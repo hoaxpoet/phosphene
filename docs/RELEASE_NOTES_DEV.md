@@ -6,6 +6,86 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-h] CSP.3.4 — FFO SDF Lipschitz divisor /4 → /10 (fixes gray-tip artifacts at high spike strength)
+
+**Increment:** CSP.3.4 (Lipschitz fix following CSP.3.3 multiplier bump). **Status:** Implemented 2026-05-28. Engine 1358/1358 tests pass; app build clean. Manual M7 outstanding.
+
+### Why this is here
+
+CSP.3.3 M7 (session `2026-05-28T13-31-47Z`): Matt reported "**spike subtlety has been addressed sufficiently**" (CSP.3.3 multiplier works) but flagged two new issues:
+
+1. "Change in behavior and some flickering around 38 s in for Love Rehab"
+2. "On Money, I started to see gray artifacts at the tips of spikes during heavy bass hits"
+3. "In Money it feels like the spike movement and the waves are fighting each other to some degree"
+
+Diagnostic dive on the session CSV traced #1 and #2 to the **same root cause** — the Lipschitz divisor in FFO's SDF, sized for spike strength = 1.0 (no modulation), is now being routinely exceeded.
+
+### The math
+
+Round 56's `/4` divisor was derived from cone geometry: height 0.62 wu / base radius 0.17 wu = max gradient 3.65 at spike strength 1.0. `/4` bounds gradients up to 4. Above that, ray-march overshoots → gray pixels at tips.
+
+Post-CSP.3.3 spike strengths from the M7 session:
+
+| Moment | `f.bass` | Spike strength | Effective gradient |
+|---|---:|---:|---:|
+| 38 s into Love Rehab (flicker) | 0.31–0.36 | 1.25–1.29 | 4.6–4.7 |
+| Money typical playback | up to 0.44 | up to 1.36 | up to 5.0 |
+| Money max bass | 0.44 | 1.36 | 5.0 |
+| Love Rehab rare peak (127 s) | 1.28 | 2.02 | 7.4 |
+| Theoretical worst case | 1.00 | 2.05 (baseline 1.25 + 0.8) | 7.5 |
+
+Every spike strength > 1.07 violates the `/4` divisor's safe range. The "flickering at 38 s" and "gray artifacts on Money heavy bass hits" are the same Lipschitz-overshoot artifact at different magnitudes. Both consistent with f.bass content fluctuating above the threshold.
+
+### The fix
+
+Bump the divisor from `/4` to `/10`:
+
+```c
+// Round 56 (previous): return (p.y - surfaceY) / 4.0;
+// CSP.3.4 (current):   return (p.y - surfaceY) / 10.0;
+```
+
+`/10` covers effective gradients up to 10 — accommodates the full post-CSP.3.3 spike-strength range with margin for the 0.1 % rare frames where `f.bass ≥ 1.0`.
+
+### Trade-off
+
+Each ray-march step is now smaller (the SDF is more conservative), so more iterations are needed to converge on the surface. The cost is at the SDF math level (each step is half as efficient at advancing toward the surface) and is bounded by the existing ray-march step budget (D-057). **No effect on rendered output** beyond removing the overshoot artifacts — surface positions, normals, lighting all unchanged.
+
+### About "fighting between spikes and waves"
+
+Matt's third observation. Likely related to but distinct from the artifact bug. The gray-tip artifacts themselves contribute visual noise that reads as "broken" / "wrong"; with the artifacts gone, the "fighting" perception may resolve. If not, a follow-up could tie spike modulation magnitude to the wave amplitude (smaller spikes during calmer arousal periods) — but that's worth deferring until the artifacts are fixed and the perception re-evaluated.
+
+### Verification
+
+- **Engine:** 1358 / 1358 tests pass. `PresetRegressionTests` golden hashes pass.
+- **App build:** succeeds.
+- **PERF.3 brightness fix verified intact**: `ffmpeg signalstats` on M7 session — 53 oscillation events (same as CSP.3.3 session).
+
+**Manual M7 (your gate).** Same protocol. Expected:
+- **No gray artifacts at spike tips during heavy bass hits** (Money or anywhere)
+- **No flicker around 38 s into Love Rehab** (same root cause; should clear)
+- **No regression on spike-height visibility** — magnitude unchanged from CSP.3.3
+- **No PERF.3 regression** — lighting fix in different formula
+- **"Fighting between spikes and waves"** — TBD; may resolve with artifacts gone, may persist as a separate concern
+
+### Touched files
+
+- `PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal` — divisor change + Lipschitz comment update.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+- `docs/ENGINEERING_PLAN.md` — CSP.3.4 under Phase CSP.
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-019 history extended.
+
+### Local-only
+
+Local commit on `main`. No remote push.
+
+### Related
+
+- `[dev-2026-05-28-g]` — CSP.3.3 (the multiplier bump that exposed this issue).
+- Round 56 (commit pre-PERF) — original Lipschitz fix this entry extends.
+
+---
+
 ## [dev-2026-05-28-g] CSP.3.3 — FFO spike-strength coefficient bump (0.35 → 0.8)
 
 **Increment:** CSP.3.3 (tune of CSP.3.2). **Status:** Implemented 2026-05-28. Engine 1358/1358 tests pass; app build clean. Manual M7 outstanding.

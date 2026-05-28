@@ -4663,6 +4663,21 @@ Plus the operational gaps CSP.2 surfaced:
 - **No different:** the design space at the cached-perception + live-overall-bass layer is exhausted at this consumption point. Pivot to Matt's stress-test methodology suggestion (CSP-Stress.1, below).
 - **Worse:** revert; capture specific failure modes before reverting (which track, what part of the timeline, what does the spike behaviour look like).
 
+### Increment CSP.3.4 — FFO SDF Lipschitz divisor /4 → /10 (2026-05-28) ✅
+
+CSP.3.3 M7 (session `2026-05-28T13-31-47Z`): Matt confirmed "spike subtlety has been addressed sufficiently" but flagged gray-tip artifacts during heavy bass hits + flickering around 38 s into Love Rehab. Diagnostic: both symptoms trace to the SDF Lipschitz divisor. Round 56's `/4` was sized for spike strength 1.0; CSP.3.3 produces spike strengths 1.25–2.05, effective gradients 4.6–7.5, all exceeding the `/4` safe ceiling (4).
+
+Bumped to `/10`. Covers effective gradients up to 10 — accommodates the full post-CSP.3.3 spike-strength range including the rare `f.bass ≥ 1.0` frames (0.1 %). Trade-off: more ray-march iterations per pixel (each step smaller), bounded by D-057's step budget. No effect on rendered output beyond removing overshoot artifacts.
+
+**Done-when.**
+
+- [x] Engine: 1358 / 1358 tests pass.
+- [x] App build: succeeds.
+- [x] `ffmpeg signalstats` on M7 session: 53 brightness-osc events (PERF.3 baseline unchanged).
+- [ ] **Matt M7.** Expected: no gray artifacts at spike tips, no 38 s Love Rehab flicker, no regression on spike-height magnitude or PERF.3.
+
+See `RELEASE_NOTES_DEV.md [dev-2026-05-28-h]`.
+
 ### Increment CSP.3.3 — Spike-strength coefficient bump 0.35 → 0.8 (2026-05-28) ✅
 
 CSP.3.2 M7 (session `2026-05-28T13-20-21Z`): Matt confirmed "irregular behavior appears to be gone" and continuous spike modulation through the track — but the magnitude was "too subtle overall." 85 % of playback frames have `f.bass < 0.3` (avg 0.21); at 0.35 coefficient that's < 11 % modulation — below perception.

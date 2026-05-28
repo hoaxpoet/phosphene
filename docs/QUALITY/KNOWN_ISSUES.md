@@ -101,7 +101,9 @@ Unknown — needs the instrumentation increment first. **Multi-increment** per t
 9. **Fix (CSP.3.2) ✅ 2026-05-28** — `fo_spike_strength` dropped the warm-state crossfade to `stems.bass_energy_dev`; uses `f.bass` (AGC-normalised continuous Layer 1) for the whole track. Same shape as PERF.3 — continuous primitive primary, no deviation-primitive dead zones — applied to spike geometry. See `[dev-2026-05-28-f]`.
 10. **Validation (CSP.3.2 M7) ✅ 2026-05-28 — partial-pass** — session `2026-05-28T13-20-21Z`: irregular behavior gone (confirmed by Matt) and continuous modulation throughout track (confirmed by data), but magnitude too small. The 0.35 coefficient (inherited from pre-CSP.3.2) was tuned against the deviation primitive's pre-SAR.1 saturation; for `f.bass`'s actual distribution (85 % of frames < 0.3), 0.35 produces < 11 % modulation — below perception.
 11. **Fix (CSP.3.3) ✅ 2026-05-28** — coefficient bump 0.35 → 0.8. Typical modulation 17 %, peaks 40 %. See `[dev-2026-05-28-g]`.
-12. **Validation (CSP.3.3 M7) — pending** — expected: visible continuous spike modulation throughout the track.
+12. **Validation (CSP.3.3 M7) ✅ 2026-05-28 — partial-pass** — session `2026-05-28T13-31-47Z`: "spike subtlety has been addressed sufficiently" + irregular behavior gone — but gray-tip artifacts on heavy bass hits in Money + flickering around 38 s into Love Rehab. Diagnosed as Lipschitz overshoot: post-CSP.3.3 spike strengths (1.25–2.05) produce effective gradients (4.6–7.5) exceeding the `/4` divisor's safe ceiling (4).
+13. **Fix (CSP.3.4) ✅ 2026-05-28** — Lipschitz divisor `/4` → `/10`. See `[dev-2026-05-28-h]`.
+14. **Validation (CSP.3.4 M7) — pending** — expected: no gray artifacts at spike tips, no 38 s Love Rehab flicker, no regression on spike-height visibility or PERF.3 brightness fix.
 
 ### Disposition
 
