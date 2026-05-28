@@ -485,23 +485,26 @@ float sceneSDF(float3 p,
     // pixels → noisy normals from central differences → banded/scooped
     // patterns (rounds 50-55) or gray pixels at tips (CSP.3.3 M7).
     //
-    // CSP.3.4 (2026-05-28) — divisor bumped 4 → 10 to accommodate the
-    // post-CSP.3.3 spike-strength range. The /4 divisor was sized for spike
-    // strength 1.0 (no modulation); it bounds gradients up to 4. Post-CSP.3.3
-    // `fo_spike_strength` returns up to baseline 1.25 + 0.8 × f.bass(1.28) ≈
-    // 2.27 — effective gradient up to 3.65 × 2.27 = 8.3. /10 gives a
-    // conservative ceiling (10 > 8.3) that covers the full modulation range
-    // including the rare f.bass-near-1.0 frames (0.1 % of playback). Matt
-    // CSP.3.3 M7: "gray artifacts at the tips of spikes during heavy bass
-    // hits" on Money (session 2026-05-28T13-31-47Z, max spike strength 1.36
-    // in Money window) + "flickering around 38 s in for Love Rehab"
-    // (session-time 73 s, spike strength 1.25-1.29) → both are
-    // Lipschitz-overshoot artifacts at modulated spike heights.
+    // CSP.3.4 → CSP.3.5 (2026-05-28) — divisor settled at /6 after iterating.
+    // Round 56's `/4` was sized for spike strength 1.0 (no modulation), bounding
+    // gradients up to 4. Post-CSP.3.3 spike strengths reach 1.25–1.50 in typical
+    // playback (effective gradients 4.6–5.5) → /4 produced gray-tip artifacts.
+    // CSP.3.4 bumped to /10 (covers gradient 10, spike strength up to 2.74) but
+    // had a side effect: each ray-march step became 60 % smaller than /4, so
+    // rays at oblique view angles (camera-close grazing reflections + far-corner
+    // pixels) exhausted the 128-step iteration cap (PresetLoader+Preamble.swift
+    // line 418) BEFORE finding the surface. Those pixels fell back to the
+    // "sky/miss" path and rendered the procedural sky as white patches. CPU
+    // also breached the 16.67 ms 60 fps budget (17.14 ms avg, session
+    // 2026-05-28T17-50-42Z) from doing more iterations per pixel.
     //
-    // Cost: each ray-march step is smaller, requiring more iterations to
-    // converge on the surface. Net per-pixel cost increases moderately at
-    // the SDF level. No effect on rendered output beyond removing the
-    // overshoot artifacts.
+    // CSP.3.5 /6 splits the difference: covers gradients up to 6 (spike strength
+    // up to 1.64), which accommodates all typical playback worst-cases observed
+    // (Money 1.36, Love Rehab regular ≤ 1.30, the cited LF session 1.52). The
+    // rare f.bass-near-1.0 frames (0.1 % of playback in some sessions) may
+    // produce brief gray-tip flicker, but those frames are too sparse to
+    // sustain a visible artifact. Net: balances Lipschitz safety against
+    // iteration reach + CPU budget.
     return (p.y - surfaceY) / 10.0;
 }
 
