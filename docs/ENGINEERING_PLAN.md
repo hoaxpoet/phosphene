@@ -32,6 +32,20 @@ Test infrastructure: swift-testing + XCTest across unit, integration, regression
 
 ## Recently Completed
 
+### Increment LF.5.fix.2 — Three post-BUG-021 cleanups (collapsed) ✅ (2026-05-28)
+
+Three follow-ups surfaced in the BUG-021 verification session `2026-05-28T19-42-50Z`. All sub-P1 (cosmetic / minor leak / latent log-only field) — collapsed into one increment per Matt's approval at the prompt's audit step.
+
+**FU-1 — Noisy no-op `provider.teardown` breadcrumbs** (`527b0ab2`). `LocalFilePlaybackProvider.stop()` now skips the `teardownAVFoundation` helper when the lock-protected ref snapshot is all-nil. Eliminates the `provider.teardown ENTER`/`EXIT` pair around zero work at every session start and inside every Next-press `audioRouter.start BEGIN/COMPLETE` window.
+
+**FU-2 — Stem analyzer continues for ~1 minute after Stop** (`1877f527`). `VisualizerEngine.swift`'s `.ended` state observer now calls `self.stopStemPipeline()` (cancelling the 5 s DispatchSource timer) before stopping the audio router. Pre-fix: 12 stem separations / ~60-120 s of CPU work persisted post-Stop in the verification session.
+
+**FU-3 — `elapsedTrackTime` session-monotonic across LF track changes** (`d09a059a`). `advanceLocalFileQueue` in `VisualizerEngine+LocalFilePlayback.swift` now fires `mirPipeline.reset()` + `pipeline.resetAccumulatedAudioTime()` between `audioRouter.stop` and `resetStemPipeline(...)`, mirroring the streaming track-change callback. Audit revealed the bug surface was broader than the kickoff described — `mir.elapsedSeconds` was wrong-shaped for every LF consumer (FFO cold-start fix `fv.trackElapsedS`, `featureStability` ramp curve, recording `playbackTime`), not just the orchestrator log line. Matt approved the audit-recommended Path B (root-cause fix, smaller diff) over the prompt's prescribed Path A (new `trackChangeTimestamp` field bound only to the log line).
+
+**Verification.** Engine 1358/1358 ✓. App suite flakes pre-existing (SessionManagerTests / AppleMusicConnectionViewModelTests timing flakes; `AccessibilityLabelsTests.connectorTileLabelDisabledNoCaption` reproduces on clean HEAD, spawned as follow-up task during closeout). SwiftLint `--strict` clean. `Scripts/check_user_strings.sh` + `Scripts/check_sample_rate_literals.sh` clean. Manual smoke pending Matt's confirmation per kickoff's done-when gate.
+
+**Docs touched.** `docs/QUALITY/KNOWN_ISSUES.md` (BUG-021 outstanding-work strike-throughs — closes 3 of 5 items; the buildPlan-deferred item and the plan-walker root-cause investigation remain open), `docs/RELEASE_NOTES_DEV.md` (`[dev-2026-05-28-t]`), this entry.
+
 ### Increment LF.5 — Multi-File Local Playback + File-Association + Recents ✅ (2026-05-28)
 
 Lifts local-file playback from LF.4's single-file ceiling. The user picks a folder, drags multiple files, opens a `.m3u` playlist, or double-clicks an `.m4a` in Finder — and Phosphene queues the audio files in order, walks through them with the same orchestrator-driven preset selection per track that the streaming path uses, surfaces a `File → Open Recent ▸` submenu of the last 10 opens, and persists ID3 / Vorbis title / artist / album / artwork alongside each cached entry. Mid-session track transitions are hard cuts; single-file env-var hook continues to loop the file for the dev workflow.
