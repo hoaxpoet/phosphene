@@ -7,6 +7,43 @@
 // flare the peak palette into HDR bloom; the ridge-line itself reads as
 // a thin emissive seam where the cut goes.
 //
+// CSP.4 audit (2026-05-28) — no code change.
+//
+//   Following BUG-019's close (PERF.3 + CSP.3.2/3/4 fixed FFO's three
+//   antipatterns: beat-dominant lighting, deviation-primitive dead zone,
+//   SDF Lipschitz overshoot), CSP.4 audited VL for the same shapes.
+//
+//   Result: VL is structurally clean of all three.
+//     • Depth driver `vocalSwell` reads `stems.vocals_energy` (AGC stem,
+//       not deviation — measured mean 0.33–0.36 on Love Rehab + Money,
+//       well above the 0.1 floor).  FV warmup fallback `f.mid_att_rel`
+//       is a deviation primitive but is only consumed for the first
+//       ~10 s before stems arrive — narrow window, accepted trade.
+//     • Peak lift `kickPulse` reads drum-stem `drums_beat` / `drums_attack_ratio`
+//       (MIR-invariant) / `drums_energy` (AGC stem).  No deviation
+//       primitive in the warm-state primary path.
+//     • Camera dolly is bass-continuous: `baseSpeed × (0.5 + features.bass × 1.1)`
+//       in RenderPipeline+RayMarch.swift:213 — already the post-CSP.3.2
+//       Layer-1-primary shape.
+//     • Engine light intensity inherits PERF.3 (`1.0 + bass × 0.4 +
+//       beatAccent × 0.15`) automatically through `applyAudioModulation`.
+//     • SDF Lipschitz: `VL_SDF_STEP_SCALE = 0.6` (effective divisor 1.67).
+//       VL's broader low-frequency noise (`VL_NOISE_FREQUENCY = 0.12`)
+//       keeps gradients well within budget; no overshoot artifacts
+//       reported in the 2026-05-28T17-16-36Z M7 (Matt's "other ray-march
+//       presets unchanged" verification).
+//     • FA #4 (beat-dominant) check: typical peak frame beat:base ratio
+//       1.47×, borderline-low against CLAUDE.md's 2–4× guideline, BUT
+//       peak lift only modulates the above-midpoint region (asymmetric)
+//       and the kick gate fires <30 % of frames.  On average continuous
+//       dominates by >3×.  Not a true FA #4 violation; this is the v9.3
+//       intentional "kick-prominent on bass-only sections" design.
+//
+//   The pre-CSP.4 audit narrative (v6 → v9.4) below remains as design
+//   history.  Stems-routing dead-zone risk is structurally avoided by
+//   reading AGC stem energies and MIR-invariant ratios directly, not
+//   their deviation primitives.
+//
 // v9 — Explicit per-stem routing: drums→pulse, vocals→depth (2026-04-17,
 //   session 2026-04-17T22-42-15Z).  Matt's observations on bad guy:
 //
@@ -293,28 +330,35 @@
 //     albedo by noise position + audio time + valence.
 //   - `sqrt(f.mid) * 1.6` replaces `f.treble * 1.4` for "other" polish.
 //
-// Audio routing (v9.2 — clean per-stem / per-element mapping):
+// Audio routing (v9.4 current — corrects the stale v9.2 summary that
+// described drivers v9.3 had removed):
 //   s.sceneParamsA.x                                          → terrain phase
-//   0.30·coact + 0.50·log(1+density) + 0.25·(AR-1)            → section intensity
-//   stems.vocals_energy × 0.7 (+ intensity)                   → continuous depth amp
+//   stems.vocals_energy × 0.7 (vocalSwell ONLY)               → continuous depth amp
+//                                                             (v9.3 removed the
+//                                                             coact+density+attack
+//                                                             intensity term so
+//                                                             landmasses sit still
+//                                                             during bass-only play)
 //   max(stems.drums_beat,
 //       smoothstep(1.3, 2.0, stems.drums_attack_ratio)
 //         × smoothstep(0.08, 0.22, stems.drums_energy))       → kick-only peak lift
 //                                                             (DRUM STEM ONLY; no bass)
 //   features.bass                                             → camera dolly speed
-//                                                             (separate path in RayMarch)
+//                                                             (separate path in
+//                                                             RenderPipeline+RayMarch.swift)
 //   kickPulse (same drum-stem-only source)                    → accent (peak flare + ridge + coverage)
 //   energy-weighted stem-hue mean                             → palette hue phase
 //   f.valence                                                 → palette hue offset (mood)
 //   onset-density + 0.25·attack                               → peak roughness polish
-// FV fallbacks (pre-stem warmup):
-//   0.3 + f.bass_att_rel·1.2 + f.mid_att_rel·1.4 + f.bass_att·0.6 → continuous amp
-//   f.mid_att_rel + 0.2                                           → vocal swell proxy
+// FV fallbacks (pre-stem warmup, ~10 s):
+//   f.mid_att_rel (clamped [0,1.2])                              → vocal swell proxy
 //   (no FV fallback for kickPulse — landmasses silent during stem warmup;
 //    track start has ~10s of no-pulse before stems arrive.  Acceptable
 //    trade for removing bass-overload when stems are live.)
 // Camera dolly base: 1.8 u/s (VisualizerEngine+Presets.swift).  Modulated
 // per-frame by (0.5 + features.bass × 1.1) in RenderPipeline+RayMarch.swift.
+// Engine-level light intensity modulated by (1.0 + features.bass × 0.4 +
+// beatAccent × 0.15) in the same file (PERF.3, Layer-1-primary).
 //
 // D-019 stem-routing fallback: stems are not in scope here, so all
 // stem-driven parameters fall back to FeatureVector — equivalent to

@@ -2,7 +2,7 @@
   "name": "Volumetric Lithograph",
   "family": "geometric",
   "duration": 35,
-  "description": "Psychedelic linocut terrain — forward-dollying flight over an infinite audio-reactive landscape. v6 density/rate/attack drivers: terrain amp = 0.30·coactivation + 0.50·onset_density + 0.25·(attack−1), three AGC-surviving primitives that track structural intensity rather than normalised amplitude. Accent fires on drum onsets or any stem's sharp transients; palette hue tracks energy-weighted stem composition. No atmospheric fog (printmaking has no aerial perspective).",
+  "description": "Psychedelic linocut terrain — forward-dollying flight over an infinite audio-reactive landscape. v9.4 routing: continuous terrain depth driven by stems.vocals_energy (AGC stem) only; peak lift fires on drum-stem kicks + snap/snare transients via drums_beat and drums_attack_ratio (MIR-invariant); camera dolly scales with features.bass continuously. Palette hue tracks energy-weighted stem composition; peak polish reads onset density. CSP.4 audit (2026-05-28) confirmed structurally clean of the FFO antipatterns BUG-019 fixed. No atmospheric fog (printmaking has no aerial perspective).",
   "author": "Matt",
   "passes": ["ray_march", "post_process"],
   "beat_source": "bass",

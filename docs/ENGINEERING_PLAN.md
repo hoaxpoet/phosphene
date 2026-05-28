@@ -116,6 +116,26 @@ Lifts local-file playback from LF.4's single-file ceiling. The user picks a fold
 
 **Recommended next increment.** LF.6 — album-art display in `PlaybackView` chrome (data already captured at LF.5 via the `artwork.bin` sibling; UI surface needed). OR a multi-file env-var hook for the dev workflow. OR a `PHOSPHENE_LOCAL_FILE_REPLAYABLE_SCRUB=1` toggle for replay-debugging the LF.5 mid-session advance against recorded sessions.
 
+### Increment CSP.4 — Volumetric Lithograph audit: no antipatterns; doc-only refresh ✅ (2026-05-28)
+
+Audit follow-up after BUG-019's close. The `[dev-2026-05-28-i]` close noted that the same continuous-bass primary pattern that fixed FFO might extend to VL's terrain pulse + camera dolly. The investigation found VL is structurally clean of all three FFO antipatterns:
+
+- **Deviation-primitive dead zone (FFO CSP.3.2):** VL's depth driver is `stems.vocals_energy` (AGC stem, measured mean 0.33–0.36 in steady state) — not a deviation primitive. The warmup-fallback `f.mid_att_rel` IS a deviation primitive but is only consumed for ~10 s before stems arrive. Per-stem `_energy_dev` primitives (the FFO-CSP.3.2 root cause, mean ≈ 0 post-SAR.1) are not consumed anywhere in VL.
+- **Beat-dominant lighting (PERF.3):** Already fixed in `applyAudioModulation` at engine level; VL inherits automatically.
+- **SDF Lipschitz overshoot (FFO CSP.3.4):** `VL_SDF_STEP_SCALE = 0.6` (effective divisor 1.67) is well-sized for VL's broader low-frequency noise (`VL_NOISE_FREQUENCY = 0.12`); no overshoot artifacts reported in `2026-05-28T17-16-36Z` M7.
+- **Camera dolly:** Already on Layer-1-primary shape: `baseSpeed × (0.5 + features.bass × 1.1)`, identical to FFO's post-CSP.3.2 formula.
+
+The shader docstring at the top of `VolumetricLithograph.metal` describes v6/v7 routing (coactivation + density + attack) that v9.3 removed; the JSON sidecar `description` cites the same stale v6 narrative. This commit refreshes both to reflect the actual v9.4 routing. **No shader logic, no constant, no behaviour change.**
+
+**Done-when.**
+
+- [x] Engine: swift test unchanged (no logic touched). `PresetRegressionTests` golden hashes unaffected.
+- [x] App build: succeeds.
+- [x] SwiftLint `--strict`: clean on `VolumetricLithograph.metal`.
+- [x] **Matt M7 (optional sanity check).** Doc-only commits do not normally need an M7 gate.
+
+See `RELEASE_NOTES_DEV.md [dev-2026-05-28-m]` for the full investigation report.
+
 ### Increment LF.4 — Local-File Playback as a User-Facing Feature ✅ (2026-05-27)
 
 Lifts local-file playback from the LF.3 `PHOSPHENE_LOCAL_FILE_PLAYBACK` env-var hook to a first-class user-facing feature on the macOS app surface. The user clicks `File → Open Local File…` (⌘O) — or drags an audio file onto the app window — and the file plays through Phosphene with the same `idle → preparing → ready → playing` state machine the streaming path uses. Cache hygiene moves from "operator deletes `~/Library/Application Support/Phosphene/StemCache/` by hand" to an automatic LRU eviction policy (default 500 MB cap ≈ 70 cached tracks) plus a `Phosphene → Clear Local-File Cache (<size>)` menu item showing the current footprint.

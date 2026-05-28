@@ -6,6 +6,87 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-m] CSP.4 — Volumetric Lithograph audit: no antipatterns; doc-only refresh
+
+**Increment:** CSP.4 (Phase CSP audit follow-up). **Status:** Doc-only commit, no logic change. Engine + app tests unchanged; SwiftLint `--strict` clean on touched `.metal` file.
+
+### Why this is here
+
+The `[dev-2026-05-28-i]` BUG-019 close noted that "the same continuous-bass primary pattern extends to Volumetric Lithograph's terrain pulse + camera dolly" as a Phase CSP follow-up. Matt requested CSP.4 to investigate before changing anything.
+
+### Investigation result — VL is structurally clean
+
+The shader's docstring at the top of `VolumetricLithograph.metal` traces v3 → v9.2 iterations and describes coactivation + onset_density + attack-ratio as the depth driver. That's **stale**: the actual code is v9.3 / v9.4 (commits from 2026-04-17 evening), which removed the intensity term entirely and replaced it with `stems.vocals_energy` only. The audit ran against current code, not the docstring.
+
+**Per-route classification:**
+
+| Driver | Reads | Class |
+|---|---|---|
+| `audioAmp` continuous depth (warm state) | `stems.vocals_energy` | AGC stem — not deviation |
+| `audioAmp` continuous depth (warmup ≤10 s) | `f.mid_att_rel` | deviation primitive — narrow window |
+| `kickPulse` peak lift + material accent | `stems.drums_beat`, `drums_attack_ratio`, `drums_energy` | beat-onset + MIR-invariant + AGC stem |
+| Palette hue | per-stem energies | AGC stem |
+| Peak roughness polish | `*_onset_rate` | MIR-invariant |
+| Camera dolly speed | `features.bass` | Layer 1 AGC (post-CSP.3.2 shape already) |
+| Engine light intensity | `features.bass` + beatAccent | Layer 1 + accent (PERF.3 already) |
+
+**Measured distribution** (session `2026-05-28T17-16-36Z`, VL windows on Love Rehab + Money, n=1379 / n=1677 frames):
+
+| Primitive | Love Rehab | Money | VL uses? |
+|---|---|---|---|
+| `f.bass` (Layer 1 — dolly + light) | mean 0.231, max 0.596 | mean 0.216, max 0.464 | ✅ healthy continuous |
+| `f.bassDev` (deviation — known dead-zone post-SAR.1) | mean **0.001**, max 0.192 | mean **0.000**, max 0.000 | ❌ not consumed — bullet dodged |
+| `stems.vocalsEnergy` (AGC stem — depth) | mean 0.361, max 1.045 | mean 0.330, max 1.349 | ✅ well above the 0.1 floor |
+| `stems.drumsEnergy` (AGC stem — kick gate) | mean 0.246, max 0.650 | mean 0.273, max 0.892 | ✅ passes 0.08-0.22 gate |
+| `stems.drumsBeat` (onset) | mean 0.220, max 1.000 | mean 0.201, max 1.000 | ✅ fires |
+| `stems.drumsAttackRatio` (MIR-invariant) | mean 0.974, max 2.497 | mean 0.999, max 2.666 | ✅ snap/snare gate fires |
+
+The FFO dead-zone (`bassDev ≈ 0` in warm state post-SAR.1) is real in this session too — but VL doesn't read it, so it can't bite.
+
+**FA #4 check (beat-dominant).** At typical peak frame: continuous depth ≈ 1.32 vs peak lift ≈ 0.9 → ratio 1.47×, borderline-low against CLAUDE.md's 2–4× guideline. BUT peak lift only modulates the above-midpoint region (asymmetric, not whole-terrain stretching) and the kick gate fires <30 % of frames. On average continuous dominates by >3×. Not a true FA #4 violation; this is the v9.3 intentional "kick-prominent on bass-only sections" design Matt requested.
+
+**Lipschitz check.** `VL_SDF_STEP_SCALE = 0.6` ≡ effective divisor 1.67 (vs FFO's `/10` after CSP.3.4). VL's broader low-frequency noise (`VL_NOISE_FREQUENCY = 0.12`) keeps gradients well within budget. No artifacts reported in Matt's 17-16-36Z "other ray-march presets unchanged" verification.
+
+### What this commit does
+
+- **`VolumetricLithograph.metal`** — adds a leading CSP.4 audit summary block to the docstring; updates the previously-stale "Audio routing (v9.2 — clean per-stem / per-element mapping)" block to "v9.4 current" with the actual drivers (vocalSwell ONLY for depth, no FV bass terms, engine-level PERF.3 light intensity called out). The v3 → v9.2 historical narrative remains as design history.
+- **`VolumetricLithograph.json`** — replaces stale `description` ("v6 density/rate/attack drivers") with current v9.4 routing summary.
+- **No code logic change**, no constant change, no shader behaviour change. `PresetRegressionTests` golden hashes unaffected.
+
+### Verification
+
+- **Engine:** swift test green (no logic touched).
+- **App build:** succeeds.
+- **SwiftLint `--strict` on touched `.metal` file:** clean.
+
+### M7 protocol — optional sanity check, not load-bearing
+
+Doc-only commits don't normally need M7. If you want to confirm VL still behaves as it did before, the existing protocol applies: build current main, connect a Spotify prepared session (Love Rehab / Money), cycle to Volumetric Lithograph (Shift+→), watch for 60–90 s on each of two tracks. Expected behaviour: identical to pre-commit. Cycling through Lumen Mosaic / Aurora Veil / Membrane is also valid — the engine-level PERF.3 fix is unchanged.
+
+### Touched files
+
+- `PhospheneEngine/Sources/Presets/Shaders/VolumetricLithograph.metal` — docstring only.
+- `PhospheneEngine/Sources/Presets/Shaders/VolumetricLithograph.json` — `description` field only.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+- `docs/ENGINEERING_PLAN.md` — CSP.4 closeout under Phase CSP.
+
+### Out-of-scope follow-up worth flagging
+
+The FV warmup fallback `f.mid_att_rel` IS a deviation primitive. For the first ~10 s of a track before stems arrive, terrain depth depends on it; if `mid_att_rel` is dead-zoned in that window (its dev distribution is not in `features.csv` so we couldn't measure it this session), cold-start VL could read inert until stems take over. No M7 has reported this; flagged here so it's findable if the symptom ever surfaces.
+
+### Local-only
+
+Local commit on `main`. No remote push.
+
+### Related
+
+- `[dev-2026-05-28-i]` — BUG-019 close that flagged CSP.4 as the follow-up.
+- `[dev-2026-05-28-e]` — PERF.3 (engine-level light fix VL automatically inherits).
+- `[dev-2026-05-28-f]` — CSP.3.2 (the "drop deviation, use f.bass continuously" shape that turns out to be unnecessary for VL).
+- CLAUDE.md Audio Data Hierarchy — Layer 1 primary driver rule confirmed not violated.
+
+---
+
 ## [dev-2026-05-28-l] LF.5.fix — Build multi-segment plan for LF sessions (D-LF5-4)
 
 Surfaced by Matt's follow-up to the D-LF5-1 closeout: "what happened to
@@ -34,6 +115,24 @@ track boundary AND multiple `preset → <name>` lines within each
 track's playback window. If only one preset transition per track shows
 up, the planner produced a single-segment plan for that track —
 expected behaviour for some short tracks; not a defect.
+
+**Verification scope — structural fixes only (Matt 2026-05-28).** Only
+2 of 16 presets are currently certified (`FerrofluidOcean`,
+`LumenMosaic`); the planner cannot meaningfully demonstrate
+multi-preset-per-song variety with that pool. LF.5.fix smoke covers
+the **structural** checks:
+
+1. `mode=planned, planIdx=N` lines confirm D-LF5-1 + D-LF5-4 landed.
+2. `livePlannedSession` populated for the 8-track folder confirms
+   `buildPlan()` ran successfully against an LF SessionPlan.
+3. End Session / transport Stop silence audio (D-LF5-2).
+4. Hover-revealed transport bar renders + buttons work (D-LF5-3).
+
+**Deferred** until the certified catalog reaches ≥ 5 presets: the
+"variety in practice" + "the planner's picks feel right" smoke —
+neither is testable while FFO ↔ LumenMosaic is the entire pool. A
+follow-up smoke is queued for whenever preset certification clears
+that threshold.
 
 ---
 
