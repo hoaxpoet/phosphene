@@ -32,6 +32,25 @@ Test infrastructure: swift-testing + XCTest across unit, integration, regression
 
 ## Recently Completed
 
+### Increment LF.5.fix.3 — Folder-pick race cluster (BUG-023 A/B/C) ✅ (2026-05-28)
+
+Three concurrency bugs in `SessionManager.startLocalFiles` surfaced during LF.5.fix.2 manual smoke verification (session `2026-05-28T20-57-46Z`). All three were symptoms of the same upstream defect: when the user picks a second folder while the first folder's preparation is still running, the cancel-then-restart path leaves orphaned state machines and racing tasks. Multi-increment fix per CLAUDE.md §Defect Handling Protocol.
+
+**Bug A — Cancelled prep transitioned to .ready** (`ef15d90d`). `_beginMultiFileTransition` resets `cancellationRequested = false`; the older suspended `startLocalFiles` always saw false post-await and proceeded into `_completeLocalFilesReady` with its partial cancelled result. Fix: new monotonic `localFileSessionGen: UInt64`; gen mismatch is the supersession signal.
+
+**Bug B — Parallel preps on the same folder** (`0596b8ea`). `cancel()` skips when state is `.ended` (user Stop between picks bypassed cancellation entirely). `preparationTask = nil` at every `prepareLocalFiles` exit clobbered newer task references on out-of-order returns. Fix: `prepareLocalFiles` prefixes with `preparationTask?.cancel()` (cancellation invariant at API boundary); exit no longer nils the field; `cancelPreparation` nils explicitly.
+
+**Bug C — Mid-track restart** (`1839d3e3`). Two `_completeLocalFilesReady` calls drove two `.ready` transitions; the second one re-fired `handleLocalFileReady` for the URL already playing → `provider.teardown` + restart from frame 0. Fix: defense-in-depth `lastStartedLocalFilePlaybackURL` marker (per Matt's kickoff decision, URL match only). Guard at handleLocalFileReady entry; commit on successful audio-router start; clear on `.preparing` + `.ended`.
+
+**Verification.** Engine 1359/1359 ✓ (1 known MemoryReporter flake). App 160/160 ✓. New regression tests:
+- `startLocalFiles_secondCall_cancelsFirstInFlight_evenAfterEndSession` (engine, Bug B).
+- `startLocalFiles_supersededCall_doesNotTransitionToReady` (engine, Bug A — uses `Task.detached` stub to deterministically sequence A's resume after B).
+- `HandleLocalFileReadyIdempotencyRegressionTests` (new file, app, 3 source-presence assertions for Bug C).
+
+Manual smoke (re-run kickoff reproducer) pending Matt's confirmation: picking folder B mid-A-prep cancels A silently; folder B preps exactly once; re-pick of same folder no-ops cleanly.
+
+**Docs touched.** `docs/QUALITY/KNOWN_ISSUES.md` (BUG-023 filed + resolved with three commit hashes), `docs/RELEASE_NOTES_DEV.md` (`[dev-2026-05-28-w]`), this entry.
+
 ### Increment LF.5.fix.2 — Five post-BUG-021 cleanups (collapsed) ✅ (2026-05-28)
 
 Five follow-ups in the BUG-021 cluster. FU-1 / FU-2 / FU-3 surfaced in the BUG-021 verification session `2026-05-28T19-42-50Z`; FU-4 (the LF-startup cousin of FU-3) was surfaced in `2026-05-28T20-36-17Z`; FU-5 closes a second mover in the same defect surface as FU-4 — verification session `2026-05-28T21-08-33Z` showed FU-4 alone insufficient. All sub-P1 (cosmetic / minor leak / latent log-only field) — collapsed into one increment per Matt's approval at the prompt's audit step.

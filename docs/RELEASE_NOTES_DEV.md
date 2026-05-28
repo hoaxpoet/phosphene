@@ -6,6 +6,67 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-w] LF.5.fix.3 — Folder-pick race cluster (BUG-023 A/B/C)
+
+**Increment:** LF.5.fix.3. **Status:** Resolved 2026-05-28. P1 — multi-increment fix per CLAUDE.md §Defect Handling Protocol (instrumentation already on disk via BUG-006.1 + LF.5.fix.2 WIRING breadcrumbs; diagnosis + B + A + C as separate commits).
+
+### What happened
+
+Manual smoke of LF.5.fix.2-FU5 surfaced a cluster of three related symptoms in session `~/Documents/phosphene_sessions/2026-05-28T20-57-46Z/session.log` when the user picked a second folder while the first folder's preparation was still running. All three are concurrency failures in the `startLocalFiles` lifecycle that the LF.4 single-file path didn't exercise:
+
+- **Bug A — Cancelled prep transitioned to .ready.** Folder A's preparation cancelled at 2/200 files (when the user picked folder B), but A's `startLocalFiles` continuation still ran `_completeLocalFilesReady` with the 2-track partial result. Result: `handleLocalFileReady` fired for folder A's first track ("Can't Leave the Night") against folder B's URL queue.
+- **Bug B — Two parallel preps of the same folder.** The captured session also had a user-Stop between the two picks, kicking state into `.ended`. `SessionManager.startLocalFiles`'s `cancel()` is guarded on `state != .idle && state != .ended`, so `.ended` bypassed the cancellation. Folder B's first prep continued in the background while the second one ran in parallel — `prepareLocalFile #1 of 5 SZ2 freshAnalysis` fired twice, files 2/3 hit `persistentDisk` on the second run because the first had already written them.
+- **Bug C — Mid-track restart.** Two `prepareLocalFiles DONE cached=5` events (21:01:48 + 21:02:14) drove two `_completeLocalFilesReady` calls. SZ2 was actively playing when the second one fired — `.playing → .ready` triggered `handleLocalFileReady` again, which ran `provider.teardown` + restart from frame 0 with no user input.
+
+### Root cause — three contributing factors
+
+1. **`_beginMultiFileTransition` resets `cancellationRequested = false`** ([SessionManager.swift:423](PhospheneEngine/Sources/Session/SessionManager.swift)). Older `startLocalFiles(A)` suspended on `await preparer.prepareLocalFiles`; when B's `startLocalFiles` runs `cancel()` then `_beginMultiFileTransition(B)`, the flag toggles `true → false` between A's suspension and A's resume. A's post-await guard `if cancellationRequested` saw `false` and proceeded → Bug A.
+2. **`cancel()` skipped on `state == .ended`** ([SessionManager.swift:383](PhospheneEngine/Sources/Session/SessionManager.swift)). User Stop put state in `.ended`. Second pick's `startLocalFiles` skipped `cancel()` entirely — the first folder B's prep was never cancelled → Bug B.
+3. **`preparationTask = nil` at every `prepareLocalFiles` exit** ([SessionPreparer.swift:269](PhospheneEngine/Sources/Session/SessionPreparer.swift)). An older call resolving out-of-order would clobber a newer task's reference. Two parallel preps both completing then both calling `_completeLocalFilesReady` → Bug C.
+
+### The fix — three commits
+
+- **`[LF.5.fix.3-B]` SessionPreparer: cancel previous prep at API boundary** (`0596b8ea`). `prepareLocalFiles` prefixes the body with `preparationTask?.cancel()` (catches the `.ended`-bypass leftover). `preparationTask = nil` at exit removed (so out-of-order returns don't drop newer refs). `cancelPreparation` nils the field. Streaming `prepare(tracks:)` left unchanged — the field semantics there are load-bearing for the `replacesActiveStreamingSession` tests; LF-specific scope.
+
+  New regression test: `startLocalFiles_secondCall_cancelsFirstInFlight_evenAfterEndSession` in `SessionManagerLocalFileTests.swift`. Pre-fix: `stubA.callCount == 5` (full parallel run). Post-fix: `stubA.callCount < 5` (cancelled mid-flight after B's `cancel()`).
+
+- **`[LF.5.fix.3-A]` SessionManager: gen-counter gate on .ready transition** (`ef15d90d`). New `localFileSessionGen: UInt64`, monotonic. `startLocalFiles` increments + captures `myGen` before `_beginMultiFileTransition`; the post-await guard bails when `localFileSessionGen != myGen`. Replaces the broken `cancellationRequested` check.
+
+  New regression test: `startLocalFiles_supersededCall_doesNotTransitionToReady`. Uses a `Task.detached`-wrapped stub delegate so A's per-file work doesn't honor parent cancellation (mirrors production's `VisualizerEngine.prepareLocalFile` shape). That deterministically sequences A's resume AFTER B's `.ready` transition, so the assertion `currentPlan == B's plan` discriminates: pre-fix A's continuation overwrites it with the cancelled partial; post-fix A bails on gen mismatch.
+
+- **`[LF.5.fix.3-C]` VisualizerEngine: handleLocalFileReady URL idempotency** (`1839d3e3`). New `lastStartedLocalFilePlaybackURL: URL?` on `VisualizerEngine`. Guard at the start of `handleLocalFileReady` skips when the new `source.localFileURL` matches the marker; marker commits on successful `audioRouter.start`, clears on `.preparing` + `.ended` in the state observer. Defense-in-depth per Matt's kickoff decision (URL match only) — Bug A's fix should prevent the duplicate `_completeLocalFilesReady` upstream, but the consumer-side guard means any future race that lets one through can't reproduce the symptom.
+
+  New regression test file: `HandleLocalFileReadyIdempotencyRegressionTests.swift` in `PhospheneAppTests/` (3 source-presence assertions for the field declaration, the read+write in handleLocalFileReady, and the .preparing+.ended clears). Same pattern as `OrchestratorWiringRegressionTests` (BUG-015) and `SettingsStoreEnvironmentRegressionTests` (QR.4) — behavioral tests of `VisualizerEngine` need a real Metal device + audio router + stem pipeline and are out of scope for the unit-test suite.
+
+### Verification
+
+- **Engine.** `swift test --package-path PhospheneEngine` — 1359/1359 ✓ (1 known MemoryReporter flake unrelated). Session-tests-only filter: 63 tests, 0 failures.
+- **App.** `xcodebuild -scheme PhospheneApp test` — 160/160 ✓ (0 failures, 6 skipped). New `HandleLocalFileReadyIdempotencyRegression` suite passes.
+- **Manual smoke (pending Matt confirmation).** Re-run the kickoff's reproducer (200-track folder → 5-track folder within 30 s, with and without a Stop in between). Expected:
+  - Picking the second folder cancels the first prep silently (no `→ ready count=2` for folder A; no playback of folder A's tracks against folder B's URLs).
+  - Folder B preps exactly once (one `prepareLocalFile #N of 5` per file; no duplicate at +48 s).
+  - Folder B transitions to `.ready` exactly once. If the user re-picks the same folder, the `_shouldShortCircuitMultiFileEntry` guard at SessionManager.swift:410 still handles user-driven re-entry (defense-in-depth in handleLocalFileReady covers the race case).
+
+### Docs touched
+
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-023 filed and resolved with commit hashes.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+- `docs/ENGINEERING_PLAN.md` — LF.5.fix.3 row added under "Recently Completed".
+
+### Out of scope
+
+- LF.5.fix.2-FU2 stem-pipeline cancellation (already shipped + validated in the same captured session log).
+- The cousin-bug `mir.elapsedSeconds` reset at LF playback start (already shipped as LF.5.fix.2-FU4 / FU-5).
+- Recents persistence / file-association.
+- Multi-file drag-and-drop semantics.
+- Streaming-path `prepare(tracks:)` has the same nil-at-exit race in theory; out of scope for this LF-focused increment. File separately if observed.
+
+### Known follow-ups
+
+None blocking. The defense-in-depth fix in Bug C means a future regression of Bug A would surface as a silent no-op in handleLocalFileReady (logged at info level), not as a torn-down player.
+
+---
+
 ## [dev-2026-05-28-v] LF.5.fix.2-FU5 — `lastAnalysisTime` reset on LF startup (closes FU-4's second mover)
 
 **Increment:** LF.5.fix.2-FU5. **Status:** Resolved 2026-05-28. Sub-P1 — collapses diagnose + fix + validate per CLAUDE.md Defect Handling Protocol.
