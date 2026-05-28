@@ -6,6 +6,66 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-t] LF.5.fix.2 — three post-BUG-021 cleanups (collapsed)
+
+**Increment:** LF.5.fix.2 (three follow-ups discovered in the BUG-021 verification session `2026-05-28T19-42-50Z`). **Status:** Resolved 2026-05-28. Per CLAUDE.md Defect Handling Protocol, the three follow-ups are sub-P1 (cosmetic / minor leak / latent log-only field) and collapse diagnose + fix + validate into one increment per Matt's approval at the prompt's audit step. Path B chosen for FU-3 (audit-recommended fix vs prompt's prescription).
+
+### The three follow-ups
+
+| FU | Commit | What |
+|---|---|---|
+| LF.5.fix.2-FU1 | `527b0ab2` | `LocalFilePlaybackProvider.stop()` skips the `teardownAVFoundation` helper when the lock-protected ref snapshot is all-nil. Eliminates the noisy `provider.teardown ENTER` + `provider.teardown EXIT` breadcrumb pair that surrounded zero work at every session start and inside every Next-press advance's `audioRouter.start BEGIN/COMPLETE` window. |
+| LF.5.fix.2-FU2 | `1877f527` | `VisualizerEngine.swift`'s `.ended` state observer cancels the stem-analyzer `DispatchSource` timer (`self.stopStemPipeline()`) before stopping the audio router. The verification session showed 12 stem separations / ~60-120 s of CPU work persisting after Stop fired at 19:43:29; the timer kept firing every 5 s against stale/silence frames until the log ended at 19:44:29. Stem-first ordering avoids one final post-stop fire that would otherwise land in the 0-5 s window. |
+| LF.5.fix.2-FU3 | `d09a059a` | `advanceLocalFileQueue` in `VisualizerEngine+LocalFilePlayback.swift` now fires `mirPipeline.reset()` + `pipeline.resetAccumulatedAudioTime()` between `audioRouter.stop` and `resetStemPipeline(...)`, mirroring the streaming track-change callback's shape at `VisualizerEngine+Capture.swift:203-204`. |
+
+### FU-3 audit divergence (Path B chosen)
+
+The prompt prescribed a new `trackChangeTimestamp: Date?` field bound only to the orchestrator log line (Path A). The pre-flight audit revealed:
+
+- `elapsedTrackTime` is not `Date().timeIntervalSince(...)` — it is `mir.elapsedSeconds`, accumulated `+= deltaTime` in `MIRPipeline.swift:235`, zeroed by `mir.reset()`.
+- The streaming track-change callback already zeros it on every real title change. The LF advance path skipped that reset.
+- All consumers of `mir.elapsedSeconds` want per-track semantics: `fv.trackElapsedS` for the FFO cold-start fix, `featureStability` ramp-up curve, recording `playbackTime`. Path A would leave them wrong-shaped for LF.
+
+Matt approved Path B (the cleaner fix that restores per-track semantics for every consumer) at the audit step before any FU code landed. The verification session's elapsedTrackTime sequence (10.9 s → 23.0 s → 35.1 s across two presses, instead of resetting near 0) was the surface symptom of a broader bug — Path B fixes it at the root.
+
+### Verification
+
+- Engine full suite: **1358/1358 ✓** (no regressions, including the load-bearing `elapsedSeconds_accumulatesAsDouble_isMoreAccurateThanFloat` test that exercises `mir.elapsedSeconds`).
+- App suite: SessionManagerTests + AppleMusicConnectionViewModelTests timing flakes per `project_test_baseline.md` memory note; `AccessibilityLabelsTests.connectorTileLabelDisabledNoCaption` reproduced on clean HEAD with no local changes during this increment — fixed by a concurrent session in `85bba6ed` (`[GAP A FU1] AccessibilityLabelsTests: reference ConnectorType.localFolder.title`) before this closeout landed.
+- SwiftLint `--strict` clean on every touched file (`LocalFilePlaybackProvider.swift`, `VisualizerEngine.swift`, `VisualizerEngine+LocalFilePlayback.swift`).
+- `Scripts/check_user_strings.sh` exit 0.
+- `Scripts/check_sample_rate_literals.sh` warning on `Gossamer.metal:189` is pre-existing (not touched by this increment).
+
+### Manual smoke (Matt to confirm)
+
+Per the LF.5.fix.2 kickoff:
+
+1. Launch Debug build at `~/Library/Developer/Xcode/DerivedData/PhospheneApp-cngkdwcjwuuqgbfrcioserxgammt/Build/Products/Debug/PhospheneApp.app`, open Local Folder (2-track fixture).
+2. session.log shows no `provider.teardown ENTER`/`EXIT` breadcrumbs at session start (FU-1 verification).
+3. Press Next. Advance breadcrumbs land within < 200 ms; orchestrator wire log shows `elapsedTrackTime` resets near 0 on the new track (FU-3 verification).
+4. Press Stop. Last `stem separation N` line within 1-2 s of `provider.teardown EXIT` (FU-2 verification).
+
+### Files touched
+
+**Source (3):**
+- `PhospheneEngine/Sources/Audio/LocalFilePlaybackProvider.swift` (FU-1)
+- `PhospheneApp/VisualizerEngine.swift` (FU-2)
+- `PhospheneApp/VisualizerEngine+LocalFilePlayback.swift` (FU-3)
+
+**Docs (3):**
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-021 outstanding-work block strike-throughs (this increment closes 3 of 5 items; the buildPlan-deferred item and the plan-walker root-cause investigation remain open).
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+- `docs/ENGINEERING_PLAN.md` — LF.5.fix.2 row above LF.5 in Recently Completed.
+
+### Out of scope (per kickoff)
+
+- Re-enabling D-LF5-4's buildPlan() call for LF (still gated on certified-catalog ≥ 5 + plan-walker safety).
+- Plan-walker / scoring-tie investigation for BUG-021's reactive-cycling diagnosis.
+- Refactoring the stem-analyzer timer-driven architecture.
+- Refactoring the orchestrator's reactive scheduler.
+
+---
+
 ## [dev-2026-05-28-s] BUG-020 — closeout (Matt M7 "none" verdict)
 
 **Increment:** BUG-020 closeout (no new code; documentation-only). **Status:** Resolved 2026-05-28 against Matt's M7 verdict on session `2026-05-28T19-59-20Z` ("none, ready to close as resolved").

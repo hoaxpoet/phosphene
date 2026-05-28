@@ -140,9 +140,12 @@ Hypothesized chain (not yet verified):
 
 ### Outstanding work
 
-- Diagnose **why** the planner's alphabetical-cycle behaviour kicks in. Read `VisualizerEngine+Orchestrator.swift`'s plan-walker; investigate scoring-tie resolution; check whether the segment duration math collapses with only 2 certified presets.
-- Re-enable buildPlan() for LF when the certified catalog reaches ≥ 5 presets AND the plan-walker is verified safe under short-segment plans.
-- Identify the precise MainActor hang point from the next session capture's WIRING breadcrumbs.
+- Diagnose **why** the planner's alphabetical-cycle behaviour kicks in. Read `VisualizerEngine+Orchestrator.swift`'s plan-walker; investigate scoring-tie resolution; check whether the segment duration math collapses with only 2 certified presets. **Still open.**
+- Re-enable buildPlan() for LF when the certified catalog reaches ≥ 5 presets AND the plan-walker is verified safe under short-segment plans. **Still open** (deferred pending catalog growth).
+- ~~Identify the precise MainActor hang point from the next session capture's WIRING breadcrumbs.~~ Resolved in `53986fac` (lock-free AVFoundation teardown).
+- ~~Stem-separation-after-stop CPU work~~ — verification session `2026-05-28T19-42-50Z` exposed ~12 stem separations / ~60-120 s of CPU work after Stop. Resolved by LF.5.fix.2-FU2 (stem timer cancelled in `.ended` state observer).
+- ~~`elapsedTrackTime` session-monotonic across LF track changes~~ — verification session `2026-05-28T19-42-50Z` showed the orchestrator wire-active log line's `elapsedTrackTime=` growing 10.9 s → 23.0 s → 35.1 s across Next/Prev presses. Same root cause silently wrong-shaped `fv.trackElapsedS` (FFO cold-start), `featureStability` ramp-up, and recording `playbackTime` for the LF advance path. Resolved by LF.5.fix.2-FU3 (LF advance fires `mir.reset()` + `pipeline.resetAccumulatedAudioTime()` to mirror the streaming track-change callback).
+- ~~Noisy no-op `provider.teardown ENTER`/`EXIT` breadcrumbs at every session start + advance~~. Resolved by LF.5.fix.2-FU1 (`LocalFilePlaybackProvider.stop()` skips the teardown helper when the lock-protected snapshot is all-nil).
 
 ---
 
