@@ -33,6 +33,7 @@ import Foundation
 import Testing
 
 @Suite("HandleLocalFileReadyIdempotencyRegression")
+// swiftlint:disable:next type_name
 struct HandleLocalFileReadyIdempotencyRegressionTests {
 
     // MARK: - Helpers

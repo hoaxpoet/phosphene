@@ -419,8 +419,9 @@ public final class SessionManager: ObservableObject {
         // (folder A's partial 2-of-200 plan transitioned to .ready after
         // folder B was already in flight).
         if localFileSessionGen != myGen {
+            let currentGen = self.localFileSessionGen
             logger.info(
-                "SessionManager: startLocalFiles superseded (gen=\(myGen) currentGen=\(self.localFileSessionGen)) — discarding result"
+                "SessionManager: startLocalFiles superseded (gen=\(myGen) currentGen=\(currentGen)) — discarding"
             )
             return
         }
