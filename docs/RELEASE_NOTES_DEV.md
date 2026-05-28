@@ -51,18 +51,21 @@ Synchronous so it fires regardless of MainActor scheduling. Mirrors the existing
 - **App build:** succeeds.
 - **SwiftLint `--strict`:** 0 violations.
 
-**Next step (Matt's gate).** Capture a session matching the BUG-020 reproducer:
+**Next step (Matt's gate).** **CORRECTION (post-`[dev-2026-05-28-p]` LF M7):** the diagnostic logs in `makeTrackChangeCallback`, which is the **Spotify-prefetched path** track-change handler. LF playback goes through `SessionManager.startLocalFiles` → `prepareLocalFiles` → `resetStemPipeline`, a different code path that does NOT invoke this callback. The original BUG-020 evidence (session `2026-05-28T18-31-06Z`) was a Spotify-prefetched session — confirmed by `SOURCE=spotifyPreFetched preFetchedCount=5` in its startup log. To reproduce + catch the spurious callback:
 
 1. Build current `main` (commit landing this entry).
-2. LF playback of love_rehab.m4a, FFO preset, play continuously past 40 s.
-3. Observe the visible mid-track flicker (if it reproduces).
-4. End session cleanly.
-5. Send me the session path.
+2. **Spotify-prefetched session** (not LF). Use the same Spotify playlist + prepared mode used for the original BUG-020 session.
+3. FFO preset; play one or two tracks continuously past 40 s each.
+4. Observe the visible mid-track flicker (if it reproduces).
+5. End session cleanly.
+6. Send me the session path.
 
-Then the new `WIRING: trackChangeCallback FIRED` lines in `session.log` will show every callback invocation. The mid-track spurious invocation should be visible with a `sameTrack=true` marker (same title+artist as previous), telling us:
+The new `WIRING: trackChangeCallback FIRED` lines in `session.log` will show every callback invocation in the Spotify path. The mid-track spurious invocation should be visible with a `sameTrack=true` marker (same title+artist as previous), telling us:
 - whether the bug is a same-track re-emit (most likely hypothesis)
 - whether multiple distinct events fire in close succession
 - which publisher chain is producing the spurious emission (next diagnostic step works backward from there)
+
+**Separate observation (not BUG-020).** LF M7 session `2026-05-28T18-59-47Z` shows "some flicker and idling" reported by Matt. `features.csv` analysis confirms: no multi-field state reset like BUG-020's signature (`accumulatedAudioTime` accumulated cleanly 1.835 → 8.396; valence/arousal didn't snap to extremes). LF flicker/idling is a separate phenomenon with a different root cause. Investigation deferred until BUG-020 closes — at which point we can decide whether to instrument the LF path equivalently.
 
 ### Touched files
 
