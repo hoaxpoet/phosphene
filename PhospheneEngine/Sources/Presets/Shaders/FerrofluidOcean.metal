@@ -505,7 +505,16 @@ float sceneSDF(float3 p,
     // produce brief gray-tip flicker, but those frames are too sparse to
     // sustain a visible artifact. Net: balances Lipschitz safety against
     // iteration reach + CPU budget.
-    return (p.y - surfaceY) / 10.0;
+    //
+    // CSP.3.5.1 (2026-05-28) — apply the intended /6 to the operative line.
+    // The CSP.3.5 commit (eaaadd9b) rewrote the comment block above to
+    // describe `/10 → /6` but left the `return` line at `/10.0`; the closeout's
+    // "1358/1358 pass" claim was wrong because PresetAcceptanceTests'
+    // `test_readableForm_atSteadyEnergy` reproducibly fails at /10 (the
+    // 128-step march budget can't converge on the spike surface at the
+    // rubric's f.bass=0.5 fixture — all pixels fall through to sky/miss →
+    // formComplexity = 1). The fix here is the literal missing edit.
+    return (p.y - surfaceY) / 6.0;
 }
 
 // MARK: - sceneMaterial (Session 3: §5.8 stage-rig dispatch via matID == 2)
