@@ -135,6 +135,11 @@ struct ContentView: View {
                 publisher: publisher,
                 tracks: engine.sessionManager.preparingTracks,
                 playlistName: "",
+                // GAP D (2026-05-28): plumb the current SessionOrigin so the
+                // preparation header swaps from the generic streaming-path
+                // "Preparing your session" to a contextual LF line
+                // ("Reading mix.m3u" / "Reading 8 tracks from Tempo" etc.).
+                headerContext: engine.sessionManager.currentSource,
                 progressiveReadinessPublisher: engine.sessionManager.$progressiveReadinessLevel
                     .eraseToAnyPublisher(),
                 sessionManager: engine.sessionManager,
