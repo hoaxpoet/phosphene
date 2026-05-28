@@ -64,19 +64,42 @@ The person invited by the Curator to experience the playlist and visuals. They w
 
 **Hard rule:** no state ever shows a solid black screen without a legible message. `PlaybackView` is the only full-bleed state; its minimum floor on silence is the idle visualizer described in `§7.5`.
 
-### 2.1 Local-file playback (LF.4 / D-131)
+### 2.1 Local-file playback (LF.4 / D-131 + LF.5 / D-132)
 
-Local-file playback is a parallel source path that joins the streaming-path state machine at `.preparing`. The user opens a file through one of three entry points (`File → Open Local File…` with `⌘O`, drag-and-drop onto the window, or — for dev/CI — the `PHOSPHENE_LOCAL_FILE_PLAYBACK` env-var hook at launch). All three call `SessionManager.startLocalFile(at:)`, which transitions:
+Local-file playback is a parallel source path that joins the streaming-path state machine at `.preparing`. The user opens audio content through one of seven entry points:
 
-1. `.idle / .ended → .preparing` — pre-analysis runs (~2 s cold, <100 ms warm via the persistent stem cache). `PreparationProgressView` renders for the duration; the row shows the filename. No "Start now" CTA — the readiness level jumps to `.fullyPrepared` once the single track is terminal.
-2. `.preparing → .ready` — fires the moment preparation completes. `ContentView` routes this state to `PlaybackView` directly (skipping `ReadyView` — Phosphene controls playback for local files, so there's nothing for the user to confirm).
-3. `.ready → .playing` — fires immediately after the engine starts the LF audio router (single MainActor tick, invisible to SwiftUI re-render). Audio begins; `PlaybackView` chrome is already mounted.
+1. **`File → Open Local File…`** with `⌘O` (LF.4 single-file picker).
+2. **`File → Open Local Folder…`** (LF.5 folder picker, no accelerator).
+3. **`File → Open Recent ▸`** submenu (LF.5 — last 10 file / folder / M3U opens, newest first; "(missing)" disabled for stale entries; `Clear Recents` at the bottom).
+4. **Drag-and-drop** onto the window (LF.4 single file; LF.5 multi-file, folder, M3U, mixed combinations — flattened in drop order).
+5. **Finder double-click** on a registered audio or M3U file after the user opts into Phosphene via the macOS "Open With…" panel (LF.5 file-association).
+6. **Terminal:** `open -a Phosphene path/to/file.m4a` (LF.5 file-association).
+7. **`PHOSPHENE_LOCAL_FILE_PLAYBACK=<path>`** env-var hook at launch (dev/CI — single file only; loops forever for debugging).
 
-**Replace-on-open semantics.** Opening a local file while a streaming session is active calls `SessionManager.cancel()` first, then transitions through the LF lifecycle. macOS-idiomatic; no modal warning prompt. The source flip is observable via the audio source change and the menu's source-aware affordances.
+All seven dispatch through the LF.5 canonical API `SessionManager.startLocalFiles(at:origin:)`, which transitions:
+
+1. `.idle / .ended → .preparing` — pre-analysis runs sequentially per file. Per-file cold-start ~2 s (no cache hit), warm-start < 1 s (cache hit via the persistent stem cache). `PreparationProgressView` renders one row per queued file; rows show filename during preparation. The "Start now" CTA fires once `progressiveReadinessThreshold` (3) tracks are terminal-ready — same threshold as streaming. Single-file queues skip the CTA (readiness jumps directly to `.fullyPrepared`).
+2. `.preparing → .ready` — fires the moment all tracks complete (or the user taps Start now). `ContentView` routes this state to `PlaybackView` directly (no `ReadyView` flash).
+3. `.ready → .playing` — fires immediately after the engine starts the LF audio router with the first track. Audio begins; `PlaybackView` chrome shows `1 of N`.
+4. **Mid-session track transitions** (LF.5 multi-file queues only) — when the active file's audio ends, `LocalFilePlaybackProvider.onFileEnded` fires; `VisualizerEngine.advanceLocalFileQueue` stops the audio router, installs the next track's cached BeatGrid via `resetStemPipeline(caller: .trackChange)`, restarts the router with the next URL, bumps `currentTrackIndex`. Hard cuts between tracks (≤ 50 ms gap; no crossfade — LF.6+ if user demand surfaces). When the queue exhausts, the session transitions to `.ended` → `EndedView` (matches streaming-path UX).
+
+**Single-file queues loop forever** (LF.4 behavior preserved). The env-var hook + `File → Open Local File…` + 1-file folders all loop the file at EOF for the dev workflow. Only multi-file queues advance + end.
+
+**Replace-on-open semantics.** Opening a new LF source while a session is active calls `SessionManager.cancel()` first, then transitions through the new LF lifecycle. Same-URL re-entry (single file) and same-origin re-entry (multi-file with identical URL list + identical `SessionOrigin` shape) is a no-op.
+
+**Source labels.** `SessionOrigin` distinguishes `.localFile(URL)` / `.localFiles([URL])` / `.localFolder(URL, expanded: [URL])` / `.localPlaylist(URL, expanded: [URL])` so the chrome can show source-aware labels ("Playing 12 tracks from ~/Music/2026 Mix" vs filename vs M3U name). The `SessionOrigin == ` operator compares root + expanded list so the same-origin no-op detection works across all four shapes.
 
 **Cache hygiene UI.** `Phosphene → Clear Local-File Cache (67.4 MB)` (size label dynamic per `engine.localFileCacheBytes`). One click empties the persistent disk cache and shows a confirmation alert with the bytes freed. Automatic LRU eviction (500 MB cap by default; UserDefaults override at `phosphene.cache.localFile.maxBytes`) runs after every successful preparation write so the user-facing footprint stays bounded.
 
-**Unsupported formats / multi-file drops.** The menu picker and drop handler validate file extensions (`.m4a` / `.mp3` / `.flac`). Multi-file drops are rejected; the user sees an `NSAlert`: "Drop one file at a time." Unsupported formats: "Phosphene supports .m4a, .mp3, and .flac files." No silent failure modes — every reject surfaces a localized alert.
+**Folder cap.** Folders + multi-file drops > 200 audio files truncate to the first 200 (alphabetical) with a localized NSAlert ("Phosphene queued the first 200 of N tracks"). The 200 cap balances against the 500 MB cache cap (~70 cached tracks) so larger folders don't thrash eviction mid-queue. Larger folders need smaller subsets for full coverage.
+
+**Recents menu behavior.** `File → Open Recent ▸` lists the last 10 opens, newest first. Entries are uniquely identified by `(URL, kind)` — opening the folder `/tmp/Music` and the file `/tmp/Music/song.m4a` are distinct. Re-opening an entry already in the list moves it to position 1 (LRU). Stale entries (file no longer at the recorded path) render disabled with `(missing)` suffix; clicking removes them from the list rather than attempting to open. `Clear Recents` empties the list. Persistence is `phosphene.lf.recents` UserDefaults (JSON-encoded `[RecentItem]` — defensive load truncates oversized state on read).
+
+**ID3 / Vorbis / MP4-atom metadata.** Title / artist / album extracted via `AVAsset.commonMetadata` at preparation time, persisted alongside the cached analysis in `PersistentStemCache` schema v2. Surfaces as the `TrackIdentity` title in `PlaybackView` chrome post-preparation. Album artwork is captured + stored in an optional sibling `artwork.bin` file but is not displayed at LF.5 scope (UI is LF.6).
+
+**File-association.** `Info.plist` registers Phosphene as an Alternate handler (NOT Default) for `m4a / mp3 / flac / m3u / m3u8`. The user opts in via the Finder "Open With…" panel; `open -a Phosphene <path>` in Terminal also works once LaunchServices re-registers the bundle. The `.onOpenURL` handler distinguishes `phosphene://` (Spotify OAuth) from `file://` (LF queue dispatch); unsupported extensions are silently ignored (no alert pop on unexpected URLs the OS routed here).
+
+**Unsupported formats / failed M3U / empty folders.** The menu picker, drop handler, and file-association handler validate file extensions (`.m4a` / `.mp3` / `.flac`) and M3U parseability. Failures surface as localized NSAlerts: "That file can't be played" / "Phosphene supports .m4a, .mp3, and .flac files." / "That folder doesn't have any playable audio files." / "Phosphene couldn't read that playlist." No silent failure modes from user-initiated paths; the file-association path silently ignores unsupported extensions (the OS chose to route them; Phosphene shouldn't pop modal alerts on system-routed URLs).
 
 ---
 

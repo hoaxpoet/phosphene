@@ -6,6 +6,37 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-j] LF.5 — Multi-File Local Playback + File-Association + Recents
+
+LF.5 (D-132) lifts local-file playback past LF.4's single-file ceiling. The user picks a folder, drags multiple files, opens a `.m3u` playlist, or double-clicks an `.m4a` in Finder — and Phosphene queues the audio in order, walks through with orchestrator-driven preset selection per track, surfaces a `File → Open Recent ▸` submenu of the last 10 opens, and persists ID3 / Vorbis title / artist / album / artwork alongside each cached entry. Mid-session transitions are hard cuts; single-file env-var hook continues to loop the file for the dev workflow.
+
+**Headlines:**
+- New canonical API `SessionManager.startLocalFiles(at:origin:)` — LF.4's `startLocalFile(at:)` becomes a thin wrapper.
+- 3 new `SessionOrigin` cases: `.localFiles([URL])`, `.localFolder(URL, expanded: [URL])`, `.localPlaylist(URL, expanded: [URL])`.
+- `M3UParser` (engine module) — defensive `.m3u`/`.m3u8` parser tolerating BOM, CRLF, `#EXTINF`, absolute / `file://` / relative paths.
+- ID3 / Vorbis / MP4-atom metadata via `AVAsset.commonMetadata` — title / artist / album persisted in `PersistentStemCache` schema v2; optional artwork in sibling `artwork.bin`.
+- `File → Open Local Folder…` + `File → Open Recent ▸` submenu wired through `LocalFileRecentsStore` (`@StateObject`, `phosphene.lf.recents` UserDefaults).
+- `Info.plist` `CFBundleDocumentTypes` for m4a/mp3/flac/m3u/m3u8 (LSHandlerRank=Alternate); `.onOpenURL` extended to route `file://` URLs.
+- `LocalFilePlaybackProvider.onFileEnded` callback drives mid-session queue advance through `VisualizerEngine.advanceLocalFileQueue`; single-file queues leave it unset (loop preserved).
+
+**Per Matt's audit answers (2026-05-27):**
+- Folder + multi-drop queues cap at 200 URLs (alphabetical) with a localized truncation alert.
+- Single-file queues loop forever (LF.1 behavior preserved for the dev workflow); multi-file queues advance + transition to `.ended` on exhaustion.
+
+**Cache invalidation.** Schema bump v1 → v2 on `PersistentStemCache`. v1 entries on disk throw `schemaMismatch` → caller re-prepares with v2. One-time ~2 s cost per cached track on next play; LF.4 user caches were typically 1-3 entries.
+
+**Test additions.** 1358 engine tests pass (LF.4 baseline 1328 + 30 net new LF.5). New suites: `M3UParserTests` (9), `LocalFileRecentsStoreTests` (12), 13 multi-file lifecycle tests in `SessionManagerLocalFileTests`, 2 trackStatuses observer tests, 5 schema-v2 + metadata + artwork roundtrip tests in `PersistentStemCacheTests`, 1 LF.5 queue test in `LocalFilePlaybackFormatCoverageTests`.
+
+**Latency capture.** `docs/diagnostics/LF5_REGRESSION_2026-05-28.md` documents cold/warm captures on `love_rehab.m4a` via the env-var hook (routes through the LF.5 wrapper). Cold ~2 s, warm ≤ 1 s — no regression past LF.4's ~1.9 s / ~607 ms baseline. Multi-file behavior verified through 27 unit tests + the LF_FORMAT_COVERAGE 3-track queue test + manual UI smoke (recommended).
+
+**Out-of-scope / deferred to LF.6+:** crossfade / gapless segue, album-art display in PlaybackView, per-track skip controls, drag-to-reorder queue, smart-playlists, `.fpl` files, in-app M3U editor, streaming-path persistent cache, multi-file env-var hook.
+
+See `docs/DECISIONS.md` D-132 for the full design rationale and rejected alternatives.
+
+**Commits (10):** SessionOrigin extension (`30e8a553`), SessionPreparer worker (`e5014d9f`), M3UParser (`74b5f45e`), ID3 + schema v2 (`14c739e1`), LocalFileRecentsStore (`55e9b7f8`), menu + drop UI (`0c284164`), file-association (`18f85673`), mid-session transitions (`ec4a0260`), this docs commit.
+
+---
+
 ## [dev-2026-05-28-i] BUG-019 closed — FFO flicker arc resolved
 
 **Status:** **Resolved 2026-05-28** against Matt's CSP.3.4 M7 verdict "Better" on session `2026-05-28T13-50-23Z`. Doc-only commit; no code changes in this entry.

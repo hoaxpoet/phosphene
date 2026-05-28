@@ -82,10 +82,11 @@ cp /path/to/main/checkout/PhospheneEngine/Tests/Fixtures/tempo/*.m4a \
 
 The `BeatThisFixturePresenceGate` suite is intentionally designed to fail loudly when the fixture tree is empty — silent skips have masked the DSP.2 S8 four-bug regression surface in the past (see CLAUDE.md *§What NOT To Do* on silent fixture skips).
 
-## Local-file stem cache management (LF.3 / LF.4, D-130 / D-131)
+## Local-file stem cache management (LF.3 / LF.4 / LF.5, D-130 / D-131 / D-132)
 
-Local-file playback (LF.4) persists the offline pre-analysis result
-(`BeatGrid` + per-stem waveforms + `StemFeatures` + `TrackProfile`) to disk
+Local-file playback (LF.4 + LF.5) persists the offline pre-analysis result
+(`BeatGrid` + per-stem waveforms + `StemFeatures` + `TrackProfile` + ID3 /
+Vorbis / MP4-atom `LocalFileMetadata` + optional artwork bytes) to disk
 under
 
 ```
@@ -94,9 +95,14 @@ under
 
 where `<aa>` is the first two hex chars of the file's SHA-256 (filesystem
 sharding) and `<full-hash>` is the full hex digest. Each entry holds five
-files: `metadata.json` (5 KB) and `vocals.f32` / `drums.f32` / `bass.f32`
-/ `other.f32` (~1.76 MB each — raw little-endian Float32 PCM). Per-track
-footprint: ~6.7 MB.
+mandatory files (`metadata.json` ~5 KB + four `<stem>.f32` raw Float32 PCM
+files at ~1.76 MB each) plus an optional sibling `artwork.bin` (raw image
+bytes — PNG / JPEG, depending on the source container). Per-track footprint:
+~6.7 MB plus artwork (typical 30–500 KB when present).
+
+**Schema version:** v2 since LF.5 (D-132). v1 entries on disk throw
+`schemaMismatch` on load → caller re-prepares with v2. One-time ~2 s cost
+per cached track on next play after the bump.
 
 **User-facing controls (LF.4).** `Phosphene → Clear Local-File Cache (<size>)`
 shows the current cache footprint in the menu label and empties the cache
@@ -148,9 +154,64 @@ the broken entry — no manual intervention required.
 
 **Cache hit/miss telemetry.** Session-log lines `STEM_CACHE_HIT` /
 `STEM_CACHE_MISS` / `STEM_CACHE_WROTE` log each cache event (track name,
-12-char hash prefix, BPM/beats, write byte count, elapsed ms). See
-`docs/diagnostics/LF3_COLD_WARM_2026-05-27.md` for the cold-vs-warm
-latency reference.
+12-char hash prefix, BPM/beats, write byte count, elapsed ms). LF.5 adds
+`artworkBytes=N` to `STEM_CACHE_WROTE` (0 when the source ships no
+embedded art). See `docs/diagnostics/LF3_COLD_WARM_2026-05-27.md`,
+`docs/diagnostics/LF4_REGRESSION_2026-05-27.md`, and
+`docs/diagnostics/LF5_REGRESSION_2026-05-28.md` for the cold-vs-warm
+latency reference per increment.
+
+## Recents menu management (LF.5, D-132)
+
+`File → Open Recent ▸` persists the last 10 file / folder / M3U opens to
+the `phosphene.lf.recents` UserDefaults key as a JSON-encoded list.
+
+```sh
+# Inspect (the value is JSON inside a `<data>` blob — base64-decode if needed)
+defaults read com.phosphene.app phosphene.lf.recents
+
+# Reset (use the menu's "Clear Recents" item, or wipe via defaults)
+defaults delete com.phosphene.app phosphene.lf.recents
+```
+
+Stale entries (file no longer at the recorded path) render disabled with a
+`(missing)` suffix in the submenu; clicking removes them rather than
+attempting to open. The on-disk format is validated on every load; an
+oversized list (corrupted future-version write) is truncated to the
+`maxRecents = 10` cap and re-persisted on the next mutation. No operator
+intervention required for normal use.
+
+## Folder + M3U ingest behavior (LF.5, D-132)
+
+`File → Open Local Folder…`, M3U drops, and multi-file drags route through
+`SessionManager.startLocalFiles(at:origin:)`. Folder expansion is
+recursive depth-first alphabetical (`localizedStandardCompare` on full
+path). M3U parsing tolerates UTF-8 BOM, CRLF + LF line endings, `#EXTM3U`
+/ `#EXTINF` comment lines, `file://` URLs, absolute paths, and relative
+paths resolved against the M3U file's parent directory. Lines that don't
+resolve to a readable audio file are silently skipped (collected in
+`ParseResult.skippedLines` for callers that want to surface them; the
+default UI path ignores them).
+
+**Queue cap.** Folder + multi-drop queues > 200 audio files truncate to
+the first 200 (alphabetical) with a localized NSAlert. This cap balances
+against the 500 MB cache cap (~70 cached tracks) — larger queues would
+thrash eviction mid-playback. Users with libraries > 200 audio files
+should pick smaller subset folders or trim the M3U.
+
+**File-association.** `Info.plist` registers Phosphene as an Alternate
+handler (NOT Default) for `m4a / mp3 / flac / m3u / m3u8`. Once the
+LaunchServices database has re-indexed the bundle (typically takes
+effect after the first launch of a new build), the user can right-click
+a registered file in Finder → "Open With…" → Phosphene. To force a
+LaunchServices re-registration without restarting:
+
+```sh
+/System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister \
+  -kill -r -domain user
+# then verify Phosphene is registered:
+/System/Library/Frameworks/CoreServices.framework/Versions/Current/Frameworks/LaunchServices.framework/Versions/Current/Support/lsregister -dump | grep -i phosphene
+```
 
 ## Claude Code Session Checklist
 

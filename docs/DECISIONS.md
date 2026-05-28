@@ -3990,14 +3990,14 @@ Three baked-in design choices:
 
 **Out of scope (deferred).**
 
-- Multi-file playlist semantics (LF.5).
-- Crossfade / gapless segue (LF.5).
-- ID3 / Vorbis tag extraction; album-art display (LF.5).
-- "Recent Files" submenu (LF.5).
+- ~~Multi-file playlist semantics (LF.5).~~ **Done (LF.5 / D-132).**
+- Crossfade / gapless segue (LF.5+ if user demand surfaces).
+- ~~ID3 / Vorbis tag extraction (LF.5).~~ **Done (LF.5 / D-132).** Album-art display still deferred — data captured, UI is LF.6.
+- ~~"Recent Files" submenu (LF.5).~~ **Done (LF.5 / D-132).**
 - Settings UI for the cache-size cap.
 - Per-track cache invalidation UI.
 - Streaming-path persistent cache.
-- File-association handling.
+- ~~File-association handling.~~ **Done (LF.5 / D-132 — `CFBundleDocumentTypes` + `.onOpenURL` extension).**
 - Mid-track resumption on `AVAudioEngineConfigurationChange` (still best-effort from beginning).
 - Multi-process cache safety (Phosphene is single-instance).
 - Production telemetry / cache hit-rate dashboards.
@@ -4012,3 +4012,82 @@ Three baked-in design choices:
 - Sample-rate literal gate green: `Scripts/check_sample_rate_literals.sh` exit 0.
 - Localized-strings gate green: `Scripts/check_user_strings.sh` exit 0.
 - Cold/warm latency: no regression past the LF.3 baseline (~2 s cold, ~634 ms warm). See `docs/diagnostics/LF4_REGRESSION_2026-05-27.md`.
+
+---
+
+## D-132 — LF.5 multi-file source model + recents + file-association + schema v2 (LF.5, 2026-05-28)
+
+**Status:** Accepted (2026-05-28).
+
+**Context.** LF.4 (D-131) graduated local-file playback to a first-class user-facing feature on the macOS app surface — `File → Open Local File…`, ⌘O, drag-and-drop, SessionManager-driven lifecycle, LRU eviction, cache-clear menu. The whole arc shipped against a single load-bearing operation: **one file at a time**. LF.5 lifts the ceiling — folder ingest, M3U playlist ingest, multi-file drag-and-drop, file-association handling (double-click `.m4a` in Finder), and an "Open Recent" submenu for one-click resume. ID3 / Vorbis / MP4-atom metadata extraction surfaces real song titles instead of filenames. Mid-session track transitions advance the orchestrator's per-track preset selection in the same shape the streaming path uses.
+
+**Decision.** Six coordinated changes:
+
+1. **`SessionOrigin` extends with three multi-file cases.** `.localFiles([URL])` (flat drag-and-drop list), `.localFolder(URL, expanded: [URL])` (folder pick — `URL` is the originally-selected root, `expanded` is the recursively-walked alphabetical audio file list), `.localPlaylist(URL, expanded: [URL])` (M3U file — `URL` is the `.m3u` file, `expanded` is the parsed track URL list). All four LF origin shapes (`.localFile`, `.localFiles`, `.localFolder`, `.localPlaylist`) expose `allLocalFileURLs` (full queue) + `localFileURL` (first / current head) + `isLocalFile` (true). The shape difference matters at the UI layer (folder name vs M3U filename vs flat track count) and at the audio-router layer (multi-file → EOF advance, single-file → loop).
+
+2. **`SessionManager.startLocalFiles(at:origin:)` is the canonical LF API.** Walks the URL list sequentially via the `LocalFilePreparing` delegate (typically `VisualizerEngine`), populates `preparingTracks` with one placeholder identity per URL, transitions `.idle/.ended → .preparing → .ready` on completion. LF.4's `startLocalFile(at:)` is now a thin wrapper: `await startLocalFiles(at: [url], origin: .localFile(url))`. The 14 LF.4 lifecycle tests pass unchanged through the wrapper; the 13 new LF.5 lifecycle tests cover multi-file queue length 3, per-origin source discrimination, same-origin no-op, different-URL replace, empty-list no-op, no-preparer fallthrough, and mid-queue cancellation. Same-origin re-entry detection uses `SessionOrigin == ` (the multi-file equality compares both root URL + expanded list).
+
+3. **`SessionPreparer.prepareLocalFiles(urls:placeholders:via:)` worker.** New method mirrors the streaming-path `prepare(tracks:)` shape but takes a URL queue + a `LocalFilePreparing` delegate. Walks the URL list sequentially, calls `delegate.prepareLocalFile(url:)` per file, publishes `trackStatuses` transitions (`.analyzing(.stemSeparation) → .analyzing(.caching) → .ready` on success; `.partial(reason:)` on delegate nil result), advances `progress: (completed, total)`. SessionManager observes the same publishers `PreparationProgressView` already binds to for streaming-path sessions. Cancellation honoured at file boundaries via the existing `preparationTask` cancellation handler.
+
+4. **`M3UParser` (engine module).** Defensive `.m3u` / `.m3u8` parser. Tolerates UTF-8 BOM, CRLF + LF line endings, comment lines (`#EXTM3U` / `#EXTINF` / plain `#`), absolute paths, `file://` URLs, and relative paths resolved against the M3U file's parent directory. Returns `ParseResult { urls, skippedLines }` so callers log `STEM_QUEUE_SKIP` per skip without the parser growing a `SessionRecorder` dependency. Three error conditions throw `ParseError`: `fileUnreadable`, `malformedUTF8`, `noEntriesResolved`.
+
+5. **PersistentStemCache schema v2 + ID3 / Vorbis / MP4-atom metadata.** `PreviewAudio` gains async helpers `extractMetadata(at:)` / `extractArtwork(at:)` via `AVAsset.commonMetadata` (uniform across all three audio container formats). `LocalFileMetadata { title, artist, album }` is `Codable + Sendable`. Schema bumps to v2:
+
+    - `metadata.json` gains optional `metadata: LocalFileMetadata?` field.
+    - Optional sibling `artwork.bin` holds raw image bytes (PNG / JPEG — whatever the container embedded). `expectedFiles()` excludes it (artwork is non-mandatory).
+    - `store()` signature: `metadata: LocalFileMetadata = .init()` + `artworkData: Data? = nil` defaults — streaming-path callers unaffected.
+    - `load()` populates `PersistentStemCacheEntry { cached, decodedDuration, metadata, artworkData }`.
+    - Schema-v1 entries throw `schemaMismatch` → caller re-prepares with v2. One-time ~2 s cost per cached track on next play; LF.4 user caches were small.
+
+    On cache hit, `VisualizerEngine.runLocalFilePreparation` reconstructs the enriched `TrackIdentity` (title from metadata, filename fallback) so the cached source label surfaces real titles in the WIRING log.
+
+6. **`File → Open Recent ▸` + file-association.** New `LocalFileRecentsStore` (app-layer, `@MainActor`, `@StateObject`) persists last 10 opens (`kind ∈ {file, folder, m3u}`) as JSON in `phosphene.lf.recents` UserDefaults. LRU-style move-to-front; defensive load truncates oversized persisted state. `RecentItem.isMissing` surfaces stale entries; the submenu renders these disabled with "(missing)" suffix; clicking removes them. `Info.plist` gains two `CFBundleDocumentTypes` entries (Audio File: m4a / mp3 / flac with UTTypes; Audio Playlist: m3u / m3u8). Both register `LSHandlerRank=Alternate` — Phosphene does NOT claim default opener; the user opts in via the Finder "Open With…" panel. `PhospheneApp.swift`'s `.onOpenURL` distinguishes `phosphene://` (Spotify OAuth, U.11) from `file://` (LF.5 file-association); the file-URL branch routes by extension into the same `openLocalFile / openLocalFolder / openLocalM3U` dispatch path the Recents submenu uses.
+
+**Mid-session track transitions.** `LocalFilePlaybackProvider` gains an `@Sendable () -> Void onFileEnded` callback. When set, `scheduleFileLoop` invokes it INSTEAD of re-scheduling the file (LF.5 multi-file advance). When nil (LF.1 / LF.4 / single-file default), the file loops forever — preserves the dev-workflow env-var hook behaviour per Matt's audit answer. `AudioInputRouter.onLocalFilePlaybackEnded` relays the callback into the freshly-constructed provider at `start(mode: .localFilePlayback)` time. `VisualizerEngine.advanceLocalFileQueue()` pops the next URL + identity from `currentSource.allLocalFileURLs[currentTrackIndex + 1]`, stops the current router, installs the next BeatGrid via `resetStemPipeline(caller: .trackChange)`, restarts the router, bumps `currentTrackIndex`. Queue exhaustion → `sessionManager.endSession()` (matches streaming-path session-end UX → `EndedView`).
+
+**Per-Matt audit (2026-05-27) decisions.**
+
+- **Folder cap at 200 URLs.** Folder + multi-drop queues larger than 200 truncate with a localized NSAlert; the first 200 alphabetical files queue. Predictable resource use under the 500 MB cache cap (≈ 70 cached tracks). Larger folders means the user must pick smaller subsets for full coverage.
+- **Single-file loops, multi-file advances.** Single-file queues (the env-var hook, `File → Open Local File…`, 1-track folders) continue the LF.1 loop-forever behaviour. Multi-file queues (folders with ≥ 2 files, M3U playlists, multi-file drag-and-drop) advance through tracks and transition to `.ended` on completion.
+- **API consolidation.** `startLocalFile(at:)` becomes a thin wrapper around `startLocalFiles(at: [url], origin: .localFile(url))` — single entry point + single lifecycle. The 14 LF.4 tests pass unchanged through the wrapper.
+
+**Rejected alternatives.**
+
+- **`startLocalFiles(at: [URL])` without `origin:` parameter.** Loses the input shape (folder vs M3U vs flat drop) which UI labels + WIRING logs need.
+- **Async metadata extraction on every cache hit.** Re-reads AVAsset.commonMetadata when loading from disk — defeats the purpose of caching. v2 schema persists metadata once; cache hit just reads the JSON envelope.
+- **Multi-file env-var hook (`PHOSPHENE_LOCAL_FILES_PLAYBACK=...`).** Adds complexity to the env-var parser (colon-separated paths? newline-separated?) without a clear use case beyond CLI dev workflows. Deferred until someone asks for it.
+- **`LSHandlerRank=Default` for audio types.** Hijacks the user's existing default opener (Music.app on macOS); the user must explicitly grant Phosphene-as-default via Finder if they want it.
+- **Drag-to-reorder of the queue mid-session.** Tracks already play in fixed order; reordering would require pause / re-queue plumbing. LF.6+ territory if user demand surfaces.
+- **Album-art display in `PlaybackView` chrome.** Data captured at LF.5 (sibling `artwork.bin`); UI surface is LF.6.
+- **`.fpl` (Foobar2000) playlist files.** Binary format; would need a separate parser. Defer until someone asks.
+- **In-app M3U editor / "Save current queue as M3U" export.** UX surface area for a niche use case.
+- **Multi-file path inside the LF.4 `_completeLocalFileReady` helper.** Two parallel single-file / multi-file paths inside SessionManager would duplicate state-tracking. Consolidating into `startLocalFiles` with the LF.4 wrapper is the cleaner shape.
+
+**Out of scope (deferred).**
+
+- Crossfade / gapless segue between LF tracks (hard cuts at LF.5).
+- Album-art display in PlaybackView (data captured; UI is LF.6).
+- Per-track skip / next / prev controls in PlaybackView (UX-2 invariant — Phosphene doesn't control playback).
+- Drag-to-reorder of the queue mid-session.
+- Manual track removal from the queue (cancel + re-pick is the workaround).
+- Smart-playlists / Apple Music library bundle ingestion / Spotify-local-file integration.
+- `.fpl` (Foobar2000) playlist files.
+- In-app M3U editor / "Save current queue as M3U" export.
+- Streaming-path persistent cache (different cache-key shape + invalidation surface).
+- Spotify track-ID-keyed cache.
+- Multi-file env-var hook.
+- Cross-machine library sync.
+- Network-streamed files.
+- Multi-process cache safety (Phosphene is single-instance).
+
+**Verification.**
+
+- All LF.1–LF.4 regression gates green (no regression past prior baselines).
+- LF.5 new tests green: `SessionManagerLocalFileTests` (29/29 — incl. 13 LF.5 lifecycle + 2 LF.5 per-track-status observer), `M3UParserTests` (9/9), `PersistentStemCacheTests` (16/16 — incl. 5 LF.5 schema-v2), `LocalFileRecentsStoreTests` (12/12), `LocalFilePlaybackFormatCoverageTests` (4/4 — incl. LF.5 3-fixture queue).
+- Full engine suite green: 1358 tests / 172 suites (LF.4 baseline 1328 + 30 net new LF.5 tests).
+- Soak tests green: `SOAK_TESTS=1 swift test --filter SoakTestHarness` (7/7, 315 s).
+- App suite green: full PhospheneApp test target passes.
+- Sample-rate literal gate green: `Scripts/check_sample_rate_literals.sh` exit 0.
+- Localized-strings gate green: `Scripts/check_user_strings.sh` exit 0.
+- Release build green: `xcodebuild -scheme PhospheneApp -configuration Release build` exit 0.
+- Cold/warm latency captured at `docs/diagnostics/LF5_REGRESSION_2026-05-28.md` — no regression past LF.4 baseline.
