@@ -29,6 +29,13 @@ struct PreparationProgressView: View {
     @StateObject private var errorViewModel: PreparationErrorViewModel
 
     private let playlistName: String
+    /// GAP D (2026-05-28). The active session origin, used to render a
+    /// contextual header for local-file sessions ("Reading mix.m3u" /
+    /// "Reading 8 tracks from Tempo" etc.) instead of the generic
+    /// streaming-path "Preparing your session" + "N tracks" header.
+    /// `nil` keeps the streaming behaviour; non-LF origins also fall
+    /// through to the streaming header.
+    private let headerContext: SessionOrigin?
     private let onCancel: () -> Void
     private let onStartNow: () -> Void
     private let onPickAnotherPlaylist: (() -> Void)?
@@ -58,6 +65,7 @@ struct PreparationProgressView: View {
         publisher: any PreparationProgressPublishing,
         tracks: [TrackIdentity],
         playlistName: String = "",
+        headerContext: SessionOrigin? = nil,
         progressiveReadinessPublisher: AnyPublisher<ProgressiveReadinessLevel, Never> =
             Just(.preparing).eraseToAnyPublisher(),
         reachability: any ReachabilityPublishing = ReachabilityMonitor(),
@@ -83,6 +91,7 @@ struct PreparationProgressView: View {
             )
         )
         self.playlistName = playlistName
+        self.headerContext = headerContext
         self.onCancel = onCancel
         self.onStartNow = onStartNow
         self.onPickAnotherPlaylist = onPickAnotherPlaylist
@@ -165,24 +174,68 @@ struct PreparationProgressView: View {
 
     private var header: some View {
         VStack(spacing: 4) {
-            Text(String(localized: "preparation.header.title"))
+            Text(verbatim: resolvedHeaderTitle)
                 .font(.title2)
                 .fontWeight(.semibold)
                 .foregroundColor(.white)
 
-            let total   = viewModel.counts.total
-            let suffix  = total == 1 ? "track" : "tracks"
-            let subtitle = playlistName.isEmpty
-                ? "\(total) \(suffix)"
-                : "\(total) \(suffix) from \(playlistName)"
-
-            Text(subtitle)
-                .font(.subheadline)
-                .foregroundColor(.white.opacity(0.5))
+            if let subtitle = resolvedHeaderSubtitle {
+                Text(verbatim: subtitle)
+                    .font(.subheadline)
+                    .foregroundColor(.white.opacity(0.5))
+            }
         }
         .padding(.top, 32)
         .padding(.bottom, 16)
         .padding(.horizontal, 24)
+    }
+
+    /// GAP D: the title line. Defaults to the streaming-path
+    /// "Preparing your session" headline; for LF origins, replaces with
+    /// a contextual line that names what's being read.
+    private var resolvedHeaderTitle: String {
+        let total = viewModel.counts.total
+        switch headerContext {
+        case .localFile(let url):
+            return String(format: String(localized: "preparation.header.lf_file"),
+                          url.lastPathComponent)
+        case .localFiles, .localFolder, .localPlaylist:
+            // Multi-file LF origins all read as "Reading N tracks" — the
+            // source (folder name, playlist filename, drop) lives in the
+            // subtitle below.
+            return String(format: String(localized: "preparation.header.lf_tracks"),
+                          total)
+        case .playlist, nil:
+            return String(localized: "preparation.header.title")
+        }
+    }
+
+    /// GAP D: the subtitle line. Streaming-path callers see the
+    /// pre-existing "N tracks [from <playlistName>]"; LF callers see
+    /// a from-clause that names the folder / playlist (or nothing for
+    /// single-file and flat-drop origins).
+    private var resolvedHeaderSubtitle: String? {
+        let total = viewModel.counts.total
+        switch headerContext {
+        case .localFile:
+            // Single file — title already says the filename. No subtitle.
+            return nil
+        case .localFiles:
+            // Flat drop / multi-file with no provenance. Title carries the
+            // count; no provenance to surface.
+            return nil
+        case .localFolder(let folder, _):
+            return String(format: String(localized: "preparation.header.lf_from"),
+                          folder.lastPathComponent)
+        case .localPlaylist(let playlist, _):
+            return String(format: String(localized: "preparation.header.lf_from"),
+                          playlist.lastPathComponent)
+        case .playlist, nil:
+            let suffix = total == 1 ? "track" : "tracks"
+            return playlistName.isEmpty
+                ? "\(total) \(suffix)"
+                : "\(total) \(suffix) from \(playlistName)"
+        }
     }
 
     private var progressBar: some View {

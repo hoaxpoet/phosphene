@@ -431,3 +431,15 @@
 "lf_source.drop_hint"                       = "You can also drop files, folders, or playlists anywhere on the window.";
 
 "lf.open.m3u.panel.title"                   = "Choose a .m3u or .m3u8 playlist";
+
+// MARK: - GAP D (2026-05-28) — Preparation header for LF sessions
+// Switches the generic "Preparing your session" headline for LF origins
+// to a contextual line that names what's being read. The streaming-path
+// header strings above (preparation.header.title etc.) are unchanged.
+
+/* %@ = filename of the single LF file being prepared */
+"preparation.header.lf_file"                = "Reading %@";
+/* %d = total track count for a multi-file LF queue */
+"preparation.header.lf_tracks"              = "Reading %d tracks";
+/* %@ = folder name OR playlist filename — subtitle for folder / playlist origins */
+"preparation.header.lf_from"                = "from %@";
