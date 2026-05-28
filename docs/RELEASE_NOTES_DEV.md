@@ -6,6 +6,37 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-l] LF.5.fix — Build multi-segment plan for LF sessions (D-LF5-4)
+
+Surfaced by Matt's follow-up to the D-LF5-1 closeout: "what happened to
+multiple presets per song?" Investigation revealed that D-LF5-1 was
+necessary but not sufficient.
+
+VisualizerEngine's `.ready` observer branches on
+`currentSource?.isLocalFile`. Streaming calls `buildPlan()`, which reads
+SessionManager's track list + cache and produces the multi-segment
+`livePlannedSession` (with intra-track preset boundaries the planner
+chose based on each track's TrackProfile). LF called
+`handleLocalFileReady()` instead, which installed BeatGrid + started
+audio but never invoked `buildPlan()`. Result: every LF.5 session had
+`livePlannedSession = nil`; the orchestrator had nothing to consult
+even with D-LF5-1's `liveTrackPlanIndex` wire — planned mode could not
+engage.
+
+One-line fix: call `buildPlan()` from `handleLocalFileReady` after
+`resetStemPipeline` (cache populated → trackProfile readable) and
+before the D-LF5-1 orchestrator wire (planIdx=0 only meaningful once
+livePlan exists).
+
+**Verification gate added to the smoke checklist.** Session log should
+emit `Orchestrator: wire active (mode=planned, planIdx=N)` at each
+track boundary AND multiple `preset → <name>` lines within each
+track's playback window. If only one preset transition per track shows
+up, the planner produced a single-segment plan for that track —
+expected behaviour for some short tracks; not a defect.
+
+---
+
 ## [dev-2026-05-28-k] LF.5.fix — Orchestrator wire, End-Session stop, transport bar
 
 Three defects surfaced by Matt's 2026-05-28 LF.5 smoke session (sessions
