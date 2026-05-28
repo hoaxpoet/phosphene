@@ -256,6 +256,12 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         localFileCacheBytes = persistentStemCache?.totalBytes() ?? 0
     }
 
+    /// `true` when the LF audio router is paused (via the transport bar's
+    /// Play/Pause button). `false` when actively playing or when no LF
+    /// session is active. Drives the transport bar's glyph (▶ vs ⏸).
+    /// LF.5.fix D-LF5-3.
+    @Published var isLocalFilePaused: Bool = false
+
     /// Stem separator (MPSGraph on GPU).
     let stemSeparator: StemSeparator?
 
@@ -774,6 +780,21 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                     } else {
                         self.buildPlan()
                     }
+                }
+                if newState == .ended {
+                    // LF.5.fix D-LF5-2: Phosphene IS the player for local-file
+                    // sessions, so End Session must actually stop audio. For
+                    // streaming sessions stop() also tears down the Core Audio
+                    // process tap (correct behaviour at session end — the
+                    // streaming app keeps playing, Phosphene stops analysing).
+                    // Either way, idempotent + safe.
+                    if #available(macOS 14.2, *), let audioRouter = self.router as? AudioInputRouter {
+                        audioRouter.stop()
+                    }
+                    // LF.5.fix D-LF5-3: reset transport state so a new session
+                    // (or a re-open of the same file) doesn't inherit a stale
+                    // paused flag.
+                    self.isLocalFilePaused = false
                 }
             }
 

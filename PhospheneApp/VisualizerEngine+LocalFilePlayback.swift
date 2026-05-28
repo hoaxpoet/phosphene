@@ -111,6 +111,17 @@ extension VisualizerEngine: LocalFilePreparing {
         // wrote into it).
         resetStemPipeline(for: identity, caller: .other)
 
+        // LF.5.fix D-LF5-1: tell the orchestrator about the LF plan so it runs
+        // in planned mode (and applies per-track presets) instead of reactive.
+        // The streaming path wires this in `makeTrackChangeCallback`
+        // (VisualizerEngine+Capture.swift:129) under `orchestratorLock`; LF.5
+        // bypasses that callback so we mirror the writes here.
+        lastResolvedTrackIdentity = identity
+        orchestratorLock.withLock {
+            liveTrackPlanIndex = 0
+            orchestratorWireLoggedThisTrack = false
+        }
+
         // LF.5: wire the EOF callback BEFORE starting the audio router so we
         // can't miss an end-of-stream event for a very short fixture. Per
         // Matt's audit answer (2026-05-27), single-file queues loop the file
@@ -139,6 +150,7 @@ extension VisualizerEngine: LocalFilePreparing {
 
         startStemPipeline()
         currentTrackIndex = 0                               // LF.5: published for chrome + orchestrator
+        isLocalFilePaused = false                           // LF.5.fix D-LF5-3: fresh session starts playing
 
         sessionManager.beginPlayback()
 
@@ -152,25 +164,43 @@ extension VisualizerEngine: LocalFilePreparing {
 
     // MARK: - LF.5 mid-session queue advance
 
-    /// Pop the next URL off the LF.5 queue, install its cached BeatGrid via
-    /// `resetStemPipeline(caller: .trackChange)`, restart the audio router
-    /// with the next file, and bump `currentTrackIndex`. When the queue is
-    /// exhausted, transitions the session to `.ended` (matches the streaming-
-    /// path "session over" UX). Single-file queues never reach this path
-    /// because the EOF callback is unset (file loops forever per Matt's
-    /// audit answer).
+    /// Direction parameter for `advanceLocalFileQueue` — `.forward` is the
+    /// natural EOF advance path; `.backward` is the user-driven "previous
+    /// track" transport button (LF.5.fix D-LF5-3).
+    enum LocalFileQueueDirection: Sendable {
+        case forward
+        case backward
+    }
+
+    /// Pop the next URL off the LF.5 queue (forward or backward), install its
+    /// cached BeatGrid via `resetStemPipeline(caller: .trackChange)`, restart
+    /// the audio router with the next file, and update `currentTrackIndex`.
+    /// Forward advance from the last track transitions the session to
+    /// `.ended`; backward advance from the first track is a no-op (matches
+    /// standard music-player UX). Single-file queues never reach this path
+    /// from an EOF (the LF.1 loop default fires instead per Matt's audit
+    /// answer); transport-driven entries to this method on a 1-track queue
+    /// are no-ops because there is no previous or next track.
     @MainActor
-    func advanceLocalFileQueue() {
+    func advanceLocalFileQueue(direction: LocalFileQueueDirection = .forward) {
         guard let source = sessionManager.currentSource, source.isLocalFile else { return }
         let urls = source.allLocalFileURLs
         let tracks = sessionManager.currentPlan?.tracks ?? []
         let currentIdx = currentTrackIndex ?? -1
-        let nextIdx = currentIdx + 1
+        let nextIdx: Int
+        switch direction {
+        case .forward: nextIdx = currentIdx + 1
+        case .backward: nextIdx = currentIdx - 1
+        }
 
-        guard nextIdx < urls.count, nextIdx < tracks.count else {
-            lfLogger.info("[LF.5] queue exhausted — transitioning to .ended")
-            currentTrackIndex = nil
-            sessionManager.endSession()
+        guard nextIdx >= 0, nextIdx < urls.count, nextIdx < tracks.count else {
+            if direction == .forward {
+                lfLogger.info("[LF.5] queue exhausted — transitioning to .ended")
+                currentTrackIndex = nil
+                sessionManager.endSession()
+            } else {
+                lfLogger.info("[LF.5] queue at start — prev is no-op")
+            }
             return
         }
 
@@ -183,6 +213,15 @@ extension VisualizerEngine: LocalFilePreparing {
         if #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
             audioRouter.stop()
             resetStemPipeline(for: nextIdentity, caller: .trackChange)
+            // LF.5.fix D-LF5-1: mirror `makeTrackChangeCallback`'s orchestrator
+            // wire-up. Without these, the analysis-queue's
+            // `runOrchestratorLiveUpdate` sees `liveTrackPlanIndex = nil` and
+            // stays in reactive mode — no per-track preset on advance.
+            lastResolvedTrackIdentity = nextIdentity
+            orchestratorLock.withLock {
+                liveTrackPlanIndex = nextIdx
+                orchestratorWireLoggedThisTrack = false
+            }
             // Re-bind the EOF callback BEFORE start() — AudioInputRouter
             // captures the callback at start time and relays it into the
             // freshly-constructed provider.
@@ -192,12 +231,63 @@ extension VisualizerEngine: LocalFilePreparing {
             do {
                 try audioRouter.start(mode: .localFilePlayback(nextURL))
                 currentTrackIndex = nextIdx
+                isLocalFilePaused = false                                   // restart implies playing
             } catch {
                 let msg = error.localizedDescription
                 lfLogger.error("[LF.5] audio router restart failed: \(msg, privacy: .public)")
                 // Stop advancing — user can re-pick from Recents or pick a new file.
             }
         }
+    }
+
+    // MARK: - LF.5.fix transport controls (D-LF5-3)
+
+    /// Toggle the LF audio router between paused and playing. Drives the
+    /// transport bar's Play/Pause glyph via the `isLocalFilePaused` publisher.
+    /// No-op when no LF session is active.
+    @MainActor
+    func togglePauseLocalFile() {
+        guard sessionManager.currentSource?.isLocalFile == true else { return }
+        if #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
+            if isLocalFilePaused {
+                audioRouter.resumeLocalFilePlayback()
+                isLocalFilePaused = false
+                lfLogger.info("[LF.5] transport: resume")
+            } else {
+                audioRouter.pauseLocalFilePlayback()
+                isLocalFilePaused = true
+                lfLogger.info("[LF.5] transport: pause")
+            }
+        }
+    }
+
+    /// Skip to the next track in the LF queue. End-of-queue transitions the
+    /// session to `.ended` (same behaviour as natural EOF advance).
+    @MainActor
+    func skipToNextLocalFileTrack() {
+        guard sessionManager.currentSource?.isLocalFile == true else { return }
+        lfLogger.info("[LF.5] transport: next")
+        advanceLocalFileQueue(direction: .forward)
+    }
+
+    /// Skip back to the previous track in the LF queue. No-op at index 0
+    /// (matches standard music-player UX — there is no track before the
+    /// first one).
+    @MainActor
+    func skipToPreviousLocalFileTrack() {
+        guard sessionManager.currentSource?.isLocalFile == true else { return }
+        lfLogger.info("[LF.5] transport: prev")
+        advanceLocalFileQueue(direction: .backward)
+    }
+
+    /// Stop LF playback and end the session. Drives the transport bar's Stop
+    /// button. Equivalent to clicking "End session" on the existing chrome —
+    /// triggers the D-LF5-2 .ended observer to tear down the audio router.
+    @MainActor
+    func stopLocalFilePlayback() {
+        guard sessionManager.currentSource?.isLocalFile == true else { return }
+        lfLogger.info("[LF.5] transport: stop")
+        sessionManager.endSession()
     }
 
     // MARK: - Off-main worker
