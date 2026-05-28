@@ -88,10 +88,18 @@ struct PhospheneApp: App {
                     engine.applyShowUncertifiedPresets(value)
                 }
             }
-            // Route phosphene://spotify-callback back to the OAuth actor.
+            // Route phosphene://spotify-callback back to the OAuth actor (U.11)
+            // and file:// URLs to the LF.5 file-association dispatch path.
             .onOpenURL { url in
-                guard url.scheme == "phosphene", url.host == "spotify-callback" else { return }
-                Task { await spotifyOAuth.handleCallback(url: url) }
+                if url.scheme == "phosphene", url.host == "spotify-callback" {
+                    Task { await spotifyOAuth.handleCallback(url: url) }
+                    return
+                }
+                if url.isFileURL {
+                    Task { @MainActor in
+                        await dispatchFileURL(url)
+                    }
+                }
             }
             // LF.4 — Local-file playback hook. When the
             // `PHOSPHENE_LOCAL_FILE_PLAYBACK` env var points at a readable
@@ -189,6 +197,35 @@ struct PhospheneApp: App {
                     LocalFileMenuCommands.clearLocalFileCache(engine: engine)
                 }
             }
+        }
+    }
+
+    // MARK: - LF.5 file-association dispatch
+
+    /// Route a `file://` URL received via `.onOpenURL` (Finder double-click,
+    /// `open -a Phosphene <path>`, drag-onto-Dock-icon) into the right
+    /// LocalFileMenuCommands entry point. Unsupported extensions and
+    /// non-existent paths are silently ignored — file-association handlers
+    /// shouldn't pop alerts on unexpected URLs the OS chose to route here.
+    @MainActor
+    private func dispatchFileURL(_ url: URL) async {
+        let ext = url.pathExtension.lowercased()
+        if LocalFileMenuCommands.allowedExtensions.contains(ext) {
+            await LocalFileMenuCommands.openLocalFile(
+                at: url, engine: engine, recentsStore: recentsStore
+            )
+            return
+        }
+        if LocalFileMenuCommands.playlistExtensions.contains(ext) {
+            await LocalFileMenuCommands.openLocalM3U(
+                at: url, engine: engine, recentsStore: recentsStore
+            )
+            return
+        }
+        if LocalFileMenuCommands.isFolder(url) {
+            await LocalFileMenuCommands.openLocalFolder(
+                at: url, engine: engine, recentsStore: recentsStore
+            )
         }
     }
 
