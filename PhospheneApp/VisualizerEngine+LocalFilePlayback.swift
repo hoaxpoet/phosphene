@@ -153,6 +153,14 @@ extension VisualizerEngine: LocalFilePreparing {
             } else {
                 audioRouter.onLocalFilePlaybackEnded = nil
             }
+            // BUG-021 (2026-05-28): forward LocalFilePlaybackProvider's
+            // diagnostic breadcrumbs into session.log on the call thread.
+            // Captured at install time — same lifecycle as the EOF callback
+            // above, applied to every subsequent provider start.
+            let recorder = sessionRecorder
+            audioRouter.onLocalFilePlaybackDiagnostic = { [weak recorder] msg in
+                recorder?.log("WIRING: \(msg)")
+            }
 
             // Start the LF audio router (AVAudioEngine path).
             do {

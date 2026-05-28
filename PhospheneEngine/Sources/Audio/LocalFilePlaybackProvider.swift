@@ -87,6 +87,17 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
     /// scheduleFile completion thread without a Swift-6 concurrency warning.
     public var onFileEnded: (@Sendable () -> Void)?
 
+    /// BUG-021 (2026-05-28) — synchronous diagnostic hook. When set, the
+    /// `_stopLocked` teardown calls this at each sub-step (remove observer,
+    /// player.stop, player.removeTap, engine.stop, nil-out). Session
+    /// `2026-05-28T19-26-13Z` showed `audioRouter.stop()` hanging
+    /// indefinitely on MainActor inside this method without any indication
+    /// of which sub-line blocked. The handler runs on whatever thread
+    /// `_stopLocked` runs on (typically MainActor for transport-driven
+    /// teardown). App-layer wires this to `SessionRecorder.log` so the
+    /// breadcrumb lands in session.log on the call thread.
+    public var onDiagnosticEvent: ((String) -> Void)?
+
     // MARK: - Init
 
     /// Create a provider that will play the file at `url` when `start()` is called.
@@ -203,18 +214,32 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
     }
 
     private func _stopLocked() {
+        // BUG-021 (2026-05-28) — synchronous breadcrumbs on every sub-step.
+        // Session 2026-05-28T19-26-13Z showed `audioRouter.stop()` hanging
+        // here with no indication of which sub-line blocked. The next capture
+        // will show the last successfully-logged step.
+        onDiagnosticEvent?("provider._stopLocked ENTER")
         if let observer = configChangeObserver {
+            onDiagnosticEvent?("provider._stopLocked removeObserver BEGIN")
             NotificationCenter.default.removeObserver(observer)
             configChangeObserver = nil
+            onDiagnosticEvent?("provider._stopLocked removeObserver COMPLETE")
         }
         if let player = playerNode {
+            onDiagnosticEvent?("provider._stopLocked player.stop BEGIN")
             player.stop()
+            onDiagnosticEvent?("provider._stopLocked player.stop COMPLETE")
+            onDiagnosticEvent?("provider._stopLocked player.removeTap BEGIN")
             player.removeTap(onBus: 0)
+            onDiagnosticEvent?("provider._stopLocked player.removeTap COMPLETE")
         }
+        onDiagnosticEvent?("provider._stopLocked engine.stop BEGIN")
         engine?.stop()
+        onDiagnosticEvent?("provider._stopLocked engine.stop COMPLETE")
         engine = nil
         playerNode = nil
         audioFile = nil
+        onDiagnosticEvent?("provider._stopLocked EXIT")
     }
 
     /// Re-schedule the file each time the player drains its scheduled
