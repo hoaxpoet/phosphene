@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 // SessionPreparer — Batch pre-analysis pipeline for playlist session preparation.
 // Orchestrates: preview resolution → download → stem separation → MIR analysis
 // → StemCache storage for every track before playback begins.
@@ -11,6 +12,14 @@
 //   would require restructuring analyzePreview. TODO(U.4-followup): split detached block.
 // - Download progress uses the -1 sentinel (indeterminate). URLSession progress
 //   callback not wired. TODO(U.4-followup): wire URLSession download progress.
+//
+// LF.5 (D-132, 2026-05-27): adds `prepareLocalFiles(urls:placeholders:via:)` —
+// the multi-file local-file twin of `prepare(tracks:)`. Walks an URL queue
+// via a `LocalFilePreparing` delegate and publishes the same `trackStatuses`
+// + `progress` SignalView the streaming path uses. The file_length disable
+// above is the tracked acknowledgement that both pipelines own the same
+// in-memory state machine; splitting requires widening property access
+// across the engine module which leaks worse than the file_length warning.
 
 import Audio
 import Combine
@@ -189,6 +198,124 @@ public final class SessionPreparer: ObservableObject {
         }
         preparationTask = nil
         return result
+    }
+
+    // MARK: - LF.5 — Multi-file local-file preparation
+
+    /// Run the LF.5 multi-file preparation pipeline against a `[URL]` queue.
+    ///
+    /// Sibling to `prepare(tracks:)` (streaming path) but driven by an URL list
+    /// from the file picker / folder ingest / M3U parser instead of a
+    /// connector. Walks the list sequentially via the `LocalFilePreparing`
+    /// delegate (typically `VisualizerEngine` in the app layer), which owns
+    /// the heavy ML deps + the persistent disk cache. Publishes per-track
+    /// `TrackPreparationStatus` transitions keyed on the supplied placeholder
+    /// identities so `PreparationProgressView` renders correctly for LF
+    /// sessions just like it does for streaming sessions.
+    ///
+    /// Status transitions per file:
+    ///   `.queued` → `.analyzing(.stemSeparation)` → `.analyzing(.caching)` → `.ready`   (cache hit / fresh analysis)
+    ///   `.queued` → `.analyzing(.stemSeparation)` → `.partial(reason:)`                  (delegate returned `nil` — LF.1 fallthrough)
+    ///
+    /// Cancellation is honoured at file boundaries; the current in-flight
+    /// per-file preparer call cannot itself be interrupted but unprocessed
+    /// files are skipped immediately on the next iteration.
+    ///
+    /// - Parameters:
+    ///   - urls: Ordered queue of local audio file URLs. Caller validates
+    ///     readability + extension upstream.
+    ///   - placeholders: One `TrackIdentity` per URL, in the same order. Used
+    ///     as stable keys for `trackStatuses` (so UI rows track per-file
+    ///     status without churn as real `local:sha256:` identities arrive).
+    ///   - delegate: The `LocalFilePreparing` implementer that runs the
+    ///     per-file hash + cache + analyze + persist work. When `nil`, every
+    ///     file goes through the LF.1 no-cache fallthrough.
+    /// - Returns: `SessionPreparationResult` with `cachedTracks` carrying the
+    ///   real `local:sha256:<hash>` identities from successful preparation
+    ///   and `failedTracks` carrying the placeholder identities for entries
+    ///   the delegate could not prepare.
+    public func prepareLocalFiles(
+        urls: [URL],
+        placeholders: [TrackIdentity],
+        via delegate: (any LocalFilePreparing)?
+    ) async -> SessionPreparationResult {
+        precondition(urls.count == placeholders.count,
+                     "prepareLocalFiles: urls and placeholders must align by index")
+
+        // Initialize statuses + progress before any async work begins.
+        trackStatuses = Dictionary(uniqueKeysWithValues: placeholders.map { ($0, .queued) })
+        progress = (0, urls.count)
+        networkFailedTracks = []
+
+        let enterMsg = "WIRING: SessionPreparer.prepareLocalFiles ENTER count=\(urls.count) " +
+            "delegate=\(delegate == nil ? "nil" : "wired")"
+        sessionRecorder?.log(enterMsg)
+        logger.info("\(enterMsg, privacy: .public)")
+
+        // Wrap the loop in a stored Task so cancelPreparation() can cancel it.
+        let task = Task { [self] in
+            await self._runLocalFilePreparation(
+                urls: urls,
+                placeholders: placeholders,
+                delegate: delegate
+            )
+        }
+        preparationTask = task
+        let result = await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+        preparationTask = nil
+        return result
+    }
+
+    private func _runLocalFilePreparation(
+        urls: [URL],
+        placeholders: [TrackIdentity],
+        delegate: (any LocalFilePreparing)?
+    ) async -> SessionPreparationResult {
+        var cachedTracks: [TrackIdentity] = []
+        var failedTracks: [TrackIdentity] = []
+
+        for (index, pair) in zip(urls, placeholders).enumerated() {
+            if Task.isCancelled { break }
+            let (url, placeholder) = pair
+
+            trackStatuses[placeholder] = .analyzing(stage: .stemSeparation)
+            let result: LocalFilePrepResult? = await (delegate?.prepareLocalFile(url: url))
+            if Task.isCancelled { break }
+
+            let sourceLabel: String
+            if let result {
+                trackStatuses[placeholder] = .analyzing(stage: .caching)
+                cache.store(result.cached, for: result.identity)
+                trackStatuses[placeholder] = .ready
+                cachedTracks.append(result.identity)
+                sourceLabel = result.source.label
+            } else {
+                trackStatuses[placeholder] = .partial(reason: "Stems unavailable")
+                failedTracks.append(placeholder)
+                sourceLabel = "noCache"
+            }
+
+            let done = cachedTracks.count + failedTracks.count
+            progress = (done, urls.count)
+            let perFileMsg = "WIRING: SessionPreparer.prepareLocalFile #\(index + 1) " +
+                "of \(urls.count) file='\(url.lastPathComponent)' source=\(sourceLabel)"
+            sessionRecorder?.log(perFileMsg)
+        }
+
+        let doneMsg = "WIRING: SessionPreparer.prepareLocalFiles DONE " +
+            "cached=\(cachedTracks.count) failed=\(failedTracks.count) total=\(urls.count)"
+        sessionRecorder?.log(doneMsg)
+        logger.info("\(doneMsg, privacy: .public)")
+
+        return SessionPreparationResult(
+            cachedTracks: cachedTracks,
+            failedTracks: failedTracks,
+            cache: cache
+        )
     }
 
     // MARK: - PreparationProgressPublishing

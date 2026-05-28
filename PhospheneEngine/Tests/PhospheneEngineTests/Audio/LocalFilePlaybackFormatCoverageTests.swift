@@ -80,6 +80,86 @@ struct LocalFilePlaybackFormatCoverageTests {
         try runDecodeAndAnalyze(filename: "love_rehab.flac", expectedSampleRate: 44100)
     }
 
+    @Test("LF.5 queue: 3-format folder runs through SessionPreparer.prepareLocalFiles")
+    @MainActor
+    func test_threeFormatQueue_runsThroughPrepareLocalFiles() async throws {
+        guard Self.isEnabled else { return }
+
+        let urls = [
+            Self.fixtureURL("love_rehab.m4a"),
+            Self.fixtureURL("love_rehab.mp3"),
+            Self.fixtureURL("love_rehab.flac")
+        ]
+        for url in urls where !FileManager.default.fileExists(atPath: url.path) {
+            Issue.record("LF_FORMAT_COVERAGE: fixture absent at \(url.path)")
+            return
+        }
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            Issue.record("LF.5 queue: no Metal device — cannot exercise ML pipeline")
+            return
+        }
+
+        let separator = try StemSeparator(device: device)
+        let analyzer = StemAnalyzer(sampleRate: 44100)
+        let classifier = MoodClassifier()
+        let gridAnalyzer = try DefaultBeatGridAnalyzer(device: device)
+
+        // The format-coverage delegate runs the same hash + decode + analyze
+        // pipeline VisualizerEngine ships in `prepareLocalFile(url:)`; the
+        // disk-cache step is skipped because the queue lifecycle is what's
+        // under test, not persistence (covered by per-format tests above).
+        let delegate = FormatCoverageLocalFilePreparer(
+            separator: separator,
+            analyzer: analyzer,
+            classifier: classifier,
+            gridAnalyzer: gridAnalyzer
+        )
+
+        let preparer = SessionPreparer(
+            resolver: StubResolverFormatCoverage(),
+            downloader: StubDownloaderFormatCoverage(),
+            stemSeparator: separator,
+            stemAnalyzer: analyzer,
+            moodClassifier: classifier
+        )
+        let placeholders = urls.map {
+            TrackIdentity(
+                title: $0.lastPathComponent,
+                artist: "local file",
+                duration: 0,
+                spotifyID: "local:" + $0.path
+            )
+        }
+
+        let result = await preparer.prepareLocalFiles(
+            urls: urls,
+            placeholders: placeholders,
+            via: delegate
+        )
+
+        #expect(result.cachedTracks.count == urls.count,
+                "Expected \(urls.count) cached tracks, got \(result.cachedTracks.count)")
+        #expect(result.failedTracks.isEmpty,
+                "Expected no failures, got \(result.failedTracks.count) failed")
+
+        // Every cached track must carry the LF.3 `local:sha256:` identity,
+        // a non-empty BeatGrid in the [110, 130] BPM window for Love Rehab,
+        // and finite stem features.
+        for track in result.cachedTracks {
+            #expect(track.spotifyID?.hasPrefix("local:sha256:") == true,
+                    "Track \(track.title): expected local:sha256: identity, got \(track.spotifyID ?? "nil")")
+            let cached = preparer.cache.loadForPlayback(track: track)
+            #expect(cached != nil, "Track \(track.title): missing from cache after prepareLocalFiles")
+            guard let cached else { continue }
+            #expect(cached.beatGrid.bpm > 110 && cached.beatGrid.bpm < 130,
+                    "Track \(track.title): expected BPM in [110, 130], got \(cached.beatGrid.bpm)")
+            #expect(cached.stemFeatures.vocalsEnergy.isFinite,
+                    "Track \(track.title): vocalsEnergy must be finite")
+            #expect(cached.stemFeatures.drumsEnergy.isFinite,
+                    "Track \(track.title): drumsEnergy must be finite")
+        }
+    }
+
     // MARK: - Shared Implementation
 
     /// Decode → analyze → assert. Used by every per-format test so the
@@ -196,4 +276,63 @@ struct LocalFilePlaybackFormatCoverageTests {
                     "\(filename): stem \(i) samples roundtrip differs")
         }
     }
+}
+
+// MARK: - LF.5 queue-level test helpers
+
+/// `LocalFilePreparing` adapter that runs the same hash + decode + analyze
+/// pipeline `VisualizerEngine.prepareLocalFile(url:)` ships, without the
+/// `PersistentStemCache` write step (the per-format tests above already
+/// cover the cache roundtrip). Sized for the 3-fixture queue test.
+private final class FormatCoverageLocalFilePreparer: LocalFilePreparing, @unchecked Sendable {
+    let separator: any StemSeparating
+    let analyzer: any StemAnalyzing
+    let classifier: any MoodClassifying
+    let gridAnalyzer: any BeatGridAnalyzing
+
+    init(
+        separator: any StemSeparating,
+        analyzer: any StemAnalyzing,
+        classifier: any MoodClassifying,
+        gridAnalyzer: any BeatGridAnalyzing
+    ) {
+        self.separator = separator
+        self.analyzer = analyzer
+        self.classifier = classifier
+        self.gridAnalyzer = gridAnalyzer
+    }
+
+    func prepareLocalFile(url: URL) async -> LocalFilePrepResult? {
+        do {
+            let preview = try PreviewAudio.fromLocalFile(at: url)
+            let cached = try SessionPreparer.analyzePreview(
+                preview,
+                separator: separator,
+                analyzer: analyzer,
+                classifier: classifier,
+                beatGridAnalyzer: gridAnalyzer,
+                prefetchedProfile: nil
+            )
+            return LocalFilePrepResult(
+                identity: preview.trackIdentity,
+                cached: cached,
+                decodedDuration: preview.duration,
+                source: .freshAnalysis
+            )
+        } catch {
+            return nil
+        }
+    }
+}
+
+/// Resolver stub: the LF queue path never calls the resolver, so it just
+/// returns `nil` to satisfy the `SessionPreparer` constructor.
+private final class StubResolverFormatCoverage: PreviewResolving, @unchecked Sendable {
+    func resolvePreviewURL(for track: TrackIdentity) async throws -> URL? { nil }
+}
+
+/// Downloader stub: same rationale as `StubResolverFormatCoverage`.
+private final class StubDownloaderFormatCoverage: PreviewDownloading, @unchecked Sendable {
+    func download(track: TrackIdentity, from url: URL) async -> PreviewAudio? { nil }
+    func batchDownload(tracks: [(TrackIdentity, URL)]) async -> [PreviewAudio] { [] }
 }
