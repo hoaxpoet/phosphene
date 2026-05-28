@@ -41,6 +41,7 @@
 		A10037 /* VisualizerEngine+PublicAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20037; };
 		Q10001 /* VisualizerEngine+LocalFilePlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20001; };
 		Q10002 /* LocalFileMenuCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20002; };
+		Q10003 /* LocalFileRecentsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20003; };
 		O10001 /* DashboardOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20001; };
 		O10002 /* DashboardCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20002; };
 		O10003 /* DashboardRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20003; };
@@ -175,6 +176,7 @@
 		L10040 /* AccessibilityStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20040; };
 		L10041 /* DynamicTypeRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20041; };
 		L10042 /* AccessibilityLabelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20042; };
+		L10043 /* LocalFileRecentsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20043; };
 		M10001 /* DisplayChangeCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20001; };
 		M10002 /* CaptureModeSwitchCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20002; };
 		M10003 /* NetworkRecoveryCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20003; };
@@ -203,6 +205,7 @@
 		A20037 /* VisualizerEngine+PublicAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+PublicAPI.swift"; sourceTree = "<group>"; };
 		Q20001 /* VisualizerEngine+LocalFilePlayback.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+LocalFilePlayback.swift"; sourceTree = "<group>"; };
 		Q20002 /* LocalFileMenuCommands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LocalFileMenuCommands.swift"; sourceTree = "<group>"; };
+		Q20003 /* LocalFileRecentsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFileRecentsStore.swift; sourceTree = "<group>"; };
 		O20001 /* DashboardOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardOverlayView.swift; sourceTree = "<group>"; };
 		O20002 /* DashboardCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardCardView.swift; sourceTree = "<group>"; };
 		O20003 /* DashboardRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardRowView.swift; sourceTree = "<group>"; };
@@ -357,6 +360,7 @@
 		L20040 /* AccessibilityStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityStateTests.swift; sourceTree = "<group>"; };
 		L20041 /* DynamicTypeRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicTypeRegressionTests.swift; sourceTree = "<group>"; };
 		L20042 /* AccessibilityLabelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityLabelsTests.swift; sourceTree = "<group>"; };
+		L20043 /* LocalFileRecentsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFileRecentsStoreTests.swift; sourceTree = "<group>"; };
 		M20001 /* DisplayChangeCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayChangeCoordinator.swift; sourceTree = "<group>"; };
 		M20002 /* CaptureModeSwitchCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureModeSwitchCoordinator.swift; sourceTree = "<group>"; };
 		M20003 /* NetworkRecoveryCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkRecoveryCoordinator.swift; sourceTree = "<group>"; };
@@ -431,6 +435,7 @@
 				A20037 /* VisualizerEngine+PublicAPI.swift */,
 				Q20001 /* VisualizerEngine+LocalFilePlayback.swift */,
 				Q20002 /* LocalFileMenuCommands.swift */,
+				Q20003 /* LocalFileRecentsStore.swift */,
 				A20040 /* VisualizerEngine+Orchestrator.swift */,
 				N20006 /* VisualizerEngine+WiringLogs.swift */,
 				N20007 /* VisualizerEngine+TrackIdentityResolution.swift */,
@@ -694,6 +699,7 @@
 				L20040 /* AccessibilityStateTests.swift */,
 				L20041 /* DynamicTypeRegressionTests.swift */,
 				L20042 /* AccessibilityLabelsTests.swift */,
+				L20043 /* LocalFileRecentsStoreTests.swift */,
 				N20003 /* SpotifyKeychainStoreTests.swift */,
 				N20004 /* SpotifyOAuthTokenProviderTests.swift */,
 				O20006 /* DashboardOverlayViewModelTests.swift */,
@@ -821,6 +827,7 @@
 				A10037 /* VisualizerEngine+PublicAPI.swift in Sources */,
 				Q10001 /* VisualizerEngine+LocalFilePlayback.swift in Sources */,
 				Q10002 /* LocalFileMenuCommands.swift in Sources */,
+				Q10003 /* LocalFileRecentsStore.swift in Sources */,
 				O10001 /* DashboardOverlayView.swift in Sources */,
 				O10002 /* DashboardCardView.swift in Sources */,
 				O10003 /* DashboardRowView.swift in Sources */,
@@ -975,6 +982,7 @@
 				L10040 /* AccessibilityStateTests.swift in Sources */,
 				L10041 /* DynamicTypeRegressionTests.swift in Sources */,
 				L10042 /* AccessibilityLabelsTests.swift in Sources */,
+				L10043 /* LocalFileRecentsStoreTests.swift in Sources */,
 				N10003 /* SpotifyKeychainStoreTests.swift in Sources */,
 				N10004 /* SpotifyOAuthTokenProviderTests.swift in Sources */,
 				O10006 /* DashboardOverlayViewModelTests.swift in Sources */,
