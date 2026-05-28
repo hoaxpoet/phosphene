@@ -84,6 +84,63 @@ Local commit on `main`. No remote push.
 
 ---
 
+## [dev-2026-05-28-p] CSP.3.5.1 M7 — Pass: white artifacts gone, performance under budget (session `2026-05-28T19-04-51Z`)
+
+**Increment:** CSP.3.5.1 M7 closeout. **Status:** Resolved 2026-05-28. Doc-only commit; no code changes.
+
+### Matt's verdict
+
+> "M7 review looks good. white artifacts are gone, performance looks good."
+
+Session `2026-05-28T19-04-51Z` — preset-rotation tap-path session cycling through all 16 production presets (per `session.log` timeline starting `19:06:34Z`). FFO appeared in multiple short windows across the rotation (e.g., `19:06:59Z`, `19:08:30Z`); no artifact regressions surfaced in any FFO segment per Matt's perceptual review.
+
+### Quantitative corroboration — CPU under budget
+
+From `features.csv` (`frame_cpu_ms` column 36, 7551 frames):
+
+| Metric | This session (`/6`) | CSP.3.5 build (`/10` per amended `[dev-2026-05-28-n]`) | Pre-CSP.3.4 (`/4`, session `13-50-23Z`) |
+|---|---:|---:|---:|
+| `cpu_mean` | **13.39 ms** | 17.14 ms | 4.84 ms |
+| Under 16.67 ms budget? | **yes** (mean − 3.28 ms) | no (mean +0.47 ms over) | yes (mean − 11.83 ms) |
+
+Distribution of `frame_cpu_ms`:
+
+| Bucket | Share |
+|---|---:|
+| `[0, 8) ms` | 18.1 % |
+| `[8, 12) ms` | 15.8 % |
+| `[12, 16) ms` | 45.0 % |
+| `[16, 20) ms` | 11.0 % |
+| `[20, 25) ms` | 4.9 % |
+| `≥ 25 ms` | 5.1 % |
+
+`/6` lands between `/4`'s baseline (4.84 ms avg) and `/10`'s breach (17.14 ms avg) — the Lipschitz safety margin trades ~8.5 ms of per-frame CPU vs the original `/4` build but stays comfortably under budget at the rate the average matters. The ~5 % `≥ 25 ms` tail is the same shape Phase PERF.2 characterized as probably-environmental; it does not correlate with FFO playback windows specifically.
+
+### What was not measured
+
+- **`ffmpeg signalstats` brightness-oscillation count was not run.** `video.mp4` is missing the `moov` atom (ffprobe: `"moov atom not found ... Invalid data found when processing input"`), so the post-hoc signalstats pipeline that CSP.3.4 / CSP.3.5 closeouts used can't process this archive. The brightness-oscillation metric in the post-PERF.3 band of 53–60 events was a supplementary citation in those closeouts; this M7 relies on Matt's perceptual verdict (no flicker call-out) + the absence of any negative reference in his review. Spawned a follow-up task to investigate the AVAssetWriter teardown path so future session videos finalize cleanly.
+
+### Trade-offs accepted (re-statement of CSP.3.5's analysis)
+
+`/6` covers effective gradients up to 6 (spike strength up to 1.64). Accommodates all typical playback worst-cases observed across the BUG-019 closeout sessions (Money 1.36, Love Rehab regular ≤ 1.30, the prior LF M7 session 1.52). Rare `f.bass ≥ 1.0` peaks (~0.1 % of playback in some sessions) may produce brief gray-tip flicker on individual frames — too sparse to sustain a visible artifact. The rotation session in this M7 did not surface either failure mode.
+
+### Touched files
+
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+- `docs/ENGINEERING_PLAN.md` — CSP.3.5.1 row M7 checkbox marked done.
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-019 step 19 marked resolved.
+
+### Local-only
+
+Local commit on `main`. No remote push.
+
+### Related
+
+- `[dev-2026-05-28-o]` — CSP.3.5.1 implementation.
+- `[dev-2026-05-28-i]` — original BUG-019 closeout (CSP.3.4 M7 chain).
+
+---
+
 ## [dev-2026-05-28-o] CSP.3.5.1 — FFO Lipschitz: apply the intended /6 to the operative line (complete CSP.3.5)
 
 **Increment:** CSP.3.5.1 (CSP.3.5 completion). **Status:** Implemented 2026-05-28. Engine 1358 / 1358 tests pass; `PresetAcceptanceTests` invariant 4 ("Preset has readable form with normal energy input") now passes for Ferrofluid Ocean — was reproducibly failing at the value that actually shipped after CSP.3.5.
