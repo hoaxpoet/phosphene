@@ -36,6 +36,18 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 > **RESOLVED 2026-05-28** — commit `fe09a594` (`[LF.5.fix] D-LF5-3`). Hover-revealed Stop / Prev / Play-Pause / Next transport bar at the bottom-center of `PlaybackView` for `currentSource?.isLocalFile == true`. UX-2 amended in `UX_SPEC.md §7.3` + §10 to carve out the LF carve-out.
 
+---
+
+### BUG-LF5-4 — LF.5 sessions never built the multi-segment PlannedSession
+
+> **RESOLVED 2026-05-28** — commit `46a9f1c2` (`[LF.5.fix] D-LF5-4`). Surfaced by Matt's follow-up to D-LF5-1 closeout: "what happened to multiple presets per song?" One-line fix — call `buildPlan()` from `handleLocalFileReady` after the cache install + before the orchestrator wire.
+
+**Severity:** P1. **Domain tag:** `pipeline-wiring`. **Companion to:** BUG-LF5-1 (which by itself was necessary but not sufficient — orchestrator could not run planned mode without a `livePlannedSession` to consult).
+**Expected:** Multi-preset-per-song behaviour per `feedback_multi_preset_per_song.md` — the planner picks the best *set* of presets per track with intra-track segment boundaries placed where the music supports transitions.
+**Actual (pre-fix):** `livePlannedSession == nil` for every LF.5 session; orchestrator had nothing to consult. Even after D-LF5-1's `liveTrackPlanIndex` writes landed, planned mode could not engage. Behaviour at the user surface: at best one autonomous-reactive preset per track-change boundary; in practice the reactive scheduler drifted on its own cadence (~7 s) ignoring boundaries entirely.
+**Root cause:** VisualizerEngine's `.ready` observer branches on `currentSource?.isLocalFile` — streaming calls `buildPlan()`, LF calls `handleLocalFileReady()`. `handleLocalFileReady` installed BeatGrid + started audio but never called `buildPlan()`. The branching split was structural to LF.4's original wire-up and inherited by LF.5 without re-examination.
+**Verification:** session log should show `Orchestrator: wire active (mode=planned, planIdx=0)` immediately after the first BeatGrid install and emit multiple `preset → <name>` lines within each track's playback window (matching the segmentation `SessionPlanner.plan(...)` generated for that track-and-trackProfile pair).
+
 **Severity:** P2 (UX-spec gap rather than a code defect).
 **Expected (Matt 2026-05-28):** Music-player UX with pause/skip/stop/forward/back when the user hovers during LF playback.
 **Actual (pre-fix):** PlaybackView chrome had only "End session," which itself was broken (BUG-LF5-2). No way to pause, skip, or step back.
