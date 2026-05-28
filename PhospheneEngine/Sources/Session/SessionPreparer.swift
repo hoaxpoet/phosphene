@@ -242,6 +242,16 @@ public final class SessionPreparer: ObservableObject {
         precondition(urls.count == placeholders.count,
                      "prepareLocalFiles: urls and placeholders must align by index")
 
+        // LF.5.fix.3-B: cancel any in-flight prep task before starting a new
+        // one. The caller-side cancel() in SessionManager.startLocalFiles is
+        // guarded on `state != .idle && state != .ended` — a user Stop between
+        // picks moves state to .ended, bypassing cancellation and leaving the
+        // previous prep running in parallel with the new one (see session
+        // 2026-05-28T20-57-46Z: two `prepareLocalFile #1 of 5` log entries for
+        // the same folder). Cancelling here closes that hole at the API
+        // boundary instead of relying on every caller to know the rules.
+        preparationTask?.cancel()
+
         // Initialize statuses + progress before any async work begins.
         trackStatuses = Dictionary(uniqueKeysWithValues: placeholders.map { ($0, .queued) })
         progress = (0, urls.count)
@@ -266,7 +276,9 @@ public final class SessionPreparer: ObservableObject {
         } onCancel: {
             task.cancel()
         }
-        preparationTask = nil
+        // LF.5.fix.3-B: see the comment in `prepare(tracks:)` — same
+        // rationale. The field stays set so out-of-order returns can't drop
+        // a newer task's reference.
         return result
     }
 
@@ -331,6 +343,11 @@ public final class SessionPreparer: ObservableObject {
     /// before cancellation takes effect. Unprocessed tracks remain `.queued`.
     public func cancelPreparation() {
         preparationTask?.cancel()
+        // LF.5.fix.3-B: clear the field on explicit cancel so a stale
+        // reference doesn't outlive the cancelled task. The `prepare*`
+        // entry points deliberately do NOT nil at exit (see comments
+        // there); explicit cancel is the canonical way to clear.
+        preparationTask = nil
     }
 
     // MARK: - Private
