@@ -6,6 +6,85 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-n] CSP.3.5 — FFO SDF Lipschitz divisor /10 → /6 (fix CSP.3.4 side effects: white artifacts + CPU breach)
+
+**Increment:** CSP.3.5 (CSP.3.4 follow-up correction). **Status:** Implemented 2026-05-28. Engine 1358/1358 tests pass; app build clean. Manual M7 outstanding.
+
+### Why this is here
+
+Matt M7 of session `2026-05-28T17-50-42Z` (local-file playback, FFO preset, love_rehab.m4a): "white artifacts near the tips of spikes close to the camera as well as white patches of substrate in the far left corner of the viewer." A separate, post-resolution regression of BUG-019's fix chain — caused by CSP.3.4's `/10` divisor.
+
+### Root cause
+
+CSP.3.4 bumped FFO's SDF Lipschitz divisor from `/4` to `/10` to handle the higher spike strengths CSP.3.3 introduced. That made the SDF more conservative — each ray-march step is `d/10` instead of `d/4`, ~60 % smaller. The ray-march iteration cap (128 steps, hardcoded in `PresetLoader+Preamble.swift:418`) wasn't adjusted to compensate.
+
+At oblique view angles where rays travel long distances before finding the surface:
+- **Camera-close spike tips** — reflection rays at grazing angles travel far across the substrate before reaching the sky (or another spike).
+- **Far-corner pixels** — primary rays from the camera at extreme FOV angles travel long horizontal distances across the substrate plane.
+
+Both cases produced rays that exhausted 128 iterations before finding the surface. The "Sky / miss" path then executed (`hit = false`), setting `gbuf0 = (1.0, 0.0, 0.0, 0.0)` — the sky-pixel marker. The lighting pass treated those pixels as sky, and FFO's mirror-substrate paradigm (matID == 2) means the sky is evaluated as a procedural function at the ray direction. That sky function returns bright/white values at certain angles → white pixels.
+
+Confirmed by per-frame timing in the same session: `cpu_avg = 17.14 ms` during FFO playback (max 30.51 ms), over the 60 fps 16.67 ms budget. Pre-CSP.3.4 session `2026-05-28T13-50-23Z` ran at 4.84 ms cpu_avg — the `/10` divisor was 3.5× more CPU-expensive due to additional iterations per pixel.
+
+### The fix
+
+Reduce the divisor from `/10` to `/6`. Trade-offs analyzed against the M7 session's spike-strength distribution:
+
+| Session | Max f.bass | Max spike strength | Max effective gradient | `/6` safe? |
+|---|---:|---:|---:|:---:|
+| This session (LF, love_rehab) | 0.65 | 1.52 | 5.55 | yes (covers ≤ 6.0) |
+| Money M7 (CSP.3.3) | 0.44 | 1.36 | 5.0 | yes |
+| Love Rehab typical | up to 0.36 | 1.29 | 4.7 | yes |
+| Love Rehab rare 127 s peak (other session) | 1.28 | 2.02 | 7.4 | no — brief flicker |
+
+`/6` covers gradients up to 6 (spike strength up to 1.64) — accommodates all typical playback worst-cases observed. The rare `f.bass ≥ 1.0` frames (~0.1 % of playback in some sessions) may produce brief gray-tip flicker on individual frames, but those are too sparse to sustain a visible artifact.
+
+CPU expected to drop ~40 % from `/10`'s baseline, bringing it back under the 16.67 ms budget.
+
+### What this preserves
+
+- **PERF.3 brightness fix** (lighting `applyAudioModulation`) — separate code path, unchanged.
+- **CSP.3.2 + CSP.3.3 spike-strength formula** — unchanged. Spike-height magnitude preserved at Matt-approved level.
+
+### What this might re-introduce (rare)
+
+- Gray-tip artifacts at the very rare moments when `f.bass ≥ 0.8` (giving spike strength > 1.64). In the M7 session that triggered this fix, max bass was 0.65 — no such frames. In earlier sessions with louder content (Love Rehab rare 127 s peak hit f.bass 1.28), there could be brief frame-level gray flicker. Trade-off accepted vs the chronic white-artifact + CPU-breach regression of `/10`.
+
+### Verification
+
+- **Engine:** 1358 / 1358 tests pass. `PresetRegressionTests` golden hashes pass.
+- **App build:** succeeds.
+- **No other files touched** — single-line change in `FerrofluidOcean.metal`.
+
+**Manual M7 (your gate).** Same protocol. Expected:
+- White artifacts at spike tips (camera-close) and substrate (far-corner) **gone**.
+- CPU back under budget (no frame drops, no stuttering during heavy bass).
+- Spike-height magnitude unchanged from CSP.3.3 (no regression on visibility).
+- PERF.3 brightness fix unchanged (no return of beat flicker).
+- **One possible residual**: very rare brief gray-tip flicker on f.bass-peak frames; tell me if it's perceptible.
+
+If brief gray flicker IS perceptible, the next round can either:
+- Cap spike strength to a known-safe maximum (e.g., clamp `0.8 * f.bass` at 0.55, capping spike strength at ~1.69 — fits `/6`'s ceiling).
+- Bump the iteration cap from 128 to 160–192, with a balanced divisor (`/7` or `/8`).
+
+### Touched files
+
+- `PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal` — single divisor + comment update.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+- `docs/ENGINEERING_PLAN.md` — CSP.3.5 step under Phase CSP.
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-019 fix chain extended with steps 15-17.
+
+### Local-only
+
+Local commit on `main`. No remote push.
+
+### Related
+
+- `[dev-2026-05-28-h]` — CSP.3.4 (the increment this corrects).
+- `[dev-2026-05-28-i]` — BUG-019 closeout; this is a post-resolution correction.
+
+---
+
 ## [dev-2026-05-28-m] CSP.4 — Volumetric Lithograph audit: no antipatterns; doc-only refresh
 
 **Increment:** CSP.4 (Phase CSP audit follow-up). **Status:** Doc-only commit, no logic change. Engine + app tests unchanged; SwiftLint `--strict` clean on touched `.metal` file.

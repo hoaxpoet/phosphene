@@ -4782,6 +4782,20 @@ Bumped to `/10`. Covers effective gradients up to 10 — accommodates the full p
 
 See `RELEASE_NOTES_DEV.md [dev-2026-05-28-h]` and `[dev-2026-05-28-i]`.
 
+### Increment CSP.3.5 — FFO SDF Lipschitz divisor /10 → /6 (correct CSP.3.4 side effects) (2026-05-28) ✅
+
+Matt M7 of session `2026-05-28T17-50-42Z` (LF playback, FFO, love_rehab.m4a) reported "white artifacts near the tips of spikes close to the camera as well as white patches of substrate in the far left corner of the viewer." Diagnostic: CSP.3.4's `/10` divisor made each ray-march step 60 % smaller than `/4`. The 128-step iteration cap (`PresetLoader+Preamble.swift:418`) wasn't adjusted. Rays at oblique view angles (camera-close grazing reflections, far-corner pixels) exhausted iterations before finding the surface → fell to "Sky / miss" path → FFO's matID == 2 mirror-reflects-sky paradigm renders the procedural sky as white. CPU also breached budget (17.14 ms avg, ceiling 16.67 ms).
+
+`/6` covers gradients up to 6 (spike strength up to 1.64) — accommodates all typical playback worst-cases observed (Money 1.36, Love Rehab regular ≤ 1.30, this M7 session 1.52). Rare `f.bass ≥ 1.0` peaks (~0.1 % of frames in some sessions) may produce brief gray-tip flicker on individual frames — too sparse to sustain a visible artifact. Net: balances Lipschitz safety against iteration reach + CPU budget.
+
+**Done-when.**
+
+- [x] Engine: 1358 / 1358 tests pass.
+- [x] App build: succeeds.
+- [ ] **Matt M7.** Expected: white artifacts gone, CPU back under budget, spike magnitude preserved, PERF.3 brightness fix preserved.
+
+See `RELEASE_NOTES_DEV.md [dev-2026-05-28-n]`.
+
 ### Increment CSP.3.3 — Spike-strength coefficient bump 0.35 → 0.8 (2026-05-28) ✅
 
 CSP.3.2 M7 (session `2026-05-28T13-20-21Z`): Matt confirmed "irregular behavior appears to be gone" and continuous spike modulation through the track — but the magnitude was "too subtle overall." 85 % of playback frames have `f.bass < 0.3` (avg 0.21); at 0.35 coefficient that's < 11 % modulation — below perception.
