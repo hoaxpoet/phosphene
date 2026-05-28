@@ -157,6 +157,14 @@ public final class AudioInputRouter: @unchecked Sendable {
     /// hop to MainActor before touching UI or @Published state.
     public var onLocalFilePlaybackEnded: (@Sendable () -> Void)?
 
+    /// BUG-021 (2026-05-28) — diagnostic hook forwarded into the
+    /// `LocalFilePlaybackProvider` so each `_stopLocked` sub-step writes a
+    /// breadcrumb on the call thread. App-layer wires this to
+    /// `SessionRecorder.log`. Captured at install time in
+    /// `startLocalFilePlayback`; subsequent changes apply only after the
+    /// next `start()`.
+    public var onLocalFilePlaybackDiagnostic: ((String) -> Void)?
+
     /// Current audio signal state as determined by the silence detector.
     public var signalState: AudioSignalState {
         silenceDetector.state
@@ -294,6 +302,7 @@ public final class AudioInputRouter: @unchecked Sendable {
             self?.onAudioSamples?(samples, count, rate, channels)
         }
         provider.onFileEnded = onLocalFilePlaybackEnded
+        provider.onDiagnosticEvent = onLocalFilePlaybackDiagnostic
         try provider.start()
         localFilePlaybackProvider = provider
     }
