@@ -4797,9 +4797,9 @@ CSP.3.5's commit (`eaaadd9b`) rewrote the SDF docstring to describe `/10 → /6`
 - [x] Engine: 1358 / 1358 tests pass. `PresetAcceptanceTests.test_readableForm_atSteadyEnergy` now passes for Ferrofluid Ocean (was failing at `/10`).
 - [x] `[dev-2026-05-28-h]` (CSP.3.4) + `[dev-2026-05-28-n]` (CSP.3.5) closeouts amended.
 - [x] `docs/QUALITY/KNOWN_ISSUES.md` BUG-019 fix chain extended with step 18.
-- [ ] **Matt M7.** The CSP.3.5 M7 protocol (white artifacts gone, CPU back under budget, spike magnitude preserved, PERF.3 brightness fix preserved) applies — Matt has not yet M7'd `/6` on a real session because the previous "CSP.3.5 shipped" run was actually `/10`. This is the build that genuinely ships `/6`.
+- [x] **Matt M7 (2026-05-28, session `2026-05-28T19-04-51Z`).** Verdict: "M7 review looks good. white artifacts are gone, performance looks good." `features.csv` `cpu_mean = 13.39 ms` (under 16.67 ms budget; down from `/10` build's 17.14 ms). White-artifact + CPU-breach symptoms gone; spike magnitude preserved (no negative call-out vs CSP.3.3). PERF.3 brightness fix preservation rests on Matt's perceptual verdict — the `ffmpeg signalstats` corroborator used in CSP.3.4 / CSP.3.5 closeouts was unavailable because `video.mp4` is missing a `moov` atom (separate session-recording defect, follow-up task spawned).
 
-See `RELEASE_NOTES_DEV.md [dev-2026-05-28-o]`.
+See `RELEASE_NOTES_DEV.md [dev-2026-05-28-o]` (CSP.3.5.1 impl) + `[dev-2026-05-28-p]` (M7 close).
 
 ### Increment CSP.3.5 — FFO SDF Lipschitz divisor /10 → /6 (correct CSP.3.4 side effects) (2026-05-28) ⚠ (doc-only; operative line unchanged until CSP.3.5.1)
 
