@@ -4663,6 +4663,22 @@ Plus the operational gaps CSP.2 surfaced:
 - **No different:** the design space at the cached-perception + live-overall-bass layer is exhausted at this consumption point. Pivot to Matt's stress-test methodology suggestion (CSP-Stress.1, below).
 - **Worse:** revert; capture specific failure modes before reverting (which track, what part of the timeline, what does the spike behaviour look like).
 
+### Increment CSP.3.2 — Drop warm-state crossfade; f.bass for the whole track (2026-05-28) ✅
+
+PERF.3's M7 (session `2026-05-28T03-10-29Z`) was partial-pass: Matt confirmed the brightness flicker was reduced ("Love Rehab looked great for about a minute"), but reported "inactivity from the spikes" mid-playback and "inactivity in spikes around 25 s into Money."
+
+Diagnostic dive: `stems.bass_energy_dev` averaged 0.05–0.10 across the warm-state window — multiplied by CSP.3.1's coefficient (0.35) that's < 0.04 added to spike strength, below perception. SAR.1's EMA-self-seeding (with the 10-second decay constant) keeps the running average close to current bass energy in steady state → deviation primitive averages near zero. Pre-SAR.1 the same primitive saturated 20–38× over `[0,1]` and pinned to max; both states fail to produce useful continuous modulation.
+
+**Fix.** Dropped the warm-state crossfade to `stems.bass_energy_dev`. `fo_spike_strength` now uses `f.bass` (AGC-normalised continuous Layer 1 primitive) for the whole track. The cold-start formula CSP.3.1 settled on was already `f.bass`-based; this extends that to warm state. Matches CLAUDE.md Audio Data Hierarchy "Layer 1 is primary visual driver" rule. Same shape as PERF.3 (continuous primitive primary, no deviation-primitive dead zones), applied to spike geometry instead of lighting.
+
+**Done-when.**
+
+- [x] Engine: 1328 / 1328 tests pass. `PresetRegressionTests` Hamming-tolerant golden hashes pass.
+- [x] App build: succeeds.
+- [ ] **Matt M7 (load-bearing gate).** Tap-path FFO session. Expected: continuous spike-height modulation through entire track, no "inactivity" after cold-start window; PERF.3 brightness fix preserved.
+
+See `RELEASE_NOTES_DEV.md [dev-2026-05-28-f]` for the full closeout.
+
 ### Increment SAR.1 — Stem analyzer EMA self-seeding (Stem Analyzer Range, 2026-05-28) ✅
 
 Cold-start blocker discovered during the CSP.3 → CSP.3.1 dive: the four per-stem deviation primitives (`vocalsEnergyDev` / `drumsEnergyDev` / `bassEnergyDev` / `otherEnergyDev`) are declared `[0, 1]` but were emitting 2–41× that ceiling on every track change, for ~30 s as the 10-second EMA converged. Root cause: the EMA running-average backing store was zero-initialised and re-zeroed by `reset()`; combined with `dev = (energy − runningAvg) × 2`, the first post-reset frame emitted `2 × energy`. Affected every stem-consuming preset (FFO spike heights, Lumen Mosaic cell colors, Aurora Veil brightness route, Volumetric Lithograph terrain pulse, Membrane kick shockwave).
