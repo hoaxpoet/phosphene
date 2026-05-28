@@ -8,14 +8,17 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
-### BUG-019 — Beat-dominant light intensity causes visible flicker on all ray-march presets (FFO-loudest)
+### BUG-019 — Beat-dominant light intensity + spike-strength dead zone caused visible flicker on FFO
+
+> **RESOLVED 2026-05-28** — Matt M7 verdict "Better" on session `2026-05-28T13-50-23Z` (CSP.3.4 build). Four-fix chain (PERF.3 + CSP.3.2 + CSP.3.3 + CSP.3.4) addressed the visible flicker / inactivity / artifact symptoms Matt has reported "since FFO existed." The originally-filed CPU-bump pattern (a separate phenomenon observed in two sessions) is characterized as probably-environmental and not actively pursued unless it returns with a clear non-environmental signal. Each fix went through its own M7 in succession; the chain is detailed under "Fix scope" below.
 
 > **AMENDED 2026-05-28 — root cause re-characterized.** Initial filing described BUG-019 as "CPU frame time degrades after ~60 s of session uptime." That CPU bump pattern was observed in two sessions (`2026-05-27T21-12-48Z`, `2026-05-27T21-48-28Z`) but PERF.2-pass instrumentation (capture `2026-05-27T22-49-42Z`) ruled out the audio analysis pipeline AND the per-ray-march-sub-pass dispatch as the source. The CPU bump appears to be probably-environmental (system-level memory pressure / GPU contention) and intermittent. Meanwhile the **consistent visible perceptual symptom Matt has reported "since FFO existed"** — flickering, lag, brief hangs, coming out of sync — was caught by ffmpeg signalstats on `2026-05-27T22-49-42Z`'s rendered video.mp4: 76 brightness-oscillation events across 200 s, each aligned with a beat-detector firing. Root cause: `applyAudioModulation` in `RenderPipeline+RayMarch.swift` had `intensityMul = 0.4 + beatPulse * 2.6` — beat 6.5× the baseline, direct violation of CLAUDE.md Failed Approach #4 ("beat is accent, never primary"). Every beat fired a 2.1× single-frame brightness multiplier swing. Fix landed as PERF.3 (`RELEASE_NOTES_DEV.md [dev-2026-05-28-e]`); M7 pending.
 
 **Severity:** P1 (load-bearing for "FFO doesn't flicker" — Matt's quality bar across multiple iterations; the symptom blocked the SAR.1 / CSP.3 / CSP.3.1 M7s).
 **Domain tag:** `perf` → amended to `renderer` (per-frame lighting content, not timing).
-**Status:** **Fix landed 2026-05-28 (PERF.3) — M7 pending.** The flicker root cause is identified and fixed in `applyAudioModulation`. The originally-filed CPU-bump symptom is now characterized as a separate phenomenon (probably environmental) — see "Disposition" section below.
+**Status:** **Resolved 2026-05-28** against Matt's CSP.3.4 M7 ("Better") on session `2026-05-28T13-50-23Z`. Brightness oscillation count stabilised at 53–60 events across post-fix sessions (vs 76 pre-fix). Visible spike-tip artifacts gone. Continuous spike-height modulation throughout each track. PERF.3 brightness fix unchanged across the CSP.3.x iterations.
 **Introduced:** The `applyAudioModulation` formula has existed since the deferred ray-march path was first added — predates any of the recent preset work. The bug is structural to the engine's preset-agnostic lighting modulation. Matt's "this has existed for as long as FFO has existed" is consistent — FFO surfaces this most loudly because of its dark-substrate-with-mirror-reflections character.
+**Resolved:** 2026-05-28. Four-fix chain: PERF.3 (commit `f0627c19`) + CSP.3.2 (`acf357dd`) + CSP.3.3 (`21874a13`) + CSP.3.4 (`62704e16`). See "Fix scope" below for the full sequence.
 
 ### Expected behavior
 
@@ -103,7 +106,7 @@ Unknown — needs the instrumentation increment first. **Multi-increment** per t
 11. **Fix (CSP.3.3) ✅ 2026-05-28** — coefficient bump 0.35 → 0.8. Typical modulation 17 %, peaks 40 %. See `[dev-2026-05-28-g]`.
 12. **Validation (CSP.3.3 M7) ✅ 2026-05-28 — partial-pass** — session `2026-05-28T13-31-47Z`: "spike subtlety has been addressed sufficiently" + irregular behavior gone — but gray-tip artifacts on heavy bass hits in Money + flickering around 38 s into Love Rehab. Diagnosed as Lipschitz overshoot: post-CSP.3.3 spike strengths (1.25–2.05) produce effective gradients (4.6–7.5) exceeding the `/4` divisor's safe ceiling (4).
 13. **Fix (CSP.3.4) ✅ 2026-05-28** — Lipschitz divisor `/4` → `/10`. See `[dev-2026-05-28-h]`.
-14. **Validation (CSP.3.4 M7) — pending** — expected: no gray artifacts at spike tips, no 38 s Love Rehab flicker, no regression on spike-height visibility or PERF.3 brightness fix.
+14. **Validation (CSP.3.4 M7) ✅ 2026-05-28** — session `2026-05-28T13-50-23Z`: Matt verdict "Better." Brightness oscillation events 60 (within the post-PERF.3 band of 53–60 — fix unchanged). Gray-tip artifacts and 38 s Love Rehab flicker gone. Spike-height magnitude preserved from CSP.3.3. BUG-019 closed.
 
 ### Disposition
 

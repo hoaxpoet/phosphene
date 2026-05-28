@@ -4674,9 +4674,9 @@ Bumped to `/10`. Covers effective gradients up to 10 — accommodates the full p
 - [x] Engine: 1358 / 1358 tests pass.
 - [x] App build: succeeds.
 - [x] `ffmpeg signalstats` on M7 session: 53 brightness-osc events (PERF.3 baseline unchanged).
-- [ ] **Matt M7.** Expected: no gray artifacts at spike tips, no 38 s Love Rehab flicker, no regression on spike-height magnitude or PERF.3.
+- [x] **Matt M7 (2026-05-28, session `2026-05-28T13-50-23Z`).** Verdict: "**Better.**" Brightness oscillation events 60 (within post-PERF.3 band of 53–60 — fix unchanged). Gray-tip artifacts gone; 38 s Love Rehab flicker gone. Spike-height magnitude preserved from CSP.3.3. **BUG-019 closed.**
 
-See `RELEASE_NOTES_DEV.md [dev-2026-05-28-h]`.
+See `RELEASE_NOTES_DEV.md [dev-2026-05-28-h]` and `[dev-2026-05-28-i]`.
 
 ### Increment CSP.3.3 — Spike-strength coefficient bump 0.35 → 0.8 (2026-05-28) ✅
 
@@ -4689,7 +4689,7 @@ Bumped to 0.8. Typical modulation now 17 % (was 7 %); rare peaks at `f.bass ≥ 
 - [x] Engine: 1358 / 1358 tests pass.
 - [x] App build: succeeds.
 - [x] `ffmpeg signalstats` on M7 session: 53 brightness-osc events (PERF.3 baseline 57 — fix unchanged).
-- [ ] **Matt M7.** Expected: visible continuous spike modulation. If 0.8 feels too much, dial back to 0.6; too little, dial to 1.0.
+- [x] **Matt M7 (2026-05-28, session `2026-05-28T13-31-47Z`).** Verdict: "spike subtlety has been addressed sufficiently." Magnitude approved. Two follow-up issues identified (gray-tip artifacts + 38 s Love Rehab flicker) traced to Lipschitz overshoot, fixed in CSP.3.4. Rolled into CSP.3.4's final BUG-019 close.
 
 See `RELEASE_NOTES_DEV.md [dev-2026-05-28-g]`.
 
@@ -4705,7 +4705,7 @@ Diagnostic dive: `stems.bass_energy_dev` averaged 0.05–0.10 across the warm-st
 
 - [x] Engine: 1328 / 1328 tests pass. `PresetRegressionTests` Hamming-tolerant golden hashes pass.
 - [x] App build: succeeds.
-- [ ] **Matt M7 (load-bearing gate).** Tap-path FFO session. Expected: continuous spike-height modulation through entire track, no "inactivity" after cold-start window; PERF.3 brightness fix preserved.
+- [x] **Matt M7 (2026-05-28, session `2026-05-28T13-20-21Z`).** Verdict: "irregular behavior appears to be gone" + continuous spike modulation confirmed. Magnitude too subtle (addressed in CSP.3.3). Rolled into CSP.3.4's final BUG-019 close.
 
 See `RELEASE_NOTES_DEV.md [dev-2026-05-28-f]` for the full closeout.
 
@@ -4723,7 +4723,7 @@ Cold-start blocker discovered during the CSP.3 → CSP.3.1 dive: the four per-st
 - [x] Pre-fix cross-session range check across 7 recent sessions confirms the chronic out-of-range pattern (max deviation 2.09 → 40.85).
 - [x] **Matt M7 (2026-05-28, session `2026-05-27T21-12-48Z`).** Verdict: "no different" visually. Post-fix CSV confirms math contract met (max deviation 37.69 → 2.87, 13× drop; first-frame saturation eliminated). Diagnostic dive identified the "no different" cause as a separate CPU perf bug filed as **BUG-019** (`frame_cpu_ms` doubles 11 → 23 ms at session-time 67 s, sustained over-budget through end of playback). BUG-019 is pre-existing — same shape appears in the pre-SAR.1 reference session — and orthogonal to SAR.1. **SAR.1 stays landed**; closeout treats math-contract correctness as the increment's deliverable.
 
-See `RELEASE_NOTES_DEV.md [dev-2026-05-28-a]` for the full evidence pack + M7 addendum. Phase CSP **paused** pending BUG-019 diagnosis.
+See `RELEASE_NOTES_DEV.md [dev-2026-05-28-a]` for the full evidence pack + M7 addendum. Phase CSP **resumed 2026-05-28** after BUG-019 was resolved via the PERF.3 + CSP.3.2/3/4 chain (Matt M7 verdict "Better" on `2026-05-28T13-50-23Z`).
 
 ### What's next for Phase CSP
 
@@ -4829,7 +4829,7 @@ Root cause: `applyAudioModulation` in `RenderPipeline+RayMarch.swift` had `inten
 - [x] Engine: 1328 / 1328 tests pass. `PresetRegressionTests` golden hashes pass within tolerance.
 - [x] App build: succeeds.
 - [x] SwiftLint `--strict`: 0 violations.
-- [ ] **Matt M7 (load-bearing gate).** Tap-path FFO session. Expected: visible flicker eliminated or substantially reduced. Other ray-march presets feel "musically continuous" rather than "beat-pulsey." Per-preset JSON multiplier available as a follow-up if any preset feels too inert.
+- [x] **Matt M7 (2026-05-28, session `2026-05-28T03-10-29Z`).** Verdict: brightness flicker reduced ("Love Rehab looked great for about a minute"). `ffmpeg signalstats` count dropped 76 → 57 events (25 %). Partial-pass; secondary symptom (spike inactivity) surfaced — CSP.3.2 follow-up. Rolled into CSP.3.4's final BUG-019 close.
 
 See `RELEASE_NOTES_DEV.md [dev-2026-05-28-e]` for the full closeout.
 

@@ -6,6 +6,74 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-i] BUG-019 closed — FFO flicker arc resolved
+
+**Status:** **Resolved 2026-05-28** against Matt's CSP.3.4 M7 verdict "Better" on session `2026-05-28T13-50-23Z`. Doc-only commit; no code changes in this entry.
+
+### What this closes
+
+BUG-019 was filed 2026-05-28 morning when Matt's SAR.1 M7 returned "no different" — the original CPU-bump observation (sustained over-budget frame times in two sessions) was the apparent issue. Over the day the investigation pivoted twice:
+
+1. **Three rounds of timing instrumentation** (PERF.1 / PERF.2-render / PERF.2-pass) empirically ruled out the timing-side hypothesis. The CPU bump pattern is **not in our render-path code**; it's probably environmental.
+2. **ffmpeg signalstats on the rendered video.mp4** caught the actual consistent visible symptom Matt has reported "since FFO existed" — 76 brightness-oscillation events across 200 s of playback. Root cause: beat-dominant `applyAudioModulation` formula (`intensityMul = 0.4 + beatPulse * 2.6`) — a direct Failed Approach #4 violation that had been in the code since the deferred ray-march path was first added.
+
+The fix chain that followed:
+
+| Increment | Commit | What it did | M7 verdict |
+|---|---|---|---|
+| PERF.3 | `f0627c19` | `applyAudioModulation` restructured: continuous bass primary + beat accent only | "Love Rehab looked great for about a minute" (partial-pass) |
+| CSP.3.2 | `acf357dd` | `fo_spike_strength` dropped warm-state deviation crossfade; uses `f.bass` continuously | "irregular behavior gone" + magnitude too subtle (partial-pass) |
+| CSP.3.3 | `21874a13` | Coefficient bump 0.35 → 0.8 | "spike subtlety addressed sufficiently" + gray-tip artifacts (partial-pass) |
+| CSP.3.4 | `62704e16` | SDF Lipschitz divisor /4 → /10 | "**Better**" — BUG-019 closed |
+
+### Net empirical result
+
+Brightness-oscillation events across the M7 session arc:
+
+| Build | Session | Osc events / 200 s |
+|---|---|---:|
+| Pre-PERF.3 | `2026-05-27T22-49-42Z` | 76 |
+| Post-PERF.3 | `2026-05-28T03-10-29Z` | 57 |
+| Post-CSP.3.2 | (skipped — formula-shape change, not magnitude) | n/a |
+| Post-CSP.3.3 | `2026-05-28T13-20-21Z` | 53 |
+| Post-CSP.3.3 (Lipschitz exposed) | `2026-05-28T13-31-47Z` | (no count — visible artifacts not in luma stats) |
+| Post-CSP.3.4 (final) | `2026-05-28T13-50-23Z` | 60 |
+
+53–60 oscillation events represents the residual baseline of the new PERF.3 formula (`1.0 + bass * 0.4 + beatAccent * 0.15`), which has a designed ±0.15 per-beat brightness swing — 14× smaller than the pre-PERF.3 ±2.1 swing. The "Better" verdict on the final session means the residual swing is below Matt's perception threshold for "flicker" while preserving "music-coupled brightness response."
+
+### What stays open
+
+**The original CPU-bump observation** (sustained ~14 ms `frame_cpu_ms` in two of the day's earlier sessions, with the 96 ms recovery hitch) remains characterized as probably-environmental. PERF.2-pass instrumentation empirically ruled out the audio analysis pipeline and the per-ray-march-sub-pass dispatch as the source. Sessions captured at different times of day (or on a different system state) don't reproduce it. Not actively pursued unless it returns with a clear non-environmental signal.
+
+**Phase CSP resumed.** ENGINEERING_PLAN's "Phase CSP paused pending BUG-019 diagnosis" note removed. The follow-up work CSP.4 (extend the same continuous-bass primary pattern to Volumetric Lithograph's terrain pulse + camera dolly) can be picked up when Matt prioritises it.
+
+### Process notes worth capturing
+
+Five M7 rounds for one P1 in one day. Pattern that worked:
+
+1. **Three instrumentation rounds** narrowed which class of code was responsible without ever finding the bug. Each round produced a permanent diagnostic surface (5 + 2 + 4 new CSV columns) that remains useful for future perf investigations.
+2. **The pivot from timing to content analysis** (ffmpeg signalstats) was the breakthrough. Earlier I should have looked at the rendered video instead of building more timing instrumentation. Recorded in the PERF.3 entry as the lesson.
+3. **Per-M7 partial-pass discipline** — Matt's verdicts on PERF.3 / CSP.3.2 / CSP.3.3 / CSP.3.4 surfaced one new symptom each, and each got its own narrow fix. The Authoring Discipline rule "the next response to pushback must change the answer, not justify it" applied at each step.
+4. **The five fixes touched two formulas and one constant** (PERF.3 = `applyAudioModulation` lighting; CSP.3.2 + CSP.3.3 = `fo_spike_strength` formula + coefficient; CSP.3.4 = SDF Lipschitz divisor). Small surgical changes, each with a clear empirical signal.
+
+### Touched files
+
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-019 marked Resolved 2026-05-28; fix chain step 14 (final M7) complete.
+- `docs/ENGINEERING_PLAN.md` — All Phase PERF + Phase CSP M7 checkboxes complete. Phase CSP resumed.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+
+### Local-only
+
+Local commit on `main`. No remote push.
+
+### Related
+
+- `[dev-2026-05-28-a]` SAR.1, `[dev-2026-05-28-b]` PERF.1, `[dev-2026-05-28-c]` PERF.2-render, `[dev-2026-05-28-d]` PERF.2-pass, `[dev-2026-05-28-e]` PERF.3, `[dev-2026-05-28-f]` CSP.3.2, `[dev-2026-05-28-g]` CSP.3.3, `[dev-2026-05-28-h]` CSP.3.4 — the full chain.
+- BUG-019 in `KNOWN_ISSUES.md` — the bug this closes.
+- CLAUDE.md Failed Approach #4 — the policy this fix complies with.
+
+---
+
 ## [dev-2026-05-28-h] CSP.3.4 — FFO SDF Lipschitz divisor /4 → /10 (fixes gray-tip artifacts at high spike strength)
 
 **Increment:** CSP.3.4 (Lipschitz fix following CSP.3.3 multiplier bump). **Status:** Implemented 2026-05-28. Engine 1358/1358 tests pass; app build clean. Manual M7 outstanding.
