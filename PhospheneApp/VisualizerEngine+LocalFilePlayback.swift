@@ -473,7 +473,8 @@ extension VisualizerEngine: LocalFilePreparing {
                 identity: identity,
                 cached: cached,
                 decodedDuration: entry.decodedDuration,
-                source: .persistentDisk
+                source: .persistentDisk,
+                artworkData: entry.artworkData
             )
         } catch {
             let msg = "STEM_CACHE_MISS: source=persistentDisk, track='\(inputs.filename)', "
@@ -542,7 +543,8 @@ extension VisualizerEngine: LocalFilePreparing {
             identity: identity,
             cached: cached,
             decodedDuration: preview.duration,
-            source: .freshAnalysis
+            source: .freshAnalysis,
+            artworkData: outcome.artwork
         )
     }
 
