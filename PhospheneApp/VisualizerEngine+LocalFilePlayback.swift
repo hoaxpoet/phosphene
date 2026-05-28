@@ -111,6 +111,18 @@ extension VisualizerEngine: LocalFilePreparing {
         // wrote into it).
         resetStemPipeline(for: identity, caller: .other)
 
+        // LF.5.fix D-LF5-4: build the multi-segment PlannedSession so the
+        // orchestrator can drive multi-preset-per-song behaviour instead of
+        // falling back to one-preset-per-track. Streaming gets this via the
+        // `.ready` observer's `buildPlan()` branch; LF.5 originally bypassed
+        // that entirely — the planner's per-track segment list was never
+        // produced for LF, so `livePlannedSession` stayed nil and the
+        // orchestrator had nothing to consult even after the D-LF5-1 wire
+        // fix below was applied. Order: BeatGrid install first (cache is
+        // populated), then buildPlan (reads cache.trackProfile per track),
+        // then orchestrator wire (planIdx=0).
+        buildPlan()
+
         // LF.5.fix D-LF5-1: tell the orchestrator about the LF plan so it runs
         // in planned mode (and applies per-track presets) instead of reactive.
         // The streaming path wires this in `makeTrackChangeCallback`
