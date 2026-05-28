@@ -6,6 +6,84 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-f] CSP.3.2 — FFO spike strength uses f.bass continuously (no warm-state deviation crossfade)
+
+**Increment:** CSP.3.2 (Phase CSP refinement, BUG-019 second fix). **Status:** Implemented 2026-05-28. Engine 1328/1328 tests pass; app build clean. Manual M7 outstanding.
+
+### Why this is here
+
+`[dev-2026-05-28-e]` PERF.3's M7 (session `2026-05-28T03-10-29Z`) was partial-pass: Matt confirmed "Love Rehab looked great for about a minute" (PERF.3 worked), then reported "flickering and inactivity from the spikes" mid-playback and "inactivity in spikes around 25 s into Money."
+
+Diagnostic dive on the M7 session's CSV: `stems.bass_energy_dev` averages **0.05–0.10** across the warm-state window (after the 14 s cold-start fade). FFO's CSP.3.1 spike-strength formula:
+
+```
+spike_strength = baseline + 0.35 × crossfaded
+crossfaded = mix(f.bass, stems.bass_energy_dev, blend)  // blend → 1.0 after 14 s
+```
+
+With the warm primitive averaging 0.07, `0.35 × 0.07 ≈ 0.025` — below perception against the formula's `1.0+` baseline. **Spike strength is effectively constant in the warm state. Spikes appear static. That's the "inactivity" Matt reported.**
+
+Root cause: the deviation primitive (`stems.bass_energy_dev`) is by design near zero in steady state because SAR.1's EMA-self-seeding (with the 10-second decay constant) keeps the running average close to current bass energy → `(energy - runningAvg) * 2 ≈ 0`. Pre-SAR.1 the same primitive saturated at 20–38× over the declared `[0,1]` ceiling and pinned the formula to its max constantly. Both states produce **no useful modulation in warm state.**
+
+### The fix
+
+Drop the warm-state crossfade. Use `f.bass` (AGC-normalised continuous bass — Layer 1 primary per Audio Data Hierarchy) for the whole track:
+
+```
+// CSP.3.1 (previous):
+float src = mix(f.bass, stems.bass_energy_dev, smoothstep(0.5, 14.0, f.track_elapsed_s));
+// CSP.3.2 (current):
+float src = clamp(f.bass, 0.0, 1.0);
+```
+
+`f.bass` ranges 0.17–0.30 across warm playback in the M7 session, giving `0.35 × 0.17 = 0.06` to `0.35 × 0.30 = 0.105` of continuous spike-height modulation. ~6 % peak-to-trough variation — visible without flicker. The cold-start formula CSP.3.1 settled on was already `f.bass`-based; this just extends that to the warm state.
+
+### Why this is the right primitive
+
+Per CLAUDE.md Audio Data Hierarchy: "**Layer 1: Continuous Energy Bands (PRIMARY VISUAL DRIVER)** — `bass`, `mid`, `treble`. Zero detection delay. Feedback zoom, rotation, color shifts, geometry deformation — all driven primarily by these." `f.bass` is the canonical Layer 1 bass primitive.
+
+Failed Approach #31 warns against absolute thresholds on AGC-normalised values (`smoothstep(0.22, 0.32, f.bass)`) because AGC's denominator shifts across tracks. **That rule applies to thresholds, not to amplitude scaling.** Continuous amplitude modulation by an AGC-normalised primitive is the recommended Layer 1 pattern — same pattern Volumetric Lithograph uses for camera dolly speed (`0.5 + bass * 1.1` in `applyAudioModulation`).
+
+The deviation primitive (`bass_energy_dev`, `drums_energy_dev`, etc.) is designed for **above-average accent** detection, not continuous modulation. Two failure modes in steady state: averages near zero (this bug), or saturates above 1.0 (pre-SAR.1). Neither produces useful continuous modulation.
+
+### What this does NOT change
+
+- **Layer 1 baseline** — `cached_bass_proportion` per-track baseline (`baseline = 1.0 + ...`) unchanged.
+- **Cold-start behaviour** — CSP.3.1's cold-start spike pulsing is preserved; the formula now just continues that behaviour past 14 s instead of crossfading to the deviation primitive.
+- **The cold-start crossfade constants** — `FO_SPIKE_COLD_START_FADE_START_S = 0.5`, `FO_SPIKE_COLD_START_FADE_END_S = 14.0` remain in the code but are unreferenced after this change. Left in place for potential reactivation if a future preset wants the crossfade pattern.
+- **`track_elapsed_s` and `cached_bass_proportion` CSV columns** — still recorded, still useful for diagnostics. Just not consumed by `fo_spike_strength` after this change.
+
+### Verification
+
+- **Engine:** 1328 / 1328 tests pass. `PresetRegressionTests` Hamming-tolerant golden hashes pass (visual change is geometric not pixel-aligned).
+- **App build:** succeeds.
+- **The `[dev-2026-05-28-e]` PERF.3 fix remains in place** — this fix is on FFO's spike geometry, separate from `applyAudioModulation`'s light intensity.
+
+**Manual M7 (your gate).** Same protocol as the PERF.3 M7. Expected:
+- **Spikes pulse with continuous bass throughout the track, not just the first 14 s.** Should feel like the cold-start motion never stops.
+- **No regression on the PERF.3 brightness fix** — light intensity is in a different formula.
+- **"Inactivity from the spikes" should be gone.** If spikes still feel inert, the multiplier (0.35) might be too small for the warm-state `f.bass` range; tune up (0.35 → 0.5 or 0.6).
+- **"Irregular behavior" should be gone.** That symptom came from occasional `bass_energy_dev` spikes above 1.0 hitting the formula; with `bass_energy_dev` out of the formula, those spikes no longer reach the spike heights.
+
+### Touched files
+
+- `PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal` — `fo_spike_strength` formula simplified.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+- `docs/ENGINEERING_PLAN.md` — CSP.3.2 closeout under Phase CSP.
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-019 fix history extended.
+
+### Local-only
+
+Local commit on `main`. No remote push.
+
+### Related
+
+- `[dev-2026-05-28-e]` — PERF.3 (the lighting fix; M7 partial-pass surfaced this remaining issue).
+- `[dev-2026-05-27-e]` — CSP.3.1 (the previous spike-strength formula; this entry simplifies it).
+- CLAUDE.md Audio Data Hierarchy — Layer 1 primary driver rule.
+
+---
+
 ## [dev-2026-05-28-e] PERF.3 — Fix beat-dominant light-intensity flicker (BUG-019 resolved)
 
 **Increment:** PERF.3 (Phase PERF step 3 — the actual fix). **Status:** Implemented 2026-05-28. Engine 1328/1328 tests pass; SwiftLint `--strict` clean; app build clean. **BUG-019 resolved.** Manual M7 outstanding (Matt's gate).

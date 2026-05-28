@@ -97,7 +97,9 @@ Unknown — needs the instrumentation increment first. **Multi-increment** per t
 5. **Instrumentation extension (PERF.2-pass) ✅ 2026-05-28** — four sub-pass columns. See `[dev-2026-05-28-d]`.
 6. **Diagnosis (PERF.2-pass) ✅ 2026-05-28** — session `2026-05-27T22-49-42Z`: all four sub-passes flat across a Matt-confirmed flicker session. **CPU bump pattern is NOT in our render-path code.** The chronic perceptual flicker, separately diagnosed via ffmpeg signalstats on the same session's video.mp4, traces to the beat-dominant `applyAudioModulation` formula.
 7. **Fix (PERF.3) ✅ 2026-05-28** — `intensityMul` formula restructured: `1.0 + bass * 0.4 + beatAccent * 0.15` (was `0.4 + beatPulse * 2.6`). Single-frame brightness swing reduced 14×. See `[dev-2026-05-28-e]`.
-8. **Validation (PERF.4) — Matt M7 pending** — tap-path FFO session expected to show flicker eliminated or substantially reduced.
+8. **Validation (PERF.3 M7) ✅ 2026-05-28 — partial-pass** — Matt's session `2026-05-28T03-10-29Z`: brightness flicker reduced ("Love Rehab looked great for about a minute") + `ffmpeg signalstats` count dropped 76 → 57 events (25 %). New visible issue surfaced — "inactivity from the spikes" — root-caused to `stems.bass_energy_dev` averaging 0.05–0.10 in warm state, making CSP.3.1's `+0.35 × bass_energy_dev` term effectively zero. PERF.3 had been masking this with its own brightness flicker.
+9. **Fix (CSP.3.2) ✅ 2026-05-28** — `fo_spike_strength` dropped the warm-state crossfade to `stems.bass_energy_dev`; uses `f.bass` (AGC-normalised continuous Layer 1) for the whole track. Same shape as PERF.3 — continuous primitive primary, no deviation-primitive dead zones — applied to spike geometry. See `[dev-2026-05-28-f]`.
+10. **Validation (CSP.3.2 M7) — pending** — tap-path FFO session expected to show continuous spike-height modulation through entire track. PERF.3 brightness fix preserved.
 
 ### Disposition
 

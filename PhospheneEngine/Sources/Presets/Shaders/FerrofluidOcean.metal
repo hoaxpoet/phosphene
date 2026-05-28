@@ -142,24 +142,29 @@ static inline float fo_spike_strength(constant FeatureVector& f,
     float baseline = 1.0 + clamp(aboveThreshold * (FO_SPIKE_BASELINE_RANGE / (1.0 - FO_SPIKE_BASELINE_PIVOT)),
                                  0.0, FO_SPIKE_BASELINE_RANGE);
 
-    // Layer 2 — cold-start crossfade. Cold-start: live overall bass
-    // (continuous). Warm: isolated bass stem (cleaner).
+    // Layer 2 — continuous per-frame source.
     //
-    // CSP.3.1 (2026-05-27): switched proxy from `f.bass_att` to `f.bass`.
-    // Session 2026-05-27T19-38-32Z showed `bass_att` ranged 0.16–0.33
-    // during cold-start (smoothed, slow-flowing) → only 6 % peak-to-trough
-    // spike-height variation, below perception floor. `f.bass` (less
-    // smoothed, instant continuous) ranges 0.03–0.53 in the same window
-    // → ~16 % variation, comfortably visible. The `att` suffix on
-    // `bass_att` literally means *attenuated* (heavily smoothed) — wrong
-    // primitive for per-frame motion driver. `f.bass` matches what other
-    // bass-driven presets use (Volumetric Lithograph's camera dolly).
-    float blend = smoothstep(FO_SPIKE_COLD_START_FADE_START_S,
-                             FO_SPIKE_COLD_START_FADE_END_S,
-                             f.track_elapsed_s);
-    float proxy = clamp(f.bass, 0.0, 1.0);              // continuous, frame 1
-    float warm  = clamp(stems.bass_energy_dev, 0.0, 1.0); // sparse-event, ~15 s+
-    float src   = mix(proxy, warm, blend);
+    // CSP.3.2 (2026-05-28) — dropped the warm-state crossfade to
+    // `stems.bass_energy_dev`. The deviation primitive averages near zero in
+    // steady state because SAR.1's EMA-self-seeding (and the 10-second time
+    // constant) keep the running average close to current bass energy →
+    // `(energy - runningAvg) * 2 ≈ 0`. Session 2026-05-28T03-10-29Z showed
+    // `stems.bass_energy_dev` averaging 0.05–0.10 across the warm window;
+    // multiplied by 0.35 that's < 0.04 added to spike strength — below
+    // perception. Matt M7 verdict for `[dev-2026-05-28-e]`: "inactivity from
+    // the spikes" after the cold-start window ended.
+    //
+    // Pre-CSP.3.2 the cold-start (0–14 s) used `f.bass` and the warm state
+    // crossfaded to `stems.bass_energy_dev`. Per the Matt M7 the cold-start
+    // looked correct ("looked great for about a minute"); the warm state
+    // was the regression. CSP.3.2 keeps `f.bass` for the whole track —
+    // matches the Audio Data Hierarchy "Layer 1 is primary visual driver"
+    // rule. `f.bass` is AGC-normalised so it stays within a useful range
+    // [0.17, 0.30] across the warm window per the same session data,
+    // giving ~6 % continuous spike-height variation — visible without the
+    // beat-pulse aliasing that the deviation primitive would have
+    // contributed even at full strength.
+    float src = clamp(f.bass, 0.0, 1.0);
 
     // Combine: per-track baseline + per-frame source. 0.35 preserved.
     return baseline + 0.35 * src;
