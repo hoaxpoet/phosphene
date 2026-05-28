@@ -99,6 +99,17 @@ public final class SessionManager: ObservableObject {
 
     private var cancellationRequested = false
 
+    /// LF.5.fix.3-A: monotonic counter incremented by every
+    /// `startLocalFiles(at:origin:)` entry. Each call captures the value
+    /// pre-await; post-await it bails when the field has advanced (a newer
+    /// call has superseded this one). Replaces the broken `cancellationRequested`
+    /// post-await check — `_beginMultiFileTransition` resets that flag to
+    /// false for the newer call, so an older suspended call always saw false
+    /// and proceeded into `_completeLocalFilesReady` with a partial,
+    /// cancelled-prep plan (session 2026-05-28T20-57-46Z line 19: A's
+    /// 2-of-200 partial plan transitioned to .ready after B took over).
+    private var localFileSessionGen: UInt64 = 0
+
     // MARK: - Progressive Readiness
 
     /// Background preparation task. Non-nil while preparation is in flight.
@@ -384,6 +395,14 @@ public final class SessionManager: ObservableObject {
             logger.info("SessionManager: startLocalFiles — replacing active session")
             cancel()
         }
+        // LF.5.fix.3-A: capture our generation BEFORE _beginMultiFileTransition.
+        // `cancellationRequested` was the prior gate but that flag is reset to
+        // false inside `_beginMultiFileTransition`, so an older suspended call
+        // resuming after a newer call's transition would always see false and
+        // proceed. The generation counter is monotonic and assignment-only,
+        // so a stale value is unambiguous evidence of supersession.
+        localFileSessionGen &+= 1
+        let myGen = localFileSessionGen
         _beginMultiFileTransition(urls: urls, origin: origin)
 
         let placeholders = preparingTracks
@@ -393,6 +412,18 @@ public final class SessionManager: ObservableObject {
             via: localFilePreparer
         )
 
+        // LF.5.fix.3-A: bail when superseded by a newer startLocalFiles call.
+        // (See `localFileSessionGen` doc above.) A still-pending older call
+        // must not drive the .ready transition with its now-cancelled prep
+        // result — that's the Bug A in the 2026-05-28T20-57-46Z session log
+        // (folder A's partial 2-of-200 plan transitioned to .ready after
+        // folder B was already in flight).
+        if localFileSessionGen != myGen {
+            logger.info(
+                "SessionManager: startLocalFiles superseded (gen=\(myGen) currentGen=\(self.localFileSessionGen)) — discarding result"
+            )
+            return
+        }
         if cancellationRequested {
             logger.info("SessionManager: startLocalFiles cancelled before .ready transition")
             return
