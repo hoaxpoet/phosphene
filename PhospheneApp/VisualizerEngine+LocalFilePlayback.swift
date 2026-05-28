@@ -1,4 +1,5 @@
-// VisualizerEngine+LocalFilePlayback — LF.4 / D-131.
+// swiftlint:disable file_length
+// VisualizerEngine+LocalFilePlayback — LF.4 / D-131 + LF.5 / D-132.
 //
 // Bridges `SessionManager.startLocalFile(at:)` to the engine's audio path:
 //
@@ -110,27 +111,35 @@ extension VisualizerEngine: LocalFilePreparing {
         // wrote into it).
         resetStemPipeline(for: identity, caller: .other)
 
-        // Start the LF audio router (AVAudioEngine path). On success the audio
-        // thread begins delivering samples immediately; on failure the LF.1
-        // live-only fallthrough still gets the user playback via the live
-        // beat-grid analyzer once it catches up.
+        // LF.5: wire the EOF callback BEFORE starting the audio router so we
+        // can't miss an end-of-stream event for a very short fixture. Per
+        // Matt's audit answer (2026-05-27), single-file queues loop the file
+        // (LF.1 behavior preserved); multi-file queues advance + .ended on
+        // exhaustion.
+        let isMultiFile = source.allLocalFileURLs.count > 1
         if #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
+            if isMultiFile {
+                audioRouter.onLocalFilePlaybackEnded = { [weak self] in
+                    Task { @MainActor in self?.advanceLocalFileQueue() }
+                }
+            } else {
+                audioRouter.onLocalFilePlaybackEnded = nil
+            }
+
+            // Start the LF audio router (AVAudioEngine path).
             do {
                 try audioRouter.start(mode: .localFilePlayback(url))
                 lfLogger.info("[LF.4] LF playback router started: \(url.lastPathComponent, privacy: .public)")
             } catch {
                 let msg = error.localizedDescription
                 lfLogger.error("[LF.4] LF playback router start failed: \(msg, privacy: .public)")
-                // Audio router failed; don't advance the session — leave it in .ready.
-                // The user sees PlaybackView mounting on the next .playing transition
-                // (which won't fire here). Surface this as a toast in a future increment.
                 return
             }
         }
 
         startStemPipeline()
+        currentTrackIndex = 0                               // LF.5: published for chrome + orchestrator
 
-        // Advance .ready → .playing through the canonical SessionManager API.
         sessionManager.beginPlayback()
 
         if let current = presetLoader.currentPreset {
@@ -138,9 +147,57 @@ extension VisualizerEngine: LocalFilePreparing {
             showPresetName(current.descriptor.name)
         }
 
-        // LF.4: refresh the menu cache-size publisher after each LF prep
-        // (cache-miss path writes ~7 MB; menu label updates to reflect it).
         refreshLocalFileCacheBytes()
+    }
+
+    // MARK: - LF.5 mid-session queue advance
+
+    /// Pop the next URL off the LF.5 queue, install its cached BeatGrid via
+    /// `resetStemPipeline(caller: .trackChange)`, restart the audio router
+    /// with the next file, and bump `currentTrackIndex`. When the queue is
+    /// exhausted, transitions the session to `.ended` (matches the streaming-
+    /// path "session over" UX). Single-file queues never reach this path
+    /// because the EOF callback is unset (file loops forever per Matt's
+    /// audit answer).
+    @MainActor
+    func advanceLocalFileQueue() {
+        guard let source = sessionManager.currentSource, source.isLocalFile else { return }
+        let urls = source.allLocalFileURLs
+        let tracks = sessionManager.currentPlan?.tracks ?? []
+        let currentIdx = currentTrackIndex ?? -1
+        let nextIdx = currentIdx + 1
+
+        guard nextIdx < urls.count, nextIdx < tracks.count else {
+            lfLogger.info("[LF.5] queue exhausted — transitioning to .ended")
+            currentTrackIndex = nil
+            sessionManager.endSession()
+            return
+        }
+
+        let nextURL = urls[nextIdx]
+        let nextIdentity = tracks[nextIdx]
+        lfLogger.info(
+            "[LF.5] advance: \(currentIdx) → \(nextIdx), next='\(nextURL.lastPathComponent, privacy: .public)'"
+        )
+
+        if #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
+            audioRouter.stop()
+            resetStemPipeline(for: nextIdentity, caller: .trackChange)
+            // Re-bind the EOF callback BEFORE start() — AudioInputRouter
+            // captures the callback at start time and relays it into the
+            // freshly-constructed provider.
+            audioRouter.onLocalFilePlaybackEnded = { [weak self] in
+                Task { @MainActor in self?.advanceLocalFileQueue() }
+            }
+            do {
+                try audioRouter.start(mode: .localFilePlayback(nextURL))
+                currentTrackIndex = nextIdx
+            } catch {
+                let msg = error.localizedDescription
+                lfLogger.error("[LF.5] audio router restart failed: \(msg, privacy: .public)")
+                // Stop advancing — user can re-pick from Recents or pick a new file.
+            }
+        }
     }
 
     // MARK: - Off-main worker

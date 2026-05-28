@@ -74,6 +74,19 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
     public var onAudioSamples: ((_ samples: UnsafePointer<Float>, _ sampleCount: Int,
                                  _ sampleRate: Float, _ channelCount: UInt32) -> Void)?
 
+    /// LF.5 — Fires when the audio file reaches end-of-stream. When set,
+    /// `scheduleFileLoop` invokes this callback INSTEAD of re-scheduling the
+    /// file — the caller is then responsible for advancing the queue (LF.5
+    /// multi-file path) or stopping playback. When nil (LF.1 / LF.4 single-
+    /// file default), the LF.1 behavior preserves: the file loops forever.
+    ///
+    /// Set before calling `start()`; subsequent changes take effect on the
+    /// NEXT scheduleFile callback, not retroactively.
+    ///
+    /// Sendable callback type so it can be invoked from the AVAudioEngine
+    /// scheduleFile completion thread without a Swift-6 concurrency warning.
+    public var onFileEnded: (@Sendable () -> Void)?
+
     // MARK: - Init
 
     /// Create a provider that will play the file at `url` when `start()` is called.
@@ -182,6 +195,11 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
     /// `scheduleFile`. Uses the public `lock` to confirm the (player, file)
     /// pair is still the active one before re-scheduling, so concurrent
     /// `stop()` calls cancel cleanly.
+    ///
+    /// LF.5: when `onFileEnded` is non-nil, the callback fires INSTEAD of
+    /// re-scheduling. The caller drives queue advance from there. When
+    /// `onFileEnded` is nil, the LF.1 behavior preserves and the file
+    /// loops forever.
     private func scheduleFileLoop(player: AVAudioPlayerNode, file: AVAudioFile) {
         player.scheduleFile(file, at: nil) { [weak self, weak player, weak file] in
             guard let self, let player, let file else { return }
@@ -189,7 +207,11 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
                 self.playerNode === player && self.audioFile === file
             }
             guard stillActive else { return }
-            self.scheduleFileLoop(player: player, file: file)
+            if let onFileEnded = self.onFileEnded {
+                onFileEnded()
+                return                                              // LF.5 advance — caller takes over
+            }
+            self.scheduleFileLoop(player: player, file: file)       // LF.1 single-file loop default
         }
     }
 
