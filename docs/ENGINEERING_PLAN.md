@@ -32,9 +32,9 @@ Test infrastructure: swift-testing + XCTest across unit, integration, regression
 
 ## Recently Completed
 
-### Increment LF.5.fix.2 — Three post-BUG-021 cleanups (collapsed) ✅ (2026-05-28)
+### Increment LF.5.fix.2 — Four post-BUG-021 cleanups (collapsed) ✅ (2026-05-28)
 
-Three follow-ups surfaced in the BUG-021 verification session `2026-05-28T19-42-50Z`. All sub-P1 (cosmetic / minor leak / latent log-only field) — collapsed into one increment per Matt's approval at the prompt's audit step.
+Four follow-ups in the BUG-021 cluster. FU-1 / FU-2 / FU-3 surfaced in the BUG-021 verification session `2026-05-28T19-42-50Z`; FU-4 is a cousin bug to FU-3 surfaced in a subsequent verification session `2026-05-28T20-36-17Z` and resolved the same day. All sub-P1 (cosmetic / minor leak / latent log-only field) — collapsed into one increment per Matt's approval at the prompt's audit step.
 
 **FU-1 — Noisy no-op `provider.teardown` breadcrumbs** (`527b0ab2`). `LocalFilePlaybackProvider.stop()` now skips the `teardownAVFoundation` helper when the lock-protected ref snapshot is all-nil. Eliminates the `provider.teardown ENTER`/`EXIT` pair around zero work at every session start and inside every Next-press `audioRouter.start BEGIN/COMPLETE` window.
 
@@ -42,9 +42,11 @@ Three follow-ups surfaced in the BUG-021 verification session `2026-05-28T19-42-
 
 **FU-3 — `elapsedTrackTime` session-monotonic across LF track changes** (`d09a059a`). `advanceLocalFileQueue` in `VisualizerEngine+LocalFilePlayback.swift` now fires `mirPipeline.reset()` + `pipeline.resetAccumulatedAudioTime()` between `audioRouter.stop` and `resetStemPipeline(...)`, mirroring the streaming track-change callback. Audit revealed the bug surface was broader than the kickoff described — `mir.elapsedSeconds` was wrong-shaped for every LF consumer (FFO cold-start fix `fv.trackElapsedS`, `featureStability` ramp curve, recording `playbackTime`), not just the orchestrator log line. Matt approved the audit-recommended Path B (root-cause fix, smaller diff) over the prompt's prescribed Path A (new `trackChangeTimestamp` field bound only to the log line).
 
-**Verification.** Engine 1358/1358 ✓. App suite flakes pre-existing (SessionManagerTests / AppleMusicConnectionViewModelTests timing flakes; `AccessibilityLabelsTests.connectorTileLabelDisabledNoCaption` reproduces on clean HEAD, spawned as follow-up task during closeout). SwiftLint `--strict` clean. `Scripts/check_user_strings.sh` + `Scripts/check_sample_rate_literals.sh` clean. Manual smoke pending Matt's confirmation per kickoff's done-when gate.
+**FU-4 — `elapsedTrackTime` carries session-prep accumulation into LF playback start** (this commit). Same field as FU-3, different code site. Session `2026-05-28T20-36-17Z` showed the first `Orchestrator: wire active` line emitting `elapsedTrackTime=440.1s` 3 s into actual playback — `MIRPipeline.elapsedSeconds` had been `+= deltaTime`-ing since `MIRPipeline()` was instantiated at session-prep entry (440.1 s ≈ playback start − session start, covering pre-analysis + stem caching + persistent cache work). FU-3 fixed the Next/Prev case; FU-4 fixes the startup case. Two-line insert in `handleLocalFileReady` (`PhospheneApp/VisualizerEngine+LocalFilePlayback.swift`) places `mirPipeline.reset()` + `pipeline.resetAccumulatedAudioTime()` immediately before `audioRouter.start(mode: .localFilePlayback(url))`, matching the FU-3 placement at the audio-router transition. Same downstream-consumer reasoning as FU-3 — every reader of `mir.elapsedSeconds` benefits.
 
-**Docs touched.** `docs/QUALITY/KNOWN_ISSUES.md` (BUG-021 outstanding-work strike-throughs — closes 3 of 5 items; the buildPlan-deferred item and the plan-walker root-cause investigation remain open), `docs/RELEASE_NOTES_DEV.md` (`[dev-2026-05-28-t]`), this entry.
+**Verification.** Engine 1358/1358 ✓ at FU-3 closeout (`[dev-2026-05-28-t]`); FU-4 re-ran the FU-3-targeted scope (52/52 ✓ on MIRPipeline + SessionManagerLocalFile + AudioInputRouterSignalState). App build clean for FU-4. App suite flakes pre-existing at FU-3 closeout (SessionManagerTests / AppleMusicConnectionViewModelTests timing flakes; `AccessibilityLabelsTests.connectorTileLabelDisabledNoCaption` reproduces on clean HEAD, spawned as follow-up task during closeout). SwiftLint `--strict` clean. Manual smoke pending Matt's confirmation per kickoff's done-when gate (FU-4 adds: first `Orchestrator: wire active` line on track 1 of a fresh LF session reports `elapsedTrackTime` near 0, not the session-prep duration).
+
+**Docs touched.** `docs/QUALITY/KNOWN_ISSUES.md` (BUG-021 outstanding-work strike-throughs — FU-1/2/3 close 3 of 5 items at FU-3 closeout; FU-4 adds a fourth strike-through; the buildPlan-deferred item and the plan-walker root-cause investigation remain open), `docs/RELEASE_NOTES_DEV.md` (`[dev-2026-05-28-t]` for FU-1/2/3; `[dev-2026-05-28-u]` for FU-4), this entry.
 
 ### Increment LF.5 — Multi-File Local Playback + File-Association + Recents ✅ (2026-05-28)
 

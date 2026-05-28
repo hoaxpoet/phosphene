@@ -6,6 +6,75 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-u] LF.5.fix.2-FU4 — `mir.reset()` on LF startup (cousin to FU-3)
+
+**Increment:** LF.5.fix.2-FU4. **Status:** Resolved 2026-05-28. Per CLAUDE.md Defect Handling Protocol, this is a trivial sub-P1 defect (cosmetic / latent for any future planner consumer that wants per-track time from frame 1) and collapses diagnose + fix + validate into one increment, matching the FU-1/FU-2/FU-3 collapsed shape.
+
+### The bug
+
+Session `~/Documents/phosphene_sessions/2026-05-28T20-36-17Z/session.log` shows:
+
+```
+[20:36:17Z] SessionRecorder started
+[20:43:34Z] raw tap capture started sr=96000 Hz ...
+[20:43:37Z] Orchestrator: wire active (mode=reactive, planIdx=0, elapsedTrackTime=440.1s)
+```
+
+The first `Orchestrator: wire active` line fires 3 s into actual playback but reports `elapsedTrackTime=440.1s` (≈ 20:43:37 − 20:36:17 = the gap between `MIRPipeline()` instantiation at session-prep entry and the moment audio starts after pre-analysis, stem caching, etc.). `MIRPipeline.elapsedSeconds` had been `+= deltaTime`-ing throughout the prep window with nobody resetting it.
+
+### Why FU-3 didn't catch this
+
+LF.5.fix.2-FU3 (`d09a059a`) zeroed `mir.elapsedSeconds` on every LF Next/Prev advance by adding `mirPipeline.reset()` + `pipeline.resetAccumulatedAudioTime()` to `advanceLocalFileQueue`. The startup case (`handleLocalFileReady`) is a different code path — it's the entry into playback from `.ready`, not a mid-session advance. The streaming track-change callback already covers the streaming-startup case (it fires when the first track-metadata event arrives post-audio-start), but LF bypasses that callback entirely. So the startup-side resets were missing.
+
+### The fix
+
+Two-line insert in `handleLocalFileReady` (`PhospheneApp/VisualizerEngine+LocalFilePlayback.swift`), placed immediately before `audioRouter.start(mode: .localFilePlayback(url))`:
+
+```swift
+mirPipeline.reset()
+pipeline.resetAccumulatedAudioTime()
+```
+
+Placement matches the FU-3 shape (reset right before the audio-router transition). Single-shot at playback entry — once `audioRouter.start` returns, the MIR pipeline begins accumulating from a clean zero against actual audio frames.
+
+### What this fixes for every consumer
+
+Same downstream-consumer reasoning as FU-3 (`[dev-2026-05-28-t]`). All of these read `mir.elapsedSeconds` and want per-track semantics:
+
+- `fv.trackElapsedS` (FFO cold-start fix in `MIRPipeline.swift:332`).
+- `featureStability` ramp curve (`MIRPipeline.swift:236`).
+- `playbackTime` for stem/MIR recording (`MIRPipeline.swift:349`).
+- The `Orchestrator: wire active` log line's `elapsedTrackTime=` field (the surface symptom).
+
+All were silently wrong-shaped on the LF startup path before this fix.
+
+### Verification
+
+- App build: clean (`xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build` → `BUILD SUCCEEDED`).
+- Engine targeted suite: **52/52 ✓** on `MIRPipeline + SessionManagerLocalFile + AudioInputRouterSignalState` (same scope FU-3 validated against), including the load-bearing `elapsedSeconds_accumulatesAsDouble_isMoreAccurateThanFloat` regression test.
+- SwiftLint `--strict` clean on `VisualizerEngine+LocalFilePlayback.swift`.
+
+### Manual smoke (Matt to confirm)
+
+1. Launch the Debug build, open Local Folder (≥ 1-track fixture).
+2. session.log's first `Orchestrator: wire active` line on track 1 should report a small `elapsedTrackTime` (typically < 5 s — the gap between `audioRouter.start` and the first analysis-tick wire fire), **not** the session-prep duration.
+
+### Files touched
+
+**Source (1):**
+- `PhospheneApp/VisualizerEngine+LocalFilePlayback.swift` — FU-4 insert in `handleLocalFileReady`.
+
+**Docs (2):**
+- `docs/QUALITY/KNOWN_ISSUES.md` — additional strike-through under BUG-021 outstanding-work block.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+
+### Out of scope
+
+- The streaming startup path (already covered by the streaming track-change callback firing on first track-metadata receipt — see `[dev-2026-05-28-t]` FU-3 audit notes).
+- The two still-open BUG-021 items (D-LF5-4 buildPlan() re-enablement + plan-walker root-cause investigation) — unchanged from `[dev-2026-05-28-t]`.
+
+---
+
 ## [dev-2026-05-28-t] LF.5.fix.2 — three post-BUG-021 cleanups (collapsed)
 
 **Increment:** LF.5.fix.2 (three follow-ups discovered in the BUG-021 verification session `2026-05-28T19-42-50Z`). **Status:** Resolved 2026-05-28. Per CLAUDE.md Defect Handling Protocol, the three follow-ups are sub-P1 (cosmetic / minor leak / latent log-only field) and collapse diagnose + fix + validate into one increment per Matt's approval at the prompt's audit step. Path B chosen for FU-3 (audit-recommended fix vs prompt's prescription).

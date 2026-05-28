@@ -162,6 +162,23 @@ extension VisualizerEngine: LocalFilePreparing {
                 recorder?.log("WIRING: \(msg)")
             }
 
+            // LF.5.fix.2-FU4: mirror the streaming track-change callback's
+            // destructive resets at `VisualizerEngine+Capture.swift:203-204`
+            // (and the FU-3 placement in `advanceLocalFileQueue`). Without
+            // these, `mir.elapsedSeconds` inherits whatever accumulated since
+            // `MIRPipeline()` init at session-prep time (pre-analysis,
+            // stem caching, etc.) — visible in session
+            // `2026-05-28T20-36-17Z` where the first `Orchestrator: wire
+            // active` line shows `elapsedTrackTime=440.1s` after 3 s of
+            // actual playback. FU-3 fixed this for Next/Prev advances; the
+            // startup case is the same bug at a different code site. Single
+            // call here zeroes the field at the moment audio actually
+            // starts, restoring per-track semantics for every consumer
+            // (`fv.trackElapsedS`, `featureStability` ramp curve, recording
+            // `playbackTime`).
+            mirPipeline.reset()
+            pipeline.resetAccumulatedAudioTime()
+
             // Start the LF audio router (AVAudioEngine path).
             do {
                 try audioRouter.start(mode: .localFilePlayback(url))
