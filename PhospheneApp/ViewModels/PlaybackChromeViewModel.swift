@@ -89,6 +89,13 @@ final class PlaybackChromeViewModel: ObservableObject {
     /// True while background track preparation is still in flight (6.1).
     /// Drives the subtle "still preparing" teal dot in `PlaybackControlsCluster`.
     @Published private(set) var isBackgroundPreparationActive: Bool = false
+    /// True when the active session is a local-file playback (LF.4 / LF.5).
+    /// Drives whether `LocalFileTransportBar` renders in the chrome.
+    /// LF.5.fix D-LF5-3.
+    @Published private(set) var isLocalFileSession: Bool = false
+    /// True when the LF audio router is currently paused.
+    /// Drives the transport bar's Play/Pause glyph.
+    @Published private(set) var isLocalFilePaused: Bool = false
 
     // MARK: - Private
 
@@ -124,6 +131,10 @@ final class PlaybackChromeViewModel: ObservableObject {
         reduceMotionPublisher: AnyPublisher<Bool, Never> = Just(false).eraseToAnyPublisher(),
         progressiveReadinessPublisher: AnyPublisher<ProgressiveReadinessLevel, Never> =
             Just(.fullyPrepared).eraseToAnyPublisher(),
+        currentSourcePublisher: AnyPublisher<SessionOrigin?, Never> =
+            Just(nil).eraseToAnyPublisher(),
+        isLocalFilePausedPublisher: AnyPublisher<Bool, Never> =
+            Just(false).eraseToAnyPublisher(),
         delay: any DelayProviding = RealDelay()
     ) {
         self.delay = delay
@@ -200,6 +211,30 @@ final class PlaybackChromeViewModel: ObservableObject {
             .sink { [weak self] level in
                 self?.isBackgroundPreparationActive = level < .fullyPrepared
             }
+            .store(in: &cancellables)
+
+        wireLocalFilePublishers(
+            currentSourcePublisher: currentSourcePublisher,
+            isLocalFilePausedPublisher: isLocalFilePausedPublisher
+        )
+    }
+
+    /// LF.5.fix D-LF5-3: local-file-session detection drives whether the
+    /// transport bar renders; pause flag drives its Play/Pause glyph.
+    /// Extracted to keep `init` under the SwiftLint function-body-length cap.
+    private func wireLocalFilePublishers(
+        currentSourcePublisher: AnyPublisher<SessionOrigin?, Never>,
+        isLocalFilePausedPublisher: AnyPublisher<Bool, Never>
+    ) {
+        currentSourcePublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] origin in
+                self?.isLocalFileSession = origin?.isLocalFile ?? false
+            }
+            .store(in: &cancellables)
+        isLocalFilePausedPublisher
+            .receive(on: DispatchQueue.main)
+            .assign(to: \.isLocalFilePaused, on: self)
             .store(in: &cancellables)
     }
 

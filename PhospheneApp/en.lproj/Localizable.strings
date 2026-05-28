@@ -396,3 +396,18 @@
 /* %1$d = files queued (capped at 200), %2$d = total files found */
 "lf.queue.truncation.title"                 = "Queued the first %1$d tracks";
 "lf.queue.truncation.body"                  = "Phosphene queued the first %1$d of %2$d audio files. Open a smaller folder to listen to the whole batch in one session.";
+
+// MARK: - LF.5.fix D-LF5-3 — Local-file transport bar
+// Hover-revealed Stop / Prev / Play-Pause / Next at the bottom of PlaybackView
+// for local-file sessions. UX-2 carve-out: Phosphene IS the player for LF.
+
+"playback.transport.stop.tooltip"           = "Stop and end session";
+"playback.transport.stop.a11y"              = "Stop playback and end session";
+"playback.transport.prev.tooltip"           = "Previous track";
+"playback.transport.prev.a11y"              = "Skip to previous track";
+"playback.transport.play.tooltip"           = "Play";
+"playback.transport.play.a11y"              = "Resume playback";
+"playback.transport.pause.tooltip"          = "Pause";
+"playback.transport.pause.a11y"             = "Pause playback";
+"playback.transport.next.tooltip"           = "Next track";
+"playback.transport.next.a11y"              = "Skip to next track";
