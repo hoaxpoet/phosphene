@@ -77,7 +77,7 @@ Hypothesized chain (not yet verified):
 
 **Severity:** P1 (visible artifact during steady-state playback — reported by Matt CSP.3.5 M7 of session `2026-05-28T18-31-06Z` as "some flickering around 40 s into playback for Love Rehab" after BUG-019 close).
 **Domain tag:** `pipeline-wiring`
-**Status:** Open — diagnostic instrumentation about to land (PERF-style diagnose-first pattern); root cause not yet identified.
+**Status:** **Fix landed 2026-05-28 (BUG-020.fix) — M7 pending.** Root cause confirmed via the BUG-020.diag instrumentation on session `2026-05-28T19-21-18Z` (commit `594e4181`): Spotify's metadata publisher emits a transitional event during track-to-track transitions where the artist field updates before the title field. The combined `('Love Rehab', 'Pink Floyd')` pair doesn't exist as a real track; the callback's destructive resets fire on this spurious event, destroying mid-track state ~2 seconds before the real next-track event arrives. Fix: early-return gate on `event.previous?.title == event.current.title` in `makeTrackChangeCallback`. See `RELEASE_NOTES_DEV.md [dev-2026-05-28-q]`.
 **Introduced:** Unknown; surfaced 2026-05-28 during CSP.3.5 M7 review. Was likely masked by the chronic PERF.3-era flicker before that fix landed.
 
 ### Expected behavior
