@@ -728,4 +728,61 @@ struct SessionManagerLocalFileTests {
         // subsequent files must NOT have been called.
         #expect(stub.callCount < urls.count, "Cancel must short-circuit before all files prepared")
     }
+
+    // MARK: - LF.5.fix.3-B — cancellation race on second startLocalFiles
+
+    @Test func startLocalFiles_secondCall_cancelsFirstInFlight_evenAfterEndSession() async throws {
+        // LF.5.fix.3-B regression gate. Reproduces the cluster from session
+        // 2026-05-28T20-57-46Z: first folder pick → user Stop (state .ended)
+        // → second folder pick. SessionManager.startLocalFiles guards cancel()
+        // on `state != .idle && state != .ended`, so .ended bypasses the
+        // SessionManager-side cancellation entirely. SessionPreparer must
+        // cancel any in-flight prep task at the start of every prepareLocalFiles
+        // call so the previous folder's preparation doesn't keep running.
+        let manager = try makeLFManager()
+        let urlsA = (0..<5).map { URL(fileURLWithPath: "/private/var/tmp/raceA\($0).m4a") }
+        let urlsB = [URL(fileURLWithPath: "/private/var/tmp/raceB.m4a")]
+
+        var resultsA: [String: LocalFilePrepResult] = [:]
+        for (index, url) in urlsA.enumerated() {
+            let hash = String(format: "%064x", index + 0x10)
+            resultsA[url.lastPathComponent] = makeStubPrepResult(url: url, hash: hash)
+        }
+        // 120 ms per file — enough headroom for the cancel to land between
+        // file 0's return and file 1's start.
+        let stubA = MultiStubLocalFilePreparer(results: resultsA, preparationDelayMs: 120)
+        manager.localFilePreparer = stubA
+
+        async let prepA: Void = manager.startLocalFiles(at: urlsA, origin: .localFiles(urlsA))
+        try await Task.sleep(nanoseconds: 50_000_000)                       // 50 ms — A is mid-file-0
+
+        // Simulate the user pressing Stop on the (mis-)playing session
+        // (matches the 20:59:05 provider.teardown in the captured log).
+        manager.endSession()
+
+        let resultsB = [
+            urlsB[0].lastPathComponent: makeStubPrepResult(
+                url: urlsB[0],
+                hash: String(format: "%064x", 0xB0)
+            )
+        ]
+        let stubB = MultiStubLocalFilePreparer(results: resultsB)
+        manager.localFilePreparer = stubB
+
+        await manager.startLocalFiles(at: urlsB, origin: .localFiles(urlsB))
+        await prepA
+
+        // The load-bearing Bug B assertion: A's preparer must NOT have
+        // processed all 5 files. Pre-fix, A would run to completion in
+        // parallel with B, leaving stubA.callCount == 5.
+        let aCount = stubA.callCount
+        let aTotal = urlsA.count
+        #expect(
+            aCount < aTotal,
+            "A's prep should have been cancelled when B started (got \(aCount)/\(aTotal) delegate calls)"
+        )
+
+        // B should have prepared its one file normally.
+        #expect(stubB.callCount == 1)
+    }
 }
