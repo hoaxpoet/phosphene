@@ -6,7 +6,66 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-o] CSP.3.5.1 — FFO Lipschitz: apply the intended /6 to the operative line (complete CSP.3.5)
+
+**Increment:** CSP.3.5.1 (CSP.3.5 completion). **Status:** Implemented 2026-05-28. Engine 1358 / 1358 tests pass; `PresetAcceptanceTests` invariant 4 ("Preset has readable form with normal energy input") now passes for Ferrofluid Ocean — was reproducibly failing at the value that actually shipped after CSP.3.5.
+
+### Why this is here
+
+`PresetAcceptanceTests.test_readableForm_atSteadyEnergy` failed on Ferrofluid Ocean on `main` (2/2 runs): `formComplexity → 1`. Investigation showed:
+
+1. **The CSP.3.5 commit (`eaaadd9b`) did not change the divisor.** The commit rewrote the comment block above the SDF return statement to describe `/10 → /6`, but `return (p.y - surfaceY) / 10.0;` was left untouched. `git show eaaadd9b -- FerrofluidOcean.metal` confirms only the comment text changed; the only `return` line in the diff body is `/ 10.0` (the unchanged context line). CSP.3.5 was a doc-only edit on a line that should have been a one-character code edit.
+2. **CSP.3.4's `/10` divisor fails the rubric.** With `/10`, the SDF is conservative enough that rays from the test's camera (y = 4.6, looking toward spikes at y ≈ 0.5) exhaust the hardcoded 128-step march budget (`PresetLoader+Preamble.swift:418`) without crossing the `d < 0.001 * t` threshold. The sky/miss branch fires for every pixel, writing `gbuf0 = (1.0, 0.0, 0.0, 0.0)`. The harness reads only `[[color(0)]]` (BGRA), so every pixel becomes `[B=0, G=0, R=255, A=0]` → luma 76 → all pixels land in the same 32-wide bin → `formComplexity = 1`.
+3. **Divisor sweep (single-line edit + run) at the test fixture (`f.bass = 0.5`, spike strength 1.4, effective gradient ≈ 5.11):** /4 pass, /5 pass, **/6 pass (last)**, /7 fail, /8 fail, /9 fail, /10 fail. Break-point exactly where CSP.3.5 already analyzed it.
+
+The `[dev-2026-05-28-n]` "Engine 1358/1358 tests pass" and `[dev-2026-05-28-h]` "Engine 1358/1358 tests pass" claims were both wrong; the test was actually failing at `/10` from `62704e16` onward. `PresetRegressionTests` golden hashes "pass" because Ferrofluid Ocean's golden hash entry is commented out (`PresetRegressionTests.swift:158`, "*V.9 Session 1 — golden hashes are stale by design*") — the regression gate was silently inactive for FFO across this entire arc.
+
+### The fix
+
+One line:
+
+```c
+// CSP.3.5 (claimed):    return (p.y - surfaceY) / 6.0;   (never landed)
+// CSP.3.4 (operative):  return (p.y - surfaceY) / 10.0;  (actually shipping)
+// CSP.3.5.1 (this):     return (p.y - surfaceY) / 6.0;   (intended change applied)
+```
+
+The CSP.3.5 comment block already on disk describes the rationale and the trade-off; CSP.3.5.1 extends that block with a note about the missing-edit history so future audits don't have to reconstruct it from git.
+
+### Verification
+
+- **Engine:** 1358 / 1358 tests pass. `PresetAcceptanceTests.test_readableForm_atSteadyEnergy` now passes for Ferrofluid Ocean.
+- **App build:** not touched in this increment.
+- **Working tree:** scoped — only `FerrofluidOcean.metal` + this entry + `ENGINEERING_PLAN.md` CSP.3.5.1 row + `KNOWN_ISSUES.md` BUG-019 step 18. Matt's parallel LF.5.fix work in `PhospheneApp/` is untouched.
+
+**Manual M7 (your gate).** The CSP.3.5 M7 protocol (white artifacts gone, CPU back under budget, spike magnitude preserved, PERF.3 brightness fix preserved) applies — Matt has not yet M7'd `/6` on a real session because the previous "/6 shipped" run was actually `/10`. This is the build that genuinely ships `/6`.
+
+### Trivial-P1 collapse
+
+Per CLAUDE.md Defect Handling Protocol — multi-increment process for P0/P1 may collapse to one increment if "trivial (< 5 lines of change, root cause obvious from existing artifacts, no architectural risk)." This qualifies: single-line shader change, root cause obvious from `git show eaaadd9b` + the existing CSP.3.5 comment block, no architectural risk. Instrumentation / diagnosis / fix / validation collapsed into one increment.
+
+### Touched files
+
+- `PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal` — operative divisor `/10` → `/6` + CSP.3.5.1 comment annotating the missing-edit history.
+- `docs/RELEASE_NOTES_DEV.md` — this entry; amended `[dev-2026-05-28-n]` + `[dev-2026-05-28-h]` for "1358/1358 pass" corrections.
+- `docs/ENGINEERING_PLAN.md` — CSP.3.5.1 row added; CSP.3.4 + CSP.3.5 rows annotated with the broken-test interval.
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-019 fix chain extended with step 18 (CSP.3.5.1).
+
+### Local-only
+
+Local commit on `main`. No remote push.
+
+### Related
+
+- `[dev-2026-05-28-h]` — CSP.3.4 (the increment that introduced `/10` and the original wrong test-count claim).
+- `[dev-2026-05-28-n]` — CSP.3.5 (the increment that *claimed* to change `/10 → /6` but didn't).
+- BUG-019 fix chain — step 18 records this completion.
+
+---
+
 ## [dev-2026-05-28-n] CSP.3.5 — FFO SDF Lipschitz divisor /10 → /6 (fix CSP.3.4 side effects: white artifacts + CPU breach)
+
+> **AMENDED 2026-05-28 — the operative divisor never changed.** The commit (`eaaadd9b`) rewrote the comment block above the SDF return statement to describe `/10 → /6` but left `return (p.y - surfaceY) / 10.0;` unchanged. The "Engine 1358/1358 tests pass" claim below was wrong: `PresetAcceptanceTests.test_readableForm_atSteadyEnergy` was reproducibly failing on Ferrofluid Ocean at `/10` from `62704e16` onward. The `PresetRegressionTests` golden-hash claim was technically true but uninformative — FFO's golden hash entry is commented out (`PresetRegressionTests.swift:158`). The intended `/10 → /6` change was actually applied by CSP.3.5.1 (`[dev-2026-05-28-o]`). The trade-off analysis below (LF M7 session data, spike-strength table, "what this preserves," "what this might re-introduce") is the rationale CSP.3.5.1 inherits verbatim.
 
 **Increment:** CSP.3.5 (CSP.3.4 follow-up correction). **Status:** Implemented 2026-05-28. Engine 1358/1358 tests pass; app build clean. Manual M7 outstanding.
 
@@ -372,6 +431,8 @@ Local commit on `main`. No remote push.
 ---
 
 ## [dev-2026-05-28-h] CSP.3.4 — FFO SDF Lipschitz divisor /4 → /10 (fixes gray-tip artifacts at high spike strength)
+
+> **AMENDED 2026-05-28 — "Engine 1358/1358 tests pass" claim was wrong.** `PresetAcceptanceTests.test_readableForm_atSteadyEnergy` was reproducibly failing on Ferrofluid Ocean from this commit (`62704e16`) onward — the `/10` divisor starves the hardcoded 128-step ray-march budget (`PresetLoader+Preamble.swift:418`) at the rubric's `f.bass=0.5` fixture, so all pixels fall through to the sky/miss path and the harness reads a single-luma frame (`formComplexity → 1`). The accompanying `PresetRegressionTests` claim was technically true but uninformative — FFO's golden hash entry is commented out (`PresetRegressionTests.swift:158`). The Lipschitz analysis and Matt's M7 verdict ("Better") on session `2026-05-28T13-50-23Z` are independent of this rubric-test miss and stand. Side-effects (white artifacts + CPU breach) surfaced later and motivated CSP.3.5; the operative fix actually shipped as CSP.3.5.1 (`[dev-2026-05-28-o]`).
 
 **Increment:** CSP.3.4 (Lipschitz fix following CSP.3.3 multiplier bump). **Status:** Implemented 2026-05-28. Engine 1358/1358 tests pass; app build clean. Manual M7 outstanding.
 

@@ -4769,6 +4769,8 @@ Plus the operational gaps CSP.2 surfaced:
 
 ### Increment CSP.3.4 — FFO SDF Lipschitz divisor /4 → /10 (2026-05-28) ✅
 
+> **AMENDED 2026-05-28** — closeout's "Engine 1358/1358 tests pass" claim was wrong: `PresetAcceptanceTests.test_readableForm_atSteadyEnergy` was reproducibly failing on Ferrofluid Ocean from this commit (`62704e16`) until CSP.3.5.1, because `/10` starves the hardcoded 128-step march budget at the rubric fixture (`PresetLoader+Preamble.swift:418`). The accompanying "PresetRegressionTests golden hashes pass" claim was technically true but uninformative — FFO's hash entry is commented out. The Lipschitz analysis below and Matt's M7 ("Better") on session `2026-05-28T13-50-23Z` are independent of the rubric-test miss and stand.
+
 CSP.3.3 M7 (session `2026-05-28T13-31-47Z`): Matt confirmed "spike subtlety has been addressed sufficiently" but flagged gray-tip artifacts during heavy bass hits + flickering around 38 s into Love Rehab. Diagnostic: both symptoms trace to the SDF Lipschitz divisor. Round 56's `/4` was sized for spike strength 1.0; CSP.3.3 produces spike strengths 1.25–2.05, effective gradients 4.6–7.5, all exceeding the `/4` safe ceiling (4).
 
 Bumped to `/10`. Covers effective gradients up to 10 — accommodates the full post-CSP.3.3 spike-strength range including the rare `f.bass ≥ 1.0` frames (0.1 %). Trade-off: more ray-march iterations per pixel (each step smaller), bounded by D-057's step budget. No effect on rendered output beyond removing overshoot artifacts.
@@ -4782,19 +4784,38 @@ Bumped to `/10`. Covers effective gradients up to 10 — accommodates the full p
 
 See `RELEASE_NOTES_DEV.md [dev-2026-05-28-h]` and `[dev-2026-05-28-i]`.
 
-### Increment CSP.3.5 — FFO SDF Lipschitz divisor /10 → /6 (correct CSP.3.4 side effects) (2026-05-28) ✅
+### Increment CSP.3.5.1 — Complete CSP.3.5: apply the intended /6 to the operative line (2026-05-28) ✅
+
+CSP.3.5's commit (`eaaadd9b`) rewrote the SDF docstring to describe `/10 → /6` but left `return (p.y - surfaceY) / 10.0;` unchanged — only the comment block was edited. Surfaced by `PresetAcceptanceTests.test_readableForm_atSteadyEnergy` failing on Ferrofluid Ocean (`formComplexity → 1`, every pixel rendering as sky because the `/10` divisor starves the hardcoded 128-step ray-march budget at the rubric's `f.bass = 0.5` fixture). Divisor sweep confirmed `/6` is the largest value that passes the test (/4–/6 pass; /7–/10 fail).
+
+`PresetRegressionTests` did not catch this because FFO's golden-hash entry is commented out (`PresetRegressionTests.swift:158` — "*V.9 Session 1 — golden hashes are stale by design*"). The `[dev-2026-05-28-h]` (CSP.3.4) and `[dev-2026-05-28-n]` (CSP.3.5) closeouts' "Engine 1358/1358 tests pass" claims were both wrong; both entries amended in-place.
+
+**Trivial-P1 collapse** per the Defect Handling Protocol: < 5 lines of change, root cause obvious from `git show eaaadd9b` + the existing CSP.3.5 comment block, no architectural risk. Instrumentation / diagnosis / fix / validation collapsed into one increment.
+
+**Done-when.**
+
+- [x] Engine: 1358 / 1358 tests pass. `PresetAcceptanceTests.test_readableForm_atSteadyEnergy` now passes for Ferrofluid Ocean (was failing at `/10`).
+- [x] `[dev-2026-05-28-h]` (CSP.3.4) + `[dev-2026-05-28-n]` (CSP.3.5) closeouts amended.
+- [x] `docs/QUALITY/KNOWN_ISSUES.md` BUG-019 fix chain extended with step 18.
+- [ ] **Matt M7.** The CSP.3.5 M7 protocol (white artifacts gone, CPU back under budget, spike magnitude preserved, PERF.3 brightness fix preserved) applies — Matt has not yet M7'd `/6` on a real session because the previous "CSP.3.5 shipped" run was actually `/10`. This is the build that genuinely ships `/6`.
+
+See `RELEASE_NOTES_DEV.md [dev-2026-05-28-o]`.
+
+### Increment CSP.3.5 — FFO SDF Lipschitz divisor /10 → /6 (correct CSP.3.4 side effects) (2026-05-28) ⚠ (doc-only; operative line unchanged until CSP.3.5.1)
+
+> **AMENDED 2026-05-28** — the commit (`eaaadd9b`) rewrote only the comment block above the SDF return statement; the operative `return (p.y - surfaceY) / 10.0;` line was unchanged. `PresetAcceptanceTests.test_readableForm_atSteadyEnergy` was reproducibly failing on Ferrofluid Ocean across this commit's interval. The intended `/10 → /6` change was actually applied by CSP.3.5.1. The Done-when below describes the trade-off analysis that stands; the operative fix landed in the increment above.
 
 Matt M7 of session `2026-05-28T17-50-42Z` (LF playback, FFO, love_rehab.m4a) reported "white artifacts near the tips of spikes close to the camera as well as white patches of substrate in the far left corner of the viewer." Diagnostic: CSP.3.4's `/10` divisor made each ray-march step 60 % smaller than `/4`. The 128-step iteration cap (`PresetLoader+Preamble.swift:418`) wasn't adjusted. Rays at oblique view angles (camera-close grazing reflections, far-corner pixels) exhausted iterations before finding the surface → fell to "Sky / miss" path → FFO's matID == 2 mirror-reflects-sky paradigm renders the procedural sky as white. CPU also breached budget (17.14 ms avg, ceiling 16.67 ms).
 
 `/6` covers gradients up to 6 (spike strength up to 1.64) — accommodates all typical playback worst-cases observed (Money 1.36, Love Rehab regular ≤ 1.30, this M7 session 1.52). Rare `f.bass ≥ 1.0` peaks (~0.1 % of frames in some sessions) may produce brief gray-tip flicker on individual frames — too sparse to sustain a visible artifact. Net: balances Lipschitz safety against iteration reach + CPU budget.
 
-**Done-when.**
+**Done-when (intent — actually shipped by CSP.3.5.1).**
 
-- [x] Engine: 1358 / 1358 tests pass.
+- [x] Engine: 1358 / 1358 tests pass — **claim was wrong**; PresetAcceptanceTests was failing at `/10`. CSP.3.5.1 makes it true.
 - [x] App build: succeeds.
-- [ ] **Matt M7.** Expected: white artifacts gone, CPU back under budget, spike magnitude preserved, PERF.3 brightness fix preserved.
+- [ ] **Matt M7.** Expected: white artifacts gone, CPU back under budget, spike magnitude preserved, PERF.3 brightness fix preserved. Applies to the CSP.3.5.1 build.
 
-See `RELEASE_NOTES_DEV.md [dev-2026-05-28-n]`.
+See `RELEASE_NOTES_DEV.md [dev-2026-05-28-n]` (with AMENDED note) and `[dev-2026-05-28-o]` for the CSP.3.5.1 completion.
 
 ### Increment CSP.3.3 — Spike-strength coefficient bump 0.35 → 0.8 (2026-05-28) ✅
 
