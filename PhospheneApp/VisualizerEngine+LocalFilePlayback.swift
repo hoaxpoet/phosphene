@@ -110,8 +110,9 @@ extension VisualizerEngine: LocalFilePreparing {
         // _completeLocalFilesReady; this is the local defense at the
         // consumer side per Matt's LF.5.fix.3-C kickoff (URL match only).
         if let started = lastStartedLocalFilePlaybackURL, started == url {
+            let name = url.lastPathComponent
             lfLogger.info(
-                "[LF.5.fix.3-C] handleLocalFileReady ignored — already started for \(url.lastPathComponent, privacy: .public)"
+                "[LF.5.fix.3-C] handleLocalFileReady ignored — already started for \(name, privacy: .public)"
             )
             return
         }
