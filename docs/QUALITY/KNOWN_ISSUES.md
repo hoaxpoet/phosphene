@@ -8,6 +8,42 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
+### BUG-LF5-1 — Orchestrator stayed REACTIVE for LF.5 multi-file sessions
+
+> **RESOLVED 2026-05-28** — commit `488afc1e` (`[LF.5.fix] D-LF5-1 + D-LF5-2`). Mirrored `makeTrackChangeCallback`'s orchestrator wire in `handleLocalFileReady` (planIdx=0) and `advanceLocalFileQueue` (planIdx=nextIdx).
+
+**Severity:** P1. **Domain tag:** `pipeline-wiring`.
+**Expected:** With an N-track `SessionPlan`, the orchestrator runs in planned mode and applies a per-track preset on each `currentTrackIndex` change.
+**Actual:** Folder session `2026-05-28T17-06-08Z` log line 33: `Orchestrator: wire active (mode=reactive, planIdx=—, elapsedTrackTime=55.1s)`. Zero preset changes at the 8 track boundaries; the 4 preset transitions logged at 17:07:06–07 were autonomous reactive picks.
+**Root cause:** Streaming wires the orchestrator via `makeTrackChangeCallback` (`VisualizerEngine+Capture.swift:129`), which sets `liveTrackPlanIndex` under `orchestratorLock` so the analysis-queue `runOrchestratorLiveUpdate` can see the plan. LF.5's `handleLocalFileReady` + `advanceLocalFileQueue` updated the published `currentTrackIndex` but never wrote `liveTrackPlanIndex` — analysis queue saw `nil` → stayed reactive.
+**Verification:** next folder session log should emit `Orchestrator: wire active (mode=planned, planIdx=0)` immediately after the first BeatGrid install + `planIdx=N` on each subsequent track change.
+
+---
+
+### BUG-LF5-2 — End Session did not stop LF audio playback
+
+> **RESOLVED 2026-05-28** — commit `488afc1e` (`[LF.5.fix] D-LF5-1 + D-LF5-2`). Extended the `sessionManager.$state` `.sink` in `VisualizerEngine` init to call `audioRouter.stop()` on `.ended`.
+
+**Severity:** P1. **Domain tag:** `pipeline-wiring`.
+**Expected:** Clicking "End session" on `PlaybackView` chrome (or the new transport-bar Stop button) stops local-file audio. Phosphene IS the player for LF sessions.
+**Actual:** SessionManager transitioned to `.ended`, ContentView routed to EndedView, but audio kept playing because `LocalFilePlaybackProvider`'s `AVAudioEngine` was never torn down.
+**Root cause:** `SessionManager.endSession()` only clears `currentSource` + flips state. The streaming-path equivalent is fine because Spotify/Apple Music owns playback there; for LF Phosphene owns playback and needs an explicit teardown.
+**Verification:** session log after clicking End Session should show no further `stem separation N` lines (router stopped → no audio frames → no analysis ticks).
+
+---
+
+### BUG-LF5-3 — No music-player transport controls for LF sessions
+
+> **RESOLVED 2026-05-28** — commit `fe09a594` (`[LF.5.fix] D-LF5-3`). Hover-revealed Stop / Prev / Play-Pause / Next transport bar at the bottom-center of `PlaybackView` for `currentSource?.isLocalFile == true`. UX-2 amended in `UX_SPEC.md §7.3` + §10 to carve out the LF carve-out.
+
+**Severity:** P2 (UX-spec gap rather than a code defect).
+**Expected (Matt 2026-05-28):** Music-player UX with pause/skip/stop/forward/back when the user hovers during LF playback.
+**Actual (pre-fix):** PlaybackView chrome had only "End session," which itself was broken (BUG-LF5-2). No way to pause, skip, or step back.
+**Fix scope:** new `LocalFilePlaybackProvider.pause()` / `resume()` + `AudioInputRouter` shims + `VisualizerEngine.{togglePauseLocalFile, skipToNext/PreviousLocalFileTrack, stopLocalFilePlayback}` + `advanceLocalFileQueue(direction:)` extension + `LocalFileTransportBar` SwiftUI view + chrome wiring + 10 localized strings.
+**Verification:** manual smoke — hover over playing window, transport bar appears centered at bottom; clicking Stop returns to IdleView with audio stopped; Prev at index 0 is a no-op; Play/Pause toggles audio without losing playhead; Next advances or transitions to EndedView at queue end.
+
+---
+
 ### BUG-019 — Beat-dominant light intensity + spike-strength dead zone caused visible flicker on FFO
 
 > **RESOLVED 2026-05-28** — Matt M7 verdict "Better" on session `2026-05-28T13-50-23Z` (CSP.3.4 build). Four-fix chain (PERF.3 + CSP.3.2 + CSP.3.3 + CSP.3.4) addressed the visible flicker / inactivity / artifact symptoms Matt has reported "since FFO existed." The originally-filed CPU-bump pattern (a separate phenomenon observed in two sessions) is characterized as probably-environmental and not actively pursued unless it returns with a clear non-environmental signal. Each fix went through its own M7 in succession; the chain is detailed under "Fix scope" below.

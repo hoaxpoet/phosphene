@@ -366,7 +366,7 @@ Auto-hide uses opacity fade over 500 ms. The render surface is unmodified during
 - Settings gear
 - Close/end session
 
-**No playback controls.** Phosphene does not control the source app. Any "pause" button on `PlaybackView` would be a lie.
+**No playback controls — streaming path only.** For connector-driven sessions (Apple Music, Spotify) Phosphene does not control the source app; any "pause" button on `PlaybackView` would be a lie. **LF.5.fix carve-out (2026-05-28):** for local-file sessions Phosphene IS the player, so a hover-revealed transport bar (Stop / Prev / Play-Pause / Next) renders at the bottom-center of `PlaybackView` whenever `currentSource?.isLocalFile == true`. The bar piggybacks on the existing `overlayVisible` auto-hide and disappears with the rest of the chrome. UX-2 in §10 carries the same carve-out language.
 
 ### 7.4 Live adaptation controls (keyboard-only, invisible to viewers)
 
@@ -850,7 +850,7 @@ Every new view gets a snapshot test using swift-testing `@Test` + `@MainActor`, 
 These are UX-level decisions that are non-obvious; append them to `DECISIONS.md` as they are implemented.
 
 - **UX-1: Permission onboarding is not a wizard.** One screen, two sentences, open Settings. Multi-step flows are cognitive friction.
-- **UX-2: Phosphene does not control playback.** No pause/play/skip controls on `PlaybackView`. Any such control would lie.
+- **UX-2: Phosphene does not control playback (streaming path only).** No pause/play/skip controls on `PlaybackView` for connector-driven sessions (Apple Music, Spotify) — Phosphene cannot honour them. **LF.5.fix carve-out (2026-05-28):** for `currentSource?.isLocalFile == true` Phosphene IS the player, so a hover-revealed transport bar (Stop / Prev / Play-Pause / Next) at the bottom-center of `PlaybackView` is mandatory. See §7.3.
 - **UX-3: "Start now" with partial readiness is a prominent CTA.** Preparation is not a hard gate. Users who want to start early can.
 - **UX-4: Never show a full-screen error during `.playing`.** Playback errors use bottom-right toasts only, on the Curator's display in multi-display setups. The visuals are the point and viewers are watching them.
 - **UX-5: First-audio autodetect advances `.ready → .playing`.** No user click required. Tapping only shows a hint.
