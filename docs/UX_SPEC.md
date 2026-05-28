@@ -55,14 +55,28 @@ The person invited by the Curator to experience the playlist and visuals. They w
 
 | State | Top-level view | Primary visible content | User actions available |
 |---|---|---|---|
-| `.idle` | `IdleView` | Phosphene logo, "Connect a playlist" CTA, "Start listening" (ad-hoc fallback) | Pick a source, start ad-hoc mode, open settings |
+| `.idle` | `IdleView` | Phosphene logo, "Connect a playlist" CTA, "Start listening" (ad-hoc fallback) | Pick a source, start ad-hoc mode, open settings, **Open Local File…** (`File → ⌘O` or drag-and-drop) |
 | `.connecting` | `ConnectingView` | Per-connector spinner with honest copy ("Asking Apple Music for your playlist…") | Cancel |
 | `.preparing` | `PreparationProgressView` | Track list with per-track status + aggregate progress + partial-ready CTA | Cancel, "Start now" (when progressive-ready), retry individual track |
-| `.ready` | `ReadyView` | "Press play in [Apple Music / Spotify / your music app]" + plan-preview affordance (§6.2) | Preview plan, modify plan, return to preparation, cancel session |
+| `.ready` | `ReadyView` (streaming) / `PlaybackView` (local file) | Streaming: "Press play in [Apple Music / Spotify / your music app]" + plan-preview affordance (§6.2). Local file: routes to `PlaybackView` immediately (engine controls playback). | Streaming: preview plan, modify plan, return to preparation, cancel session. Local file: same as `.playing`. |
 | `.playing` | `PlaybackView` | Visuals full-bleed + auto-hiding overlay chrome + hidden recovery shortcuts | Toggle overlay, fullscreen, feedback nudges, preset nudges, re-plan, end session |
 | `.ended` | `EndedView` | Summary card: track count played, session duration, "Open sessions folder" | Start new session, quit |
 
 **Hard rule:** no state ever shows a solid black screen without a legible message. `PlaybackView` is the only full-bleed state; its minimum floor on silence is the idle visualizer described in `§7.5`.
+
+### 2.1 Local-file playback (LF.4 / D-131)
+
+Local-file playback is a parallel source path that joins the streaming-path state machine at `.preparing`. The user opens a file through one of three entry points (`File → Open Local File…` with `⌘O`, drag-and-drop onto the window, or — for dev/CI — the `PHOSPHENE_LOCAL_FILE_PLAYBACK` env-var hook at launch). All three call `SessionManager.startLocalFile(at:)`, which transitions:
+
+1. `.idle / .ended → .preparing` — pre-analysis runs (~2 s cold, <100 ms warm via the persistent stem cache). `PreparationProgressView` renders for the duration; the row shows the filename. No "Start now" CTA — the readiness level jumps to `.fullyPrepared` once the single track is terminal.
+2. `.preparing → .ready` — fires the moment preparation completes. `ContentView` routes this state to `PlaybackView` directly (skipping `ReadyView` — Phosphene controls playback for local files, so there's nothing for the user to confirm).
+3. `.ready → .playing` — fires immediately after the engine starts the LF audio router (single MainActor tick, invisible to SwiftUI re-render). Audio begins; `PlaybackView` chrome is already mounted.
+
+**Replace-on-open semantics.** Opening a local file while a streaming session is active calls `SessionManager.cancel()` first, then transitions through the LF lifecycle. macOS-idiomatic; no modal warning prompt. The source flip is observable via the audio source change and the menu's source-aware affordances.
+
+**Cache hygiene UI.** `Phosphene → Clear Local-File Cache (67.4 MB)` (size label dynamic per `engine.localFileCacheBytes`). One click empties the persistent disk cache and shows a confirmation alert with the bytes freed. Automatic LRU eviction (500 MB cap by default; UserDefaults override at `phosphene.cache.localFile.maxBytes`) runs after every successful preparation write so the user-facing footprint stays bounded.
+
+**Unsupported formats / multi-file drops.** The menu picker and drop handler validate file extensions (`.m4a` / `.mp3` / `.flac`). Multi-file drops are rejected; the user sees an `NSAlert`: "Drop one file at a time." Unsupported formats: "Phosphene supports .m4a, .mp3, and .flac files." No silent failure modes — every reject surfaces a localized alert.
 
 ---
 

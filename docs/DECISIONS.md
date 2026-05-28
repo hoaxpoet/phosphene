@@ -3931,12 +3931,12 @@ Three baked-in design choices:
 **Out of scope (deferred).**
 
 - Streaming-path persistence (Spotify track ID → cached analysis surviving app restart). Different cache-key shape (metadata-derived, not content-derived), different invalidation surface (Spotify can rotate preview URLs). Design discussion is its own increment if the need surfaces.
-- Cache eviction policy / size bounds (LF.4).
-- Cache-clear UI / cache-stats display (LF.4 or separate dev-tooling increment).
-- Folder / M3U / multi-file ingestion (LF.4).
-- File-picker UI / settings audio-source toggle / drag-and-drop (LF.4).
-- `SessionManager` integration (LF.4). LF.3 stays in ad-hoc / env-var-driven flow.
-- Cross-fixture cache verification across multiple tracks. Single-fixture verification (love_rehab.m4a) was sufficient for LF.3 done-when.
+- ~~Cache eviction policy / size bounds (LF.4).~~ **Done (LF.4 / D-131).**
+- ~~Cache-clear UI / cache-stats display (LF.4 or separate dev-tooling increment).~~ **Done (LF.4 / D-131 — `Phosphene → Clear Local-File Cache (<size>)` menu item).**
+- Folder / M3U / multi-file ingestion (LF.4). _Still LF.5 territory; LF.4 covered single-file._
+- ~~File-picker UI / settings audio-source toggle / drag-and-drop (LF.4).~~ **Done (LF.4 / D-131 — `File → Open Local File…` menu + ⌘O + .onDrop).**
+- ~~`SessionManager` integration (LF.4). LF.3 stays in ad-hoc / env-var-driven flow.~~ **Done (LF.4 / D-131 — `SessionManager.startLocalFile(at:)` + `LocalFilePreparing` protocol).**
+- ~~Cross-fixture cache verification across multiple tracks.~~ **Done (LF.4 / D-131 — `LocalFilePlaybackFormatCoverageTests` cache-roundtrip step exercises M4A / MP3 / FLAC).**
 - StemSeparator tiling / Beat This! sliding-window aggregation. The cached data is the same 10 s of stems + 30 s of beats LF.2 produces; lifting those limits is a separate infrastructure increment.
 - Hash-truncation / partial-file hashing. Full-file SHA-256 is fast enough.
 - Multi-process cache safety. Phosphene is a single-instance app.
@@ -3954,3 +3954,61 @@ Three baked-in design choices:
 - Live warm capture (session `2026-05-27T22-00-59Z`): `STEM_CACHE_HIT: bpm=118.1, beats=59` at session.log line 3 → `BeatGrid installed` at line 6 → audio router at +634 ms wall. ~3× speedup over LF.2 cold-start.
 - On-disk layout verified (`~/Library/Application Support/Phosphene/StemCache/sha256/c1/c1685f07d559…/{metadata.json,vocals.f32,drums.f32,bass.f32,other.f32}`, 6.7 MB total per track).
 - Full diagnostics in `docs/diagnostics/LF3_COLD_WARM_2026-05-27.md`.
+
+---
+
+## D-131 — LF.4 SessionManager integration + LRU eviction policy (LF.4, 2026-05-27)
+
+**Status:** Accepted (2026-05-27).
+
+**Context.** LF.1 / LF.2 / LF.3 (D-128 / D-129 / D-130) made local-file playback structurally correct and fast: `AVAudioEngine` for the audio path, offline pre-analysis before audio starts, and a persistent disk cache that takes a second launch from ~2 s to ~634 ms. None of that work shipped past the dev-hook scope — local-file playback required setting `PHOSPHENE_LOCAL_FILE_PLAYBACK` before launch, with no menu item, no file picker, no drag-and-drop, no pre-analysis UI feedback, and no integration with `SessionManager`. The LF path bypassed the streaming-path session lifecycle entirely via `startAdHocSession()`. LF.4 lifts local-file playback to a first-class user-facing feature on the macOS app surface.
+
+**Decision.** Three coordinated changes:
+
+1. **SessionManager owns the LF lifecycle.** A new `SessionManager.startLocalFile(at:)` API drives the full session lifecycle for a single local file: `idle → preparing → ready → playing`, exactly like a streaming session. The preparation work is delegated to a new `LocalFilePreparing` protocol that `VisualizerEngine` conforms to — the engine still owns the heavy ML deps (`StemSeparator`, `StemAnalyzer`, `MoodClassifier`, `BeatGridAnalyzer`, `PersistentStemCache`) while SessionManager drives state transitions and writes results into the in-memory `StemCache`. The engine subscribes to `.ready` and reacts by installing the cached `BeatGrid` via `resetStemPipeline(for:)`, starting the LF audio router, and calling `beginPlayback()` to advance to `.playing`. The `localFilePlaybackActive` boolean flag on VisualizerEngine is retired in favour of `sessionManager.currentSource?.isLocalFile` — derived from the canonical SessionManager source rather than a parallel boolean. The legacy `startLocalFilePlayback(url:)` (LF.1) and `prepareAndStartLocalFilePlayback(url:)` (LF.2/LF.3) entry points are removed; the env-var hook routes through `sessionManager.startLocalFile(at:)` so the dev workflow keeps working with no behaviour change.
+
+2. **Source model: new `SessionOrigin` enum.** `SessionOrigin.{playlist(PlaylistSource), localFile(URL)}` published as `@Published var currentSource: SessionOrigin?` on SessionManager. `sessionSource: PlaylistSource?` stays as the streaming-specific publisher (cleared when LF takes over). Rejected: extending `PlaylistSource` itself with a `.localFile` case (would have to throw at the `PlaylistConnecting.connect(source:)` boundary, awkward). Rejected: convenience-method-only design without an enum (loses the "is this LF" derivability that consumers rely on). The enum extends naturally to LF.5 multi-file (`.localFile(URL)` → `.localFolder([URL])` symmetrically, or a separate `.localPlaylist(URL)` for M3U files).
+
+3. **LRU eviction with `UserDefaults`-driven cap.** `PersistentStemCache` grows `totalBytes() -> Int64`, `evictToMaxBytes(_:) -> Int`, and `clearAll() -> Int64`. Eviction fires after every successful `store(...)` so the cap is continuously enforced. Eviction order is mtime-ascending — the cheapest per-entry signal the filesystem already tracks for our writes (metadata.json is the last-written file in every successful store). Reads don't bump mtime; "least-recently-stored" is approximate "least-recently-used" — acceptable for the LF scope where the user re-plays the same tracks repeatedly so writes are rare. Default cap **500 MB ≈ 70 cached tracks** at ~7 MB/track (per LF.3 budget). UserDefaults override via `phosphene.cache.localFile.maxBytes` is supported for power users (`defaults write com.phosphene.app phosphene.cache.localFile.maxBytes -int 1073741824` for 1 GB). The cache-clear UI lives at `Phosphene → Clear Local-File Cache (<size>)` — the dynamic size label re-reads `engine.localFileCacheBytes` (a new `@Published` publisher refreshed on engine init + after each LF prep + after each clearAll).
+
+**User-facing surfaces.**
+
+- `File → Open Local File…` menu item with `⌘O`. `NSOpenPanel`-backed (chosen over `.fileImporter` for full validation-message control). Allowed types: `.mpeg4Audio`, `.mp3`, FLAC (looked up via `UTType(filenameExtension: "flac")` since UTType ships no FLAC constant on macOS 14).
+- Drag-and-drop on the main window. `.onDrop(of: [.fileURL])` accepts a single file; multi-file drops are rejected with a localized `NSAlert`.
+- Pre-analysis progress UI. The existing `PreparationProgressView` handles single-track LF sessions verbatim — `computeReadiness` short-circuits to `.fullyPrepared` once the one terminal track is ready (no special case needed). A placeholder identity in `preparingTracks` keeps the view from rendering its empty-state during the ~2 s `analyzePreview` window.
+- Replace-on-open. Opening a local file while a streaming session is active calls `cancel()` first (silent replace, macOS-idiomatic). Same-URL re-entry is a no-op.
+
+**Rejected alternatives.**
+
+- **Multi-file playlist semantics at LF.4 scope.** Folder ingestion / M3U parsing / `.fpl` import / crossfade / gapless segue. LF.5 territory; LF.4 is single-file. The `SessionOrigin` enum was designed to extend naturally there.
+- **`.fileImporter` instead of `NSOpenPanel`.** Cleaner for SwiftUI but doesn't easily surface custom validation messages. `NSOpenPanel.runModal()` is one extra import; the validation surface is non-trivial enough to justify it.
+- **Toast for the replace-on-open confirmation.** The toast manager lives in `PlaybackView` only; idle-state toasts would need a new app-level surface. The session-source change is immediate and contextually obvious (the audio source flips); no toast is necessary.
+- **Settings UI exposing the cache-size cap.** Operator-only at LF.4 scope (UserDefaults override). Settings UI is its own increment if user demand surfaces.
+- **Per-track cache invalidation UI.** The cache-clear action is all-or-nothing. Per-track invalidation adds storage surface + UX complexity for a rarely-needed action.
+- **File-association handling (double-click `.m4a` in Finder → opens Phosphene).** Adds Info.plist surface area for `CFBundleDocumentTypes`; defer to LF.5.
+- **Streaming-path persistent cache.** Different cache-key shape (metadata-derived, not content-derived), different invalidation surface (Spotify can rotate preview URLs). Separate increment if the need surfaces.
+
+**Out of scope (deferred).**
+
+- Multi-file playlist semantics (LF.5).
+- Crossfade / gapless segue (LF.5).
+- ID3 / Vorbis tag extraction; album-art display (LF.5).
+- "Recent Files" submenu (LF.5).
+- Settings UI for the cache-size cap.
+- Per-track cache invalidation UI.
+- Streaming-path persistent cache.
+- File-association handling.
+- Mid-track resumption on `AVAudioEngineConfigurationChange` (still best-effort from beginning).
+- Multi-process cache safety (Phosphene is single-instance).
+- Production telemetry / cache hit-rate dashboards.
+
+**Verification.**
+
+- LF.1 regression gate green: `swift test --filter AudioInputRouterSignalStateTests` (11/11).
+- LF.2 format-coverage gate green: `LF_FORMAT_COVERAGE=1 swift test --filter LocalFilePlaybackFormatCoverageTests` (3/3 — with the new persist-roundtrip step).
+- LF.3 + LF.4 cache tests green: `PersistentStemCacheTests` (11/11), `PersistentStemCacheEvictionTests` (11/11), `PreviewAudioContentHashTests` (8/8).
+- LF.4 lifecycle tests green: `SessionManagerLocalFileTests` (14/14).
+- App build + tests: full app target green (304/305; the 1 pre-existing flake is `MetadataPreFetcherTests.fetch_networkTimeout`).
+- Sample-rate literal gate green: `Scripts/check_sample_rate_literals.sh` exit 0.
+- Localized-strings gate green: `Scripts/check_user_strings.sh` exit 0.
+- Cold/warm latency: no regression past the LF.3 baseline (~2 s cold, ~634 ms warm). See `docs/diagnostics/LF4_REGRESSION_2026-05-27.md`.

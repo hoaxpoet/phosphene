@@ -81,7 +81,7 @@ extension SessionOrigin {
     public static func == (lhs: SessionOrigin, rhs: SessionOrigin) -> Bool {
         switch (lhs, rhs) {
         case (.playlist, .playlist): return true   // PlaylistSource itself is not Equatable
-        case (.localFile(let l), .localFile(let r)): return l == r
+        case (.localFile(let lhsURL), .localFile(let rhsURL)): return lhsURL == rhsURL
         default: return false
         }
     }

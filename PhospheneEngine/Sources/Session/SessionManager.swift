@@ -1,6 +1,13 @@
+// swiftlint:disable file_length
 // SessionManager — Session lifecycle state machine.
 // Coordinates PlaylistConnector, SessionPreparer, and StemCache.
 // Owns the idle → connecting → preparing → ready → playing → ended lifecycle.
+//
+// LF.4 (D-131) added startLocalFile(at:) + _completeLocalFileReady; both
+// need to write to multiple `@Published private(set)` properties, which
+// can't be done from an extension in a separate file. The file_length
+// disable above is the tracked acknowledgement — splitting requires
+// internal setter helpers which add more lines than they save.
 //
 // Increment 6.1: Progressive Session Readiness.
 // startSession() no longer blocks until preparation completes. Instead it:
@@ -427,8 +434,9 @@ public final class SessionManager: ObservableObject {
         preparingTracks = []
         state = .ready
         let sourceLabel = result?.source.label ?? "noCache"
+        let filename = url.lastPathComponent
         logger.info(
-            "SessionManager: local file ready (\(sourceLabel, privacy: .public)) — \(url.lastPathComponent, privacy: .public)"
+            "SessionManager: local file ready (\(sourceLabel, privacy: .public)) — \(filename, privacy: .public)"
         )
         let readyMsg = "WIRING: SessionManager.startLocalFile→ready " +
             "file='\(url.lastPathComponent)' source=\(sourceLabel)"
