@@ -247,7 +247,7 @@ struct PhospheneApp: App {
         let label = missing
             ? baseLabel + String(localized: "menu.file.open_recent.missing_suffix")
             : baseLabel
-        Button(label) {
+        Button {
             if missing {
                 recentsStore.remove(item)
                 return
@@ -268,6 +268,12 @@ struct PhospheneApp: App {
                     )
                 }
             }
+        } label: {
+            // GAP E (2026-05-28): leading SF Symbol per kind replaces the
+            // old "Folder: " / "Playlist: " prefix. macOS menu convention.
+            // Missing items stay clickable (the click removes them); the
+            // "(missing)" suffix is the user-visible cue, not .disabled().
+            Label(label, systemImage: item.systemImage)
         }
     }
 }

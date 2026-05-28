@@ -185,13 +185,26 @@ struct LocalFileRecentsStoreTests {
         #expect(item.isMissing == false)
     }
 
-    @Test func displayLabel_prefixesFolderAndPlaylistKinds() throws {
+    @Test func displayLabel_returnsBareFileName_perGapERefresh() throws {
+        // GAP E (2026-05-28): kind disambiguation moved from prefixed text
+        // into a leading SF Symbol via `systemImage`. displayLabel is now
+        // just the URL's last path component for every kind.
         let file = RecentItem(url: makeURL("song.m4a"), kind: .file)
         let folder = RecentItem(url: makeURL("Music"), kind: .folder)
         let playlist = RecentItem(url: makeURL("mix.m3u"), kind: .m3u)
 
         #expect(file.displayLabel == "song.m4a")
-        #expect(folder.displayLabel == "Folder: Music")
-        #expect(playlist.displayLabel == "Playlist: mix.m3u")
+        #expect(folder.displayLabel == "Music")
+        #expect(playlist.displayLabel == "mix.m3u")
+    }
+
+    @Test func systemImage_mapsKindToSFSymbol_perGapERefresh() throws {
+        let file = RecentItem(url: makeURL("song.m4a"), kind: .file)
+        let folder = RecentItem(url: makeURL("Music"), kind: .folder)
+        let playlist = RecentItem(url: makeURL("mix.m3u"), kind: .m3u)
+
+        #expect(file.systemImage == "waveform")
+        #expect(folder.systemImage == "folder.fill")
+        #expect(playlist.systemImage == "music.note.list")
     }
 }

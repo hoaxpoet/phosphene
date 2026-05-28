@@ -64,14 +64,26 @@ public struct RecentItem: Codable, Sendable, Equatable, Identifiable, Hashable {
         !FileManager.default.fileExists(atPath: url.path)
     }
 
-    /// Display label for the menu row. Folder + M3U get prefixed so the
-    /// menu reads clearly when the list mixes shapes.
+    /// Display label for the menu row.
+    ///
+    /// GAP E refresh (2026-05-28): returns the bare filename / folder name —
+    /// kind is no longer disambiguated via prefix text ("Folder: " /
+    /// "Playlist: "). The leading SF Symbol from `systemImage` carries that
+    /// signal instead, matching macOS menu conventions (folder.fill +
+    /// folder name, music.note.list + playlist name, etc.).
     public var displayLabel: String {
-        let name = url.lastPathComponent
+        url.lastPathComponent
+    }
+
+    /// SF Symbol name for the leading glyph in `File → Open Recent ▸` menu
+    /// items. Per GAP E (2026-05-28) the kind-disambiguation moves from
+    /// prefixed text into a system glyph — readable at a glance, idiomatic
+    /// for macOS menus.
+    public var systemImage: String {
         switch kind {
-        case .file: return name
-        case .folder: return "Folder: \(name)"
-        case .m3u: return "Playlist: \(name)"
+        case .file:   return "waveform"
+        case .folder: return "folder.fill"
+        case .m3u:    return "music.note.list"
         }
     }
 }
