@@ -99,7 +99,9 @@ Unknown — needs the instrumentation increment first. **Multi-increment** per t
 7. **Fix (PERF.3) ✅ 2026-05-28** — `intensityMul` formula restructured: `1.0 + bass * 0.4 + beatAccent * 0.15` (was `0.4 + beatPulse * 2.6`). Single-frame brightness swing reduced 14×. See `[dev-2026-05-28-e]`.
 8. **Validation (PERF.3 M7) ✅ 2026-05-28 — partial-pass** — Matt's session `2026-05-28T03-10-29Z`: brightness flicker reduced ("Love Rehab looked great for about a minute") + `ffmpeg signalstats` count dropped 76 → 57 events (25 %). New visible issue surfaced — "inactivity from the spikes" — root-caused to `stems.bass_energy_dev` averaging 0.05–0.10 in warm state, making CSP.3.1's `+0.35 × bass_energy_dev` term effectively zero. PERF.3 had been masking this with its own brightness flicker.
 9. **Fix (CSP.3.2) ✅ 2026-05-28** — `fo_spike_strength` dropped the warm-state crossfade to `stems.bass_energy_dev`; uses `f.bass` (AGC-normalised continuous Layer 1) for the whole track. Same shape as PERF.3 — continuous primitive primary, no deviation-primitive dead zones — applied to spike geometry. See `[dev-2026-05-28-f]`.
-10. **Validation (CSP.3.2 M7) — pending** — tap-path FFO session expected to show continuous spike-height modulation through entire track. PERF.3 brightness fix preserved.
+10. **Validation (CSP.3.2 M7) ✅ 2026-05-28 — partial-pass** — session `2026-05-28T13-20-21Z`: irregular behavior gone (confirmed by Matt) and continuous modulation throughout track (confirmed by data), but magnitude too small. The 0.35 coefficient (inherited from pre-CSP.3.2) was tuned against the deviation primitive's pre-SAR.1 saturation; for `f.bass`'s actual distribution (85 % of frames < 0.3), 0.35 produces < 11 % modulation — below perception.
+11. **Fix (CSP.3.3) ✅ 2026-05-28** — coefficient bump 0.35 → 0.8. Typical modulation 17 %, peaks 40 %. See `[dev-2026-05-28-g]`.
+12. **Validation (CSP.3.3 M7) — pending** — expected: visible continuous spike modulation throughout the track.
 
 ### Disposition
 

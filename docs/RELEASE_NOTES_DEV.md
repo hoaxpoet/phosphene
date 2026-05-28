@@ -6,6 +6,70 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-g] CSP.3.3 — FFO spike-strength coefficient bump (0.35 → 0.8)
+
+**Increment:** CSP.3.3 (tune of CSP.3.2). **Status:** Implemented 2026-05-28. Engine 1358/1358 tests pass; app build clean. Manual M7 outstanding.
+
+### Why this is here
+
+CSP.3.2 M7 (session `2026-05-28T13-20-21Z`): "**Multiplier too small for the warm state. Spike height movement for Money is too subtle overall. Irregular behavior appears to be gone.**"
+
+CSP.3.2 successfully eliminated the deviation-primitive dead zone — the formula now produces continuous modulation throughout the track — but the magnitude is below perception for typical bass levels. The 0.35 coefficient was inherited from the pre-CSP.3.2 formula, where it was tuned against `stems.bass_energy_dev` which (pre-SAR.1) saturated above 1.0 frequently. For `f.bass`, the distribution is shaped differently:
+
+| `f.bass` range | % of playback frames | Spike-mod at 0.35 | Spike-mod at 0.8 |
+|---|---:|---:|---:|
+| < 0.30 | **85 %** | < 11 % | < 24 % |
+| 0.30 – 0.50 | 14 % | 11–18 % | 24–40 % |
+| 0.50 – 1.00 | 1.2 % | 18–35 % | 40–80 % |
+| ≥ 1.00 | 0.1 % | 35 % | 80 % |
+
+(Distribution from M7 session `2026-05-28T13-20-21Z`, 15+ s window, 9 651 frames.)
+
+At 0.35, 85 % of frames produced less than 11 % modulation — visually subtle. The bump puts the same 85 % at up to 24 % modulation while the rare peaks (`f.bass ≥ 0.5`, 1.2 % of frames) climb to 40–80 %. Those peaks are *smooth* (AGC-normalised continuous primitive), not beat-onset spikes, so they don't flicker — they pump the spike heights up gradually and then back down.
+
+### The fix
+
+One line:
+
+```c
+// CSP.3.2 (previous): return baseline + 0.35 * src;
+// CSP.3.3 (current):  return baseline + 0.8  * src;
+```
+
+`src = clamp(f.bass, 0.0, 1.0)` unchanged.
+
+### Verification
+
+- **Engine:** 1358 / 1358 tests pass. `PresetRegressionTests` Hamming-tolerant golden hashes pass (the change is a magnitude-only tune).
+- **App build:** succeeds.
+- **PERF.3 brightness fix verification** (`ffmpeg signalstats` on the M7 session video.mp4): **53 brightness-oscillation events** (vs 57 in PERF.3 alone, 76 pre-PERF.3). PERF.3 remains effective; CSP.3.2 didn't increase brightness flicker; CSP.3.3 doesn't touch brightness.
+
+**Manual M7 (your gate).** Same protocol. Expected:
+- **Spikes now visibly pulse with the music continuously through the track** (typical 17 % modulation at avg `f.bass = 0.21`).
+- **Rare bass-heavy moments** (e.g. drops, sustained loud bass) produce visibly tall spikes — 40 % modulation at `f.bass = 0.5` (top 1.3 % of frames).
+- **No PERF.3 regression** — brightness flicker behavior unchanged.
+- **No "irregular" or "flickering" spike behavior** — `f.bass` is smooth, no beat-onset jitter in the spike heights.
+
+If 0.8 turns out to be too much (e.g. peak moments feel over-aggressive), dial back to 0.6 or 0.5. If still too subtle, dial up to 1.0.
+
+### Touched files
+
+- `PhospheneEngine/Sources/Presets/Shaders/FerrofluidOcean.metal` — coefficient + comment.
+- `docs/RELEASE_NOTES_DEV.md` — this entry.
+- `docs/ENGINEERING_PLAN.md` — CSP.3.3 under Phase CSP.
+- `docs/QUALITY/KNOWN_ISSUES.md` — BUG-019 history extended.
+
+### Local-only
+
+Local commit on `main`. No remote push.
+
+### Related
+
+- `[dev-2026-05-28-f]` — CSP.3.2 (the formula simplification this tune extends).
+- `[dev-2026-05-28-e]` — PERF.3 (the lighting fix that remains in place).
+
+---
+
 ## [dev-2026-05-28-f] CSP.3.2 — FFO spike strength uses f.bass continuously (no warm-state deviation crossfade)
 
 **Increment:** CSP.3.2 (Phase CSP refinement, BUG-019 second fix). **Status:** Implemented 2026-05-28. Engine 1328/1328 tests pass; app build clean. Manual M7 outstanding.
