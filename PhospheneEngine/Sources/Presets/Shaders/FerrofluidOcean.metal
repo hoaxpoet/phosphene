@@ -155,19 +155,25 @@ static inline float fo_spike_strength(constant FeatureVector& f,
     // the spikes" after the cold-start window ended.
     //
     // Pre-CSP.3.2 the cold-start (0–14 s) used `f.bass` and the warm state
-    // crossfaded to `stems.bass_energy_dev`. Per the Matt M7 the cold-start
-    // looked correct ("looked great for about a minute"); the warm state
-    // was the regression. CSP.3.2 keeps `f.bass` for the whole track —
-    // matches the Audio Data Hierarchy "Layer 1 is primary visual driver"
-    // rule. `f.bass` is AGC-normalised so it stays within a useful range
-    // [0.17, 0.30] across the warm window per the same session data,
-    // giving ~6 % continuous spike-height variation — visible without the
-    // beat-pulse aliasing that the deviation primitive would have
-    // contributed even at full strength.
+    // crossfaded to `stems.bass_energy_dev`. CSP.3.2 keeps `f.bass` for the
+    // whole track — matches the Audio Data Hierarchy "Layer 1 is primary
+    // visual driver" rule. `f.bass` is AGC-normalised so it stays within a
+    // useful range across the warm window.
+    //
+    // CSP.3.3 (2026-05-28) — coefficient bumped 0.35 → 0.8 per Matt M7 on
+    // session 2026-05-28T13-20-21Z. CSP.3.2 multiplier was inherited from
+    // the pre-CSP.3.2 formula (tuned against the deviation primitive which
+    // saturated above 1.0 pre-SAR.1). For `f.bass`, the value distribution
+    // is shaped differently — 85 % of playback frames sit at `f.bass < 0.3`
+    // (per the M7 session). At 0.35 × 0.21 (avg) = 7 % modulation, "too
+    // subtle overall" per Matt. 0.8 × 0.21 = 17 % typical; 0.8 × 0.5 (top
+    // 1.3 % of frames) = 40 % peak — visible without over-saturating
+    // because `f.bass` is a smooth AGC-normalised continuous primitive, not
+    // a beat onset. (Beat-onset primitives at high coefficient produce the
+    // PERF.3-class flicker; smooth continuous primitives at high
+    // coefficient produce smooth visible modulation.)
     float src = clamp(f.bass, 0.0, 1.0);
-
-    // Combine: per-track baseline + per-frame source. 0.35 preserved.
-    return baseline + 0.35 * src;
+    return baseline + 0.8 * src;
 }
 
 // Swell amplitude scale — slow energy-driven drift only (round 65, 2026-05-18).

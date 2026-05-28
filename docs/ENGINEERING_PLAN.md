@@ -4663,6 +4663,21 @@ Plus the operational gaps CSP.2 surfaced:
 - **No different:** the design space at the cached-perception + live-overall-bass layer is exhausted at this consumption point. Pivot to Matt's stress-test methodology suggestion (CSP-Stress.1, below).
 - **Worse:** revert; capture specific failure modes before reverting (which track, what part of the timeline, what does the spike behaviour look like).
 
+### Increment CSP.3.3 — Spike-strength coefficient bump 0.35 → 0.8 (2026-05-28) ✅
+
+CSP.3.2 M7 (session `2026-05-28T13-20-21Z`): Matt confirmed "irregular behavior appears to be gone" and continuous spike modulation through the track — but the magnitude was "too subtle overall." 85 % of playback frames have `f.bass < 0.3` (avg 0.21); at 0.35 coefficient that's < 11 % modulation — below perception.
+
+Bumped to 0.8. Typical modulation now 17 % (was 7 %); rare peaks at `f.bass ≥ 0.5` reach 40 % (was 18 %). `f.bass` is smooth (AGC-normalised), not a beat onset — peaks pump smoothly, no flicker.
+
+**Done-when.**
+
+- [x] Engine: 1358 / 1358 tests pass.
+- [x] App build: succeeds.
+- [x] `ffmpeg signalstats` on M7 session: 53 brightness-osc events (PERF.3 baseline 57 — fix unchanged).
+- [ ] **Matt M7.** Expected: visible continuous spike modulation. If 0.8 feels too much, dial back to 0.6; too little, dial to 1.0.
+
+See `RELEASE_NOTES_DEV.md [dev-2026-05-28-g]`.
+
 ### Increment CSP.3.2 — Drop warm-state crossfade; f.bass for the whole track (2026-05-28) ✅
 
 PERF.3's M7 (session `2026-05-28T03-10-29Z`) was partial-pass: Matt confirmed the brightness flicker was reduced ("Love Rehab looked great for about a minute"), but reported "inactivity from the spikes" mid-playback and "inactivity in spikes around 25 s into Money."
