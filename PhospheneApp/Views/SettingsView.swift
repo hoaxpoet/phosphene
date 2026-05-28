@@ -29,6 +29,7 @@ struct SettingsView: View {
             Group {
                 switch selection ?? .audio {
                 case .audio:       AudioSettingsSection(viewModel: viewModel)
+                case .localFiles:  LocalFilesSettingsSection()
                 case .visuals:     VisualsSettingsSection(viewModel: viewModel)
                 case .diagnostics: DiagnosticsSettingsSection(viewModel: viewModel)
                 case .about:       AboutSettingsSection(viewModel: viewModel)
@@ -51,12 +52,13 @@ struct SettingsView: View {
 // MARK: - SettingsSection
 
 enum SettingsSection: String, CaseIterable, Identifiable {
-    case audio, visuals, diagnostics, about
+    case audio, localFiles, visuals, diagnostics, about
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .audio:       return NSLocalizedString("settings.group.audio", comment: "")
+        case .localFiles:  return NSLocalizedString("settings.group.local_files", comment: "")
         case .visuals:     return NSLocalizedString("settings.group.visuals", comment: "")
         case .diagnostics: return NSLocalizedString("settings.group.diagnostics", comment: "")
         case .about:       return NSLocalizedString("settings.group.about", comment: "")
@@ -66,6 +68,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .audio:       return "waveform"
+        case .localFiles:  return "folder"
         case .visuals:     return "eye"
         case .diagnostics: return "stethoscope"
         case .about:       return "info.circle"

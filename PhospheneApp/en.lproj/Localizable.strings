@@ -449,3 +449,25 @@
 "preparation.header.lf_tracks"              = "Reading %d tracks";
 /* %@ = folder name OR playlist filename — subtitle for folder / playlist origins */
 "preparation.header.lf_from"                = "from %@";
+
+// MARK: - GAP G (2026-05-28) — Local Files settings section
+// New sidebar entry between Audio and Visuals. Surfaces the persistent
+// stem-cache size + Clear button, plus Recents count + Clear.
+
+"settings.group.local_files"                = "Local Files";
+
+"settings.lf.cache.title"                   = "Cache";
+"settings.lf.cache.size_label"              = "On disk";
+"settings.lf.cache.body"                    = "Phosphene stores stem analysis for files it has played before so they start instantly the next time. Clearing the cache frees disk space but the next play of each file will take ~2 seconds to re-prepare.";
+"settings.lf.cache.clear_button"            = "Clear cache";
+"settings.lf.cache.confirm_title"           = "Clear local-file cache?";
+"settings.lf.cache.confirm_button"          = "Clear";
+"settings.lf.cache.confirm_message"         = "Every cached file will need to be re-analyzed the next time it plays.";
+
+"settings.lf.recents.title"                 = "Recents";
+"settings.lf.recents.count_label"           = "Remembered items";
+"settings.lf.recents.body"                  = "The last 10 files, folders, and playlists you opened are listed in File → Open Recent. Clear this list if you'd like to start fresh.";
+"settings.lf.recents.clear_button"          = "Clear recents";
+"settings.lf.recents.confirm_title"         = "Clear recently-opened list?";
+"settings.lf.recents.confirm_button"        = "Clear";
+"settings.lf.recents.confirm_message"       = "Every item in File → Open Recent will be removed. The files themselves stay on disk.";

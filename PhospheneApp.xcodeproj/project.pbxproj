@@ -45,6 +45,7 @@
 		Q10005 /* LocalFileTransportBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20005; };
 		Q10006 /* LocalSourceConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20006; };
 		Q10007 /* LocalFileErrorStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20007; };
+		Q10008 /* LocalFilesSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20008; };
 		Q10004 /* LocalFileMenuCommands+Drop.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20004; };
 		O10001 /* DashboardOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20001; };
 		O10002 /* DashboardCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20002; };
@@ -213,6 +214,7 @@
 		Q20005 /* LocalFileTransportBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFileTransportBar.swift; sourceTree = "<group>"; };
 		Q20006 /* LocalSourceConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalSourceConnectionView.swift; sourceTree = "<group>"; };
 		Q20007 /* LocalFileErrorStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFileErrorStore.swift; sourceTree = "<group>"; };
+		Q20008 /* LocalFilesSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFilesSettingsSection.swift; sourceTree = "<group>"; };
 		Q20004 /* LocalFileMenuCommands+Drop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LocalFileMenuCommands+Drop.swift"; sourceTree = "<group>"; };
 		O20001 /* DashboardOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardOverlayView.swift; sourceTree = "<group>"; };
 		O20002 /* DashboardCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardCardView.swift; sourceTree = "<group>"; };
@@ -737,6 +739,7 @@
 			isa = PBXGroup;
 			children = (
 				K20011 /* AudioSettingsSection.swift */,
+				Q20008 /* LocalFilesSettingsSection.swift */,
 				K20012 /* VisualsSettingsSection.swift */,
 				K20013 /* DiagnosticsSettingsSection.swift */,
 				K20014 /* AboutSettingsSection.swift */,
@@ -925,6 +928,7 @@
 				K10004 /* SettingsViewModel.swift in Sources */,
 				K10010 /* SettingsView.swift in Sources */,
 				K10011 /* AudioSettingsSection.swift in Sources */,
+				Q10008 /* LocalFilesSettingsSection.swift in Sources */,
 				K10012 /* VisualsSettingsSection.swift in Sources */,
 				K10013 /* DiagnosticsSettingsSection.swift in Sources */,
 				K10014 /* AboutSettingsSection.swift in Sources */,
