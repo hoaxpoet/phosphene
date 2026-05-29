@@ -141,17 +141,13 @@ extension VisualizerEngine: LocalFilePreparing {
         // Re-enable buildPlan for LF when the certified catalog grows
         // AND the plan walker's behaviour for short segments is verified.
 
-        // LF.5.fix D-LF5-1 (unchanged): tell the orchestrator about the LF
-        // plan so it runs in planned mode (and applies per-track presets)
-        // instead of reactive. The streaming path wires this in
-        // `makeTrackChangeCallback` (VisualizerEngine+Capture.swift:129)
-        // under `orchestratorLock`; LF.5 bypasses that callback so we mirror
-        // the writes here.
-        lastResolvedTrackIdentity = identity
-        orchestratorLock.withLock {
-            liveTrackPlanIndex = 0
-            orchestratorWireLoggedThisTrack = false
-        }
+        // LF.5.fix D-LF5-1 + LF.6: orchestrator plan-mode wire (mirrors
+        // `makeTrackChangeCallback` in VisualizerEngine+Capture.swift:129 —
+        // the LF.5 LF path bypasses the streaming callback) AND chrome
+        // surface publish (closes Gap A — pre-LF.6 every LF session rendered
+        // "—" for title because `currentTrack` was never written from the LF
+        // path). See `applyLocalFileTrackState(...)` for the unified write.
+        applyLocalFileTrackState(identity: identity, planIndex: 0)
 
         // LF.5: wire the EOF callback BEFORE starting the audio router so we
         // can't miss an end-of-stream event for a very short fixture. Per
@@ -315,15 +311,10 @@ extension VisualizerEngine: LocalFilePreparing {
             pipeline.resetAccumulatedAudioTime()
             resetStemPipeline(for: nextIdentity, caller: .trackChange)
             sessionRecorder?.log("WIRING: advanceLocalFileQueue resetStemPipeline COMPLETE")
-            // LF.5.fix D-LF5-1: mirror `makeTrackChangeCallback`'s orchestrator
-            // wire-up. Without these, the analysis-queue's
-            // `runOrchestratorLiveUpdate` sees `liveTrackPlanIndex = nil` and
-            // stays in reactive mode — no per-track preset on advance.
-            lastResolvedTrackIdentity = nextIdentity
-            orchestratorLock.withLock {
-                liveTrackPlanIndex = nextIdx
-                orchestratorWireLoggedThisTrack = false
-            }
+            // LF.5.fix D-LF5-1 + LF.6: orchestrator plan-mode wire + chrome
+            // surface publish via the shared helper. See
+            // `applyLocalFileTrackState(...)`.
+            applyLocalFileTrackState(identity: nextIdentity, planIndex: nextIdx)
             sessionRecorder?.log("WIRING: advanceLocalFileQueue orchestratorLock COMPLETE")
             // Re-bind the EOF callback BEFORE start() — AudioInputRouter
             // captures the callback at start time and relays it into the
@@ -397,6 +388,62 @@ extension VisualizerEngine: LocalFilePreparing {
         guard sessionManager.currentSource?.isLocalFile == true else { return }
         lfLogger.info("[LF.5] transport: stop")
         sessionManager.endSession()
+    }
+
+    // MARK: - LF.6 chrome publishers
+
+    /// Apply the per-LF-track state mutations that both `handleLocalFileReady`
+    /// and `advanceLocalFileQueue` need: latch the resolved identity, update
+    /// the orchestrator wire's plan index + per-track diagnostic latch, and
+    /// publish the chrome surface (TrackMetadata + artwork). Single helper so
+    /// the two call sites stay under SwiftLint's function-body-length cap and
+    /// can't drift out of sync.
+    @MainActor
+    private func applyLocalFileTrackState(identity: TrackIdentity, planIndex: Int) {
+        lastResolvedTrackIdentity = identity
+        orchestratorLock.withLock {
+            liveTrackPlanIndex = planIndex
+            orchestratorWireLoggedThisTrack = false
+        }
+        publishLocalFileTrackSurface(identity: identity)
+    }
+
+    /// Publish the `TrackMetadata` + artwork bytes that drive `TrackInfoCardView`.
+    /// Both writes land back-to-back inside this @MainActor method so chrome
+    /// consumers observe title + artwork updates as one tick (avoids the "—" +
+    /// artwork flash documented on `currentTrackArtworkData`).
+    @MainActor
+    private func publishLocalFileTrackSurface(identity: TrackIdentity) {
+        // Title-first.
+        currentTrack = TrackMetadata(
+            title: identity.title,
+            artist: identity.artist,
+            album: identity.album,
+            duration: identity.duration,
+            source: .unknown
+        )
+        // Artwork-second. Synchronous disk read on the LF persistent cache —
+        // ~5–20 ms on warm OS file cache (post-LF.5 prep), bounded once per
+        // track change. Failures (no cache, missing entry, art-free track)
+        // surface as nil, which the chrome renders as the fallback glyph.
+        currentTrackArtworkData = lfPersistentArtworkData(for: identity)
+    }
+
+    /// Look up the LF.5-cached artwork bytes for a synthetic `local:sha256:`
+    /// identity. Returns nil for non-LF identities, missing persistent cache,
+    /// or tracks whose source file shipped no embedded artwork. The
+    /// `persistentStemCache.load(hash:)` call is NSLock-serialized internally
+    /// so this is safe to invoke from any actor context.
+    @MainActor
+    private func lfPersistentArtworkData(for identity: TrackIdentity) -> Data? {
+        let prefix = "local:sha256:"
+        guard let spotifyID = identity.spotifyID, spotifyID.hasPrefix(prefix) else {
+            return nil
+        }
+        let hash = String(spotifyID.dropFirst(prefix.count))
+        guard let cache = persistentStemCache else { return nil }
+        guard let entry = try? cache.load(hash: hash) else { return nil }
+        return entry.artworkData
     }
 
     // MARK: - Off-main worker

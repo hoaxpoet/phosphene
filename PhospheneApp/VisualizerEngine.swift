@@ -70,6 +70,19 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Current track metadata from Now Playing.
     @Published var currentTrack: TrackMetadata?
 
+    /// Raw album-artwork bytes for the live track (PNG / JPEG, depending on
+    /// container). LF.6: populated alongside `currentTrack` for local-file
+    /// sessions from the LF.5 persistent cache's `artwork.bin` sibling.
+    /// Streaming sessions leave this `nil` until LF.6.streaming wires up
+    /// Spotify Web API + iTunes Search artwork-URL fetch.
+    ///
+    /// **Invariant:** updated in the same MainActor tick as `currentTrack`
+    /// — title-first then artwork-second — so chrome consumers binding to
+    /// both don't briefly render the previous track's artwork against the
+    /// new track's title (or vice versa). See `handleLocalFileReady()` /
+    /// `advanceLocalFileQueue(direction:)` for the LF write sites.
+    @Published var currentTrackArtworkData: Data?
+
     /// Most-recently-resolved canonical `TrackIdentity` for the live track.
     /// Set by the track-change handler in `VisualizerEngine+Capture.swift`
     /// after `canonicalTrackIdentity(matching:)` resolution; consumed by
