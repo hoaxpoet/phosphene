@@ -61,7 +61,8 @@ struct PlaybackChromeView: View {
             TrackInfoCardView(
                 trackInfo: viewModel.currentTrack,
                 preset: viewModel.currentPreset,
-                orchestratorState: viewModel.orchestratorState
+                orchestratorState: viewModel.orchestratorState,
+                isLocalFileSession: viewModel.isLocalFileSession
             )
             .padding(24)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
