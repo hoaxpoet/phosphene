@@ -4091,3 +4091,50 @@ Three baked-in design choices:
 - Localized-strings gate green: `Scripts/check_user_strings.sh` exit 0.
 - Release build green: `xcodebuild -scheme PhospheneApp -configuration Release build` exit 0.
 - Cold/warm latency captured at `docs/diagnostics/LF5_REGRESSION_2026-05-28.md` — no regression past LF.4 baseline.
+
+## D-133 — LF.6 album-art surface: LF-only scope, cornered thumbnail, `albumArtData: Data?` schema (LF.6, 2026-05-28)
+
+**Context.** LF.5 persisted ID3 / Vorbis / MP4-atom artwork bytes alongside each cached LF entry as a sibling `artwork.bin` file. The bytes landed on disk but no UI surface consumed them — `PreviewAudio.extractArtwork(at:)` ran inside `analyzeAndPersist`; `PersistentStemCache.store(...)` wrote them; `PersistentStemCache.load(...)` returned them in `Entry.artworkData: Data?`. LF.6 surfaces them in the chrome.
+
+Pre-LF.6 the chrome had two separate surface gaps:
+
+1. **Gap A — every LF session rendered `—` for title.** `engine.currentTrack: TrackMetadata?` is the chrome's title source. The streaming track-change callback at [VisualizerEngine+Capture.swift:190](PhospheneApp/VisualizerEngine+Capture.swift:190) was the only writer; the LF path never published. So `TrackInfoCardView` rendered the placeholder `—` for the title row on every LF playback. Invisible to most users because the chrome auto-hides after 3 s before they read it.
+2. **Gap B — `TrackMetadata.artworkURL: URL?` exists in the schema but no code path ever populates it.** Streaming connectors don't surface artwork URLs even when the upstream API returns them.
+
+LF.6 addresses Gap A as a prerequisite (an artwork slot above a placeholder title row would be visually disorienting); Gap B is deferred to `LF.6.streaming` per decision (a) below.
+
+**Decisions** (Matt-approved at kickoff, 2026-05-28):
+
+**(a) Scope: LF-only at LF.6; streaming-path artwork deferred to LF.6.streaming.** Wiring Spotify Web API `album.images[]` + iTunes Search artwork URLs + an image-fetch chain + on-disk image cache is three subsystems worth of work vs. LF.6's single-surface change. The smallest atomic shipment that delivers real product value is "render LF artwork in the chrome." Streaming chrome stays text-only at LF.6 (artwork slot hidden when source is streaming AND no artwork present); `LF.6.streaming` will populate the same `currentTrackArtworkData` publisher from network-fetched bytes via a separate `StreamingArtworkURLResolver` + `StreamingArtworkFetcher` + `StreamingArtworkDiskCache` chain. Kickoff doc for the follow-up is on disk at `docs/prompts/LF6STREAMING_KICKOFF.md` (unexecuted at LF.6 close).
+
+**(b) Visual treatment: cornered thumbnail (48 × 48 pt) leading the text column.** Card grows from 320 pt max-width to 380 pt. Reads as a record sleeve adjacent to the track text — closest to Phosphene's "ghost chrome" register and the brand voice (Braun audio component). Alternatives considered and rejected:
+- **Stacked card** (square art on top, text below). Stronger "now playing" moment but takes more screen real estate; reads as more interruptive than the chrome's auto-hide register supports.
+- **Full-bleed backdrop** (heavily blurred art behind the card's text). Strongest visual statement but highest risk of text legibility regression — the existing `overlayBackdrop()` is calibrated for contrast, and full-bleed art would break that calibration in a way that's hard to tune across arbitrary user art.
+
+**(c) Schema: replace `TrackInfoDisplay.albumArtURL: URL?` with `albumArtData: Data?`.** The existing `albumArtURL` field on the view-model's display projection had been an unused `TODO(U.future): populate from MetadataPreFetcher` since U.6 (~10 months). LF.5's pipeline produces bytes, not URLs; `LF.6.streaming` will keep the same Data-publisher shape (network-fetched bytes will flow through the same `currentTrackArtworkData` publisher, decoded via `AlbumArtworkCache.image(for:cacheKey:)`). Clean break is preferred over keeping a parallel URL field. Alternatives considered and rejected:
+- **Parallel `albumArtURL` + `albumArtData` fields, view picks first non-nil.** Preserves the URL slot for streaming-path URL fetch later — but `LF.6.streaming` is set to feed the Data publisher directly (resolver + fetcher + disk cache produce bytes before the chrome ever sees them), so the URL slot would remain dead code.
+- **Decode to `SwiftUI.Image` in the view-model.** Fastest path to wire but couples view-model to AppKit decode + bypasses the cleanest test surface (view-model tests would need `Image` fixtures, which aren't comparable for cache-hit assertions).
+
+**(d) No-artwork fallback: `music.note.list` SF Symbol on a tinted background tile.** Matches `LocalSourceConnectionView`'s tile glyphs (the visual register the user has already seen in the connector picker). Restrained, on-brand. Alternatives considered and rejected:
+- **Hash-generated abstract pattern** (sigil-style per track). Visually distinctive but adds shader / canvas work — deferred to a future polish increment.
+- **Hide the slot entirely when art is missing.** Lowest visual signal — but in a mixed-art folder, the chrome geometry would shift on every artless track, which is more distracting than a consistent restrained glyph.
+
+**Out of scope (deferred).**
+
+- Streaming-path artwork fetch (covered by `LF.6.streaming`).
+- `TrackChangeAnimationView` boundary-card artwork (stays typographic per `.impeccable.md §3.6`).
+- `EndedView` replay-CTA thumbnail (stays text-only).
+- `Recents` submenu thumbnails (`NSMenuItem.image` work doesn't compose cleanly with the GAP E typographic refresh; menu-load latency on cache miss is a separate problem).
+- `PreparationProgressView` track-row artwork (artwork is extracted DURING `analyzeAndPersist` — not available at the moment preparation rows render).
+- Artwork extraction from the streaming-path's `PreviewAudio` (the 30-second mp3 stubs don't carry embedded artwork; different fetch chain).
+- Animation on artwork load / swap (the existing chrome opacity-animate-in is sufficient).
+- User-supplied artwork override (right-click → Set artwork…) — separate feature.
+
+**Verification.**
+
+- Engine 1360 / 1360 ✓ (1 known pre-existing flake; LF.5 baseline 1358 + 2 net regressions from re-running existing suites).
+- App 360 / 360 ✓ (LF.6 baseline 349 + 6 `AlbumArtworkCacheTests` + 5 `PlaybackChromeArtworkBindingTests`).
+- SwiftLint `--strict` clean on every touched file.
+- `Scripts/check_user_strings.sh` exit 0 / `Scripts/check_sample_rate_literals.sh` exit 0.
+- New file `AlbumArtworkCache.swift` registered in `project.pbxproj` across all four PBX sections (`PBXBuildFile`, `PBXFileReference`, `PBXGroup`, `PBXSourcesBuildPhase`); same for both test files.
+- Manual smoke (Matt-driven) pending — need a release-grade fixture with embedded artwork; LF.5 tempo fixtures all ship art-free per `ffprobe -select_streams v:0 -show_entries stream=codec_type`.
