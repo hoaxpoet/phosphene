@@ -71,6 +71,8 @@ struct PlaybackView: View {
         sessionManager: SessionManager,
         audioSignalStatePublisher: AnyPublisher<AudioSignalState, Never>,
         currentTrackPublisher: AnyPublisher<TrackMetadata?, Never>,
+        currentTrackArtworkDataPublisher: AnyPublisher<Data?, Never> =
+            Just(nil).eraseToAnyPublisher(),
         currentTrackIndexPublisher: AnyPublisher<Int?, Never> = Just(nil).eraseToAnyPublisher(),
         currentPresetNamePublisher: AnyPublisher<String?, Never>,
         livePlanPublisher: AnyPublisher<PlannedSession?, Never>,
@@ -91,6 +93,7 @@ struct PlaybackView: View {
         _chromeVM = StateObject(wrappedValue: PlaybackChromeViewModel(
             audioSignalStatePublisher: audioSignalStatePublisher,
             currentTrackPublisher: currentTrackPublisher,
+            currentTrackArtworkDataPublisher: currentTrackArtworkDataPublisher,
             currentTrackIndexPublisher: currentTrackIndexPublisher,
             currentPresetNamePublisher: currentPresetNamePublisher,
             livePlanPublisher: livePlanPublisher,

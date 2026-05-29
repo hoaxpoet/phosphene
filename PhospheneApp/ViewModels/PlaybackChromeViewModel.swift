@@ -42,8 +42,11 @@ import SwiftUI
 struct TrackInfoDisplay: Equatable {
     let title: String
     let artist: String
-    /// Art URL is nil in v1. TODO(U.future): populate from MetadataPreFetcher.
-    let albumArtURL: URL?
+    /// Raw album-artwork bytes (PNG / JPEG, depending on container) for the
+    /// live track, or nil when the source has no embedded artwork. Populated
+    /// from `VisualizerEngine.currentTrackArtworkData` for LF sessions
+    /// (LF.6). Streaming sessions stay nil until LF.6.streaming.
+    let albumArtData: Data?
 }
 
 /// Display-side projection of the active preset.
@@ -113,6 +116,10 @@ final class PlaybackChromeViewModel: ObservableObject {
     /// - Parameters:
     ///   - audioSignalStatePublisher: Emits `AudioSignalState` changes from the engine.
     ///   - currentTrackPublisher: Emits `TrackMetadata?` as Now Playing changes.
+    ///   - currentTrackArtworkDataPublisher: Emits raw album-artwork bytes for the live track
+    ///     (LF.6). Combined with `currentTrackPublisher` via `Publishers.CombineLatest` so
+    ///     `TrackInfoDisplay` carries both fields atomically. Defaults to `Just(nil)` for
+    ///     tests and pre-LF.6 callers.
     ///   - currentPresetNamePublisher: Emits the display preset name.
     ///   - livePlanPublisher: Emits `PlannedSession?` updates.
     ///   - reduceMotionPublisher: Emits effective reduce-motion state from `AccessibilityState`.
@@ -125,6 +132,8 @@ final class PlaybackChromeViewModel: ObservableObject {
     init(
         audioSignalStatePublisher: AnyPublisher<AudioSignalState, Never>,
         currentTrackPublisher: AnyPublisher<TrackMetadata?, Never>,
+        currentTrackArtworkDataPublisher: AnyPublisher<Data?, Never> =
+            Just(nil).eraseToAnyPublisher(),
         currentTrackIndexPublisher: AnyPublisher<Int?, Never> = Just(nil).eraseToAnyPublisher(),
         currentPresetNamePublisher: AnyPublisher<String?, Never>,
         livePlanPublisher: AnyPublisher<PlannedSession?, Never>,
@@ -158,16 +167,25 @@ final class PlaybackChromeViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        // Current track → TrackInfoDisplay.
-        currentTrackPublisher
+        // Current track + artwork → TrackInfoDisplay. LF.6: bind both
+        // publishers together via CombineLatest so the view sees title and
+        // artwork as one projection. The engine writes both fields back-to-
+        // back inside the same MainActor block (see
+        // `VisualizerEngine.currentTrackArtworkData` invariant); CombineLatest
+        // emits per-upstream change, so a track-advance briefly carries the
+        // previous track's artwork into the next emission — acceptable per
+        // the kickoff's "back-to-back" invariant since the second emission
+        // lands within sub-frame time and the chrome's opacity-animate
+        // covers it.
+        Publishers.CombineLatest(currentTrackPublisher, currentTrackArtworkDataPublisher)
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] meta in
+            .sink { [weak self] meta, artworkData in
                 guard let self else { return }
                 self.currentTrack = meta.map {
                     TrackInfoDisplay(
                         title: $0.title ?? "Unknown",
                         artist: $0.artist ?? "",
-                        albumArtURL: nil
+                        albumArtData: artworkData
                     )
                 }
                 self.refreshProgress()
