@@ -6,6 +6,55 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-05-28-x] LF.6 — Album-art display in PlaybackView chrome
+
+**Increment:** LF.6. **Status:** Shipped 2026-05-28. Forward progress (no defect).
+
+### What landed
+
+`TrackInfoCardView` now renders the LF-cached album artwork in a 48 × 48 pt cornered thumbnail leading the title/artist text column. The artwork bytes are the same `artwork.bin` siblings LF.5 already persists per-track — LF.6 is purely surfacing work, no new persistence.
+
+As a side effect, the chrome now shows real track titles for every LF session: pre-LF.6 the streaming-path track-change callback was the only writer of `engine.currentTrack`, so every LF playback rendered `—` for title. LF.6's L2 publishes `TrackMetadata` from `handleLocalFileReady` and `advanceLocalFileQueue` so the LF text column populates correctly.
+
+### What changed
+
+- **`PhospheneEngine/Sources/Session/LocalFilePreparing.swift`** — `LocalFilePrepResult` carries a new `artworkData: Data?` field, populated from both the persistent-cache hit (`entry.artworkData`) and the fresh-analysis path (`outcome.artwork`). Default-nil init param keeps existing test fixtures compiling.
+- **`PhospheneApp/VisualizerEngine.swift`** — new `@Published var currentTrackArtworkData: Data?`. **Invariant:** updated in the same MainActor tick as `currentTrack`, title-first then artwork-second, so chrome consumers can't briefly render the previous track's artwork against the new track's title (or vice versa).
+- **`PhospheneApp/VisualizerEngine+LocalFilePlayback.swift`** — new `applyLocalFileTrackState(identity:planIndex:)` helper consolidates the identity + orchestrator wire + chrome publish at both `handleLocalFileReady()` and `advanceLocalFileQueue(direction:)` sites. Synchronous `persistentStemCache.load(hash:)` lookup at publish time (~5–20 ms on warm OS file cache, bounded once per track change).
+- **`PhospheneApp/ViewModels/PlaybackChromeViewModel.swift`** — `TrackInfoDisplay.albumArtURL: URL?` → `albumArtData: Data?` (clean break — the URL field has been an unused `TODO(U.future)` since U.6). New `currentTrackArtworkDataPublisher` init param bound to `currentTrackPublisher` via `Publishers.CombineLatest` so the projection carries both fields.
+- **`PhospheneApp/Views/Playback/TrackInfoCardView.swift`** — redesigned as `HStack(.top, spacing: 12)` of artwork slot + text column. Slot is 48 × 48 pt with `cornerRadius(6)`, renders the decoded NSImage via `AlbumArtworkCache.image(for:cacheKey:)` when bytes are present, falls back to `music.note.list` SF Symbol on a tinted background tile otherwise. Card `maxWidth` grows 320 → 380. Slot is hidden entirely when the active session is streaming AND no artwork exists (text-only chrome unchanged until `LF.6.streaming` lands).
+- **`PhospheneApp/AlbumArtworkCache.swift` (new)** — process-wide `NSCache<NSString, NSImage>` keyed by `title|artist`, count limit 20 entries. Decodes via `NSImage(data:)`, downsizes to 64 pt max edge (128 px native @2x). `nonisolated(unsafe)` per Swift 6 strict concurrency — `NSCache` is Apple-documented thread-safe.
+- **`PhospheneApp/Views/Playback/PlaybackChromeView.swift`** + **`PlaybackView.swift`** + **`ContentView.swift`** — thread the new publisher + `isLocalFileSession` flag through to the card view.
+
+### Tests
+
+- **`PhospheneAppTests/AlbumArtworkCacheTests.swift` (new)** — 6 tests: decode + downsize cap, small-source pass-through, cache-hit returns same instance, distinct keys don't collide, malformed bytes return nil, empty bytes return nil.
+- **`PhospheneAppTests/PlaybackChromeArtworkBindingTests.swift` (new)** — 5 tests: artwork → display populates correctly, nil artwork → nil display, track advance updates both, art-having → art-free advance clears artwork, nil track collapses display even when artwork is non-nil.
+
+LF.5 persistent-cache round-trip is already covered by `PersistentStemCacheTests` ("Roundtrip with artwork persists sibling bytes" + 4 related); L1's `LocalFilePrepResult.artworkData` is a struct field that flows through unchanged.
+
+### Pre-flight decisions (Matt-approved)
+
+1. **Streaming-path artwork — deferred to LF.6.streaming.** LF.6 is the minimum atomic shipment: LF chrome shows artwork; streaming chrome stays text-only until a separate increment wires Spotify Web API + iTunes Search artwork-URL fetch. Kickoff doc on disk at `docs/prompts/LF6STREAMING_KICKOFF.md` (unexecuted at LF.6 close).
+2. **Visual treatment — cornered thumbnail.** 48 × 48 pt left of the text column. Stacked / full-bleed alternatives considered and deferred.
+3. **Schema — replace `albumArtURL: URL?` with `albumArtData: Data?`.** Clean break; the URL field had been an unused TODO since U.6. LF.6.streaming will feed the same Data publisher from network-fetched bytes.
+4. **Fallback glyph — `music.note.list` SF Symbol on tinted tile.** Matches the LocalSourceConnectionView register; hash-pattern sigil deferred to a future polish increment.
+
+### Verification
+
+- Engine: 1360 / 1360 ✓ (1 known pre-existing flake).
+- App: 360 / 360 ✓ (LF.6 baseline + 6 AlbumArtworkCacheTests + 5 PlaybackChromeArtworkBindingTests).
+- SwiftLint `--strict` clean on all touched files.
+- `Scripts/check_user_strings.sh` + `Scripts/check_sample_rate_literals.sh` exit 0.
+
+Manual smoke (Matt-driven): pending — open a 2-track folder with art-having tracks (LF.5 tempo fixtures don't carry art per `ffprobe`; use any release-grade m4a / mp3 to verify). Expected: top-left chrome shows artwork + real title; Next/Prev updates artwork in the same frame as title; streaming sessions render unchanged.
+
+### Follow-up
+
+- **`LF.6.streaming`** — Spotify Web API `album.images[]` capture in `SpotifyWebAPIConnector` + iTunes Search artwork URL fallback + URLSession fetcher + on-disk byte cache under `~/Library/Caches/`. Kickoff doc on disk at `docs/prompts/LF6STREAMING_KICKOFF.md`.
+
+---
+
 ## [dev-2026-05-28-w] LF.5.fix.3 — Folder-pick race cluster (BUG-023 A/B/C)
 
 **Increment:** LF.5.fix.3. **Status:** Resolved 2026-05-28. P1 — multi-increment fix per CLAUDE.md §Defect Handling Protocol (instrumentation already on disk via BUG-006.1 + LF.5.fix.2 WIRING breadcrumbs; diagnosis + B + A + C as separate commits).

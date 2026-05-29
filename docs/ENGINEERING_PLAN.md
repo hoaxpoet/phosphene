@@ -32,6 +32,37 @@ Test infrastructure: swift-testing + XCTest across unit, integration, regression
 
 ## Recently Completed
 
+### Increment LF.6 — Album-art display in PlaybackView chrome ✅ (2026-05-28)
+
+LF.5 lands the artwork *bytes* on disk (`artwork.bin` siblings per cached track). LF.6 surfaces them in the chrome: `TrackInfoCardView` gains a 48 × 48 pt cornered thumbnail leading the existing title/artist text column, populated from the engine's new `currentTrackArtworkData` publisher. Streaming-path artwork is deferred to a separate `LF.6.streaming` increment (kickoff doc on disk at `docs/prompts/LF6STREAMING_KICKOFF.md`, unexecuted at LF.6 close) — the streaming chrome stays text-only until that lands.
+
+**Side-effect: closes the "—" placeholder gap.** Pre-LF.6 the LF path never wrote `engine.currentTrack`, so every LF session rendered `—` for title. LF.6's L2 publishes a `TrackMetadata` projection from the cached `TrackIdentity` (title / artist / album / duration) at LF session start and every track advance — title now renders correctly.
+
+**Files touched.**
+
+- **`PhospheneEngine/Sources/Session/LocalFilePreparing.swift`** — `LocalFilePrepResult.artworkData: Data?` (new field, default-nil init param).
+- **`PhospheneApp/VisualizerEngine.swift`** — `@Published var currentTrackArtworkData: Data?`. Invariant: updates in the same MainActor tick as `currentTrack`, title-first then artwork-second.
+- **`PhospheneApp/VisualizerEngine+LocalFilePlayback.swift`** — `applyLocalFileTrackState(identity:planIndex:)` helper at both `handleLocalFileReady()` and `advanceLocalFileQueue(direction:)` sites; `lfPersistentArtworkData(for:)` synchronous cache lookup; `publishLocalFileTrackSurface(identity:)` two-write helper.
+- **`PhospheneApp/ViewModels/PlaybackChromeViewModel.swift`** — `TrackInfoDisplay.albumArtURL: URL?` replaced with `albumArtData: Data?`; new `currentTrackArtworkDataPublisher` init param bound via `Publishers.CombineLatest` with the track publisher.
+- **`PhospheneApp/Views/Playback/TrackInfoCardView.swift`** — redesigned as `HStack(.top, spacing: 12)` of 48 × 48 pt artwork slot + text column. Slot is hidden for streaming sessions with no artwork; renders fallback `music.note.list` glyph for LF sessions with no embedded art. Card `maxWidth` 320 → 380.
+- **`PhospheneApp/AlbumArtworkCache.swift`** *(new)* — process-wide `NSCache<NSString, NSImage>`, 20-entry cap, keyed by `title|artist`. Decode via `NSImage(data:)`, downsize to 64 pt max edge (128 px native @2x).
+- **`PhospheneApp/Views/Playback/PlaybackChromeView.swift` + `PlaybackView.swift` + `ContentView.swift`** — thread the new publisher + `isLocalFileSession` flag through.
+
+**Tests.**
+
+- **`PhospheneAppTests/AlbumArtworkCacheTests.swift` (new)** — 6 tests: large-source downsize cap, small-source pass-through, cache-hit returns same instance, distinct keys don't collide, malformed bytes nil, empty bytes nil. Stand-alone via synthesised PNG fixtures.
+- **`PhospheneAppTests/PlaybackChromeArtworkBindingTests.swift` (new)** — 5 tests covering the `CombineLatest` binding: bytes populate display, nil leaves display nil, track advance updates both fields, art-having → art-free advance clears artwork, nil track collapses display even when artwork is non-nil.
+
+LF.5's persistent-cache round-trip is already covered by `PersistentStemCacheTests` ("Roundtrip with artwork persists sibling bytes" + 4 related); L1's `LocalFilePrepResult.artworkData` plumbing is a struct field that flows through unchanged.
+
+**Pre-flight decisions** (sign-off at kickoff, documented in D-133): (a) streaming-path artwork deferred to `LF.6.streaming`; (b) cornered-thumbnail visual treatment over stacked or full-bleed; (c) `albumArtData: Data?` replaces the unused `albumArtURL: URL?` TODO field; (d) `music.note.list` SF Symbol fallback over hash-pattern sigil or hidden-slot variants.
+
+**Verification.** Engine 1360 + 1 known pre-existing flake / App 360 / SwiftLint --strict clean / `Scripts/check_user_strings.sh` + `check_sample_rate_literals.sh` exit 0. Manual smoke pending Matt's confirmation (need a release-grade fixture with embedded art — LF.5 tempo fixtures all ship art-free per `ffprobe`).
+
+**Docs touched.** `docs/RELEASE_NOTES_DEV.md` (`[dev-2026-05-28-x]`), `docs/DECISIONS.md` (D-133), `docs/ARCHITECTURE.md` (Session Preparation LF.6 sub-bullet + Key Types note on `TrackMetadata.artworkURL`), this entry.
+
+**Follow-up.** `LF.6.streaming` (Spotify Web API `album.images[]` capture + iTunes Search fallback + URLSession fetcher + `~/Library/Caches/` byte cache); kickoff doc already on disk at `docs/prompts/LF6STREAMING_KICKOFF.md`.
+
 ### Increment LF.5.fix.3 — Folder-pick race cluster (BUG-023 A/B/C) ✅ (2026-05-28)
 
 Three concurrency bugs in `SessionManager.startLocalFiles` surfaced during LF.5.fix.2 manual smoke verification (session `2026-05-28T20-57-46Z`). All three were symptoms of the same upstream defect: when the user picks a second folder while the first folder's preparation is still running, the cancel-then-restart path leaves orphaned state machines and racing tasks. Multi-increment fix per CLAUDE.md §Defect Handling Protocol.
