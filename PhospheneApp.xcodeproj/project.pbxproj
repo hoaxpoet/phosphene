@@ -62,6 +62,7 @@
 		P10005 /* OrchestratorWiringRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20005; };
 		P10006 /* HandleLocalFileReadyIdempotencyRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20006; };
 		P10007 /* AlbumArtworkCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20007; };
+		P10008 /* PlaybackChromeArtworkBindingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20008; };
 		A10003 /* PhospheneEngine in Frameworks */ = {isa = PBXBuildFile; productRef = A80001; };
 		A10010 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20010; };
 		A10011 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20011; };
@@ -233,6 +234,7 @@
 		P20005 /* OrchestratorWiringRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrchestratorWiringRegressionTests.swift; sourceTree = "<group>"; };
 		P20006 /* HandleLocalFileReadyIdempotencyRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandleLocalFileReadyIdempotencyRegressionTests.swift; sourceTree = "<group>"; };
 		P20007 /* AlbumArtworkCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumArtworkCacheTests.swift; sourceTree = "<group>"; };
+		P20008 /* PlaybackChromeArtworkBindingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackChromeArtworkBindingTests.swift; sourceTree = "<group>"; };
 		O20007 /* DarkVibrancyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DarkVibrancyView.swift; sourceTree = "<group>"; };
 		A20004 /* PhospheneApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhospheneApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20005 /* PhospheneEngine */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = PhospheneEngine; path = PhospheneEngine; sourceTree = "<group>"; };
@@ -731,6 +733,7 @@
 				P20005 /* OrchestratorWiringRegressionTests.swift */,
 				P20006 /* HandleLocalFileReadyIdempotencyRegressionTests.swift */,
 				P20007 /* AlbumArtworkCacheTests.swift */,
+				P20008 /* PlaybackChromeArtworkBindingTests.swift */,
 			);
 			path = PhospheneAppTests;
 			sourceTree = "<group>";
@@ -1023,6 +1026,7 @@
 				P10005 /* OrchestratorWiringRegressionTests.swift in Sources */,
 				P10006 /* HandleLocalFileReadyIdempotencyRegressionTests.swift in Sources */,
 				P10007 /* AlbumArtworkCacheTests.swift in Sources */,
+				P10008 /* PlaybackChromeArtworkBindingTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
