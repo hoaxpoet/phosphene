@@ -65,7 +65,7 @@ struct TrackInfoCardView: View {
     private var artworkSlot: some View {
         Group {
             if let data = trackInfo?.albumArtData,
-               let image = NSImage(data: data) {
+               let image = AlbumArtworkCache.image(for: data, cacheKey: artworkCacheKey) {
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
@@ -77,6 +77,14 @@ struct TrackInfoCardView: View {
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .accessibilityIdentifier(Self.artworkSlotID)
         .accessibilityHidden(true)
+    }
+
+    /// Cache key for `AlbumArtworkCache`. `title|artist` is unique enough at
+    /// LF.5's content-hashed cache layer (the bytes come from a stable
+    /// `local:sha256:` entry); two LF tracks can't collide unless their tags
+    /// are byte-identical, which would also mean their visual identity is.
+    private var artworkCacheKey: String {
+        (trackInfo?.title ?? "") + "|" + (trackInfo?.artist ?? "")
     }
 
     @ViewBuilder
