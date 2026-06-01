@@ -5,7 +5,9 @@ real-music-driven renders). Source pack: projectM-visualizer/presets-cream-of-th
 Render harness: butterchurn + headless Chrome (built-in presets only — the runtime
 .milk converter renders raw directory presets poorly; see session notes).
 
-## Top pick (lead candidate)
+## Top pick → now "Dragon Bloom" (IN PROGRESS — see DRAGON_BLOOM_PLAN.md)
+
+Matt chose **$$$ Royal - Mashup (220)** to build FIRST (faithful, named "Dragon Bloom") — fills the glowsticks/feedback register, distinct from the catalog. fata morgana (below) deferred as a later FFO-register sibling.
 - **martin [shadow harlequins shape code] - fata morgana** — reflective iridescent
   water + aurora sky + horizon + stars (mirage seascape). Maps to Ferrofluid Ocean's
   register (mirror-reflects-procedural-sky + iridescence + aurora) — fidelity is
