@@ -2,8 +2,9 @@
 // Used as a cache key throughout the session preparation pipeline.
 //
 // Equality and hashing are based on the seven identity fields only.
-// `spotifyPreviewURL` is a resolution hint that does NOT participate in
-// equality or hashing — it is transparent to the cache key contract.
+// `spotifyPreviewURL` and `spotifyArtworkURL` are resolution hints that do
+// NOT participate in equality or hashing — they are transparent to the
+// cache key contract.
 
 import Foundation
 
@@ -18,8 +19,11 @@ import Foundation
 /// `spotifyPreviewURL` is an optional hint field that carries the 30-second
 /// preview URL provided directly by the Spotify Web API. When present,
 /// `PreviewResolver` uses it without making an iTunes Search API request.
-/// This field is excluded from `Equatable` and `Hashable` so it does not
-/// affect the cache key contract.
+/// `spotifyArtworkURL` is an optional hint field that carries the
+/// highest-resolution album-art URL from `album.images[0].url` (LF.6.streaming).
+/// `StreamingArtworkURLResolver` uses it without falling back to iTunes
+/// Search. Both fields are excluded from `Equatable` and `Hashable` so they
+/// do not affect the cache key contract.
 public struct TrackIdentity: Sendable, Codable {
 
     // MARK: - Required Fields
@@ -58,10 +62,20 @@ public struct TrackIdentity: Sendable, Codable {
     /// Search API for Spotify tracks. Not part of the cache key.
     public let spotifyPreviewURL: URL?
 
+    /// Spotify-provided highest-resolution album-art URL, or `nil` if absent.
+    ///
+    /// Populated by `SpotifyWebAPIConnector` from `album.images[0].url` in the
+    /// `/items` response (Spotify returns images in descending size order, so
+    /// index 0 is always the largest). `StreamingArtworkURLResolver` uses this
+    /// to bypass iTunes Search for Spotify tracks (LF.6.streaming). Not part
+    /// of the cache key.
+    public let spotifyArtworkURL: URL?
+
     // MARK: - Codable
 
-    /// Excludes `spotifyPreviewURL` from the serialized form — it is a resolution
-    /// hint, not a stable identity field, and need not survive encoding round-trips.
+    /// Excludes `spotifyPreviewURL` and `spotifyArtworkURL` from the serialized
+    /// form — they are resolution hints, not stable identity fields, and need
+    /// not survive encoding round-trips.
     private enum CodingKeys: String, CodingKey {
         case title, artist, album, duration, appleMusicID, spotifyID, musicBrainzID
     }
@@ -76,6 +90,7 @@ public struct TrackIdentity: Sendable, Codable {
         spotifyID = try container.decodeIfPresent(String.self, forKey: .spotifyID)
         musicBrainzID = try container.decodeIfPresent(String.self, forKey: .musicBrainzID)
         spotifyPreviewURL = nil  // hint is never persisted
+        spotifyArtworkURL = nil  // hint is never persisted
     }
 
     // MARK: - Init
@@ -91,6 +106,7 @@ public struct TrackIdentity: Sendable, Codable {
     ///   - spotifyID: Spotify track ID (optional).
     ///   - musicBrainzID: MusicBrainz recording ID (optional).
     ///   - spotifyPreviewURL: Spotify-provided preview URL hint (optional, not part of identity).
+    ///   - spotifyArtworkURL: Spotify-provided album-art URL hint (optional, not part of identity).
     public init(
         title: String,
         artist: String,
@@ -99,7 +115,8 @@ public struct TrackIdentity: Sendable, Codable {
         appleMusicID: String? = nil,
         spotifyID: String? = nil,
         musicBrainzID: String? = nil,
-        spotifyPreviewURL: URL? = nil
+        spotifyPreviewURL: URL? = nil,
+        spotifyArtworkURL: URL? = nil
     ) {
         self.title = title
         self.artist = artist
@@ -109,12 +126,13 @@ public struct TrackIdentity: Sendable, Codable {
         self.spotifyID = spotifyID
         self.musicBrainzID = musicBrainzID
         self.spotifyPreviewURL = spotifyPreviewURL
+        self.spotifyArtworkURL = spotifyArtworkURL
     }
 }
 
 // MARK: - Equatable
 
-/// Identity-only equality: `spotifyPreviewURL` is excluded.
+/// Identity-only equality: `spotifyPreviewURL` and `spotifyArtworkURL` are excluded.
 extension TrackIdentity: Equatable {
     public static func == (lhs: TrackIdentity, rhs: TrackIdentity) -> Bool {
         lhs.title == rhs.title &&
@@ -129,7 +147,7 @@ extension TrackIdentity: Equatable {
 
 // MARK: - Hashable
 
-/// Identity-only hash: `spotifyPreviewURL` is excluded.
+/// Identity-only hash: `spotifyPreviewURL` and `spotifyArtworkURL` are excluded.
 extension TrackIdentity: Hashable {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(title)

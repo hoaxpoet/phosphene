@@ -69,6 +69,32 @@ struct SpotifyItemsSchemaTests {
                 "Track B null preview_url must yield nil (no fallback fabrication)")
         #expect(tracks[2].spotifyPreviewURL?.absoluteString == "https://example.com/preview-c.mp3")
     }
+
+    @Test("album.images[0].url is captured inline in TrackIdentity.spotifyArtworkURL (LF.6.streaming-S1)")
+    func test_artworkURLCapturedInline() async throws {
+        let fixtureURL = URL(fileURLWithPath: String(#filePath))
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/spotify_items_response.json")
+        let data = try Data(contentsOf: fixtureURL)
+
+        let connector = SpotifyWebAPIConnector(tokenProvider: FixedTokenProvider())
+        let response = try makeOK200(
+            url: "https://api.spotify.com/v1/playlists/abc/items"
+        )
+        connector.networkFetcher = { _ in (data, response) }
+
+        let tracks = try await connector.connect(playlistID: "abc")
+        #expect(tracks.count == 3)
+        // Track A has 3 images; the connector must pick index 0 (largest).
+        #expect(tracks[0].spotifyArtworkURL?.absoluteString == "https://i.scdn.co/image/album-a-640.jpg",
+                "Track A artwork URL must be the highest-res (index 0) image")
+        // Track B has an empty images array → nil (no fabrication).
+        #expect(tracks[1].spotifyArtworkURL == nil,
+                "Track B empty images[] must yield nil spotifyArtworkURL")
+        // Track C has a single image.
+        #expect(tracks[2].spotifyArtworkURL?.absoluteString == "https://i.scdn.co/image/album-c-640.jpg")
+    }
 }
 
 // MARK: - Helpers

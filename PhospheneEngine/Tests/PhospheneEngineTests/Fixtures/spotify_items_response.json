@@ -5,7 +5,14 @@
       "item": {
         "name": "Track A",
         "artists": [{ "name": "Artist 1" }],
-        "album": { "name": "Album 1" },
+        "album": {
+          "name": "Album 1",
+          "images": [
+            { "url": "https://i.scdn.co/image/album-a-640.jpg", "height": 640, "width": 640 },
+            { "url": "https://i.scdn.co/image/album-a-300.jpg", "height": 300, "width": 300 },
+            { "url": "https://i.scdn.co/image/album-a-64.jpg", "height": 64, "width": 64 }
+          ]
+        },
         "id": "track-a-id",
         "preview_url": "https://example.com/preview-a.mp3",
         "duration_ms": 180000
@@ -16,7 +23,10 @@
       "item": {
         "name": "Track B",
         "artists": [{ "name": "Artist 2" }],
-        "album": { "name": "Album 2" },
+        "album": {
+          "name": "Album 2",
+          "images": []
+        },
         "id": "track-b-id",
         "preview_url": null,
         "duration_ms": 200000
@@ -27,7 +37,12 @@
       "item": {
         "name": "Track C",
         "artists": [{ "name": "Artist 3" }],
-        "album": { "name": "Album 3" },
+        "album": {
+          "name": "Album 3",
+          "images": [
+            { "url": "https://i.scdn.co/image/album-c-640.jpg", "height": 640, "width": 640 }
+          ]
+        },
         "id": "track-c-id",
         "preview_url": "https://example.com/preview-c.mp3",
         "duration_ms": 220000
