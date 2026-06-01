@@ -157,7 +157,7 @@ The capability gaps above shape what preset families are buildable today, what i
 ### Buildable today (no engine work)
 
 - **Direct-fragment 2D SDF presets that read FeatureVector + StemFeatures + SpectralHistory** (instrument-family diagnostics like Spectral Cartograph; minimal abstract presets like Plasma, Waveform, Nebula).
-- **Direct-fragment + mv_warp presets** that need temporal feedback accumulation but no per-pass compositing (Volumetric Lithograph, Starburst, Gossamer's current architecture).
+- **Direct-fragment + mv_warp presets** that need temporal feedback accumulation but no per-pass compositing (Volumetric Lithograph, Starburst, Gossamer's current architecture, **Dragon Bloom Spike 1** — first preset using `passes: ["direct", "mv_warp"]` explicitly, polar-waveform brush accumulated through the warp + decay chain; D-135).
 - **Ray-march scene presets** with deferred PBR + IBL + SSGI + post-process (Glass Brutalist, Kinetic Sculpture, Test Sphere). These already get fog, IBL ambient, hero specular, optional SSGI for free.
 - **Mesh-shader / particle / ICB presets** for any concept where the visual element is geometry-instanced (Stalker; future murmuration variants).
 

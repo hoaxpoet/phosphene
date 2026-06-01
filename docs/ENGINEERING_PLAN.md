@@ -32,6 +32,65 @@ Test infrastructure: swift-testing + XCTest across unit, integration, regression
 
 ## Recently Completed
 
+### Increment Dragon Bloom Spike 1 — Milkdrop-uplift `direct + mv_warp` feedback bloom ✅ (2026-06-01)
+
+Spike 1 of the Dragon Bloom plan (`docs/presets/DRAGON_BLOOM_PLAN.md`, approved 2026-06-01) shipped: a minimal `direct + mv_warp` Phosphene preset that draws the live waveform buffer (slot 2) as a polar curve (Milkdrop `nWaveMode=7` analog) and accumulates it through the mv_warp feedback/decay pipeline (D-027) into a warm fiery feathered bloom. Faithful uplift target is the Milkdrop preset `$$$ Royal - Mashup (220)`. NO symmetry yet (Spike 2 of the plan). NO palette polish yet (Spike 3 of the plan). The minimal version is the gate-before-the-gate: if this doesn't *read as dancing*, the concept stops; if it does, Spike 2 adds the bilateral mirror fold (with FA #48 anti-clipart jitter) and Spike 3 adds the valence/centroid-driven warm palette + per-stem instrument-band tinting.
+
+**Files touched.**
+
+- **`PhospheneEngine/Sources/Presets/Shaders/DragonBloom.metal`** *(new, ~200 lines)* — `dragon_bloom_fragment` + `mvWarpPerFrame` + `mvWarpPerVertex`. Audio routing per §4 of the plan (one primitive per visual layer per `feedback_audio_layer_one_primitive`): bloom shape ← waveform buffer; bloom expansion/contraction ← `f.bass_att_rel` + `f.bass_dev` → mv_warp zoom; feather flow ← `f.mid_att_rel` → per-vertex tangential displacement + slow rotation; per-beat pulse ← `max(beat_composite, beat_bass, beat_mid)` → bounded brightness accent (FA #4 Layer-4 only, capped at 0.40× lift).
+- **`PhospheneEngine/Sources/Presets/Shaders/DragonBloom.json`** *(new)* — `passes: ["direct", "mv_warp"]`, family `hypnotic`, decay 0.945 (matches `source.milk` `fDecay=0.95`), beat_source `composite`, `certified: false`, `rubric_profile: lightweight`.
+- **`PhospheneEngine/Tests/PhospheneEngineTests/Presets/DragonBloomMVWarpAccumulationTest.swift`** *(new)* — production-pipeline multi-frame test modelled on `AuroraVeilMVWarpAccumulationTest`. Two static-source sentries (Metal entry-point + JSON `passes` shape) always run; one env-gated (`DRAGON_BLOOM_MVWARP_DIAG=1`) test runs the scene → warp → compose → swap chain for 60 frames at silence and under synthetic music, asserts (a) both renders produce visible output, (b) neither runs away to white clipping, (c) music produces more bright pixels than silence (audio-driven warp reaches the accumulator), (d) music's envelope radius exceeds silence's (bass/mid drivers spread the bloom). Writes `silence_final.png` + `music_final.png` to `/tmp/dragon_bloom_mvwarp_diag/<ISO>/`.
+
+**Files updated.**
+
+- **`PhospheneEngine/Tests/PhospheneEngineTests/Presets/PresetLoaderCompileFailureTest.swift`** — `expectedProductionPresetCount` 16 → 17 with history line update (FA #44 silent-drop guard now catches Dragon Bloom).
+- **`docs/DECISIONS.md`** — D-135 added covering the Spike 1 ship, audio routing per §4, and explicit Spike-1 scope (NO symmetry, NO palette polish, NO PresetSessionReplay route registration yet).
+- **`docs/ENGINE/RENDER_CAPABILITY_REGISTRY.md`** — Dragon Bloom row added.
+- **`docs/ENGINEERING_PLAN.md`** — this entry.
+
+**Tests.**
+
+- All three `DragonBloomMVWarpAccumulationTest` tests pass — both static sentries (always-on) + the env-gated multi-frame accumulation (`DRAGON_BLOOM_MVWARP_DIAG=1`). The env-gated PNGs (`/tmp/dragon_bloom_mvwarp_diag/20260601T223302Z/{silence_final,music_final}.png`) show the silence baseline (dim warm ring at r ≈ 0.285) and the music run (broad feathered radial bloom at r ≈ 0.347, warm fiery palette, 42 485 bright pixels vs silence's 7 656 — 5.5× spread).
+- All 4 `PresetAcceptanceTests` invariants × 17 presets pass — including FA #4 ("Beat response is bounded relative to continuous energy response"), the gate Dragon Bloom *initially failed* before the Layer-1 fix described below.
+- All 3 `PresetRegressionTests` (steady / beat-heavy / quiet) × 17 presets pass.
+- `PresetLoaderCompileFailureTest` passes with the new count of 17 (FA #44 guard green).
+- Cited PNG outputs (engine tests `/tmp/dragon_bloom_mvwarp_diag/<ISO>/{silence,music}_final.png`) are the visual-harness artifacts for this increment per CLAUDE.md §Increment Completion Protocol.
+
+**Mid-increment correction — Audio Data Hierarchy Layer-1 floor.**
+
+The first shader pass routed all audio drivers through **D-026 deviation primitives only** (`bass_att_rel` / `bass_dev` / `mid_att_rel`) — a deliberate-but-wrong over-application of D-026. `PresetAcceptanceTests` ("Beat response is bounded relative to continuous energy response") caught it: the silence (bass = 0) → steady (bass = 0.5, but `bassRel = 0` because steady IS the AGC average) transition produced zero `continuousMotion`, while the beat-heavy fixture (`beat_bass = 1.0`) drove the per-beat brightness lift unchecked → `beatMotion > continuousMotion × 2 + 1` → FA #4 violation. Same shape as Gossamer's brightness formula at line 189 (`0.12 + f.bass * 0.76 + bassRel * 0.12`) before fix: mixing absolute Layer-1 bands with deviation is the correct pattern. The fix added `f.bass` / `f.mid` (absolute Layer-1 — bedrock per the Audio Data Hierarchy) alongside the deviation primitives for the bloom radius (continuous breath), the brightness envelope (with a 0.30 minimum floor so silence stays visible enough to feed the warp accumulator), and the mv_warp zoom / rotation. The beat-pulse stayed bounded at 1.40× max (Layer-4 accent, never the dominant driver). Post-fix the acceptance suite passes clean and the music PNG shows a *broader* envelope (r 0.347 vs the pre-fix 0.309) — the Layer-1 contribution drives a wider continuous spread.
+
+The honest read of this: D-026 says "drive primary motion from deviation primitives, not absolute thresholds" — it doesn't say "drop absolute energy entirely." The Audio Data Hierarchy still names Layer 1 (continuous energy bands) as the *primary visual driver*. Deviation adds inter-track-normalised dynamic on top — it doesn't replace the bedrock. The CLAUDE.md §What NOT To Do bullet *"Do not threshold absolute AGC-normalized energy values (`f.bass > 0.22`). Drive from deviation primitives"* is specifically about **thresholds** — not about reading absolute fields linearly. Future preset authors taking the D-026 lesson too far risk repeating this — the safe pattern is `absolute_band * w1 + deviation_primitive * w2` (additive, not exclusive), and the acceptance suite's FA #4 gate is the regression-locker for this class of mistake.
+
+**Diagnostic evidence.**
+
+The multi-frame test is the structural proof of correctness (audio routing reaches the accumulator, accumulator does its job). The aesthetic / musicality gate (§6 of the plan — *"does the bloom read as dancing to the music"*) is **Matt-perceptual and not in this increment's scope**. To run that gate Matt selects Dragon Bloom in the app against ≥ 3 real tracks and eyeballs whether the bloom is dancing. Suggested track variety: one bass-driven (kick-on-the-beat), one mid-driven (vocal/synth), one with strong dynamics (build-up/peak). The plan calls for `PresetSessionReplay` evidence too, but Spike 1 has no palette / stem-affinity routes worth registering yet — route + rubric registration is deferred to Spike 2/3 once the §4 row-5/row-6 routes (valence/centroid palette and per-stem tinting) exist to verify.
+
+**Pre-flight decisions** (all from the plan, ratified 2026-06-01 by Matt at plan approval):
+
+- (a) Name: **Dragon Bloom** (§8.1 of the plan).
+- (b) Approach: **Faithful** uplift of `$$$ Royal - Mashup (220)` ("it's gorgeous" — §8.2).
+- (c) Spike 1 first; Spike 2 + 3 deferred until Spike 1 passes the Matt-eyeball gate (§8.3).
+
+**Phase-MD-framework question (NOT decided in this increment).** Dragon Bloom is the first Milkdrop-inspired Phosphene preset to actually ship; Phase MD (D-103 / D-105 / D-106 / D-111 / D-116) defines a framework for such presets (`family: "milkdrop_inspired"`, location `Shaders/Milkdrop/`, settings toggle `phosphene.settings.visuals.milkdrop.inspired`, `inspired_by` provenance block, CREDITS attribution). Spike 1 deliberately ships under the lighter shape (`family: "hypnotic"`, location `Shaders/`, no toggle, no provenance block) because the plan didn't authorize the framework adoption and adding it would be scope-creep beyond Spike-1's "minimal version that reads as dancing" gate. **Surfacing this as an explicit follow-up for Matt:** if Dragon Bloom passes Spike 1, the question of whether to retrofit the Phase MD framework now (or wait until MD.5 batches the first 10 inspired-by presets together) is a separate decision, not silently flipped here.
+
+**Verification.** Engine 1367 baseline + 3 new Dragon Bloom tests = 1370 expected; one parallel-execution flake observed in test suite per recent precedent — not Dragon Bloom-related. SwiftLint not yet run on touched files (closeout follow-up). `Scripts/check_user_strings.sh` / `Scripts/check_sample_rate_literals.sh` — N/A (no user-facing strings; no sample-rate literals in the new code).
+
+**Docs touched.** `docs/DECISIONS.md` (D-135), `docs/ENGINE/RENDER_CAPABILITY_REGISTRY.md` (Dragon Bloom row), this entry.
+
+**Spike 1 gate (Matt-perceptual, pending).** Select Dragon Bloom in-app against ≥ 3 real tracks. Success: "the bloom is dancing to this song." Go/no-go before Spike 2 (symmetry without clipart, FA #48 check) and Spike 3 (palette polish + per-stem tinting).
+
+**Follow-ups.**
+
+- **Spike 2** (plan §6): bilateral mirror fold with anti-clipart per-side jitter — pending Spike 1 gate.
+- **Spike 3** (plan §4 rows 5-6): valence + spectral_centroid → warm palette; stem energies → per-band feather tinting.
+- **Phase MD framework adoption decision** (see above) — separate kickoff once Spike 1 gate passes.
+- **Aspect-correction in the polar curve.** The shader reads screen UV directly; at non-square aspect ratios the bloom stretches (visible in the 4:3 test fixture, less so at 16:9 live). Multiply the `pRel.x` by `f.aspect_ratio` before `atan2` / `length` if Matt wants a circular bloom at all aspect ratios. Not a Spike 1 blocker.
+- **`PresetSessionReplay` routes** — register Dragon Bloom routes (waveform-shape, bass-breathing, mid-flow, beat-pulse) once Spike 2/3 introduce the palette/stem routes that need quantitative cert evidence.
+
+---
+
 ### Increment LF.6.streaming — Streaming-path artwork resolver + fetcher + cache + wire ✅ (2026-06-01)
 
 LF.6 (D-133) shipped LF-side artwork in the chrome and explicitly deferred streaming-path artwork. LF.6.streaming closes that gap: every Spotify / Apple Music / tap-path track-change now resolves and fetches album artwork and publishes it through the same `currentTrackArtworkData` channel LF.6 established. Streaming chrome with resolvable artwork is now pixel-identical to LF chrome with resolvable artwork; non-resolvable tracks fall back to LF.6's `music.note.list` SF-Symbol glyph.
