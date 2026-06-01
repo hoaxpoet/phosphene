@@ -50,6 +50,7 @@
 		Q10009 /* AlbumArtworkCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20009; };
 		Q10010 /* StreamingArtworkDiskCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20010; };
 		Q10011 /* StreamingArtworkFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20011; };
+		Q10012 /* VisualizerEngine+StreamingArtwork.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20012; };
 		O10001 /* DashboardOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20001; };
 		O10002 /* DashboardCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20002; };
 		O10003 /* DashboardRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20003; };
@@ -67,6 +68,7 @@
 		P10008 /* PlaybackChromeArtworkBindingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20008; };
 		P10009 /* StreamingArtworkDiskCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20009; };
 		P10010 /* StreamingArtworkFetcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20010; };
+		P10011 /* StreamingArtworkPublishingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20011; };
 		A10003 /* PhospheneEngine in Frameworks */ = {isa = PBXBuildFile; productRef = A80001; };
 		A10010 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20010; };
 		A10011 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20011; };
@@ -227,6 +229,7 @@
 		Q20009 /* AlbumArtworkCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumArtworkCache.swift; sourceTree = "<group>"; };
 		Q20010 /* StreamingArtworkDiskCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingArtworkDiskCache.swift; sourceTree = "<group>"; };
 		Q20011 /* StreamingArtworkFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingArtworkFetcher.swift; sourceTree = "<group>"; };
+		Q20012 /* VisualizerEngine+StreamingArtwork.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+StreamingArtwork.swift"; sourceTree = "<group>"; };
 		O20001 /* DashboardOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardOverlayView.swift; sourceTree = "<group>"; };
 		O20002 /* DashboardCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardCardView.swift; sourceTree = "<group>"; };
 		O20003 /* DashboardRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardRowView.swift; sourceTree = "<group>"; };
@@ -243,6 +246,7 @@
 		P20008 /* PlaybackChromeArtworkBindingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackChromeArtworkBindingTests.swift; sourceTree = "<group>"; };
 		P20009 /* StreamingArtworkDiskCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingArtworkDiskCacheTests.swift; sourceTree = "<group>"; };
 		P20010 /* StreamingArtworkFetcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingArtworkFetcherTests.swift; sourceTree = "<group>"; };
+		P20011 /* StreamingArtworkPublishingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingArtworkPublishingTests.swift; sourceTree = "<group>"; };
 		O20007 /* DarkVibrancyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DarkVibrancyView.swift; sourceTree = "<group>"; };
 		A20004 /* PhospheneApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhospheneApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20005 /* PhospheneEngine */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = PhospheneEngine; path = PhospheneEngine; sourceTree = "<group>"; };
@@ -467,6 +471,7 @@
 				Q20009 /* AlbumArtworkCache.swift */,
 				Q20010 /* StreamingArtworkDiskCache.swift */,
 				Q20011 /* StreamingArtworkFetcher.swift */,
+				Q20012 /* VisualizerEngine+StreamingArtwork.swift */,
 				A20040 /* VisualizerEngine+Orchestrator.swift */,
 				N20006 /* VisualizerEngine+WiringLogs.swift */,
 				N20007 /* VisualizerEngine+TrackIdentityResolution.swift */,
@@ -746,6 +751,7 @@
 				P20008 /* PlaybackChromeArtworkBindingTests.swift */,
 				P20009 /* StreamingArtworkDiskCacheTests.swift */,
 				P20010 /* StreamingArtworkFetcherTests.swift */,
+				P20011 /* StreamingArtworkPublishingTests.swift */,
 			);
 			path = PhospheneAppTests;
 			sourceTree = "<group>";
@@ -873,6 +879,7 @@
 				Q10009 /* AlbumArtworkCache.swift in Sources */,
 				Q10010 /* StreamingArtworkDiskCache.swift in Sources */,
 				Q10011 /* StreamingArtworkFetcher.swift in Sources */,
+				Q10012 /* VisualizerEngine+StreamingArtwork.swift in Sources */,
 				O10001 /* DashboardOverlayView.swift in Sources */,
 				O10002 /* DashboardCardView.swift in Sources */,
 				O10003 /* DashboardRowView.swift in Sources */,
@@ -1043,6 +1050,7 @@
 				P10008 /* PlaybackChromeArtworkBindingTests.swift in Sources */,
 				P10009 /* StreamingArtworkDiskCacheTests.swift in Sources */,
 				P10010 /* StreamingArtworkFetcherTests.swift in Sources */,
+				P10011 /* StreamingArtworkPublishingTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -186,32 +186,12 @@ extension VisualizerEngine {
                 self.orchestratorWireLoggedThisTrack = false
             }
 
-            Task { @MainActor in
-                self.currentTrack = event.current
-                // LF.6.fix.1 (BUG-024): streaming sessions don't carry
-                // embedded artwork at LF.6 (streaming-path artwork is
-                // deferred to LF.6.streaming). Without this clear, the
-                // publisher retains any prior LF session's bytes — verified
-                // manual smoke 2026-06-01 showed The Cure's Kiss Me cover
-                // bleeding into every Spotify track after an LF session.
-                // Pair with currentTrack in the same MainActor block per
-                // the `currentTrackArtworkData` invariant (title-first then
-                // artwork-second so consumers see one tick).
-                self.currentTrackArtworkData = nil
-                self.preFetchedProfile = nil
-                let title = event.current.title ?? "?"
-                let artist = event.current.artist ?? "?"
-                captureLogger.info("Track: \(title) — \(artist)")
-                self.sessionRecorder?.log("track → \(title) — \(artist)")
-                // QR.4 / D-091: publish the live track's plan index so view models
-                // can bind directly instead of doing fragile lowercased title+artist
-                // string matches. nil when the track is not part of the plan
-                // (covers, remasters, encoding-different versions) or when no plan
-                // exists.
-                self.currentTrackIndex = resolvedPlanIndex
-            }
-            mir.reset()
-            self.pipeline.resetAccumulatedAudioTime()
+            // LF.6.streaming-S5: resolve the canonical identity BEFORE the
+            // MainActor block so `streamingArtworkPublisher.update(for:)`
+            // sees the full identity (with `spotifyArtworkURL` hint set by
+            // S1) rather than a partial title+artist one. Identity
+            // resolution is non-isolated; it acquires `orchestratorLock`
+            // internally and is safe from any thread.
             let title = event.current.title ?? ""
             let artist = event.current.artist ?? ""
             let partialIdentity = TrackIdentity(title: title, artist: artist)
@@ -223,6 +203,34 @@ extension VisualizerEngine {
             // stored. Falls back to the partial identity for ad-hoc/reactive
             // sessions where livePlan is nil.
             let identity = self.canonicalTrackIdentity(matching: partialIdentity) ?? partialIdentity
+
+            Task { @MainActor in
+                self.currentTrack = event.current
+                // LF.6.fix.1 (BUG-024): streaming sessions don't carry
+                // embedded artwork at LF.6; publish nil first so any prior
+                // LF session's bytes never leak into the new streaming
+                // track's chrome. Pair with `currentTrack` in the same
+                // MainActor block per the `currentTrackArtworkData`
+                // invariant (title-first then artwork-second so consumers
+                // see one tick). LF.6.streaming-S5 then kicks off an
+                // async fetch — the resolved bytes land on a later tick;
+                // chrome's existing opacity-animate-in covers the gap.
+                self.currentTrackArtworkData = nil
+                self.streamingArtworkPublisher?.update(for: identity)
+                self.preFetchedProfile = nil
+                let displayTitle = event.current.title ?? "?"
+                let displayArtist = event.current.artist ?? "?"
+                captureLogger.info("Track: \(displayTitle) — \(displayArtist)")
+                self.sessionRecorder?.log("track → \(displayTitle) — \(displayArtist)")
+                // QR.4 / D-091: publish the live track's plan index so view models
+                // can bind directly instead of doing fragile lowercased title+artist
+                // string matches. nil when the track is not part of the plan
+                // (covers, remasters, encoding-different versions) or when no plan
+                // exists.
+                self.currentTrackIndex = resolvedPlanIndex
+            }
+            mir.reset()
+            self.pipeline.resetAccumulatedAudioTime()
             // BUG-016 fix (2026-05-26): persist the resolved identity so
             // `applyPreset` can refresh per-track preset state (Lumen Mosaic
             // palette) when the user activates a preset mid-track. Before this
