@@ -1,0 +1,25 @@
+{
+  "name": "Dragon Bloom",
+  "family": "hypnotic",
+  "duration": 45,
+  "description": "Spike 1 — Milkdrop-uplift feedback bloom. Live waveform drawn as a polar curve (nWaveMode=7 analog) and accumulated through mv_warp decay + per-vertex feather displacement, producing a warm fiery feathered bloom that breathes with the bass and streams with the mids. No symmetry / no palette polish yet (Spike 2/3). Faithful uplift target: `$$$ Royal - Mashup (220)`. See docs/presets/DRAGON_BLOOM_PLAN.md.",
+  "author": "Matt",
+  "passes": ["direct", "mv_warp"],
+  "fragment_function": "dragon_bloom_fragment",
+  "vertex_function": "fullscreen_vertex",
+  "beat_source": "composite",
+  "decay": 0.945,
+  "stem_affinity": {
+    "bass": "bloom_breathing",
+    "other": "feather_flow"
+  },
+  "visual_density": 0.45,
+  "motion_intensity": 0.55,
+  "color_temperature_range": [0.60, 0.95],
+  "fatigue_risk": "low",
+  "transition_affordances": ["crossfade", "morph"],
+  "section_suitability": ["buildup", "peak", "bridge"],
+  "complexity_cost": { "tier1": 1.4, "tier2": 0.7 },
+  "certified": false,
+  "rubric_profile": "lightweight"
+}

@@ -4177,3 +4177,57 @@ The three subsystems landed as siblings: `StreamingArtworkURLResolver` (engine, 
 - `Scripts/check_user_strings.sh` exit 0 / `Scripts/check_sample_rate_literals.sh` exit 0.
 - New files `StreamingArtworkDiskCache.swift`, `StreamingArtworkFetcher.swift`, `VisualizerEngine+StreamingArtwork.swift` (app) registered in `project.pbxproj` across all four PBX sections; new test files `StreamingArtworkDiskCacheTests.swift`, `StreamingArtworkFetcherTests.swift`, `StreamingArtworkPublishingTests.swift` similarly registered. `StreamingArtworkURLResolver.swift` (engine) auto-discovered by SPM.
 - Manual smoke (Matt-driven) pending — visual verification against real Spotify + Apple Music + tap sessions.
+
+## D-135 — Dragon Bloom Spike 1: Milkdrop-uplift `direct + mv_warp` feedback bloom shipped to the catalog (Dragon Bloom Spike 1, 2026-06-01)
+
+### Context
+
+The Dragon Bloom plan (`docs/presets/DRAGON_BLOOM_PLAN.md`, approved 2026-06-01) faithfully uplifts the Milkdrop preset `$$$ Royal - Mashup (220)` — a warm bilaterally-symmetric feathered bloom — onto Phosphene's mv_warp infrastructure. The plan was researched against the existing capability set and identified as the **lowest-risk preset build** proposed all session: proven mechanic (D-027 mv_warp + waveform/FFT GPU contract), reference implementation (Gossamer for the mv_warp pattern, Waveform.metal for the direct-pass waveform-buffer read), and zero net-new engine infrastructure.
+
+Per §6 of the plan, Spike 1 is the load-bearing gate before any symmetry / palette polish: build the minimal `direct + mv_warp` skeleton, render it against real music, and let Matt eyeball whether the bloom *reads as dancing*. Lower risk than Goldengrove's spike (feedback-musicality is proven; mv_warp is well-trodden) — but still the gate that decides whether the concept proceeds.
+
+### Decision
+
+Ship a new production preset **Dragon Bloom** at `PhospheneEngine/Sources/Presets/Shaders/DragonBloom.{metal,json}`. `passes: ["direct", "mv_warp"]`. The fragment draws the live waveform buffer (slot 2, 2048 samples → 1024 stereo frames) as a polar curve (`nWaveMode=7` analog: screen angle → sample index → radial offset around a base radius), and `mvWarpPerFrame` / `mvWarpPerVertex` accumulate the feathered bloom across frames via decay + zoom + per-vertex tangential feather displacement.
+
+Audio routing follows §4 of the plan (one primitive per visual layer per `feedback_audio_layer_one_primitive`):
+- **Bloom shape** — live waveform (the silhouette literally IS the music's waveform).
+- **Bloom expansion / contraction** — `f.bass_att_rel` (continuous) + `f.bass_dev` (above-average kicks only) → mv_warp zoom + radial breathing displacement.
+- **Feather flow speed** — `f.mid_att_rel` → mv_warp tangential displacement magnitude + slow rotation.
+- **Per-beat pulse** — `max(beat_composite, beat_bass, beat_mid)` → bounded brightness accent (Layer-4 accent only per the Audio Data Hierarchy and FA #4 — never the primary motion driver; capped at 0.40× lift).
+
+Spike 1 deliberately omits:
+- **Bilateral symmetry** (Spike 2 of the plan; FA #48 anti-clipart rule).
+- **Palette polish** (Spike 3 — `valence` + `spectral_centroid` driven hue shift).
+- **Per-stem instrument-band tinting** (stretch goal in the plan).
+
+The bloom uses a fixed warm fiery brush colour (amber hot core + deeper red halo) so the warm-palette character is present from frame 1 without yet doing audio-driven palette modulation.
+
+Auto-discovery (filename convention in `Sources/Presets/Shaders/`) registers the preset; no per-name code in `VisualizerEngine+Presets.swift` is required for Spike 1 because no slot-6/7 per-preset GPU state is allocated. The mv_warp pipeline bundle is constructed in the existing `case .mvWarp` branch alongside `setMVWarpDecay(desc.decay)` plumbing the JSON `decay: 0.945` (matches `source.milk` `fDecay=0.95`) into the compose pass.
+
+### Rationale
+
+This entry covers a Spike 1 ship (concept-feasibility increment), not the Faithful-bloom design ship — Spike 2 (symmetry without clipart) and Spike 3 (palette + warmth + stretch routing) will earn their own decisions if/when Spike 1 passes its gate.
+
+The plan's three-part bar is satisfied:
+1. **Iconic visual subject deliverable at fidelity** — likely. The fidelity register is procedural-feedback + warm palette, which mv_warp produces natively. No hero-material or painterly-fidelity risk (the failure mode in V.9 / Drift Motes / Goldengrove). Risk is aesthetic tuning, not structural.
+2. **Clear musical role** — the bloom's silhouette IS the waveform, breathing on bass and streaming on mids. One sentence per visual layer per `feedback_audio_layer_one_primitive`.
+3. **Infrastructure-feasible** — strongest of any candidate this session. Existing mv_warp pass (D-027), existing waveform/FFT slots (CLAUDE.md GPU Contract), existing direct-fragment dispatch (Waveform reference). Zero net-new render infrastructure.
+
+Per the production-grade-testing rule (CLAUDE.md §Authoring Discipline, post-AV.1 amendment), the Spike 1 closeout includes a multi-frame mv_warp accumulation test (`DragonBloomMVWarpAccumulationTest.swift`, env-gated, modelled on `AuroraVeilMVWarpAccumulationTest.swift`) that runs the production scene → warp → compose → swap chain for ≥60 frames and proves the accumulator builds an expanding bright-pixel envelope across frames — single-frame tests would not catch the failure mode where mv_warp's per-frame contract is misconfigured.
+
+### Implementation
+
+- **New files:**
+  - `PhospheneEngine/Sources/Presets/Shaders/DragonBloom.metal` — `dragon_bloom_fragment` + `mvWarpPerFrame` + `mvWarpPerVertex`. ~200 lines.
+  - `PhospheneEngine/Sources/Presets/Shaders/DragonBloom.json` — name "Dragon Bloom", family `hypnotic`, decay 0.945, beat_source composite, stem_affinity stubbed (bass → bloom_breathing, other → feather_flow), `certified: false`, `rubric_profile: lightweight`.
+  - `PhospheneEngine/Tests/PhospheneEngineTests/Presets/DragonBloomMVWarpAccumulationTest.swift` — production-pipeline multi-frame test (env-gated `DRAGON_BLOOM_MVWARP_DIAG=1`).
+- **Updated files:**
+  - `PhospheneEngine/Tests/PhospheneEngineTests/Presets/PresetLoaderCompileFailureTest.swift` — `expectedProductionPresetCount` 16 → 17 with history-line update (FA #44 silent-drop guard catches Dragon Bloom).
+  - `docs/DECISIONS.md` — this entry.
+  - `docs/ENGINE/RENDER_CAPABILITY_REGISTRY.md` — Dragon Bloom row added under direct + mv_warp presets.
+  - `docs/ENGINEERING_PLAN.md` — Dragon Bloom Spike 1 row marked landed; Spike 2 row added as pending-Matt-gate.
+
+### Spike 1 Gate
+
+Matt-eyeball verification on ≥ 3 real tracks, per §6 of the plan. Success condition: "the bloom is dancing to this song." Spike 1 closeout does NOT claim audio-coupling fidelity or visual cert-readiness — only that the build is structurally correct and ready for the eyeball gate. PresetSessionReplay registration for Dragon Bloom (routes + rubric) is deferred to Spike 2/3 once the palette routing exists to verify; for Spike 1 the gate is perceptual, not metric.
