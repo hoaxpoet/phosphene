@@ -1,6 +1,8 @@
-# Milkdrop Uplift Plan — `$$$ Royal - Mashup (220)` → new Phosphene preset
+# Dragon Bloom — Milkdrop Uplift Plan (from `$$$ Royal - Mashup (220)`)
 
-**Status:** feasibility-researched plan for sign-off. No shader code until approved; first work item is a de-risking spike. Phosphene preset **name TBD** (Matt's call — working ref "Mashup220-uplift").
+**Status:** plan APPROVED 2026-06-01 (Matt). **Name: Dragon Bloom. Faithful** uplift ("it's gorgeous"). **Spike 1 approved.** Work moves to a new session. No shader code yet — first work item is Spike 1. References preserved at `docs/VISUAL_REFERENCES/dragon_bloom/` (target still + animated gif + `source.milk`).
+
+> **New-session start here:** read this plan + `docs/VISUAL_REFERENCES/dragon_bloom/README.md`, then build **Spike 1** (§6) — a minimal `direct + mv_warp` feedback bloom on real music, derived from the **Starburst** preset pattern, no symmetry/palette yet. Gate: does the bloom read as dancing to the music. Faithful target; mv_warp = D-027 = the core mechanic.
 
 **Reference:** `$$$ Royal - Mashup (220)` (cream-of-crop `Dancer/Petals/`). Matt's pick to start — "sufficiently different from other presets" (fills the glowsticks/feedback register Phosphene lacks; not close to any certified preset).
 
@@ -73,11 +75,11 @@ Add the mirror fold; confirm it reads as *organic feathered bloom*, not *flat mi
 5. **Beat accent + stem tint** (stretch).
 6. **M7 polish rounds** — count unknown; `RENDER_VISUAL` contact sheet + `PresetSessionReplay` evidence + Matt M7 each round. Lower expected round-count than a hero-fidelity preset, but still iterative.
 
-## 8. Open questions for sign-off
+## 8. Decisions (resolved 2026-06-01)
 
-1. **Name** the Phosphene preset (it's a warm symmetric feathered feedback bloom — working refs: "Plumage", "Firebird", "Ember Bloom" — your call, like Goldengrove).
-2. **Faithful-ish or inspired-by?** Match Mashup (220)'s warm symmetric bloom closely, or use it as a *register* seed and let the Phosphene version diverge (e.g., palette per track, less strict symmetry)?
-3. Proceed to **Spike 1** (the minimal feedback bloom on real music) as the first step?
+1. **Name: Dragon Bloom.**
+2. **Faithful** — match Mashup (220)'s warm symmetric feathered bloom closely ("it's gorgeous").
+3. **Spike 1 approved** — proceed to the minimal `direct + mv_warp` feedback bloom on real music (Starburst-derived) as the first step, in a new session.
 
 ## 9. Recommendation
 
