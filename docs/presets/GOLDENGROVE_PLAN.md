@@ -1,6 +1,8 @@
 # Goldengrove — Feasibility-Researched Build Plan
 
-**Status:** plan for sign-off. Supersedes `GOLDENGROVE_CONCEPT.md` (kept for the experiential picture). No production code until approved; the first work items are **de-risking spikes**, not the build.
+> **SHELVED 2026-06-01 (not built).** Matt's call: not the next best preset to develop — a repeat of the Drift Motes (D-102 / FA #58) and Ferrofluid Ocean (69-round) pattern, where neither the musical coherence nor the hero-fidelity deliverability was settled. Two unresolved problems: (1) the distinctive hook (growth) is the *slowest, least music-alignable* behaviour, and the signal that would make it strong (song structure) doesn't reach a preset; the achievable version is soft intensity-envelope modulation — the Drift Motes failure shape. (2) Hero painterly fidelity is the category that's been botched repeatedly. Research record retained as a real-feasibility reference for any future tree work. Do not revive without a fundamentally stronger, signal-grounded musical hook.
+
+**Status:** SHELVED — plan-for-sign-off below kept as historical record. Supersedes `GOLDENGROVE_CONCEPT.md` (kept for the experiential picture). No production code until approved; the first work items are **de-risking spikes**, not the build.
 
 **What this is:** a new high-fidelity preset (painterly, golden-hour, back-lit autumn tree that grows with the music) on the V.10 cert rung. The existing Fractal Tree is preserved untouched as a sibling.
 
