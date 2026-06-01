@@ -125,4 +125,34 @@ struct PlaybackChromeArtworkBindingTests {
         try await Task.sleep(for: .milliseconds(20))
         #expect(viewModel.currentTrack == nil)
     }
+
+    @Test("LF → streaming transition: artwork-nil emission clears prior LF bytes")
+    func lfToStreamingClearsArtwork() async throws {
+        // BUG-024 regression. Pre-fix: switching from an LF session (with
+        // embedded artwork) to a streaming session left
+        // `currentTrackArtworkData` populated; the streaming chrome rendered
+        // the prior LF artwork against every streaming track. The fix lives
+        // in VisualizerEngine+Capture.swift (streaming track-change writes
+        // `currentTrackArtworkData = nil` alongside `currentTrack`) and in
+        // VisualizerEngine.swift's `.connecting` state observer (defense at
+        // session boundary). This test asserts the view-model binding
+        // correctly observes that nil emission and clears the display.
+        let (viewModel, trackPub, artworkPub) = makeViewModel()
+        let lfBytes = Data(repeating: 0xEE, count: 16)
+
+        // Phase 1 — LF session with embedded art.
+        trackPub.send(metadata(title: "Kiss Me", artist: "The Cure"))
+        artworkPub.send(lfBytes)
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(viewModel.currentTrack?.albumArtData == lfBytes)
+
+        // Phase 2 — streaming track-change emission. The engine's streaming
+        // callback writes `currentTrack = <new track>` + `currentTrackArtworkData = nil`
+        // back-to-back; this test simulates the publisher side of that pair.
+        trackPub.send(metadata(title: "There, There", artist: "Radiohead"))
+        artworkPub.send(nil)
+        try await Task.sleep(for: .milliseconds(20))
+        #expect(viewModel.currentTrack?.title == "There, There")
+        #expect(viewModel.currentTrack?.albumArtData == nil)
+    }
 }
