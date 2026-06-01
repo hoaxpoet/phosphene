@@ -48,6 +48,7 @@
 		Q10008 /* LocalFilesSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20008; };
 		Q10004 /* LocalFileMenuCommands+Drop.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20004; };
 		Q10009 /* AlbumArtworkCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20009; };
+		Q10010 /* StreamingArtworkDiskCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = Q20010; };
 		O10001 /* DashboardOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20001; };
 		O10002 /* DashboardCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20002; };
 		O10003 /* DashboardRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = O20003; };
@@ -63,6 +64,7 @@
 		P10006 /* HandleLocalFileReadyIdempotencyRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20006; };
 		P10007 /* AlbumArtworkCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20007; };
 		P10008 /* PlaybackChromeArtworkBindingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20008; };
+		P10009 /* StreamingArtworkDiskCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20009; };
 		A10003 /* PhospheneEngine in Frameworks */ = {isa = PBXBuildFile; productRef = A80001; };
 		A10010 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20010; };
 		A10011 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20011; };
@@ -221,6 +223,7 @@
 		Q20008 /* LocalFilesSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFilesSettingsSection.swift; sourceTree = "<group>"; };
 		Q20004 /* LocalFileMenuCommands+Drop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LocalFileMenuCommands+Drop.swift"; sourceTree = "<group>"; };
 		Q20009 /* AlbumArtworkCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumArtworkCache.swift; sourceTree = "<group>"; };
+		Q20010 /* StreamingArtworkDiskCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingArtworkDiskCache.swift; sourceTree = "<group>"; };
 		O20001 /* DashboardOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardOverlayView.swift; sourceTree = "<group>"; };
 		O20002 /* DashboardCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardCardView.swift; sourceTree = "<group>"; };
 		O20003 /* DashboardRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardRowView.swift; sourceTree = "<group>"; };
@@ -235,6 +238,7 @@
 		P20006 /* HandleLocalFileReadyIdempotencyRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandleLocalFileReadyIdempotencyRegressionTests.swift; sourceTree = "<group>"; };
 		P20007 /* AlbumArtworkCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumArtworkCacheTests.swift; sourceTree = "<group>"; };
 		P20008 /* PlaybackChromeArtworkBindingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackChromeArtworkBindingTests.swift; sourceTree = "<group>"; };
+		P20009 /* StreamingArtworkDiskCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingArtworkDiskCacheTests.swift; sourceTree = "<group>"; };
 		O20007 /* DarkVibrancyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DarkVibrancyView.swift; sourceTree = "<group>"; };
 		A20004 /* PhospheneApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhospheneApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20005 /* PhospheneEngine */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = PhospheneEngine; path = PhospheneEngine; sourceTree = "<group>"; };
@@ -457,6 +461,7 @@
 				Q20007 /* LocalFileErrorStore.swift */,
 				Q20004 /* LocalFileMenuCommands+Drop.swift */,
 				Q20009 /* AlbumArtworkCache.swift */,
+				Q20010 /* StreamingArtworkDiskCache.swift */,
 				A20040 /* VisualizerEngine+Orchestrator.swift */,
 				N20006 /* VisualizerEngine+WiringLogs.swift */,
 				N20007 /* VisualizerEngine+TrackIdentityResolution.swift */,
@@ -734,6 +739,7 @@
 				P20006 /* HandleLocalFileReadyIdempotencyRegressionTests.swift */,
 				P20007 /* AlbumArtworkCacheTests.swift */,
 				P20008 /* PlaybackChromeArtworkBindingTests.swift */,
+				P20009 /* StreamingArtworkDiskCacheTests.swift */,
 			);
 			path = PhospheneAppTests;
 			sourceTree = "<group>";
@@ -859,6 +865,7 @@
 				Q10005 /* LocalFileTransportBar.swift in Sources */,
 				Q10004 /* LocalFileMenuCommands+Drop.swift in Sources */,
 				Q10009 /* AlbumArtworkCache.swift in Sources */,
+				Q10010 /* StreamingArtworkDiskCache.swift in Sources */,
 				O10001 /* DashboardOverlayView.swift in Sources */,
 				O10002 /* DashboardCardView.swift in Sources */,
 				O10003 /* DashboardRowView.swift in Sources */,
@@ -1027,6 +1034,7 @@
 				P10006 /* HandleLocalFileReadyIdempotencyRegressionTests.swift in Sources */,
 				P10007 /* AlbumArtworkCacheTests.swift in Sources */,
 				P10008 /* PlaybackChromeArtworkBindingTests.swift in Sources */,
+				P10009 /* StreamingArtworkDiskCacheTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
