@@ -1,65 +1,47 @@
-# Goldengrove — Concept Scope (V.10 hero preset)
+# Goldengrove — Concept
 
-**Status:** pre-authoring concept scope, awaiting Matt sign-off. **No shader code until this is approved.**
+**Status:** concept for sign-off. No shader code until approved.
 
-## Decision recorded
+---
 
-- **Preserve the existing Fractal Tree** untouched — it's a fun, distinctive mesh preset and stays in the catalog as an uncertified sibling. (Siblings, not subclasses — D-097 grain.)
-- **Goldengrove** is a **new** high-fidelity preset that takes over the V.10 cert-ladder rung and the `§10.4` uplift target. It inherits the `docs/VISUAL_REFERENCES/fractal_tree/` reference set (curated for exactly this painterly target).
-- **Load-bearing musical role: the tree grows with the song.** The L-system canopy builds with musical structure — generations unfold, foliage fills in, full canopy at the peak — and sheds at section boundaries / track end. Growth state *is* song structure (the Arachne web-build analog). Wind and season are *secondary* texture on top, not the headline.
+## What you see
 
-## Visual target (grounded in the reference set)
+A single great tree, filling the frame, at golden hour. The low sun sits **behind** it — so the whole canopy is **back-lit and glowing**, the leaves translucent and warm the way foliage goes when the light comes through it rather than off it. The crown is dense and **asymmetric** — a billowing cloud-mass of fine branches, leaning, never mirror-symmetric. The bark catches a warm rim of light down one edge. Dust motes drift in the shafts of light. A low bank of fog pools around the base and fades out by the lower branches.
 
-Gold-standard 14-image reference set with per-image mandatory/decorative/anti-traits, each cross-referenced to an existing `SHADER_CRAFT.md` recipe. Hero reads:
+The whole image is **painterly, not photoreal** — soft-edged color masses with an Impressionist softness, like a plein-air painting of a tree rather than a crisp 3D render. Color blocked, not detail-etched.
 
-- **Macro form** (`01`): dense **asymmetric** multi-generation crown — fine perimeter branches blur into a cloud-mass. ≥4 generations, no mirror symmetry (FA #44 — per-branch hash jitter).
-- **Hero moment — back-lit canopy glow** (`06`): warm yellow-green transmission when the key light is behind the foliage. **Critical scoping note:** at tree-render distance the per-leaf venation in the macro reference is sub-pixel — the readable effect is the **aggregate foliage mass glowing warm against the light**, not literally-resolved veins. That makes the hero moment *more* tractable than the macro photo implies.
-- **Golden-hour lighting** (`09`): warm low-angle key, rim/SSS glow on back-lit edges, airborne dust motes, soft warm atmosphere, cool shadow fill.
-- Bark POM + lichen (`04`/`07`/`08`), seasonal palette (`11`/`12`, default autumn, valence-synced), ground fog (`10`), painterly soft-edge aesthetic (`13`).
+The default palette is **autumn**: the canopy is a tapestry of deep green, gold, orange, and ember-red — varying leaf to leaf, with green holdouts mixed through, the way a real autumn tree is never uniformly turned. It reads warm, alive, and a little melancholy — the Hopkins "Goldengrove unleaving" feeling the name carries.
 
-## Feasibility — the Arachne FA #49 trap check
+## What it does over a song — *this is the heart of it*
 
-Arachne stalled because its references demanded compositing layers the ray-march renderer **structurally lacked** (background pass, refraction, DoF). Goldengrove is the opposite case — **every demanded layer maps to an existing engine capability:**
+**The tree grows with the music, blooms at the peak, and sheds at the turns.**
 
-| Layer | Need | Status |
-|---|---|---|
-| Growth mechanic | runtime-varying L-system geometry + CPU state machine | ✅ **already prototyped** — existing FT varies `branch_count 3–63` at runtime; `setMeshPresetTick` CPU-state pattern proven by `ArachneState` |
-| Bark material + POM | §4.7 + §8.3 | ✅ recipes exist |
-| Translucent SSS leaves | §4.8 | ✅ recipe exists |
-| Golden-hour lighting | §5.6 | ✅ recipe exists |
-| Seasonal palette | IQ-cosine, valence-synced | ✅ standard palette path |
-| Wind / atmosphere | curl_noise + ground fog + dust motes | ✅ standard utilities |
+- **Quiet open** — a sparse silhouette. Trunk and a few first branches, dim, the light still low and cool. The tree is *waiting*.
+- **The build (verse)** — branches reach outward and upward, generation by generation, as the song gathers. The canopy starts to fill in. The light warms toward gold.
+- **The peak (chorus / drop)** — the canopy **bursts into full radiant foliage**, back-lit and glowing, at the exact moment the song swells. *This is the payoff.* You watch the bare-ish tree bloom into a full golden crown right as the music opens up. That's the moment a listener points at and says "that's the song."
+- **The sustain** — once full, wind moves through the canopy; leaves shimmer and sway, the light breathes.
+- **The turn (section boundary / outro)** — leaves **release and drift down** through the light, the canopy thins, the tree settles — and is ready to build again for the next track. Every section boundary is a small release; the end of a song is the tree letting go.
+- **Across the playlist** — the **season** shifts with the song's mood. A heavy or sad track turns the tree to **winter** — bare branches, cool light, hoarfrost. A bright track brings **spring** green or **summer** fullness. Default is autumn fire. Each track gets its own color-world *and* its own bloom-and-release arc.
 
-**No net-new engine infrastructure is required.** The novel work is *design + authoring on proven rails*, not building missing render passes.
+So: not "a tree that twitches with the beat." A tree that lives a whole small life across each song — grows, blooms at the high point, lets go at the end.
 
-## The one genuinely novel piece — the growth state machine
+## How it's different from the Fractal Tree we're keeping
 
-The existing FT growth is **instantaneous** (`branch_count ← bass_att`, frame-to-frame). Goldengrove's musical role needs **structural** growth: a CPU-side `GoldengroveState` (an `ArachneBuildState` analog wired via `setMeshPresetTick`) that advances build stages over the song's arc — canopy density tracking the energy/structure arc, peaking at the chorus/drop, shedding at section boundaries. Inputs already exist (StructuralAnalyzer section boundaries, energy envelope). Design risk: pacing must be driven by structure/energy, **not** `sin(time)` (FA #33), so growth lands with the music rather than scrolling mechanically.
+The existing **Fractal Tree** is a flat, graphic, almost-diagram branch-fan — black lines on a bright field — that flicks bigger and smaller with the bass. Playful and abstract; we're keeping it exactly as-is.
 
-## 3-part bar verdict
+**Goldengrove** is the opposite register: dimensional, painterly, golden-hour, *almost photographic but soft* — a tree you could half-believe is real, that builds an emotional arc across a whole song instead of reacting frame-to-frame. Same subject, completely different feeling — which is why it's a new preset, not a replacement.
 
-1. **Iconic subject deliverable at fidelity** — CONDITIONAL PASS. References are gold-standard, recipes exist, the hero SSS moment reduces to aggregate canopy glow (tractable). Residual risk is *execution polish* (the painterly soft-edge target, hero golden-hour) — the category that's been botched before — not structural impossibility.
-2. **Clear musical role** — PASS. "Grows with the song," load-bearing, points-at-a-moment, feasible mechanism.
-3. **Infrastructure-feasible** — PASS. Strongest of the three; no missing engine surfaces.
+---
 
-**This is the best-positioned hero-preset cert attempt in the catalog** — precisely because the references map to existing recipes and the growth mechanism is on proven rails, where Arachne/Aurora Veil are not.
+## Is it buildable, and what's the bet?
 
-## Honest risk register (not soft-pedaled)
+**Buildable — and on unusually solid ground.** Every part of the look maps to a technique the engine already has (bark, translucent leaves, golden-hour light, surface depth), and the "tree grows" mechanic is already prototyped in the existing Fractal Tree — we'd be driving it from the song's *structure* (build → peak → shed) instead of raw bass. Crucially, this is *not* the trap Arachne fell into (references demanding things the engine couldn't render). Here the engine can render all of it.
 
-- **Execution fidelity** — painterly hero look is the category Matt has watched get botched. Gold-standard references + recipes are real mitigants; they don't eliminate the risk. This will be a multi-round M7 grind (Lumen Mosaic took 8, FFO 69).
-- **Perf** — §10.4 budgets ~6.5 ms Tier 2 (POM bark + 200–500 leaf billboards) ≈ 40 % of the 16 ms Tier 2 frame. Tier-1/Tier-2 mitigations (capped leaf count, POM off on Tier 1, half-res where possible) must be designed in from session 1, per the D-072 ladder's Tier-1-default-mitigation rule — not bolted on at the end.
-- **Growth state machine** — new design; pacing must read as musical, not mechanical (FA #33).
+**The honest bet:** this is an ambitious *painterly* look, and painterly hero visuals are exactly the kind that take several review-and-tune rounds with your eye to get right (Lumen Mosaic took 8, Ferrofluid Ocean took dozens). The references and existing recipes stack the odds well, but I can't promise first-pass fidelity — this is a build-and-review grind, not a quick win. There's also a performance budget to respect (lots of leaves + surface detail), which we'd design around from the start.
 
-## Proposed session breakdown (musical role first, per Authoring Discipline)
+## What I'd want to confirm
 
-1. **`GoldengroveState` growth state machine** — structural-arc-driven build/shed, wired via `setMeshPresetTick`. The load-bearing musical layer goes first, validated on real music before any decoration.
-2. **Geometry** — deeper asymmetric L-system + real branch geometry (ribbons/cylinders, not flat quads) + bark POM (§4.7/§8.3).
-3. **Foliage** — leaf-cluster billboards + §4.8 SSS (the hero canopy-glow moment).
-4. **Lighting + atmosphere + season + wind** — §5.6 golden-hour + ground fog + dust motes + valence-synced seasonal palette + curl_noise wind (← `other_energy_att`).
-5. **Perf pass + M7 polish rounds** (count unknown until the first M7).
+1. **Is this the tree you want?** — the picture above (back-lit golden-hour autumn tree, painterly, that grows-blooms-sheds across each song with seasonal mood shifts). If any of that is wrong, it's far cheaper to fix here than in code.
+2. **Where to start.** My recommendation: build the **grow-bloom-shed behaviour first** on cheap placeholder geometry, so you can confirm *the tree feels alive with the music* before we spend the real effort on bark, glowing leaves, and light. If the life isn't there on a rough tree, no amount of beautiful foliage saves it.
 
-Each session ends with a `RENDER_VISUAL` contact sheet; cert is gated on Matt's M7 against the reference set + a `PresetSessionReplay` evidence pack on a real capture (per SR.1 + the §Diagnostic-infrastructure rule).
-
-## Open question for sign-off
-
-The verdict is **go, with eyes open** — Goldengrove clears the bar that Arachne and Aurora Veil don't, but it's still a high-fidelity painterly grind. Confirm: (a) the concept + musical role as scoped, (b) start with session 1 (the growth state machine on the existing flat-quad geometry, so the musical behaviour is proven before the expensive material work), or a different sequencing.
+*(Engineering feasibility detail — recipe mapping, the growth state-machine design, perf budget, the layer-by-layer build plan — is real and checks out; it's kept out of this doc on purpose. Ask and I'll walk through any of it.)*
