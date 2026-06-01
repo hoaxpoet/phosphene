@@ -1,5 +1,14 @@
 // AppleMusicConnectionViewModelTests — Unit tests for AppleMusicConnectionViewModel.
 // Uses MockAppleMusicConnector to avoid real AppleScript or network calls.
+//
+// Determinism note (hardening pass, 2026-06-01): these tests previously waited a
+// fixed 300 ms / 1500 ms wall-clock margin for the async connect chain to settle,
+// then asserted `vm.state`. Under the parallel app run, @MainActor contention
+// could delay the chain past the margin → intermittent failures. The waits are
+// now bounded-yield polls on `vm.state` (no wall-clock), so the flake class is
+// eliminated. `connectNoCurrentPlaylist` keeps the default RealDelay so its 2 s
+// auto-retry stays pending during the sub-millisecond poll (asserting the
+// pre-retry state); every other test injects InstantDelay.
 
 import Session
 import Testing
@@ -11,21 +20,30 @@ import Testing
 @MainActor
 struct AppleMusicConnectionViewModelTests {
 
+    /// Poll `vm.state` until `predicate` holds (bounded yields — no wall-clock).
+    private func awaitState(
+        _ vm: AppleMusicConnectionViewModel,
+        until predicate: (AppleMusicConnectionState) -> Bool
+    ) async {
+        var yields = 0
+        while !predicate(vm.state) && yields < 5000 { await Task.yield(); yields += 1 }
+    }
+
     @Test("beginConnect transitions to .connecting then .noCurrentPlaylist when tracks empty")
-    func connectNoCurrentPlaylist() async throws {
+    func connectNoCurrentPlaylist() async {
         let connector = MockAppleMusicConnector(result: .success([]))
-        // Use default RealDelay: auto-retry fires after 2 s, so at 50 ms the
-        // state is still .noCurrentPlaylist rather than cycling back to .connecting.
+        // Default RealDelay: the 2 s auto-retry stays pending while the poll (which
+        // finishes in microseconds) observes the pre-retry .noCurrentPlaylist state.
         let vm = AppleMusicConnectionViewModel(connector: connector)
         vm.beginConnect()
-        try await Task.sleep(for: .milliseconds(300))
+        await awaitState(vm) { if case .noCurrentPlaylist = $0 { return true }; return false }
         if case .noCurrentPlaylist = vm.state { } else {
             Issue.record("Expected .noCurrentPlaylist, got \(vm.state)")
         }
     }
 
     @Test("noCurrentPlaylist schedules auto-retry; retry re-connects")
-    func connectNoCurrentPlaylistSchedulesRetry() async throws {
+    func connectNoCurrentPlaylistSchedulesRetry() async {
         let connector = MockAppleMusicConnector(results: [
             .success([]),
             .success([makeFakeTrack()])
@@ -35,14 +53,9 @@ struct AppleMusicConnectionViewModelTests {
             delayProvider: InstantDelay()
         )
         vm.beginConnect()
-        // First attempt: empty → .noCurrentPlaylist → InstantDelay fires immediately.
-        // 1500ms gives the full async chain (connect → noCurrentPlaylist → yield →
-        // retry → connect → connected) ample time regardless of executor scheduling.
-        // Previously 500ms; widened to absorb @MainActor contention during the
-        // 328-test parallel app run (CLAUDE.md U.11 precedent — 2-3× headroom
-        // over the worst-observed delay).
-        try await Task.sleep(for: .milliseconds(1500))
-        // Second attempt should have succeeded.
+        // First attempt empty → .noCurrentPlaylist → InstantDelay fires → retry →
+        // .connected. Poll the full chain deterministically.
+        await awaitState(vm) { if case .connected = $0 { return true }; return false }
         if case .connected(let count) = vm.state {
             #expect(count == 1)
         } else {
@@ -51,7 +64,7 @@ struct AppleMusicConnectionViewModelTests {
     }
 
     @Test("connect throws appleMusicNotRunning → .notRunning, no retry")
-    func connectNotRunning() async throws {
+    func connectNotRunning() async {
         let connector = MockAppleMusicConnector(
             result: .failure(PlaylistConnectorError.appleMusicNotRunning)
         )
@@ -60,13 +73,13 @@ struct AppleMusicConnectionViewModelTests {
             delayProvider: InstantDelay()
         )
         vm.beginConnect()
-        try await Task.sleep(for: .milliseconds(300))
+        await awaitState(vm) { $0 == .notRunning }
         #expect(vm.state == .notRunning)
         #expect(connector.callCount == 1)  // no retry after notRunning
     }
 
     @Test("connect throws parseFailure → .error state")
-    func connectParseFailure() async throws {
+    func connectParseFailure() async {
         let connector = MockAppleMusicConnector(
             result: .failure(PlaylistConnectorError.parseFailure("bad output"))
         )
@@ -75,14 +88,14 @@ struct AppleMusicConnectionViewModelTests {
             delayProvider: InstantDelay()
         )
         vm.beginConnect()
-        try await Task.sleep(for: .milliseconds(300))
+        await awaitState(vm) { if case .error = $0 { return true }; return false }
         if case .error = vm.state { } else {
             Issue.record("Expected .error, got \(vm.state)")
         }
     }
 
     @Test("connect succeeds with tracks → .connected(trackCount:)")
-    func connectSuccess() async throws {
+    func connectSuccess() async {
         let tracks = [makeFakeTrack(), makeFakeTrack()]
         let connector = MockAppleMusicConnector(result: .success(tracks))
         var startSessionCalled = false
@@ -91,7 +104,7 @@ struct AppleMusicConnectionViewModelTests {
             delayProvider: InstantDelay()
         )
         vm.beginConnect()
-        try await Task.sleep(for: .milliseconds(300))
+        await awaitState(vm) { if case .connected = $0 { return true }; return false }
         if case .connected(let count) = vm.state {
             #expect(count == 2)
             startSessionCalled = true  // view would call onConnect here

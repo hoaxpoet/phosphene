@@ -122,13 +122,22 @@ private func makeManager(
     return SessionManager(connector: connector, preparer: preparer)
 }
 
-/// Poll until the manager leaves `.preparing` (or 3 seconds elapse).
+/// Poll until the manager leaves `.preparing` (or the safety deadline elapses).
 ///
 /// Required because `startSession()` now returns while still in `.preparing` — the
 /// background preparation Task completes asynchronously on the main actor.
+///
+/// The deadline is a *failure safety net*, not a timing assertion: prep here runs
+/// on instant mocks (InstantStemSeparator / InstantDownloader / InstantStemAnalyzer)
+/// so the common case exits in well under a second. The loop returns the instant
+/// state leaves `.preparing`, so a generous deadline never slows a passing run —
+/// it only prevents a false failure when @MainActor starvation during the full
+/// parallel suite delays the background Task. 3 s was too tight for that role under
+/// the ~1300-test engine run; 15 s gives ample headroom while still catching a
+/// genuine hang. (hardening pass, 2026-06-01 — was a recurring flake.)
 @MainActor
 private func waitForReady(_ manager: SessionManager) async {
-    let deadline = Date().addingTimeInterval(3)
+    let deadline = Date().addingTimeInterval(15)
     while manager.state == .preparing && Date() < deadline {
         try? await Task.sleep(nanoseconds: 10_000_000)
     }
