@@ -28,6 +28,13 @@ constant float kWaveDisplaceUV   = 0.12;   // peak radial offset from a |sample|
 constant float kCurveThicknessUV = 0.0040; // anti-aliased thickness of the drawn curve
 constant float kCurveHaloUV      = 0.0140; // soft outer halo for bloom feeding
 
+// Target RMS that `waveformRMS()` normalises the raw PCM input to. Tuned to
+// match a typical LF AVAudioEngine steady-state RMS so LF audio takes minimal
+// boost while quieter process-tap audio scales up to the same effective
+// reference (Matt's 2026-06-01 Spotify report). 0.5 floor / 6.0 ceiling on
+// the scale factor prevents extreme amplification at edge cases.
+constant float kWaveTargetRMS    = 0.25;
+
 // Background — kept near-black so the feedback accumulator dominates the read.
 constant float3 kBackgroundColor = float3(0.006, 0.004, 0.012);
 
@@ -56,6 +63,33 @@ static float sampleWaveformMono(constant float* wv, float frameF) {
     float s0 = (wv[frame0 * 2] + wv[frame0 * 2 + 1]) * 0.5;
     float s1 = (wv[frame1 * 2] + wv[frame1 * 2 + 1]) * 0.5;
     return mix(s0, s1, t);
+}
+
+// Estimate the waveform buffer's RMS amplitude for this frame.
+// The waveform is RAW PCM (NOT AGC-normalised) so its peak amplitude varies
+// 5×+ across input paths: LF AVAudioEngine ≈ 0.6 peaks; process-tap on
+// Spotify with normalize-off ≈ 0.15 peaks (FA #30); other taps anywhere in
+// between. Without this normalisation the polar bloom shape (driven by raw
+// waveform value) collapses to a nearly-circular ring on quiet inputs — even
+// when the AGC-normalised bands say music is clearly playing. Matt's
+// 2026-06-01 Spotify report ("reactive for 20 s then looks like silence") is
+// this failure mode, manifesting after AGC convergence ate the deviation
+// primitives that were masking the issue during cold-start.
+//
+// Sampling 64 of 1024 stereo frames (stride 16) is sufficient — the buffer
+// is a contiguous slab and reads coalesce across fragments. Same answer for
+// every fragment in this draw call, so the cost is one per-pixel division
+// added to the existing curve math; perceptually free on Apple Silicon.
+static float waveformRMS(constant float* wv) {
+    constexpr int kSamples = 64;
+    constexpr int kStride  = 16;            // 64 × 16 = 1024 stereo frames
+    float sumSq = 0.0;
+    for (int i = 0; i < kSamples; i++) {
+        int idx = i * kStride;
+        float lr = (wv[idx * 2] + wv[idx * 2 + 1]) * 0.5;
+        sumSq += lr * lr;
+    }
+    return sqrt(sumSq / float(kSamples));
 }
 
 // ── Scene fragment ────────────────────────────────────────────────────────────
@@ -97,10 +131,22 @@ fragment float4 dragon_bloom_fragment(
     // Map screen angle → waveform sample index → radial offset around kBaseRadius.
     // The bloom *silhouette* is this curve. The bloom *texture* is what mv_warp
     // builds from accumulating thousands of these strokes through warp+decay.
+    //
+    // Per-frame waveform amplitude normalisation: bring the raw PCM amplitude
+    // (slot 2) to a consistent reference RMS so the polar curve deflects
+    // equally across audio paths (LF AVAudioEngine vs. process-tap on
+    // Spotify/Apple Music — see `waveformRMS` block above). Gated on
+    // `musicPresent` (derived from AGC-normalised bands) so the boost only
+    // kicks in when there's real audio — at true silence we leave the noise
+    // floor alone instead of amplifying it 6×.
+    float waveRMS      = waveformRMS(wv);
+    float musicPresent = saturate((bassAbs + midAbs + max(0.0, f.treble)) * 1.5 - 0.10);
+    float waveAmpScale = mix(1.0, clamp(kWaveTargetRMS / max(0.02, waveRMS), 0.5, 6.0), musicPresent);
+
     constexpr int kFrames = WAVEFORM_CAPACITY / 2;
     float angNorm  = (ang + M_PI_F) / (2.0 * M_PI_F);   // [0, 1)
     float frameF   = angNorm * float(kFrames - 1);
-    float wave     = sampleWaveformMono(wv, frameF);
+    float wave     = sampleWaveformMono(wv, frameF) * waveAmpScale;
 
     // Radius grows with bass — bloom *breathes* with the low end. Continuous
     // bass (Layer 1) drives the steady-state breath; bass_att_rel (above-average)
