@@ -32,6 +32,38 @@ Test infrastructure: swift-testing + XCTest across unit, integration, regression
 
 ## Recently Completed
 
+### Increment LF.6.streaming — Streaming-path artwork resolver + fetcher + cache + wire ✅ (2026-06-01)
+
+LF.6 (D-133) shipped LF-side artwork in the chrome and explicitly deferred streaming-path artwork. LF.6.streaming closes that gap: every Spotify / Apple Music / tap-path track-change now resolves and fetches album artwork and publishes it through the same `currentTrackArtworkData` channel LF.6 established. Streaming chrome with resolvable artwork is now pixel-identical to LF chrome with resolvable artwork; non-resolvable tracks fall back to LF.6's `music.note.list` SF-Symbol glyph.
+
+**Files touched.**
+
+- **`PhospheneEngine/Sources/Session/TrackIdentity.swift`** — new `spotifyArtworkURL: URL?` resolution-hint field (excluded from `Equatable` / `Hashable` / `Codable`, mirroring the LF.4 `spotifyPreviewURL` shape).
+- **`PhospheneEngine/Sources/Session/Connectors/SpotifyWebAPIConnector.swift`** — `parseTrack` lifts `album.images[0].url` into the new identity hint (Spotify returns images in descending size order; index 0 is largest).
+- **`PhospheneEngine/Sources/Session/StreamingArtworkURLResolver.swift`** *(new)* — protocol + default implementation. Spotify-first short-circuit, iTunes Search fallback (`100x100bb` → `600x600bb` URL rewrite), per-session in-memory cache.
+- **`PhospheneApp/StreamingArtworkDiskCache.swift`** *(new)* — actor. SHA-256-keyed byte cache at `~/Library/Caches/com.phosphene.app/streaming-artwork/`. LRU eviction by `contentModificationDate`; atomic writes; 100 MB cap.
+- **`PhospheneApp/StreamingArtworkFetcher.swift`** *(new)* — `StreamingArtworkFetching` protocol + URLSession-backed default with a 5 s timeout. Throws on non-2xx / network failure; caller falls back to nil.
+- **`PhospheneApp/VisualizerEngine.swift`** — added `streamingArtworkResolver` / `streamingArtworkFetcher` / `streamingArtworkDiskCache` / `streamingArtworkPublisher` stored properties. `init` constructs the publisher post-phase-2 with a `[weak self]` publish closure that writes `currentTrackArtworkData`. `.connecting` state observer cancels any in-flight task.
+- **`PhospheneApp/VisualizerEngine+StreamingArtwork.swift`** *(new)* — `StreamingArtworkPublisher` class. Owns the in-flight `Task<Void, Never>?`; cancel-on-update; resolver → disk-cache → fetcher → persist → publish flow; every publish gated on `!Task.isCancelled`.
+- **`PhospheneApp/VisualizerEngine+Capture.swift`** — track-change callback resolves the canonical `TrackIdentity` BEFORE the MainActor block so the publisher sees the `spotifyArtworkURL` hint; MainActor block publishes `currentTrack` + nil-artwork on the same tick (LF.6 invariant) then kicks the publisher; resolved bytes land on a later tick (chrome's opacity-animate-in covers the gap).
+- **`PhospheneEngine/Tests/PhospheneEngineTests/Fixtures/spotify_items_response.json`** — extended `album` dicts with `images` arrays (Track A: 3 images at 640/300/64 px; Track B: empty; Track C: 1 image at 640 px).
+
+**Tests.**
+
+- **`PhospheneEngine/Tests/PhospheneEngineTests/Session/SpotifyItemsSchemaTests.swift`** — `+1` test asserting Track A's index-0 URL (highest-res) is captured, Track B's empty `images[]` yields nil, Track C's single image is captured.
+- **`PhospheneEngine/Tests/PhospheneEngineTests/Session/StreamingArtworkURLResolverTests.swift`** *(new)* — 6 tests: Spotify hint short-circuits (asserts zero network calls), iTunes 100→600 upgrade, both-sources-nil returns nil, iTunes 429 returns nil, in-memory cache de-duplicates, network error returns nil.
+- **`PhospheneAppTests/StreamingArtworkDiskCacheTests.swift`** *(new)* — 7 tests: store/read roundtrip, miss returns nil, persistence across instances, LRU eviction drops oldest-modified, `clearAll`, corrupt entry recovers without crash, distinct URLs use distinct files.
+- **`PhospheneAppTests/StreamingArtworkFetcherTests.swift`** *(new, `@Suite(.serialized)`)* — 5 tests: 200 success, 404 throws, 500 throws, network error propagates, all-2xx accepted (206).
+- **`PhospheneAppTests/StreamingArtworkPublishingTests.swift`** *(new)* — 6 tests through stub deps + a recorder publish closure: resolvable→bytes, unresolvable→nil, fetch-error→nil, disk-cache hit skips fetcher, rapid A→B cancels A (only B's bytes ever appear), nil-track cancels in-flight + publishes nil.
+
+**Pre-flight decisions** (sign-off at kickoff, documented in D-134): (a) cache location `~/Library/Caches/`; (b) cache size cap 100 MB; (c) source order Spotify + iTunes Search; (d) in-flight cancel-on-track-change yes.
+
+**Verification.** Engine 1367 / App 379 / SwiftLint `--strict` clean on touched files / `Scripts/check_user_strings.sh` + `Scripts/check_sample_rate_literals.sh` exit 0. Manual smoke (Matt-driven) pending — needs real Spotify session + Apple Music session + rapid-track-change validation.
+
+**Docs touched.** `docs/RELEASE_NOTES_DEV.md` (`[dev-2026-06-01-b]`), `docs/DECISIONS.md` (D-134), `docs/ARCHITECTURE.md` (Session Preparation LF.6.streaming sub-bullet under the existing LF.6 entry), this entry.
+
+**Follow-up.** Potential `LF.6.streaming.2` if Apple Music subscribers report that the iTunes Search fallback misses too often — MusicKit-native artwork would land highest-res for that path (requires MusicKit token plumbing).
+
 ### Increment LF.6 — Album-art display in PlaybackView chrome ✅ (2026-05-28)
 
 LF.5 lands the artwork *bytes* on disk (`artwork.bin` siblings per cached track). LF.6 surfaces them in the chrome: `TrackInfoCardView` gains a 48 × 48 pt cornered thumbnail leading the existing title/artist text column, populated from the engine's new `currentTrackArtworkData` publisher. Streaming-path artwork is deferred to a separate `LF.6.streaming` increment (kickoff doc on disk at `docs/prompts/LF6STREAMING_KICKOFF.md`, unexecuted at LF.6 close) — the streaming chrome stays text-only until that lands.
