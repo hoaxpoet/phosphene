@@ -6,6 +6,42 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-06-01-a] LF.6.fix.1 — Clear stale LF artwork on streaming track-change + session start (BUG-024)
+
+**Increment:** LF.6.fix.1. **Status:** Resolved 2026-06-01. Trivial-collapsed P1 per CLAUDE.md §Defect Handling Protocol.
+
+### What happened
+
+Manual smoke of LF.6 (Matt-driven, 2026-06-01) surfaced a clear regression: after running an LF session with embedded artwork, every streaming track in the next Spotify session rendered the LF artwork in the chrome's thumbnail slot. The screenshots showed Radiohead's "There, There" and Chaim's "Love Rehab" both displaying The Cure's Kiss Me cover.
+
+### Root cause
+
+`engine.currentTrackArtworkData` is the `@Published` LF.6 added for chrome consumption. The LF write sites (`handleLocalFileReady` + `advanceLocalFileQueue`, via `applyLocalFileTrackState`) correctly publish bytes-or-nil per track. The streaming track-change callback at [VisualizerEngine+Capture.swift:189-202](PhospheneApp/VisualizerEngine+Capture.swift:189-202) writes `currentTrack` for every streaming track but never touched `currentTrackArtworkData`. The `@Published` retained the LF bytes indefinitely; `TrackInfoCardView.showArtworkSlot` evaluated `(albumArtData != nil) || isLocalFileSession` → `true` (stale bytes) → rendered the wrong art.
+
+This violates the LF.6 kickoff's Critical Invariant: *"Streaming-path behaviour is byte-identical to pre-LF.6. `engine.currentTrack` continues to be set by `makeTrackChangeCallback` for streaming, `currentTrackArtworkData` stays `nil` on streaming sessions."*
+
+### The fix — one commit
+
+**`[LF.6.fix.1]`** — three small changes:
+
+- **`PhospheneApp/VisualizerEngine+Capture.swift:190`** — the streaming track-change callback writes `self.currentTrackArtworkData = nil` alongside `self.currentTrack = event.current`, back-to-back in the same MainActor block. The pairing mirrors the LF write sites and honours the kickoff invariant (title-first then artwork-second so chrome consumers see one tick).
+- **`PhospheneApp/VisualizerEngine.swift:807`** — the `.connecting` state observer clears `currentTrackArtworkData = nil` alongside `currentSessionPlanSeed = nil`. Defense-in-depth at session boundaries; covers ad-hoc / reactive entry paths that may not fire a track-change callback immediately.
+- **`PhospheneAppTests/PlaybackChromeArtworkBindingTests.swift`** — new regression test "LF → streaming transition: artwork-nil emission clears prior LF bytes". Asserts the view-model's `CombineLatest` binding correctly observes a nil artwork emission after a prior LF bytes emission. Pairs with the four existing binding tests in the suite (now 6 total).
+
+### Verification
+
+- Engine: 1360 / 1360 ✓.
+- App: 361 / 361 ✓ (LF.6 baseline 360 + 1 BUG-024 regression test).
+- SwiftLint `--strict` clean on all touched files.
+
+Manual re-test pending Matt's confirmation: re-run Test 4 from the LF.6 smoke (LF session → end → Spotify playlist). Expected: streaming chrome reverts to text-only (slot hidden entirely, no artwork tile, no fallback glyph), matching pre-LF.6 streaming chrome.
+
+### Follow-up
+
+The deeper "it would be nice if the actual album art appeared for streaming tracks" remains scoped to `LF.6.streaming` (kickoff on disk at `docs/prompts/LF6STREAMING_KICKOFF.md`). LF.6.fix.1 restores correct behaviour against the LF.6 invariant; LF.6.streaming will replace the hidden-slot state with network-fetched artwork via the same `currentTrackArtworkData` publisher.
+
+---
+
 ## [dev-2026-05-28-x] LF.6 — Album-art display in PlaybackView chrome
 
 **Increment:** LF.6. **Status:** Shipped 2026-05-28. Forward progress (no defect).

@@ -188,6 +188,16 @@ extension VisualizerEngine {
 
             Task { @MainActor in
                 self.currentTrack = event.current
+                // LF.6.fix.1 (BUG-024): streaming sessions don't carry
+                // embedded artwork at LF.6 (streaming-path artwork is
+                // deferred to LF.6.streaming). Without this clear, the
+                // publisher retains any prior LF session's bytes — verified
+                // manual smoke 2026-06-01 showed The Cure's Kiss Me cover
+                // bleeding into every Spotify track after an LF session.
+                // Pair with currentTrack in the same MainActor block per
+                // the `currentTrackArtworkData` invariant (title-first then
+                // artwork-second so consumers see one tick).
+                self.currentTrackArtworkData = nil
                 self.preFetchedProfile = nil
                 let title = event.current.title ?? "?"
                 let artist = event.current.artist ?? "?"

@@ -817,7 +817,16 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         stateCancellable = mgr.$state
             .sink { [weak self] newState in
                 guard let self else { return }
-                if newState == .connecting { self.currentSessionPlanSeed = nil }
+                if newState == .connecting {
+                    self.currentSessionPlanSeed = nil
+                    // LF.6.fix.1 (BUG-024): wipe stale LF artwork at session
+                    // boundary so a streaming session starting after an LF
+                    // session doesn't briefly render the prior track's
+                    // cached artwork before the first streaming track-change
+                    // callback fires. Defense-in-depth with the per-track
+                    // clear at VisualizerEngine+Capture.swift:190.
+                    self.currentTrackArtworkData = nil
+                }
                 if newState == .preparing {
                     // LF.5.fix.3-C: each new session entry clears the
                     // duplicate-emission guard so the next `.ready` for a
