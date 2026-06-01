@@ -8,6 +8,343 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
+### BUG-014 — Lumen Mosaic panel aggregate uniform across tracks (LM.4.6 limitation superseded by LM.4.7 palette library)
+
+**Severity:** P3 (visible but accepted at cert time; impact is "every Lumen Mosaic session feels statistically similar at the panel level" rather than a hard quality regression — Matt accepted the trade-off at LM.4.6 with the verdict *"Working. It's close enough. I'm giving up the fight on colors,"* and the 2026-05-17 palette exploration converged on a structural fix.)
+**Domain tag:** preset.fidelity
+**Status:** Resolved by Increment LM.4.7 (pending Matt M7 review on real-music multi-track session per the Done-when criterion in `docs/ENGINEERING_PLAN.md`).
+**Introduced:** Documented as a known trade-off at LM.4.6 (`c0f9ccf3`, 2026-05-12) — the shader file header, the ENGINEERING_PLAN Increment LM.4.6 "Honest math caveat" section, and the D-LM-7 amendment all explicitly call it out. LM.7 (`888bb856`-following commits, 2026-05-12) mitigated it at the aggregate-mean level via the per-track chromatic-projected tint (D-LM-7); the palette-character-per-session gap remained.
+**Resolved:** 2026-05-18, LM.4.7 implementation (commit pending). `lm_cell_palette` rewritten to palette-table lookup over a per-song 12-colour drawn palette. The Orchestrator selects one of 18 hand-authored palettes per song via mood-biased Gaussian-over-distance draw with anti-repeat exclusion of the last `kAntiRepeatWindow = 3` drawn palettes (widened from N=1 same day after Matt's M7 session showed within-quadrant clustering — see D-LM-palette-library amendment + release-note `[dev-2026-05-18-b]`). New `LumenMosaicPaletteLibrary.swift` holds the catalogue + `selectPalette(...)` algorithm; new slot-8 ABI fields carry the 12-entry palette payload; `LumenPaletteSpectrumTests` regression-locks the six LM.4.7 contract suites (palette membership, selection determinism, anti-repeat over the full recent-window, mood-weighted distribution shape, LM.9 pale-tone-share ≤ 0.30 for all 18 palettes, scripted track-sequence reproducibility). LM.7's chromatic-projection tint (`kTintMagnitude` + raw-tint vector) retired with this increment.
+
+### Expected behavior
+
+Different songs should produce visibly distinct **palette character** at the panel level — a track drawing Cathedral Lights should read as light-through-stained-glass, a track drawing Refn Glow as warm-neon-shadow, a track drawing Glacier as frozen-blue-on-snow. Within a song, every cell can still be any colour the palette's 12 entries allow; across songs, the listener perceives the palette changing at track boundaries.
+
+### Actual behavior (LM.4.6 + LM.7 baseline)
+
+The cell-colour generator (`lm_cell_palette`) samples uniformly from the full RGB cube on every track, with LM.7's per-track tint sliding the sampling window by `±0.20` per channel along the chromatic plane. At ~30 visible cells per panel, law-of-large-numbers convergence makes the **aggregate distribution shape** (mean, hue histogram, saturation distribution) statistically identical across tracks except for the chromatic-plane offset. The aggregate-mean offset gives each track a faintly distinct **tint** but does not give it a distinct **palette character** — every panel still looks like a sample from the same uniform RGB cube with a small chromatic shift.
+
+### Reproduction steps
+
+1. Run a multi-track Lumen Mosaic session against the LM.4.6 + LM.7 baseline (any commit between `c0f9ccf3` / `888bb856` and the LM.4.7 implementation commit).
+2. Compare 3–4 panel screenshots taken at the same beat phase across 3–4 different tracks.
+3. Observe: the panels are distinguishable (different specific colours per cell, slight chromatic-mean offset) but the overall **palette identity** does not vary — each panel reads as "a random sample from the same uniform-RGB distribution."
+
+The contact-sheet output of `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter PresetVisualReview` makes the failure mode visible across the 9-fixture set.
+
+### Suspected failure class
+
+`algorithm` — the cell-colour generator's sampling distribution shape is track-invariant by construction. LM.7's tint mitigates the **mean** of the distribution but not the **shape**. The fix is a structural replacement of the cell-colour source — palette-library-driven per-cell sampling with per-session palette selection — not a tuning pass on the existing generator.
+
+### Verification criteria
+
+- Automated: `LumenPaletteSpectrumTests` asserts palette membership (every cell colour matches one of the 12 palette entries to within float epsilon) per LM.4.7's rewritten test suite; per-song selection determinism (same `(track ID, previous-palette)` → same drawn palette); immediate-repeat exclusion (consecutive tracks cannot share a palette).
+- Manual: Matt M7 review on a real-music multi-track session — each song's palette reads as its named character (e.g. a track drawing Cathedral Lights reads as stained-glass; a track drawing Refn Glow reads as warm-neon-shadow) at the panel level, distinct from neighbouring tracks' palettes; the palette change at track boundaries is visible.
+- Mechanical: the LM.9 pale-tone-share gate (≤ 0.30; per D-LM-cream-rescission) passes for all 18 palettes — Cathedral Lights specifically must pass at its ~17 % nominal share (2 of 12 palette entries pale under the rule's linear-RGB definition; see D-LM-cream-rescission Erratum).
+
+### Related
+
+- D-LM-palette-library (this session) — the 18-palette library is the structural fix.
+- D-LM-cream-rescission (this session) — the anti-cream rule rescission is what makes pale-rich palettes (Cathedral Lights, Cycladic, Ming Porcelain) shippable inside the library.
+- LM.4.6 + LM.7 entries in `docs/ENGINEERING_PLAN.md` (Phase LM, both ✅ 2026-05-12) — the prior shape and its documented trade-off.
+- LM.4.7 entry in `docs/ENGINEERING_PLAN.md` (Phase LM, ⏳) — the implementation increment.
+
+---
+
+### BUG-012 — MPSGraph EXC_BAD_ACCESS in StemFFTEngine during sustained force-dispatch
+
+**Severity:** P1 (process-fatal crash; surfaced under sustained jank — ML dispatch scheduler hitting the 2100 ms ceiling and force-firing repeatedly. Not reproducible on every session but observed at least once at 2026-05-15T17:54Z.)
+**Domain tag:** ml
+**Status:** Open
+**Introduced:** Unknown; surfaced 2026-05-15. Stack frames are all in code that predates the V.9 Session 4.5c ferrofluid work — none of the rounds 16-26 commits touched StemFFTEngine, MPSGraph, or live stem separation. Suspect a latent race that requires specific timing patterns to surface.
+**Resolved:** —
+
+---
+
+### Expected behavior
+
+`StemFFTEngine.runForwardGraph()` completes its MPSGraph dispatch on every call, returning the forward STFT real + imag outputs to `StemSeparator.stft(mono:)`. No nil-pointer dereference, no process termination.
+
+### Actual behavior
+
+`EXC_BAD_ACCESS (code=1, address=0x8)` at `MPSGraph.run(withMTLCommandQueue:feeds:targetOperations:resultsDictionary:)`, called from `StemFFTEngine.runForwardGraph()`. Address 0x8 is "offset 8 from nil" — typical signature of accessing a member on a nil object reference. The session that captured the crash (`~/Documents/phosphene_sessions/2026-05-15T17-54-49Z/`) shows clean shutdown in session.log (`SessionRecorder finished (7140 frames, 15 stem dumps)`) — the crash fired after the session-recorder finalised, during continued playback or teardown.
+
+Stack:
+
+```
+Thread 71 — com.phosphene.stemSeparator queue
+0  MPSGraphOSLog
+6  -[MPSGraph runWithMTLCommandQueue:feeds:targetOperations:resultsDictionary:]
+7  StemFFTEngine.runForwardGraph()
+8  StemFFTEngine.gpuForward(mono:)
+9  StemFFTEngine.forward(mono:)
+10 StemSeparator.stft(mono:)
+11 StemSeparator.separate(audio:channelCount:sampleRate:)
+12 VisualizerEngine.performStemSeparation()
+13 closure #2 in closure #1 in VisualizerEngine.runStemSeparation()
+```
+
+Preceding session.log lines show repeated `ML: force-dispatch after 2100ms — ceiling hit, jank ignored` messages — the ML dispatch scheduler force-firing because the previous separation exceeded the 2100 ms ceiling.
+
+### Reproduction steps
+
+1. Start a session with a Spotify-prepared playlist.
+2. Run playback for ≥ 3 minutes (Love Rehab + Money has reproduced once at 2026-05-15T17:54Z).
+3. Observe sustained `force-dispatch after >2100ms` messages in session.log indicating ML scheduler backpressure.
+4. The crash may fire mid-playback or during teardown — not deterministic.
+
+**Minimum reproducer:** unknown — single observed occurrence so far. Suspected trigger: high concurrent load on the stem separator queue (multiple in-flight separations + force-dispatch races) on Tier 2 hardware.
+
+---
+
+### Session artifacts
+
+**Session directory:** `~/Documents/phosphene_sessions/2026-05-15T17-54-49Z/`
+
+**Hardware:** Apple M2 Pro (Mac mini), macOS 26.4.1.
+
+**Xcode screenshot (manually captured):** EXC_BAD_ACCESS dialog at the MPSGraph.run call site, Thread 71 — com.phosphene.stemSeparator queue.
+
+session.log tail at the time of the crash:
+
+```log
+[2026-05-15T17:57:27Z] stem separation 14 (440320 samples) track=Money → 0014_Money
+SessionRecorder finished (7140 frames, 15 stem dumps)
+```
+
+(Crash fired after this line — outside the session-recorder's captured range.)
+
+---
+
+### Suspected failure class
+
+`concurrency` — race between the ML dispatch scheduler's force-dispatch path and a stem separator's in-flight buffer / graph reference. Address 0x8 = nil-pointer offset → a held reference was concurrently freed.
+
+**Evidence for this class:** The force-dispatch messages preceding the crash indicate sustained backpressure. The ML scheduler force-fires a NEW dispatch while a PRIOR dispatch may still be holding buffers. If teardown of the prior dispatch races with the new one's setup, you get a nil-pointer access at MPSGraph.run.
+
+---
+
+### Verification criteria
+
+When this defect is resolved:
+
+- [ ] Sustained 5+ minutes of stem-separation-heavy playback with multiple force-dispatch events does not crash.
+- [ ] An instrumented capture shows MPSGraph buffer lifetimes are properly scoped to one dispatch (no overlapping references).
+- [ ] If concurrency is confirmed: a regression test exercises the force-dispatch path with deliberately racing setup/teardown.
+
+**Manual validation required:** Yes — multi-minute capture on Tier 2 hardware under sustained load.
+
+---
+
+### Fix scope
+
+Investigation: 2-4 hours (instrument MPSGraph buffer lifetimes, audit force-dispatch path for concurrent buffer access). Fix: depends on findings — could be a single missing lock or a larger refactor of the dispatch scheduler's concurrent semantics.
+
+### 2026-05-20 race-surface analysis (no fix; instrumentation only)
+
+A dispatch-path analysis was completed against the one observed crash. Findings:
+
+- `stemQueue` (`com.phosphene.stemSeparator`) is a serial `DispatchQueue` (utility QoS). The 5 s `DispatchSourceTimer`, the MainActor scheduler-decide hop, and the `stemQueue.async { performStemSeparation() }` re-entry all enqueue onto the same serial queue. By construction `performStemSeparation` cannot be concurrent with itself.
+- `StemFFTEngine` holds its `MPSGraph`, `commandQueue`, and `MTLBuffer`s as `let` members. `StemSeparator` holds the engine via `private let fftEngine`. `VisualizerEngine` holds the separator via `let stemSeparator: StemSeparator?`. Strong references — the engine's resources cannot be torn down while a `performStemSeparation` call is in flight unless `VisualizerEngine` itself is being deallocated.
+- `StemFFTEngine.forward(mono:)` acquires an internal `NSLock` before entering `gpuForward → runForwardGraph`. Concurrent callers (if they ever existed) would block, not race.
+- The `MLDispatchScheduler` is pure-state. It does not mutate any cross-thread resource on `forceDispatch`; the caller is the one that submits the new dispatch.
+- The crash fired *after* `SessionRecorder finished` in `session.log`. That correlates with teardown — the surviving hypothesis is a teardown race during a MainActor scheduler hop where `[weak self]` resolves non-nil at the boundary and the engine deinitialises while a `stemQueue.async` is enqueued.
+
+What we *don't* know and the next reproduction must capture: (a) whether `[weak self]` was nil at the MainActor or stemQueue hop, (b) whether the engine was actively being deinit'd, (c) whether MPSGraph buffer addresses were valid immediately before the call, (d) where the 2100 ms force-dispatch ceiling fired *relative to* the dispatching that crashed, (e) whether two `performStemSeparation` calls were somehow in flight despite the serial-queue contract.
+
+**Instrumentation installed (`[BUG-012-i1]`, 2026-05-20).** Pure-observability additions across `PhospheneEngine/Sources/Shared/`, `Sources/ML/`, `Sources/Renderer/`, and `PhospheneApp/`:
+
+- `Logging.bug012` (new os.Logger category `com.phosphene/bug012`).
+- `BUG012Probe` namespace (`Sources/Shared/BUG012Probe.swift`) with: monotonic dispatch-ID generator, in-flight counters for `stem dispatch` and `fft forward` / `fft inverse` with `.notice`-level **ALARM** logs if any counter exceeds 1, lifecycle counters for `StemFFTEngine` / `StemSeparator` / `VisualizerEngine` init+deinit, free-form `log()` / `notice()` helpers tagged `[BUG-012]`.
+- `StemFFTEngine.init/deinit/forward/inverse` — lifecycle + in-flight + lock-acquire/release events.
+- `StemFFTEngine.runForwardGraph/runInverseGraph` — buffer-address + storage-mode dump immediately before `MPSGraph.run`; matching post-call line.
+- `StemSeparator.init/deinit/separate` — lifecycle + ENTER/EXIT log per call.
+- `MLDispatchScheduler.decide` — log every decision (was only `.forceDispatch`).
+- `VisualizerEngine.init/deinit` — lifecycle markers.
+- `VisualizerEngine+Stems.runStemSeparation` — timer-fire log, MainActor `self?` resolution, scheduler decision, queued performStemSeparation, weak-self resolution at each `stemQueue.async` re-entry (logs explicitly if `self == nil`).
+- `VisualizerEngine+Stems.performStemSeparation` — `enterStemDispatch` / `exitStemDispatch` with outcome label (`ok` / `threw` / `warmup-skip` / `silence-skip` / `no-separator`); the separator.separate call is wrapped in `.notice`-level CALL/RETURN log lines.
+
+Regression test: `BUG012ConcurrencyTest` (4 threads × 3 forwards on one engine) regression-locks the engine's thread-safety contract. The test does not reproduce the crash today; it fires if a future change exposes `StemFFTEngine.forward` to genuinely concurrent callers (a stricter contract than the dispatch path requires, hence safer).
+
+**Centralised instrumentation reading-aid:** the complete per-line BUG-012-i1 probe map (every `BUG012Probe` call site labelled with its dispatch-ID semantics and severity) is published as part of the CA.2 ML capability audit at [`docs/CAPABILITY_REGISTRY/ML.md §BUG-012 instrumentation map`](../CAPABILITY_REGISTRY/ML.md#bug-012-instrumentation-map). The CA.2 audit's read of every BUG-012-adjacent code path (2026-05-20) did not edit any instrumented file and surfaced no new candidate root cause beyond the race-surface analysis above. One small diagnostic enrichment is suggested for the next instrumentation tranche — `CA.2-FU-2` in the audit's Follow-up Backlog.
+
+**How to read the next reproduction:**
+```
+log show --predicate 'subsystem == "com.phosphene" AND category == "bug012"' --info --last 30m | grep '[BUG-012]'
+```
+- Look for the last `[BUG-012] MPSGraph.run forward CALL id=N input=...` before the crash. The buffer-address line tells you whether the buffers were the expected ones.
+- Look for any `[BUG-012][ALARM]` lines. Any alarm at all is diagnostic gold — it means a serial-queue or lock contract was violated.
+- Look for `[BUG-012] VisualizerEngine deinit` near the crash. Presence = teardown race; absence = steady-state crash.
+- Look for `[BUG-012] stemQueue.async self=nil` lines. Presence = the engine was already nil when stemQueue picked the closure up.
+
+### Related
+
+Out of scope for V.9 Session 4.5c ferrofluid preset work (none of rounds 16-26 touched StemFFTEngine or MPSGraph). Filed for a future dedicated investigation. Step 1 (instrumentation) landed 2026-05-20 as increment `[BUG-012-i1]`; step 2 (diagnosis from instrumented reproduction) and step 3 (fix) follow.
+
+---
+
+### BUG-013 — Soundcharts does not expose `time_signature`; ML meter detection wrong on some odd-meter tracks
+
+**Severity:** P2 (visual artifact on a subset of odd-meter tracks. Bar-locked motion presets (Ferrofluid Ocean) cycle at the wrong rate on tracks where the ML meter detector guesses wrong AND the metadata source can't override. Current production playlist only surfaces this on Pink Floyd's Money 7/4 → cycles at 5.85 s/cycle on Ferrofluid Ocean instead of the intended 20.5 s/cycle. Visual still reads as "ocean swell" per Matt's 2026-05-15T17-54-49Z review.)
+**Domain tag:** dsp.beat
+**Status:** Open
+**Introduced:** Surfaced 2026-05-15 during Ferrofluid Ocean Round 25-26 metadata-override implementation.
+**Resolved:** —
+
+---
+
+### Expected behavior
+
+When `MetadataPreFetcher` returns a profile for a track, `PreFetchedTrackProfile.timeSignature` carries the track's time-signature numerator (3 for 3/4, 4 for 4/4, 7 for 7/4, etc.). `SessionPreparer.analyzePreview` overrides `BeatGrid.beatsPerBar` with this value before caching. Downstream consumers (FerrofluidMesh vertex shader's bar-locked wave cycling) use the correct meter.
+
+### Actual behavior
+
+`PreFetchedTrackProfile.timeSignature` is always nil in production. Soundcharts (the only metadata source in production that exposes audio features) does not return `time_signature` in its API response — verified by adding the decode field and observing zero hits in session.log (no `Using pre-fetched time signature: N/X` lines for any of Love Rehab, So What, There There, Pyramid Song, Money).
+
+Result: `BeatGrid.beatsPerBar` retains the ML-detected value. For Money (actual 7/4), the ML detector classifies as `meter=2/X` — wave cycle is `6 × 60 × 2 / 123 = 5.85 s` instead of the intended `6 × 60 × 7 / 123 = 20.5 s`.
+
+### Reproduction steps
+
+1. Build app: `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build`
+2. Start a Spotify-prepared session including Money by Pink Floyd.
+3. Switch to Ferrofluid Ocean preset.
+4. Observe wave cycle period during Money playback (~5.85 s, not the intended 20.5 s).
+5. `grep "time signature" session.log` returns no matches.
+6. `grep "BeatGrid installed" session.log` shows `meter=2/X` for Money.
+
+**Minimum reproducer:** any Spotify-prepared session containing Money (or Pyramid Song's 16/8, or any other odd-meter track where the ML detector guesses wrong).
+
+---
+
+### Session artifacts
+
+**Session directory:** `~/Documents/phosphene_sessions/2026-05-15T17-54-49Z/`
+
+```log
+[2026-05-15T17:57:01Z] BeatGrid installed: source=preparedCache, track='Money', bpm=123.2, beats=62, meter=2/X
+```
+
+No `Using pre-fetched time signature` lines exist in the file.
+
+---
+
+### Suspected failure class
+
+`api-contract` — Soundcharts' audio-features endpoint doesn't expose `time_signature` (or strips it from the Spotify upstream they proxy). The Phosphene-side override mechanism is wired correctly (Round 26); it has no value to consume.
+
+**Evidence for this class:** Decoder was added with `CodingKeys: time_signature` mapping; field stays nil on every track. ML override path fires (Round 25 / 26 code paths) but with nil input → no-op.
+
+---
+
+### Verification criteria
+
+When this defect is resolved:
+
+- [ ] `session.log` includes `Using pre-fetched time signature: N/X` lines for tracks where the value is known.
+- [ ] Money's installed BeatGrid logs `meter=7/X`, not `meter=2/X`.
+- [ ] Ferrofluid Ocean wave cycle on Money matches the intended `6 × 60 × 7 / 123 = 20.5 s` period.
+
+**Manual validation required:** Yes — visual confirmation that Money's wave rolls at the calmer 20.5 s cadence.
+
+---
+
+### Fix scope
+
+Three potential paths:
+
+1. **Path B — per-track hardcoded overrides.** Maintain a small JSON config mapping `spotifyID → timeSignature` for known-tricky tracks. Works for the few odd-meter tracks Matt's playlists actually contain; doesn't scale. ~40 lines + manual curation.
+
+2. **Add a different metadata source that exposes `time_signature`.** Spotify's `/audio-features` had the field but was deprecated for most apps in late 2024. AudD or AcousticBrainz might. Each new fetcher = ~150-300 lines of integration.
+
+3. **Improve ML meter detection on odd-meter tracks.** Out of scope for Phosphene application code — would require either retraining Beat This! or post-processing the downbeat probabilities with a meter-specific search.
+
+Current status: deferred. The Round 26 visual review accepted Money's 5.85 s cycle as "smooth and synced — solid." Revisit if/when a future playlist surfaces an odd-meter track where the visual reads wrong.
+
+### Related
+
+V.9 Session 4.5c Rounds 25-26 (metadata-override wiring), Round 21-24 (Gerstner bar-locked motion), BUG-001 (Money 7/4 live-path detection failure — different code path, related cause).
+
+---
+
+### BUG-001 — Money 7/4 stays REACTIVE on live path
+
+**Severity:** P2
+**Domain tag:** dsp.beat
+**Status:** Open
+**Introduced:** DSP.3.5 (identified; pre-existing limitation of the 10-second live window)
+**Resolved:** —
+
+**Expected behavior:** After 20 seconds of playback (two retry attempts), Beat This! produces a usable BeatGrid for Money 7/4 and `lock_state` advances past UNLOCKED.
+
+**Actual behavior:** Beat This! returns an empty grid on both the 10-second and 20-second attempts. The session stays in REACTIVE mode throughout. `grid_bpm=0` in `features.csv`.
+
+**Reproduction steps:**
+1. Start an ad-hoc reactive session (no Spotify preparation).
+2. Play "Money" by Pink Floyd in Apple Music.
+3. Switch to SpectralCartograph preset and observe mode label.
+4. Observe "○ REACTIVE" for the full track.
+
+**Minimum reproducer:** "Money" by Pink Floyd, ad-hoc reactive session.
+
+**Session artifacts:**
+- `docs/diagnostics/DSP.3.5-post-validation-beatgrid-triage.md` — contains the evidence and analysis.
+
+**Suspected failure class:** calibration
+**Evidence:** 10-second window at 120 BPM gives ~20 beats, which is insufficient for confident downbeat estimation on 7/4 irregular meter. The retry at 20 seconds sees the same 10-second snapshot (not a longer window), so it does not help. The 30-second Spotify-prepared path gives ~61 beats and reliably detects the meter.
+
+**Verification criteria:**
+- [ ] Connecting a Spotify playlist that includes "Money" results in a prepared BeatGrid with `beats_per_bar=7` in `KNOWN_ISSUES.md` test notes.
+- [ ] Manual: beat grid ticks in SpectralCartograph align to perceived quarter notes.
+
+**Fix scope:** The durable fix is not to tune the live path — it is to use a Spotify-prepared session. The live path (10-second window) is below the beat-count floor for irregular-meter tracks by construction. See `docs/diagnostics/DSP.3.5-post-validation-beatgrid-triage.md` for the evidence. A potential improvement (not yet planned) would be to extend the live-path snapshot to 20–30 seconds on the retry, but this carries a 1.5–2× memory cost per attempt.
+
+**Related:** DSP.3.5, D-077
+
+---
+
+### BUG-005 — Spotify `preview_url` returns null for some tracks
+
+**Severity:** P3
+**Domain tag:** session.ux
+**Status:** Open
+**Introduced:** U.11 (discovered during integration testing)
+**Resolved:** —
+
+**Expected behavior:** `PreviewResolver` finds a 30-second preview for every track in a Spotify playlist and preparation completes for all tracks.
+
+**Actual behavior:** Rights-restricted or region-locked tracks return `null` for `preview_url` from Spotify's `/items` endpoint. These tracks fall through to iTunes Search API, which also returns no preview for some of them. Affected tracks show `TrackPreparationStatus.noPreviewURL` in `PreparationProgressView`.
+
+**Minimum reproducer:** Any playlist containing tracks by Mclusky, or region-restricted regional-exclusives.
+
+**Session artifacts:** `session.log` `noPreviewURL` entries.
+
+**Suspected failure class:** api-contract (external API limitation, not a Phosphene bug)
+
+**Verification criteria:**
+- [ ] `PreparationProgressView` shows a clear "No preview available" status for affected tracks rather than a spinner or error.
+- [ ] Session proceeds to `.ready` state even when some tracks have no preview.
+
+**Fix scope:** UX copy improvement only. The underlying limitation (no preview URL from either Spotify or iTunes) is not fixable by Phosphene. See Failed Approach #47.
+
+**Related:** U.11, D-070, Failed Approach #47
+
+---
+
+## Pre-existing Flakes (non-blocking, test infrastructure only)
+
+These test failures are pre-existing, environment-dependent, and do not indicate behavioral regressions. They are tracked here for completeness.
+
+| Test | Condition | Workaround |
+|---|---|---|
+| `MetadataPreFetcherTests.fetch_networkTimeout_returnsWithinBudget` | Wall-clock budget (15 s) for a timeout-vs-slow-fetcher race; can flake at peak load | Run in isolation: `swift test --filter fetch_networkTimeout_returnsWithinBudget` |
+| `MemoryReporterTests` growth assertions | `phys_footprint` variance across system memory pressure states | Run with other apps quit; or skip with `SKIP_MEMORY_TESTS=1` |
+
+**Resolved in the 2026-06-01 hardening pass** (made deterministic — no longer wall-clock-dependent, removed from the table above): `FirstAudioDetectorTests` (ManualDelay), `AppleMusicConnectionViewModelTests` (bounded-yield state polling; never required Apple Music.app — uses `MockAppleMusicConnector`), `SessionManagerTests` lifecycle suite (`waitForReady` safety deadline 3 s → 15 s). `PreviewResolverTests` carries no wall-clock waits or `URLProtocol` stubs in current source — the earlier "rate-limit timing / `.serialized` applied" note did not match the code and was dropped.
+
+---
+
+## Resolved (recent)
+
 ### BUG-024 — Stale LF artwork bleeds into streaming sessions (LF.6, 2026-06-01)
 
 > **RESOLVED 2026-06-01** — Trivial-collapsed P1 per CLAUDE.md §Defect Handling Protocol (< 5 lines, root cause obvious, no architectural risk). Landed as the one-commit `[LF.6.fix.1]` increment.
@@ -1315,343 +1652,6 @@ Scope: 1 commit (criteria update + KNOWN_ISSUES status flip + release note). Clo
 - **L4 escalation path** (DeviceTier-aware fallback to V.7.5 2D silhouette spider on Tier 1, plus reclassifying M2 Pro as Tier 1 for Arachne) — documented above; needs a new `D-XXX` entry before implementation.
 
 ---
-
-### BUG-014 — Lumen Mosaic panel aggregate uniform across tracks (LM.4.6 limitation superseded by LM.4.7 palette library)
-
-**Severity:** P3 (visible but accepted at cert time; impact is "every Lumen Mosaic session feels statistically similar at the panel level" rather than a hard quality regression — Matt accepted the trade-off at LM.4.6 with the verdict *"Working. It's close enough. I'm giving up the fight on colors,"* and the 2026-05-17 palette exploration converged on a structural fix.)
-**Domain tag:** preset.fidelity
-**Status:** Resolved by Increment LM.4.7 (pending Matt M7 review on real-music multi-track session per the Done-when criterion in `docs/ENGINEERING_PLAN.md`).
-**Introduced:** Documented as a known trade-off at LM.4.6 (`c0f9ccf3`, 2026-05-12) — the shader file header, the ENGINEERING_PLAN Increment LM.4.6 "Honest math caveat" section, and the D-LM-7 amendment all explicitly call it out. LM.7 (`888bb856`-following commits, 2026-05-12) mitigated it at the aggregate-mean level via the per-track chromatic-projected tint (D-LM-7); the palette-character-per-session gap remained.
-**Resolved:** 2026-05-18, LM.4.7 implementation (commit pending). `lm_cell_palette` rewritten to palette-table lookup over a per-song 12-colour drawn palette. The Orchestrator selects one of 18 hand-authored palettes per song via mood-biased Gaussian-over-distance draw with anti-repeat exclusion of the last `kAntiRepeatWindow = 3` drawn palettes (widened from N=1 same day after Matt's M7 session showed within-quadrant clustering — see D-LM-palette-library amendment + release-note `[dev-2026-05-18-b]`). New `LumenMosaicPaletteLibrary.swift` holds the catalogue + `selectPalette(...)` algorithm; new slot-8 ABI fields carry the 12-entry palette payload; `LumenPaletteSpectrumTests` regression-locks the six LM.4.7 contract suites (palette membership, selection determinism, anti-repeat over the full recent-window, mood-weighted distribution shape, LM.9 pale-tone-share ≤ 0.30 for all 18 palettes, scripted track-sequence reproducibility). LM.7's chromatic-projection tint (`kTintMagnitude` + raw-tint vector) retired with this increment.
-
-### Expected behavior
-
-Different songs should produce visibly distinct **palette character** at the panel level — a track drawing Cathedral Lights should read as light-through-stained-glass, a track drawing Refn Glow as warm-neon-shadow, a track drawing Glacier as frozen-blue-on-snow. Within a song, every cell can still be any colour the palette's 12 entries allow; across songs, the listener perceives the palette changing at track boundaries.
-
-### Actual behavior (LM.4.6 + LM.7 baseline)
-
-The cell-colour generator (`lm_cell_palette`) samples uniformly from the full RGB cube on every track, with LM.7's per-track tint sliding the sampling window by `±0.20` per channel along the chromatic plane. At ~30 visible cells per panel, law-of-large-numbers convergence makes the **aggregate distribution shape** (mean, hue histogram, saturation distribution) statistically identical across tracks except for the chromatic-plane offset. The aggregate-mean offset gives each track a faintly distinct **tint** but does not give it a distinct **palette character** — every panel still looks like a sample from the same uniform RGB cube with a small chromatic shift.
-
-### Reproduction steps
-
-1. Run a multi-track Lumen Mosaic session against the LM.4.6 + LM.7 baseline (any commit between `c0f9ccf3` / `888bb856` and the LM.4.7 implementation commit).
-2. Compare 3–4 panel screenshots taken at the same beat phase across 3–4 different tracks.
-3. Observe: the panels are distinguishable (different specific colours per cell, slight chromatic-mean offset) but the overall **palette identity** does not vary — each panel reads as "a random sample from the same uniform-RGB distribution."
-
-The contact-sheet output of `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter PresetVisualReview` makes the failure mode visible across the 9-fixture set.
-
-### Suspected failure class
-
-`algorithm` — the cell-colour generator's sampling distribution shape is track-invariant by construction. LM.7's tint mitigates the **mean** of the distribution but not the **shape**. The fix is a structural replacement of the cell-colour source — palette-library-driven per-cell sampling with per-session palette selection — not a tuning pass on the existing generator.
-
-### Verification criteria
-
-- Automated: `LumenPaletteSpectrumTests` asserts palette membership (every cell colour matches one of the 12 palette entries to within float epsilon) per LM.4.7's rewritten test suite; per-song selection determinism (same `(track ID, previous-palette)` → same drawn palette); immediate-repeat exclusion (consecutive tracks cannot share a palette).
-- Manual: Matt M7 review on a real-music multi-track session — each song's palette reads as its named character (e.g. a track drawing Cathedral Lights reads as stained-glass; a track drawing Refn Glow reads as warm-neon-shadow) at the panel level, distinct from neighbouring tracks' palettes; the palette change at track boundaries is visible.
-- Mechanical: the LM.9 pale-tone-share gate (≤ 0.30; per D-LM-cream-rescission) passes for all 18 palettes — Cathedral Lights specifically must pass at its ~17 % nominal share (2 of 12 palette entries pale under the rule's linear-RGB definition; see D-LM-cream-rescission Erratum).
-
-### Related
-
-- D-LM-palette-library (this session) — the 18-palette library is the structural fix.
-- D-LM-cream-rescission (this session) — the anti-cream rule rescission is what makes pale-rich palettes (Cathedral Lights, Cycladic, Ming Porcelain) shippable inside the library.
-- LM.4.6 + LM.7 entries in `docs/ENGINEERING_PLAN.md` (Phase LM, both ✅ 2026-05-12) — the prior shape and its documented trade-off.
-- LM.4.7 entry in `docs/ENGINEERING_PLAN.md` (Phase LM, ⏳) — the implementation increment.
-
----
-
-### BUG-012 — MPSGraph EXC_BAD_ACCESS in StemFFTEngine during sustained force-dispatch
-
-**Severity:** P1 (process-fatal crash; surfaced under sustained jank — ML dispatch scheduler hitting the 2100 ms ceiling and force-firing repeatedly. Not reproducible on every session but observed at least once at 2026-05-15T17:54Z.)
-**Domain tag:** ml
-**Status:** Open
-**Introduced:** Unknown; surfaced 2026-05-15. Stack frames are all in code that predates the V.9 Session 4.5c ferrofluid work — none of the rounds 16-26 commits touched StemFFTEngine, MPSGraph, or live stem separation. Suspect a latent race that requires specific timing patterns to surface.
-**Resolved:** —
-
----
-
-### Expected behavior
-
-`StemFFTEngine.runForwardGraph()` completes its MPSGraph dispatch on every call, returning the forward STFT real + imag outputs to `StemSeparator.stft(mono:)`. No nil-pointer dereference, no process termination.
-
-### Actual behavior
-
-`EXC_BAD_ACCESS (code=1, address=0x8)` at `MPSGraph.run(withMTLCommandQueue:feeds:targetOperations:resultsDictionary:)`, called from `StemFFTEngine.runForwardGraph()`. Address 0x8 is "offset 8 from nil" — typical signature of accessing a member on a nil object reference. The session that captured the crash (`~/Documents/phosphene_sessions/2026-05-15T17-54-49Z/`) shows clean shutdown in session.log (`SessionRecorder finished (7140 frames, 15 stem dumps)`) — the crash fired after the session-recorder finalised, during continued playback or teardown.
-
-Stack:
-
-```
-Thread 71 — com.phosphene.stemSeparator queue
-0  MPSGraphOSLog
-6  -[MPSGraph runWithMTLCommandQueue:feeds:targetOperations:resultsDictionary:]
-7  StemFFTEngine.runForwardGraph()
-8  StemFFTEngine.gpuForward(mono:)
-9  StemFFTEngine.forward(mono:)
-10 StemSeparator.stft(mono:)
-11 StemSeparator.separate(audio:channelCount:sampleRate:)
-12 VisualizerEngine.performStemSeparation()
-13 closure #2 in closure #1 in VisualizerEngine.runStemSeparation()
-```
-
-Preceding session.log lines show repeated `ML: force-dispatch after 2100ms — ceiling hit, jank ignored` messages — the ML dispatch scheduler force-firing because the previous separation exceeded the 2100 ms ceiling.
-
-### Reproduction steps
-
-1. Start a session with a Spotify-prepared playlist.
-2. Run playback for ≥ 3 minutes (Love Rehab + Money has reproduced once at 2026-05-15T17:54Z).
-3. Observe sustained `force-dispatch after >2100ms` messages in session.log indicating ML scheduler backpressure.
-4. The crash may fire mid-playback or during teardown — not deterministic.
-
-**Minimum reproducer:** unknown — single observed occurrence so far. Suspected trigger: high concurrent load on the stem separator queue (multiple in-flight separations + force-dispatch races) on Tier 2 hardware.
-
----
-
-### Session artifacts
-
-**Session directory:** `~/Documents/phosphene_sessions/2026-05-15T17-54-49Z/`
-
-**Hardware:** Apple M2 Pro (Mac mini), macOS 26.4.1.
-
-**Xcode screenshot (manually captured):** EXC_BAD_ACCESS dialog at the MPSGraph.run call site, Thread 71 — com.phosphene.stemSeparator queue.
-
-session.log tail at the time of the crash:
-
-```log
-[2026-05-15T17:57:27Z] stem separation 14 (440320 samples) track=Money → 0014_Money
-SessionRecorder finished (7140 frames, 15 stem dumps)
-```
-
-(Crash fired after this line — outside the session-recorder's captured range.)
-
----
-
-### Suspected failure class
-
-`concurrency` — race between the ML dispatch scheduler's force-dispatch path and a stem separator's in-flight buffer / graph reference. Address 0x8 = nil-pointer offset → a held reference was concurrently freed.
-
-**Evidence for this class:** The force-dispatch messages preceding the crash indicate sustained backpressure. The ML scheduler force-fires a NEW dispatch while a PRIOR dispatch may still be holding buffers. If teardown of the prior dispatch races with the new one's setup, you get a nil-pointer access at MPSGraph.run.
-
----
-
-### Verification criteria
-
-When this defect is resolved:
-
-- [ ] Sustained 5+ minutes of stem-separation-heavy playback with multiple force-dispatch events does not crash.
-- [ ] An instrumented capture shows MPSGraph buffer lifetimes are properly scoped to one dispatch (no overlapping references).
-- [ ] If concurrency is confirmed: a regression test exercises the force-dispatch path with deliberately racing setup/teardown.
-
-**Manual validation required:** Yes — multi-minute capture on Tier 2 hardware under sustained load.
-
----
-
-### Fix scope
-
-Investigation: 2-4 hours (instrument MPSGraph buffer lifetimes, audit force-dispatch path for concurrent buffer access). Fix: depends on findings — could be a single missing lock or a larger refactor of the dispatch scheduler's concurrent semantics.
-
-### 2026-05-20 race-surface analysis (no fix; instrumentation only)
-
-A dispatch-path analysis was completed against the one observed crash. Findings:
-
-- `stemQueue` (`com.phosphene.stemSeparator`) is a serial `DispatchQueue` (utility QoS). The 5 s `DispatchSourceTimer`, the MainActor scheduler-decide hop, and the `stemQueue.async { performStemSeparation() }` re-entry all enqueue onto the same serial queue. By construction `performStemSeparation` cannot be concurrent with itself.
-- `StemFFTEngine` holds its `MPSGraph`, `commandQueue`, and `MTLBuffer`s as `let` members. `StemSeparator` holds the engine via `private let fftEngine`. `VisualizerEngine` holds the separator via `let stemSeparator: StemSeparator?`. Strong references — the engine's resources cannot be torn down while a `performStemSeparation` call is in flight unless `VisualizerEngine` itself is being deallocated.
-- `StemFFTEngine.forward(mono:)` acquires an internal `NSLock` before entering `gpuForward → runForwardGraph`. Concurrent callers (if they ever existed) would block, not race.
-- The `MLDispatchScheduler` is pure-state. It does not mutate any cross-thread resource on `forceDispatch`; the caller is the one that submits the new dispatch.
-- The crash fired *after* `SessionRecorder finished` in `session.log`. That correlates with teardown — the surviving hypothesis is a teardown race during a MainActor scheduler hop where `[weak self]` resolves non-nil at the boundary and the engine deinitialises while a `stemQueue.async` is enqueued.
-
-What we *don't* know and the next reproduction must capture: (a) whether `[weak self]` was nil at the MainActor or stemQueue hop, (b) whether the engine was actively being deinit'd, (c) whether MPSGraph buffer addresses were valid immediately before the call, (d) where the 2100 ms force-dispatch ceiling fired *relative to* the dispatching that crashed, (e) whether two `performStemSeparation` calls were somehow in flight despite the serial-queue contract.
-
-**Instrumentation installed (`[BUG-012-i1]`, 2026-05-20).** Pure-observability additions across `PhospheneEngine/Sources/Shared/`, `Sources/ML/`, `Sources/Renderer/`, and `PhospheneApp/`:
-
-- `Logging.bug012` (new os.Logger category `com.phosphene/bug012`).
-- `BUG012Probe` namespace (`Sources/Shared/BUG012Probe.swift`) with: monotonic dispatch-ID generator, in-flight counters for `stem dispatch` and `fft forward` / `fft inverse` with `.notice`-level **ALARM** logs if any counter exceeds 1, lifecycle counters for `StemFFTEngine` / `StemSeparator` / `VisualizerEngine` init+deinit, free-form `log()` / `notice()` helpers tagged `[BUG-012]`.
-- `StemFFTEngine.init/deinit/forward/inverse` — lifecycle + in-flight + lock-acquire/release events.
-- `StemFFTEngine.runForwardGraph/runInverseGraph` — buffer-address + storage-mode dump immediately before `MPSGraph.run`; matching post-call line.
-- `StemSeparator.init/deinit/separate` — lifecycle + ENTER/EXIT log per call.
-- `MLDispatchScheduler.decide` — log every decision (was only `.forceDispatch`).
-- `VisualizerEngine.init/deinit` — lifecycle markers.
-- `VisualizerEngine+Stems.runStemSeparation` — timer-fire log, MainActor `self?` resolution, scheduler decision, queued performStemSeparation, weak-self resolution at each `stemQueue.async` re-entry (logs explicitly if `self == nil`).
-- `VisualizerEngine+Stems.performStemSeparation` — `enterStemDispatch` / `exitStemDispatch` with outcome label (`ok` / `threw` / `warmup-skip` / `silence-skip` / `no-separator`); the separator.separate call is wrapped in `.notice`-level CALL/RETURN log lines.
-
-Regression test: `BUG012ConcurrencyTest` (4 threads × 3 forwards on one engine) regression-locks the engine's thread-safety contract. The test does not reproduce the crash today; it fires if a future change exposes `StemFFTEngine.forward` to genuinely concurrent callers (a stricter contract than the dispatch path requires, hence safer).
-
-**Centralised instrumentation reading-aid:** the complete per-line BUG-012-i1 probe map (every `BUG012Probe` call site labelled with its dispatch-ID semantics and severity) is published as part of the CA.2 ML capability audit at [`docs/CAPABILITY_REGISTRY/ML.md §BUG-012 instrumentation map`](../CAPABILITY_REGISTRY/ML.md#bug-012-instrumentation-map). The CA.2 audit's read of every BUG-012-adjacent code path (2026-05-20) did not edit any instrumented file and surfaced no new candidate root cause beyond the race-surface analysis above. One small diagnostic enrichment is suggested for the next instrumentation tranche — `CA.2-FU-2` in the audit's Follow-up Backlog.
-
-**How to read the next reproduction:**
-```
-log show --predicate 'subsystem == "com.phosphene" AND category == "bug012"' --info --last 30m | grep '[BUG-012]'
-```
-- Look for the last `[BUG-012] MPSGraph.run forward CALL id=N input=...` before the crash. The buffer-address line tells you whether the buffers were the expected ones.
-- Look for any `[BUG-012][ALARM]` lines. Any alarm at all is diagnostic gold — it means a serial-queue or lock contract was violated.
-- Look for `[BUG-012] VisualizerEngine deinit` near the crash. Presence = teardown race; absence = steady-state crash.
-- Look for `[BUG-012] stemQueue.async self=nil` lines. Presence = the engine was already nil when stemQueue picked the closure up.
-
-### Related
-
-Out of scope for V.9 Session 4.5c ferrofluid preset work (none of rounds 16-26 touched StemFFTEngine or MPSGraph). Filed for a future dedicated investigation. Step 1 (instrumentation) landed 2026-05-20 as increment `[BUG-012-i1]`; step 2 (diagnosis from instrumented reproduction) and step 3 (fix) follow.
-
----
-
-### BUG-013 — Soundcharts does not expose `time_signature`; ML meter detection wrong on some odd-meter tracks
-
-**Severity:** P2 (visual artifact on a subset of odd-meter tracks. Bar-locked motion presets (Ferrofluid Ocean) cycle at the wrong rate on tracks where the ML meter detector guesses wrong AND the metadata source can't override. Current production playlist only surfaces this on Pink Floyd's Money 7/4 → cycles at 5.85 s/cycle on Ferrofluid Ocean instead of the intended 20.5 s/cycle. Visual still reads as "ocean swell" per Matt's 2026-05-15T17-54-49Z review.)
-**Domain tag:** dsp.beat
-**Status:** Open
-**Introduced:** Surfaced 2026-05-15 during Ferrofluid Ocean Round 25-26 metadata-override implementation.
-**Resolved:** —
-
----
-
-### Expected behavior
-
-When `MetadataPreFetcher` returns a profile for a track, `PreFetchedTrackProfile.timeSignature` carries the track's time-signature numerator (3 for 3/4, 4 for 4/4, 7 for 7/4, etc.). `SessionPreparer.analyzePreview` overrides `BeatGrid.beatsPerBar` with this value before caching. Downstream consumers (FerrofluidMesh vertex shader's bar-locked wave cycling) use the correct meter.
-
-### Actual behavior
-
-`PreFetchedTrackProfile.timeSignature` is always nil in production. Soundcharts (the only metadata source in production that exposes audio features) does not return `time_signature` in its API response — verified by adding the decode field and observing zero hits in session.log (no `Using pre-fetched time signature: N/X` lines for any of Love Rehab, So What, There There, Pyramid Song, Money).
-
-Result: `BeatGrid.beatsPerBar` retains the ML-detected value. For Money (actual 7/4), the ML detector classifies as `meter=2/X` — wave cycle is `6 × 60 × 2 / 123 = 5.85 s` instead of the intended `6 × 60 × 7 / 123 = 20.5 s`.
-
-### Reproduction steps
-
-1. Build app: `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build`
-2. Start a Spotify-prepared session including Money by Pink Floyd.
-3. Switch to Ferrofluid Ocean preset.
-4. Observe wave cycle period during Money playback (~5.85 s, not the intended 20.5 s).
-5. `grep "time signature" session.log` returns no matches.
-6. `grep "BeatGrid installed" session.log` shows `meter=2/X` for Money.
-
-**Minimum reproducer:** any Spotify-prepared session containing Money (or Pyramid Song's 16/8, or any other odd-meter track where the ML detector guesses wrong).
-
----
-
-### Session artifacts
-
-**Session directory:** `~/Documents/phosphene_sessions/2026-05-15T17-54-49Z/`
-
-```log
-[2026-05-15T17:57:01Z] BeatGrid installed: source=preparedCache, track='Money', bpm=123.2, beats=62, meter=2/X
-```
-
-No `Using pre-fetched time signature` lines exist in the file.
-
----
-
-### Suspected failure class
-
-`api-contract` — Soundcharts' audio-features endpoint doesn't expose `time_signature` (or strips it from the Spotify upstream they proxy). The Phosphene-side override mechanism is wired correctly (Round 26); it has no value to consume.
-
-**Evidence for this class:** Decoder was added with `CodingKeys: time_signature` mapping; field stays nil on every track. ML override path fires (Round 25 / 26 code paths) but with nil input → no-op.
-
----
-
-### Verification criteria
-
-When this defect is resolved:
-
-- [ ] `session.log` includes `Using pre-fetched time signature: N/X` lines for tracks where the value is known.
-- [ ] Money's installed BeatGrid logs `meter=7/X`, not `meter=2/X`.
-- [ ] Ferrofluid Ocean wave cycle on Money matches the intended `6 × 60 × 7 / 123 = 20.5 s` period.
-
-**Manual validation required:** Yes — visual confirmation that Money's wave rolls at the calmer 20.5 s cadence.
-
----
-
-### Fix scope
-
-Three potential paths:
-
-1. **Path B — per-track hardcoded overrides.** Maintain a small JSON config mapping `spotifyID → timeSignature` for known-tricky tracks. Works for the few odd-meter tracks Matt's playlists actually contain; doesn't scale. ~40 lines + manual curation.
-
-2. **Add a different metadata source that exposes `time_signature`.** Spotify's `/audio-features` had the field but was deprecated for most apps in late 2024. AudD or AcousticBrainz might. Each new fetcher = ~150-300 lines of integration.
-
-3. **Improve ML meter detection on odd-meter tracks.** Out of scope for Phosphene application code — would require either retraining Beat This! or post-processing the downbeat probabilities with a meter-specific search.
-
-Current status: deferred. The Round 26 visual review accepted Money's 5.85 s cycle as "smooth and synced — solid." Revisit if/when a future playlist surfaces an odd-meter track where the visual reads wrong.
-
-### Related
-
-V.9 Session 4.5c Rounds 25-26 (metadata-override wiring), Round 21-24 (Gerstner bar-locked motion), BUG-001 (Money 7/4 live-path detection failure — different code path, related cause).
-
----
-
-### BUG-001 — Money 7/4 stays REACTIVE on live path
-
-**Severity:** P2
-**Domain tag:** dsp.beat
-**Status:** Open
-**Introduced:** DSP.3.5 (identified; pre-existing limitation of the 10-second live window)
-**Resolved:** —
-
-**Expected behavior:** After 20 seconds of playback (two retry attempts), Beat This! produces a usable BeatGrid for Money 7/4 and `lock_state` advances past UNLOCKED.
-
-**Actual behavior:** Beat This! returns an empty grid on both the 10-second and 20-second attempts. The session stays in REACTIVE mode throughout. `grid_bpm=0` in `features.csv`.
-
-**Reproduction steps:**
-1. Start an ad-hoc reactive session (no Spotify preparation).
-2. Play "Money" by Pink Floyd in Apple Music.
-3. Switch to SpectralCartograph preset and observe mode label.
-4. Observe "○ REACTIVE" for the full track.
-
-**Minimum reproducer:** "Money" by Pink Floyd, ad-hoc reactive session.
-
-**Session artifacts:**
-- `docs/diagnostics/DSP.3.5-post-validation-beatgrid-triage.md` — contains the evidence and analysis.
-
-**Suspected failure class:** calibration
-**Evidence:** 10-second window at 120 BPM gives ~20 beats, which is insufficient for confident downbeat estimation on 7/4 irregular meter. The retry at 20 seconds sees the same 10-second snapshot (not a longer window), so it does not help. The 30-second Spotify-prepared path gives ~61 beats and reliably detects the meter.
-
-**Verification criteria:**
-- [ ] Connecting a Spotify playlist that includes "Money" results in a prepared BeatGrid with `beats_per_bar=7` in `KNOWN_ISSUES.md` test notes.
-- [ ] Manual: beat grid ticks in SpectralCartograph align to perceived quarter notes.
-
-**Fix scope:** The durable fix is not to tune the live path — it is to use a Spotify-prepared session. The live path (10-second window) is below the beat-count floor for irregular-meter tracks by construction. See `docs/diagnostics/DSP.3.5-post-validation-beatgrid-triage.md` for the evidence. A potential improvement (not yet planned) would be to extend the live-path snapshot to 20–30 seconds on the retry, but this carries a 1.5–2× memory cost per attempt.
-
-**Related:** DSP.3.5, D-077
-
----
-
-### BUG-005 — Spotify `preview_url` returns null for some tracks
-
-**Severity:** P3
-**Domain tag:** session.ux
-**Status:** Open
-**Introduced:** U.11 (discovered during integration testing)
-**Resolved:** —
-
-**Expected behavior:** `PreviewResolver` finds a 30-second preview for every track in a Spotify playlist and preparation completes for all tracks.
-
-**Actual behavior:** Rights-restricted or region-locked tracks return `null` for `preview_url` from Spotify's `/items` endpoint. These tracks fall through to iTunes Search API, which also returns no preview for some of them. Affected tracks show `TrackPreparationStatus.noPreviewURL` in `PreparationProgressView`.
-
-**Minimum reproducer:** Any playlist containing tracks by Mclusky, or region-restricted regional-exclusives.
-
-**Session artifacts:** `session.log` `noPreviewURL` entries.
-
-**Suspected failure class:** api-contract (external API limitation, not a Phosphene bug)
-
-**Verification criteria:**
-- [ ] `PreparationProgressView` shows a clear "No preview available" status for affected tracks rather than a spinner or error.
-- [ ] Session proceeds to `.ready` state even when some tracks have no preview.
-
-**Fix scope:** UX copy improvement only. The underlying limitation (no preview URL from either Spotify or iTunes) is not fixable by Phosphene. See Failed Approach #47.
-
-**Related:** U.11, D-070, Failed Approach #47
-
----
-
-## Pre-existing Flakes (non-blocking, test infrastructure only)
-
-These test failures are pre-existing, environment-dependent, and do not indicate behavioral regressions. They are tracked here for completeness.
-
-| Test | Condition | Workaround |
-|---|---|---|
-| `MetadataPreFetcherTests.fetch_networkTimeout_returnsWithinBudget` | Intermittent network call timing variance under load | Run in isolation: `swift test --filter fetch_networkTimeout_returnsWithinBudget` |
-| `MemoryReporterTests` growth assertions | `phys_footprint` variance across system memory pressure states | Run with other apps quit; or skip with `SKIP_MEMORY_TESTS=1` |
-| `AppleMusicConnectionViewModelTests` (4 tests) | Requires Apple Music.app to be installed and reachable; CI-only failure | Run on dev machine with Apple Music installed |
-| `PreviewResolverTests` timing tests | Rate-limit timing sensitive under parallel test execution | `@Suite(.serialized)` applied; still flakes under peak system load |
-
----
-
-## Resolved (recent)
 
 ### BUG-018 — Stem deviation primitives systematically exceed declared `[0, 1]` ceiling during cold-start
 
