@@ -9,6 +9,8 @@ dist/
 # Xcode / Swift
 build/
 DerivedData/
+# LLVM coverage profiles emitted by `swift test --enable-code-coverage`.
+*.profraw
 *.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/
 *.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
