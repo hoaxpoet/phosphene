@@ -223,6 +223,24 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Metadata pre-fetcher for external API queries.
     var preFetcher: MetadataPreFetcher?
 
+    // MARK: - Streaming Artwork (LF.6.streaming)
+
+    /// Resolves album-artwork URLs for streaming tracks. Spotify-first
+    /// (`TrackIdentity.spotifyArtworkURL`) then iTunes Search fallback.
+    var streamingArtworkResolver: StreamingArtworkURLResolving = StreamingArtworkURLResolver()
+
+    /// URLSession-backed byte fetcher for resolved artwork URLs.
+    var streamingArtworkFetcher: StreamingArtworkFetching = DefaultStreamingArtworkFetcher()
+
+    /// Disk cache for fetched artwork bytes (SHA-256-keyed LRU, 100 MB cap,
+    /// `~/Library/Caches/com.phosphene.app/streaming-artwork/`).
+    var streamingArtworkDiskCache = StreamingArtworkDiskCache()
+
+    /// Owns the in-flight artwork fetch task for the live streaming track.
+    /// Lazily constructed once `init()` is past phase 2 so the publish
+    /// closure can capture `self`.
+    var streamingArtworkPublisher: StreamingArtworkPublisher?
+
     // MARK: - Device Tier
 
     /// GPU capability tier: .tier1 (M1/M2) or .tier2 (M3/M4).
@@ -807,6 +825,18 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         // teardown cleanly.
         sessionManager.localFilePreparer = self
 
+        // LF.6.streaming-S5: assemble the streaming-side artwork publisher.
+        // Built post-phase-2 so the publish closure can `[weak self]`-capture
+        // and write `currentTrackArtworkData` on the MainActor.
+        self.streamingArtworkPublisher = StreamingArtworkPublisher(
+            resolver: streamingArtworkResolver,
+            fetcher: streamingArtworkFetcher,
+            diskCache: streamingArtworkDiskCache,
+            publish: { [weak self] data in
+                self?.currentTrackArtworkData = data
+            }
+        )
+
         // Trigger plan construction whenever the session reaches .ready.
         // For LF sessions (`currentSource.isLocalFile`), `handleLocalFileReady()`
         // installs the cached BeatGrid + starts the LF audio router + advances
@@ -825,6 +855,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                     // cached artwork before the first streaming track-change
                     // callback fires. Defense-in-depth with the per-track
                     // clear at VisualizerEngine+Capture.swift:190.
+                    // LF.6.streaming-S5: also cancel any in-flight streaming
+                    // fetch from the prior session so a slow CDN response
+                    // can never land on the new session's chrome.
+                    self.streamingArtworkPublisher?.update(for: nil)
                     self.currentTrackArtworkData = nil
                 }
                 if newState == .preparing {
