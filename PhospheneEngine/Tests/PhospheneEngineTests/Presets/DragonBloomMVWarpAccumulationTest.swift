@@ -116,6 +116,18 @@ struct DragonBloomMVWarpAccumulationTest {
         )
         try writePNG(music.pixels, to: outDir.appendingPathComponent("music_final.png"))
 
+        // ── Run C: Spotify-tap pattern (Matt's 2026-06-01 reproducer) ──────
+        // Post-AGC-convergence: bands at ~0.5 (so brightness/zoom should fire)
+        // but raw waveform amplitude is quiet (~0.20 peaks). The bloom shape
+        // is supposed to deflect with the waveform — if waveform amplitude
+        // isn't compensated for, the curve barely deviates from a circle and
+        // the result reads "like silence" despite the brightness/zoom working.
+        let spotify = try runAccumulationLoop(
+            preset: preset, mvWarp: mvWarp, context: ctx,
+            audioMode: .spotifyTapPattern
+        )
+        try writePNG(spotify.pixels, to: outDir.appendingPathComponent("spotify_final.png"))
+
         // ── Per-frame snapshots from the music run (frames 1, 10, 30, 60) ──────
         // The accumulator's envelope should monotonically grow over this range.
 
@@ -126,6 +138,7 @@ struct DragonBloomMVWarpAccumulationTest {
           ├─────────────────────┼──────────────┼────────────────┼─────────────────┤
           │ silence (frame 60)  │   \(pad(silence.brightPixels, 8))   │     \(padF(silence.frameMaxLuma))     │      \(padF(silence.envelopeRadius))      │
           │ music   (frame 60)  │   \(pad(music.brightPixels, 8))   │     \(padF(music.frameMaxLuma))     │      \(padF(music.envelopeRadius))      │
+          │ spotify (frame 60)  │   \(pad(spotify.brightPixels, 8))   │     \(padF(spotify.frameMaxLuma))     │      \(padF(spotify.envelopeRadius))      │
           └─────────────────────┴──────────────┴────────────────┴─────────────────┘
         Interpretation:
           brightPixels   = pixels with luma > 0.20 (loose threshold — feathered halo counts)
@@ -170,11 +183,43 @@ struct DragonBloomMVWarpAccumulationTest {
                 Music envelope radius (\(music.envelopeRadius)) does not exceed silence \
                 (\(silence.envelopeRadius)) — bass/mid drivers are not spreading the bloom.
                 """)
+
+        // Spotify-tap pattern: the FIX gate. With raw waveform amplitude 4×
+        // quieter than LF but bands at the same AGC-converged 0.5, the bloom
+        // should still spread to roughly LF-comparable envelope. Pre-fix this
+        // assertion FAILS because the polar curve barely deflects under quiet
+        // waveform input → envelope stays near the silence ring at r ≈ 0.285.
+        // Post-fix (in-shader waveform RMS normalization) this should pass.
+        #expect(spotify.envelopeRadius > silence.envelopeRadius + 0.02,
+                """
+                Spotify-tap envelope radius (\(spotify.envelopeRadius)) is too close to silence \
+                (\(silence.envelopeRadius)). On the process-tap path the raw waveform is quieter \
+                than LF, so without amplitude normalization the polar curve collapses to a circle \
+                and the bloom looks like silence — matches Matt's 2026-06-01 report. \
+                Add in-shader waveform RMS normalization.
+                """)
+        #expect(spotify.brightPixels > silence.brightPixels * 2,
+                """
+                Spotify-tap is not visibly spread vs silence (\(spotify.brightPixels) ≤ \
+                \(silence.brightPixels) × 2). The bloom shape needs the raw waveform to deflect; \
+                process-tap audio is quieter than LF so the shape collapses. Same root cause as \
+                the envelope-radius gate above.
+                """)
     }
 
     // MARK: - Accumulation loop
 
-    private enum AudioMode { case silence, syntheticMusic }
+    private enum AudioMode {
+        case silence
+        case syntheticMusic
+        /// Reproduces the Spotify-tap pattern: AGC-normalized bands settle near
+        /// 0.5 (so brightness/zoom work fine) but raw waveform peaks are quiet
+        /// (~0.15) because the process-tap delivers a lower-amplitude signal
+        /// than the in-process LF AVAudioEngine path (LF.1.5 + the un-AGC-d
+        /// waveform-buffer-amplitude gap). Use this fixture to validate that
+        /// the bloom shape still deflects under quiet raw waveform input.
+        case spotifyTapPattern
+    }
 
     private struct LoopResult {
         let pixels: [UInt8]
@@ -277,11 +322,25 @@ struct DragonBloomMVWarpAccumulationTest {
             for i in 0..<2048 { p[i] = 0 }
         case .syntheticMusic:
             // Two superposed sines on each channel; phase walks with frame.
+            // Amplitude ~0.55 — typical LF-path or normalized-Spotify peak.
             let phase = Float(frameIdx) * 0.27
             for f in 0..<1024 {
                 let theta = Float(f) / 1024.0 * 2.0 * .pi
                 let s = 0.55 * sin(theta * 3.0 + phase)
                       + 0.25 * sin(theta * 11.0 - phase * 0.6)
+                p[f * 2]     = s
+                p[f * 2 + 1] = s
+            }
+        case .spotifyTapPattern:
+            // Same shape as syntheticMusic but 4× quieter — reproduces the
+            // process-tap-path amplitude register. Peaks at ~0.20 instead of
+            // ~0.80; sufficient to expose the un-normalised-waveform-amplitude
+            // bug that makes the polar curve barely deflect on Spotify.
+            let phase = Float(frameIdx) * 0.27
+            for f in 0..<1024 {
+                let theta = Float(f) / 1024.0 * 2.0 * .pi
+                let s = 0.14 * sin(theta * 3.0 + phase)
+                      + 0.06 * sin(theta * 11.0 - phase * 0.6)
                 p[f * 2]     = s
                 p[f * 2 + 1] = s
             }
@@ -307,6 +366,25 @@ struct DragonBloomMVWarpAccumulationTest {
             let pulse = (frameIdx % 60 == 0) ? Float(1.0) : Float(0.0)
             fv.beatComposite = pulse
             fv.beatBass      = pulse
+            return fv
+        case .spotifyTapPattern:
+            // Post-AGC-convergence steady state on the process-tap path:
+            // AGC has compressed per-band energies into the same register as
+            // LF (≈ 0.5), so the brightness/zoom path looks fine. But the raw
+            // waveform amplitude (slot 2) is much quieter — populated by
+            // populateWaveform above at ~0.20 peaks. Beat fields are zero;
+            // deviation primitives are ~0 (post-convergence). This is the
+            // "looks like silence after 20s on Spotify" reproducer.
+            var fv = FeatureVector(bass: 0.50, mid: 0.50, treble: 0.45,
+                                   time: time, deltaTime: Self.deltaTime)
+            // Small post-convergence deviation residuals — not enough to drive
+            // motion by themselves under the Spike-1 weights.
+            fv.bassRel    = 0.02
+            fv.bassDev    = 0.02
+            fv.midRel     = 0.02
+            fv.midDev     = 0.02
+            fv.bassAttRel = 0.03
+            fv.midAttRel  = 0.02
             return fv
         }
     }
