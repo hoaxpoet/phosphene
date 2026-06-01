@@ -35,15 +35,35 @@
 
 ---
 
-## Recommendation — drive these first
+## CORRECTION (2026-06-01, post-review) — there is a documented cert ladder; follow it
 
-1. **Volumetric Lithograph** — best clean-cert bet. It's the *reference implementation* for the mv_warp musicality architecture (so the hard "feedback accumulation" problem is already solved here), has references + README, is in active review, and carries no documented structural wall. Lowest-risk path to a third certified preset.
-2. **Gossamer** — refs + README, already remastered, and explicitly earmarked for an uplift phase. Active in the harness. Second-best bet.
-3. **Aurora Veil** — only *after* two prerequisites: (a) curate the reference README (FA#63), and (b) verify every audio route actually fires via the replay tool (the PT.1 lesson — don't author against a 0 %-firing route). It's closest to a cert attempt but has the most route-debt.
+The first draft of this audit anchored on *investment as a proxy for cert-proximity* and recommended the already-worked presets (VL / Gossamer). That was wrong on two counts, surfaced by Matt's pushback:
 
-**Advise against (near-term):** **Arachne** as a cert target. Despite the heaviest investment, its references demand compositing layers the renderer structurally lacks — a cert push is the V.8 render-pass build, a large increment, not a tuning pass. Worth doing eventually, but it's a project, not a quick third-cert.
+1. **Investment ≠ proximity to cert.** Arachne is the proof: most-invested (60 commits), furthest from cert (structural gap). Prior work can entrench problems rather than approach the bar.
+2. **I missed a documented, ordered cert ladder.** D-072's system-wide "same visual conversation, not pixel-match" reframe + the `SHADER_CRAFT.md §10.x` uplift specs define an explicit sequence:
 
-**Defer (need scoping):** Glass Brutalist + Membrane (ref-backed but dormant — would need a fresh capture + contact sheet to assess). Kinetic Sculpture + Fractal Tree (1 commit each — too early; these are "build the preset," not "certify it").
+   | Rung | Preset | Spec | State |
+   |---|---|---|---|
+   | V.8 | Arachne | §10.1 (+ `ARACHNE_V8_DESIGN.md`) | structural pivot, stalled |
+   | V.8 | Gossamer | §10.2 | remaster done, not certified |
+   | V.9 | Ferrofluid Ocean | §10.3 | ✅ **certified** (round 69) |
+   | **V.10** | **Fractal Tree** | **§10.4** | **next designated rung** |
+   | V.11 | Volumetric Lithograph | §10.5 | after Fractal Tree |
+   | V.12 | Glass Brutalist + Kinetic Sculpture | (specs TBD) | last |
+
+   The ladder *deliberately* puts the low-code-investment preset (Fractal Tree, 1 fidelity commit) next — because its prerequisite work is what's done: **15 reference images + a session-ready annotated README + a written §10.4 uplift spec**, with zero entrenched fidelity debt.
+
+3. **The VL claim was overstated.** VL has *never had an M7 review*; "the feedback-accumulation problem is already solved" conflated "the `mv_warp` pass is wired" with "the visual reads cert-ready." Retracted. VL is V.11 — after Fractal Tree.
+
+## Recommendation (corrected) — follow the ladder: Fractal Tree (V.10) next
+
+**Fractal Tree** is the best next cert target — not despite its low code-investment but *because* of it: the de-risking groundwork (complete reference set + §10.4 spec + ladder slot) is done, and there's no baked-in fidelity debt to un-stick. This is the "choose a preset that hasn't had much work" path, and it's also the documented plan.
+
+**Honest risk (not soft-pedaled):** it's still a from-near-scratch *hero-fidelity* uplift — painterly translucent SSS leaves, golden-hour lighting, bark POM displacement — exactly the high-fidelity ambition that has been botched before. It's a multi-round M7 grind like every cert (Lumen Mosaic 8 rounds, FFO 69), not a quick win. The mitigants are real (complete references, written spec, the "same visual conversation" reframe) but the fidelity ceiling is high.
+
+**Then:** Volumetric Lithograph (V.11), Glass Brutalist + Kinetic Sculpture (V.12), per the ladder.
+
+**Not near-term:** Arachne (a V.8 render-pass build, not a tuning pass) and Aurora Veil (route-debt + missing README — off the V.10–V.12 ladder).
 
 ---
 
