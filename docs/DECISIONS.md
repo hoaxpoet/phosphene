@@ -4138,3 +4138,42 @@ LF.6 addresses Gap A as a prerequisite (an artwork slot above a placeholder titl
 - `Scripts/check_user_strings.sh` exit 0 / `Scripts/check_sample_rate_literals.sh` exit 0.
 - New file `AlbumArtworkCache.swift` registered in `project.pbxproj` across all four PBX sections (`PBXBuildFile`, `PBXFileReference`, `PBXGroup`, `PBXSourcesBuildPhase`); same for both test files.
 - Manual smoke (Matt-driven) pending — need a release-grade fixture with embedded artwork; LF.5 tempo fixtures all ship art-free per `ffprobe -select_streams v:0 -show_entries stream=codec_type`.
+
+## D-134 — LF.6.streaming streaming-path artwork: Spotify+iTunes resolver, Caches/ 100 MB LRU, cancel-on-track-change (LF.6.streaming, 2026-06-01)
+
+**Context.** LF.6 (D-133) surfaced LF-side artwork in the chrome via `engine.currentTrackArtworkData: Data?` and deferred streaming-path artwork to a follow-up increment. LF.6.streaming closes that gap: every Spotify / Apple Music / tap-path streaming track-change now resolves and fetches album artwork (Spotify Web API `album.images[0].url` hint + iTunes Search fallback), persists the bytes to a disk cache under `~/Library/Caches/`, and publishes them through the same `currentTrackArtworkData` channel LF.6 already established.
+
+The three subsystems landed as siblings: `StreamingArtworkURLResolver` (engine, Spotify-first + iTunes Search), `StreamingArtworkFetcher` (app, URLSession with 5 s timeout), `StreamingArtworkDiskCache` (app, SHA-256-keyed LRU). `StreamingArtworkPublisher` (app, in `VisualizerEngine+StreamingArtwork.swift`) owns the in-flight `Task` so a rapid A → B track-change cancels A cleanly before B's bytes can race it.
+
+**Decisions** (Matt-approved at kickoff Pre-Flight Audit, 2026-06-01):
+
+**(a) Cache location: `~/Library/Caches/com.phosphene.app/streaming-artwork/`.** macOS may purge `Caches/` under disk pressure; re-fetch costs one HTTP round-trip and matches Spotify's own client behaviour. Alternative considered: `~/Library/Application Support/` (artwork survives indefinitely; system can't reclaim under low-disk pressure). Rejected — accumulating artwork from tracks the user no longer plays is unkind to disk-constrained Mac mini deployments, and the re-fetch cost is bounded (single HTTP round-trip per evicted track).
+
+**(b) Cache size cap: 100 MB.** ~1,200 cached tracks at typical Spotify CDN size (~80 KB JPEG). Comfortable headroom for a deep streaming history. Alternatives considered: 50 MB (~600 tracks; tighter, evicts during a long session for heavy users), 500 MB (effectively no cap during normal use; user-visible only on disk-usage inspection). Rejected — 100 MB hits the sweet spot for a single-user listening machine; 50 MB risks eviction during long sessions and 500 MB is conspicuous footprint for a decoration cache.
+
+**(c) Source order: Spotify-first, iTunes Search second, then nil.** Spotify connector captures `album.images[0].url` inline at parse time (no network call needed); iTunes Search falls back for non-Spotify sessions (Apple Music, Core Audio tap when the source app is known). Alternatives considered: Spotify only (narrower scope; Apple Music shows the glyph until LF.6.streaming.2 lands the iTunes path), Spotify + iTunes Search + MusicKit (highest-res for Apple Music subscribers, but requires MusicKit token plumbing we don't have for the music-library scope). Rejected — Spotify-only leaves a coverage gap users will see immediately; MusicKit is a separate increment if Matt wants it.
+
+**(d) In-flight cancel-on-track-change: yes.** `StreamingArtworkPublisher` stores the current `Task<Void, Never>?` and cancels it on every new `update(for:)` call. Every publish is gated on `!Task.isCancelled` so a cancelled task can never write `currentTrackArtworkData` after a newer track-change has started. The user-visible cost is a sub-frame nil flash between cancel and re-publish; the chrome's existing opacity-animate-in covers it. Alternative considered: let the previous fetch complete. Rejected — orphaned in-flight tasks waste bandwidth and create a wrong-art-briefly-visible failure mode if A's slow fetch lands after B's fast fetch (LF.5.fix.3 Bug B lessons; CLAUDE.md "no wrong-art at any moment" rule from LF.6).
+
+**Engineering call (within scope, doc'd for the record).** The kickoff suggested URLProtocol stubs + `@Suite(.serialized)` for `StreamingArtworkURLResolverTests`. The actual implementation uses closure-injected `networkFetcher` — same shape as `PreviewResolver`, which the resolver is modelled on — so URLProtocol stubs aren't needed. `@Suite(.serialized)` is reserved for `StreamingArtworkFetcherTests` which DOES use a URLProtocol stub per CLAUDE.md's URLProtocol invariant.
+
+**Out of scope (deferred or won't-do).**
+
+- Apple Music MusicKit-native artwork API (separate increment if Matt wants it; current iTunes Search coverage is acceptable for most mainstream Apple Music tracks).
+- Real-time tap-path artwork when no source-app identity is available (the fallback glyph applies — no track identity means nothing to query).
+- Mid-track artwork updates / animated swap (chrome's opacity-animate-in is sufficient).
+- `MetadataPreFetcher` rewiring (LF.6 already replaced the `albumArtURL: URL?` TODO; LF.6.streaming feeds the same `Data?` publisher).
+- `PreparationProgressView` per-track artwork (artwork fetched lazily after track-change, not during prep).
+- `Recents` submenu thumbnails for streaming history.
+- `TrackChangeAnimationView` boundary cards (stays typographic per `.impeccable.md §3.6`).
+- Public-build telemetry on cache hit-rate (internal Logger lines only).
+- Image format conversion (we persist bytes verbatim; `AlbumArtworkCache` (LF.6) handles decode + downsize).
+
+**Verification.**
+
+- Engine 1367 / 1367 ✓ (LF.6 baseline 1361 + 6 `StreamingArtworkURLResolverTests`).
+- App 379 / 379 ✓ on isolated re-runs; one parallel-execution flake observed in `SessionManagerTests` (matches the pre-existing timing-race flake category — passes cleanly in isolation, second app-suite run after the flake was green).
+- SwiftLint `--strict` clean on every touched file.
+- `Scripts/check_user_strings.sh` exit 0 / `Scripts/check_sample_rate_literals.sh` exit 0.
+- New files `StreamingArtworkDiskCache.swift`, `StreamingArtworkFetcher.swift`, `VisualizerEngine+StreamingArtwork.swift` (app) registered in `project.pbxproj` across all four PBX sections; new test files `StreamingArtworkDiskCacheTests.swift`, `StreamingArtworkFetcherTests.swift`, `StreamingArtworkPublishingTests.swift` similarly registered. `StreamingArtworkURLResolver.swift` (engine) auto-discovered by SPM.
+- Manual smoke (Matt-driven) pending — visual verification against real Spotify + Apple Music + tap sessions.

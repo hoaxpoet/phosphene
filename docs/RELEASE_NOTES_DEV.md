@@ -6,6 +6,54 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-06-01-b] LF.6.streaming — Streaming-path artwork resolver + fetcher + cache + wire
+
+**Increment:** LF.6.streaming. **Status:** Shipped 2026-06-01.
+
+### What landed
+
+Every Spotify / Apple Music / tap-path track-change now resolves and fetches album artwork and publishes it through the same `currentTrackArtworkData` channel LF.6 (D-133) established for the LF path. The streaming chrome with resolvable artwork is pixel-identical to the LF chrome with resolvable artwork; non-resolvable tracks fall back to the LF.6 `music.note.list` glyph.
+
+### How it works
+
+Three new subsystems shipped as siblings (one engine, two app, plus an engine-extension on the app side):
+
+- **`StreamingArtworkURLResolver`** (engine) — modelled on `PreviewResolver`. Spotify-first: `TrackIdentity.spotifyArtworkURL` (new resolution-hint field, populated by `SpotifyWebAPIConnector` from `album.images[0].url`) short-circuits without any network call. iTunes Search fallback: by `<artist> <title>`, parses `artworkUrl100`, rewrites `100x100bb` → `600x600bb`. Per-session in-memory cache de-duplicates.
+- **`StreamingArtworkFetcher`** (app) — `StreamingArtworkFetching` protocol + URLSession-backed default with a 5 s request timeout. Throws on non-2xx / network failure; caller catches and publishes nil so the chrome falls back to the glyph.
+- **`StreamingArtworkDiskCache`** (app) — actor at `~/Library/Caches/com.phosphene.app/streaming-artwork/`. SHA-256-keyed `.bin` files; LRU eviction by `contentModificationDate`; atomic writes; 100 MB cap (~1,200 cached tracks at typical Spotify CDN size).
+- **`StreamingArtworkPublisher`** (app, in `VisualizerEngine+StreamingArtwork.swift`) — owns the in-flight fetch `Task<Void, Never>?` so a rapid A → B track-change cancels A cleanly. Every publish gated on `!Task.isCancelled`. Composes the resolver → disk-cache → fetcher → persist → publish chain.
+
+The `+Capture.swift` track-change callback now resolves the canonical `TrackIdentity` BEFORE the MainActor block so the publisher sees the full identity (with `spotifyArtworkURL` hint). MainActor block publishes `currentTrack` + nil-artwork on the same tick (LF.6 title-first-then-artwork invariant) then kicks the publisher; resolved bytes land on a later tick — chrome's existing opacity-animate-in covers the gap.
+
+### Decisions (Matt-approved Pre-Flight Audit)
+
+D-134 records the full rationale. Summary: (a) cache location `~/Library/Caches/`; (b) cache size cap 100 MB; (c) source order Spotify + iTunes Search; (d) in-flight cancel-on-track-change yes.
+
+### Verification
+
+- Engine 1367 / 1367 ✓ (LF.6 baseline 1361 + 6 `StreamingArtworkURLResolverTests`).
+- App 379 / 379 ✓ on isolated re-run; first parallel run flaked on `SessionManagerTests` state-transition assertions, second run passed clean — matches the pre-existing timing-race flake pattern (memory `project_test_baseline.md`). `SessionManagerTests` passes 11 / 11 in isolation via `swift test --filter SessionManagerTests`.
+- 7 disk-cache tests + 5 fetcher tests + 6 publishing tests + 6 resolver tests + 1 fixture-extension test all pass.
+- SwiftLint `--strict` clean on every touched file.
+- `Scripts/check_user_strings.sh` exit 0 / `Scripts/check_sample_rate_literals.sh` exit 0.
+- 4 PBX sections updated in `project.pbxproj` for each new app source / test file.
+
+### Manual smoke (Matt-driven, pending)
+
+Visual contract to verify on a real Mac mini session:
+
+1. Spotify session — artwork renders within ~1 s of every track change.
+2. Apple Music session — artwork renders for tracks iTunes Search finds (most mainstream); less-mainstream tracks fall back to the glyph, no crash.
+3. Rapid `next next next`-track — chrome never flashes a previous track's artwork; final state matches the final track.
+4. Offline — restart a previously-played streaming session in airplane mode; cached artwork still renders (disk cache hit).
+5. Disk cap — `~/Library/Caches/com.phosphene.app/streaming-artwork/` does not exceed 100 MB after extended use.
+
+### Follow-up
+
+Potential `LF.6.streaming.2` if Apple Music subscribers report the iTunes Search fallback misses too often. MusicKit-native artwork would land highest-res for that path but requires MusicKit token plumbing not currently in the music-library scope.
+
+---
+
 ## [dev-2026-06-01-a] LF.6.fix.1 — Clear stale LF artwork on streaming track-change + session start (BUG-024)
 
 **Increment:** LF.6.fix.1. **Status:** Resolved 2026-06-01. Trivial-collapsed P1 per CLAUDE.md §Defect Handling Protocol.
