@@ -41,7 +41,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 - `[LF.6.fix.1]` ([VisualizerEngine.swift:807](PhospheneApp/VisualizerEngine.swift:807)): `.connecting` state observer clears `currentTrackArtworkData = nil` alongside `currentSessionPlanSeed = nil`.
 - `[LF.6.fix.1]` ([PlaybackChromeArtworkBindingTests.swift](PhospheneAppTests/PlaybackChromeArtworkBindingTests.swift)): new "LF → streaming transition" regression test (6 tests in suite total).
 
-**Resolved:** 2026-06-01, commit `<filled-at-commit-time>`.
+**Resolved:** 2026-06-01, commit `45021472`.
 
 ---
 
