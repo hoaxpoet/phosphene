@@ -233,12 +233,20 @@ public final class SpotifyWebAPIConnector: SpotifyWebAPIConnecting, @unchecked S
             let artistName = firstArtist["name"] as? String
         else { return nil }
 
-        let album = (track["album"] as? [String: Any])?["name"] as? String
+        let albumDict = track["album"] as? [String: Any]
+        let album = albumDict?["name"] as? String
         let duration = (track["duration_ms"] as? Double).map { $0 / 1000.0 }
         let spotifyID = track["id"] as? String
         // Capture Spotify's own preview URL (null → nil). PreviewResolver uses this
         // to skip the iTunes Search API round-trip for tracks where Spotify has a preview.
         let spotifyPreviewURL = (track["preview_url"] as? String).flatMap(URL.init)
+        // LF.6.streaming-S1: capture Spotify's highest-resolution album-art URL.
+        // Spotify returns `album.images` in descending size order, so index 0 is
+        // always the largest. StreamingArtworkURLResolver uses this hint to skip
+        // the iTunes Search fallback for Spotify-sourced tracks.
+        let spotifyArtworkURL = (albumDict?["images"] as? [[String: Any]])?
+            .first?["url"] as? String
+        let spotifyArtworkURLParsed = spotifyArtworkURL.flatMap(URL.init)
 
         return TrackIdentity(
             title: name,
@@ -246,7 +254,8 @@ public final class SpotifyWebAPIConnector: SpotifyWebAPIConnecting, @unchecked S
             album: album,
             duration: duration,
             spotifyID: spotifyID,
-            spotifyPreviewURL: spotifyPreviewURL
+            spotifyPreviewURL: spotifyPreviewURL,
+            spotifyArtworkURL: spotifyArtworkURLParsed
         )
     }
 }
