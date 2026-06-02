@@ -144,7 +144,11 @@ fragment float4 fata_morgana_comp_fragment(
     constant FataUniforms& u         [[buffer(1)]]
 ) {
     constexpr sampler nWrap(filter::linear, address::repeat);
-    float2 uv = float2(in.uv.x, 1.0 - in.uv.y);        // butterchurn flips Y
+    // butterchurn's comp does `uv.y = 1.0 - vUv.y` on a BOTTOM-left-origin vUv.
+    // Phosphene's fullscreen_vertex emits TOP-left-origin uv (uv.y=0 at top), i.e.
+    // in.uv.y = 1 - vUv.y already — so the butterchurn flip resolves to in.uv
+    // directly. (An explicit `1.0 - in.uv.y` double-flips → sky/water reversed.)
+    float2 uv = in.uv;
     float2 uv1 = uv - 0.5;
 
     // Perspective floor/ceiling + scrolling ground noise (starfield in the sky).
