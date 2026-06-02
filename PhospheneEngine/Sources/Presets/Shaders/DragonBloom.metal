@@ -112,19 +112,29 @@ fragment float4 dragon_bloom_fragment(
     float  ang   = atan2(pRel.y, pRel.x);           // [-PI, PI]
 
     // ── Audio drivers ─────────────────────────────────────────────────────────
-    // PRIMARY (Audio Data Hierarchy Layer 1 — continuous energy bands, the
-    // bedrock — silence → playing must produce visible motion):
-    //   f.bass / f.mid (absolute, AGC-normalised)
-    // SECONDARY (D-026 deviation primitives — add inter-track-normalised dynamic
-    // variation on top, kicks above average only):
-    //   f.bass_att_rel / f.bass_dev / f.mid_att_rel
-    // ACCENT (Layer 4 — onset pulses, capped so they never dominate):
-    //   max(beat_composite, beat_bass, beat_mid)
+    // Signal selection is empirically grounded: each driver was chosen by
+    // measuring its frame-to-frame stddev across both a real LF session
+    // (Atlas, the one that "danced") and a real Spotify session (the one that
+    // looked muted), per the 2026-06-02 BUG-025 A/B diagnosis. Only signals
+    // that are *alive on both paths* drive motion. The earlier Spike-1 routing
+    // drove feather flow from `mid_att_rel` (stddev ≈ 0.01 on this music →
+    // feathers frozen) and breathing from `max(0, bass_att_rel)` (clamping the
+    // signed signal to zero → no breathing). Both were dead. See the
+    // (layer × primitive × timescale) table at the top of mvWarpPerFrame.
+    //
+    //   bass_rel SIGNED  — stddev 0.20 (Spotify) / 0.22 (LF): the strongest
+    //                      path-consistent continuous driver. Signed so the
+    //                      bloom contracts below-average and expands above.
+    //   bass (Layer-1)   — stddev 0.10 / 0.11: continuous loudness / presence.
+    //   spectralFlux     — stddev 0.22 / 0.15: spectral-change → feather flow.
+    //   beatComposite    — stddev 0.25 / 0.37: the per-beat accent.
+    //   mid / treble     — stddev < 0.02 on bass-dominant music; kept only as a
+    //                      tiny additive term so mid-rich tracks still register,
+    //                      never as a primary driver.
     float bassAbs    = f.bass;                       // [0, ~1] — continuous loudness
-    float midAbs     = f.mid;                        // [0, ~1] — continuous loudness
-    float bassEnergy = max(0.0, f.bass_att_rel);     // [0, ~1] — above-average attack
-    float bassKick   = f.bass_dev;                   // [0, ~1] — above-average bass only
-    float midFlow    = max(0.0, f.mid_att_rel);      // [0, ~1] — above-average mid attack
+    float midAbs     = f.mid;                        // [0, ~1] — usually tiny
+    float bassRel    = f.bass_rel;                   // [-1, ~0.6] SIGNED — alive on both paths
+    float flux       = f.spectral_flux;              // [0, 1] — spectral change
     float beatPulse  = max(f.beat_composite, max(f.beat_bass, f.beat_mid));
 
     // ── Polar waveform curve (nWaveMode=7 analog) ────────────────────────────
@@ -148,13 +158,22 @@ fragment float4 dragon_bloom_fragment(
     float frameF   = angNorm * float(kFrames - 1);
     float wave     = sampleWaveformMono(wv, frameF) * waveAmpScale;
 
-    // Radius grows with bass — bloom *breathes* with the low end. Continuous
-    // bass (Layer 1) drives the steady-state breath; bass_att_rel (above-average)
-    // adds an extra swell on transients.
+    // Radius — the bloom *breathes* with the low end.
+    //   · Continuous bass (Layer 1) sets a gentle baseline swell.
+    //   · SIGNED bass_rel is the breathing (stddev ≈ 0.21 on both paths — the
+    //     alive signal). It sits structurally negative because the bass band
+    //     is a fraction of the AGC total-energy average it's normalised
+    //     against, so it averages ≈ −0.5 on real music regardless of path. We
+    //     RECENTER by +0.5 so the bloom rests at base radius at typical bass,
+    //     expands on bass hits (bass_rel → 0 or positive), and draws in during
+    //     bass lulls (bass_rel → −1). Without the recenter the bloom would sit
+    //     permanently contracted. The 0.060 gain gives clearly visible travel
+    //     (≈ ±0.03 UV typical, more on hits) against the 0.28 base radius.
+    float breathe    = (bassRel + 0.5) * 0.060;       // recentered SIGNED breathing
     float liveRadius = kBaseRadius
-                     + wave * kWaveDisplaceUV
-                     + bassAbs    * 0.030             // continuous breath
-                     + bassEnergy * 0.020;            // transient swell
+                     + wave    * kWaveDisplaceUV      // the music's waveform shape
+                     + bassAbs * 0.020                // continuous baseline swell
+                     + breathe;                       // alive on both paths
     float dr         = abs(r - liveRadius);
 
     // Anti-aliased curve coverage + soft halo (the halo is what the warp pass
@@ -174,20 +193,27 @@ fragment float4 dragon_bloom_fragment(
     float3 brushCol  = mix(kBloomColorHot, kBloomColorEdge, edgeMix);
 
     // ── Per-beat pulse (Layer-4 accent only) ─────────────────────────────────
-    // Bounded; never the dominant motion driver (Audio Data Hierarchy §4 / FA #4).
-    float beatBoost  = 1.0 + beatPulse * 0.40;
+    // Bounded and deliberately small. mv_warp feedback AMPLIFIES per-beat
+    // brightness flashes (a bright beat frame smears forward through the
+    // accumulator), so this is exactly the "beat amplified by feedback"
+    // failure FA #4 guards. Primary motion lives in the continuous drivers
+    // (bass_rel breathing + flux feather flow + bass brightness); the beat is
+    // a 0.15 shimmer on top, never the dominant driver.
+    float beatBoost  = 1.0 + beatPulse * 0.15;
 
     // ── Brightness lift ───────────────────────────────────────────────────────
-    // PRIMARY: continuous f.bass / f.mid (Layer 1 — non-zero whenever music is
-    // playing, even at AGC-average levels). SECONDARY: above-average deviation
-    // primitives for dynamic variation. The 0.30 floor keeps the bloom visible
-    // at silence (so the warp accumulator has material to smear into the bloom
-    // shape across a quiet section without going completely dark).
+    // PRIMARY: continuous f.bass (Layer 1 — non-zero whenever music is playing,
+    // stddev ≈ 0.10 on both paths). A small spectralFlux term adds shimmer on
+    // spectral changes; a tiny mid term so mid-rich tracks register. The 0.30
+    // floor keeps the bloom visible at silence so the warp accumulator always
+    // has material to smear into the bloom shape. bass_rel is deliberately NOT
+    // used here — it drives the radius breathing (one primitive per layer,
+    // per feedback_audio_layer_one_primitive); routing it into brightness too
+    // would encode the same bass event through two channels at one timescale.
     float energyLift = 0.30
-                     + bassAbs    * 0.45             // continuous bass — primary
-                     + midAbs     * 0.30             // continuous mid  — primary
-                     + midFlow    * 0.35             // above-average mid attack
-                     + bassEnergy * 0.25;            // above-average bass attack
+                     + bassAbs * 0.55                // continuous bass — primary
+                     + flux    * 0.20                // spectral-change shimmer
+                     + midAbs  * 0.30;               // mid (tiny on bass-dominant music)
 
     float3 bloomCol  = brushCol * bloomMask * energyLift * beatBoost;
 
@@ -215,24 +241,31 @@ MVWarpPerFrame mvWarpPerFrame(
     pf.sx = 1.0; pf.sy = 1.0;
     pf.warp = 0.0;
 
-    // Continuous outward bleed; gentle additional swell on bass deviation.
-    // pf.zoom > 1 ⇒ vertex samples a slightly inward UV ⇒ trails push outward.
-    // Layer-1 absolute bass keeps the warp breathing even at AGC-average levels
-    // (the bedrock of the Audio Data Hierarchy); deviation primitives add the
-    // above-average dynamic on top.
-    float bassAbs    = f.bass;
-    float bassEnergy = max(0.0, f.bass_att_rel);
-    float bassKick   = f.bass_dev;
-    pf.zoom  = kMVWarpBaseZoom
-             + bassAbs    * 0.008                    // continuous breath
-             + bassEnergy * kMVWarpZoomGain          // above-average attack
-             + bassKick   * 0.008;                   // above-average kick
+    // ── (layer × primitive × timescale) routing table ────────────────────────
+    // Empirically grounded by the 2026-06-02 BUG-025 A/B liveness measurement
+    // (frame-to-frame stddev, LF "Atlas" vs muted Spotify session). Each warp
+    // channel reads a primitive that is alive on BOTH paths:
+    //   pf.zoom  (outward bleed)   ← bass (Layer-1, stddev 0.10) + signed bass_rel
+    //   pf.rot   (swirl)           ← spectralFlux (stddev 0.15–0.22)
+    //   q1 feather-flow magnitude  ← spectralFlux (was mid_att_rel ≈ 0 → frozen)
+    //   q3 radial-breathing impulse← signed bass_rel (was bass_dev ≈ 0 → dead)
+    // The earlier Spike-1 routing read mid_att_rel + bass_dev, both ≈ 0 on
+    // bass-dominant music, so the feathers never flowed and the bloom looked
+    // static. See the fragment-side driver block for the same diagnosis.
+    float bassAbs = f.bass;
+    float bassRel = f.bass_rel;        // SIGNED — alive on both paths
+    float flux    = f.spectral_flux;   // spectral change — feather flow driver
 
-    // Slow swirl driven by mid energy — adds rotational energy to the feathers.
-    // Layer-1 absolute mid + deviation primitive together.
-    float midAbs     = f.mid;
-    float midFlow    = max(0.0, f.mid_att_rel);
-    pf.rot   = (midAbs * 0.5 + midFlow) * kMVWarpRotGain;
+    // pf.zoom > 1 ⇒ vertex samples a slightly inward UV ⇒ trails push outward.
+    // Layer-1 bass is the steady bleed; signed bass_rel modulates it ± so the
+    // bloom breathes outward on bass hits and settles inward between them.
+    pf.zoom  = kMVWarpBaseZoom
+             + bassAbs * 0.008                       // continuous breath
+             + max(0.0, bassRel) * kMVWarpZoomGain;  // extra push on above-avg bass
+
+    // Swirl from spectral change — feathers gain rotational energy when the
+    // texture of the sound shifts. Flux is alive on both paths (unlike mid).
+    pf.rot   = flux * kMVWarpRotGain;
 
     // Decay = source.milk fDecay (0.95). VisualizerEngine also feeds the JSON
     // `decay` field to setMVWarpDecay so the compose pass matches — keep these
@@ -240,9 +273,9 @@ MVWarpPerFrame mvWarpPerFrame(
     pf.decay = kMVWarpBaseDecay;
 
     // Q-channels pass per-frame audio to mvWarpPerVertex.
-    pf.q1 = midFlow;       // feather flow magnitude
-    pf.q2 = bassEnergy;    // radial breathing
-    pf.q3 = bassKick;      // above-average bass impulse
+    pf.q1 = flux;                  // feather flow magnitude (alive on both paths)
+    pf.q2 = bassAbs;               // continuous presence (reserved)
+    pf.q3 = max(0.0, bassRel);     // radial breathing impulse on above-avg bass
     pf.q4 = 0.0; pf.q5 = 0.0; pf.q6 = 0.0; pf.q7 = 0.0; pf.q8 = 0.0;
     return pf;
 }
