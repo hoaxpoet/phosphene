@@ -84,6 +84,20 @@ beatComposite mean = 0.600  (beat detection unaffected — it operates on flux, 
 
 The Spotify in-app volume was at 50 % during this capture, which independently lowers the steady-state per-band values (see BUG-026). The startup-transient → AGC-poisoning interaction is separate from the user-settable level issue: even at correct Spotify volume the cold-start transient would still poison the EMA.
 
+**Confirmation session (Spotify at 100 %, 2026-06-02):** `~/Documents/phosphene_sessions/2026-06-02T01-12-51Z/`. With the Spotify volume cause from BUG-026 resolved, the raw tap level rose by 16 dB (Peak -4.8 dB, RMS -18.4 dB — healthy mastered-audio range; `session.log` confirms `signal quality → green: peak -6 dBFS, treble 0.06% — OK`). The cold-start transient is unchanged: frames 310-321 immediately after `active` show bass = 3.3 → 6.6 → 10.9 → 11.4 → 10.97 → 11.58 → 10.45 → 10.07 → 9.09 → 8.55 → 7.92 → 7.33 (peak 11.58 at frame 315 — same shape and magnitude as the previous session's 11.0 peak at frame 262). The AGC EMA absorbs these and the rest-of-session statistics are essentially identical:
+
+```
+bass mean   = 0.260  (was 0.225 at 50 %; 16 dB louder input → only 16 % bump in mean)
+bass max    = 11.58  (was 12.82; cold-start spike same magnitude regardless of input level)
+bassRel mean = -0.48  (was negative too; EMA poisoned identically)
+pct(bassRel in [-0.1, +0.1]) = 2.8 %  (should be ~50 % at AGC convergence)
+bassDev fires (≥ 0.05): 1.8 %  (was 1.6 %; deviation routing structurally dead)
+post-startup bass distribution:
+  < 0.1: 2.8 %   0.1–0.3: 72.0 %   0.3–0.5: 23.6 %   ≥ 0.5: 1.7 %
+```
+
+This isolates BUG-025 from BUG-026: even at healthy signal level the AGC starves all deviation-driven routing. The deviation primitives (Layer-2 in the Audio Data Hierarchy, the canonical "above-average" drivers per D-026) are effectively non-functional on every Spotify session that includes the `silent → active` transition.
+
 ---
 
 ### Suspected failure class
