@@ -4231,3 +4231,32 @@ Per the production-grade-testing rule (CLAUDE.md §Authoring Discipline, post-AV
 ### Spike 1 Gate
 
 Matt-eyeball verification on ≥ 3 real tracks, per §6 of the plan. Success condition: "the bloom is dancing to this song." Spike 1 closeout does NOT claim audio-coupling fidelity or visual cert-readiness — only that the build is structurally correct and ready for the eyeball gate. PresetSessionReplay registration for Dragon Bloom (routes + rubric) is deferred to Spike 2/3 once the palette routing exists to verify; for Spike 1 the gate is perceptual, not metric.
+
+---
+
+## D-136 — Dragon Bloom Spike 2: bilateral symmetry via fold-the-brush / keep-the-field-asymmetric (Dragon Bloom Spike 2, 2026-06-02)
+
+### Context
+
+Spike 2 of the Dragon Bloom plan (`docs/presets/DRAGON_BLOOM_PLAN.md` §6) adds the bilateral mirror fold so the bloom matches the reference's left-right-symmetric feathered silhouette (`01_target.png`). The one real risk is structural to Phosphene's authoring discipline: **bilateral symmetry is an anti-pattern when it reads as flat clipart symmetry** (Failed Approach #48 — the Arachne anti-reference was symmetric clipart). The source preset `$$$ Royal - Mashup (220)` gets away with symmetry *only because the feedback texture is rich* (feathered flow, not flat mirrored shapes).
+
+### Decision
+
+Apply the mirror fold to the **silhouette source only**, and keep the **mv_warp field asymmetric** so the accumulated texture stays rich:
+
+- **Fold the brush.** `dragon_bloom_fragment` computes `angFold = atan2(pRel.y, abs(pRel.x))` (range `[-π/2, π/2]`, remapped to the full waveform `[0,1]`). The `abs` on the x-component folds about the **vertical** axis, so the left and right halves sample the same part of the waveform → the bloom silhouette is bilaterally symmetric, matching `01_target.png`.
+- **Keep the field asymmetric.** `mvWarpPerVertex`'s tangential-swirl term `(-p.y, p.x)` has rotational handedness; the accumulator therefore builds a *different* feathered texture on each half even though every fresh brush stroke is mirror-symmetric. This is the FA #44 per-instance-variation rule applied to the two mirror halves — and it required **no per-side fragment jitter**: the warp handedness alone diverges the halves (measured left↔right Pearson correlation 0.915 music / 0.985 spotify on the diagnostic harness — symmetric form, but well below a perfect pixel mirror).
+
+This is the realisation of the plan §5 / reference-README rule: **"Mirror a feedback-warped field, never flat geometry."** The folded fragment curve is the *brush*; the warped, decaying accumulator is the *field*. Symmetric form, rich non-identical texture.
+
+### Rationale
+
+The cleanest separation of "symmetric form" from "rich asymmetric texture" routes them through different stages: the fragment fold owns the silhouette (perfectly symmetric per-frame), the mv_warp accumulator owns the texture (asymmetric by construction). No fragment-side jitter is introduced, so the silhouette read stays crisp and the anti-clipart richness is a structural property of the existing warp field rather than an added perturbation that could fight the symmetry.
+
+Audio routing is **unchanged** from Spike 1 (D-135) — Spike 2 is geometry-only. The `DragonBloomMVWarpAccumulationTest` gained a `symmetryCorrelation` gate (band `0.70–0.999`) that regression-locks both failure modes: `≤ 0.70` = fold not producing a symmetric silhouette; `≥ 0.999` = flat pixel mirror = FA #48 clipart. Per the production-grade-testing rule, the assertion runs on the final accumulated frame of the live scene → warp → compose → swap chain, not a single fragment frame.
+
+Per D-135's precedent ("Spike N earns its own decision if/when it passes its gate"), this entry covers the Spike 2 *implementation*; the Matt-M7 perceptual gate (symmetric AND dances AND reads rich) remains pending. If a future render reads as clipart on real music despite the warp handedness, the documented next step is per-side hash jitter on the curve (FA #44) — but it was not needed for the synthetic-audio diagnostic.
+
+### Spike 2 Gate
+
+Matt M7 on a live Spotify session. Success: the bloom is bilaterally symmetric AND still dances (Spike-1 motion intact) AND reads as a rich feathered bloom, never flat mirrored clipart. The structural proof (symmetric silhouette + textured non-identical halves + retained `radiusMotion`) is complete; the aesthetic gate is perceptual. Spike 3 (warm palette via valence/centroid + per-stem feather tinting) follows on pass.
