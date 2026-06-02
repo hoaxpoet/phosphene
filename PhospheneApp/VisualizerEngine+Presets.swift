@@ -364,7 +364,7 @@ extension VisualizerEngine {
                     // 6 instances = 3 stems × {original, vertical mirror} (L2 bilateral
                     // symmetry); 512 samples each (matches kStrandSamples).
                     pipeline.setSceneGeometry(
-                        strandState, vertexCount: 512, instanceCount: 6, primitive: .lineStrip)
+                        strandState, vertexCount: 1536, instanceCount: 6, primitive: .lineStrip)
                     // L3 (D-137): enable the chromatic colour-separation warp (the warm
                     // R->G->B feedback cycling) for Dragon Bloom.
                     pipeline.setMVWarpChromatic(1.0)

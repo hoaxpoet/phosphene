@@ -143,7 +143,11 @@ fragment float4 dragon_bloom_fragment(
 // (x=ox·fov/oz, with the 0.75 horizontal squish), with oz=abs(oz)−2 (the fold
 // that yields the bilateral symmetry). vol is the source's final constant 0.2.
 
-constant int   kStrandSamples = 512;     // points per strand (source uses 512)
+constant int   kStrandSamples = 1536;    // points per strand. Source uses 512, but the
+                                         // spiral frequency (sp = sample·1286) is badly
+                                         // under-sampled at 512 → the line strip aliases into
+                                         // a moire "pixelated" pattern (Matt M7). 1536 (3×)
+                                         // resolves the spiral into smooth feathered strands.
 constant float kStrandSP      = 6.28 * 8.0 * 8.0 * 4.0;   // 1285.76 — source `sample*6.28*8*8*4`
 constant float kStrandVol     = 0.2;     // source's final `vol = .2`
 constant float kStrandFov     = 0.5;     // source's `fov = .5`
@@ -151,8 +155,10 @@ constant float kStrandFov     = 0.5;     // source's `fov = .5`
 // scene by (1−decay) and accumulates over the decay window to ≈1× at steady
 // state, and the dense helix piles many points per pixel near the centre — so
 // the raw `1+sin(sp)` colour (up to 2) saturates to white without a strong dim.
-// 0.13 keeps the accumulated bloom below clip while still reading as glow.
-constant float kStrandBrightness = 0.13;
+// L4: 0.20 — richer/brighter than the initial 0.13 (Matt M7: "dull, only the
+// centre is bright"). Calibrated against real stem energies (~0.24–0.36, not the
+// 0.5 the first pass assumed).
+constant float kStrandBrightness = 0.20;
 
 struct DragonStrandVertexOut {
     float4 position [[position]];
@@ -165,7 +171,11 @@ struct DragonStrandVertexOut {
 // deviation primitive (D-026) for liveliness plus the absolute energy so a
 // playing-but-steady instrument still stretches.
 static float strandModFromStem(float energy, float energyDev) {
-    return 0.40 + 1.40 * clamp(energy + 0.60 * max(0.0, energyDev), 0.0, 1.15);
+    // L4 recalibration: real stem energies run ~0.24–0.36 (≤ ~0.7 on peaks), so
+    // the first pass's 0.4 + 1.4·energy gave only ~0.75 strand length → a tiny
+    // centre-bound bloom. Reach further at typical energy so the bloom fills,
+    // longer on peaks.
+    return 0.60 + 3.00 * clamp(energy + 0.50 * max(0.0, energyDev), 0.0, 0.60);
 }
 
 vertex DragonStrandVertexOut dragon_bloom_strand_vertex(
@@ -245,7 +255,7 @@ vertex DragonStrandVertexOut dragon_bloom_strand_vertex(
     // with ITS instrument's energy, so a quiet/absent instrument fades its strand
     // (musical — each arm tracks its stem) and at silence the strands don't pile
     // densely at the shared centre and clip to white.
-    float volGate = clamp(stemE * 1.6, 0.0, 1.0);
+    float volGate = clamp(0.35 + stemE * 2.2, 0.0, 1.0);   // L4: fuller alpha at real stem levels (~0.25)
     float alpha = (0.5 + (oz + 2.0) * 0.25) * volGate;
 
     DragonStrandVertexOut o;

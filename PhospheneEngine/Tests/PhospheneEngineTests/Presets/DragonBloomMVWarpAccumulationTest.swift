@@ -474,14 +474,17 @@ struct DragonBloomMVWarpAccumulationTest {
         case .silence:
             return StemFeatures.zero
         case .syntheticMusic, .spotifyTapPattern:
+            // Calibrated to MEASURED real stem energies (session 2026-06-02T15-48-51Z:
+            // drums ~0.24, bass ~0.26, vocals ~0.36, peaks ~0.7) so the offline render
+            // matches what Matt sees live — the earlier 0.5 baseline over-rendered.
             let t = Float(frameIdx)
             var s = StemFeatures.zero
-            s.drumsEnergy     = 0.50 + 0.10 * sin(t * 0.33)
-            s.bassEnergy      = 0.55 + 0.12 * sin(t * 0.21 + 1.0)
-            s.vocalsEnergy    = 0.45 + 0.10 * sin(t * 0.27 + 2.0)
-            s.drumsEnergyDev  = max(0.0, 0.25 * sin(t * 0.70))
-            s.bassEnergyDev   = max(0.0, 0.30 * sin(t * 0.50 + 1.0))
-            s.vocalsEnergyDev = max(0.0, 0.20 * sin(t * 0.60 + 2.0))
+            s.drumsEnergy     = 0.24 + 0.14 * max(0.0, sin(t * 0.33))
+            s.bassEnergy      = 0.26 + 0.16 * max(0.0, sin(t * 0.21 + 1.0))
+            s.vocalsEnergy    = 0.36 + 0.20 * max(0.0, sin(t * 0.27 + 2.0))
+            s.drumsEnergyDev  = max(0.0, 0.20 * sin(t * 0.70))
+            s.bassEnergyDev   = max(0.0, 0.25 * sin(t * 0.50 + 1.0))
+            s.vocalsEnergyDev = max(0.0, 0.18 * sin(t * 0.60 + 2.0))
             return s
         }
     }
@@ -516,8 +519,9 @@ struct DragonBloomMVWarpAccumulationTest {
             enc.setRenderPipelineState(strandState)
             enc.setVertexBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
             enc.setVertexBytes(&stems, length: MemoryLayout<StemFeatures>.stride, index: 1)
-            // 6 instances = 3 stems × {original, vertical mirror} (L2 bilateral symmetry).
-            enc.drawPrimitives(type: .lineStrip, vertexStart: 0, vertexCount: 512, instanceCount: 6)
+            // 6 instances = 3 stems × {original, vertical mirror} (L2 bilateral symmetry);
+            // 1536 samples each (matches kStrandSamples — resolves the spiral, anti-alias).
+            enc.drawPrimitives(type: .lineStrip, vertexStart: 0, vertexCount: 1536, instanceCount: 6)
         } else {
             Issue.record("Dragon Bloom has no strand pipeline (mvWarpPipelines.sceneGeometryState nil) — L1 wiring broken.")
         }
