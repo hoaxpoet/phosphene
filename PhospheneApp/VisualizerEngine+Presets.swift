@@ -365,8 +365,12 @@ extension VisualizerEngine {
                     // symmetry); 512 samples each (matches kStrandSamples).
                     pipeline.setSceneGeometry(
                         strandState, vertexCount: 512, instanceCount: 6, primitive: .lineStrip)
+                    // L3 (D-137): enable the chromatic colour-separation warp (the warm
+                    // R->G->B feedback cycling) for Dragon Bloom.
+                    pipeline.setMVWarpChromatic(1.0)
                 } else {
                     pipeline.setSceneGeometry(nil, vertexCount: 0, instanceCount: 0, primitive: .lineStrip)
+                    pipeline.setMVWarpChromatic(0.0)
                 }
 
                 // Arachne-specific: allocate web pool + spider buffer and wire tick + fragment buffers.

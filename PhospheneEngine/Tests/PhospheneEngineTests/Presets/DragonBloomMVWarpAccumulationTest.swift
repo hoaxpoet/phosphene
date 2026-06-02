@@ -540,6 +540,9 @@ struct DragonBloomMVWarpAccumulationTest {
         var sceneUni = SceneUniforms()
         enc.setVertexBytes(&sceneUni, length: MemoryLayout<SceneUniforms>.stride, index: 2)
         enc.setFragmentTexture(warpTex, index: 0)
+        // L3 (D-137): bind the chromatic mix the live app binds for Dragon Bloom (1.0).
+        var chromatic: Float = 1.0
+        enc.setFragmentBytes(&chromatic, length: MemoryLayout<Float>.stride, index: 0)
         // 31×23 quads × 2 triangles × 3 vertices = 4278 (matches RenderPipeline+MVWarp).
         enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 4278)
         enc.endEncoding()
