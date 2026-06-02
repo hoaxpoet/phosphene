@@ -4299,3 +4299,47 @@ L1 strands ← drums/bass/vocals (HDR glow) · L2 `per_pixel` petal warp → `mv
 ### Gate
 
 Per-layer Matt M7 against the faithful live reference + `01_target.png`/`target_animated.gif`. The reference harness (`tools/dragon_bloom_reference/`) is the comparison oracle; its warp-shader fix (hand-written GLSL) is what makes it faithful.
+
+---
+
+## D-138 — Dragon Bloom: faithful butterchurn render-loop port + music response, certified (Dragon Bloom, 2026-06-02)
+
+### Context
+
+D-137's layered uplift (L1–L5) reached a warm symmetric bloom but L4 ("rich warm FILL") turned into a multi-hour struggle: the render kept diverging from the live butterchurn oracle (pale/washed, under-filled, then over-bright/flat, then jittery). **Root cause was method, not difficulty:** the work was patching Phosphene's `mv_warp` — a *structurally different* feedback engine — to imitate butterchurn one divergence at a time, instead of replicating butterchurn's render loop wholesale by reading its source. Each fix corrected one symptom and exposed the next. (Promoted to a Failed Approach — see CLAUDE.md FA #70.)
+
+### Decision
+
+Replicate butterchurn's custom-warp render loop verbatim for Dragon Bloom (read from `tools/dragon_bloom_reference/butterchurn.min.js`), then layer the Phosphene music-response uplift on top. **Dragon Bloom is certified** (Matt live M7 across 5 Spotify tracks + a local file, 2026-06-02 sessions `…20-59-52Z` → `…21-46-36Z`).
+
+### The butterchurn render loop (durable reference — these are the load-bearing facts)
+
+Per frame: **swap prev↔target → warp(prev) into target → draw waves normal-alpha ON TOP of target → target IS next frame's feedback; comp (echo/gamma/invert) is display-only.** Specifics verified in the bundle:
+
+1. **No decay on custom-warp presets.** `fDecay` is applied ONLY in the *default* warp (`ret = sample(prev)·decay`). A preset with a custom warp shader sets `warpColor=(1,1,1,1)` and does `fragColor = ret·vColor` = no decay; the custom shader self-regulates the feedback via its normalise + R→G→B transfer (the B-fade). Phosphene was double-decaying → starved edges (pale background), field converged to the instantaneous wave draw (no accumulation).
+2. **8-bit feedback textures (`UNSIGNED_BYTE` RGBA, CLAMP_TO_EDGE, LINEAR).** The per-frame clamp is load-bearing — at no-decay it holds the field at a saturated equilibrium. A float (rgba16f) buffer over-accumulates to pale near-white. (Earlier I made it float thinking 8-bit caused the pale wash; the opposite is true once the loop is correct.)
+3. **Custom waves blend NORMAL-alpha** (`wavecode_*_bAdditive=0`; the global `bAdditiveWaves=1` is for the built-in waveform only), drawn directly onto the warped target. Additive piled the centre-converging strands into a white core (→ black after invert).
+4. **Comp is display-only.** echo (orient-1 horizontal flip, alpha 0.5) → `ret *= gammaAdj` (1.07, a MULTIPLY not pow) → `if(brighten) ret=sqrt(ret); if(darken) ret=ret*ret` (both set ⇒ **cancel**) → `if(invert) ret=1-ret`.
+5. **Bilateral symmetry comes from the video echo** (horizontal mirror at comp), NOT strand mirroring. So 3 waves, not 6 mirrored instances.
+6. **`fWaveAlpha` is the built-in-waveform alpha, not custom waves.** Custom-wave alpha = per-point `a` × `bModWaveAlphaByVolume` ramp.
+7. **butterchurn feeds 6×-boosted audio** (tap ≈ −18 dB); `bModWaveAlphaByVolume`'s 0.71/1.30 bounds assume that scale — so Phosphene's raw stem energies are boosted 6× before the ramp (else quiet stems gate the waves to ~0).
+8. **The warp is a 32×24 vertex mesh** (`warpUVs` per mesh vertex, interpolated) — Phosphene's `mvWarpPerVertex` grid matches it. A per-fragment recompute is both unfaithful and costs trig per pixel; use the mesh.
+
+### Music response (D-137 uplift, on top of the faithful loop)
+
+- **Each arm is an instrument** (headline): drums/bass/vocals → strand length (`mod`) + brightness (`modVol`).
+- **Breathing (primary continuous):** the warp zoom expands on loud bass and settles when it thins (reformulated from source `per_pixel_8`, which pinned at the 1.05 cap and never breathed).
+- **Per-arm transient flare (accent):** each arm brightens on its own stem's deviation (D-026) — smeared by the feedback.
+- **Beat pulse (accent, at the comp/DISPLAY stage so it punches through the no-decay feedback instead of being smeared):** a smoothed attack/decay envelope on `beatComposite` (shaped to its strong peaks; the drums-stem dev was too noisy on the process-tap and caused flicker) drives a subtle per-beat pump (4% zoom) + brighten (12%).
+- **Tumble on `accumulated_audio_time`** (energy-weighted, pauses at silence) instead of free-running wall-clock (FA #33).
+
+### Engine changes (Dragon-Bloom-scoped; other mv_warp presets byte-identical — PresetRegression)
+
+- `mvWarp_fragment`: full warp transfer (normalise + hue-zoom resample + R→G→B transfer) gated by `chromaticMix`; **no decay** on the custom-warp path.
+- `mvWarp_blit_fragment`: faithful comp (echo + gamma + invert) + the beat-pulse pump/brighten, via a float4 `post` uniform (`setMVWarpPost`; `(0,0,1,0)` ⇒ identity for other presets).
+- `drawWithMVWarp`: for presets with a scene-geometry overlay (Dragon Bloom), warp-no-decay → strands normal-alpha on top → blit (skips the scene + decayed-compose path). Smoothed beat envelope (`mvWarpBeatEnv`) computed per-frame.
+- Strand pipeline blend → normal alpha; feedback textures → 8-bit (`feedbackFormat` reverted to the drawable format).
+
+### Pitfall recorded
+
+The float→8-bit revert must change BOTH the pipeline format (`PresetLoader.feedbackFormat`) AND the app's `MVWarpPipelineBundle.feedbackFormat` — a mismatch (8-bit pipeline rendering into a float texture) is an attachment-format mismatch that **stalls the GPU (beachball) at the preset transition**, not a clean error.

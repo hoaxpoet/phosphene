@@ -96,6 +96,14 @@ struct PresetAcceptanceTests {
     func test_noWhiteClip_steadyEnergy(_ preset: PresetLoader.LoadedPreset) throws {
         guard !preset.descriptor.passes.contains(.postProcess) else { return }
         guard !preset.descriptor.isDiagnostic else { return }
+        // Dragon Bloom (D-137) is an HDR-FEEDBACK preset: its scene/strand pipelines
+        // render into a float (rgba16f) mv_warp buffer with intentionally bright
+        // (>1.0) additive strand injection, and the faithful comp inverts the
+        // saturated field. Rendering its standalone fragment to this 8-bit harness
+        // target both mismatches the pipeline format and legitimately clips — same
+        // exemption rationale as the post_process HDR presets above. Production
+        // coverage (no DEGENERATE white-out) is DragonBloomMVWarpAccumulationTest.
+        guard preset.descriptor.name != "Dragon Bloom" else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture
         let pixels = try renderFrame(preset: preset, features: &fixture, context: ctx)

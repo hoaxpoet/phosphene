@@ -61,3 +61,4 @@ PhospheneEngine/Tests/Fixtures/tempo/
 #   git clone --depth 1 https://github.com/CPJKU/beat_this vendor/beat_this_repo
 #   cd vendor/beat_this_repo && git checkout 9d787b9797eaa325856a20897187734175467074
 vendor/
+tools/dragon_bloom_reference/oracle_recording.mov

@@ -616,7 +616,8 @@ public final class PresetLoader: @unchecked Sendable {
             logger.error("mv_warp shader compilation failed for \(url.lastPathComponent): \(error)")
             return nil
         }
-        guard let warpPipelines = makeWarpPipelines(library: library, url: url) else { return nil }
+        guard let warpPipelines = makeWarpPipelines(library: library, url: url, descriptor: descriptor)
+        else { return nil }
         if isRayMarch {
             return makeRayMarchPrimaryPipeline(
                 library: library, descriptor: descriptor, url: url, warpPipelines: warpPipelines)
@@ -639,7 +640,20 @@ public final class PresetLoader: @unchecked Sendable {
         }
     }
 
-    private func makeWarpPipelines(library: MTLLibrary, url: URL) -> MVWarpCompiledPipelines? {
+    /// Feedback-buffer pixel format for an mv_warp preset. Always the drawable
+    /// (8-bit) format — matching butterchurn/Milkdrop, which use UNSIGNED_BYTE RGBA
+    /// for the feedback textures. The 8-bit per-frame CLAMP is load-bearing for
+    /// Dragon Bloom (D-137): with the faithful no-decay warp, the clamp holds the
+    /// field at a saturated equilibrium; a float buffer instead over-accumulates to
+    /// pale near-white (verified). (Earlier this returned rgba16f for DB — that was
+    /// wrong; reverted once the no-decay loop was matched to the source.)
+    func feedbackFormat(_ descriptor: PresetDescriptor) -> MTLPixelFormat {
+        return pixelFormat
+    }
+
+    private func makeWarpPipelines(
+        library: MTLLibrary, url: URL, descriptor: PresetDescriptor
+    ) -> MVWarpCompiledPipelines? {
         guard let warpVertexFn  = library.makeFunction(name: "mvWarp_vertex"),
               let warpFragFn    = library.makeFunction(name: "mvWarp_fragment"),
               let composeFn     = library.makeFunction(name: "mvWarp_compose_fragment"),
@@ -649,14 +663,17 @@ public final class PresetLoader: @unchecked Sendable {
             logger.error("mv_warp functions not found in compiled library for \(url.lastPathComponent)")
             return nil
         }
+        // Warp + compose render INTO the feedback textures → feedbackFormat (float
+        // for Dragon Bloom). The blit renders to the DRAWABLE → drawable pixelFormat.
+        let fbFormat = feedbackFormat(descriptor)
         let warpDesc = MTLRenderPipelineDescriptor()
         warpDesc.vertexFunction = warpVertexFn
         warpDesc.fragmentFunction = warpFragFn
-        warpDesc.colorAttachments[0].pixelFormat = pixelFormat
+        warpDesc.colorAttachments[0].pixelFormat = fbFormat
         let composeDesc = MTLRenderPipelineDescriptor()
         composeDesc.vertexFunction = fullscreenVtx
         composeDesc.fragmentFunction = composeFn
-        composeDesc.colorAttachments[0].pixelFormat = pixelFormat
+        composeDesc.colorAttachments[0].pixelFormat = fbFormat
         composeDesc.colorAttachments[0].isBlendingEnabled = true
         composeDesc.colorAttachments[0].sourceRGBBlendFactor = .sourceAlpha
         composeDesc.colorAttachments[0].destinationRGBBlendFactor = .one
@@ -720,13 +737,14 @@ public final class PresetLoader: @unchecked Sendable {
         let stdDesc = MTLRenderPipelineDescriptor()
         stdDesc.vertexFunction = vertexFn
         stdDesc.fragmentFunction = fragmentFn
-        stdDesc.colorAttachments[0].pixelFormat = pixelFormat
+        // The direct fragment renders INTO the mv_warp scene texture → feedbackFormat.
+        stdDesc.colorAttachments[0].pixelFormat = feedbackFormat(descriptor)
         do {
             let state = try device.makeRenderPipelineState(descriptor: stdDesc)
             // Optional additive scene-geometry pipeline (Dragon Bloom strands, D-137).
             // Built only if the preset library defines the strand functions; folded
             // into the warp pipelines so the app can wire it via setSceneGeometry.
-            let strand = makeSceneGeometryPipeline(library: library)
+            let strand = makeSceneGeometryPipeline(library: library, descriptor: descriptor)
             let warp = MVWarpCompiledPipelines(
                 warpState: warpPipelines.warpState,
                 composeState: warpPipelines.composeState,
@@ -745,21 +763,31 @@ public final class PresetLoader: @unchecked Sendable {
     /// dst=one) so strands accumulate as glow; the primitive type + vertex/instance
     /// counts are supplied per-draw by the app via `setSceneGeometry`. Returns nil if
     /// the preset library doesn't define the strand functions.
-    private func makeSceneGeometryPipeline(library: MTLLibrary) -> MTLRenderPipelineState? {
+    private func makeSceneGeometryPipeline(
+        library: MTLLibrary, descriptor: PresetDescriptor
+    ) -> MTLRenderPipelineState? {
         guard let vtx  = library.makeFunction(name: "dragon_bloom_strand_vertex"),
               let frag = library.makeFunction(name: "dragon_bloom_strand_fragment")
         else { return nil }
         let geoDesc = MTLRenderPipelineDescriptor()
         geoDesc.vertexFunction = vtx
         geoDesc.fragmentFunction = frag
-        geoDesc.colorAttachments[0].pixelFormat = pixelFormat
+        // Strands render INTO the mv_warp scene texture → feedbackFormat (float for
+        // Dragon Bloom).
+        geoDesc.colorAttachments[0].pixelFormat = feedbackFormat(descriptor)
+        // NORMAL alpha blend (SRC_ALPHA, ONE_MINUS_SRC_ALPHA) — butterchurn's
+        // drawCustomWaveform path for waves with bAdditive=0 (the preset's
+        // wavecode_*_bAdditive=0; the global bAdditiveWaves=1 is for the built-in
+        // waveform only). Additive piled the centre-converging strands into an
+        // over-saturated white core (→ black after the comp invert); normal-alpha
+        // compositing matches the source and keeps the centre a flame, not a blob.
         geoDesc.colorAttachments[0].isBlendingEnabled = true
         geoDesc.colorAttachments[0].rgbBlendOperation = .add
-        geoDesc.colorAttachments[0].sourceRGBBlendFactor = .one
-        geoDesc.colorAttachments[0].destinationRGBBlendFactor = .one
+        geoDesc.colorAttachments[0].sourceRGBBlendFactor = .sourceAlpha
+        geoDesc.colorAttachments[0].destinationRGBBlendFactor = .oneMinusSourceAlpha
         geoDesc.colorAttachments[0].alphaBlendOperation = .add
-        geoDesc.colorAttachments[0].sourceAlphaBlendFactor = .one
-        geoDesc.colorAttachments[0].destinationAlphaBlendFactor = .one
+        geoDesc.colorAttachments[0].sourceAlphaBlendFactor = .sourceAlpha
+        geoDesc.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
         return try? device.makeRenderPipelineState(descriptor: geoDesc)
     }
 

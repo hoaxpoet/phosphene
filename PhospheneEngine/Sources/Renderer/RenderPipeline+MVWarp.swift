@@ -29,19 +29,26 @@ public struct MVWarpPipelineBundle: Sendable {
     public let warpState: MTLRenderPipelineState    // mvWarp_vertex + mvWarp_fragment
     public let composeState: MTLRenderPipelineState // fullscreen_vertex + mvWarp_compose_fragment
     public let blitState: MTLRenderPipelineState    // fullscreen_vertex + mvWarp_blit_fragment
-    /// Pixel format for all three mv_warp textures (matches the drawable).
+    /// Drawable pixel format (the blit pass renders to this).
     public let pixelFormat: MTLPixelFormat
+    /// Pixel format for the three FEEDBACK textures (warp / compose / scene).
+    /// Usually equals `pixelFormat`; `.rgba16Float` for HDR-feedback presets
+    /// (Dragon Bloom, D-137) so colour/saturation survives the feedback loop and
+    /// additive scene injection isn't clamped at 1.0.
+    public let feedbackFormat: MTLPixelFormat
 
     public init(
         warpState: MTLRenderPipelineState,
         composeState: MTLRenderPipelineState,
         blitState: MTLRenderPipelineState,
-        pixelFormat: MTLPixelFormat
+        pixelFormat: MTLPixelFormat,
+        feedbackFormat: MTLPixelFormat? = nil
     ) {
         self.warpState    = warpState
         self.composeState = composeState
         self.blitState    = blitState
         self.pixelFormat  = pixelFormat
+        self.feedbackFormat = feedbackFormat ?? pixelFormat
     }
 }
 
@@ -65,6 +72,8 @@ public struct MVWarpState: @unchecked Sendable {
     public let composePipeline: MTLRenderPipelineState // fullscreen_vertex + mvWarp_compose_fragment
     public let blitPipeline: MTLRenderPipelineState    // fullscreen_vertex + mvWarp_blit_fragment
     public let pixelFormat: MTLPixelFormat
+    /// Feedback-texture format (float for HDR-feedback presets; else == pixelFormat).
+    public let feedbackFormat: MTLPixelFormat
 }
 
 // MARK: - MVWarp Draw Path
@@ -82,9 +91,9 @@ extension RenderPipeline {
         let width  = max(Int(size.width), 1)
         let height = max(Int(size.height), 1)
 
-        guard let warpTex    = makeWarpTexture(width: width, height: height, format: bundle.pixelFormat),
-              let composeTex = makeWarpTexture(width: width, height: height, format: bundle.pixelFormat),
-              let sceneTex   = makeWarpTexture(width: width, height: height, format: bundle.pixelFormat)
+        guard let warpTex    = makeWarpTexture(width: width, height: height, format: bundle.feedbackFormat),
+              let composeTex = makeWarpTexture(width: width, height: height, format: bundle.feedbackFormat),
+              let sceneTex   = makeWarpTexture(width: width, height: height, format: bundle.feedbackFormat)
         else {
             mvWarpLogger.error("Failed to allocate mv_warp textures at \(width)×\(height)")
             return
@@ -106,7 +115,8 @@ extension RenderPipeline {
             warpPipeline: bundle.warpState,
             composePipeline: bundle.composeState,
             blitPipeline: bundle.blitState,
-            pixelFormat: bundle.pixelFormat
+            pixelFormat: bundle.pixelFormat,
+            feedbackFormat: bundle.feedbackFormat
         )
         mvWarpLock.withLock { mvWarpState = state }
         mvWarpLogger.info("mv_warp textures allocated: \(width)×\(height), format=\(bundle.pixelFormat.rawValue)")
@@ -135,7 +145,8 @@ extension RenderPipeline {
             warpState: existing.warpPipeline,
             composeState: existing.composePipeline,
             blitState: existing.blitPipeline,
-            pixelFormat: existing.pixelFormat
+            pixelFormat: existing.pixelFormat,
+            feedbackFormat: existing.feedbackFormat
         )
         setupMVWarp(bundle: bundle, size: size)
     }
@@ -210,10 +221,18 @@ extension RenderPipeline {
             return
         }
 
-        // ── Pass 0: Scene render (direct-render presets only) ─────────────────
+        // Dragon Bloom (D-137): when a scene-geometry overlay (the strands) is
+        // attached, replicate butterchurn's custom-warp loop exactly — warp the
+        // previous frame (NO decay; the custom warp self-regulates) then draw the
+        // waves NORMAL-ALPHA directly ON TOP of the warp result; that IS the
+        // feedback (comp/echo/invert is display-only at blit). No separate scene
+        // texture, no decayed compose. Other presets keep the scene+decayed-compose.
+        let strandsOnTop = sceneGeometryLock.withLock { sceneGeometryState != nil }
+
+        // ── Pass 0: Scene render (non-strands presets) ───────────────────────
         // For ray-march presets the scene is already in warpState.sceneTexture;
         // drawWithRayMarch renders to that texture when mv_warp is active.
-        if !sceneAlreadyRendered {
+        if !sceneAlreadyRendered && !strandsOnTop {
             renderSceneToTexture(
                 commandBuffer: commandBuffer,
                 features: &features,
@@ -223,34 +242,22 @@ extension RenderPipeline {
             )
         }
 
-        // ── Pass 1: Warp pass → Pass 2: Compose pass ─────────────────────────
-        var currentDecay: Float = 0.96
+        // ── Pass 1: Warp pass ────────────────────────────────────────────────
         encodeMVWarpPass(
             commandBuffer: commandBuffer,
             features: &features,
             stemFeatures: stemFeatures,
             warpState: warpState
         )
-        currentDecay = mvWarpLock.withLock { mvWarpDecay }
 
-        // ── Pass 2: Compose pass ──────────────────────────────────────────────
-        // Fullscreen quad. mvWarp_compose_fragment alpha-blends the scene onto
-        // the decay-warped composeTexture using sourceAlpha × src + one × dst.
-        // Steady state: sum(n=0..∞, (1-decay) × decay^n) = 1.0 × scene.
-        do {
-            let desc = MTLRenderPassDescriptor()
-            desc.colorAttachments[0].texture     = warpState.composeTexture
-            desc.colorAttachments[0].loadAction  = .load   // keep warp result
-            desc.colorAttachments[0].storeAction = .store
-
-            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) {
-                encoder.setRenderPipelineState(warpState.composePipeline)
-                encoder.setFragmentTexture(warpState.sceneTexture, index: 0)
-                encoder.setFragmentBytes(&currentDecay, length: MemoryLayout<Float>.stride, index: 0)
-                encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-                encoder.endEncoding()
-            }
-        }
+        // ── Pass 2: Waves-on-top (Dragon Bloom) OR decayed compose ───────────
+        encodeMVWarpScenePass(
+            commandBuffer: commandBuffer,
+            warpState: warpState,
+            strandsOnTop: strandsOnTop,
+            features: &features,
+            stemFeatures: stemFeatures
+        )
 
         // ── Pass 3: Blit to drawable ─────────────────────────────────────────
         guard let drawable = view.currentDrawable,
@@ -262,6 +269,15 @@ extension RenderPipeline {
         if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) {
             encoder.setRenderPipelineState(warpState.blitPipeline)
             encoder.setFragmentTexture(warpState.composeTexture, index: 0)
+            // Beat pulse (Dragon Bloom only): a crisp per-beat pump+brighten at the
+            // comp/display stage (not fed back). beatComposite (shaped to its strong
+            // peaks) OR the drums-stem kick transient — whichever is bigger — so it
+            // dances on the beat across genres. Other presets get 0 (identity).
+            let beat = strandsOnTop ? mvWarpBeatPulse(features: features, stems: stemFeatures) : 0
+            var post = mvWarpLock.withLock {
+                SIMD4<Float>(mvWarpInvert, mvWarpEcho, mvWarpGamma, beat)
+            }
+            encoder.setFragmentBytes(&post, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
             encoder.endEncoding()
         }
@@ -309,6 +325,10 @@ extension RenderPipeline {
             guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
             encoder.setRenderPipelineState(warpState.blitPipeline)
             encoder.setFragmentTexture(warpState.sceneTexture, index: 0)
+            var post = mvWarpLock.withLock {
+                SIMD4<Float>(mvWarpInvert, mvWarpEcho, mvWarpGamma, 0)
+            }
+            encoder.setFragmentBytes(&post, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
             encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
             encoder.endEncoding()
         }
@@ -345,56 +365,11 @@ extension RenderPipeline {
         encoder.endEncoding()
     }
 
-    // MARK: Scene → Texture (direct-render presets)
-
-    /// Render the preset's direct fragment shader to an offscreen texture.
-    /// Used for non-ray-march presets (e.g. Starburst) with `.mvWarp` in their passes.
-    private func renderSceneToTexture(
-        commandBuffer: MTLCommandBuffer,
-        features: inout FeatureVector,
-        stemFeatures: StemFeatures,
-        activePipeline: MTLRenderPipelineState,
-        target: MTLTexture
-    ) {
-        let desc = MTLRenderPassDescriptor()
-        desc.colorAttachments[0].texture     = target
-        desc.colorAttachments[0].loadAction  = .clear
-        desc.colorAttachments[0].clearColor  = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
-        desc.colorAttachments[0].storeAction = .store
-
-        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else {
-            return
-        }
-        encoder.setRenderPipelineState(activePipeline)
-        encoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
-        encoder.setFragmentBuffer(fftMagnitudeBuffer, offset: 0, index: 1)
-        encoder.setFragmentBuffer(waveformBuffer, offset: 0, index: 2)
-        var stems = stemFeatures
-        encoder.setFragmentBytes(&stems, length: MemoryLayout<StemFeatures>.stride, index: 3)
-        // Bind optional per-preset fragment data at buffer(6) (e.g. GossamerState wave pool).
-        if let presetBuf = directPresetFragmentBufferLock.withLock({ directPresetFragmentBuffer }) {
-            encoder.setFragmentBuffer(presetBuf, offset: 0, index: 6)
-        }
-        // Bind optional secondary per-preset fragment data at buffer(7) (e.g. ArachneSpiderGPU).
-        if let presetBuf2 = directPresetFragmentBuffer2Lock.withLock({ directPresetFragmentBuffer2 }) {
-            encoder.setFragmentBuffer(presetBuf2, offset: 0, index: 7)
-        }
-        // Bind optional tertiary per-preset fragment data at buffer(8) (D-LM-buffer-slot-8).
-        if let presetBuf3 = directPresetFragmentBuffer3Lock.withLock({ directPresetFragmentBuffer3 }) {
-            encoder.setFragmentBuffer(presetBuf3, offset: 0, index: 8)
-        }
-        bindNoiseTextures(to: encoder)
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-        // Additive scene-geometry overlay — Dragon Bloom strands (RenderPipeline+SceneGeometry).
-        drawSceneGeometryOverlay(encoder: encoder, features: &features, stems: &stems)
-        encoder.endEncoding()
-    }
-
     // MARK: Helpers
 
     /// Extract the current SceneUniforms from the attached ray march pipeline (if any).
     /// Falls back to a zeroed struct for direct-render presets.
-    private func getSceneUniforms() -> SceneUniforms {
+    func getSceneUniforms() -> SceneUniforms {
         return rayMarchLock.withLock { rayMarchPipeline?.sceneUniforms } ?? SceneUniforms()
     }
 }

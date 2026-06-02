@@ -43,8 +43,11 @@ constant float3 kBackgroundColor = float3(0.006, 0.004, 0.012);
 constant float3 kBloomColorHot   = float3(1.00, 0.58, 0.18);  // warm amber/orange
 constant float3 kBloomColorEdge  = float3(0.85, 0.20, 0.08);  // deeper red on the halo
 
-// MV-warp baseline (matches source.milk fDecay=0.95, fWarp=0.01).
-constant float kMVWarpBaseDecay  = 0.945;
+// MV-warp baseline — faithful to source.milk fDecay=0.950. Stability/fill come
+// from the inward baseline zoom (0.99951, in mvWarpPerVertex) + the warp transfer
+// + video-echo mirror, NOT from inflating decay. Must match DragonBloom.json decay
+// + the compose-pass decay.
+constant float kMVWarpBaseDecay  = 0.950;
 constant float kMVWarpBaseZoom   = 1.0010;  // slow outward bleed → trails spread radially
 constant float kMVWarpZoomGain   = 0.0140;  // bass_dev → +zoom (Milkdrop fWarp range)
 constant float kMVWarpFeatherAmp = 0.0080;  // mid_att_rel → per-vertex tangential displacement
@@ -151,14 +154,25 @@ constant int   kStrandSamples = 1536;    // points per strand. Source uses 512, 
 constant float kStrandSP      = 6.28 * 8.0 * 8.0 * 4.0;   // 1285.76 — source `sample*6.28*8*8*4`
 constant float kStrandVol     = 0.2;     // source's final `vol = .2`
 constant float kStrandFov     = 0.5;     // source's `fov = .5`
-// Per-point additive brightness scale. The mv_warp compose weights each frame's
-// scene by (1−decay) and accumulates over the decay window to ≈1× at steady
-// state, and the dense helix piles many points per pixel near the centre — so
-// the raw `1+sin(sp)` colour (up to 2) saturates to white without a strong dim.
-// L4: 0.20 — richer/brighter than the initial 0.13 (Matt M7: "dull, only the
-// centre is bright"). Calibrated against real stem energies (~0.24–0.36, not the
-// 0.5 the first pass assumed).
-constant float kStrandBrightness = 0.20;
+// CUSTOM-wave alpha = per_point a × modVol (butterchurn drawCustomWaveform path).
+// fWaveAlpha=4.100 is the BUILT-IN waveform alpha (per_frame sets wave_a=0, so the
+// built-in waveform is off) — it does NOT apply to the custom waves. The custom-wave
+// per-point a (0.5+(oz+2)*0.25) is the literal alpha; no extra brightness scale.
+// Audio boost: butterchurn feeds its analyser 6×-boosted audio (the recorded tap is
+// ~−18 dB — reference README). bModWaveAlphaByVolume's 0.71/1.30 bounds assume that
+// boosted scale, so Phosphene's raw stem energies must be boosted the same 6× before
+// the volume ramp — otherwise quiet real stems gate the waves to ~0.
+constant float kAudioBoost    = 6.0;
+
+// ── D-137 music-response uplift ───────────────────────────────────────────────
+// Tumble speed scale on energy-weighted time (accumulated_audio_time ≈ 9% of
+// wall-clock; ×11 ≈ the prior wall-clock tumble speed on average, but now pausing
+// at silence and quickening with energy — FA #33).
+constant float kTumbleRate    = 11.0;
+// Per-arm transient flare gain — each strand brightens on its instrument's
+// deviation (D-026). Accent on top of the continuous volume ramp; kept modest so
+// continuous energy stays the primary driver (Audio Data Hierarchy).
+constant float kStrandFlare   = 0.60;
 
 struct DragonStrandVertexOut {
     float4 position [[position]];
@@ -166,16 +180,14 @@ struct DragonStrandVertexOut {
     float  pointSize [[point_size]];
 };
 
-// Map a stem's energy + deviation to the source's `mod` stretch (range ≈ [0.4, 2.0],
-// matching source's `mod = if(below(band,1.8), band+.2, 2)`). Driven from the
-// deviation primitive (D-026) for liveliness plus the absolute energy so a
-// playing-but-steady instrument still stretches.
+// Strand length `mod`, faithful to source: `mod = if(below(band_att,1.8), band_att+.2, 2)`
+// — grows with the instrument's energy, capped at 2. Phosphene drives it per-stem
+// (the D-137 uplift; each arm tracks its instrument). The stem energy (~0..0.7) is
+// scaled to a Milkdrop band_att-like range (~0..2) so the faithful formula applies;
+// deviation (D-026) adds transient liveliness.
 static float strandModFromStem(float energy, float energyDev) {
-    // L4 recalibration: real stem energies run ~0.24–0.36 (≤ ~0.7 on peaks), so
-    // the first pass's 0.4 + 1.4·energy gave only ~0.75 strand length → a tiny
-    // centre-bound bloom. Reach further at typical energy so the bloom fills,
-    // longer on peaks.
-    return 0.60 + 3.00 * clamp(energy + 0.50 * max(0.0, energyDev), 0.0, 0.60);
+    float bandAtt = (energy + 0.5 * max(0.0, energyDev)) * 3.0;   // → ~Milkdrop band_att scale
+    return (bandAtt < 1.8) ? (bandAtt + 0.2) : 2.0;
 }
 
 vertex DragonStrandVertexOut dragon_bloom_strand_vertex(
@@ -185,7 +197,13 @@ vertex DragonStrandVertexOut dragon_bloom_strand_vertex(
     constant StemFeatures&  stems [[buffer(1)]]
 ) {
     float s = float(vid) / float(kStrandSamples - 1);   // sample ∈ [0, 1]
-    float t = f.time;
+    // Tumble on ENERGY-WEIGHTED time, not wall-clock (FA #33: free-running sin(time)
+    // motion reads mechanical / disconnected from the music). accumulated_audio_time
+    // advances with audio energy (≈9% of wall-clock at steady state) and PAUSES at
+    // silence — so the bloom tumbles faster through energetic passages and stills
+    // when the track drops out. ×kTumbleRate restores a wall-clock-comparable speed
+    // on average while keeping the energy coupling.
+    float t = f.accumulated_audio_time * kTumbleRate;
     // L2 (D-137): 6 instances = 3 stems × {original, vertical-axis mirror}. The
     // raw tumbling strands are NOT bilaterally symmetric, and the source's
     // per_pixel warp does not symmetrise them (verified empirically). The
@@ -197,22 +215,18 @@ vertex DragonStrandVertexOut dragon_bloom_strand_vertex(
     int  strand = int(iid % 3);                         // 0=drums, 1=bass, 2=vocals
     bool mirror = iid >= 3;
 
-    // Per-strand: stem drive, source rotation rates, dominant colour channel.
+    // Per-strand: stem drive + source rotation rates (wave_0/1/2_per_point xang/yang/zang).
     float  stemE, stemD;
     float3 ang;                                         // (xang, yang, zang)
-    int    dom;                                         // dominant colour channel index
     if (strand == 0) {                                  // DRUMS  → source wave_0
         stemE = stems.drums_energy;  stemD = stems.drums_energy_dev;
         ang   = float3(t * 0.672, t * -1.351, t * -0.401);
-        dom   = 0;
     } else if (strand == 1) {                           // BASS   → source wave_1
         stemE = stems.bass_energy;   stemD = stems.bass_energy_dev;
         ang   = float3(t * -0.321, t * 1.531, t * -0.101);
-        dom   = 1;
     } else {                                            // VOCALS → source wave_2
         stemE = stems.vocals_energy; stemD = stems.vocals_energy_dev;
         ang   = float3(t * 0.221, t * -0.411, t * 1.201);
-        dom   = 2;
     }
     float modK = strandModFromStem(stemE, stemD);
 
@@ -237,26 +251,39 @@ vertex DragonStrandVertexOut dragon_bloom_strand_vertex(
     float y = oy * kStrandFov / oz + 0.5;
     if (mirror) { x = 1.0 - x; }                        // L2: vertical-axis mirror → bilateral symmetry
 
-    // ── L5: warm fiery per-stem palette (D-137) ───────────────────────────────
-    // Replaces source.milk's R/G/B-dominant wave colours with warm hues so the
-    // bloom reads fiery — the reference's defining trait. Per-stem identity:
-    // drums = orange, bass = ember-red, vocals = gold. valence + spectral_centroid
-    // shift overall warmth (hotter on bright/positive music). The L3 chromatic
-    // transfer bleeds the warm (R-heavy) cores partly toward green → the
-    // reference's "warm fiery with green accents" read. The source's `sin(sp)`
-    // glow striping is preserved as a brightness modulation along the strand.
-    float3 warmHue = (dom == 0) ? float3(1.00, 0.42, 0.12)   // drums  — fiery orange
-                   : (dom == 1) ? float3(0.95, 0.20, 0.06)   // bass   — ember red
-                                : float3(1.00, 0.74, 0.20);  // vocals — gold
-    float warmth = clamp(0.80 + 0.40 * f.valence + 0.30 * (f.spectral_centroid - 0.5), 0.45, 1.35);
-    float glow   = 0.55 + 0.45 * sin(sp);                    // source bright striping → [0.1, 1.0]
-    float3 col   = warmHue * glow * warmth;
-    // bModWaveAlphaByVolume analog (source.milk =1): each strand's alpha scales
-    // with ITS instrument's energy, so a quiet/absent instrument fades its strand
-    // (musical — each arm tracks its stem) and at silence the strands don't pile
-    // densely at the shared centre and clip to white.
-    float volGate = clamp(0.35 + stemE * 2.2, 0.0, 1.0);   // L4: fuller alpha at real stem levels (~0.25)
-    float alpha = (0.5 + (oz + 2.0) * 0.25) * volGate;
+    // ── FAITHFUL per-strand colour (source.milk wave_*_per_point39..42) ────────
+    // The three waves are NOT white — each injects an R/G/B-DOMINANT colour. The
+    // dominant channel is `1+sin(sp)` (range [0,2], HDR); the other two are
+    // 0.5±0.5·sin/cos(sample·1.57). These coloured injections + the warp transfer
+    // + the comp invert are what produce the reference's CYCLING warm palette
+    // (the whole field rotates through hues over time — green/orange/red/magenta).
+    //   wave_0 (drums) : r=1+sin(sp), g=0.5+0.5cos(s·1.57), b=0.5+0.5sin(s·1.57)
+    //   wave_1 (bass)  : g=1+sin(sp), r=0.5+0.5sin,         b=0.5+0.5cos
+    //   wave_2 (vocals): b=1+sin(sp), g=0.5+0.5sin,         r=0.5+0.5cos
+    float sc  = s * 1.57;                       // source sample*1.57 (≈ π/2)
+    float hi  = 1.0 + sin(sp);                  // dominant channel, [0, 2]
+    float los = 0.5 + 0.5 * sin(sc);
+    float loc = 0.5 + 0.5 * cos(sc);
+    float3 col = (strand == 0) ? float3(hi,  loc, los)    // wave_0 red-dominant
+               : (strand == 1) ? float3(los, hi,  loc)    // wave_1 green-dominant
+                               : float3(loc, los, hi);     // wave_2 blue-dominant
+    // FAITHFUL additive weight (butterchurn customwave path), no invented knobs:
+    //   per_point a   = 0.5 + (oz+2)*0.25            (source wave_*_per_point42)
+    //   modVol        = clamp((vol·6 − 0.71)/(1.30−0.71), 0, 1)   (bModWaveAlphaByVolume
+    //                   with fModWaveAlphaStart/End, on 6×-boosted audio — see kAudioBoost)
+    //   alpha         = fWaveAlpha(4.1) × a × modVol
+    // Drawn additively (SRC_ALPHA,ONE) into the float scene. `vol` is the per-stem
+    // energy (the D-137 uplift — each arm's volume is its instrument's energy).
+    float pointA = 0.5 + (oz + 2.0) * 0.25;
+    float modVol = clamp((stemE * kAudioBoost - 0.71) / (1.30 - 0.71), 0.0, 1.0);
+    // Per-arm TRANSIENT FLARE (D-137 uplift): each arm brightens on its own
+    // instrument's transient (deviation primitive, D-026) — the drums-arm flares on
+    // each kick, the bass-arm on each bass hit, the vocals-arm on vocal attacks. So
+    // the alpha = slow volume ramp (modVol) + a per-hit flare. With the no-decay
+    // feedback the flare blooms outward and smears — a pulse you can point at. Layer
+    // hierarchy: continuous energy (modVol) is primary; the dev flare is the accent.
+    float flare  = 1.0 + kStrandFlare * max(0.0, stemD);
+    float alpha  = clamp(pointA * modVol * flare, 0.0, 1.0);
 
     DragonStrandVertexOut o;
     // Screen (x,y)∈[0,1] → clip. Flip Y: Milkdrop is bottom-up, the scene texture
@@ -269,13 +296,11 @@ vertex DragonStrandVertexOut dragon_bloom_strand_vertex(
 }
 
 fragment float4 dragon_bloom_strand_fragment(DragonStrandVertexOut in [[stage_in]]) {
-    // Additive blend (configured engine-side: srcRGB=one, dstRGB=one): emit the
-    // strand colour pre-weighted by the per-point alpha (faint near-end points
-    // contribute less) and the global dim that keeps feedback accumulation below
-    // clip. The colour ratios (dominant `1+sin(sp)` channel) survive the scale,
-    // so the per-strand hue identity is preserved.
-    float w = in.color.a * kStrandBrightness;
-    return float4(in.color.rgb * w, w);
+    // butterchurn customwave blend (bAdditive=0) = SRC_ALPHA, ONE_MINUS_SRC_ALPHA.
+    // The engine binds that blend, so emit the raw per-point colour + alpha (NOT
+    // premultiplied) and let the blend composite col·a + dst·(1−a). col is the
+    // per-point r/g/b (dominant channel up to 2), alpha = per_point_a·modVol.
+    return float4(in.color.rgb, in.color.a);
 }
 
 // ── MV-Warp functions (D-027) ─────────────────────────────────────────────────
@@ -313,36 +338,30 @@ float2 mvWarpPerVertex(
     constant FeatureVector& f,
     constant StemFeatures& stems
 ) {
-    // ── L2: source.milk per_pixel warp (D-137) ────────────────────────────────
-    // Faithful port of the preset's per-pixel feedback warp — the layer that
-    // folds the tumbling strands into the bilaterally-symmetric PETAL bloom.
-    // Verbatim from source.milk per_pixel_1..8:
-    //   it   = 0.3*sin(time*0.2)
-    //   rot  = 0.02*sin((rad*0.5 + it)*20)          // concentric rotation rings
-    //   mod  = sin(ang*5)^5                          // sharp 5-LOBE angular fn
-    //   zoom = (1 + |0.01*mod|) * min(1.05, max(1, max(bass,treb)))
-    // The 5-fold angular zoom is what pulls the feedback outward into a small
-    // number of distinct petals (Spike-1's uniform zoom could only fuzz a ring);
-    // because `zoom` depends on ang only through sin(ang·5)^5 it is symmetric
-    // across the axes → the petal form is bilaterally symmetric. The audio
-    // multiplier is faithful to source; on Phosphene's AGC scale bass/treble
-    // rarely exceed 1, so it sits ≈1 — the warp is FORM, the strands (L1) carry
-    // the audio (one primitive per layer). pf is unused here (its per-frame
-    // decay is consumed by the compose pass); the warp is fully per-pixel.
+    // source.milk per_pixel warp, on the 32×24 vertex mesh — which is exactly how
+    // butterchurn/Milkdrop compute it (`warpUVs` per mesh vertex, interpolated). It
+    // was briefly moved to a per-FRAGMENT recompute for sharper petals, but that
+    // diverges from the source's mesh AND costs trig per pixel; the mesh is faithful
+    // and cheaper, and the strands (drawn full-res on top) carry the fine detail.
+    //   per_pixel_1: it   = 0.3*sin(time*0.2)
+    //   per_pixel_3: rot  = 0.02*sin((rad*0.5 + it)*20)     // concentric rotation
+    //   per_pixel_4-6: mod = sin(ang*5)^5; zoom = (1+|0.01*mod|)*0.99951 (inward base)
+    // The 0.99951 inward baseline is load-bearing for stability (FA: prevents the
+    // field draining off-edge / white-collapse). The source's audio-zoom term
+    // (per_pixel_8) is reformulated as BREATHING: the whole bloom expands on loud
+    // bass and settles when it thins — the primary continuous response (D-137).
     float t    = f.time;
     float it   = 0.3 * sin(t * 0.2);
     float rotA = 0.02 * sin((rad * 0.5 + it) * 20.0);
     float md   = sin(ang * 5.0);
-    md = md * md * md * md * md;                        // ^5
-    float zoom = 1.0 + fabs(0.01 * md);
-    zoom *= min(1.05, max(1.0, max(f.bass, f.treble)));
+    md = md * md * md * md * md;                              // ^5
+    float z    = (1.0 + fabs(0.01 * md)) * 0.99951;
+    z *= clamp(1.0 + 0.06 * (f.bass * 6.0 - 1.0), 0.97, 1.07);  // breathing (bass, 6×-boosted)
 
     float2 centre = float2(0.5, 0.5);
     float2 p      = uv - centre;
-    // zoom > 1 ⇒ sample inward ⇒ accumulated content flows outward (Milkdrop
-    // convention; same idiom as the retired base-zoom path).
-    float2 zp = p / max(zoom, 0.001);
-    float  c  = cos(rotA);
-    float  s  = sin(rotA);
-    return float2(c * zp.x - s * zp.y, s * zp.x + c * zp.y) + centre;
+    float2 zp     = p / max(z, 0.001);
+    float  c      = cos(rotA);
+    float  sn     = sin(rotA);
+    return float2(c * zp.x - sn * zp.y, sn * zp.x + c * zp.y) + centre;
 }

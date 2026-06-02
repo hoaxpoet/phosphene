@@ -342,11 +342,18 @@ extension VisualizerEngine {
                     logger.error("mv_warp preset '\(desc.name)' missing compiled warp pipeline states")
                     break
                 }
+                // Feedback textures use the drawable (8-bit) format — matching
+                // butterchurn/Milkdrop (UNSIGNED_BYTE RGBA); the per-frame clamp is
+                // load-bearing for Dragon Bloom's saturated no-decay equilibrium.
+                // MUST match PresetLoader.feedbackFormat (the format the warp/compose/
+                // scene pipelines were compiled for) or the render encoder gets an
+                // attachment-format mismatch and the GPU stalls.
                 let bundle = MVWarpPipelineBundle(
                     warpState: warpPipelines.warpState,
                     composeState: warpPipelines.composeState,
                     blitState: warpPipelines.blitState,
-                    pixelFormat: context.pixelFormat
+                    pixelFormat: context.pixelFormat,
+                    feedbackFormat: context.pixelFormat
                 )
                 // Use the last drawable size reported by drawableSizeWillChange so
                 // mid-session preset switches allocate at the correct resolution.
@@ -361,16 +368,23 @@ extension VisualizerEngine {
                 // (instanceCount), each a line strip of 512 samples (matches
                 // kStrandSamples in DragonBloom.metal). Otherwise clear any prior overlay.
                 if let strandState = warpPipelines.sceneGeometryState {
-                    // 6 instances = 3 stems × {original, vertical mirror} (L2 bilateral
-                    // symmetry); 512 samples each (matches kStrandSamples).
+                    // 3 waves (source has 3 custom waves). Bilateral symmetry comes
+                    // from the video echo (horizontal mirror) at the comp/blit, NOT
+                    // from mirrored strand instances — matching butterchurn.
                     pipeline.setSceneGeometry(
-                        strandState, vertexCount: 1536, instanceCount: 6, primitive: .lineStrip)
+                        strandState, vertexCount: 1536, instanceCount: 3, primitive: .lineStrip)
                     // L3 (D-137): enable the chromatic colour-separation warp (the warm
                     // R->G->B feedback cycling) for Dragon Bloom.
                     pipeline.setMVWarpChromatic(1.0)
+                    // L4 (D-137): faithful source.milk fixed-function comp at the blit —
+                    // video echo (fVideoEchoAlpha=0.5, orientation-1 horizontal mirror) +
+                    // gamma (fGammaAdj=1.07) + invert (bInvert=1). bBrighten+bDarken cancel.
+                    // Display-only, so the float feedback field accumulates undisturbed.
+                    pipeline.setMVWarpPost(invert: 1.0, echo: 0.5, gamma: 1.07)
                 } else {
                     pipeline.setSceneGeometry(nil, vertexCount: 0, instanceCount: 0, primitive: .lineStrip)
                     pipeline.setMVWarpChromatic(0.0)
+                    pipeline.setMVWarpPost(invert: 0.0, echo: 0.0, gamma: 1.0)
                 }
 
                 // Arachne-specific: allocate web pool + spider buffer and wire tick + fragment buffers.
