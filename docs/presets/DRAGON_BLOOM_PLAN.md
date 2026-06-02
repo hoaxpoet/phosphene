@@ -81,8 +81,16 @@ procedural-vertex strand geometry vs fragment splat); (b) a **chromatic
 colour-transform in the mv_warp compose** (small shader add).
 
 **Layered build (each verified against the now-faithful live oracle + gif/still):**
-- **L1 — Strand brush ← stems.** Transcribe the `per_point` tumbling-strand math;
-  3 strands driven by drums/bass/vocals; HDR glow. *Supersedes Spike 1's ring.*
+- **L1 — Strand brush ← stems. ✅ DONE (2026-06-02, commits L1a `1ca736c1` + L1b `2dc05ed1`).**
+  Transcribed the `per_point` tumbling-strand math; 3 strands driven by
+  drums/bass/vocals (stem-gated alpha = `bModWaveAlphaByVolume`); drawn as
+  additive instanced line strips into the mv_warp scene texture (new engine
+  surface: `setSceneGeometry` + `RenderPipeline+SceneGeometry`). The Spike-1/2
+  ring + D-136 fold are retired (strands carry their own symmetry via `oz=abs(oz)`).
+  Renders as feathered tumbling blades, stem-coupled, no clip
+  (`DragonBloomMVWarpAccumulationTest`, parity-rewritten). NOT yet symmetric/warm/
+  full — that's L2–L5. HDR glow deferred (sceneTexture is 8-bit; needs float +
+  tonemap, a later refinement). *Supersedes Spike 1's ring.*
 - **L2 — `per_pixel` petal warp → `mvWarpPerVertex`** (`zoom = 1+abs(0.01·sin(ang·5)^5)`, concentric rot).
 - **L3 — Chromatic colour-transform in compose** (the hand-written warp GLSL is the spec — `tools/dragon_bloom_reference/index.html` `fixWarpShader`).
 - **L4 — Decay/echo/invert blend** tuning to the reference's feathered density.
