@@ -1,6 +1,6 @@
 # Dragon Bloom — Milkdrop Uplift Plan (from `$$$ Royal - Mashup (220)`)
 
-**Status:** **Spike 1 ✅ PASSED.** **Spike 2 (bilateral symmetry) ✅ symmetry confirmed by Matt M7 2026-06-02** ("looks symmetric, can't see the line of symmetry" — symmetric, no clipart seam). **BUT Matt M7 also surfaced: "not really seeing petals yet."** Investigation (reading `source.milk` + standing up the live butterchurn reference) found **Spike 1's mechanic ≠ the reference's mechanic** — see §0 (Mechanic decode). The live reference is now **faithful** (the converter botched the HLSL warp shader → hand-written GLSL fix in `tools/dragon_bloom_reference/`; it reproduces the warm feathered bloom matching the gif/still). **Matt reframed this as an UPLIFT** (not a literal copy) and approved (2026-06-02) the **feedback-native uplift** with strands ← **drums/bass/vocals** stems — see §0 "The uplift approach" (D-137). **L1 (strands←stems), L2 (petal warp + bilateral mirror), L3 (chromatic), L5 (warm palette) all ✅ DONE 2026-06-02** — the bloom now renders as a warm fiery bilaterally-symmetric feathered bloom matching the reference family (offline diag verified per layer; L2 Matt-M7-confirmed symmetric live). **Remaining: L4 density/fullness polish + Matt M7 on the warm milestone before polish.** Plan approved 2026-06-01; Faithful uplift of `$$$ Royal - Mashup (220)`. References at `docs/VISUAL_REFERENCES/dragon_bloom/`.
+**Status:** **Spike 1 ✅ PASSED.** **Spike 2 (bilateral symmetry) ✅ symmetry confirmed by Matt M7 2026-06-02** ("looks symmetric, can't see the line of symmetry" — symmetric, no clipart seam). **BUT Matt M7 also surfaced: "not really seeing petals yet."** Investigation (reading `source.milk` + standing up the live butterchurn reference) found **Spike 1's mechanic ≠ the reference's mechanic** — see §0 (Mechanic decode). The live reference is now **faithful** (the converter botched the HLSL warp shader → hand-written GLSL fix in `tools/dragon_bloom_reference/`; it reproduces the warm feathered bloom matching the gif/still). **Matt reframed this as an UPLIFT** (not a literal copy) and approved (2026-06-02) the **feedback-native uplift** with strands ← **drums/bass/vocals** stems — see §0 "The uplift approach" (D-137). **L1 (strands←stems), L2 (petal warp + bilateral mirror), L3 (chromatic), L5 (warm palette) all ✅ DONE 2026-06-02** — the bloom now renders as a warm fiery bilaterally-symmetric feathered bloom matching the reference family (offline diag verified per layer; L2 Matt-M7-confirmed symmetric live). **Remaining: L4 — the rich warm FILL.** Matt M7 (2026-06-02): the bloom reads dull/desaturated, pixelated, bright only at centre. The empirical recipe is now measured from the faithful oracle (§0 L4): full warp shader (normalise+resample = saturated fill) + `bInvert=1` (warm) + fast fill (video echo), in that order (invert only works once filled). A focused, grounded next increment — NOT tuning. Plan approved 2026-06-01; Faithful uplift of `$$$ Royal - Mashup (220)`. References at `docs/VISUAL_REFERENCES/dragon_bloom/`.
 
 > **New-session start here:** read §0 (Mechanic decode) + `tools/dragon_bloom_reference/README.md` + `docs/VISUAL_REFERENCES/dragon_bloom/README.md`. The reference loop and the mechanic understanding are done; the work is the §0 layered faithful port (L1 → L5). The committed Spike-2 fold (`angFold` in `DragonBloom.metal`, D-136) + the production-pipeline test (symmetry-correlation gate) stay; the polar-ring *brush* is replaced in L1.
 
@@ -112,9 +112,39 @@ colour-transform in the mv_warp compose** (small shader add).
   spectral-centroid warmth, floored vivid. With L3's transfer → "warm fiery with
   green accents." The bloom now matches the reference family (warm, bilaterally
   symmetric, feathered). *Done out of L3→L5 order (warmth was the key missing trait).*
-- **L4 — Decay/echo/density tuning (REMAINING — polish).** The reference fills the
-  frame more densely; tune decay/echo/brightness/strand-count toward that. Best
-  done after a Matt M7 on the current warm-symmetric-feathered milestone.
+- **L4 — Rich warm FILL (REMAINING — the real gap).** Matt M7 (session
+  `2026-06-02T15-48-51Z`): "dull, not saturated; pixelated; only the centre is
+  bright." Round 1 (commit `ea182532`) recalibrated to real stem energies
+  (~0.24–0.36, not 0.5), bumped brightness, and fixed the "pixelated" moire
+  (spiral aliasing → `kStrandSamples` 512→1536). That helped but did NOT reach
+  the bar. **Empirical finding from the faithful oracle (don't guess — this is
+  measured):** the oracle's rich, saturated, FRAME-FILLING warm bloom comes from
+  THREE mechanisms the port is missing, in this order:
+  1. **Full warp shader (the FILL/SATURATION).** I ported only the R→G→B transfer
+     (L3). The source warp shader also does: normalise feedback → hue; R-weighted
+     `zoom = dot(hue,(1,0.975,0.95))`; **RESAMPLE feedback at that hue-zoom**;
+     then the transfer. The resample + normalise is what fills the frame with
+     saturated colour (verified: full-warp-no-invert in the oracle = fully
+     saturated COOL fill, not a dull thread). Exact GLSL is in
+     `tools/dragon_bloom_reference/index.html` `fixWarpShader`; the MSL port goes
+     in `mvWarp_fragment`, gated by `chromaticMix` (identity at 0).
+  2. **`bInvert=1` (the WARMTH).** The saturated fill is COOL (blue/cyan/green);
+     invert flips it WARM (red/orange/magenta are the complements). Verified by
+     toggling invert in the oracle. Must be IN the feedback loop (parity, FA #66),
+     gated.
+  3. **Fast fill (accumulation + spread).** The fill is a feedback attractor that
+     develops over ~20 s in the oracle; likely accelerated by `fVideoEchoAlpha=0.5`
+     (video echo — a 2nd feedback tap, not yet ported). **Ordering is critical:
+     invert only works once the buffer is FILLED** — invert on an empty/black
+     buffer flips black→white and breaks (tested: it whites-out + fails the test).
+     So fill must develop (fast enough) before/with invert.
+  Next increment: port (1) the full warp shader, then (3) ensure fast fill
+  (video echo and/or decay), then (2) invert — verifying each step against the
+  now-faithful oracle + a longer-accumulation test. This is the difference
+  between the current dull-dim-centre render and the oracle's rich warm fill.
+  *(The full-warp + invert port was attempted this session and reverted — it's
+  correct in direction but invert-before-fill whited-out; needs the fast-fill
+  step first. It's a focused next increment, not a tuning tweak.)*
 
 Each layer: render offline against the **real recorded audio** (extend the diag
 harness to load `raw_tap.wav`, not the synthetic sine) + compare to the live
