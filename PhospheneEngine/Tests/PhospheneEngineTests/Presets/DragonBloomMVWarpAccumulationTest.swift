@@ -198,20 +198,35 @@ struct DragonBloomMVWarpAccumulationTest {
                 coupling broken on the tap-pattern stems.
                 """)
 
-        // ── Bilateral symmetry (informational at L1; HARD-gated at L2) ────────
-        // L1 draws the raw tumbling strands; their bilateral symmetry comes from
-        // the per-pixel 5-fold petal warp added in L2 (D-137 §0). So we PRINT the
-        // left↔right correlation here as a baseline but do NOT gate on it yet —
-        // L2 reinstates the hard symmetry gate (band 0.70–0.999) once the warp
-        // establishes the symmetric form.
+        // ── L2 gate: bilateral symmetry WITHOUT flat-clipart mirroring ────────
+        // L2 mirrors the strand brush about the vertical axis (each stem drawn as
+        // {original, mirror}) → the bloom FORM is bilaterally symmetric (high
+        // left↔right correlation). The per_pixel warp's concentric rotation keeps
+        // the accumulated TEXTURE non-identical across halves, so correlation
+        // stays strictly below a flat pixel mirror — the FA #48 "symmetric form,
+        // rich texture" contract Matt confirmed at Spike 2. Band (0.65, 0.999):
+        //   ≤ 0.65  → mirror not producing a symmetric form (regression)
+        //   ≥ 0.999 → flat pixel mirror = clipart (warp not diverging the halves)
         let silenceSym = symmetryCorrelation(silence.pixels)
         let musicSym   = symmetryCorrelation(music.pixels)
         let spotifySym = symmetryCorrelation(spotify.pixels)
         print("""
-        [dragon_bloom_diag] Bilateral symmetry correlation (left↔right mirror, INFORMATIONAL at L1):
+        [dragon_bloom_diag] Bilateral symmetry correlation (left↔right mirror):
           silence = \(padF(silenceSym))   music = \(padF(musicSym))   spotify = \(padF(spotifySym))
-          L1 = raw tumbling strands (symmetry established by the L2 petal warp).
+          L2 target band for music: > 0.65 (symmetric form) AND < 0.999 (rich texture, not flat mirror).
         """)
+        #expect(musicSym > 0.65,
+                """
+                Bloom is not bilaterally symmetric under music (corr \(musicSym) ≤ 0.65). \
+                The L2 strand mirror (instance ≥ 3 → x = 1−x) is not producing a \
+                symmetric form. See D-137 §0 / Spike 2.
+                """)
+        #expect(musicSym < 0.999,
+                """
+                Bloom is a near-perfect pixel mirror under music (corr \(musicSym) ≥ 0.999) \
+                — flat-clipart symmetry (FA #48). The per_pixel warp is not diverging \
+                the two halves' accumulated texture.
+                """)
     }
 
     // MARK: - Accumulation loop
@@ -497,7 +512,8 @@ struct DragonBloomMVWarpAccumulationTest {
             enc.setRenderPipelineState(strandState)
             enc.setVertexBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
             enc.setVertexBytes(&stems, length: MemoryLayout<StemFeatures>.stride, index: 1)
-            enc.drawPrimitives(type: .lineStrip, vertexStart: 0, vertexCount: 512, instanceCount: 3)
+            // 6 instances = 3 stems × {original, vertical mirror} (L2 bilateral symmetry).
+            enc.drawPrimitives(type: .lineStrip, vertexStart: 0, vertexCount: 512, instanceCount: 6)
         } else {
             Issue.record("Dragon Bloom has no strand pipeline (mvWarpPipelines.sceneGeometryState nil) — L1 wiring broken.")
         }

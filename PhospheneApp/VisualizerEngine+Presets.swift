@@ -361,8 +361,10 @@ extension VisualizerEngine {
                 // (instanceCount), each a line strip of 512 samples (matches
                 // kStrandSamples in DragonBloom.metal). Otherwise clear any prior overlay.
                 if let strandState = warpPipelines.sceneGeometryState {
+                    // 6 instances = 3 stems × {original, vertical mirror} (L2 bilateral
+                    // symmetry); 512 samples each (matches kStrandSamples).
                     pipeline.setSceneGeometry(
-                        strandState, vertexCount: 512, instanceCount: 3, primitive: .lineStrip)
+                        strandState, vertexCount: 512, instanceCount: 6, primitive: .lineStrip)
                 } else {
                     pipeline.setSceneGeometry(nil, vertexCount: 0, instanceCount: 0, primitive: .lineStrip)
                 }

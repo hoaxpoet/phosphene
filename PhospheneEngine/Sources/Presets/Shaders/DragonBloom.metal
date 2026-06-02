@@ -176,7 +176,16 @@ vertex DragonStrandVertexOut dragon_bloom_strand_vertex(
 ) {
     float s = float(vid) / float(kStrandSamples - 1);   // sample ∈ [0, 1]
     float t = f.time;
-    int   strand = int(iid);                            // 0=drums, 1=bass, 2=vocals
+    // L2 (D-137): 6 instances = 3 stems × {original, vertical-axis mirror}. The
+    // raw tumbling strands are NOT bilaterally symmetric, and the source's
+    // per_pixel warp does not symmetrise them (verified empirically). The
+    // reference unmistakably reads as a bilaterally-symmetric petal bloom, so we
+    // GUARANTEE it the Spike-2-validated way: mirror the brush about the vertical
+    // axis (reflect the projected x). The per_pixel warp keeps the feathered
+    // texture rich (symmetric FORM, non-identical TEXTURE — the FA #48 mitigation
+    // Matt confirmed reads as symmetric). The mirror also doubles the petals.
+    int  strand = int(iid % 3);                         // 0=drums, 1=bass, 2=vocals
+    bool mirror = iid >= 3;
 
     // Per-strand: stem drive, source rotation rates, dominant colour channel.
     float  stemE, stemD;
@@ -212,10 +221,11 @@ vertex DragonStrandVertexOut dragon_bloom_strand_vertex(
     mx = ox * cy + oz * sy; mz = -ox * sy + oz * cy; ox = mx; oz = mz;       // rot Y
     my = oy * cx - oz * sx; mz = oy * sx + oz * cx; oy = my; oz = mz;        // rot X
 
-    oz = fabs(oz) - 2.0;                                // the fold → bilateral symmetry
+    oz = fabs(oz) - 2.0;                                // source z fold
     float x = ox * kStrandFov / oz + 0.5;
     x = (x - 0.5) * 0.75 + 0.5;                         // source horizontal squish (4:3)
     float y = oy * kStrandFov / oz + 0.5;
+    if (mirror) { x = 1.0 - x; }                        // L2: vertical-axis mirror → bilateral symmetry
 
     // ── per_point colour (source.milk): dominant channel = 1+sin(sp) (HDR),
     //    the other two = 0.5±0.5·sin/cos(sample·1.57). Alpha from depth. ──────
@@ -266,42 +276,18 @@ MVWarpPerFrame mvWarpPerFrame(
     pf.sx = 1.0; pf.sy = 1.0;
     pf.warp = 0.0;
 
-    // ── (layer × primitive × timescale) routing table ────────────────────────
-    // Empirically grounded by the 2026-06-02 BUG-025 A/B liveness measurement
-    // (frame-to-frame stddev, LF "Atlas" vs muted Spotify session). Each warp
-    // channel reads a primitive that is alive on BOTH paths:
-    //   pf.zoom  (outward bleed)   ← bass (Layer-1, stddev 0.10) + signed bass_rel
-    //   pf.rot   (swirl)           ← spectralFlux (stddev 0.15–0.22)
-    //   q1 feather-flow magnitude  ← spectralFlux (was mid_att_rel ≈ 0 → frozen)
-    //   q3 radial-breathing impulse← signed bass_rel (was bass_dev ≈ 0 → dead)
-    // The earlier Spike-1 routing read mid_att_rel + bass_dev, both ≈ 0 on
-    // bass-dominant music, so the feathers never flowed and the bloom looked
-    // static. See the fragment-side driver block for the same diagnosis.
-    float bassAbs = f.bass;
-    float bassRel = f.bass_rel;        // SIGNED — alive on both paths
-    float flux    = f.spectral_flux;   // spectral change — feather flow driver
-
-    // pf.zoom > 1 ⇒ vertex samples a slightly inward UV ⇒ trails push outward.
-    // Layer-1 bass is the steady bleed; signed bass_rel modulates it ± so the
-    // bloom breathes outward on bass hits and settles inward between them.
-    pf.zoom  = kMVWarpBaseZoom
-             + bassAbs * 0.008                       // continuous breath
-             + max(0.0, bassRel) * kMVWarpZoomGain;  // extra push on above-avg bass
-
-    // Swirl from spectral change — feathers gain rotational energy when the
-    // texture of the sound shifts. Flux is alive on both paths (unlike mid).
-    pf.rot   = flux * kMVWarpRotGain;
-
-    // Decay = source.milk fDecay (0.95). VisualizerEngine also feeds the JSON
-    // `decay` field to setMVWarpDecay so the compose pass matches — keep these
-    // two values aligned (both 0.945 here / in DragonBloom.json).
+    // L2 (D-137): the warp is now computed fully PER-PIXEL in mvWarpPerVertex
+    // (the faithful source.milk per_pixel 5-fold petal zoom + concentric
+    // rotation). The only per-frame value the engine still needs is the decay,
+    // which the compose pass consumes. The Spike-1 per-frame zoom/rot/q-channel
+    // routing is retired (it drove the now-removed ring warp). Decay = source
+    // fDecay; keep aligned with DragonBloom.json `decay` (both 0.945) so the
+    // compose blend Σ(1−d)·d^n = 1 holds.
+    pf.zoom  = 1.0;
+    pf.rot   = 0.0;
     pf.decay = kMVWarpBaseDecay;
-
-    // Q-channels pass per-frame audio to mvWarpPerVertex.
-    pf.q1 = flux;                  // feather flow magnitude (alive on both paths)
-    pf.q2 = bassAbs;               // continuous presence (reserved)
-    pf.q3 = max(0.0, bassRel);     // radial breathing impulse on above-avg bass
-    pf.q4 = 0.0; pf.q5 = 0.0; pf.q6 = 0.0; pf.q7 = 0.0; pf.q8 = 0.0;
+    pf.q1 = 0.0; pf.q2 = 0.0; pf.q3 = 0.0; pf.q4 = 0.0;
+    pf.q5 = 0.0; pf.q6 = 0.0; pf.q7 = 0.0; pf.q8 = 0.0;
     return pf;
 }
 
@@ -311,34 +297,36 @@ float2 mvWarpPerVertex(
     constant FeatureVector& f,
     constant StemFeatures& stems
 ) {
+    // ── L2: source.milk per_pixel warp (D-137) ────────────────────────────────
+    // Faithful port of the preset's per-pixel feedback warp — the layer that
+    // folds the tumbling strands into the bilaterally-symmetric PETAL bloom.
+    // Verbatim from source.milk per_pixel_1..8:
+    //   it   = 0.3*sin(time*0.2)
+    //   rot  = 0.02*sin((rad*0.5 + it)*20)          // concentric rotation rings
+    //   mod  = sin(ang*5)^5                          // sharp 5-LOBE angular fn
+    //   zoom = (1 + |0.01*mod|) * min(1.05, max(1, max(bass,treb)))
+    // The 5-fold angular zoom is what pulls the feedback outward into a small
+    // number of distinct petals (Spike-1's uniform zoom could only fuzz a ring);
+    // because `zoom` depends on ang only through sin(ang·5)^5 it is symmetric
+    // across the axes → the petal form is bilaterally symmetric. The audio
+    // multiplier is faithful to source; on Phosphene's AGC scale bass/treble
+    // rarely exceed 1, so it sits ≈1 — the warp is FORM, the strands (L1) carry
+    // the audio (one primitive per layer). pf is unused here (its per-frame
+    // decay is consumed by the compose pass); the warp is fully per-pixel.
+    float t    = f.time;
+    float it   = 0.3 * sin(t * 0.2);
+    float rotA = 0.02 * sin((rad * 0.5 + it) * 20.0);
+    float md   = sin(ang * 5.0);
+    md = md * md * md * md * md;                        // ^5
+    float zoom = 1.0 + fabs(0.01 * md);
+    zoom *= min(1.05, max(1.0, max(f.bass, f.treble)));
+
     float2 centre = float2(0.5, 0.5);
     float2 p      = uv - centre;
-
-    // ── Base zoom (outward bleed) ────────────────────────────────────────────
-    // Same idiom as Gossamer.metal — invert pf.zoom so >1 = trails push outward.
-    float  zoomAmt = 1.0 / max(pf.zoom, 0.001);
-    float2 zoomed  = p * zoomAmt;
-
-    // ── Base rotation (slow swirl) ───────────────────────────────────────────
-    float c = cos(pf.rot);
-    float s = sin(pf.rot);
-    float2 rotated = float2(c * zoomed.x - s * zoomed.y,
-                            s * zoomed.x + c * zoomed.y);
-
-    // ── Per-vertex feather displacement (the "motion vectors" in the source) ─
-    // Two-component motion field:
-    //   (a) tangential flow — the feather streams curve sideways, scaled by radius
-    //       so the centre stays calm and the edges fan out.
-    //   (b) radial breathing — pushes vertices outward on bass kicks.
-    // Magnitudes stay small (sub-1% UV per frame) — the rich motion comes from
-    // *accumulating* these displacements across the decay window, not from any
-    // one frame being dramatic.
-    float2 tangent = (rad > 0.001) ? float2(-p.y, p.x) / max(rad, 0.001) * 0.5
-                                   : float2(0.0, 0.0);
-    float  flowMag = pf.q1 * kMVWarpFeatherAmp * rad;
-    float  breathe = pf.q3 * 0.006 * rad;
-
-    float2 feather = tangent * flowMag + normalize(p + float2(1e-5)) * breathe;
-
-    return rotated + centre + feather;
+    // zoom > 1 ⇒ sample inward ⇒ accumulated content flows outward (Milkdrop
+    // convention; same idiom as the retired base-zoom path).
+    float2 zp = p / max(zoom, 0.001);
+    float  c  = cos(rotA);
+    float  s  = sin(rotA);
+    return float2(c * zp.x - s * zp.y, s * zp.x + c * zp.y) + centre;
 }
