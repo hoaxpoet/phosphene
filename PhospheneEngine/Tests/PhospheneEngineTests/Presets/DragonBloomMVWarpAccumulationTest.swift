@@ -430,6 +430,8 @@ struct DragonBloomMVWarpAccumulationTest {
             fv.spectralFlux  = fluxOsc
             fv.beatComposite = (frameIdx % 28 < 4) ? Float(1.0) : Float(0.45)
             fv.beatBass      = (frameIdx % 28 < 2) ? Float(1.0) : Float(0.15)
+            fv.valence          = 0.6            // L5: warm-palette drivers (representative mood)
+            fv.spectralCentroid = 0.55
             return fv
         case .spotifyTapPattern:
             // Reproduces the MEASURED distribution of a real bass-dominant
@@ -457,6 +459,8 @@ struct DragonBloomMVWarpAccumulationTest {
             // beatComposite pulses on a ~2 Hz grid (30-frame period) — mean ≈ 0.6.
             fv.beatComposite = (frameIdx % 30 < 4) ? Float(1.0) : Float(0.35)
             fv.beatBass      = (frameIdx % 30 < 2) ? Float(0.9) : Float(0.1)
+            fv.valence          = 0.55           // L5: warm-palette drivers (representative mood)
+            fv.spectralCentroid = 0.50
             return fv
         }
     }

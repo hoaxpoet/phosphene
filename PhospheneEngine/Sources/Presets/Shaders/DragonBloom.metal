@@ -227,14 +227,20 @@ vertex DragonStrandVertexOut dragon_bloom_strand_vertex(
     float y = oy * kStrandFov / oz + 0.5;
     if (mirror) { x = 1.0 - x; }                        // L2: vertical-axis mirror → bilateral symmetry
 
-    // ── per_point colour (source.milk): dominant channel = 1+sin(sp) (HDR),
-    //    the other two = 0.5±0.5·sin/cos(sample·1.57). Alpha from depth. ──────
-    float bright = 1.0 + sin(sp);                       // [0, 2] — HDR glow channel
-    float cS = 0.5 + 0.5 * sin(s * 1.5708);
-    float cC = 0.5 + 0.5 * cos(s * 1.5708);
-    float3 col = (dom == 0) ? float3(bright, cC, cS)
-               : (dom == 1) ? float3(cS, bright, cC)
-                            : float3(cC, cS, bright);
+    // ── L5: warm fiery per-stem palette (D-137) ───────────────────────────────
+    // Replaces source.milk's R/G/B-dominant wave colours with warm hues so the
+    // bloom reads fiery — the reference's defining trait. Per-stem identity:
+    // drums = orange, bass = ember-red, vocals = gold. valence + spectral_centroid
+    // shift overall warmth (hotter on bright/positive music). The L3 chromatic
+    // transfer bleeds the warm (R-heavy) cores partly toward green → the
+    // reference's "warm fiery with green accents" read. The source's `sin(sp)`
+    // glow striping is preserved as a brightness modulation along the strand.
+    float3 warmHue = (dom == 0) ? float3(1.00, 0.42, 0.12)   // drums  — fiery orange
+                   : (dom == 1) ? float3(0.95, 0.20, 0.06)   // bass   — ember red
+                                : float3(1.00, 0.74, 0.20);  // vocals — gold
+    float warmth = clamp(0.80 + 0.40 * f.valence + 0.30 * (f.spectral_centroid - 0.5), 0.45, 1.35);
+    float glow   = 0.55 + 0.45 * sin(sp);                    // source bright striping → [0.1, 1.0]
+    float3 col   = warmHue * glow * warmth;
     // bModWaveAlphaByVolume analog (source.milk =1): each strand's alpha scales
     // with ITS instrument's energy, so a quiet/absent instrument fades its strand
     // (musical — each arm tracks its stem) and at silence the strands don't pile
