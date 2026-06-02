@@ -1,14 +1,79 @@
 # Dragon Bloom — Milkdrop Uplift Plan (from `$$$ Royal - Mashup (220)`)
 
-**Status:** **Spike 1 ✅ PASSED (Matt, 2026-06-02).** **Spike 2 (bilateral symmetry without clipart, §6) implemented 2026-06-02 — ⏳ Matt M7 pending.** The vertical-axis mirror fold makes the bloom silhouette bilaterally symmetric; the mv_warp field is left asymmetric (rotational handedness) so the accumulated feather texture stays rich (left↔right correlation 0.915 music / 0.985 spotify — symmetric but not a flat pixel mirror). **Next gate: Matt M7 on a live Spotify session** (symmetric AND dances AND reads rich, not clipart). Then Spike 3 (warm palette via valence/centroid + per-stem feather tinting). Plan approved 2026-06-01; Faithful uplift of `$$$ Royal - Mashup (220)`. References at `docs/VISUAL_REFERENCES/dragon_bloom/`.
+**Status:** **Spike 1 ✅ PASSED.** **Spike 2 (bilateral symmetry) ✅ symmetry confirmed by Matt M7 2026-06-02** ("looks symmetric, can't see the line of symmetry" — symmetric, no clipart seam). **BUT Matt M7 also surfaced: "not really seeing petals yet."** Investigation (reading `source.milk` + standing up the live butterchurn reference) found **Spike 1's mechanic ≠ the reference's mechanic** — see §0 (Mechanic decode). **Matt approved (2026-06-02) the faithful port** (rebuild the brush to the reference's tumbling spectral strands + 5-fold petal warp + chromatic feathering) **+ standing up the live reference** (`tools/dragon_bloom_reference/`). **Next: execute the §0 layered port (L1 strand brush first).** Plan approved 2026-06-01; Faithful uplift of `$$$ Royal - Mashup (220)`. References at `docs/VISUAL_REFERENCES/dragon_bloom/`.
 
-> **New-session start here:** read this plan + `docs/VISUAL_REFERENCES/dragon_bloom/README.md` + the Spike 1/2 history below. **If Spike 2's M7 has passed,** build **Spike 3** (warm palette via valence/centroid + per-stem feather tinting). **If not,** the Spike 2 fold is in `DragonBloom.metal` (`angFold = atan2(pRel.y, abs(pRel.x))`) — iterate on it per Matt's M7. The `direct + mv_warp` skeleton, the alive-signal audio routing, the mirror fold, and the multi-frame production-pipeline test (with the symmetry-correlation gate) all exist.
+> **New-session start here:** read §0 (Mechanic decode) + `tools/dragon_bloom_reference/README.md` + `docs/VISUAL_REFERENCES/dragon_bloom/README.md`. The reference loop and the mechanic understanding are done; the work is the §0 layered faithful port (L1 → L5). The committed Spike-2 fold (`angFold` in `DragonBloom.metal`, D-136) + the production-pipeline test (symmetry-correlation gate) stay; the polar-ring *brush* is replaced in L1.
 
 > **Spike 1 history (3 commits + 1 re-tune, 2026-06-01 → 2026-06-02).** Shipped `d380ed00` (skeleton, D-135). Two live-test rounds against Matt's Spotify playlist surfaced and fixed two issues: (1) raw waveform amplitude is path-dependent and NOT AGC-normalised → in-shader RMS normalisation (`cffefe65`); (2) the Spike-1 audio routing drove motion from primitives that are structurally near-dead on bass-dominant music (`mid_att_rel` feather flow ≈ 0, clamped `bass_dev` breathing ≈ 0) → re-tuned to signals measured alive on both paths (signed `bass_rel`, `spectralFlux`, beat) in `0ceef58f`. That round also corrected a misdiagnosis (BUG-025 root cause), shelved an unnecessary AGC increment (AGC.1), and filed the real structural issue (BUG-027) — see `docs/ENGINEERING_PLAN.md` Dragon Bloom entries + `docs/SHADER_CRAFT.md §14.1` (signal-liveness rule born from this). **The lesson for Spike 2/3: verify audio primitives are alive on the target music by measuring stddev on a real session — don't trust a primitive's name.**
 
 **Reference:** `$$$ Royal - Mashup (220)` (cream-of-crop `Dancer/Petals/`). Matt's pick to start — "sufficiently different from other presets" (fills the glowsticks/feedback register Phosphene lacks; not close to any certified preset).
 
 ---
+
+## 0. Mechanic decode (from `source.milk`) — READ THIS FIRST (2026-06-02)
+
+**Spike 1's mechanic is NOT the reference's mechanic.** Spike 1 draws a flat
+polar-waveform *ring* at a fixed radius — structurally an annulus that reads as a
+fuzzy fiery ring with a dark hole, no petals (Matt M7 2026-06-02, session
+`2026-06-02T13-37-09Z`). Reading `source.milk` line-by-line (and confirming it
+live in butterchurn — see `tools/dragon_bloom_reference/`) shows the actual
+`$$$ Royal - Mashup (220)` is a different program:
+
+1. **The brush = three tumbling 3-D spectral "helix-strands"** (`wavecode_0/1/2`,
+   one per band — mid / bass / treble via the `mod = if(below(<band>_att,1.8), …)`
+   line). Each strand is a vertical line (`oy = sample*mod`) with a fine spiral
+   wound around it (`ox = 0.5*sin(sp)*sin(sample·π)*vol`, `oz = …cos(sp)…`,
+   `sp = sample·6.28·8·8·4`), tapered at both ends by `sin(sample·π)`, then
+   **rotated in 3-D** by time-varying `xang/yang/zang` (each strand at different
+   rates), perspective-projected (`x = ox·fov/oz + 0.5`, then `x = (x−.5)·0.75+.5`),
+   drawn **additively** (`bAdditiveWaves=1`, `wave_alpha≈4.1`). The "petals" are
+   these projected tumbling blades; bilateral symmetry falls out of the projection
+   + `oz = abs(oz)−2`.
+2. **The petals' radial structure = a 5-fold angular zoom in the per-pixel warp**:
+   `mod = sin(ang·5); mod = mod^5; zoom = 1 + abs(0.01·mod)` — a sharp 5-lobe
+   angular function modulating the feedback zoom. Spike 1's warp is a uniform
+   zoom + swirl and can only make a fuzzy ring.
+3. **The feathering = the tumbling strands smeared through a heavy feedback field**
+   (`fDecay=0.95`, video-echo `α=0.5`, baseline `zoom=0.99951` slightly inward,
+   `warp=0.01`). Builds over ~20 frames.
+4. **The green/red accents = a chromatic colour-separation warp shader**
+   (`warp_1..21`, HLSL): normalises colour then pushes R→G→B in different
+   directions + error-diffusion dither.
+
+**The faithful port therefore rebuilds the brush + warp**, it does not tune the
+Spike-1 ring (tuning a structurally-different renderer = Failed Approach #49).
+Matt approved the faithful port + standing up the live reference (2026-06-02).
+
+**Live reference:** `tools/dragon_bloom_reference/` runs the real preset in
+butterchurn (WebGL Milkdrop) so the port is compared frame-by-frame against the
+truth, not just `01_target.png`. Confirmed visually: dark-field bloom of
+iridescent tumbling strand-petals, bilaterally symmetric, feathered — the form,
+motion, feathering and symmetry all match `01_target.png`'s structure (the still's
+warm fiery palette is a per-moment/palette difference, addressed by the palette
+layer). Harness notes (audio-boost, invert-off) in that dir's README.
+
+### Revised build sequence (faithful port, layered — each verified vs the live reference)
+
+The Spike 1 fold (D-136, committed) and the production-pipeline test stay. The
+brush is rebuilt:
+
+- **L1 — Strand brush.** Replace the polar ring with 3 tumbling 3-D spectral
+  helix-strands drawn additively into the scene fragment (per-band `mod` stretch,
+  3-D rotation, perspective projection). Verify the silhouette/motion vs the live
+  reference. *This supersedes Spike 1's ring brush.*
+- **L2 — 5-fold petal warp.** Add `sin(ang·5)^5` angular zoom + concentric
+  rotation to `mvWarpPerVertex` (replacing the uniform zoom/swirl). Verify petals
+  emerge.
+- **L3 — Chromatic feathering.** Port the R→G→B colour-separation (in compose/
+  warp). *Feasibility check first* — may need a small engine surface; if so,
+  surface to Matt before building (three-part bar #3).
+- **L4 — Decay/echo smear tuning** to match the reference's feathered density.
+- **L5 — Warm palette** (the original Spike 3): valence/centroid-driven warm
+  fiery palette + per-stem feather tinting, to match the still's tone.
+
+Each layer: render offline against the **real recorded audio** (extend the diag
+harness to load `raw_tap.wav`, not the synthetic sine) + compare to the live
+butterchurn reference; Matt M7 at layer milestones.
 
 ## 1. What it is (from the rendered still + source)
 

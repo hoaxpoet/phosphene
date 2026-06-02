@@ -6,6 +6,12 @@
       "runtimeExecutable": "/opt/homebrew/bin/python3",
       "runtimeArgs": ["-m", "http.server", "8765", "-d", "test-harness"],
       "port": 8765
+    },
+    {
+      "name": "dragon-ref",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8733", "--directory", "tools/dragon_bloom_reference"],
+      "port": 8733
     }
   ]
 }
