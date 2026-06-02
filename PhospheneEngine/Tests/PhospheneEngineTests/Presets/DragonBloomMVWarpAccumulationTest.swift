@@ -210,6 +210,44 @@ struct DragonBloomMVWarpAccumulationTest {
                 ≤ \(silence.brightPixels)). The waveform RMS normalisation (slot-2 amplitude)
                 or the alive-signal routing is not reaching the bloom.
                 """)
+
+        // ── Spike 2 gate: bilateral symmetry WITHOUT flat-clipart mirroring ──
+        // The mirror fold (abs(pRel.x) in the fragment) makes the bloom
+        // SILHOUETTE bilaterally symmetric → high left↔right correlation. The
+        // asymmetric mv_warp swirl (rotational handedness) accumulates a
+        // DIFFERENT feathered texture on each half → correlation stays strictly
+        // below a perfect pixel mirror. The band (0.70, 0.999) captures
+        // "symmetric form, rich textured halves" and rejects BOTH failure modes:
+        //   · ≤ 0.70  → fold not producing a symmetric silhouette
+        //   · ≥ 0.999 → perfect pixel mirror = flat clipart (FA #48 anti-ref)
+        let silenceSym = symmetryCorrelation(silence.pixels)
+        let musicSym   = symmetryCorrelation(music.pixels)
+        let spotifySym = symmetryCorrelation(spotify.pixels)
+        print("""
+        [dragon_bloom_diag] Bilateral symmetry correlation (left↔right mirror):
+          silence = \(padF(silenceSym))   music = \(padF(musicSym))   spotify = \(padF(spotifySym))
+          Target band for music/spotify: > 0.70 (symmetric silhouette) AND < 0.999
+          (not a flat pixel mirror — the asymmetric warp swirl keeps texture rich).
+          Silence is expected near 1.0 (no swirl at zero flux → pure radial mirror).
+        """)
+        #expect(musicSym > 0.70,
+                """
+                Bloom is not bilaterally symmetric under music (corr \(musicSym) ≤ 0.70). \
+                The mirror fold (abs(pRel.x) → angFold) is not producing a symmetric \
+                silhouette. See Spike 2 §6.
+                """)
+        #expect(musicSym < 0.999,
+                """
+                Bloom is a near-perfect pixel mirror under music (corr \(musicSym) ≥ 0.999) \
+                — flat-clipart symmetry, the FA #48 anti-reference. The asymmetric mv_warp \
+                swirl is not diverging the two halves' accumulated texture. Add per-side \
+                hash jitter (FA #44) or restore the warp handedness.
+                """)
+        #expect(spotifySym > 0.70 && spotifySym < 0.999,
+                """
+                Spotify-tap bloom symmetry out of band (corr \(spotifySym); want 0.70–0.999). \
+                Same symmetric-form / rich-texture contract as the music run.
+                """)
     }
 
     // MARK: - Accumulation loop
@@ -549,6 +587,41 @@ struct DragonBloomMVWarpAccumulationTest {
         }
         let radius = (bright > 0) ? radSum / Float(bright) : 0
         return (bright, maxL, radius)
+    }
+
+    /// Pearson correlation between each pixel's luma and its vertical-axis
+    /// mirror partner (x ↔ width-1-x). This is the Spike-2 gate: a bilaterally
+    /// symmetric bloom (the mirror fold) drives this HIGH, but the asymmetric
+    /// mv_warp swirl (rotational handedness accumulating differently on the two
+    /// halves) keeps it strictly BELOW a perfect pixel mirror — which is what
+    /// "symmetric form, rich non-clipart texture" means quantitatively.
+    ///   ≈ 1.0  → perfect pixel mirror (flat clipart — FA #48 anti-reference)
+    ///   ~0.7–0.99 → symmetric silhouette with textured, non-identical halves ✅
+    ///   < 0.5  → not bilaterally symmetric (fold not working)
+    private func symmetryCorrelation(_ pixels: [UInt8]) -> Float {
+        var sumA: Double = 0, sumB: Double = 0
+        var sumAA: Double = 0, sumBB: Double = 0, sumAB: Double = 0
+        var n: Double = 0
+        let halfW = Self.width / 2
+        for y in 0..<Self.height {
+            for x in 0..<halfW {
+                let mx = Self.width - 1 - x
+                let i  = (y * Self.width + x)  * 4
+                let j  = (y * Self.width + mx) * 4
+                let la = Double(0.299 * Float(pixels[i + 2]) + 0.587 * Float(pixels[i + 1]) + 0.114 * Float(pixels[i + 0])) / 255.0
+                let lb = Double(0.299 * Float(pixels[j + 2]) + 0.587 * Float(pixels[j + 1]) + 0.114 * Float(pixels[j + 0])) / 255.0
+                sumA += la; sumB += lb
+                sumAA += la * la; sumBB += lb * lb; sumAB += la * lb
+                n += 1
+            }
+        }
+        guard n > 0 else { return 0 }
+        let covAB = sumAB - sumA * sumB / n
+        let varA  = sumAA - sumA * sumA / n
+        let varB  = sumBB - sumB * sumB / n
+        let denom = (varA * varB).squareRoot()
+        guard denom > 1e-9 else { return 0 }
+        return Float(covAB / denom)
     }
 
     private func makeOutputDir() throws -> URL {
