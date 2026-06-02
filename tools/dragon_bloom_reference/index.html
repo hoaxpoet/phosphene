@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Dragon Bloom reference (butterchurn / source.milk)</title>
+<style>html,body{margin:0;background:#000;overflow:hidden}#c{display:block}</style>
+</head>
+<body>
+<canvas id="c" width="900" height="600"></canvas>
+<script src="./butterchurn.min.js"></script>
+<script>
+window.__status = { ready:false, ctxState:'none', elapsed:0, err:null, audioRMS:0 };
+(async function(){
+  try {
+    const bc = (window.butterchurn && window.butterchurn.default) ? window.butterchurn.default : window.butterchurn;
+    const canvas = document.getElementById('c');
+    const W = 900, H = 600;
+
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    window.__ctx = ctx;
+    try { await ctx.resume(); } catch(e){}
+    window.__status.ctxState = ctx.state;
+
+    // Decode the recorded session audio.
+    const wavBuf = await (await fetch('./audio.wav')).arrayBuffer();
+    const audioBuf = await ctx.decodeAudioData(wavBuf);
+
+    // source -> analyser(for monitoring) -> gain(0) -> destination (drives the clock, silent)
+    window.__status.bufDur = audioBuf.duration;
+    const src = ctx.createBufferSource();
+    src.buffer = audioBuf;
+    src.loop = true;
+    // Boost: the recorded tap is ~-18 dB, far quieter than butterchurn's
+    // expected level scale. The preset's per-pixel `zoom *= min(1.05, max(1,
+    // max(bass,treb)))` only counteracts the baseline inward zoom (0.99951)
+    // when bands exceed 1.0 — so quiet input collapses the bloom to a central
+    // blob. Boost feeds butterchurn a loud signal so the bloom holds + builds.
+    const boost = ctx.createGain(); boost.gain.value = window.__boost || 6.0;
+    window.__boostNode = boost;
+    const mon = ctx.createAnalyser(); mon.fftSize = 2048;
+    const g = ctx.createGain(); g.gain.value = 0.0001;   // silent sink, keeps graph pulled
+    src.connect(boost); boost.connect(mon); mon.connect(g); g.connect(ctx.destination);
+
+    const viz = bc.createVisualizer(ctx, canvas, { width:W, height:H, pixelRatio:1, textureRatio:1 });
+    window.__viz = viz;
+    viz.connectAudio(boost);               // butterchurn taps its own analyser off the BOOSTED node
+    const preset = await (await fetch('./dragon_ref_preset.json')).json();
+    viz.loadPreset(preset, 0.0);
+    viz.setRendererSize(W, H);
+
+    src.start(0);
+    window.__status.ready = true;
+    const t0 = performance.now();
+    const td = new Uint8Array(mon.fftSize);
+    function frame(){
+      viz.render();
+      window.__status.elapsed = (performance.now()-t0)/1000;
+      window.__status.ctxState = ctx.state;
+      mon.getByteTimeDomainData(td);
+      let s=0; for(let i=0;i<td.length;i+=32){const v=(td[i]-128)/128; s+=v*v;}
+      window.__status.audioRMS = Math.sqrt(s/(td.length/32));
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  } catch(e){
+    window.__status.err = (e && e.message) ? e.message : String(e);
+    console.error('REF_ERR', e);
+  }
+})();
+</script>
+</body>
+</html>
