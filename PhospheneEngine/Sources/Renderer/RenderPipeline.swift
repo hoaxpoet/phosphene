@@ -44,6 +44,11 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var sceneGeometryInstanceCount = 0
     var sceneGeometryPrimitive: MTLPrimitiveType = .lineStrip
 
+    /// mv_warp chromatic colour-separation amount (Dragon Bloom L3, D-137), bound
+    /// to `mvWarp_fragment` at fragment buffer 0. 0 ⇒ identity (every other mv_warp
+    /// preset unchanged). Set via `setMVWarpChromatic`.
+    var mvWarpChromatic: Float = 0
+
     // MARK: - Live Audio Features
 
     /// Latest audio features from MIR analysis (band energy, beats, spectral).

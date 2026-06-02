@@ -339,8 +339,9 @@ extension RenderPipeline {
         var sceneUni = getSceneUniforms()
         encoder.setVertexBytes(&sceneUni, length: MemoryLayout<SceneUniforms>.stride, index: 2)
         encoder.setFragmentTexture(warpState.warpTexture, index: 0)
-        // 31×23 quads × 2 triangles × 3 vertices = 4278 vertices
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 4278)
+        var chromatic = mvWarpLock.withLock { mvWarpChromatic }   // L3: 0 ⇒ identity for non-DB
+        encoder.setFragmentBytes(&chromatic, length: MemoryLayout<Float>.stride, index: 0)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 4278)  // 31×23 quads
         encoder.endEncoding()
     }
 
@@ -384,8 +385,7 @@ extension RenderPipeline {
         }
         bindNoiseTextures(to: encoder)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-        // Additive scene-geometry overlay (Dragon Bloom strands, D-137) into the
-        // same scene-texture pass. See RenderPipeline+SceneGeometry.swift.
+        // Additive scene-geometry overlay — Dragon Bloom strands (RenderPipeline+SceneGeometry).
         drawSceneGeometryOverlay(encoder: encoder, features: &features, stems: &stems)
         encoder.endEncoding()
     }

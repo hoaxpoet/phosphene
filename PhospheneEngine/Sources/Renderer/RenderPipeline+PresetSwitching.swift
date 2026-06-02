@@ -73,6 +73,13 @@ extension RenderPipeline {
         }
     }
 
+    /// Set the mv_warp chromatic colour-separation amount (Dragon Bloom L3, D-137).
+    /// 0 ⇒ identity (the warp fragment leaves feedback colour unchanged — every
+    /// other mv_warp preset). Thread-safe.
+    public func setMVWarpChromatic(_ amount: Float) {
+        mvWarpLock.withLock { mvWarpChromatic = amount }
+    }
+
     /// Attach a post-process chain for bloom + ACES when passes include `.postProcess`.
     /// Pass `nil` to detach. Thread-safe — can be called from any queue.
     public func setPostProcessChain(_ chain: PostProcessChain?) {

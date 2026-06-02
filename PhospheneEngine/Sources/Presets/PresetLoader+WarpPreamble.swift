@@ -143,11 +143,26 @@ extension PresetLoader {
     // Samples the previous warp texture at the per-vertex warped UV, scaled by decay.
     // Writes to the compose texture; the compose pass then adds the current scene.
     fragment float4 mvWarp_fragment(
-        WarpVertexOut      in      [[stage_in]],
-        texture2d<float>   prevTex [[texture(0)]]
+        WarpVertexOut      in           [[stage_in]],
+        texture2d<float>   prevTex      [[texture(0)]],
+        constant float&    chromaticMix [[buffer(0)]]
     ) {
         float4 prev = prevTex.sample(warpSampler, in.warped_uv);
-        return prev * in.decay;
+        // L3 (D-137): chromatic colour-separation on the AGED feedback — a faithful
+        // port of source.milk's warp-shader R->G->B transfer (warp_11..15). Where R
+        // is present it bleeds R->G; where G is present (and R/G low) G->B; B fades.
+        // Iterated through the feedback this cycles colours toward warm and yields
+        // the green/red fringing — the reference's warmth comes from HERE, not just
+        // a palette. Per-preset gated by chromaticMix: at 0 this is the identity
+        // (mix → prev.rgb), so every other mv_warp preset is byte-for-byte unchanged.
+        float3 cr   = prev.rgb;
+        float3 xfer = saturate((cr - 0.05) * 99.0);
+        xfer.yz    *= saturate((0.1 - cr.xy) * 99.0);
+        float3 warm = cr;
+        warm += xfer.xxx * float3(-1.0, 1.0, 0.0) * 0.014;
+        warm += xfer.yyy * float3(0.0, -1.0, 1.0) * 0.080;
+        warm += xfer.zzz * float3(0.0, 0.0, -1.0) * 0.020;
+        return float4(mix(cr, warm, chromaticMix), prev.a) * in.decay;
     }
 
     // ── mvWarp_compose_fragment ───────────────────────────────────────────────
