@@ -8,6 +8,209 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
+### BUG-025 — AGC running-average poisoned by post-`active` startup transient on Spotify process-tap (2026-06-01)
+
+**Severity:** P2 (degrades preset reactivity on every tap-path Spotify session for the entire session lifetime, but visible only as "less reactive than expected," not as a crash or wrong audio. Was load-bearing in the Dragon Bloom Spike 1 follow-up debug — see Related.)
+**Domain tag:** dsp.beat (AGC convergence; same audio-feature subsystem)
+**Status:** Open — diagnosed, not yet scoped.
+**Introduced:** Pre-dates session-level diagnostics; almost certainly present since the AGC EMA was introduced (Increment 1.x / D-026 era). First measurement-grade observation: Dragon Bloom Spike 1 debug session `~/Documents/phosphene_sessions/2026-06-01T22-57-10Z`.
+**Resolved:** —
+
+### Expected behavior
+
+When the process-tap goes from `silent` → `active` (audio first reaches the AGC after Spotify starts playing), the per-band AGC running averages should converge to a value reflecting steady-state playback within a small number of seconds. Steady-state `bassRel ≈ 0` (bass equals running average) and the deviation primitives `bassDev` / `midDev` should fire on real transients across most of the session.
+
+### Actual behavior
+
+The first 5–10 frames after `audio signal → active` show extreme transient amplitude spikes (`bass` values 50× the eventual steady-state value — see Session artifacts). These spikes appear to be FFT cold-start or buffer-fill transients, NOT real audio content, but they enter the AGC EMA with the same weight as legitimate signal. The EMA running average gets pulled up high by them and decays only over the EMA's time constant — meaning **the entire rest of the session sees an artificially inflated running average**. Symptoms over the remaining session:
+
+- `bassRel` is structurally negative across nearly all post-startup frames (observed range −0.42 to −0.89 in the reference session).
+- `bassDev = max(0, bassRel)` therefore fires (≥ 0.05) on only ≈ 1.6 % of frames — instead of the expected ≈ 30–50 % on a normal music track.
+- Deviation-driven preset routing (D-026: `bassDev` / `midDev` as the primary "above-average" motion driver) is effectively dead for the session.
+- AGC's intended inter-track normalisation does not engage — the "is this above the running average" question reads as "no" on almost every frame.
+
+### Reproduction steps
+
+1. Run Phosphene against a Spotify tap session. Any modern Spotify playlist with a mix of loud and quiet sections works; the Dragon Bloom debug session used Son Lux *Flickers* + Wild Beasts *Wanderlust* + other tracks.
+2. Wait for `audio signal → active` in `session.log`.
+3. Inspect `features.csv` `bass` column: rows in the first ~10 frames after `active` show values 5–50× the median; the median itself is well below 0.5.
+4. Inspect `bassRel` across the rest of the session: predominantly negative.
+5. Inspect `bassDev`: zero on > 98 % of frames.
+
+**Minimum reproducer:** any Spotify-tap session captured after the `active` transition. The transient amplitudes vary per session but the AGC-pulling behavior is reproducible.
+
+---
+
+### Session artifacts
+
+**Session directory:** `~/Documents/phosphene_sessions/2026-06-01T22-57-10Z/`
+
+Selected `features.csv` rows showing the startup transient (frames 253–262, immediately after `audio signal → active` at 22:58:47Z):
+
+```
+frame  wallclock      bass       mid       treble  beatBass  spectralFlux
+253    ...527.39      2.308      0.310     0.221   0.893     1.000
+254    ...527.41      5.331      0.432     0.320   0.692     1.000
+255    ...527.43      6.412      0.480     0.337   0.542     1.000
+256    ...527.44      6.629      0.477     0.338   0.480     1.000
+257    ...527.46      6.601      0.468     0.325   0.374     1.000
+258    ...527.48      6.377      0.461     0.317   0.334     1.000
+259    ...527.49      5.869      0.433     0.298   0.259     1.000
+260    ...527.51      5.782      0.420     0.287   0.231     1.000
+261    ...527.53      7.730      0.686     0.252   0.179     1.000
+262    ...527.54      11.010     1.051     0.246   0.159     1.000
+```
+
+Statistical summary across the remaining 3 792 post-active frames:
+
+```
+bass mean   = 0.225    bass max     = 12.822    pct(bass > 0.5)    =  1.8 %
+mid  mean   = 0.059    mid  max     =  1.051    pct(mid  > 0.2)    =  5.5 %
+trbl mean   = 0.025    trbl max     =  0.600
+bassDev fires (≥ 0.05): 1.6 % of frames
+beatComposite mean = 0.600  (beat detection unaffected — it operates on flux, not amplitude)
+```
+
+`session.log` confirms the transient lands exactly at the `active` transition:
+
+```log
+[22:58:43Z] signal quality → red: no signal — check output device / app is playing
+[22:58:44Z] audio signal → suspect
+[22:58:45Z] audio signal → silent
+[22:58:47Z] audio signal → recovering
+[22:58:47Z] audio signal → active
+[... transient spikes at frames 253–262 follow within ~0.3 s ...]
+```
+
+The Spotify in-app volume was at 50 % during this capture, which independently lowers the steady-state per-band values (see BUG-026). The startup-transient → AGC-poisoning interaction is separate from the user-settable level issue: even at correct Spotify volume the cold-start transient would still poison the EMA.
+
+---
+
+### Suspected failure class
+
+`calibration` — the AGC EMA does not protect itself against startup transients that bypass the "active" signal-detection gate. Possibilities for the spike source: FFT buffer-fill ringing in the first 1–2 windows after `active`; sample-rate-converter ramp at the tap boundary; or process-tap initial buffer carrying stale data from a prior session. Determining which is part of the fix.
+
+**Evidence for this class:** the spikes are present in the AGC-input band energies but the underlying raw waveform amplitudes (per `raw_tap.wav` astats) are smoothly increasing — the spike is amplification by the AGC pipeline, not the source signal. The behavior is reproducible across sessions and lasts the entire session because the EMA decay time is long relative to a session.
+
+---
+
+### Verification criteria
+
+When this defect is resolved, the following must all pass:
+
+- [ ] **Automated:** new test asserting that on a fixture session (recorded `features.csv` + `raw_tap.wav` from a real Spotify session), `pct(bassDev > 0.05)` over the post-active frames exceeds 20 % (sanity floor — most music passes 30–50 %).
+- [ ] **Automated:** new test asserting that the AGC EMA running-average state after the `active` transition is bounded by some multiple (TBD: 3×?) of the prior-window median, rejecting transient values above that threshold or warming up the EMA from a clean state.
+- [ ] **Domain-specific artifact:** `features.csv` from a fresh Spotify-tap session (any playlist) shows `bassRel` distribution roughly centred on zero across the post-active session, not structurally negative.
+- [ ] **Manual:** Matt confirms a deviation-driven preset (Volumetric Lithograph, Aurora Veil, or post-fix Dragon Bloom) reads as appropriately reactive across a multi-track Spotify session — *not* "dim for the whole session."
+
+**Manual validation required:** Yes. The numerical gates above prove the pipeline correction; the manual check proves the preset experience improved.
+
+---
+
+### Fix scope
+
+Contained — the change lives in `MIRPipeline` / the AGC EMA implementation. Candidate approaches: (a) reject samples > N× current running average from the EMA update on the first M frames after `active`; (b) warm up the running average from a clean zero state for the first N frames after `active`, accepting low / no normalisation during that window; (c) add a one-shot "transient suppression" window immediately after `silent` → `active` that gates the AGC from updating until the input settles. Any approach must preserve the existing AGC behavior under steady-state input (regression-locked by the existing acceptance suite).
+
+### Related
+
+- Decision: D-026 (AGC + deviation primitives) — the routing layer that gets starved by this bug.
+- Failed Approach: FA #31 (absolute thresholds on AGC-normalized energy) — orthogonal but related family; FA #31 says "don't threshold AGC values," this bug says "AGC itself can mis-converge."
+- Increment: Dragon Bloom Spike 1 / Spike 1 fix (`d380ed00` / `cffefe65`, 2026-06-01) — surfaced this bug during root-cause analysis of the "looks like silence on Spotify after 20 s" report.
+- BUG-026 — Spotify in-app volume slider not surfaced as a setup warning; compounds the visible severity of BUG-025 on the user's first sessions.
+
+---
+
+### BUG-026 — Quiet-tap-signal UX gap: no warning when input signal level is structurally insufficient (2026-06-01)
+
+**Severity:** P2 (does not affect correctness; degrades the first-session experience for any user whose Spotify in-app volume slider is below 100 % or whose macOS output level is reduced. Cost surfaced when a preset author spent ~3 hours debugging a Spotify-reactivity report whose root cause was a 50 % Spotify volume slider.)
+**Domain tag:** session.ux
+**Status:** Open — diagnosed.
+**Introduced:** Pre-dates session UX work — has been present since the process-tap path was first wired (Phase 1 / 2).
+**Resolved:** —
+
+### Expected behavior
+
+When the process tap is delivering audio whose RMS sits at a level too low to drive useful AGC convergence or perceptible preset reactivity (e.g. RMS < −25 dB after the `active` transition), Phosphene should warn the user via a non-blocking chrome toast: *"Input signal is very quiet — check that Spotify volume (in-app slider) is at 100 % and macOS output volume is normal. Phosphene is post-mixer; your hardware monitor knob can be loud while the tap sees a quiet signal."* The toast should fire once per session after the steady-state RMS is established (e.g. 5 s after `active`).
+
+### Actual behavior
+
+The existing `signal quality` detector emits `red: no signal` → `suspect` → `silent` → `recovering` → `active` based on whether ANY signal is present (it gates on something close to absolute-zero). It does not distinguish "active and at normal level" from "active and structurally too quiet." Once the detector reads `active`, the session proceeds as if the signal is healthy. No toast is shown. The user perceives the symptom (presets unreactive) without any pointer to the cause.
+
+Common upstream causes the user could fix if they were told:
+- **Spotify in-app volume slider below 100 %** — extremely common because the Apogee / monitor-controller workflow encourages controlling final loudness in hardware. The user can have a loud monitor and a quiet Spotify slider simultaneously and not realise it. (This was the cause Matt hit on 2026-06-01: Spotify slider at 50 %, monitor cranked.)
+- **macOS system volume reduced** — relevant when the output device is the built-in DAC (not an external interface with hardware volume).
+- **Spotify Normalize Volume = On** — documented in CLAUDE.md FA #30 but no in-app surface for it.
+- **Source app is muted at the app level (some apps have per-app volume in macOS Audio MIDI Setup).**
+
+### Reproduction steps
+
+1. Open Spotify; set the in-app volume slider to ≈ 50 %.
+2. Start a Phosphene session against a Spotify playlist with the Apogee Duet 3 (or similar external interface) as the output, monitor knob at normal listening level.
+3. Audio plays at correct loudness through the monitor. `session.log` shows `audio signal → active`. No warning toast appears.
+4. Observe in `features.csv`: `bass` mean stays ≈ 0.22 (well below the ≈ 0.5 AGC convergence target); preset reactivity is visibly diminished.
+
+**Minimum reproducer:** the Dragon Bloom debug session referenced in BUG-025 (`~/Documents/phosphene_sessions/2026-06-01T22-57-10Z`) is one reproducer; any session captured with Spotify slider < 75 % reproduces.
+
+---
+
+### Session artifacts
+
+**Session directory:** `~/Documents/phosphene_sessions/2026-06-01T22-57-10Z/`
+
+`raw_tap.wav` astats summary (compare to typical streaming-mastered audio at peak ≈ −1 dB / RMS ≈ −14 dB):
+
+```
+Peak level  dB: −21.5
+RMS  level  dB: −34.8
+RMS  peak   dB: −29.8
+DC offset:   −0.000004   (within float-rounding noise — clean)
+NaN / Inf / denormal: 0   (audio data is well-formed)
+```
+
+The DC offset and clean numerics confirm the tap path is operating correctly; the level is the issue. `session.log` shows the `signal quality → active` transition fired despite the signal being 20 dB below useful range:
+
+```log
+[22:58:47Z] audio signal → recovering
+[22:58:47Z] audio signal → active
+[... no warning about the level ...]
+```
+
+---
+
+### Suspected failure class
+
+`session.ux` — the diagnostic information exists in the pipeline (running RMS is trivially computable from the existing tap-buffer code), but the UX path that would surface it to the user is missing. Adjacent class: `calibration` — the `signal quality` detector's `active` threshold is "non-zero," not "perceptually adequate."
+
+**Evidence for this class:** the underlying tap is delivering well-formed PCM (verified by `raw_tap.wav` astats); the AGC produces valid (though low-amplitude) per-band energies; no pipeline component is broken. Adding the warning is a pure UX addition.
+
+---
+
+### Verification criteria
+
+When this defect is resolved, the following must all pass:
+
+- [ ] **Automated:** unit test on `SignalQualityClassifier` (or wherever the toast fires) verifying that on a synthetic tap input at RMS = −30 dB sustained, the "low input" toast fires within 5 s of `active`.
+- [ ] **Automated:** the toast does NOT fire on a normal-level fixture (RMS ≈ −14 dB).
+- [ ] **Domain-specific artifact:** `session.log` from a fresh quiet-tap session (Spotify at 50 % volume) contains a log line indicating the warning was emitted, with the measured RMS dB.
+- [ ] **Manual:** the toast text reads clearly, references Spotify in-app volume AND macOS output volume, and dismisses cleanly. It does NOT overlap with other chrome elements during the `.connecting` → `.playing` transition.
+
+**Manual validation required:** Yes. UX wording and dismissal behavior are subjective.
+
+---
+
+### Fix scope
+
+Small — extend the existing `SignalQualityClassifier` (or equivalent) with an `activeButTooQuiet` state, surface it through the same chrome toast path that handles other capture warnings. Threshold selection (which RMS level is "too quiet") needs one calibration measurement against a known-good LF session and a known-quiet Spotify session — the −25 dB number above is a draft, not the final tuning. Sits naturally inside a small Phase U / Phase QR follow-up; not blocking any other increment.
+
+### Related
+
+- Failed Approach: FA #30 (Spotify Normalize Volume) — same family of "user setting upstream of Phosphene that affects signal level"; the toast text should mention it.
+- Decision: none yet.
+- Increment: Dragon Bloom Spike 1 follow-up debug (2026-06-01) — the cost surfaced during that session is the motivation.
+- BUG-025 — Compounds with this bug; until BUG-026's toast lands, users have no clue why their input is quiet, and even if their input were a healthy level BUG-025 could still poison the AGC at the `active` transition.
+
+---
+
 ### BUG-014 — Lumen Mosaic panel aggregate uniform across tracks (LM.4.6 limitation superseded by LM.4.7 palette library)
 
 **Severity:** P3 (visible but accepted at cert time; impact is "every Lumen Mosaic session feels statistically similar at the panel level" rather than a hard quality regression — Matt accepted the trade-off at LM.4.6 with the verdict *"Working. It's close enough. I'm giving up the fight on colors,"* and the 2026-05-17 palette exploration converged on a structural fix.)
