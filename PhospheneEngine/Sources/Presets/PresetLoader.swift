@@ -48,6 +48,23 @@ public final class PresetLoader: @unchecked Sendable {
         public let composeState: MTLRenderPipelineState
         /// Blit pipeline: `fullscreen_vertex` + `mvWarp_blit_fragment`.
         public let blitState: MTLRenderPipelineState
+        /// Optional additive scene-geometry pipeline drawn into the scene texture
+        /// AFTER the fullscreen background fragment (Dragon Bloom L1: the 3 spectral
+        /// strands, `dragon_bloom_strand_vertex`/`_fragment`). nil for presets that
+        /// don't define the strand functions. D-137.
+        public let sceneGeometryState: MTLRenderPipelineState?
+
+        public init(
+            warpState: MTLRenderPipelineState,
+            composeState: MTLRenderPipelineState,
+            blitState: MTLRenderPipelineState,
+            sceneGeometryState: MTLRenderPipelineState? = nil
+        ) {
+            self.warpState = warpState
+            self.composeState = composeState
+            self.blitState = blitState
+            self.sceneGeometryState = sceneGeometryState
+        }
     }
 
     /// One compiled stage of a staged-composition preset (V.ENGINE.1).
@@ -706,11 +723,44 @@ public final class PresetLoader: @unchecked Sendable {
         stdDesc.colorAttachments[0].pixelFormat = pixelFormat
         do {
             let state = try device.makeRenderPipelineState(descriptor: stdDesc)
-            return CompiledShader(standard: state, mvWarp: warpPipelines)
+            // Optional additive scene-geometry pipeline (Dragon Bloom strands, D-137).
+            // Built only if the preset library defines the strand functions; folded
+            // into the warp pipelines so the app can wire it via setSceneGeometry.
+            let strand = makeSceneGeometryPipeline(library: library)
+            let warp = MVWarpCompiledPipelines(
+                warpState: warpPipelines.warpState,
+                composeState: warpPipelines.composeState,
+                blitState: warpPipelines.blitState,
+                sceneGeometryState: strand
+            )
+            return CompiledShader(standard: state, mvWarp: warp)
         } catch {
             logger.error("Standard pipeline failed for direct mv_warp preset \(url.lastPathComponent): \(error)")
             return nil
         }
+    }
+
+    /// Build the optional additive scene-geometry pipeline for direct mv_warp presets
+    /// that define strand geometry (Dragon Bloom L1, D-137). Additive blend (src=one,
+    /// dst=one) so strands accumulate as glow; the primitive type + vertex/instance
+    /// counts are supplied per-draw by the app via `setSceneGeometry`. Returns nil if
+    /// the preset library doesn't define the strand functions.
+    private func makeSceneGeometryPipeline(library: MTLLibrary) -> MTLRenderPipelineState? {
+        guard let vtx  = library.makeFunction(name: "dragon_bloom_strand_vertex"),
+              let frag = library.makeFunction(name: "dragon_bloom_strand_fragment")
+        else { return nil }
+        let geoDesc = MTLRenderPipelineDescriptor()
+        geoDesc.vertexFunction = vtx
+        geoDesc.fragmentFunction = frag
+        geoDesc.colorAttachments[0].pixelFormat = pixelFormat
+        geoDesc.colorAttachments[0].isBlendingEnabled = true
+        geoDesc.colorAttachments[0].rgbBlendOperation = .add
+        geoDesc.colorAttachments[0].sourceRGBBlendFactor = .one
+        geoDesc.colorAttachments[0].destinationRGBBlendFactor = .one
+        geoDesc.colorAttachments[0].alphaBlendOperation = .add
+        geoDesc.colorAttachments[0].sourceAlphaBlendFactor = .one
+        geoDesc.colorAttachments[0].destinationAlphaBlendFactor = .one
+        return try? device.makeRenderPipelineState(descriptor: geoDesc)
     }
 
     // MARK: - Hot Reload

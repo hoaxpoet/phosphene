@@ -77,6 +77,10 @@ struct PresetAcceptanceTests {
     @Test("Preset produces non-black output with normal energy input", arguments: _acceptanceFixture.presets)
     func test_nonBlack_atSteadyEnergy(_ preset: PresetLoader.LoadedPreset) throws {
         guard !preset.descriptor.passes.contains(.meshShader) else { return }
+        // Dragon Bloom L1 (D-137): content is the scene-geometry strands, not the
+        // (near-black) standalone fragment this harness renders. See the readable-form
+        // exemption below; production coverage is DragonBloomMVWarpAccumulationTest.
+        guard preset.descriptor.name != "Dragon Bloom" else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture
         let pixels = try renderFrame(preset: preset, features: &fixture, context: ctx)
@@ -179,6 +183,13 @@ struct PresetAcceptanceTests {
     func test_readableForm_atSteadyEnergy(_ preset: PresetLoader.LoadedPreset) throws {
         guard !preset.descriptor.passes.contains(.meshShader) else { return }
         guard !preset.descriptor.passes.contains(.staged) else { return }
+        // Dragon Bloom L1 (D-137): its content is the additive spectral STRANDS
+        // drawn as scene geometry in the mv_warp scene-render path — the
+        // standalone fragment is intentionally a near-black ground. This
+        // fragment-only harness can't see the strands, so the readable-form +
+        // non-black invariants don't apply. Production-pipeline coverage (strands
+        // through scene→warp→compose→swap) lives in DragonBloomMVWarpAccumulationTest.
+        guard preset.descriptor.name != "Dragon Bloom" else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture
         let pixels = try renderFrame(preset: preset, features: &fixture, context: ctx)

@@ -56,6 +56,23 @@ extension RenderPipeline {
         particleLock.withLock { particleGeometry = geometry }
     }
 
+    /// Attach (or clear) the additive scene-geometry overlay drawn into the mv_warp
+    /// scene texture after the background fragment — the Dragon Bloom spectral
+    /// strands (D-137). Pass `nil` state to clear. Thread-safe.
+    public func setSceneGeometry(
+        _ state: MTLRenderPipelineState?,
+        vertexCount: Int,
+        instanceCount: Int,
+        primitive: MTLPrimitiveType
+    ) {
+        sceneGeometryLock.withLock {
+            sceneGeometryState = state
+            sceneGeometryVertexCount = vertexCount
+            sceneGeometryInstanceCount = instanceCount
+            sceneGeometryPrimitive = primitive
+        }
+    }
+
     /// Attach a post-process chain for bloom + ACES when passes include `.postProcess`.
     /// Pass `nil` to detach. Thread-safe — can be called from any queue.
     public func setPostProcessChain(_ chain: PostProcessChain?) {

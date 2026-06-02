@@ -159,95 +159,59 @@ struct DragonBloomMVWarpAccumulationTest {
         """)
 
         // Structural #expect — guards regressions if the accumulator wiring breaks.
-        // Both runs produce visible output (preset renders end-to-end).
-        #expect(silence.brightPixels > 0,
-                "Silence run produced no visible output — preset fragment may not be running.")
+        // The music runs produce visible strands end-to-end. Silence is correctly
+        // near-black now: the strands are stem-gated (bModWaveAlphaByVolume — L1),
+        // so with zero stems they fade out — NOT the Spike-2 ring (retired).
         #expect(music.brightPixels > 0,
-                "Music run produced no visible output — preset fragment may not be running.")
+                "Music run produced no strands — strand pipeline or stem drive not running.")
+        #expect(spotify.brightPixels > 0,
+                "Spotify-tap run produced no strands — strand pipeline or stem drive not running.")
 
-        // No runaway feedback (per-frame additions don't saturate the buffer to white).
-        #expect(silence.frameMaxLuma < 0.95,
-                "Silence run clipped to white (\(silence.frameMaxLuma)) — decay value too high.")
+        // No runaway feedback (additive strands + decay don't saturate to white).
         #expect(music.frameMaxLuma < 0.95,
-                "Music run clipped to white (\(music.frameMaxLuma)) — accumulator running away.")
+                "Music run clipped to white (\(music.frameMaxLuma)) — strand brightness/accumulator running away.")
+        #expect(spotify.frameMaxLuma < 0.95,
+                "Spotify-tap run clipped to white (\(spotify.frameMaxLuma)) — strand brightness/accumulator running away.")
 
-        // ── The load-bearing gate: the bloom MOVES over time under music ─────
-        // "Dancing" = temporal motion (the bloom breathing / feathers flowing /
-        // beats flaring across frames), NOT final-frame size. The silence run
-        // is a static ring → radiusMotion ≈ 0. Both music and the Spotify-tap
-        // pattern drive the bloom from signals that are alive on both capture
-        // paths (signed bass_rel breathing, spectralFlux feather flow, beat
-        // accent), so both should show clearly more motion than silence.
-        //
-        // This is the regression sentinel for the 2026-06-02 re-tune: if a
-        // future edit reverts to dead drivers (mid_att_rel feather flow,
-        // clamped bass_dev breathing), the Spotify motion collapses toward the
-        // silence baseline and this gate fails. The perceptual "does it dance"
-        // judgement remains Matt's M7 call on the live app — this only proves
-        // the bloom is structurally in motion through the production pipeline.
-        let silenceMotion = silence.radiusMotion
-        #expect(music.radiusMotion > silenceMotion + 0.004,
+        // ── L1 load-bearing gate: STEM COUPLING (D-137) ───────────────────────
+        // The strands are stem-driven: at silence stems are zero so each strand
+        // falls to the minimal modK=0.4 baseline (short); under music the
+        // drums/bass/vocals energies lengthen the strands (modK up to ~2.0), so
+        // the bloom covers materially MORE pixels than silence. This proves the
+        // stem→strand coupling reaches the accumulator through the production
+        // scene→warp→compose→swap path. The strands TUMBLE on time regardless of
+        // audio (per source.milk — rotation is time-driven, stems drive length),
+        // so a temporal-motion metric can't distinguish silence here; strand
+        // EXTENT is the clean stem-coupling signal. If a future edit drops the
+        // stem drive (strandModFromStem → constant), music collapses toward the
+        // silence baseline and this fails.
+        #expect(music.brightPixels > silence.brightPixels,
                 """
-                Music run shows no temporal bloom motion (radiusMotion \
-                \(music.radiusMotion) vs silence \(silenceMotion)). The alive \
-                drivers (bass_rel breathing / flux feather flow) are not reaching \
-                the accumulator.
+                Music strands did not extend past the silence baseline \
+                (\(music.brightPixels) ≤ \(silence.brightPixels)) — the stem drive \
+                (drums/bass/vocals → modK) is not reaching the strand vertex shader.
                 """)
-        #expect(spotify.radiusMotion > silenceMotion + 0.004,
-                """
-                Spotify-tap run shows no temporal bloom motion (radiusMotion \
-                \(spotify.radiusMotion) vs silence \(silenceMotion)). On the \
-                process-tap path the deviation primitives are starved (bass_dev \
-                ≈ 0, mid ≈ 0), so the bloom must be driven by signals alive on \
-                BOTH paths — signed bass_rel + spectralFlux. If this fails, the \
-                shader has reverted to dead drivers. See the 2026-06-02 BUG-025 \
-                A/B liveness diagnosis.
-                """)
-        // Both runs produce a substantial bloom (not collapsed to the silence ring).
         #expect(spotify.brightPixels > silence.brightPixels,
                 """
-                Spotify-tap bloom collapsed to the silence ring (\(spotify.brightPixels) \
-                ≤ \(silence.brightPixels)). The waveform RMS normalisation (slot-2 amplitude)
-                or the alive-signal routing is not reaching the bloom.
+                Spotify-tap strands did not extend past the silence baseline \
+                (\(spotify.brightPixels) ≤ \(silence.brightPixels)) — stem→strand \
+                coupling broken on the tap-pattern stems.
                 """)
 
-        // ── Spike 2 gate: bilateral symmetry WITHOUT flat-clipart mirroring ──
-        // The mirror fold (abs(pRel.x) in the fragment) makes the bloom
-        // SILHOUETTE bilaterally symmetric → high left↔right correlation. The
-        // asymmetric mv_warp swirl (rotational handedness) accumulates a
-        // DIFFERENT feathered texture on each half → correlation stays strictly
-        // below a perfect pixel mirror. The band (0.70, 0.999) captures
-        // "symmetric form, rich textured halves" and rejects BOTH failure modes:
-        //   · ≤ 0.70  → fold not producing a symmetric silhouette
-        //   · ≥ 0.999 → perfect pixel mirror = flat clipart (FA #48 anti-ref)
+        // ── Bilateral symmetry (informational at L1; HARD-gated at L2) ────────
+        // L1 draws the raw tumbling strands; their bilateral symmetry comes from
+        // the per-pixel 5-fold petal warp added in L2 (D-137 §0). So we PRINT the
+        // left↔right correlation here as a baseline but do NOT gate on it yet —
+        // L2 reinstates the hard symmetry gate (band 0.70–0.999) once the warp
+        // establishes the symmetric form.
         let silenceSym = symmetryCorrelation(silence.pixels)
         let musicSym   = symmetryCorrelation(music.pixels)
         let spotifySym = symmetryCorrelation(spotify.pixels)
         print("""
-        [dragon_bloom_diag] Bilateral symmetry correlation (left↔right mirror):
+        [dragon_bloom_diag] Bilateral symmetry correlation (left↔right mirror, INFORMATIONAL at L1):
           silence = \(padF(silenceSym))   music = \(padF(musicSym))   spotify = \(padF(spotifySym))
-          Target band for music/spotify: > 0.70 (symmetric silhouette) AND < 0.999
-          (not a flat pixel mirror — the asymmetric warp swirl keeps texture rich).
-          Silence is expected near 1.0 (no swirl at zero flux → pure radial mirror).
+          L1 = raw tumbling strands (symmetry established by the L2 petal warp).
         """)
-        #expect(musicSym > 0.70,
-                """
-                Bloom is not bilaterally symmetric under music (corr \(musicSym) ≤ 0.70). \
-                The mirror fold (abs(pRel.x) → angFold) is not producing a symmetric \
-                silhouette. See Spike 2 §6.
-                """)
-        #expect(musicSym < 0.999,
-                """
-                Bloom is a near-perfect pixel mirror under music (corr \(musicSym) ≥ 0.999) \
-                — flat-clipart symmetry, the FA #48 anti-reference. The asymmetric mv_warp \
-                swirl is not diverging the two halves' accumulated texture. Add per-side \
-                hash jitter (FA #44) or restore the warp handedness.
-                """)
-        #expect(spotifySym > 0.70 && spotifySym < 0.999,
-                """
-                Spotify-tap bloom symmetry out of band (corr \(spotifySym); want 0.70–0.999). \
-                Same symmetric-form / rich-texture contract as the music run.
-                """)
     }
 
     // MARK: - Accumulation loop
@@ -325,15 +289,21 @@ struct DragonBloomMVWarpAccumulationTest {
             // Populate the waveform slot per-frame.
             populateWaveform(wav, frameIdx: frameIdx, mode: audioMode)
 
-            // Build FeatureVector for this frame.
+            // Build FeatureVector + StemFeatures for this frame. The strands are
+            // stem-driven (L1, D-137), so the stem buffer must carry real
+            // drums/bass/vocals energy for the music modes.
             var features = makeFeatures(frameIdx: frameIdx, mode: audioMode, time: t)
+            var stemsVal = makeStems(frameIdx: frameIdx, mode: audioMode)
+            _ = withUnsafeBytes(of: stemsVal) { src in
+                memcpy(stem.contents(), src.baseAddress!, min(src.count, MemoryLayout<StemFeatures>.size))
+            }
 
             guard let cmd = queue.makeCommandBuffer() else { throw DragonBloomDiagError.cmdBufferFailed }
 
-            // ── Pass A: render dragon_bloom_fragment → sceneTex ──────────────
+            // ── Pass A: render background + additive strands → sceneTex ──────
             try renderScene(
                 cmd: cmd, preset: preset, target: sceneTex,
-                features: &features, fft: fft, wav: wav, stem: stem
+                features: &features, stems: &stemsVal, fft: fft, wav: wav, stem: stem
             )
 
             // ── Pass B: warp prev (warpTex) → composeTex ─────────────────────
@@ -476,11 +446,32 @@ struct DragonBloomMVWarpAccumulationTest {
         }
     }
 
+    /// Per-frame StemFeatures driving the 3 strands (drums/bass/vocals — L1, D-137).
+    /// Silence → zero (strands fall to the minimal modK=0.4 baseline). Music modes →
+    /// instrument energies ~0.45–0.6 with time-varying deviation, phased so the
+    /// strands don't lockstep, so stem coupling lengthens the strands past silence.
+    private func makeStems(frameIdx: Int, mode: AudioMode) -> StemFeatures {
+        switch mode {
+        case .silence:
+            return StemFeatures.zero
+        case .syntheticMusic, .spotifyTapPattern:
+            let t = Float(frameIdx)
+            var s = StemFeatures.zero
+            s.drumsEnergy     = 0.50 + 0.10 * sin(t * 0.33)
+            s.bassEnergy      = 0.55 + 0.12 * sin(t * 0.21 + 1.0)
+            s.vocalsEnergy    = 0.45 + 0.10 * sin(t * 0.27 + 2.0)
+            s.drumsEnergyDev  = max(0.0, 0.25 * sin(t * 0.70))
+            s.bassEnergyDev   = max(0.0, 0.30 * sin(t * 0.50 + 1.0))
+            s.vocalsEnergyDev = max(0.0, 0.20 * sin(t * 0.60 + 2.0))
+            return s
+        }
+    }
+
     // MARK: - Pass encoders
 
     private func renderScene(
         cmd: MTLCommandBuffer, preset: PresetLoader.LoadedPreset, target: MTLTexture,
-        features: inout FeatureVector,
+        features: inout FeatureVector, stems: inout StemFeatures,
         fft: MTLBuffer, wav: MTLBuffer, stem: MTLBuffer
     ) throws {
         let desc = MTLRenderPassDescriptor()
@@ -490,12 +481,26 @@ struct DragonBloomMVWarpAccumulationTest {
         desc.colorAttachments[0].storeAction = .store
         guard let enc = cmd.makeRenderCommandEncoder(descriptor: desc)
         else { throw DragonBloomDiagError.encoderFailed }
+        // Background fragment.
         enc.setRenderPipelineState(preset.pipelineState)
         enc.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.size, index: 0)
         enc.setFragmentBuffer(fft, offset: 0, index: 1)
         enc.setFragmentBuffer(wav, offset: 0, index: 2)
         enc.setFragmentBuffer(stem, offset: 0, index: 3)
         enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        // ── L1: additive spectral strands (test/prod parity — FA #66) ─────────
+        // Exercise the SAME strand pipeline the live app draws (built by
+        // PresetLoader into mvWarpPipelines.sceneGeometryState), in the same
+        // scene-render pass, so this test proves the strands reach the mv_warp
+        // accumulator — not just that the background fragment runs.
+        if let strandState = preset.mvWarpPipelines?.sceneGeometryState {
+            enc.setRenderPipelineState(strandState)
+            enc.setVertexBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
+            enc.setVertexBytes(&stems, length: MemoryLayout<StemFeatures>.stride, index: 1)
+            enc.drawPrimitives(type: .lineStrip, vertexStart: 0, vertexCount: 512, instanceCount: 3)
+        } else {
+            Issue.record("Dragon Bloom has no strand pipeline (mvWarpPipelines.sceneGeometryState nil) — L1 wiring broken.")
+        }
         enc.endEncoding()
     }
 
