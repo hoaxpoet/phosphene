@@ -353,7 +353,11 @@ extension VisualizerEngine {
                     composeState: warpPipelines.composeState,
                     blitState: warpPipelines.blitState,
                     pixelFormat: context.pixelFormat,
-                    feedbackFormat: context.pixelFormat
+                    feedbackFormat: context.pixelFormat,
+                    // Fata Morgana (D-139): non-nil ⇒ the render pipeline runs the fata
+                    // branch (blur → custom warp → mirage comp). nil for every other
+                    // mv_warp preset (their libraries define no `*_blur_fragment`).
+                    blurState: warpPipelines.blurState
                 )
                 // Use the last drawable size reported by drawableSizeWillChange so
                 // mid-session preset switches allocate at the correct resolution.

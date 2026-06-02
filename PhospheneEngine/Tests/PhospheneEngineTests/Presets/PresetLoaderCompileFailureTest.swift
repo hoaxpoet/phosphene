@@ -37,8 +37,10 @@ struct PresetLoaderCompileFailureTest {
     /// (Lumen Mosaic, D-LM-matid). 16 → 15 when Drift Motes was retired.
     /// 15 → 16 at AV.1 (Aurora Veil — direct-fragment + mv_warp ambient
     /// ribbon preset, lightweight rubric). 16 → 17 at Dragon Bloom Spike 1
-    /// (D-135) — Milkdrop-uplift feedback bloom (direct + mv_warp).
-    static let expectedProductionPresetCount = 17
+    /// (D-135) — Milkdrop-uplift feedback bloom (direct + mv_warp). 17 → 18 at
+    /// FM.L1 (Fata Morgana — butterchurn mirage port: custom warp + comp + blur,
+    /// direct + mv_warp; D-139). Not yet certified (mirage substrate, shapes L2).
+    static let expectedProductionPresetCount = 18
 
     @Test("PresetLoader.presets.count matches expectedProductionPresetCount — catches Failed Approach #44 silent drops")
     func test_presetLoaderProductionCount() {
