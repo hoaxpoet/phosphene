@@ -81,6 +81,11 @@ struct PresetAcceptanceTests {
         // (near-black) standalone fragment this harness renders. See the readable-form
         // exemption below; production coverage is DragonBloomMVWarpAccumulationTest.
         guard preset.descriptor.name != "Dragon Bloom" else { return }
+        // Fata Morgana (D-139): same rationale — the mirage is built by the
+        // warp+comp+shapes feedback branch (drawWithFataMorgana); the standalone
+        // `fata_morgana_fragment` this harness renders is intentionally black.
+        // Production coverage: FataMorganaMVWarpAccumulationTest.
+        guard preset.descriptor.name != "Fata Morgana" else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture
         let pixels = try renderFrame(preset: preset, features: &fixture, context: ctx)
@@ -104,6 +109,11 @@ struct PresetAcceptanceTests {
         // exemption rationale as the post_process HDR presets above. Production
         // coverage (no DEGENERATE white-out) is DragonBloomMVWarpAccumulationTest.
         guard preset.descriptor.name != "Dragon Bloom" else { return }
+        // Fata Morgana (D-139): same rationale — the mirage is built by the
+        // warp+comp+shapes feedback branch (drawWithFataMorgana); the standalone
+        // `fata_morgana_fragment` this harness renders is intentionally black.
+        // Production coverage: FataMorganaMVWarpAccumulationTest.
+        guard preset.descriptor.name != "Fata Morgana" else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture
         let pixels = try renderFrame(preset: preset, features: &fixture, context: ctx)
@@ -160,6 +170,7 @@ struct PresetAcceptanceTests {
         // DragonBloomMVWarpAccumulationTest (beat-free temporal motion driven by
         // bass_rel + flux). See the BUG-025 A/B diagnosis (2026-06-02).
         if preset.descriptor.name == "Dragon Bloom" { return }
+        if preset.descriptor.name == "Fata Morgana" { return }
         let ctx = try MetalContext()
         var silence = silenceFixture
         var steady = steadyFixture
@@ -198,6 +209,11 @@ struct PresetAcceptanceTests {
         // non-black invariants don't apply. Production-pipeline coverage (strands
         // through scene→warp→compose→swap) lives in DragonBloomMVWarpAccumulationTest.
         guard preset.descriptor.name != "Dragon Bloom" else { return }
+        // Fata Morgana (D-139): same rationale — the mirage is built by the
+        // warp+comp+shapes feedback branch (drawWithFataMorgana); the standalone
+        // `fata_morgana_fragment` this harness renders is intentionally black.
+        // Production coverage: FataMorganaMVWarpAccumulationTest.
+        guard preset.descriptor.name != "Fata Morgana" else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture
         let pixels = try renderFrame(preset: preset, features: &fixture, context: ctx)

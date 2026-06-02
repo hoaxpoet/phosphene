@@ -67,6 +67,18 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// per-frame flicker. Updated on the render loop (MainActor); display-only.
     var mvWarpBeatEnv: Float = 0
 
+    /// Fata Morgana frame_eqs beat-rotation accumulator (D-139), faithful to the
+    /// source: `is_beat` from max(bass,mid,treb) vs a slow average + decaying peak;
+    /// `rott = π·p2/4` smooths a per-beat index step into the warp lattice's q1/q2
+    /// (cos/sin). MainActor-only (the mv_warp draw path), no lock — same convention
+    /// as `auroraDrumsSmoothed`.
+    var fataAvg: Float = 0
+    var fataPeak: Float = 0
+    var fataT0: Float = 0
+    var fataP1: Float = 0
+    var fataP2: Float = 0
+    var fataIndex: Int = 0
+
     // MARK: - Live Audio Features
 
     /// Latest audio features from MIR analysis (band energy, beats, spectral).

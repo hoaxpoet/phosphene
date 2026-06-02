@@ -1,0 +1,26 @@
+{
+  "name": "Fata Morgana",
+  "family": "hypnotic",
+  "duration": 45,
+  "description": "A desert/ocean MIRAGE — starfield night sky, a glowing horizon, and a reflective rippling neon floor — a faithful port of the Milkdrop/butterchurn builtin `martin [shadow harlequins shape code] - fata morgana` (custom feedback warp + procedural mirage comp + 4 additive/textured n-gon shapes) onto Phosphene's mv_warp. Render loop replicated wholesale from butterchurn source (FA #70): warp(prev) → blur → shapes-on-top (=the feedback) → comp (display-only) → swap. See docs/presets/FATA_MORGANA_PLAN.md + D-139.",
+  "author": "Matt",
+  "passes": ["direct", "mv_warp"],
+  "fragment_function": "fata_morgana_fragment",
+  "vertex_function": "fullscreen_vertex",
+  "beat_source": "composite",
+  "decay": 1.0,
+  "stem_affinity": {
+    "bass": "shape_bass",
+    "drums": "shape_mid",
+    "vocals": "shape_treb"
+  },
+  "visual_density": 0.5,
+  "motion_intensity": 0.5,
+  "color_temperature_range": [0.35, 0.85],
+  "fatigue_risk": "low",
+  "transition_affordances": ["crossfade", "morph"],
+  "section_suitability": ["buildup", "peak", "bridge"],
+  "complexity_cost": { "tier1": 1.3, "tier2": 0.6 },
+  "certified": false,
+  "rubric_profile": "lightweight"
+}

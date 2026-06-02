@@ -18,63 +18,7 @@ import os.log
 
 private let mvWarpLogger = Logger(subsystem: "com.phosphene.renderer", category: "MVWarp")
 
-// MARK: - MVWarpPipelineBundle
-
-/// The three per-preset compiled pipeline states needed for the mv_warp pass.
-///
-/// Created in `VisualizerEngine+Presets.swift` by combining the pipeline states
-/// compiled by `PresetLoader` (which has the preset's `mvWarpPerFrame`/`mvWarpPerVertex`
-/// implementations) with the pixel format of the current drawable.
-public struct MVWarpPipelineBundle: Sendable {
-    public let warpState: MTLRenderPipelineState    // mvWarp_vertex + mvWarp_fragment
-    public let composeState: MTLRenderPipelineState // fullscreen_vertex + mvWarp_compose_fragment
-    public let blitState: MTLRenderPipelineState    // fullscreen_vertex + mvWarp_blit_fragment
-    /// Drawable pixel format (the blit pass renders to this).
-    public let pixelFormat: MTLPixelFormat
-    /// Pixel format for the three FEEDBACK textures (warp / compose / scene).
-    /// Usually equals `pixelFormat`; `.rgba16Float` for HDR-feedback presets
-    /// (Dragon Bloom, D-137) so colour/saturation survives the feedback loop and
-    /// additive scene injection isn't clamped at 1.0.
-    public let feedbackFormat: MTLPixelFormat
-
-    public init(
-        warpState: MTLRenderPipelineState,
-        composeState: MTLRenderPipelineState,
-        blitState: MTLRenderPipelineState,
-        pixelFormat: MTLPixelFormat,
-        feedbackFormat: MTLPixelFormat? = nil
-    ) {
-        self.warpState    = warpState
-        self.composeState = composeState
-        self.blitState    = blitState
-        self.pixelFormat  = pixelFormat
-        self.feedbackFormat = feedbackFormat ?? pixelFormat
-    }
-}
-
-// MARK: - MVWarpState
-
-/// All Metal resources and pipeline states needed for one frame of mv_warp rendering.
-///
-/// Allocated in `setupMVWarp(bundle:size:)` and reallocated on drawable resize.
-/// Stored behind `mvWarpLock` in `RenderPipeline`.
-public struct MVWarpState: @unchecked Sendable {
-    /// Previous frame's accumulated warp output (read source in warp pass).
-    public var warpTexture: MTLTexture
-    /// Current frame's working output (written by warp + compose; read by blit).
-    public var composeTexture: MTLTexture
-    /// Current scene render output (written by preceding ray march / direct pass;
-    /// read in the compose pass to add the new frame's contribution).
-    public var sceneTexture: MTLTexture
-
-    // Pipeline states compiled per-preset from the preset's Metal library.
-    public let warpPipeline: MTLRenderPipelineState    // mvWarp_vertex + mvWarp_fragment
-    public let composePipeline: MTLRenderPipelineState // fullscreen_vertex + mvWarp_compose_fragment
-    public let blitPipeline: MTLRenderPipelineState    // fullscreen_vertex + mvWarp_blit_fragment
-    public let pixelFormat: MTLPixelFormat
-    /// Feedback-texture format (float for HDR-feedback presets; else == pixelFormat).
-    public let feedbackFormat: MTLPixelFormat
-}
+// MVWarpPipelineBundle + MVWarpState now live in MVWarpTypes.swift.
 
 // MARK: - MVWarp Draw Path
 
@@ -108,6 +52,13 @@ extension RenderPipeline {
                                  composeTex: composeTex,
                                  sceneTex: sceneTex)
 
+        // Fata Morgana (D-139): the blur-of-prev target (only when the preset
+        // compiled a blur pipeline).
+        let blurTex = bundle.blurState != nil
+            ? makeWarpTexture(width: width, height: height, format: bundle.feedbackFormat)
+            : nil
+        if let blurTex { clearWarpTexturesToBlack(warpTex: blurTex, composeTex: blurTex, sceneTex: blurTex) }
+
         let state = MVWarpState(
             warpTexture: warpTex,
             composeTexture: composeTex,
@@ -116,7 +67,9 @@ extension RenderPipeline {
             composePipeline: bundle.composeState,
             blitPipeline: bundle.blitState,
             pixelFormat: bundle.pixelFormat,
-            feedbackFormat: bundle.feedbackFormat
+            feedbackFormat: bundle.feedbackFormat,
+            blurPipeline: bundle.blurState,
+            blurTexture: blurTex
         )
         mvWarpLock.withLock { mvWarpState = state }
         mvWarpLogger.info("mv_warp textures allocated: \(width)×\(height), format=\(bundle.pixelFormat.rawValue)")
@@ -146,7 +99,8 @@ extension RenderPipeline {
             composeState: existing.composePipeline,
             blitState: existing.blitPipeline,
             pixelFormat: existing.pixelFormat,
-            feedbackFormat: existing.feedbackFormat
+            feedbackFormat: existing.feedbackFormat,
+            blurState: existing.blurPipeline
         )
         setupMVWarp(bundle: bundle, size: size)
     }
@@ -221,6 +175,20 @@ extension RenderPipeline {
             return
         }
 
+        // Fata Morgana (D-139): when a blur pipeline is attached, run the fata
+        // branch — blur(prev) → custom feedback warp → [shapes on top, L2] →
+        // procedural mirage comp (display-only) → swap.
+        if warpState.blurPipeline != nil {
+            drawWithFataMorgana(
+                commandBuffer: commandBuffer,
+                view: view,
+                features: &features,
+                stemFeatures: stemFeatures,
+                warpState: warpState
+            )
+            return
+        }
+
         // Dragon Bloom (D-137): when a scene-geometry overlay (the strands) is
         // attached, replicate butterchurn's custom-warp loop exactly — warp the
         // previous frame (NO decay; the custom warp self-regulates) then draw the
@@ -259,7 +227,32 @@ extension RenderPipeline {
             stemFeatures: stemFeatures
         )
 
-        // ── Pass 3: Blit to drawable ─────────────────────────────────────────
+        // ── Pass 3: Blit to drawable + present + swap ────────────────────────
+        encodeMVWarpBlitPresentSwap(
+            commandBuffer: commandBuffer,
+            view: view,
+            warpState: warpState,
+            features: features,
+            stemFeatures: stemFeatures,
+            strandsOnTop: strandsOnTop
+        )
+    }
+    // swiftlint:enable function_parameter_count
+
+    /// Pass 3 of the standard/Dragon-Bloom mv_warp path: blit `composeTexture` to
+    /// the drawable (with the display-stage post + Dragon Bloom beat pulse), present,
+    /// then swap compose ↔ warp for the next frame. (Fata Morgana has its own blit in
+    /// `drawWithFataMorgana`.)
+    @MainActor
+    // swiftlint:disable:next function_parameter_count
+    private func encodeMVWarpBlitPresentSwap(
+        commandBuffer: MTLCommandBuffer,
+        view: MTKView,
+        warpState: MVWarpState,
+        features: FeatureVector,
+        stemFeatures: StemFeatures,
+        strandsOnTop: Bool
+    ) {
         guard let drawable = view.currentDrawable,
               let descriptor = view.currentRenderPassDescriptor else { return }
         // .dontCare is correct — the full-screen triangle overwrites every pixel.
@@ -270,9 +263,7 @@ extension RenderPipeline {
             encoder.setRenderPipelineState(warpState.blitPipeline)
             encoder.setFragmentTexture(warpState.composeTexture, index: 0)
             // Beat pulse (Dragon Bloom only): a crisp per-beat pump+brighten at the
-            // comp/display stage (not fed back). beatComposite (shaped to its strong
-            // peaks) OR the drums-stem kick transient — whichever is bigger — so it
-            // dances on the beat across genres. Other presets get 0 (identity).
+            // comp/display stage (not fed back). Other presets get 0 (identity).
             let beat = strandsOnTop ? mvWarpBeatPulse(features: features, stems: stemFeatures) : 0
             var post = mvWarpLock.withLock {
                 SIMD4<Float>(mvWarpInvert, mvWarpEcho, mvWarpGamma, beat)
@@ -291,7 +282,6 @@ extension RenderPipeline {
             mvWarpState = state
         }
     }
-    // swiftlint:enable function_parameter_count
 
     // MARK: Reduced-Motion Fallback (U.9)
 

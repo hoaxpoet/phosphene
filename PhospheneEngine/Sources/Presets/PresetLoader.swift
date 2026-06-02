@@ -53,17 +53,23 @@ public final class PresetLoader: @unchecked Sendable {
         /// strands, `dragon_bloom_strand_vertex`/`_fragment`). nil for presets that
         /// don't define the strand functions. D-137.
         public let sceneGeometryState: MTLRenderPipelineState?
+        /// Optional blur-of-previous-frame pipeline (`<prefix>_blur_fragment`), the
+        /// butterchurn `blur1` approximation Fata Morgana's custom warp reads. nil for
+        /// presets that don't define a blur fragment (Dragon Bloom, default). D-139.
+        public let blurState: MTLRenderPipelineState?
 
         public init(
             warpState: MTLRenderPipelineState,
             composeState: MTLRenderPipelineState,
             blitState: MTLRenderPipelineState,
-            sceneGeometryState: MTLRenderPipelineState? = nil
+            sceneGeometryState: MTLRenderPipelineState? = nil,
+            blurState: MTLRenderPipelineState? = nil
         ) {
             self.warpState = warpState
             self.composeState = composeState
             self.blitState = blitState
             self.sceneGeometryState = sceneGeometryState
+            self.blurState = blurState
         }
     }
 
@@ -654,10 +660,26 @@ public final class PresetLoader: @unchecked Sendable {
     private func makeWarpPipelines(
         library: MTLLibrary, url: URL, descriptor: PresetDescriptor
     ) -> MVWarpCompiledPipelines? {
+        // Preset-overridable warp/comp/blur fragments (D-139). A preset whose
+        // fragment_function is `<prefix>_fragment` may compile `<prefix>_warp_fragment`
+        // / `<prefix>_comp_fragment` / `<prefix>_blur_fragment` to replace the shared
+        // mv_warp defaults — used by Fata Morgana's custom feedback warp + procedural
+        // mirage comp + blur-of-prev. Every OTHER preset's library lacks those symbols,
+        // so it falls back to the shared mvWarp_* defaults (byte-identical, gated
+        // structurally — PresetRegression).
+        let prefix = descriptor.fragmentFunction.hasSuffix("_fragment")
+            ? String(descriptor.fragmentFunction.dropLast("_fragment".count))
+            : descriptor.fragmentFunction
+        let warpFn = library.makeFunction(name: "\(prefix)_warp_fragment")
+            ?? library.makeFunction(name: "mvWarp_fragment")
+        let blitFn = library.makeFunction(name: "\(prefix)_comp_fragment")
+            ?? library.makeFunction(name: "mvWarp_blit_fragment")
+        let blurFn = library.makeFunction(name: "\(prefix)_blur_fragment")
+
         guard let warpVertexFn  = library.makeFunction(name: "mvWarp_vertex"),
-              let warpFragFn    = library.makeFunction(name: "mvWarp_fragment"),
+              let warpFragFn    = warpFn,
               let composeFn     = library.makeFunction(name: "mvWarp_compose_fragment"),
-              let blitFragFn    = library.makeFunction(name: "mvWarp_blit_fragment"),
+              let blitFragFn    = blitFn,
               let fullscreenVtx = library.makeFunction(name: "fullscreen_vertex")
         else {
             logger.error("mv_warp functions not found in compiled library for \(url.lastPathComponent)")
@@ -683,12 +705,27 @@ public final class PresetLoader: @unchecked Sendable {
         blitDesc.vertexFunction = fullscreenVtx
         blitDesc.fragmentFunction = blitFragFn
         blitDesc.colorAttachments[0].pixelFormat = pixelFormat
+        // Optional blur-of-prev pipeline (Fata Morgana, D-139): renders a low-pass of
+        // the previous feedback frame into a feedbackFormat texture.
+        var blurDesc: MTLRenderPipelineDescriptor?
+        if let blurFn = blurFn {
+            let blurPipeDesc = MTLRenderPipelineDescriptor()
+            blurPipeDesc.vertexFunction = fullscreenVtx
+            blurPipeDesc.fragmentFunction = blurFn
+            blurPipeDesc.colorAttachments[0].pixelFormat = fbFormat
+            blurDesc = blurPipeDesc
+        }
         do {
             let warpState    = try device.makeRenderPipelineState(descriptor: warpDesc)
             let composeState = try device.makeRenderPipelineState(descriptor: composeDesc)
             let blitState    = try device.makeRenderPipelineState(descriptor: blitDesc)
+            let blurState    = try blurDesc.map { try device.makeRenderPipelineState(descriptor: $0) }
             return MVWarpCompiledPipelines(
-                warpState: warpState, composeState: composeState, blitState: blitState)
+                warpState: warpState,
+                composeState: composeState,
+                blitState: blitState,
+                blurState: blurState
+            )
         } catch {
             logger.error("mv_warp pipeline creation failed for \(url.lastPathComponent): \(error)")
             return nil
@@ -749,7 +786,8 @@ public final class PresetLoader: @unchecked Sendable {
                 warpState: warpPipelines.warpState,
                 composeState: warpPipelines.composeState,
                 blitState: warpPipelines.blitState,
-                sceneGeometryState: strand
+                sceneGeometryState: strand,
+                blurState: warpPipelines.blurState
             )
             return CompiledShader(standard: state, mvWarp: warp)
         } catch {
