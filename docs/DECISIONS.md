@@ -4260,3 +4260,42 @@ Per D-135's precedent ("Spike N earns its own decision if/when it passes its gat
 ### Spike 2 Gate
 
 Matt M7 on a live Spotify session. Success: the bloom is bilaterally symmetric AND still dances (Spike-1 motion intact) AND reads as a rich feathered bloom, never flat mirrored clipart. The structural proof (symmetric silhouette + textured non-identical halves + retained `radiusMotion`) is complete; the aesthetic gate is perceptual. Spike 3 (warm palette via valence/centroid + per-stem feather tinting) follows on pass.
+
+---
+
+## D-137 — Dragon Bloom: feedback-native UPLIFT (strands ← stems), not a literal Milkdrop copy (Dragon Bloom, 2026-06-02)
+
+### Context
+
+Matt M7 on Spike 2 (session `2026-06-02T13-37-09Z`) confirmed bilateral symmetry (no clipart) but flagged "not really seeing petals." Reading `source.milk` (and confirming in a faithful butterchurn reference — `tools/dragon_bloom_reference/`) established that **Spike 1's mechanic is structurally different from the reference's** (flat polar ring vs. 3 tumbling 3-D spectral strands + a 5-fold `sin(ang·5)^5` per-pixel petal warp + a chromatic colour-separation warp shader, smeared through heavy feedback). See DRAGON_BLOOM_PLAN §0.
+
+Matt then reframed the work: **"This is an UPLIFT specifically for Phosphene. Recommend an approach to translating this preset to Phosphene's platform and taking better advantage of the technologies that are part of Phosphene but were not a part of Milkdrop/Butterchurn."** — i.e., translate the preset's *identity*, do not slavishly reproduce Milkdrop's line-drawing + HLSL-warp mechanics.
+
+### Decision
+
+Uplift Dragon Bloom in Phosphene's **mv_warp feedback register** (D-027 — the original's charm is procedural feedback, and this is Phosphene's most-proven capability), uplifting along three axes Phosphene is strong and Milkdrop was weak:
+
+1. **Strands ← real stems (headline musical uplift).** Milkdrop drives its 3 custom waves by mid/bass/treble FFT bands; Phosphene has stem separation. The 3 bloom strands map to **drums / bass / vocals** (Matt's pick, 2026-06-02); `other` tints the palette. Each arm of the bloom is legibly an instrument. Driven via deviation primitives (D-026); stems available frame-1 via StemCache.
+2. **HDR-glow strands + ACES tonemap** (vs Milkdrop's 8-bit clamped additive).
+3. **valence + spectral-centroid warm palette + per-stem tinting** (the former Spike 3).
+
+Kept: bilateral symmetry (D-136 fold), mv_warp feedback, bass breathing, and the chromatic colour-separation (ported into the compose pass; the hand-written GLSL in `tools/dragon_bloom_reference` `fixWarpShader` is the reference spec).
+
+**Explicitly rejected (Matt agreed): a full ray-march / 3-D volumetric rebuild.** It changes the preset's identity, is the high-fidelity-hero register that has repeatedly stalled (Drift Motes D-102, Ferrofluid, Aurora Veil), and the original's magic — feedback — is already native to mv_warp. A 3-D depth exploration, if ever wanted, is a separate spike, not the main path.
+
+### Rationale
+
+Choosing the feedback register over a 3-D rebuild trades maximal use of Phosphene's hero tech for **fidelity reliability** — the consistent failure mode (FA #58/#61/#62) is overreaching on hero-material/3-D fidelity. The uplift still uses distinctly-Phosphene capabilities (stem separation, HDR, mood-driven palette, mv_warp) that Milkdrop lacked, so it is a genuine platform uplift, not a port. The stems→strands mapping is the load-bearing musical-role upgrade (per `feedback_audio_layer_one_primitive`: one primitive per layer — each strand consumes one stem).
+
+### Engine surfaces (modest — far short of a ray-march rebuild)
+
+- A path to **draw the 3 strands** (the `per_point` projected points): prototype the cheapest faithful option first (procedural-vertex strand geometry vs. fragment splat). Per-pixel min-distance over the full high-frequency strand curve is too expensive (~512 samples × 3 strands × all pixels), so geometry/procedural-vertex is the likely path.
+- A **chromatic colour-transform in the mv_warp compose pass** (small shader addition).
+
+### Build (layered; each verified against the faithful live oracle + gif/still)
+
+L1 strands ← drums/bass/vocals (HDR glow) · L2 `per_pixel` petal warp → `mvWarpPerVertex` · L3 chromatic transform in compose · L4 decay/echo/invert blend · L5 valence/centroid palette + per-stem tint. Offline verification extends the diag harness to load the real recorded tap (`raw_tap.wav`), not the synthetic sine.
+
+### Gate
+
+Per-layer Matt M7 against the faithful live reference + `01_target.png`/`target_animated.gif`. The reference harness (`tools/dragon_bloom_reference/`) is the comparison oracle; its warp-shader fix (hand-written GLSL) is what makes it faithful.

@@ -1,6 +1,6 @@
 # Dragon Bloom — Milkdrop Uplift Plan (from `$$$ Royal - Mashup (220)`)
 
-**Status:** **Spike 1 ✅ PASSED.** **Spike 2 (bilateral symmetry) ✅ symmetry confirmed by Matt M7 2026-06-02** ("looks symmetric, can't see the line of symmetry" — symmetric, no clipart seam). **BUT Matt M7 also surfaced: "not really seeing petals yet."** Investigation (reading `source.milk` + standing up the live butterchurn reference) found **Spike 1's mechanic ≠ the reference's mechanic** — see §0 (Mechanic decode). **Matt approved (2026-06-02) the faithful port** (rebuild the brush to the reference's tumbling spectral strands + 5-fold petal warp + chromatic feathering) **+ standing up the live reference** (`tools/dragon_bloom_reference/`). **Next: execute the §0 layered port (L1 strand brush first).** Plan approved 2026-06-01; Faithful uplift of `$$$ Royal - Mashup (220)`. References at `docs/VISUAL_REFERENCES/dragon_bloom/`.
+**Status:** **Spike 1 ✅ PASSED.** **Spike 2 (bilateral symmetry) ✅ symmetry confirmed by Matt M7 2026-06-02** ("looks symmetric, can't see the line of symmetry" — symmetric, no clipart seam). **BUT Matt M7 also surfaced: "not really seeing petals yet."** Investigation (reading `source.milk` + standing up the live butterchurn reference) found **Spike 1's mechanic ≠ the reference's mechanic** — see §0 (Mechanic decode). The live reference is now **faithful** (the converter botched the HLSL warp shader → hand-written GLSL fix in `tools/dragon_bloom_reference/`; it reproduces the warm feathered bloom matching the gif/still). **Matt reframed this as an UPLIFT** (not a literal copy) and approved (2026-06-02) the **feedback-native uplift** with strands ← **drums/bass/vocals** stems — see §0 "The uplift approach" (D-137). **Next: execute the §0 layered build (L1 — strands ← stems, first).** Plan approved 2026-06-01; Faithful uplift of `$$$ Royal - Mashup (220)`. References at `docs/VISUAL_REFERENCES/dragon_bloom/`.
 
 > **New-session start here:** read §0 (Mechanic decode) + `tools/dragon_bloom_reference/README.md` + `docs/VISUAL_REFERENCES/dragon_bloom/README.md`. The reference loop and the mechanic understanding are done; the work is the §0 layered faithful port (L1 → L5). The committed Spike-2 fold (`angFold` in `DragonBloom.metal`, D-136) + the production-pipeline test (symmetry-correlation gate) stay; the polar-ring *brush* is replaced in L1.
 
@@ -52,28 +52,46 @@ motion, feathering and symmetry all match `01_target.png`'s structure (the still
 warm fiery palette is a per-moment/palette difference, addressed by the palette
 layer). Harness notes (audio-boost, invert-off) in that dir's README.
 
-### Revised build sequence (faithful port, layered — each verified vs the live reference)
+### The uplift approach (Matt-approved 2026-06-02) — D-137
 
-The Spike 1 fold (D-136, committed) and the production-pipeline test stay. The
-brush is rebuilt:
+This is an **uplift**, not a literal transcription (Matt 2026-06-02): translate
+the preset's *identity* onto Phosphene's platform and use the technologies
+Milkdrop/butterchurn never had. Matt approved the **feedback-native uplift** —
+stay in Phosphene's proven mv_warp feedback register (where the original's charm
+lives and where Phosphene reliably succeeds), uplifting along three axes:
 
-- **L1 — Strand brush.** Replace the polar ring with 3 tumbling 3-D spectral
-  helix-strands drawn additively into the scene fragment (per-band `mod` stretch,
-  3-D rotation, perspective projection). Verify the silhouette/motion vs the live
-  reference. *This supersedes Spike 1's ring brush.*
-- **L2 — 5-fold petal warp.** Add `sin(ang·5)^5` angular zoom + concentric
-  rotation to `mvWarpPerVertex` (replacing the uniform zoom/swirl). Verify petals
-  emerge.
-- **L3 — Chromatic feathering.** Port the R→G→B colour-separation (in compose/
-  warp). *Feasibility check first* — may need a small engine surface; if so,
-  surface to Matt before building (three-part bar #3).
-- **L4 — Decay/echo smear tuning** to match the reference's feathered density.
-- **L5 — Warm palette** (the original Spike 3): valence/centroid-driven warm
-  fiery palette + per-stem feather tinting, to match the still's tone.
+1. **Strands ← real stems (the headline musical uplift).** Milkdrop drives its 3
+   strands by mid/bass/treble FFT bands. Phosphene has stem separation — map the
+   3 strands to **drums / bass / vocals** (Matt's pick); `other` tints the
+   palette. Each arm of the bloom *is* an instrument. Driven via deviation
+   primitives (D-026); stems available from frame 1 via StemCache.
+2. **HDR-glow strands + ACES** (vs Milkdrop's 8-bit clamped additive).
+3. **valence + spectral-centroid warm palette + per-stem tinting** (the old
+   Spike 3) so warmth tracks the song.
+
+**Recommended AGAINST (Matt agreed):** a full ray-march / 3-D volumetric rebuild
+— it changes the preset's identity, is the high-fidelity-hero register that has
+stalled before (Drift Motes / Ferrofluid / Aurora Veil), and the original's magic
+is feedback, which mv_warp already nails. A 3-D depth exploration, if ever wanted,
+is a separate spike, not the main path.
+
+**Engine surfaces needed** (modest — far short of a ray-march rebuild): (a) a path
+to **draw the 3 strands** (the `per_point` projected points — prototype cheapest:
+procedural-vertex strand geometry vs fragment splat); (b) a **chromatic
+colour-transform in the mv_warp compose** (small shader add).
+
+**Layered build (each verified against the now-faithful live oracle + gif/still):**
+- **L1 — Strand brush ← stems.** Transcribe the `per_point` tumbling-strand math;
+  3 strands driven by drums/bass/vocals; HDR glow. *Supersedes Spike 1's ring.*
+- **L2 — `per_pixel` petal warp → `mvWarpPerVertex`** (`zoom = 1+abs(0.01·sin(ang·5)^5)`, concentric rot).
+- **L3 — Chromatic colour-transform in compose** (the hand-written warp GLSL is the spec — `tools/dragon_bloom_reference/index.html` `fixWarpShader`).
+- **L4 — Decay/echo/invert blend** tuning to the reference's feathered density.
+- **L5 — valence/centroid warm palette + per-stem tint.**
 
 Each layer: render offline against the **real recorded audio** (extend the diag
 harness to load `raw_tap.wav`, not the synthetic sine) + compare to the live
-butterchurn reference; Matt M7 at layer milestones.
+butterchurn reference (`tools/dragon_bloom_reference/`, now faithful); Matt M7 at
+layer milestones.
 
 ## 1. What it is (from the rendered still + source)
 
