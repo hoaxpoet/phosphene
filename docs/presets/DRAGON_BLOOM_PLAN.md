@@ -93,6 +93,12 @@ harness to load `raw_tap.wav`, not the synthetic sine) + compare to the live
 butterchurn reference (`tools/dragon_bloom_reference/`, now faithful); Matt M7 at
 layer milestones.
 
+## 0b. Future exploration — 3-D depth spike (Matt, 2026-06-02)
+
+**Matt wants to explore 3-D depth for this preset as a SEPARATE spike — and possibly a separate preset.** This is logged backlog, NOT part of the D-137 feedback-native uplift (which deliberately stays in the mv_warp register and rejected a 3-D rebuild as the main path). The idea: render the strands as real 3-D volumetric filaments with depth / lighting / self-shadowing (Phosphene's ray-march / SDF / PBR hero tech), rather than Milkdrop's flat 2-D projection.
+
+Treat as its own spike with its own concept-viability gate (three-part bar) — it is the high-fidelity-hero register that has stalled before (Drift Motes D-102, Ferrofluid, Aurora Veil), so it needs an explicit grounding/feasibility pass before authoring. May warrant a distinct preset (e.g. "Dragon Bloom 3D" / a new name) rather than replacing the feedback-native Dragon Bloom — keep both options open. Do not start until the D-137 uplift has shipped and Matt greenlights the spike.
+
 ## 1. What it is (from the rendered still + source)
 
 A warm, **bilaterally-symmetric feathered bloom** — fiery red/orange/yellow petal/moth forms radiating from a center, with rich flowing feedback texture. Calm-but-alive; the bloom breathes and the feathers flow.
