@@ -91,7 +91,15 @@ colour-transform in the mv_warp compose** (small shader add).
   (`DragonBloomMVWarpAccumulationTest`, parity-rewritten). NOT yet symmetric/warm/
   full — that's L2–L5. HDR glow deferred (sceneTexture is 8-bit; needs float +
   tonemap, a later refinement). *Supersedes Spike 1's ring.*
-- **L2 — `per_pixel` petal warp → `mvWarpPerVertex`** (`zoom = 1+abs(0.01·sin(ang·5)^5)`, concentric rot).
+- **L2 — `per_pixel` petal warp + bilateral mirror. ✅ DONE (2026-06-02, commit `f5b622af`).**
+  Ported the source `per_pixel` warp verbatim into `mvWarpPerVertex` (5-fold
+  `sin(ang·5)^5` angular zoom + concentric rotation) — adds the feathered/swirling
+  texture. **Finding:** the per_pixel warp does NOT by itself symmetrise the
+  tumbling strands (verified — symmetry fell to 0.19). So bilateral symmetry is
+  GUARANTEED by mirroring the brush (6 instances = 3 stems × {original, vertical
+  mirror}), the Spike-2-validated approach — symmetric form, rich (non-flat-mirror)
+  texture (corr 0.78). Renders as a bilaterally-symmetric feathered petal bloom.
+  Warm palette / density / chromatic still to come.
 - **L3 — Chromatic colour-transform in compose** (the hand-written warp GLSL is the spec — `tools/dragon_bloom_reference/index.html` `fixWarpShader`).
 - **L4 — Decay/echo/invert blend** tuning to the reference's feathered density.
 - **L5 — valence/centroid warm palette + per-stem tint.**
