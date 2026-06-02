@@ -109,7 +109,25 @@ fragment float4 dragon_bloom_fragment(
     float2 uv    = in.uv;
     float2 pRel  = uv - float2(kBloomCentreX, kBloomCentreY);
     float  r     = length(pRel);
-    float  ang   = atan2(pRel.y, pRel.x);           // [-PI, PI]
+
+    // ── Bilateral mirror fold (Spike 2) ──────────────────────────────────────
+    // Fold the silhouette source about the VERTICAL axis (abs on the x
+    // component) so the left and right halves sample the SAME part of the
+    // waveform → the bloom is bilaterally symmetric, matching the reference
+    // (`01_target.png`, which mirrors left↔right about a vertical centre line).
+    //
+    // We fold ONLY the angle used to draw the waveform curve — i.e. the bloom
+    // SILHOUETTE. The rich feathered TEXTURE that keeps this out of FA #48
+    // ("flat mirrored clipart", the Arachne anti-reference) comes from the
+    // mv_warp accumulator, whose tangential-swirl field has rotational
+    // handedness (`(-p.y, p.x)`) and therefore accumulates DIFFERENTLY on the
+    // two halves even though each fresh brush stroke is mirror-symmetric.
+    // Net read: symmetric FORM, non-identical (rich) TEXTURE. Per the plan §5
+    // and the reference README: "Mirror a feedback-warped field, never flat
+    // geometry." The folded curve is the brush; the warped accumulator is the
+    // field. (If a future render reads as clipart, add per-side hash jitter
+    // here per FA #44 — the warp handedness is the primary anti-clipart source.)
+    float  angFold = atan2(pRel.y, abs(pRel.x));    // [-PI/2, PI/2] — right-half angle, mirrored to left
 
     // ── Audio drivers ─────────────────────────────────────────────────────────
     // Signal selection is empirically grounded: each driver was chosen by
@@ -153,8 +171,13 @@ fragment float4 dragon_bloom_fragment(
     float musicPresent = saturate((bassAbs + midAbs + max(0.0, f.treble)) * 1.5 - 0.10);
     float waveAmpScale = mix(1.0, clamp(kWaveTargetRMS / max(0.02, waveRMS), 0.5, 6.0), musicPresent);
 
+    // Map the FOLDED vertical-sweep angle [-PI/2, PI/2] across the full
+    // waveform [0, 1]: bottom of screen (angFold → -PI/2) samples frame 0, top
+    // (angFold → +PI/2) samples the last frame. Because angFold is built from
+    // abs(pRel.x), the left half mirrors the right — the curve, and therefore
+    // the bloom silhouette, is bilaterally symmetric.
     constexpr int kFrames = WAVEFORM_CAPACITY / 2;
-    float angNorm  = (ang + M_PI_F) / (2.0 * M_PI_F);   // [0, 1)
+    float angNorm  = (angFold + M_PI_F * 0.5) / M_PI_F;   // [0, 1] across the vertical sweep
     float frameF   = angNorm * float(kFrames - 1);
     float wave     = sampleWaveformMono(wv, frameF) * waveAmpScale;
 
