@@ -8,13 +8,90 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
+### BUG-027 — Positive deviation primitives (`bassDev`/`midDev`/`trebDev`) structurally near-dead for any band that isn't dominant (2026-06-02)
+
+**Severity:** P2 (silently weakens the canonical D-026 Layer-2 "above-average" motion driver for every preset that consumes the positive deviation primitives, on every capture path — not a crash, but a load-bearing-design-doesn't-do-what-it-says issue).
+**Domain tag:** dsp.beat (deviation-primitive derivation)
+**Status:** Open — diagnosed, not yet scoped. Surfaced during the BUG-025 A/B correction.
+**Introduced:** D-026 / MV-1 (the deviation-primitive design). The fixed 0.5 pivot has always assumed each band's AGC-normalised value centres at 0.5; it doesn't.
+**Resolved:** —
+
+### Expected behavior
+
+Per CLAUDE.md §Audio Data Hierarchy Layer 2 and D-026, the deviation primitives are "the primary above-average motion driver." `bassDev` should fire (be meaningfully positive) when the bass is above its own running average — i.e. reasonably often on real music (intuitively 30–50 % of frames on a bass-driven track), so presets driving motion from `bassDev` get a lively signal.
+
+### Actual behavior
+
+`bassDev = max(0, (bass − 0.5) × 2)` fires only when the AGC-normalised `bass` output exceeds 0.5. But `bass` is normalised by `agcScale = 0.5 / agcRunningAvg`, where `agcRunningAvg` tracks **total 6-band energy**, not per-band energy (`BandEnergyProcessor.swift:204`, `totalRawEnergy = raw6.reduce(0, +)`). So an individual band's output centres at `0.5 × (that band's fraction of total energy)`. A band that is, say, half the total energy centres at 0.25 → its `*Dev` only fires on a > +2σ excursion → almost never.
+
+Measured (frames downstream of clean AGC resets, both capture paths):
+
+```
+                bass mean   bassRel mean   bassDev fires
+LF (Atlas)        0.254       −0.49          2.9 %
+Spotify           0.222       −0.55          1.5 %
+```
+
+`bassDev` firing on < 3 % of frames means any preset relying on it for primary motion gets a near-dead signal — independent of capture path. The *signed* `bassRel` (stddev ≈ 0.21 on both paths) carries the real information; the positive-only `*Dev` clamp throws most of it away.
+
+### Reproduction steps
+
+1. Capture any session (LF or streaming) on bass-dominant or spectrally-uneven music.
+2. Inspect `features.csv`: `bassDev` column is 0 on the large majority of frames; `bassRel` is mostly negative.
+3. Confirm the same on an LF session — this is not capture-path-specific.
+
+**Minimum reproducer:** any session; the Atlas-LF (`2026-06-01T22-37-01Z`) and Spotify (`2026-06-02T01-12-51Z`) sessions both demonstrate it.
+
+### Session artifacts
+
+`~/Documents/phosphene_sessions/2026-06-01T22-37-01Z/` (LF) and `~/Documents/phosphene_sessions/2026-06-02T01-12-51Z/` (Spotify). 6-band means on the Spotify session: `subBass 0.234, lowBass 0.232, lowMid 0.029, midHigh 0.003, highMid 0.001, high 0.001` — energy concentrated in bass, so total-energy normalisation pushes every individual band's output (and thus its `*Dev`) low.
+
+### Suspected failure class
+
+`calibration` — the 0.5 pivot in the deviation formula assumes per-band centring that the total-energy AGC does not produce.
+
+### Verification criteria
+
+When resolved:
+- [ ] **Automated:** on a recorded bass-dominant fixture, the chosen "above-average bass" primitive fires on ≥ 20 % of frames.
+- [ ] **Automated:** existing deviation-primitive contract tests (`RelDevTests`) still pass or are updated with the new semantics.
+- [ ] **Manual:** Matt confirms presets that consume the above-average-bass primitive read as appropriately reactive across multiple tracks — no regression on the 8 deviation-consuming presets.
+
+**Manual validation required:** Yes — affects all 8 deviation-consuming presets.
+
+### Fix scope
+
+**Not yet scoped; needs a design decision, not a quick patch.** Candidate directions (each affects all 8 deviation-consuming presets + their golden hashes, so this is a real increment with M7 across the catalog, NOT a trivial fix):
+- (a) **Per-band running average** — give each band its own AGC EMA so `bandDev` centres on that band's own average. Cleanest semantically; changes the AGC's whole character; invalidates golden hashes.
+- (b) **Recenter the deviation pivot per-band** — derive each band's typical fraction-of-total and pivot the deviation there instead of at 0.5. Less invasive than (a).
+- (c) **Document `*Dev` as "rare strong-transient only" and steer preset authors to signed `*Rel`** — no engine change; the Dragon Bloom 2026-06-02 re-tune already does this (uses signed `bass_rel`, not `bass_dev`). Lowest risk; makes the limitation explicit rather than fixing it.
+
+Recommend deciding between (a/b/c) with Matt before any implementation — this is the structural issue the BUG-025 misdiagnosis was pointing at, and it deserves a deliberate call, not a rushed fix.
+
+### Related
+
+- Decision: D-026 (deviation primitives) — the design this refines.
+- BUG-025 — the misdiagnosis that surfaced this; corrected 2026-06-02.
+- Increment: Dragon Bloom 2026-06-02 re-tune (direction (c) applied at preset scope — proof the signed-`*Rel`-not-`*Dev` workaround works).
+- Failed Approach: #31 (absolute thresholds on AGC-normalised energy) — same family of "AGC normalisation has non-obvious per-band consequences."
+
+---
+
 ### BUG-025 — AGC running-average poisoned by post-`active` startup transient on Spotify process-tap (2026-06-01)
 
-**Severity:** P2 (degrades preset reactivity on every tap-path Spotify session for the entire session lifetime, but visible only as "less reactive than expected," not as a crash or wrong audio. Was load-bearing in the Dragon Bloom Spike 1 follow-up debug — see Related.)
-**Domain tag:** dsp.beat (AGC convergence; same audio-feature subsystem)
-**Status:** Open — diagnosed, not yet scoped.
-**Introduced:** Pre-dates session-level diagnostics; almost certainly present since the AGC EMA was introduced (Increment 1.x / D-026 era). First measurement-grade observation: Dragon Bloom Spike 1 debug session `~/Documents/phosphene_sessions/2026-06-01T22-57-10Z`.
+> **CORRECTED 2026-06-02 — root cause was misdiagnosed; severity downgraded P2 → P3.** A LF↔Spotify A/B (sessions `2026-06-01T22-37-01Z` Atlas-LF vs `2026-06-02T01-12-51Z` Spotify) during the AGC.1 scoping step disproved the original "session-wide starvation" claim below. Two facts the original entry got wrong:
+> 1. **The transient is one-time, ~2 s, at the very first audio onset only.** Subsequent track changes call `reset()` and re-initialise the AGC cleanly from the first audio-playing frame — they show gentle ramps, no transient. So the transient does NOT poison the whole session; it affects ~2 s once at session start.
+> 2. **The session-wide `bassDev ≈ 0` starvation is STRUCTURAL, not caused by the transient, and is identical on LF.** Measured in transient-free segments downstream of clean track-change resets: `bassDev` fires on 1.5 % of Spotify frames and **2.9 % of the LF session that "danced."** The deviation primitive `bassDev = max(0, (bass−0.5)×2)` fires only when the bass band exceeds the *total-energy* AGC average — structurally rare for bass-dominant music on any capture path (6-band means: `subBass 0.23, lowBass 0.23, lowMid 0.03, rest ≈ 0`). It is the fixed-0.5-pivot interacting with total-energy normalisation, not an AGC mis-convergence.
+>
+> **What's actually real here:** a genuine but minor cold-start visual flash in the first ~2 s of a fresh session's first onset. That's the only defect; it's cosmetic, hence P3. The "muted on Spotify" symptom that motivated this entry was (a) raw-waveform amplitude gap, fixed in Dragon Bloom commit `cffefe65`, and (b) the structural `bassDev` limitation that affects LF equally — addressed at the preset level by the 2026-06-02 Dragon Bloom re-tune (route to signals alive on both paths: signed `bass_rel`, `spectralFlux`, beat — not `bassDev`/`mid_att_rel` which are structurally dead on bass-dominant music). The AGC.1 transient-rejection fix (kickoff `docs/prompts/AGC1_KICKOFF.md`) is **shelved** — it would fix only the 2 s flash, which is not worth a cross-cutting AGC change touching 8 presets. **The structural deviation-pivot limitation is the real latent issue and is filed separately as BUG-027.**
+
+**Severity:** ~~P2~~ → **P3** (cosmetic ~2 s cold-start flash at the very first onset of a fresh session; not session-wide; does not affect track changes).
+**Domain tag:** dsp.beat (AGC convergence)
+**Status:** Open — diagnosed, root cause corrected, fix shelved as not-worth-the-blast-radius. See BUG-027 for the real latent issue.
+**Introduced:** AGC EMA's interaction with a long silent pre-playback period (the AGC runs during silence, floors its average + burns its warmup window, then over-scales the first ~2 s of real audio). First measurement-grade observation: Dragon Bloom Spike 1 debug session `~/Documents/phosphene_sessions/2026-06-01T22-57-10Z`.
 **Resolved:** —
+
+> *The original investigation record below is preserved verbatim. Read it as the data that LED to the corrected diagnosis above — its "Actual behavior" section's "entire rest of the session" claim is the part the A/B disproved.*
 
 ### Expected behavior
 

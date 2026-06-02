@@ -2265,7 +2265,11 @@ SESSION CHECKLIST — before declaring complete:
 [ ] Triplanar projection on non-planar surfaces.
 [ ] Atmosphere present (fog, aerial perspective, volumetric element).
 [ ] Detail normals or POM on primary surface.
-[ ] Audio reactivity via deviation primitives (f.*_rel, f.*_dev, stems.*_rel/dev).
+[ ] Audio reactivity via primitives VERIFIED ALIVE on the target music
+    (§14.1). Prefer signed f.*_rel + spectral_flux + beat fields; the
+    positive-only f.*_dev clamps are structurally near-dead for any band
+    that isn't dominant (BUG-027). Verify with a stddev measurement on a
+    real session, not by trusting the primitive's name.
 [ ] Graceful silence fallback tested.
 [ ] Performance measured against tier budget.
 [ ] Hashed reference frame comparison passed.
@@ -2279,6 +2283,59 @@ POST-M7 INTEGRATION (after every M7 review round):
     Approach #49). STOP, re-scope, do not start the next remediation
     increment.
 ```
+
+---
+
+### 14.1 Signal liveness — drive motion only from primitives that actually vary on your music
+
+**Promoted from the Dragon Bloom 2026-06-02 re-tune.** A preset reads audio
+primitives and maps them to visual motion. The trap: a primitive can be
+*named* the canonical driver (D-026 calls the deviation primitives "the
+primary above-average motion driver") and still be **near-dead** for the
+music you're targeting — producing a preset that looks reactive in your head
+and static on screen.
+
+**What went wrong on Dragon Bloom.** Spike 1 drove feather flow from
+`f.mid_att_rel` and breathing from `max(0, f.bass_att_rel)`. On bass-dominant
+music both sit at ≈ 0 frame after frame (mid energy is tiny; the clamped
+positive deviation almost never fires — see BUG-027). The feathers were
+frozen and the bloom didn't breathe — on **both** LF and Spotify. It read as
+"barely reactive."
+
+**The rule.** Before routing a primitive to a visual layer, **measure its
+frame-to-frame standard deviation on a real recorded session of the target
+music** (the `features.csv` / `stems.csv` a session writes). Drive motion only
+from primitives that are *alive* (meaningful stddev) on the capture paths you
+ship. A worked measurement from the Dragon Bloom diagnosis (stddev, Spotify /
+LF, on bass-dominant tracks):
+
+| Primitive | stddev | Verdict |
+|---|---|---|
+| `f.bass_rel` **(signed)** | 0.20 / 0.22 | alive + path-consistent — best continuous driver |
+| `f.beat_composite` | 0.25 / 0.37 | alive accent |
+| `f.spectral_flux` | 0.22 / 0.15 | alive (means differ — drive from variation, don't threshold absolutely) |
+| `f.bass` (Layer-1) | 0.10 / 0.11 | solid continuous loudness |
+| `f.mid`, `f.treble` | < 0.02 | **near-dead** on bass-dominant music |
+| `f.bass_dev` (= `max(0, bass_rel)`) | ≈ 0 most frames | **structurally near-dead** (BUG-027) |
+
+**Practical guidance:**
+- **Prefer signed `f.*_rel`** over the positive-only `f.*_dev`. The signed
+  value carries the full deviation range (it's mostly negative for non-dominant
+  bands, but it *varies*); the `*_dev` clamp throws that away. Recenter the
+  signed value (`(f.bass_rel + 0.5)`) if you want it to rest at a neutral
+  visual state and swing both ways.
+- **`spectral_flux` and the beat fields are reliably alive** across genres and
+  capture paths — good for texture motion and accents.
+- **Don't build a load-bearing layer on `f.mid`/`f.treble`** unless your
+  target music is genuinely mid/treble-rich — measure first.
+- **One primitive per visual layer at one timescale** (the existing
+  `feedback_audio_layer_one_primitive` rule). The liveness check is upstream of
+  it: first pick alive primitives, then assign one per layer.
+- **The differentiator between "danced on LF" and "muted on Spotify" is rarely
+  a single primitive** — it's usually raw amplitude (slot 1/2 buffers are NOT
+  AGC-normalised; see the Dragon Bloom waveform-RMS-normalisation note) or the
+  music itself being sparser. Measure both sessions before concluding the
+  preset or the engine is at fault.
 
 ---
 

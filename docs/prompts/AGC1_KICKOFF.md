@@ -1,5 +1,13 @@
 # AGC.1 Kickoff — Fix BUG-025 (AGC EMA poisoning by cold-start transient)
 
+> **⚠️ SHELVED 2026-06-02 — DO NOT IMPLEMENT. Read this banner before anything below.**
+> During AGC.1 step 1 (confirm-the-diagnosis-in-code), an LF↔Spotify A/B comparison disproved the premise this kickoff is built on. The BUG-025 cold-start transient is **real but one-time and ~2 s** (first onset only; track changes re-init cleanly), and it does **NOT** cause the session-wide deviation-primitive starvation this kickoff blames it for. That starvation is **structural** (fixed-0.5 deviation pivot vs total-energy AGC normalisation) and is **identical on LF** (`bassDev` fires 2.9 % LF vs 1.5 % Spotify). Implementing Approach A here would fix only the 2 s flash — not worth a cross-cutting AGC change touching 8 presets.
+> - The corrected diagnosis lives in `docs/QUALITY/KNOWN_ISSUES.md` BUG-025 (downgraded P2→P3) + the new **BUG-027** (the real structural issue).
+> - The "muted on Spotify" symptom that motivated all this was addressed at preset scope by the 2026-06-02 Dragon Bloom re-tune (route to signals alive on both paths).
+> - If AGC work is ever revived, start from BUG-027's fix-scope options (per-band EMA / recentered pivot / document-and-steer), NOT from this kickoff's transient-rejection approach.
+>
+> The text below is preserved as the (now-invalidated) scoping record only.
+
 Hand this to a new Claude Code session verbatim. Do not summarise.
 
 ## What this is

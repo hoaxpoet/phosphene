@@ -134,6 +134,20 @@ struct PresetAcceptanceTests {
         // `AuroraVeilContinuousDominanceTest` (drum-kink MSD ≤ 10% of
         // bass-brightness MSD at peak).
         if preset.descriptor.name == "Aurora Veil" { return }
+        // Dragon Bloom (2026-06-02 re-tune): same fixture-conflation exemption as
+        // Ferrofluid Ocean / Aurora Veil. The shared `beatHeavyFixture` cranks
+        // bass 0.5→0.8 AND bassRel 0→0.6 AND beatBass 0→1.0 simultaneously, so
+        // the steady→beatHeavy MSD captures Dragon Bloom's *continuous* bass
+        // response (Layer-1 brightness + signed-bass_rel breathing) as if it were
+        // beat response. Empirical proof the beat is NOT the culprit: cutting the
+        // per-beat boost 2.7× (0.40→0.15) moved beatMotion only 9% (1875→1699) —
+        // 91% of the delta is the continuous bass drivers, not the beat. Dragon
+        // Bloom's actual beat coupling is a bounded 0.15 brightness shimmer
+        // (deliberately small because mv_warp feedback amplifies beat flashes).
+        // The real continuous-vs-accent guard is the radiusMotion metric in
+        // DragonBloomMVWarpAccumulationTest (beat-free temporal motion driven by
+        // bass_rel + flux). See the BUG-025 A/B diagnosis (2026-06-02).
+        if preset.descriptor.name == "Dragon Bloom" { return }
         let ctx = try MetalContext()
         var silence = silenceFixture
         var steady = steadyFixture

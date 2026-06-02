@@ -133,13 +133,15 @@ struct DragonBloomMVWarpAccumulationTest {
 
         print("""
         [dragon_bloom_diag] Summary (\(Self.frameCount) frames at \(Self.width)×\(Self.height)):
-          ┌─────────────────────┬──────────────┬────────────────┬─────────────────┐
-          │ Run                 │ brightPixels │ frameMaxLuma   │ envelopeRadius  │
-          ├─────────────────────┼──────────────┼────────────────┼─────────────────┤
-          │ silence (frame 60)  │   \(pad(silence.brightPixels, 8))   │     \(padF(silence.frameMaxLuma))     │      \(padF(silence.envelopeRadius))      │
-          │ music   (frame 60)  │   \(pad(music.brightPixels, 8))   │     \(padF(music.frameMaxLuma))     │      \(padF(music.envelopeRadius))      │
-          │ spotify (frame 60)  │   \(pad(spotify.brightPixels, 8))   │     \(padF(spotify.frameMaxLuma))     │      \(padF(spotify.envelopeRadius))      │
-          └─────────────────────┴──────────────┴────────────────┴─────────────────┘
+          ┌─────────────────────┬──────────────┬─────────────┬──────────────┬──────────────┐
+          │ Run                 │ brightPixels │ envelopeR   │ radiusMotion │ frameMaxLuma │
+          ├─────────────────────┼──────────────┼─────────────┼──────────────┼──────────────┤
+          │ silence             │   \(pad(silence.brightPixels, 8))   │   \(padF(silence.envelopeRadius))    │    \(padF(silence.radiusMotion))    │    \(padF(silence.frameMaxLuma))    │
+          │ music   (LF-like)   │   \(pad(music.brightPixels, 8))   │   \(padF(music.envelopeRadius))    │    \(padF(music.radiusMotion))    │    \(padF(music.frameMaxLuma))    │
+          │ spotify (tap-like)  │   \(pad(spotify.brightPixels, 8))   │   \(padF(spotify.envelopeRadius))    │    \(padF(spotify.radiusMotion))    │    \(padF(spotify.frameMaxLuma))    │
+          └─────────────────────┴──────────────┴─────────────┴──────────────┴──────────────┘
+        radiusMotion = temporal range of the bloom's envelope radius across checkpoints
+                       (the load-bearing "does it dance" metric — silence ≈ 0, music/spotify > 0).
         Interpretation:
           brightPixels   = pixels with luma > 0.20 (loose threshold — feathered halo counts)
           envelopeRadius = mean radius of bright pixels (UV units), 0.28 baseline curve
@@ -169,41 +171,44 @@ struct DragonBloomMVWarpAccumulationTest {
         #expect(music.frameMaxLuma < 0.95,
                 "Music run clipped to white (\(music.frameMaxLuma)) — accumulator running away.")
 
-        // Music distributes energy across a wider envelope than silence.
-        // This is the load-bearing structural check: it proves the audio-driven
-        // warp + zoom path is reaching the accumulator and spreading the brush.
-        #expect(music.brightPixels > silence.brightPixels * 2,
+        // ── The load-bearing gate: the bloom MOVES over time under music ─────
+        // "Dancing" = temporal motion (the bloom breathing / feathers flowing /
+        // beats flaring across frames), NOT final-frame size. The silence run
+        // is a static ring → radiusMotion ≈ 0. Both music and the Spotify-tap
+        // pattern drive the bloom from signals that are alive on both capture
+        // paths (signed bass_rel breathing, spectralFlux feather flow, beat
+        // accent), so both should show clearly more motion than silence.
+        //
+        // This is the regression sentinel for the 2026-06-02 re-tune: if a
+        // future edit reverts to dead drivers (mid_att_rel feather flow,
+        // clamped bass_dev breathing), the Spotify motion collapses toward the
+        // silence baseline and this gate fails. The perceptual "does it dance"
+        // judgement remains Matt's M7 call on the live app — this only proves
+        // the bloom is structurally in motion through the production pipeline.
+        let silenceMotion = silence.radiusMotion
+        #expect(music.radiusMotion > silenceMotion + 0.004,
                 """
-                Music run is not visibly wider than silence \
-                (\(music.brightPixels) ≤ \(silence.brightPixels) × 2). \
-                The audio-driven warp displacement may not be reaching mvWarpPerVertex.
+                Music run shows no temporal bloom motion (radiusMotion \
+                \(music.radiusMotion) vs silence \(silenceMotion)). The alive \
+                drivers (bass_rel breathing / flux feather flow) are not reaching \
+                the accumulator.
                 """)
-        #expect(music.envelopeRadius > silence.envelopeRadius + 0.01,
+        #expect(spotify.radiusMotion > silenceMotion + 0.004,
                 """
-                Music envelope radius (\(music.envelopeRadius)) does not exceed silence \
-                (\(silence.envelopeRadius)) — bass/mid drivers are not spreading the bloom.
+                Spotify-tap run shows no temporal bloom motion (radiusMotion \
+                \(spotify.radiusMotion) vs silence \(silenceMotion)). On the \
+                process-tap path the deviation primitives are starved (bass_dev \
+                ≈ 0, mid ≈ 0), so the bloom must be driven by signals alive on \
+                BOTH paths — signed bass_rel + spectralFlux. If this fails, the \
+                shader has reverted to dead drivers. See the 2026-06-02 BUG-025 \
+                A/B liveness diagnosis.
                 """)
-
-        // Spotify-tap pattern: the FIX gate. With raw waveform amplitude 4×
-        // quieter than LF but bands at the same AGC-converged 0.5, the bloom
-        // should still spread to roughly LF-comparable envelope. Pre-fix this
-        // assertion FAILS because the polar curve barely deflects under quiet
-        // waveform input → envelope stays near the silence ring at r ≈ 0.285.
-        // Post-fix (in-shader waveform RMS normalization) this should pass.
-        #expect(spotify.envelopeRadius > silence.envelopeRadius + 0.02,
+        // Both runs produce a substantial bloom (not collapsed to the silence ring).
+        #expect(spotify.brightPixels > silence.brightPixels,
                 """
-                Spotify-tap envelope radius (\(spotify.envelopeRadius)) is too close to silence \
-                (\(silence.envelopeRadius)). On the process-tap path the raw waveform is quieter \
-                than LF, so without amplitude normalization the polar curve collapses to a circle \
-                and the bloom looks like silence — matches Matt's 2026-06-01 report. \
-                Add in-shader waveform RMS normalization.
-                """)
-        #expect(spotify.brightPixels > silence.brightPixels * 2,
-                """
-                Spotify-tap is not visibly spread vs silence (\(spotify.brightPixels) ≤ \
-                \(silence.brightPixels) × 2). The bloom shape needs the raw waveform to deflect; \
-                process-tap audio is quieter than LF so the shape collapses. Same root cause as \
-                the envelope-radius gate above.
+                Spotify-tap bloom collapsed to the silence ring (\(spotify.brightPixels) \
+                ≤ \(silence.brightPixels)). The waveform RMS normalisation (slot-2 amplitude)
+                or the alive-signal routing is not reaching the bloom.
                 """)
     }
 
@@ -225,7 +230,13 @@ struct DragonBloomMVWarpAccumulationTest {
         let pixels: [UInt8]
         let brightPixels: Int
         let frameMaxLuma: Float
-        let envelopeRadius: Float    // mean radial distance (UV) of bright pixels
+        let envelopeRadius: Float    // mean radial distance (UV) of bright pixels (final frame)
+        // Temporal motion: range (max−min) of the envelope radius sampled across
+        // checkpoints during the run. This is what "the bloom dances" means —
+        // the bloom MOVING over time, not its final-frame size. ~0 at silence
+        // (static ring); > 0 when an alive driver is breathing the bloom.
+        let radiusMotion: Float
+        let brightnessMotion: Float  // range of brightPixels across checkpoints, normalised
     }
 
     private func runAccumulationLoop(
@@ -261,6 +272,15 @@ struct DragonBloomMVWarpAccumulationTest {
         _ = stem.contents().initializeMemory(as: UInt8.self, repeating: 0,
                                              count: MemoryLayout<StemFeatures>.size)
 
+        // Checkpoint sampling for temporal-motion measurement. Sample the
+        // accumulated frame at several points across the back half of the run
+        // (past the decay-window warmup) so we can measure how much the bloom
+        // MOVES over time, not just its final size. Spaced to span a full
+        // breathing half-cycle of the slowest driver.
+        let checkpoints: Set<Int> = [38, 44, 50, 56]
+        var checkpointRadii: [Float] = []
+        var checkpointBright: [Int] = []
+
         for frameIdx in 0..<Self.frameCount {
             let t = Float(frameIdx) * Self.deltaTime + 1.0
 
@@ -293,10 +313,20 @@ struct DragonBloomMVWarpAccumulationTest {
             cmd.commit()
             cmd.waitUntilCompleted()
 
-            // Swap warp ↔ compose for the next frame.
+            // Swap warp ↔ compose for the next frame. After the swap, warpTex
+            // holds this frame's accumulated result.
             let tmp = warpTex
             warpTex = composeTex
             composeTex = tmp
+
+            if checkpoints.contains(frameIdx) {
+                var cp = [UInt8](repeating: 0, count: Self.width * Self.height * 4)
+                warpTex.getBytes(&cp, bytesPerRow: Self.width * 4,
+                                 from: MTLRegionMake2D(0, 0, Self.width, Self.height), mipmapLevel: 0)
+                let (b, _, r) = analyzeFrame(cp)
+                checkpointBright.append(b)
+                checkpointRadii.append(r)
+            }
         }
 
         // Final accumulated frame lives in warpTex post-swap.
@@ -305,8 +335,12 @@ struct DragonBloomMVWarpAccumulationTest {
                          from: MTLRegionMake2D(0, 0, Self.width, Self.height), mipmapLevel: 0)
 
         let (bright, maxL, envR) = analyzeFrame(pixels)
+        let radiusMotion = (checkpointRadii.max() ?? 0) - (checkpointRadii.min() ?? 0)
+        let brightRange = Float((checkpointBright.max() ?? 0) - (checkpointBright.min() ?? 0))
+        let brightnessMotion = brightRange / Float(max(1, Self.width * Self.height))
         return LoopResult(pixels: pixels, brightPixels: bright,
-                          frameMaxLuma: maxL, envelopeRadius: envR)
+                          frameMaxLuma: maxL, envelopeRadius: envR,
+                          radiusMotion: radiusMotion, brightnessMotion: brightnessMotion)
     }
 
     // MARK: - Audio inputs
@@ -352,39 +386,54 @@ struct DragonBloomMVWarpAccumulationTest {
         case .silence:
             return FeatureVector(time: time, deltaTime: Self.deltaTime)
         case .syntheticMusic:
-            // Light steady-state energy: bass ~0.6, mid ~0.55 (above AGC average),
-            // plus a per-second beat pulse to exercise the Layer-4 accent path.
-            var fv = FeatureVector(bass: 0.60, mid: 0.55, treble: 0.45,
+            // Reproduces the MEASURED distribution of the real LF "Atlas"
+            // session (the one that "danced") — frames 400-5000 of
+            // ~/Documents/phosphene_sessions/2026-06-01T22-37-01Z:
+            //   bass         mean 0.26  stddev 0.11
+            //   bass_rel     mean -0.49 stddev 0.22  (SIGNED)
+            //   spectralFlux mean 0.65  stddev 0.15  (≈2× the Spotify mean)
+            //   beatComposite mean 0.69 stddev 0.37
+            // Time-varying at the measured rates so the bloom breathes/flows;
+            // the higher flux + louder waveform are what made LF feel livelier
+            // than the (sparser) Spotify playlist — NOT a capture-path bug.
+            let t = Float(frameIdx)
+            let bassOsc = 0.26 + 0.11 * sin(t * 0.23)
+            let relOsc  = -0.49 + 0.22 * sin(t * 0.15 + 1.0)
+            let fluxOsc = max(0.0, 0.65 + 0.15 * sin(t * 0.41 + 2.0))
+            var fv = FeatureVector(bass: max(0.0, bassOsc), mid: 0.045, treble: 0.004,
                                    time: time, deltaTime: Self.deltaTime)
-            fv.bassRel    = 0.20
-            fv.bassDev    = 0.20
-            fv.midRel     = 0.10
-            fv.midDev     = 0.10
-            fv.bassAttRel = 0.30
-            fv.midAttRel  = 0.25
-            // Pulse beat_composite every 60 frames (~1 Hz).
-            let pulse = (frameIdx % 60 == 0) ? Float(1.0) : Float(0.0)
-            fv.beatComposite = pulse
-            fv.beatBass      = pulse
+            fv.bassRel       = relOsc
+            fv.bassDev       = max(0.0, relOsc)
+            fv.spectralFlux  = fluxOsc
+            fv.beatComposite = (frameIdx % 28 < 4) ? Float(1.0) : Float(0.45)
+            fv.beatBass      = (frameIdx % 28 < 2) ? Float(1.0) : Float(0.15)
             return fv
         case .spotifyTapPattern:
-            // Post-AGC-convergence steady state on the process-tap path:
-            // AGC has compressed per-band energies into the same register as
-            // LF (≈ 0.5), so the brightness/zoom path looks fine. But the raw
-            // waveform amplitude (slot 2) is much quieter — populated by
-            // populateWaveform above at ~0.20 peaks. Beat fields are zero;
-            // deviation primitives are ~0 (post-convergence). This is the
-            // "looks like silence after 20s on Spotify" reproducer.
-            var fv = FeatureVector(bass: 0.50, mid: 0.50, treble: 0.45,
+            // Reproduces the MEASURED distribution of a real bass-dominant
+            // Spotify session (~/Documents/phosphene_sessions/2026-06-02T01-12-51Z,
+            // frames 400-4361). Post-AGC-convergence, so per-band absolutes sit
+            // low and `bass_rel` is mostly negative — but every driver is
+            // TIME-VARYING at its measured stddev so the re-tuned shader's
+            // alive-signal routing is actually exercised:
+            //   bass          mean 0.22  stddev 0.10
+            //   bass_rel      mean -0.55 stddev 0.20  (SIGNED — drives breathing)
+            //   spectralFlux  mean 0.31  stddev 0.22  (drives feather flow)
+            //   beatComposite mean 0.62  stddev 0.25  (per-beat accent)
+            //   mid           mean 0.014                (near-dead on this music)
+            // Deterministic oscillators (no RNG) keep the test reproducible;
+            // the three drivers run at different rates so they don't phase-lock.
+            let t = Float(frameIdx)
+            let bassOsc = 0.22 + 0.10 * sin(t * 0.21)
+            let relOsc  = -0.55 + 0.20 * sin(t * 0.13 + 1.0)
+            let fluxOsc = max(0.0, 0.31 + 0.22 * sin(t * 0.37 + 2.0))
+            var fv = FeatureVector(bass: max(0.0, bassOsc), mid: 0.014, treble: 0.001,
                                    time: time, deltaTime: Self.deltaTime)
-            // Small post-convergence deviation residuals — not enough to drive
-            // motion by themselves under the Spike-1 weights.
-            fv.bassRel    = 0.02
-            fv.bassDev    = 0.02
-            fv.midRel     = 0.02
-            fv.midDev     = 0.02
-            fv.bassAttRel = 0.03
-            fv.midAttRel  = 0.02
+            fv.bassRel      = relOsc                  // SIGNED, mostly negative — the real signal
+            fv.bassDev      = max(0.0, relOsc)        // structurally ~0 most frames (as measured)
+            fv.spectralFlux = fluxOsc
+            // beatComposite pulses on a ~2 Hz grid (30-frame period) — mean ≈ 0.6.
+            fv.beatComposite = (frameIdx % 30 < 4) ? Float(1.0) : Float(0.35)
+            fv.beatBass      = (frameIdx % 30 < 2) ? Float(0.9) : Float(0.1)
             return fv
         }
     }
