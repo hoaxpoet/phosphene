@@ -147,22 +147,64 @@ extension PresetLoader {
         texture2d<float>   prevTex      [[texture(0)]],
         constant float&    chromaticMix [[buffer(0)]]
     ) {
-        float4 prev = prevTex.sample(warpSampler, in.warped_uv);
-        // L3 (D-137): chromatic colour-separation on the AGED feedback — a faithful
-        // port of source.milk's warp-shader R->G->B transfer (warp_11..15). Where R
-        // is present it bleeds R->G; where G is present (and R/G low) G->B; B fades.
-        // Iterated through the feedback this cycles colours toward warm and yields
-        // the green/red fringing — the reference's warmth comes from HERE, not just
-        // a palette. Per-preset gated by chromaticMix: at 0 this is the identity
-        // (mix → prev.rgb), so every other mv_warp preset is byte-for-byte unchanged.
-        float3 cr   = prev.rgb;
+        // ── L4 (D-137): full source.milk warp shader (warp_3..15) ──────────────
+        // This is the FILL/SATURATION mechanism. L3 ported only the R->G->B
+        // transfer (warp_11..15). The source warp shader ALSO does, before the
+        // transfer:
+        //   warp_3  ret  = sample(prev, warped_uv)            // base feedback colour
+        //   warp_4  ret /= (ret.r+ret.g+ret.b)                // NORMALISE -> hue
+        //   warp_5  zoom = dot(hue, (1, 0.975, 0.95))         // R-weighted, ∈[0.95,1]
+        //   warp_7  ret  = sample(prev, (warped_uv-0.5)*zoom + 0.5)  // RESAMPLE at hue-zoom
+        // The hue-dependent inward resample makes saturated content flow OUTWARD
+        // at a colour-dependent rate — over the decay window this fills the frame
+        // with saturated colour (verified against the faithful butterchurn oracle:
+        // full-warp = saturated frame-filling fill, vs L3-transfer-only = a dim
+        // dull thread). The fill is COOL on its own; the blit-stage invert
+        // (mvWarp_blit_fragment, bInvert=1) flips it warm — see the plan §0 L4.
+        //
+        // Per-preset gated by chromaticMix: at 0 the resample collapses to
+        // warped_uv and the transfer mix collapses to identity, so every other
+        // mv_warp preset is byte-for-byte unchanged (PresetRegression confirms).
+        // Base sample at the per-vertex warped UV. The per_pixel warp (5-lobe petal
+        // zoom + concentric rotation + inward baseline + the bass BREATHING) is
+        // computed on the 32×24 vertex mesh in the preset's mvWarpPerVertex — exactly
+        // Milkdrop/butterchurn's warp-mesh approach (and cheaper than a per-fragment
+        // recompute). The chromatic transfer below still gates on chromaticMix so
+        // every other mv_warp preset is byte-for-byte unchanged.
+        float2 baseUV = in.warped_uv;
+        float3 c0  = prevTex.sample(warpSampler, baseUV).rgb;
+        float  a0  = prevTex.sample(warpSampler, baseUV).a;
+        float  sum = max(c0.r + c0.g + c0.b, 1e-4);
+        float3 hue = c0 / sum;
+        float  hzoom    = dot(hue, float3(1.0, 0.975, 0.95));      // ∈ [0.95, 1.0]
+        float2 zoomedUV = (baseUV - 0.5) * hzoom + 0.5;
+        float2 sUV      = mix(baseUV, zoomedUV, chromaticMix);     // identity at 0 (baseUV==warped_uv)
+        float3 cr       = prevTex.sample(warpSampler, sUV).rgb;
+
+        // R->G->B transfer (warp_11..15) on the resampled colour — VERBATIM source
+        // (r=0.02; the three pushes are r·0.7, r·4, r·1 = 0.014, 0.080, 0.020).
+        // Where R is present it bleeds R->G; where G is present (and R/G low) G->B;
+        // B fades. Iterated through the feedback this cycles the field through the
+        // hue wheel — the source's full colour cycling, not a tuned approximation.
         float3 xfer = saturate((cr - 0.05) * 99.0);
         xfer.yz    *= saturate((0.1 - cr.xy) * 99.0);
         float3 warm = cr;
         warm += xfer.xxx * float3(-1.0, 1.0, 0.0) * 0.014;
         warm += xfer.yyy * float3(0.0, -1.0, 1.0) * 0.080;
         warm += xfer.zzz * float3(0.0, 0.0, -1.0) * 0.020;
-        return float4(mix(cr, warm, chromaticMix), prev.a) * in.decay;
+        // (warp_18..19 error-diffusion dither deferred — needs a noise texture
+        // bound to the warp pass; it is anti-banding polish, not the fill.)
+        //
+        // DECAY: butterchurn applies decay ONLY in the DEFAULT warp
+        // (`ret = sample(prev)·decay`). When a CUSTOM warp shader is present (DB),
+        // it sets warpColor = (1,1,1,1) and does `fragColor = ret · vColor` — i.e.
+        // NO decay multiply; the custom shader self-regulates the feedback via its
+        // normalise + R→G→B transfer (the B-fade) instead. So for the custom-warp
+        // path (chromaticMix>0) we must NOT apply decay — applying it was an extra
+        // ~5%/frame loss that starved the edges (pale background) and dimmed the
+        // field vs the oracle. Other presets use the default-warp decay unchanged.
+        float decayMul = (chromaticMix > 0.0) ? 1.0 : in.decay;
+        return float4(mix(cr, warm, chromaticMix), a0) * decayMul;
     }
 
     // ── mvWarp_compose_fragment ───────────────────────────────────────────────
@@ -179,13 +221,59 @@ extension PresetLoader {
     }
 
     // ── mvWarp_blit_fragment ──────────────────────────────────────────────────
-    // Copies the composed warp texture to the drawable. No tone-mapping here —
-    // the scene was already ACES-composited before entering the warp pipeline.
+    // Copies the composed warp texture to the drawable, applying the optional
+    // DISPLAY-stage post params (Dragon Bloom L4, D-137). The blit output is
+    // presented and NEVER swapped back into the feedback loop, so this is the
+    // faithful home for source.milk's comp-shader effects (bInvert / bBrighten) —
+    // the cool full-warp fill accumulates undisturbed in the feedback texture and
+    // only the presented frame is warmed (Milkdrop comp-shader semantics).
+    //
+    // FAITHFUL fixed-function comp of source.milk (PSVERSION_COMP=0), transcribed
+    // VERBATIM from butterchurn's built-in comp shader. Display-stage only (applied
+    // to the float feedback on the way to the drawable, NOT fed back — Milkdrop
+    // comp semantics, so the feedback field accumulates undisturbed):
+    //
+    //   uv_echo = (uv-0.5)*(1/echoZoom)*vec2(orientX,orientY)+0.5   // orient 1 = flip x
+    //   ret = mix(main(uv), main(uv_echo), echoAlpha)               // fVideoEchoAlpha=0.5
+    //   ret *= gammaAdj                                             // fGammaAdj=1.07 (MULTIPLY)
+    //   if(brighten) ret = sqrt(ret)   ┐ bBrighten=1 AND bDarken=1
+    //   if(darken)   ret = ret*ret     ┘ → sqrt then square = IDENTITY (cancel)
+    //   if(invert)   ret = 1 - ret                                  // bInvert=1
+    //
+    // The video echo (orientation 1, horizontal flip) also fills asymmetric gaps
+    // (an empty corner takes the mirror of the filled side) and cleans the
+    // bilateral symmetry. brighten+darken cancel for THIS preset → no net contrast
+    // op (so there is intentionally no brighten term here).
+    //
+    // post.x = invert (bInvert), post.y = echoAlpha (fVideoEchoAlpha),
+    // post.z = gamma (fGammaAdj), post.w = BEAT PULSE (D-137 music response).
+    // (0, 0, 1, 0) ⇒ identity blit — every other mv_warp preset byte-for-byte
+    // unchanged (echoAlpha 0 → mix=base; gamma 1; invert 0; beat 0).
+    //
+    // post.w (beat pulse, 0..1, per-frame): a DISPLAY-stage pump + brighten on the
+    // beat. The no-decay feedback smears per-beat changes into the slow field, so
+    // beat sync read subtle when driven inside the loop; applying it at the comp
+    // (NOT fed back) makes a crisp per-beat pump that punches through. The whole
+    // bloom zooms out slightly + brightens on the beat, then settles — "dancing
+    // with the beat" without strobing or disturbing the feedback equilibrium.
     fragment float4 mvWarp_blit_fragment(
         VertexOut          in      [[stage_in]],
-        texture2d<float>   warpTex [[texture(0)]]
+        texture2d<float>   warpTex [[texture(0)]],
+        constant float4&   post    [[buffer(0)]]
     ) {
-        return warpTex.sample(warpSampler, in.uv);
+        float  bp  = post.w;   // smoothed beat envelope (CPU-side attack/decay)
+        // Beat pump: zoom the sampled image OUT slightly on the beat so the bloom
+        // gently swells, then settles. Applied to the sample UV (display only).
+        // Kept subtle (4% pump / 12% brighten) — the earlier 7%/28% read as flicker.
+        float2 puv = (in.uv - 0.5) * (1.0 - 0.04 * bp) + 0.5;
+        float3 base = warpTex.sample(warpSampler, puv).rgb;
+        float3 echo = warpTex.sample(warpSampler, float2(1.0 - puv.x, puv.y)).rgb;  // orient 1, zoom 1
+        float3 ret  = mix(base, echo, post.y);   // video echo
+        ret *= post.z;                            // gamma multiply (1.07)
+        // brighten(sqrt)+darken(square) cancel → omitted.
+        ret  = mix(ret, 1.0 - ret, post.x);       // invert
+        ret *= (1.0 + 0.12 * bp);                 // beat brighten (accent on the pump)
+        return float4(saturate(ret), 1.0);
     }
 
     """

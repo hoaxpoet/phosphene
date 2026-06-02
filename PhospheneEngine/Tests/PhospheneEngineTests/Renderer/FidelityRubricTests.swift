@@ -167,7 +167,7 @@ struct FidelityRubricGateTests {
     // (ambient + fresnel + specular + iridescence — by-design paradigm
     // pivot per D-126); the visual fidelity bar is met by other means.
     // Matt's approval is the load-bearing gate per SHADER_CRAFT.md §12.1 M7.
-    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean"]
+    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom"]
 
     @Test func automatedGate_uncertifiedPresetsAreUncertified() async {
         let store = PresetCertificationStore()

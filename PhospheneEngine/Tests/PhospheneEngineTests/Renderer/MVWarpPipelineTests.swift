@@ -225,6 +225,11 @@ final class MVWarpPipelineTests: XCTestCase {
         if let enc = cmd.makeRenderCommandEncoder(descriptor: blitRPD) {
             enc.setRenderPipelineState(states.blit)
             enc.setFragmentTexture(composeTex, index: 0)
+            // mvWarp_blit_fragment post uniform (D-138): (invert, echoAlpha, gamma,
+            // beat). Identity = (0, 0, 1, 0) — passthrough, as for any non-Dragon-Bloom
+            // mv_warp preset.
+            var post = SIMD4<Float>(0, 0, 1, 0)
+            enc.setFragmentBytes(&post, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
             enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
             enc.endEncoding()
         }

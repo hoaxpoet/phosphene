@@ -49,6 +49,24 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// preset unchanged). Set via `setMVWarpChromatic`.
     var mvWarpChromatic: Float = 0
 
+    /// mv_warp display-stage post params (Dragon Bloom L4, D-137), bound to
+    /// `mvWarp_blit_fragment` at fragment buffer 0. `x` = invert amount
+    /// (source.milk `bInvert=1` — flips the cool full-warp fill to warm), `y` =
+    /// brighten amount (`bBrighten=1`). These are DISPLAY-only (the blit output
+    /// is presented, never swapped back into the feedback loop), matching
+    /// Milkdrop's fixed-function comp semantics — applied to the float feedback on
+    /// the way to the drawable, never fed back. `x` = invert (`bInvert`), `y` =
+    /// video-echo alpha (`fVideoEchoAlpha`, orientation-1 horizontal mirror), `z` =
+    /// gamma multiply (`fGammaAdj`). `(0, 0, 1)` ⇒ identity blit (every other
+    /// mv_warp preset byte-for-byte unchanged). Set via `setMVWarpPost`.
+    var mvWarpInvert: Float = 0
+    var mvWarpEcho: Float = 0
+    var mvWarpGamma: Float = 1
+    /// Smoothed beat-pulse envelope (Dragon Bloom comp pump, D-137). Sharp attack on
+    /// a beat, smooth decay between — so each beat reads as a pump-and-settle, not a
+    /// per-frame flicker. Updated on the render loop (MainActor); display-only.
+    var mvWarpBeatEnv: Float = 0
+
     // MARK: - Live Audio Features
 
     /// Latest audio features from MIR analysis (band energy, beats, spectral).

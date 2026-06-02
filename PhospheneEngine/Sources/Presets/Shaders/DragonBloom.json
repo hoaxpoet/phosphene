@@ -2,16 +2,17 @@
   "name": "Dragon Bloom",
   "family": "hypnotic",
   "duration": 45,
-  "description": "Spike 1 — Milkdrop-uplift feedback bloom. Live waveform drawn as a polar curve (nWaveMode=7 analog) and accumulated through mv_warp decay + per-vertex feather displacement, producing a warm fiery feathered bloom that breathes with the bass and streams with the mids. No symmetry / no palette polish yet (Spike 2/3). Faithful uplift target: `$$$ Royal - Mashup (220)`. See docs/presets/DRAGON_BLOOM_PLAN.md.",
+  "description": "Warm fiery bilaterally-symmetric feathered feedback bloom — a faithful port of the Milkdrop preset `$$$ Royal - Mashup (220)`'s render loop (butterchurn-replicated: no-decay custom warp + R→G→B colour transfer + waves composited normal-alpha on top, comp-stage echo/gamma/invert) on Phosphene's mv_warp, uplifted with stem separation (three tumbling spectral strands ← drums/bass/vocals — each arm is an instrument), bass breathing, per-arm transient flares, an energy-weighted tumble, and a comp-stage beat pump. See docs/presets/DRAGON_BLOOM_PLAN.md + D-137/D-138.",
   "author": "Matt",
   "passes": ["direct", "mv_warp"],
   "fragment_function": "dragon_bloom_fragment",
   "vertex_function": "fullscreen_vertex",
   "beat_source": "composite",
-  "decay": 0.945,
+  "decay": 0.950,
   "stem_affinity": {
-    "bass": "bloom_breathing",
-    "other": "feather_flow"
+    "drums": "strand_arm",
+    "bass": "strand_arm_breathing",
+    "vocals": "strand_arm"
   },
   "visual_density": 0.45,
   "motion_intensity": 0.55,
@@ -20,6 +21,6 @@
   "transition_affordances": ["crossfade", "morph"],
   "section_suitability": ["buildup", "peak", "bridge"],
   "complexity_cost": { "tier1": 1.4, "tier2": 0.7 },
-  "certified": false,
+  "certified": true,
   "rubric_profile": "lightweight"
 }

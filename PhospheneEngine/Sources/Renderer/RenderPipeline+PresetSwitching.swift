@@ -80,6 +80,19 @@ extension RenderPipeline {
         mvWarpLock.withLock { mvWarpChromatic = amount }
     }
 
+    /// Set the mv_warp display-stage post params (Dragon Bloom L4, D-137).
+    /// `invert` = source.milk `bInvert` (flips the cool full-warp fill to warm),
+    /// `brighten` = `bBrighten`. Display-only (applied in the blit, never fed
+    /// back). `(0, 0)` ⇒ identity blit (every other mv_warp preset unchanged).
+    /// Thread-safe.
+    public func setMVWarpPost(invert: Float, echo: Float = 0, gamma: Float = 1) {
+        mvWarpLock.withLock {
+            mvWarpInvert = invert
+            mvWarpEcho = echo
+            mvWarpGamma = gamma
+        }
+    }
+
     /// Attach a post-process chain for bloom + ACES when passes include `.postProcess`.
     /// Pass `nil` to detach. Thread-safe — can be called from any queue.
     public func setPostProcessChain(_ chain: PostProcessChain?) {

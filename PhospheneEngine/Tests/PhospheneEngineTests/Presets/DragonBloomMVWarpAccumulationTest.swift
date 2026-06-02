@@ -38,7 +38,12 @@ struct DragonBloomMVWarpAccumulationTest {
 
     private static let width  = 480
     private static let height = 360
-    private static let frameCount = 60        // ~1 s at 60 fps; well past mv_warp's ~17-frame decay window
+    // ~1 s at 60 fps; well past mv_warp's ~17-frame decay window. Env-overridable
+    // (DRAGON_BLOOM_FRAMES) for L4 steady-state-fill inspection (the oracle's fill
+    // develops over ~20 s — 60 frames does not reach it).
+    private static var frameCount: Int {
+        ProcessInfo.processInfo.environment["DRAGON_BLOOM_FRAMES"].flatMap { Int($0) } ?? 60
+    }
     private static let deltaTime: Float = 1.0 / 60.0
 
     // MARK: - Static-source guards (cheap regression sentries)
@@ -115,6 +120,7 @@ struct DragonBloomMVWarpAccumulationTest {
             audioMode: .syntheticMusic
         )
         try writePNG(music.pixels, to: outDir.appendingPathComponent("music_final.png"))
+        try writePNG(music.displayPixels, to: outDir.appendingPathComponent("music_display.png"))
 
         // ── Run C: Spotify-tap pattern (Matt's 2026-06-01 reproducer) ──────
         // Post-AGC-convergence: bands at ~0.5 (so brightness/zoom should fire)
@@ -127,6 +133,8 @@ struct DragonBloomMVWarpAccumulationTest {
             audioMode: .spotifyTapPattern
         )
         try writePNG(spotify.pixels, to: outDir.appendingPathComponent("spotify_final.png"))
+        try writePNG(spotify.displayPixels, to: outDir.appendingPathComponent("spotify_display.png"))
+        try writePNG(silence.displayPixels, to: outDir.appendingPathComponent("silence_display.png"))
 
         // ── Per-frame snapshots from the music run (frames 1, 10, 30, 60) ──────
         // The accumulator's envelope should monotonically grow over this range.
@@ -167,11 +175,17 @@ struct DragonBloomMVWarpAccumulationTest {
         #expect(spotify.brightPixels > 0,
                 "Spotify-tap run produced no strands — strand pipeline or stem drive not running.")
 
-        // No runaway feedback (additive strands + decay don't saturate to white).
-        #expect(music.frameMaxLuma < 0.95,
-                "Music run clipped to white (\(music.frameMaxLuma)) — strand brightness/accumulator running away.")
-        #expect(spotify.frameMaxLuma < 0.95,
-                "Spotify-tap run clipped to white (\(spotify.frameMaxLuma)) — strand brightness/accumulator running away.")
+        // No DEGENERATE white-out. Post-faithful-port (D-137) the pre-invert
+        // accumulator is intentionally a SATURATED HDR field — the bright petals
+        // legitimately reach 1.0 (frameMaxLuma == 1.0 is expected, not runaway).
+        // The real failure mode is the WHOLE frame clipping to flat white (every
+        // pixel maxed), so we gate on coverage not peak: the bright field must not
+        // fill the entire frame (a colourful bloom leaves structure/darker regions).
+        let total = Self.width * Self.height
+        #expect(music.brightPixels < total,
+                "Music run is a flat white-out (\(music.brightPixels)/\(total) px bright) — accumulator running away.")
+        #expect(spotify.brightPixels < total,
+                "Spotify-tap run is a flat white-out (\(spotify.brightPixels)/\(total) px bright) — accumulator running away.")
 
         // ── L1 load-bearing gate: STEM COUPLING (D-137) ───────────────────────
         // The strands are stem-driven: at silence stems are zero so each strand
@@ -198,34 +212,27 @@ struct DragonBloomMVWarpAccumulationTest {
                 coupling broken on the tap-pattern stems.
                 """)
 
-        // ── L2 gate: bilateral symmetry WITHOUT flat-clipart mirroring ────────
-        // L2 mirrors the strand brush about the vertical axis (each stem drawn as
-        // {original, mirror}) → the bloom FORM is bilaterally symmetric (high
-        // left↔right correlation). The per_pixel warp's concentric rotation keeps
-        // the accumulated TEXTURE non-identical across halves, so correlation
-        // stays strictly below a flat pixel mirror — the FA #48 "symmetric form,
-        // rich texture" contract Matt confirmed at Spike 2. Band (0.65, 0.999):
-        //   ≤ 0.65  → mirror not producing a symmetric form (regression)
-        //   ≥ 0.999 → flat pixel mirror = clipart (warp not diverging the halves)
-        let silenceSym = symmetryCorrelation(silence.pixels)
-        let musicSym   = symmetryCorrelation(music.pixels)
-        let spotifySym = symmetryCorrelation(spotify.pixels)
+        // ── Bilateral symmetry gate (measured on the DISPLAY output) ──────────
+        // Symmetry comes from the comp-stage VIDEO ECHO (horizontal mirror, alpha
+        // 0.5) — matching butterchurn (the 3 custom waves are NOT mirrored; the
+        // echo symmetrises the displayed frame). So the gate measures displayPixels
+        // (post-echo), not the pre-echo accumulator. Band (0.65, 0.9999): the echo
+        // blends the field with its mirror at 0.5, so the display is strongly but
+        // not perfectly symmetric (the field itself is asymmetric under the mirror).
+        let silenceSym = symmetryCorrelation(silence.displayPixels)
+        let musicSym   = symmetryCorrelation(music.displayPixels)
+        let spotifySym = symmetryCorrelation(spotify.displayPixels)
         print("""
-        [dragon_bloom_diag] Bilateral symmetry correlation (left↔right mirror):
+        [dragon_bloom_diag] Bilateral symmetry correlation (DISPLAY, left↔right mirror):
           silence = \(padF(silenceSym))   music = \(padF(musicSym))   spotify = \(padF(spotifySym))
-          L2 target band for music: > 0.65 (symmetric form) AND < 0.999 (rich texture, not flat mirror).
+          Target for music: > 0.99 — the echo (0.5 horizontal-mirror blend) makes the
+          display mathematically symmetric (corr ≈ 1.0); the symmetric field is still
+          richly textured (the average of the two rich halves), not flat clipart.
         """)
-        #expect(musicSym > 0.65,
+        #expect(musicSym > 0.99,
                 """
-                Bloom is not bilaterally symmetric under music (corr \(musicSym) ≤ 0.65). \
-                The L2 strand mirror (instance ≥ 3 → x = 1−x) is not producing a \
-                symmetric form. See D-137 §0 / Spike 2.
-                """)
-        #expect(musicSym < 0.999,
-                """
-                Bloom is a near-perfect pixel mirror under music (corr \(musicSym) ≥ 0.999) \
-                — flat-clipart symmetry (FA #48). The per_pixel warp is not diverging \
-                the two halves' accumulated texture.
+                Display is not bilaterally symmetric under music (corr \(musicSym) ≤ 0.99) — \
+                the comp video-echo (horizontal mirror) is not symmetrising the frame.
                 """)
     }
 
@@ -243,8 +250,21 @@ struct DragonBloomMVWarpAccumulationTest {
         case spotifyTapPattern
     }
 
+    /// L4 (D-137): faithful comp params bound to mvWarp_blit_fragment.
+    /// x = invert (bInvert), y = video-echo alpha (fVideoEchoAlpha, orientation-1
+    /// horizontal mirror), z = gamma (fGammaAdj). Match the live app's Dragon Bloom
+    /// wiring; env-overridable for quick visual iteration.
+    private static var displayPost: SIMD4<Float> {
+        let env = ProcessInfo.processInfo.environment
+        let inv = env["DRAGON_BLOOM_INVERT"].flatMap { Float($0) } ?? 1.0
+        let echo = env["DRAGON_BLOOM_ECHO"].flatMap { Float($0) } ?? 0.5
+        let gamma = env["DRAGON_BLOOM_GAMMA"].flatMap { Float($0) } ?? 1.07
+        return SIMD4<Float>(inv, echo, gamma, 0)
+    }
+
     private struct LoopResult {
-        let pixels: [UInt8]
+        let pixels: [UInt8]          // pre-blit accumulator (feedback texture)
+        let displayPixels: [UInt8]   // L4: post-blit display output (what the user sees)
         let brightPixels: Int
         let frameMaxLuma: Float
         let envelopeRadius: Float    // mean radial distance (UV) of bright pixels (final frame)
@@ -265,17 +285,22 @@ struct DragonBloomMVWarpAccumulationTest {
         let device = context.device
         let queue = context.commandQueue
 
-        let texDesc = MTLTextureDescriptor.texture2DDescriptor(
+        // 8-bit feedback textures — matching butterchurn (UNSIGNED_BYTE RGBA). The
+        // per-frame clamp is load-bearing for the saturated no-decay equilibrium.
+        let fbDesc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: context.pixelFormat,
             width: Self.width, height: Self.height, mipmapped: false)
-        texDesc.usage = [.renderTarget, .shaderRead]
-        texDesc.storageMode = .shared
-        guard let sceneTex = device.makeTexture(descriptor: texDesc),
-              var warpTex = device.makeTexture(descriptor: texDesc),
-              var composeTex = device.makeTexture(descriptor: texDesc)
+        fbDesc.usage = [.renderTarget, .shaderRead]
+        fbDesc.storageMode = .shared
+        guard let sceneTex = device.makeTexture(descriptor: fbDesc),
+              var warpTex = device.makeTexture(descriptor: fbDesc),
+              var composeTex = device.makeTexture(descriptor: fbDesc),
+              let blitTex = device.makeTexture(descriptor: fbDesc),
+              let readbackTex = device.makeTexture(descriptor: fbDesc)
         else { throw DragonBloomDiagError.textureFailed }
 
         try clearTextures([sceneTex, warpTex, composeTex], context: context)
+        try clearTextures([blitTex, readbackTex], context: context)
 
         let floatStride = MemoryLayout<Float>.stride
         guard
@@ -297,6 +322,7 @@ struct DragonBloomMVWarpAccumulationTest {
         let checkpoints: Set<Int> = [38, 44, 50, 56]
         var checkpointRadii: [Float] = []
         var checkpointBright: [Int] = []
+        var beatEnv: Float = 0   // smoothed beat-pulse envelope (matches RenderPipeline)
 
         for frameIdx in 0..<Self.frameCount {
             let t = Float(frameIdx) * Self.deltaTime + 1.0
@@ -315,23 +341,41 @@ struct DragonBloomMVWarpAccumulationTest {
 
             guard let cmd = queue.makeCommandBuffer() else { throw DragonBloomDiagError.cmdBufferFailed }
 
-            // ── Pass A: render background + additive strands → sceneTex ──────
-            try renderScene(
-                cmd: cmd, preset: preset, target: sceneTex,
-                features: &features, stems: &stemsVal, fft: fft, wav: wav, stem: stem
-            )
-
-            // ── Pass B: warp prev (warpTex) → composeTex ─────────────────────
+            // ── Pass A: warp prev (warpTex) → composeTex (no decay for DB) ────
+            // Matches butterchurn: warp the previous frame into the target, then
+            // draw the waves ON TOP of it (normal alpha). There is NO separate
+            // decayed compose for custom-warp presets — the feedback is the warped
+            // prev with waves composited, self-regulated by the warp transfer.
             try encodeWarp(
                 cmd: cmd, mvWarp: mvWarp,
                 warpTex: warpTex, composeTex: composeTex,
                 features: &features
             )
-            // ── Pass C: alpha-blend scene onto composeTex ────────────────────
-            try encodeCompose(
-                cmd: cmd, mvWarp: mvWarp,
-                sceneTex: sceneTex, composeTex: composeTex
+            // ── Pass B: draw the strands directly onto composeTex (normal alpha) ─
+            // (sceneTex/encodeCompose retired for DB — was: scene*(1-decay) additive,
+            // which with no warp-decay accumulated to white.)
+            _ = sceneTex; _ = fft; _ = wav; _ = stem  // (retired scene-render inputs)
+            try encodeStrandsOnto(
+                cmd: cmd, preset: preset, target: composeTex,
+                features: &features, stems: &stemsVal
             )
+            // ── Pass D: blit composeTex → display (invert/brighten) + readback ─
+            // Production parity (FA #66 / production-grade-testing rule): the live
+            // app blits composeTexture to the drawable with the display-stage post
+            // (invert/brighten) BEFORE the swap. blitTex holds what the user sees;
+            // readbackTex is an identity-tonemap of the float accumulator (8-bit)
+            // for the structural analysis/PNG (float can't be read back as RGBA8).
+            // Beat pulse (post.w) per-frame — matches RenderPipeline.mvWarpBeatPulse:
+            // trigger = smoothstep(0.78,1.0, beatComposite); envelope sharp-attack /
+            // 0.85-decay (pump-and-settle, not per-frame flicker).
+            let bu = min(1, max(0, (features.beatComposite - 0.78) / 0.22))
+            let trigger = bu * bu * (3 - 2 * bu)
+            beatEnv = max(trigger, beatEnv * 0.85)
+            var dPost = Self.displayPost; dPost.w = beatEnv
+            try encodeBlit(cmd: cmd, mvWarp: mvWarp, srcTex: composeTex,
+                           dstTex: blitTex, post: dPost)
+            try encodeBlit(cmd: cmd, mvWarp: mvWarp, srcTex: composeTex,
+                           dstTex: readbackTex, post: SIMD4<Float>(0, 0, 1, 0))  // invert0 echo0 gamma1
 
             cmd.commit()
             cmd.waitUntilCompleted()
@@ -344,7 +388,7 @@ struct DragonBloomMVWarpAccumulationTest {
 
             if checkpoints.contains(frameIdx) {
                 var cp = [UInt8](repeating: 0, count: Self.width * Self.height * 4)
-                warpTex.getBytes(&cp, bytesPerRow: Self.width * 4,
+                readbackTex.getBytes(&cp, bytesPerRow: Self.width * 4,
                                  from: MTLRegionMake2D(0, 0, Self.width, Self.height), mipmapLevel: 0)
                 let (b, _, r) = analyzeFrame(cp)
                 checkpointBright.append(b)
@@ -352,16 +396,23 @@ struct DragonBloomMVWarpAccumulationTest {
             }
         }
 
-        // Final accumulated frame lives in warpTex post-swap.
+        // Final accumulated frame: identity-tonemapped 8-bit readback of the float
+        // accumulator (warpTex == composeTex pre-swap content lives in readbackTex).
         var pixels = [UInt8](repeating: 0, count: Self.width * Self.height * 4)
-        warpTex.getBytes(&pixels, bytesPerRow: Self.width * 4,
+        readbackTex.getBytes(&pixels, bytesPerRow: Self.width * 4,
+                         from: MTLRegionMake2D(0, 0, Self.width, Self.height), mipmapLevel: 0)
+        _ = warpTex  // (float; analysed via readbackTex above)
+
+        // L4: the post-blit display output (what the user sees) lives in blitTex.
+        var displayPixels = [UInt8](repeating: 0, count: Self.width * Self.height * 4)
+        blitTex.getBytes(&displayPixels, bytesPerRow: Self.width * 4,
                          from: MTLRegionMake2D(0, 0, Self.width, Self.height), mipmapLevel: 0)
 
         let (bright, maxL, envR) = analyzeFrame(pixels)
         let radiusMotion = (checkpointRadii.max() ?? 0) - (checkpointRadii.min() ?? 0)
         let brightRange = Float((checkpointBright.max() ?? 0) - (checkpointBright.min() ?? 0))
         let brightnessMotion = brightRange / Float(max(1, Self.width * Self.height))
-        return LoopResult(pixels: pixels, brightPixels: bright,
+        return LoopResult(pixels: pixels, displayPixels: displayPixels, brightPixels: bright,
                           frameMaxLuma: maxL, envelopeRadius: envR,
                           radiusMotion: radiusMotion, brightnessMotion: brightnessMotion)
     }
@@ -404,7 +455,66 @@ struct DragonBloomMVWarpAccumulationTest {
         }
     }
 
+    // ── Real-session replay (feedback_synthetic_audio: never judge temporal
+    // behaviour on hand-authored envelopes). Set DRAGON_BLOOM_SESSION=<dir> to a
+    // recorded session (features.csv + stems.csv); the music run then replays the
+    // REAL per-frame FeatureVector + StemFeatures in order (DRAGON_BLOOM_SESSION_OFFSET
+    // skips past cold-start). Falls back to the synthetic distributions if unset.
+    nonisolated(unsafe) static var _realSession: (feats: [FeatureVector], stems: [StemFeatures])??
+    static func realSession() -> (feats: [FeatureVector], stems: [StemFeatures])? {
+        if let cached = _realSession { return cached }
+        guard let dir = ProcessInfo.processInfo.environment["DRAGON_BLOOM_SESSION"] else {
+            _realSession = .some(nil); return nil
+        }
+        func cols(_ path: String) -> [[Float]] {
+            guard let txt = try? String(contentsOfFile: path, encoding: .utf8) else { return [] }
+            return txt.split(separator: "\n").dropFirst().map { line in
+                line.split(separator: ",", omittingEmptySubsequences: false).map { Float($0) ?? 0 }
+            }
+        }
+        let f = cols("\(dir)/features.csv")
+        let s = cols("\(dir)/stems.csv")
+        let n = min(f.count, s.count)
+        guard n > 0 else { _realSession = .some(nil); return nil }
+        var feats: [FeatureVector] = []; var stems: [StemFeatures] = []
+        feats.reserveCapacity(n); stems.reserveCapacity(n)
+        for i in 0..<n {
+            let fr = f[i], sr = s[i]
+            func fv(_ a: [Float], _ idx: Int) -> Float { idx < a.count ? a[idx] : 0 }
+            // features.csv: time=2 bass=4 mid=5 treble=6 spectralCentroid=17 valence=19
+            var v = FeatureVector(bass: fv(fr, 4), mid: fv(fr, 5), treble: fv(fr, 6),
+                                  time: fv(fr, 2), deltaTime: Self.deltaTime)
+            v.spectralCentroid = fv(fr, 17)
+            v.valence = fv(fr, 19); v.arousal = fv(fr, 20)
+            v.accumulatedAudioTime = fv(fr, 21)   // drives the energy-weighted tumble
+            v.bassRel = fv(fr, 24); v.bassDev = fv(fr, 25)
+            v.spectralFlux = fv(fr, 18)
+            v.beatComposite = fv(fr, 16)
+            feats.append(v)
+            // stems.csv: drumsE=2 bassE=6 vocalsE=10 otherE=14 drumsDev=19 bassDev=21 vocalsDev=23
+            var st = StemFeatures.zero
+            st.drumsEnergy = fv(sr, 2);  st.bassEnergy = fv(sr, 6)
+            st.vocalsEnergy = fv(sr, 10); st.otherEnergy = fv(sr, 14)
+            st.drumsEnergyDev = fv(sr, 19); st.bassEnergyDev = fv(sr, 21)
+            st.vocalsEnergyDev = fv(sr, 23)
+            stems.append(st)
+        }
+        let loaded = (feats: feats, stems: stems)
+        _realSession = .some(loaded)
+        print("[dragon_bloom_diag] replaying REAL session: \(n) frames from \(dir)")
+        return loaded
+    }
+    private static func realFrameIndex(_ frameIdx: Int, count: Int) -> Int {
+        let off = ProcessInfo.processInfo.environment["DRAGON_BLOOM_SESSION_OFFSET"].flatMap { Int($0) } ?? 600
+        return min(off + frameIdx, count - 1)
+    }
+
     private func makeFeatures(frameIdx: Int, mode: AudioMode, time: Float) -> FeatureVector {
+        if mode != .silence, let rs = Self.realSession() {
+            var v = rs.feats[Self.realFrameIndex(frameIdx, count: rs.feats.count)]
+            v.time = time           // monotonic diag clock for time-driven strand tumble
+            return v
+        }
         switch mode {
         case .silence:
             return FeatureVector(time: time, deltaTime: Self.deltaTime)
@@ -470,6 +580,9 @@ struct DragonBloomMVWarpAccumulationTest {
     /// instrument energies ~0.45–0.6 with time-varying deviation, phased so the
     /// strands don't lockstep, so stem coupling lengthens the strands past silence.
     private func makeStems(frameIdx: Int, mode: AudioMode) -> StemFeatures {
+        if mode != .silence, let rs = Self.realSession() {
+            return rs.stems[Self.realFrameIndex(frameIdx, count: rs.stems.count)]
+        }
         switch mode {
         case .silence:
             return StemFeatures.zero
@@ -528,6 +641,33 @@ struct DragonBloomMVWarpAccumulationTest {
         enc.endEncoding()
     }
 
+    /// Draw the strands directly ONTO the warp result (loadAction .load), normal
+    /// alpha — butterchurn's "waves on top of warped target" (D-137). The strand
+    /// pipeline carries the normal-alpha blend (wavecode bAdditive=0).
+    private func encodeStrandsOnto(
+        cmd: MTLCommandBuffer, preset: PresetLoader.LoadedPreset, target: MTLTexture,
+        features: inout FeatureVector, stems: inout StemFeatures
+    ) throws {
+        guard let strandState = preset.mvWarpPipelines?.sceneGeometryState else {
+            Issue.record("Dragon Bloom has no strand pipeline — L1 wiring broken.")
+            return
+        }
+        let desc = MTLRenderPassDescriptor()
+        desc.colorAttachments[0].texture = target
+        desc.colorAttachments[0].loadAction = .load          // keep the warped prev
+        desc.colorAttachments[0].storeAction = .store
+        guard let enc = cmd.makeRenderCommandEncoder(descriptor: desc)
+        else { throw DragonBloomDiagError.encoderFailed }
+        enc.setRenderPipelineState(strandState)
+        enc.setVertexBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
+        enc.setVertexBytes(&stems, length: MemoryLayout<StemFeatures>.stride, index: 1)
+        // 3 waves (source has 3 custom waves). Bilateral symmetry comes from the
+        // video echo (horizontal mirror) at the comp/blit, NOT from mirrored strand
+        // instances — matching butterchurn.
+        enc.drawPrimitives(type: .lineStrip, vertexStart: 0, vertexCount: 1536, instanceCount: 3)
+        enc.endEncoding()
+    }
+
     private func encodeWarp(
         cmd: MTLCommandBuffer, mvWarp: PresetLoader.MVWarpCompiledPipelines,
         warpTex: MTLTexture, composeTex: MTLTexture,
@@ -568,8 +708,29 @@ struct DragonBloomMVWarpAccumulationTest {
         else { throw DragonBloomDiagError.encoderFailed }
         enc.setRenderPipelineState(mvWarp.composeState)
         enc.setFragmentTexture(sceneTex, index: 0)
-        var decay: Float = 0.945    // matches DragonBloom.json / kMVWarpBaseDecay
+        var decay: Float = 0.950    // matches DragonBloom.json / kMVWarpBaseDecay
         enc.setFragmentBytes(&decay, length: MemoryLayout<Float>.stride, index: 0)
+        enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        enc.endEncoding()
+    }
+
+    /// L4 (D-137): blit srcTex → dstTex applying the display-stage post
+    /// (invert/brighten) via mvWarp_blit_fragment — the same pipeline + bound
+    /// uniform the live app uses for the present pass.
+    private func encodeBlit(
+        cmd: MTLCommandBuffer, mvWarp: PresetLoader.MVWarpCompiledPipelines,
+        srcTex: MTLTexture, dstTex: MTLTexture, post: SIMD4<Float>
+    ) throws {
+        let desc = MTLRenderPassDescriptor()
+        desc.colorAttachments[0].texture = dstTex
+        desc.colorAttachments[0].loadAction = .dontCare
+        desc.colorAttachments[0].storeAction = .store
+        guard let enc = cmd.makeRenderCommandEncoder(descriptor: desc)
+        else { throw DragonBloomDiagError.encoderFailed }
+        enc.setRenderPipelineState(mvWarp.blitState)
+        enc.setFragmentTexture(srcTex, index: 0)
+        var post = post
+        enc.setFragmentBytes(&post, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
         enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         enc.endEncoding()
     }

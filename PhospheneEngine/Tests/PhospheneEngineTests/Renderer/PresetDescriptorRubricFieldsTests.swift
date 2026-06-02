@@ -90,8 +90,11 @@ import Foundation
         let descriptor = try decoder.decode(PresetDescriptor.self, from: data)
         loaded += 1
 
-        // All presets must have certified: false initially.
-        #expect(descriptor.certified == false, "\(descriptor.name): expected certified: false")
+        // Certified presets (Matt M7-approved): Lumen Mosaic, Ferrofluid Ocean,
+        // Dragon Bloom. Everything else must be uncertified. (Field must decode.)
+        let certifiedExpected: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom"]
+        #expect(descriptor.certified == certifiedExpected.contains(descriptor.name),
+                "\(descriptor.name): certified flag does not match the M7-approved set")
 
         // Lightweight presets must declare the correct profile.
         if lightweightExpected.contains(descriptor.name) {
