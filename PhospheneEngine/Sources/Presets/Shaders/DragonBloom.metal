@@ -106,148 +106,20 @@ fragment float4 dragon_bloom_fragment(
     constant float*         wv     [[buffer(2)]],   // slot 2 — 2048 samples (1024 stereo frames)
     constant StemFeatures&  stems  [[buffer(3)]]    // unused Spike 1 (D-019 warmup not relevant)
 ) {
-    float2 uv    = in.uv;
-    float2 pRel  = uv - float2(kBloomCentreX, kBloomCentreY);
-    float  r     = length(pRel);
-
-    // ── Bilateral mirror fold (Spike 2) ──────────────────────────────────────
-    // Fold the silhouette source about the VERTICAL axis (abs on the x
-    // component) so the left and right halves sample the SAME part of the
-    // waveform → the bloom is bilaterally symmetric, matching the reference
-    // (`01_target.png`, which mirrors left↔right about a vertical centre line).
+    // L1 (D-137): the bloom is now the three additive spectral STRANDS drawn on
+    // top of this pass (`dragon_bloom_strand_vertex`, wired via setSceneGeometry)
+    // — each strand driven by a stem (drums/bass/vocals). This fullscreen fragment
+    // just lays a near-black ground with a soft corner vignette so the mv_warp
+    // accumulator has a quiet base and the strands read against it.
     //
-    // We fold ONLY the angle used to draw the waveform curve — i.e. the bloom
-    // SILHOUETTE. The rich feathered TEXTURE that keeps this out of FA #48
-    // ("flat mirrored clipart", the Arachne anti-reference) comes from the
-    // mv_warp accumulator, whose tangential-swirl field has rotational
-    // handedness (`(-p.y, p.x)`) and therefore accumulates DIFFERENTLY on the
-    // two halves even though each fresh brush stroke is mirror-symmetric.
-    // Net read: symmetric FORM, non-identical (rich) TEXTURE. Per the plan §5
-    // and the reference README: "Mirror a feedback-warped field, never flat
-    // geometry." The folded curve is the brush; the warped accumulator is the
-    // field. (If a future render reads as clipart, add per-side hash jitter
-    // here per FA #44 — the warp handedness is the primary anti-clipart source.)
-    float  angFold = atan2(pRel.y, abs(pRel.x));    // [-PI/2, PI/2] — right-half angle, mirrored to left
-
-    // ── Audio drivers ─────────────────────────────────────────────────────────
-    // Signal selection is empirically grounded: each driver was chosen by
-    // measuring its frame-to-frame stddev across both a real LF session
-    // (Atlas, the one that "danced") and a real Spotify session (the one that
-    // looked muted), per the 2026-06-02 BUG-025 A/B diagnosis. Only signals
-    // that are *alive on both paths* drive motion. The earlier Spike-1 routing
-    // drove feather flow from `mid_att_rel` (stddev ≈ 0.01 on this music →
-    // feathers frozen) and breathing from `max(0, bass_att_rel)` (clamping the
-    // signed signal to zero → no breathing). Both were dead. See the
-    // (layer × primitive × timescale) table at the top of mvWarpPerFrame.
-    //
-    //   bass_rel SIGNED  — stddev 0.20 (Spotify) / 0.22 (LF): the strongest
-    //                      path-consistent continuous driver. Signed so the
-    //                      bloom contracts below-average and expands above.
-    //   bass (Layer-1)   — stddev 0.10 / 0.11: continuous loudness / presence.
-    //   spectralFlux     — stddev 0.22 / 0.15: spectral-change → feather flow.
-    //   beatComposite    — stddev 0.25 / 0.37: the per-beat accent.
-    //   mid / treble     — stddev < 0.02 on bass-dominant music; kept only as a
-    //                      tiny additive term so mid-rich tracks still register,
-    //                      never as a primary driver.
-    float bassAbs    = f.bass;                       // [0, ~1] — continuous loudness
-    float midAbs     = f.mid;                        // [0, ~1] — usually tiny
-    float bassRel    = f.bass_rel;                   // [-1, ~0.6] SIGNED — alive on both paths
-    float flux       = f.spectral_flux;              // [0, 1] — spectral change
-    float beatPulse  = max(f.beat_composite, max(f.beat_bass, f.beat_mid));
-
-    // ── Polar waveform curve (nWaveMode=7 analog) ────────────────────────────
-    // Map screen angle → waveform sample index → radial offset around kBaseRadius.
-    // The bloom *silhouette* is this curve. The bloom *texture* is what mv_warp
-    // builds from accumulating thousands of these strokes through warp+decay.
-    //
-    // Per-frame waveform amplitude normalisation: bring the raw PCM amplitude
-    // (slot 2) to a consistent reference RMS so the polar curve deflects
-    // equally across audio paths (LF AVAudioEngine vs. process-tap on
-    // Spotify/Apple Music — see `waveformRMS` block above). Gated on
-    // `musicPresent` (derived from AGC-normalised bands) so the boost only
-    // kicks in when there's real audio — at true silence we leave the noise
-    // floor alone instead of amplifying it 6×.
-    float waveRMS      = waveformRMS(wv);
-    float musicPresent = saturate((bassAbs + midAbs + max(0.0, f.treble)) * 1.5 - 0.10);
-    float waveAmpScale = mix(1.0, clamp(kWaveTargetRMS / max(0.02, waveRMS), 0.5, 6.0), musicPresent);
-
-    // Map the FOLDED vertical-sweep angle [-PI/2, PI/2] across the full
-    // waveform [0, 1]: bottom of screen (angFold → -PI/2) samples frame 0, top
-    // (angFold → +PI/2) samples the last frame. Because angFold is built from
-    // abs(pRel.x), the left half mirrors the right — the curve, and therefore
-    // the bloom silhouette, is bilaterally symmetric.
-    constexpr int kFrames = WAVEFORM_CAPACITY / 2;
-    float angNorm  = (angFold + M_PI_F * 0.5) / M_PI_F;   // [0, 1] across the vertical sweep
-    float frameF   = angNorm * float(kFrames - 1);
-    float wave     = sampleWaveformMono(wv, frameF) * waveAmpScale;
-
-    // Radius — the bloom *breathes* with the low end.
-    //   · Continuous bass (Layer 1) sets a gentle baseline swell.
-    //   · SIGNED bass_rel is the breathing (stddev ≈ 0.21 on both paths — the
-    //     alive signal). It sits structurally negative because the bass band
-    //     is a fraction of the AGC total-energy average it's normalised
-    //     against, so it averages ≈ −0.5 on real music regardless of path. We
-    //     RECENTER by +0.5 so the bloom rests at base radius at typical bass,
-    //     expands on bass hits (bass_rel → 0 or positive), and draws in during
-    //     bass lulls (bass_rel → −1). Without the recenter the bloom would sit
-    //     permanently contracted. The 0.060 gain gives clearly visible travel
-    //     (≈ ±0.03 UV typical, more on hits) against the 0.28 base radius.
-    float breathe    = (bassRel + 0.5) * 0.060;       // recentered SIGNED breathing
-    float liveRadius = kBaseRadius
-                     + wave    * kWaveDisplaceUV      // the music's waveform shape
-                     + bassAbs * 0.020                // continuous baseline swell
-                     + breathe;                       // alive on both paths
-    float dr         = abs(r - liveRadius);
-
-    // Anti-aliased curve coverage + soft halo (the halo is what the warp pass
-    // gets to smear — without it the bloom looks like a thin line, not a feathered
-    // form).
-    float aaW       = 0.0010;
-    float curveCov  = smoothstep(kCurveThicknessUV + aaW, kCurveThicknessUV - aaW, dr);
-    float curveHalo = exp(-(dr * dr) / (kCurveHaloUV * kCurveHaloUV)) * 0.55;
-    float bloomMask = max(curveCov, curveHalo);
-
-    // ── Colour: fixed warm brush (NO palette polish in Spike 1) ──────────────
-    // The curve is hot near its centre, deeper red on the halo wings. This is
-    // the "brush" loaded into the mv_warp accumulator each frame; the final
-    // visible colour comes from accumulating thousands of these brushes through
-    // the warp + decay chain.
-    float edgeMix    = smoothstep(0.0, kCurveHaloUV, dr);
-    float3 brushCol  = mix(kBloomColorHot, kBloomColorEdge, edgeMix);
-
-    // ── Per-beat pulse (Layer-4 accent only) ─────────────────────────────────
-    // Bounded and deliberately small. mv_warp feedback AMPLIFIES per-beat
-    // brightness flashes (a bright beat frame smears forward through the
-    // accumulator), so this is exactly the "beat amplified by feedback"
-    // failure FA #4 guards. Primary motion lives in the continuous drivers
-    // (bass_rel breathing + flux feather flow + bass brightness); the beat is
-    // a 0.15 shimmer on top, never the dominant driver.
-    float beatBoost  = 1.0 + beatPulse * 0.15;
-
-    // ── Brightness lift ───────────────────────────────────────────────────────
-    // PRIMARY: continuous f.bass (Layer 1 — non-zero whenever music is playing,
-    // stddev ≈ 0.10 on both paths). A small spectralFlux term adds shimmer on
-    // spectral changes; a tiny mid term so mid-rich tracks register. The 0.30
-    // floor keeps the bloom visible at silence so the warp accumulator always
-    // has material to smear into the bloom shape. bass_rel is deliberately NOT
-    // used here — it drives the radius breathing (one primitive per layer,
-    // per feedback_audio_layer_one_primitive); routing it into brightness too
-    // would encode the same bass event through two channels at one timescale.
-    float energyLift = 0.30
-                     + bassAbs * 0.55                // continuous bass — primary
-                     + flux    * 0.20                // spectral-change shimmer
-                     + midAbs  * 0.30;               // mid (tiny on bass-dominant music)
-
-    float3 bloomCol  = brushCol * bloomMask * energyLift * beatBoost;
-
-    // ── Composite onto near-black background ─────────────────────────────────
-    // Soft vignette so the corners feed less material into the warp pass —
-    // keeps the feathered halo loosely concentric without forcing geometry.
-    float vignette   = 1.0 - smoothstep(0.45, 0.95, r);
-    float3 final     = kBackgroundColor + bloomCol * vignette;
-
-    final = min(final, float3(1.0));
-    return float4(final, 1.0);
+    // The Spike-1/2 polar ring + the D-136 bilateral fold are RETIRED here: the
+    // strands carry their own bilateral symmetry (the `oz = abs(oz)` fold in the
+    // per-point math), so the fragment no longer draws or folds a waveform curve.
+    // `fft`/`wv`/`stems`/`f` stay bound for later layers (L5 palette).
+    float2 uv       = in.uv;
+    float  r        = length(uv - float2(kBloomCentreX, kBloomCentreY));
+    float  vignette = 1.0 - smoothstep(0.55, 1.05, r);
+    return float4(kBackgroundColor * vignette, 1.0);
 }
 
 // ── L1: Spectral strand brush (the UPLIFT — D-137) ─────────────────────────────
@@ -275,6 +147,12 @@ constant int   kStrandSamples = 512;     // points per strand (source uses 512)
 constant float kStrandSP      = 6.28 * 8.0 * 8.0 * 4.0;   // 1285.76 — source `sample*6.28*8*8*4`
 constant float kStrandVol     = 0.2;     // source's final `vol = .2`
 constant float kStrandFov     = 0.5;     // source's `fov = .5`
+// Per-point additive brightness scale. The mv_warp compose weights each frame's
+// scene by (1−decay) and accumulates over the decay window to ≈1× at steady
+// state, and the dense helix piles many points per pixel near the centre — so
+// the raw `1+sin(sp)` colour (up to 2) saturates to white without a strong dim.
+// 0.13 keeps the accumulated bloom below clip while still reading as glow.
+constant float kStrandBrightness = 0.13;
 
 struct DragonStrandVertexOut {
     float4 position [[position]];
@@ -347,7 +225,12 @@ vertex DragonStrandVertexOut dragon_bloom_strand_vertex(
     float3 col = (dom == 0) ? float3(bright, cC, cS)
                : (dom == 1) ? float3(cS, bright, cC)
                             : float3(cC, cS, bright);
-    float alpha = 0.5 + (oz + 2.0) * 0.25;
+    // bModWaveAlphaByVolume analog (source.milk =1): each strand's alpha scales
+    // with ITS instrument's energy, so a quiet/absent instrument fades its strand
+    // (musical — each arm tracks its stem) and at silence the strands don't pile
+    // densely at the shared centre and clip to white.
+    float volGate = clamp(stemE * 1.6, 0.0, 1.0);
+    float alpha = (0.5 + (oz + 2.0) * 0.25) * volGate;
 
     DragonStrandVertexOut o;
     // Screen (x,y)∈[0,1] → clip. Flip Y: Milkdrop is bottom-up, the scene texture
@@ -361,9 +244,12 @@ vertex DragonStrandVertexOut dragon_bloom_strand_vertex(
 
 fragment float4 dragon_bloom_strand_fragment(DragonStrandVertexOut in [[stage_in]]) {
     // Additive blend (configured engine-side: srcRGB=one, dstRGB=one): emit the
-    // HDR strand colour pre-weighted by the per-point alpha so faint near-end
-    // points contribute less. Glow > 1 is intentional (tonemapped downstream).
-    return float4(in.color.rgb * in.color.a, in.color.a);
+    // strand colour pre-weighted by the per-point alpha (faint near-end points
+    // contribute less) and the global dim that keeps feedback accumulation below
+    // clip. The colour ratios (dominant `1+sin(sp)` channel) survive the scale,
+    // so the per-strand hue identity is preserved.
+    float w = in.color.a * kStrandBrightness;
+    return float4(in.color.rgb * w, w);
 }
 
 // ── MV-Warp functions (D-027) ─────────────────────────────────────────────────

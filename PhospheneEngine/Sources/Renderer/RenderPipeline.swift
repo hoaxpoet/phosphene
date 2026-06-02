@@ -31,6 +31,19 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var particleGeometry: (any ParticleGeometry)?
     let particleLock = NSLock()
 
+    // MARK: - Scene Geometry Overlay (Dragon Bloom strands, D-137)
+
+    /// Optional additive geometry drawn into the mv_warp scene texture AFTER the
+    /// fullscreen background fragment (the 3 Dragon Bloom spectral strands). The
+    /// pipeline's blend is additive; the draw binds FeatureVector(0) + StemFeatures(1)
+    /// so the strand vertex shader can compute the per-point math from time + stems.
+    /// nil = no overlay (every other direct/mv_warp preset). Set via `setSceneGeometry`.
+    let sceneGeometryLock = NSLock()
+    var sceneGeometryState: MTLRenderPipelineState?
+    var sceneGeometryVertexCount = 0
+    var sceneGeometryInstanceCount = 0
+    var sceneGeometryPrimitive: MTLPrimitiveType = .lineStrip
+
     // MARK: - Live Audio Features
 
     /// Latest audio features from MIR analysis (band energy, beats, spectral).

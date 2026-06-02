@@ -384,6 +384,9 @@ extension RenderPipeline {
         }
         bindNoiseTextures(to: encoder)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        // Additive scene-geometry overlay (Dragon Bloom strands, D-137) into the
+        // same scene-texture pass. See RenderPipeline+SceneGeometry.swift.
+        drawSceneGeometryOverlay(encoder: encoder, features: &features, stems: &stems)
         encoder.endEncoding()
     }
 

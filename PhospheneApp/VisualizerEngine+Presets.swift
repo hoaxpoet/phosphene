@@ -356,6 +356,17 @@ extension VisualizerEngine {
                 // Plumb the descriptor decay so the compose pass matches pf.decay in the shader.
                 pipeline.setMVWarpDecay(desc.decay)
 
+                // Dragon Bloom L1 (D-137): if the preset compiled a strand pipeline,
+                // wire it as the additive scene-geometry overlay — 3 strands
+                // (instanceCount), each a line strip of 512 samples (matches
+                // kStrandSamples in DragonBloom.metal). Otherwise clear any prior overlay.
+                if let strandState = warpPipelines.sceneGeometryState {
+                    pipeline.setSceneGeometry(
+                        strandState, vertexCount: 512, instanceCount: 3, primitive: .lineStrip)
+                } else {
+                    pipeline.setSceneGeometry(nil, vertexCount: 0, instanceCount: 0, primitive: .lineStrip)
+                }
+
                 // Arachne-specific: allocate web pool + spider buffer and wire tick + fragment buffers.
                 if desc.name == "Arachne" {
                     if let state = ArachneState(device: context.device) {
