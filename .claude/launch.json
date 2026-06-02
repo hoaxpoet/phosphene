@@ -12,6 +12,12 @@
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "8733", "--directory", "tools/dragon_bloom_reference"],
       "port": 8733
+    },
+    {
+      "name": "fata-ref",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8734", "--directory", "tools/fata_morgana_reference"],
+      "port": 8734
     }
   ]
 }

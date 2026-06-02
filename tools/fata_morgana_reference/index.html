@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Fata Morgana reference (butterchurn / martin [shadow harlequins shape code])</title>
+<style>html,body{margin:0;background:#000;overflow:hidden}#c{display:block}</style>
+</head>
+<body>
+<canvas id="c" width="640" height="480"></canvas>
+<script src="./butterchurn.min.js"></script>
+<script>
+// Live butterchurn oracle for the faithful port of
+//   `martin [shadow harlequins shape code] - fata morgana`
+// (the official butterchurn-presets converted JSON — clean GLSL, so unlike the
+// Dragon Bloom reference there is NO warp-shader fix needed here).
+//
+// The preset is a custom-SHAPE preset (no waves): 4 forty-sided n-gons (one
+// textured "mirror" + three additive orbiters sized by bass/mid/treb attack),
+// a custom feedback warp shader, and a custom procedural COMP shader (the
+// mirage: perspective floor + starfield + horizon glow + neon grid).
+window.__status = { ready:false, ctxState:'none', elapsed:0, err:null, audioRMS:0 };
+
+(async function(){
+  try {
+    const bc = (window.butterchurn && window.butterchurn.default) ? window.butterchurn.default : window.butterchurn;
+    const canvas = document.getElementById('c');
+    const W = 640, H = 480;                 // 4:3 — Milkdrop's projection assumes it
+
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    window.__ctx = ctx;
+    try { await ctx.resume(); } catch(e){}
+    window.__status.ctxState = ctx.state;
+
+    // Decode the recorded session audio (a real session tap, NOT synthetic).
+    const wavBuf = await (await fetch('./audio.wav')).arrayBuffer();
+    const audioBuf = await ctx.decodeAudioData(wavBuf);
+    window.__status.bufDur = audioBuf.duration;
+
+    const src = ctx.createBufferSource();
+    src.buffer = audioBuf;
+    src.loop = true;
+    // Boost: the recorded tap is ~-18 dB, far quieter than butterchurn's level
+    // scale. butterchurn feeds 6×-boosted audio (D-138 finding); the shapes'
+    // rad *= {bass,mid,treb}_att collapse to ~0 on quiet input otherwise.
+    const urlBoost = parseFloat(new URLSearchParams(location.search).get('boost'));
+    const boost = ctx.createGain(); boost.gain.value = isFinite(urlBoost) ? urlBoost : 6.0;
+    window.__boostNode = boost;
+    const mon = ctx.createAnalyser(); mon.fftSize = 2048;
+    const g = ctx.createGain(); g.gain.value = 0.0001;   // silent sink, keeps the graph pulled
+    src.connect(boost); boost.connect(mon); mon.connect(g); g.connect(ctx.destination);
+
+    const viz = bc.createVisualizer(ctx, canvas, { width:W, height:H, pixelRatio:1, textureRatio:1 });
+    window.__viz = viz;
+    viz.connectAudio(boost);               // butterchurn taps its own analyser off the BOOSTED node
+    const preset = (await (await fetch('./fata_ref_preset.json')).json()).preset;
+    viz.loadPreset(preset, 0.0);
+    viz.setRendererSize(W, H);
+
+    src.start(0);
+    window.__status.ready = true;
+    const t0 = performance.now();
+    const td = new Uint8Array(mon.fftSize);
+    function frame(){
+      viz.render();
+      window.__status.elapsed = (performance.now()-t0)/1000;
+      window.__status.ctxState = ctx.state;
+      mon.getByteTimeDomainData(td);
+      let s=0; for(let i=0;i<td.length;i+=32){const v=(td[i]-128)/128; s+=v*v;}
+      window.__status.audioRMS = Math.sqrt(s/(td.length/32));
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  } catch(e){
+    window.__status.err = (e && e.message) ? e.message : String(e);
+    console.error('REF_ERR', e);
+  }
+})();
+</script>
+</body>
+</html>
