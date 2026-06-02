@@ -1,6 +1,6 @@
 # Dragon Bloom — Milkdrop Uplift Plan (from `$$$ Royal - Mashup (220)`)
 
-**Status:** **Spike 1 ✅ PASSED.** **Spike 2 (bilateral symmetry) ✅ symmetry confirmed by Matt M7 2026-06-02** ("looks symmetric, can't see the line of symmetry" — symmetric, no clipart seam). **BUT Matt M7 also surfaced: "not really seeing petals yet."** Investigation (reading `source.milk` + standing up the live butterchurn reference) found **Spike 1's mechanic ≠ the reference's mechanic** — see §0 (Mechanic decode). The live reference is now **faithful** (the converter botched the HLSL warp shader → hand-written GLSL fix in `tools/dragon_bloom_reference/`; it reproduces the warm feathered bloom matching the gif/still). **Matt reframed this as an UPLIFT** (not a literal copy) and approved (2026-06-02) the **feedback-native uplift** with strands ← **drums/bass/vocals** stems — see §0 "The uplift approach" (D-137). **Next: execute the §0 layered build (L1 — strands ← stems, first).** Plan approved 2026-06-01; Faithful uplift of `$$$ Royal - Mashup (220)`. References at `docs/VISUAL_REFERENCES/dragon_bloom/`.
+**Status:** **Spike 1 ✅ PASSED.** **Spike 2 (bilateral symmetry) ✅ symmetry confirmed by Matt M7 2026-06-02** ("looks symmetric, can't see the line of symmetry" — symmetric, no clipart seam). **BUT Matt M7 also surfaced: "not really seeing petals yet."** Investigation (reading `source.milk` + standing up the live butterchurn reference) found **Spike 1's mechanic ≠ the reference's mechanic** — see §0 (Mechanic decode). The live reference is now **faithful** (the converter botched the HLSL warp shader → hand-written GLSL fix in `tools/dragon_bloom_reference/`; it reproduces the warm feathered bloom matching the gif/still). **Matt reframed this as an UPLIFT** (not a literal copy) and approved (2026-06-02) the **feedback-native uplift** with strands ← **drums/bass/vocals** stems — see §0 "The uplift approach" (D-137). **L1 (strands←stems), L2 (petal warp + bilateral mirror), L3 (chromatic), L5 (warm palette) all ✅ DONE 2026-06-02** — the bloom now renders as a warm fiery bilaterally-symmetric feathered bloom matching the reference family (offline diag verified per layer; L2 Matt-M7-confirmed symmetric live). **Remaining: L4 density/fullness polish + Matt M7 on the warm milestone before polish.** Plan approved 2026-06-01; Faithful uplift of `$$$ Royal - Mashup (220)`. References at `docs/VISUAL_REFERENCES/dragon_bloom/`.
 
 > **New-session start here:** read §0 (Mechanic decode) + `tools/dragon_bloom_reference/README.md` + `docs/VISUAL_REFERENCES/dragon_bloom/README.md`. The reference loop and the mechanic understanding are done; the work is the §0 layered faithful port (L1 → L5). The committed Spike-2 fold (`angFold` in `DragonBloom.metal`, D-136) + the production-pipeline test (symmetry-correlation gate) stay; the polar-ring *brush* is replaced in L1.
 
@@ -100,9 +100,21 @@ colour-transform in the mv_warp compose** (small shader add).
   mirror}), the Spike-2-validated approach — symmetric form, rich (non-flat-mirror)
   texture (corr 0.78). Renders as a bilaterally-symmetric feathered petal bloom.
   Warm palette / density / chromatic still to come.
-- **L3 — Chromatic colour-transform in compose** (the hand-written warp GLSL is the spec — `tools/dragon_bloom_reference/index.html` `fixWarpShader`).
-- **L4 — Decay/echo/invert blend** tuning to the reference's feathered density.
-- **L5 — valence/centroid warm palette + per-stem tint.**
+- **L3 — Chromatic colour-separation. ✅ DONE (2026-06-02, commit `74d23eee`).**
+  Ported the source warp-shader R→G→B transfer into the shared `mvWarp_fragment`
+  (applied to the aged feedback), per-preset gated by a `chromaticMix` uniform
+  (0 ⇒ identity, so other mv_warp presets are byte-identical — PresetRegression
+  confirms). Wired on for Dragon Bloom via `setMVWarpChromatic`. Adds the colour
+  cycling + green/red fringing. (The optional chromatic-zoom *resample* — spatial
+  aberration — is deferred; the transfer is the main colour effect.)
+- **L5 — warm fiery per-stem palette. ✅ DONE (2026-06-02, commit `68081ffc`).**
+  Warm per-stem hues (drums=orange, bass=ember-red, vocals=gold) × valence +
+  spectral-centroid warmth, floored vivid. With L3's transfer → "warm fiery with
+  green accents." The bloom now matches the reference family (warm, bilaterally
+  symmetric, feathered). *Done out of L3→L5 order (warmth was the key missing trait).*
+- **L4 — Decay/echo/density tuning (REMAINING — polish).** The reference fills the
+  frame more densely; tune decay/echo/brightness/strand-count toward that. Best
+  done after a Matt M7 on the current warm-symmetric-feathered milestone.
 
 Each layer: render offline against the **real recorded audio** (extend the diag
 harness to load `raw_tap.wav`, not the synthetic sine) + compare to the live
