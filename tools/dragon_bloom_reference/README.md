@@ -32,6 +32,25 @@ Then serve the directory and open it in the preview browser. A `.claude/launch.j
 config named `dragon-ref` runs `python3 -m http.server` on port 8733 against this
 dir (adjust `--directory`). Use `preview_start dragon-ref` → `preview_screenshot`.
 
+## The warp-shader fix (load-bearing — learned 2026-06-02)
+
+The offline `milkdrop-preset-converter` (Node) **mistranslated the custom HLSL
+warp shader** (`source.milk` `warp_1..21`, the chromatic colour-separation
+feedback shader): every operator in the shader body became `bvecN(..) && bvecN(..)`
+(e.g. `(uv-0.5)*zoom + 0.5` → `bvec2((uv-0.5)*zoom) && bvec2(0.5)`). The
+feedback warp was therefore garbage and the harness rendered **crisp strands with
+no feathering** — nothing like `target_animated.gif`. The shader-converter wasm
+evidently does not run under Node 25.
+
+`index.html` repairs this at load via `fixWarpShader()`: the converter's
+wrapper/ABI (`main_shader_sentinel(uv)` → `shader_body`; `sampler_main`,
+`uv_orig`, `texsize`, `sampler_noise_lq` uniforms) is intact, so we splice in a
+**hand-written GLSL body** that is a faithful translation of the HLSL
+`warp_1..21`. With it, the harness reproduces the warm dense feathered bloom of
+the references (matches `01_target.png` + the gif's dense frames). **This warp
+shader is the entire reason the preset reads as a warm feathered bloom rather
+than bare strands** — it is the chromatic feedback that fills + colours the frame.
+
 ## Harness notes (learned 2026-06-02)
 
 - **Boost the audio ~6×** (`window.__boost`, default 6.0 in `index.html`). The
