@@ -13,9 +13,11 @@
 //   <output>/events/<route>/event_NN.png
 //   <output>/motion_grid/grid_NNN.png  (if motion-grid > 0)
 //
-// SR.1: Aurora Veil is the only registered preset. Future presets register
-// their route specs in <Preset>Routes.swift and add a case to the
-// PresetRegistry below.
+// Registered presets: aurora_veil (SR.1), murmuration (MM.3). Future presets
+// register their route specs in <Preset>Routes.swift and add a case to
+// resolvePreset below. (The rubric-calibration section currently uses the
+// Aurora Veil question set; route firing + motion-band analysis are
+// preset-agnostic and work for any registered preset.)
 
 import ArgumentParser
 import Foundation
@@ -265,9 +267,11 @@ struct PresetSessionReplay: AsyncParsableCommand {
         switch name.lowercased() {
         case "aurora_veil", "aurora-veil", "auroraveil":
             return AuroraVeilRouteSpecs.all
+        case "murmuration":
+            return MurmurationRouteSpecs.all
         default:
             throw ValidationError(
-                "Unknown preset '\(name)'. Registered: aurora_veil. "
+                "Unknown preset '\(name)'. Registered: aurora_veil, murmuration. "
                 + "Add new presets in PresetSessionReplay.swift::resolvePreset.")
         }
     }
