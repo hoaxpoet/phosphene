@@ -100,7 +100,8 @@ struct FlockAudio {
     var flockAxis: SIMD3<Float> = SIMD3(1, 0, 0)  // unit elongation / wave-travel axis
     var elongation: Float = 0                     // L1 comma/ribbon [0, 0.72]
     var driftOffset: SIMD3<Float> = .zero         // L1 macro drift added to the roost
-    var turnGain: Float = 0                       // L2 gated turning-wave amplitude
+    var turnGain: Float = 0                       // L2 turning-wave FORCE (gentle — must not translate)
+    var waveDarkAmp: Float = 0                    // L2 wave DARKENING amplitude (visual, decoupled from force)
     var beatValue: Float = 0                      // L2 decaying beat pulse [0,1]
     var propDir: Float = 1                        // L2 wave direction (±1, per epoch)
     var waveWidth: Float = 0.22                   // L2 triangular bump half-width
@@ -176,10 +177,10 @@ public struct MurmurationFlockConfiguration: Sendable {
         wanderWeight: Float = 0.34,
         bankingRate: Float = 4.0,
         neighborCap: Int = 32,
-        bassDriftGain: Float = 1.4,
-        elongationGain: Float = 1.1,
-        turnBaseAmp: Float = 2.0,
-        midEdgeAmp: Float = 0.9,
+        bassDriftGain: Float = 1.0,
+        elongationGain: Float = 0.7,
+        turnBaseAmp: Float = 0.16,
+        midEdgeAmp: Float = 0.22,
         vocalsBreathDepth: Float = 0.30,
         substrateTau: Float = 6.0,
         flockExtent: Float = 0.6
@@ -471,7 +472,7 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
             drive: SIMD4<Float>(audio.turnGain, audio.beatValue, audio.propDir, audio.waveWidth),
             midEdgeGain: audio.midEdgeGain,
             flockExtent: cfg.flockExtent,
-            audioPad0: 0,
+            audioPad0: audio.waveDarkAmp,   // L2 wave darkening (decoupled from the curl force)
             audioPad1: 0
         )
     }
@@ -496,18 +497,24 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
         let totalStem = st.drumsEnergy + st.bassEnergy + st.otherEnergy + st.vocalsEnergy
         let blend = Self.smoothstep(0.02, 0.06, totalStem)
 
-        // Per-layer deviation primitives (D-026), warmup-blended.
+        // Per-layer deviation primitives (D-026), warmup-blended, then SOFT-
+        // SATURATED. On real music these primitives spike to ~3× (drumsEnergyDev
+        // / bassEnergyRel reach ~3.2–3.4, not the docs' ~±0.5) — see
+        // project_deviation_primitive_real_range. tanh preserves the common
+        // 0.1–0.4 range and caps the transients near ±1 so a 3× spike can't
+        // produce a 3× force that tears the boids flock apart (the MM.3 M7
+        // failure; FA #4 inverted by over-driven accents).
         // L1 bass (continuous, signed Rel — relaxes negative in quiet sections).
-        let bassRel = Self.lerp(feat.bassAttRel, st.bassEnergyRel, blend)
+        let bassRel = Self.saturate(Self.lerp(feat.bassAttRel, st.bassEnergyRel, blend))
         // L2 drums (accent, positive Dev). Full-mix proxy: bass_dev.
-        let drumsDev = Self.lerp(feat.bassDev, st.drumsEnergyDev, blend)
+        let drumsDev = Self.saturate(Self.lerp(feat.bassDev, st.drumsEnergyDev, blend))
         // FA #26 — cross-genre beat: snare- and kick-driven tracks both register.
         let fmBeat = max(feat.beatBass, max(feat.beatMid, feat.beatComposite))
         let beatPulse = Self.lerp(fmBeat, st.drumsBeat, blend)
         // L4 mid edge flutter. Full-mix: mid_att_rel; stem: "other" (§3.2).
-        let midRel = Self.lerp(feat.midAttRel, st.otherEnergyRel, blend)
+        let midRel = Self.saturate(Self.lerp(feat.midAttRel, st.otherEnergyRel, blend))
         // L5 vocals breathing (only present once stems arrive).
-        let vocalsDev = st.vocalsEnergyDev * blend
+        let vocalsDev = Self.saturate(st.vocalsEnergyDev * blend)
 
         // Slow substrate smoothers (~tau s) — the 4–8 s shape/breath cadence.
         bassSmoothed = Self.ema(bassSmoothed, bassRel, dt: dt, tau: cfg.substrateTau)
@@ -531,15 +538,30 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
         let axis = Self.normalized(rawAxis)
 
         // L1 macro drift (PRIMARY continuous motion) — the whole roost translates
-        // along the axis, signed by smoothed bass. Extra-smoothed for inertia.
+        // along the axis, signed by smoothed bass. Extra-smoothed for inertia,
+        // then HARD-BOUNDED to a fraction of the world so the roost (and the
+        // flock that follows it) can never be dragged off-screen by a loud
+        // passage — the flock must stay framed (the static-wide-camera contract).
         let driftTarget = axis * (bassSmoothed * cfg.bassDriftGain)
         driftSmoothed = Self.ema3(driftSmoothed, driftTarget, dt: dt, tau: cfg.substrateTau * 0.4)
+        let driftCap = cfg.worldHalfSpan * 0.30
+        let driftMag = driftSmoothed.x * driftSmoothed.x + driftSmoothed.y * driftSmoothed.y
+                     + driftSmoothed.z * driftSmoothed.z
+        if driftMag > driftCap * driftCap {
+            driftSmoothed *= driftCap / driftMag.squareRoot()
+        }
 
         // L1 elongation (comma/ribbon) — only sustained high bass stretches it.
         let elong = max(0, min(0.72, max(0, bassSmoothed) * cfg.elongationGain))
 
-        // L2 drum turning-wave amplitude (ACCENT) — gated to ~0 in calm music.
-        let turnGain = max(0, drumsDev) * eventGate * cfg.turnBaseAmp
+        // L2 drum wave (ACCENT) — gated to ~0 in calm music. The DARKENING
+        // amplitude (what reads visually) is decoupled from the FORCE: the curl
+        // force must stay gentle (a strong force would translate the flock and
+        // invert the Audio Data Hierarchy — the M7 failure), but the dark band
+        // can read strong. waveDarkAmp drives the pad0 darkening; turnGain (a
+        // small fraction of it) drives the physical roll.
+        let waveDarkAmp = max(0, drumsDev) * eventGate
+        let turnGain = waveDarkAmp * cfg.turnBaseAmp
         let epoch = floor(feat.time * 2.5)
         let propDir: Float = Self.hash11(epoch) > 0.5 ? 1 : -1
 
@@ -551,6 +573,7 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
             elongation: elong,
             driftOffset: driftSmoothed,
             turnGain: turnGain,
+            waveDarkAmp: waveDarkAmp,
             beatValue: max(0, min(1, beatPulse)),
             propDir: propDir,
             waveWidth: 0.30,
@@ -570,6 +593,13 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
     private static func lerp(_ from: Float, _ toValue: Float, _ frac: Float) -> Float {
         from + (toValue - from) * frac
     }
+
+    /// Soft-saturate an audio driver into a bounded operating range. `tanh`
+    /// preserves the common 0.1–0.4 deviation range almost linearly and caps the
+    /// ~3× transients near ±1, so a loud spike can't produce a proportionally
+    /// huge force (the MM.3 M7 failure). See
+    /// project_deviation_primitive_real_range.
+    private static func saturate(_ value: Float) -> Float { tanh(value) }
 
     /// Frame-rate-independent EMA toward `target` with time constant `tau` s.
     private static func ema(_ current: Float, _ target: Float, dt: Float, tau: Float) -> Float {
