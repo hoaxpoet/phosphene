@@ -108,7 +108,7 @@ extension RenderPipeline {
         // +kFataGlowSeed so a fresh render starts mid-cycle (warm) where the oracle is,
         // and cycles the visible spectrum from there. This is a phase offset only — the
         // cycle behaviour is identical to source; we just don't open in the pale quarter.
-        let tGlow = tSec + Self.kFataGlowSeed
+        let tGlow = tSec + Self.kFataGlowSeed + fataGlowSeedJitter
         uni.slowRoamSin = SIMD4<Float>(0.5 + 0.5 * sin(tGlow * 0.005),
                                        0.5 + 0.5 * sin(tGlow * 0.008),
                                        0.5 + 0.5 * sin(tGlow * 0.013),

@@ -336,23 +336,24 @@ fragment float4 fata_shape_fragment(
     return in.color;                                       // additive blob colour
 }
 
-// MARK: - Blur fragment (butterchurn blur1 — wide downsampled gaussian)
+// MARK: - Blur fragment (butterchurn blur1 — moderate downsampled gaussian)
 //
-// butterchurn's blur1 is a separable gaussian rendered at ~1/4 resolution (blurRatios
-// ≈ 0.25) + mipmapped — a genuinely WIDE low-pass. The warp reads it for its rotation
-// + displacement, so the width is load-bearing: a wide blur1 → COHERENT large-scale
-// warp displacement → the orbiting blobs smear into smooth flowing RIBBONS (the
-// oracle). A narrow blur (the earlier 3×3) gave incoherent small-scale motion → the
-// blobs stayed discrete particles. This fragment renders into the 1/4-res blurTexture
-// and box-downsamples the full-res feedback with a 5×5 gaussian whose taps step in
-// QUARTER-res texels (×4 the full-res texel) → ≈±12-texel radius; the 1/4-res store +
-// the warp's bilinear read widen it further. Output in colour space (warp scale1=1).
+// butterchurn's blur1 is a SEPARABLE gaussian (blurRatios[0] = [0.5, 0.25] → stored at
+// ~1/4 resolution) spanning ~±4 source texels — a MODERATE low-pass, NOT a wide one.
+// The warp reads blur1 to compute its swirl direction (`rot = dot(c, roam_sin)·16`) and
+// luma displacement, so the blur WIDTH governs ring vs ribbon: at the right width the
+// swirl varies at fine scale and the zoom-1.05 feedback echoes survive as concentric
+// neon RINGS (the oracle); too WIDE and the swirl is coherent over large regions, which
+// twists the rings into smeared RIBBONS (Matt M7: "too much smearing"). The earlier
+// ×6 (±12 texel) blur was over-wide on a wrong "ribbons = oracle" assumption — corrected
+// to ×2 (±4 texels) to match butterchurn's blur1. The 1/4-res store + the warp's
+// bilinear read widen it slightly, as in butterchurn. Output in colour space (scale1=1).
 fragment float4 fata_morgana_blur_fragment(
     VertexOut              in   [[stage_in]],
     texture2d<float>       src  [[texture(0)]],
     constant FataUniforms& u    [[buffer(1)]]
 ) {
-    float2 step = u.texsize.zw * 6.0;                    // ~6 full-res texels per tap
+    float2 step = u.texsize.zw * 2.0;                    // ~±4 full-res texels (butterchurn blur1)
     const float w1d[5] = { 1.0, 4.0, 6.0, 4.0, 1.0 };   // separable gaussian
     float3 acc = float3(0.0);
     float  wsum = 0.0;

@@ -136,6 +136,9 @@ struct FataMorganaMVWarpAccumulationTest {
         pipeline.setupMVWarp(bundle: bundle, size: size)
         pipeline.setMVWarpDecay(preset.descriptor.decay)
         pipeline.setFataShapePipelines(additive: mvWarp.shapeAdditiveState, normal: mvWarp.shapeNormalState)
+        // Pin the per-session glow-phase jitter for reproducible diag output (production
+        // re-rolls it per Fata activation). FATA_GLOW_JITTER overrides to inspect a phase.
+        pipeline.fataGlowSeedJitter = ProcessInfo.processInfo.environment["FATA_GLOW_JITTER"].flatMap { Float($0) } ?? 0
         // Sweep the production size gain from the diag (defaults to the production value).
         if let b = ProcessInfo.processInfo.environment["FATA_BOOST"].flatMap({ Float($0) }) {
             pipeline.fataShapeSizeGain = b
