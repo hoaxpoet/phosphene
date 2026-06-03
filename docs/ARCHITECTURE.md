@@ -633,7 +633,7 @@ PhospheneEngine/
     Shaders/Waveform.metal  → Spectrum bars + oscilloscope
     Shaders/Plasma.metal    → Demoscene plasma
     Shaders/Nebula.metal    → Radial frequency nebula
-    Shaders/Starburst.metal → Murmuration sky backdrop (MV-2: mv_warp pass replaces feedback+particles; bass_att_rel drives zoom breath, mid_att_rel drives slow rotation, decay=0.97 for long cloud smear)
+    Shaders/Murmuration.metal → Murmuration sky backdrop (`murmuration_sky_fragment`). Renamed from Starburst.metal in MM.0. Passes `["feedback", "particles"]` per D-029 (the MV-2 mv_warp conversion was reverted); the flock is the GPU compute kernel in Shaders/Particles.metal, the sky fragment is the backdrop. Phase MM is a full flock redesign in progress.
     Shaders/GlassBrutalist.metal → Brutalist corridor — static architecture; only the glass-fin X-position deforms with bass (Option A design, see DECISIONS D-020). Light/fog/colour modulated in shared Swift path.
     Shaders/KineticSculpture.metal → Interlocking lattice of Brushed Aluminum + Frosted Glass + Liquid Mercury, abstract ray march. FOV in degrees (post-fix; was radians, see commit history).
     Shaders/TestSphere.metal → Minimal pipeline-verification SDF (sphere + floor); used for end-to-end ray-march compile/render test.

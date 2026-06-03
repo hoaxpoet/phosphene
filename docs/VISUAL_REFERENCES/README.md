@@ -32,7 +32,7 @@ uplifting a preset cite these images by filename per `SHADER_CRAFT.md §2.3`.
    here directly resolve the "lumpy vs mountainous" judgment calls that prior
    sessions had to skip.
 4. **glass_brutalist, kinetic_sculpture** — V.12 polish targets.
-5. **starburst, membrane** — current production presets; reference folders
+5. **murmuration, membrane** — current production presets; reference folders
    document the existing aesthetic so future regressions are catchable.
 6. **plasma, waveform, nebula, spectral_cartograph** — lightweight folders;
    ~15 minutes each.
@@ -64,7 +64,7 @@ docs/VISUAL_REFERENCES/
   nebula/                         ← lightweight (stylized particle system)
   plasma/                         ← lightweight (demoscene plasma)
   spectral_cartograph/            ← lightweight (diagnostic panel)
-  starburst/                      ← full rubric
+  murmuration/                    ← full rubric
   volumetric_lithograph/          ← full rubric
   waveform/                       ← lightweight (stylized 2D)
   phase_md/                       ← empty parent; per-MD-preset folders land in MD.1+

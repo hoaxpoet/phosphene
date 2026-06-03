@@ -12,7 +12,7 @@
   "base_rot": 0.01,
   "decay": 0.95,
   "beat_sensitivity": 1.0,
-  "fragment_function": "starburst_fragment",
+  "fragment_function": "murmuration_sky_fragment",
   "visual_density": 0.9,
   "motion_intensity": 0.85,
   "color_temperature_range": [0.2, 0.7],
