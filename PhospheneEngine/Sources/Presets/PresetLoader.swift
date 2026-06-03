@@ -664,6 +664,12 @@ public final class PresetLoader: @unchecked Sendable {
     /// pale near-white (verified). (Earlier this returned rgba16f for DB — that was
     /// wrong; reverted once the no-decay loop was matched to the source.)
     func feedbackFormat(_ descriptor: PresetDescriptor) -> MTLPixelFormat {
+        // Fata Morgana (D-139): butterchurn's feedback is LINEAR 8-bit (gl.RGBA /
+        // UNSIGNED_BYTE), not sRGB. Phosphene's drawable is `.bgra8Unorm_srgb`, so
+        // using it for the feedback accumulated the decay + additive blobs in sRGB
+        // space — a divergence from the source. Use the non-sRGB `.bgra8Unorm` for the
+        // feedback textures (the blit still targets the sRGB drawable for display).
+        if descriptor.name == "Fata Morgana" { return .bgra8Unorm }
         return pixelFormat
     }
 

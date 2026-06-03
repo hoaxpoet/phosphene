@@ -124,12 +124,14 @@ struct FataMorganaMVWarpAccumulationTest {
         let hPix = ProcessInfo.processInfo.environment["FATA_H"].flatMap { Int($0) } ?? 720
         let size = CGSize(width: wPix, height: hPix)
         pipeline.currentDrawableSize = size   // drives shape aspectY (== live)
+        // Feedback in LINEAR .bgra8Unorm (matches butterchurn + PresetLoader.feedbackFormat
+        // for fata); the blit/display target stays the sRGB drawable format.
         let bundle = MVWarpPipelineBundle(
             warpState: mvWarp.warpState,
             composeState: mvWarp.composeState,
             blitState: mvWarp.blitState,
             pixelFormat: ctx.pixelFormat,
-            feedbackFormat: ctx.pixelFormat,
+            feedbackFormat: .bgra8Unorm,
             blurState: mvWarp.blurState)
         pipeline.setupMVWarp(bundle: bundle, size: size)
         pipeline.setMVWarpDecay(preset.descriptor.decay)
