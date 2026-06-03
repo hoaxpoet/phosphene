@@ -953,32 +953,28 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         BUG012Probe.recordVisualizerEngineDeinit()
     }
 
-    /// Build the GPU particle system used by the Murmuration preset.
-    /// Quality of movement over quantity — each bird should be visible.
+    /// Build the GPU flock used by the Murmuration preset (Phase MM redesign).
     ///
     /// Returns `any ParticleGeometry` (D-097). Particle presets are siblings,
-    /// not subclasses — future particle presets ship their own conformer
-    /// alongside this one rather than parameterising `ProceduralGeometry`.
+    /// not subclasses — Murmuration ships its own `MurmurationFlockGeometry`
+    /// conformer + `MurmurationFlock.metal` kernels (emergent GPU boids) rather
+    /// than parameterising `ProceduralGeometry` (the pre-MM 5K ellipse flock,
+    /// retired from this path; see Phase MM). MM.2: silence baseline only —
+    /// audio coupling lands in MM.3.
     private static func makeMurmurationGeometry(
         context: MetalContext,
         library: Renderer.ShaderLibrary
     ) -> (any ParticleGeometry)? {
-        guard let particles = try? ProceduralGeometry(
+        guard let flock = try? MurmurationFlockGeometry(
             device: context.device,
             library: library.library,
-            configuration: ParticleConfiguration(
-                particleCount: 5_000,
-                decayRate: 0.0,     // Birds don't die — they're always alive.
-                burstThreshold: 0.4, // Only strong beats trigger scatter.
-                burstVelocity: 1.0,  // Not used (flocking, not explosions).
-                drag: 0.8            // Light air drag — birds glide.
-            ),
+            configuration: MurmurationFlockConfiguration(),
             pixelFormat: context.pixelFormat
         ) else {
             return nil
         }
-        logger.info("Murmuration particle system created: 5K particles")
-        return particles
+        logger.info("Murmuration flock created: \(MurmurationFlockConfiguration().particleCount) boids")
+        return flock
     }
 
     /// Resolve a particle-preset name to the geometry conformer the engine
