@@ -106,6 +106,14 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// — this is a deliberate, Matt-requested divergence. The diag pins it (default 0,
     /// or FATA_GLOW_JITTER) for reproducibility. See `computeFataUniforms` / kFataGlowSeed.
     var fataGlowSeedJitter: Float = 0
+    /// Coordinated-sway bar clock (FM.L2). Advances +1 per musical bar (accumulates
+    /// `barPhase01` deltas, handling the downbeat wrap). The shapes sway horizontally by
+    /// `cos(π·swayClock)` — a 2-bar period that turns around on every downbeat, so the
+    /// few spectra sweep back and forth over the water in time with the bars (Matt's
+    /// vision). Frozen when no bar grid is present (barPhase01 static) → shapes hold.
+    /// MainActor-only (the mv_warp draw path).
+    var fataSwayClock: Float = 0
+    var fataPrevBarPhase: Float = 0
 
     // MARK: - Live Audio Features
 

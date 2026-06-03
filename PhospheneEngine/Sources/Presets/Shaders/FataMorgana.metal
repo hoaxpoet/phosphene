@@ -69,15 +69,10 @@ MVWarpPerFrame mvWarpPerFrame(
     constant SceneUniforms& s
 ) {
     MVWarpPerFrame pf;
-    // Source per_pixel zoom is a constant 1.05. The L-uplift adds a WHOLE-FIELD
-    // DOWNBEAT BREATH on top: the entire mirage surges outward on beat 1 of each bar,
-    // then settles. This is the legible "sync to the downbeat" — a per-blob sway is
-    // lost among the many spectra (Matt), but a global zoom pulse moves EVERYTHING at
-    // once and is unmistakable, immune to blob count. Stateless: `bar_phase01` is 0 at
-    // the downbeat → 1 at the next, so `pow(1 - 4·phase, 2)` peaks at the downbeat and
-    // decays over the first beat of the bar (one clean breath per bar).
-    float downbeat = pow(max(0.0, 1.0 - 4.0 * f.bar_phase01), 2.0);
-    pf.zoom = 1.05 + 0.07 * downbeat;   // +7% outward surge on the downbeat
+    pf.zoom = 1.05;          // source per_pixel zoom (constant). The bar gesture lives in
+                            // the shapes' coordinated horizontal sway (fata_shape_vertex),
+                            // not a whole-field zoom — isolating Matt's "sway over the
+                            // water in time with the bars" as the single clear bar motion.
     pf.rot  = 0.0;
     pf.decay = 1.0;          // custom warp bakes its own decay (×0.98 − 0.02); no compose decay
     pf.warp = 0.0;
@@ -239,7 +234,8 @@ struct FataShapeParams {
     float frame;        // butterchurn frame counter (colour cycle + shape-0 rotation)
     float aspectY;      // texsizeY/texsizeX (keeps n-gons round on a wide canvas)
     float audioBoost;   // multiplies the band attack driving the blob radius
-    float pad0; float pad1;
+    float swayClock;    // CPU bar clock (+1 per bar); drives the coordinated horizontal sway
+    float pad1;
 };
 
 struct FataShapeVtxOut {
@@ -248,9 +244,6 @@ struct FataShapeVtxOut {
     float2 uv;
     float  textured;
 };
-
-// div(a,b) — Milkdrop's guarded divide (b==0 ⇒ 0), used by shapes 1/3 orbits.
-static float fataDiv(float a, float b) { return (b == 0.0) ? 0.0 : a / b; }
 
 vertex FataShapeVtxOut fata_shape_vertex(
     uint                      vid [[vertex_id]],
@@ -262,54 +255,47 @@ vertex FataShapeVtxOut fata_shape_vertex(
     int   sides  = sp.sides;
     int   tri    = int(vid) / 3;
     int   corner = int(vid) % 3;
-    // Orbit motion is continuous (the source's time-driven sweep) so the blobs travel
-    // and paint a rich feedback field. The per-bar direction reversal was tried here
-    // (sp.orbitPhase) but the sway was lost among the many spectra — the downbeat sync
-    // now lives in the WHOLE-FIELD zoom breath (mvWarpPerFrame), which reads regardless
-    // of blob count.
-    float time   = f.time;
-    int   inst   = int(iid);
 
-    // ── per-instance frame_eqs (source verbatim) ─────────────────────────────
+    // ── colour cycle (source: r=sin(cyc), b=sin(cyc+2.094), g=sin(cyc+4.188)) ──
     float x = 0.5, y = 0.5, rad = 0.1, ang = 0.0, aCenter = 1.0;
     float cyc = 0.5 * sp.frame;
-    // colour cycle: r=sin(cyc), b=sin(cyc+2.094), g=sin(cyc+4.188)
     float3 col = float3(0.5 + 0.5 * sin(cyc),
                         0.5 + 0.5 * sin(cyc + 4.188),
                         0.5 + 0.5 * sin(cyc + 2.094));
 
-    // BEAT PULSE (the L-uplift). The previous version popped on `drums_beat` + `_dev`,
-    // which fire on EVERY drum onset (hats, snares) and every transient — so it burst
-    // far more often than once per beat ("too excited", Matt). Now the pulse is gated to
-    // the GRID beat via `beatPhase01` (0 at each beat → 1 at the next): one clean pulse
-    // per beat, at GENTLE amplitude. The primary "dance" is now the per-BAR orbit
-    // direction reversal above (sp.orbitPhase); this beat pulse is a light accent on top.
-    // beatPulse peaks sharply at the beat (phase 0) and decays before the next.
-    // Per-stem `_energy_dev` still tints each shape's brightness for instrument identity.
-    float beatPulse = pow(max(0.0, 1.0 - f.beat_phase01), 4.0);   // one sharp pulse per grid beat
+    // COORDINATED BAR SWAY (the L-uplift, redesigned). Matt's vision: a FEW spectra
+    // swaying over the water back-and-forth IN TIME WITH THE BARS — not a crowd of
+    // independent orbits (chaos). So there are now just 3 bright spectra (one per
+    // instrument), each at a fixed spread-out base position, and ALL share one
+    // horizontal sway offset = A·cos(π·swayClock). swayClock advances +1 per bar, so
+    // cos has a 2-bar period and hits an EXTREME at every downbeat: the spectra sweep
+    // together to one side over a bar, turn around exactly on the downbeat, and sweep
+    // back the next bar. The coordinated, low-count motion is legible where 11
+    // independent orbits were not. (No bar grid → swayClock frozen → they hold still.)
+    // beatPulse (one gentle pop per grid beat) + per-stem _energy_dev (brightness
+    // identity) ride on top.
+    float sway = cos(M_PI_F * sp.swayClock);                       // -1..1, turns at each downbeat
+    float A    = 0.20;                                             // horizontal sway amplitude
+    float beatPulse = pow(max(0.0, 1.0 - f.beat_phase01), 4.0);    // one sharp pulse per grid beat
     float flare = 1.0;
-    if (sp.shapeIndex == 0) {
+    if (sp.shapeIndex == 0) {                              // faint textured echo (central, still)
         rad = 0.06623; ang = 0.02 * sp.frame; x = 0.5; y = 0.5;
-        col = float3(0.0); aCenter = 0.1;                 // faint textured echo
-    } else if (sp.shapeIndex == 1) {                       // mid blobs ← DRUMS stem
-        float d = 0.7 * fataDiv(time, float(inst));
-        x = 0.5 + 0.225 * sin(d); y = 0.5 + 0.3 * cos(d);
-        x -= 0.4 * x * sin(time);  y -= 0.4 * y * cos(time);
+        col = float3(0.0); aCenter = 0.1;
+    } else if (sp.shapeIndex == 1) {                       // DRUMS — left of centre
+        x = 0.32 + A * sway; y = 0.60;
         float dev = max(0.0, st.drums_energy_dev);
-        rad   = 0.1 * (1.0 + 0.45 * beatPulse) * sp.audioBoost;   // gentle one-per-beat pop
-        flare = 0.55 + 0.7 * beatPulse + 0.5 * dev;               // light beat accent + drum identity
-    } else if (sp.shapeIndex == 2) {                       // bass blob ← BASS stem
-        x = 0.5 + 0.225 * sin(time + 2.09); y = 0.5 + 0.3 * cos(time + 2.09);
+        rad   = 0.11 * (1.0 + 0.45 * beatPulse) * sp.audioBoost;
+        flare = 0.55 + 0.7 * beatPulse + 0.5 * dev;
+    } else if (sp.shapeIndex == 2) {                       // BASS — centre
+        x = 0.50 + A * sway; y = 0.66;
         float dev = max(0.0, st.bass_energy_dev);
-        rad   = 0.1 * (1.0 + 0.45 * beatPulse) * sp.audioBoost;
-        flare = 0.55 + 0.7 * beatPulse + 0.5 * dev;               // + bass identity
-    } else {                                               // treb blobs ← VOCALS stem
-        float d = fataDiv(time, float(inst));
-        x = 0.5 + 0.225 * sin(d); y = 0.5 + 0.3 * cos(d);
-        x += 0.4 * x * sin(time);  y += 0.4 * y * cos(time);
+        rad   = 0.11 * (1.0 + 0.45 * beatPulse) * sp.audioBoost;
+        flare = 0.55 + 0.7 * beatPulse + 0.5 * dev;
+    } else {                                               // VOCALS — right of centre
+        x = 0.68 + A * sway; y = 0.60;
         float dev = max(0.0, st.vocals_energy_dev);
-        rad   = 0.07419 * (1.0 + 0.45 * beatPulse) * sp.audioBoost;
-        flare = 0.55 + 0.7 * beatPulse + 0.5 * dev;               // + vocal identity
+        rad   = 0.09 * (1.0 + 0.45 * beatPulse) * sp.audioBoost;
+        flare = 0.55 + 0.7 * beatPulse + 0.5 * dev;
     }
     col *= flare;                                          // brightness = instrument identity
 
