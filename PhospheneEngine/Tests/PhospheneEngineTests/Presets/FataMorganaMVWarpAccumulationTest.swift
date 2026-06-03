@@ -124,6 +124,7 @@ struct FataMorganaMVWarpAccumulationTest {
         // trebAtt the live shapes use (test/prod parity, FA #66; loadSessionBands
         // reconstructs them). Matt's live M7 remains the fidelity gate.
         let rows = Self.loadSessionBands()
+        let stemRows = Self.loadSessionStems()
         let offset = ProcessInfo.processInfo.environment["FATA_SESSION_OFFSET"].flatMap { Int($0) } ?? 700
         let boost = ProcessInfo.processInfo.environment["FATA_BOOST"].flatMap { Float($0) } ?? 6.0
         let frames = Self.frameCount
@@ -147,8 +148,13 @@ struct FataMorganaMVWarpAccumulationTest {
                                          0.5 + 0.5 * sin(t * 0.013), 0.5 + 0.5 * sin(t * 0.022))
             var feat = FeatureVector.zero
             feat.time = t
-            feat.bassAtt = row.1; feat.midAtt = row.2; feat.trebleAtt = row.3
             var stm = StemFeatures.zero
+            if !stemRows.isEmpty {
+                let sr = stemRows[min(offset + i, stemRows.count - 1)]
+                stm.drumsEnergy = sr.dE;  stm.drumsEnergyDev = sr.dDev;  stm.drumsBeat = sr.dBeat
+                stm.bassEnergy = sr.bE;   stm.bassEnergyDev = sr.bDev;   stm.bassBeat = sr.bBeat
+                stm.vocalsEnergy = sr.vE; stm.vocalsEnergyDev = sr.vDev; stm.vocalsBeat = sr.vBeat
+            }
             var scene = SceneUniforms()
 
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { return }
@@ -171,6 +177,7 @@ struct FataMorganaMVWarpAccumulationTest {
             // shapes on top of composeTex (FM.L2)
             encodePass(cmd, pipeline: mvWarp.warpState, target: composeTex, load: .load) { enc in
                 enc.setVertexBytes(&feat, length: MemoryLayout<FeatureVector>.stride, index: 0)
+                enc.setVertexBytes(&stm, length: MemoryLayout<StemFeatures>.stride, index: 2)
                 enc.setFragmentTexture(warpTex, index: 0)
                 for (idx, sides, numInst, pipe) in shapeCfg {
                     guard let pipe else { continue }
@@ -235,6 +242,34 @@ struct FataMorganaMVWarpAccumulationTest {
             let midAtt  = min((Float(c[5]) ?? 0) * 0.45, 1.5)      // raw mid  → att proxy
             let trebAtt = min((Float(c[6]) ?? 0) * 0.45, 1.5)      // raw treble → att proxy
             out.append((time, bassAtt, midAtt, trebAtt))
+        }
+        return out
+    }
+
+    struct StemRow {
+        var dE: Float = 0, dDev: Float = 0, dBeat: Float = 0
+        var bE: Float = 0, bDev: Float = 0, bBeat: Float = 0
+        var vE: Float = 0, vDev: Float = 0, vBeat: Float = 0
+    }
+
+    /// Parse the session's stems.csv (row-aligned with features.csv) into per-frame
+    /// drums/bass/vocals energy + deviation + beat — the SAME stem values the live
+    /// shape uplift consumes (test/prod parity). Cols (0-based): drumsEnergy 2,
+    /// drumsBeat 3, bassEnergy 6, bassBeat 7, vocalsEnergy 10, vocalsBeat 11,
+    /// drumsEnergyDev 19, bassEnergyDev 21, vocalsEnergyDev 23.
+    static func loadSessionStems() -> [StemRow] {
+        let dir = ProcessInfo.processInfo.environment["FATA_SESSION"]
+            ?? "\(NSHomeDirectory())/Documents/phosphene_sessions/2026-06-03T03-23-25Z"
+        let url = URL(fileURLWithPath: dir).appendingPathComponent("stems.csv")
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        var out: [StemRow] = []
+        for line in text.split(separator: "\n").dropFirst() {
+            let c = line.split(separator: ",", omittingEmptySubsequences: false)
+            guard c.count > 23 else { continue }
+            func f(_ i: Int) -> Float { Float(c[i]) ?? 0 }
+            out.append(StemRow(dE: f(2), dDev: f(19), dBeat: f(3),
+                               bE: f(6), bDev: f(21), bBeat: f(7),
+                               vE: f(10), vDev: f(23), vBeat: f(11)))
         }
         return out
     }
