@@ -71,6 +71,14 @@ struct FataShapeDraw {
 
 extension RenderPipeline {
 
+    /// Phase-seed (seconds) added to the horizon-glow clock so a fresh render opens
+    /// mid-spectrum (warm orange) where the oracle is sampled, instead of in the pale
+    /// opening quarter of the 21-min slow_roam_sin cycle. ~400 s lands on the oracle's
+    /// warm-orange horizon; the cycle proceeds spectrally from there. Glow only — the
+    /// warp's fast roam_sin and all geometry stay on raw session time. See
+    /// computeFataUniforms for the full rationale (D-139, FM.L2 glow-colour fix).
+    static let kFataGlowSeed: Float = 400.0
+
     // MARK: Per-frame uniforms + beat-rotation accumulator
 
     /// Compute the Fata Morgana warp/comp uniforms for this frame, advancing the
@@ -81,15 +89,30 @@ extension RenderPipeline {
         let tSec = features.time
         uni.time = tSec
 
-        // roam_sin / slow_roam_sin (butterchurn time-roam vectors).
+        // roam_sin (butterchurn fast time-roam vector; drives the WARP rotation).
+        // Periods 21 s / 4.8 s / 1.3 s / 0.3 s — fast, visibly varies from t=0; no
+        // offset needed. Stays on raw session time (faithful).
         uni.roamSin = SIMD4<Float>(0.5 + 0.5 * sin(tSec * 0.3),
                                    0.5 + 0.5 * sin(tSec * 1.3),
                                    0.5 + 0.5 * sin(tSec * 5.0),
                                    0.5 + 0.5 * sin(tSec * 20.0))
-        uni.slowRoamSin = SIMD4<Float>(0.5 + 0.5 * sin(tSec * 0.005),
-                                       0.5 + 0.5 * sin(tSec * 0.008),
-                                       0.5 + 0.5 * sin(tSec * 0.013),
-                                       0.5 + 0.5 * sin(tSec * 0.022))
+
+        // slow_roam_sin (the COMP horizon-glow colour). Periods 21 / 13 / 8 / 5 min —
+        // butterchurn's `time` is seconds-since-preset-load and the oracle is sampled
+        // many minutes in (t≈400 s), where the three channels have desynced into a
+        // saturated, spectrum-cycling colour (warm orange at ~400 s). A fresh Phosphene
+        // session starts at small `time`, where all three channels sit bunched in their
+        // first rising quarter ([0.6,1.0], near-equal) → a PALE grey-white wash, never
+        // saturated (Matt M7: "horizon is gray; should cycle the spectrum"). FAITHFUL
+        // FIX: keep the exact formula + 21-min rate; phase-seed the glow clock by
+        // +kFataGlowSeed so a fresh render starts mid-cycle (warm) where the oracle is,
+        // and cycles the visible spectrum from there. This is a phase offset only — the
+        // cycle behaviour is identical to source; we just don't open in the pale quarter.
+        let tGlow = tSec + Self.kFataGlowSeed
+        uni.slowRoamSin = SIMD4<Float>(0.5 + 0.5 * sin(tGlow * 0.005),
+                                       0.5 + 0.5 * sin(tGlow * 0.008),
+                                       0.5 + 0.5 * sin(tGlow * 0.013),
+                                       0.5 + 0.5 * sin(tGlow * 0.022))
 
         // texsize = the ACTUAL feedback resolution (the source uses the real texsize for
         // the warp's lattice/displacement + the blur's downsample offsets). The earlier
