@@ -126,7 +126,11 @@ fragment float4 fata_morgana_warp_fragment(
                         sin(t.x)        * cos(t.y * u.q2));
     uv1 = uv1 - (lat * u.texsize.zw) * 12.0;
 
-    float3 ret = prev.sample(fataWrap, uv1).rgb * 0.975 - 0.032;  // baked decay (uplift: faster clear)
+    // FAST decay (uplift): clears the field in ~15 frames so it stays DARK between blob
+    // passes — vivid fresh saturated blobs on black (the oracle's look), short comet
+    // trails, no accumulation-to-bright. (Source ×0.98−0.02 accumulated to a wash with
+    // the uplift's balanced blobs; faster clear + pure-hue saturation gives dark+vivid.)
+    float3 ret = prev.sample(fataWrap, uv1).rgb * 0.93 - 0.05;
     // Hue-preserving ceiling on the FED-BACK field (FM.L2 stem uplift). The uplift's
     // ~10 balanced additive blobs all orbit through screen-centre, so that region gets
     // continuous injection and the feedback would creep to a white core over a sustained
@@ -134,7 +138,9 @@ fragment float4 fata_morgana_warp_fragment(
     // bright COLOUR (never white) while preserving hue (scale all channels together).
     // Fresh blob flares are drawn AFTER the warp, so they still punch above the ceiling
     // on the displayed frame — only the accumulated feedback is bounded.
-    constexpr float kFieldCeil = 0.95;
+    // Pure-hue blobs keep the field saturated (not white), so the ceiling is now just an
+    // overflow guard near 1.0 — it preserves the vivid colour, only trimming pure white.
+    constexpr float kFieldCeil = 0.99;
     float mx = max(ret.r, max(ret.g, ret.b));
     if (mx > kFieldCeil) { ret *= kFieldCeil / mx; }
     return float4(ret, 1.0);
@@ -267,7 +273,7 @@ vertex FataShapeVtxOut fata_shape_vertex(
     // drums/bass/vocals). FM.L2 stem-uplift calibration.
     float ed = max(0.0, stemDev);
     float sizeFactor = clamp(0.12 + 0.9 * stemE + 0.55 * ed, 0.05, 1.4) * sp.audioBoost;
-    float flare      = clamp(0.18 + 0.35 * stemE + 0.7 * ed + 0.4 * stemBeat, 0.1, 1.9);
+    float flare      = clamp(0.4 + 0.5 * stemE + 1.0 * ed + 0.5 * stemBeat, 0.2, 2.6);
 
     // ── per-instance frame_eqs (orbit + colour cycle, source verbatim) ───────────
     float x = 0.5, y = 0.5, rad = 0.1, ang = 0.0, aCenter = 1.0;
@@ -311,10 +317,18 @@ vertex FataShapeVtxOut fata_shape_vertex(
     float yn = y * -2.0 + 1.0;     // butterchurn frame.y*-2+1 (y=0 → NDC top)
     float quarterPi = M_PI_F * 0.25;
 
-    // Per-instrument FLARE on the saturated hue (the visible music response): the blob
-    // brightens with its stem's energy + punches on its transient/beat, then settles
-    // to the vivid baseline. Additive over the feedback. (Shape 0 echo unaffected.)
-    if (sp.shapeIndex != 0) { col *= flare; }
+    // PURE-SATURATE the blob hue, THEN flare. The source colour is 0.5+0.5·sin —
+    // centred at 0.5, i.e. DESATURATED — and additive accumulation of a desaturated
+    // colour drives every channel toward white → the grey WASH (Matt M7: "dull palette,
+    // anemic spectra"). Additive accumulation of a PURE hue instead stays that colour
+    // (e.g. (1,0,0)+(1,0,0) clamps to red, never white) → vivid neon on black, like the
+    // oracle. Normalise to min→0 / max→1 (saturation = 1), then scale by the flare.
+    if (sp.shapeIndex != 0) {
+        float mn = min(col.r, min(col.g, col.b));
+        float mx = max(col.r, max(col.g, col.b));
+        col = (col - mn) / max(mx - mn, 1e-3);     // pure saturated hue
+        col *= flare;
+    }
 
     FataShapeVtxOut out;
     out.textured = (sp.shapeIndex == 0) ? 1.0 : 0.0;
