@@ -49,6 +49,46 @@ redesign, not a tuning pass.
 
 ---
 
+## 2.1 Motion analysis — from Matt's clips (2026-06-03)
+
+Four 1074×604 clips in `tools/murmuration_reference/` (git-ignored; FOX Weather / stock footage —
+**not** committed to the reference library for licensing reasons). Frames sampled with ffmpeg at the
+timestamps Matt flagged. Findings (frame citations are `clipNN_tSSS`):
+
+**Shape vocabulary** — the flock continuously cycles through a small set of forms:
+- Rounded dense ovoid / blob — the at-rest archetype (`clip01_t014`, `clip02_t003`).
+- **Comma / teardrop**: dense head, tapering trailing wisp — the directional-motion form
+  (`clip02_t027`, `clip01_t080`).
+- **Thin wide level sheet**: elongated horizontal, thin vertical, hugging the roost — the McGill
+  aspect-ratio constancy made visible (`clip01_t038`, `clip04_t100`).
+- **Curl / hook**: a sharp collective pivot (`clip02_t082`).
+- **Split + re-cohere**: the mass sheds a detached trailing sub-cluster that streams below and then
+  rejoins (`clip02_t074`, `clip02_t078`).
+
+**Timescales (this is the load-bearing finding for the contract):**
+- **Major shape change** (blob → comma → blob) takes **~5–12 s**. Shape is NOT a per-beat response —
+  it tracks the *sustained* low end. → confirms **L1 = bass, slow/continuous**.
+- **Internal density/orientation bands** — visible dark streaks rippling *across* the body — traverse
+  the mass in **~1–2 s** (`clip01_t014`, `clip01_t080`, `clip03_t095`). This is exactly the
+  orientation-wave signature. → confirms **L2 = per-beat wave**, traversal ~0.5–1.5 s.
+- **Whole-mass breathing** (large `clip02_t003` → tight `clip02_t019`) over **phrase scale (~4–8 s)**.
+  → confirms **L5 = vocals**.
+- **Edge** is *always* feathered/stippled, periphery sparser than core, in every non-settling frame.
+  → confirms **L4 edge flutter** + the density-gradient rendering requirement (§7).
+- **Drift** across frame is slow and continuous; the **camera is effectively static** in the good
+  examples — the *flock* is the motion (confirms §9 framing decision).
+
+**Density:** a continuous textured field of thousands of sub-pixel dots; dense core, stippled
+feathered edge; never countable individuals **except** when settling/dispersing (`clip02_t086`,
+`clip04_t100`) — that dispersed state is the documented anti-reference, i.e. the state to leave
+quickly, not rest in.
+
+**Palette range** observed: bright-blue daylight → saturated orange-red dusk (`clip01_t080`, matches
+`06_palette_saturated_peak`) → cool blue dusk (`clip01_t038`) → misty grey (`clip03`). Birds read as
+near-black silhouettes across all of them.
+
+---
+
 ## 3. Musical contract (the load-bearing table)
 
 One audio primitive per visual layer, one timescale each (FA #67); all deviation primitives (D-026);
@@ -63,11 +103,19 @@ continuous drivers 2–4× the beat accents (Audio Data Hierarchy).
 | L5 | **Breathing** — whole-mass cohesion radius tightens (dark pulse) then releases | `vocals_energy_dev` | phrase | blackening / dilution |
 | L6 | **Sky warmth** (≤10%, secondary, never competes with the flock) | `spectral_centroid` | slow | dusk light |
 
-**Provisional until Matt's motion clips.** L1–L6 are grounded in biology + the stills. The *exact
-feel* of each (how far the comma stretches, how visible a single-beat wave should be, how often a
-flash-expansion should fire) is a **temporal contract that only the motion clips can pin down**.
-MM.1's remaining step is Matt's notes on specific clip moments (e.g. "the pivot at 0:15 in clip 2");
-those refine the magnitudes here before MM.2 freezes them.
+**Magnitudes (derived from the §2.1 clip analysis; final values tuned in MM.3):**
+- **L1 bass** → roost-attractor drift + elongation, smoothed over **~4–8 s** (matches the 5–12 s
+  observed shape-change cadence); comma head:tail aspect up to **~3:1** at sustained high bass.
+- **L2 drums** → one orientation (banking) wave per beat, traversing the mass in **~0.5–1.5 s**,
+  direction alternating per beat-epoch (the observed weaving).
+- **L3 drop** (deferred per §9) → split/flash that sheds **~10–20%** as a trailing cluster, re-cohering
+  over **~2–4 s**.
+- **L4 mid** → edge-bird noise, fast (sub-second), amplitude weighted by inverse neighbour-count.
+- **L5 vocals** → cohesion-radius breathing **±~20–30%** over **~4–8 s** (phrase).
+- **L6 spectral_centroid** → sky warmth ≤10%, slow.
+
+These are starting magnitudes grounded in the footage; MM.3 dials final feel against live sessions +
+Matt's review, with the clips as the yardstick. Default bias: under-react (§3.1).
 
 ### 3.1 Signal coordination — NOT all-at-once (load-bearing)
 
@@ -215,16 +263,14 @@ waves, flash expansion, breathing) are biology-grounded; *mapping them to stems*
    `feedback` pass is kept in `passes` for paradigm-legality (D-029) but its decay is set so the
    silhouette stays crisp (effectively near-off).
 
-### 9.1 Motion-clip handling — honest limitation
+### 9.1 Motion-clip handling — DONE (2026-06-03)
 
-I **cannot watch the supplied clips** (YouTube / commercial stock-video pages — not fetchable as
-frames). So the §3 *magnitudes* will **not** be pre-derived from video by me; they are tuned
-empirically in MM.3 against real-music sessions + Matt's live review, with the clips serving as
-**Matt's** yardstick for that review (and for the M7 gate in MM.5). This is consistent with how feel
-is tuned across the project (e.g. Fata Morgana's live movement-tuning pass). If Matt wants a tighter
-pre-spec, timestamped notes ("at 0:15 the flock does X") or downloaded still frames are the way — but
-they are **not** a blocker: the design is robust without them, and the energy-gating master lever
-(§3.1) plus "default to under-react" is the safe starting point.
+Matt supplied four clips in `tools/murmuration_reference/` with timestamped notes; frames were
+extracted (ffmpeg) at the flagged moments and analyzed — see **§2.1**. The §3 magnitudes are now
+grounded in that footage. Final feel is still dialed in MM.3 against live sessions + Matt's review,
+with the clips as the yardstick (and for the M7 gate in MM.5), per the Fata Morgana live-tuning
+precedent. The raw clips/frames stay git-ignored (licensed stock); the committed artifact is the
+§2.1 written breakdown.
 
 ---
 
