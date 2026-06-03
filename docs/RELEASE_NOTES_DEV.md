@@ -6,6 +6,31 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-06-03] FM — Fata Morgana: faithful butterchurn mirage port + bar-sway stem uplift, CERTIFIED
+
+**Increment:** FM.0 + FM.L1 + FM.L2. **Status:** Shipped + certified 2026-06-03. **Decision:** D-139.
+
+### What landed
+
+A new **certified** preset — **Fata Morgana**, a mirage (starfield night sky, glowing cycling horizon, reflective rippling neon floor). It's the second faithful butterchurn port after Dragon Bloom: the render loop (`warp → blur → shapes-on-top → comp → swap`) is replicated wholesale from the source (FA #70), then uplifted with stem separation — **three neon spectra (drums/bass/vocals) sway over the water in time with the bars.**
+
+### How it works
+
+- **Faithful substrate:** custom feedback warp (blur-driven swirl + lattice, self-decaying), procedural mirage comp (perspective floor + horizon glow + water reflection + point-wrap starfield, display-only), and a moderate blur1. `zoom=1.05` (from `pixel_eqs`) forms the concentric rings via the shapes' zoom-feedback.
+- **Stem uplift:** 3 spectra (one per instrument, down from the source's 11-blob crowd) share a phase-offset `cos(π·swayClock)` horizontal sway — `swayClock` advances +1 per musical bar, drums/vocals anti-phase + bass weaving so the frame stays balanced and they turn on each downbeat. Brightness: one gentle pulse per grid beat + per-stem `_energy_dev` identity.
+
+### Fidelity fixes worth remembering (durable)
+
+- **sRGB round-trip** (FA #71): the comp output is sRGB-decoded before the `.bgra8Unorm_srgb` drawable write so an sRGB-naive source shader's values map to the intended display blacks (the comp was washing out otherwise).
+- **Glow clock magnitude** (FA #71): the horizon-glow `slow_roam_sin` has a ~21-min period; a fresh render sat in its pale opening quarter. Phase-seeded (+400 s) + per-session jitter → warm, spectrum-cycling horizon, different hue each session.
+- **MSL snake_case fields** (FA #72): `f.beat_phase01` / `st.drums_energy_dev` in `.metal`, never the Swift camelCase — the camelCase silently fails to compile and the preset is dropped (count 18→17, caught by `PresetLoaderCompileFailureTest`).
+
+### Verification
+
+1374 engine tests pass; swiftlint --strict 0/420; app builds. **Certified** by Matt's live M7 across the movement-tuning sessions (closing `2026-06-03T17-08-42Z`, Billie Jean) — reviewed full-video frames + clean session.log. Cert ground-truth sets updated in `FidelityRubricTests` + `PresetDescriptorRubricFieldsTests`. Other mv_warp presets byte-identical (PresetRegression).
+
+---
+
 ## [dev-2026-06-01-b] LF.6.streaming — Streaming-path artwork resolver + fetcher + cache + wire
 
 **Increment:** LF.6.streaming. **Status:** Shipped 2026-06-01.

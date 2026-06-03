@@ -167,7 +167,17 @@ struct FidelityRubricGateTests {
     // (ambient + fresnel + specular + iridescence — by-design paradigm
     // pivot per D-126); the visual fidelity bar is met by other means.
     // Matt's approval is the load-bearing gate per SHADER_CRAFT.md §12.1 M7.
-    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom"]
+    //
+    // FM.L2 (2026-06-03): Fata Morgana certified by Matt after the iterative
+    // live-session movement-tuning pass (sessions 2026-06-03T15-26 → 17-08).
+    // Closes D-139 (faithful butterchurn port + L-uplift). The port replicates
+    // butterchurn's render loop wholesale (FA #70); the uplift maps three neon
+    // spectra to drums/bass/vocals stems, swaying over the water in time with the
+    // bars (phase-offset coordinated sway). The automated rubric gate reads false
+    // (it is a ray-march/material heuristic; Fata is a feedback mirage with no V.3
+    // mat_* cookbook materials by construction) — Matt's reference review against
+    // the butterchurn oracle is the load-bearing gate per SHADER_CRAFT.md §12.1 M7.
+    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana"]
 
     @Test func automatedGate_uncertifiedPresetsAreUncertified() async {
         let store = PresetCertificationStore()

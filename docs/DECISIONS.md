@@ -4343,3 +4343,45 @@ Per frame: **swap prev↔target → warp(prev) into target → draw waves normal
 ### Pitfall recorded
 
 The float→8-bit revert must change BOTH the pipeline format (`PresetLoader.feedbackFormat`) AND the app's `MVWarpPipelineBundle.feedbackFormat` — a mismatch (8-bit pipeline rendering into a float texture) is an attachment-format mismatch that **stalls the GPU (beachball) at the preset transition**, not a clean error.
+
+## D-139 — Fata Morgana: faithful butterchurn mirage port + coordinated bar-sway stem uplift, certified (Fata Morgana, 2026-06-03)
+
+### Context
+
+Second butterchurn port after Dragon Bloom (D-138). `martin [shadow harlequins shape code] - fata morgana` is a **mirage** — starfield night sky, a glowing cycling horizon, and a reflective rippling neon floor. Render loop replicated wholesale from source per FA #70: a custom feedback **WARP** (blur-driven swirl + lattice, bakes its own `×0.98−0.02` decay), a custom procedural **COMP** (the mirage projection — perspective floor, horizon glow, grid stars, water reflection; display-only, fully replaces fixed-function gamma/darken/echo), a wide-ish **blur1**, and custom **SHAPES** drawn on top of the warped target (= the feedback). Per frame: `warp(prev) → blur → shapes-on-top → comp → swap`.
+
+### Decision
+
+Ship Fata Morgana as a **certified** preset (Matt live M7 across the iterative movement-tuning sessions 2026-06-03, closing on `…17-08-42Z`). The faithful port is uplifted with stem separation; the visual identity is **three neon spectra (drums/bass/vocals) swaying over the water in time with the bars**.
+
+### Faithful-port facts (durable; verified against butterchurn source)
+
+- **Warp:** line-for-line from the converted JSON — `rot = dot(blur1, roam_sin)·16`, displacement `0.2·luma·rotate(p, rot)` (calmed to `0.15` in the uplift — see below), texsize lattice, `ret = main(uv1)·0.98 − 0.02`.
+- **`zoom = 1.05`** comes from `pixel_eqs` (`a.zoom=1.05`), which overrides `baseVals.zoom=0.9999`. It is faithful — content flows outward 5%/frame, and the zoom feedback of the shapes is what forms the concentric neon rings.
+- **Custom comp fully replaces fixed-function.** `gammaadj`/`darken`/`echo`/`invert` are the DEFAULT-comp body (`butterchurn.js` ~3550, `if shaderText.length === 0`); a custom comp does NOT apply them. The mirage's horizon-glow colour is `(0.02/(0.02+|xf|))·slow_roam_sin` — `slow_roam_sin = 0.5+0.5·sin(time·{.005,.008,.013,.022})`.
+- **blur1** is a separable gaussian stored at ~0.25 res (`blurRatios[0]=[0.5,0.25]`), spanning ~±4 source texels — MODERATE, not wide. The warp derives its swirl direction from blur1, so blur width governs **rings vs ribbons**: too wide → coherent large-scale swirl twists the zoom-echo rings into smeared ribbons. (An early over-wide ×6 blur was the smear; corrected to ×2 ≈ ±4 texels.)
+- **Grid stars** are gated by `pw_noise_lq` — a POINT-WRAP (nearest-sampled) random texture, so the lit cells scatter into a starfield. Sampling smooth Perlin instead gives a regular diagonal Moiré lattice.
+
+### Three durable engine/port lessons (promoted to CLAUDE.md Failed Approaches)
+
+1. **sRGB round-trip for sRGB-naive ports (FA #71).** butterchurn writes to an sRGB-naive WebGL canvas (shader output = display value). Phosphene's drawable is `.bgra8Unorm_srgb`, so Metal sRGB-ENCODES the comp output → lifted blacks / washed midtones. Fix: sRGB-DECODE the comp output so the target's encode round-trips back to the source's display values. Only the final comp→drawable write needs it (the feedback textures are linear `.bgra8Unorm`, matching butterchurn's 8-bit clamp).
+2. **`time` magnitude, not phase, drove the "gray horizon" (FA #71 corollary).** `slow_roam_sin`'s slowest period is ~21 min, so it only leaves the pale opening quarter once `time` reaches the hundreds of seconds. The oracle was sampled minutes in (saturated, spectrum-cycling); a fresh render sat in the pale quarter. Fix: phase-seed the glow clock (`+400 s` base) so it opens mid-cycle; plus a **per-session random jitter** (~one 21-min period) so every session opens on a different horizon hue (a deliberate, Matt-requested divergence — butterchurn itself has no such jitter).
+3. **MSL `FeatureVector`/`StemFeatures` fields are snake_case (FA #72).** Using the Swift name (`f.beatPhase01`) in `.metal` silently fails to compile and the preset is **dropped from the loader** (`PresetLoaderCompileFailureTest` count 18→17 caught it). The fields are `f.beat_phase01`, `f.bar_phase01`, `st.drums_energy_dev`, etc.
+
+### Music uplift (the design Matt converged on over the movement-tuning pass)
+
+The journey is instructive (each step is a recorded session): per-onset size **bursts** read as "too excited / more bursts than beats" (drums_beat + dev fire on every onset); a per-blob **bar-direction reversal** was "lost among the many spectra"; a whole-field **downbeat zoom breath** synced but wasn't the vision. The converged design:
+
+- **COUNT:** the source's 4/1/5-instance shapes were a crowd (chaos). Cut to **ONE instance per instrument** (drums/bass/vocals) + the faint central echo — 3 bright spectra.
+- **MOTION — coordinated bar sway (headline):** the 3 spectra share a horizontal sway `A·cos(π·swayClock)`, `swayClock` advancing **+1 per bar** (accumulated `barPhase01` deltas, downbeat wrap handled) → a 2-bar cosine that turns at each downbeat. **Phase-offset** so they stay balanced: drums (phase 0) and vocals (phase 1.0) are anti-phase (one swings right while the other swings left), bass (phase 0.5) weaves centre — at every downbeat they sit right/centre/left, never bunched. Frozen when no bar grid is present.
+- **POSITION:** base `y < 0.5` puts them above the horizon (the comp samples the sky at feedback `v ∈ [0 top, 0.5 horizon]`, and a shape's `v` equals its `y`, so `y > 0.5` reads as IN the water).
+- **BRIGHTNESS:** one gentle pulse per GRID beat (`pow(1−beat_phase01, 4)`, not per-onset `drums_beat`) + per-stem `_energy_dev` for instrument identity.
+- **Swirl calmed** to `0.15·luma` (from the faithful `0.2`) so the swaying spectra streak less (Matt-requested).
+
+### Authoring lesson (durable)
+
+**Few coordinated subjects beat many independent ones for a legible musical gesture.** A bar-synced motion on 11 independent orbits is invisible (chaos); the same gesture on 3 phase-coordinated subjects reads clearly. When a coupling "isn't reading," check subject COUNT and COORDINATION before increasing amplitude. (Project-scope twin of FA #67 one-primitive-per-layer.)
+
+### Files
+
+`FataMorgana.metal`, `FataMorgana.json` (certified:true), `RenderPipeline+FataMorgana.swift`, `RenderPipeline.swift` (sway/glow state), `RenderPipeline+PresetSwitching.swift` (per-session glow jitter), `FataMorganaMVWarpAccumulationTest.swift` (diag feeds beat/bar phase), `FidelityRubricTests.swift` + `PresetDescriptorRubricFieldsTests.swift` (cert ground-truth sets). Other mv_warp presets byte-identical (PresetRegression).

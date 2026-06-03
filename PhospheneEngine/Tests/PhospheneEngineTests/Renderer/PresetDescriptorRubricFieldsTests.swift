@@ -91,8 +91,8 @@ import Foundation
         loaded += 1
 
         // Certified presets (Matt M7-approved): Lumen Mosaic, Ferrofluid Ocean,
-        // Dragon Bloom. Everything else must be uncertified. (Field must decode.)
-        let certifiedExpected: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom"]
+        // Dragon Bloom, Fata Morgana. Everything else must be uncertified. (Field must decode.)
+        let certifiedExpected: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana"]
         #expect(descriptor.certified == certifiedExpected.contains(descriptor.name),
                 "\(descriptor.name): certified flag does not match the M7-approved set")
 

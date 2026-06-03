@@ -2,7 +2,7 @@
   "name": "Fata Morgana",
   "family": "hypnotic",
   "duration": 45,
-  "description": "A desert/ocean MIRAGE — starfield night sky, a glowing horizon, and a reflective rippling neon floor — a faithful port of the Milkdrop/butterchurn builtin `martin [shadow harlequins shape code] - fata morgana` (custom feedback warp + procedural mirage comp + 4 additive/textured n-gon shapes) onto Phosphene's mv_warp. Render loop replicated wholesale from butterchurn source (FA #70): warp(prev) → blur → shapes-on-top (=the feedback) → comp (display-only) → swap. See docs/presets/FATA_MORGANA_PLAN.md + D-139.",
+  "description": "A desert/ocean MIRAGE — starfield night sky, a glowing horizon, and a reflective rippling neon floor — a faithful port of the Milkdrop/butterchurn builtin `martin [shadow harlequins shape code] - fata morgana` (custom feedback warp + procedural mirage comp) onto Phosphene's mv_warp, uplifted with stem separation: three neon spectra (drums/bass/vocals) sway over the water in time with the bars (phase-offset coordinated sway, anti-phase pair + weaving centre), each flaring its own brightness on its instrument's onset. Render loop replicated wholesale from butterchurn source (FA #70): warp(prev) → blur → shapes-on-top (=the feedback) → comp (display-only) → swap. Per-session glow-phase jitter (varied horizon hue on startup) and sRGB-correct comp output. See docs/presets/FATA_MORGANA_PLAN.md + D-139.",
   "author": "Matt",
   "passes": ["direct", "mv_warp"],
   "fragment_function": "fata_morgana_fragment",
@@ -21,6 +21,6 @@
   "transition_affordances": ["crossfade", "morph"],
   "section_suitability": ["buildup", "peak", "bridge"],
   "complexity_cost": { "tier1": 1.3, "tier2": 0.6 },
-  "certified": false,
+  "certified": true,
   "rubric_profile": "lightweight"
 }
