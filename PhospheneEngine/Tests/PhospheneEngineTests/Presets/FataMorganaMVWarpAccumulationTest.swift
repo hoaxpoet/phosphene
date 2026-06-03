@@ -109,7 +109,11 @@ struct FataMorganaMVWarpAccumulationTest {
             return
         }
 
-        let wPix = 640, hPix = 480   // 4:3 to match the oracle
+        // Default 1280×720 (16:9) to MATCH the live app's aspect/scale (test/prod
+        // parity, FA #66) — the earlier 640×480 hid a resolution-dependent warp bug.
+        // FATA_W/FATA_H override (use 640/480 to reproduce the old oracle-aspect view).
+        let wPix = ProcessInfo.processInfo.environment["FATA_W"].flatMap { Int($0) } ?? 1280
+        let hPix = ProcessInfo.processInfo.environment["FATA_H"].flatMap { Int($0) } ?? 720
         let fbDesc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: ctx.pixelFormat, width: wPix, height: hPix, mipmapped: false)
         fbDesc.usage = [.renderTarget, .shaderRead]
