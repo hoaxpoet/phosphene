@@ -176,6 +176,114 @@ fragment float4 fata_morgana_comp_fragment(
     return float4(saturate(ret), 1.0);
 }
 
+// MARK: - Custom SHAPES (FM.L2) — 4 forty-gon n-gons drawn on top of the warp
+//
+// Faithful to butterchurn's CustomShape (source ~L4589): TRIANGLE_FAN per
+// instance, CENTER vertex = primary colour (r,g,b,a), perimeter = secondary
+// (r2,g2,b2,a2). For all 4 fata shapes the rim secondary is (0,0,0,0), so the
+// additive shapes (1/2/3) read as a bright cycled centre fading to transparent =
+// soft neon blobs; shape 0 is a faint textured central echo. Metal has no
+// TRIANGLE_FAN, so the fan is expanded to a triangle LIST in the vertex shader:
+// `sides` triangles × 3 verts; tri t = (center, perimeter[t], perimeter[t+1]).
+// Drawn ON TOP of the warped composeTexture (= the feedback), like DB strands.
+//
+// Per-instance frame_eqs transcribed from source (orbit + colour cycle); the 3
+// additive shapes' radius = baseVals.rad × the band attack (the source uses
+// {mid,bass,treb}_att — that IS the faithful copy; the stem map is the L-uplift).
+
+struct FataShapeParams {
+    int   shapeIndex;   // 0 textured echo, 1 mid, 2 bass, 3 treb
+    int   sides;        // 30 (shape 0) or 40
+    int   numInst;      // instances (1/4/1/5)
+    float frame;        // butterchurn frame counter (colour cycle + shape-0 rotation)
+    float aspectY;      // texsizeY/texsizeX (keeps n-gons round on a wide canvas)
+    float audioBoost;   // multiplies the band attack driving the blob radius
+    float pad0; float pad1;
+};
+
+struct FataShapeVtxOut {
+    float4 position [[position]];
+    float4 color;
+    float2 uv;
+    float  textured;
+};
+
+// div(a,b) — Milkdrop's guarded divide (b==0 ⇒ 0), used by shapes 1/3 orbits.
+static float fataDiv(float a, float b) { return (b == 0.0) ? 0.0 : a / b; }
+
+vertex FataShapeVtxOut fata_shape_vertex(
+    uint                      vid [[vertex_id]],
+    uint                      iid [[instance_id]],
+    constant FeatureVector&   f   [[buffer(0)]],
+    constant FataShapeParams& sp  [[buffer(1)]]
+) {
+    int   sides  = sp.sides;
+    int   tri    = int(vid) / 3;
+    int   corner = int(vid) % 3;
+    float time   = f.time;
+    int   inst   = int(iid);
+
+    // ── per-instance frame_eqs (source verbatim) ─────────────────────────────
+    float x = 0.5, y = 0.5, rad = 0.1, ang = 0.0, aCenter = 1.0;
+    float cyc = 0.5 * sp.frame;
+    // colour cycle: r=sin(cyc), b=sin(cyc+2.094), g=sin(cyc+4.188)
+    float3 col = float3(0.5 + 0.5 * sin(cyc),
+                        0.5 + 0.5 * sin(cyc + 4.188),
+                        0.5 + 0.5 * sin(cyc + 2.094));
+    if (sp.shapeIndex == 0) {
+        rad = 0.06623; ang = 0.02 * sp.frame; x = 0.5; y = 0.5;
+        col = float3(0.0); aCenter = 0.1;                 // faint textured echo
+    } else if (sp.shapeIndex == 1) {                       // mid
+        float d = 0.7 * fataDiv(time, float(inst));
+        x = 0.5 + 0.225 * sin(d); y = 0.5 + 0.3 * cos(d);
+        x -= 0.4 * x * sin(time);  y -= 0.4 * y * cos(time);
+        rad = 0.1 * (f.mid_att * sp.audioBoost);
+    } else if (sp.shapeIndex == 2) {                       // bass
+        x = 0.5 + 0.225 * sin(time + 2.09); y = 0.5 + 0.3 * cos(time + 2.09);
+        rad = 0.1 * (f.bass_att * sp.audioBoost);
+    } else {                                               // treb
+        float d = fataDiv(time, float(inst));
+        x = 0.5 + 0.225 * sin(d); y = 0.5 + 0.3 * cos(d);
+        x += 0.4 * x * sin(time);  y += 0.4 * y * cos(time);
+        rad = 0.07419 * (f.treb_att * sp.audioBoost);
+    }
+
+    float xn = x * 2.0 - 1.0;
+    float yn = y * -2.0 + 1.0;     // butterchurn frame.y*-2+1 (y=0 → NDC top)
+    float quarterPi = M_PI_F * 0.25;
+
+    FataShapeVtxOut out;
+    out.textured = (sp.shapeIndex == 0) ? 1.0 : 0.0;
+    if (corner == 0) {
+        out.position = float4(xn, yn, 0.0, 1.0);
+        out.color    = float4(col, aCenter);              // CENTER = primary
+        out.uv       = float2(0.5, 0.5);
+    } else {
+        int   k = (corner == 1) ? tri : (tri + 1);        // perimeter vertex, wraps
+        float p = float(k) / float(sides);
+        float angSum = p * 2.0 * M_PI_F + ang + quarterPi;
+        out.position = float4(xn + rad * cos(angSum) * sp.aspectY,
+                              yn + rad * sin(angSum), 0.0, 1.0);
+        out.color    = float4(0.0, 0.0, 0.0, 0.0);        // RIM = secondary (0 for all 4 shapes)
+        float texZoom = (sp.shapeIndex == 0) ? 1.79845 : 1.0;
+        float texAngSum = p * 2.0 * M_PI_F + quarterPi;   // tex_ang = 0
+        out.uv = float2(0.5 + 0.5 * cos(texAngSum) / texZoom * sp.aspectY,
+                        0.5 + 0.5 * sin(texAngSum) / texZoom);
+    }
+    return out;
+}
+
+fragment float4 fata_shape_fragment(
+    FataShapeVtxOut  in   [[stage_in]],
+    texture2d<float> prev [[texture(0)]]
+) {
+    if (in.textured > 0.5) {
+        constexpr sampler s(filter::linear, address::repeat);
+        return prev.sample(s, in.uv) * in.color;          // textured echo (shape 0)
+    }
+    return in.color;                                       // additive blob colour
+}
+
 // MARK: - Blur fragment (butterchurn blur1 approximation)
 //
 // Phosphene has no blur-mip chain; approximate butterchurn's `blur1` (the warp's

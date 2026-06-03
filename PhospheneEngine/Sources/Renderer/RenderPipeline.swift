@@ -78,6 +78,14 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var fataP1: Float = 0
     var fataP2: Float = 0
     var fataIndex: Int = 0
+    /// Fata Morgana frame counter (FM.L2): drives the shapes' colour cycle and
+    /// shape-0 rotation (butterchurn's `frame`). Incremented per fata draw.
+    var fataFrame: Int = 0
+    /// Fata Morgana custom-shape pipelines (FM.L2), set from the app at preset switch
+    /// via `setFataShapePipelines`. nil for every other preset. Drawn on top of the
+    /// warp target in `drawWithFataMorgana`.
+    var fataShapeAdditive: MTLRenderPipelineState?
+    var fataShapeNormal: MTLRenderPipelineState?
 
     // MARK: - Live Audio Features
 

@@ -120,10 +120,24 @@ struct FataMorganaMVWarpAccumulationTest {
               let displayTex = ctx.device.makeTexture(descriptor: fbDesc)
         else { Issue.record("texture alloc failed"); return }
 
+        // Real-session band energies drive the blob sizes (the shapes are audio-sized).
+        // The CSV logs raw bass/mid/treble (cols 5/6/7) but not raw *_att — use the
+        // band energy as the *_att proxy here (a RENDER sanity check of the shape draw
+        // path; the live app uses true bassAtt and Matt's M7 is the fidelity gate).
+        let rows = Self.loadSessionBands()
+        let offset = ProcessInfo.processInfo.environment["FATA_SESSION_OFFSET"].flatMap { Int($0) } ?? 700
         let frames = Self.frameCount
-        let dt: Float = 1.0 / 60.0
+        let aspectY = Float(min(wPix, hPix)) / Float(max(wPix, hPix))
+        let shapeCfg: [(Int32, Int32, Int32, MTLRenderPipelineState?)] = [
+            (0, 30, 1, mvWarp.shapeNormalState),
+            (1, 40, 4, mvWarp.shapeAdditiveState),
+            (2, 40, 1, mvWarp.shapeAdditiveState),
+            (3, 40, 5, mvWarp.shapeAdditiveState),
+        ]
         for i in 0..<frames {
-            let t = Float(i) * dt
+            let row = rows.isEmpty ? (Float(i) / 60.0, Float(0), Float(0), Float(0))
+                                   : rows[min(offset + i, rows.count - 1)]
+            let t = row.0
             var u = FataUniforms()
             u.time = t
             u.texsize = SIMD4<Float>(Float(wPix), Float(hPix), 1.0 / Float(wPix), 1.0 / Float(hPix))
@@ -131,7 +145,10 @@ struct FataMorganaMVWarpAccumulationTest {
                                      0.5 + 0.5 * sin(t * 5.0), 0.5 + 0.5 * sin(t * 20.0))
             u.slowRoamSin = SIMD4<Float>(0.5 + 0.5 * sin(t * 0.005), 0.5 + 0.5 * sin(t * 0.008),
                                          0.5 + 0.5 * sin(t * 0.013), 0.5 + 0.5 * sin(t * 0.022))
-            var feat = FeatureVector.zero; feat.time = t
+            var feat = FeatureVector.zero
+            feat.time = t
+            feat.bass = row.1; feat.mid = row.2; feat.treble = row.3
+            feat.bassAtt = min(row.1, 2.0); feat.midAtt = min(row.2, 2.0); feat.trebleAtt = min(row.3, 2.0)
             var stm = StemFeatures.zero
             var scene = SceneUniforms()
 
@@ -151,6 +168,20 @@ struct FataMorganaMVWarpAccumulationTest {
                 enc.setFragmentTexture(blurTex, index: 1)
                 enc.setFragmentBytes(&u, length: MemoryLayout<FataUniforms>.stride, index: 1)
                 enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 4278)
+            }
+            // shapes on top of composeTex (FM.L2)
+            encodePass(cmd, pipeline: mvWarp.warpState, target: composeTex, load: .load) { enc in
+                enc.setVertexBytes(&feat, length: MemoryLayout<FeatureVector>.stride, index: 0)
+                enc.setFragmentTexture(warpTex, index: 0)
+                for (idx, sides, numInst, pipe) in shapeCfg {
+                    guard let pipe else { continue }
+                    enc.setRenderPipelineState(pipe)
+                    var params = FataShapeParams(shapeIndex: idx, sides: sides, numInst: numInst,
+                                                 frame: Float(i), aspectY: aspectY, audioBoost: 1.0)
+                    enc.setVertexBytes(&params, length: MemoryLayout<FataShapeParams>.stride, index: 1)
+                    enc.drawPrimitives(type: .triangle, vertexStart: 0,
+                                       vertexCount: Int(sides) * 3, instanceCount: Int(numInst))
+                }
             }
             // comp(compose, noise) → displayTex
             encodePass(cmd, pipeline: mvWarp.blitState, target: displayTex, load: .dontCare) { enc in
@@ -183,6 +214,23 @@ struct FataMorganaMVWarpAccumulationTest {
         enc.setRenderPipelineState(pipeline)
         body(enc)
         enc.endEncoding()
+    }
+
+    /// Parse a recorded session's features.csv into (time, bass, mid, treble) rows
+    /// (cols 3/5/6/7). FATA_SESSION=<dir> overrides; defaults to the 23-44-40Z session.
+    /// Returns [] if unreadable (the diag then runs on a silent field).
+    static func loadSessionBands() -> [(Float, Float, Float, Float)] {
+        let dir = ProcessInfo.processInfo.environment["FATA_SESSION"]
+            ?? "\(NSHomeDirectory())/Documents/phosphene_sessions/2026-06-02T23-44-40Z"
+        let url = URL(fileURLWithPath: dir).appendingPathComponent("features.csv")
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
+        var out: [(Float, Float, Float, Float)] = []
+        for line in text.split(separator: "\n").dropFirst() {
+            let c = line.split(separator: ",", omittingEmptySubsequences: false)
+            guard c.count > 7 else { continue }
+            out.append((Float(c[2]) ?? 0, Float(c[4]) ?? 0, Float(c[5]) ?? 0, Float(c[6]) ?? 0))
+        }
+        return out
     }
 
     static func writePNG(_ tex: MTLTexture, to url: URL) throws {

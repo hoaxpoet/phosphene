@@ -73,6 +73,19 @@ extension RenderPipeline {
         }
     }
 
+    /// Set the Fata Morgana custom-shape pipelines (FM.L2, D-139) — additive (neon
+    /// blobs) + normal-blend (textured echo). Pass `nil`/`nil` to clear. Drawn on top
+    /// of the warp target in `drawWithFataMorgana`. Thread-safe (mvWarpLock).
+    public func setFataShapePipelines(
+        additive: MTLRenderPipelineState?,
+        normal: MTLRenderPipelineState?
+    ) {
+        mvWarpLock.withLock {
+            fataShapeAdditive = additive
+            fataShapeNormal = normal
+        }
+    }
+
     /// Set the mv_warp chromatic colour-separation amount (Dragon Bloom L3, D-137).
     /// 0 ⇒ identity (the warp fragment leaves feedback colour unchanged — every
     /// other mv_warp preset). Thread-safe.
