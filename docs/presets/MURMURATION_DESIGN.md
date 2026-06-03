@@ -69,6 +69,39 @@ flash-expansion should fire) is a **temporal contract that only the motion clips
 MM.1's remaining step is Matt's notes on specific clip moments (e.g. "the pivot at 0:15 in clip 2");
 those refine the magnitudes here before MM.2 freezes them.
 
+### 3.1 Signal coordination — NOT all-at-once (load-bearing)
+
+The six layers are **not** six always-on peers. A real murmuration is mostly calm and highly
+coordinated (polarisation ≈ 0.96), drifting and breathing, *punctuated* by discrete events — so the
+coordination below is what makes the result faithful, not a compromise against it. Three mechanisms:
+
+1. **Two tiers, not six peers.**
+   - **Continuous substrate** — always gently on, but each layer acts on an **orthogonal degree of
+     freedom** so they cannot fight: L1 bass → *where + how stretched* (roost-attractor translation
+     and shape), L5 vocals → *how tight* (cohesion radius / density breathing), L4 mid → *edge
+     shimmer only* (high-frequency noise applied to topological-edge birds, not the core). A real
+     flock drifts, breathes, and shimmers at its edge simultaneously the same way.
+   - **Punctuated events** — discrete and arbitrated: L2 drum → orientation wave, L3 drop → flash
+     expansion. These act on the *same* collective DOF, so they pass through a **single event bus**
+     with a refractory period: one event travels at a time, a flash-expansion supersedes an in-flight
+     wave, nothing stacks.
+
+2. **Events are beat-quantized; the substrate is free-running.** This is the "rhythmic coordination":
+   orientation waves are launched on the beat grid and alternate direction per beat-epoch (the
+   natural weaving zigzag); drift/breath flow continuously. The rhythm lives in the event layer only.
+
+3. **The boids substrate is its own low-pass filter.** Momentum + banking limits + 7-neighbour
+   coupling mean the flock physically cannot respond instantly or twitch in six directions — every
+   injected signal is integrated into one coherent collective motion. (This is *why* boids replaces
+   the old ellipse-spring model: the substrate absorbs simultaneous input instead of amplifying it,
+   which is also the McGill "critical noise" requirement.)
+
+**Master lever — energy-gated drama.** The entire event layer's amplitude is scaled by overall
+energy/arousal (and may key off orchestrator section context). In a calm passage the flock is
+essentially pure substrate — drifting and breathing, almost no waves; the predator-strike drama only
+emerges as the music intensifies. **This is the single biggest "realistic vs. busy" knob**, tuned
+against the motion clips in MM.3. Default bias: err toward calm — under-react rather than over-react.
+
 ---
 
 ## 4. Technique + grounding (research-first, per CLAUDE.md grounding priority)
