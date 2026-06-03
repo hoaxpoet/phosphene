@@ -1,0 +1,8 @@
+# Raw motion clips + extracted frames are NOT committed (large + licensed stock footage).
+*.mp4
+*.mov
+*.webm
+*.mkv
+*.m4v
+*.avi
+frames/
