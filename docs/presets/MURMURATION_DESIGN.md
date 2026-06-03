@@ -350,7 +350,32 @@ recorded session* and the M7 perceptual review are the MM.5 gates — MM.3 verif
 the production dispatch path (`MurmurationFlockAudioTests`) and registers the firing-evidence
 diagnostic (`MurmurationRoutes.swift` in `PresetSessionReplay`); it does not assert perceptual feel.
 
-**Tuning constants (MM.3 starting values, in `MurmurationFlockConfiguration`):** `bassDriftGain 1.4`,
-`elongationGain 1.1` (cap 0.72 ≈ 3:1), `turnBaseAmp 2.0`, `midEdgeAmp 0.9`, `vocalsBreathDepth 0.30`,
-`substrateTau 6 s`, wave width 0.30, event-gate floor 0.2. These are routing-layer defaults; final
-feel is dialled against live sessions + Matt's review in MM.5 (Fata Morgana live-tuning precedent).
+## 11.1 M7 round 1 — the over-driven-force failure (2026-06-03)
+
+First live M7 review **failed**: the flock fragmented into clumps, popped/splashed birds out, and
+showed a square-grid artifact — read as neither a murmuration nor musical. **Root cause** (from the
+live session CSV, `2026-06-03T21-04-33Z`): the D-026 deviation primitives spike to **~3×** on real
+music (`drumsEnergyDev`/`bassEnergyRel` max ~3.2–3.4, p99 ~0.85), but the MM.3 gains were tuned at
+input = 1.0. So the curl turning-wave force reached ~6 (vs boids cohesion ~0.3–0.5), bass drift
+dragged the roost ~1.5 units across a half-span-2 world, and edge flutter scattered birds — the
+Audio Data Hierarchy inverted (FA #4, live). The routing tests missed it because they capped inputs
+at 1.0 (the FA #66 / FA #31 parity gap). See `project_deviation_primitive_real_range`.
+
+**Fix** — the boids substrate must stay the low-pass filter (§3.1); audio *nudges*, never overwhelms:
+- **Soft-saturate (`tanh`) every driver** so a 3× spike can't produce a 3× force.
+- **Decouple** the L2 wave's visual darkening (`pad0`, can read strong) from its physical curl
+  **force** (must stay gentle — the failure was a strong force, not strong shading).
+- **Hard-bound the drift** to `0.30 × worldHalfSpan` so the flock stays framed.
+- **Per-frame edge flutter** (was a ~7 Hz held step → moved birds in straight lines, no shimmer).
+- New **parity invariant test**: drive sustained 3×-magnitude audio + beats at 55k through the real
+  dispatch path; assert the flock stays one cohesive, framed, finite mass.
+
+**Still unverified after the fix:** the live *look* (murmuration character; whether the square-grid
+artifact — suspected grid-binning `cellCapacity`/`neighborCap` overflow exposed by over-clumping — is
+gone). Those need Matt's rebuild + re-review; they cannot be confirmed headlessly.
+
+**Tuning constants (post-fix, in `MurmurationFlockConfiguration`):** `bassDriftGain 1.0` (drift capped
+at 0.30·worldHalfSpan), `elongationGain 0.7` (cap 0.72 ≈ 3:1), `turnBaseAmp 0.16` (force only — wave
+darkening is `drumsDev·eventGate`, decoupled), `midEdgeAmp 0.22`, `vocalsBreathDepth 0.30`,
+`substrateTau 6 s`, wave width 0.30, event-gate floor 0.2; all drivers `tanh`-saturated. Routing-layer
+defaults; final feel is dialled against live sessions + Matt's review in MM.5.

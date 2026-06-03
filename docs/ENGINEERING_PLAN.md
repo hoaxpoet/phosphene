@@ -3130,6 +3130,19 @@ the M7 live review (the load-bearing "reads musical + stays calm in calm passage
 — "the audio coupling demonstrably works at the routing layer" — is met; the perceptual sign-off is
 MM.5.
 
+**M7 round 1 FAILED + fixed (2026-06-03, commit `564f4eec`).** First live review: the flock
+fragmented into clumps, popped/splashed birds, showed a square-grid artifact — not a murmuration, not
+musical. Root cause (live session CSV): the D-026 deviation primitives spike to **~3×** on real music
+(`drumsEnergyDev`/`bassEnergyRel` max ~3.2–3.4), but the gains were tuned at input = 1.0 → audio
+forces 3–6× too strong, tearing the flock and inverting the Audio Data Hierarchy (FA #4). The routing
+tests missed it by capping inputs at 1.0 (FA #66 parity gap). Fix: `tanh`-saturate every driver,
+re-tune gains to gentle accents, bound the drift inside the frame, decouple the L2 wave's darkening
+(strong) from its curl force (gentle), per-frame edge flutter, + a new **parity invariant test**
+(sustained 3×-magnitude audio at 55k → flock stays cohesive). Full suite 1385 green. See
+`MURMURATION_DESIGN.md §11.1` + memory `project_deviation_primitive_real_range`. **The live LOOK
+(murmuration character + whether the square-grid artifact is gone) is still unverified — needs Matt's
+rebuild + re-review; not confirmable headlessly.**
+
 ---
 
 ### Increment MM.4 — Sky + render polish + performance
