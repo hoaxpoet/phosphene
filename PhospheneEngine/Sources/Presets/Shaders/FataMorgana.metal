@@ -300,10 +300,11 @@ fragment float4 fata_shape_fragment(
 // MARK: - Blur fragment (butterchurn blur1 approximation)
 //
 // Phosphene has no blur-mip chain; approximate butterchurn's `blur1` (the warp's
-// low-frequency feedback read) with a 9-tap separable-ish gaussian of the prev
-// frame, stored in colour space so the warp's scale1=1 / bias1=0. Radius ≈ a few
-// px; the warp only uses blur1 for a luma-weighted rotation/displacement, so an
-// exact gaussian isn't needed — a smooth low-pass is.
+// low-frequency feedback read) with a 9-tap gaussian of the prev frame, stored in
+// colour space so the warp's scale1=1 / bias1=0. The warp only uses blur1 for a
+// luma-weighted rotation/displacement, so a smooth low-pass suffices. (A much wider
+// blur was tried for the fill gap — it did not spread the field; the fill gap is a
+// deeper feedback-transport issue, not blur width. FM.L2.)
 fragment float4 fata_morgana_blur_fragment(
     VertexOut              in   [[stage_in]],
     texture2d<float>       src  [[texture(0)]],
