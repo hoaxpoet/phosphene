@@ -91,9 +91,17 @@ extension RenderPipeline {
                                        0.5 + 0.5 * sin(tSec * 0.013),
                                        0.5 + 0.5 * sin(tSec * 0.022))
 
-        // texsize (feedback px size + reciprocal).
+        // texsize — a FIXED REFERENCE scale (≈ the oracle's 480-tall canvas), NOT the
+        // live drawable size. The warp's lattice + displacement scale with texsize
+        // (`uv1·texsize·0.02`, `lat·texsize.zw·12`), so using the live 1080p size made a
+        // fine regular lattice that the comp mirrors into the sky as diagonal streaks
+        // (Matt M7 #5). A fixed 480-tall reference (live aspect preserved) matches the
+        // oracle's coarser warp and is resolution-INDEPENDENT (live looks identical at
+        // any res). The comp uses normalized uv, so it's unaffected.
         let size = mvWarpDrawableSize
-        let wPx = max(Float(size.width), 1), hPx = max(Float(size.height), 1)
+        let aspect = Float(max(size.width, 1)) / Float(max(size.height, 1))
+        let hPx: Float = 480
+        let wPx = hPx * aspect
         uni.texsize = SIMD4<Float>(wPx, hPx, 1.0 / wPx, 1.0 / hPx)
 
         // frame_eqs beat-rotation accumulator (source verbatim, order preserved):
