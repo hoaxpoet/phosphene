@@ -3104,7 +3104,31 @@ one improvement over the original: convert raw energy → deviation primitives (
 [`MURMURATION_DESIGN.md` §3.2](presets/MURMURATION_DESIGN.md). **Keep `ProceduralGeometry` /
 `Particles.metal` in the tree until MM.3 has ported its audio coupling** — it is the reference source.
 
-**Done when:** each route's firing is evidenced; ratio verified; no absolute-threshold reads remain.
+**Delivered (2026-06-03, commits `072b2b8c` port · `205ac595` tests · `4ff18f8b` replay · `11767968` lint):**
+- `MurmurationFlockGeometry.computeAudio(features:stemFeatures:dt:)` ports the four `Particles.metal`
+  routes onto the boids substrate, all from deviation primitives (D-026): **L1 bass** → roost macro
+  drift + a guide-segment elongation (Hoetzlein guide-line) → comma/ribbon; **L2 drums** → a curl
+  impulse about the flock axis that sweeps as the beat pulse decays (FA #26 cross-genre beat),
+  rolling birds without translating the mass (FA #4) + a localized wave-darkening band written to
+  `pad0` for the moving dark band; **L4 mid** → inverse-neighbour-count edge flutter; **L5 vocals**
+  → tighter inter-bird spacing (the dark pulse). §3.1 coordination: orthogonal-DOF substrate +
+  energy/arousal-gated event layer; D-019 warmup blend kept. `FlockParams` → 144 B (MSL mirror).
+- Every audio term vanishes at zero input → the MM.2 silence baseline is reproduced exactly (its
+  harness stays green). **L3 flash-expansion deferred** per design §9 (Matt 2026-06-03).
+- `MurmurationFlockAudioTests` (7 tests) verify every route + the ≥ 2× continuous:beat ratio via
+  the **real reset→bin→boids dispatch path**, measured within one geometry (the flock is its own
+  control — boids are chaotic + GPU atomic-binning is non-deterministic, so cross-run diffs are
+  unreliable). Full engine suite 1384 green; swiftlint --strict 0; app build clean.
+- `MurmurationRouteSpecs` registered in `PresetSessionReplay` → a `--preset murmuration` run over a
+  recorded session emits the per-route firing evidence pack.
+
+**Done when:** ✅ ratio verified (≥ 2× via real dispatch); ✅ no absolute-threshold reads (D-026
+throughout); ✅ each route's routing verified via the production dispatch path. **PENDING (→ MM.5):**
+per-route firing evidence from a *real recorded session* (none exists in-repo and live audio can't be
+captured headlessly — the diagnostic is built and one command away once Matt records a session) and
+the M7 live review (the load-bearing "reads musical + stays calm in calm passages" gate). MM.3's bar
+— "the audio coupling demonstrably works at the routing layer" — is met; the perceptual sign-off is
+MM.5.
 
 ---
 
