@@ -312,3 +312,45 @@ precedent. The raw clips/frames stay git-ignored (licensed stock); the committed
   once the base reads right.
 - **MM.4** — sky + render polish + performance (60fps@1080p, rubric M1/M2 on sky).
 - **MM.5** — M7 review vs references + clips, certify.
+
+---
+
+## 11. MM.3 implementation note (2026-06-03)
+
+The §3.2 carry-forward landed in `MurmurationFlockGeometry.computeAudio(...)` +
+`MurmurationFlock.metal`. Four port decisions worth recording (each chosen against the boids
+substrate, not the original ellipse):
+
+- **L1 elongation → guide segment, not anisotropic spring.** The original stretched a parametric
+  envelope (`halfLength`/`halfWidth`). On boids the faithful, *stable* equivalent is Hoetzlein's
+  moving guide-line: under bass the point roost attractor becomes a segment along the flock axis
+  (half-length ∝ elongation), each bird pulled to its nearest point → the mass spreads into a
+  comma/ribbon with no positive-feedback blow-up, collapsing back to the point attractor at zero
+  bass. (A first attempt — decomposing the roost pull into along-/across-axis components — was a
+  weak perturbation on an already-weak roost and measured *rounder*, not more elongated.)
+- **L2 drum wave → curl impulse, not a perpendicular shove.** A constant-direction perpendicular
+  turning force net-*translates* the flock (the accent becomes a primary motion driver — FA #4). A
+  rotation about the flock axis, `cross(axis, pos − centre)`, sums to ≈ 0 across the mass, so it
+  rolls birds in the band (banking) **without relocating the flock**. This is also more faithful to
+  a real rolling manoeuvre. Verified: the continuous:beat net-displacement ratio is ≥ 2× by
+  construction.
+- **L2 darkening → its own `pad0` channel, not the persistent `bank` field.** A coordinated roll is
+  a *smooth* turn → low per-frame direction change → the emergent `bank` field barely moves, and
+  `max`-ing the wave into `bank` smears it (the persistent field) into whole-flock darkening over a
+  beat epoch. The fix: write the **instantaneous** wave-influence band to `pad0` each frame
+  (localized, decays the moment the band passes) and have the render sample it for the moving dark
+  band. The persistent `bank` keeps carrying the emergent orientation cue.
+- **Deviation-primitive proxies (D-026).** Full-mix fallbacks: L1 `bass_att_rel`, L2 `bass_dev`
+  (drums proxy until the drum stem arrives), L4 `mid_att_rel`. Stem routing: L1 `bass_energy_rel`,
+  L2 `drums_energy_dev`, L4 `other_energy_rel`, L5 `vocals_energy_dev`. The §3.1 master lever is an
+  arousal + smoothed-energy event gate (default floor 0.2) scaling **only** the drum-wave amplitude.
+
+**Deferred / pending:** L3 flash-expansion (design §9). Per-route firing evidence from a *real
+recorded session* and the M7 perceptual review are the MM.5 gates — MM.3 verifies the routing through
+the production dispatch path (`MurmurationFlockAudioTests`) and registers the firing-evidence
+diagnostic (`MurmurationRoutes.swift` in `PresetSessionReplay`); it does not assert perceptual feel.
+
+**Tuning constants (MM.3 starting values, in `MurmurationFlockConfiguration`):** `bassDriftGain 1.4`,
+`elongationGain 1.1` (cap 0.72 ≈ 3:1), `turnBaseAmp 2.0`, `midEdgeAmp 0.9`, `vocalsBreathDepth 0.30`,
+`substrateTau 6 s`, wave width 0.30, event-gate floor 0.2. These are routing-layer defaults; final
+feel is dialled against live sessions + Matt's review in MM.5 (Fata Morgana live-tuning precedent).
