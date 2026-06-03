@@ -237,8 +237,11 @@ extension RenderPipeline {
         enc.endEncoding()
     }
 
-    /// Multiplies the band attack driving the blob radii. butterchurn feeds
-    /// 6×-boosted audio (D-138); 3.5 matches the oracle's blob scale + the strength
-    /// of the floor reflection (swept 1/2/3/4 vs the live oracle — FM.L2 tuning).
-    static let fataShapeAudioBoost: Float = 3.5
+    /// Multiplies the band attack driving the blob radii. Phosphene's bassAtt/midAtt/
+    /// trebAtt are AGC-normalized + slow-smoothed (~0.5 baseline), so the raw blobs are
+    /// small; butterchurn compensates by feeding 6×-boosted audio (D-138 kAudioBoost),
+    /// which its `*_att` envelopes inherit. 6.0 restores the oracle's blob scale + the
+    /// strength of the floor reflection + the colored horizon (the blob reflections
+    /// compress at the horizon). FM.L2 live-M7 finding (Matt: "underpowered" at 3.5).
+    static let fataShapeAudioBoost: Float = 6.0
 }
