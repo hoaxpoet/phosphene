@@ -51,7 +51,7 @@ struct FataShapeParams {
     var frame: Float
     var aspectY: Float
     var audioBoost: Float
-    var pad0: Float = 0
+    var swayClock: Float = 0   // bar clock (+1 per bar) → coordinated horizontal sway
     var pad1: Float = 0
 }
 
@@ -61,11 +61,14 @@ struct FataShapeDraw {
     let shapeIndex: Int32
     let sides: Int32
     let numInst: Int32
+    // L-uplift: ONE instance per instrument (drums/bass/vocals) + the faint echo —
+    // 3 bright spectra that sway together, not 11 independent orbits (Matt: "too many
+    // spectra ... looks like chaos"). The source's 4/5-instance counts produced the crowd.
     static let all: [FataShapeDraw] = [
         FataShapeDraw(shapeIndex: 0, sides: 30, numInst: 1),
-        FataShapeDraw(shapeIndex: 1, sides: 40, numInst: 4),
+        FataShapeDraw(shapeIndex: 1, sides: 40, numInst: 1),
         FataShapeDraw(shapeIndex: 2, sides: 40, numInst: 1),
-        FataShapeDraw(shapeIndex: 3, sides: 40, numInst: 5),
+        FataShapeDraw(shapeIndex: 3, sides: 40, numInst: 1),
     ]
 }
 
@@ -88,6 +91,15 @@ extension RenderPipeline {
         var uni = FataUniforms()
         let tSec = features.time
         uni.time = tSec
+
+        // Coordinated-sway bar clock: accumulate barPhase01 deltas (+1 per bar), handling
+        // the downbeat wrap (1→0). Drives the shapes' shared cos(π·swayClock) horizontal
+        // sway. No advance when barPhase01 is static (no grid) → shapes hold still.
+        var dBar = features.barPhase01 - fataPrevBarPhase
+        if dBar < -0.5 { dBar += 1 }          // wrapped ~1 → ~0 (downbeat)
+        if dBar < 0 { dBar = 0 }              // guard against tiny backslides
+        fataSwayClock += dBar
+        fataPrevBarPhase = features.barPhase01
 
         // roam_sin (butterchurn fast time-roam vector; drives the WARP rotation).
         // Periods 21 s / 4.8 s / 1.3 s / 0.3 s — fast, visibly varies from t=0; no
@@ -284,7 +296,8 @@ extension RenderPipeline {
                 numInst: shape.numInst,
                 frame: Float(fataFrame),
                 aspectY: aspectY,
-                audioBoost: boost)
+                audioBoost: boost,
+                swayClock: fataSwayClock)
             enc.setVertexBytes(&params, length: MemoryLayout<FataShapeParams>.stride, index: 1)
             let vc = Int(shape.sides) * 3, ic = Int(shape.numInst)
             enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: vc, instanceCount: ic)
