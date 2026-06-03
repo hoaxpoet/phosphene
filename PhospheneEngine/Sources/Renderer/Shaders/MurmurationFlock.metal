@@ -61,12 +61,12 @@ struct FlockParams {
     float alignmentWeight;
     float roostWeight;
 
-    float noiseWeight;
+    float roostFar;           // distance-scaled containment (anti-fragmentation leash)
     float bankingRate;
     uint  neighborCap;
     float wanderWeight;
 
-    float4 roostTarget;       // xyz = where the flock wants to be (drifts in MM.2)
+    float4 roostTarget;       // xyz = global flock centroid + slow drift bias (CPU-computed)
 };
 
 // MARK: - Hash helpers
@@ -213,9 +213,13 @@ kernel void murmuration_boids(
     // Separation — local repulsion (already direction-weighted).
     accel += sepSum * fp.separationWeight;
 
-    // Roost attractor — soft global containment toward the (drifting) target.
+    // Global attractor toward the flock centroid (+ drift bias). Distance-scaled
+    // so far birds snap back hard — this is the anti-fragmentation leash: a
+    // breakaway cluster is off-centroid → pulled strongly back → re-merges. The
+    // base term gives gentle drift; the far term forbids persistent splits.
     float3 toRoost = fp.roostTarget.xyz - pos;
-    accel += toRoost * fp.roostWeight;
+    float roostDist = length(toRoost);
+    accel += toRoost * (fp.roostWeight + fp.roostFar * roostDist);
 
     // Wander — low per-bird noise (the "critical noise" that keeps the flock
     // alive without destroying coordination). Slowly-varying per bird.
@@ -270,7 +274,7 @@ vertex FlockVertexOut murmuration_flock_vertex(
 
     // Orthographic-ish projection: camera at +z looking toward −z.
     // Higher z = nearer the camera. World ±worldHalfSpan → clip via kViewScale.
-    const float kViewScale = 0.85;
+    const float kViewScale = 1.3;
     float zNorm = clamp(b.position.z / fp.worldHalfSpan, -1.0, 1.0);   // −1 far … +1 near
     float persp = 1.0 + 0.18 * zNorm;                                  // mild size parallax
     out.position = float4(b.position.x * kViewScale * persp,

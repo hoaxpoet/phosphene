@@ -116,42 +116,54 @@ struct MurmurationFlockTests {
         )
     }
 
-    @Test("Silence baseline: cohesive, bounded, flying, core-dense")
+    @Test("Silence baseline: cohesive, bounded, flying, core-dense, no fragmentation")
     func test_silenceBaseline() throws {
         let ctx = try MetalContext()
         let lib = try ShaderLibrary(context: ctx)
         let cfg = MurmurationFlockConfiguration()
         let geo = try MurmurationFlockGeometry(device: ctx.device, library: lib.library, configuration: cfg)
 
-        // Settle.
+        // Run 30 s (the MM.2b fragmentation split appeared ~25 s in, so the
+        // earlier 4 s test missed it). Sample core density throughout — a split
+        // drops it because the centroid falls into the empty gap between clusters.
         var t: Float = 0
-        for _ in 0..<180 { try stepFlock(geo, time: t, queue: ctx.commandQueue); t += 1.0 / 60.0 }
-        let m1 = FlockMetrics.measure(geo)
-        // Advance and re-measure to confirm the flock drifts (alive, not frozen).
-        for _ in 0..<60 { try stepFlock(geo, time: t, queue: ctx.commandQueue); t += 1.0 / 60.0 }
-        let m2 = FlockMetrics.measure(geo)
-        let drift = (m2.centroid - m1.centroid).magnitude3
-
+        var prevCentroid = SIMD3<Float>(0, 0, 0)
+        var minCore: Float = 1
+        var maxR: Float = 0
+        var maxCentroidDist: Float = 0      // |centroid| from origin — must stay on-screen
+        var sawDrift = false
+        var lastMeanSpeed: Float = 0
+        var lastBad = false
+        for frame in 0..<1800 {
+            try stepFlock(geo, time: t, queue: ctx.commandQueue); t += 1.0 / 60.0
+            if frame % 120 == 0 && frame > 120 {       // sample every 2 s after settle
+                let m = FlockMetrics.measure(geo)
+                minCore = min(minCore, m.coreFraction)
+                maxR = max(maxR, m.maxRadius)
+                maxCentroidDist = max(maxCentroidDist, m.centroid.magnitude3)
+                lastMeanSpeed = m.meanSpeed
+                lastBad = lastBad || m.anyNonFinite
+                if (m.centroid - prevCentroid).magnitude3 > 0.002 { sawDrift = true }
+                prevCentroid = m.centroid
+            }
+        }
         print("""
-        [MM.2 silence] count=\(m1.count) \
-        rmsR=\(String(format: "%.3f", m1.rmsRadius)) \
-        maxR=\(String(format: "%.3f", m1.maxRadius)) \
-        coreFrac=\(String(format: "%.3f", m1.coreFraction)) \
-        meanSpeed=\(String(format: "%.3f", m1.meanSpeed)) \
-        centroidDrift(1s)=\(String(format: "%.3f", drift))
+        [MM.2 silence/30s] count=\(cfg.particleCount) \
+        minCoreFrac=\(String(format: "%.3f", minCore)) \
+        maxR=\(String(format: "%.3f", maxR)) \
+        maxCentroidDist=\(String(format: "%.3f", maxCentroidDist)) \
+        meanSpeed=\(String(format: "%.3f", lastMeanSpeed)) drift=\(sawDrift)
         """)
 
-        #expect(!m1.anyNonFinite, "positions must be finite (integrator stable)")
-        // Bounded: the flock stays within the simulated world, doesn't escape.
-        #expect(m1.maxRadius < cfg.worldHalfSpan * 1.6, "flock must not disperse past the world")
-        // Cohesive but not collapsed to a point.
-        #expect(m1.rmsRadius > 0.08 && m1.rmsRadius < 1.3, "flock radius in murmuration range, got \(m1.rmsRadius)")
-        // Birds keep flying (min speed enforced).
-        #expect(m1.meanSpeed > cfg.minSpeed * 0.7, "birds must keep flying, meanSpeed=\(m1.meanSpeed)")
-        // Denser core than a uniform ball (uniform → 0.125 within half-radius).
-        #expect(m1.coreFraction > 0.16, "core must be denser than uniform, coreFrac=\(m1.coreFraction)")
-        // Alive: the mass drifts over a second.
-        #expect(drift > 0.002, "flock should drift (not frozen), drift=\(drift)")
+        #expect(!lastBad, "positions must stay finite over 30 s")
+        #expect(maxR < cfg.worldHalfSpan * 1.6, "flock must not disperse past the world, maxR=\(maxR)")
+        #expect(lastMeanSpeed > cfg.minSpeed * 0.7, "birds must keep flying")
+        #expect(sawDrift, "flock should drift (not frozen)")
+        // No fragmentation: core density must stay denser-than-uniform for the
+        // WHOLE 30 s. A persistent split would drop minCore toward 0.
+        #expect(minCore > 0.16, "flock must stay one cohesive mass (no split), minCoreFrac=\(minCore)")
+        // Stays on-screen: the flock must not wander off into the distance.
+        #expect(maxCentroidDist < 0.8, "flock must stay framed (centroid near origin), got \(maxCentroidDist)")
     }
 
     @Test("Render silence-baseline frames (RENDER_VISUAL=1)")
@@ -182,9 +194,10 @@ struct MurmurationFlockTests {
         var t: Float = 0
         // Settle.
         for _ in 0..<180 { try stepFlock(geo, time: t, queue: ctx.commandQueue); t += 1.0 / 60.0 }
-        // Capture 6 frames over the next ~3 s.
+        // Capture 6 frames spread over ~24 s (so late frames cover the window
+        // where MM.2b used to fragment).
         for frame in 0..<6 {
-            for _ in 0..<30 { try stepFlock(geo, time: t, queue: ctx.commandQueue); t += 1.0 / 60.0 }
+            for _ in 0..<240 { try stepFlock(geo, time: t, queue: ctx.commandQueue); t += 1.0 / 60.0 }
             try renderFrame(geo: geo, features: silenceFeatures(time: t), tex: tex, ctx: ctx)
             let pixels = readBack(tex, w: w, h: h)
             let url = outDir.appendingPathComponent(String(format: "mm2_silence_%02d.png", frame))
