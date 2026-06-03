@@ -155,7 +155,8 @@ waves, flash expansion, breathing) are biology-grounded; *mapping them to stems*
   Target: **no struct-size change** (keeps the D-099 byte-layout discipline; if banking needs a
   dedicated field we extend additively and regen golden hashes, per `project_engine_msl_struct_extension`).
 - **Passes** stay `["feedback", "particles"]` (D-029) — the feedback pass is the trail decay, not an
-  independent motion source; we may reduce/disable trail so the silhouette stays crisp (decided in MM.4).
+  independent motion source. **Decided (Matt 2026-06-03): crisp** — trail decay set near-off so the
+  silhouette stays sharp (references have no smear).
 
 ---
 
@@ -204,17 +205,26 @@ waves, flash expansion, breathing) are biology-grounded; *mapping them to stems*
 
 ---
 
-## 9. Open questions for Matt
+## 9. Resolved decisions (Matt, 2026-06-03)
 
-1. **Motion-clip notes** (the one true blocker for finalizing §3 magnitudes): a few specific moments
-   to anchor the temporal contract — a drift/stretch you like, a beat-wave you want visible, a
-   flash-expansion moment. I can't fetch YouTube; downloaded frames or timestamped notes both work.
-2. **Camera framing:** the stills are mixed (from-below `01`, side `02/03`). Single fixed framing, or
-   a slow drift? Recommend a slow, near-static wide framing so the *flock's* motion is the motion.
-3. **Flash-expansion (L3):** in or out for v1? It's the most dramatic beat response but also the most
-   tuning-heavy. Recommend building L1/L2/L4/L5 first and adding L3 once the base reads right.
-4. **Trail/feedback:** crisp silhouette (little/no trail) vs a slight motion-trail smear. Recommend
-   crisp — the references have no smear.
+1. **Camera framing → static, wide.** Fixed wide framing; the *flock's* motion is the only motion.
+   No camera drift. (Affects §7 — projection is a fixed orthographic/wide-perspective view.)
+2. **Flash-expansion (L3) → deferred.** Build L1/L2/L4/L5 first; add L3 once the base reads right
+   (MM.3 builds the substrate + orientation wave; L3 is a follow-on step, not v1 of the coupling).
+3. **Trail/feedback → crisp.** Minimal/no motion-trail smear; the references have none. The
+   `feedback` pass is kept in `passes` for paradigm-legality (D-029) but its decay is set so the
+   silhouette stays crisp (effectively near-off).
+
+### 9.1 Motion-clip handling — honest limitation
+
+I **cannot watch the supplied clips** (YouTube / commercial stock-video pages — not fetchable as
+frames). So the §3 *magnitudes* will **not** be pre-derived from video by me; they are tuned
+empirically in MM.3 against real-music sessions + Matt's live review, with the clips serving as
+**Matt's** yardstick for that review (and for the M7 gate in MM.5). This is consistent with how feel
+is tuned across the project (e.g. Fata Morgana's live movement-tuning pass). If Matt wants a tighter
+pre-spec, timestamped notes ("at 0:15 the flock does X") or downloaded still frames are the way — but
+they are **not** a blocker: the design is robust without them, and the energy-gating master lever
+(§3.1) plus "default to under-react" is the safe starting point.
 
 ---
 
@@ -223,6 +233,8 @@ waves, flash expansion, breathing) are biology-grounded; *mapping them to stems*
 - **MM.1** (this doc) → Matt approval.
 - **MM.2** — flock engine + multi-frame harness; silence baseline reads as a dense, cohesive,
   density-graded mass.
-- **MM.3** — audio coupling (the §3 table) with per-route firing evidence.
+- **MM.3** — audio coupling: substrate (L1 bass / L5 vocals / L4 mid) + L2 orientation wave first,
+  with per-route firing evidence + energy-gating; **L3 flash-expansion deferred** to a follow-on step
+  once the base reads right.
 - **MM.4** — sky + render polish + performance (60fps@1080p, rubric M1/M2 on sky).
 - **MM.5** — M7 review vs references + clips, certify.
