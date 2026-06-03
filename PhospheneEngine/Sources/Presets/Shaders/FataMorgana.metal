@@ -256,6 +256,15 @@ vertex FataShapeVtxOut fata_shape_vertex(
     float yn = y * -2.0 + 1.0;     // butterchurn frame.y*-2+1 (y=0 → NDC top)
     float quarterPi = M_PI_F * 0.25;
 
+    // Additive blobs injected BRIGHTER than the source's [0,1] colour (HDR). Phosphene's
+    // feedback accumulates less than butterchurn's minutes-long run (the warp's
+    // ×0.98−0.02 self-regulation), so a single-frame blob carries less luminous content
+    // for the floor reflection + horizon glow to pick up; the brightness compensates so
+    // the water reflection + colored horizon read at oracle strength. (Shape 0 textured
+    // echo unaffected — its colour is near-zero by design.) FM.L2 live-M7 finding.
+    constexpr float kBlobBrightness = 2.2;
+    if (sp.shapeIndex != 0) { col *= kBlobBrightness; }
+
     FataShapeVtxOut out;
     out.textured = (sp.shapeIndex == 0) ? 1.0 : 0.0;
     if (corner == 0) {

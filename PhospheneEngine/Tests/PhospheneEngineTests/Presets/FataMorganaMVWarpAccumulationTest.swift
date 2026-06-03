@@ -120,13 +120,12 @@ struct FataMorganaMVWarpAccumulationTest {
               let displayTex = ctx.device.makeTexture(descriptor: fbDesc)
         else { Issue.record("texture alloc failed"); return }
 
-        // Real-session band energies drive the blob sizes (the shapes are audio-sized).
-        // The CSV logs raw bass/mid/treble (cols 5/6/7) but not raw *_att — use the
-        // band energy as the *_att proxy here (a RENDER sanity check of the shape draw
-        // path; the live app uses true bassAtt and Matt's M7 is the fidelity gate).
+        // Real-session attack values drive the blob sizes — the SAME bassAtt/midAtt/
+        // trebAtt the live shapes use (test/prod parity, FA #66; loadSessionBands
+        // reconstructs them). Matt's live M7 remains the fidelity gate.
         let rows = Self.loadSessionBands()
         let offset = ProcessInfo.processInfo.environment["FATA_SESSION_OFFSET"].flatMap { Int($0) } ?? 700
-        let boost = ProcessInfo.processInfo.environment["FATA_BOOST"].flatMap { Float($0) } ?? 3.5
+        let boost = ProcessInfo.processInfo.environment["FATA_BOOST"].flatMap { Float($0) } ?? 6.0
         let frames = Self.frameCount
         let aspectY = Float(min(wPix, hPix)) / Float(max(wPix, hPix))
         let shapeCfg: [(Int32, Int32, Int32, MTLRenderPipelineState?)] = [
@@ -148,8 +147,7 @@ struct FataMorganaMVWarpAccumulationTest {
                                          0.5 + 0.5 * sin(t * 0.013), 0.5 + 0.5 * sin(t * 0.022))
             var feat = FeatureVector.zero
             feat.time = t
-            feat.bass = row.1; feat.mid = row.2; feat.treble = row.3
-            feat.bassAtt = min(row.1, 2.0); feat.midAtt = min(row.2, 2.0); feat.trebleAtt = min(row.3, 2.0)
+            feat.bassAtt = row.1; feat.midAtt = row.2; feat.trebleAtt = row.3
             var stm = StemFeatures.zero
             var scene = SceneUniforms()
 
@@ -217,19 +215,26 @@ struct FataMorganaMVWarpAccumulationTest {
         enc.endEncoding()
     }
 
-    /// Parse a recorded session's features.csv into (time, bass, mid, treble) rows
-    /// (cols 3/5/6/7). FATA_SESSION=<dir> overrides; defaults to the 23-44-40Z session.
-    /// Returns [] if unreadable (the diag then runs on a silent field).
+    /// Parse a recorded session's features.csv into (time, bassAtt, midAtt, trebAtt)
+    /// rows — the SAME attack values the live shape draw uses (test/prod parity, FA #66).
+    /// bassAtt is reconstructed exactly from bassAttRel (col 26): bassAtt = rel/2 + 0.5.
+    /// midAtt/trebAtt aren't logged (no *AttRel cols) → approximated from raw mid/treble
+    /// (cols 6/7) ×0.45 (att is the slow-smoothed AGC band, well below the instant peak).
+    /// FATA_SESSION=<dir> overrides. Returns [] if unreadable (diag runs on a silent field).
     static func loadSessionBands() -> [(Float, Float, Float, Float)] {
         let dir = ProcessInfo.processInfo.environment["FATA_SESSION"]
-            ?? "\(NSHomeDirectory())/Documents/phosphene_sessions/2026-06-02T23-44-40Z"
+            ?? "\(NSHomeDirectory())/Documents/phosphene_sessions/2026-06-03T03-01-32Z"
         let url = URL(fileURLWithPath: dir).appendingPathComponent("features.csv")
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
         var out: [(Float, Float, Float, Float)] = []
         for line in text.split(separator: "\n").dropFirst() {
             let c = line.split(separator: ",", omittingEmptySubsequences: false)
-            guard c.count > 7 else { continue }
-            out.append((Float(c[2]) ?? 0, Float(c[4]) ?? 0, Float(c[5]) ?? 0, Float(c[6]) ?? 0))
+            guard c.count > 26 else { continue }
+            let time = Float(c[2]) ?? 0
+            let bassAtt = ((Float(c[25]) ?? 0) / 2 + 0.5)          // col 26 bassAttRel → bassAtt
+            let midAtt  = min((Float(c[5]) ?? 0) * 0.45, 1.5)      // raw mid  → att proxy
+            let trebAtt = min((Float(c[6]) ?? 0) * 0.45, 1.5)      // raw treble → att proxy
+            out.append((time, bassAtt, midAtt, trebAtt))
         }
         return out
     }
