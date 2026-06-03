@@ -104,7 +104,7 @@ private let expectedAutomatedGate: [String: Bool] = [
     "Gossamer":             false,   // full; M3 fails
     "Kinetic Sculpture":    false,   // full; M3 fails
     "Membrane":             false,   // full; M3 fails
-    "Murmuration":          false,   // full; M3 fails (file: Starburst.metal)
+    "Murmuration":          false,   // full; M3 fails (file: Murmuration.metal)
     "Nebula":               false,   // lightweight; L2 fails — no deviation primitives in source
     "Plasma":               false,   // lightweight; L2 fails — no deviation primitives in source
     "Spectral Cartograph":  true,    // lightweight; L1+L2+L3 all pass

@@ -140,7 +140,7 @@ Render-pass breakdown of our 11 presets (current, post-D-029 revert):
 | Waveform | `direct` | Time + audio into fragment (no persistence) |
 | Plasma | `direct` | Time + audio into fragment |
 | Nebula | `direct` | Time + audio into fragment |
-| Starburst | `feedback` + `particles` | Compute-kernel starling flock + feedback trail |
+| Murmuration | `feedback` + `particles` | Compute-kernel starling flock + feedback trail (renamed from Starburst, MM.0) |
 | Membrane | `feedback` | Thin global zoom+rot feedback |
 | FractalTree | `mesh_shader` | GPU-authored procedural geometry |
 | FerrofluidOcean | `post_process` | HDR post chain |

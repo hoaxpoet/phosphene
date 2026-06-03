@@ -1,4 +1,4 @@
-// Starburst.metal — Murmuration sky: vivid sunrise/sunset seen from below.
+// Murmuration.metal — Murmuration sky: vivid sunrise/sunset seen from below.
 //
 // Looking up into the sky where birds fly. Rich color — peach, amber,
 // rose, lavender, deep blue. Clouds drift slowly. The sky is the canvas;
@@ -37,7 +37,7 @@ float sky_fbm(float2 p, int octaves) {
     return val;
 }
 
-fragment float4 starburst_fragment(
+fragment float4 murmuration_sky_fragment(
     VertexOut in [[stage_in]],
     constant FeatureVector& features [[buffer(0)]],
     constant float* fftMagnitudes [[buffer(1)]],

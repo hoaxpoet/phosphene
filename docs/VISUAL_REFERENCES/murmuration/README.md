@@ -1,4 +1,10 @@
-# Starburst (Murmuration) — Visual References
+# Murmuration — Visual References
+
+> **MM.0 note (2026-06-03):** this preset was promoted to its own identity (renamed
+> from the legacy `Murmuration.*` files). The technical sections below predate the
+> Phase MM full redesign and will be rewritten in MM.1 against the motion clips +
+> redesigned flock engine. Treat the **reference images + annotations** as current;
+> treat the audio-routing / rubric / particle-count text as historical until MM.1.
 
 **Family:** `particles`
 **Passes:** `["feedback", "particles"]` (per D-029)
@@ -33,8 +39,8 @@ render; it is not an independent motion source.
 | `05_anti_dispersed_no_shape.jpg` | **NOT this.** Scattered points with no cohesive silhouette and no negative space. Failure mode for cohesion/alignment forces being too weak — flock fails to form a shape. |
 
 **Actively disregard** in the reference images:
-- The horizon foreground (trees, reeds, water) in 01/02. Starburst has no ground plane; the flock is the sole subject. These elements appear in the references because real murmurations are photographed at dusk over wetlands, not because the preset depicts terrain.
-- The bird-shape detail visible in 02/03. At Starburst's particle scale and density, individual birds are sub-pixel dots, not the wing-readable silhouettes seen in reference photography. The references teach *flock-level* behavior, not bird anatomy.
+- The horizon foreground (trees, reeds, water) in 01/02. Murmuration has no ground plane; the flock is the sole subject. These elements appear in the references because real murmurations are photographed at dusk over wetlands, not because the preset depicts terrain.
+- The bird-shape detail visible in 02/03. At Murmuration's particle scale and density, individual birds are sub-pixel dots, not the wing-readable silhouettes seen in reference photography. The references teach *flock-level* behavior, not bird anatomy.
 - The cloud striations in 06_palette_pastel_baseline. The preset's sky is a plain vertical gradient with no cloud structure; the reference teaches the color stack, not the cloud shapes.
 
 ---
@@ -43,7 +49,7 @@ render; it is not an independent motion source.
 
 | # | Item | Status | Notes |
 |---|---|---|---|
-| M1 | Detail cascade present | ⚠ partial | Macro (silhouette), meso (shape morphology), micro (core/periphery density gradient) are well-defined for a particle field. "Specular breakup" maps awkwardly — Starburst has no surfaces; the closest analogue is per-particle size/alpha variation. Flag for Matt: rubric M1 may need a particle-preset interpretation. |
+| M1 | Detail cascade present | ⚠ partial | Macro (silhouette), meso (shape morphology), micro (core/periphery density gradient) are well-defined for a particle field. "Specular breakup" maps awkwardly — Murmuration has no surfaces; the closest analogue is per-particle size/alpha variation. Flag for Matt: rubric M1 may need a particle-preset interpretation. |
 | M2 | ≥4 noise octaves | N/A | No hero surface to apply noise to. The sky gradient is a vertical color stack; the particles are integrated dots. Rubric item assumes surface shading. |
 | M3 | ≥3 distinct materials | N/A | No PBR materials. Render layers (particle dots, sky gradient, feedback trail) are not "materials" in the cookbook sense. Same argument as Nebula's lightweight classification. |
 | M4 | Deviation-primitive audio | ✗ | Currently routes on absolute stem energy (`drums_beat`, `bass_energy`, `other_energy`, `vocals_energy`) and FeatureVector 6-band fallback. Per D-026, should use `*_rel`/`*_dev` primitives. **Flag for next uplift session.** |
@@ -51,11 +57,11 @@ render; it is not an independent motion source.
 | M6 | p95 frame time ≤ tier budget | pending | Empirical; verify via `PresetPerformanceTests` on Tier 1 / Tier 2 fixtures. |
 | M7 | Matt-approved reference frame match | pending | These reference images are the input contract for that gate. |
 
-**Rubric tension flag.** Starburst is classified full-rubric per D-064 but the rubric's
+**Rubric tension flag.** Murmuration is classified full-rubric per D-064 but the rubric's
 M1–M3 assume surface-shaded geometry. Three rubric items are N/A or partial purely
 because particle presets don't have the structural primitives the rubric checks for.
 This is the same tension D-064 acknowledged for Nebula (resolved by lightweight
-classification). Recommend either (a) reclassify Starburst lightweight with a
+classification). Recommend either (a) reclassify Murmuration lightweight with a
 particle-specific stylization contract, or (b) extend the rubric with a particle
 profile that replaces M1–M3 with cohesion/density/shape items. Decision deferred to
 Matt; this README does not assume the resolution.
@@ -148,7 +154,7 @@ are real photography depicting non-murmuration flock states.
 
 - `MILKDROP_ARCHITECTURE.md §7 (MV-2)` — why mv_warp was reverted on this preset (D-029)
 - `DECISIONS.md D-026` — deviation-primitive audio routing requirement
-- `DECISIONS.md D-029` — preset motion-source paradigms; Starburst uses `feedback + particles`
+- `DECISIONS.md D-029` — preset motion-source paradigms; Murmuration uses `feedback + particles`
 - `ENGINEERING_PLAN.md §Increment 3.5.2` — Murmuration Stem Routing Revision
 - `SHADER_CRAFT.md §12` — fidelity rubric this README maps to
 - `SHADER_CRAFT.md §2.3` — reference-image discipline

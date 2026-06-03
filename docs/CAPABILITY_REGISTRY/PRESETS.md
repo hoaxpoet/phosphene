@@ -321,7 +321,7 @@ None of the engine-library kernels read past the original 32 / 16 float window t
 | Kinetic Sculpture | ✓ | `["ray_march", "post_process"]` → `compileRayMarchShader` ✓ | (no stem_affinity) |
 | Lumen Mosaic | ✓ | `["ray_march", "post_process"]` → `compileRayMarchShader` ✓ | drums/bass/vocals/other (4) |
 | Membrane | ✓ | `["feedback"]` → `compileStandardShader` (with feedback pipeline) ✓ | (no stem_affinity) |
-| Murmuration (file Starburst.json) | ✓ | `["feedback", "particles"]` → `compileStandardShader` + particle dispatch ✓ | (no stem_affinity) |
+| Murmuration | ✓ | `["feedback", "particles"]` → `compileStandardShader` + particle dispatch ✓ | (no stem_affinity) |
 | Nebula | ✓ | `["direct"]` → `compileStandardShader` ✓ | (no stem_affinity) |
 | Plasma | ✓ | `["direct"]` → `compileStandardShader` ✓ | (no stem_affinity) |
 | Spectral Cartograph | ✓ | `["direct"]` → `compileStandardShader` + text_overlay + is_diagnostic ✓ | (empty {}) |
@@ -335,7 +335,7 @@ None of the engine-library kernels read past the original 32 / 16 float window t
 
 2. **LumenMosaic.json carries `"lumen_mosaic": {...}` configuration block** (cell_density, cell_jitter, frost_amplitude, frost_scale, ambient_floor_intensity, light_agent_count, max_active_patterns, mood_smoothing_seconds, back_plane_depth) — NOT decoded by `PresetDescriptor`. The values exist as shader constants in `LumenMosaic.metal`. **The block is dead JSON** — kept for documentation but ignored at load time. Filed as CA-Presets-FU-2 (recommend either decode + wire OR remove from sidecar; the latter is cheaper).
 
-3. **Starburst.json declares `"name": "Murmuration"`** — file-name / preset-name discrepancy. The file lives at `Shaders/Starburst.json` (and matching `Starburst.metal`) but the preset is loaded with name "Murmuration". This is post-2026-05-XX rename per ARCHITECTURE.md context. Sidecar correctly carries the new name; the file path will follow when convenient (not a P-class defect).
+3. **File-name / preset-name discrepancy RESOLVED (MM.0, 2026-06-03).** The sidecar and shader were renamed `Starburst.{json,metal}` → `Murmuration.{json,metal}` (and the fragment function `starburst_fragment` → `murmuration_sky_fragment`) so the file path now matches the preset name. The reference folder `docs/VISUAL_REFERENCES/starburst/` was renamed to `murmuration/` in the same increment.
 
 4. **`"family"` field is omitted on diagnostic sidecars** (Spectral Cartograph + Staged Sandbox) — correct per `is_diagnostic: true` + D-123 ("Diagnostic presets carry no family — they are tools, not aesthetic content").
 

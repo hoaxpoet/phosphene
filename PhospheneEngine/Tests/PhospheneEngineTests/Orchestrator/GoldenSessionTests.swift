@@ -352,7 +352,7 @@ private func makePreset(
 
 /// All 15 production presets mirrored verbatim from their JSON sidecars.
 /// Only scoring-relevant fields are populated; rendering fields use decoder defaults.
-/// Note: Starburst.json declares name "Murmuration" — that is the preset ID.
+/// Note: Murmuration.json (renamed from Starburst.json in MM.0) declares name "Murmuration".
 ///
 /// BUG-004 closure (2026-05-12): expanded from 11 → 15 presets to match
 /// production catalog. Added Arachne, Gossamer, Lumen Mosaic, Staged Sandbox.

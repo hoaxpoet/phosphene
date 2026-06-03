@@ -2996,7 +2996,126 @@ Under the inspired-by reframe, source `.milk` files become reference material th
 
 ---
 
-## Phase SB — Starburst Fidelity Uplift
+## Phase MM — Murmuration (promote, redesign, certify)
+
+**Supersedes Phase SB** (below). Matt's 2026-06-03 direction: promote Murmuration to its
+own first-class preset (split from the legacy `Starburst.*` files) and **fully redesign the
+flock** to faithfully capture the shape and movement of a real starling murmuration, tied to
+musical signals — not the cosmetic D-026 + noise-utility pass that Phase SB scoped. The core
+problem is structural: the current model is a parametric ellipse of fixed "home slots" with
+spring-to-home forces (`Particles.metal` / `ProceduralGeometry`) at **5,000 particles** — it
+cannot produce the dense, emergent, morphing mass with a core→edge density gradient that the
+references (`docs/VISUAL_REFERENCES/murmuration/`) and motion clips show. "Each bird visible"
+is the documented anti-reference (`05_anti_countable_individuals`).
+
+**Decisions (2026-06-03):** full redesign · full rename (retire the Starburst name; no separate
+radial-burst preset) · May still-refs are current · Matt-supplied motion clips + flocking-research
+references drive the temporal contract (recorded in memory `project_murmuration_uplift.md`).
+
+**Drafted musical contract** (one primitive per layer, one timescale, all deviation primitives per
+D-026; continuous drivers 2–4× the beat accents; finalized against the clips in MM.1):
+
+| Visual behavior | Audio driver | Timescale |
+|---|---|---|
+| Shape elongation (ribbon/comma) + macro drift | `bass_att_rel` | slow / continuous (primary) |
+| Turning + pivot + density-agitation waves | `drums_energy_dev` + beat | per-beat (accent) |
+| Feathered-edge flutter / shimmering periphery | `mid_att_rel` (edge-weighted) | fast |
+| Whole-mass breathing (expand ↔ contract) | `vocals_energy_dev` | phrase |
+| Sky warmth shift (≤10%, secondary) | `spectral_centroid` | slow |
+
+---
+
+### Increment MM.0 — Identity split + rename ✅ 2026-06-03
+
+**Delivered (mechanical; output byte-identical, golden hashes stable):**
+- `git mv` `Starburst.metal` → `Murmuration.metal`, `Starburst.json` → `Murmuration.json`;
+  fragment function `starburst_fragment` → `murmuration_sky_fragment` (JSON `fragment_function`
+  updated to match); file header comment updated.
+- `git mv docs/VISUAL_REFERENCES/starburst/` → `murmuration/` (LFS-tracked images preserved);
+  README title/identity pass (technical sections flagged historical pending MM.1 rewrite).
+- Preset discovery is glob-based (`PresetLoader` pairs each `.metal` with its sibling `.json`),
+  so the file rename is transparent to loading; no registry/name-list edits needed for discovery.
+- Doc path updates: `docs/VISUAL_REFERENCES/README.md`, `CAPABILITY_REGISTRY/PRESETS.md`
+  (file/name discrepancy marked resolved), `ENGINE/RENDER_CAPABILITY_REGISTRY.md`,
+  `ARCHITECTURE.md` Module Map (also corrected a stale mv_warp description), `RUNBOOK.md`
+  (removed a stale Starburst mv_warp reference), `MILKDROP_ARCHITECTURE.md` live table row,
+  `FidelityRubricTests.swift` comment. Historical narrative (DECISIONS D-029 body,
+  MILKDROP_ARCHITECTURE MV-2 revert story, `archive/`, `diagnostics/`, `prompts/`) left as-is.
+- **Scope note:** the `ProceduralGeometry` class / `Particles.metal` engine-shader rename to a
+  flock-specific name + its own sibling file (D-097) is **deferred to MM.2**, where the flock
+  engine is rewritten — renaming code about to be replaced is churn-on-churn.
+
+**Done when:** ✅ engine + app build clean; ✅ full test suite green (preset loads as
+"Murmuration" from the renamed files; golden hashes unchanged).
+
+---
+
+### Increment MM.1 — Reference + motion review → design doc (research-first)
+
+**Scope:** read the references + Matt's motion clips; decompose the reference signature into
+layers; research the working flocking references (Robert Hodgin murmuration, Hoetzlein GPU
+flocking, boids implementations, McGill biomechanics analysis — all in memory) and cite them per
+the grounding-priority rule. Author `docs/presets/MURMURATION_DESIGN.md`: technique choice +
+grounding, particle-count target, the (layer × primitive × timescale) table made concrete from
+the video, an honest fidelity-risk statement. **Matt approves the design before any flock code.**
+Likely direction: morphing implicit shape-envelope + curl-noise turbulence + cheap grid-based
+separation for the feathered edge (GPU spatial-binning precedent: `FerrofluidParticles`).
+
+**Done when:** design doc published + Matt-approved; technique grounded in ≥1 working reference.
+
+---
+
+### Increment MM.2 — Flock engine (the redesign)
+
+**Scope:** new flock-specific engine-library shader + conformer (D-097 sibling; this is where
+the deferred `ProceduralGeometry`/`Particles.metal` rename lands) at the MM.1 particle count.
+**Multi-frame production-path test harness FIRST** (per "test in production-grade pipeline"):
+runs the feedback+particles dispatch for N frames at silence and on a beat, measuring silhouette
+cohesion + core/edge density gradient. Tune the silence baseline to a dense, cohesive,
+density-graded mass (the opposite of the `05_anti_*` failure modes).
+
+**Done when:** silence baseline reads as a cohesive dense mass with a density gradient; harness
+asserts it; 60fps-feasible at target count (perf validated in MM.4).
+
+---
+
+### Increment MM.3 — Audio coupling (D-026) + firing evidence
+
+**Scope:** wire the musical contract with deviation primitives; verify the 2–4×
+continuous:beat ratio; produce per-route firing evidence from a real-music session
+(`features.csv`/`stems.csv`, via `PresetSessionReplay`) — evidence, not assertion.
+
+**Done when:** each route's firing is evidenced; ratio verified; no absolute-threshold reads remain.
+
+---
+
+### Increment MM.4 — Sky + render polish + performance
+
+**Scope:** upgrade the sky to V.1 noise utilities + palette (secondary — the flock is the hero);
+density-accumulation rendering + edge feathering; recalibrate `complexity_cost`; confirm 60fps
+@ 1080p (frame-budget governor `activeParticleFraction` downshift already supported).
+
+**Done when:** rubric M1/M2 satisfied on the sky surface; p95 frame time ≤ tier budget.
+
+---
+
+### Increment MM.5 — Certification
+
+**Scope:** real-music session, M7 contact sheet vs references + motion clips, Matt approval,
+flip `Murmuration.json` `certified: true`, add "Murmuration" to
+`FidelityRubricTests.certifiedPresets`, regenerate golden hashes, update registry / plan /
+release notes.
+
+**Done when:** Matt M7-approves; `certified: true`; golden hash regenerated; tests green.
+
+---
+
+## Phase SB — Starburst Fidelity Uplift  *(SUPERSEDED by Phase MM, 2026-06-03)*
+
+> **Superseded.** Phase SB scoped a cosmetic uplift (D-026 routing + V.1 noise utilities +
+> materials) that kept the parametric-ellipse flock and 5K count. Matt's 2026-06-03 direction
+> is a full flock redesign — see **Phase MM** above. SB.0 (docs prep) already shipped; SB.1–SB.5
+> are retired in favor of MM.1–MM.5. The SB text below is retained for historical context only.
 
 Starburst (Murmuration) is the particle-system preset: a murmuration of birds against a vivid sunrise/sunset sky, rendered as a compute-kernel particle field composited over a 2D fragment sky. The preset currently sits at `certified: false` with the full rubric unapplied. Its fragment shader (136 lines) uses its own custom hash/noise/fbm functions rather than the V.1 Noise utility tree, drives audio from raw `features.bass_att` and `stems.vocals_energy` (D-026 violation), and has no materials layer.
 
