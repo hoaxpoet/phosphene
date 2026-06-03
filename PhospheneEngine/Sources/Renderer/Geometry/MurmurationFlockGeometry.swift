@@ -68,7 +68,7 @@ struct FlockParams {
     var alignmentWeight: Float
     var roostWeight: Float
 
-    var noiseWeight: Float
+    var roostFar: Float
     var bankingRate: Float
     var neighborCap: UInt32
     var wanderWeight: Float
@@ -96,6 +96,7 @@ public struct MurmurationFlockConfiguration: Sendable {
     public var alignmentWeight: Float
     public var separationWeight: Float
     public var roostWeight: Float
+    public var roostFar: Float
     public var wanderWeight: Float
     public var bankingRate: Float
     public var neighborCap: Int
@@ -106,16 +107,17 @@ public struct MurmurationFlockConfiguration: Sendable {
         cellCapacity: Int = 96,
         worldHalfSpan: Float = 2.0,
         maxSpeed: Float = 0.7,
-        minSpeed: Float = 0.18,
-        maxForce: Float = 8.0,
+        minSpeed: Float = 0.12,
+        maxForce: Float = 10.0,
         cohesionRadius: Float = 0.16,
         alignmentRadius: Float = 0.16,
-        separationRadius: Float = 0.06,
-        cohesionWeight: Float = 3.5,
-        alignmentWeight: Float = 2.8,
-        separationWeight: Float = 5.0,
-        roostWeight: Float = 0.9,
-        wanderWeight: Float = 0.22,
+        separationRadius: Float = 0.075,
+        cohesionWeight: Float = 3.0,
+        alignmentWeight: Float = 3.5,
+        separationWeight: Float = 7.0,
+        roostWeight: Float = 1.0,
+        roostFar: Float = 2.5,
+        wanderWeight: Float = 0.34,
         bankingRate: Float = 4.0,
         neighborCap: Int = 32
     ) {
@@ -133,6 +135,7 @@ public struct MurmurationFlockConfiguration: Sendable {
         self.alignmentWeight = alignmentWeight
         self.separationWeight = separationWeight
         self.roostWeight = roostWeight
+        self.roostFar = roostFar
         self.wanderWeight = wanderWeight
         self.bankingRate = bankingRate
         self.neighborCap = neighborCap
@@ -283,7 +286,7 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
         if !(dt > 0) { dt = 1.0 / 60.0 }
         dt = min(dt, 1.0 / 30.0)
 
-        var fp = makeParams(dt: dt, time: features.time)
+        var fp = makeParams(dt: dt, time: features.time, roost: roostTarget(time: features.time))
 
         // Pass 1: reset cell counts.
         encoder.setComputePipelineState(resetPipeline)
@@ -325,14 +328,22 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
         )
     }
 
-    /// Build the per-frame parameter block. MM.2: the roost target drifts on a
-    /// slow procedural path (ambient — FA #33 carve-out); MM.3 swaps this for
-    /// the bass-driven attractor.
-    private func makeParams(dt: Float, time: Float) -> FlockParams {
+    /// Absolute, bounded global attractor position (world space, near origin).
+    /// A slowly-drifting target the flock wanders around — bounded so the mass
+    /// stays on-screen. The distance-scaled `roostFar` leash holds the flock
+    /// together around it (anti-fragmentation). MM.2 ambient motion (FA #33
+    /// carve-out); MM.3 displaces this with the bass-driven roost.
+    private func roostTarget(time: Float) -> SIMD3<Float> {
+        SIMD3<Float>(
+            0.30 * sinf(time * 0.11) + 0.12 * cosf(time * 0.05),
+            0.16 * sinf(time * 0.09) + 0.07 * sinf(time * 0.04),
+            0.22 * sinf(time * 0.07)
+        )
+    }
+
+    /// Build the per-frame parameter block. `roost` = flock centroid + drift bias.
+    private func makeParams(dt: Float, time: Float, roost: SIMD3<Float>) -> FlockParams {
         let cfg = configuration
-        let rx = 0.18 * sinf(time * 0.13) + 0.08 * cosf(time * 0.07)
-        let ry = 0.10 * sinf(time * 0.11) + 0.05 * sinf(time * 0.05)
-        let rz = 0.14 * sinf(time * 0.09)
         return FlockParams(
             particleCount: UInt32(cfg.particleCount),
             gridSide: UInt32(cfg.gridSide),
@@ -350,11 +361,11 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
             separationWeight: cfg.separationWeight,
             alignmentWeight: cfg.alignmentWeight,
             roostWeight: cfg.roostWeight,
-            noiseWeight: 0,
+            roostFar: cfg.roostFar,
             bankingRate: cfg.bankingRate,
             neighborCap: UInt32(cfg.neighborCap),
             wanderWeight: cfg.wanderWeight,
-            roostTarget: SIMD4<Float>(rx, ry, rz, 0)
+            roostTarget: SIMD4<Float>(roost.x, roost.y, roost.z, 0)
         )
     }
 
@@ -365,7 +376,7 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
             logger.warning("MurmurationFlock.render: no render pipeline (compute-only)")
             return
         }
-        var fp = makeParams(dt: 1.0 / 60.0, time: features.time)
+        var fp = makeParams(dt: 1.0 / 60.0, time: features.time, roost: roostTarget(time: features.time))
         encoder.setRenderPipelineState(state)
         encoder.setVertexBuffer(birdBuffer, offset: 0, index: 0)
         encoder.setVertexBytes(&fp, length: MemoryLayout<FlockParams>.stride, index: 2)
