@@ -379,3 +379,64 @@ at 0.30·worldHalfSpan), `elongationGain 0.7` (cap 0.72 ≈ 3:1), `turnBaseAmp 0
 darkening is `drumsDev·eventGate`, decoupled), `midEdgeAmp 0.22`, `vocalsBreathDepth 0.30`,
 `substrateTau 6 s`, wave width 0.30, event-gate floor 0.2; all drivers `tanh`-saturated. Routing-layer
 defaults; final feel is dialled against live sessions + Matt's review in MM.5.
+
+## 12. MM.6 — Flock2 orientation rebuild + musicality rethink (2026-06-03)
+
+**Supersedes §11/§11.1's force-based substrate AND §3.2's per-bird audio brain.** MM.3's M7 failure was
+not just over-driven gains — the whole substrate was a hand-derived (worse) version of the published
+model Matt handed over at kickoff (**FA #73**). MM.6 ports **Hoetzlein's Flock2** (orientation-based
+social flocking, J. Theoretical Biology 2024, MIT code) from its actual source.
+
+**Substrate (the faithful port).** Each bird carries a body **quaternion** + scalar speed; neighbour
+influence is a *desire to TURN* (orientation targets in the body frame), not a summed force. Ported
+verbatim from `flock_kernels.cu` (`advanceOrientationHoetzlein` + `findNeighborsTopological`) and
+libmin `quaternion.cuh`: topological-7/240°-FOV neighbour gather → four heading rules (avoidance /
+alignment / cohesion / peripheral-boundary) writing a heading `target` → a reaction-rate-limited control
+loop that rolls + steers the body → a dynamic-stability term re-aligning body to velocity. **Banking
+emerges**: the roll target is derived from the yaw error, so birds bank *into* turns, and the travelling
+dark "orientation bands" fall out of alignment+avoidance coupling (we never inject them — the MM.3 curl
+hack is deleted). Render darkening = true **wing-area-to-camera** (`|up.z|` of the body quaternion), the
+McGill mechanism computed directly.
+
+**Matt decision 1 — faithful aero, NOT simplified (mid-flight).** The sim runs in **literal metre
+units** with Flock2's full Newton aero (lift/drag/thrust/gravity, source constants: 5–18 m/s, mass
+0.08 kg, CL 0.5714, etc.); metres→clip projection at render. The flock self-sizes by metre-space density
+(radius ∝ N^⅓); domain/framing/view scale as `cbrt(count)` so per-cell density — and the topological
+structure + boundary threshold — is invariant across test (2–6 k) and production (~48 k) counts.
+Containment for the static wide camera (§9): the periphery-boundary turn keeps it cohesive; an
+**elliptical soft-containment** (always-on gentle turn-toward-centre, anisotropic) frames it and sets
+its shape; the faithful ground/ceiling band bounds Y.
+
+**Matt decision 2 — musicality rethink: global envelope + emergence, NOT per-bird accents (mid-flight).**
+The self-organizing substrate is its own low-pass filter (design §3.1) — so strong it **swallows or
+inverts** small per-bird injections. Measured on the faithful flock: the MM.3 drum-roll-wave *halved*
+the hard-banking population; the mid-flutter *increased* edge alignment. So MM.6 drives the flock's
+**global state** and lets the rich structure emerge:
+
+- **L1 bass = the wind** — drift (anchor translation, bounded to stay framed) + **envelope elongation**
+  (an active anisotropic forcing stretches the containment ellipse along a slow axis → comma/ribbon).
+- **Bar maneuver = the flock turns** — ONE coordinated heading-swing per **bar** (trigger = `barPhase01`
+  downbeat; **not** every beat — too twitchy, and a swing takes ~1 s to traverse the mass), alternating
+  direction each bar (weaving; net translation cancels), amplitude energy-gated + drum-modulated. The
+  dark banking wave **emerges from the swing** (a real orientation wave *is* birds banking through a
+  collective turn). Robust to beat-phase uncertainty (a sweeping bar-anchored maneuver reads as a small
+  offset if mis-phased, not a wrong-beat hit).
+- **L5 vocals = breathing** — an active **vertical dilation** (the mass swells in Y on a vocal swell,
+  then settles — the McGill blackening↔dilution).
+
+**Empirical finding (durable).** The flock's *size* is a stiff emergent equilibrium: tightening a bound
+(framing radius, vertical band) does **not** shrink it (the flock sits well inside its bounds). Only
+**active anisotropic forcing** moves the shape robustly — hence elongation and vertical dilation are
+active spreads, not bound-tightenings. Per-bird drum-wave + mid-flutter routes were **removed**; three
+robust global couplings remain.
+
+**Verification.** `MurmurationFlockTests` + `MurmurationFlockAudioTests` run the real reset→bin→boids
+dispatch. The subtle route tests use **separately-settled equilibria + long/multi-bar averaging** — single
+within-geometry windows are too noisy under the non-deterministic GPU atomic binning (they flaked under
+parallel load). The **cohesion-under-3×-load** invariant (the test that caught the MM.3 failure) is
+carried forward and green. Full engine suite 1384 green (×3 parallel), lint 0, app builds. Silence-baseline
+`RENDER_VISUAL=1` frames in `tools/murmuration_reference/frames/`. **M7 live review (MM.5) is the
+load-bearing gate** — the live look is not assertable headlessly.
+
+Bird layout 64 B (quaternion+pos+seed+vel+nbrCount+target+speedRnd); `FlockParams` 208 B. Memory:
+`project_flock2_reference`, `project_murmuration_uplift`, `project_deviation_primitive_real_range`.

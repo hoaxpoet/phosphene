@@ -3166,7 +3166,7 @@ release notes.
 
 ---
 
-### Increment MM.6 — Rebuild the flock on Flock2 (orientation-based)  *(scoped 2026-06-03; to run in a new session)*
+### Increment MM.6 — Rebuild the flock on Flock2 (orientation-based)  *(IMPLEMENTED 2026-06-03; M7 live review pending)*
 
 **Supersedes the force-based substrate of MM.2 and the force-based audio coupling of MM.3.** MM.4
 (sky/perf) and MM.5 (cert) now apply to the Flock2 flock and follow this increment.
@@ -3206,6 +3206,41 @@ no visible effect.
 the carried-forward cohesion-under-load invariant + per-route turn-desire firing; no absolute-threshold
 reads; continuous ≥ 2× beat; full suite green, lint 0, app builds; per-route firing evidence from a real
 recorded session; **Matt M7 live approval** (the load-bearing gate — not assertable headlessly).
+
+**DELIVERED (2026-06-03).** Hoetzlein's orientation controller (`advanceOrientationHoetzlein` +
+`findNeighborsTopological` + libmin `quaternion.cuh`) ported to MSL `murmuration_boids` (quaternion
+bird + topological-7/240°-FOV gather + 4 heading rules + reaction-limited control + dynamic-stability
+realign). New 64 B `MurmurationBird` (quaternion+target), 208 B `FlockParams`. Silence baseline reads
+as a murmuration (cohesive dense core, feathered/stippled edge, detached stragglers, **emergent**
+banking; `RENDER_VISUAL=1` frames in `tools/murmuration_reference/frames/`). Banking darkening = true
+wing-area-to-camera (`|up.z|`), not an injected channel.
+
+**Two mid-flight design decisions (Matt):**
+1. **Faithful aero, NOT simplified** — simulate in literal **metre units** with Flock2's full
+   lift/drag/thrust/gravity (source constants) and project metres→clip at render. The flock self-sizes
+   by metre-space density (radius ∝ N^⅓); framing/view/domain scale as `cbrt(count)` for
+   density-invariance across test (2–6 k) and production counts.
+2. **Musicality rethink — global envelope + emergence, NOT per-bird accents.** The self-organizing
+   substrate *swallows or inverts* small per-bird injections (the MM.3 drum-roll-wave halved banking;
+   mid-flutter increased edge alignment — measured). So drive the flock's **global** state and let the
+   structure emerge: **bass** → drift + envelope elongation (ribbon); **bar maneuver** → ONE
+   coordinated heading-swing per bar (downbeat-triggered, alternating, energy-gated, drum-modulated) —
+   the banking wave **emerges** from the swing (not every beat — too twitchy); **vocals** → active
+   vertical dilation (breathing). Per-bird drum-wave + mid-flutter routes **removed**. Empirically:
+   the flock's *size* is a stiff emergent equilibrium that tightening a bound can't shrink (only active
+   anisotropic forcing — elongation, vertical dilation — moves it robustly).
+
+**Tests** (`MurmurationFlockTests` + `MurmurationFlockAudioTests`, real reset→bin→boids dispatch):
+silence baseline, FlockParams stride, silence-zero-drive, bass drift+elongation, bar-maneuver
+(banking tracks the bar envelope, multi-bar-averaged), vocals dilation, continuous ≥ 2× maneuver, and
+the **carried-forward** cohesion-under-3×-load invariant. The subtle route tests use separately-settled
+flocks + long averaging (single within-geometry windows are too noisy under the non-deterministic GPU
+binning — flaked under parallel load). Full engine suite 1384 green (×3 parallel runs), lint 0, app
+builds. Route specs updated in `MurmurationRoutes.swift`.
+
+**PENDING (→ MM.5):** per-route firing evidence from a real recorded session; **Matt M7 live approval**
+(the load-bearing gate — the live look is not assertable headlessly; the session `video.mp4` is a
+rolling clip, not preset-specific — anchor on Matt's screenshots + CSV).
 
 ---
 
