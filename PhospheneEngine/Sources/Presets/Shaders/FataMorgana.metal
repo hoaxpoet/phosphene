@@ -122,7 +122,10 @@ fragment float4 fata_morgana_warp_fragment(
     float2 p   = uv - 0.5;
     float2 rotP = float2(p.x * cr - p.y * sr, p.x * sr + p.y * cr);   // GLSL v*mat2 rotation
     float  luma = dot(c, float3(0.32, 0.49, 0.29));
-    float2 uv1 = (p + 0.2 * luma * rotP) - 0.5;          // verbatim double −0.5 (wrap no-op)
+    // Source displacement is 0.2·luma·rotP; calmed to 0.15 (Matt: "calm the warp swirl
+    // slightly") — less per-frame drag → the swaying spectra streak less. Deliberate,
+    // Matt-requested L-uplift divergence from the faithful 0.2.
+    float2 uv1 = (p + 0.15 * luma * rotP) - 0.5;         // verbatim double −0.5 (wrap no-op)
 
     float2 t = (uv1 * u.texsize.xy) * 0.02;
     float2 lat = float2(cos(t.y * u.q1) * sin(-t.y),
@@ -275,24 +278,27 @@ vertex FataShapeVtxOut fata_shape_vertex(
     // beatPulse (one gentle pop per grid beat) + per-stem _energy_dev (brightness
     // identity) ride on top.
     float sway = cos(M_PI_F * sp.swayClock);                       // -1..1, turns at each downbeat
-    float A    = 0.20;                                             // horizontal sway amplitude
+    float A    = 0.30;                                             // horizontal sway amplitude (Matt: more sway)
     float beatPulse = pow(max(0.0, 1.0 - f.beat_phase01), 4.0);    // one sharp pulse per grid beat
     float flare = 1.0;
+    // Base Y < 0.5 places the spectra ABOVE the horizon (in the sky, reflecting onto the
+    // water). The comp samples the sky at feedback v ∈ [0 top, 0.5 horizon], and a shape's
+    // v equals its y, so y > 0.5 reads as IN the water (Matt) — these now sit at ~0.30.
     if (sp.shapeIndex == 0) {                              // faint textured echo (central, still)
         rad = 0.06623; ang = 0.02 * sp.frame; x = 0.5; y = 0.5;
         col = float3(0.0); aCenter = 0.1;
     } else if (sp.shapeIndex == 1) {                       // DRUMS — left of centre
-        x = 0.32 + A * sway; y = 0.60;
+        x = 0.35 + A * sway; y = 0.35;
         float dev = max(0.0, st.drums_energy_dev);
         rad   = 0.11 * (1.0 + 0.45 * beatPulse) * sp.audioBoost;
         flare = 0.55 + 0.7 * beatPulse + 0.5 * dev;
-    } else if (sp.shapeIndex == 2) {                       // BASS — centre
-        x = 0.50 + A * sway; y = 0.66;
+    } else if (sp.shapeIndex == 2) {                       // BASS — centre, a touch higher
+        x = 0.50 + A * sway; y = 0.28;
         float dev = max(0.0, st.bass_energy_dev);
         rad   = 0.11 * (1.0 + 0.45 * beatPulse) * sp.audioBoost;
         flare = 0.55 + 0.7 * beatPulse + 0.5 * dev;
     } else {                                               // VOCALS — right of centre
-        x = 0.68 + A * sway; y = 0.60;
+        x = 0.65 + A * sway; y = 0.35;
         float dev = max(0.0, st.vocals_energy_dev);
         rad   = 0.09 * (1.0 + 0.45 * beatPulse) * sp.audioBoost;
         flare = 0.55 + 0.7 * beatPulse + 0.5 * dev;
