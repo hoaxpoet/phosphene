@@ -45,7 +45,7 @@ public struct MurmurationBird: Sendable {
     }
 }
 
-// MARK: - FlockParams (mirror of MSL `FlockParams`, 96 bytes)
+// MARK: - FlockParams (mirror of MSL `FlockParams`, 144 bytes)
 
 struct FlockParams {
     var particleCount: UInt32
@@ -74,6 +74,38 @@ struct FlockParams {
     var wanderWeight: Float
 
     var roostTarget: SIMD4<Float>
+
+    // MM.3 audio coupling (inert at zero audio). `FlockParams` is uploaded via
+    // setBytes each frame (not a persistent GPU contract), so its size may grow
+    // freely as long as the MSL mirror in MurmurationFlock.metal stays
+    // byte-identical. Re-check `MemoryLayout<FlockParams>.stride == 144`.
+    var flockAxis: SIMD4<Float>   // xyz = unit elongation/wave axis, w = elongation
+    var drive: SIMD4<Float>       // x = turnGain, y = beatValue, z = propDir, w = waveWidth
+    var midEdgeGain: Float        // L4 mid edge-flutter amplitude
+    var flockExtent: Float        // nominal half-extent for the wave bird-coordinate
+    // swiftlint:disable:next identifier_name
+    var audioPad0: Float
+    // swiftlint:disable:next identifier_name
+    var audioPad1: Float
+}
+
+// MARK: - FlockAudio (per-frame coupling scalars, CPU-computed)
+
+/// The per-frame audio drive computed from `FeatureVector` + `StemFeatures`,
+/// consumed by `makeParams` to populate the audio fields of `FlockParams` and
+/// to modulate the boids weights. All-zero at silence (`.silent`).
+struct FlockAudio {
+    var flockAxis: SIMD3<Float> = SIMD3(1, 0, 0)  // unit elongation / wave-travel axis
+    var elongation: Float = 0                     // L1 comma/ribbon [0, 0.72]
+    var driftOffset: SIMD3<Float> = .zero         // L1 macro drift added to the roost
+    var turnGain: Float = 0                       // L2 gated turning-wave amplitude
+    var beatValue: Float = 0                      // L2 decaying beat pulse [0,1]
+    var propDir: Float = 1                        // L2 wave direction (±1, per epoch)
+    var waveWidth: Float = 0.22                   // L2 triangular bump half-width
+    var midEdgeGain: Float = 0                    // L4 edge-flutter amplitude
+    var breath: Float = 0                         // L5 cohesion-tightening [0,1]
+
+    static let silent = FlockAudio()
 }
 
 // MARK: - Configuration
@@ -101,6 +133,28 @@ public struct MurmurationFlockConfiguration: Sendable {
     public var bankingRate: Float
     public var neighborCap: Int
 
+    // ── MM.3 audio-coupling gains (all default to a deliberately under-reactive
+    // baseline per design §3.1). Continuous substrate drivers are sized well
+    // above the per-beat event amplitude (Audio Data Hierarchy ≥ 2×). ──
+
+    /// L1 — world units the roost target drifts per unit of smoothed bass
+    /// deviation. The dominant continuous motion (PRIMARY driver).
+    public var bassDriftGain: Float
+    /// L1 — elongation (comma/ribbon) per unit of positive smoothed bass.
+    /// Capped at 0.72 → ≈ 3:1 aspect at sustained high bass.
+    public var elongationGain: Float
+    /// L2 — peak per-beat turning-wave amplitude before the master energy gate
+    /// and `drums_energy_dev` scaling. Kept below the substrate (accent only).
+    public var turnBaseAmp: Float
+    /// L4 — mid edge-flutter amplitude per unit of positive mid deviation.
+    public var midEdgeAmp: Float
+    /// L5 — fractional cohesion tightening at full vocal breath (the dark pulse).
+    public var vocalsBreathDepth: Float
+    /// Seconds (EMA τ) for the slow bass/vocals substrate smoothers.
+    public var substrateTau: Float
+    /// Nominal flock half-extent normalising the wave bird-coordinate.
+    public var flockExtent: Float
+
     public init(
         particleCount: Int = 55_000,
         gridSide: Int = 24,
@@ -119,7 +173,14 @@ public struct MurmurationFlockConfiguration: Sendable {
         roostFar: Float = 2.5,
         wanderWeight: Float = 0.34,
         bankingRate: Float = 4.0,
-        neighborCap: Int = 32
+        neighborCap: Int = 32,
+        bassDriftGain: Float = 1.4,
+        elongationGain: Float = 1.1,
+        turnBaseAmp: Float = 2.0,
+        midEdgeAmp: Float = 0.9,
+        vocalsBreathDepth: Float = 0.30,
+        substrateTau: Float = 6.0,
+        flockExtent: Float = 0.6
     ) {
         self.particleCount = particleCount
         self.gridSide = gridSide
@@ -139,6 +200,13 @@ public struct MurmurationFlockConfiguration: Sendable {
         self.wanderWeight = wanderWeight
         self.bankingRate = bankingRate
         self.neighborCap = neighborCap
+        self.bassDriftGain = bassDriftGain
+        self.elongationGain = elongationGain
+        self.turnBaseAmp = turnBaseAmp
+        self.midEdgeAmp = midEdgeAmp
+        self.vocalsBreathDepth = vocalsBreathDepth
+        self.substrateTau = substrateTau
+        self.flockExtent = flockExtent
     }
 }
 
@@ -161,6 +229,17 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
     private let binPipeline: MTLComputePipelineState
     private let boidsPipeline: MTLComputePipelineState
     private let renderPipelineState: MTLRenderPipelineState?
+
+    // MARK: Audio-coupling smoother state (MM.3)
+    //
+    // EMA accumulators for the slow substrate drivers + master energy gate.
+    // Mutated only from `update()` on the single render thread (consistent with
+    // the `@unchecked Sendable` contract — no concurrent access).
+    private var bassSmoothed: Float = 0          // L1 smoothed bass deviation (signed)
+    private var vocalsSmoothed: Float = 0        // L5 smoothed positive vocal deviation
+    private var energySmoothed: Float = 0        // master-gate smoothed energy deviation
+    private var driftSmoothed: SIMD3<Float> = .zero  // L1 extra-smoothed drift offset
+    private var windPhase: Float = 0             // elongation / drift axis rotation
 
     // MARK: Init
 
@@ -286,7 +365,12 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
         if !(dt > 0) { dt = 1.0 / 60.0 }
         dt = min(dt, 1.0 / 30.0)
 
-        var fp = makeParams(dt: dt, time: features.time, roost: roostTarget(time: features.time))
+        // MM.3 — compute the per-frame audio drive (D-026 deviation primitives,
+        // D-019 warmup blend, §3.1 energy-gated event layer) and displace the
+        // procedural roost by the bass-driven macro drift.
+        let audio = computeAudio(features: features, stemFeatures: stemFeatures, dt: dt)
+        let roost = roostTarget(time: features.time) + audio.driftOffset
+        var fp = makeParams(dt: dt, time: features.time, roost: roost, audio: audio)
 
         // Pass 1: reset cell counts.
         encoder.setComputePipelineState(resetPipeline)
@@ -341,9 +425,24 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
         )
     }
 
-    /// Build the per-frame parameter block. `roost` = flock centroid + drift bias.
-    private func makeParams(dt: Float, time: Float, roost: SIMD3<Float>) -> FlockParams {
+    /// Build the per-frame parameter block. `roost` = flock centroid + drift
+    /// bias; `audio` carries the MM.3 coupling (silent for the render path).
+    ///
+    /// L5 vocals "breathing" (the dark pulse) is applied here as a tightening of
+    /// the cohesion/separation weights — denser packing on vocal entries. All
+    /// audio terms collapse to the MM.2 baseline when `audio == .silent`.
+    private func makeParams(
+        dt: Float, time: Float, roost: SIMD3<Float>, audio: FlockAudio
+    ) -> FlockParams {
         let cfg = configuration
+        let breath = audio.breath
+        // L5 dark pulse — density compression. Tighten the inter-bird SPACING
+        // (smaller separation radius/weight → birds pack closer, the whole mass
+        // contracts) rather than cranking cohesion, which fights the minSpeed
+        // floor into a hollow orbiting shell (MM.2 finding).
+        let cohesionWeight = cfg.cohesionWeight
+        let separationRadius = cfg.separationRadius * (1 - cfg.vocalsBreathDepth * breath)
+        let separationWeight = cfg.separationWeight * (1 - 0.20 * breath)
         return FlockParams(
             particleCount: UInt32(cfg.particleCount),
             gridSide: UInt32(cfg.gridSide),
@@ -355,18 +454,141 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
             minSpeed: cfg.minSpeed,
             maxForce: cfg.maxForce,
             cohesionRadius: cfg.cohesionRadius,
-            separationRadius: cfg.separationRadius,
+            separationRadius: separationRadius,
             alignmentRadius: cfg.alignmentRadius,
-            cohesionWeight: cfg.cohesionWeight,
-            separationWeight: cfg.separationWeight,
+            cohesionWeight: cohesionWeight,
+            separationWeight: separationWeight,
             alignmentWeight: cfg.alignmentWeight,
             roostWeight: cfg.roostWeight,
             roostFar: cfg.roostFar,
             bankingRate: cfg.bankingRate,
             neighborCap: UInt32(cfg.neighborCap),
             wanderWeight: cfg.wanderWeight,
-            roostTarget: SIMD4<Float>(roost.x, roost.y, roost.z, 0)
+            roostTarget: SIMD4<Float>(roost.x, roost.y, roost.z, 0),
+            flockAxis: SIMD4<Float>(audio.flockAxis.x, audio.flockAxis.y,
+                                    audio.flockAxis.z, audio.elongation),
+            drive: SIMD4<Float>(audio.turnGain, audio.beatValue, audio.propDir, audio.waveWidth),
+            midEdgeGain: audio.midEdgeGain,
+            flockExtent: cfg.flockExtent,
+            audioPad0: 0,
+            audioPad1: 0
         )
+    }
+
+    // MARK: ParticleGeometry — audio coupling (MM.3)
+
+    /// Compute the per-frame audio drive from the live `FeatureVector` and
+    /// `StemFeatures`. This is the original `Particles.metal` audio brain ported
+    /// onto the boids substrate (design §3.2): drum turning-wave (L2), bass
+    /// drift + elongation (L1), mid edge flutter (L4), vocals breathing (L5),
+    /// the D-019 warmup stem-blend and the FA #26 cross-genre beat — with the
+    /// one improvement over the original: every read is a **deviation primitive**
+    /// (D-026), not raw AGC energy.
+    ///
+    /// Returns `.silent` semantics at zero input: all drives are 0, the smoother
+    /// state stays at 0, and `makeParams` reproduces the MM.2 baseline exactly.
+    func computeAudio(features f: FeatureVector, stemFeatures st: StemFeatures, dt: Float) -> FlockAudio {
+        let cfg = configuration
+
+        // D-019 warmup blend: full-mix FeatureVector routing → stem routing as
+        // stems arrive (~first 10 s are all-zero stems).
+        let totalStem = st.drumsEnergy + st.bassEnergy + st.otherEnergy + st.vocalsEnergy
+        let blend = Self.smoothstep(0.02, 0.06, totalStem)
+
+        // Per-layer deviation primitives (D-026), warmup-blended.
+        // L1 bass (continuous, signed Rel — relaxes negative in quiet sections).
+        let bassRel = Self.lerp(f.bassAttRel, st.bassEnergyRel, blend)
+        // L2 drums (accent, positive Dev). Full-mix proxy: bass_dev.
+        let drumsDev = Self.lerp(f.bassDev, st.drumsEnergyDev, blend)
+        // FA #26 — cross-genre beat: snare- and kick-driven tracks both register.
+        let fmBeat = max(f.beatBass, max(f.beatMid, f.beatComposite))
+        let beatPulse = Self.lerp(fmBeat, st.drumsBeat, blend)
+        // L4 mid edge flutter. Full-mix: mid_att_rel; stem: "other" (§3.2).
+        let midRel = Self.lerp(f.midAttRel, st.otherEnergyRel, blend)
+        // L5 vocals breathing (only present once stems arrive).
+        let vocalsDev = st.vocalsEnergyDev * blend
+
+        // Slow substrate smoothers (~tau s) — the 4–8 s shape/breath cadence.
+        bassSmoothed = Self.ema(bassSmoothed, bassRel, dt: dt, tau: cfg.substrateTau)
+        vocalsSmoothed = Self.ema(vocalsSmoothed, max(0, vocalsDev), dt: dt, tau: cfg.substrateTau)
+
+        // Master energy gate (§3.1) — scales the drum-wave event layer by
+        // overall arousal / smoothed energy deviation so calm passages stay
+        // near-pure-substrate. Default bias: under-react.
+        let energyNow = max(0, bassRel) + max(0, drumsDev) + max(0, midRel)
+        energySmoothed = Self.ema(energySmoothed, energyNow, dt: dt, tau: 0.8)
+        let arousal01 = max(0, min(1, (f.arousal + 1) * 0.5))
+        let masterGate = max(0, min(1, 0.2 + 0.8 * max(arousal01 - 0.2, energySmoothed)))
+
+        // Elongation/drift axis: a SLOW rotation (a coherent sweep the flock can
+        // actually follow, the original's "large sweeping arc"). Rotating it
+        // faster than the flock's leash time would self-cancel the macro drift.
+        windPhase += dt * (0.05 + 0.05 * abs(bassSmoothed))
+        let rawAxis = SIMD3<Float>(cos(windPhase),
+                                   0.32 * sin(windPhase * 0.7),
+                                   0.22 * sin(windPhase * 0.5))
+        let axis = Self.normalized(rawAxis)
+
+        // L1 macro drift (PRIMARY continuous motion) — the whole roost translates
+        // along the axis, signed by smoothed bass. Extra-smoothed for inertia.
+        let driftTarget = axis * (bassSmoothed * cfg.bassDriftGain)
+        driftSmoothed = Self.ema3(driftSmoothed, driftTarget, dt: dt, tau: cfg.substrateTau * 0.4)
+
+        // L1 elongation (comma/ribbon) — only sustained high bass stretches it.
+        let elong = max(0, min(0.72, max(0, bassSmoothed) * cfg.elongationGain))
+
+        // L2 drum turning-wave amplitude (ACCENT) — gated to ~0 in calm music.
+        let turnGain = max(0, drumsDev) * masterGate * cfg.turnBaseAmp
+        let epoch = floor(f.time * 2.5)
+        let propDir: Float = Self.hash11(epoch) > 0.5 ? 1 : -1
+
+        // L4 mid edge-flutter amplitude.
+        let midGain = max(0, midRel) * cfg.midEdgeAmp
+
+        return FlockAudio(
+            flockAxis: axis,
+            elongation: elong,
+            driftOffset: driftSmoothed,
+            turnGain: turnGain,
+            beatValue: max(0, min(1, beatPulse)),
+            propDir: propDir,
+            waveWidth: 0.30,
+            midEdgeGain: midGain,
+            breath: max(0, min(1, vocalsSmoothed))
+        )
+    }
+
+    // MARK: - Math helpers (match the MSL-side primitives)
+
+    private static func smoothstep(_ lo: Float, _ hi: Float, _ x: Float) -> Float {
+        guard hi > lo else { return x >= lo ? 1 : 0 }
+        let t = max(0, min(1, (x - lo) / (hi - lo)))
+        return t * t * (3 - 2 * t)
+    }
+
+    private static func lerp(_ a: Float, _ b: Float, _ t: Float) -> Float { a + (b - a) * t }
+
+    /// Frame-rate-independent EMA toward `target` with time constant `tau` s.
+    private static func ema(_ s: Float, _ target: Float, dt: Float, tau: Float) -> Float {
+        guard tau > 1e-5, dt > 0 else { return target }
+        let a = 1 - exp(-dt / tau)
+        return s + (target - s) * a
+    }
+
+    private static func ema3(_ s: SIMD3<Float>, _ target: SIMD3<Float>, dt: Float, tau: Float) -> SIMD3<Float> {
+        guard tau > 1e-5, dt > 0 else { return target }
+        let a = 1 - exp(-dt / tau)
+        return s + (target - s) * a
+    }
+
+    private static func normalized(_ v: SIMD3<Float>) -> SIMD3<Float> {
+        let len = (v.x * v.x + v.y * v.y + v.z * v.z).squareRoot()
+        return len > 1e-5 ? v / len : SIMD3<Float>(1, 0, 0)
+    }
+
+    private static func hash11(_ n: Float) -> Float {
+        let s = sin(n) * 43758.5453123
+        return s - floor(s)
     }
 
     // MARK: ParticleGeometry — render
@@ -376,7 +598,11 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
             logger.warning("MurmurationFlock.render: no render pipeline (compute-only)")
             return
         }
-        var fp = makeParams(dt: 1.0 / 60.0, time: features.time, roost: roostTarget(time: features.time))
+        // The vertex shader reads only position/velocity/bank/neighbourCount +
+        // worldHalfSpan; the audio fields are unused on the render path.
+        var fp = makeParams(
+            dt: 1.0 / 60.0, time: features.time,
+            roost: roostTarget(time: features.time), audio: .silent)
         encoder.setRenderPipelineState(state)
         encoder.setVertexBuffer(birdBuffer, offset: 0, index: 0)
         encoder.setVertexBytes(&fp, length: MemoryLayout<FlockParams>.stride, index: 2)
