@@ -265,16 +265,20 @@ vertex FataShapeVtxOut fata_shape_vertex(
                         0.5 + 0.5 * sin(cyc + 4.188),
                         0.5 + 0.5 * sin(cyc + 2.094));
 
-    // Per-instrument MUSIC RESPONSE (the L-uplift). The source modulates only the
-    // shape RADIUS by {mid,bass,treb}_att — which at the top end balloons the blob
-    // and the warp smears it into a featureless wash (loud frames lost structure).
-    // The uplift makes each instrument's blob FLARE in BRIGHTNESS on its own onset
-    // (an unmistakable, beat-locked, per-instrument light-up — drums shape flares on
-    // a kick, bass on a bassline, vocals on a vocal), with only a GENTLE size breathe
-    // so the ring structure survives. brightness is the legible music layer; size is
-    // a faithful-but-tamed secondary. `_energy_dev` is the ~0-centred transient
-    // deviation (D-026); raw (not _smoothed) for a snappy attack.
+    // BEAT DANCE (the L-uplift). The earlier brightness-only flare was undetectable
+    // live: the 0.98-decay feedback LOW-PASSES brightness into a steady glow, and the
+    // constant warp churn (zoom + swirl + time-orbit) buries any modest response. The
+    // mechanic that beats both: a sharp SIZE POP on the beat. Size is SPATIAL, so the
+    // zoom-1.05 feedback ejects each pop as a RING that visibly travels outward — a
+    // ring pulses off every spectrum on the kick (the oracle's own mechanic, and
+    // unmistakably "dancing with the beat"). `drums_beat` is the shared groove impulse
+    // (a clean per-beat 1→0 envelope) that all spectra pop on; each shape keeps its own
+    // `_energy_dev` for brightness identity (which instrument is singing). Size←beat,
+    // brightness←per-stem-energy: distinct primitives, one coherent gesture per blob
+    // (FA #67). The pop is brief (drums_beat decays in ~10 frames) so it ejects a clean
+    // ring and snaps back — no sustained over-size (the old smear cause).
     float flare = 1.0;
+    float beat  = st.drums_beat;                           // shared groove impulse (the kick)
     if (sp.shapeIndex == 0) {
         rad = 0.06623; ang = 0.02 * sp.frame; x = 0.5; y = 0.5;
         col = float3(0.0); aCenter = 0.1;                 // faint textured echo
@@ -283,22 +287,22 @@ vertex FataShapeVtxOut fata_shape_vertex(
         x = 0.5 + 0.225 * sin(d); y = 0.5 + 0.3 * cos(d);
         x -= 0.4 * x * sin(time);  y -= 0.4 * y * cos(time);
         float dev = max(0.0, st.drums_energy_dev);
-        rad   = 0.1 * (1.0 + 0.6 * dev) * sp.audioBoost;  // gentle breathe (was 1+dev → smear)
-        flare = 0.40 + 1.8 * dev;                          // bright flare on the kick
+        rad   = 0.1 * (1.0 + 1.3 * beat + 0.3 * dev) * sp.audioBoost;   // POP on the kick → ring ejects
+        flare = 0.45 + 1.8 * beat + 1.0 * dev;                          // FLASH on the kick + drum identity
     } else if (sp.shapeIndex == 2) {                       // bass blob ← BASS stem
         x = 0.5 + 0.225 * sin(time + 2.09); y = 0.5 + 0.3 * cos(time + 2.09);
         float dev = max(0.0, st.bass_energy_dev);
-        rad   = 0.1 * (1.0 + 0.6 * dev) * sp.audioBoost;
-        flare = 0.40 + 1.8 * dev;                          // bright flare on the bassline
+        rad   = 0.1 * (1.0 + 1.3 * beat + 0.3 * dev) * sp.audioBoost;
+        flare = 0.45 + 1.8 * beat + 1.0 * dev;                          // + bass identity
     } else {                                               // treb blobs ← VOCALS stem
         float d = fataDiv(time, float(inst));
         x = 0.5 + 0.225 * sin(d); y = 0.5 + 0.3 * cos(d);
         x += 0.4 * x * sin(time);  y += 0.4 * y * cos(time);
         float dev = max(0.0, st.vocals_energy_dev);
-        rad   = 0.07419 * (1.0 + 0.6 * dev) * sp.audioBoost;
-        flare = 0.40 + 1.8 * dev;                          // bright flare on the vocal
+        rad   = 0.07419 * (1.0 + 1.3 * beat + 0.3 * dev) * sp.audioBoost;
+        flare = 0.45 + 1.8 * beat + 1.0 * dev;                          // + vocal identity
     }
-    col *= flare;                                          // brightness = the music layer
+    col *= flare;                                          // brightness = instrument identity
 
     float xn = x * 2.0 - 1.0;
     float yn = y * -2.0 + 1.0;     // butterchurn frame.y*-2+1 (y=0 → NDC top)
