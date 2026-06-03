@@ -1,17 +1,20 @@
 // MurmurationFlockGeometry — Phase MM emergent starling-flock conformer.
 //
-// GPU boids (separation / alignment / cohesion) over a 3D spatial grid + a soft
-// global roost attractor + per-bird banking, simulated in 3D and projected to
-// screen. The dense morphing shape + core→edge density gradient are emergent.
-// See docs/presets/MURMURATION_DESIGN.md.
+// MM.6 REBUILD on Rama Hoetzlein's **Flock2** orientation-based model (a faithful
+// port of the published, code-available reference — FA #73). Each bird carries a
+// body **quaternion** + a scalar speed; neighbour influence is a desire to TURN
+// (an orientation target in the body frame), not a summed force. The travelling
+// dark orientation bands EMERGE from alignment+avoidance coupling; the flock is
+// held cohesive AND framed by the peripheral-boundary turn (no roost-attractor
+// force). This REPLACES the MM.2/MM.3 force-based boids substrate that fragmented
+// under real audio at the MM.3 M7 live review. See `MurmurationFlock.metal` for
+// the ported kernel and `docs/presets/MURMURATION_DESIGN.md` §12.
 //
-// A `ParticleGeometry` sibling (D-097) — owns its own 48-byte `Bird` layout and
-// `MurmurationFlock.metal` kernels rather than parameterizing ProceduralGeometry
-// (which it replaces as Murmuration's geometry). MM.2 established the silence
-// baseline; MM.3 (`computeAudio`) ports the original Particles.metal audio brain
-// onto the boids substrate — bass drift/elongation (L1), the drum turning-wave
-// (L2), mid edge flutter (L4), vocals breathing (L5) — all from deviation
-// primitives (D-026), all inert at zero audio.
+// A `ParticleGeometry` sibling (D-097) — owns its own `Bird` layout and
+// `MurmurationFlock.metal` kernels. The reset → bin → boids encoder structure,
+// render-pass wiring, governor hook, and multi-frame production-path test harness
+// pattern are carried forward from MM.2/MM.3; the integrator + audio coupling are
+// the MM.6 replacement.
 
 // swiftlint:disable file_length
 
@@ -21,12 +24,18 @@ import os.log
 
 private let logger = Logger(subsystem: "com.phosphene.renderer", category: "MurmurationFlock")
 
-// MARK: - Bird (mirror of MSL `MurmurationBird`, 48 bytes)
+// MARK: - Bird (mirror of MSL `MurmurationBird`, 64 bytes)
 
-/// Per-bird state. Scalar floats (not SIMD) to match the MSL `packed_float3`
-/// layout exactly — no alignment padding inside the struct.
+/// Per-bird state. Scalar floats (not SIMD) so the layout matches the MSL
+/// `float4 orient` + `packed_float3` members byte-for-byte (no SIMD alignment
+/// padding). `orient` is the body quaternion (xyzw); `target` is the persistent
+/// heading desire (degrees: x=roll, y=pitch, z=yaw).
 @frozen
 public struct MurmurationBird: Sendable {
+    public var orientX: Float
+    public var orientY: Float
+    public var orientZ: Float
+    public var orientW: Float
     public var positionX: Float
     public var positionY: Float
     public var positionZ: Float
@@ -34,22 +43,21 @@ public struct MurmurationBird: Sendable {
     public var velocityX: Float
     public var velocityY: Float
     public var velocityZ: Float
-    public var bank: Float
-    public var speedRnd: Float
     public var neighborCount: Float
-    // swiftlint:disable:next identifier_name
-    public var _pad0: Float
-    // swiftlint:disable:next identifier_name
-    public var _pad1: Float
+    public var targetX: Float
+    public var targetY: Float
+    public var targetZ: Float
+    public var speedRnd: Float
 
     public init() {
+        orientX = 0; orientY = 0; orientZ = 0; orientW = 1
         positionX = 0; positionY = 0; positionZ = 0; seed = 0
-        velocityX = 0; velocityY = 0; velocityZ = 0; bank = 0
-        speedRnd = 0; neighborCount = 0; _pad0 = 0; _pad1 = 0
+        velocityX = 0; velocityY = 0; velocityZ = 0; neighborCount = 0
+        targetX = 0; targetY = 0; targetZ = 0; speedRnd = 0
     }
 }
 
-// MARK: - FlockParams (mirror of MSL `FlockParams`, 144 bytes)
+// MARK: - FlockParams (mirror of MSL `FlockParams`, 208 bytes)
 
 struct FlockParams {
     var particleCount: UInt32
@@ -59,34 +67,52 @@ struct FlockParams {
 
     var time: Float
     var worldHalfSpan: Float
-    var maxSpeed: Float
+    var neighborRadius: Float
+    var fovCos: Float
+
     var minSpeed: Float
+    var maxSpeed: Float
+    var reactionSpeed: Float
+    var dynamicStability: Float
 
-    var maxForce: Float
-    var cohesionRadius: Float
-    var separationRadius: Float
-    var alignmentRadius: Float
+    // Faithful aero (metre units; source constants).
+    var mass: Float
+    var powerParam: Float
+    var wingArea: Float
+    var liftFactor: Float
 
-    var cohesionWeight: Float
-    var separationWeight: Float
-    var alignmentWeight: Float
-    var roostWeight: Float
-
-    var roostFar: Float
-    var bankingRate: Float
+    var dragFactor: Float
+    var airDensity: Float
+    var gravityY: Float
     var neighborCap: UInt32
-    var wanderWeight: Float
 
-    var roostTarget: SIMD4<Float>
+    var avoidAmt: Float
+    var alignAmt: Float
+    var cohesionAmt: Float
+    var boundaryAmt: Float
 
-    // MM.3 audio coupling (inert at zero audio). `FlockParams` is uploaded via
-    // setBytes each frame (not a persistent GPU contract), so its size may grow
-    // freely as long as the MSL mirror in MurmurationFlock.metal stays
-    // byte-identical. Re-check `MemoryLayout<FlockParams>.stride == 144`.
-    var flockAxis: SIMD4<Float>   // xyz = unit elongation/wave axis, w = elongation
-    var drive: SIMD4<Float>       // x = turnGain, y = beatValue, z = propDir, w = waveWidth
-    var midEdgeGain: Float        // L4 mid edge-flutter amplitude
-    var flockExtent: Float        // nominal half-extent for the wave bird-coordinate
+    var boundaryCnt: Float
+    var pitchDecay: Float
+    var pitchMin: Float
+    var pitchMax: Float
+
+    var boundHalfY: Float
+    var boundSoften: Float
+    var avoidGroundAmt: Float
+    var avoidCeilAmt: Float
+
+    var anchor: SIMD4<Float>       // xyz = flock anchor (boundary-turn centre) + bass drift
+
+    // ── MM.6 audio turn-desire biases (inert at zero audio) ──
+    var flockAxis: SIMD4<Float>    // xyz = unit elongation/wave axis, w = elongation
+    var drive: SIMD4<Float>        // x = waveRollDeg(gated), y = beatValue, z = propDir, w = waveWidth
+    var midEdgeDeg: Float          // L4 edge-flutter turn jitter (degrees)
+    var flockExtent: Float         // guide-segment + wave-coord half-extent (m)
+    var framingRadius: Float       // horizontal soft containment radius (m)
+    var framingAmt: Float          // framing turn strength
+
+    var viewRadius: Float          // render: world metres → clip half-extent
+    var renderYOffset: Float       // render: vertical recentre
     var audioPad0: Float
     var audioPad1: Float
 }
@@ -94,127 +120,168 @@ struct FlockParams {
 // MARK: - FlockAudio (per-frame coupling scalars, CPU-computed)
 
 /// The per-frame audio drive computed from `FeatureVector` + `StemFeatures`,
-/// consumed by `makeParams` to populate the audio fields of `FlockParams` and
-/// to modulate the boids weights. All-zero at silence (`.silent`).
+/// consumed by `makeParams`. All-zero at silence (`.silent`) → the MM.2 silence
+/// baseline is reproduced exactly. Every magnitude is a turn-desire bias (degrees
+/// or a length offset), never a force.
 struct FlockAudio {
-    var flockAxis: SIMD3<Float> = SIMD3(1, 0, 0)  // unit elongation / wave-travel axis
-    var elongation: Float = 0                     // L1 comma/ribbon [0, 0.72]
-    var driftOffset: SIMD3<Float> = .zero         // L1 macro drift added to the roost
-    var turnGain: Float = 0                       // L2 turning-wave FORCE (gentle — must not translate)
-    var waveDarkAmp: Float = 0                    // L2 wave DARKENING amplitude (visual, decoupled from force)
-    var beatValue: Float = 0                      // L2 decaying beat pulse [0,1]
-    var propDir: Float = 1                        // L2 wave direction (±1, per epoch)
-    var waveWidth: Float = 0.22                   // L2 triangular bump half-width
-    var midEdgeGain: Float = 0                    // L4 edge-flutter amplitude
-    var breath: Float = 0                         // L5 cohesion-tightening [0,1]
+    var flockAxis: SIMD3<Float> = SIMD3(1, 0, 0)  // unit elongation / maneuver-sweep axis
+    var elongation: Float = 0                     // L1 comma/ribbon envelope stretch [0,0.72]
+    var driftOffset: SIMD3<Float> = .zero         // L1 macro drift added to the anchor
+    var maneuverYawDeg: Float = 0                 // bar maneuver: gated yaw-swing amplitude (deg)
+    var barSweep: Float = 0                       // bar maneuver: wavefront position = barPhase01
+    var maneuverDir: Float = 1                    // bar maneuver: sweep direction (±1, per bar)
+    var waveWidth: Float = 0.40                   // bar maneuver: triangular bump half-width
+    var breath: Float = 0                         // L5 envelope contraction [0,1]
 
     static let silent = FlockAudio()
 }
 
 // MARK: - Configuration
 
-/// CPU-side flock configuration. The boids weights/radii are the MM.2 silence
-/// baseline starting values; tuned against rendered frames + (MM.3) live audio.
+/// CPU-side flock configuration. MM.6 simulates in **literal metre units** with
+/// Flock2's faithful aerodynamic model and source constants (Matt's call: don't
+/// simplify). The flock self-sizes by the metre-space density (radius ∝ N^⅓);
+/// the framing radius, view radius and domain scale as `cbrt(count /
+/// referenceCount)` so the per-cell density — and thus the topological neighbour
+/// structure and the `boundaryCnt` threshold — is invariant across the test
+/// counts (2–6 k) and the production count, while the flock fills the same frame
+/// fraction at any count. `neighborRadius` is the real `psmoothradius` (10 m) and
+/// the grid resolution follows the domain. Aero / coefficient values are the
+/// Flock2 source defaults (app_flock.cpp).
 public struct MurmurationFlockConfiguration: Sendable {
     public var particleCount: Int
     public var gridSide: Int
     public var cellCapacity: Int
-    public var worldHalfSpan: Float
-
-    public var maxSpeed: Float
-    public var minSpeed: Float
-    public var maxForce: Float
-    public var cohesionRadius: Float
-    public var alignmentRadius: Float
-    public var separationRadius: Float
-    public var cohesionWeight: Float
-    public var alignmentWeight: Float
-    public var separationWeight: Float
-    public var roostWeight: Float
-    public var roostFar: Float
-    public var wanderWeight: Float
-    public var bankingRate: Float
     public var neighborCap: Int
 
-    // ── MM.3 audio-coupling gains (all default to a deliberately under-reactive
-    // baseline per design §3.1). Continuous substrate drivers are sized well
-    // above the per-beat event amplitude (Audio Data Hierarchy ≥ 2×). ──
+    // Metre-space substrate.
+    public var worldHalfSpan: Float       // domain half (m)
+    public var neighborRadius: Float      // psmoothradius (m, source 10)
+    public var minSpeed: Float            // m/s (source 5)
+    public var maxSpeed: Float            // m/s (source 18)
+    public var flockExtent: Float         // guide-segment / wave-coord half-extent (m)
+    public var framingRadius: Float       // horizontal containment radius (m)
+    public var framingAmt: Float
+    public var boundHalfY: Float          // vertical band half-height (m)
+    public var boundSoften: Float         // ground/ceiling detection range (m)
+    public var avoidGroundAmt: Float
+    public var avoidCeilAmt: Float
+    public var viewRadius: Float          // render metres → clip half-extent
+    public var renderYOffset: Float       // render vertical recentre (m)
 
-    /// L1 — world units the roost target drifts per unit of smoothed bass
-    /// deviation. The dominant continuous motion (PRIMARY driver).
+    // Faithful aero (source constants).
+    public var mass: Float
+    public var powerParam: Float
+    public var wingArea: Float
+    public var liftFactor: Float
+    public var dragFactor: Float
+    public var airDensity: Float
+    public var gravityY: Float
+
+    // Flock2 heading-controller coefficients (source defaults).
+    public var reactionSpeed: Float       // control reaction time (ms)
+    public var dynamicStability: Float    // [0,1] body→velocity realign per frame
+    public var avoidAmt: Float            // k_avoid (source 0.01)
+    public var alignAmt: Float            // k_align (source 0.40)
+    public var cohesionAmt: Float         // k_coh  (source 0.001)
+    public var boundaryAmt: Float         // k_bound (source 0.40)
+    public var boundaryCnt: Float         // r_nbrs below which a bird is peripheral
+    public var pitchDecay: Float          // source 0.95
+    public var pitchMin: Float            // source −40°
+    public var pitchMax: Float            // source +20°
+    public var fovDegrees: Float          // source 240°
+
+    // ── MM.6 audio-coupling gains (deliberately under-reactive, §3.1). ──
+    /// L1 — anchor drift per unit smoothed bass deviation, in `worldHalfSpan`
+    /// fractions (hard-capped to 0.30·worldHalfSpan so the flock stays framed).
     public var bassDriftGain: Float
-    /// L1 — elongation (comma/ribbon) per unit of positive smoothed bass.
-    /// Capped at 0.72 → ≈ 3:1 aspect at sustained high bass.
+    /// L1 — envelope elongation per unit positive smoothed bass (comma/ribbon).
     public var elongationGain: Float
-    /// L2 — peak per-beat turning-wave amplitude before the master energy gate
-    /// and `drums_energy_dev` scaling. Kept below the substrate (accent only).
-    public var turnBaseAmp: Float
-    /// L4 — mid edge-flutter amplitude per unit of positive mid deviation.
-    public var midEdgeAmp: Float
-    /// L5 — fractional cohesion tightening at full vocal breath (the dark pulse).
+    /// Bar maneuver — peak per-bar yaw-swing (degrees) before the energy gate and
+    /// drum modulation. The flock turns once per bar; the banking wave emerges.
+    public var maneuverYawDeg: Float
+    /// L5 — fractional envelope contraction at full vocal breath (the dark pulse).
     public var vocalsBreathDepth: Float
     /// Seconds (EMA τ) for the slow bass/vocals substrate smoothers.
     public var substrateTau: Float
-    /// Nominal flock half-extent normalising the wave bird-coordinate.
-    public var flockExtent: Float
 
     public init(
-        particleCount: Int = 55_000,
-        gridSide: Int = 24,
-        cellCapacity: Int = 96,
-        worldHalfSpan: Float = 2.0,
-        maxSpeed: Float = 0.7,
-        minSpeed: Float = 0.12,
-        maxForce: Float = 10.0,
-        cohesionRadius: Float = 0.16,
-        alignmentRadius: Float = 0.16,
-        separationRadius: Float = 0.075,
-        cohesionWeight: Float = 3.0,
-        alignmentWeight: Float = 3.5,
-        separationWeight: Float = 7.0,
-        roostWeight: Float = 1.0,
-        roostFar: Float = 2.5,
-        wanderWeight: Float = 0.34,
-        bankingRate: Float = 4.0,
-        neighborCap: Int = 32,
-        bassDriftGain: Float = 1.0,
-        elongationGain: Float = 0.7,
-        turnBaseAmp: Float = 0.16,
-        midEdgeAmp: Float = 0.22,
-        vocalsBreathDepth: Float = 0.30,
-        substrateTau: Float = 6.0,
-        flockExtent: Float = 0.6
+        particleCount: Int = 48_000,
+        referenceCount: Int = 48_000,
+        referenceHalfSpan: Float = 100,
+        cellCapacity: Int = 256,
+        neighborCap: Int = 64,
+        reactionSpeed: Float = 2200,
+        dynamicStability: Float = 0.8,
+        boundaryCnt: Float = 40,
+        framingAmt: Float = 0.8,
+        avoidGroundAmt: Float = 6.0,
+        avoidCeilAmt: Float = 1.5,
+        renderYOffset: Float = 0,
+        bassDriftGain: Float = 0.6,
+        elongationGain: Float = 1.1,
+        maneuverYawDeg: Float = 9.0,
+        vocalsBreathDepth: Float = 0.7,
+        substrateTau: Float = 6.0
     ) {
         self.particleCount = particleCount
-        self.gridSide = gridSide
         self.cellCapacity = cellCapacity
-        self.worldHalfSpan = worldHalfSpan
-        self.maxSpeed = maxSpeed
-        self.minSpeed = minSpeed
-        self.maxForce = maxForce
-        self.cohesionRadius = cohesionRadius
-        self.alignmentRadius = alignmentRadius
-        self.separationRadius = separationRadius
-        self.cohesionWeight = cohesionWeight
-        self.alignmentWeight = alignmentWeight
-        self.separationWeight = separationWeight
-        self.roostWeight = roostWeight
-        self.roostFar = roostFar
-        self.wanderWeight = wanderWeight
-        self.bankingRate = bankingRate
         self.neighborCap = neighborCap
+
+        // Density-invariant scaling: domain + flock radius ∝ cbrt(count).
+        let scale = cbrtf(Float(max(particleCount, 1)) / Float(max(referenceCount, 1)))
+        let whs = referenceHalfSpan * scale
+        self.worldHalfSpan = whs
+        self.neighborRadius = 10.0                          // real psmoothradius (m)
+        self.gridSide = max(4, Int((2 * whs / 10.0).rounded()))
+        let framingR = 0.42 * whs
+        self.framingRadius = framingR
+        self.framingAmt = framingAmt
+        self.flockExtent = 1.30 * framingR                  // guide-segment reach (comma/ribbon)
+        self.boundHalfY = 0.35 * framingR                   // flat band (aspect ~3:1)
+        self.boundSoften = 0.5 * (0.35 * framingR)
+        self.avoidGroundAmt = avoidGroundAmt
+        self.avoidCeilAmt = avoidCeilAmt
+        // The flock settles to a tighter natural size than the framing radius, so
+        // the view is scaled to the actual dense mass — the core fills ~half the
+        // frame and the feathered edge reaches the border.
+        self.viewRadius = framingR * 0.72
+        self.renderYOffset = renderYOffset
+
+        // Faithful aero — Flock2 source constants (metres).
+        self.minSpeed = 5
+        self.maxSpeed = 18
+        self.mass = 0.08
+        self.powerParam = 0.2173
+        self.wingArea = 0.0224
+        self.liftFactor = 0.5714
+        self.dragFactor = 0.1731
+        self.airDensity = 1.225
+        self.gravityY = -9.8
+
+        self.reactionSpeed = reactionSpeed
+        self.dynamicStability = dynamicStability
+        self.avoidAmt = 0.01
+        self.alignAmt = 0.40
+        self.cohesionAmt = 0.001
+        self.boundaryAmt = 0.40
+        self.boundaryCnt = boundaryCnt
+        self.pitchDecay = 0.95
+        self.pitchMin = -40
+        self.pitchMax = 20
+        self.fovDegrees = 240
+
         self.bassDriftGain = bassDriftGain
         self.elongationGain = elongationGain
-        self.turnBaseAmp = turnBaseAmp
-        self.midEdgeAmp = midEdgeAmp
+        self.maneuverYawDeg = maneuverYawDeg
         self.vocalsBreathDepth = vocalsBreathDepth
         self.substrateTau = substrateTau
-        self.flockExtent = flockExtent
     }
 }
 
 // MARK: - MurmurationFlockGeometry
 
+// swiftlint:disable:next type_body_length
 public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendable {
 
     // MARK: Properties
@@ -233,16 +300,22 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
     private let boidsPipeline: MTLComputePipelineState
     private let renderPipelineState: MTLRenderPipelineState?
 
-    // MARK: Audio-coupling smoother state (MM.3)
+    // MARK: Audio-coupling smoother state (MM.6)
     //
-    // EMA accumulators for the slow substrate drivers + master energy gate.
-    // Mutated only from `update()` on the single render thread (consistent with
-    // the `@unchecked Sendable` contract — no concurrent access).
-    private var bassSmoothed: Float = 0          // L1 smoothed bass deviation (signed)
-    private var vocalsSmoothed: Float = 0        // L5 smoothed positive vocal deviation
-    private var energySmoothed: Float = 0        // master-gate smoothed energy deviation
-    private var driftSmoothed: SIMD3<Float> = .zero  // L1 extra-smoothed drift offset
-    private var windPhase: Float = 0             // elongation / drift axis rotation
+    // Mutated only from `update()` / `computeAudio()` on the single render thread
+    // (consistent with the `@unchecked Sendable` contract — no concurrent access).
+    private var bassSmoothed: Float = 0
+    private var vocalsSmoothed: Float = 0
+    private var energySmoothed: Float = 0
+    private var driftSmoothed: SIMD3<Float> = .zero
+    private var windPhase: Float = 0
+    // Bar-anchored maneuver state (MM.6 musicality rethink): one coordinated
+    // heading-swing per BAR (not per beat — too twitchy), alternating direction,
+    // amplitude latched at the downbeat and gated by energy. The banking wave
+    // EMERGES from the swing; we do not inject per-bird accents.
+    private var lastBarPhase: Float = 0
+    private var maneuverDir: Float = 1
+    private var maneuverAmp: Float = 0
 
     // MARK: Init
 
@@ -301,10 +374,9 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
             desc.fragmentFunction = ffn
             desc.colorAttachments[0].pixelFormat = pixelFormat
             // Dark silhouettes over a bright sky → alpha-blend the RGB, but pin
-            // the destination ALPHA channel at 1 (the target is opaque). Letting
-            // dst-alpha fall below 1 in sparse regions makes premultiplied
-            // consumers (the PNG harness, any compositor) lift those areas toward
-            // white — the white-halo artifact. src*0 + dst*1 keeps alpha = 1.
+            // the destination ALPHA at 1 (the white-halo fix — see MM.2): a
+            // premultiplied consumer would otherwise lift sparse regions toward
+            // white. src*0 + dst*1 keeps alpha = 1.
             desc.colorAttachments[0].isBlendingEnabled = true
             desc.colorAttachments[0].sourceRGBBlendFactor = .sourceAlpha
             desc.colorAttachments[0].destinationRGBBlendFactor = .oneMinusSourceAlpha
@@ -318,9 +390,10 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
         logger.info("MurmurationFlockGeometry: \(count) birds, grid \(configuration.gridSide)^3")
     }
 
-    /// Deterministic initial cloud: a loose sphere near the origin with small
-    /// tangential velocity so the flock starts already wheeling. Deterministic
-    /// (seeded LCG) so test harnesses are reproducible.
+    /// Deterministic initial cloud: a loose sphere near the origin with a small
+    /// tangential velocity (the flock starts already wheeling) and a body
+    /// quaternion already aligned to that velocity. Deterministic (seeded LCG) so
+    /// test harnesses are reproducible.
     private static func seedBirds(into buffer: MTLBuffer, count: Int, worldHalfSpan: Float) {
         let ptr = buffer.contents().bindMemory(to: MurmurationBird.self, capacity: count)
         var rng: UInt64 = 0x9E3779B97F4A7C15
@@ -328,24 +401,31 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
             rng = rng &* 6364136223846793005 &+ 1442695040888963407
             return Float((rng >> 33) & 0xFFFFFF) / Float(0xFFFFFF)   // [0,1]
         }
-        let radius = min(0.5, worldHalfSpan * 0.25)
+        let radius = worldHalfSpan * 0.35
         for i in 0..<count {
             var bird = MurmurationBird()
-            // Uniform-ish point in a ball (rounded at-rest mass).
             let rndA = next(); let rndB = next(); let rndC = next()
             let theta = rndA * 2.0 * .pi
             let phi = acos(2.0 * rndB - 1.0)
             let rad = radius * powf(rndC, 1.0 / 3.0)
             let sx = rad * sinf(phi) * cosf(theta)
-            let sy = rad * sinf(phi) * sinf(theta)
+            let sy = rad * sinf(phi) * sinf(theta) * 0.6   // flatter at rest (aspect)
             let sz = rad * cosf(phi)
             bird.positionX = sx; bird.positionY = sy; bird.positionZ = sz
             bird.seed = next()
             bird.speedRnd = next()
-            // Tangential start velocity (swirl around y axis).
-            bird.velocityX = -sz * 0.6
-            bird.velocityY = (next() - 0.5) * 0.2
-            bird.velocityZ = sx * 0.6
+            // Tangential start velocity (swirl around y).
+            let vx = -sz * 0.6
+            let vy = (next() - 0.5) * 0.1
+            let vz = sx * 0.6
+            let vel = Self.normalized(SIMD3(vx, vy, vz))
+            let startSpeed: Float = 10   // m/s, mid of the [5,18] range
+            bird.velocityX = vel.x * startSpeed
+            bird.velocityY = vel.y * startSpeed
+            bird.velocityZ = vel.z * startSpeed
+            // Body quaternion aligned so forward (+x) points along velocity.
+            let quat = Self.quatFromTo(SIMD3(1, 0, 0), vel)
+            bird.orientX = quat.x; bird.orientY = quat.y; bird.orientZ = quat.z; bird.orientW = quat.w
             ptr[i] = bird
         }
     }
@@ -363,17 +443,13 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
         }
 
         let cfg = configuration
-        // Clamp dt — a long first frame must not blow the integrator up.
         var dt = features.deltaTime
         if !(dt > 0) { dt = 1.0 / 60.0 }
         dt = min(dt, 1.0 / 30.0)
 
-        // MM.3 — compute the per-frame audio drive (D-026 deviation primitives,
-        // D-019 warmup blend, §3.1 energy-gated event layer) and displace the
-        // procedural roost by the bass-driven macro drift.
         let audio = computeAudio(features: features, stemFeatures: stemFeatures, dt: dt)
-        let roost = roostTarget(time: features.time) + audio.driftOffset
-        var fp = makeParams(dt: dt, time: features.time, roost: roost, audio: audio)
+        let anchor = anchorTarget(time: features.time) + audio.driftOffset
+        var fp = makeParams(dt: dt, time: features.time, anchor: anchor, audio: audio)
 
         // Pass 1: reset cell counts.
         encoder.setComputePipelineState(resetPipeline)
@@ -392,8 +468,8 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
         dispatch(encoder, threads: cfg.particleCount)
         encoder.memoryBarrier(scope: .buffers)
 
-        // Pass 3: boids integrate. Governor reduces the integrated count; the
-        // remainder keep their previous positions (still binned correctly).
+        // Pass 3: orientation-flocking integrate. Governor reduces the integrated
+        // count; the remainder keep their previous state (still binned correctly).
         let fraction = max(0.0, min(1.0, activeParticleFraction))
         let activeCount = max(1, Int(Float(cfg.particleCount) * fraction))
         encoder.setComputePipelineState(boidsPipeline)
@@ -415,37 +491,37 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
         )
     }
 
-    /// Absolute, bounded global attractor position (world space, near origin).
-    /// A slowly-drifting target the flock wanders around — bounded so the mass
-    /// stays on-screen. The distance-scaled `roostFar` leash holds the flock
-    /// together around it (anti-fragmentation). MM.2 ambient motion (FA #33
-    /// carve-out); MM.3 displaces this with the bass-driven roost.
-    private func roostTarget(time: Float) -> SIMD3<Float> {
-        SIMD3<Float>(
-            0.30 * sinf(time * 0.11) + 0.12 * cosf(time * 0.05),
-            0.16 * sinf(time * 0.09) + 0.07 * sinf(time * 0.04),
-            0.22 * sinf(time * 0.07)
+    /// Slowly-drifting flock anchor (world space, near origin). The boundary
+    /// term frames the flock around this point; the static camera does not
+    /// follow it, so this drift IS the ambient motion (FA #33 carve-out). MM.6
+    /// adds the bass-driven drift on top (bounded).
+    private func anchorTarget(time: Float) -> SIMD3<Float> {
+        let whs = configuration.worldHalfSpan
+        return SIMD3<Float>(
+            whs * (0.03 * sinf(time * 0.11) + 0.015 * cosf(time * 0.05)),
+            whs * (0.015 * sinf(time * 0.09)),
+            whs * (0.025 * sinf(time * 0.07))
         )
     }
 
-    /// Build the per-frame parameter block. `roost` = flock centroid + drift
-    /// bias; `audio` carries the MM.3 coupling (silent for the render path).
-    ///
-    /// L5 vocals "breathing" (the dark pulse) is applied here as a tightening of
-    /// the cohesion/separation weights — denser packing on vocal entries. All
-    /// audio terms collapse to the MM.2 baseline when `audio == .silent`.
+    /// Build the per-frame parameter block. `anchor` = flock centre + bass drift;
+    /// `audio` carries the MM.6 turn-desire biases (silent for the render path).
+    /// L5 vocals "breathing" tightens the boundary pull (the mass contracts on
+    /// vocal phrases). All audio terms collapse to the silence baseline when
+    /// `audio == .silent`.
     private func makeParams(
-        dt: Float, time: Float, roost: SIMD3<Float>, audio: FlockAudio
+        dt: Float, time: Float, anchor: SIMD3<Float>, audio: FlockAudio
     ) -> FlockParams {
         let cfg = configuration
-        let breath = audio.breath
-        // L5 dark pulse — density compression. Tighten the inter-bird SPACING
-        // (smaller separation radius/weight → birds pack closer, the whole mass
-        // contracts) rather than cranking cohesion, which fights the minSpeed
-        // floor into a hollow orbiting shell (MM.2 finding).
-        let cohesionWeight = cfg.cohesionWeight
-        let separationRadius = cfg.separationRadius * (1 - cfg.vocalsBreathDepth * breath)
-        let separationWeight = cfg.separationWeight * (1 - 0.20 * breath)
+        // L5 vocals "breathing": on a vocal swell the mass DILATES vertically (the
+        // McGill blackening↔dilution). The flock's SIZE is a stiff emergent
+        // equilibrium that tightening a bound does NOT shrink (it sits well inside
+        // both the framing ellipse and the vertical band) — but an ACTIVE
+        // anisotropic force does move it (the same mechanism that elongates it
+        // horizontally). So breath drives an active vertical spread: birds pitch
+        // away from the band centre → the mass swells in Y, then settles.
+        let breathPull = cfg.vocalsBreathDepth * audio.breath
+        let fovCos = cosf(cfg.fovDegrees * 0.5 * .pi / 180.0)
         return FlockParams(
             particleCount: UInt32(cfg.particleCount),
             gridSide: UInt32(cfg.gridSide),
@@ -453,136 +529,143 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
             dt: dt,
             time: time,
             worldHalfSpan: cfg.worldHalfSpan,
-            maxSpeed: cfg.maxSpeed,
+            neighborRadius: cfg.neighborRadius,
+            fovCos: fovCos,
             minSpeed: cfg.minSpeed,
-            maxForce: cfg.maxForce,
-            cohesionRadius: cfg.cohesionRadius,
-            separationRadius: separationRadius,
-            alignmentRadius: cfg.alignmentRadius,
-            cohesionWeight: cohesionWeight,
-            separationWeight: separationWeight,
-            alignmentWeight: cfg.alignmentWeight,
-            roostWeight: cfg.roostWeight,
-            roostFar: cfg.roostFar,
-            bankingRate: cfg.bankingRate,
+            maxSpeed: cfg.maxSpeed,
+            reactionSpeed: cfg.reactionSpeed,
+            dynamicStability: cfg.dynamicStability,
+            mass: cfg.mass,
+            powerParam: cfg.powerParam,
+            wingArea: cfg.wingArea,
+            liftFactor: cfg.liftFactor,
+            dragFactor: cfg.dragFactor,
+            airDensity: cfg.airDensity,
+            gravityY: cfg.gravityY,
             neighborCap: UInt32(cfg.neighborCap),
-            wanderWeight: cfg.wanderWeight,
-            roostTarget: SIMD4<Float>(roost.x, roost.y, roost.z, 0),
+            avoidAmt: cfg.avoidAmt,
+            alignAmt: cfg.alignAmt,
+            cohesionAmt: cfg.cohesionAmt,
+            boundaryAmt: cfg.boundaryAmt,
+            boundaryCnt: cfg.boundaryCnt,
+            pitchDecay: cfg.pitchDecay,
+            pitchMin: cfg.pitchMin,
+            pitchMax: cfg.pitchMax,
+            boundHalfY: cfg.boundHalfY,
+            boundSoften: cfg.boundSoften,
+            avoidGroundAmt: cfg.avoidGroundAmt,
+            avoidCeilAmt: cfg.avoidCeilAmt,
+            anchor: SIMD4<Float>(anchor.x, anchor.y, anchor.z, 0),
             flockAxis: SIMD4<Float>(audio.flockAxis, audio.elongation),
-            drive: SIMD4<Float>(audio.turnGain, audio.beatValue, audio.propDir, audio.waveWidth),
-            midEdgeGain: audio.midEdgeGain,
+            drive: SIMD4<Float>(audio.maneuverYawDeg, audio.barSweep, audio.maneuverDir, audio.waveWidth),
+            midEdgeDeg: 0,
             flockExtent: cfg.flockExtent,
-            audioPad0: audio.waveDarkAmp,   // L2 wave darkening (decoupled from the curl force)
+            framingRadius: cfg.framingRadius,
+            framingAmt: cfg.framingAmt,
+            viewRadius: cfg.viewRadius,
+            renderYOffset: cfg.renderYOffset,
+            audioPad0: breathPull,    // L5 breath → active vertical spread (dilation)
             audioPad1: 0
         )
     }
 
-    // MARK: ParticleGeometry — audio coupling (MM.3)
+    // MARK: ParticleGeometry — audio coupling (MM.6)
 
     /// Compute the per-frame audio drive from the live `FeatureVector` and
-    /// `StemFeatures`. This is the original `Particles.metal` audio brain ported
-    /// onto the boids substrate (design §3.2): drum turning-wave (L2), bass
-    /// drift + elongation (L1), mid edge flutter (L4), vocals breathing (L5),
-    /// the D-019 warmup stem-blend and the FA #26 cross-genre beat — with the
-    /// one improvement over the original: every read is a **deviation primitive**
-    /// (D-026), not raw AGC energy.
+    /// `StemFeatures`, re-expressed (vs MM.3) as gentle biases on the Flock2
+    /// turn-desires rather than forces — which is why it can no longer tear the
+    /// flock (orientation nudges cannot fling birds). Routes: L1 bass → anchor
+    /// drift + guide-segment elongation; L2 drums → swept yaw bias (intensifies
+    /// the emergent orientation wave); L4 mid → edge turn-jitter; L5 vocals →
+    /// boundary tightening (breathing). D-019 warmup blend + FA #26 cross-genre
+    /// beat kept; every read is a deviation primitive (D-026), tanh-saturated and
+    /// sized against the real ~3× range (project_deviation_primitive_real_range).
     ///
-    /// Returns `.silent` semantics at zero input: all drives are 0, the smoother
-    /// state stays at 0, and `makeParams` reproduces the MM.2 baseline exactly.
+    /// Returns `.silent` semantics at zero input: all drives 0, smoother state at
+    /// 0, `makeParams` reproduces the silence baseline exactly.
     func computeAudio(features feat: FeatureVector, stemFeatures st: StemFeatures, dt: Float) -> FlockAudio {
         let cfg = configuration
 
-        // D-019 warmup blend: full-mix FeatureVector routing → stem routing as
-        // stems arrive (~first 10 s are all-zero stems).
+        // D-019 warmup blend: full-mix FeatureVector → stem routing as stems arrive.
         let totalStem = st.drumsEnergy + st.bassEnergy + st.otherEnergy + st.vocalsEnergy
         let blend = Self.smoothstep(0.02, 0.06, totalStem)
 
         // Per-layer deviation primitives (D-026), warmup-blended, then SOFT-
-        // SATURATED. On real music these primitives spike to ~3× (drumsEnergyDev
-        // / bassEnergyRel reach ~3.2–3.4, not the docs' ~±0.5) — see
-        // project_deviation_primitive_real_range. tanh preserves the common
-        // 0.1–0.4 range and caps the transients near ±1 so a 3× spike can't
-        // produce a 3× force that tears the boids flock apart (the MM.3 M7
-        // failure; FA #4 inverted by over-driven accents).
-        // L1 bass (continuous, signed Rel — relaxes negative in quiet sections).
+        // SATURATED. On real music these spike to ~3× (drumsEnergyDev/
+        // bassEnergyRel reach ~3.2–3.4) — tanh keeps the common 0.1–0.4 range
+        // ~linear and caps the spikes near ±1.
         let bassRel = Self.saturate(Self.lerp(feat.bassAttRel, st.bassEnergyRel, blend))
-        // L2 drums (accent, positive Dev). Full-mix proxy: bass_dev.
         let drumsDev = Self.saturate(Self.lerp(feat.bassDev, st.drumsEnergyDev, blend))
-        // FA #26 — cross-genre beat: snare- and kick-driven tracks both register.
-        let fmBeat = max(feat.beatBass, max(feat.beatMid, feat.beatComposite))
-        let beatPulse = Self.lerp(fmBeat, st.drumsBeat, blend)
-        // L4 mid edge flutter. Full-mix: mid_att_rel; stem: "other" (§3.2).
-        let midRel = Self.saturate(Self.lerp(feat.midAttRel, st.otherEnergyRel, blend))
-        // L5 vocals breathing (only present once stems arrive).
         let vocalsDev = Self.saturate(st.vocalsEnergyDev * blend)
 
         // Slow substrate smoothers (~tau s) — the 4–8 s shape/breath cadence.
         bassSmoothed = Self.ema(bassSmoothed, bassRel, dt: dt, tau: cfg.substrateTau)
         vocalsSmoothed = Self.ema(vocalsSmoothed, max(0, vocalsDev), dt: dt, tau: cfg.substrateTau)
 
-        // Event-layer energy gate (§3.1 master lever) — scales the drum-wave by
-        // overall arousal / smoothed energy deviation so calm passages stay
-        // near-pure-substrate. Default bias: under-react.
-        let energyNow = max(0, bassRel) + max(0, drumsDev) + max(0, midRel)
+        // Event-layer energy gate (§3.1 master lever) — scales the maneuver by
+        // overall arousal / smoothed energy so calm passages stay near-pure
+        // substrate. Default bias: under-react.
+        let energyNow = max(0, bassRel) + max(0, drumsDev)
         energySmoothed = Self.ema(energySmoothed, energyNow, dt: dt, tau: 0.8)
         let arousal01 = max(0, min(1, (feat.arousal + 1) * 0.5))
-        let eventGate = max(0, min(1, 0.2 + 0.8 * max(arousal01 - 0.2, energySmoothed)))
+        let eventGate = max(0, min(1, 0.15 + 0.85 * max(arousal01 - 0.2, energySmoothed)))
 
-        // Elongation/drift axis: a SLOW rotation (a coherent sweep the flock can
-        // actually follow, the original's "large sweeping arc"). Rotating it
-        // faster than the flock's leash time would self-cancel the macro drift.
-        windPhase += dt * (0.05 + 0.05 * abs(bassSmoothed))
+        // Elongation / drift axis: a SLOW rotation (a coherent sweep the flock can
+        // follow). Rotating faster than the flock's turn time would self-cancel.
+        windPhase += dt * (0.012 + 0.018 * abs(bassSmoothed))
         let rawAxis = SIMD3<Float>(cos(windPhase),
-                                   0.32 * sin(windPhase * 0.7),
+                                   0.28 * sin(windPhase * 0.7),
                                    0.22 * sin(windPhase * 0.5))
         let axis = Self.normalized(rawAxis)
 
-        // L1 macro drift (PRIMARY continuous motion) — the whole roost translates
-        // along the axis, signed by smoothed bass. Extra-smoothed for inertia,
-        // then HARD-BOUNDED to a fraction of the world so the roost (and the
-        // flock that follows it) can never be dragged off-screen by a loud
-        // passage — the flock must stay framed (the static-wide-camera contract).
-        let driftTarget = axis * (bassSmoothed * cfg.bassDriftGain)
+        // L1 macro drift (PRIMARY continuous motion) — the anchor translates along
+        // the axis, signed by smoothed bass; extra-smoothed for inertia, then
+        // HARD-BOUNDED to 0.30·worldHalfSpan so the flock can never be dragged
+        // off-frame (static-wide-camera contract). Expressed in world units.
+        let driftTarget = axis * (bassSmoothed * cfg.bassDriftGain * cfg.worldHalfSpan)
         driftSmoothed = Self.ema3(driftSmoothed, driftTarget, dt: dt, tau: cfg.substrateTau * 0.4)
-        let driftCap = cfg.worldHalfSpan * 0.30
-        let driftMag = driftSmoothed.x * driftSmoothed.x + driftSmoothed.y * driftSmoothed.y
-                     + driftSmoothed.z * driftSmoothed.z
-        if driftMag > driftCap * driftCap {
-            driftSmoothed *= driftCap / driftMag.squareRoot()
+        let driftCap = cfg.worldHalfSpan * 0.15   // < half the view radius → stays framed
+        let driftMag2 = driftSmoothed.x * driftSmoothed.x + driftSmoothed.y * driftSmoothed.y
+                      + driftSmoothed.z * driftSmoothed.z
+        if driftMag2 > driftCap * driftCap {
+            driftSmoothed *= driftCap / driftMag2.squareRoot()
         }
 
-        // L1 elongation (comma/ribbon) — only sustained high bass stretches it.
+        // L1 elongation (comma/ribbon) — only sustained high bass stretches the
+        // envelope ellipse. [0, 0.72] → up to ≈ 3:1 aspect.
         let elong = max(0, min(0.72, max(0, bassSmoothed) * cfg.elongationGain))
 
-        // L2 drum wave (ACCENT) — gated to ~0 in calm music. The DARKENING
-        // amplitude (what reads visually) is decoupled from the FORCE: the curl
-        // force must stay gentle (a strong force would translate the flock and
-        // invert the Audio Data Hierarchy — the M7 failure), but the dark band
-        // can read strong. waveDarkAmp drives the pad0 darkening; turnGain (a
-        // small fraction of it) drives the physical roll.
-        let waveDarkAmp = max(0, drumsDev) * eventGate
-        let turnGain = waveDarkAmp * cfg.turnBaseAmp
-        let epoch = floor(feat.time * 2.5)
-        let propDir: Float = Self.hash11(epoch) > 0.5 ? 1 : -1
-
-        // L4 mid edge-flutter amplitude.
-        let midGain = max(0, midRel) * cfg.midEdgeAmp
+        // BAR-ANCHORED MANEUVER (the rethink). On each bar downbeat the flock
+        // executes ONE coordinated heading-swing — a gentle yaw that sweeps
+        // across the flock axis over the bar (barPhase01 0→1), alternating
+        // direction each bar (the weaving zigzag; net translation cancels). The
+        // dark banking wave EMERGES from the swing — we do not inject it. The
+        // swing amplitude is latched at the downbeat, gated by energy (calm bars
+        // barely move) and modulated by the bar's drum energy.
+        let barPhase = max(0, min(1, feat.barPhase01))
+        if barPhase + 0.5 < lastBarPhase {                 // wrapped 1→0 = downbeat
+            maneuverDir = -maneuverDir
+            maneuverAmp = cfg.maneuverYawDeg * eventGate * (0.5 + min(1.5, max(0, drumsDev)))
+        }
+        lastBarPhase = barPhase
+        // Fade the swing in over the early bar and out near the end so it reads as
+        // one smooth sweep, not a step.
+        let barEnvelope = sinf(barPhase * .pi)             // 0 at downbeat, peak mid-bar, 0 at next
+        let maneuverNow = maneuverAmp * barEnvelope
 
         return FlockAudio(
             flockAxis: axis,
             elongation: elong,
             driftOffset: driftSmoothed,
-            turnGain: turnGain,
-            waveDarkAmp: waveDarkAmp,
-            beatValue: max(0, min(1, beatPulse)),
-            propDir: propDir,
-            waveWidth: 0.30,
-            midEdgeGain: midGain,
+            maneuverYawDeg: maneuverNow,
+            barSweep: barPhase,
+            maneuverDir: maneuverDir,
+            waveWidth: 0.40,
             breath: max(0, min(1, vocalsSmoothed))
         )
     }
 
-    // MARK: - Math helpers (match the MSL-side primitives)
+    // MARK: - Math helpers
 
     private static func smoothstep(_ lo: Float, _ hi: Float, _ value: Float) -> Float {
         guard hi > lo else { return value >= lo ? 1 : 0 }
@@ -594,14 +677,11 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
         from + (toValue - from) * frac
     }
 
-    /// Soft-saturate an audio driver into a bounded operating range. `tanh`
-    /// preserves the common 0.1–0.4 deviation range almost linearly and caps the
-    /// ~3× transients near ±1, so a loud spike can't produce a proportionally
-    /// huge force (the MM.3 M7 failure). See
-    /// project_deviation_primitive_real_range.
+    /// Soft-saturate an audio driver into a bounded operating range. `tanh` keeps
+    /// the common 0.1–0.4 deviation range ~linear and caps ~3× transients near
+    /// ±1, so a loud spike can't produce a proportionally huge bias.
     private static func saturate(_ value: Float) -> Float { tanh(value) }
 
-    /// Frame-rate-independent EMA toward `target` with time constant `tau` s.
     private static func ema(_ current: Float, _ target: Float, dt: Float, tau: Float) -> Float {
         guard tau > 1e-5, dt > 0 else { return target }
         let alpha = 1 - exp(-dt / tau)
@@ -624,6 +704,24 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
         return raw - floor(raw)
     }
 
+    /// Unit quaternion rotating `from` onto `to` (roll = 0). Matches the MSL
+    /// `mf_q_fromto` convention so the seeded orientation is consistent with the
+    /// kernel.
+    private static func quatFromTo(_ from: SIMD3<Float>, _ to: SIMD3<Float>) -> SIMD4<Float> {
+        let fn = normalized(from), tn = normalized(to)
+        let dot = max(-1, min(1, fn.x * tn.x + fn.y * tn.y + fn.z * tn.z))
+        if dot > 0.9999 { return SIMD4(0, 0, 0, 1) }
+        if dot < -0.9999 { return SIMD4(0, 0, 1, 0) }   // 180° about z (for +x → −x)
+        let axis = normalized(SIMD3(
+            fn.y * tn.z - fn.z * tn.y,
+            fn.z * tn.x - fn.x * tn.z,
+            fn.x * tn.y - fn.y * tn.x
+        ))
+        let half = acos(dot) * 0.5
+        let sinH = sin(half)
+        return SIMD4(sinH * axis.x, sinH * axis.y, sinH * axis.z, cos(half))
+    }
+
     // MARK: ParticleGeometry — render
 
     public func render(encoder: MTLRenderCommandEncoder, features: FeatureVector) {
@@ -631,10 +729,8 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
             logger.warning("MurmurationFlock.render: no render pipeline (compute-only)")
             return
         }
-        // The vertex shader reads only position/velocity/bank/neighbourCount +
-        // worldHalfSpan; the audio fields are unused on the render path.
-        let roost = roostTarget(time: features.time)
-        var fp = makeParams(dt: 1.0 / 60.0, time: features.time, roost: roost, audio: .silent)
+        let anchor = anchorTarget(time: features.time)
+        var fp = makeParams(dt: 1.0 / 60.0, time: features.time, anchor: anchor, audio: .silent)
         encoder.setRenderPipelineState(state)
         encoder.setVertexBuffer(birdBuffer, offset: 0, index: 0)
         encoder.setVertexBytes(&fp, length: MemoryLayout<FlockParams>.stride, index: 2)

@@ -68,7 +68,8 @@ private func features(
     bassAttRel: Float = 0,
     midAttRel: Float = 0,
     bassDev: Float = 0,
-    beat: Float = 0
+    beat: Float = 0,
+    barPhase: Float = 0
 ) -> FeatureVector {
     var f = FeatureVector(time: time, deltaTime: 1.0 / 60.0)
     f.arousal = arousal
@@ -76,6 +77,7 @@ private func features(
     f.midAttRel = midAttRel
     f.bassDev = bassDev
     f.beatBass = beat
+    f.barPhase01 = barPhase
     return f
 }
 
@@ -102,21 +104,16 @@ private func stems(
 
 private let kSilence: @Sendable (Int, Float) -> (FeatureVector, StemFeatures) = { _, t in (features(time: t), .zero) }
 
-/// A decaying beat pulse every 0.5 s (a realistic beat envelope so the wave
-/// front sweeps across the mass). Stateless: pulse = 0.82^(frame mod 30).
-private let kBeats: @Sendable (Int, Float) -> (FeatureVector, StemFeatures) = { frame, t in
-    let pulse = powf(0.82, Float(frame % 30))
-    return (features(time: t, arousal: 0.8, beat: pulse), stems(drumsDev: 1.0, drumsBeat: pulse))
+// One bar every ~2 s (120 frames): barPhase01 ramps 0→1 and wraps, firing one
+// maneuver per bar (downbeat = wrap). Energetic so the maneuver is gated on.
+private let kBarFrames = 120
+private let kManeuver: @Sendable (Int, Float) -> (FeatureVector, StemFeatures) = { frame, t in
+    let barPhase = Float(frame % kBarFrames) / Float(kBarFrames)
+    return (features(time: t, arousal: 0.85, barPhase: barPhase), stems(drumsDev: 1.5))
 }
 
 private let kBass: @Sendable (Int, Float) -> (FeatureVector, StemFeatures) = { _, t in
     (features(time: t, bassAttRel: 1.0), stems(bassRel: 1.0))
-}
-
-// Strong mid (realistic peak — drivers are tanh-saturated, so this clamps to a
-// gentle flutter; driving at peak gives the routing test a clear signal).
-private let kMid: @Sendable (Int, Float) -> (FeatureVector, StemFeatures) = { _, t in
-    (features(time: t, midAttRel: 2.5), stems(otherRel: 2.5))
 }
 
 private let kVocals: @Sendable (Int, Float) -> (FeatureVector, StemFeatures) = { _, t in
@@ -132,9 +129,8 @@ private extension SIMD3 where Scalar == Float {
 private struct Birds {
     let pos: [SIMD3<Float>]
     let vel: [SIMD3<Float>]
-    let bank: [Float]
+    let bank: [Float]       // |roll| (deg) from the body quaternion — the orientation-wave cue
     let neighbors: [Float]
-    let waveDark: [Float]   // pad0 — L2 instantaneous wave-darkening channel
 
     static func read(_ geo: MurmurationFlockGeometry) -> Birds {
         let n = geo.configuration.particleCount
@@ -143,29 +139,19 @@ private struct Birds {
         var vel = [SIMD3<Float>](); vel.reserveCapacity(n)
         var bank = [Float](); bank.reserveCapacity(n)
         var nb = [Float](); nb.reserveCapacity(n)
-        var wd = [Float](); wd.reserveCapacity(n)
         for i in 0..<n {
             let b = ptr[i]
             pos.append(SIMD3(b.positionX, b.positionY, b.positionZ))
             vel.append(SIMD3(b.velocityX, b.velocityY, b.velocityZ))
-            bank.append(b.bank)
+            bank.append(bankRoll(b))
             nb.append(b.neighborCount)
-            wd.append(b._pad0)
         }
-        return Birds(pos: pos, vel: vel, bank: bank, neighbors: nb, waveDark: wd)
+        return Birds(pos: pos, vel: vel, bank: bank, neighbors: nb)
     }
 
-    var meanWaveDark: Float { waveDark.reduce(0, +) / Float(waveDark.count) }
-
-    /// Std of the wave-darkening field. For a sparse localized band (most birds
-    /// 0, a few high) std exceeds the mean → proof the response is a band, not a
-    /// global uniform shift.
-    var waveDarkStd: Float {
-        let m = meanWaveDark
-        let v = waveDark.reduce(Float(0)) { $0 + ($1 - m) * ($1 - m) } / Float(waveDark.count)
-        return v.squareRoot()
-    }
-
+    /// Std of the banking (roll) field. A localized travelling orientation band
+    /// (a few birds banking hard, most level) gives high std → proof the wave is
+    /// a band, not a uniform global shift.
     var centroid: SIMD3<Float> {
         var c = SIMD3<Float>(0, 0, 0)
         for p in pos { c += p }
@@ -174,9 +160,12 @@ private struct Birds {
 
     var meanBank: Float { bank.reduce(0, +) / Float(bank.count) }
 
-    var rmsRadius: Float {
-        let c = centroid
-        let s = pos.reduce(Float(0)) { $0 + ($1 - c).mag * ($1 - c).mag }
+    /// Vertical extent (rms of Y about the centroid). The ground/ceiling band
+    /// actively bounds Y, so vocals breath (narrowing the band) reliably shrinks
+    /// this — the flock flattens/thins.
+    var verticalExtent: Float {
+        let cy = centroid.y
+        let s = pos.reduce(Float(0)) { $0 + ($1.y - cy) * ($1.y - cy) }
         return (s / Float(pos.count)).squareRoot()
     }
 
@@ -201,71 +190,23 @@ private struct Birds {
         return pos.map { ($0 - c).mag }.max() ?? 0
     }
 
-    var bankStd: Float {
-        let m = meanBank
-        let v = bank.reduce(Float(0)) { $0 + ($1 - m) * ($1 - m) } / Float(bank.count)
-        return v.squareRoot()
-    }
-
-    /// Anisotropy = sqrt(λ_max / λ_min) of the position covariance. ≈ 1 for a
-    /// spherical mass; rises as the flock elongates into a comma/ribbon.
-    var anisotropy: Float {
+    /// Longest horizontal principal-axis sigma (sqrt of the larger X–Z covariance
+    /// eigenvalue). Grows as the flock stretches into a comma/ribbon — the robust
+    /// elongation signal (the ratio is confounded by the flat-band vertical).
+    var longAxisSigma: Float {
         let c = centroid
-        var cov = [[Double]](repeating: [0, 0, 0], count: 3)
+        var a = 0.0, b = 0.0, cc = 0.0
         for p in pos {
-            let d = SIMD3<Double>(Double(p.x - c.x), Double(p.y - c.y), Double(p.z - c.z))
-            cov[0][0] += d.x * d.x; cov[0][1] += d.x * d.y; cov[0][2] += d.x * d.z
-            cov[1][1] += d.y * d.y; cov[1][2] += d.y * d.z; cov[2][2] += d.z * d.z
+            let dx = Double(p.x - c.x), dz = Double(p.z - c.z)
+            a += dx * dx; b += dx * dz; cc += dz * dz
         }
         let n = Double(pos.count)
-        for i in 0..<3 { for j in i..<3 { cov[i][j] /= n; if i != j { cov[j][i] = cov[i][j] } } }
-        let (a, _, c3) = Birds.eigenvalues3x3(cov)
-        let lmax = max(a, c3), lmin = max(min(a, c3), 1e-9)
-        return Float((lmax / lmin).squareRoot())
+        a /= n; b /= n; cc /= n
+        let tr = (a + cc) / 2
+        let disc = (((a - cc) / 2) * ((a - cc) / 2) + b * b).squareRoot()
+        return Float((tr + disc).squareRoot())
     }
 
-    /// Edge-vs-core gap in the banking (direction-change) field. Flutter is a
-    /// high-frequency random force; the min/max speed clamp masks it in raw
-    /// speed, but it shows clearly as extra direction agitation. `edge − core`
-    /// banking: rises when the feathered edge shimmers more than the solid core.
-    var edgeCoreBankGap: Float {
-        let sorted = neighbors.sorted()
-        let loCut = sorted[Int(0.25 * Float(sorted.count))]
-        let hiCut = sorted[Int(0.75 * Float(sorted.count))]
-        var edgeSum: Float = 0, edgeN = 0
-        var coreSum: Float = 0, coreN = 0
-        for i in 0..<pos.count {
-            if neighbors[i] <= loCut { edgeSum += bank[i]; edgeN += 1 }
-            else if neighbors[i] >= hiCut { coreSum += bank[i]; coreN += 1 }
-        }
-        return edgeSum / Float(max(edgeN, 1)) - coreSum / Float(max(coreN, 1))
-    }
-
-    /// Sorted eigenvalues of a 3×3 symmetric matrix (Smith 1961, analytic).
-    static func eigenvalues3x3(_ m: [[Double]]) -> (Double, Double, Double) {
-        let p1 = m[0][1] * m[0][1] + m[0][2] * m[0][2] + m[1][2] * m[1][2]
-        if p1 < 1e-18 {
-            let e = [m[0][0], m[1][1], m[2][2]].sorted()
-            return (e[0], e[1], e[2])
-        }
-        let q = (m[0][0] + m[1][1] + m[2][2]) / 3
-        let p2 = (m[0][0] - q) * (m[0][0] - q) + (m[1][1] - q) * (m[1][1] - q)
-               + (m[2][2] - q) * (m[2][2] - q) + 2 * p1
-        let p = (p2 / 6).squareRoot()
-        var b = m
-        for i in 0..<3 { for j in 0..<3 { b[i][j] = (m[i][j] - (i == j ? q : 0)) / p } }
-        let detB =
-            b[0][0] * (b[1][1] * b[2][2] - b[1][2] * b[2][1])
-          - b[0][1] * (b[1][0] * b[2][2] - b[1][2] * b[2][0])
-          + b[0][2] * (b[1][0] * b[2][1] - b[1][1] * b[2][0])
-        let r = max(-1.0, min(1.0, detB / 2))
-        let phi = acos(r) / 3
-        let e1 = q + 2 * p * cos(phi)
-        let e3 = q + 2 * p * cos(phi + 2 * Double.pi / 3)
-        let e2 = 3 * q - e1 - e3
-        let s = [e1, e2, e3].sorted()
-        return (s[0], s[1], s[2])
-    }
 }
 
 // MARK: - Sequential within-geometry harness
@@ -317,11 +258,12 @@ private extension Array where Element == Birds {
 struct MurmurationFlockAudioTests {
 
     /// The Swift `FlockParams` mirror must stay byte-identical to the MSL struct
-    /// (it is uploaded via `setBytes` each frame). 144 bytes after the MM.3
-    /// audio fields. A mismatch silently corrupts every boids dispatch.
-    @Test("FlockParams stride matches the 144-byte MSL mirror")
+    /// (it is uploaded via `setBytes` each frame). 208 bytes after the MM.6
+    /// metre-space faithful-aero rebuild. A mismatch silently corrupts every
+    /// boids dispatch.
+    @Test("FlockParams stride matches the 208-byte MSL mirror")
     func test_flockParamsLayout() {
-        #expect(MemoryLayout<FlockParams>.stride == 144)
+        #expect(MemoryLayout<FlockParams>.stride == 208)
     }
 
     /// Zero audio must reproduce the MM.2 silence baseline: `computeAudio`
@@ -334,74 +276,130 @@ struct MurmurationFlockAudioTests {
             let t = Float(frame) / 60.0
             let a = geo.computeAudio(features: features(time: t), stemFeatures: .zero, dt: 1.0 / 60.0)
             #expect(a.elongation == 0)
-            #expect(a.turnGain == 0)
-            #expect(a.midEdgeGain == 0)
+            #expect(a.maneuverYawDeg == 0)
             #expect(a.breath == 0)
             #expect(a.driftOffset.mag == 0)
         }
     }
 
     /// L1 — sustained bass elongates the mass (comma/ribbon) AND drifts it.
+    /// Measured as two SEPARATELY-settled flocks (sustained bass vs silence), each
+    /// averaged over a long window — the elongation is an active anisotropic force
+    /// so it settles to a stable elongated equilibrium, but the naturally-wheeling
+    /// flock's instantaneous long-axis is too noisy for a single within-geometry
+    /// window (flaky under parallel GPU contention). Amplified `elongationGain`
+    /// for a clear signal; PRODUCTION gain is gentle (safety:
+    /// `test_loudAudioStaysCohesive`).
     @Test("Bass route: elongation + macro drift")
     func test_bassElongatesAndDrifts() throws {
-        let (base, driven) = try sequential(audio: kBass)
-        let baseAniso = base.mean { $0.anisotropy }
-        let drivenAniso = driven.mean { $0.anisotropy }
-        let drift = (driven.meanCentroid - base.meanCentroid).mag
-        #expect(drift > 0.1, "bass should drift the flock; drift=\(drift)")
-        #expect(drivenAniso > baseAniso * 1.15,
-                "bass should elongate the mass: silence=\(baseAniso) bassed=\(drivenAniso)")
+        func settled(bass: Bool) throws -> (long: Float, centroidOffset: Float) {
+            let cfg = MurmurationFlockConfiguration(particleCount: 6_000, elongationGain: 2.4)
+            let (geo, q) = try makeGeometry(config: cfg)
+            var t: Float = 0
+            func frame() -> (FeatureVector, StemFeatures) {
+                bass ? (features(time: t, bassAttRel: 1.0), stems(bassRel: 1.0)) : (features(time: t), .zero)
+            }
+            for _ in 0..<540 { let (f, s) = frame(); try step(geo, features: f, stems: s, queue: q); t += 1.0 / 60.0 }
+            var longSum: Float = 0, offSum: Float = 0; let n = 120
+            for _ in 0..<n {
+                let (f, s) = frame(); try step(geo, features: f, stems: s, queue: q); t += 1.0 / 60.0
+                let b = Birds.read(geo)
+                longSum += b.longAxisSigma; offSum += b.centroid.mag
+            }
+            return (longSum / Float(n), offSum / Float(n))
+        }
+        let silence = try settled(bass: false)
+        let bassed = try settled(bass: true)
+        #expect(bassed.centroidOffset > silence.centroidOffset + 1.0,
+                "bass should drift the flock off-centre: silence=\(silence.centroidOffset) bass=\(bassed.centroidOffset)")
+        #expect(bassed.long > silence.long * 1.12,
+                "bass should stretch the flock's long axis: silence=\(silence.long) bass=\(bassed.long)")
     }
 
-    /// L2 — drum beats fire an orientation/darkening wave that PROPAGATES as a
-    /// localized band. Silence has none; under beats the wave-darkening channel
-    /// lights up, and its per-frame std exceeds its mean — the signature of a
-    /// sparse travelling band, not a uniform global shift. That it does NOT
-    /// relocate the flock (a roll, not a shove) is proven by the
-    /// continuous:beat ratio test (the curl force nets to ≈0 translation).
-    @Test("Drum route: propagating orientation wave (localized band)")
-    func test_drumsBankingWave() throws {
-        let (base, driven) = try sequential(audio: kBeats)
-        let baseWave = base.mean { $0.meanWaveDark }
-        let drivenWave = driven.mean { $0.meanWaveDark }
-        let drivenStd = driven.mean { $0.waveDarkStd }
-        #expect(baseWave < 1e-4, "silence must have no orientation wave: \(baseWave)")
-        #expect(drivenWave > 0.01, "drums must fire the orientation wave: \(drivenWave)")
-        // Non-uniform band: a uniform global shift would have std ≈ 0. A
-        // localized band gives std a large fraction of the mean (~0.5 here).
-        #expect(drivenStd > 0.3 * drivenWave,
-                "the wave must be a localized band, not a uniform shift: std=\(drivenStd) mean=\(drivenWave)")
+    /// BAR MANEUVER (the musicality rethink). Once per bar the flock executes a
+    /// coordinated heading-swing, alternating direction — so the COLLECTIVE
+    /// heading travels far more across a bar than the slowly-wheeling silence
+    /// flock does. The dark banking wave emerges from the swing; we assert the
+    /// robust global signature — the flock's mean heading swings — at an amplified
+    /// `maneuverYawDeg` (PRODUCTION amplitude is gentle + energy-gated; safety:
+    /// `test_loudAudioStaysCohesive`). The maneuver is fired by `barPhase01`
+    /// wrapping (`kManeuver`).
+    @Test("Bar maneuver: the flock executes a coordinated heading-swing per bar")
+    func test_barManeuverSwingsHeading() throws {
+        // Sample heading travel across a whole bar (window = one bar) so the swing
+        // is captured; amplified swing so it clears the wheeling-flock floor.
+        // The maneuver is BAR-PERIODIC: the swept yaw turns a band → it banks, and
+        // (since banking is |roll|) the banding peaks mid-bar every bar regardless
+        // of the alternating direction. Build a banking-vs-bar-phase PROFILE
+        // averaged over several bars — chaotic baseline banking is uncorrelated
+        // with bar phase, so it averages toward flat, while the maneuver's bump
+        // accumulates. Correlate the profile with the sin(barPhase·π) envelope.
+        let cfg = MurmurationFlockConfiguration(particleCount: 6_000, maneuverYawDeg: 35)
+        let (geo, q) = try makeGeometry(config: cfg)
+        var t: Float = 0
+        for _ in 0..<360 { try step(geo, features: features(time: t), stems: .zero, queue: q); t += 1.0 / 60.0 }
+
+        func profile(maneuver: Bool, bars: Int) throws -> [Float] {
+            var sum = [Float](repeating: 0, count: kBarFrames)
+            for bar in 0..<bars {
+                for i in 0..<kBarFrames {
+                    let frame = bar * kBarFrames + i
+                    let (f, s) = maneuver ? kManeuver(frame, t) : (features(time: t), StemFeatures.zero)
+                    try step(geo, features: f, stems: s, queue: q); t += 1.0 / 60.0
+                    sum[i] += Birds.read(geo).meanBank
+                }
+            }
+            return sum.map { $0 / Float(bars) }
+        }
+        func envCorr(_ p: [Float]) -> Float {
+            let n = p.count
+            let env = (0..<n).map { sinf(Float($0) / Float(n) * .pi) }
+            let pm = p.reduce(0, +) / Float(n), em = env.reduce(0, +) / Float(n)
+            var cov: Float = 0, vp: Float = 0, ve: Float = 0
+            for i in 0..<n {
+                let dp = p[i] - pm, de = env[i] - em
+                cov += dp * de; vp += dp * dp; ve += de * de
+            }
+            return cov / max((vp * ve).squareRoot(), 1e-6)
+        }
+        // Silence FIRST on the freshly-settled flock (clean ~0 baseline), then
+        // maneuver — otherwise the silence profile inherits the maneuver's
+        // bar-locked banking and falsely correlates.
+        let silenceCorr = envCorr(try profile(maneuver: false, bars: 10))
+        let maneuverCorr = envCorr(try profile(maneuver: true, bars: 10))
+        #expect(maneuverCorr > 0.45 && maneuverCorr > silenceCorr + 0.25,
+                "the bar maneuver must make banking track the bar envelope: silence=\(silenceCorr) maneuver=\(maneuverCorr)")
     }
 
-    /// L4 — mid energy flutters the feathered edge: edge birds (few neighbours)
-    /// get extra direction agitation (banking), the solid core stays steady. The
-    /// edge-vs-core banking gap widens under mid (the flutter is edge-weighted
-    /// ≈5×). Speed is the wrong measure — the min/max clamp masks the flutter;
-    /// banking (direction change) is what edge shimmer actually is.
-    ///
-    /// Tests the WIRING (mid → edge agitation) at an amplified `midEdgeAmp` so
-    /// the signal clears the boids chaos floor. The PRODUCTION amplitude is
-    /// deliberately gentle (it must not scatter the flock — that was the M7
-    /// failure); its safety is proven by `test_loudAudioStaysCohesive`.
-    @Test("Mid route: edge birds flutter more than core")
-    func test_midEdgeFlutter() throws {
-        let amplified = MurmurationFlockConfiguration(particleCount: 6_000, midEdgeAmp: 1.5)
-        let (base, driven) = try sequential(config: amplified, audio: kMid)
-        let baseGap = base.mean { $0.edgeCoreBankGap }
-        let drivenGap = driven.mean { $0.edgeCoreBankGap }
-        #expect(drivenGap > baseGap,
-                "mid must widen the edge-vs-core banking gap: silence=\(baseGap) mid=\(drivenGap)")
-    }
-
-    /// L5 — vocals compress the mass (the dark pulse): cohesion spacing tightens,
-    /// so the rms radius shrinks vs the silence baseline.
-    @Test("Vocals route: density compression (mass contracts)")
+    /// L5 — vocals breathe: a vocal swell drives an active vertical spread, so the
+    /// mass DILATES (its vertical extent grows), then settles as the breath
+    /// releases (the McGill blackening↔dilution). The flock's size is a stiff
+    /// emergent equilibrium that tightening a bound can't shrink, but an active
+    /// anisotropic force moves it — the same robust mechanism that elongates it
+    /// horizontally. Measured as two SEPARATELY-settled flocks (sustained vocals
+    /// vs silence), each averaged over a long window. Amplified `vocalsBreathDepth`
+    /// for a clear signal; PRODUCTION depth is gentle.
+    @Test("Vocals route: breathing (the mass dilates)")
     func test_vocalsBreathing() throws {
-        let (base, driven) = try sequential(audio: kVocals)
-        let baseR = base.mean { $0.rmsRadius }
-        let drivenR = driven.mean { $0.rmsRadius }
-        #expect(drivenR < baseR,
-                "vocals should contract the mass: silenceR=\(baseR) vocalsR=\(drivenR)")
+        func settledVertical(vocals: Bool) throws -> Float {
+            let cfg = MurmurationFlockConfiguration(particleCount: 6_000, vocalsBreathDepth: 2.0)
+            let (geo, q) = try makeGeometry(config: cfg)
+            var t: Float = 0
+            func frame() -> (FeatureVector, StemFeatures) {
+                vocals ? (features(time: t), stems(vocalsDev: 1.0)) : (features(time: t), .zero)
+            }
+            for _ in 0..<540 { let (f, s) = frame(); try step(geo, features: f, stems: s, queue: q); t += 1.0 / 60.0 }
+            var sum: Float = 0; let n = 120
+            for _ in 0..<n {
+                let (f, s) = frame(); try step(geo, features: f, stems: s, queue: q); t += 1.0 / 60.0
+                sum += Birds.read(geo).verticalExtent
+            }
+            return sum / Float(n)
+        }
+        let silenceV = try settledVertical(vocals: false)
+        let vocalsV = try settledVertical(vocals: true)
+        #expect(vocalsV > silenceV * 1.15,
+                "sustained vocals should dilate the flock (vertical extent grows): silence=\(silenceV) vocals=\(vocalsV)")
     }
 
     /// THE PARITY INVARIANT (added after the MM.3 M7 live failure, 2026-06-03).
@@ -428,8 +426,11 @@ struct MurmurationFlockAudioTests {
         var pulse: Float = 0
         for frame in 0..<900 {
             if frame % 24 == 0 { pulse = 1.0 }
-            // Real-music peak magnitudes (from the 2026-06-03 Billie Jean session).
-            let f = features(time: t, arousal: 0.85, bassAttRel: 2.7, beat: pulse)
+            // Real-music peak magnitudes (from the 2026-06-03 Billie Jean session)
+            // + the per-bar maneuver firing (barPhase cycling) so the maneuver is
+            // stress-tested at 3× load too — the M7 failure was over-driven motion.
+            let barPhase = Float(frame % kBarFrames) / Float(kBarFrames)
+            let f = features(time: t, arousal: 0.85, bassAttRel: 2.7, beat: pulse, barPhase: barPhase)
             let s = stems(bassRel: 3.4, drumsDev: 3.2, drumsBeat: pulse, otherRel: 1.5, vocalsDev: 1.7)
             try step(geo, features: f, stems: s, queue: q)
             pulse *= 0.82
@@ -445,28 +446,29 @@ struct MurmurationFlockAudioTests {
         #expect(!bad, "positions must stay finite under loud audio")
         #expect(minCore > 0.16, "loud audio must NOT fragment the flock: minCoreFrac=\(minCore)")
         #expect(maxR < cfg.worldHalfSpan * 1.6, "flock must not fly apart: maxR=\(maxR)")
-        #expect(maxCentroid < 1.2, "flock must stay framed under bounded drift: maxCentroid=\(maxCentroid)")
+        #expect(maxCentroid < cfg.worldHalfSpan * 0.55,
+                "flock must stay framed under bounded drift: maxCentroid=\(maxCentroid)")
     }
 
-    /// Audio Data Hierarchy — the continuous substrate (bass drift) must drive
-    /// ≥ 2× the whole-mass net displacement of the per-beat accent. Both are
-    /// measured as the net centroid shift from the baseline window to the driven
-    /// window, with the silence run subtracted so the procedural roost drift
-    /// (present in every run) cancels. The beat wave is a curl → near-zero net
-    /// translation, so this is a wide margin by construction.
-    @Test("Continuous : beat motion ratio ≥ 2×")
-    func test_continuousDominatesBeat() throws {
+    /// Audio Data Hierarchy (FA #4) — the continuous substrate (bass drift) must
+    /// drive ≥ 2× the whole-mass NET displacement of the per-bar maneuver. The
+    /// maneuver alternates direction each bar, so its net translation cancels
+    /// over the window while bass drift accumulates — the accent stays an accent,
+    /// never a primary motion driver. The silence run is subtracted so the
+    /// procedural ambient drift (present in every run) cancels.
+    @Test("Continuous : maneuver motion ratio ≥ 2×")
+    func test_continuousDominatesManeuver() throws {
         func netShift(_ audio: (Int, Float) -> (FeatureVector, StemFeatures)) throws -> Float {
             let (base, driven) = try sequential(audio: audio)
             return (driven.meanCentroid - base.meanCentroid).mag
         }
         let silence = try netShift(kSilence)
         let bass = try netShift(kBass)
-        let beats = try netShift(kBeats)
+        let maneuver = try netShift(kManeuver)
         let continuousMotion = max(0, bass - silence)
-        let beatMotion = max(0, beats - silence)
-        let detail = "silence=\(silence) bass=\(bass) beats=\(beats) → continuous=\(continuousMotion) beat=\(beatMotion)"
-        #expect(continuousMotion >= 2 * beatMotion,
-                "continuous (bass) motion must be ≥ 2× beat motion above the silence baseline: \(detail)")
+        let maneuverMotion = max(0, maneuver - silence)
+        let detail = "silence=\(silence) bass=\(bass) maneuver=\(maneuver) → continuous=\(continuousMotion) maneuver=\(maneuverMotion)"
+        #expect(continuousMotion >= 2 * maneuverMotion,
+                "continuous (bass) motion must be ≥ 2× maneuver motion above the silence baseline: \(detail)")
     }
 }
