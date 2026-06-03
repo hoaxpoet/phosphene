@@ -117,7 +117,9 @@ extension RenderPipeline {
 
     // MARK: Draw branch
 
-    /// Fata Morgana feedback loop: blur → warp → [shapes L2] → mirage comp → swap.
+    /// Live entry point: render the Fata Morgana frame to the drawable, then present.
+    /// Thin wrapper over `renderFataMorgana(target:)` so the live path and the diag
+    /// harness run the EXACT SAME render code (FA #66 — no reimplemented test path).
     @MainActor
     func drawWithFataMorgana(
         commandBuffer: MTLCommandBuffer,
@@ -125,6 +127,27 @@ extension RenderPipeline {
         features: inout FeatureVector,
         stemFeatures: StemFeatures,
         warpState: MVWarpState
+    ) {
+        guard let drawable = view.currentDrawable else { return }
+        renderFataMorgana(
+            commandBuffer: commandBuffer,
+            features: features,
+            stemFeatures: stemFeatures,
+            warpState: warpState,
+            target: drawable.texture)
+        commandBuffer.present(drawable)
+    }
+
+    /// Fata Morgana feedback loop rendered into `target`: blur → warp → shapes (= the
+    /// feedback) → mirage comp (→ target) → swap. Target-agnostic so the live drawable
+    /// path and the offscreen diag both call it identically.
+    @MainActor
+    func renderFataMorgana(
+        commandBuffer: MTLCommandBuffer,
+        features: FeatureVector,
+        stemFeatures: StemFeatures,
+        warpState: MVWarpState,
+        target: MTLTexture
     ) {
         fataFrame &+= 1
         var uni = computeFataUniforms(features: features)
@@ -172,21 +195,19 @@ extension RenderPipeline {
             features: features,
             stemFeatures: stemFeatures)
 
-        // ── Comp blit: mirage(compose, noise, u) → drawable ───────────────────
-        guard let drawable = view.currentDrawable,
-              let descriptor = view.currentRenderPassDescriptor else { return }
-        descriptor.colorAttachments[0].loadAction  = .dontCare
-        descriptor.colorAttachments[0].storeAction = .store
-        if let enc = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) {
+        // ── Comp blit: mirage(compose, noise, u) → target ────────────────────
+        let cdesc = MTLRenderPassDescriptor()
+        cdesc.colorAttachments[0].texture     = target
+        cdesc.colorAttachments[0].loadAction  = .dontCare
+        cdesc.colorAttachments[0].storeAction = .store
+        if let enc = commandBuffer.makeRenderCommandEncoder(descriptor: cdesc) {
             enc.setRenderPipelineState(warpState.blitPipeline)
             enc.setFragmentTexture(warpState.composeTexture, index: 0)
-            bindNoiseTextures(to: enc)   // noiseLQ→4, noiseHQ→5 (the comp's pw_noise_lq / noise_hq)
+            bindNoiseTextures(to: enc)   // noiseLQ→4, noiseHQ→5, blueNoise→8 (comp samplers)
             enc.setFragmentBytes(&uni, length: MemoryLayout<FataUniforms>.stride, index: 1)
             enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
             enc.endEncoding()
         }
-
-        commandBuffer.present(drawable)
 
         // ── Swap: composeTexture becomes next frame's warpTexture ─────────────
         mvWarpLock.withLock {
@@ -220,7 +241,7 @@ extension RenderPipeline {
 
         let sz = mvWarpDrawableSize
         let aspectY = Float(min(sz.width, sz.height)) / Float(max(sz.width, sz.height))
-        let boost = RenderPipeline.fataShapeAudioBoost
+        let boost = fataShapeSizeGain
         var feat = features
         enc.setVertexBytes(&feat, length: MemoryLayout<FeatureVector>.stride, index: 0)
         var stems = stemFeatures
@@ -243,11 +264,4 @@ extension RenderPipeline {
         }
         enc.endEncoding()
     }
-
-    /// Master size gain on the stem-driven blob radius (FM.L2 stem uplift, D-139). The
-    /// per-instrument sizeFactor (in fata_shape_vertex) already scales the blobs from the
-    /// balanced per-stem deviation primitives, so this is 1.0 in production (a global
-    /// knob for sweeps). Superseded the FM.L2 6× audio boost — that compensated for the
-    /// AGC-crushed band attack, which the stem uplift replaced (stems are balanced).
-    static let fataShapeAudioBoost: Float = 1.0
 }
