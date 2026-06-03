@@ -3050,7 +3050,17 @@ D-026; continuous drivers 2–4× the beat accents; finalized against the clips 
 
 ---
 
-### Increment MM.1 — Reference + motion review → design doc (research-first)
+### Increment MM.1 — Reference + motion review → design doc (research-first)  *(draft published 2026-06-03; pending Matt approval)*
+
+**Delivered:** [`docs/presets/MURMURATION_DESIGN.md`](presets/MURMURATION_DESIGN.md) — technique
+chosen (**GPU boids over ~7 grid-found neighbours + audio-driven global roost attractor + banking,
+simulated in 3D and projected**), grounded in working references (Robert Hodgin *Murmuration*
+40K–1M flockers; Rama Hoetzlein three-level flocking; techcentaur boids; McGill biomechanics for
+topological neighbours + **orientation-wave dark bands** + critical-noise + flash-expansion).
+Infrastructure precedent: `FerrofluidParticles` GPU spatial-binning. Carries the §3 musical contract
+(L1–L6), a honest fidelity-risk statement (tuning risk concentrated in MM.2/MM.3), and the open
+questions for Matt. **Remaining to close MM.1: Matt's motion-clip notes to finalize the §3 magnitudes
++ approval to proceed to MM.2.**
 
 **Scope:** read the references + Matt's motion clips; decompose the reference signature into
 layers; research the working flocking references (Robert Hodgin murmuration, Hoetzlein GPU
