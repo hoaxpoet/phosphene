@@ -124,7 +124,9 @@ fragment float4 fata_morgana_warp_fragment(
     float2 t = (uv1 * u.texsize.xy) * 0.02;
     float2 lat = float2(cos(t.y * u.q1) * sin(-t.y),
                         sin(t.x)        * cos(t.y * u.q2));
-    uv1 = uv1 - (lat * u.texsize.zw) * 12.0;
+    if (u.gammaAdj != 2.0) {                              // dbg2: lattice off
+        uv1 = uv1 - (lat * u.texsize.zw) * 12.0;
+    }
 
     // Decay tuned for SMOOTH flowing spectra (Matt M7 #5: blobs read as discrete
     // PARTICLES at fast decay). A slower clear (~40-frame trail) smears the orbiting
@@ -155,6 +157,24 @@ fragment float4 fata_morgana_warp_fragment(
 // A custom comp FULLY REPLACES fixed-function — no gamma/darken/echo/invert.
 // Shader `uv` is Y-flipped vs vUv. noise_hq → slot 5 (noiseHQ), pw_noise_lq →
 // slot 4 (noiseLQ). The `main` texture is the warped+shapes feedback target.
+
+// Procedural hash starfield — crisp scattered round points. Replaces the earlier
+// blue-noise-texture sample, which undersampled the 256² texture (tiled ~9× across the
+// frame) → Moiré aliasing that read as regular DIAGONAL streaks (Matt M7 #5/#6). A
+// per-cell hash places ~12 % of cells' stars at a random sub-position, so they scatter
+// (no lattice) with no texture sampling (no Moiré). `aspect` keeps cells square.
+static float fataStarfield(float2 uv, float aspect, float time) {
+    float2 grid = uv * float2(46.0 * aspect, 46.0) / max(aspect, 1.0);
+    float2 cell = floor(grid);
+    float2 f    = fract(grid);
+    float  h    = fract(sin(dot(cell, float2(127.1, 311.7))) * 43758.5453);
+    if (h < 0.91) { return 0.0; }                       // ~9 % of cells hold a star
+    float2 pos  = float2(fract(h * 7.13), fract(h * 13.7));
+    float  d    = length(f - pos);
+    float  tw   = 0.65 + 0.35 * sin(time * 2.0 + h * 40.0);   // gentle twinkle
+    return smoothstep(0.30, 0.0, d) * (0.5 + 0.5 * fract(h * 31.0)) * tw;
+}
+
 fragment float4 fata_morgana_comp_fragment(
     VertexOut              in        [[stage_in]],
     texture2d<float>       mainTex   [[texture(0)]],
@@ -191,15 +211,15 @@ fragment float4 fata_morgana_comp_fragment(
     float  hmn = min(srs.r, min(srs.g, srs.b));
     float  hmx = max(srs.r, max(srs.g, srs.b));
     float3 hazeTint = (srs - hmn) / max(hmx - hmn, 1e-3);   // vivid, time-cycling hue
-    float3 col = mainTex.sample(fataClamp, p).rgb
-               + (0.045 / (0.045 + abs(xf))) * hazeTint;
+    float dbg = u.gammaAdj;   // 0 = normal; diagnostic term isolation
+    float3 fieldCol = (dbg == 3.0) ? float3(0.0) : mainTex.sample(fataClamp, p).rgb;  // dbg3: no field
+    float3 hazeCol  = (dbg == 4.0) ? float3(0.0) : (0.045 / (0.045 + abs(xf))) * hazeTint;  // dbg4: no haze
+    float3 col = fieldCol + hazeCol;
 
-    // Scattered STARS (Matt M7 #5: the grid term read as a regular diagonal lattice).
-    // Sample the scattered blueNoise directly over uv (no rotated grid) + threshold for
-    // sparse points → random star positions, slow drift. Sky only (1-m).
-    float2 starUV = uv * float2(9.0, 5.0) + float2(u.time * 0.003, 0.0);
-    float  starN = blueNoise.sample(nWrap, starUV).r;
-    float  stars = smoothstep(0.90, 0.99, starN);
+    // Scattered STARS — procedural hash field (no texture sampling → no Moiré streaks).
+    float aspectR = u.texsize.x / max(u.texsize.y, 1.0);
+    float stars = (dbg == 1.0) ? 0.0 : fataStarfield(uv, aspectR, u.time);  // dbg1: no stars
+    if (dbg == 5.0) { return float4(float3(stars), 1.0); }   // isolate the starfield
 
     float3 ret = col + (stars + (u.randPreset.xyz * (0.5 - uv.y)) * float3(0.0, 0.0, 1.0)) * (1.0 - m);
     // Deepen blacks to the oracle's high-contrast register, but GENTLY so the warm
