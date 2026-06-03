@@ -1,20 +1,24 @@
-// MurmurationRoutes.swift — Per-route specs for the MM.3 audio-coupled flock.
+// MurmurationRoutes.swift — Per-route specs for the MM.6 audio-coupled flock.
 //
-// Each route corresponds to one of the four audio→visual mappings ported from
-// the original Particles.metal onto the boids substrate in
-// `MurmurationFlockGeometry.computeAudio(features:stemFeatures:dt:)` (design
-// §3.2). SR.1 measures routes at the INPUT layer: for each recorded frame, did
-// the route's driver cross its firing gate, and what was the distribution?
+// MM.6 musicality rethink (Matt 2026-06-03): drive the flock's GLOBAL envelope
+// and let the rich structure (banking waves, feathered edge) EMERGE from the
+// Flock2 substrate — three robust global couplings, not four fragile per-bird
+// ones (the MM.3 per-bird drum-wave + mid-flutter were swallowed/inverted by the
+// self-organizing substrate). Routes in
+// `MurmurationFlockGeometry.computeAudio(features:stemFeatures:dt:)`:
 //
-//   L1 — bass   → macro drift + elongation
-//                 Driver: mix(f.bass_att_rel, stems.bass_energy_rel, stemMix)
-//                 (continuous; "fires" = above-average bass present)
-//   L2 — drums  → orientation/banking wave (per-beat accent, energy-gated)
-//                 Driver: mix(f.bass_dev, stems.drums_energy_dev, stemMix)
-//   L4 — mid    → edge-weighted flutter
-//                 Driver: mix(f.mid_att_rel, stems.other_energy_rel, stemMix)
-//   L5 — vocals → density compression (breathing)
-//                 Driver: stems.vocals_energy_dev × stemMix
+//   L1 — bass    → macro drift + envelope elongation (comma/ribbon)
+//                  Driver: mix(f.bass_att_rel, stems.bass_energy_rel, stemMix)
+//                  (continuous; "fires" = above-average bass present)
+//   MV — maneuver → one coordinated heading-swing per BAR, energy-gated and
+//                  drum-MODULATED (the banking wave emerges from the swing).
+//                  Driver (amplitude): mix(f.bass_dev, stems.drums_energy_dev,
+//                  stemMix) × the energy gate; the trigger is the bar downbeat.
+//   L5 — vocals  → vertical dilation (breathing)
+//                  Driver: stems.vocals_energy_dev × stemMix
+//
+// SR.1 measures routes at the INPUT layer: for each recorded frame, did the
+// route's driver cross its firing gate, and what was the distribution?
 //
 // !!! GATE / BLEND CONSTANTS MIRROR THE CONFORMER !!!
 // `stemMix = smoothstep(0.02, 0.06, totalStemEnergy)` (D-019) and the firing
@@ -35,7 +39,7 @@ public enum MurmurationRouteSpecs {
     public static let bassDrift = RouteSpec(
         name: "L1 — bass → drift + elongation",
         description: "mix(f.bass_att_rel, stems.bass_energy_dev, stemMix). Drives the "
-                   + "roost macro drift and the guide-segment elongation (comma/ribbon). "
+                   + "anchor macro drift and the envelope elongation (comma/ribbon). "
                    + "Continuous primary driver — fires whenever bass runs above average.",
         inputName: "mix(f.bass_att_rel, stems.bass_energy_dev, stemMix)",
         gateThreshold: 0.20,
@@ -46,15 +50,16 @@ public enum MurmurationRouteSpecs {
         }
     )
 
-    /// L2 — drum turning-wave (per-beat ACCENT, gated by the master energy lever).
-    /// The curl wave amplitude is `drums_energy_dev × masterGate`; this reports
-    /// the drums-deviation side. LO 0.30 = the wave becomes visible; HI 0.70 =
-    /// strong-wave territory (matches the Aurora Veil drum-kink convention).
-    public static let drumsWave = RouteSpec(
-        name: "L2 — drums → orientation wave",
-        description: "mix(f.bass_dev, stems.drums_energy_dev, stemMix). Fires the curl "
-                   + "turning-wave (a rolling dark band) on drum transients. Energy-gated "
-                   + "so calm passages stay wave-free.",
+    /// MV — bar maneuver amplitude (the coordinated heading-swing; the banking
+    /// wave emerges from it). The swing fires once per bar (trigger = barPhase01
+    /// downbeat) with amplitude `drums_energy_dev × masterGate`; this reports the
+    /// drums-deviation side that modulates how hard each bar swings. LO 0.30 =
+    /// the maneuver becomes visible; HI 0.70 = strong-swing territory.
+    public static let maneuver = RouteSpec(
+        name: "MV — bar maneuver (heading-swing)",
+        description: "mix(f.bass_dev, stems.drums_energy_dev, stemMix) modulates the per-bar "
+                   + "coordinated heading-swing amplitude (the dark banking wave emerges from "
+                   + "it). Bar-triggered + energy-gated so calm passages barely swing.",
         inputName: "mix(f.bass_dev, stems.drums_energy_dev, stemMix)",
         gateThreshold: 0.30,
         partialGateThreshold: 0.70,
@@ -64,29 +69,12 @@ public enum MurmurationRouteSpecs {
         }
     )
 
-    /// L4 — mid edge flutter. The recorded frame lacks `mid_att_rel`, so the
-    /// stem "other" deviation (which dominates once stems arrive, stemMix≈1) is
-    /// the measurable proxy. Fires when above-average mid/other energy shimmers
-    /// the feathered edge.
-    public static let midEdge = RouteSpec(
-        name: "L4 — mid → edge flutter",
-        description: "stems.other_energy_dev × stemMix (≈ the mix(f.mid_att_rel, "
-                   + "stems.other_energy_rel, stemMix) driver once stems arrive). Adds "
-                   + "edge-weighted shimmer to the feathered periphery.",
-        inputName: "stems.other_energy_dev × stemMix",
-        gateThreshold: 0.20,
-        partialGateThreshold: 0.50,
-        inputValue: { frame in
-            frame.otherEnergyDev * stemWarmupBlend(frame.totalStemEnergy)
-        }
-    )
-
-    /// L5 — vocals breathing (density compression / the dark pulse). Stem-only
+    /// L5 — vocals breathing (vertical dilation / the dark pulse). Stem-only
     /// (vocals are absent from the full-mix fallback); fires on vocal entries.
     public static let vocalsBreath = RouteSpec(
         name: "L5 — vocals → breathing",
-        description: "stems.vocals_energy_dev × stemMix. Tightens inter-bird spacing so "
-                   + "the mass contracts on vocal phrases (the dark pulse).",
+        description: "stems.vocals_energy_dev × stemMix. Drives an active vertical spread so "
+                   + "the mass dilates on vocal phrases (the McGill blackening↔dilution).",
         inputName: "stems.vocals_energy_dev × stemMix",
         gateThreshold: 0.20,
         partialGateThreshold: 0.50,
@@ -95,6 +83,6 @@ public enum MurmurationRouteSpecs {
         }
     )
 
-    /// Murmuration's MM.3 route set.
-    public static let all: [RouteSpec] = [bassDrift, drumsWave, midEdge, vocalsBreath]
+    /// Murmuration's MM.6 route set (global-envelope couplings).
+    public static let all: [RouteSpec] = [bassDrift, maneuver, vocalsBreath]
 }
