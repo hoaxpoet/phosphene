@@ -106,15 +106,6 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// — this is a deliberate, Matt-requested divergence. The diag pins it (default 0,
     /// or FATA_GLOW_JITTER) for reproducibility. See `computeFataUniforms` / kFataGlowSeed.
     var fataGlowSeedJitter: Float = 0
-    /// Bar-reversing orbit clock (FM.L2). The shapes' orbital motion reads this instead
-    /// of raw `f.time`: it integrates `fataOrbitDir · deltaTime`, and `fataOrbitDir`
-    /// flips sign at each downbeat (`barPhase01` wrap) — so every shape REVERSES its
-    /// orbit direction at the start of each new bar (Matt's bar-direction gesture). When
-    /// no bar grid is present (`barPhase01` stuck at 0), the sign never flips and it
-    /// degrades to a steadily-advancing orbit. MainActor-only (the mv_warp draw path).
-    var fataOrbitPhase: Float = 0
-    var fataOrbitDir: Float = 1
-    var fataPrevBarPhase: Float = 0
 
     // MARK: - Live Audio Features
 

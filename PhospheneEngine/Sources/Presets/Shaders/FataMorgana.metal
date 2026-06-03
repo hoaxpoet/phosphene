@@ -69,7 +69,15 @@ MVWarpPerFrame mvWarpPerFrame(
     constant SceneUniforms& s
 ) {
     MVWarpPerFrame pf;
-    pf.zoom = 1.05;          // source per_pixel zoom (constant)
+    // Source per_pixel zoom is a constant 1.05. The L-uplift adds a WHOLE-FIELD
+    // DOWNBEAT BREATH on top: the entire mirage surges outward on beat 1 of each bar,
+    // then settles. This is the legible "sync to the downbeat" — a per-blob sway is
+    // lost among the many spectra (Matt), but a global zoom pulse moves EVERYTHING at
+    // once and is unmistakable, immune to blob count. Stateless: `bar_phase01` is 0 at
+    // the downbeat → 1 at the next, so `pow(1 - 4·phase, 2)` peaks at the downbeat and
+    // decays over the first beat of the bar (one clean breath per bar).
+    float downbeat = pow(max(0.0, 1.0 - 4.0 * f.bar_phase01), 2.0);
+    pf.zoom = 1.05 + 0.07 * downbeat;   // +7% outward surge on the downbeat
     pf.rot  = 0.0;
     pf.decay = 1.0;          // custom warp bakes its own decay (×0.98 − 0.02); no compose decay
     pf.warp = 0.0;
@@ -231,8 +239,7 @@ struct FataShapeParams {
     float frame;        // butterchurn frame counter (colour cycle + shape-0 rotation)
     float aspectY;      // texsizeY/texsizeX (keeps n-gons round on a wide canvas)
     float audioBoost;   // multiplies the band attack driving the blob radius
-    float orbitPhase;   // CPU bar-reversing orbit clock (replaces f.time for shape motion)
-    float pad1;
+    float pad0; float pad1;
 };
 
 struct FataShapeVtxOut {
@@ -255,12 +262,12 @@ vertex FataShapeVtxOut fata_shape_vertex(
     int   sides  = sp.sides;
     int   tri    = int(vid) / 3;
     int   corner = int(vid) % 3;
-    // Orbit clock is the CPU-accumulated `orbitPhase`, NOT raw f.time: it advances
-    // forward during one bar and BACKWARD during the next (sign flips at each downbeat),
-    // so every shape's orbit REVERSES DIRECTION at the start of each new bar — the
-    // structural, once-per-bar "dance" gesture (Matt's bar-direction idea). All shape
-    // motion below (orbit sin/cos + the sin(time) sway) reads from this clock.
-    float time   = sp.orbitPhase;
+    // Orbit motion is continuous (the source's time-driven sweep) so the blobs travel
+    // and paint a rich feedback field. The per-bar direction reversal was tried here
+    // (sp.orbitPhase) but the sway was lost among the many spectra — the downbeat sync
+    // now lives in the WHOLE-FIELD zoom breath (mvWarpPerFrame), which reads regardless
+    // of blob count.
+    float time   = f.time;
     int   inst   = int(iid);
 
     // ── per-instance frame_eqs (source verbatim) ─────────────────────────────
