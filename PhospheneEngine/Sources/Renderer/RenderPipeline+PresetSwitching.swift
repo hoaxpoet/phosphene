@@ -84,6 +84,12 @@ extension RenderPipeline {
             fataShapeAdditive = additive
             fataShapeNormal = normal
         }
+        // Re-roll the horizon-glow phase so each session opens on a different point in
+        // the spectrum cycle (Matt: "different on startup"). One full slow_roam_sin
+        // period (~1257 s) of spread. Only on activation, not on clear.
+        if additive != nil {
+            fataGlowSeedJitter = Float.random(in: 0..<1300)
+        }
     }
 
     /// Set the mv_warp chromatic colour-separation amount (Dragon Bloom L3, D-137).

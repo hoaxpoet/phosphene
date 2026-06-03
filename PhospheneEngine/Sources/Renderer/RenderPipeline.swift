@@ -98,6 +98,14 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// unused gammaAdj channel. 0 = normal. The diag sets it from FATA_DEBUG to isolate
     /// the field / glow / stars and locate the gray-wash. (Kept as diagnostic infra.)
     var fataDebugMode: Float = 0
+    /// Per-session phase jitter (seconds) added to the horizon-glow clock so every
+    /// session opens at a DIFFERENT point in the slow_roam_sin spectrum cycle instead
+    /// of all starting at the same hue (Matt: "horizon color different on startup").
+    /// Re-rolled once per Fata activation in `setFataShapePipelines`. butterchurn itself
+    /// has no such jitter (its glow is pure session-time, so every load starts the same)
+    /// — this is a deliberate, Matt-requested divergence. The diag pins it (default 0,
+    /// or FATA_GLOW_JITTER) for reproducibility. See `computeFataUniforms` / kFataGlowSeed.
+    var fataGlowSeedJitter: Float = 0
 
     // MARK: - Live Audio Features
 
