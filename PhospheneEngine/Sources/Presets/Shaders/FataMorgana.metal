@@ -30,7 +30,7 @@
 // builtins those custom shaders reference (time, the q1/q2 beat-rotation cos/sin,
 // the roaming sin vectors, rand_preset, and the feedback texture size).
 struct FataUniforms {
-    float  time;        // seconds (energy-weighted accumulated_audio_time)
+    float  time;        // features.time — seconds since visualization start (session-monotonic, butterchurn's wall-clock `time`)
     float  q1;          // cos(rott) — beat-rotation accumulator (frame_eqs)
     float  q2;          // sin(rott)
     float  gammaAdj;    // 1.98 (unused: custom comp replaces fixed-function; kept for parity)
@@ -187,7 +187,20 @@ fragment float4 fata_morgana_comp_fragment(
         if (u.gammaAdj < 2.5) return float4((0.02 / (0.02 + abs(xf))) * u.slowRoamSin.xyz, 1.0);
         return float4(mainTex.sample(fataClamp, in.uv).rgb, 1.0);
     }
-    return float4(saturate(ret), 1.0);
+
+    // sRGB round-trip cancellation. butterchurn writes to an sRGB-NAIVE WebGL canvas —
+    // its comp output bytes are scanned out and displayed directly (the shader's value
+    // IS the display value). Phosphene's drawable is .bgra8Unorm_srgb, so Metal would
+    // sRGB-ENCODE this return (linear 0.2 → byte ~0.48), lifting blacks and washing the
+    // image toward midtone (Matt M7: "deeper black needed"; the purple haze). Decode
+    // here so the target's encode round-trips back to the butterchurn display value:
+    // displayed = srgbEncode(srgbDecode(ret)) = ret. Only the final comp→drawable write
+    // needs this — the feedback textures are linear .bgra8Unorm (butterchurn 8-bit clamp).
+    float3 v = saturate(ret);
+    float3 lin = select(v / 12.92,
+                        pow((v + 0.055) / 1.055, float3(2.4)),
+                        v > 0.04045);
+    return float4(lin, 1.0);
 }
 
 // MARK: - Custom SHAPES (FM.L2) — 4 forty-gon n-gons drawn on top of the warp
