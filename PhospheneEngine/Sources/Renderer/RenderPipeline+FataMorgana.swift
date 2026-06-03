@@ -80,7 +80,6 @@ extension RenderPipeline {
         var uni = FataUniforms()
         let tSec = features.time
         uni.time = tSec
-        uni.gammaAdj = fataDebugMode   // diagnostic term-isolation channel (0 = normal)
 
         // roam_sin / slow_roam_sin (butterchurn time-roam vectors).
         uni.roamSin = SIMD4<Float>(0.5 + 0.5 * sin(tSec * 0.3),
