@@ -140,6 +140,10 @@ struct FataMorganaMVWarpAccumulationTest {
         if let b = ProcessInfo.processInfo.environment["FATA_BOOST"].flatMap({ Float($0) }) {
             pipeline.fataShapeSizeGain = b
         }
+        // Term-isolation diagnostic: 1 field-reflection, 2 glow, 3 raw field.
+        if let d = ProcessInfo.processInfo.environment["FATA_DEBUG"].flatMap({ Float($0) }) {
+            pipeline.fataDebugMode = d
+        }
 
         let fbDesc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: ctx.pixelFormat, width: wPix, height: hPix, mipmapped: false)

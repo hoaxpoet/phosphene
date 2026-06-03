@@ -86,11 +86,18 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// warp target in `drawWithFataMorgana`.
     var fataShapeAdditive: MTLRenderPipelineState?
     var fataShapeNormal: MTLRenderPipelineState?
-    /// Master size gain on the stem-driven Fata blob radius (FM.L2, D-139). At typical
-    /// stem energy (~0.27) the per-instrument sizeFactor alone gives anemic blobs (Matt
-    /// M7 #4 — and the test-prod gap: the old diag passed 6 while production was 1.0);
-    /// 6.0 scales them to the oracle's prominence. The diag sweeps it via FATA_BOOST.
-    var fataShapeSizeGain: Float = 5.0
+    /// Master size gain on the stem-driven Fata blob radius (FM.L2, D-139). The shapes
+    /// are driven by the D-026 `_energy_rel` primitive (~1.0-centred, the faithful analog
+    /// of Milkdrop's `_att`), so rad ≈ baseRad at average level — matching the source's
+    /// `baseVal.rad × _att`. 1.5 gives a touch more presence on Phosphene's wider 16:9
+    /// canvas vs the oracle's 4:3. (The earlier 5.0 compensated for the wrong 0.5-centred
+    /// AGC `_energy` drive, which oversized the blobs into the gray-wash.) Diag sweeps it
+    /// via FATA_BOOST.
+    var fataShapeSizeGain: Float = 1.5
+    /// Diagnostic term-isolation selector (FM.L2), passed to the fata comp via the
+    /// unused gammaAdj channel. 0 = normal. The diag sets it from FATA_DEBUG to isolate
+    /// the field / glow / stars and locate the gray-wash. (Kept as diagnostic infra.)
+    var fataDebugMode: Float = 0
 
     // MARK: - Live Audio Features
 
