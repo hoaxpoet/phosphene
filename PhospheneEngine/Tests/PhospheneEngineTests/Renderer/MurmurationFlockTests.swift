@@ -52,6 +52,7 @@ private struct FlockMetrics {
     let maxRadius: Float
     let coreFraction: Float       // fraction of birds within 0.5 × 95th-pctile radius
     let meanSpeed: Float
+    let bankingStd: Float         // std of per-bird roll (deg) — emergent orientation-wave proxy
     let anyNonFinite: Bool
 
     static func measure(_ geometry: MurmurationFlockGeometry) -> FlockMetrics {
@@ -60,12 +61,14 @@ private struct FlockMetrics {
         var c = SIMD3<Float>(0, 0, 0)
         var speed: Float = 0
         var bad = false
+        var rolls = [Float](); rolls.reserveCapacity(count)
         for i in 0..<count {
             let b = ptr[i]
             let p = SIMD3<Float>(b.positionX, b.positionY, b.positionZ)
             if !p.x.isFinite || !p.y.isFinite || !p.z.isFinite { bad = true }
             c += p
             speed += (SIMD3<Float>(b.velocityX, b.velocityY, b.velocityZ)).magnitude3
+            rolls.append(bankRoll(b))
         }
         let n = Float(count)
         c /= n
@@ -83,6 +86,8 @@ private struct FlockMetrics {
         let half = 0.5 * p95
         var core = 0
         for d in dists where d <= half { core += 1 }
+        let rollMean = rolls.reduce(0, +) / n
+        let rollVar = rolls.reduce(Float(0)) { $0 + ($1 - rollMean) * ($1 - rollMean) } / n
         return FlockMetrics(
             count: count,
             centroid: c,
@@ -90,9 +95,18 @@ private struct FlockMetrics {
             maxRadius: dists.last ?? 0,
             coreFraction: Float(core) / n,
             meanSpeed: speed / n,
+            bankingStd: rollVar.squareRoot(),
             anyNonFinite: bad
         )
     }
+}
+
+/// Per-bird roll (banking) angle in degrees from the body quaternion — matches
+/// MSL `mf_q_euler(.).x`. |roll| is the orientation-wave darkening cue.
+func bankRoll(_ b: MurmurationBird) -> Float {
+    let x = b.orientX, y = b.orientY, z = b.orientZ, w = b.orientW
+    let roll = atan2(2 * (x * w - y * z), 1 - 2 * (x * x + z * z))
+    return abs(roll) * 180 / .pi
 }
 
 private extension SIMD3 where Scalar == Float {
@@ -133,6 +147,7 @@ struct MurmurationFlockTests {
         var maxCentroidDist: Float = 0      // |centroid| from origin — must stay on-screen
         var sawDrift = false
         var lastMeanSpeed: Float = 0
+        var maxBankingStd: Float = 0
         var lastBad = false
         for frame in 0..<1800 {
             try stepFlock(geo, time: t, queue: ctx.commandQueue); t += 1.0 / 60.0
@@ -142,17 +157,19 @@ struct MurmurationFlockTests {
                 maxR = max(maxR, m.maxRadius)
                 maxCentroidDist = max(maxCentroidDist, m.centroid.magnitude3)
                 lastMeanSpeed = m.meanSpeed
+                maxBankingStd = max(maxBankingStd, m.bankingStd)
                 lastBad = lastBad || m.anyNonFinite
-                if (m.centroid - prevCentroid).magnitude3 > 0.002 { sawDrift = true }
+                if (m.centroid - prevCentroid).magnitude3 > 0.002 * cfg.worldHalfSpan { sawDrift = true }
                 prevCentroid = m.centroid
             }
         }
         print("""
-        [MM.2 silence/30s] count=\(cfg.particleCount) \
+        [MM.6 silence/30s] count=\(cfg.particleCount) whs=\(cfg.worldHalfSpan) \
         minCoreFrac=\(String(format: "%.3f", minCore)) \
         maxR=\(String(format: "%.3f", maxR)) \
         maxCentroidDist=\(String(format: "%.3f", maxCentroidDist)) \
-        meanSpeed=\(String(format: "%.3f", lastMeanSpeed)) drift=\(sawDrift)
+        meanSpeed=\(String(format: "%.3f", lastMeanSpeed)) \
+        bankingStd=\(String(format: "%.2f", maxBankingStd)) drift=\(sawDrift)
         """)
 
         #expect(!lastBad, "positions must stay finite over 30 s")
@@ -163,7 +180,12 @@ struct MurmurationFlockTests {
         // WHOLE 30 s. A persistent split would drop minCore toward 0.
         #expect(minCore > 0.16, "flock must stay one cohesive mass (no split), minCoreFrac=\(minCore)")
         // Stays on-screen: the flock must not wander off into the distance.
-        #expect(maxCentroidDist < 0.8, "flock must stay framed (centroid near origin), got \(maxCentroidDist)")
+        #expect(maxCentroidDist < cfg.worldHalfSpan * 0.45,
+                "flock must stay framed (centroid near origin), got \(maxCentroidDist)")
+        // Orientation waves EMERGE even at silence: birds bank as they wheel, so
+        // the per-bird roll field has real spread (the dark-band mechanism). A
+        // frozen / non-banking flock would have ~0 spread.
+        #expect(maxBankingStd > 1.0, "birds must bank as they manoeuvre (emergent waves), got \(maxBankingStd)")
     }
 
     @Test("Render silence-baseline frames (RENDER_VISUAL=1)")
