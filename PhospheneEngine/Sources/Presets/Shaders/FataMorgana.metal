@@ -139,11 +139,13 @@ fragment float4 fata_morgana_warp_fragment(
 fragment float4 fata_morgana_comp_fragment(
     VertexOut              in        [[stage_in]],
     texture2d<float>       mainTex   [[texture(0)]],
-    texture2d<float>       noiseLQ   [[texture(4)]],   // pw_noise_lq
-    texture2d<float>       noiseHQ   [[texture(5)]],   // noise_hq
+    texture2d<float>       noiseLQ   [[texture(4)]],   // pw_noise_lq (grid stars)
+    texture2d<float>       noiseHQ   [[texture(5)]],   // noise_hq (ground noise)
+    texture2d<float>       blueNoise [[texture(8)]],   // point-wrap random (pw_noise_lq stand-in)
     constant FataUniforms& u         [[buffer(1)]]
 ) {
     constexpr sampler nWrap(filter::linear, address::repeat);
+    constexpr sampler pwWrap(filter::nearest, address::repeat);   // POINT-wrap (butterchurn pw_noise_lq)
     // butterchurn's comp does `uv.y = 1.0 - vUv.y` on a BOTTOM-left-origin vUv.
     // Phosphene's fullscreen_vertex emits TOP-left-origin uv (uv.y=0 at top), i.e.
     // in.uv.y = 1 - vUv.y already — so the butterchurn flip resolves to in.uv
@@ -165,12 +167,16 @@ fragment float4 fata_morgana_comp_fragment(
     float3 col = mainTex.sample(fataClamp, p).rgb
                + (0.02 / (0.02 + abs(xf))) * u.slowRoamSin.xyz;   // horizon glow line
 
-    // Neon grid.
+    // Neon grid stars (source mechanic). butterchurn gates the grid with pw_noise_lq —
+    // a POINT-WRAP random noise (nearest-sampled), so the lit grid cells scatter. Mine
+    // sampled Perlin FBM (smooth, linear) → spatially-correlated gating → a regular
+    // diagonal lattice (Matt M7). Sample blueNoise with a NEAREST/repeat sampler (the
+    // point-wrap behaviour) so the >threshold cells scatter into a starfield.
     float2x2 gm = float2x2(0.6, -0.8, 0.8, 0.6);        // columns (0.6,-0.8),(0.8,0.6)
     float2 g  = 32.0 * ((uv * gm) + (col * 0.1).xy + u.time / 64.0);
     float2 gt = abs(fract(g) - 0.5);
     float  gv = clamp((0.25 / sqrt(dot(gt, gt)))
-                      * (noiseLQ.sample(nWrap, g / 256.0).r - 0.9), 0.0, 1.0);
+                      * (blueNoise.sample(pwWrap, g / 256.0).r - 0.9), 0.0, 1.0);
 
     float3 ret = col + (gv * gv + (u.randPreset.xyz * (0.5 - uv.y)) * float3(0.0, 0.0, 1.0)) * (1.0 - m);
     return float4(saturate(ret), 1.0);
