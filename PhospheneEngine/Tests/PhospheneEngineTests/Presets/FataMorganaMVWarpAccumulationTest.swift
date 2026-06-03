@@ -94,6 +94,7 @@ struct FataMorganaMVWarpAccumulationTest {
     // q1/q2 beat rotation); real-session replay matters at L2/L3 (shapes are
     // audio-sized) — feedback_synthetic_audio.
     @Test("Mirage substrate renders (env-gated FATA_MVWARP_DIAG=1)")
+    @MainActor
     func test_mirageRender_diag() throws {
         guard ProcessInfo.processInfo.environment["FATA_MVWARP_DIAG"] == "1" else {
             print("FataMorganaMVWarpAccumulationTest: FATA_MVWARP_DIAG not set, skipping render diag")
@@ -102,56 +103,62 @@ struct FataMorganaMVWarpAccumulationTest {
         let ctx = try MetalContext()
         let lib = try ShaderLibrary(context: ctx)
         let texMgr = try TextureManager(context: ctx, shaderLibrary: lib)
+        let floatStride = MemoryLayout<Float>.stride
+        guard let fft = ctx.makeSharedBuffer(length: 512 * floatStride),
+              let wav = ctx.makeSharedBuffer(length: 2048 * floatStride) else {
+            Issue.record("buffer alloc failed"); return
+        }
+        // Drive the REAL RenderPipeline.renderFataMorgana — the SAME method the live app
+        // calls (FA #66 / production-grade testing): no reimplemented encode path, so
+        // what this renders is byte-identical to live.
+        let pipeline = try RenderPipeline(context: ctx, shaderLibrary: lib, fftBuffer: fft, waveformBuffer: wav)
+        pipeline.setTextureManager(texMgr)
         let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat, loadBuiltIn: true)
         guard let preset = loader.presets.first(where: { $0.descriptor.name == "Fata Morgana" }),
-              let mvWarp = preset.mvWarpPipelines, let blur = mvWarp.blurState else {
-            Issue.record("Fata Morgana preset/pipelines missing")
-            return
+              let mvWarp = preset.mvWarpPipelines else {
+            Issue.record("Fata Morgana preset/pipelines missing"); return
         }
 
-        // Default 1280×720 (16:9) to MATCH the live app's aspect/scale (test/prod
-        // parity, FA #66) — the earlier 640×480 hid a resolution-dependent warp bug.
-        // FATA_W/FATA_H override (use 640/480 to reproduce the old oracle-aspect view).
+        // Default 1280×720 (16:9) to MATCH the live app's aspect/scale. FATA_W/FATA_H override.
         let wPix = ProcessInfo.processInfo.environment["FATA_W"].flatMap { Int($0) } ?? 1280
         let hPix = ProcessInfo.processInfo.environment["FATA_H"].flatMap { Int($0) } ?? 720
+        let size = CGSize(width: wPix, height: hPix)
+        pipeline.currentDrawableSize = size   // drives shape aspectY (== live)
+        let bundle = MVWarpPipelineBundle(
+            warpState: mvWarp.warpState,
+            composeState: mvWarp.composeState,
+            blitState: mvWarp.blitState,
+            pixelFormat: ctx.pixelFormat,
+            feedbackFormat: ctx.pixelFormat,
+            blurState: mvWarp.blurState)
+        pipeline.setupMVWarp(bundle: bundle, size: size)
+        pipeline.setMVWarpDecay(preset.descriptor.decay)
+        pipeline.setFataShapePipelines(additive: mvWarp.shapeAdditiveState, normal: mvWarp.shapeNormalState)
+        // Sweep the production size gain from the diag (defaults to the production value).
+        if let b = ProcessInfo.processInfo.environment["FATA_BOOST"].flatMap({ Float($0) }) {
+            pipeline.fataShapeSizeGain = b
+        }
+
         let fbDesc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: ctx.pixelFormat, width: wPix, height: hPix, mipmapped: false)
         fbDesc.usage = [.renderTarget, .shaderRead]
         fbDesc.storageMode = .shared
-        guard var warpTex = ctx.device.makeTexture(descriptor: fbDesc),
-              var composeTex = ctx.device.makeTexture(descriptor: fbDesc),
-              let blurTex = ctx.device.makeTexture(descriptor: fbDesc),
-              let displayTex = ctx.device.makeTexture(descriptor: fbDesc)
-        else { Issue.record("texture alloc failed"); return }
+        guard let displayTex = ctx.device.makeTexture(descriptor: fbDesc) else {
+            Issue.record("texture alloc failed"); return
+        }
 
-        // Real-session attack values drive the blob sizes — the SAME bassAtt/midAtt/
-        // trebAtt the live shapes use (test/prod parity, FA #66; loadSessionBands
-        // reconstructs them). Matt's live M7 remains the fidelity gate.
-        let rows = Self.loadSessionBands()
-        let stemRows = Self.loadSessionStems()
+        let rows = Self.loadSessionBands()       // (time, bassAtt, midAtt, trebAtt) — time + accumulator energy
+        let stemRows = Self.loadSessionStems()   // drums/bass/vocals energy+dev+beat (drives the shapes)
         let offset = ProcessInfo.processInfo.environment["FATA_SESSION_OFFSET"].flatMap { Int($0) } ?? 700
-        let boost = ProcessInfo.processInfo.environment["FATA_BOOST"].flatMap { Float($0) } ?? 6.0
         let frames = Self.frameCount
-        let aspectY = Float(min(wPix, hPix)) / Float(max(wPix, hPix))
-        let shapeCfg: [(Int32, Int32, Int32, MTLRenderPipelineState?)] = [
-            (0, 30, 1, mvWarp.shapeNormalState),
-            (1, 40, 4, mvWarp.shapeAdditiveState),
-            (2, 40, 1, mvWarp.shapeAdditiveState),
-            (3, 40, 5, mvWarp.shapeAdditiveState),
-        ]
+
         for i in 0..<frames {
             let row = rows.isEmpty ? (Float(i) / 60.0, Float(0), Float(0), Float(0))
                                    : rows[min(offset + i, rows.count - 1)]
-            let t = row.0
-            var u = FataUniforms()
-            u.time = t
-            u.texsize = SIMD4<Float>(Float(wPix), Float(hPix), 1.0 / Float(wPix), 1.0 / Float(hPix))
-            u.roamSin = SIMD4<Float>(0.5 + 0.5 * sin(t * 0.3), 0.5 + 0.5 * sin(t * 1.3),
-                                     0.5 + 0.5 * sin(t * 5.0), 0.5 + 0.5 * sin(t * 20.0))
-            u.slowRoamSin = SIMD4<Float>(0.5 + 0.5 * sin(t * 0.005), 0.5 + 0.5 * sin(t * 0.008),
-                                         0.5 + 0.5 * sin(t * 0.013), 0.5 + 0.5 * sin(t * 0.022))
             var feat = FeatureVector.zero
-            feat.time = t
+            feat.time = row.0
+            feat.deltaTime = 1.0 / 60.0
+            feat.bass = row.1; feat.mid = row.2; feat.treble = row.3   // beat accumulator (q1/q2)
             var stm = StemFeatures.zero
             if !stemRows.isEmpty {
                 let sr = stemRows[min(offset + i, stemRows.count - 1)]
@@ -159,49 +166,15 @@ struct FataMorganaMVWarpAccumulationTest {
                 stm.bassEnergy = sr.bE;   stm.bassEnergyDev = sr.bDev;   stm.bassBeat = sr.bBeat
                 stm.vocalsEnergy = sr.vE; stm.vocalsEnergyDev = sr.vDev; stm.vocalsBeat = sr.vBeat
             }
-            var scene = SceneUniforms()
-
-            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { return }
-            // blur(prev) → blurTex
-            encodePass(cmd, pipeline: blur, target: blurTex, load: .dontCare) { enc in
-                enc.setFragmentTexture(warpTex, index: 0)
-                enc.setFragmentBytes(&u, length: MemoryLayout<FataUniforms>.stride, index: 1)
-                enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-            }
-            // warp(prev, blur) → composeTex
-            encodePass(cmd, pipeline: mvWarp.warpState, target: composeTex, load: .clear) { enc in
-                enc.setVertexBytes(&feat, length: MemoryLayout<FeatureVector>.stride, index: 0)
-                enc.setVertexBytes(&stm, length: MemoryLayout<StemFeatures>.stride, index: 1)
-                enc.setVertexBytes(&scene, length: MemoryLayout<SceneUniforms>.stride, index: 2)
-                enc.setFragmentTexture(warpTex, index: 0)
-                enc.setFragmentTexture(blurTex, index: 1)
-                enc.setFragmentBytes(&u, length: MemoryLayout<FataUniforms>.stride, index: 1)
-                enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 4278)
-            }
-            // shapes on top of composeTex (FM.L2)
-            encodePass(cmd, pipeline: mvWarp.warpState, target: composeTex, load: .load) { enc in
-                enc.setVertexBytes(&feat, length: MemoryLayout<FeatureVector>.stride, index: 0)
-                enc.setVertexBytes(&stm, length: MemoryLayout<StemFeatures>.stride, index: 2)
-                enc.setFragmentTexture(warpTex, index: 0)
-                for (idx, sides, numInst, pipe) in shapeCfg {
-                    guard let pipe else { continue }
-                    enc.setRenderPipelineState(pipe)
-                    var params = FataShapeParams(shapeIndex: idx, sides: sides, numInst: numInst,
-                                                 frame: Float(i), aspectY: aspectY, audioBoost: boost)
-                    enc.setVertexBytes(&params, length: MemoryLayout<FataShapeParams>.stride, index: 1)
-                    enc.drawPrimitives(type: .triangle, vertexStart: 0,
-                                       vertexCount: Int(sides) * 3, instanceCount: Int(numInst))
-                }
-            }
-            // comp(compose, noise) → displayTex
-            encodePass(cmd, pipeline: mvWarp.blitState, target: displayTex, load: .dontCare) { enc in
-                enc.setFragmentTexture(composeTex, index: 0)
-                texMgr.bindTextures(to: enc)
-                enc.setFragmentBytes(&u, length: MemoryLayout<FataUniforms>.stride, index: 1)
-                enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-            }
+            guard let cmd = ctx.commandQueue.makeCommandBuffer(),
+                  let warpState = pipeline.mvWarpState else { return }
+            pipeline.renderFataMorgana(
+                commandBuffer: cmd,
+                features: feat,
+                stemFeatures: stm,
+                warpState: warpState,
+                target: displayTex)
             cmd.commit(); cmd.waitUntilCompleted()
-            swap(&warpTex, &composeTex)
         }
 
         let outDir = FileManager.default.temporaryDirectory
@@ -210,20 +183,6 @@ struct FataMorganaMVWarpAccumulationTest {
         let url = outDir.appendingPathComponent("mirage_frame\(frames).png")
         try Self.writePNG(displayTex, to: url)
         print("[fata_diag] wrote \(url.path)")
-    }
-
-    private func encodePass(_ cmd: MTLCommandBuffer, pipeline: MTLRenderPipelineState,
-                            target: MTLTexture, load: MTLLoadAction,
-                            _ body: (MTLRenderCommandEncoder) -> Void) {
-        let d = MTLRenderPassDescriptor()
-        d.colorAttachments[0].texture = target
-        d.colorAttachments[0].loadAction = load
-        d.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
-        d.colorAttachments[0].storeAction = .store
-        guard let enc = cmd.makeRenderCommandEncoder(descriptor: d) else { return }
-        enc.setRenderPipelineState(pipeline)
-        body(enc)
-        enc.endEncoding()
     }
 
     /// Parse a recorded session's features.csv into (time, bassAtt, midAtt, trebAtt)
