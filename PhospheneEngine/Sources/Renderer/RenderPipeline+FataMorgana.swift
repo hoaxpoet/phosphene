@@ -51,7 +51,7 @@ struct FataShapeParams {
     var frame: Float
     var aspectY: Float
     var audioBoost: Float
-    var pad0: Float = 0
+    var orbitPhase: Float = 0   // bar-reversing orbit clock (replaces f.time for shape motion)
     var pad1: Float = 0
 }
 
@@ -88,6 +88,16 @@ extension RenderPipeline {
         var uni = FataUniforms()
         let tSec = features.time
         uni.time = tSec
+
+        // Bar-reversing orbit clock: flip direction at each downbeat (barPhase01 wraps
+        // high→low), then integrate. Drives the shapes' orbit so they reverse direction
+        // each bar. Falls back to steady advance when barPhase01 is stuck at 0 (no grid).
+        let barPhase = features.barPhase01
+        if barPhase + 0.5 < fataPrevBarPhase {   // wrapped ~1 → ~0 = new bar downbeat
+            fataOrbitDir = -fataOrbitDir
+        }
+        fataPrevBarPhase = barPhase
+        fataOrbitPhase += fataOrbitDir * max(features.deltaTime, 0)
 
         // roam_sin (butterchurn fast time-roam vector; drives the WARP rotation).
         // Periods 21 s / 4.8 s / 1.3 s / 0.3 s — fast, visibly varies from t=0; no
@@ -284,7 +294,8 @@ extension RenderPipeline {
                 numInst: shape.numInst,
                 frame: Float(fataFrame),
                 aspectY: aspectY,
-                audioBoost: boost)
+                audioBoost: boost,
+                orbitPhase: fataOrbitPhase)
             enc.setVertexBytes(&params, length: MemoryLayout<FataShapeParams>.stride, index: 1)
             let vc = Int(shape.sides) * 3, ic = Int(shape.numInst)
             enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: vc, instanceCount: ic)

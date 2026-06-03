@@ -231,7 +231,8 @@ struct FataShapeParams {
     float frame;        // butterchurn frame counter (colour cycle + shape-0 rotation)
     float aspectY;      // texsizeY/texsizeX (keeps n-gons round on a wide canvas)
     float audioBoost;   // multiplies the band attack driving the blob radius
-    float pad0; float pad1;
+    float orbitPhase;   // CPU bar-reversing orbit clock (replaces f.time for shape motion)
+    float pad1;
 };
 
 struct FataShapeVtxOut {
@@ -254,7 +255,12 @@ vertex FataShapeVtxOut fata_shape_vertex(
     int   sides  = sp.sides;
     int   tri    = int(vid) / 3;
     int   corner = int(vid) % 3;
-    float time   = f.time;
+    // Orbit clock is the CPU-accumulated `orbitPhase`, NOT raw f.time: it advances
+    // forward during one bar and BACKWARD during the next (sign flips at each downbeat),
+    // so every shape's orbit REVERSES DIRECTION at the start of each new bar — the
+    // structural, once-per-bar "dance" gesture (Matt's bar-direction idea). All shape
+    // motion below (orbit sin/cos + the sin(time) sway) reads from this clock.
+    float time   = sp.orbitPhase;
     int   inst   = int(iid);
 
     // ── per-instance frame_eqs (source verbatim) ─────────────────────────────
@@ -265,20 +271,16 @@ vertex FataShapeVtxOut fata_shape_vertex(
                         0.5 + 0.5 * sin(cyc + 4.188),
                         0.5 + 0.5 * sin(cyc + 2.094));
 
-    // BEAT DANCE (the L-uplift). The earlier brightness-only flare was undetectable
-    // live: the 0.98-decay feedback LOW-PASSES brightness into a steady glow, and the
-    // constant warp churn (zoom + swirl + time-orbit) buries any modest response. The
-    // mechanic that beats both: a sharp SIZE POP on the beat. Size is SPATIAL, so the
-    // zoom-1.05 feedback ejects each pop as a RING that visibly travels outward — a
-    // ring pulses off every spectrum on the kick (the oracle's own mechanic, and
-    // unmistakably "dancing with the beat"). `drums_beat` is the shared groove impulse
-    // (a clean per-beat 1→0 envelope) that all spectra pop on; each shape keeps its own
-    // `_energy_dev` for brightness identity (which instrument is singing). Size←beat,
-    // brightness←per-stem-energy: distinct primitives, one coherent gesture per blob
-    // (FA #67). The pop is brief (drums_beat decays in ~10 frames) so it ejects a clean
-    // ring and snaps back — no sustained over-size (the old smear cause).
+    // BEAT PULSE (the L-uplift). The previous version popped on `drums_beat` + `_dev`,
+    // which fire on EVERY drum onset (hats, snares) and every transient — so it burst
+    // far more often than once per beat ("too excited", Matt). Now the pulse is gated to
+    // the GRID beat via `beatPhase01` (0 at each beat → 1 at the next): one clean pulse
+    // per beat, at GENTLE amplitude. The primary "dance" is now the per-BAR orbit
+    // direction reversal above (sp.orbitPhase); this beat pulse is a light accent on top.
+    // beatPulse peaks sharply at the beat (phase 0) and decays before the next.
+    // Per-stem `_energy_dev` still tints each shape's brightness for instrument identity.
+    float beatPulse = pow(max(0.0, 1.0 - f.beat_phase01), 4.0);   // one sharp pulse per grid beat
     float flare = 1.0;
-    float beat  = st.drums_beat;                           // shared groove impulse (the kick)
     if (sp.shapeIndex == 0) {
         rad = 0.06623; ang = 0.02 * sp.frame; x = 0.5; y = 0.5;
         col = float3(0.0); aCenter = 0.1;                 // faint textured echo
@@ -287,20 +289,20 @@ vertex FataShapeVtxOut fata_shape_vertex(
         x = 0.5 + 0.225 * sin(d); y = 0.5 + 0.3 * cos(d);
         x -= 0.4 * x * sin(time);  y -= 0.4 * y * cos(time);
         float dev = max(0.0, st.drums_energy_dev);
-        rad   = 0.1 * (1.0 + 1.3 * beat + 0.3 * dev) * sp.audioBoost;   // POP on the kick → ring ejects
-        flare = 0.45 + 1.8 * beat + 1.0 * dev;                          // FLASH on the kick + drum identity
+        rad   = 0.1 * (1.0 + 0.45 * beatPulse) * sp.audioBoost;   // gentle one-per-beat pop
+        flare = 0.55 + 0.7 * beatPulse + 0.5 * dev;               // light beat accent + drum identity
     } else if (sp.shapeIndex == 2) {                       // bass blob ← BASS stem
         x = 0.5 + 0.225 * sin(time + 2.09); y = 0.5 + 0.3 * cos(time + 2.09);
         float dev = max(0.0, st.bass_energy_dev);
-        rad   = 0.1 * (1.0 + 1.3 * beat + 0.3 * dev) * sp.audioBoost;
-        flare = 0.45 + 1.8 * beat + 1.0 * dev;                          // + bass identity
+        rad   = 0.1 * (1.0 + 0.45 * beatPulse) * sp.audioBoost;
+        flare = 0.55 + 0.7 * beatPulse + 0.5 * dev;               // + bass identity
     } else {                                               // treb blobs ← VOCALS stem
         float d = fataDiv(time, float(inst));
         x = 0.5 + 0.225 * sin(d); y = 0.5 + 0.3 * cos(d);
         x += 0.4 * x * sin(time);  y += 0.4 * y * cos(time);
         float dev = max(0.0, st.vocals_energy_dev);
-        rad   = 0.07419 * (1.0 + 1.3 * beat + 0.3 * dev) * sp.audioBoost;
-        flare = 0.45 + 1.8 * beat + 1.0 * dev;                          // + vocal identity
+        rad   = 0.07419 * (1.0 + 0.45 * beatPulse) * sp.audioBoost;
+        flare = 0.55 + 0.7 * beatPulse + 0.5 * dev;               // + vocal identity
     }
     col *= flare;                                          // brightness = instrument identity
 

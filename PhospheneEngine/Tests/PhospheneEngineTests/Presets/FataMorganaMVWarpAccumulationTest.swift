@@ -162,12 +162,14 @@ struct FataMorganaMVWarpAccumulationTest {
         let frames = Self.frameCount
 
         for i in 0..<frames {
-            let row = rows.isEmpty ? (Float(i) / 60.0, Float(0), Float(0), Float(0))
+            let row = rows.isEmpty ? (Float(i) / 60.0, Float(0), Float(0), Float(0), Float(0), Float(0))
                                    : rows[min(offset + i, rows.count - 1)]
             var feat = FeatureVector.zero
             feat.time = row.0
             feat.deltaTime = 1.0 / 60.0
             feat.bass = row.1; feat.mid = row.2; feat.treble = row.3   // beat accumulator (q1/q2)
+            feat.beatPhase01 = row.4                                   // FM.L2 beat pulse
+            feat.barPhase01 = row.5                                    // FM.L2 bar-direction reversal
             var stm = StemFeatures.zero
             if !stemRows.isEmpty {
                 let sr = stemRows[min(offset + i, stemRows.count - 1)]
@@ -200,12 +202,15 @@ struct FataMorganaMVWarpAccumulationTest {
     /// midAtt/trebAtt aren't logged (no *AttRel cols) → approximated from raw mid/treble
     /// (cols 6/7) ×0.45 (att is the slow-smoothed AGC band, well below the instant peak).
     /// FATA_SESSION=<dir> overrides. Returns [] if unreadable (diag runs on a silent field).
-    static func loadSessionBands() -> [(Float, Float, Float, Float)] {
+    /// (time, bassAtt, midAtt, trebAtt, beatPhase01, barPhase01). beatPhase01 = col 22,
+    /// barPhase01 = col 26 (barPhase01_permille / 1000) — drive the FM.L2 beat pulse +
+    /// bar-direction-reversal gestures (test/prod parity, FA #66).
+    static func loadSessionBands() -> [(Float, Float, Float, Float, Float, Float)] {
         let dir = ProcessInfo.processInfo.environment["FATA_SESSION"]
             ?? "\(NSHomeDirectory())/Documents/phosphene_sessions/2026-06-03T03-01-32Z"
         let url = URL(fileURLWithPath: dir).appendingPathComponent("features.csv")
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
-        var out: [(Float, Float, Float, Float)] = []
+        var out: [(Float, Float, Float, Float, Float, Float)] = []
         for line in text.split(separator: "\n").dropFirst() {
             let c = line.split(separator: ",", omittingEmptySubsequences: false)
             guard c.count > 26 else { continue }
@@ -213,7 +218,9 @@ struct FataMorganaMVWarpAccumulationTest {
             let bassAtt = ((Float(c[25]) ?? 0) / 2 + 0.5)          // col 26 bassAttRel → bassAtt
             let midAtt  = min((Float(c[5]) ?? 0) * 0.45, 1.5)      // raw mid  → att proxy
             let trebAtt = min((Float(c[6]) ?? 0) * 0.45, 1.5)      // raw treble → att proxy
-            out.append((time, bassAtt, midAtt, trebAtt))
+            let beatPhase = Float(c[22]) ?? 0                       // col 22 beatPhase01 (0..1)
+            let barPhase  = (Float(c[26]) ?? 0) / 1000.0            // col 26 barPhase01_permille → 0..1
+            out.append((time, bassAtt, midAtt, trebAtt, beatPhase, barPhase))
         }
         return out
     }
