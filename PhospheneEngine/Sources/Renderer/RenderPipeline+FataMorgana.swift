@@ -238,7 +238,7 @@ extension RenderPipeline {
     }
 
     /// Multiplies the band attack driving the blob radii. butterchurn feeds
-    /// 6×-boosted audio (D-138); start at 1.0 against Phosphene's attack values and
-    /// tune against the oracle at M7.
-    static let fataShapeAudioBoost: Float = 1.0
+    /// 6×-boosted audio (D-138); 3.5 matches the oracle's blob scale + the strength
+    /// of the floor reflection (swept 1/2/3/4 vs the live oracle — FM.L2 tuning).
+    static let fataShapeAudioBoost: Float = 3.5
 }
