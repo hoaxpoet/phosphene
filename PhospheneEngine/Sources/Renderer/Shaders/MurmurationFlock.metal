@@ -38,7 +38,7 @@ struct MurmurationBird {
     float         pad1;
 };
 
-// MARK: - Flock parameters (mirror of Swift FlockParams, 96 bytes)
+// MARK: - Flock parameters (mirror of Swift FlockParams, 144 bytes)
 
 struct FlockParams {
     uint  particleCount;
@@ -67,6 +67,14 @@ struct FlockParams {
     float wanderWeight;
 
     float4 roostTarget;       // xyz = global flock centroid + slow drift bias (CPU-computed)
+
+    // ── MM.3 audio coupling (all inert at zero audio → silence baseline) ──
+    float4 flockAxis;         // xyz = unit elongation/wave axis, w = elongation [0, ~0.72]
+    float4 drive;             // x = turnGain, y = beatValue, z = propDir (±1), w = waveWidth
+    float  midEdgeGain;       // L4 mid edge-flutter amplitude (edge-weighted noise)
+    float  flockExtent;       // nominal half-extent normalising the wave bird-coordinate
+    float  audioPad0;
+    float  audioPad1;
 };
 
 // MARK: - Hash helpers
@@ -217,7 +225,21 @@ kernel void murmuration_boids(
     // so far birds snap back hard — this is the anti-fragmentation leash: a
     // breakaway cluster is off-centroid → pulled strongly back → re-merges. The
     // base term gives gentle drift; the far term forbids persistent splits.
-    float3 toRoost = fp.roostTarget.xyz - pos;
+    //
+    // L1 elongation (MM.3): under sustained bass the point attractor becomes a
+    // GUIDE SEGMENT along the flock axis (Hoetzlein's moving guide-line). Each
+    // bird is pulled to the nearest point on the segment, so the mass spreads
+    // into a comma/ribbon of length ∝ elongation — stable (no positive
+    // feedback) and collapses back to the point attractor at zero bass.
+    float3 roostCentre = fp.roostTarget.xyz;
+    float  elong = fp.flockAxis.w;
+    float3 roostPoint = roostCentre;
+    if (elong > 1e-4) {
+        float halfLen = elong * fp.flockExtent * 1.6;
+        float along   = clamp(dot(pos - roostCentre, fp.flockAxis.xyz), -halfLen, halfLen);
+        roostPoint    = roostCentre + fp.flockAxis.xyz * along;
+    }
+    float3 toRoost = roostPoint - pos;
     float roostDist = length(toRoost);
     accel += toRoost * (fp.roostWeight + fp.roostFar * roostDist);
 
@@ -225,6 +247,64 @@ kernel void murmuration_boids(
     // alive without destroying coordination). Slowly-varying per bird.
     float3 wander = mf_hash33(float3(b.seed * 97.0, b.seed * 53.0, floor(fp.time * 1.7) + b.seed));
     accel += wander * fp.wanderWeight;
+
+    // ── AUDIO COUPLING (MM.3) — ports the original Particles.metal brain ──
+    // onto the boids substrate. Every term vanishes at zero audio, so the MM.2
+    // silence baseline is preserved exactly. Substrate (bass elongation, mid
+    // edge flutter; vocals breathing is applied CPU-side to the weights) is
+    // continuous; the drum turning-wave is the punctuated, energy-gated event
+    // layer (§3.1 — calm passages stay near-pure-substrate). `toRoost` and
+    // `roostDist` are reused from the global-attractor block above.
+    float waveBankBoost = 0.0;   // L2 wave darkening (applied to bank after integrate)
+    {
+        float3 axis = fp.flockAxis.xyz;
+        // L1 elongation is applied in the guide-segment roost block above; this
+        // block carries the L2 (drum wave) and L4 (mid edge flutter) routes.
+
+        // L2 — drum turning-wave (the original's mechanic, ported). A banking
+        // impulse sweeps across the flock-axis coordinate as the beat pulse
+        // decays (waveFront = 1 − beatValue), direction alternating per
+        // beat-epoch (propDir). The impulse is a ROTATION about the flock axis
+        // — cross(axis, pos − centre) — so it sums to zero across the mass: it
+        // makes birds in the band roll/turn (banking → the dark orientation
+        // band) WITHOUT translating the whole flock (the accent must never
+        // become a primary motion driver — FA #4 / Audio Data Hierarchy).
+        // Amplitude is `drums_energy_dev × masterGate` (CPU), so the wave only
+        // emerges as the music intensifies (§3.1 master lever).
+        float turnGain = fp.drive.x;
+        if (turnGain > 1e-5) {
+            float3 toCentre = pos - fp.roostTarget.xyz;
+            float coord = 0.5 + 0.5 * tanh(dot(toCentre, axis) / max(fp.flockExtent, 1e-3));
+            float propDir       = fp.drive.z;
+            float birdCoord     = (propDir > 0.0) ? coord : (1.0 - coord);
+            float waveFront     = 1.0 - fp.drive.y;
+            float waveWidth     = max(fp.drive.w, 1e-3);
+            float waveInfluence = max(0.0, 1.0 - abs(waveFront - birdCoord) / waveWidth);
+            // Tangential (curl) direction about the flock axis — zero net force.
+            float3 curl = cross(axis, toCentre);
+            float  cl   = length(curl);
+            curl = (cl > 1e-4) ? curl / cl : float3(0.0);
+            accel += curl * (turnGain * waveInfluence * propDir);
+            // Orientation-wave darkening: the band IS where birds present more
+            // wing (McGill). Drive the bank field directly so the dark band
+            // reads, rather than relying on the emergent turn-rate (a smooth
+            // coordinated roll has a LOW per-frame direction change).
+            waveBankBoost = waveInfluence * min(1.0, turnGain);
+        }
+
+        // L4 — mid edge flutter. Fast per-bird noise weighted toward edge birds
+        // (low neighbour count); the dense core stays solid, the feathered edge
+        // shimmers. Ported from the original's distFromCenter weighting, with
+        // the boids neighbour count as the edge detector.
+        float midGain = fp.midEdgeGain;
+        if (midGain > 1e-5) {
+            float  densityT   = clamp(neighborN / 22.0, 0.0, 1.0);
+            float  edgeWeight = mix(1.0, 0.18, densityT);
+            float3 flutter    = mf_hash33(float3(b.seed * 131.0, b.seed * 61.0,
+                                                 floor(fp.time * 7.0) + b.seed));
+            accel += flutter * (midGain * edgeWeight);
+        }
+    }
 
     // Clamp force.
     float aLen = length(accel);
@@ -251,6 +331,12 @@ kernel void murmuration_boids(
     b.position = packed_float3(newPos);
     b.velocity = packed_float3(newVel);
     b.bank = bank;
+    // L2 orientation-wave darkening goes to its OWN channel (pad0), written
+    // fresh each frame so it stays a LOCALIZED travelling band (the persistent
+    // `bank` field would smear it into whole-flock darkening). Zero when no
+    // wave is active → silence baseline unchanged. The render samples it for
+    // the moving dark band.
+    b.pad0 = waveBankBoost;
     b.neighborCount = neighborN;
     birds[gid] = b;
 }
@@ -292,10 +378,13 @@ vertex FlockVertexOut murmuration_flock_vertex(
     float baseSize = 2.4 + 1.0 * (zNorm * 0.5 + 0.5) + 0.8 * densityT;
     out.pointSize = max(baseSize, 1.0);
 
-    // Banking presents more wing → darker (the orientation-wave signature).
+    // Banking presents more wing → darker (the emergent orientation cue); the
+    // L2 drum wave adds a stronger, LOCALIZED darkening band on top (pad0).
     float bankDark = clamp(b.bank, 0.0, 1.0);
-    out.shade = clamp(0.55 + 0.45 * densityT + 0.15 * bankDark, 0.0, 1.0);
-    out.alpha = clamp((0.28 + 0.66 * densityT) * depthFade + 0.10 * bankDark, 0.0, 0.98);
+    float waveDark = clamp(b.pad0, 0.0, 1.0);
+    float darken = clamp(0.15 * bankDark + 0.55 * waveDark, 0.0, 1.0);
+    out.shade = clamp(0.55 + 0.45 * densityT + darken, 0.0, 1.0);
+    out.alpha = clamp((0.28 + 0.66 * densityT) * depthFade + 0.10 * bankDark + 0.20 * waveDark, 0.0, 0.98);
     return out;
 }
 
