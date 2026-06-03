@@ -3075,7 +3075,7 @@ separation for the feathered edge (GPU spatial-binning precedent: `FerrofluidPar
 
 ---
 
-### Increment MM.2 — Flock engine (the redesign)
+### Increment MM.2 — Flock engine (the redesign)  *(force-based substrate SUPERSEDED by MM.6; scaffolding kept)*
 
 **Scope:** new flock-specific engine-library shader + conformer (D-097 sibling; this is where
 the deferred `ProceduralGeometry`/`Particles.metal` rename lands) at the MM.1 particle count.
@@ -3089,7 +3089,7 @@ asserts it; 60fps-feasible at target count (perf validated in MM.4).
 
 ---
 
-### Increment MM.3 — Audio coupling (D-026) + firing evidence
+### Increment MM.3 — Audio coupling (D-026) + firing evidence  *(force-based coupling SUPERSEDED by MM.6; M7-failed, see below; routing/replay/test scaffolding kept)*
 
 **Scope:** wire the musical contract with deviation primitives; verify the 2–4×
 continuous:beat ratio; produce per-route firing evidence from a real-music session
@@ -3163,6 +3163,49 @@ flip `Murmuration.json` `certified: true`, add "Murmuration" to
 release notes.
 
 **Done when:** Matt M7-approves; `certified: true`; golden hash regenerated; tests green.
+
+---
+
+### Increment MM.6 — Rebuild the flock on Flock2 (orientation-based)  *(scoped 2026-06-03; to run in a new session)*
+
+**Supersedes the force-based substrate of MM.2 and the force-based audio coupling of MM.3.** MM.4
+(sky/perf) and MM.5 (cert) now apply to the Flock2 flock and follow this increment.
+
+**Why:** MM.3's M7 live review failed — the force-based flock fragmented/popped/showed a grid artifact
+under real audio. Root cause was twofold: deviation primitives spike ~3× (force-magnitude fix landed,
+`564f4eec`), AND — more fundamentally — the whole substrate was a hand-derived force-boids
+approximation of the published model Matt provided at kickoff. **Failed Approach #73** ("don't build
+what's already been built"). The reference is **Hoetzlein's Flock2 (2024, J. Theoretical Biology,
+MIT code, github.com/ramakarl/Flock2)**: an *orientation-based* model (neighbour influence = a desire
+to TURN via quaternion targets, not summed force vectors) that natively produces what MM.2/MM.3
+hand-faked — travelling dark bands **emerge** from alignment+avoidance coupling (MM.3 *injected* a curl
+wave), cohesion comes from a **peripheral-boundary turn** (MM.2 used a roost leash that clumps/freezes),
+and it is **stable under perturbation by construction** (force-summing is *why* MM.3 shredded under
+audio). Audio coupling re-expresses the §3 contract as **gentle biases on the turn-desires**, which
+physically cannot fling the flock apart.
+
+**Scope:** PORT Flock2 from its source (`source/flock_types.h`, `flock_kernels.cu/.cuh`,
+`app_flock.cpp`) — wholesale, not re-derived from the paper (FA #70/#64). Replace the
+`murmuration_boids` integrator + the `MurmurationBird` layout (→ quaternion + speed) + `computeAudio`;
+**keep** the conformer/harness/render/sky/governor/replay scaffolding. Re-express L1 bass (drift +
+elongation as target/anisotropy bias), L2 drums (intensify the emergent wave on the beat, not a
+force), L4 mid (edge-bird turn jitter), L5 vocals (cohesion-strength breathing); L3 still deferred. All
+drivers soft-saturated and sized against the real ~3× range (`project_deviation_primitive_real_range`);
+**carry the cohesion-under-3×-load test forward** (it caught the MM.3 failure). Full kickoff:
+[`docs/prompts/MM6_KICKOFF_FLOCK2_REBUILD_2026-06-03.md`](prompts/MM6_KICKOFF_FLOCK2_REBUILD_2026-06-03.md).
+Model + params pre-extracted in memory `project_flock2_reference`.
+
+**Key porting decisions (kickoff §"Porting decisions"):** quaternion bird state; ~7-topological-+-290°-FOV
+neighbour query; **unit/scale mapping** (Flock2 is metres / 5–18 m/s — must map to Phosphene's ±2 world,
+keep the ratios); drop the roost leash for the boundary term + a soft framing containment (static wide
+camera, design §9); port the heading controller faithfully, simplify the full aero only if a term has
+no visible effect.
+
+**Done when:** silence flock reproduces Flock2's qualitative behaviour (cohesive morphing mass +
+**emergent** travelling bands + feathered edge) vs references/clips; production-path tests green incl.
+the carried-forward cohesion-under-load invariant + per-route turn-desire firing; no absolute-threshold
+reads; continuous ≥ 2× beat; full suite green, lint 0, app builds; per-route firing evidence from a real
+recorded session; **Matt M7 live approval** (the load-bearing gate — not assertable headlessly).
 
 ---
 
