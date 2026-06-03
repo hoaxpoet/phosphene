@@ -193,6 +193,10 @@ fragment float4 fata_morgana_comp_fragment(
                       * (blueNoise.sample(nWrap, g / 256.0).r - 0.82), 0.0, 1.0);
 
     float3 ret = col + (gv * gv + (u.randPreset.xyz * (0.5 - uv.y)) * float3(0.0, 0.0, 1.0)) * (1.0 - m);
+    // Deepen blacks to the oracle's high-contrast register: a small black-point lift
+    // crushes the faint grey horizon/reflection haze to black, leaving the vivid neon
+    // spectra to pop on a dark field (a display-stage curve; the stars/glow survive).
+    ret = (ret - 0.055) * 1.13;
     return float4(saturate(ret), 1.0);
 }
 
