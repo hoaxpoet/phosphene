@@ -103,6 +103,34 @@ continuous drivers 2–4× the beat accents (Audio Data Hierarchy).
 | L5 | **Breathing** — whole-mass cohesion radius tightens (dark pulse) then releases | `vocals_energy_dev` | phrase | blackening / dilution |
 | L6 | **Sky warmth** (≤10%, secondary, never competes with the flock) | `spectral_centroid` | slow | dusk light |
 
+### 3.2 CARRY FORWARD the original Murmuration's audio coupling (binding — Matt 2026-06-03)
+
+The pre-MM `Particles.metal` (the original 5K-ellipse flock) was a parametric ellipse, **but its
+audio coupling was advanced and had days of tuning in it.** MM.3 **ports and adapts those proven
+mappings onto the boids substrate — it does NOT reinvent them from scratch** (doing so was the
+"starting over" / deja-vu mistake Matt flagged). The boids substrate (MM.2) is the genuinely-new
+piece; the audio *brain* is carried forward. Specifically, lift from the original:
+
+- **Drum turning-wave propagation** → this IS L2. The original's mechanic: `beatEpoch = floor(t·2.5)`
+  with per-epoch alternating `propDir`; a wave front `waveFront = 1 − beatPulse` sweeps a bird-flock
+  coordinate; a triangular bump `waveInfluence = max(0, 1 − |waveFront − birdCoord|/waveWidth)`
+  applies a **perpendicular** turning force. Port this as a banking/turn impulse propagating across a
+  flock-axis coordinate so the dark orientation band rolls across the mass. Don't redesign it.
+- **Bass → macro drift + shape elongation** (L1): the original drove `halfLength/halfWidth` + drift
+  from `rhythm`. On boids: bass displaces the roost target (drift) and elongates cohesion
+  anisotropically (comma/ribbon).
+- **"Other"/mid → edge-weighted flutter** (L4): original weighted flutter by `distFromCenter`
+  (periphery ≈4× core). On boids: weight by inverse `neighborCount` (already computed).
+- **Vocals → density compression / "dark pulse"** (L5): original `densityScale = 1 − vocals·0.22`.
+  On boids: tighten cohesion/separation radius → breathing.
+- **Warmup stem-blend** (D-019): `smoothstep(0.02, 0.06, totalStemEnergy)` crossfade from full-mix
+  FeatureVector routing to stem routing. Keep it.
+- **Cross-genre beat coverage** (FA #26): key the beat off `max(beatBass, beatMid, beatComposite)`,
+  not `beatBass` alone.
+
+All of the above must become **deviation primitives** (D-026) where the original used raw energy —
+that conversion is the one place MM.3 *improves* on the original rather than porting it verbatim.
+
 **Magnitudes (derived from the §2.1 clip analysis; final values tuned in MM.3):**
 - **L1 bass** → roost-attractor drift + elongation, smoothed over **~4–8 s** (matches the 5–12 s
   observed shape-change cadence); comma head:tail aspect up to **~3:1** at sustained high bass.

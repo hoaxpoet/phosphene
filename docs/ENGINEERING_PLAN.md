@@ -3095,6 +3095,15 @@ asserts it; 60fps-feasible at target count (perf validated in MM.4).
 continuous:beat ratio; produce per-route firing evidence from a real-music session
 (`features.csv`/`stems.csv`, via `PresetSessionReplay`) — evidence, not assertion.
 
+**CARRY FORWARD the original Murmuration's audio coupling (binding).** MM.3 ports and adapts the
+pre-MM `Particles.metal` proven audio mappings onto the boids substrate — it does NOT reinvent them
+(that was the "starting over" mistake Matt flagged 2026-06-03). The original's drum turning-wave
+propagation = L2 verbatim-in-mechanic; bass elongation = L1; edge-weighted "other" flutter = L4;
+vocals density-compression = L5; warmup stem-blend (D-019) + FA #26 cross-genre beat all kept. The
+one improvement over the original: convert raw energy → deviation primitives (D-026). See
+[`MURMURATION_DESIGN.md` §3.2](presets/MURMURATION_DESIGN.md). **Keep `ProceduralGeometry` /
+`Particles.metal` in the tree until MM.3 has ported its audio coupling** — it is the reference source.
+
 **Done when:** each route's firing is evidenced; ratio verified; no absolute-threshold reads remain.
 
 ---
