@@ -124,30 +124,9 @@ fragment float4 fata_morgana_warp_fragment(
     float2 t = (uv1 * u.texsize.xy) * 0.02;
     float2 lat = float2(cos(t.y * u.q1) * sin(-t.y),
                         sin(t.x)        * cos(t.y * u.q2));
-    if (u.gammaAdj != 2.0) {                              // dbg2: lattice off
-        uv1 = uv1 - (lat * u.texsize.zw) * 12.0;
-    }
+    uv1 = uv1 - (lat * u.texsize.zw) * 12.0;
 
-    // Decay tuned for SMOOTH flowing spectra (Matt M7 #5: blobs read as discrete
-    // PARTICLES at fast decay). A slower clear (~40-frame trail) smears the orbiting
-    // blobs into continuous flowing ribbons like the oracle; pure-hue saturation + the
-    // ceiling below keep the longer accumulation colourful + bounded (not the grey/white
-    // wash that slow decay caused before saturation).
-    float3 ret = prev.sample(fataWrap, uv1).rgb * 0.975 - 0.022;
-    // Hue-preserving ceiling on the FED-BACK field (FM.L2 stem uplift). The uplift's
-    // ~10 balanced additive blobs all orbit through screen-centre, so that region gets
-    // continuous injection and the feedback would creep to a white core over a sustained
-    // loud section. Capping the field's max channel to kFieldCeil keeps it a saturated
-    // bright COLOUR (never white) while preserving hue (scale all channels together).
-    // Fresh blob flares are drawn AFTER the warp, so they still punch above the ceiling
-    // on the displayed frame — only the accumulated feedback is bounded.
-    // Hue-preserving ceiling: caps the fed-back field's max channel so the slower-decay
-    // accumulation stays a saturated bright COLOUR, never washing to white at loud
-    // sections (Matt M7 #5 "overenergized"). Fresh blob flares draw after the warp so
-    // they still punch above it on the displayed frame.
-    constexpr float kFieldCeil = 0.85;
-    float mx = max(ret.r, max(ret.g, ret.b));
-    if (mx > kFieldCeil) { ret *= kFieldCeil / mx; }
+    float3 ret = prev.sample(fataWrap, uv1).rgb * 0.98 - 0.02;   // baked decay
     return float4(ret, 1.0);
 }
 
@@ -157,30 +136,11 @@ fragment float4 fata_morgana_warp_fragment(
 // A custom comp FULLY REPLACES fixed-function — no gamma/darken/echo/invert.
 // Shader `uv` is Y-flipped vs vUv. noise_hq → slot 5 (noiseHQ), pw_noise_lq →
 // slot 4 (noiseLQ). The `main` texture is the warped+shapes feedback target.
-
-// Procedural hash starfield — crisp scattered round points. Replaces the earlier
-// blue-noise-texture sample, which undersampled the 256² texture (tiled ~9× across the
-// frame) → Moiré aliasing that read as regular DIAGONAL streaks (Matt M7 #5/#6). A
-// per-cell hash places ~12 % of cells' stars at a random sub-position, so they scatter
-// (no lattice) with no texture sampling (no Moiré). `aspect` keeps cells square.
-static float fataStarfield(float2 uv, float aspect, float time) {
-    float2 grid = uv * float2(46.0 * aspect, 46.0) / max(aspect, 1.0);
-    float2 cell = floor(grid);
-    float2 f    = fract(grid);
-    float  h    = fract(sin(dot(cell, float2(127.1, 311.7))) * 43758.5453);
-    if (h < 0.91) { return 0.0; }                       // ~9 % of cells hold a star
-    float2 pos  = float2(fract(h * 7.13), fract(h * 13.7));
-    float  d    = length(f - pos);
-    float  tw   = 0.65 + 0.35 * sin(time * 2.0 + h * 40.0);   // gentle twinkle
-    return smoothstep(0.30, 0.0, d) * (0.5 + 0.5 * fract(h * 31.0)) * tw;
-}
-
 fragment float4 fata_morgana_comp_fragment(
     VertexOut              in        [[stage_in]],
     texture2d<float>       mainTex   [[texture(0)]],
     texture2d<float>       noiseLQ   [[texture(4)]],   // pw_noise_lq
     texture2d<float>       noiseHQ   [[texture(5)]],   // noise_hq
-    texture2d<float>       blueNoise [[texture(8)]],   // scattered point noise (the stars)
     constant FataUniforms& u         [[buffer(1)]]
 ) {
     constexpr sampler nWrap(filter::linear, address::repeat);
@@ -202,29 +162,17 @@ fragment float4 fata_morgana_comp_fragment(
     // Floor reflection sample of the feedback.
     float2 p = fract((uv1 * (1.0 - abs(uv1.x)) - 0.5) - (n.xy * 0.05) * m);
     float  xf = p.y - 0.52;
-    // Horizon glow → a BROADER colored mirage haze that CHANGES COLOUR over time (Matt
-    // M7 #5 + note: the oracle's haze cycles hue, slow_roam_sin-driven). Wider falloff
-    // (0.045 vs 0.02) reads as atmosphere not a thin line. slow_roam_sin is pale
-    // (0.5–0.95) → pure-saturate it so the haze is a VIVID hue that drifts through the
-    // colour wheel over the session (red→orange→teal→…), like the oracle.
-    float3 srs = u.slowRoamSin.xyz;
-    float  hmn = min(srs.r, min(srs.g, srs.b));
-    float  hmx = max(srs.r, max(srs.g, srs.b));
-    float3 hazeTint = (srs - hmn) / max(hmx - hmn, 1e-3);   // vivid, time-cycling hue
-    float dbg = u.gammaAdj;   // 0 = normal; diagnostic term isolation
-    float3 fieldCol = (dbg == 3.0) ? float3(0.0) : mainTex.sample(fataClamp, p).rgb;  // dbg3: no field
-    float3 hazeCol  = (dbg == 4.0) ? float3(0.0) : (0.045 / (0.045 + abs(xf))) * hazeTint;  // dbg4: no haze
-    float3 col = fieldCol + hazeCol;
+    float3 col = mainTex.sample(fataClamp, p).rgb
+               + (0.02 / (0.02 + abs(xf))) * u.slowRoamSin.xyz;   // horizon glow line
 
-    // Scattered STARS — procedural hash field (no texture sampling → no Moiré streaks).
-    float aspectR = u.texsize.x / max(u.texsize.y, 1.0);
-    float stars = (dbg == 1.0) ? 0.0 : fataStarfield(uv, aspectR, u.time);  // dbg1: no stars
-    if (dbg == 5.0) { return float4(float3(stars), 1.0); }   // isolate the starfield
+    // Neon grid.
+    float2x2 gm = float2x2(0.6, -0.8, 0.8, 0.6);        // columns (0.6,-0.8),(0.8,0.6)
+    float2 g  = 32.0 * ((uv * gm) + (col * 0.1).xy + u.time / 64.0);
+    float2 gt = abs(fract(g) - 0.5);
+    float  gv = clamp((0.25 / sqrt(dot(gt, gt)))
+                      * (noiseLQ.sample(nWrap, g / 256.0).r - 0.9), 0.0, 1.0);
 
-    float3 ret = col + (stars + (u.randPreset.xyz * (0.5 - uv.y)) * float3(0.0, 0.0, 1.0)) * (1.0 - m);
-    // Deepen blacks to the oracle's high-contrast register, but GENTLY so the warm
-    // horizon haze survives (the earlier aggressive lift crushed the mirage atmosphere).
-    ret = (ret - 0.03) * 1.08;
+    float3 ret = col + (gv * gv + (u.randPreset.xyz * (0.5 - uv.y)) * float3(0.0, 0.0, 1.0)) * (1.0 - m);
     return float4(saturate(ret), 1.0);
 }
 
@@ -276,38 +224,7 @@ vertex FataShapeVtxOut fata_shape_vertex(
     float time   = f.time;
     int   inst   = int(iid);
 
-    // ── STEM UPLIFT (D-139 / D-137 move): each spectrum cluster is an INSTRUMENT.
-    // The source sized blobs by AGC band attack (bass/mid/treb_att), but Phosphene's
-    // per-band AGC crushes mid (~5×) + treble (~20×) below bass → 9 of 10 blobs
-    // vanish + nothing visibly responds (Matt M7: "underpowered; don't see the music
-    // connection"). Drive instead from per-STEM deviation (D-026) — balanced across
-    // instruments + punchy: bass-blob ← BASS, mid-blobs ← DRUMS, treble-blobs ← VOCALS.
-    //   size  = grows with the instrument's energy (quiet → small, loud → big)
-    //   flare = brightness PULSE on the instrument's transient/beat (the visible "this
-    //           blob IS the drums") — additive over the saturated hue, returns to the
-    //           vivid baseline (a constant brightness multiply just clamps to white).
-    float stemE = 0.0, stemDev = 0.0, stemBeat = 0.0;
-    if (sp.shapeIndex == 1) {        stemE = st.drums_energy;  stemDev = st.drums_energy_dev;  stemBeat = st.drums_beat; }
-    else if (sp.shapeIndex == 2) {   stemE = st.bass_energy;   stemDev = st.bass_energy_dev;   stemBeat = st.bass_beat; }
-    else if (sp.shapeIndex == 3) {   stemE = st.vocals_energy; stemDev = st.vocals_energy_dev; stemBeat = st.vocals_beat; }
-    // Keep blobs MODEST: additive blobs that ORBIT don't accumulate, but oversized ones
-    // cover their whole orbit persistently and the feedback runs away to white (B →
-    // 50·S at equilibrium; S>0.02 blows up). Tight clamps keep size/flare in the range
-    // the source's att-sized blobs occupied — balanced across stems, punchy on dev.
-    // Total additive injection across all 10 (now-balanced) blobs must stay below what
-    // the warp decay (×0.98−0.02) can bound, or the field runs away to white. So keep a
-    // DIM, modest baseline and put the punch in TRANSIENT flares (brief dev/beat spikes
-    // that don't sustain accumulation). FM.L2 stem-uplift calibration vs white-out.
-    // LOW sustained baseline + punchy transients: keeps the feedback equilibrium SPARSE
-    // (dark moody field + localized vivid spectra, like the oracle) instead of filling
-    // to a wash. The blobs nearly vanish when their instrument is quiet and BLOOM on
-    // energy/transients — which is also the visible music connection (the blob IS the
-    // drums/bass/vocals). FM.L2 stem-uplift calibration.
-    float ed = max(0.0, stemDev);
-    float sizeFactor = clamp(0.12 + 0.9 * stemE + 0.55 * ed, 0.05, 1.4) * sp.audioBoost;
-    float flare      = clamp(0.4 + 0.5 * stemE + 1.0 * ed + 0.5 * stemBeat, 0.2, 2.6);
-
-    // ── per-instance frame_eqs (orbit + colour cycle, source verbatim) ───────────
+    // ── per-instance frame_eqs (source verbatim) ─────────────────────────────
     float x = 0.5, y = 0.5, rad = 0.1, ang = 0.0, aCenter = 1.0;
     float cyc = 0.5 * sp.frame;
     // colour cycle: r=sin(cyc), b=sin(cyc+2.094), g=sin(cyc+4.188)
@@ -316,51 +233,25 @@ vertex FataShapeVtxOut fata_shape_vertex(
                         0.5 + 0.5 * sin(cyc + 2.094));
     if (sp.shapeIndex == 0) {
         rad = 0.06623; ang = 0.02 * sp.frame; x = 0.5; y = 0.5;
-        col = float3(0.0); aCenter = 0.1;                 // faint textured echo (no audio)
-    } else if (sp.shapeIndex == 1) {                       // mid blobs ← DRUMS
+        col = float3(0.0); aCenter = 0.1;                 // faint textured echo
+    } else if (sp.shapeIndex == 1) {                       // mid blobs ← DRUMS stem
         float d = 0.7 * fataDiv(time, float(inst));
         x = 0.5 + 0.225 * sin(d); y = 0.5 + 0.3 * cos(d);
         x -= 0.4 * x * sin(time);  y -= 0.4 * y * cos(time);
-        rad = 0.1 * sizeFactor;
-    } else if (sp.shapeIndex == 2) {                       // bass blob ← BASS
+        rad = 0.1 * (st.drums_energy * sp.audioBoost);
+    } else if (sp.shapeIndex == 2) {                       // bass blob ← BASS stem
         x = 0.5 + 0.225 * sin(time + 2.09); y = 0.5 + 0.3 * cos(time + 2.09);
-        rad = 0.1 * sizeFactor;
-    } else {                                               // treble blobs ← VOCALS
+        rad = 0.1 * (st.bass_energy * sp.audioBoost);
+    } else {                                               // treb blobs ← VOCALS stem
         float d = fataDiv(time, float(inst));
         x = 0.5 + 0.225 * sin(d); y = 0.5 + 0.3 * cos(d);
         x += 0.4 * x * sin(time);  y += 0.4 * y * cos(time);
-        rad = 0.07419 * sizeFactor;
-    }
-
-    // DISPERSE the orbit centres (FM.L2 stem uplift). The source's blobs all orbit
-    // screen-centre — fine for the source's tiny att-blobs, but the uplift's balanced
-    // visible blobs all crossing one point pile additive injection there into a white
-    // core on sustained-loud (no decay rate clears a continuously-revisited point).
-    // A per-instance static offset spreads them across the horizon BAND (small Y spread
-    // keeps the sky dark/moody, spectra in the horizon+water zone) so injection is
-    // distributed → sparse equilibrium + a more oracle-like distributed composition.
-    if (sp.shapeIndex != 0) {
-        float gi = float(inst) * 1.7 + float(sp.shapeIndex) * 4.3;
-        x = 0.5 + (x - 0.5) * 0.45 + 0.30 * sin(gi);          // contract source orbit + spread X
-        y = 0.5 + (y - 0.5) * 0.40 + 0.10 * cos(gi * 1.3);    // keep near horizon band
+        rad = 0.07419 * (st.vocals_energy * sp.audioBoost);
     }
 
     float xn = x * 2.0 - 1.0;
     float yn = y * -2.0 + 1.0;     // butterchurn frame.y*-2+1 (y=0 → NDC top)
     float quarterPi = M_PI_F * 0.25;
-
-    // PURE-SATURATE the blob hue, THEN flare. The source colour is 0.5+0.5·sin —
-    // centred at 0.5, i.e. DESATURATED — and additive accumulation of a desaturated
-    // colour drives every channel toward white → the grey WASH (Matt M7: "dull palette,
-    // anemic spectra"). Additive accumulation of a PURE hue instead stays that colour
-    // (e.g. (1,0,0)+(1,0,0) clamps to red, never white) → vivid neon on black, like the
-    // oracle. Normalise to min→0 / max→1 (saturation = 1), then scale by the flare.
-    if (sp.shapeIndex != 0) {
-        float mn = min(col.r, min(col.g, col.b));
-        float mx = max(col.r, max(col.g, col.b));
-        col = (col - mn) / max(mx - mn, 1e-3);     // pure saturated hue
-        col *= flare;
-    }
 
     FataShapeVtxOut out;
     out.textured = (sp.shapeIndex == 0) ? 1.0 : 0.0;
@@ -397,11 +288,10 @@ fragment float4 fata_shape_fragment(
 // MARK: - Blur fragment (butterchurn blur1 approximation)
 //
 // Phosphene has no blur-mip chain; approximate butterchurn's `blur1` (the warp's
-// low-frequency feedback read) with a 9-tap gaussian of the prev frame, stored in
-// colour space so the warp's scale1=1 / bias1=0. The warp only uses blur1 for a
-// luma-weighted rotation/displacement, so a smooth low-pass suffices. (A much wider
-// blur was tried for the fill gap — it did not spread the field; the fill gap is a
-// deeper feedback-transport issue, not blur width. FM.L2.)
+// low-frequency feedback read) with a 9-tap separable-ish gaussian of the prev
+// frame, stored in colour space so the warp's scale1=1 / bias1=0. Radius ≈ a few
+// px; the warp only uses blur1 for a luma-weighted rotation/displacement, so an
+// exact gaussian isn't needed — a smooth low-pass is.
 fragment float4 fata_morgana_blur_fragment(
     VertexOut              in   [[stage_in]],
     texture2d<float>       src  [[texture(0)]],
