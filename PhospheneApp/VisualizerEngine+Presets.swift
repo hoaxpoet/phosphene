@@ -348,12 +348,17 @@ extension VisualizerEngine {
                 // MUST match PresetLoader.feedbackFormat (the format the warp/compose/
                 // scene pipelines were compiled for) or the render encoder gets an
                 // attachment-format mismatch and the GPU stalls.
+                // Fata Morgana (D-139): LINEAR feedback (.bgra8Unorm) matching butterchurn
+                // + PresetLoader.feedbackFormat — MUST match the format the pipelines were
+                // compiled for or the GPU stalls (the D-138 attachment-mismatch pitfall).
+                let fbFormat: MTLPixelFormat = desc.name == "Fata Morgana"
+                    ? .bgra8Unorm : context.pixelFormat
                 let bundle = MVWarpPipelineBundle(
                     warpState: warpPipelines.warpState,
                     composeState: warpPipelines.composeState,
                     blitState: warpPipelines.blitState,
                     pixelFormat: context.pixelFormat,
-                    feedbackFormat: context.pixelFormat,
+                    feedbackFormat: fbFormat,
                     // Fata Morgana (D-139): non-nil ⇒ the render pipeline runs the fata
                     // branch (blur → custom warp → mirage comp). nil for every other
                     // mv_warp preset (their libraries define no `*_blur_fragment`).

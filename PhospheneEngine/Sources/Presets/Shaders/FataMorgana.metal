@@ -285,29 +285,32 @@ fragment float4 fata_shape_fragment(
     return in.color;                                       // additive blob colour
 }
 
-// MARK: - Blur fragment (butterchurn blur1 approximation)
+// MARK: - Blur fragment (butterchurn blur1 — wide downsampled gaussian)
 //
-// Phosphene has no blur-mip chain; approximate butterchurn's `blur1` (the warp's
-// low-frequency feedback read) with a 9-tap separable-ish gaussian of the prev
-// frame, stored in colour space so the warp's scale1=1 / bias1=0. Radius ≈ a few
-// px; the warp only uses blur1 for a luma-weighted rotation/displacement, so an
-// exact gaussian isn't needed — a smooth low-pass is.
+// butterchurn's blur1 is a separable gaussian rendered at ~1/4 resolution (blurRatios
+// ≈ 0.25) + mipmapped — a genuinely WIDE low-pass. The warp reads it for its rotation
+// + displacement, so the width is load-bearing: a wide blur1 → COHERENT large-scale
+// warp displacement → the orbiting blobs smear into smooth flowing RIBBONS (the
+// oracle). A narrow blur (the earlier 3×3) gave incoherent small-scale motion → the
+// blobs stayed discrete particles. This fragment renders into the 1/4-res blurTexture
+// and box-downsamples the full-res feedback with a 5×5 gaussian whose taps step in
+// QUARTER-res texels (×4 the full-res texel) → ≈±12-texel radius; the 1/4-res store +
+// the warp's bilinear read widen it further. Output in colour space (warp scale1=1).
 fragment float4 fata_morgana_blur_fragment(
     VertexOut              in   [[stage_in]],
     texture2d<float>       src  [[texture(0)]],
     constant FataUniforms& u    [[buffer(1)]]
 ) {
-    float2 px = u.texsize.zw;                            // 1/size
+    float2 step = u.texsize.zw * 6.0;                    // ~6 full-res texels per tap
+    const float w1d[5] = { 1.0, 4.0, 6.0, 4.0, 1.0 };   // separable gaussian
     float3 acc = float3(0.0);
-    // 3×3 gaussian (1 2 1 / 2 4 2 / 1 2 1) / 16, radius 2 px.
-    const float w[9] = { 1, 2, 1, 2, 4, 2, 1, 2, 1 };
-    int i = 0;
-    for (int dy = -1; dy <= 1; dy++) {
-        for (int dx = -1; dx <= 1; dx++) {
-            float2 o = float2(float(dx), float(dy)) * px * 2.0;
-            acc += src.sample(fataClamp, in.uv + o).rgb * w[i];
-            i++;
+    float  wsum = 0.0;
+    for (int dy = -2; dy <= 2; dy++) {
+        for (int dx = -2; dx <= 2; dx++) {
+            float wt = w1d[dx + 2] * w1d[dy + 2];
+            acc += src.sample(fataClamp, in.uv + float2(float(dx), float(dy)) * step).rgb * wt;
+            wsum += wt;
         }
     }
-    return float4(acc / 16.0, 1.0);
+    return float4(acc / wsum, 1.0);
 }

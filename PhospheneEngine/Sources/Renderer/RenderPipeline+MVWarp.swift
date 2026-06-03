@@ -52,10 +52,14 @@ extension RenderPipeline {
                                  composeTex: composeTex,
                                  sceneTex: sceneTex)
 
-        // Fata Morgana (D-139): the blur-of-prev target (only when the preset
-        // compiled a blur pipeline).
+        // Fata Morgana (D-139): the blur-of-prev target at 1/4 RESOLUTION — butterchurn's
+        // blur1 is a downsampled separable gaussian (blurRatios ~0.25), and the
+        // downsample + the warp's bilinear read are what make it a WIDE low-pass (which
+        // drives the warp's coherent large-scale smearing of the blobs into ribbons). A
+        // full-res blur was too narrow (blobs stayed discrete particles).
+        let blurW = max(width / 4, 1), blurH = max(height / 4, 1)
         let blurTex = bundle.blurState != nil
-            ? makeWarpTexture(width: width, height: height, format: bundle.feedbackFormat)
+            ? makeWarpTexture(width: blurW, height: blurH, format: bundle.feedbackFormat)
             : nil
         if let blurTex { clearWarpTexturesToBlack(warpTex: blurTex, composeTex: blurTex, sceneTex: blurTex) }
 
