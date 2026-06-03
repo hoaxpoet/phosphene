@@ -91,6 +91,10 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// M7 #4 — and the test-prod gap: the old diag passed 6 while production was 1.0);
     /// 6.0 scales them to the oracle's prominence. The diag sweeps it via FATA_BOOST.
     var fataShapeSizeGain: Float = 4.0
+    /// Diagnostic term-isolation selector (FM.L2), passed to the fata shaders via the
+    /// unused gammaAdj uniform channel. 0 = normal (production). The diag sets it from
+    /// FATA_DEBUG to switch individual warp/comp terms off and locate artifacts.
+    var fataDebugMode: Float = 0
 
     // MARK: - Live Audio Features
 
