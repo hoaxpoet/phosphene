@@ -57,19 +57,29 @@ public final class PresetLoader: @unchecked Sendable {
         /// butterchurn `blur1` approximation Fata Morgana's custom warp reads. nil for
         /// presets that don't define a blur fragment (Dragon Bloom, default). D-139.
         public let blurState: MTLRenderPipelineState?
+        /// Optional Fata Morgana custom-shape pipelines (FM.L2): the additive (neon
+        /// blobs) and normal-blend (textured echo) variants of `fata_shape_vertex` /
+        /// `fata_shape_fragment`, drawn on top of the warp target. nil unless the
+        /// preset library defines the shape functions. D-139.
+        public let shapeAdditiveState: MTLRenderPipelineState?
+        public let shapeNormalState: MTLRenderPipelineState?
 
         public init(
             warpState: MTLRenderPipelineState,
             composeState: MTLRenderPipelineState,
             blitState: MTLRenderPipelineState,
             sceneGeometryState: MTLRenderPipelineState? = nil,
-            blurState: MTLRenderPipelineState? = nil
+            blurState: MTLRenderPipelineState? = nil,
+            shapeAdditiveState: MTLRenderPipelineState? = nil,
+            shapeNormalState: MTLRenderPipelineState? = nil
         ) {
             self.warpState = warpState
             self.composeState = composeState
             self.blitState = blitState
             self.sceneGeometryState = sceneGeometryState
             self.blurState = blurState
+            self.shapeAdditiveState = shapeAdditiveState
+            self.shapeNormalState = shapeNormalState
         }
     }
 
@@ -705,31 +715,58 @@ public final class PresetLoader: @unchecked Sendable {
         blitDesc.vertexFunction = fullscreenVtx
         blitDesc.fragmentFunction = blitFragFn
         blitDesc.colorAttachments[0].pixelFormat = pixelFormat
-        // Optional blur-of-prev pipeline (Fata Morgana, D-139): renders a low-pass of
-        // the previous feedback frame into a feedbackFormat texture.
-        var blurDesc: MTLRenderPipelineDescriptor?
-        if let blurFn = blurFn {
-            let blurPipeDesc = MTLRenderPipelineDescriptor()
-            blurPipeDesc.vertexFunction = fullscreenVtx
-            blurPipeDesc.fragmentFunction = blurFn
-            blurPipeDesc.colorAttachments[0].pixelFormat = fbFormat
-            blurDesc = blurPipeDesc
-        }
         do {
             let warpState    = try device.makeRenderPipelineState(descriptor: warpDesc)
             let composeState = try device.makeRenderPipelineState(descriptor: composeDesc)
             let blitState    = try device.makeRenderPipelineState(descriptor: blitDesc)
-            let blurState    = try blurDesc.map { try device.makeRenderPipelineState(descriptor: $0) }
+            // Optional Fata Morgana aux pipelines (D-139): blur-of-prev + the two
+            // custom-shape blend variants. (nil for every other mv_warp preset.)
+            let blurState = try blurFn.map { fn -> MTLRenderPipelineState in
+                let bd = MTLRenderPipelineDescriptor()
+                bd.vertexFunction = fullscreenVtx; bd.fragmentFunction = fn
+                bd.colorAttachments[0].pixelFormat = fbFormat
+                return try device.makeRenderPipelineState(descriptor: bd)
+            }
+            let (shapeAdd, shapeNorm) = try makeFataShapeStates(library: library, fbFormat: fbFormat)
             return MVWarpCompiledPipelines(
                 warpState: warpState,
                 composeState: composeState,
                 blitState: blitState,
-                blurState: blurState
+                blurState: blurState,
+                shapeAdditiveState: shapeAdd,
+                shapeNormalState: shapeNorm
             )
         } catch {
             logger.error("mv_warp pipeline creation failed for \(url.lastPathComponent): \(error)")
             return nil
         }
+    }
+
+    /// Build the optional Fata Morgana custom-shape pipelines (FM.L2, D-139) — additive
+    /// (neon blobs) + normal-blend (textured echo). Both use `fata_shape_vertex` /
+    /// `fata_shape_fragment` rendering into the feedback target; they differ only in
+    /// blend. Returns (nil, nil) when the preset library lacks the shape functions.
+    private func makeFataShapeStates(
+        library: MTLLibrary, fbFormat: MTLPixelFormat
+    ) throws -> (MTLRenderPipelineState?, MTLRenderPipelineState?) {
+        guard let shapeVtx = library.makeFunction(name: "fata_shape_vertex"),
+              let shapeFrag = library.makeFunction(name: "fata_shape_fragment")
+        else { return (nil, nil) }
+        func state(additive: Bool) throws -> MTLRenderPipelineState {
+            let sd = MTLRenderPipelineDescriptor()
+            sd.vertexFunction = shapeVtx
+            sd.fragmentFunction = shapeFrag
+            sd.colorAttachments[0].pixelFormat = fbFormat
+            sd.colorAttachments[0].isBlendingEnabled = true
+            sd.colorAttachments[0].rgbBlendOperation = .add
+            sd.colorAttachments[0].alphaBlendOperation = .add
+            sd.colorAttachments[0].sourceRGBBlendFactor = .sourceAlpha
+            sd.colorAttachments[0].sourceAlphaBlendFactor = .sourceAlpha
+            sd.colorAttachments[0].destinationRGBBlendFactor = additive ? .one : .oneMinusSourceAlpha
+            sd.colorAttachments[0].destinationAlphaBlendFactor = additive ? .one : .oneMinusSourceAlpha
+            return try device.makeRenderPipelineState(descriptor: sd)
+        }
+        return (try state(additive: true), try state(additive: false))
     }
 
     private func makeRayMarchPrimaryPipeline(
@@ -787,7 +824,9 @@ public final class PresetLoader: @unchecked Sendable {
                 composeState: warpPipelines.composeState,
                 blitState: warpPipelines.blitState,
                 sceneGeometryState: strand,
-                blurState: warpPipelines.blurState
+                blurState: warpPipelines.blurState,
+                shapeAdditiveState: warpPipelines.shapeAdditiveState,
+                shapeNormalState: warpPipelines.shapeNormalState
             )
             return CompiledShader(standard: state, mvWarp: warp)
         } catch {

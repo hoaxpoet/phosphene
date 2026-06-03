@@ -34,7 +34,39 @@ struct FataUniforms {
     var texsize: SIMD4<Float> = .init(1, 1, 1, 1)
     var roamSin: SIMD4<Float> = .init(repeating: 0.5)
     var slowRoamSin: SIMD4<Float> = .init(repeating: 0.5)
-    var randPreset: SIMD4<Float> = .init(0.37, 0.61, 0.52, 0.91)
+    // rand_preset is RANDOM per-load in butterchurn (only its .z scales the sky's
+    // blue gradient via `rand_preset*(0.5-uv.y)*vec3(0,0,1)`). The faithful oracle's
+    // load had a low blue (near-black starfield sky); a high .z drowns the stars in
+    // a blue wash. Fixed to a low value to match the oracle's dark-sky register.
+    var randPreset: SIMD4<Float> = .init(0.30, 0.40, 0.14, 0.60)
+}
+
+// MARK: - FataShapeParams (matches `struct FataShapeParams` in FataMorgana.metal)
+
+/// 32-byte per-shape uniform bound at vertex buffer(1) of the shape draw.
+struct FataShapeParams {
+    var shapeIndex: Int32
+    var sides: Int32
+    var numInst: Int32
+    var frame: Float
+    var aspectY: Float
+    var audioBoost: Float
+    var pad0: Float = 0
+    var pad1: Float = 0
+}
+
+/// The 4 fata shapes' fixed config (sides + instance count). Shape 0 = textured echo
+/// (normal blend), 1/2/3 = mid/bass/treb additive blobs. D-139.
+struct FataShapeDraw {
+    let shapeIndex: Int32
+    let sides: Int32
+    let numInst: Int32
+    static let all: [FataShapeDraw] = [
+        FataShapeDraw(shapeIndex: 0, sides: 30, numInst: 1),
+        FataShapeDraw(shapeIndex: 1, sides: 40, numInst: 4),
+        FataShapeDraw(shapeIndex: 2, sides: 40, numInst: 1),
+        FataShapeDraw(shapeIndex: 3, sides: 40, numInst: 5),
+    ]
 }
 
 extension RenderPipeline {
@@ -94,6 +126,7 @@ extension RenderPipeline {
         stemFeatures: StemFeatures,
         warpState: MVWarpState
     ) {
+        fataFrame &+= 1
         var uni = computeFataUniforms(features: features)
 
         // ── Blur pass: blur(prev) → blurTexture (the warp's `blur1`) ──────────
@@ -132,7 +165,8 @@ extension RenderPipeline {
             enc.endEncoding()
         }
 
-        // ── Shapes on top of composeTexture (L2 — not yet) ────────────────────
+        // ── Shapes on top of composeTexture (FM.L2; = the feedback) ───────────
+        encodeFataShapes(commandBuffer: commandBuffer, warpState: warpState, features: features)
 
         // ── Comp blit: mirage(compose, noise, u) → drawable ───────────────────
         guard let drawable = view.currentDrawable,
@@ -157,4 +191,54 @@ extension RenderPipeline {
             mvWarpState = state
         }
     }
+
+    // MARK: Shapes (FM.L2)
+
+    /// Draw the 4 custom shapes on top of the warped composeTexture (= the feedback).
+    /// Shape 0 (normal-blend textured echo, samples the prev frame), then the 3
+    /// additive neon blobs sized by mid/bass/treb attack. One render pass, pipeline
+    /// switched per shape. (Faithful to butterchurn's draw order: 0,1,2,3.)
+    @MainActor
+    func encodeFataShapes(
+        commandBuffer: MTLCommandBuffer,
+        warpState: MVWarpState,
+        features: FeatureVector
+    ) {
+        let (additive, normal) = mvWarpLock.withLock { (fataShapeAdditive, fataShapeNormal) }
+        guard let additive, let normal else { return }
+
+        let desc = MTLRenderPassDescriptor()
+        desc.colorAttachments[0].texture = warpState.composeTexture
+        desc.colorAttachments[0].loadAction = .load       // keep the warped feedback
+        desc.colorAttachments[0].storeAction = .store
+        guard let enc = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
+
+        let sz = mvWarpDrawableSize
+        let aspectY = Float(min(sz.width, sz.height)) / Float(max(sz.width, sz.height))
+        let boost = RenderPipeline.fataShapeAudioBoost
+        var feat = features
+        enc.setVertexBytes(&feat, length: MemoryLayout<FeatureVector>.stride, index: 0)
+        enc.setFragmentTexture(warpState.warpTexture, index: 0)   // prev frame, for shape 0 texturing
+
+        // Draw order 0,1,2,3 (faithful to butterchurn): textured echo, then mid/bass/treb blobs.
+        for shape in FataShapeDraw.all {
+            enc.setRenderPipelineState(shape.shapeIndex == 0 ? normal : additive)
+            var params = FataShapeParams(
+                shapeIndex: shape.shapeIndex,
+                sides: shape.sides,
+                numInst: shape.numInst,
+                frame: Float(fataFrame),
+                aspectY: aspectY,
+                audioBoost: boost)
+            enc.setVertexBytes(&params, length: MemoryLayout<FataShapeParams>.stride, index: 1)
+            let vc = Int(shape.sides) * 3, ic = Int(shape.numInst)
+            enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: vc, instanceCount: ic)
+        }
+        enc.endEncoding()
+    }
+
+    /// Multiplies the band attack driving the blob radii. butterchurn feeds
+    /// 6×-boosted audio (D-138); start at 1.0 against Phosphene's attack values and
+    /// tune against the oracle at M7.
+    static let fataShapeAudioBoost: Float = 1.0
 }

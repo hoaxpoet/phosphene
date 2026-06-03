@@ -391,6 +391,13 @@ extension VisualizerEngine {
                     pipeline.setMVWarpPost(invert: 0.0, echo: 0.0, gamma: 1.0)
                 }
 
+                // Fata Morgana (D-139, FM.L2): wire the custom-shape pipelines (the
+                // fata draw branch keys on the blur pipeline; the shapes draw on top of
+                // the warp target). nil/nil for every other mv_warp preset.
+                pipeline.setFataShapePipelines(
+                    additive: warpPipelines.shapeAdditiveState,
+                    normal: warpPipelines.shapeNormalState)
+
                 // Arachne-specific: allocate web pool + spider buffer and wire tick + fragment buffers.
                 if desc.name == "Arachne" {
                     if let state = ArachneState(device: context.device) {
