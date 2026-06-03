@@ -115,6 +115,7 @@ extension RenderPipeline {
         let rott = Float.pi * fataP2 / 4.0
         uni.q1 = cos(rott)
         uni.q2 = sin(rott)
+        uni.gammaAdj = fataDebugMode    // diagnostic term-isolation (0 = normal)
         return uni
     }
 

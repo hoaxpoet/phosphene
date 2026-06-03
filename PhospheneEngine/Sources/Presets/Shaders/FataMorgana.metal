@@ -179,6 +179,14 @@ fragment float4 fata_morgana_comp_fragment(
                       * (blueNoise.sample(pwWrap, g / 256.0).r - 0.9), 0.0, 1.0);
 
     float3 ret = col + (gv * gv + (u.randPreset.xyz * (0.5 - uv.y)) * float3(0.0, 0.0, 1.0)) * (1.0 - m);
+
+    // ── Diagnostic term isolation (u.gammaAdj carries fataDebugMode; 0 = normal) ──
+    // 1: field reflection only (main(p), no glow/stars)  2: glow only  3: raw field at uv
+    if (u.gammaAdj > 0.5) {
+        if (u.gammaAdj < 1.5) return float4(mainTex.sample(fataClamp, p).rgb, 1.0);
+        if (u.gammaAdj < 2.5) return float4((0.02 / (0.02 + abs(xf))) * u.slowRoamSin.xyz, 1.0);
+        return float4(mainTex.sample(fataClamp, in.uv).rgb, 1.0);
+    }
     return float4(saturate(ret), 1.0);
 }
 
@@ -194,8 +202,14 @@ fragment float4 fata_morgana_comp_fragment(
 // Drawn ON TOP of the warped composeTexture (= the feedback), like DB strands.
 //
 // Per-instance frame_eqs transcribed from source (orbit + colour cycle); the 3
-// additive shapes' radius = baseVals.rad × the band attack (the source uses
-// {mid,bass,treb}_att — that IS the faithful copy; the stem map is the L-uplift).
+// additive shapes' radius = baseVals.rad × the band attack. The source uses
+// {mid,bass,treb}_att — a ~1.0-centred peak-follower that spikes on transients and
+// decays between them. The faithful Phosphene analog is `(1 + *_energy_dev)` (D-026):
+// `_energy_dev` is the deviation about the running average, so `1 + dev` ≡ `_energy_rel`
+// ≡ `_att` (~1.0 baseline, spikes on hits). max(0,·) clamps the rare sub-baseline dip.
+// This was the AGC `*_energy` (~0.5-centred, steady) ×gain-5 before — which kept blobs
+// continuously oversized so the additive feedback never decayed dark (gray-wash). The
+// stem map (drums/bass/vocals) is the L-uplift.
 
 struct FataShapeParams {
     int   shapeIndex;   // 0 textured echo, 1 mid, 2 bass, 3 treb
@@ -244,15 +258,15 @@ vertex FataShapeVtxOut fata_shape_vertex(
         float d = 0.7 * fataDiv(time, float(inst));
         x = 0.5 + 0.225 * sin(d); y = 0.5 + 0.3 * cos(d);
         x -= 0.4 * x * sin(time);  y -= 0.4 * y * cos(time);
-        rad = 0.1 * (st.drums_energy * sp.audioBoost);
+        rad = 0.1 * (max(0.0, 1.0 + st.drums_energy_dev) * sp.audioBoost);
     } else if (sp.shapeIndex == 2) {                       // bass blob ← BASS stem
         x = 0.5 + 0.225 * sin(time + 2.09); y = 0.5 + 0.3 * cos(time + 2.09);
-        rad = 0.1 * (st.bass_energy * sp.audioBoost);
+        rad = 0.1 * (max(0.0, 1.0 + st.bass_energy_dev) * sp.audioBoost);
     } else {                                               // treb blobs ← VOCALS stem
         float d = fataDiv(time, float(inst));
         x = 0.5 + 0.225 * sin(d); y = 0.5 + 0.3 * cos(d);
         x += 0.4 * x * sin(time);  y += 0.4 * y * cos(time);
-        rad = 0.07419 * (st.vocals_energy * sp.audioBoost);
+        rad = 0.07419 * (max(0.0, 1.0 + st.vocals_energy_dev) * sp.audioBoost);
     }
 
     float xn = x * 2.0 - 1.0;
