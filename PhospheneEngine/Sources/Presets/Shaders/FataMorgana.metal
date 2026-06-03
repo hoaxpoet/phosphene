@@ -126,11 +126,12 @@ fragment float4 fata_morgana_warp_fragment(
                         sin(t.x)        * cos(t.y * u.q2));
     uv1 = uv1 - (lat * u.texsize.zw) * 12.0;
 
-    // FAST decay (uplift): clears the field in ~15 frames so it stays DARK between blob
-    // passes — vivid fresh saturated blobs on black (the oracle's look), short comet
-    // trails, no accumulation-to-bright. (Source ×0.98−0.02 accumulated to a wash with
-    // the uplift's balanced blobs; faster clear + pure-hue saturation gives dark+vivid.)
-    float3 ret = prev.sample(fataWrap, uv1).rgb * 0.93 - 0.05;
+    // Decay tuned for SMOOTH flowing spectra (Matt M7 #5: blobs read as discrete
+    // PARTICLES at fast decay). A slower clear (~40-frame trail) smears the orbiting
+    // blobs into continuous flowing ribbons like the oracle; pure-hue saturation + the
+    // ceiling below keep the longer accumulation colourful + bounded (not the grey/white
+    // wash that slow decay caused before saturation).
+    float3 ret = prev.sample(fataWrap, uv1).rgb * 0.975 - 0.022;
     // Hue-preserving ceiling on the FED-BACK field (FM.L2 stem uplift). The uplift's
     // ~10 balanced additive blobs all orbit through screen-centre, so that region gets
     // continuous injection and the feedback would creep to a white core over a sustained
@@ -138,9 +139,11 @@ fragment float4 fata_morgana_warp_fragment(
     // bright COLOUR (never white) while preserving hue (scale all channels together).
     // Fresh blob flares are drawn AFTER the warp, so they still punch above the ceiling
     // on the displayed frame — only the accumulated feedback is bounded.
-    // Pure-hue blobs keep the field saturated (not white), so the ceiling is now just an
-    // overflow guard near 1.0 — it preserves the vivid colour, only trimming pure white.
-    constexpr float kFieldCeil = 0.99;
+    // Hue-preserving ceiling: caps the fed-back field's max channel so the slower-decay
+    // accumulation stays a saturated bright COLOUR, never washing to white at loud
+    // sections (Matt M7 #5 "overenergized"). Fresh blob flares draw after the warp so
+    // they still punch above it on the displayed frame.
+    constexpr float kFieldCeil = 0.85;
     float mx = max(ret.r, max(ret.g, ret.b));
     if (mx > kFieldCeil) { ret *= kFieldCeil / mx; }
     return float4(ret, 1.0);
@@ -179,24 +182,29 @@ fragment float4 fata_morgana_comp_fragment(
     // Floor reflection sample of the feedback.
     float2 p = fract((uv1 * (1.0 - abs(uv1.x)) - 0.5) - (n.xy * 0.05) * m);
     float  xf = p.y - 0.52;
+    // Horizon glow → a BROADER colored mirage haze that CHANGES COLOUR over time (Matt
+    // M7 #5 + note: the oracle's haze cycles hue, slow_roam_sin-driven). Wider falloff
+    // (0.045 vs 0.02) reads as atmosphere not a thin line. slow_roam_sin is pale
+    // (0.5–0.95) → pure-saturate it so the haze is a VIVID hue that drifts through the
+    // colour wheel over the session (red→orange→teal→…), like the oracle.
+    float3 srs = u.slowRoamSin.xyz;
+    float  hmn = min(srs.r, min(srs.g, srs.b));
+    float  hmx = max(srs.r, max(srs.g, srs.b));
+    float3 hazeTint = (srs - hmn) / max(hmx - hmn, 1e-3);   // vivid, time-cycling hue
     float3 col = mainTex.sample(fataClamp, p).rgb
-               + (0.02 / (0.02 + abs(xf))) * u.slowRoamSin.xyz;   // horizon glow line
+               + (0.045 / (0.045 + abs(xf))) * hazeTint;
 
-    // Neon grid → scattered STARS. Source samples pw_noise_lq (a point-wrap noise
-    // with many high values); Phosphene's noiseLQ is smooth FBM that rarely exceeds
-    // the 0.9 gate (→ no stars), so use the scattered blueNoise instead — its high
-    // values are spatially isolated, giving crisp star points along the grid.
-    float2x2 gm = float2x2(0.6, -0.8, 0.8, 0.6);        // columns (0.6,-0.8),(0.8,0.6)
-    float2 g  = 32.0 * ((uv * gm) + (col * 0.1).xy + u.time / 64.0);
-    float2 gt = abs(fract(g) - 0.5);
-    float  gv = clamp((0.25 / sqrt(dot(gt, gt)))
-                      * (blueNoise.sample(nWrap, g / 256.0).r - 0.82), 0.0, 1.0);
+    // Scattered STARS (Matt M7 #5: the grid term read as a regular diagonal lattice).
+    // Sample the scattered blueNoise directly over uv (no rotated grid) + threshold for
+    // sparse points → random star positions, slow drift. Sky only (1-m).
+    float2 starUV = uv * float2(9.0, 5.0) + float2(u.time * 0.003, 0.0);
+    float  starN = blueNoise.sample(nWrap, starUV).r;
+    float  stars = smoothstep(0.90, 0.99, starN);
 
-    float3 ret = col + (gv * gv + (u.randPreset.xyz * (0.5 - uv.y)) * float3(0.0, 0.0, 1.0)) * (1.0 - m);
-    // Deepen blacks to the oracle's high-contrast register: a small black-point lift
-    // crushes the faint grey horizon/reflection haze to black, leaving the vivid neon
-    // spectra to pop on a dark field (a display-stage curve; the stars/glow survive).
-    ret = (ret - 0.055) * 1.13;
+    float3 ret = col + (stars + (u.randPreset.xyz * (0.5 - uv.y)) * float3(0.0, 0.0, 1.0)) * (1.0 - m);
+    // Deepen blacks to the oracle's high-contrast register, but GENTLY so the warm
+    // horizon haze survives (the earlier aggressive lift crushed the mirage atmosphere).
+    ret = (ret - 0.03) * 1.08;
     return float4(saturate(ret), 1.0);
 }
 

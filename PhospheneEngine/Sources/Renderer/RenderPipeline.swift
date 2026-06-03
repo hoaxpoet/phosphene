@@ -90,7 +90,7 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// stem energy (~0.27) the per-instrument sizeFactor alone gives anemic blobs (Matt
     /// M7 #4 — and the test-prod gap: the old diag passed 6 while production was 1.0);
     /// 6.0 scales them to the oracle's prominence. The diag sweeps it via FATA_BOOST.
-    var fataShapeSizeGain: Float = 6.0
+    var fataShapeSizeGain: Float = 4.0
 
     // MARK: - Live Audio Features
 
