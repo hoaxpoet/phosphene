@@ -141,6 +141,7 @@ fragment float4 fata_morgana_comp_fragment(
     texture2d<float>       mainTex   [[texture(0)]],
     texture2d<float>       noiseLQ   [[texture(4)]],   // pw_noise_lq
     texture2d<float>       noiseHQ   [[texture(5)]],   // noise_hq
+    texture2d<float>       blueNoise [[texture(8)]],   // scattered point noise (the stars)
     constant FataUniforms& u         [[buffer(1)]]
 ) {
     constexpr sampler nWrap(filter::linear, address::repeat);
@@ -165,12 +166,15 @@ fragment float4 fata_morgana_comp_fragment(
     float3 col = mainTex.sample(fataClamp, p).rgb
                + (0.02 / (0.02 + abs(xf))) * u.slowRoamSin.xyz;   // horizon glow line
 
-    // Neon grid.
+    // Neon grid → scattered STARS. Source samples pw_noise_lq (a point-wrap noise
+    // with many high values); Phosphene's noiseLQ is smooth FBM that rarely exceeds
+    // the 0.9 gate (→ no stars), so use the scattered blueNoise instead — its high
+    // values are spatially isolated, giving crisp star points along the grid.
     float2x2 gm = float2x2(0.6, -0.8, 0.8, 0.6);        // columns (0.6,-0.8),(0.8,0.6)
     float2 g  = 32.0 * ((uv * gm) + (col * 0.1).xy + u.time / 64.0);
     float2 gt = abs(fract(g) - 0.5);
     float  gv = clamp((0.25 / sqrt(dot(gt, gt)))
-                      * (noiseLQ.sample(nWrap, g / 256.0).r - 0.9), 0.0, 1.0);
+                      * (blueNoise.sample(nWrap, g / 256.0).r - 0.82), 0.0, 1.0);
 
     float3 ret = col + (gv * gv + (u.randPreset.xyz * (0.5 - uv.y)) * float3(0.0, 0.0, 1.0)) * (1.0 - m);
     return float4(saturate(ret), 1.0);

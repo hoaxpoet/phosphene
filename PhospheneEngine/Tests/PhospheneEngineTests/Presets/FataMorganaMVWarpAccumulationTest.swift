@@ -126,6 +126,7 @@ struct FataMorganaMVWarpAccumulationTest {
         // path; the live app uses true bassAtt and Matt's M7 is the fidelity gate).
         let rows = Self.loadSessionBands()
         let offset = ProcessInfo.processInfo.environment["FATA_SESSION_OFFSET"].flatMap { Int($0) } ?? 700
+        let boost = ProcessInfo.processInfo.environment["FATA_BOOST"].flatMap { Float($0) } ?? 3.5
         let frames = Self.frameCount
         let aspectY = Float(min(wPix, hPix)) / Float(max(wPix, hPix))
         let shapeCfg: [(Int32, Int32, Int32, MTLRenderPipelineState?)] = [
@@ -177,7 +178,7 @@ struct FataMorganaMVWarpAccumulationTest {
                     guard let pipe else { continue }
                     enc.setRenderPipelineState(pipe)
                     var params = FataShapeParams(shapeIndex: idx, sides: sides, numInst: numInst,
-                                                 frame: Float(i), aspectY: aspectY, audioBoost: 1.0)
+                                                 frame: Float(i), aspectY: aspectY, audioBoost: boost)
                     enc.setVertexBytes(&params, length: MemoryLayout<FataShapeParams>.stride, index: 1)
                     enc.drawPrimitives(type: .triangle, vertexStart: 0,
                                        vertexCount: Int(sides) * 3, instanceCount: Int(numInst))
