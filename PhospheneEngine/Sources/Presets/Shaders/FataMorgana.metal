@@ -277,28 +277,32 @@ vertex FataShapeVtxOut fata_shape_vertex(
     // independent orbits were not. (No bar grid → swayClock frozen → they hold still.)
     // beatPulse (one gentle pop per grid beat) + per-stem _energy_dev (brightness
     // identity) ride on top.
-    float sway = cos(M_PI_F * sp.swayClock);                       // -1..1, turns at each downbeat
     float A    = 0.30;                                             // horizontal sway amplitude (Matt: more sway)
     float beatPulse = pow(max(0.0, 1.0 - f.beat_phase01), 4.0);    // one sharp pulse per grid beat
     float flare = 1.0;
-    // Base Y < 0.5 places the spectra ABOVE the horizon (in the sky, reflecting onto the
-    // water). The comp samples the sky at feedback v ∈ [0 top, 0.5 horizon], and a shape's
-    // v equals its y, so y > 0.5 reads as IN the water (Matt) — these now sit at ~0.30.
+    // Each shape sways by A·cos(π·(swayClock + phase)). The three are PHASE-OFFSET so
+    // they spread across the frame at all times instead of bunching to one side at the
+    // extremes (Matt): drums (phase 0) and vocals (phase 1.0) are ANTI-PHASE — one
+    // swings right while the other swings left — and bass (phase 0.5) weaves through the
+    // centre. At every downbeat they sit right/centre/left, so the frame stays balanced
+    // while each still turns once per bar. Base Y < 0.5 places them ABOVE the horizon
+    // (the comp samples the sky at feedback v ∈ [0 top, 0.5 horizon]; a shape's v = its y,
+    // so y > 0.5 would read as IN the water).
     if (sp.shapeIndex == 0) {                              // faint textured echo (central, still)
         rad = 0.06623; ang = 0.02 * sp.frame; x = 0.5; y = 0.5;
         col = float3(0.0); aCenter = 0.1;
-    } else if (sp.shapeIndex == 1) {                       // DRUMS — left of centre
-        x = 0.35 + A * sway; y = 0.35;
+    } else if (sp.shapeIndex == 1) {                       // DRUMS — phase 0 (right on downbeat)
+        x = 0.50 + A * cos(M_PI_F * sp.swayClock); y = 0.35;
         float dev = max(0.0, st.drums_energy_dev);
         rad   = 0.11 * (1.0 + 0.45 * beatPulse) * sp.audioBoost;
         flare = 0.55 + 0.7 * beatPulse + 0.5 * dev;
-    } else if (sp.shapeIndex == 2) {                       // BASS — centre, a touch higher
-        x = 0.50 + A * sway; y = 0.28;
+    } else if (sp.shapeIndex == 2) {                       // BASS — phase 0.5 (centre, weaving)
+        x = 0.50 + A * cos(M_PI_F * (sp.swayClock + 0.5)); y = 0.28;
         float dev = max(0.0, st.bass_energy_dev);
         rad   = 0.11 * (1.0 + 0.45 * beatPulse) * sp.audioBoost;
         flare = 0.55 + 0.7 * beatPulse + 0.5 * dev;
-    } else {                                               // VOCALS — right of centre
-        x = 0.65 + A * sway; y = 0.35;
+    } else {                                               // VOCALS — phase 1.0 (anti-phase to drums)
+        x = 0.50 + A * cos(M_PI_F * (sp.swayClock + 1.0)); y = 0.35;
         float dev = max(0.0, st.vocals_energy_dev);
         rad   = 0.09 * (1.0 + 0.45 * beatPulse) * sp.audioBoost;
         flare = 0.55 + 0.7 * beatPulse + 0.5 * dev;
