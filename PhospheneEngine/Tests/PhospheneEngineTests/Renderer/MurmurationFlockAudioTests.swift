@@ -48,12 +48,15 @@ private func step(
     return cmd.status == .completed
 }
 
-private func makeGeometry(count: Int = 6_000) throws -> (MurmurationFlockGeometry, MTLCommandQueue) {
+private func makeGeometry(
+    count: Int = 6_000,
+    config: MurmurationFlockConfiguration? = nil
+) throws -> (MurmurationFlockGeometry, MTLCommandQueue) {
     let ctx = try MetalContext()
     let lib = try ShaderLibrary(context: ctx)
     let geo = try MurmurationFlockGeometry(
         device: ctx.device, library: lib.library,
-        configuration: .init(particleCount: count))
+        configuration: config ?? .init(particleCount: count))
     return (geo, ctx.commandQueue)
 }
 
@@ -110,8 +113,10 @@ private let kBass: @Sendable (Int, Float) -> (FeatureVector, StemFeatures) = { _
     (features(time: t, bassAttRel: 1.0), stems(bassRel: 1.0))
 }
 
+// Strong mid (realistic peak — drivers are tanh-saturated, so this clamps to a
+// gentle flutter; driving at peak gives the routing test a clear signal).
 private let kMid: @Sendable (Int, Float) -> (FeatureVector, StemFeatures) = { _, t in
-    (features(time: t, midAttRel: 1.0), stems(otherRel: 1.0))
+    (features(time: t, midAttRel: 2.5), stems(otherRel: 2.5))
 }
 
 private let kVocals: @Sendable (Int, Float) -> (FeatureVector, StemFeatures) = { _, t in
@@ -175,6 +180,27 @@ private struct Birds {
         return (s / Float(pos.count)).squareRoot()
     }
 
+    var anyNonFinite: Bool {
+        pos.contains { !$0.x.isFinite || !$0.y.isFinite || !$0.z.isFinite }
+    }
+
+    /// Fraction of birds within 0.5× the 95th-percentile radius — the same
+    /// cohesion metric the MM.2 silence harness uses. A fragmented flock (two
+    /// clumps with a gap, or a dispersed cloud) drops this toward 0.
+    var coreFraction: Float {
+        let c = centroid
+        let dists = pos.map { ($0 - c).mag }.sorted()
+        let p95 = dists[min(dists.count - 1, Int(0.95 * Float(dists.count)))]
+        let half = 0.5 * p95
+        let core = dists.filter { $0 <= half }.count
+        return Float(core) / Float(dists.count)
+    }
+
+    var maxRadius: Float {
+        let c = centroid
+        return pos.map { ($0 - c).mag }.max() ?? 0
+    }
+
     var bankStd: Float {
         let m = meanBank
         let v = bank.reduce(Float(0)) { $0 + ($1 - m) * ($1 - m) } / Float(bank.count)
@@ -198,18 +224,19 @@ private struct Birds {
         return Float((lmax / lmin).squareRoot())
     }
 
-    /// Mean speed split by edge (few neighbours) vs core (many neighbours).
-    /// Returns `edge − core`: positive when edge birds outpace the core.
-    var edgeCoreGap: Float {
+    /// Edge-vs-core gap in the banking (direction-change) field. Flutter is a
+    /// high-frequency random force; the min/max speed clamp masks it in raw
+    /// speed, but it shows clearly as extra direction agitation. `edge − core`
+    /// banking: rises when the feathered edge shimmers more than the solid core.
+    var edgeCoreBankGap: Float {
         let sorted = neighbors.sorted()
         let loCut = sorted[Int(0.25 * Float(sorted.count))]
         let hiCut = sorted[Int(0.75 * Float(sorted.count))]
         var edgeSum: Float = 0, edgeN = 0
         var coreSum: Float = 0, coreN = 0
         for i in 0..<pos.count {
-            let sp = vel[i].mag
-            if neighbors[i] <= loCut { edgeSum += sp; edgeN += 1 }
-            else if neighbors[i] >= hiCut { coreSum += sp; coreN += 1 }
+            if neighbors[i] <= loCut { edgeSum += bank[i]; edgeN += 1 }
+            else if neighbors[i] >= hiCut { coreSum += bank[i]; coreN += 1 }
         }
         return edgeSum / Float(max(edgeN, 1)) - coreSum / Float(max(coreN, 1))
     }
@@ -249,12 +276,13 @@ private struct Birds {
 /// stateless pulse phases (kBeats) stay coherent.
 private func sequential(
     count: Int = 6_000,
+    config: MurmurationFlockConfiguration? = nil,
     settle: Int = 300,
     drive: Int = 420,
     window: Int = 24,
     audio: (Int, Float) -> (FeatureVector, StemFeatures)
 ) throws -> (base: [Birds], driven: [Birds]) {
-    let (geo, q) = try makeGeometry(count: count)
+    let (geo, q) = try makeGeometry(count: count, config: config)
     var t: Float = 0
     for _ in 0..<settle { try step(geo, features: features(time: t), stems: .zero, queue: q); t += 1.0 / 60.0 }
     var base = [Birds]()
@@ -345,15 +373,24 @@ struct MurmurationFlockAudioTests {
                 "the wave must be a localized band, not a uniform shift: std=\(drivenStd) mean=\(drivenWave)")
     }
 
-    /// L4 — mid energy flutters the feathered edge: the edge-vs-core speed gap
-    /// widens under mid (the flutter is edge-weighted ≈5×).
+    /// L4 — mid energy flutters the feathered edge: edge birds (few neighbours)
+    /// get extra direction agitation (banking), the solid core stays steady. The
+    /// edge-vs-core banking gap widens under mid (the flutter is edge-weighted
+    /// ≈5×). Speed is the wrong measure — the min/max clamp masks the flutter;
+    /// banking (direction change) is what edge shimmer actually is.
+    ///
+    /// Tests the WIRING (mid → edge agitation) at an amplified `midEdgeAmp` so
+    /// the signal clears the boids chaos floor. The PRODUCTION amplitude is
+    /// deliberately gentle (it must not scatter the flock — that was the M7
+    /// failure); its safety is proven by `test_loudAudioStaysCohesive`.
     @Test("Mid route: edge birds flutter more than core")
     func test_midEdgeFlutter() throws {
-        let (base, driven) = try sequential(audio: kMid)
-        let baseGap = base.mean { $0.edgeCoreGap }
-        let drivenGap = driven.mean { $0.edgeCoreGap }
+        let amplified = MurmurationFlockConfiguration(particleCount: 6_000, midEdgeAmp: 1.5)
+        let (base, driven) = try sequential(config: amplified, audio: kMid)
+        let baseGap = base.mean { $0.edgeCoreBankGap }
+        let drivenGap = driven.mean { $0.edgeCoreBankGap }
         #expect(drivenGap > baseGap,
-                "mid must widen the edge-vs-core speed gap: silence=\(baseGap) mid=\(drivenGap)")
+                "mid must widen the edge-vs-core banking gap: silence=\(baseGap) mid=\(drivenGap)")
     }
 
     /// L5 — vocals compress the mass (the dark pulse): cohesion spacing tightens,
@@ -365,6 +402,50 @@ struct MurmurationFlockAudioTests {
         let drivenR = driven.mean { $0.rmsRadius }
         #expect(drivenR < baseR,
                 "vocals should contract the mass: silenceR=\(baseR) vocalsR=\(drivenR)")
+    }
+
+    /// THE PARITY INVARIANT (added after the MM.3 M7 live failure, 2026-06-03).
+    /// On real music the deviation primitives spike to ~3× (drumsEnergyDev /
+    /// bassEnergyRel reach ~3.2–3.4), not the ~1× the other tests use. Drive
+    /// SUSTAINED 3×-magnitude deviations + beats at the production count (55 000)
+    /// through the real dispatch path for 15 s and assert the boids substrate
+    /// stays ONE cohesive, framed, finite mass. The original gains (tuned at
+    /// input 1.0) tore the flock into clumps under exactly this load — the
+    /// routing tests missed it because they capped inputs at 1.0 (FA #66).
+    @Test("Loud real-magnitude audio keeps the flock cohesive (no fragmentation)")
+    func test_loudAudioStaysCohesive() throws {
+        let cfg = MurmurationFlockConfiguration(particleCount: 55_000)
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let geo = try MurmurationFlockGeometry(device: ctx.device, library: lib.library, configuration: cfg)
+        let q = ctx.commandQueue
+
+        var t: Float = 0
+        var minCore: Float = 1
+        var maxR: Float = 0
+        var maxCentroid: Float = 0
+        var bad = false
+        var pulse: Float = 0
+        for frame in 0..<900 {
+            if frame % 24 == 0 { pulse = 1.0 }
+            // Real-music peak magnitudes (from the 2026-06-03 Billie Jean session).
+            let f = features(time: t, arousal: 0.85, bassAttRel: 2.7, beat: pulse)
+            let s = stems(bassRel: 3.4, drumsDev: 3.2, drumsBeat: pulse, otherRel: 1.5, vocalsDev: 1.7)
+            try step(geo, features: f, stems: s, queue: q)
+            pulse *= 0.82
+            if frame % 60 == 0 && frame > 180 {     // sample after the substrate ramps
+                let b = Birds.read(geo)
+                minCore = min(minCore, b.coreFraction)
+                maxR = max(maxR, b.maxRadius)
+                maxCentroid = max(maxCentroid, b.centroid.mag)
+                bad = bad || b.anyNonFinite
+            }
+            t += 1.0 / 60.0
+        }
+        #expect(!bad, "positions must stay finite under loud audio")
+        #expect(minCore > 0.16, "loud audio must NOT fragment the flock: minCoreFrac=\(minCore)")
+        #expect(maxR < cfg.worldHalfSpan * 1.6, "flock must not fly apart: maxR=\(maxR)")
+        #expect(maxCentroid < 1.2, "flock must stay framed under bounded drift: maxCentroid=\(maxCentroid)")
     }
 
     /// Audio Data Hierarchy — the continuous substrate (bass drift) must drive

@@ -286,10 +286,11 @@ kernel void murmuration_boids(
             curl = (cl > 1e-4) ? curl / cl : float3(0.0);
             accel += curl * (turnGain * waveInfluence * propDir);
             // Orientation-wave darkening: the band IS where birds present more
-            // wing (McGill). Drive the bank field directly so the dark band
-            // reads, rather than relying on the emergent turn-rate (a smooth
-            // coordinated roll has a LOW per-frame direction change).
-            waveBankBoost = waveInfluence * min(1.0, turnGain);
+            // wing (McGill). Driven by the DECOUPLED darkening amplitude
+            // (audioPad0), NOT the gentle curl force — so the dark band reads
+            // strong while the physical roll stays small enough not to translate
+            // the flock (the M7 failure was a strong force, not strong shading).
+            waveBankBoost = waveInfluence * clamp(fp.audioPad0, 0.0, 1.0);
         }
 
         // L4 — mid edge flutter. Fast per-bird noise weighted toward edge birds
@@ -300,8 +301,13 @@ kernel void murmuration_boids(
         if (midGain > 1e-5) {
             float  densityT   = clamp(neighborN / 22.0, 0.0, 1.0);
             float  edgeWeight = mix(1.0, 0.18, densityT);
-            float3 flutter    = mf_hash33(float3(b.seed * 131.0, b.seed * 61.0,
-                                                 floor(fp.time * 7.0) + b.seed));
+            // Per-frame-varying noise (continuous fast term, NOT a held step) so
+            // the edge genuinely SHIMMERS — a constant push just moves a bird in
+            // a straight line (no direction change, no shimmer). The fast term
+            // decorrelates frame-to-frame so edge birds jitter.
+            float3 flutter = mf_hash33(float3(b.seed * 131.0 + fp.time * 47.0,
+                                              b.seed * 61.0 - fp.time * 41.0,
+                                              b.seed * 17.0 + fp.time * 53.0));
             accel += flutter * (midGain * edgeWeight);
         }
     }
