@@ -126,7 +126,17 @@ fragment float4 fata_morgana_warp_fragment(
                         sin(t.x)        * cos(t.y * u.q2));
     uv1 = uv1 - (lat * u.texsize.zw) * 12.0;
 
-    float3 ret = prev.sample(fataWrap, uv1).rgb * 0.98 - 0.02;   // baked decay
+    float3 ret = prev.sample(fataWrap, uv1).rgb * 0.975 - 0.032;  // baked decay (uplift: faster clear)
+    // Hue-preserving ceiling on the FED-BACK field (FM.L2 stem uplift). The uplift's
+    // ~10 balanced additive blobs all orbit through screen-centre, so that region gets
+    // continuous injection and the feedback would creep to a white core over a sustained
+    // loud section. Capping the field's max channel to kFieldCeil keeps it a saturated
+    // bright COLOUR (never white) while preserving hue (scale all channels together).
+    // Fresh blob flares are drawn AFTER the warp, so they still punch above the ceiling
+    // on the displayed frame — only the accumulated feedback is bounded.
+    constexpr float kFieldCeil = 0.95;
+    float mx = max(ret.r, max(ret.g, ret.b));
+    if (mx > kFieldCeil) { ret *= kFieldCeil / mx; }
     return float4(ret, 1.0);
 }
 
@@ -219,7 +229,8 @@ vertex FataShapeVtxOut fata_shape_vertex(
     uint                      vid [[vertex_id]],
     uint                      iid [[instance_id]],
     constant FeatureVector&   f   [[buffer(0)]],
-    constant FataShapeParams& sp  [[buffer(1)]]
+    constant FataShapeParams& sp  [[buffer(1)]],
+    constant StemFeatures&    st  [[buffer(2)]]
 ) {
     int   sides  = sp.sides;
     int   tri    = int(vid) / 3;
@@ -227,7 +238,38 @@ vertex FataShapeVtxOut fata_shape_vertex(
     float time   = f.time;
     int   inst   = int(iid);
 
-    // ── per-instance frame_eqs (source verbatim) ─────────────────────────────
+    // ── STEM UPLIFT (D-139 / D-137 move): each spectrum cluster is an INSTRUMENT.
+    // The source sized blobs by AGC band attack (bass/mid/treb_att), but Phosphene's
+    // per-band AGC crushes mid (~5×) + treble (~20×) below bass → 9 of 10 blobs
+    // vanish + nothing visibly responds (Matt M7: "underpowered; don't see the music
+    // connection"). Drive instead from per-STEM deviation (D-026) — balanced across
+    // instruments + punchy: bass-blob ← BASS, mid-blobs ← DRUMS, treble-blobs ← VOCALS.
+    //   size  = grows with the instrument's energy (quiet → small, loud → big)
+    //   flare = brightness PULSE on the instrument's transient/beat (the visible "this
+    //           blob IS the drums") — additive over the saturated hue, returns to the
+    //           vivid baseline (a constant brightness multiply just clamps to white).
+    float stemE = 0.0, stemDev = 0.0, stemBeat = 0.0;
+    if (sp.shapeIndex == 1) {        stemE = st.drums_energy;  stemDev = st.drums_energy_dev;  stemBeat = st.drums_beat; }
+    else if (sp.shapeIndex == 2) {   stemE = st.bass_energy;   stemDev = st.bass_energy_dev;   stemBeat = st.bass_beat; }
+    else if (sp.shapeIndex == 3) {   stemE = st.vocals_energy; stemDev = st.vocals_energy_dev; stemBeat = st.vocals_beat; }
+    // Keep blobs MODEST: additive blobs that ORBIT don't accumulate, but oversized ones
+    // cover their whole orbit persistently and the feedback runs away to white (B →
+    // 50·S at equilibrium; S>0.02 blows up). Tight clamps keep size/flare in the range
+    // the source's att-sized blobs occupied — balanced across stems, punchy on dev.
+    // Total additive injection across all 10 (now-balanced) blobs must stay below what
+    // the warp decay (×0.98−0.02) can bound, or the field runs away to white. So keep a
+    // DIM, modest baseline and put the punch in TRANSIENT flares (brief dev/beat spikes
+    // that don't sustain accumulation). FM.L2 stem-uplift calibration vs white-out.
+    // LOW sustained baseline + punchy transients: keeps the feedback equilibrium SPARSE
+    // (dark moody field + localized vivid spectra, like the oracle) instead of filling
+    // to a wash. The blobs nearly vanish when their instrument is quiet and BLOOM on
+    // energy/transients — which is also the visible music connection (the blob IS the
+    // drums/bass/vocals). FM.L2 stem-uplift calibration.
+    float ed = max(0.0, stemDev);
+    float sizeFactor = clamp(0.12 + 0.9 * stemE + 0.55 * ed, 0.05, 1.4) * sp.audioBoost;
+    float flare      = clamp(0.18 + 0.35 * stemE + 0.7 * ed + 0.4 * stemBeat, 0.1, 1.9);
+
+    // ── per-instance frame_eqs (orbit + colour cycle, source verbatim) ───────────
     float x = 0.5, y = 0.5, rad = 0.1, ang = 0.0, aCenter = 1.0;
     float cyc = 0.5 * sp.frame;
     // colour cycle: r=sin(cyc), b=sin(cyc+2.094), g=sin(cyc+4.188)
@@ -236,34 +278,43 @@ vertex FataShapeVtxOut fata_shape_vertex(
                         0.5 + 0.5 * sin(cyc + 2.094));
     if (sp.shapeIndex == 0) {
         rad = 0.06623; ang = 0.02 * sp.frame; x = 0.5; y = 0.5;
-        col = float3(0.0); aCenter = 0.1;                 // faint textured echo
-    } else if (sp.shapeIndex == 1) {                       // mid
+        col = float3(0.0); aCenter = 0.1;                 // faint textured echo (no audio)
+    } else if (sp.shapeIndex == 1) {                       // mid blobs ← DRUMS
         float d = 0.7 * fataDiv(time, float(inst));
         x = 0.5 + 0.225 * sin(d); y = 0.5 + 0.3 * cos(d);
         x -= 0.4 * x * sin(time);  y -= 0.4 * y * cos(time);
-        rad = 0.1 * (f.mid_att * sp.audioBoost);
-    } else if (sp.shapeIndex == 2) {                       // bass
+        rad = 0.1 * sizeFactor;
+    } else if (sp.shapeIndex == 2) {                       // bass blob ← BASS
         x = 0.5 + 0.225 * sin(time + 2.09); y = 0.5 + 0.3 * cos(time + 2.09);
-        rad = 0.1 * (f.bass_att * sp.audioBoost);
-    } else {                                               // treb
+        rad = 0.1 * sizeFactor;
+    } else {                                               // treble blobs ← VOCALS
         float d = fataDiv(time, float(inst));
         x = 0.5 + 0.225 * sin(d); y = 0.5 + 0.3 * cos(d);
         x += 0.4 * x * sin(time);  y += 0.4 * y * cos(time);
-        rad = 0.07419 * (f.treb_att * sp.audioBoost);
+        rad = 0.07419 * sizeFactor;
+    }
+
+    // DISPERSE the orbit centres (FM.L2 stem uplift). The source's blobs all orbit
+    // screen-centre — fine for the source's tiny att-blobs, but the uplift's balanced
+    // visible blobs all crossing one point pile additive injection there into a white
+    // core on sustained-loud (no decay rate clears a continuously-revisited point).
+    // A per-instance static offset spreads them across the horizon BAND (small Y spread
+    // keeps the sky dark/moody, spectra in the horizon+water zone) so injection is
+    // distributed → sparse equilibrium + a more oracle-like distributed composition.
+    if (sp.shapeIndex != 0) {
+        float gi = float(inst) * 1.7 + float(sp.shapeIndex) * 4.3;
+        x = 0.5 + (x - 0.5) * 0.45 + 0.30 * sin(gi);          // contract source orbit + spread X
+        y = 0.5 + (y - 0.5) * 0.40 + 0.10 * cos(gi * 1.3);    // keep near horizon band
     }
 
     float xn = x * 2.0 - 1.0;
     float yn = y * -2.0 + 1.0;     // butterchurn frame.y*-2+1 (y=0 → NDC top)
     float quarterPi = M_PI_F * 0.25;
 
-    // Additive blobs injected BRIGHTER than the source's [0,1] colour (HDR). Phosphene's
-    // feedback accumulates less than butterchurn's minutes-long run (the warp's
-    // ×0.98−0.02 self-regulation), so a single-frame blob carries less luminous content
-    // for the floor reflection + horizon glow to pick up; the brightness compensates so
-    // the water reflection + colored horizon read at oracle strength. (Shape 0 textured
-    // echo unaffected — its colour is near-zero by design.) FM.L2 live-M7 finding.
-    constexpr float kBlobBrightness = 2.2;
-    if (sp.shapeIndex != 0) { col *= kBlobBrightness; }
+    // Per-instrument FLARE on the saturated hue (the visible music response): the blob
+    // brightens with its stem's energy + punches on its transient/beat, then settles
+    // to the vivid baseline. Additive over the feedback. (Shape 0 echo unaffected.)
+    if (sp.shapeIndex != 0) { col *= flare; }
 
     FataShapeVtxOut out;
     out.textured = (sp.shapeIndex == 0) ? 1.0 : 0.0;

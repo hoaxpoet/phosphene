@@ -166,7 +166,11 @@ extension RenderPipeline {
         }
 
         // ── Shapes on top of composeTexture (FM.L2; = the feedback) ───────────
-        encodeFataShapes(commandBuffer: commandBuffer, warpState: warpState, features: features)
+        encodeFataShapes(
+            commandBuffer: commandBuffer,
+            warpState: warpState,
+            features: features,
+            stemFeatures: stemFeatures)
 
         // ── Comp blit: mirage(compose, noise, u) → drawable ───────────────────
         guard let drawable = view.currentDrawable,
@@ -202,7 +206,8 @@ extension RenderPipeline {
     func encodeFataShapes(
         commandBuffer: MTLCommandBuffer,
         warpState: MVWarpState,
-        features: FeatureVector
+        features: FeatureVector,
+        stemFeatures: StemFeatures
     ) {
         let (additive, normal) = mvWarpLock.withLock { (fataShapeAdditive, fataShapeNormal) }
         guard let additive, let normal else { return }
@@ -218,6 +223,8 @@ extension RenderPipeline {
         let boost = RenderPipeline.fataShapeAudioBoost
         var feat = features
         enc.setVertexBytes(&feat, length: MemoryLayout<FeatureVector>.stride, index: 0)
+        var stems = stemFeatures
+        enc.setVertexBytes(&stems, length: MemoryLayout<StemFeatures>.stride, index: 2)  // stem uplift
         enc.setFragmentTexture(warpState.warpTexture, index: 0)   // prev frame, for shape 0 texturing
 
         // Draw order 0,1,2,3 (faithful to butterchurn): textured echo, then mid/bass/treb blobs.
@@ -237,11 +244,10 @@ extension RenderPipeline {
         enc.endEncoding()
     }
 
-    /// Multiplies the band attack driving the blob radii. Phosphene's bassAtt/midAtt/
-    /// trebAtt are AGC-normalized + slow-smoothed (~0.5 baseline), so the raw blobs are
-    /// small; butterchurn compensates by feeding 6×-boosted audio (D-138 kAudioBoost),
-    /// which its `*_att` envelopes inherit. 6.0 restores the oracle's blob scale + the
-    /// strength of the floor reflection + the colored horizon (the blob reflections
-    /// compress at the horizon). FM.L2 live-M7 finding (Matt: "underpowered" at 3.5).
-    static let fataShapeAudioBoost: Float = 6.0
+    /// Master size gain on the stem-driven blob radius (FM.L2 stem uplift, D-139). The
+    /// per-instrument sizeFactor (in fata_shape_vertex) already scales the blobs from the
+    /// balanced per-stem deviation primitives, so this is 1.0 in production (a global
+    /// knob for sweeps). Superseded the FM.L2 6× audio boost — that compensated for the
+    /// AGC-crushed band attack, which the stem uplift replaced (stems are balanced).
+    static let fataShapeAudioBoost: Float = 1.0
 }
