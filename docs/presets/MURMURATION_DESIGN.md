@@ -574,3 +574,74 @@ perf cost. (2) The cap-512 gather is heavier (early-exit mitigates; the governor
 now coherently — under load); a denser+higher-count ship needs gather optimisation. (3) The audio-route
 FEEL needs re-tuning for the free-wheeling regime (the routes fire, but the restless flock responds
 differently than the contained one) — M7-feel territory. **M7 round-7 live review pending.**
+
+# 13. RESOLUTION — pivot to a 3D parametric-ellipse flock (2026-06-04)
+
+**The emergent Flock2 substrate failed M7 seven times (R1–R7) and was retired.** Round-7's free-wheeling
+rework morphed in headless renders, but its live review (and two more iterations) still failed: *"neither
+looks nor behaves like a murmuration… the previous version built months ago is still far superior in look
+and feel. Have you looked at the code of this version at all?"* — with the flock extending off-canvas. Each
+of the seven rounds traded one failure for another (too-fast → frozen cross → internal sub-clusters → spray
+→ frozen oval → dead blob → off-canvas spray). Per the convergence rule (FA #58/#69): when iteration keeps
+failing in a new way without changing the upstream premise, the **premise** is wrong.
+
+**The premise that failed:** *pure emergence (free-flight boids) will, on its own, hold one dense framed
+on-canvas mass.* It will not. The references (Hodgin, the real starling clips) teach realistic **motion** —
+banking flocks, rolling dark bands, comma-tails. But the **control** a screen preset needs — one dense
+mass, framed on-canvas, morphing smoothly, every frame, on every track — comes from the **proven 40-round
+2D Murmuration** (`Particles.metal`): birds spring-pulled to home slots in a continuously morphing ellipse,
+dense and framed **by construction**. Seven rounds of fighting the emergent substrate to fake that control
+is exactly the work the 2D architecture already did.
+
+**Matt's resolving direction (three messages).** (a) *"I asked you to REVIEW THE CODE [of the old version],
+not replace your work with it"* — learn from the proven architecture; don't just restore the 2D preset.
+(b) *"Why are these the only options?"* — rejected the false binary (keep-emergent vs. restore-2D). (c)
+**"I have always wanted a 3D version of this preset — this was the whole goal of the uplift. I just don't
+want to work on tweaking it for the next 48 hours."** Synthesis: **lift the proven 2D controlled-ellipse
+architecture into 3D** — keep the control, gain the dimension, and stop the per-round live-tweak loop by
+verifying the look headlessly.
+
+## 13.1 Architecture (`Murmuration3D.metal` + `Murmuration3DGeometry.swift`)
+
+A `ParticleGeometry` **sibling** (D-097) — its own `M3DParticle` (64 B) layout + `murmuration3d_*` kernels,
+NOT a parameterisation of `ProceduralGeometry` or the retired Flock2. The 2D preset's control mechanics,
+lifted to 3D:
+
+- **3D morphing ellipsOID home slots.** Each bird owns a stable slot on the surface/interior of an
+  ellipsoid whose half-extents are audio-morphed: `halfLength = 0.40 + 0.12·rhythm`,
+  `halfWidth = 0.105 + 0.04·flutter`, `halfDepth = 0.085 + 0.03·flutter` (tapered comma form). The slot is
+  the *target*; the bird is sprung toward it.
+- **Spring-to-home** from the 2D original: accel `3·d + 5·d²` toward the home slot, velocity damping
+  `1 − 3·dt`. This is what makes the mass dense and coherent **by construction** — no emergence required to
+  hold the shape.
+- **Bounded lemniscate flock-centre drift** (figure-8 wander) so the whole mass roams without leaving frame.
+- **Perspective projection + depth fade.** `camDist 2.6`, `camPitch 0.35 rad`, `viewScale 2.1`. The pitch
+  tilts the ellipsoid so its depth maps into screen height (reads as a 3D volume at an angle, not a flat
+  cloud); near birds render larger/darker, far birds smaller/lighter → the near/far density gradient.
+- **Banking → dark bands.** Per-bird `bank` from turn-rate drives near-black sprite darkening; as regions
+  of the flock bank wing-to-camera they darken together → the rolling dark-band shimmer that is the
+  murmuration signature. This is **real** (geometry-derived), not an injected channel.
+
+**Audio brain ported verbatim from the 2D preset** (the routing the original 40 rounds settled): **bass** →
+centre drift + ellipsoid elongation (ribbon); **drums** → turning-wave / banding intensity; **other** →
+flutter + path curvature; **vocals** → density compression. 14 000 birds; the D-057 governor never
+throttles it at this cost, so the controlled flock keeps every bird (the round-6 freeze cannot recur).
+
+## 13.2 Verification (headless — the look is the deliverable)
+
+`Murmuration3DRenderTests`, run in the production dispatch path (update kernel → point render):
+- `test_framed`: 420 silence steps, then assert **framedFrac > 0.95** on-canvas (replicates the vertex
+  projection incl. `viewScale`) + all positions finite. The load-bearing "stays framed" must-have, now a
+  test, not a live discovery.
+- `test_render` (RENDER_VISUAL=1): silence frames → a dense **tapered 3D mass** with a near/far depth
+  gradient, morphing comma → ribbon over time; audio frames → elongated **S / boomerang ribbons** spanning
+  the frame with **rolling dark bands that shift between shots**. Frames in
+  `tools/murmuration_reference/frames/mm3d_*.png`.
+
+Engine **1376 tests green**, app build clean, lint 0. The look is verified headlessly **so the next live
+look is a sign-off, not round 8** — pace and audio-FEEL remain Matt's call (the "don't tweak for 48 hours"
+constraint), but the shape/density/depth/morphing/banding are proven before he looks.
+
+**Retired:** `MurmurationFlock.metal`, `MurmurationFlockGeometry.swift`, `MurmurationFlockTests.swift`,
+`MurmurationFlockAudioTests.swift` (`git rm`'d in `9056dc48`). §§12.1–12.3 above are the historical record
+of the emergent substrate; §13 is the shipped architecture.

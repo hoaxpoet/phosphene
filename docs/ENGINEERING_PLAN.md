@@ -3166,7 +3166,7 @@ release notes.
 
 ---
 
-### Increment MM.6 — Rebuild the flock on Flock2 (orientation-based)  *(IMPLEMENTED 2026-06-03; M7 rounds 1–6 failed + fixed; round-7 source-faithful free-wheeling rework restores morphing 2026-06-04; M7 round-7 live review pending)*
+### Increment MM.6 — 3D Murmuration (parametric-ellipse flock)  *(DELIVERED 2026-06-04; emergent Flock2 substrate retired after M7 rounds 1–7 all failed live — see RESOLUTION at end of section; M7 sign-off review pending)*
 
 **Supersedes the force-based substrate of MM.2 and the force-based audio coupling of MM.3.** MM.4
 (sky/perf) and MM.5 (cert) now apply to the Flock2 flock and follow this increment.
@@ -3286,9 +3286,48 @@ full AND throttled quality. Durable lesson in CLAUDE.md §What NOT To Do (don't 
 of its working regime). Full suite **1387 green**, lint 0, app builds. Design §12.3. Follow-ups: density
 (more birds), gather perf for a higher-count ship, audio-route FEEL re-tune for the free-wheeling regime.
 
-**PENDING (→ MM.5):** per-route firing evidence from a real recorded session; **Matt M7 round-7 live
-approval** (the load-bearing gate — the live look is not assertable headlessly; the session `video.mp4` is
-a rolling clip, not preset-specific — anchor on Matt's screenshots + CSV).
+**ROUND-7 M7 FAILED → RESOLUTION: PIVOT TO A 3D PARAMETRIC-ELLIPSE FLOCK (2026-06-04, commit `9056dc48`).**
+Live review of the free-wheeling rework (and two further iterations) still failed: *"neither looks nor
+behaves like a murmuration… the previous version built months ago is still far superior in look and feel.
+Have you looked at the code of this version at all?"* — and the flock was extending off-canvas. **Seven M7
+rounds (R1–R7) of the emergent Flock2 substrate failed live**; each fix traded one failure for another
+(too-fast → frozen → sub-clusters → spray → frozen-oval → dead-blob → off-canvas spray). The convergence
+rule of FA #58/#69 fired: iteration that doesn't change the upstream premise means the premise is wrong.
+The premise that failed: **pure emergence (free-flight boids) will, on its own, hold one dense framed
+on-canvas mass.** It will not — the references teach realistic *motion* (banking → dark bands), but the
+*control* (one dense framed morphing mass) comes from the proven 40-round 2D Murmuration
+(`Particles.metal`): birds spring-pulled to home slots in a **continuously morphing ellipse**, dense and
+framed **by construction**.
+
+Matt's resolving direction (three messages): (a) *"I asked you to REVIEW THE CODE [of the old version],
+not replace your work with it"* — learn from the proven architecture, don't just restore the 2D preset;
+(b) *"Why are these the only options?"* — rejected the false A/B (keep-emergent vs restore-2D); (c) **"I
+have always wanted a 3D version of this preset — this was the whole goal of the uplift. I just don't want
+to work on tweaking it for the next 48 hours."** The synthesis: **lift the proven 2D controlled-ellipse
+architecture to 3D** — keep the control (spring-to-morphing-ellipse, dense/framed by construction), gain
+the third dimension (3D morphing ellipsOID home slots + perspective + depth fade) and real banking
+(wing-area-to-camera → the rolling dark bands).
+
+**DELIVERED — `Murmuration3D.metal` + `Murmuration3DGeometry.swift` (a `ParticleGeometry` sibling, D-097;
+own `M3DParticle` 64 B layout + `murmuration3d_*` kernels).** 3D ellipsoid home slots with audio-morphed
+half-extents; spring-to-home (`3·d + 5·d²`, damping `1 − 3·dt`) from the 2D original; bounded lemniscate
+flock-centre drift; perspective projection (camDist 2.6, camPitch 0.35 rad) + depth fade + viewScale 2.1;
+banking from turn-rate drives near-black sprite darkening for the dark-band shimmer. Audio brain ported
+verbatim from the 2D preset: **bass** → drift + elongation, **drums** → turning-wave/banding, **other** →
+flutter + curvature, **vocals** → density compression. 14 000 birds (governor never throttles it at this
+cost — controlled flock keeps all birds). Wired into `VisualizerEngine.makeMurmurationGeometry`. **Emergent
+Flock2 substrate retired** (`MurmurationFlock.metal` + `MurmurationFlockGeometry` + 2 test files `git rm`'d).
+
+**Verified headlessly** (`Murmuration3DRenderTests`, the look is the deliverable; pace/audio-feel are
+Matt's call): `test_framed` asserts framedFrac > 0.95 on-canvas (replicates the vertex projection incl.
+viewScale); `test_render` (RENDER_VISUAL=1) — silence frames show a dense tapered 3D mass with near/far
+depth gradient morphing comma→ribbon; audio frames show elongated S/boomerang ribbons spanning the frame
+with rolling dark bands that shift between shots. Frames in `tools/murmuration_reference/frames/mm3d_*.png`.
+Engine **1376 tests green**, app build clean, lint 0.
+
+**PENDING (→ MM.5):** **Matt M7 sign-off** of the 3D version (the load-bearing gate — the look is verified
+headlessly precisely so this is a sign-off, not another tweak round); per-route firing evidence from a real
+recorded session. Design doc §13.
 
 ---
 

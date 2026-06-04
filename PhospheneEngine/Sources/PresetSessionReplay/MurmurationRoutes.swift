@@ -1,10 +1,22 @@
-// MurmurationRoutes.swift — Per-route specs for the MM.6 audio-coupled flock.
+// MurmurationRoutes.swift — Per-route specs for the audio-coupled flock.
 //
+// !!! STALE FOR THE SHIPPED PRESET — re-derive in MM.5 (design §13). !!!
+// These three GLOBAL-envelope routes describe the RETIRED emergent Flock2
+// substrate (`MurmurationFlock*`, `git rm`'d in 9056dc48). The shipped
+// Murmuration is the 3D parametric-ellipse flock (`Murmuration3D.metal`), whose
+// audio brain is the proven 2D preset's FOUR routes — bass → drift + elongation,
+// drums → turning-wave / banding, other → flutter + curvature, vocals → density
+// compression. The firing specs below must be re-derived against
+// `murmuration3d_update` before the MM.5 firing-evidence report is trusted; they
+// are kept only so the replay harness still loads. DO NOT cite this file's firing
+// % as evidence for the shipped preset until MM.5 re-derives it.
+//
+// --- historical (retired emergent substrate) -------------------------------
 // MM.6 musicality rethink (Matt 2026-06-03): drive the flock's GLOBAL envelope
 // and let the rich structure (banking waves, feathered edge) EMERGE from the
 // Flock2 substrate — three robust global couplings, not four fragile per-bird
 // ones (the MM.3 per-bird drum-wave + mid-flutter were swallowed/inverted by the
-// self-organizing substrate). Routes in
+// self-organizing substrate). Routes were in
 // `MurmurationFlockGeometry.computeAudio(features:stemFeatures:dt:)`:
 //
 //   L1 — bass    → macro drift + envelope elongation (comma/ribbon)
