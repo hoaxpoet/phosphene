@@ -91,16 +91,22 @@ kernel void murmuration3d_update(
     float drumEnergy  = mix(features.bass,      stems.drums_energy, stemBlend);
     float vocals      = stems.vocals_energy * stemBlend;
 
-    // ── FLOCK CENTRE — bounded so it never leaves the canvas (proven 2D values,
-    // plus a gentle depth drift). Bass adds sweeping arcs.
+    // ── FLOCK CENTRE — a SLOW END-TO-END TRAVERSE across the sky is now the
+    // dominant position motion (Matt 2026-06-04: it was morphing in place; a
+    // murmuration should drift from one side to the other). The flock is zoomed
+    // out (viewScale 1.3) to leave room. Gentler vertical + depth wobble on top;
+    // bass adds sweeping arcs. Clamped so it stays framed even at the extremes.
     float3 flockCenter = float3(
-        sin(st * 0.22) * 0.08 + cos(st * 0.14) * 0.04,
-        sin(st * 0.17) * 0.06 + cos(st * 0.11) * 0.03,
-        sin(st * 0.13) * 0.10 + cos(st * 0.19) * 0.05);
+        sin(st * 0.11) * 0.24 + sin(st * 0.043 + 1.7) * 0.07,   // big slow L↔R sweep
+        sin(st * 0.085) * 0.12 + cos(st * 0.057) * 0.06,        // gentle vertical
+        sin(st * 0.13) * 0.12 + cos(st * 0.19) * 0.06);         // depth wobble
     float windDir = features.bass_att * 3.0 + st * 0.2;
     flockCenter.x += rhythm * 0.10 * cos(windDir);
     flockCenter.y += rhythm * 0.06 * sin(windDir);
     flockCenter.z += rhythm * 0.10 * sin(windDir * 0.7);
+    flockCenter.x = clamp(flockCenter.x, -0.30, 0.30);          // stay framed at viewScale 1.3
+    flockCenter.y = clamp(flockCenter.y, -0.32, 0.32);
+    flockCenter.z = clamp(flockCenter.z, -0.40, 0.40);
 
     // ── FLOCK SHAPE — a long, tapered ELLIPSOID; thickest at centre. ──
     float u = (birdU - 0.5) * 2.0; u = sign(u) * pow(abs(u), 0.7);   // mild centre concentration

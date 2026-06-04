@@ -46,16 +46,39 @@ struct Murmuration3DRenderTests {
         return (Float(framed) / Float(n), bad)
     }
 
-    @Test("Compiles, settles dense + framed on-canvas at silence")
+    /// Flock-centre X in world units — to prove the flock actually TRAVERSES the
+    /// sky (Matt 2026-06-04) rather than drifting in place.
+    private func centroidX(_ geo: Murmuration3DGeometry) -> Float {
+        let n = geo.configuration.particleCount
+        let ptr = geo.particleBuffer.contents().bindMemory(to: M3DParticle.self, capacity: n)
+        var sx: Float = 0
+        for i in 0..<n { sx += ptr[i].positionX }
+        return sx / Float(n)
+    }
+
+    @Test("Settles dense, traverses the sky, stays framed throughout (silence)")
     func test_framed() throws {
         let ctx = try MetalContext()
         let lib = try ShaderLibrary(context: ctx)
         let geo = try makeGeo(ctx, lib, pixelFormat: nil)
         var t: Float = 0
-        for _ in 0..<420 { try step(geo, FeatureVector(time: t, deltaTime: 1.0 / 60.0), .zero, ctx.commandQueue); t += 1.0 / 60.0 }
-        let (frac, bad) = framedFraction(geo)
-        #expect(!bad, "positions must stay finite")
-        #expect(frac > 0.95, "the 3D flock must stay framed on-canvas at silence: framedFrac=\(frac)")
+        // Step through a full slow traverse (~40 s). The flock drifts end-to-end, so
+        // (a) the WORST frame must still be framed, and (b) the centre must sweep a
+        // meaningful range — proving it traverses, not drifts-in-place.
+        var minFramed: Float = 1.0
+        var minCx: Float = 1.0, maxCx: Float = -1.0
+        for frame in 0..<2400 {
+            try step(geo, FeatureVector(time: t, deltaTime: 1.0 / 60.0), .zero, ctx.commandQueue); t += 1.0 / 60.0
+            if frame >= 300 && frame % 100 == 0 {
+                let (frac, bad) = framedFraction(geo)
+                #expect(!bad, "positions must stay finite (frame \(frame))")
+                minFramed = min(minFramed, frac)
+                let cx = centroidX(geo)
+                minCx = min(minCx, cx); maxCx = max(maxCx, cx)
+            }
+        }
+        #expect(minFramed > 0.93, "the 3D flock must stay framed across its full traverse: minFramed=\(minFramed)")
+        #expect(maxCx - minCx > 0.30, "the flock must traverse the sky, not drift in place: centreXrange=\(maxCx - minCx)")
     }
 
     @Test("Render sequences (RENDER_VISUAL=1)")
