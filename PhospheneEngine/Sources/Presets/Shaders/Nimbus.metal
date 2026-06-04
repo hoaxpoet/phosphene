@@ -39,7 +39,7 @@ constant float  kNimbusBoundR    = 1.85;   // bounding sphere for the march rang
 constant int    kNimbusSteps     = 64;     // primary march steps
 constant int    kNimbusShadowN   = 6;      // secondary light-march steps
 constant float  kNimbusShadowDt  = 0.16;   // light-march step length
-constant float  kNimbusSigma     = 2.1;    // primary extinction / scattering coefficient (translucent)
+constant float  kNimbusSigma     = 1.55;   // primary extinction (translucent: low enough to see INTO the volume so front-to-back accumulation reads lobe depth — NB.2)
 constant float  kNimbusShadowSig = 1.10;   // softer self-shadow extinction (keeps the core lit → brighter)
 constant float  kNimbusCamZ      = -6.0;   // camera distance (looking +Z)
 constant float  kNimbusFocal     = 1.25;   // FOV (larger = narrower)
@@ -66,11 +66,14 @@ static inline float nimbus_envelope(float3 p) {
     return nimbus_envelope(p, rr);
 }
 
-// Full body density: the smooth ellipsoidal envelope ERODED by a billowy detail
-// field. Erosion increases toward the shell (fray weighting) so the core stays
-// dense and coherent while the periphery breaks into lobes, wisps and soft voids
-// — the macro+meso cascade in one field. Detail is sampled from the preamble 64³
-// tileable 3D FBM texture (NB.1.1 budget pass — see below). Time-only drift.
+// Full body density: the smooth ellipsoidal envelope ERODED by a multi-scale
+// detail field — the macro→meso→micro cascade in one field (SHADER_CRAFT §2.2).
+// Erosion increases toward the shell (fray weighting) so the core stays dense and
+// coherent while the periphery breaks into lobes, wisps and soft voids. ALL detail
+// is sampled from the preamble 64³ tileable 3D FBM texture (noiseVolume,
+// [[texture(6)]], production-bound via TextureManager) — never computed per step
+// (NB.1.1 budget lesson, D-140 / DESIGN §6.1: per-step fbm4 was ~20 ms @1080p,
+// texture sampling ~1.4 ms). Time-only drift (no audio — Breath is NB.4).
 static inline float nimbus_density(float3 p, float t,
                                    texture3d<float> noiseVol, sampler smp) {
     float rr;
@@ -79,30 +82,51 @@ static inline float nimbus_density(float3 p, float t,
 
     float3 q = p + float3(0.0, -t * 0.015, t * 0.008);   // slow, time-only drift
 
-    // Detail sampled from the preamble 64³ tileable 3D FBM texture (noiseVolume,
-    // [[texture(6)]], production-bound on the direct path via TextureManager)
-    // instead of computed fbm4 — the per-step procedural noise was the dominant
-    // march cost (NB.1.1; voronoi removal alone was a wash → the cost was fbm4's
-    // ALU). Two octaves of turbulence + one low-freq octave for the billow lobes;
-    // the tileable texture repeats under linearSampler.
-    float oct1 = noiseVol.sample(smp, q * 1.8).r;                          // turbulence
-    float oct2 = noiseVol.sample(smp, q * 3.8).r;                          // finer turbulence
-    float n    = oct1 * 0.65 + oct2 * 0.35;                                // [0,1]
-    float lobe = smoothstep(0.32, 0.70, noiseVol.sample(smp, q * 0.9).r);  // low-freq lumps [0,1]
-    float detail = smoothstep(0.15, 0.85, clamp(n * 0.6 + lobe * 0.55, 0.0, 1.0));
+    // ── MESO: nested billow lobes (ref 02_meso_billow_and_filament) ─────────
+    // Two octave-doubled lobe scales → rounded lumps with sub-lumps riding on
+    // them. Shaped (tight smoothstep) so the billows read as DISTINCT bright
+    // lobes separated by dimmer valleys — ref 02's soft cellular boundaries —
+    // not a smooth egg. The depth / self-occlusion read (ref 02's "nearer lobes
+    // shadow those behind") is NOT painted here: it emerges from the march's
+    // front-to-back transmittance accumulation (a near dense lobe attenuates the
+    // in-scatter of the lobes behind it) plus the existing envelope self-shadow.
+    // No detail-aware shadow in NB.2 — that is the NB.3 lighting recipe.
+    float lobeA  = noiseVol.sample(smp, q * 0.7).r;          // coarse billows
+    float lobeB  = noiseVol.sample(smp, q * 1.4).r;          // nested sub-billows
+    float lobes  = lobeA * 0.62 + lobeB * 0.38;              // [0,1]
+    float billow = smoothstep(0.35, 0.70, lobes);            // distinct lumps [0,1] (tight range → crisp lobe/valley contrast)
 
-    // Interior billows: modulate density everywhere with the detail field. A low
-    // floor keeps the gaps between lobes thin (so billows read as brighter lumps
-    // separated by dimmer valleys, not a smooth egg) while the envelope keeps the
-    // core a coherent mass; dense lobes push above 1 so lumps read brighter (ref 02).
-    float interior = mix(0.32, 1.32, detail);
+    // ── Interior turbulence texture (mid + fine octaves) ────────────────────
+    // Roughens the inside of each billow so the gas reads as gas, not jelly.
+    // (The interior-roil AMPLITUDE — placid ↔ churning, arousal-ready — is
+    // promoted to a named #define in NB.2-turbulence; a fixed contribution here.)
+    float turbA = noiseVol.sample(smp, q * 2.8).r;           // mid turbulence
+    float turbB = noiseVol.sample(smp, q * 5.6).r;           // fine turbulence
+    float turb  = turbA * 0.6 + turbB * 0.4;                 // [0,1], centred ~0.5
+    // 4 octaves (0.7 / 1.4 / 2.8 / 5.6), all noiseVolume samples — the §12.1
+    // ≥4-octave noise floor reached here (the texture is itself FBM → effective
+    // octave count is higher).
 
-    // Edge fray: only the outer shell (rr > 0.6) erodes to zero where detail is
-    // low → wisps, tendrils and a soft dissolving edge instead of a clean ellipse.
-    float frayEdge  = smoothstep(0.6, 1.0, rr);
-    float edgeCarve = frayEdge * (1.0 - detail) * 1.1;
+    // ── Compose: billow lobes CARVE the envelope (distinct lumps) ───────────
+    // Multiplicative carve, not additive: valleys (low billow) thin the body
+    // toward transparency while crests stay dense, so the density iso-surface is
+    // genuinely LUMPY (the ref-02 billow read) rather than a smooth saturated
+    // egg — additive modulation just brightens an already-opaque core and the
+    // lumps wash out (the 05_anti_solid_surface interior). Crests push slightly
+    // above 1 so lobe peaks read brighter than valleys.
+    float lobeCarve = mix(0.14, 1.10, billow);              // [0.14 valley .. 1.10 crest]
+    float roil      = 1.0 + (turb - 0.5) * 0.45;            // interior turbulence texture
+    float dens      = env * lobeCarve * roil;
 
-    return max(0.0, env * interior - edgeCarve);
+    // ── Edge fray (soft dissolving periphery; full feathering in NB.2-micro) ─
+    // The outer shell (rr > 0.5) dissolves in the billow valleys → wisps and a
+    // soft edge that frays into the void (never the 05_anti_solid_surface hard
+    // silhouette). Tying the carve to the billow valleys makes the silhouette
+    // itself lumpy — lobes peeling off the mass rather than a clean ellipse.
+    float frayEdge = smoothstep(0.58, 1.05, rr);
+    dens -= frayEdge * (1.0 - billow) * 0.85;
+
+    return max(0.0, dens);
 }
 
 // MARK: - Nimbus fragment (NB.1 macro maquette)
@@ -137,7 +161,7 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
     // while the soft self-shadow gives a 3D form. Intensity is artistic, not
     // physical (the HG phase is normalised small).
     float3 lightDir   = normalize(float3(-0.35, 0.42, 0.45));   // upper-left, biased behind
-    float3 lightColor = float3(1.00, 0.97, 0.92) * 4.5;         // neutral warm-white, intensity 4.5
+    float3 lightColor = float3(1.00, 0.97, 0.92) * 5.2;         // neutral warm-white (intensity restores body presence under the lower NB.2 sigma)
     float3 ambient    = float3(0.025, 0.030, 0.060);            // faint cool ambient (shadow side just reads, gradient preserved)
 
     float t = features.time;
