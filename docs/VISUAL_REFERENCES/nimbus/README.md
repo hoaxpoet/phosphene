@@ -5,9 +5,13 @@
 > **Place at:** `docs/VISUAL_REFERENCES/nimbus/`, alongside the eleven numbered image files.
 > **Lint:** `swift run --package-path PhospheneTools CheckVisualReferences` (`jpg`|`png`, ≤ 500 KB, `NN_<scale>_<descriptor>` names).
 
+## What we're building (the target — read first)
+
+> **Re-grounded 2026-06-04.** The packet collectively defines ONE concrete target, and we reproduce it: **a single coherent mass of glowing cool gas, suspended in a black void, that moves with the music** — a dense brighter core, billowing / cauliflower structure, soft wisps feathering into the dark, lit so it glows from within. Cool indigo at rest, warming toward gold with the mood. Ink in water, lit smoke. **No storm, no lightning, no "alive" narrative, no per-beat response.** The motion is the gas itself — constant rich billowing flow — speeding up and blooming bigger/brighter with the music's energy; mood shifts the colour cool↔warm. That is the whole concept (see `docs/presets/NIMBUS_DESIGN.md §1`). The earlier framing of this README — "none of these is faithful, read each only for its one trait" — gave the implementer no concrete target and produced a soft average matching nothing; it is retired. The packet IS the target.
+
 ## How to read this set (read before authoring)
 
-None of these images is a faithful rendering of "Nimbus as it should appear." They are sourced smoke, ink, cloud, and iridescence photographs, each chosen to isolate **one** trait. Read each image only for the trait its annotation calls out, and obey the *actively disregard* column — real photography is full of structural cues that read as directives but are not (the descending ink column in `01` is not a directive that the body falls; the one-sided light in `08` is not a directive that the source sits in a corner). This is the Failed Approach #63 / #35 discipline: **do not author a Nimbus session without reading this README cover-to-cover and each annotation, and cite specific reference traits in design comments where they motivate a choice.** Mid-session sanity checks must be side-by-side comparisons against the named images, not self-judgments of "looks reasonable."
+The images are sourced smoke, ink, and cloud photographs — **different source media that each show part of the one target above.** Take from each the trait its annotation calls out (and obey the *actively disregard* column — the teal cast of `01`/`02` is not our palette; the descending ink column in `01` is not a directive that the body falls; the one-sided light in `08` is not a directive that the source sits in a corner). This is the Failed Approach #63 / #35 discipline: **do not author a Nimbus session without reading this README cover-to-cover and each annotation, and cite specific reference traits in design comments where they motivate a choice.** Mid-session sanity checks must be side-by-side comparisons against the named images, not self-judgments of "looks reasonable."
 
 ## Gate 0 — Intake
 
@@ -15,7 +19,7 @@ None of these images is a faithful rendering of "Nimbus as it should appear." Th
 |---|---|
 | Preset name | Nimbus (provisional) |
 | Family | Volumetric (first in family) |
-| Emotional / musical role | A single luminous gaseous body suspended in a cosmic void — an expressive co-performer that breathes with energy, ignites with light on the beat, and shifts its colour-mood across sections. Shows restraint at silence. |
+| Emotional / musical role | A single coherent mass of glowing cool gas in a black void that moves with the music — energy blooms it bigger/brighter and flows the gas faster; mood shifts its colour cool↔warm. **Nothing on the beat.** Settles to a small, dim, drifting floor at silence. |
 | Render pipeline | Single-pass 2D direct-fragment volumetric ray-march. Compose `Utilities/Volume/{Clouds, ParticipatingMedia, HenyeyGreenstein}`; density shape from `FBM` + `voronoi_smooth`. **No engine changes — pure preset increment.** |
 | Camera | Fixed vantage. No flythrough. |
 | Performance target | **Tier 2 (M3+) — supported tier:** 60 fps @ 1920×1080. Full-frame **p95 ≤ 16 ms** (`FrameBudgetManager` Tier 2 threshold); **per-preset GPU ≤ 7 ms** (`SHADER_CRAFT §9.3` Tier 2 ceiling); drops (> 32 ms) ≤ 1 % over a representative 60 s window. Headroom lever: half-res volumetric march + MetalFX Temporal upscale (§9.2). Under-budget degradation rides `reducedRayMarch` (Nimbus has no SSGI / separate bloom pass, so those ladder rungs are no-ops). First implementation phase validates the budget with `MTLCounterSet.timestampGPU` on real Tier 2 silicon (Arachne V.8.1 precedent). **Tier 1 (M1/M2) — excluded:** a single-pass volumetric ray-march exceeds the Tier 1 ceiling (5 ms / preset, **no volumetric clouds**, §9.3). `complexity_cost.tier1` is set above the Tier 1 budget so the Orchestrator drops Nimbus on M1/M2; no degraded Tier 1 fallback in v1 — a march cut to fit 5 ms reads as flat fog, which is the `05_anti_uniform_fog` failure. |
@@ -62,19 +66,17 @@ Per D-065(b), an anti-reference has **no partial-trust read**: the whole image i
 | **Micro detail** | Feathered, fraying edges; turbulent wisp texture; fine shimmer surface (driven by the high band). |
 | **Material** | N/A — gaseous participating medium. "Material" here = scattering response (single-scatter albedo + phase anisotropy); see Lighting. |
 | **Lighting** | Internal source(s); strong forward scatter → silver rim + halo; self-shadowing; glow **earned in the march**, not a bloom sticker. |
-| **Motion** | Fixed camera. Slow internal evolution at rest; energy-driven mass swell; beat-locked light bloom / decay; slow mood-driven palette + turbulence drift; discrete section reorganisation. Laminar (low arousal) ↔ churning (high). |
-| **Audio-reactive** | Four orthogonal channels, separated by timescale — below. |
+| **Motion** | Fixed camera. **Constant rich gaseous flow at all times** (the interesting motion — billows folding, wisps curling); energy **blooms** the mass (size + brightness) and speeds the flow; mood shifts colour cool↔warm and flow agitation (laminar↔churning). **No** per-beat events, **no** section reorganisation in v1. |
+| **Audio-reactive** | Two drivers, separated by timescale (below). **Nothing on the beat.** |
 | **Failure modes** | Uniform fog; solid / opaque look; over-saturation / clipping; literal sky; multiple bodies / scattered dust; pure-black-at-silence. |
 | **Anti-reference warnings** | The `05_anti_*` slots above. |
 
-### Audio-reactive channels (the four kept)
+### Audio-reactive drivers (the two kept)
 
-1. **Breath of the body** *(continuous / slow)* — broadband attenuated energy, via deviation primitives (D-026), → mass density + luminosity. Coarse band → bulk; high band → edge shimmer. **Silence floor:** energy → 0 collapses the body to a dim held breath with a faint residual haze.
-2. **Pulse of light** *(transient / fast)* — composite beat onset → a single internal ember flare (bloom + decay); the forward-scatter rim is the tell. Optional: substitute the drum-stem onset when stems are warm (D-019). Accent only.
-3. **Mood of the section** *(section-length / very slow)* — valence → palette temperature; arousal → turbulence character. Smoothed in preset state — **never** written through `setFeatures` (Failed Approach #25).
-4. **Turn of the page** *(rare / discrete)* — a predicted section boundary → one reorganisation event (new core, palette shift, turbulence step).
+1. **Energy** *(continuous — the hero)* — broadband attenuated energy deviation `(bass_att_rel+mid_att_rel+treb_att_rel)/3` (D-026), run through a fast-attack/slow-release follower → `bloom`. `bloom` drives the mass **bigger + brighter + flowing faster** (one signal, one physical event). **Silence floor:** energy → 0 settles the body to a small, dim, slowly-drifting floor with a faint residual haze — non-black (D-037).
+2. **Mood** *(section-length — very slow)* — valence → body **colour** cool↔warm; arousal → **flow agitation** (laminar↔churning). Smoothed in preset state — **never** written through `setFeatures` (Failed Approach #25).
 
-**Cut for v1** (reactive but chaotic or off-axis): per-stem role assignment (fractures the one body), vocals-pitch → hue, spectral-centroid as its own channel, anticipatory beat-phase breathing, camera / time drift.
+**Cut for v1:** **anything on the beat** (no ember / pulse — per-beat response is "too much activity"); **section reorganisation**; per-stem roles; vocals-pitch → hue; spectral-centroid; camera / time drift. The discipline is *energy blooms-and-flows it, mood colours it* — nothing else.
 
 ## Provenance & compliance
 

@@ -4,20 +4,20 @@ This is the increment breakdown for review. It is **not** the session prompts. O
 
 Companion design doc: `NIMBUS_DESIGN.md` (the Gate 0→6 architecture; the seed for `docs/presets/NIMBUS_DESIGN.md`).
 
-Nimbus is unusual in this queue in one way: **there is no engine increment.** No `NB.ENGINE.*` row. The V.2 Volume utilities Nimbus needs are already injected into every preset's shader (`PresetLoader+Preamble.swift`), so every increment below is `doc` or `preset`. Skein needed two engine increments (canvas-hold, wetness); Nimbus needs none — which also means none of Skein's GPU-stall / shared-format traps apply here.
+Nimbus needs **one small engine touch** (Matt-approved 2026-06-04): a baked **Perlin-Worley 3D texture** in `TextureManager` (NB.3.0), required because the reference billows need Worley noise that the existing Perlin-only `noiseVolume` can't provide, and computing it per-step would blow the budget (§6.1). Everything else is `preset` — the V.2 Volume utilities are already injected into every preset's shader (`PresetLoader+Preamble.swift`). (The original plan claimed "no engine increment"; the NB.2 soft-blob result and the §0 direction reset changed that.)
 
 ---
 
 ## Locked decisions (from §8 of the design doc + this session)
 
 1. **Tier 2 (M3+) only.** `complexity_cost.tier1` set above the Tier-1 budget so the Orchestrator excludes Nimbus on M1/M2. No Tier-1 fallback in v1. (DESIGN §6.)
-2. **Single `direct` paradigm**, no extra passes (D-029 trivially satisfied). No engine work, no new pass-combination, no D-### ratification needed.
-3. **Four channels only** — Breath / Pulse / Mood / Page. Per-stem roles, pitch→hue, centroid: cut for v1. (DESIGN §1.2 / §8.2.)
-4. **Half-res internal march + MetalFX Temporal** is the budget mechanism, proven at NB.8. (DESIGN §6 / §5.5.)
-5. **Silence = dim held breath + faint haze**, not black (D-037); a settle, not a collapse. (DESIGN §1.5.)
-6. **Breath primary, Pulse a bounded accent** — the body breathes, it must not strobe per-beat. (DESIGN §5.7 beat-ratio.)
-7. **D-139** scoped exception accepts the authored `06_palette_*` swatches for Nimbus only. (Drafted this session; pending paste into `DECISIONS.md`.)
-8. **Name *Nimbus*, family `volumetric`** (provisional, your call — §8.1).
+2. **Single `direct` paradigm**, no extra passes (D-029 trivially satisfied). One small engine touch only: the NB.3.0 Perlin-Worley texture bake.
+3. **The look is a ported cloud technique** (HZD / "Nubis": Perlin-Worley billows + Beer-Powder + cone self-shadow), not the NB.1/NB.2 Perlin-FBM march. Port, don't hand-roll (DESIGN §0).
+4. **Two music drivers only** — Energy (bloom + flow) and Mood (colour + flow-agitation). **Nothing on the beat.** Per-beat ember and section reorganisation are CUT (DESIGN §1.3).
+5. **Silence = small, dim, slowly-drifting body + faint haze**, not black (D-037); a settle, not a collapse. (DESIGN §1.5.)
+6. **Energy is the hero, momentum-smoothed** — bloom + flow track the continuous broadband energy, never the beat (FA #4 / FA #33). (DESIGN §1.3.)
+7. **D-139** scoped exception accepts the authored `06_palette_*` swatches for Nimbus only.
+8. **Name *Nimbus*, family `volumetric`**.
 
 ---
 
@@ -27,16 +27,16 @@ Nimbus is unusual in this queue in one way: **there is no engine increment.** No
 |---|---|---|---|---|
 | **NB.0** | Reference lock | doc | — | `CheckVisualReferences` green; you sign off trait/anti-ref set *(substantially done)* |
 | **NB.1** | Macro maquette | preset | NB.0 | Eyeball (gate-before-gate) **+ budget gate**: one body reads; macro-only ≤ 7 ms Tier 2 |
-| **NB.2** ✅ | Meso/micro detail | preset | NB.1 | Contact sheet: billows / filaments / feathering read; not a flat card *(done 2026-06-04)* |
-| **NB.3** | Lighting / internal glow | preset | NB.2 | Contact sheet vs hero `08`: reads as luminous backlit gas *(highest aesthetic risk)* |
-| **NB.4** | Breath + silence floor | preset | NB.3 | Body mass/luminosity tracks energy deviation; silence non-black |
-| **NB.5** | Pulse (embers) | preset | NB.4 | Beat-ratio: ember accent bounded < Breath; reads as ignition, not strobe |
-| **NB.6** | Mood | preset | NB.4 | Valence → warm/cool, arousal → turbulence visible across mood fixtures |
-| **NB.7** | Page (reorganisation) | preset | NB.4 | Section-boundary fixture shows one slow reorganisation, not a thrash |
-| **NB.8** | Performance tranche | preset | NB.3 (NB.5/6/7 landed) | `MTLCounterSet` profile: p95 ≤ 16 ms full-frame, ≤ 7 ms preset; `complexity_cost` set |
+| **NB.2** ✅ | Meso/micro detail | preset | NB.1 | *Shipped, but look superseded by NB.3 (Perlin-FBM can't make billows). Test parity + debug views + budget probe reused.* |
+| **NB.3** | The look (cloud-port) | preset + 1 engine touch | NB.2 | Contact sheet vs the packet: cool billowing luminous backlit gas *(**highest risk — the whole fidelity fight**)* |
+| **NB.4** | Energy: bloom + flow + silence | preset | NB.3 | Bloom + flow track continuous energy; silence non-black; **nothing on the beat** |
+| ~~**NB.5**~~ | ~~Pulse (embers)~~ | — | — | ❌ **CUT** — nothing on the beat (DESIGN §1.3) |
+| **NB.6** | Mood | preset | NB.4 | Valence → cool/warm, arousal → flow-agitation visible across mood fixtures |
+| ~~**NB.7**~~ | ~~Page (reorganisation)~~ | — | — | ❌ **CUT** — no section reorganisation in v1 (DESIGN §1.3) |
+| **NB.8** | Performance tranche | preset | NB.3 + NB.4/6 | `MTLCounterSet` profile (re-measure cone-shadow cost): p95 ≤ 16 ms full-frame, ≤ 7 ms preset; `complexity_cost` set |
 | **NB.9** | Certification | preset | all | Acceptance + golden + anti-ref manual + **Matt M7** |
 
-Execution order is top-to-bottom. **NB.5 / NB.6 / NB.7 all branch off NB.4** (independent channels layered on a working Breath) and may be sequenced or reordered freely; NB.8 wants the heaviest channels present (≥ NB.3, ideally embers + turbulence too) so the profile is honest.
+Execution order is top-to-bottom and largely linear now: **NB.3 (the look) → NB.4 (energy) → NB.6 (mood) → NB.8 (perf) → NB.9 (cert)**. NB.3 is the gate everything waits on — it's where the fidelity fight is won or lost. NB.4 and NB.6 are small and well-understood once the look is right.
 
 ---
 
@@ -112,98 +112,77 @@ Execution order is top-to-bottom. **NB.5 / NB.6 / NB.7 all branch off NB.4** (in
 
 ---
 
-### NB.3 — Lighting / internal glow
-**preset · depends on: NB.2 · gate: contact sheet vs hero `08` (highest aesthetic risk)**
+### NB.3 — The look (cloud-port)
+**preset · depends on: NB.2 · gate: matches the reference packet — the whole fidelity fight (HIGHEST risk)**
 
-**Goal.** The signature look: the body lit so it reads as luminous backlit gas (hero `08_lighting_internal_glow`), with soft self-shadowing through the denser mass (`08_lighting_self_shadow`). This is where the preset earns its identity and where iteration concentrates.
+**Goal.** Replace the NB.1/NB.2 Perlin-FBM density + ad-hoc lighting with the ported **HZD / "Nubis"** volumetric-cloud technique, so the body finally reads like the packet: a cool gaseous mass with cauliflower **billows**, self-shadowed 3D depth, a luminous backlit glow, feathered edges into the void. Root cause of the NB.2 soft blob (researched + sourced, DESIGN §0): Perlin noise can't make billows (needs **Worley / Perlin-Worley**), and depth/glow needs **Beer-Powder + cone self-shadow**, not a single key. **Port the technique; don't hand-roll** (FA #70/#73).
 
-**Scope.**
-- Light set: single key + ambient, biased to internal / backlit so forward-scatter (HG) produces the glow; emission-term scaffold for embers (lit by a debug trigger now; real onset routing in NB.5).
-- Self-shadow: attenuate in-scatter through accumulated density (cheap single-light shadowing, not a second march if budget-prohibitive).
-- ACES composite; faint-haze void floor (non-black) established here so silence (NB.4) has its ground.
+**Scope (sub-increments, infra first).**
+- **NB.3.0 (infra).** Bake a tileable **Perlin-Worley 3D texture** in `TextureManager` (the one Matt-approved engine touch), generated by the existing GPU noise-gen path; bind via `bindTextures` so it auto-binds everywhere (test paths already get the full noise set, NB.2 Task 1). Own `.x` commit before any shader work.
+- **NB.3.1 (density).** Rebuild `nimbus_density`: Perlin-Worley base (billows) + Worley detail erosion + edge gradient, shaped to a bounded body by the existing envelope. Verify real billows in the density-only view.
+- **NB.3.2 (lighting).** Port the lighting: **Beer-Powder × HG phase × ~6-step cone self-shadow march** toward the key → luminous, self-shadowed, backlit billows. ACES; faint-haze void floor (non-black).
 
-**Out of scope / Do NOT.** No audio routing (lighting responds to nothing yet; embers on a debug trigger). No palette / mood (single neutral-cool baseline temperature; valence mapping is NB.6). **Do NOT make the body read as an opaque lit surface** (`05_anti_solid_surface`) — glow comes from light *through* the medium, not a surface highlight on it.
+**Out of scope / Do NOT.** No audio routing (NB.4+). No palette/mood (single cool baseline; valence is NB.6). **No per-step computed noise** — Perlin-Worley is a TEXTURE SAMPLE (§6.1 budget rule). **Do NOT hand-roll** — port the published loop, adapt only what differs (one bounded body vs sky slab; our cool tint; Tier-2 budget).
 
-**Key files.** `Sources/Presets/Shaders/Nimbus.metal`, `Sources/Presets/Nimbus.json` (lighting params), `SHADER_CRAFT.md` (internal-glow recipe).
+**Key files.** `Sources/Renderer/TextureManager.swift` (+ a Perlin-Worley gen kernel), `Sources/Presets/Shaders/Nimbus.metal`, `Sources/Presets/Nimbus.json`, `SHADER_CRAFT.md` (extend §6.5 with the Beer-Powder + cone-shadow recipe).
 
 **Done-when.**
-- Contact sheet reads as a luminous backlit gaseous body comparable to hero `08`; self-shadowing gives interior depth.
-- Does not match any `05_anti_*` (manual; especially solid-surface and oil-slick).
-- Per-preset GPU re-checked (lighting is the cost step before the formal NB.8 tranche).
+- Contact sheet reads as a cool, billowing, luminous backlit gaseous body comparable to the packet (`01`/`02`/`03`/`08`); billows + self-shadow depth present in both the lit and density-only views.
+- Does not match any `05_anti_*` (manual; especially solid-surface and uniform-fog).
+- Per-preset GPU re-measured — the cone-shadow cost is the new budget unknown (NB.8 formalises).
 
 ---
 
-### NB.4 — Breath + silence floor
-**preset · depends on: NB.3 · gate: mass/luminosity tracks energy deviation; silence non-black**
+### NB.4 — Energy: bloom + flow + silence floor
+**preset · depends on: NB.3 · gate: bloom + flow track continuous energy; silence non-black; nothing on the beat**
 
-**Goal.** Wire the primary continuous channel — broadband energy **deviation** (D-026) → body mass/extent + luminosity — and the dim-held-breath silence floor (D-037). The body starts breathing with the music.
+**Goal.** Wire the one fast channel — broadband energy **deviation** (D-026) → a momentum-smoothed `bloom` driving the body's size, brightness, and gas-flow rate — plus the dim/small/slow silence floor (D-037). The body starts moving with the music.
 
 **Scope.**
-- Breath routing: broadband energy deviation → body extent + luminosity (DESIGN §5.4); smoothed in state (breath integrator).
-- Silence floor: as energy-deviation goes quiet, settle to a dim slow breath + faint haze; pause `accumulated_audio_time`-linked drift; **non-black** (D-037).
+- `NimbusState`: `E = (bass_att_rel + mid_att_rel + treb_att_rel)/3` → a **fast-attack (~150 ms) / slow-release (~400 ms)** follower → `bloom` (DESIGN §5.4).
+- `bloom` → body size (~+45 %) + brightness (~+80 %) + flow rate (churn ~1×→3.5×). All three off the one signal, read as one physical event.
+- Silence floor: as energy goes quiet, settle to a small/dim/slow-drifting body + faint haze; pause `accumulated_audio_time`-linked flow; **non-black** (D-037).
 - Wire the **seed** to track identity (the SHA hook scaffolded in NB.1) → deterministic body per track.
-- Stem warmup blend (`smoothstep(0.02,0.06,totalStemEnergy)`, D-019) **only if** a `stems.*` term is read — Breath uses broadband, so warmup is N/A unless a per-stem term is introduced; note it either way.
-- Register Nimbus in **PresetSessionReplay** (routes) — deferred until now because routing must exist to verify (Dragon Bloom Spike-2/3 / Skein.3 pattern).
+- Register Nimbus in **PresetSessionReplay** (routes) — deferred until now because routing must exist to verify.
 
-**Out of scope / Do NOT.** No Pulse / embers (NB.5), no Mood (NB.6), no Page (NB.7). Do NOT use absolute-threshold audio patterns (D-026 deviation only). Do NOT write valence/arousal anywhere yet.
+**Out of scope / Do NOT.** **No beat field (`beat_*`) — nothing on the beat** (DESIGN §1.3). No Mood (NB.6). Do NOT use absolute-threshold audio (D-026 deviation only). Do NOT write valence/arousal yet.
 
-**Key files.** `Sources/Presets/Shaders/Nimbus.metal`, `Sources/Presets/NimbusState.swift`, `Sources/Presets/Nimbus.json` (Breath routing), PresetSessionReplay registration, `PresetAcceptanceTests.swift`.
+**Key files.** `Sources/Presets/Shaders/Nimbus.metal`, `Sources/Presets/NimbusState.swift`, `Sources/Presets/Nimbus.json`, PresetSessionReplay registration, `PresetAcceptanceTests.swift`.
 
 **Done-when.**
-- Replay / acceptance: body mass + luminosity track the continuous energy-deviation signal (loud → larger/brighter, sparse → smaller/dimmer); zero-delay feel.
-- Silence fixture: dim breathing body + haze, measurably **non-black**; drift paused.
+- Replay / acceptance: size + brightness + flow visibly track continuous energy (loud → bigger/brighter/faster, sparse → smaller/dimmer/slower) with fast-attack/slow-release momentum; **no `beat_*` read** (source-verified).
+- Silence fixture: small dim slowly-drifting body + haze, measurably **non-black**; flow eased.
 - Same track → same starting body (seed determinism).
 
 ---
 
-### NB.5 — Pulse (embers)
-**preset · depends on: NB.4 · gate: beat-ratio (accent bounded < Breath)**
-
-**Goal.** On a beat onset, kindle one ember deep in the body and flare it outward — the accent layer. It must read as ignition, never as a per-beat strobe.
-
-**Scope.**
-- Composite onset pulse → spawn one ember (seeded interior position, age, intensity); small active cap (≈4–8, DESIGN §8.3); flare-and-decay animated in state + emission term in shader.
-- Bound the accent: ember contribution capped so Breath remains the dominant luminosity signal.
-
-**Out of scope / Do NOT.** No Mood, no Page. **Do NOT drive body mass from onsets** (mass is Breath's; onsets only kindle embers). Do NOT let ember density rise to a strobe — check the beat-ratio criterion each iteration (FA #33: rhythm lives in Breath, not the spark).
-
-**Key files.** `Sources/Presets/Shaders/Nimbus.metal`, `Sources/Presets/NimbusState.swift`, `Sources/Presets/Nimbus.json`, `PresetAcceptanceTests.swift`.
-
-**Done-when.**
-- Beat-heavy fixture: visible ember flares on onsets; ember (Pulse) luminosity energy measurably **below** Breath energy by the set margin — it breathes, it doesn't strobe.
-- Ember cap respected; flares decay cleanly.
+### NB.5 — Pulse (embers) — ❌ CUT (2026-06-04)
+**Removed from the concept**, not deferred-with-a-plan. No per-beat response in v1 (Matt: a per-beat ember is "too much activity"; DESIGN §1.3). The activity lives entirely in the continuous gas flow (NB.4); nothing fires on the beat. Revisit only if a future direction explicitly calls for it.
 
 ---
 
 ### NB.6 — Mood
-**preset · depends on: NB.4 (NB.5 optional) · gate: mood fixtures show warm/cool + turbulence travel**
+**preset · depends on: NB.4 · gate: mood fixtures show colour + flow-agitation travel**
 
-**Goal.** The slow colour-of-mood channel: valence → body colour temperature; arousal → internal turbulence amplitude.
+**Goal.** The two slow mood signals: valence → body colour (cool↔warm); arousal → flow agitation (smooth↔torn).
 
 **Scope.**
-- Valence → colour temperature (cool indigo/violet baseline ↔ warm gold/amber peak, the `06_palette_*` axis); arousal → turbulence amplitude (placid ↔ roiling) + ember vigour. **Smoothed in state — never via `setFeatures` (FA #25).**
-- Replace the NB.2/NB.3 debug turbulence scalar with the arousal route.
+- Valence → colour cool indigo/violet ↔ warm gold/amber (the `06_palette_*` axis); arousal → **flow agitation** amplitude (the `kNimbusTurbulence` knob NB.2 built). **Smoothed in state ~4 s — never via `setFeatures` (FA #25).**
+- Replace the fixed `kNimbusTurbulence` constant with the arousal route.
 
-**Out of scope / Do NOT.** No Page, no per-stem tint (V2, §8.2). Do NOT write valence/arousal through `setFeatures`. Do NOT let mood introduce a fast colour flicker — temperature drifts slowly.
+**Out of scope / Do NOT.** No per-stem tint (V2, §8.2). Do NOT write valence/arousal through `setFeatures`. Do NOT let mood introduce a fast colour flicker — colour crawls (fast colour = the `05_anti_oilslick` failure).
 
-**Key files.** `Sources/Presets/NimbusState.swift` (mood smoothers), `Sources/Presets/Shaders/Nimbus.metal` (temperature + turbulence), `Sources/Presets/Nimbus.json`.
+**Key files.** `Sources/Presets/NimbusState.swift` (mood smoothers), `Sources/Presets/Shaders/Nimbus.metal` (colour + flow agitation), `Sources/Presets/Nimbus.json`.
 
 **Done-when.**
 - Contact sheet across high/low-valence fixtures: visibly warm vs cool body.
-- High/low-arousal fixtures: visibly different turbulence amplitude.
-- No first-frames colour pop; transitions smooth (state-smoothed).
+- High/low-arousal fixtures: visibly different flow agitation.
+- No first-frame colour pop; transitions smooth (state-smoothed).
 
 ---
 
-### NB.7 — Page (reorganisation)
-**preset · depends on: NB.4 · gate: section-boundary fixture shows one slow reorganisation**
-
-**Goal.** The rarest channel: at a predicted section boundary, the body performs one slow mass reorganisation — felt more than seen.
-
-**Scope.**
-- `StructuralPrediction` boundary → trigger a single reorganisation: redistribute the density field's shaping toward a new silhouette, interpolated over ~1–2 s (DESIGN §8.4). State carries target + interpolation `t`.
-
-**Out of scope / Do NOT.** Do NOT reorganise per-section-beat or per-onset (Page is rare). Do NOT make it a hard cut / new body — it is a slow redistribution of the same body.
+### NB.7 — Page (reorganisation) — ❌ CUT (2026-06-04)
+**Removed from scope.** No section-boundary reorganisation in v1 — it's not in the reference packet and adds a behaviour the concept doesn't need (DESIGN §1.3).
 
 **Key files.** `Sources/Presets/NimbusState.swift` (reorg state), `Sources/Presets/Shaders/Nimbus.metal` (silhouette interpolation), `Sources/Presets/Nimbus.json`.
 
@@ -239,11 +218,11 @@ Execution order is top-to-bottom. **NB.5 / NB.6 / NB.7 all branch off NB.4** (in
 **Goal.** Certify Nimbus and flip `certified: true`.
 
 **Scope.**
-- **Acceptance invariants** (`PresetAcceptanceTests`, DESIGN §5.7): silence-non-black; breath-primacy / beat-ratio (Pulse < Breath margin); body-coherence (single bounded mass, negative space preserved, ≠ uniform fog); mood travel (warm/cool + turbulence).
+- **Acceptance invariants** (`PresetAcceptanceTests`, DESIGN §5.7): silence-non-black; energy-primacy (bloom + flow track continuous energy; **no `beat_*` read**); flow-is-alive (gas visibly churns at all times, incl. silence); body-coherence (single bounded mass, negative space preserved, ≠ uniform fog); mood travel (cool/warm + flow-agitation).
 - Golden dHash regression entry for Nimbus.
 - **Anti-reference check:** manual (the automated anti-reference dHash gate is a Missing engine capability — same as Arachne / Skein — so this stays an M7 judgement).
 - `ENGINEERING_PLAN.md` rows marked landed; `FidelityRubric` profile set (full-rubric — Nimbus is an artistic preset, not lightweight).
-- **Matt M7:** live, on real music, ≥5 tracks + a local file — body-must-breathe / glow-must-read. Non-negotiable, non-bypassable.
+- **Matt M7:** live, on real music, ≥5 tracks + a local file — body-must-bloom-and-flow / glow-must-read. Non-negotiable, non-bypassable.
 
 **Out of scope / Do NOT.** No new features at cert. Do NOT flip `certified: true` before M7 passes.
 
@@ -257,7 +236,7 @@ Execution order is top-to-bottom. **NB.5 / NB.6 / NB.7 all branch off NB.4** (in
 
 ## Sequencing, cut-lines, and risk
 
-- **Critical path:** NB.0 → NB.1 → NB.2 → NB.3 → NB.4 → NB.8 → NB.9. NB.5 / NB.6 / NB.7 are independent channels branching off NB.4 and can be sequenced in any order — or cut/deferred individually without blocking cert. (A certified Nimbus wants at least Breath + Pulse + Mood; **Page is the most cuttable to V2**.)
+- **Critical path:** NB.0 ✅ → NB.1 ✅ → NB.2 ✅ → **NB.3 (the look — the gate everything waits on)** → NB.4 (energy) → NB.6 (mood) → NB.8 (perf) → NB.9 (cert). NB.5 (Pulse) and NB.7 (Page) are CUT. A certified Nimbus is Energy + Mood on a packet-matching body — nothing more.
 - **Two risk concentrations, both early:**
   - **NB.1 — feasibility.** The unprecedented thing is *cost*: no preset has marched a volume in production. The NB.1 budget gate exists to fail fast — if the macro-only march can't fit 7 ms (even at half-res), escalate to "this preset needs a staged volume pass" or "re-scope," per the §5.5 fallback, rather than tuning forward. (CC_DESIGN flagship-risk lesson / FA #58: escalate non-viability, don't grind.)
   - **NB.3 — aesthetics.** The internal-glow recipe is where Nimbus reads as luminous gas or as a lit blob. Budget iteration here (cf. Arachne clipart, Dragon Bloom "not seeing petals").

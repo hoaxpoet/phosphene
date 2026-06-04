@@ -2,7 +2,7 @@
   "name": "Nimbus",
   "family": "volumetric",
   "duration": 60,
-  "description": "A single luminous gaseous body suspended in a cosmic void — a single-pass volumetric single-scatter march composing the V.2 Volume tree. NB.1 macro maquette: one coherent body with a denser, brighter core fraying to soft wispy edges on a true-black void. No audio coupling yet (NB.4+).",
+  "description": "A single coherent mass of glowing cool gas in a black void that moves with the music — a single-pass volumetric single-scatter march. Energy blooms the body bigger/brighter and flows the gas faster; mood colours it cool↔warm; nothing fires on the beat. (Look being rebuilt on the ported HZD/Nubis cloud technique — NB.3; audio coupling NB.4+.)",
   "author": "Matt",
   "passes": [],
   "fragment_function": "nimbus_fragment",
