@@ -177,7 +177,7 @@ struct FidelityRubricGateTests {
     // (it is a ray-march/material heuristic; Fata is a feedback mirage with no V.3
     // mat_* cookbook materials by construction) — Matt's reference review against
     // the butterchurn oracle is the load-bearing gate per SHADER_CRAFT.md §12.1 M7.
-    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana"]
+    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana", "Murmuration"]
 
     @Test func automatedGate_uncertifiedPresetsAreUncertified() async {
         let store = PresetCertificationStore()

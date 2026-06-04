@@ -1,100 +1,83 @@
-// MurmurationRoutes.swift — Per-route specs for the audio-coupled flock.
+// MurmurationRoutes.swift — Per-route firing specs for the shipped 3D Murmuration.
 //
-// !!! STALE FOR THE SHIPPED PRESET — re-derive in MM.5 (design §13). !!!
-// These three GLOBAL-envelope routes describe the RETIRED emergent Flock2
-// substrate (`MurmurationFlock*`, `git rm`'d in 9056dc48). The shipped
-// Murmuration is the 3D parametric-ellipse flock (`Murmuration3D.metal`), whose
-// audio brain is the proven 2D preset's FOUR routes — bass → drift + elongation,
-// drums → turning-wave / banding, other → flutter + curvature, vocals → density
-// compression. The firing specs below must be re-derived against
-// `murmuration3d_update` before the MM.5 firing-evidence report is trusted; they
-// are kept only so the replay harness still loads. DO NOT cite this file's firing
-// % as evidence for the shipped preset until MM.5 re-derives it.
+// Re-derived for MM.5 cert against the global-envelope coupling of the 3D
+// parametric-ellipse flock (`Murmuration3D.metal` + `Murmuration3DGeometry`,
+// design §13.5), replacing the retired emergent-Flock2 specs (9056dc48). The
+// shipped coupling drives the flock's GLOBAL envelope, computed CPU-side in
+// `Murmuration3DGeometry.advanceEnvelopes`:
 //
-// --- historical (retired emergent substrate) -------------------------------
-// MM.6 musicality rethink (Matt 2026-06-03): drive the flock's GLOBAL envelope
-// and let the rich structure (banking waves, feathered edge) EMERGE from the
-// Flock2 substrate — three robust global couplings, not four fragile per-bird
-// ones (the MM.3 per-bird drum-wave + mid-flutter were swallowed/inverted by the
-// self-organizing substrate). Routes were in
-// `MurmurationFlockGeometry.computeAudio(features:stemFeatures:dt:)`:
+//   ENERGY (PRIMARY) — rawEnergy = (drums + bass + other)/3 + 0.4·vocals, smoothed
+//                      (EMA τ≈0.45 s), mapped energyNorm = (energyEnv − 0.18)/0.45.
+//                      Drives the morph-clock PACE (vigor), the flock's SWELL +
+//                      elongation, and the TRAVERSE range. The dominant continuous
+//                      coupling — active whenever music plays.
+//   BEAT (ACCENT)    — the drumsBeat pulse → a beat-GATED agitation/banking wave (a
+//                      band banks together and a dark band sweeps across as the beat
+//                      decays). Quiet passages carry no band.
+//   VOCALS           — vocals energy, smoothed → density breathing (the flock
+//                      tightens/darkens on vocal phrases).
 //
-//   L1 — bass    → macro drift + envelope elongation (comma/ribbon)
-//                  Driver: mix(f.bass_att_rel, stems.bass_energy_rel, stemMix)
-//                  (continuous; "fires" = above-average bass present)
-//   MV — maneuver → one coordinated heading-swing per BAR, energy-gated and
-//                  drum-MODULATED (the banking wave emerges from the swing).
-//                  Driver (amplitude): mix(f.bass_dev, stems.drums_energy_dev,
-//                  stemMix) × the energy gate; the trigger is the bar downbeat.
-//   L5 — vocals  → vertical dilation (breathing)
-//                  Driver: stems.vocals_energy_dev × stemMix
-//
-// SR.1 measures routes at the INPUT layer: for each recorded frame, did the
-// route's driver cross its firing gate, and what was the distribution?
-//
-// !!! GATE / BLEND CONSTANTS MIRROR THE CONFORMER !!!
-// `stemMix = smoothstep(0.02, 0.06, totalStemEnergy)` (D-019) and the firing
-// thresholds below mirror the effective drive points in
-// MurmurationFlockGeometry.computeAudio. The recorded `SessionFrame` exposes the
-// *Dev primitives (not *Rel); Dev = max(0, Rel), which is the firing-relevant
-// half — the firing % is therefore a conservative read of each continuous
-// route. Keep these in sync with the conformer (SR.2 will centralise).
+// SR.1 measures firing at the INPUT layer. The recorded `SessionFrame` carries the
+// per-stem energies + Dev primitives but NOT drumsBeat, so the beat route is
+// measured via `stems.drums_energy_dev` (its faithful onset correlate) and the
+// energy route via the rawEnergy reconstruction above (recorded sessions always
+// have stems present, so the full-mix fallback path is not exercised here). Gates
+// are sized to the measured driver ranges (stem energies ~0.30 mean / ~0.70 p99;
+// Dev primitives near-zero, spiking to ~1–2.5 on events). Keep in sync with
+// `Murmuration3DGeometry.advanceEnvelopes`.
 
 import Foundation
 import Shared
 
 public enum MurmurationRouteSpecs {
 
-    /// L1 — bass macro drift + elongation (the PRIMARY continuous driver).
-    /// Reports how often above-average bass is present to drift/stretch the
-    /// flock. Continuous (no hard gate); the 0.20 LO edge is "noticeably driving".
-    public static let bassDrift = RouteSpec(
-        name: "L1 — bass → drift + elongation",
-        description: "mix(f.bass_att_rel, stems.bass_energy_dev, stemMix). Drives the "
-                   + "anchor macro drift and the envelope elongation (comma/ribbon). "
-                   + "Continuous primary driver — fires whenever bass runs above average.",
-        inputName: "mix(f.bass_att_rel, stems.bass_energy_dev, stemMix)",
+    /// rawEnergy reconstruction = (drums + bass + other)/3 + 0.4·vocals — mirrors
+    /// `Murmuration3DGeometry.advanceEnvelopes` (stems present in recorded sessions).
+    private static func rawEnergy(_ frame: SessionFrame) -> Float {
+        (frame.drumsEnergy + frame.bassEnergy + frame.otherEnergy) / 3 + 0.4 * frame.vocalsEnergy
+    }
+
+    /// PRIMARY — energy → vigor + swell + drift range. Continuous; the LO gate is the
+    /// quiet floor where energyNorm starts driving (rawEnergy ≈ 0.27 ↔ energyNorm ≈
+    /// 0.20), HI is the strong-response level (≈ 0.50 ↔ energyNorm ≈ 0.70).
+    public static let energy = RouteSpec(
+        name: "ENERGY → vigor + swell + drift (PRIMARY)",
+        description: "rawEnergy = (drums+bass+other)/3 + 0.4·vocals, smoothed (τ≈0.45 s) → the "
+                   + "morph-clock pace, the flock's swell/elongation, and the traverse range. "
+                   + "The dominant continuous coupling — fires whenever music is playing.",
+        inputName: "(drums+bass+other)/3 + 0.4·vocals",
+        gateThreshold: 0.27,
+        partialGateThreshold: 0.50,
+        inputValue: { rawEnergy($0) }
+    )
+
+    /// ACCENT — beat → the beat-gated agitation/banking wave. The shader keys this on
+    /// the drumsBeat pulse; `SessionFrame` lacks drumsBeat, so firing is measured via
+    /// `drums_energy_dev` (the onset correlate). LO 0.20 = a noticeable hit, HI 0.50 =
+    /// a strong hit driving a clear band sweep.
+    public static let beatWave = RouteSpec(
+        name: "BEAT → agitation/banking wave (ACCENT)",
+        description: "drumsBeat pulse → a band banks together and a dark band sweeps across as "
+                   + "the beat decays. Beat-gated (no band in quiet passages). Measured via "
+                   + "stems.drums_energy_dev — drumsBeat itself is not recorded in SessionFrame.",
+        inputName: "stems.drums_energy_dev (≈ drumsBeat onset)",
         gateThreshold: 0.20,
         partialGateThreshold: 0.50,
-        inputValue: { frame in
-            let mix = stemWarmupBlend(frame.totalStemEnergy)
-            return frame.bassAttRel * (1 - mix) + frame.bassEnergyDev * mix
-        }
+        inputValue: { $0.drumsEnergyDev }
     )
 
-    /// MV — bar maneuver amplitude (the coordinated heading-swing; the banking
-    /// wave emerges from it). The swing fires once per bar (trigger = barPhase01
-    /// downbeat) with amplitude `drums_energy_dev × masterGate`; this reports the
-    /// drums-deviation side that modulates how hard each bar swings. LO 0.30 =
-    /// the maneuver becomes visible; HI 0.70 = strong-swing territory.
-    public static let maneuver = RouteSpec(
-        name: "MV — bar maneuver (heading-swing)",
-        description: "mix(f.bass_dev, stems.drums_energy_dev, stemMix) modulates the per-bar "
-                   + "coordinated heading-swing amplitude (the dark banking wave emerges from "
-                   + "it). Bar-triggered + energy-gated so calm passages barely swing.",
-        inputName: "mix(f.bass_dev, stems.drums_energy_dev, stemMix)",
-        gateThreshold: 0.30,
-        partialGateThreshold: 0.70,
-        inputValue: { frame in
-            let mix = stemWarmupBlend(frame.totalStemEnergy)
-            return frame.bassDev * (1 - mix) + frame.drumsEnergyDev * mix
-        }
-    )
-
-    /// L5 — vocals breathing (vertical dilation / the dark pulse). Stem-only
-    /// (vocals are absent from the full-mix fallback); fires on vocal entries.
-    public static let vocalsBreath = RouteSpec(
-        name: "L5 — vocals → breathing",
-        description: "stems.vocals_energy_dev × stemMix. Drives an active vertical spread so "
-                   + "the mass dilates on vocal phrases (the McGill blackening↔dilution).",
-        inputName: "stems.vocals_energy_dev × stemMix",
+    /// SECONDARY — vocals → density breathing (the flock tightens/darkens on vocal
+    /// phrases). Measured via `vocals_energy_dev` (fires on vocal entries).
+    public static let vocalsDensity = RouteSpec(
+        name: "VOCALS → density breathing",
+        description: "vocals energy, smoothed → the flock tightens/darkens on vocal phrases. "
+                   + "Measured via stems.vocals_energy_dev (fires on vocal entries).",
+        inputName: "stems.vocals_energy_dev",
         gateThreshold: 0.20,
         partialGateThreshold: 0.50,
-        inputValue: { frame in
-            frame.vocalsEnergyDev * stemWarmupBlend(frame.totalStemEnergy)
-        }
+        inputValue: { $0.vocalsEnergyDev }
     )
 
-    /// Murmuration's MM.6 route set (global-envelope couplings).
-    public static let all: [RouteSpec] = [bassDrift, maneuver, vocalsBreath]
+    /// The shipped 3D Murmuration route set (global-envelope couplings, design §13.5).
+    public static let all: [RouteSpec] = [energy, beatWave, vocalsDensity]
 }
