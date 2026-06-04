@@ -40,7 +40,11 @@ struct PresetLoaderCompileFailureTest {
     /// (D-135) — Milkdrop-uplift feedback bloom (direct + mv_warp). 17 → 18 at
     /// FM.L1 (Fata Morgana — butterchurn mirage port: custom warp + comp + blur,
     /// direct + mv_warp; D-139). Not yet certified (mirage substrate, shapes L2).
-    static let expectedProductionPresetCount = 18
+    /// 18 → 19 at NB.1 (Nimbus — first `volumetric`-family preset; single-pass
+    /// direct-fragment volumetric ray-march composing the V.2 Volume tree; the
+    /// `volumetric` PresetCategory case was Matt-authorized 2026-06-04). Not yet
+    /// certified (NB.1 macro maquette; cert at NB.9).
+    static let expectedProductionPresetCount = 19
 
     @Test("PresetLoader.presets.count matches expectedProductionPresetCount — catches Failed Approach #44 silent drops")
     func test_presetLoaderProductionCount() {
