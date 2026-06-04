@@ -3344,9 +3344,21 @@ flock's position stayed mid-frame (drift amp ~0.12 vs flock half-extent ~0.40). 
 sweep (~34 s each way, clamped ±0.30 x). `test_framed` upgraded to prove framed-across-traverse
 (`minFramed > 0.93`) AND a real sweep (`centreXrange > 0.30`). Engine 1376 green, app build clean, lint 0.
 
+**3RD LIVE REVIEW → MUSICALITY (2026-06-04, commit `cd67944a`, design §13.5).** Session
+`2026-06-04T16-15-40Z`: *"Steady improvements… the real focus now should be on musicality — how the preset
+feels connected to music sources"* (+ traverse still inches, minor). Diagnosis from the session CSVs: the
+existing routes were 10–20 % modulations buried under autonomous motion running on a pure-time clock —
+that was the disconnect. Fix (global-envelope coupling, `feedback_global_coupling_emergent_substrate` +
+Audio Data Hierarchy): smoothed CPU-side envelopes drive `energyEnv` → a **vigor-paced morph clock** +
+**swell** + **traverse range** (PRIMARY); `beatEnv` → a **beat-gated agitation wave** (ACCENT); `vocalEnv`
+→ density. Gains sized to measured ranges (stem energy ~0.3 mean/0.7 p99; drumsBeat 0→1). `viewScale`
+1.3 → 1.05 for swell room. `test_musicality` asserts louder → bigger + more banding than silence;
+`test_framed` drives energetic audio and asserts framed + traverse. Engine 1377 green, app build clean,
+lint 0.
+
 **PENDING (→ MM.5):** **Matt M7 sign-off** of the reworked 3D version (the load-bearing gate — verified
 headlessly so it's a sign-off, not another tweak round); per-route firing evidence from a real recorded
-session. Design doc §13 / §13.3 / §13.4.
+session. Design doc §13 / §13.3 / §13.4 / §13.5.
 
 ---
 
