@@ -3166,7 +3166,7 @@ release notes.
 
 ---
 
-### Increment MM.6 — Rebuild the flock on Flock2 (orientation-based)  *(IMPLEMENTED 2026-06-03; M7 rounds 1–5 failed + fixed; round-5 density/framing reframe + round-6 governor-freeze fix 2026-06-04; M7 round-6 live review pending)*
+### Increment MM.6 — Rebuild the flock on Flock2 (orientation-based)  *(IMPLEMENTED 2026-06-03; M7 rounds 1–6 failed + fixed; round-7 source-faithful free-wheeling rework restores morphing 2026-06-04; M7 round-7 live review pending)*
 
 **Supersedes the force-based substrate of MM.2 and the force-based audio coupling of MM.3.** MM.4
 (sky/perf) and MM.5 (cert) now apply to the Flock2 flock and follow this increment.
@@ -3272,7 +3272,21 @@ rate) + `mm6_throttled_*` parity render. Generalisable rule added to CLAUDE.md �
 substrates throttle fidelity, never element count). Full suite **1386 green**, lint 0, app builds. Design
 doc §12.2.
 
-**PENDING (→ MM.5):** per-route firing evidence from a real recorded session; **Matt M7 round-6 live
+**ROUND-6 M7 FAILED → ROUND-7 FREE-WHEELING REWORK (2026-06-04).** R6: "neither looks nor behaves like a
+murmuration" — the flock settled into a stable blob (silence renders 24 s apart identical) instead of
+ceaselessly morphing. Root cause (FA #73, from the Flock2 source): faithful CONTROLLER, unfaithful WORLD.
+The source frames its flock with ONLY the soft peripheral-boundary turn toward a fixed centre (no hard
+wall); my round-5 hard wall + per-bird re-centring flat-lined the wheeling. Taproot: the neighbour examine
+cap (96) couldn't count r_nbrs to the source's boundary_cnt=120, so I'd used 10 → weak herding → spray →
+wall → dead. Fix: remove the wall + re-centring; raise neighborCap 96→512 + boundaryCnt 10→60 so the
+boundary-turn frames the flock source-faithfully; lower avoidance 0.05→0.015; PERF early-exit gather
+(interior birds exit at boundary_cnt — makes the high cap affordable); 3D far-edge safety for runaways;
+wider static view. Silence now MORPHS (banked masses, sweeping wings, comma-tails, shed sub-groups) at
+full AND throttled quality. Durable lesson in CLAUDE.md §What NOT To Do (don't bend a ported reference out
+of its working regime). Full suite **1387 green**, lint 0, app builds. Design §12.3. Follow-ups: density
+(more birds), gather perf for a higher-count ship, audio-route FEEL re-tune for the free-wheeling regime.
+
+**PENDING (→ MM.5):** per-route firing evidence from a real recorded session; **Matt M7 round-7 live
 approval** (the load-bearing gate — the live look is not assertable headlessly; the session `video.mp4` is
 a rolling clip, not preset-specific — anchor on Matt's screenshots + CSV).
 
