@@ -42,10 +42,14 @@ struct M3DConfig {
     float drag;
     float camDist;            // perspective camera distance (world units)
     float camPitch;           // downward look angle (rad)
-    float time;
+    float time;               // real elapsed time (beat epochs, edge flutter, age)
     float viewScale;          // screen zoom — fills the frame (perspective shrinks the raw flock)
+    float motionPhase;        // VIGOR-PACED morph clock (CPU-integrated; faster when energetic)
+    float energyEnv;          // smoothed music energy → vigor + swell + drift range (PRIMARY)
+    float beatEnv;            // smoothed beat pulse → agitation/banking wave + squash (ACCENT)
+    float vocalEnv;           // smoothed vocals → density breathing
+    float _pad0;
     float _pad1;
-    float _pad2;
 };
 
 inline float m3d_hash(float n) { return fract(sin(n) * 43758.5453); }
@@ -69,8 +73,20 @@ kernel void murmuration3d_update(
     if (!(dt > 0.0)) { dt = 1.0 / 60.0; }
     dt = min(dt, 1.0 / 30.0);
     float t  = features.time;
-    float motionRate = 1.2;          // global morph/wheel speed (+20%, Matt 2026-06-04)
-    float st = t * 0.7 * motionRate;
+    // `st` is the VIGOR-PACED morph clock — the CPU integrates motionPhase faster when
+    // the music is energetic and slower when it's calm, so the whole flock churns,
+    // wheels and drifts TO THE MUSIC'S ENERGY rather than a fixed wall-clock. `t` stays
+    // real time for beat epochs, edge flutter and age.
+    float st = config.motionPhase;
+
+    // ── MUSIC ENVELOPES (smoothed CPU-side — the global-envelope coupling) ──
+    //   energyNorm  0 (silence/quiet) … ~1.2 (loud) — PRIMARY: vigor, swell, drift range
+    //   beatEnv     per-beat pulse — ACCENT: the agitation/banking wave + squash
+    //   vocalEnv    smoothed vocals — density breathing
+    float energyNorm = clamp((config.energyEnv - 0.18) / 0.45, 0.0, 1.3);
+    float energyUp   = min(energyNorm, 1.0);
+    float beatEnv    = config.beatEnv;
+    float vocalEnv   = config.vocalEnv;
 
     float3 pos = float3(p.position);
     float3 vel = float3(p.velocity);
@@ -82,30 +98,26 @@ kernel void murmuration3d_update(
     float birdW = m3d_hash(p.seed * 211.0);
     float distFromCenter = length(float3(birdU, birdV, birdW) - 0.5) * 2.0;
 
-    // ── Warmup crossfade: full-mix FeatureVector → stems as they arrive ──
+    // ── Raw fast flutter (edge-texture only; everything load-bearing now flows
+    // through the smoothed envelopes above) ──
     float totalStem = stems.drums_energy + stems.bass_energy + stems.other_energy + stems.vocals_energy;
     float stemBlend = smoothstep(0.02, 0.06, totalStem);
-    float rhythm      = mix(features.sub_bass + features.low_bass, stems.bass_energy,  stemBlend);
     float flutterBase = mix(features.high_mid + features.high_freq, stems.other_energy, stemBlend);
-    float beatPulse   = mix(features.beat_bass, stems.drums_beat,   stemBlend);
-    float drumEnergy  = mix(features.bass,      stems.drums_energy, stemBlend);
-    float vocals      = stems.vocals_energy * stemBlend;
 
-    // ── FLOCK CENTRE — a SLOW END-TO-END TRAVERSE across the sky is now the
-    // dominant position motion (Matt 2026-06-04: it was morphing in place; a
-    // murmuration should drift from one side to the other). The flock is zoomed
-    // out (viewScale 1.3) to leave room. Gentler vertical + depth wobble on top;
-    // bass adds sweeping arcs. Clamped so it stays framed even at the extremes.
+    // ── FLOCK CENTRE — a slow end-to-end traverse whose RANGE scales with music
+    // energy: energetic music sends the flock roaming the whole sky; calm music lets
+    // it drift gently near home (Matt 2026-06-04: "can move around more" + musicality).
+    // The vigor-paced clock also makes the sweep itself quicker when energetic.
+    float traverseScale = 0.45 + 0.75 * energyUp;               // 0.45 calm … 1.20 loud
     float3 flockCenter = float3(
-        sin(st * 0.11) * 0.24 + sin(st * 0.043 + 1.7) * 0.07,   // big slow L↔R sweep
-        sin(st * 0.085) * 0.12 + cos(st * 0.057) * 0.06,        // gentle vertical
-        sin(st * 0.13) * 0.12 + cos(st * 0.19) * 0.06);         // depth wobble
+        (sin(st * 0.11) * 0.26 + sin(st * 0.043 + 1.7) * 0.08) * traverseScale,
+        (sin(st * 0.085) * 0.12 + cos(st * 0.057) * 0.06) * (0.6 + 0.5 * energyUp),
+        (sin(st * 0.13) * 0.12 + cos(st * 0.19) * 0.06) * (0.6 + 0.5 * energyUp));
     float windDir = features.bass_att * 3.0 + st * 0.2;
-    flockCenter.x += rhythm * 0.10 * cos(windDir);
-    flockCenter.y += rhythm * 0.06 * sin(windDir);
-    flockCenter.z += rhythm * 0.10 * sin(windDir * 0.7);
-    flockCenter.x = clamp(flockCenter.x, -0.30, 0.30);          // stay framed at viewScale 1.3
-    flockCenter.y = clamp(flockCenter.y, -0.32, 0.32);
+    flockCenter.x += energyUp * 0.10 * cos(windDir);            // bass sweeping arcs
+    flockCenter.y += energyUp * 0.06 * sin(windDir);
+    flockCenter.x = clamp(flockCenter.x, -0.32, 0.32);          // stay framed at viewScale 1.05
+    flockCenter.y = clamp(flockCenter.y, -0.30, 0.30);
     flockCenter.z = clamp(flockCenter.z, -0.40, 0.40);
 
     // ── FLOCK SHAPE — a long, tapered ELLIPSOID; thickest at centre. ──
@@ -113,13 +125,13 @@ kernel void murmuration3d_update(
     float v = (birdV - 0.5) * 2.0; v = sign(v) * pow(abs(v), 1.4);
     float w = (birdW - 0.5) * 2.0; w = sign(w) * pow(abs(w), 1.4);
 
-    float halfLength = 0.40 + 0.12 * rhythm;     // tapered comma — elongated like the proven 2D
-    float halfWidth  = 0.105 + 0.04 * flutterBase;
-    float halfDepth  = 0.085 + 0.03 * flutterBase;
-    float densityScale = 1.0 - vocals * 0.22;         // vocals → tighten/darken
-    halfLength *= densityScale; halfWidth *= densityScale; halfDepth *= densityScale;
-    halfLength *= (1.0 - beatPulse * 0.12);
-    halfWidth  *= (1.0 - beatPulse * 0.08);
+    // SIZE swells and the body ELONGATES with music energy (calm → smaller, rounder
+    // blob; energetic → bigger, longer ribbon); vocals + each beat tighten it.
+    float swell   = 0.82 + 0.26 * energyUp;                      // 0.82 calm … 1.08 loud
+    float density = 1.0 - vocalEnv * 0.24 - beatEnv * 0.10;      // vocals + beat squash
+    float halfLength = 0.32 * swell * (1.0 + 0.28 * energyUp) * density;   // swells + elongates
+    float halfWidth  = 0.12 * swell * density;
+    float halfDepth  = 0.10 * swell * density;
 
     float taper = 1.0 - 0.55 * u * u;                 // tapered tips
     float3 localPos = float3(u * halfLength, v * halfWidth * taper, w * halfDepth * taper);
@@ -129,8 +141,8 @@ kernel void murmuration3d_update(
     // down the long axis — a spine wave reads as a worm undulating, not a flock.
     // `(u² − 0.33)` / `(u³ − 0.6u)` are centred (mean ≈ 0) so they BEND the body
     // without shifting it; the curve PLANE rotates so the comma wheels through 3D.
-    float armC = (0.13 + 0.07 * rhythm) * (0.7 + 0.5 * sin(st * 0.37));   // C-curvature, breathing
-    float armS = (0.08 + 0.05 * rhythm) * sin(st * 0.23 + 1.0);           // S-curvature, slower
+    float armC = (0.10 + 0.06 * energyUp) * (0.7 + 0.5 * sin(st * 0.37));   // C-curvature, breathing
+    float armS = (0.06 + 0.04 * energyUp) * sin(st * 0.23 + 1.0);           // S-curvature, slower
     float curvePlane = st * 0.28;
     float arc = -armC * (u * u - 0.33) + armS * (u * u * u - 0.6 * u);
     localPos.y += arc * cos(curvePlane);
@@ -146,10 +158,10 @@ kernel void murmuration3d_update(
         sin(v * 3.7 + churnT)       - sin(w * 3.1 - churnT * 0.8),
         sin(w * 4.1 + churnT * 1.1) - sin(u * 3.3 - churnT),
         sin(u * 3.6 + churnT * 0.9) - sin(v * 3.0 - churnT * 1.2));
-    localPos += churn * (0.034 + flutterBase * 0.030);
+    localPos += churn * (0.030 + 0.035 * energyUp);   // boils harder when energetic
 
     // Shape orientation — slow musical rotation (yaw about Y + slight pitch).
-    float yaw   = st * 0.12 + sin(st * 0.18) * 0.5 + features.treb_att * 0.4 + rhythm * 0.3;
+    float yaw   = st * 0.12 + sin(st * 0.18) * 0.5 + features.treb_att * 0.4 + energyUp * 0.3;
     float pitch = sin(st * 0.15) * 0.25 + features.spectral_centroid * 0.2;
     float cy = cos(yaw), sy = sin(yaw), cp = cos(pitch), sp = sin(pitch);
     // Rotate localPos by yaw (about Y) then pitch (about X).
@@ -157,18 +169,19 @@ kernel void murmuration3d_update(
     float3 r2 = float3(r1.x, r1.y * cp - r1.z * sp, r1.y * sp + r1.z * cp);
     float3 homePos = flockCenter + r2;
 
-    // ── TURNING WAVE (drums) — a band banks together; the bank darkens it, so a
-    // dark band rolls across the mass (the references' orientation-wave). ──
+    // ── AGITATION WAVE (drums/beat) — on each beat a band of birds banks together
+    // and a dark band sweeps across the mass as the beat decays (the references'
+    // orientation-wave; the per-beat musical accent). Intensity scales with energy.
     float beatEpoch = floor(t * 2.5);
     float propDir   = m3d_hash(beatEpoch) > 0.5 ? 1.0 : -1.0;
     float birdCoord = propDir > 0.0 ? birdU : (1.0 - birdU);
-    float waveFront = 1.0 - beatPulse;
-    float waveInfluence = max(0.0, 1.0 - abs(waveFront - birdCoord) / 0.22);
+    float waveFront = 1.0 - beatEnv;                              // front sweeps as the beat decays
+    float waveInfluence = max(0.0, 1.0 - abs(waveFront - birdCoord) / 0.24);
 
     // Heading in the projected XZ plane → a perpendicular turn force.
     float3 headingDir = float3(cy, 0.0, sy);
     float3 perpDir    = float3(-headingDir.z, 0.0, headingDir.x);
-    float turnAmp     = drumEnergy * 0.22 * waveInfluence;
+    float turnAmp     = (0.08 + 0.20 * energyUp) * beatEnv * waveInfluence;
     float3 turnForce  = perpDir * turnAmp * propDir;
 
     // ── FORCES — strong spring to home (dense, no overshoot) + edge flutter ──
@@ -194,11 +207,18 @@ kernel void murmuration3d_update(
     // separates a living flock from a uniformly-shaded body.
     float rollPos  = birdU * 2.0 - st * 0.6;
     float rollBand = pow(0.5 + 0.5 * cos(rollPos * 6.2832), 3.0);     // ~2 sharp rolling crests
+    float bandStrength = 0.30 + 1.20 * energyUp;                      // modest at silence, vivid when energetic
 
-    // ── BANKING — turning-wave band + own-turn lean + rolling band. Smoothed for
-    // fluidity. Drives the wing-area-to-camera darkening (the dark bands). ──
+    // ── BANKING — the beat agitation wave (BEAT-GATED, so quiet passages don't carry a
+    // static band) + own-turn lean (more when energetic) + continuous rolling bands
+    // (energy-scaled). Smoothed for fluidity. Drives the wing-area-to-camera darkening
+    // (the dark bands rolling through the flock — the murmuration's musical shimmer). ──
     float lateral = dot(normalize(vel + float3(1e-5)), perpDir);
-    float targetBank = clamp(waveInfluence * propDir * 1.0 + lateral * 0.6 + (rollBand - 0.3) * 0.7, -1.0, 1.0);
+    float targetBank = clamp(
+        waveInfluence * propDir * beatEnv * 1.6
+        + lateral * (0.35 + 0.5 * energyUp)
+        + (rollBand - 0.3) * 0.7 * bandStrength,
+        -1.0, 1.0);
     p.bank = mix(p.bank, targetBank, clamp(dt * 4.0, 0.0, 1.0));
 
     p.position = packed_float3(pos);
