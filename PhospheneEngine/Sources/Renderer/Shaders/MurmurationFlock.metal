@@ -301,6 +301,7 @@ kernel void murmuration_boids(
     float rad2 = rad * rad;
     int3 c = mf_cell_coord(pos, fp.worldHalfSpan, fp.gridSide);
     uint examined = 0u;
+    bool done = false;                   // PERF early-exit once K-nearest + boundary count are satisfied
 
     for (int dz = -1; dz <= 1; dz++) {
         for (int dy = -1; dy <= 1; dy++) {
@@ -342,12 +343,23 @@ kernel void murmuration_boids(
                         if (sortNum < K) { sortNum++; }
                     }
                     if (dist < nearD) { nearD = dist; nearJ = (int)j; }
+
+                    // PERF early-exit (round-7): once the bird has its K nearest AND
+                    // has counted up to boundary_cnt neighbours, it is INTERIOR — the
+                    // boundary-turn won't fire and the shading caps at boundary_cnt —
+                    // so further examination is wasted. Interior birds (the majority)
+                    // exit cheaply; only edge birds (r_nbrs < boundary_cnt) scan to
+                    // the cap. This is what makes a source-faithful boundary_cnt
+                    // affordable. (The K-nearest become the nearest among the
+                    // examined subset — already approximate via the grid; fine for the
+                    // alignment/cohesion averages.)
+                    if (rNbrs >= (int)fp.boundaryCnt && sortNum >= K) { done = true; break; }
                 }
-                if (examined >= fp.neighborCap) { break; }
+                if (examined >= fp.neighborCap || done) { break; }
             }
-            if (examined >= fp.neighborCap) { break; }
+            if (examined >= fp.neighborCap || done) { break; }
         }
-        if (examined >= fp.neighborCap) { break; }
+        if (examined >= fp.neighborCap || done) { break; }
     }
 
     for (int k = 0; k < sortNum; k++) {
@@ -525,65 +537,43 @@ kernel void murmuration_boids(
     cq = mf_q_angleaxis(angAccel.y * rx, right);
     vaxis = normalize(mf_qrotate(vaxis, cq));
 
-    // ── Hard framing containment (round-5) — direct-velocity OBLATE wall ──
-    // This is the flock's SIZE + framing controller and the fix for both round-4
-    // failures: it caps the EXTERIOR of an oblate ellipsoid (horizontal radius
-    // framingRadius, vertical half-height boundHalfY) so the flock can neither leak
-    // to the world corners and wrap into a sparse halo (round-4 spray, maxR ≈ 1.8×
-    // whs) NOR drip a falling tail out the bottom under the faithful −9.8 gravity
-    // (round-5a). Past the envelope (rEll > 1) the bird's velocity is smoothly bent
-    // toward home (full 3D, so a falling bird is steered UP), ramped by how far
-    // past. A velocity steer (not an angle target) has reliable authority — the
-    // angle path saturated through mf_fmodulus; and because it acts ONLY outside
-    // the envelope and bends toward (never past) home, the flock SETTLES at the
-    // envelope rather than driving the centering-spring overshoot that shrinking an
-    // interior bound triggers. The horizontal ellipse is stretched by the L1
-    // elongation so the comma/ribbon extends its ends. Non-audio framing only
-    // (design §9 static camera); audio still acts purely through the turn-desires.
+    // ── Gentle FAR-edge safety (round-7) — catch the rare runaway, 3D ──
+    // The boundary-turn frames the flock, but a few birds occasionally wheel toward
+    // the horizontal wrap boundary, or (with no hard wall) climb/dive away
+    // vertically — the soft ground/ceiling pitch is capped at −40° and reels a fast
+    // vertical escapee back too slowly (a single bird hit 422 m). This turns any
+    // bird FAR outside the flock firmly back home. It acts ONLY beyond
+    // 0.80·worldHalfSpan horizontally or 3·boundHalfY vertically — far outside the
+    // morphing core — so it never touches the free wheeling/morphing; it just stops
+    // runaways, unlike the round-5 wall that clamped the whole flock every frame.
     {
-        float3 d = pos - fp.anchor.xyz;                      // from home (full 3D)
-        float3 axis = fp.flockAxis.xyz;
-        float3 dh = float3(d.x, 0.0, d.z);                   // horizontal component
-        float along = dot(dh, axis);
-        float3 perp = dh - axis * along;
-        float stretch = 1.0 + 3.0 * fp.flockAxis.w;          // elongation extends the ends
-        float alongN = along / (fp.framingRadius * stretch);
-        float perpN  = length(perp) / max(fp.framingRadius, 1e-3);
-        float rHoriz = sqrt(alongN * alongN + perpN * perpN);          // horizontal ellipse radius
-        float vertN  = d.y / max(fp.boundHalfY, 1e-3);
-        float rEll   = sqrt(rHoriz * rHoriz + vertN * vertN);          // full oblate radius
-
-        // GENTLE horizontal re-centring (anti-slosh): pull toward the vertical AXIS
-        // (not the home POINT), so it keeps the mass centred under the static camera
-        // and reels trailing wisps in WITHOUT squashing the vertical extent into a
-        // flat sheet (round-5b — a 3D re-centre flattened the mass). Flat-bottomed
-        // inside rHoriz 0.5 → no core collapse.
-        if (rHoriz > 0.25 && dot(dh, dh) > 1e-6) {
-            float3 inwardH = -normalize(dh);
-            float steerH = clamp((rHoriz - 0.25) * 0.5, 0.0, 0.18);
-            vaxis = normalize(mix(vaxis, inwardH, steerH));
-        }
-        // GENTLE vertical re-centring at the band EXTREMES only (|vertN| > 0.55):
-        // caps the breath dilation / agitation from hollowing the core into a thin
-        // vertical shell under sustained loud vocals (round-5 cohesion-under-load),
-        // WITHOUT flattening the filled mass — it is flat-bottomed (no pull within
-        // |vertN| < 0.55), so the silence baseline and the moderate breath dilation
-        // are unaffected; it only fights the EXTREME spread that would empty the
-        // centre. (The horizontal re-centre is intentionally separate to avoid
-        // squashing the vertical extent — round-5b.)
-        if (abs(vertN) > 0.55) {
-            float3 inwardV = float3(0.0, -sign(d.y), 0.0);
-            float steerV = clamp((abs(vertN) - 0.55) * 0.5, 0.0, 0.16);
-            vaxis = normalize(mix(vaxis, inwardV, steerV));
-        }
-        // FIRM oblate wall — the hard size cap, full 3D so a bird leaking out the
-        // side (spray), the bottom (falling tail) or the top is turned back home.
-        if (rEll > 1.0 && dot(d, d) > 1e-6) {
+        float3 d = pos - fp.anchor.xyz;
+        float hr = length(float3(d.x, 0.0, d.z));
+        float vr = abs(d.y);
+        float hEdge = 0.80 * fp.worldHalfSpan;
+        float vEdge = 3.0 * fp.boundHalfY;
+        if ((hr > hEdge || vr > vEdge) && dot(d, d) > 1e-6) {
             float3 inward = -normalize(d);
-            float steer = clamp((rEll - 1.0) * 1.2, 0.0, 0.6);
+            float over = max((hr - hEdge) / max(0.20 * fp.worldHalfSpan, 1e-3),
+                             (vr - vEdge) / max(fp.boundHalfY, 1e-3));
+            float steer = clamp(over, 0.0, 0.7);
             vaxis = normalize(mix(vaxis, inward, steer));
         }
     }
+
+    // ── Framing is the SOURCE's boundary-turn, NOT a hard wall (round-7) ──
+    // The Flock2 source frames its flock with ONLY the peripheral-boundary turn
+    // (rule 4 above): edge birds (r_nbrs < boundary_cnt) gently turn toward a fixed
+    // centre, while interior birds fly free — so the flock WHEELS and MORPHS while
+    // staying loosely framed. The round-5 hard oblate wall + continuous per-bird
+    // re-centring I had here (added to stop the round-4 spray) over-constrained the
+    // WHOLE flock every frame and flat-lined the wheeling → a dead, static blob (M7
+    // round-6 "doesn't behave like a murmuration"). Both are removed; framing is now
+    // the source mechanism (a high boundary_cnt herds a large fraction of the
+    // periphery home — which requires the neighbour examine cap raised so r_nbrs is
+    // counted that high). Vertical is the source's soft ground/ceiling pitch above.
+    // The wrap at the domain edge is the only hard bound, and the boundary-turn
+    // herds birds back well before they reach it.
 
     // ── Faithful aerodynamic flight model (Newton, metre units — ported) ──
     // power-as-speed-governor (source): below min speed, boost thrust; above

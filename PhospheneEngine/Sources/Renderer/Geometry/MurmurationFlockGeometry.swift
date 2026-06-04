@@ -209,11 +209,11 @@ public struct MurmurationFlockConfiguration: Sendable {
         particleCount: Int = 48_000,
         referenceCount: Int = 48_000,
         referenceHalfSpan: Float = 75,
-        cellCapacity: Int = 64,
-        neighborCap: Int = 96,
+        cellCapacity: Int = 96,
+        neighborCap: Int = 512,            // examine enough to count r_nbrs up to boundaryCnt (source-faithful framing)
         reactionSpeed: Float = 2600,
         dynamicStability: Float = 0.8,
-        boundaryCnt: Float = 10,
+        boundaryCnt: Float = 60,           // source 120; the peripheral-boundary turn FRAMES the flock (no hard wall)
         framingAmt: Float = 0.8,
         avoidGroundAmt: Float = 6.0,
         avoidCeilAmt: Float = 1.5,
@@ -263,11 +263,12 @@ public struct MurmurationFlockConfiguration: Sendable {
         self.boundSoften = 0.5 * (0.50 * framingR)
         self.avoidGroundAmt = avoidGroundAmt
         self.avoidCeilAmt = avoidCeilAmt
-        // The view maps metres → clip half-extent. Size it so the contained oblate
-        // mass (horizontal radius ≈ framingRadius) fills ~70 % of the frame width
-        // with a little sky margin, and the feathered edge reaches toward the
-        // border — one dense body, individual birds sub-pixel.
-        self.viewRadius = framingR * 1.15
+        // The view maps metres → clip half-extent. The flock now WHEELS/MORPHS
+        // freely around the centre (framed by the boundary-turn, not a wall), so the
+        // view is GENEROUS — wide enough that the mass stays in frame as it wheels
+        // and throws out comma-tails (Matt's "wider static frame"), individual birds
+        // sub-pixel.
+        self.viewRadius = whs * 0.92
         self.renderYOffset = renderYOffset
 
         // Faithful aero — Flock2 source constants with speeds SCALED for the
@@ -292,10 +293,11 @@ public struct MurmurationFlockConfiguration: Sendable {
         // Avoidance is the mutual-repulsion rule that gives the flock its VOLUME
         // (spacing). The source value (0.01) was calibrated for its loose open
         // domain; in our compact framed world it is too weak to inflate the mass
-        // into the vertical envelope, so the flock collapsed to a thin level sheet
-        // (round-5b). Raised so birds puff apart in 3D and fill the oblate wall —
-        // the rounded ovoid of reference `01` rather than a flat pancake.
-        self.avoidAmt = 0.05
+        // into the vertical envelope. Round-7: back toward the SOURCE value (0.01) —
+        // the high avoidance was inflating the flock loose to fill the (now removed)
+        // wall; with source-faithful framing the density is set by boundaryCnt, and
+        // low avoidance keeps it a dense, restless, critical-state mass.
+        self.avoidAmt = 0.015
         self.alignAmt = 0.40
         self.cohesionAmt = 0.001
         self.boundaryAmt = 0.40
