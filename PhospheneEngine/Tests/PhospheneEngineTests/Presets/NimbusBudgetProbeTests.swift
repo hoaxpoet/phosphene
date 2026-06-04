@@ -19,6 +19,7 @@
 import Testing
 import Metal
 @testable import Presets
+@testable import Renderer
 import Shared
 
 @Suite("NimbusBudgetProbe")
@@ -30,10 +31,12 @@ struct NimbusBudgetProbeTests {
             print("[NimbusBudget] NIMBUS_BUDGET not set — skipping")
             return
         }
-        guard let device = MTLCreateSystemDefaultDevice() else {
-            print("[NimbusBudget] no Metal device — skipping")
-            return
+        let ctx: MetalContext
+        do { ctx = try MetalContext() } catch {
+            print("[NimbusBudget] no Metal context — skipping"); return
         }
+        let device = ctx.device
+        let queue = ctx.commandQueue
 
         let width = 1920, height = 1080
         let pixelFormat: MTLPixelFormat = .bgra8Unorm_srgb
@@ -44,9 +47,15 @@ struct NimbusBudgetProbeTests {
             Issue.record("Nimbus preset not found — shader failed to compile or auto-discover")
             return
         }
-        guard let queue = device.makeCommandQueue() else {
-            Issue.record("failed to make command queue"); return
+
+        // Production binds noiseVolume at fragment texture(6) on the direct path
+        // (RenderPipeline+Draw.bindNoiseTextures). Bind the SAME texture here so the
+        // probe measures the real cost — FA #66 test/prod parity.
+        guard let lib = try? ShaderLibrary(context: ctx),
+              let texMgr = try? TextureManager(context: ctx, shaderLibrary: lib) else {
+            Issue.record("could not build noiseVolume — probe would mis-measure"); return
         }
+        let noiseVolume = texMgr.noiseVolume
 
         // Steady-mid fixture (DESIGN §6 / NB.1 plan). aspectRatio defaults to
         // 1.777 = the 1920×1080 measurement aspect, so the framing matches.
@@ -72,6 +81,7 @@ struct NimbusBudgetProbeTests {
                       let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) else { return 0 }
                 enc.setRenderPipelineState(nimbus.pipelineState)
                 enc.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.size, index: 0)
+                enc.setFragmentTexture(noiseVolume, index: 6)
                 enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
                 enc.endEncoding()
                 cmd.commit()
