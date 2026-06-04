@@ -228,9 +228,14 @@ public struct MurmurationFlockConfiguration: Sendable {
         self.cellCapacity = cellCapacity
         self.neighborCap = neighborCap
 
-        // Density-invariant scaling: domain + flock radius ∝ cbrt(count).
-        let scale = cbrtf(Float(max(particleCount, 1)) / Float(max(referenceCount, 1)))
-        let whs = referenceHalfSpan * scale
+        // Domain scaled to match the source's bird DENSITY. Source: 10k birds in
+        // a 400×150×200 m domain (vol ~12M m³) → ~0.00083 birds/m³. For N birds
+        // at the same density, the cube half-span = cbrt(N / (2 × density))^(1/3).
+        // This keeps the per-cell neighbor count (~22) and the topological
+        // structure identical to the source regardless of bird count.
+        let sourceDensity: Float = 10000.0 / (400.0 * 150.0 * 200.0)  // 0.000833
+        let domainVol = Float(max(particleCount, 1)) / sourceDensity
+        let whs = powf(domainVol, 1.0 / 3.0) / 2.0
         self.worldHalfSpan = whs
         self.neighborRadius = 10.0                          // real psmoothradius (m)
         self.gridSide = max(4, Int((2 * whs / 10.0).rounded()))
@@ -242,10 +247,11 @@ public struct MurmurationFlockConfiguration: Sendable {
         self.boundSoften = 0.5 * (0.35 * framingR)
         self.avoidGroundAmt = avoidGroundAmt
         self.avoidCeilAmt = avoidCeilAmt
-        // The view maps metres → clip. At source speed (5-18 m/s) the flock fills
-        // the framingRadius naturally; size the view so it fills ~2/3 of the frame
-        // with room for drift at the edges.
-        self.viewRadius = framingR * 1.5
+        // The view maps metres → clip. The flock's dense core sits at roughly
+        // 0.4× the framing radius; size the view so the CORE fills ~half the frame
+        // and the feathered edge reaches the border. This makes the mass read as
+        // one dense body (not visible sub-clusters) and individual birds sub-pixel.
+        self.viewRadius = framingR * 0.55
         self.renderYOffset = renderYOffset
 
         // Faithful aero — Flock2 source constants with speeds SCALED for the
