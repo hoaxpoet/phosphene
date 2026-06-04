@@ -3166,7 +3166,7 @@ release notes.
 
 ---
 
-### Increment MM.6 — Rebuild the flock on Flock2 (orientation-based)  *(IMPLEMENTED 2026-06-03; M7 live review pending)*
+### Increment MM.6 — Rebuild the flock on Flock2 (orientation-based)  *(IMPLEMENTED 2026-06-03; M7 rounds 1–4 failed + fixed; round-5 density/framing reframe 2026-06-04; M7 round-5 live review pending)*
 
 **Supersedes the force-based substrate of MM.2 and the force-based audio coupling of MM.3.** MM.4
 (sky/perf) and MM.5 (cert) now apply to the Flock2 flock and follow this increment.
@@ -3238,9 +3238,31 @@ flocks + long averaging (single within-geometry windows are too noisy under the 
 binning — flaked under parallel load). Full engine suite 1384 green (×3 parallel runs), lint 0, app
 builds. Route specs updated in `MurmurationRoutes.swift`.
 
-**PENDING (→ MM.5):** per-route firing evidence from a real recorded session; **Matt M7 live approval**
-(the load-bearing gate — the live look is not assertable headlessly; the session `video.mp4` is a
-rolling clip, not preset-specific — anchor on Matt's screenshots + CSV).
+**M7 ROUND HISTORY (live reviews, Matt).** R1 split/froze/too-fast (over-tuned off source defaults); R2
+frozen cross (speed-scaling broke the lift/gravity balance — reverted to verbatim aero + DT=0.005
+sub-stepping); R3 "murmurations of murmurations" internal sub-clusters (over-packed grid → matched source
+density); R4 **"birds far too spread out, world still much too large — not convincing, still inferior to
+the previous build."**
+
+**ROUND-5 REFRAME — visual density + framing + the camera tilt (2026-06-04).** R4's source-density domain
+is a SIMULATION default, not a framed visual — it rendered a small dense core inside a wide sparse spray
+(`maxR ≈ 355 m`, ~1.8× whs; the angle-target containment saturated through `mf_fmodulus` and the X/Z wrap
+circulated escapees into a halo). Fixes (faithful aero KEPT, gravity unchanged): (1) size the world for
+VISUAL density (`whs = 75·cbrt(count/ref)`, `neighborRadius` scales with it so `rNbrs` is counted
+accurately, `boundaryCnt` 120→10 = a true topological edge); (2) a **direct-velocity oblate wall**
+replaces the saturating angle-target wall as the size/framing controller (no spray, no falling tail, no
+overshoot) + gentle flat-bottomed re-centring; (3) the **rounding is a ~34° camera pitch** in the vertex
+projection — the flock is a wide disk round in X–Z and thin in Y, so tilting maps its depth into screen
+height → a rounded ovoid (ref `01`), no aero change; (4) routes made **homothetic** (proportional to
+position, fill don't hollow) + world-relative caps so loud bass gives a framed comma not a thin edge
+ribbon. Silence = rounded dense ovoid (ref `01`); loud = coherent framed comma (ref `02`). Test
+robustness: audio suite `.serialized`; bar-maneuver asserts **mean banking rises** (not a flaky bar-phase
+correlation); loud-cohesion asserts **mean** core-fraction (not the noise-sensitive per-frame min). Full
+engine suite **1385 green (×2 full-parallel + ×3 serialized)**, lint 0, app builds. Design doc §12.1.
+
+**PENDING (→ MM.5):** per-route firing evidence from a real recorded session; **Matt M7 round-5 live
+approval** (the load-bearing gate — the live look is not assertable headlessly; the session `video.mp4` is
+a rolling clip, not preset-specific — anchor on Matt's screenshots + CSV).
 
 ---
 
