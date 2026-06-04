@@ -3155,7 +3155,7 @@ density-accumulation rendering + edge feathering; recalibrate `complexity_cost`;
 
 ---
 
-### Increment MM.5 — Certification
+### Increment MM.5 — Certification  *(✅ DONE 2026-06-04, commit `8f313bdc`)*
 
 **Scope:** real-music session, M7 contact sheet vs references + motion clips, Matt approval,
 flip `Murmuration.json` `certified: true`, add "Murmuration" to
@@ -3164,9 +3164,28 @@ release notes.
 
 **Done when:** Matt M7-approves; `certified: true`; golden hash regenerated; tests green.
 
+**DELIVERED.** Certified after Matt's review across MM.6 rounds (worm → traverse → musicality →
+review pass; "works and can probably be certified soon" → "prepare closeout and certification").
+`Murmuration.json certified: true` + `rubric_profile: lightweight` (particle preset — exempt from
+the M3 material heuristic by construction, like the other certified feedback/particle presets;
+Matt's M7 review is the load-bearing gate per SHADER_CRAFT §12.1); stale "500K starlings"
+description rewritten to the real 3D parametric-ellipse flock + global-envelope coupling.
+`FidelityRubricTests.certifiedPresets += "Murmuration"` (kept in sync with the JSON flag).
+`MurmurationRoutes.swift` firing specs re-derived against the shipped `murmuration3d_update`
+(ENERGY / BEAT / VOCALS per §13.5; were stale, describing the retired emergent substrate).
+Deliberately **no `stem_affinity`** — Murmuration is energy-driven (not stem-specific), so neutral
+affinity is the honest representation; stem routing is deferred to Matt's "experimentation" phase.
+No golden-hash regen needed (golden tests use an inline catalog with dev=0 → neutral affinity for
+all; the JSON cert flip does not perturb them). Review pass on session `2026-06-04T16-44-08Z`:
+GPU 0.75 ms mean (trivially cheap), zero NaN/inf across 8554 frames, framing holds live; the only
+flags (CPU hitches at startup/track-change 0.2%; high beat-grid drift) are pre-existing engine/audio
+behavior, not Murmuration (the beat layer is onset-driven, robust to grid drift). Engine 1377 green,
+app build clean, lint 0; FidelityRubric / Golden / routing gates pass. Follow-ups (experimentation
+phase): `stem_affinity` tuning, `complexity_cost` recalibration to the measured cheapness.
+
 ---
 
-### Increment MM.6 — 3D Murmuration (parametric-ellipse flock)  *(DELIVERED 2026-06-04; emergent Flock2 substrate retired after M7 rounds 1–7 all failed live — see RESOLUTION at end of section; M7 sign-off review pending)*
+### Increment MM.6 — 3D Murmuration (parametric-ellipse flock)  *(✅ DELIVERED + CERTIFIED 2026-06-04 via MM.5 `8f313bdc`; emergent Flock2 substrate retired after M7 rounds 1–7 all failed live — see RESOLUTION at end of section)*
 
 **Supersedes the force-based substrate of MM.2 and the force-based audio coupling of MM.3.** MM.4
 (sky/perf) and MM.5 (cert) now apply to the Flock2 flock and follow this increment.
@@ -3356,9 +3375,12 @@ Audio Data Hierarchy): smoothed CPU-side envelopes drive `energyEnv` → a **vig
 `test_framed` drives energetic audio and asserts framed + traverse. Engine 1377 green, app build clean,
 lint 0.
 
-**PENDING (→ MM.5):** **Matt M7 sign-off** of the reworked 3D version (the load-bearing gate — verified
-headlessly so it's a sign-off, not another tweak round); per-route firing evidence from a real recorded
-session. Design doc §13 / §13.3 / §13.4 / §13.5.
+**CERTIFIED (MM.5, 2026-06-04, commit `8f313bdc`).** Matt approved across the review rounds ("works and
+can probably be certified soon" → "prepare closeout and certification"). `Murmuration.json certified:
+true`; route specs re-derived; review-pass on `2026-06-04T16-44-08Z` clean (GPU 0.75 ms, 0 NaN, framing
+holds). See the MM.5 row above. Design §13 / §13.3 / §13.4 / §13.5. **Experimentation follow-ups (Matt's
+"revisit later"):** `stem_affinity` tuning, `complexity_cost` recalibration to the measured cheapness, and
+optional deeper beat-coupling (gated by the separate beat-sync work).
 
 ---
 

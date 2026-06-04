@@ -6,6 +6,34 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-06-04] MM — Murmuration: 3D rebuild + global-envelope musicality, CERTIFIED
+
+**Increment:** MM.6 (rebuild) + MM.5 (cert). **Status:** Shipped + certified 2026-06-04. **Design:** `docs/presets/MURMURATION_DESIGN.md` §13–§14.
+
+### What landed
+
+**Murmuration is now a certified 3D preset** — a dense starling flock against a dusk sky that churns internally, wheels as a comma, drifts across the sky, rolls dark bands through itself, and responds to the music's energy. This was the goal of the whole Phase MM uplift ("I have always wanted a 3D version of this preset").
+
+### The road here (5 live-review rounds, each headless-verified before the next look)
+
+1. **Pivot (`9056dc48`):** the emergent Flock2 rebuild failed Matt's M7 review **seven times** (spray → frozen → dead blob → off-canvas). Retired it. The premise that failed: pure emergence holds a framed dense mass on its own — it doesn't. Lifted the **proven 40-round 2D controlled-ellipse flock** (`Particles.metal`) into 3D instead: `Murmuration3D.metal` + `Murmuration3DGeometry` (a D-097 `ParticleGeometry` sibling). Dense + framed *by construction*.
+2. **Worm → murmuration (`9b37d359`):** the motion read as a worm — an `sin(u·π+st)` curvature wave travelling down the long axis (the snake-spine primitive) over a static interior. Replaced with a wheeling comma (C↔S) + **internal churn** (coherent flow through the volume — the boil) + continuous rolling bands. +20% speed.
+3. **Traverse (`75d39eaf`):** it churned but moved in place. Camera back (`camDist` 2.6→3.2, `viewScale` 2.1→1.3) + a slow dominant end-to-end sweep.
+4. **Musicality (`cd67944a`):** the routes were 10–20% deltas buried under a pure-time motion clock — the disconnect. Drove the **global envelope** instead (per `feedback_global_coupling_emergent_substrate` + the Audio Data Hierarchy): smoothed CPU-side envelopes — `energyEnv` → a vigor-paced morph clock + swell + traverse range (PRIMARY); `beatEnv` → a beat-gated agitation/banking wave (ACCENT); `vocalEnv` → density. Gains sized to measured driver ranges.
+5. **Certification (`8f313bdc` + `69df2f93`):** `certified: true`, `rubric_profile: lightweight`, accurate description; both cert ground-truth sets synced (`FidelityRubricTests` + `PresetDescriptorRubricFieldsTests`); `MurmurationRoutes.swift` firing specs re-derived against the shipped coupling. Deliberately **no `stem_affinity`** — Murmuration is energy-driven, not stem-specific.
+
+### Durable learnings (in CLAUDE.md / design doc)
+
+- A faithfully-ported **emergent** reference can be the wrong tool when the product needs direct **control** — use the reference for character, a controlled substrate for the guarantee (design §13, CLAUDE.md regime bullet).
+- An elongated mass needs **internal** motion (churn + bands rolling *through* it) to read as a flock — bending the whole body is worm motion (§13.3).
+- On a preset with strong autonomous motion, audio coupling only **reads** if it drives that motion's **global envelope** (vigor/size/range), not if it adds small deltas on a fixed clock (§13.5).
+
+### Verification
+
+Engine **1377** green, app build clean, swiftlint --strict **0**; FidelityRubric / Golden / routing gates pass. Headless harness `Murmuration3DRenderTests` (`test_framed` = framed-across-traverse + real sweep under energy; `test_musicality` = louder → bigger + more banding than silence; `test_render` = silence/audio/burst contact sheets). **Review pass** on session `2026-06-04T16-44-08Z` (8554 frames): GPU **0.75 ms** mean, **zero NaN/inf**, framing holds live. Certified by Matt across the review rounds.
+
+---
+
 ## [dev-2026-06-03] FM — Fata Morgana: faithful butterchurn mirage port + bar-sway stem uplift, CERTIFIED
 
 **Increment:** FM.0 + FM.L1 + FM.L2. **Status:** Shipped + certified 2026-06-03. **Decision:** D-139.
