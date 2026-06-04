@@ -46,6 +46,13 @@ constant float  kNimbusFocal     = 1.25;   // FOV (larger = narrower)
 constant float  kNimbusPhaseG    = 0.40;   // Henyey-Greenstein anisotropy (DESIGN §5.2)
 constant float  kNimbusWarpAmt   = 0.26;   // domain-warp strength → micro tendrils/curl (NB.2; ref 03)
 
+// Interior-turbulence amplitude — how hard the fine octaves roil the inside of
+// the body: 0 = placid laminar billows, 1 = the NB.2 default churn, >1 = more
+// agitated. A compile-time constant FOR NOW; NB.6 replaces it with the smoothed
+// `arousal` route (DESIGN §1.3 / §5.4 — arousal → turbulence character). The
+// default reproduces the NB.2 maquette look; arousal will modulate around it.
+constant float  kNimbusTurbulence = 1.0;
+
 // MARK: - Density field
 
 // Analytic ellipsoidal envelope: 1 at the dense core, smoothly → 0 at the shell.
@@ -98,7 +105,9 @@ static inline float nimbus_density(float3 p, float t,
     float billow = smoothstep(0.35, 0.70, lobes);            // distinct lumps [0,1] (tight range → crisp lobe/valley contrast)
 
     // ── Interior turbulence (mid octave) ────────────────────────────────────
-    // Roughens the inside of each billow so the gas reads as gas, not jelly.
+    // Roughens the inside of each billow so the gas reads as gas, not jelly. Its
+    // AMPLITUDE — how churning vs placid the interior reads — is the named
+    // kNimbusTurbulence knob applied in the compose step below (NB.6 → arousal).
     float turbMid = noiseVol.sample(smp, q * 2.8).r;         // [0,1], centred ~0.5
 
     // ── MICRO: domain-warped fine filaments + curl (ref 03_micro_wisp_*) ────
@@ -124,7 +133,7 @@ static inline float nimbus_density(float3 p, float t,
     // above 1 so lobe peaks read brighter than valleys. The interior roil is the
     // mid + warped-fine octaves so the inside carries the §12.1 fine detail too.
     float lobeCarve = mix(0.14, 1.10, billow);              // [0.14 valley .. 1.10 crest]
-    float roil      = 1.0 + (turbMid - 0.5) * 0.42 + (micro - 0.5) * 0.28;
+    float roil      = 1.0 + ((turbMid - 0.5) * 0.42 + (micro - 0.5) * 0.28) * kNimbusTurbulence;
     float dens      = env * lobeCarve * roil;
 
     // ── Edge feathering: peeling curling tendrils dissolving into void (ref 03)
