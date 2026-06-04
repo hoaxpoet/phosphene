@@ -182,13 +182,15 @@ struct PresetVisualReviewTests {
         }
 
         let ctx = try MetalContext()
-        // noiseVolume for direct presets that sample it (Nimbus reads [[texture(6)]]).
-        // Production binds it on the direct path (RenderPipeline+Draw.bindNoiseTextures);
-        // bind the same texture here so the review PNG matches production (FA #66 parity).
-        let nimbusNoiseVolume: MTLTexture? = {
+        // Full noise set for direct presets that sample any of it (Nimbus reads
+        // noiseVolume [[texture(6)]] + blueNoise [[texture(8)]]). Production binds
+        // slots 4–8 on the direct path (RenderPipeline+Draw.bindNoiseTextures →
+        // TextureManager.bindTextures); bind the SAME set here so the review PNG
+        // matches production exactly (FA #66 parity, NB.2 — never trip it again).
+        let noiseTextureManager: TextureManager? = {
             guard let lib = try? ShaderLibrary(context: ctx),
                   let tm = try? TextureManager(context: ctx, shaderLibrary: lib) else { return nil }
-            return tm.noiseVolume
+            return tm
         }()
         guard let preset = _acceptanceFixture.presets.first(where: {
             $0.descriptor.name == presetName
@@ -310,7 +312,7 @@ struct PresetVisualReviewTests {
                                          arachneState: arachneState,
                                          auroraVeilState: auroraVeilState,
                                          lumenEngine: lumenEngine,
-                                         noiseVolume: nimbusNoiseVolume,
+                                         noiseTextureManager: noiseTextureManager,
                                          features: &fv)
             let url = outputDir.appendingPathComponent(
                 "\(presetName.replacingOccurrences(of: " ", with: "_"))_\(fixtures[index].name).png"
@@ -573,7 +575,7 @@ struct PresetVisualReviewTests {
         arachneState: ArachneState?,
         auroraVeilState: AuroraVeilState? = nil,
         lumenEngine: LumenPatternEngine? = nil,
-        noiseVolume: MTLTexture? = nil,
+        noiseTextureManager: TextureManager? = nil,
         features: inout FeatureVector
     ) throws -> [UInt8] {
         // Dispatch: pure-ray-march presets go through the deferred pipeline so
@@ -634,9 +636,11 @@ struct PresetVisualReviewTests {
 
         encoder.setRenderPipelineState(preset.pipelineState)
         encoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.size, index: 0)
-        // Texture(6) is the noise-volume slot (orthogonal to the buffer(6) per-preset
-        // state Arachne/Aurora bind). Nimbus samples it; harmless for other presets.
-        if let noiseVolume { encoder.setFragmentTexture(noiseVolume, index: 6) }
+        // Noise textures at slots 4–8 (orthogonal to the buffer(6)/(7) per-preset
+        // state Arachne/Aurora bind). Matches production's bindNoiseTextures so the
+        // review PNG is byte-faithful (FA #66). Nimbus samples noiseVolume(6) +
+        // blueNoise(8); harmless/free for presets that sample fewer slots.
+        noiseTextureManager?.bindTextures(to: encoder)
         encoder.setFragmentBuffer(fftBuf, offset: 0, index: 1)
         encoder.setFragmentBuffer(wavBuf, offset: 0, index: 2)
         encoder.setFragmentBuffer(stemBuf, offset: 0, index: 3)
