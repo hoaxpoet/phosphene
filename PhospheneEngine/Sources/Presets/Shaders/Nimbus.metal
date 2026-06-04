@@ -44,6 +44,7 @@ constant float  kNimbusShadowSig = 1.10;   // softer self-shadow extinction (kee
 constant float  kNimbusCamZ      = -6.0;   // camera distance (looking +Z)
 constant float  kNimbusFocal     = 1.25;   // FOV (larger = narrower)
 constant float  kNimbusPhaseG    = 0.40;   // Henyey-Greenstein anisotropy (DESIGN §5.2)
+constant float  kNimbusWarpAmt   = 0.26;   // domain-warp strength → micro tendrils/curl (NB.2; ref 03)
 
 // MARK: - Density field
 
@@ -96,16 +97,23 @@ static inline float nimbus_density(float3 p, float t,
     float lobes  = lobeA * 0.62 + lobeB * 0.38;              // [0,1]
     float billow = smoothstep(0.35, 0.70, lobes);            // distinct lumps [0,1] (tight range → crisp lobe/valley contrast)
 
-    // ── Interior turbulence texture (mid + fine octaves) ────────────────────
+    // ── Interior turbulence (mid octave) ────────────────────────────────────
     // Roughens the inside of each billow so the gas reads as gas, not jelly.
-    // (The interior-roil AMPLITUDE — placid ↔ churning, arousal-ready — is
-    // promoted to a named #define in NB.2-turbulence; a fixed contribution here.)
-    float turbA = noiseVol.sample(smp, q * 2.8).r;           // mid turbulence
-    float turbB = noiseVol.sample(smp, q * 5.6).r;           // fine turbulence
-    float turb  = turbA * 0.6 + turbB * 0.4;                 // [0,1], centred ~0.5
-    // 4 octaves (0.7 / 1.4 / 2.8 / 5.6), all noiseVolume samples — the §12.1
-    // ≥4-octave noise floor reached here (the texture is itself FBM → effective
-    // octave count is higher).
+    float turbMid = noiseVol.sample(smp, q * 2.8).r;         // [0,1], centred ~0.5
+
+    // ── MICRO: domain-warped fine filaments + curl (ref 03_micro_wisp_*) ────
+    // Domain warp: perturb the sample coordinate with a low-freq noiseVolume tap
+    // so the fine octave stretches into swirling tendrils / curl at the wisp
+    // tips (ref 03) rather than isotropic stipple. The texture is single-channel
+    // (.r8Unorm), so two decorrelated low-freq taps build a 2-axis swirl offset.
+    // The warp is a CHEAP texture sample — NEVER warped_fbm / fbm_vec3, which
+    // compute fbm8 (~56 perlin evals) and re-blow the budget (D-140 / §6.1).
+    float w0 = noiseVol.sample(smp, q * 0.9).r - 0.5;                       // [-0.5,0.5]
+    float w1 = noiseVol.sample(smp, q * 0.9 + float3(4.7, 1.3, 8.1)).r - 0.5;
+    float3 qw    = q + float3(w0, w1, (w0 - w1) * 0.5) * kNimbusWarpAmt;    // swirled coords
+    float micro  = noiseVol.sample(smp, qw * 5.6).r;                        // warped fine filaments
+    // 4 octaves (0.7 / 1.4 / 2.8 / 5.6 warped) — the §12.1 ≥4-octave noise
+    // floor; the warp adds a low-freq swirl band on top (texture is itself FBM).
 
     // ── Compose: billow lobes CARVE the envelope (distinct lumps) ───────────
     // Multiplicative carve, not additive: valleys (low billow) thin the body
@@ -113,18 +121,26 @@ static inline float nimbus_density(float3 p, float t,
     // genuinely LUMPY (the ref-02 billow read) rather than a smooth saturated
     // egg — additive modulation just brightens an already-opaque core and the
     // lumps wash out (the 05_anti_solid_surface interior). Crests push slightly
-    // above 1 so lobe peaks read brighter than valleys.
+    // above 1 so lobe peaks read brighter than valleys. The interior roil is the
+    // mid + warped-fine octaves so the inside carries the §12.1 fine detail too.
     float lobeCarve = mix(0.14, 1.10, billow);              // [0.14 valley .. 1.10 crest]
-    float roil      = 1.0 + (turb - 0.5) * 0.45;            // interior turbulence texture
+    float roil      = 1.0 + (turbMid - 0.5) * 0.42 + (micro - 0.5) * 0.28;
     float dens      = env * lobeCarve * roil;
 
-    // ── Edge fray (soft dissolving periphery; full feathering in NB.2-micro) ─
-    // The outer shell (rr > 0.5) dissolves in the billow valleys → wisps and a
-    // soft edge that frays into the void (never the 05_anti_solid_surface hard
-    // silhouette). Tying the carve to the billow valleys makes the silhouette
-    // itself lumpy — lobes peeling off the mass rather than a clean ellipse.
-    float frayEdge = smoothstep(0.58, 1.05, rr);
-    dens -= frayEdge * (1.0 - billow) * 0.85;
+    // ── Edge feathering: peeling curling tendrils dissolving into void (ref 03)
+    // Toward the rim, MULTIPLY density by the warped micro field so the body
+    // breaks into curling filaments separated by void — a multiplicative mask
+    // gives crisp filament-vs-gap contrast where a smooth subtraction only
+    // softened the whole rim into a blur. The domain warp curls the tendrils
+    // (ref 03's vortex tips) instead of stippling them straight out; the larger
+    // billow gaps let whole lobes peel off the mass. The core (low rr) is
+    // unmasked so the body stays one coherent mass; the rim never hard-cuts
+    // (never 05_anti_solid_surface) because the mask is continuous noise.
+    float rim          = smoothstep(0.48, 1.06, rr);         // 0 core → 1 shell
+    float microFil     = smoothstep(0.34, 0.64, micro);      // fine curling tendrils (sharper → crisper filaments)
+    float lobeFil      = smoothstep(0.28, 0.74, billow);     // larger lobe gaps peel off
+    float filamentMask = clamp(microFil * 0.74 + lobeFil * 0.42, 0.0, 1.0);
+    dens *= mix(1.0, filamentMask, rim);
 
     return max(0.0, dens);
 }
