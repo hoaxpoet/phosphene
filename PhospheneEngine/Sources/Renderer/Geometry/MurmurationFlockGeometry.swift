@@ -208,50 +208,66 @@ public struct MurmurationFlockConfiguration: Sendable {
     public init(
         particleCount: Int = 48_000,
         referenceCount: Int = 48_000,
-        referenceHalfSpan: Float = 100,
-        cellCapacity: Int = 256,
+        referenceHalfSpan: Float = 75,
+        cellCapacity: Int = 64,
         neighborCap: Int = 96,
-        reactionSpeed: Float = 4000,
+        reactionSpeed: Float = 2600,
         dynamicStability: Float = 0.8,
-        boundaryCnt: Float = 120,
+        boundaryCnt: Float = 10,
         framingAmt: Float = 0.8,
         avoidGroundAmt: Float = 6.0,
         avoidCeilAmt: Float = 1.5,
         renderYOffset: Float = 0,
         bassDriftGain: Float = 0.6,
         elongationGain: Float = 1.1,
-        maneuverYawDeg: Float = 9.0,
-        vocalsBreathDepth: Float = 0.7,
+        maneuverYawDeg: Float = 6.0,
+        vocalsBreathDepth: Float = 0.16,
         substrateTau: Float = 6.0
     ) {
         self.particleCount = particleCount
         self.cellCapacity = cellCapacity
         self.neighborCap = neighborCap
 
-        // Domain scaled to match the source's bird DENSITY. Source: 10k birds in
-        // a 400×150×200 m domain (vol ~12M m³) → ~0.00083 birds/m³. For N birds
-        // at the same density, the cube half-span = cbrt(N / (2 × density))^(1/3).
-        // This keeps the per-cell neighbor count (~22) and the topological
-        // structure identical to the source regardless of bird count.
-        let sourceDensity: Float = 10000.0 / (400.0 * 150.0 * 200.0)  // 0.000833
-        let domainVol = Float(max(particleCount, 1)) / sourceDensity
-        let whs = powf(domainVol, 1.0 / 3.0) / 2.0
+        // MM.6 round-5 reframe — size the world for VISUAL DENSITY, not the
+        // source's open-domain simulation. Matching the source's bird density (10k
+        // in 400×150×200 m) spread 48k birds across a ~190 m half-span domain; viewed
+        // as a framed murmuration that reads as a small dense core inside a wide
+        // sparse spray of countable individuals — the `05_anti_dispersed_no_shape`
+        // anti-reference (M7 round-4 failure: maxR reached 355 m, ~1.8× whs — the
+        // flock leaked to the world corners and wrapped into a permanent halo).
+        //
+        // The reference `01` look is a single COHERENT contained ellipsoid that
+        // fills the frame: depth-stacking through a coherent mass makes the centre
+        // dense (uncountable) and the edge feather, even at 48k. So we (a) size a
+        // COMPACT world whose half-span scales as cbrt(count) off a reference span
+        // (density + topology count-invariant; flock fills the same frame fraction
+        // at any count), (b) scale neighborRadius WITH the domain so the topological
+        // gather's 3×3×3-cell candidate count stays UNDER neighborCap — otherwise
+        // the examine cap undercounts `rNbrs` and the peripheral-boundary turn
+        // degenerates into a weak everyone-pulls-to-anchor (the round-4 spray), and
+        // (c) let the topological equilibrium SET the flock size (framingRadius ≈
+        // the natural radius) with a direct-velocity containment (in the kernel)
+        // catching escapees — the angle-target wall alone saturates through
+        // mf_fmodulus and cannot reliably turn a leaked bird home.
+        let countScale = powf(Float(max(particleCount, 1)) / Float(max(referenceCount, 1)), 1.0 / 3.0)
+        let whs = referenceHalfSpan * countScale
         self.worldHalfSpan = whs
-        self.neighborRadius = 10.0                          // real psmoothradius (m)
-        self.gridSide = max(4, Int((2 * whs / 10.0).rounded()))
-        let framingR = 0.42 * whs
+        let nr = whs * (6.0 / 75.0)                         // psmoothradius ∝ domain (6 m at ref)
+        self.neighborRadius = nr
+        self.gridSide = max(4, Int((2 * whs / nr).rounded()))  // ~25, count-invariant
+        let framingR = 0.50 * whs                           // the oblate-wall horizontal radius
         self.framingRadius = framingR
         self.framingAmt = framingAmt
         self.flockExtent = 1.30 * framingR                  // guide-segment reach (comma/ribbon)
-        self.boundHalfY = 0.35 * framingR                   // flat band (aspect ~3:1)
-        self.boundSoften = 0.5 * (0.35 * framingR)
+        self.boundHalfY = 0.50 * framingR                   // flat-ish disk; the camera tilt rounds it
+        self.boundSoften = 0.5 * (0.50 * framingR)
         self.avoidGroundAmt = avoidGroundAmt
         self.avoidCeilAmt = avoidCeilAmt
-        // The view maps metres → clip. The flock's dense core sits at roughly
-        // 0.4× the framing radius; size the view so the CORE fills ~half the frame
-        // and the feathered edge reaches the border. This makes the mass read as
-        // one dense body (not visible sub-clusters) and individual birds sub-pixel.
-        self.viewRadius = framingR * 0.55
+        // The view maps metres → clip half-extent. Size it so the contained oblate
+        // mass (horizontal radius ≈ framingRadius) fills ~70 % of the frame width
+        // with a little sky margin, and the feathered edge reaches toward the
+        // border — one dense body, individual birds sub-pixel.
+        self.viewRadius = framingR * 1.15
         self.renderYOffset = renderYOffset
 
         // Faithful aero — Flock2 source constants with speeds SCALED for the
@@ -269,24 +285,30 @@ public struct MurmurationFlockConfiguration: Sendable {
         self.liftFactor = 0.5714
         self.dragFactor = 0.1731
         self.airDensity = 1.225
-        self.gravityY = -9.8
+        self.gravityY = -9.8                                // faithful (verbatim source)
 
         self.reactionSpeed = reactionSpeed
         self.dynamicStability = dynamicStability
-        self.avoidAmt = 0.01
+        // Avoidance is the mutual-repulsion rule that gives the flock its VOLUME
+        // (spacing). The source value (0.01) was calibrated for its loose open
+        // domain; in our compact framed world it is too weak to inflate the mass
+        // into the vertical envelope, so the flock collapsed to a thin level sheet
+        // (round-5b). Raised so birds puff apart in 3D and fill the oblate wall —
+        // the rounded ovoid of reference `01` rather than a flat pancake.
+        self.avoidAmt = 0.05
         self.alignAmt = 0.40
         self.cohesionAmt = 0.001
         self.boundaryAmt = 0.40
-        // boundaryCnt scales with count — at 48k (reference) the source default is
-        // 120; at smaller test counts the average core-neighbor count is lower (the
-        // world scales as cbrt but neighbor radius is fixed at 10 m), so the
-        // threshold must drop proportionally or every bird is "peripheral" and the
-        // flock collapses. Scale linearly with count (the density ∝ count/volume
-        // and volume ∝ count, so average-neighbors ∝ count^0 is ~constant at
-        // density-invariance — but neighborCap truncation makes it count-dependent
-        // in practice). Cap at neighborCap.
-        self.boundaryCnt = min(boundaryCnt * Float(particleCount) / Float(max(referenceCount, 1)),
-                               Float(neighborCap))
+        // boundaryCnt is a TOPOLOGICAL edge threshold (birds with fewer than this
+        // many radius+FOV neighbours are "peripheral" and turn inward). Because the
+        // domain and neighborRadius both scale as cbrt(count), the equilibrium
+        // per-bird neighbour count is count-invariant, so boundaryCnt is a constant
+        // (NOT count-scaled — the old linear scaling was a workaround for the fixed
+        // 10 m radius). It is kept low (≈10) so the 3×3×3-cell candidate count stays
+        // under neighborCap and `rNbrs` is counted accurately: a true topological
+        // edge, not the degenerate everyone-is-peripheral state the examine cap
+        // produced when boundaryCnt was 96 in a dense neighbourhood.
+        self.boundaryCnt = min(boundaryCnt, Float(neighborCap))
         self.pitchDecay = 0.95
         self.pitchMin = -40
         self.pitchMax = 20
@@ -655,7 +677,7 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
         // off-frame (static-wide-camera contract). Expressed in world units.
         let driftTarget = axis * (bassSmoothed * cfg.bassDriftGain * cfg.worldHalfSpan)
         driftSmoothed = Self.ema3(driftSmoothed, driftTarget, dt: dt, tau: cfg.substrateTau * 0.4)
-        let driftCap = cfg.worldHalfSpan * 0.15   // < half the view radius → stays framed
+        let driftCap = cfg.worldHalfSpan * 0.10   // keep the mass framed even under sustained loud bass
         let driftMag2 = driftSmoothed.x * driftSmoothed.x + driftSmoothed.y * driftSmoothed.y
                       + driftSmoothed.z * driftSmoothed.z
         if driftMag2 > driftCap * driftCap {
@@ -663,8 +685,16 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
         }
 
         // L1 elongation (comma/ribbon) — only sustained high bass stretches the
-        // envelope ellipse. [0, 0.72] → up to ≈ 3:1 aspect.
-        let elong = max(0, min(0.72, max(0, bassSmoothed) * cfg.elongationGain))
+        // containment ellipse along the flock axis. Capped WORLD-RELATIVE so the
+        // stretched along-axis wall (framingRadius·(1+3·elong)) stays well inside
+        // the world half-span: past it the wall would exceed the wrap boundary and
+        // the flock would leak/fragment under sustained loud bass. At framingRadius
+        // = 0.5·whs this caps elong ≈ 0.09 (stretch ≈ 1.28) — a clear comma that
+        // stays framed and core-dense even under sustained loud bass (the round-5
+        // over-stretch read as a thin ribbon drifted to the frame edge — coherent,
+        // but over-reacting; the design bias is under-react).
+        let elongMax = max(0.05, min(0.5, (cfg.worldHalfSpan * 0.64 / cfg.framingRadius - 1.0) / 3.0))
+        let elong = max(0, min(elongMax, max(0, bassSmoothed) * cfg.elongationGain))
 
         // BAR-ANCHORED MANEUVER (the rethink). On each bar downbeat the flock
         // executes ONE coordinated heading-swing — a gentle yaw that sweeps
