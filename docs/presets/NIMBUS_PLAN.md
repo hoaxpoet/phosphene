@@ -27,7 +27,7 @@ Nimbus is unusual in this queue in one way: **there is no engine increment.** No
 |---|---|---|---|---|
 | **NB.0** | Reference lock | doc | — | `CheckVisualReferences` green; you sign off trait/anti-ref set *(substantially done)* |
 | **NB.1** | Macro maquette | preset | NB.0 | Eyeball (gate-before-gate) **+ budget gate**: one body reads; macro-only ≤ 7 ms Tier 2 |
-| **NB.2** | Meso/micro detail | preset | NB.1 | Contact sheet: billows / filaments / feathering read; not a flat card |
+| **NB.2** ✅ | Meso/micro detail | preset | NB.1 | Contact sheet: billows / filaments / feathering read; not a flat card *(done 2026-06-04)* |
 | **NB.3** | Lighting / internal glow | preset | NB.2 | Contact sheet vs hero `08`: reads as luminous backlit gas *(highest aesthetic risk)* |
 | **NB.4** | Breath + silence floor | preset | NB.3 | Body mass/luminosity tracks energy deviation; silence non-black |
 | **NB.5** | Pulse (embers) | preset | NB.4 | Beat-ratio: ember accent bounded < Breath; reads as ignition, not strobe |
@@ -107,6 +107,8 @@ Execution order is top-to-bottom. **NB.5 / NB.6 / NB.7 all branch off NB.4** (in
 - Contact sheet shows billows + filaments + edge feathering + interior variation; the body reads as volume with depth, not a flat card.
 - Negative space preserved (density-only view still shows a bounded body).
 - Does not match `05_anti_solid_surface` (still translucent at edges) — manual.
+
+**Status: ✅ done (2026-06-04).** All three done-when met: body reads as volume with depth (distinct billows + valleys + peeling tendrils + feathered edges); density-only guard shows a bounded body with dominant negative space; edges translucent (not anti-solid-surface). Built via multiplicative billow carve + translucent-σ depth + domain-warp-on-texture-coords micro filaments + multiplicative rim feathering; interior turbulence on the `kNimbusTurbulence` knob (NB.6 wires arousal). Budget macro+meso+micro p50 1.65 ms @1080p (NIMBUS_DESIGN §6.2). Recipe in SHADER_CRAFT §6.5. (NB: no `NimbusState.swift` this increment — state lands with audio at NB.4/NB.6; turbulence is a compile-time constant for now.) `certified:false` unchanged.
 
 ---
 
