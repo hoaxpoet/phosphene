@@ -332,7 +332,11 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
     public let birdBuffer: MTLBuffer
     public let configuration: MurmurationFlockConfiguration
 
-    /// Frame-budget governor gate (D-057): fraction of birds integrated per frame.
+    /// Frame-budget governor gate (D-057). UNLIKE independent-particle presets,
+    /// this does NOT drop a fraction of birds (a flock is coupled — freezing a
+    /// fraction leaves a frozen mass + a detached active sub-flock, the M7 round-5
+    /// live failure). Here it scales the per-frame SUB-STEP count instead: all birds
+    /// always integrate; under load they take fewer, larger steps. See `update(...)`.
     public var activeParticleFraction: Float = 1.0
 
     private let cellCountBuffer: MTLBuffer    // atomic_uint per cell
@@ -493,18 +497,28 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
         let audio = computeAudio(features: features, stemFeatures: stemFeatures, dt: frameDt)
         let anchor = anchorTarget(time: features.time) + audio.driftOffset
 
-        // Sub-step at the source's DT=0.005 (200 Hz). At 60 fps this is ~3 steps
+        // Sub-step at the source's DT=0.005 (200 Hz). At 60 fps this is ~4 steps
         // per frame. The source's constants are tuned for this rate; running them
         // at 60 Hz directly gives wrong turn rates and unstable aero. Each sub-step
         // re-bins (the grid is UMA-shared, fits in cache at 48k). Audio params are
         // computed once per frame (global-envelope coupling, not per-step dynamics).
+        //
+        // GOVERNOR (D-057): a flock is a COUPLED system — it CANNOT drop a fraction
+        // of its birds the way independent particles can (ProceduralGeometry does).
+        // Dispatching the integrator on `activeCount < particleCount` froze the
+        // excluded birds in place → a frozen mass + a detached active sub-flock (the
+        // M7 round-5 live failure). So `activeParticleFraction` throttles INTEGRATION
+        // FIDELITY (the sub-step count) instead: ALL birds integrate every frame,
+        // they just take fewer, larger steps under load. This is cost-equivalent to
+        // the old fraction-of-birds throttle (48k×2 = 24k×4) but keeps the flock one
+        // coherent mass. Floored at 2 sub-steps (below that the aero is too coarse).
         let physicsDt: Float = 0.005
-        let steps = max(1, Int(ceilf(frameDt / physicsDt)))
+        let frac = max(0.0, min(1.0, activeParticleFraction))
+        let baseSteps = max(1, Int(ceilf(frameDt / physicsDt)))
+        let steps = max(2, Int((Float(baseSteps) * frac).rounded()))
         let stepDt = frameDt / Float(steps)
 
         let cellTotal = cfg.gridSide * cfg.gridSide * cfg.gridSide
-        let fraction = max(0.0, min(1.0, activeParticleFraction))
-        let activeCount = max(1, Int(Float(cfg.particleCount) * fraction))
 
         for _ in 0..<steps {
             var fp = makeParams(dt: stepDt, time: features.time, anchor: anchor, audio: audio)
@@ -528,7 +542,7 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
             encoder.setBytes(&fp, length: MemoryLayout<FlockParams>.stride, index: 1)
             encoder.setBuffer(cellCountBuffer, offset: 0, index: 2)
             encoder.setBuffer(cellSlotBuffer, offset: 0, index: 3)
-            dispatch(encoder, threads: activeCount)
+            dispatch(encoder, threads: cfg.particleCount)   // ALL birds — never freeze a fraction
             encoder.memoryBarrier(scope: .buffers)
         }
 

@@ -188,6 +188,49 @@ struct MurmurationFlockTests {
         #expect(maxBankingStd > 1.0, "birds must bank as they manoeuvre (emergent waves), got \(maxBankingStd)")
     }
 
+    /// THE GOVERNOR-PARITY INVARIANT (added after the M7 round-5 live failure,
+    /// 2026-06-04). The D-057 frame-budget governor drops `activeParticleFraction`
+    /// to 0.5 at `.reducedParticles`. For an independent-particle preset that just
+    /// integrates fewer particles; for a COUPLED FLOCK it froze the excluded birds
+    /// in place — the live app showed a frozen mass + a detached active sub-flock,
+    /// invisible to every other test because they all run at fraction 1.0 (the
+    /// FA #66 parity gap). The fix: all birds integrate every frame regardless of
+    /// the governor (it throttles sub-step COUNT instead). Assert NO bird freezes.
+    @Test("Governor throttle (activeParticleFraction < 1) freezes NO birds")
+    func test_governorThrottleFreezesNoBirds() throws {
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let cfg = MurmurationFlockConfiguration(particleCount: 6_000)
+        let geo = try MurmurationFlockGeometry(device: ctx.device, library: lib.library, configuration: cfg)
+        geo.activeParticleFraction = 0.5   // the D-057 .reducedParticles level
+
+        var t: Float = 0
+        for _ in 0..<120 { try stepFlock(geo, time: t, queue: ctx.commandQueue); t += 1.0 / 60.0 }
+
+        // The throttle drops to 2 sub-steps — the flock must still be cohesive and
+        // finite at the coarser integration rate (no fragmentation).
+        let m = FlockMetrics.measure(geo)
+        #expect(!m.anyNonFinite, "throttled flock must stay finite")
+        #expect(m.coreFraction > 0.16, "throttled flock (2 sub-steps) must stay cohesive: coreFrac=\(m.coreFraction)")
+
+        // Snapshot positions, advance one frame, count birds whose position did NOT
+        // change (frozen = never integrated). Active birds fly at ≥ minSpeed so they
+        // always move; a frozen bird's position is byte-identical (not written).
+        let count = cfg.particleCount
+        let ptr = geo.birdBuffer.contents().bindMemory(to: MurmurationBird.self, capacity: count)
+        var before = [SIMD3<Float>](); before.reserveCapacity(count)
+        for i in 0..<count { before.append(SIMD3(ptr[i].positionX, ptr[i].positionY, ptr[i].positionZ)) }
+        try stepFlock(geo, time: t, queue: ctx.commandQueue)
+        var frozen = 0
+        for i in 0..<count {
+            let p = SIMD3(ptr[i].positionX, ptr[i].positionY, ptr[i].positionZ)
+            if p == before[i] { frozen += 1 }
+        }
+        let frozenFrac = Float(frozen) / Float(count)
+        #expect(frozenFrac < 0.02,
+                "a coupled flock must integrate ALL birds under governor throttle (no frozen sub-mass): frozenFrac=\(frozenFrac)")
+    }
+
     @Test("Render silence-baseline frames (RENDER_VISUAL=1)")
     func test_renderSilenceFrames() throws {
         guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else {
@@ -225,6 +268,33 @@ struct MurmurationFlockTests {
             let url = outDir.appendingPathComponent(String(format: "mm2_silence_%02d.png", frame))
             try writePNG(bgra: pixels, w: w, h: h, to: url)
             print("[MM.2] wrote \(url.path)")
+        }
+    }
+
+    @Test("Render THROTTLED frames (RENDER_VISUAL=1) — governor-parity eyeball")
+    func test_renderThrottledFrames() throws {
+        guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else { return }
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let cfg = MurmurationFlockConfiguration(particleCount: 48_000)
+        let geo = try MurmurationFlockGeometry(
+            device: ctx.device, library: lib.library, configuration: cfg, pixelFormat: ctx.pixelFormat)
+        geo.activeParticleFraction = 0.5   // the D-057 .reducedParticles level (M7 round-5 condition)
+        let w = 960, h = 540
+        let texDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: ctx.pixelFormat, width: w, height: h, mipmapped: false)
+        texDesc.usage = [.renderTarget, .shaderRead]; texDesc.storageMode = .shared
+        guard let tex = ctx.device.makeTexture(descriptor: texDesc) else { throw FlockTestError.renderFailed }
+        let outDir = Self.repoRoot().appendingPathComponent("tools/murmuration_reference/frames", isDirectory: true)
+        try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+        var t: Float = 0
+        for _ in 0..<300 { try stepFlock(geo, time: t, queue: ctx.commandQueue); t += 1.0 / 60.0 }
+        for frame in 0..<3 {
+            for _ in 0..<180 { try stepFlock(geo, time: t, queue: ctx.commandQueue); t += 1.0 / 60.0 }
+            try renderFrame(geo: geo, features: silenceFeatures(time: t), tex: tex, ctx: ctx)
+            let url = outDir.appendingPathComponent(String(format: "mm6_throttled_%02d.png", frame))
+            try writePNG(bgra: readBack(tex, w: w, h: h), w: w, h: h, to: url)
+            print("[MM.6 throttled] wrote \(url.path)")
         }
     }
 
