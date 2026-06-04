@@ -701,3 +701,44 @@ proving it traverses, not drifts-in-place. Visually: `mm3d_silence_00` (centre-r
 (drifted to the right half, left sky open). Engine 1376 green, app build clean, lint 0. **Tunable dials if
 the framing/pace needs adjustment: `viewScale` (flock size in frame), the `sin(st·0.11)·0.24` amplitude
 (traverse distance), `motionRate` (overall speed).** M7 sign-off pending.
+
+## 13.5 Musicality — global-envelope coupling (2026-06-04, commit `cd67944a`)
+
+**3rd live review (session `2026-06-04T16-15-40Z`):** *"Steady improvements… the real focus now should be
+on musicality — how the preset feels connected to music sources"* (+ the traverse still inches along —
+minor). The motion was good; it just wasn't legibly *driven* by the music.
+
+**Diagnosis (grounded in the session CSVs, not guessed).** Measured driver ranges: stem energies sit at
+~0.30 mean / ~0.70 p99 (AGC-normalized); dev primitives are near-zero (p50 ~0.08) and spike to 1–2.5 on
+events; `drumsBeat` is a clean 0→1 pulse; arousal is high/steady (0.82). Against those ranges, **every
+existing route was a 10–20 % modulation buried under large autonomous motion** (comma wheel, churn,
+traverse) that ran on a *pure-time clock regardless of audio*. That is the disconnect: the flock moved
+impressively but on its own clock, not the music's.
+
+**Fix — drive the GLOBAL ENVELOPE** (per `feedback_global_coupling_emergent_substrate` + the Audio Data
+Hierarchy: continuous energy PRIMARY, beat ACCENT). Smoothed envelopes are computed **CPU-side**
+(`Murmuration3DGeometry.advanceEnvelopes`) — so the response is coherent and not twitchy, and we can
+low-pass without per-particle state — then passed to the shader via new `M3DConfig` fields:
+
+- **`energyEnv`** (EMA, τ 0.45 s) → **PRIMARY**. Drives (a) a **vigor-paced morph clock**: the CPU
+  integrates `motionPhase` faster when energetic (`vigorSpeed = 0.55 + 0.85·energyNorm`) so the whole flock
+  churns/wheels/drifts *to the music's energy*, not a fixed clock; (b) **swell + elongation** of the
+  ellipsoid (calm → small, round; energetic → big, long ribbon); (c) **churn intensity**; (d) **traverse
+  range** (`traverseScale 0.45…1.20`) — which also answers "can move around more": the flock roams the
+  whole sky when energetic, stays near home when calm.
+- **`beatEnv`** (fast-attack/slow-release EMA) → **ACCENT**. A **beat-gated** agitation wave: on each beat
+  a band banks together and a dark band sweeps across as the pulse decays. Beat-gating means silent
+  passages no longer carry a static band.
+- **`vocalEnv`** (EMA) → density breathing.
+
+All gains sized to the **measured ranges** (FA #31/#57 — never tune at input = 1.0). Framing rebudgeted for
+the swelled/wider state: `camDist` 3.2, `viewScale` 1.3 → 1.05.
+
+**Verification now tests the coupling, not just framing.** `test_musicality` asserts louder music → bigger
+(swell) **and** more banding than silence (the routes measurably read). `test_framed` drives *energetic*
+audio (the framing worst case) and asserts framed-throughout **and** a real traverse. Visually: silence =
+small calm flock; energetic = big elongated roaming flock with rolling band structure. Engine 1377 green,
+app build clean, lint 0. **Durable rule:** on a preset with strong autonomous motion, audio coupling only
+*reads* if it drives that motion's global envelope (vigor / size / range), not if it adds small deltas on
+top of a fixed clock. **Dials: the `energyNorm` map + `vigorSpeed`/`swell`/`traverseScale` gains (response
+depth), EMA τ (smoothness), `beatEnv·1.6` (beat-wave punch).** M7 sign-off pending.
