@@ -182,6 +182,14 @@ struct PresetVisualReviewTests {
         }
 
         let ctx = try MetalContext()
+        // noiseVolume for direct presets that sample it (Nimbus reads [[texture(6)]]).
+        // Production binds it on the direct path (RenderPipeline+Draw.bindNoiseTextures);
+        // bind the same texture here so the review PNG matches production (FA #66 parity).
+        let nimbusNoiseVolume: MTLTexture? = {
+            guard let lib = try? ShaderLibrary(context: ctx),
+                  let tm = try? TextureManager(context: ctx, shaderLibrary: lib) else { return nil }
+            return tm.noiseVolume
+        }()
         guard let preset = _acceptanceFixture.presets.first(where: {
             $0.descriptor.name == presetName
         }) else {
@@ -302,6 +310,7 @@ struct PresetVisualReviewTests {
                                          arachneState: arachneState,
                                          auroraVeilState: auroraVeilState,
                                          lumenEngine: lumenEngine,
+                                         noiseVolume: nimbusNoiseVolume,
                                          features: &fv)
             let url = outputDir.appendingPathComponent(
                 "\(presetName.replacingOccurrences(of: " ", with: "_"))_\(fixtures[index].name).png"
@@ -564,6 +573,7 @@ struct PresetVisualReviewTests {
         arachneState: ArachneState?,
         auroraVeilState: AuroraVeilState? = nil,
         lumenEngine: LumenPatternEngine? = nil,
+        noiseVolume: MTLTexture? = nil,
         features: inout FeatureVector
     ) throws -> [UInt8] {
         // Dispatch: pure-ray-march presets go through the deferred pipeline so
@@ -624,6 +634,9 @@ struct PresetVisualReviewTests {
 
         encoder.setRenderPipelineState(preset.pipelineState)
         encoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.size, index: 0)
+        // Texture(6) is the noise-volume slot (orthogonal to the buffer(6) per-preset
+        // state Arachne/Aurora bind). Nimbus samples it; harmless for other presets.
+        if let noiseVolume { encoder.setFragmentTexture(noiseVolume, index: 6) }
         encoder.setFragmentBuffer(fftBuf, offset: 0, index: 1)
         encoder.setFragmentBuffer(wavBuf, offset: 0, index: 2)
         encoder.setFragmentBuffer(stemBuf, offset: 0, index: 3)

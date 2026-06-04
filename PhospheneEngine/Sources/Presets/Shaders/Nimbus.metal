@@ -36,7 +36,7 @@
 // Body ellipsoid semi-axes (body space). Long axis vertical (y > x,z).
 constant float3 kNimbusSemiAxes  = float3(1.20, 1.50, 1.20);
 constant float  kNimbusBoundR    = 1.85;   // bounding sphere for the march range
-constant int    kNimbusSteps     = 64;     // primary march steps (NB.1 start)
+constant int    kNimbusSteps     = 64;     // primary march steps
 constant int    kNimbusShadowN   = 6;      // secondary light-march steps
 constant float  kNimbusShadowDt  = 0.16;   // light-march step length
 constant float  kNimbusSigma     = 2.1;    // primary extinction / scattering coefficient (translucent)
@@ -69,22 +69,26 @@ static inline float nimbus_envelope(float3 p) {
 // Full body density: the smooth ellipsoidal envelope ERODED by a billowy detail
 // field. Erosion increases toward the shell (fray weighting) so the core stays
 // dense and coherent while the periphery breaks into lobes, wisps and soft voids
-// — the macro+meso cascade in one field. Detail = fbm4 (4-octave; fbm8 is flagged
-// avoid-in-march-loop) + voronoi_3d_f1 billow lobes (the voronoi_smooth named in
-// the design is 2D-only — see DESIGN §3.1). Time-only drift (the subtle "breath").
-static inline float nimbus_density(float3 p, float t) {
+// — the macro+meso cascade in one field. Detail is sampled from the preamble 64³
+// tileable 3D FBM texture (NB.1.1 budget pass — see below). Time-only drift.
+static inline float nimbus_density(float3 p, float t,
+                                   texture3d<float> noiseVol, sampler smp) {
     float rr;
     float env = nimbus_envelope(p, rr);
     if (env <= 0.001) { return 0.0; }   // outside the body → skip the noise cost
 
-    float3 drift = float3(0.0, -t * 0.015, t * 0.008);   // slow, time-only
+    float3 q = p + float3(0.0, -t * 0.015, t * 0.008);   // slow, time-only drift
 
-    // Billowy detail field in [0,1]: fbm gives organic turbulence, voronoi lobes
-    // give rounded density lumps (ref 02). Higher frequency than the body so the
-    // structure reads at body scale; contrast-stretched so lobes are legible.
-    float n    = fbm4(p * 4.5 + drift) * 0.5 + 0.5;                       // [0,1]
-    float lobe = 1.0 - smoothstep(0.0, 0.6,
-                                  voronoi_3d_f1(p * 2.6 + drift * 0.6, 1.0)); // [0,1]
+    // Detail sampled from the preamble 64³ tileable 3D FBM texture (noiseVolume,
+    // [[texture(6)]], production-bound on the direct path via TextureManager)
+    // instead of computed fbm4 — the per-step procedural noise was the dominant
+    // march cost (NB.1.1; voronoi removal alone was a wash → the cost was fbm4's
+    // ALU). Two octaves of turbulence + one low-freq octave for the billow lobes;
+    // the tileable texture repeats under linearSampler.
+    float oct1 = noiseVol.sample(smp, q * 1.8).r;                          // turbulence
+    float oct2 = noiseVol.sample(smp, q * 3.8).r;                          // finer turbulence
+    float n    = oct1 * 0.65 + oct2 * 0.35;                                // [0,1]
+    float lobe = smoothstep(0.32, 0.70, noiseVol.sample(smp, q * 0.9).r);  // low-freq lumps [0,1]
     float detail = smoothstep(0.15, 0.85, clamp(n * 0.6 + lobe * 0.55, 0.0, 1.0));
 
     // Interior billows: modulate density everywhere with the detail field. A low
@@ -104,7 +108,8 @@ static inline float nimbus_density(float3 p, float t) {
 // MARK: - Nimbus fragment (NB.1 macro maquette)
 
 fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
-                                constant FeatureVector& features [[buffer(0)]]) {
+                                constant FeatureVector& features [[buffer(0)]],
+                                texture3d<float> noiseVolume [[texture(6)]]) {
     // ── View ray (fixed camera + FOV, aspect-corrected) ──────────────────────
     float2 uv = in.uv;
     float2 p = uv - 0.5;
@@ -114,7 +119,10 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
 
     float3 voidColor = float3(0.0);   // true-black void (NB.1; the haze floor is NB.4)
 
-    // ── Bounding-sphere intersection (skip the void; concentrate the steps) ──
+    // ── Bounding-sphere intersection (skip the void; the env early-out makes the
+    // in-sphere / outside-body steps nearly free — a loose sphere is *cheaper*
+    // than a tight ellipsoid here because it spends most steps in empty space
+    // that early-outs, rather than forcing every step through the noise field).
     float bq = dot(ro, rd);                       // sphere centred at origin
     float cq = dot(ro, ro) - kNimbusBoundR * kNimbusBoundR;
     float disc = bq * bq - cq;
@@ -141,7 +149,7 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
     for (int i = 0; i < kNimbusSteps; i++) {
         float ti = t0 + (float(i) + 0.5) * dt;
         float3 pos = ro + rd * ti;
-        float dens = nimbus_density(pos, t);
+        float dens = nimbus_density(pos, t, noiseVolume, linearSampler);
         if (dens > 0.002) {
             litSteps++;
             // Self-shadow: short secondary light-march over the analytic envelope
