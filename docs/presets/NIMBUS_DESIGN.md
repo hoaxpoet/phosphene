@@ -237,6 +237,19 @@ Measured per-preset GPU cost of the NB.1 macro maquette (steady-mid fixture, `Ni
 
 **Resolution (NB.1.1, same day — Matt directed "make the engineering call and proceed").** Replaced the per-step computed `fbm4` with samples of the preamble-provided **64³ tileable 3D FBM texture** (`noiseVolume`, `[[texture(6)]]`, already production-bound on the direct path via `RenderPipeline+Draw.bindNoiseTextures` → `TextureManager`). Two octaves of turbulence + one low-frequency octave for the billow lobes; the cheap envelope-only self-shadow is unchanged. **Result: full-res p50 1.37 ms — within the 7 ms Tier-2 ceiling at *full resolution*, ~5.6 ms of headroom for NB.2–7; half-res + MetalFX is not required for the maquette.** The look improved (smokier, more delicate fraying — closer to ref 01) as a bonus. This stays inside NB.1's mandate: `noiseVolume` is preamble-injected and production-bound, so the shader merely composes existing machinery; the only test-side change is binding the same texture in `NimbusBudgetProbeTests` + `PresetVisualReviewTests` for parity (FA #66). **Durable lesson: compute-per-step procedural noise does NOT fit Tier-2 at 1080p — budget volumetric noise as a `noiseVolume` texture sample from the start.** NB.2 is unblocked.
 
+### 6.2 NB.2 macro+meso+micro measurement (2026-06-04)
+
+The meso/micro detail cascade (NB.2) added body-scale billow lobes, domain-warped micro filaments + edge feathering, and the `kNimbusTurbulence` interior-roil knob — raising the per-step sample count from **3 → 6** `noiseVolume` samples (2 lobe octaves + 1 mid turbulence + 2 domain-warp taps + 1 warped fine octave), all texture-sampled (no computed noise, §6.1 rule held). Same harness/fixture as §6.1:
+
+| Variant | min | **p50** | mean | p95 | max |
+|---|---|---|---|---|---|
+| **Full 1920×1080 — NB.2 macro+meso+micro (shipped)** | 1.56 | **1.65** | 1.71 | 2.10 | 2.29 |
+| Half 960×540 — NB.2 (march only) | 0.58 | 0.73 | 0.74 | 0.86 | 1.04 |
+
+(All ms. Hardware: the dev Mac mini, Apple Silicon. `NimbusBudgetProbeTests`, `NIMBUS_BUDGET=1`.)
+
+**Finding.** Doubling the per-step sample count (3 → 6) cost only **+0.28 ms** (p50 1.37 → 1.65 ms) — the envelope early-out keeps most march steps outside the body (where they pay zero noise cost) and `noiseVolume` taps are near-free vs the retired `fbm4` ALU. **macro+meso+micro p50 = 1.65 ms @ 1080p, 0.24× the 7 ms Tier-2 ceiling, well under the NB.2 ≤ ~3 ms target — ~5.35 ms headroom preserved for NB.3 (lighting) → NB.7 (page).** The half-res-march + MetalFX lever (§6) remains an untapped reserve. **Durable lesson reinforced (§6.1): the cost of detail is the per-step ALU, not the sample count — add octaves freely as `noiseVolume` taps.**
+
 ---
 
 ## 7. Phased implementation sketch (Gate 5)

@@ -1202,6 +1202,59 @@ Two shaping approaches:
 
 Both are ~0.3 ms additions to the existing bloom chain. Implement as optional flags per-preset in `PresetDescriptor`.
 
+### 6.5 Single luminous body — the volumetric detail cascade (V.2-Volume consumer)
+
+**Use for:** a *single coherent gaseous body* suspended in a void (Nimbus) — not frame-filling atmosphere (that's §6.1/§6.3). The body must have a centre of mass, a legible silhouette, internal billow/lobe structure, and edges that dissolve into the void. The failure mode at every step is **uniform fog** (no centre, no negative space) and its opposite, **a solid-surface blob** (opaque, hard-edged). Reference implementation: `Nimbus.metal` (the first preset to compose the V.2 Volume tree). Cost: macro+meso+micro **p50 ≈ 1.65 ms @ 1080p** on M-series (64 march steps, 6 `noiseVolume` taps/in-body step), well inside the 7 ms Tier-2 ceiling.
+
+**The non-negotiable budget rule (D-140 / `NIMBUS_DESIGN §6.1`): volumetric noise is a TEXTURE SAMPLE, never computed per march step.** Per-step `fbm4` was ~20 ms @1080p (2.9× over budget) and *half-res* was still 7.5 ms — the dominant cost is the per-step ALU (4× `perlin3d`/step), not the resolution. Sampling the preamble **64³ tileable 3D `noiseVolume`** (`[[texture(6)]]`, production-bound via `TextureManager.bindNoiseTextures`) instead dropped it to 1.37 ms. The corollary: **the cost is the per-step ALU, not the sample count** — adding the meso/micro octaves (3 → 6 taps/step) cost only +0.28 ms because the body early-out keeps most steps free. Add octaves freely *as texture taps*. Use the **true-3D `noiseVolume`**, not a 2D texture (`noiseHQ`/`noiseFBM`) — a 2D sample in a 3D march gives columnar artifacts (constant along the projected axis). `blueNoise` (2D) is fine for screen-space step-jitter.
+
+**Shape a BOUNDED body first (the macro envelope).** An analytic envelope — ellipsoidal shell × gaussian core boost — gives the silhouette + dense-core read for free, with no noise cost, and doubles as a cheap self-shadow field. Skip the noise entirely outside the body (the early-out is what makes the march affordable):
+
+```metal
+// 1 at the dense core → 0 at the shell. Cheap; also the self-shadow field.
+static inline float body_envelope(float3 p, thread float& rrOut) {
+    float3 bp = p / kSemiAxes;       // ellipsoid → unit sphere
+    float  rr = length(bp); rrOut = rr;
+    float  shell = smoothstep(1.05, 0.12, rr);              // bounded silhouette
+    float  core  = 0.50 + 1.05 * exp(-rr * rr * 3.2);       // gaussian core boost
+    return shell * core;
+}
+// In the march loop: float env = body_envelope(p, rr);
+//                     if (env <= 0.001) continue;          // <-- the budget saver
+```
+
+**Meso billows must CARVE the envelope multiplicatively, not modulate it additively.** Additive detail (`env * mix(floor, peak, detail)`) just brightens an already-opaque core and the lumps wash out into the solid-surface failure. Make the lobe field *thin the body toward transparency in the valleys* so the density iso-surface is genuinely lumpy:
+
+```metal
+float lobeA  = noiseVol.sample(s, q * 0.7).r;       // coarse billows
+float lobeB  = noiseVol.sample(s, q * 1.4).r;       // nested sub-billows (octave-doubled)
+float billow = smoothstep(0.35, 0.70, lobeA*0.62 + lobeB*0.38);  // tight → crisp lump/valley
+float lobeCarve = mix(0.14, 1.10, billow);          // valleys thin to 0.14·env, crests > 1
+float dens = env * lobeCarve * roil;                // roil = interior turbulence texture
+```
+
+**Render TRANSLUCENT so front-to-back accumulation reads lobe depth — no extra lighting needed.** A near-opaque body (high σ) shows only a flat front surface. Drop the extinction σ until light scatters *through* the volume (Nimbus: σ ≈ 1.55): the march's own front-to-back accumulation then makes lobe crests (more density stacked along the ray) brighter than valleys, and near lobes attenuate far ones — a real depth read with zero lobe-to-lobe shadow work. (Lobe-to-lobe *shadow lighting* is a separate, later increment; the *density* depth read comes free from σ + accumulation.)
+
+**Micro filaments — domain-warp the texture COORDINATE with a cheap second tap, never `fbm_vec3`/`warped_fbm`.** Those helpers compute `fbm8` internally (~56 perlin evals) and re-blow the budget. `noiseVolume` is single-channel, so build a 2-axis swirl offset from two decorrelated low-freq taps and apply it to the fine octave's coordinate — that stretches isotropic noise into curling tendrils:
+
+```metal
+float w0 = noiseVol.sample(s, q*0.9).r - 0.5;
+float w1 = noiseVol.sample(s, q*0.9 + float3(4.7,1.3,8.1)).r - 0.5;   // decorrelated tap
+float3 qw   = q + float3(w0, w1, (w0-w1)*0.5) * kWarpAmt;             // swirled coords
+float micro = noiseVol.sample(s, qw * 5.6).r;                        // warped fine filaments
+```
+
+**Edge feathering MULTIPLIES the rim by a filament mask — don't subtract a smooth amount.** Subtraction blurs the whole rim into a soft uniform falloff; a multiplicative mask breaks the rim into discrete curling filaments separated by void (the warp curls them). Keep the core (low `rr`) unmasked so the body stays one coherent mass; the mask is continuous noise so the edge never hard-cuts:
+
+```metal
+float rim   = smoothstep(0.48, 1.06, rr);                    // 0 core → 1 shell
+float fil   = clamp(smoothstep(0.34,0.64,micro)*0.74         // fine tendrils
+                  + smoothstep(0.28,0.74,billow)*0.42, 0,1); // + larger lobe gaps
+dens *= mix(1.0, fil, rim);                                  // rim dissolves to tendrils
+```
+
+**Expose interior turbulence as one named amplitude constant** (`kNimbusTurbulence`) scaling the roil term, so a mood/arousal route can later modulate placid ↔ churning without touching the field structure. Keep a **density-only debug view** (accumulated opacity, no lighting) as the load-bearing guard — it must always show a bounded body with dominant negative space and feathered edges; if it fills the frame you've drifted into uniform fog, and **raising global density is never the way to add detail** (detail is structure, not opacity). A **step-count heatmap** validates the early-out (cost confined to the body).
+
 ---
 
 ## 7. SDF Craft
