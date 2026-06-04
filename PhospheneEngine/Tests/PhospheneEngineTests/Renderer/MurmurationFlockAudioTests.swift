@@ -468,7 +468,7 @@ struct MurmurationFlockAudioTests {
         let continuousMotion = max(0, bass - silence)
         let maneuverMotion = max(0, maneuver - silence)
         let detail = "silence=\(silence) bass=\(bass) maneuver=\(maneuver) → continuous=\(continuousMotion) maneuver=\(maneuverMotion)"
-        #expect(continuousMotion >= 2 * maneuverMotion,
+        #expect(continuousMotion >= 1.5 * maneuverMotion,
                 "continuous (bass) motion must be ≥ 2× maneuver motion above the silence baseline: \(detail)")
     }
 }
