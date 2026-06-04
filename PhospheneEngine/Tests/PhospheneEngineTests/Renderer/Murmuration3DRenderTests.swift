@@ -56,20 +56,56 @@ struct Murmuration3DRenderTests {
         return sx / Float(n)
     }
 
-    @Test("Settles dense, traverses the sky, stays framed throughout (silence)")
+    /// 95th-pct radius from the flock centre — to prove energy SWELLS the flock.
+    private func extent(_ geo: Murmuration3DGeometry) -> Float {
+        let n = geo.configuration.particleCount
+        let ptr = geo.particleBuffer.contents().bindMemory(to: M3DParticle.self, capacity: n)
+        var cx: Float = 0, cy: Float = 0, cz: Float = 0
+        for i in 0..<n { cx += ptr[i].positionX; cy += ptr[i].positionY; cz += ptr[i].positionZ }
+        cx /= Float(n); cy /= Float(n); cz /= Float(n)
+        var r = [Float](); r.reserveCapacity(n)
+        for i in 0..<n {
+            let dx = ptr[i].positionX - cx, dy = ptr[i].positionY - cy, dz = ptr[i].positionZ - cz
+            r.append((dx * dx + dy * dy + dz * dz).squareRoot())
+        }
+        r.sort()
+        return r[Int(Float(n) * 0.95)]
+    }
+
+    /// Mean |bank| — to prove energy/beats drive the banking (dark-band) response.
+    private func meanAbsBank(_ geo: Murmuration3DGeometry) -> Float {
+        let n = geo.configuration.particleCount
+        let ptr = geo.particleBuffer.contents().bindMemory(to: M3DParticle.self, capacity: n)
+        var s: Float = 0
+        for i in 0..<n { s += abs(ptr[i].bank) }
+        return s / Float(n)
+    }
+
+    /// One frame of sustained energetic audio (bass+drums+other+vocals, beats at ~2.3 Hz).
+    private func energeticStep(_ geo: Murmuration3DGeometry, _ t: Float, _ frame: Int,
+                               energy: Float, beat: Bool, _ q: MTLCommandQueue) throws {
+        var f = FeatureVector(time: t, deltaTime: 1.0 / 60.0)
+        f.arousal = 0.75; f.bassAttRel = 0.5
+        var s = StemFeatures()
+        s.bassEnergy = energy; s.drumsEnergy = energy; s.otherEnergy = energy * 0.85; s.vocalsEnergy = energy * 0.55
+        if beat { s.drumsBeat = (frame % 26 < 2) ? 1.0 : 0.0 }
+        try step(geo, f, s, q)
+    }
+
+    @Test("Under energetic audio: swells, traverses the sky, stays framed throughout")
     func test_framed() throws {
         let ctx = try MetalContext()
         let lib = try ShaderLibrary(context: ctx)
         let geo = try makeGeo(ctx, lib, pixelFormat: nil)
         var t: Float = 0
-        // Step through a full slow traverse (~40 s). The flock drifts end-to-end, so
-        // (a) the WORST frame must still be framed, and (b) the centre must sweep a
-        // meaningful range — proving it traverses, not drifts-in-place.
+        // Energy drives the worst case for framing (swell + wide traverse). Step through
+        // a full traverse and assert (a) the worst frame stays framed, (b) the centre
+        // sweeps a real range (it traverses, not drifts-in-place).
         var minFramed: Float = 1.0
         var minCx: Float = 1.0, maxCx: Float = -1.0
-        for frame in 0..<2400 {
-            try step(geo, FeatureVector(time: t, deltaTime: 1.0 / 60.0), .zero, ctx.commandQueue); t += 1.0 / 60.0
-            if frame >= 300 && frame % 100 == 0 {
+        for frame in 0..<2600 {
+            try energeticStep(geo, t, frame, energy: 0.6, beat: true, ctx.commandQueue); t += 1.0 / 60.0
+            if frame >= 400 && frame % 100 == 0 {
                 let (frac, bad) = framedFraction(geo)
                 #expect(!bad, "positions must stay finite (frame \(frame))")
                 minFramed = min(minFramed, frac)
@@ -77,8 +113,33 @@ struct Murmuration3DRenderTests {
                 minCx = min(minCx, cx); maxCx = max(maxCx, cx)
             }
         }
-        #expect(minFramed > 0.93, "the 3D flock must stay framed across its full traverse: minFramed=\(minFramed)")
-        #expect(maxCx - minCx > 0.30, "the flock must traverse the sky, not drift in place: centreXrange=\(maxCx - minCx)")
+        #expect(minFramed > 0.90, "the swelled, traversing flock must stay framed: minFramed=\(minFramed)")
+        #expect(maxCx - minCx > 0.30, "the flock must traverse the sky under energy: centreXrange=\(maxCx - minCx)")
+    }
+
+    @Test("Musicality: louder music → bigger + more banding than silence (the coupling reads)")
+    func test_musicality() throws {
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let geo = try makeGeo(ctx, lib, pixelFormat: nil)
+        let q = ctx.commandQueue
+        var t: Float = 0
+        // Silence: settle, then measure peak extent + banding over a window.
+        for _ in 0..<300 { try step(geo, FeatureVector(time: t, deltaTime: 1.0 / 60.0), .zero, q); t += 1.0 / 60.0 }
+        var silExtent: Float = 0, silBank: Float = 0
+        for frame in 0..<360 {
+            try step(geo, FeatureVector(time: t, deltaTime: 1.0 / 60.0), .zero, q); t += 1.0 / 60.0
+            if frame % 30 == 0 { silExtent = max(silExtent, extent(geo)); silBank = max(silBank, meanAbsBank(geo)) }
+        }
+        // Energetic: ramp the envelopes, then measure.
+        for frame in 0..<300 { try energeticStep(geo, t, frame, energy: 0.6, beat: true, q); t += 1.0 / 60.0 }
+        var loudExtent: Float = 0, loudBank: Float = 0
+        for frame in 0..<360 {
+            try energeticStep(geo, t, frame + 300, energy: 0.6, beat: true, q); t += 1.0 / 60.0
+            if frame % 30 == 0 { loudExtent = max(loudExtent, extent(geo)); loudBank = max(loudBank, meanAbsBank(geo)) }
+        }
+        #expect(loudExtent > silExtent * 1.15, "energy must swell the flock: sil=\(silExtent) loud=\(loudExtent)")
+        #expect(loudBank > silBank * 1.15, "energy/beats must drive more banding: sil=\(silBank) loud=\(loudBank)")
     }
 
     @Test("Render sequences (RENDER_VISUAL=1)")

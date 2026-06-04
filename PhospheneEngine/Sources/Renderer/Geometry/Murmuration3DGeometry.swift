@@ -47,10 +47,14 @@ struct M3DConfig {
     var camPitch: Float
     var time: Float
     var viewScale: Float
+    var motionPhase: Float    // vigor-paced morph clock (integrated CPU-side)
+    var energyEnv: Float      // smoothed music energy → vigor + swell + drift range
+    var beatEnv: Float        // smoothed beat pulse → agitation wave + squash
+    var vocalEnv: Float       // smoothed vocals → density breathing
+    // swiftlint:disable:next identifier_name
+    var _pad0: Float
     // swiftlint:disable:next identifier_name
     var _pad1: Float
-    // swiftlint:disable:next identifier_name
-    var _pad2: Float
 }
 
 // MARK: - Configuration
@@ -67,7 +71,7 @@ public struct Murmuration3DConfiguration: Sendable {
         drag: Float = 3.0,
         camDist: Float = 3.2,        // camera further back (Matt 2026-06-04: room to traverse)
         camPitch: Float = 0.35,
-        viewScale: Float = 1.3       // zoomed out → flock ~40% of frame, room to drift end-to-end
+        viewScale: Float = 1.05      // zoomed out → room for the energy-swelled flock to roam
     ) {
         self.particleCount = particleCount
         self.drag = drag
@@ -87,6 +91,12 @@ public final class Murmuration3DGeometry: ParticleGeometry, @unchecked Sendable 
     /// D-057 governor gate. At ~6 K the preset is cheap enough that the governor
     /// never throttles it, so the controlled flock never loses birds.
     public var activeParticleFraction: Float = 1.0
+
+    // ── Music envelopes (smoothed CPU-side; the global-envelope coupling) ──
+    private var motionPhase: Double = 0   // vigor-paced morph clock (Double: no long-run drift)
+    private var energyEnv: Float = 0      // smoothed music energy
+    private var beatEnv: Float = 0        // smoothed beat pulse
+    private var vocalEnv: Float = 0       // smoothed vocals
 
     private let computePipeline: MTLComputePipelineState
     private let renderPipeline: MTLRenderPipelineState?
@@ -162,15 +172,8 @@ public final class Murmuration3DGeometry: ParticleGeometry, @unchecked Sendable 
         guard let enc = commandBuffer.makeComputeCommandEncoder() else {
             logger.error("Murmuration3D.update: encoder failed"); return
         }
-        var cfg = M3DConfig(
-            particleCount: UInt32(configuration.particleCount),
-            drag: configuration.drag,
-            camDist: configuration.camDist,
-            camPitch: configuration.camPitch,
-            time: features.time,
-            viewScale: configuration.viewScale,
-            _pad1: 0,
-            _pad2: 0)
+        advanceEnvelopes(features: features, stems: stemFeatures)
+        var cfg = makeConfig(time: features.time)
         var feat = features
         var stems = stemFeatures
         enc.setComputePipelineState(computePipeline)
@@ -189,19 +192,66 @@ public final class Murmuration3DGeometry: ParticleGeometry, @unchecked Sendable 
 
     public func render(encoder: MTLRenderCommandEncoder, features: FeatureVector) {
         guard let state = renderPipeline else { return }
-        var cfg = M3DConfig(
-            particleCount: UInt32(configuration.particleCount),
-            drag: configuration.drag,
-            camDist: configuration.camDist,
-            camPitch: configuration.camPitch,
-            time: features.time,
-            viewScale: configuration.viewScale,
-            _pad1: 0,
-            _pad2: 0)
+        var cfg = makeConfig(time: features.time)
         encoder.setRenderPipelineState(state)
         encoder.setVertexBuffer(particleBuffer, offset: 0, index: 0)
         encoder.setVertexBytes(&cfg, length: MemoryLayout<M3DConfig>.stride, index: 2)
         encoder.drawPrimitives(type: .point, vertexStart: 0, vertexCount: configuration.particleCount)
+    }
+
+    // MARK: - Music envelopes
+
+    /// Advance the smoothed music envelopes that drive the global coupling. Computing
+    /// them once CPU-side (rather than per-bird in the shader) keeps the response
+    /// coherent and lets us low-pass without per-particle state. Tuned against the
+    /// measured driver ranges (stem energies ~0.3 mean / ~0.7 p99; drumsBeat a clean
+    /// 0→1 pulse) so the response is sized to real music, not input = 1.0.
+    private func advanceEnvelopes(features: FeatureVector, stems: StemFeatures) {
+        var dt = features.deltaTime
+        if !(dt > 0) { dt = 1.0 / 60.0 }
+        dt = min(dt, 1.0 / 30.0)
+
+        // Continuous music energy: stems when present, else the full-mix fallback.
+        let stemTotal = stems.drumsEnergy + stems.bassEnergy + stems.otherEnergy + stems.vocalsEnergy
+        let blend = Self.smoothstep(0.02, 0.06, stemTotal)
+        let stemEnergy = (stems.drumsEnergy + stems.bassEnergy + stems.otherEnergy) / 3 + 0.4 * stems.vocalsEnergy
+        let fullEnergy = (features.bass + features.mid) * 0.5
+        let rawEnergy = fullEnergy + (stemEnergy - fullEnergy) * blend
+        let rawBeat   = features.beatBass + (stems.drumsBeat - features.beatBass) * blend
+        let rawVocal  = stems.vocalsEnergy * blend
+
+        // EMAs: alpha = dt / (tau + dt).
+        energyEnv += Float(dt / (0.45 + dt)) * (rawEnergy - energyEnv)
+        vocalEnv += Float(dt / (0.50 + dt)) * (rawVocal - vocalEnv)
+        // Beat: fast attack so each hit reads, slower release so the band sweeps as it decays.
+        let beatAlpha = rawBeat > beatEnv ? dt / (0.02 + dt) : dt / (0.14 + dt)
+        beatEnv += Float(beatAlpha) * (rawBeat - beatEnv)
+
+        // Vigor-paced morph clock: energetic → faster churn/wheel/drift, calm → slower.
+        let energyNorm = max(0, min(1.3, (energyEnv - 0.18) / 0.45))
+        let vigorSpeed = 0.55 + 0.85 * energyNorm
+        motionPhase += Double(dt) * 0.7 * 1.2 * Double(vigorSpeed)
+    }
+
+    private func makeConfig(time: Float) -> M3DConfig {
+        M3DConfig(
+            particleCount: UInt32(configuration.particleCount),
+            drag: configuration.drag,
+            camDist: configuration.camDist,
+            camPitch: configuration.camPitch,
+            time: time,
+            viewScale: configuration.viewScale,
+            motionPhase: Float(motionPhase),
+            energyEnv: energyEnv,
+            beatEnv: beatEnv,
+            vocalEnv: vocalEnv,
+            _pad0: 0,
+            _pad1: 0)
+    }
+
+    private static func smoothstep(_ edge0: Float, _ edge1: Float, _ x: Float) -> Float {
+        let tn = max(0, min(1, (x - edge0) / (edge1 - edge0)))
+        return tn * tn * (3 - 2 * tn)
     }
 }
 
