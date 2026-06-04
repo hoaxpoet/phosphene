@@ -4388,9 +4388,9 @@ The journey is instructive (each step is a recorded session): per-onset size **b
 
 ---
 
-## D-140 — Nimbus: `volumetric` PresetCategory family + NB.1 macro maquette (budget-blocked)
+## D-140 — Nimbus: `volumetric` PresetCategory family + NB.1 macro maquette
 
-**Date:** 2026-06-04. **Status:** family added & maquette implemented; **NB.1 budget gate OVER → replan pending Matt.**
+**Date:** 2026-06-04. **Status:** family added; NB.1 macro maquette implemented; **budget gate fired then resolved in-session (NB.1.1, noiseVolume).** Matt eyeball + cert pending (NB.9).
 
 **Context.** Nimbus is the first preset to compose the V.2 Volume tree (`Utilities/Volume/*`) — a single-pass 2D direct-fragment volumetric single-scatter ray-march (`passes: []`, like Aurora Veil). Design of record: `docs/presets/NIMBUS_DESIGN.md`; plan: `docs/presets/NIMBUS_PLAN.md`.
 
@@ -4398,4 +4398,4 @@ The journey is instructive (each step is a recorded session): per-onset size **b
 
 **Decision 2 — Tier-2-only via `complexity_cost`.** `Nimbus.json` sets `complexity_cost.tier1 = 9.0` (above the 5 ms Tier-1 ceiling → Orchestrator excludes Nimbus on M1/M2; a volumetric march cannot honour the Tier-1 no-volumetric-clouds budget) and `tier2 = 6.0` (provisional, to be set from the NB.8 profile). `certified: false`, `rubric_profile: full`.
 
-**Finding (NB.1 budget gate) — the open replan.** Measured macro-only cost (steady-mid, `NimbusBudgetProbeTests`): **p50 20.2 ms @1920×1080**, and **p50 7.5 ms @960×540 march-only** — i.e. the design's half-res+MetalFX lever (§6) is *insufficient on its own*: even at quarter-resolution the bare maquette is over the 7 ms ceiling, before MetalFX upscale and before NB.2–7 add detail/lighting/embers. Dominant cost: per-step `fbm4` + `voronoi_3d_f1`. This is the §5.5 / PLAN-risk fallback trigger. **NB.2 is gated on Matt's decision** between: (a) sample the preamble `noiseVolume` 64³ texture per step (the standard volumetric optimisation; needs the texture bound on every render path — FA #66 parity); (b) ellipsoid-tight bound + step cuts; (c) §5.5 staged down-res volume pass; (d) re-scope. Options (a)–(c) exceed NB.1's no-engine-changes mandate. The maquette renders correctly (§2 traits read) — the blocker is cost, not look. Full data in `NIMBUS_DESIGN.md §6.1`.
+**Decision 3 — budget: the gate fired, then resolved (NB.1.1).** Measured macro-only cost (steady-mid, `NimbusBudgetProbeTests`) with per-step *computed* noise: **p50 20.2 ms @1920×1080** and **7.5 ms @960×540 march-only** — over the 7 ms Tier-2 ceiling even at quarter-res, so the §6 half-res+MetalFX lever was insufficient on its own (the §5.5 / PLAN-risk fallback trigger). I stopped and reported per the gate; Matt directed "make the engineering call and proceed." Diagnosis: removing `voronoi_3d_f1` was a wash, so the cost was the `fbm4` ALU, not the voronoi. **Fix:** sample the preamble-provided `noiseVolume` 64³ tileable 3D FBM texture (`[[texture(6)]]`, already production-bound on the direct path via `RenderPipeline+Draw.bindNoiseTextures`) instead of computing `fbm4` → **p50 1.37 ms @1080p, within Tier-2 at full resolution with ~5.6 ms headroom** for NB.2–7; the look improved (smokier, closer to ref 01). Stays inside NB.1's mandate (noiseVolume is preamble-injected + production-bound; only the test paths gained a parity binding — FA #66). **Durable lesson: budget volumetric noise as a `noiseVolume` texture sample, never per-step compute.** NB.2 unblocked. Full data in `NIMBUS_DESIGN.md §6.1`.
