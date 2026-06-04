@@ -18,6 +18,10 @@ import Foundation
 /// Diagnostic presets (Spectral Cartograph, Staged Sandbox) carry no
 /// `family` — they are identified by `is_diagnostic: true` and are not
 /// aesthetic content (D-123).
+///
+/// `volumetric` (added NB.1, Matt-authorized 2026-06-04) is a Phosphene-original
+/// family — not from the cream-of-crop set — for the V.2 Volume-tree lineage
+/// (Nimbus is the first member; see `docs/presets/NIMBUS_DESIGN.md` §8.1).
 public enum PresetCategory: String, Sendable, CaseIterable, Codable {
     case waveform
     case fractal
@@ -29,6 +33,7 @@ public enum PresetCategory: String, Sendable, CaseIterable, Codable {
     case drawing
     case dancer
     case sparkle
+    case volumetric
     case transition
 }
 
@@ -48,6 +53,7 @@ public extension PresetCategory {
         case .drawing:     return "Drawing"
         case .dancer:      return "Dancer"
         case .sparkle:     return "Sparkle"
+        case .volumetric:  return "Volumetric"
         case .transition:  return "Transition"
         }
     }
