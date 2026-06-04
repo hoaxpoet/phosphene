@@ -97,6 +97,22 @@ struct Murmuration3DRenderTests {
                 try renderPNG(geo, t, tex, ctx, w, h, outDir.appendingPathComponent(String(format: "mm3d_audio_%02d.png", shot))); shot += 1
             }
         }
+        // Fine burst (0.2 s spacing) — adjacent frames reveal INTERNAL CHURN: a worm
+        // translates/bends as a rigid body; a murmuration's interior reshuffles
+        // between consecutive frames. Flip through mm3d_burst_* to judge motion.
+        var bt = t
+        for frame in 0..<10 {
+            for _ in 0..<12 {
+                var f = FeatureVector(time: bt, deltaTime: 1.0 / 60.0)
+                f.arousal = 0.6; f.bassAttRel = 0.4
+                var s = StemFeatures()
+                s.bassEnergy = 0.4; s.drumsEnergy = 0.45
+                s.drumsBeat = (frame % 3 == 0) ? 1.0 : 0.0
+                s.otherEnergy = 0.4; s.vocalsEnergy = 0.2
+                try step(geo, f, s, ctx.commandQueue); bt += 1.0 / 60.0
+            }
+            try renderPNG(geo, bt, tex, ctx, w, h, outDir.appendingPathComponent(String(format: "mm3d_burst_%02d.png", frame)))
+        }
     }
 
     private func renderPNG(_ geo: Murmuration3DGeometry, _ t: Float, _ tex: MTLTexture, _ ctx: MetalContext,
