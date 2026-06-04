@@ -228,6 +228,47 @@ struct MurmurationFlockTests {
         }
     }
 
+    @Test("Render LOUD-audio frames (RENDER_VISUAL=1) — cohesion-under-load eyeball")
+    func test_renderLoudFrames() throws {
+        guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else { return }
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let cfg = MurmurationFlockConfiguration(particleCount: 48_000)
+        let geo = try MurmurationFlockGeometry(
+            device: ctx.device, library: lib.library, configuration: cfg, pixelFormat: ctx.pixelFormat)
+        let w = 960, h = 540
+        let texDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: ctx.pixelFormat, width: w, height: h, mipmapped: false)
+        texDesc.usage = [.renderTarget, .shaderRead]; texDesc.storageMode = .shared
+        guard let tex = ctx.device.makeTexture(descriptor: texDesc) else { throw FlockTestError.renderFailed }
+        let outDir = Self.repoRoot().appendingPathComponent("tools/murmuration_reference/frames", isDirectory: true)
+        try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+        let kBarFrames = 120
+        var t: Float = 0
+        var pulse: Float = 0
+        var shot = 0
+        for frame in 0..<900 {
+            if frame % 24 == 0 { pulse = 1.0 }
+            let barPhase = Float(frame % kBarFrames) / Float(kBarFrames)
+            var f = FeatureVector(time: t, deltaTime: 1.0 / 60.0)
+            f.arousal = 0.85; f.bassAttRel = 2.7; f.bassDev = 3.2; f.beatBass = pulse; f.barPhase01 = barPhase
+            var s = StemFeatures()
+            s.bassEnergy = 0.2; s.drumsEnergy = 0.2; s.otherEnergy = 0.2; s.vocalsEnergy = 0.2
+            s.bassEnergyRel = 3.4; s.drumsEnergyDev = 3.2; s.drumsBeat = pulse
+            s.otherEnergyRel = 1.5; s.vocalsEnergyDev = 1.7
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { throw FlockTestError.renderFailed }
+            geo.update(features: f, stemFeatures: s, commandBuffer: cmd)
+            cmd.commit(); cmd.waitUntilCompleted()
+            pulse *= 0.82; t += 1.0 / 60.0
+            if frame >= 300 && frame % 200 == 0 {
+                try renderFrame(geo: geo, features: f, tex: tex, ctx: ctx)
+                let url = outDir.appendingPathComponent(String(format: "mm6_loud_%02d.png", shot)); shot += 1
+                try writePNG(bgra: readBack(tex, w: w, h: h), w: w, h: h, to: url)
+                print("[MM.6 loud] wrote \(url.path)")
+            }
+        }
+    }
+
     // MARK: - Render helpers
 
     private func renderFrame(
