@@ -456,7 +456,7 @@ kernel void murmuration_boids(
             float3 bf = mf_qrotate(d / dlen, ctrlq);
             float yaw = atan2(bf.z, bf.x) * MF_RAD2DEG;
             float pitch = asin(clamp(bf.y, -1.0, 1.0)) * MF_RAD2DEG;
-            float s = rNell * 0.30 + max(0.0, rNell - 1.0) * 5.0;
+            float s = rNell * 0.30 + max(0.0, rNell - 1.0) * 12.0;
             target.z += yaw * fp.framingAmt * s;
             target.y += pitch * fp.framingAmt * s;
 
@@ -583,10 +583,21 @@ kernel void murmuration_boids(
     pos += vel * fp.dt;
     vel += accel * fp.dt;
 
+    // Speed clamp (after aero integration — matches the source's order).
+    float newSpeed = length(vel);
+    if (newSpeed < fp.minSpeed && newSpeed > 1e-6) { vel *= fp.minSpeed / newSpeed; }
+    else if (newSpeed > fp.maxSpeed) { vel *= fp.maxSpeed / newSpeed; }
+    else if (newSpeed <= 1e-6) { vel = fwd * fp.minSpeed; }
+
+    // NaN guard — quaternion degeneration or extreme aero can produce NaN;
+    // reset to a sane state rather than propagating.
+    if (any(isnan(vel)) || any(isnan(pos))) {
+        vel = fwd * fp.minSpeed;
+        pos = fp.anchor.xyz;
+        orient = float4(0, 0, 0, 1);
+    }
+
     // ── Dynamic stability — re-align the body forward axis to velocity ──
-    // (Directional stability; preserves the roll/bank set by the control input,
-    // which is the orientation-wave cue. dynamicStability < the source's 0.8 so
-    // banking persists longer in the 60 fps step.)
     float3 vdir = normalize(vel);
     float3 fwdNow = mf_qrotate(float3(1, 0, 0), orient);
     float4 sq = mf_q_fromto(fwdNow, vdir, fp.dynamicStability);
@@ -594,10 +605,18 @@ kernel void murmuration_boids(
         orient = mf_qnorm(mf_qmul(orient, sq));
     }
 
-    // Safety net: a bird that escapes the grid domain (should not happen — the
-    // boundary term frames the flock) is pulled back so binning stays valid.
+    // Safety net: clamp to the grid domain AND a flock corral (1.5× framing
+    // radius from the anchor) — stragglers that overshoot the framing turn get
+    // relocated before they become distant visual outliers.
     float lim = fp.worldHalfSpan * 0.98;
     pos = clamp(pos, float3(-lim), float3(lim));
+    float3 toAnchor = pos - fp.anchor.xyz;
+    toAnchor.y = 0.0;
+    float corralR = fp.framingRadius * 1.5;
+    float hDist = length(toAnchor);
+    if (hDist > corralR) {
+        pos.xz = fp.anchor.xyz.xz + (toAnchor.xz / hDist) * corralR;
+    }
 
     b.orient = orient;
     b.position = packed_float3(pos);
