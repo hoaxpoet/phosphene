@@ -3336,9 +3336,17 @@ rolling dark bands**; **+20 % speed** via `motionRate = 1.2`. Verified headlessl
 `mm3d_burst_*` 0.2 s frames show the interior reshuffling + bands rolling, not rigid translation). Engine
 1376 green, app build clean, lint 0.
 
+**2ND LIVE REVIEW → TRAVERSE (2026-06-04, commit `75d39eaf`, design §13.4).** Session
+`2026-06-04T15-59-58Z`: *"Better, but primarily moving in place — needs to drift from one end of the
+screen to the other, might require moving the camera back a little."* Motion character was right; the
+flock's position stayed mid-frame (drift amp ~0.12 vs flock half-extent ~0.40). Fix: camera back + zoom out
+(`camDist` 2.6 → 3.2, `viewScale` 2.1 → 1.3 → flock ~40 % of frame, room to drift) + a slow dominant L↔R
+sweep (~34 s each way, clamped ±0.30 x). `test_framed` upgraded to prove framed-across-traverse
+(`minFramed > 0.93`) AND a real sweep (`centreXrange > 0.30`). Engine 1376 green, app build clean, lint 0.
+
 **PENDING (→ MM.5):** **Matt M7 sign-off** of the reworked 3D version (the load-bearing gate — verified
 headlessly so it's a sign-off, not another tweak round); per-route firing evidence from a real recorded
-session. Design doc §13 / §13.3.
+session. Design doc §13 / §13.3 / §13.4.
 
 ---
 
