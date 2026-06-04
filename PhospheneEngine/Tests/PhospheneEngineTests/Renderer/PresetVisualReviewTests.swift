@@ -98,6 +98,16 @@ struct PresetVisualReviewTests {
         ("Ref 08", "docs/VISUAL_REFERENCES/arachne/08_palette_bioluminescent_organism.jpg"),
     ]
 
+    // Nimbus review cells: the three TRUST refs (form / meso / micro) the body
+    // is authored against + the two AVOID anti-refs the body must not match.
+    private static let nimbusReferenceRelPaths: [(label: String, path: String)] = [
+        ("01 form (TRUST)",    "docs/VISUAL_REFERENCES/nimbus/01_macro_coherent_body.jpg"),
+        ("02 meso (TRUST)",    "docs/VISUAL_REFERENCES/nimbus/02_meso_billow_and_filament.jpg"),
+        ("03 micro (TRUST)",   "docs/VISUAL_REFERENCES/nimbus/03_micro_wisp_feathering.jpg"),
+        ("05 fog (AVOID)",     "docs/VISUAL_REFERENCES/nimbus/05_anti_uniform_fog.jpg"),
+        ("05 solid (AVOID)",   "docs/VISUAL_REFERENCES/nimbus/05_anti_solid_surface.jpg"),
+    ]
+
     // MARK: - Tests
 
     /// Pass-separated capture for staged-composition presets (V.ENGINE.1).
@@ -328,6 +338,13 @@ struct PresetVisualReviewTests {
         if presetName == "Arachne", let midURL = midPNGURL {
             let sheetURL = outputDir.appendingPathComponent("Arachne_contact_sheet.png")
             try buildArachneContactSheet(renderedMidPNG: midURL, to: sheetURL)
+            print("[PresetVisualReview] wrote \(sheetURL.lastPathComponent)")
+        } else if presetName == "Nimbus", let midURL = midPNGURL {
+            let sheetURL = outputDir.appendingPathComponent("Nimbus_contact_sheet.png")
+            try buildContactSheet(renderedMidPNG: midURL,
+                                  references: Self.nimbusReferenceRelPaths,
+                                  renderLabel: "NB.2 render (mid) — lit",
+                                  to: sheetURL)
             print("[PresetVisualReview] wrote \(sheetURL.lastPathComponent)")
         }
     }
@@ -1082,6 +1099,77 @@ struct PresetVisualReviewTests {
         guard let cgImage = ctx.makeImage() else {
             throw VisualReviewError.cgImageFailed
         }
+        try writeCGImage(cgImage, to: outURL)
+    }
+
+    /// General N-cell contact sheet: rendered output letterboxed across the top
+    /// half, `references.count` reference cells across the bottom half, each
+    /// labelled. Used for Nimbus (5 cells: 3 TRUST refs + 2 AVOID anti-refs) and
+    /// any future preset that wants a render-vs-references sheet; Arachne keeps
+    /// its bespoke 4-cell builder above.
+    private func buildContactSheet(
+        renderedMidPNG: URL,
+        references: [(label: String, path: String)],
+        renderLabel: String,
+        to outURL: URL
+    ) throws {
+        let sheetW = Self.renderWidth
+        let sheetH = Self.renderHeight
+        let topHalfH = sheetH / 2
+        let cols = max(references.count, 1)
+        let cellW = sheetW / cols
+        let cellH = sheetH / 2
+
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
+            throw VisualReviewError.cgImageFailed
+        }
+        let bitmapInfo = CGBitmapInfo(rawValue:
+            CGImageAlphaInfo.premultipliedFirst.rawValue
+            | CGBitmapInfo.byteOrder32Little.rawValue)
+        guard let ctx = CGContext(data: nil, width: sheetW, height: sheetH,
+                                  bitsPerComponent: 8, bytesPerRow: sheetW * 4,
+                                  space: colorSpace, bitmapInfo: bitmapInfo.rawValue) else {
+            throw VisualReviewError.cgImageFailed
+        }
+
+        ctx.setFillColor(red: 0, green: 0, blue: 0, alpha: 1)
+        ctx.fill(CGRect(x: 0, y: 0, width: sheetW, height: sheetH))
+        ctx.interpolationQuality = .high
+
+        // Top half: rendered output letterboxed.
+        if let renderedImage = loadCGImage(from: renderedMidPNG) {
+            let topRect = CGRect(x: 0, y: cellH, width: sheetW, height: topHalfH)
+            drawLetterboxed(image: renderedImage, in: topRect, ctx: ctx)
+        }
+
+        // Bottom half: reference cells, left → right.
+        let projectRoot = projectRootURL()
+        for (index, ref) in references.enumerated() {
+            let url = projectRoot.appendingPathComponent(ref.path)
+            let rect = CGRect(x: index * cellW, y: 0, width: cellW, height: cellH)
+            if let img = loadCGImage(from: url) {
+                drawLetterboxed(image: img, in: rect, ctx: ctx)
+            }
+        }
+
+        // Labels via NSGraphicsContext.
+        let nsContext = NSGraphicsContext(cgContext: ctx, flipped: false)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = nsContext
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.boldSystemFont(ofSize: 20),
+            .foregroundColor: NSColor.white,
+            .backgroundColor: NSColor(red: 0, green: 0, blue: 0, alpha: 0.7),
+        ]
+        NSAttributedString(string: " \(renderLabel) ", attributes: attrs)
+            .draw(at: NSPoint(x: 12, y: sheetH - 30))
+        for (index, ref) in references.enumerated() {
+            NSAttributedString(string: " \(ref.label) ", attributes: attrs)
+                .draw(at: NSPoint(x: index * cellW + 8, y: cellH - 30))
+        }
+        NSGraphicsContext.restoreGraphicsState()
+
+        guard let cgImage = ctx.makeImage() else { throw VisualReviewError.cgImageFailed }
         try writeCGImage(cgImage, to: outURL)
     }
 
