@@ -645,3 +645,37 @@ constraint), but the shape/density/depth/morphing/banding are proven before he l
 **Retired:** `MurmurationFlock.metal`, `MurmurationFlockGeometry.swift`, `MurmurationFlockTests.swift`,
 `MurmurationFlockAudioTests.swift` (`git rm`'d in `9056dc48`). §§12.1–12.3 above are the historical record
 of the emergent substrate; §13 is the shipped architecture.
+
+## 13.3 Worm → murmuration motion rework (2026-06-04, commit `9b37d359`)
+
+**First live review of the 3D flock (session `2026-06-04T15-41-40Z`):** *"Better. It's a consistent shape
+now, but its movement is more like a worm than a murmuration."* + motion ~20 % too slow. The **shape** was
+approved; the **motion** read as a worm. Confirmed at headless parity (live frames match the fixture): a
+single dense ribbon bending/reorienting as a 1-D body with a smooth, static interior.
+
+**Root cause (two parts).** (1) The curvature term was `sin(u·π + st·k)` — a wave travelling **down the
+long axis**. A lateral wave propagating along an elongated body is *literally* the snake/worm animation
+primitive. (2) Birds were spring-pinned to fixed home slots → the **interior never churned**, so the mass
+moved as one (bending) body. A murmuration's defining feature vs. any other flock animation is the
+**constant internal turbulence** — it boils like a fluid; a static interior always reads as a solid body.
+
+**Fix (all in `Murmuration3D.metal`; the controlled-ellipse shape from §13.1 is unchanged).**
+- **Wheeling comma replaces the spine wave.** A *centred* C-curve `(u²−0.33)` + S-curve `(u³−0.6u)` (both
+  mean ≈ 0 so they bend without translating), each breathing on its own slow phase, rotated through a
+  turning `curvePlane`. The body curves into one coherent comma that **wheels through 3D and morphs C↔S** —
+  it reshapes, it does not undulate along a spine.
+- **Internal churn** (the single biggest worm→flock lever). A flow field that is smooth in `(u,v,w)` advects
+  the home slots, so neighbours stream together **through** the volume — coherent flow, not jitter. The
+  interior now boils; birds visibly reshuffle frame-to-frame.
+- **Continuous rolling bands.** ~2 sharp dark density bands sweep head-to-tail **at all times** (the
+  baseline murmuration shimmer); the per-beat drum turning-wave still intensifies them. Folded into the
+  banking target → wing-area-to-camera darkening.
+- **+20 % speed** via one `motionRate = 1.2` on the morph/wheel clock (`st = t·0.7·motionRate`) — Matt's
+  "starting point"; the single tunable to re-pace.
+
+**Verified headlessly.** framedFrac > 0.95 holds; the new `mm3d_burst_*` fine sequence (0.2 s spacing)
+shows the interior reshuffling and dark bands rolling between consecutive frames (not rigid translation);
+silence = compact churning mass; audio = wheeling comma with rolling bands. Engine 1376 green, app build
+clean, lint 0. **Durable rule (one-primitive-per-layer corollary):** an elongated mass needs *internal*
+motion (churn + bands rolling THROUGH it) to read as a flock — bending the whole body is worm motion;
+reshaping + a boiling interior is murmuration motion. **M7 sign-off of the reworked motion pending.**

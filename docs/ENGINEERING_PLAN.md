@@ -3325,9 +3325,20 @@ depth gradient morphing comma→ribbon; audio frames show elongated S/boomerang 
 with rolling dark bands that shift between shots. Frames in `tools/murmuration_reference/frames/mm3d_*.png`.
 Engine **1376 tests green**, app build clean, lint 0.
 
-**PENDING (→ MM.5):** **Matt M7 sign-off** of the 3D version (the load-bearing gate — the look is verified
-headlessly precisely so this is a sign-off, not another tweak round); per-route firing evidence from a real
-recorded session. Design doc §13.
+**1ST LIVE REVIEW → MOTION REWORK (2026-06-04, commit `9b37d359`, design §13.3).** Session
+`2026-06-04T15-41-40Z`: *"Better. Consistent shape now, but its movement is more like a worm than a
+murmuration"* + ~20 % too slow. The shape was approved; the **motion** read as a worm — root cause was a
+`sin(u·π + st)` curvature wave travelling down the long axis (the snake-spine primitive) over a static,
+spring-pinned interior. Fix: replace the spine wave with a **wheeling comma** (centred C+S curves rotated
+through a turning plane — reshapes, doesn't undulate); add **internal churn** (a flow field smooth in
+(u,v,w) advects the home slots so birds stream through the volume — the mass boils); add **continuous
+rolling dark bands**; **+20 % speed** via `motionRate = 1.2`. Verified headlessly (framedFrac > 0.95; new
+`mm3d_burst_*` 0.2 s frames show the interior reshuffling + bands rolling, not rigid translation). Engine
+1376 green, app build clean, lint 0.
+
+**PENDING (→ MM.5):** **Matt M7 sign-off** of the reworked 3D version (the load-bearing gate — verified
+headlessly so it's a sign-off, not another tweak round); per-route firing evidence from a real recorded
+session. Design doc §13 / §13.3.
 
 ---
 
