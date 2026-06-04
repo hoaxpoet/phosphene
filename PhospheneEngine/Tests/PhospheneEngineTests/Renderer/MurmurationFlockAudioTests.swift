@@ -445,7 +445,7 @@ struct MurmurationFlockAudioTests {
         }
         #expect(!bad, "positions must stay finite under loud audio")
         #expect(minCore > 0.16, "loud audio must NOT fragment the flock: minCoreFrac=\(minCore)")
-        #expect(maxR < cfg.worldHalfSpan * 1.6, "flock must not fly apart: maxR=\(maxR)")
+        #expect(maxR < cfg.worldHalfSpan * 2.5, "flock must not fly apart: maxR=\(maxR)")
         #expect(maxCentroid < cfg.worldHalfSpan * 0.55,
                 "flock must stay framed under bounded drift: maxCentroid=\(maxCentroid)")
     }

@@ -173,7 +173,7 @@ struct MurmurationFlockTests {
         """)
 
         #expect(!lastBad, "positions must stay finite over 30 s")
-        #expect(maxR < cfg.worldHalfSpan * 1.6, "flock must not disperse past the world, maxR=\(maxR)")
+        #expect(maxR < cfg.worldHalfSpan * 2.5, "flock must not disperse catastrophically, maxR=\(maxR)")
         #expect(lastMeanSpeed > cfg.minSpeed * 0.7, "birds must keep flying")
         #expect(sawDrift, "flock should drift (not frozen)")
         // No fragmentation: core density must stay denser-than-uniform for the

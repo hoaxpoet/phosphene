@@ -525,7 +525,7 @@ kernel void murmuration_boids(
         // settles as the breath releases). Bounded by the ceiling/ground above.
         if (fp.audioPad0 > 1e-4) {
             float dy = pos.y - fp.anchor.y;
-            target.y += sign(dy) * fp.audioPad0 * 12.0;
+            target.y += sign(dy) * fp.audioPad0 * 30.0;
         }
     }
 
@@ -583,39 +583,19 @@ kernel void murmuration_boids(
     pos += vel * fp.dt;
     vel += accel * fp.dt;
 
-    // Speed clamp (after aero integration — matches the source's order).
-    float newSpeed = length(vel);
-    if (newSpeed < fp.minSpeed && newSpeed > 1e-6) { vel *= fp.minSpeed / newSpeed; }
-    else if (newSpeed > fp.maxSpeed) { vel *= fp.maxSpeed / newSpeed; }
-    else if (newSpeed <= 1e-6) { vel = fwd * fp.minSpeed; }
+    // Wrap boundaries (X/Z) — matches the source exactly. Y is bounded by the
+    // ground/ceiling avoidance target.y above (same as source).
+    if (pos.x < -fp.worldHalfSpan) pos.x = fp.worldHalfSpan;
+    if (pos.x >  fp.worldHalfSpan) pos.x = -fp.worldHalfSpan;
+    if (pos.z < -fp.worldHalfSpan) pos.z = fp.worldHalfSpan;
+    if (pos.z >  fp.worldHalfSpan) pos.z = -fp.worldHalfSpan;
 
-    // NaN guard — quaternion degeneration or extreme aero can produce NaN;
-    // reset to a sane state rather than propagating.
-    if (any(isnan(vel)) || any(isnan(pos))) {
-        vel = fwd * fp.minSpeed;
-        pos = fp.anchor.xyz;
-        orient = float4(0, 0, 0, 1);
-    }
+    vaxis = normalize(vel);
 
-    // ── Dynamic stability — re-align the body forward axis to velocity ──
-    float3 vdir = normalize(vel);
-    float3 fwdNow = mf_qrotate(float3(1, 0, 0), orient);
-    float4 sq = mf_q_fromto(fwdNow, vdir, fp.dynamicStability);
+    // Dynamic stability (source verbatim): re-align body forward to velocity.
+    float4 sq = mf_q_fromto(fwd, vaxis, fp.dynamicStability);
     if (!isnan(sq.x)) {
         orient = mf_qnorm(mf_qmul(orient, sq));
-    }
-
-    // Safety net: clamp to the grid domain AND a flock corral (1.5× framing
-    // radius from the anchor) — stragglers that overshoot the framing turn get
-    // relocated before they become distant visual outliers.
-    float lim = fp.worldHalfSpan * 0.98;
-    pos = clamp(pos, float3(-lim), float3(lim));
-    float3 toAnchor = pos - fp.anchor.xyz;
-    toAnchor.y = 0.0;
-    float corralR = fp.framingRadius * 1.5;
-    float hDist = length(toAnchor);
-    if (hDist > corralR) {
-        pos.xz = fp.anchor.xyz.xz + (toAnchor.xz / hDist) * corralR;
     }
 
     b.orient = orient;
