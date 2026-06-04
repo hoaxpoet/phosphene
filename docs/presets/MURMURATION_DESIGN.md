@@ -495,3 +495,30 @@ fraction `> 0.10` + per-frame `min > 0.05` + bounded `maxR`/centroid + finite (t
 legitimately lowers radial core-density, so "as dense as silence" would forbid it; the render verifies a
 coherent comma, not clumps). Full engine suite **1385 green (×2 full-parallel + ×3 serialized)**, lint 0,
 app builds. **M7 live review is still the load-bearing gate.**
+
+## 12.2 MM.6 round-5 M7 FAILED — the governor froze the flock (2026-06-04)
+
+**M7 round-5 live review failed:** a frozen oval cloud of birds + a smaller chaotically-moving flock
+*inside* it. Crucially, the round-5 shape tuning was actually **correct** — the frozen oval IS the rounded
+ovoid §12.1 produced. The failure was a **test/prod parity gap** (FA #66 class): the D-057 frame-budget
+governor drops `activeParticleFraction` to **0.5** at `.reducedParticles`, and the boids integrator was
+dispatched on `activeCount = particleCount · fraction`. **A flock is a COUPLED system — it cannot drop a
+fraction of its birds** the way an independent-particle preset (ProceduralGeometry) can: the excluded
+birds were never written by the integrator, so they **froze in place** (a frozen snapshot of the ovoid),
+while the active half flew off and re-cohered into the small blob. The bin kernel + render still process
+all birds, so both the frozen mass and the active sub-flock were drawn. **Every headless test ran at
+fraction 1.0**, so none reproduced it (the diagnosis was clinched by recognising the frozen oval as the
+correct round-5 shape, not a tuning artifact).
+
+**Fix.** Integrate **ALL** birds every frame; `activeParticleFraction` now throttles the **sub-step
+count** instead (fewer, larger steps under load, floored at 2). This is cost-equivalent to the old
+throttle (48 k·2 = 24 k·4 integrations) but keeps the flock one coherent mass — and the bin/reset cost
+actually drops with fewer sub-steps. The governor still has a real Murmuration cost valve; it just throttles
+integration *fidelity*, not bird *count*. The generalisable rule (now in CLAUDE.md §What NOT To Do): a
+coupled/emergent substrate must throttle fidelity, never element count.
+
+**Regression test** `test_governorThrottleFreezesNoBirds`: at fraction 0.5, snapshot positions, step one
+frame, assert < 2 % of birds are unchanged (the old code froze 50 %) **and** the throttled flock stays
+cohesive at 2 sub-steps. Env-gated `mm6_throttled_*` render confirms a single coherent flock under the
+exact governor condition (parity loop closed). Full engine suite **1386 green**, lint 0, app builds.
+**M7 round-6 live review pending.**

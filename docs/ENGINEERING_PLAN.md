@@ -3166,7 +3166,7 @@ release notes.
 
 ---
 
-### Increment MM.6 — Rebuild the flock on Flock2 (orientation-based)  *(IMPLEMENTED 2026-06-03; M7 rounds 1–4 failed + fixed; round-5 density/framing reframe 2026-06-04; M7 round-5 live review pending)*
+### Increment MM.6 — Rebuild the flock on Flock2 (orientation-based)  *(IMPLEMENTED 2026-06-03; M7 rounds 1–5 failed + fixed; round-5 density/framing reframe + round-6 governor-freeze fix 2026-06-04; M7 round-6 live review pending)*
 
 **Supersedes the force-based substrate of MM.2 and the force-based audio coupling of MM.3.** MM.4
 (sky/perf) and MM.5 (cert) now apply to the Flock2 flock and follow this increment.
@@ -3260,7 +3260,19 @@ robustness: audio suite `.serialized`; bar-maneuver asserts **mean banking rises
 correlation); loud-cohesion asserts **mean** core-fraction (not the noise-sensitive per-frame min). Full
 engine suite **1385 green (×2 full-parallel + ×3 serialized)**, lint 0, app builds. Design doc §12.1.
 
-**PENDING (→ MM.5):** per-route firing evidence from a real recorded session; **Matt M7 round-5 live
+**ROUND-5 M7 FAILED → ROUND-6 GOVERNOR FIX (2026-06-04).** Live review showed a frozen oval + a small
+chaotic sub-flock inside it. The round-5 SHAPE was correct (the frozen oval IS the rounded ovoid); the
+failure was a test/prod parity gap (FA #66): the D-057 governor drops `activeParticleFraction` to 0.5, and
+the boids integrator ran on `activeCount = particleCount·fraction` — but a **coupled flock cannot drop a
+fraction of its birds** (the excluded birds froze in place; the active half re-cohered into the blob).
+Every headless test ran at fraction 1.0 → missed it. Fix: integrate ALL birds every frame;
+`activeParticleFraction` throttles the **sub-step count** instead (cost-equivalent, flock stays whole).
+Regression test `test_governorThrottleFreezesNoBirds` (asserts <2% frozen + cohesive at the throttled
+rate) + `mm6_throttled_*` parity render. Generalisable rule added to CLAUDE.md §What NOT To Do (coupled
+substrates throttle fidelity, never element count). Full suite **1386 green**, lint 0, app builds. Design
+doc §12.2.
+
+**PENDING (→ MM.5):** per-route firing evidence from a real recorded session; **Matt M7 round-6 live
 approval** (the load-bearing gate — the live look is not assertable headlessly; the session `video.mp4` is
 a rolling clip, not preset-specific — anchor on Matt's screenshots + CSV).
 
