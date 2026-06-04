@@ -68,7 +68,7 @@ Entries should cite source files. When adding a capability, link to the files th
 | IBL ambient with mood-tinted lightColor | Supported | `RayMarchPipeline+Passes.swift` (per CLAUDE.md §Failed Approach #24 — ambient multiplied by `lightColor.rgb`) | Ray-march only. |
 | Screen-space global illumination (SSGI) | Supported | `RayMarchPipeline.swift`, `Shaders/SSGI.metal` | Half-res, additive, governor-gated. |
 | Volumetric lighting (light shafts, god rays, dust beams) | Partial | `Utilities/Volume/LightShafts.metal` provides `ls_radial_step_uv`, `ls_shadow_march`, `ls_sun_disk`, `ls_intensity_audio` | Utility functions exist; no shipping preset composes shafts as a separate pass. Required for Arachne WORLD pass §4.2.6. |
-| Volumetric fog / participating media | Partial | `Utilities/Volume/HenyeyGreenstein.metal`, `ParticipatingMedia.metal`, `Clouds.metal`, `Caustics.metal` | Functions exist. No depth for 2D presets, so true depth-modulated fog is not currently authorable in a 2D fragment. |
+| Volumetric fog / participating media | Partial | `Utilities/Volume/HenyeyGreenstein.metal`, `ParticipatingMedia.metal`, `Clouds.metal`, `Caustics.metal` | Functions exist. **Nimbus (NB.1, 2026-06-04) is the first preset to compose the Volume tree** (direct-fragment single-scatter march). **Budget caveat:** the NB.1 macro-only body measured p50 **20.2 ms @1080p / 7.5 ms @half-res march** — over the 7 ms Tier-2 ceiling; per-step `fbm4`+`voronoi_3d_f1` is the cost driver. Volumetric-march presets are cost-blocked pending the NB.1 replan (`NIMBUS_DESIGN.md §6.1`): candidate fix is sampling the preamble `noiseVolume` 64³ texture instead of computing noise per step. No depth for 2D presets, so true depth-modulated fog is still approximate. |
 | Caustics | Supported (utility) | `Utilities/Volume/Caustics.metal` | |
 | Hero specular highlight | Supported | Cook-Torrance / GGX in PBR utilities; pinpoint specular trivially expressible | Used everywhere. |
 | Backlit silk / fiber rim emission | Supported | `sss_backlit`, `wrap_lighting` (V.1 PBR/SSS) | Used by Gossamer, Arachne. |
@@ -171,7 +171,7 @@ The capability gaps above shape what preset families are buildable today, what i
 
 ### Buildable today with localised additions
 
-- **Volumetric / participating-media-heavy presets** (cloudscapes, fog rooms). Volume utilities exist (`Utilities/Volume/*`); a preset would compose them in-fragment without needing engine changes, but lacks depth so anything depth-modulated is approximate.
+- **Volumetric / participating-media-heavy presets** (cloudscapes, fog rooms). Volume utilities exist (`Utilities/Volume/*`); a preset composes them in-fragment without engine changes (Nimbus NB.1 is the first), but lacks depth so anything depth-modulated is approximate. **Cost caveat (NB.1, 2026-06-04):** a per-step procedural march (`fbm4`+`voronoi_3d_f1`) costs ~20 ms @1080p / ~7.5 ms @half-res — over the 7 ms Tier-2 ceiling. The viable path for volumetric presets is sampling the precomputed `noiseVolume` 64³ texture per step rather than computing noise; bounding the body tightly; and half-res march + MetalFX (NIMBUS_DESIGN §6.1, pending Matt's NB.1 replan).
 - **Caustics, reaction-diffusion, voronoi-based texture presets**. Utilities are in place (V.2 Texture tree).
 - **Atmosphere-utility-promoted presets** (sky band, dust motes, light-shaft helpers). Lifting Arachne's atmosphere into shared utilities would unblock similar treatments in future presets at low cost.
 

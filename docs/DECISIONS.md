@@ -4385,3 +4385,17 @@ The journey is instructive (each step is a recorded session): per-onset size **b
 ### Files
 
 `FataMorgana.metal`, `FataMorgana.json` (certified:true), `RenderPipeline+FataMorgana.swift`, `RenderPipeline.swift` (sway/glow state), `RenderPipeline+PresetSwitching.swift` (per-session glow jitter), `FataMorganaMVWarpAccumulationTest.swift` (diag feeds beat/bar phase), `FidelityRubricTests.swift` + `PresetDescriptorRubricFieldsTests.swift` (cert ground-truth sets). Other mv_warp presets byte-identical (PresetRegression).
+
+---
+
+## D-140 — Nimbus: `volumetric` PresetCategory family + NB.1 macro maquette (budget-blocked)
+
+**Date:** 2026-06-04. **Status:** family added & maquette implemented; **NB.1 budget gate OVER → replan pending Matt.**
+
+**Context.** Nimbus is the first preset to compose the V.2 Volume tree (`Utilities/Volume/*`) — a single-pass 2D direct-fragment volumetric single-scatter ray-march (`passes: []`, like Aurora Veil). Design of record: `docs/presets/NIMBUS_DESIGN.md`; plan: `docs/presets/NIMBUS_PLAN.md`.
+
+**Decision 1 — `volumetric` family.** Added `PresetCategory.volumetric` (a Phosphene-original family, not from the cream-of-crop set) per DESIGN §8.1. The NB.1 prompt forbade engine changes; Matt explicitly authorized this one-case addition (the single engine touch of NB.1) because a sidecar tagged `volumetric` against the fixed enum would throw on decode and silently drop the preset. Only the exhaustive `displayName` switch + `PresetTests.presetCategoryAllCases` (11→12) needed updating; all other consumers iterate `allCases`.
+
+**Decision 2 — Tier-2-only via `complexity_cost`.** `Nimbus.json` sets `complexity_cost.tier1 = 9.0` (above the 5 ms Tier-1 ceiling → Orchestrator excludes Nimbus on M1/M2; a volumetric march cannot honour the Tier-1 no-volumetric-clouds budget) and `tier2 = 6.0` (provisional, to be set from the NB.8 profile). `certified: false`, `rubric_profile: full`.
+
+**Finding (NB.1 budget gate) — the open replan.** Measured macro-only cost (steady-mid, `NimbusBudgetProbeTests`): **p50 20.2 ms @1920×1080**, and **p50 7.5 ms @960×540 march-only** — i.e. the design's half-res+MetalFX lever (§6) is *insufficient on its own*: even at quarter-resolution the bare maquette is over the 7 ms ceiling, before MetalFX upscale and before NB.2–7 add detail/lighting/embers. Dominant cost: per-step `fbm4` + `voronoi_3d_f1`. This is the §5.5 / PLAN-risk fallback trigger. **NB.2 is gated on Matt's decision** between: (a) sample the preamble `noiseVolume` 64³ texture per step (the standard volumetric optimisation; needs the texture bound on every render path — FA #66 parity); (b) ellipsoid-tight bound + step cuts; (c) §5.5 staged down-res volume pass; (d) re-scope. Options (a)–(c) exceed NB.1's no-engine-changes mandate. The maquette renders correctly (§2 traits read) — the blocker is cost, not look. Full data in `NIMBUS_DESIGN.md §6.1`.
