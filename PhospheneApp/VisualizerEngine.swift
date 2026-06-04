@@ -953,27 +953,30 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         BUG012Probe.recordVisualizerEngineDeinit()
     }
 
-    /// Build the GPU flock used by the Murmuration preset (Phase MM redesign).
+    /// Build the flock used by the Murmuration preset — the **3D version of the
+    /// proven parametric-ellipse flock** (`Murmuration3DGeometry` +
+    /// `Murmuration3D.metal`), 2026-06-04.
     ///
-    /// Returns `any ParticleGeometry` (D-097). Particle presets are siblings,
-    /// not subclasses — Murmuration ships its own `MurmurationFlockGeometry`
-    /// conformer + `MurmurationFlock.metal` kernels (emergent GPU boids) rather
-    /// than parameterising `ProceduralGeometry` (the pre-MM 5K ellipse flock,
-    /// retired from this path; see Phase MM). MM.2: silence baseline only —
-    /// audio coupling lands in MM.3.
+    /// This realises the uplift's actual goal — a *3D* murmuration — by lifting the
+    /// 40-round 2D architecture (birds spring-pulled to home slots in a morphing
+    /// ellipse → dense, coherent, framed by construction) into 3D with perspective
+    /// depth and real banking (the rolling dark bands), rather than the emergent
+    /// GPU-boids redesign that failed across many M7 rounds (sparse, spraying,
+    /// off-canvas — control is what a murmuration preset needs, not pure emergence).
+    /// Returns `any ParticleGeometry` (D-097, siblings not subclasses).
     private static func makeMurmurationGeometry(
         context: MetalContext,
         library: Renderer.ShaderLibrary
     ) -> (any ParticleGeometry)? {
-        guard let flock = try? MurmurationFlockGeometry(
+        guard let flock = try? Murmuration3DGeometry(
             device: context.device,
             library: library.library,
-            configuration: MurmurationFlockConfiguration(),
+            configuration: Murmuration3DConfiguration(),
             pixelFormat: context.pixelFormat
         ) else {
             return nil
         }
-        logger.info("Murmuration flock created: \(MurmurationFlockConfiguration().particleCount) boids")
+        logger.info("Murmuration created: 3D parametric-ellipse flock (\(Murmuration3DConfiguration().particleCount) birds)")
         return flock
     }
 
