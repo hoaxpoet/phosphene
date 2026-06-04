@@ -293,7 +293,7 @@ struct MurmurationFlockAudioTests {
     @Test("Bass route: elongation + macro drift")
     func test_bassElongatesAndDrifts() throws {
         func settled(bass: Bool) throws -> (long: Float, centroidOffset: Float) {
-            let cfg = MurmurationFlockConfiguration(particleCount: 6_000, elongationGain: 2.4)
+            let cfg = MurmurationFlockConfiguration(particleCount: 6_000, reactionSpeed: 800, elongationGain: 2.4)
             let (geo, q) = try makeGeometry(config: cfg)
             var t: Float = 0
             func frame() -> (FeatureVector, StemFeatures) {
@@ -334,7 +334,7 @@ struct MurmurationFlockAudioTests {
         // averaged over several bars — chaotic baseline banking is uncorrelated
         // with bar phase, so it averages toward flat, while the maneuver's bump
         // accumulates. Correlate the profile with the sin(barPhase·π) envelope.
-        let cfg = MurmurationFlockConfiguration(particleCount: 6_000, maneuverYawDeg: 35)
+        let cfg = MurmurationFlockConfiguration(particleCount: 6_000, reactionSpeed: 800, maneuverYawDeg: 50)
         let (geo, q) = try makeGeometry(config: cfg)
         var t: Float = 0
         for _ in 0..<360 { try step(geo, features: features(time: t), stems: .zero, queue: q); t += 1.0 / 60.0 }
@@ -382,7 +382,7 @@ struct MurmurationFlockAudioTests {
     @Test("Vocals route: breathing (the mass dilates)")
     func test_vocalsBreathing() throws {
         func settledVertical(vocals: Bool) throws -> Float {
-            let cfg = MurmurationFlockConfiguration(particleCount: 6_000, vocalsBreathDepth: 2.0)
+            let cfg = MurmurationFlockConfiguration(particleCount: 6_000, vocalsBreathDepth: 3.0)
             let (geo, q) = try makeGeometry(config: cfg)
             var t: Float = 0
             func frame() -> (FeatureVector, StemFeatures) {

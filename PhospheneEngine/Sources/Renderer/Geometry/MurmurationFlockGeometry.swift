@@ -210,10 +210,10 @@ public struct MurmurationFlockConfiguration: Sendable {
         referenceCount: Int = 48_000,
         referenceHalfSpan: Float = 100,
         cellCapacity: Int = 256,
-        neighborCap: Int = 64,
-        reactionSpeed: Float = 2200,
+        neighborCap: Int = 96,
+        reactionSpeed: Float = 4000,
         dynamicStability: Float = 0.8,
-        boundaryCnt: Float = 40,
+        boundaryCnt: Float = 120,
         framingAmt: Float = 0.8,
         avoidGroundAmt: Float = 6.0,
         avoidCeilAmt: Float = 1.5,
@@ -242,22 +242,42 @@ public struct MurmurationFlockConfiguration: Sendable {
         self.boundSoften = 0.5 * (0.35 * framingR)
         self.avoidGroundAmt = avoidGroundAmt
         self.avoidCeilAmt = avoidCeilAmt
-        // The flock settles to a tighter natural size than the framing radius, so
-        // the view is scaled to the actual dense mass — the core fills ~half the
-        // frame and the feathered edge reaches the border.
-        self.viewRadius = framingR * 0.72
+        // The view fills the frame with the flock's natural equilibrium (roughly
+        // the framing radius). With 0.3× speed scaling the flock is slower and
+        // tighter so a tighter view keeps it prominent.
+        self.viewRadius = framingR * 0.85
         self.renderYOffset = renderYOffset
 
-        // Faithful aero — Flock2 source constants (metres).
-        self.minSpeed = 5
-        self.maxSpeed = 18
+        // Faithful aero — Flock2 source constants with speeds SCALED for the
+        // visual cadence. Source runs at 5-18 m/s in a 200m box viewed from far
+        // away; Phosphene fills the frame with a ~40m flock, so real starling
+        // speeds look too fast. Scale speeds by 0.3× (preserving the 3.6:1
+        // max:min ratio and the thrust/drag/gravity balance — the force
+        // coefficients don't change because lift∝v² and drag∝v², so the
+        // equilibrium cruise just shifts down proportionally).
+        // Speed scaling for visual cadence. Scale speeds by 0.3× (preserving
+        // the 3.6:1 max:min ratio). The aero equilibrium at cruise v is:
+        //   lift = CL×½ρv²A = mg (level flight)
+        //   thrust = CD×½ρv²A (balance drag)
+        // So g and power both scale as v²/v₀² = speedScale² to preserve the
+        // aerodynamic balance at the new cruise.
+        let speedScale: Float = 0.3
+        let s2 = speedScale * speedScale
+        self.minSpeed = 5 * speedScale
+        self.maxSpeed = 18 * speedScale
         self.mass = 0.08
-        self.powerParam = 0.2173
+        // Source power (0.2173 N) balances drag at cruise ~10 m/s. At 3 m/s,
+        // drag is 0.09× → power must be 0.09×. BUT the source's power-governor
+        // already scales power up/down to push toward the speed band, so we just
+        // match the cruise-drag balance and let the governor handle excursions.
+        let cruiseV = 10.0 * speedScale
+        let dynPCruise = 0.5 * 1.225 * cruiseV * cruiseV
+        self.powerParam = 0.1731 * dynPCruise * 0.0224   // thrust = drag at cruise
         self.wingArea = 0.0224
         self.liftFactor = 0.5714
         self.dragFactor = 0.1731
         self.airDensity = 1.225
-        self.gravityY = -9.8
+        self.gravityY = -9.8 * s2
 
         self.reactionSpeed = reactionSpeed
         self.dynamicStability = dynamicStability
@@ -265,7 +285,16 @@ public struct MurmurationFlockConfiguration: Sendable {
         self.alignAmt = 0.40
         self.cohesionAmt = 0.001
         self.boundaryAmt = 0.40
-        self.boundaryCnt = boundaryCnt
+        // boundaryCnt scales with count — at 48k (reference) the source default is
+        // 120; at smaller test counts the average core-neighbor count is lower (the
+        // world scales as cbrt but neighbor radius is fixed at 10 m), so the
+        // threshold must drop proportionally or every bird is "peripheral" and the
+        // flock collapses. Scale linearly with count (the density ∝ count/volume
+        // and volume ∝ count, so average-neighbors ∝ count^0 is ~constant at
+        // density-invariance — but neighborCap truncation makes it count-dependent
+        // in practice). Cap at neighborCap.
+        self.boundaryCnt = min(boundaryCnt * Float(particleCount) / Float(max(referenceCount, 1)),
+                               Float(neighborCap))
         self.pitchDecay = 0.95
         self.pitchMin = -40
         self.pitchMax = 20
@@ -451,15 +480,18 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
         let anchor = anchorTarget(time: features.time) + audio.driftOffset
         var fp = makeParams(dt: dt, time: features.time, anchor: anchor, audio: audio)
 
+        let cellTotal = cfg.gridSide * cfg.gridSide * cfg.gridSide
+        let fraction = max(0.0, min(1.0, activeParticleFraction))
+        let activeCount = max(1, Int(Float(cfg.particleCount) * fraction))
+
         // Pass 1: reset cell counts.
         encoder.setComputePipelineState(resetPipeline)
         encoder.setBuffer(cellCountBuffer, offset: 0, index: 0)
         encoder.setBytes(&fp, length: MemoryLayout<FlockParams>.stride, index: 1)
-        let cellTotal = cfg.gridSide * cfg.gridSide * cfg.gridSide
         dispatch(encoder, threads: cellTotal)
         encoder.memoryBarrier(scope: .buffers)
 
-        // Pass 2: bin all birds (atomic slot reserve).
+        // Pass 2: bin all birds.
         encoder.setComputePipelineState(binPipeline)
         encoder.setBuffer(birdBuffer, offset: 0, index: 0)
         encoder.setBytes(&fp, length: MemoryLayout<FlockParams>.stride, index: 1)
@@ -468,10 +500,7 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
         dispatch(encoder, threads: cfg.particleCount)
         encoder.memoryBarrier(scope: .buffers)
 
-        // Pass 3: orientation-flocking integrate. Governor reduces the integrated
-        // count; the remainder keep their previous state (still binned correctly).
-        let fraction = max(0.0, min(1.0, activeParticleFraction))
-        let activeCount = max(1, Int(Float(cfg.particleCount) * fraction))
+        // Pass 3: orientation-flocking integrate.
         encoder.setComputePipelineState(boidsPipeline)
         encoder.setBuffer(birdBuffer, offset: 0, index: 0)
         encoder.setBytes(&fp, length: MemoryLayout<FlockParams>.stride, index: 1)
