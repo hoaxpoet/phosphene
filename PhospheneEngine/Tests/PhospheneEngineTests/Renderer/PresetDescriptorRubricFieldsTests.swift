@@ -81,7 +81,7 @@ import Foundation
     let jsonFiles = contents.filter { $0.pathExtension == "json" }
     #expect(jsonFiles.count >= 13, "Expected at least 13 JSON sidecars")
 
-    let lightweightExpected: Set<String> = ["Plasma", "Waveform", "Nebula", "Spectral Cartograph"]
+    let lightweightExpected: Set<String> = ["Plasma", "Waveform", "Nebula", "Spectral Cartograph", "Murmuration"]
     let decoder = JSONDecoder()
     var loaded = 0
 
@@ -91,8 +91,8 @@ import Foundation
         loaded += 1
 
         // Certified presets (Matt M7-approved): Lumen Mosaic, Ferrofluid Ocean,
-        // Dragon Bloom, Fata Morgana. Everything else must be uncertified. (Field must decode.)
-        let certifiedExpected: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana"]
+        // Dragon Bloom, Fata Morgana, Murmuration. Everything else must be uncertified. (Field must decode.)
+        let certifiedExpected: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana", "Murmuration"]
         #expect(descriptor.certified == certifiedExpected.contains(descriptor.name),
                 "\(descriptor.name): certified flag does not match the M7-approved set")
 
