@@ -215,27 +215,27 @@ A dedicated volume *pass* (render-to-volume-texture, then composite) is the text
 **Nimbus is a heavy preset and the reason it is Tier 2 (M3+) only.** Grounded in the actual ladder:
 
 - **Budget.** Target 60 fps @ 1080p → `FrameBudgetManager` (D-057) full-frame threshold Tier 2 (M3+) 16 ms p95. SHADER_CRAFT §9.3 per-preset ceiling: Tier 2 = **7 ms/preset**. Nimbus's target: per-preset GPU ≤ 7 ms, full-frame p95 ≤ 16 ms, drops (>32 ms) ≤ 1 %.
-- **The headroom lever.** A volume march at full 1080p will not fit 7 ms. The mechanism is a **half-resolution internal march + MetalFX Temporal upscale** to 1080p (§5.5), which §9.3 notes recovers ~25 % (confirm it is *wired*, not just planned, at NB.8 — Arachne V.8.1 precedent). Secondary levers: step-count cap with early-out on accumulated opacity; bounded body extent (fewer empty-space steps).
+- **The headroom lever.** A volume march at full 1080p will not fit 7 ms *if its noise is computed per step* (the original assumption). The planned mechanism was a **half-resolution internal march + MetalFX Temporal upscale** to 1080p (§5.5). **NB.1.1 update (§6.1): with `noiseVolume` texture-sampled noise the macro body fits at full res (p50 1.37 ms), so the half-res lever becomes a headroom reserve for later increments rather than a requirement.** Secondary levers remain: step-count cap with early-out on accumulated opacity; bounded body extent.
 - **Degradation.** Under the FrameBudgetManager quality ladder (full → noSSGI → noBloom → reducedRayMarch → …), Nimbus uses no SSGI and no bloom, so those rungs are **no-ops**; the live rung is **reducedRayMarch** (fewer steps / lower march res). `QualityCeiling.ultra` exempts the governor.
 - **Tier 1 (M1/M2): EXCLUDED.** The Tier-1 ceiling is 5 ms *and explicitly no volumetric clouds* (§9.3). A march cannot honour that, and starving it to fit produces the `05_anti_uniform_fog` failure. **Resolution: set `complexity_cost.tier1` above the Tier-1 budget so the Orchestrator (`DefaultPresetScorer`) excludes Nimbus on M1/M2.** No Tier-1 fallback in v1. `complexity_cost.tier2` is set from the measured NB.8 profile.
 - **First validation.** NB.8 measures p50/p95/p99/max via `MTLCounterSet.timestampGPU` on the standard silence / steady-mid / beat-heavy fixtures (`PresetPerformanceTests`). The NB.1 macro spike carries a **budget gate**: if the macro-only body already exceeds 7 ms (Tier 2) before lighting/embers exist, stop and report — a march that can't fit at the maquette stage won't fit certified.
 
-### 6.1 NB.1 macro-only measurement (2026-06-04) — BUDGET GATE OVER
+### 6.1 NB.1 macro-only measurement + budget resolution (2026-06-04)
 
-Measured per-preset GPU cost of the NB.1 macro maquette (steady-mid fixture, `NimbusBudgetProbeTests`, command-buffer `gpuEndTime − gpuStartTime`, 160 frames after 40-frame warmup; 64 primary steps, 6-step envelope self-shadow, per-step `fbm4` + `voronoi_3d_f1`):
+Measured per-preset GPU cost of the NB.1 macro maquette (steady-mid fixture, `NimbusBudgetProbeTests`, command-buffer `gpuEndTime − gpuStartTime`, 160 frames after 40-frame warmup; 64 primary steps, 6-step envelope self-shadow):
 
-| Resolution | min | **p50** | mean | p95 | max |
+| Variant | min | **p50** | mean | p95 | max |
 |---|---|---|---|---|---|
-| **Full 1920×1080** | 16.0 | **20.2** | 20.4 | 26.0 | 27.8 |
-| **Half 960×540** (march only, no MetalFX upscale) | 6.0 | **7.5** | 7.8 | 10.1 | 12.6 |
+| Full 1920×1080 — computed `fbm4`+`voronoi_3d_f1` (original) | 16.0 | 20.2 | 20.4 | 26.0 | 27.8 |
+| Half 960×540 — computed (march only) | 6.0 | 7.5 | 7.8 | 10.1 | 12.6 |
+| **Full 1920×1080 — `noiseVolume` texture (shipped)** | 1.3 | **1.37** | 1.42 | 1.8 | 1.9 |
+| Half 960×540 — `noiseVolume` texture | 0.4 | 0.56 | 0.57 | 0.75 | 0.87 |
 
 (All ms. Hardware: the dev Mac mini, Apple Silicon.)
 
-**Verdict: OVER the 7 ms Tier-2 ceiling, and the §6 half-res+MetalFX lever is not sufficient as planned.** Full-res p50 (20.2 ms) ≈ 2.9× ceiling — expected per §6 ("a volume march at full 1080p will not fit 7 ms"). The decisive finding is the **half-res projection: p50 7.5 ms is *already over* 7 ms for the bare macro body**, *before* the MetalFX upscale cost and *before* NB.2 (detail cascade), NB.3 (lighting + real self-shadow), NB.5 (embers) and NB.6 (turbulence) add their cost. So the documented lever cannot rescue the budget on its own — this is the §5.5 / PLAN-risk fallback trigger ("if the macro-only march can't fit 7 ms even at half-res … escalate, don't tune forward").
+**Finding (the gate fired).** With per-step *computed* noise the macro-only body was **OVER** the 7 ms ceiling: full-res p50 20.2 ms (~2.9×) and — decisively — **half-res p50 7.5 ms, already over 7 ms for the bare body**, before MetalFX upscale and before NB.2–7 add cost. So the §6 half-res+MetalFX lever could not rescue the budget on its own. **Dominant cost driver:** the per-march-step procedural noise. Diagnosis was sharpened by an experiment: removing `voronoi_3d_f1` (replacing it with a cheap perlin lobe) was a *wash* (20.4 ms) — i.e. the cost was the `fbm4` ALU (4× `perlin3d`/step), not the voronoi.
 
-**Dominant cost driver:** the per-march-step procedural noise — `fbm4` (4× `perlin3d`) **+** `voronoi_3d_f1` (27-cell) evaluated on every in-body step (× up to 64 steps × ~2M fragments). The bounding **sphere** is also looser than the body (an ellipsoid-tight bound would cut the wasted outer steps the step-count heatmap shows).
-
-**This is a replan point — NB.2 is gated on Matt's decision.** Candidate directions (not chosen here; surfaced for the replan): (a) replace per-step procedural noise with a sample of the preamble-provided **64³ 3D noise texture** (`noiseVolume`, `[[texture(6)]]`) that production binds — ~1 fetch vs ~30+ ALU/step (the standard volumetric optimisation; needs the texture bound on every render path — FA #66 parity); (b) ellipsoid-tight bound + fewer/early-cut steps; (c) the §5.5 documented fallback — a staged down-res volume pass; (d) re-scope. Items (a)–(c) reach beyond NB.1's "pure preset, no engine changes" mandate, so they need explicit authorization. The macro maquette itself renders correctly (the §2 traits read); the blocker is cost, not look.
+**Resolution (NB.1.1, same day — Matt directed "make the engineering call and proceed").** Replaced the per-step computed `fbm4` with samples of the preamble-provided **64³ tileable 3D FBM texture** (`noiseVolume`, `[[texture(6)]]`, already production-bound on the direct path via `RenderPipeline+Draw.bindNoiseTextures` → `TextureManager`). Two octaves of turbulence + one low-frequency octave for the billow lobes; the cheap envelope-only self-shadow is unchanged. **Result: full-res p50 1.37 ms — within the 7 ms Tier-2 ceiling at *full resolution*, ~5.6 ms of headroom for NB.2–7; half-res + MetalFX is not required for the maquette.** The look improved (smokier, more delicate fraying — closer to ref 01) as a bonus. This stays inside NB.1's mandate: `noiseVolume` is preamble-injected and production-bound, so the shader merely composes existing machinery; the only test-side change is binding the same texture in `NimbusBudgetProbeTests` + `PresetVisualReviewTests` for parity (FA #66). **Durable lesson: compute-per-step procedural noise does NOT fit Tier-2 at 1080p — budget volumetric noise as a `noiseVolume` texture sample from the start.** NB.2 is unblocked.
 
 ---
 
