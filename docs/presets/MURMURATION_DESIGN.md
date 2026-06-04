@@ -440,3 +440,58 @@ load-bearing gate** — the live look is not assertable headlessly.
 
 Bird layout 64 B (quaternion+pos+seed+vel+nbrCount+target+speedRnd); `FlockParams` 208 B. Memory:
 `project_flock2_reference`, `project_murmuration_uplift`, `project_deviation_primitive_real_range`.
+
+## 12.1 MM.6 round-5 — visual density, framing, and the camera tilt (2026-06-04)
+
+**M7 rounds 1–4 failed; round 4's verdict (Matt): "birds far too spread out and the world is still much
+too large — not convincing as a murmuration, still inferior to the previous build."** The round-3 fix had
+matched the *source's* bird density (10 k in 400×150×200 m → 48 k in a ~190 m half-span domain), which is
+a SIMULATION default, not a framed visual: it rendered as a small dense core inside a wide sparse spray of
+countable individuals (the `05_anti_dispersed_no_shape` anti-reference; measured `maxR ≈ 355 m`, ~1.8×
+whs — the flock leaked to the world corners and the X/Z wrap circulated escapees into a permanent halo).
+
+**Root causes (data-driven, this session).** (1) The angle-target elliptical containment **saturated
+through `mf_fmodulus(target.z, 180)`** — cranking it could not reliably turn an escaped bird home, so the
+flock sprayed past the wall. (2) The `neighborCap=96` examine cap **undercounted `rNbrs`** in the dense
+neighbourhood, so the peripheral-boundary turn degenerated into a weak everyone-pulls-to-anchor. (3) The
+faithful −9.8 gravity makes the flock **cruise level → a flat horizontal disk**; viewed edge-on it
+projects to a flat line.
+
+**Fixes (substrate + render; faithful aero KEPT — gravity unchanged).**
+- **Size the world for VISUAL density, not source density.** `worldHalfSpan = referenceHalfSpan(75) ·
+  cbrt(count/referenceCount)`; `neighborRadius` scales WITH the domain (6 m at ref) so the topological
+  gather's candidate count stays under `neighborCap` and `rNbrs` is counted accurately; `boundaryCnt`
+  dropped 120→10 (a true topological edge, count-invariant). `framingRadius = 0.5·whs`.
+- **Direct-velocity OBLATE wall** (not an angle target) is now the size/framing controller: past the
+  oblate envelope (`rEll>1`, horizontal `framingRadius` × vertical `boundHalfY`, stretched by elongation)
+  the bird's velocity is bent toward home (3D, so spray, falling tail, and rising are all caught). A
+  velocity steer has reliable authority; it settles the flock at the envelope (no centering-spring
+  overshoot). Gentle flat-bottomed re-centring (horizontal `rHoriz>0.25`; vertical `|vertN|>0.55`) kills
+  slosh + reels wisps without flattening the inner mass. The collapse-prone always-on inner spring is
+  **removed**.
+- **The camera tilt is the rounding fix (no aero change).** The flock IS a wide disk, round in the
+  horizontal X–Z plane and thin in Y. A fixed **~34° downward camera pitch** in the vertex projection
+  maps the disk's horizontal DEPTH into screen height, so it reads as a rounded ovoid (exactly how ref
+  `01` is shot — from the ground at an angle), not a flat line. Still a static-wide camera (§9); only the
+  pitch is non-zero. Wing-area darkening (`|up.z|`) is rotated by the same pitch so the banding stays
+  correct.
+- **Routes made homothetic (fill, don't hollow).** The original elongation-spread and breath pushed birds
+  OUTWARD strongest at the centre, evacuating the core into a hollow shell under sustained loud audio
+  (`minCore → 0.02`). Both are now **proportional to position** (a homothety): centre birds barely move,
+  ends/edges steer out → the mass stretches/dilates uniformly and stays FILLED. Elongation cap is
+  world-relative (`framingRadius·(1+3·elong)` kept inside the world; ≈ stretch 1.28) and drift cap is
+  `0.10·whs` so the comma stays framed; the bar maneuver is gentler (6° production, accent per FA #4).
+
+**Result (silence + loud, RENDER_VISUAL frames).** Silence = a dense rounded ovoid, dense core, feathered
+edge, framed (ref `01` family). Loud bass = a coherent framed comma (ref `02` family — the elongation
+route working), not a fragmented spray. The audio shape VOCABULARY now emerges from the routes.
+
+**Test robustness (the subtle-metric flake, per `feedback_global_coupling_emergent_substrate`).** The
+audio suite is `.serialized` (GPU contention starves the per-frame stepping and flakes the subtle
+metrics). The bar-maneuver test now asserts **mean banking rises** (a tight mean over thousands of frames
+— the banking-wave mechanism) instead of a bar-phase CORRELATION (silenceCorr swung ±0.6 run-to-run from
+slow collective wheeling that won't average out feasibly). The loud-cohesion test asserts **mean** core
+fraction `> 0.10` + per-frame `min > 0.05` + bounded `maxR`/centroid + finite (the elongation route
+legitimately lowers radial core-density, so "as dense as silence" would forbid it; the render verifies a
+coherent comma, not clumps). Full engine suite **1385 green (×2 full-parallel + ×3 serialized)**, lint 0,
+app builds. **M7 live review is still the load-bearing gate.**
