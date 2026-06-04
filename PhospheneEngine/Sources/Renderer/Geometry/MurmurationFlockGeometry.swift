@@ -242,10 +242,10 @@ public struct MurmurationFlockConfiguration: Sendable {
         self.boundSoften = 0.5 * (0.35 * framingR)
         self.avoidGroundAmt = avoidGroundAmt
         self.avoidCeilAmt = avoidCeilAmt
-        // The view fills the frame with the flock's natural equilibrium (roughly
-        // the framing radius). With 0.3× speed scaling the flock is slower and
-        // tighter so a tighter view keeps it prominent.
-        self.viewRadius = framingR * 0.85
+        // The view maps metres → clip. At source speed (5-18 m/s) the flock fills
+        // the framingRadius naturally; size the view so it fills ~2/3 of the frame
+        // with room for drift at the edges.
+        self.viewRadius = framingR * 1.5
         self.renderYOffset = renderYOffset
 
         // Faithful aero — Flock2 source constants with speeds SCALED for the
@@ -253,31 +253,17 @@ public struct MurmurationFlockConfiguration: Sendable {
         // away; Phosphene fills the frame with a ~40m flock, so real starling
         // speeds look too fast. Scale speeds by 0.3× (preserving the 3.6:1
         // max:min ratio and the thrust/drag/gravity balance — the force
-        // coefficients don't change because lift∝v² and drag∝v², so the
-        // equilibrium cruise just shifts down proportionally).
-        // Speed scaling for visual cadence. Scale speeds by 0.3× (preserving
-        // the 3.6:1 max:min ratio). The aero equilibrium at cruise v is:
-        //   lift = CL×½ρv²A = mg (level flight)
-        //   thrust = CD×½ρv²A (balance drag)
-        // So g and power both scale as v²/v₀² = speedScale² to preserve the
-        // aerodynamic balance at the new cruise.
-        let speedScale: Float = 0.3
-        let s2 = speedScale * speedScale
-        self.minSpeed = 5 * speedScale
-        self.maxSpeed = 18 * speedScale
+        // Faithful aero — Flock2 source constants VERBATIM (app_flock.cpp).
+        // No speed scaling. Sub-stepped at DT=0.005 (200 Hz) per the source.
+        self.minSpeed = 5
+        self.maxSpeed = 18
         self.mass = 0.08
-        // Source power (0.2173 N) balances drag at cruise ~10 m/s. At 3 m/s,
-        // drag is 0.09× → power must be 0.09×. BUT the source's power-governor
-        // already scales power up/down to push toward the speed band, so we just
-        // match the cruise-drag balance and let the governor handle excursions.
-        let cruiseV = 10.0 * speedScale
-        let dynPCruise = 0.5 * 1.225 * cruiseV * cruiseV
-        self.powerParam = 0.1731 * dynPCruise * 0.0224   // thrust = drag at cruise
+        self.powerParam = 0.2173
         self.wingArea = 0.0224
         self.liftFactor = 0.5714
         self.dragFactor = 0.1731
         self.airDensity = 1.225
-        self.gravityY = -9.8 * s2
+        self.gravityY = -9.8
 
         self.reactionSpeed = reactionSpeed
         self.dynamicStability = dynamicStability
@@ -448,7 +434,7 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
             let vy = (next() - 0.5) * 0.1
             let vz = sx * 0.6
             let vel = Self.normalized(SIMD3(vx, vy, vz))
-            let startSpeed: Float = 10   // m/s, mid of the [5,18] range
+            let startSpeed: Float = 10   // m/s, mid of [5,18] (source range)
             bird.velocityX = vel.x * startSpeed
             bird.velocityY = vel.y * startSpeed
             bird.velocityZ = vel.z * startSpeed
@@ -472,41 +458,51 @@ public final class MurmurationFlockGeometry: ParticleGeometry, @unchecked Sendab
         }
 
         let cfg = configuration
-        var dt = features.deltaTime
-        if !(dt > 0) { dt = 1.0 / 60.0 }
-        dt = min(dt, 1.0 / 30.0)
+        var frameDt = features.deltaTime
+        if !(frameDt > 0) { frameDt = 1.0 / 60.0 }
+        frameDt = min(frameDt, 1.0 / 30.0)
 
-        let audio = computeAudio(features: features, stemFeatures: stemFeatures, dt: dt)
+        let audio = computeAudio(features: features, stemFeatures: stemFeatures, dt: frameDt)
         let anchor = anchorTarget(time: features.time) + audio.driftOffset
-        var fp = makeParams(dt: dt, time: features.time, anchor: anchor, audio: audio)
+
+        // Sub-step at the source's DT=0.005 (200 Hz). At 60 fps this is ~3 steps
+        // per frame. The source's constants are tuned for this rate; running them
+        // at 60 Hz directly gives wrong turn rates and unstable aero. Each sub-step
+        // re-bins (the grid is UMA-shared, fits in cache at 48k). Audio params are
+        // computed once per frame (global-envelope coupling, not per-step dynamics).
+        let physicsDt: Float = 0.005
+        let steps = max(1, Int(ceilf(frameDt / physicsDt)))
+        let stepDt = frameDt / Float(steps)
 
         let cellTotal = cfg.gridSide * cfg.gridSide * cfg.gridSide
         let fraction = max(0.0, min(1.0, activeParticleFraction))
         let activeCount = max(1, Int(Float(cfg.particleCount) * fraction))
 
-        // Pass 1: reset cell counts.
-        encoder.setComputePipelineState(resetPipeline)
-        encoder.setBuffer(cellCountBuffer, offset: 0, index: 0)
-        encoder.setBytes(&fp, length: MemoryLayout<FlockParams>.stride, index: 1)
-        dispatch(encoder, threads: cellTotal)
-        encoder.memoryBarrier(scope: .buffers)
+        for _ in 0..<steps {
+            var fp = makeParams(dt: stepDt, time: features.time, anchor: anchor, audio: audio)
 
-        // Pass 2: bin all birds.
-        encoder.setComputePipelineState(binPipeline)
-        encoder.setBuffer(birdBuffer, offset: 0, index: 0)
-        encoder.setBytes(&fp, length: MemoryLayout<FlockParams>.stride, index: 1)
-        encoder.setBuffer(cellCountBuffer, offset: 0, index: 2)
-        encoder.setBuffer(cellSlotBuffer, offset: 0, index: 3)
-        dispatch(encoder, threads: cfg.particleCount)
-        encoder.memoryBarrier(scope: .buffers)
+            encoder.setComputePipelineState(resetPipeline)
+            encoder.setBuffer(cellCountBuffer, offset: 0, index: 0)
+            encoder.setBytes(&fp, length: MemoryLayout<FlockParams>.stride, index: 1)
+            dispatch(encoder, threads: cellTotal)
+            encoder.memoryBarrier(scope: .buffers)
 
-        // Pass 3: orientation-flocking integrate.
-        encoder.setComputePipelineState(boidsPipeline)
-        encoder.setBuffer(birdBuffer, offset: 0, index: 0)
-        encoder.setBytes(&fp, length: MemoryLayout<FlockParams>.stride, index: 1)
-        encoder.setBuffer(cellCountBuffer, offset: 0, index: 2)
-        encoder.setBuffer(cellSlotBuffer, offset: 0, index: 3)
-        dispatch(encoder, threads: activeCount)
+            encoder.setComputePipelineState(binPipeline)
+            encoder.setBuffer(birdBuffer, offset: 0, index: 0)
+            encoder.setBytes(&fp, length: MemoryLayout<FlockParams>.stride, index: 1)
+            encoder.setBuffer(cellCountBuffer, offset: 0, index: 2)
+            encoder.setBuffer(cellSlotBuffer, offset: 0, index: 3)
+            dispatch(encoder, threads: cfg.particleCount)
+            encoder.memoryBarrier(scope: .buffers)
+
+            encoder.setComputePipelineState(boidsPipeline)
+            encoder.setBuffer(birdBuffer, offset: 0, index: 0)
+            encoder.setBytes(&fp, length: MemoryLayout<FlockParams>.stride, index: 1)
+            encoder.setBuffer(cellCountBuffer, offset: 0, index: 2)
+            encoder.setBuffer(cellSlotBuffer, offset: 0, index: 3)
+            dispatch(encoder, threads: activeCount)
+            encoder.memoryBarrier(scope: .buffers)
+        }
 
         encoder.endEncoding()
     }
