@@ -2,7 +2,7 @@
   "name": "Murmuration",
   "family": "particles",
   "duration": 45,
-  "description": "A flock of 500K starlings — music is wind, beats are predators, the flock breathes as one",
+  "description": "A 3D starling murmuration against a dusk sky — a dense flock (Murmuration3D parametric-ellipse: ~14K birds spring-pulled to home slots in a continuously morphing 3D ellipsoid, perspective + depth fade + real banking) that churns internally, wheels as a comma, drifts across the sky, and rolls dark bands through itself. Music drives the GLOBAL envelope (design §13.5): energy → the flock's vigor (morph pace), swell/elongation and drift range; beats → a gated agitation/banking wave; vocals → density breathing. Built MM.6 by lifting the proven 40-round 2D flock to 3D after the emergent-Flock2 rebuild failed M7 ×7 (design §13). Loose-but-musical coupling, Matt-reviewed.",
   "author": "Matt",
   "passes": ["feedback", "particles"],
   "beat_source": "bass",
@@ -20,5 +20,6 @@
   "transition_affordances": ["crossfade"],
   "section_suitability": ["buildup", "peak"],
   "complexity_cost": { "tier1": 2.5, "tier2": 1.4 },
-  "certified": false
+  "rubric_profile": "lightweight",
+  "certified": true
 }
