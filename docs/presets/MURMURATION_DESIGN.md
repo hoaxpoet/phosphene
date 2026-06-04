@@ -742,3 +742,46 @@ app build clean, lint 0. **Durable rule:** on a preset with strong autonomous mo
 *reads* if it drives that motion's global envelope (vigor / size / range), not if it adds small deltas on
 top of a fixed clock. **Dials: the `energyNorm` map + `vigorSpeed`/`swell`/`traverseScale` gains (response
 depth), EMA τ (smoothness), `beatEnv·1.6` (beat-wave punch).** M7 sign-off pending.
+
+# 14. CERTIFICATION (MM.5, 2026-06-04, commit `8f313bdc`)
+
+**Certified.** Matt approved across the MM.6 review rounds (worm → traverse → musicality → review pass:
+*"works and can probably be certified soon"* → *"prepare closeout and certification"*). Per SHADER_CRAFT
+§12.1, the load-bearing gate for a particle/feedback preset is Matt's reference review, not the automated
+material heuristic (which a point-sprite flock fails by construction — no V.3 `mat_*` cookbook materials).
+
+**Changes.**
+- `Murmuration.json`: `certified: true`; `rubric_profile: "lightweight"`; description rewritten from the
+  stale Starburst-era "500K starlings" text to the real 3D parametric-ellipse flock + global-envelope
+  coupling. Render-control fields (passes, sky fragment, feedback params) and orchestrator-scoring fields
+  (section suitability, motion intensity, complexity cost) left untouched.
+- `FidelityRubricTests.certifiedPresets += "Murmuration"` — kept in sync with the JSON flag (the
+  `automatedGate` asserts JSON ↔ ground-truth set; particle presets are not required to pass the material
+  heuristic).
+- `MurmurationRoutes.swift`: firing specs re-derived against the shipped `murmuration3d_update` (ENERGY /
+  BEAT / VOCALS per §13.5) — they previously described the retired emergent Flock2 substrate.
+
+**Deliberate non-change: no `stem_affinity`.** Murmuration is driven by *total* music energy, not a
+specific stem, so neutral affinity is the honest representation (it fits any energetic section via the
+section-suitability axis). Inventing per-stem affinity would overstate specificity; stem routing is
+deferred to Matt's "experimentation" phase. Golden tests are unaffected by the cert flip (inline catalog,
+dev = 0 → neutral affinity for all presets regardless of declaration).
+
+**Review-pass evidence (session `2026-06-04T16-44-08Z`, 8554 frames across 4 tracks).** GPU **0.75 ms
+mean** / 0.99 ms p99 (trivially within the 16.67 ms budget — the 14 K-point flock is cheap); render passes
+all <0.1 ms. **Zero NaN/inf** across 8554 frames × 50 columns. Framing holds live across tracks with
+visible energy-responsive sizing. The only flags are pre-existing engine/audio behavior, **not
+Murmuration**: rare CPU hitches (0.2 % of frames, at startup + track changes; uncorrelated with the
+analysis thread or GPU; inflated by per-frame recording I/O), and high beat-grid drift (mean 66 ms — the
+documented beat-sync limitation), to which Murmuration is robust because its beat layer rides the
+drums-*stem* onset pulse, not the grid.
+
+**Gates:** engine 1377 green, app build clean, lint 0; FidelityRubric / Golden / routing suites pass.
+
+**Experimentation follow-ups (Matt's "revisit later for adjustments").** (1) `stem_affinity` tuning if
+stem-specific routing is wanted. (2) `complexity_cost` recalibration down toward the measured cheapness
+(currently tier1 2.5 — conservative; GPU is ~0.75 ms). (3) Deeper beat-coupling, gated by the separate
+beat-sync work (the loose coupling Matt noted is partly the drifty grid; tightening it is out of scope
+here). (4) Live route-firing evidence via `PresetSessionReplay --preset murmuration` against a recorded
+session (the re-derived specs are ready; SessionFrame lacks `drumsBeat`, so the BEAT route reads via
+`drums_energy_dev`).
