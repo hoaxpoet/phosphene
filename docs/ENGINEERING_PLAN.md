@@ -5822,6 +5822,23 @@ A static-camera ray-march scene of a glowing geode interior — crystalline mate
 
 ---
 
+## Phase NB — Nimbus (first volumetric-family preset)
+
+First consumer of the V.2 Volume tree (`Utilities/Volume/*`). Single-pass 2D direct-fragment volumetric ray-march; `family: volumetric` (new `PresetCategory` case, Matt-authorized 2026-06-04, D-140). Design of record: `docs/presets/NIMBUS_DESIGN.md`; plan: `docs/presets/NIMBUS_PLAN.md`. Tier 2 (M3+) only (`complexity_cost.tier1` above the Tier-1 ceiling → Orchestrator excludes on M1/M2).
+
+### Increment NB.0 — Reference lock ✅ (committed 2026-06-04, precondition baseline)
+Curated 10-image reference set + README (D-065(c) annotations + `05_anti_*`) in `docs/VISUAL_REFERENCES/nimbus/`; `NIMBUS_DESIGN.md` + `NIMBUS_PLAN.md`. Found uncommitted at NB.1 start; committed as the precondition baseline. **Follow-up:** `06_palette_cool_baseline.jpg` (manifest slot) is absent from disk — re-source it (the cool target is specified in prose meanwhile).
+
+### Increment NB.1 — Macro maquette ✅ implemented / ⛔ BUDGET GATE OVER → replan (2026-06-04)
+**Delivered.** `Nimbus.metal` (single-scatter volumetric march: ellipsoidal envelope × eroded `fbm4`+`voronoi_3d_f1` detail; 64-step front-to-back; `hg_phase(·,0.4)`; 6-step envelope self-shadow; cool-indigo tint; ACES; true-black void; density-only + step-count debug `#define`s). `Nimbus.json` (`passes:[]`, family volumetric, certified:false, rubric full, `complexity_cost {tier1:9.0, tier2:6.0 provisional}`). `PresetCategory.volumetric` (D-140). `expectedProductionPresetCount` 18→19. `NimbusBudgetProbeTests` (env-gated). `PresetVisualReviewTests` arg + `PresetTests` allCases 11→12.
+**Visual:** maquette reads — single coherent body, denser/brighter core, soft fraying edges, true-black void, framed per `01_macro_coherent_body` (Matt eyeball pending).
+**BUDGET GATE OVER (DESIGN §6.1):** macro-only p50 = **20.2 ms @ 1920×1080** (~2.9× the 7 ms Tier-2 ceiling); half-res-march projection p50 = **7.5 ms** — *still over*, before MetalFX upscale + NB.2–7 cost. The §6 half-res+MetalFX lever is insufficient as planned. **NB.2 is gated on Matt's replan decision** (§5.5 staged-volume fallback / `noiseVolume`-texture optimisation / re-scope — all beyond NB.1's no-engine-changes mandate).
+
+### NB.2 → NB.9 — planned (gated on the NB.1 budget replan)
+Per `NIMBUS_PLAN.md`: NB.2 meso/micro detail → NB.3 lighting/internal-glow → NB.4 Breath + silence floor → NB.5 Pulse → NB.6 Mood → NB.7 Page → NB.8 perf tranche → NB.9 certification. **Do not open NB.2 until the budget path is resolved.**
+
+---
+
 ## Phase G-uplift — Gossamer + remaining preset fidelity uplifts
 
 The Phase V uplift trajectory left several presets at the post-V.6 cert baseline without per-preset fidelity work tailored to their visual contracts. The shipped catalog has 15 presets (post-D-102); the Phase V plan called for 12 fidelity-uplifted presets. Several catalog members are *certifiable* but have *not* been through a per-preset uplift session against curated references — Gossamer is the named example, but Membrane / Starburst (post-SB) / Nebula / Plasma / Waveform / Fractal Tree / TestSphere / Glass Brutalist / Kinetic Sculpture / Volumetric Lithograph / Spectral Cartograph are all worth review (some are lightweight rubric and need only validation, others are full rubric and may need work).
