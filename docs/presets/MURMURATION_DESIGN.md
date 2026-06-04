@@ -522,3 +522,55 @@ frame, assert < 2 % of birds are unchanged (the old code froze 50 %) **and** the
 cohesive at 2 sub-steps. Env-gated `mm6_throttled_*` render confirms a single coherent flock under the
 exact governor condition (parity loop closed). Full engine suite **1386 green**, lint 0, app builds.
 **M7 round-6 live review pending.**
+
+## 12.3 MM.6 round-6 M7 FAILED → round-7 source-faithful free-wheeling (2026-06-04)
+
+**M7 round-6 (Matt): "neither looks like nor behaves like a murmuration."** The freeze was fixed, but
+the flock SETTLED into a stable blob and drifted — two silence renders 24 s apart were nearly identical.
+A murmuration's essence is *ceaseless morphing / wheeling / rolling waves*; mine had none.
+
+**Root cause (FA #73, grounded in the Flock2 source).** I had asked "how does a faithful port produce
+such different output?" — and the honest answer is it ISN'T a faithful port of the *system*, only of the
+controller *math*. A murmuration is *emergent* from the controller running in a specific *world*, and I
+had changed the world. Reading `flock_kernels.cu`: the source frames its flock with **only** the
+peripheral-boundary turn (rule 4) — edge birds (`r_nbrs < boundary_cnt = 120`) gently turn toward a
+**fixed centre** (`float3 center = make_float3(0,50,0)`; the `FFlock.centroid` variant is commented out),
+**no hard wall**. With a high `boundary_cnt`, a large fraction of the periphery is herded home, keeping
+the flock framed *while the interior wheels and morphs freely*. My round-5 hard oblate wall + continuous
+per-bird re-centring over-constrained the WHOLE flock every frame and flat-lined the wheeling. **The
+taproot:** my neighbour examine cap (96) could not count `r_nbrs` to 120, so I had dropped `boundary_cnt`
+to 10 → the boundary-turn herded almost no one → the round-4 spray → the hard wall → the dead blob.
+
+**Fix — stop bending the model.**
+- **Remove the hard wall + per-bird re-centring** entirely (neither is in the source).
+- **Raise `neighborCap` 96 → 512** so `r_nbrs` counts to a source-faithful `boundaryCnt` (10 → 60); the
+  boundary-turn now FRAMES the flock (periphery herded toward the fixed anchor) with no wall, interior
+  free to wheel/morph.
+- **Lower `avoidAmt` 0.05 → 0.015** toward source (the high value was inflating it loose to fill the now-
+  removed wall); density is set by `boundaryCnt` → a dense, restless mass.
+- **PERF early-exit** in the neighbour gather: once a bird has its 7 nearest AND `r_nbrs ≥ boundaryCnt`
+  it is interior → stop. Interior birds (the majority) exit cheaply; only edge birds scan to the cap —
+  which is what makes the source-faithful `boundaryCnt` affordable. Preserves the boundary-turn + shading
+  exactly.
+- **Gentle 3D far-edge safety** (beyond 0.80·whs horizontal / 3·boundHalfY vertical) catches the rare
+  runaway (including a vertical climb-away, now that the wall is gone) without touching the morphing core.
+- **Wider static view** (`whs · 0.92`) so the wheeling flock stays framed (Matt's "wider static frame").
+
+**Result.** Silence now MORPHS — completely different flowing shapes over time (banked masses, sweeping
+wings, comma-tails, shed-and-reabsorbed sub-groups), framed and stable (maxR bounded), at BOTH full
+(4 sub-step) and throttled (2 sub-step, live-governor) quality. The "behaves like a murmuration" problem
+is cracked. The audio routes (global-envelope) survive; the bass-DRIFT unit assertion was dropped (the
+flock's own wheeling now swamps a separately-measurable audio drift — elongation is the reliable bass
+signature; the drift still acts live, making the wheeling bass-responsive). Full engine suite **1387
+green**, lint 0, app builds.
+
+**Durable lesson (CLAUDE.md §What NOT To Do).** Do not bend a faithfully-ported reference model out of
+its working regime to satisfy local constraints (a static frame, a perf cap). The emergent behaviour is
+fragile to exactly those bends — three M7 rounds (spray → frozen → dead blob) all traced to deviations
+from the source's world (containment, parameters, the examine cap), not the controller.
+
+**Known follow-ups.** (1) Density is moderate at 48k — more birds densify the look (cbrt-scaled), at a
+perf cost. (2) The cap-512 gather is heavier (early-exit mitigates; the governor throttles sub-steps —
+now coherently — under load); a denser+higher-count ship needs gather optimisation. (3) The audio-route
+FEEL needs re-tuning for the free-wheeling regime (the routes fire, but the restless flock responds
+differently than the contained one) — M7-feel territory. **M7 round-7 live review pending.**
