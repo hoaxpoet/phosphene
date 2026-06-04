@@ -415,65 +415,26 @@ kernel void murmuration_boids(
         }
     }
 
-    // ── Elliptical soft containment — the flock SHAPE + SIZE controller ──
-    // The peripheral-boundary term keeps the flock cohesive, but the angle-based
-    // controller has no length scale, so the flock would drift ballistically and
-    // its size would be set only by the initial spread. This term gives it one:
-    // an ALWAYS-ON gentle horizontal turn-toward-centre whose strength grows with
-    // the normalised elliptical radius, so the flock equilibrates to an ellipse
-    // (the orbit where inward turn balances forward flight). It is the single
-    // knob that frames the flock (static camera, design §9), sets its size, and —
-    // by warping the ellipse — produces the audio SHAPE moves without any force
-    // (porting decision #4; FA #4):
-    //   • L1 elongation stretches the ellipse along the flock axis → comma/ribbon
-    //   • L5 vocals breath shrinks framingRadius (CPU) → the mass contracts
-    //   • L1 drift moves anchor → the framed centre translates (bounded)
-    // The vertical is contained separately by the faithful ground/ceiling band.
-    {
-        float3 d = fp.anchor.xyz - pos;
-        d.y = 0.0;                                       // horizontal only
-        float dlen = length(d);
-        if (dlen > 1e-4) {
-            float3 axis = fp.flockAxis.xyz;
-            float along = dot(d, axis);
-            float3 perp = d - axis * along;
-            // ELLIPTICAL containment: both the soft spring AND the steep
-            // boundary wall use a normalised radius whose along-axis extent is
-            // stretched by the elongation, so the flock can extend further along
-            // the axis (comma/ribbon) before the wall stops it. The restoring
-            // DIRECTION is also warped to pull birds back harder perpendicular to
-            // the axis, flattening the sides. Both shape the flock at any size and
-            // collapse to a circle at zero elongation.
-            float stretch = 1.0 + 3.0 * fp.flockAxis.w;  // along-axis extent allowed
-            float alongN = along / (fp.framingRadius * stretch);
-            float perpN  = length(perp) / max(fp.framingRadius, 1e-3);
-            float rNell  = sqrt(alongN * alongN + perpN * perpN);  // elliptical radius
-            // Restoring DIRECTION is straight toward the centre (stable); the
-            // ellipse comes from the anisotropic STRENGTH (rNell) alone — birds
-            // displaced along the axis sit at a smaller rNell, so they feel less
-            // pull and the flock extends along the axis (comma/ribbon). Shrinking
-            // framingRadius (L5 vocals breath) raises rNell → tightens at any size.
-            float3 bf = mf_qrotate(d / dlen, ctrlq);
-            float yaw = atan2(bf.z, bf.x) * MF_RAD2DEG;
-            float pitch = asin(clamp(bf.y, -1.0, 1.0)) * MF_RAD2DEG;
-            float s = rNell * 0.30 + max(0.0, rNell - 1.0) * 12.0;
-            target.z += yaw * fp.framingAmt * s;
-            target.y += pitch * fp.framingAmt * s;
-
-            // Elongation spread: under bass, gently steer birds OUTWARD along the
-            // axis (toward the ellipse ends), fading to zero as they approach the
-            // wall (rNell→1) so they fill the stretched ellipse into a ribbon
-            // rather than orbiting past it. The perpendicular pull above keeps the
-            // sides tight → a comma/ribbon, not a bigger blob.
-            if (fp.flockAxis.w > 1e-3 && abs(along) > 1e-3) {
-                float3 outDir = axis * sign(along);             // away from centre, along axis
-                float3 bo = mf_qrotate(outDir, ctrlq);
-                float yawO = atan2(bo.z, bo.x) * MF_RAD2DEG;
-                float pitchO = asin(clamp(bo.y, -1.0, 1.0)) * MF_RAD2DEG;
-                float spread = fp.flockAxis.w * max(0.0, 1.0 - rNell);
-                target.z += yawO * fp.framingAmt * spread * 1.2;
-                target.y += pitchO * fp.framingAmt * spread * 1.2;
-            }
+    // ── Elongation shaping (audio L1) — the comma/ribbon ──
+    // Under bass, stretch the mass along the flock axis into a filled comma. The
+    // bias is PROPORTIONAL to a bird's along-axis position (a homothety): centre
+    // birds (alongN ≈ 0) barely move, end birds steer outward — so the mass
+    // stretches uniformly and stays FILLED (dense head, tapering ends). The earlier
+    // form pushed outward STRONGEST at the centre (∝ 1−rNell), which evacuated the
+    // core into a hollow shell under sustained loud bass (round-5 cohesion-under-
+    // load failure, minCore → 0.02) — same bug, and same proportional fix, as the
+    // vocals breath. Inert at silence (elongation = 0). The containment ellipse
+    // below stretches by the same factor so the wall makes room for the comma.
+    if (fp.flockAxis.w > 1e-3) {
+        float3 d = pos - fp.anchor.xyz;
+        d.y = 0.0;                                          // horizontal axis
+        float along = dot(d, fp.flockAxis.xyz);
+        float alongN = along / max(fp.framingRadius, 1e-3);  // signed, ~[−1,1]
+        if (abs(alongN) > 1e-3) {
+            float3 outDir = fp.flockAxis.xyz * sign(along);  // toward the nearer end
+            float3 bo = mf_qrotate(outDir, ctrlq);
+            float yawO = atan2(bo.z, bo.x) * MF_RAD2DEG;
+            target.z += yawO * fp.framingAmt * fp.flockAxis.w * min(abs(alongN), 1.0) * 1.8;
         }
     }
 
@@ -520,12 +481,15 @@ kernel void murmuration_boids(
             float t = (fp.boundSoften - ceilDist) / max(fp.boundSoften, 1e-3);
             target.y -= t * fp.avoidCeilAmt;              // pitch down away from ceiling
         }
-        // L5 vocals breath (audioPad0): active vertical SPREAD — pitch birds away
-        // from the band centre so the mass dilates in Y on a vocal swell (then
-        // settles as the breath releases). Bounded by the ceiling/ground above.
+        // L5 vocals breath (audioPad0): a uniform vertical DILATION (homothety) —
+        // pitch each bird away from the band centre PROPORTIONAL to its height, so
+        // the whole distribution scales up and stays FILLED on a vocal swell (then
+        // settles). The old constant sign(dy) push shoved every bird to the wall
+        // and hollowed the core under sustained loud vocals (round-5 cohesion-
+        // under-load failure, minCore → 0.02). Bounded by the oblate wall.
         if (fp.audioPad0 > 1e-4) {
-            float dy = pos.y - fp.anchor.y;
-            target.y += sign(dy) * fp.audioPad0 * 30.0;
+            float dyN = clamp((pos.y - fp.anchor.y) / max(fp.boundHalfY, 1e-3), -1.0, 1.0);
+            target.y += dyN * fp.audioPad0 * 26.0;
         }
     }
 
@@ -560,6 +524,66 @@ kernel void murmuration_boids(
     vaxis = normalize(mf_qrotate(vaxis, cq));
     cq = mf_q_angleaxis(angAccel.y * rx, right);
     vaxis = normalize(mf_qrotate(vaxis, cq));
+
+    // ── Hard framing containment (round-5) — direct-velocity OBLATE wall ──
+    // This is the flock's SIZE + framing controller and the fix for both round-4
+    // failures: it caps the EXTERIOR of an oblate ellipsoid (horizontal radius
+    // framingRadius, vertical half-height boundHalfY) so the flock can neither leak
+    // to the world corners and wrap into a sparse halo (round-4 spray, maxR ≈ 1.8×
+    // whs) NOR drip a falling tail out the bottom under the faithful −9.8 gravity
+    // (round-5a). Past the envelope (rEll > 1) the bird's velocity is smoothly bent
+    // toward home (full 3D, so a falling bird is steered UP), ramped by how far
+    // past. A velocity steer (not an angle target) has reliable authority — the
+    // angle path saturated through mf_fmodulus; and because it acts ONLY outside
+    // the envelope and bends toward (never past) home, the flock SETTLES at the
+    // envelope rather than driving the centering-spring overshoot that shrinking an
+    // interior bound triggers. The horizontal ellipse is stretched by the L1
+    // elongation so the comma/ribbon extends its ends. Non-audio framing only
+    // (design §9 static camera); audio still acts purely through the turn-desires.
+    {
+        float3 d = pos - fp.anchor.xyz;                      // from home (full 3D)
+        float3 axis = fp.flockAxis.xyz;
+        float3 dh = float3(d.x, 0.0, d.z);                   // horizontal component
+        float along = dot(dh, axis);
+        float3 perp = dh - axis * along;
+        float stretch = 1.0 + 3.0 * fp.flockAxis.w;          // elongation extends the ends
+        float alongN = along / (fp.framingRadius * stretch);
+        float perpN  = length(perp) / max(fp.framingRadius, 1e-3);
+        float rHoriz = sqrt(alongN * alongN + perpN * perpN);          // horizontal ellipse radius
+        float vertN  = d.y / max(fp.boundHalfY, 1e-3);
+        float rEll   = sqrt(rHoriz * rHoriz + vertN * vertN);          // full oblate radius
+
+        // GENTLE horizontal re-centring (anti-slosh): pull toward the vertical AXIS
+        // (not the home POINT), so it keeps the mass centred under the static camera
+        // and reels trailing wisps in WITHOUT squashing the vertical extent into a
+        // flat sheet (round-5b — a 3D re-centre flattened the mass). Flat-bottomed
+        // inside rHoriz 0.5 → no core collapse.
+        if (rHoriz > 0.25 && dot(dh, dh) > 1e-6) {
+            float3 inwardH = -normalize(dh);
+            float steerH = clamp((rHoriz - 0.25) * 0.5, 0.0, 0.18);
+            vaxis = normalize(mix(vaxis, inwardH, steerH));
+        }
+        // GENTLE vertical re-centring at the band EXTREMES only (|vertN| > 0.55):
+        // caps the breath dilation / agitation from hollowing the core into a thin
+        // vertical shell under sustained loud vocals (round-5 cohesion-under-load),
+        // WITHOUT flattening the filled mass — it is flat-bottomed (no pull within
+        // |vertN| < 0.55), so the silence baseline and the moderate breath dilation
+        // are unaffected; it only fights the EXTREME spread that would empty the
+        // centre. (The horizontal re-centre is intentionally separate to avoid
+        // squashing the vertical extent — round-5b.)
+        if (abs(vertN) > 0.55) {
+            float3 inwardV = float3(0.0, -sign(d.y), 0.0);
+            float steerV = clamp((abs(vertN) - 0.55) * 0.5, 0.0, 0.16);
+            vaxis = normalize(mix(vaxis, inwardV, steerV));
+        }
+        // FIRM oblate wall — the hard size cap, full 3D so a bird leaking out the
+        // side (spray), the bottom (falling tail) or the top is turned back home.
+        if (rEll > 1.0 && dot(d, d) > 1e-6) {
+            float3 inward = -normalize(d);
+            float steer = clamp((rEll - 1.0) * 1.2, 0.0, 0.6);
+            vaxis = normalize(mix(vaxis, inward, steer));
+        }
+    }
 
     // ── Faithful aerodynamic flight model (Newton, metre units — ported) ──
     // power-as-speed-governor (source): below min speed, boost thrust; above
@@ -623,15 +647,23 @@ vertex FlockVertexOut murmuration_flock_vertex(
     MurmurationBird b = birds[vid];
     FlockVertexOut out;
 
-    // Orthographic-ish projection: camera at +z looking toward −z; higher z =
-    // nearer. Static wide camera (design §9) — the flock's own drift is the ONLY
-    // motion, so the projection is fixed (does NOT follow the anchor in X/Z, so
-    // bass drift is visible). The metre-space sim is mapped to clip by viewRadius
-    // (so the flock fills the frame at any count); the vertical recentre absorbs
-    // the cruise-altitude offset (the flock rides the lower aero band).
-    float3 p = float3(b.position) - float3(0.0, fp.renderYOffset, 0.0);
+    // Orthographic-ish projection with a fixed downward camera PITCH. Under the
+    // faithful −9.8 gravity the flock cruises level, so it is a wide disk — round in
+    // the horizontal X–Z plane, thin in Y. Viewed edge-on (camera along −z) that
+    // disk projects to a flat horizontal line (round-5b). Tilting the camera to look
+    // at the disk from an angle (as reference `01` is shot, from the ground looking
+    // up at the flock) maps the disk's horizontal DEPTH into screen height, so the
+    // mass reads as a rounded ovoid without any change to the faithful flight model.
+    // Still a fixed static-wide camera (design §9) — only the pitch is non-zero, and
+    // it does NOT follow the anchor in X/Z so the bass drift stays visible.
+    const float kCamPitch = 0.60;                       // ~34° look-down
+    const float kcp = cos(kCamPitch), ksp = sin(kCamPitch);
+    float3 p0 = float3(b.position) - float3(0.0, fp.renderYOffset, 0.0);
+    float3 p = float3(p0.x,
+                      p0.y * kcp + p0.z * ksp,          // flock depth lifts into screen height
+                      -p0.y * ksp + p0.z * kcp);        // rotated view depth
     float viewRadius = max(fp.viewRadius, 1e-3);
-    float zNorm = clamp(p.z / viewRadius, -1.0, 1.0);   // −1 far … +1 near
+    float zNorm = clamp(p.z / viewRadius, -1.0, 1.0);   // −1 far … +1 near (rotated)
     float persp = 1.0 + 0.18 * zNorm;
     out.position = float4(p.x / viewRadius * persp,
                           p.y / viewRadius * persp,
@@ -643,7 +675,7 @@ vertex FlockVertexOut murmuration_flock_vertex(
     // contrast that is the references' signature.
     float densityT = clamp(b.neighborCount / max(fp.boundaryCnt, 1.0), 0.0, 1.0);
 
-    float baseSize = 2.2 + 1.0 * (zNorm * 0.5 + 0.5) + 0.8 * densityT;
+    float baseSize = 2.6 + 1.0 * (zNorm * 0.5 + 0.5) + 0.9 * densityT;
     out.pointSize = max(baseSize, 1.0);
 
     // EMERGENT orientation-wave darkening — the McGill mechanism, computed
@@ -654,11 +686,12 @@ vertex FlockVertexOut murmuration_flock_vertex(
     // tilt up toward the camera → broad wing → dark. A coordinated turning band
     // rolls together → a darker band rolls across the mass (the L2 drum bias
     // makes one roll on the beat). No injected darkening channel.
-    float3 up = mf_qrotate(float3(0, 1, 0), b.orient);
-    float bankDark = clamp(abs(up.z) * 1.6, 0.0, 1.0);
+    float3 up0 = mf_qrotate(float3(0, 1, 0), b.orient);
+    float3 up = float3(up0.x, up0.y * kcp + up0.z * ksp, -up0.y * ksp + up0.z * kcp);
+    float bankDark = clamp(abs(up.z) * 1.6, 0.0, 1.0);   // wing area toward the tilted camera
 
     out.shade = clamp(0.55 + 0.45 * densityT + 0.25 * bankDark, 0.0, 1.0);
-    out.alpha = clamp((0.28 + 0.66 * densityT) * depthFade + 0.18 * bankDark, 0.0, 0.98);
+    out.alpha = clamp((0.34 + 0.64 * densityT) * depthFade + 0.18 * bankDark, 0.0, 0.98);
     return out;
 }
 
