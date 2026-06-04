@@ -108,6 +108,19 @@ Locked against the curated set in `docs/VISUAL_REFERENCES/nimbus/` (11 files, on
 
 **Nothing Nimbus needs is in the "Missing" column.** The volume utilities exist and are pre-injected; no preset has *composed* them yet, so the only real unknown is performance (§6), not capability.
 
+### 3.1 Confirmed primitive signatures (NB.1 audit — 2026-06-04)
+
+Folded from the NB.1 engine audit; the design decisions in §1/§5 are **unchanged** — only the real names/params Nimbus composes are recorded here:
+
+- **Detail noise:** `fbm4(float3 p, float H = 0.5)` (Noise/FBM.metal), output ≈ [-1, 1]. `fbm8` is the hero workhorse but its own header flags it *"avoid inside inner ray-march loops"* — so the per-step density uses **`fbm4`** (4 octaves, inside the §1 "~4–5 octaves" range). `perlin3d(float3 p)` underlies both.
+- **Cellular carve:** `voronoi_3d_f1(float3 p, float scale)` (Texture/Voronoi.metal) — F1 distance, **3D**. The `voronoi_smooth` named in §5.2 is **2D-only** (`voronoi_smooth(float2 p, float scale, float k)`, the IQ C¹ soft-min); there is no smooth-3D variant. The 3D body therefore carves with `voronoi_3d_f1`; a 2D `voronoi_smooth` projection stays available to NB.2 if smoother cell boundaries are wanted. (The decision — "carve cellular voids" — is unchanged; only the function name is reconciled.)
+- **Scattering:** `hg_phase(float cosTheta, float g)` + `hg_transmittance(float density, float t, float sigma)` (Volume/HenyeyGreenstein.metal); `struct VolumeSample{float3 color; float transmittance;}` + `vol_sample_zero()` (ParticipatingMedia.metal). The convenience accumulator `vol_accumulate(...)` hardcodes `hg_phase(·, 0.5)` internally — to hold the §5.2 `g ≈ 0.4`, NB.1 composes `hg_phase(·, 0.4)` in a self-written front-to-back loop rather than calling `vol_accumulate`.
+- **Self-shadow:** the only existing single-tap helper (`vol_inscatter` → `hg_transmittance` on *local* density) is not directional; NB.1 takes §5.2's first option — a short secondary light-march — but over the **analytic envelope only** (no fbm/voronoi in the shadow taps) so the dense core self-shadows for the 3D read at low cost. Billow-level self-shadow is deferred to NB.2/NB.3.
+- **Tonemap:** `toneMapACES(float3)` (ShaderUtilities legacy alias; canonical `tone_map_aces`).
+- **Entry / discovery:** `fragment float4 nimbus_fragment(VertexOut in [[stage_in]], constant FeatureVector& features [[buffer(0)]], …)`, declared via the sidecar's `fragment_function`. `direct` presets are bundle-auto-discovered (no registry / engine wiring). Every Volume / Noise / Texture / Color utility is preamble-injected and reachable from a `direct` fragment — confirmed.
+
+No engine gap was found and no §1/§5 decision is altered by this fold.
+
 ---
 
 ## 4. Gap report (Gate 3)
@@ -136,14 +149,14 @@ Locked against the curated set in `docs/VISUAL_REFERENCES/nimbus/` (11 files, on
 1. SETUP            build view ray per fragment; seed = track identity;
                     read FeatureVector (Breath / Pulse / Mood / Page channels)
 2. DENSITY          procedural body density along the ray:
-                      • FBM + voronoi_smooth, shaped to a BOUNDED body
+                      • fbm4 + voronoi_3d_f1, shaped to a BOUNDED body
                         (centre of mass + falloff → silhouette, NOT a
                          frame-filling field)
                       • turbulence amplitude ← arousal (Mood)
                       • overall mass / extent ← Breath (energy deviation)
 3. MARCH            single-scatter participating-media integration:
-                      • absorption + in-scatter per step (ParticipatingMedia)
-                      • Henyey-Greenstein phase (forward-scatter → backlit glow)
+                      • absorption + in-scatter per step (Beer-Lambert + VolumeSample)
+                      • hg_phase(cosθ, g≈0.4) (forward-scatter → backlit glow)
                       • internal emission term: ember(s) from Pulse, lit deep
                         in the body and flaring outward
                       • light set: 1 key + ambient (internal / backlit bias)
