@@ -69,7 +69,8 @@ kernel void murmuration3d_update(
     if (!(dt > 0.0)) { dt = 1.0 / 60.0; }
     dt = min(dt, 1.0 / 30.0);
     float t  = features.time;
-    float st = t * 0.7;
+    float motionRate = 1.2;          // global morph/wheel speed (+20%, Matt 2026-06-04)
+    float st = t * 0.7 * motionRate;
 
     float3 pos = float3(p.position);
     float3 vel = float3(p.velocity);
@@ -117,11 +118,29 @@ kernel void murmuration3d_update(
     float taper = 1.0 - 0.55 * u * u;                 // tapered tips
     float3 localPos = float3(u * halfLength, v * halfWidth * taper, w * halfDepth * taper);
 
-    // Curvature: "other" makes the body ripple/curve (in Y and Z).
-    float bend = sin(u * 3.14 + st * 0.6) * 0.06 + sin(u * 6.28 + st * 1.1) * 0.04 * flutterBase;
-    bend *= (0.5 + rhythm * 1.2);
-    localPos.y += bend;
-    localPos.z += sin(u * 4.0 + st * 0.5) * 0.04 * (0.5 + flutterBase);
+    // ── COMMA ARC — the whole body curves into ONE coherent shape that wheels,
+    // morphing C ↔ S. This REPLACES the old `sin(u·π + st)` wave that travelled
+    // down the long axis — a spine wave reads as a worm undulating, not a flock.
+    // `(u² − 0.33)` / `(u³ − 0.6u)` are centred (mean ≈ 0) so they BEND the body
+    // without shifting it; the curve PLANE rotates so the comma wheels through 3D.
+    float armC = (0.13 + 0.07 * rhythm) * (0.7 + 0.5 * sin(st * 0.37));   // C-curvature, breathing
+    float armS = (0.08 + 0.05 * rhythm) * sin(st * 0.23 + 1.0);           // S-curvature, slower
+    float curvePlane = st * 0.28;
+    float arc = -armC * (u * u - 0.33) + armS * (u * u * u - 0.6 * u);
+    localPos.y += arc * cos(curvePlane);
+    localPos.z += arc * sin(curvePlane);
+
+    // ── INTERNAL CHURN — birds continuously flow THROUGH the volume so the mass
+    // BOILS like a real murmuration instead of moving as one rigid body. The field
+    // is smooth in (u,v,w) → neighbours flow together (coherent stream, not jitter).
+    // This is the single biggest "worm → murmuration" lever: a static interior
+    // reads as a solid body; a churning interior reads as thousands of birds.
+    float churnT = st * 1.6;
+    float3 churn = float3(
+        sin(v * 3.7 + churnT)       - sin(w * 3.1 - churnT * 0.8),
+        sin(w * 4.1 + churnT * 1.1) - sin(u * 3.3 - churnT),
+        sin(u * 3.6 + churnT * 0.9) - sin(v * 3.0 - churnT * 1.2));
+    localPos += churn * (0.034 + flutterBase * 0.030);
 
     // Shape orientation — slow musical rotation (yaw about Y + slight pitch).
     float yaw   = st * 0.12 + sin(st * 0.18) * 0.5 + features.treb_att * 0.4 + rhythm * 0.3;
@@ -163,10 +182,17 @@ kernel void murmuration3d_update(
     if (speed > 3.0) { vel = normalize(vel) * 3.0; }
     pos += vel * dt;
 
-    // ── BANKING — birds in the turning band bank; also bank into their own turn
-    // (lateral velocity vs heading). Smoothed for fluidity. Drives the dark band.
+    // ── ROLLING BANDS (continuous) — a few dark density bands sweep head-to-tail
+    // at ALL times (the murmuration shimmer/boil; the drum turning-wave above
+    // intensifies it on the beat). Continuous rolling bands are the signature that
+    // separates a living flock from a uniformly-shaded body.
+    float rollPos  = birdU * 2.0 - st * 0.6;
+    float rollBand = pow(0.5 + 0.5 * cos(rollPos * 6.2832), 3.0);     // ~2 sharp rolling crests
+
+    // ── BANKING — turning-wave band + own-turn lean + rolling band. Smoothed for
+    // fluidity. Drives the wing-area-to-camera darkening (the dark bands). ──
     float lateral = dot(normalize(vel + float3(1e-5)), perpDir);
-    float targetBank = clamp(waveInfluence * propDir * 1.0 + lateral * 0.6, -1.0, 1.0);
+    float targetBank = clamp(waveInfluence * propDir * 1.0 + lateral * 0.6 + (rollBand - 0.3) * 0.7, -1.0, 1.0);
     p.bank = mix(p.bank, targetBank, clamp(dt * 4.0, 0.0, 1.0));
 
     p.position = packed_float3(pos);
