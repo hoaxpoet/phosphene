@@ -48,14 +48,15 @@ struct NimbusBudgetProbeTests {
             return
         }
 
-        // Production binds noiseVolume at fragment texture(6) on the direct path
-        // (RenderPipeline+Draw.bindNoiseTextures). Bind the SAME texture here so the
-        // probe measures the real cost — FA #66 test/prod parity.
+        // Production binds the full noise set at fragment slots 4–8 on the direct
+        // path (RenderPipeline+Draw.bindNoiseTextures → TextureManager.bindTextures).
+        // Bind the SAME set here so the probe measures the real cost — FA #66
+        // test/prod parity. (NB.2: Nimbus samples noiseVolume(6) + blueNoise(8); the
+        // full-set bind future-proofs the probe against any later slot use.)
         guard let lib = try? ShaderLibrary(context: ctx),
               let texMgr = try? TextureManager(context: ctx, shaderLibrary: lib) else {
-            Issue.record("could not build noiseVolume — probe would mis-measure"); return
+            Issue.record("could not build noise textures — probe would mis-measure"); return
         }
-        let noiseVolume = texMgr.noiseVolume
 
         // Steady-mid fixture (DESIGN §6 / NB.1 plan). aspectRatio defaults to
         // 1.777 = the 1920×1080 measurement aspect, so the framing matches.
@@ -81,7 +82,7 @@ struct NimbusBudgetProbeTests {
                       let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) else { return 0 }
                 enc.setRenderPipelineState(nimbus.pipelineState)
                 enc.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.size, index: 0)
-                enc.setFragmentTexture(noiseVolume, index: 6)
+                texMgr.bindTextures(to: enc)   // slots 4–8 (noiseVolume 6, blueNoise 8) — FA #66 parity
                 enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
                 enc.endEncoding()
                 cmd.commit()
