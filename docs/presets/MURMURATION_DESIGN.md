@@ -679,3 +679,25 @@ silence = compact churning mass; audio = wheeling comma with rolling bands. Engi
 clean, lint 0. **Durable rule (one-primitive-per-layer corollary):** an elongated mass needs *internal*
 motion (churn + bands rolling THROUGH it) to read as a flock — bending the whole body is worm motion;
 reshaping + a boiling interior is murmuration motion. **M7 sign-off of the reworked motion pending.**
+
+## 13.4 Traverse the sky — end-to-end drift (2026-06-04, commit `75d39eaf`)
+
+**2nd live review (session `2026-06-04T15-59-58Z`):** *"Better, but the murmuration is primarily moving in
+place. It needs to drift more from one end of the screen to another, which might require moving the camera
+back a little."* The motion character was right (it churns/wheels — §13.3 held); the flock's *position*
+just stayed mid-frame. Root cause: the flock-centre drift amplitude (~0.12 world) was small relative to the
+flock's own half-extent (~0.40), so the wheeling read as in-place.
+
+**Fix.** (1) **Camera back + zoomed out** — `camDist` 2.6 → 3.2, `viewScale` 2.1 → 1.3. The flock is now
+~40 % of frame width (was ~70 %), leaving room to drift; perspective flattens slightly → reads as a flock
+further away against a bigger sky (matches the dusk-sky references). (2) **Dominant slow traverse** — the
+flock centre is now a slow L↔R sweep `sin(st·0.11)·0.24 + sin(st·0.043)·0.07` (~34 s each way) with gentler
+vertical/depth wobble and the existing bass arcs, **hard-clamped to ±0.30 x** so it stays framed at the
+extremes.
+
+**Verification upgraded.** `test_framed` now steps a full 40 s traverse and asserts **both** (a) the worst
+frame stays framed (`minFramed > 0.93`) and (b) the centre sweeps a real range (`centreXrange > 0.30`) —
+proving it traverses, not drifts-in-place. Visually: `mm3d_silence_00` (centre-right) → `mm3d_silence_05`
+(drifted to the right half, left sky open). Engine 1376 green, app build clean, lint 0. **Tunable dials if
+the framing/pace needs adjustment: `viewScale` (flock size in frame), the `sin(st·0.11)·0.24` amplitude
+(traverse distance), `motionRate` (overall speed).** M7 sign-off pending.
