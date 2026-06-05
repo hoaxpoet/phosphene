@@ -41,14 +41,17 @@ The interesting motion *is the gas itself*: **constant, rich, organic flow** —
 
 ### 1.3 How it answers the music
 
-Two drivers, **nothing on the beat** — the activity lives in the continuous gas flow, never in discrete hits (FA #33, FA #4):
+> **MODEL REVISED — NB.5 (2026-06-05, D-141). The original "nothing on the beat" premise is RETIRED.** NB.4 shipped the energy-only bloom below; the first real-music test (the *Atlas* / Battles session, a relentless 136-BPM track) showed it **too subtle**, and on bass-dominated music structurally broken: the bloom averaged three bands and, with mid (0.04) / treble (0.004) near-silent, the two dead bands vetoed it — the body sat near floor-size all session while the beat (beatComposite fired > 0.5 on 53 % of frames, grid locked) went unanswered. Matt's call: *wrong model — drive from the beat, per stem.* FA #4 still holds — beat is an **accent**, not the primary motion driver — and Nimbus honours it: the slow energy bloom is still the underlying swell; the beat lobes ride on top. (Nimbus has no feedback loop to amplify jitter, the onset pulse is zero-delay, and a gas heave with a soft decay is forgiving of ±80 ms — so a prominent beat-punch is safe here.)
+
+**The band plays the body.** One coherent gaseous mass that HEAVES with the full band — each stem pushes a soft, blended bulge of the *single* envelope (a star-convex deformation that cannot fragment into separate blobs — §1.4). Three timescales:
 
 | Driver | Timescale | What you see |
 |---|---|---|
-| **Energy** — smoothed broadband energy vs the track's own baseline (`(bass_att_rel + mid_att_rel + treb_att_rel)/3`, D-026), run through a **fast-attack / slow-release follower** (~150 ms / ~400 ms) for gas-like momentum | continuous — the hero | the mass **blooms** — bigger (~+45 %) and brighter (~+80 %) — and the gas **flows faster and richer** (churn rate ~1×→3.5×). One signal, read as one physical event. |
-| **Mood** — valence + arousal, smoothed in state ~4 s (FA #25) | very slow | valence → **colour** cool↔warm (indigo↔gold); arousal → **flow agitation** (lazy/smooth ↔ churning/torn). |
+| **Beat — the stems** (NB.5, the hero): each stem's energy **deviation** (D-026), through a fast-attack / slow-release follower. Drums = `max(beatBass, beatComposite)` onset pulse (zero-delay, frame 1) → `drumsEnergyDev`; bass/lead/other = their stem deviation. | per-beat — the hero | **Drums punch + brighten the WHOLE body** (the kick is the spine of the beat). **Bass heaves it DOWN**, **lead/"vocals" flares it UP**, **other swells it to the SIDE** — the body lurches richly with the band, always one cloud. |
+| **Energy — the swell** (NB.4): mean of the four stem **energies** (robust; never floored by a dead band — the NB.4 bug), fast-attack / slow-release follower → `bloom`. | continuous — slow | the mass's overall **size** + **brightness** + gas **flow rate** rise and fall with the music's overall energy; settles small/dim/slow at the silence floor (non-black, D-037). |
+| **Mood** — valence + arousal, smoothed in state ~4 s (FA #25) — **NB.6, not yet built** | very slow | valence → **colour** cool↔warm (indigo↔gold); arousal → **flow agitation** (lazy/smooth ↔ churning/torn). |
 
-**Cut from v1, deliberately:** anything on the beat (no ember / pulse — the "too much activity" failure); section-boundary reorganisation; per-stem colour roles; pitch→hue; camera / time-of-day drift. The discipline is *energy blooms-and-flows it, mood colours it* — nothing else lands until that reads. (These are V2 candidates, §8.)
+**Still cut:** section-boundary reorganisation; pitch→hue; camera / time-of-day drift. The discipline is now *the band plays the body (beat, per stem) + energy swells it + mood colours it*.
 
 ### 1.4 The body as a single coherent mass — the idea to protect
 
@@ -172,21 +175,23 @@ Internal state advances CPU-side each frame (energy follower → bloom, flow pha
 
 ### 5.3 State model
 
-- **NimbusState** (Swift) — energy follower (fast-attack/slow-release → `bloom`), flow phase (accumulated churn time), smoothed valence / arousal, `rng_seed` (track identity). **No ember list, no reorganisation state** — those channels are cut (§1.3).
-- **No GPU-persistent textures.** Nimbus is stateless frame-to-frame on the GPU — the body is recomputed each frame; only CPU-side scalars persist. (Contrast Skein, whose canvas *is* a persistent texture.)
-- **Reset** — on track change, reset the follower / flow phase, re-seed, settle into the new body.
+- **NimbusState** (Swift, 32-byte `NimbusStateGPU` at fragment buffer(6)) — the slow energy `bloom` follower + the gas `flowPhase` accumulator (Double) + **four NB.5 stem followers**: `kickPunch` (drums, fast), `bassLobe` / `vocalsLobe` / `otherLobe` (fast-attack/slow-release). Mood smoothers land at NB.6. **No ember list, no reorganisation state** — those channels are cut (§1.3).
+- **No GPU-persistent textures.** Nimbus is stateless frame-to-frame on the GPU — the body is recomputed each frame; only CPU-side scalars persist.
+- **Reset** — on track change / segment boundary, reset all followers + flow phase so the body settles into the new track.
 
-### 5.4 Audio routing (one primitive per visual layer — all deviation-normalised, D-026)
+### 5.4 Audio routing (one primitive per visual layer — deviation-normalised, D-026)
 
 | Visual layer | Single audio primitive | Driver |
 |---|---|---|
-| Body mass / extent | `bloom` ← broadband energy deviation `(bass_att_rel+mid_att_rel+treb_att_rel)/3`, fast-attack/slow-release follower | Energy — primary / continuous |
-| Body luminosity | same `bloom` | Energy — primary / continuous |
-| Gas flow rate (churn) | same `bloom` | Energy — primary / continuous |
-| Body colour (cool↔warm) | valence (smoothed in state) | Mood — slow global |
-| Flow agitation (smooth↔torn) | arousal (smoothed in state) | Mood — slow global |
+| Whole-body punch + brightness pop | `kickPunch` ← `max(beatBass, beatComposite)` onset pulse → `drumsEnergyDev` (D-019 warmup blend) | **Beat — drums (NB.5, hero)** |
+| Downward heave | `bassLobe` ← `bassEnergyDev` | Beat — bass (NB.5) |
+| Upward flare | `vocalsLobe` ← `vocalsEnergyDev` | Beat — lead/"vocals" (NB.5) |
+| Sideways swell | `otherLobe` ← `otherEnergyDev` | Beat — other (NB.5) |
+| Body size + luminosity + flow rate (slow swell) | `bloom` ← mean of the four stem **energies** (FV bass proxy at warmup) | Energy — slow (NB.4) |
+| Body colour (cool↔warm) | valence (smoothed in state) | Mood — slow global (NB.6) |
+| Flow agitation (smooth↔torn) | arousal (smoothed in state) | Mood — slow global (NB.6) |
 
-The three Energy-driven layers all read one signal (`bloom`) so they move as one physical event; the two Mood layers crawl. **No layer reads the beat.** (The `feedback_audio_layer_one_primitive` discipline, generalised.)
+Each layer reads ONE primitive at ONE timescale (FA #67). The four stem lobes are different primitives driving different *spatial regions* of the single body — distinct musical information, not the same signal encoded twice — so they enrich rather than fight. The beat lobes all add into one star-convex envelope deformation: the body lurches per-stem but never fragments (§1.4). **`bloom` no longer uses the 3-band `(bass+mid+treble)` average** — that floored on bass-dominated music (NB.4 / Atlas session); the mean of the four stem energies is the robust replacement.
 
 ### 5.5 Why direct-fragment (not a staged volume pass)
 
@@ -293,6 +298,32 @@ is ~0.98× the NB.3 size). **Worst case is full bloom** (`bodyScale` 1.16 →
 body projected area ~1.35× → ~3.6 ms estimated), still ~0.51× the ceiling. No
 perf action at NB.4; the half-res + MetalFX lever (§6) remains untapped reserve.
 
+### 6.5 NB.5 stem beat-lobes measurement (2026-06-05)
+
+NB.5 added the per-stem envelope heave: the `nimbus_envelope` now applies a
+star-convex bulge (`rr / (1 + kick + Σ lobe·cos²)`) — evaluated on every march
+AND cone-shadow sample (~7× per in-body step). Same harness/fixture (steady-mid,
+slot-6 bound; lobes at zero on the probe — the baseline body):
+
+| Variant | min | **p50** | mean | p95 | max |
+|---|---|---|---|---|---|
+| **Full 1920×1080 — NB.5 (shipped)** | 3.65 | **3.74** | 3.88 | 4.38 | 5.02 |
+
+(All ms. Dev Mac mini, Apple Silicon. `NimbusBudgetProbeTests`, `NIMBUS_BUDGET=1`.)
+
+**Finding.** p50 = **3.74 ms @ 1080p — 0.53× the 7 ms ceiling, WITHIN**, ~3.3 ms
+headroom for NB.6 (mood). The ~+0.5 ms over NB.3.3's 3.27 ms is the per-step
+envelope deformation (3 dot + 3 mul-add + a divide). **Perf lesson:** the first
+cut used `pow(cos, 1.5)` for the lobe falloff and the budget **doubled to 5.15 ms**
+— a general `pow()` evaluated ~7× per sample is brutal, and the GPU *predicates*
+(does not skip) the `if`-guard around it, so the cost is paid even when no lobe
+is active. `sqrt` (cos^1.5 = c·√c) cut it to 4.58 ms; **cos² (pure mul-adds)** to
+3.74 ms. Rule: in a per-march-step function, never use `pow()`/transcendentals
+for a falloff — use a polynomial (cos², smoothstep). The bound grows by the live
+bulge (~+44 % on a max simultaneous heave) so the active-lobe worst case is a
+little higher, still well under budget. NB.8 sets `complexity_cost.tier2` from
+this profile; the half-res + MetalFX lever remains untapped reserve.
+
 ---
 
 ## 7. Phased implementation sketch (Gate 5)
@@ -309,8 +340,9 @@ Increment IDs in house style (`NB.N`), small commits per logical concern (`[NB.N
   - **NB.3.3 — fidelity uplift (Matt-directed, reference-aligned, backlit model only — NO emission):** closed the three reference gaps — coverage-gated interior billow contrast (ref 02, soft rim ref 03), radial denser core for substance (ref 01), +15% on-screen size (focal zoom 1.25→1.44), forward-scatter silver-lining glow + brightness (ref 08). An egg-core / internal-emission / "incandescent" exploration was **reverted** as a divergence from the references (§5.2 note). Budget §6.3.
   - Gate: ✅ matches the reference packet (cool gaseous body, billows, glow, feathered edges) at budget — Matt-approved on the render-vs-packet contact sheet 2026-06-05.
 - **NB.4 — Energy: bloom + flow + silence floor. ✅ DONE 2026-06-05 (pending Matt's live manual-validation sign-off on the musical feel).** `NimbusState` (Swift, `@unchecked Sendable` + NSLock) runs a fast-attack (~150 ms) / slow-release (~400 ms) follower over `(bass_att_rel+mid_att_rel+treb_att_rel)/3` (D-026) → `bloom`, flushed to a 16-byte `NimbusStateGPU` at fragment buffer(6); `flowPhase` accumulated in `Double` (long-accumulator rule) at a bloom-modulated rate. The shader consumes `bloom` for body extent (uniform `bodyScale` inflation, +45 % floor→peak), luminosity (`bright` scale on the back-key + ambient, +80 % floor→peak) and `flowPhase` for the gas drift (1×→3.5×, replacing wall-clock `features.time`). Silence floor = the NB.3 backlit look, smaller/dimmer/slower over a faint non-black cool haze (D-037 — a settle, not a collapse). **No beat, no mood** (verified by source inspection — the shader reads no `beat_*` and no valence/arousal). Wired live (`setDirectPresetFragmentBuffer` + `setMeshPresetTick`); `reset()` on preset apply + track change. Tests: `NimbusBloomFollowerTest` (multi-frame follower attack/release feel + render-tracks-bloom through the live direct dispatch path), `PresetVisualReviewTests` (silence/mid/energy fixtures), `NimbusBudgetProbeTests` (slot-6 bound). Budget §6.4 (p50 2.66 ms). Gate: ✅ the contact sheet shows the body blooms bigger/brighter/faster with energy and settles small/dim/slow (non-black) at silence; backlit NB.3 look preserved across the range. **Matt's live ear/eye sign-off on "feels married to the music" is the remaining gate (non-bypassable).**
-- ~~**NB.5 — Pulse.**~~ **CUT** — nothing on the beat (§1.3).
-- **NB.6 — Mood.** Valence → colour cool↔warm; arousal → flow agitation. Smoothed in state (FA #25).
+- ~~**NB.5 — Pulse (embers).**~~ **CUT** (2026-06-04) — superseded by the line below.
+- **NB.5 — Beat: stem lobes (the band plays the body). ✅ DONE 2026-06-05 (pending Matt's live manual-validation sign-off).** Reverses the "nothing on the beat" premise (D-141) after the Atlas session showed the energy-only bloom too subtle + floored on bass-dominated music. `NimbusState` gains four stem followers (`kickPunch` ← `max(beatBass,beatComposite)`→`drumsEnergyDev`; `bassLobe`/`vocalsLobe`/`otherLobe` ← stem `…EnergyDev`); `NimbusStateGPU` grows 16→32 bytes. The shader heaves the *single* envelope per stem (`rr/(1 + kick + Σ lobe·cos²)` — star-convex, cannot fragment): drums punch + brighten the whole body, bass heaves DOWN, lead flares UP, other swells to the SIDE. `bloom` re-sourced to mean stem energy (fixes the 3-band floor). Tests: `NimbusBloomFollowerTest.test_stemLobes` (each stem heaves the right way + one mass holds, through the live direct path), budget §6.5 (p50 3.74 ms; perf lesson: cos², never `pow()`, in a per-step falloff). Gate: ✅ the per-stem contact sheet shows directional heaves on one coherent mass. **Matt's live ear/eye sign-off is the remaining gate (non-bypassable — does the body feel like it's playing with the band?).**
+- **NB.6 — Mood.** Valence → colour cool↔warm; arousal → flow agitation. Smoothed in state (FA #25). Folds in the two NB.4/NB.5 deferrals: per-track-distinct gas seeding + PresetSessionReplay route registration (replay against a real mood session).
 - ~~**NB.7 — Page.**~~ **CUT** — no section reorganisation in v1 (§1.3).
 - **NB.8 — performance tranche.** Re-measure with the cone-shadow cost (the new budget unknown); step-cap / early-out; half-res + MetalFX if needed; set `complexity_cost.{tier1 above-budget, tier2 measured}`.
 - **NB.9 — certification.** Acceptance invariants (§5.7), golden registration, anti-reference manual check, then Matt M7.

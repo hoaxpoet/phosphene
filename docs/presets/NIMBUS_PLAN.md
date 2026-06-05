@@ -30,13 +30,13 @@ Nimbus needs **one small engine touch** (Matt-approved 2026-06-04): a baked **Pe
 | **NB.2** ✅ | Meso/micro detail | preset | NB.1 | *Shipped, but look superseded by NB.3 (Perlin-FBM can't make billows). Test parity + debug views + budget probe reused.* |
 | **NB.3** ✅ | The look (cloud-port) | preset + 1 engine touch | NB.2 | *Shipped 2026-06-05, Matt-approved on the contact sheet: cool billowing luminous backlit gas.* |
 | **NB.4** ✅ | Energy: bloom + flow + silence | preset | NB.3 | *Shipped 2026-06-05 — bloom→size/brightness/flow + non-black silence floor; nothing on the beat. Pending Matt's live musical-feel sign-off.* |
-| ~~**NB.5**~~ | ~~Pulse (embers)~~ | — | — | ❌ **CUT** — nothing on the beat (DESIGN §1.3) |
-| **NB.6** | Mood | preset | NB.4 | Valence → cool/warm, arousal → flow-agitation visible across mood fixtures |
+| **NB.5** ✅ | Beat: stem lobes (the band plays the body) | preset | NB.4 | *Shipped 2026-06-05 (D-141) — reverses "nothing on the beat"; each stem heaves the single body (drums punch, bass↓/lead↑/other↔). Pending Matt's live sign-off.* |
+| **NB.6** | Mood | preset | NB.5 | Valence → cool/warm, arousal → flow-agitation visible across mood fixtures |
 | ~~**NB.7**~~ | ~~Page (reorganisation)~~ | — | — | ❌ **CUT** — no section reorganisation in v1 (DESIGN §1.3) |
 | **NB.8** | Performance tranche | preset | NB.3 + NB.4/6 | `MTLCounterSet` profile (re-measure cone-shadow cost): p95 ≤ 16 ms full-frame, ≤ 7 ms preset; `complexity_cost` set |
 | **NB.9** | Certification | preset | all | Acceptance + golden + anti-ref manual + **Matt M7** |
 
-Execution order is top-to-bottom and largely linear now: **NB.3 (the look) → NB.4 (energy) → NB.6 (mood) → NB.8 (perf) → NB.9 (cert)**. NB.3 is the gate everything waits on — it's where the fidelity fight is won or lost. NB.4 and NB.6 are small and well-understood once the look is right.
+Execution order is top-to-bottom and largely linear now: **NB.3 (the look) → NB.4 (energy swell) → NB.5 (beat: stem lobes) → NB.6 (mood) → NB.8 (perf) → NB.9 (cert)**. NB.3 was the fidelity gate; NB.5 (reinstated, D-141) is the musical-feel gate — the energy-only NB.4 was too subtle on real music, so the beat came back as per-stem lobes.
 
 ---
 
@@ -158,8 +158,14 @@ Execution order is top-to-bottom and largely linear now: **NB.3 (the look) → N
 
 ---
 
-### NB.5 — Pulse (embers) — ❌ CUT (2026-06-04)
-**Removed from the concept**, not deferred-with-a-plan. No per-beat response in v1 (Matt: a per-beat ember is "too much activity"; DESIGN §1.3). The activity lives entirely in the continuous gas flow (NB.4); nothing fires on the beat. Revisit only if a future direction explicitly calls for it.
+### NB.5 — Beat: stem lobes (the band plays the body) ✅ (2026-06-05, D-141)
+**preset · depends on: NB.4 · gate: each stem heaves the single body in its direction; one mass holds; Matt live sign-off**
+
+*(The original NB.5 — Pulse/embers — was CUT 2026-06-04 as "too much activity." This slot is reinstated and redefined after the NB.4 model was falsified live; see D-141.)*
+
+**Why.** The first real-music test of NB.4 (the *Atlas* / Battles session `2026-06-05T14-35-14Z`, a relentless 136-BPM track) showed the energy-only bloom **too subtle** and, on bass-dominated music, structurally floored: `bloom` averaged 3 bands and with mid (0.04) / treble (0.004) near-silent the dead bands vetoed it → the body sat at floor-size all session while the beat (beatComposite > 0.5 on 53 % of frames, grid locked at 136) went unanswered. All four stem deviations swing hard (peaks 1.9–2.8) — the stems carry the structure the 3-band FeatureVector lost. Matt's call: drive from the beat, per stem; "one mass heaves per-stem" (not hard quadrants).
+
+**Delivered.** Four fast-attack/slow-release stem followers in `NimbusState` (`kickPunch` ← drums onset pulse → `drumsEnergyDev`; `bassLobe`/`vocalsLobe`/`otherLobe` ← stem `…EnergyDev`); `NimbusStateGPU` 16→32 bytes; `bloom` re-sourced to mean stem energy (fixes the floor). Shader heaves the **single** envelope per stem (`rr/(1 + kick + Σ lobe·cos²)` — star-convex, cannot fragment): drums punch + brighten the whole body, bass DOWN, lead UP, other SIDE. FA #4 honoured (beat = accent on the slow bloom; safe — no feedback loop, zero-delay pulse, soft-decay heave). Budget p50 3.74 ms (§6.5; perf lesson: cos², never `pow()`). Test: `NimbusBloomFollowerTest.test_stemLobes`. **Remaining: Matt's live sign-off — does the body feel like it's playing with the band?**
 
 ---
 
@@ -238,7 +244,7 @@ Execution order is top-to-bottom and largely linear now: **NB.3 (the look) → N
 
 ## Sequencing, cut-lines, and risk
 
-- **Critical path:** NB.0 ✅ → NB.1 ✅ → NB.2 ✅ → **NB.3 (the look — the gate everything waits on)** → NB.4 (energy) → NB.6 (mood) → NB.8 (perf) → NB.9 (cert). NB.5 (Pulse) and NB.7 (Page) are CUT. A certified Nimbus is Energy + Mood on a packet-matching body — nothing more.
+- **Critical path:** NB.0 ✅ → NB.1 ✅ → NB.2 ✅ → NB.3 ✅ (the look) → NB.4 ✅ (energy swell) → NB.5 ✅ (beat: stem lobes, D-141) → NB.6 (mood) → NB.8 (perf) → NB.9 (cert). NB.5-as-Pulse and NB.7 (Page) were CUT; NB.5 was reinstated as stem beat-lobes after the energy-only model proved too subtle live. A certified Nimbus is the band playing one packet-matching body — beat (per stem) + energy swell + mood.
 - **Two risk concentrations, both early:**
   - **NB.1 — feasibility.** The unprecedented thing is *cost*: no preset has marched a volume in production. The NB.1 budget gate exists to fail fast — if the macro-only march can't fit 7 ms (even at half-res), escalate to "this preset needs a staged volume pass" or "re-scope," per the §5.5 fallback, rather than tuning forward. (CC_DESIGN flagship-risk lesson / FA #58: escalate non-viability, don't grind.)
   - **NB.3 — aesthetics.** The internal-glow recipe is where Nimbus reads as luminous gas or as a lit blob. Budget iteration here (cf. Arachne clipart, Dragon Bloom "not seeing petals").
