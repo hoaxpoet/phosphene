@@ -60,14 +60,16 @@ final class TextureManagerTests: XCTestCase {
 
     // MARK: - 4. noiseVolume dimensions, format, and type
 
-    /// `noiseVolume` must be 64×64×64 `.r8Unorm` and typed `.type3D`.
+    /// `noiseVolume` must be 64×64×64 `.rgba8Unorm` and typed `.type3D`.
+    /// (NB.3.0: upgraded from `.r8Unorm` FBM to RGBA Perlin-Worley — R=billows,
+    /// G/B/A=Worley detail octaves — the HZD/Nubis cloud base-shape noise.)
     func test_noiseVolume_dimensions_64x64x64_type3D() throws {
         let tex = manager.noiseVolume
-        XCTAssertEqual(tex.textureType, .type3D,  "noiseVolume must be a 3D texture")
-        XCTAssertEqual(tex.width,       64,        "noiseVolume width must be 64")
-        XCTAssertEqual(tex.height,      64,        "noiseVolume height must be 64")
-        XCTAssertEqual(tex.depth,       64,        "noiseVolume depth must be 64")
-        XCTAssertEqual(tex.pixelFormat, .r8Unorm,  "noiseVolume must be .r8Unorm")
+        XCTAssertEqual(tex.textureType, .type3D,     "noiseVolume must be a 3D texture")
+        XCTAssertEqual(tex.width,       64,           "noiseVolume width must be 64")
+        XCTAssertEqual(tex.height,      64,           "noiseVolume height must be 64")
+        XCTAssertEqual(tex.depth,       64,           "noiseVolume depth must be 64")
+        XCTAssertEqual(tex.pixelFormat, .rgba8Unorm,  "noiseVolume must be .rgba8Unorm (Perlin-Worley, NB.3.0)")
     }
 
     // MARK: - 5. noiseFBM pixel format
