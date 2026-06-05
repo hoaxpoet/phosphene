@@ -63,6 +63,13 @@ struct SkeinCanvasHoldTest {
                 "Skein.metal skein_geometry_vertex must read features@0 (Path A — the painter drives off features.time).")
         #expect(!src.contains("kSkeinStampColor"),
                 "Skein.metal still declares the ENGINE.1.1 disc stamp — Skein.1 replaces it with the pour line.")
+        // Skein.2: the splatter morphology — ragged-edge 2D fBM + the debug viscosity sweep.
+        #expect(src.contains("skein_fbm2"),
+                "Skein.metal missing skein_fbm2 (Skein.2 ≥4-octave ragged-edge 2D noise).")
+        #expect(src.contains("skeinDebugViscosity"),
+                "Skein.metal missing skeinDebugViscosity (Skein.2 debug viscosity sweep → Skein.3 centroid).")
+        #expect(src.contains("hash_f01_4x"),
+                "Skein.metal missing hash_f01_4x (Skein.2 deterministic per-droplet placement, §5.7).")
     }
 
     @Test("Skein.json declares canvas-hold config + a marks-on-top block (D-143)")
@@ -99,13 +106,16 @@ struct SkeinCanvasHoldTest {
             chromatic: 0, frames: 180, width: w, height: h, aspect: 1.0, startTime: 0.0,
             checkpoints: Set(checkpoints), fx: fx)
 
-        let frac = largestPaintedComponentFraction(run.finalPixels, w: w, h: h, cream: run.creamRef)
+        // Skein.2: isolate the pour LINE from the splatter satellites. The line lives in a thin
+        // corridor around the trajectory; far satellites are disconnected components by design.
+        let line = pourLineCorridor(run.finalPixels, w: w, h: h, cream: run.creamRef,
+                                    t0: -0.7, t1: 3.0, rV: 0.025)
         let whiteOK = hasWhiteTexel(run.finalPixels)
         print("""
-        [skein_pour] 180 frames @ \(w)×\(h), chromatic=0, live scene→warp→overlay→blit→swap:
+        [skein_pour] 180 frames @ \(w)×\(h), chromatic=0, live scene→warp→overlay→blit→swap (Skein.2 splatter on):
           painted-count checkpoints \(run.checkpointFrames) = \(run.checkpointCounts)
           early painted texel \(run.earlyXY.map { "(\($0.0),\($0.1))" } ?? "none") still painted at end = \(run.earlyStillPaintedFinal)
-          largest connected component / painted = \(String(format: "%.3f", frac))
+          pour-LINE continuity (corridor) = \(String(format: "%.3f", line.continuity))  [in-corridor \(line.inCorridor) / satellites-outside \(line.outside)]
           far corner held (chromatic=0): frame0 \(run.creamRef) == final \(run.groundCornerFinal) ? \(run.creamRef == run.groundCornerFinal)
           ground corner cream = \(isCreamish(run.groundCornerFinal)) ; white texel present = \(whiteOK)
         """)
@@ -129,10 +139,15 @@ struct SkeinCanvasHoldTest {
         #expect(run.creamRef == run.groundCornerFinal,
                 "Far corner drifted \(run.creamRef) → \(run.groundCornerFinal) at chromatic=0 — the held canvas is not lossless.")
 
-        // 3. CONTINUITY — the laid line is a single connected component (no gaps between
-        //    consecutive capsules; they share an endpoint by construction). Allow an AA-speck margin.
-        #expect(frac >= 0.95,
-                "Largest connected painted component is only \(frac) of painted pixels — the line has gaps (not continuous).")
+        // 3. CONTINUITY (pour LINE only) — the laid line is a single connected component (no gaps
+        //    between consecutive capsules; they share an endpoint by construction). Skein.2 adds
+        //    disconnected SATELLITES by design, so continuity is checked in the LINE corridor only;
+        //    the satellites appear as paint OUTSIDE the corridor (asserted present, so the splatter
+        //    is verified to render here too — it is exercised in depth by test_splatter_*).
+        #expect(line.continuity >= 0.95,
+                "Pour-line corridor continuity is only \(line.continuity) — the line has gaps (Skein.1 invariant regressed).")
+        #expect(line.outside > 0,
+                "No painted pixels outside the line corridor — the Skein.2 splatter satellites did not render.")
 
         // 4. CREAM GROUND held (not black) — the per-preset canvas clear (D-143) still carries.
         #expect(!isBlack(run.groundCornerFinal),
@@ -142,6 +157,87 @@ struct SkeinCanvasHoldTest {
 
         // 5. WHITE LINE — at least one fully-laid texel is white (the pour colour; palette is Skein.3).
         #expect(whiteOK, "No white texel found — the pour line did not render white-on-cream.")
+    }
+
+    // MARK: - Splatter: halo + bake/hold + viscosity response + new-mark count (the Skein.2 gate)
+
+    @Test("Splatter bakes + holds, shows a dense-near satellite halo, opaque (not additive), and responds to viscosity — live path")
+    func test_splatter_morphologyBakesHoldsViscosity() throws {
+        guard let fx = try loadSkeinFixture() else { return }
+        let w = 256, h = 256
+        // Two windows of the debug viscosity sweep (period 12 s): THICK peak ~t6, THIN trough ~t12.
+        // Both run the same live scene→warp→overlay→blit→swap path advancing features.time.
+        let thick = try runPourAccumulation(
+            chromatic: 0, frames: 180, width: w, height: h, aspect: 1.0, startTime: 4.5,
+            checkpoints: [40, 179], fx: fx, capturePerFrame: true)
+        let thin = try runPourAccumulation(
+            chromatic: 0, frames: 180, width: w, height: h, aspect: 1.0, startTime: 10.5,
+            checkpoints: [40, 179], fx: fx, capturePerFrame: true)
+
+        let ts = splatterHaloAndSatellites(thick.finalPixels, w: w, h: h, cream: thick.creamRef,
+                                           t0: 3.8, t1: 7.5, corridorRV: 0.025)
+        let ns = splatterHaloAndSatellites(thin.finalPixels, w: w, h: h, cream: thin.creamRef,
+                                           t0: 9.8, t1: 13.5, corridorRV: 0.025)
+
+        // New-mark count (governor input): per-frame painted-count deltas.
+        let deltas = zip(thick.perFrameCounts.dropFirst(), thick.perFrameCounts).map { $0 - $1 }
+        let newMarkFrames = deltas.filter { $0 > 0 }.count
+        let creamMin = Int(min(thick.creamRef[0], min(thick.creamRef[1], thick.creamRef[2])))
+
+        print("""
+        [skein_splatter] live scene→warp→overlay→blit→swap, 256×256:
+          THICK (visc≈hi, startT 4.5): halo near/mid/far = \(ts.haloNear)/\(ts.haloMid)/\(ts.haloFar)  satellites=\(ts.satellites)  meanSatDist=\(String(format: "%.3f", ts.meanSatDist))  minCh=\(ts.minChannel)
+          THIN  (visc≈lo, startT 10.5): halo near/mid/far = \(ns.haloNear)/\(ns.haloMid)/\(ns.haloFar)  satellites=\(ns.satellites)  meanSatDist=\(String(format: "%.3f", ns.meanSatDist))  minCh=\(ns.minChannel)
+          new-mark count: \(newMarkFrames)/\(deltas.count) frames added marks; deltas[0..<8]=\(Array(deltas.prefix(8)))
+          opaque check: creamMin=\(creamMin), thick minCh=\(ts.minChannel), thin minCh=\(ns.minChannel)
+        """)
+
+        // 1. SATELLITE HALO — dense near the line, sparse far (spatter, not a uniform field).
+        #expect(ts.haloNear > ts.haloFar,
+                "THICK satellites not dense-near/sparse-far (near \(ts.haloNear) ≤ far \(ts.haloFar)).")
+        #expect(ns.haloNear > ns.haloFar,
+                "THIN satellites not dense-near/sparse-far (near \(ns.haloNear) ≤ far \(ns.haloFar)).")
+
+        // 2. DISTINCT SATELLITES (not a merged froth) — many disconnected blobs outside the line.
+        #expect(ns.satellites > 20,
+                "THIN produced only \(ns.satellites) distinct satellites — splatter not rendering as discrete dots.")
+
+        // 3. VISCOSITY RESPONSE — thin/fine flings satellites WIDER + throws MORE of them than thick.
+        //    meanSatDist (a per-satellite spread, trajectory-robust) is the cleanest discriminator.
+        #expect(ns.meanSatDist > ts.meanSatDist,
+                "Viscosity did not widen the spread: thin meanSatDist \(ns.meanSatDist) ≤ thick \(ts.meanSatDist).")
+        #expect(ns.satellites > ts.satellites,
+                "Satellite count did not respond to viscosity: thin \(ns.satellites) ≤ thick \(ts.satellites).")
+
+        // 4. OPAQUE alpha-over, NOT additive — paint only brightens cream→white; no channel drops
+        //    below cream's darkest channel (no mud / no darkening). (creamB ≈ 188; 12 tolerance.)
+        #expect(ts.minChannel >= creamMin - 12,
+                "A pixel darkened below cream (thick minCh \(ts.minChannel) < \(creamMin - 12)) — additive/muddy compositing.")
+        #expect(ns.minChannel >= creamMin - 12,
+                "A pixel darkened below cream (thin minCh \(ns.minChannel) < \(creamMin - 12)) — additive/muddy compositing.")
+
+        // 5. SPLATTER BAKES + HOLDS — a satellite painted by the early checkpoint persists to the end.
+        let earlyBuf = thick.checkpointPixels[40]
+        #expect(earlyBuf != nil, "No early checkpoint captured for the bake/hold check.")
+        if let earlyBuf = earlyBuf {
+            let sat = firstSatellitePixel(earlyBuf, w: w, h: h, cream: thick.creamRef,
+                                          t0: 3.8, t1: 7.5, corridorRV: 0.03)
+            #expect(sat != nil, "No early satellite found outside the line corridor — splatter not laid early.")
+            if let (sx, sy) = sat {
+                let i = (sy * w + sx) * 4
+                let f = thick.finalPixels
+                let delta = abs(Int(f[i]) - Int(thick.creamRef[0]))
+                          + abs(Int(f[i + 1]) - Int(thick.creamRef[1]))
+                          + abs(Int(f[i + 2]) - Int(thick.creamRef[2]))
+                #expect(delta > 45,
+                        "An early-painted satellite at (\(sx),\(sy)) was lost by the end — splatter did not bake/hold (Δ \(delta)).")
+            }
+        }
+
+        // 6. NEW-MARK COUNT exposed (the §6 governor input) — marks are added across the run.
+        #expect(thick.perFrameCounts.count == 180, "Per-frame painted counts not captured for all frames.")
+        #expect(newMarkFrames > 90,
+                "Marks were added on only \(newMarkFrames)/\(deltas.count) frames — splatter/pour not accumulating.")
     }
 
     // MARK: - Pour-line accumulation contact sheet (env-gated eyeball artifact)
@@ -155,7 +251,9 @@ struct SkeinCanvasHoldTest {
         }
         guard let fx = try loadSkeinFixture() else { return }
         // 16:9 — the live viewport shape (aspect 1.777, the FeatureVector default) → isotropic width.
-        let w = 480, h = 270
+        // 960×540 (½ of 1080p) so the fine far-flung satellites read at a fair scale (270p under-samples
+        // the 2–6 px dots that are 8–24 px in the live 1080p path).
+        let w = 960, h = 540
         let dt: Float = 1.0 / 60.0
         // Frames at ~2 / 5 / 10 / 20 s of features.time — a single frame cannot show accumulation.
         let secs: [Float] = [2, 5, 10, 20]
@@ -185,6 +283,45 @@ struct SkeinCanvasHoldTest {
           → skein_contact_sheet.png  +  skein_t02s/05s/10s/20s.png
         """)
         #expect(ordered.count == checkpoints.count, "Missing contact-sheet checkpoints — accumulation run came up short.")
+    }
+
+    // MARK: - Splatter viscosity-sweep contact sheet (env-gated: both poles, crisp)
+
+    @Test("Splatter viscosity-sweep contact sheet (env-gated: SKEIN_VISUAL=1 / RENDER_VISUAL=1)")
+    func test_splatter_viscositySweepContactSheet() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard env["SKEIN_VISUAL"] == "1" || env["RENDER_VISUAL"] == "1" else {
+            print("SkeinCanvasHoldTest: SKEIN_VISUAL/RENDER_VISUAL not set, skipping viscosity sweep")
+            return
+        }
+        guard let fx = try loadSkeinFixture() else { return }
+        let w = 960, h = 540
+        // Independent fresh accumulations (each ~4 s from cream) centred on the viscosity-sweep poles,
+        // so each tile is a near-constant-viscosity demonstration of ONE pole through the live path:
+        //   THIN  (trough ~t12): finer line, MANY fine FAR-flung satellites (ref 03_micro).
+        //   THICK (peak  ~t6):   fatter line/pools, FEWER bigger CLOSER droplets (refs 02 / 06).
+        let poles: [(name: String, startT: Float)] = [("thin", 10.0), ("thick", 4.0)]
+        let frames = 240
+        let last = frames - 1
+        var tiles: [[UInt8]] = []
+        let outDir = try makeOutputDir()
+        for pole in poles {
+            let run = try runPourAccumulation(
+                chromatic: 0, frames: frames, width: w, height: h, aspect: Float(w) / Float(h),
+                startTime: pole.startT, checkpoints: [last], fx: fx)
+            guard let buf = run.checkpointPixels[last] else { continue }
+            tiles.append(buf)
+            try writeBGRAToPNG(buf, w: w, h: h, url: outDir.appendingPathComponent("skein_visc_\(pole.name).png"))
+        }
+        try writeMontage(tiles, tileW: w, tileH: h,
+                         url: outDir.appendingPathComponent("skein_viscosity_sweep.png"))
+        print("""
+        [skein_viscosity_sweep] live marks-on-top path, \(w)×\(h), independent fresh accumulations:
+          output dir: \(outDir.path)
+          poles (startT) = \(poles.map { "\($0.name)@\($0.startT)s" })
+          → skein_viscosity_sweep.png  (thin | thick)  +  skein_visc_thin/thick.png
+        """)
+        #expect(tiles.count == poles.count, "Missing viscosity-sweep tiles — a pole run came up short.")
     }
 
     // MARK: - Fixture load
@@ -238,6 +375,7 @@ struct SkeinCanvasHoldTest {
         var groundCornerFinal: [UInt8]         // final far corner (must == creamRef under chromatic=0)
         var earlyXY: (Int, Int)?               // a texel painted by the first checkpoint
         var earlyStillPaintedFinal: Bool       // that texel still painted at the final frame
+        var perFrameCounts: [Int]              // painted-pixel count per frame (Skein.2 new-mark governor input)
     }
 
     /// Drive the live marks-on-top dispatch path for `frames` frames, advancing features.time by
@@ -246,7 +384,7 @@ struct SkeinCanvasHoldTest {
     /// Mirrors `drawWithMVWarp`'s strandsOnTop branch (Pass 0 skipped; the ground is the clear).
     private func runPourAccumulation(
         chromatic: Float, frames: Int, width: Int, height: Int, aspect: Float, startTime: Float,
-        checkpoints: Set<Int>, fx: SkeinFixture
+        checkpoints: Set<Int>, fx: SkeinFixture, capturePerFrame: Bool = false
     ) throws -> PourResult {
         let device = fx.ctx.device, queue = fx.ctx.commandQueue
         let fbDesc = MTLTextureDescriptor.texture2DDescriptor(
@@ -279,6 +417,7 @@ struct SkeinCanvasHoldTest {
         let sortedCp = checkpoints.sorted()
         var earlyXY: (Int, Int)? = nil
         var finalPixels: [UInt8] = []
+        var perFrameCounts: [Int] = []
 
         for frameIdx in 0..<frames {
             var features = FeatureVector(
@@ -298,6 +437,7 @@ struct SkeinCanvasHoldTest {
 
             let canvas = read(composeTex)
             if frameIdx == 0 { creamRef = pxAt(canvas, 5, 5) }   // far corner — never reached by the painter
+            if capturePerFrame { perFrameCounts.append(countPainted(canvas, cream: creamRef)) }
             if checkpoints.contains(frameIdx) {
                 checkpointPixels[frameIdx] = canvas
                 checkpointCounts.append(countPainted(canvas, cream: creamRef))
@@ -317,7 +457,8 @@ struct SkeinCanvasHoldTest {
         return PourResult(
             checkpointFrames: sortedCp, checkpointCounts: checkpointCounts,
             checkpointPixels: checkpointPixels, finalPixels: finalPixels, creamRef: creamRef,
-            groundCornerFinal: groundCornerFinal, earlyXY: earlyXY, earlyStillPaintedFinal: earlyStill)
+            groundCornerFinal: groundCornerFinal, earlyXY: earlyXY, earlyStillPaintedFinal: earlyStill,
+            perFrameCounts: perFrameCounts)
     }
 
     // MARK: - Pass encoders (mirror the live mv_warp dispatch path)
@@ -467,6 +608,162 @@ struct SkeinCanvasHoldTest {
             if size > largest { largest = size }
         }
         return Float(largest) / Float(total)
+    }
+
+    // MARK: - Pour-line corridor (Skein.2: isolate the LINE from the splatter satellites)
+
+    /// Mirror of `skeinPainterPos` in Skein.metal (the Skein.1 closed-form trajectory). Kept in
+    /// sync by review — the static-source guard asserts the shader still declares `skeinPainterPos`.
+    /// Used ONLY to build the pour-LINE corridor so the Skein.1 continuity invariant can be checked
+    /// on the line alone: Skein.2 adds disconnected SATELLITES by design, so whole-canvas continuity
+    /// is intentionally < 1 now (the line is still gap-free; the satellites are separate components).
+    private static func skeinPainterPos(_ t: Float) -> SIMD2<Float> {
+        let x = 0.5 + 0.300 * sin(0.220 * t + 0.0)
+                    + 0.110 * sin(0.950 * t + 1.7)
+                    + 0.045 * sin(2.300 * t + 4.2)
+        let y = 0.5 + 0.280 * cos(0.190 * t + 2.3)
+                    + 0.120 * cos(1.070 * t + 5.1)
+                    + 0.040 * cos(2.620 * t + 0.9)
+        return SIMD2(x, y)
+    }
+
+    /// Pour-LINE continuity: build a corridor (union of discs of radius `rV` uv-units around the
+    /// densely-sampled trajectory over [t0, t1]) and return the largest-4-connected-component
+    /// fraction of painted pixels INSIDE it, plus the painted-in / painted-outside counts. Far
+    /// satellites (outside the corridor) are excluded, so this is the Skein.1 "no gaps in the line"
+    /// check, preserved under the Skein.2 splatter. (Test runs at aspect 1.0, so uv == fragment q.)
+    private func pourLineCorridor(
+        _ buf: [UInt8], w: Int, h: Int, cream: [UInt8], t0: Float, t1: Float, rV: Float
+    ) -> (continuity: Float, inCorridor: Int, outside: Int) {
+        var corridor = [Bool](repeating: false, count: w * h)
+        let steps = max(1, Int((t1 - t0) * 600.0))   // ~600 samples/s — far finer than the 60 fps line spacing
+        for s in 0...steps {
+            let t = t0 + (t1 - t0) * Float(s) / Float(steps)
+            let p = Self.skeinPainterPos(t)
+            // Render-target row 0 = TOP = clip y +1 = uv.y 1.0, so pixel row → uv.y is FLIPPED.
+            let minX = max(0, Int((p.x - rV) * Float(w)) - 1)
+            let maxX = min(w - 1, Int((p.x + rV) * Float(w)) + 1)
+            let minY = max(0, Int((1.0 - p.y - rV) * Float(h)) - 1)
+            let maxY = min(h - 1, Int((1.0 - p.y + rV) * Float(h)) + 1)
+            guard minX <= maxX, minY <= maxY else { continue }
+            for py in minY...maxY {
+                for px in minX...maxX {
+                    let dx = (Float(px) + 0.5) / Float(w) - p.x
+                    let dy = (1.0 - (Float(py) + 0.5) / Float(h)) - p.y
+                    if dx * dx + dy * dy <= rV * rV { corridor[py * w + px] = true }
+                }
+            }
+        }
+        let cb = Int(cream[0]), cg = Int(cream[1]), cr = Int(cream[2])
+        var painted = [Bool](repeating: false, count: w * h)
+        var inC = 0, outC = 0
+        for idx in 0..<(w * h) {
+            let i = idx * 4
+            if abs(Int(buf[i]) - cb) + abs(Int(buf[i + 1]) - cg) + abs(Int(buf[i + 2]) - cr) > 45 {
+                painted[idx] = true
+                if corridor[idx] { inC += 1 } else { outC += 1 }
+            }
+        }
+        guard inC > 0 else { return (0, 0, outC) }
+        var visited = [Bool](repeating: false, count: w * h)
+        var largest = 0
+        var stack: [Int] = []
+        for start in 0..<(w * h) where painted[start] && corridor[start] && !visited[start] {
+            var size = 0
+            stack.removeAll(keepingCapacity: true)
+            stack.append(start); visited[start] = true
+            while let p = stack.popLast() {
+                size += 1
+                let x = p % w, y = p / w
+                if x > 0     { let q = p - 1; if painted[q] && corridor[q] && !visited[q] { visited[q] = true; stack.append(q) } }
+                if x < w - 1 { let q = p + 1; if painted[q] && corridor[q] && !visited[q] { visited[q] = true; stack.append(q) } }
+                if y > 0     { let q = p - w; if painted[q] && corridor[q] && !visited[q] { visited[q] = true; stack.append(q) } }
+                if y < h - 1 { let q = p + w; if painted[q] && corridor[q] && !visited[q] { visited[q] = true; stack.append(q) } }
+            }
+            if size > largest { largest = size }
+        }
+        return (Float(largest) / Float(inC), inC, outC)
+    }
+
+    /// Skein.2 splatter analysis against the line trajectory [t0,t1].
+    ///  - haloNear/Mid/Far: painted-pixel COUNT in three distance bands OUTSIDE the line corridor
+    ///    (the dense-near → sparse-far satellite-halo signature: near > far).
+    ///  - satelliteComponents: # of disconnected painted blobs (≥2 px) outside the corridor — the
+    ///    "distinct dots, not a merged froth" count (responds to viscosity: thin throws more).
+    ///  - meanSatDist: mean distance (uv-units) of outside-painted pixels from the line — thin paint
+    ///    flings satellites WIDER, so this is the cleanest trajectory-robust viscosity discriminator.
+    ///  - minChannel: smallest single channel over the whole canvas. Paint only brightens cream→white
+    ///    (normal-alpha), so nothing drops below cream's darkest channel → proves NOT additive (no mud).
+    private func splatterHaloAndSatellites(
+        _ buf: [UInt8], w: Int, h: Int, cream: [UInt8], t0: Float, t1: Float, corridorRV: Float
+    ) -> (haloNear: Int, haloMid: Int, haloFar: Int, satellites: Int, meanSatDist: Float, minChannel: Int) {
+        let steps = max(1, Int((t1 - t0) * 400.0))
+        var samples: [SIMD2<Float>] = []
+        samples.reserveCapacity(steps + 1)
+        for s in 0...steps { samples.append(Self.skeinPainterPos(t0 + (t1 - t0) * Float(s) / Float(steps))) }
+        let cb = Int(cream[0]), cg = Int(cream[1]), cr = Int(cream[2])
+        var near = 0, mid = 0, far = 0, minCh = 255
+        var distSum: Float = 0
+        var outside = [Bool](repeating: false, count: w * h)
+        for y in 0..<h {
+            for x in 0..<w {
+                let i = (y * w + x) * 4
+                let b = Int(buf[i]), g = Int(buf[i + 1]), r = Int(buf[i + 2])
+                if b < minCh { minCh = b }; if g < minCh { minCh = g }; if r < minCh { minCh = r }
+                if abs(b - cb) + abs(g - cg) + abs(r - cr) <= 45 { continue }   // not painted
+                // Render-target row 0 = TOP = uv.y 1.0 → flip pixel row to painter uv-space.
+                let ux = (Float(x) + 0.5) / Float(w), uy = 1.0 - (Float(y) + 0.5) / Float(h)
+                var best = Float.greatestFiniteMagnitude
+                for p in samples { let dx = ux - p.x, dy = uy - p.y; let d2 = dx * dx + dy * dy; if d2 < best { best = d2 } }
+                let d = best.squareRoot()
+                if d <= corridorRV { continue }   // the line itself, not a satellite
+                outside[y * w + x] = true
+                distSum += d
+                if d < 0.06 { near += 1 } else if d < 0.11 { mid += 1 } else { far += 1 }
+            }
+        }
+        let outCount = near + mid + far
+        // Count disconnected satellite components (≥2 px, ignoring single-pixel AA specks).
+        var visited = [Bool](repeating: false, count: w * h)
+        var comps = 0
+        var stack: [Int] = []
+        for start in 0..<(w * h) where outside[start] && !visited[start] {
+            var size = 0
+            stack.removeAll(keepingCapacity: true)
+            stack.append(start); visited[start] = true
+            while let p = stack.popLast() {
+                size += 1
+                let x = p % w, y = p / w
+                if x > 0     { let q = p - 1; if outside[q] && !visited[q] { visited[q] = true; stack.append(q) } }
+                if x < w - 1 { let q = p + 1; if outside[q] && !visited[q] { visited[q] = true; stack.append(q) } }
+                if y > 0     { let q = p - w; if outside[q] && !visited[q] { visited[q] = true; stack.append(q) } }
+                if y < h - 1 { let q = p + w; if outside[q] && !visited[q] { visited[q] = true; stack.append(q) } }
+            }
+            if size >= 2 { comps += 1 }
+        }
+        return (near, mid, far, comps, outCount > 0 ? distSum / Float(outCount) : 0, minCh)
+    }
+
+    /// Find a strongly-painted SATELLITE pixel (delta > 80, clearly outside the line corridor) for
+    /// the bake/hold check. Returns nil if none — i.e. no splatter was laid in this window.
+    private func firstSatellitePixel(
+        _ buf: [UInt8], w: Int, h: Int, cream: [UInt8], t0: Float, t1: Float, corridorRV: Float
+    ) -> (Int, Int)? {
+        let steps = max(1, Int((t1 - t0) * 300.0))
+        var samples: [SIMD2<Float>] = []
+        for s in 0...steps { samples.append(Self.skeinPainterPos(t0 + (t1 - t0) * Float(s) / Float(steps))) }
+        let cb = Int(cream[0]), cg = Int(cream[1]), cr = Int(cream[2])
+        for y in 2..<(h - 2) {
+            for x in 2..<(w - 2) {
+                let i = (y * w + x) * 4
+                if abs(Int(buf[i]) - cb) + abs(Int(buf[i + 1]) - cg) + abs(Int(buf[i + 2]) - cr) <= 80 { continue }
+                let ux = (Float(x) + 0.5) / Float(w), uy = 1.0 - (Float(y) + 0.5) / Float(h)   // flip row → uv.y
+                var best = Float.greatestFiniteMagnitude
+                for p in samples { let dx = ux - p.x, dy = uy - p.y; best = min(best, dx * dx + dy * dy) }
+                if best.squareRoot() > corridorRV + 0.012 { return (x, y) }
+            }
+        }
+        return nil
     }
 
     /// Whether any texel is white (the pour colour) — min(B,G,R) ≥ 235.
