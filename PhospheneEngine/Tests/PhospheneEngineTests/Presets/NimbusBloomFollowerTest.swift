@@ -32,6 +32,10 @@
 
 import Testing
 import Metal
+import Foundation
+import CoreGraphics
+import ImageIO
+import UniformTypeIdentifiers
 @testable import Presets
 @testable import Renderer
 import Shared
@@ -226,7 +230,7 @@ struct NimbusBloomFollowerTest {
                               texMgr: TextureManager,
                               state: NimbusState,
                               features: FeatureVector) -> [UInt8]? {
-        let size = 256
+        let size = Self.lobeRenderSize
         let td = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: ctx.pixelFormat, width: size, height: size, mipmapped: false)
         td.usage = [.renderTarget, .shaderRead]
@@ -286,5 +290,163 @@ struct NimbusBloomFollowerTest {
             if luma > lumaThreshold { n += 1 }
         }
         return Float(n) / Float(count)
+    }
+
+    // MARK: - Part C: stem beat-lobes (the band plays the body — NB.5)
+
+    private static let lobeRenderSize = 256
+
+    @Test("each stem heaves the body in its direction; drums punch + brighten; one mass holds")
+    func test_stemLobes() throws {
+        let ctx: MetalContext
+        do { ctx = try MetalContext() } catch {
+            print("NimbusBloomFollowerTest: no Metal context — skipping Part C"); return
+        }
+        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat)
+        guard let nimbus = loader.presets.first(where: { $0.descriptor.name == "Nimbus" }) else {
+            Issue.record("Nimbus preset not found"); return
+        }
+        guard let lib = try? ShaderLibrary(context: ctx),
+              let texMgr = try? TextureManager(context: ctx, shaderLibrary: lib) else {
+            Issue.record("could not build noise textures"); return
+        }
+
+        // Each fixture converges the followers to one regime. All stem energies
+        // sum past the D-019 warmup so the model is in its post-warmup (stem)
+        // path; only the named deviation is hot, so only that lobe fires.
+        let fixtures: [(name: String, stems: StemFeatures)] = [
+            ("baseline", stemFixture()),                          // present body, no lobes
+            ("bloom",    stemFixture(energy: 0.95)),              // big swell, no lobes
+            ("kick",     stemFixture(drumsDev: 1.6)),             // whole-body punch + brightness
+            ("bass",     stemFixture(bassDev: 1.6)),              // heaves DOWN
+            ("vocals",   stemFixture(vocalsDev: 1.6)),            // flares UP
+            ("other",    stemFixture(otherDev: 1.6)),             // swells to the SIDE (right)
+        ]
+        let fv = FeatureVector(bass: 0.5, mid: 0.5, treble: 0.5, time: 3.0, deltaTime: Self.dt)
+
+        var rendered: [String: [UInt8]] = [:]
+        var followers: [String: NimbusStateGPU] = [:]
+        for fixture in fixtures {
+            guard let state = NimbusState(device: ctx.device) else {
+                Issue.record("NimbusState alloc failed"); return
+            }
+            // Converge: one big-dt tick snaps every follower to its sustained
+            // target; small ticks hold it and advance flow.
+            state.tick(deltaTime: 2.0, features: fv, stems: fixture.stems)
+            for _ in 0..<20 { state.tick(deltaTime: Self.dt, features: fv, stems: fixture.stems) }
+            followers[fixture.name] = NimbusStateGPU(
+                bloom: state.bloom,
+                flowPhase: state.flowPhase,
+                kickPunch: state.kickPunch,
+                bassLobe: state.bassLobe,
+                vocalsLobe: state.vocalsLobe,
+                otherLobe: state.otherLobe,
+                padA: 0,
+                padB: 0)
+            guard let px = renderNimbus(nimbus, ctx: ctx, texMgr: texMgr, state: state, features: fv) else {
+                Issue.record("render failed for \(fixture.name)"); return
+            }
+            rendered[fixture.name] = px
+        }
+
+        // ── Followers respond to the right stem only ─────────────────────────
+        let kf = followers["kick"]!, bf = followers["bass"]!
+        let vf = followers["vocals"]!, of = followers["other"]!
+        #expect(kf.kickPunch > 0.7 && kf.bassLobe < 0.1 && kf.vocalsLobe < 0.1 && kf.otherLobe < 0.1,
+                "drums fixture should fire kickPunch only: \(kf)")
+        #expect(bf.bassLobe > 0.7 && bf.kickPunch < 0.1, "bass fixture should fire bassLobe only: \(bf)")
+        #expect(vf.vocalsLobe > 0.7 && vf.kickPunch < 0.1, "vocals fixture should fire vocalsLobe only: \(vf)")
+        #expect(of.otherLobe > 0.7 && of.kickPunch < 0.1, "other fixture should fire otherLobe only: \(of)")
+
+        // ── The render moves the right way ───────────────────────────────────
+        let size = Self.lobeRenderSize
+        let base = bodyCentroid(rendered["baseline"]!, size: size)
+        let bass = bodyCentroid(rendered["bass"]!, size: size)
+        let vocals = bodyCentroid(rendered["vocals"]!, size: size)
+        let other = bodyCentroid(rendered["other"]!, size: size)
+
+        print(String(format: "[NimbusLobes] baseline c=(%.1f,%.1f) cover=%.3f | bass row=%.1f vocals row=%.1f other col=%.1f",
+                     base.row, base.col, coverage(rendered["baseline"]!, lumaThreshold: 0.12),
+                     bass.row, vocals.row, other.col))
+
+        // Body-space −y (bass, down) → screen DOWN = larger row; +y (vocals, up)
+        // → smaller row; +x (other, side) → larger col. Margins are loose (the
+        // lobe magnitudes are tunable); we assert direction, not amount.
+        #expect(bass.row > base.row + 2.0, "bass did not heave the body DOWN (row \(bass.row) vs base \(base.row))")
+        #expect(vocals.row < base.row - 2.0, "vocals did not flare the body UP (row \(vocals.row) vs base \(base.row))")
+        #expect(other.col > base.col + 2.0, "other did not swell the body SIDEways (col \(other.col) vs base \(base.col))")
+
+        // ── Drums = whole-body punch: brighter AND bigger than baseline ─────
+        let baseLuma = meanLuma(rendered["baseline"]!), kickLuma = meanLuma(rendered["kick"]!)
+        let baseCover = coverage(rendered["baseline"]!, lumaThreshold: 0.12)
+        let kickCover = coverage(rendered["kick"]!, lumaThreshold: 0.12)
+        #expect(kickLuma > baseLuma * 1.1, "kick did not brighten the body (\(kickLuma) vs \(baseLuma))")
+        #expect(kickCover > baseCover, "kick did not inflate the body (\(kickCover) vs \(baseCover))")
+
+        // ── One mass holds: every fixture renders a present, non-black body ──
+        for fixture in fixtures {
+            let cov = coverage(rendered[fixture.name]!, lumaThreshold: 0.12)
+            #expect(cov > 0.03, "\(fixture.name) body vanished (coverage \(cov)) — fragmentation or collapse")
+        }
+
+        // Optional contact sheet for the eye (gated): 6 PNGs to /tmp/nimbus_nb5.
+        if ProcessInfo.processInfo.environment["NB5_VISUAL"] == "1" {
+            let dir = URL(fileURLWithPath: "/tmp/nimbus_nb5")
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            for fixture in fixtures {
+                writePNG(rendered[fixture.name]!, size: size,
+                         to: dir.appendingPathComponent("nimbus_\(fixture.name).png"))
+            }
+            print("[NimbusLobes] wrote 6 PNGs to \(dir.path)")
+        }
+    }
+
+    /// Build a StemFeatures with a baseline energy on every stem (so the D-019
+    /// warmup is satisfied → post-warmup stem path) and one hot deviation.
+    private func stemFixture(energy: Float = 0.5, drumsDev: Float = 0, bassDev: Float = 0,
+                             vocalsDev: Float = 0, otherDev: Float = 0) -> StemFeatures {
+        var s = StemFeatures.zero
+        s.drumsEnergy = energy; s.bassEnergy = energy
+        s.vocalsEnergy = energy; s.otherEnergy = energy
+        s.drumsEnergyDev = drumsDev; s.bassEnergyDev = bassDev
+        s.vocalsEnergyDev = vocalsDev; s.otherEnergyDev = otherDev
+        return s
+    }
+
+    /// Luma-weighted centroid (row, col) of body pixels (luma > 0.12), in pixels.
+    private func bodyCentroid(_ pixels: [UInt8], size: Int) -> (row: Float, col: Float) {
+        var sumW: Float = 0, sumR: Float = 0, sumC: Float = 0
+        for y in 0..<size {
+            for x in 0..<size {
+                let i = (y * size + x) * 4
+                let b = Float(pixels[i + 0]), g = Float(pixels[i + 1]), r = Float(pixels[i + 2])
+                let luma = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
+                if luma > 0.12 {
+                    sumW += luma
+                    sumR += luma * Float(y)
+                    sumC += luma * Float(x)
+                }
+            }
+        }
+        guard sumW > 0 else { return (Float(size) / 2, Float(size) / 2) }
+        return (sumR / sumW, sumC / sumW)
+    }
+
+    private func writePNG(_ bgra: [UInt8], size: Int, to url: URL) {
+        var rgba = [UInt8](repeating: 0, count: bgra.count)
+        for i in stride(from: 0, to: bgra.count, by: 4) {
+            rgba[i + 0] = bgra[i + 2]; rgba[i + 1] = bgra[i + 1]
+            rgba[i + 2] = bgra[i + 0]; rgba[i + 3] = bgra[i + 3]
+        }
+        let cs = CGColorSpaceCreateDeviceRGB()
+        guard let provider = CGDataProvider(data: Data(rgba) as CFData),
+              let img = CGImage(width: size, height: size, bitsPerComponent: 8, bitsPerPixel: 32,
+                                bytesPerRow: size * 4, space: cs,
+                                bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+                                provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent),
+              let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)
+        else { return }
+        CGImageDestinationAddImage(dest, img, nil)
+        CGImageDestinationFinalize(dest)
     }
 }
