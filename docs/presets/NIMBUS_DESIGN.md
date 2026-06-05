@@ -265,6 +265,34 @@ NB.3.2 added the detail-aware **cone self-shadow** (a ~6-step secondary light-ma
 
 **Finding.** p50 = **3.27 ms @ 1080p — 0.47× the 7 ms Tier-2 ceiling, WITHIN**, ~3.7 ms headroom for NB.4 (energy) → NB.6 (mood). The rise from NB.2's 1.65 ms is dominated by (a) the NB.3.2 cone self-shadow (the flagged unknown — now measured and comfortably affordable) and (b) the +15% focal zoom putting more body-pixels on screen, each paying the full march. The half-res + MetalFX lever (§6) remains untapped reserve. **No perf action needed at NB.3.3; NB.8 sets `complexity_cost.tier2` from this profile.**
 
+### 6.4 NB.4 Energy bloom measurement (2026-06-05)
+
+NB.4 added the Energy coupling — a CPU-side fast-attack/slow-release follower
+(`NimbusState`) → `bloom`, flushed to a 16-byte `NimbusStateGPU` at fragment
+buffer(6). The shader consumes `bloom` for body extent (uniform `bodyScale`
+inflation), luminosity (`bright` scale on the back-key + ambient), and
+`flowPhase` for the gas drift (replacing wall-clock `features.time`), plus the
+non-black haze floor. The probe primes the follower to the steady-mid converged
+bloom (~0.5 → `bodyScale` ≈ 0.98 ≈ the NB.3 body size) so this number is
+directly comparable to §6.3. Same harness/fixture (`NimbusBudgetProbeTests`,
+`NIMBUS_BUDGET=1`, the slot-6 buffer now bound for parity — FA #66):
+
+| Variant | min | **p50** | mean | p95 | max |
+|---|---|---|---|---|---|
+| **Full 1920×1080 — NB.4 steady-mid (shipped)** | 2.64 | **2.66** | 2.67 | 2.72 | 3.03 |
+| Half 960×540 — NB.4 (march only) | 0.79 | 0.92 | 0.93 | 1.06 | 1.62 |
+
+(All ms. Dev Mac mini, Apple Silicon.)
+
+**Finding.** p50 = **2.66 ms @ 1080p — 0.38× the 7 ms Tier-2 ceiling, WITHIN**,
+~4.3 ms headroom for NB.6 (mood). The Energy follower is **CPU-side and adds no
+GPU cost**; the shader's added work is a handful of multiplies (`bodyScale`,
+`bright`, the haze term), negligible against the march. The number sits within
+run-to-run thermal variance of §6.3's 3.27 ms (the steady-mid body at bloom ~0.5
+is ~0.98× the NB.3 size). **Worst case is full bloom** (`bodyScale` 1.16 →
+body projected area ~1.35× → ~3.6 ms estimated), still ~0.51× the ceiling. No
+perf action at NB.4; the half-res + MetalFX lever (§6) remains untapped reserve.
+
 ---
 
 ## 7. Phased implementation sketch (Gate 5)
@@ -280,7 +308,7 @@ Increment IDs in house style (`NB.N`), small commits per logical concern (`[NB.N
   - **NB.3.2:** Beer-Powder × HG × ~6-step cone self-shadow march → luminous backlit billows. Verify against the packet.
   - **NB.3.3 — fidelity uplift (Matt-directed, reference-aligned, backlit model only — NO emission):** closed the three reference gaps — coverage-gated interior billow contrast (ref 02, soft rim ref 03), radial denser core for substance (ref 01), +15% on-screen size (focal zoom 1.25→1.44), forward-scatter silver-lining glow + brightness (ref 08). An egg-core / internal-emission / "incandescent" exploration was **reverted** as a divergence from the references (§5.2 note). Budget §6.3.
   - Gate: ✅ matches the reference packet (cool gaseous body, billows, glow, feathered edges) at budget — Matt-approved on the render-vs-packet contact sheet 2026-06-05.
-- **NB.4 — Energy: bloom + flow + silence floor.** `NimbusState` energy follower → `bloom` → size + brightness + flow rate; the dim/small/slow silence floor (D-037).
+- **NB.4 — Energy: bloom + flow + silence floor. ✅ DONE 2026-06-05 (pending Matt's live manual-validation sign-off on the musical feel).** `NimbusState` (Swift, `@unchecked Sendable` + NSLock) runs a fast-attack (~150 ms) / slow-release (~400 ms) follower over `(bass_att_rel+mid_att_rel+treb_att_rel)/3` (D-026) → `bloom`, flushed to a 16-byte `NimbusStateGPU` at fragment buffer(6); `flowPhase` accumulated in `Double` (long-accumulator rule) at a bloom-modulated rate. The shader consumes `bloom` for body extent (uniform `bodyScale` inflation, +45 % floor→peak), luminosity (`bright` scale on the back-key + ambient, +80 % floor→peak) and `flowPhase` for the gas drift (1×→3.5×, replacing wall-clock `features.time`). Silence floor = the NB.3 backlit look, smaller/dimmer/slower over a faint non-black cool haze (D-037 — a settle, not a collapse). **No beat, no mood** (verified by source inspection — the shader reads no `beat_*` and no valence/arousal). Wired live (`setDirectPresetFragmentBuffer` + `setMeshPresetTick`); `reset()` on preset apply + track change. Tests: `NimbusBloomFollowerTest` (multi-frame follower attack/release feel + render-tracks-bloom through the live direct dispatch path), `PresetVisualReviewTests` (silence/mid/energy fixtures), `NimbusBudgetProbeTests` (slot-6 bound). Budget §6.4 (p50 2.66 ms). Gate: ✅ the contact sheet shows the body blooms bigger/brighter/faster with energy and settles small/dim/slow (non-black) at silence; backlit NB.3 look preserved across the range. **Matt's live ear/eye sign-off on "feels married to the music" is the remaining gate (non-bypassable).**
 - ~~**NB.5 — Pulse.**~~ **CUT** — nothing on the beat (§1.3).
 - **NB.6 — Mood.** Valence → colour cool↔warm; arousal → flow agitation. Smoothed in state (FA #25).
 - ~~**NB.7 — Page.**~~ **CUT** — no section reorganisation in v1 (§1.3).

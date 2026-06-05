@@ -28,8 +28,8 @@ Nimbus needs **one small engine touch** (Matt-approved 2026-06-04): a baked **Pe
 | **NB.0** | Reference lock | doc | — | `CheckVisualReferences` green; you sign off trait/anti-ref set *(substantially done)* |
 | **NB.1** | Macro maquette | preset | NB.0 | Eyeball (gate-before-gate) **+ budget gate**: one body reads; macro-only ≤ 7 ms Tier 2 |
 | **NB.2** ✅ | Meso/micro detail | preset | NB.1 | *Shipped, but look superseded by NB.3 (Perlin-FBM can't make billows). Test parity + debug views + budget probe reused.* |
-| **NB.3** | The look (cloud-port) | preset + 1 engine touch | NB.2 | Contact sheet vs the packet: cool billowing luminous backlit gas *(**highest risk — the whole fidelity fight**)* |
-| **NB.4** | Energy: bloom + flow + silence | preset | NB.3 | Bloom + flow track continuous energy; silence non-black; **nothing on the beat** |
+| **NB.3** ✅ | The look (cloud-port) | preset + 1 engine touch | NB.2 | *Shipped 2026-06-05, Matt-approved on the contact sheet: cool billowing luminous backlit gas.* |
+| **NB.4** ✅ | Energy: bloom + flow + silence | preset | NB.3 | *Shipped 2026-06-05 — bloom→size/brightness/flow + non-black silence floor; nothing on the beat. Pending Matt's live musical-feel sign-off.* |
 | ~~**NB.5**~~ | ~~Pulse (embers)~~ | — | — | ❌ **CUT** — nothing on the beat (DESIGN §1.3) |
 | **NB.6** | Mood | preset | NB.4 | Valence → cool/warm, arousal → flow-agitation visible across mood fixtures |
 | ~~**NB.7**~~ | ~~Page (reorganisation)~~ | — | — | ❌ **CUT** — no section reorganisation in v1 (DESIGN §1.3) |
@@ -153,6 +153,8 @@ Execution order is top-to-bottom and largely linear now: **NB.3 (the look) → N
 - Replay / acceptance: size + brightness + flow visibly track continuous energy (loud → bigger/brighter/faster, sparse → smaller/dimmer/slower) with fast-attack/slow-release momentum; **no `beat_*` read** (source-verified).
 - Silence fixture: small dim slowly-drifting body + haze, measurably **non-black**; flow eased.
 - Same track → same starting body (seed determinism).
+
+**Status: ✅ done (2026-06-05) — pending Matt's live manual-validation sign-off on the musical feel.** `NimbusState.swift` (`Sources/Presets/Nimbus/`) fast-attack/slow-release follower → `bloom`; `flowPhase` (Double accumulator) at a bloom-modulated rate; 16-byte `NimbusStateGPU` at fragment buffer(6). Shader consumes `bloom` for body extent (uniform `bodyScale` inflation, +45 % floor→peak) + luminosity (`bright`, +80 %) and `flowPhase` for the gas drift (1×→3.5×); silence floor = the NB.3 backlit look smaller/dimmer/slower over a faint non-black cool haze (D-037). Wired live (`setDirectPresetFragmentBuffer` + `setMeshPresetTick`); `reset()` on preset apply + track change. **No beat / no mood** (source-verified). Gates: `NimbusBloomFollowerTest` (multi-frame follower feel + render-tracks-bloom through the live direct path — the firing-evidence diagnostic), `PresetVisualReviewTests` silence/mid/energy fixtures, `NimbusBudgetProbeTests` slot-6 bind; 1380 engine tests green; SwiftLint clean; app build clean; count 19; budget p50 2.66 ms (NIMBUS_DESIGN §6.4). First two done-when met (contact sheet + follower test). The third (seed determinism) is met trivially — every track starts from the same `flowPhase=0` body — **but per-track-DISTINCT seeding (re-seed the gas from track identity, NB.1 SHA hook) was DEFERRED**: it requires threading track identity into `NimbusState` init (broader wiring than the prompt's Energy-only scope), and the continuous flow re-diverges the body within seconds regardless. **PresetSessionReplay route registration also DEFERRED** — the follower test already supplies per-route firing evidence; replay is most useful against a real session (the manual-validation step). Both fold naturally into NB.6 (mood adds per-track colour variation + the replay pass against a real mood session).
 
 ---
 
