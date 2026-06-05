@@ -2,7 +2,7 @@
   "name": "Nimbus",
   "family": "volumetric",
   "duration": 60,
-  "description": "A single coherent mass of glowing cool gas in a black void that moves with the music — a single-pass volumetric single-scatter march. Energy blooms the body bigger/brighter and flows the gas faster; mood colours it cool↔warm; nothing fires on the beat. (Look being rebuilt on the ported HZD/Nubis cloud technique — NB.3; audio coupling NB.4+.)",
+  "description": "A single coherent mass of glowing cool gas in a black void that moves with the music — a single-pass volumetric single-scatter march. The band plays the body: drums punch and brighten the whole mass, bass/lead/other heave it down/up/sideways, broadband energy blooms it bigger and brighter and flows the gas faster, and mood shifts its colour cool↔warm. First volumetric-family preset.",
   "author": "Matt",
   "passes": [],
   "fragment_function": "nimbus_fragment",
