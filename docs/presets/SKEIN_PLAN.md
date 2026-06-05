@@ -24,7 +24,8 @@ Companion design doc: `SKEIN_pollock_preset_architecture.md` (becomes the seed f
 |---|---|---|---|---|
 | **Skein.0** | Reference lock | doc | — | `CheckVisualReferences` green; you sign off the trait/anti-ref set |
 | **Skein.ENGINE.1** | Canvas-hold accumulation path | engine | — | Regression: all goldens byte-identical; hold-persistence test |
-| **Skein.1** | Canvas + pour spike | preset | ENGINE.1 | Eyeball (gate-before-the-gate): does a skein hold + read as paint? |
+| **Skein.ENGINE.1.1** | Per-preset marks-on-top + cream ground (D-143) | engine | ENGINE.1 | Regression byte-identical (DB/FM + all mv_warp); per-preset marks-on-top test green; Skein renders live |
+| **Skein.1** | Canvas + pour spike | preset | ENGINE.1.1 | Eyeball (gate-before-the-gate): does a skein hold + read as paint? |
 | **Skein.2** | Splatter morphology + viscosity | preset | Skein.1 | Harness contact sheet: reads as Pollock, not particle-fountain |
 | **Skein.3** | Stem palette + full emission routing | preset | Skein.2 | Harness + replay registration; routing is legible |
 | **Skein.ENGINE.2** | Wetness channel | engine | — (land before Skein.4) | Regression: byte-identical for others; stamp+decay test |
@@ -80,17 +81,18 @@ Execution order is top-to-bottom. ENGINE.2 is shown near Skein.4 because that's 
 ---
 
 ### Skein.1 — Canvas + pour spike
-**preset · depends on: ENGINE.1 · gate: eyeball (gate-before-the-gate)**
+**preset · depends on: ENGINE.1.1 · gate: eyeball (gate-before-the-gate)**
 
 **Goal.** A single white pour line traced by a wandering painter, accumulating on a cream canvas. No audio routing yet. If a persistent skein does not hold and read as *paint*, the concept stops here.
+
+> **Moved to Skein.ENGINE.1.1 (D-143):** the marks-on-top wiring (the per-preset `<prefix>_geometry_*` overlay path, draw-params/chromatic/comp via the `marks` block) and the **base cream-canvas fill on apply/reset** (per-preset `canvas_clear`) are already done and gated byte-identical. Skein already **renders live** (cream ground + a held test disc through the overlay). Skein.1 is now pure preset work: replace the static test disc with the wandering painter's swept-capsule pour.
 
 **Scope.**
 - `SkeinState.swift` (painter trajectory: position, velocity, base-path phase via curl-noise / incommensurate sinusoids; per-frame tick) — the established `*State.swift` pattern.
 - Establish a **seed hook** on the painter (fixed seed acceptable for the spike; audit whether the track SHA-256 from `PersistentStemCache` is reachable by preset state on apply — full wiring deferred to Skein.3).
-- Base cream-canvas fill on apply/reset.
-- Pour shader: a **swept capsule** from `painter_prev → painter_now`, composited normal-alpha onto the held canvas (the strands-on-top brush).
+- Replace the ENGINE.1.1 static test disc in `skein_geometry_*` with the **swept capsule** from `painter_prev → painter_now` (the moving locus accumulates a continuous looping line on the held canvas via the already-wired overlay). Marks drawn once as the painter moves keep their AA (unlike the static test disc, which is hard-edged for idempotent redraw).
 - Coverage diagnostic (% painted) + painter-trajectory debug overlay.
-- `Skein.json`: `passes: ["direct", "mv_warp"]`, family `painterly`, `certified: false`, canvas-hold params from ENGINE.1.
+- `Skein.json`: `passes: ["direct", "mv_warp"]`, family `painterly`, `certified: false`, canvas-hold + `marks` block from ENGINE.1 / ENGINE.1.1 (D-143).
 
 **Out of scope / Do NOT.** No splatter, no filaments, no viscosity, no stems, no colour beyond white, no wetness, no mood/structure. Do NOT add audio routing.
 
