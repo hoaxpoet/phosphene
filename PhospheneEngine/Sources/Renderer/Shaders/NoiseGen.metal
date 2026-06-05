@@ -87,6 +87,40 @@ static inline float ng_worley2D(float2 p) {
     return clamp(minDist, 0.0, 1.0);
 }
 
+/// Tileable 3D Worley (cellular) F1 distance, returned in [0, 1].
+///
+/// Tiles seamlessly at `period`: the per-cell jitter is hashed from the cell id
+/// wrapped by `fmod(., period)`, while the seed point uses the un-wrapped cell
+/// coordinate, so a sample at `p≈0` and `p≈period` see seeds an exact `period`
+/// apart and produce identical distances. 3×3×3 neighbourhood (generated once at
+/// startup, so the 27-cell cost is irrelevant). Inverted (`1 - worley`) gives the
+/// bright billowing clumps the Perlin-Worley remap needs.
+static inline float ng_worley3D(float3 p, float period) {
+    float3 cell = floor(p);
+    float minDist = 1.0e9;
+    for (int z = -1; z <= 1; z++) {
+        for (int y = -1; y <= 1; y++) {
+            for (int x = -1; x <= 1; x++) {
+                float3 n = cell + float3(x, y, z);
+                float3 wrapped = fmod(n + period, period);       // tile the cell id
+                float3 jitter = float3(
+                    ng_hash3(wrapped),
+                    ng_hash3(wrapped + float3(13.7, 5.3, 9.1)),
+                    ng_hash3(wrapped + float3(27.1, 3.3, 41.9)));
+                float3 point = n + jitter;                       // seed uses un-wrapped n
+                minDist = min(minDist, length(p - point));
+            }
+        }
+    }
+    return clamp(minDist, 0.0, 1.0);
+}
+
+/// Linear remap of `v` from [oldMin, oldMax] onto [newMin, newMax] (HZD/Nubis).
+static inline float ng_remap(float v, float oldMin, float oldMax,
+                             float newMin, float newMax) {
+    return newMin + (v - oldMin) / (oldMax - oldMin) * (newMax - newMin);
+}
+
 // MARK: - FBM Helper
 
 /// 4-octave FBM over ng_valueNoise2D.
@@ -156,6 +190,45 @@ kernel void gen_perlin_3d(
     float n = ng_fbm3D(uvw * period, period);
 
     out.write(float4(n, 0.0, 0.0, 1.0), gid);
+}
+
+/// Generate the tileable 3D **Perlin-Worley** base-shape texture into an
+/// `.rgba8Unorm` 3D texture — the HZD / "Nubis" volumetric-cloud noise. Perlin
+/// alone reads as soft, formless cloud (NB.2's blob); the cauliflower BILLOWS
+/// come from remapping a billowy Perlin FBM by inverted Worley clumps.
+///
+///   R — Perlin-Worley base (the billow shape — the body's lobes read from this)
+///   G — inverted Worley FBM, frequency ×1   ╮ detail-erosion octaves: carve the
+///   B — inverted Worley FBM, frequency ×2   │ billow edges into finer structure
+///   A — inverted Worley FBM, frequency ×4   ╯ (consumed by Nimbus's density build, NB.3.1)
+///
+/// - texture(0): write target (3D `.rgba8Unorm`)
+/// - buffer(0):  `texSize` — cube edge length in pixels (64)
+kernel void gen_perlin_worley_3d(
+    texture3d<float, access::write> out [[texture(0)]],
+    constant uint&                  texSize [[buffer(0)]],
+    uint3                           gid [[thread_position_in_grid]])
+{
+    if (gid.x >= texSize || gid.y >= texSize || gid.z >= texSize) { return; }
+
+    float3 uvw = (float3(gid) + 0.5) / float(texSize);
+    const float period = 4.0;
+
+    // Billowy Perlin FBM: |2·fbm − 1| ridges the smooth FBM into creased lobes.
+    float perlin        = ng_fbm3D(uvw * period, period);     // [0,1]
+    float billowyPerlin = abs(perlin * 2.0 - 1.0);            // [0,1], ridged
+
+    // Inverted Worley FBM at increasing frequencies (bright clumps).
+    float w0 = 1.0 - ng_worley3D(uvw * period,        period);        // ×1
+    float w1 = 1.0 - ng_worley3D(uvw * period * 2.0,  period * 2.0);  // ×2
+    float w2 = 1.0 - ng_worley3D(uvw * period * 4.0,  period * 4.0);  // ×4
+    float worleyFBM = w0 * 0.625 + w1 * 0.25 + w2 * 0.125;
+
+    // Perlin-Worley: expand the billowy Perlin by the Worley clumps (Schneider,
+    // "The Real-time Volumetric Cloudscapes of Horizon: Zero Dawn", SIGGRAPH 2015).
+    float pw = clamp(ng_remap(billowyPerlin, worleyFBM - 1.0, 1.0, 0.0, 1.0), 0.0, 1.0);
+
+    out.write(float4(pw, w0, w1, w2), gid);
 }
 
 /// Generate a 4-channel RGBA FBM texture into an `.rgba8Unorm` target.

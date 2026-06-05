@@ -6,7 +6,7 @@
 // Texture layout (matches preamble declarations):
 //   texture(4) noiseLQ     — 256²  .r8Unorm   tileable Perlin-like FBM
 //   texture(5) noiseHQ     — 1024² .r8Unorm   tileable Perlin-like FBM (high detail)
-//   texture(6) noiseVolume — 64³   .r8Unorm   tileable 3D FBM (volumetric clouds, fog)
+//   texture(6) noiseVolume — 64³   .rgba8Unorm tileable 3D Perlin-Worley (HZD/Nubis cloud base; R=billows, GBA=Worley detail)
 //   texture(7) noiseFBM    — 1024² .rgba8Unorm R=Perlin, G=shifted, B=Worley, A=curl
 //   texture(8) blueNoise   — 256²  .r8Unorm   IGN dither (removes banding)
 //
@@ -36,7 +36,9 @@ public final class TextureManager: @unchecked Sendable {
     /// 1024×1024 tileable Perlin-like FBM, `.r8Unorm`. High-detail surfaces.
     public let noiseHQ: MTLTexture
 
-    /// 64×64×64 tileable 3D FBM, `.r8Unorm`. Volumetric clouds and fog.
+    /// 64×64×64 tileable 3D **Perlin-Worley**, `.rgba8Unorm` — the HZD / "Nubis"
+    /// volumetric-cloud base-shape noise. R = Perlin-Worley billows; G/B/A =
+    /// inverted Worley FBM at ×1/×2/×4 for detail erosion. (Sole consumer: Nimbus.)
     public let noiseVolume: MTLTexture
 
     /// 1024×1024 RGBA noise, `.rgba8Unorm`.
@@ -57,7 +59,7 @@ public final class TextureManager: @unchecked Sendable {
     /// - Parameters:
     ///   - context: Shared Metal context (device + command queue).
     ///   - shaderLibrary: Compiled library containing the `gen_perlin_2d`,
-    ///     `gen_perlin_3d`, `gen_fbm_rgba`, and `gen_blue_noise` compute kernels.
+    ///     `gen_perlin_worley_3d`, `gen_fbm_rgba`, and `gen_blue_noise` compute kernels.
     /// - Throws: `TextureManagerError` if any texture or pipeline state cannot
     ///   be created, or if the GPU reports an error during generation.
     public init(context: MetalContext, shaderLibrary: ShaderLibrary) throws {
@@ -68,7 +70,7 @@ public final class TextureManager: @unchecked Sendable {
         guard
             let lq = TextureManager.make2D(device: device, size: 256, format: .r8Unorm),
             let hq = TextureManager.make2D(device: device, size: 1024, format: .r8Unorm),
-            let vol = TextureManager.make3D(device: device, size: 64, format: .r8Unorm),
+            let vol = TextureManager.make3D(device: device, size: 64, format: .rgba8Unorm),
             let fbm = TextureManager.make2D(device: device, size: 1024, format: .rgba8Unorm),
             let blue = TextureManager.make2D(device: device, size: 256, format: .r8Unorm)
         else {
@@ -84,7 +86,7 @@ public final class TextureManager: @unchecked Sendable {
         // ── 2. Build compute pipeline states ───────────────────────────────
         guard
             let fn2D   = lib.makeFunction(name: "gen_perlin_2d"),
-            let fn3D   = lib.makeFunction(name: "gen_perlin_3d"),
+            let fn3D   = lib.makeFunction(name: "gen_perlin_worley_3d"),
             let fnFBM  = lib.makeFunction(name: "gen_fbm_rgba"),
             let fnBlue = lib.makeFunction(name: "gen_blue_noise")
         else {
@@ -138,7 +140,7 @@ public final class TextureManager: @unchecked Sendable {
 
         logger.info("""
             TextureManager: 5 noise textures generated \
-            (noiseLQ 256², noiseHQ 1024², noiseVolume 64³, noiseFBM 1024², blueNoise 256²)
+            (noiseLQ 256², noiseHQ 1024², noiseVolume 64³ Perlin-Worley RGBA, noiseFBM 1024², blueNoise 256²)
             """)
     }
 
