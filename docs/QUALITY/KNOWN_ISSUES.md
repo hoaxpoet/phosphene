@@ -27,7 +27,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 **Severity:** P2 (silently weakens the canonical D-026 Layer-2 "above-average" motion driver for every preset that consumes the positive deviation primitives, on every capture path — not a crash, but a load-bearing-design-doesn't-do-what-it-says issue).
 **Domain tag:** dsp.beat (deviation-primitive derivation)
-**Status:** Open — diagnosed, not yet scoped. Surfaced during the BUG-025 A/B correction. **Re-confirmed 2026-06-05 (Nimbus NB.10 r1.6):** the same wrong "centres at 0.5" assumption mis-calibrated Nimbus's `bloom` (stem-energy = 3 AGC bands summed, centres ~0.30 not 0.5 → tiny bodies on normal music). Nimbus was fixed with a local recalibration, but this is the second preset bitten by the system-wide root cause — a normalisation fix here (make the AGC produce a true 0.5 centre per band/stem) would let every preset calibrate against a real 0.5 and is the proper permanent fix. Candidate for its own project (cf. the beat-grid D-145 pattern).
+**Status:** Open — **AGC2.1 measured 2026-06-05** (evidence reproduced + expanded on 4 real sessions, both paths; see the evidence-refresh block below and [`docs/diagnostics/AGC2_1_DEVIATION_CENTRING_2026-06-05.md`](../diagnostics/AGC2_1_DEVIATION_CENTRING_2026-06-05.md)); **awaiting the AGC2.2 decision gate** (a/b/c/split, Matt's call). Surfaced during the BUG-025 A/B correction. **Re-confirmed 2026-06-05 (Nimbus NB.10 r1.6):** the same wrong "centres at 0.5" assumption mis-calibrated Nimbus's `bloom` (stem-energy = 3 AGC bands summed, centres ~0.30 not 0.5 → tiny bodies on normal music). Nimbus was fixed with a local recalibration, but this is the second preset bitten by the system-wide root cause — a normalisation fix here (make the AGC produce a true 0.5 centre per band/stem) would let every preset calibrate against a real 0.5 and is the proper permanent fix. Candidate for its own project (cf. the beat-grid D-145 pattern).
 **Introduced:** D-026 / MV-1 (the deviation-primitive design). The fixed 0.5 pivot has always assumed each band's AGC-normalised value centres at 0.5; it doesn't.
 **Resolved:** —
 
@@ -82,6 +82,29 @@ When resolved:
 - (c) **Document `*Dev` as "rare strong-transient only" and steer preset authors to signed `*Rel`** — no engine change; the Dragon Bloom 2026-06-02 re-tune already does this (uses signed `bass_rel`, not `bass_dev`). Lowest risk; makes the limitation explicit rather than fixing it.
 
 Recommend deciding between (a/b/c) with Matt before any implementation — this is the structural issue the BUG-025 misdiagnosis was pointing at, and it deserves a deliberate call, not a rushed fix.
+
+### AGC2.1 evidence refresh (2026-06-05)
+
+The two sessions named under "Session artifacts" above (`2026-06-01T22-37-01Z`,
+`2026-06-02T01-12-51Z`) **no longer exist on disk**; AGC2.1 re-measured on 4 current sessions
+across both paths and 4 spectral classes. Harness: `tools/agc2/measure_deviation_centring.py`.
+Full tables: [`docs/diagnostics/AGC2_1_DEVIATION_CENTRING_2026-06-05.md`](../diagnostics/AGC2_1_DEVIATION_CENTRING_2026-06-05.md).
+
+Three findings sharpen the original entry:
+
+1. **Manifestation A is broader than the bass-only headline.** `bassDev` fires 2–8 % of active
+   frames, but **`midDev`/`trebDev` fire ~0 % on every session, both paths — including a genuinely
+   mid-rich acoustic track (Elliott Smith, mid p50 0.07) and a treble-rich jazz track (Mingus, mid
+   p50 0.10, cymbals/horns).** The mid band's centre rises with spectral focus but never approaches
+   0.5, so the entire positive mid/treble deviation channel is dead catalog-wide. Structural (total-
+   energy AGC pins non-bass bands below 0.5 regardless of genre), not genre-correlated.
+2. **Manifestation B splits.** Raw `{stem}Energy` centres ~0.25–0.45 (≠ 0.5) and bites consumers
+   that read it directly (Nimbus bloom). But `{stem}EnergyDev` fires **56–77 %** — the stem
+   deviation path uses a **per-stem EMA pivot** (`StemAnalyzer.swift:277-298`), not the fixed 0.5,
+   so it self-centres and is **already healthy**. Only the raw-energy-0.5 assumption needs handling.
+3. **The working pattern already ships in-codebase**: the stem path (per-element EMA pivot, alive)
+   vs the band path (fixed-0.5 pivot, dead) sit side by side. Fixing A = bringing the band path in
+   line with the stem path. This is the (b)-leaning evidence; the call is Matt's at AGC2.2.
 
 ### Related
 
