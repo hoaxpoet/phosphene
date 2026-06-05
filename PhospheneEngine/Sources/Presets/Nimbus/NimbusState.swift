@@ -1,41 +1,43 @@
-// NimbusState — Per-preset world state for the Nimbus volumetric preset (NB.4).
+// NimbusState — Per-preset world state for the Nimbus volumetric preset.
 //
-// Nimbus is a `direct` preset: a single-pass volumetric ray-march whose GPU
-// side is stateless frame-to-frame (the body is recomputed every frame). The
-// only thing that persists across frames is a pair of CPU-side scalars — the
-// Energy "bloom" and the gas "flow phase" — flushed each frame to a 16-byte
-// buffer the shader reads at fragment buffer(6).
+// Nimbus is a `direct` preset whose GPU side is stateless frame-to-frame (the
+// body is recomputed every frame). Everything temporal lives here, CPU-side,
+// flushed each frame to the buffer the shader reads at fragment buffer(6).
 //
-// NB.4 (Energy / Breath) is the hero coupling of the whole preset (DESIGN
-// §1.3). One signal, three visual readings of the same physical event:
+// NB.4 (Energy) shipped a single broadband-energy "bloom" follower. The
+// 2026-06-05 Atlas (Battles) session showed that model was too subtle and, on
+// bass-dominated music, structurally broken: the bloom averaged three bands
+// `(bass+mid+treble)`, and with mid/treble near-silent the two dead bands
+// vetoed it — the body sat near floor-size all session while the relentless
+// 136-BPM beat went unanswered. Matt's call: wrong model — drive from the beat,
+// per stem. (Reverses the original "nothing on the beat" premise; see
+// NIMBUS_DESIGN §1.3 and DECISIONS.)
 //
-//   • `bloom` — a fast-attack / slow-release envelope follower over the
-//     broadband energy deviation `(bass_att_rel + mid_att_rel + treb_att_rel)/3`
-//     (D-026 deviation primitives — NEVER absolute energy thresholds, FA #31).
-//     The asymmetric follower gives the gas momentum: it blooms quickly on a
-//     swell and settles slowly afterward (never snaps). `bloom` drives the
-//     body's size, luminosity, and flow rate in the shader so the three move
-//     as ONE event (DESIGN §5.4 — one primitive per layer, FA #67).
+// NB.5 — the band plays the body. One coherent gaseous mass that HEAVES with
+// the full band: each stem pushes a soft, blended bulge of the *single*
+// envelope (a star-convex deformation — it cannot fragment into separate
+// blobs), driven by a fast-attack/slow-release follower so it puffs on the hit
+// and settles. Layers (one audio primitive per layer — FA #67):
 //
-//   • `flowPhase` — churn time accumulated at a bloom-modulated rate. The
-//     shader advects the noise domain by this phase instead of raw wall-clock
-//     `features.time`, so the gas flows faster with energy and eases to its
-//     slowest drift (but never freezes) at the silence floor (DESIGN §5.2).
-//     Accumulated in `Double` (CLAUDE.md long-accumulator rule — a `Float +=`
-//     drifts/stalls over a long session) and flushed as `Float` each frame.
+//   • bloom      — slow overall size/brightness swell ← mean of the four stem
+//                  ENERGIES (robust; never floored by a dead band). FV bass
+//                  proxy during the ~10 s stem warmup (D-019 blend).
+//   • kickPunch  — whole-body inflate + brightness pop ← the onset pulse
+//                  `max(beatBass, beatComposite)` (zero-delay, frame 1),
+//                  refined toward the drums-stem deviation as it converges. The
+//                  hero beat moment; the kick is the spine of the beat.
+//   • bassLobe   — heaves the body DOWN  ← bass-stem energy deviation (D-026).
+//   • vocalsLobe — flares the body UP    ← lead/"vocals"-stem deviation.
+//   • otherLobe  — swells the body SIDE  ← other-stem deviation.
+//   • flowPhase  — gas churn phase, advancing faster with bloom + on kicks.
 //
-// NO beat field is read (DESIGN §1.3, FA #4 / FA #33) and NO mood (valence /
-// arousal → colour + agitation is NB.6). Energy is the only driver here.
+// The three directional lobes are stem-only (no FV proxy) so they sit at zero
+// until the live stem analyzer converges, then ramp in naturally.
 //
 // The state buffer is bound at fragment buffer(6) via
-// `RenderPipeline.setDirectPresetFragmentBuffer` (the same slot Aurora Veil /
-// Gossamer use — per-preset, not global; orthogonal to the noiseVolume bound
-// at *texture* 6). The shader reads it as `constant NimbusStateGPU& nb
-// [[buffer(6)]]`.
-//
-// Mirrors the AuroraVeilState pattern (@unchecked Sendable + NSLock for
-// audio-thread safety, MTLBuffer with .storageModeShared for UMA, per-frame
-// `tick(deltaTime:features:stems:)` flush to GPU).
+// `RenderPipeline.setDirectPresetFragmentBuffer` (orthogonal to noiseVolume at
+// *texture* 6). @unchecked Sendable + NSLock for audio-thread safety;
+// .storageModeShared MTLBuffer for UMA; per-frame tick(...) flush.
 
 import Metal
 import Shared
@@ -45,88 +47,103 @@ private let logger = Logger(subsystem: "com.phosphene.presets", category: "Nimbu
 
 // MARK: - GPU struct
 
-/// GPU-side state — 16 bytes, must match `NimbusStateGPU` in `Nimbus.metal`
-/// byte-for-byte. Padding fields hold the 16-byte alignment Metal expects for
-/// `constant&` buffer reads.
+/// GPU-side state — 32 bytes, must match `NimbusStateGPU` in `Nimbus.metal`
+/// byte-for-byte. Six load-bearing floats + two pads for 16-byte alignment.
 struct NimbusStateGPU {
-    var bloom: Float        // 0 at the silence floor; ~0.5 baseline; ~1 at peak
-    var flowPhase: Float    // gas churn phase (seconds-equivalent, bloom-modulated)
+    var bloom: Float        // slow overall size/brightness swell (0 floor … ~1 peak)
+    var flowPhase: Float    // gas churn phase (seconds-equivalent, bloom + kick modulated)
+    var kickPunch: Float    // whole-body beat punch (0 … ~1), fast attack / fast settle
+    var bassLobe: Float     // downward heave (0 … ~1)
+    var vocalsLobe: Float   // upward flare (0 … ~1)
+    var otherLobe: Float    // sideways swell (0 … ~1)
     var padA: Float
     var padB: Float
 
-    static let zero = NimbusStateGPU(bloom: 0, flowPhase: 0, padA: 0, padB: 0)
+    static let zero = NimbusStateGPU(
+        bloom: 0,
+        flowPhase: 0,
+        kickPunch: 0,
+        bassLobe: 0,
+        vocalsLobe: 0,
+        otherLobe: 0,
+        padA: 0,
+        padB: 0
+    )
 }
 
 // MARK: - NimbusState
 
-/// Owns the Energy bloom follower + gas flow-phase accumulator and the GPU
-/// buffer for the Nimbus preset.
+/// Owns the bloom swell, the four stem beat-followers, and the gas flow-phase
+/// accumulator, plus the GPU buffer for the Nimbus preset.
 ///
 /// Thread-safe: `tick()` and `stateBuffer` can be accessed from any queue.
 public final class NimbusState: @unchecked Sendable {
 
     // MARK: - Constants (DESIGN §1.3 / §5.4 — starting points; Matt's eye sets finals)
 
-    /// Bloom follower attack time constant. Fast (~150 ms) so the gas blooms
-    /// quickly on a swell — gas-like momentum (DESIGN §1.3).
+    /// Slow bloom swell follower (overall size/brightness). Gentle.
     private static let bloomAttackTau: Float = 0.15
-
-    /// Bloom follower release time constant. Slow (~400 ms) so the gas settles
-    /// with momentum after a swell rather than snapping back (DESIGN §1.3).
     private static let bloomReleaseTau: Float = 0.40
 
-    /// Linear map from the broadband energy deviation `(bass_att_rel +
-    /// mid_att_rel + treb_att_rel)/3` to the bloom target. The deviation band is
-    /// centred at 0 at the track's own AGC baseline, reaches −1 at true silence
-    /// (bands hit 0 → `AttRel = (0 − 0.5)·2 = −1`), and rises positive on
-    /// above-average swells. `target = rawEnergy·gain + offset`:
-    ///   • silence  (−1) → ~0    (the floor)
-    ///   • baseline ( 0) → ~0.5  (resting active body)
-    ///   • swell    (+1) → ~1.05 (full bloom)
-    private static let bloomGain: Float = 0.55
-    private static let bloomOffset: Float = 0.50
-
-    /// Soft ceiling on the bloom target. AttRel can occasionally spike past +1
-    /// on big drops (the deviation primitives reach ~3× on real music — see
-    /// `project_deviation_primitive_real_range`); the clamp soft-saturates so a
-    /// huge swell gives a little extra bloom without blowing the body out.
+    /// bloom target = meanStemEnergy·gain + offset. Mean stem energy is AGC-
+    /// centred at ~0.5 (baseline) → ~0.5 bloom; quiet (0.2) → ~0.08 floor; loud
+    /// (0.9) → ~1.06. Never floored by a single dead band (the NB.4 bug).
+    private static let bloomGain: Float = 1.40
+    private static let bloomOffset: Float = -0.20
     private static let bloomMax: Float = 1.10
 
+    /// Whole-body kick punch follower. SHARP: snaps up on the hit, settles in
+    /// ~160 ms so it reads as a punch on a 440 ms (136 BPM) beat, not a smear.
+    private static let kickAttackTau: Float = 0.04
+    private static let kickReleaseTau: Float = 0.16
+
+    /// Directional stem-lobe followers. A touch slower than the kick so they
+    /// read as heaves, not flickers.
+    private static let lobeAttackTau: Float = 0.06
+    private static let lobeReleaseTau: Float = 0.28
+
+    /// smoothstep window on the stem energy deviations (D-026) → a clean [0,1]
+    /// per-stem hit signal. Devs sit ~0.27 mean and spike to ~2 on hits
+    /// (Atlas session), so [0.30, 1.10] fires on above-average hits.
+    private static let devThreshLo: Float = 0.30
+    private static let devThreshHi: Float = 1.10
+
+    /// D-019 stem-warmup window — match Aurora Veil / Gossamer.
+    private static let stemWarmupLow: Float = 0.02
+    private static let stemWarmupHigh: Float = 0.06
+
     /// Gas flow speed at the silence floor (bloom 0) and at full bloom (bloom 1),
-    /// expressed as a multiple of the NB.3 wall-clock drift rate. floor 0.5 →
-    /// the silence drift is HALF the NB.3 speed (slower, per DESIGN §1.5 "eases
-    /// to its slowest drift"); peak 1.75 → 3.5× the floor (DESIGN §1.3 churn
-    /// rate "~1×→3.5×"). The flow never reaches zero — the gas visibly churns at
-    /// all times, including at silence (DESIGN §5.7 "Flow is alive").
+    /// as a multiple of the NB.3 wall-clock drift rate; plus a per-kick churn
+    /// boost so the gas roils on the beat.
     private static let flowFloor: Float = 0.50
     private static let flowPeak: Float = 1.75
+    private static let flowKickBoost: Float = 1.00
 
     // MARK: - Public Properties
 
-    /// GPU-side state buffer (16 bytes, shared storage).
-    ///
-    /// Bound at fragment buffer(6) by `VisualizerEngine+Presets.swift` via
-    /// `RenderPipeline.setDirectPresetFragmentBuffer`.
+    /// GPU-side state buffer (32 bytes, shared storage). Bound at fragment
+    /// buffer(6) by `VisualizerEngine+Presets.swift`.
     public let stateBuffer: MTLBuffer
 
-    /// Most-recent bloom value (diagnostics / the DESIGN §5.6 bloom scalar trace).
+    /// Most-recent follower values (diagnostics / the DESIGN §5.6 trace).
     public private(set) var bloom: Float = 0
-
-    /// Most-recent flow phase (diagnostics).
+    public private(set) var kickPunch: Float = 0
+    public private(set) var bassLobe: Float = 0
+    public private(set) var vocalsLobe: Float = 0
+    public private(set) var otherLobe: Float = 0
     public private(set) var flowPhase: Float = 0
 
     // MARK: - Private State
 
-    /// Flow phase accumulated in `Double` so a long session doesn't drift —
-    /// CLAUDE.md long-accumulator rule. Flushed to `Float` each frame.
+    /// Flow phase in `Double` so a long session doesn't drift (long-accumulator
+    /// rule). Flushed to `Float` each frame.
     private var flowPhaseAccum: Double = 0
     private let lock = NSLock()
 
     // MARK: - Init
 
-    /// Creates a new NimbusState at the silence floor (bloom 0, flow phase 0) —
-    /// silence-stable from frame zero. The body settles UP into the new track's
-    /// level over the attack window rather than popping in at full size.
+    /// Creates a new NimbusState at the silence floor (all followers 0) —
+    /// silence-stable from frame zero.
     public init?(device: MTLDevice) {
         let bufferSize = MemoryLayout<NimbusStateGPU>.stride
         guard let buf = device.makeBuffer(length: bufferSize, options: .storageModeShared) else {
@@ -139,26 +156,21 @@ public final class NimbusState: @unchecked Sendable {
 
     // MARK: - Public API
 
-    /// Tick the bloom follower + flow-phase accumulator for one rendered frame
-    /// and flush to the GPU buffer.
-    ///
-    /// Call once per frame from the render-loop tick hook before the scene draw
-    /// (mirrors `AuroraVeilState.tick(...)` wiring in
-    /// `VisualizerEngine+Presets.swift`). `stems` is unused — Nimbus's Energy
-    /// driver reads FeatureVector deviation primitives only.
+    /// Tick all followers + the flow-phase accumulator for one rendered frame
+    /// and flush to the GPU buffer. Call once per frame from the render-loop
+    /// tick hook before the scene draw.
     public func tick(deltaTime: Float, features: FeatureVector, stems: StemFeatures) {
-        lock.withLock { _tick(deltaTime: deltaTime, features: features) }
+        lock.withLock { _tick(deltaTime: deltaTime, features: features, stems: stems) }
         writeToGPU()
     }
 
-    /// Reset the follower + flow phase to the silence floor. Call at track
-    /// change / segment boundaries so the body settles into the new track's
-    /// energy rather than carrying the previous track's bloom across the cut
-    /// (DESIGN §1.5 — "a brief settle into the new body rather than an instant
-    /// pop").
+    /// Reset all followers + flow phase to the silence floor. Call at track
+    /// change / segment boundaries so the body settles into the new track
+    /// rather than carrying the prior state across the cut (DESIGN §1.5).
     public func reset() {
         lock.withLock {
-            bloom = 0
+            bloom = 0; kickPunch = 0
+            bassLobe = 0; vocalsLobe = 0; otherLobe = 0
             flowPhase = 0
             flowPhaseAccum = 0
         }
@@ -167,31 +179,71 @@ public final class NimbusState: @unchecked Sendable {
 
     // MARK: - Private: tick
 
-    private func _tick(deltaTime: Float, features: FeatureVector) {
-        // Clamp deltaTime — the first frame after preset apply can carry a stale
-        // accumulated value; a large dt would over-step the follower / phase.
+    private func _tick(deltaTime: Float, features: FeatureVector, stems: StemFeatures) {
+        // Clamp dt — the first frame after preset apply can carry a stale value.
         let dt = min(max(deltaTime, 0.001), 0.1)
 
-        // Broadband energy deviation (D-026): the three smoothed/attenuated band
-        // deviations, averaged. Heavily smoothed → NO beat content (FA #4 / #33).
-        let rawEnergy = (features.bassAttRel + features.midAttRel + features.trebAttRel) / 3.0
+        // D-019 warmup: blend FV proxies → stems as the live analyzer converges.
+        let totalStemEnergy = stems.drumsEnergy + stems.bassEnergy
+                            + stems.vocalsEnergy + stems.otherEnergy
+        let stemMix = nbSmoothstep(Self.stemWarmupLow, Self.stemWarmupHigh, totalStemEnergy)
 
-        // Map the deviation band to a [0, bloomMax] target (see bloomGain/offset).
-        let target = min(max(rawEnergy * Self.bloomGain + Self.bloomOffset, 0), Self.bloomMax)
+        // ── Slow bloom swell (overall size/brightness) ───────────────────────
+        // Mean of the four stem energies (AGC-centred ~0.5; never floored by one
+        // dead band). FV bass proxy during warmup (reliable from frame 1).
+        let meanStemEnergy = totalStemEnergy / 4.0
+        let bloomProxy = nbClamp(0.5 + 0.5 * features.bassAttRel, 0, 1)
+        let bloomDrive = nbMix(bloomProxy, meanStemEnergy, stemMix)
+        let bloomTarget = nbClamp(bloomDrive * Self.bloomGain + Self.bloomOffset, 0, Self.bloomMax)
+        bloom = follow(bloom, bloomTarget, dt, Self.bloomAttackTau, Self.bloomReleaseTau)
 
-        // Asymmetric one-pole follower: fast attack (blooms on a swell), slow
-        // release (settles with momentum). Framerate-independent via
-        // `1 − exp(−dt/τ)` so a variable frame rate doesn't change the feel.
-        let tau = target > bloom ? Self.bloomAttackTau : Self.bloomReleaseTau
-        let coeff = 1.0 - exp(-dt / tau)
-        bloom += (target - bloom) * coeff
+        // ── Whole-body kick punch — the hero beat moment ─────────────────────
+        // Onset pulse (zero-delay, frame 1) blended toward the drums-stem hit
+        // signal as stems converge. max(beatBass, beatComposite) covers both
+        // kick- and snare-driven tracks (FA #26).
+        let fvBeat = max(features.beatBass, features.beatComposite)
+        let drumsHit = nbSmoothstep(Self.devThreshLo, Self.devThreshHi, stems.drumsEnergyDev)
+        let kickSignal = nbMix(fvBeat, drumsHit, stemMix)
+        kickPunch = follow(kickPunch, kickSignal, dt, Self.kickAttackTau, Self.kickReleaseTau)
 
-        // Flow phase: churn time at a bloom-modulated rate. floor at silence,
-        // up to flowPeak at full bloom. Accumulated in Double, flushed as Float.
-        let bloomForFlow = min(max(bloom, 0), 1)
+        // ── Directional stem lobes (stem-only → naturally zero pre-warmup) ───
+        let bassTarget = nbSmoothstep(Self.devThreshLo, Self.devThreshHi, stems.bassEnergyDev)
+        bassLobe = follow(bassLobe, bassTarget, dt, Self.lobeAttackTau, Self.lobeReleaseTau)
+        let vocalsTarget = nbSmoothstep(Self.devThreshLo, Self.devThreshHi, stems.vocalsEnergyDev)
+        vocalsLobe = follow(vocalsLobe, vocalsTarget, dt, Self.lobeAttackTau, Self.lobeReleaseTau)
+        let otherTarget = nbSmoothstep(Self.devThreshLo, Self.devThreshHi, stems.otherEnergyDev)
+        otherLobe = follow(otherLobe, otherTarget, dt, Self.lobeAttackTau, Self.lobeReleaseTau)
+
+        // ── Flow phase: churn at a bloom-modulated rate, surging on kicks ────
+        let bloomForFlow = nbClamp(bloom, 0, 1)
         let flowSpeed = Self.flowFloor + (Self.flowPeak - Self.flowFloor) * bloomForFlow
+                      + Self.flowKickBoost * kickPunch
         flowPhaseAccum += Double(dt) * Double(flowSpeed)
         flowPhase = Float(flowPhaseAccum)
+    }
+
+    // MARK: - Private: follower + math helpers
+
+    /// Asymmetric one-pole follower: fast attack, slow release, framerate-
+    /// independent via `1 − exp(−dt/τ)`.
+    private func follow(_ current: Float, _ target: Float, _ dt: Float,
+                        _ attackTau: Float, _ releaseTau: Float) -> Float {
+        let tau = target > current ? attackTau : releaseTau
+        let coeff = 1.0 - exp(-dt / tau)
+        return current + (target - current) * coeff
+    }
+
+    private func nbSmoothstep(_ edge0: Float, _ edge1: Float, _ x: Float) -> Float {
+        let tt = nbClamp((x - edge0) / (edge1 - edge0), 0, 1)
+        return tt * tt * (3 - 2 * tt)
+    }
+
+    private func nbClamp(_ x: Float, _ lo: Float, _ hi: Float) -> Float {
+        min(max(x, lo), hi)
+    }
+
+    private func nbMix(_ lhs: Float, _ rhs: Float, _ mixT: Float) -> Float {
+        lhs + (rhs - lhs) * mixT
     }
 
     // MARK: - Private: GPU write
@@ -200,6 +252,10 @@ public final class NimbusState: @unchecked Sendable {
         var packed = NimbusStateGPU(
             bloom: bloom,
             flowPhase: flowPhase,
+            kickPunch: kickPunch,
+            bassLobe: bassLobe,
+            vocalsLobe: vocalsLobe,
+            otherLobe: otherLobe,
             padA: 0,
             padB: 0
         )
