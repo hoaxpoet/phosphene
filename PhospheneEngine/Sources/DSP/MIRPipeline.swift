@@ -118,6 +118,13 @@ public final class MIRPipeline: @unchecked Sendable {
 
     private var fluxRunningMax: Float = 1e-6
     private static let fluxMaxDecay: Float = 0.999
+    /// MV-1 / D-146 (BUG-027): per-band running-average pivot for the deviation
+    /// primitives. Each band's deviation is measured against its own recent
+    /// average (mirroring StemAnalyzer's per-stem EMA), not a fixed 0.5 — the
+    /// total-energy AGC centres each band below 0.5, which left the fixed-pivot
+    /// midDev/trebDev structurally dead. Updated in `buildFeatureVector`, reset
+    /// on track change.
+    private var bandDeviationTracker = BandDeviationTracker()
     private let nyquist: Float
     private let lock = NSLock()
 
@@ -298,6 +305,30 @@ public final class MIRPipeline: @unchecked Sendable {
     ///
     /// MV-3b: beatPhase01 and beatsUntilNext are populated from BeatPredictor
     /// each frame, enabling anticipatory motion in preset shaders (D-028).
+    /// Derive the deviation primitives against each band's own running average (D-146 / BUG-027)
+    /// and write them into the FeatureVector. The total-energy AGC (fv.bass/mid/treble) is
+    /// untouched — only the *Rel/*Dev derivation moves off the fixed 0.5 pivot. Mirrors
+    /// StemAnalyzer's per-stem EMA so the long-dead midDev/trebDev fire on real music again.
+    private func applyBandDeviations(to fv: inout FeatureVector) {
+        let out = bandDeviationTracker.derive(BandDeviationTracker.BandEnergies(
+            bass: fv.bass,
+            mid: fv.mid,
+            treble: fv.treble,
+            bassAtt: fv.bassAtt,
+            midAtt: fv.midAtt,
+            trebleAtt: fv.trebleAtt
+        ))
+        fv.bassRel = out.bassRel
+        fv.bassDev = out.bassDev
+        fv.midRel = out.midRel
+        fv.midDev = out.midDev
+        fv.trebRel = out.trebRel
+        fv.trebDev = out.trebDev
+        fv.bassAttRel = out.bassAttRel
+        fv.midAttRel = out.midAttRel
+        fv.trebAttRel = out.trebAttRel
+    }
+
     private func buildFeatureVector(_ ctx: ProcessContext) -> FeatureVector {
         var fv = FeatureVector(
             bass: ctx.energy.bass,
@@ -330,16 +361,9 @@ public final class MIRPipeline: @unchecked Sendable {
         // 1.0 — the cold-start path collapses to the warm path, restoring
         // pre-CSP.3 behaviour without recompiling.
         fv.trackElapsedS = ffoColdStartFixEnabled ? Float(elapsedSeconds) : 100.0
-        // MV-1: Derive deviation primitives from AGC-normalized values.
-        fv.bassRel = (fv.bass - 0.5) * 2.0
-        fv.bassDev = max(0, fv.bassRel)
-        fv.midRel  = (fv.mid - 0.5) * 2.0
-        fv.midDev  = max(0, fv.midRel)
-        fv.trebRel = (fv.treble - 0.5) * 2.0
-        fv.trebDev = max(0, fv.trebRel)
-        fv.bassAttRel = (fv.bassAtt - 0.5) * 2.0
-        fv.midAttRel  = (fv.midAtt - 0.5) * 2.0
-        fv.trebAttRel = (fv.trebleAtt - 0.5) * 2.0
+        // MV-1 / D-146 (BUG-027): derive deviation primitives against each band's own
+        // running average (per-band EMA), not a fixed 0.5 pivot — see applyBandDeviations.
+        applyBandDeviations(to: &fv)
         // DSP.2 S7: prefer the offline-grid drift tracker when a cached
         // `BeatGrid` is installed.  In reactive mode (no grid), fall back to
         // the legacy `BeatPredictor` IIR estimator.
@@ -399,6 +423,7 @@ public final class MIRPipeline: @unchecked Sendable {
         structuralAnalyzer.reset()
         beatPredictor.reset()
         liveDriftTracker.reset()
+        bandDeviationTracker.reset()
 
         lock.lock()
         fluxRunningMax = 1e-6
