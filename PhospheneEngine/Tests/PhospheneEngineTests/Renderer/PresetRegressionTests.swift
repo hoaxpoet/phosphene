@@ -200,6 +200,20 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     "Lumen Mosaic": (steady: 0xF0F0C8CCCCC8F0F0, beatHeavy: 0xF0F0C8CCCCC8F0F0, quiet: 0xF0F0C8CCCCC8F0F0),
     "Membrane": (steady: 0x33E3A919C9627939, beatHeavy: 0x12A3A998C9646139, quiet: 0x47E3C919CD627959),
     "Murmuration": (steady: 0x07449B6727773FF8, beatHeavy: 0x0B449A4727373FF8, quiet: 0x0744936727773FF8),
+    // NB.9 (D-140, first volumetric preset): all three fixtures are IDENTICAL.
+    // Nimbus's GPU output is animated (flowPhase) and entirely driven by the
+    // CPU-side NimbusStateGPU at slot 6 (bloom / flow / stem lobes / mood) plus
+    // noiseVolume at texture(6) — the only FeatureVector field the shader reads
+    // is aspect_ratio. The regression harness binds a ZEROED slot-6 buffer (the
+    // deterministic silence-floor body at flowPhase 0) and the three fixtures
+    // differ only in FeatureVector fields the shader never reads, so steady /
+    // beatHeavy / quiet all converge to one hash. The 0x0F-per-byte pattern is a
+    // clean centred body — each row brightens toward the centre (left 4 cells
+    // set) then darkens (right 4 clear) — so a regression that broke the
+    // silhouette, the backlit lighting gradient, or the haze falloff shifts it.
+    // Production-parity coverage (ticked followers + bound noiseVolume) is
+    // NimbusBloomFollowerTest + PresetVisualReviewTests.
+    "Nimbus": (steady: 0x0F0F0F0F0F0F0F0F, beatHeavy: 0x0F0F0F0F0F0F0F0F, quiet: 0x0F0F0F0F0F0F0F0F),
     "Nebula": (steady: 0x0000080C0C080000, beatHeavy: 0x0000080C0C080000, quiet: 0x0000080C0C080000),
     "Plasma": (steady: 0x030F170A072F1B0F, beatHeavy: 0x4193254F0E8E87C7, quiet: 0x0F1F0F0F0F07070F),
     "Spectral Cartograph": (steady: 0x00180C0C0C0C0000, beatHeavy: 0x00180C0C0C0C6080, quiet: 0x00180C0C0C0C0000),
@@ -365,6 +379,21 @@ struct PresetRegressionTests {
         if let avState = buffers.auroraVeilState {
             encoder.setFragmentBuffer(avState, offset: 0, index: 6)
         }
+        // NB.9 (D-140): Nimbus reads a 32-byte NimbusStateGPU at slot 6 (the
+        // CPU-side bloom / flow / stem-lobe / mood followers). The shader reads
+        // ALL of its music response from this buffer plus noiseVolume at
+        // texture(6); the only FeatureVector field it touches is aspect_ratio.
+        // Bind a ZEROED state — the deterministic silence-floor body at
+        // flowPhase 0 — so the golden hash is reproducible (the three fixtures
+        // differ only in FeatureVector fields the shader never reads, so all
+        // three Nimbus hashes converge). noiseVolume stays unbound (→ 0) per the
+        // suite convention; the dHash captures the macro silhouette + lighting +
+        // haze, which is the fingerprint regressions must preserve. Production-
+        // parity coverage (noiseVolume + ticked followers) lives in
+        // NimbusBloomFollowerTest + PresetVisualReviewTests.
+        if let nbState = buffers.nimbusState {
+            encoder.setFragmentBuffer(nbState, offset: 0, index: 6)
+        }
         if let lumenBuf = buffers.lumen {
             encoder.setFragmentBuffer(lumenBuf, offset: 0, index: 8)
         }
@@ -387,6 +416,7 @@ struct PresetRegressionTests {
         let scene: MTLBuffer?
         let lumen: MTLBuffer?
         let auroraVeilState: MTLBuffer?
+        let nimbusState: MTLBuffer?
     }
 
     private func makeRenderBuffers(context: MetalContext, preset: PresetLoader.LoadedPreset) throws -> RenderBuffers {
@@ -457,9 +487,22 @@ struct PresetRegressionTests {
             }
         }
 
+        // NB.9 (D-140): Nimbus reads a 32-byte NimbusStateGPU at slot 6. A zeroed
+        // buffer is the silence-floor state (all followers 0, flowPhase 0) — the
+        // deterministic body the golden registers against.
+        var nimbusState: MTLBuffer?
+        if preset.descriptor.name == "Nimbus" {
+            let nbStride = MemoryLayout<NimbusStateGPU>.stride   // 32 bytes
+            if let buf = context.makeSharedBuffer(length: nbStride) {
+                _ = buf.contents().initializeMemory(as: UInt8.self, repeating: 0, count: nbStride)
+                nimbusState = buf
+            }
+        }
+
         return RenderBuffers(fft: fft, wav: wav, stem: stem, hist: hist,
                              scene: scene, lumen: lumen,
-                             auroraVeilState: auroraVeilState)
+                             auroraVeilState: auroraVeilState,
+                             nimbusState: nimbusState)
     }
 
     // MARK: - dHash
