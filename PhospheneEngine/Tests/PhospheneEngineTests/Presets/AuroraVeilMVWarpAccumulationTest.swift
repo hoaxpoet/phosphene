@@ -65,7 +65,7 @@ struct AuroraVeilMVWarpAccumulationTest {
     // does not replace) a full integration test that exercises drawDirect
     // end-to-end against a live RenderPipeline + MTKView (deferred to
     // AV.2.3 scope — see RELEASE_NOTES `[dev-2026-05-18-g]`).
-    @Test("drawDirect binds fragment slot 6 for direct-pass preset state buffers")
+    @Test("the direct path binds fragment slot 6 for direct-pass preset state buffers")
     func test_drawDirect_bindsSlot6() throws {
         let repoRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()  // /Presets/
@@ -73,24 +73,38 @@ struct AuroraVeilMVWarpAccumulationTest {
             .deletingLastPathComponent()  // /Tests/
             .deletingLastPathComponent()  // /PhospheneEngine/
             .deletingLastPathComponent()  // repo root
-        let drawSource = repoRoot
-            .appendingPathComponent("PhospheneEngine/Sources/Renderer/RenderPipeline+Draw.swift")
-        let src = try String(contentsOf: drawSource, encoding: .utf8)
-        // Extract the body of `func drawDirect(` so we don't get false-positive
-        // matches from comments elsewhere in the file.
-        guard let drawDirectRange = src.range(of: "func drawDirect(") else {
-            Issue.record("RenderPipeline+Draw.swift: `func drawDirect(` not found — file refactored?")
+        let renderer = repoRoot.appendingPathComponent("PhospheneEngine/Sources/Renderer")
+
+        // NB.8 refactor: the slot-6 binding moved out of `drawDirect` into the
+        // shared `encodePresetVisualization` helper (RenderPipeline+DirectDraw.swift),
+        // which `drawDirect` calls on both the full-res and half-res paths. The
+        // AV.2.2a guard is preserved by checking (a) the helper binds slot 6 and
+        // (b) drawDirect actually calls the helper.
+        let directDraw = try String(
+            contentsOf: renderer.appendingPathComponent("RenderPipeline+DirectDraw.swift"),
+            encoding: .utf8)
+        guard let helperRange = directDraw.range(of: "func encodePresetVisualization(") else {
+            Issue.record("RenderPipeline+DirectDraw.swift: `func encodePresetVisualization(` not found — refactored?")
             return
         }
-        let body = String(src[drawDirectRange.lowerBound...])
         #expect(
-            body.contains("offset: 0, index: 6"),
+            String(directDraw[helperRange.lowerBound...]).contains("offset: 0, index: 6"),
             """
-            drawDirect no longer binds fragment slot 6. AV.2.2a regression: \
-            Aurora Veil's [[buffer(6)]] AuroraVeilStateGPU read will crash on \
-            the first frame after preset apply. Restore the slot-6 binding \
-            (mirrors renderSceneToTexture in RenderPipeline+MVWarp.swift).
+            encodePresetVisualization no longer binds fragment slot 6. AV.2.2a \
+            regression: Aurora Veil's [[buffer(6)]] AuroraVeilStateGPU read will \
+            crash on the first frame after preset apply. Restore the slot-6 bind.
             """
+        )
+        let draw = try String(
+            contentsOf: renderer.appendingPathComponent("RenderPipeline+Draw.swift"),
+            encoding: .utf8)
+        guard let drawDirectRange = draw.range(of: "func drawDirect(") else {
+            Issue.record("RenderPipeline+Draw.swift: `func drawDirect(` not found — refactored?")
+            return
+        }
+        #expect(
+            String(draw[drawDirectRange.lowerBound...]).contains("encodePresetVisualization("),
+            "drawDirect no longer calls encodePresetVisualization — the slot-6 bind won't reach the direct path."
         )
     }
 

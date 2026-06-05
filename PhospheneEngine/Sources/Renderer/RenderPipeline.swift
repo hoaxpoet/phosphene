@@ -209,6 +209,34 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     }
     let mvWarpLock = NSLock()
 
+    // MARK: - Direct-preset half-res render path (NB.8)
+
+    /// Render scale for the direct-fragment path: 1.0 = full drawable resolution
+    /// (default), < 1.0 = render the preset fragment to an offscreen texture at
+    /// `scale × drawable` then bilinearly upscale to the drawable. Used by heavy
+    /// volumetric presets (Nimbus) whose march cost scales with on-screen pixel
+    /// count — at full energy Nimbus's body swells to fill the frame and the
+    /// full-res march exceeds the 7 ms Tier-2 ceiling; a 0.5× march is ~4×
+    /// cheaper and the soft gas tolerates the upscale. Set per-preset in
+    /// `applyPreset`; reset to 1.0 on every preset change.
+    private var _directRenderScale: Float = 1.0
+    private let directRenderScaleLock = NSLock()
+
+    /// Set the direct-preset render scale (1.0 = full res; e.g. 0.5 = half-res
+    /// march + upscale). Reset to 1.0 on preset change.
+    public func setDirectRenderScale(_ scale: Float) {
+        directRenderScaleLock.withLock { _directRenderScale = scale }
+    }
+
+    var directRenderScale: Float {
+        directRenderScaleLock.withLock { _directRenderScale }
+    }
+
+    /// Cached offscreen target for the half-res direct path; (re)allocated lazily
+    /// in `drawDirect` when the scale or drawable size changes. Render-thread only.
+    var halfResTexture: MTLTexture?
+    var halfResTextureSize: (width: Int, height: Int) = (0, 0)
+
     // MARK: - Noise Textures (Increment 3.13)
 
     /// Optional noise texture manager — binds 5 pre-computed textures at slots 4–8.

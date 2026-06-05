@@ -282,61 +282,69 @@ extension RenderPipeline {
         guard let descriptor = view.currentRenderPassDescriptor,
               let drawable = view.currentDrawable else { return }
 
-        descriptor.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
-        descriptor.colorAttachments[0].loadAction = .clear
-        descriptor.colorAttachments[0].storeAction = .store
-
-        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) else {
-            return
-        }
-
-        // Refresh and bind the dynamic text overlay when a text-overlay preset is active.
-        // refresh() clears the CGContext and invokes the callback on the render thread —
-        // must happen before the encoder is created so the CPU write completes before
-        // the GPU reads the shared-memory texture.
+        // Refresh the dynamic text overlay (CPU write must complete before the GPU
+        // reads the shared-memory texture, so before any encoder is created).
         let textOverlay = dynamicTextOverlayLock.withLock { dynamicTextOverlay }
         let textCB = textOverlayCallbackLock.withLock { textOverlayCallback }
         if let overlay = textOverlay {
             textCB?(overlay, features)
         }
 
-        // Draw preset visualization.
-        encoder.setRenderPipelineState(activePipeline)
-        encoder.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.size, index: 0)
-        encoder.setFragmentBuffer(fftMagnitudeBuffer, offset: 0, index: 1)
-        encoder.setFragmentBuffer(waveformBuffer, offset: 0, index: 2)
-        var stems = stemFeatures
-        encoder.setFragmentBytes(&stems, length: MemoryLayout<StemFeatures>.size, index: 3)
-        encoder.setFragmentBuffer(spectralHistory.gpuBuffer, offset: 0, index: 5)
-        // Bind optional per-preset fragment data at buffer(6) / buffer(7) for
-        // direct-pass presets that need preset-uniform CPU-driven state. AV.2.2
-        // introduced the first direct-pass slot-6 consumer (`AuroraVeilState`
-        // — kink accumulator + smoothed pitch); the same `setDirectPresetFragmentBuffer`
-        // setters used by the mv_warp / staged paths are honoured here. Without
-        // this binding, Aurora Veil's `[[buffer(6)]]` shader read hits an
-        // unbound buffer and crashes the first frame after preset apply.
-        if let presetBuf = directPresetFragmentBufferLock.withLock({ directPresetFragmentBuffer }) {
-            encoder.setFragmentBuffer(presetBuf, offset: 0, index: 6)
-        }
-        if let presetBuf2 = directPresetFragmentBuffer2Lock.withLock({ directPresetFragmentBuffer2 }) {
-            encoder.setFragmentBuffer(presetBuf2, offset: 0, index: 7)
-        }
-        // Slot 8 — tertiary per-preset fragment data (D-LM-buffer-slot-8).
-        if let presetBuf3 = directPresetFragmentBuffer3Lock.withLock({ directPresetFragmentBuffer3 }) {
-            encoder.setFragmentBuffer(presetBuf3, offset: 0, index: 8)
-        }
-        bindNoiseTextures(to: encoder)
-        // Bind dynamic text overlay at texture(12) when active.
-        if let overlay = textOverlay {
-            encoder.setFragmentTexture(overlay.texture, index: 12)
-        }
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        // NB.8 half-res path: a heavy volumetric preset (Nimbus) whose march cost
+        // scales with on-screen pixels — at full energy its body swells to fill
+        // the frame and a full-res march exceeds the 7 ms ceiling. Render the
+        // fragment to a scale×drawable offscreen texture, then bilinearly upscale
+        // to the drawable (~4× cheaper at 0.5×; the soft gas tolerates it).
+        // scale == 1.0 (every other preset) → the normal full-res path below.
+        let scale = directRenderScale
+        if scale < 0.999,
+           let halfTex = halfResTarget(drawableWidth: drawable.texture.width,
+                                       drawableHeight: drawable.texture.height,
+                                       scale: scale) {
+            // Pass 1 — preset fragment → half-res offscreen texture.
+            let offDesc = MTLRenderPassDescriptor()
+            offDesc.colorAttachments[0].texture = halfTex
+            offDesc.colorAttachments[0].loadAction = .clear
+            offDesc.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+            offDesc.colorAttachments[0].storeAction = .store
+            guard let offEnc = commandBuffer.makeRenderCommandEncoder(descriptor: offDesc) else { return }
+            encodePresetVisualization(
+                into: offEnc,
+                activePipeline: activePipeline,
+                features: &features,
+                stems: stemFeatures,
+                particles: particles,
+                textOverlay: textOverlay)
+            offEnc.endEncoding()
 
-        // Draw particles on top.
-        particles?.render(encoder: encoder, features: features)
+            // Pass 2 — bilinear upscale (feedback_blit + the linear clamp sampler)
+            // → drawable.
+            descriptor.colorAttachments[0].loadAction = .clear
+            descriptor.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+            descriptor.colorAttachments[0].storeAction = .store
+            guard let upEnc = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) else { return }
+            upEnc.setRenderPipelineState(feedbackBlitPipelineState)
+            upEnc.setFragmentTexture(halfTex, index: 0)
+            upEnc.setFragmentSamplerState(feedbackSamplerState, index: 0)
+            upEnc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            upEnc.endEncoding()
+            commandBuffer.present(drawable)
+            return
+        }
 
+        // ── Full-res direct path ─────────────────────────────────────────────
+        descriptor.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        descriptor.colorAttachments[0].loadAction = .clear
+        descriptor.colorAttachments[0].storeAction = .store
+        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) else { return }
+        encodePresetVisualization(
+            into: encoder,
+            activePipeline: activePipeline,
+            features: &features,
+            stems: stemFeatures,
+            particles: particles,
+            textOverlay: textOverlay)
         encoder.endEncoding()
-
         commandBuffer.present(drawable)
     }
 
