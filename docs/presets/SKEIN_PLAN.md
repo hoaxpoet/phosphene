@@ -12,7 +12,7 @@ Companion design doc: `SKEIN_pollock_preset_architecture.md` (becomes the seed f
 2. **Wet sheen ships in V1** (Skein.4) — but Skein.4 + Skein.ENGINE.2 are the **explicit cut-line**: if Skein.2 overruns, they defer to V2 and the preset certifies matte-only.
 3. **Visible painter locus** — implemented behind an off-by-default flag in Skein.5.
 4. **In-flight paint** — deferred to V2 (not in this plan).
-5. **Explicit canvas-hold mode** in the mv_warp family (Skein.ENGINE.1), not an overload of the narrower `feedback` path.
+5. **Explicit canvas-hold mode** in the mv_warp family (Skein.ENGINE.1), not an overload of the narrower `feedback` path. ⚠️ **AMENDED by the Skein.ENGINE.1 audit (D-142):** canvas-hold needed **no new engine "mode"** — it is reachable as pure per-preset config of the existing mv_warp machinery (identity `mvWarpPerVertex` + `decay=1.0` + `chromaticMix=0`), and (as this decision intended) did NOT overload the `feedback`/Membrane path. Verdict: config-only, no PhospheneEngine source change; every other mv_warp preset byte-identical. See DECISIONS D-142.
 6. **Family `painterly`; name Skein.**
 7. **8-bit canvas** (RGB is the lossless permanent record); revisit only if soak surfaces banding.
 

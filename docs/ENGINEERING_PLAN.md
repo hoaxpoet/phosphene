@@ -5883,6 +5883,18 @@ Per `NIMBUS_PLAN.md`: ~~NB.7 Page (CUT — §1.3)~~ → NB.9 certification (acce
 
 ---
 
+## Phase Skein — action-painting / drip-pour preset (`painterly`)
+
+New preset in the Dragon Bloom lineage (D-135 / D-138): a Pollock-style poured / dripped **action-painting** visualiser whose canvas is a persistent, **lossless** feedback accumulation (paint lands, stays, is occluded only by later opaque paint-over-paint — the temporal-integral canvas). Design: `docs/presets/SKEIN_DESIGN.md`; plan: `docs/presets/SKEIN_PLAN.md`. Critical path: Skein.0 → ENGINE.1 → Skein.1 → 2 → 3 → 5 → 6; wet-sheen (ENGINE.2 + Skein.4) is the explicit cut-line branch.
+
+### Skein.0 — Reference lock ✅ (2026-06-05)
+Reference set curated + Matt-approved; `docs/VISUAL_REFERENCES/skein/` populated, `CheckVisualReferences` green (commits `07a4a57b` / `52ebfe3d`). Anti-reference images + the V.6 rubric profile deferred per the Skein.0 closeout.
+
+### Increment Skein.ENGINE.1 — Canvas-hold accumulation path ✅ (2026-06-05, D-142)
+Establishes the persistent, lossless paint canvas: **identity warp + no decay + no R→G→B transfer + marks-on-top**, the no-decay / identity **configuration** of the mv_warp brush-on-feedback paradigm (a sibling of Dragon Bloom — D-142). **Audit verdict: config-only — no PhospheneEngine source change, no new warp mode** (the four properties are reachable as per-preset config; `decayMul = (chromaticMix>0)?1.0:in.decay` proves no-decay is *not* bound to the colour transfer). Files: `Skein.metal` (identity `mvWarpPerFrame` decay=1.0 / `mvWarpPerVertex` returns `uv` + a `skein_fragment` toned-ground + fixed test stamp), `Skein.json` (`passes:["direct","mv_warp"]`, decay 1.0, uncertified, no `family` yet), `SkeinCanvasHoldTest.swift` (new), `PresetLoaderCompileFailureTest` count 19→20. **`SkeinCanvasHoldTest` proves whole-frame Hamming 0 across 130 hold frames** through the live scene→warp→blit→swap dispatch path (sRGB feedback; sRGB round-trip + identity-at-pixel-centers both exact → no linear-format / nearest-sampler override needed). **Gates:** 1388 engine tests green; `PresetRegressionTests` byte-identical for every other preset (no shared code touched); MVWarp/StagedComposition green; app build clean; SwiftLint `--strict` clean (424 files); contrast + acceptance gates pass for Skein. **Flagged for Skein.1+:** app-wiring de-entanglement of "scene-geometry ⟹ Dragon Bloom chromatic+comp" + generalize `makeSceneGeometryPipeline` names; the light-canvas-vs-white-chrome WCAG contrast tension (ENGINE.1 uses a darkened toned-ground placeholder); `family: painterly` + the `PresetCategory` case. **Pending Matt's sign-off (the increment gate).**
+
+---
+
 ## Phase G-uplift — Gossamer + remaining preset fidelity uplifts
 
 The Phase V uplift trajectory left several presets at the post-V.6 cert baseline without per-preset fidelity work tailored to their visual contracts. The shipped catalog has 15 presets (post-D-102); the Phase V plan called for 12 fidelity-uplifted presets. Several catalog members are *certifiable* but have *not* been through a per-preset uplift session against curated references — Gossamer is the named example, but Membrane / Starburst (post-SB) / Nebula / Plasma / Waveform / Fractal Tree / TestSphere / Glass Brutalist / Kinetic Sculpture / Volumetric Lithograph / Spectral Cartograph are all worth review (some are lightweight rubric and need only validation, others are full rubric and may need work).
