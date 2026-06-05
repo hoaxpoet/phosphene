@@ -124,7 +124,7 @@ static inline float skeinSegDist(float2 p, float2 a, float2 b) {
 // stamp OUT of this fragment and into the marks-on-top overlay (skein_geometry_*, below):
 //   • LIVE, the marks-on-top path SKIPS this fragment (Pass 0 is not run for presets with
 //     a scene-geometry overlay); the held ground comes from the canvas CLEAR (same value,
-//     kSkeinCanvasCream) and the disc is drawn on top by the overlay every frame.
+//     kSkeinCanvasCream) and the pour line is drawn on top by the overlay every frame.
 //   • This fragment is still what the single-frame acceptance / contrast harnesses render
 //     (they call preset.pipelineState directly), so it must equal the live ground.
 // Feature-invariant by design — Skein has no audio routing until Skein.4.
@@ -139,83 +139,89 @@ fragment float4 skein_fragment(
     return float4(kSkeinCanvasCream, 1.0);
 }
 
-// ── Marks-on-top overlay (Skein.1) ─────────────────────────────────────────────────
+// -- Marks-on-top overlay (Skein.1) -------------------------------------------------
 //
-// Draws THIS FRAME'S new pour mark — a swept capsule from painter(t−Δt) → painter(t) — as a
-// fullscreen-triangle overlay composited NORMAL-ALPHA on top of the held canvas (the D-138
+// Draws the leading END of the pour -- a short TRAILING TAIL of the painter's last K positions --
+// as a fullscreen-triangle overlay composited NORMAL-ALPHA on top of the held canvas (the D-138
 // marks-on-top mechanism, reachable per-preset since D-143; Dragon Bloom resolves
-// `dragon_bloom_strand_*`, Skein resolves these). The painter MOVES each frame, so the capsule
-// lands in a NEW place and is then carried forward losslessly by the identity warp + no decay:
-// the union of every frame's capsule is the accumulating, continuous, looping pour LINE on the
-// cream canvas. Draw params (3 verts / 1 instance / .triangle) come from Skein.json `marks`.
+// `dragon_bloom_strand_*`, Skein resolves these). The painter position is the closed-form
+// skeinPainterPos(features.time); the tail is the last K frames recomputed in-shader (no buffer).
 //
-// AA is correct here (unlike the ENGINE.1.1 static disc, which was hard-edged for idempotent
-// in-place redraw): each capsule is stamped ONCE at a new position and then held — it never
-// re-blends in place, so a soft anti-aliased edge does not compound (SKEIN_DESIGN §5.2).
+// TRAILING-OFF / build-up (Matt 2026-06-05 -- "less paint at the end of the pour, a trailing-off
+// effect"; the VisComp 2014 line layer -- width tapers toward the endpoint as the stream thins,
+// SKEIN_DESIGN 1.0): the tail TAPERS from faint + thin at the live tip (newest paint) to full +
+// wide at its base (~0.4 s back). Redrawn every frame onto the HELD canvas, each point ages
+// through the tail and is composited at INCREASING opacity (normal-alpha only ever brightens),
+// so paint FADES IN over the tail window -- the leading edge trails off, older paint is solid.
+// Once a point ages past the tail it is no longer drawn -> frozen, carried forward losslessly by
+// the identity warp + no decay. The union over the session is the accumulating, continuous,
+// looping pour LINE on cream with a trailing-off live edge. (A single per-frame capsule cannot
+// show this -- the next frame fills its tip to full; the multi-frame tail is what persists.)
+// Draw params (3 verts / 1 instance / .triangle) from Skein.json `marks`.
 //
-// White-on-cream ONLY — palette is Skein.3. No splatter / filaments / viscosity / wetness here.
+// White-on-cream ONLY -- palette is Skein.3. No splatter / filaments / viscosity / wetness here.
 
 struct SkeinGeoVertexOut {
     float4 position [[position]];
     float2 uv;
-    // Per-frame painter state, computed once in the vertex (constant across the 3 verts) and
-    // read in the fragment. Path A: no per-preset buffer — features reaches only the vertex.
-    float2 posNow;    // painter UV this frame
-    float2 posPrev;   // painter UV last frame (= previous frame's posNow → gap-free chaining)
-    float  radius;    // pour half-width (v-units), speed-shaped (pool ↔ filament)
-    float  aspect;    // viewport aspect, for isotropic line width
+    float  t;        // features.time -- the painter clock (Path A: features reaches only the vertex)
+    float  dt;       // features.delta_time (guarded) -- one tail step
+    float  aspect;   // viewport aspect, for isotropic line width
 };
 
 vertex SkeinGeoVertexOut skein_geometry_vertex(
     uint vid [[vertex_id]],
     constant FeatureVector& f [[buffer(0)]]   // bound by drawSceneGeometryOverlay (vertex slot 0)
 ) {
-    // Fullscreen triangle in clip space: (-1,-1), (-1,3), (3,-1) — covers the viewport.
+    // Fullscreen triangle in clip space: (-1,-1), (-1,3), (3,-1) -- covers the viewport.
     float2 p = float2((vid == 2) ? 3.0 : -1.0, (vid == 1) ? 3.0 : -1.0);
     SkeinGeoVertexOut out;
     out.position = float4(p, 0.0, 1.0);
     out.uv = p * 0.5 + 0.5;   // 0..1
-
-    float aspect = (f.aspect_ratio > 0.01) ? f.aspect_ratio : 1.0;
-    float t  = f.time;
-    float dt = max(f.delta_time, 1.0 / 240.0);   // guard a zero Δt (would degenerate the capsule)
-
-    // Chaining: posPrev = painter(t−Δt) is exactly the PREVIOUS frame's posNow when time advances
-    // by Δt each frame, so consecutive capsules share an endpoint → one continuous, gap-free line.
-    float2 now  = skeinPainterPos(t);
-    float2 prev = skeinPainterPos(t - dt);
-
-    // Speed-shaped width (SKEIN_DESIGN §1.0 fact (1) / §1.2): the painter LINGERS at the turning
-    // points of its trajectory → the line POOLS (thicker, ref 02_meso_pour_pools); it sweeps fast
-    // mid-swing → a thin FILAMENT (ref 03_micro_filament_threads). This is gesture physics
-    // (width ∝ 1/speed), NOT a noise term — it breaks the "clean geometric tube" anti-reference
-    // without faking coiling. Bounded [0.75, 1.6]× so it stays a single legible line.
-    float2 dCorr = float2((now.x - prev.x) * aspect, now.y - prev.y);
-    float  speed = length(dCorr) / dt;                              // v-units / s, aspect-correct
-    float  wscale = mix(1.6, 0.75, smoothstep(0.05, 0.35, speed));  // pool ↔ filament
-
-    out.posNow  = now;
-    out.posPrev = prev;
-    out.radius  = kSkeinLineRadius * wscale;
-    out.aspect  = aspect;
+    out.t  = f.time;
+    out.dt = max(f.delta_time, 1.0 / 240.0);          // guard a zero dt (would collapse the tail)
+    out.aspect = (f.aspect_ratio > 0.01) ? f.aspect_ratio : 1.0;
     return out;
 }
 
+// Trailing-tail length in frames (~0.67 s at 60 fps): the leading run that tapers + builds up.
+constant int kSkeinTailFrames = 40;
+
 fragment float4 skein_geometry_fragment(SkeinGeoVertexOut in [[stage_in]]) {
-    // Distance to the swept capsule, measured in an aspect-corrected space (x × aspect) so the
-    // line width is isotropic in pixels regardless of viewport shape.
     float a = in.aspect;
-    float2 q  = float2(in.uv.x      * a, in.uv.y);
-    float2 pA = float2(in.posPrev.x * a, in.posPrev.y);
-    float2 pB = float2(in.posNow.x  * a, in.posNow.y);
-    float d = skeinSegDist(q, pA, pB);
+    float2 q = float2(in.uv.x * a, in.uv.y);          // aspect-corrected fragment position
+    float t = in.t, dt = in.dt;
 
-    // Anti-aliased coverage (~1 px transition via the screen-space derivative). Drawn once at a
-    // new position each frame then held, so the AA edge never compounds (see the overlay note).
-    float aa = max(fwidth(d), 1e-4);
-    float cover = 1.0 - smoothstep(in.radius - aa, in.radius + aa, d);
+    // Walk the painter's last K segments from the live tip backwards. Each segment's width is
+    // speed-shaped (pool at the slow turning points, filament on fast sweeps); the AGE taper then
+    // thins + fades the segments toward the tip so the leading edge trails off (SKEIN_DESIGN 1.0/1.2).
+    float2 tip = skeinPainterPos(t);
+    float2 recent = float2(tip.x * a, tip.y);         // k = 0 (newest)
+    float cover = 0.0;
+    for (int k = 0; k < kSkeinTailFrames; ++k) {
+        float2 pp = skeinPainterPos(t - float(k + 1) * dt);
+        float2 older = float2(pp.x * a, pp.y);
 
-    // White pour on the held cream ground (white-on-cream only — palette is Skein.3). Overlay
+        float speed = length(recent - older) / dt;                            // v-units / s
+        float baseR = kSkeinLineRadius * mix(1.6, 0.75, smoothstep(0.05, 0.35, speed));
+
+        float ageFrac = float(k) / float(kSkeinTailFrames);   // 0 = live tip, 1 = tail base
+        // Width tapers thin -> full across the whole tail (the leading edge thins to a point).
+        float r  = baseR * mix(0.18, 1.0, ageFrac);
+        // Opacity stays LOW over the leading tail then ramps to solid near the base, so the
+        // per-pixel ACCUMULATION (younger = drawn fewer times = fainter) leaves a long, smooth
+        // trailing-off; once paint ages past the tail it solidifies and is carried forward by the
+        // hold. A stronger, fully-persistent trail-off is the wet-now/dry-past wetness channel (ENGINE.2).
+        float op = mix(0.04, 1.0, smoothstep(0.0, 0.85, ageFrac));
+
+        float d  = skeinSegDist(q, older, recent);
+        float aa = max(fwidth(d), 1e-4);
+        cover = max(cover, (1.0 - smoothstep(r - aa, r + aa, d)) * op);
+
+        recent = older;
+    }
+
+    // White pour on the held cream ground (white-on-cream only -- palette is Skein.3). Overlay
     // blend is SRC_ALPHA / ONE_MINUS_SRC_ALPHA (PresetLoader.makeSceneGeometryPipeline).
     return float4(float3(1.0), cover);
 }
