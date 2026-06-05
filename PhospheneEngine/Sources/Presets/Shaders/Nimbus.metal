@@ -102,7 +102,7 @@ constant float  kNimbusDetailChurn = 0.45; // fine detail evolves this much fast
 // pole, warm gold/amber at the high pole. Arousal → flow agitation: calm =
 // smoother lobes + gentler roll; energetic = more torn edges + stronger churn.
 // Both smoothed ~4 s in NimbusState (FA #25) and crawl at the section timescale.
-// NB.10 (D-142, Matt M7 r1): poles SATURATED for an expressive cool↔warm swing
+// NB.10 (D-144, Matt M7 r1): poles SATURATED for an expressive cool↔warm swing
 // (the prior muted lavender/soft-gold read "white/gray" once the bright core
 // washed out — Matt's Billie Jean note). Cool = vivid indigo-violet; warm =
 // rich amber/gold.
@@ -113,7 +113,7 @@ constant float3 kNimbusAmbWarm    = float3(0.060, 0.034, 0.012); // warm fill �
 constant float  kNimbusAgitCalm   = 0.65;  // arousal −1 → calmer (smoother lobes, less churn)
 constant float  kNimbusAgitWild   = 1.55;  // arousal +1 → wilder (torn edges, stronger churn)
 
-// NB.10 (D-142) — ENERGY warms the body for genuine bangers. Matt M7 r1: an
+// NB.10 (D-144) — ENERGY warms the body for genuine bangers. Matt M7 r1: an
 // energetic track (B.O.B.) read cool/purple because colour tracked valence only
 // (the classifier hears aggressive-but-dark as low-valence). r1.5 fix: warmth is
 // PRIMARILY valence; high AROUSAL (the classifier's intensity read — more
@@ -398,7 +398,7 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
     // arousal → agitation. Both ∈ [-1, 1], smoothed ~4 s in NimbusState. ───────
     float valence01 = clamp(nb.valence * 0.5 + 0.5, 0.0, 1.0);
     float arousal01 = clamp(nb.arousal * 0.5 + 0.5, 0.0, 1.0);
-    // NB.10 r1.5 (D-142): warmth is PRIMARILY valence (sad → cool, happy → warm).
+    // NB.10 r1.5 (D-144): warmth is PRIMARILY valence (sad → cool, happy → warm).
     // High AROUSAL adds warmth ONLY past a high threshold (a genuine banger reads
     // hot even at low valence — B.O.B.), so it never biases moderate tracks warm
     // and collapse the cool↔warm range (the r1 regression). Then expand around
@@ -502,7 +502,7 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
 #else
     // ── Composite: mood-tinted body over the haze floor → ACES ───────────────
     // NB.6/NB.10: the body is tinted toward `moodTint` (vivid indigo ← cool/low-
-    // energy … rich amber ← warm/energetic). NB.10 (D-142): the densest/brightest
+    // energy … rich amber ← warm/energetic). NB.10 (D-144): the densest/brightest
     // core keeps its MOOD HUE, brightened (luminance, same hue) — it does NOT
     // desaturate to near-white. The old white-wash killed the colour on exactly
     // the brightest, most-visible pixels, so an energetic body read "white/gray"

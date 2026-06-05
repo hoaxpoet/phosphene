@@ -101,14 +101,22 @@ extension RenderPipeline {
 
     /// Set the mv_warp display-stage post params (Dragon Bloom L4, D-137).
     /// `invert` = source.milk `bInvert` (flips the cool full-warp fill to warm),
-    /// `brighten` = `bBrighten`. Display-only (applied in the blit, never fed
-    /// back). `(0, 0)` ⇒ identity blit (every other mv_warp preset unchanged).
+    /// `echo` = `fVideoEchoAlpha`, `gamma` = `fGammaAdj`. Display-only (applied in the
+    /// blit, never fed back). `(0, 0, 1)` ⇒ identity blit (every other mv_warp preset
+    /// unchanged).
+    ///
+    /// `beatPulse` (Skein.ENGINE.1.1, D-143): whether the per-frame comp beat pump fires
+    /// at the blit (`mvWarpBeatPulse` → `post.w`). Formerly keyed on `sceneGeometryState
+    /// != nil`; now per-preset so a marks-on-top preset that wants a quiet canvas (Skein)
+    /// gets true comp-identity. Defaults false — only Dragon Bloom passes true, and it is
+    /// the only `strandsOnTop` preset today, so all existing presets are byte-identical.
     /// Thread-safe.
-    public func setMVWarpPost(invert: Float, echo: Float = 0, gamma: Float = 1) {
+    public func setMVWarpPost(invert: Float, echo: Float = 0, gamma: Float = 1, beatPulse: Bool = false) {
         mvWarpLock.withLock {
             mvWarpInvert = invert
             mvWarpEcho = echo
             mvWarpGamma = gamma
+            mvWarpBeatPulseEnabled = beatPulse
         }
     }
 

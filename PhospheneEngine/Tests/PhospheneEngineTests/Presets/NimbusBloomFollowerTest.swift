@@ -729,7 +729,7 @@ struct NimbusBloomFollowerTest {
         print(String(format: "[NimbusMood] calm↔wild agitation MSD=%.2f", arousalMSD))
         #expect(arousalMSD > 1.0,
                 "arousal→agitation route is dead: calm and wild renders are ~identical (MSD \(arousalMSD))")
-        // NB.10 (D-142): ENERGY warms the body. At NEUTRAL valence, a high-energy
+        // NB.10 (D-144): ENERGY warms the body. At NEUTRAL valence, a high-energy
         // state (high arousal + big bloom) must render warmer than a low-energy
         // one — so an energetic-but-"dark" track (B.O.B.) reads hot, not cool
         // (Matt M7 r1). This gates the energy→warmth route the mood uplift added.

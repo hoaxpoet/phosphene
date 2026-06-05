@@ -27,6 +27,12 @@ public struct MVWarpPipelineBundle: Sendable {
     /// path runs the fata branch: blur(prev) → custom warp → shapes-on-top → custom
     /// mirage comp → swap. nil ⇒ the standard Dragon-Bloom/default mv_warp path.
     public let blurState: MTLRenderPipelineState?
+    /// Initial clear colour for the three feedback textures (Skein.ENGINE.1.1, D-143).
+    /// On the marks-on-top path the background fragment (Pass 0) is skipped, so this is
+    /// the held GROUND the marks sit on (Skein's cream). Stored as RGBA components
+    /// (Sendable) and converted to `MTLClearColor` at the clear site. Defaults to opaque
+    /// black — every existing mv_warp preset clears to black, byte-identical.
+    public let canvasClearColor: SIMD4<Double>
 
     public init(
         warpState: MTLRenderPipelineState,
@@ -34,7 +40,8 @@ public struct MVWarpPipelineBundle: Sendable {
         blitState: MTLRenderPipelineState,
         pixelFormat: MTLPixelFormat,
         feedbackFormat: MTLPixelFormat? = nil,
-        blurState: MTLRenderPipelineState? = nil
+        blurState: MTLRenderPipelineState? = nil,
+        canvasClearColor: SIMD4<Double> = SIMD4<Double>(0, 0, 0, 1)
     ) {
         self.warpState    = warpState
         self.composeState = composeState
@@ -42,6 +49,7 @@ public struct MVWarpPipelineBundle: Sendable {
         self.pixelFormat  = pixelFormat
         self.feedbackFormat = feedbackFormat ?? pixelFormat
         self.blurState    = blurState
+        self.canvasClearColor = canvasClearColor
     }
 }
 
@@ -71,4 +79,9 @@ public struct MVWarpState: @unchecked Sendable {
     /// the fata draw branch runs. nil for Dragon Bloom / default mv_warp presets.
     public let blurPipeline: MTLRenderPipelineState?
     public var blurTexture: MTLTexture?
+    /// Initial feedback-texture clear colour (Skein.ENGINE.1.1, D-143), as RGBA
+    /// components. Carried so `reallocateMVWarpTextures` (resize) re-clears to the same
+    /// ground. (0,0,0,1) for every preset except marks-on-top canvas-hold presets
+    /// (Skein's cream).
+    public let canvasClearColor: SIMD4<Double>
 }
