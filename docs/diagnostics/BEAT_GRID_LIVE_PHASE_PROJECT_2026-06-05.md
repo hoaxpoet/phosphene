@@ -1,6 +1,6 @@
 # Beat-grid live-phase — project scoping note
 
-**Opened:** 2026-06-05 (Matt, after Nimbus M7 round 1, session `2026-06-05T18-26-37Z`). **Decision:** D-143. **Status:** scoping only — needs its own design session + a premise decision from Matt before any increment is written.
+**Opened:** 2026-06-05 (Matt, after Nimbus M7 round 1, session `2026-06-05T18-26-37Z`). **Decision:** D-145. **Status:** scoping only — needs its own design session + a premise decision from Matt before any increment is written.
 
 > This is **not** an increment and **not** a green light to start coding. Per Failed Approach #69, any work on beat-phase requires a *new premise*, and that premise must be chosen with Matt first. This note records the diagnosis and the candidate premises so the future design session starts from evidence, not a blank page.
 
@@ -31,7 +31,7 @@ A combination is plausible (e.g. local-file full-track analysis as the default, 
 
 ## Relationship to Nimbus cert
 
-Nimbus's **beat axis** (kick timing / downbeat feel) is gated on this project — Matt's M7 r1 verdict explicitly waits on it. The **mood axis** is not (NB.10 / D-142 shipped independently). Whether Nimbus can certify on the achievable bar (mood fixed + best-effort beat within the current grid) vs. waiting for this project to land is Matt's call at a future M7.
+Nimbus's **beat axis** (kick timing / downbeat feel) is gated on this project — Matt's M7 r1 verdict explicitly waits on it. The **mood axis** is not (NB.10 / D-144 shipped independently). Whether Nimbus can certify on the achievable bar (mood fixed + best-effort beat within the current grid) vs. waiting for this project to land is Matt's call at a future M7.
 
 ## Artifacts
 

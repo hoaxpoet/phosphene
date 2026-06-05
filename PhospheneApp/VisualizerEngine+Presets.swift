@@ -13,6 +13,23 @@ import Shared
 
 private let logger = Logger(subsystem: "com.phosphene.app", category: "VisualizerEngine")
 
+/// Map a `marks.primitive` descriptor string to an `MTLPrimitiveType` (Skein.ENGINE.1.1,
+/// D-143). The descriptor lives in the Presets module, which does not import Metal, so it
+/// stores the primitive as a string; the mapping lives here in the app (Metal-importing)
+/// layer. Unknown values default to `.triangle` with a logged error.
+private func mvWarpMarksPrimitive(_ name: String, presetName: String) -> MTLPrimitiveType {
+    switch name {
+    case "point":          return .point
+    case "line":           return .line
+    case "line_strip":     return .lineStrip
+    case "triangle":       return .triangle
+    case "triangle_strip": return .triangleStrip
+    default:
+        logger.error("mv_warp preset '\(presetName)' has unknown marks.primitive '\(name)' — defaulting to .triangle")
+        return .triangle
+    }
+}
+
 extension VisualizerEngine {
 
     // MARK: - Preset Cycling
@@ -355,6 +372,13 @@ extension VisualizerEngine {
                 // compiled for or the GPU stalls (the D-138 attachment-mismatch pitfall).
                 let fbFormat: MTLPixelFormat = desc.name == "Fata Morgana"
                     ? .bgra8Unorm : context.pixelFormat
+                // Skein.ENGINE.1.1 (D-143): per-preset canvas clear ground. Marks-on-top
+                // presets skip Pass 0, so the feedback-texture clear IS the held ground
+                // (Skein's cream). Sourced from the preset's `marks.canvas_clear`; black
+                // (default) for every other preset → byte-identical.
+                let canvasClear = desc.marks?.canvasClear.map {
+                    SIMD4<Double>(Double($0.x), Double($0.y), Double($0.z), 1)
+                } ?? SIMD4<Double>(0, 0, 0, 1)
                 let bundle = MVWarpPipelineBundle(
                     warpState: warpPipelines.warpState,
                     composeState: warpPipelines.composeState,
@@ -364,7 +388,8 @@ extension VisualizerEngine {
                     // Fata Morgana (D-139): non-nil ⇒ the render pipeline runs the fata
                     // branch (blur → custom warp → mirage comp). nil for every other
                     // mv_warp preset (their libraries define no `*_blur_fragment`).
-                    blurState: warpPipelines.blurState
+                    blurState: warpPipelines.blurState,
+                    canvasClearColor: canvasClear
                 )
                 // Use the last drawable size reported by drawableSizeWillChange so
                 // mid-session preset switches allocate at the correct resolution.
@@ -374,25 +399,31 @@ extension VisualizerEngine {
                 // Plumb the descriptor decay so the compose pass matches pf.decay in the shader.
                 pipeline.setMVWarpDecay(desc.decay)
 
-                // Dragon Bloom L1 (D-137): if the preset compiled a strand pipeline,
-                // wire it as the additive scene-geometry overlay — 3 strands
-                // (instanceCount), each a line strip of 512 samples (matches
-                // kStrandSamples in DragonBloom.metal). Otherwise clear any prior overlay.
-                if let strandState = warpPipelines.sceneGeometryState {
-                    // 3 waves (source has 3 custom waves). Bilateral symmetry comes
-                    // from the video echo (horizontal mirror) at the comp/blit, NOT
-                    // from mirrored strand instances — matching butterchurn.
+                // Marks-on-top overlay (D-138; generalised per-preset in Skein.ENGINE.1.1,
+                // D-143). If the preset compiled a scene-geometry overlay pipeline, wire it
+                // with the preset's OWN draw params + chromatic + comp + beat pump declared
+                // in its `marks` descriptor block — no longer hard-coded to Dragon Bloom.
+                // Dragon Bloom's `marks` block carries its exact prior values verbatim
+                // (1536/3/lineStrip, chromatic 1.0, comp invert 1 / echo 0.5 / gamma 1.07,
+                // beat pump on) ⇒ byte-identical. Skein declares chromatic 0 + comp-identity
+                // + a fullscreen-triangle disc. Presets with no overlay keep chromatic 0 +
+                // comp-identity exactly as before.
+                if let geoState = warpPipelines.sceneGeometryState, let marks = desc.marks {
                     pipeline.setSceneGeometry(
-                        strandState, vertexCount: 1536, instanceCount: 3, primitive: .lineStrip)
-                    // L3 (D-137): enable the chromatic colour-separation warp (the warm
-                    // R->G->B feedback cycling) for Dragon Bloom.
-                    pipeline.setMVWarpChromatic(1.0)
-                    // L4 (D-137): faithful source.milk fixed-function comp at the blit —
-                    // video echo (fVideoEchoAlpha=0.5, orientation-1 horizontal mirror) +
-                    // gamma (fGammaAdj=1.07) + invert (bInvert=1). bBrighten+bDarken cancel.
-                    // Display-only, so the float feedback field accumulates undisturbed.
-                    pipeline.setMVWarpPost(invert: 1.0, echo: 0.5, gamma: 1.07)
+                        geoState,
+                        vertexCount: marks.vertexCount,
+                        instanceCount: marks.instanceCount,
+                        primitive: mvWarpMarksPrimitive(marks.primitive, presetName: desc.name))
+                    pipeline.setMVWarpChromatic(marks.chromatic)
+                    pipeline.setMVWarpPost(
+                        invert: marks.comp.invert,
+                        echo: marks.comp.echo,
+                        gamma: marks.comp.gamma,
+                        beatPulse: marks.beatPulse)
                 } else {
+                    if warpPipelines.sceneGeometryState != nil {
+                        logger.error("mv_warp '\(desc.name)' has a geometry overlay but no `marks` block.")
+                    }
                     pipeline.setSceneGeometry(nil, vertexCount: 0, instanceCount: 0, primitive: .lineStrip)
                     pipeline.setMVWarpChromatic(0.0)
                     pipeline.setMVWarpPost(invert: 0.0, echo: 0.0, gamma: 1.0)
