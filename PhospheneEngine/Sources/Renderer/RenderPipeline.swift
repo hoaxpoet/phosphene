@@ -66,6 +66,12 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// a beat, smooth decay between — so each beat reads as a pump-and-settle, not a
     /// per-frame flicker. Updated on the render loop (MainActor); display-only.
     var mvWarpBeatEnv: Float = 0
+    /// Whether the comp beat pump fires (Skein.ENGINE.1.1, D-143). Formerly keyed on
+    /// `sceneGeometryState != nil` (so any marks-on-top preset inherited Dragon Bloom's
+    /// pump); now a per-preset flag from the `marks` descriptor block. true only for
+    /// Dragon Bloom (the only `strandsOnTop` preset today ⇒ byte-identical); false for a
+    /// quiet held canvas (Skein) so it gets true comp-identity. Set via `setMVWarpPost`.
+    var mvWarpBeatPulseEnabled: Bool = false
 
     /// Fata Morgana frame_eqs beat-rotation accumulator (D-139), faithful to the
     /// source: `is_beat` from max(bass,mid,treb) vs a slow average + decaying peak;
