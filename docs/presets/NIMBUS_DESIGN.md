@@ -355,6 +355,45 @@ step count to the finest octave you actually keep; on-screen area is a linear
 budget lever. NB.8 sets `complexity_cost.tier2` from this profile; the half-res +
 MetalFX lever remains the untapped reserve.
 
+### 6.7 NB.8 perf tranche — half-res path + worst-case profile (2026-06-05)
+
+The 2nd Atlas live session exposed that §6.1–6.6 all **under-measured**: they
+primed the budget probe to the *steady-mid* body, but the live cost is dominated
+by the body **swelling to fill the frame** at full energy. Live `frame_gpu_ms`:
+**mean 6.84 ms, max 14.53 ms, 56 % of frames over the 7 ms ceiling.** The probe
+was corrected to prime the WORST case (full bloom + max kick + max lobes):
+
+| Variant (worst-case body) | p50 | max |
+|---|---|---|
+| Full 1920×1080 (the live problem) | **7.64 ms** | 9.1 ms (probe) / 14.5 ms (live) |
+| **Half 960×540 march (the NB.8 fix)** | **2.57 ms** | 3.35 ms |
+
+**The lever (implemented): a half-resolution direct-render path.** The §5.5 /
+README "half-res march + MetalFX Temporal" reserve was never wired (no MetalFX in
+the codebase, and MetalFX Temporal needs motion vectors a procedural volume
+lacks). NB.8 instead renders Nimbus's fragment to a `0.5×` offscreen texture and
+**bilinearly upscales** to the drawable (`feedback_blit` + the linear-clamp
+sampler) — ~4× cheaper (the soft gas tolerates the upscale; the freed budget went
+back into march quality). Opt-in per-preset via `RenderPipeline.setDirectRenderScale(0.5)`
+(every other preset stays full-res); `drawDirect` branches on it (the shared
+binding contract lives in `encodePresetVisualization`). Worst-case is now ~2.6 ms
+march + ~0.3 ms upscale ≈ **3 ms (p50) … 3.6 ms (max), well under the 7 ms
+ceiling.** `complexity_cost.tier2` set to **4.0** (was 6.0 provisional); `tier1 =
+9.0` keeps the Orchestrator excluding Nimbus on M1/M2. **Durable rule:** a
+volumetric preset's budget must be measured at its WORST on-screen body (full
+swell), not the steady state — the steady-mid prime under-measured by ~4×.
+
+### 6.8 NB.8 beat-sync tightening (2026-06-05)
+
+The same session: "beat could be tighter." Diagnosis (grid locked 83 %,
+`beatPhase01` clean): the kick fired off the *onset pulse*, which lags the beat
+~80–120 ms (detection + follower). Fix: drive the kick from the **predicted grid
+beat** — an anticipatory pulse `smoothstep(0.82, 1.0, beatPhase01)` that rises in
+the last ~18 % of each beat and peaks ON it; the zero-delay onset (`max(beatBass,
+beatComposite)`) is the fallback when the grid isn't locked. The kick no longer
+needs the stem path (the directional lobes carry per-instrument response), so it
+also needs no warmup gate. A live-feel refinement — Matt's ear is the gate.
+
 ---
 
 ## 7. Phased implementation sketch (Gate 5)
@@ -375,7 +414,7 @@ Increment IDs in house style (`NB.N`), small commits per logical concern (`[NB.N
 - **NB.5 — Beat: stem lobes (the band plays the body). ✅ DONE 2026-06-05 (pending Matt's live manual-validation sign-off).** Reverses the "nothing on the beat" premise (D-141) after the Atlas session showed the energy-only bloom too subtle + floored on bass-dominated music. `NimbusState` gains four stem followers (`kickPunch` ← `max(beatBass,beatComposite)`→`drumsEnergyDev`; `bassLobe`/`vocalsLobe`/`otherLobe` ← stem `…EnergyDev`); `NimbusStateGPU` grows 16→32 bytes. The shader heaves the *single* envelope per stem (`rr/(1 + kick + Σ lobe·cos²)` — star-convex, cannot fragment): drums punch + brighten the whole body, bass heaves DOWN, lead flares UP, other swells to the SIDE. `bloom` re-sourced to mean stem energy (fixes the 3-band floor). Tests: `NimbusBloomFollowerTest.test_stemLobes` (each stem heaves the right way + one mass holds, through the live direct path), budget §6.5 (p50 3.74 ms; perf lesson: cos², never `pow()`, in a per-step falloff). Gate: ✅ the per-stem contact sheet shows directional heaves on one coherent mass. **Matt's live ear/eye sign-off is the remaining gate (non-bypassable — does the body feel like it's playing with the band?).**
 - **NB.6 — Mood.** Valence → colour cool↔warm; arousal → flow agitation. Smoothed in state (FA #25). Folds in the two NB.4/NB.5 deferrals: per-track-distinct gas seeding + PresetSessionReplay route registration (replay against a real mood session).
 - ~~**NB.7 — Page.**~~ **CUT** — no section reorganisation in v1 (§1.3).
-- **NB.8 — performance tranche.** Re-measure with the cone-shadow cost (the new budget unknown); step-cap / early-out; half-res + MetalFX if needed; set `complexity_cost.{tier1 above-budget, tier2 measured}`.
+- **NB.8 — performance tranche. ✅ DONE 2026-06-05 (pending Matt's live sign-off on the half-res look + beat-sync).** The 2nd Atlas live session showed the body swelling to fill the frame costs **mean 6.84 / max 14.5 ms, 56 % of frames over the 7 ms ceiling** (every prior probe under-measured by priming the steady-mid body, not the swell). Fix: a **half-resolution direct-render path** — Nimbus's fragment renders to a 0.5× offscreen texture + bilinear upscale (`feedback_blit`); ~4× cheaper → worst-case ~3 ms (the MetalFX reserve was never wired and Temporal needs motion vectors a procedural volume lacks, so a simple upscale substitutes). Opt-in via `setDirectRenderScale(0.5)` (engine `drawDirect` + `encodePresetVisualization`/`halfResTarget` in `RenderPipeline+DirectDraw.swift`); other presets unaffected. `complexity_cost.tier2` 6.0→**4.0** from the corrected worst-case profile; `tier1 = 9.0` keeps the M1/M2 exclusion. **Beat-sync** tightened (anticipatory predicted-beat kick, §6.8). Budget §6.7/§6.8. Tests: `NimbusBloomFollowerTest.test_halfResUpscale` (half-res + upscale renders a valid image), worst-case `NimbusBudgetProbeTests`, AV.2.2a slot-6 guard updated for the `encodePresetVisualization` refactor.
 - **NB.9 — certification.** Acceptance invariants (§5.7), golden registration, anti-reference manual check, then Matt M7.
 
 ---
