@@ -231,6 +231,12 @@ extension VisualizerEngine {
             }
             mir.reset()
             self.pipeline.resetAccumulatedAudioTime()
+            // NB.4: settle Nimbus into the new track. Zeroing the bloom follower
+            // shrinks/dims the body to its floor and the flow phase re-seeds; the
+            // dim settle-in masks the gas re-seed so the body blooms back UP into
+            // the new track rather than popping (DESIGN §1.5). No-op when Nimbus
+            // is not the active preset (state is nil).
+            self.nimbusState?.reset()
             // BUG-016 fix (2026-05-26): persist the resolved identity so
             // `applyPreset` can refresh per-track preset state (Lumen Mosaic
             // palette) when the user activates a preset mid-track. Before this

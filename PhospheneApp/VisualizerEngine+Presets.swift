@@ -56,6 +56,7 @@ extension VisualizerEngine {
         arachneState = nil
         gossamerState = nil
         auroraVeilState = nil
+        nimbusState = nil
         lumenPatternEngine = nil
         ferrofluidParticles = nil
         ferrofluidMesh = nil
@@ -508,6 +509,30 @@ extension VisualizerEngine {
                 }
             } else {
                 logger.error("AuroraVeilState: failed to allocate state for preset '\(desc.name)'")
+            }
+        }
+
+        // Nimbus-specific (NB.4): allocate the Energy bloom follower + gas
+        // flow-phase state and wire it at slot 6 + per-frame tick. Same
+        // direct-preset (`passes: []`) slot-6 pattern as Aurora Veil — the
+        // setMeshPresetTick closure runs once per frame on the direct path
+        // (RenderPipeline+Draw), advancing the fast-attack/slow-release bloom
+        // and the flow accumulator before the scene draw reads buffer(6).
+        // reset() zeroes the follower so the body settles into each new
+        // track/segment rather than carrying the prior bloom across the cut
+        // (DESIGN §1.5).
+        if desc.name == "Nimbus" {
+            if let state = NimbusState(device: context.device) {
+                nimbusState = state
+                state.reset()
+                pipeline.setDirectPresetFragmentBuffer(state.stateBuffer)
+                pipeline.setMeshPresetTick { [weak state] features, stems in
+                    state?.tick(deltaTime: features.deltaTime,
+                                features: features,
+                                stems: stems)
+                }
+            } else {
+                logger.error("NimbusState: failed to allocate state for preset '\(desc.name)'")
             }
         }
 
