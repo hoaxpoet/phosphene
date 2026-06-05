@@ -146,6 +146,53 @@ struct NimbusBloomFollowerTest {
         )
     }
 
+    // MARK: - Cold-start gate (NB.5 fix — the ~20 s freeze)
+
+    @Test("cold-start: kick pulses on the live beat while cached stems are frozen; lobes gate in after")
+    func test_coldStartGate() throws {
+        let device = MTLCreateSystemDefaultDevice()
+        guard let device, let state = NimbusState(device: device) else {
+            print("NimbusBloomFollowerTest: no Metal device — skipping cold-start gate"); return
+        }
+        // A "cached snapshot": every stem field CONSTANT, with a hot bass
+        // deviation. The old energy-based warmup gate would flip onto these
+        // immediately and freeze the kick at 0 (drumsEnergyDev=0) and the bass
+        // lobe at a constant bulge. The new time-based gate must instead drive
+        // the kick from the live FV beat and keep the lobes gated until ~13 s.
+        var cached = StemFeatures.zero
+        cached.drumsEnergy = 0.4; cached.bassEnergy = 0.4
+        cached.vocalsEnergy = 0.4; cached.otherEnergy = 0.4
+        cached.bassEnergyDev = 1.5   // a frozen "bass hit"
+
+        // ── Cold-start (trackTime < ~9 s): pulse the FV beat, hold stems constant.
+        var kickMin: Float = 1, kickMax: Float = 0, lobeMax: Float = 0
+        var t: Float = 0
+        while t < 5.0 {
+            let beatOn = (Int(t * 4) % 2 == 0)   // ~2 Hz square wave
+            var fv = FeatureVector(deltaTime: Self.dt)
+            fv.beatComposite = beatOn ? 1.0 : 0.0
+            state.tick(deltaTime: Self.dt, features: fv, stems: cached)
+            kickMin = min(kickMin, state.kickPunch); kickMax = max(kickMax, state.kickPunch)
+            lobeMax = max(lobeMax, state.bassLobe)
+            t += Self.dt
+        }
+        #expect(
+            kickMax - kickMin > 0.2,
+            "kick did not PULSE on the live beat during cold-start — frozen on the cached stems? min=\(kickMin) max=\(kickMax)"
+        )
+        #expect(
+            lobeMax < 0.1,
+            "bassLobe fired during cold-start despite the gate (would be frozen on the constant cached dev): \(lobeMax)"
+        )
+
+        // ── Past convergence (trackTime > ~13 s): the lobes gate IN on the stems.
+        for _ in 0..<800 { state.tick(deltaTime: Self.dt, features: FeatureVector(deltaTime: Self.dt), stems: cached) }
+        #expect(
+            state.bassLobe > 0.5,
+            "bassLobe did not engage after the cold-start convergence window: \(state.bassLobe)"
+        )
+    }
+
     // MARK: - Part B: the render tracks bloom (live direct dispatch path)
 
     @Test("silence floor renders non-black; energetic renders bigger + brighter")
@@ -330,10 +377,10 @@ struct NimbusBloomFollowerTest {
             guard let state = NimbusState(device: ctx.device) else {
                 Issue.record("NimbusState alloc failed"); return
             }
-            // Converge: one big-dt tick snaps every follower to its sustained
-            // target; small ticks hold it and advance flow.
-            state.tick(deltaTime: 2.0, features: fv, stems: fixture.stems)
-            for _ in 0..<20 { state.tick(deltaTime: Self.dt, features: fv, stems: fixture.stems) }
+            // Converge AND advance past the cold-start gate (trackTime >
+            // stemConvergeHi ≈ 13 s) so the lobes are ungated — trackTime
+            // advances by the clamped dt (≤ 0.1/tick), so this needs ~150 ticks.
+            for _ in 0..<150 { state.tick(deltaTime: 0.1, features: fv, stems: fixture.stems) }
             followers[fixture.name] = NimbusStateGPU(
                 bloom: state.bloom,
                 flowPhase: state.flowPhase,
