@@ -44,23 +44,38 @@
 // playback chrome — a Skein.1+ palette/UX decision (darker chrome backdrop for light
 // presets, dark chrome text, or a toned ground). Canvas-hold is colour-agnostic, so this
 // value is not load-bearing for ENGINE.1. See the ENGINE.1 closeout + SKEIN_DESIGN flag.
+//
+// Skein.ENGINE.1.1 (D-143): this MUST stay byte-identical to Skein.json `marks.canvas_clear`.
+// LIVE, the held ground comes from the per-preset canvas CLEAR (the marks-on-top path skips
+// Pass 0, so skein_fragment is not drawn); skein_fragment below renders the same value for
+// the single-frame acceptance/contrast harnesses. Keep the two in sync.
 constant float3 kSkeinCanvasCream = float3(0.66, 0.60, 0.50);
 
-// The single hard-coded TEST STAMP — a fixed disc. Not a real mark model; it exists
-// only to give the persistence test a non-trivial pattern to hold and the
-// PresetAcceptance "readable form" gate ≥2 luma bins. A deep teal, well separated
+// The single hard-coded TEST STAMP — a fixed disc. Not a real mark model; it exists only
+// to give the persistence test a non-trivial pattern to hold. A deep teal, well separated
 // from the cream ground. All real mark morphology is Skein.2+.
+//
+// HARD EDGE (no AA): the marks-on-top overlay redraws this stamp EVERY frame onto the held
+// canvas (the live path runs drawSceneGeometryOverlay per frame). A normal-alpha redraw is
+// IDEMPOTENT only when alpha is exactly 0 or 1 — teal-over-teal and keep-cream both produce
+// byte-identical frames (the canvas-hold "consecutive frames byte-identical" contract). A
+// partial-alpha AA fringe would re-blend toward teal every frame and creep for hundreds of
+// frames. Real Skein.1 marks are drawn ONCE as the painter moves (not redrawn in place), so
+// they get their AA without this constraint.
 constant float2 kSkeinStampCentre = float2(0.5, 0.5);
 constant float  kSkeinStampRadius = 0.16;
-constant float  kSkeinStampAA     = 0.006;
 constant float3 kSkeinStampColor  = float3(0.06, 0.30, 0.32);
 
 // ── Background / canvas fragment ──────────────────────────────────────────────────
 //
-// Renders ONE frame of the base canvas: cream ground + the fixed test stamp. In the
-// canvas-hold path this is the "scene" drawn once onto the held canvas; the mv_warp
-// warp pass then carries it forward losslessly without re-rendering. Feature-invariant
-// by design — ENGINE.1 has no audio routing (Skein.4 wires the real emission).
+// Renders the flat cream/toned GROUND only. Skein.ENGINE.1.1 (D-143) moved the test
+// stamp OUT of this fragment and into the marks-on-top overlay (skein_geometry_*, below):
+//   • LIVE, the marks-on-top path SKIPS this fragment (Pass 0 is not run for presets with
+//     a scene-geometry overlay); the held ground comes from the canvas CLEAR (same value,
+//     kSkeinCanvasCream) and the disc is drawn on top by the overlay every frame.
+//   • This fragment is still what the single-frame acceptance / contrast harnesses render
+//     (they call preset.pipelineState directly), so it must equal the live ground.
+// Feature-invariant by design — Skein has no audio routing until Skein.4.
 
 fragment float4 skein_fragment(
     VertexOut               in    [[stage_in]],
@@ -69,11 +84,43 @@ fragment float4 skein_fragment(
     constant float*         wv    [[buffer(2)]],   // unused
     constant StemFeatures&  stems [[buffer(3)]]    // unused
 ) {
-    float  d        = length(in.uv - kSkeinStampCentre);
-    float  inStamp  = 1.0 - smoothstep(kSkeinStampRadius - kSkeinStampAA,
-                                       kSkeinStampRadius + kSkeinStampAA, d);
-    float3 colour   = mix(kSkeinCanvasCream, kSkeinStampColor, inStamp);
-    return float4(colour, 1.0);
+    return float4(kSkeinCanvasCream, 1.0);
+}
+
+// ── Marks-on-top overlay (Skein.ENGINE.1.1, D-143) ─────────────────────────────────
+//
+// Draws the fixed TEST STAMP (the disc) as a fullscreen-triangle overlay composited
+// NORMAL-ALPHA on top of the held canvas — the D-138 marks-on-top mechanism, now reachable
+// per-preset (Dragon Bloom resolves `dragon_bloom_strand_*`; Skein resolves these). Live,
+// the disc is redrawn in place every frame onto the warped/held frame; identity warp + no
+// decay carry the canvas forward losslessly, so the result is a Hamming-0 hold.
+//
+// ENGINE.1.1 SKELETON ONLY: the stamp is STATIC (fixed UV, no audio, no motion). The
+// wandering painter + swept-capsule pour that ACCUMULATE a continuous line are Skein.1.
+// Draw params (3 verts / 1 instance / .triangle) come from Skein.json `marks`.
+
+struct SkeinGeoVertexOut {
+    float4 position [[position]];
+    float2 uv;
+};
+
+vertex SkeinGeoVertexOut skein_geometry_vertex(uint vid [[vertex_id]]) {
+    // Fullscreen triangle in clip space: (-1,-1), (-1,3), (3,-1) — covers the viewport.
+    float2 p = float2((vid == 2) ? 3.0 : -1.0, (vid == 1) ? 3.0 : -1.0);
+    SkeinGeoVertexOut out;
+    out.position = float4(p, 0.0, 1.0);
+    out.uv = p * 0.5 + 0.5;   // 0..1; the disc is centred + radially symmetric, so Y-flip is moot
+    return out;
+}
+
+fragment float4 skein_geometry_fragment(SkeinGeoVertexOut in [[stage_in]]) {
+    float d = length(in.uv - kSkeinStampCentre);
+    // HARD edge (alpha ∈ {0,1}) so the per-frame redraw is idempotent — see kSkeinStamp*.
+    float inStamp = (d <= kSkeinStampRadius) ? 1.0 : 0.0;
+    // Normal-alpha over the held canvas: opaque teal inside the disc, fully transparent
+    // outside so the cream ground shows through. The overlay pipeline's blend is
+    // SRC_ALPHA / ONE_MINUS_SRC_ALPHA (PresetLoader.makeSceneGeometryPipeline).
+    return float4(kSkeinStampColor, inStamp);
 }
 
 // ── MV-Warp functions (D-027) — the canvas-hold config ─────────────────────────────

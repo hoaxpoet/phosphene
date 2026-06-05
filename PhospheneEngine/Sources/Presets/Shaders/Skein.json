@@ -8,6 +8,15 @@
   "vertex_function": "fullscreen_vertex",
   "beat_source": "composite",
   "decay": 1.0,
+  "marks": {
+    "vertex_count": 3,
+    "instance_count": 1,
+    "primitive": "triangle",
+    "chromatic": 0.0,
+    "comp": { "invert": 0.0, "echo": 0.0, "gamma": 1.0 },
+    "beat_pulse": false,
+    "canvas_clear": [0.66, 0.60, 0.50]
+  },
   "visual_density": 0.40,
   "motion_intensity": 0.40,
   "fatigue_risk": "low",
