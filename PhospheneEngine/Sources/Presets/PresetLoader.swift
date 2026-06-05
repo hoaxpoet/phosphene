@@ -841,22 +841,37 @@ public final class PresetLoader: @unchecked Sendable {
         }
     }
 
-    /// Build the optional additive scene-geometry pipeline for direct mv_warp presets
-    /// that define strand geometry (Dragon Bloom L1, D-137). Additive blend (src=one,
-    /// dst=one) so strands accumulate as glow; the primitive type + vertex/instance
-    /// counts are supplied per-draw by the app via `setSceneGeometry`. Returns nil if
-    /// the preset library doesn't define the strand functions.
+    /// Build the optional scene-geometry overlay pipeline for direct mv_warp presets
+    /// that draw "marks on top" of the held/warped frame (D-138; generalised per-preset
+    /// in Skein.ENGINE.1.1, D-143). NORMAL alpha blend (SRC_ALPHA, ONE_MINUS_SRC_ALPHA)
+    /// so marks paint over the canvas (NOT additive — the per-draw primitive type +
+    /// vertex/instance counts are supplied by the app via `setSceneGeometry` from the
+    /// preset's `marks` descriptor block). Returns nil if the preset library defines no
+    /// overlay functions.
+    ///
+    /// Per-preset lookup mirrors the `<prefix>_warp_fragment` precedent in
+    /// `makeWarpPipelines` (D-139): a preset whose `fragment_function` is
+    /// `<prefix>_fragment` declares `<prefix>_geometry_vertex` / `<prefix>_geometry_fragment`
+    /// (e.g. Skein → `skein_geometry_*`). Dragon Bloom keeps its original
+    /// `dragon_bloom_strand_*` names via the legacy fallback — its library is the only one
+    /// that defines those symbols, so it resolves byte-identically and every other preset
+    /// without overlay functions still gets nil.
     private func makeSceneGeometryPipeline(
         library: MTLLibrary, descriptor: PresetDescriptor
     ) -> MTLRenderPipelineState? {
-        guard let vtx  = library.makeFunction(name: "dragon_bloom_strand_vertex"),
-              let frag = library.makeFunction(name: "dragon_bloom_strand_fragment")
-        else { return nil }
+        let prefix = descriptor.fragmentFunction.hasSuffix("_fragment")
+            ? String(descriptor.fragmentFunction.dropLast("_fragment".count))
+            : descriptor.fragmentFunction
+        let vtxFn = library.makeFunction(name: "\(prefix)_geometry_vertex")
+            ?? library.makeFunction(name: "dragon_bloom_strand_vertex")
+        let fragFn = library.makeFunction(name: "\(prefix)_geometry_fragment")
+            ?? library.makeFunction(name: "dragon_bloom_strand_fragment")
+        guard let vtx = vtxFn, let frag = fragFn else { return nil }
         let geoDesc = MTLRenderPipelineDescriptor()
         geoDesc.vertexFunction = vtx
         geoDesc.fragmentFunction = frag
-        // Strands render INTO the mv_warp scene texture → feedbackFormat (float for
-        // Dragon Bloom).
+        // Overlay renders INTO the mv_warp scene/compose texture → feedbackFormat
+        // (float for Dragon Bloom; sRGB drawable format for Skein).
         geoDesc.colorAttachments[0].pixelFormat = feedbackFormat(descriptor)
         // NORMAL alpha blend (SRC_ALPHA, ONE_MINUS_SRC_ALPHA) — butterchurn's
         // drawCustomWaveform path for waves with bAdditive=0 (the preset's
