@@ -66,6 +66,7 @@ extension VisualizerEngine {
         pipeline.setDirectPresetFragmentBuffer(nil)
         pipeline.setDirectPresetFragmentBuffer2(nil)
         pipeline.setDirectPresetFragmentBuffer3(nil)
+        pipeline.setDirectRenderScale(1.0)   // NB.8: full-res unless a preset opts into half-res below
         pipeline.setRayMarchPresetHeightTexture(nil)
         pipeline.setMeshGBufferEncoder(nil)
         pipeline.setPostProcessChain(nil)
@@ -531,6 +532,12 @@ extension VisualizerEngine {
                                 features: features,
                                 stems: stems)
                 }
+                // NB.8: render the volumetric march at half resolution + upscale.
+                // The body swells to fill the frame at full energy, where a
+                // full-res march exceeds the 7 ms Tier-2 ceiling; 0.5× is ~4×
+                // cheaper and the soft gas tolerates the upscale. Reset to 1.0
+                // for every other preset at the top of applyPreset.
+                pipeline.setDirectRenderScale(0.5)
             } else {
                 logger.error("NimbusState: failed to allocate state for preset '\(desc.name)'")
             }
