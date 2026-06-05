@@ -214,6 +214,15 @@ struct PresetAcceptanceTests {
         // `fata_morgana_fragment` this harness renders is intentionally black.
         // Production coverage: FataMorganaMVWarpAccumulationTest.
         guard preset.descriptor.name != "Fata Morgana" else { return }
+        // Skein (D-143): its readable content (the test stamp; later the poured line) is
+        // the marks-on-top overlay (skein_geometry_*) composited onto the held canvas in
+        // the mv_warp path. This fragment-only harness renders the flat cream GROUND only
+        // (1 luma bin), so the readable-form invariant doesn't apply — same exemption form
+        // as Dragon Bloom / Fata Morgana. The overlay's lossless persistence is covered by
+        // SkeinCanvasHoldTest's marks-on-top test. NOTE: Skein is NOT exempted from the
+        // non-black / no-white-clip / contrast invariants — its cream ground (unlike the
+        // near-black DB/FM fragments) genuinely passes those.
+        guard preset.descriptor.name != "Skein" else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture
         let pixels = try renderFrame(preset: preset, features: &fixture, context: ctx)
