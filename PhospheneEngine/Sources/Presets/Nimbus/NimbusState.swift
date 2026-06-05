@@ -97,6 +97,12 @@ public final class NimbusState: @unchecked Sendable {
     private static let kickAttackTau: Float = 0.04
     private static let kickReleaseTau: Float = 0.16
 
+    /// Anticipatory beat window: the kick pulse ramps from `beatPhase01 ==
+    /// beatAnticLo` to the beat (`beatPhase01 == 1`), peaking ON the beat. 0.82
+    /// = the last ~18 % of each beat interval (~80 ms at 136 BPM), so the punch
+    /// leads the onset-detection lag and lands on the beat.
+    private static let beatAnticLo: Float = 0.82
+
     /// Directional stem-lobe followers. A touch slower than the kick so they
     /// read as heaves, not flickers.
     private static let lobeAttackTau: Float = 0.06
@@ -220,13 +226,18 @@ public final class NimbusState: @unchecked Sendable {
         let bloomTarget = nbClamp(bloomDrive * Self.bloomGain + Self.bloomOffset, 0, Self.bloomMax)
         bloom = follow(bloom, bloomTarget, dt, Self.bloomAttackTau, Self.bloomReleaseTau)
 
-        // ── Whole-body kick punch — the hero beat moment ─────────────────────
-        // Onset pulse (zero-delay, frame 1) blended toward the drums-stem hit
-        // signal as stems converge. max(beatBass, beatComposite) covers both
-        // kick- and snare-driven tracks (FA #26).
-        let fvBeat = max(features.beatBass, features.beatComposite)
-        let drumsHit = nbSmoothstep(Self.devThreshLo, Self.devThreshHi, stems.drumsEnergyDev)
-        let kickSignal = nbMix(fvBeat, drumsHit, stemMix)
+        // ── Whole-body kick punch — TIGHT beat timing (NB.8 beat-sync) ───────
+        // The anticipatory pulse rises in the last ~18 % of each beat and peaks
+        // ON the predicted beat (beatPhase01 → 1), so the punch lands on the beat
+        // rather than ~80–120 ms after it (the onset-detection lag — the 2nd Atlas
+        // session's "beat could be tighter"). The zero-delay onset pulse
+        // (max(beatBass, beatComposite), FA #26) is the fallback when the grid
+        // isn't locked (beatPhase01 pinned at 0). Both are live from frame 1 on a
+        // cached-grid track, so the kick needs no warmup gate. (The directional
+        // stem lobes below carry the per-instrument response.)
+        let antic = nbSmoothstep(Self.beatAnticLo, 1.0, features.beatPhase01)
+        let onset = max(features.beatBass, features.beatComposite)
+        let kickSignal = max(antic, onset)
         kickPunch = follow(kickPunch, kickSignal, dt, Self.kickAttackTau, Self.kickReleaseTau)
 
         // ── Directional stem lobes ───────────────────────────────────────────

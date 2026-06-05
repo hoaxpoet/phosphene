@@ -267,6 +267,92 @@ struct NimbusBloomFollowerTest {
         )
     }
 
+    // MARK: - NB.8 half-res render path
+
+    @Test("half-res render + bilinear upscale produces a valid (non-black, body-present) image")
+    func test_halfResUpscale() throws {
+        let ctx: MetalContext
+        do { ctx = try MetalContext() } catch {
+            print("NimbusBloomFollowerTest: no Metal context — skipping half-res"); return
+        }
+        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat)
+        guard let nimbus = loader.presets.first(where: { $0.descriptor.name == "Nimbus" }),
+              let lib = try? ShaderLibrary(context: ctx),
+              let texMgr = try? TextureManager(context: ctx, shaderLibrary: lib),
+              let state = NimbusState(device: ctx.device) else {
+            Issue.record("half-res setup failed"); return
+        }
+        // The same feedback_blit + linear-clamp sampler the live half-res path
+        // uses for the upscale (RenderPipeline drawDirect / feedbackBlitPipelineState).
+        guard let blit = try? lib.renderPipelineState(
+                named: "feedback_blit", vertexFunction: "fullscreen_vertex",
+                fragmentFunction: "feedback_blit_fragment",
+                pixelFormat: ctx.pixelFormat, device: ctx.device) else {
+            Issue.record("feedback_blit pipeline failed"); return
+        }
+        let sd = MTLSamplerDescriptor()
+        sd.minFilter = .linear; sd.magFilter = .linear
+        sd.sAddressMode = .clampToEdge; sd.tAddressMode = .clampToEdge
+        guard let sampler = ctx.device.makeSamplerState(descriptor: sd) else {
+            Issue.record("sampler failed"); return
+        }
+
+        // Converge to a present, swelled body (the case the half-res path exists for).
+        var fv = FeatureVector(bass: 0.5, mid: 0.5, treble: 0.5, time: 3.0, deltaTime: Self.dt)
+        fv.aspectRatio = 1.0
+        for _ in 0..<60 { state.tick(deltaTime: Self.dt, features: fv, stems: stemFixture(energy: 0.8)) }
+
+        let full = 256, half = 128
+        func makeTex(_ width: Int, _ height: Int) -> MTLTexture? {
+            let td = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: ctx.pixelFormat, width: width, height: height, mipmapped: false)
+            td.usage = [.renderTarget, .shaderRead]; td.storageMode = .shared
+            return ctx.device.makeTexture(descriptor: td)
+        }
+        guard let halfTex = makeTex(half, half), let fullTex = makeTex(full, full),
+              let cmd = ctx.commandQueue.makeCommandBuffer() else {
+            Issue.record("texture/cmd alloc failed"); return
+        }
+
+        // Pass 1 — Nimbus fragment → half-res texture (the same bindings drawDirect uses).
+        let rpd1 = MTLRenderPassDescriptor()
+        rpd1.colorAttachments[0].texture = halfTex
+        rpd1.colorAttachments[0].loadAction = .clear
+        rpd1.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        rpd1.colorAttachments[0].storeAction = .store
+        guard let e1 = cmd.makeRenderCommandEncoder(descriptor: rpd1) else { Issue.record("enc1"); return }
+        e1.setRenderPipelineState(nimbus.pipelineState)
+        e1.setFragmentBytes(&fv, length: MemoryLayout<FeatureVector>.size, index: 0)
+        texMgr.bindTextures(to: e1)
+        e1.setFragmentBuffer(state.stateBuffer, offset: 0, index: 6)
+        e1.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        e1.endEncoding()
+
+        // Pass 2 — bilinear upscale → full-res texture.
+        let rpd2 = MTLRenderPassDescriptor()
+        rpd2.colorAttachments[0].texture = fullTex
+        rpd2.colorAttachments[0].loadAction = .clear
+        rpd2.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        rpd2.colorAttachments[0].storeAction = .store
+        guard let e2 = cmd.makeRenderCommandEncoder(descriptor: rpd2) else { Issue.record("enc2"); return }
+        e2.setRenderPipelineState(blit)
+        e2.setFragmentTexture(halfTex, index: 0)
+        e2.setFragmentSamplerState(sampler, index: 0)
+        e2.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        e2.endEncoding()
+        cmd.commit()
+        cmd.waitUntilCompleted()
+        guard cmd.status == .completed else { Issue.record("render failed"); return }
+
+        var px = [UInt8](repeating: 0, count: full * full * 4)
+        fullTex.getBytes(&px, bytesPerRow: full * 4,
+                         from: MTLRegionMake2D(0, 0, full, full), mipmapLevel: 0)
+        let luma = meanLuma(px), cover = coverage(px, lumaThreshold: 0.12)
+        print(String(format: "[NimbusHalfRes] upscaled luma=%.4f cover=%.3f", luma, cover))
+        #expect(luma > 0.003, "half-res upscaled output is ~black (luma \(luma)) — the path produced nothing")
+        #expect(cover > 0.03, "no body in the half-res upscaled output (coverage \(cover))")
+    }
+
     // MARK: - Render harness (live direct dispatch path)
 
     /// Render Nimbus into a square BGRA buffer through `preset.pipelineState`
@@ -358,18 +444,18 @@ struct NimbusBloomFollowerTest {
             Issue.record("could not build noise textures"); return
         }
 
-        // Each fixture converges the followers to one regime. All stem energies
-        // sum past the D-019 warmup so the model is in its post-warmup (stem)
-        // path; only the named deviation is hot, so only that lobe fires.
-        let fixtures: [(name: String, stems: StemFeatures)] = [
-            ("baseline", stemFixture()),                          // present body, no lobes
-            ("bloom",    stemFixture(energy: 0.95)),              // big swell, no lobes
-            ("kick",     stemFixture(drumsDev: 1.6)),             // whole-body punch + brightness
-            ("bass",     stemFixture(bassDev: 1.6)),              // heaves DOWN
-            ("vocals",   stemFixture(vocalsDev: 1.6)),            // flares UP
-            ("other",    stemFixture(otherDev: 1.6)),             // swells to the SIDE (right)
+        // Each fixture converges the followers to one regime. The whole-body kick
+        // punch is BEAT-driven (NB.8) so the "kick" fixture supplies a beat; the
+        // directional lobes are stem-driven, so each lobe fixture has one hot stem
+        // deviation. All stem energies sum past the D-019 warmup.
+        let fixtures: [(name: String, stems: StemFeatures, beat: Bool)] = [
+            ("baseline", stemFixture(),               false),   // present body, no lobes
+            ("bloom",    stemFixture(energy: 0.95),   false),   // big swell, no lobes
+            ("kick",     stemFixture(),               true),    // whole-body punch + brightness (beat)
+            ("bass",     stemFixture(bassDev: 1.6),   false),   // heaves DOWN
+            ("vocals",   stemFixture(vocalsDev: 1.6), false),   // flares UP
+            ("other",    stemFixture(otherDev: 1.6),  false),   // swells to the SIDE (right)
         ]
-        let fv = FeatureVector(bass: 0.5, mid: 0.5, treble: 0.5, time: 3.0, deltaTime: Self.dt)
 
         var rendered: [String: [UInt8]] = [:]
         var followers: [String: NimbusStateGPU] = [:]
@@ -377,6 +463,8 @@ struct NimbusBloomFollowerTest {
             guard let state = NimbusState(device: ctx.device) else {
                 Issue.record("NimbusState alloc failed"); return
             }
+            var fv = FeatureVector(bass: 0.5, mid: 0.5, treble: 0.5, time: 3.0, deltaTime: Self.dt)
+            if fixture.beat { fv.beatComposite = 1.0; fv.beatBass = 1.0 }
             // Converge AND advance past the cold-start gate (trackTime >
             // stemConvergeHi ≈ 13 s) so the lobes are ungated — trackTime
             // advances by the clamped dt (≤ 0.1/tick), so this needs ~150 ticks.
@@ -400,7 +488,7 @@ struct NimbusBloomFollowerTest {
         let kf = followers["kick"]!, bf = followers["bass"]!
         let vf = followers["vocals"]!, of = followers["other"]!
         #expect(kf.kickPunch > 0.7 && kf.bassLobe < 0.1 && kf.vocalsLobe < 0.1 && kf.otherLobe < 0.1,
-                "drums fixture should fire kickPunch only: \(kf)")
+                "kick (beat) fixture should fire kickPunch only: \(kf)")
         #expect(bf.bassLobe > 0.7 && bf.kickPunch < 0.1, "bass fixture should fire bassLobe only: \(bf)")
         #expect(vf.vocalsLobe > 0.7 && vf.kickPunch < 0.1, "vocals fixture should fire vocalsLobe only: \(vf)")
         #expect(of.otherLobe > 0.7 && of.kickPunch < 0.1, "other fixture should fire otherLobe only: \(of)")

@@ -58,21 +58,26 @@ struct NimbusBudgetProbeTests {
             Issue.record("could not build noise textures — probe would mis-measure"); return
         }
 
-        // Steady-mid fixture (DESIGN §6 / NB.1 plan). aspectRatio defaults to
-        // 1.777 = the 1920×1080 measurement aspect, so the framing matches.
-        var features = FeatureVector(bass: 0.5, mid: 0.5, treble: 0.5,
-                                     time: 3.0, deltaTime: 1.0 / 60.0)
-
-        // NB.4: the shader now reads NimbusStateGPU at buffer(6). Prime a
-        // follower to the steady-mid converged bloom (~0.5 → body ≈ the NB.3
-        // size) so this probe stays directly comparable to the §6.3 NB.3
-        // measurement, and bind it each frame (an unbound slot 6 would
-        // mis-measure — FA #66). Full-bloom (bigger body) costs modestly more;
-        // §6.4 records the comparable baseline number.
+        // NB.8 — measure the WORST CASE, not the baseline. The 2nd Atlas live
+        // session showed the cost is dominated by the body SWELLING TO FILL THE
+        // FRAME at full energy (live mean 6.84 ms, max 14.5 ms, 56 % of frames
+        // over the 7 ms ceiling) — the old steady-mid prime under-measured that
+        // badly. Prime the follower to full bloom + max kick + max lobes (past
+        // the cold-start gate so the lobes engage) so `nb` drives the biggest
+        // body. The shader reads only `aspect_ratio` from `features`; the body
+        // size/lobes come from the slot-6 buffer.
+        var features = FeatureVector(time: 3.0, deltaTime: 1.0 / 60.0)   // aspect 1.777
+        features.beatComposite = 1.0; features.beatBass = 1.0; features.beatPhase01 = 1.0
+        features.bassAttRel = 1.0; features.midAttRel = 1.0; features.trebAttRel = 1.0
         guard let nbState = NimbusState(device: device) else {
             Issue.record("NimbusState alloc failed — probe would read an unbound slot 6"); return
         }
-        nbState.tick(deltaTime: 2.0, features: features, stems: .zero)
+        var worstStems = StemFeatures.zero
+        worstStems.drumsEnergy = 0.9; worstStems.bassEnergy = 0.9
+        worstStems.vocalsEnergy = 0.9; worstStems.otherEnergy = 0.9
+        worstStems.drumsEnergyDev = 2.0; worstStems.bassEnergyDev = 2.0
+        worstStems.vocalsEnergyDev = 2.0; worstStems.otherEnergyDev = 2.0
+        for _ in 0..<200 { nbState.tick(deltaTime: 0.1, features: features, stems: worstStems) }
 
         // Measure per-preset GPU ms at a given resolution via the command-buffer
         // GPU timestamp window (one fullscreen direct-fragment pass per frame).
