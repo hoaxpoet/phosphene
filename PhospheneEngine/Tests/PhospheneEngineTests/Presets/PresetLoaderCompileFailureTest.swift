@@ -44,7 +44,12 @@ struct PresetLoaderCompileFailureTest {
     /// direct-fragment volumetric ray-march composing the V.2 Volume tree; the
     /// `volumetric` PresetCategory case was Matt-authorized 2026-06-04). Not yet
     /// certified (NB.1 macro maquette; cert at NB.9).
-    static let expectedProductionPresetCount = 19
+    /// 19 → 20 at Skein.ENGINE.1 (Skein — canvas-hold accumulation skeleton:
+    /// the no-decay / identity config of the mv_warp brush-on-feedback paradigm,
+    /// D-142; direct + mv_warp). ENGINE.1 ships an identity-warp recipe + a fixed
+    /// test stamp only — no audio/marks/family yet (family `painterly` + emission
+    /// at Skein.1+). Not certified.
+    static let expectedProductionPresetCount = 20
 
     @Test("PresetLoader.presets.count matches expectedProductionPresetCount — catches Failed Approach #44 silent drops")
     func test_presetLoaderProductionCount() {
