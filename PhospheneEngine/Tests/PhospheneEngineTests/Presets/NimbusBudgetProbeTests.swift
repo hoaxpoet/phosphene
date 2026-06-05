@@ -63,6 +63,17 @@ struct NimbusBudgetProbeTests {
         var features = FeatureVector(bass: 0.5, mid: 0.5, treble: 0.5,
                                      time: 3.0, deltaTime: 1.0 / 60.0)
 
+        // NB.4: the shader now reads NimbusStateGPU at buffer(6). Prime a
+        // follower to the steady-mid converged bloom (~0.5 → body ≈ the NB.3
+        // size) so this probe stays directly comparable to the §6.3 NB.3
+        // measurement, and bind it each frame (an unbound slot 6 would
+        // mis-measure — FA #66). Full-bloom (bigger body) costs modestly more;
+        // §6.4 records the comparable baseline number.
+        guard let nbState = NimbusState(device: device) else {
+            Issue.record("NimbusState alloc failed — probe would read an unbound slot 6"); return
+        }
+        nbState.tick(deltaTime: 2.0, features: features, stems: .zero)
+
         // Measure per-preset GPU ms at a given resolution via the command-buffer
         // GPU timestamp window (one fullscreen direct-fragment pass per frame).
         func measure(_ w: Int, _ h: Int) -> (min: Double, p50: Double, mean: Double, p95: Double, max: Double)? {
@@ -83,6 +94,7 @@ struct NimbusBudgetProbeTests {
                 enc.setRenderPipelineState(nimbus.pipelineState)
                 enc.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.size, index: 0)
                 texMgr.bindTextures(to: enc)   // slots 4–8 (noiseVolume 6, blueNoise 8) — FA #66 parity
+                enc.setFragmentBuffer(nbState.stateBuffer, offset: 0, index: 6)  // NB.4 NimbusStateGPU
                 enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
                 enc.endEncoding()
                 cmd.commit()
