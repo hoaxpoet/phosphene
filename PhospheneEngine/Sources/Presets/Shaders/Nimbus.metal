@@ -42,14 +42,26 @@ constant float  kNimbusShadowDt  = 0.32;   // light-march step length (reach ≈
 constant float  kNimbusSigma     = 1.55;   // primary extinction (translucent: see INTO the volume)
 constant float  kNimbusShadowSig = 3.40;   // self-shadow extinction — STRONGER (NB.3.3) → deeper dark crevices vs bright forward-scatter rim (the backlit silver lining)
 constant float  kNimbusCamZ      = -6.0;   // camera distance (looking +Z)
-constant float  kNimbusFocal     = 1.25;   // FOV (larger = narrower)
-constant float  kNimbusPhaseG    = 0.58;   // Henyey-Greenstein anisotropy — strong forward scatter → backlit glow (NB.3.2)
+constant float  kNimbusFocal     = 1.44;   // FOV (larger = narrower) — NB.3.3 zoom +15% (1.25→1.44) to grow the mass on-screen without touching the approved body geometry/density (Matt-directed)
+constant float  kNimbusPhaseG    = 0.70;   // Henyey-Greenstein anisotropy — stronger forward scatter (NB.3.3 step 3) → brighter silver-lining rim where rays graze thin edges toward the back-key (ref 08)
 
 // NB.3.1 Perlin-Worley density (HZD / "Nubis"). Scales are body-space sample
 // units; noiseVolume tiles every 1.0 and itself holds ~4 billow cycles per tile.
 constant float  kNimbusBillowScale = 0.55;  // base billow frequency (≈ cauliflower lumps across the body)
 constant float  kNimbusDetailMul   = 3.1;   // detail-erosion octave frequency = base × this
 constant float  kNimbusDetailErode = 0.32;  // how hard the high-freq Worley carves the billow edges
+
+// NB.3.3 — interior lump/crevice contrast (ref 02: deep crevices between cauliflower
+// lumps). Gated by coverage so it deepens the body's INTERIOR billows without
+// fragmenting the soft feathered rim (ref 03). Lighting stays the backlit model.
+constant float  kNimbusLumpLo   = 0.20;  // contrast window low  → deepens crevices
+constant float  kNimbusLumpHi   = 0.82;  // contrast window high → sharpens lit lumps
+
+// NB.3.3 — denser CORE for substance (ref 01: a denser core falling to wispy edges).
+// Backlit (existing model), a denser core self-shadows into ref 08's dark-core /
+// bright-rim — substance, not a glow source. Pure density; no emission.
+constant float  kNimbusCoreGain = 0.55;  // density boost added at the centre (0 = none) — eased so the core gains substance without saturating flat (keeps ref-02 interior lumps)
+constant float  kNimbusCoreSig  = 1.50;  // core falloff (larger = tighter dense core)
 
 // Edge-agitation amplitude — scales the detail erosion: 0 = smooth lobes, 1 = the
 // NB.3 default, >1 = more torn / churning edges. Compile-time FOR NOW; NB.6
@@ -115,6 +127,13 @@ static inline float nimbus_density(float3 p, float t,
     // — both the dense core and the soft edge from one remap. cov ≥ 0.001 (the
     // early-out) so the remap's (hi−lo)=cov is never zero.
     float coverage = clamp(env, 0.0, 1.0);
+
+    // NB.3.3 — deepen LUMP/CREVICE contrast in the INTERIOR (ref 02) so the BACKLIT
+    // cone self-shadow has 3D structure to carve; mix by coverage so it's full at the
+    // dense core and zero at the wispy rim (ref 03 stays soft). Density-shape only.
+    float billowsC = smoothstep(kNimbusLumpLo, kNimbusLumpHi, billows);
+    billows = mix(billows, billowsC, coverage);
+
     float density  = clamp(nimbus_remap(billows, 1.0 - coverage, 1.0, 0.0, 1.0), 0.0, 1.0);
 
     // ── Detail erosion: a higher-frequency Worley octave carves the billow edges
@@ -127,6 +146,14 @@ static inline float nimbus_density(float3 p, float t,
     float  erodeLo    = clamp((1.0 - detailFBM) * kNimbusDetailErode * kNimbusTurbulence
                               * edgeWeight, 0.0, 0.9);
     density = clamp(nimbus_remap(density, erodeLo, 1.0, 0.0, 1.0), 0.0, 1.0);
+
+    // NB.3.3 — denser CORE (ref 01: a denser core falling off to wispy edges). The
+    // coverage remap caps core density at the raw billow value, so the body read
+    // evenly thin. A radial boost adds substance at the centre (which, BACKLIT, then
+    // self-shadows into ref 08's dark core + bright scattering rim) while leaving the
+    // already-feathered edges (coreW→0 → ×1) wispy. Pure density; lighting unchanged.
+    float coreW = exp(-rr * rr * kNimbusCoreSig);
+    density = clamp(density * (1.0 + kNimbusCoreGain * coreW), 0.0, 1.0);
 
     return density;
 }
@@ -164,8 +191,8 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
     // the detail-aware cone self-shadow (in the march below) is what makes the
     // cauliflower billows read as 3D.
     float3 lightDir   = normalize(float3(-0.30, 0.42, 0.74));   // upper-left, strongly behind
-    float3 lightColor = float3(1.00, 0.97, 0.92) * 8.5;         // neutral warm-white key — BRIGHTER (NB.3.3) for a luminous backlit glow
-    float3 ambient    = float3(0.014, 0.018, 0.040);            // fainter cool fill (NB.3.3) → darker crevices, more silver-lining contrast
+    float3 lightColor = float3(1.00, 0.97, 0.92) * 10.0;        // neutral warm-white BACK-key (NB.3.3 step 3): lifts the forward-scatter silver-lining rim (ref 08). No emission — the dense core stays self-shadowed; the rim-vs-core contrast IS the glow.
+    float3 ambient    = float3(0.016, 0.020, 0.045);            // cool fill LIFTED (NB.3.3 step 3b): the contrast-darkened core read "too dark" (Matt), so raise the floor slightly above baseline → body reads present + slightly brighter, while the step-3 forward-scatter rim still carries the glow.
 
     float t = features.time;
 
