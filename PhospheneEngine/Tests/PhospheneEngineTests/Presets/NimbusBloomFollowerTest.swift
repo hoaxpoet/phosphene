@@ -425,6 +425,53 @@ struct NimbusBloomFollowerTest {
         return Float(n) / Float(count)
     }
 
+    /// Mean luma in [0,1] over a rectangular region [rows) × [cols) of a `size`²
+    /// BGRA frame. Used for the negative-space (corner-vs-centre) coherence gate.
+    private func regionMeanLuma(_ pixels: [UInt8], size: Int,
+                                rows: Range<Int>, cols: Range<Int>) -> Float {
+        var sum: Float = 0; var n = 0
+        for y in rows {
+            for x in cols {
+                let i = (y * size + x) * 4
+                let b = Float(pixels[i + 0]), g = Float(pixels[i + 1]), r = Float(pixels[i + 2])
+                sum += (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
+                n += 1
+            }
+        }
+        return n > 0 ? sum / Float(n) : 0
+    }
+
+    /// Mean of the four corner blocks (each `frac` of the frame edge) — the
+    /// truest negative space for a centred body.
+    private func cornerMeanLuma(_ pixels: [UInt8], size: Int, frac: Float = 0.16) -> Float {
+        let m = max(1, Int(Float(size) * frac))
+        let tl = regionMeanLuma(pixels, size: size, rows: 0..<m, cols: 0..<m)
+        let tr = regionMeanLuma(pixels, size: size, rows: 0..<m, cols: (size - m)..<size)
+        let bl = regionMeanLuma(pixels, size: size, rows: (size - m)..<size, cols: 0..<m)
+        let br = regionMeanLuma(pixels, size: size, rows: (size - m)..<size, cols: (size - m)..<size)
+        return (tl + tr + bl + br) / 4.0
+    }
+
+    /// Mean luma of the central block (`frac` of the frame, centred).
+    private func centreMeanLuma(_ pixels: [UInt8], size: Int, frac: Float = 0.25) -> Float {
+        let h = Int(Float(size) * frac) / 2
+        let c = size / 2
+        return regionMeanLuma(pixels, size: size, rows: (c - h)..<(c + h), cols: (c - h)..<(c + h))
+    }
+
+    /// Mean squared per-channel difference between two BGRA buffers (non-alpha).
+    private func meanSquaredDiff(_ a: [UInt8], _ b: [UInt8]) -> Float {
+        guard a.count == b.count, !a.isEmpty else { return 0 }
+        var sum: Float = 0; var count = 0
+        for i in stride(from: 0, to: a.count, by: 4) {
+            for c in 0..<3 {
+                let d = Float(a[i + c]) - Float(b[i + c])
+                sum += d * d; count += 1
+            }
+        }
+        return count > 0 ? sum / Float(count) : 0
+    }
+
     // MARK: - Part C: stem beat-lobes (the band plays the body — NB.5)
 
     private static let lobeRenderSize = 256
@@ -536,6 +583,74 @@ struct NimbusBloomFollowerTest {
         }
     }
 
+    // MARK: - Body coherence + negative space (NB.9 §5.7 — ≠ 05_anti_uniform_fog)
+
+    /// The single worst failure mode for a volumetric preset is the dead-soup
+    /// uniform fog (DESIGN §1.4, README "the single worst outcome"). The other
+    /// gates put a FLOOR under coverage (the body must be present); this one puts
+    /// a CEILING on it at the body's absolute largest — full bloom + max kick +
+    /// every directional lobe heaving at once (the budget-probe worst case). Even
+    /// there the body must (a) stay a MINORITY of the frame and (b) leave the
+    /// corners dark — the negative space the §1.4 idea-to-protect depends on.
+    /// Rendered through the live direct path with noiseVolume bound (FA #66).
+    @Test("worst-case body stays a bounded mass with dark corners (≠ uniform fog)")
+    func test_bodyCoherenceNegativeSpace() throws {
+        let ctx: MetalContext
+        do { ctx = try MetalContext() } catch {
+            print("NimbusBloomFollowerTest: no Metal context — skipping coherence"); return
+        }
+        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat)
+        guard let nimbus = loader.presets.first(where: { $0.descriptor.name == "Nimbus" }),
+              let lib = try? ShaderLibrary(context: ctx),
+              let texMgr = try? TextureManager(context: ctx, shaderLibrary: lib),
+              let state = NimbusState(device: ctx.device) else {
+            Issue.record("coherence setup failed"); return
+        }
+
+        // Prime the absolute worst case: full bloom + kick + every lobe maxed
+        // (the NimbusBudgetProbe worst-case prime). Beat live so the kick
+        // converges; all four stem deviations maxed so every directional lobe
+        // heaves; past the cold-start gate so the lobes are ungated.
+        var fv = FeatureVector(bass: 0.9, mid: 0.9, treble: 0.9, time: 3.0, deltaTime: Self.dt)
+        fv.aspectRatio = 1.0
+        fv.beatComposite = 1.0; fv.beatBass = 1.0; fv.beatPhase01 = 1.0
+        fv.bassAttRel = 1.0; fv.midAttRel = 1.0; fv.trebAttRel = 1.0
+        var worst = StemFeatures.zero
+        worst.drumsEnergy = 0.9; worst.bassEnergy = 0.9
+        worst.vocalsEnergy = 0.9; worst.otherEnergy = 0.9
+        worst.drumsEnergyDev = 2.0; worst.bassEnergyDev = 2.0
+        worst.vocalsEnergyDev = 2.0; worst.otherEnergyDev = 2.0
+        for _ in 0..<200 { state.tick(deltaTime: 0.1, features: fv, stems: worst) }
+
+        guard let px = renderNimbus(nimbus, ctx: ctx, texMgr: texMgr, state: state, features: fv) else {
+            Issue.record("worst-case render failed"); return
+        }
+        let size = Self.lobeRenderSize
+        let cover  = coverage(px, lumaThreshold: 0.12)
+        let corner = cornerMeanLuma(px, size: size)
+        let centre = centreMeanLuma(px, size: size)
+        print(String(format:
+            "[NimbusCoherence] worst-case cover=%.3f corner=%.4f centre=%.4f corner/centre=%.3f",
+            cover, corner, centre, corner / max(centre, 1e-4)))
+
+        // (a) Body present (not a collapse) but still leaves real void even at
+        // its absolute largest — it does NOT fill the frame (that is uniform
+        // fog). Measured worst case = 0.668 (full bloom + max kick + all three
+        // lobes heaving at once — a pathological synthetic max; typical energetic
+        // coverage is ~0.24–0.36). The 0.80 ceiling keeps ≥ 20 % dark void even
+        // there, robust to legitimate body-size tuning; the primary negative-
+        // space proof is the corner/centre ratio below.
+        #expect(cover > 0.05, "worst-case body vanished (coverage \(cover)) — collapse, not a body")
+        #expect(cover < 0.80,
+                "worst-case body fills the frame (coverage \(cover)) — negative space lost (05_anti_uniform_fog)")
+        // (b) Corners stay dark vs the lit centre — the true discriminator from
+        // uniform fog (a flat field reads corner/centre ≈ 1; a bounded centred
+        // body reads ≪ 1). Measured 0.082; the haze halo concentrates near the
+        // body and fades to near-black corners by construction (kNimbusHazeFalloff).
+        #expect(corner < centre * 0.30,
+                "corners not dark relative to the centre (corner \(corner) vs centre \(centre)) — frame-filling haze, negative space lost (05_anti_uniform_fog)")
+    }
+
     // MARK: - Mood travel (NB.6 — valence→colour, arousal→agitation)
 
     @Test("mood: high valence renders warmer than low; renders are valid (NB.6)")
@@ -571,6 +686,17 @@ struct NimbusBloomFollowerTest {
         print(String(format: "[NimbusMood] cool R/B=%.2f  warm R/B=%.2f  (warm should be > cool)", coolRB, warmRB))
         #expect(warmRB > coolRB * 1.3,
                 "high valence did not render warmer than low: cool R/B=\(coolRB), warm R/B=\(warmRB)")
+        // Arousal → flow agitation (NB.6 / §5.7): `calm` and `wild` differ ONLY
+        // in arousal, which drives the detail-erosion strength (calm = smoother
+        // lobes, wild = torn/fraying edges). Assert the route is LIVE — it
+        // produces a visible per-pixel change. (The directional read — wild is
+        // more torn — is M7; this completes the §5.7 mood-travel bullet by
+        // proving the second mood axis carries signal, the partner to the
+        // valence→colour assertion above.)
+        let arousalMSD = meanSquaredDiff(calm, wild)
+        print(String(format: "[NimbusMood] calm↔wild agitation MSD=%.2f", arousalMSD))
+        #expect(arousalMSD > 1.0,
+                "arousal→agitation route is dead: calm and wild renders are ~identical (MSD \(arousalMSD))")
         for (name, px) in [("cool", cool), ("warm", warm), ("calm", calm), ("wild", wild)] {
             #expect(meanLuma(px) > 0.003, "\(name) mood render is ~black")
         }
