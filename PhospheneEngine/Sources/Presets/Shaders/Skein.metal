@@ -1,12 +1,15 @@
-// Skein.metal — Skein.ENGINE.1: the canvas-hold accumulation path.
+// Skein.metal — Skein.1: canvas-hold accumulation + the wandering pour line.
 //
 // Skein is an ACTION-PAINTING / drip-pour visualiser (Pollock's poured technique;
-// see docs/presets/SKEIN_DESIGN.md). This file is the ENGINE.1 SKELETON only — it
-// establishes the persistent, LOSSLESS paint canvas and nothing else. There is NO
-// mark morphology, NO audio routing, NO wetness, NO palette, NO mood here; all of
-// that begins at Skein.1+. The only "paint" is a single hard-coded test stamp
-// (a fixed disc on a cream ground), present solely so the persistence test and the
-// PresetAcceptance "readable form" gate have something to read.
+// see docs/presets/SKEIN_DESIGN.md). The canvas-hold accumulation path (identity warp,
+// no decay, no colour transfer) lands the LOSSLESS persistent paint canvas; Skein.1 adds
+// the first real mark — a SINGLE white pour LINE traced by a wandering "painter" (a closed-
+// form ergodic trajectory of features.time), accumulating losslessly on the cream ground.
+// There is still NO audio routing, NO splatter / filaments, NO viscosity, NO wetness, NO
+// palette beyond white-on-cream, NO mood here — all of that begins at Skein.2+. The pour line
+// is the gate-before-the-gate: does a persistent skein hold and read as poured paint?
+// (SKEIN_DESIGN §7.) `skein_fragment` remains the flat cream GROUND (what the PresetAcceptance
+// + contrast harnesses render; Skein is readable-form-exempt — the mark lives in the overlay).
 //
 // ── Canvas-hold = the no-decay / identity CONFIG of the mv_warp brush-on-feedback
 //    paradigm (D-135 / D-138). It is NOT a new render paradigm and NOT a D-029
@@ -51,20 +54,69 @@
 // the single-frame acceptance/contrast harnesses. Keep the two in sync.
 constant float3 kSkeinCanvasCream = float3(0.66, 0.60, 0.50);
 
-// The single hard-coded TEST STAMP — a fixed disc. Not a real mark model; it exists only
-// to give the persistence test a non-trivial pattern to hold. A deep teal, well separated
-// from the cream ground. All real mark morphology is Skein.2+.
+// ── Skein.1: the wandering painter (closed-form ergodic pour trajectory) ───────────
 //
-// HARD EDGE (no AA): the marks-on-top overlay redraws this stamp EVERY frame onto the held
-// canvas (the live path runs drawSceneGeometryOverlay per frame). A normal-alpha redraw is
-// IDEMPOTENT only when alpha is exactly 0 or 1 — teal-over-teal and keep-cream both produce
-// byte-identical frames (the canvas-hold "consecutive frames byte-identical" contract). A
-// partial-alpha AA fringe would re-blend toward teal every frame and creep for hundreds of
-// frames. Real Skein.1 marks are drawn ONCE as the painter moves (not redrawn in place), so
-// they get their AA without this constraint.
-constant float2 kSkeinStampCentre = float2(0.5, 0.5);
-constant float  kSkeinStampRadius = 0.16;
-constant float3 kSkeinStampColor  = float3(0.06, 0.30, 0.32);
+// Replaces the ENGINE.1.1 static test disc with a SINGLE moving emission locus — the
+// "painter" (SKEIN_DESIGN §1.1). Its position is a CLOSED-FORM function of features.time:
+// a sum of incommensurate sinusoids (frequencies in golden-ratio φ multiples, so the 2D
+// path is quasi-periodic — it never exactly repeats and fills the canvas ergodically with
+// NO focal point: the "allover" composition, SKEIN_DESIGN §1.0 fact (2) / ref
+// 01_macro_allover_field.jpg). Driven by features.time ONLY — no audio until Skein.3.
+//
+// LOAD-BEARING — the loops are the GESTURE, never a coiling term (SKEIN_DESIGN §1.0 fact (1)):
+// the fluid-dynamics finding is that Pollock *deliberately avoided* the rope-coil instability;
+// the line BETWEEN gesture points is a mostly-straight filament, and the sinuous skeins come
+// from his whole-body motion. So the curvature here is PURELY the sinusoid sum (the gesture) —
+// there is NO fbm / curl / coil applied to the line. All three frequencies sit in the GESTURE
+// band (periods ≈ 13–38 s), never a sub-second jitter band, so the wander reads as a thrown
+// gesture (refs 01/02/03_micro_filament_threads), not a vibration.
+//
+// Path A (the Skein.1 audit): the painter position is computed in the VERTEX shader, which
+// already receives `features` at buffer(0) via drawSceneGeometryOverlay — the same slot
+// dragon_bloom_strand_vertex reads. The position is a per-frame scalar (identical across the
+// 3 fullscreen-triangle verts), passed to the fragment as a varying. ZERO engine touch, no
+// per-preset buffer, no CPU state — exactly the ENGINE.1.1 disc pattern with a time-varying
+// centre + a swept capsule. (CPU-side SkeinState + an overlay-buffer binding are deferred to a
+// future ENGINE.1.2 when Skein.2's stateful painter — droplet positions, per-stem integrators —
+// genuinely needs them; not smuggled into Skein.1. SKEIN_DESIGN §7, FA #59/#60.)
+
+// Base pour half-width (v-height units; ≈2 % of canvas height → a thin pour filament). The
+// per-frame radius rides this by a speed factor (see skein_geometry_vertex).
+constant float kSkeinLineRadius = 0.010;
+
+// Painter position at time t, in UV [0,1]². THREE GESTURE SCALES per axis, at deliberately
+// non-harmonic (incommensurate) frequencies → a quasi-periodic path that never exactly repeats
+// and fills the canvas ergodically (allover, no focal point — SKEIN_DESIGN §1.0 fact (2)):
+//   • SLOW DRIFT  (period ≈ 29 / 33 s): carries the painter across the canvas — the "localized
+//     island, then a longer trajectory that joins the islands" build order (§1.0 fact (2)).
+//   • GESTURE LOOP (period ≈ 6.6 / 5.9 s): the main looping skeins that cross and double back.
+//   • TIGHT LOOP  (period ≈ 2.7 / 2.4 s): finer secondary loops. Still firmly GESTURE scale —
+//     NOT a sub-second jitter / coiling term (§1.0 fact (1): the loops are the whole-body gesture,
+//     never a noise/coil function; the line BETWEEN gesture points is a mostly-straight filament).
+// x and y use DIFFERENT frequencies + phases so the figure is asymmetric (NOT a clean Lissajous /
+// spirograph — SKEIN_DESIGN §2 anti-reference). Per-axis amplitudes sum to ≈0.46 so the path stays
+// inside ≈[0.04, 0.96] (edge-to-edge, a sliver of margin). The constants are the fixed "seed" for
+// the spike (per-track seeding is Skein.3).
+static inline float2 skeinPainterPos(float t) {
+    float x = 0.5
+        + 0.300 * sin(0.220 * t + 0.0)    // slow drift   — period ≈ 28.6 s
+        + 0.110 * sin(0.950 * t + 1.7)    // gesture loop — period ≈ 6.6 s
+        + 0.045 * sin(2.300 * t + 4.2);   // tight loop   — period ≈ 2.7 s
+    float y = 0.5
+        + 0.280 * cos(0.190 * t + 2.3)    // slow drift   — period ≈ 33 s
+        + 0.120 * cos(1.070 * t + 5.1)    // gesture loop — period ≈ 5.9 s
+        + 0.040 * cos(2.620 * t + 0.9);   // tight loop   — period ≈ 2.4 s
+    return float2(x, y);
+}
+
+// Unsigned distance from p to the 2D segment a→b (project-clamp-distance — the 2D capsule
+// core). Degenerate a==b (a perfect turning point) collapses to distance-to-point (a disc).
+static inline float skeinSegDist(float2 p, float2 a, float2 b) {
+    float2 pa = p - a;
+    float2 ba = b - a;
+    float  h  = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-9), 0.0, 1.0);
+    return length(pa - ba * h);
+}
 
 // ── Background / canvas fragment ──────────────────────────────────────────────────
 //
@@ -87,40 +139,85 @@ fragment float4 skein_fragment(
     return float4(kSkeinCanvasCream, 1.0);
 }
 
-// ── Marks-on-top overlay (Skein.ENGINE.1.1, D-143) ─────────────────────────────────
+// ── Marks-on-top overlay (Skein.1) ─────────────────────────────────────────────────
 //
-// Draws the fixed TEST STAMP (the disc) as a fullscreen-triangle overlay composited
-// NORMAL-ALPHA on top of the held canvas — the D-138 marks-on-top mechanism, now reachable
-// per-preset (Dragon Bloom resolves `dragon_bloom_strand_*`; Skein resolves these). Live,
-// the disc is redrawn in place every frame onto the warped/held frame; identity warp + no
-// decay carry the canvas forward losslessly, so the result is a Hamming-0 hold.
+// Draws THIS FRAME'S new pour mark — a swept capsule from painter(t−Δt) → painter(t) — as a
+// fullscreen-triangle overlay composited NORMAL-ALPHA on top of the held canvas (the D-138
+// marks-on-top mechanism, reachable per-preset since D-143; Dragon Bloom resolves
+// `dragon_bloom_strand_*`, Skein resolves these). The painter MOVES each frame, so the capsule
+// lands in a NEW place and is then carried forward losslessly by the identity warp + no decay:
+// the union of every frame's capsule is the accumulating, continuous, looping pour LINE on the
+// cream canvas. Draw params (3 verts / 1 instance / .triangle) come from Skein.json `marks`.
 //
-// ENGINE.1.1 SKELETON ONLY: the stamp is STATIC (fixed UV, no audio, no motion). The
-// wandering painter + swept-capsule pour that ACCUMULATE a continuous line are Skein.1.
-// Draw params (3 verts / 1 instance / .triangle) come from Skein.json `marks`.
+// AA is correct here (unlike the ENGINE.1.1 static disc, which was hard-edged for idempotent
+// in-place redraw): each capsule is stamped ONCE at a new position and then held — it never
+// re-blends in place, so a soft anti-aliased edge does not compound (SKEIN_DESIGN §5.2).
+//
+// White-on-cream ONLY — palette is Skein.3. No splatter / filaments / viscosity / wetness here.
 
 struct SkeinGeoVertexOut {
     float4 position [[position]];
     float2 uv;
+    // Per-frame painter state, computed once in the vertex (constant across the 3 verts) and
+    // read in the fragment. Path A: no per-preset buffer — features reaches only the vertex.
+    float2 posNow;    // painter UV this frame
+    float2 posPrev;   // painter UV last frame (= previous frame's posNow → gap-free chaining)
+    float  radius;    // pour half-width (v-units), speed-shaped (pool ↔ filament)
+    float  aspect;    // viewport aspect, for isotropic line width
 };
 
-vertex SkeinGeoVertexOut skein_geometry_vertex(uint vid [[vertex_id]]) {
+vertex SkeinGeoVertexOut skein_geometry_vertex(
+    uint vid [[vertex_id]],
+    constant FeatureVector& f [[buffer(0)]]   // bound by drawSceneGeometryOverlay (vertex slot 0)
+) {
     // Fullscreen triangle in clip space: (-1,-1), (-1,3), (3,-1) — covers the viewport.
     float2 p = float2((vid == 2) ? 3.0 : -1.0, (vid == 1) ? 3.0 : -1.0);
     SkeinGeoVertexOut out;
     out.position = float4(p, 0.0, 1.0);
-    out.uv = p * 0.5 + 0.5;   // 0..1; the disc is centred + radially symmetric, so Y-flip is moot
+    out.uv = p * 0.5 + 0.5;   // 0..1
+
+    float aspect = (f.aspect_ratio > 0.01) ? f.aspect_ratio : 1.0;
+    float t  = f.time;
+    float dt = max(f.delta_time, 1.0 / 240.0);   // guard a zero Δt (would degenerate the capsule)
+
+    // Chaining: posPrev = painter(t−Δt) is exactly the PREVIOUS frame's posNow when time advances
+    // by Δt each frame, so consecutive capsules share an endpoint → one continuous, gap-free line.
+    float2 now  = skeinPainterPos(t);
+    float2 prev = skeinPainterPos(t - dt);
+
+    // Speed-shaped width (SKEIN_DESIGN §1.0 fact (1) / §1.2): the painter LINGERS at the turning
+    // points of its trajectory → the line POOLS (thicker, ref 02_meso_pour_pools); it sweeps fast
+    // mid-swing → a thin FILAMENT (ref 03_micro_filament_threads). This is gesture physics
+    // (width ∝ 1/speed), NOT a noise term — it breaks the "clean geometric tube" anti-reference
+    // without faking coiling. Bounded [0.75, 1.6]× so it stays a single legible line.
+    float2 dCorr = float2((now.x - prev.x) * aspect, now.y - prev.y);
+    float  speed = length(dCorr) / dt;                              // v-units / s, aspect-correct
+    float  wscale = mix(1.6, 0.75, smoothstep(0.05, 0.35, speed));  // pool ↔ filament
+
+    out.posNow  = now;
+    out.posPrev = prev;
+    out.radius  = kSkeinLineRadius * wscale;
+    out.aspect  = aspect;
     return out;
 }
 
 fragment float4 skein_geometry_fragment(SkeinGeoVertexOut in [[stage_in]]) {
-    float d = length(in.uv - kSkeinStampCentre);
-    // HARD edge (alpha ∈ {0,1}) so the per-frame redraw is idempotent — see kSkeinStamp*.
-    float inStamp = (d <= kSkeinStampRadius) ? 1.0 : 0.0;
-    // Normal-alpha over the held canvas: opaque teal inside the disc, fully transparent
-    // outside so the cream ground shows through. The overlay pipeline's blend is
-    // SRC_ALPHA / ONE_MINUS_SRC_ALPHA (PresetLoader.makeSceneGeometryPipeline).
-    return float4(kSkeinStampColor, inStamp);
+    // Distance to the swept capsule, measured in an aspect-corrected space (x × aspect) so the
+    // line width is isotropic in pixels regardless of viewport shape.
+    float a = in.aspect;
+    float2 q  = float2(in.uv.x      * a, in.uv.y);
+    float2 pA = float2(in.posPrev.x * a, in.posPrev.y);
+    float2 pB = float2(in.posNow.x  * a, in.posNow.y);
+    float d = skeinSegDist(q, pA, pB);
+
+    // Anti-aliased coverage (~1 px transition via the screen-space derivative). Drawn once at a
+    // new position each frame then held, so the AA edge never compounds (see the overlay note).
+    float aa = max(fwidth(d), 1e-4);
+    float cover = 1.0 - smoothstep(in.radius - aa, in.radius + aa, d);
+
+    // White pour on the held cream ground (white-on-cream only — palette is Skein.3). Overlay
+    // blend is SRC_ALPHA / ONE_MINUS_SRC_ALPHA (PresetLoader.makeSceneGeometryPipeline).
+    return float4(float3(1.0), cover);
 }
 
 // ── MV-Warp functions (D-027) — the canvas-hold config ─────────────────────────────
