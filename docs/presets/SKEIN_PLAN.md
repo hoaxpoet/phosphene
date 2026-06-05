@@ -25,7 +25,7 @@ Companion design doc: `SKEIN_pollock_preset_architecture.md` (becomes the seed f
 | **Skein.0** | Reference lock | doc | — | `CheckVisualReferences` green; you sign off the trait/anti-ref set |
 | **Skein.ENGINE.1** | Canvas-hold accumulation path | engine | — | Regression: all goldens byte-identical; hold-persistence test |
 | **Skein.ENGINE.1.1** | Per-preset marks-on-top + cream ground (D-143) | engine | ENGINE.1 | Regression byte-identical (DB/FM + all mv_warp); per-preset marks-on-top test green; Skein renders live |
-| **Skein.1** | Canvas + pour spike | preset | ENGINE.1.1 | Eyeball (gate-before-the-gate): does a skein hold + read as paint? |
+| **Skein.1** | Canvas + pour spike | preset | ENGINE.1.1 | ✅ **landed 2026-06-05** (`57ee7383`/`528021b5`); **pending Matt's eyeball gate**: does a skein hold + read as paint? |
 | **Skein.2** | Splatter morphology + viscosity | preset | Skein.1 | Harness contact sheet: reads as Pollock, not particle-fountain |
 | **Skein.3** | Stem palette + full emission routing | preset | Skein.2 | Harness + replay registration; routing is legible |
 | **Skein.ENGINE.2** | Wetness channel | engine | — (land before Skein.4) | Regression: byte-identical for others; stamp+decay test |
@@ -87,21 +87,23 @@ Execution order is top-to-bottom. ENGINE.2 is shown near Skein.4 because that's 
 
 > **Moved to Skein.ENGINE.1.1 (D-143):** the marks-on-top wiring (the per-preset `<prefix>_geometry_*` overlay path, draw-params/chromatic/comp via the `marks` block) and the **base cream-canvas fill on apply/reset** (per-preset `canvas_clear`) are already done and gated byte-identical. Skein already **renders live** (cream ground + a held test disc through the overlay). Skein.1 is now pure preset work: replace the static test disc with the wandering painter's swept-capsule pour.
 
-**Scope.**
-- `SkeinState.swift` (painter trajectory: position, velocity, base-path phase via curl-noise / incommensurate sinusoids; per-frame tick) — the established `*State.swift` pattern.
-- Establish a **seed hook** on the painter (fixed seed acceptable for the spike; audit whether the track SHA-256 from `PersistentStemCache` is reachable by preset state on apply — full wiring deferred to Skein.3).
+**Scope (as planned).**
+- ~~`SkeinState.swift` (painter trajectory: position, velocity, base-path phase via curl-noise / incommensurate sinusoids; per-frame tick) — the established `*State.swift` pattern.~~ → **deferred to ENGINE.1.2** (see Landed note).
+- ~~Establish a **seed hook** on the painter (fixed seed for the spike; track SHA-256 from `PersistentStemCache`).~~ → fixed seed is the in-shader constants; per-track seeding deferred to Skein.3.
 - Replace the ENGINE.1.1 static test disc in `skein_geometry_*` with the **swept capsule** from `painter_prev → painter_now` (the moving locus accumulates a continuous looping line on the held canvas via the already-wired overlay). Marks drawn once as the painter moves keep their AA (unlike the static test disc, which is hard-edged for idempotent redraw).
-- Coverage diagnostic (% painted) + painter-trajectory debug overlay.
-- `Skein.json`: `passes: ["direct", "mv_warp"]`, family `painterly`, `certified: false`, canvas-hold + `marks` block from ENGINE.1 / ENGINE.1.1 (D-143).
+- Coverage diagnostic (% painted) + the env-gated contact sheet.
+- `Skein.json`: `passes: ["direct", "mv_warp"]`, `certified: false`, canvas-hold + `marks` block from ENGINE.1 / ENGINE.1.1 (D-143). (`family: painterly` deferred — see Landed note.)
+
+**Landed (path A, 2026-06-05 — `57ee7383` / `528021b5`).** The session audit took **Path A (closed-form, in-shader)** over Path B (`SkeinState` + a per-preset overlay buffer): the marks-on-top overlay binds `features` only at the **vertex** stage (`drawSceneGeometryOverlay:36-37`, no fragment binding), so the painter position is computed in `skein_geometry_vertex` (which already reads `features@0` — the same slot `dragon_bloom_strand_vertex` reads) and passed to the fragment as varyings. **Zero engine touch, no CPU state, no per-preset buffer; DB/FM byte-identical by construction.** `SkeinState` + the gated `drawSceneGeometryOverlay` buffer-binding (Path B) are **deferred to a future ENGINE.1.2**, opened when Skein.2's stateful painter (droplet positions, per-stem integrators) genuinely needs them (FA #59/#60 — don't build infra before its consumer exists; SKEIN_DESIGN §7 "infra patches land in their own .x increment"). The trajectory is three gesture scales per axis at non-harmonic frequencies (slow drift + gesture loops + tight loops, all gesture-band); the loops are the GESTURE not a coiling/noise term (§1.0 fact 1); width rides 1/speed (pools at turning points, filament on sweeps — §1.0/§1.2). `family: painterly` + the `PresetCategory` case stay **deferred** per D-142(c)/D-143 — adding the enum case is an engine touch outside Skein.1's pure-preset scope; it lands with the rubric/family decision (Skein.3 or .6). No `SkeinState.swift` / `VisualizerEngine+Presets.swift` change this increment.
 
 **Out of scope / Do NOT.** No splatter, no filaments, no viscosity, no stems, no colour beyond white, no wetness, no mood/structure. Do NOT add audio routing.
 
-**Key files.** `Sources/Presets/Skein/SkeinState.swift`, `Shaders/Skein.metal`, `Skein.json`, `VisualizerEngine+Presets.swift` (wiring), `SkeinCanvasHoldTest.swift` (extend).
+**Key files (as landed).** `Shaders/Skein.metal` (the pour line replaces the disc), `SkeinCanvasHoldTest.swift` (the disc hold test → the accumulation + hold + continuity gate + env-gated contact sheet). `Skein.json` unchanged.
 
-**Done-when.**
-- `RENDER_VISUAL=1` contact sheet across ≥4 fixtures shows a continuous, accumulating, looping pour line.
-- Coverage meter increases monotonically; silence fixture non-black.
-- **Eyeball gate:** the line holds, layers, and reads as poured paint on a surface.
+**Done-when.** ✅ (pending Matt's eyeball gate)
+- ✅ `RENDER_VISUAL=1`/`SKEIN_VISUAL=1` contact sheet (live marks-on-top path, 480×270) at ~2/5/10/20 s shows a continuous, accumulating, looping pour line (coverage 0.4 → 1.4 → 2.7 → 5.9 %).
+- ✅ Coverage grows monotonically; far-corner held byte-identical; continuity = 1.000 (single connected component). Silence-non-black trivial (cream ground). All through the **live** scene→warp→overlay→blit→swap path advancing `features.time`.
+- ⏳ **Eyeball gate:** Matt confirms the line holds, layers, and reads as poured paint.
 
 ---
 
