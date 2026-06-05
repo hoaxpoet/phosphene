@@ -146,6 +146,38 @@ struct NimbusBloomFollowerTest {
         )
     }
 
+    // MARK: - Bloom calibration (NB.10 r1.6 — "input problem, solve permanently")
+
+    @Test("typical-loudness music blooms to a clearly visible body, quiet stays small")
+    func test_bloomVisibleOnTypicalMusic() throws {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            print("NimbusBloomFollowerTest: no Metal device — skipping bloom calibration"); return
+        }
+        // Real music sits at meanStemEnergy ~0.27 (measured p50 across 3 sessions),
+        // NOT the 0.5 the pre-r1.6 calibration assumed — `{stem}Energy` is 3 AGC
+        // bands summed and the AGC normalises the 6-band TOTAL to 0.5, so the
+        // 3-band sum centres at ~0.30 (BUG-027 class). The old ×1.4−0.2 mapped
+        // that to bloom ≈ 0.18 → a tiny dim body. tick past the cold-start gate
+        // so the stem path (not the FV proxy) drives bloom.
+        func converge(_ e: Float) -> Float {
+            guard let s = NimbusState(device: device) else { return 0 }
+            var st = StemFeatures.zero
+            st.drumsEnergy = e; st.bassEnergy = e; st.vocalsEnergy = e; st.otherEnergy = e
+            let fv = FeatureVector(deltaTime: Self.dt)
+            for _ in 0..<200 { s.tick(deltaTime: 0.1, features: fv, stems: st) }
+            return s.bloom
+        }
+        let typical = converge(0.27)
+        let quiet   = converge(0.14)
+        let loud    = converge(0.55)
+        print(String(format: "[NimbusBloomCal] quiet(0.14)=%.2f  typical(0.27)=%.2f  loud(0.55)=%.2f", quiet, typical, loud))
+        #expect(typical > 0.35,
+                "typical-loudness music (meanStem 0.27) bloomed to only \(typical) — the tiny-body bug (bloom calibrated to a non-existent 0.5 stem centre). Should read as a clearly visible body.")
+        // Dynamic range preserved: quiet < typical < loud.
+        #expect(quiet < typical && typical < loud,
+                "bloom lost its dynamic range: quiet=\(quiet) typical=\(typical) loud=\(loud)")
+    }
+
     // MARK: - Cold-start gate (NB.5 fix — the ~20 s freeze)
 
     @Test("cold-start: kick pulses on the live beat while cached stems are frozen; lobes gate in after")
