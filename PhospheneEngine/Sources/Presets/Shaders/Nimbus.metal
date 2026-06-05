@@ -11,15 +11,17 @@
 // cool gaseous body with feathered edges. Matt-approved on the contact sheet
 // 2026-06-05. (BACKLIT, never emission — DESIGN §5.2.)
 //
-// NB.4 — ENERGY (Breath): the hero coupling. NimbusState (Swift) runs a
-// fast-attack/slow-release follower over the broadband energy deviation
-// `(bass_att_rel+mid_att_rel+treb_att_rel)/3` (D-026) → `bloom`, flushed to a
-// 16-byte NimbusStateGPU at fragment buffer(6). One signal, three readings of
-// one physical event: bloom blooms the body bigger (size) + brighter
-// (luminosity) and `flowPhase` flows the gas faster. At the silence floor the
-// body settles small/dim/slow over a faint non-black haze (D-037) — a settle,
-// not a collapse. NO beat (FA #4/#33), NO mood (valence/arousal → colour +
-// agitation is NB.6). Static cool indigo tint until then. Fixed camera + FOV.
+// NB.4 — ENERGY (bloom): a slow overall size/brightness/flow swell. NB.5 —
+// THE BAND PLAYS THE BODY: the 2026-06-05 Atlas session showed the energy-only
+// bloom was too subtle (and floored on bass-dominated music — two dead bands
+// vetoed the 3-band average) while the relentless beat went unanswered. The
+// model was reversed (DESIGN §1.3): NimbusState now drives, per stem, a
+// fast-attack/slow-release follower → a soft bulge of the SINGLE envelope.
+// Drums = whole-body punch + brightness pop (the hero beat moment); bass heaves
+// DOWN, lead/"vocals" flares UP, other swells to the SIDE. All blended into one
+// star-convex mass (it cannot fragment — the §1.4 idea-to-protect). The slow
+// bloom now tracks total stem energy (never floored). NO mood yet (valence/
+// arousal → colour + agitation is NB.6). Fixed camera + FOV.
 //
 // References folded into the code below:
 //   01_macro_coherent_body  — bright core → soft wispy edges, vertical long axis,
@@ -77,14 +79,18 @@ constant float  kNimbusCoreSig  = 1.50;  // core falloff (larger = tighter dense
 // replaces it with smoothed `arousal` (DESIGN §1.3 — arousal → flow agitation).
 constant float  kNimbusTurbulence  = 1.0;
 
-// MARK: - NB.4 Energy bloom (DESIGN §1.3 / §5.4)
+// MARK: - NB.4/NB.5 audio-reactive state (DESIGN §1.3 / §5.4)
 
-// Per-frame world state from NimbusState (Swift) — 16 bytes, must match
+// Per-frame world state from NimbusState (Swift) — 32 bytes, must match
 // `NimbusStateGPU` in NimbusState.swift byte-for-byte. Bound at fragment
 // buffer(6) (orthogonal to noiseVolume at *texture* 6 — different namespaces).
 struct NimbusStateGPU {
-    float bloom;       // 0 silence floor · ~0.5 baseline · ~1 full bloom
-    float flowPhase;   // gas churn phase (seconds-equivalent, bloom-modulated)
+    float bloom;       // slow overall size/brightness swell (0 floor · ~0.5 baseline · ~1 peak)
+    float flowPhase;   // gas churn phase (seconds-equivalent, bloom + kick modulated)
+    float kickPunch;   // NB.5 whole-body beat punch (drums) — fast attack / fast settle
+    float bassLobe;    // NB.5 downward heave (bass stem)
+    float vocalsLobe;  // NB.5 upward flare (lead/"vocals" stem)
+    float otherLobe;   // NB.5 sideways swell (other stem)
     float _pad0;
     float _pad1;
 };
@@ -108,25 +114,62 @@ constant float3 kNimbusHazeColor   = float3(0.36, 0.42, 0.92);  // deep cool ind
 constant float  kNimbusHazeBase    = 0.040; // peak haze radiance scalar (pre-tonemap, ×color ×falloff)
 constant float  kNimbusHazeFalloff = 2.30;  // radial concentration; larger = tighter halo, darker corners
 
+// MARK: - NB.5 stem beat-lobes (DESIGN §1.3 — one mass heaves per-stem)
+
+// The band plays the body. Each stem's follower (NimbusState) pushes a soft bulge
+// of the SINGLE envelope: drums = whole-body punch (uniform), bass/lead/other =
+// directional heaves. The bulge divides the effective radius (rr/(1+bulge)) so it
+// is a star-convex deformation of one body — it CANNOT fragment into separate
+// blobs (the §1.4 idea-to-protect). Directions are body-space unit vectors with a
+// little musical logic: low → down, melody → up, the rest → to the side.
+constant float3 kNimbusDirBass   = float3(0.0, -0.970, 0.243);  // bass heaves DOWN (heavy/low)
+constant float3 kNimbusDirVocals = float3(0.0,  0.970, 0.243);  // lead flares UP (the voice reaches up)
+constant float3 kNimbusDirOther  = float3(0.970, 0.0,  0.243);  // other swells to the SIDE
+constant float  kNimbusKickBulge = 0.20;   // whole-body inflate at full kick punch (drums)
+constant float  kNimbusLobeBulge = 0.30;   // directional bulge at a full stem hit (cosine² falloff)
+constant float  kNimbusKickBright = 0.55;  // brightness POP at full kick punch (on top of bloom)
+
 // MARK: - Density field
 
 // Analytic ellipsoidal envelope: 1 at the dense core, smoothly → 0 at the shell.
 // Cheap (no noise) — also used directly for the secondary self-shadow march.
-static inline float nimbus_envelope(float3 p, thread float& rrOut) {
+// `lobes` = (bassLobe, vocalsLobe, otherLobe, kickPunch) from NimbusState (NB.5).
+static inline float nimbus_envelope(float3 p, float4 lobes, thread float& rrOut) {
     float3 bp = p / kNimbusSemiAxes;
     float rr = length(bp);
-    rrOut = rr;
-    // Fuller shell for a substantial body, multiplied by a gaussian core boost so
-    // the centre is the densest region (→ reads as the brighter core) while the
-    // body keeps its size; smoothly → 0 at the shell (rr ≈ 1.05).
-    float shell = smoothstep(1.05, 0.12, rr);
+    rrOut = rr;   // ORIGINAL radius → the dense core stays centred while the shell bulges
+
+    // NB.5 — per-stem bulge: drums inflate the WHOLE body (uniform punch);
+    // bass/lead/other HEAVE it along their direction (a soft cosine lobe). All
+    // added together and dividing the effective radius → a star-convex
+    // deformation of ONE mass that cannot fragment into separate blobs.
+    float bulge = kNimbusKickBulge * lobes.w;   // .w = kickPunch (whole-body, cheap)
+    // Directional lobes: a cosine² falloff (cheap — pure mul-adds, no pow/sqrt;
+    // the GPU predicates rather than branches here, and the envelope is evaluated
+    // ~7× per in-body sample, so a transcendental at rest doubled the budget).
+    // cos² is broad/soft, which is what "one blended mass" wants anyway.
+    if (rr > 1e-4) {
+        float3 n = bp / rr;   // normalised body-space direction
+        float cb = max(0.0, dot(n, kNimbusDirBass));
+        float cv = max(0.0, dot(n, kNimbusDirVocals));
+        float cs = max(0.0, dot(n, kNimbusDirOther));
+        bulge += kNimbusLobeBulge * (lobes.x * cb * cb
+                                   + lobes.y * cv * cv
+                                   + lobes.z * cs * cs);
+    }
+    float rrEff = rr / (1.0 + bulge);
+
+    // Fuller shell for a substantial body (bulged boundary), multiplied by a
+    // gaussian core boost centred on the ORIGINAL rr so the dense heart stays
+    // put while the shell heaves; smoothly → 0 at the shell (rrEff ≈ 1.05).
+    float shell = smoothstep(1.05, 0.12, rrEff);
     float core  = 0.50 + 1.05 * exp(-rr * rr * 3.2);
     return shell * core;
 }
 
-static inline float nimbus_envelope(float3 p) {
+static inline float nimbus_envelope(float3 p, float4 lobes) {
     float rr;
-    return nimbus_envelope(p, rr);
+    return nimbus_envelope(p, lobes, rr);
 }
 
 // HZD / "Nubis" remap (Schneider 2015): linear remap of v from [lo,hi] → [nlo,nhi].
@@ -141,7 +184,7 @@ static inline float nimbus_remap(float v, float lo, float hi, float nlo, float n
 // remap that yields a dense core AND feathered cauliflower edges at once. All noise
 // is texture-sampled (§6.1 budget rule). Time-only drift (audio is NB.4).
 static inline float nimbus_density(float3 worldP, float flowT, float bodyScale,
-                                   texture3d<float> noiseVol, sampler smp) {
+                                   float4 lobes, texture3d<float> noiseVol, sampler smp) {
     // NB.4 — uniform bloom inflation. Scaling the sample position DOWN grows the
     // whole body (boundary AND internal billows together) so the gas reads as
     // puffing up with energy rather than gaining detail. bodyScale comes from
@@ -149,7 +192,7 @@ static inline float nimbus_density(float3 worldP, float flowT, float bodyScale,
     float3 p = worldP / bodyScale;
 
     float rr;
-    float env = nimbus_envelope(p, rr);
+    float env = nimbus_envelope(p, lobes, rr);   // NB.5 per-stem bulge baked into the envelope
     if (env <= 0.001) { return 0.0; }   // outside the body → skip the noise cost
 
     // Off-lattice sample coordinate: a constant offset so the body is NOT centred
@@ -206,7 +249,7 @@ static inline float nimbus_density(float3 worldP, float flowT, float bodyScale,
     return density;
 }
 
-// MARK: - Nimbus fragment (NB.3 look + NB.4 Energy bloom)
+// MARK: - Nimbus fragment (NB.3 look + NB.4 bloom + NB.5 stem beat-lobes)
 
 fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
                                 constant FeatureVector& features [[buffer(0)]],
@@ -219,14 +262,19 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
     float3 ro = float3(0.0, 0.0, kNimbusCamZ);
     float3 rd = normalize(float3(p.x, -p.y, kNimbusFocal));  // -p.y: uv.y=0 is top → +world-up
 
-    // ── NB.4 Energy bloom: one signal (bloom), three readings of one event ───
-    // bloom ∈ [0, ~1.1] from NimbusState's fast-attack/slow-release follower.
-    // Allow a little mix-extrapolation past 1 so big drops bloom slightly extra,
-    // clamped so it can't run away. NO beat field, NO mood read (DESIGN §1.3).
+    // ── NB.4 bloom (slow swell) + NB.5 stem beat-lobes (the band plays the body) ──
+    // bloom = slow overall size/brightness swell (mean stem energy). kickPunch +
+    // the three lobes are the per-stem beat response (DESIGN §1.3). NO mood read
+    // yet (valence/arousal is NB.6).
     float bloomV    = clamp(nb.bloom, 0.0, 1.15);
-    float bodyScale = mix(kNimbusSizeFloor,   kNimbusSizePeak,   bloomV);  // body extent
-    float bright    = mix(kNimbusBrightFloor, kNimbusBrightPeak, bloomV);  // luminosity
+    float bodyScale = mix(kNimbusSizeFloor, kNimbusSizePeak, bloomV);      // slow body extent
+    // NB.5: the kick punch pops brightness on top of the slow bloom luminosity.
+    float bright    = mix(kNimbusBrightFloor, kNimbusBrightPeak, bloomV)
+                      * (1.0 + kNimbusKickBright * nb.kickPunch);          // + beat brightness pop
     float flowT     = nb.flowPhase;                                        // gas flow phase
+    // Per-stem bulge amplitudes, packed (bass, lead/vocals, other, kick) for the
+    // envelope's star-convex heave (.w = drums whole-body punch).
+    float4 lobes    = float4(nb.bassLobe, nb.vocalsLobe, nb.otherLobe, nb.kickPunch);
 
     // ── Non-black haze floor (D-037 / DESIGN §1.4-§1.5): a faint cool halo,
     // brightest near the body, fading to near-black corners (negative space
@@ -242,7 +290,13 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
     // sphere is *cheaper* than a tight ellipsoid here because it spends most
     // steps in empty space that early-outs, rather than forcing every step
     // through the noise field.
-    float boundR = kNimbusBoundR * bodyScale;
+    // Grow the bound for the bloomed body AND the CURRENT max NB.5 bulge (the
+    // largest a point can heave right now = kick + the strongest single lobe) so
+    // a heave never clips against the march bound — but only as much as the live
+    // amplitudes need, so the baseline (no-lobe) march isn't coarsened.
+    float maxBulge = kNimbusKickBulge * nb.kickPunch
+                   + kNimbusLobeBulge * max(nb.bassLobe, max(nb.vocalsLobe, nb.otherLobe));
+    float boundR = kNimbusBoundR * bodyScale * (1.0 + maxBulge);
     float bq = dot(ro, rd);                       // sphere centred at origin
     float cq = dot(ro, ro) - boundR * boundR;
     float disc = bq * bq - cq;
@@ -274,7 +328,7 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
     for (int i = 0; i < kNimbusSteps; i++) {
         float ti = t0 + (float(i) + 0.5) * dt;
         float3 pos = ro + rd * ti;
-        float dens = nimbus_density(pos, flowT, bodyScale, noiseVolume, linearSampler);
+        float dens = nimbus_density(pos, flowT, bodyScale, lobes, noiseVolume, linearSampler);
         if (dens > 0.002) {
             litSteps++;
             // Detail-aware CONE self-shadow (NB.3.2): march toward the light
@@ -285,7 +339,7 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
             float densToLight = 0.0;
             for (int j = 1; j <= kNimbusShadowN; j++) {
                 float3 sp = pos + lightDir * (float(j) * shadowDt);
-                densToLight += nimbus_density(sp, flowT, bodyScale, noiseVolume, linearSampler);
+                densToLight += nimbus_density(sp, flowT, bodyScale, lobes, noiseVolume, linearSampler);
             }
             float shadow = exp(-densToLight * shadowDt * kNimbusShadowSig);
             // Forward-scatter phase: thin edges grazing the back-light glow brightest.
