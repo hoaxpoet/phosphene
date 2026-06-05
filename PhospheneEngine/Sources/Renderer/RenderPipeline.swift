@@ -224,8 +224,23 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
 
     /// Set the direct-preset render scale (1.0 = full res; e.g. 0.5 = half-res
     /// march + upscale). Reset to 1.0 on preset change.
+    ///
+    /// Called from `applyPreset` on the MainActor — the same actor the render
+    /// loop (`draw(in:)` → `drawDirect`) runs on, so the eager pre-allocation
+    /// below cannot race the render thread's `halfResTarget`.
     public func setDirectRenderScale(_ scale: Float) {
         directRenderScaleLock.withLock { _directRenderScale = scale }
+        // NB.8 polish: pre-allocate the half-res target NOW (at preset apply)
+        // rather than lazily on the first rendered frame — that lazy allocation
+        // was part of the ~one-frame startup hitch (~25 ms) the instant the
+        // preset switched in (NB.8 live session). `drawDirect`'s lazy realloc
+        // still covers later drawable resizes.
+        if scale < 0.999 {
+            let size = mvWarpDrawableSize
+            _ = halfResTarget(drawableWidth: max(Int(size.width), 1),
+                              drawableHeight: max(Int(size.height), 1),
+                              scale: scale)
+        }
     }
 
     var directRenderScale: Float {
