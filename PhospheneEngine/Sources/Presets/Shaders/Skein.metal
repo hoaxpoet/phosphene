@@ -1,15 +1,37 @@
-// Skein.metal — Skein.1: canvas-hold accumulation + the wandering pour line.
+// Skein.metal — Skein.2: canvas-hold accumulation + wandering pour line + splatter morphology.
 //
 // Skein is an ACTION-PAINTING / drip-pour visualiser (Pollock's poured technique;
 // see docs/presets/SKEIN_DESIGN.md). The canvas-hold accumulation path (identity warp,
-// no decay, no colour transfer) lands the LOSSLESS persistent paint canvas; Skein.1 adds
-// the first real mark — a SINGLE white pour LINE traced by a wandering "painter" (a closed-
-// form ergodic trajectory of features.time), accumulating losslessly on the cream ground.
-// There is still NO audio routing, NO splatter / filaments, NO viscosity, NO wetness, NO
-// palette beyond white-on-cream, NO mood here — all of that begins at Skein.2+. The pour line
-// is the gate-before-the-gate: does a persistent skein hold and read as poured paint?
-// (SKEIN_DESIGN §7.) `skein_fragment` remains the flat cream GROUND (what the PresetAcceptance
-// + contrast harnesses render; Skein is readable-form-exempt — the mark lives in the overlay).
+// no decay, no colour transfer) lands the LOSSLESS persistent paint canvas; Skein.1 added
+// the wandering "painter" pour LINE (a closed-form ergodic trajectory of features.time),
+// accumulating losslessly on the cream ground. Skein.2 adds the SPLATTER VOCABULARY — the
+// VisComp 2014 droplet + filament layers (Ni et al.; SKEIN_DESIGN §1.0): velocity-biased
+// droplet BURSTS with ragged organic edges and exp/poly satellite falloff (ref
+// 03_micro_satellite_spatter), thin connecting FILAMENT tendrils (ref 03_micro_filament_threads),
+// and a VISCOSITY axis (thin-fast-fine ↔ thick-slow-gloopy; refs 02_meso_pour_pools /
+// 06_palette_saturated_peak) shaping every mark — all baked normal-alpha into the SAME held
+// canvas as the pour line.
+//
+// Still NO audio routing here: bursts fire on a DETERMINISTIC flick schedule and viscosity is
+// a closed-form DEBUG sweep of features.time (so a STILL frame exhibits the full morphology).
+// Real onset→splatter / centroid→viscosity / stem→colour routing + the per-track seed is Skein.3.
+// NO palette beyond white-on-cream, NO wetness/sheen (ENGINE.2/Skein.4), NO mood (Skein.5).
+//
+// Path A (closed-form, in-shader; the Skein.1 audit, extended): splatter is a pure deterministic
+// HASH of (flick index, droplet index) generated in skein_geometry_fragment with the Noise/Hash
+// utilities — paint LANDS and the canvas HOLDS it (the canvas is a temporal integral, §1.4), so
+// there is no persistent per-frame physics state, no CPU SkeinState, no per-preset overlay buffer,
+// and NO engine touch (DragonBloom / FataMorgana byte-identical by construction). CPU-side state +
+// the gated ENGINE.1.2 overlay buffer are deferred to Skein.3, where stateful audio routing is the
+// demonstrated consumer (FA #59/#60; SKEIN_DESIGN §7). drawSceneGeometryOverlay binds `features`
+// only at the VERTEX stage (RenderPipeline+SceneGeometry.swift:36-37) with no fragment buffer, so
+// the debug viscosity is computed in skein_geometry_vertex and passed to the fragment as a varying.
+//
+// The gate is purely aesthetic: a still frame must read as POURED PAINT (Pollock), never a particle
+// fountain / clean polka-dots / brush stroke / dead mat / kaleidoscope (the 5 Skein.0 anti-refs).
+// Marks composite OPAQUE alpha-over (the normal-alpha overlay → layers occlude, never additive mud).
+// `skein_fragment` remains the flat cream GROUND (what the PresetAcceptance + contrast harnesses
+// render; Skein is readable-form-exempt — the marks live in the overlay).
 //
 // ── Canvas-hold = the no-decay / identity CONFIG of the mv_warp brush-on-feedback
 //    paradigm (D-135 / D-138). It is NOT a new render paradigm and NOT a D-029
@@ -118,6 +140,45 @@ static inline float skeinSegDist(float2 p, float2 a, float2 b) {
     return length(pa - ba * h);
 }
 
+// ── Skein.2: 2D ragged-edge noise + splatter / viscosity constants ─────────────────
+//
+// 4-octave 2D fBM (the 2D analogue of the hero-surface ≥4-octave floor the README mandates
+// on the edge / spatter fields). Built from the preamble's `perlin2d` (gradient noise — NOT
+// value-on-lattice), sampled at NON-integer coords with an inter-octave rotation, so the FA #43
+// Perlin lattice-degeneracy trap (value noise at integer lattice points; thresholds in the
+// dead [0.4,1.0] band) does not apply: perlin2d is centred at 0 (range ~[-0.9,0.9]) and we ride
+// it as a ±amplitude radius perturbation, never threshold it. Scale must be ≥3 at the call site
+// (we use 70 / 120) — see SHADER_CRAFT.md §3.
+static inline float skein_fbm2(float2 p) {
+    // ~37° orthonormal rotation between octaves (det = 1) — breaks axis-aligned fBM banding.
+    const float2x2 rot = float2x2(0.80, 0.60, -0.60, 0.80);
+    float amp = 1.0, sum = 0.0, norm = 0.0;
+    for (int i = 0; i < 4; ++i) {
+        sum  += amp * perlin2d(p);
+        norm += amp;
+        amp  *= 0.5;
+        p     = rot * p * 2.0;       // rotate + frequency-double each octave
+    }
+    return sum / norm;               // ~[-1, 1]
+}
+
+// Flick schedule (DEBUG, no audio — Skein.3 routes onsets). A "flick" is a discrete paint-throw
+// event at time T_i = i·kSkeinFlickDt along the SAME painter trajectory; its burst BAKES into the
+// held canvas and is carried forward losslessly (so a still frame shows the full vocabulary).
+constant float kSkeinFlickDt      = 0.46;   // ~2.2 flicks / s — studs the line with spatter
+constant float kSkeinSplatWindow  = 0.55;   // s — the bake-in window (fade-in then freeze; like the pour tail)
+constant int   kSkeinActiveFlicks = 3;      // recent flicks considered per frame (age-gated to the window)
+
+// Debug VISCOSITY sweep (Skein.2 only). A slow closed-form function of features.time that traverses
+// the FULL viscosity range, so a multi-second contact sheet — and a still frame at any t — exhibits
+// BOTH poles: thin-fast-fine (visc→0; ref 03_micro) and thick-slow-gloopy (visc→1; refs 02 / 06).
+// Period ~12 s: thin at t≈0 / 12 / 24, thick at t≈6 / 18. NOT time-as-RNG — a deterministic f(time),
+// reproducible frame-over-frame. Real per-stem spectral-centroid → viscosity routing lands at Skein.3
+// (§1.2); this whole function is throwaway, the MARK MORPHOLOGY it shapes is the deliverable.
+static inline float skeinDebugViscosity(float t) {
+    return 0.5 - 0.5 * cos(t * (6.2831853 / 12.0));
+}
+
 // ── Background / canvas fragment ──────────────────────────────────────────────────
 //
 // Renders the flat cream/toned GROUND only. Skein.ENGINE.1.1 (D-143) moved the test
@@ -159,7 +220,10 @@ fragment float4 skein_fragment(
 // show this -- the next frame fills its tip to full; the multi-frame tail is what persists.)
 // Draw params (3 verts / 1 instance / .triangle) from Skein.json `marks`.
 //
-// White-on-cream ONLY -- palette is Skein.3. No splatter / filaments / viscosity / wetness here.
+// SKEIN.2 adds, baked into the SAME held canvas alongside the pour line: velocity-biased droplet
+// BURSTS (ragged-edge discs, exp/poly satellite size+density falloff with distance from the flick),
+// thin FILAMENT tendrils (line→droplet), and a VISCOSITY axis shaping width / satellite count+spread /
+// edge raggedness. White-on-cream ONLY -- palette is Skein.3; wetness/sheen is ENGINE.2/Skein.4.
 
 struct SkeinGeoVertexOut {
     float4 position [[position]];
@@ -167,6 +231,7 @@ struct SkeinGeoVertexOut {
     float  t;        // features.time -- the painter clock (Path A: features reaches only the vertex)
     float  dt;       // features.delta_time (guarded) -- one tail step
     float  aspect;   // viewport aspect, for isotropic line width
+    float  visc;     // Skein.2 DEBUG viscosity [0,1] -- computed here (features reaches only the vertex)
 };
 
 vertex SkeinGeoVertexOut skein_geometry_vertex(
@@ -181,6 +246,7 @@ vertex SkeinGeoVertexOut skein_geometry_vertex(
     out.t  = f.time;
     out.dt = max(f.delta_time, 1.0 / 240.0);          // guard a zero dt (would collapse the tail)
     out.aspect = (f.aspect_ratio > 0.01) ? f.aspect_ratio : 1.0;
+    out.visc = skeinDebugViscosity(f.time);           // Skein.2 debug viscosity sweep (Skein.3 → centroid)
     return out;
 }
 
@@ -191,38 +257,120 @@ fragment float4 skein_geometry_fragment(SkeinGeoVertexOut in [[stage_in]]) {
     float a = in.aspect;
     float2 q = float2(in.uv.x * a, in.uv.y);          // aspect-corrected fragment position
     float t = in.t, dt = in.dt;
+    float visc = clamp(in.visc, 0.0, 1.0);            // DEBUG viscosity (0 = thin-fine, 1 = thick-gloopy)
 
-    // Walk the painter's last K segments from the live tip backwards. Each segment's width is
-    // speed-shaped (pool at the slow turning points, filament on fast sweeps); the AGE taper then
-    // thins + fades the segments toward the tip so the leading edge trails off (SKEIN_DESIGN 1.0/1.2).
-    float2 tip = skeinPainterPos(t);
-    float2 recent = float2(tip.x * a, tip.y);         // k = 0 (newest)
     float cover = 0.0;
-    for (int k = 0; k < kSkeinTailFrames; ++k) {
-        float2 pp = skeinPainterPos(t - float(k + 1) * dt);
-        float2 older = float2(pp.x * a, pp.y);
 
-        float speed = length(recent - older) / dt;                            // v-units / s
-        float baseR = kSkeinLineRadius * mix(1.6, 0.75, smoothstep(0.05, 0.35, speed));
+    // ── Layer A: the Skein.1 pour LINE + trailing-off tail (now viscosity-WIDENED) ─────────
+    // Unchanged mechanism (width rides 1/speed → pools at slow turning points; the AGE taper
+    // trails off the leading edge — SKEIN_DESIGN §1.0/§1.2). The Skein.2 viscosity factor only
+    // ever WIDENS (mix floor = 1.0 = the exact Skein.1 width at the thin pole), so the Skein.1
+    // continuity + lossless-hold invariants are preserved; the thick pole fattens the pour into
+    // the heavy lobes/pools of ref 02_meso_pour_pools / 06_palette_saturated_peak.
+    float lineVisc = mix(1.0, 1.5, visc);
+    {
+        float2 tip = skeinPainterPos(t);
+        float2 recent = float2(tip.x * a, tip.y);     // k = 0 (newest)
+        for (int k = 0; k < kSkeinTailFrames; ++k) {
+            float2 pp = skeinPainterPos(t - float(k + 1) * dt);
+            float2 older = float2(pp.x * a, pp.y);
 
-        float ageFrac = float(k) / float(kSkeinTailFrames);   // 0 = live tip, 1 = tail base
-        // Width tapers thin -> full across the whole tail (the leading edge thins to a point).
-        float r  = baseR * mix(0.18, 1.0, ageFrac);
-        // Opacity stays LOW over the leading tail then ramps to solid near the base, so the
-        // per-pixel ACCUMULATION (younger = drawn fewer times = fainter) leaves a long, smooth
-        // trailing-off; once paint ages past the tail it solidifies and is carried forward by the
-        // hold. A stronger, fully-persistent trail-off is the wet-now/dry-past wetness channel (ENGINE.2).
-        float op = mix(0.04, 1.0, smoothstep(0.0, 0.85, ageFrac));
+            float speed = length(recent - older) / dt;                        // v-units / s
+            float baseR = kSkeinLineRadius * lineVisc * mix(1.6, 0.75, smoothstep(0.05, 0.35, speed));
 
-        float d  = skeinSegDist(q, older, recent);
-        float aa = max(fwidth(d), 1e-4);
-        cover = max(cover, (1.0 - smoothstep(r - aa, r + aa, d)) * op);
+            float ageFrac = float(k) / float(kSkeinTailFrames);   // 0 = live tip, 1 = tail base
+            float r  = baseR * mix(0.18, 1.0, ageFrac);           // width tapers thin → full
+            float op = mix(0.04, 1.0, smoothstep(0.0, 0.85, ageFrac));  // leading-edge trail-off
 
-        recent = older;
+            float d  = skeinSegDist(q, older, recent);
+            float aa = max(fwidth(d), 1e-4);
+            cover = max(cover, (1.0 - smoothstep(r - aa, r + aa, d)) * op);
+
+            recent = older;
+        }
     }
 
-    // White pour on the held cream ground (white-on-cream only -- palette is Skein.3). Overlay
-    // blend is SRC_ALPHA / ONE_MINUS_SRC_ALPHA (PresetLoader.makeSceneGeometryPipeline).
+    // ── Layers B + C: SPLATTER droplet bursts + FILAMENT tendrils (VisComp droplet + filament) ─
+    // Each FLICK is a discrete throw at time T_i = i·kSkeinFlickDt along the SAME painter
+    // trajectory. We redraw flicks within the bake-in window each frame (the pour-tail age-ramp),
+    // so a burst fades in then FREEZES into the held canvas once aged out — identical bake-and-hold.
+    // All offsets / sizes are a deterministic HASH of (flick, droplet) → reproducible (§5.7).
+    int iHi = int(floor(t / kSkeinFlickDt));
+    for (int j = 0; j < kSkeinActiveFlicks; ++j) {
+        int fi = iHi - j;
+        if (fi < 0) { continue; }
+        float Ti  = float(fi) * kSkeinFlickDt;
+        float age = t - Ti;
+        if (age < 0.0 || age > kSkeinSplatWindow) { continue; }
+
+        // ~25 % of ticks throw no burst (breaks the metronome — reads thrown, not metered).
+        if (hash_f01(uint(fi) * 1973u + 9u) > 0.75) { continue; }
+
+        float ageFrac = age / kSkeinSplatWindow;
+        float op = mix(0.05, 1.0, smoothstep(0.0, 0.8, ageFrac));
+
+        float2 fp     = skeinPainterPos(Ti);
+        float2 fpPrev = skeinPainterPos(Ti - dt);
+        float2 fpA    = float2(fp.x * a, fp.y);                                // flick point (aspect-corrected)
+        float2 dir    = normalize(float2((fp.x - fpPrev.x) * a, fp.y - fpPrev.y) + float2(1e-5, 0.0));
+        float  base   = atan2(dir.y, dir.x);                                   // direction of travel (flung-forward axis)
+
+        // Viscosity → burst character (SKEIN_DESIGN §1.2):
+        //   thin/bright (visc→0): MANY fine FAR-flung satellites — delicate filigree (ref 03_micro).
+        //   thick/dark  (visc→1): FEWER, BIGGER, CLOSER droplets — heavy spatter (refs 02 / 06).
+        float flickJit = hash_f01(uint(fi) * 7919u + 3u);                      // per-flick size/count variation
+        int   nDrop    = int(mix(46.0, 13.0, visc) * mix(0.45, 1.0, flickJit));
+        float spread   = mix(0.170, 0.075, visc) * mix(0.7, 1.15, flickJit);  // thin flings WIDER (fine far satellites)
+        float dropBig  = mix(0.0042, 0.0100, visc);                           // small DISTINCT dots, not merged froth
+        float edgeAmp  = mix(0.40, 0.26, visc);                               // thin = more feathered / irregular edge
+        float aaScale  = mix(2.4, 1.0, visc);                                 // thin = softer edge (reads translucent)
+
+        // SCISSOR (§6 — cost ∝ this frame's marks): a fragment outside the burst's bounding disc
+        // skips the whole droplet loop. Bound covers the farthest droplet + its ragged radius.
+        float bound = spread + dropBig * 2.5 + 0.01;
+        if (length(q - fpA) > bound) { continue; }
+
+        for (int n = 0; n < nDrop; ++n) {
+            float4 hs      = hash_f01_4x(float4(float(fi), float(n), 1.0, 0.0));
+            float distFrac = pow(hs.x, 1.5);                                  // exp/poly: denser near the line, tail far
+            float dist     = spread * distFrac;
+            // Near satellites scatter all directions (splash halo); far ones are forward-thrown.
+            float coneHalf = mix(3.14159, 0.42, distFrac);
+            float ang      = base + coneHalf * (hs.y * 2.0 - 1.0);
+            float2 dpos    = fpA + float2(cos(ang), sin(ang)) * dist;
+            float  dr      = dropBig * mix(0.9, 0.18, distFrac) * mix(0.55, 1.3, hs.z);  // mid near, fine far — DISTINCT dots
+
+            // Cheap per-droplet reject BEFORE the noise keeps the inner loop affordable.
+            float dc = length(q - dpos);
+            if (dc < dr * 1.7 + 0.004) {
+                // RAGGED organic edge — perturb the radius by ±noise (never a clean circle; anti-ref
+                // polka-dots). AA taken from the SMOOTH radial distance so the boundary stays crisp.
+                float ragged = 1.0 + edgeAmp * skein_fbm2(q * 70.0 + float2(float(fi) * 7.3, float(n) * 3.1));
+                float drr = dr * max(ragged, 0.20);
+                float aa  = max(fwidth(dc), 1e-4) * aaScale;
+                cover = max(cover, (1.0 - smoothstep(drr - aa, drr + aa, dc)) * op);
+            }
+
+            // FILAMENT: a thin ragged tendril from the line to a FORWARD, mid-distance droplet — reads as
+            // a string of paint stretched along the throw (ref 03_micro_filament_threads). Gated FORWARD-
+            // ONLY + short + sparse (hash) so threads do NOT radiate as a starburst — that radial-spoke
+            // firework IS the particle-burst anti-reference. A few directional spray-streaks, never a web.
+            float2 toDrop = dpos - fpA;
+            float  dlen   = length(toDrop);
+            bool   fwd    = dot(toDrop / max(dlen, 1e-5), dir) > 0.30;        // forward of the throw only
+            if (hs.w < 0.16 && fwd && dlen > spread * 0.18 && dlen < spread * 0.5) {
+                float fd = skeinSegDist(q, fpA, dpos);
+                if (fd < 0.005) {
+                    float filR = 0.0015 * (1.0 + 0.5 * skein_fbm2(q * 130.0 + float2(float(n) * 5.0, float(fi) * 2.0)));
+                    float faa  = max(fwidth(fd), 1e-4) * 1.6;
+                    cover = max(cover, (1.0 - smoothstep(filR - faa, filR + faa, fd)) * op * 0.8);
+                }
+            }
+        }
+    }
+
+    // White paint on the held cream ground (white-on-cream only — palette is Skein.3). Overlay blend
+    // is SRC_ALPHA / ONE_MINUS_SRC_ALPHA → OPAQUE alpha-over (layers occlude, never additive mud).
     return float4(float3(1.0), cover);
 }
 
