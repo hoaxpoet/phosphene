@@ -86,11 +86,25 @@ public final class NimbusState: @unchecked Sendable {
     private static let bloomAttackTau: Float = 0.15
     private static let bloomReleaseTau: Float = 0.40
 
-    /// bloom target = meanStemEnergy·gain + offset. Mean stem energy is AGC-
-    /// centred at ~0.5 (baseline) → ~0.5 bloom; quiet (0.2) → ~0.08 floor; loud
-    /// (0.9) → ~1.06. Never floored by a single dead band (the NB.4 bug).
-    private static let bloomGain: Float = 1.40
-    private static let bloomOffset: Float = -0.20
+    /// bloom target = meanStemEnergy·gain + offset.
+    ///
+    /// **NB.10 r1.6 recalibration (Matt M7 "input problem, solve permanently").**
+    /// The old constants assumed mean stem energy is "AGC-centred at ~0.5" — it
+    /// is NOT. `{stem}Energy` = the stem's (bass+mid+treble) 3 AGC bands summed,
+    /// and the AGC normalises the *6-band TOTAL* to 0.5, so the 3-band sum centres
+    /// at `0.5 × (3-band/6-band ratio) ≈ 0.30` (measured p50 across 3 real
+    /// sessions: 0.24 / 0.27 / 0.41 — same mis-calibration class as BUG-027). The
+    /// old `×1.4 − 0.2` mapped that 0.30 centre to bloom ≈ 0.13 → a tiny dim body
+    /// on all normal music; Atlas only looked right because it's an unusually
+    /// dense/loud master (p50 0.41 → 0.38). This is LEVEL-INDEPENDENT (the AGC
+    /// removes loudness; the residual is content density), so the fix is a
+    /// recalibration, not input gain. New map (lift the floor, keep the dynamic
+    /// range): typical 0.27 → ~0.45, quiet 0.14 → ~0.20, dense/loud 0.55 → ~1.0,
+    /// silence 0 → 0 (floor preserved). The system-wide root cause (every energy
+    /// value centres ~0.3 not 0.5) is BUG-027's domain — a normalisation fix
+    /// there would let presets calibrate against a true 0.5 and is its own project.
+    private static let bloomGain: Float = 1.90
+    private static let bloomOffset: Float = -0.06
     private static let bloomMax: Float = 1.10
 
     /// Whole-body kick punch follower. SHARP: snaps up on the hit, settles in
