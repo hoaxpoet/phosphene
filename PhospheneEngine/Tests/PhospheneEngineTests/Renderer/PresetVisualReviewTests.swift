@@ -343,7 +343,7 @@ struct PresetVisualReviewTests {
             let sheetURL = outputDir.appendingPathComponent("Nimbus_contact_sheet.png")
             try buildContactSheet(renderedMidPNG: midURL,
                                   references: Self.nimbusReferenceRelPaths,
-                                  renderLabel: "NB.2 render (mid) — lit",
+                                  renderLabel: "Nimbus render (mid) — lit",
                                   to: sheetURL)
             print("[PresetVisualReview] wrote \(sheetURL.lastPathComponent)")
         }
