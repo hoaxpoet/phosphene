@@ -26,7 +26,7 @@ Companion design doc: `SKEIN_pollock_preset_architecture.md` (becomes the seed f
 | **Skein.ENGINE.1** | Canvas-hold accumulation path | engine | — | Regression: all goldens byte-identical; hold-persistence test |
 | **Skein.ENGINE.1.1** | Per-preset marks-on-top + cream ground (D-143) | engine | ENGINE.1 | Regression byte-identical (DB/FM + all mv_warp); per-preset marks-on-top test green; Skein renders live |
 | **Skein.1** | Canvas + pour spike | preset | ENGINE.1.1 | ✅ **landed 2026-06-05** (`57ee7383`/`528021b5`); **pending Matt's eyeball gate**: does a skein hold + read as paint? |
-| **Skein.2** | Splatter morphology + viscosity | preset | Skein.1 | Harness contact sheet: reads as Pollock, not particle-fountain |
+| **Skein.2** | Splatter morphology + viscosity | preset | Skein.1 | ✅ **landed 2026-06-05** (closed-form / path A, no engine touch); **pending Matt's M7**: reads as poured paint, not a particle-fountain? |
 | **Skein.3** | Stem palette + full emission routing | preset | Skein.2 | Harness + replay registration; routing is legible |
 | **Skein.ENGINE.2** | Wetness channel | engine | — (land before Skein.4) | Regression: byte-identical for others; stamp+decay test |
 | **Skein.4** | Wet/dry sheen *(cut-line)* | preset | ENGINE.2, Skein.3 | Harness: wet-now reads vs dry-past |
@@ -107,8 +107,10 @@ Execution order is top-to-bottom. ENGINE.2 is shown near Skein.4 because that's 
 
 ---
 
-### Skein.2 — Splatter morphology + viscosity
+### Skein.2 — Splatter morphology + viscosity ✅ (2026-06-05) — pending Matt's M7
 **preset · depends on: Skein.1 · gate: harness contact sheet (highest aesthetic risk)**
+
+**Landed (path A — closed-form, in-shader, no engine touch).** The Skein.1 audit's Path A extended cleanly: droplet bursts + filaments + viscosity are a deterministic hash of (flick, droplet) generated in `skein_geometry_fragment`, with a closed-form debug viscosity sweep of `features.time` computed in `skein_geometry_vertex` and passed as a varying — **no `SkeinState`, no per-preset overlay buffer, no engine touch** (DB/FM byte-identical by construction; verified `drawSceneGeometryOverlay:36-37` binds `features` at the vertex only). The ENGINE.1.2 buffer + CPU state stay **deferred to Skein.3** (their real consumer — per-stem flow integrators + onset emission + the per-track SHA seed; FA #59/#60). Two iteration findings: big+dense droplets read as merged "froth" → small+crisp+wider-flung DISTINCT dots; straight line→droplet filaments radiate as a sci-fi **starburst** (the particle-burst anti-reference) → forward-gated/short/sparse spray-streaks. Viscosity → line-width factor floors at 1.0 (widen-only) so the Skein.1 continuity invariant is preserved. See `ENGINEERING_PLAN.md` Skein.2 + `SHADER_CRAFT.md §18`.
 
 **Goal.** Add the splatter vocabulary and make a still frame read as Pollock — central mark + velocity-biased satellite droplets + thin filaments, with viscosity shaping. This is where the iteration lives (cf. Dragon Bloom "not seeing petals", Arachne clipart).
 
@@ -120,12 +122,12 @@ Execution order is top-to-bottom. ENGINE.2 is shown near Skein.4 because that's 
 
 **Out of scope / Do NOT.** No stem/audio routing yet (drive bursts and viscosity from debug scalars). No wetness. No mood. Do NOT let droplets read as clean circles or sci-fi sparks — ragged edges and matte are the whole game; check against the Skein.0 anti-references each iteration.
 
-**Key files.** `Shaders/Skein.metal`, `SkeinState.swift` (burst bookkeeping), `SHADER_CRAFT.md`.
+**Key files (as landed).** `Shaders/Skein.metal` (`skein_fbm2` + `skeinDebugViscosity` + splatter/filament/viscosity in `skein_geometry_fragment`), `SkeinCanvasHoldTest.swift` (corridor-isolated line continuity + the splatter halo/viscosity/bake-hold/new-mark test + a viscosity-sweep contact sheet), `SHADER_CRAFT.md §18`, `ENGINEERING_PLAN.md`. **No `SkeinState.swift`** (path A — deferred to Skein.3 / ENGINE.1.2). `Skein.json` unchanged.
 
-**Done-when.**
-- Contact sheet: bursts produce a believable central-mark + satellite-halo + filament structure.
-- A still frame reads as **poured paint, not a particle field**, and does not match any Skein.0 anti-reference (manual check).
-- Per-frame new-mark count exposed (governor input).
+**Done-when.** ✅ (pending Matt's M7)
+- ✅ Contact sheet: bursts produce a central-mark + satellite-halo + filament structure (halo dense-near/sparse-far; the viscosity-sweep sheet shows both poles).
+- ⏳ **M7 gate:** a still frame reads as **poured paint, not a particle field**, and matches no Skein.0 anti-reference (manual check — all 5 checked clear at closeout).
+- ✅ Per-frame new-mark count exposed (governor input — 178/179 frames in the bake/hold test).
 
 ---
 
