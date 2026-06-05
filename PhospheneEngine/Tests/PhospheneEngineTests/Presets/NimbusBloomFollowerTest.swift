@@ -476,8 +476,8 @@ struct NimbusBloomFollowerTest {
                 bassLobe: state.bassLobe,
                 vocalsLobe: state.vocalsLobe,
                 otherLobe: state.otherLobe,
-                padA: 0,
-                padB: 0)
+                valence: state.smoothedValence,
+                arousal: state.smoothedArousal)
             guard let px = renderNimbus(nimbus, ctx: ctx, texMgr: texMgr, state: state, features: fv) else {
                 Issue.record("render failed for \(fixture.name)"); return
             }
@@ -534,6 +534,62 @@ struct NimbusBloomFollowerTest {
             }
             print("[NimbusLobes] wrote 6 PNGs to \(dir.path)")
         }
+    }
+
+    // MARK: - Mood travel (NB.6 — valence→colour, arousal→agitation)
+
+    @Test("mood: high valence renders warmer than low; renders are valid (NB.6)")
+    func test_moodTravel() throws {
+        let ctx: MetalContext
+        do { ctx = try MetalContext() } catch {
+            print("NimbusBloomFollowerTest: no Metal context — skipping mood"); return
+        }
+        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat)
+        guard let nimbus = loader.presets.first(where: { $0.descriptor.name == "Nimbus" }),
+              let lib = try? ShaderLibrary(context: ctx),
+              let texMgr = try? TextureManager(context: ctx, shaderLibrary: lib) else {
+            Issue.record("mood setup failed"); return
+        }
+        // valence/arousal arrive on the FeatureVector; smoothed ~4 s in state, so
+        // tick well past the EMA (and the cold-start gate) to converge.
+        func render(valence: Float, arousal: Float) -> [UInt8]? {
+            guard let state = NimbusState(device: ctx.device) else { return nil }
+            var fv = FeatureVector(bass: 0.5, mid: 0.5, treble: 0.5, time: 3.0, deltaTime: Self.dt)
+            fv.valence = valence; fv.arousal = arousal; fv.aspectRatio = 1.0
+            for _ in 0..<250 { state.tick(deltaTime: 0.1, features: fv, stems: stemFixture(energy: 0.7)) }
+            return renderNimbus(nimbus, ctx: ctx, texMgr: texMgr, state: state, features: fv)
+        }
+        guard let cool = render(valence: -0.85, arousal: 0),
+              let warm = render(valence:  0.85, arousal: 0),
+              let calm = render(valence: 0, arousal: -0.85),
+              let wild = render(valence: 0, arousal:  0.85) else {
+            Issue.record("mood render failed"); return
+        }
+        let c = meanChannels(cool), w = meanChannels(warm)
+        // Warm valence → the body is redder relative to blue than the cool pole.
+        let coolRB = c.r / max(c.b, 1), warmRB = w.r / max(w.b, 1)
+        print(String(format: "[NimbusMood] cool R/B=%.2f  warm R/B=%.2f  (warm should be > cool)", coolRB, warmRB))
+        #expect(warmRB > coolRB * 1.3,
+                "high valence did not render warmer than low: cool R/B=\(coolRB), warm R/B=\(warmRB)")
+        for (name, px) in [("cool", cool), ("warm", warm), ("calm", calm), ("wild", wild)] {
+            #expect(meanLuma(px) > 0.003, "\(name) mood render is ~black")
+        }
+        if ProcessInfo.processInfo.environment["NB_MOOD"] == "1" {
+            let dir = URL(fileURLWithPath: "/tmp/nimbus_mood")
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            for (name, px) in [("cool", cool), ("warm", warm), ("calm", calm), ("wild", wild)] {
+                writePNG(px, size: Self.lobeRenderSize, to: dir.appendingPathComponent("mood_\(name).png"))
+            }
+            print("[NimbusMood] wrote 4 PNGs to \(dir.path)")
+        }
+    }
+
+    /// Mean (r, g, b) over the frame in [0, 255] (BGRA bytes).
+    private func meanChannels(_ px: [UInt8]) -> (r: Float, g: Float, b: Float) {
+        var sr: Float = 0, sg: Float = 0, sb: Float = 0
+        let n = px.count / 4
+        for i in 0..<n { sb += Float(px[i * 4 + 0]); sg += Float(px[i * 4 + 1]); sr += Float(px[i * 4 + 2]) }
+        return (sr / Float(n), sg / Float(n), sb / Float(n))
     }
 
     // MARK: - Motion strip (NB.3.5 rising/curling smoke — env-gated, visual)

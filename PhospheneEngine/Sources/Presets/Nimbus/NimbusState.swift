@@ -48,7 +48,8 @@ private let logger = Logger(subsystem: "com.phosphene.presets", category: "Nimbu
 // MARK: - GPU struct
 
 /// GPU-side state — 32 bytes, must match `NimbusStateGPU` in `Nimbus.metal`
-/// byte-for-byte. Six load-bearing floats + two pads for 16-byte alignment.
+/// byte-for-byte. Eight load-bearing floats (the last two are NB.6 mood —
+/// reusing the former padding, so the byte layout is unchanged).
 struct NimbusStateGPU {
     var bloom: Float        // slow overall size/brightness swell (0 floor … ~1 peak)
     var flowPhase: Float    // gas churn phase (seconds-equivalent, bloom + kick modulated)
@@ -56,8 +57,8 @@ struct NimbusStateGPU {
     var bassLobe: Float     // downward heave (0 … ~1)
     var vocalsLobe: Float   // upward flare (0 … ~1)
     var otherLobe: Float    // sideways swell (0 … ~1)
-    var padA: Float
-    var padB: Float
+    var valence: Float      // NB.6 mood — smoothed valence (-1 cool … +1 warm)
+    var arousal: Float      // NB.6 mood — smoothed arousal (-1 calm … +1 churning)
 
     static let zero = NimbusStateGPU(
         bloom: 0,
@@ -66,8 +67,8 @@ struct NimbusStateGPU {
         bassLobe: 0,
         vocalsLobe: 0,
         otherLobe: 0,
-        padA: 0,
-        padB: 0
+        valence: 0,
+        arousal: 0
     )
 }
 
@@ -117,6 +118,11 @@ public final class NimbusState: @unchecked Sendable {
     private static let devThreshLo: Float = 0.12
     private static let devThreshHi: Float = 0.55
 
+    /// Mood smoothing time constant (FA #25 — smooth valence/arousal in preset
+    /// state, never via setFeatures). ~4 s so colour/agitation crawl at the
+    /// section timescale, not per-frame.
+    private static let moodTau: Float = 4.0
+
     /// Cold-start convergence window (seconds since track start). Below
     /// `stemConvergeLo` the model is fully on the live FeatureVector beat (the
     /// cached stems are a constant snapshot and can't drive per-beat motion);
@@ -145,6 +151,10 @@ public final class NimbusState: @unchecked Sendable {
     public private(set) var vocalsLobe: Float = 0
     public private(set) var otherLobe: Float = 0
     public private(set) var flowPhase: Float = 0
+    /// NB.6 mood — smoothed valence (−1 cool … +1 warm) and arousal (−1 calm …
+    /// +1 churning), ~4 s EMA. Diagnostics.
+    public private(set) var smoothedValence: Float = 0
+    public private(set) var smoothedArousal: Float = 0
 
     // MARK: - Private State
 
@@ -190,6 +200,7 @@ public final class NimbusState: @unchecked Sendable {
         lock.withLock {
             bloom = 0; kickPunch = 0
             bassLobe = 0; vocalsLobe = 0; otherLobe = 0
+            smoothedValence = 0; smoothedArousal = 0
             flowPhase = 0
             flowPhaseAccum = 0
             trackTime = 0   // restart the cold-start gate for the new track
@@ -253,6 +264,14 @@ public final class NimbusState: @unchecked Sendable {
         let otherTarget = nbSmoothstep(Self.devThreshLo, Self.devThreshHi, stems.otherEnergyDev) * stemMix
         otherLobe = follow(otherLobe, otherTarget, dt, Self.lobeAttackTau, Self.lobeReleaseTau)
 
+        // ── Mood (NB.6) — valence → colour, arousal → agitation ──────────────
+        // Smoothed ~4 s in state (FA #25). valence/arousal arrive on the
+        // FeatureVector from the MoodClassifier (setMood, preserved across
+        // setFeatures — D-024); never written back. 0 (neutral) before mood lands.
+        let moodCoeff = 1.0 - exp(-dt / Self.moodTau)
+        smoothedValence += (features.valence - smoothedValence) * moodCoeff
+        smoothedArousal += (features.arousal - smoothedArousal) * moodCoeff
+
         // ── Flow phase: churn at a bloom-modulated rate, surging on kicks ────
         let bloomForFlow = nbClamp(bloom, 0, 1)
         let flowSpeed = Self.flowFloor + (Self.flowPeak - Self.flowFloor) * bloomForFlow
@@ -295,8 +314,8 @@ public final class NimbusState: @unchecked Sendable {
             bassLobe: bassLobe,
             vocalsLobe: vocalsLobe,
             otherLobe: otherLobe,
-            padA: 0,
-            padB: 0
+            valence: smoothedValence,
+            arousal: smoothedArousal
         )
         stateBuffer.contents().copyMemory(
             from: &packed,
