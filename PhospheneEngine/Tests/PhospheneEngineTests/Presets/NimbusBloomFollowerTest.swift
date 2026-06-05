@@ -667,11 +667,11 @@ struct NimbusBloomFollowerTest {
         }
         // valence/arousal arrive on the FeatureVector; smoothed ~4 s in state, so
         // tick well past the EMA (and the cold-start gate) to converge.
-        func render(valence: Float, arousal: Float) -> [UInt8]? {
+        func render(valence: Float, arousal: Float, energy: Float = 0.7) -> [UInt8]? {
             guard let state = NimbusState(device: ctx.device) else { return nil }
             var fv = FeatureVector(bass: 0.5, mid: 0.5, treble: 0.5, time: 3.0, deltaTime: Self.dt)
             fv.valence = valence; fv.arousal = arousal; fv.aspectRatio = 1.0
-            for _ in 0..<250 { state.tick(deltaTime: 0.1, features: fv, stems: stemFixture(energy: 0.7)) }
+            for _ in 0..<250 { state.tick(deltaTime: 0.1, features: fv, stems: stemFixture(energy: energy)) }
             return renderNimbus(nimbus, ctx: ctx, texMgr: texMgr, state: state, features: fv)
         }
         guard let cool = render(valence: -0.85, arousal: 0),
@@ -697,6 +697,19 @@ struct NimbusBloomFollowerTest {
         print(String(format: "[NimbusMood] calm↔wild agitation MSD=%.2f", arousalMSD))
         #expect(arousalMSD > 1.0,
                 "arousal→agitation route is dead: calm and wild renders are ~identical (MSD \(arousalMSD))")
+        // NB.10 (D-142): ENERGY warms the body. At NEUTRAL valence, a high-energy
+        // state (high arousal + big bloom) must render warmer than a low-energy
+        // one — so an energetic-but-"dark" track (B.O.B.) reads hot, not cool
+        // (Matt M7 r1). This gates the energy→warmth route the mood uplift added.
+        guard let lowE = render(valence: 0, arousal: -0.9, energy: 0.15),
+              let highE = render(valence: 0, arousal: 0.9, energy: 0.95) else {
+            Issue.record("energy-warmth render failed"); return
+        }
+        let le = meanChannels(lowE), he = meanChannels(highE)
+        let lowERB = le.r / max(le.b, 1), highERB = he.r / max(he.b, 1)
+        print(String(format: "[NimbusMood] energy-warmth: lowE R/B=%.2f  highE R/B=%.2f", lowERB, highERB))
+        #expect(highERB > lowERB * 1.3,
+                "energy did not warm the body: low-energy R/B=\(lowERB), high-energy R/B=\(highERB) — B.O.B. would still read cool")
         for (name, px) in [("cool", cool), ("warm", warm), ("calm", calm), ("wild", wild)] {
             #expect(meanLuma(px) > 0.003, "\(name) mood render is ~black")
         }

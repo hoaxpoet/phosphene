@@ -102,12 +102,29 @@ constant float  kNimbusDetailChurn = 0.45; // fine detail evolves this much fast
 // pole, warm gold/amber at the high pole. Arousal → flow agitation: calm =
 // smoother lobes + gentler roll; energetic = more torn edges + stronger churn.
 // Both smoothed ~4 s in NimbusState (FA #25) and crawl at the section timescale.
-constant float3 kNimbusMoodCool   = float3(0.40, 0.36, 0.74);  // low valence — deep desaturated indigo (06 cool baseline)
-constant float3 kNimbusMoodWarm   = float3(0.96, 0.64, 0.30);  // high valence — warm gold/amber (06 warm peak)
-constant float3 kNimbusAmbCool    = float3(0.016, 0.020, 0.045); // cool fill (the NB.3.3 ambient) — low valence
-constant float3 kNimbusAmbWarm    = float3(0.050, 0.032, 0.016); // warm fill — high valence (shadow side warms too)
+// NB.10 (D-142, Matt M7 r1): poles SATURATED for an expressive cool↔warm swing
+// (the prior muted lavender/soft-gold read "white/gray" once the bright core
+// washed out — Matt's Billie Jean note). Cool = vivid indigo-violet; warm =
+// rich amber/gold.
+constant float3 kNimbusMoodCool   = float3(0.30, 0.26, 0.95);  // low warmth — vivid indigo-violet
+constant float3 kNimbusMoodWarm   = float3(1.00, 0.56, 0.14);  // high warmth — rich amber/gold
+constant float3 kNimbusAmbCool    = float3(0.014, 0.018, 0.055); // cool fill (the NB.3.3 ambient) — low warmth
+constant float3 kNimbusAmbWarm    = float3(0.060, 0.034, 0.012); // warm fill — high warmth (shadow side warms too)
 constant float  kNimbusAgitCalm   = 0.65;  // arousal −1 → calmer (smoother lobes, less churn)
 constant float  kNimbusAgitWild   = 1.55;  // arousal +1 → wilder (torn edges, stronger churn)
+
+// NB.10 (D-142) — ENERGY warms + vivifies the body. Matt M7 r1: an energetic
+// track (B.O.B.) read cool/purple because colour tracked only valence (the
+// classifier hears aggressive-but-dark as low-valence). Now arousal + the slow
+// energy bloom LIFT the warmth, so a banger reads hot regardless of valence.
+constant float  kNimbusEnergyWarmth = 0.60;  // how hard energy lifts warmth above the valence baseline
+constant float  kNimbusEnergyBase   = 0.25;  // energy below this doesn't warm (calm stays on the valence axis)
+constant float  kNimbusMoodContrast = 1.35;  // expand the warmth range around mid → bigger cool↔warm swing
+// Bright core keeps its MOOD HUE (brightened), it does NOT wash to white — the
+// old near-white desaturation killed the colour on the most-visible pixels.
+constant float  kNimbusCoreHueGain  = 1.55;  // brighten the mood hue at the dense core (luminance, same hue)
+constant float  kNimbusCoreWhiteAdd = 0.10;  // a small white lift for only the very hottest pixels
+constant float  kNimbusCoreWash     = 0.62;  // cap on how much the core lightens (leaves the hue intact)
 
 // NB.3.4 — interior lump/crevice contrast (ref 02: deep crevices between cauliflower
 // lumps). TIGHTER window than NB.3.3 → sharper lit lumps + darker crevices (less
@@ -372,13 +389,20 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
     // envelope's star-convex heave (.w = drums whole-body punch).
     float4 lobes    = float4(nb.bassLobe, nb.vocalsLobe, nb.otherLobe, nb.kickPunch);
 
-    // ── NB.6 Mood (slow global) — valence → colour, arousal → agitation ──────
-    // Both ∈ [-1, 1], smoothed ~4 s in NimbusState. valence shifts the body
-    // colour cool↔warm; arousal sets the flow-agitation (torn-edge) strength.
+    // ── NB.6/NB.10 Mood (slow global) — warmth (valence + ENERGY) → colour,
+    // arousal → agitation. Both ∈ [-1, 1], smoothed ~4 s in NimbusState. ───────
     float valence01 = clamp(nb.valence * 0.5 + 0.5, 0.0, 1.0);
     float arousal01 = clamp(nb.arousal * 0.5 + 0.5, 0.0, 1.0);
-    float3 moodTint = mix(kNimbusMoodCool, kNimbusMoodWarm, valence01);  // body colour
-    float3 moodAmb  = mix(kNimbusAmbCool,  kNimbusAmbWarm,  valence01);  // fill warms too (D-022 propagation)
+    // NB.10 (D-142): ENERGY lifts warmth. `energy01` blends the mood-classifier
+    // arousal (energetic vs calm) with the slow energy bloom (`bloomV`, the
+    // actual loudness swell) — an energetic track reads hot even at neutral/low
+    // valence (Matt M7 r1: B.O.B.). Calm tracks (low energy) stay on the pure
+    // valence axis. Then expand the range around mid for a bigger cool↔warm swing.
+    float energy01 = clamp(0.55 * arousal01 + 0.55 * clamp(bloomV, 0.0, 1.0), 0.0, 1.0);
+    float warm01   = clamp(valence01 + kNimbusEnergyWarmth * (energy01 - kNimbusEnergyBase), 0.0, 1.0);
+    warm01         = clamp((warm01 - 0.5) * kNimbusMoodContrast + 0.5, 0.0, 1.0);
+    float3 moodTint = mix(kNimbusMoodCool, kNimbusMoodWarm, warm01);  // body colour
+    float3 moodAmb  = mix(kNimbusAmbCool,  kNimbusAmbWarm,  warm01);  // fill warms too (D-022 propagation)
     float  agitation = mix(kNimbusAgitCalm, kNimbusAgitWild, arousal01); // erosion knob
 
     // ── Non-black haze floor (D-037 / DESIGN §1.4-§1.5): a faint cool halo,
@@ -388,9 +412,9 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
     // floor so the silence frame is provably non-black.
     float  hazeR2   = dot(p, p);
     float  hazeAmt  = kNimbusHazeBase * (0.60 + 0.40 * clamp(bloomV, 0.0, 1.0));
-    // NB.6: the halo warms with the body (valence) so a warm mood doesn't sit in
-    // a cool-blue halo. kNimbusHazeColor is the cool pole.
-    float3 hazeCol  = mix(kNimbusHazeColor, float3(0.92, 0.55, 0.30), valence01);
+    // NB.6/NB.10: the halo warms with the body (warmth = valence + energy) so a
+    // warm/energetic mood doesn't sit in a cool-blue halo. kNimbusHazeColor is the cool pole.
+    float3 hazeCol  = mix(kNimbusHazeColor, float3(0.95, 0.52, 0.22), warm01);
     float3 haze     = hazeCol * hazeAmt * exp(-hazeR2 * kNimbusHazeFalloff);
 
     // ── Bounding-sphere intersection (grows with the bloomed body). The env
@@ -471,14 +495,16 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
     return float4(heat, 1.0);
 #else
     // ── Composite: mood-tinted body over the haze floor → ACES ───────────────
-    // NB.6: the body is tinted toward `moodTint` (cool indigo ← low valence …
-    // warm gold ← high valence, the 06_palette axis). The densest/brightest core
-    // still desaturates toward a (mood-warmed) white at the top end (luminance,
-    // not a second hue) → the ref-01 bright core. moodTint multiplies every body
-    // pixel so the cool↔warm shift propagates across the whole mass.
+    // NB.6/NB.10: the body is tinted toward `moodTint` (vivid indigo ← cool/low-
+    // energy … rich amber ← warm/energetic). NB.10 (D-142): the densest/brightest
+    // core keeps its MOOD HUE, brightened (luminance, same hue) — it does NOT
+    // desaturate to near-white. The old white-wash killed the colour on exactly
+    // the brightest, most-visible pixels, so an energetic body read "white/gray"
+    // (Matt M7 r1, Billie Jean). moodTint multiplies every body pixel so the
+    // cool↔warm shift propagates across the whole mass.
     float  lum = dot(acc.color, float3(0.299, 0.587, 0.114));
-    float3 moodWhite = mix(float3(0.80, 0.80, 0.94), float3(0.98, 0.93, 0.82), valence01);
-    float3 tint = mix(moodTint, moodWhite, smoothstep(0.9, 2.2, lum));
+    float3 moodBright = clamp(moodTint * kNimbusCoreHueGain + kNimbusCoreWhiteAdd, 0.0, 1.6);
+    float3 tint = mix(moodTint, moodBright, smoothstep(0.9, 2.4, lum) * kNimbusCoreWash);
     // Composite the body over the faint cool haze floor (NB.4 / D-037 — never
     // pure black at steady state). Where the body is opaque, transmittance → 0
     // and the haze is hidden; in the gaps and around the silhouette it reads as
