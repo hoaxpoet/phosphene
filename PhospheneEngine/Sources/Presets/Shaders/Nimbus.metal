@@ -38,12 +38,12 @@ constant float3 kNimbusSemiAxes  = float3(1.20, 1.50, 1.20);
 constant float  kNimbusBoundR    = 1.85;   // bounding sphere for the march range
 constant int    kNimbusSteps     = 64;     // primary march steps
 constant int    kNimbusShadowN   = 6;      // secondary light-march steps
-constant float  kNimbusShadowDt  = 0.16;   // light-march step length
-constant float  kNimbusSigma     = 1.55;   // primary extinction (translucent: low enough to see INTO the volume so front-to-back accumulation reads lobe depth — NB.2)
-constant float  kNimbusShadowSig = 1.10;   // softer self-shadow extinction (keeps the core lit → brighter)
+constant float  kNimbusShadowDt  = 0.22;   // light-march step length (reach ≈ full body depth)
+constant float  kNimbusSigma     = 1.55;   // primary extinction (translucent: see INTO the volume)
+constant float  kNimbusShadowSig = 2.40;   // self-shadow extinction — strong → dark core vs bright forward-scatter rim (the backlit silver lining, NB.3.2)
 constant float  kNimbusCamZ      = -6.0;   // camera distance (looking +Z)
 constant float  kNimbusFocal     = 1.25;   // FOV (larger = narrower)
-constant float  kNimbusPhaseG    = 0.40;   // Henyey-Greenstein anisotropy (DESIGN §5.2)
+constant float  kNimbusPhaseG    = 0.58;   // Henyey-Greenstein anisotropy — strong forward scatter → backlit glow (NB.3.2)
 
 // NB.3.1 Perlin-Worley density (HZD / "Nubis"). Scales are body-space sample
 // units; noiseVolume tiles every 1.0 and itself holds ~4 billow cycles per tile.
@@ -157,14 +157,15 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
     float t0 = max(-bq - sq, 0.0);
     float t1 = -bq + sq;
 
-    // ── Fixed lighting (minimal — NOT the NB.3 internal-glow recipe) ─────────
-    // 3/4 key from upper-left, biased behind the body so single-scatter reads as
-    // a luminous gas (forward-scatter through the dense core → brighter core)
-    // while the soft self-shadow gives a 3D form. Intensity is artistic, not
-    // physical (the HG phase is normalised small).
-    float3 lightDir   = normalize(float3(-0.35, 0.42, 0.45));   // upper-left, biased behind
-    float3 lightColor = float3(1.00, 0.97, 0.92) * 5.2;         // neutral warm-white (intensity restores body presence under the lower NB.2 sigma)
-    float3 ambient    = float3(0.025, 0.030, 0.060);            // faint cool ambient (shadow side just reads, gradient preserved)
+    // ── Lighting: backlit internal glow (NB.3.2 — ported HZD / "Nubis") ──────
+    // The references are BACKLIT (hero 08): the key sits behind the body, so
+    // forward-scatter through the thin edges makes the glowing silver-lining rim
+    // while the dense front self-shadows into a deep core. Strong forward HG +
+    // the detail-aware cone self-shadow (in the march below) is what makes the
+    // cauliflower billows read as 3D.
+    float3 lightDir   = normalize(float3(-0.30, 0.42, 0.74));   // upper-left, strongly behind
+    float3 lightColor = float3(1.00, 0.97, 0.92) * 5.6;         // neutral warm-white key
+    float3 ambient    = float3(0.022, 0.028, 0.055);            // faint cool fill (shadowed front still reads)
 
     float t = features.time;
 
@@ -178,14 +179,18 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
         float dens = nimbus_density(pos, t, noiseVolume, linearSampler);
         if (dens > 0.002) {
             litSteps++;
-            // Self-shadow: short secondary light-march over the analytic envelope
-            // only (cheap; the dense core occludes the far side → reads as 3D).
-            float tau = 0.0;
+            // Detail-aware CONE self-shadow (NB.3.2): march toward the light
+            // accumulating the real billow DENSITY (not the smooth envelope), so
+            // the crevices between cauliflower lumps fall into shadow and thin
+            // edges stay lit → the 3D billow read. This is the cost driver the
+            // plan flagged (re-measured at NB.8).
+            float densToLight = 0.0;
             for (int j = 1; j <= kNimbusShadowN; j++) {
                 float3 sp = pos + lightDir * (float(j) * kNimbusShadowDt);
-                tau += nimbus_envelope(sp) * kNimbusShadowSig * kNimbusShadowDt;
+                densToLight += nimbus_density(sp, t, noiseVolume, linearSampler);
             }
-            float shadow = exp(-tau);
+            float shadow = exp(-densToLight * kNimbusShadowDt * kNimbusShadowSig);
+            // Forward-scatter phase: thin edges grazing the back-light glow brightest.
             float phase = hg_phase(dot(rd, lightDir), kNimbusPhaseG);
             float3 lit = lightColor * (phase * shadow) + ambient;
             float3 inscat = lit * dens * kNimbusSigma * dt;
