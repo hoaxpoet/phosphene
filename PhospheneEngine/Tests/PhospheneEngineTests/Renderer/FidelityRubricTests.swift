@@ -177,7 +177,18 @@ struct FidelityRubricGateTests {
     // (it is a ray-march/material heuristic; Fata is a feedback mirage with no V.3
     // mat_* cookbook materials by construction) — Matt's reference review against
     // the butterchurn oracle is the load-bearing gate per SHADER_CRAFT.md §12.1 M7.
-    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana", "Murmuration"]
+    //
+    // NB.9 (2026-06-05): Nimbus certified by Matt after the M7 live review
+    // (session 2026-06-05T20-33-47Z, 8 tracks) — the first `volumetric`-family
+    // preset (D-140). Closes Phase NB (energy bloom + per-stem beat lobes + the
+    // NB.10/D-144 mood uplift: energy-warmed cool↔warm colour + the r1.6 bloom
+    // recalibration to the real ~0.30 stem-energy centre). The automated rubric
+    // gate reads false (full profile, but volumetric — no V.3 `mat_*` cookbook
+    // materials and no `fbm` calls by construction, so M1/M2/M3 don't apply) —
+    // Matt's reference-packet review is the load-bearing gate per SHADER_CRAFT
+    // §12.1 M7. Beat-grid live phase is a known limitation deferred to its own
+    // project (D-145), accepted at cert.
+    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana", "Murmuration", "Nimbus"]
 
     @Test func automatedGate_uncertifiedPresetsAreUncertified() async {
         let store = PresetCertificationStore()

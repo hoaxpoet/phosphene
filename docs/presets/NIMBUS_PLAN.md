@@ -34,7 +34,7 @@ Nimbus needs **one small engine touch** (Matt-approved 2026-06-04): a baked **Pe
 | **NB.6** | Mood | preset | NB.5 | Valence → cool/warm, arousal → flow-agitation visible across mood fixtures |
 | ~~**NB.7**~~ | ~~Page (reorganisation)~~ | — | — | ❌ **CUT** — no section reorganisation in v1 (DESIGN §1.3) |
 | **NB.8** | Performance tranche | preset | NB.3 + NB.4/6 | `MTLCounterSet` profile (re-measure cone-shadow cost): p95 ≤ 16 ms full-frame, ≤ 7 ms preset; `complexity_cost` set |
-| **NB.9** | Certification | preset | all | Acceptance + golden + anti-ref manual + **Matt M7** |
+| **NB.9** ✅ | Certification | preset | all | *Done 2026-06-05 — Matt M7 pass (session 20-33-47Z); `certified: true`. Beat-grid (D-145) deferred.* |
 
 Execution order is top-to-bottom and largely linear now: **NB.3 (the look) → NB.4 (energy swell) → NB.5 (beat: stem lobes) → NB.6 (mood) → NB.8 (perf) → NB.9 (cert)**. NB.3 was the fidelity gate; NB.5 (reinstated, D-141) is the musical-feel gate — the energy-only NB.4 was too subtle on real music, so the beat came back as per-stem lobes.
 
