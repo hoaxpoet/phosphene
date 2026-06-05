@@ -9,6 +9,14 @@
   "vertex_function": "fullscreen_vertex",
   "beat_source": "composite",
   "decay": 0.950,
+  "marks": {
+    "vertex_count": 1536,
+    "instance_count": 3,
+    "primitive": "line_strip",
+    "chromatic": 1.0,
+    "comp": { "invert": 1.0, "echo": 0.5, "gamma": 1.07 },
+    "beat_pulse": true
+  },
   "stem_affinity": {
     "drums": "strand_arm",
     "bass": "strand_arm_breathing",

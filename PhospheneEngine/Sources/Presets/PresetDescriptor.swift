@@ -115,6 +115,99 @@ public struct SceneLight: Sendable, Codable, Equatable {
     }
 }
 
+/// Marks-on-top overlay configuration for mv_warp presets that draw geometry
+/// normal-alpha on top of the held/warped frame (D-138, generalised per-preset in
+/// Skein.ENGINE.1.1 / D-143). Declared under the `"marks"` JSON key. Present only for
+/// presets whose library defines a scene-geometry overlay (`<prefix>_geometry_*`, or
+/// `dragon_bloom_strand_*` for Dragon Bloom); a nil block means no overlay and the
+/// preset renders through the standard scene→decayed-compose mv_warp path.
+///
+/// This block declares the per-preset draw params + display config that were formerly
+/// hard-coded to Dragon Bloom in the app's `.mvWarp` apply branch — so the marks-on-top
+/// mechanism is reachable by any mv_warp preset declaratively (Dragon Bloom is one
+/// instance, Skein another).
+public struct MarksConfig: Sendable, Codable, Equatable {
+    /// Vertices per draw call passed to `drawPrimitives` (e.g. 1536 strand samples for
+    /// Dragon Bloom; 3 for a fullscreen-triangle overlay).
+    public var vertexCount: Int
+    /// Instance count (e.g. 3 Dragon Bloom strands; 1 for a single fullscreen overlay).
+    public var instanceCount: Int
+    /// Primitive type as a string — "line_strip", "triangle", "line", "point",
+    /// "triangle_strip". Mapped to `MTLPrimitiveType` in the app layer (this module does
+    /// not import Metal). Defaults to "line_strip".
+    public var primitive: String
+    /// mv_warp chromatic colour-separation amount consumed by the shared warp fragment
+    /// (`PresetLoader+WarpPreamble` `mvWarp_fragment`). Dragon Bloom L3 = 1.0; a lossless
+    /// non-cycling canvas-hold (Skein) = 0.
+    public var chromatic: Float
+    /// Display-stage comp params applied at the blit (`mvWarp_blit_fragment`). Identity
+    /// = (invert 0, echo 0, gamma 1).
+    public var comp: CompParams
+    /// Whether the per-frame comp beat pump fires at the blit (Dragon Bloom L4 `post.w`).
+    /// False for a quiet held canvas (Skein) so it gets true comp-identity.
+    public var beatPulse: Bool
+    /// Initial feedback-canvas clear colour (linear RGB). On the marks-on-top path the
+    /// background fragment (Pass 0) is skipped, so this is the held GROUND the marks sit
+    /// on. Omitted ⇒ black (Dragon Bloom's feedback bloom starts from black).
+    public var canvasClear: SIMD3<Float>?
+
+    /// Display-stage comp (invert / video-echo / gamma) for the mv_warp blit.
+    public struct CompParams: Sendable, Codable, Equatable {
+        public var invert: Float
+        public var echo: Float
+        public var gamma: Float
+        public init(invert: Float = 0, echo: Float = 0, gamma: Float = 1) {
+            self.invert = invert
+            self.echo = echo
+            self.gamma = gamma
+        }
+        enum CodingKeys: String, CodingKey { case invert, echo, gamma }
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            invert = try container.decodeIfPresent(Float.self, forKey: .invert) ?? 0
+            echo   = try container.decodeIfPresent(Float.self, forKey: .echo) ?? 0
+            gamma  = try container.decodeIfPresent(Float.self, forKey: .gamma) ?? 1
+        }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case vertexCount = "vertex_count"
+        case instanceCount = "instance_count"
+        case primitive, chromatic, comp
+        case beatPulse = "beat_pulse"
+        case canvasClear = "canvas_clear"
+    }
+
+    public init(
+        vertexCount: Int,
+        instanceCount: Int,
+        primitive: String,
+        chromatic: Float,
+        comp: CompParams,
+        beatPulse: Bool,
+        canvasClear: SIMD3<Float>? = nil
+    ) {
+        self.vertexCount = vertexCount
+        self.instanceCount = instanceCount
+        self.primitive = primitive
+        self.chromatic = chromatic
+        self.comp = comp
+        self.beatPulse = beatPulse
+        self.canvasClear = canvasClear
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        vertexCount   = try container.decodeIfPresent(Int.self, forKey: .vertexCount) ?? 0
+        instanceCount = try container.decodeIfPresent(Int.self, forKey: .instanceCount) ?? 1
+        primitive     = try container.decodeIfPresent(String.self, forKey: .primitive) ?? "line_strip"
+        chromatic     = try container.decodeIfPresent(Float.self, forKey: .chromatic) ?? 0
+        comp          = try container.decodeIfPresent(CompParams.self, forKey: .comp) ?? CompParams()
+        beatPulse     = try container.decodeIfPresent(Bool.self, forKey: .beatPulse) ?? false
+        canvasClear   = try container.decodeIfPresent(SIMD3<Float>.self, forKey: .canvasClear)
+    }
+}
+
 // MARK: - PresetDescriptor
 
 /// Metadata for a single visual preset, loaded from a JSON sidecar file.
@@ -375,6 +468,15 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// outputs are bound at fragment textures starting at `[[texture(13)]]`.
     public let stages: [PresetStage]
 
+    // MARK: - Marks-on-top Overlay (Skein.ENGINE.1.1, D-143)
+
+    /// Per-preset config for the marks-on-top overlay (D-138 mechanism, generalised in
+    /// Skein.ENGINE.1.1). Non-nil only for mv_warp presets whose library defines a
+    /// scene-geometry overlay; declares draw params + chromatic + comp + beat pump +
+    /// canvas-clear ground so the app's `.mvWarp` apply branch no longer hard-codes
+    /// Dragon Bloom's values. Nil for every preset without an overlay.
+    public let marks: MarksConfig?
+
     // MARK: - CodingKeys
 
     /// Keys for all stored properties — used by both `init(from:)` and `encode(to:)`.
@@ -416,6 +518,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case waitForCompletionEvent = "wait_for_completion_event"
         case textOverlay  = "text_overlay"
         case stages
+        case marks
     }
 
     /// Keys for legacy boolean flags — decode-only, not stored as properties.
@@ -526,6 +629,9 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
 
         // MARK: Staged Composition (V.ENGINE.1)
         stages = try container.decodeIfPresent([PresetStage].self, forKey: .stages) ?? []
+
+        // MARK: Marks-on-top Overlay (Skein.ENGINE.1.1)
+        marks = try container.decodeIfPresent(MarksConfig.self, forKey: .marks)
     }
 
     /// Synthesise a `passes` array from legacy boolean flags.
