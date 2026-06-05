@@ -2472,4 +2472,52 @@ Every preset ships a `<PresetName>.json` sidecar alongside its `.metal` file. Th
 
 ---
 
+## 18. Painterly drip/pour technique — swept-capsule pour + splatter morphology (Skein)
+
+The `painterly` canvas-hold family (Skein, a Dragon Bloom sibling — D-135/D-138/D-142/D-143) accumulates 2D marks **losslessly** on a persistent feedback canvas (identity warp, `decay=1.0`, `chromatic=0`): paint composites normal-alpha **once** on landing and is then carried forward byte-for-byte. The canvas is a **temporal integral** (the finished frame is the song's fingerprint). All mark geometry is 2D-SDF compositing in screen UV — no ray-march, no particles. This section is the authoring handbook for the mark vocabulary (Skein.1 pour line; Skein.2 splatter morphology).
+
+### 18.1 Port the VisComp 2014 layered model — do not reinvent the drip vocabulary (FA #64/#73)
+
+The clean decomposition of Pollock's drip style is the **VisComp 2014 layered model** (Ni et al., *Layered modeling and generation of Pollock's drip style*): four sequentially-composited **opaque alpha-over** layers — **background** (the ground) → **irregular-shape** (pour pools where the stream lingered) → **line** (Catmull-Rom trajectory, width tapers toward the endpoints as the stream thins) → **droplet** (satellite spatter distributed **perpendicular/forward to the line**, size falling off **exponentially/polynomially with distance**). Map these onto in-shader SDF marks; unify every layer's coverage into one `cover = max(...)` accumulator returned as `float4(white, cover)` (the per-frame max + the cross-frame normal-alpha blend is the bake-and-hold).
+
+### 18.2 Bake-and-hold via an age-ramp redraw window (no CPU state)
+
+A mark (a pour-tail point or a flick's droplet) need not persist via per-frame physics — the **canvas holds it**. Each frame, redraw the marks within a short age window (`age = t − T_event < window`) with an opacity that ramps low→high as the mark ages (`op = mix(0.05, 1.0, smoothstep(0,0.8,ageFrac))`); the cross-frame normal-alpha accumulation converges the pixel to opaque, then it ages out of the window and is **frozen** in the held canvas. This is closed-form, deterministic, and needs **no `SkeinState`, no per-preset buffer, no engine touch** — the painter trajectory and every flick are a pure function of `features.time`, and droplet placement is a deterministic **hash of (flick index, droplet index)** (never time-as-RNG; §5.7 determinism is a headline property).
+
+### 18.3 Droplet morphology — distinct matte dots, not merged froth, not sci-fi sparks
+
+- **Velocity-biased dispersion.** Offset each droplet from the flick point by `dist·(cos θ, sin θ)` where `θ = travelDir ± coneHalf`. Make `coneHalf` **shrink with distance** (`mix(π, 0.42, distFrac)`): near satellites scatter all directions (the splash halo), far ones are forward-thrown. This forward bias is what reads as *flung* paint.
+- **Exp/poly falloff with distance.** `distFrac = pow(rnd, 1.5)` concentrates satellites near the line; size falls off too (`dr = base·mix(0.9, 0.18, distFrac)·sizeVar`) — big near, fine far. This dense-near/sparse-far gradient is the satellite-halo signature.
+- **Distinct, not merged.** *Durable learning (Skein.2):* big + dense + ragged droplets **overlap into amorphous "cauliflower froth"** that reads as foam, not spatter. Fix with **small + crisp + wider-flung + slightly-fewer** dots so dot-spacing > dot-diameter and they read as discrete marks even when dense. The references' dense patches are still *distinct* dots over visible ground.
+- **Ragged edges, never clean circles** (anti-ref: polka-dots). Perturb the radius with a **≥4-octave 2D fBM** (`skein_fbm2` = 4× `perlin2d` with an inter-octave rotation). FA #43 avoidance: `perlin2d` is *gradient* noise sampled at non-lattice scaled coords (scale ≥ 3), centred at 0 — ride it as a `±amp` radius perturbation, never `smoothstep`-threshold it. **Take the AA band from the SMOOTH radial distance** (`fwidth(length(q−dpos))`) and put the raggedness in the threshold *radius* (`drr = dr·(1 + amp·noise)`) — `fwidth` of a noise-perturbed distance gives a blurry, noisy edge.
+- **Matte, opaque alpha-over.** White-on-cream marks brighten cream→white only (no mud is possible with one colour; multi-colour palettes at Skein.3 must keep opaque-overwrite so layers occlude rather than average to brown — anti-ref: dead mat). A verifier check: no canvas channel ever drops below the ground's darkest channel.
+
+### 18.4 Filament discipline — forward-gated, or it becomes the particle-burst anti-reference
+
+*Durable learning (Skein.2):* drawing a straight thin thread from the flick point to **every** scattered droplet produces a **radial spoke starburst** — a sea-urchin/firework that **is** the neon/sci-fi particle-burst anti-reference. The references' threads are *forward, wandering tendrils*, not radial spokes. Gate filaments **forward-only** (`dot(normalize(dropPos−flick), travelDir) > 0.3`), **short** (mid-distance droplets only), and **sparse** (hash-gated ~16 %), so they read as a few directional spray-streaks (a string of paint that stretched along the throw), never a web or a burst. When in doubt, the main pour line + its trailing tail already carry most of the "thread/skein" reading; per-flick filaments are a minor accent.
+
+### 18.5 Viscosity axis — one debug scalar (Skein.2) → per-stem spectral centroid (Skein.3)
+
+Viscosity ∈ [0,1] (thin-fast-fine ↔ thick-slow-gloopy; §1.2) shapes every mark at once:
+
+| Viscosity → | Thin (0, bright/high-centroid) | Thick (1, dark/low-centroid) |
+|---|---|---|
+| Line width | Skein.1 baseline (**mix floor = 1.0**) | fatter pools (`mix(1.0, 1.5, v)`) |
+| Satellite count | many (`~46`) | few (`~13`) |
+| Satellite spread | wide (`~0.17`) | close (`~0.075`) |
+| Droplet size | fine | big |
+| Edge | feathered + soft AA (reads translucent) | crisper |
+
+*Durable learning:* the viscosity → line-width factor must **never narrow below the Skein.1 width** (`mix(1.0, …)`, not `mix(0.85, …)`), or the thin pole regresses the Skein.1 pour-line continuity invariant. Carry the thin-pole "fineness" in the satellites/edges, not by thinning the spine. For Skein.2 the viscosity is a closed-form **debug** sweep of `features.time` (period ~12 s) so a still frame and a multi-second contact sheet both exhibit both poles; Skein.3 replaces it with the per-stem spectral centroid (one primitive per layer — D-026, `feedback_audio_layer_one_primitive`). True per-mark *translucency* (a baked alpha < 1) is **not** achievable with normal-alpha bake-and-hold — it converges to opaque over the window; the thin-paint translucency *read* is carried by edge softness + size + density, with real wet/dry sheen deferred to the wetness channel (ENGINE.2 / Skein.4).
+
+### 18.6 Performance — scissor to this frame's marks (cost ∝ new marks, §6)
+
+A fullscreen overlay fragment must early-out cheaply away from the few active marks. Two-level scissor: (1) a **per-flick bounding-disc reject** (`length(q − flick) > spread + maxDrop` → skip the whole ≤64-droplet loop), and (2) a **per-droplet cheap reject** (`length(q − dropPos) > dr·1.7` → skip *before* sampling the expensive ragged-edge noise). Result: ~99 % of fragments pay only a couple of distance checks; only the small discs around 1–2 active flicks pay the inner cost. Cap droplets N ≈ 64. This keeps the bake-into-canvas amortisation (past marks are stored pixels, never re-evaluated) — the preset gets *no more expensive* as the painting fills.
+
+### 18.7 Test parity (FA #66) — exercise the live marks-on-top dispatch path
+
+The temporal bake-and-hold only exists in the live `scene → warp → overlay → blit → swap` loop; a single `preset.pipelineState` draw cannot show it. Drive the multi-frame harness through that loop advancing `features.time` (`SkeinCanvasHoldTest`). For the splatter, isolate the **pour-LINE** continuity from the by-design disconnected satellites with a trajectory **corridor** (a Swift mirror of the painter `skeinPainterPos`, masked to a thin band around the line) — Skein.2 satellites are separate components on purpose, so whole-canvas continuity is intentionally < 1. **Watch the Y-flip:** Metal render-target row 0 = top = clip y +1 = uv.y **1.0**, so any test that maps pixel row → painter uv-space must flip (`uv.y = 1 − (py+0.5)/h`); the connectivity/brightness analyses are flip-agnostic but a distance-to-trajectory analysis is not.
+
+---
+
 
