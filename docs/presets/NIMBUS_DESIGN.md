@@ -168,6 +168,8 @@ No engine gap was found and no §1/§5 decision is altered by this fold.
 
 Internal state advances CPU-side each frame (energy follower → bloom, flow phase, mood smoothers, seed), like `ArachneState`. Half-resolution internal march + MetalFX Temporal upscale is the budget reserve (§6), validated at NB.8.
 
+> **NB.3.3 (2026-06-05) — the glow is BACKLIT, never emission.** Lighting is and stays the backlit forward-scatter model above: light scatters *through* the thin edges (the silver-lining rim) while the dense core self-shadows. An NB.3.3 exploration that added an internal **emission** term (an "egg-shaped radiant body" / "incandescent" glow source) was tried and **reverted** — it diverges from the reference packet, which shows a BACKLIT cool body (`08` = a light source *behind/within* the medium, read via scattering *through* it), not an internally-emissive one. Close glow gaps with the back-key / forward-scatter (`kNimbusPhaseG`) / self-shadow-contrast levers — do **not** re-add emission. (Failed-Approach class: adding a mechanic the references don't show — cf. CLAUDE.md FA #62/#63.)
+
 ### 5.3 State model
 
 - **NimbusState** (Swift) — energy follower (fast-attack/slow-release → `bloom`), flow phase (accumulated churn time), smoothed valence / arousal, `rng_seed` (track identity). **No ember list, no reorganisation state** — those channels are cut (§1.3).
@@ -250,6 +252,19 @@ The meso/micro detail cascade (NB.2) added body-scale billow lobes, domain-warpe
 
 **Finding.** Doubling the per-step sample count (3 → 6) cost only **+0.28 ms** (p50 1.37 → 1.65 ms) — the envelope early-out keeps most march steps outside the body (where they pay zero noise cost) and `noiseVolume` taps are near-free vs the retired `fbm4` ALU. **macro+meso+micro p50 = 1.65 ms @ 1080p, 0.24× the 7 ms Tier-2 ceiling, well under the NB.2 ≤ ~3 ms target — ~5.35 ms headroom preserved for NB.3 (lighting) → NB.7 (page).** The half-res-march + MetalFX lever (§6) remains an untapped reserve. **Durable lesson reinforced (§6.1): the cost of detail is the per-step ALU, not the sample count — add octaves freely as `noiseVolume` taps.**
 
+### 6.3 NB.3 lighting + NB.3.3 fidelity-uplift measurement (2026-06-05)
+
+NB.3.2 added the detail-aware **cone self-shadow** (a ~6-step secondary light-march sampling density per step — the budget unknown §6/§6.2 flagged). NB.3.3 then closed the three reference-packet fidelity gaps (Matt-directed, reference-aligned, **backlit model only — no emission**): coverage-gated interior billow contrast (ref 02), a radial denser core (ref 01), +15% on-screen size (focal zoom 1.25→1.44), and the forward-scatter silver-lining glow + brightness lift (ref 08). Same harness/fixture as §6.1/§6.2:
+
+| Variant | min | **p50** | mean | p95 | max |
+|---|---|---|---|---|---|
+| **Full 1920×1080 — NB.3.3 (shipped)** | 3.20 | **3.27** | 3.41 | 3.88 | 4.15 |
+| Half 960×540 — NB.3.3 (march only) | 0.96 | 1.07 | 1.09 | 1.36 | 1.54 |
+
+(All ms. Dev Mac mini, Apple Silicon. `NimbusBudgetProbeTests`, `NIMBUS_BUDGET=1`.)
+
+**Finding.** p50 = **3.27 ms @ 1080p — 0.47× the 7 ms Tier-2 ceiling, WITHIN**, ~3.7 ms headroom for NB.4 (energy) → NB.6 (mood). The rise from NB.2's 1.65 ms is dominated by (a) the NB.3.2 cone self-shadow (the flagged unknown — now measured and comfortably affordable) and (b) the +15% focal zoom putting more body-pixels on screen, each paying the full march. The half-res + MetalFX lever (§6) remains untapped reserve. **No perf action needed at NB.3.3; NB.8 sets `complexity_cost.tier2` from this profile.**
+
 ---
 
 ## 7. Phased implementation sketch (Gate 5)
@@ -259,11 +274,12 @@ Increment IDs in house style (`NB.N`), small commits per logical concern (`[NB.N
 - **NB.0 — reference lock.** ✅ Done. Reference framing re-grounded 2026-06-04 — the packet *is* the target (§1), not trait-fragments to disregard.
 - **NB.1 — macro maquette.** ✅ Shipped (single coherent body; budget resolved via `noiseVolume`). *Look superseded by the NB.3 cloud-port — Perlin-FBM cannot make billows (§0 Direction reset).*
 - **NB.2 — meso/micro detail.** ✅ Shipped (Perlin-FBM detail cascade). *Look superseded by NB.3; the test/prod noise-set parity, debug views, budget probe, and `kNimbusTurbulence` knob it built are all reused below.*
-- **NB.3 — the look (cloud-port). Highest risk — this is the whole fidelity fight.** Replace the density + lighting with the ported HZD / "Nubis" technique:
+- **NB.3 — the look (cloud-port + fidelity uplift). ✅ DONE 2026-06-05 (Matt-approved on the contact sheet).** Replaced the density + lighting with the ported HZD / "Nubis" technique:
   - **NB.3.0 (infra):** bake a Perlin-Worley 3D texture in `TextureManager` (the one engine touch), auto-bound via `bindTextures` (test paths already get the full set, NB.2 Task 1).
   - **NB.3.1:** density from Perlin-Worley billows + Worley detail erosion, shaped to a bounded body by the envelope. Verify billows in the density-only view.
   - **NB.3.2:** Beer-Powder × HG × ~6-step cone self-shadow march → luminous backlit billows. Verify against the packet.
-  - Gate: matches the reference packet (cool gaseous body, billows, glow, feathered edges) at budget.
+  - **NB.3.3 — fidelity uplift (Matt-directed, reference-aligned, backlit model only — NO emission):** closed the three reference gaps — coverage-gated interior billow contrast (ref 02, soft rim ref 03), radial denser core for substance (ref 01), +15% on-screen size (focal zoom 1.25→1.44), forward-scatter silver-lining glow + brightness (ref 08). An egg-core / internal-emission / "incandescent" exploration was **reverted** as a divergence from the references (§5.2 note). Budget §6.3.
+  - Gate: ✅ matches the reference packet (cool gaseous body, billows, glow, feathered edges) at budget — Matt-approved on the render-vs-packet contact sheet 2026-06-05.
 - **NB.4 — Energy: bloom + flow + silence floor.** `NimbusState` energy follower → `bloom` → size + brightness + flow rate; the dim/small/slow silence floor (D-037).
 - ~~**NB.5 — Pulse.**~~ **CUT** — nothing on the beat (§1.3).
 - **NB.6 — Mood.** Valence → colour cool↔warm; arousal → flow agitation. Smoothed in state (FA #25).
