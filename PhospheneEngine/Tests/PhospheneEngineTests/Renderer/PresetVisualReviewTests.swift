@@ -240,6 +240,15 @@ struct PresetVisualReviewTests {
             return AuroraVeilState(device: ctx.device)
         }()
 
+        // NB.4: Nimbus reads a 16-byte NimbusStateGPU at slot 6 (Energy bloom +
+        // flow phase). Allocate the state; the per-fixture loop below primes it
+        // to each fixture's energy level so the contact sheet shows the bloom
+        // RANGE (silence floor → baseline → energetic).
+        let nimbusState: NimbusState? = {
+            guard presetName == "Nimbus" else { return nil }
+            return NimbusState(device: ctx.device)
+        }()
+
         // Lumen Mosaic: allocate the 4-light pattern engine once, re-prewarm
         // it per fixture so mood smoothing converges to that fixture's
         // valence/arousal before rendering. The engine flushes
@@ -284,6 +293,29 @@ struct PresetVisualReviewTests {
                     ("track_v4",         midFixture,     SIMD4<Float>(-1,  1, -1,  1)),
                 ]
             }
+            if presetName == "Nimbus" {
+                // NB.4: explicit broadband-energy deviation (D-026 AttRel) per
+                // fixture so the contact sheet exercises the Energy bloom RANGE.
+                // The shared silence/mid/beat fixtures leave AttRel at 0, which
+                // would render every cell at the same baseline bloom (~0.5) and
+                // could not show the silence floor or full bloom.
+                var nbSilence = FeatureVector(time: 1.0, deltaTime: 1.0 / 60.0)
+                nbSilence.bassAttRel = -1.0   // bands at 0 → bloom 0: small/dim/slow floor
+                nbSilence.midAttRel  = -1.0
+                nbSilence.trebAttRel = -1.0
+                let nbMid = FeatureVector(bass: 0.5, mid: 0.5, treble: 0.5,
+                                          time: 3.0, deltaTime: 1.0 / 60.0)  // AttRel 0 → ~0.5 baseline
+                var nbEnergy = FeatureVector(bass: 0.9, mid: 0.9, treble: 0.9,
+                                             time: 5.0, deltaTime: 1.0 / 60.0)
+                nbEnergy.bassAttRel = 0.9     // above-average swell → bloom ~1: big/bright/fast
+                nbEnergy.midAttRel  = 0.9
+                nbEnergy.trebAttRel = 0.9
+                return [
+                    ("silence", nbSilence, nil),
+                    ("mid",     nbMid,     nil),
+                    ("energy",  nbEnergy,  nil),
+                ]
+            }
             return [
                 ("silence", silenceFixture, nil),
                 ("mid",     midFixture,     nil),
@@ -318,9 +350,19 @@ struct PresetVisualReviewTests {
             if let avState = auroraVeilState {
                 avState.tick(deltaTime: fv.deltaTime, features: fv, stems: .zero)
             }
+            // NB.4: prime the Nimbus follower so bloom converges to THIS
+            // fixture's energy level before the GPU read. One big-dt tick snaps
+            // the fast-attack/slow-release follower to its target (coeff → 1 at
+            // dt ≫ τ); a few small ticks then advance the flow phase off the
+            // t=0 lattice so the gas pattern reads.
+            if let nbState = nimbusState {
+                nbState.tick(deltaTime: 2.0, features: fv, stems: .zero)
+                for _ in 0..<30 { nbState.tick(deltaTime: 1.0 / 60.0, features: fv, stems: .zero) }
+            }
             let pixels = try renderFrame(preset: preset, context: ctx,
                                          arachneState: arachneState,
                                          auroraVeilState: auroraVeilState,
+                                         nimbusState: nimbusState,
                                          lumenEngine: lumenEngine,
                                          noiseTextureManager: noiseTextureManager,
                                          features: &fv)
@@ -591,6 +633,7 @@ struct PresetVisualReviewTests {
         context: MetalContext,
         arachneState: ArachneState?,
         auroraVeilState: AuroraVeilState? = nil,
+        nimbusState: NimbusState? = nil,
         lumenEngine: LumenPatternEngine? = nil,
         noiseTextureManager: TextureManager? = nil,
         features: inout FeatureVector
@@ -675,6 +718,11 @@ struct PresetVisualReviewTests {
             // standard silence/mid/beat fixtures (all stems.zero) the
             // buffer stays at silence-equivalent values.
             encoder.setFragmentBuffer(auroraVeilState.stateBuffer, offset: 0, index: 6)
+        } else if let nimbusState = nimbusState {
+            // NB.4: bind the 16-byte NimbusStateGPU at buffer slot 6 (Energy
+            // bloom + flow phase). Orthogonal to noiseVolume at *texture* 6 —
+            // different binding namespaces. Primed per fixture by the caller.
+            encoder.setFragmentBuffer(nimbusState.stateBuffer, offset: 0, index: 6)
         }
 
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)

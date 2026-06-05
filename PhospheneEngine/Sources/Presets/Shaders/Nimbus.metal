@@ -1,16 +1,25 @@
 // Nimbus — volumetric luminous-body preset (family: volumetric).
 //
-// A single coherent gaseous body suspended in a true-black void, rendered as a
-// single-pass 2D direct-fragment volumetric ray-march that composes the
+// A single coherent gaseous body suspended in a (faintly-hazed) void, rendered
+// as a single-pass 2D direct-fragment volumetric ray-march that composes the
 // preamble-injected V.2 Volume tree (no engine changes, no new utilities, no
 // extra passes — passes: []). Contract of record: docs/presets/NIMBUS_DESIGN.md.
 //
-// NB.1 — MACRO MAQUETTE. Coarse-geometry pass (SHADER_CRAFT §2.2): one coherent
-// body with a denser, brighter core fraying to soft wispy edges on a true-black
-// void, framed to docs/VISUAL_REFERENCES/nimbus/01_macro_coherent_body. Slow
-// time-only drift (NO audio coupling — Breath is NB.4). Minimal single-scatter +
-// cheap envelope self-shadow (the internal-glow recipe is NB.3). Static cool
-// indigo tint (valence/arousal mapping is NB.6). Fixed camera + FOV.
+// NB.3 — THE LOOK (ported HZD / "Nubis" cloud technique): density from
+// Perlin-Worley billows (noiseVolume) shaped to a bounded body by the analytic
+// envelope; backlit forward-scatter + a detail-aware cone self-shadow → luminous
+// cool gaseous body with feathered edges. Matt-approved on the contact sheet
+// 2026-06-05. (BACKLIT, never emission — DESIGN §5.2.)
+//
+// NB.4 — ENERGY (Breath): the hero coupling. NimbusState (Swift) runs a
+// fast-attack/slow-release follower over the broadband energy deviation
+// `(bass_att_rel+mid_att_rel+treb_att_rel)/3` (D-026) → `bloom`, flushed to a
+// 16-byte NimbusStateGPU at fragment buffer(6). One signal, three readings of
+// one physical event: bloom blooms the body bigger (size) + brighter
+// (luminosity) and `flowPhase` flows the gas faster. At the silence floor the
+// body settles small/dim/slow over a faint non-black haze (D-037) — a settle,
+// not a collapse. NO beat (FA #4/#33), NO mood (valence/arousal → colour +
+// agitation is NB.6). Static cool indigo tint until then. Fixed camera + FOV.
 //
 // References folded into the code below:
 //   01_macro_coherent_body  — bright core → soft wispy edges, vertical long axis,
@@ -68,6 +77,37 @@ constant float  kNimbusCoreSig  = 1.50;  // core falloff (larger = tighter dense
 // replaces it with smoothed `arousal` (DESIGN §1.3 — arousal → flow agitation).
 constant float  kNimbusTurbulence  = 1.0;
 
+// MARK: - NB.4 Energy bloom (DESIGN §1.3 / §5.4)
+
+// Per-frame world state from NimbusState (Swift) — 16 bytes, must match
+// `NimbusStateGPU` in NimbusState.swift byte-for-byte. Bound at fragment
+// buffer(6) (orthogonal to noiseVolume at *texture* 6 — different namespaces).
+struct NimbusStateGPU {
+    float bloom;       // 0 silence floor · ~0.5 baseline · ~1 full bloom
+    float flowPhase;   // gas churn phase (seconds-equivalent, bloom-modulated)
+    float _pad0;
+    float _pad1;
+};
+
+// One signal (`bloom`), three visual readings of the same physical event. All
+// `mix(floor, peak, bloom)` — the floor is the silence-floor value (smaller /
+// dimmer / slower than the approved NB.3 look), the peak is full bloom. The
+// floor→peak ratios encode the DESIGN §1.3 ranges (+45 % size, +80 % bright,
+// 3.5× flow). Starting points — Matt's eye/ear sets the finals.
+constant float kNimbusSizeFloor   = 0.80;  // body scale at silence (smaller than NB.3)
+constant float kNimbusSizePeak    = 1.16;  // body scale at full bloom (1.16/0.80 = 1.45 → +45 %; baseline ≈ NB.3)
+constant float kNimbusBrightFloor = 0.65;  // luminosity ×NB.3 at silence (dim, still present — non-black)
+constant float kNimbusBrightPeak  = 1.17;  // luminosity ×NB.3 at full bloom (1.17/0.65 = 1.80 → +80 %)
+
+// NB.4 — faint non-black HAZE floor (D-037 / DESIGN §1.4-§1.5). A dim cool halo
+// fills the void so the steady-playback ground is never pure black; concentrated
+// around the body, fading to near-black corners so negative space is preserved
+// (NOT the 05_anti_uniform_fog failure — the corners stay dark). Eased slightly
+// with bloom but with a hard non-zero floor (the D-037 guarantee at silence).
+constant float3 kNimbusHazeColor   = float3(0.36, 0.42, 0.92);  // deep cool indigo (the body's cool baseline)
+constant float  kNimbusHazeBase    = 0.040; // peak haze radiance scalar (pre-tonemap, ×color ×falloff)
+constant float  kNimbusHazeFalloff = 2.30;  // radial concentration; larger = tighter halo, darker corners
+
 // MARK: - Density field
 
 // Analytic ellipsoidal envelope: 1 at the dense core, smoothly → 0 at the shell.
@@ -100,8 +140,14 @@ static inline float nimbus_remap(float v, float lo, float hi, float nlo, float n
 // octaves (G/B/A) and remapped against the envelope as "coverage" — the single HZD
 // remap that yields a dense core AND feathered cauliflower edges at once. All noise
 // is texture-sampled (§6.1 budget rule). Time-only drift (audio is NB.4).
-static inline float nimbus_density(float3 p, float t,
+static inline float nimbus_density(float3 worldP, float flowT, float bodyScale,
                                    texture3d<float> noiseVol, sampler smp) {
+    // NB.4 — uniform bloom inflation. Scaling the sample position DOWN grows the
+    // whole body (boundary AND internal billows together) so the gas reads as
+    // puffing up with energy rather than gaining detail. bodyScale comes from
+    // mix(kNimbusSizeFloor, kNimbusSizePeak, bloom) in the fragment.
+    float3 p = worldP / bodyScale;
+
     float rr;
     float env = nimbus_envelope(p, rr);
     if (env <= 0.001) { return 0.0; }   // outside the body → skip the noise cost
@@ -109,9 +155,11 @@ static inline float nimbus_density(float3 p, float t,
     // Off-lattice sample coordinate: a constant offset so the body is NOT centred
     // on a tile boundary / lattice point — centring there makes +δ and −δ sample
     // near-identical values across the seamless tile boundary → 4-fold mirror
-    // symmetry (NB.3.0 finding). Slow time drift on top.
-    float3 q = p + float3(3.17, 1.73, 5.41)                 // off-lattice offset
-                 + float3(0.0, -t * 0.015, t * 0.008);      // slow drift
+    // symmetry (NB.3.0 finding). NB.4: the drift is advected by the bloom-
+    // modulated flow phase (flowT) instead of raw wall-clock time, so the gas
+    // flows faster with energy and eases to its slowest drift at silence.
+    float3 q = p + float3(3.17, 1.73, 5.41)                          // off-lattice offset
+                 + float3(0.0, -flowT * 0.015, flowT * 0.008);       // bloom-modulated flow
 
     // ── Base shape: Perlin-Worley billows (R) carved by Worley detail (G/B/A) ──
     float4 base      = noiseVol.sample(smp, q * kNimbusBillowScale);
@@ -158,10 +206,11 @@ static inline float nimbus_density(float3 p, float t,
     return density;
 }
 
-// MARK: - Nimbus fragment (NB.1 macro maquette)
+// MARK: - Nimbus fragment (NB.3 look + NB.4 Energy bloom)
 
 fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
                                 constant FeatureVector& features [[buffer(0)]],
+                                constant NimbusStateGPU& nb [[buffer(6)]],
                                 texture3d<float> noiseVolume [[texture(6)]]) {
     // ── View ray (fixed camera + FOV, aspect-corrected) ──────────────────────
     float2 uv = in.uv;
@@ -170,16 +219,34 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
     float3 ro = float3(0.0, 0.0, kNimbusCamZ);
     float3 rd = normalize(float3(p.x, -p.y, kNimbusFocal));  // -p.y: uv.y=0 is top → +world-up
 
-    float3 voidColor = float3(0.0);   // true-black void (NB.1; the haze floor is NB.4)
+    // ── NB.4 Energy bloom: one signal (bloom), three readings of one event ───
+    // bloom ∈ [0, ~1.1] from NimbusState's fast-attack/slow-release follower.
+    // Allow a little mix-extrapolation past 1 so big drops bloom slightly extra,
+    // clamped so it can't run away. NO beat field, NO mood read (DESIGN §1.3).
+    float bloomV    = clamp(nb.bloom, 0.0, 1.15);
+    float bodyScale = mix(kNimbusSizeFloor,   kNimbusSizePeak,   bloomV);  // body extent
+    float bright    = mix(kNimbusBrightFloor, kNimbusBrightPeak, bloomV);  // luminosity
+    float flowT     = nb.flowPhase;                                        // gas flow phase
 
-    // ── Bounding-sphere intersection (skip the void; the env early-out makes the
-    // in-sphere / outside-body steps nearly free — a loose sphere is *cheaper*
-    // than a tight ellipsoid here because it spends most steps in empty space
-    // that early-outs, rather than forcing every step through the noise field).
+    // ── Non-black haze floor (D-037 / DESIGN §1.4-§1.5): a faint cool halo,
+    // brightest near the body, fading to near-black corners (negative space
+    // preserved — NOT 05_anti_uniform_fog). Used as the background everywhere
+    // the body doesn't fully occlude. Eased with bloom but with a hard non-zero
+    // floor so the silence frame is provably non-black.
+    float  hazeR2  = dot(p, p);
+    float  hazeAmt = kNimbusHazeBase * (0.60 + 0.40 * clamp(bloomV, 0.0, 1.0));
+    float3 haze    = kNimbusHazeColor * hazeAmt * exp(-hazeR2 * kNimbusHazeFalloff);
+
+    // ── Bounding-sphere intersection (grows with the bloomed body). The env
+    // early-out makes the in-sphere / outside-body steps nearly free — a loose
+    // sphere is *cheaper* than a tight ellipsoid here because it spends most
+    // steps in empty space that early-outs, rather than forcing every step
+    // through the noise field.
+    float boundR = kNimbusBoundR * bodyScale;
     float bq = dot(ro, rd);                       // sphere centred at origin
-    float cq = dot(ro, ro) - kNimbusBoundR * kNimbusBoundR;
+    float cq = dot(ro, ro) - boundR * boundR;
     float disc = bq * bq - cq;
-    if (disc < 0.0) { return float4(voidColor, 1.0); }   // ray misses the body bound
+    if (disc < 0.0) { return float4(toneMapACES(haze), 1.0); }   // ray misses → haze only
     float sq = sqrt(disc);
     float t0 = max(-bq - sq, 0.0);
     float t1 = -bq + sq;
@@ -191,19 +258,23 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
     // the detail-aware cone self-shadow (in the march below) is what makes the
     // cauliflower billows read as 3D.
     float3 lightDir   = normalize(float3(-0.30, 0.42, 0.74));   // upper-left, strongly behind
-    float3 lightColor = float3(1.00, 0.97, 0.92) * 10.0;        // neutral warm-white BACK-key (NB.3.3 step 3): lifts the forward-scatter silver-lining rim (ref 08). No emission — the dense core stays self-shadowed; the rim-vs-core contrast IS the glow.
-    float3 ambient    = float3(0.016, 0.020, 0.045);            // cool fill LIFTED (NB.3.3 step 3b): the contrast-darkened core read "too dark" (Matt), so raise the floor slightly above baseline → body reads present + slightly brighter, while the step-3 forward-scatter rim still carries the glow.
-
-    float t = features.time;
+    // NB.4: scale the BACK-key + ambient together by `bright` so the whole body
+    // dims at the silence floor and brightens (+80 %) at full bloom, while the
+    // backlit rim-vs-core contrast ratio (the approved NB.3 look) is preserved.
+    float3 lightColor = float3(1.00, 0.97, 0.92) * 10.0 * bright;   // neutral warm-white BACK-key (NB.3.3 step 3): lifts the forward-scatter silver-lining rim (ref 08). No emission — the dense core stays self-shadowed; the rim-vs-core contrast IS the glow.
+    float3 ambient    = float3(0.016, 0.020, 0.045) * bright;       // cool fill LIFTED (NB.3.3 step 3b): the contrast-darkened core read "too dark" (Matt), so raise the floor slightly above baseline → body reads present + slightly brighter, while the step-3 forward-scatter rim still carries the glow.
 
     // ── Front-to-back single-scatter march ──────────────────────────────────
     VolumeSample acc = vol_sample_zero();
     float dt = (t1 - t0) / float(kNimbusSteps);
+    // Cone self-shadow reach tracks the bloomed body so the backlit billow depth
+    // reads consistently as the body breathes (NB.4).
+    float shadowDt = kNimbusShadowDt * bodyScale;
     int litSteps = 0;
     for (int i = 0; i < kNimbusSteps; i++) {
         float ti = t0 + (float(i) + 0.5) * dt;
         float3 pos = ro + rd * ti;
-        float dens = nimbus_density(pos, t, noiseVolume, linearSampler);
+        float dens = nimbus_density(pos, flowT, bodyScale, noiseVolume, linearSampler);
         if (dens > 0.002) {
             litSteps++;
             // Detail-aware CONE self-shadow (NB.3.2): march toward the light
@@ -213,10 +284,10 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
             // plan flagged (re-measured at NB.8).
             float densToLight = 0.0;
             for (int j = 1; j <= kNimbusShadowN; j++) {
-                float3 sp = pos + lightDir * (float(j) * kNimbusShadowDt);
-                densToLight += nimbus_density(sp, t, noiseVolume, linearSampler);
+                float3 sp = pos + lightDir * (float(j) * shadowDt);
+                densToLight += nimbus_density(sp, flowT, bodyScale, noiseVolume, linearSampler);
             }
-            float shadow = exp(-densToLight * kNimbusShadowDt * kNimbusShadowSig);
+            float shadow = exp(-densToLight * shadowDt * kNimbusShadowSig);
             // Forward-scatter phase: thin edges grazing the back-light glow brightest.
             float phase = hg_phase(dot(rd, lightDir), kNimbusPhaseG);
             float3 lit = lightColor * (phase * shadow) + ambient;
@@ -244,7 +315,11 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
     float3 coolTint = float3(0.40, 0.36, 0.74);
     float lum = dot(acc.color, float3(0.299, 0.587, 0.114));
     float3 tint = mix(coolTint, float3(0.80, 0.80, 0.94), smoothstep(0.9, 2.2, lum));
-    float3 outc = acc.color * tint + voidColor * acc.transmittance;
+    // Composite the body over the faint cool haze floor (NB.4 / D-037 — never
+    // pure black at steady state). Where the body is opaque, transmittance → 0
+    // and the haze is hidden; in the gaps and around the silhouette it reads as
+    // a dim halo.
+    float3 outc = acc.color * tint + haze * acc.transmittance;
     outc = toneMapACES(outc);
     return float4(outc, 1.0);
 #endif
