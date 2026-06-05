@@ -47,26 +47,60 @@
 // Body ellipsoid semi-axes (body space). Long axis vertical (y > x,z).
 constant float3 kNimbusSemiAxes  = float3(1.70, 2.10, 1.70);   // NB.3.3: larger, more substantial body (was 1.2,1.5,1.2)
 constant float  kNimbusBoundR    = 2.70;   // bounding sphere for the march range (grown with the body)
-constant int    kNimbusSteps     = 64;     // primary march steps
+constant int    kNimbusSteps     = 64;     // primary march steps (the cheap shadow density + 2-octave cascade keep crispness within budget; >64 just aliases the fine octave)
 constant int    kNimbusShadowN   = 6;      // secondary light-march steps
 constant float  kNimbusShadowDt  = 0.32;   // light-march step length (reach ≈ full body depth — grown with the body, NB.3.3)
 constant float  kNimbusSigma     = 1.55;   // primary extinction (translucent: see INTO the volume)
 constant float  kNimbusShadowSig = 3.40;   // self-shadow extinction — STRONGER (NB.3.3) → deeper dark crevices vs bright forward-scatter rim (the backlit silver lining)
 constant float  kNimbusCamZ      = -6.0;   // camera distance (looking +Z)
-constant float  kNimbusFocal     = 1.44;   // FOV (larger = narrower) — NB.3.3 zoom +15% (1.25→1.44) to grow the mass on-screen without touching the approved body geometry/density (Matt-directed)
+constant float  kNimbusFocal     = 1.30;   // FOV (larger = narrower). NB.3.4: 1.44→1.30 (~10% smaller on-screen, Matt-directed for budget — fewer body-pixels do the expensive march; ~19% fewer). Still above the pre-NB.3.3 1.25.
 constant float  kNimbusPhaseG    = 0.70;   // Henyey-Greenstein anisotropy — stronger forward scatter (NB.3.3 step 3) → brighter silver-lining rim where rays graze thin edges toward the back-key (ref 08)
 
 // NB.3.1 Perlin-Worley density (HZD / "Nubis"). Scales are body-space sample
 // units; noiseVolume tiles every 1.0 and itself holds ~4 billow cycles per tile.
-constant float  kNimbusBillowScale = 0.55;  // base billow frequency (≈ cauliflower lumps across the body)
-constant float  kNimbusDetailMul   = 3.1;   // detail-erosion octave frequency = base × this
-constant float  kNimbusDetailErode = 0.32;  // how hard the high-freq Worley carves the billow edges
+constant float  kNimbusBillowScale = 0.40;  // NB.3.5: base billow frequency 0.55→0.40 → BIGGER primary lobes (huge cauliflower with sub-lobes from the cascade, rolling like the refs) instead of small uniform lumps
+constant float  kNimbusDetailErode = 0.40;  // NB.3.4: how hard the Worley cascade carves the billow edges (was 0.32 — deeper crevices, ref 02)
 
-// NB.3.3 — interior lump/crevice contrast (ref 02: deep crevices between cauliflower
-// lumps). Gated by coverage so it deepens the body's INTERIOR billows without
-// fragmenting the soft feathered rim (ref 03). Lighting stays the backlit model.
-constant float  kNimbusLumpLo   = 0.20;  // contrast window low  → deepens crevices
-constant float  kNimbusLumpHi   = 0.82;  // contrast window high → sharpens lit lumps
+// NB.3.4 — fractal detail CASCADE (ref 02 cauliflower + 03 filaments). Three
+// Worley octaves at rising frequency carve the billows into nested cauliflower
+// lumps + curling edge filaments; each noiseVolume tap already blends 3 Worley
+// sub-octaves (G/B/A), so this is ~9 effective octaves. noiseVolume samples are
+// near-free vs ALU (§6.1) — buy crispness with octaves, not computed noise.
+constant float  kNimbusDetailS1 = 1.70;  // medium knobble (≈ old single detail octave)
+constant float  kNimbusDetailS2 = 3.60;  // fine (finest the 64-step march resolves without aliasing)
+
+// NB.3.4 — INTERIOR cauliflower carve. The HZD edge-erosion above leaves the core
+// smooth (realistic for a distant cloud, but ref 02 is a close-up — lump/crevice
+// detail EVERYWHERE). This multiplicatively carves crevices (×lo) and keeps lumps
+// (×hi) throughout the body from the same fractal detail, so the cone self-shadow
+// then has interior structure to darken → crisp cauliflower, not a smooth blob.
+constant float  kNimbusInteriorCarve = 0.70;  // 0 = smooth core (old), 1 = fully carved
+constant float  kNimbusCarveLo = 0.30;  // crevice density multiplier (darkens between lumps)
+constant float  kNimbusCarveHi = 1.18;  // lump density multiplier (brightens lump tops)
+
+// NB.3.5 — RISING, CURLING SMOKE motion (Matt's chosen character). The gas RISES
+// (vertical domain scroll), TWISTS as it rises (a height+time helical rotation →
+// curling vortices), and its fine detail CHURNS faster than the base (billows
+// form/dissolve in place, not just slide). All rates ride flowT (the NB.4 bloom-
+// modulated clock) so the smoke rises/curls faster with energy and drifts at
+// silence. ~20× the old linear-drift rate — it was imperceptible before.
+constant float  kNimbusRiseRate   = 0.34;  // vertical scroll: body-units of rise per unit flowT
+constant float  kNimbusTwistFreq  = 0.30;  // helical curl: twist angle (rad) per body-unit of height (gentle torsion, not a tornado)
+constant float  kNimbusTwistRate  = 0.26;  // the curl itself rotates over time (rad per unit flowT)
+// Organic ROLLING — two octaves of noise domain-warp give the billows-rolling-
+// over-each-other character of the references (dense churning smoke), not a clean
+// twist. Big rolls + medium churn; the warp fields themselves rise/drift.
+constant float  kNimbusSwirlAmp   = 0.40;  // big-roll warp amplitude
+constant float  kNimbusSwirl2Amp  = 0.18;  // medium-churn warp amplitude
+constant float  kNimbusSwirl1Scale = 0.27; // big-roll spatial scale
+constant float  kNimbusSwirl2Scale = 0.85; // medium-churn spatial scale
+constant float  kNimbusDetailChurn = 0.45; // fine detail evolves this much faster than the base drift
+
+// NB.3.4 — interior lump/crevice contrast (ref 02: deep crevices between cauliflower
+// lumps). TIGHTER window than NB.3.3 → sharper lit lumps + darker crevices (less
+// blurry). Gated by coverage so the soft feathered rim (ref 03) is not fragmented.
+constant float  kNimbusLumpLo   = 0.32;  // contrast window low  → deepens crevices (was 0.20)
+constant float  kNimbusLumpHi   = 0.70;  // contrast window high → sharpens lit lumps (was 0.82)
 
 // NB.3.3 — denser CORE for substance (ref 01: a denser core falling to wispy edges).
 // Backlit (existing model), a denser core self-shadows into ref 08's dark-core /
@@ -195,14 +229,23 @@ static inline float nimbus_density(float3 worldP, float flowT, float bodyScale,
     float env = nimbus_envelope(p, lobes, rr);   // NB.5 per-stem bulge baked into the envelope
     if (env <= 0.001) { return 0.0; }   // outside the body → skip the noise cost
 
-    // Off-lattice sample coordinate: a constant offset so the body is NOT centred
-    // on a tile boundary / lattice point — centring there makes +δ and −δ sample
-    // near-identical values across the seamless tile boundary → 4-fold mirror
-    // symmetry (NB.3.0 finding). NB.4: the drift is advected by the bloom-
-    // modulated flow phase (flowT) instead of raw wall-clock time, so the gas
-    // flows faster with energy and eases to its slowest drift at silence.
-    float3 q = p + float3(3.17, 1.73, 5.41)                          // off-lattice offset
-                 + float3(0.0, -flowT * 0.015, flowT * 0.008);       // bloom-modulated flow
+    // ── NB.3.5 RISING, CURLING SMOKE motion (flowT = NB.4 bloom-modulated clock) ──
+    // 1. Helical twist — rotate the horizontal plane by an angle that grows with
+    //    height and time, so the rising gas CURLS into vortices (a slow torsion).
+    float twist = p.y * kNimbusTwistFreq + flowT * kNimbusTwistRate;
+    float ct = cos(twist), st = sin(twist);
+    float3 pt = float3(ct * p.x - st * p.z, p.y, st * p.x + ct * p.z);
+    // 2. Rise — scroll the sample coordinate DOWN so features travel UP through the
+    //    body. 3. Off-lattice offset (kills the tile-boundary 4-fold mirror, NB.3.0).
+    float rise = flowT * kNimbusRiseRate;
+    float3 q = pt + float3(3.17, 1.73, 5.41) - float3(0.0, rise, 0.0);
+    // 4. Organic ROLLING — two noiseVolume warps (big rolls + medium churn) so the
+    //    billows roll over each other like dense churning smoke (the motion refs),
+    //    not a uniform twist. Each warp field rises/drifts so the rolls travel up.
+    float3 sw1 = noiseVol.sample(smp, q * kNimbusSwirl1Scale - float3(0.0, rise * 0.6, 0.0)).rgb - 0.5;
+    float3 sw2 = noiseVol.sample(smp, q * kNimbusSwirl2Scale
+                                 + float3(rise * 0.3, -rise * 0.45, rise * 0.2)).rgb - 0.5;
+    q += sw1 * kNimbusSwirlAmp + sw2 * kNimbusSwirl2Amp;
 
     // ── Base shape: Perlin-Worley billows (R) carved by Worley detail (G/B/A) ──
     float4 base      = noiseVol.sample(smp, q * kNimbusBillowScale);
@@ -227,15 +270,24 @@ static inline float nimbus_density(float3 worldP, float flowT, float bodyScale,
 
     float density  = clamp(nimbus_remap(billows, 1.0 - coverage, 1.0, 0.0, 1.0), 0.0, 1.0);
 
-    // ── Detail erosion: a higher-frequency Worley octave carves the billow edges
-    // into finer structure (HZD's high-freq detail pass), weighted toward the rim
-    // so the dense core stays coherent. kNimbusTurbulence is the agitation knob
-    // (NB.6 → arousal): more erosion = more torn / churning edges.
-    float4 detail     = noiseVol.sample(smp, q * kNimbusBillowScale * kNimbusDetailMul);
-    float  detailFBM  = detail.g * 0.625 + detail.b * 0.25 + detail.a * 0.125;
-    float  edgeWeight = 1.0 - coverage;                     // 0 core → 1 shell
-    float  erodeLo    = clamp((1.0 - detailFBM) * kNimbusDetailErode * kNimbusTurbulence
-                              * edgeWeight, 0.0, 0.9);
+    // ── Detail erosion CASCADE (NB.3.4): three Worley octaves at rising frequency
+    // carve the billow into nested cauliflower lumps (ref 02) + curling edge
+    // filaments (ref 03). Decorrelated from the base so it adds structure rather
+    // than echoing it. Each tap blends 3 Worley sub-octaves → ~9 effective octaves.
+    // dq churns faster than the base (extra rise) so the fine billows FORM and
+    // DISSOLVE as they travel, rather than rigidly sliding with the big lobes.
+    float3 dq  = q + float3(11.3, 4.7, 8.9) - float3(0.0, flowT * kNimbusDetailChurn, 0.0);
+    float4 d1  = noiseVol.sample(smp, dq * kNimbusDetailS1);
+    float4 d2  = noiseVol.sample(smp, dq * kNimbusDetailS2);
+    float  wf1 = d1.g * 0.625 + d1.b * 0.25 + d1.a * 0.125;
+    float  wf2 = d2.g * 0.625 + d2.b * 0.25 + d2.a * 0.125;
+    float  detailFBM  = wf1 * 0.62 + wf2 * 0.38;   // fractal Worley (2 taps; the scale-7.6 octave only aliased at 64 steps)
+    float  edgeWeight = 1.0 - coverage;                         // 0 core → 1 shell
+    // Erode hardest at the rim (fraying filaments) but keep some interior carve so
+    // the core surface is knobbly too (ref 02 detail is everywhere, not just edges).
+    // kNimbusTurbulence is the agitation knob (NB.6 → arousal).
+    float  erodeAmt = kNimbusDetailErode * kNimbusTurbulence * (0.25 + 0.75 * edgeWeight);
+    float  erodeLo  = clamp((1.0 - detailFBM) * erodeAmt, 0.0, 0.92);
     density = clamp(nimbus_remap(density, erodeLo, 1.0, 0.0, 1.0), 0.0, 1.0);
 
     // NB.3.3 — denser CORE (ref 01: a denser core falling off to wispy edges). The
@@ -246,7 +298,41 @@ static inline float nimbus_density(float3 worldP, float flowT, float bodyScale,
     float coreW = exp(-rr * rr * kNimbusCoreSig);
     density = clamp(density * (1.0 + kNimbusCoreGain * coreW), 0.0, 1.0);
 
+    // NB.3.4 — interior cauliflower carve (ref 02): the fractal detail darkens
+    // crevices and lifts lump tops THROUGHOUT the body (not just the rim), so the
+    // backlit cone self-shadow has interior structure to bite into → crisp lumps,
+    // not a smooth gradient. Multiplicative contrast, not removal (stays connected).
+    float lumps = smoothstep(0.32, 0.68, detailFBM);            // 0 crevice → 1 lump
+    float carve = mix(1.0, mix(kNimbusCarveLo, kNimbusCarveHi, lumps), kNimbusInteriorCarve);
+    density = clamp(density * carve, 0.0, 1.0);
+
     return density;
+}
+
+// Cheap density for the cone SELF-SHADOW march (NB.3.4). The shadow march runs
+// ~6× per in-body primary step; paying the full detail cascade + swirl there
+// blew the budget to ~20 ms. The self-shadow only needs the COARSE density (lit
+// top vs shadowed underside = the macro depth), not the fine crevice detail —
+// so this is the base billow only (1 sample), with the rise+twist motion (no
+// extra samples) so the shadow tracks the body. ~1 sample vs ~7.
+static inline float nimbus_density_shadow(float3 worldP, float flowT, float bodyScale,
+                                          float4 lobes, texture3d<float> noiseVol, sampler smp) {
+    float3 p = worldP / bodyScale;
+    float rr;
+    float env = nimbus_envelope(p, lobes, rr);
+    if (env <= 0.001) { return 0.0; }
+    float twist = p.y * kNimbusTwistFreq + flowT * kNimbusTwistRate;
+    float ct = cos(twist), st = sin(twist);
+    float3 pt = float3(ct * p.x - st * p.z, p.y, st * p.x + ct * p.z);
+    float rise = flowT * kNimbusRiseRate;
+    float3 q = pt + float3(3.17, 1.73, 5.41) - float3(0.0, rise, 0.0);
+    float4 base = noiseVol.sample(smp, q * kNimbusBillowScale);
+    float worleyFBM = base.g * 0.625 + base.b * 0.25 + base.a * 0.125;
+    float billows = clamp(nimbus_remap(base.r, worleyFBM - 1.0, 1.0, 0.0, 1.0), 0.0, 1.0);
+    float coverage = clamp(env, 0.0, 1.0);
+    float density = clamp(nimbus_remap(billows, 1.0 - coverage, 1.0, 0.0, 1.0), 0.0, 1.0);
+    float coreW = exp(-rr * rr * kNimbusCoreSig);
+    return clamp(density * (1.0 + kNimbusCoreGain * coreW), 0.0, 1.0);
 }
 
 // MARK: - Nimbus fragment (NB.3 look + NB.4 bloom + NB.5 stem beat-lobes)
@@ -339,7 +425,7 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
             float densToLight = 0.0;
             for (int j = 1; j <= kNimbusShadowN; j++) {
                 float3 sp = pos + lightDir * (float(j) * shadowDt);
-                densToLight += nimbus_density(sp, flowT, bodyScale, lobes, noiseVolume, linearSampler);
+                densToLight += nimbus_density_shadow(sp, flowT, bodyScale, lobes, noiseVolume, linearSampler);
             }
             float shadow = exp(-densToLight * shadowDt * kNimbusShadowSig);
             // Forward-scatter phase: thin edges grazing the back-light glow brightest.
