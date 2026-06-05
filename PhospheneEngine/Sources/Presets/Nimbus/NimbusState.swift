@@ -103,14 +103,21 @@ public final class NimbusState: @unchecked Sendable {
     private static let lobeReleaseTau: Float = 0.28
 
     /// smoothstep window on the stem energy deviations (D-026) → a clean [0,1]
-    /// per-stem hit signal. Devs sit ~0.27 mean and spike to ~2 on hits
-    /// (Atlas session), so [0.30, 1.10] fires on above-average hits.
-    private static let devThreshLo: Float = 0.30
-    private static let devThreshHi: Float = 1.10
+    /// per-stem hit signal. **NB.5 recalibration:** the Atlas live session showed
+    /// the deviations sit at ~0.3–0.4 mean and cross 0.8 on only **1–3 % of
+    /// frames** — so the old [0.30, 1.10] window meant the lobes essentially
+    /// never fired ("uniform, no direction"). [0.12, 0.55] fires on the real
+    /// distribution: gentle at typical activity, full on the more-prominent hits.
+    private static let devThreshLo: Float = 0.12
+    private static let devThreshHi: Float = 0.55
 
-    /// D-019 stem-warmup window — match Aurora Veil / Gossamer.
-    private static let stemWarmupLow: Float = 0.02
-    private static let stemWarmupHigh: Float = 0.06
+    /// Cold-start convergence window (seconds since track start). Below
+    /// `stemConvergeLo` the model is fully on the live FeatureVector beat (the
+    /// cached stems are a constant snapshot and can't drive per-beat motion);
+    /// above `stemConvergeHi` it is fully on the live per-frame stems. The
+    /// crossfade spans the live-stem-analyzer convergence (~CSP 14 s window).
+    private static let stemConvergeLo: Float = 9.0
+    private static let stemConvergeHi: Float = 13.0
 
     /// Gas flow speed at the silence floor (bloom 0) and at full bloom (bloom 1),
     /// as a multiple of the NB.3 wall-clock drift rate; plus a per-kick churn
@@ -138,6 +145,12 @@ public final class NimbusState: @unchecked Sendable {
     /// Flow phase in `Double` so a long session doesn't drift (long-accumulator
     /// rule). Flushed to `Float` each frame.
     private var flowPhaseAccum: Double = 0
+
+    /// Seconds since track start (reset by `reset()`), in `Double`. Drives the
+    /// cold-start gate — see `stemConvergeLo/Hi`. Self-tracked rather than read
+    /// from `features.trackElapsedS` so it does not depend on the FFO cold-start
+    /// UserDefaults toggle (which can pin that field to 100).
+    private var trackTime: Double = 0
     private let lock = NSLock()
 
     // MARK: - Init
@@ -173,6 +186,7 @@ public final class NimbusState: @unchecked Sendable {
             bassLobe = 0; vocalsLobe = 0; otherLobe = 0
             flowPhase = 0
             flowPhaseAccum = 0
+            trackTime = 0   // restart the cold-start gate for the new track
         }
         writeToGPU()
     }
@@ -183,10 +197,19 @@ public final class NimbusState: @unchecked Sendable {
         // Clamp dt — the first frame after preset apply can carry a stale value.
         let dt = min(max(deltaTime, 0.001), 0.1)
 
-        // D-019 warmup: blend FV proxies → stems as the live analyzer converges.
+        // ── Cold-start gate (NB.5 fix) — TIME-based, not energy-based ────────
+        // On a cache-hit track the stems are a CONSTANT snapshot for ~10 s
+        // (drumsEnergy etc. frozen), and they carry energy — so the old
+        // energy-based warmup gate (smoothstep(totalStemEnergy)) flipped onto
+        // them IMMEDIATELY and froze the kick / lobes / bloom (the live
+        // "didn't move for ~20 s"). Gate on time-since-track-start instead:
+        // drive from the live FeatureVector beat (pulses from frame 1) until
+        // the live per-frame stem analyzer has actually converged (~9–13 s),
+        // then cross to the stems. trackTime resets on reset() (track change).
+        trackTime += Double(dt)
+        let stemMix = nbSmoothstep(Self.stemConvergeLo, Self.stemConvergeHi, Float(trackTime))
         let totalStemEnergy = stems.drumsEnergy + stems.bassEnergy
                             + stems.vocalsEnergy + stems.otherEnergy
-        let stemMix = nbSmoothstep(Self.stemWarmupLow, Self.stemWarmupHigh, totalStemEnergy)
 
         // ── Slow bloom swell (overall size/brightness) ───────────────────────
         // Mean of the four stem energies (AGC-centred ~0.5; never floored by one
@@ -206,12 +229,17 @@ public final class NimbusState: @unchecked Sendable {
         let kickSignal = nbMix(fvBeat, drumsHit, stemMix)
         kickPunch = follow(kickPunch, kickSignal, dt, Self.kickAttackTau, Self.kickReleaseTau)
 
-        // ── Directional stem lobes (stem-only → naturally zero pre-warmup) ───
-        let bassTarget = nbSmoothstep(Self.devThreshLo, Self.devThreshHi, stems.bassEnergyDev)
+        // ── Directional stem lobes ───────────────────────────────────────────
+        // Gated by stemMix so they ramp in only once the LIVE stems vary (not
+        // frozen on the constant cached snapshot during cold-start). The
+        // recalibrated [devThreshLo, devThreshHi] window fires on the real
+        // deviation distribution (~0.3–0.4 mean, rarely past 0.8) — the old
+        // [0.30, 1.10] crossed on only 1–3 % of frames, so the lobes never fired.
+        let bassTarget = nbSmoothstep(Self.devThreshLo, Self.devThreshHi, stems.bassEnergyDev) * stemMix
         bassLobe = follow(bassLobe, bassTarget, dt, Self.lobeAttackTau, Self.lobeReleaseTau)
-        let vocalsTarget = nbSmoothstep(Self.devThreshLo, Self.devThreshHi, stems.vocalsEnergyDev)
+        let vocalsTarget = nbSmoothstep(Self.devThreshLo, Self.devThreshHi, stems.vocalsEnergyDev) * stemMix
         vocalsLobe = follow(vocalsLobe, vocalsTarget, dt, Self.lobeAttackTau, Self.lobeReleaseTau)
-        let otherTarget = nbSmoothstep(Self.devThreshLo, Self.devThreshHi, stems.otherEnergyDev)
+        let otherTarget = nbSmoothstep(Self.devThreshLo, Self.devThreshHi, stems.otherEnergyDev) * stemMix
         otherLobe = follow(otherLobe, otherTarget, dt, Self.lobeAttackTau, Self.lobeReleaseTau)
 
         // ── Flow phase: churn at a bloom-modulated rate, surging on kicks ────

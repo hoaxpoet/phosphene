@@ -159,9 +159,9 @@ constant float  kNimbusHazeFalloff = 2.30;  // radial concentration; larger = ti
 constant float3 kNimbusDirBass   = float3(0.0, -0.970, 0.243);  // bass heaves DOWN (heavy/low)
 constant float3 kNimbusDirVocals = float3(0.0,  0.970, 0.243);  // lead flares UP (the voice reaches up)
 constant float3 kNimbusDirOther  = float3(0.970, 0.0,  0.243);  // other swells to the SIDE
-constant float  kNimbusKickBulge = 0.20;   // whole-body inflate at full kick punch (drums)
-constant float  kNimbusLobeBulge = 0.30;   // directional bulge at a full stem hit (cosine² falloff)
-constant float  kNimbusKickBright = 0.55;  // brightness POP at full kick punch (on top of bloom)
+constant float  kNimbusKickBulge = 0.26;   // NB.5 recal: whole-body inflate at full kick punch (drums) — bigger for more motion
+constant float  kNimbusLobeBulge = 0.42;   // NB.5 recal: directional bulge at a full stem hit (cosine²) — bigger so the heave reads
+constant float  kNimbusKickBright = 0.72;  // NB.5 recal: brightness POP at full kick punch (on top of bloom)
 
 // MARK: - Density field
 
