@@ -258,6 +258,9 @@ fragment float4 skein_geometry_fragment(SkeinGeoVertexOut in [[stage_in]]) {
     float2 q = float2(in.uv.x * a, in.uv.y);          // aspect-corrected fragment position
     float t = in.t, dt = in.dt;
     float visc = clamp(in.visc, 0.0, 1.0);            // DEBUG viscosity (0 = thin-fine, 1 = thick-gloopy)
+    // ~1 screen pixel in aspect-corrected q-units, ISOTROPIC (fwidth(q.x) == fwidth(q.y) == 1/height).
+    // Used for the droplet/filament edge AA + the minimum-size floor — see the droplet block (Matt M7).
+    float px = max(fwidth(q.x), fwidth(q.y));
 
     float cover = 0.0;
 
@@ -323,7 +326,7 @@ fragment float4 skein_geometry_fragment(SkeinGeoVertexOut in [[stage_in]]) {
         float spread   = mix(0.170, 0.075, visc) * mix(0.7, 1.15, flickJit);  // thin flings WIDER (fine far satellites)
         float dropBig  = mix(0.0042, 0.0100, visc);                           // small DISTINCT dots, not merged froth
         float edgeAmp  = mix(0.40, 0.26, visc);                               // thin = more feathered / irregular edge
-        float aaScale  = mix(2.4, 1.0, visc);                                 // thin = softer edge (reads translucent)
+        float aaScale  = mix(2.6, 1.4, visc);                                 // edge AA in PIXELS: thick ~1.4 px (crisp) → thin ~2.6 px (feathered)
 
         // SCISSOR (§6 — cost ∝ this frame's marks): a fragment outside the burst's bounding disc
         // skips the whole droplet loop. Bound covers the farthest droplet + its ragged radius.
@@ -342,12 +345,15 @@ fragment float4 skein_geometry_fragment(SkeinGeoVertexOut in [[stage_in]]) {
 
             // Cheap per-droplet reject BEFORE the noise keeps the inner loop affordable.
             float dc = length(q - dpos);
-            if (dc < dr * 1.7 + 0.004) {
-                // RAGGED organic edge — perturb the radius by ±noise (never a clean circle; anti-ref
-                // polka-dots). AA taken from the SMOOTH radial distance so the boundary stays crisp.
+            if (dc < dr * 1.7 + px * 4.5) {
+                // RAGGED organic edge — perturb the radius by ±noise (never a clean circle; anti-ref polka-dots).
                 float ragged = 1.0 + edgeAmp * skein_fbm2(q * 70.0 + float2(float(fi) * 7.3, float(n) * 3.1));
-                float drr = dr * max(ragged, 0.20);
-                float aa  = max(fwidth(dc), 1e-4) * aaScale;
+                // ISOTROPIC px-based AA — NOT fwidth(dc): the gradient of length() is the radial unit vector,
+                // so fwidth(dc) runs ~41 % wider at the diagonals than the cardinals → sharp axis-aligned edges
+                // snap to the pixel grid = ROUNDED-SQUARE droplets (Matt M7 2026-06-05). And FLOOR the radius at
+                // ~1.5 px so even the finest far satellites read ROUND, not as a single square texel.
+                float drr = max(dr * max(ragged, 0.20), px * 1.5);
+                float aa  = px * aaScale;
                 cover = max(cover, (1.0 - smoothstep(drr - aa, drr + aa, dc)) * op);
             }
 
@@ -360,10 +366,11 @@ fragment float4 skein_geometry_fragment(SkeinGeoVertexOut in [[stage_in]]) {
             bool   fwd    = dot(toDrop / max(dlen, 1e-5), dir) > 0.30;        // forward of the throw only
             if (hs.w < 0.16 && fwd && dlen > spread * 0.18 && dlen < spread * 0.5) {
                 float fd = skeinSegDist(q, fpA, dpos);
-                if (fd < 0.005) {
+                if (fd < px * 4.0) {
                     float filR = 0.0015 * (1.0 + 0.5 * skein_fbm2(q * 130.0 + float2(float(n) * 5.0, float(fi) * 2.0)));
-                    float faa  = max(fwidth(fd), 1e-4) * 1.6;
-                    cover = max(cover, (1.0 - smoothstep(filR - faa, filR + faa, fd)) * op * 0.8);
+                    float filRR = max(filR, px * 0.9);            // keep thin threads ≥ ~1 px so they read as strands
+                    float faa  = px * 1.5;                        // isotropic AA (same reason as the droplet edge)
+                    cover = max(cover, (1.0 - smoothstep(filRR - faa, filRR + faa, fd)) * op * 0.8);
                 }
             }
         }

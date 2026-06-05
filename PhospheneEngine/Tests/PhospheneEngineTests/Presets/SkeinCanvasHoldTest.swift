@@ -190,6 +190,7 @@ struct SkeinCanvasHoldTest {
           THIN  (visc≈lo, startT 10.5): halo near/mid/far = \(ns.haloNear)/\(ns.haloMid)/\(ns.haloFar)  satellites=\(ns.satellites)  meanSatDist=\(String(format: "%.3f", ns.meanSatDist))  minCh=\(ns.minChannel)
           new-mark count: \(newMarkFrames)/\(deltas.count) frames added marks; deltas[0..<8]=\(Array(deltas.prefix(8)))
           opaque check: creamMin=\(creamMin), thick minCh=\(ts.minChannel), thin minCh=\(ns.minChannel)
+          roundness (bbox-fill; ~0.785 round, ~1.0 square): thick \(String(format: "%.3f", ts.roundFill)) (n=\(ts.roundN)), thin \(String(format: "%.3f", ns.roundFill)) (n=\(ns.roundN))
         """)
 
         // 1. SATELLITE HALO — dense near the line, sparse far (spatter, not a uniform field).
@@ -238,6 +239,18 @@ struct SkeinCanvasHoldTest {
         #expect(thick.perFrameCounts.count == 180, "Per-frame painted counts not captured for all frames.")
         #expect(newMarkFrames > 90,
                 "Marks were added on only \(newMarkFrames)/\(deltas.count) frames — splatter/pour not accumulating.")
+
+        // 7. ROUNDNESS — droplets read as ROUND discs, not squares (Matt M7 2026-06-05): a round disc
+        //    fills ~0.785 of its bbox, a square ~1.0. Guards against the fwidth(dc)-anisotropy regression
+        //    (sharp axis-aligned edges snapping to the pixel grid → rounded-square dots).
+        if ns.roundN >= 5 {
+            #expect(ns.roundFill < 0.90,
+                    "THIN droplets are too boxy (mean bbox-fill \(ns.roundFill) ≥ 0.90, n=\(ns.roundN)) — square-droplet regression.")
+        }
+        if ts.roundN >= 5 {
+            #expect(ts.roundFill < 0.90,
+                    "THICK droplets are too boxy (mean bbox-fill \(ts.roundFill) ≥ 0.90, n=\(ts.roundN)) — square-droplet regression.")
+        }
     }
 
     // MARK: - Pour-line accumulation contact sheet (env-gated eyeball artifact)
@@ -696,7 +709,8 @@ struct SkeinCanvasHoldTest {
     ///    (normal-alpha), so nothing drops below cream's darkest channel → proves NOT additive (no mud).
     private func splatterHaloAndSatellites(
         _ buf: [UInt8], w: Int, h: Int, cream: [UInt8], t0: Float, t1: Float, corridorRV: Float
-    ) -> (haloNear: Int, haloMid: Int, haloFar: Int, satellites: Int, meanSatDist: Float, minChannel: Int) {
+    ) -> (haloNear: Int, haloMid: Int, haloFar: Int, satellites: Int, meanSatDist: Float,
+          minChannel: Int, roundFill: Float, roundN: Int) {
         let steps = max(1, Int((t1 - t0) * 400.0))
         var samples: [SIMD2<Float>] = []
         samples.reserveCapacity(steps + 1)
@@ -723,25 +737,40 @@ struct SkeinCanvasHoldTest {
             }
         }
         let outCount = near + mid + far
-        // Count disconnected satellite components (≥2 px, ignoring single-pixel AA specks).
+        // Count disconnected satellite components (≥2 px) + measure ROUNDNESS: an individual droplet
+        // is a single medium blob whose bbox is roughly square; a round disc fills ~π/4 ≈ 0.785 of its
+        // bbox, a square ≈ 1.0 (the fwidth(dc)-anisotropy bug — Matt M7 2026-06-05). Average the fill of
+        // the medium, square-bbox blobs (skip merged streaks via the aspect-ratio gate).
         var visited = [Bool](repeating: false, count: w * h)
         var comps = 0
+        var fillSum: Float = 0
+        var fillN = 0
         var stack: [Int] = []
         for start in 0..<(w * h) where outside[start] && !visited[start] {
             var size = 0
+            var minx = w, maxx = 0, miny = h, maxy = 0
             stack.removeAll(keepingCapacity: true)
             stack.append(start); visited[start] = true
             while let p = stack.popLast() {
                 size += 1
                 let x = p % w, y = p / w
+                if x < minx { minx = x }; if x > maxx { maxx = x }
+                if y < miny { miny = y }; if y > maxy { maxy = y }
                 if x > 0     { let q = p - 1; if outside[q] && !visited[q] { visited[q] = true; stack.append(q) } }
                 if x < w - 1 { let q = p + 1; if outside[q] && !visited[q] { visited[q] = true; stack.append(q) } }
                 if y > 0     { let q = p - w; if outside[q] && !visited[q] { visited[q] = true; stack.append(q) } }
                 if y < h - 1 { let q = p + w; if outside[q] && !visited[q] { visited[q] = true; stack.append(q) } }
             }
             if size >= 2 { comps += 1 }
+            let bw = maxx - minx + 1, bh = maxy - miny + 1
+            let ar = Float(max(bw, bh)) / Float(max(min(bw, bh), 1))
+            if size >= 9 && size <= 200 && ar < 1.5 {   // an individual droplet, not a streak
+                fillSum += Float(size) / Float(bw * bh)
+                fillN += 1
+            }
         }
-        return (near, mid, far, comps, outCount > 0 ? distSum / Float(outCount) : 0, minCh)
+        let roundFill = fillN > 0 ? fillSum / Float(fillN) : 0
+        return (near, mid, far, comps, outCount > 0 ? distSum / Float(outCount) : 0, minCh, roundFill, fillN)
     }
 
     /// Find a strongly-painted SATELLITE pixel (delta > 80, clearly outside the line corridor) for
