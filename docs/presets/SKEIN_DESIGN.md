@@ -1,7 +1,7 @@
 # Skein — drip / pour painting preset
 
 **Working name:** *Skein* (a "skein" is the art-historical term for Pollock's tangled drip lines — single-word, house style, captures the thread-tangle quality). Provisional; your call.
-**Lineage:** Pollock's pour/drip technique; *Full Fathom Five* as the hero. (The Tempest reference — "full fathom five thy father lies… those are pearls that were his eyes" — is a nice latent theme: the canvas is a thing that *accumulates and transforms* what falls into it.)
+**Lineage:** **Action painting** — Jackson Pollock's poured / dripped technique (research grounding in §1.0). Skein adopts the *technique*, not any one artist's colours: the **palette is open and unconstrained** (Matt, 2026-06-05) — *Full Fathom Five* is a seed example, not a target. (The Tempest reference — "full fathom five thy father lies… those are pearls that were his eyes" — remains a latent theme: the canvas *accumulates and transforms* what falls into it.)
 **Family:** `painterly` / `generative` (new family, or fold under an existing abstract family — see §8).
 
 ---
@@ -24,6 +24,22 @@ Everything else hangs off three axes: **who** is playing (stem → paint colour)
 ## 1. Creative architecture — "painting the music"
 
 The goal is a canvas a listener can *read*: see the snare in the flicks, feel the bass in the heavy pools, watch the melody draw the long lines. A faithful trace, deterministic given the audio — not a random splatter screensaver. Same song twice → recognisably the same painting; two different songs → visibly different paintings. (Seed from the track's SHA-256 — we already key `PersistentStemCache` that way, so a track always seeds the same canvas.)
+
+### 1.0 Action painting, grounded — the technique Skein simulates
+
+Skein simulates **action painting**: Jackson Pollock's poured / dripped technique, where *the act of painting is the subject*. Three research-grounded facts shape everything downstream — cite this section in Skein.1+ sessions rather than reaching for memory.
+
+**(1) The curve is the gesture, not the fluid — the load-bearing fact.** The intuition that Pollock's looping lines come from paint "coiling" as it falls is *wrong*. A fluid-dynamics study (Zetina, Godínez & Rodríguez, *PLOS One* 2019; summarised by Brown University) showed Pollock *deliberately avoided* the coiling instability — the rope-coil curl a viscous stream makes on its own — by combining **high hand speed, low pour height, and matched paint viscosity**, which lays down **mostly-straight, unbroken filaments**. The sinuous skeins came from **his whole-body motion** — the recorded gesture. **Design consequence:** Skein's looping curvature is driven by the **painter's trajectory (= the music / gesture)**, *never* a noise function or a faked coiling term. Coiling and pooling appear **only where the painter slows and lingers** (the §2 "pour pools where the stream lingered") — pooling is a low-speed behaviour, curvature is a gesture behaviour. This is the physical grounding for §1.1.
+
+**(2) All-over, no focal point, built by accumulation.** Pollock worked the canvas flat on the floor, from all four sides — no privileged orientation, no focal point; the composition is *all-over*, edge-to-edge. He built it in a characteristic order: localized trajectory **islands** first, then longer trajectories that **join the islands**, gradually submerged under later layers into a dense, multi-scale (fractal) web — layered over weeks, **never erased**. **Design consequence:** the physical grounding for the *temporal integral* canvas (§1.4) and the lossless **canvas-hold** path (Skein.ENGINE.1) — paint lands, stays, and is occluded by later **opaque** paint-over-paint, never averaged or decayed.
+
+**(3) Pour / drip only, varying viscosity — never a brush.** Sticks, hardened brushes, basters and knives poured and flung enamel / household paint of varying consistency; the brush never touched the canvas. **Design consequence:** the "no literal brush stroke" anti-reference, and the **viscosity axis** (thin-fast-fine filaments ↔ thick-slow-gloopy pools) that §1.2 maps to spectral centroid.
+
+**Prior art to port, not reinvent (FA #64 / #73).** The cleanest published decomposition of the drip style is the **VisComp 2014 layered model** (Ni et al., *Layered modeling and generation of Pollock's drip style*, The Visual Computer): four sequentially-composited, **opaque alpha-over** layers — **background** → **irregular-shape** (the pour pools) → **line** (Catmull-Rom trajectories whose width *tapers toward the endpoints* as the stream thins) → **droplet** (satellite spatter distributed *perpendicular to the line*, size falling off exponentially / polynomially with distance). This maps almost 1:1 onto Skein's pour-capsule + splatter-disc + filament model; Skein.1 / 2 / 3 should **adapt it**, not derive a mark model from scratch.
+
+**Palette is open and infinite (Matt directive, 2026-06-05).** Skein is inspired by action painting as a *technique*, not bound to Pollock's colours. The colour space is unconstrained; the only binding colour rule is legibility — **one stable, well-separated colour per stem** (§1.2). Do not anchor on the *Full Fathom Five* register; it is one illustrative example, not a target.
+
+**Sources.** Zetina et al., "Pollock avoided hydrodynamic instabilities to paint with his dripping technique," *PLOS One* 2019 — <https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0223706> · Brown University news, 2019-10-30 — <https://www.brown.edu/news/2019-10-30/pollock> · Ni et al., *Layered modeling and generation of Pollock's drip style*, The Visual Computer 2014 — <https://niexc.github.io/assets/pdf/Layered_VisComp2014.pdf> · Hirshhorn Museum, "Jackson Pollock: Methods and Materials" — <https://hirshhorn.si.edu/explore/jackson-pollock-methods-materials/> · Taylor, "Fractal Analysis of Jackson Pollock's Poured Paintings" — <https://blogs.uoregon.edu/richardtaylor/2016/02/08/fractal-analysis-of-jackson-pollocks-poured-paintings/>
 
 ### 1.1 The painter is a member of the band
 
