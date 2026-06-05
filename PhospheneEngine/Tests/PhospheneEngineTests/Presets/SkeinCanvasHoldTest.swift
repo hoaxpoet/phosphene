@@ -49,9 +49,14 @@ struct SkeinCanvasHoldTest {
                 "Skein.metal mvWarpPerVertex must be identity (return uv) for canvas-hold.")
         #expect(src.contains("pf.decay = 1.0"),
                 "Skein.metal mvWarpPerFrame must set decay = 1.0 (no decay) for canvas-hold.")
+        // Skein.ENGINE.1.1 (D-143): the test stamp moved to the marks-on-top overlay.
+        #expect(src.contains("vertex SkeinGeoVertexOut skein_geometry_vertex("),
+                "Skein.metal missing skein_geometry_vertex (marks-on-top overlay, D-143).")
+        #expect(src.contains("fragment float4 skein_geometry_fragment("),
+                "Skein.metal missing skein_geometry_fragment (marks-on-top overlay, D-143).")
     }
 
-    @Test("Skein.json declares passes: [\"direct\", \"mv_warp\"] and decay 1.0")
+    @Test("Skein.json declares canvas-hold config + a marks-on-top block (D-143)")
     func test_json_declaresCanvasHoldConfig() throws {
         let data = try Data(contentsOf: Self.shaderURL("Skein.json"))
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -60,12 +65,25 @@ struct SkeinCanvasHoldTest {
         let decay = (json?["decay"] as? NSNumber)?.doubleValue
         #expect(decay == 1.0,
                 "Skein.json decay must be 1.0 (no decay) to match mvWarpPerFrame.")
+        // Skein.ENGINE.1.1 (D-143): the marks-on-top block drives chromatic / comp / draw
+        // params + the per-preset canvas-clear ground per-preset (no longer hard-coded to
+        // Dragon Bloom). Skein needs chromatic=0 (lossless, non-cycling), no beat pump, and
+        // a cream ground.
+        let marks = json?["marks"] as? [String: Any]
+        #expect(marks != nil, "Skein.json must declare a `marks` block (marks-on-top config, D-143).")
+        #expect((marks?["chromatic"] as? NSNumber)?.doubleValue == 0.0,
+                "Skein.json marks.chromatic must be 0 (lossless, non-cycling canvas-hold).")
+        #expect((marks?["beat_pulse"] as? Bool) == false,
+                "Skein.json marks.beat_pulse must be false (a quiet held canvas — no audio until Skein.4).")
+        let clear = marks?["canvas_clear"] as? [NSNumber]
+        #expect(clear?.count == 3,
+                "Skein.json marks.canvas_clear must be an RGB triple (the held cream ground).")
     }
 
-    // MARK: - Lossless hold (the load-bearing gate)
+    // MARK: - Marks-on-top lossless hold (the load-bearing ENGINE.1.1 gate)
 
-    @Test("Canvas-hold: a stamped mark is Hamming-0 across ≥120 frames via the live dispatch path")
-    func test_canvasHold_losslessPersistence() throws {
+    @Test("Marks-on-top: disc lands on the cream ground, chromatic=0 holds Hamming-0 (chromatic=1.0 cycles) — live dispatch path")
+    func test_marksOnTop_creamGroundDiscHoldsLossless() throws {
         guard MTLCreateSystemDefaultDevice() != nil else {
             print("SkeinCanvasHoldTest: no Metal device — skipping")
             return
@@ -80,13 +98,86 @@ struct SkeinCanvasHoldTest {
             Issue.record("Skein preset.mvWarpPipelines is nil — JSON passes array misconfigured.")
             return
         }
+        // The per-preset scene-geometry overlay (skein_geometry_*) must have compiled via
+        // the D-143 per-prefix lookup — this is the mechanism that draws the marks on top.
+        guard let overlay = mvWarp.sceneGeometryState else {
+            Issue.record("Skein mvWarpPipelines.sceneGeometryState is nil — skein_geometry_* not resolved (D-143 per-prefix lookup).")
+            return
+        }
+        // The held GROUND comes from the per-preset canvas clear (Pass 0 is skipped on the
+        // marks-on-top path). Source the cream from the descriptor — the same value the
+        // live app feeds setupMVWarp.
+        guard let creamRGB = preset.descriptor.marks?.canvasClear else {
+            Issue.record("Skein descriptor has no marks.canvas_clear — the held cream ground is unplumbed (D-143).")
+            return
+        }
+        let cream = MTLClearColor(
+            red: Double(creamRGB.x), green: Double(creamRGB.y), blue: Double(creamRGB.z), alpha: 1)
         let ctx = try MetalContext()
-        let device = ctx.device
-        let queue = ctx.commandQueue
 
-        // Feedback textures match the format the warp/scene pipelines were compiled
-        // for (feedbackFormat → ctx.pixelFormat for Skein), or the encoder gets an
-        // attachment-format mismatch and the GPU stalls (the D-137 pitfall).
+        // chromatic = 0 (Skein's config): the held canvas must persist byte-for-byte.
+        let hold = try runMarksOnTopHold(chromatic: 0, cream: cream, overlay: overlay, mvWarp: mvWarp, ctx: ctx)
+        // chromatic = 1.0 (Dragon-Bloom-style control): the shared warp's R→G→B transfer
+        // must make the held canvas DRIFT — proving chromatic=0 is what gives the lossless,
+        // non-cycling hold (the load-bearing distinguisher between Skein and Dragon Bloom).
+        let cycle = try runMarksOnTopHold(chromatic: 1.0, cream: cream, overlay: overlay, mvWarp: mvWarp, ctx: ctx)
+
+        print("""
+        [skein_marks_on_top] \(Self.holdFrames - 1) hold frames at \(Self.width)×\(Self.height):
+          ground corner (BGRA)      = \(hold.groundCorner)  (cream — must NOT be black)
+          disc centre (BGRA)        = \(hold.discCentre)    (teal — the overlay landed)
+          chromatic=0 worst Hamming = \(hold.worstHamming)  (must be 0 — lossless hold)
+          chromatic=1 worst Hamming = \(cycle.worstHamming) (must be > 0 — colour cycling)
+        """)
+
+        // 1. The disc LANDS via the overlay on a CREAM ground. The ENGINE.1.1 bug being
+        //    fixed is "marks-on-top ⇒ black canvas / no cream ground" (Pass 0 skipped, the
+        //    clear was hard-coded black). The ground must be cream, the disc must be teal.
+        #expect(!isBlack(hold.groundCorner),
+                "Ground corner is black — the per-preset cream canvas clear did not take (marks-on-top renders on black). \(hold.groundCorner)")
+        #expect(isCreamish(hold.groundCorner),
+                "Ground corner is not cream-ish (bright, R≳G≳B) — clear colour wrong. \(hold.groundCorner)")
+        #expect(hold.discCentre != hold.groundCorner,
+                "Disc centre equals the ground — the marks-on-top overlay did not draw the stamp.")
+        #expect(isTealish(hold.discCentre),
+                "Disc centre is not the teal stamp colour (B≳G > R) — overlay output/blend wrong. \(hold.discCentre)")
+
+        // 2. chromatic = 0 ⇒ Hamming-0 hold — the ENGINE.1 persistence property preserved,
+        //    now with the stamp REDRAWN each frame via the overlay (consecutive frames byte-
+        //    identical).
+        #expect(hold.worstHamming == 0,
+                "Canvas drifted by up to \(hold.worstHamming) bytes at chromatic=0 — the marks-on-top hold is not lossless.")
+
+        // 3. chromatic = 1.0 ⇒ the canvas colour-cycles (drift > 0). Without this the
+        //    chromatic transfer would be inert and chromatic=0 would prove nothing.
+        #expect(cycle.worstHamming > 0,
+                "Control run at chromatic=1.0 did NOT cycle — the chromatic transfer is inert, so chromatic=0 is not a meaningful distinguisher.")
+    }
+
+    // MARK: - Marks-on-top dispatch driver (mirrors drawWithMVWarp's strandsOnTop branch)
+
+    private struct MarksHoldResult {
+        var groundCorner: [UInt8]
+        var discCentre: [UInt8]
+        var worstHamming: Int
+    }
+
+    /// Drive the live marks-on-top dispatch path for `holdFrames` frames at the given
+    /// `chromatic`: clear warp+compose to the cream ground once, then each frame
+    /// warp(prev) → overlay(disc on top) → blit → read → swap. Mirrors `drawWithMVWarp`'s
+    /// `strandsOnTop` branch (Pass 0 skipped; the ground is the clear; the disc is the
+    /// `skein_geometry_*` overlay composited normal-alpha onto the held frame).
+    private func runMarksOnTopHold(
+        chromatic: Float,
+        cream: MTLClearColor,
+        overlay: MTLRenderPipelineState,
+        mvWarp: PresetLoader.MVWarpCompiledPipelines,
+        ctx: MetalContext
+    ) throws -> MarksHoldResult {
+        let device = ctx.device, queue = ctx.commandQueue
+        // Feedback textures match the format the warp/overlay pipelines were compiled for
+        // (feedbackFormat → ctx.pixelFormat for Skein), or the encoder gets an attachment-
+        // format mismatch and the GPU stalls (the D-137 pitfall).
         let fbDesc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: ctx.pixelFormat, width: Self.width, height: Self.height, mipmapped: false)
         fbDesc.usage = [.renderTarget, .shaderRead]
@@ -95,121 +186,47 @@ struct SkeinCanvasHoldTest {
               var composeTex = device.makeTexture(descriptor: fbDesc),
               let blitTex = device.makeTexture(descriptor: fbDesc)
         else { throw SkeinHoldError.textureFailed }
-        try clearTextures([warpTex, composeTex, blitTex], context: ctx)
+        // The held ground IS the canvas clear (cream), not black — this is the D-143 fix.
+        try clearTextures([warpTex, composeTex], to: cream, context: ctx)
+        try clearTextures([blitTex], to: MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1), context: ctx)
 
-        // Zeroed audio buffers — ENGINE.1 has no audio routing; skein_fragment is
-        // feature-invariant, the warp is identity regardless of features.
-        let floatStride = MemoryLayout<Float>.stride
-        guard let fft = ctx.makeSharedBuffer(length: 512 * floatStride),
-              let wav = ctx.makeSharedBuffer(length: 2048 * floatStride),
-              let stem = ctx.makeSharedBuffer(length: MemoryLayout<StemFeatures>.size)
-        else { throw SkeinHoldError.bufferFailed }
-        _ = fft.contents().initializeMemory(as: UInt8.self, repeating: 0, count: 512 * floatStride)
-        _ = wav.contents().initializeMemory(as: UInt8.self, repeating: 0, count: 2048 * floatStride)
-        _ = stem.contents().initializeMemory(as: UInt8.self, repeating: 0,
-                                             count: MemoryLayout<StemFeatures>.size)
         var features = FeatureVector(time: 1.0, deltaTime: 1.0 / 60.0)
-
-        // Reference = frame-0 canvas (painted by the real preset fragment). Every hold
-        // frame must reproduce it byte-for-byte. Patches sample flat interior regions
-        // (away from the disc's AA edge) so the gate isolates decay/drift, not sub-texel
-        // edge antialiasing: the stamped mark interior + an unpainted (cream) corner.
-        var reference: [UInt8] = []
-        var markRef: [UInt8] = []
-        var openRef: [UInt8] = []
-        var markDrift = 0, openDrift = 0
-        var worstWholeFrameHamming = 0
-        var firstDriftFrame = -1
+        var reference: [UInt8] = [], groundCorner: [UInt8] = [], discCentre: [UInt8] = []
+        var worst = 0
 
         for frameIdx in 0..<Self.holdFrames {
             guard let cmd = queue.makeCommandBuffer() else { throw SkeinHoldError.cmdBufferFailed }
-
-            if frameIdx == 0 {
-                // ── Scene: paint the canvas ONCE via the preset's own fragment. ──
-                try encodeScene(cmd: cmd, preset: preset, target: composeTex,
-                                features: &features, fft: fft, wav: wav, stem: stem)
-            } else {
-                // ── Warp: identity-hold the previous canvas (warpTex → composeTex). ──
-                // chromatic = 0 ⇒ no hue-zoom resample + no R→G→B transfer; the preset's
-                // mvWarpPerFrame returns decay = 1.0 ⇒ decayMul = in.decay = 1.0 (no decay).
-                try encodeWarp(cmd: cmd, mvWarp: mvWarp,
-                               warpTex: warpTex, composeTex: composeTex, features: &features)
-            }
-            // ── Blit (display-only, identity post) — faithful to the live present pass. ──
+            // Pass 1: identity warp holds the previous canvas (warpTex → composeTex). At
+            // chromatic=0 + decay=1.0 this is a lossless copy; at chromatic=1.0 the R→G→B
+            // transfer + hue-zoom resample make it drift.
+            try encodeWarp(cmd: cmd, mvWarp: mvWarp, warpTex: warpTex, composeTex: composeTex,
+                           features: &features, chromatic: chromatic)
+            // Pass 2: marks-on-top — draw the disc normal-alpha onto the held canvas.
+            try encodeOverlay(cmd: cmd, overlay: overlay, target: composeTex, features: &features)
+            // Pass 3: blit (display-only, identity post) — faithful to the live present pass.
             try encodeBlit(cmd: cmd, mvWarp: mvWarp, src: composeTex, dst: blitTex,
                            post: SIMD4<Float>(0, 0, 1, 0))   // invert0 echo0 gamma1 beat0 = identity
             cmd.commit()
             cmd.waitUntilCompleted()
 
             let canvas = readTexture(composeTex)
-            let markPatch = regionBytes(canvas, cx: Self.width / 2, cy: Self.height / 2, half: 6)  // disc interior
-            let openPatch = regionBytes(canvas, cx: 20, cy: 20, half: 6)                           // unpainted cream
             if frameIdx == 0 {
                 reference = canvas
-                markRef = markPatch
-                openRef = openPatch
-                #expect(!markRef.allSatisfy { $0 == 0 },
-                        "Reference mark patch is empty/black — skein_fragment did not paint the test stamp.")
+                groundCorner = pixelAt(canvas, x: 20, y: 20)                       // unpainted ground
+                discCentre = pixelAt(canvas, x: Self.width / 2, y: Self.height / 2) // disc interior
             } else {
-                if markPatch != markRef { markDrift += 1 }
-                if openPatch != openRef { openDrift += 1 }
-                let whole = hammingBytes(canvas, reference)
-                if whole > worstWholeFrameHamming { worstWholeFrameHamming = whole }
-                if whole != 0 && firstDriftFrame < 0 { firstDriftFrame = frameIdx }
+                worst = max(worst, hammingBytes(canvas, reference))
             }
-
             swap(&warpTex, &composeTex)
         }
-
-        print("""
-        [skein_canvas_hold] \(Self.holdFrames - 1) hold frames at \(Self.width)×\(Self.height):
-          mark-patch drift frames   = \(markDrift) (must be 0 — lossless hold at the stamp)
-          unpainted-patch drift     = \(openDrift) (must be 0 — lossless hold everywhere)
-          worst whole-frame Hamming = \(worstWholeFrameHamming) bytes\
-          \(firstDriftFrame >= 0 ? " (first at frame \(firstDriftFrame))" : "")
-          mark centre byte (BGRA)   = \(centreByte(reference))
-        """)
-
-        #expect(markDrift == 0,
-                "Stamped mark drifted on \(markDrift) hold frame(s) — identity hold is not lossless.")
-        #expect(openDrift == 0,
-                "Unpainted texel drifted on \(openDrift) hold frame(s) — the copy is not lossless everywhere.")
-        // Whole-frame Hamming 0 is the strongest form (no drift ANYWHERE, including the
-        // disc's AA edge). Reported above; asserted here. If a future sampler/format
-        // change introduces sub-texel edge blend, this catches it while the patch gates
-        // above still localise it to flat vs edge regions.
-        #expect(worstWholeFrameHamming == 0,
-                """
-                Canvas drifted by up to \(worstWholeFrameHamming) bytes across the hold \
-                (first at frame \(firstDriftFrame)) — identity warp is resampling/decaying \
-                somewhere. Expected byte-for-byte persistence.
-                """)
+        return MarksHoldResult(groundCorner: groundCorner, discCentre: discCentre, worstHamming: worst)
     }
 
     // MARK: - Pass encoders (mirror the live mv_warp dispatch path)
 
-    private func encodeScene(
-        cmd: MTLCommandBuffer, preset: PresetLoader.LoadedPreset, target: MTLTexture,
-        features: inout FeatureVector, fft: MTLBuffer, wav: MTLBuffer, stem: MTLBuffer
-    ) throws {
-        let desc = MTLRenderPassDescriptor()
-        desc.colorAttachments[0].texture = target
-        desc.colorAttachments[0].loadAction = .clear
-        desc.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
-        desc.colorAttachments[0].storeAction = .store
-        guard let enc = cmd.makeRenderCommandEncoder(descriptor: desc) else { throw SkeinHoldError.encoderFailed }
-        enc.setRenderPipelineState(preset.pipelineState)
-        enc.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
-        enc.setFragmentBuffer(fft, offset: 0, index: 1)
-        enc.setFragmentBuffer(wav, offset: 0, index: 2)
-        enc.setFragmentBuffer(stem, offset: 0, index: 3)
-        enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
-        enc.endEncoding()
-    }
-
     private func encodeWarp(
         cmd: MTLCommandBuffer, mvWarp: PresetLoader.MVWarpCompiledPipelines,
-        warpTex: MTLTexture, composeTex: MTLTexture, features: inout FeatureVector
+        warpTex: MTLTexture, composeTex: MTLTexture, features: inout FeatureVector, chromatic: Float
     ) throws {
         let desc = MTLRenderPassDescriptor()
         desc.colorAttachments[0].texture = composeTex
@@ -225,9 +242,31 @@ struct SkeinCanvasHoldTest {
         var sceneUni = SceneUniforms()
         enc.setVertexBytes(&sceneUni, length: MemoryLayout<SceneUniforms>.stride, index: 2)
         enc.setFragmentTexture(warpTex, index: 0)
-        var chromatic: Float = 0   // canvas-hold: identity (no hue-zoom resample, no R→G→B transfer)
-        enc.setFragmentBytes(&chromatic, length: MemoryLayout<Float>.stride, index: 0)
+        var chromaticCopy = chromatic
+        enc.setFragmentBytes(&chromaticCopy, length: MemoryLayout<Float>.stride, index: 0)
         enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 4278)   // 31×23 quads
+        enc.endEncoding()
+    }
+
+    /// Pass 2 of the marks-on-top path: draw the overlay (Skein's disc) normal-alpha onto
+    /// the held/warped canvas. `loadAction = .load` preserves the warped ground (only the
+    /// disc texels are blended in), exactly as `encodeMVWarpScenePass`'s strandsOnTop branch.
+    private func encodeOverlay(
+        cmd: MTLCommandBuffer, overlay: MTLRenderPipelineState, target: MTLTexture,
+        features: inout FeatureVector
+    ) throws {
+        let desc = MTLRenderPassDescriptor()
+        desc.colorAttachments[0].texture = target
+        desc.colorAttachments[0].loadAction = .load     // keep the held ground; blend the disc on top
+        desc.colorAttachments[0].storeAction = .store
+        guard let enc = cmd.makeRenderCommandEncoder(descriptor: desc) else { throw SkeinHoldError.encoderFailed }
+        enc.setRenderPipelineState(overlay)
+        // drawSceneGeometryOverlay binds features@0 + stems@1; skein_geometry_vertex ignores
+        // them (the disc is static at ENGINE.1.1), but bind them for live-path parity.
+        enc.setVertexBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
+        var stems = StemFeatures.zero
+        enc.setVertexBytes(&stems, length: MemoryLayout<StemFeatures>.stride, index: 1)
+        enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3, instanceCount: 1)
         enc.endEncoding()
     }
 
@@ -250,13 +289,13 @@ struct SkeinCanvasHoldTest {
 
     // MARK: - Helpers
 
-    private func clearTextures(_ texs: [MTLTexture], context: MetalContext) throws {
+    private func clearTextures(_ texs: [MTLTexture], to clearColor: MTLClearColor, context: MetalContext) throws {
         guard let cmd = context.commandQueue.makeCommandBuffer() else { throw SkeinHoldError.cmdBufferFailed }
         for tex in texs {
             let desc = MTLRenderPassDescriptor()
             desc.colorAttachments[0].texture = tex
             desc.colorAttachments[0].loadAction = .clear
-            desc.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+            desc.colorAttachments[0].clearColor = clearColor
             desc.colorAttachments[0].storeAction = .store
             if let enc = cmd.makeRenderCommandEncoder(descriptor: desc) { enc.endEncoding() }
         }
@@ -271,16 +310,10 @@ struct SkeinCanvasHoldTest {
         return px
     }
 
-    /// Bytes of a (2·half+1)² patch centred at (cx, cy), row-major BGRA.
-    private func regionBytes(_ px: [UInt8], cx: Int, cy: Int, half: Int) -> [UInt8] {
-        var out: [UInt8] = []
-        for y in (cy - half)...(cy + half) {
-            for x in (cx - half)...(cx + half) {
-                let idx = (y * Self.width + x) * 4
-                out.append(contentsOf: px[idx..<idx + 4])
-            }
-        }
-        return out
+    /// The 4 BGRA bytes at pixel (x, y).
+    private func pixelAt(_ px: [UInt8], x: Int, y: Int) -> [UInt8] {
+        let idx = (y * Self.width + x) * 4
+        return Array(px[idx..<idx + 4])
     }
 
     /// Count of differing bytes between two equal-length frames.
@@ -291,9 +324,17 @@ struct SkeinCanvasHoldTest {
         return diff
     }
 
-    private func centreByte(_ px: [UInt8]) -> String {
-        let idx = ((Self.height / 2) * Self.width + Self.width / 2) * 4
-        return "(\(px[idx]), \(px[idx + 1]), \(px[idx + 2]), \(px[idx + 3]))"
+    // BGRA byte order. "Black" = all channels near 0; "cream" = bright with R≳G≳B (warm);
+    // "teal" = the stamp (B≳G clearly above R). Generous thresholds — these distinguish the
+    // ground/disc/black, not exact colours (sRGB-encode rounding is fine).
+    private func isBlack(_ p: [UInt8]) -> Bool { p[0] < 12 && p[1] < 12 && p[2] < 12 }
+    private func isCreamish(_ p: [UInt8]) -> Bool {
+        let b = Int(p[0]), g = Int(p[1]), r = Int(p[2])
+        return r > 140 && g > 120 && b > 100 && r >= g && g >= b   // warm, bright
+    }
+    private func isTealish(_ p: [UInt8]) -> Bool {
+        let b = Int(p[0]), g = Int(p[1]), r = Int(p[2])
+        return b > r + 30 && g > r + 30   // deep teal: blue/green well above red
     }
 
     private static func shaderURL(_ name: String) -> URL {
