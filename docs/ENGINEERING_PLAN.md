@@ -5839,8 +5839,17 @@ Curated 10-image reference set + README (D-065(c) annotations + `05_anti_*`) in 
 
 **Budget (re-measured, NIMBUS_DESIGN §6.2):** macro+meso+micro **p50 1.65 ms @1080p** (vs NB.1 macro 1.37 ms) — +0.28 ms for doubling samples 3→6/step, because the envelope early-out keeps most steps free. 0.24× the 7 ms Tier-2 ceiling, well under the NB.2 ≤~3 ms target; ~5.35 ms headroom preserved for NB.3–7. **Recipe:** SHADER_CRAFT §6.5 — the first V.2-Volume-consumer entry (envelope shaping, multiplicative billow carve, translucent-σ depth, domain-warp-on-texture-coords, texture-noise budget rule). Visual: density-only guard shows a bounded body with dominant negative space + feathered edges (not anti-uniform-fog, not anti-solid-surface); step-count heatmap confirms early-out localizes cost. Matt eyeball (contact-sheet-style), not a formal M7. `certified:false` unchanged.
 
-### NB.3 → NB.9 — planned
-Per `NIMBUS_PLAN.md`: NB.3 lighting/internal-glow → NB.4 Breath + silence floor → NB.5 Pulse → NB.6 Mood → NB.7 Page → NB.8 perf tranche → NB.9 certification. (NB.1 budget resolved at full res; the half-res+MetalFX lever is now a headroom reserve for the heavier later increments, validated at NB.8.)
+### Increment NB.3 — The look: HZD/Nubis cloud-port + fidelity uplift ✅ (2026-06-04 → 2026-06-05)
+**Delivered.** Replaced the NB.1/NB.2 Perlin-FBM blob with the ported Horizon: Zero Dawn / "Nubis" volumetric-cloud technique (Perlin-FBM cannot make billows — §0 Direction reset):
+- **NB.3.0** — baked a tileable 3D **Perlin-Worley** texture (`gen_perlin_worley_3d` in `NoiseGen.metal`: RGBA = PW base + 3 inverted-Worley detail octaves) in `TextureManager`, auto-bound on the direct path (the one engine touch).
+- **NB.3.1** — density from PW billows (R) carved by Worley detail (G/B/A), HZD-remapped against the analytic envelope as coverage → bounded body + feathered cauliflower edges. Off-lattice sample offset kills a 4-fold mirror symmetry.
+- **NB.3.2** — backlit lighting: forward-scatter HG + a detail-aware ~6-step **cone self-shadow** march → luminous backlit billows.
+- **NB.3.3 — fidelity uplift (Matt-directed, reference-aligned).** Closed the three reference-packet gaps **strictly within the backlit model — no emission**: coverage-gated interior billow/crevice contrast (ref 02, soft rim ref 03), a radial denser core for substance (ref 01), +15% on-screen size via focal zoom (`kNimbusFocal` 1.25→1.44), and the forward-scatter silver-lining glow + brightness lift (ref 08). An egg-core / internal-emission / "incandescent" exploration was tried and **reverted** as a divergence — the packet is a BACKLIT cool body (light scattering *through* the medium), not an emissive one (durable note in `NIMBUS_DESIGN.md §5.2`). Matt-approved on the render-vs-packet contact sheet.
+
+**Budget (NIMBUS_DESIGN §6.3):** p50 **3.27 ms @1080p**, 0.47× the 7 ms Tier-2 ceiling — within, ~3.7 ms headroom for NB.4→NB.6. **Gates:** 1378 engine tests green; SwiftLint `--strict` clean; app build clean; `PresetLoaderCompileFailureTest` at 19; density-only guard clears anti-fog + anti-solid; mode-2 heatmap intact; debug toggle at 0. Still NO audio coupling (NB.4) and NO mood (NB.6); `certified:false` unchanged (cert is NB.9).
+
+### NB.4 → NB.9 — planned
+Per `NIMBUS_PLAN.md`: NB.4 Breath (energy → bloom: size + brightness + flow) + silence floor → ~~NB.5 Pulse (CUT — §1.3)~~ → NB.6 Mood (valence → colour, arousal → flow agitation) → ~~NB.7 Page (CUT — §1.3)~~ → NB.8 perf tranche (set `complexity_cost.tier2` from the §6.3 profile) → NB.9 certification. (The half-res+MetalFX lever remains a headroom reserve, validated at NB.8.)
 
 ---
 
