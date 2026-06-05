@@ -1,0 +1,17 @@
+{
+  "name": "Skein",
+  "duration": 45,
+  "description": "ENGINE.1 SKELETON of the Skein action-painting / drip-pour preset (Pollock's poured technique). Establishes the persistent, LOSSLESS canvas-hold accumulation path — the no-decay / identity configuration of the mv_warp brush-on-feedback paradigm (D-135 / D-138), a sibling of Dragon Bloom (D-142). NO mark morphology, audio routing, wetness, palette, or mood yet (Skein.1+); the only paint is a fixed test stamp. `family: painterly` and the real emission routing land at Skein.1+. See docs/presets/SKEIN_DESIGN.md §5.",
+  "author": "Matt",
+  "passes": ["direct", "mv_warp"],
+  "fragment_function": "skein_fragment",
+  "vertex_function": "fullscreen_vertex",
+  "beat_source": "composite",
+  "decay": 1.0,
+  "visual_density": 0.40,
+  "motion_intensity": 0.40,
+  "fatigue_risk": "low",
+  "complexity_cost": { "tier1": 0.8, "tier2": 0.4 },
+  "certified": false,
+  "rubric_profile": "lightweight"
+}
