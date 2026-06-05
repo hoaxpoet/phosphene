@@ -44,14 +44,17 @@ constant float  kNimbusShadowSig = 1.10;   // softer self-shadow extinction (kee
 constant float  kNimbusCamZ      = -6.0;   // camera distance (looking +Z)
 constant float  kNimbusFocal     = 1.25;   // FOV (larger = narrower)
 constant float  kNimbusPhaseG    = 0.40;   // Henyey-Greenstein anisotropy (DESIGN §5.2)
-constant float  kNimbusWarpAmt   = 0.26;   // domain-warp strength → micro tendrils/curl (NB.2; ref 03)
 
-// Interior-turbulence amplitude — how hard the fine octaves roil the inside of
-// the body: 0 = placid laminar billows, 1 = the NB.2 default churn, >1 = more
-// agitated. A compile-time constant FOR NOW; NB.6 replaces it with the smoothed
-// `arousal` route (DESIGN §1.3 / §5.4 — arousal → turbulence character). The
-// default reproduces the NB.2 maquette look; arousal will modulate around it.
-constant float  kNimbusTurbulence = 1.0;
+// NB.3.1 Perlin-Worley density (HZD / "Nubis"). Scales are body-space sample
+// units; noiseVolume tiles every 1.0 and itself holds ~4 billow cycles per tile.
+constant float  kNimbusBillowScale = 0.55;  // base billow frequency (≈ cauliflower lumps across the body)
+constant float  kNimbusDetailMul   = 3.1;   // detail-erosion octave frequency = base × this
+constant float  kNimbusDetailErode = 0.32;  // how hard the high-freq Worley carves the billow edges
+
+// Edge-agitation amplitude — scales the detail erosion: 0 = smooth lobes, 1 = the
+// NB.3 default, >1 = more torn / churning edges. Compile-time FOR NOW; NB.6
+// replaces it with smoothed `arousal` (DESIGN §1.3 — arousal → flow agitation).
+constant float  kNimbusTurbulence  = 1.0;
 
 // MARK: - Density field
 
@@ -74,84 +77,58 @@ static inline float nimbus_envelope(float3 p) {
     return nimbus_envelope(p, rr);
 }
 
-// Full body density: the smooth ellipsoidal envelope ERODED by a multi-scale
-// detail field — the macro→meso→micro cascade in one field (SHADER_CRAFT §2.2).
-// Erosion increases toward the shell (fray weighting) so the core stays dense and
-// coherent while the periphery breaks into lobes, wisps and soft voids. ALL detail
-// is sampled from the preamble 64³ tileable 3D FBM texture (noiseVolume,
-// [[texture(6)]], production-bound via TextureManager) — never computed per step
-// (NB.1.1 budget lesson, D-140 / DESIGN §6.1: per-step fbm4 was ~20 ms @1080p,
-// texture sampling ~1.4 ms). Time-only drift (no audio — Breath is NB.4).
+// HZD / "Nubis" remap (Schneider 2015): linear remap of v from [lo,hi] → [nlo,nhi].
+static inline float nimbus_remap(float v, float lo, float hi, float nlo, float nhi) {
+    return nlo + (v - lo) * (nhi - nlo) / (hi - lo);
+}
+
+// Full body density — the ported HZD / "Nubis" volumetric-cloud build (NB.3.1).
+// The bounded body comes from the analytic envelope; the cauliflower BILLOWS come
+// from the Perlin-Worley base texture (R channel), carved by its Worley detail
+// octaves (G/B/A) and remapped against the envelope as "coverage" — the single HZD
+// remap that yields a dense core AND feathered cauliflower edges at once. All noise
+// is texture-sampled (§6.1 budget rule). Time-only drift (audio is NB.4).
 static inline float nimbus_density(float3 p, float t,
                                    texture3d<float> noiseVol, sampler smp) {
     float rr;
     float env = nimbus_envelope(p, rr);
     if (env <= 0.001) { return 0.0; }   // outside the body → skip the noise cost
 
-    float3 q = p + float3(0.0, -t * 0.015, t * 0.008);   // slow, time-only drift
+    // Off-lattice sample coordinate: a constant offset so the body is NOT centred
+    // on a tile boundary / lattice point — centring there makes +δ and −δ sample
+    // near-identical values across the seamless tile boundary → 4-fold mirror
+    // symmetry (NB.3.0 finding). Slow time drift on top.
+    float3 q = p + float3(3.17, 1.73, 5.41)                 // off-lattice offset
+                 + float3(0.0, -t * 0.015, t * 0.008);      // slow drift
 
-    // ── MESO: nested billow lobes (ref 02_meso_billow_and_filament) ─────────
-    // Two octave-doubled lobe scales → rounded lumps with sub-lumps riding on
-    // them. Shaped (tight smoothstep) so the billows read as DISTINCT bright
-    // lobes separated by dimmer valleys — ref 02's soft cellular boundaries —
-    // not a smooth egg. The depth / self-occlusion read (ref 02's "nearer lobes
-    // shadow those behind") is NOT painted here: it emerges from the march's
-    // front-to-back transmittance accumulation (a near dense lobe attenuates the
-    // in-scatter of the lobes behind it) plus the existing envelope self-shadow.
-    // No detail-aware shadow in NB.2 — that is the NB.3 lighting recipe.
-    float lobeA  = noiseVol.sample(smp, q * 0.7).r;          // coarse billows
-    float lobeB  = noiseVol.sample(smp, q * 1.4).r;          // nested sub-billows
-    float lobes  = lobeA * 0.62 + lobeB * 0.38;              // [0,1]
-    float billow = smoothstep(0.35, 0.70, lobes);            // distinct lumps [0,1] (tight range → crisp lobe/valley contrast)
+    // ── Base shape: Perlin-Worley billows (R) carved by Worley detail (G/B/A) ──
+    float4 base      = noiseVol.sample(smp, q * kNimbusBillowScale);
+    float  worleyFBM = base.g * 0.625 + base.b * 0.25 + base.a * 0.125;
+    // HZD remap: expand the Perlin-Worley base by the Worley clumps → nested
+    // cauliflower lumps (this is what makes them read as billows, not soft blobs).
+    float  billows   = clamp(nimbus_remap(base.r, worleyFBM - 1.0, 1.0, 0.0, 1.0), 0.0, 1.0);
 
-    // ── Interior turbulence (mid octave) ────────────────────────────────────
-    // Roughens the inside of each billow so the gas reads as gas, not jelly. Its
-    // AMPLITUDE — how churning vs placid the interior reads — is the named
-    // kNimbusTurbulence knob applied in the compose step below (NB.6 → arousal).
-    float turbMid = noiseVol.sample(smp, q * 2.8).r;         // [0,1], centred ~0.5
+    // ── Coverage remap by the envelope → bounded body + feathered billow edges ──
+    // The envelope (clamped) is the "coverage": at the core (cov≈1) the full billow
+    // structure survives; toward the shell (cov→0) only the highest billow peaks
+    // survive, so the edge breaks into cauliflower lumps and feathers into the void
+    // — both the dense core and the soft edge from one remap. cov ≥ 0.001 (the
+    // early-out) so the remap's (hi−lo)=cov is never zero.
+    float coverage = clamp(env, 0.0, 1.0);
+    float density  = clamp(nimbus_remap(billows, 1.0 - coverage, 1.0, 0.0, 1.0), 0.0, 1.0);
 
-    // ── MICRO: domain-warped fine filaments + curl (ref 03_micro_wisp_*) ────
-    // Domain warp: perturb the sample coordinate with a low-freq noiseVolume tap
-    // so the fine octave stretches into swirling tendrils / curl at the wisp
-    // tips (ref 03) rather than isotropic stipple. The texture is single-channel
-    // (.r8Unorm), so two decorrelated low-freq taps build a 2-axis swirl offset.
-    // The warp is a CHEAP texture sample — NEVER warped_fbm / fbm_vec3, which
-    // compute fbm8 (~56 perlin evals) and re-blow the budget (D-140 / §6.1).
-    float w0 = noiseVol.sample(smp, q * 0.9).r - 0.5;                       // [-0.5,0.5]
-    float w1 = noiseVol.sample(smp, q * 0.9 + float3(4.7, 1.3, 8.1)).r - 0.5;
-    float3 qw    = q + float3(w0, w1, (w0 - w1) * 0.5) * kNimbusWarpAmt;    // swirled coords
-    float micro  = noiseVol.sample(smp, qw * 5.6).r;                        // warped fine filaments
-    // 4 octaves (0.7 / 1.4 / 2.8 / 5.6 warped) — the §12.1 ≥4-octave noise
-    // floor; the warp adds a low-freq swirl band on top (texture is itself FBM).
+    // ── Detail erosion: a higher-frequency Worley octave carves the billow edges
+    // into finer structure (HZD's high-freq detail pass), weighted toward the rim
+    // so the dense core stays coherent. kNimbusTurbulence is the agitation knob
+    // (NB.6 → arousal): more erosion = more torn / churning edges.
+    float4 detail     = noiseVol.sample(smp, q * kNimbusBillowScale * kNimbusDetailMul);
+    float  detailFBM  = detail.g * 0.625 + detail.b * 0.25 + detail.a * 0.125;
+    float  edgeWeight = 1.0 - coverage;                     // 0 core → 1 shell
+    float  erodeLo    = clamp((1.0 - detailFBM) * kNimbusDetailErode * kNimbusTurbulence
+                              * edgeWeight, 0.0, 0.9);
+    density = clamp(nimbus_remap(density, erodeLo, 1.0, 0.0, 1.0), 0.0, 1.0);
 
-    // ── Compose: billow lobes CARVE the envelope (distinct lumps) ───────────
-    // Multiplicative carve, not additive: valleys (low billow) thin the body
-    // toward transparency while crests stay dense, so the density iso-surface is
-    // genuinely LUMPY (the ref-02 billow read) rather than a smooth saturated
-    // egg — additive modulation just brightens an already-opaque core and the
-    // lumps wash out (the 05_anti_solid_surface interior). Crests push slightly
-    // above 1 so lobe peaks read brighter than valleys. The interior roil is the
-    // mid + warped-fine octaves so the inside carries the §12.1 fine detail too.
-    float lobeCarve = mix(0.14, 1.10, billow);              // [0.14 valley .. 1.10 crest]
-    float roil      = 1.0 + ((turbMid - 0.5) * 0.42 + (micro - 0.5) * 0.28) * kNimbusTurbulence;
-    float dens      = env * lobeCarve * roil;
-
-    // ── Edge feathering: peeling curling tendrils dissolving into void (ref 03)
-    // Toward the rim, MULTIPLY density by the warped micro field so the body
-    // breaks into curling filaments separated by void — a multiplicative mask
-    // gives crisp filament-vs-gap contrast where a smooth subtraction only
-    // softened the whole rim into a blur. The domain warp curls the tendrils
-    // (ref 03's vortex tips) instead of stippling them straight out; the larger
-    // billow gaps let whole lobes peel off the mass. The core (low rr) is
-    // unmasked so the body stays one coherent mass; the rim never hard-cuts
-    // (never 05_anti_solid_surface) because the mask is continuous noise.
-    float rim          = smoothstep(0.48, 1.06, rr);         // 0 core → 1 shell
-    float microFil     = smoothstep(0.34, 0.64, micro);      // fine curling tendrils (sharper → crisper filaments)
-    float lobeFil      = smoothstep(0.28, 0.74, billow);     // larger lobe gaps peel off
-    float filamentMask = clamp(microFil * 0.74 + lobeFil * 0.42, 0.0, 1.0);
-    dens *= mix(1.0, filamentMask, rim);
-
-    return max(0.0, dens);
+    return density;
 }
 
 // MARK: - Nimbus fragment (NB.1 macro maquette)
