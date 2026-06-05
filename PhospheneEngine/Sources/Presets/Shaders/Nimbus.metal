@@ -34,13 +34,13 @@
 // MARK: - Nimbus tunables (NB.1 macro maquette)
 
 // Body ellipsoid semi-axes (body space). Long axis vertical (y > x,z).
-constant float3 kNimbusSemiAxes  = float3(1.20, 1.50, 1.20);
-constant float  kNimbusBoundR    = 1.85;   // bounding sphere for the march range
+constant float3 kNimbusSemiAxes  = float3(1.70, 2.10, 1.70);   // NB.3.3: larger, more substantial body (was 1.2,1.5,1.2)
+constant float  kNimbusBoundR    = 2.70;   // bounding sphere for the march range (grown with the body)
 constant int    kNimbusSteps     = 64;     // primary march steps
 constant int    kNimbusShadowN   = 6;      // secondary light-march steps
-constant float  kNimbusShadowDt  = 0.22;   // light-march step length (reach ≈ full body depth)
+constant float  kNimbusShadowDt  = 0.32;   // light-march step length (reach ≈ full body depth — grown with the body, NB.3.3)
 constant float  kNimbusSigma     = 1.55;   // primary extinction (translucent: see INTO the volume)
-constant float  kNimbusShadowSig = 2.40;   // self-shadow extinction — strong → dark core vs bright forward-scatter rim (the backlit silver lining, NB.3.2)
+constant float  kNimbusShadowSig = 3.40;   // self-shadow extinction — STRONGER (NB.3.3) → deeper dark crevices vs bright forward-scatter rim (the backlit silver lining)
 constant float  kNimbusCamZ      = -6.0;   // camera distance (looking +Z)
 constant float  kNimbusFocal     = 1.25;   // FOV (larger = narrower)
 constant float  kNimbusPhaseG    = 0.58;   // Henyey-Greenstein anisotropy — strong forward scatter → backlit glow (NB.3.2)
@@ -164,8 +164,8 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
     // the detail-aware cone self-shadow (in the march below) is what makes the
     // cauliflower billows read as 3D.
     float3 lightDir   = normalize(float3(-0.30, 0.42, 0.74));   // upper-left, strongly behind
-    float3 lightColor = float3(1.00, 0.97, 0.92) * 5.6;         // neutral warm-white key
-    float3 ambient    = float3(0.022, 0.028, 0.055);            // faint cool fill (shadowed front still reads)
+    float3 lightColor = float3(1.00, 0.97, 0.92) * 8.5;         // neutral warm-white key — BRIGHTER (NB.3.3) for a luminous backlit glow
+    float3 ambient    = float3(0.014, 0.018, 0.040);            // fainter cool fill (NB.3.3) → darker crevices, more silver-lining contrast
 
     float t = features.time;
 
