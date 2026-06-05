@@ -96,6 +96,19 @@ constant float  kNimbusSwirl1Scale = 0.27; // big-roll spatial scale
 constant float  kNimbusSwirl2Scale = 0.85; // medium-churn spatial scale
 constant float  kNimbusDetailChurn = 0.45; // fine detail evolves this much faster than the base drift
 
+// MARK: - NB.6 Mood (DESIGN §1.3 / §5.4)
+
+// Valence → body colour cool↔warm (the 06_palette axis): deep indigo at the low
+// pole, warm gold/amber at the high pole. Arousal → flow agitation: calm =
+// smoother lobes + gentler roll; energetic = more torn edges + stronger churn.
+// Both smoothed ~4 s in NimbusState (FA #25) and crawl at the section timescale.
+constant float3 kNimbusMoodCool   = float3(0.40, 0.36, 0.74);  // low valence — deep desaturated indigo (06 cool baseline)
+constant float3 kNimbusMoodWarm   = float3(0.96, 0.64, 0.30);  // high valence — warm gold/amber (06 warm peak)
+constant float3 kNimbusAmbCool    = float3(0.016, 0.020, 0.045); // cool fill (the NB.3.3 ambient) — low valence
+constant float3 kNimbusAmbWarm    = float3(0.050, 0.032, 0.016); // warm fill — high valence (shadow side warms too)
+constant float  kNimbusAgitCalm   = 0.65;  // arousal −1 → calmer (smoother lobes, less churn)
+constant float  kNimbusAgitWild   = 1.55;  // arousal +1 → wilder (torn edges, stronger churn)
+
 // NB.3.4 — interior lump/crevice contrast (ref 02: deep crevices between cauliflower
 // lumps). TIGHTER window than NB.3.3 → sharper lit lumps + darker crevices (less
 // blurry). Gated by coverage so the soft feathered rim (ref 03) is not fragmented.
@@ -107,11 +120,6 @@ constant float  kNimbusLumpHi   = 0.70;  // contrast window high → sharpens li
 // bright-rim — substance, not a glow source. Pure density; no emission.
 constant float  kNimbusCoreGain = 0.55;  // density boost added at the centre (0 = none) — eased so the core gains substance without saturating flat (keeps ref-02 interior lumps)
 constant float  kNimbusCoreSig  = 1.50;  // core falloff (larger = tighter dense core)
-
-// Edge-agitation amplitude — scales the detail erosion: 0 = smooth lobes, 1 = the
-// NB.3 default, >1 = more torn / churning edges. Compile-time FOR NOW; NB.6
-// replaces it with smoothed `arousal` (DESIGN §1.3 — arousal → flow agitation).
-constant float  kNimbusTurbulence  = 1.0;
 
 // MARK: - NB.4/NB.5 audio-reactive state (DESIGN §1.3 / §5.4)
 
@@ -125,8 +133,8 @@ struct NimbusStateGPU {
     float bassLobe;    // NB.5 downward heave (bass stem)
     float vocalsLobe;  // NB.5 upward flare (lead/"vocals" stem)
     float otherLobe;   // NB.5 sideways swell (other stem)
-    float _pad0;
-    float _pad1;
+    float valence;     // NB.6 mood — smoothed valence (-1 cool · +1 warm)
+    float arousal;     // NB.6 mood — smoothed arousal (-1 calm · +1 churning)
 };
 
 // One signal (`bloom`), three visual readings of the same physical event. All
@@ -218,7 +226,8 @@ static inline float nimbus_remap(float v, float lo, float hi, float nlo, float n
 // remap that yields a dense core AND feathered cauliflower edges at once. All noise
 // is texture-sampled (§6.1 budget rule). Time-only drift (audio is NB.4).
 static inline float nimbus_density(float3 worldP, float flowT, float bodyScale,
-                                   float4 lobes, texture3d<float> noiseVol, sampler smp) {
+                                   float4 lobes, float agitation,
+                                   texture3d<float> noiseVol, sampler smp) {
     // NB.4 — uniform bloom inflation. Scaling the sample position DOWN grows the
     // whole body (boundary AND internal billows together) so the gas reads as
     // puffing up with energy rather than gaining detail. bodyScale comes from
@@ -285,8 +294,9 @@ static inline float nimbus_density(float3 worldP, float flowT, float bodyScale,
     float  edgeWeight = 1.0 - coverage;                         // 0 core → 1 shell
     // Erode hardest at the rim (fraying filaments) but keep some interior carve so
     // the core surface is knobbly too (ref 02 detail is everywhere, not just edges).
-    // kNimbusTurbulence is the agitation knob (NB.6 → arousal).
-    float  erodeAmt = kNimbusDetailErode * kNimbusTurbulence * (0.25 + 0.75 * edgeWeight);
+    // `agitation` (NB.6 ← smoothed arousal) is the flow-agitation knob: calm =
+    // smoother lobes, energetic = more torn / churning edges.
+    float  erodeAmt = kNimbusDetailErode * agitation * (0.25 + 0.75 * edgeWeight);
     float  erodeLo  = clamp((1.0 - detailFBM) * erodeAmt, 0.0, 0.92);
     density = clamp(nimbus_remap(density, erodeLo, 1.0, 0.0, 1.0), 0.0, 1.0);
 
@@ -362,14 +372,26 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
     // envelope's star-convex heave (.w = drums whole-body punch).
     float4 lobes    = float4(nb.bassLobe, nb.vocalsLobe, nb.otherLobe, nb.kickPunch);
 
+    // ── NB.6 Mood (slow global) — valence → colour, arousal → agitation ──────
+    // Both ∈ [-1, 1], smoothed ~4 s in NimbusState. valence shifts the body
+    // colour cool↔warm; arousal sets the flow-agitation (torn-edge) strength.
+    float valence01 = clamp(nb.valence * 0.5 + 0.5, 0.0, 1.0);
+    float arousal01 = clamp(nb.arousal * 0.5 + 0.5, 0.0, 1.0);
+    float3 moodTint = mix(kNimbusMoodCool, kNimbusMoodWarm, valence01);  // body colour
+    float3 moodAmb  = mix(kNimbusAmbCool,  kNimbusAmbWarm,  valence01);  // fill warms too (D-022 propagation)
+    float  agitation = mix(kNimbusAgitCalm, kNimbusAgitWild, arousal01); // erosion knob
+
     // ── Non-black haze floor (D-037 / DESIGN §1.4-§1.5): a faint cool halo,
     // brightest near the body, fading to near-black corners (negative space
     // preserved — NOT 05_anti_uniform_fog). Used as the background everywhere
     // the body doesn't fully occlude. Eased with bloom but with a hard non-zero
     // floor so the silence frame is provably non-black.
-    float  hazeR2  = dot(p, p);
-    float  hazeAmt = kNimbusHazeBase * (0.60 + 0.40 * clamp(bloomV, 0.0, 1.0));
-    float3 haze    = kNimbusHazeColor * hazeAmt * exp(-hazeR2 * kNimbusHazeFalloff);
+    float  hazeR2   = dot(p, p);
+    float  hazeAmt  = kNimbusHazeBase * (0.60 + 0.40 * clamp(bloomV, 0.0, 1.0));
+    // NB.6: the halo warms with the body (valence) so a warm mood doesn't sit in
+    // a cool-blue halo. kNimbusHazeColor is the cool pole.
+    float3 hazeCol  = mix(kNimbusHazeColor, float3(0.92, 0.55, 0.30), valence01);
+    float3 haze     = hazeCol * hazeAmt * exp(-hazeR2 * kNimbusHazeFalloff);
 
     // ── Bounding-sphere intersection (grows with the bloomed body). The env
     // early-out makes the in-sphere / outside-body steps nearly free — a loose
@@ -402,7 +424,7 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
     // dims at the silence floor and brightens (+80 %) at full bloom, while the
     // backlit rim-vs-core contrast ratio (the approved NB.3 look) is preserved.
     float3 lightColor = float3(1.00, 0.97, 0.92) * 10.0 * bright;   // neutral warm-white BACK-key (NB.3.3 step 3): lifts the forward-scatter silver-lining rim (ref 08). No emission — the dense core stays self-shadowed; the rim-vs-core contrast IS the glow.
-    float3 ambient    = float3(0.016, 0.020, 0.045) * bright;       // cool fill LIFTED (NB.3.3 step 3b): the contrast-darkened core read "too dark" (Matt), so raise the floor slightly above baseline → body reads present + slightly brighter, while the step-3 forward-scatter rim still carries the glow.
+    float3 ambient    = moodAmb * bright;       // NB.6: cool↔warm fill (valence) — so the shadow side warms with the mood too, not just the lit rim (D-022 propagation). Lifted floor (NB.3.3 step 3b) carried in kNimbusAmb*.
 
     // ── Front-to-back single-scatter march ──────────────────────────────────
     VolumeSample acc = vol_sample_zero();
@@ -414,7 +436,7 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
     for (int i = 0; i < kNimbusSteps; i++) {
         float ti = t0 + (float(i) + 0.5) * dt;
         float3 pos = ro + rd * ti;
-        float dens = nimbus_density(pos, flowT, bodyScale, lobes, noiseVolume, linearSampler);
+        float dens = nimbus_density(pos, flowT, bodyScale, lobes, agitation, noiseVolume, linearSampler);
         if (dens > 0.002) {
             litSteps++;
             // Detail-aware CONE self-shadow (NB.3.2): march toward the light
@@ -448,13 +470,15 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
     float3 heat = float3(load, 1.0 - abs(load - 0.5) * 2.0, 1.0 - load);
     return float4(heat, 1.0);
 #else
-    // ── Composite: cool indigo body over the black void → ACES ───────────────
-    // Body tinted toward the cool baseline (deep desaturated indigo/violet,
-    // 06_palette_cool_baseline). The densest/brightest core desaturates toward
-    // white at the top end (luminance, not a second hue) → the ref-01 bright core.
-    float3 coolTint = float3(0.40, 0.36, 0.74);
-    float lum = dot(acc.color, float3(0.299, 0.587, 0.114));
-    float3 tint = mix(coolTint, float3(0.80, 0.80, 0.94), smoothstep(0.9, 2.2, lum));
+    // ── Composite: mood-tinted body over the haze floor → ACES ───────────────
+    // NB.6: the body is tinted toward `moodTint` (cool indigo ← low valence …
+    // warm gold ← high valence, the 06_palette axis). The densest/brightest core
+    // still desaturates toward a (mood-warmed) white at the top end (luminance,
+    // not a second hue) → the ref-01 bright core. moodTint multiplies every body
+    // pixel so the cool↔warm shift propagates across the whole mass.
+    float  lum = dot(acc.color, float3(0.299, 0.587, 0.114));
+    float3 moodWhite = mix(float3(0.80, 0.80, 0.94), float3(0.98, 0.93, 0.82), valence01);
+    float3 tint = mix(moodTint, moodWhite, smoothstep(0.9, 2.2, lum));
     // Composite the body over the faint cool haze floor (NB.4 / D-037 — never
     // pure black at steady state). Where the body is opaque, transmittance → 0
     // and the haze is hidden; in the gaps and around the silhouette it reads as

@@ -299,17 +299,23 @@ struct PresetVisualReviewTests {
                 // The shared silence/mid/beat fixtures leave AttRel at 0, which
                 // would render every cell at the same baseline bloom (~0.5) and
                 // could not show the silence floor or full bloom.
+                // NB.6: a cool valence so the contact sheet shows the cool baseline
+                // body (matching the 06_cool references / the approved NB.3 look) —
+                // mood now drives colour, and neutral valence reads mid-palette.
                 var nbSilence = FeatureVector(time: 1.0, deltaTime: 1.0 / 60.0)
                 nbSilence.bassAttRel = -1.0   // bands at 0 → bloom 0: small/dim/slow floor
                 nbSilence.midAttRel  = -1.0
                 nbSilence.trebAttRel = -1.0
-                let nbMid = FeatureVector(bass: 0.5, mid: 0.5, treble: 0.5,
+                nbSilence.valence = -0.7
+                var nbMid = FeatureVector(bass: 0.5, mid: 0.5, treble: 0.5,
                                           time: 3.0, deltaTime: 1.0 / 60.0)  // AttRel 0 → ~0.5 baseline
+                nbMid.valence = -0.7
                 var nbEnergy = FeatureVector(bass: 0.9, mid: 0.9, treble: 0.9,
                                              time: 5.0, deltaTime: 1.0 / 60.0)
                 nbEnergy.bassAttRel = 0.9     // above-average swell → bloom ~1: big/bright/fast
                 nbEnergy.midAttRel  = 0.9
                 nbEnergy.trebAttRel = 0.9
+                nbEnergy.valence = -0.7
                 return [
                     ("silence", nbSilence, nil),
                     ("mid",     nbMid,     nil),
@@ -356,8 +362,9 @@ struct PresetVisualReviewTests {
             // dt ≫ τ); a few small ticks then advance the flow phase off the
             // t=0 lattice so the gas pattern reads.
             if let nbState = nimbusState {
-                nbState.tick(deltaTime: 2.0, features: fv, stems: .zero)
-                for _ in 0..<30 { nbState.tick(deltaTime: 1.0 / 60.0, features: fv, stems: .zero) }
+                // ~150 ticks at dt 0.1 = 15 s — converges the bloom AND the ~4 s
+                // mood EMA (NB.6) so the fixture's cool valence reads on the body.
+                for _ in 0..<150 { nbState.tick(deltaTime: 0.1, features: fv, stems: .zero) }
             }
             let pixels = try renderFrame(preset: preset, context: ctx,
                                          arachneState: arachneState,
