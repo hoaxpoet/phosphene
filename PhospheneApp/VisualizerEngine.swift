@@ -159,6 +159,12 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// pattern, slot 6).
     var auroraVeilState: AuroraVeilState?
 
+    /// Nimbus Energy bloom follower + gas flow-phase state — allocated when the
+    /// Nimbus preset is active, nil otherwise. Tick closure and stateBuffer are
+    /// wired via `setMeshPresetTick` / `setDirectPresetFragmentBuffer` in
+    /// `applyPreset` (NB.4 — same direct-preset slot-6 pattern as Aurora Veil).
+    var nimbusState: NimbusState?
+
     /// Lumen Mosaic 4-light pattern engine — allocated when the Lumen Mosaic
     /// preset is active, nil otherwise. Tick closure flushes the engine state
     /// to a 336-byte UMA buffer bound at fragment slot 8 of the ray-march
