@@ -51,7 +51,7 @@ The interesting motion *is the gas itself*: **constant, rich, organic flow** —
 |---|---|---|
 | **Beat — the stems** (NB.5, the hero): each stem's energy **deviation** (D-026), through a fast-attack / slow-release follower. Drums = `max(beatBass, beatComposite)` onset pulse (zero-delay, frame 1) → `drumsEnergyDev`; bass/lead/other = their stem deviation. | per-beat — the hero | **Drums punch + brighten the WHOLE body** (the kick is the spine of the beat). **Bass heaves it DOWN**, **lead/"vocals" flares it UP**, **other swells it to the SIDE** — the body lurches richly with the band, always one cloud. |
 | **Energy — the swell** (NB.4): mean of the four stem **energies** (robust; never floored by a dead band — the NB.4 bug), fast-attack / slow-release follower → `bloom`. | continuous — slow | the mass's overall **size** + **brightness** + gas **flow rate** rise and fall with the music's overall energy; settles small/dim/slow at the silence floor (non-black, D-037). |
-| **Mood** — valence + arousal, smoothed in state ~4 s (FA #25) — **NB.6, not yet built** | very slow | valence → **colour** cool↔warm (indigo↔gold); arousal → **flow agitation** (lazy/smooth ↔ churning/torn). |
+| **Mood + energy** — valence + arousal smoothed in state ~4 s (FA #25); NB.6 built, **NB.10 amended (D-142)** | very slow | **colour** cool↔warm ← *warmth* = valence **+ energy** (arousal + the bloom swell), so an energetic track reads hot even at neutral/low valence (Matt M7 r1: B.O.B.); arousal → **flow agitation** (lazy/smooth ↔ churning/torn). The bright core keeps its mood hue — no white-wash. |
 
 **Still cut:** section-boundary reorganisation; pitch→hue; camera / time-of-day drift. The discipline is now *the band plays the body (beat, per stem) + energy swells it + mood colours it*.
 
@@ -190,7 +190,7 @@ Internal state advances CPU-side each frame (energy follower → bloom, flow pha
 | Upward flare | `vocalsLobe` ← `vocalsEnergyDev` | Beat — lead/"vocals" (NB.5) |
 | Sideways swell | `otherLobe` ← `otherEnergyDev` | Beat — other (NB.5) |
 | Body size + luminosity + flow rate (slow swell) | `bloom` ← mean of the four stem **energies** (FV bass proxy at warmup) | Energy — slow (NB.4) |
-| Body colour (cool↔warm) | valence (smoothed in state) | Mood — slow global (NB.6) |
+| Body colour (cool↔warm) | **warmth = valence + energy** (energy = arousal + bloom swell) — smoothed in state | Mood + energy — slow global (NB.6, **NB.10 D-142**) |
 | Flow agitation (smooth↔torn) | arousal (smoothed in state) | Mood — slow global (NB.6) |
 
 Each layer reads ONE primitive at ONE timescale (FA #67). The four stem lobes are different primitives driving different *spatial regions* of the single body — distinct musical information, not the same signal encoded twice — so they enrich rather than fight. The beat lobes all add into one star-convex envelope deformation: the body lurches per-stem but never fragments (§1.4). **`bloom` no longer uses the 3-band `(bass+mid+treble)` average** — that floored on bass-dominated music (NB.4 / Atlas session); the mean of the four stem energies is the robust replacement.
