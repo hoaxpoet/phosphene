@@ -39,6 +39,8 @@ Everything else is deliberately thin: **Energy** blooms-and-flows it (continuous
 
 The interesting motion *is the gas itself*: **constant, rich, organic flow** — billows rolling and folding, wisps curling — like the ink-in-water and smoke the references are photos of. It is never still: fine wisps flow continuously, larger billows reorganise over a second or two. This is the motion that has to be mesmerising with the sound off. The music does not bolt extra motion onto a static body — it **shapes this flow.**
 
+> **Motion character — RISING, CURLING SMOKE (Matt's call, NB.3.5, 2026-06-05).** The first NB.4/NB.5 live tests exposed that the motion model was wrong: the gas only *translated* along a fixed slow linear vector — no swirl, no rise, billows never forming/dissolving — so it read as a static blob that slides (Matt: "smoke/cloud means how they move — curling, rising, drifting, with trails"). The chosen character is **rising, curling smoke** (vs drifting cloud / blooming ink): the mass rises, curls into vortices as it rises, and the billows form and dissolve in place. **Motion references** (Matt-provided — the temporal contract the still packet can't carry; a photograph shows what the frame resembles, not how it moves): *"Smoke Effect Overlay Background Video Footage"* (youtube `d_ZAU0535MM`) and *"4K Smoke Effect: Dynamic Moving Dust Cloud Background Video"* (youtube `f0AMzO12Igc`), both Channel Art Background — classic rising-plume smoke-overlay footage (billowing, curling, dissolving upward on black). The NB.3.5 model: vertical domain rise + a height/time helical twist (curl) + an organic low-freq swirl warp + faster-churning fine detail, all on the `flowT` bloom clock (so it rises/curls faster with energy, drifts at silence). **Deferred — literal trails/wake:** a travelling puff leaving a tapering tail needs *temporal persistence* (a feedback pass), which Nimbus is stateless-by-design against (FA #32); without it the rising body elongates/wisps upward (a tapering rising column) but does not leave a lingering screen-trail. Revisit as an explicit architecture decision if the rising-column read isn't enough.
+
 ### 1.3 How it answers the music
 
 > **MODEL REVISED — NB.5 (2026-06-05, D-141). The original "nothing on the beat" premise is RETIRED.** NB.4 shipped the energy-only bloom below; the first real-music test (the *Atlas* / Battles session, a relentless 136-BPM track) showed it **too subtle**, and on bass-dominated music structurally broken: the bloom averaged three bands and, with mid (0.04) / treble (0.004) near-silent, the two dead bands vetoed it — the body sat near floor-size all session while the beat (beatComposite fired > 0.5 on 53 % of frames, grid locked) went unanswered. Matt's call: *wrong model — drive from the beat, per stem.* FA #4 still holds — beat is an **accent**, not the primary motion driver — and Nimbus honours it: the slow energy bloom is still the underlying swell; the beat lobes ride on top. (Nimbus has no feedback loop to amplify jitter, the onset pulse is zero-delay, and a gas heave with a soft decay is forgiving of ±80 ms — so a prominent beat-punch is safe here.)
@@ -323,6 +325,33 @@ for a falloff — use a polynomial (cos², smoothstep). The bound grows by the l
 bulge (~+44 % on a max simultaneous heave) so the active-lobe worst case is a
 little higher, still well under budget. NB.8 sets `complexity_cost.tier2` from
 this profile; the half-res + MetalFX lever remains untapped reserve.
+
+### 6.6 NB.3.4/.5 smoke qualities (texture + motion) measurement (2026-06-05)
+
+NB.3.4 (crisper texture: a 2-octave fractal Worley detail cascade + interior
+cauliflower carve + tighter lump/crevice contrast) and NB.3.5 (rising/curling
+smoke motion: vertical rise + helical twist + a 2-octave organic swirl warp +
+faster-churning detail + bigger base billows) were authored after the NB.5 live
+test exposed that the body read as a static blurry blob (Matt). Same harness:
+
+| Variant | p50 | notes |
+|---|---|---|
+| Naïve (full cascade + swirl in the shadow march, 96 steps) | **20.3 ms** | 2.9× OVER — the cone self-shadow paid the full ~7-sample density 6× per in-body step |
+| **Shipped (cheap shadow + 64 steps + 2-oct cascade + 10% smaller blob)** | **3.78 ms** | 0.54× the ceiling, WITHIN (~5.7 ms full-bloom worst case) |
+
+**Perf lessons (durable, reusable).** Getting from 20 ms → 3.78 ms was three
+moves, biggest first: **(1) a cheap shadow density** — the cone self-shadow runs
+~6× per in-body sample and only needs the COARSE density (lit top vs shadowed
+underside), so `nimbus_density_shadow` is the base billow only (1 sample) vs the
+lit path's ~7; this was the dominant win. **(2) Don't over-step** — 96→64; a
+march resolves detail only up to ~Nyquist of its step count, so the scale-7.6
+detail octave just *aliased* at 64 steps (dropped it: cheaper AND less noisy).
+**(3) Smaller on-screen body** (Matt-directed, focal 1.44→1.30, ~10% smaller →
+~19% fewer body-pixels do the expensive march). General rule for a volumetric
+march: the self-shadow march is the cost centre — give it a cheap density; match
+step count to the finest octave you actually keep; on-screen area is a linear
+budget lever. NB.8 sets `complexity_cost.tier2` from this profile; the half-res +
+MetalFX lever remains the untapped reserve.
 
 ---
 

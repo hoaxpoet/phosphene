@@ -401,6 +401,42 @@ struct NimbusBloomFollowerTest {
         }
     }
 
+    // MARK: - Motion strip (NB.3.5 rising/curling smoke — env-gated, visual)
+
+    /// Renders a sequence of frames at advancing flow so the MOTION (rising,
+    /// curling, churning) can be judged — a still can't show it. Writes N PNGs to
+    /// /tmp/nimbus_motion under NB_MOTION=1; not a CI assertion.
+    @Test("Nimbus motion strip (NB_MOTION=1)")
+    func test_motionStrip() throws {
+        guard ProcessInfo.processInfo.environment["NB_MOTION"] == "1" else {
+            print("NimbusBloomFollowerTest: NB_MOTION not set, skipping motion strip"); return
+        }
+        let ctx = try MetalContext()
+        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat)
+        guard let nimbus = loader.presets.first(where: { $0.descriptor.name == "Nimbus" }),
+              let lib = try? ShaderLibrary(context: ctx),
+              let texMgr = try? TextureManager(context: ctx, shaderLibrary: lib),
+              let state = NimbusState(device: ctx.device) else {
+            Issue.record("motion strip setup failed"); return
+        }
+        // Energy fixture → bloom high, flow fast. Converge bloom first.
+        let fv = energyFV()
+        let stems = stemFixture(energy: 0.8)
+        for _ in 0..<60 { state.tick(deltaTime: Self.dt, features: fv, stems: stems) }
+
+        let dir = URL(fileURLWithPath: "/tmp/nimbus_motion")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let frames = 8, ticksBetween = 16   // ~0.27 s of motion between captures
+        for i in 0..<frames {
+            guard let px = renderNimbus(nimbus, ctx: ctx, texMgr: texMgr, state: state, features: fv) else {
+                Issue.record("motion render \(i) failed"); return
+            }
+            writePNG(px, size: Self.lobeRenderSize, to: dir.appendingPathComponent("m_\(i).png"))
+            for _ in 0..<ticksBetween { state.tick(deltaTime: Self.dt, features: fv, stems: stems) }
+        }
+        print("[NimbusMotion] wrote \(frames) frames to \(dir.path) (flowPhase \(state.flowPhase))")
+    }
+
     /// Build a StemFeatures with a baseline energy on every stem (so the D-019
     /// warmup is satisfied → post-warmup stem path) and one hot deviation.
     private func stemFixture(energy: Float = 0.5, drumsDev: Float = 0, bassDev: Float = 0,
