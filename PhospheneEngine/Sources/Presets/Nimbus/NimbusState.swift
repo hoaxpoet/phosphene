@@ -119,9 +119,12 @@ public final class NimbusState: @unchecked Sendable {
     private static let devThreshHi: Float = 0.55
 
     /// Mood smoothing time constant (FA #25 — smooth valence/arousal in preset
-    /// state, never via setFeatures). ~4 s so colour/agitation crawl at the
-    /// section timescale, not per-frame.
-    private static let moodTau: Float = 4.0
+    /// state, never via setFeatures). NB.10 r1.5: 4.0 → 2.5 s. At 4 s the colour
+    /// crushed toward each track's near-neutral *mean* and read static ("fades to
+    /// neutral", Matt M7 r1); 2.5 s still crawls at the section timescale (no
+    /// per-frame flicker) but lets the colour TRAVEL with the valence swings
+    /// within a track, so the mood reads alive.
+    private static let moodTau: Float = 2.5
 
     /// Cold-start convergence window (seconds since track start). Below
     /// `stemConvergeLo` the model is fully on the live FeatureVector beat (the

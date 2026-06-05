@@ -113,13 +113,18 @@ constant float3 kNimbusAmbWarm    = float3(0.060, 0.034, 0.012); // warm fill �
 constant float  kNimbusAgitCalm   = 0.65;  // arousal −1 → calmer (smoother lobes, less churn)
 constant float  kNimbusAgitWild   = 1.55;  // arousal +1 → wilder (torn edges, stronger churn)
 
-// NB.10 (D-142) — ENERGY warms + vivifies the body. Matt M7 r1: an energetic
-// track (B.O.B.) read cool/purple because colour tracked only valence (the
-// classifier hears aggressive-but-dark as low-valence). Now arousal + the slow
-// energy bloom LIFT the warmth, so a banger reads hot regardless of valence.
-constant float  kNimbusEnergyWarmth = 0.60;  // how hard energy lifts warmth above the valence baseline
-constant float  kNimbusEnergyBase   = 0.25;  // energy below this doesn't warm (calm stays on the valence axis)
-constant float  kNimbusMoodContrast = 1.35;  // expand the warmth range around mid → bigger cool↔warm swing
+// NB.10 (D-142) — ENERGY warms the body for genuine bangers. Matt M7 r1: an
+// energetic track (B.O.B.) read cool/purple because colour tracked valence only
+// (the classifier hears aggressive-but-dark as low-valence). r1.5 fix: warmth is
+// PRIMARILY valence; high AROUSAL (the classifier's intensity read — more
+// reliable than the often-near-zero `bloom` in real captures) adds warmth ONLY
+// past a high threshold, so it never washes out the cool↔warm axis. (r1's flat
+// +energy bias turned every moderate-energy track warm and collapsed the range —
+// the "clobbered / neutral" regression.)
+constant float  kNimbusEnergyWarmth = 0.50;  // max warmth lift at full arousal (a banger)
+constant float  kNimbusEnergyLo     = 0.65;  // arousal01 where energy-warmth STARTS (arousal +0.30); below = pure valence
+constant float  kNimbusEnergyHi     = 0.95;  // arousal01 for the full lift (arousal +0.90)
+constant float  kNimbusMoodContrast = 1.60;  // expand the (often subtle) VALENCE travel around mid so it reads clearly
 // Bright core keeps its MOOD HUE (brightened), it does NOT wash to white — the
 // old near-white desaturation killed the colour on the most-visible pixels.
 constant float  kNimbusCoreHueGain  = 1.55;  // brighten the mood hue at the dense core (luminance, same hue)
@@ -393,14 +398,15 @@ fragment float4 nimbus_fragment(VertexOut in [[stage_in]],
     // arousal → agitation. Both ∈ [-1, 1], smoothed ~4 s in NimbusState. ───────
     float valence01 = clamp(nb.valence * 0.5 + 0.5, 0.0, 1.0);
     float arousal01 = clamp(nb.arousal * 0.5 + 0.5, 0.0, 1.0);
-    // NB.10 (D-142): ENERGY lifts warmth. `energy01` blends the mood-classifier
-    // arousal (energetic vs calm) with the slow energy bloom (`bloomV`, the
-    // actual loudness swell) — an energetic track reads hot even at neutral/low
-    // valence (Matt M7 r1: B.O.B.). Calm tracks (low energy) stay on the pure
-    // valence axis. Then expand the range around mid for a bigger cool↔warm swing.
-    float energy01 = clamp(0.55 * arousal01 + 0.55 * clamp(bloomV, 0.0, 1.0), 0.0, 1.0);
-    float warm01   = clamp(valence01 + kNimbusEnergyWarmth * (energy01 - kNimbusEnergyBase), 0.0, 1.0);
-    warm01         = clamp((warm01 - 0.5) * kNimbusMoodContrast + 0.5, 0.0, 1.0);
+    // NB.10 r1.5 (D-142): warmth is PRIMARILY valence (sad → cool, happy → warm).
+    // High AROUSAL adds warmth ONLY past a high threshold (a genuine banger reads
+    // hot even at low valence — B.O.B.), so it never biases moderate tracks warm
+    // and collapse the cool↔warm range (the r1 regression). Then expand around
+    // mid so the often-subtle valence travel reads clearly (the "VERY subtle"
+    // complaint). bloom stays out of the colour — it already drives size/bright.
+    float energyWarm = kNimbusEnergyWarmth * smoothstep(kNimbusEnergyLo, kNimbusEnergyHi, arousal01);
+    float warm01     = clamp(valence01 + energyWarm, 0.0, 1.0);
+    warm01           = clamp((warm01 - 0.5) * kNimbusMoodContrast + 0.5, 0.0, 1.0);
     float3 moodTint = mix(kNimbusMoodCool, kNimbusMoodWarm, warm01);  // body colour
     float3 moodAmb  = mix(kNimbusAmbCool,  kNimbusAmbWarm,  warm01);  // fill warms too (D-022 propagation)
     float  agitation = mix(kNimbusAgitCalm, kNimbusAgitWild, arousal01); // erosion knob
