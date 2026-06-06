@@ -131,7 +131,7 @@ Execution order is top-to-bottom. ENGINE.2 is shown near Skein.4 because that's 
 
 ---
 
-### Skein.3 — Stem palette + full emission routing ✅ (2026-06-05) — pending Matt's M7
+### Skein.3 — Stem palette + full emission routing ✅ (2026-06-05) — Matt M7 PASS 2026-06-06
 **preset (+ ENGINE.1.2) · depends on: Skein.2 · gate: harness + PresetSessionReplay registration + Matt's palette sign-off + M7**
 
 **Landed (ENGINE.1.2 = Option B, the lightest gated form).** The Skein.1/2 audit deferred `SkeinState` + the overlay buffer to "when the stateful painter genuinely needs them" — that is here. **The audit found Option A (pure config via slot 6) UNAVAILABLE:** the marks-on-top `strandsOnTop` path (`encodeMVWarpScenePass`) never bound fragment slot 6 — only the non-strands `renderSceneToTexture` did — so the overlay fragment could not see `directPresetFragmentBuffer`. Landed the lightest **Option B**: a gated slot-6 fragment-buffer binding in the `strandsOnTop` branch (Dragon Bloom sets no buffer → nil → byte-identical; Fata Morgana uses its own draw branch → byte-identical). `SkeinState.swift` (new) packs `SkeinHeaderGPU` (64 B) + 48 × `SkeinBurstGPU` (48 B): the audio-modulated painter clock, per-track seed phases, dominant-stem line colour, and the onset-burst ring. `skein_geometry_fragment` consumes it at `buffer(6)`. **Palette: Full Fathom Five (charcoal/oxblood/ochre/teal), Matt-approved 2026-06-05.** Key finding: only `drums_beat` is a real pulse — the other `*_beat` are reserved-zero, so per-stem onsets derive from `*_energy_dev` rising-activity in `SkeinState` (the history the closed-form fragment cannot see). sRGB (FA #71): the `.bgra8Unorm_srgb` canvas sRGB-encodes on store, so `SkeinState` sRGB-DECODES the display palette to linear before packing — without it, dark stems lifted to washed mid-tones and painted nothing. Commits: `f0fef708` (ENGINE.1.2), `7098eff7` (colour+routing), `8ddcb438` (seed+reset).
@@ -158,7 +158,7 @@ Execution order is top-to-bottom. ENGINE.2 is shown near Skein.4 because that's 
 - ✅ Per-track seed determinism (§5.7): same seed → byte-identical painting (pixel-diff 0); different seed → different (3947); reseed clears the painter (bursts 160→0, clock→0).
 - ✅ Palette contact sheet (live path, 3 candidates) → **Matt signed off on Full Fathom Five 2026-06-05**.
 - ✅ `PresetSessionReplay --preset skein` registered (per-stem `*_energy_dev` onset routes + the broadband painter-speed route; viscosity←centroid / sharpness←attackRatio are not SR.1-measurable — `SessionFrame` records no centroid/attackRatio).
-- ⏳ **M7 gate:** Matt confirms a listener can read the arrangement (drums/bass/vocals legibly distinct by colour, pour responds to energy, splatter to onsets). Cert (full M7 ≥5 tracks + soak + dHash) is Skein.6.
+- ✅ **M7 gate PASS (2026-06-06):** Matt "Looks great!" live on local-file session `2026-06-06T14-59-12Z` (Skein active, no errors, 4318 frames, all four stems heavily active → every colour painted) — a listener can read the arrangement. Cert (full M7 ≥5 tracks + soak + dHash) is Skein.6.
 
 ---
 
