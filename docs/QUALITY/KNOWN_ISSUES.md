@@ -8,6 +8,36 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
+### BUG-029 — AGC `f.bass` cold-start spike pops/drops continuous-energy presets at every track onset (2026-06-06)
+
+**Severity:** P3 (cosmetic startup artifact, ~1-2 s at each track onset; not a crash). Re-rate to P2 if judged to materially hurt the per-track first impression.
+**Domain tag:** dsp.beat (AGC cold-start) — same family as BUG-025.
+**Status:** Open — diagnosed, not yet scoped. Filed at Matt's request 2026-06-06 after the AGC2.4 re-M7. **Evidence-before-implementation: do not fix yet.**
+**Introduced:** structural — `BandEnergyProcessor`'s total-energy AGC seeds its running average from whatever energy is present at capture start; during the inter-track silence the running average decays toward zero, so the first audio frame of every track explodes the AGC scale before it catches up.
+**Resolved:** —
+
+**Expected:** continuous-energy presets (those reading `f.bass`/`f.mid`/`f.treble` directly) arrive smoothly when a track's audio starts.
+
+**Actual (session `2026-06-06T01-18-36Z`):** at every track onset the first audible frame spikes `f.bass` far above its steady ~0.25 — **Cherub Rock te=1.42 `f.bass`=4.003; Alameda te=0.66 `f.bass`=3.697**. Ferrofluid Ocean (`spikeStrength = 1.0 + 0.8·clamp(f.bass,0,1)`) pops to 1.8× then collapses as bass settles — a "pop-and-drop," not a smooth arrival. During the preceding silent pre-roll `f.bass`=0 so the spikes sit flat/static (only the slow Gerstner swell moves), so the preset reads near-static then jarringly pops.
+
+**Reproduction steps:** play any local-file or streaming session; inspect `features.csv` `bass` at each track's first audible frame — it spikes ~5-15× the steady value for ~1-2 s while the AGC scale catches up.
+
+**Session artifacts:** `~/Documents/phosphene_sessions/2026-06-06T01-18-36Z/features.csv` (Cherub Rock + Alameda startups).
+
+**Suspected failure class:** `calibration` — AGC seed/scale on the silence→onset transition.
+
+**Verification criteria (when resolved):**
+- [ ] **Automated:** on a silence→onset fixture, `f.bass` does not exceed ~N× its steady value after the first ~M frames.
+- [ ] **Manual:** Matt confirms continuous-energy presets (Ferrofluid Ocean) arrive smoothly at track onset — no pop-and-drop.
+
+**Manual validation required:** Yes — it's a felt visual artifact.
+
+**Related:**
+- BUG-025 — the AGC cold-start transient (shelved as P3); same AGC-seed family, re-surfaced via its effect on `f.bass`-driven presets.
+- BUG-027 / AGC2 — the deviation fix; its cold-start warmup (AGC2.4.1) is a *separate* mechanism inside `BandDeviationTracker` and does **not** touch `f.bass`. FFO reads `f.bass` directly, so AGC2 does not help it — hence this separate filing. Highest-leverage fix smooths the AGC seed/scale at the source (broad benefit: every `f.bass` consumer).
+
+---
+
 ### BUG-028 — Beat-grid live phase imperfect on ~half of tracks (felt "behind the beat / wrong downbeat") (2026-06-05)
 
 **Severity:** P2 (musical-feel ceiling across every beat-coupled preset; not a crash. Bounds Nimbus's beat axis — see M7 r1 below).
@@ -27,9 +57,9 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 **Severity:** P2 (silently weakens the canonical D-026 Layer-2 "above-average" motion driver for every preset that consumes the positive deviation primitives, on every capture path — not a crash, but a load-bearing-design-doesn't-do-what-it-says issue).
 **Domain tag:** dsp.beat (deviation-primitive derivation)
-**Status:** Open — **AGC2.1 measured 2026-06-05** (evidence reproduced + expanded on 4 real sessions, both paths; see the evidence-refresh block below and [`docs/diagnostics/AGC2_1_DEVIATION_CENTRING_2026-06-05.md`](../diagnostics/AGC2_1_DEVIATION_CENTRING_2026-06-05.md)); **awaiting the AGC2.2 decision gate** (a/b/c/split, Matt's call). Surfaced during the BUG-025 A/B correction. **Re-confirmed 2026-06-05 (Nimbus NB.10 r1.6):** the same wrong "centres at 0.5" assumption mis-calibrated Nimbus's `bloom` (stem-energy = 3 AGC bands summed, centres ~0.30 not 0.5 → tiny bodies on normal music). Nimbus was fixed with a local recalibration, but this is the second preset bitten by the system-wide root cause — a normalisation fix here (make the AGC produce a true 0.5 centre per band/stem) would let every preset calibrate against a real 0.5 and is the proper permanent fix. Candidate for its own project (cf. the beat-grid D-145 pattern).
+**Status:** **Resolved 2026-06-06 (AGC2.1 → 2.5).** Matt chose the (b)+(c)-split at the AGC2.2 gate (**D-146**): a per-band EMA pivot on the FeatureVector band deviation (mirror the stem path) + document the stem-energy offset. Implemented in AGC2.3 (`BandDeviationTracker`); a cold-start warmup was added in AGC2.4.1 after the M7 exposed a session-start hole. See the **Resolution** block below. Surfaced during the BUG-025 A/B correction. **Re-confirmed 2026-06-05 (Nimbus NB.10 r1.6):** the same wrong "centres at 0.5" assumption mis-calibrated Nimbus's `bloom` (stem-energy = 3 AGC bands summed, centres ~0.30 not 0.5 → tiny bodies on normal music). Nimbus was fixed with a local recalibration, but this is the second preset bitten by the system-wide root cause — a normalisation fix here (make the AGC produce a true 0.5 centre per band/stem) would let every preset calibrate against a real 0.5 and is the proper permanent fix. Candidate for its own project (cf. the beat-grid D-145 pattern).
 **Introduced:** D-026 / MV-1 (the deviation-primitive design). The fixed 0.5 pivot has always assumed each band's AGC-normalised value centres at 0.5; it doesn't.
-**Resolved:** —
+**Resolved:** 2026-06-06 — commits `bf711edf` (AGC2.1 measure), `b1c1d1b7` (D-146 decision), `41d87bf9` + `0d2ddb51` (AGC2.3 fix), `95a16881` (AGC2.4.1 cold-start warmup). Local `main` (not pushed).
 
 ### Expected behavior
 
@@ -68,11 +98,11 @@ Spotify           0.222       −0.55          1.5 %
 ### Verification criteria
 
 When resolved:
-- [ ] **Automated:** on a recorded bass-dominant fixture, the chosen "above-average bass" primitive fires on ≥ 20 % of frames.
-- [ ] **Automated:** existing deviation-primitive contract tests (`RelDevTests`) still pass or are updated with the new semantics.
-- [ ] **Manual:** Matt confirms presets that consume the above-average-bass primitive read as appropriately reactive across multiple tracks — no regression on the 8 deviation-consuming presets.
+- [x] **Automated:** on a recorded bass-dominant fixture, the chosen "above-average bass" primitive fires on ≥ 20 % of frames. *(`RelDevTests.bandDeviation_firesAboveOwnAverage_onRecordedBass`: the old fixed-0.5 pivot fires 7.2 %, the new per-band EMA fires 41 % on the recorded Atlas fixture.)*
+- [x] **Automated:** existing deviation-primitive contract tests (`RelDevTests`) still pass or are updated with the new semantics. *(The fixed-0.5 formula pin was deliberately retired → `BandDeviationTracker` unit tests + the cold-start live-path test; 10/10 green, SwiftLint `--strict` clean.)*
+- [x] **Manual:** Matt confirms presets that consume the above-average-bass primitive read as appropriately reactive across multiple tracks. *(M7 catalog cycle, session `2026-06-06T01-18-36Z` — deviation presets read well. The one flagged issue, Ferrofluid Ocean's startup, was diagnosed **out of scope**: FFO reads `f.bass`/`arousal`, no deviation primitives; its root is the AGC `f.bass` cold-start spike, filed as **BUG-029**.)*
 
-**Manual validation required:** Yes — affects all 8 deviation-consuming presets.
+**Manual validation required:** Yes — affects the deviation-consuming presets (Arachne, Aurora Veil, Dragon Bloom, Gossamer, Kinetic Sculpture, Spectral Cartograph, Volumetric Lithograph). Done at the M7 catalog cycle.
 
 ### Fix scope
 
@@ -106,12 +136,25 @@ Three findings sharpen the original entry:
    vs the band path (fixed-0.5 pivot, dead) sit side by side. Fixing A = bringing the band path in
    line with the stem path. This is the (b)-leaning evidence; the call is Matt's at AGC2.2.
 
+### Resolution (AGC2.1 → 2.5, 2026-06-06)
+
+**Decision (D-146):** the (b)+(c)-split. The fixed-0.5 pivot in `MIRPipeline.buildFeatureVector` was replaced with a **per-band running-average pivot** (`BandDeviationTracker`, mirroring `StemAnalyzer`'s per-stem EMA): each band's `*Rel`/`*Dev` is now measured against the band's own recent average. The total-energy AGC is untouched (raw `f.bass/mid/treble` and cross-band info unchanged). Stems needed no engine change — the stem deviation path was already EMA-based and healthy; the raw-`{stem}Energy`-centre is handled per-consumer (Nimbus already recalibrated, D-144 r1.6) and documented.
+
+**Additive form** chosen over scale-free `x/ema−1` (AGC2.3 prototype) — preserves the `[-1,1]`-ish `*Rel` convention and avoids unbounded spikes. Mid/treble `*Dev` are quieter than `bassDev` in absolute terms (those bands are quiet post-AGC) — an authoring note, see SHADER_CRAFT §14.1.
+
+**No golden-hash drift** — `PresetRegressionTests` feed hand-built FeatureVectors, bypassing the live derivation; the *live* runtime values change (catalog M7 validated that).
+
+**Cold-start sub-fix (AGC2.4.1):** the AGC2.4 M7 (`2026-06-05T23-57-14Z`) exposed a hole — the per-band EMA seeded from the session-start AGC spike (bass = 3.69 off the initial silence) and, since `MIRPipeline.reset()` is never called per track, stayed poisoned ~3-4 min, suppressing all band `*Dev` early. Fixed with a two-speed warmup (fast decay converges through the spike in ~1-2 s) + a value ceiling. A **live-path** test (`bandDeviation_recoversFromColdStart_liveMIRPipeline`) now reproduces and guards it — closing the FA #66 parity gap that let the hole ship. (Replaying the fix over the M7 session: the early tracks recover, e.g. Alameda mid 0 → 59 %, Mingus treble 0 → 63 %.)
+
+**Out of scope, filed separately:** the AGC `f.bass` cold-start spike itself (**BUG-029**) — it pops/drops continuous-energy presets (Ferrofluid Ocean) at every track onset; it's a `BandEnergyProcessor` AGC issue, not a deviation issue, and AGC2's warmup is a separate mechanism that does not touch `f.bass`.
+
 ### Related
 
-- Decision: D-026 (deviation primitives) — the design this refines.
+- Decision: D-026 (deviation primitives) — the design this refines; D-146 (the AGC2.2 fix-scope decision).
 - BUG-025 — the misdiagnosis that surfaced this; corrected 2026-06-02.
+- BUG-029 — the AGC `f.bass` cold-start spike, filed out of AGC2 scope.
 - Increment: Dragon Bloom 2026-06-02 re-tune (direction (c) applied at preset scope — proof the signed-`*Rel`-not-`*Dev` workaround works).
-- Failed Approach: #31 (absolute thresholds on AGC-normalised energy) — same family of "AGC normalisation has non-obvious per-band consequences."
+- Failed Approach: #31 (absolute thresholds on AGC-normalised energy) — same family; #66 (test/prod parity gap — the cold-start hole's lesson).
 
 ---
 

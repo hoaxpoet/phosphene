@@ -6,6 +6,40 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-06-06] AGC2 — BUG-027: per-band EMA deviation pivot (mid/treble `*Dev` alive again) + cold-start warmup
+
+**Increment:** AGC2.1 → 2.5 (measure → decide D-146 → fix → validate → close) + AGC2.4.1 (cold-start sub-fix). **Status:** Resolved 2026-06-06 (local `main`, not pushed). **Decision:** `docs/DECISIONS.md` D-146. **Evidence:** `docs/diagnostics/AGC2_1_DEVIATION_CENTRING_2026-06-05.md`.
+
+### What landed
+
+The FeatureVector band deviation primitives (`bassDev`/`midDev`/`trebDev` + the `*AttRel` family) were derived against a **fixed 0.5 pivot**, but the AGC normalises the *total* 6-band energy to 0.5 — so each band centres well below 0.5 and `midDev`/`trebDev` fired **~0 % on all music** (measured AGC2.1, both capture paths, including genuinely mid-rich and treble-rich tracks). The entire positive mid/treble "above-average" channel was dead catalog-wide.
+
+**Fix (D-146, the b+c-split):** a new `BandDeviationTracker` (`Sources/DSP`) replaces the fixed pivot with a **per-band running-average pivot** — each band's `*Rel`/`*Dev` is measured against the band's own recent average, mirroring `StemAnalyzer`'s per-stem EMA (already healthy). The total-energy AGC is untouched, so raw `f.bass/mid/treble` and the cross-band relative-energy info are unchanged. Stems needed no engine change (their deviation path was already EMA-based); the raw-`{stem}Energy`-centre is handled per-consumer (Nimbus, D-144 r1.6) + documented.
+
+Replaying the fix over a real session, the long-dead routes wake up: Alameda (mid-rich) `mid_dev` 0 → 59 %, Mingus (treble-rich) `treb_dev` 0 → 63 %; `bass_dev` 2-8 % → 40-60 %. Affected presets: Spectral Cartograph, Volumetric Lithograph, Gossamer, Dragon Bloom, Arachne, Aurora Veil, Kinetic Sculpture. **Ferrofluid Ocean is NOT affected** (it reads `f.bass`/`arousal`, no deviation primitives).
+
+### Cold-start sub-fix (AGC2.4.1)
+
+The first M7 exposed a hole: the per-band EMA seeded from the session-start AGC spike (bass = 3.69 off the initial silence) and — since `MIRPipeline.reset()` is never called per track — stayed poisoned ~3-4 minutes, suppressing all band `*Dev` early. Fixed with a two-speed warmup (fast decay converges through the spike in ~1-2 s) + a value ceiling. **A live-path test now reproduces and guards it** (`bandDeviation_recoversFromColdStart_liveMIRPipeline`) — closing the FA #66 test/prod parity gap that let the hole ship.
+
+### Tests / verification
+
+- `RelDevTests`: the fixed-0.5 formula pin retired → `BandDeviationTracker` unit tests + the BUG-027 firing gate (recorded fixture: old 7.2 %, new 41 %) + the live-path cold-start test. 10/10 green; existing 8 unregressed.
+- Full engine suite green (modulo the pre-existing gitignored `love_rehab` fixture); app build `BUILD SUCCEEDED`; SwiftLint `--strict` clean; **no `PresetRegressionTests` golden drift** (fixtures bypass the live derivation).
+- M7 catalog cycle (`2026-06-06T01-18-36Z`): deviation presets read well; the one flagged issue (Ferrofluid Ocean startup) was diagnosed out of scope → **BUG-029**.
+
+### Durable
+
+- `SHADER_CRAFT.md §14.1` softened — `f.*_dev` works again (per-band EMA), with the mid/treble-amplitude + cold-start caveats.
+- Diagnostics: `tools/agc2/measure_deviation_centring.py`, `tools/agc2/prototype_pivot_formula.py`.
+- Filed **BUG-029** — the AGC `f.bass` cold-start spike (pops/drops continuous-energy presets at every track onset; out of AGC2 scope).
+
+### Commits
+
+`bf711edf` (AGC2.1) · `b1c1d1b7` (D-146) · `41d87bf9` + `0d2ddb51` (AGC2.3) · `95a16881` (AGC2.4.1). Local `main`, not pushed.
+
+---
+
 ## [dev-2026-06-04] MM — Murmuration: 3D rebuild + global-envelope musicality, CERTIFIED
 
 **Increment:** MM.6 (rebuild) + MM.5 (cert). **Status:** Shipped + certified 2026-06-04. **Design:** `docs/presets/MURMURATION_DESIGN.md` §13–§14.
