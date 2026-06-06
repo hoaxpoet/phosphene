@@ -165,6 +165,13 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// `applyPreset` (NB.4 — same direct-preset slot-6 pattern as Aurora Veil).
     var nimbusState: NimbusState?
 
+    /// Skein painter integrators + onset-burst ring + per-track seed — allocated
+    /// when the Skein preset is active, nil otherwise. Tick closure and
+    /// skeinBuffer are wired via `setMeshPresetTick` / `setDirectPresetFragmentBuffer`
+    /// in `applyPreset` (Skein.ENGINE.1.2 — the gated slot-6 marks-on-top overlay
+    /// buffer). Re-seeded on track change for the §5.7 determinism property.
+    var skeinState: SkeinState?
+
     /// Lumen Mosaic 4-light pattern engine — allocated when the Lumen Mosaic
     /// preset is active, nil otherwise. Tick closure flushes the engine state
     /// to a 336-byte UMA buffer bound at fragment slot 8 of the ray-march

@@ -63,13 +63,21 @@ struct SkeinCanvasHoldTest {
                 "Skein.metal skein_geometry_vertex must read features@0 (Path A — the painter drives off features.time).")
         #expect(!src.contains("kSkeinStampColor"),
                 "Skein.metal still declares the ENGINE.1.1 disc stamp — Skein.1 replaces it with the pour line.")
-        // Skein.2: the splatter morphology — ragged-edge 2D fBM + the debug viscosity sweep.
+        // Skein.2: the splatter morphology — ragged-edge 2D fBM + deterministic droplet placement.
         #expect(src.contains("skein_fbm2"),
                 "Skein.metal missing skein_fbm2 (Skein.2 ≥4-octave ragged-edge 2D noise).")
-        #expect(src.contains("skeinDebugViscosity"),
-                "Skein.metal missing skeinDebugViscosity (Skein.2 debug viscosity sweep → Skein.3 centroid).")
         #expect(src.contains("hash_f01_4x"),
-                "Skein.metal missing hash_f01_4x (Skein.2 deterministic per-droplet placement, §5.7).")
+                "Skein.metal missing hash_f01_4x (deterministic per-droplet placement, §5.7).")
+        // Skein.3: the debug drivers are RETIRED — the fragment consumes SkeinUniforms at slot 6
+        // (the painter clock + per-track seed phases + per-stem-coloured onset-burst ring).
+        #expect(!src.contains("skeinDebugViscosity"),
+                "Skein.metal still declares skeinDebugViscosity — Skein.3 retires it (viscosity ← per-burst centroid).")
+        #expect(!src.contains("kSkeinFlickDt"),
+                "Skein.metal still declares kSkeinFlickDt — Skein.3 retires the debug flick schedule (→ onset-burst ring).")
+        #expect(src.contains("constant SkeinUniforms& st [[buffer(6)]]"),
+                "Skein.metal skein_geometry_fragment must read SkeinUniforms at buffer(6) (ENGINE.1.2 slot-6 binding).")
+        #expect(src.contains("st.painterTau"),
+                "Skein.metal fragment must drive the painter from SkeinState.painterTau (Skein.3 audio-modulated clock).")
     }
 
     @Test("Skein.json declares canvas-hold config + a marks-on-top block (D-143)")
@@ -100,22 +108,25 @@ struct SkeinCanvasHoldTest {
         guard let fx = try loadSkeinFixture() else { return }
         let w = 256, h = 256
         let checkpoints = [30, 75, 120, 179]
-        // Square render (aspect 1.0) so the line width is isotropic and the connectivity mask
-        // is clean. The painter advances with features.time → a new capsule lands each frame.
+        // Square render (aspect 1.0) so the line width is isotropic and the connectivity mask is
+        // clean. SILENCE (stemFrames empty → StemFeatures.zero): Skein.3 lays ONLY the pour line —
+        // onset bursts are real-audio-driven, so silence has no splatter (verified by the real-stem
+        // test below). The painter advances on painterTau (SkeinState, speed 1 at silence ≈ a
+        // 60 fps clock) → a new capsule lands each frame. lineCol stays white at silence.
         let run = try runPourAccumulation(
             chromatic: 0, frames: 180, width: w, height: h, aspect: 1.0, startTime: 0.0,
             checkpoints: Set(checkpoints), fx: fx)
 
-        // Skein.2: isolate the pour LINE from the splatter satellites. The line lives in a thin
-        // corridor around the trajectory; far satellites are disconnected components by design.
+        // The pour LINE lives in a thin corridor around the (seed-0) trajectory; at silence the
+        // whole painting IS the line (no satellites), so continuity should be near-total.
         let line = pourLineCorridor(run.finalPixels, w: w, h: h, cream: run.creamRef,
                                     t0: -0.7, t1: 3.0, rV: 0.025)
         let whiteOK = hasWhiteTexel(run.finalPixels)
         print("""
-        [skein_pour] 180 frames @ \(w)×\(h), chromatic=0, live scene→warp→overlay→blit→swap (Skein.2 splatter on):
+        [skein_pour] 180 frames @ \(w)×\(h), chromatic=0, live scene→warp→overlay→blit→swap (SILENCE: line only):
           painted-count checkpoints \(run.checkpointFrames) = \(run.checkpointCounts)
           early painted texel \(run.earlyXY.map { "(\($0.0),\($0.1))" } ?? "none") still painted at end = \(run.earlyStillPaintedFinal)
-          pour-LINE continuity (corridor) = \(String(format: "%.3f", line.continuity))  [in-corridor \(line.inCorridor) / satellites-outside \(line.outside)]
+          pour-LINE continuity (corridor) = \(String(format: "%.3f", line.continuity))  [in-corridor \(line.inCorridor) / outside \(line.outside)]
           far corner held (chromatic=0): frame0 \(run.creamRef) == final \(run.groundCornerFinal) ? \(run.creamRef == run.groundCornerFinal)
           ground corner cream = \(isCreamish(run.groundCornerFinal)) ; white texel present = \(whiteOK)
         """)
@@ -139,15 +150,12 @@ struct SkeinCanvasHoldTest {
         #expect(run.creamRef == run.groundCornerFinal,
                 "Far corner drifted \(run.creamRef) → \(run.groundCornerFinal) at chromatic=0 — the held canvas is not lossless.")
 
-        // 3. CONTINUITY (pour LINE only) — the laid line is a single connected component (no gaps
-        //    between consecutive capsules; they share an endpoint by construction). Skein.2 adds
-        //    disconnected SATELLITES by design, so continuity is checked in the LINE corridor only;
-        //    the satellites appear as paint OUTSIDE the corridor (asserted present, so the splatter
-        //    is verified to render here too — it is exercised in depth by test_splatter_*).
+        // 3. CONTINUITY (pour LINE) — the laid line is a single connected component (no gaps between
+        //    consecutive capsules; they share an endpoint by construction via the painterTau tail
+        //    chaining). At silence there are no satellites, so the corridor holds the whole painting.
+        //    (Onset-driven splatter is exercised by test_splatter_realStem_* below.)
         #expect(line.continuity >= 0.95,
                 "Pour-line corridor continuity is only \(line.continuity) — the line has gaps (Skein.1 invariant regressed).")
-        #expect(line.outside > 0,
-                "No painted pixels outside the line corridor — the Skein.2 splatter satellites did not render.")
 
         // 4. CREAM GROUND held (not black) — the per-preset canvas clear (D-143) still carries.
         #expect(!isBlack(run.groundCornerFinal),
@@ -159,97 +167,101 @@ struct SkeinCanvasHoldTest {
         #expect(whiteOK, "No white texel found — the pour line did not render white-on-cream.")
     }
 
-    // MARK: - Splatter: halo + bake/hold + viscosity response + new-mark count (the Skein.2 gate)
+    // MARK: - Real-stem routing: colour separation + onset→splatter + opaque + bake/hold (Skein.3 gate)
 
-    @Test("Splatter bakes + holds, shows a dense-near satellite halo, opaque (not additive), and responds to viscosity — live path")
-    func test_splatter_morphologyBakesHoldsViscosity() throws {
+    @Test("Real stems: stems paint separable colours, onsets drive splatter, marks composite opaque, bake + hold — live path")
+    func test_realStem_colourSeparationAndRouting() throws {
         guard let fx = try loadSkeinFixture() else { return }
-        let w = 256, h = 256
-        // Two windows of the debug viscosity sweep (period 12 s): THICK peak ~t6, THIN trough ~t12.
-        // Both run the same live scene→warp→overlay→blit→swap path advancing features.time.
-        let thick = try runPourAccumulation(
-            chromatic: 0, frames: 180, width: w, height: h, aspect: 1.0, startTime: 4.5,
-            checkpoints: [40, 179], fx: fx, capturePerFrame: true)
-        let thin = try runPourAccumulation(
-            chromatic: 0, frames: 180, width: w, height: h, aspect: 1.0, startTime: 10.5,
-            checkpoints: [40, 179], fx: fx, capturePerFrame: true)
+        guard let session = Self.firstRecordedSession() else {
+            print("SkeinCanvasHoldTest: no recorded session under ~/Documents/phosphene_sessions — skipping real-stem routing test (local-only: real audio required, feedback_synthetic_audio)")
+            return
+        }
+        guard let stems = loadStemFrames(session, maxFrames: 2400), stems.count > 200 else {
+            Issue.record("Recorded session \(session.lastPathComponent) has no usable stems.csv frames.")
+            return
+        }
+        let w = 320, h = 320
+        let palette = SkeinState.defaultPalette
+        let frames = min(stems.count, 1200)
+        // Drive the live scene→warp→overlay→blit→swap path with REAL replayed stems
+        // (feedback_synthetic_audio: never hand-authored envelopes). Bursts fire on real per-stem
+        // onsets in each stem's colour; the painting accumulates coloured.
+        let run = try runPourAccumulation(
+            chromatic: 0, frames: frames, width: w, height: h, aspect: 1.0, startTime: 0.0,
+            checkpoints: [60, frames - 1], fx: fx, seed: 0, palette: palette, stemFrames: stems)
 
-        let ts = splatterHaloAndSatellites(thick.finalPixels, w: w, h: h, cream: thick.creamRef,
-                                           t0: 3.8, t1: 7.5, corridorRV: 0.025)
-        let ns = splatterHaloAndSatellites(thin.finalPixels, w: w, h: h, cream: thin.creamRef,
-                                           t0: 9.8, t1: 13.5, corridorRV: 0.025)
+        let an = analyzeColouredPainting(run.finalPixels, w: w, h: h, cream: run.creamRef, palette: palette)
+        let classified = an.perStemCount.reduce(0, +) + an.mudCount
+        let stemsPresent = an.perStemCount.filter { $0 > 30 }.count
+        let mudFrac = classified > 0 ? Float(an.mudCount) / Float(classified) : 0
 
-        // New-mark count (governor input): per-frame painted-count deltas.
-        let deltas = zip(thick.perFrameCounts.dropFirst(), thick.perFrameCounts).map { $0 - $1 }
-        let newMarkFrames = deltas.filter { $0 > 0 }.count
-        let creamMin = Int(min(thick.creamRef[0], min(thick.creamRef[1], thick.creamRef[2])))
+        // ONSET → SPLATTER route + STEM WARMUP — driven at the SkeinState layer (the deterministic
+        // source of bursts) so the assertions don't depend on render sampling.
+        let busyCalm = Self.busiestAndCalmestSlices(stems, window: 240)
+        let busyBursts = try Self.spawnsOver(busyCalm.busy, device: fx.ctx.device, palette: palette)
+        let calmBursts = try Self.spawnsOver(busyCalm.calm, device: fx.ctx.device, palette: palette)
+        let silenceBursts = try Self.spawnsOver(Array(repeating: StemFeatures.zero, count: 30),
+                                                device: fx.ctx.device, palette: palette)
+        // DIAG (legibility): per-stem spawns over the full run + early-frame per-stem painted, to
+        // distinguish a spawn (routing) gap from overpaint (render) of the dark stem colours.
+        let spawnsFull = try Self.spawnsPerStemOver(Array(stems.prefix(frames)),
+                                                    device: fx.ctx.device, palette: palette)
+        let earlyAn = run.checkpointPixels[60].map {
+            analyzeColouredPainting($0, w: w, h: h, cream: run.creamRef, palette: palette)
+        }
 
         print("""
-        [skein_splatter] live scene→warp→overlay→blit→swap, 256×256:
-          THICK (visc≈hi, startT 4.5): halo near/mid/far = \(ts.haloNear)/\(ts.haloMid)/\(ts.haloFar)  satellites=\(ts.satellites)  meanSatDist=\(String(format: "%.3f", ts.meanSatDist))  minCh=\(ts.minChannel)
-          THIN  (visc≈lo, startT 10.5): halo near/mid/far = \(ns.haloNear)/\(ns.haloMid)/\(ns.haloFar)  satellites=\(ns.satellites)  meanSatDist=\(String(format: "%.3f", ns.meanSatDist))  minCh=\(ns.minChannel)
-          new-mark count: \(newMarkFrames)/\(deltas.count) frames added marks; deltas[0..<8]=\(Array(deltas.prefix(8)))
-          opaque check: creamMin=\(creamMin), thick minCh=\(ts.minChannel), thin minCh=\(ns.minChannel)
-          roundness (bbox-fill; ~0.785 round, ~1.0 square): thick \(String(format: "%.3f", ts.roundFill)) (n=\(ts.roundN)), thin \(String(format: "%.3f", ns.roundFill)) (n=\(ns.roundN))
+        [skein_realstem] session \(session.lastPathComponent), \(stems.count) stem frames, live path \(w)×\(h):
+          per-stem painted (drums/bass/vocals/other) = \(an.perStemCount)  stems-present(>30px) = \(stemsPresent)
+          per-stem SPAWNS (full run)                 = \(spawnsFull)
+          early frame-60 per-stem painted            = \(earlyAn?.perStemCount ?? [])
+          mud fraction (ambiguous between two stems) = \(String(format: "%.3f", mudFrac))  (classified \(classified) px)
+          distinct coloured blobs = \(an.distinctBlobs)   roundness bbox-fill = \(String(format: "%.3f", an.roundFill)) (n=\(an.roundN))
+          onset→splatter route: busy-slice bursts \(busyBursts) vs calm-slice \(calmBursts)   warmup bursts-at-silence = \(silenceBursts)
         """)
 
-        // 1. SATELLITE HALO — dense near the line, sparse far (spatter, not a uniform field).
-        #expect(ts.haloNear > ts.haloFar,
-                "THICK satellites not dense-near/sparse-far (near \(ts.haloNear) ≤ far \(ts.haloFar)).")
-        #expect(ns.haloNear > ns.haloFar,
-                "THIN satellites not dense-near/sparse-far (near \(ns.haloNear) ≤ far \(ns.haloFar)).")
+        // 1. COLOUR SEPARATION — the headline: ≥3 stems paint well-populated, separable colour clusters.
+        #expect(stemsPresent >= 3,
+                "Only \(stemsPresent) stems produced a separable colour cluster (\(an.perStemCount)) — the canvas is not legibly per-stem.")
 
-        // 2. DISTINCT SATELLITES (not a merged froth) — many disconnected blobs outside the line.
-        #expect(ns.satellites > 20,
-                "THIN produced only \(ns.satellites) distinct satellites — splatter not rendering as discrete dots.")
+        // 2. OPAQUE, not mud — ambiguous between-two-stems pixels are a small fraction (occlude, no brown).
+        #expect(mudFrac < 0.22,
+                "Mud fraction \(mudFrac) ≥ 0.22 — coloured marks are averaging to mud, not occluding (the dead-mat anti-ref).")
 
-        // 3. VISCOSITY RESPONSE — thin/fine flings satellites WIDER + throws MORE of them than thick.
-        //    meanSatDist (a per-satellite spread, trajectory-robust) is the cleanest discriminator.
-        #expect(ns.meanSatDist > ts.meanSatDist,
-                "Viscosity did not widen the spread: thin meanSatDist \(ns.meanSatDist) ≤ thick \(ts.meanSatDist).")
-        #expect(ns.satellites > ts.satellites,
-                "Satellite count did not respond to viscosity: thin \(ns.satellites) ≤ thick \(ts.satellites).")
+        // 3. DISTINCT coloured dots — onset bursts produce separate satellite blobs, not a uniform
+        //    smear. Most droplets connect to the wandering line (bursts are flicked AS the painter
+        //    pours, so they touch the skein — Pollock-correct); the separate FAR satellites are the
+        //    "splatter, not froth" evidence. Paired with the roundness + colour-separation gates.
+        #expect(an.distinctBlobs > 8,
+                "Only \(an.distinctBlobs) distinct coloured satellite blobs — onset splatter not rendering as dots.")
 
-        // 4. OPAQUE alpha-over, NOT additive — paint only brightens cream→white; no channel drops
-        //    below cream's darkest channel (no mud / no darkening). (creamB ≈ 188; 12 tolerance.)
-        #expect(ts.minChannel >= creamMin - 12,
-                "A pixel darkened below cream (thick minCh \(ts.minChannel) < \(creamMin - 12)) — additive/muddy compositing.")
-        #expect(ns.minChannel >= creamMin - 12,
-                "A pixel darkened below cream (thin minCh \(ns.minChannel) < \(creamMin - 12)) — additive/muddy compositing.")
+        // 4. ROUNDNESS — droplets read ROUND, not square (Matt M7 isotropic-AA guard).
+        if an.roundN >= 3 {
+            #expect(an.roundFill < 0.90,
+                    "Coloured droplets too boxy (bbox-fill \(an.roundFill), n=\(an.roundN)) — square-droplet regression.")
+        }
 
-        // 5. SPLATTER BAKES + HOLDS — a satellite painted by the early checkpoint persists to the end.
-        let earlyBuf = thick.checkpointPixels[40]
-        #expect(earlyBuf != nil, "No early checkpoint captured for the bake/hold check.")
-        if let earlyBuf = earlyBuf {
-            let sat = firstSatellitePixel(earlyBuf, w: w, h: h, cream: thick.creamRef,
-                                          t0: 3.8, t1: 7.5, corridorRV: 0.03)
-            #expect(sat != nil, "No early satellite found outside the line corridor — splatter not laid early.")
-            if let (sx, sy) = sat {
-                let i = (sy * w + sx) * 4
-                let f = thick.finalPixels
-                let delta = abs(Int(f[i]) - Int(thick.creamRef[0]))
-                          + abs(Int(f[i + 1]) - Int(thick.creamRef[1]))
-                          + abs(Int(f[i + 2]) - Int(thick.creamRef[2]))
+        // 5. ONSET → SPLATTER (route) — a beat-heavy slice spawns measurably more bursts than a steady one.
+        #expect(busyBursts > calmBursts,
+                "Beat-heavy slice spawned \(busyBursts) bursts ≤ steady slice \(calmBursts) — onset→splatter route not firing.")
+
+        // 6. STEM WARMUP (D-019) — no bursts at silence (no first-frame colour pop).
+        #expect(silenceBursts == 0,
+                "\(silenceBursts) bursts spawned at silence — the D-019 warmup gate leaked.")
+
+        // 7. BAKE + HOLD — an early-painted coloured pixel persists to the end (lossless held colour).
+        if let early = run.checkpointPixels[60] {
+            let cp = firstColouredPixel(early, w: w, h: h, cream: run.creamRef)
+            #expect(cp != nil, "No early coloured pixel found — bursts not laid early.")
+            if let (cx, cy) = cp {
+                let i = (cy * w + cx) * 4
+                let f = run.finalPixels
+                let delta = abs(Int(f[i]) - Int(run.creamRef[0]))
+                          + abs(Int(f[i + 1]) - Int(run.creamRef[1]))
+                          + abs(Int(f[i + 2]) - Int(run.creamRef[2]))
                 #expect(delta > 45,
-                        "An early-painted satellite at (\(sx),\(sy)) was lost by the end — splatter did not bake/hold (Δ \(delta)).")
+                        "An early coloured pixel at (\(cx),\(cy)) was lost by the end — bake/hold regressed (Δ \(delta)).")
             }
-        }
-
-        // 6. NEW-MARK COUNT exposed (the §6 governor input) — marks are added across the run.
-        #expect(thick.perFrameCounts.count == 180, "Per-frame painted counts not captured for all frames.")
-        #expect(newMarkFrames > 90,
-                "Marks were added on only \(newMarkFrames)/\(deltas.count) frames — splatter/pour not accumulating.")
-
-        // 7. ROUNDNESS — droplets read as ROUND discs, not squares (Matt M7 2026-06-05): a round disc
-        //    fills ~0.785 of its bbox, a square ~1.0. Guards against the fwidth(dc)-anisotropy regression
-        //    (sharp axis-aligned edges snapping to the pixel grid → rounded-square dots).
-        if ns.roundN >= 5 {
-            #expect(ns.roundFill < 0.90,
-                    "THIN droplets are too boxy (mean bbox-fill \(ns.roundFill) ≥ 0.90, n=\(ns.roundN)) — square-droplet regression.")
-        }
-        if ts.roundN >= 5 {
-            #expect(ts.roundFill < 0.90,
-                    "THICK droplets are too boxy (mean bbox-fill \(ts.roundFill) ≥ 0.90, n=\(ts.roundN)) — square-droplet regression.")
         }
     }
 
@@ -298,43 +310,108 @@ struct SkeinCanvasHoldTest {
         #expect(ordered.count == checkpoints.count, "Missing contact-sheet checkpoints — accumulation run came up short.")
     }
 
-    // MARK: - Splatter viscosity-sweep contact sheet (env-gated: both poles, crisp)
+    // MARK: - Per-track seed determinism (§5.7) + reseed
 
-    @Test("Splatter viscosity-sweep contact sheet (env-gated: SKEIN_VISUAL=1 / RENDER_VISUAL=1)")
-    func test_splatter_viscositySweepContactSheet() throws {
+    @Test("Per-track seed: same seed → byte-identical painting; different seed → different; reseed clears")
+    func test_seedDeterminismAndReseed() throws {
+        guard let fx = try loadSkeinFixture() else { return }
+        guard let session = Self.firstRecordedSession(),
+              let stems = loadStemFrames(session, maxFrames: 2400), stems.count > 200 else {
+            print("SkeinCanvasHoldTest: no recorded session — skipping seed-determinism test")
+            return
+        }
+        // The determinism RENDER uses the first 400 frames (fast); the reseed busy-slice search
+        // below scans the full set so it lands on an active stretch (the intro is quiet).
+        let w = 200, h = 200, frames = min(stems.count, 400)
+        func render(_ seed: UInt32) throws -> [UInt8] {
+            try runPourAccumulation(
+                chromatic: 0, frames: frames, width: w, height: h, aspect: 1.0, startTime: 0.0,
+                checkpoints: [frames - 1], fx: fx, seed: seed, palette: nil, stemFrames: stems).finalPixels
+        }
+        let a1 = try render(12345), a2 = try render(12345), bSeed = try render(99999)
+        func pxDiff(_ x: [UInt8], _ y: [UInt8]) -> Int {
+            var n = 0, i = 0
+            while i < x.count { if x[i] != y[i] || x[i + 1] != y[i + 1] || x[i + 2] != y[i + 2] { n += 1 }; i += 4 }
+            return n
+        }
+        let same = pxDiff(a1, a2), cross = pxDiff(a1, bSeed)
+
+        // Reseed unit check: tick a BUSY slice so bursts actually spawn, then reseed clears both.
+        let busy = Self.busiestAndCalmestSlices(stems, window: 300).busy
+        guard let st = SkeinState(device: fx.ctx.device, seed: 7) else { throw SkeinHoldError.bufferFailed }
+        let dt: Float = 1.0 / 60.0
+        for stem in busy {
+            st.tick(deltaTime: dt, features: FeatureVector(time: 0, deltaTime: dt, aspectRatio: 1.0), stems: stem)
+        }
+        let beforeTau = st.painterTau, beforeBursts = st.totalBurstsSpawned
+        st.reseed(7)
+        print("""
+        [skein_seed] same-seed pixel-diff=\(same)  diff-seed pixel-diff=\(cross)  (200×200, \(frames)f)
+          reseed: bursts \(beforeBursts)→\(st.totalBurstsSpawned)  painterTau \(String(format: "%.2f", beforeTau))→\(String(format: "%.2f", st.painterTau))
+        """)
+
+        // 1. DETERMINISM (§5.7 headline) — same track + same seed → the same painting.
+        #expect(same == 0, "Same seed produced \(same) differing pixels — the painting is not deterministic.")
+        // 2. The seed actually perturbs the trajectory — a different seed paints differently.
+        #expect(cross > 50, "Different seeds produced near-identical paintings (\(cross) px) — the seed does not reach the trajectory.")
+        // 3. RESEED clears the live painter state (the §1.5 track-change reset).
+        #expect(st.painterTau == 0, "reseed did not reset painterTau (\(st.painterTau)).")
+        #expect(st.totalBurstsSpawned == 0, "reseed did not clear the burst ring (\(st.totalBurstsSpawned)).")
+    }
+
+    // MARK: - Real-stem palette contact sheet (env-gated: candidate palettes for Matt sign-off)
+
+    /// Candidate per-stem palettes [drums, bass, vocals, other] for Matt's sign-off. The README
+    /// colour rule: legibility (one stable, well-separated colour per stem), not specific hues, is
+    /// the binding constraint — these are distinct legible options, the *Full Fathom Five* register
+    /// (A) being the illustrative default.
+    private static let candidatePalettes: [(name: String, colors: [SIMD3<Float>])] = [
+        ("A_fathom", [SIMD3(0.12, 0.13, 0.18), SIMD3(0.62, 0.13, 0.16),
+                      SIMD3(0.90, 0.62, 0.16), SIMD3(0.12, 0.58, 0.55)]),
+        ("B_jewel",  [SIMD3(0.28, 0.10, 0.45), SIMD3(0.82, 0.10, 0.30),
+                      SIMD3(0.97, 0.72, 0.15), SIMD3(0.05, 0.62, 0.45)]),
+        ("C_inkpop", [SIMD3(0.08, 0.09, 0.12), SIMD3(0.10, 0.32, 0.75),
+                      SIMD3(0.95, 0.55, 0.10), SIMD3(0.80, 0.14, 0.50)])
+    ]
+
+    @Test("Real-stem palette contact sheet (env-gated: SKEIN_VISUAL=1 / RENDER_VISUAL=1)")
+    func test_realStem_paletteContactSheet() throws {
         let env = ProcessInfo.processInfo.environment
         guard env["SKEIN_VISUAL"] == "1" || env["RENDER_VISUAL"] == "1" else {
-            print("SkeinCanvasHoldTest: SKEIN_VISUAL/RENDER_VISUAL not set, skipping viscosity sweep")
+            print("SkeinCanvasHoldTest: SKEIN_VISUAL/RENDER_VISUAL not set, skipping palette contact sheet")
             return
         }
         guard let fx = try loadSkeinFixture() else { return }
+        guard let session = Self.firstRecordedSession(),
+              let stems = loadStemFrames(session, maxFrames: 2400), stems.count > 200 else {
+            print("SkeinCanvasHoldTest: no recorded session — skipping palette contact sheet")
+            return
+        }
         let w = 960, h = 540
-        // Independent fresh accumulations (each ~4 s from cream) centred on the viscosity-sweep poles,
-        // so each tile is a near-constant-viscosity demonstration of ONE pole through the live path:
-        //   THIN  (trough ~t12): finer line, MANY fine FAR-flung satellites (ref 03_micro).
-        //   THICK (peak  ~t6):   fatter line/pools, FEWER bigger CLOSER droplets (refs 02 / 06).
-        let poles: [(name: String, startT: Float)] = [("thin", 10.0), ("thick", 4.0)]
-        let frames = 240
-        let last = frames - 1
-        var tiles: [[UInt8]] = []
+        let frames = min(stems.count, 1400)
         let outDir = try makeOutputDir()
-        for pole in poles {
+        // Render the SAME real-stem sequence (seed 0) with each candidate palette so Matt compares
+        // legibility/character on identical paint, through the live path.
+        var tiles: [[UInt8]] = []
+        for cand in Self.candidatePalettes {
             let run = try runPourAccumulation(
                 chromatic: 0, frames: frames, width: w, height: h, aspect: Float(w) / Float(h),
-                startTime: pole.startT, checkpoints: [last], fx: fx)
-            guard let buf = run.checkpointPixels[last] else { continue }
+                startTime: 0.0, checkpoints: [frames - 1], fx: fx,
+                seed: 0, palette: cand.colors, stemFrames: stems)
+            guard let buf = run.checkpointPixels[frames - 1] else { continue }
             tiles.append(buf)
-            try writeBGRAToPNG(buf, w: w, h: h, url: outDir.appendingPathComponent("skein_visc_\(pole.name).png"))
+            try writeBGRAToPNG(buf, w: w, h: h,
+                               url: outDir.appendingPathComponent("skein_palette_\(cand.name).png"))
         }
         try writeMontage(tiles, tileW: w, tileH: h,
-                         url: outDir.appendingPathComponent("skein_viscosity_sweep.png"))
+                         url: outDir.appendingPathComponent("skein_palette_candidates.png"))
         print("""
-        [skein_viscosity_sweep] live marks-on-top path, \(w)×\(h), independent fresh accumulations:
+        [skein_palette_candidates] live path, \(w)×\(h), session \(session.lastPathComponent):
           output dir: \(outDir.path)
-          poles (startT) = \(poles.map { "\($0.name)@\($0.startT)s" })
-          → skein_viscosity_sweep.png  (thin | thick)  +  skein_visc_thin/thick.png
+          candidates (l→r) = \(Self.candidatePalettes.map { $0.name })
+          → skein_palette_candidates.png  +  skein_palette_A_fathom/B_jewel/C_inkpop.png
         """)
-        #expect(tiles.count == poles.count, "Missing viscosity-sweep tiles — a pole run came up short.")
+        #expect(tiles.count == Self.candidatePalettes.count, "Missing palette-candidate tiles.")
     }
 
     // MARK: - Fixture load
@@ -397,9 +474,18 @@ struct SkeinCanvasHoldTest {
     /// Mirrors `drawWithMVWarp`'s strandsOnTop branch (Pass 0 skipped; the ground is the clear).
     private func runPourAccumulation(
         chromatic: Float, frames: Int, width: Int, height: Int, aspect: Float, startTime: Float,
-        checkpoints: Set<Int>, fx: SkeinFixture, capturePerFrame: Bool = false
+        checkpoints: Set<Int>, fx: SkeinFixture, capturePerFrame: Bool = false,
+        seed: UInt32 = 0, palette: [SIMD3<Float>]? = nil, stemFrames: [StemFeatures] = []
     ) throws -> PourResult {
         let device = fx.ctx.device, queue = fx.ctx.commandQueue
+        // Skein.3: the painter clock + onset-burst ring + per-stem colour live in SkeinState, bound
+        // at fragment slot 6 of the overlay (the ENGINE.1.2 strands-on-top binding). The harness
+        // ticks it each frame exactly as the live app's setMeshPresetTick does. `stemFrames` are
+        // REAL replayed StemFeatures (feedback_synthetic_audio: never hand-authored envelopes); an
+        // empty array drives StemFeatures.zero (silence → the pour line only, no onset bursts).
+        guard let skein = SkeinState(device: device, seed: seed,
+                                     palette: palette ?? SkeinState.defaultPalette)
+        else { throw SkeinHoldError.bufferFailed }
         let fbDesc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: fx.ctx.pixelFormat, width: width, height: height, mipmapped: false)
         fbDesc.usage = [.renderTarget, .shaderRead]
@@ -435,13 +521,19 @@ struct SkeinCanvasHoldTest {
         for frameIdx in 0..<frames {
             var features = FeatureVector(
                 time: startTime + Float(frameIdx) * dt, deltaTime: dt, aspectRatio: aspect)
+            // Tick SkeinState with this frame's REAL stems (or silence). Advances painterTau (the
+            // audio-modulated painter clock), detects per-stem onsets → burst ring, and writes the
+            // slot-6 buffer the overlay fragment reads. Same call the live setMeshPresetTick makes.
+            let stems = stemFrames.isEmpty ? StemFeatures.zero : stemFrames[frameIdx % stemFrames.count]
+            skein.tick(deltaTime: dt, features: features, stems: stems)
             guard let cmd = queue.makeCommandBuffer() else { throw SkeinHoldError.cmdBufferFailed }
             // Pass 1: identity warp holds the previous canvas (warpTex → composeTex). chromatic=0
             // + decay=1.0 ⇒ a lossless copy of every unpainted texel.
             try encodeWarp(cmd: cmd, mvWarp: fx.mvWarp, warpTex: warpTex, composeTex: composeTex,
                            features: &features, chromatic: chromatic)
-            // Pass 2: marks-on-top — draw this frame's swept capsule normal-alpha onto the held canvas.
-            try encodeOverlay(cmd: cmd, overlay: fx.overlay, target: composeTex, features: &features)
+            // Pass 2: marks-on-top — draw this frame's marks normal-alpha onto the held canvas.
+            try encodeOverlay(cmd: cmd, overlay: fx.overlay, target: composeTex,
+                              features: &features, skeinBuffer: skein.skeinBuffer)
             // Pass 3: blit (display-only, identity post) — faithful to the live present pass.
             try encodeBlit(cmd: cmd, mvWarp: fx.mvWarp, src: composeTex, dst: blitTex,
                            post: SIMD4<Float>(0, 0, 1, 0))   // invert0 echo0 gamma1 beat0 = identity
@@ -500,24 +592,29 @@ struct SkeinCanvasHoldTest {
         enc.endEncoding()
     }
 
-    /// Pass 2 of the marks-on-top path: draw the overlay (Skein's swept-capsule pour) normal-alpha
-    /// onto the held/warped canvas. `loadAction = .load` preserves the warped ground (only the
-    /// capsule texels are blended in), exactly as `encodeMVWarpScenePass`'s strandsOnTop branch.
+    /// Pass 2 of the marks-on-top path: draw the overlay (Skein's pour line + onset-burst ring)
+    /// normal-alpha onto the held/warped canvas. `loadAction = .load` preserves the warped ground
+    /// (only the mark texels are blended in), exactly as `encodeMVWarpScenePass`'s strandsOnTop
+    /// branch — INCLUDING the Skein.ENGINE.1.2 gated slot-6 fragment-buffer binding (SkeinState's
+    /// SkeinUniforms), which is what `skein_geometry_fragment` reads for the painter clock + the
+    /// per-stem-coloured onset ring. Skein.3: the painter is driven by SkeinState (buffer 6), not
+    /// features.time, so the harness binds the live SkeinState buffer the same way the app does.
     private func encodeOverlay(
         cmd: MTLCommandBuffer, overlay: MTLRenderPipelineState, target: MTLTexture,
-        features: inout FeatureVector
+        features: inout FeatureVector, skeinBuffer: MTLBuffer
     ) throws {
         let desc = MTLRenderPassDescriptor()
         desc.colorAttachments[0].texture = target
-        desc.colorAttachments[0].loadAction = .load     // keep the held ground; blend the capsule on top
+        desc.colorAttachments[0].loadAction = .load     // keep the held ground; blend the marks on top
         desc.colorAttachments[0].storeAction = .store
         guard let enc = cmd.makeRenderCommandEncoder(descriptor: desc) else { throw SkeinHoldError.encoderFailed }
         enc.setRenderPipelineState(overlay)
-        // drawSceneGeometryOverlay binds features@0 + stems@1; skein_geometry_vertex reads features@0
-        // (the painter position is f(features.time) — Path A, no per-preset buffer). Bind both for parity.
+        // drawSceneGeometryOverlay binds features@0 + stems@1 (vertex); the strandsOnTop branch also
+        // binds the per-preset fragment buffer at slot 6 (ENGINE.1.2). Mirror all three for parity.
         enc.setVertexBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
         var stems = StemFeatures.zero
         enc.setVertexBytes(&stems, length: MemoryLayout<StemFeatures>.stride, index: 1)
+        enc.setFragmentBuffer(skeinBuffer, offset: 0, index: 6)   // Skein.ENGINE.1.2 — painter state
         enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3, instanceCount: 1)
         enc.endEncoding()
     }
@@ -698,57 +795,45 @@ struct SkeinCanvasHoldTest {
         return (Float(largest) / Float(inC), inC, outC)
     }
 
-    /// Skein.2 splatter analysis against the line trajectory [t0,t1].
-    ///  - haloNear/Mid/Far: painted-pixel COUNT in three distance bands OUTSIDE the line corridor
-    ///    (the dense-near → sparse-far satellite-halo signature: near > far).
-    ///  - satelliteComponents: # of disconnected painted blobs (≥2 px) outside the corridor — the
-    ///    "distinct dots, not a merged froth" count (responds to viscosity: thin throws more).
-    ///  - meanSatDist: mean distance (uv-units) of outside-painted pixels from the line — thin paint
-    ///    flings satellites WIDER, so this is the cleanest trajectory-robust viscosity discriminator.
-    ///  - minChannel: smallest single channel over the whole canvas. Paint only brightens cream→white
-    ///    (normal-alpha), so nothing drops below cream's darkest channel → proves NOT additive (no mud).
-    private func splatterHaloAndSatellites(
-        _ buf: [UInt8], w: Int, h: Int, cream: [UInt8], t0: Float, t1: Float, corridorRV: Float
-    ) -> (haloNear: Int, haloMid: Int, haloFar: Int, satellites: Int, meanSatDist: Float,
-          minChannel: Int, roundFill: Float, roundN: Int) {
-        let steps = max(1, Int((t1 - t0) * 400.0))
-        var samples: [SIMD2<Float>] = []
-        samples.reserveCapacity(steps + 1)
-        for s in 0...steps { samples.append(Self.skeinPainterPos(t0 + (t1 - t0) * Float(s) / Float(steps))) }
-        let cb = Int(cream[0]), cg = Int(cream[1]), cr = Int(cream[2])
-        var near = 0, mid = 0, far = 0, minCh = 255
-        var distSum: Float = 0
-        var outside = [Bool](repeating: false, count: w * h)
+    /// Classify the coloured painting by the per-stem palette (Skein.3 colour-separation gate).
+    ///  - perStemCount: # of high-cover pixels clearly nearest ONE stem colour (idx = drums/bass/
+    ///    vocals/other). "Clearly" = nearest palette distance < 0.62 × second-nearest (separable).
+    ///  - mudCount: high-cover pixels roughly equidistant between two stem colours (ambiguous/muddy).
+    ///  - distinctBlobs: # of burst-sized connected painted components (size [4,500]; the big line
+    ///    component is excluded) — onset bursts as DISTINCT dots, not a merged froth.
+    ///  - roundFill / roundN: bbox-fill of medium square-bbox blobs (~0.785 round, ~1.0 square — the
+    ///    Matt M7 isotropic-AA round-droplet guard).
+    private func analyzeColouredPainting(
+        _ buf: [UInt8], w: Int, h: Int, cream: [UInt8], palette: [SIMD3<Float>]
+    ) -> (perStemCount: [Int], mudCount: Int, distinctBlobs: Int, roundFill: Float, roundN: Int) {
+        let cr = Int(cream[2]), cg = Int(cream[1]), cb = Int(cream[0])
+        let pal = palette.map { SIMD3<Float>($0.x * 255, $0.y * 255, $0.z * 255) }
+        var perStem = [Int](repeating: 0, count: palette.count)
+        var mud = 0
+        var painted = [Bool](repeating: false, count: w * h)
         for y in 0..<h {
             for x in 0..<w {
                 let i = (y * w + x) * 4
-                let b = Int(buf[i]), g = Int(buf[i + 1]), r = Int(buf[i + 2])
-                if b < minCh { minCh = b }; if g < minCh { minCh = g }; if r < minCh { minCh = r }
-                if abs(b - cb) + abs(g - cg) + abs(r - cr) <= 45 { continue }   // not painted
-                // Render-target row 0 = TOP = uv.y 1.0 → flip pixel row to painter uv-space.
-                let ux = (Float(x) + 0.5) / Float(w), uy = 1.0 - (Float(y) + 0.5) / Float(h)
-                var best = Float.greatestFiniteMagnitude
-                for p in samples { let dx = ux - p.x, dy = uy - p.y; let d2 = dx * dx + dy * dy; if d2 < best { best = d2 } }
-                let d = best.squareRoot()
-                if d <= corridorRV { continue }   // the line itself, not a satellite
-                outside[y * w + x] = true
-                distSum += d
-                if d < 0.06 { near += 1 } else if d < 0.11 { mid += 1 } else { far += 1 }
+                let r = Int(buf[i + 2]), g = Int(buf[i + 1]), b = Int(buf[i])
+                let delta = abs(r - cr) + abs(g - cg) + abs(b - cb)
+                if delta > 50 { painted[y * w + x] = true }
+                guard delta > 90 else { continue }   // classify only HIGH-cover pixels (≈ pure stem colour)
+                let pr = Float(r), pg = Float(g), pb = Float(b)
+                var d0 = Float.greatestFiniteMagnitude, d1 = Float.greatestFiniteMagnitude, idx0 = 0
+                for (k, pc) in pal.enumerated() {
+                    let dd = ((pr - pc.x) * (pr - pc.x) + (pg - pc.y) * (pg - pc.y) + (pb - pc.z) * (pb - pc.z)).squareRoot()
+                    if dd < d0 { d1 = d0; d0 = dd; idx0 = k } else if dd < d1 { d1 = dd }
+                }
+                if d0 < 0.62 * d1 { perStem[idx0] += 1 } else { mud += 1 }
             }
         }
-        let outCount = near + mid + far
-        // Count disconnected satellite components (≥2 px) + measure ROUNDNESS: an individual droplet
-        // is a single medium blob whose bbox is roughly square; a round disc fills ~π/4 ≈ 0.785 of its
-        // bbox, a square ≈ 1.0 (the fwidth(dc)-anisotropy bug — Matt M7 2026-06-05). Average the fill of
-        // the medium, square-bbox blobs (skip merged streaks via the aspect-ratio gate).
+        // Burst-sized blob count + roundness (the big line component, size > 500, is excluded).
         var visited = [Bool](repeating: false, count: w * h)
-        var comps = 0
+        var blobs = 0, fillN = 0
         var fillSum: Float = 0
-        var fillN = 0
         var stack: [Int] = []
-        for start in 0..<(w * h) where outside[start] && !visited[start] {
-            var size = 0
-            var minx = w, maxx = 0, miny = h, maxy = 0
+        for start in 0..<(w * h) where painted[start] && !visited[start] {
+            var size = 0, minx = w, maxx = 0, miny = h, maxy = 0
             stack.removeAll(keepingCapacity: true)
             stack.append(start); visited[start] = true
             while let p = stack.popLast() {
@@ -756,43 +841,128 @@ struct SkeinCanvasHoldTest {
                 let x = p % w, y = p / w
                 if x < minx { minx = x }; if x > maxx { maxx = x }
                 if y < miny { miny = y }; if y > maxy { maxy = y }
-                if x > 0     { let q = p - 1; if outside[q] && !visited[q] { visited[q] = true; stack.append(q) } }
-                if x < w - 1 { let q = p + 1; if outside[q] && !visited[q] { visited[q] = true; stack.append(q) } }
-                if y > 0     { let q = p - w; if outside[q] && !visited[q] { visited[q] = true; stack.append(q) } }
-                if y < h - 1 { let q = p + w; if outside[q] && !visited[q] { visited[q] = true; stack.append(q) } }
+                if x > 0     { let q = p - 1; if painted[q] && !visited[q] { visited[q] = true; stack.append(q) } }
+                if x < w - 1 { let q = p + 1; if painted[q] && !visited[q] { visited[q] = true; stack.append(q) } }
+                if y > 0     { let q = p - w; if painted[q] && !visited[q] { visited[q] = true; stack.append(q) } }
+                if y < h - 1 { let q = p + w; if painted[q] && !visited[q] { visited[q] = true; stack.append(q) } }
             }
-            if size >= 2 { comps += 1 }
+            if size >= 4 && size <= 500 { blobs += 1 }
             let bw = maxx - minx + 1, bh = maxy - miny + 1
             let ar = Float(max(bw, bh)) / Float(max(min(bw, bh), 1))
-            if size >= 9 && size <= 200 && ar < 1.5 {   // an individual droplet, not a streak
-                fillSum += Float(size) / Float(bw * bh)
-                fillN += 1
-            }
+            if size >= 9 && size <= 200 && ar < 1.5 { fillSum += Float(size) / Float(bw * bh); fillN += 1 }
         }
-        let roundFill = fillN > 0 ? fillSum / Float(fillN) : 0
-        return (near, mid, far, comps, outCount > 0 ? distSum / Float(outCount) : 0, minCh, roundFill, fillN)
+        return (perStem, mud, blobs, fillN > 0 ? fillSum / Float(fillN) : 0, fillN)
     }
 
-    /// Find a strongly-painted SATELLITE pixel (delta > 80, clearly outside the line corridor) for
-    /// the bake/hold check. Returns nil if none — i.e. no splatter was laid in this window.
-    private func firstSatellitePixel(
-        _ buf: [UInt8], w: Int, h: Int, cream: [UInt8], t0: Float, t1: Float, corridorRV: Float
-    ) -> (Int, Int)? {
-        let steps = max(1, Int((t1 - t0) * 300.0))
-        var samples: [SIMD2<Float>] = []
-        for s in 0...steps { samples.append(Self.skeinPainterPos(t0 + (t1 - t0) * Float(s) / Float(steps))) }
-        let cb = Int(cream[0]), cg = Int(cream[1]), cr = Int(cream[2])
+    /// Find a strongly-coloured (saturated, non-white) painted pixel for the bake/hold check —
+    /// a real onset burst (not the white silence line). delta > 90 AND channel spread > 40.
+    private func firstColouredPixel(_ buf: [UInt8], w: Int, h: Int, cream: [UInt8]) -> (Int, Int)? {
+        let cr = Int(cream[2]), cg = Int(cream[1]), cb = Int(cream[0])
         for y in 2..<(h - 2) {
             for x in 2..<(w - 2) {
                 let i = (y * w + x) * 4
-                if abs(Int(buf[i]) - cb) + abs(Int(buf[i + 1]) - cg) + abs(Int(buf[i + 2]) - cr) <= 80 { continue }
-                let ux = (Float(x) + 0.5) / Float(w), uy = 1.0 - (Float(y) + 0.5) / Float(h)   // flip row → uv.y
-                var best = Float.greatestFiniteMagnitude
-                for p in samples { let dx = ux - p.x, dy = uy - p.y; best = min(best, dx * dx + dy * dy) }
-                if best.squareRoot() > corridorRV + 0.012 { return (x, y) }
+                let r = Int(buf[i + 2]), g = Int(buf[i + 1]), b = Int(buf[i])
+                let delta = abs(r - cr) + abs(g - cg) + abs(b - cb)
+                let spread = max(r, max(g, b)) - min(r, min(g, b))
+                if delta > 90 && spread > 40 { return (x, y) }
             }
         }
         return nil
+    }
+
+    // MARK: - Real-stem replay (real audio only — feedback_synthetic_audio)
+
+    /// The recorded session under ~/Documents/phosphene_sessions with the largest stems.csv (most
+    /// onsets → the most per-stem colour activity). nil when none exist (local-only artifact).
+    private static func firstRecordedSession() -> URL? {
+        let base = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Documents/phosphene_sessions")
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: base, includingPropertiesForKeys: nil) else { return nil }
+        func stemsSize(_ url: URL) -> Int {
+            let path = url.appendingPathComponent("stems.csv").path
+            guard FileManager.default.fileExists(atPath: path) else { return 0 }
+            return ((try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int) ?? 0
+        }
+        return entries.filter { stemsSize($0) > 0 }.max { stemsSize($0) < stemsSize($1) }
+    }
+
+    /// Parse a session's stems.csv into replayable StemFeatures frames (the routing-relevant
+    /// columns: per-stem energy, energyRel/Dev, centroid, attackRatio, band1). Real audio only.
+    private func loadStemFrames(_ dir: URL, maxFrames: Int) -> [StemFeatures]? {
+        guard let text = try? String(contentsOf: dir.appendingPathComponent("stems.csv"), encoding: .utf8)
+        else { return nil }
+        var lines = text.split(separator: "\n", omittingEmptySubsequences: true)
+        guard lines.count > 1 else { return nil }
+        var idx: [String: Int] = [:]
+        for (i, name) in lines.removeFirst().split(separator: ",").map(String.init).enumerated() { idx[name] = i }
+        var frames: [StemFeatures] = []
+        for line in lines.prefix(maxFrames) {
+            let row = line.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+            func col(_ name: String) -> Float {
+                guard let i = idx[name], i < row.count else { return 0 }
+                return Float(row[i]) ?? 0
+            }
+            var sf = StemFeatures()
+            sf.drumsEnergy = col("drumsEnergy"); sf.bassEnergy = col("bassEnergy")
+            sf.vocalsEnergy = col("vocalsEnergy"); sf.otherEnergy = col("otherEnergy")
+            sf.drumsBand1 = col("drumsBand1"); sf.vocalsBand1 = col("vocalsBand1"); sf.otherBand1 = col("otherBand1")
+            sf.drumsEnergyRel = col("drumsEnergyRel"); sf.drumsEnergyDev = col("drumsEnergyDev")
+            sf.bassEnergyRel = col("bassEnergyRel"); sf.bassEnergyDev = col("bassEnergyDev")
+            sf.vocalsEnergyRel = col("vocalsEnergyRel"); sf.vocalsEnergyDev = col("vocalsEnergyDev")
+            sf.otherEnergyRel = col("otherEnergyRel"); sf.otherEnergyDev = col("otherEnergyDev")
+            sf.drumsCentroid = col("drumsCentroid"); sf.bassCentroid = col("bassCentroid")
+            sf.vocalsCentroid = col("vocalsCentroid"); sf.otherCentroid = col("otherCentroid")
+            sf.drumsAttackRatio = col("drumsAttackRatio"); sf.bassAttackRatio = col("bassAttackRatio")
+            sf.vocalsAttackRatio = col("vocalsAttackRatio"); sf.otherAttackRatio = col("otherAttackRatio")
+            frames.append(sf)
+        }
+        return frames
+    }
+
+    /// The busiest + calmest contiguous `window`-frame slices by total positive energy deviation —
+    /// the beat-heavy vs steady stretches for the onset→splatter route assertion.
+    private static func busiestAndCalmestSlices(
+        _ stems: [StemFeatures], window: Int
+    ) -> (busy: [StemFeatures], calm: [StemFeatures]) {
+        guard stems.count > window else { return (stems, stems) }
+        func activity(_ s: StemFeatures) -> Float {
+            max(0, s.drumsEnergyDev) + max(0, s.bassEnergyDev)
+                + max(0, s.vocalsEnergyDev) + max(0, s.otherEnergyDev)
+        }
+        var sum: Float = 0
+        for i in 0..<window { sum += activity(stems[i]) }
+        var bestSum = sum, bestIdx = 0, worstSum = sum, worstIdx = 0
+        for i in window..<stems.count {
+            sum += activity(stems[i]) - activity(stems[i - window])
+            if sum > bestSum { bestSum = sum; bestIdx = i - window + 1 }
+            if sum < worstSum { worstSum = sum; worstIdx = i - window + 1 }
+        }
+        return (Array(stems[bestIdx..<bestIdx + window]), Array(stems[worstIdx..<worstIdx + window]))
+    }
+
+    /// Tick a fresh SkeinState over a stem slice and return the total bursts spawned (route metric).
+    private static func spawnsOver(
+        _ stems: [StemFeatures], device: MTLDevice, palette: [SIMD3<Float>]
+    ) throws -> Int {
+        guard let state = SkeinState(device: device, seed: 0, palette: palette)
+        else { throw SkeinHoldError.bufferFailed }
+        let dt: Float = 1.0 / 60.0
+        let feat = FeatureVector(time: 0, deltaTime: dt, aspectRatio: 1.0)
+        for stem in stems { state.tick(deltaTime: dt, features: feat, stems: stem) }
+        return state.totalBurstsSpawned
+    }
+
+    /// Tick a fresh SkeinState over a stem slice and return the per-stem spawn tally (diagnostic).
+    private static func spawnsPerStemOver(
+        _ stems: [StemFeatures], device: MTLDevice, palette: [SIMD3<Float>]
+    ) throws -> [Int] {
+        guard let state = SkeinState(device: device, seed: 0, palette: palette)
+        else { throw SkeinHoldError.bufferFailed }
+        let dt: Float = 1.0 / 60.0
+        let feat = FeatureVector(time: 0, deltaTime: dt, aspectRatio: 1.0)
+        for stem in stems { state.tick(deltaTime: dt, features: feat, stems: stem) }
+        return state.spawnsPerStem
     }
 
     /// Whether any texel is white (the pour colour) — min(B,G,R) ≥ 235.
