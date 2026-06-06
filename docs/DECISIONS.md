@@ -4504,3 +4504,30 @@ Every other mv_warp preset (Fata Morgana, Gossamer) has no geometry overlay → 
 - Mid/treble `*Dev` remain quieter in absolute terms than `bassDev` (those bands are quieter post-AGC); authors driving motion from `midDev`/`trebDev` may need a larger gain than for `bassDev` — documented in `SHADER_CRAFT.md §14.1`.
 
 **References.** BUG-027 (`KNOWN_ISSUES.md`); AGC2.1 evidence (`docs/diagnostics/AGC2_1_DEVIATION_CENTRING_2026-06-05.md`); D-026 (deviation-primitive contract this refines); D-144 r1.6 (manifestation-B preset-scope band-aid); Failed Approach #31 (absolute thresholds on AGC values — same family).
+
+---
+
+## D-147 — Skein.ENGINE.1.2 (gated slot-6 marks-on-top buffer) + the Skein.3 stem→colour contract
+
+**Date:** 2026-06-05. **Status:** decided + implemented (Skein.3). Palette signed off by Matt. Consumes D-135 / D-138 (brush-on-feedback), D-142 / D-143 (canvas-hold + per-preset marks-on-top), D-026 (deviation primitives), D-019 (stem warmup).
+
+**Context.** Skein.1/2 stayed pure closed-form (Path A) and deferred the CPU-side `SkeinState` + a per-preset overlay buffer to "ENGINE.1.2, when the stateful painter genuinely needs it." Skein.3 (per-mark stem colour frozen at lay-time, onset-driven burst spawning, per-track seed, per-stem flow integrators) is that consumer — none of it is synthesizable in the closed-form fragment.
+
+**The ENGINE.1.2 decision (audit-driven — Option A unavailable).** The prompt hypothesized Option A (pure config: the slot-6 `directPresetFragmentBuffer` already reaches the overlay fragment). The audit **falsified it** with file:line evidence: Skein renders via the marks-on-top `strandsOnTop` branch (`RenderPipeline+MVWarp.swift:212`), which **skips** `renderSceneToTexture` (`:217`) — the *only* site that binds fragment slot 6 (`RenderPipeline+MVWarpScene.swift:43-44`, for Gossamer/Arachne *scene* fragments). Pass 2's `strandsOnTop` branch (`encodeMVWarpScenePass:77-79`) calls `drawSceneGeometryOverlay`, which binds only `features`@vtx0 + `stems`@vtx1 (`RenderPipeline+SceneGeometry.swift:36-37`) — **no fragment buffer**. So the overlay fragment could not see slot 6 on this path. **Decision: Option B (gated binding), the lightest form** — a gated `if let presetBuf = directPresetFragmentBuffer { setFragmentBuffer(index:6) }` in the `strandsOnTop` branch, affecting only Dragon Bloom + Skein. **Byte-identical:** Dragon Bloom sets no `directPresetFragmentBuffer` (nil → no bind); Fata Morgana uses its own `renderFataMorgana` branch (never reaches `encodeMVWarpScenePass`). `SkeinState.swift` follows the established `GossamerState` pattern (no engine touch beyond the one gated binding).
+
+**The Skein.3 stem→colour contract.**
+1. **One stable, well-separated, vivid colour per stem over cream** (drums / bass / vocals / harmonic-other). Palette is **open** (legibility, not specific hues, is the binding constraint — README); Matt signed off on **Full Fathom Five** (charcoal / oxblood / ochre / teal) 2026-06-05.
+2. **Opaque compositing, never mud.** The fragment outputs the **topmost** mark's colour (paired `bestCover`/`bestCol` max), never a blend of two stem colours (the dead-mat anti-ref). Each onset burst is mono-colour, frozen at its stem at lay-time.
+3. **Per-stem onset = `*_energy_dev` activity, not `*_beat`.** Only `drums_beat` is a real pulse; the other `*_beat` are reserved-zero. Onsets derive from rising activity on each stem's `*_energy_dev` (D-026) in CPU state — the history the closed-form fragment cannot see. Throttled-while-active (refractory-limited), not rising-edge-only, so sparse real onsets still lay enough colour to read.
+4. **Dominant-stem line colour = discrete argmax** of smoothed per-stem energy_dev (never a colour-space EMA, which passes through the mud midpoint).
+5. **sRGB decode (FA #71).** The `.bgra8Unorm_srgb` canvas sRGB-encodes on store, so the palette is treated as display-space and sRGB-**decoded** to linear before packing — without it, dark stems lift to washed mid-tones and become unreadable (measured: drums/bass painted 0 → 933/2905 after the decode).
+6. **§1.5 track-change reset.** A new track paints its own canvas: reseed the painter from the new track identity (FNV-1a title|artist — same track → same painting, §5.7) and wipe the canvas to cream (`clearMVWarpCanvasToGround`, gated to Skein).
+
+**Rejected.** **(Option A)** pure config — empirically unavailable (the overlay fragment never sees slot 6 on the strandsOnTop path). **(Mood/structure/anticipation in Skein.3)** out of scope (Skein.5); no valence/arousal written anywhere (FA #25). **(`*_beat` for per-stem onsets)** only drums_beat is real.
+
+**Consequences.**
+- `SkeinState` is the sixth `*State.swift` (registry). The gated slot-6 binding is now a registry capability ("per-preset fragment buffer reaching the marks-on-top overlay fragment").
+- Route-firing evidence (PresetSessionReplay, real Mingus session): drums 55.7 % / bass 30.4 % / vocals 68.7 % / harmony 68.4 % / energy 77.9 %. Viscosity ← centroid and flick-sharpness ← attackRatio are **not SR.1-measurable** (SessionFrame records no centroid/attackRatio) — stated, not asserted (PT.1).
+- `family: painterly` + the `PresetCategory` case + cert (`certified`, `rubric_profile`) remain deferred to Skein.6.
+
+**References.** SKEIN_DESIGN §5.2–5.4 / §1.5 / §5.7; SKEIN_PLAN Skein.3; D-142 / D-143 (canvas-hold + marks-on-top); D-135 / D-138 (Dragon Bloom brush-on-feedback); Failed Approach #71 (sRGB double-encode); RENDER_CAPABILITY_REGISTRY (slot-6 marks-on-top row); SHADER_CRAFT §18.8.
