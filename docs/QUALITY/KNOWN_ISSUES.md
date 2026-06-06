@@ -12,7 +12,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 **Severity:** P3 (cosmetic startup artifact, ~1-2 s at each track onset; not a crash). Re-rate to P2 if judged to materially hurt the per-track first impression.
 **Domain tag:** dsp.beat (AGC cold-start) — same family as BUG-025.
-**Status:** Open — diagnosed, not yet scoped. Filed at Matt's request 2026-06-06 after the AGC2.4 re-M7. **Evidence-before-implementation: do not fix yet.**
+**Status:** Open — **fix landed (AGC3.3), automated validation green; awaiting Matt's catalog M7 (AGC3.4) before close.** AGC3.1 measured (2026-06-05); AGC3.2 decided **D-148** ("ease the meter in per track" — Matt's call); AGC3.3 implemented seed-from-first-audible + hold-through-sustained-silence in `BandEnergyProcessor`, regression-locked by `AGC3ColdStartSpikeTests` (live-path, FA #66). Filed at Matt's request 2026-06-06 after the AGC2.4 re-M7. AGC3.1 evidence subsection below.
 **Introduced:** structural — `BandEnergyProcessor`'s total-energy AGC seeds its running average from whatever energy is present at capture start; during the inter-track silence the running average decays toward zero, so the first audio frame of every track explodes the AGC scale before it catches up.
 **Resolved:** —
 
@@ -27,14 +27,56 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 **Suspected failure class:** `calibration` — AGC seed/scale on the silence→onset transition.
 
 **Verification criteria (when resolved):**
-- [ ] **Automated:** on a silence→onset fixture, `f.bass` does not exceed ~N× its steady value after the first ~M frames.
-- [ ] **Manual:** Matt confirms continuous-energy presets (Ferrofluid Ocean) arrive smoothly at track onset — no pop-and-drop.
+- [x] **Automated (live-path):** on a silence→onset fixture through the real `MIRPipeline.process`, `f.bass` does not exceed 2× its steady value. *(`AGC3ColdStartSpikeTests` — session-start 32.6×→<2×, inter-track 10.6×→<2×; plus a byte-identical steady-state lock. FA #66 live-path, not isolation.)*
+- [ ] **Manual:** Matt confirms continuous-energy presets (Ferrofluid Ocean) arrive smoothly at track onset — no pop-and-drop. *(AGC3.4 catalog M7, both paths — pending.)*
 
 **Manual validation required:** Yes — it's a felt visual artifact.
 
 **Related:**
 - BUG-025 — the AGC cold-start transient (shelved as P3); same AGC-seed family, re-surfaced via its effect on `f.bass`-driven presets.
 - BUG-027 / AGC2 — the deviation fix; its cold-start warmup (AGC2.4.1) is a *separate* mechanism inside `BandDeviationTracker` and does **not** touch `f.bass`. FFO reads `f.bass` directly, so AGC2 does not help it — hence this separate filing. Highest-leverage fix smooths the AGC seed/scale at the source (broad benefit: every `f.bass` consumer).
+
+### AGC3.1 evidence (2026-06-05)
+
+Measured from the reference session `2026-06-06T01-18-36Z` (LF, 5 tracks) with the permanent
+diagnostic [`tools/agc3/measure_coldstart_spike.py`](../../tools/agc3/measure_coldstart_spike.py).
+Full write-up: [`docs/diagnostics/AGC3_1_COLDSTART_SPIKE_2026-06-05.md`](../diagnostics/AGC3_1_COLDSTART_SPIKE_2026-06-05.md).
+
+| trk | mode | pre-roll s | **peak f.bass** | steady | **ratio** | spike s | fo_peak→steady |
+|----:|:--|--:|--:|--:|--:|--:|:--|
+| 1 | session-start | 1.00 | **4.003** | 0.356 | 11.3× | 0.10 | 1.800 → 1.285 |
+| 2 | inter-track | 0.39 | **3.697** | 0.215 | 17.2× | 0.91 | 1.800 → 1.172 |
+| 3 | inter-track | 0.50 | **3.471** | 0.203 | 17.1× | 1.19 | 1.800 → 1.162 |
+| 4 | inter-track | 0.00 | 0.486 | 0.213 | 2.3× | 0.00 | 1.388 → 1.170 |
+| 5 | inter-track | 0.02 | 0.874 | 0.220 | 4.0× | 0.00 | 1.699 → 1.176 |
+
+Four findings sharpen the filed entry:
+
+1. **"Every track onset" → confirmed, refined: every onset preceded by *any* silence gap.**
+   The one non-spiking onset (track 4) had **zero** pre-roll; even a one-frame (0.02 s) gap
+   spiked 4× (track 5). Magnitude saturates by ~0.4 s of silence. For LF playback an
+   inter-track gap is the norm → recurs on essentially every track. Absolute peak (~3.5–4.0)
+   is the stable cross-track number; the ratio varies with track loudness (set any fix
+   threshold against the absolute value/scale, not the ratio).
+2. **Both modes fire; the inter-track mode is the *worse* one.** Session-start (frame-0 seed
+   off `1e-6`) self-corrects in ~0.10 s via the fast warmup rate (0.95). Later onsets, with
+   the AGC in its slow steady-state rate (0.992), spike **0.9–1.2 s**. This refutes the
+   BUG-025 "one-time ~2 s flash" shelving premise — it is per-track and the per-track
+   instances last longer than the session-start one.
+3. **Downstream pop-and-drop confirmed.** `fo_spike_strength` pins to its **1.800** clamp
+   ceiling on every spiking onset (f.bass > 1) then collapses to 1.16–1.29 — a **+40–55 %
+   spike-height pop** that drops within 0.1–1.2 s.
+4. **The per-stem path does NOT spike** (ratios 0.8–1.4). `StemAnalyzer` runs the same
+   `BandEnergyProcessor` per stem but **resets them per track** (`StemAnalyzer.reset()` →
+   `processor.reset()`), re-seeding each stem's AGC from its first audible frame. Only the
+   main-mix `MIRPipeline` processor is not reset per track — that asymmetry is the spike's
+   immediate cause, and the per-stem reset/re-seed is a shipped in-codebase precedent the
+   AGC3.2 fix decision can draw on (must keep BUG-018 green).
+
+**Coverage gap:** characterised on **local-file only** — every recorded multi-track session
+on disk is `origin=localFile`. The session-start mode is path-independent; the inter-track
+mode depends on whether the streaming app emits silence between tracks. A streaming
+multi-track recording is needed to close this (flagged for Matt).
 
 ---
 

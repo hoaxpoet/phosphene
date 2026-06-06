@@ -4533,3 +4533,31 @@ Every other mv_warp preset (Fata Morgana, Gossamer) has no geometry overlay → 
 - `family: painterly` + the `PresetCategory` case + cert (`certified`, `rubric_profile`) remain deferred to Skein.6.
 
 **References.** SKEIN_DESIGN §5.2–5.4 / §1.5 / §5.7; SKEIN_PLAN Skein.3; D-142 / D-143 (canvas-hold + marks-on-top); D-135 / D-138 (Dragon Bloom brush-on-feedback); Failed Approach #71 (sRGB double-encode); RENDER_CAPABILITY_REGISTRY (slot-6 marks-on-top row); SHADER_CRAFT §18.8.
+
+---
+
+## D-148 — BUG-029 fix approach: ease the AGC loudness meter in at each track start (seed-from-first-audible + hold-through-silence); AGC3.2
+
+**Date:** 2026-06-05. **Status:** decided (Matt's AGC3.2 call); implementation = AGC3.3; validation + catalog M7 = AGC3.4. Sibling of D-146 (the AGC2 deviation fix) — both are cold-start fixes touching the `BandEnergyProcessor` family, at different layers (D-146 = the deviation EMA pivot; D-148 = the AGC band values themselves).
+
+**Context.** BUG-029: at every track onset preceded by silence, `BandEnergyProcessor`'s total-energy AGC denominator (`agcRunningAvg`, which is *not* reset per track) has decayed toward zero across the inter-track silence — or seeded at `1e-6` off the session-start pre-roll — so the first audible frame over-scales and `f.bass` spikes to an absolute ~3.5–4.0 (steady ~0.25 = 11–17×). Continuous-energy presets reading `f.bass` directly (Ferrofluid Ocean's `1.0 + 0.8·clamp(f.bass,0,1)`) pop to their clamp ceiling then collapse. AGC3.1 measured it on a real 5-track LF session (`tools/agc3/measure_coldstart_spike.py`; `docs/diagnostics/AGC3_1_COLDSTART_SPIKE_2026-06-05.md`).
+
+**Evidence (AGC3.1).** The spike is **per-track** (not one-time — refutes the BUG-025 shelving premise), gated by the silent pre-roll (every onset with *any* gap spiked; the one zero-gap onset did not); the **inter-track** instances last *longer* (0.9–1.2 s, slow AGC rate) than session-start (0.10 s, fast warmup); `fo_spike_strength` pins to 1.800 (+40–55 % height pop). The per-stem path does **not** spike because `StemAnalyzer.reset()` re-seeds each stem's processor per track — a working in-codebase precedent.
+
+**Decision (Matt's call — option (a), "ease the meter in per track").** Smooth the arrival by easing the loudness meter into each track instead of cold-starting and over-reacting to the first sound. Implementation (AGC3.3, Claude's engineering choice *within* (a)) touches **only** cold-start/silence inside `BandEnergyProcessor`:
+1. **Seed-from-first-audible.** Defer the AGC seed until the first frame with non-zero energy (don't seed `1e-6` off leading silence). The first audible frame seeds `agcRunningAvg` from its own energy → the meter starts at a sane level (slightly muted on a loud onset transient) and eases to steady, instead of dividing by ~0. Mirrors `StemAnalyzer` / SAR.1 / `BandDeviationTracker`.
+2. **Hold-through-silence.** When a frame is near-silent *relative to the running average* (`totalRawEnergy < 0.02·agcRunningAvg`), hold the running average instead of decaying it toward zero. So an inter-track silence no longer leaves a tiny denominator for the next onset to over-scale against. Output is ~0 during the silence either way.
+
+**Steady-state guarantee.** For continuous audible input (frame-0 energy > `1e-6`, no sub-2 % frames) the code path is **byte-identical** to the prior algorithm — same seed, same EMA, same rate schedule — so the total-energy AGC's mix-density-stability response (D-026) is untouched. Behaviour changes **only** at/below the near-silence floor (where output is ~0) and in the immediate post-silence ease-in window. A live-path test reproduces the spike un-fixed and asserts it gone (FA #66).
+
+**Rejected.**
+- **(b) Cap the jump at track start** — clip the over-reaction without easing in. Simpler, but the first loud hit still reads strong (just not a full white-out); less smooth than (a). The AGC3.1 evidence (per-track recurrence; the longer inter-track instances) favours the smoother arrival.
+- **(c) Per-preset** — each preset softens its own track-start response. No shared-engine risk, but every author must remember it forever and shipped presets stay un-fixed; the evidence shows the artifact is at the shared-meter source, where one fix benefits every `f.bass` consumer.
+
+**Consequences.**
+- Touches the shared loudness meter feeding every preset + the deviation primitives → catalog M7 on both paths at AGC3.4 (Ferrofluid Ocean first), even though the change is cold-start-only.
+- The per-stem `BandEnergyProcessor` gets the same change; BUG-018 (stem cold-start deviation ceiling — a separate StemAnalyzer-layer seed) must stay green; verified at AGC3.3.
+- `PresetRegressionTests` golden hashes feed hand-built FeatureVectors (bypass the live AGC) → expected no drift; verified at AGC3.4.
+- Streaming-path validation deferred to the AGC3.4 M7 (no streaming multi-track session existed at AGC3.1; the session-start mode is path-independent, the inter-track mode depends on the source app's gap).
+
+**References.** BUG-029 (`KNOWN_ISSUES.md`); AGC3.1 evidence (`docs/diagnostics/AGC3_1_COLDSTART_SPIKE_2026-06-05.md`); D-146 (sibling AGC2 deviation-layer cold-start fix); D-026 (deviation-primitive / mix-density-stability contract the steady-state guarantee protects); BUG-018 / SAR.1 (seed-from-first-non-zero precedent); BUG-025 (the shelved sibling this re-justifies); Failed Approach #66 (live-path test parity), #31 (AGC-cold-start family).
