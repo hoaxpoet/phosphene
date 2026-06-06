@@ -48,6 +48,15 @@ extension VisualizerEngine {
         showPresetName(preset.descriptor.name)
     }
 
+    /// Per-track deterministic seed for `SkeinState` (Skein.3 §5.7 — same track → same
+    /// painting). Reuses the shared FNV-1a `title|artist` hash (the LumenPatternEngine seed
+    /// precedent), truncated to the 32-bit seed SkeinState perturbs its trajectory with.
+    /// Returns 0 before any track resolves (a fixed, still-deterministic default).
+    func currentSkeinSeed() -> UInt32 {
+        guard let identity = lastResolvedTrackIdentity else { return 0 }
+        return UInt32(truncatingIfNeeded: Self.lumenTrackSeedHash(for: identity))
+    }
+
     // swiftlint:disable cyclomatic_complexity function_body_length
     // applyPreset iterates the passes array with one case per capability type.
     // The switch is the whole point — extracting cases would obscure the configuration
@@ -74,6 +83,7 @@ extension VisualizerEngine {
         gossamerState = nil
         auroraVeilState = nil
         nimbusState = nil
+        skeinState = nil
         lumenPatternEngine = nil
         ferrofluidParticles = nil
         ferrofluidMesh = nil
@@ -462,6 +472,26 @@ extension VisualizerEngine {
                         }
                     } else {
                         logger.error("GossamerState: failed to allocate wave pool for preset '\(desc.name)'")
+                    }
+                }
+
+                // Skein-specific (Skein.ENGINE.1.2): allocate the painter state + onset-burst
+                // ring and wire the per-frame tick + the gated slot-6 marks-on-top overlay
+                // buffer. The buffer reaches `skein_geometry_fragment` via the strands-on-top
+                // slot-6 binding (RenderPipeline+MVWarpScene). The per-track seed is installed
+                // on track change (resetSkeinSeed); construct with the current track's seed so
+                // the painting is deterministic from frame 1.
+                if desc.name == "Skein" {
+                    if let state = SkeinState(device: context.device, seed: currentSkeinSeed()) {
+                        skeinState = state
+                        pipeline.setDirectPresetFragmentBuffer(state.skeinBuffer)   // buffer(6)
+                        pipeline.setMeshPresetTick { [weak state] features, stems in
+                            state?.tick(deltaTime: features.deltaTime,
+                                        features: features,
+                                        stems: stems)
+                        }
+                    } else {
+                        logger.error("SkeinState: failed to allocate painter state for preset '\(desc.name)'")
                     }
                 }
 

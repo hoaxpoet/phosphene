@@ -75,6 +75,17 @@ extension RenderPipeline {
         desc.colorAttachments[0].storeAction = .store
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
         if strandsOnTop {
+            // Skein.ENGINE.1.2: the marks-on-top overlay's FRAGMENT may consume a per-preset
+            // world-state buffer (SkeinState's SkeinUniforms — painter clock + per-track seed +
+            // onset-burst ring + per-stem colour) at fragment slot 6, the same reserved slot the
+            // scene-to-texture path binds for Gossamer/Arachne (renderSceneToTexture). The
+            // strands-on-top branch did NOT previously bind it, so the overlay fragment could not
+            // see slot 6. Bind it here, gated on non-nil: Dragon Bloom sets no
+            // directPresetFragmentBuffer (reset to nil at applyPreset top) ⇒ binds nothing ⇒
+            // byte-identical. Fata Morgana uses its own draw branch and never reaches this path.
+            if let presetBuf = directPresetFragmentBufferLock.withLock({ directPresetFragmentBuffer }) {
+                encoder.setFragmentBuffer(presetBuf, offset: 0, index: 6)
+            }
             var stems = stemFeatures
             drawSceneGeometryOverlay(encoder: encoder, features: &features, stems: &stems)
         } else {
