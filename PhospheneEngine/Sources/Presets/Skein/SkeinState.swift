@@ -62,7 +62,7 @@ struct SkeinBurstGPU {
     var colG: Float
     var colB: Float
     var sharpness: Float   // flick sharpness [0,1] (attackRatio → cone tightness)
-    var pad: Float
+    var hashSeed: Float    // per-burst deterministic seed for droplet placement variety
 }
 
 // MARK: - SkeinHeaderGPU
@@ -115,11 +115,14 @@ public final class SkeinState: @unchecked Sendable {
     static let paintSpeedBase: Float = 1.0
     static let paintSpeedGain: Float = 2.2
 
-    /// Per-stem onset: a RISING EDGE where `*_energy_dev` crosses above this DEVIATION threshold
-    /// (D-026-clean — a deviation primitive centred at 0, not an absolute AGC energy). Plus a
-    /// refractory gap so one surge fires one burst, not a machine-gun (FA #1/#4 family).
-    static let onsetDevThreshold: Float = 0.18
-    static let onsetRefractory: Float = 0.10   // s — min gap between bursts of the same stem
+    /// Per-stem onset/activity: a stem flicks whenever its `*_energy_dev` is above this DEVIATION
+    /// threshold (D-026-clean — a deviation primitive centred at 0, not an absolute AGC energy),
+    /// rate-limited by the refractory so a busier stem flicks MORE (splatter density ∝ activity) but
+    /// never machine-guns (FA #1/#4 family). Throttled-while-active (not rising-edge-only) so sparse
+    /// real onsets still lay enough coloured paint to read per-stem (the line over-dominated when
+    /// each stem fired only on a rising edge — drums/bass painted nothing).
+    static let onsetDevThreshold: Float = 0.13
+    static let onsetRefractory: Float = 0.14   // s — min gap between a stem's bursts (~7 / s max)
 
     /// EMA time-constant (s) for the per-stem energy used to pick the dominant line colour and
     /// drive pour flow — smooth enough that the dominant-stem argmax doesn't flicker per frame.
@@ -128,10 +131,10 @@ public final class SkeinState: @unchecked Sendable {
     // MARK: - Palette (Skein.3 — placeholder vivid set; Matt sign-off finalises in commit 2)
 
     /// One stable, well-separated, vivid colour per stem over cream. Indexed by `SkeinStem`.
-    /// These are the *Full Fathom Five* illustrative register (charcoal / oxblood / ochre /
-    /// teal) — placeholders pending Matt's palette sign-off (the README colour rule: legibility,
-    /// not specific hues, is the binding constraint). Linear-ish RGB; vivid (not pale).
-    static let palette: [SIMD3<Float>] = [
+    /// The *Full Fathom Five* illustrative register (charcoal / oxblood / ochre / teal) — the
+    /// default pending Matt's palette sign-off (the README colour rule: legibility, not specific
+    /// hues, is the binding constraint). Linear-ish RGB; vivid (not pale).
+    public static let defaultPalette: [SIMD3<Float>] = [
         SIMD3(0.12, 0.13, 0.18),   // drums  — near-black charcoal/indigo (dark skeletal flicks)
         SIMD3(0.62, 0.13, 0.16),   // bass   — deep oxblood crimson (heavy deep pools)
         SIMD3(0.90, 0.62, 0.16),   // vocals — warm ochre/gold (warm flowing lines)
@@ -150,6 +153,25 @@ public final class SkeinState: @unchecked Sendable {
     /// The painter clock this frame (accumulated, audio-modulated). Exposed for tests.
     public private(set) var painterTau: Float = 0
 
+    /// Total onset bursts spawned since the last reseed. Exposed for the beat-ratio route test
+    /// (a beat-heavy stem slice must spawn measurably more bursts than a steady slice).
+    public var totalBurstsSpawned: Int { lock.withLock { Int(burstSpawnCounter) } }
+
+    /// Bursts spawned per stem [drums, bass, vocals, other] since the last reseed. Exposed for
+    /// the colour-legibility diagnostic (every stem with onsets should produce bursts).
+    public var spawnsPerStem: [Int] { lock.withLock { spawnsPerStemStore } }
+
+    /// The active per-stem palette as the intended DISPLAY (sRGB) colours (defaults to
+    /// `defaultPalette`; the contact-sheet harness passes candidates for Matt's sign-off). One
+    /// vivid, well-separated colour per stem. Public so the colour-separation test classifies
+    /// rendered (sRGB) pixels against these display values directly.
+    public let palette: [SIMD3<Float>]
+
+    /// The palette sRGB-DECODED to linear, packed into the GPU buffer. The shader outputs linear;
+    /// the `.bgra8Unorm_srgb` canvas sRGB-ENCODES on store, so the round-trip yields the `palette`
+    /// display colour (FA #71 — without the decode, dark colours lift to washed mid-tones).
+    private let paletteLinear: [SIMD3<Float>]
+
     // MARK: - Private State
 
     private var bursts: [SkeinBurstGPU]
@@ -157,6 +179,11 @@ public final class SkeinState: @unchecked Sendable {
     private var seedPhaseX: Float = 0
     private var seedPhaseY: Float = 0
     private var seed: UInt32
+    /// Monotonic spawn counter — seeds each burst's droplet placement so the same track
+    /// (same seed → same onset sequence) places the same droplets (the §5.7 determinism).
+    private var burstSpawnCounter: UInt32 = 0
+    /// Per-stem spawn tally [drums, bass, vocals, other] (diagnostic).
+    private var spawnsPerStemStore = [Int](repeating: 0, count: 4)
 
     // Per-frame line state (computed in _tick, packed into the header in writeToGPU).
     private var lineCol = SIMD3<Float>(1, 1, 1)
@@ -166,8 +193,6 @@ public final class SkeinState: @unchecked Sendable {
 
     /// Per-stem smoothed energy (EMA) for dominant-colour selection + pour flow.
     private var stemEnergySmoothed = [Float](repeating: 0, count: 4)
-    /// Per-stem previous-frame `energy_dev` (for rising-edge onset detection).
-    private var prevEnergyDev = [Float](repeating: 0, count: 4)
     /// Per-stem painter-clock value at the last burst (refractory gate).
     private var lastBurstTau = [Float](repeating: -1, count: 4)
 
@@ -180,7 +205,11 @@ public final class SkeinState: @unchecked Sendable {
     /// - Parameters:
     ///   - device: Metal device for buffer allocation.
     ///   - seed: Per-track deterministic seed (FNV-1a of title|artist — same track → same painting).
-    public init?(device: MTLDevice, seed: UInt32 = 0) {
+    ///   - palette: Per-stem colour set; defaults to `defaultPalette`. The contact-sheet harness
+    ///     passes candidates for Matt's palette sign-off.
+    public init?(device: MTLDevice,
+                 seed: UInt32 = 0,
+                 palette: [SIMD3<Float>] = SkeinState.defaultPalette) {
         let bufferSize = MemoryLayout<SkeinHeaderGPU>.stride
             + Self.maxBursts * MemoryLayout<SkeinBurstGPU>.stride
         guard let buf = device.makeBuffer(length: bufferSize, options: .storageModeShared) else {
@@ -188,6 +217,9 @@ public final class SkeinState: @unchecked Sendable {
             return nil
         }
         skeinBuffer = buf
+        let pal = palette.count == 4 ? palette : Self.defaultPalette
+        self.palette = pal
+        self.paletteLinear = pal.map(Self.srgbToLinear)
         bursts = []
         bursts.reserveCapacity(Self.maxBursts)
         self.seed = seed
@@ -215,13 +247,14 @@ public final class SkeinState: @unchecked Sendable {
             applySeed(newSeed)
             painterTau = 0
             painterTauStep = 0
+            burstSpawnCounter = 0
+            spawnsPerStemStore = [0, 0, 0, 0]
             bursts.removeAll(keepingCapacity: true)
             burstCount = 0
             lineCol = SIMD3<Float>(1, 1, 1)
             lineFlow = 0; lineVisc = 0; jitter = 0
             for i in 0..<4 {
                 stemEnergySmoothed[i] = 0
-                prevEnergyDev[i] = 0
                 lastBurstTau[i] = -1
             }
         }
@@ -275,7 +308,7 @@ public final class SkeinState: @unchecked Sendable {
         for i in 1..<4 where stemEnergySmoothed[i] > domVal { domVal = stemEnergySmoothed[i]; domIdx = i }
         // Only switch the line colour once the canvas is warm; below the floor keep the prior hue.
         if stemMix > 0.001 {
-            lineCol = Self.palette[domIdx]
+            lineCol = paletteLinear[domIdx]
             lineFlow = stemEnergySmoothed[domIdx] * stemMix
             let domCentroid = centroid(of: SkeinStem(rawValue: domIdx) ?? .drums, stems: stems)
             lineVisc = clamp(1.0 - domCentroid, 0, 1) * stemMix
@@ -289,22 +322,19 @@ public final class SkeinState: @unchecked Sendable {
             lineFlow = 0; lineVisc = 0; jitter = 0
         }
 
-        // Per-stem ONSET → splatter burst (rising edge on energy_dev + refractory). The burst is
-        // frozen at the painter's current position, in the stem's colour, with size from
-        // attackRatio and viscosity from centroid. Gated by warmup so silence lays nothing.
+        // Per-stem ACTIVITY → splatter burst (energy_dev above threshold, rate-limited by the
+        // refractory → a busier stem flicks more). The burst is frozen at the painter's current
+        // position, in the stem's colour, with size from attackRatio and viscosity from centroid.
+        // Gated by warmup so silence lays nothing.
         if stemMix > 0.001 {
             for i in 0..<4 {
-                let dv = dev[i]
-                let crossed = dv > Self.onsetDevThreshold && prevEnergyDev[i] <= Self.onsetDevThreshold
+                let active = dev[i] > Self.onsetDevThreshold
                 let pastRefractory = (painterTau - lastBurstTau[i]) > Self.onsetRefractory
-                if crossed && pastRefractory {
+                if active && pastRefractory {
                     spawnBurst(stem: i, stems: stems, aspect: features.aspectRatio)
                     lastBurstTau[i] = painterTau
                 }
-                prevEnergyDev[i] = dv
             }
-        } else {
-            for i in 0..<4 { prevEnergyDev[i] = dev[i] }
         }
 
         // Retire bursts that have aged past the bake window (already baked losslessly into the
@@ -339,7 +369,14 @@ public final class SkeinState: @unchecked Sendable {
         let size = mix(1.0, 0.55, sharpness)             // soft→bigger, sharp→smaller base size
         // Viscosity ← centroid: bright/high-centroid = thin-fine (visc→0), dark/low = thick (visc→1).
         let visc = clamp(1.0 - centroid(of: stemEnum, stems: stems), 0, 1)
-        let col = Self.palette[stem]
+        let col = paletteLinear[stem]
+
+        // Per-burst droplet-placement seed: mix the per-track seed with a monotonic spawn counter
+        // so the same track (same onset sequence) places identical droplets (§5.7 determinism).
+        burstSpawnCounter &+= 1
+        if stem >= 0 && stem < 4 { spawnsPerStemStore[stem] += 1 }
+        let mixed = (seed &+ burstSpawnCounter &* 0x9E3779B9) & 0xFFFFF
+        let hashSeed = Float(mixed)
 
         bursts.append(SkeinBurstGPU(
             posX: pos.x,
@@ -353,7 +390,7 @@ public final class SkeinState: @unchecked Sendable {
             colG: col.y,
             colB: col.z,
             sharpness: sharpness,
-            pad: 0))
+            hashSeed: hashSeed))
     }
 
     // MARK: - Private: painter trajectory (mirrors skeinPainterPos in Skein.metal + seed phases)
@@ -435,4 +472,14 @@ public final class SkeinState: @unchecked Sendable {
     }
     private func clamp(_ x: Float, _ lo: Float, _ hi: Float) -> Float { min(max(x, lo), hi) }
     private func mix(_ x0: Float, _ x1: Float, _ frac: Float) -> Float { x0 + (x1 - x0) * frac }
+
+    /// sRGB → linear (the standard EOTF). Decodes a display-space palette colour to the linear
+    /// value the shader outputs, so the `.bgra8Unorm_srgb` store round-trips back to the display
+    /// colour (FA #71). Applied once per palette entry at init.
+    static func srgbToLinear(_ col: SIMD3<Float>) -> SIMD3<Float> {
+        func decode(_ val: Float) -> Float {
+            val <= 0.04045 ? val / 12.92 : pow((val + 0.055) / 1.055, 2.4)
+        }
+        return SIMD3(decode(col.x), decode(col.y), decode(col.z))
+    }
 }
