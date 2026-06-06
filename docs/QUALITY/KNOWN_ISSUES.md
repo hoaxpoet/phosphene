@@ -12,7 +12,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 **Severity:** P3 (cosmetic startup artifact, ~1-2 s at each track onset; not a crash). Re-rate to P2 if judged to materially hurt the per-track first impression.
 **Domain tag:** dsp.beat (AGC cold-start) — same family as BUG-025.
-**Status:** Open — **measured (AGC3.1, 2026-06-05); at the AGC3.2 decision gate (awaiting Matt's (a)/(b)/(c) call).** Filed at Matt's request 2026-06-06 after the AGC2.4 re-M7. **Evidence-before-implementation: do not fix yet.** AGC3.1 evidence subsection below.
+**Status:** Open — **fix landed (AGC3.3), automated validation green; awaiting Matt's catalog M7 (AGC3.4) before close.** AGC3.1 measured (2026-06-05); AGC3.2 decided **D-147** ("ease the meter in per track" — Matt's call); AGC3.3 implemented seed-from-first-audible + hold-through-sustained-silence in `BandEnergyProcessor`, regression-locked by `AGC3ColdStartSpikeTests` (live-path, FA #66). Filed at Matt's request 2026-06-06 after the AGC2.4 re-M7. AGC3.1 evidence subsection below.
 **Introduced:** structural — `BandEnergyProcessor`'s total-energy AGC seeds its running average from whatever energy is present at capture start; during the inter-track silence the running average decays toward zero, so the first audio frame of every track explodes the AGC scale before it catches up.
 **Resolved:** —
 
@@ -27,8 +27,8 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 **Suspected failure class:** `calibration` — AGC seed/scale on the silence→onset transition.
 
 **Verification criteria (when resolved):**
-- [ ] **Automated:** on a silence→onset fixture, `f.bass` does not exceed ~N× its steady value after the first ~M frames.
-- [ ] **Manual:** Matt confirms continuous-energy presets (Ferrofluid Ocean) arrive smoothly at track onset — no pop-and-drop.
+- [x] **Automated (live-path):** on a silence→onset fixture through the real `MIRPipeline.process`, `f.bass` does not exceed 2× its steady value. *(`AGC3ColdStartSpikeTests` — session-start 32.6×→<2×, inter-track 10.6×→<2×; plus a byte-identical steady-state lock. FA #66 live-path, not isolation.)*
+- [ ] **Manual:** Matt confirms continuous-energy presets (Ferrofluid Ocean) arrive smoothly at track onset — no pop-and-drop. *(AGC3.4 catalog M7, both paths — pending.)*
 
 **Manual validation required:** Yes — it's a felt visual artifact.
 
