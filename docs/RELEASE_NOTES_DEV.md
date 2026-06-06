@@ -8,13 +8,13 @@ User-visible release notes are not yet in scope (no public build).
 
 ## [dev-2026-06-06-b] AGC3 — BUG-029: ease the AGC `f.bass` meter in at each track start (cold-start spike fix)
 
-**Increment:** AGC3.1 (measure) → AGC3.2 (decide, D-147) → AGC3.3 (fix). **Status:** fix landed; automated validation green; **awaiting Matt's catalog M7 (AGC3.4 manual gate)** before close (AGC3.5). Local `main`, not pushed. **Decision:** `docs/DECISIONS.md` D-147. **Evidence:** `docs/diagnostics/AGC3_1_COLDSTART_SPIKE_2026-06-05.md`.
+**Increment:** AGC3.1 (measure) → AGC3.2 (decide, D-148) → AGC3.3 (fix). **Status:** fix landed; automated validation green; **awaiting Matt's catalog M7 (AGC3.4 manual gate)** before close (AGC3.5). Local `main`, not pushed. **Decision:** `docs/DECISIONS.md` D-148. **Evidence:** `docs/diagnostics/AGC3_1_COLDSTART_SPIKE_2026-06-05.md`.
 
 ### The defect
 
 At every track onset preceded by silence, `BandEnergyProcessor`'s total-energy AGC denominator (`agcRunningAvg`, *not* reset per track) had decayed toward zero across the inter-track silence — or seeded at `1e-6` off the session-start pre-roll — so the first audible frame over-scaled and `f.bass` spiked to an absolute **~3.5–4.0** (steady ~0.25 = **11–17×**). Continuous-energy presets reading `f.bass` directly (Ferrofluid Ocean's `1.0 + 0.8·clamp(f.bass,0,1)`) **popped to their clamp ceiling then collapsed** — a "pop-and-drop," not a smooth arrival. AGC3.1 measured it on a real 5-track LF session (`tools/agc3/measure_coldstart_spike.py`): the spike is **per-track** (refutes the BUG-025 "one-time flash" shelving premise), gated by the silent pre-roll, and the inter-track instances last *longer* (0.9–1.2 s) than session-start (0.10 s). The per-stem path does *not* spike (it resets per track).
 
-### The fix (D-147 — Matt chose "ease the meter in per track")
+### The fix (D-148 — Matt chose "ease the meter in per track")
 
 Two cold-start/silence-only changes in `BandEnergyProcessor`:
 - **Seed-from-first-audible** — defer the AGC seed until the first frame with energy (don't seed `1e-6` off leading silence). Mirrors `StemAnalyzer` / SAR.1 / `BandDeviationTracker`.
@@ -30,7 +30,7 @@ Two cold-start/silence-only changes in `BandEnergyProcessor`:
 
 ### Commits
 
-`[AGC3.1]` measure (`ea2326e0`) · `[AGC3.2]` D-147 · `[AGC3.3]` fix + live-path gate.
+`[AGC3.1]` measure (`ea2326e0`) · `[AGC3.2]` D-148 · `[AGC3.3]` fix + live-path gate.
 
 ---
 
