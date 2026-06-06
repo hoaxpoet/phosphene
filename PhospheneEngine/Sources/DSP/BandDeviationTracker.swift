@@ -30,13 +30,31 @@ import Foundation
 /// each band's own average instead of a fixed 0.5 pivot (D-146 / BUG-027).
 struct BandDeviationTracker {
 
-    /// EMA decay per analysis frame. Mirrors `StemAnalyzer.stemEMADecay` so the band running
-    /// averages adapt over the same window as the per-stem running averages.
+    /// Steady-state EMA decay per analysis frame. Mirrors `StemAnalyzer.stemEMADecay` so the band
+    /// running averages adapt over the same window as the per-stem running averages.
     static let decay: Float = 0.9989
+
+    /// Faster decay during the cold-start warmup (AGC2.4.1). At session start the first audio after
+    /// silence explodes the AGC scale, so the band values spike many× normal (the live M7 saw bass
+    /// = 3.688 vs a steady ~0.25). Seeding the slow-only EMA from that spike left it poisoned for
+    /// ~3-4 minutes. The warmup decay converges the running average THROUGH the spike within a
+    /// couple of seconds, then locks to the slow steady-state decay. Mirrors BandEnergyProcessor's
+    /// own two-speed AGC warmup.
+    static let warmupDecay: Float = 0.9
+    /// Audio-present frames to run the warmup decay before locking to `decay`.
+    static let warmupFrames = 180
+    /// Ceiling on the band value fed to the average + deviation, so a cold-start AGC spike (the M7
+    /// saw 3.69; a pathological silence→onset can be far higher) cannot poison the running average
+    /// or produce an unbounded startup flash. Above any realistic loud-band value (~1.2).
+    static let valueCeiling: Float = 2.0
 
     /// Per-band running averages. Order: bass, mid, treble, bassAtt, midAtt, trebleAtt.
     /// Sentinel 0 means "unseeded" (set at construction and by `reset()`).
     private(set) var runningAvg: [Float] = [0, 0, 0, 0, 0, 0]
+
+    /// Count of audio-present frames since the last reset, capped at `warmupFrames`. Drives the
+    /// two-speed warmup so the cold-start spike doesn't strand the average high.
+    private var warmupCounter = 0
 
     // MARK: Output
 
@@ -69,6 +87,7 @@ struct BandDeviationTracker {
     /// track's deviations are measured against its own audio, not the previous track's average.
     mutating func reset() {
         runningAvg = [0, 0, 0, 0, 0, 0]
+        warmupCounter = 0
     }
 
     /// Update the per-band EMAs with this frame's AGC-normalised band values and return the
@@ -77,15 +96,21 @@ struct BandDeviationTracker {
     /// The first post-reset frame seeds the running average from the band's value (when non-zero),
     /// so its deviation is exactly 0 rather than 2x the value (SAR.1 — same as StemAnalyzer).
     mutating func derive(_ bands: BandEnergies) -> Output {
+        // Bound the values fed to the average + deviation so a cold-start AGC spike can neither
+        // poison the running average nor produce an unbounded startup flash (AGC2.4.1).
         let values = [bands.bass, bands.mid, bands.treble, bands.bassAtt, bands.midAtt, bands.trebleAtt]
-        let decay = Self.decay
+            .map { min(max($0, 0), Self.valueCeiling) }
+        // Two-speed warmup: fast decay until the running average has converged through the
+        // cold-start spike, then the slow steady-state decay.
+        if values.contains(where: { $0 > 0 }) && warmupCounter < Self.warmupFrames { warmupCounter += 1 }
+        let decay = warmupCounter < Self.warmupFrames ? Self.warmupDecay : Self.decay
         for i in 0..<6 {
             if runningAvg[i] == 0 && values[i] > 0 { runningAvg[i] = values[i] }
             runningAvg[i] = runningAvg[i] * decay + values[i] * (1 - decay)
         }
-        let bassRel = (bands.bass - runningAvg[0]) * 2.0
-        let midRel = (bands.mid - runningAvg[1]) * 2.0
-        let trebRel = (bands.treble - runningAvg[2]) * 2.0
+        let bassRel = (values[0] - runningAvg[0]) * 2.0
+        let midRel = (values[1] - runningAvg[1]) * 2.0
+        let trebRel = (values[2] - runningAvg[2]) * 2.0
         return Output(
             bassRel: bassRel,
             bassDev: max(0, bassRel),
@@ -93,9 +118,9 @@ struct BandDeviationTracker {
             midDev: max(0, midRel),
             trebRel: trebRel,
             trebDev: max(0, trebRel),
-            bassAttRel: (bands.bassAtt - runningAvg[3]) * 2.0,
-            midAttRel: (bands.midAtt - runningAvg[4]) * 2.0,
-            trebAttRel: (bands.trebleAtt - runningAvg[5]) * 2.0
+            bassAttRel: (values[3] - runningAvg[3]) * 2.0,
+            midAttRel: (values[4] - runningAvg[4]) * 2.0,
+            trebAttRel: (values[5] - runningAvg[5]) * 2.0
         )
     }
 }
