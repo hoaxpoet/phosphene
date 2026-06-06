@@ -125,6 +125,11 @@ public final class BandEnergyProcessor: @unchecked Sendable {
     /// Frame counter for two-speed warmup.
     private var frameCount: Int = 0
 
+    /// Consecutive near-silent frames since the last audible frame (D-147 / BUG-029). Drives the
+    /// hold-through-silence gate so only *sustained* silence (an inter-track gap) holds the running
+    /// average; brief within-track gaps decay as before.
+    private var silentRun: Int = 0
+
     /// Number of frames for fast warmup phase (~1s at 60fps).
     private static let warmupFastFrames = 60
 
@@ -136,6 +141,21 @@ public final class BandEnergyProcessor: @unchecked Sendable {
 
     /// Moderate rate after warmup.
     private static let agcRateModerate: Float = 0.992
+
+    /// D-147 / BUG-029 — near-silence threshold as a fraction of the running average. A frame whose
+    /// total energy is below this fraction of `agcRunningAvg` is "near-silent." Relative
+    /// (self-calibrating) so it never fires during continuous music (where total ≈ average); 0.02 is
+    /// ~34 dB below the running level — well into silence / inter-track-gap territory.
+    private static let silenceFraction: Float = 0.02
+
+    /// D-147 / BUG-029 — frames of *sustained* near-silence before the running average is HELD
+    /// (instead of decayed toward zero). This distinguishes an inter-track gap (sustained silence,
+    /// the spike's cause) from a within-track between-beat gap (a few frames of silence in sparse
+    /// music — which must keep decaying exactly as before, or sparse-pattern band values shift).
+    /// 30 frames ≈ 0.5 s at 60 fps: longer than any musical between-beat gap, far shorter than the
+    /// multi-second inter-track silences AGC3.1 measured. Below this count, behaviour is byte-
+    /// identical to the prior algorithm.
+    private static let sustainedSilenceFrames = 30
 
     // MARK: - Smoothing State
 
@@ -201,11 +221,35 @@ public final class BandEnergyProcessor: @unchecked Sendable {
         let raw6 = computeRawEnergy(magnitudes: magnitudes, ranges: bandRanges6)
 
         // AGC: normalize 6-band against total energy.
+        //
+        // D-147 / BUG-029 — ease the meter in at each track start. Two cold-start/silence-only
+        // changes stop the first audible frame from over-scaling (which spiked f.bass to ~4.0 and
+        // popped continuous-energy presets like Ferrofluid Ocean at every track onset):
+        //   • seed-from-first-audible — don't seed off leading silence. The old `max(E,1e-6)` at
+        //     frame 0 seeded ~0 off the silent pre-roll, so the next audible frame divided by ~0.
+        //     Defer the seed until the first frame with energy, then seed from it (mirrors
+        //     StemAnalyzer / SAR.1 / BandDeviationTracker).
+        //   • hold-through-sustained-silence — across an inter-track gap the running average would
+        //     decay toward zero, leaving a tiny denominator for the next onset to over-scale against.
+        //     After `sustainedSilenceFrames` consecutive near-silent frames, HOLD the average instead.
+        //     The gate matters: a few frames of silence between beats in sparse music must keep
+        //     decaying exactly as before (or sparse-pattern band values shift), so only *sustained*
+        //     silence (a real track gap) holds.
+        // For continuous audible input (frame-0 energy > 1e-6, no sustained sub-`silenceFraction`
+        // run) this is byte-identical to the prior algorithm — seed == max(E,1e-6), same EMA, same
+        // rate — so the total-energy AGC's mix-density-stability response (D-026) is untouched. The
+        // behaviour changes ONLY across a sustained silence (output ~0 there) and in the immediate
+        // post-gap ease-in. Regression-locked by AGC3ColdStartSpikeTests.
         let totalRawEnergy = raw6.reduce(0, +)
         let agcRate = frameCount < Self.warmupFastFrames ? Self.agcRateFast : Self.agcRateModerate
+        let nearSilent = agcRunningAvg != 0 && totalRawEnergy < Self.silenceFraction * agcRunningAvg
+        silentRun = nearSilent ? silentRun + 1 : 0
 
-        if frameCount == 0 {
-            agcRunningAvg = max(totalRawEnergy, 1e-6)
+        if agcRunningAvg == 0 {
+            // Unseeded (session start / pre-audio): seed from the first audible frame, not silence.
+            if totalRawEnergy > 0 { agcRunningAvg = totalRawEnergy }
+        } else if nearSilent && silentRun >= Self.sustainedSilenceFrames {
+            // Sustained silence (inter-track gap): hold the running average (no decay toward zero).
         } else {
             agcRunningAvg = agcRate * agcRunningAvg + (1 - agcRate) * totalRawEnergy
         }
@@ -254,6 +298,7 @@ public final class BandEnergyProcessor: @unchecked Sendable {
 
         agcRunningAvg = 0
         frameCount = 0
+        silentRun = 0
         smoothedInstant = [0, 0, 0]
         smoothedAttenuated = [0, 0, 0]
         smoothed6Band = [0, 0, 0, 0, 0, 0]
