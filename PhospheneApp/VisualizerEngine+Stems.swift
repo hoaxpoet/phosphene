@@ -603,7 +603,11 @@ extension VisualizerEngine {
     /// the same track on different services land on the same seed when
     /// they differ only in casing). FNV-1a 64-bit — fast, collision rate
     /// acceptable for a 4-component perturbation.
-    private static func lumenTrackSeedHash(for identity: TrackIdentity) -> UInt64 {
+    ///
+    /// Shared (not `private`) so `VisualizerEngine+Presets` can derive the
+    /// SkeinState per-track painter seed from the same hash (Skein.3 §5.7
+    /// determinism — same track → same painting).
+    static func lumenTrackSeedHash(for identity: TrackIdentity) -> UInt64 {
         let key = (identity.title.lowercased() + "|" + identity.artist.lowercased())
         var hash: UInt64 = 0xcbf29ce484222325
         for byte in key.utf8 {
