@@ -269,9 +269,11 @@ struct PresetSessionReplay: AsyncParsableCommand {
             return AuroraVeilRouteSpecs.all
         case "murmuration":
             return MurmurationRouteSpecs.all
+        case "skein":
+            return SkeinRouteSpecs.all
         default:
             throw ValidationError(
-                "Unknown preset '\(name)'. Registered: aurora_veil, murmuration. "
+                "Unknown preset '\(name)'. Registered: aurora_veil, murmuration, skein. "
                 + "Add new presets in PresetSessionReplay.swift::resolvePreset.")
         }
     }
