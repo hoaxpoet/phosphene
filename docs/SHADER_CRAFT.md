@@ -2351,8 +2351,9 @@ and static on screen.
 **What went wrong on Dragon Bloom.** Spike 1 drove feather flow from
 `f.mid_att_rel` and breathing from `max(0, f.bass_att_rel)`. On bass-dominant
 music both sit at ≈ 0 frame after frame (mid energy is tiny; the clamped
-positive deviation almost never fires — see BUG-027). The feathers were
-frozen and the bloom didn't breathe — on **both** LF and Spotify. It read as
+positive deviation almost never fired — see BUG-027, **resolved 2026-06-06**
+by the per-band EMA pivot; the liveness lesson here still stands). The feathers
+were frozen and the bloom didn't breathe — on **both** LF and Spotify. It read as
 "barely reactive."
 
 **The rule.** Before routing a primitive to a visual layer, **measure its
@@ -2368,15 +2369,19 @@ LF, on bass-dominant tracks):
 | `f.beat_composite` | 0.25 / 0.37 | alive accent |
 | `f.spectral_flux` | 0.22 / 0.15 | alive (means differ — drive from variation, don't threshold absolutely) |
 | `f.bass` (Layer-1) | 0.10 / 0.11 | solid continuous loudness |
-| `f.mid`, `f.treble` | < 0.02 | **near-dead** on bass-dominant music |
-| `f.bass_dev` (= `max(0, bass_rel)`) | ≈ 0 most frames | **structurally near-dead** (BUG-027) |
+| `f.mid`, `f.treble` | < 0.02 | **near-dead** on bass-dominant music (absolute Layer-1 values) |
+| `f.bass_dev` (= `max(0, bass_rel)`) | fires ~40-50 % (post AGC2/D-146) | **alive** — per-band EMA pivot fixed it; ≈ 0 pre-2026-06-06 (BUG-027) |
 
 **Practical guidance:**
-- **Prefer signed `f.*_rel`** over the positive-only `f.*_dev`. The signed
-  value carries the full deviation range (it's mostly negative for non-dominant
-  bands, but it *varies*); the `*_dev` clamp throws that away. Recenter the
-  signed value (`(f.bass_rel + 0.5)`) if you want it to rest at a neutral
-  visual state and swing both ways.
+- **`f.*_dev` works again (AGC2 / D-146, 2026-06-06).** The deviation pivot is
+  now each band's own running average (`BandDeviationTracker`), so `bass_dev`
+  fires ~40-50 % and `mid_dev`/`treb_dev` — long dead — fire on real music. Two
+  caveats: (1) mid/treble `*_dev` carry *smaller amplitude* than `bass_dev`
+  (those bands are quiet post-AGC) → use a larger gain for them; (2) all band
+  `*_dev` have a ~1-2 s cold-start warmup on the session's first track (the
+  per-band average converges through the AGC startup spike). Signed `f.*_rel`
+  remains a fine choice where you want a both-ways swing — recenter it
+  (`(f.bass_rel + 0.5)`) to rest at neutral.
 - **`spectral_flux` and the beat fields are reliably alive** across genres and
   capture paths — good for texture motion and accents.
 - **Don't build a load-bearing layer on `f.mid`/`f.treble`** unless your
