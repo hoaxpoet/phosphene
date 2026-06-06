@@ -245,6 +245,14 @@ extension VisualizerEngine {
             // per-track GPU payload is wired through `resetStemPipeline` would
             // render against zero-filled defaults until the next track change.
             self.lastResolvedTrackIdentity = identity
+            // Skein.3 (§1.5): a new track paints its OWN canvas (the held painting is the previous
+            // track's visual fingerprint). Wipe the canvas back to cream and re-seed the painter
+            // from the new track's identity (same track → same painting, §5.7). No-op when Skein
+            // is not the active preset (skeinState is nil → the canvas clear is skipped too).
+            if self.skeinState != nil {
+                self.skeinState?.reseed(self.currentSkeinSeed())
+                self.pipeline.clearMVWarpCanvasToGround()
+            }
             self.logTrackChangeObserved(event: event, identity: identity)
             self.resetStemPipeline(for: identity, caller: .trackChange)
             self.kickoffPreFetch(for: event.current, fetcher: fetcher)

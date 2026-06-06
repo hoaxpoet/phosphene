@@ -124,6 +124,21 @@ extension RenderPipeline {
         mvWarpLock.withLock { mvWarpState = nil }
     }
 
+    /// Wipe the mv_warp canvas back to the preset's ground colour (Skein.3 §1.5 track-change
+    /// reset: the held canvas-hold painting is the PREVIOUS track's fingerprint, so a new track
+    /// starts on fresh cream). Lightweight — re-clears the existing textures, no reallocation.
+    /// No-op when no mv_warp state is active. Called only for canvas-hold presets (Skein) on
+    /// track change; every decay-based mv_warp preset (Dragon Bloom / Fata Morgana) never calls
+    /// it, so their cross-track feedback is unchanged.
+    public func clearMVWarpCanvasToGround() {
+        guard let state = mvWarpLock.withLock({ mvWarpState }) else { return }
+        let cc = state.canvasClearColor
+        let ground = MTLClearColor(red: cc.x, green: cc.y, blue: cc.z, alpha: cc.w)
+        var textures = [state.warpTexture, state.composeTexture, state.sceneTexture]
+        if let blur = state.blurTexture { textures.append(blur) }
+        clearWarpTextures(textures, to: ground)
+    }
+
     /// Set the decay value used by the mv_warp compose pass.
     ///
     /// Must match the `pf.decay` returned by the preset's `mvWarpPerFrame` shader function.
