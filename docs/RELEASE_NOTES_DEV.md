@@ -6,6 +6,34 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-06-06-b] AGC3 — BUG-029: ease the AGC `f.bass` meter in at each track start (cold-start spike fix)
+
+**Increment:** AGC3.1 (measure) → AGC3.2 (decide, D-148) → AGC3.3 (fix). **Status:** fix landed; automated validation green; **awaiting Matt's catalog M7 (AGC3.4 manual gate)** before close (AGC3.5). Local `main`, not pushed. **Decision:** `docs/DECISIONS.md` D-148. **Evidence:** `docs/diagnostics/AGC3_1_COLDSTART_SPIKE_2026-06-05.md`.
+
+### The defect
+
+At every track onset preceded by silence, `BandEnergyProcessor`'s total-energy AGC denominator (`agcRunningAvg`, *not* reset per track) had decayed toward zero across the inter-track silence — or seeded at `1e-6` off the session-start pre-roll — so the first audible frame over-scaled and `f.bass` spiked to an absolute **~3.5–4.0** (steady ~0.25 = **11–17×**). Continuous-energy presets reading `f.bass` directly (Ferrofluid Ocean's `1.0 + 0.8·clamp(f.bass,0,1)`) **popped to their clamp ceiling then collapsed** — a "pop-and-drop," not a smooth arrival. AGC3.1 measured it on a real 5-track LF session (`tools/agc3/measure_coldstart_spike.py`): the spike is **per-track** (refutes the BUG-025 "one-time flash" shelving premise), gated by the silent pre-roll, and the inter-track instances last *longer* (0.9–1.2 s) than session-start (0.10 s). The per-stem path does *not* spike (it resets per track).
+
+### The fix (D-148 — Matt chose "ease the meter in per track")
+
+Two cold-start/silence-only changes in `BandEnergyProcessor`:
+- **Seed-from-first-audible** — defer the AGC seed until the first frame with energy (don't seed `1e-6` off leading silence). Mirrors `StemAnalyzer` / SAR.1 / `BandDeviationTracker`.
+- **Hold-through-*sustained*-silence** — after 30 consecutive near-silent frames (relative threshold, ~0.5 s; an inter-track gap, not a between-beat dip) hold the running average instead of decaying it toward zero, so the next onset doesn't divide by a tiny denominator. The *sustained* gate is load-bearing: brief within-track gaps in sparse music keep decaying exactly as before (caught when a single-step hold shifted `FerrofluidBeatSyncTests`' sparse synthetic pattern).
+
+**Steady-state is byte-identical** for continuous audible input (frame-0 energy > 1e-6, no sustained sub-2 % run) — same seed, same EMA, same rate schedule — so the AGC's mix-density-stability response (D-026) is untouched. The change affects only the immediate post-silence ease-in.
+
+### Tests / verification
+
+- **New live-path regression gate** `AGC3ColdStartSpikeTests` (FA #66 — through the real `MIRPipeline.process`): session-start spike **32.6× → < 2×**, inter-track **10.6× → < 2×**, plus a **byte-identical steady-state lock** (continuous-audible `f.bass` matches the captured pre-fix values to 1e-6).
+- Full engine suite green except the **pre-existing** `love_rehab.m4a` fixture-absence cluster (7) + the MemoryReporter env-flake (1) — verified identical with the fix stashed. **BUG-018** stem cold-start gate green. **No `PresetRegressionTests` golden drift** (fixtures bypass the live AGC). SwiftLint `--strict` clean; app build `BUILD SUCCEEDED`.
+- **Pending:** Matt M7 on continuous-energy presets, both paths (Ferrofluid Ocean first — the pop-and-drop must be gone and the onset smooth, with no mid-track regression). Streaming path not yet characterised (no streaming multi-track session on disk at AGC3.1).
+
+### Commits
+
+`[AGC3.1]` measure (`ea2326e0`) · `[AGC3.2]` D-148 · `[AGC3.3]` fix + live-path gate.
+
+---
+
 ## [dev-2026-06-06] AGC2 — BUG-027: per-band EMA deviation pivot (mid/treble `*Dev` alive again) + cold-start warmup
 
 **Increment:** AGC2.1 → 2.5 (measure → decide D-146 → fix → validate → close) + AGC2.4.1 (cold-start sub-fix). **Status:** Resolved 2026-06-06 (local `main`, not pushed). **Decision:** `docs/DECISIONS.md` D-146. **Evidence:** `docs/diagnostics/AGC2_1_DEVIATION_CENTRING_2026-06-05.md`.
