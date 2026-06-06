@@ -44,6 +44,18 @@ The FeatureVector band deviation primitives (`bassDev`/`midDev`/`trebDev`) were 
 
 Local `main`, not pushed.
 
+### Increment AGC3 — BUG-029: AGC `f.bass` cold-start spike (continuous-energy presets pop-and-drop at track onset) ⏳ (2026-06-05, in progress)
+
+At every track onset preceded by silence, `BandEnergyProcessor`'s total-energy AGC denominator has decayed (it is not reset per track), so the first audible frame over-scales and `f.bass` spikes to ~3.5–4.0 (steady ~0.25) — `f.bass`-driven presets (Ferrofluid Ocean's `1.0 + 0.8·clamp(f.bass,0,1)`) pop to their clamp ceiling then collapse. Separate from AGC2: AGC2's warmup is at the *deviation* layer (`BandDeviationTracker`) and does not touch `f.bass`. Staged measure → decide → fix → validate → close (cross-cutting AGC change; do not collapse):
+
+- **AGC3.1** (measure, this increment): permanent diagnostic `tools/agc3/measure_coldstart_spike.py` + `docs/diagnostics/AGC3_1_COLDSTART_SPIKE_2026-06-05.md`. Reference session `2026-06-06T01-18-36Z` (LF). Findings: spike is **per-track** (not one-time — refutes the BUG-025 shelving premise), gated by the silent pre-roll (every onset with *any* gap spikes; the one zero-gap onset did not); absolute peak ~3.5–4.0 = **11–17×** steady; the **inter-track** mode lasts *longer* (0.9–1.2 s) than the session-start mode (0.10 s, fast warmup) because the AGC is in its slow rate by then; `fo_spike_strength` pins to 1.800 (+40–55 % height pop); the **per-stem path does NOT spike** (it resets per track — `StemAnalyzer.reset()`). Coverage gap: LF only (no streaming multi-track session on disk). **Stop → bring evidence to Matt.**
+- **AGC3.2** (decision gate, no code): present (a) ease the loudness meter in per track / (b) cap the jump / (c) per-preset, in product language; Matt picks; file the decision in `DECISIONS.md` (next free `D-` — grep first).
+- **AGC3.3** (fix): live-path test first (FA #66 — silence→onset→steady through the real `BandEnergyProcessor`/`MIRPipeline`); implement the chosen approach touching **only** cold-start/silence; prove steady-state byte-identical; keep BUG-018 (stem cold-start) green.
+- **AGC3.4** (validate): full suite + app build + SwiftLint; `PresetRegressionTests` (expect no drift — fixtures bypass live AGC, verify); Matt M7 both paths, Ferrofluid Ocean first.
+- **AGC3.5** (close): KNOWN_ISSUES BUG-029 → Resolved; RELEASE_NOTES; ENGINEERING_PLAN; RENDER_CAPABILITY_REGISTRY + CLAUDE.md if documented AGC behaviour changes.
+
+AGC3.1 on local `main`, not pushed. AGC3.2+ gated on Matt's decision.
+
 ### Increment FM.0 + FM.L1 + FM.L2 — Fata Morgana port: mirage substrate + shapes + stem uplift, CERTIFIED ✅ (2026-06-02 → 2026-06-03, D-139)
 
 Porting the butterchurn builtin `martin [shadow harlequins shape code] - fata morgana` — a **mirage** (starfield sky + glowing horizon + reflective rippling neon floor), the increment after Dragon Bloom. Matt's scope call: **mirage first, decide stem/beat uplift later**. Plan: `docs/presets/FATA_MORGANA_PLAN.md`; full mechanic decode in `/tmp/fata_faithful_checklist.md` (transcribed wholesale from butterchurn source, FA #70). It's a custom-**SHAPE** preset (4 additive/textured 40-gons, no waves) + a custom feedback **WARP** + a custom procedural **COMP** (the mirage). Render loop == D-138: `warp(prev) → blur → shapes-on-top (=feedback) → comp (display-only) → swap`; custom warp bakes its own decay (`×0.98−0.02`); a custom comp fully replaces fixed-function (no gamma/darken/echo/invert).
