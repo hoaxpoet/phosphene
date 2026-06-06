@@ -310,6 +310,55 @@ struct SkeinCanvasHoldTest {
         #expect(ordered.count == checkpoints.count, "Missing contact-sheet checkpoints — accumulation run came up short.")
     }
 
+    // MARK: - Per-track seed determinism (§5.7) + reseed
+
+    @Test("Per-track seed: same seed → byte-identical painting; different seed → different; reseed clears")
+    func test_seedDeterminismAndReseed() throws {
+        guard let fx = try loadSkeinFixture() else { return }
+        guard let session = Self.firstRecordedSession(),
+              let stems = loadStemFrames(session, maxFrames: 2400), stems.count > 200 else {
+            print("SkeinCanvasHoldTest: no recorded session — skipping seed-determinism test")
+            return
+        }
+        // The determinism RENDER uses the first 400 frames (fast); the reseed busy-slice search
+        // below scans the full set so it lands on an active stretch (the intro is quiet).
+        let w = 200, h = 200, frames = min(stems.count, 400)
+        func render(_ seed: UInt32) throws -> [UInt8] {
+            try runPourAccumulation(
+                chromatic: 0, frames: frames, width: w, height: h, aspect: 1.0, startTime: 0.0,
+                checkpoints: [frames - 1], fx: fx, seed: seed, palette: nil, stemFrames: stems).finalPixels
+        }
+        let a1 = try render(12345), a2 = try render(12345), bSeed = try render(99999)
+        func pxDiff(_ x: [UInt8], _ y: [UInt8]) -> Int {
+            var n = 0, i = 0
+            while i < x.count { if x[i] != y[i] || x[i + 1] != y[i + 1] || x[i + 2] != y[i + 2] { n += 1 }; i += 4 }
+            return n
+        }
+        let same = pxDiff(a1, a2), cross = pxDiff(a1, bSeed)
+
+        // Reseed unit check: tick a BUSY slice so bursts actually spawn, then reseed clears both.
+        let busy = Self.busiestAndCalmestSlices(stems, window: 300).busy
+        guard let st = SkeinState(device: fx.ctx.device, seed: 7) else { throw SkeinHoldError.bufferFailed }
+        let dt: Float = 1.0 / 60.0
+        for stem in busy {
+            st.tick(deltaTime: dt, features: FeatureVector(time: 0, deltaTime: dt, aspectRatio: 1.0), stems: stem)
+        }
+        let beforeTau = st.painterTau, beforeBursts = st.totalBurstsSpawned
+        st.reseed(7)
+        print("""
+        [skein_seed] same-seed pixel-diff=\(same)  diff-seed pixel-diff=\(cross)  (200×200, \(frames)f)
+          reseed: bursts \(beforeBursts)→\(st.totalBurstsSpawned)  painterTau \(String(format: "%.2f", beforeTau))→\(String(format: "%.2f", st.painterTau))
+        """)
+
+        // 1. DETERMINISM (§5.7 headline) — same track + same seed → the same painting.
+        #expect(same == 0, "Same seed produced \(same) differing pixels — the painting is not deterministic.")
+        // 2. The seed actually perturbs the trajectory — a different seed paints differently.
+        #expect(cross > 50, "Different seeds produced near-identical paintings (\(cross) px) — the seed does not reach the trajectory.")
+        // 3. RESEED clears the live painter state (the §1.5 track-change reset).
+        #expect(st.painterTau == 0, "reseed did not reset painterTau (\(st.painterTau)).")
+        #expect(st.totalBurstsSpawned == 0, "reseed did not clear the burst ring (\(st.totalBurstsSpawned)).")
+    }
+
     // MARK: - Real-stem palette contact sheet (env-gated: candidate palettes for Matt sign-off)
 
     /// Candidate per-stem palettes [drums, bass, vocals, other] for Matt's sign-off. The README
