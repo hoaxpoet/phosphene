@@ -26,7 +26,7 @@ Companion design doc: `SKEIN_pollock_preset_architecture.md` (becomes the seed f
 | **Skein.ENGINE.1** | Canvas-hold accumulation path | engine | — | Regression: all goldens byte-identical; hold-persistence test |
 | **Skein.ENGINE.1.1** | Per-preset marks-on-top + cream ground (D-143) | engine | ENGINE.1 | Regression byte-identical (DB/FM + all mv_warp); per-preset marks-on-top test green; Skein renders live |
 | **Skein.1** | Canvas + pour spike | preset | ENGINE.1.1 | ✅ **landed 2026-06-05** (`57ee7383`/`528021b5`); **pending Matt's eyeball gate**: does a skein hold + read as paint? |
-| **Skein.2** | Splatter morphology + viscosity | preset | Skein.1 | ✅ **landed 2026-06-05** (closed-form / path A, no engine touch); **pending Matt's M7**: reads as poured paint, not a particle-fountain? |
+| **Skein.2** | Splatter morphology + viscosity | preset | Skein.1 | ✅ **landed + Matt eyeball PASS 2026-06-05** (closed-form / path A, no engine touch; round-droplet M7 fix `409c1b70`) — reads as poured paint, not a particle-fountain. Cert at Skein.6. |
 | **Skein.3** | Stem palette + full emission routing | preset | Skein.2 | Harness + replay registration; routing is legible |
 | **Skein.ENGINE.2** | Wetness channel | engine | — (land before Skein.4) | Regression: byte-identical for others; stamp+decay test |
 | **Skein.4** | Wet/dry sheen *(cut-line)* | preset | ENGINE.2, Skein.3 | Harness: wet-now reads vs dry-past |
@@ -124,9 +124,9 @@ Execution order is top-to-bottom. ENGINE.2 is shown near Skein.4 because that's 
 
 **Key files (as landed).** `Shaders/Skein.metal` (`skein_fbm2` + `skeinDebugViscosity` + splatter/filament/viscosity in `skein_geometry_fragment`), `SkeinCanvasHoldTest.swift` (corridor-isolated line continuity + the splatter halo/viscosity/bake-hold/new-mark test + a viscosity-sweep contact sheet), `SHADER_CRAFT.md §18`, `ENGINEERING_PLAN.md`. **No `SkeinState.swift`** (path A — deferred to Skein.3 / ENGINE.1.2). `Skein.json` unchanged.
 
-**Done-when.** ✅ (pending Matt's M7)
+**Done-when.** ✅ (Matt eyeball PASS 2026-06-05; cert at Skein.6)
 - ✅ Contact sheet: bursts produce a central-mark + satellite-halo + filament structure (halo dense-near/sparse-far; the viscosity-sweep sheet shows both poles).
-- ⏳ **M7 gate:** a still frame reads as **poured paint, not a particle field**, and matches no Skein.0 anti-reference (manual check — all 5 checked clear at closeout).
+- ✅ **M7 gate (round 2):** Matt "looks good" — a still frame reads as **poured paint, not a particle field**, and matches no Skein.0 anti-reference (all 5 checked clear). Round-droplet fix `409c1b70` resolved the M7-round-1 rounded-square readout.
 - ✅ Per-frame new-mark count exposed (governor input — 178/179 frames in the bake/hold test).
 
 ---
