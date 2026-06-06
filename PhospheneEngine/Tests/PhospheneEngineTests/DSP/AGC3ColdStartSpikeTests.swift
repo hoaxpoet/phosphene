@@ -1,4 +1,4 @@
-// AGC3ColdStartSpikeTests — BUG-029 / D-147. The AGC `f.bass` cold-start band-value spike.
+// AGC3ColdStartSpikeTests — BUG-029 / D-148. The AGC `f.bass` cold-start band-value spike.
 //
 // At a track onset preceded by silence, BandEnergyProcessor's total-energy AGC denominator
 // (`agcRunningAvg`, NOT reset per track) has decayed toward zero across the silence (or seeded at
@@ -6,13 +6,13 @@
 // to an absolute ~3.5-4.0 (steady ~0.25 = 11-17x). AGC3.1 measured it on a real LF session
 // (docs/diagnostics/AGC3_1_COLDSTART_SPIKE_2026-06-05.md).
 //
-// D-147 fix (option a — ease the meter in per track): seed-from-first-audible + hold-through-
+// D-148 fix (option a — ease the meter in per track): seed-from-first-audible + hold-through-
 // silence inside BandEnergyProcessor. These are LIVE-PATH tests (through the real MIRPipeline.process
 // / BandEnergyProcessor) per FA #66 — the AGC2 cold-start hole shipped because its tests bypassed the
 // live path. Each reproduces the spike un-fixed and asserts it gone with the fix.
 //
 // The byte-identical steady-state lock (agc3_steadyState_continuousAudible_unchanged) guards the
-// D-147 hard rule: for continuous audible input the AGC's mix-density-stability response (D-026) must
+// D-148 hard rule: for continuous audible input the AGC's mix-density-stability response (D-026) must
 // be untouched — the change is cold-start/silence ONLY.
 
 import Foundation
@@ -88,10 +88,10 @@ private let kSpikeRatioCeiling: Float = 2.0
             "BUG-029: inter-track f.bass spike — track-2 onset peak \(peak2) / track-1 steady \(steady1) = \(ratio)x must be < \(kSpikeRatioCeiling)x")
 }
 
-// MARK: - Steady-state byte-identical lock (D-147 hard rule: cold-start/silence ONLY)
+// MARK: - Steady-state byte-identical lock (D-148 hard rule: cold-start/silence ONLY)
 
-/// Byte-identical steady-state lock (D-147 hard rule). For continuous audible input (frame-0 audible,
-/// never silent) the D-147 fix takes the SAME code path as the prior algorithm — same seed (max(E,1e-6)
+/// Byte-identical steady-state lock (D-148 hard rule). For continuous audible input (frame-0 audible,
+/// never silent) the D-148 fix takes the SAME code path as the prior algorithm — same seed (max(E,1e-6)
 /// == E for E>1e-6), same EMA, same fast/moderate rate schedule. These checkpoints were captured from
 /// the PRE-FIX BandEnergyProcessor; the post-fix code must reproduce them exactly, proving the total-
 /// energy AGC's mix-density-stability response (D-026) is untouched (the change is cold-start/silence
@@ -99,7 +99,7 @@ private let kSpikeRatioCeiling: Float = 2.0
 @Test func agc3_steadyState_continuousAudible_byteIdentical() {
     let proc = BandEnergyProcessor()
     let mags = bassMags(0.5)
-    // (frame, pre-fix f.bass) — captured 2026-06-05 from the pre-D-147 algorithm.
+    // (frame, pre-fix f.bass) — captured 2026-06-05 from the pre-D-148 algorithm.
     let expected: [Int: Float] = [
         0: 0.043204270, 1: 0.078036666, 2: 0.106119439, 5: 0.161730975,
         30: 0.222681135, 60: 0.222961456, 120: 0.222961843, 300: 0.222961843,

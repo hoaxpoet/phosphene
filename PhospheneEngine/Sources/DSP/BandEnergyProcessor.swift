@@ -125,7 +125,7 @@ public final class BandEnergyProcessor: @unchecked Sendable {
     /// Frame counter for two-speed warmup.
     private var frameCount: Int = 0
 
-    /// Consecutive near-silent frames since the last audible frame (D-147 / BUG-029). Drives the
+    /// Consecutive near-silent frames since the last audible frame (D-148 / BUG-029). Drives the
     /// hold-through-silence gate so only *sustained* silence (an inter-track gap) holds the running
     /// average; brief within-track gaps decay as before.
     private var silentRun: Int = 0
@@ -142,13 +142,13 @@ public final class BandEnergyProcessor: @unchecked Sendable {
     /// Moderate rate after warmup.
     private static let agcRateModerate: Float = 0.992
 
-    /// D-147 / BUG-029 — near-silence threshold as a fraction of the running average. A frame whose
+    /// D-148 / BUG-029 — near-silence threshold as a fraction of the running average. A frame whose
     /// total energy is below this fraction of `agcRunningAvg` is "near-silent." Relative
     /// (self-calibrating) so it never fires during continuous music (where total ≈ average); 0.02 is
     /// ~34 dB below the running level — well into silence / inter-track-gap territory.
     private static let silenceFraction: Float = 0.02
 
-    /// D-147 / BUG-029 — frames of *sustained* near-silence before the running average is HELD
+    /// D-148 / BUG-029 — frames of *sustained* near-silence before the running average is HELD
     /// (instead of decayed toward zero). This distinguishes an inter-track gap (sustained silence,
     /// the spike's cause) from a within-track between-beat gap (a few frames of silence in sparse
     /// music — which must keep decaying exactly as before, or sparse-pattern band values shift).
@@ -222,7 +222,7 @@ public final class BandEnergyProcessor: @unchecked Sendable {
 
         // AGC: normalize 6-band against total energy.
         //
-        // D-147 / BUG-029 — ease the meter in at each track start. Two cold-start/silence-only
+        // D-148 / BUG-029 — ease the meter in at each track start. Two cold-start/silence-only
         // changes stop the first audible frame from over-scaling (which spiked f.bass to ~4.0 and
         // popped continuous-energy presets like Ferrofluid Ocean at every track onset):
         //   • seed-from-first-audible — don't seed off leading silence. The old `max(E,1e-6)` at

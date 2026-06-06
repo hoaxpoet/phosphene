@@ -12,7 +12,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 **Severity:** P3 (cosmetic startup artifact, ~1-2 s at each track onset; not a crash). Re-rate to P2 if judged to materially hurt the per-track first impression.
 **Domain tag:** dsp.beat (AGC cold-start) — same family as BUG-025.
-**Status:** Open — **fix landed (AGC3.3), automated validation green; awaiting Matt's catalog M7 (AGC3.4) before close.** AGC3.1 measured (2026-06-05); AGC3.2 decided **D-147** ("ease the meter in per track" — Matt's call); AGC3.3 implemented seed-from-first-audible + hold-through-sustained-silence in `BandEnergyProcessor`, regression-locked by `AGC3ColdStartSpikeTests` (live-path, FA #66). Filed at Matt's request 2026-06-06 after the AGC2.4 re-M7. AGC3.1 evidence subsection below.
+**Status:** Open — **fix landed (AGC3.3), automated validation green; awaiting Matt's catalog M7 (AGC3.4) before close.** AGC3.1 measured (2026-06-05); AGC3.2 decided **D-148** ("ease the meter in per track" — Matt's call); AGC3.3 implemented seed-from-first-audible + hold-through-sustained-silence in `BandEnergyProcessor`, regression-locked by `AGC3ColdStartSpikeTests` (live-path, FA #66). Filed at Matt's request 2026-06-06 after the AGC2.4 re-M7. AGC3.1 evidence subsection below.
 **Introduced:** structural — `BandEnergyProcessor`'s total-energy AGC seeds its running average from whatever energy is present at capture start; during the inter-track silence the running average decays toward zero, so the first audio frame of every track explodes the AGC scale before it catches up.
 **Resolved:** —
 
