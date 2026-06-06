@@ -181,6 +181,48 @@ private func bands(_ b: Float, _ m: Float, _ t: Float) -> BandDeviationTracker.B
             "per-band EMA pivot must fire >= 20% on recorded bass-dominant music (BUG-027 gate); got \(newRate * 100)%")
 }
 
+/// AGC2.4.1 — the band running average must RECOVER from a cold-start spike within the warmup
+/// window, not stay poisoned for minutes. At session start the first audio after silence explodes
+/// the AGC scale (the live M7 saw bass = 3.688 vs a normal ~0.25); seeding the slow-only EMA from
+/// that spike left bassDev ~0% for ~3-4 minutes. Feeds a spike then steady dynamic bass and asserts
+/// bassDev fires in the late window.
+@Test func bandDeviation_recoversFromColdStartSpike() {
+    var tracker = BandDeviationTracker()
+    func bassVal(_ i: Int) -> Float {
+        if i == 0 { return 3.7 }                                   // the seed spike (AGC cold-start)
+        if i < 8 { return [1.4, 0.7, 1.1, 0.5, 0.9, 0.4, 0.6][i - 1] }   // spike tail
+        return 0.25 + 0.12 * sin(Float(i) * 0.3)                    // steady dynamic bass ~0.13..0.37
+    }
+    var lateFires = 0, lateN = 0
+    for i in 0..<400 {
+        let out = tracker.derive(bands(bassVal(i), 0, 0))
+        if i >= 250 { lateN += 1; if out.bassDev > 1e-4 { lateFires += 1 } }
+    }
+    let rate = Double(lateFires) / Double(lateN)
+    #expect(rate > 0.20,
+            "bassDev must recover after a cold-start spike (got \(rate * 100)% in the late window); the warmup must converge the EMA off the spike")
+}
+
+/// AGC2.4.1 / FA #66 — cold-start recovery through the LIVE MIRPipeline.process path (the path the
+/// AGC2.3 unit tests + offline replay bypassed, which is why the cold-start hole shipped). A session
+/// starts with silence, so the AGC seeds low and the first audio explodes the band scale; the band
+/// average must recover so deviations fire within a few seconds, not stay suppressed for minutes.
+@Test func bandDeviation_recoversFromColdStart_liveMIRPipeline() {
+    let pipeline = MIRPipeline()
+    func bassMags(_ amp: Float) -> [Float] { (0..<512).map { $0 < 6 ? amp : Float(0.0) } }
+    var lateFires = 0, lateN = 0
+    for i in 0..<600 {
+        // 30 frames of true silence → the AGC seeds ~0; then a sudden dynamic bass onset explodes
+        // the AGC scale (the real cold-start spike). The band average must recover by the late window.
+        let amp: Float = i < 30 ? 0.0 : 0.22 + 0.14 * sin(Float(i) * 0.22)
+        let fv = pipeline.process(magnitudes: bassMags(amp), fps: 60, time: Float(i) / 60.0, deltaTime: 1.0 / 60.0)
+        if i >= 400 { lateN += 1; if fv.bassDev > 1e-4 { lateFires += 1 } }
+    }
+    let rate = Double(lateFires) / Double(lateN)
+    #expect(rate > 0.15,
+            "bassDev must recover after the live cold-start spike (got \(rate * 100)% in the late window) — AGC2.4.1")
+}
+
 // MARK: - StemFeatures Rel/Dev Invariants
 
 /// Stem energyDev fields must always be non-negative — they are max(0, energyRel).
