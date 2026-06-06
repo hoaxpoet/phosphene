@@ -117,7 +117,7 @@ Entries should cite source files. When adding a capability, link to the files th
 | Capability | Status | Evidence | Notes |
 |---|---|---|---|
 | Continuous energy bands (3-band + 6-band, instant + attenuated) on GPU | Supported | `BandEnergyProcessor` → `FeatureVector` floats 1–24 | Primary visual driver per CLAUDE.md §Audio Data Hierarchy. |
-| AGC-normalised deviation primitives (`xRel`, `xDev`, `xAttRel`) | Supported | `FeatureVector` floats 26–34; `StemFeatures` floats 17–24 (D-026, MV-1) | Required style. Absolute-threshold patterns are an anti-pattern. |
+| AGC-normalised deviation primitives (`xRel`, `xDev`, `xAttRel`) | Supported | `FeatureVector` floats 26–34 (`BandDeviationTracker`); `StemFeatures` floats 17–24 (D-026, MV-1; D-146/AGC2) | Required style. Absolute-threshold patterns are an anti-pattern. **The band-`*Dev` pivot is each band's own running average since D-146/AGC2 (2026-06-06)** — `midDev`/`trebDev` now fire on real music (were structurally ~0 % under the old fixed-0.5 pivot, BUG-027). Mid/treble carry smaller amplitude (use a larger gain) + a ~1-2 s cold-start warmup; SHADER_CRAFT §14.1. Stem `*EnergyDev` already used a per-stem EMA (unchanged). |
 | Beat onset pulses (per-band + composite) | Supported | `BeatDetector` → `OnsetPulses` → `FeatureVector` | Accent-only by policy. |
 | Beat-phase clock (analytic, drift-tracked) | Supported (post-DSP.2) | `LiveBeatDriftTracker` + offline `BeatGrid` (DSP.2 S5–S8) | For anticipation curves and beat-anchored motion. |
 | Per-stem energy + per-stem deviation primitives | Supported | `StemFeatures` floats 1–24 | |
