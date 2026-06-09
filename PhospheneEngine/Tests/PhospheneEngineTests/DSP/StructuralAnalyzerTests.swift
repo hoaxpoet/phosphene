@@ -51,6 +51,29 @@ private func feedSection(
     return prediction
 }
 
+// MARK: - Ring-Wrap Dedup (BUG-035)
+
+@Test func structuralAnalyzer_ringWrap_boundaryRegistersOnce() {
+    // Production geometry (maxHistory 600, minPeakDistance 120): the
+    // pre-fix stale-index dedup re-admitted the boundary every 4 detect
+    // calls while it slid through the 600-frame ring (~4-5 duplicates).
+    let analyzer = StructuralAnalyzer(
+        maxHistory: 600, featureDim: 16, detectionInterval: 30
+    )
+
+    // One real A→B transition, then enough B to slide it fully out of history.
+    feedSection(analyzer: analyzer, chroma: chromaA(), frames: 200, startTime: 0)
+    feedSection(
+        analyzer: analyzer, chroma: chromaB(), centroid: 0.7, flux: 0.6,
+        frames: 1400, startTime: 200.0 / 60.0
+    )
+
+    // Pre-fix: stale logical-index dedup re-registered the boundary ~4-5×,
+    // collapsing section durations toward 0 and inflating sectionIndex.
+    #expect(analyzer.boundaryCount == 1,
+            "One musical boundary should register once across the ring slide, got \(analyzer.boundaryCount): \(analyzer.boundaryTimestamps)")
+}
+
 // MARK: - Init
 
 @Test func structuralAnalyzer_init_noSegments() {
