@@ -233,6 +233,10 @@ public final class SkeinState: @unchecked Sendable {
     /// Skein.4.1 colour-freeze test (detect the dominant-stem switch frame on the live path).
     public var lineDominantStem: Int { lock.withLock { lineDomIdx } }
 
+    // Skein.ENGINE.3 (D-151): the structural-section read accessors live in a same-file extension
+    // (`SkeinState structural-section signal`, below) to keep the class body within the SwiftLint
+    // type_body_length budget — the same reason the math helpers are in an extension.
+
     /// The colour-breakpoint ring (oldest→newest). Each entry is the line colour + position offset in
     /// effect from `tauStart` onward; the shader freezes each tail segment to the latest breakpoint
     /// at/under its lay-time τ, and a switch starts a displaced NEW pour (Skein.4.1 option 2). Test-only.
@@ -296,6 +300,18 @@ public final class SkeinState: @unchecked Sendable {
     /// Per-stem painter-clock value at the last burst (refractory gate).
     private var lastBurstTau = [Float](repeating: -1, count: 4)
 
+    // Structural-section signal (Skein.ENGINE.3, D-151) — STORED from the live bridge, not yet
+    // visually consumed (Skein.5 keys the structural bias on it). Pure CPU state; never packed into
+    // the GPU buffer ⇒ the render is byte-identical.
+    private var structSectionIndex: UInt32 = 0
+    private var structSectionStartTime: Float = 0
+    private var structConfidence: Float = 0
+    /// false until the first prediction is observed (so the first frame re-baselines rather than
+    /// reporting a spurious boundary); reset on reseed.
+    private var structInitialized = false
+    /// true for exactly the one frame on which the delivered section index changed.
+    private var structBoundaryChanged = false
+
     private let lock = NSLock()
 
     // MARK: - Init
@@ -335,8 +351,16 @@ public final class SkeinState: @unchecked Sendable {
     ///
     /// Call once per frame from the render-loop tick hook (setMeshPresetTick) before the overlay
     /// draw reads buffer(6).
-    public func tick(deltaTime: Float, features: FeatureVector, stems: StemFeatures) {
-        lock.withLock { _tick(deltaTime: deltaTime, features: features, stems: stems) }
+    ///
+    /// `structure` (Skein.ENGINE.3, D-151): the live structural-section prediction, delivered via
+    /// the gated `RenderPipeline.latestStructuralPrediction` bridge. CPU-only — **STORED** here for
+    /// Skein.5 (which will key the structural visual bias on it); ENGINE.3 only proves the signal
+    /// arrives. Nothing below feeds it into geometry/colour/width and it is never written to the GPU
+    /// buffer, so the render is byte-identical to today. Defaults to `.none` (the value at silence /
+    /// before the first prediction / for the unit-tick test call sites that don't drive structure).
+    public func tick(deltaTime: Float, features: FeatureVector, stems: StemFeatures,
+                     structure: StructuralPrediction = .none) {
+        lock.withLock { _tick(deltaTime: deltaTime, features: features, stems: stems, structure: structure) }
         writeToGPU()
     }
 
@@ -357,6 +381,14 @@ public final class SkeinState: @unchecked Sendable {
             lineCol = SIMD3<Float>(1, 1, 1)
             resetColorBreaks()   // clear the line-colour ring + re-seed the white baseline (Skein.4.1)
             lineFlow = 0; lineVisc = 0; jitter = 0
+            // Skein.ENGINE.3: clear the structural-section tracking so the new track re-baselines —
+            // no spurious boundary from the old track's last section index (the bridge also resets
+            // to .none via MIRPipeline.reset on track change, but clearing here is the local guard).
+            structSectionIndex = 0
+            structSectionStartTime = 0
+            structConfidence = 0
+            structInitialized = false
+            structBoundaryChanged = false
             for i in 0..<4 {
                 stemEnergySmoothed[i] = 0
                 lastBurstTau[i] = -1
@@ -376,7 +408,15 @@ public final class SkeinState: @unchecked Sendable {
 
     // MARK: - Private: tick (called while holding lock)
 
-    private func _tick(deltaTime: Float, features: FeatureVector, stems: StemFeatures) {
+    private func _tick(deltaTime: Float, features: FeatureVector, stems: StemFeatures,
+                       structure: StructuralPrediction) {
+        // Skein.ENGINE.3 (D-151): ingest the live structural-section signal FIRST and
+        // UNCONDITIONALLY — section detection is independent of the visual warmup/silence gate, so
+        // the section index / boundary flag track even at silence. STORED only (Skein.5 consumes
+        // it for the structural bias); no field below reads it and it never reaches the GPU buffer,
+        // so the render is byte-identical.
+        ingestStructure(structure)
+
         let dt = max(deltaTime, 0.001)
 
         // D-019 warmup: 0 = FV-only, 1 = stems fully warm.
@@ -550,26 +590,6 @@ public final class SkeinState: @unchecked Sendable {
         return SIMD2(x, y)
     }
 
-    // MARK: - Private: per-stem feature accessors
-
-    private func centroid(of stem: SkeinStem, stems: StemFeatures) -> Float {
-        switch stem {
-        case .drums: return stems.drumsCentroid
-        case .bass: return stems.bassCentroid
-        case .vocals: return stems.vocalsCentroid
-        case .other: return stems.otherCentroid
-        }
-    }
-
-    private func attackRatio(of stem: SkeinStem, stems: StemFeatures) -> Float {
-        switch stem {
-        case .drums: return stems.drumsAttackRatio
-        case .bass: return stems.bassAttackRatio
-        case .vocals: return stems.vocalsAttackRatio
-        case .other: return stems.otherAttackRatio
-        }
-    }
-
     // MARK: - Private: GPU write
 
     private func writeToGPU() {
@@ -676,5 +696,68 @@ extension SkeinState {
             val <= 0.04045 ? val / 12.92 : pow((val + 0.055) / 1.055, 2.4)
         }
         return SIMD3(decode(col.x), decode(col.y), decode(col.z))
+    }
+
+    // MARK: - Per-stem feature accessors (same-file extension — see the type_body_length note above)
+
+    func centroid(of stem: SkeinStem, stems: StemFeatures) -> Float {
+        switch stem {
+        case .drums: return stems.drumsCentroid
+        case .bass: return stems.bassCentroid
+        case .vocals: return stems.vocalsCentroid
+        case .other: return stems.otherCentroid
+        }
+    }
+
+    func attackRatio(of stem: SkeinStem, stems: StemFeatures) -> Float {
+        switch stem {
+        case .drums: return stems.drumsAttackRatio
+        case .bass: return stems.bassAttackRatio
+        case .vocals: return stems.vocalsAttackRatio
+        case .other: return stems.otherAttackRatio
+        }
+    }
+}
+
+// MARK: - SkeinState structural-section signal (Skein.ENGINE.3, D-151)
+
+/// The live structural-section channel (read accessors + the `_tick` ingest helper) in a same-file
+/// extension — `private` members of a type are visible to same-file extensions (SE-0169), so `_tick`
+/// reaches `ingestStructure` and the accessors reach the private fields, while the class body stays
+/// within the SwiftLint `type_body_length` budget (the same reason the math helpers are split out).
+/// STORED only: nothing here drives geometry/colour/width and none of it reaches the GPU buffer, so
+/// the render is byte-identical to pre-ENGINE.3. Skein.5 consumes the stored signal for the bias.
+extension SkeinState {
+
+    /// The live structural-section index most recently delivered to `tick` via the
+    /// `RenderPipeline.latestStructuralPrediction` bridge (0 until the first prediction arrives /
+    /// after reseed). Thread-safe.
+    public var currentSectionIndex: UInt32 { lock.withLock { structSectionIndex } }
+
+    /// The current section's start time (s) and the prediction confidence (0–1), as last delivered.
+    /// Exposed for Skein.5 + the ENGINE.3 plumbing test. Thread-safe.
+    public var currentSectionStartTime: Float { lock.withLock { structSectionStartTime } }
+    public var sectionConfidence: Float { lock.withLock { structConfidence } }
+
+    /// True for exactly the one frame on which the delivered section index changed (a detected
+    /// section-boundary crossing); false on the first observation and after reseed. Skein.5 will key
+    /// the structural anticipation on this — ENGINE.3 only proves it fires. Thread-safe.
+    public var didCrossSectionBoundaryThisFrame: Bool { lock.withLock { structBoundaryChanged } }
+
+    /// Ingest the live structural-section prediction (called from `_tick`, lock held). STORES the
+    /// section index / start-time / confidence and raises a one-frame boundary flag when the section
+    /// index changes. The `StructuralAnalyzer` increments `sectionIndex` monotonically within a track
+    /// (reset to 0 on track change, mirrored in `reseed`), so "changed" detects exactly a boundary
+    /// crossing.
+    func ingestStructure(_ structure: StructuralPrediction) {
+        if structInitialized {
+            structBoundaryChanged = structure.sectionIndex != structSectionIndex
+        } else {
+            structInitialized = true   // first observation re-baselines; not a crossing
+            structBoundaryChanged = false
+        }
+        structSectionIndex = structure.sectionIndex
+        structSectionStartTime = structure.sectionStartTime
+        structConfidence = structure.confidence
     }
 }
