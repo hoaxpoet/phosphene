@@ -25,6 +25,23 @@ import Shared
 /// Bass-heavy magnitudes (energy in the low bins, like a kick / power chord) at a given amplitude.
 private func bassMags(_ amp: Float) -> [Float] { (0..<512).map { $0 < 6 ? amp : Float(0) } }
 
+/// Spectrally-realistic broadband magnitudes (bass-dominant but with mid/treble, so bass is ~40 % of
+/// total — like real music). The fully-bass `bassMags` over-states `f.bass` because it puts ALL
+/// energy in the bass band; real onsets spread across the spectrum, which is what determines how the
+/// cold-start floor reads (tuned on real raw_tap.wav, not synthetic — FA #27). Bins: bass <6, low-mid
+/// 6..<24, mid 24..<90, treble 90..<300, scaled so bass ≈ 40 % of the 6-band energy sum.
+private func mixMags(_ amp: Float) -> [Float] {
+    (0..<512).map { i -> Float in
+        switch i {
+        case ..<6:        return amp
+        case 6..<24:      return amp * 0.6
+        case 24..<90:     return amp * 0.35
+        case 90..<300:    return amp * 0.18
+        default:          return 0
+        }
+    }
+}
+
 /// The spike ceiling: after the fix, the first-audible-frame `f.bass` must not exceed this multiple
 /// of the steady value. AGC3.1 measured 11-17x un-fixed; a smooth arrival is ~1x (approached from
 /// below via the instant smoother). 2.0x is a generous gate that the un-fixed code blows past and a
@@ -53,6 +70,52 @@ private let kSpikeRatioCeiling: Float = 2.0
     #expect(steady > 0.01, "sanity: steady f.bass should be meaningfully non-zero, got \(steady)")
     #expect(ratio < kSpikeRatioCeiling,
             "BUG-029: session-start f.bass spike — peak \(peakFirst3s) / steady \(steady) = \(ratio)x must be < \(kSpikeRatioCeiling)x")
+}
+
+// MARK: - Quiet-intro → loud-hit cold-start (the M7-exposed residual, BUG-029 re-open)
+
+/// The real-music onset shape the first AGC3 fix MISSED (M7 session 2026-06-09, Battles "SZ2"):
+/// silence → a ~1 s QUIET intro → the first LOUD bass hit. seed-from-first-audible seeds the meter
+/// off the quiet intro, so the loud hit ~1 s later — while the meter is still converged low — inflates
+/// (live: f.bass 0.18 intro → 3.829 on the hit). The prior test used "silence → immediately loud,"
+/// which seed-from-first-audible DOES handle — that wrong shape is exactly why the fix shipped looking
+/// green and failed live (FA #27: the synthetic onset didn't match the real onset shape). This models
+/// the real shape; it must be RED before the peak-aware-floor fix and GREEN after.
+@Test func agc3_quietIntroThenLoudHit_doesNotSpike_liveMIRPipeline() {
+    let pipeline = MIRPipeline()
+    let quietAmp: Float = 0.05     // soft intro (real SZ2 intro read f.bass ~0.18)
+    let loudAmp: Float = 0.9       // a loud broadband hit (real SZ2 cold-start hit f.bass 1.67 un-fixed)
+    var coldHitPeak: Float = 0     // f.bass on the FIRST loud hit (cold-start, after the quiet intro)
+    var steadyHitPeak: Float = 0   // f.bass on an IDENTICAL loud hit once the AGC has converged
+    for i in 0..<900 {
+        let amp: Float
+        switch i {
+        case ..<6:        amp = 0.0        // silent pre-roll
+        case 6..<60:      amp = quietAmp   // ~0.9 s quiet intro → meter seeds low
+        case 60..<75:     amp = loudAmp    // FIRST loud hit (cold-start — un-fixed this inflates > 1)
+        case 75..<600:    amp = 0.35       // settled music: AGC converges, cold-start window ends
+        case 600..<615:   amp = loudAmp    // an IDENTICAL loud hit, now in steady state
+        default:          amp = 0.35
+        }
+        let fv = pipeline.process(magnitudes: mixMags(amp), fps: 60, time: Float(i) / 60.0, deltaTime: 1.0 / 60.0)
+        if (60..<90).contains(i)  { coldHitPeak = max(coldHitPeak, fv.bass) }
+        if (600..<630).contains(i) { steadyHitPeak = max(steadyHitPeak, fv.bass) }
+    }
+    // The visible bug is that the cold-start hit pins f.bass ABOVE FFO's clamp ceiling (1.0) for ~0.8 s
+    // (real SZ2: 1.67), holding the spikes at max height — a lurch a normal hit doesn't cause. The
+    // floor must keep the cold-start hit below 1.0 (no max-lock) while leaving it clearly responsive,
+    // AND read no more inflated than the SAME hit in steady state (consistency). Un-fixed this hit
+    // exceeds 1.0 (verified RED on the pre-floor code + real audio).
+    #expect(coldHitPeak < 1.0,
+            "BUG-029 (re-open): cold-start loud hit f.bass \(coldHitPeak) must stay below FFO's clamp ceiling (no max-lock lurch)")
+    #expect(coldHitPeak > 0.3,
+            "the floor must not over-mute the first hit — it should still read clearly loud, got \(coldHitPeak)")
+    #expect(steadyHitPeak > 0.05, "sanity: the steady loud hit should read clearly loud, got \(steadyHitPeak)")
+    // Loose backstop: the cold-start hit may be mildly emphasised vs a steady hit (it IS an onset), but
+    // not the ~4–5x inflation of the un-fixed code (real SZ2: cold 1.67 vs steady ~0.4). The < 1.0 gate
+    // above is the load-bearing FFO-max-lock check; this just rejects gross inflation.
+    #expect(coldHitPeak <= steadyHitPeak * 2.5,
+            "the first loud hit (\(coldHitPeak)) must not grossly inflate vs the same hit in steady state (\(steadyHitPeak))")
 }
 
 // MARK: - Inter-track cold-start (denominator decays across the silence gap; no per-track reset)

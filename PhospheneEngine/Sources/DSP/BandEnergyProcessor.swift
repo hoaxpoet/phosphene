@@ -111,6 +111,12 @@ public final class BandEnergyProcessor: @unchecked Sendable {
     public let binCount: Int
     public let sampleRate: Float
 
+    /// Whether the cold-start peak floor (BUG-029 re-open / AGC3.6) is active. Only the **main-mix**
+    /// processor (MIRPipeline) sets this — it's what feeds `f.bass` to continuous-energy presets. The
+    /// per-stem processors (StemAnalyzer) leave it off: stems have their own cold-start seeding
+    /// (BUG-018) and the floor would suppress their energy during the window.
+    private let applyColdStartFloor: Bool
+
     /// Precomputed bin ranges for 3-band: [(startBin, endBin)] exclusive end.
     private let bandRanges3: [(start: Int, end: Int)]
 
@@ -129,6 +135,14 @@ public final class BandEnergyProcessor: @unchecked Sendable {
     /// hold-through-silence gate so only *sustained* silence (an inter-track gap) holds the running
     /// average; brief within-track gaps decay as before.
     private var silentRun: Int = 0
+
+    /// Audible frames since the cold-start window armed (BUG-029 re-open / AGC3.6). The peak floor
+    /// below is active while this is < the window length; the window re-arms at each track start
+    /// (seed / silence-emergence). −1 means unarmed.
+    private var coldStartFrames: Int = -1
+
+    /// Max total energy seen during the current cold-start window (BUG-029 re-open / AGC3.6).
+    private var coldStartPeak: Float = 0
 
     /// Number of frames for fast warmup phase (~1s at 60fps).
     private static let warmupFastFrames = 60
@@ -157,6 +171,27 @@ public final class BandEnergyProcessor: @unchecked Sendable {
     /// identical to the prior algorithm.
     private static let sustainedSilenceFrames = 30
 
+    /// BUG-029 re-open (AGC3.6) — cold-start peak floor. The D-148 fix (seed-from-first-audible)
+    /// stopped the first-FRAME explosion but NOT the residual the M7 (2026-06-09) exposed: when a
+    /// track opens with a QUIET intro, the meter seeds off the intro, so the first LOUD bass hit ~1 s
+    /// later — while the meter is still converged low — inflates (live f.bass 3.8). Through Ferrofluid
+    /// Ocean's `1.0 + 0.8·clamp(f.bass,0,1)` that holds the spikes at full height for ~0.3 s.
+    ///
+    /// Fix: during a per-track cold-start *window*, floor the AGC denominator at a fraction of the
+    /// loudest energy seen so far, so a sudden loud hit divides by ~its own peak instead of the quiet
+    /// intro's average. The floor only BINDS when the running average is far below the peak (a quiet→
+    /// loud jump) — for constant-amplitude input it never binds (peak ≈ average), so steady-state and
+    /// constant-cold-start are byte-identical; only the quiet-intro→loud-hit case changes. The window
+    /// is wall-clock (×fps) and re-arms each track, so it never touches steady state.
+    private static let coldStartWindowSeconds: Float = 2.5
+    /// Floor = this × the cold-start peak energy. Tuned on the REAL M7 audio (raw_tap.wav, Battles
+    /// "SZ2", `tools/agc3/`): un-fixed the first loud hit reads f.bass ≈ 1.67 and locks FFO at max
+    /// spike height for ~0.8 s; this floor removes the lock at any value ≥ 0.20. The first-hit reading
+    /// scales inversely — 0.20→0.87, 0.25→0.70, 0.30→0.60, 0.60→0.32 (too muted). 0.25 keeps the hit
+    /// clearly responsive (≈85 % of full FFO height) without the max-lock. Higher → more muted; lower
+    /// → closer to the clamp ceiling. Final value is an M7 (render) call.
+    private static let coldStartPeakFraction: Float = 0.25
+
     // MARK: - Smoothing State
 
     /// Smoothed 3-band instant values.
@@ -179,9 +214,12 @@ public final class BandEnergyProcessor: @unchecked Sendable {
     ///   - binCount: Number of FFT magnitude bins (default 512).
     ///   - sampleRate: Sample rate in Hz (default 48000).
     ///   - fftSize: FFT size (default 1024).
-    public init(binCount: Int = 512, sampleRate: Float = 48000, fftSize: Int = 1024) {
+    ///   - applyColdStartFloor: Enable the cold-start peak floor (main-mix only; default false).
+    public init(binCount: Int = 512, sampleRate: Float = 48000, fftSize: Int = 1024,
+                applyColdStartFloor: Bool = false) {
         self.binCount = binCount
         self.sampleRate = sampleRate
+        self.applyColdStartFloor = applyColdStartFloor
 
         let binResolution = sampleRate / Float(fftSize)
 
@@ -243,6 +281,8 @@ public final class BandEnergyProcessor: @unchecked Sendable {
         let totalRawEnergy = raw6.reduce(0, +)
         let agcRate = frameCount < Self.warmupFastFrames ? Self.agcRateFast : Self.agcRateModerate
         let nearSilent = agcRunningAvg != 0 && totalRawEnergy < Self.silenceFraction * agcRunningAvg
+        let wasUnseeded = agcRunningAvg == 0
+        let wasSustainedSilence = silentRun >= Self.sustainedSilenceFrames
         silentRun = nearSilent ? silentRun + 1 : 0
 
         if agcRunningAvg == 0 {
@@ -254,7 +294,15 @@ public final class BandEnergyProcessor: @unchecked Sendable {
             agcRunningAvg = agcRate * agcRunningAvg + (1 - agcRate) * totalRawEnergy
         }
 
-        let agcScale: Float = agcRunningAvg > 1e-10 ? 0.5 / agcRunningAvg : 0
+        // The AGC denominator — `agcRunningAvg`, floored during the cold-start window (main-mix only).
+        let effectiveAvg = coldStartFlooredAvg(
+            totalRawEnergy: totalRawEnergy,
+            agcRunningAvg: agcRunningAvg,
+            fps: fps,
+            wasUnseeded: wasUnseeded,
+            wasSustainedSilence: wasSustainedSilence
+        )
+        let agcScale: Float = effectiveAvg > 1e-10 ? 0.5 / effectiveAvg : 0
 
         // Apply AGC to both 3-band and 6-band.
         let agc3 = raw3.map { $0 * agcScale }
@@ -299,12 +347,39 @@ public final class BandEnergyProcessor: @unchecked Sendable {
         agcRunningAvg = 0
         frameCount = 0
         silentRun = 0
+        coldStartFrames = -1
+        coldStartPeak = 0
         smoothedInstant = [0, 0, 0]
         smoothedAttenuated = [0, 0, 0]
         smoothed6Band = [0, 0, 0, 0, 0, 0]
     }
 
     // MARK: - Helpers
+
+    /// The AGC denominator with the cold-start peak floor applied (BUG-029 re-open / AGC3.6). During
+    /// a per-track cold-start window (main-mix processor only — `applyColdStartFloor`), floor
+    /// `agcRunningAvg` at `coldStartPeakFraction × (loudest energy seen)`, so a loud hit after a quiet
+    /// intro divides by ~its own peak (reads "loud" once) instead of the quiet average (inflates → FFO
+    /// locks at max). Binds ONLY on a quiet→loud jump (avg ≪ peak) and self-releases as the running
+    /// average catches up; for constant input it never binds, so steady-state stays byte-identical.
+    /// Off for the per-stem processors (BUG-018 owns their cold-start; the floor would suppress stem
+    /// energy in the window). Mutates the window state; call once per frame.
+    private func coldStartFlooredAvg(totalRawEnergy: Float, agcRunningAvg: Float, fps: Float,
+                                     wasUnseeded: Bool, wasSustainedSilence: Bool) -> Float {
+        guard applyColdStartFloor else { return agcRunningAvg }
+        // Arm the window at each track start: first audible frame after unseeded (session-start /
+        // per-track reset) or after a sustained silence (inter-track gap).
+        if totalRawEnergy > 0 && (wasUnseeded || wasSustainedSilence) {
+            coldStartFrames = 0
+            coldStartPeak = totalRawEnergy
+        }
+        guard coldStartFrames >= 0 else { return agcRunningAvg }
+        coldStartPeak = max(coldStartPeak, totalRawEnergy)
+        let floored = max(agcRunningAvg, Self.coldStartPeakFraction * coldStartPeak)
+        if totalRawEnergy > 0 { coldStartFrames += 1 }
+        if Float(coldStartFrames) >= Self.coldStartWindowSeconds * fps { coldStartFrames = -1 }
+        return floored
+    }
 
     /// Compute RMS energy for each band from magnitude bins.
     private func computeRawEnergy(magnitudes: [Float], ranges: [(start: Int, end: Int)]) -> [Float] {

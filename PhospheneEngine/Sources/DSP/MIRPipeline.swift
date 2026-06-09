@@ -141,7 +141,10 @@ public final class MIRPipeline: @unchecked Sendable {
             binCount: binCount, sampleRate: sampleRate, fftSize: fftSize
         )
         self.bandEnergyProcessor = BandEnergyProcessor(
-            binCount: binCount, sampleRate: sampleRate, fftSize: fftSize
+            binCount: binCount,
+            sampleRate: sampleRate,
+            fftSize: fftSize,
+            applyColdStartFloor: true   // main-mix f.bass cold-start floor (BUG-029 re-open / AGC3.6)
         )
         self.chromaExtractor = ChromaExtractor(
             binCount: binCount, sampleRate: sampleRate, fftSize: fftSize
