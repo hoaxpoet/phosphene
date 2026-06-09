@@ -9,7 +9,7 @@ Companion design doc: `SKEIN_pollock_preset_architecture.md` (becomes the seed f
 ## Locked decisions (from §8 of the architecture doc)
 
 1. **Subtle structural bias**, not pure allover — sections softly lean the painter's region; repeated choruses revisit and build density. Overall allover-ness preserved.
-2. **Wet sheen ships in V1** (Skein.4) — but Skein.4 + Skein.ENGINE.2 are the **explicit cut-line**: if Skein.2 overruns, they defer to V2 and the preset certifies matte-only.
+2. **Wet sheen ships in V1** (Skein.4) — but Skein.4 + Skein.ENGINE.2 are the **explicit cut-line**: if Skein.2 overruns, they defer to V2 and the preset certifies matte-only. ✅ **Cut-line NOT invoked (2026-06-08, D-149):** the ENGINE.2 audit found a gated additive signal (canvas-alpha wetness + Skein-owned warp/comp fragments) — no shared format change, no new pass — so both landed in V1. Skein certifies *with* the sheen.
 3. **Visible painter locus** — implemented behind an off-by-default flag in Skein.5.
 4. **In-flight paint** — deferred to V2 (not in this plan).
 5. **Explicit canvas-hold mode** in the mv_warp family (Skein.ENGINE.1), not an overload of the narrower `feedback` path. ⚠️ **AMENDED by the Skein.ENGINE.1 audit (D-142):** canvas-hold needed **no new engine "mode"** — it is reachable as pure per-preset config of the existing mv_warp machinery (identity `mvWarpPerVertex` + `decay=1.0` + `chromaticMix=0`), and (as this decision intended) did NOT overload the `feedback`/Membrane path. Verdict: config-only, no PhospheneEngine source change; every other mv_warp preset byte-identical. See DECISIONS D-142.
@@ -28,8 +28,8 @@ Companion design doc: `SKEIN_pollock_preset_architecture.md` (becomes the seed f
 | **Skein.1** | Canvas + pour spike | preset | ENGINE.1.1 | ✅ **landed 2026-06-05** (`57ee7383`/`528021b5`); **pending Matt's eyeball gate**: does a skein hold + read as paint? |
 | **Skein.2** | Splatter morphology + viscosity | preset | Skein.1 | ✅ **landed + Matt eyeball PASS 2026-06-05** (closed-form / path A, no engine touch; round-droplet M7 fix `409c1b70`) — reads as poured paint, not a particle-fountain. Cert at Skein.6. |
 | **Skein.3** | Stem palette + full emission routing | preset | Skein.2 | Harness + replay registration; routing is legible |
-| **Skein.ENGINE.2** | Wetness channel | engine | — (land before Skein.4) | Regression: byte-identical for others; stamp+decay test |
-| **Skein.4** | Wet/dry sheen *(cut-line)* | preset | ENGINE.2, Skein.3 | Harness: wet-now reads vs dry-past |
+| **Skein.ENGINE.2** | Wetness channel | engine | — (land before Skein.4) | ✅ **landed 2026-06-08** (D-149, approach A) — DB/FM byte-identical, RGB lossless-hold intact, stamp/decay/holds-at-silence green |
+| **Skein.4** | Wet/dry sheen *(cut-line — NOT invoked)* | preset | ENGINE.2, Skein.3 | ✅ **landed 2026-06-08** — wet-now glistens / dry-past matte through the live BLIT path; **pending Matt's M7** |
 | **Skein.5** | Mood + structure + anticipation + locus flag | preset | Skein.3 | Harness across mood/section fixtures |
 | **Skein.6** | Certification | preset | all | Soak + acceptance + determinism gate + **Matt M7** |
 
@@ -162,8 +162,10 @@ Execution order is top-to-bottom. ENGINE.2 is shown near Skein.4 because that's 
 
 ---
 
-### Skein.ENGINE.2 — Wetness channel
+### Skein.ENGINE.2 — Wetness channel ✅ (2026-06-08, D-149)
 **engine · depends on: — (must land before Skein.4) · gate: regression byte-identical + stamp/decay test**
+
+**Landed (approach A — canvas ALPHA channel; the plan's default-if-clean, taken).** The audit (D-149) found approach A clean *and* the per-prefix override mechanism (`PresetLoader.swift:689`/`:691`, used by Fata Morgana) lets Skein own its warp + comp fragments with **no shared GPU code touched**. Wetness lives in the feedback texture's ALPHA channel (linear 8-bit on the `.bgra8Unorm_srgb` feedback; RGB stays the lossless permanent record). **Stamp:** the overlay's existing alpha-over blend (`A = bestCover² + dst.a·(1−cover)` → fresh solid paint → A≈1; no new stamp code). **Decay:** `skein_warp_fragment` holds RGB byte-identically and does `A *= wetnessDecay`; `wetnessDecay = exp(-rate·dt·stemMix)` from `SkeinState` **pauses at silence** (stemMix→0 → 1.0). **Read-hook:** the blit already samples the compose texture — Skein.4's `skein_comp_fragment` reads `.a`. Plumbing: a gated `mvWarpWetnessDecay` uniform (mirror of `mvWarpChromatic`) at warp-fragment `buffer(1)`, default 1.0 — only `skein_warp_fragment` declares it, FM never runs the standard warp pass → **DB/FM/Starburst byte-identical by construction**. **Cut-line check: PASS, NOT invoked** (no shared format change, no new pass, no loop reshape). Approach B (dedicated R8) rejected — it forces MRT on the shared overlay pass or a mark re-dispatch, more code/risk for the same separation. Files: `RenderPipeline.swift`/`+PresetSwitching.swift`/`+MVWarp.swift` (the uniform), `Skein.metal` (`skein_warp_fragment`), `SkeinState.swift` (`wetnessDecay`), `VisualizerEngine+Presets.swift` (per-frame push), `SkeinCanvasHoldTest.swift` (`SkeinWetnessTest` + RGB-only hold re-scope). Commits `255fcc64` / `c5192d28`.
 
 **Goal.** A transient per-pixel wetness signal: stamped to 1 where paint lands this frame, decaying toward 0 each frame (decay pauses at silence via `accumulated_audio_time`), readable by the display/blit stage.
 
@@ -182,8 +184,10 @@ Execution order is top-to-bottom. ENGINE.2 is shown near Skein.4 because that's 
 
 ---
 
-### Skein.4 — Wet/dry sheen *(cut-line)*
+### Skein.4 — Wet/dry sheen *(cut-line — NOT invoked)* ✅ (2026-06-08) — pending Matt's M7
 **preset · depends on: ENGINE.2, Skein.3 · gate: harness (wet-now vs dry-past)**
+
+**Landed.** `skein_comp_fragment` (the `<prefix>_comp_fragment` override — shared blit byte-identical) reads canvas RGB + wetness A and renders the wet-now / dry-past device: **wet → GGX specular** (normal from the canvas luminance gradient — central-difference/Sobel; tonemapped GGX NDF, Walter et al. 2007), hard-gated by wetness so it fires on recent paint and ~0 on the dried past; **dry → matte + slight desaturation**; subtle canvas-weave grain. The sheen is an **additive glint + a subtle wet saturation "deepen"** (glossy depth, not whitening) so the Skein.3 stem colours **read through** (verified — all 4 stems preserved on the blit). sRGB (FA #71): the feedback is sRGB → sampling auto-decodes to linear; no manual decode. Bloom-on-wet-specular deferred (needs a pass / governor state — the in-shader glint gives the sparkle, cut-line-conscious). Gate (live BLIT path, real replayed stems): wet (A>180) sheen boost **25.77** vs dry (A<80) **3.71** (≈7×), glint **162**, stem colours **CANVAS [1906,7205,5601,10328] → BLIT all 4 intact**. Files: `Skein.metal` (`skein_comp_fragment` + sheen tuning), `SkeinCanvasHoldTest.swift` (wet-now/dry-past gate + BLIT capture + contact sheet + canvas-vs-blit isolation). Commits `ba62e1ef` / `23060d11`. **Pending Matt's M7** (the eye-tracks-the-now perceptual gate, live).
 
 **Goal.** The legibility device: fresh paint glistens, old paint is matte, so the eye tracks the musical *now*.
 
