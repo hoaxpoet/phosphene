@@ -78,6 +78,15 @@ struct SkeinCanvasHoldTest {
                 "Skein.metal skein_geometry_fragment must read SkeinUniforms at buffer(6) (ENGINE.1.2 slot-6 binding).")
         #expect(src.contains("st.painterTau"),
                 "Skein.metal fragment must drive the painter from SkeinState.painterTau (Skein.3 audio-modulated clock).")
+        // Skein.ENGINE.2: Skein owns its warp/hold fragment (decays the ALPHA wetness channel, holds
+        // RGB byte-identically) via the per-prefix override — the shared mvWarp_fragment is untouched
+        // (DB/FM byte-identical). The literal `prev.a * wetnessDecay` is the wetness-decay invariant.
+        #expect(src.contains("fragment float4 skein_warp_fragment("),
+                "Skein.metal missing skein_warp_fragment (ENGINE.2 wetness-channel hold/decay).")
+        #expect(src.contains("prev.a * wetnessDecay"),
+                "Skein.metal skein_warp_fragment must decay the ALPHA wetness channel by wetnessDecay (ENGINE.2).")
+        #expect(src.contains("return float4(prev.rgb,"),
+                "Skein.metal skein_warp_fragment must hold RGB byte-identically (lossless paint record, ENGINE.2).")
     }
 
     @Test("Skein.json declares canvas-hold config + a marks-on-top block (D-143)")
@@ -147,8 +156,13 @@ struct SkeinCanvasHoldTest {
                 "An early-painted texel was no longer painted at the end — the canvas-hold lost a laid mark.")
         //    and the UNPAINTED far corner is byte-identical frame-0 → final (the ENGINE.1.1
         //    lossless-hold property, now under a moving mark: unpainted texels never drift).
-        #expect(run.creamRef == run.groundCornerFinal,
-                "Far corner drifted \(run.creamRef) → \(run.groundCornerFinal) at chromatic=0 — the held canvas is not lossless.")
+        //    Skein.ENGINE.2 RE-SCOPE: the RGB channels are the lossless permanent paint record; the
+        //    ALPHA channel now carries the transient WETNESS signal, which legitimately decays under
+        //    music (and is held at silence, where this test runs, so A is also unchanged here). The
+        //    lossless-hold invariant is therefore asserted on RGB only — A is checked by the
+        //    dedicated wetness test below. (At silence wetnessDecay == 1.0, so A is in fact held too.)
+        #expect(Array(run.creamRef.prefix(3)) == Array(run.groundCornerFinal.prefix(3)),
+                "Far-corner RGB drifted \(run.creamRef) → \(run.groundCornerFinal) at chromatic=0 — the held canvas RGB is not lossless.")
 
         // 3. CONTINUITY (pour LINE) — the laid line is a single connected component (no gaps between
         //    consecutive capsules; they share an endpoint by construction via the painterTau tail
@@ -165,6 +179,72 @@ struct SkeinCanvasHoldTest {
 
         // 5. WHITE LINE — at least one fully-laid texel is white (the pour colour; palette is Skein.3).
         #expect(whiteOK, "No white texel found — the pour line did not render white-on-cream.")
+    }
+
+    // MARK: - Wetness channel (Skein.ENGINE.2): stamp + decay-pauses-at-silence (live dispatch path)
+
+    @Test("Wetness channel (ENGINE.2): stamp ~1 where painted, decays under music, holds at silence — live path")
+    func test_wetnessChannel_stampDecayHold() throws {
+        guard let fx = try loadSkeinFixture() else { return }
+        let w = 160, h = 160
+        let musicFrames = 60, silenceFrames = 60
+
+        // The wetness DECAY is a pure function of the SILENCE GATE (totalStemEnergy → stemMix), NOT
+        // of audio CONTENT, so this is a deterministic PLUMBING test of the ENGINE.2 signal: it drives
+        // a constant non-zero-energy stem for the "music" phase and StemFeatures.zero for "silence".
+        // (This is NOT a musical / visual diagnostic — the wet-now/dry-past VISUAL gate uses REAL
+        // replayed stems; `feedback_synthetic_audio` / FA #27 applies there, not to this gate-mechanism
+        // unit test, which asserts only that wetnessDecay propagates and pauses at zero energy.)
+        var music = StemFeatures.zero
+        music.drumsEnergy = 0.30; music.bassEnergy = 0.30
+        music.vocalsEnergy = 0.25; music.otherEnergy = 0.20      // total 1.05 ≫ warmupHigh (0.06) ⇒ stemMix = 1
+        music.drumsEnergyDev = 0.20; music.bassEnergyDev = 0.18  // drive the painter + a few bursts
+        let stemFrames = Array(repeating: music, count: musicFrames)
+                       + Array(repeating: StemFeatures.zero, count: silenceFrames)
+
+        let run = try runPourAccumulation(
+            chromatic: 0, frames: musicFrames + silenceFrames, width: w, height: h, aspect: 1.0,
+            startTime: 0.0, checkpoints: [musicFrames - 1], fx: fx, seed: 0, stemFrames: stemFrames,
+            captureWetness: true)
+
+        let corner = run.cornerAlphaSeries
+        let maxA = run.maxAlphaSeries
+        #expect(corner.count == musicFrames + silenceFrames && maxA.count == corner.count,
+                "Wetness series came up short (\(corner.count) / \(maxA.count)).")
+        guard corner.count == musicFrames + silenceFrames else { return }
+
+        let stampPeak = maxA.prefix(musicFrames).max() ?? 0
+        let cornerMusicStart = corner[0]
+        let cornerMusicEnd = corner[musicFrames - 1]
+        // Count frames where the unpainted-corner wetness INCREASED during music (should ≈ 0 — a
+        // freak stray burst reaching the extreme corner is tolerated up to 2).
+        var risesInMusic = 0
+        for i in 1..<musicFrames where corner[i] > corner[i - 1] { risesInMusic += 1 }
+        let silenceWindow = Array(corner[musicFrames..<(musicFrames + silenceFrames)])
+        let silenceSpread = (silenceWindow.max() ?? 0) - (silenceWindow.min() ?? 0)
+
+        print("""
+        [skein_wetness] live scene→warp→overlay→blit→swap, \(w)×\(h), \(musicFrames)f music + \(silenceFrames)f silence:
+          stamp: max canvas ALPHA during music = \(stampPeak) / 255  (fresh paint → wet)
+          decay: unpainted-corner ALPHA \(cornerMusicStart) → \(cornerMusicEnd) over music  (rises: \(risesInMusic))
+          hold : silence-window ALPHA spread = \(silenceSpread)  (\(silenceWindow.first ?? -1) → \(silenceWindow.last ?? -1))
+        """)
+
+        // 1. STAMP — fresh solid paint stamps the wetness channel toward ~1 (255).
+        #expect(stampPeak > 200,
+                "Max canvas wetness peaked at only \(stampPeak)/255 during music — the overlay is not stamping wetness where paint lands.")
+
+        // 2. DECAY UNDER MUSIC — the unpainted corner's wetness dries monotonically (it is never
+        //    re-stamped, so each frame multiplies it by wetnessDecay < 1).
+        #expect(cornerMusicEnd < cornerMusicStart - 30,
+                "Unpainted-corner wetness barely changed under music (\(cornerMusicStart) → \(cornerMusicEnd)) — the decay is not firing.")
+        #expect(risesInMusic <= 2,
+                "Unpainted-corner wetness rose on \(risesInMusic) frames under music — decay is not monotone (unexpected re-stamp).")
+
+        // 3. HOLDS AT SILENCE — wetnessDecay == 1.0 at silence (the §5.2-step-3 pause), so the held
+        //    wetness does not drift (8-bit: × 1.0 is exact; allow ±1 for rounding).
+        #expect(silenceSpread <= 1,
+                "Wetness drifted by \(silenceSpread) across the silence window — the decay did not PAUSE at silence (the held painting must not dry while paused).")
     }
 
     // MARK: - Real-stem routing: colour separation + onset→splatter + opaque + bake/hold (Skein.3 gate)
@@ -263,6 +343,96 @@ struct SkeinCanvasHoldTest {
                         "An early coloured pixel at (\(cx),\(cy)) was lost by the end — bake/hold regressed (Δ \(delta)).")
             }
         }
+    }
+
+    // MARK: - Wet-now / dry-past sheen (Skein.4): fresh paint glistens, accumulated past is matte
+
+    @Test("Wet-now / dry-past sheen (Skein.4): recently-painted glistens (specular), older is matte — live BLIT path")
+    func test_sheen_wetNowDryPast() throws {
+        guard let fx = try loadSkeinFixture() else { return }
+        guard let session = Self.firstRecordedSession(),
+              let stems = loadStemFrames(session, maxFrames: 2400), stems.count > 400 else {
+            print("SkeinCanvasHoldTest: no recorded session — skipping wet-now/dry-past sheen gate (real audio: feedback_synthetic_audio)")
+            return
+        }
+        let w = 320, h = 320
+        let frames = min(stems.count, 1500)   // long enough that all active stems have painted (the intro is other-dominated)
+        // Drive the live scene→warp→overlay→blit→swap path with REAL replayed stems so the painter
+        // lays paint of varying AGE: the recent tail is WET (high A), the accumulated past has DRIED
+        // (A decayed). The sheen (skein_comp_fragment) reads canvas + wetness at the blit.
+        let run = try runPourAccumulation(
+            chromatic: 0, frames: frames, width: w, height: h, aspect: 1.0, startTime: 0.0,
+            checkpoints: [frames - 1], fx: fx, seed: 0, stemFrames: stems,
+            captureWetness: true, captureBlit: true)
+
+        let canvas = run.finalPixels          // composeTex: rgb = raw paint, a = wetness
+        let blit = run.finalBlitPixels        // blitTex: the sheened display output
+        #expect(canvas.count == w * h * 4 && blit.count == w * h * 4,
+                "Sheen gate: canvas/blit capture came up short (\(canvas.count)/\(blit.count)).")
+        guard canvas.count == w * h * 4, blit.count == w * h * 4 else { return }
+
+        // The sheen = luma(blit) − luma(canvas) at each PAINTED texel. The specular ADDS brightness
+        // where wet; the dry desaturation is luma-preserving, so dry paint reads ≈ 0 boost. Partition
+        // painted texels by WETNESS (canvas alpha) into wet (recent) vs dry (past) and compare.
+        func luma(_ p: [UInt8], _ i: Int) -> Float {   // BGRA byte order
+            0.2126 * Float(p[i + 2]) + 0.7152 * Float(p[i + 1]) + 0.0722 * Float(p[i])
+        }
+        let cb = Int(run.creamRef[0]), cg = Int(run.creamRef[1]), cr = Int(run.creamRef[2])
+        var wetBoost: Float = 0, dryBoost: Float = 0, wetN = 0, dryN = 0
+        var maxBoost: Float = 0
+        for idx in 0..<(w * h) {
+            let i = idx * 4
+            let paintDelta = abs(Int(canvas[i]) - cb) + abs(Int(canvas[i + 1]) - cg) + abs(Int(canvas[i + 2]) - cr)
+            guard paintDelta > 45 else { continue }      // painted texels only (skip bare cream)
+            let boost = luma(blit, i) - luma(canvas, i)
+            if boost > maxBoost { maxBoost = boost }
+            let wetness = Int(canvas[i + 3])
+            if wetness > 180 { wetBoost += boost; wetN += 1 }       // recent paint (wet)
+            else if wetness < 80 { dryBoost += boost; dryN += 1 }   // accumulated past (dried)
+        }
+        let wetMean = wetN > 0 ? wetBoost / Float(wetN) : 0
+        let dryMean = dryN > 0 ? dryBoost / Float(dryN) : 0
+
+        // The Skein.3 stem colours must READ THROUGH the sheen (it is a highlight, not a recolour):
+        // the BLIT still shows ≥3 separable per-stem colour clusters.
+        let blitColours = analyzeColouredPainting(blit, w: w, h: h, cream: run.creamRef, palette: SkeinState.defaultPalette)
+        let canvasColours = analyzeColouredPainting(canvas, w: w, h: h, cream: run.creamRef, palette: SkeinState.defaultPalette)
+        let stemsThroughSheen = blitColours.perStemCount.filter { $0 > 30 }.count
+        // DEBUG: a known painted pixel canvas vs blit (BGRA), + the cream ref, to see the colour shift.
+        var sampleC = "", sampleB = ""
+        if let (px, py) = firstColouredPixel(canvas, w: w, h: h, cream: run.creamRef) {
+            let si = (py * w + px) * 4
+            sampleC = "(\(canvas[si+2]),\(canvas[si+1]),\(canvas[si]))a\(canvas[si+3])"
+            sampleB = "(\(blit[si+2]),\(blit[si+1]),\(blit[si]))a\(blit[si+3])"
+        }
+
+        print("""
+        [skein_sheen] session \(session.lastPathComponent), live BLIT path \(w)×\(h), \(frames)f real stems:
+          wet (A>180) sheen boost mean = \(String(format: "%.2f", wetMean))  (n=\(wetN))
+          dry (A<80)  sheen boost mean = \(String(format: "%.2f", dryMean))  (n=\(dryN))
+          max sheen boost (a glint)    = \(String(format: "%.1f", maxBoost))
+          stem colours: CANVAS \(canvasColours.perStemCount)  →  BLIT \(blitColours.perStemCount)  (cream \(run.creamRef))
+          sample painted texel: canvas \(sampleC)  →  blit \(sampleB)
+        """)
+
+        #expect(wetN > 100 && dryN > 100,
+                "Sheen gate needs both wet (\(wetN)) and dry (\(dryN)) painted texels — the run did not produce paint of varying age.")
+        // 1. WET-NOW glistens — the specular adds brightness on fresh paint.
+        #expect(wetMean > 3.0,
+                "Recently-painted (wet) paint shows almost no specular boost (\(wetMean)) — the wet sheen is not firing.")
+        // 2. DRY-PAST is matte — the wet region glistens measurably MORE than the dried past.
+        #expect(wetMean > dryMean + 2.5,
+                "Wet sheen (\(wetMean)) does not exceed the dried past (\(dryMean)) — the wet-now/dry-past read is not legible.")
+        // 3. A visible glint exists somewhere (the live painter edge catches the light).
+        #expect(maxBoost > 20,
+                "No bright specular glint anywhere (max boost \(maxBoost)) — the wet edge does not catch the light.")
+        // 4. Stem colours read THROUGH the sheen (highlight on top, not a recolour): the BLIT
+        //    preserves the CANVAS's separable-colour count (the sheen does not lose or merge stems).
+        let canvasStems = canvasColours.perStemCount.filter { $0 > 30 }.count
+        #expect(canvasStems >= 3,
+                "Canvas only painted \(canvasStems) separable stem colours (\(canvasColours.perStemCount)) — the run is too short to test colour-through-sheen.")
+        #expect(stemsThroughSheen >= canvasStems,
+                "Sheen dropped stem colours: CANVAS \(canvasColours.perStemCount) (\(canvasStems)) → BLIT \(blitColours.perStemCount) (\(stemsThroughSheen)) — it is recolouring, not highlighting.")
     }
 
     // MARK: - Pour-line accumulation contact sheet (env-gated eyeball artifact)
@@ -414,6 +584,55 @@ struct SkeinCanvasHoldTest {
         #expect(tiles.count == Self.candidatePalettes.count, "Missing palette-candidate tiles.")
     }
 
+    // MARK: - Sheen contact sheet (env-gated: the Skein.4 eyeball artifact — live BLIT)
+
+    @Test("Wet/dry sheen contact sheet (env-gated: SKEIN_VISUAL=1 / RENDER_VISUAL=1) — live BLIT, real stems")
+    func test_sheen_contactSheet() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard env["SKEIN_VISUAL"] == "1" || env["RENDER_VISUAL"] == "1" else {
+            print("SkeinCanvasHoldTest: SKEIN_VISUAL/RENDER_VISUAL not set, skipping sheen contact sheet")
+            return
+        }
+        guard let fx = try loadSkeinFixture() else { return }
+        guard let session = Self.firstRecordedSession(),
+              let stems = loadStemFrames(session, maxFrames: 2400), stems.count > 200 else {
+            print("SkeinCanvasHoldTest: no recorded session — skipping sheen contact sheet")
+            return
+        }
+        let w = 960, h = 540
+        let frames = min(stems.count, 1400)
+        // Checkpoints across the song so the contact sheet shows the wet live edge advancing while
+        // the accumulated past goes matte — the wet-now / dry-past read. BLIT (sheened) output.
+        let cps = [frames / 4, frames / 2, (3 * frames) / 4, frames - 1]
+        let run = try runPourAccumulation(
+            chromatic: 0, frames: frames, width: w, height: h, aspect: Float(w) / Float(h),
+            startTime: 0.0, checkpoints: Set(cps), fx: fx, seed: 0, stemFrames: stems,
+            captureWetness: false, captureBlit: true)
+
+        let outDir = try makeOutputDir()
+        var tiles: [[UInt8]] = []
+        for (i, f) in cps.enumerated() {
+            guard let buf = run.checkpointBlitPixels[f] else { continue }
+            tiles.append(buf)
+            try writeBGRAToPNG(buf, w: w, h: h,
+                               url: outDir.appendingPathComponent(String(format: "skein_sheen_cp%d.png", i)))
+        }
+        try writeMontage(tiles, tileW: w, tileH: h,
+                         url: outDir.appendingPathComponent("skein_sheen_contact_sheet.png"))
+        // Isolate the sheen: the RAW canvas (composeTex, matte — what Skein.3 shipped) beside the
+        // SHEENED blit (skein_comp_fragment) at the final frame. The difference IS the wet/dry sheen.
+        try writeMontage([run.finalPixels, run.finalBlitPixels], tileW: w, tileH: h,
+                         url: outDir.appendingPathComponent("skein_sheen_canvas_vs_blit.png"))
+        print("""
+        [skein_sheen_contact_sheet] live BLIT path (scene→warp→overlay→blit→swap, skein_comp_fragment), \(w)×\(h):
+          output dir: \(outDir.path)
+          session \(session.lastPathComponent), checkpoints (frames) = \(cps)
+          → skein_sheen_contact_sheet.png   (wet glistening live edge vs matte accumulated past, over time)
+          → skein_sheen_canvas_vs_blit.png  (L: raw matte canvas  R: sheened blit — the sheen isolated)
+        """)
+        #expect(tiles.count == cps.count, "Missing sheen contact-sheet checkpoints.")
+    }
+
     // MARK: - Fixture load
 
     private struct SkeinFixture {
@@ -466,6 +685,16 @@ struct SkeinCanvasHoldTest {
         var earlyXY: (Int, Int)?               // a texel painted by the first checkpoint
         var earlyStillPaintedFinal: Bool       // that texel still painted at the final frame
         var perFrameCounts: [Int]              // painted-pixel count per frame (Skein.2 new-mark governor input)
+        // Skein.ENGINE.2 wetness probes (populated when captureWetness == true).
+        var cornerAlphaSeries: [Int]           // far-corner (5,5) ALPHA per frame — UNPAINTED wetness:
+                                               //   decays under music (never re-stamped), holds at silence.
+        var maxAlphaSeries: [Int]              // max ALPHA over the canvas per frame — the freshest wet
+                                               //   paint (the overlay stamps coverage → ~255 on solid paint).
+        // Skein.4 sheen probe (populated when captureBlit == true): the final BLIT/display output
+        // (composeTex → skein_comp_fragment → blitTex), where the wet/dry sheen lives. finalPixels is
+        // the raw canvas (composeTex); the sheen = the difference between these two.
+        var finalBlitPixels: [UInt8]
+        var checkpointBlitPixels: [Int: [UInt8]]   // BLIT (sheened) output at each checkpoint (contact sheet)
     }
 
     /// Drive the live marks-on-top dispatch path for `frames` frames, advancing features.time by
@@ -475,7 +704,8 @@ struct SkeinCanvasHoldTest {
     private func runPourAccumulation(
         chromatic: Float, frames: Int, width: Int, height: Int, aspect: Float, startTime: Float,
         checkpoints: Set<Int>, fx: SkeinFixture, capturePerFrame: Bool = false,
-        seed: UInt32 = 0, palette: [SIMD3<Float>]? = nil, stemFrames: [StemFeatures] = []
+        seed: UInt32 = 0, palette: [SIMD3<Float>]? = nil, stemFrames: [StemFeatures] = [],
+        captureWetness: Bool = false, captureBlit: Bool = false
     ) throws -> PourResult {
         let device = fx.ctx.device, queue = fx.ctx.commandQueue
         // Skein.3: the painter clock + onset-burst ring + per-stem colour live in SkeinState, bound
@@ -517,6 +747,10 @@ struct SkeinCanvasHoldTest {
         var earlyXY: (Int, Int)? = nil
         var finalPixels: [UInt8] = []
         var perFrameCounts: [Int] = []
+        var cornerAlphaSeries: [Int] = []
+        var maxAlphaSeries: [Int] = []
+        var finalBlitPixels: [UInt8] = []
+        var checkpointBlitPixels: [Int: [UInt8]] = [:]
 
         for frameIdx in 0..<frames {
             var features = FeatureVector(
@@ -528,9 +762,11 @@ struct SkeinCanvasHoldTest {
             skein.tick(deltaTime: dt, features: features, stems: stems)
             guard let cmd = queue.makeCommandBuffer() else { throw SkeinHoldError.cmdBufferFailed }
             // Pass 1: identity warp holds the previous canvas (warpTex → composeTex). chromatic=0
-            // + decay=1.0 ⇒ a lossless copy of every unpainted texel.
+            // + decay=1.0 ⇒ a lossless RGB copy of every unpainted texel. Skein.ENGINE.2: the ALPHA
+            // channel carries wetness, decayed by skein.wetnessDecay (1.0 at silence ⇒ held).
             try encodeWarp(cmd: cmd, mvWarp: fx.mvWarp, warpTex: warpTex, composeTex: composeTex,
-                           features: &features, chromatic: chromatic)
+                           features: &features, chromatic: chromatic,
+                           wetnessDecay: skein.wetnessDecay)
             // Pass 2: marks-on-top — draw this frame's marks normal-alpha onto the held canvas.
             try encodeOverlay(cmd: cmd, overlay: fx.overlay, target: composeTex,
                               features: &features, skeinBuffer: skein.skeinBuffer)
@@ -543,14 +779,31 @@ struct SkeinCanvasHoldTest {
             let canvas = read(composeTex)
             if frameIdx == 0 { creamRef = pxAt(canvas, 5, 5) }   // far corner — never reached by the painter
             if capturePerFrame { perFrameCounts.append(countPainted(canvas, cream: creamRef)) }
+            if captureWetness {
+                // Skein.ENGINE.2: the far corner (5,5) is UNPAINTED (the painter's amplitude-limited
+                // trajectory never reaches it), so its ALPHA is the held-then-decaying wetness with
+                // no re-stamp — decays under music (wetnessDecay < 1), holds at silence (= 1). maxA is
+                // the freshest stamped wetness (the overlay raises painted texels' A toward ~255).
+                cornerAlphaSeries.append(Int(canvas[(5 * width + 5) * 4 + 3]))
+                var mA = 0, j = 3
+                while j < canvas.count { if Int(canvas[j]) > mA { mA = Int(canvas[j]) }; j += 4 }
+                maxAlphaSeries.append(mA)
+            }
             if checkpoints.contains(frameIdx) {
                 checkpointPixels[frameIdx] = canvas
+                if captureBlit { checkpointBlitPixels[frameIdx] = read(blitTex) }
                 checkpointCounts.append(countPainted(canvas, cream: creamRef))
                 if frameIdx == sortedCp.first, earlyXY == nil {
                     earlyXY = brightestPaintedXY(canvas, w: width, h: height, cream: creamRef)
                 }
             }
-            if frameIdx == frames - 1 { finalPixels = canvas }
+            if frameIdx == frames - 1 {
+                finalPixels = canvas
+                // Skein.4: the BLIT/display output (composeTex → skein_comp_fragment → blitTex) is where
+                // the wet/dry sheen lives. The existing tests read composeTex (the raw canvas); the sheen
+                // gate reads blitTex and compares it against composeTex (the sheen = the difference).
+                if captureBlit { finalBlitPixels = read(blitTex) }
+            }
             swap(&warpTex, &composeTex)
         }
 
@@ -563,14 +816,17 @@ struct SkeinCanvasHoldTest {
             checkpointFrames: sortedCp, checkpointCounts: checkpointCounts,
             checkpointPixels: checkpointPixels, finalPixels: finalPixels, creamRef: creamRef,
             groundCornerFinal: groundCornerFinal, earlyXY: earlyXY, earlyStillPaintedFinal: earlyStill,
-            perFrameCounts: perFrameCounts)
+            perFrameCounts: perFrameCounts,
+            cornerAlphaSeries: cornerAlphaSeries, maxAlphaSeries: maxAlphaSeries,
+            finalBlitPixels: finalBlitPixels, checkpointBlitPixels: checkpointBlitPixels)
     }
 
     // MARK: - Pass encoders (mirror the live mv_warp dispatch path)
 
     private func encodeWarp(
         cmd: MTLCommandBuffer, mvWarp: PresetLoader.MVWarpCompiledPipelines,
-        warpTex: MTLTexture, composeTex: MTLTexture, features: inout FeatureVector, chromatic: Float
+        warpTex: MTLTexture, composeTex: MTLTexture, features: inout FeatureVector, chromatic: Float,
+        wetnessDecay: Float = 1.0
     ) throws {
         let desc = MTLRenderPassDescriptor()
         desc.colorAttachments[0].texture = composeTex
@@ -588,6 +844,10 @@ struct SkeinCanvasHoldTest {
         enc.setFragmentTexture(warpTex, index: 0)
         var chromaticCopy = chromatic
         enc.setFragmentBytes(&chromaticCopy, length: MemoryLayout<Float>.stride, index: 0)
+        // Skein.ENGINE.2: bind the wetness-channel decay at fragment buffer 1 — `skein_warp_fragment`
+        // reads it (decays ALPHA only). Mirrors the live `encodeMVWarpPass`. 1.0 ⇒ A held.
+        var wetnessDecayCopy = wetnessDecay
+        enc.setFragmentBytes(&wetnessDecayCopy, length: MemoryLayout<Float>.stride, index: 1)
         enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 4278)   // 31×23 quads
         enc.endEncoding()
     }

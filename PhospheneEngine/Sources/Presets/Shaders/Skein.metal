@@ -414,6 +414,154 @@ fragment float4 skein_geometry_fragment(
     return float4(bestCol, bestCover);
 }
 
+// ── Skein.ENGINE.2: the wetness channel (canvas-hold warp/hold fragment) ────────────
+//
+// Skein owns its warp/hold fragment via the PresetLoader `<prefix>_warp_fragment` override
+// (the same per-prefix mechanism Fata Morgana's `fata_warp_fragment` uses — PresetLoader.swift
+// makeWarpPipelines). The shared `mvWarp_fragment` is left BYTE-IDENTICAL for every other preset
+// (this is the ENGINE.2 byte-identical guarantee — no shared GPU code is touched).
+//
+// RGB is the LOSSLESS PERMANENT PAINT RECORD (the ENGINE.1 invariant): under identity warp
+// (mvWarpPerVertex returns uv → in.warped_uv == this texel) the previous canvas is sampled at
+// exactly this fragment's texel and returned BYTE-FOR-BYTE — no resampling, no decay, no drift.
+// This is the SAME RGB result the shared `mvWarp_fragment` produces for Skein (chromaticMix=0,
+// decay=1.0 collapse it to the identity copy), so the canvas-hold RGB regression is unchanged.
+//
+// ALPHA carries the transient WETNESS signal (SKEIN_DESIGN §5.5: drying is a READ-TIME effect on
+// a SEPARATE channel, never a destructive multiply on the RGB record). The overlay normal-alpha
+// blend (skein_geometry_fragment → float4(bestCol, bestCover); blend SRC_ALPHA/ONE_MINUS_SRC_ALPHA
+// on both colour AND alpha) STAMPS coverage into A where paint lands this frame. Here the hold
+// DECAYS A by `wetnessDecay` each frame (= exp(-rate·dt·stemMix) from SkeinState — pauses at
+// silence). Net per texel: A jumps to ~1 when (re)painted, then dries toward 0; Skein.4's
+// `skein_comp_fragment` reads A as the wet/dry sheen mask. RGB is untouched by the A decay.
+fragment float4 skein_warp_fragment(
+    WarpVertexOut      in           [[stage_in]],
+    texture2d<float>   prevTex      [[texture(0)]],
+    constant float&    chromaticMix [[buffer(0)]],   // unused (0 for Skein) — kept for binding parity
+    constant float&    wetnessDecay [[buffer(1)]]    // Skein.ENGINE.2 — ALPHA decay multiplier
+) {
+    // Identity hold: sample the previous canvas at the un-displaced UV → lossless RGB copy.
+    float4 prev = prevTex.sample(warpSampler, in.warped_uv);
+    // RGB held byte-identical (the lossless permanent paint record); ALPHA dries by wetnessDecay
+    // (1.0 at silence ⇒ held; < 1.0 while music plays ⇒ wetness decays toward 0).
+    return float4(prev.rgb, prev.a * wetnessDecay);
+}
+
+// ── Skein.4: the wet/dry SHEEN (display/lighting comp fragment) ─────────────────────
+//
+// Skein owns its blit/comp fragment via the PresetLoader `<prefix>_comp_fragment` override
+// (the same per-prefix mechanism Fata Morgana's `fata_comp_fragment` uses). The shared
+// `mvWarp_blit_fragment` is left BYTE-IDENTICAL for every other preset. This is the READ side
+// of the ENGINE.2 wetness channel: it reads canvas RGB + wetness A from the (already-bound)
+// compose texture and renders the wet-now / dry-past legibility device (SKEIN_DESIGN §1.4 / §5.2
+// step 4): wet paint catches a specular highlight, dry paint is matte + slightly desaturated, so
+// the eye tracks the musical NOW (the live painter edge glistens) while the accumulated past
+// reads matte.
+//
+// GROUNDING (CLAUDE.md grounding rule, FA #64/#73 — desk-researched, not first-principles):
+//   • Normal-from-canvas: a flat 2D canvas has no geometric normal, so derive one from the
+//     canvas LUMINANCE GRADIENT (central-difference / Sobel bump) — the standard heightfield→
+//     normal technique (LearnOpenGL "Normal Mapping"; Sobel-terrain normal generation). Paint
+//     ridges/edges tilt the normal → they catch the light; flat bare ground stays normal-up.
+//   • Specular: the GGX / Trowbridge-Reitz microfacet NDF (Walter et al. 2007), the §2-Lighting
+//     "only specular event is WET paint catching light". Tonemapped (x/(x+knee)) so the broad
+//     gloss is visible AND the edge glints stay bounded; roughness drops with wetness (wet =
+//     glossier). The specular is an ADDITIVE highlight on top of the Skein.3 stem colour — never
+//     a recolour, so the stem palette reads through (§Skein.4 contract).
+//
+// sRGB (FA #71): the compose texture is `.bgra8Unorm_srgb`, so `warpTex.sample(...).rgb` already
+// sRGB-DECODES to LINEAR — the lighting is done in linear and the `.bgra8Unorm_srgb` DRAWABLE
+// re-encodes on store. We must NOT manually decode (that double-decode is the FA #71 trap; Skein's
+// situation is the inverse of Fata Morgana, whose feedback is linear `.bgra8Unorm`). The wetness
+// in A is linear (sRGB never touches alpha). Gated by construction: only Skein resolves
+// `skein_comp_fragment`; every other mv_warp preset keeps the untouched shared blit.
+
+// Linear-space relative luminance (Rec.709) — the canvas is already linear at this point.
+static inline float skeinLuma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
+
+// Sheen tuning (Skein.4). Conservative + tunable; verified through the live SKEIN_VISUAL harness.
+// Retuned (round 2): the wet specular is a SHARP, mostly-small GLINT — not a broad whitening — so
+// the Skein.3 stem colours read THROUGH it (a broad highlight at full strength washed the palette to
+// near-white; the glint + a subtle wet "deepen" keep colour identity). The dry pole is hard-gated to
+// matte by `specWet` so the accumulated past does not glisten (the wet-now / dry-past legibility read).
+constant float3 kSkeinLightDir   = float3(0.2357, 0.3300, 0.9146);  // normalize(0.25,0.35,0.97) — flat overhead, slight tilt
+constant float3 kSkeinSpecColor  = float3(1.00, 0.97, 0.92);        // warm-white wet glint
+constant float  kSkeinNormalAmp  = 2.2;    // canvas luminance-gradient → normal tilt (edge response)
+constant float  kSkeinRoughWet   = 0.22;   // wet paint = glossier (sharper, tighter glint)
+constant float  kSkeinRoughDry   = 0.50;   // (roughness floor for just-wet paint — broadens the lobe)
+constant float  kSkeinSpecKnee   = 3.2;    // GGX tonemap knee (higher ⇒ concentrate on small glints, not broad wash)
+constant float  kSkeinSpecGain   = 0.58;   // overall wet-highlight strength (legibility: the wet edge must read)
+constant float2 kSkeinWetGate    = float2(0.30, 0.72);  // smoothstep(lo,hi) on wetness → HARD dry-matte / wet-gloss split
+constant float  kSkeinWetDeepen  = 0.22;   // wet paint saturation boost (glossy DEPTH — keeps stem colour, doesn't whiten)
+constant float  kSkeinDesat      = 0.16;   // dry paint matte desaturation (subtle)
+constant float  kSkeinWeaveAmp   = 0.015;  // canvas-weave grain beneath the paint (very subtle)
+
+fragment float4 skein_comp_fragment(
+    VertexOut          in      [[stage_in]],
+    texture2d<float>   warpTex [[texture(0)]],
+    constant float4&   post    [[buffer(0)]]   // unused for Skein (identity comp) — kept for binding parity
+) {
+    float2 uv = in.uv;
+    float4 c  = warpTex.sample(warpSampler, uv);   // rgb = LINEAR canvas paint; a = wetness [0,1]
+    float3 col = c.rgb;
+    float  wet = clamp(c.a, 0.0, 1.0);
+
+    // Paint-present mask: bare cream ground (rgb ≈ the held cream) reads MATTE — the sheen only
+    // touches PAINT. (Bare cream carries wetness in A too, since the clear seeds A=1; the mask is
+    // what keeps the bare ground from glistening — wet paint, not a wet floor.)
+    float paint = smoothstep(0.015, 0.080, distance(col, kSkeinCanvasCream));
+
+    // Normal from the canvas luminance gradient (central difference) — the 2D analogue of a surface
+    // normal. Paint ridges/edges tilt N → they catch the overhead light; flat areas keep N ≈ +z.
+    float2 texel = 1.0 / float2(warpTex.get_width(), warpTex.get_height());
+    float lR = skeinLuma(warpTex.sample(warpSampler, uv + float2(texel.x, 0.0)).rgb);
+    float lL = skeinLuma(warpTex.sample(warpSampler, uv - float2(texel.x, 0.0)).rgb);
+    float lU = skeinLuma(warpTex.sample(warpSampler, uv + float2(0.0, texel.y)).rgb);
+    float lD = skeinLuma(warpTex.sample(warpSampler, uv - float2(0.0, texel.y)).rgb);
+    float3 N = normalize(float3(-(lR - lL) * kSkeinNormalAmp, -(lU - lD) * kSkeinNormalAmp, 1.0));
+
+    // GGX/Trowbridge-Reitz specular highlight (Walter et al. 2007). View is head-on (flat field
+    // viewed straight down); the light is flat-overhead with a slight tilt so the glint has a
+    // direction. Roughness drops with wetness (wet = glossier). Tonemapped so the edge glint is
+    // bounded while the broad gloss stays visible.
+    float3 V = float3(0.0, 0.0, 1.0);
+    float3 H = normalize(kSkeinLightDir + V);
+    float  NdotH = max(dot(N, H), 0.0);
+    // Hard wet/dry split: the specular fires only on WET (recent) paint and is gated to ~0 on the
+    // dried past, so the highlight reads as the musical NOW — not a uniform gloss over everything.
+    float  specWet = smoothstep(kSkeinWetGate.x, kSkeinWetGate.y, wet);
+    float  rough = mix(kSkeinRoughWet, kSkeinRoughDry, 1.0 - specWet);
+    float  a  = rough * rough;
+    float  a2 = a * a;
+    float  denom = NdotH * NdotH * (a2 - 1.0) + 1.0;
+    float  ggx = a2 / (M_PI_F * denom * denom);          // the GGX NDF (unbounded peak)
+    float  specT = ggx / (ggx + kSkeinSpecKnee);          // tonemap → [0,1): a small bright glint, bounded
+    float  spec = specT * specWet * paint * kSkeinSpecGain;   // wet paint only — the §1.4 wet-now device
+
+    // Wet paint also reads DEEPER (glossy depth, ref 03_micro_layered_buildup) — a subtle SATURATION
+    // boost (over-saturate around luma), NOT a brightening, so the stem colour reads THROUGH the gloss
+    // rather than washing white.
+    float  lumaW = skeinLuma(col);
+    float3 deepened = lumaW + (col - lumaW) * (1.0 + kSkeinWetDeepen);
+    col = mix(col, deepened, specWet * paint);
+
+    // Dry paint → matte + slight desaturation (wet paint keeps full saturation; the dried past mutes).
+    float dry = (1.0 - specWet) * paint;
+    col = mix(col, float3(skeinLuma(col)), dry * kSkeinDesat);
+
+    // Subtle canvas-weave grain beneath the paint (the §2-Material "subtle canvas-weave texture
+    // beneath") — a faint high-frequency modulation, strongest on the bare/thin ground, fading
+    // under thick opaque paint so it never competes with the marks.
+    float weave = sin(uv.x * 760.0) * sin(uv.y * 760.0);
+    col *= 1.0 + kSkeinWeaveAmp * weave * (1.0 - paint);
+
+    // Add the wet specular highlight ON TOP of the stem colour (additive — never a recolour, so the
+    // Skein.3 palette reads through). The drawable (.bgra8Unorm_srgb) sRGB-encodes on store.
+    col += spec * kSkeinSpecColor;
+
+    return float4(saturate(col), 1.0);
+}
+
 // ── MV-Warp functions (D-027) — the canvas-hold config ─────────────────────────────
 // Both required by the mvWarpPreamble forward declarations. Identity + no decay.
 

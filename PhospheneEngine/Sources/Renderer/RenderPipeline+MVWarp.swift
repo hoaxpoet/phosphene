@@ -379,6 +379,12 @@ extension RenderPipeline {
         encoder.setFragmentTexture(warpState.warpTexture, index: 0)
         var chromatic = mvWarpLock.withLock { mvWarpChromatic }   // L3: 0 ⇒ identity for non-DB
         encoder.setFragmentBytes(&chromatic, length: MemoryLayout<Float>.stride, index: 0)
+        // Skein.ENGINE.2: per-frame wetness-channel decay (ALPHA only) for canvas-hold presets.
+        // 1.0 ⇒ A held unchanged. Only Skein's own `skein_warp_fragment` declares buffer 1; the
+        // shared `mvWarp_fragment` does not, so binding it here is inert for every other preset
+        // (byte-identical — PresetRegression + the DB/FM MVWarp accumulation tests confirm).
+        var wetnessDecay = mvWarpLock.withLock { mvWarpWetnessDecay }
+        encoder.setFragmentBytes(&wetnessDecay, length: MemoryLayout<Float>.stride, index: 1)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 4278)  // 31×23 quads
         encoder.endEncoding()
     }
