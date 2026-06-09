@@ -82,10 +82,42 @@ struct SkeinHeaderGPU {
     var jitter: Float           // high-band energy / onset-rate → painter local jitter
     var burstCount: UInt32      // active bursts in the ring this frame
     var seed: UInt32            // raw per-track seed (for any shader-side hashing)
-    var pad0: Float
+    var breakCount: UInt32      // active colour breakpoints in the ring (Skein.4.1; was pad0)
     var pad1: Float
     var pad2: Float
     var pad3: Float
+}
+
+// MARK: - SkeinBreakGPU
+
+/// One line-colour + new-pour BREAKPOINT — 6 floats = 24 bytes, align 4. Must match `SkeinBreakGPU`
+/// in Skein.metal byte-for-byte. Pushed on each dominant-stem switch (Skein.4.1, option 2 — Matt's
+/// call: a colour change starts a genuinely NEW pour, not a recoloured continuation):
+///   • the shader freezes each pour-line tail segment's COLOUR at the painter-clock value it was LAID
+///     at, so already-laid paint keeps its colour (never recolouring the existing stroke); AND
+///   • each breakpoint carries a small bounded position OFFSET — the painter "grabs new paint and
+///     starts a fresh drip" — so the new-colour line is spatially displaced from the old, with a clean
+///     GAP at the switch (the segment that would bridge two different offsets is not drawn). The offset
+///     is NON-cumulative (a fixed-magnitude, golden-angle-rotated vector) so the line never drifts off
+///     canvas. This is the per-burst colour freeze (SkeinBurstGPU.colR/G/B) applied to the line, plus a
+///     "new container" jump.
+struct SkeinBreakGPU {
+    var tauStart: Float   // painter-clock value at the dominant-stem switch (this pour valid from here on)
+    var colR: Float       // the new LINEAR (sRGB-decoded) colour — like paletteLinear (FA #71)
+    var colG: Float
+    var colB: Float
+    var offX: Float       // bounded UV position offset for this pour (the "new container" jump; 0 at baseline)
+    var offY: Float
+}
+
+// MARK: - SkeinColorBreakpoint (test-facing)
+
+/// A line-colour breakpoint as exposed for tests (Skein.4.1): the painter-clock value the pour began,
+/// its LINEAR colour, and its bounded position offset (the "new container" jump).
+public struct SkeinColorBreakpoint: Sendable {
+    public let tauStart: Float
+    public let color: SIMD3<Float>
+    public let offset: SIMD2<Float>
 }
 
 // MARK: - SkeinState
@@ -101,6 +133,19 @@ public final class SkeinState: @unchecked Sendable {
     /// Max active bursts in the ring. ~2 onsets/s/stem × 4 stems × the bake window ≈ a handful
     /// live at once; 48 leaves generous headroom for dense passages without blowing the stride.
     public static let maxBursts: Int = 48
+
+    /// Max colour breakpoints in the line-colour ring (Skein.4.1). The 16 most-recent dominant-stem
+    /// switches always cover the ~40-frame live tail (even busy music switches the dominant far slower
+    /// than 16×/40-frames); older entries evict. 16 × 24 B = 384 B appended after the burst array.
+    public static let maxColorBreaks: Int = 16
+
+    /// New-pour JUMP magnitude (UV) on a colour switch (Skein.4.1 option 2 — Matt's call: a colour
+    /// change is a NEW pour). The new-colour line is displaced this far from the old, leaving a clean
+    /// gap (≫ the ~0.01–0.02 line radius). Bounded + non-cumulative → the line never drifts off canvas.
+    static let breakJumpMagnitude: Float = 0.05
+    /// Successive jumps rotate by the golden angle so consecutive new pours land in well-separated
+    /// directions (a clear gap every switch — never two near-collinear offsets that barely move).
+    static let breakJumpGoldenAngle: Float = 2.399963
 
     /// Seconds a burst is redrawn (fades in then freezes into the held canvas) — matches the
     /// Skein.2 `kSkeinSplatWindow` bake-in window, now measured in painter-clock units.
@@ -171,6 +216,23 @@ public final class SkeinState: @unchecked Sendable {
     /// (a beat-heavy stem slice must spawn measurably more bursts than a steady slice).
     public var totalBurstsSpawned: Int { lock.withLock { Int(burstSpawnCounter) } }
 
+    /// The current dominant-stem index for the pour line (-1 until the canvas warms). Exposed for the
+    /// Skein.4.1 colour-freeze test (detect the dominant-stem switch frame on the live path).
+    public var lineDominantStem: Int { lock.withLock { lineDomIdx } }
+
+    /// The colour-breakpoint ring (oldest→newest). Each entry is the line colour + position offset in
+    /// effect from `tauStart` onward; the shader freezes each tail segment to the latest breakpoint
+    /// at/under its lay-time τ, and a switch starts a displaced NEW pour (Skein.4.1 option 2). Test-only.
+    public var colorBreakpoints: [SkeinColorBreakpoint] {
+        lock.withLock {
+            colorBreaks.map {
+                SkeinColorBreakpoint(tauStart: $0.tauStart,
+                                     color: SIMD3<Float>($0.colR, $0.colG, $0.colB),
+                                     offset: SIMD2<Float>($0.offX, $0.offY))
+            }
+        }
+    }
+
     /// Bursts spawned per stem [drums, bass, vocals, other] since the last reseed. Exposed for
     /// the colour-legibility diagnostic (every stem with onsets should produce bursts).
     public var spawnsPerStem: [Int] { lock.withLock { spawnsPerStemStore } }
@@ -189,6 +251,15 @@ public final class SkeinState: @unchecked Sendable {
     // MARK: - Private State
 
     private var bursts: [SkeinBurstGPU]
+    /// Line-colour + new-pour breakpoint ring (Skein.4.1) — pushed on each dominant-stem switch, read
+    /// by the shader to freeze each pour-line segment's colour + offset at lay-time. White baseline seed.
+    private var colorBreaks: [SkeinBreakGPU] = []
+    /// The dominant-stem index the line currently records (-1 until warm) — a switch pushes a breakpoint.
+    private var lineDomIdx: Int = -1
+    /// Monotonic colour-break counter — seeds each new pour's jump angle (§5.7 determinism). Reset on reseed.
+    private var colorBreakCounter: UInt32 = 0
+    /// The current pour's position offset (the latest breakpoint's jump) — bursts flick from here too.
+    private var currentLineOffset = SIMD2<Float>(0, 0)
     private var painterTauStep: Float = 0
     private var seedPhaseX: Float = 0
     private var seedPhaseY: Float = 0
@@ -226,6 +297,7 @@ public final class SkeinState: @unchecked Sendable {
                  palette: [SIMD3<Float>] = SkeinState.defaultPalette) {
         let bufferSize = MemoryLayout<SkeinHeaderGPU>.stride
             + Self.maxBursts * MemoryLayout<SkeinBurstGPU>.stride
+            + Self.maxColorBreaks * MemoryLayout<SkeinBreakGPU>.stride
         guard let buf = device.makeBuffer(length: bufferSize, options: .storageModeShared) else {
             logger.error("SkeinState: failed to allocate skeinBuffer (\(bufferSize) bytes)")
             return nil
@@ -238,6 +310,7 @@ public final class SkeinState: @unchecked Sendable {
         bursts.reserveCapacity(Self.maxBursts)
         self.seed = seed
         applySeed(seed)
+        resetColorBreaks()   // seed the line-colour ring with the white baseline (Skein.4.1)
         writeToGPU()
     }
 
@@ -267,6 +340,7 @@ public final class SkeinState: @unchecked Sendable {
             bursts.removeAll(keepingCapacity: true)
             burstCount = 0
             lineCol = SIMD3<Float>(1, 1, 1)
+            resetColorBreaks()   // clear the line-colour ring + re-seed the white baseline (Skein.4.1)
             lineFlow = 0; lineVisc = 0; jitter = 0
             for i in 0..<4 {
                 stemEnergySmoothed[i] = 0
@@ -331,6 +405,14 @@ public final class SkeinState: @unchecked Sendable {
         // Only switch the line colour once the canvas is warm; below the floor keep the prior hue.
         if stemMix > 0.001 {
             lineCol = paletteLinear[domIdx]
+            // Skein.4.1: on a dominant-stem SWITCH push a colour breakpoint at the current painter
+            // clock, so the redrawn tail freezes each segment at its lay-time colour — the line no
+            // longer recolours along its length; a colour change reads as a NEW pour (Matt M7
+            // 2026-06-09). The bursts already freeze colour at spawn; this is the same for the line.
+            if domIdx != lineDomIdx {
+                pushColorBreak(tauStart: painterTau, color: paletteLinear[domIdx])
+                lineDomIdx = domIdx
+            }
             lineFlow = stemEnergySmoothed[domIdx] * stemMix
             let domCentroid = centroid(of: SkeinStem(rawValue: domIdx) ?? .drums, stems: stems)
             lineVisc = clamp(1.0 - domCentroid, 0, 1) * stemMix
@@ -376,13 +458,17 @@ public final class SkeinState: @unchecked Sendable {
             return spawnBurst(stem: stem, stems: stems, aspect: aspect)
         }
         let asp = aspect > 0.01 ? aspect : 1.0
-        let pos = painterPos(painterTau)
+        let base = painterPos(painterTau)
         let prev = painterPos(painterTau - max(painterTauStep, 1.0 / 240.0))
-        // Throw direction = direction of travel (aspect-corrected), the flung-forward axis.
-        var dx = (pos.x - prev.x) * asp
-        var dy = pos.y - prev.y
+        // Throw direction = direction of travel (aspect-corrected), the flung-forward axis. Computed
+        // from the UN-offset path so a switch-frame jump (Skein.4.1) does not spike the throw vector.
+        var dx = (base.x - prev.x) * asp
+        var dy = base.y - prev.y
         let len = (dx * dx + dy * dy).squareRoot()
         if len > 1e-5 { dx /= len; dy /= len } else { dx = 1; dy = 0 }
+        // Flick from the painter's CURRENT pour position — including this pour's jump offset — so the
+        // onset splatter lands with the displaced new-pour line, not the un-jumped trajectory (Skein.4.1).
+        let pos = base + currentLineOffset
 
         let stemEnum = SkeinStem(rawValue: stem) ?? .drums
         // Flick sharpness ← attackRatio (∈[0,3]): sharp transient → tight/fast spray (small dots),
@@ -458,7 +544,7 @@ public final class SkeinState: @unchecked Sendable {
         // Snapshot all GPU-bound state under one lock, then write the buffer outside it (the
         // GossamerState/ArachneState pattern — the benign CPU/GPU write race is accepted for
         // per-frame visual state; @unchecked Sendable owns the contract).
-        let (header, burstSnapshot): (SkeinHeaderGPU, [SkeinBurstGPU]) = lock.withLock {
+        let snap: GPUSnapshot = lock.withLock {
             let hdr = SkeinHeaderGPU(
                 painterTau: painterTau,
                 painterTauStep: painterTauStep,
@@ -472,18 +558,66 @@ public final class SkeinState: @unchecked Sendable {
                 jitter: jitter,
                 burstCount: UInt32(min(bursts.count, Self.maxBursts)),
                 seed: seed,
-                pad0: 0,
+                breakCount: UInt32(min(colorBreaks.count, Self.maxColorBreaks)),
                 pad1: 0,
                 pad2: 0,
                 pad3: 0)
-            return (hdr, bursts)
+            return GPUSnapshot(header: hdr, bursts: bursts, breaks: colorBreaks)
         }
         let ptr = skeinBuffer.contents()
-        ptr.bindMemory(to: SkeinHeaderGPU.self, capacity: 1)[0] = header
-        let count = min(burstSnapshot.count, Self.maxBursts)
+        ptr.bindMemory(to: SkeinHeaderGPU.self, capacity: 1)[0] = snap.header
+        let count = min(snap.bursts.count, Self.maxBursts)
         let burstPtr = ptr.advanced(by: MemoryLayout<SkeinHeaderGPU>.stride)
             .bindMemory(to: SkeinBurstGPU.self, capacity: Self.maxBursts)
-        for i in 0..<count { burstPtr[i] = burstSnapshot[i] }
+        for i in 0..<count { burstPtr[i] = snap.bursts[i] }
+        // Skein.4.1: the colour-breakpoint ring follows the fixed-size burst array (additive tail).
+        let breakCount = min(snap.breaks.count, Self.maxColorBreaks)
+        let breakPtr = ptr.advanced(by: MemoryLayout<SkeinHeaderGPU>.stride
+                                    + Self.maxBursts * MemoryLayout<SkeinBurstGPU>.stride)
+            .bindMemory(to: SkeinBreakGPU.self, capacity: Self.maxColorBreaks)
+        for i in 0..<breakCount { breakPtr[i] = snap.breaks[i] }
+    }
+
+    /// One frame's GPU-bound snapshot, captured under the lock then written to the buffer outside it
+    /// (the GossamerState pattern — avoids a >2-member tuple while keeping the lock window minimal).
+    private struct GPUSnapshot {
+        let header: SkeinHeaderGPU
+        let bursts: [SkeinBurstGPU]
+        let breaks: [SkeinBreakGPU]
+    }
+
+    // MARK: - Private: colour-break ring (Skein.4.1)
+
+    /// Clear the line-colour ring and seed it with the white baseline at τ = 0, zero offset (the
+    /// cold/warmup line colour, the continuous un-jumped pour). Every tail sample laid before the first
+    /// dominant-stem switch resolves to white-no-jump; at silence only this baseline exists, so the
+    /// silence pour line is the byte-identical pre-Skein.4.1 continuous white line. init + reseed call it.
+    private func resetColorBreaks() {
+        colorBreaks.removeAll(keepingCapacity: true)
+        colorBreaks.append(SkeinBreakGPU(tauStart: 0, colR: 1, colG: 1, colB: 1, offX: 0, offY: 0))
+        lineDomIdx = -1
+        colorBreakCounter = 0
+        currentLineOffset = SIMD2<Float>(0, 0)
+    }
+
+    /// Push a breakpoint (the painter-clock value at a dominant-stem switch + the new LINEAR colour +
+    /// a bounded new-pour jump offset). The jump is a fixed-magnitude vector rotated by the golden angle
+    /// per switch (non-cumulative → never drifts off canvas; well-separated → a clear gap every switch).
+    /// Evicts the oldest when the ring is full — the 16 most-recent switches always cover the live tail.
+    private func pushColorBreak(tauStart: Float, color: SIMD3<Float>) {
+        colorBreakCounter &+= 1
+        let seedAngle = Float(seed & 0xFFFF) / Float(0xFFFF) * 2 * .pi
+        let ang = seedAngle + Float(colorBreakCounter) * Self.breakJumpGoldenAngle
+        let off = SIMD2<Float>(cos(ang), sin(ang)) * Self.breakJumpMagnitude
+        currentLineOffset = off
+        if colorBreaks.count >= Self.maxColorBreaks { colorBreaks.removeFirst() }
+        colorBreaks.append(SkeinBreakGPU(
+            tauStart: tauStart,
+            colR: color.x,
+            colG: color.y,
+            colB: color.z,
+            offX: off.x,
+            offY: off.y))
     }
 
     // MARK: - Private: math helpers (local, to avoid global-function dependency)

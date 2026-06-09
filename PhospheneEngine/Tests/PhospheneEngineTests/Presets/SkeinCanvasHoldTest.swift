@@ -521,6 +521,202 @@ struct SkeinCanvasHoldTest {
         return n > 0 ? sum / Float(n) : 0
     }
 
+    // MARK: - Colour-per-stroke (Skein.4.1): a dominant switch freezes the old colour + starts a new pour
+
+    @Test("Line colour is frozen per-segment: a dominant-stem switch keeps the already-laid paint's colour and starts a displaced new pour — live path")
+    func test_lineColorFreeze_keepsColourAndStartsNewPour() throws {
+        guard let fx = try loadSkeinFixture() else { return }
+        guard let session = Self.firstRecordedSession(),
+              let stems = loadStemFrames(session, maxFrames: 3000), stems.count > 400 else {
+            print("SkeinCanvasHoldTest: no recorded session — skipping colour-freeze gate (real audio: feedback_synthetic_audio)")
+            return
+        }
+        // Build a two-phase REAL-stem sequence with a clean dominant-stem SWITCH: the window where one
+        // stem most strongly leads, then the window where a DIFFERENT stem most strongly leads. The
+        // frames are real (feedback_synthetic_audio / FA #27 — never hand-authored); we only ORDER two
+        // real slices to guarantee a switch (the same thing busiestAndCalmestSlices does for its route).
+        let window = 90, phaseA = 70, phaseB = 55
+        let leads = (0..<4).map { Self.mostDominatedSlice(stems, stem: $0, window: window) }
+        let ranked = leads.enumerated().sorted { $0.element.lead > $1.element.lead }
+        guard ranked.count >= 2, ranked[0].element.lead > 0, ranked[1].element.lead > 0 else {
+            Issue.record("Could not find two stem-dominated slices in \(session.lastPathComponent) — cannot build a switch.")
+            return
+        }
+        let stemA = ranked[0].offset, stemB = ranked[1].offset
+        let seq = Array(leads[stemA].slice.prefix(phaseA)) + Array(leads[stemB].slice.prefix(phaseB))
+        guard seq.count == phaseA + phaseB else { Issue.record("Dominated slices too short."); return }
+
+        let w = 256, h = 256
+        let palette = SkeinState.defaultPalette
+        guard let skein = SkeinState(device: fx.ctx.device, seed: 0, palette: palette) else {
+            throw SkeinHoldError.bufferFailed
+        }
+        // Live dispatch path (scene→warp→overlay→blit→swap), recording the painter clock + dominant
+        // stem each frame; capture the final canvas (composeTex). Seed 0 ⇒ the test's skeinPainterPos
+        // mirror (phx=phy=0) matches the shader trajectory; the per-pour OFFSET comes from the ring.
+        let device = fx.ctx.device, queue = fx.ctx.commandQueue
+        let fbDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: fx.ctx.pixelFormat, width: w, height: h, mipmapped: false)
+        fbDesc.usage = [.renderTarget, .shaderRead]; fbDesc.storageMode = .shared
+        guard var warpTex = device.makeTexture(descriptor: fbDesc),
+              var composeTex = device.makeTexture(descriptor: fbDesc),
+              let blitTex = device.makeTexture(descriptor: fbDesc) else { throw SkeinHoldError.textureFailed }
+        try clearTextures([warpTex, composeTex], to: fx.cream, context: fx.ctx)
+        try clearTextures([blitTex], to: MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1), context: fx.ctx)
+
+        let dt: Float = 1.0 / 60.0
+        var taus: [Float] = [], doms: [Int] = []
+        var finalCanvas = [UInt8](repeating: 0, count: w * h * 4)
+        for (fi, stem) in seq.enumerated() {
+            var features = FeatureVector(time: Float(fi) * dt, deltaTime: dt, aspectRatio: 1.0)
+            skein.tick(deltaTime: dt, features: features, stems: stem)
+            taus.append(skein.painterTau); doms.append(skein.lineDominantStem)
+            guard let cmd = queue.makeCommandBuffer() else { throw SkeinHoldError.cmdBufferFailed }
+            try encodeWarp(cmd: cmd, mvWarp: fx.mvWarp, warpTex: warpTex, composeTex: composeTex,
+                           features: &features, chromatic: 0, wetnessDecay: skein.wetnessDecay)
+            try encodeOverlay(cmd: cmd, overlay: fx.overlay, target: composeTex,
+                              features: &features, skeinBuffer: skein.skeinBuffer)
+            try encodeBlit(cmd: cmd, mvWarp: fx.mvWarp, src: composeTex, dst: blitTex,
+                           post: SIMD4<Float>(0, 0, 1, 0))
+            cmd.commit(); cmd.waitUntilCompleted()
+            if fi == seq.count - 1 {
+                composeTex.getBytes(&finalCanvas, bytesPerRow: w * 4,
+                                    from: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0)
+            }
+            swap(&warpTex, &composeTex)
+        }
+
+        // Resolve the switch from the breakpoint ring: the final pour vs the prior different-colour pour.
+        let cream = Array(finalCanvas[(5 * w + 5) * 4 ..< (5 * w + 5) * 4 + 4])
+        let bps = skein.colorBreakpoints
+        guard let lastBP = bps.last,
+              let priorBP = bps.dropLast().reversed().first(where: { dist3($0.color, lastBP.color) > 0.05 })
+        else {
+            Issue.record("Only one colour pour — the concat did not switch the dominant stem (domEnd=\(doms.last ?? -1), breakpoints=\(bps.count)).")
+            return
+        }
+        func palIndex(_ linear: SIMD3<Float>) -> Int? {
+            (0..<palette.count).first { dist3(SkeinState.srgbToLinear(palette[$0]), linear) < 0.06 }
+        }
+        guard let domA = palIndex(priorBP.color), let domB = palIndex(lastBP.color), domA != domB else {
+            Issue.record("Breakpoint colours did not map to two distinct palette stems (\(priorBP.color) / \(lastBP.color)).")
+            return
+        }
+        let offA = priorBP.offset, offB = lastBP.offset
+        let colA255 = SIMD3<Float>(palette[domA].x * 255, palette[domA].y * 255, palette[domA].z * 255)
+        let colB255 = SIMD3<Float>(palette[domB].x * 255, palette[domB].y * 255, palette[domB].z * 255)
+        let tauSwitch = lastBP.tauStart
+        let tauFinal = taus.last ?? 0
+        let dtau = max(tauFinal - (taus.dropLast().last ?? 0), 1e-4)
+        let jump = offB - offA
+        let jumpMag = (jump.x * jump.x + jump.y * jump.y).squareRoot()
+
+        // Sample the line colour along the trajectory at a known pour offset (painterPos(tau) + off).
+        func tally(_ tauLo: Float, _ tauHi: Float, _ off: SIMD2<Float>) -> (x: Int, y: Int, cream: Int) {
+            var cx = 0, cy = 0, cc = 0
+            let n = 60
+            for s in 0...n {
+                let tau = tauLo + (tauHi - tauLo) * Float(s) / Float(n)
+                switch sampleLineClass(finalCanvas, w: w, h: h, uv: Self.skeinPainterPos(tau) + off,
+                                       x255: colA255, y255: colB255, cream: cream) {
+                case 0: cx += 1
+                case 1: cy += 1
+                default: cc += 1
+                }
+            }
+            return (cx, cy, cc)
+        }
+        // pre-switch window: inside the prior (A) pour's reign and baked; post-switch: the new (B) pour.
+        let preLo = max(tauSwitch - 25 * dtau, priorBP.tauStart + 2 * dtau)
+        let preHi = tauSwitch - 3 * dtau
+        let postLo = tauSwitch + 3 * dtau
+        let postHi = min(tauSwitch + 25 * dtau, tauFinal)
+        guard preHi - preLo >= 3 * dtau, postHi - postLo >= 3 * dtau else {
+            Issue.record("Switch landed too close to a pour boundary to sample (preLo=\(preLo) preHi=\(preHi) postLo=\(postLo) postHi=\(postHi)).")
+            return
+        }
+        let pre = tally(preLo, preHi, offA)
+        let post = tally(postLo, postHi, offB)
+        let postAtA = tally(postLo, postHi, offA)   // the new pour is NOT on the un-jumped (offA) path
+
+        print("""
+        [skein_colorfreeze] session \(session.lastPathComponent), live path \(w)×\(h), switch stem \(domA)→\(domB):
+          dominant: frame60=\(doms[min(60, doms.count - 1)]) → end=\(doms.last ?? -1)   tauSwitch=\(String(format: "%.2f", tauSwitch)) dtau=\(String(format: "%.4f", dtau))
+          new-pour jump |offB−offA| = \(String(format: "%.3f", jumpMag))  (offA \(offA) offB \(offB))
+          PRE-switch @offA   X=\(pre.x) Y=\(pre.y) cream=\(pre.cream)    [expect X≫Y — old paint KEEPS its colour]
+          POST-switch @offB  X=\(post.x) Y=\(post.y) cream=\(post.cream)   [expect Y≫X — the new colour]
+          new-pour displaced: @offB Y=\(post.y) vs @offA Y=\(postAtA.y)   [expect offB≫offA — a NEW pour, not a continuation]
+        """)
+
+        // The concat must have switched the visible dominant stem (else the test proves nothing).
+        #expect((doms.last ?? -1) != doms[min(60, doms.count - 1)],
+                "Dominant stem did not switch (frame60=\(doms[min(60, doms.count - 1)]) end=\(doms.last ?? -1)) — test setup failed.")
+        // 1. COLOUR FREEZE (the headline — inverse of the recolour bug): pre-switch line KEEPS colour A.
+        #expect(pre.x >= 6 && pre.x > pre.y * 2,
+                "Pre-switch line is not colour A (X=\(pre.x) Y=\(pre.y)) — the already-laid stroke recoloured on the switch (the Skein.4.1 defect).")
+        // 2. NEW COLOUR: the post-switch line reads colour B.
+        #expect(post.y >= 6 && post.y > post.x * 2,
+                "Post-switch line is not colour B (X=\(post.x) Y=\(post.y)) — the new pour did not take the new colour.")
+        // 3. NEW POUR DISPLACED (Matt's option 2): a real jump, and the new pour is at the jumped offset.
+        #expect(jumpMag > SkeinState.breakJumpMagnitude * 0.5,
+                "No new-pour jump recorded (|offB−offA|=\(jumpMag)) — a colour change must start a displaced new pour.")
+        #expect(post.y > postAtA.y,
+                "The new pour sits on the un-jumped path, not the jumped position (offB Y=\(post.y) vs offA Y=\(postAtA.y)) — it reads as a continuation, not a new pour.")
+    }
+
+    /// Euclidean distance between two RGB triples (breakpoint-colour compare).
+    private func dist3(_ a: SIMD3<Float>, _ b: SIMD3<Float>) -> Float {
+        let d = a - b; return (d.x * d.x + d.y * d.y + d.z * d.z).squareRoot()
+    }
+
+    /// Classify the nearest painted pixel to `uv` (radius-2 search, Y-flipped) as colour X (0), colour
+    /// Y (1), or neither/cream (-1) — reads the rendered line colour at a known trajectory position
+    /// (painterPos(tau) + the pour's offset). BGRA byte order; `x255`/`y255` are display RGB × 255.
+    private func sampleLineClass(_ buf: [UInt8], w: Int, h: Int, uv: SIMD2<Float>,
+                                 x255: SIMD3<Float>, y255: SIMD3<Float>, cream: [UInt8]) -> Int {
+        let cxp = Int((uv.x * Float(w)).rounded()), cyp = Int(((1 - uv.y) * Float(h)).rounded())
+        let cb = Int(cream[0]), cg = Int(cream[1]), cr = Int(cream[2])
+        var bestD = Int.max, bi = -1
+        for dy in -2...2 {
+            for dx in -2...2 {
+                let x = cxp + dx, y = cyp + dy
+                guard x >= 0, x < w, y >= 0, y < h else { continue }
+                let i = (y * w + x) * 4
+                if abs(Int(buf[i]) - cb) + abs(Int(buf[i + 1]) - cg) + abs(Int(buf[i + 2]) - cr) > 50 {
+                    let dd = dx * dx + dy * dy
+                    if dd < bestD { bestD = dd; bi = i }
+                }
+            }
+        }
+        guard bi >= 0 else { return -1 }   // cream (no painted pixel near the sampled position)
+        let rr = Float(buf[bi + 2]), gg = Float(buf[bi + 1]), bb = Float(buf[bi])
+        let dX = (rr - x255.x) * (rr - x255.x) + (gg - x255.y) * (gg - x255.y) + (bb - x255.z) * (bb - x255.z)
+        let dY = (rr - y255.x) * (rr - y255.x) + (gg - y255.y) * (gg - y255.y) + (bb - y255.z) * (bb - y255.z)
+        guard min(dX, dY) < 90 * 90 else { return -1 }   // painted but neither X nor Y (some other stem)
+        return dX <= dY ? 0 : 1
+    }
+
+    /// The `window`-frame slice where `stem` most strongly LEADS (mean over the window of dev[stem] −
+    /// max(other dev)). Real frames only — used to order two real slices into a clean dominant switch.
+    private static func mostDominatedSlice(_ stems: [StemFeatures], stem: Int, window: Int)
+        -> (slice: [StemFeatures], lead: Float) {
+        guard stems.count > window else { return (stems, 0) }
+        func lead(_ s: StemFeatures) -> Float {
+            let d = [max(0, s.drumsEnergyDev), max(0, s.bassEnergyDev),
+                     max(0, s.vocalsEnergyDev), max(0, s.otherEnergyDev)]
+            let others = (0..<4).filter { $0 != stem }.map { d[$0] }.max() ?? 0
+            return d[stem] - others
+        }
+        var sum: Float = 0
+        for i in 0..<window { sum += lead(stems[i]) }
+        var best = sum, bestIdx = 0
+        for i in window..<stems.count {
+            sum += lead(stems[i]) - lead(stems[i - window])
+            if sum > best { best = sum; bestIdx = i - window + 1 }
+        }
+        return (Array(stems[bestIdx..<bestIdx + window]), best / Float(window))
+    }
+
     // MARK: - Pour-line accumulation contact sheet (env-gated eyeball artifact)
 
     @Test("Pour-line accumulation contact sheet (env-gated: SKEIN_VISUAL=1 / RENDER_VISUAL=1)")
