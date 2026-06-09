@@ -6,6 +6,17 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-06-09] BUG-035 — NoveltyDetector ring-wrap boundary dedup (structural signal repaired for Skein.5)
+
+**Fix increment (P2, single increment per protocol — evidence pre-documented in `docs/diagnostics/CODE_AUDIT_2026-06-09.md`).**
+
+- **`NoveltyDetector`** stored detected boundaries by *logical* ring index; once `SelfSimilarityMatrix` filled (600 frames), logical indices slide ~30 per `detect()` call, so the dedup window (120 frames) re-admitted the same physical boundary every ~4 calls — ~4-5 near-equal-timestamp duplicates per real boundary, collapsing `StructuralAnalyzer` section durations toward 0, inflating `sectionIndex` ~5×, and structurally depressing `confidence` (the exact signal Skein.ENGINE.3 / D-151 wired live for Skein.5).
+- **Fix:** `SelfSimilarityMatrix` now exposes `totalFrameCount` (monotonic frames-added counter); `NoveltyDetector` stores and dedups boundaries in **absolute frame index** space (`Boundary.frameIndex` is now absolute, not logical). Timestamps were already slide-compensated and are unchanged.
+- **Related (same audit finding):** `MIRPipeline.latestStructuralPrediction` was the only published property written outside the lock — the write at the `updateStructuralAnalysis` site now goes under `lock` like every other CPU-side property.
+- **Tests:** `noveltyDetect_ringWrap_boundaryRegistersOnce` + `structuralAnalyzer_ringWrap_boundaryRegistersOnce` (production 600-frame geometry). Both A/B-proven: pre-fix they fail with 3 and 2 duplicate registrations respectively (identical timestamps — the audit's predicted signature); post-fix exactly 1. Existing `SkeinStructureSignalTests` and the AABA golden regression stay green.
+
+---
+
 ## [dev-2026-06-06-b] AGC3 — BUG-029: ease the AGC `f.bass` meter in at each track start (cold-start spike fix)
 
 **Increment:** AGC3.1 (measure) → AGC3.2 (decide, D-148) → AGC3.3 (fix). **Status:** fix landed; automated validation green; **awaiting Matt's catalog M7 (AGC3.4 manual gate)** before close (AGC3.5). Local `main`, not pushed. **Decision:** `docs/DECISIONS.md` D-148. **Evidence:** `docs/diagnostics/AGC3_1_COLDSTART_SPIKE_2026-06-05.md`.
