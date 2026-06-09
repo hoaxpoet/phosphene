@@ -6,6 +6,25 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-06-09-flicker] BUG-038 — temporally smooth ray-march light intensity (kill the BUG-019 flicker residual)
+
+**Increment:** FBS pre-step (a clean, non-flickering FFO baseline before the Ferrofluid Beat-Sync pulse work — Matt's call 2026-06-09). **Status:** fix landed, automated validation green; **awaiting Matt's M7** (visual confirm the strobe is gone). Local worktree branch `claude/intelligent-shirley-1ce3b4` — **not yet on `main`/Matt's build.** **Defect:** `KNOWN_ISSUES.md` BUG-038 (continuation of BUG-019). **Evidence:** sessions `2026-06-09T21-23-07Z` (streaming) + `21-19-14Z` (clean local); `tools/fbs/` analysis.
+
+### The defect
+
+`applyAudioModulation` (`RenderPipeline+RayMarch.swift`, preset-agnostic for **all** ray-march presets) set scene light intensity = `base × (1 + f.bass·0.4 + beatAccent·0.15)` **every frame with no temporal smoothing**. On real sessions the beat-onset term `beatAccent = max(beatBass, beatMid, beatComposite)` fires on **96–98 % of frames** — a near-constant jitter, *not* clean beats — and `f.bass` is noisy, so the whole scene's brightness **stepped 7–9 perceptible times/sec** (a constant strobe). This is the residual BUG-019 left behind: PERF.3 cut the worst of it (`0.4 + beatPulse·2.6` → the current formula, 76→53–60 oscillation events) but kept a beat term and added no smoothing. Present on clean-signal Cherub (~7/sec) too, so it is **not** a weak-signal artifact. Matt has reported this "since FFO existed"; it blocks fair evaluation of FFO and any beat-sync work.
+
+### The fix
+
+Temporally smooth the light multiplier with an EMA before writing the uniform — `RayMarchPipeline.smoothLightIntensity(previous:target:dt:tau:)`, τ ≈ 0.12 s. Measured on the real `intensityMul` series across all 4 sessions: perceptible steps drop **~8/sec → ~0** while the slower musical brightness swell is preserved (surviving variation 0.02–0.08). The PERF.3 formula is **unchanged — only low-passed**; the beat term's 97 %-firing jitter becomes a harmless near-constant offset. **Mean-preserving + preset-agnostic → no certified-preset (Nimbus) regression.** First frame after a preset load / stall (`dt ≤ 0`) returns the target verbatim → no startup brightness lag, and single-frame golden hashes are unchanged.
+
+### Tests / verification
+
+- **New pure-function gates** (`RayMarchPipelineTests`): `test_smoothLightIntensity_suppressesFrameToFrameFlicker` (synthetic jittery target mimicking the 97 %-firing beat + bass noise → smoothed < 5 steps / 600 frames, raw > 400, still tracks the swell) and `_firstFrameHasNoLag` (`dt ≤ 0` → target verbatim). Both green.
+- **Regression:** `PresetRegressionTests` golden hashes **unchanged**; `RayMarchPipelineTests` (12), `FerrofluidOceanVisualTests`, `SceneUniformsTests`, `MatIDDispatch`, `PresetAcceptanceTests` all green. SwiftLint `--strict` clean on the 3 changed files.
+- **Full engine suite:** 8 pre-existing failures, **all verified independent of this change** (re-confirmed with the change stashed): 7 = the documented `love_rehab.m4a` fixture-absence cluster (LFS tempo fixtures not fetched in this worktree — `Scripts/fetch_tempo_fixtures.sh`), 1 = a **pre-existing Skein.4.1 colour-freeze regression** (`SkeinCanvasHoldTest.swift:548`, fails without this change too — flagged separately, out of scope).
+- **Pending:** Matt M7 — FFO and other ray-march presets show steady lighting (no strobe) through a continuous-playback session. **Requires the fix to reach his build** (integrate to local `main`, or build the branch) per `feedback_worktree_changes_reach_build`.
+
 ## [dev-2026-06-06-b] AGC3 — BUG-029: ease the AGC `f.bass` meter in at each track start (cold-start spike fix)
 
 **Increment:** AGC3.1 (measure) → AGC3.2 (decide, D-148) → AGC3.3 (fix). **Status:** fix landed; automated validation green; **awaiting Matt's catalog M7 (AGC3.4 manual gate)** before close (AGC3.5). Local `main`, not pushed. **Decision:** `docs/DECISIONS.md` D-148. **Evidence:** `docs/diagnostics/AGC3_1_COLDSTART_SPIKE_2026-06-05.md`.

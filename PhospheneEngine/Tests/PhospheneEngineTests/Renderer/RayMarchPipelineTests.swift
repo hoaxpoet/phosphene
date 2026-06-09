@@ -329,6 +329,48 @@ final class RayMarchPipelineTests: XCTestCase {
         XCTAssertLessThan(elapsed, 8.0,
             "Full ray march pipeline at 1080p took \(String(format: "%.2f", elapsed)) ms; must be < 8 ms")
     }
+
+    // MARK: - BUG-038 — light-intensity flicker suppression (continuation of BUG-019)
+
+    /// The raw audio-driven light multiplier jitters frame-to-frame on real sessions
+    /// (the beat-onset signals fire on ~97 % of frames — a near-constant jitter, not
+    /// clean beats — and `f.bass` is noisy), flickering the whole scene 7–9
+    /// perceptible steps/sec. `smoothLightIntensity` must low-pass that to ~0 steps
+    /// while still tracking the slow musical brightness swell.
+    func test_smoothLightIntensity_suppressesFrameToFrameFlicker() {
+        let dt: Float = 1.0 / 60.0
+        let stepThreshold: Float = 0.05      // a perceptible single-frame brightness step
+        var smoothed: Float = 1.0
+        var prevRaw: Float = 1.0
+        var rawFlashes = 0
+        var smoothedFlashes = 0
+        // Synthetic target = slow musical swell + per-frame ±0.09 jitter (mimics the
+        // measured 97 %-firing beat term + bass noise). Deterministic, no RNG.
+        for i in 0..<600 {
+            let swell = 1.18 + 0.12 * sin(Float(i) * 0.02)
+            let jitter: Float = (i % 2 == 0) ? 0.09 : -0.09
+            let target = swell + jitter
+            if i > 0, abs(target - prevRaw) > stepThreshold { rawFlashes += 1 }
+            prevRaw = target
+            let next = RayMarchPipeline.smoothLightIntensity(previous: smoothed, target: target, dt: dt)
+            if i > 0, abs(next - smoothed) > stepThreshold { smoothedFlashes += 1 }
+            smoothed = next
+        }
+        XCTAssertGreaterThan(rawFlashes, 400,
+            "Synthetic input must actually flicker (sanity check on the test).")
+        XCTAssertLessThan(smoothedFlashes, 5,
+            "EMA must suppress frame-to-frame brightness stepping to ~0 (BUG-038); got \(smoothedFlashes).")
+        // Must still track the musical swell (range ≈ [1.06, 1.30]), not flatten to the 1.0 seed.
+        XCTAssertGreaterThan(smoothed, 1.05, "Smoothed light must follow the musical swell, not stay at seed.")
+        XCTAssertLessThan(smoothed, 1.31, "Smoothed light must stay within the musical swell band.")
+    }
+
+    /// `dt <= 0` (first frame after a preset load / stall) returns the target verbatim
+    /// so there is no startup brightness lag.
+    func test_smoothLightIntensity_firstFrameHasNoLag() {
+        XCTAssertEqual(RayMarchPipeline.smoothLightIntensity(previous: 1.0, target: 1.4, dt: 0),
+                       1.4, accuracy: 1e-6)
+    }
 }
 
 // MARK: - Helpers

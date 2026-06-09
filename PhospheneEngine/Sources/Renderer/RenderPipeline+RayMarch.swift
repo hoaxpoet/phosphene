@@ -229,8 +229,23 @@ extension RenderPipeline {
         let bassPrimary = max(0, min(1.0, features.bass))
         let beatPulse = max(features.beatBass, max(features.beatMid, features.beatComposite))
         let beatAccent = max(0, min(1.0, beatPulse))
-        let intensityMul = 1.0 + bassPrimary * 0.4 + beatAccent * 0.15
-        rayMarchState.sceneUniforms.lightPositionAndIntensity.w = base.lightIntensity * intensityMul
+        let intensityMulTarget = 1.0 + bassPrimary * 0.4 + beatAccent * 0.15
+        // BUG-038 (continuation of BUG-019, FBS pre-step) — temporally smooth the
+        // light multiplier so it cannot step frame-to-frame. The beat-onset signals
+        // fire on ~97 % of frames on real sessions (a near-constant jitter, NOT clean
+        // beats) and `f.bass` is noisy; together they flickered the whole scene's
+        // brightness 7–9 perceptible steps/sec (the BUG-019 residual). An EMA
+        // (τ ≈ 0.12 s) drops that to ~0 (verified on 4 sessions: streaming Love
+        // Rehab / So What / Lotus Flower + clean-signal Cherub) while preserving the
+        // slower musical brightness swell. Preset-agnostic + mean-preserving → no
+        // certified-preset regression. The PERF.3 formula (continuous bass primary,
+        // beat as a small accent) is unchanged; it is only low-passed now.
+        rayMarchState.smoothedLightIntensityMul = RayMarchPipeline.smoothLightIntensity(
+            previous: rayMarchState.smoothedLightIntensityMul,
+            target: intensityMulTarget,
+            dt: dt)
+        rayMarchState.sceneUniforms.lightPositionAndIntensity.w =
+            base.lightIntensity * rayMarchState.smoothedLightIntensityMul
         let valence = max(-1, min(1, features.valence))
         let warm = max(0, valence)
         let cool = max(0, -valence)
