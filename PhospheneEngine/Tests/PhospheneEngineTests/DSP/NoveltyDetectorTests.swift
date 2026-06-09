@@ -108,6 +108,43 @@ import Foundation
             "Minor fluctuations should not trigger boundaries, got \(boundaries.count)")
 }
 
+// MARK: - Ring-Wrap Dedup (BUG-035)
+
+@Test func noveltyDetect_ringWrap_boundaryRegistersOnce() {
+    let matrix = SelfSimilarityMatrix(maxHistory: 200, featureDim: 4)
+    let detector = NoveltyDetector(
+        maxHistory: 200, kernelHalfWidth: 8,
+        minPeakDistance: 30, thresholdMultiplier: 1.0
+    )
+
+    // One real A→B boundary, then keep feeding B far past ring capacity so the
+    // boundary slides through the full logical range and out of history.
+    // Detect every 30 frames the way StructuralAnalyzer does. Pre-fix, the
+    // stale logical-index dedup re-registered the boundary every ~4 calls.
+    let vecA: [Float] = [1, 0, 0, 0]
+    let vecB: [Float] = [0, 1, 0, 0]
+    var total = 0
+    var registered: [NoveltyDetector.Boundary] = []
+    func feed(_ vec: [Float], frames: Int) {
+        for _ in 0..<frames {
+            matrix.addFrame(vec)
+            total += 1
+            if total % 30 == 0 {
+                registered += detector.detect(
+                    similarityMatrix: matrix,
+                    currentTime: Float(total) / 60.0,
+                    fps: 60
+                )
+            }
+        }
+    }
+    feed(vecA, frames: 100)
+    feed(vecB, frames: 500)
+
+    #expect(registered.count == 1,
+            "One physical boundary should register exactly once across the ring slide, got \(registered.count): \(registered.map(\.timestamp))")
+}
+
 // MARK: - Determinism
 
 @Test func noveltyDetect_deterministic() {

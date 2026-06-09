@@ -167,6 +167,19 @@ extension RenderPipeline {
         }
     }
 
+    /// Inject the latest live structural-section prediction (Skein.ENGINE.3, D-151).
+    ///
+    /// CPU-only — NOT a GPU `FeatureVector` field (no `Common.metal` change). Rides the same
+    /// lock-guarded analysis→render value-injection bridge as `setMood` (D-024 / FA #25) but as a
+    /// **separate** store, so it is never clobbered by `setFeatures`. Called from the analysis
+    /// queue alongside the per-frame MIR features publish; pass `.none` to reset (track change /
+    /// preset switch). Defaults to `.none`, and **only `SkeinState` reads it** (via the Skein tick
+    /// closure), so every other preset is byte-identical regardless of value. Thread-safe — can be
+    /// called from any queue.
+    public func setStructuralPrediction(_ prediction: StructuralPrediction) {
+        structuralPredictionLock.withLock { storedStructuralPrediction = prediction }
+    }
+
     /// Update per-stem features from the background stem pipeline.
     /// Thread-safe — called from the stem queue at ~5s cadence.
     ///

@@ -278,7 +278,7 @@ public final class MIRPipeline: @unchecked Sendable {
     private func updateStructuralAnalysis(_ ctx: ProcessContext) {
         let normalizedRolloff = nyquist > 0 ? ctx.spectral.rolloff / nyquist : 0
         let totalEnergy = (ctx.energy.bass + ctx.energy.mid + ctx.energy.treble) / 3.0
-        latestStructuralPrediction = structuralAnalyzer.process(
+        let prediction = structuralAnalyzer.process(
             chroma: ctx.chroma.chroma,
             spectral: StructuralAnalyzer.SpectralSummary(
                 centroid: ctx.normalizedCentroid,
@@ -288,6 +288,11 @@ public final class MIRPipeline: @unchecked Sendable {
             ),
             time: ctx.time
         )
+        // Published-property write goes under the lock like every other
+        // CPU-side property (BUG-035 related finding; class is @unchecked Sendable).
+        lock.lock()
+        latestStructuralPrediction = prediction
+        lock.unlock()
 
         let centroidNorm = nyquist > 0
             ? ctx.spectral.smoothedCentroid / nyquist : 0
