@@ -600,7 +600,7 @@ struct SkeinCanvasHoldTest {
             try encodeOverlay(cmd: cmd, overlay: fx.overlay, target: composeTex,
                               features: &features, skeinBuffer: skein.skeinBuffer)
             try encodeBlit(cmd: cmd, mvWarp: fx.mvWarp, src: composeTex, dst: blitTex,
-                           post: SIMD4<Float>(0, 0, 1, 0))
+                           post: SIMD4<Float>(0, 0, 1, 0), skeinBuffer: skein.skeinBuffer)
             cmd.commit(); cmd.waitUntilCompleted()
             if fi == seq.count - 1 {
                 composeTex.getBytes(&finalCanvas, bytesPerRow: w * 4,
@@ -685,6 +685,244 @@ struct SkeinCanvasHoldTest {
                 "No new-pour jump recorded (|offB−offA|=\(jumpMag)) — a colour change must start a displaced new pour.")
         #expect(post.y > postAtA.y,
                 "The new pour sits on the un-jumped path, not the jumped position (offB Y=\(post.y) vs offA Y=\(postAtA.y)) — it reads as a continuation, not a new pour.")
+    }
+
+    // MARK: - Skein.5: mood — valence warms the laid palette, arousal quickens/densifies
+
+    @Test("Mood: +valence warms the laid paint (R↑ B↓), +arousal covers faster — live path, real stems")
+    func test_mood_warmthAndVigour() throws {
+        guard let fx = try loadSkeinFixture() else { return }
+        guard let session = Self.firstRecordedSession(),
+              let stems = loadStemFrames(session, maxFrames: 1200), stems.count > 400 else {
+            print("SkeinCanvasHoldTest: no recorded session — skipping mood gate (real audio: feedback_synthetic_audio)")
+            return
+        }
+        let w = 256, h = 256, frames = 900
+        // Same REAL stems + same seed; only the smoothed-classifier-style mood inputs differ —
+        // the high/low valence + high/low arousal fixtures the Skein.5 done-when names.
+        let warm = try runPourAccumulation(
+            chromatic: 0, frames: frames, width: w, height: h, aspect: 1.0, startTime: 0,
+            checkpoints: [], fx: fx, seed: 7, stemFrames: stems,
+            drive: MusicalityDrive(valence: 0.8, arousal: 0.8))
+        let cool = try runPourAccumulation(
+            chromatic: 0, frames: frames, width: w, height: h, aspect: 1.0, startTime: 0,
+            checkpoints: [], fx: fx, seed: 7, stemFrames: stems,
+            drive: MusicalityDrive(valence: -0.8, arousal: -0.8))
+
+        // Painted-pixel statistics (≠ cream): mean R − mean B (warmth), coverage, pale share.
+        func stats(_ px: [UInt8], cream: [UInt8]) -> (warmth: Float, painted: Int, paleShare: Float) {
+            var rSum = 0, bSum = 0, n = 0, pale = 0
+            let cb = Int(cream[0]), cg = Int(cream[1]), cr = Int(cream[2])
+            for i in stride(from: 0, to: px.count, by: 4) {
+                let pd = abs(Int(px[i]) - cb) + abs(Int(px[i + 1]) - cg) + abs(Int(px[i + 2]) - cr)
+                guard pd > 60 else { continue }
+                rSum += Int(px[i + 2]); bSum += Int(px[i])
+                if min(Int(px[i]), Int(px[i + 1]), Int(px[i + 2])) > 165 { pale += 1 }   // linear ~0.65 in bytes
+                n += 1
+            }
+            guard n > 0 else { return (0, 0, 0) }
+            return (Float(rSum - bSum) / Float(n), n, Float(pale) / Float(n))
+        }
+        let sWarm = stats(warm.finalPixels, cream: warm.creamRef)
+        let sCool = stats(cool.finalPixels, cream: cool.creamRef)
+        print("""
+        [skein5_mood] session \(session.lastPathComponent), \(frames)f live path \(w)×\(h):
+          WARM (+v +a): warmth(R−B)=\(String(format: "%.1f", sWarm.warmth))  painted=\(sWarm.painted)  pale=\(String(format: "%.3f", sWarm.paleShare))
+          COOL (−v −a): warmth(R−B)=\(String(format: "%.1f", sCool.warmth))  painted=\(sCool.painted)  pale=\(String(format: "%.3f", sCool.paleShare))
+        """)
+        #expect(sWarm.painted > 500 && sCool.painted > 500,
+                "Runs painted too little to compare (warm \(sWarm.painted) / cool \(sCool.painted)).")
+        // 1. WARMTH: the +valence canvas reads warmer than the −valence one (R−B balance shift).
+        #expect(sWarm.warmth > sCool.warmth + 5.0,
+                "+valence did not warm the laid palette (warm R−B \(sWarm.warmth) vs cool \(sCool.warmth)).")
+        // 2. VIGOUR: the +arousal painter covers more canvas in the same frames (speed + density).
+        #expect(Float(sWarm.painted) > Float(sCool.painted) * 1.10,
+                "+arousal did not quicken/densify (painted warm \(sWarm.painted) vs cool \(sCool.painted)).")
+        // 3. PALE GUARD (CLAUDE.md pale-dominant rule): the mood tint never washes the paint pale.
+        #expect(sWarm.paleShare < 0.30 && sCool.paleShare < 0.30,
+                "Mood tint pushed pale share over the ceiling (warm \(sWarm.paleShare) / cool \(sCool.paleShare)).")
+    }
+
+    // MARK: - Skein.5: structure — a confident boundary leans new pours + flurries the splatter
+
+    @Test("Structure: a confident section boundary pulses density, leans new pours, and is fully off at low confidence — live tick path")
+    func test_structure_boundaryBias() throws {
+        guard let fx = try loadSkeinFixture() else { return }
+        guard let session = Self.firstRecordedSession(),
+              let raw = loadStemFrames(session, maxFrames: 6000), raw.count > 400 else {
+            print("SkeinCanvasHoldTest: no recorded session — skipping structure gate (real audio: feedback_synthetic_audio)")
+            return
+        }
+        // Tile ONE single-dominant 120-frame REAL slice so (a) pre/post-boundary audio content is
+        // IDENTICAL (any density change is the pulse, not the music) and (b) the dominant stem
+        // never switches naturally (any new pour at the boundary is the boundary's).
+        let slice = Self.mostDominatedSlice(raw, stem: Self.mostActiveStem(raw), window: 120).slice
+        let boundaryFrame = 600, total = 1200
+        let dt: Float = 1.0 / 60.0
+
+        func run(confidence: Float) throws -> (skein: SkeinState, spawnsPre: Int, spawnsPost: Int, breaksAtBoundary: Int) {
+            guard let skein = SkeinState(device: fx.ctx.device, seed: 0) else { throw SkeinHoldError.bufferFailed }
+            var spawnsAt480 = 0, spawnsAt600 = 0, spawnsAt720 = 0, breaksBefore = 0
+            for fi in 0..<total {
+                let features = FeatureVector(time: Float(fi) * dt, deltaTime: dt, aspectRatio: 1.0)
+                let structure = StructuralPrediction(
+                    sectionIndex: fi < boundaryFrame ? 0 : 1,
+                    sectionStartTime: fi < boundaryFrame ? 0 : Float(boundaryFrame) * dt,
+                    predictedNextBoundary: 0,
+                    confidence: confidence)
+                skein.tick(deltaTime: dt, features: features, stems: slice[fi % slice.count],
+                           structure: structure)
+                if fi == 479 { spawnsAt480 = skein.totalBurstsSpawned }
+                if fi == 599 { spawnsAt600 = skein.totalBurstsSpawned; breaksBefore = skein.colorBreakpoints.count }
+                if fi == 719 { spawnsAt720 = skein.totalBurstsSpawned }
+            }
+            return (skein, spawnsAt600 - spawnsAt480, spawnsAt720 - spawnsAt600,
+                    skein.colorBreakpoints.count - breaksBefore)
+        }
+
+        let hi = try run(confidence: 0.8)
+        let lo = try run(confidence: 0.05)
+        let leanMag = (hi.skein.sectionLeanCurrent.x * hi.skein.sectionLeanCurrent.x
+                     + hi.skein.sectionLeanCurrent.y * hi.skein.sectionLeanCurrent.y).squareRoot()
+        let loLean = (lo.skein.sectionLeanCurrent.x * lo.skein.sectionLeanCurrent.x
+                    + lo.skein.sectionLeanCurrent.y * lo.skein.sectionLeanCurrent.y).squareRoot()
+        print("""
+        [skein5_structure] tiled single-dominant slice, boundary @\(boundaryFrame), live tick path:
+          conf 0.8:  spawns pre/post = \(hi.spawnsPre)/\(hi.spawnsPost)  lean=\(String(format: "%.3f", leanMag))  newBreaks=\(hi.breaksAtBoundary)
+          conf 0.05: spawns pre/post = \(lo.spawnsPre)/\(lo.spawnsPost)  lean=\(String(format: "%.3f", loLean))  newBreaks=\(lo.breaksAtBoundary)
+        """)
+        // 1. FLURRY: identical tiled audio, so post-boundary bursts > pre-boundary bursts is the pulse.
+        #expect(hi.spawnsPost > hi.spawnsPre,
+                "The boundary did not flurry the splatter (pre \(hi.spawnsPre) vs post \(hi.spawnsPost)).")
+        // 2. LEAN: new pours lean toward the section's patch — nonzero, but bounded (allover intact).
+        #expect(leanMag > 0.02 && leanMag <= SkeinState.sectionLeanRadius + 1e-4,
+                "Section lean out of range (\(leanMag)) — expected (0.02, \(SkeinState.sectionLeanRadius)].")
+        // 3. FRESH POUR: the boundary commits a new pour (a breakpoint lands in the boundary window).
+        #expect(hi.breaksAtBoundary >= 1,
+                "No fresh pour at the confident boundary (breakpoints +\(hi.breaksAtBoundary)).")
+        // 4. CONFIDENCE GATE: at low confidence the bias is exactly zero — the pure allover read.
+        #expect(lo.skein.sectionPulseCurrent == 0 && loLean == 0 && lo.breaksAtBoundary == 0,
+                "Low-confidence structure leaked bias (pulse \(lo.skein.sectionPulseCurrent), lean \(loLean), breaks +\(lo.breaksAtBoundary)).")
+    }
+
+    /// The stem index with the highest total positive deviation over the session (the slice picker's
+    /// anchor for a single-dominant tile).
+    private static func mostActiveStem(_ stems: [StemFeatures]) -> Int {
+        var sums = [Float](repeating: 0, count: 4)
+        for s in stems {
+            sums[0] += max(0, s.drumsEnergyDev); sums[1] += max(0, s.bassEnergyDev)
+            sums[2] += max(0, s.vocalsEnergyDev); sums[3] += max(0, s.otherEnergyDev)
+        }
+        return sums.enumerated().max { $0.element < $1.element }?.offset ?? 0
+    }
+
+    // MARK: - Skein.5: anticipation — wind-up into the beat, flick at the wrap (FA #33)
+
+    @Test("Anticipation: the painter slows into each beat and surges at the wrap; silence is exactly neutral — live tick path")
+    func test_anticipation_windupFlick() throws {
+        guard let fx = try loadSkeinFixture() else { return }
+        guard let session = Self.firstRecordedSession(),
+              let raw = loadStemFrames(session, maxFrames: 2000), raw.count > 400 else {
+            print("SkeinCanvasHoldTest: no recorded session — skipping anticipation gate (real audio: feedback_synthetic_audio)")
+            return
+        }
+        guard let skein = SkeinState(device: fx.ctx.device, seed: 0) else { throw SkeinHoldError.bufferFailed }
+        let dt: Float = 1.0 / 60.0, bpm: Float = 120
+        var windupSum: Float = 0; var windupN = 0
+        var flickSum: Float = 0; var flickN = 0
+        for fi in 0..<900 {
+            let time = Float(fi) * dt
+            var features = FeatureVector(time: time, deltaTime: dt, aspectRatio: 1.0)
+            let beats = time * bpm / 60.0
+            features.beatPhase01 = beats - floor(beats)   // the live BeatPredictor ramp shape
+            skein.tick(deltaTime: dt, features: features, stems: raw[fi % raw.count])
+            guard fi > 120 else { continue }   // past the stem warmup
+            let factor = skein.anticipationFactorCurrent
+            if features.beatPhase01 > 0.85 { windupSum += factor; windupN += 1 }
+            if features.beatPhase01 < 0.10 { flickSum += factor; flickN += 1 }
+        }
+        let windupMean = windupN > 0 ? windupSum / Float(windupN) : 1
+        let flickMean = flickN > 0 ? flickSum / Float(flickN) : 1
+        print("[skein5_anticipation] 120 BPM ramp, real stems: windup mean \(windupMean) (n=\(windupN)), flick mean \(flickMean) (n=\(flickN))")
+        // Wind-up: the hand slows in the last fraction of the beat…
+        #expect(windupMean < 0.92, "No wind-up — factor \(windupMean) in the pre-beat window (expected < 0.92).")
+        // …and the flick surges right after the wrap.
+        #expect(flickMean > 1.05, "No flick — factor \(flickMean) right after the beat (expected > 1.05).")
+
+        // Silence: exactly neutral (the Skein.1 silence-continuity contract) — factor == 1 every frame.
+        guard let silent = SkeinState(device: fx.ctx.device, seed: 0) else { throw SkeinHoldError.bufferFailed }
+        for fi in 0..<240 {
+            let time = Float(fi) * dt
+            var features = FeatureVector(time: time, deltaTime: dt, aspectRatio: 1.0)
+            let beats = time * bpm / 60.0
+            features.beatPhase01 = beats - floor(beats)
+            silent.tick(deltaTime: dt, features: features, stems: .zero)
+            #expect(silent.anticipationFactorCurrent == 1.0,
+                    "Anticipation modulated the silence pour (factor \(silent.anticipationFactorCurrent) at frame \(fi)).")
+        }
+    }
+
+    // MARK: - Skein.5: painter locus — display-only, build-flagged, OFF by default
+
+    @Test("Locus: OFF by default; when flagged on, the glow is DISPLAY-ONLY — blit shows it, the held canvas is byte-identical")
+    func test_locus_displayOnly() throws {
+        #expect(SkeinState.defaultLocusEnabled == false, "The painter locus must ship OFF by default.")
+        guard let fx = try loadSkeinFixture() else { return }
+        let w = 192, h = 192, frames = 180
+        func run(_ locus: Bool) throws -> PourResult {
+            try runPourAccumulation(
+                chromatic: 0, frames: frames, width: w, height: h, aspect: 1.0, startTime: 0,
+                checkpoints: [], fx: fx, seed: 3, captureBlit: true,
+                drive: MusicalityDrive(locusEnabled: locus))
+        }
+        let on = try run(true), off = try run(false)
+        // 1. The held CANVAS is byte-identical — the locus never bakes (it would otherwise paint
+        //    itself permanently; that is why it lives in the comp fragment, not the overlay).
+        #expect(on.finalPixels == off.finalPixels,
+                "The locus BAKED into the held canvas — it must be display-only (comp stage).")
+        // 2. The BLIT (display) shows it: a localized region of pixels differs.
+        var diff = 0
+        for i in stride(from: 0, to: on.finalBlitPixels.count, by: 4) {
+            if abs(Int(on.finalBlitPixels[i + 2]) - Int(off.finalBlitPixels[i + 2])) > 8 { diff += 1 }
+        }
+        print("[skein5_locus] blit pixels differing (locus on vs off): \(diff) of \(w * h)")
+        #expect(diff > 20 && diff < (w * h) / 4,
+                "Locus glow not visible (or not localized) in the display blit: \(diff) differing pixels.")
+    }
+
+    // MARK: - Skein.5 contact sheet (env-gated eyeball artifact)
+
+    @Test("Skein.5 mood/locus contact sheet (env-gated: SKEIN_VISUAL=1 / RENDER_VISUAL=1)")
+    func test_skein5_contactSheet() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard env["SKEIN_VISUAL"] == "1" || env["RENDER_VISUAL"] == "1" else {
+            print("SkeinCanvasHoldTest: SKEIN_VISUAL/RENDER_VISUAL not set, skipping Skein.5 contact sheet")
+            return
+        }
+        guard let fx = try loadSkeinFixture() else { return }
+        guard let session = Self.firstRecordedSession(),
+              let stems = loadStemFrames(session, maxFrames: 1500), stems.count > 400 else { return }
+        let w = 480, h = 480, frames = 1200
+        // Panels: warm/calm × cool/vigorous corners + a locus panel (flag on).
+        let drives: [(String, MusicalityDrive)] = [
+            ("hiV_hiA", MusicalityDrive(valence: 0.8, arousal: 0.8)),
+            ("hiV_loA", MusicalityDrive(valence: 0.8, arousal: -0.8)),
+            ("loV_hiA", MusicalityDrive(valence: -0.8, arousal: 0.8)),
+            ("loV_loA", MusicalityDrive(valence: -0.8, arousal: -0.8)),
+            ("locus_on", MusicalityDrive(beatBPM: 120, locusEnabled: true))
+        ]
+        let dir = try makeOutputDir()
+        var tiles: [[UInt8]] = []
+        for (name, drive) in drives {
+            let run = try runPourAccumulation(
+                chromatic: 0, frames: frames, width: w, height: h, aspect: 1.0, startTime: 0,
+                checkpoints: [], fx: fx, seed: 11, stemFrames: stems, captureBlit: true, drive: drive)
+            let px = drive.locusEnabled ? run.finalBlitPixels : run.finalPixels
+            tiles.append(px)
+            try writeBGRAToPNG(px, w: w, h: h, url: dir.appendingPathComponent("skein5_\(name).png"))
+        }
+        try writeMontage(tiles, tileW: w, tileH: h, url: dir.appendingPathComponent("skein5_mood_montage.png"))
+        print("[skein5_contact_sheet] wrote \(dir.path)/skein5_mood_montage.png (hiV_hiA | hiV_loA | loV_hiA | loV_loA | locus_on)")
     }
 
     /// Euclidean distance between two RGB triples (breakpoint-colour compare).
@@ -1002,6 +1240,19 @@ struct SkeinCanvasHoldTest {
         var checkpointBlitPixels: [Int: [UInt8]]   // BLIT (sheened) output at each checkpoint (contact sheet)
     }
 
+    /// Skein.5 fixture drive: mood (constant smoothed-classifier-style valence/arousal), an
+    /// optional beat-phase sawtooth (what the live BeatPredictor's `beatPhase01` ramp looks like
+    /// at a steady BPM), an optional per-frame StructuralPrediction, and the locus build flag.
+    /// Stems stay REAL replayed frames — these are the controlled fixture INPUTS the Skein.5
+    /// done-when names (high/low valence, high/low arousal, a section boundary, a beat ramp).
+    struct MusicalityDrive {
+        var valence: Float = 0
+        var arousal: Float = 0
+        var beatBPM: Float = 0
+        var structure: ((Int) -> StructuralPrediction)?
+        var locusEnabled = false
+    }
+
     /// Drive the live marks-on-top dispatch path for `frames` frames, advancing features.time by
     /// a fixed Δt each frame (so the painter moves and consecutive capsules chain exactly). Each
     /// frame: warp(prev) → overlay(this frame's swept capsule on top) → blit → read → swap.
@@ -1010,7 +1261,8 @@ struct SkeinCanvasHoldTest {
         chromatic: Float, frames: Int, width: Int, height: Int, aspect: Float, startTime: Float,
         checkpoints: Set<Int>, fx: SkeinFixture, capturePerFrame: Bool = false,
         seed: UInt32 = 0, palette: [SIMD3<Float>]? = nil, stemFrames: [StemFeatures] = [],
-        captureWetness: Bool = false, captureBlit: Bool = false
+        captureWetness: Bool = false, captureBlit: Bool = false,
+        drive: MusicalityDrive = MusicalityDrive()
     ) throws -> PourResult {
         let device = fx.ctx.device, queue = fx.ctx.commandQueue
         // Skein.3: the painter clock + onset-burst ring + per-stem colour live in SkeinState, bound
@@ -1019,7 +1271,8 @@ struct SkeinCanvasHoldTest {
         // REAL replayed StemFeatures (feedback_synthetic_audio: never hand-authored envelopes); an
         // empty array drives StemFeatures.zero (silence → the pour line only, no onset bursts).
         guard let skein = SkeinState(device: device, seed: seed,
-                                     palette: palette ?? SkeinState.defaultPalette)
+                                     palette: palette ?? SkeinState.defaultPalette,
+                                     locusEnabled: drive.locusEnabled)
         else { throw SkeinHoldError.bufferFailed }
         let fbDesc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: fx.ctx.pixelFormat, width: width, height: height, mipmapped: false)
@@ -1058,13 +1311,22 @@ struct SkeinCanvasHoldTest {
         var checkpointBlitPixels: [Int: [UInt8]] = [:]
 
         for frameIdx in 0..<frames {
+            let time = startTime + Float(frameIdx) * dt
             var features = FeatureVector(
-                time: startTime + Float(frameIdx) * dt, deltaTime: dt, aspectRatio: aspect)
+                valence: drive.valence, arousal: drive.arousal,
+                time: time, deltaTime: dt, aspectRatio: aspect)
+            // Skein.5: an optional steady-BPM beat-phase ramp (the shape the live BeatPredictor
+            // publishes) for the anticipation wind-up/flick fixture.
+            if drive.beatBPM > 0 {
+                let beats = time * drive.beatBPM / 60.0
+                features.beatPhase01 = beats - floor(beats)
+            }
             // Tick SkeinState with this frame's REAL stems (or silence). Advances painterTau (the
             // audio-modulated painter clock), detects per-stem onsets → burst ring, and writes the
             // slot-6 buffer the overlay fragment reads. Same call the live setMeshPresetTick makes.
             let stems = stemFrames.isEmpty ? StemFeatures.zero : stemFrames[frameIdx % stemFrames.count]
-            skein.tick(deltaTime: dt, features: features, stems: stems)
+            skein.tick(deltaTime: dt, features: features, stems: stems,
+                       structure: drive.structure?(frameIdx) ?? .none)
             guard let cmd = queue.makeCommandBuffer() else { throw SkeinHoldError.cmdBufferFailed }
             // Pass 1: identity warp holds the previous canvas (warpTex → composeTex). chromatic=0
             // + decay=1.0 ⇒ a lossless RGB copy of every unpainted texel. Skein.ENGINE.2: the ALPHA
@@ -1075,9 +1337,11 @@ struct SkeinCanvasHoldTest {
             // Pass 2: marks-on-top — draw this frame's marks normal-alpha onto the held canvas.
             try encodeOverlay(cmd: cmd, overlay: fx.overlay, target: composeTex,
                               features: &features, skeinBuffer: skein.skeinBuffer)
-            // Pass 3: blit (display-only, identity post) — faithful to the live present pass.
+            // Pass 3: blit (display-only, identity post) — faithful to the live present pass,
+            // including the Skein.5 buffer-1 binding (the display-only locus reads it).
             try encodeBlit(cmd: cmd, mvWarp: fx.mvWarp, src: composeTex, dst: blitTex,
-                           post: SIMD4<Float>(0, 0, 1, 0))   // invert0 echo0 gamma1 beat0 = identity
+                           post: SIMD4<Float>(0, 0, 1, 0),   // invert0 echo0 gamma1 beat0 = identity
+                           skeinBuffer: skein.skeinBuffer)
             cmd.commit()
             cmd.waitUntilCompleted()
 
@@ -1186,7 +1450,8 @@ struct SkeinCanvasHoldTest {
 
     private func encodeBlit(
         cmd: MTLCommandBuffer, mvWarp: PresetLoader.MVWarpCompiledPipelines,
-        src: MTLTexture, dst: MTLTexture, post: SIMD4<Float>
+        src: MTLTexture, dst: MTLTexture, post: SIMD4<Float>,
+        skeinBuffer: MTLBuffer? = nil
     ) throws {
         let desc = MTLRenderPassDescriptor()
         desc.colorAttachments[0].texture = dst
@@ -1197,6 +1462,11 @@ struct SkeinCanvasHoldTest {
         enc.setFragmentTexture(src, index: 0)
         var post = post
         enc.setFragmentBytes(&post, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
+        // Skein.5: the live blit binds the per-preset buffer at fragment buffer 1 (the display-only
+        // painter locus reads SkeinUniforms there). Mirror it for dispatch-path parity (FA #66).
+        if let skeinBuffer {
+            enc.setFragmentBuffer(skeinBuffer, offset: 0, index: 1)
+        }
         enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         enc.endEncoding()
     }

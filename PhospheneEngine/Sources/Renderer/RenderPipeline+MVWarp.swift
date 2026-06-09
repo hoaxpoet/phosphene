@@ -297,6 +297,7 @@ extension RenderPipeline {
                 SIMD4<Float>(mvWarpInvert, mvWarpEcho, mvWarpGamma, beat)
             }
             encoder.setFragmentBytes(&post, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
+            bindCompStagePresetBuffer(encoder)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
             encoder.endEncoding()
         }
@@ -309,48 +310,6 @@ extension RenderPipeline {
             swap(&state.warpTexture, &state.composeTexture)
             mvWarpState = state
         }
-    }
-
-    // MARK: Reduced-Motion Fallback (U.9)
-
-    /// Single-frame render when `frameReduceMotion` is true — skips feedback accumulation.
-    @MainActor
-    // swiftlint:disable:next function_parameter_count
-    private func drawMVWarpReducedMotion(
-        commandBuffer: MTLCommandBuffer,
-        view: MTKView,
-        features: inout FeatureVector,
-        stemFeatures: StemFeatures,
-        activePipeline: MTLRenderPipelineState,
-        warpState: MVWarpState,
-        sceneAlreadyRendered: Bool
-    ) {
-        guard let drawable = view.currentDrawable else { return }
-        if !sceneAlreadyRendered {
-            renderSceneToTexture(
-                commandBuffer: commandBuffer,
-                features: &features,
-                stemFeatures: stemFeatures,
-                activePipeline: activePipeline,
-                target: drawable.texture
-            )
-        } else {
-            let desc = MTLRenderPassDescriptor()
-            desc.colorAttachments[0].texture = drawable.texture
-            desc.colorAttachments[0].loadAction = .clear
-            desc.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
-            desc.colorAttachments[0].storeAction = .store
-            guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
-            encoder.setRenderPipelineState(warpState.blitPipeline)
-            encoder.setFragmentTexture(warpState.sceneTexture, index: 0)
-            var post = mvWarpLock.withLock {
-                SIMD4<Float>(mvWarpInvert, mvWarpEcho, mvWarpGamma, 0)
-            }
-            encoder.setFragmentBytes(&post, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
-            encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
-            encoder.endEncoding()
-        }
-        commandBuffer.present(drawable)
     }
 
     // MARK: - Warp Pass Encoder
@@ -390,6 +349,16 @@ extension RenderPipeline {
     }
 
     // MARK: Helpers
+
+    /// Skein.5: bind the per-preset comp-stage buffer (the display-only painter locus reads
+    /// SkeinUniforms) at fragment buffer 1 of the blit pass. Only Skein's `skein_comp_fragment`
+    /// declares buffer 1 — inert for every other preset (the ENGINE.2 wetnessDecay precedent);
+    /// nil (e.g. Dragon Bloom) ⇒ nothing bound, exactly as before.
+    func bindCompStagePresetBuffer(_ encoder: MTLRenderCommandEncoder) {
+        if let presetBuf = directPresetFragmentBufferLock.withLock({ directPresetFragmentBuffer }) {
+            encoder.setFragmentBuffer(presetBuf, offset: 0, index: 1)
+        }
+    }
 
     /// Extract the current SceneUniforms from the attached ray march pipeline (if any).
     /// Falls back to a zeroed struct for direct-render presets.

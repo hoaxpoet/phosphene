@@ -153,14 +153,14 @@ public final class NoveltyDetector: @unchecked Sendable {
         let absoluteOffset = similarityMatrix.totalFrameCount - frameCount
 
         // Peak-picking: find local maxima above threshold with minimum distance.
-        let peaks = pickPeaks(
+        let peaks = pickPeaks(PeakPickContext(
             threshold: threshold,
             validRange: validRange,
             frameCount: frameCount,
             absoluteOffset: absoluteOffset,
             currentTime: currentTime,
             fps: fps
-        )
+        ))
 
         // Add new peaks to detected boundaries.
         detectedBoundaries.append(contentsOf: peaks)
@@ -191,34 +191,39 @@ public final class NoveltyDetector: @unchecked Sendable {
 
     // MARK: - Private
 
+    /// Inputs for one peak-picking pass (bundled — the pass needs the curve geometry, the
+    /// logical→absolute offset, and the timestamp conversion parameters together).
+    private struct PeakPickContext {
+        let threshold: Float
+        let validRange: Range<Int>
+        let frameCount: Int
+        let absoluteOffset: Int
+        let currentTime: Float
+        let fps: Float
+    }
+
     /// Pick peaks from the novelty curve that are local maxima above threshold,
     /// enforcing minimum distance from each other and from previously detected boundaries.
     ///
-    /// `absoluteOffset` converts a logical curve index into an absolute frame
+    /// `ctx.absoluteOffset` converts a logical curve index into an absolute frame
     /// index (`absoluteOffset + i`). Stored boundaries and the dedup window
     /// operate in absolute space so a boundary's identity is stable across
     /// the ring slide (BUG-035).
-    private func pickPeaks(
-        threshold: Float,
-        validRange: Range<Int>,
-        frameCount: Int,
-        absoluteOffset: Int,
-        currentTime: Float,
-        fps: Float
-    ) -> [Boundary] {
+    private func pickPeaks(_ ctx: PeakPickContext) -> [Boundary] {
+        let validRange = ctx.validRange
         var peaks: [Boundary] = []
         for i in validRange {
             let val = noveltyCurve[i]
-            guard val > threshold else { continue }
+            guard val > ctx.threshold else { continue }
 
             // Local maximum check (must be greater than both neighbors).
             let prev = i > validRange.lowerBound ? noveltyCurve[i - 1] : 0
             let next = i < validRange.upperBound - 1 ? noveltyCurve[i + 1] : 0
             guard val >= prev, val >= next else { continue }
 
-            let absIndex = absoluteOffset + i
+            let absIndex = ctx.absoluteOffset + i
             let ts = timestampForFrame(
-                i, currentTime: currentTime, totalFrames: frameCount, fps: fps
+                i, currentTime: ctx.currentTime, totalFrames: ctx.frameCount, fps: ctx.fps
             )
 
             // Minimum distance from last peak.
