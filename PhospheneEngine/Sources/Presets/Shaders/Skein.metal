@@ -511,7 +511,8 @@ constant float3 kSkeinLightDir   = float3(0.2357, 0.3300, 0.9146);  // normalize
 constant float3 kSkeinSpecColor  = float3(1.00, 0.97, 0.92);        // warm-white glossy catch-light
 constant float  kSkeinNormalAmp  = 2.2;    // canvas luminance-gradient → normal tilt (edge response)
 constant float  kSkeinSpecKnee   = 2.4;    // GGX tonemap knee (compresses the peak; keeps a coherent catch-light)
-constant float2 kSkeinWetGate    = float2(0.30, 0.72);  // smoothstep(lo,hi) on wetness → HARD dry / wet split
+constant float2 kSkeinWetGate    = float2(0.05, 0.95);  // smoothstep(lo,hi) on wetness → near-LINEAR wet→dry ramp (a
+                                                       // steep gate amplified per-pass age differences into rings)
 constant float  kSkeinWeaveAmp   = 0.015;  // canvas-weave grain beneath the paint (very subtle)
 // Wet body = DARKER + more saturated (water-soaked). Dry body = LIGHTER + desaturated (matte). The
 // DARKEN must DOMINATE — Matt M7-round-3: a broad glossy highlight BRIGHTENED the fresh paint enough
@@ -532,7 +533,25 @@ fragment float4 skein_comp_fragment(
     float2 uv = in.uv;
     float4 c  = warpTex.sample(warpSampler, uv);   // rgb = LINEAR canvas paint; a = wetness [0,1]
     float3 col = c.rgb;
-    float  wet = clamp(c.a, 0.0, 1.0);
+
+    // BLURRED wetness (Skein.4 M7-round-4 — Matt: "rings appear ~1 s after the line and then fade").
+    // When the painter LOOPS it lays overlapping passes at progressively different AGES; each pass's
+    // wetness decays separately, and the sheen renders those age differences as CONCENTRIC RINGS — but
+    // only ~1 s after laying, once the wetness has decayed into the steep part of the specWet gate
+    // (where tiny age differences become visible darkness steps), then they fade as it dries fully. A
+    // small spatial blur of the wetness blends the per-pass age bands into one smooth wet region, so
+    // there are no fine steps for the sheen to amplify. The large-scale wet→dry boundary is preserved
+    // (the blur radius ≈ the loop-pass spacing, small vs the wet region). 9-tap Gaussian at ±7 texels.
+    float2 t1 = (1.0 / float2(warpTex.get_width(), warpTex.get_height())) * 6.0;   // inner ring ±6 texels
+    float2 t2 = t1 * 2.0;                                                           // outer ring ±12 texels
+    float  wet = 0.20 * c.a
+        + 0.09 * (warpTex.sample(warpSampler, uv + float2(t1.x, 0.0)).a + warpTex.sample(warpSampler, uv - float2(t1.x, 0.0)).a
+                + warpTex.sample(warpSampler, uv + float2(0.0, t1.y)).a + warpTex.sample(warpSampler, uv - float2(0.0, t1.y)).a)
+        + 0.05 * (warpTex.sample(warpSampler, uv + t1).a + warpTex.sample(warpSampler, uv - t1).a
+                + warpTex.sample(warpSampler, uv + float2(t1.x, -t1.y)).a + warpTex.sample(warpSampler, uv + float2(-t1.x, t1.y)).a)
+        + 0.06 * (warpTex.sample(warpSampler, uv + float2(t2.x, 0.0)).a + warpTex.sample(warpSampler, uv - float2(t2.x, 0.0)).a
+                + warpTex.sample(warpSampler, uv + float2(0.0, t2.y)).a + warpTex.sample(warpSampler, uv - float2(0.0, t2.y)).a);
+    wet = clamp(wet, 0.0, 1.0);   // 13-tap, two-ring Gaussian (≈ ±10 texel radius) — blends the loop-pass age bands
 
     // Paint-present mask: bare cream ground (rgb ≈ the held cream) reads MATTE — the sheen only
     // touches PAINT. (Bare cream carries wetness in A too, since the clear seeds A=1; the mask is
