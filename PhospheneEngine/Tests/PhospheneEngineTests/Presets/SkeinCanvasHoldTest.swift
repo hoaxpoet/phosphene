@@ -308,18 +308,17 @@ struct SkeinCanvasHoldTest {
         #expect(mudFrac < 0.22,
                 "Mud fraction \(mudFrac) ≥ 0.22 — coloured marks are averaging to mud, not occluding (the dead-mat anti-ref).")
 
-        // 3. DISTINCT coloured dots — onset bursts produce separate satellite blobs, not a uniform
-        //    smear. Most droplets connect to the wandering line (bursts are flicked AS the painter
-        //    pours, so they touch the skein — Pollock-correct); the separate FAR satellites are the
-        //    "splatter, not froth" evidence. The EXACT count is session-dependent — on a line-dominant
-        //    track (e.g. a bass-heavy session where the dominant line sweeps the canvas) most droplets
-        //    connect to the line and few stay separate, so the bar is "several distinct dots exist", not
-        //    a high count. The dot SHAPE (round, not froth) is verified by the roundness gate below and
-        //    the onset→splatter route gate; the firing is verified by busy≫calm bursts. (Was > 8,
-        //    calibrated on a sparse other-dominant session; that fails on line-dominant sessions where
-        //    the splatter is demonstrably fine — verified the same count with the prior line renderer.)
-        #expect(an.distinctBlobs > 3,
-                "Only \(an.distinctBlobs) distinct coloured satellite blobs — onset splatter not rendering as separate dots at all.")
+        // 3. ONSET BURSTS FIRE PER STEM — every stem with onsets produces bursts. This is the
+        //    session-ROBUST "splatter, not just a line" check. The separate-satellite-blob COUNT
+        //    (`an.distinctBlobs`, kept as a diagnostic above) is too session-dependent to gate on:
+        //    most droplets are flicked AS the painter pours so they connect to the skein (Pollock-
+        //    correct), and since Skein.4.1 M7-round-2 the line is now LONG continuous pours (minPourTau),
+        //    which absorb droplets into one >500 px component → separable far-satellites can be ~0 even
+        //    though the splatter is firing fine. The firing is proven directly by the per-stem spawn
+        //    tally + busy≫calm (route) + stems-present (distinct colours render); the dot SHAPE by the
+        //    roundness gate when separable blobs exist.
+        #expect(spawnsFull.allSatisfy { $0 > 0 },
+                "A stem produced no onset bursts over the run (\(spawnsFull)) — the onset→splatter route is dead for a stem.")
 
         // 4. ROUNDNESS — droplets read ROUND, not square (Matt M7 isotropic-AA guard).
         if an.roundN >= 3 {
@@ -335,10 +334,14 @@ struct SkeinCanvasHoldTest {
         #expect(silenceBursts == 0,
                 "\(silenceBursts) bursts spawned at silence — the D-019 warmup gate leaked.")
 
-        // 7. BAKE + HOLD — an early-painted coloured pixel persists to the end (lossless held colour).
+        // 7. BAKE + HOLD — an early-painted pixel persists to the end (lossless held paint). Use a
+        //    colour-AGNOSTIC strongly-painted finder (max delta from cream), not a saturated-only one:
+        //    since M7-round-2 the longer first pour can be a low-colour-spread stem (e.g. drums =
+        //    charcoal) through frame 60, which a `spread > 40` finder would miss — the canvas-hold
+        //    property is colour-independent, so any strongly-painted texel proves it.
         if let early = run.checkpointPixels[60] {
-            let cp = firstColouredPixel(early, w: w, h: h, cream: run.creamRef)
-            #expect(cp != nil, "No early coloured pixel found — bursts not laid early.")
+            let cp = brightestPaintedXY(early, w: w, h: h, cream: run.creamRef)
+            #expect(cp != nil, "No early painted pixel found — nothing laid early.")
             if let (cx, cy) = cp {
                 let i = (cy * w + cx) * 4
                 let f = run.finalPixels
@@ -535,7 +538,10 @@ struct SkeinCanvasHoldTest {
         // stem most strongly leads, then the window where a DIFFERENT stem most strongly leads. The
         // frames are real (feedback_synthetic_audio / FA #27 — never hand-authored); we only ORDER two
         // real slices to guarantee a switch (the same thing busiestAndCalmestSlices does for its route).
-        let window = 90, phaseA = 70, phaseB = 55
+        // Phases are long enough that the Skein.4.1 M7-round-2 minPourTau dwell is satisfied during
+        // phase A and the post-switch pour (phase B) is long enough to sample (the new pour only
+        // COMMITS on a sustained, decisive change, so a short phase B would never switch).
+        let window = 140, phaseA = 120, phaseB = 130
         let leads = (0..<4).map { Self.mostDominatedSlice(stems, stem: $0, window: window) }
         let ranked = leads.enumerated().sorted { $0.element.lead > $1.element.lead }
         guard ranked.count >= 2, ranked[0].element.lead > 0, ranked[1].element.lead > 0 else {
