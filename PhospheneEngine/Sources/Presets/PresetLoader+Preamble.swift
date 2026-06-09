@@ -54,8 +54,15 @@ extension PresetLoader {
             // CSP.3 — track-relative elapsed time. Reset at track change.
             // Float 39 — reclaimed from `_pad3`. 100.0 when toggle is off.
             float track_elapsed_s;
-            // Padding to 192 bytes (floats 40–48).
-            float _pad4, _pad5, _pad6, _pad7,
+            // FBS Stage 1 (D-153) — steady first-note-anchored beat pulse.
+            // pulse_phase01: 0 at each pulse beat → 1 at the next; anchored to
+            // the track's first note, ticks at the cached-grid tempo, never
+            // drift-corrected. pulse_amp01: 0 before the first note / in
+            // sustained silence, 1 while music plays. Floats 40–41.
+            float pulse_phase01;
+            float pulse_amp01;
+            // Padding to 192 bytes (floats 42–48).
+            float _pad6, _pad7,
                   _pad8, _pad9, _pad10, _pad11, _pad12;
         };
 
