@@ -513,14 +513,16 @@ constant float  kSkeinNormalAmp  = 2.2;    // canvas luminance-gradient → norm
 constant float  kSkeinSpecKnee   = 2.4;    // GGX tonemap knee (compresses the peak; keeps a coherent catch-light)
 constant float2 kSkeinWetGate    = float2(0.30, 0.72);  // smoothstep(lo,hi) on wetness → HARD dry / wet split
 constant float  kSkeinWeaveAmp   = 0.015;  // canvas-weave grain beneath the paint (very subtle)
-// Wet body = darker + more saturated (water-soaked). Dry body = lighter + desaturated (matte). The
-// CONTRAST is the primary "wet" read; the gloss highlight adds the reflection.
-constant float  kSkeinWetDarken   = 0.82;  // wet body brightness × (darker = wet)
+// Wet body = DARKER + more saturated (water-soaked). Dry body = LIGHTER + desaturated (matte). The
+// DARKEN must DOMINATE — Matt M7-round-3: a broad glossy highlight BRIGHTENED the fresh paint enough
+// that it read "lighter on application, darker as it dries", inverting the wet read. So the body
+// darken is strong and the gloss is a TINY TIGHT glint (a small wet shine, not a broad brightening).
+constant float  kSkeinWetDarken   = 0.74;  // wet body brightness × (clearly DARKER = wet) — must dominate the gloss
 constant float  kSkeinWetSat      = 1.28;  // wet body saturation × (richer = wet)
-constant float  kSkeinDryLighten  = 1.05;  // dry body brightness × (slightly lighter = dry/matte)
+constant float  kSkeinDryLighten  = 1.08;  // dry body brightness × (clearly lighter = dry/matte)
 constant float  kSkeinDryDesat    = 0.18;  // dry body desaturation toward luma (matte chalk)
-constant float  kSkeinRoughGloss  = 0.20;  // glossy catch-light — a bright, coherent reflection (not speckle)
-constant float  kSkeinGainGloss   = 0.65;  // glossy catch-light strength
+constant float  kSkeinRoughGloss  = 0.12;  // TIGHT glint (small wet shine only — does NOT broadly brighten the body)
+constant float  kSkeinGainGloss   = 0.40;  // glossy catch-light strength (kept small so the DARKEN reads as "wet")
 
 fragment float4 skein_comp_fragment(
     VertexOut          in      [[stage_in]],
