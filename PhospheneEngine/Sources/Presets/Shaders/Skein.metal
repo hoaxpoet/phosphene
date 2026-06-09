@@ -414,6 +414,39 @@ fragment float4 skein_geometry_fragment(
     return float4(bestCol, bestCover);
 }
 
+// ── Skein.ENGINE.2: the wetness channel (canvas-hold warp/hold fragment) ────────────
+//
+// Skein owns its warp/hold fragment via the PresetLoader `<prefix>_warp_fragment` override
+// (the same per-prefix mechanism Fata Morgana's `fata_warp_fragment` uses — PresetLoader.swift
+// makeWarpPipelines). The shared `mvWarp_fragment` is left BYTE-IDENTICAL for every other preset
+// (this is the ENGINE.2 byte-identical guarantee — no shared GPU code is touched).
+//
+// RGB is the LOSSLESS PERMANENT PAINT RECORD (the ENGINE.1 invariant): under identity warp
+// (mvWarpPerVertex returns uv → in.warped_uv == this texel) the previous canvas is sampled at
+// exactly this fragment's texel and returned BYTE-FOR-BYTE — no resampling, no decay, no drift.
+// This is the SAME RGB result the shared `mvWarp_fragment` produces for Skein (chromaticMix=0,
+// decay=1.0 collapse it to the identity copy), so the canvas-hold RGB regression is unchanged.
+//
+// ALPHA carries the transient WETNESS signal (SKEIN_DESIGN §5.5: drying is a READ-TIME effect on
+// a SEPARATE channel, never a destructive multiply on the RGB record). The overlay normal-alpha
+// blend (skein_geometry_fragment → float4(bestCol, bestCover); blend SRC_ALPHA/ONE_MINUS_SRC_ALPHA
+// on both colour AND alpha) STAMPS coverage into A where paint lands this frame. Here the hold
+// DECAYS A by `wetnessDecay` each frame (= exp(-rate·dt·stemMix) from SkeinState — pauses at
+// silence). Net per texel: A jumps to ~1 when (re)painted, then dries toward 0; Skein.4's
+// `skein_comp_fragment` reads A as the wet/dry sheen mask. RGB is untouched by the A decay.
+fragment float4 skein_warp_fragment(
+    WarpVertexOut      in           [[stage_in]],
+    texture2d<float>   prevTex      [[texture(0)]],
+    constant float&    chromaticMix [[buffer(0)]],   // unused (0 for Skein) — kept for binding parity
+    constant float&    wetnessDecay [[buffer(1)]]    // Skein.ENGINE.2 — ALPHA decay multiplier
+) {
+    // Identity hold: sample the previous canvas at the un-displaced UV → lossless RGB copy.
+    float4 prev = prevTex.sample(warpSampler, in.warped_uv);
+    // RGB held byte-identical (the lossless permanent paint record); ALPHA dries by wetnessDecay
+    // (1.0 at silence ⇒ held; < 1.0 while music plays ⇒ wetness decays toward 0).
+    return float4(prev.rgb, prev.a * wetnessDecay);
+}
+
 // ── MV-Warp functions (D-027) — the canvas-hold config ─────────────────────────────
 // Both required by the mvWarpPreamble forward declarations. Identity + no decay.
 
