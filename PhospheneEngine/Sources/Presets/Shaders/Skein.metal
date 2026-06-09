@@ -297,12 +297,21 @@ fragment float4 skein_geometry_fragment(
     float  bestCover = 0.0;
     float3 bestCol   = float3(1.0);   // unpainted: white (the held cream shows through at cover 0)
 
-    // ── Layer A: the pour LINE + trailing-off tail (dominant-stem coloured, flow-/visc-widened) ──
+    // ── Layer A: the pour LINE — a SOLID smooth dribble (dominant-stem coloured, flow-/visc-widened) ──
     // Width rides 1/speed (pools at slow turning points) × the dominant stem's viscosity (thick →
-    // heavy lobes) × its pour flow (a surge fattens the pour). The AGE taper trails off the leading
-    // edge. lineCol is the DISCRETE dominant-stem colour (SkeinState argmax — never a blend), so the
-    // continuous line records who is leading the mix (SKEIN_DESIGN §1.2). At silence lineCol stays
-    // white → white-on-cream, silence-non-black trivial.
+    // heavy lobes) × its pour flow (a surge fattens the pour). lineCol is the DISCRETE dominant-stem
+    // colour (SkeinState argmax — never a blend), so the continuous line records who is leading the
+    // mix (SKEIN_DESIGN §1.2). At silence lineCol stays white → white-on-cream, silence-non-black trivial.
+    //
+    // Skein.4 M7-round-2 (Matt 2026-06-09 — "strokes appear as a series of overlapping circles that
+    // smooth out into a line after a second"): the Skein.1 trailing-off AGE TAPER is REMOVED. It rode
+    // a per-sample radius ramp `mix(0.18,1.0,ageFrac)` + opacity ramp `mix(0.04,1.0,…)` across the 40
+    // tail samples, so at the slow / looping live edge the co-located samples drew as a STACK of
+    // nested thin faint discs (concentric rings) that only smoothed once they baked (~a second). The
+    // age-taper was Skein.1's STAND-IN for a wet leading edge; ENGINE.2/Skein.4 now provide the real
+    // wetness channel + sheen, so the pour LANDS SOLID (full opacity, no radius taper) and reads as a
+    // continuous dribble immediately. Bonus: a full-coverage fresh stroke stamps full WETNESS along
+    // its whole recent length → the sheen glistens on the live dribble, not just a faint tip.
     float3 lineCol   = float3(st.lineColR, st.lineColG, st.lineColB);
     float  lineVisc  = clamp(st.lineVisc, 0.0, 1.0);
     float  lineWiden = mix(1.0, 1.5, lineVisc) + 0.5 * clamp(st.lineFlow, 0.0, 1.0);
@@ -314,15 +323,14 @@ fragment float4 skein_geometry_fragment(
             float2 older = float2(pp.x * a, pp.y);
 
             float speed = length(recent - older) / dtau;                      // v-units / painter-clock-unit
-            float baseR = kSkeinLineRadius * lineWiden * mix(1.6, 0.75, smoothstep(0.05, 0.35, speed));
-
-            float ageFrac = float(k) / float(kSkeinTailFrames);   // 0 = live tip, 1 = tail base
-            float r  = baseR * mix(0.18, 1.0, ageFrac);           // width tapers thin → full
-            float op = mix(0.04, 1.0, smoothstep(0.0, 0.85, ageFrac));  // leading-edge trail-off
+            // SOLID smooth ribbon: speed→width only (NO age taper). Slow → wide pool, fast → thin
+            // filament (§1.0/§1.2). Same radius along the whole drawn stretch ⇒ the union of the
+            // chained capsules is one continuous-width stroke, never a stack of concentric rings.
+            float r = kSkeinLineRadius * lineWiden * mix(1.6, 0.75, smoothstep(0.05, 0.35, speed));
 
             float d  = skeinSegDist(q, older, recent);
             float aa = max(fwidth(d), 1e-4);
-            float cov = (1.0 - smoothstep(r - aa, r + aa, d)) * op;
+            float cov = (1.0 - smoothstep(r - aa, r + aa, d));   // full opacity — paint lands solid
             if (cov > bestCover) { bestCover = cov; bestCol = lineCol; }
 
             recent = older;
@@ -479,6 +487,16 @@ fragment float4 skein_warp_fragment(
 // Linear-space relative luminance (Rec.709) — the canvas is already linear at this point.
 static inline float skeinLuma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
+// Tonemapped GGX/Trowbridge-Reitz NDF (Walter et al. 2007): the highlight intensity for a given
+// half-angle cosine + roughness, compressed by `knee` so the unbounded peak becomes a bounded
+// highlight while the broad gloss stays visible. Used for both the broad wet gloss and the sparkle.
+static inline float skeinGGX(float NdotH, float rough, float knee) {
+    float a = rough * rough, a2 = a * a;
+    float d = NdotH * NdotH * (a2 - 1.0) + 1.0;
+    float g = a2 / (M_PI_F * d * d);
+    return g / (g + knee);
+}
+
 // Sheen tuning (Skein.4). Conservative + tunable; verified through the live SKEIN_VISUAL harness.
 // Retuned (round 2): the wet specular is a SHARP, mostly-small GLINT — not a broad whitening — so
 // the Skein.3 stem colours read THROUGH it (a broad highlight at full strength washed the palette to
@@ -487,14 +505,20 @@ static inline float skeinLuma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0
 constant float3 kSkeinLightDir   = float3(0.2357, 0.3300, 0.9146);  // normalize(0.25,0.35,0.97) — flat overhead, slight tilt
 constant float3 kSkeinSpecColor  = float3(1.00, 0.97, 0.92);        // warm-white wet glint
 constant float  kSkeinNormalAmp  = 2.2;    // canvas luminance-gradient → normal tilt (edge response)
-constant float  kSkeinRoughWet   = 0.22;   // wet paint = glossier (sharper, tighter glint)
-constant float  kSkeinRoughDry   = 0.50;   // (roughness floor for just-wet paint — broadens the lobe)
-constant float  kSkeinSpecKnee   = 3.2;    // GGX tonemap knee (higher ⇒ concentrate on small glints, not broad wash)
-constant float  kSkeinSpecGain   = 0.58;   // overall wet-highlight strength (legibility: the wet edge must read)
+constant float  kSkeinSpecKnee   = 2.6;    // GGX tonemap knee (compresses the peak; broad gloss stays visible)
 constant float2 kSkeinWetGate    = float2(0.30, 0.72);  // smoothstep(lo,hi) on wetness → HARD dry-matte / wet-gloss split
-constant float  kSkeinWetDeepen  = 0.22;   // wet paint saturation boost (glossy DEPTH — keeps stem colour, doesn't whiten)
 constant float  kSkeinDesat      = 0.16;   // dry paint matte desaturation (subtle)
 constant float  kSkeinWeaveAmp   = 0.015;  // canvas-weave grain beneath the paint (very subtle)
+// Glistening = a BROAD wet gloss (the surface reflects the light softly across its body — keeps the
+// mean bright, the "this is wet" read) + a SPARKLE layer (bright pinpoint catch-lights from fine
+// surface micro-relief — the glint that says glistening). Both hard-gated by wetness × paint so dry
+// paint and bare canvas stay matte and the stem colours read THROUGH (Skein.4 M7-round-2, Matt 2026-06-09).
+constant float  kSkeinRoughBroad   = 0.34;  // broad gloss — a soft, visible wet sheen across the paint
+constant float  kSkeinGainBroad    = 0.55;  // broad gloss strength (keeps the wet mean bright = "glossy")
+constant float  kSkeinRoughSparkle = 0.13;  // sparkle — a tight, bright catch-light
+constant float  kSkeinGainSparkle  = 0.60;  // sparkle strength (the glisten)
+constant float  kSkeinMicroFreq    = 240.0; // micro-relief spatial frequency (fine ripples → scattered glints)
+constant float  kSkeinMicroAmp     = 1.1;   // micro-normal tilt (sparkle spread; too high scatters the broad gloss away)
 
 fragment float4 skein_comp_fragment(
     VertexOut          in      [[stage_in]],
@@ -511,6 +535,10 @@ fragment float4 skein_comp_fragment(
     // what keeps the bare ground from glistening — wet paint, not a wet floor.)
     float paint = smoothstep(0.015, 0.080, distance(col, kSkeinCanvasCream));
 
+    // Wetness → gloss gate (hard wet/dry split): the specular + micro-relief fire only on WET
+    // (recent) paint, gated to ~0 on the dried past — the wet-now / dry-past legibility read.
+    float specWet = smoothstep(kSkeinWetGate.x, kSkeinWetGate.y, wet);
+
     // Normal from the canvas luminance gradient (central difference) — the 2D analogue of a surface
     // normal. Paint ridges/edges tilt N → they catch the overhead light; flat areas keep N ≈ +z.
     float2 texel = 1.0 / float2(warpTex.get_width(), warpTex.get_height());
@@ -520,30 +548,29 @@ fragment float4 skein_comp_fragment(
     float lD = skeinLuma(warpTex.sample(warpSampler, uv - float2(0.0, texel.y)).rgb);
     float3 N = normalize(float3(-(lR - lL) * kSkeinNormalAmp, -(lU - lD) * kSkeinNormalAmp, 1.0));
 
-    // GGX/Trowbridge-Reitz specular highlight (Walter et al. 2007). View is head-on (flat field
+    // Micro-relief on WET paint → glistening across the body (the wet surface ripples + catches light
+    // everywhere, not only at stroke edges). A fine noise-gradient normal perturbation gated by
+    // specWet × paint, so dry paint + bare canvas stay matte and the stem colours read through (the
+    // glints are small + scattered, not a wash). This is what makes it read as GLISTENING wet paint.
+    float2 mstep = texel * 2.0;
+    float  nC = perlin2d(uv * kSkeinMicroFreq);
+    float  nXR = perlin2d((uv + float2(mstep.x, 0.0)) * kSkeinMicroFreq);
+    float  nYU = perlin2d((uv + float2(0.0, mstep.y)) * kSkeinMicroFreq);
+    // Nmicro = the smooth normal jittered by the fine relief (the SPARKLE normal). N (the smooth
+    // luminance-gradient normal) is kept for the BROAD gloss so the wet paint stays glossy, not just
+    // sparkly-on-a-dark-base.
+    float3 Nmicro = normalize(N + float3(float2(nXR - nC, nYU - nC) * kSkeinMicroAmp * specWet * paint, 0.0));
+
+    // Two-term specular (GGX/Trowbridge-Reitz, Walter et al. 2007). View is head-on (flat field
     // viewed straight down); the light is flat-overhead with a slight tilt so the glint has a
-    // direction. Roughness drops with wetness (wet = glossier). Tonemapped so the edge glint is
-    // bounded while the broad gloss stays visible.
+    // direction. (1) BROAD gloss from the smooth normal — a soft wet sheen across the paint body
+    // (keeps the wet mean bright = reads "glossy"). (2) SPARKLE from the micro-perturbed normal —
+    // bright pinpoint catch-lights (the glisten). Both gated to wet paint (specWet × paint).
     float3 V = float3(0.0, 0.0, 1.0);
     float3 H = normalize(kSkeinLightDir + V);
-    float  NdotH = max(dot(N, H), 0.0);
-    // Hard wet/dry split: the specular fires only on WET (recent) paint and is gated to ~0 on the
-    // dried past, so the highlight reads as the musical NOW — not a uniform gloss over everything.
-    float  specWet = smoothstep(kSkeinWetGate.x, kSkeinWetGate.y, wet);
-    float  rough = mix(kSkeinRoughWet, kSkeinRoughDry, 1.0 - specWet);
-    float  a  = rough * rough;
-    float  a2 = a * a;
-    float  denom = NdotH * NdotH * (a2 - 1.0) + 1.0;
-    float  ggx = a2 / (M_PI_F * denom * denom);          // the GGX NDF (unbounded peak)
-    float  specT = ggx / (ggx + kSkeinSpecKnee);          // tonemap → [0,1): a small bright glint, bounded
-    float  spec = specT * specWet * paint * kSkeinSpecGain;   // wet paint only — the §1.4 wet-now device
-
-    // Wet paint also reads DEEPER (glossy depth, ref 03_micro_layered_buildup) — a subtle SATURATION
-    // boost (over-saturate around luma), NOT a brightening, so the stem colour reads THROUGH the gloss
-    // rather than washing white.
-    float  lumaW = skeinLuma(col);
-    float3 deepened = lumaW + (col - lumaW) * (1.0 + kSkeinWetDeepen);
-    col = mix(col, deepened, specWet * paint);
+    float  broad   = skeinGGX(max(dot(N, H), 0.0),      kSkeinRoughBroad,   kSkeinSpecKnee) * specWet * paint * kSkeinGainBroad;
+    float  sparkle = skeinGGX(max(dot(Nmicro, H), 0.0), kSkeinRoughSparkle, kSkeinSpecKnee) * specWet * paint * kSkeinGainSparkle;
+    float  spec = broad + sparkle;   // wet paint only — the §1.4 wet-now device
 
     // Dry paint → matte + slight desaturation (wet paint keeps full saturation; the dried past mutes).
     float dry = (1.0 - specWet) * paint;
