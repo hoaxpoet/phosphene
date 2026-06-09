@@ -4656,3 +4656,21 @@ Plumbing: one gated `mvWarpWetnessDecay` uniform (mirror of `mvWarpChromatic`), 
 **Evidence (live path, real stems).** Mood: warmth(R−B) 106.4 warm vs 81.4 cool, coverage +24 % with +arousal, pale 0.003. Structure: spawns 88→144 across a boundary on IDENTICAL tiled audio; lean 0.083 ≤ 0.085; conf 0.05 ⇒ all-zero bias. Anticipation: wind-up mean 0.649 / flick mean 1.627; silence exactly 1.0 every frame. Locus: 24-pixel localized blit glow, canvas byte-identical. All prior Skein gates + DB/FM + PresetRegression + loader count green; BUG-035 fixed first so the consumed signal is sane past 600 frames.
 
 **References.** D-147 (stem palette), D-149 (wetness), D-150 (colour-per-stroke + min-dwell), D-151 (the structure bridge this consumes), BUG-035 (the dedup fix gating this increment), FA #25/#33/#67/#70, SKEIN_DESIGN §1.3/§1.5/§8, SHADER_CRAFT §18.10.
+
+## D-153 — FBS Stage 1: a steady, first-NOTE-anchored, cached-tempo beat pulse (`pulsePhase01`/`pulseAmp01`) drives Ferrofluid Ocean's spike punch; never drift-corrected
+
+**Date:** 2026-06-09 · **Increment:** FBS Stage 1 · **Status:** Ratified (pending Matt's Stage-1 read on a live session)
+
+**Decision.** FFO's spike height drops the `0.8 × clamp(f.bass)` per-frame term (the "frozen spikes" root cause — the AGC holds `f.bass` near-constant; motion std 0.044–0.09 on bass-light material — and the residual post-BUG-038 sparkle source) and instead punches on a new engine primitive, `BeatPulseClock` → `FeatureVector` floats 40–41 (reclaimed `_pad4`/`_pad5`, byte-identical layout for fields 1–39):
+
+1. **Anchor = the track's first NOTE** (silence→sound, 3-frame confirm, backdated to the run's first frame) — Matt's correction over "first strong hit," Stage-0-verified: music starts on the one; the silence→signal transition is the cleanest detectable event and is robust to quiet/building intros. Cross-clock PCM gate: anchor lands ~2 ms from the raw-tap first note on the purpose-recorded Cherub session.
+2. **Tempo = the cached BeatGrid BPM** — the trustworthy half of the grid (Stage 0: ~1 % err, reproducible ×6 captures). Grid PHASE is cross-capture-unstable and is NOT consumed.
+3. **Dead steady, never corrected** — deliberately independent of `LiveBeatDriftTracker` (its correction wanders 50–90 ms over the opening and broke Love Rehab's good start). A steady pulse wrong-by-a-hair beats a wandering pulse right-on-average. Stage 3 may add a bar-boundary handoff; nothing corrects Stage 1.
+4. **`pulseAmp01` gates** (0 before the first note / across > 0.5 s sustained silence; 1 while music plays; ~250 ms ramps) — no punching into a silent room. Stage 2 scales it by live energy.
+5. **Envelope in the shader** (rise 8 % of the beat, decay to 85 %, rest): headroom-capped at spike strength 1.62, under the CSP.3.5 Lipschitz `/6` ceiling 1.64. One-primitive-per-layer preserved (FA #67): swell×arousal (slow), spikes×pulse (per-beat), aurora×drums-smoothed (hit envelope). No Layer-4 onset signals consumed (those fire ~97 % of frames — BUG-038's root).
+
+**Evidence (real sessions, live dispatch path).** `BeatPulseClockTests` (9): anchor 2 ms vs PCM; every pulse interval == grid period (cumulative drift ~0 vs the tracker's 50–90 ms); envelope motion std 0.198/0.212/0.182 (Lotus/Cherub/SZ2) vs the old term's 0.044 on the frozen streaming case. `FerrofluidPulseLivePathTests`: 110 continuous frames of the real Lotus session through SDF G-buffer → lighting → bloom, paired per-frame A/B delta — punch-window |δ| = 29.3 luma, rest-window 0.0 (beat-locked, zero between-beat flicker by construction). Golden hashes unchanged; full suite green modulo the documented pre-existing set.
+
+**Known limitations (stated, not hidden).** Mid-playlist gapless segues anchor at the track-change instant, not a musical "one" (best-effort); the anchored phase is perceptually-convincing, not provably the downbeat (FA #69's structural limit stands); the toggle off-arm no longer restores the historical `f.bass` drive (Layer 2 is the pulse in both arms).
+
+**References.** FBS kickoff (`docs/prompts/FFO_BEAT_SYNC_KICKOFF.md`), Stage 0 findings (`docs/diagnostics/FBS_STAGE0_FINDINGS_2026-06-09.md`), BUG-038 (the flicker pre-step), FA #4/#27/#66/#67/#69, D-099 (struct-extension pattern), CSP.3.x (the spike-driver history this supersedes).
