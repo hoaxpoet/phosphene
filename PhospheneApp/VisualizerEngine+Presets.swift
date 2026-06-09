@@ -80,6 +80,7 @@ extension VisualizerEngine {
         pipeline.setMeshGenerator(nil)
         pipeline.setMeshPresetTick(nil)
         pipeline.setMVWarpWetnessDecay(1.0)   // Skein.ENGINE.2: reset to "held" (only Skein decays A)
+        pipeline.setStructuralPrediction(.none)   // Skein.ENGINE.3 (D-151): reset to inert default on preset switch
         arachneState = nil
         gossamerState = nil
         auroraVeilState = nil
@@ -493,7 +494,13 @@ extension VisualizerEngine {
                         let renderPipeline = pipeline
                         pipeline.setMeshPresetTick { [weak state, weak renderPipeline] features, stems in
                             guard let state else { return }
-                            state.tick(deltaTime: features.deltaTime, features: features, stems: stems)
+                            // Skein.ENGINE.3 (D-151): read the live structural-section signal from
+                            // the gated bridge and pass it into the tick (CPU-only; STORED for
+                            // Skein.5's structural bias — no visual effect yet, byte-identical today).
+                            state.tick(deltaTime: features.deltaTime,
+                                       features: features,
+                                       stems: stems,
+                                       structure: renderPipeline?.latestStructuralPrediction ?? .none)
                             // skein_warp_fragment reads this at fragment buffer 1 (decays ALPHA only).
                             renderPipeline?.setMVWarpWetnessDecay(state.wetnessDecay)
                         }
