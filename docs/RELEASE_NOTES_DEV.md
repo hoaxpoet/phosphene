@@ -6,6 +6,19 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-06-09-b] Skein.5 — mood + structure + anticipation + painter-locus (D-152; pending Matt M7)
+
+The §1.3/§1.5 musicality layer on Skein's working look — no new visual subject. Four sub-features, each placed so the lossless canvas-hold invariants survive (full rationale in D-152, craft in `SHADER_CRAFT.md §18.10`):
+
+- **Mood** — valence/arousal EMA-smoothed in `SkeinState` (FA #25); the palette is warm/cool-tinted + saturated **at lay time and frozen** into breakpoints/bursts, so the held canvas archives the song's emotional arc. Arousal quickens the painter (×0.7–1.3), shortens the splatter refractory, and slightly widens the pour. Measured: warmth(R−B) 106.4 vs 81.4 across ±0.8 valence, +24 % coverage with +arousal, pale share 0.003.
+- **Structure** — consumes the ENGINE.3/D-151 signal (post-BUG-035): a confident section boundary fires a density flurry (spawns 88→144 on identical tiled audio), a fresh displaced pour, and a bounded region lean (≤ 0.085 UV) routed through the per-pour breakpoint offsets; `sectionIndex mod 5` slots make repeated sections revisit the same patch. Confidence-gated to **exactly zero** below smoothstep(0.25, 0.55) — ambient material keeps the pure allover read.
+- **Anticipation** — τ-speed wind-up into each beat + a 90 ms flick at the wrap (`beatPhase01`, FA #33; wind-up mean 0.649 / flick 1.627). τ-warping keeps tail samples ON the trajectory curve — no smear by construction; exactly 1.0 at silence.
+- **Painter locus** — display-only in `skein_comp_fragment` (the geometry overlay would bake it permanently), via a new gated blit-stage buffer-1 binding (registry row added); glow + occlusion shadow ring; build-flagged **OFF** by default.
+
+Also: the Skein.4.1 colour-freeze gate now scans all recorded sessions for the most decisive switch pair (it went red on new session data, not code). All prior Skein gates green; DB/FM + PresetRegression byte-identical; loader count intact; full engine 1419 tests (7 known love_rehab fixture-absent only); app build + SwiftLint `--strict` clean.
+
+---
+
 ## [dev-2026-06-09] BUG-035 — NoveltyDetector ring-wrap boundary dedup (structural signal repaired for Skein.5)
 
 **Fix increment (P2, single increment per protocol — evidence pre-documented in `docs/diagnostics/CODE_AUDIT_2026-06-09.md`).**

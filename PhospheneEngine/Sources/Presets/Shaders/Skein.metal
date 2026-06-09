@@ -208,7 +208,8 @@ struct SkeinUniforms {        // 64-byte header + 48 × 48-byte bursts + 16 × 2
     uint  burstCount;
     uint  seed;
     uint  breakCount;                  // Skein.4.1 active colour breakpoints (was pad0)
-    float pad1; float pad2; float pad3;
+    float locusEnable;                 // Skein.5 painter-locus build flag, 0/1 (was pad1)
+    float pad2; float pad3;
     SkeinBurstGPU bursts[48];          // == kSkeinMaxBursts
     SkeinBreakGPU breaks[16];          // == kSkeinMaxBreaks (Skein.4.1)
 };
@@ -576,7 +577,8 @@ constant float  kSkeinGainGloss   = 0.40;  // glossy catch-light strength (kept 
 fragment float4 skein_comp_fragment(
     VertexOut          in      [[stage_in]],
     texture2d<float>   warpTex [[texture(0)]],
-    constant float4&   post    [[buffer(0)]]   // unused for Skein (identity comp) — kept for binding parity
+    constant float4&   post    [[buffer(0)]],  // unused for Skein (identity comp) — kept for binding parity
+    constant SkeinUniforms& st [[buffer(1)]]   // Skein.5 — painter state for the DISPLAY-ONLY locus
 ) {
     float2 uv = in.uv;
     float4 c  = warpTex.sample(warpSampler, uv);   // rgb = LINEAR canvas paint; a = wetness [0,1]
@@ -644,6 +646,29 @@ fragment float4 skein_comp_fragment(
     // Add the wet specular highlight ON TOP of the stem colour (additive — never a recolour, so the
     // Skein.3 palette reads through). The drawable (.bgra8Unorm_srgb) sRGB-encodes on store.
     col += spec * kSkeinSpecColor;
+
+    // ── Skein.5: painter LOCUS (build-flagged, OFF by default) ──────────────────────
+    // A faint luminous pour-point hovering at the live painter tip — makes "where the paint is
+    // coming from" trackable by eye. DISPLAY-ONLY by construction: drawn here at comp (the blit to
+    // the drawable), NEVER in the geometry overlay — anything the overlay draws is baked losslessly
+    // into the held canvas, so a locus there would paint itself permanently (the same display-only
+    // contract as butterchurn comp, FA #70). Position = the live tip on the current pour (trajectory
+    // + the pour's frozen jump offset, exactly what Layer A draws at k = 0).
+    if (st.locusEnable > 0.5) {
+        float2 tip = skeinPainterPos(st.painterTau, st.seedPhaseX, st.seedPhaseY)
+                   + skeinLineLookupAt(st.painterTau, st).off;
+        float aspect = float(warpTex.get_width()) / max(float(warpTex.get_height()), 1.0);
+        float d = length(float2((uv.x - tip.x) * aspect, uv.y - tip.y));
+        // A luminous point ABOVE the canvas needs contrast on BOTH grounds: a warm-white glow is
+        // near-invisible over cream, so the "hovering" cue is a soft occlusion SHADOW ring under
+        // the glow (an object above a surface casts one) — legible on cream AND on paint.
+        float dr = d - 0.014;
+        float ring = exp(-dr * dr / (2.0 * 0.008 * 0.008));
+        col = mix(col, col * 0.78, 0.45 * ring);
+        float core = exp(-d * d / (2.0 * 0.006 * 0.006));          // bright pin core (~0.6 % of height)
+        float halo = exp(-d * d / (2.0 * 0.028 * 0.028));          // soft hovering halo
+        col += float3(1.0, 0.95, 0.82) * (0.55 * core + 0.10 * halo);
+    }
 
     return float4(saturate(col), 1.0);
 }
