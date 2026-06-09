@@ -147,6 +147,19 @@ public final class SkeinState: @unchecked Sendable {
     /// directions (a clear gap every switch — never two near-collinear offsets that barely move).
     static let breakJumpGoldenAngle: Float = 2.399963
 
+    /// Minimum pour length before a NEW pour can start (painter-clock τ; Skein.4.1 M7-round-2). A new
+    /// pour = a new colour + a displaced jump; the dominant-stem argmax flickers far faster than a pour
+    /// reads, so without a dwell the line breaks into very short segments (Matt M7 2026-06-09: "the
+    /// lines are very short rather than a long continuous dripping/pouring across the canvas" — measured
+    /// 63 switches / 44 s, median pour 0.2 s). At the trajectory's ~0.15 UV/τ, 3.0 τ ≈ a half-canvas
+    /// minimum pour; the typical pour is longer (it only switches when a different stem decisively leads).
+    /// Validated on a real session: 63 → 10 pours, ~4 s average. NOT a new audio route (gates the
+    /// existing dominant-switch event), so FA #67 holds.
+    static let minPourTau: Float = 3.0
+    /// A challenger must lead the incumbent's smoothed energy by this factor to start a new pour —
+    /// prevents flicker between two near-equal stems at the minPourTau boundary.
+    static let pourSwitchHysteresis: Float = 1.25
+
     /// Seconds a burst is redrawn (fades in then freezes into the held canvas) — matches the
     /// Skein.2 `kSkeinSplatWindow` bake-in window, now measured in painter-clock units.
     static let bakeWindow: Float = 0.55
@@ -256,6 +269,8 @@ public final class SkeinState: @unchecked Sendable {
     private var colorBreaks: [SkeinBreakGPU] = []
     /// The dominant-stem index the line currently records (-1 until warm) — a switch pushes a breakpoint.
     private var lineDomIdx: Int = -1
+    /// Painter-clock value at the last committed pour start — the minPourTau dwell reference (Skein.4.1).
+    private var lastSwitchTau: Float = 0
     /// Monotonic colour-break counter — seeds each new pour's jump angle (§5.7 determinism). Reset on reseed.
     private var colorBreakCounter: UInt32 = 0
     /// The current pour's position offset (the latest breakpoint's jump) — bursts flick from here too.
@@ -404,17 +419,34 @@ public final class SkeinState: @unchecked Sendable {
         for i in 1..<4 where stemEnergySmoothed[i] > domVal { domVal = stemEnergySmoothed[i]; domIdx = i }
         // Only switch the line colour once the canvas is warm; below the floor keep the prior hue.
         if stemMix > 0.001 {
-            lineCol = paletteLinear[domIdx]
-            // Skein.4.1: on a dominant-stem SWITCH push a colour breakpoint at the current painter
-            // clock, so the redrawn tail freezes each segment at its lay-time colour — the line no
-            // longer recolours along its length; a colour change reads as a NEW pour (Matt M7
-            // 2026-06-09). The bursts already freeze colour at spawn; this is the same for the line.
-            if domIdx != lineDomIdx {
+            // Skein.4.1: a dominant-stem switch starts a genuinely NEW pour (new colour + a displaced
+            // jump — the breakpoint ring; the redrawn tail then freezes each segment at its lay-time
+            // colour, so the line no longer recolours along its length). But the dominant ARGMAX
+            // flickers far faster than a pour can read (Matt M7 2026-06-09: "the lines are very short
+            // rather than a long continuous dripping/pouring" — measured 63 switches / 44 s, median pour
+            // 0.2 s). So a new pour COMMITS only on a SUSTAINED, DECISIVE change: the current pour must
+            // have lasted `minPourTau` (the long-stroke guarantee), and the challenger must lead the
+            // incumbent by the hysteresis margin (no flicker between near-equal stems). The first pour
+            // commits immediately. The bursts still fire per-stem onset, ungated (they are the accents).
+            let committed: Bool
+            if lineDomIdx == -1 {
+                committed = true
+            } else {
+                committed = domIdx != lineDomIdx
+                    && (painterTau - lastSwitchTau) >= Self.minPourTau
+                    && stemEnergySmoothed[domIdx] > stemEnergySmoothed[lineDomIdx] * Self.pourSwitchHysteresis
+            }
+            if committed {
                 pushColorBreak(tauStart: painterTau, color: paletteLinear[domIdx])
                 lineDomIdx = domIdx
+                lastSwitchTau = painterTau
             }
-            lineFlow = stemEnergySmoothed[domIdx] * stemMix
-            let domCentroid = centroid(of: SkeinStem(rawValue: domIdx) ?? .drums, stems: stems)
+            // Colour / flow / viscosity all reflect the COMMITTED pour (lineDomIdx), so the whole pour
+            // is coherent — the colour the breakpoint ring renders + a matching width/viscosity — and
+            // the width doesn't breathe with a louder non-committed stem mid-pour.
+            lineCol = paletteLinear[lineDomIdx]
+            lineFlow = stemEnergySmoothed[lineDomIdx] * stemMix
+            let domCentroid = centroid(of: SkeinStem(rawValue: lineDomIdx) ?? .drums, stems: stems)
             lineVisc = clamp(1.0 - domCentroid, 0, 1) * stemMix
 
             // Local jitter ← high-band energy / onset rate (a fast continuous primitive distinct
@@ -596,6 +628,7 @@ public final class SkeinState: @unchecked Sendable {
         colorBreaks.removeAll(keepingCapacity: true)
         colorBreaks.append(SkeinBreakGPU(tauStart: 0, colR: 1, colG: 1, colB: 1, offX: 0, offY: 0))
         lineDomIdx = -1
+        lastSwitchTau = 0
         colorBreakCounter = 0
         currentLineOffset = SIMD2<Float>(0, 0)
     }
@@ -619,15 +652,21 @@ public final class SkeinState: @unchecked Sendable {
             offX: off.x,
             offY: off.y))
     }
+}
 
-    // MARK: - Private: math helpers (local, to avoid global-function dependency)
+// MARK: - SkeinState math helpers
 
-    private func smoothstep(_ e0: Float, _ e1: Float, _ x: Float) -> Float {
+/// Local math helpers in a same-file extension — keeps the main type body within the SwiftLint
+/// `type_body_length` budget; `private` members of a type are visible to same-file extensions of that
+/// type (SE-0169), so `_tick`/`spawnBurst` still reach these.
+extension SkeinState {
+
+    func smoothstep(_ e0: Float, _ e1: Float, _ x: Float) -> Float {
         let tt = clamp((x - e0) / (e1 - e0), 0, 1)
         return tt * tt * (3 - 2 * tt)
     }
-    private func clamp(_ x: Float, _ lo: Float, _ hi: Float) -> Float { min(max(x, lo), hi) }
-    private func mix(_ x0: Float, _ x1: Float, _ frac: Float) -> Float { x0 + (x1 - x0) * frac }
+    func clamp(_ x: Float, _ lo: Float, _ hi: Float) -> Float { min(max(x, lo), hi) }
+    func mix(_ x0: Float, _ x1: Float, _ frac: Float) -> Float { x0 + (x1 - x0) * frac }
 
     /// sRGB → linear (the standard EOTF). Decodes a display-space palette colour to the linear
     /// value the shader outputs, so the `.bgra8Unorm_srgb` store round-trips back to the display
