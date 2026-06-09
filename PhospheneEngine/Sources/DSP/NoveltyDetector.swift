@@ -30,7 +30,12 @@ public final class NoveltyDetector: @unchecked Sendable {
 
     /// A detected section boundary.
     public struct Boundary: Sendable, Equatable {
-        /// Logical frame index in the similarity matrix where the boundary was detected.
+        /// Absolute frame index since capture start/reset.
+        ///
+        /// Absolute (not logical-ring) so the identity of a boundary survives
+        /// the ring slide once `SelfSimilarityMatrix` is full — logical
+        /// indices shift on every `addFrame`, which made the dedup window
+        /// re-admit the same physical boundary every ~4 detect calls (BUG-035).
         public var frameIndex: Int
         /// Timestamp in seconds since capture start.
         public var timestamp: Float
@@ -142,14 +147,20 @@ public final class NoveltyDetector: @unchecked Sendable {
         let stddev = sqrtf(max(variance, 0))
         let threshold = mean + thresholdMultiplier * stddev
 
+        // Offset converting logical ring indices to absolute frame indices.
+        // Zero until the ring is full; afterwards grows by 1 per added frame
+        // as old frames slide out (BUG-035 dedup stability).
+        let absoluteOffset = similarityMatrix.totalFrameCount - frameCount
+
         // Peak-picking: find local maxima above threshold with minimum distance.
-        let peaks = pickPeaks(
+        let peaks = pickPeaks(PeakPickContext(
             threshold: threshold,
             validRange: validRange,
             frameCount: frameCount,
+            absoluteOffset: absoluteOffset,
             currentTime: currentTime,
             fps: fps
-        )
+        ))
 
         // Add new peaks to detected boundaries.
         detectedBoundaries.append(contentsOf: peaks)
@@ -180,47 +191,59 @@ public final class NoveltyDetector: @unchecked Sendable {
 
     // MARK: - Private
 
+    /// Inputs for one peak-picking pass (bundled — the pass needs the curve geometry, the
+    /// logical→absolute offset, and the timestamp conversion parameters together).
+    private struct PeakPickContext {
+        let threshold: Float
+        let validRange: Range<Int>
+        let frameCount: Int
+        let absoluteOffset: Int
+        let currentTime: Float
+        let fps: Float
+    }
+
     /// Pick peaks from the novelty curve that are local maxima above threshold,
     /// enforcing minimum distance from each other and from previously detected boundaries.
-    private func pickPeaks(
-        threshold: Float,
-        validRange: Range<Int>,
-        frameCount: Int,
-        currentTime: Float,
-        fps: Float
-    ) -> [Boundary] {
+    ///
+    /// `ctx.absoluteOffset` converts a logical curve index into an absolute frame
+    /// index (`absoluteOffset + i`). Stored boundaries and the dedup window
+    /// operate in absolute space so a boundary's identity is stable across
+    /// the ring slide (BUG-035).
+    private func pickPeaks(_ ctx: PeakPickContext) -> [Boundary] {
+        let validRange = ctx.validRange
         var peaks: [Boundary] = []
         for i in validRange {
             let val = noveltyCurve[i]
-            guard val > threshold else { continue }
+            guard val > ctx.threshold else { continue }
 
             // Local maximum check (must be greater than both neighbors).
             let prev = i > validRange.lowerBound ? noveltyCurve[i - 1] : 0
             let next = i < validRange.upperBound - 1 ? noveltyCurve[i + 1] : 0
             guard val >= prev, val >= next else { continue }
 
+            let absIndex = ctx.absoluteOffset + i
             let ts = timestampForFrame(
-                i, currentTime: currentTime, totalFrames: frameCount, fps: fps
+                i, currentTime: ctx.currentTime, totalFrames: ctx.frameCount, fps: ctx.fps
             )
 
             // Minimum distance from last peak.
-            if let lastPeak = peaks.last, i - lastPeak.frameIndex < minPeakDistance {
+            if let lastPeak = peaks.last, absIndex - lastPeak.frameIndex < minPeakDistance {
                 if val > lastPeak.noveltyScore {
                     peaks[peaks.count - 1] = Boundary(
-                        frameIndex: i, timestamp: ts, noveltyScore: val
+                        frameIndex: absIndex, timestamp: ts, noveltyScore: val
                     )
                 }
                 continue
             }
 
-            // Minimum distance from previously detected boundaries.
+            // Minimum distance from previously detected boundaries (absolute space).
             let tooCloseToExisting = detectedBoundaries.contains { existing in
-                abs(existing.frameIndex - i) < minPeakDistance
+                abs(existing.frameIndex - absIndex) < minPeakDistance
             }
             if tooCloseToExisting { continue }
 
             peaks.append(Boundary(
-                frameIndex: i, timestamp: ts, noveltyScore: val
+                frameIndex: absIndex, timestamp: ts, noveltyScore: val
             ))
         }
         return peaks
