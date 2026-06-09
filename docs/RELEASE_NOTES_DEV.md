@@ -6,6 +6,28 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-06-09-fbs-s1] FBS Stage 1 — FFO spikes punch on a steady, first-note-anchored, cached-tempo beat pulse (D-153)
+
+**Increment:** FBS Stage 1 (kickoff `docs/prompts/FFO_BEAT_SYNC_KICKOFF.md`; Stage 0 findings `docs/diagnostics/FBS_STAGE0_FINDINGS_2026-06-09.md`). **Status:** built + measured green; **STOPPED at the Stage-1 gate — awaiting Matt's read on a live session** (validation = measurement; a fresh session with the new `pulse_phase01`/`pulse_amp01` features.csv columns is the acceptance artifact). **Decision:** D-153.
+
+### What changed
+
+- **New engine primitive `BeatPulseClock`** (`Sources/DSP/`): anchors at the track's first NOTE (silence→sound, 3-frame confirm, backdated — Matt's correction over first-hit), ticks at the cached BeatGrid tempo (the trustworthy half of the grid, ~1 % err), and is **never drift-corrected** — deliberately independent of `LiveBeatDriftTracker` (50–90 ms wander over the opening, Stage 0). `pulseAmp01` gates: 0 before the first note / across > 0.5 s sustained silence.
+- **`FeatureVector` floats 40–41** (`pulsePhase01`/`pulseAmp01`, reclaimed `_pad4`/`_pad5` — byte-identical layout for fields 1–39, no size migration, both MSL mirrors updated). Wired in `MIRPipeline` (`setBeatGrid` ×2 = tempo authority; `reset()` clears the anchor per track; `buildFeatureVector` writes per frame). Logged as trailing `features.csv` columns.
+- **FFO spike driver replaced:** `fo_spike_strength` Layer 2 drops `0.8·clamp(f.bass)` (the "frozen spikes" root cause + the residual post-BUG-038 sparkle) for a punch envelope on the pulse (rise 8 % of the beat, decay by 85 %, rest; headroom-capped ≤ 1.62 under the CSP.3.5 Lipschitz `/6` ceiling). Baseline + swell untouched; FA #67 one-primitive-per-layer holds.
+
+### Measured proof (real sessions, live dispatch path)
+
+- **Anchor:** ~2 ms from the PCM-measured first note (Cherub Rock, cross-clock wallclock↔raw-tap; gate ±60 ms). SZ2's session has bunched startup wallclocks (18.3 s stall) — cross-clock unverifiable there, documented; its gate is anchor == first sustained-audible frame.
+- **Steadiness:** every pulse interval == the grid period (≤ 5 ms interpolation tolerance), cumulative drift ~0 over the opening — vs the live tracker's 50–90 ms wander on the same sessions.
+- **Motion:** envelope std **0.198 on the frozen streaming Lotus Flower session** (old term: 0.044) — consistent across material (Cherub 0.212, SZ2 0.182; the old term varied 0.044–0.191).
+- **Live pipeline (FA #66):** `FerrofluidPulseLivePathTests` renders 110 continuous frames of the real Lotus session through FFO's actual dispatch (SDF G-buffer → deferred lighting → bloom + ACES, pipeline built once), paired A/B per frame: **punch-window |δ| = 29.3 luma units, rest-window |δ| = 0.0** — the spike field changes strongly AT the beats and not at all between them.
+- Suites: `BeatPulseClockTests` 9/9 (real-session fixtures under `Tests/Fixtures/fbs/`), recorder column gates, `PresetRegressionTests` goldens unchanged, full engine suite green modulo the documented pre-existing set (7 × `love_rehab.m4a` fixture-absence + Skein colour-freeze). SwiftLint `--strict` clean; app `BUILD SUCCEEDED`.
+
+### Known limitations (stated up front)
+
+Mid-playlist gapless segues anchor at the track-change instant (no silence boundary → best-effort, not a musical "one"). The anchored phase is perceptually-convincing, not provably the downbeat — FA #69's structural limit stands. The `ffoColdStartFixEnabled` off-arm no longer restores the historical `f.bass` spike drive.
+
 ## [dev-2026-06-09-flicker] BUG-038 — temporally smooth ray-march light intensity (kill the BUG-019 flicker residual)
 
 **Increment:** FBS pre-step (a clean, non-flickering FFO baseline before the Ferrofluid Beat-Sync pulse work — Matt's call 2026-06-09). **Status:** fix landed, automated validation green; **awaiting Matt's M7** (visual confirm the strobe is gone). Local worktree branch `claude/intelligent-shirley-1ce3b4` — **not yet on `main`/Matt's build.** **Defect:** `KNOWN_ISSUES.md` BUG-038 (continuation of BUG-019). **Evidence:** sessions `2026-06-09T21-23-07Z` (streaming) + `21-19-14Z` (clean local); `tools/fbs/` analysis.
