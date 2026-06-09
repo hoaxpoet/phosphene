@@ -175,6 +175,7 @@ static inline float skein_fbm2(float2 p) {
 // `lineVisc`. Marks composite OPAQUE (paired bestCover/bestColor → topmost colour, never mud).
 
 constant int kSkeinMaxBursts = 48;        // MUST equal SkeinState.maxBursts + the bursts[] size below
+constant int kSkeinMaxBreaks = 16;        // MUST equal SkeinState.maxColorBreaks + the breaks[] size below
 constant float kSkeinBakeWindow = 0.55;   // painter-clock units a burst is redrawn before it freezes
 
 struct SkeinBurstGPU {        // 12 floats = 48 bytes (matches Swift SkeinBurstGPU)
@@ -188,7 +189,14 @@ struct SkeinBurstGPU {        // 12 floats = 48 bytes (matches Swift SkeinBurstG
     float hashSeed;                    // per-burst droplet-placement seed
 };
 
-struct SkeinUniforms {        // 64-byte header + 48 × 48-byte bursts (matches SkeinState buffer)
+// Skein.4.1 — one line-colour + new-pour breakpoint (matches Swift SkeinBreakGPU byte-for-byte).
+struct SkeinBreakGPU {        // 6 floats = 24 bytes
+    float tauStart;                    // painter clock at the dominant-stem switch (pour valid from here)
+    float colR; float colG; float colB;  // frozen line colour (LINEAR — sRGB-decoded, like the bursts)
+    float offX; float offY;            // bounded new-pour position offset (the "new container" jump)
+};
+
+struct SkeinUniforms {        // 64-byte header + 48 × 48-byte bursts + 16 × 24-byte breaks (matches SkeinState)
     float painterTau;
     float painterTauStep;
     float seedPhaseX;
@@ -199,9 +207,43 @@ struct SkeinUniforms {        // 64-byte header + 48 × 48-byte bursts (matches 
     float jitter;
     uint  burstCount;
     uint  seed;
-    float pad0; float pad1; float pad2; float pad3;
+    uint  breakCount;                  // Skein.4.1 active colour breakpoints (was pad0)
+    float pad1; float pad2; float pad3;
     SkeinBurstGPU bursts[48];          // == kSkeinMaxBursts
+    SkeinBreakGPU breaks[16];          // == kSkeinMaxBreaks (Skein.4.1)
 };
+
+// Skein.4.1 — the line state in effect at a given painter-clock value: frozen colour + new-pour offset
+// + the breakpoint's start (so the tail loop can tell whether two endpoints belong to the SAME pour).
+struct SkeinLineLookup { float3 col; float2 off; float start; };
+
+// Look up the line colour + offset in effect when painter-clock value `t` was laid: the latest
+// breakpoint with tauStart ≤ t. The ring is ASCENDING in tauStart (SkeinState appends in monotonic
+// painter-clock order; eviction removes the oldest, preserving order), so we early-out at the first
+// tauStart > t — typically 1–3 iterations. For `t` older than every retained breakpoint we fall back
+// to breaks[0] (only the already-baked tail can be that old, never the live tail — see
+// SkeinState.maxColorBreaks). This is the per-burst colour freeze applied to the continuous line: a
+// tail segment keeps its lay-time colour, and a switch carries a position jump so the new pour is
+// spatially displaced (Skein.4.1 option 2). `start` lets the tail loop tell two pours apart.
+static inline SkeinLineLookup skeinLineLookupAt(float t, constant SkeinUniforms& st) {
+    SkeinLineLookup r;
+    int n = min(int(st.breakCount), kSkeinMaxBreaks);
+    if (n <= 0) {                                              // no ring yet → the current pour, no jump
+        r.col = float3(st.lineColR, st.lineColG, st.lineColB);
+        r.off = float2(0.0, 0.0);
+        r.start = -1e30;
+        return r;
+    }
+    SkeinBreakGPU sel = st.breaks[0];                          // oldest retained (the fallback for t < all)
+    for (int i = 1; i < n; ++i) {
+        SkeinBreakGPU bk = st.breaks[i];
+        if (bk.tauStart <= t) { sel = bk; } else { break; }    // ascending → first miss ends the search
+    }
+    r.col = float3(sel.colR, sel.colG, sel.colB);
+    r.off = float2(sel.offX, sel.offY);
+    r.start = sel.tauStart;
+    return r;
+}
 
 // ── Background / canvas fragment ──────────────────────────────────────────────────
 //
@@ -297,45 +339,51 @@ fragment float4 skein_geometry_fragment(
     float  bestCover = 0.0;
     float3 bestCol   = float3(1.0);   // unpainted: white (the held cream shows through at cover 0)
 
-    // ── Layer A: the pour LINE — a SOLID smooth dribble, rendered as ONE union SDF (no rings) ──
-    // lineCol is the DISCRETE dominant-stem colour (SkeinState argmax — never a blend), so the
-    // continuous line records who is leading the mix (SKEIN_DESIGN §1.2). At silence lineCol stays
-    // white → white-on-cream, silence-non-black trivial.
+    // ── Layer A: the pour LINE — per-segment FROZEN colour + per-switch NEW pour (Skein.4.1) ──
+    // The colour is the DISCRETE dominant-stem colour, but FROZEN PER SEGMENT at lay-time via the
+    // SkeinState colour-breakpoint ring (skeinLineLookupAt): a segment laid before a dominant switch
+    // keeps the OLD colour, one laid after gets the new — the line no longer recolours along its length
+    // (Matt M7 2026-06-09: "the colour changes in the middle of a stroke"). AND a colour switch starts a
+    // genuinely NEW pour (Matt's option 2): each breakpoint carries a small bounded position OFFSET —
+    // "the painter grabs a new paint container" — so the new line is spatially displaced from the old,
+    // with a clean GAP at the switch. The segment that would BRIDGE two different pours (different
+    // start) is simply NOT drawn → the gap. At silence only the white baseline breakpoint exists
+    // (offset 0) → the byte-identical pre-4.1 continuous white line (the silence continuity gate holds).
     //
-    // Skein.4 M7-round-3 (Matt 2026-06-09: "I still see the rings when the drip lines move slowly").
-    // Round-2 removed the age-taper but rings PERSISTED — the deeper cause is the rendering FORMULA:
-    // `cov = MAX over capsules of smoothstep(r_k, d_k)` with a PER-SEGMENT speed→width `r_k`. When the
-    // painter moves slowly its tail samples cluster with varying micro-speed → varying r_k on
-    // co-located capsules → the union's boundary SCALLOPS and (amplified by the sheen's gradient
-    // normal) reads as concentric arcs. Fix: render the recent painter polyline as a single UNION
-    // SDF — `sdf = MIN over segments of (segDist − r)` — with ONE per-frame radius (no per-segment
-    // variation). A union of equal-radius capsules is one smooth tube; thresholding its SDF once
-    // gives a uniformly-solid interior (so the sheen finds no internal luminance ridges to amplify).
-    // Width is modulated per-FRAME (smoothly): the dominant stem's viscosity/flow widens it, and the
-    // overall recent speed pools it at turns — never per-segment, so it cannot scallop.
-    float3 lineCol   = float3(st.lineColR, st.lineColG, st.lineColB);
+    // Coverage is UNCHANGED from Skein.4 M7-round-3/4 — ONE union SDF, ONE per-frame radius (no
+    // per-segment radius → no scalloping → no rings; the sheen finds no internal luminance ridges). With
+    // a single radius, `max over per-capsule coverage` ≡ `1 − smoothstep(min segDist − r)`, so tracking
+    // the nearest drawn segment to pick its frozen colour does NOT change coverage. Width is per-FRAME
+    // (viscosity/flow widen it; overall tip→tail speed THINS it to a filament on fast sweeps), never
+    // per-segment (§18.8: an overall-speed widening fattens the loop and buries the droplets).
     float  lineVisc  = clamp(st.lineVisc, 0.0, 1.0);
     float  lineWiden = mix(1.0, 1.5, lineVisc) + 0.5 * clamp(st.lineFlow, 0.0, 1.0);
     {
-        float2 tip    = skeinPainterPos(tau, phx, phy);
-        float2 tipQ   = float2(tip.x * a, tip.y);
-        // ONE radius for this frame (viscosity/flow widen it; the overall tip→tail speed THINS it on
-        // fast sweeps to a filament). A per-FRAME value (never per-segment), so it cannot scallop into
-        // rings. Biased to THINNING only (slow → ~base, fast → 0.70× filament) — an earlier slow-WIDENING
-        // fattened the whole line during looping and buried the satellite droplets (§18.8). Pooling at
-        // slow turns still emerges from the tail clustering (the union of equal-radius capsules).
-        float2 oldP   = skeinPainterPos(tau - float(kSkeinTailFrames) * dtau, phx, phy);
-        float2 oldQ   = float2(oldP.x * a, oldP.y);
-        float  oSpeed = length(tipQ - oldQ) / max(float(kSkeinTailFrames) * dtau, 1e-4);
+        // Per-frame radius (never per-segment). Speed estimated from the natural (un-offset) path.
+        float2 tip0  = skeinPainterPos(tau, phx, phy);
+        float2 oldP0 = skeinPainterPos(tau - float(kSkeinTailFrames) * dtau, phx, phy);
+        float  oSpeed = length(float2((tip0.x - oldP0.x) * a, tip0.y - oldP0.y))
+                      / max(float(kSkeinTailFrames) * dtau, 1e-4);
         float  r = kSkeinLineRadius * lineWiden * mix(1.05, 0.70, smoothstep(0.05, 0.35, oSpeed));
 
-        float2 recent = tipQ;     // k = 0 (newest)
+        // Walk the tail newest→oldest, one breakpoint lookup per point. Draw segment k only when both
+        // endpoints belong to the SAME pour (equal breakpoint `start`); a segment straddling a switch is
+        // the JUMP and is skipped → the gap. Each drawn point is displaced by its pour's offset, and the
+        // segment is coloured by its pour's frozen colour.
+        SkeinLineLookup pr = skeinLineLookupAt(tau, st);
+        float2 prQ = float2((tip0.x + pr.off.x) * a, tip0.y + pr.off.y);   // k = 0 (newest)
         float  lineSDF = 1e9;
-        for (int k = 0; k < kSkeinTailFrames; ++k) {
-            float2 pp = skeinPainterPos(tau - float(k + 1) * dtau, phx, phy);
-            float2 older = float2(pp.x * a, pp.y);
-            lineSDF = min(lineSDF, skeinSegDist(q, older, recent) - r);   // union of equal-radius capsules
-            recent = older;
+        float3 lineCol = pr.col;
+        for (int k = 1; k <= kSkeinTailFrames; ++k) {
+            float  ctau = tau - float(k) * dtau;
+            SkeinLineLookup cu = skeinLineLookupAt(ctau, st);
+            float2 cb  = skeinPainterPos(ctau, phx, phy);
+            float2 cuQ = float2((cb.x + cu.off.x) * a, cb.y + cu.off.y);
+            if (cu.start == pr.start) {                              // same pour → draw (no bridge)
+                float d = skeinSegDist(q, cuQ, prQ) - r;
+                if (d < lineSDF) { lineSDF = d; lineCol = cu.col; }   // nearest drawn segment's frozen colour
+            }
+            pr = cu; prQ = cuQ;
         }
         float cov = 1.0 - smoothstep(-px, px, lineSDF);   // ONE smooth tube; uniformly solid interior
         if (cov > bestCover) { bestCover = cov; bestCol = lineCol; }
