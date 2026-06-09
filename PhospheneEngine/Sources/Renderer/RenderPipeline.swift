@@ -49,6 +49,18 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// preset unchanged). Set via `setMVWarpChromatic`.
     var mvWarpChromatic: Float = 0
 
+    /// mv_warp per-frame WETNESS-channel decay multiplier (Skein.ENGINE.2), bound to the
+    /// warp/hold fragment at fragment buffer 1. Skein's canvas-hold carries a transient
+    /// "wetness" signal in the feedback texture's ALPHA channel (RGB stays the lossless
+    /// permanent paint record); the warp fragment decays A by this factor each frame while
+    /// holding RGB byte-identically. `1.0` ⇒ A held unchanged. Only Skein's own
+    /// `skein_warp_fragment` reads buffer 1 — every other mv_warp preset uses the shared
+    /// `mvWarp_fragment` (which does not declare buffer 1), so the binding is ignored and
+    /// they are byte-identical regardless of this value. Driven per-frame from `SkeinState`
+    /// (decay pauses at silence — the §5.2 step-3 accumulated-audio-time semantics). Set via
+    /// `setMVWarpWetnessDecay`.
+    var mvWarpWetnessDecay: Float = 1.0
+
     /// mv_warp display-stage post params (Dragon Bloom L4, D-137), bound to
     /// `mvWarp_blit_fragment` at fragment buffer 0. `x` = invert amount
     /// (source.milk `bInvert=1` — flips the cool full-warp fill to warm), `y` =

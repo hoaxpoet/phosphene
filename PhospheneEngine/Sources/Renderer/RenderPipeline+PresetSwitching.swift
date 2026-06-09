@@ -99,6 +99,16 @@ extension RenderPipeline {
         mvWarpLock.withLock { mvWarpChromatic = amount }
     }
 
+    /// Set the mv_warp wetness-channel decay multiplier (Skein.ENGINE.2). Applied per-frame
+    /// to the feedback ALPHA channel by Skein's `skein_warp_fragment` (RGB held byte-identical).
+    /// `1.0` ⇒ wetness held (the default — and the silence value, so wetness pauses-not-decays
+    /// at silence); `< 1.0` ⇒ wetness dries toward 0 each frame while music plays. Only Skein's
+    /// own warp fragment reads it; every other mv_warp preset ignores fragment buffer 1, so this
+    /// is inert for them regardless of value. Thread-safe.
+    public func setMVWarpWetnessDecay(_ decay: Float) {
+        mvWarpLock.withLock { mvWarpWetnessDecay = decay }
+    }
+
     /// Set the mv_warp display-stage post params (Dragon Bloom L4, D-137).
     /// `invert` = source.milk `bInvert` (flips the cool full-warp fill to warm),
     /// `echo` = `fVideoEchoAlpha`, `gamma` = `fGammaAdj`. Display-only (applied in the

@@ -79,6 +79,7 @@ extension VisualizerEngine {
         pipeline.setActivePasses([])
         pipeline.setMeshGenerator(nil)
         pipeline.setMeshPresetTick(nil)
+        pipeline.setMVWarpWetnessDecay(1.0)   // Skein.ENGINE.2: reset to "held" (only Skein decays A)
         arachneState = nil
         gossamerState = nil
         auroraVeilState = nil
@@ -485,10 +486,16 @@ extension VisualizerEngine {
                     if let state = SkeinState(device: context.device, seed: currentSkeinSeed()) {
                         skeinState = state
                         pipeline.setDirectPresetFragmentBuffer(state.skeinBuffer)   // buffer(6)
-                        pipeline.setMeshPresetTick { [weak state] features, stems in
-                            state?.tick(deltaTime: features.deltaTime,
-                                        features: features,
-                                        stems: stems)
+                        // Skein.ENGINE.2: the per-frame wetness-channel decay (pauses at silence)
+                        // is pushed to the warp/hold pass from the tick hook. Capture the pipeline
+                        // WEAKLY (via a local) so the @Sendable closure holds no retain cycle —
+                        // self keeps the pipeline alive; the weak ref just tracks the object.
+                        let renderPipeline = pipeline
+                        pipeline.setMeshPresetTick { [weak state, weak renderPipeline] features, stems in
+                            guard let state else { return }
+                            state.tick(deltaTime: features.deltaTime, features: features, stems: stems)
+                            // skein_warp_fragment reads this at fragment buffer 1 (decays ALPHA only).
+                            renderPipeline?.setMVWarpWetnessDecay(state.wetnessDecay)
                         }
                     } else {
                         logger.error("SkeinState: failed to allocate painter state for preset '\(desc.name)'")
