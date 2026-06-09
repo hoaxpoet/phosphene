@@ -28,14 +28,14 @@ extension SessionRecorder {
             ) else { return }
         }
 
-        guard let adaptor = pixelAdaptor,
-              let pool = adaptor.pixelBufferPool,
-              let videoInput = videoInput,
-              videoInput.isReadyForMoreMediaData else { return }
-
-        var maybeBuffer: CVPixelBuffer?
-        let status = CVPixelBufferPoolCreatePixelBuffer(nil, pool, &maybeBuffer)
-        guard status == kCVReturnSuccess, let pixelBuffer = maybeBuffer else { return }
+        // BUG-039 instrumentation: video output has stalled silently a few seconds into some
+        // sessions (2026-06-09T22-35-09Z froze at 120 frames / 5.0 s; 17-14-25Z at 15 s) with NO
+        // log lines — every early-out below was silent and the `append` result was ignored. Each
+        // path now logs (throttled), and a writer that left `.writing` is detected once, logged
+        // loudly with its error, and left alone WITHOUT deleting the partial file (the BUG-022
+        // fragmented MP4 keeps everything up to the last 5 s fragment playable).
+        guard let adaptor = healthyVideoAdaptor() else { return }
+        guard let pixelBuffer = makeVideoPixelBuffer(adaptor: adaptor) else { return }
 
         CVPixelBufferLockBaseAddress(pixelBuffer, [])
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
@@ -49,7 +49,66 @@ extension SessionRecorder {
             videoWriter?.startSession(atSourceTime: startTime)
         }
         let pts = CMTime(value: CMTimeValue(wallclock * 1_000_000), timescale: 1_000_000)
-        adaptor.append(pixelBuffer, withPresentationTime: pts)
+        if !adaptor.append(pixelBuffer, withPresentationTime: pts) {
+            videoAppendFailCount += 1
+            let err = videoWriter?.error.map { String(describing: $0) } ?? "nil"
+            let statusRaw = videoWriter?.status.rawValue ?? -1
+            if videoAppendFailCount % 30 == 1 {
+                writeLogLine("video append FAILED at pts \(String(format: "%.3f", wallclock)) "
+                    + "(status=\(statusRaw), error=\(err), "
+                    + "count \(videoAppendFailCount); BUG-039 instrumentation)")
+            }
+        }
+    }
+
+    /// The adaptor to append to, or nil with a (throttled / one-shot) log naming WHY the frame
+    /// was dropped — the BUG-039 silent stall paths made loud. A writer that left `.writing` is
+    /// reported once and the partial file retained (never deleted).
+    private func healthyVideoAdaptor() -> AVAssetWriterInputPixelBufferAdaptor? {
+        if let writer = videoWriter, writer.status != .writing {
+            if !videoFailureLogged {
+                videoFailureLogged = true
+                let err = writer.error.map { String(describing: $0) } ?? "nil"
+                writeLogLine("video writer stopped consuming (status=\(writer.status.rawValue), "
+                    + "error=\(err)) — video output disabled, partial mp4 retained (BUG-039)")
+            }
+            return nil
+        }
+        guard let adaptor = pixelAdaptor, let videoInput = videoInput else { return nil }
+        guard videoInput.isReadyForMoreMediaData else {
+            videoNotReadyCount += 1
+            if videoNotReadyCount % 120 == 1 {
+                writeLogLine("video input not ready — frame dropped "
+                    + "(count \(videoNotReadyCount); BUG-039 instrumentation)")
+            }
+            return nil
+        }
+        return adaptor
+    }
+
+    /// A pool pixel buffer, or nil with a throttled log (pool unavailable / create failure).
+    private func makeVideoPixelBuffer(
+        adaptor: AVAssetWriterInputPixelBufferAdaptor
+    ) -> CVPixelBuffer? {
+        guard let pool = adaptor.pixelBufferPool else {
+            videoPoolFailCount += 1
+            if videoPoolFailCount % 120 == 1 {
+                writeLogLine("video pixel-buffer pool unavailable "
+                    + "(count \(videoPoolFailCount); BUG-039 instrumentation)")
+            }
+            return nil
+        }
+        var maybeBuffer: CVPixelBuffer?
+        let status = CVPixelBufferPoolCreatePixelBuffer(nil, pool, &maybeBuffer)
+        guard status == kCVReturnSuccess, let pixelBuffer = maybeBuffer else {
+            videoPoolFailCount += 1
+            if videoPoolFailCount % 120 == 1 {
+                writeLogLine("video pixel-buffer create failed (CVReturn \(status), "
+                    + "count \(videoPoolFailCount); BUG-039 instrumentation)")
+            }
+            return nil
+        }
+        return pixelBuffer
     }
 
     private func initializeVideoWriterIfNeeded(width: Int, height: Int) -> Bool {

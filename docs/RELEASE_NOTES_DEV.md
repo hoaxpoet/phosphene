@@ -6,6 +6,16 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-06-09-c] Skein.5.1/5.2 — never-white painter + structural CSV columns + BUG-039 video instrumentation
+
+Matt's Skein.5 M7 follow-ups, in priority order:
+
+1. **Skein.5.1 — the painter never pours white (D-152 amendment).** The Skein.1-era white-baseline breakpoint baked a permanent tail-length white squiggle at every track start (different per track via the seed). The ring now starts EMPTY (no line until a pour commits); the first commit waits a ¼ s settle (colour from smoothed evidence, not one frame's argmax) and retro-colours the pre-commit tail — the first stroke appears already in the lead stem's colour; the painter clock pauses at true silence (wetness-pause semantics). The "white line at silence" invariant is deliberately retired; gates inverted (`!hasWhiteTexel`, silence `painted == 0`); pour gates re-driven on CALM real stems.
+2. **Skein.5.2 — structural columns in features.csv.** `section_index,section_start_s,section_confidence` appended (append-only invariant); published from the per-frame MIR site that feeds `setStructuralPrediction`, so sessions now carry the exact signal the Skein.5 structural bias consumes — the structure layer and the BUG-035 manual criterion become artifact-verifiable. SessionRecorderTests offsets shifted by the new tail; round-trip + default gates added.
+3. **BUG-039 filed + instrumented — session video stalls silently.** `22-35-09Z` froze at 5.0 s and `17-14-25Z` at 15 s (of ~10/~6 min) with zero log lines: every stall path was silent and the `append` result ignored. All paths now log throttled counters with `writer.status`/`writer.error`; a failed writer logs once, loudly, and no longer deletes the partial file. Root-cause fix follows the first instrumented affected session.
+
+---
+
 ## [dev-2026-06-09-flicker] BUG-038 — temporally smooth ray-march light intensity (kill the BUG-019 flicker residual)
 
 **Increment:** FBS pre-step (a clean, non-flickering FFO baseline before the Ferrofluid Beat-Sync pulse work — Matt's call 2026-06-09). **Status:** fix landed, automated validation green; **awaiting Matt's M7** (visual confirm the strobe is gone). Local worktree branch `claude/intelligent-shirley-1ce3b4` — **not yet on `main`/Matt's build.** **Defect:** `KNOWN_ISSUES.md` BUG-038 (continuation of BUG-019). **Evidence:** sessions `2026-06-09T21-23-07Z` (streaming) + `21-19-14Z` (clean local); `tools/fbs/` analysis.
