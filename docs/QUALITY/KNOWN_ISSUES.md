@@ -8,6 +8,38 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
+### BUG-038 — Ray-march light-intensity flickers 7–9 steps/sec (BUG-019 residual: beat-onset brightness term fires ~97% of frames) (2026-06-09)
+
+**Severity:** P1 (chronic visible artifact across all ray-march presets; the symptom Matt has reported "since FFO existed" — a strobe that blocks fair evaluation of FFO and any beat-sync work). Continuation of **BUG-019** (PERF.3 reduced it 76→53–60 oscillation events but did not eliminate it).
+**Domain tag:** `renderer` (light-intensity modulation) + `dsp.beat` (beat-onset signals near-constant).
+**Status:** **Fix landed (FBS pre-step), automated validation green; awaiting Matt's M7** (visual confirm the flicker is gone). Local worktree branch — **not yet on `main`/his build** (see Related).
+**Introduced:** structural — `applyAudioModulation` (`RenderPipeline+RayMarch.swift`, preset-agnostic for all ray-march presets) set light intensity = `base × (1 + f.bass·0.4 + beatAccent·0.15)` *per frame with no temporal smoothing*. `beatAccent = max(beatBass, beatMid, beatComposite)` fires on ~97% of frames on real sessions (a near-constant jitter, not clean beats), and `f.bass` is noisy → the whole scene's brightness steps frame-to-frame.
+**Resolved:** — (code fixed; pending M7)
+
+**Expected:** scene brightness is steady, brightening/dimming smoothly with the music's energy — no per-frame stepping/strobe.
+
+**Actual (sessions `2026-06-09T21-23-07Z` streaming + `21-19-14Z` clean local):** the light multiplier takes a perceptible single-frame step (|Δ| > 0.05) **7–9 times/sec on every streaming track and ~7/sec on clean-signal Cherub**; the beat-onset term fires on **96–98% of frames** (near-constant, not on beats). Visible as a constant light flicker (Matt flagged it on Lotus Flower and "some other tracks"). Present on clean signal too → not a weak-signal artifact.
+
+**Reproduction steps:** play any session; per frame compute `1 + clamp(bass)·0.4 + clamp(max(beatBass,beatMid,beatComposite))·0.15` from `features.csv`; count frames with frame-to-frame |Δ| > 0.05 → ~8/sec. (`tools/fbs/` brightness analysis.)
+
+**Session artifacts:** `~/Documents/phosphene_sessions/2026-06-09T21-23-07Z/features.csv` (all 6 streaming tracks), `21-19-14Z/features.csv` (Cherub clean). Beat-term firing rate 96–98%.
+
+**Suspected failure class:** `render-state` (no temporal smoothing on a per-frame light uniform) compounded by `algorithm` (beat-onset signals near-constant, so they add jitter not beats).
+
+**Fix (FBS pre-step):** temporally smooth the light multiplier with an EMA (`RayMarchPipeline.smoothLightIntensity`, τ ≈ 0.12 s) before writing the light uniform. Drops perceptible steps **~8/sec → ~0** (verified on all 4 sessions) while preserving the slower musical brightness swell. **Mean-preserving + preset-agnostic → no certified-preset (Nimbus) regression**; the PERF.3 formula is unchanged, only low-passed. First frame after preset-load/stall (`dt ≤ 0`) returns the target verbatim → no startup lag and single-frame golden hashes unchanged.
+
+**Verification criteria:**
+- [x] **Automated (pure-function):** `RayMarchPipelineTests.test_smoothLightIntensity_suppressesFrameToFrameFlicker` — synthetic jittery target (mimics the 97%-firing beat + bass noise) → smoothed output < 5 steps over 600 frames (raw > 400), still tracks the slow swell. `_firstFrameHasNoLag` covers `dt ≤ 0`.
+- [x] **Regression:** `PresetRegressionTests` golden hashes unchanged (single-frame, dt=0 = target = pre-fix value); full ray-march/FFO/acceptance suites green.
+- [ ] **Manual (M7):** Matt confirms FFO (and other ray-march presets) no longer flicker — steady lighting through a continuous-playback session. *Requires the fix to reach his build (see Related).*
+
+**Manual validation required:** Yes — it's a felt visual artifact; only a human can confirm the strobe is gone.
+
+**Related:**
+- **BUG-019** — the original beat-dominant-brightness flicker (`0.4 + beatPulse·2.6`); PERF.3 fixed the worst of it but left this residual (still had a beat term + no smoothing). This is its continuation.
+- **FBS** (Ferrofluid Beat Sync) — done as the pre-step so FFO has a steady baseline to evaluate the new beat pulse against (Matt's call, 2026-06-09). The noisy beat-onset signals are also *why* FBS times its pulse off the steady tempo grid, not these signals.
+- **Worktree → build:** the fix is on branch `claude/intelligent-shirley-1ce3b4`; Matt's build runs `main`. Must integrate to local `main` (or have him build the branch) before the M7 — else he tests stranded old code (`feedback_worktree_changes_reach_build`).
+
 ### BUG-029 — AGC `f.bass` cold-start spike pops/drops continuous-energy presets at every track onset (2026-06-06)
 
 **Severity:** P3 (cosmetic startup artifact, ~1-2 s at each track onset; not a crash). Re-rate to P2 if judged to materially hurt the per-track first impression.
