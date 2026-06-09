@@ -529,11 +529,6 @@ struct SkeinCanvasHoldTest {
     @Test("Line colour is frozen per-segment: a dominant-stem switch keeps the already-laid paint's colour and starts a displaced new pour — live path")
     func test_lineColorFreeze_keepsColourAndStartsNewPour() throws {
         guard let fx = try loadSkeinFixture() else { return }
-        guard let session = Self.firstRecordedSession(),
-              let stems = loadStemFrames(session, maxFrames: 3000), stems.count > 400 else {
-            print("SkeinCanvasHoldTest: no recorded session — skipping colour-freeze gate (real audio: feedback_synthetic_audio)")
-            return
-        }
         // Build a two-phase REAL-stem sequence with a clean dominant-stem SWITCH: the window where one
         // stem most strongly leads, then the window where a DIFFERENT stem most strongly leads. The
         // frames are real (feedback_synthetic_audio / FA #27 — never hand-authored); we only ORDER two
@@ -541,15 +536,37 @@ struct SkeinCanvasHoldTest {
         // Phases are long enough that the Skein.4.1 M7-round-2 minPourTau dwell is satisfied during
         // phase A and the post-switch pour (phase B) is long enough to sample (the new pour only
         // COMMITS on a sustained, decisive change, so a short phase B would never switch).
+        //
+        // NOT every session contains two stem-dominated windows (a vocals+bass-only song never lets
+        // `other` or `drums` lead) — so search the recorded sessions, largest first, for one that does,
+        // instead of hard-depending on the single largest session (which changes every time Matt
+        // listens; the gate went red on new session data 2026-06-09).
         let window = 140, phaseA = 120, phaseB = 130
-        let leads = (0..<4).map { Self.mostDominatedSlice(stems, stem: $0, window: window) }
-        let ranked = leads.enumerated().sorted { $0.element.lead > $1.element.lead }
-        guard ranked.count >= 2, ranked[0].element.lead > 0, ranked[1].element.lead > 0 else {
-            Issue.record("Could not find two stem-dominated slices in \(session.lastPathComponent) — cannot build a switch.")
+        // The binding constraint is the SECOND stem's decisiveness — the post-switch pour only
+        // commits if the challenger leads the incumbent by the 1.25× hysteresis — so pick the
+        // session whose 2nd-ranked lead is strongest, not merely the first with two positive leads.
+        var pick: (session: URL, slices: [(slice: [StemFeatures], lead: Float)], a: Int, b: Int, lead2: Float)?
+        for candidate in Self.recordedSessionsBySize() {
+            guard let stems = loadStemFrames(candidate, maxFrames: 6000), stems.count > 400 else { continue }
+            let leads = (0..<4).map { Self.mostDominatedSlice(stems, stem: $0, window: window) }
+            let ranked = leads.enumerated().sorted { $0.element.lead > $1.element.lead }
+            guard ranked.count >= 2, ranked[0].element.lead > 0, ranked[1].element.lead > 0 else { continue }
+            if pick == nil || ranked[1].element.lead > pick!.lead2 {
+                pick = (candidate, leads, ranked[0].offset, ranked[1].offset, ranked[1].element.lead)
+            }
+        }
+        guard let pick else {
+            guard !Self.recordedSessionsBySize().isEmpty else {
+                print("SkeinCanvasHoldTest: no recorded session — skipping colour-freeze gate (real audio: feedback_synthetic_audio)")
+                return
+            }
+            Issue.record("No recorded session contains two stem-dominated \(window)-frame slices — cannot build a switch.")
             return
         }
-        let stemA = ranked[0].offset, stemB = ranked[1].offset
-        let seq = Array(leads[stemA].slice.prefix(phaseA)) + Array(leads[stemB].slice.prefix(phaseB))
+        let session = pick.session
+        let stemA = pick.a, stemB = pick.b
+        print("[skein_colorfreeze] picked \(session.lastPathComponent): stemA=\(stemA) lead \(pick.slices[stemA].lead), stemB=\(stemB) lead \(pick.slices[stemB].lead)")
+        let seq = Array(pick.slices[stemA].slice.prefix(phaseA)) + Array(pick.slices[stemB].slice.prefix(phaseB))
         guard seq.count == phaseA + phaseB else { Issue.record("Dominated slices too short."); return }
 
         let w = 256, h = 256
@@ -1423,16 +1440,25 @@ struct SkeinCanvasHoldTest {
     /// The recorded session under ~/Documents/phosphene_sessions with the largest stems.csv (most
     /// onsets → the most per-stem colour activity). nil when none exist (local-only artifact).
     private static func firstRecordedSession() -> URL? {
+        recordedSessionsBySize().first
+    }
+
+    /// All recorded sessions with a non-empty stems.csv, largest first. Tests whose assertion
+    /// depends on a *property* of the session content (e.g. the colour-freeze gate needs two
+    /// stem-dominated slices) iterate this list instead of hard-depending on the single largest
+    /// session — every new live session Matt records changes which session is largest, and a
+    /// session-fragile gate goes red on data, not code (the Skein.4.1 `distinctBlobs` lesson).
+    private static func recordedSessionsBySize() -> [URL] {
         let base = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Documents/phosphene_sessions")
         guard let entries = try? FileManager.default.contentsOfDirectory(
-            at: base, includingPropertiesForKeys: nil) else { return nil }
+            at: base, includingPropertiesForKeys: nil) else { return [] }
         func stemsSize(_ url: URL) -> Int {
             let path = url.appendingPathComponent("stems.csv").path
             guard FileManager.default.fileExists(atPath: path) else { return 0 }
             return ((try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int) ?? 0
         }
-        return entries.filter { stemsSize($0) > 0 }.max { stemsSize($0) < stemsSize($1) }
+        return entries.filter { stemsSize($0) > 0 }.sorted { stemsSize($0) > stemsSize($1) }
     }
 
     /// Parse a session's stems.csv into replayable StemFeatures frames (the routing-relevant
