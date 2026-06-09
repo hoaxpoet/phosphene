@@ -108,7 +108,8 @@ extension SessionRecorder {
         frameGPUms: Float? = nil,
         subsystem: SubsystemTimingSnapshot = .empty,
         renderTiming: RenderTimingSnapshot = .empty,
-        rayMarchPass: RayMarchPassTimingSnapshot = .empty
+        rayMarchPass: RayMarchPassTimingSnapshot = .empty,
+        structure: StructuralPrediction = .none
     ) -> String {
         let base = String(format: "%d,%.4f,%.4f,%.4f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
                                + "%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,"
@@ -166,8 +167,17 @@ extension SessionRecorder {
         let rayMarchPassCols = ",\(gbufMs),\(lightMs),\(ssgiMs),\(postMs)"
         // FBS Stage 1 (D-153) — the steady first-note-anchored beat pulse, so
         // anchor accuracy + steadiness are verifiable from session artifacts.
-        let pulseCols = String(format: ",%.5f,%.3f\n", fv.pulsePhase01, fv.pulseAmp01)
-        return base + sync + timing + subTiming + renderTimingCols + rayMarchPassCols + pulseCols
+        let pulseCols = String(format: ",%.5f,%.3f", fv.pulsePhase01, fv.pulseAmp01)
+        // Skein.5.2 — structural-section evidence (`section_index` / `section_start_s` /
+        // `section_confidence`): the exact StructuralAnalyzer signal the Skein.5 structural
+        // bias consumes (D-151), recorded so section firing — and BUG-035-class corruption
+        // (sub-second "sections", inflated indices) — is verifiable from session artifacts.
+        let structCols = String(format: ",%d,%.3f,%.4f\n",
+                                structure.sectionIndex,
+                                structure.sectionStartTime,
+                                structure.confidence)
+        return base + sync + timing + subTiming + renderTimingCols + rayMarchPassCols
+            + pulseCols + structCols
     }
 
     static func csvRow(stems: StemFeatures, frame: Int, wallclock: CFAbsoluteTime) -> String {
