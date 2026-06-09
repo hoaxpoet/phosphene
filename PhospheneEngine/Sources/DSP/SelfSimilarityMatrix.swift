@@ -41,6 +41,11 @@ public final class SelfSimilarityMatrix: @unchecked Sendable {
     /// Number of frames stored (0...maxHistory).
     private var storedCount: Int = 0
 
+    /// Total frames ever added since init/reset (monotonic, never capped).
+    /// `totalAdded - storedCount` is the number of frames that have slid out
+    /// of the ring — the offset converting logical indices to absolute ones.
+    private var totalAdded: Int = 0
+
     /// Pre-allocated scratch for similarity computation.
     private var scratchA: [Float]
     private var scratchB: [Float]
@@ -83,6 +88,7 @@ public final class SelfSimilarityMatrix: @unchecked Sendable {
         if storedCount < maxHistory {
             storedCount += 1
         }
+        totalAdded += 1
         lock.unlock()
     }
 
@@ -90,6 +96,18 @@ public final class SelfSimilarityMatrix: @unchecked Sendable {
     public var frameCount: Int {
         lock.lock()
         let count = storedCount
+        lock.unlock()
+        return count
+    }
+
+    /// Total frames added since start/reset (monotonic, not capped at `maxHistory`).
+    ///
+    /// Once the ring is full, logical indices slide on every `addFrame` —
+    /// `totalFrameCount - frameCount` is the slide offset that converts a
+    /// logical index into a stable absolute frame index (BUG-035).
+    public var totalFrameCount: Int {
+        lock.lock()
+        let count = totalAdded
         lock.unlock()
         return count
     }
@@ -187,6 +205,7 @@ public final class SelfSimilarityMatrix: @unchecked Sendable {
         lock.lock()
         head = 0
         storedCount = 0
+        totalAdded = 0
         // Zero out buffer for clean state.
         for i in 0..<buffer.count { buffer[i] = 0 }
         lock.unlock()

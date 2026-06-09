@@ -133,9 +133,9 @@ P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh dou
 
 **Severity:** P2 (corrupts `StructuralAnalyzer` section durations / `predictedNextBoundary` / section confidence — the exact signal Skein.ENGINE.3 just wired live for Skein.5).
 **Domain tag:** dsp.structure
-**Status:** Open — audit finding. **Should be fixed before Skein.5 leans on structural signals.**
+**Status:** **Resolved 2026-06-09** — fixed as the `[BUG-035]` increment immediately before Skein.5 (single-increment P2 fix; evidence pre-documented in the audit doc).
 **Introduced:** structural — `detectedBoundaries` stores logical ring indices that go stale as the ring slides.
-**Resolved:** —
+**Resolved:** 2026-06-09, `[BUG-035]` commit on local main. `SelfSimilarityMatrix.totalFrameCount` (monotonic frames-added counter) + `NoveltyDetector` stores/dedups in **absolute** frame-index space (`Boundary.frameIndex` is now absolute); `MIRPipeline.latestStructuralPrediction` write moved under the lock. A/B-proven: `noveltyDetect_ringWrap_boundaryRegistersOnce` (pre-fix 3 dups, identical timestamps) + `structuralAnalyzer_ringWrap_boundaryRegistersOnce` (production 600-frame geometry, pre-fix 2 dups); post-fix exactly 1 each. `SkeinStructureSignalTests` + AABA golden regression green. Manual criterion (features.csv section plausibility on a real session) folds into Skein.5's M7 session review.
 
 **Expected:** each real musical section boundary registers once.
 **Actual:** `SelfSimilarityMatrix` logical indices slide ~30 per `detect()` call once `storedCount == maxHistory` (`SelfSimilarityMatrix.swift:198-203`); `NoveltyDetector.swift:217`'s `tooCloseToExisting` compares fresh indices against the stale stored ones, so the same boundary passes the dedup again every ~1.3 s (~94 Hz analysis rate) — ~4-5 near-equal-timestamp duplicates per real boundary (`timestampForFrame` compensates for the slide, so duplicates carry ~equal timestamps). `StructuralAnalyzer.registerBoundary` appends unconditionally → section durations collapse toward 0, `avgDuration`/`predictedNextBoundary` garbage, `sectionIndex` inflates ~5×, confidence structurally depressed.
@@ -144,9 +144,9 @@ P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh dou
 **Session artifacts:** `docs/diagnostics/CODE_AUDIT_2026-06-09.md` (Audio/DSP P2 section).
 **Suspected failure class:** `algorithm` (stale-index dedup).
 **Verification criteria:**
-- [ ] Automated: real-music fixture through the live MIR path — each detected boundary registers exactly once (dedup by timestamp or absolute frame counter).
-- [ ] Automated: `latestStructuralPrediction` write moved under the lock (existing `SkeinStructureSignalTests` stay green).
-- [ ] Manual: section indices/durations from a real session's `features.csv` are musically plausible (no sub-second "sections").
+- [x] Automated: each detected boundary registers exactly once across the ring slide (absolute frame counter dedup) — `noveltyDetect_ringWrap_boundaryRegistersOnce` + `structuralAnalyzer_ringWrap_boundaryRegistersOnce`, both A/B-proven against pre-fix source.
+- [x] Automated: `latestStructuralPrediction` write moved under the lock (`SkeinStructureSignalTests` green).
+- [ ] Manual: section indices/durations from a real session's `features.csv` are musically plausible (no sub-second "sections") — folds into the Skein.5 M7 session review.
 
 ---
 

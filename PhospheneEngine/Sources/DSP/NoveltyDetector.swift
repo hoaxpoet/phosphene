@@ -30,7 +30,12 @@ public final class NoveltyDetector: @unchecked Sendable {
 
     /// A detected section boundary.
     public struct Boundary: Sendable, Equatable {
-        /// Logical frame index in the similarity matrix where the boundary was detected.
+        /// Absolute frame index since capture start/reset.
+        ///
+        /// Absolute (not logical-ring) so the identity of a boundary survives
+        /// the ring slide once `SelfSimilarityMatrix` is full — logical
+        /// indices shift on every `addFrame`, which made the dedup window
+        /// re-admit the same physical boundary every ~4 detect calls (BUG-035).
         public var frameIndex: Int
         /// Timestamp in seconds since capture start.
         public var timestamp: Float
@@ -142,11 +147,17 @@ public final class NoveltyDetector: @unchecked Sendable {
         let stddev = sqrtf(max(variance, 0))
         let threshold = mean + thresholdMultiplier * stddev
 
+        // Offset converting logical ring indices to absolute frame indices.
+        // Zero until the ring is full; afterwards grows by 1 per added frame
+        // as old frames slide out (BUG-035 dedup stability).
+        let absoluteOffset = similarityMatrix.totalFrameCount - frameCount
+
         // Peak-picking: find local maxima above threshold with minimum distance.
         let peaks = pickPeaks(
             threshold: threshold,
             validRange: validRange,
             frameCount: frameCount,
+            absoluteOffset: absoluteOffset,
             currentTime: currentTime,
             fps: fps
         )
@@ -182,10 +193,16 @@ public final class NoveltyDetector: @unchecked Sendable {
 
     /// Pick peaks from the novelty curve that are local maxima above threshold,
     /// enforcing minimum distance from each other and from previously detected boundaries.
+    ///
+    /// `absoluteOffset` converts a logical curve index into an absolute frame
+    /// index (`absoluteOffset + i`). Stored boundaries and the dedup window
+    /// operate in absolute space so a boundary's identity is stable across
+    /// the ring slide (BUG-035).
     private func pickPeaks(
         threshold: Float,
         validRange: Range<Int>,
         frameCount: Int,
+        absoluteOffset: Int,
         currentTime: Float,
         fps: Float
     ) -> [Boundary] {
@@ -199,28 +216,29 @@ public final class NoveltyDetector: @unchecked Sendable {
             let next = i < validRange.upperBound - 1 ? noveltyCurve[i + 1] : 0
             guard val >= prev, val >= next else { continue }
 
+            let absIndex = absoluteOffset + i
             let ts = timestampForFrame(
                 i, currentTime: currentTime, totalFrames: frameCount, fps: fps
             )
 
             // Minimum distance from last peak.
-            if let lastPeak = peaks.last, i - lastPeak.frameIndex < minPeakDistance {
+            if let lastPeak = peaks.last, absIndex - lastPeak.frameIndex < minPeakDistance {
                 if val > lastPeak.noveltyScore {
                     peaks[peaks.count - 1] = Boundary(
-                        frameIndex: i, timestamp: ts, noveltyScore: val
+                        frameIndex: absIndex, timestamp: ts, noveltyScore: val
                     )
                 }
                 continue
             }
 
-            // Minimum distance from previously detected boundaries.
+            // Minimum distance from previously detected boundaries (absolute space).
             let tooCloseToExisting = detectedBoundaries.contains { existing in
-                abs(existing.frameIndex - i) < minPeakDistance
+                abs(existing.frameIndex - absIndex) < minPeakDistance
             }
             if tooCloseToExisting { continue }
 
             peaks.append(Boundary(
-                frameIndex: i, timestamp: ts, noveltyScore: val
+                frameIndex: absIndex, timestamp: ts, noveltyScore: val
             ))
         }
         return peaks
