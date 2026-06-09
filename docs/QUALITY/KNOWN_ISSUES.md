@@ -222,6 +222,34 @@ Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — 
 - **BUG-019** — the original beat-dominant-brightness flicker (`0.4 + beatPulse·2.6`); PERF.3 fixed the worst of it but left this residual (still had a beat term + no smoothing). This is its continuation.
 - **FBS** (Ferrofluid Beat Sync) — done as the pre-step so FFO has a steady baseline to evaluate the new beat pulse against (Matt's call, 2026-06-09). The noisy beat-onset signals are also *why* FBS times its pulse off the steady tempo grid, not these signals.
 - **Worktree → build:** the fix is on branch `claude/intelligent-shirley-1ce3b4`; Matt's build runs `main`. Must integrate to local `main` (or have him build the branch) before the M7 — else he tests stranded old code (`feedback_worktree_changes_reach_build`).
+
+---
+
+### BUG-039 — Session video stops appending silently a few seconds into some sessions (intermittent; recorder keeps "running") (2026-06-09)
+
+**Severity:** P2 (the session video is the primary M7 review artifact; a truncated video forces CSV-only reconstruction of visual defect reports — it directly degraded the Skein.5 M7 session review).
+**Domain tag:** `resource-management` (session recorder / AVAssetWriter)
+**Status:** Open — **instrumentation landed (Skein.5.2 session); diagnosis completes on the next live session's `session.log`.**
+**Introduced:** unknown — intermittent; possibly long-standing (older sessions are mostly long-form, but `17-14-25Z` truncated at 15 s).
+**Resolved:** —
+
+**Expected:** `video.mp4` covers the whole session (BUG-022 fragmented MP4: at minimum up to the last 5 s fragment at abnormal exit).
+**Actual:** intermittent early freeze with the recorder otherwise healthy: `2026-06-09T22-35-09Z` video froze at **120 frames / 5.005 s** (file mtime = session start + ~1 min) while features.csv/stems.csv/log ran the full ~10 min; `17-14-25Z` froze at **15.0 s** of a ~6 min session. Other same-day sessions are long (`21-23-07Z` 294.6 s, `13-06-15Z` 393.3 s). No `video frame skipped` / relock / error lines in any affected log — the writer locked (`video writer locked to 900x600 after 30 stable frames`) and then appends stopped through one of the SILENT paths.
+**Reproduction steps:** not yet reproducible on demand (intermittent). Affected-session signature: `video.mp4` duration ≪ session length + zero video log lines after the lock line.
+**Session artifacts:** `~/Documents/phosphene_sessions/2026-06-09T22-35-09Z` (5.005 s of ~10 min), `17-14-25Z` (15.0 s of ~6 min); compare `21-23-07Z`/`13-06-15Z` (long).
+**Suspected failure class:** `resource-management`. Candidate silent paths (all at `SessionRecorder+Video.swift` pre-instrumentation): (a) `videoInput.isReadyForMoreMediaData == false` persisting (typically means the writer stopped consuming — e.g. `status == .failed`); (b) `adaptor.append(...)` returning `false` with the result IGNORED (a failed append usually moves the writer to `.failed` permanently); (c) pixel-buffer pool exhaustion. A `.failed` writer was never detected anywhere — video stayed dead for the rest of the session with zero log output.
+
+**Instrumentation landed (this increment — root-cause fix follows the next affected session):**
+- Writer status checked per frame: a non-`.writing` writer logs ONE loud line with `writer.error` and stops attempting appends — **without deleting the partial file** (the fragmented MP4 keeps everything up to the last 5 s fragment).
+- `isReadyForMoreMediaData == false`, pool failures, and `append == false` each log throttled counters with `writer.status` + `writer.error`.
+
+**Verification criteria:**
+- [ ] Diagnosis: the next affected session's `session.log` names the failing path + `writer.error` (instrumentation criterion).
+- [ ] Fix (subsequent increment): a full-length session video after the root-cause fix; affected-session signature no longer occurs across a multi-session week.
+- [ ] Partial-file retention: an affected session still yields a playable partial `video.mp4` (no deletion on failure).
+
+---
+
 ### BUG-029 — AGC `f.bass` cold-start spike pops/drops continuous-energy presets at every track onset (2026-06-06)
 
 **Severity:** P3 (cosmetic startup artifact, ~1-2 s at each track onset; not a crash). Re-rate to P2 if judged to materially hurt the per-track first impression.

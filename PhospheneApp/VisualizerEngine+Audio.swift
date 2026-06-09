@@ -166,6 +166,10 @@ extension VisualizerEngine {
         // and this site is UNCONDITIONAL — the `setMood` path early-returns when the mood classifier
         // is absent or `classify` throws, which would intermittently stall the section signal.
         pipeline.setStructuralPrediction(mir.latestStructuralPrediction)
+        // Skein.5.2: mirror the same prediction into the session recorder so features.csv carries
+        // `section_index` / `section_start_s` / `section_confidence` — the artifact that makes the
+        // Skein.5 structural bias (and BUG-035-class corruption) verifiable from a session.
+        sessionRecorder?.recordStructuralPrediction(mir.latestStructuralPrediction)
 
         // Update SpectralCartograph beat-grid overlay (diagnostic preset).
         updateSpectralCartographBeatGrid(mir: mir, fv: fv)

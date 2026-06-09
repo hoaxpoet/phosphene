@@ -6,6 +6,16 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-06-09-c] Skein.5.1/5.2 — never-white painter + structural CSV columns + BUG-039 video instrumentation
+
+Matt's Skein.5 M7 follow-ups, in priority order:
+
+1. **Skein.5.1 — the painter never pours white (D-152 amendment).** The Skein.1-era white-baseline breakpoint baked a permanent tail-length white squiggle at every track start (different per track via the seed). The ring now starts EMPTY (no line until a pour commits); the first commit waits a ¼ s settle (colour from smoothed evidence, not one frame's argmax) and retro-colours the pre-commit tail — the first stroke appears already in the lead stem's colour; the painter clock pauses at true silence (wetness-pause semantics). The "white line at silence" invariant is deliberately retired; gates inverted (`!hasWhiteTexel`, silence `painted == 0`); pour gates re-driven on CALM real stems.
+2. **Skein.5.2 — structural columns in features.csv.** `section_index,section_start_s,section_confidence` appended (append-only invariant); published from the per-frame MIR site that feeds `setStructuralPrediction`, so sessions now carry the exact signal the Skein.5 structural bias consumes — the structure layer and the BUG-035 manual criterion become artifact-verifiable. SessionRecorderTests offsets shifted by the new tail; round-trip + default gates added.
+3. **BUG-039 filed + instrumented — session video stalls silently.** `22-35-09Z` froze at 5.0 s and `17-14-25Z` at 15 s (of ~10/~6 min) with zero log lines: every stall path was silent and the `append` result ignored. All paths now log throttled counters with `writer.status`/`writer.error`; a failed writer logs once, loudly, and no longer deletes the partial file. Root-cause fix follows the first instrumented affected session.
+
+---
+
 ## [dev-2026-06-09-fbs-s1] FBS Stage 1 — FFO spikes punch on a steady, first-note-anchored, cached-tempo beat pulse (D-153)
 
 **Increment:** FBS Stage 1 (kickoff `docs/prompts/FFO_BEAT_SYNC_KICKOFF.md`; Stage 0 findings `docs/diagnostics/FBS_STAGE0_FINDINGS_2026-06-09.md`). **Status:** built + measured green; **STOPPED at the Stage-1 gate — awaiting Matt's read on a live session** (validation = measurement; a fresh session with the new `pulse_phase01`/`pulse_amp01` features.csv columns is the acceptance artifact). **Decision:** D-153.

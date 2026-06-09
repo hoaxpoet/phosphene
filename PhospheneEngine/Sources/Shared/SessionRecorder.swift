@@ -146,6 +146,23 @@ public final class SessionRecorder: @unchecked Sendable {
     var latestSSGIPassMs: Float?
     var latestPostProcessPassMs: Float?
 
+    // MARK: Video-stall instrumentation (BUG-039). All accessed only from the
+    // serial `queue`. The append/not-ready/pool counters throttle their log
+    // lines; `videoFailureLogged` makes the one-shot writer-failed line fire once.
+    var videoFailureLogged = false
+    var videoNotReadyCount = 0
+    var videoPoolFailCount = 0
+    var videoAppendFailCount = 0
+
+    // MARK: Structural prediction (Skein.5.2 — section evidence in artifacts).
+    // Updated by `recordStructuralPrediction(_:)` from the per-frame MIR publish
+    // (the same site that calls `RenderPipeline.setStructuralPrediction`).
+    // Emitted as the `section_index` / `section_start_s` / `section_confidence`
+    // tail columns of features.csv, so section firing — and BUG-035-class
+    // corruption (sub-second "sections") — is verifiable from session artifacts.
+    // Accessed only from the serial `queue`.
+    var latestStructuralPrediction = StructuralPrediction.none
+
     // MARK: Raw-tap streaming WAV state (diagnostic — first 30s).
     var rawTapHandle: FileHandle?
     var rawTapSampleRate: UInt32 = 0
@@ -284,7 +301,8 @@ public final class SessionRecorder: @unchecked Sendable {
                                               frame: idx, wallclock: now,
                                               frameCPUms: cpuMs, frameGPUms: gpuMs,
                                               subsystem: subsystem, renderTiming: renderTiming,
-                                              rayMarchPass: passTiming)
+                                              rayMarchPass: passTiming,
+                                              structure: self.latestStructuralPrediction)
             // swiftlint:enable multiline_arguments
             self.featuresHandle.write(fRow.data(using: .utf8) ?? Data())
             let sRow = SessionRecorder.csvRow(stems: stems, frame: idx, wallclock: now)
@@ -368,7 +386,8 @@ public final class SessionRecorder: @unchecked Sendable {
             mir_pipeline_ms,stem_analyzer_ms,beat_detector_ms,pitch_tracker_ms,mood_classifier_ms,\
             encode_cpu_ms,renderframe_cpu_ms,\
             gbuffer_pass_ms,lighting_pass_ms,ssgi_pass_ms,post_process_pass_ms,\
-            pulse_phase01,pulse_amp01
+            pulse_phase01,pulse_amp01,\
+            section_index,section_start_s,section_confidence
 
             """
         let stemsHeader = """
