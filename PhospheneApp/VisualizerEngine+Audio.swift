@@ -156,6 +156,17 @@ extension VisualizerEngine {
         pipeline.setFeatures(fv)
         pipeline.updateFeedbackBeatValue(from: fv)
 
+        // Skein.ENGINE.3 (D-151): publish the live structural-section prediction to the render
+        // pipeline's gated CPU-only bridge, alongside the per-frame MIR features publish. `mir.process`
+        // (above) just refreshed `mir.latestStructuralPrediction`; route it through `RenderPipeline`
+        // (never read `mirPipeline` on the render thread directly — cross-thread race) so the Skein
+        // tick closure can consume it. Inert for every other preset (the store defaults to `.none`
+        // and only `SkeinState` reads it) ⇒ byte-identical. Co-located with `setFeatures`, not
+        // `setMood`: structure is a per-frame MIR output (not an accumulated mood-classifier result),
+        // and this site is UNCONDITIONAL — the `setMood` path early-returns when the mood classifier
+        // is absent or `classify` throws, which would intermittently stall the section signal.
+        pipeline.setStructuralPrediction(mir.latestStructuralPrediction)
+
         // Update SpectralCartograph beat-grid overlay (diagnostic preset).
         updateSpectralCartographBeatGrid(mir: mir, fv: fv)
 
