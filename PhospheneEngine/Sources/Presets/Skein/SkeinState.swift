@@ -352,7 +352,7 @@ public final class SkeinState: @unchecked Sendable {
         bursts.reserveCapacity(Self.maxBursts)
         self.seed = seed
         applySeed(seed)
-        resetColorBreaks()   // seed the line-colour ring with the white baseline (Skein.4.1)
+        resetColorBreaks()   // empty ring — no line until the first coloured pour commits (Skein.5.1)
         writeToGPU()
     }
 
@@ -390,7 +390,7 @@ public final class SkeinState: @unchecked Sendable {
             bursts.removeAll(keepingCapacity: true)
             burstCount = 0
             lineCol = SIMD3<Float>(1, 1, 1)
-            resetColorBreaks()   // clear the line-colour ring + re-seed the white baseline (Skein.4.1)
+            resetColorBreaks()   // empty ring — the new track's line waits for its first pour (Skein.5.1)
             lineFlow = 0; lineVisc = 0; jitter = 0
             // Skein.ENGINE.3: clear the structural-section tracking so the new track re-baselines —
             // no spurious boundary from the old track's last section index (the bridge also resets
@@ -465,7 +465,13 @@ public final class SkeinState: @unchecked Sendable {
         let speedStem = (Self.paintSpeedBase + Self.paintSpeedGain * broadbandDev) * arousalGain
         let speedFV = Self.paintSpeedBase + 1.5 * max(0, features.midAttRel)
         let anticipation = anticipationFactor(features: features, dt: dt, stemMix: stemMix)
-        let paintSpeed = mix(speedFV, speedStem, stemMix) * anticipation
+        // Skein.5.1: the painter CLOCK pauses at true silence — no music, no painting (the same
+        // semantics as the wetness decay pause). `activity` is the max of the stem warmup and an
+        // FV-energy gate, so the FV-fallback window (track start, live stems still converging,
+        // music clearly playing) keeps the painter moving while a pause/track-gap freezes it.
+        let fvEnergy = features.bass + features.mid + features.treble
+        let activity = max(stemMix, smoothstep(0.01, 0.04, fvEnergy))
+        let paintSpeed = mix(speedFV, speedStem, stemMix) * anticipation * activity
         m5.speedFactor = anticipation
         painterTauStep = dt * paintSpeed
         painterTau += painterTauStep
@@ -594,13 +600,14 @@ public final class SkeinState: @unchecked Sendable {
 
     // MARK: - Private: colour-break ring (Skein.4.1)
 
-    /// Clear the line-colour ring and seed it with the white baseline at τ = 0, zero offset (the
-    /// cold/warmup line colour, the continuous un-jumped pour). Every tail sample laid before the first
-    /// dominant-stem switch resolves to white-no-jump; at silence only this baseline exists, so the
-    /// silence pour line is the byte-identical pre-Skein.4.1 continuous white line. init + reseed call it.
+    /// Clear the line-colour ring to EMPTY (Skein.5.1 — Matt M7 2026-06-09: the old white baseline
+    /// laid a permanent white squiggle at every track start; "white disturbs the colour palette").
+    /// With an empty ring the shader draws NO line at all (`breakCount == 0` skips Layer A): the
+    /// painter never pours white — the line starts when the first COLOURED pour commits, which
+    /// retro-colours the brief pre-commit tail via `tauStart = 0`. At silence nothing ever commits,
+    /// so the painter rests. init + reseed call it.
     private func resetColorBreaks() {
         colorBreaks.removeAll(keepingCapacity: true)
-        colorBreaks.append(SkeinBreakGPU(tauStart: 0, colR: 1, colG: 1, colB: 1, offX: 0, offY: 0))
         lineDomIdx = -1
         lastSwitchTau = 0
         colorBreakCounter = 0
@@ -611,16 +618,24 @@ public final class SkeinState: @unchecked Sendable {
     /// a bounded new-pour jump offset). The jump is a fixed-magnitude vector rotated by the golden angle
     /// per switch (non-cumulative → never drifts off canvas; well-separated → a clear gap every switch).
     /// Evicts the oldest when the ring is full — the 16 most-recent switches always cover the live tail.
+    ///
+    /// Skein.5.1: the FIRST pour of a painting carries NO jump — a jump separates a new pour from
+    /// the previous one, and there is none; the painting starts on the natural trajectory.
     private func pushColorBreak(tauStart: Float, color: SIMD3<Float>) {
-        colorBreakCounter &+= 1
-        let seedAngle = Float(seed & 0xFFFF) / Float(0xFFFF) * 2 * .pi
-        let ang = seedAngle + Float(colorBreakCounter) * Self.breakJumpGoldenAngle
-        // Skein.5: the section REGION LEAN adds to the golden-angle jump — every pour committed
-        // inside a section starts displaced toward that section's patch (repeated sections revisit
-        // and build density). Both terms are bounded + non-cumulative (≤ 0.05 + 0.085 UV), so the
-        // line still never drifts off canvas; lean = 0 (no structure / low confidence) is the
-        // byte-identical Skein.4.1 jump.
-        let off = SIMD2<Float>(cos(ang), sin(ang)) * Self.breakJumpMagnitude + m5.sectionLean
+        let off: SIMD2<Float>
+        if colorBreaks.isEmpty {
+            off = SIMD2<Float>(0, 0)
+        } else {
+            colorBreakCounter &+= 1
+            let seedAngle = Float(seed & 0xFFFF) / Float(0xFFFF) * 2 * .pi
+            let ang = seedAngle + Float(colorBreakCounter) * Self.breakJumpGoldenAngle
+            // Skein.5: the section REGION LEAN adds to the golden-angle jump — every pour committed
+            // inside a section starts displaced toward that section's patch (repeated sections revisit
+            // and build density). Both terms are bounded + non-cumulative (≤ 0.05 + 0.085 UV), so the
+            // line still never drifts off canvas; lean = 0 (no structure / low confidence) is the
+            // byte-identical Skein.4.1 jump.
+            off = SIMD2<Float>(cos(ang), sin(ang)) * Self.breakJumpMagnitude + m5.sectionLean
+        }
         currentLineOffset = off
         if colorBreaks.count >= Self.maxColorBreaks { colorBreaks.removeFirst() }
         colorBreaks.append(SkeinBreakGPU(
@@ -685,7 +700,9 @@ extension SkeinState {
 
         let committed: Bool
         if lineDomIdx == -1 {
-            committed = true
+            // Skein.5.1: a brief settle before the first commit — the colour is chosen from ~¼ s of
+            // smoothed evidence, not one frame's argmax; the retro-colour hides the wait entirely.
+            committed = painterTau >= Self.firstPourSettleTau
         } else if domIdx != lineDomIdx
             && (painterTau - lastSwitchTau) >= Self.minPourTau
             && stemEnergySmoothed[domIdx] > stemEnergySmoothed[lineDomIdx] * Self.pourSwitchHysteresis {
@@ -695,11 +712,18 @@ extension SkeinState {
                 && (painterTau - lastSwitchTau) >= Self.boundaryPourMinTau
         }
         if committed {
-            pushColorBreak(tauStart: painterTau, color: moodTinted(paletteLinear[domIdx]))
+            // Skein.5.1: the FIRST commit retro-colours the whole pre-commit tail (tauStart 0 —
+            // every tail sample, including the negative-ctau birth window, resolves to this pour),
+            // so the painting's first stroke is already the lead stem's colour. White never paints.
+            let isFirstPour = lineDomIdx == -1
+            pushColorBreak(tauStart: isFirstPour ? 0 : painterTau,
+                           color: moodTinted(paletteLinear[domIdx]))
             lineDomIdx = domIdx
             lastSwitchTau = painterTau
             m5.boundaryPourPending = 0
         }
+        // Skein.5.1: during the first-pour settle no pour exists yet — nothing to colour or width.
+        guard lineDomIdx >= 0 else { lineFlow = 0; lineVisc = 0; jitter = 0; return }
         // Colour / flow / viscosity all reflect the COMMITTED pour (lineDomIdx) — the whole pour is
         // coherent, and the width doesn't breathe with a louder non-committed stem mid-pour. The
         // rendered colour is the breakpoint's, FROZEN at lay-time (the canvas archives the mood arc).
@@ -896,6 +920,12 @@ extension SkeinState {
     /// Confidence gate (smoothstep lo→hi): below lo the structural bias is exactly zero.
     static var sectionConfLo: Float { 0.25 }
     static var sectionConfHi: Float { 0.55 }
+    /// Skein.5.1: the FIRST pour commits only after this much painter-clock settle (≈ a quarter
+    /// second of music through the 0.3 s stem EMA), so its colour reflects the actual lead stem,
+    /// not one frame's instantaneous argmax (the D-150 decisiveness principle applied to the first
+    /// commit). Invisible to the viewer: the retro-colour (`tauStart = 0`) paints the settle
+    /// window's trajectory in the committed colour the moment it commits.
+    static var firstPourSettleTau: Float { 0.25 }
 
     // MARK: Skein.5 tick helpers (called from `_tick`, lock held)
 

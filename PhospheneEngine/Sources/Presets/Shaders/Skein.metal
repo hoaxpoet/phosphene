@@ -348,8 +348,12 @@ fragment float4 skein_geometry_fragment(
     // genuinely NEW pour (Matt's option 2): each breakpoint carries a small bounded position OFFSET —
     // "the painter grabs a new paint container" — so the new line is spatially displaced from the old,
     // with a clean GAP at the switch. The segment that would BRIDGE two different pours (different
-    // start) is simply NOT drawn → the gap. At silence only the white baseline breakpoint exists
-    // (offset 0) → the byte-identical pre-4.1 continuous white line (the silence continuity gate holds).
+    // start) is simply NOT drawn → the gap.
+    //
+    // Skein.5.1 (Matt M7 2026-06-09: "white disturbs the colour palette"): the ring starts EMPTY —
+    // until the first COLOURED pour commits there is NO line at all (the white-baseline era is
+    // retired; the first commit retro-colours the pre-commit tail via tauStart = 0). At silence
+    // nothing commits and the painter clock pauses → the painter rests, the canvas stays clean.
     //
     // Coverage is UNCHANGED from Skein.4 M7-round-3/4 — ONE union SDF, ONE per-frame radius (no
     // per-segment radius → no scalloping → no rings; the sheen finds no internal luminance ridges). With
@@ -359,7 +363,7 @@ fragment float4 skein_geometry_fragment(
     // per-segment (§18.8: an overall-speed widening fattens the loop and buries the droplets).
     float  lineVisc  = clamp(st.lineVisc, 0.0, 1.0);
     float  lineWiden = mix(1.0, 1.5, lineVisc) + 0.5 * clamp(st.lineFlow, 0.0, 1.0);
-    {
+    if (int(st.breakCount) > 0) {   // Skein.5.1: no committed pour yet ⇒ no line (never white)
         // Per-frame radius (never per-segment). Speed estimated from the natural (un-offset) path.
         float2 tip0  = skeinPainterPos(tau, phx, phy);
         float2 oldP0 = skeinPainterPos(tau - float(kSkeinTailFrames) * dtau, phx, phy);

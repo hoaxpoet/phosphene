@@ -112,36 +112,58 @@ struct SkeinCanvasHoldTest {
 
     // MARK: - Pour line: accumulation + hold + continuity (the Skein.1 gate, live dispatch path)
 
-    @Test("Pour line accumulates, holds losslessly under motion, and is continuous — live marks-on-top path")
+    @Test("Pour line accumulates, holds losslessly, is continuous, and is NEVER white; the painter rests at silence — live marks-on-top path")
     func test_pourLine_accumulatesHoldsContinuous() throws {
         guard let fx = try loadSkeinFixture() else { return }
         let w = 256, h = 256
         let checkpoints = [30, 75, 120, 179]
-        // Square render (aspect 1.0) so the line width is isotropic and the connectivity mask is
-        // clean. SILENCE (stemFrames empty → StemFeatures.zero): Skein.3 lays ONLY the pour line —
-        // onset bursts are real-audio-driven, so silence has no splatter (verified by the real-stem
-        // test below). The painter advances on painterTau (SkeinState, speed 1 at silence ≈ a
-        // 60 fps clock) → a new capsule lands each frame. lineCol stays white at silence.
+        // Skein.5.1: the line only exists once a COLOURED pour commits (white-baseline era retired),
+        // so this gate drives REAL stem frames — but CALM ones (every per-stem dev below the onset
+        // threshold) so no bursts spawn: the painting is the pour line alone, and the corridor
+        // continuity check stays exact. Calm frames keep stemMix warm (AGC energies ~0.3/stem), so
+        // the first pour commits immediately and the whole line draws in that pour's colour at
+        // offset 0 (the first pour carries no jump) — on the corridor's natural trajectory.
+        guard let session = Self.firstRecordedSession(),
+              let all = loadStemFrames(session, maxFrames: 6000), all.count > 400 else {
+            print("SkeinCanvasHoldTest: no recorded session — skipping pour-line gate (real audio: feedback_synthetic_audio)")
+            return
+        }
+        let calm = all.filter {
+            max(max($0.drumsEnergyDev, $0.bassEnergyDev), max($0.vocalsEnergyDev, $0.otherEnergyDev))
+                < SkeinState.onsetDevThreshold
+        }
+        guard calm.count >= 60 else {
+            Issue.record("Session \(session.lastPathComponent) has only \(calm.count) all-calm stem frames — cannot isolate the pour line.")
+            return
+        }
+        let stems = (0..<180).map { calm[$0 % calm.count] }   // tile real calm frames
         let run = try runPourAccumulation(
             chromatic: 0, frames: 180, width: w, height: h, aspect: 1.0, startTime: 0.0,
-            checkpoints: Set(checkpoints), fx: fx)
+            checkpoints: Set(checkpoints), fx: fx, stemFrames: stems)
 
-        // The pour LINE lives in a thin corridor around the (seed-0) trajectory; at silence the
-        // whole painting IS the line (no satellites), so continuity should be near-total.
+        // The pour LINE lives in a thin corridor around the (seed-0) trajectory. τ-range from the
+        // real painter clock (paint speed varies with the calm frames' broadband dev).
         let line = pourLineCorridor(run.finalPixels, w: w, h: h, cream: run.creamRef,
-                                    t0: -0.7, t1: 3.0, rV: 0.025)
-        let whiteOK = hasWhiteTexel(run.finalPixels)
+                                    t0: -0.7, t1: run.finalPainterTau + 0.05, rV: 0.035)
+        let whitePresent = hasWhiteTexel(run.finalPixels)
+
+        // Skein.5.1 SILENCE REST: with no stems at all, nothing commits and the painter clock
+        // pauses — the canvas stays pure cream (the old behaviour drew a white line forever).
+        let silent = try runPourAccumulation(
+            chromatic: 0, frames: 120, width: w, height: h, aspect: 1.0, startTime: 0.0,
+            checkpoints: [119], fx: fx)
+        let silentPainted = silent.checkpointCounts.last ?? -1
+
         print("""
-        [skein_pour] 180 frames @ \(w)×\(h), chromatic=0, live scene→warp→overlay→blit→swap (SILENCE: line only):
-          painted-count checkpoints \(run.checkpointFrames) = \(run.checkpointCounts)
+        [skein_pour] 180 calm real-stem frames @ \(w)×\(h), live scene→warp→overlay→blit→swap (line only):
+          painted-count checkpoints \(run.checkpointFrames) = \(run.checkpointCounts)   finalTau = \(String(format: "%.2f", run.finalPainterTau))
           early painted texel \(run.earlyXY.map { "(\($0.0),\($0.1))" } ?? "none") still painted at end = \(run.earlyStillPaintedFinal)
           pour-LINE continuity (corridor) = \(String(format: "%.3f", line.continuity))  [in-corridor \(line.inCorridor) / outside \(line.outside)]
-          far corner held (chromatic=0): frame0 \(run.creamRef) == final \(run.groundCornerFinal) ? \(run.creamRef == run.groundCornerFinal)
-          ground corner cream = \(isCreamish(run.groundCornerFinal)) ; white texel present = \(whiteOK)
+          far corner held: frame0 \(run.creamRef) == final \(run.groundCornerFinal) ? \(run.creamRef == run.groundCornerFinal)
+          white texel present = \(whitePresent)   silence-run painted = \(silentPainted)
         """)
 
-        // 1. ACCUMULATION — painted-pixel count is monotone non-decreasing (identity hold + no
-        //    decay ⇒ paint never disappears) and strictly grows (the painter is laying the line).
+        // 1. ACCUMULATION — painted-pixel count is monotone non-decreasing and strictly grows.
         for i in 1..<run.checkpointCounts.count {
             #expect(run.checkpointCounts[i] >= run.checkpointCounts[i - 1],
                     "Painted count fell \(run.checkpointCounts[i-1]) → \(run.checkpointCounts[i]) — accumulation not lossless (paint vanished).")
@@ -149,25 +171,17 @@ struct SkeinCanvasHoldTest {
         #expect((run.checkpointCounts.last ?? 0) > (run.checkpointCounts.first ?? 0),
                 "Painted count did not grow (\(run.checkpointCounts)) — the painter laid no new line.")
 
-        // 2. HOLD UNDER MOTION — a texel painted early persists to the end (the laid line is held
-        //    losslessly; it does not fade or drift while the painter moves on).
+        // 2. HOLD UNDER MOTION — an early-painted texel persists; the unpainted far corner is
+        //    RGB-byte-identical frame-0 → final (ENGINE.2 re-scope: A carries wetness, RGB is the
+        //    lossless record — and the wetness test owns the A assertions).
         #expect(run.earlyXY != nil, "No early painted texel found — the line did not render.")
         #expect(run.earlyStillPaintedFinal,
                 "An early-painted texel was no longer painted at the end — the canvas-hold lost a laid mark.")
-        //    and the UNPAINTED far corner is byte-identical frame-0 → final (the ENGINE.1.1
-        //    lossless-hold property, now under a moving mark: unpainted texels never drift).
-        //    Skein.ENGINE.2 RE-SCOPE: the RGB channels are the lossless permanent paint record; the
-        //    ALPHA channel now carries the transient WETNESS signal, which legitimately decays under
-        //    music (and is held at silence, where this test runs, so A is also unchanged here). The
-        //    lossless-hold invariant is therefore asserted on RGB only — A is checked by the
-        //    dedicated wetness test below. (At silence wetnessDecay == 1.0, so A is in fact held too.)
         #expect(Array(run.creamRef.prefix(3)) == Array(run.groundCornerFinal.prefix(3)),
                 "Far-corner RGB drifted \(run.creamRef) → \(run.groundCornerFinal) at chromatic=0 — the held canvas RGB is not lossless.")
 
-        // 3. CONTINUITY (pour LINE) — the laid line is a single connected component (no gaps between
-        //    consecutive capsules; they share an endpoint by construction via the painterTau tail
-        //    chaining). At silence there are no satellites, so the corridor holds the whole painting.
-        //    (Onset-driven splatter is exercised by test_splatter_realStem_* below.)
+        // 3. CONTINUITY (pour LINE) — the laid line is a single connected ribbon along the
+        //    trajectory corridor (calm frames ⇒ no satellites; first pour ⇒ offset 0).
         #expect(line.continuity >= 0.95,
                 "Pour-line corridor continuity is only \(line.continuity) — the line has gaps (Skein.1 invariant regressed).")
 
@@ -177,8 +191,14 @@ struct SkeinCanvasHoldTest {
         #expect(isCreamish(run.groundCornerFinal),
                 "Ground corner is not cream-ish (bright, R≳G≳B). \(run.groundCornerFinal)")
 
-        // 5. WHITE LINE — at least one fully-laid texel is white (the pour colour; palette is Skein.3).
-        #expect(whiteOK, "No white texel found — the pour line did not render white-on-cream.")
+        // 5. NEVER WHITE (Skein.5.1 — the Matt M7 2026-06-09 defect, inverted from the old Skein.1
+        //    assertion): no laid texel is white; the line is in a palette colour from its first frame.
+        #expect(!whitePresent,
+                "A white texel was laid — the white-baseline pour regressed (the painter must never pour white).")
+
+        // 6. THE PAINTER RESTS AT SILENCE — no stems ⇒ no commits, clock paused ⇒ pure cream canvas.
+        #expect(silentPainted == 0,
+                "\(silentPainted) painted pixels at silence — the painter must rest (no music, no paint).")
     }
 
     // MARK: - Wetness channel (Skein.ENGINE.2): stamp + decay-pauses-at-silence (live dispatch path)
@@ -333,6 +353,11 @@ struct SkeinCanvasHoldTest {
         // 6. STEM WARMUP (D-019) — no bursts at silence (no first-frame colour pop).
         #expect(silenceBursts == 0,
                 "\(silenceBursts) bursts spawned at silence — the D-019 warmup gate leaked.")
+
+        // 6b. NEVER WHITE (Skein.5.1) — canvas birth + real stems is exactly the track-start
+        //     scenario of Matt's M7 defect: the first stroke must already be a palette colour.
+        #expect(!hasWhiteTexel(run.finalPixels),
+                "A white texel was laid on a real-stem run — the white-baseline pour regressed.")
 
         // 7. BAKE + HOLD — an early-painted pixel persists to the end (lossless held paint). Use a
         //    colour-AGNOSTIC strongly-painted finder (max delta from cream), not a saturated-only one:
@@ -664,6 +689,7 @@ struct SkeinCanvasHoldTest {
 
         print("""
         [skein_colorfreeze] session \(session.lastPathComponent), live path \(w)×\(h), switch stem \(domA)→\(domB):
+          breakpoint ring: \(bps.map { "(τ\(String(format: "%.2f", $0.tauStart)) col\(String(format: "%.2f/%.2f/%.2f", $0.color.x, $0.color.y, $0.color.z)) off\(String(format: "%.3f,%.3f", $0.offset.x, $0.offset.y)))" }.joined(separator: " "))
           dominant: frame60=\(doms[min(60, doms.count - 1)]) → end=\(doms.last ?? -1)   tauSwitch=\(String(format: "%.2f", tauSwitch)) dtau=\(String(format: "%.4f", dtau))
           new-pour jump |offB−offA| = \(String(format: "%.3f", jumpMag))  (offA \(offA) offB \(offB))
           PRE-switch @offA   X=\(pre.x) Y=\(pre.y) cream=\(pre.cream)    [expect X≫Y — old paint KEEPS its colour]
@@ -996,9 +1022,27 @@ struct SkeinCanvasHoldTest {
         // Frames at ~2 / 5 / 10 / 20 s of features.time — a single frame cannot show accumulation.
         let secs: [Float] = [2, 5, 10, 20]
         let checkpoints = secs.map { Int(($0 / dt).rounded()) }   // [120, 300, 600, 1200]
+        // Skein.5.1: at silence the painter rests (no line at all), so the sheet drives CALM real
+        // stem frames — the pour line alone, in its committed colour, never white.
+        guard let session = Self.firstRecordedSession(),
+              let all = loadStemFrames(session, maxFrames: 6000), all.count > 400 else {
+            print("SkeinCanvasHoldTest: no recorded session — skipping contact sheet (real audio)")
+            return
+        }
+        let calm = all.filter {
+            max(max($0.drumsEnergyDev, $0.bassEnergyDev), max($0.vocalsEnergyDev, $0.otherEnergyDev))
+                < SkeinState.onsetDevThreshold
+        }
+        guard calm.count >= 60 else {
+            print("SkeinCanvasHoldTest: too few calm frames — skipping contact sheet")
+            return
+        }
+        let frames = (checkpoints.max() ?? 0) + 1
+        let stems = (0..<frames).map { calm[$0 % calm.count] }
         let run = try runPourAccumulation(
-            chromatic: 0, frames: (checkpoints.max() ?? 0) + 1, width: w, height: h,
-            aspect: Float(w) / Float(h), startTime: 0.0, checkpoints: Set(checkpoints), fx: fx)
+            chromatic: 0, frames: frames, width: w, height: h,
+            aspect: Float(w) / Float(h), startTime: 0.0, checkpoints: Set(checkpoints), fx: fx,
+            stemFrames: stems)
 
         let outDir = try makeOutputDir()
         var ordered: [[UInt8]] = []
@@ -1238,6 +1282,7 @@ struct SkeinCanvasHoldTest {
         // the raw canvas (composeTex); the sheen = the difference between these two.
         var finalBlitPixels: [UInt8]
         var checkpointBlitPixels: [Int: [UInt8]]   // BLIT (sheened) output at each checkpoint (contact sheet)
+        var finalPainterTau: Float = 0             // painter clock at the last frame (corridor τ-range)
     }
 
     /// Skein.5 fixture drive: mood (constant smoothed-classifier-style valence/arousal), an
@@ -1387,7 +1432,8 @@ struct SkeinCanvasHoldTest {
             groundCornerFinal: groundCornerFinal, earlyXY: earlyXY, earlyStillPaintedFinal: earlyStill,
             perFrameCounts: perFrameCounts,
             cornerAlphaSeries: cornerAlphaSeries, maxAlphaSeries: maxAlphaSeries,
-            finalBlitPixels: finalBlitPixels, checkpointBlitPixels: checkpointBlitPixels)
+            finalBlitPixels: finalBlitPixels, checkpointBlitPixels: checkpointBlitPixels,
+            finalPainterTau: skein.painterTau)
     }
 
     // MARK: - Pass encoders (mirror the live mv_warp dispatch path)
