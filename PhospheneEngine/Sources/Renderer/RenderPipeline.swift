@@ -140,6 +140,35 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var latestFeatures = FeatureVector.zero
     let featuresLock = NSLock()
 
+    // MARK: - Live Structural-Section Signal (Skein.ENGINE.3, D-151)
+
+    /// Latest live structural-section prediction from the MIR `StructuralAnalyzer`
+    /// (`{ sectionIndex, sectionStartTime, predictedNextBoundary, confidence }`).
+    ///
+    /// CPU-only — NOT part of the GPU `FeatureVector`/`Common.metal` contract (no D-099
+    /// migration). Rides the same lock-guarded analysis→render value-injection bridge as
+    /// `setMood`/`latestFeatures` (D-024 / FA #25), but as a **separate** store: structure is
+    /// not a `FeatureVector` field, so it is never clobbered by `setFeatures`. Written from the
+    /// analysis queue (`setStructuralPrediction`, alongside the per-frame MIR features publish);
+    /// read on the render thread by the Skein mesh-preset tick closure. Defaults to `.none`, and
+    /// **only `SkeinState` consumes it** — every other preset's tick ignores it, so this store is
+    /// inert for them (the byte-identical guarantee). See `setStructuralPrediction`.
+    ///
+    /// Internal (not `private`) so the `setStructuralPrediction` setter in the
+    /// `RenderPipeline+PresetSwitching` extension can write it — exactly as `latestFeatures` is
+    /// internal so `setMood` can, and `currentDrawableSize` backs `mvWarpDrawableSize`. Always
+    /// access under `structuralPredictionLock` (read via the `latestStructuralPrediction` getter).
+    var storedStructuralPrediction: StructuralPrediction = .none
+    let structuralPredictionLock = NSLock()
+
+    /// The latest live structural-section prediction (lock-guarded read). `.none` until the
+    /// analysis queue first publishes one (and after a track-change / preset-switch reset). Read by
+    /// the Skein tick closure on the render thread — the analysis thread writes it via
+    /// `setStructuralPrediction`, exactly the `setMood` cross-thread situation. (Skein.ENGINE.3)
+    public var latestStructuralPrediction: StructuralPrediction {
+        structuralPredictionLock.withLock { storedStructuralPrediction }
+    }
+
     // MARK: - Session Recording Hook
 
     /// Per-frame capture hook for SessionRecorder. Invoked after `renderFrame`,

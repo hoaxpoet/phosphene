@@ -2579,3 +2579,13 @@ The wet-now / dry-past legibility device (`SKEIN_DESIGN §1.4`): freshly-landed 
 ---
 
 
+
+### 18.10 Mood / structure / anticipation on a lossless canvas (Skein.5, D-152)
+
+The canvas-hold invariant ("paint lands and never moves") constrains WHERE musicality modulation may enter. Three placement rules, each learned by construction at Skein.5:
+
+- **Anything per-frame that displaces drawn positions smears.** The pour tail is recomputed closed-form every frame; a per-frame positional offset repaints the whole tail shifted → ghosting. Two safe channels exist: (a) **τ-warping** — modulate the painter-clock RATE, never the position; every tail sample stays exactly ON the trajectory curve (samples slide along the curve, never laterally), so wind-up/flick anticipation (`1 − 0.45·smoothstep(0.70, 1, beat_phase01)` + a 90 ms flick release at the wrap) cannot smear, by construction; (b) **pour-start offsets** — captured once per breakpoint and frozen (the D-150 jump mechanism), the channel the structural region lean rides. If a new modulation idea fits neither channel, it moves laid paint — redesign it.
+- **Mood tints at LAY TIME, frozen.** Tint the LINEAR palette colour at the moment a breakpoint/burst is pushed (multiplicative warm/cool ±18 % R / ∓16 % B + saturation-around-luma with a 0.85 floor — never `mix(cream, hue, sat)`), and the lossless hold turns the mood into an ARCHIVE: the finished canvas shows the song's emotional arc in its layers. Tinting at READ time would repaint history every frame — the opposite read. Identity at valence 0 keeps silence + all earlier gates byte-identical.
+- **Display-only adornments live in the comp fragment, never the overlay.** The overlay BAKES (that is its job); the comp is the only non-persistent surface (FA #70). The Skein.5 locus binds the slot-6 preset buffer at blit fragment buffer 1 via a gated `bindCompStagePresetBuffer` (inert for every other preset — the ENGINE.2 precedent). A luminous point over a CREAM ground needs an occlusion shadow ring to read ("hovering" = it casts one); warm-white alone vanishes on cream.
+
+Confidence-gate structure bias to exactly zero below the gate (smoothstep 0.25→0.55 on `StructuralPrediction.confidence`) — ambient/unpredictable material must keep the pure allover read, and "exactly zero" is testable (`conf 0.05 ⇒ pulse 0, lean 0, breaks +0`). Density-flurry proofs need IDENTICAL tiled audio either side of the injected boundary, or the music explains the density change, not the pulse.

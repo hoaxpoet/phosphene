@@ -30,11 +30,12 @@ Companion design doc: `SKEIN_pollock_preset_architecture.md` (becomes the seed f
 | **Skein.3** | Stem palette + full emission routing | preset | Skein.2 | Harness + replay registration; routing is legible |
 | **Skein.ENGINE.2** | Wetness channel | engine | — (land before Skein.4) | ✅ **landed 2026-06-08** (D-149, approach A) — DB/FM byte-identical, RGB lossless-hold intact, stamp/decay/holds-at-silence green |
 | **Skein.4** | Wet/dry sheen *(cut-line — NOT invoked)* | preset | ENGINE.2, Skein.3 | ✅ **M7 PASS 2026-06-09** (4 rounds — "rings are gone and the drying looks good"): union-SDF line, darker-saturated-glossy wet, wetness-blur killed the displaced rings |
-| **Skein.4.1** | Colour-per-stroke | preset | Skein.4 | ✅ **landed 2026-06-09** (D-150; pending Matt's M7) — colour-breakpoint ring freezes the line colour per-segment AND starts a displaced NEW pour on a switch (Matt's option 2); coverage byte-identical (no rings regression); live-path freeze+new-pour test green |
-| **Skein.5** | Mood + structure + anticipation + locus flag | preset | Skein.3 | Harness across mood/section fixtures |
+| **Skein.4.1** | Colour-per-stroke | preset | Skein.4 | ✅ **M7 PASS 2026-06-09** (D-150, 2 rounds) — colour-breakpoint ring freezes the line per-segment + displaced NEW pour on a switch (option 2); round-2 added a min-dwell + hysteresis so pours are long continuous drips (63→10 pours); coverage byte-identical |
+| **Skein.ENGINE.3** | Structural-section signal → preset tick | engine | Skein.4.1 | ✅ **landed 2026-06-09 (D-151)** — gated `RenderPipeline.setStructuralPrediction` (separate lock, default `.none`; mirrors `setMood`) delivers live `StructuralPrediction` to `SkeinState.tick(…structure:)` from the per-frame MIR publish; CPU-only, byte-identical (all presets + Skein), no GPU-contract change; `SkeinStructureSignalTests` proves the live path (FA #66); signal STORED for Skein.5, visually identical to today |
+| **Skein.5** | Mood + structure + anticipation + locus flag | preset | Skein.3, **ENGINE.3** (for structure) | ✅ **landed 2026-06-09 (D-152; pending Matt M7)** — BUG-035 fixed first (the structure signal's ring-wrap dedup); mood frozen at lay-time (the canvas archives the arc); structure biased through pour offsets, conf-gated to exactly zero; anticipation = τ-warping (cannot smear by construction); locus display-only at comp, flagged OFF |
 | **Skein.6** | Certification | preset | all | Soak + acceptance + determinism gate + **Matt M7** |
 
-Execution order is top-to-bottom. ENGINE.2 is shown near Skein.4 because that's the increment that needs it; it can be built any time after approval but **must land before Skein.4 opens** (infra-before-preset, never bundled).
+Execution order is top-to-bottom. ENGINE.2 is shown near Skein.4 because that's the increment that needs it; it can be built any time after approval but **must land before Skein.4 opens** (infra-before-preset, never bundled). **ENGINE.3 likewise must land before Skein.5's structure sub-feature** — Matt chose the deliberate engine increment (option (a)) over an in-state proxy for real section-awareness.
 
 ---
 
@@ -208,8 +209,10 @@ Execution order is top-to-bottom. ENGINE.2 is shown near Skein.4 because that's 
 
 ---
 
-### Skein.4.1 — Colour-per-stroke ✅ (2026-06-09) — pending Matt's M7
+### Skein.4.1 — Colour-per-stroke ✅ M7 PASS (2026-06-09, 2 rounds)
 **preset (+ small SkeinState/SkeinUniforms extension) · depends on: Skein.4 · gate: Matt's M7 — a colour change reads as a new pour, never the existing stroke recolouring**
+
+> **M7-round-2 (Matt: "the lines are very short rather than a long continuous dripping/pouring"):** the dominant-stem argmax flickers (63 switches / 44 s), so a new pour now COMMITS only on a sustained, decisive change — `minPourTau = 3.0` τ since the last switch AND the challenger leads by `pourSwitchHysteresis = 1.25×`; colour/flow follow the *committed* pour; bursts stay ungated. 63 → 10 long pours. "Why no teal lines?" (later session) = working-as-designed: the line is the *decisive dominant* stem, and that song was vocals+bass-dominated; `other` (teal) appears only as splatter unless it's decisively dominant (song-dependent).
 
 **Defect (Matt M7, session `2026-06-09T14-19-14Z`).** The pour line is redrawn closed-form each frame over a ~40-frame tail in ONE current `lineCol` (the dominant-stem argmax), so a dominant-stem switch recoloured the recent ~40 frames of already-laid line ("the colour changes in the middle of a stroke"). The bursts were already correct (frozen at spawn); only the line recoloured.
 
@@ -221,14 +224,23 @@ Execution order is top-to-bottom. ENGINE.2 is shown near Skein.4 because that's 
 
 ---
 
-### Skein.5 — Mood + structure + anticipation + painter-locus flag
-**preset · depends on: Skein.3 (Skein.4 optional) · gate: harness across mood/section fixtures**
+### Skein.ENGINE.3 — Structural-section signal → preset tick ✅ (landed 2026-06-09; D-151; Matt chose option (a))
+**engine · depends on: Skein.4.1 · gate: signal reaches `SkeinState.tick` end-to-end; every other preset byte-identical; no GPU-contract change — ALL MET**
+
+Plumbs the live `StructuralPrediction` (`MIRPipeline.latestStructuralPrediction` — `sectionIndex`/`sectionStartTime`/`predictedNextBoundary`/`confidence`) to the preset tick via a **gated `RenderPipeline.setStructuralPrediction(_:)`** (a separate lock-guarded `storedStructuralPrediction` + computed `latestStructuralPrediction`, default `.none` — mirrors the `setMood` value-injection bridge). **Landed (D-151):** the setter is called from `VisualizerEngine+Audio.swift` **at the per-frame MIR publish (right after `setFeatures`, reading `mir.latestStructuralPrediction`)** — the audit moved it off the `setMood` site the prompt's recon named because the `setFeatures` site is unconditional + freshest (the `setMood` path early-returns when the mood classifier is absent / `classify` throws). The Skein tick closure reads `pipeline.latestStructuralPrediction` and passes it to the extended `SkeinState.tick(…structure: = .none)`, which STORES the section index/start-time/confidence + a one-frame `didCrossSectionBoundaryThisFrame` flag (cleared on `reseed`; reset to `.none` on preset switch). **Delivers + proves the signal only — the structural VISUAL is Skein.5** (infra-before-preset, FA #59/#60); the app is **visually identical to today**. CPU-only (no `FeatureVector`/`Common.metal` change; never written to the GPU buffer). Byte-identical for all other presets AND Skein itself (`PresetRegressionTests` + DB/FM MVWarp + loader count all green). Gate `SkeinStructureSignalTests` (FA #66 — real bridge + `meshPresetTick` invocation indirection + ingestion + one-frame boundary). Prompt: `~/Downloads/SKEIN.ENGINE.3_structure_plumbing_session_prompt.md`.
+
+---
+
+### Skein.5 — Mood + structure + anticipation + painter-locus flag ✅ (landed 2026-06-09; D-152; pending Matt M7)
+**preset · depends on: Skein.3 + Skein.4.1 + **Skein.ENGINE.3** (for structure) · gate: harness across mood/section fixtures + Matt M7** · prompt: `~/Downloads/SKEIN.5_mood_structure_session_prompt.md`
+
+**Landed (D-152) — see the ENGINEERING_PLAN Skein.5 row for the full record.** BUG-035 (NoveltyDetector ring-wrap dedup — the structure signal's corruption) was fixed first as its own increment. The four placement decisions that made the sub-features safe on a lossless canvas: mood tint at LAY TIME frozen into breakpoints/bursts (the canvas archives the emotional arc; identity at valence 0); the structural region lean routed through the per-pour breakpoint OFFSETS (a per-frame painter displacement would smear the redrawn tail), conf-gated smoothstep(0.25, 0.55) to EXACTLY zero below; anticipation as τ-SPEED warping (samples stay ON the trajectory curve — no smear by construction; exactly 1.0 at silence); the locus DISPLAY-ONLY in `skein_comp_fragment` via a gated blit buffer-1 binding (the geometry overlay would bake it permanently), OFF by default. Gates: warmth(R−B) 106.4 vs 81.4, coverage +24 %, pale 0.003; boundary flurry 88→144 on identical tiled audio, lean 0.083, conf 0.05 ⇒ all-zero; wind-up 0.649 / flick 1.627, silence 1.0; locus canvas byte-identical on/off. Craft: `SHADER_CRAFT.md §18.10`.
 
 **Goal.** The slow global modulators + the gesture quality that makes the painter read as a performer + the agreed subtle structural bias.
 
 **Scope.**
 - **Mood:** valence → palette warmth/saturation; arousal → vigour/density. Smooth valence/arousal **in state** (never via `setFeatures` — FA #25).
-- **Structure (subtle bias):** on `StructuralPrediction` boundaries, shift palette emphasis + pour density, and softly lean the painter's region so repeated sections revisit and build density — preserving overall allover-ness.
+- **Structure (subtle bias):** CONSUME the **Skein.ENGINE.3** signal — on `StructuralPrediction` boundaries (`sectionIndex` change), shift palette emphasis + pour density, and softly lean the painter's region so repeated sections revisit and build density — preserving overall allover-ness. **Gate the bias on `confidence`** (low → no bias, allover intact). ENGINE.3 must land first.
 - **Anticipation:** painter wind-up/coil on the rising edge of `beatPhase01`, release into a flick — motion driven by **beat phase, not raw onset** (FA #33). (Splatter emission itself stays onset-driven; that's the accent.)
 - **Painter locus (flagged, off by default):** a faint luminous pour-point hovering above the canvas, trackable by eye.
 
@@ -269,7 +281,7 @@ Execution order is top-to-bottom. ENGINE.2 is shown near Skein.4 because that's 
 
 ## Sequencing, cut-lines, and risk
 
-- **Critical path:** Skein.0 → ENGINE.1 → Skein.1 → Skein.2 → Skein.3 → Skein.5 → Skein.6. Wet-sheen (ENGINE.2 + Skein.4) is a parallel branch off Skein.3 and the explicit **cut-line** — defer to V2 under schedule pressure; matte-only still certifies.
+- **Critical path:** Skein.0 → ENGINE.1 → Skein.1 → Skein.2 → Skein.3 → Skein.4 → Skein.4.1 → **ENGINE.3 → Skein.5** → Skein.6. Wet-sheen (ENGINE.2 + Skein.4) was a parallel branch off Skein.3 (cut-line NOT invoked — landed). **ENGINE.3** (structural-signal plumbing, Matt's option (a)) is the prerequisite for Skein.5's structure sub-feature (infra-before-preset).
 - **The risk is concentrated in Skein.2** (splatter morphology = paint vs particle-fountain). Everything before it is low-risk plumbing; everything after is routing on top of a working look. Budget iteration there.
 - **Two GPU-stall traps** (ENGINE.1, ENGINE.2): any shared mv_warp format/transfer change must be gated, or the preset-transition beachball (D-137 pitfall) bites. Both engine increments are golden-regression-locked for exactly this reason.
 - **8-bit assumption** is verified at Skein.6 soak, not assumed earlier — but it's load-bearing for the whole "lossless identity hold" story, so if it ever fails the fix (16-bit canvas) is a trivial format swap, not a redesign.
