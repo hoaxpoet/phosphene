@@ -367,7 +367,8 @@ public final class SessionRecorder: @unchecked Sendable {
             frame_cpu_ms,frame_gpu_ms,track_elapsed_s,cached_bass_proportion,\
             mir_pipeline_ms,stem_analyzer_ms,beat_detector_ms,pitch_tracker_ms,mood_classifier_ms,\
             encode_cpu_ms,renderframe_cpu_ms,\
-            gbuffer_pass_ms,lighting_pass_ms,ssgi_pass_ms,post_process_pass_ms
+            gbuffer_pass_ms,lighting_pass_ms,ssgi_pass_ms,post_process_pass_ms,\
+            pulse_phase01,pulse_amp01
 
             """
         let stemsHeader = """

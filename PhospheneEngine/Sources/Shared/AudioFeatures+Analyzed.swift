@@ -36,9 +36,10 @@ import Foundation
 ///     // Bar phase (floats 37–38)
 ///     float bar_phase01;   // 0 in reactive mode
 ///     float beats_per_bar; // 4 default
-///     // Padding to 192 bytes (floats 39–48)
-///     float _pad3, _pad4, _pad5, _pad6, _pad7,
-///           _pad8, _pad9, _pad10, _pad11, _pad12;
+///     float track_elapsed_s;            // float 39 (reclaimed _pad3, CSP.3)
+///     float pulse_phase01, pulse_amp01; // floats 40–41 (FBS Stage 1, D-153)
+///     // Padding to 192 bytes (floats 42–48)
+///     float _pad6, _pad7, _pad8, _pad9, _pad10, _pad11, _pad12;
 /// };
 /// ```
 @frozen
@@ -187,10 +188,17 @@ public struct FeatureVector: Sendable {
     /// fields 1–38.
     public var trackElapsedS: Float
 
-    // --- Padding to 192 bytes (48 floats total — floats 40–48) ---
+    /// FBS Stage 1 (D-153, float 40): steady first-note-anchored beat-pulse
+    /// phase — 0 at each pulse beat → 1 at the next; cached-grid tempo, NEVER
+    /// drift-corrected (unlike `beatPhase01`). Reclaimed `_pad4`; written by
+    /// `BeatPulseClock`.
+    public var pulsePhase01: Float
+    /// Pulse gate: 0 before the first note / in sustained silence, 1 while
+    /// music plays. Stage 2 adds energy scaling. Reclaimed `_pad5`.
+    public var pulseAmp01: Float
+
+    // --- Padding to 192 bytes (48 floats total — floats 42–48) ---
     // swiftlint:disable identifier_name
-    var _pad4: Float
-    var _pad5: Float
     var _pad6: Float
     var _pad7: Float
     var _pad8: Float
@@ -239,9 +247,9 @@ public struct FeatureVector: Sendable {
         // ffoColdStartFixEnabled toggle is off, MIRPipeline writes 100.0
         // instead so the shader-side crossfade collapses to the warm path.
         self.trackElapsedS = 0
-        // Padding
-        self._pad4 = 0
-        self._pad5 = 0; self._pad6 = 0; self._pad7 = 0; self._pad8 = 0
+        // FBS Stage 1 pulse (BeatPulseClock via MIRPipeline) + padding.
+        self.pulsePhase01 = 0; self.pulseAmp01 = 0
+        self._pad6 = 0; self._pad7 = 0; self._pad8 = 0
         self._pad9 = 0; self._pad10 = 0; self._pad11 = 0; self._pad12 = 0
     }
 
