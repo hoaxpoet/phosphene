@@ -32,6 +32,17 @@ Test infrastructure: swift-testing + XCTest across unit, integration, regression
 
 ## Recently Completed
 
+### Phase FBS — Ferrofluid Beat Sync ⏳ (2026-06-09, staged; kickoff `docs/prompts/FFO_BEAT_SYNC_KICKOFF.md`)
+
+Make Ferrofluid Ocean's spikes punch on a steady, **first-note-anchored**, tempo-locked beat pulse (FFO currently reads "frozen": its only reactive motion is spike height from the smoothed AGC bass, held near-constant). Stage the core before layering: prove the steady anchored pulse with **measurement** (a manual M7 cannot judge beat-lock) before building energy/mood/handoff. Three standing rules: plain-English-only to Matt (no code/jargon), never over-promise (measure, don't assert), validation = measurement.
+
+- **Stage 0 — verify the load-bearing assumptions** ✅ (`docs/diagnostics/FBS_STAGE0_FINDINGS_2026-06-09.md`, tools `tools/fbs/`). PCM ground truth (SZ2 + Cherub Rock ×6 takes) + features-proxy on all tracks. Findings: cached-grid **tempo is reliably correct** (Cherub 1.1 % err, reproducible) → a steady pulse at the pre-analysed tempo stays locked; cached-grid **phase is NOT reliable / cross-capture-unstable** (6 takes → 6 downbeat positions, ±½ beat) → even local files anchor to the first note, not the grid; **live drift tracker wanders** 50–90 ms over the opening → hold steady, don't chase. **Matt's correction:** anchor to the **first NOTE** (silence→sound = the downbeat), not the first strong hit — verified: a pulse anchored at the first note lands within ~28 ms of the beat, consistent across takes, beating the grid's scattered phase. Streaming session (`21-23-07Z`) confirmed the thesis: Love Rehab starts locked then the live tracker swings ~⅔ beat and breaks it; most other streaming tracks never lock (jazz / odd-meter / weak signal / wrong grid tempo).
+- **FBS pre-step — BUG-038: kill the FFO flicker first** ✅ (Matt's call — a clean baseline to evaluate beat-sync against). The preset-agnostic ray-march light formula stepped 7–9 perceptible times/sec (the beat-onset brightness term fires ~97 % of frames; BUG-019 residual). Fixed by temporally smoothing the light multiplier (EMA τ ≈ 0.12 s, `RayMarchPipeline.smoothLightIntensity`) → ~0 steps/sec, mean-preserving (no Nimbus regression), formula unchanged. New pure-function gates in `RayMarchPipelineTests`; golden hashes unchanged; full suite green modulo the pre-existing fixture-absence + Skein.4.1 failures. **Awaiting Matt M7** (needs the fix on his build). `KNOWN_ISSUES.md` BUG-038, `RELEASE_NOTES_DEV.md [dev-2026-06-09-flicker]`.
+- **Stage 1 — build ONLY the anchored steady pulse** ⏳ next: first-note anchor + cached tempo + dead-steady (no wandering), driving FFO spike height (replace the `f.bass` term); prove through the live `mv_warp`/staged path on real recorded audio that it anchors, holds steady, and the spike field moves — numbers to Matt, then STOP.
+- **Stage 2** (energy + mood) / **Stage 3** (bar-boundary handoff to live beat) — only after Stage 1 is accepted.
+
+Local worktree branch `claude/intelligent-shirley-1ce3b4`, not on `main`. Beat-phase is the known-hard FA #69 area — tempo solid, phase is perception-not-precision.
+
 ### Increment AGC2 — BUG-027: per-band EMA deviation pivot + cold-start warmup ✅ (2026-06-05 → 06, D-146)
 
 The FeatureVector band deviation primitives (`bassDev`/`midDev`/`trebDev`) were derived against a fixed 0.5 pivot while the AGC normalises *total* 6-band energy to 0.5 → `midDev`/`trebDev` fired ~0 % on all music (BUG-027). Staged measure → decide → fix → validate → close:

@@ -290,6 +290,28 @@ public final class RayMarchPipeline: @unchecked Sendable {
     /// first draw.  Reset on preset change.
     public var lastDollyFrameTime: CFTimeInterval?
 
+    /// EMA-smoothed audio-driven light-intensity multiplier (BUG-038, continuation
+    /// of BUG-019). The raw per-frame multiplier jitters: the beat-onset signals
+    /// (`beatBass`/`beatMid`/`beatComposite`) fire on ~97 % of frames on real
+    /// sessions — a near-constant jitter, not clean beats — and `f.bass` is noisy,
+    /// so the whole scene's brightness flickered 7–9 perceptible steps/sec. This
+    /// holds the low-passed value; see `smoothLightIntensity`. Carries across preset
+    /// changes (re-converges within ~τ); seeded to the neutral 1.0 baseline.
+    public var smoothedLightIntensityMul: Float = 1.0
+
+    /// Low-pass (EMA) the audio-driven light-intensity multiplier so it cannot step
+    /// frame-to-frame. `tau` is the time constant in seconds (~0.12 s suppresses the
+    /// flicker to ~0 steps/sec while preserving the slower musical brightness swell).
+    /// Pure + deterministic so the flicker suppression is unit-testable without a GPU.
+    /// `dt <= 0` (first frame after a stall / preset load) returns the target verbatim
+    /// so there is no startup lag.
+    public static func smoothLightIntensity(previous: Float, target: Float,
+                                            dt: Float, tau: Float = 0.12) -> Float {
+        guard dt > 0, tau > 0 else { return target }
+        let alpha = min(1.0, dt / (tau + dt))
+        return previous + alpha * (target - previous)
+    }
+
     /// Captured baseline scene values from the preset JSON.
     public struct BaseSceneSnapshot: Sendable {
         public var cameraPosition: SIMD3<Float> = .zero
