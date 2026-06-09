@@ -146,6 +146,14 @@ public final class SessionRecorder: @unchecked Sendable {
     var latestSSGIPassMs: Float?
     var latestPostProcessPassMs: Float?
 
+    // MARK: Video-stall instrumentation (BUG-039). All accessed only from the
+    // serial `queue`. The append/not-ready/pool counters throttle their log
+    // lines; `videoFailureLogged` makes the one-shot writer-failed line fire once.
+    var videoFailureLogged = false
+    var videoNotReadyCount = 0
+    var videoPoolFailCount = 0
+    var videoAppendFailCount = 0
+
     // MARK: Structural prediction (Skein.5.2 — section evidence in artifacts).
     // Updated by `recordStructuralPrediction(_:)` from the per-frame MIR publish
     // (the same site that calls `RenderPipeline.setStructuralPrediction`).
