@@ -82,6 +82,19 @@ extension SessionRecorder {
     /// these CSV cells empty (the recorder's latest* fields stay at their last
     /// observed value, which is fine — diagnostic scans should filter by the
     /// known-active preset).
+    /// Record the latest structural-section prediction for the next features.csv
+    /// row's `section_index` / `section_start_s` / `section_confidence` columns.
+    /// Called from the per-frame MIR publish (the same site that feeds
+    /// `RenderPipeline.setStructuralPrediction` — Skein.ENGINE.3 / D-151), so the
+    /// artifact records exactly the signal the Skein.5 structural bias consumes.
+    /// Safe to call from any thread — hops onto the recorder's serial queue. (Skein.5.2)
+    public func recordStructuralPrediction(_ prediction: StructuralPrediction) {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            self.latestStructuralPrediction = prediction
+        }
+    }
+
     public func recordRayMarchPassTimings(
         gbufferMs: Float,
         lightingMs: Float,

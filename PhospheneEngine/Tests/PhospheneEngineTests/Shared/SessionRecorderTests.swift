@@ -25,6 +25,11 @@ import Metal
 
 final class SessionRecorderTests: XCTestCase {
 
+    /// Skein.5.2 appended three structural columns at the very end of features.csv
+    /// (`section_index,section_start_s,section_confidence`); every pre-existing from-end
+    /// cell offset in these tests is shifted by this tail.
+    private let structTail = 3
+
     private var tempDir: URL!
 
     override func setUpWithError() throws {
@@ -103,6 +108,9 @@ final class SessionRecorderTests: XCTestCase {
 
     // MARK: - frame_cpu_ms / frame_gpu_ms / per-subsystem / render-loop / ray-march pass columns
     //
+    // Skein.5.2: the last three columns are now `section_index,section_start_s,
+    // section_confidence`; the offsets below are relative to `count - structTail`.
+    //
     // CSV column layout from the end after PERF.2-pass (BUG-019 instrumentation):
     //   cells[count -  1] = post_process_pass_ms    (PERF.2-pass)
     //   cells[count -  2] = ssgi_pass_ms            (PERF.2-pass)
@@ -135,9 +143,51 @@ final class SessionRecorderTests: XCTestCase {
                       "features.csv header must contain the PERF.1 timing block, got: \(header)")
         XCTAssertTrue(header.contains("encode_cpu_ms,renderframe_cpu_ms"),
                       "features.csv header must contain the PERF.2-render timing block, got: \(header)")
-        XCTAssertTrue(header.hasSuffix(
+        XCTAssertTrue(header.contains(
             "gbuffer_pass_ms,lighting_pass_ms,ssgi_pass_ms,post_process_pass_ms"),
-                      "features.csv header must end with the PERF.2-pass timing block, got: \(header)")
+                      "features.csv header must contain the PERF.2-pass timing block, got: \(header)")
+        XCTAssertTrue(header.hasSuffix("section_index,section_start_s,section_confidence"),
+                      "features.csv header must end with the Skein.5.2 structural block, got: \(header)")
+    }
+
+    func test_recordStructuralPrediction_thenRecordFrame_writesSectionColumns() throws {
+        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
+        recorder.recordStructuralPrediction(StructuralPrediction(
+            sectionIndex: 3, sectionStartTime: 42.5, predictedNextBoundary: 60, confidence: 0.73))
+        recorder.recordFrame(features: FeatureVector.zero, stems: StemFeatures.zero)
+        recorder.finish()
+
+        let csv = try String(
+            contentsOf: recorder.sessionDir.appendingPathComponent("features.csv"),
+            encoding: .utf8)
+        let rows = csv.split(separator: "\n")
+        XCTAssertEqual(rows.count, 2, "Header + 1 data row")
+        let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
+            .map(String.init)
+        XCTAssertEqual(cells[cells.count - 3], "3", "section_index round-trip")
+        XCTAssertEqual(Float(cells[cells.count - 2]) ?? -1, 42.5, accuracy: 0.001,
+                       "section_start_s round-trip")
+        XCTAssertEqual(Float(cells[cells.count - 1]) ?? -1, 0.73, accuracy: 0.001,
+                       "section_confidence round-trip")
+    }
+
+    func test_recordFrame_beforeAnyStructuralPrediction_writesZeroSectionColumns() throws {
+        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
+        recorder.recordFrame(features: FeatureVector.zero, stems: StemFeatures.zero)
+        recorder.finish()
+
+        let csv = try String(
+            contentsOf: recorder.sessionDir.appendingPathComponent("features.csv"),
+            encoding: .utf8)
+        let rows = csv.split(separator: "\n")
+        let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
+            .map(String.init)
+        // `.none` semantics: section 0, start 0, confidence 0 — "no prediction yet" is a
+        // legitimate zero state (unlike the timing columns' empty-cell convention, the
+        // structural zero IS the StructuralPrediction.none value the consumers see).
+        XCTAssertEqual(cells[cells.count - 3], "0")
+        XCTAssertEqual(Float(cells[cells.count - 2]) ?? -1, 0, accuracy: 0.0001)
+        XCTAssertEqual(Float(cells[cells.count - 1]) ?? -1, 0, accuracy: 0.0001)
     }
 
     func test_recordFrameTiming_thenRecordFrame_writesTimingValues() throws {
@@ -153,9 +203,9 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(rows.count, 2, "Header + 1 data row")
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        XCTAssertEqual(Float(cells[cells.count - 15]) ?? -1, 4.25, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - structTail - 15]) ?? -1, 4.25, accuracy: 0.001,
                        "frame_cpu_ms round-trip")
-        XCTAssertEqual(Float(cells[cells.count - 14]) ?? -1, 1.75, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - structTail - 14]) ?? -1, 1.75, accuracy: 0.001,
                        "frame_gpu_ms round-trip")
     }
 
@@ -175,8 +225,8 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(rows.count, 2)
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        XCTAssertEqual(cells[cells.count - 15], "", "frame_cpu_ms empty before any timing observed")
-        XCTAssertEqual(cells[cells.count - 14], "", "frame_gpu_ms empty before any timing observed")
+        XCTAssertEqual(cells[cells.count - structTail - 15], "", "frame_cpu_ms empty before any timing observed")
+        XCTAssertEqual(cells[cells.count - structTail - 14], "", "frame_gpu_ms empty before any timing observed")
     }
 
     func test_recordFrameTiming_gpuNil_writesEmptyGPUCellOnly() throws {
@@ -193,9 +243,9 @@ final class SessionRecorderTests: XCTestCase {
         let rows = csv.split(separator: "\n")
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        XCTAssertEqual(Float(cells[cells.count - 15]) ?? -1, 3.5, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - structTail - 15]) ?? -1, 3.5, accuracy: 0.001,
                        "frame_cpu_ms still written when gpu nil")
-        XCTAssertEqual(cells[cells.count - 14], "",
+        XCTAssertEqual(cells[cells.count - structTail - 14], "",
                        "frame_gpu_ms empty when gpuMs is nil")
     }
 
@@ -217,9 +267,9 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(rows.count, 2)
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        XCTAssertEqual(Float(cells[cells.count - 13]) ?? -1, 7.234, accuracy: 0.0005,
+        XCTAssertEqual(Float(cells[cells.count - structTail - 13]) ?? -1, 7.234, accuracy: 0.0005,
                        "track_elapsed_s round-trip — column count-13 (post-PERF.2-pass)")
-        XCTAssertEqual(Float(cells[cells.count - 12]) ?? -1, 0.31415, accuracy: 0.0001,
+        XCTAssertEqual(Float(cells[cells.count - structTail - 12]) ?? -1, 0.31415, accuracy: 0.0001,
                        "cached_bass_proportion round-trip — column count-12 (post-PERF.2-pass)")
     }
 
@@ -244,15 +294,15 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(rows.count, 2)
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        XCTAssertEqual(Float(cells[cells.count - 11]) ?? -1, 0.42, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - structTail - 11]) ?? -1, 0.42, accuracy: 0.001,
                        "mir_pipeline_ms round-trip — column count-11")
-        XCTAssertEqual(Float(cells[cells.count - 10]) ?? -1, 1.85, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - structTail - 10]) ?? -1, 1.85, accuracy: 0.001,
                        "stem_analyzer_ms round-trip — column count-10")
-        XCTAssertEqual(Float(cells[cells.count - 9]) ?? -1, 0.31, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - structTail - 9]) ?? -1, 0.31, accuracy: 0.001,
                        "beat_detector_ms round-trip — column count-9")
-        XCTAssertEqual(Float(cells[cells.count - 8]) ?? -1, 0.97, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - structTail - 8]) ?? -1, 0.97, accuracy: 0.001,
                        "pitch_tracker_ms round-trip — column count-8")
-        XCTAssertEqual(Float(cells[cells.count - 7]) ?? -1, 0.12, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - structTail - 7]) ?? -1, 0.12, accuracy: 0.001,
                        "mood_classifier_ms round-trip — column count-7")
     }
 
@@ -274,7 +324,7 @@ final class SessionRecorderTests: XCTestCase {
         // PERF.1 columns are at count-7 through count-11 after PERF.2-render +
         // PERF.2-pass appended six columns at the end. All five must be empty pre-firing.
         for offset in 7...11 {
-            XCTAssertEqual(cells[cells.count - offset], "",
+            XCTAssertEqual(cells[cells.count - structTail - offset], "",
                            "subsystem timing column count-\(offset) must be empty before first observation")
         }
     }
@@ -294,9 +344,9 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(rows.count, 2)
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        XCTAssertEqual(Float(cells[cells.count - 6]) ?? -1, 2.34, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - structTail - 6]) ?? -1, 2.34, accuracy: 0.001,
                        "encode_cpu_ms round-trip — column count-6")
-        XCTAssertEqual(Float(cells[cells.count - 5]) ?? -1, 1.50, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - structTail - 5]) ?? -1, 1.50, accuracy: 0.001,
                        "renderframe_cpu_ms round-trip — column count-5")
     }
 
@@ -313,8 +363,8 @@ final class SessionRecorderTests: XCTestCase {
         let rows = csv.split(separator: "\n")
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        XCTAssertEqual(cells[cells.count - 6], "", "encode_cpu_ms empty before first observation")
-        XCTAssertEqual(cells[cells.count - 5], "", "renderframe_cpu_ms empty before first observation")
+        XCTAssertEqual(cells[cells.count - structTail - 6], "", "encode_cpu_ms empty before first observation")
+        XCTAssertEqual(cells[cells.count - structTail - 5], "", "renderframe_cpu_ms empty before first observation")
     }
 
     // MARK: - PERF.2-pass ray-march per-pass timing columns
@@ -337,13 +387,13 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(rows.count, 2)
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        XCTAssertEqual(Float(cells[cells.count - 4]) ?? -1, 0.61, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - structTail - 4]) ?? -1, 0.61, accuracy: 0.001,
                        "gbuffer_pass_ms round-trip — column count-4")
-        XCTAssertEqual(Float(cells[cells.count - 3]) ?? -1, 0.84, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - structTail - 3]) ?? -1, 0.84, accuracy: 0.001,
                        "lighting_pass_ms round-trip — column count-3")
-        XCTAssertEqual(Float(cells[cells.count - 2]) ?? -1, 0.0, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - structTail - 2]) ?? -1, 0.0, accuracy: 0.001,
                        "ssgi_pass_ms round-trip — column count-2 (0.0 = SSGI suppressed this frame)")
-        XCTAssertEqual(Float(cells[cells.count - 1]) ?? -1, 0.42, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - structTail - 1]) ?? -1, 0.42, accuracy: 0.001,
                        "post_process_pass_ms round-trip — column count-1 (last)")
     }
 
@@ -361,7 +411,7 @@ final class SessionRecorderTests: XCTestCase {
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
         for offset in 1...4 {
-            XCTAssertEqual(cells[cells.count - offset], "",
+            XCTAssertEqual(cells[cells.count - structTail - offset], "",
                            "ray-march pass column count-\(offset) must be empty before first observation")
         }
     }
