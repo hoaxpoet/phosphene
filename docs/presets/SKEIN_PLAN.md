@@ -30,7 +30,7 @@ Companion design doc: `SKEIN_pollock_preset_architecture.md` (becomes the seed f
 | **Skein.3** | Stem palette + full emission routing | preset | Skein.2 | Harness + replay registration; routing is legible |
 | **Skein.ENGINE.2** | Wetness channel | engine | — (land before Skein.4) | ✅ **landed 2026-06-08** (D-149, approach A) — DB/FM byte-identical, RGB lossless-hold intact, stamp/decay/holds-at-silence green |
 | **Skein.4** | Wet/dry sheen *(cut-line — NOT invoked)* | preset | ENGINE.2, Skein.3 | ✅ **M7 PASS 2026-06-09** (4 rounds — "rings are gone and the drying looks good"): union-SDF line, darker-saturated-glossy wet, wetness-blur killed the displaced rings |
-| **Skein.4.1** | Colour-per-stroke *(deferred)* | preset | Skein.4 | ⏳ **deferred to a new session** (Matt, context-budget) — freeze the line colour per-segment so a colour change reads as a new pour; prompt `~/Downloads/SKEIN.4.1_color_per_stroke_session_prompt.md` |
+| **Skein.4.1** | Colour-per-stroke | preset | Skein.4 | ✅ **landed 2026-06-09** (D-150; pending Matt's M7) — colour-breakpoint ring freezes the line colour per-segment AND starts a displaced NEW pour on a switch (Matt's option 2); coverage byte-identical (no rings regression); live-path freeze+new-pour test green |
 | **Skein.5** | Mood + structure + anticipation + locus flag | preset | Skein.3 | Harness across mood/section fixtures |
 | **Skein.6** | Certification | preset | all | Soak + acceptance + determinism gate + **Matt M7** |
 
@@ -205,6 +205,19 @@ Execution order is top-to-bottom. ENGINE.2 is shown near Skein.4 because that's 
 - Contact sheet: recently-painted regions visibly catch light; older regions are matte. The live edge of the music is visible.
 
 **Cut-line note.** If Skein.2 overruns, defer ENGINE.2 + Skein.4 to V2; Skein certifies matte-only without them.
+
+---
+
+### Skein.4.1 — Colour-per-stroke ✅ (2026-06-09) — pending Matt's M7
+**preset (+ small SkeinState/SkeinUniforms extension) · depends on: Skein.4 · gate: Matt's M7 — a colour change reads as a new pour, never the existing stroke recolouring**
+
+**Defect (Matt M7, session `2026-06-09T14-19-14Z`).** The pour line is redrawn closed-form each frame over a ~40-frame tail in ONE current `lineCol` (the dominant-stem argmax), so a dominant-stem switch recoloured the recent ~40 frames of already-laid line ("the colour changes in the middle of a stroke"). The bursts were already correct (frozen at spawn); only the line recoloured.
+
+**Landed (D-150) — Matt chose option 2 (a colour change is a genuinely NEW pour, not a recoloured seam).** A `SkeinState` colour-**breakpoint ring** (push `(painterTau-at-switch, linear colour, bounded position offset)` on each dominant change) packed as an **additive tail** of the slot-6 `SkeinUniforms` (`SkeinBreakGPU`, 24 B; `pad0`→`breakCount`; mirrors the burst ring). `skein_geometry_fragment` Layer A looks up each tail sample's lay-time colour+offset (`skeinLineLookupAt`, ascending-ring early-out): (1) **colour freeze** — a segment laid before a switch keeps the old colour, one after gets the new (the per-burst freeze applied to the line); (2) **new pour** — each pour carries a fixed-magnitude (0.05 UV) golden-angle-rotated offset (non-cumulative → never drifts off canvas; seeded → §5.7 determinism), so the new line is spatially displaced and the segment bridging two pours is not drawn → a clean gap. **Coverage is byte-identical** to Skein.4's union SDF (one per-frame radius → `max-over-capsules ≡ 1−smoothstep(min sdf−r)`), so no rings regression. Bursts flick from the jumped position (throw direction from the un-offset path). At silence only the white baseline breakpoint exists (offset 0) → the byte-identical pre-4.1 continuous white line.
+
+**Rejected:** option 1 (continuous path, colour frozen, no jump) — fixes the literal complaint but Matt asked for a NEW line; a pure temporal gap (no jump) — neighbouring capsules refill it at slow movement, so only a spatial jump reads as a new pour at all speeds; option B (per-frame colour into the canvas) — the closed-form tail has no single lay-frame to write into.
+
+**Gate (all green).** New live-path test `test_lineColorFreeze_keepsColourAndStartsNewPour` (two ordered real-stem slices across a dominant switch): switch stem 2→1 — pre-switch @offA X=61 Y=0 (old paint KEEPS its colour), post-switch @offB Y=61 X=0 (new colour), jump 0.093 with the new pour at offB not the un-jumped path. Silence continuity 1.000; `test_sheen_noConcentricRings` 8.68 < 13; real-stem colour separation 4 stems / mud 0.067; determinism same-seed=0; DB/FM + `PresetRegressionTests` byte-identical; `PresetLoaderCompileFailure` count intact (FA #72); app build + SwiftLint `--strict` clean. Files: `Skein.metal`, `SkeinState.swift`, `SkeinCanvasHoldTest.swift`. **Deferred (unchanged):** `family: painterly` + `PresetCategory` case (Skein.6); mood/structure (Skein.5); cert (Skein.6).
 
 ---
 
