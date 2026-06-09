@@ -450,6 +450,77 @@ struct SkeinCanvasHoldTest {
                 "Sheen dropped stem colours: CANVAS \(canvasColours.perStemCount) (\(canvasStems)) → BLIT \(blitColours.perStemCount) (\(stemsThroughSheen)) — it is recolouring, not highlighting.")
     }
 
+    // MARK: - No concentric rings (Skein.4 M7-round-4): the sheen must not amplify wetness age-bands
+
+    @Test("Sheen does not amplify wetness age-bands into concentric rings inside strokes — live BLIT path")
+    func test_sheen_noConcentricRings() throws {
+        guard let fx = try loadSkeinFixture() else { return }
+        guard let session = Self.firstRecordedSession(),
+              let stems = loadStemFrames(session, maxFrames: 2400), stems.count > 400 else {
+            print("SkeinCanvasHoldTest: no recorded session — skipping no-rings gate (real audio: feedback_synthetic_audio)")
+            return
+        }
+        let w = 320, h = 320
+        let frames = min(stems.count, 1500)
+        // The rings are a TRANSIENT — paint at a LOOP whose wetness has decayed into the specWet
+        // transition zone (~1 s after laying) — so a single frame misses them. Capture the BLIT +
+        // CANVAS at many checkpoints (the painter loops repeatedly) and take the MAX ringiness, which
+        // catches the worst transition-zone-at-a-loop frame.
+        let cps = Array(stride(from: 150, to: frames, by: 90))
+        let run = try runPourAccumulation(
+            chromatic: 0, frames: frames, width: w, height: h, aspect: 1.0, startTime: 0.0,
+            checkpoints: Set(cps), fx: fx, seed: 0, stemFrames: stems, captureBlit: true)
+
+        var maxRing: Float = 0, maxCp = -1
+        for cp in cps {
+            guard let blit = run.checkpointBlitPixels[cp], let canvas = run.checkpointPixels[cp] else { continue }
+            let r = sheenInteriorRinginess(blit: blit, canvas: canvas, w: w, h: h, cream: run.creamRef)
+            if r > maxRing { maxRing = r; maxCp = cp }
+        }
+        print("""
+        [skein_norings] session \(session.lastPathComponent), \(cps.count) checkpoints over \(frames)f:
+          max sheen-added interior luminance range (concentric-ring proxy) = \(String(format: "%.2f", maxRing)) at frame \(maxCp)
+        """)
+        // The sheen may add a little interior structure (the gentle wet→dry gradient + the tiny gloss),
+        // but a steep gate over the per-pass wetness age-bands produced strong concentric rings
+        // (measured > 20 before the wetness blur). Bar: the sheen adds little local contrast inside an
+        // otherwise-smooth stroke.
+        #expect(maxRing < 13.0,
+                "The sheen adds \(maxRing) luminance range inside SMOOTH painted strokes (frame \(maxCp)) — concentric age-band RINGS. Blur the wetness / soften the gate more.")
+    }
+
+    /// At SMOOTH-INTERIOR painted texels (the canvas is locally uniform — a solid-stroke interior, not
+    /// an edge or droplet boundary), the local luminance RANGE the sheen adds in the BLIT. Concentric
+    /// rings = the sheen turning the wetness age-bands into luminance bands inside an otherwise-solid
+    /// stroke; this measures exactly that (gating out edges/droplets where the canvas is itself varied).
+    private func sheenInteriorRinginess(blit: [UInt8], canvas: [UInt8], w: Int, h: Int, cream: [UInt8]) -> Float {
+        func luma(_ p: [UInt8], _ i: Int) -> Float { 0.2126 * Float(p[i + 2]) + 0.7152 * Float(p[i + 1]) + 0.0722 * Float(p[i]) }
+        let cb = Int(cream[0]), cg = Int(cream[1]), cr = Int(cream[2])
+        let rad = 3
+        var sum: Float = 0
+        var n = 0
+        for y in rad..<(h - rad) {
+            for x in rad..<(w - rad) {
+                let i = (y * w + x) * 4
+                let pd = abs(Int(canvas[i]) - cb) + abs(Int(canvas[i + 1]) - cg) + abs(Int(canvas[i + 2]) - cr)
+                guard pd > 60 else { continue }   // painted only
+                var cMin: Float = 999, cMax: Float = 0, bMin: Float = 999, bMax: Float = 0
+                for dy in -rad...rad {
+                    for dx in -rad...rad {
+                        let j = ((y + dy) * w + (x + dx)) * 4
+                        let lc = luma(canvas, j), lb = luma(blit, j)
+                        cMin = min(cMin, lc); cMax = max(cMax, lc)
+                        bMin = min(bMin, lb); bMax = max(bMax, lb)
+                    }
+                }
+                guard (cMax - cMin) < 18 else { continue }   // canvas locally SMOOTH (skip edges / droplet boundaries)
+                sum += (bMax - bMin)                          // the sheen-added local luminance range
+                n += 1
+            }
+        }
+        return n > 0 ? sum / Float(n) : 0
+    }
+
     // MARK: - Pour-line accumulation contact sheet (env-gated eyeball artifact)
 
     @Test("Pour-line accumulation contact sheet (env-gated: SKEIN_VISUAL=1 / RENDER_VISUAL=1)")
