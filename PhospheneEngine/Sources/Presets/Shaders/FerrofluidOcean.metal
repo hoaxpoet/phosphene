@@ -32,10 +32,14 @@
 // drives them. No custom fragment function here.
 //
 // Audio data hierarchy compliance (CLAUDE.md):
-//   - Continuous: Gerstner amplitude (arousal-baseline) and Rosensweig spike
-//                 height (stems.bass_energy_dev) are PRIMARY drivers.
-//   - Accents:    drums_energy_dev adds amplitude swing on top of arousal.
-//   - No beat-onset rising edges in Session 1.
+//   - Continuous: Gerstner swell amplitude (arousal) is the slow PRIMARY body.
+//   - Beat:       Rosensweig spike height punches on the steady first-note-
+//                 anchored, cached-tempo beat pulse (pulse_phase01/pulse_amp01,
+//                 FBS Stage 1 / D-153). Grid-PHASE-locked timing — allowed per
+//                 the hierarchy; NOT Layer-4 onset pulses (beat_bass etc. are
+//                 never consumed here — they fire ~97 % of frames, BUG-038).
+//   - One primitive per layer (FA #67): swell×arousal (slow), spikes×pulse
+//                 (per-beat), aurora×drums_energy_dev_smoothed (hit envelope).
 //   - No absolute-threshold patterns on raw f.bass / stems.bass_energy (D-026).
 
 // MARK: - Constants
@@ -111,11 +115,13 @@ static inline float fo_stem_warmup_blend(constant StemFeatures& stems) {
 // Per-frame coefficient (0.35) preserved verbatim from pre-CSP behaviour.
 //
 // **Toggle off-path.** When `MIRPipeline.ffoColdStartFixEnabled` is false:
-// the app layer writes `track_elapsed_s = 100.0` (crossfade → 1.0 → fully
-// warm path) AND `cached_bass_proportion = 0.25` (one-sided baseline → 0).
-// Then `fo_spike_strength` reduces exactly to the pre-CSP.3 formula
-// `1.0 + 0.35 × clamp(stems.bass_energy_dev, 0, 1)`. A/B verifiable from
-// `features.csv` (both new fields are logged as trailing columns).
+// the app layer writes `track_elapsed_s = 100.0` AND `cached_bass_proportion
+// = 0.15` (the pivot), collapsing the Layer-1 BASELINE boost to 0. Since FBS
+// Stage 1 (D-153) the Layer-2 per-frame source is the beat pulse in BOTH
+// toggle arms — the toggle no longer restores the historical `f.bass` spike
+// drive (that term was the "frozen spikes" root cause and is retired).
+// A/B verifiable from `features.csv` trailing columns (`track_elapsed_s`,
+// `cached_bass_proportion`, `pulse_phase01`, `pulse_amp01`).
 
 constant float FO_SPIKE_COLD_START_FADE_START_S = 0.5;
 constant float FO_SPIKE_COLD_START_FADE_END_S   = 14.0;
@@ -142,38 +148,40 @@ static inline float fo_spike_strength(constant FeatureVector& f,
     float baseline = 1.0 + clamp(aboveThreshold * (FO_SPIKE_BASELINE_RANGE / (1.0 - FO_SPIKE_BASELINE_PIVOT)),
                                  0.0, FO_SPIKE_BASELINE_RANGE);
 
-    // Layer 2 — continuous per-frame source.
+    // Layer 2 — FBS Stage 1 (D-153, 2026-06-09): the steady first-note-
+    // anchored beat pulse. REPLACES the CSP.3.2/3.3 `0.8 × clamp(f.bass)`
+    // term — the FBS diagnosis: `f.bass` is the auto-levelled (AGC) bass,
+    // held near-constant by design, so the spikes barely moved (motion std
+    // 0.09 on bass-light tracks = Matt's "frozen"), and its frame-to-frame
+    // noise was the residual sparkle after the BUG-038 light fix.
     //
-    // CSP.3.2 (2026-05-28) — dropped the warm-state crossfade to
-    // `stems.bass_energy_dev`. The deviation primitive averages near zero in
-    // steady state because SAR.1's EMA-self-seeding (and the 10-second time
-    // constant) keep the running average close to current bass energy →
-    // `(energy - runningAvg) * 2 ≈ 0`. Session 2026-05-28T03-10-29Z showed
-    // `stems.bass_energy_dev` averaging 0.05–0.10 across the warm window;
-    // multiplied by 0.35 that's < 0.04 added to spike strength — below
-    // perception. Matt M7 verdict for `[dev-2026-05-28-e]`: "inactivity from
-    // the spikes" after the cold-start window ended.
+    // `pulse_phase01` is anchored to the track's first NOTE (= the downbeat;
+    // Matt's correction, verified in FBS Stage 0), ticks at the cached-grid
+    // tempo (reliable to ~1 %), and is NEVER drift-corrected — a steady
+    // pulse that is wrong-by-a-hair beats a wandering pulse that is
+    // right-on-average. `pulse_amp01` gates it: 0 before the first note and
+    // across sustained silence (no punching into a silent room), 1 while
+    // music plays. Stage 2 will scale punch height by live energy.
     //
-    // Pre-CSP.3.2 the cold-start (0–14 s) used `f.bass` and the warm state
-    // crossfaded to `stems.bass_energy_dev`. CSP.3.2 keeps `f.bass` for the
-    // whole track — matches the Audio Data Hierarchy "Layer 1 is primary
-    // visual driver" rule. `f.bass` is AGC-normalised so it stays within a
-    // useful range across the warm window.
+    // Envelope: rise over the first 8 % of the beat (~37 ms at 128 BPM — an
+    // attack, not a step), decay to 0 by 85 %, rest until the next beat so
+    // each punch reads as a distinct hit landing ON the beat.
     //
-    // CSP.3.3 (2026-05-28) — coefficient bumped 0.35 → 0.8 per Matt M7 on
-    // session 2026-05-28T13-20-21Z. CSP.3.2 multiplier was inherited from
-    // the pre-CSP.3.2 formula (tuned against the deviation primitive which
-    // saturated above 1.0 pre-SAR.1). For `f.bass`, the value distribution
-    // is shaped differently — 85 % of playback frames sit at `f.bass < 0.3`
-    // (per the M7 session). At 0.35 × 0.21 (avg) = 7 % modulation, "too
-    // subtle overall" per Matt. 0.8 × 0.21 = 17 % typical; 0.8 × 0.5 (top
-    // 1.3 % of frames) = 40 % peak — visible without over-saturating
-    // because `f.bass` is a smooth AGC-normalised continuous primitive, not
-    // a beat onset. (Beat-onset primitives at high coefficient produce the
-    // PERF.3-class flicker; smooth continuous primitives at high
-    // coefficient produce smooth visible modulation.)
-    float src = clamp(f.bass, 0.0, 1.0);
-    return baseline + 0.8 * src;
+    // Headroom: the swing is capped so spike strength stays ≤ 1.62, under
+    // the CSP.3.5 Lipschitz-divisor (/6) safe ceiling of 1.64 — punch peaks
+    // every beat must not re-introduce the gray-tip artifact class.
+    //
+    // This is grid-PHASE-locked motion (Audio Data Hierarchy: the stable
+    // beat-grid phase may drive timing), NOT Layer-4 onset-pulse motion —
+    // no beat_bass/beat_mid/beat_composite onset signals are consumed (those
+    // fire on ~97 % of frames on real sessions; BUG-038 root cause).
+    float ph     = clamp(f.pulse_phase01, 0.0, 1.0);
+    float amp    = clamp(f.pulse_amp01, 0.0, 1.0);
+    float attack = smoothstep(0.0, 0.08, ph);
+    float decay  = 1.0 - smoothstep(0.08, 0.85, ph);
+    float env    = attack * decay;
+    float head   = min(0.7, 1.62 - baseline);
+    return baseline + head * amp * env;
 }
 
 // Swell amplitude scale — slow energy-driven drift only (round 65, 2026-05-18).

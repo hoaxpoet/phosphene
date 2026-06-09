@@ -125,6 +125,10 @@ public final class MIRPipeline: @unchecked Sendable {
     /// midDev/trebDev structurally dead. Updated in `buildFeatureVector`, reset
     /// on track change.
     private var bandDeviationTracker = BandDeviationTracker()
+    /// FBS Stage 1 (D-153) — steady first-note-anchored beat pulse. Tempo is
+    /// installed by `setBeatGrid`; the anchor resets per track in `reset()`;
+    /// the per-frame output lands on `FeatureVector.pulsePhase01/pulseAmp01`.
+    private let beatPulseClock = BeatPulseClock()
     private let nyquist: Float
     private let lock = NSLock()
 
@@ -369,6 +373,17 @@ public final class MIRPipeline: @unchecked Sendable {
         // MV-1 / D-146 (BUG-027): derive deviation primitives against each band's own
         // running average (per-band EMA), not a fixed 0.5 pivot — see applyBandDeviations.
         applyBandDeviations(to: &fv)
+        // FBS Stage 1 (D-153) — steady first-note-anchored beat pulse. Anchored
+        // at the track's first audible frame, ticking at the cached-grid tempo,
+        // never drift-corrected (deliberately independent of liveDriftTracker —
+        // its correction wanders 50–90 ms over the opening, Stage 0 finding).
+        let pulse = beatPulseClock.update(
+            energySum: fv.bass + fv.mid + fv.treble,
+            time: elapsedSeconds,
+            deltaTime: ctx.deltaTime
+        )
+        fv.pulsePhase01 = pulse.phase01
+        fv.pulseAmp01 = pulse.amp01
         // DSP.2 S7: prefer the offline-grid drift tracker when a cached
         // `BeatGrid` is installed.  In reactive mode (no grid), fall back to
         // the legacy `BeatPredictor` IIR estimator.
@@ -407,6 +422,7 @@ public final class MIRPipeline: @unchecked Sendable {
     /// Call from the app layer on track change after consulting `StemCache`.
     public func setBeatGrid(_ grid: BeatGrid?) {
         liveDriftTracker.setGrid(grid ?? .empty)
+        beatPulseClock.setTempo(bpm: grid?.bpm)   // FBS Stage 1 (D-153)
         logger.info("MIR_BEAT_GRID: set (\(grid?.beats.count ?? 0) beats)")
     }
 
@@ -414,6 +430,7 @@ public final class MIRPipeline: @unchecked Sendable {
     /// per-track offset (BUG-007.8). Used by the prepared-cache install path.
     public func setBeatGrid(_ grid: BeatGrid?, initialDriftMs: Double) {
         liveDriftTracker.setGrid(grid ?? .empty, initialDriftMs: initialDriftMs)
+        beatPulseClock.setTempo(bpm: grid?.bpm)   // FBS Stage 1 (D-153)
         let driftStr = String(format: "%+.1f", initialDriftMs)
         logger.info("MIR_BEAT_GRID: set (\(grid?.beats.count ?? 0) beats, initialDrift=\(driftStr) ms)")
     }
@@ -429,6 +446,11 @@ public final class MIRPipeline: @unchecked Sendable {
         beatPredictor.reset()
         liveDriftTracker.reset()
         bandDeviationTracker.reset()
+        // FBS Stage 1 (D-153) — new track, new first-note anchor. Tempo is
+        // intentionally NOT cleared here: `setBeatGrid` is the sole tempo
+        // authority and the track-change call order between `reset()` and the
+        // grid install differs across the LF / streaming paths.
+        beatPulseClock.resetAnchor()
 
         lock.lock()
         fluxRunningMax = 1e-6

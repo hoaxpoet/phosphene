@@ -163,8 +163,11 @@ extension SessionRecorder {
         let lightMs = rayMarchPass.lightingPassMs.map { String(format: "%.4f", $0) } ?? ""
         let ssgiMs = rayMarchPass.ssgiPassMs.map { String(format: "%.4f", $0) } ?? ""
         let postMs = rayMarchPass.postProcessPassMs.map { String(format: "%.4f", $0) } ?? ""
-        let rayMarchPassCols = ",\(gbufMs),\(lightMs),\(ssgiMs),\(postMs)\n"
-        return base + sync + timing + subTiming + renderTimingCols + rayMarchPassCols
+        let rayMarchPassCols = ",\(gbufMs),\(lightMs),\(ssgiMs),\(postMs)"
+        // FBS Stage 1 (D-153) — the steady first-note-anchored beat pulse, so
+        // anchor accuracy + steadiness are verifiable from session artifacts.
+        let pulseCols = String(format: ",%.5f,%.3f\n", fv.pulsePhase01, fv.pulseAmp01)
+        return base + sync + timing + subTiming + renderTimingCols + rayMarchPassCols + pulseCols
     }
 
     static func csvRow(stems: StemFeatures, frame: Int, wallclock: CFAbsoluteTime) -> String {
