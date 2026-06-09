@@ -128,6 +128,14 @@ public final class SkeinState: @unchecked Sendable {
     /// drive pour flow — smooth enough that the dominant-stem argmax doesn't flicker per frame.
     static let stemEnergyTau: Float = 0.30
 
+    /// Wetness dry-rate (Skein.ENGINE.2 / Skein.4). The feedback texture's ALPHA channel carries a
+    /// transient "wetness" stamped ~1 where paint lands (the overlay's coverage) and decayed each
+    /// frame by `exp(-wetnessDryRate · dt · stemMix)` in `skein_warp_fragment`. The `stemMix` gate
+    /// makes the decay PAUSE AT SILENCE (§5.2 step 3 — the accumulated-audio-time semantics: at
+    /// silence stemMix→0 → factor→1 → wetness holds, no sheen drift). `ln2 / halfLifeSeconds`:
+    /// a ~1.6 s wet half-life → marks read matte after ~3–4 s of active music. Tunable at Skein.4.
+    static let wetnessDryRate: Float = 0.43   // ln2 / 1.6 s
+
     // MARK: - Palette (Skein.3 — placeholder vivid set; Matt sign-off finalises in commit 2)
 
     /// One stable, well-separated, vivid colour per stem over cream. Indexed by `SkeinStem`.
@@ -152,6 +160,12 @@ public final class SkeinState: @unchecked Sendable {
 
     /// The painter clock this frame (accumulated, audio-modulated). Exposed for tests.
     public private(set) var painterTau: Float = 0
+
+    /// This frame's wetness-channel decay multiplier (Skein.ENGINE.2), pushed to the warp/hold
+    /// fragment via `RenderPipeline.setMVWarpWetnessDecay`. `exp(-wetnessDryRate · dt · stemMix)`:
+    /// `1.0` at silence (stemMix→0, the decay PAUSES — §5.2 step 3), `< 1.0` while music plays.
+    /// Exposed so the render-loop tick hook (and the test harness) can bind it each frame.
+    public private(set) var wetnessDecay: Float = 1.0
 
     /// Total onset bursts spawned since the last reseed. Exposed for the beat-ratio route test
     /// (a beat-heavy stem slice must spawn measurably more bursts than a steady slice).
@@ -247,6 +261,7 @@ public final class SkeinState: @unchecked Sendable {
             applySeed(newSeed)
             painterTau = 0
             painterTauStep = 0
+            wetnessDecay = 1.0
             burstSpawnCounter = 0
             spawnsPerStemStore = [0, 0, 0, 0]
             bursts.removeAll(keepingCapacity: true)
@@ -279,6 +294,13 @@ public final class SkeinState: @unchecked Sendable {
         let totalStemEnergy = stems.drumsEnergy + stems.bassEnergy
                             + stems.vocalsEnergy + stems.otherEnergy
         let stemMix = smoothstep(Self.warmupLow, Self.warmupHigh, totalStemEnergy)
+
+        // Wetness decay (Skein.ENGINE.2): the per-frame multiplier applied to the feedback ALPHA
+        // channel by `skein_warp_fragment`. Gated by `stemMix` so it PAUSES at silence (§5.2 step 3,
+        // the accumulated-audio-time semantics — at silence the held painting freezes wet, no sheen
+        // drift). Exponential in `dt` so the dry-rate is frame-rate-independent. NOT a new audio
+        // routing — it reuses the existing silence gate; wetness = where paint landed (FA #67).
+        wetnessDecay = exp(-Self.wetnessDryRate * dt * stemMix)
 
         // Per-stem positive energy deviation (D-026) — drumsEnergyDev etc. are already
         // max(0, rel); read them directly. EMA-smooth for the dominant-colour pick + pour flow.
