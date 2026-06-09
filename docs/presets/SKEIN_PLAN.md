@@ -29,7 +29,8 @@ Companion design doc: `SKEIN_pollock_preset_architecture.md` (becomes the seed f
 | **Skein.2** | Splatter morphology + viscosity | preset | Skein.1 | ✅ **landed + Matt eyeball PASS 2026-06-05** (closed-form / path A, no engine touch; round-droplet M7 fix `409c1b70`) — reads as poured paint, not a particle-fountain. Cert at Skein.6. |
 | **Skein.3** | Stem palette + full emission routing | preset | Skein.2 | Harness + replay registration; routing is legible |
 | **Skein.ENGINE.2** | Wetness channel | engine | — (land before Skein.4) | ✅ **landed 2026-06-08** (D-149, approach A) — DB/FM byte-identical, RGB lossless-hold intact, stamp/decay/holds-at-silence green |
-| **Skein.4** | Wet/dry sheen *(cut-line — NOT invoked)* | preset | ENGINE.2, Skein.3 | ✅ **landed 2026-06-08** — wet-now glistens / dry-past matte through the live BLIT path; **pending Matt's M7** |
+| **Skein.4** | Wet/dry sheen *(cut-line — NOT invoked)* | preset | ENGINE.2, Skein.3 | ✅ **M7 PASS 2026-06-09** (4 rounds — "rings are gone and the drying looks good"): union-SDF line, darker-saturated-glossy wet, wetness-blur killed the displaced rings |
+| **Skein.4.1** | Colour-per-stroke *(deferred)* | preset | Skein.4 | ⏳ **deferred to a new session** (Matt, context-budget) — freeze the line colour per-segment so a colour change reads as a new pour; prompt `~/Downloads/SKEIN.4.1_color_per_stroke_session_prompt.md` |
 | **Skein.5** | Mood + structure + anticipation + locus flag | preset | Skein.3 | Harness across mood/section fixtures |
 | **Skein.6** | Certification | preset | all | Soak + acceptance + determinism gate + **Matt M7** |
 
