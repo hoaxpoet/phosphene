@@ -8,6 +8,189 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
+### AUDIT-2026-06-09 — Full-codebase audit backlog (P2/P3 findings not individually filed)
+
+**Status:** Open — index entry. The 2026-06-09 six-agent full-codebase audit (~92k lines, all findings verified at file:line, cross-checked against this tracker and CLAUDE.md FAs) produced 6 P1s, 17 P2s, ~40 P3s. The P1s and three highest-impact P2s are filed individually below (BUG-030 … BUG-037). Everything else lives in **[`docs/diagnostics/CODE_AUDIT_2026-06-09.md`](../diagnostics/CODE_AUDIT_2026-06-09.md)** — treat that document as the evidence record when picking up any item. Remaining P2s in brief (full detail + fix shapes in the audit doc):
+
+- **Reactive orchestrator can select a hard-excluded preset** at session start — `PresetScorer.rank()` never filters despite its doc-comment; reactive nil-current path takes `ranked.first` unconditionally (`PresetScorer.swift:67-80`, `ReactiveOrchestrator.swift:208-227`).
+- **Zero-duration track → unscored `catalog.first` fallback** bypassing every exclusion gate, can install a diagnostic preset (D-074 violation) (`SessionPlanner+Segments.swift:109-129`).
+- **Mood-override cooldown never reset** across repeat plays/sessions — override effectively permanently dead from a track's second play (`LiveAdapter.swift:180-385`).
+- **Unbounded in-memory StemCache** (~7 MB/track, no eviction; disk sibling has a 500 MB LRU cap) (`StemCache.swift:76`).
+- **Re-entrant `login()` leaks the pending continuation** + arms a stray timeout against the second login (`SpotifyOAuthTokenProvider.swift:122-147`).
+- **Spotify client secret baked into the built Info.plist** — extractable from any distributed binary; PKCE doesn't need it. Must be resolved before any distribution (`PhospheneApp/Info.plist:13`).
+- **Two honest-UI violations:** "Use Apple Music instead" footer button wired to `{ }` (`ConnectorPickerView.swift:149,223`); Settings "Local file" capture mode says "coming in a future update" though LF shipped, and selection is a silent no-op (`AudioSettingsSection.swift:42-46`, `CaptureModeSwitchCoordinator.swift:89`).
+- **Localization gate only scans `PhospheneApp/Views/`** — verified hardcoded user-facing English in ViewModels/ContentView/indirection helpers bypasses `check_user_strings.sh` (sites listed in the audit doc).
+
+P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh double-spend + form-encoding gaps, PSO cache key, mv_warp buffer(5) omission, PostProcessChain texture aliasing, malformed-sidecar swallowing, Arachne listening-pose FA #57-gate, >2-channel LF corruption, ~94 Hz vs 60 fps chroma hysteresis), ~11 perf items (autocorrelation 2×/frame, drums FFT 2×/frame, mono STFT 2×/track, serial prep pipeline, wasted particle-mode warp pass, unconditional feedback textures), dead code, and 6 in-code doc-drift items.
+
+---
+
+### BUG-030 — Duplicate playlist tracks crash `SessionPreparer.prepare(tracks:)` (2026-06-09)
+
+**Severity:** P1 (runtime trap → session preparation crash on ordinary input).
+**Domain tag:** session.prep
+**Status:** Open — audit finding (code-verified, not yet reproduced live).
+**Introduced:** structural — original `trackStatuses` construction.
+**Resolved:** —
+
+**Expected:** a playlist containing the same track twice prepares normally; `PlaylistConnecting`'s doc (`PlaylistConnector.swift:57`) explicitly promises "Duplicate tracks preserve their playlist order."
+**Actual:** `SessionPreparer.swift:183` builds `trackStatuses = Dictionary(uniqueKeysWithValues: tracks.map { ($0, .queued) })`, which **traps at runtime on duplicate keys**. Duplicate tracks yield identical `TrackIdentity` values (same title/artist/album/duration/spotifyID). Same trap at `:256` on the LF path (an M3U listing the same file twice → identical `"local:" + url.path` identities).
+**Reproduction steps:** connect a Spotify playlist containing the same track twice (common on real playlists); preparation crashes at dictionary construction.
+**Session artifacts:** `docs/diagnostics/CODE_AUDIT_2026-06-09.md` §A2 (code-level evidence).
+**Suspected failure class:** `api-contract` (Dictionary uniqueness precondition vs the connector's documented duplicate-preserving contract).
+**Verification criteria:**
+- [ ] Automated: engine test preparing a track list with an exact-duplicate `TrackIdentity` completes without trapping (streaming + LF paths).
+- [ ] Manual: a real Spotify playlist with a duplicated track reaches `.ready`.
+
+---
+
+### BUG-031 — StemSeparator shared between live pipeline and session preparer with unlocked I/O: cross-path stem corruption (2026-06-09)
+
+**Severity:** P1 (silent data corruption — a prepped track's cached stems can be the live track's stems, poisoning orchestrator stem-affinity scoring; plausible contributor to the BUG-012 family).
+**Domain tag:** dsp.stem / concurrency
+**Status:** Open — audit finding.
+**Introduced:** progressive readiness (Inc 6.1) made prep-during-playback the normal case; the BUG-012 race analysis only covered the serial `stemQueue` and never considered the preparer path.
+**Resolved:** —
+
+**Expected:** stem separation results are isolated per caller.
+**Actual:** one `StemSeparator` instance is shared (`VisualizerEngine+InitHelpers.swift:123` passes the engine's separator into `makeSessionManager`). `separate()` writes `stemModel.inputMagLBuffer`/`inputMagRBuffer` (`StemSeparator.swift:174-181`) and reads `stemModel.outputBuffers` (`:196-204`) **outside any lock** — only `predict()` itself is locked. The live path (`stemQueue`) and the prep path (`SessionPreparer.analyzePreview`, `Task.detached`, `SessionPreparer.swift:460`) overlap under progressive readiness; both callers also read the shared `stemBuffers` after return with no lock (`VisualizerEngine+Stems.swift:196`, `SessionPreparer+Analysis.swift:90`). Overlapping calls can run predict on the other call's input and read half-written outputs.
+**Reproduction steps:** start playback while later tracks are still preparing; race is timing-dependent (instrument with a generation counter on input-write vs output-read to expose).
+**Session artifacts:** `docs/diagnostics/CODE_AUDIT_2026-06-09.md` §A1.
+**Suspected failure class:** `concurrency`.
+**Verification criteria:**
+- [ ] Instrumentation: a generation/ownership assertion inside `separate()` that fires on interleaved use (per the multi-increment P1 process).
+- [ ] Automated: concurrent live+prep separation stress test produces per-caller-correct stems (e.g. distinct fixture inputs → distinct expected outputs, N iterations).
+- [ ] Fix shape (for the fix increment): one lock across input-write → predict → output-read; return stem waveforms by value instead of exposing shared `stemBuffers`.
+
+---
+
+### BUG-032 — Streaming session lifecycle: `endSession()` orphans the prep task; stale prep can hijack the next session; recovery spawns a second concurrent prep loop (2026-06-09)
+
+**Severity:** P1 (next session's plan can be overwritten with the old playlist and flipped `.ready` prematurely; two `_runPreparation` loops can run against the single StemSeparator — compounds BUG-031).
+**Domain tag:** session.lifecycle / concurrency
+**Status:** Open — audit finding. Three related defects, one root cause: the streaming path has no session-generation guard (the LF path fixed exactly this with `localFileSessionGen`, LF.5.fix.3-A).
+**Introduced:** structural — predates LF.5's generation-guard pattern; streaming path never got the equivalent.
+**Resolved:** —
+
+**Expected:** ending a session cancels its preparation; a new session is unaffected by the old one's in-flight work; network recovery resumes within the existing loop.
+**Actual:**
+1. `SessionManager.endSession()` (`SessionManager.swift:562`) flips to `.ended` without cancelling `sessionPreparationTask`/`statusCancellable`. A new `startSession` resets `cancellationRequested = false`; the orphaned task's completion closure (`:261`) then passes its guard, overwrites `currentPlan` with the **old** playlist, cancels the new session's status subscription, and can flip the new session `.preparing → .ready` prematurely. `prepare(tracks:)` — unlike `prepareLocalFiles` (`:253`) — also never cancels a still-running prior task.
+2. `resumeFailedNetworkTracks()` (`SessionPreparer.swift:509-518`) unconditionally spawns a fresh `Task { _runPreparation(...) }` while the original loop is typically still running (`NetworkRecoveryCoordinator` only fires during `.preparing`) — two loops interleave, progress ping-pongs between two denominators, and `cancelPreparation()` loses the original loop. The doc comment claims sequential processing; the code does not implement it.
+3. `startSession` assigns `sessionSource`/`currentSource` **before** the state guard (`SessionManager.swift:174-176, 213-215`) — a rejected call still rewrites the published origin (hides `LocalFileTransportBar` mid-session, corrupts source-aware labels).
+**Reproduction steps:** (1) end a streaming session mid-preparation, immediately start a new one with a different playlist; (2) drop network during prep, restore it before the loop finishes; (3) call `startSession` while a local-file session is `.playing`.
+**Session artifacts:** `docs/diagnostics/CODE_AUDIT_2026-06-09.md` §A3 + P2 section.
+**Suspected failure class:** `concurrency` (task lifecycle), `api-contract` (3).
+**Verification criteria:**
+- [ ] Automated: end-then-restart test asserts the old prep task cannot mutate the new session's `currentPlan`/state (generation-guard pattern, mirroring `localFileSessionGen`).
+- [ ] Automated: recovery during active prep does not produce two concurrent loops (single-flight assertion).
+- [ ] Automated: rejected `startSession` leaves `sessionSource`/`currentSource` untouched.
+
+---
+
+### BUG-033 — App layer: per-frame `@Published dashboardSnapshot` invalidates the whole SwiftUI tree at 60 Hz; `assign(to:on: self)` retain cycles leak view models (2026-06-09)
+
+**Severity:** P1 (steady main-thread burn for the entire duration of every playback session + unbounded VM leak at frame rate; one chrome VM additionally leaks per session).
+**Domain tag:** app.ui / performance / leak
+**Status:** Open — audit finding. Two root causes that compound each other.
+**Introduced:** dashboard snapshot pump (dashboard increment); `assign(to:on:)` subscriptions in VM inits.
+**Resolved:** —
+
+**Expected:** hidden diagnostics cost nothing; view models deallocate when their views go away.
+**Actual:**
+1. `setupDashboardSnapshotPump` (`VisualizerEngine+InitHelpers.swift:75-84`) writes `engine.dashboardSnapshot` (`@Published` on `VisualizerEngine`) from `onFrameRendered` **every rendered frame, unconditionally** (dashboard hidden or not), allocating a `Task { @MainActor }` per frame. `VisualizerEngine` is `@StateObject`/`@EnvironmentObject` across the tree → `objectWillChange` re-evaluates the App body, `ContentView.playbackView` (12 fresh `eraseToAnyPublisher()` per frame), and the full `PlaybackView` diff at ~60 Hz throughout playback. The dashboard VM's 30 Hz throttle is downstream of the damage.
+2. `SessionStateViewModel.swift:56,61` and `PlaybackChromeViewModel.swift:159,255` use `assign(to: \.x, on: self)` with the cancellable stored in `self.cancellables` — `Subscribers.Assign` retains its target, closing a retain cycle; the VMs never deallocate (`PlaybackChromeViewModel.deinit`, which cancels `hideTask`, never runs). Compounding: `PhospheneApp.swift:57-62` constructs a **new** `SessionStateViewModel` eagerly in the scene body on every body evaluation — at 60 Hz during playback via (1) — and every discarded instance has already subscribed in init and is leaked permanently, each still receiving every state change.
+**Reproduction steps:** play any session; observe main-thread CPU + Instruments leaks/allocations for `SessionStateViewModel` instances growing at frame rate; end a session and observe `PlaybackChromeViewModel` never deallocates.
+**Session artifacts:** `docs/diagnostics/CODE_AUDIT_2026-06-09.md` §A4/§A5.
+**Suspected failure class:** `resource-management`.
+**Verification criteria:**
+- [ ] Automated: VM deallocation tests (weak reference nils after teardown) for both VMs.
+- [ ] Automated: with dashboard hidden, no `dashboardSnapshot` writes occur during rendering (or writes go through a non-`@Published` subject).
+- [ ] Manual: Instruments before/after — main-thread CPU during playback drops measurably; zero leaked VM instances after a session.
+
+---
+
+### BUG-034 — `sceneParamsB.z` double-booked (ambient vs D-057 step multiplier): every ray-march fixture renders at 32 steps vs live's 128 (2026-06-09)
+
+**Severity:** P1 (test/prod parity, FA #66 class — golden hashes, RENDER_VISUAL contact sheets, and certification evidence for every ray-march preset are generated at 1/4 the live step budget).
+**Domain tag:** renderer / preset.fidelity / test-isolation
+**Status:** Open — audit finding.
+**Introduced:** D-057 frame-budget multiplier was packed into the slot `PresetDescriptor+SceneUniforms` already used for `sceneAmbient`.
+**Resolved:** —
+
+**Expected:** fixtures march the same step budget the live app uses.
+**Actual:** `makeSceneUniforms()` (`PresetDescriptor+SceneUniforms.swift:99`) packs `sceneAmbient` (default 0.1) into `sceneParamsB.z`; the G-buffer preamble (`PresetLoader+Preamble.swift:417`) reads `.z` as the D-057 step multiplier: `clamp(0.1, 0.25, 1.0) = 0.25` → `maxMarchSteps = 32`. The live path overwrites `.z = 1.0` per frame (`RenderPipeline+RayMarch.swift:118`) → 128 steps. `PresetAcceptanceTests`, `PresetVisualReviewTests`, `PresetRegressionTests`, and `PresetContrastCertificationTests` all bind raw `makeSceneUniforms()` output. Corollary: the `scene_ambient` JSON sidecar field never reaches any shader on the live path — dead config + doc drift in `PresetDescriptor`.
+**Reproduction steps:** render any ray-march preset via the fixture helper and via the live path; compare step counts (or diff a contact-sheet frame against a live capture at identical inputs).
+**Session artifacts:** `docs/diagnostics/CODE_AUDIT_2026-06-09.md` §A6.
+**Suspected failure class:** `test-isolation` (FA #66 class) + `api-contract` (slot double-booking).
+**Verification criteria:**
+- [ ] Automated: fixture and live path march identical step budgets by construction (move one meaning to a free slot, e.g. `sceneParamsB.w` is SSGI-only; fixtures set the multiplier to 1.0).
+- [ ] Golden-hash regen across all ray-march presets with before/after contact sheets — visual deltas reviewed, not assumed.
+- [ ] `scene_ambient` either wired to a real consumer or removed from the sidecar schema + docs.
+
+---
+
+### BUG-035 — NoveltyDetector re-detects every section boundary ~4-5× after the similarity ring wraps; structural prediction (D-151 consumer) degraded (2026-06-09)
+
+**Severity:** P2 (corrupts `StructuralAnalyzer` section durations / `predictedNextBoundary` / section confidence — the exact signal Skein.ENGINE.3 just wired live for Skein.5).
+**Domain tag:** dsp.structure
+**Status:** Open — audit finding. **Should be fixed before Skein.5 leans on structural signals.**
+**Introduced:** structural — `detectedBoundaries` stores logical ring indices that go stale as the ring slides.
+**Resolved:** —
+
+**Expected:** each real musical section boundary registers once.
+**Actual:** `SelfSimilarityMatrix` logical indices slide ~30 per `detect()` call once `storedCount == maxHistory` (`SelfSimilarityMatrix.swift:198-203`); `NoveltyDetector.swift:217`'s `tooCloseToExisting` compares fresh indices against the stale stored ones, so the same boundary passes the dedup again every ~1.3 s (~94 Hz analysis rate) — ~4-5 near-equal-timestamp duplicates per real boundary (`timestampForFrame` compensates for the slide, so duplicates carry ~equal timestamps). `StructuralAnalyzer.registerBoundary` appends unconditionally → section durations collapse toward 0, `avgDuration`/`predictedNextBoundary` garbage, `sectionIndex` inflates ~5×, confidence structurally depressed.
+**Related:** `MIRPipeline.swift:277` — `latestStructuralPrediction` is the only published property written outside the lock (move under the lock in the same increment; class is `@unchecked Sendable`).
+**Reproduction steps:** run any track past `maxHistory` frames; log `registerBoundary` calls — clusters of ~equal timestamps appear per real boundary.
+**Session artifacts:** `docs/diagnostics/CODE_AUDIT_2026-06-09.md` (Audio/DSP P2 section).
+**Suspected failure class:** `algorithm` (stale-index dedup).
+**Verification criteria:**
+- [ ] Automated: real-music fixture through the live MIR path — each detected boundary registers exactly once (dedup by timestamp or absolute frame counter).
+- [ ] Automated: `latestStructuralPrediction` write moved under the lock (existing `SkeinStructureSignalTests` stay green).
+- [ ] Manual: section indices/durations from a real session's `features.csv` are musically plausible (no sub-second "sections").
+
+---
+
+### BUG-036 — Heap allocations on the real-time Core Audio thread at three sites (FFTProcessor, AudioBuffer.latestSamples, SessionRecorder raw tap) (2026-06-09)
+
+**Severity:** P2 (violates the standing "do not allocate in the Core Audio IO proc callback" rule on every callback of every session; priority-inversion / glitch risk under memory pressure rather than observed breakage).
+**Domain tag:** audio.capture / performance
+**Status:** Open — audit finding.
+**Introduced:** structural — predates the rule's enforcement attention; the "zero-alloc" header comments in both DSP files are currently false.
+**Resolved:** —
+
+**Expected:** the IO-proc path allocates nothing (CLAUDE.md What-NOT-To-Do).
+**Actual (all three verified on the IO-proc call path via `VisualizerEngine+Audio.makeAudioSampleCallback`):**
+1. `FFTProcessor.swift:149,193` — `process()` allocates a fresh `magnitudes` array per call; `processStereo` allocates a fresh `mono` array (called at `VisualizerEngine+Audio.swift:114`).
+2. `AudioBuffer.swift:148` — `latestSamples` does 2048 per-element ring reads (`UMARingBuffer.read(at:)` precondition + modulo each) + an allocating `append` loop **under the same NSLock the write path takes**, per callback (`VisualizerEngine+Audio.swift:111`). RMS over the same samples is also computed 3× per callback (AudioBuffer `:179`, SilenceDetector `:106`, InputLevelMonitor `:185`).
+3. `SessionRecorder+RawTap.swift:28` — `Data(bytes:count:)` copy + `queue.async` closure allocation per callback for the first 30 s of every session (entire session under `PHOSPHENE_FULL_RAW_TAP=1`).
+Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — tap-reinstall scheduling (locks, `DispatchWorkItem` alloc, os_log interpolation) runs on the RT thread on silence transitions.
+**Session artifacts:** `docs/diagnostics/CODE_AUDIT_2026-06-09.md` (Audio/DSP P2 section).
+**Suspected failure class:** `resource-management` (RT-safety).
+**Verification criteria:**
+- [ ] Automated: allocation-free assertions or code-shape tests on the three sites (pre-allocated members / `latestSamples(into:)` segment-memcpy variant / pre-allocated ring for raw-tap).
+- [ ] Manual: a full session with the os allocator instrumented shows zero mallocs attributable to the IO-proc path.
+
+---
+
+### BUG-037 — Arachne spiral chord-count contract three-ways inconsistent (CPU 200 / shader 441 / test 104): spiral builds to ~45 % then pops to complete (2026-06-09)
+
+**Severity:** P2 (visible build defect: per-chord reveal gate saturates at 200/441 ≈ 0.45, then the `.stable` snap shows the remaining ~55 % in one frame; build cycle halves to ~62 beats vs the documented ~136, firing `_presetCompletionEvent` early).
+**Domain tag:** preset.fidelity (Arachne)
+**Status:** Open — audit finding.
+**Introduced:** post-BUG-011 ranges (`radialCount`/`spiralRevolutions` ∈ [18, 24], `ArachneState._reset()` :1086-1087) made the uncapped chord product 324-576, so the `min(200, …)` cap at `recomputeSpiralChordTable()` (`ArachneState.swift:1005`) **always** fires; the shader normalizes `spiral_packed / 441.0` (`Arachne.metal:1336`); `PresetAcceptanceTests.swift:335` uses a third value (104).
+**Resolved:** —
+
+**Expected:** spiral chords reveal continuously outside-in to completion (D-095 per-chord gate), with the documented ~92 s round-8 build cycle.
+**Actual:** `fgProgress` saturates at ~0.45 → ~45 % of chords visible, then a one-frame pop to complete; `spiralChordRadii` truncates at radius ≈ 0.27 instead of reaching the 0.05 core.
+**Reproduction steps:** run Arachne through a full build cycle (live or `PresetVisualReviewTests` frame phase); watch chord coverage vs `frame_progress`.
+**Session artifacts:** `docs/diagnostics/CODE_AUDIT_2026-06-09.md` (Presets P2 section).
+**Suspected failure class:** `api-contract` (three uncoordinated constants for one contract).
+**Verification criteria:**
+- [ ] Automated: one shared constant (or CPU-published total) consumed by CPU table, shader normalization, and tests; test asserts the uncapped product is honoured (or the cap is propagated).
+- [ ] Manual/visual: contact-sheet build sequence shows continuous chord reveal to the core with no completion pop.
+
+---
+
 ### BUG-029 — AGC `f.bass` cold-start spike pops/drops continuous-energy presets at every track onset (2026-06-06)
 
 **Severity:** P3 (cosmetic startup artifact, ~1-2 s at each track onset; not a crash). Re-rate to P2 if judged to materially hurt the per-track first impression.
