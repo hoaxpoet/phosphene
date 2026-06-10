@@ -35,6 +35,9 @@ final class FerrofluidFlashForensicsTests: XCTestCase {
         let parts = windowSpec.split(separator: ":").compactMap { Double($0) }
         guard parts.count == 3 else { throw XCTSkip("PHOSPHENE_FLASH_WINDOW must be seg:lo:hi") }
         let (segIdx, lo, hi) = (Int(parts[0]), parts[1], parts[2])
+        // Ablation: none | pulse | aurora | light | spikes-frozen — disable ONE
+        // layer to attribute measured flashes mechanically.
+        let ablate = ProcessInfo.processInfo.environment["PHOSPHENE_FLASH_ABLATE"] ?? "none"
 
         guard let device = MTLCreateSystemDefaultDevice() else { throw XCTSkip("no Metal device") }
         let loader = PresetLoader(device: device, pixelFormat: .bgra8Unorm_srgb)
@@ -124,7 +127,7 @@ final class FerrofluidFlashForensicsTests: XCTestCase {
                 accumulatedAudioTime: fv(r, "accumulatedAudioTime"))
             features.trackElapsedS = te
             features.pulsePhase01 = fv(r, "pulse_phase01")
-            features.pulseAmp01 = fv(r, "pulse_amp01")
+            features.pulseAmp01 = ablate == "pulse" ? 0 : fv(r, "pulse_amp01")
 
             var stems = StemFeatures.zero
             if let srow = stemsByFrame[r["frame"] ?? ""] {
@@ -147,7 +150,8 @@ final class FerrofluidFlashForensicsTests: XCTestCase {
                                                  max(features.beatMid, features.beatComposite))))
             smoothedLight = RayMarchPipeline.smoothLightIntensity(
                 previous: smoothedLight, target: 1.0 + bassPrimary * 0.4 + beatAccent * 0.15, dt: dt)
-            uniforms.lightPositionAndIntensity.w = baseLightIntensity * smoothedLight
+            uniforms.lightPositionAndIntensity.w = ablate == "light"
+                ? baseLightIntensity : baseLightIntensity * smoothedLight
             let warm = max(0, min(1, features.valence))
             let cool = max(0, min(1, -features.valence))
             let tint = SIMD3<Float>(1.0 + warm * 0.40 - cool * 0.25,
@@ -162,7 +166,7 @@ final class FerrofluidFlashForensicsTests: XCTestCase {
                 drumsDev: stems.drumsEnergyDev, dt: dt)
             auroraSmoothed = aurora.smoothed
             auroraWarmup = aurora.warmup01
-            stems.drumsEnergyDevSmoothed = aurora.output
+            stems.drumsEnergyDevSmoothed = ablate == "aurora" ? 0 : aurora.output
             pipeline.sceneUniforms = uniforms
 
             let cmdBuf = try XCTUnwrap(context.commandQueue.makeCommandBuffer())
@@ -224,7 +228,14 @@ final class FerrofluidFlashForensicsTests: XCTestCase {
         }
 
         // --- Report: frame-step events in the RENDERED output ---
-        print("[FLASH-FORENSICS] window seg\(segIdx) \(lo)-\(hi)s frames=\(stats.count)")
+        // Aggregate step metric for ablation comparison: count + total |dMean|>6.
+        var stepCount = 0
+        var stepSum: Float = 0
+        for (a, b) in zip(stats, stats.dropFirst()) where abs(b.mean - a.mean) > 6 {
+            stepCount += 1; stepSum += abs(b.mean - a.mean)
+        }
+        print("[FLASH-FORENSICS] window seg\(segIdx) \(lo)-\(hi)s frames=\(stats.count) "
+              + "ablate=\(ablate) flashSteps(|dMean|>6)=\(stepCount) totalMag=\(stepSum)")
         for (a, b) in zip(stats, stats.dropFirst()) {
             let dMean = b.mean - a.mean
             let dWhite = b.whiteFrac - a.whiteFrac
