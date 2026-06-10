@@ -1211,6 +1211,13 @@ struct SkeinCanvasHoldTest {
             return n
         }
         let same = pxDiff(a1, a2), cross = pxDiff(a1, bSeed)
+        // Skein.6 cert formalisation (§5.7 headline): the final canvas is dHash-stable across
+        // the two full live-path runs, within the PresetRegressionTests tolerance (≤ 8 of 64).
+        // Byte-identity (asserted below) is the stronger property; the dHash form is the named
+        // cert gate, kept explicit so a future relaxation of byte-identity (e.g. a GPU/driver
+        // nondeterminism) still has the §5.7 contract to answer to. Full-track-length evidence
+        // (2 × 10,800 frames, pixel-diff 0, hamming 0) was captured at Skein.6 closeout.
+        let dSame = (Self.dHash64(a1, w: w, h: h) ^ Self.dHash64(a2, w: w, h: h)).nonzeroBitCount
 
         // Reseed unit check: tick a BUSY slice so bursts actually spawn, then reseed clears both.
         let busy = Self.busiestAndCalmestSlices(stems, window: 300).busy
@@ -1228,11 +1235,102 @@ struct SkeinCanvasHoldTest {
 
         // 1. DETERMINISM (§5.7 headline) — same track + same seed → the same painting.
         #expect(same == 0, "Same seed produced \(same) differing pixels — the painting is not deterministic.")
+        #expect(dSame <= 8, "Final-canvas dHash unstable across two same-seed live-path runs (hamming \(dSame) > 8).")
         // 2. The seed actually perturbs the trajectory — a different seed paints differently.
         #expect(cross > 50, "Different seeds produced near-identical paintings (\(cross) px) — the seed does not reach the trajectory.")
         // 3. RESEED clears the live painter state (the §1.5 track-change reset).
         #expect(st.painterTau == 0, "reseed did not reset painterTau (\(st.painterTau)).")
         #expect(st.totalBurstsSpawned == 0, "reseed did not clear the burst ring (\(st.totalBurstsSpawned)).")
+    }
+
+    // MARK: - Skein.6 certification: coverage bound + full-track determinism dHash (§5.7)
+
+    /// The §5.7 cert coverage invariant, at the TRACK-LENGTH scale the other gates don't reach
+    /// (the remaining §5.7 invariants are standing gates: silence-non-black =
+    /// PresetAcceptanceTests invariant 1 + the silence runs above; beat-ratio = the busy≫calm
+    /// spawn gate in `test_realStem_colourSeparationAndRouting`; determinism =
+    /// `test_seedDeterminismAndReseed`'s two-run byte-identity + dHash).
+    ///
+    /// Renders one typical-track-length (180 s @ 60 fps) live-path run on REAL recorded stems
+    /// (tiled when the session is shorter — the tile preserves real dynamics) at a live-window
+    /// scale. Coverage fraction is RESOLUTION-DEPENDENT (the droplet AA radius floor
+    /// `max(drr, px·1.5)` widens sub-pixel satellites at small targets — measured +10–17 pts
+    /// at 200×200 vs 900×600), so this gate renders at 600×400 and its thresholds are
+    /// calibrated at that size. Matt's cert decision (2026-06-10, Skein.6 / D-159): the
+    /// approved post-round-2-tune density stands; the §5.7 "ends 60–80 %" band was a
+    /// pre-implementation estimate, superseded by never-solid / never-near-empty:
+    ///   • NEVER SOLID — ground always breathes through (the anti_dead_mat failure mode).
+    ///     Measured on the approved sessions at 900×600: 80.2 % at the longest approved
+    ///     single track (43 s), plateau ≈ 87 % at 100 s.
+    ///   • NEVER NEAR-EMPTY — a full track of dense material paints well past half the canvas.
+    @Test("Skein.6 cert: track-length coverage bound (never solid, never near-empty) — live path, real stems")
+    func test_cert_coverageBound() throws {
+        guard let fx = try loadSkeinFixture() else { return }
+        guard let session = Self.firstRecordedSession(),
+              let stems = loadStemFrames(session, maxFrames: 10_800), stems.count > 600 else {
+            print("SkeinCanvasHoldTest: no recorded session — skipping cert coverage test")
+            return
+        }
+        let w = 600, h = 400   // live-window scale + aspect (coverage thresholds calibrated here)
+        let frames = 10_800    // 180 s at 60 fps — a typical track
+        let quarter = frames / 4
+        let cps: Set<Int> = [quarter - 1, 2 * quarter - 1, 3 * quarter - 1, frames - 1]
+        // Library mode = the live path (seed picks palette + ground together). Seed 4 → index 0
+        // (fathom, the cream default) — deterministic, and the coverage counter's ground
+        // reference works for any entry either way.
+        let run = try runPourAccumulation(
+            chromatic: 0, frames: frames, width: w, height: h, aspect: Float(w) / Float(h),
+            startTime: 0.0, checkpoints: cps, fx: fx, stemFrames: stems, libraryPaletteSeed: 4)
+
+        let total = Float(w * h)
+        let covSeries = zip(run.checkpointFrames, run.checkpointCounts)
+            .map { "f\($0)=\(String(format: "%.1f", Float($1) / total * 100))%" }
+            .joined(separator: "  ")
+        let finalCoverage = Float(run.checkpointCounts.last ?? 0) / total
+        print("[skein_cert] coverage \(covSeries)  (\(stems.count) real frames tiled to \(frames), \(w)×\(h), session \(session.lastPathComponent))")
+        // Env-gated eyeball artifact: the four checkpoint canvases as a montage (M7 prep).
+        if ProcessInfo.processInfo.environment["SKEIN_VISUAL"] == "1"
+            || ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" {
+            let tiles = run.checkpointFrames.compactMap { run.checkpointPixels[$0] }
+            let dir = try makeOutputDir()
+            let url = dir.appendingPathComponent("skein6_cert_coverage_montage.png")
+            try writeMontage(tiles, tileW: w, tileH: h, url: url)
+            print("[skein_cert] checkpoint montage → \(url.path)")
+        }
+
+        // NEVER SOLID: a tiled multi-track replay with no per-track wipes is the densest input
+        // the live app can ever exceed, so the ceiling is a regression tripwire on the approved
+        // emission rates, not a product target.
+        #expect(finalCoverage < 0.95, "Canvas painted \(finalCoverage * 100)% — reads as a solid over-covered mat (anti_dead_mat / density regression).")
+        #expect(finalCoverage > 0.40, "Canvas only \(finalCoverage * 100)% painted after a full track of dense material — near-empty (density regression).")
+    }
+
+    /// 9×8 luma dHash (the PresetRegressionTests form): one bit per adjacent horizontal cell pair.
+    private static func dHash64(_ bgra: [UInt8], w: Int, h: Int) -> UInt64 {
+        var cells = [Float](repeating: 0, count: 9 * 8)
+        for cy in 0..<8 {
+            for cx in 0..<9 {
+                let x0 = cx * w / 9, x1 = (cx + 1) * w / 9
+                let y0 = cy * h / 8, y1 = (cy + 1) * h / 8
+                var sum: Float = 0
+                var n = 0
+                for y in y0..<y1 {
+                    for x in x0..<x1 {
+                        let i = (y * w + x) * 4
+                        sum += 0.114 * Float(bgra[i]) + 0.587 * Float(bgra[i + 1]) + 0.299 * Float(bgra[i + 2])
+                        n += 1
+                    }
+                }
+                cells[cy * 9 + cx] = n > 0 ? sum / Float(n) : 0
+            }
+        }
+        var hash: UInt64 = 0
+        for cy in 0..<8 {
+            for cx in 0..<8 where cells[cy * 9 + cx + 1] > cells[cy * 9 + cx] {
+                hash |= 1 << UInt64(cy * 8 + cx)
+            }
+        }
+        return hash
     }
 
     // MARK: - Real-stem palette contact sheet (env-gated: candidate palettes for Matt sign-off)
