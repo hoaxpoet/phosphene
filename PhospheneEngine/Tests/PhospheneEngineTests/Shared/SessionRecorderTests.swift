@@ -28,7 +28,7 @@ final class SessionRecorderTests: XCTestCase {
     /// Columns appended after the PERF.2-pass block, shifting every pre-existing from-end
     /// cell offset: the FBS Stage 1 pulse pair (`pulse_phase01,pulse_amp01`, D-153) followed
     /// by the Skein.5.2 structural trio (`section_index,section_start_s,section_confidence`).
-    private let structTail = 5
+    private let structTail = 7
 
     private var tempDir: URL!
 
@@ -109,10 +109,12 @@ final class SessionRecorderTests: XCTestCase {
     // MARK: - frame_cpu_ms / frame_gpu_ms / per-subsystem / render-loop / ray-march pass columns
     //
     // Combined appended tail (newest last): `pulse_phase01,pulse_amp01` (FBS Stage 1 /
-    // D-153) then `section_index,section_start_s,section_confidence` (Skein.5.2) —
-    //   cells[count - 1] = section_confidence   cells[count - 4] = pulse_amp01
-    //   cells[count - 2] = section_start_s      cells[count - 5] = pulse_phase01
-    //   cells[count - 3] = section_index
+    // D-153), `section_index,section_start_s,section_confidence` (Skein.5.2), then
+    // `pulse_beat_index,pulse_regional_blend01` (FBS.S5 / D-158) —
+    //   cells[count - 1] = pulse_regional_blend01   cells[count - 5] = section_index
+    //   cells[count - 2] = pulse_beat_index         cells[count - 6] = pulse_amp01
+    //   cells[count - 3] = section_confidence       cells[count - 7] = pulse_phase01
+    //   cells[count - 4] = section_start_s
     // The offsets below are relative to `count - structTail`.
     //
     // CSV column layout from the end after PERF.2-pass (BUG-019 instrumentation):
@@ -151,8 +153,10 @@ final class SessionRecorderTests: XCTestCase {
             "gbuffer_pass_ms,lighting_pass_ms,ssgi_pass_ms,post_process_pass_ms"),
                       "features.csv header must contain the PERF.2-pass timing block, got: \(header)")
         XCTAssertTrue(header.hasSuffix(
-            "pulse_phase01,pulse_amp01,section_index,section_start_s,section_confidence"),
-                      "features.csv header must end with the FBS pulse pair + the Skein.5.2 structural block, got: \(header)")
+            "pulse_phase01,pulse_amp01,section_index,section_start_s,section_confidence,"
+            + "pulse_beat_index,pulse_regional_blend01"),
+                      "features.csv header must end with the FBS pulse pair + the Skein.5.2 "
+                      + "structural block + the FBS.S5 pulse tail, got: \(header)")
     }
 
     // MARK: - BUG-039 — video writer death → segment-rolling recovery
@@ -222,6 +226,8 @@ final class SessionRecorderTests: XCTestCase {
         var fv = FeatureVector.zero
         fv.pulsePhase01 = 0.625
         fv.pulseAmp01 = 1.0
+        fv.pulseBeatIndex = 17
+        fv.pulseRegionalBlend01 = 0.75
         recorder.recordFrame(features: fv, stems: StemFeatures.zero)
         recorder.finish()
 
@@ -232,10 +238,14 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(rows.count, 2)
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        XCTAssertEqual(Float(cells[cells.count - 5]) ?? -1, 0.625, accuracy: 0.0001,
-                       "pulse_phase01 round-trip — column count-5 (before the structural trio)")
-        XCTAssertEqual(Float(cells[cells.count - 4]) ?? -1, 1.0, accuracy: 0.0001,
-                       "pulse_amp01 round-trip — column count-4")
+        XCTAssertEqual(Float(cells[cells.count - 7]) ?? -1, 0.625, accuracy: 0.0001,
+                       "pulse_phase01 round-trip — column count-7 (before the structural trio)")
+        XCTAssertEqual(Float(cells[cells.count - 6]) ?? -1, 1.0, accuracy: 0.0001,
+                       "pulse_amp01 round-trip — column count-6")
+        XCTAssertEqual(cells[cells.count - 2], "17",
+                       "pulse_beat_index round-trip — column count-2 (FBS.S5 tail)")
+        XCTAssertEqual(Float(cells[cells.count - 1]) ?? -1, 0.75, accuracy: 0.0001,
+                       "pulse_regional_blend01 round-trip — last column (FBS.S5 tail)")
     }
 
     func test_recordStructuralPrediction_thenRecordFrame_writesSectionColumns() throws {
@@ -252,10 +262,10 @@ final class SessionRecorderTests: XCTestCase {
         XCTAssertEqual(rows.count, 2, "Header + 1 data row")
         let cells = rows[1].split(separator: ",", omittingEmptySubsequences: false)
             .map(String.init)
-        XCTAssertEqual(cells[cells.count - 3], "3", "section_index round-trip")
-        XCTAssertEqual(Float(cells[cells.count - 2]) ?? -1, 42.5, accuracy: 0.001,
+        XCTAssertEqual(cells[cells.count - 5], "3", "section_index round-trip")
+        XCTAssertEqual(Float(cells[cells.count - 4]) ?? -1, 42.5, accuracy: 0.001,
                        "section_start_s round-trip")
-        XCTAssertEqual(Float(cells[cells.count - 1]) ?? -1, 0.73, accuracy: 0.001,
+        XCTAssertEqual(Float(cells[cells.count - 3]) ?? -1, 0.73, accuracy: 0.001,
                        "section_confidence round-trip")
     }
 
@@ -273,9 +283,9 @@ final class SessionRecorderTests: XCTestCase {
         // `.none` semantics: section 0, start 0, confidence 0 — "no prediction yet" is a
         // legitimate zero state (unlike the timing columns' empty-cell convention, the
         // structural zero IS the StructuralPrediction.none value the consumers see).
-        XCTAssertEqual(cells[cells.count - 3], "0")
-        XCTAssertEqual(Float(cells[cells.count - 2]) ?? -1, 0, accuracy: 0.0001)
-        XCTAssertEqual(Float(cells[cells.count - 1]) ?? -1, 0, accuracy: 0.0001)
+        XCTAssertEqual(cells[cells.count - 5], "0")
+        XCTAssertEqual(Float(cells[cells.count - 4]) ?? -1, 0, accuracy: 0.0001)
+        XCTAssertEqual(Float(cells[cells.count - 3]) ?? -1, 0, accuracy: 0.0001)
     }
 
     func test_recordFrameTiming_thenRecordFrame_writesTimingValues() throws {

@@ -51,9 +51,13 @@ struct FeatureVector {
     // D-157 (float 42): completed pulse-cycle count — seeds the per-beat
     // spatial punch mask.
     float pulse_beat_index;
-    // Padding to 192 bytes (floats 43–48).
-    float _pad7,
-          _pad8, _pad9, _pad10, _pad11, _pad12;
+    // D-158 (FBS.S5, float 43 — reclaimed from `_pad7`): regional punch-mask
+    // blend. 0 during the bridge (global heave), ramping 0 → 1 over one
+    // 4-beat span after the handoff (regional per-beat punches). FFO mixes
+    // `mix(1.0, mask, blend)` into the punch footprint.
+    float pulse_regional_blend01;
+    // Padding to 192 bytes (floats 44–48).
+    float _pad8, _pad9, _pad10, _pad11, _pad12;
 };
 
 // MARK: - FeedbackParams

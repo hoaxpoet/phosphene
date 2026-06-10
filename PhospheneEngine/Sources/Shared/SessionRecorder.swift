@@ -409,7 +409,8 @@ public final class SessionRecorder: @unchecked Sendable {
             encode_cpu_ms,renderframe_cpu_ms,\
             gbuffer_pass_ms,lighting_pass_ms,ssgi_pass_ms,post_process_pass_ms,\
             pulse_phase01,pulse_amp01,\
-            section_index,section_start_s,section_confidence
+            section_index,section_start_s,section_confidence,\
+            pulse_beat_index,pulse_regional_blend01
 
             """
         let stemsHeader = """

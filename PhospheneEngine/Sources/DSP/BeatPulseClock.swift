@@ -64,8 +64,15 @@ public final class BeatPulseClock: @unchecked Sendable {
         /// per-beat spatial punch mask so a different region of the spike
         /// field punches each beat. Monotonic within a track; resets per track.
         public var beatIndex: Float
+        /// D-158 (FBS.S5, Matt's S4 directive): regional-mask blend. 0 during
+        /// the bridge (the slow heave moves the WHOLE ocean — it was invisible
+        /// under regional coverage), ramping 0 → 1 over one 4-beat span after
+        /// the handoff so the per-beat punches become regional without a
+        /// coverage cliff. Resets per track.
+        public var regionalBlend01: Float
 
-        public static let zero = Output(phase01: 0, amp01: 0, beatIndex: 0)
+        public static let zero = Output(phase01: 0, amp01: 0, beatIndex: 0,
+                                        regionalBlend01: 0)
     }
 
     // MARK: - Tuning constants
@@ -153,6 +160,10 @@ public final class BeatPulseClock: @unchecked Sendable {
     private var liveBeatCount: Float = 0
     private var lastLivePhase: Float?
 
+    /// D-158 — regional-mask blend ramp (see `Output.regionalBlend01`).
+    /// Advances only after the handoff, at 1 / (one 4-beat span) per second.
+    private var regionalBlend: Float = 0
+
     // MARK: - Init
 
     public init() {}
@@ -183,6 +194,7 @@ public final class BeatPulseClock: @unchecked Sendable {
         handedOff = false
         liveBeatCount = 0
         lastLivePhase = nil
+        regionalBlend = 0
     }
 
     /// First note = first sustained audible run; the anchor backdates to the
@@ -245,7 +257,7 @@ public final class BeatPulseClock: @unchecked Sendable {
 
         // --- Phase ---
         guard let anchor = anchorTime, let period = periodS, time >= anchor else {
-            return Output(phase01: 0, amp01: 0, beatIndex: 0)
+            return Output(phase01: 0, amp01: 0, beatIndex: 0, regionalBlend01: 0)
         }
         let beats = (time - anchor) / period
         let bridgePhase = Float(beats - beats.rounded(.down))
@@ -271,16 +283,24 @@ public final class BeatPulseClock: @unchecked Sendable {
            Self.envelope(live) < Self.handoffEnvelopeFloor {
             handedOff = true
         }
+        // D-158 — the regional blend ramps in only after the handoff (one
+        // 4-beat span ≈ the bridge cycle), so the global bridge heave gives
+        // way to regional per-beat punches without a coverage cliff.
+        if handedOff {
+            regionalBlend = min(1, regionalBlend + max(0, deltaTime) / Float(period))
+        }
         if handedOff {
             // Live phase gone (grid cleared mid-track) → fall back to the
             // bridge metronome rather than going dark.
             if let live = liveBeatPhase01 {
-                return Output(phase01: live, amp01: amp, beatIndex: liveBeatCount)
+                return Output(phase01: live, amp01: amp, beatIndex: liveBeatCount,
+                              regionalBlend01: regionalBlend)
             }
         }
         return Output(
             phase01: bridgePhase,
             amp01: amp,
-            beatIndex: Float(beats.rounded(.down)))
+            beatIndex: Float(beats.rounded(.down)),
+            regionalBlend01: regionalBlend)
     }
 }

@@ -196,10 +196,15 @@ public struct FeatureVector: Sendable {
     /// D-157 (float 42, reclaimed `_pad6`): completed pulse-cycle count —
     /// seeds the per-beat spatial punch mask.
     public var pulseBeatIndex: Float
+    /// D-158 (FBS.S5, float 43, reclaimed `_pad7`): regional punch-mask
+    /// blend from `BeatPulseClock` — 0 during the bridge (the slow heave
+    /// moves the WHOLE ocean), ramping 0 → 1 over one 4-beat span after the
+    /// handoff (regional per-beat punches, Matt's S4 keep). FFO mixes
+    /// `mix(1.0, mask, blend)` into the punch footprint.
+    public var pulseRegionalBlend01: Float
 
-    // --- Padding to 192 bytes (48 floats total — floats 43–48) ---
+    // --- Padding to 192 bytes (48 floats total — floats 44–48) ---
     // swiftlint:disable identifier_name
-    var _pad7: Float
     var _pad8: Float
     var _pad9: Float
     var _pad10: Float
@@ -248,7 +253,8 @@ public struct FeatureVector: Sendable {
         self.trackElapsedS = 0
         // FBS pulse (BeatPulseClock via MIRPipeline) + padding.
         self.pulsePhase01 = 0; self.pulseAmp01 = 0; self.pulseBeatIndex = 0
-        self._pad7 = 0; self._pad8 = 0
+        self.pulseRegionalBlend01 = 0
+        self._pad8 = 0
         self._pad9 = 0; self._pad10 = 0; self._pad11 = 0; self._pad12 = 0
     }
 
