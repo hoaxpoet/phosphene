@@ -379,6 +379,89 @@ struct SkeinCanvasHoldTest {
         }
     }
 
+    // MARK: - Skein.5.4: two painting techniques — independent flicks + pour drips (spawn layer)
+
+    /// Spawn-frame audit: tick a fresh SkeinState over a stem slice and, on every frame the burst
+    /// counter advances, measure each NEW mark's distance to the painter's pour position THAT frame
+    /// (spawn and the read share the same post-advance painterTau — exact, not approximate).
+    /// Drips that yield to a full ring don't advance the counter, so suffix(delta) is always the
+    /// newly-appended marks.
+    private static func spawnAudit(
+        _ slice: [StemFeatures], frames: Int, device: MTLDevice, palette: [SIMD3<Float>]
+    ) throws -> (flickDists: [Float], dripDists: [Float], flicks: Int, drips: Int) {
+        guard let st = SkeinState(device: device, seed: 0, palette: palette)
+        else { throw SkeinHoldError.bufferFailed }
+        let dt: Float = 1.0 / 60.0
+        var flickDists: [Float] = [], dripDists: [Float] = []
+        for fi in 0..<frames {
+            let before = st.totalBurstsSpawned
+            let features = FeatureVector(time: Float(fi) * dt, deltaTime: dt, aspectRatio: 1.0)
+            st.tick(deltaTime: dt, features: features, stems: slice[fi % slice.count])
+            let delta = st.totalBurstsSpawned - before
+            guard delta > 0 else { continue }
+            let pp = st.currentPainterPourPosition
+            for mark in st.activeBurstMarks.suffix(delta) {
+                let d = mark.pos - pp
+                let dist = (d.x * d.x + d.y * d.y).squareRoot()
+                if mark.isDrip { dripDists.append(dist) } else { flickDists.append(dist) }
+            }
+        }
+        let flicks = st.spawnsPerStem.reduce(0, +)
+        return (flickDists, dripDists, flicks, st.totalBurstsSpawned - flicks)
+    }
+
+    @Test("Skein.5.4 techniques: flicks land FAR from the painter (independent gesture), drips shed BESIDE the line at a rate ∝ pour volume — live tick path, real stems")
+    func test_splatterTechniques_flickPlacementAndPourDrips() throws {
+        guard let fx = try loadSkeinFixture() else { return }
+        guard let session = Self.firstRecordedSession(),
+              let stems = loadStemFrames(session, maxFrames: 2400), stems.count > 400 else {
+            print("SkeinCanvasHoldTest: no recorded session — skipping splatter-techniques gate (real audio: feedback_synthetic_audio)")
+            return
+        }
+        let palette = SkeinState.defaultPalette
+        let dev = fx.ctx.device
+
+        // Run 1: the real session as-played (both techniques under natural music).
+        let real = try Self.spawnAudit(Array(stems.prefix(1500)), frames: min(stems.count, 1500),
+                                       device: dev, palette: palette)
+        // Runs 2 + 3: the busiest vs calmest 240-frame slices, tiled — high pour volume (high
+        // sustained devs → high lineFlow) vs low. Identical frame count, so the drip-count gap
+        // is the volume response (Matt: drip density "depends on the volume of the pour").
+        let busyCalm = Self.busiestAndCalmestSlices(stems, window: 240)
+        let busy = try Self.spawnAudit(busyCalm.busy, frames: 900, device: dev, palette: palette)
+        let calm = try Self.spawnAudit(busyCalm.calm, frames: 900, device: dev, palette: palette)
+
+        let allFlickDists = real.flickDists + busy.flickDists + calm.flickDists
+        let allDripDists = real.dripDists + busy.dripDists + calm.dripDists
+        let minFlick = allFlickDists.min() ?? -1
+        let maxDrip = allDripDists.max() ?? -1
+        print("""
+        [skein54_techniques] session \(session.lastPathComponent), live tick path:
+          real run: flicks \(real.flicks) / drips \(real.drips)
+          busy tile: flicks \(busy.flicks) / drips \(busy.drips)   calm tile: flicks \(calm.flicks) / drips \(calm.drips)
+          flick distance from painter: min \(String(format: "%.3f", minFlick)) over \(allFlickDists.count)
+          drip distance from painter:  max \(String(format: "%.3f", maxDrip)) over \(allDripDists.count)
+        """)
+
+        // (a) FLICK INDEPENDENCE — every flick lands ≥ ~0.18 UV from the painter's pour position
+        //     ("away from the line is best"; spawn-time min-distance 0.20 minus the push-out edge case).
+        #expect(!allFlickDists.isEmpty, "No flicks spawned across three runs — the onset route died.")
+        #expect(minFlick >= 0.18,
+                "A flick landed \(minFlick) UV from the painter (< 0.18) — flicks must be independent of the line.")
+
+        // (b) DRIP RATE ∝ POUR VOLUME — the high-flow tile sheds clearly more drips than the
+        //     low-flow tile over the same frame count.
+        #expect(busy.drips > 0, "The high-flow tile shed no drips — the pour-drip spawner is dead.")
+        #expect(busy.drips > calm.drips,
+                "High-flow tile shed \(busy.drips) drips ≤ low-flow \(calm.drips) — drip rate is not following pour volume.")
+
+        // (c) DRIP PROXIMITY — every drip lands within ~0.03 UV of the line (the painter's pour
+        //     position at shed time; dripMaxPerpOffset 0.020 + margin).
+        #expect(!allDripDists.isEmpty, "No drips spawned across three runs — cannot verify drip proximity.")
+        #expect(maxDrip <= 0.03,
+                "A drip landed \(maxDrip) UV from the line (> 0.03) — drips must hug the pour.")
+    }
+
     // MARK: - Wet-now / dry-past sheen (Skein.4): fresh paint glistens, accumulated past is matte
 
     @Test("Wet-now / dry-past sheen (Skein.4): recently-painted glistens (specular), older is matte — live BLIT path")
@@ -513,7 +596,15 @@ struct SkeinCanvasHoldTest {
         // but a steep gate over the per-pass wetness age-bands produced strong concentric rings
         // (measured > 20 before the wetness blur). Bar: the sheen adds little local contrast inside an
         // otherwise-smooth stroke.
-        #expect(maxRing < 13.0,
+        //
+        // RECALIBRATED 13 → 16 at Skein.5.4 (the ONLY sanctioned bar adjustment of that increment,
+        // flagged in its closeout): the lobed impact blots + heavier drips have LARGER smooth
+        // interiors than the old confetti dots, so more blot-interior texels enter this proxy's
+        // sample and the wet-fresh sheen over them legitimately raises the mean local range
+        // (~13.4 measured, verified ring-free at pixel zoom in the Skein.5.4 prior session). The
+        // ring-defect signature is unchanged at ~27.6 (the round-4 A/B) — 16 still rejects it
+        // with margin while admitting the bigger smooth blots.
+        #expect(maxRing < 16.0,
                 "The sheen adds \(maxRing) luminance range inside SMOOTH painted strokes (frame \(maxCp)) — concentric age-band RINGS. Blur the wetness / soften the gate more.")
     }
 
@@ -614,11 +705,18 @@ struct SkeinCanvasHoldTest {
 
         let dt: Float = 1.0 / 60.0
         var taus: [Float] = [], doms: [Int] = []
-        var finalCanvas = [UInt8](repeating: 0, count: w * h * 4)
+        var probeCanvas = [UInt8](repeating: 0, count: w * h * 4)
+        var probeTau: Float = 0
+        var probeCaptured = false
+        var committedDom = -1
+        var switchFrame: Int?
         for (fi, stem) in seq.enumerated() {
             var features = FeatureVector(time: Float(fi) * dt, deltaTime: dt, aspectRatio: 1.0)
             skein.tick(deltaTime: dt, features: features, stems: stem)
             taus.append(skein.painterTau); doms.append(skein.lineDominantStem)
+            let domNow = skein.lineDominantStem
+            if committedDom < 0 { committedDom = domNow }   // first committed pour (−1 until settle)
+            else if switchFrame == nil && domNow >= 0 && domNow != committedDom { switchFrame = fi }
             guard let cmd = queue.makeCommandBuffer() else { throw SkeinHoldError.cmdBufferFailed }
             try encodeWarp(cmd: cmd, mvWarp: fx.mvWarp, warpTex: warpTex, composeTex: composeTex,
                            features: &features, chromatic: 0, wetnessDecay: skein.wetnessDecay)
@@ -627,15 +725,26 @@ struct SkeinCanvasHoldTest {
             try encodeBlit(cmd: cmd, mvWarp: fx.mvWarp, src: composeTex, dst: blitTex,
                            post: SIMD4<Float>(0, 0, 1, 0), skeinBuffer: skein.skeinBuffer)
             cmd.commit(); cmd.waitUntilCompleted()
-            if fi == seq.count - 1 {
-                composeTex.getBytes(&finalCanvas, bytesPerRow: w * 4,
+            // Skein.5.4 probe timing (Matt-approved, 2026-06-10): capture the canvas ~28 frames
+            // after the switch COMMITS — late enough that the post-switch pour has drawn through
+            // the 25·dτ probe window, early enough that the independent flicks (which now
+            // legitimately land anywhere, including over the old line) have not yet overpainted
+            // the pre-switch segment. The defect this gate guards — instant recolour of the laid
+            // tail AT the switch — manifests immediately, so the early probe is a SHARPER test of
+            // the same property. (End-of-run probing read X=28/Y=32 from flick overpaint while the
+            // freeze itself was intact — main baseline X=61/Y=0, same session.)
+            let probeFrame = switchFrame.map { min($0 + 28, seq.count - 1) } ?? (seq.count - 1)
+            if !probeCaptured && fi >= probeFrame {
+                composeTex.getBytes(&probeCanvas, bytesPerRow: w * 4,
                                     from: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0)
+                probeTau = skein.painterTau
+                probeCaptured = true
             }
             swap(&warpTex, &composeTex)
         }
 
         // Resolve the switch from the breakpoint ring: the final pour vs the prior different-colour pour.
-        let cream = Array(finalCanvas[(5 * w + 5) * 4 ..< (5 * w + 5) * 4 + 4])
+        let cream = Array(probeCanvas[(5 * w + 5) * 4 ..< (5 * w + 5) * 4 + 4])
         let bps = skein.colorBreakpoints
         guard let lastBP = bps.last,
               let priorBP = bps.dropLast().reversed().first(where: { dist3($0.color, lastBP.color) > 0.05 })
@@ -665,7 +774,7 @@ struct SkeinCanvasHoldTest {
             let n = 60
             for s in 0...n {
                 let tau = tauLo + (tauHi - tauLo) * Float(s) / Float(n)
-                switch sampleLineClass(finalCanvas, w: w, h: h, uv: Self.skeinPainterPos(tau) + off,
+                switch sampleLineClass(probeCanvas, w: w, h: h, uv: Self.skeinPainterPos(tau) + off,
                                        x255: colA255, y255: colB255, cream: cream) {
                 case 0: cx += 1
                 case 1: cy += 1
@@ -678,7 +787,7 @@ struct SkeinCanvasHoldTest {
         let preLo = max(tauSwitch - 25 * dtau, priorBP.tauStart + 2 * dtau)
         let preHi = tauSwitch - 3 * dtau
         let postLo = tauSwitch + 3 * dtau
-        let postHi = min(tauSwitch + 25 * dtau, tauFinal)
+        let postHi = min(tauSwitch + 25 * dtau, probeTau)   // probe canvas only extends to capture τ
         guard preHi - preLo >= 3 * dtau, postHi - postLo >= 3 * dtau else {
             Issue.record("Switch landed too close to a pour boundary to sample (preLo=\(preLo) preHi=\(preHi) postLo=\(postLo) postHi=\(postHi)).")
             return
@@ -753,17 +862,27 @@ struct SkeinCanvasHoldTest {
         let sCool = stats(cool.finalPixels, cream: cool.creamRef)
         print("""
         [skein5_mood] session \(session.lastPathComponent), \(frames)f live path \(w)×\(h):
-          WARM (+v +a): warmth(R−B)=\(String(format: "%.1f", sWarm.warmth))  painted=\(sWarm.painted)  pale=\(String(format: "%.3f", sWarm.paleShare))
-          COOL (−v −a): warmth(R−B)=\(String(format: "%.1f", sCool.warmth))  painted=\(sCool.painted)  pale=\(String(format: "%.3f", sCool.paleShare))
+          WARM (+v +a): warmth(R−B)=\(String(format: "%.1f", sWarm.warmth))  painted=\(sWarm.painted)  pale=\(String(format: "%.3f", sWarm.paleShare))  τ=\(String(format: "%.2f", warm.finalPainterTau))  marks=\(warm.totalBurstsSpawned)
+          COOL (−v −a): warmth(R−B)=\(String(format: "%.1f", sCool.warmth))  painted=\(sCool.painted)  pale=\(String(format: "%.3f", sCool.paleShare))  τ=\(String(format: "%.2f", cool.finalPainterTau))  marks=\(cool.totalBurstsSpawned)
         """)
         #expect(sWarm.painted > 500 && sCool.painted > 500,
                 "Runs painted too little to compare (warm \(sWarm.painted) / cool \(sCool.painted)).")
         // 1. WARMTH: the +valence canvas reads warmer than the −valence one (R−B balance shift).
         #expect(sWarm.warmth > sCool.warmth + 5.0,
                 "+valence did not warm the laid palette (warm R−B \(sWarm.warmth) vs cool \(sCool.warmth)).")
-        // 2. VIGOUR: the +arousal painter covers more canvas in the same frames (speed + density).
-        #expect(Float(sWarm.painted) > Float(sCool.painted) * 1.10,
-                "+arousal did not quicken/densify (painted warm \(sWarm.painted) vs cool \(sCool.painted)).")
+        // 2. VIGOUR — RE-PROBED at Skein.5.4 (Matt-approved, 2026-06-10): flicks now scatter over
+        //    the WHOLE canvas (the independent-technique change), so total painted area saturates
+        //    similarly in both runs and the old ≥1.10× coverage margin measured placement, not
+        //    vigour (1.285× pre-5.4 → 1.078× post, same session, both runs painting 2.3× more).
+        //    Measure the two mechanisms +arousal actually drives — the painter travels farther
+        //    (speed ×0.7–1.3) and throws more marks (refractory ÷(1+0.5a), τ-clocked drips) —
+        //    plus keep coverage as a DIRECTION check (no diluted margin).
+        #expect(warm.finalPainterTau > cool.finalPainterTau * 1.10,
+                "+arousal did not quicken the painter (τ warm \(warm.finalPainterTau) vs cool \(cool.finalPainterTau)).")
+        #expect(warm.totalBurstsSpawned > cool.totalBurstsSpawned,
+                "+arousal did not densify the marks (spawns warm \(warm.totalBurstsSpawned) vs cool \(cool.totalBurstsSpawned)).")
+        #expect(sWarm.painted > sCool.painted,
+                "+arousal covered LESS canvas (painted warm \(sWarm.painted) vs cool \(sCool.painted)).")
         // 3. PALE GUARD (CLAUDE.md pale-dominant rule): the mood tint never washes the paint pale.
         #expect(sWarm.paleShare < 0.30 && sCool.paleShare < 0.30,
                 "Mood tint pushed pale share over the ceiling (warm \(sWarm.paleShare) / cool \(sCool.paleShare)).")
@@ -1140,7 +1259,9 @@ struct SkeinCanvasHoldTest {
             return
         }
         let w = 960, h = 540
-        let frames = min(stems.count, 1400)
+        // SKEIN_SHEET_FRAMES overrides the render length (e.g. 300 ≈ 5 s for an early-canvas
+        // mark-anatomy panel where individual flicks are still separable — Skein.5.4 sheets).
+        let frames = min(stems.count, Int(env["SKEIN_SHEET_FRAMES"] ?? "") ?? 1400)
         let outDir = try makeOutputDir()
         // Render the SAME real-stem sequence (seed 0) with each candidate palette so Matt compares
         // legibility/character on identical paint, through the live path.
@@ -1280,6 +1401,8 @@ struct SkeinCanvasHoldTest {
         var finalBlitPixels: [UInt8]
         var checkpointBlitPixels: [Int: [UInt8]]   // BLIT (sheened) output at each checkpoint (contact sheet)
         var finalPainterTau: Float = 0             // painter clock at the last frame (corridor τ-range)
+        var totalBurstsSpawned = 0                 // marks thrown over the run (flicks + drips —
+                                                   //   the Skein.5.4 vigour-mechanism probe)
     }
 
     /// Skein.5 fixture drive: mood (constant smoothed-classifier-style valence/arousal), an
@@ -1450,7 +1573,7 @@ struct SkeinCanvasHoldTest {
             perFrameCounts: perFrameCounts,
             cornerAlphaSeries: cornerAlphaSeries, maxAlphaSeries: maxAlphaSeries,
             finalBlitPixels: finalBlitPixels, checkpointBlitPixels: checkpointBlitPixels,
-            finalPainterTau: skein.painterTau)
+            finalPainterTau: skein.painterTau, totalBurstsSpawned: skein.totalBurstsSpawned)
     }
 
     // MARK: - Pass encoders (mirror the live mv_warp dispatch path)
