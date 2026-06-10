@@ -150,6 +150,28 @@ public final class SessionRecorder: @unchecked Sendable {
     // serial `queue`. The append/not-ready/pool counters throttle their log
     // lines; `videoFailureLogged` makes the one-shot writer-failed line fire once.
     var videoFailureLogged = false
+
+    /// BUG-039 recovery — 1-based index of the video segment currently being
+    /// written. Segment 1 = `video.mp4` (unchanged layout); each writer death
+    /// rolls to `video_<n>.mp4` so the dead partial (playable to its last
+    /// fragment) is retained and recording RESUMES instead of dying for the
+    /// rest of the session. The writer's death certificate from session
+    /// 2026-06-10T17-50-56Z (AVFoundation -11800 / undocumented OSStatus
+    /// -16341, 10 s after lock) is an intermittent encoder-session failure —
+    /// unrecoverable in place, so the recorder restarts around it.
+    var videoSegmentIndex = 1
+    /// Restarts performed this session; capped so a pathological failure loop
+    /// can't churn files forever.
+    var videoWriterRestartCount = 0
+    static let maxVideoWriterRestarts = 8
+
+    /// URL for the CURRENT video segment.
+    var currentVideoURL: URL {
+        videoSegmentIndex <= 1
+            ? videoURL
+            : videoURL.deletingLastPathComponent()
+                .appendingPathComponent("video_\(videoSegmentIndex).mp4")
+    }
     var videoNotReadyCount = 0
     var videoPoolFailCount = 0
     var videoAppendFailCount = 0
