@@ -258,12 +258,20 @@ public final class SkeinState: @unchecked Sendable {
     /// `defaultPalette`; the contact-sheet harness passes candidates for Matt's sign-off). One
     /// vivid, well-separated colour per stem. Public so the colour-separation test classifies
     /// rendered (sRGB) pixels against these display values directly.
-    public let palette: [SIMD3<Float>]
+    ///
+    /// Skein.5.3: in LIBRARY MODE (no explicit palette at init — the live app's path) this is
+    /// `SkeinPaletteLibrary.entry(forTrackSeed:)` and `reseed` RE-PICKS it per track — each song
+    /// paints in its own palette, deterministically. An explicit init palette stays fixed forever
+    /// (the test fixtures / contact-sheet candidates). Written only under `lock`.
+    public private(set) var palette: [SIMD3<Float>]
 
     /// The palette sRGB-DECODED to linear, packed into the GPU buffer. The shader outputs linear;
     /// the `.bgra8Unorm_srgb` canvas sRGB-ENCODES on store, so the round-trip yields the `palette`
     /// display colour (FA #71 — without the decode, dark colours lift to washed mid-tones).
-    private let paletteLinear: [SIMD3<Float>]
+    private var paletteLinear: [SIMD3<Float>]
+
+    /// True when the palette comes from the library by track seed (Skein.5.3 — the live mode).
+    private let usesLibraryPalette: Bool
 
     // MARK: - Private State
 
@@ -330,11 +338,15 @@ public final class SkeinState: @unchecked Sendable {
     /// - Parameters:
     ///   - device: Metal device for buffer allocation.
     ///   - seed: Per-track deterministic seed (FNV-1a of title|artist — same track → same painting).
-    ///   - palette: Per-stem colour set; defaults to `defaultPalette`. The contact-sheet harness
-    ///     passes candidates for Matt's palette sign-off.
+    ///   - palette: Explicit per-stem colour set (the test fixtures / contact-sheet candidates) —
+    ///     stays fixed forever. `nil` (the live app's path) = LIBRARY MODE (Skein.5.3, Matt's
+    ///     "per-track, fixed" pick): `SkeinPaletteLibrary.entry(forTrackSeed:)` chooses the
+    ///     palette from the SAME track identity that seeds the trajectory, and `reseed` re-picks
+    ///     per track. Seed 0 → `fathom` (= `defaultPalette`), so no-palette fixtures at seed 0
+    ///     are byte-identical to the pre-library behaviour.
     public init?(device: MTLDevice,
                  seed: UInt32 = 0,
-                 palette: [SIMD3<Float>] = SkeinState.defaultPalette,
+                 palette: [SIMD3<Float>]? = nil,
                  locusEnabled: Bool = SkeinState.defaultLocusEnabled) {
         self.locusEnabled = locusEnabled
         let bufferSize = MemoryLayout<SkeinHeaderGPU>.stride
@@ -345,9 +357,14 @@ public final class SkeinState: @unchecked Sendable {
             return nil
         }
         skeinBuffer = buf
-        let pal = palette.count == 4 ? palette : Self.defaultPalette
-        self.palette = pal
-        self.paletteLinear = pal.map(Self.srgbToLinear)
+        if let explicit = palette, explicit.count == 4 {
+            usesLibraryPalette = false
+            self.palette = explicit
+        } else {
+            usesLibraryPalette = true
+            self.palette = SkeinPaletteLibrary.entry(forTrackSeed: seed).colors
+        }
+        self.paletteLinear = self.palette.map(Self.srgbToLinear)
         bursts = []
         bursts.reserveCapacity(Self.maxBursts)
         self.seed = seed
@@ -382,6 +399,13 @@ public final class SkeinState: @unchecked Sendable {
         lock.withLock {
             seed = newSeed
             applySeed(newSeed)
+            // Skein.5.3 (library mode only): the new track picks ITS palette — deterministic
+            // from the same identity that seeds the trajectory, so the same song always paints
+            // the same painting in the same colours (§5.7). Explicit-palette states stay fixed.
+            if usesLibraryPalette {
+                palette = SkeinPaletteLibrary.entry(forTrackSeed: newSeed).colors
+                paletteLinear = palette.map(Self.srgbToLinear)
+            }
             painterTau = 0
             painterTauStep = 0
             wetnessDecay = 1.0
@@ -973,13 +997,22 @@ extension SkeinState {
     /// the per-section warmth emphasis) warms/cools multiplicatively and scales saturation around
     /// luma. v = 0 ⇒ exact identity (existing tests and the silence path are byte-identical).
     func moodTinted(_ linear: SIMD3<Float>) -> SIMD3<Float> {
-        let val = clamp(m5.moodValence + m5.sectionWarm, -1, 1)
-        if abs(val) < 1e-5 { return linear }
-        var col = linear * SIMD3<Float>(1 + Self.moodWarmR * val, 1 + Self.moodWarmG * val, 1 - Self.moodCoolB * val)
+        let val = min(max(m5.moodValence + m5.sectionWarm, -1), 1)
+        return Self.moodTint(linear, valence: val)
+    }
+
+    /// The pure mood-tint math (static so the Skein.5.3 palette-library separability gate
+    /// exercises the EXACT production transform): multiplicative warm/cool on R/B + saturation
+    /// scaled around luma, clamped. Identity at valence = 0.
+    static func moodTint(_ linear: SIMD3<Float>, valence: Float) -> SIMD3<Float> {
+        if abs(valence) < 1e-5 { return linear }
+        var col = linear * SIMD3<Float>(1 + Self.moodWarmR * valence,
+                                        1 + Self.moodWarmG * valence,
+                                        1 - Self.moodCoolB * valence)
         let luma = col.x * 0.2126 + col.y * 0.7152 + col.z * 0.0722
-        let sat = max(Self.moodSatFloor, 1 + Self.moodSatGain * val)
+        let sat = max(Self.moodSatFloor, 1 + Self.moodSatGain * valence)
         col = SIMD3<Float>(repeating: luma) + (col - SIMD3<Float>(repeating: luma)) * sat
-        return SIMD3<Float>(clamp(col.x, 0, 1), clamp(col.y, 0, 1), clamp(col.z, 0, 1))
+        return SIMD3<Float>(min(max(col.x, 0), 1), min(max(col.y, 0), 1), min(max(col.z, 0), 1))
     }
 
     // MARK: Skein.5 test-facing accessors (thread-safe)

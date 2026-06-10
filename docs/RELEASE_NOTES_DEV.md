@@ -6,6 +6,12 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-06-10-b] Skein.5.3 — curated palette library, per-track (D-155)
+
+Matt's enhancement: palette variety like Lumen Mosaic's profiles. Five curated palettes (fathom — the shipped default — plus nocturne, jewel, inkpop, electric; terra was cut at curation), every one holding the same role grammar (drums = darkest ink, bass = deep weight, vocals = warm lead, other = contrast accent) so the painting reads identically in any palette. Each track deterministically paints in its own palette — the same identity hash that seeds the trajectory picks the colours, so "same song → same painting" now includes the inks, and a playlist rotates the library naturally. Library mode engages only on the live path; every test fixture stays pinned to its explicit palette. Curation gates: pairwise display separability (incl. vs the cream ground) across the full mood-tint swing, pale ceiling, role grammar, picker determinism. Contact sheets: `/tmp/skein_pour_diag/<stamp>/skein_palette_candidates.png` (the same real-stem painting per entry).
+
+---
+
 ## [dev-2026-06-10] BUG-040 — structural sections actually work now (frozen clock + live-edge peak + relative-only threshold)
 
 **Fix increment (P2, single increment per protocol — evidence pre-filed in BUG-040 from session `2026-06-10T03-09-20Z`'s new section columns).** Three compounding causes, each A/B-proven:
