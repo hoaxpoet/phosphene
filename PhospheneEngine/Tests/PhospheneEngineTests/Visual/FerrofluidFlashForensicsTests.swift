@@ -111,6 +111,7 @@ final class FerrofluidFlashForensicsTests: XCTestCase {
         var lastPulsePhase: Float?
         var auroraSmoothed: Float = 0
         var auroraWarmup: Float = 1.0   // mid-track window: warmup long done
+        var auroraHuePhase: Float = 0
         var dollyOffset: Float = 0
 
         struct FrameStat { let te: Float; let mean: Float; let p99: Float; let whiteFrac: Float }
@@ -185,6 +186,15 @@ final class FerrofluidFlashForensicsTests: XCTestCase {
             auroraSmoothed = aurora.smoothed
             auroraWarmup = aurora.warmup01
             stems.drumsEnergyDevSmoothed = ablate == "aurora" ? 0 : aurora.output
+            // FBS.S5 (D-158): the sky reads the CPU-smoothed palette phase;
+            // the raw pitch fields are inert to the shader now. The aurora-hue
+            // ablation already zeroed the pitch inputs above.
+            auroraHuePhase = RenderPipeline.auroraHueStep(
+                smoothedPhase: auroraHuePhase,
+                pitchHz: stems.vocalsPitchHz,
+                pitchConfidence: stems.vocalsPitchConfidence,
+                valence: features.valence, dt: dt)
+            stems.auroraPalettePhase = auroraHuePhase
             pipeline.sceneUniforms = uniforms
 
             let cmdBuf = try XCTUnwrap(context.commandQueue.makeCommandBuffer())

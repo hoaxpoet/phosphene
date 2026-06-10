@@ -177,6 +177,19 @@ extension RenderPipeline {
         var lightingStems = stemFeatures
         lightingStems.drumsEnergyDevSmoothed = auroraStep.output
 
+        // FBS.S5 (D-158) — aurora hue driver. The sky shader now reads ONE
+        // CPU-smoothed palette phase instead of computing per-pixel from raw
+        // `vocals_pitch_hz`/`confidence` (the gate-flapping strobe the S5
+        // forensics convicted). Runs unconditionally like the drums smoother;
+        // non-aurora presets don't read the slot.
+        auroraHuePhase = Self.auroraHueStep(
+            smoothedPhase: auroraHuePhase,
+            pitchHz: stemFeatures.vocalsPitchHz,
+            pitchConfidence: stemFeatures.vocalsPitchConfidence,
+            valence: features.valence,
+            dt: frameDt)
+        lightingStems.auroraPalettePhase = auroraHuePhase
+
         rayMarchState.render(
             gbufferPipelineState: activePipeline,
             features: &features,
@@ -242,6 +255,13 @@ extension RenderPipeline {
     ///    max per-frame output step ≈ 0.06 at 60 fps), fall τ 1.2 s (glow
     ///    decays like an afterimage). Replaces the symmetric 150 ms τ.
     /// The BUG-041 per-track quadratic warmup gate is unchanged on top.
+    ///
+    /// FBS.S5 (D-158, Matt's directive from the `2026-06-10T19-13-14Z` read:
+    /// "the aurora color is shifting too quickly… transition over a longer
+    /// length of time, e.g., 8-10s"): rise τ 0.45 → 2.7 s, fall τ 1.2 → 3.3 s.
+    /// A full transition (~3τ) now completes in ~8 s up / ~10 s down — the
+    /// brightness becomes a slow swell that follows the track's drum energy
+    /// arc rather than individual hits. Soft-knee + warmup unchanged.
     static func auroraDriverStep(
         smoothed: Float,
         warmup01: Float,
@@ -249,7 +269,7 @@ extension RenderPipeline {
         dt: Float
     ) -> AuroraDriverState {
         let knee = max(0, drumsDev) / (1.0 + 0.6 * max(0, drumsDev))
-        let tau: Float = knee > smoothed ? 0.45 : 1.2
+        let tau: Float = knee > smoothed ? 2.7 : 3.3
         let alpha = 1.0 - exp(-dt / tau)
         let nextSmoothed = smoothed + alpha * (knee - smoothed)
         let nextWarmup = min(1.0, warmup01 + max(0, dt) / Self.auroraWarmupSeconds)
@@ -261,6 +281,54 @@ extension RenderPipeline {
             smoothed: nextSmoothed,
             warmup01: nextWarmup,
             output: nextSmoothed * gate)
+    }
+
+    // MARK: - Aurora hue driver (FBS.S5, D-158)
+
+    /// EMA time constant for the aurora palette phase. 3τ ≈ 9 s — a hue
+    /// transition completes over Matt's directed 8–10 s window.
+    static let auroraHueTauSeconds: Float = 3.0
+
+    /// One frame of the aurora hue driver. Pure + deterministic so the flash
+    /// forensics harness runs the exact production arithmetic.
+    ///
+    /// Computes the SAME composite phase target the Ferrofluid Ocean sky
+    /// shader (`rm_ferrofluidSky`) used to derive per-pixel from raw stem
+    /// fields — perceptual log-scale pitch over 80 Hz–1 kHz, confidence-gated
+    /// (smoothstep 0.5→0.7) against the valence fallback — then low-passes it
+    /// with a τ ≈ 3 s EMA.
+    ///
+    /// Why (FBS.S5 forensics, session `2026-06-10T19-13-14Z`): the raw
+    /// confidence flapped across the 0.5 gate boundary ~9×/s on real music
+    /// (90 crossings in the 10 s So What window), snapping the curtain hue
+    /// between the pitch phase and the valence phase — at curtain intensity
+    /// 2.5–5.5 reflected across the whole mirror substrate, each snap stepped
+    /// the entire frame's luminance. Ablation proof: replicating the pitch
+    /// fields took the replica 1 → 13 flash steps (So What 31–41 s) and
+    /// 0 → 15 (Lotus 45–51 s); zeroing only those fields restored 1 / 0.
+    /// Smoothing the composite target averages gate flapping to a stable
+    /// intermediate hue, while a sustained vocal entry glides the hue over
+    /// ~9 s — Matt's directed character.
+    static func auroraHueStep(
+        smoothedPhase: Float,
+        pitchHz: Float,
+        pitchConfidence: Float,
+        valence: Float,
+        dt: Float
+    ) -> Float {
+        // Constants mirror the pre-S5 shader math (rm_ferrofluidSky).
+        let refLowHz: Float = 80.0
+        let refHighHz: Float = 1000.0
+        let maxShift: Float = 0.20
+        let hz = min(max(pitchHz, refLowHz), refHighHz)
+        let pitchNorm = log2(hz / refLowHz) / log2(refHighHz / refLowHz)
+        let pitchPhase = (pitchNorm - 0.5) * 2.0 * maxShift
+        let valencePhase = min(max(valence, -1.0), 1.0) * maxShift
+        let edge = min(max((pitchConfidence - 0.5) / 0.2, 0.0), 1.0)
+        let gate = edge * edge * (3.0 - 2.0 * edge)
+        let target = valencePhase + (pitchPhase - valencePhase) * gate
+        let alpha = 1.0 - exp(-max(0, dt) / Self.auroraHueTauSeconds)
+        return smoothedPhase + alpha * (target - smoothedPhase)
     }
 
     // MARK: - Audio-Reactive Modulation

@@ -138,8 +138,13 @@ extension PresetLoader {
             // reclaimed from `_pad2`. 0.25 (pivot) when toggle is off.
             float cached_bass_proportion;
 
-            // Padding to 256 bytes (floats 45–64).
-            float _pad3,  _pad4,  _pad5,  _pad6,  _pad7,  _pad8;
+            // FBS.S5 aurora hue driver (float 45, D-158) — reclaimed from
+            // `_pad3`. CPU-side τ≈3 s EMA over the pitch/valence palette-phase
+            // target. Consumed by FerrofluidOcean's sky; zero on other presets.
+            float aurora_palette_phase;
+
+            // Padding to 256 bytes (floats 46–64).
+            float _pad4,  _pad5,  _pad6,  _pad7,  _pad8;
             float _pad9,  _pad10, _pad11, _pad12, _pad13, _pad14, _pad15, _pad16;
             float _pad17, _pad18, _pad19, _pad20, _pad21, _pad22;
         };
