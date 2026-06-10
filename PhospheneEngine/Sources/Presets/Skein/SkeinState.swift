@@ -61,7 +61,8 @@ struct SkeinBurstGPU {
     var colR: Float        // frozen stem colour (the §colour-mud audit: per-burst mono-colour)
     var colG: Float
     var colB: Float
-    var sharpness: Float   // flick sharpness [0,1] (attackRatio → cone tightness)
+    var sharpness: Float   // flick sharpness [0,1] (attackRatio → cone tightness); < 0 ⇒ pour DRIP
+                           // (Skein.5.4 marker — the shader draws drip morphology, no flick layers)
     var hashSeed: Float    // per-burst deterministic seed for droplet placement variety
 }
 
@@ -339,6 +340,10 @@ public final class SkeinState: @unchecked Sendable {
     /// default (`defaultLocusEnabled`); the contact-sheet harness passes `true`.
     public let locusEnabled: Bool
 
+    /// Skein.5.4 pour-drip accumulator: drips shed from the pour at a rate ∝ its volume
+    /// (`lineFlow` — the same signal that drives width). Reset on reseed.
+    private var dripAccum: Float = 0
+
     private let lock = NSLock()
 
     // MARK: - Init
@@ -441,6 +446,7 @@ public final class SkeinState: @unchecked Sendable {
             structInitialized = false
             structBoundaryChanged = false
             m5 = MusicalityState()   // Skein.5: mood EMA, section lean/pulse, anticipation state
+            dripAccum = 0            // Skein.5.4: the new pour starts dry
             for i in 0..<4 {
                 stemEnergySmoothed[i] = 0
                 lastBurstTau[i] = -1
@@ -528,66 +534,16 @@ public final class SkeinState: @unchecked Sendable {
             spawnOnsetBursts(dev: dev, stems: stems, aspect: features.aspectRatio)
         }
 
+        // Skein.5.4 — the POUR's own by-product: drips shed beside the line at a rate that
+        // follows the pour's volume (Matt: "depends on the volume of the pour"). A separate
+        // technique from the flick — quiet, continuous, in the pour's colour. Clocked on the
+        // painter's τ step (the spec's drips/τ), so the drip clock pauses with the painter.
+        spawnPourDrips(tauStep: painterTauStep, stemMix: stemMix)
+
         // Retire bursts that have aged past the bake window (already baked losslessly into the
         // held canvas — no longer redrawn).
         bursts.removeAll { painterTau - $0.spawnTau > Self.bakeWindow }
         burstCount = bursts.count
-    }
-
-    // MARK: - Private: burst spawning
-
-    private func spawnBurst(stem: Int, stems: StemFeatures, aspect: Float) {
-        guard bursts.count < Self.maxBursts else {
-            // Ring full (very dense onset cluster): drop the oldest to make room.
-            if let oldest = bursts.indices.min(by: { bursts[$0].spawnTau < bursts[$1].spawnTau }) {
-                bursts.remove(at: oldest)
-            }
-            return spawnBurst(stem: stem, stems: stems, aspect: aspect)
-        }
-        let asp = aspect > 0.01 ? aspect : 1.0
-        let base = painterPos(painterTau)
-        let prev = painterPos(painterTau - max(painterTauStep, 1.0 / 240.0))
-        // Throw direction = direction of travel (aspect-corrected), the flung-forward axis. Computed
-        // from the UN-offset path so a switch-frame jump (Skein.4.1) does not spike the throw vector.
-        var dx = (base.x - prev.x) * asp
-        var dy = base.y - prev.y
-        let len = (dx * dx + dy * dy).squareRoot()
-        if len > 1e-5 { dx /= len; dy /= len } else { dx = 1; dy = 0 }
-        // Flick from the painter's CURRENT pour position — including this pour's jump offset — so the
-        // onset splatter lands with the displaced new-pour line, not the un-jumped trajectory (Skein.4.1).
-        let pos = base + currentLineOffset
-
-        let stemEnum = SkeinStem(rawValue: stem) ?? .drums
-        // Flick sharpness ← attackRatio (∈[0,3]): sharp transient → tight/fast spray (small dots),
-        // soft → looser/larger droplets.
-        let sharpness = clamp(attackRatio(of: stemEnum, stems: stems) / 3.0, 0, 1)
-        let size = mix(1.0, 0.55, sharpness)             // soft→bigger, sharp→smaller base size
-        // Viscosity ← centroid: bright/high-centroid = thin-fine (visc→0), dark/low = thick (visc→1).
-        let visc = clamp(1.0 - centroid(of: stemEnum, stems: stems), 0, 1)
-        // Skein.5: the burst colour is mood-tinted at SPAWN and frozen — like the line breakpoints,
-        // the canvas archives the mood each mark was laid under (valence = 0 ⇒ identity tint).
-        let col = moodTinted(paletteLinear[stem])
-
-        // Per-burst droplet-placement seed: mix the per-track seed with a monotonic spawn counter
-        // so the same track (same onset sequence) places identical droplets (§5.7 determinism).
-        burstSpawnCounter &+= 1
-        if stem >= 0 && stem < 4 { spawnsPerStemStore[stem] += 1 }
-        let mixed = (seed &+ burstSpawnCounter &* 0x9E3779B9) & 0xFFFFF
-        let hashSeed = Float(mixed)
-
-        bursts.append(SkeinBurstGPU(
-            posX: pos.x,
-            posY: pos.y,
-            dirX: dx,
-            dirY: dy,
-            spawnTau: painterTau,
-            size: size,
-            visc: visc,
-            colR: col.x,
-            colG: col.y,
-            colB: col.z,
-            sharpness: sharpness,
-            hashSeed: hashSeed))
     }
 
     // MARK: - Private: GPU write
@@ -793,6 +749,149 @@ extension SkeinState {
         jitter = clamp(highBand * 0.5 * stemMix, 0, 1)
     }
 
+    /// Deterministic 32-bit integer hash → [0, 1) (murmur-style finalizer). Drives the
+    /// Skein.5.4 flick landing points / throw angles / drip placement from the per-track seed +
+    /// spawn counter — same track, same marks (§5.7).
+    static func hash01(_ value: UInt32) -> Float {
+        var hv = value
+        hv ^= hv >> 16; hv = hv &* 0x7FEB_352D
+        hv ^= hv >> 15; hv = hv &* 0x846C_A68B
+        hv ^= hv >> 16
+        return Float(hv & 0xFF_FFFF) / Float(0x100_0000)
+    }
+
+    /// Skein.5.4 drip tuning: rate gain (drips/τ per unit lineFlow — typical flow 0.1–0.4 ⇒ a
+    /// drip every ~0.8–3 s), and how far beside the line a drip may land (stays inside the
+    /// pour's visual band; the corridor gates allow it).
+    static var dripRateGain: Float { 3.0 }
+    static var dripMaxPerpOffset: Float { 0.020 }
+
+    /// One onset-spawned FLICK (lock held). Skein.5.4 (Matt's technique distinction): the flick
+    /// is a separate gesture from the pour — "flicks are completely independent of the lines and
+    /// could conceivably land anywhere on the canvas; away from the line is best." The landing
+    /// point is a deterministic per-burst hash position with a minimum distance from the
+    /// painter's current pour position (mirror across the canvas when too close), and the throw
+    /// direction is the gesture's own random angle — no longer the painter's travel vector.
+    private func spawnBurst(stem: Int, stems: StemFeatures, aspect: Float, dev: Float) {
+        guard bursts.count < Self.maxBursts else {
+            // Ring full (very dense onset cluster): drop the oldest to make room.
+            if let oldest = bursts.indices.min(by: { bursts[$0].spawnTau < bursts[$1].spawnTau }) {
+                bursts.remove(at: oldest)
+            }
+            return spawnBurst(stem: stem, stems: stems, aspect: aspect, dev: dev)
+        }
+        _ = aspect   // flicks are gesture-independent of the pour path (Skein.5.4)
+        burstSpawnCounter &+= 1
+        let h1 = Self.hash01(seed &+ burstSpawnCounter &* 0x9E37_79B9)
+        let h2 = Self.hash01(seed &+ burstSpawnCounter &* 0x85EB_CA6B)
+        let h3 = Self.hash01(seed &+ burstSpawnCounter &* 0xC2B2_AE35)
+        func dist(_ a2: SIMD2<Float>, _ b2: SIMD2<Float>) -> Float {
+            let dv = a2 - b2
+            return (dv.x * dv.x + dv.y * dv.y).squareRoot()
+        }
+        var pos = SIMD2<Float>(0.06 + 0.88 * h1, 0.06 + 0.88 * h2)
+        let painterNow = painterPos(painterTau) + currentLineOffset
+        if dist(pos, painterNow) < 0.20 {
+            pos = SIMD2<Float>(1, 1) - pos                       // mirror to the far side
+            if dist(pos, painterNow) < 0.20 {                    // painter near centre: push outward
+                let away = pos - painterNow
+                let mag2 = max(dist(away, SIMD2<Float>(0, 0)), 1e-4)
+                pos = painterNow + (away / mag2) * 0.24
+                pos = SIMD2<Float>(min(max(pos.x, 0.06), 0.94), min(max(pos.y, 0.06), 0.94))
+            }
+        }
+        let throwAngle = h3 * 2 * Float.pi
+        let dx = cos(throwAngle)
+        let dy = sin(throwAngle)
+
+        let stemEnum = SkeinStem(rawValue: stem) ?? .drums
+        // Flick sharpness ← attackRatio (∈[0,3]): sharp transient → tight/fast spray (small dots),
+        // soft → looser/larger droplets.
+        let sharpness = clamp(attackRatio(of: stemEnum, stems: stems) / 3.0, 0, 1)
+        // Skein.5.4: the THROW MAGNITUDE — how far the firing dev exceeds the onset threshold,
+        // soft-saturated against the real deviation range (spikes reach ~3x, p99 ≈ 0.85 — the
+        // deviation-real-range memory; never tune against dev == 1.0). A heavy hit flings a big,
+        // far splatter; a marginal one barely crosses, a soft flick. Folded into `burst.size`
+        // (no GPU-struct change): size = attack base × magnitude swing — the shader scales the
+        // primary splat, streak length, satellite spread and droplet sizes from it.
+        let magRaw = max(0, dev - Self.onsetDevThreshold)
+        let mag01 = magRaw / (magRaw + 0.35)
+        let size = mix(1.0, 0.55, sharpness) * mix(0.55, 2.0, mag01)
+        // Viscosity ← centroid: bright/high-centroid = thin-fine (visc→0), dark/low = thick (visc→1).
+        let visc = clamp(1.0 - centroid(of: stemEnum, stems: stems), 0, 1)
+        // Skein.5: the burst colour is mood-tinted at SPAWN and frozen — like the line breakpoints,
+        // the canvas archives the mood each mark was laid under (valence = 0 ⇒ identity tint).
+        let col = moodTinted(paletteLinear[stem])
+
+        // Per-burst droplet-placement seed: the same per-track seed + monotonic spawn counter
+        // (incremented above) so the same track places identical marks (§5.7 determinism).
+        if stem >= 0 && stem < 4 { spawnsPerStemStore[stem] += 1 }
+        let mixed = (seed &+ burstSpawnCounter &* 0x9E3779B9) & 0xFFFFF
+        let hashSeed = Float(mixed)
+
+        bursts.append(SkeinBurstGPU(
+            posX: pos.x,
+            posY: pos.y,
+            dirX: dx,
+            dirY: dy,
+            spawnTau: painterTau,
+            size: size,
+            visc: visc,
+            colR: col.x,
+            colG: col.y,
+            colB: col.z,
+            sharpness: sharpness,
+            hashSeed: hashSeed))
+    }
+
+    /// The POUR's drips (Skein.5.4, lock held): paint shed from the travelling stream — round
+    /// drops landing close beside the line, rate ∝ pour volume (`lineFlow`), in the POUR's
+    /// colour. Encoded in the shared burst ring with `sharpness = -1` as the drip marker (no
+    /// GPU-struct change); the shader draws drip morphology for negative sharpness. Drips
+    /// yield to flicks when the ring is full (flicks are the accents).
+    func spawnPourDrips(tauStep: Float, stemMix: Float) {
+        guard lineDomIdx >= 0, stemMix > 0.001 else { return }
+        dripAccum += tauStep * Self.dripRateGain * lineFlow
+        guard dripAccum >= 1 else { return }
+        dripAccum -= 1
+        guard bursts.count < Self.maxBursts else { return }
+        burstSpawnCounter &+= 1
+        let h1 = Self.hash01(seed &+ burstSpawnCounter &* 0x9E37_79B9)
+        let h2 = Self.hash01(seed &+ burstSpawnCounter &* 0x85EB_CA6B)
+        let h3 = Self.hash01(seed &+ burstSpawnCounter &* 0xC2B2_AE35)
+        let pp = painterPos(painterTau) + currentLineOffset
+        let ang = h1 * 2 * Float.pi
+        let off = mix(0.005, Self.dripMaxPerpOffset, h2)
+        let pos = pp + SIMD2<Float>(cos(ang), sin(ang)) * off
+        let col = moodTinted(paletteLinear[lineDomIdx])
+        let mixed = (seed &+ burstSpawnCounter &* 0x9E3779B9) & 0xFFFFF
+        bursts.append(SkeinBurstGPU(
+            posX: pos.x,
+            posY: pos.y,
+            dirX: cos(ang),
+            dirY: sin(ang),
+            spawnTau: painterTau,
+            size: clamp(0.5 + 1.6 * lineFlow, 0.5, 1.6) * mix(0.7, 1.3, h3),   // heavy pour, heavy drop
+            visc: lineVisc,
+            colR: col.x,
+            colG: col.y,
+            colB: col.z,
+            sharpness: -1,                                                      // the drip marker
+            hashSeed: Float(mixed)))
+    }
+
+    /// Test-facing: the live burst ring's positions + technique (drip vs flick). Thread-safe.
+    public var activeBurstMarks: [(pos: SIMD2<Float>, isDrip: Bool)] {
+        lock.withLock { bursts.map { (SIMD2<Float>($0.posX, $0.posY), $0.sharpness < 0) } }
+    }
+
+    /// Test-facing: the painter's current pour position (trajectory + the committed pour's jump
+    /// offset) — the reference point the Skein.5.4 flick min-distance + drip proximity gates
+    /// measure from. Thread-safe.
+    public var currentPainterPourPosition: SIMD2<Float> {
+        lock.withLock { painterPos(painterTau) + currentLineOffset }
+    }
+
     /// Per-stem onset → splatter bursts (called from `_tick`, lock held; canvas warm). The
     /// emission TRIGGER stays per-stem onset (the accent layer, unchanged); Skein.5 scales only
     /// the DENSITY envelope: arousal (vigorous music flicks more) and the section-boundary pulse
@@ -805,7 +904,7 @@ extension SkeinState {
             let active = dev[i] > Self.onsetDevThreshold
             let pastRefractory = (painterTau - lastBurstTau[i]) > refractory
             if active && pastRefractory {
-                spawnBurst(stem: i, stems: stems, aspect: aspect)
+                spawnBurst(stem: i, stems: stems, aspect: aspect, dev: dev[i])
                 lastBurstTau[i] = painterTau
             }
         }
