@@ -35,8 +35,11 @@ final class FerrofluidFlashForensicsTests: XCTestCase {
         let parts = windowSpec.split(separator: ":").compactMap { Double($0) }
         guard parts.count == 3 else { throw XCTSkip("PHOSPHENE_FLASH_WINDOW must be seg:lo:hi") }
         let (segIdx, lo, hi) = (Int(parts[0]), parts[1], parts[2])
-        // Ablation: none | pulse | aurora | light | spikes-frozen — disable ONE
-        // layer to attribute measured flashes mechanically.
+        // Ablation: none | pulse | aurora | aurora-hue | light — disable ONE
+        // layer to attribute measured flashes mechanically. `aurora-hue` zeroes
+        // ONLY the vocals-pitch fields (the S4 replica-gap route): the aurora
+        // keeps its drums-driven intensity but the hue input freezes to the
+        // valence fallback — isolating hue motion from brightness motion.
         let ablate = ProcessInfo.processInfo.environment["PHOSPHENE_FLASH_ABLATE"] ?? "none"
 
         guard let device = MTLCreateSystemDefaultDevice() else { throw XCTSkip("no Metal device") }
@@ -147,6 +150,13 @@ final class FerrofluidFlashForensicsTests: XCTestCase {
                 stems.bassEnergy = fv(srow, "bassEnergy")
                 stems.vocalsEnergy = fv(srow, "vocalsEnergy")
                 stems.otherEnergy = fv(srow, "otherEnergy")
+                // S5: the vocals-pitch → aurora-hue route (rm_ferrofluidSky
+                // palettePhase) was the replica's known gap — these two fields
+                // were never set, so hue-motion flashes could not reproduce.
+                if ablate != "aurora-hue" {
+                    stems.vocalsPitchHz = fv(srow, "vocalsPitchHz")
+                    stems.vocalsPitchConfidence = fv(srow, "vocalsPitchConfidence")
+                }
             }
             // -- replicate applyAudioModulation with the CSV's deterministic dt --
             var uniforms = baseUniforms
