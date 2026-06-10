@@ -57,6 +57,40 @@ extension VisualizerEngine {
         return UInt32(truncatingIfNeeded: Self.lumenTrackSeedHash(for: identity))
     }
 
+    /// BUG-044: per-track preset-state reset shared by BOTH track-change paths — the streaming
+    /// metadata callback (`VisualizerEngine+Capture`) AND the local-file queue advance
+    /// (`advanceLocalFileQueue` — next / prev / natural EOF). Any preset whose per-track state
+    /// lives outside `resetStemPipeline` resets HERE, or it silently survives track changes on
+    /// whichever path forgets it (the BUG-024 complementary-path class — the Skein §1.5 canvas
+    /// wipe was wired only on the streaming path for 5 days before a local-file listen caught it).
+    ///
+    /// PRECONDITION: `lastResolvedTrackIdentity` must already hold the NEW track's identity —
+    /// `currentSkeinSeed()` derives the reseed from it (call after `applyLocalFileTrackState`
+    /// on the LF path).
+    func resetPerTrackPresetState() {
+        // NB.4: settle Nimbus into the new track. Zeroing the bloom follower shrinks/dims the
+        // body to its floor and the flow phase re-seeds; the dim settle-in masks the gas re-seed
+        // so the body blooms back UP into the new track rather than popping (DESIGN §1.5).
+        // No-op when Nimbus is not the active preset (state is nil).
+        nimbusState?.reset()
+        // Skein.3 (§1.5): a new track paints its OWN canvas (the held painting is the previous
+        // track's visual fingerprint). Wipe the canvas back to the ground and re-seed the painter
+        // from the new track's identity (same track → same painting, §5.7). No-op when Skein
+        // is not the active preset (skeinState is nil → the canvas clear is skipped too).
+        if skeinState != nil {
+            skeinState?.reseed(currentSkeinSeed())
+            // Skein.5.3b: the new track's palette carries its GROUND (light or dark) — push it
+            // as the canvas-ground override BEFORE the wipe so the fresh canvas clears to the
+            // new palette's ground, and any mid-track resize re-clears to the same. LINEAR
+            // (Metal encodes on store for the sRGB canvas).
+            if let skeinGround = skeinState?.groundLinear {
+                pipeline.setMVWarpCanvasGround(SIMD4<Double>(
+                    Double(skeinGround.x), Double(skeinGround.y), Double(skeinGround.z), 1.0))
+            }
+            pipeline.clearMVWarpCanvasToGround()
+        }
+    }
+
     // swiftlint:disable cyclomatic_complexity function_body_length
     // applyPreset iterates the passes array with one case per capability type.
     // The switch is the whole point — extracting cases would obscure the configuration

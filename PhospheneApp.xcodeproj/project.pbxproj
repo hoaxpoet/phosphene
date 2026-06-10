@@ -69,6 +69,7 @@
 		P10009 /* StreamingArtworkDiskCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20009; };
 		P10010 /* StreamingArtworkFetcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20010; };
 		P10011 /* StreamingArtworkPublishingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20011; };
+		P10012 /* TrackChangePresetResetRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = P20012; };
 		A10003 /* PhospheneEngine in Frameworks */ = {isa = PBXBuildFile; productRef = A80001; };
 		A10010 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20010; };
 		A10011 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20011; };
@@ -247,6 +248,7 @@
 		P20009 /* StreamingArtworkDiskCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingArtworkDiskCacheTests.swift; sourceTree = "<group>"; };
 		P20010 /* StreamingArtworkFetcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingArtworkFetcherTests.swift; sourceTree = "<group>"; };
 		P20011 /* StreamingArtworkPublishingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingArtworkPublishingTests.swift; sourceTree = "<group>"; };
+		P20012 /* TrackChangePresetResetRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackChangePresetResetRegressionTests.swift; sourceTree = "<group>"; };
 		O20007 /* DarkVibrancyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DarkVibrancyView.swift; sourceTree = "<group>"; };
 		A20004 /* PhospheneApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhospheneApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A20005 /* PhospheneEngine */ = {isa = PBXFileReference; lastKnownFileType = wrapper; name = PhospheneEngine; path = PhospheneEngine; sourceTree = "<group>"; };
@@ -752,6 +754,7 @@
 				P20009 /* StreamingArtworkDiskCacheTests.swift */,
 				P20010 /* StreamingArtworkFetcherTests.swift */,
 				P20011 /* StreamingArtworkPublishingTests.swift */,
+				P20012 /* TrackChangePresetResetRegressionTests.swift */,
 			);
 			path = PhospheneAppTests;
 			sourceTree = "<group>";
@@ -1051,6 +1054,7 @@
 				P10009 /* StreamingArtworkDiskCacheTests.swift in Sources */,
 				P10010 /* StreamingArtworkFetcherTests.swift in Sources */,
 				P10011 /* StreamingArtworkPublishingTests.swift in Sources */,
+				P10012 /* TrackChangePresetResetRegressionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
