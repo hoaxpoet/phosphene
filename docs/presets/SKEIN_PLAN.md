@@ -36,7 +36,7 @@ Companion design doc: `SKEIN_pollock_preset_architecture.md` (becomes the seed f
 | **Skein.5.3b** | Per-palette grounds + anchored re-curation | preset | Skein.5.3 | ✅ **landed 2026-06-10 (D-155 amendment)** — final library fathom/poles/nocturne/ember (1 light + 3 dark grounds, all work-anchored); ground travels with the palette end-to-end |
 | **Skein.5.3** | Curated palette library + per-track picker | preset | Skein.5 | ✅ **landed 2026-06-10 (D-155)** — 5 Matt-curated palettes (fathom/nocturne/jewel/inkpop/electric), fixed role grammar, deterministic per-track picker (seed % count, §5.7 extends to colour); separability-under-mood-tint gates |
 | **Skein.5.4** | Two painting techniques: pour drips vs independent flicks | preset | Skein.5.3b | ✅ **landed + Matt eyeball-gate PASSED 2026-06-10 (3 live sessions: look "I like it" / round-2 speed tune "the speed adjustments look good" / BUG-044 wipe verify "Looks good"); merged to local main `befb406b`** — the pour sheds drips beside the line ∝ pour volume (`lineFlow`, τ-clocked); flicks land anywhere ≥ 0.20 UV from the painter with their own throw angle (lobed blot + 1–3 flung threads w/ terminal droplets + power-law teardrop satellites; magnitude = soft-saturated dev excess in `burst.size`); emission timing UNCHANGED, no GPU-struct change (`sharpness < 0` = drip marker); round-2: spatter rate −41 %, pour starts +13 % |
-| **Skein.6** | Certification | preset | all | Soak + acceptance + determinism gate + **Matt M7** |
+| **Skein.6** | Certification | preset | all | 🔶 **gates landed 2026-06-10 (D-159) — AWAITING MATT'S M7** (≥5 streaming tracks + a local file, from the main build). Landed: track-length coverage bound (Matt's decision: approved density stands, §5.7 60–80 % band retired for never-solid/never-near-empty), §5.7 determinism dHash (two-run byte-identity + hamming ≤ 8; full-track evidence 2×10,800f diff 0), golden dHash entry, §5.5 two-hour canvas soak (`SKEIN_SOAK=1`, via the live mv_warp path — `SoakTestHarness` can't see the canvas), `family: painterly` + `PresetCategory` case (D-142(c)), `rubric_profile: lightweight` ratified (D-064 precedent). Seed stays FNV-1a `title\|artist` (SHA-256 wording amended). `certified: true` flips ONLY on the M7 verdict |
 
 Execution order is top-to-bottom. ENGINE.2 is shown near Skein.4 because that's the increment that needs it; it can be built any time after approval but **must land before Skein.4 opens** (infra-before-preset, never bundled). **ENGINE.3 likewise must land before Skein.5's structure sub-feature** — Matt chose the deliberate engine increment (option (a)) over an in-state proxy for real section-awareness.
 
@@ -266,7 +266,7 @@ Plumbs the live `StructuralPrediction` (`MIRPipeline.latestStructuralPrediction`
 **Scope.**
 - **Soak:** multi-hour `SoakTestHarness` run — confirm the 8-bit canvas under identity-hold shows no banding/drift over a long session (the §5.5 verify-don't-assume check). 16-bit fallback only if this fails.
 - **Acceptance invariants** (`PresetAcceptanceTests`): silence-non-black (trivial here); beat-ratio (splatter density beat-heavy > steady); **coverage bound** (typical track ends 60–80 %, never full, never near-empty on a dense track).
-- **Determinism gate (headline property):** same track + same seed → dHash-stable final canvas across two runs, within tolerance. Wire the painter seed fully to the track SHA-256.
+- **Determinism gate (headline property):** same track + same seed → dHash-stable final canvas across two runs, within tolerance. ~~Wire the painter seed fully to the track SHA-256.~~ **AMENDED at Skein.6 (D-159): the seed stays FNV-1a `title|artist`** (the seed every approved painting was drawn from); the SHA-256 wording was a design-phase proposal, amended in `SKEIN_DESIGN.md §1`/`§5.7`.
 - Golden dHash regression entry for Skein.
 - **Anti-reference check:** manual (the automated anti-reference dHash gate is itself a Missing engine capability — same gap Arachne has — so this stays an M7 judgement).
 - ENGINEERING_PLAN.md rows marked landed; FidelityRubric profile set.
@@ -279,6 +279,8 @@ Plumbs the live `StructuralPrediction` (`MIRPipeline.latestStructuralPrediction`
 **Done-when.**
 - Soak clean; acceptance green; determinism gate green; golden registered.
 - M7 verdict: pass.
+
+**Status (2026-06-10, D-159).** All automated gates landed and green (coverage bound per Matt's keep-the-approved-look decision; determinism dHash; golden entry; the §5.5 soak runs the CANVAS through the live mv_warp path — `SoakTestHarness` is the headless audio-path harness and cannot observe banding/drift). `family: painterly` + `rubric_profile: lightweight` ratified. **Awaiting Matt's M7**; `certified` stays `false` until the verdict.
 
 ---
 
