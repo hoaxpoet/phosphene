@@ -146,7 +146,7 @@ P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh dou
 **Verification criteria:**
 - [x] Automated: each detected boundary registers exactly once across the ring slide (absolute frame counter dedup) — `noveltyDetect_ringWrap_boundaryRegistersOnce` + `structuralAnalyzer_ringWrap_boundaryRegistersOnce`, both A/B-proven against pre-fix source.
 - [x] Automated: `latestStructuralPrediction` write moved under the lock (`SkeinStructureSignalTests` green).
-- [ ] Manual: section indices/durations from a real session's `features.csv` are musically plausible (no sub-second "sections") — folds into the Skein.5 M7 session review.
+- [ ] Manual: section indices/durations from a real session's `features.csv` are musically plausible (no sub-second "sections") — **evaluated 2026-06-10 (session `03-09-20Z`, the first with the Skein.5.2 columns): NOT plausible — but via a DIFFERENT mechanism than BUG-035** (a live-edge peak registered anew every ~4 detect intervals, not the same boundary re-admitted by ring slide; the BUG-035 A/B regression tests stay green). Criterion superseded by **BUG-040**.
 
 ---
 
@@ -247,6 +247,28 @@ Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — 
 - [ ] Diagnosis: the next affected session's `session.log` names the failing path + `writer.error` (instrumentation criterion).
 - [ ] Fix (subsequent increment): a full-length session video after the root-cause fix; affected-session signature no longer occurs across a multi-session week.
 - [ ] Partial-file retention: an affected session still yields a playable partial `video.mp4` (no deletion on failure).
+
+**Observation log:** `2026-06-10T03-09-20Z` (first session WITH the instrumentation): full-length video (333.6 s of a 335 s session), no stall — the defect did not fire. Still awaiting the first instrumented affected session.
+
+---
+
+### BUG-040 — NoveltyDetector registers a live-edge boundary every ~4 detect intervals on real music: sections of ~1.3–1.6 s, negative `section_start_s`, confidence pinned low (2026-06-10)
+
+**Severity:** P2 (the structural signal D-151 delivers to Skein.5 is unusable on real music — every track reads as 20–35 "sections"; the Skein.5 confidence gate (smoothstep 0.25→0.55) correctly suppresses the visual bias, so the painting is unharmed, but the structure sub-feature is effectively INERT. Discovered the first day the Skein.5.2 columns existed — the instrumentation did its job.)
+**Domain tag:** dsp.structure
+**Status:** Open — evidence from session artifacts; not yet diagnosed in code.
+**Introduced:** structural — distinct from BUG-035 (which is fixed and stays fixed: its mechanism was the SAME physical boundary re-admitted as the ring slid; this is a NEW boundary registered near the live edge over and over).
+**Resolved:** —
+
+**Expected:** a ~45–55 s pop track registers 1–4 section boundaries with multi-second durations and confidence that climbs on regular material.
+**Actual (session `2026-06-10T03-09-20Z`, 6 streaming tracks, the audit catalog):** every track registers a boundary every **~1.3–1.6 s** (Love Rehab: 33 "sections"; Lotus Flower: 36) — the cadence ≈ **4 × the 30-frame detect interval**, exactly the spacing at which a peak whose ABSOLUTE index advances with the stream escapes the 120-frame dedup window. `section_start_s` is **negative** (−0.13…−0.77) essentially always — the registered timestamps sit "just before now," consistent with a peak at the newest edge of the novelty window plus a timestamp/fps skew. `section_confidence` is structurally pinned ≤ 0.30 (sub-second duration variance ⇒ near-zero duration consistency; brief 0.70/0.90 spikes on two tracks).
+**Reproduction steps:** play any real track ≥ 1 min; read the `section_index`/`section_start_s`/`section_confidence` tail columns (Skein.5.2) — index inflates every ~1.5 s.
+**Session artifacts:** `~/Documents/phosphene_sessions/2026-06-10T03-09-20Z/features.csv` (cols 53–55).
+**Suspected failure class:** `algorithm`. Working hypothesis (UNVERIFIED — needs a diagnosis increment): on real, constantly-evolving music the checkerboard novelty response forms a local maximum at/near the NEWEST valid window position (the after-block holds the freshest, most-different content). That edge peak's absolute index advances ~30 per detect call, so the BUG-035 absolute-index dedup (correct for stationary content peaks) re-admits it every 4th call. A true boundary should only register once it is INTERIOR to the window — i.e. peaks within ~`minPeakDistance` of the newest edge need an edge guard (register only after the peak survives with full bilateral context). The negative timestamps additionally suggest a `currentTime`/`fps` estimation skew in `timestampForFrame` worth auditing in the same diagnosis.
+**Verification criteria (written before any fix):**
+- [ ] Automated: a real-music-shaped fixture (continuously varying features, no true boundary) registers ZERO boundaries over ≥ 2000 frames; the existing A→B fixtures still register exactly one.
+- [ ] Automated: registered timestamps are non-negative and within the fed time range.
+- [ ] Manual: a real session's section columns show multi-second sections and confidence that climbs on verse/chorus material (the original BUG-035 criterion 3, which this defect supersedes).
 
 ---
 
