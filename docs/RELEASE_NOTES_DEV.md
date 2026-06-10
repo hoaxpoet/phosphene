@@ -6,6 +6,18 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-06-10] BUG-040 — structural sections actually work now (frozen clock + live-edge peak + relative-only threshold)
+
+**Fix increment (P2, single increment per protocol — evidence pre-filed in BUG-040 from session `2026-06-10T03-09-20Z`'s new section columns).** Three compounding causes, each A/B-proven:
+
+1. **Frozen clock:** the live analysis loop hardwires `time: 0` into `MIRPipeline.process`, so the structural analyzer's clock never advanced — boundary timestamps were `0 − age ≈ −0.3 s` (the exact observed range), durations were noise, confidence pinned ≤ 0.30. The analyzer now clocks from the pipeline's own track-relative `elapsedSeconds`. The new live-caller-shape test fails pre-fix with `sectionStartTime → −0.3167`.
+2. **Live-edge peak:** on real music the checkerboard novelty response peaks at the newest window position; its absolute index advances with the stream and escaped the BUG-035-fixed dedup every ~4 detect calls (the ~1.3–1.6 s junk cadence). Detection is now restricted to the interior region (≥ `minPeakDistance` after-context) — a true boundary registers once, ~2 s late.
+3. **Relative-only threshold:** mean + 1.5σ admits noise-scale peaks on smooth material (measured: junk ~0.0003 vs real boundary ~0.43). An absolute floor (`minNoveltyFloor = 0.02`) is ANDed in.
+
+Consequence: the Skein.5 structure sub-feature (section flurry + region lean, conf-gated) and the orchestrator's `StructuralPrediction` consumer receive a sane signal for the first time. Gates: evolving-music zero-boundary (pre-fix 5 junk), live-caller timestamps, analyzer-layer plausibility; all 16 pre-existing structure tests + AABA golden unchanged-green. Remaining manual criterion: next real session's section columns show multi-second sections with climbing confidence.
+
+---
+
 ## [dev-2026-06-09-c] Skein.5.1/5.2 — never-white painter + structural CSV columns + BUG-039 video instrumentation
 
 Matt's Skein.5 M7 follow-ups, in priority order:
