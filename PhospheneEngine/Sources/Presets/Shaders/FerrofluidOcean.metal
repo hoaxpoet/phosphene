@@ -178,6 +178,10 @@ static inline float fo_spike_strength(constant FeatureVector& f,
     // beat-grid phase may drive timing), NOT Layer-4 onset-pulse motion —
     // no beat_bass/beat_mid/beat_composite onset signals are consumed (those
     // fire on ~97 % of frames on real sessions; BUG-038 root cause).
+    // NOTE: the 0.85 decay-end is load-bearing for the FBS.S3 handoff
+    // (D-156): BeatPulseClock.envelopeRestPhase mirrors it — the CPU swaps
+    // the pulse's phase source only while phase >= 0.85 (envelope at rest)
+    // so the swap is invisible. Change one, change both.
     float ph     = clamp(f.pulse_phase01, 0.0, 1.0);
     float amp    = clamp(f.pulse_amp01, 0.0, 1.0);
     float attack = smoothstep(0.0, 0.08, ph);

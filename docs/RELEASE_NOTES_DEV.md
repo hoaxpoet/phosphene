@@ -34,6 +34,14 @@ Matt's Skein.5 M7 follow-ups, in priority order:
 
 ---
 
+## [dev-2026-06-10-fbs-s3] FBS.S2.1/S2.2/S3 — planner-fallback exclusion hole closed; aurora track-start flash fixed (BUG-041); the pulse hands off invisibly to the live beat (D-156)
+
+**Increments:** FBS.S2.1 (fallback fix), FBS.S2.2 (BUG-041), FBS.S3 (handoff). **Status:** all gates green; **awaiting Matt's live read** (the energetic steady state + no aurora flash + Pyramid exclusion in an auto-rotating session). **Decisions:** D-156; BUG-041 in KNOWN_ISSUES (fix landed, pending M7).
+
+- **S2.1:** Matt's "verify the exclusion with your own test" caught a real hole — `SessionPlanner.cheapestFallback` ignored hard exclusions (and could schedule a diagnostic preset, a pre-existing D-074 violation). The fallback now relaxes only soft exclusions; locked by the end-to-end planner test that was red before the fix.
+- **S2.2:** the aurora's drums driver gets a per-track quadratic warmup (0→1 over 10 s) — the stem-deviation cold-start overswing (measured 1.2–3.3× on exactly the tracks Matt flagged) no longer reaches the GPU at flash scale; steady state byte-identical. Real-session replay tests through the production arithmetic.
+- **S3:** after 10 s the spike pulse swaps from the slow 4-beat bridge onto the live drift tracker's per-beat phase — only at a frame where both phases sit in the punch envelope's rest window, so the envelope is zero across the swap (invisible seam by construction). Per-track reset re-opens on the bridge; reactive/no-grid keeps the bridge. Proven on the recorded Love Rehab session (handoff timing, rest-window swap, post-handoff phase identity, envelope-continuity, pre-handoff bridge period — all asserted). Known risk stated: the steady state inherits the live tracker's phase quality.
+
 ## [dev-2026-06-10-fbs-s2] FBS.S2 — beat-irregular tracks never see FFO; the pulse becomes a slow 4-beat heave (D-154)
 
 **Increment:** FBS.S2 (Matt's course-correction after the Stage-1 live verdict — session `2026-06-10T03-02-32Z`, addendum in `FBS_STAGE0_FINDINGS_2026-06-09.md`). **Status:** built, gates green; **awaiting Matt's live read.** **Decision:** D-154.

@@ -88,6 +88,21 @@ public final class BeatPulseClock: @unchecked Sendable {
     /// four beats: phase errors read as swell character, not a wrong beat.
     public static let pulseBeats: Double = 4.0
 
+    // MARK: Handoff to the live beat (FBS.S3 / D-156)
+
+    /// Seconds after the anchor before the pulse may hand off to the live
+    /// drift tracker's per-beat phase. Matches the stem/tracker convergence
+    /// window (the tracker's correction wanders over the opening — Stage 0).
+    static let handoffAfterS: Double = 10.0
+
+    /// Phase at/after which the punch envelope is at REST (must match the
+    /// envelope decay-end in `FerrofluidOcean.metal`'s `fo_spike_strength` —
+    /// decay completes at 0.85 of the cycle). The handoff swaps the phase
+    /// source only while BOTH the outgoing and incoming phases sit in this
+    /// window, so the envelope is zero across the swap — an invisible seam
+    /// by construction.
+    static let envelopeRestPhase: Float = 0.85
+
     // MARK: - State
 
     /// Beat period in seconds. nil = no usable tempo → pulse stays silent.
@@ -106,6 +121,11 @@ public final class BeatPulseClock: @unchecked Sendable {
     private var silentRunS: Float = 0
     /// Smoothed amplitude gate.
     private var amp: Float = 0
+
+    /// FBS.S3 / D-156 — true once the pulse has handed off to the live
+    /// drift-tracker phase (per-beat, "energetic" steady state). Cleared per
+    /// track by `resetAnchor()` so every track re-opens on the slow bridge.
+    public private(set) var handedOff = false
 
     // MARK: - Init
 
@@ -134,6 +154,7 @@ public final class BeatPulseClock: @unchecked Sendable {
         audibleRunFrames = 0
         silentRunS = 0
         amp = 0
+        handedOff = false
     }
 
     // MARK: - Per-frame update
@@ -146,6 +167,21 @@ public final class BeatPulseClock: @unchecked Sendable {
     ///     resets to 0 on track change, same clock the anchor lives in).
     ///   - deltaTime: seconds since the previous analysis frame.
     public func update(energySum: Float, time: Double, deltaTime: Float) -> Output {
+        update(energySum: energySum, time: time, deltaTime: deltaTime, liveBeatPhase01: nil)
+    }
+
+    /// Advance the clock one analysis frame, with the live drift tracker's
+    /// per-beat phase available for the FBS.S3 handoff (D-156).
+    ///
+    /// - Parameter liveBeatPhase01: `FeatureVector.beatPhase01` from
+    ///   `LiveBeatDriftTracker` when a grid is installed; nil in reactive
+    ///   mode (no handoff — the bridge keeps running).
+    public func update(
+        energySum: Float,
+        time: Double,
+        deltaTime: Float,
+        liveBeatPhase01: Float?
+    ) -> Output {
         let audible = energySum > Self.audibleEnergyFloor
 
         // --- Anchor acquisition (first note = first sustained audible run) ---
@@ -176,12 +212,36 @@ public final class BeatPulseClock: @unchecked Sendable {
         let alpha = min(1, max(0, deltaTime) / Self.ampRampS)
         amp += alpha * (ampTarget - amp)
 
-        // --- Phase: pure metronome, never corrected ---
+        // --- Phase ---
         guard let anchor = anchorTime, let period = periodS, time >= anchor else {
             return Output(phase01: 0, amp01: 0)
         }
         let beats = (time - anchor) / period
-        let phase = Float(beats - beats.rounded(.down))
-        return Output(phase01: phase, amp01: amp)
+        let bridgePhase = Float(beats - beats.rounded(.down))
+
+        // FBS.S3 / D-156 — handoff to the live beat. After the convergence
+        // window, swap the phase source from the slow bridge metronome to the
+        // drift tracker's per-beat phase — but ONLY at a frame where BOTH
+        // phases sit in the envelope's rest window, so the punch envelope is
+        // zero on each side of the swap and the seam is invisible by
+        // construction. Once handed off, the pulse follows the live beat for
+        // the rest of the track (its small continuous corrections read as
+        // timing breath at punch rate, not stutter; gross corrections happen
+        // in the opening, which the bridge covers).
+        if !handedOff,
+           let live = liveBeatPhase01,
+           time - anchor >= Self.handoffAfterS,
+           bridgePhase >= Self.envelopeRestPhase,
+           live >= Self.envelopeRestPhase {
+            handedOff = true
+        }
+        if handedOff {
+            // Live phase gone (grid cleared mid-track) → fall back to the
+            // bridge metronome rather than going dark.
+            if let live = liveBeatPhase01 {
+                return Output(phase01: live, amp01: amp)
+            }
+        }
+        return Output(phase01: bridgePhase, amp01: amp)
     }
 }

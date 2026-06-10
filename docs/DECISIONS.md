@@ -4709,3 +4709,21 @@ Plumbing: one gated `mvWarpWetnessDecay` uniform (mirror of `mvWarpChromatic`), 
 **Trade-off accepted.** Per-palette character variation (e.g. nocturne's violet bass vs fathom's oxblood) means M7/cert evidence must sample multiple palettes; Skein.6's ≥5-track M7 naturally covers ≥5 palette draws via distinct tracks.
 
 **References.** D-147 (stem palette + the legibility binding constraint), D-150/D-152 (the colour-freeze + lay-time mood tint the library rides), D-LM-palette-library (the Lumen Mosaic precedent Matt pointed at), SKEIN_DESIGN §1.2 ("the palette is open — a tunable"), SHADER_CRAFT §18.8.
+
+## D-156 — FBS.S3: after ~10 s the pulse hands off invisibly to the live drift-tracker beat (per-beat punches — the energetic steady state); the slow bridge covers only the opening
+
+**Date:** 2026-06-10 · **Increment:** FBS.S3 · **Status:** Ratified (implements Matt's "slow pulse for the start… we need something more energetic" direction, 2026-06-10)
+
+**Decision.** `BeatPulseClock` becomes a two-state machine:
+
+1. **Bridge (track open):** unchanged D-153/D-154 behaviour — first-note anchor, cached tempo, slow 4-beat heave, never corrected. Covers the window where the live tracker wanders and the stems converge.
+2. **Handoff (once, per track):** after `handoffAfterS` (10 s) past the anchor, the pulse swaps its phase source to `LiveBeatDriftTracker`'s per-beat `beatPhase01` — but ONLY at a frame where BOTH the outgoing bridge phase and the incoming live phase sit in the punch envelope's REST window (≥ 0.85 of the cycle, where the envelope is zero — the constant mirrors the decay-end in `fo_spike_strength`; both sides are cross-annotated). The envelope is zero on each side of the swap ⇒ **the seam is invisible by construction**, no crossfade needed.
+3. **Steady state:** per-beat punches following the live beat — including its small continuous corrections, which at punch rate read as timing breath, not stutter (the gross corrections happen in the opening, which the bridge covers). Grid cleared mid-track ⇒ falls back to the bridge metronome rather than going dark. `resetAnchor()` (track change) returns to the bridge, so every track re-opens slow.
+
+Reactive mode with no grid: no live phase is offered, the bridge keeps running (no handoff). The MIRPipeline pulse update moves AFTER the drift-tracker block so the live phase is current-frame.
+
+**Evidence (real session replay, `loverehab_handoff_2026-06-10T14-55-32Z` fixture — 40 s of Love Rehab with the recorded live `beatPhase01`).** `test_handoff_swapsToLiveBeat_invisibly_onRealSession`: handoff fires ≥ 10 s, in the rest window on both sides; post-handoff phase equals the recorded live phase exactly; the envelope's max frame-to-frame step around the swap stays within its natural attack slope (bound 0.65 — sized for real frame-time jitter; a bad mid-punch swap would step ≈ 1.0); the bridge ticked at exactly the slow 4-beat period before the swap. Plus no-grid/no-handoff and per-track reset gates. Live-path GPU suite green.
+
+**Known risk (stated).** The steady state inherits the live tracker's quality: on tracks where its phase is wrong or breathing visibly, the per-beat punches will show that. That is the next live read's question — and the gate (D-154) already keeps the worst tracks (beat-irregular) off FFO entirely.
+
+**References.** D-153 (the pulse), D-154 (exclusion + slow bridge), FBS kickoff §Stage 3, Matt 2026-06-10.
