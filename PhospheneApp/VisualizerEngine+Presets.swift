@@ -81,6 +81,7 @@ extension VisualizerEngine {
         pipeline.setMeshPresetTick(nil)
         pipeline.setMVWarpWetnessDecay(1.0)   // Skein.ENGINE.2: reset to "held" (only Skein decays A)
         pipeline.setStructuralPrediction(.none)   // Skein.ENGINE.3 (D-151): reset to inert default on preset switch
+        pipeline.setMVWarpCanvasGround(nil)   // Skein.5.3b: drop the per-track ground override (only Skein sets it)
         arachneState = nil
         gossamerState = nil
         auroraVeilState = nil
@@ -487,6 +488,14 @@ extension VisualizerEngine {
                     if let state = SkeinState(device: context.device, seed: currentSkeinSeed()) {
                         skeinState = state
                         pipeline.setDirectPresetFragmentBuffer(state.skeinBuffer)   // buffer(6)
+                        // Skein.5.3b: the palette's GROUND travels with the track. setupMVWarp
+                        // already cleared the canvas to the JSON cream before this state existed
+                        // — push the per-track ground override and re-wipe so the first track's
+                        // canvas opens on ITS palette's ground (light or dark).
+                        let ground = state.groundLinear
+                        pipeline.setMVWarpCanvasGround(SIMD4<Double>(
+                            Double(ground.x), Double(ground.y), Double(ground.z), 1.0))
+                        pipeline.clearMVWarpCanvasToGround()
                         // Skein.ENGINE.2: the per-frame wetness-channel decay (pauses at silence)
                         // is pushed to the warp/hold pass from the tick hook. Capture the pipeline
                         // WEAKLY (via a local) so the @Sendable closure holds no retain cycle —

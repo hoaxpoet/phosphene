@@ -1145,11 +1145,13 @@ struct SkeinCanvasHoldTest {
         // Render the SAME real-stem sequence (seed 0) with each candidate palette so Matt compares
         // legibility/character on identical paint, through the live path.
         var tiles: [[UInt8]] = []
-        for cand in Self.candidatePalettes {
+        for (idx, cand) in Self.candidatePalettes.enumerated() {
+            // Skein.5.3b: LIBRARY MODE per entry — the seed picks palette AND ground together,
+            // and the canvas clears to that entry's ground (light or dark), the live path.
             let run = try runPourAccumulation(
                 chromatic: 0, frames: frames, width: w, height: h, aspect: Float(w) / Float(h),
                 startTime: 0.0, checkpoints: [frames - 1], fx: fx,
-                seed: 0, palette: cand.colors, stemFrames: stems)
+                stemFrames: stems, libraryPaletteSeed: UInt32(idx))
             guard let buf = run.checkpointPixels[frames - 1] else { continue }
             tiles.append(buf)
             try writeBGRAToPNG(buf, w: w, h: h,
@@ -1302,7 +1304,8 @@ struct SkeinCanvasHoldTest {
         checkpoints: Set<Int>, fx: SkeinFixture, capturePerFrame: Bool = false,
         seed: UInt32 = 0, palette: [SIMD3<Float>]? = nil, stemFrames: [StemFeatures] = [],
         captureWetness: Bool = false, captureBlit: Bool = false,
-        drive: MusicalityDrive = MusicalityDrive()
+        drive: MusicalityDrive = MusicalityDrive(),
+        libraryPaletteSeed: UInt32? = nil
     ) throws -> PourResult {
         let device = fx.ctx.device, queue = fx.ctx.commandQueue
         // Skein.3: the painter clock + onset-burst ring + per-stem colour live in SkeinState, bound
@@ -1310,10 +1313,20 @@ struct SkeinCanvasHoldTest {
         // ticks it each frame exactly as the live app's setMeshPresetTick does. `stemFrames` are
         // REAL replayed StemFeatures (feedback_synthetic_audio: never hand-authored envelopes); an
         // empty array drives StemFeatures.zero (silence → the pour line only, no onset bursts).
-        guard let skein = SkeinState(device: device, seed: seed,
-                                     palette: palette ?? SkeinState.defaultPalette,
-                                     locusEnabled: drive.locusEnabled)
-        else { throw SkeinHoldError.bufferFailed }
+        //
+        // Skein.5.3b: `libraryPaletteSeed` runs the state in LIBRARY MODE (the live path) — the
+        // seed picks palette AND ground together, and the canvas clears to that entry's ground
+        // (light or dark), exactly as the live track-change clear does. Default = explicit
+        // palette + the classic cream (every pre-existing gate pinned, byte-identical).
+        let skeinMaybe: SkeinState?
+        if let libSeed = libraryPaletteSeed {
+            skeinMaybe = SkeinState(device: device, seed: libSeed, locusEnabled: drive.locusEnabled)
+        } else {
+            skeinMaybe = SkeinState(device: device, seed: seed,
+                                    palette: palette ?? SkeinState.defaultPalette,
+                                    locusEnabled: drive.locusEnabled)
+        }
+        guard let skein = skeinMaybe else { throw SkeinHoldError.bufferFailed }
         let fbDesc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: fx.ctx.pixelFormat, width: width, height: height, mipmapped: false)
         fbDesc.usage = [.renderTarget, .shaderRead]
@@ -1322,8 +1335,17 @@ struct SkeinCanvasHoldTest {
               var composeTex = device.makeTexture(descriptor: fbDesc),
               let blitTex = device.makeTexture(descriptor: fbDesc)
         else { throw SkeinHoldError.textureFailed }
-        // Held ground IS the cream canvas clear (not black) — the D-143 fix.
-        try clearTextures([warpTex, composeTex], to: fx.cream, context: fx.ctx)
+        // Held ground IS the canvas clear (not black) — the D-143 fix; Skein.5.3b: in library
+        // mode the clear is the ENTRY's ground (mirrors the live setMVWarpCanvasGround path).
+        let groundClear: MTLClearColor
+        if libraryPaletteSeed != nil {
+            let gl = skein.groundLinear
+            groundClear = MTLClearColor(red: Double(gl.x), green: Double(gl.y),
+                                        blue: Double(gl.z), alpha: 1.0)
+        } else {
+            groundClear = fx.cream
+        }
+        try clearTextures([warpTex, composeTex], to: groundClear, context: fx.ctx)
         try clearTextures([blitTex], to: MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1), context: fx.ctx)
 
         let dt: Float = 1.0 / 60.0   // fixed 60 fps step → posPrev(t−Δt) == prev frame's posNow (chaining)

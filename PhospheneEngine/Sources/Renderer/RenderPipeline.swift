@@ -61,6 +61,16 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// `setMVWarpWetnessDecay`.
     var mvWarpWetnessDecay: Float = 1.0
 
+    /// Skein.5.3b: a per-TRACK canvas-ground override (LINEAR rgba) for canvas-hold presets
+    /// whose ground travels with the palette (the Skein palette library — light AND dark
+    /// grounds). `nil` (every other preset, and Skein before its state exists) ⇒ the
+    /// preset-static `canvasClearColor` from the `marks` descriptor — byte-identical for all
+    /// non-consumers. Consulted by `setupMVWarp`'s fresh-texture clear (incl. the resize
+    /// re-clear path) and `clearMVWarpCanvasToGround` (the §1.5 track-change wipe). Reset to
+    /// `nil` at preset teardown beside the wetness/structure resets. Set via
+    /// `setMVWarpCanvasGround`.
+    var mvWarpCanvasGroundOverride: SIMD4<Double>?
+
     /// mv_warp display-stage post params (Dragon Bloom L4, D-137), bound to
     /// `mvWarp_blit_fragment` at fragment buffer 0. `x` = invert amount
     /// (source.milk `bInvert=1` — flips the cool full-warp fill to warm), `y` =

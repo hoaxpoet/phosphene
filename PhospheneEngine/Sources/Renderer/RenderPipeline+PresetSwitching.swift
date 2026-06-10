@@ -109,6 +109,14 @@ extension RenderPipeline {
         mvWarpLock.withLock { mvWarpWetnessDecay = decay }
     }
 
+    /// Set (or clear, with `nil`) the per-track canvas-ground override for canvas-hold presets
+    /// whose ground travels with the palette (Skein.5.3b). LINEAR rgba — Metal encodes on store
+    /// for the `.bgra8Unorm_srgb` canvas. Takes effect on the next canvas clear
+    /// (`clearMVWarpCanvasToGround` / texture (re)allocation), not retroactively. Thread-safe.
+    public func setMVWarpCanvasGround(_ ground: SIMD4<Double>?) {
+        mvWarpLock.withLock { mvWarpCanvasGroundOverride = ground }
+    }
+
     /// Set the mv_warp display-stage post params (Dragon Bloom L4, D-137).
     /// `invert` = source.milk `bInvert` (flips the cool full-warp fill to warm),
     /// `echo` = `fVideoEchoAlpha`, `gamma` = `fGammaAdj`. Display-only (applied in the

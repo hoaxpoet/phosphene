@@ -212,6 +212,10 @@ struct SkeinUniforms {        // 64-byte header + 48 × 48-byte bursts + 16 × 2
     float pad2; float pad3;
     SkeinBurstGPU bursts[48];          // == kSkeinMaxBursts
     SkeinBreakGPU breaks[16];          // == kSkeinMaxBreaks (Skein.4.1)
+    float4 ground;                     // Skein.5.3b: the palette's canvas ground, LINEAR (rgb; w unused).
+                                       // Offset 2752 = 64 + 48·48 + 16·24, 16-byte aligned — the second
+                                       // additive tail. The comp paint-mask compares the auto-decoded
+                                       // (linear) canvas sample against it; per-track in library mode.
 };
 
 // Skein.4.1 — the line state in effect at a given painter-clock value: frozen colour + new-pour offset
@@ -607,10 +611,12 @@ fragment float4 skein_comp_fragment(
                 + warpTex.sample(warpSampler, uv + float2(0.0, t2.y)).a + warpTex.sample(warpSampler, uv - float2(0.0, t2.y)).a);
     wet = clamp(wet, 0.0, 1.0);   // 13-tap, two-ring Gaussian (≈ ±10 texel radius) — blends the loop-pass age bands
 
-    // Paint-present mask: bare cream ground (rgb ≈ the held cream) reads MATTE — the sheen only
-    // touches PAINT. (Bare cream carries wetness in A too, since the clear seeds A=1; the mask is
-    // what keeps the bare ground from glistening — wet paint, not a wet floor.)
-    float paint = smoothstep(0.015, 0.080, distance(col, kSkeinCanvasCream));
+    // Paint-present mask: the bare ground reads MATTE — the sheen only touches PAINT. (Bare
+    // ground carries wetness in A too, since the clear seeds A=1; the mask is what keeps the
+    // bare ground from glistening — wet paint, not a wet floor.) Skein.5.3b: the ground is
+    // per-palette (st.ground, LINEAR — light cream/linen or dark indigo/maroon), no longer
+    // the fixed cream constant.
+    float paint = smoothstep(0.015, 0.080, distance(col, st.ground.rgb));
 
     // Wetness → gloss gate (hard wet/dry split): the specular + micro-relief fire only on WET
     // (recent) paint, gated to ~0 on the dried past — the wet-now / dry-past legibility read.
