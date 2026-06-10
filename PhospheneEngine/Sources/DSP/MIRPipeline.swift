@@ -424,11 +424,17 @@ public final class MIRPipeline: @unchecked Sendable {
             deltaTime: ctx.deltaTime,
             liveBeatPhase01: liveDriftTracker.hasGrid ? fv.beatPhase01 : nil
         )
+        applyPulseFields(pulse, to: &fv)
+        return fv
+    }
+
+    /// Write the `BeatPulseClock` output onto the FeatureVector pulse fields
+    /// (floats 40–43: D-153 phase/amp, D-157 beat index, D-158 regional blend).
+    private func applyPulseFields(_ pulse: BeatPulseClock.Output, to fv: inout FeatureVector) {
         fv.pulsePhase01 = pulse.phase01
         fv.pulseAmp01 = pulse.amp01
         fv.pulseBeatIndex = pulse.beatIndex
         fv.pulseRegionalBlend01 = pulse.regionalBlend01
-        return fv
     }
 
     // MARK: - Live Drift Grid
