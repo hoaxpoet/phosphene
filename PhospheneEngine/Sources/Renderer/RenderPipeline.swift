@@ -192,6 +192,16 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// draw path — no lock required.
     var auroraDrumsSmoothed: Float = 0
 
+    /// BUG-041 — per-track warmup gate on the aurora's drums driver, 0 → 1
+    /// over `RenderPipeline.auroraWarmupSeconds` after each track change.
+    /// The per-stem deviation EMA re-seeds when `StemAnalyzer` resets per
+    /// track and overswings 1.2–3.3× for the first ~10 s (measured, session
+    /// `2026-06-10T14-55-32Z`) — without this gate the aurora flashes at
+    /// exactly the track starts Matt flagged. Reset to 0 alongside
+    /// `resetAccumulatedAudioTime()` (the existing track-change hook).
+    /// Accessed only from the ray-march draw path, like `auroraDrumsSmoothed`.
+    var auroraTrackWarmup01: Float = 1.0
+
     // MARK: - Feedback Textures (Milkdrop-style ping-pong)
 
     /// Double-buffered feedback textures. Index flips each frame.
@@ -403,6 +413,11 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// Reset accumulated audio time to zero. Call on track change.
     public func resetAccumulatedAudioTime() {
         audioTimeLock.withLock { _accumulatedAudioTime = 0 }
+        // BUG-041 — new track: re-warm the aurora's drums driver (the stem
+        // analyzer resets too and its deviation EMA overswings while it
+        // re-converges) and drop the previous track's smoothed value.
+        auroraTrackWarmup01 = 0
+        auroraDrumsSmoothed = 0
     }
 
     /// Advance accumulated audio time by one frame.
