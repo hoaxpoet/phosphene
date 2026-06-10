@@ -156,7 +156,9 @@ public final class SkeinState: @unchecked Sendable {
     /// minimum pour; the typical pour is longer (it only switches when a different stem decisively leads).
     /// Validated on a real session: 63 → 10 pours, ~4 s average. NOT a new audio route (gates the
     /// existing dominant-switch event), so FA #67 holds.
-    static let minPourTau: Float = 3.0
+    /// Skein.5.4 round-2 (Matt's live read, session 2026-06-10T19-28-50Z): 3.0 → 2.65 — new pour
+    /// lines start ~13 % more often ("increase the frequency of pours by 10–15 %").
+    static let minPourTau: Float = 2.65
     /// A challenger must lead the incumbent's smoothed energy by this factor to start a new pour —
     /// prevents flicker between two near-equal stems at the minPourTau boundary.
     static let pourSwitchHysteresis: Float = 1.25
@@ -181,7 +183,12 @@ public final class SkeinState: @unchecked Sendable {
     /// real onsets still lay enough coloured paint to read per-stem (the line over-dominated when
     /// each stem fired only on a rising edge — drums/bass painted nothing).
     static let onsetDevThreshold: Float = 0.13
-    static let onsetRefractory: Float = 0.14   // s — min gap between a stem's bursts (~7 / s max)
+    /// Skein.5.4 round-2 (Matt's live read, session 2026-06-10T19-28-50Z — "slow the speed of
+    /// spatters by 40–50 %", confirmed as RATE not size): 0.14 → 0.26, flick rate × ~0.54. The
+    /// session ran devs above threshold ~75 % of frames → ~22 flicks/s at the old ceiling; the
+    /// canvas filled 85 % in 23 s. Anatomy/size untouched; the trigger mechanism (onset +
+    /// refractory, never beat-locked) unchanged.
+    static let onsetRefractory: Float = 0.26   // min gap between a stem's bursts (painter-τ units)
 
     /// EMA time-constant (s) for the per-stem energy used to pick the dominant line colour and
     /// drive pour flow — smooth enough that the dominant-stem argmax doesn't flicker per frame.
