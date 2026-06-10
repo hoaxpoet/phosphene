@@ -216,6 +216,15 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     "Nimbus": (steady: 0x0F0F0F0F0F0F0F0F, beatHeavy: 0x0F0F0F0F0F0F0F0F, quiet: 0x0F0F0F0F0F0F0F0F),
     "Nebula": (steady: 0x0000080C0C080000, beatHeavy: 0x0000080C0C080000, quiet: 0x0000080C0C080000),
     "Plasma": (steady: 0x030F170A072F1B0F, beatHeavy: 0x4193254F0E8E87C7, quiet: 0x0F1F0F0F0F07070F),
+    // Skein.6 (D-159 cert): all three fixtures are IDENTICAL — the standalone
+    // `skein_fragment` this harness renders is the static canvas GROUND (the
+    // painting is built by the mv_warp marks-on-top branch + SkeinState slot-6
+    // buffer, which this harness doesn't run — the Dragon Bloom / Fata Morgana
+    // exemption rationale, but unlike their near-black fragments Skein's ground
+    // is a stable hashable surface, the Nimbus pattern). The golden locks the
+    // ground rendering; full live-path coverage (accumulation, hold, routing,
+    // determinism, soak) is SkeinCanvasHoldTest.
+    "Skein": (steady: 0x8080808080808080, beatHeavy: 0x8080808080808080, quiet: 0x8080808080808080),
     "Spectral Cartograph": (steady: 0x00180C0C0C0C0000, beatHeavy: 0x00180C0C0C0C6080, quiet: 0x00180C0C0C0C0000),
     "Staged Sandbox": (steady: 0x000022160A162A00, beatHeavy: 0x000022160A162A00, quiet: 0x000022160A162A00),
     "Volumetric Lithograph": (steady: 0x8C63D43512030000, beatHeavy: 0x8C63D43512030000, quiet: 0x8C63D43512030000),

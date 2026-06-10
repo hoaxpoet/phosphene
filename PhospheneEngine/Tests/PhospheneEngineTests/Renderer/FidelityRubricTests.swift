@@ -107,6 +107,13 @@ private let expectedAutomatedGate: [String: Bool] = [
     "Murmuration":          false,   // full; M3 fails (file: Murmuration.metal)
     "Nebula":               false,   // lightweight; L2 fails — no deviation primitives in source
     "Plasma":               false,   // lightweight; L2 fails — no deviation primitives in source
+    "Skein":                false,   // lightweight; L2 fails BY CONSTRUCTION — Skein's deviation
+                                     // primitives (stems.*EnergyDev, midAttRel — D-026) are consumed
+                                     // CPU-side in SkeinState and reach the shader pre-computed via
+                                     // the slot-6 buffer, so the MSL-source heuristic can't see them
+                                     // (the Lumen Mosaic slot-8 precedent). The load-bearing gate is
+                                     // Matt's M7 per SHADER_CRAFT §12.1; routing coverage is
+                                     // SkeinCanvasHoldTest's real-stem gates. Skein.6 / D-159.
     "Spectral Cartograph":  true,    // lightweight; L1+L2+L3 all pass
     "Volumetric Lithograph": false,  // full; M3 fails — mat_* cookbook not yet called
     "Waveform":             false,   // lightweight; L2 fails — no deviation primitives in source
