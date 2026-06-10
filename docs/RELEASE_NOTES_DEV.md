@@ -6,6 +6,20 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-06-10-f] Skein.6 — certification gates landed (D-159); awaiting Matt's M7
+
+All automated cert gates for Skein are in, green, and calibrated against the approved sessions; no behavioural or tuning change (the 5.4 look is untouched). `certified` stays `false` until Matt's M7 verdict (≥5 streaming tracks + a local file, from the main build).
+
+- **Coverage bound — Matt's decision.** Measured through the live dispatch path on the approved sessions: the painting reaches ~80 % of the canvas at 43 s and plateaus ≈ 87–90 % on a full track (live-video cross-check confirms parity). Matt chose to keep the approved density; §5.7's pre-implementation "ends 60–80 %" band is retired for **never-solid / never-near-empty** (`test_cert_coverageBound`, 180 s real-stem run @ 600×400 — coverage fraction is resolution-dependent via the droplet AA radius floor: same run reads 94.7 % at 200×200 vs 80.2 % at 900×600; any future coverage number must state its render size).
+- **Determinism (§5.7 headline)** formalised as dHash ≤ 8 across two same-seed live-path runs (byte-identity stays the stronger assert); full-track evidence: 2×10,800 frames, pixel-diff 0, hamming 0. **Seed ratified as FNV-1a `title|artist`** — the design doc's SHA-256 wording amended (D-159), not the code: rewiring would silently change every approved painting.
+- **§5.5 soak** = `test_cert_soak_twoHourCanvasHold` (`SKEIN_SOAK=1`): 432,000 frames (2 simulated hours) through the live mv_warp path — 15 min real stems / 90 min silence (whole-canvas RGBA byte-identity) / 15 min real stems. The generic `SoakTestHarness` is the headless audio-path harness and cannot observe the canvas; the gate runs pixels instead.
+- **Golden dHash entry** for Skein in `PresetRegressionTests` (three fixtures identical — static ground, the Nimbus pattern).
+- **`family: "painterly"`** + the `PresetCategory.painterly` case (the D-142(c) deferred engine touch; blast radius audited: enum + displayName + count test + sidecar, UI iterates `allCases`). **`rubric_profile: lightweight` ratified** (D-064 precedent; the L2 heuristic false-negative — CPU-side deviation routing — documented in `FidelityRubricTests`).
+- Doc write-backs: `SKEIN_DESIGN.md §1/§5.7` amendments, skein README rubric-tension resolution + seed wording, `SKEIN_PLAN.md` rows, D-159.
+- **Pruning-pass cadence has fired** (no pass since the 2026-05-13 DOC.3 refactor): the pruning pass is the next increment after cert.
+
+---
+
 ## [dev-2026-06-10-e] FBS.S5 — the flash hunt closes (the hue route, proven then fixed) + Matt's three S4 directives (D-158, BUG-045)
 
 **The proof first (the S5 rule: pixels, not input correlation).** The S4 replica-gap finding resolved exactly as hypothesized: adding the never-replicated `vocalsPitchHz`/`vocalsPitchConfidence` fields to the flash-forensics harness made the replica reproduce the remaining flashes (So What 31–41: 1 → 13 steps; Lotus 45–51: 0 → 15), and the new `aurora-hue` ablation arm (zeroing only those two fields) killed them (1 / 0). Mechanism in the recorded data: pitch confidence flaps across the hue gate ~9×/s, snapping the aurora hue between palette stops across the whole mirrored sky. Filed + resolved as **BUG-045**.

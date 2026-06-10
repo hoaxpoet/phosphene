@@ -23,7 +23,7 @@ Everything else hangs off three axes: **who** is playing (stem → paint colour)
 
 ## 1. Creative architecture — "painting the music"
 
-The goal is a canvas a listener can *read*: see the snare in the flicks, feel the bass in the heavy pools, watch the melody draw the long lines. A faithful trace, deterministic given the audio — not a random splatter screensaver. Same song twice → recognisably the same painting; two different songs → visibly different paintings. (Seed from the track's SHA-256 — we already key `PersistentStemCache` that way, so a track always seeds the same canvas.)
+The goal is a canvas a listener can *read*: see the snare in the flicks, feel the bass in the heavy pools, watch the melody draw the long lines. A faithful trace, deterministic given the audio — not a random splatter screensaver. Same song twice → recognisably the same painting; two different songs → visibly different paintings. (Seed: as shipped at Skein.3 and certified at Skein.6, the seed is **FNV-1a of `title|artist`** — `lumenTrackSeedHash`, the same per-track identity Lumen Mosaic uses — not the track SHA-256 this paragraph originally proposed. Same determinism property, simpler identity, and it's the seed every Matt-approved painting was drawn from; D-159 records the amendment.)
 
 ### 1.0 Action painting, grounded — the technique Skein simulates
 
@@ -194,7 +194,7 @@ Painter state advances on the CPU/Swift side each frame (trajectory + technique 
 
 - **Canvas** — ping-pong texture, the permanent paint record. Marks composited once on landing; otherwise copied identity. *Not* destructively modified after a mark lands (drying is a read-time effect, see 5.5).
 - **Wetness** — ping-pong single-channel, transient.
-- **PainterState** (Swift) — position, velocity, phase along base path, current technique (pour/flick), per-stem flow integrators, anticipation coil, `rng_seed` (track SHA-256).
+- **PainterState** (Swift) — position, velocity, phase along base path, current technique (pour/flick), per-stem flow integrators, anticipation coil, `rng_seed` (FNV-1a `title|artist` — D-159 amendment; originally spec'd as track SHA-256).
 - **Reset** — on track change, clear canvas to cream + wetness to 0, re-seed painter.
 
 ### 5.4 Audio routing (one primitive per visual layer — `feedback_audio_layer_one_primitive`; all deviation-normalised — D-026)
@@ -229,10 +229,20 @@ Feedback drift comes from per-frame **resampling** — the warp's bilinear inter
 
 ### 5.7 Acceptance criteria (Gate 6 preview)
 
+> **AMENDED at Skein.6 (2026-06-10, D-159).** Two items below were corrected against the
+> shipped, Matt-approved preset: the **seed** is FNV-1a `title|artist` (not track SHA-256 —
+> see §1), and the **coverage bound** is never-solid / never-near-empty (the original
+> "ends 60–80 %" band was a pre-implementation estimate; Matt's cert decision keeps the
+> approved post-round-2-tune density, which fills faster — measured at live resolution:
+> ~39 % at 9 s, ~80 % at 43 s, plateau ≈ 87–90 % on a full track, with ground always
+> breathing through and late paint layering over earlier paint). Coverage *fraction* is
+> resolution-dependent (droplet AA radius floor), so the automated gate
+> (`test_cert_coverageBound`) renders at 600×400 and calibrates its thresholds there.
+
 - **Silence-non-black** (D-037): trivially passes (cream canvas + paint is bright).
 - **Beat ratio**: splatter density on a beat-heavy fixture measurably exceeds the steady fixture.
 - **Determinism**: same track + same seed → dHash-stable final canvas (within tolerance) across two runs. This is a *headline* acceptance property for Skein, not just a regression nicety.
-- **Coverage bound**: typical track ends at 60–80 % coverage (never fully covered, never near-empty on a dense track).
+- **Coverage bound** (amended): the canvas is never a solid over-covered mat (< 95 % at the gate's 600×400, on the densest tiled-real-stem input — measured 89.6 %) and never near-empty after a full track of dense material (> 40 %).
 - **Anti-reference rejection**: final canvas must not read as neon-particle-burst / clean-polka-dot / muddy-saturated / kaleidoscopic-symmetric. (The automated anti-reference dHash gate is itself a *Missing* engine capability — same gap Arachne has — so this stays an M7 manual judgement until that lands.)
 - **Performance**: 60 fps at 1080p, M1 included (see §6).
 - **M7**: Matt, live, on real music across ≥5 tracks + a local file — the bloom-must-dance / Pollock-must-read perceptual gate. Non-negotiable, non-bypassable.
