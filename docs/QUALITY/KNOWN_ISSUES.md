@@ -195,7 +195,7 @@ Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — 
 
 **Severity:** P2 (visible flashing in the first ~10 s of affected tracks on FFO; Matt flagged it on So What, There, There, and Lotus Flower in session `2026-06-10T14-55-32Z`). Same cold-start-deviation family as BUG-027/AGC2.4.1 (fixed for the FeatureVector band devs) — this is the STEM-side twin reaching the GPU through the aurora.
 **Domain tag:** `dsp.stem` (deviation cold start) + `preset.fidelity` (FFO aurora intensity).
-**Status:** Open — diagnosed with session evidence; fix not yet scoped (FBS iterative queue, per Matt's incremental direction).
+**Status:** **Fix landed 2026-06-10 (FBS.S2.2), automated validation green; awaiting Matt's M7** (aurora arrives without flashing on the flagged tracks).
 **Introduced:** structural — `StemAnalyzer` resets per track; its per-stem deviation EMA re-seeds and `drumsEnergyDev` overswings during convergence. The aurora consumes it through the D-127 smoother (`auroraDrumsSmoothed`, τ ≈ 150 ms) — fast enough to pass multi-Hz cold-start swings as visible intensity flashes. The Stage-1 spike-driver replacement removed the OTHER flicker source (`f.bass` jitter into spike geometry), making this one prominent.
 **Resolved:** —
 
@@ -209,8 +209,10 @@ Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — 
 
 **Suspected failure class:** `calibration` (deviation cold-start overswing, BUG-027 class) — consumed un-warmed by a brightness layer.
 
-**Verification criteria (when fixed):**
-- [ ] Automated: early-window (0–10 s) smoothed aurora driver peak ≤ ~1.5 × its steady-state level on the session above (live-path test or replay).
+**Fix (FBS.S2.2):** a per-track quadratic warmup gate on the aurora's drums driver (`RenderPipeline.auroraDriverStep` — D-127 smoother × `warmup²`, 0 → 1 over 10 s, reset by the existing `resetAccumulatedAudioTime()` track-change hook). The gate is smallest exactly where the overswing peaks (2–6 s; Lotus's 2.35 spike lands on gate ≈ 0.16) and is ~1 once the analyzer has converged; steady state is byte-identical after 10 s. Measured on the session fixtures: early peaks 2.35/1.37/1.23 → **0.65/0.50/1.10**. Linear was tried and measured insufficient (Lotus still reached 1.23).
+
+**Verification criteria:**
+- [x] Automated (real-session replay through the production arithmetic, `AuroraTrackStartWarmupTests`): early-window (0–10 s) driver peak ≤ max(1.0, steady-state peak) on all three flagged tracks, red-arm reproduction of the flash on the two unambiguous ones, steady state byte-identical. *(Criterion AMENDED from the original "≤ 1.5× steady": Lotus's drums settle to ~0 steady — a steady-relative bound is unmeetable; So What's steady runs hot (1.64) so its early window is not anomalous. So What's perceived flashing is partly general drums-dev jitter on sparse jazz — a separate aurora-character question, noted, not chased here.)*
 - [ ] Manual: Matt confirms the aurora arrives without flashing on So What / There, There / Lotus Flower track starts.
 
 **Manual validation required:** Yes — felt visual artifact.

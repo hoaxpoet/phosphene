@@ -156,12 +156,26 @@ extension RenderPipeline {
         // 150 ms τ exponential smoother on `drumsEnergyDev`. EMA blend coefficient
         // `α = 1 − exp(−dt / τ)` gives frame-rate-independent smoothing. At 60 Hz
         // and τ=0.15 s, α ≈ 0.105 → step response ~95% in ~430 ms (3τ).
-        let auroraSmootherTau: Float = 0.15
-        let auroraAlpha = 1.0 - exp(-frameDt / auroraSmootherTau)
-        let drumsDev = max(0, stemFeatures.drumsEnergyDev)
-        auroraDrumsSmoothed += auroraAlpha * (drumsDev - auroraDrumsSmoothed)
+        // BUG-041 — the smoother alone is NOT enough at track starts: the
+        // per-stem deviation EMA re-seeds when `StemAnalyzer` resets per track
+        // and overswings 1.2–3.3× for the first ~10 s (measured on session
+        // `2026-06-10T14-55-32Z` — smoothed peaks 2.35 / 1.37 / 1.23 on the
+        // exact tracks Matt flagged as flashing, vs 0.23 on calm Love Rehab,
+        // settling by ~10 s). A per-track linear warmup (0 → 1 over 10 s,
+        // reset in `resetAccumulatedAudioTime()`) gates the driver, so the
+        // aurora blooms in over a track's opening instead of flashing. Steady
+        // state is untouched (the gate is 1.0 after 10 s). Step extracted to
+        // `auroraDriverStep` so the real-session replay test exercises the
+        // exact production arithmetic.
+        let auroraStep = Self.auroraDriverStep(
+            smoothed: auroraDrumsSmoothed,
+            warmup01: auroraTrackWarmup01,
+            drumsDev: stemFeatures.drumsEnergyDev,
+            dt: frameDt)
+        auroraDrumsSmoothed = auroraStep.smoothed
+        auroraTrackWarmup01 = auroraStep.warmup01
         var lightingStems = stemFeatures
-        lightingStems.drumsEnergyDevSmoothed = auroraDrumsSmoothed
+        lightingStems.drumsEnergyDevSmoothed = auroraStep.output
 
         rayMarchState.render(
             gbufferPipelineState: activePipeline,
@@ -197,6 +211,44 @@ extension RenderPipeline {
     }
 
     // swiftlint:enable function_parameter_count function_body_length
+
+    // MARK: - Aurora drums driver (D-127 smoother + BUG-041 track-start warmup)
+
+    /// Seconds for the per-track aurora warmup ramp (BUG-041). Sized from the
+    /// measured overswing window: the stem-deviation cold start settles by
+    /// ~10 s on every observed track (worst peaks at 2–8 s).
+    static let auroraWarmupSeconds: Float = 10.0
+
+    /// Result of one `auroraDriverStep` frame (struct, not tuple — lint).
+    struct AuroraDriverState {
+        let smoothed: Float
+        let warmup01: Float
+        let output: Float
+    }
+
+    /// One frame of the aurora drums driver: 150 ms-τ EMA (D-127) gated by the
+    /// per-track quadratic warmup (BUG-041). Pure + deterministic so the
+    /// real-session replay test runs the exact production arithmetic.
+    static func auroraDriverStep(
+        smoothed: Float,
+        warmup01: Float,
+        drumsDev: Float,
+        dt: Float
+    ) -> AuroraDriverState {
+        let alpha = 1.0 - exp(-dt / 0.15)
+        let nextSmoothed = smoothed + alpha * (max(0, drumsDev) - smoothed)
+        let nextWarmup = min(1.0, warmup01 + max(0, dt) / Self.auroraWarmupSeconds)
+        // Quadratic ease-in: the gate stays small exactly where the deviation
+        // overswing peaks (2–6 s; the worst measured spike, Lotus Flower 2.35
+        // at ~4 s, lands on gate ≈ 0.16) and is ~1 by the time the analyzer
+        // has converged. Linear was measured insufficient (Lotus still reached
+        // 1.23 early); quadratic caps all three flagged tracks at ≤ 1.1.
+        let gate = nextWarmup * nextWarmup
+        return AuroraDriverState(
+            smoothed: nextSmoothed,
+            warmup01: nextWarmup,
+            output: nextSmoothed * gate)
+    }
 
     // MARK: - Audio-Reactive Modulation
 
