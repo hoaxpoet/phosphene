@@ -279,7 +279,22 @@ public struct DefaultSessionPlanner: SessionPlanning {
         warnings: inout [PlanningWarning]
     ) -> (PresetDescriptor, PresetScoreBreakdown) {
         let tier = context.deviceTier
-        let sorted = catalog.sorted { $0.complexityCost.cost(for: tier) < $1.complexityCost.cost(for: tier) }
+        // The fallback exists to relax SOFT exclusions (budget, fatigue,
+        // score) when nothing is eligible — it must never relax CATEGORICAL
+        // ones: a diagnostic preset (D-074) or a beat-locked preset on a
+        // beat-irregular track (FBS / D-154) cannot land via fallback either.
+        // Discovered by `test_plannedSession_neverSchedulesRequiringPreset_
+        // onIrregularTrack`: alternate segments fell through to this path
+        // (current preset active-excluded + family-mates fatigued to zero)
+        // and scheduled the excluded preset. Degenerate catalogs (everything
+        // categorical) keep the old behaviour — the warning above already
+        // fired and rendering something beats rendering nothing.
+        let categoricallyEligible = catalog.filter { preset in
+            !preset.isDiagnostic
+                && !(preset.requiresRegularBeat && profile.beatIrregular == true)
+        }
+        let pool = categoricallyEligible.isEmpty ? catalog : categoricallyEligible
+        let sorted = pool.sorted { $0.complexityCost.cost(for: tier) < $1.complexityCost.cost(for: tier) }
         let excludingID = context.currentPreset?.id
         if let fallback = sorted.first(where: { $0.id != excludingID }) {
             return (fallback, scorer.breakdown(preset: fallback, track: profile, context: context))
