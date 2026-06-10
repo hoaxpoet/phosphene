@@ -27,5 +27,6 @@
   "scene_far_plane": 40.0,
   "scene_ambient": 0.06,
   "certified": true,
+  "requires_regular_beat": true,
   "rubric_hints": { "hero_specular": true, "dust_motes": false }
 }

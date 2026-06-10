@@ -81,7 +81,10 @@ extension VisualizerEngine {
         // Only plan from tracks that have been cached — uncached tracks have empty
         // profiles which would skew scoring. The reactive path covers remaining tracks.
         let readyTracks: [(TrackIdentity, TrackProfile)] = sessionPlan.tracks.compactMap { identity in
-            guard let profile = cache.trackProfile(for: identity) else { return nil }
+            guard var profile = cache.trackProfile(for: identity) else { return nil }
+            // FBS / D-154: resolve beat regularity from the cached grids so the
+            // planner's beat_irregular hard exclusion can fire per track.
+            profile.beatIrregular = cache.beatIrregular(for: identity)
             return (identity, profile)
         }
 
@@ -371,6 +374,11 @@ extension VisualizerEngine {
         // rather than adversarially penalising stem-affinity-bearing presets (QR.2/D-080).
         let liveStemFeatures: StemFeatures? = elapsed >= 10.0 ? pipeline.currentStemFeatures() : nil
 
+        // FBS / D-154: beat-regularity of the live track, resolved at track
+        // change in resetStemPipeline (the caches are MainActor; this path is
+        // not). nil = unknown — permissive, no exclusion.
+        let beatIrregular = currentTrackBeatIrregular
+
         let decision = reactiveOrchestrator.evaluate(
             liveMood: mood,
             liveBoundary: boundary,
@@ -379,7 +387,8 @@ extension VisualizerEngine {
             catalog: catalog,
             deviceTier: tier,
             includeUncertifiedPresets: showUncertifiedPresets,
-            liveStemFeatures: liveStemFeatures
+            liveStemFeatures: liveStemFeatures,
+            currentTrackBeatIrregular: beatIrregular
         )
 
         switch decision.accumulationState {
@@ -421,8 +430,10 @@ extension VisualizerEngine {
             logger.info("Orchestrator: regeneratePlan — no session plan, skipping")
             return
         }
-        let tracks: [(TrackIdentity, TrackProfile)] = sessionPlan.tracks.map {
-            ($0, sessionManager.cache.trackProfile(for: $0) ?? .empty)
+        let tracks: [(TrackIdentity, TrackProfile)] = sessionPlan.tracks.map { identity in
+            var profile = sessionManager.cache.trackProfile(for: identity) ?? .empty
+            profile.beatIrregular = sessionManager.cache.beatIrregular(for: identity)  // FBS / D-154
+            return (identity, profile)
         }
         let catalog = presetLoader.presets.map { $0.descriptor }
         let tier = Self.detectDeviceTier(device: context.device)

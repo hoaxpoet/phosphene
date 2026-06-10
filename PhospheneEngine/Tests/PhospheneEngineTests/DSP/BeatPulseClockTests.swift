@@ -138,8 +138,8 @@ final class BeatPulseClockTests: XCTestCase {
             let frames = try loadFixture(name)
             let outs = replay(frames, bpm: bpm)
             let wraps = wrapTimes(frames, outs)
-            XCTAssertGreaterThan(wraps.count, 10, "\(name): expected many beats in 25 s")
-            let period = 60.0 / bpm
+            XCTAssertGreaterThan(wraps.count, 5, "\(name): expected several slow pulses in 25 s")
+            let period = (60.0 / bpm) * BeatPulseClock.pulseBeats   // D-154 slow pulse
             // Every interval == one grid period. Tolerance 5 ms covers the
             // frame-boundary interpolation error at ~60 fps; the live drift
             // tracker moved 50–90 ms over the same window (Stage 0).
@@ -234,7 +234,7 @@ final class BeatPulseClockTests: XCTestCase {
         var lastPhaseZeroCrossDistance: Float = 1
         for _ in 0..<240 {
             let out = clock.update(energySum: 0.6, time: t, deltaTime: 1 / 60)
-            let expected = Float(((t - musicStart) / 0.5).truncatingRemainder(dividingBy: 1.0))
+            let expected = Float(((t - musicStart) / 2.0).truncatingRemainder(dividingBy: 1.0))
             lastPhaseZeroCrossDistance = min(lastPhaseZeroCrossDistance, abs(out.phase01 - expected))
             t += 1.0 / 60.0
         }

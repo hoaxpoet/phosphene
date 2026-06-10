@@ -90,6 +90,9 @@ public protocol ReactiveOrchestrating: Sendable {
     ///     Pass `nil` until the analyzer has converged (~10 s). When non-nil, stem deviation
     ///     fields are used for scoring, making stem-affinity-bearing presets eligible
     ///     for selection in reactive mode (QR.2/D-080).
+    ///   - currentTrackBeatIrregular: Beat-regularity of the live track from the
+    ///     cached grids (FBS/D-154). `true` ⇒ presets declaring
+    ///     `requires_regular_beat` are hard-excluded; `nil` = unknown (permissive).
     /// - Returns: A `ReactiveDecision` — `suggestedPreset` is nil when holding.
     func evaluate(
         liveMood: EmotionalState,
@@ -99,7 +102,8 @@ public protocol ReactiveOrchestrating: Sendable {
         catalog: [PresetDescriptor],
         deviceTier: DeviceTier,
         includeUncertifiedPresets: Bool,
-        liveStemFeatures: StemFeatures?
+        liveStemFeatures: StemFeatures?,
+        currentTrackBeatIrregular: Bool?
     ) -> ReactiveDecision
     // swiftlint:enable function_parameter_count
 }
@@ -165,7 +169,8 @@ public struct DefaultReactiveOrchestrator: ReactiveOrchestrating {
         catalog: [PresetDescriptor],
         deviceTier: DeviceTier,
         includeUncertifiedPresets: Bool = false,
-        liveStemFeatures: StemFeatures? = nil
+        liveStemFeatures: StemFeatures? = nil,
+        currentTrackBeatIrregular: Bool? = nil
     ) -> ReactiveDecision {
         let state = ReactiveAccumulationState(elapsedTime: elapsedSessionTime)
         let confidence = Self.computeConfidence(elapsed: elapsedSessionTime)
@@ -192,6 +197,11 @@ public struct DefaultReactiveOrchestrator: ReactiveOrchestrating {
         if let stems = liveStemFeatures {
             liveProfile.stemEnergyBalance = stems
         }
+        // FBS / D-154: beat-regularity of the CURRENT track, resolved by the
+        // app layer from the stem cache at track change. Rides the live
+        // profile so the scorer's `beat_irregular` hard exclusion works in
+        // reactive mode too (nil = unknown = permissive).
+        liveProfile.beatIrregular = currentTrackBeatIrregular
 
         let altCtx = PresetScoringContext(
             deviceTier: deviceTier,

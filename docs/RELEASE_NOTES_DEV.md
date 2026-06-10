@@ -28,6 +28,27 @@ Matt's Skein.5 M7 follow-ups, in priority order:
 
 ---
 
+## [dev-2026-06-10-fbs-s2] FBS.S2 — beat-irregular tracks never see FFO; the pulse becomes a slow 4-beat heave (D-154)
+
+**Increment:** FBS.S2 (Matt's course-correction after the Stage-1 live verdict — session `2026-06-10T03-02-32Z`, addendum in `FBS_STAGE0_FINDINGS_2026-06-09.md`). **Status:** built, gates green; **awaiting Matt's live read.** **Decision:** D-154.
+
+### The verdict it responds to
+
+Stage 1's whole-track per-beat punch read as a robotic metronome on a streaming playlist (gapless switches make every mid-playlist anchor musically meaningless), and Pyramid Song — rubato — regressed. Matt's corrections: the pulse was always the COLD-START bridge, not the whole-track driver; tracks without a steady beat should **never see FFO at all**; a **slow pulse** is the iteration-one answer; improve incrementally.
+
+### What changed
+
+- **Beat-regularity hard exclusion at the preset picker.** `assessBeatIrregularity` (octave-folded full-mix-vs-drums grid BPM disagreement > 10 % OR bar confidence < 0.2 ⇒ irregular; MIR estimator deliberately not consulted — it disagrees 8–11 % even on solid-beat tracks). Calibrated on the real 38-track cache: kept ≤ 9.2 % fold (Love Rehab 0.7, There There 0.4, Money 0.6, Cherub 9.2); excluded ≥ 11.3 % (Pyramid 17.4, SZ2 11.3, Mingus 49). Plumbed as `TrackProfile.beatIrregular` (optional; old profiles decode unchanged) + `PresetDescriptor.requiresRegularBeat` (`requires_regular_beat: true` on FerrofluidOcean.json) + the scorer's `beat_irregular` hard exclusion. Reaches planner, plan-regenerate, reactive (`evaluate(currentTrackBeatIrregular:)`, resolved at track change in `resetStemPipeline` — also evicts FFO if active when the gate fires), and mood-override repatch. Manual selection unaffected. nil = permissive.
+- **Slow pulse:** `BeatPulseClock.pulseBeats = 4` — one heave per four beats (~2 s at 120 BPM). Phase error reads as swell character at a musical rate, not a wrong beat claim; sub-1 % tempo error smears phase 4× slower. Fixed 4 beats (not the unreliable detected meter).
+
+### Known gaps (stated)
+
+Swing feel is invisible to the gate (So What: estimators agree 135.5/135.5, conf 1.0 — needs a different signal, future iteration). The Mingus track is excluded (49 % fold) though Matt rated old-FFO best on it — flagged for his read. The 10 % threshold sits in a thin observed gap (9.2 vs 11.3).
+
+### Verification
+
+`BeatRegularityExclusionTests` (real catalog values; planner + reactive exclusion; FFO sidecar flag). `BeatPulseClockTests` at the 4-beat period (anchor 2 ms vs PCM, zero wander, motion gates green). `FerrofluidPulseLivePathTests` with the slow pulse: punch |δ| = 31.1 luma / rest 0.0 through the live dispatch. Scorer/planner/golden-session/regression suites green; full suite shows only the documented wall-clock flakes (SoakTestHarness, MetadataPreFetcher — both pass isolated). SwiftLint `--strict` clean; app `BUILD SUCCEEDED`.
+
 ## [dev-2026-06-09-fbs-s1] FBS Stage 1 — FFO spikes punch on a steady, first-note-anchored, cached-tempo beat pulse (D-153)
 
 **Increment:** FBS Stage 1 (kickoff `docs/prompts/FFO_BEAT_SYNC_KICKOFF.md`; Stage 0 findings `docs/diagnostics/FBS_STAGE0_FINDINGS_2026-06-09.md`). **Status:** built + measured green; **STOPPED at the Stage-1 gate — awaiting Matt's read on a live session** (validation = measurement; a fresh session with the new `pulse_phase01`/`pulse_amp01` features.csv columns is the acceptance artifact). **Decision:** D-153.

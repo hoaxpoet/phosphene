@@ -163,9 +163,12 @@ static inline float fo_spike_strength(constant FeatureVector& f,
     // across sustained silence (no punching into a silent room), 1 while
     // music plays. Stage 2 will scale punch height by live energy.
     //
-    // Envelope: rise over the first 8 % of the beat (~37 ms at 128 BPM — an
-    // attack, not a step), decay to 0 by 85 %, rest until the next beat so
-    // each punch reads as a distinct hit landing ON the beat.
+    // Envelope: rise over the first 8 % of the pulse cycle, decay to 0 by
+    // 85 %, rest until the next pulse. SLOW PULSE since D-154 (Matt,
+    // 2026-06-10): the cycle is FOUR beats (~1.9 s at 128 BPM), so this reads
+    // as a gentle oceanic heave at a musical rate — the Stage-1 live verdict
+    // showed a per-beat punch from an arbitrary phase (gapless streaming
+    // switches) reads as a robotic metronome ignoring the music.
     //
     // Headroom: the swing is capped so spike strength stays ≤ 1.62, under
     // the CSP.3.5 Lipschitz-divisor (/6) safe ceiling of 1.64 — punch peaks

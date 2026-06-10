@@ -38,6 +38,16 @@ public struct TrackProfile: Sendable, Codable {
     /// Typically 1–3 for a 30-second preview window.
     public var estimatedSectionCount: Int
 
+    /// Does the track lack a steady, trustworthy beat? (FBS / D-154.)
+    /// Computed at consumption time from the cached grids via
+    /// `assessBeatIrregularity` (octave-folded full-mix-vs-drums BPM
+    /// disagreement + bar confidence). `true` ⇒ the scorer hard-excludes
+    /// presets declaring `requires_regular_beat` (Ferrofluid Ocean — Matt's
+    /// 2026-06-10 rule: irregular tracks never see FFO). `nil` = unknown
+    /// (missing estimators / pre-D-154 cache entries) — permissive, no
+    /// exclusion. Optional so old persisted profiles decode unchanged.
+    public var beatIrregular: Bool?
+
     // MARK: - Init
 
     public init(
@@ -47,7 +57,8 @@ public struct TrackProfile: Sendable, Codable {
         spectralCentroidAvg: Float = 0,
         genreTags: [String] = [],
         stemEnergyBalance: StemFeatures = .zero,
-        estimatedSectionCount: Int = 0
+        estimatedSectionCount: Int = 0,
+        beatIrregular: Bool? = nil
     ) {
         self.bpm = bpm
         self.key = key
@@ -56,6 +67,7 @@ public struct TrackProfile: Sendable, Codable {
         self.genreTags = genreTags
         self.stemEnergyBalance = stemEnergyBalance
         self.estimatedSectionCount = estimatedSectionCount
+        self.beatIrregular = beatIrregular
     }
 
     // MARK: - Defaults

@@ -110,6 +110,25 @@ public final class StemCache: @unchecked Sendable {
         lock.withLock { storage[identity]?.drumsBeatGrid }
     }
 
+    /// Does the track lack a steady, trustworthy beat? (FBS / D-154.)
+    ///
+    /// Combines the cached full-mix and drums-stem grids via
+    /// `assessBeatIrregularity` (octave-folded BPM disagreement + bar
+    /// confidence). `true` ⇒ beat-locked presets (`requires_regular_beat`)
+    /// are hard-excluded for this track; `nil` = unknown (uncached track or
+    /// missing estimator) — permissive.
+    public func beatIrregular(for identity: TrackIdentity) -> Bool? {
+        let (grid, drums): (BeatGrid?, BeatGrid?) = lock.withLock {
+            (storage[identity]?.beatGrid, storage[identity]?.drumsBeatGrid)
+        }
+        guard let grid else { return nil }
+        return assessBeatIrregularity(
+            gridBPM: grid.bpm,
+            drumsBPM: drums?.bpm ?? 0,
+            barConfidence: grid.barConfidence
+        )
+    }
+
     /// Return the full `CachedTrackData` bundle for playback, or nil if uncached.
     ///
     /// Called by `VisualizerEngine` on track change to populate the stem pipeline
