@@ -251,6 +251,14 @@ extension VisualizerEngine {
             // is not the active preset (skeinState is nil → the canvas clear is skipped too).
             if self.skeinState != nil {
                 self.skeinState?.reseed(self.currentSkeinSeed())
+                // Skein.5.3b: the new track's palette carries its GROUND (light or dark) —
+                // push it as the canvas-ground override BEFORE the wipe so the fresh canvas
+                // clears to the new palette's ground, and any mid-track resize re-clears to
+                // the same. LINEAR (Metal encodes on store for the sRGB canvas).
+                if let skeinGround = self.skeinState?.groundLinear {
+                    self.pipeline.setMVWarpCanvasGround(SIMD4<Double>(
+                        Double(skeinGround.x), Double(skeinGround.y), Double(skeinGround.z), 1.0))
+                }
                 self.pipeline.clearMVWarpCanvasToGround()
             }
             self.logTrackChangeObserved(event: event, identity: identity)

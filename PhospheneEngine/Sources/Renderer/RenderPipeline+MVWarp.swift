@@ -52,7 +52,10 @@ extension RenderPipeline {
         // Skein.ENGINE.1.1 (D-143): the clear colour is per-preset. Black for every
         // existing preset (byte-identical); on the marks-on-top path Pass 0 is skipped,
         // so this clear IS the held ground (Skein's cream).
-        let cc = bundle.canvasClearColor
+        // Skein.5.3b: a per-track ground override (the palette library's light/dark grounds)
+        // wins over the preset-static colour — including on the resize re-clear path, so a
+        // mid-track window resize re-clears to the CURRENT track's ground, not the JSON cream.
+        let cc = mvWarpLock.withLock { mvWarpCanvasGroundOverride } ?? bundle.canvasClearColor
         let canvasClear = MTLClearColor(red: cc.x, green: cc.y, blue: cc.z, alpha: cc.w)
         clearWarpTextures([warpTex, composeTex, sceneTex], to: canvasClear)
 
@@ -132,7 +135,9 @@ extension RenderPipeline {
     /// it, so their cross-track feedback is unchanged.
     public func clearMVWarpCanvasToGround() {
         guard let state = mvWarpLock.withLock({ mvWarpState }) else { return }
-        let cc = state.canvasClearColor
+        // Skein.5.3b: the per-track ground override (set from SkeinState's palette pick on
+        // track change, BEFORE this wipe) wins over the preset-static colour.
+        let cc = mvWarpLock.withLock { mvWarpCanvasGroundOverride } ?? state.canvasClearColor
         let ground = MTLClearColor(red: cc.x, green: cc.y, blue: cc.z, alpha: cc.w)
         var textures = [state.warpTexture, state.composeTexture, state.sceneTexture]
         if let blur = state.blurTexture { textures.append(blur) }
