@@ -273,6 +273,16 @@ public final class SkeinState: @unchecked Sendable {
     /// True when the palette comes from the library by track seed (Skein.5.3 — the live mode).
     private let usesLibraryPalette: Bool
 
+    /// The canvas GROUND for the current palette (display sRGB; Skein.5.3b — the ground is
+    /// part of the palette: light AND dark grounds). Library mode re-picks it with the palette
+    /// on reseed; explicit mode keeps the classic cream. Written only under `lock`.
+    public private(set) var ground: SIMD3<Float>
+
+    /// The ground in LINEAR space — what the canvas clear takes (Metal encodes on store for
+    /// the `.bgra8Unorm_srgb` canvas) and what the comp fragment's paint-present mask compares
+    /// against (it samples the canvas auto-decoded to linear). Thread-safe snapshot.
+    public var groundLinear: SIMD3<Float> { lock.withLock { Self.srgbToLinear(ground) } }
+
     // MARK: - Private State
 
     private var bursts: [SkeinBurstGPU]
@@ -352,6 +362,7 @@ public final class SkeinState: @unchecked Sendable {
         let bufferSize = MemoryLayout<SkeinHeaderGPU>.stride
             + Self.maxBursts * MemoryLayout<SkeinBurstGPU>.stride
             + Self.maxColorBreaks * MemoryLayout<SkeinBreakGPU>.stride
+            + MemoryLayout<SIMD4<Float>>.stride   // Skein.5.3b: the LINEAR ground tail
         guard let buf = device.makeBuffer(length: bufferSize, options: .storageModeShared) else {
             logger.error("SkeinState: failed to allocate skeinBuffer (\(bufferSize) bytes)")
             return nil
@@ -360,9 +371,12 @@ public final class SkeinState: @unchecked Sendable {
         if let explicit = palette, explicit.count == 4 {
             usesLibraryPalette = false
             self.palette = explicit
+            self.ground = SkeinPaletteLibrary.creamGroundDisplay   // fixtures keep the classic cream
         } else {
             usesLibraryPalette = true
-            self.palette = SkeinPaletteLibrary.entry(forTrackSeed: seed).colors
+            let entry = SkeinPaletteLibrary.entry(forTrackSeed: seed)
+            self.palette = entry.colors
+            self.ground = entry.ground
         }
         self.paletteLinear = self.palette.map(Self.srgbToLinear)
         bursts = []
@@ -403,7 +417,9 @@ public final class SkeinState: @unchecked Sendable {
             // from the same identity that seeds the trajectory, so the same song always paints
             // the same painting in the same colours (§5.7). Explicit-palette states stay fixed.
             if usesLibraryPalette {
-                palette = SkeinPaletteLibrary.entry(forTrackSeed: newSeed).colors
+                let entry = SkeinPaletteLibrary.entry(forTrackSeed: newSeed)
+                palette = entry.colors
+                ground = entry.ground   // Skein.5.3b: the ground travels with the palette
                 paletteLinear = palette.map(Self.srgbToLinear)
             }
             painterTau = 0
@@ -598,7 +614,11 @@ public final class SkeinState: @unchecked Sendable {
                 locusEnable: locusEnabled ? 1.0 : 0.0,
                 pad2: 0,
                 pad3: 0)
-            return GPUSnapshot(header: hdr, bursts: bursts, breaks: colorBreaks)
+            return GPUSnapshot(
+                header: hdr,
+                bursts: bursts,
+                breaks: colorBreaks,
+                groundLinear: Self.srgbToLinear(ground))
         }
         let ptr = skeinBuffer.contents()
         ptr.bindMemory(to: SkeinHeaderGPU.self, capacity: 1)[0] = snap.header
@@ -612,6 +632,14 @@ public final class SkeinState: @unchecked Sendable {
                                     + Self.maxBursts * MemoryLayout<SkeinBurstGPU>.stride)
             .bindMemory(to: SkeinBreakGPU.self, capacity: Self.maxColorBreaks)
         for i in 0..<breakCount { breakPtr[i] = snap.breaks[i] }
+        // Skein.5.3b: the LINEAR ground follows the breakpoint ring (second additive tail —
+        // float4 to match the MSL `float4 ground` 16-byte alignment). The comp fragment's
+        // paint-present mask compares the auto-decoded (linear) canvas sample against it.
+        let groundPtr = ptr.advanced(by: MemoryLayout<SkeinHeaderGPU>.stride
+                                     + Self.maxBursts * MemoryLayout<SkeinBurstGPU>.stride
+                                     + Self.maxColorBreaks * MemoryLayout<SkeinBreakGPU>.stride)
+            .bindMemory(to: SIMD4<Float>.self, capacity: 1)
+        groundPtr[0] = SIMD4<Float>(snap.groundLinear, 0)
     }
 
     /// One frame's GPU-bound snapshot, captured under the lock then written to the buffer outside it
@@ -620,6 +648,7 @@ public final class SkeinState: @unchecked Sendable {
         let header: SkeinHeaderGPU
         let bursts: [SkeinBurstGPU]
         let breaks: [SkeinBreakGPU]
+        let groundLinear: SIMD3<Float>
     }
 
     // MARK: - Private: colour-break ring (Skein.4.1)
@@ -797,6 +826,16 @@ extension SkeinState {
             val <= 0.04045 ? val / 12.92 : pow((val + 0.055) / 1.055, 2.4)
         }
         return SIMD3(decode(col.x), decode(col.y), decode(col.z))
+    }
+
+    /// Linear → display sRGB encode (the inverse — what the `.bgra8Unorm_srgb` canvas store
+    /// does). Used to express the classic linear cream ground in the library's display space
+    /// and by the palette gates.
+    public static func linearToSRGB(_ col: SIMD3<Float>) -> SIMD3<Float> {
+        func encode(_ val: Float) -> Float {
+            val <= 0.0031308 ? val * 12.92 : 1.055 * pow(val, 1.0 / 2.4) - 0.055
+        }
+        return SIMD3(encode(col.x), encode(col.y), encode(col.z))
     }
 
     // MARK: - Per-stem feature accessors (same-file extension — see the type_body_length note above)
