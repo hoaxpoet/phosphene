@@ -123,6 +123,44 @@ final class BeatRegularityExclusionTests: XCTestCase {
                        "reactive mode must never pick a beat-locked preset on an irregular track")
     }
 
+    // MARK: - Planner path: a full planned session never schedules FFO on an
+    // irregular track (Matt's verification ask, 2026-06-10 — the live session
+    // only exercised manual selection, which bypasses the gate by design)
+
+    func test_plannedSession_neverSchedulesRequiringPreset_onIrregularTrack() throws {
+        let planner = DefaultSessionPlanner()
+        let requiring = makePreset(name: "FFO-like", requiresRegularBeat: true)
+        let others = [makePreset(name: "A", requiresRegularBeat: false),
+                      makePreset(name: "B", requiresRegularBeat: false)]
+        // Pyramid-Song-shaped track: irregular flag set (as _buildPlan now does
+        // from the cached grids), full duration so multiple segments get planned.
+        var profile = TrackProfile.empty
+        profile.beatIrregular = true
+        let identity = TrackIdentity(title: "Pyramid Song", artist: "Radiohead", duration: 288.7)
+        let session = try planner.plan(tracks: [(identity, profile)],
+                                       catalog: [requiring] + others, deviceTier: .tier1)
+        let scheduled = session.tracks.flatMap(\.segments).map(\.preset.name)
+        XCTAssertFalse(scheduled.isEmpty, "planner must schedule something")
+        XCTAssertFalse(scheduled.contains("FFO-like"),
+                       "an irregular track must NEVER be scheduled onto a "
+                       + "requires_regular_beat preset; got \(scheduled)")
+    }
+
+    func test_plannedSession_allowsRequiringPreset_onRegularTrack() throws {
+        let planner = DefaultSessionPlanner()
+        // Only the requiring preset in the catalog: on a REGULAR track it must
+        // be schedulable (proves the exclusion doesn't over-fire).
+        let requiring = makePreset(name: "FFO-like", requiresRegularBeat: true)
+        var profile = TrackProfile.empty
+        profile.beatIrregular = false
+        let identity = TrackIdentity(title: "Love Rehab", artist: "Chaim", duration: 460.7)
+        let session = try planner.plan(tracks: [(identity, profile)],
+                                       catalog: [requiring], deviceTier: .tier1)
+        let scheduled = session.tracks.flatMap(\.segments).map(\.preset.name)
+        XCTAssertTrue(scheduled.contains("FFO-like"),
+                      "a regular track must still be able to schedule the requiring preset")
+    }
+
     func test_realFFOSidecar_declaresRequiresRegularBeat() throws {
         // The shipped FerrofluidOcean.json carries the flag (D-154) — locate it
         // relative to this source file so the gate survives bundle layout changes.

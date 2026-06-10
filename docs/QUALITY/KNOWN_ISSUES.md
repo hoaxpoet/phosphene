@@ -191,6 +191,32 @@ Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — 
 
 ---
 
+### BUG-041 — FFO aurora flashes at track start: the drums-stem deviation driver overswings 1.2–3.3× during the per-track analyzer cold start (2026-06-10)
+
+**Severity:** P2 (visible flashing in the first ~10 s of affected tracks on FFO; Matt flagged it on So What, There, There, and Lotus Flower in session `2026-06-10T14-55-32Z`). Same cold-start-deviation family as BUG-027/AGC2.4.1 (fixed for the FeatureVector band devs) — this is the STEM-side twin reaching the GPU through the aurora.
+**Domain tag:** `dsp.stem` (deviation cold start) + `preset.fidelity` (FFO aurora intensity).
+**Status:** Open — diagnosed with session evidence; fix not yet scoped (FBS iterative queue, per Matt's incremental direction).
+**Introduced:** structural — `StemAnalyzer` resets per track; its per-stem deviation EMA re-seeds and `drumsEnergyDev` overswings during convergence. The aurora consumes it through the D-127 smoother (`auroraDrumsSmoothed`, τ ≈ 150 ms) — fast enough to pass multi-Hz cold-start swings as visible intensity flashes. The Stage-1 spike-driver replacement removed the OTHER flicker source (`f.bass` jitter into spike geometry), making this one prominent.
+**Resolved:** —
+
+**Expected:** the aurora arrives smoothly when a track starts.
+
+**Actual (session `2026-06-10T14-55-32Z`, first 10 s of each track, 150 ms-smoothed driver):** flagged tracks — Lotus Flower smoothed peak **2.35**, So What **1.23**, There, There **1.37** (smoothed jitter 0.45–0.91/s); unflagged — Love Rehab peak 0.23, jitter 0.02/s. The flashing maps exactly onto the measured overswing. Steady-state (10–20 s) values are far lower. The pulse, spike strength, and the BUG-038-smoothed light multiplier are all calm in the same windows (measured — they are excluded as causes).
+
+**Reproduction steps:** play the 6-track streaming playlist on FFO; observe the aurora in the first ~10 s of So What / There, There / Lotus Flower; compare `stems.csv` `drumsEnergyDev` early-window values against the 10–20 s window.
+
+**Session artifacts:** `~/Documents/phosphene_sessions/2026-06-10T14-55-32Z/` (`stems.csv` drums columns; the per-track table above).
+
+**Suspected failure class:** `calibration` (deviation cold-start overswing, BUG-027 class) — consumed un-warmed by a brightness layer.
+
+**Verification criteria (when fixed):**
+- [ ] Automated: early-window (0–10 s) smoothed aurora driver peak ≤ ~1.5 × its steady-state level on the session above (live-path test or replay).
+- [ ] Manual: Matt confirms the aurora arrives without flashing on So What / There, There / Lotus Flower track starts.
+
+**Manual validation required:** Yes — felt visual artifact.
+
+**Related:** BUG-027/AGC2.4.1 (the band-dev cold-start warmup — the fix pattern to mirror on the stem side or at the aurora's consumption point), BUG-029/AGC3 (the `f.bass` cold-start spike — same family, different path), D-127 (the aurora smoother), FBS (this became visible once the spike driver stopped flickering).
+
 ### BUG-038 — Ray-march light-intensity flickers 7–9 steps/sec (BUG-019 residual: beat-onset brightness term fires ~97% of frames) (2026-06-09)
 
 **Severity:** P1 (chronic visible artifact across all ray-march presets; the symptom Matt has reported "since FFO existed" — a strobe that blocks fair evaluation of FFO and any beat-sync work). Continuation of **BUG-019** (PERF.3 reduced it 76→53–60 oscillation events but did not eliminate it).
