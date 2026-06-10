@@ -89,3 +89,26 @@ The plan as written is **supported**, with one course-correction:
 ## Next
 
 **STOP per the staged plan.** Await Matt's read of the plain-English report before Stage 1 (build only the anchored steady pulse, prove it holds steady through the live pipeline). Confirm the `FBS` tag. No code committed yet.
+
+---
+
+# ADDENDUM — Stage 1 live verdict (2026-06-10, session `2026-06-10T03-02-32Z`)
+
+**Matt's read: NEGATIVE on a streaming playlist** ("strong opening with Love Rehab… totally falls apart for So What… same regular beat but not synced [There There]… definitely a regression for [Pyramid Song]… Money perfectly synced… Lotus appears more synced but is not").
+
+**What the pulse columns show (the mechanism worked exactly as built):** every track pulsed at its OWN cached tempo to 0.05 % (118.13 / 135.52 / 126.27 / 69.96 / 123.23 / 128.05), anchored instantly, held dead steady. No tempo lag, no wander, no bug.
+
+**Per-track sync (spectralFlux folded on pulse phase, 10 s windows):**
+- **Love Rehab: LOCKED — R 0.43/0.35/0.31, offset stable at ~+200 ms** → Matt's "strong opening." The design working as intended: real track start (audio began with the session) + regular beat + correct tempo.
+- **So What (swing jazz): R ≈ 0.01–0.21, offsets random** — no quarter-note pulse to fold; the 135.5 thump reads as a metronome ignoring Miles Davis. Matt's "same beat as Love Rehab": two generic mid-tempo thumps that both ignore the music ARE perceptually the same.
+- **There There: R ≈ 0.06–0.10** — tempo essentially right (grid/drums agree 0.4 %) but the anchor = the mid-audio title-change instant → arbitrary phase; regular-but-not-synced.
+- **Pyramid Song: R ≈ 0.03–0.09, offsets swinging ±300 ms — THE REGRESSION.** Rubato/irregular song; the prepare-time 3-way tempo disagreement (47.7 % / 57.4 %!) flagged it as irregular and we pulsed anyway, confidently thumping 70 bpm nonsense. Worse than the frozen baseline.
+- **Money: Matt perceived "perfectly synced"** (walking bass at ~123 = notes on every beat; the 123.23 pulse coincides) though the flux-fold stays low (7/4 meter + dense flux smear the metric) — perception credit, not metric credit.
+- **Lotus Flower: R ≈ 0.01–0.04** — syncopated groove + arbitrary anchor phase; "appears more synced but is not."
+
+**The three structural causes (now measured, not hypothesized):**
+1. **Mid-playlist streaming anchors are musically meaningless.** Gapless switches mean every anchor (te ≈ 0.03 on all of tracks 2–6) = the title-change instant, not a musical event. The first-note premise holds only for true starts (track 1 / local files). This was filed as a "known limitation" — the live test shows it is THE dominant case on a playlist, not an edge.
+2. **No regularity gate.** Songs without a steady quarter-note beat (swing, rubato, heavy syncopation) get a confident robotic pulse — actively worse than no pulse. The gating signal already exists at prepare time (3-way BPM agreement, bar confidence).
+3. **Steady-but-meaningless reads WORSE than nothing.** The Stage-1 bet was "steady wrong-by-a-hair beats wandering right-on-average" — true when the anchor is near-musical (Love Rehab), false when the phase is arbitrary: a regular thump that ignores the music is maximally visible as fake. Stage 3 (one-time bar-boundary handoff to a musical phase source) is load-bearing for tracks 2+, not polish.
+
+**What I now believe:** the steady pulse earns its place only when its phase comes from a musical event AND the song actually has a regular beat; Stage 1 proved the mechanism and falsified the streaming-anchor premise — phase sourcing and regularity gating, not tempo, are the binding constraints.
