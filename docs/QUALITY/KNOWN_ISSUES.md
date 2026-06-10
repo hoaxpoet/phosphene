@@ -191,6 +191,28 @@ Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — 
 
 ---
 
+### BUG-042 — Structural sections are still ~1.5 s on real music: the analyzer's GEOMETRY is note-scale (6.4 s window, 85 ms checkerboard), not section-scale — and post-BUG-040 confidence now endorses the junk (2026-06-10)
+
+**Severity:** P2 (the Skein.5 structure sub-feature and the orchestrator's `StructuralPrediction` consumer act on a boundary every ~1.5 s with confidence 0.85–1.00 — worse than pre-BUG-040, where low confidence at least kept the gates shut).
+**Domain tag:** dsp.structure
+**Status:** Open — verified from session artifacts (the Skein.5.2 columns doing their job again).
+**Introduced:** structural — the analyzer's defaults were sized for a different feature rate; at the live ~94 Hz analysis rate the geometry detects note/bar novelty, not sections.
+**Resolved:** —
+
+**Expected:** musical sections of 15–60 s with confidence that reflects real form.
+**Actual (session `2026-06-10T17-39-41Z`, 6 streaming tracks):** boundaries every **1.3–2.5 s** on every track (Love Rehab: 30 in ~50 s), `section_start_s` now sane and durations now CONSISTENT — so duration-consistency-driven confidence climbs to **0.85–1.00** and the Skein conf gate opens on junk (the exact risk noted in the BUG-040 fix rationale).
+**Why BUG-040's fixes were insufficient:** all three were real (frozen clock, live-edge dedup escape, no absolute floor) but operate at the wrong SCALE. `maxHistory = 600` frames at ~94 Hz = a **6.4-second** similarity window; `kernelHalfWidth = 8` frames = **85 ms** checkerboard blocks. An 85 ms before/after comparison inside a 6.4 s memory detects fills, chord changes and transients — every one a "boundary." The `minNoveltyFloor = 0.02` was calibrated on a smooth synthetic fixture (junk ≈ 0.0003); real music's frame-to-frame chroma variance puts baseline novelty far above it. The 1.3–2.5 s cadence = peaks admitted as fast as `minPeakDistance` (120 frames ≈ 1.28 s) allows.
+**Reproduction steps:** any real track ≥ 1 min; read the section tail columns — index inflates every ~1.5 s with high confidence.
+**Session artifacts:** `~/Documents/phosphene_sessions/2026-06-10T17-39-41Z/features.csv` (cols 53–55).
+**Suspected failure class:** `calibration` (detector geometry vs feature rate).
+**Proposed direction (next increment):** run the STRUCTURAL feature stream at section scale — aggregate the 16-dim feature vector to ~2 Hz (mean over ~0.5 s) before it enters the similarity matrix. The same code then gives: 600-frame ring = **5 minutes** of memory, 8-frame kernel = **4-second** checkerboard blocks, `minPeakDistance` retuned to ~16 (≈ 8 s minimum section). Re-calibrate `minNoveltyFloor` against REAL session feature streams (replayable from raw_tap/preview audio), not synthetic fixtures. The Skein conf-gate thresholds stay; the existing BUG-035/040 regression tests must be re-expressed at the new rate.
+**Verification criteria (before any fix):**
+- [ ] Automated: a real-audio-derived feature stream (fixture from a recorded session) yields plausible section counts (1–6 per 3–5 min track) with multi-second-to-minute durations.
+- [ ] Automated: BUG-035 (ring-wrap dedup) + BUG-040 (edge guard / floor / clock) regression tests green at the new feature rate.
+- [ ] Manual: a live session's section columns show 15–60 s sections; confidence high only on genuinely sectional material.
+
+---
+
 ### BUG-041 — FFO aurora flashes at track start: the drums-stem deviation driver overswings 1.2–3.3× during the per-track analyzer cold start (2026-06-10)
 
 **Severity:** P2 (visible flashing in the first ~10 s of affected tracks on FFO; Matt flagged it on So What, There, There, and Lotus Flower in session `2026-06-10T14-55-32Z`). Same cold-start-deviation family as BUG-027/AGC2.4.1 (fixed for the FeatureVector band devs) — this is the STEM-side twin reaching the GPU through the aurora.
