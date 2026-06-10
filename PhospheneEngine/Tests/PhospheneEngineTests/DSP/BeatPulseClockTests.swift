@@ -289,12 +289,8 @@ final class BeatPulseClockTests: XCTestCase {
         return frames
     }
 
-    /// Mirrors fo_spike_strength's envelope (rise to 8 %, decay to 85 %, rest).
-    private func env(_ ph: Float) -> Float {
-        let attack = min(max(ph / 0.08, 0), 1)
-        let dec = 1 - min(max((ph - 0.08) / 0.77, 0), 1)
-        return attack * dec
-    }
+    /// The shared envelope authority (mirrors fo_spike_strength).
+    private func env(_ ph: Float) -> Float { BeatPulseClock.envelope(ph) }
 
     /// Replays the real Love Rehab session (40 s, live `beatPhase01` from the
     /// drift tracker as recorded) and asserts the FBS.S3 handoff contract:
@@ -316,24 +312,24 @@ final class BeatPulseClockTests: XCTestCase {
 
         // (a) Not before the convergence window.
         XCTAssertGreaterThanOrEqual(frames[hi].te, 10.0)
-        // (b) Swap fired in the envelope's rest window on BOTH phase sources.
-        XCTAssertGreaterThanOrEqual(outs[hi].phase01, 0.85,
-                                    "swap frame must be in the envelope rest window")
-        XCTAssertGreaterThanOrEqual(outs[hi - 1].phase01, 0.80,
-                                    "frame before the swap must also be near rest")
+        // (b) Seam safety: the envelope is low on both sides of the swap
+        // (the incoming phase IS the output at the swap frame; the outgoing
+        // bridge envelope was < the floor by the swap condition).
+        XCTAssertLessThan(env(outs[hi].phase01), 0.2,
+                          "incoming envelope at the swap frame must be low (seam-safe)")
         // (c) Afterwards the pulse IS the live beat (per-beat, energetic).
         for k in (hi + 1)..<min(hi + 600, frames.count) {
             XCTAssertEqual(outs[k].phase01, frames[k].livePhase, accuracy: 1e-5,
                            "post-handoff phase must equal the live drift-tracker phase")
         }
         // (d) Invisible seam: around the swap the envelope must never step
-        // beyond its own natural attack slope. The rise spans 8 % of a beat
-        // (≈ 41 ms at 118 BPM); with real frame-time jitter up to ~25 ms a
-        // NATURAL attack step reaches ≈ 0.6 — the bound is 0.65. A bad swap
-        // (zero → mid-punch) would step ≈ 1.0.
+        // beyond its own natural attack slope. The rise spans 20 % of a beat
+        // (≈ 100 ms at 118 BPM, FBS.S3.1); with frame-time jitter to ~25 ms a
+        // natural attack step is ≈ 0.25 — bound 0.35. A bad swap (low → mid-
+        // punch) would step ≥ ~0.5.
         for k in max(1, hi - 5)...min(hi + 5, outs.count - 1) {
             let step = abs(env(outs[k].phase01) - env(outs[k - 1].phase01))
-            XCTAssertLessThanOrEqual(step, 0.65,
+            XCTAssertLessThanOrEqual(step, 0.35,
                                      "envelope discontinuity at the handoff (frame \(k), step \(step))")
         }
         // (e) Before the handoff the bridge ticked at the slow 4-beat period.
@@ -365,6 +361,42 @@ final class BeatPulseClockTests: XCTestCase {
         XCTAssertTrue(clock.handedOff)
         clock.resetAnchor()
         XCTAssertFalse(clock.handedOff, "new track must re-open on the slow bridge")
+    }
+
+    /// MONEY regression (session 2026-06-10T17-21-49Z): the original swap
+    /// condition required both PHASES in a narrow rest window — but bridge and
+    /// live phase share a tempo source, so their offset is frozen and the
+    /// coincidence either fires every cycle or NEVER. On Money it was never:
+    /// zero eligible frames in 63 s, the track stayed on the bridge for its
+    /// whole playback (Matt: "It never moved over... only the pulse was
+    /// present"). The envelope-floor condition is structurally guaranteed —
+    /// this replays Money's recorded series and demands the handoff.
+    func test_handoff_firesOnMoney_theStructuralCounterexample() throws {
+        let url = try XCTUnwrap(
+            Bundle.module.url(forResource: "money_handoff_2026-06-10T17-21-49Z",
+                              withExtension: "csv", subdirectory: "fbs"))
+        let text = try String(contentsOf: url, encoding: .utf8)
+        var frames: [HandoffFrame] = []
+        for line in text.split(separator: "\n").dropFirst() {
+            let c = line.split(separator: ",").compactMap { Double($0) }
+            guard c.count >= 6 else { continue }
+            frames.append(HandoffFrame(te: c[0], dt: Float(max(0.001, min(0.1, c[1]))),
+                                       energy: Float(c[2] + c[3] + c[4]),
+                                       livePhase: Float(c[5])))
+        }
+        let clock = BeatPulseClock()
+        clock.setTempo(bpm: 123.2)   // Money's cached grid
+        var handoffTe: Double?
+        for fr in frames {
+            _ = clock.update(energySum: fr.energy, time: fr.te,
+                             deltaTime: fr.dt, liveBeatPhase01: fr.livePhase)
+            if handoffTe == nil, clock.handedOff { handoffTe = fr.te }
+        }
+        let te = try XCTUnwrap(handoffTe,
+                               "handoff must fire on Money — the phase-window condition "
+                               + "structurally never did (0 eligible frames in the session)")
+        // Guaranteed within ~one bridge cycle (≈ 1.95 s) of eligibility at 10 s.
+        XCTAssertLessThan(te, 13.0, "handoff must fire promptly once eligible (got \(te) s)")
     }
 
     func test_resetAnchor_clearsAnchorButKeepsTempo() {
