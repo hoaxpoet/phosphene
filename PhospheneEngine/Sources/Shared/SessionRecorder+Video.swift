@@ -66,11 +66,30 @@ extension SessionRecorder {
     /// reported once and the partial file retained (never deleted).
     private func healthyVideoAdaptor() -> AVAssetWriterInputPixelBufferAdaptor? {
         if let writer = videoWriter, writer.status != .writing {
+            let err = writer.error.map { String(describing: $0) } ?? "nil"
+            // BUG-039 recovery: the writer died (intermittent encoder-session
+            // failure; death certificate from 2026-06-10T17-50-56Z was
+            // AVFoundation -11800 / undocumented OSStatus -16341). The dead
+            // file is playable up to its last 5 s fragment (BUG-022) — retain
+            // it, roll to the next segment file, and let the lazy init build
+            // a fresh writer on the next frame. Bounded so a failure loop
+            // can't churn forever.
+            if videoWriterRestartCount < Self.maxVideoWriterRestarts {
+                videoWriterRestartCount += 1
+                videoSegmentIndex += 1
+                writeLogLine("video writer DIED (status=\(writer.status.rawValue), error=\(err)) "
+                    + "— partial retained; restarting into video_\(videoSegmentIndex).mp4 "
+                    + "(restart \(videoWriterRestartCount)/\(Self.maxVideoWriterRestarts); BUG-039 recovery)")
+                tearDownVideoWriter()
+                videoStartTime = nil
+                videoFailureLogged = false
+                return nil   // next appendVideoFrame lazily re-initializes
+            }
             if !videoFailureLogged {
                 videoFailureLogged = true
-                let err = writer.error.map { String(describing: $0) } ?? "nil"
                 writeLogLine("video writer stopped consuming (status=\(writer.status.rawValue), "
-                    + "error=\(err)) — video output disabled, partial mp4 retained (BUG-039)")
+                    + "error=\(err)) — restart budget exhausted, video output disabled, "
+                    + "partials retained (BUG-039)")
             }
             return nil
         }
@@ -166,12 +185,12 @@ extension SessionRecorder {
         pixelAdaptor = nil
         videoStartTime = nil
         lastVideoFrameTime = 0
-        try? FileManager.default.removeItem(at: videoURL)
+        try? FileManager.default.removeItem(at: currentVideoURL)
     }
 
     private func setupVideoWriter(width: Int, height: Int) -> Bool {
         do {
-            let writer = try AVAssetWriter(outputURL: videoURL, fileType: .mp4)
+            let writer = try AVAssetWriter(outputURL: currentVideoURL, fileType: .mp4)
             // BUG-022 — write a fragmented MP4 so the file remains playable
             // even if the process exits without calling `finishWriting`
             // (force-quit, crash, signal kill). Default AVAssetWriter only

@@ -40,6 +40,14 @@ Matt's Skein.5 M7 follow-ups, in priority order:
 
 ---
 
+## [dev-2026-06-10-bug039] BUG-039 — video writer death diagnosed live (-11800/-16341) + segment-rolling recovery; flash forensics harness
+
+**Increment:** BUG-039 diagnosis+fix (Matt's call: the session video is the PRIMARY visual-defect evidence — fix the recorder before further flash theorizing). **Status:** recovery landed, gates green; confirmation = the next live session records full-length video (possibly in segments).
+
+- The Skein.5.2 instrumentation caught the death live (`17-50-56Z`): writer left `.writing` 10 s after lock, `AVFoundation -11800` / undocumented `OSStatus -16341` (intermittent encoder-session failure class per Apple forums; co-occurred with the BUG-042 analysis stalls). Undocumented + intermittent ⇒ the durable fix is recovery: dead partial retained, recorder rolls to `video_N.mp4` within a frame, ≤ 8 restarts/session. Regression test simulates the field failure (status leaves `.writing`, file retained) and asserts both segments readable + the restart logged.
+- **New diagnostic:** `FerrofluidFlashForensicsTests` — env-gated (`PHOSPHENE_SESSION_DIR` + `PHOSPHENE_FLASH_WINDOW`) offline re-render of a real session window through the live FFO dispatch with the CPU-side modulation replicated; measures the RENDERED PIXELS per frame (mean/p99 luma, near-white fraction, localized block deltas). First run on the Lotus 2–9 s window reproduced measurable localized luma events in the pixels. Secondary tool to the (now fixed) session video.
+- Process note recorded: flash attributions to date were input-correlation, not pixel measurement — root-causing continues on REAL video from the next session (ffmpeg signalstats, the BUG-019 method) + the forensics harness for attribution A/Bs.
+
 ## [dev-2026-06-10-fbs-s3.2] FBS.S3.2 — the flashing was the aurora reacting to MID-TRACK stem-deviation bursts (soft-knee + bloom-rate response); BUG-043 filed (9.6 s analysis stall; renumbered from BUG-042 — number collision)
 
 **Increment:** FBS.S3.2, from Matt's timestamped live read of session `2026-06-10T17-50-56Z` (Money now syncs ✓ — the S3.1 handoff fix confirmed live; flashing persisted with exact times). **Status:** gates green; awaiting Matt's read. The S3.1 punch-attack attribution was WRONG (falsified by Lotus ~5 s / So What ~7 s flashes during the BRIDGE, pre-handoff); the timestamps converge on a single cause: **all-stem deviation bursts (3–30×, So What dev = 35) reaching the aurora through 150 ms smoothing** — mid-track, outside BUG-041's track-start warmup scope.

@@ -155,6 +155,66 @@ final class SessionRecorderTests: XCTestCase {
                       "features.csv header must end with the FBS pulse pair + the Skein.5.2 structural block, got: \(header)")
     }
 
+    // MARK: - BUG-039 — video writer death → segment-rolling recovery
+
+    /// The live death certificate (session `2026-06-10T17-50-56Z`): the writer
+    /// left `.writing` mid-session (AVFoundation -11800 / undocumented
+    /// OSStatus -16341) and video stayed dead for the rest of the session.
+    /// Recovery contract: the dead partial is RETAINED, a new segment file
+    /// (`video_2.mp4`) starts within a frame, and both files are readable.
+    /// The death is simulated by cancelling the live writer (status leaves
+    /// `.writing`, same condition the recovery path checks).
+    func test_videoWriterDeath_rollsToNewSegment_bothFilesReadable() throws {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            throw XCTSkip("No Metal device")
+        }
+        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
+        let width = 128, height = 72
+        let captureTex = try XCTUnwrap(recorder.ensureCaptureTexture(
+            device: device, width: width, height: height,
+            pixelFormat: .bgra8Unorm_srgb))
+        var pixels = [UInt8](repeating: 128, count: width * height * 4)
+        captureTex.replace(region: MTLRegionMake2D(0, 0, width, height),
+                           mipmapLevel: 0, withBytes: &pixels, bytesPerRow: width * 4)
+
+        // Phase 1: enough frames to lock + write segment 1.
+        for _ in 0..<45 {
+            recorder.recordFrame(features: FeatureVector.zero, stems: StemFeatures.zero)
+            Thread.sleep(forTimeInterval: 0.04)
+        }
+        // Kill the writer so status leaves .writing WITH the partial retained —
+        // matching the field failure (a .failed writer leaves its file; note
+        // cancelWriting() would DELETE it, which is why it isn't used here).
+        // Executed on the recorder's own queue to avoid racing in-flight appends.
+        recorder.queue.sync {
+            recorder.videoInput?.markAsFinished()
+            let sema = DispatchSemaphore(value: 0)
+            recorder.videoWriter?.finishWriting { sema.signal() }
+            _ = sema.wait(timeout: .now() + 5)
+        }
+
+        // Phase 2: more frames — recovery must roll to video_2.mp4 and resume.
+        for _ in 0..<45 {
+            recorder.recordFrame(features: FeatureVector.zero, stems: StemFeatures.zero)
+            Thread.sleep(forTimeInterval: 0.04)
+        }
+        recorder.finish()
+
+        let seg1 = recorder.sessionDir.appendingPathComponent("video.mp4")
+        let seg2 = recorder.sessionDir.appendingPathComponent("video_2.mp4")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: seg1.path),
+                      "the dead partial must be retained")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: seg2.path),
+                      "recording must resume into a new segment after writer death")
+        let tracks2 = AVURLAsset(url: seg2).tracks(withMediaType: .video)
+        XCTAssertFalse(tracks2.isEmpty, "the recovery segment must contain a video track")
+        // The recovery must be logged for diagnosability.
+        let log = try String(contentsOf: recorder.sessionDir.appendingPathComponent("session.log"),
+                             encoding: .utf8)
+        XCTAssertTrue(log.contains("BUG-039 recovery"),
+                      "the restart must be visible in session.log")
+    }
+
     // MARK: - FBS Stage 1 (D-153) pulse columns
 
     func test_recordFrame_writesPulseColumns_beforeStructuralTail() throws {
