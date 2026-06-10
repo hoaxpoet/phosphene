@@ -40,7 +40,9 @@ public enum SkeinPaletteLibrary {
         public let colors: [SIMD3<Float>]
     }
 
-    /// The candidates, dark/moody → bright/vivid. `fathom` is the shipped Skein.3 default.
+    /// The library, dark/moody → bright/vivid (Matt-curated 2026-06-10: fathom + nocturne +
+    /// jewel + inkpop + electric; `terra` was cut). `fathom` is the shipped Skein.3 default
+    /// and MUST stay at index 0 (seed 0 → fathom keeps every no-palette test byte-identical).
     public static let candidates: [Entry] = [
         Entry(name: "fathom",
               character: "the Full Fathom Five default — charcoal, oxblood, ochre gold, teal",
@@ -50,10 +52,6 @@ public enum SkeinPaletteLibrary {
               character: "dark and moody — ink blue-black, deep violet, moonlit gold, ice blue",
               colors: [SIMD3(0.07, 0.08, 0.14), SIMD3(0.30, 0.16, 0.58),
                        SIMD3(0.85, 0.70, 0.32), SIMD3(0.32, 0.62, 0.80)]),
-        Entry(name: "terra",
-              character: "earthy and warm — dark umber, rust, sun gold, sage",
-              colors: [SIMD3(0.16, 0.11, 0.08), SIMD3(0.58, 0.24, 0.10),
-                       SIMD3(0.93, 0.68, 0.22), SIMD3(0.34, 0.54, 0.40)]),
         Entry(name: "jewel",
               character: "rich jewel tones — deep violet, crimson, saffron, emerald",
               colors: [SIMD3(0.28, 0.10, 0.45), SIMD3(0.82, 0.10, 0.30),
@@ -71,4 +69,12 @@ public enum SkeinPaletteLibrary {
     /// The canvas ground in LINEAR space (must mirror `kSkeinCanvasCream` in Skein.metal) —
     /// every palette colour must stay separable from it too.
     public static let canvasCreamLinear = SIMD3<Float>(0.66, 0.60, 0.50)
+
+    /// The per-track picker (Matt's choice 2026-06-10: "per-track, fixed"): the SAME track
+    /// identity that seeds the painter trajectory picks the palette, deterministically — the
+    /// same song always paints the same painting in the same colours (§5.7), and a playlist
+    /// rotates the library naturally. Seed 0 (every no-palette test fixture) → `fathom`.
+    public static func entry(forTrackSeed seed: UInt32) -> Entry {
+        candidates[Int(seed % UInt32(candidates.count))]
+    }
 }

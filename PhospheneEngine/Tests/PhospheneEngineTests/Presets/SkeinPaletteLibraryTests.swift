@@ -8,6 +8,7 @@
 
 import Testing
 import Foundation
+import Metal
 import simd
 @testable import Presets
 
@@ -80,4 +81,38 @@ func paletteLibrary_defaultIsFathom() {
     #expect(fathom.name == "fathom")
     #expect(fathom.colors == SkeinState.defaultPalette,
             "The library's `fathom` entry must stay byte-equal to SkeinState.defaultPalette — it IS the shipped default.")
+}
+
+@Test("Library mode: the track seed picks the palette, reseed re-picks per track; explicit palettes stay pinned")
+func paletteLibrary_pickerDeterminismAndReseed() {
+    // Picker is a pure deterministic function of the track seed and covers the library.
+    let count = UInt32(SkeinPaletteLibrary.candidates.count)
+    for seed: UInt32 in 0..<(count * 2) {
+        #expect(SkeinPaletteLibrary.entry(forTrackSeed: seed).name
+                    == SkeinPaletteLibrary.candidates[Int(seed % count)].name,
+                "Picker must be seed % libraryCount — deterministic, same song → same palette (§5.7).")
+    }
+
+    guard let device = MTLCreateSystemDefaultDevice() else { return }
+    // LIBRARY MODE (no explicit palette — the live app's path): init picks by seed; reseed
+    // (the §1.5 track change) re-picks from the new track's identity.
+    guard let state = SkeinState(device: device, seed: 0) else {
+        Issue.record("SkeinState alloc failed"); return
+    }
+    #expect(state.palette == SkeinPaletteLibrary.candidates[0].colors,
+            "Seed 0 must paint in fathom (the pre-library behaviour, byte-identical).")
+    state.reseed(1)
+    #expect(state.palette == SkeinPaletteLibrary.candidates[1].colors,
+            "A track change (reseed) must re-pick the new track's palette in library mode.")
+    state.reseed(0)
+    #expect(state.palette == SkeinPaletteLibrary.candidates[0].colors,
+            "Re-picking is deterministic — back to seed 0 is back to fathom.")
+
+    // EXPLICIT MODE (test fixtures / contact-sheet candidates): the palette never moves.
+    guard let pinned = SkeinState(device: device, seed: 0, palette: SkeinState.defaultPalette) else {
+        Issue.record("SkeinState alloc failed"); return
+    }
+    pinned.reseed(3)
+    #expect(pinned.palette == SkeinState.defaultPalette,
+            "An explicit init palette must survive reseed — fixtures stay pinned.")
 }
