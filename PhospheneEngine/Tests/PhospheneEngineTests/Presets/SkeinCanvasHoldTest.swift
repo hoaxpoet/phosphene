@@ -1118,18 +1118,13 @@ struct SkeinCanvasHoldTest {
 
     // MARK: - Real-stem palette contact sheet (env-gated: candidate palettes for Matt sign-off)
 
-    /// Candidate per-stem palettes [drums, bass, vocals, other] for Matt's sign-off. The README
-    /// colour rule: legibility (one stable, well-separated colour per stem), not specific hues, is
-    /// the binding constraint — these are distinct legible options, the *Full Fathom Five* register
-    /// (A) being the illustrative default.
-    private static let candidatePalettes: [(name: String, colors: [SIMD3<Float>])] = [
-        ("A_fathom", [SIMD3(0.12, 0.13, 0.18), SIMD3(0.62, 0.13, 0.16),
-                      SIMD3(0.90, 0.62, 0.16), SIMD3(0.12, 0.58, 0.55)]),
-        ("B_jewel",  [SIMD3(0.28, 0.10, 0.45), SIMD3(0.82, 0.10, 0.30),
-                      SIMD3(0.97, 0.72, 0.15), SIMD3(0.05, 0.62, 0.45)]),
-        ("C_inkpop", [SIMD3(0.08, 0.09, 0.12), SIMD3(0.10, 0.32, 0.75),
-                      SIMD3(0.95, 0.55, 0.10), SIMD3(0.80, 0.14, 0.50)])
-    ]
+    /// Skein.5.3: the candidates are the curated library (`SkeinPaletteLibrary.candidates`) —
+    /// the Skein.3 A/B/C trio grew into the six-entry library with a fixed role grammar
+    /// (drums darkest / bass deep / vocals warm-bright / other contrast accent), each entry
+    /// regression-locked by `SkeinPaletteLibraryTests`.
+    private static var candidatePalettes: [(name: String, colors: [SIMD3<Float>])] {
+        SkeinPaletteLibrary.candidates.map { ($0.name, $0.colors) }
+    }
 
     @Test("Real-stem palette contact sheet (env-gated: SKEIN_VISUAL=1 / RENDER_VISUAL=1)")
     func test_realStem_paletteContactSheet() throws {
@@ -1166,7 +1161,7 @@ struct SkeinCanvasHoldTest {
         [skein_palette_candidates] live path, \(w)×\(h), session \(session.lastPathComponent):
           output dir: \(outDir.path)
           candidates (l→r) = \(Self.candidatePalettes.map { $0.name })
-          → skein_palette_candidates.png  +  skein_palette_A_fathom/B_jewel/C_inkpop.png
+          → skein_palette_candidates.png + one PNG per library entry
         """)
         #expect(tiles.count == Self.candidatePalettes.count, "Missing palette-candidate tiles.")
     }
