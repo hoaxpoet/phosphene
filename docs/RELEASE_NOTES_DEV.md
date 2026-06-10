@@ -6,7 +6,7 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
-## [dev-2026-06-10-d] Skein.5.4 — two painting techniques: pour drips vs independent flicks (🔶 built on `claude/skein54-splatter`; merges only after Matt's eyeball gate)
+## [dev-2026-06-10-d] Skein.5.4 — two painting techniques: pour drips vs independent flicks (✅ Matt eyeball-gate APPROVED ×3 sessions; merged to local main `befb406b` 2026-06-10)
 
 **Round-2 (Matt's live read, session `2026-06-10T19-28-50Z`):** spatter rate −41 % (`onsetRefractory` 0.14 → 0.26; "slow the speed of spatters by 40–50 %", confirmed as rate not size) and new pour lines start +13 % more often (`minPourTau` 3.0 → 2.65). Early fill at 5 s: 37 % → 25 % of canvas. The same listen surfaced **BUG-044** (local-file next/prev/EOF never wiped the Skein canvas — the §1.5 wipe was wired only on the streaming path since Skein.3; trivial-collapsed P2): the per-track preset reset (Nimbus settle + Skein wipe/reseed) is now the shared `resetPerTrackPresetState()` called from BOTH track-change paths, regression-locked by `TrackChangePresetResetRegressionTests`, with a `WIRING:` breadcrumb per LF advance for session-artifact verification.
 
