@@ -1106,6 +1106,24 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 
 ## Resolved (recent)
 
+### BUG-045 — FFO aurora hue strobes: vocals-pitch confidence flaps across the hue gate ~9×/s, snapping the reflected sky's colour and stepping whole-frame luminance (2026-06-10)
+
+> **RESOLVED 2026-06-10 (FBS.S5, D-158)** — the "remaining flasher" after D-157's regional punches. Diagnosis and fix landed in one session because the fix IS Matt's independently-directed character change ("the aurora color is shifting too quickly… transition over a longer length of time, e.g., 8-10s") — the multi-increment split was honored within the session: forensics-proof commit first (`ef4fb8e0`), fix commit second (`0159c54f`).
+
+**Severity:** P2 (visible whole-frame flashing on FFO mid-track, "prominent on some tracks" — Matt, S4 read of session `2026-06-10T19-13-14Z`).
+
+**Domain tag:** `preset.fidelity` / failure class `calibration` (an ungated per-frame input driving a scene-wide chromatic surface).
+
+**Expected behavior.** The aurora curtain's hue follows the vocal register/mood smoothly; the reflected sky never changes colour at frame rate.
+
+**Actual behavior.** `rm_ferrofluidSky` computed the palette phase per-pixel from raw `vocals_pitch_hz`/`vocals_pitch_confidence`. On real music the confidence crosses the smoothstep(0.5, 0.7) gate ~9×/s (90 crossings in the 10 s So What window), snapping the phase between the pitch path and the valence fallback — up to 0.4 of palette phase, across palette stops (pink↔green↔purple differ ~2× in luma). At curtain intensity 2.5–5.5 mirrored across the whole substrate, each snap stepped the entire frame's mean luminance (video: 72–84-luma flashes).
+
+**Reproduction / artifacts.** `FerrofluidFlashForensicsTests` on session `2026-06-10T19-13-14Z`: replicating the pitch fields took the replica 1 → 13 flash steps (So What seg2 31–41 s) and 0 → 15 (Lotus seg5 45–51 s); the new `PHOSPHENE_FLASH_ABLATE=aurora-hue` arm (zeroing only those two fields) restored 1 / 0 — the route is convicted mechanically, not by input correlation.
+
+**Fix (D-158).** The same composite phase math runs CPU-side (`RenderPipeline.auroraHueStep`, pure fn) behind a τ ≈ 3 s EMA — gate flapping averages to a stable intermediate hue; a sustained vocal entry glides the hue over ~9 s (Matt's directed window). Shipped to the shader as `StemFeatures.auroraPalettePhase` (float 45); the shader reads one smoothed value. Companion (same directive): `auroraDriverStep` intensity τ rise/fall 0.45/1.2 → 2.7/3.3 s.
+
+**Verification (pre-stated, met).** Automated: the four forensics windows re-rendered post-fix → 1/0/1/0 flash steps with localized punch deltas preserved; `AuroraHueDriverTests` pins flap immunity (≤ 0.005/frame under worst-case flapping), the 8–10 s step response, and converged-target fidelity to the pre-S5 shader formula. Manual: Matt's next live read (hue character is his call — pending).
+
 ### BUG-044 — Local-file next/prev/EOF never wipes the Skein canvas: one painting accumulates across every track (2026-06-10)
 
 > **RESOLVED 2026-06-10** — Trivial-collapsed P2 per CLAUDE.md §Defect Handling Protocol (root cause obvious from the session log + a one-helper extraction, no architectural risk; collapse stated explicitly here and in the commit). Landed on the Skein.5.4 branch `claude/skein54-splatter`; reaches main with the 5.4 merge.

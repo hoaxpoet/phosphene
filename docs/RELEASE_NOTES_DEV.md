@@ -6,6 +6,19 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-06-10-e] FBS.S5 — the flash hunt closes (the hue route, proven then fixed) + Matt's three S4 directives (D-158, BUG-045)
+
+**The proof first (the S5 rule: pixels, not input correlation).** The S4 replica-gap finding resolved exactly as hypothesized: adding the never-replicated `vocalsPitchHz`/`vocalsPitchConfidence` fields to the flash-forensics harness made the replica reproduce the remaining flashes (So What 31–41: 1 → 13 steps; Lotus 45–51: 0 → 15), and the new `aurora-hue` ablation arm (zeroing only those two fields) killed them (1 / 0). Mechanism in the recorded data: pitch confidence flaps across the hue gate ~9×/s, snapping the aurora hue between palette stops across the whole mirrored sky. Filed + resolved as **BUG-045**.
+
+**Matt's three directives (S4 read), implemented:**
+1. **Aurora transitions slow to 8–10 s** — hue now computed CPU-side (`auroraHueStep`, τ ≈ 3 s EMA → `StemFeatures.auroraPalettePhase` float 45) which kills the strobe by design; intensity rise/fall τ 0.45/1.2 → 2.7/3.3 s (a slow swell following the drum-energy arc). The Matt-tuned orbit hue rotation (~8–12 s between stops) is untouched.
+2. **Bridge heave back to GLOBAL** — `BeatPulseClock.regionalBlend01` (FV float 43): 0 on the bridge (whole-ocean heave, visible again), ramping to 1 over one 4-beat span post-handoff.
+3. **Regional punches stay** post-handoff (D-157 unchanged in steady state).
+
+**Acceptance:** four windows of `2026-06-10T19-13-14Z` re-rendered → 1/0/1/0 flash steps with localized punch motion preserved (blocks ~45–63); live-path A/B: bridge punch |δ| 25.3 luma at the heave, 0.0 at rest. New gates: `AuroraHueDriverTests` (3), `test_regionalBlend_zeroOnBridge_rampsToOneAfterHandoff` (real-session replay). `features.csv` gains trailing `pulse_beat_index`/`pulse_regional_blend01`. Engine suite + app build + lint per the closeout. **Awaiting Matt's live read.** Queued behind it: Stage 2 energy-scaled punch heights (So What intro), BUG-043 instrumentation, the dev=35 anomaly.
+
+---
+
 ## [dev-2026-06-10-d] Skein.5.4 — two painting techniques: pour drips vs independent flicks (✅ Matt eyeball-gate APPROVED ×3 sessions; merged to local main `befb406b` 2026-06-10)
 
 **Round-2 (Matt's live read, session `2026-06-10T19-28-50Z`):** spatter rate −41 % (`onsetRefractory` 0.14 → 0.26; "slow the speed of spatters by 40–50 %", confirmed as rate not size) and new pour lines start +13 % more often (`minPourTau` 3.0 → 2.65). Early fill at 5 s: 37 % → 25 % of canvas. The same listen surfaced **BUG-044** (local-file next/prev/EOF never wiped the Skein canvas — the §1.5 wipe was wired only on the streaming path since Skein.3; trivial-collapsed P2): the per-track preset reset (Nimbus settle + Skein wipe/reseed) is now the shared `resetPerTrackPresetState()` called from BOTH track-change paths, regression-locked by `TrackChangePresetResetRegressionTests`, with a `WIRING:` breadcrumb per LF advance for session-artifact verification.

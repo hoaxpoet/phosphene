@@ -71,8 +71,7 @@ public final class BeatPulseClock: @unchecked Sendable {
         /// coverage cliff. Resets per track.
         public var regionalBlend01: Float
 
-        public static let zero = Output(phase01: 0, amp01: 0, beatIndex: 0,
-                                        regionalBlend01: 0)
+        public static let zero = Output(phase01: 0, amp01: 0, beatIndex: 0, regionalBlend01: 0)
     }
 
     // MARK: - Tuning constants
@@ -293,8 +292,11 @@ public final class BeatPulseClock: @unchecked Sendable {
             // Live phase gone (grid cleared mid-track) → fall back to the
             // bridge metronome rather than going dark.
             if let live = liveBeatPhase01 {
-                return Output(phase01: live, amp01: amp, beatIndex: liveBeatCount,
-                              regionalBlend01: regionalBlend)
+                return Output(
+                    phase01: live,
+                    amp01: amp,
+                    beatIndex: liveBeatCount,
+                    regionalBlend01: regionalBlend)
             }
         }
         return Output(
