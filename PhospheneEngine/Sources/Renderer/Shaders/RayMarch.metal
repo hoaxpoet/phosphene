@@ -377,20 +377,19 @@ static float3 rm_ferrofluidSky(float3 R,
         return baseSky;
     }
 
-    // ── Curtain hue: pitch (confidence-gated) ↔ valence fallback ───
-    // Perceptual log-scale over 80 Hz – 1 kHz → centred phase shift in
-    // [-kPitchHueMaxShift, +kPitchHueMaxShift]. Same recipe the retired §5.8
-    // rig used CPU-side; ported inline here to keep CPU state minimal.
-    constexpr float kPitchRefLowHz    = 80.0;
-    constexpr float kPitchRefHighHz   = 1000.0;
-    constexpr float kPitchHueMaxShift = 0.20;
-    float pitchHz   = clamp(stems.vocals_pitch_hz, kPitchRefLowHz, kPitchRefHighHz);
-    float pitchNorm = log2(pitchHz / kPitchRefLowHz)
-                    / log2(kPitchRefHighHz / kPitchRefLowHz);
-    float pitchPhase = (pitchNorm - 0.5) * 2.0 * kPitchHueMaxShift;
-    float valencePhase = clamp(features.valence, -1.0, 1.0) * kPitchHueMaxShift;
-    float pitchGate = smoothstep(0.5, 0.7, stems.vocals_pitch_confidence);
-    float palettePhase = mix(valencePhase, pitchPhase, pitchGate);
+    // ── Curtain hue: CPU-smoothed pitch/valence phase (FBS.S5, D-158) ──
+    // Pre-S5 this block computed the phase per-pixel from raw
+    // `vocals_pitch_hz` / `vocals_pitch_confidence` (perceptual log-scale
+    // over 80 Hz–1 kHz, confidence-gated smoothstep(0.5, 0.7) against the
+    // valence fallback). On real music the confidence flaps across that
+    // gate ~9×/s, snapping the hue between the two phase sources — at
+    // curtain intensity 2.5–5.5 reflected across the whole mirror, each
+    // snap stepped the entire frame's luminance (the FBS flash forensics'
+    // proven remaining flasher; session `2026-06-10T19-13-14Z`). The same
+    // math now runs CPU-side in `RenderPipeline.auroraHueStep` behind a
+    // τ≈3 s EMA (a hue transition completes over ~9 s — Matt's directive),
+    // and the shader reads the one smoothed result.
+    float palettePhase = stems.aurora_palette_phase;
 
     // ── Curtain drift: orbital azimuth ticked by accumulated audio time ─
     // arousal ∈ [-1, +1] mapped to speed factor [0.5, 1.0]: calm music orbits

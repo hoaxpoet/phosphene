@@ -212,6 +212,16 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// Accessed only from the ray-march draw path, like `auroraDrumsSmoothed`.
     var auroraTrackWarmup01: Float = 1.0
 
+    /// FBS.S5 (D-158) — smoothed aurora palette phase (τ ≈ 3 s EMA over the
+    /// composite pitch/valence hue target), patched into the stems snapshot at
+    /// `StemFeatures.auroraPalettePhase`. Replaces the shader's per-pixel raw
+    /// pitch-field read, which strobed the reflected sky when pitch confidence
+    /// flapped across its gate (~9×/s measured on session
+    /// 2026-06-10T19-13-14Z). Not reset per track — hue continuity across
+    /// track changes is free of steps by construction. Accessed only from the
+    /// ray-march draw path, like `auroraDrumsSmoothed`.
+    var auroraHuePhase: Float = 0
+
     // MARK: - Feedback Textures (Milkdrop-style ping-pong)
 
     /// Double-buffered feedback textures. Index flips each frame.
