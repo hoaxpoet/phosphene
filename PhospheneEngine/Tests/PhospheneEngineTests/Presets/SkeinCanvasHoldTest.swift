@@ -1305,6 +1305,133 @@ struct SkeinCanvasHoldTest {
         #expect(finalCoverage > 0.40, "Canvas only \(finalCoverage * 100)% painted after a full track of dense material — near-empty (density regression).")
     }
 
+    // MARK: - Skein.6 certification: multi-hour canvas soak (§5.5 verify-don't-assume)
+
+    /// The §5.5 soak: the 8-bit canvas under identity-hold must show no banding/drift over a
+    /// MULTI-HOUR session. (The generic `SoakTestHarness` is the headless audio-path harness —
+    /// memory + frame timing, no render — so it cannot observe the canvas; this gate runs the
+    /// live mv_warp dispatch path instead, the same scene→warp→overlay→blit→swap loop the app
+    /// dispatches, for a simulated 2-hour session.)
+    ///
+    /// Env-gated (`SKEIN_SOAK=1`, ~8–10 min wall): 432,000 frames = 120 simulated minutes.
+    ///   Phase A — 15 min of tiled REAL stems: paint accumulates (the thin-paint layering §5.5
+    ///             worries about: repeated alpha-over at the same texels).
+    ///   Phase B — 90 min of silence: after a 60 s settle (the silence gate is an EMA —
+    ///             stemMix decays over seconds, by design), the painter clock pauses and the
+    ///             whole canvas (RGB paint record + wetness ALPHA, which holds at silence)
+    ///             must be BYTE-IDENTICAL from the settled baseline to phase end — the
+    ///             lossless-hold claim at the hours scale. Drift/banding would show here.
+    ///   Phase C — 15 min of tiled real stems again: painting resumes (bursts fire),
+    ///             never-white holds, coverage never shrinks.
+    @Test("Skein.6 soak: 2-hour simulated session — lossless 8-bit hold, no banding/drift (SKEIN_SOAK=1)",
+          .enabled(if: ProcessInfo.processInfo.environment["SKEIN_SOAK"] == "1"))
+    func test_cert_soak_twoHourCanvasHold() throws {
+        guard let fx = try loadSkeinFixture() else { return }
+        guard let session = Self.firstRecordedSession(),
+              let stems = loadStemFrames(session, maxFrames: 10_800), stems.count > 600 else {
+            print("SkeinCanvasHoldTest: no recorded session — skipping soak")
+            return
+        }
+        let device = fx.ctx.device, queue = fx.ctx.commandQueue
+        let w = 200, h = 200
+        let phaseA = 54_000, phaseB = 324_000, phaseC = 54_000   // 15 + 90 + 15 min @ 60 fps
+        let frames = phaseA + phaseB + phaseC
+        guard let skein = SkeinState(device: device, seed: 4) else { throw SkeinHoldError.bufferFailed }
+        let fbDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: fx.ctx.pixelFormat, width: w, height: h, mipmapped: false)
+        fbDesc.usage = [.renderTarget, .shaderRead]
+        fbDesc.storageMode = .shared
+        guard var warpTex = device.makeTexture(descriptor: fbDesc),
+              var composeTex = device.makeTexture(descriptor: fbDesc),
+              let blitTex = device.makeTexture(descriptor: fbDesc) else { throw SkeinHoldError.textureFailed }
+        try clearTextures([warpTex, composeTex], to: fx.cream, context: fx.ctx)
+        try clearTextures([blitTex], to: MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1), context: fx.ctx)
+
+        let dt: Float = 1.0 / 60.0
+        func read(_ tex: MTLTexture) -> [UInt8] {
+            var px = [UInt8](repeating: 0, count: w * h * 4)
+            tex.getBytes(&px, bytesPerRow: w * 4, from: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0)
+            return px
+        }
+        var creamRef: [UInt8] = []
+        var holdSnapshot: [UInt8] = []       // canvas at the first phase-B frame
+        var maxHoldDiff = 0                  // worst per-checkpoint byte diff across phase B
+        var coverageEndA = 0
+        var burstsEndB = 0
+        let t0 = Date()
+        for frameIdx in 0..<frames {
+            let inSilence = frameIdx >= phaseA && frameIdx < phaseA + phaseB
+            var features = FeatureVector(time: Float(frameIdx) * dt, deltaTime: dt, aspectRatio: 1.0)
+            let stemFrame = inSilence ? StemFeatures.zero : stems[frameIdx % stems.count]
+            skein.tick(deltaTime: dt, features: features, stems: stemFrame)
+            guard let cmd = queue.makeCommandBuffer() else { throw SkeinHoldError.cmdBufferFailed }
+            try encodeWarp(cmd: cmd, mvWarp: fx.mvWarp, warpTex: warpTex, composeTex: composeTex,
+                           features: &features, chromatic: 0, wetnessDecay: skein.wetnessDecay)
+            try encodeOverlay(cmd: cmd, overlay: fx.overlay, target: composeTex,
+                              features: &features, skeinBuffer: skein.skeinBuffer)
+            try encodeBlit(cmd: cmd, mvWarp: fx.mvWarp, src: composeTex, dst: blitTex,
+                           post: SIMD4<Float>(0, 0, 1, 0), skeinBuffer: skein.skeinBuffer)
+            cmd.commit()
+            cmd.waitUntilCompleted()
+
+            if frameIdx == 0 {
+                let c = read(composeTex)
+                creamRef = Array(c[(5 * w + 5) * 4..<(5 * w + 5) * 4 + 4])
+            }
+            if frameIdx == phaseA - 1 { coverageEndA = countPainted(read(composeTex), cream: creamRef) }
+            // The hold baseline is taken AFTER a 60 s settle window, not at the first silent
+            // frame: the silence gate is an EMA (stemMix decays over seconds — the Skein.5.1
+            // design), so the painter clock + wetness decay legitimately run a few seconds
+            // into phase B. The first soak run proved this empirically: a one-time 2342-byte
+            // settle in the first checkpoint interval, then ZERO further change from B+10 min
+            // to B+89 min. The §5.5 claim is about SUSTAINED silence, so the baseline is the
+            // settled canvas.
+            let settleFrames = 3600   // 60 s at 60 fps
+            if frameIdx == phaseA + settleFrames { holdSnapshot = read(composeTex) }
+            // Phase-B checkpoints every simulated 10 min + the last B frame: FULL byte-identity
+            // (RGB + ALPHA — wetness holds at silence too) against the settled baseline. A
+            // count-only comparison could hide an oscillation inside a constant diff count;
+            // byte-level comparison against one fixed baseline cannot.
+            if inSilence, frameIdx > phaseA + settleFrames,
+               (frameIdx - phaseA) % 36_000 == 0 || frameIdx == phaseA + phaseB - 1 {
+                let now = read(composeTex)
+                var diffRGB = 0, diffA = 0
+                var i = 0
+                while i < now.count {
+                    if now[i] != holdSnapshot[i] || now[i + 1] != holdSnapshot[i + 1]
+                        || now[i + 2] != holdSnapshot[i + 2] { diffRGB += 1 }
+                    if now[i + 3] != holdSnapshot[i + 3] { diffA += 1 }
+                    i += 4
+                }
+                maxHoldDiff = max(maxHoldDiff, diffRGB + diffA)
+                let mins = (frameIdx - phaseA) / 3600
+                print("[skein_soak] B+\(mins)min hold-diff rgb=\(diffRGB)px alpha=\(diffA)px  (\(String(format: "%.1f", -t0.timeIntervalSinceNow / 60))min wall)")
+            }
+            if frameIdx == phaseA + phaseB - 1 { burstsEndB = skein.totalBurstsSpawned }
+            if frameIdx == frames - 1 {
+                let final = read(composeTex)
+                let coverageEndC = countPainted(final, cream: creamRef)
+                print("""
+                [skein_soak] DONE \(frames)f (\(String(format: "%.1f", -t0.timeIntervalSinceNow / 60))min wall)
+                  coverage endA=\(coverageEndA) endC=\(coverageEndC) px  maxHoldDiff=\(maxHoldDiff)px
+                  bursts endB=\(burstsEndB) endC=\(skein.totalBurstsSpawned)
+                """)
+                // 1. LOSSLESS HOLD AT HOURS SCALE (§5.5): after the 60 s EMA settle, 89 min of
+                //    silence changes NOTHING — RGB paint record and wetness alpha byte-identical.
+                //    (No corner/"unreachable texel" check: at soak scale flicks legitimately
+                //    reach the whole canvas — mirror-then-push-out placement — so no texel is
+                //    structurally unpaintable; the whole-canvas B-phase identity IS the
+                //    unpainted-ground drift check.)
+                #expect(maxHoldDiff == 0, "Canvas changed \(maxHoldDiff) px during the settled 89-min silence hold — 8-bit identity-hold is NOT lossless (16-bit fallback territory; STOP and report).")
+                // 2. Long-session integrity: never white, painting resumed after the hold.
+                #expect(!hasWhiteTexel(final), "White texel after 2-h soak — never-white invariant broke at scale.")
+                #expect(skein.totalBurstsSpawned > burstsEndB, "No bursts after the silence hold — painting did not resume in phase C.")
+                #expect(coverageEndC >= coverageEndA, "Coverage shrank across the soak (\(coverageEndA) → \(coverageEndC)) — paint was lost.")
+            }
+            swap(&warpTex, &composeTex)
+        }
+    }
+
     /// 9×8 luma dHash (the PresetRegressionTests form): one bit per adjacent horizontal cell pair.
     private static func dHash64(_ bgra: [UInt8], w: Int, h: Int) -> UInt64 {
         var cells = [Float](repeating: 0, count: 9 * 8)
