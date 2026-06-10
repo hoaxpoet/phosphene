@@ -10,14 +10,16 @@ import Metal
 // MARK: - PresetCategory Tests
 
 @Test func presetCategoryAllCases() {
-    // 11 cream-of-crop families + `volumetric` (added NB.1, Matt-authorized 2026-06-04) = 12.
-    #expect(PresetCategory.allCases.count == 12)
+    // 11 cream-of-crop families + `volumetric` (NB.1, Matt-authorized 2026-06-04)
+    // + `painterly` (Skein.6, the D-142(c) deferred engine touch) = 13.
+    #expect(PresetCategory.allCases.count == 13)
     #expect(PresetCategory.allCases.contains(.waveform))
     #expect(PresetCategory.allCases.contains(.fractal))
     #expect(PresetCategory.allCases.contains(.geometric))
     #expect(PresetCategory.allCases.contains(.particles))
     #expect(PresetCategory.allCases.contains(.hypnotic))
     #expect(PresetCategory.allCases.contains(.volumetric))
+    #expect(PresetCategory.allCases.contains(.painterly))
 }
 
 @Test func presetCategoryRawValues() {

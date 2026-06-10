@@ -22,6 +22,10 @@ import Foundation
 /// `volumetric` (added NB.1, Matt-authorized 2026-06-04) is a Phosphene-original
 /// family — not from the cream-of-crop set — for the V.2 Volume-tree lineage
 /// (Nimbus is the first member; see `docs/presets/NIMBUS_DESIGN.md` §8.1).
+///
+/// `painterly` (added Skein.6, the D-142(c) deferred engine touch) is a
+/// Phosphene-original family for canvas-hold paint-accumulation presets
+/// (Skein is the first member; see `docs/presets/SKEIN_DESIGN.md` §1).
 public enum PresetCategory: String, Sendable, CaseIterable, Codable {
     case waveform
     case fractal
@@ -34,6 +38,7 @@ public enum PresetCategory: String, Sendable, CaseIterable, Codable {
     case dancer
     case sparkle
     case volumetric
+    case painterly
     case transition
 }
 
@@ -54,6 +59,7 @@ public extension PresetCategory {
         case .dancer:      return "Dancer"
         case .sparkle:     return "Sparkle"
         case .volumetric:  return "Volumetric"
+        case .painterly:   return "Painterly"
         case .transition:  return "Transition"
         }
     }
