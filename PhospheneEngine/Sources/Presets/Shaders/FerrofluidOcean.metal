@@ -137,7 +137,41 @@ constant float FO_SPIKE_COLD_START_FADE_END_S   = 14.0;
 constant float FO_SPIKE_BASELINE_PIVOT          = 0.15;
 constant float FO_SPIKE_BASELINE_RANGE          = 0.25;   // ±25 % per Matt approval 2026-05-27
 
-static inline float fo_spike_strength(constant FeatureVector& f,
+// D-157 — per-beat spatial punch mask (Matt's option B, 2026-06-10).
+// The pixel-level forensics convicted the GLOBAL punch: the whole spike field
+// leaping each beat swung the entire frame's mean luminance 6–84 per beat
+// (ablation: pulse-off = 0 flash steps, aurora/light unchanged) — geometry-as-
+// rhythm read as luminance-as-strobe. The fix keeps the punch but gives it a
+// FOOTPRINT: each beat, only smoothly-bounded REGIONS of the ocean punch
+// (~⅓ of the field, re-drawn per beat from `pulse_beat_index`), so local beat
+// motion stays strong while the global frame luminance stays steady.
+//
+// Mask = smooth value noise over xz (patch scale ~2.5 wu, smoothstep-banded)
+// with the beat index shifting the noise domain — continuous in space (no SDF
+// discontinuities; the wide transition bounds the added height-field gradient
+// so the Lipschitz /6 budget holds — see the cap note below).
+static inline float fo_hash21(float2 p) {
+    float3 q = fract(float3(p.xyx) * 0.1031);
+    q += dot(q, q.yzx + 33.33);
+    return fract((q.x + q.y) * q.z);
+}
+
+static inline float fo_punch_mask(float2 xz, float beatIndex) {
+    // Shift the noise domain per beat — a different region wakes each beat.
+    float2 domain = xz * (1.0 / 2.5) + float2(beatIndex * 7.31, beatIndex * 3.17);
+    float2 cell = floor(domain);
+    float2 frac2 = fract(domain);
+    float2 u = frac2 * frac2 * (3.0 - 2.0 * frac2);
+    float n = mix(mix(fo_hash21(cell), fo_hash21(cell + float2(1, 0)), u.x),
+                  mix(fo_hash21(cell + float2(0, 1)), fo_hash21(cell + float2(1, 1)), u.x),
+                  u.y);
+    // ~⅓ of the field active, wide smooth band (transition ≈ half a patch)
+    // so the strength field stays gentle in space.
+    return smoothstep(0.55, 0.80, n);
+}
+
+static inline float fo_spike_strength(float2 xz,
+                                      constant FeatureVector& f,
                                       constant StemFeatures& stems) {
     // Layer 1 — one-sided baseline. Proportion above the pivot boosts
     // height; proportion at or below leaves baseline at 1.0.
@@ -195,8 +229,13 @@ static inline float fo_spike_strength(constant FeatureVector& f,
     float attack = smoothstep(0.0, 0.20, ph);
     float decay  = 1.0 - smoothstep(0.20, 0.85, ph);
     float env    = attack * decay;
-    float head   = min(0.7, 1.62 - baseline);
-    return baseline + head * amp * env;
+    // D-157 cap 1.62 → 1.55: the spatial mask adds a height-field gradient
+    // term (≈ h·|∇mask|·head ≈ 0.3 at the chosen patch/transition scale);
+    // trimming the peak keeps the worst-case gradient inside the CSP.3.5
+    // Lipschitz /6 budget. Verified by the forensics white-pixel metric.
+    float head   = min(0.7, 1.55 - baseline);
+    float mask   = fo_punch_mask(xz, f.pulse_beat_index);
+    return baseline + head * amp * env * mask;
 }
 
 // Swell amplitude scale — slow energy-driven drift only (round 65, 2026-05-18).
@@ -494,7 +533,7 @@ float sceneSDF(float3 p,
     float3 swellD  = fo_gerstner_swell(p.xz, t, fo_swell_scale(f, stems));
     float3 spikeP  = float3(p.x - swellD.x, p.y, p.z - swellD.z);
     float spikes   = fo_ferrofluid_field_sampled(spikeP,
-                                                 fo_spike_strength(f, stems),
+                                                 fo_spike_strength(spikeP.xz, f, stems),
                                                  ferrofluidHeight);
     float surfaceY = swellD.y + spikes;
     // Round 56 (2026-05-17): Lipschitz-corrected SDF. The naive

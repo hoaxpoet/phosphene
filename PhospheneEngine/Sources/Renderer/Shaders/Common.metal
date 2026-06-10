@@ -48,8 +48,11 @@ struct FeatureVector {
     // Floats 40–41 — reclaimed from `_pad4`/`_pad5`.
     float pulse_phase01;
     float pulse_amp01;
-    // Padding to 192 bytes (floats 42–48).
-    float _pad6, _pad7,
+    // D-157 (float 42): completed pulse-cycle count — seeds the per-beat
+    // spatial punch mask.
+    float pulse_beat_index;
+    // Padding to 192 bytes (floats 43–48).
+    float _pad7,
           _pad8, _pad9, _pad10, _pad11, _pad12;
 };
 
