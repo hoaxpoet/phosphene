@@ -51,6 +51,60 @@ private func feedSection(
     return prediction
 }
 
+// MARK: - Live-Edge Guard (BUG-040)
+
+@Test func structuralAnalyzer_evolvingMusicNoBoundary_registersNothing() {
+    // Real music varies CONTINUOUSLY — the checkerboard novelty response forms a local
+    // maximum at the newest valid window position (the after-block holds the freshest
+    // content), and pre-fix that live-edge peak's advancing ABSOLUTE index escaped the
+    // dedup window every ~4 detect calls: 20-35 junk "boundaries" per track at ~1.3-1.6 s
+    // cadence (BUG-040, session 2026-06-10T03-09-20Z). This fixture is continuously
+    // evolving with NO structural discontinuity anywhere — production geometry — and must
+    // register ZERO boundaries.
+    let analyzer = StructuralAnalyzer(maxHistory: 600, featureDim: 16, detectionInterval: 30)
+    for i in 0..<3000 {
+        let t = Float(i)
+        var chroma = [Float](repeating: 0, count: 12)
+        for bin in 0..<12 {
+            // Slow, smooth, never-repeating drift across bins (incommensurate rates).
+            chroma[bin] = 0.35 + 0.25 * sinf(0.0041 * t + Float(bin) * 0.524)
+                               + 0.10 * sinf(0.0173 * t + Float(bin) * 1.31)
+        }
+        _ = analyzer.process(
+            chroma: chroma,
+            spectral: StructuralAnalyzer.SpectralSummary(
+                centroid: 0.5 + 0.12 * sinf(0.0031 * t),
+                flux: 0.3 + 0.12 * sinf(0.0053 * t),
+                rolloff: 0.6 + 0.08 * sinf(0.0023 * t),
+                energy: 0.5 + 0.10 * sinf(0.0019 * t)
+            ),
+            time: t / 60.0
+        )
+    }
+    #expect(analyzer.boundaryCount == 0,
+            "Continuously-evolving no-boundary material registered \(analyzer.boundaryCount) boundaries (\(analyzer.boundaryTimestamps)) — the live-edge guard regressed (BUG-040).")
+}
+
+@Test func structuralAnalyzer_boundaryTimestamps_nonNegativeAndPlausible() {
+    // BUG-040's second head: the live caller hardwired `time: 0` into MIRPipeline.process,
+    // freezing the analyzer clock — boundary timestamps came out NEGATIVE (≈ −0.3 s) and
+    // durations were noise. At the ANALYZER layer the contract is: fed a sane clock, the
+    // registered boundary timestamp is non-negative and lands near the transition.
+    let analyzer = StructuralAnalyzer(maxHistory: 600, featureDim: 16, detectionInterval: 30)
+    // A for 10 s, B for 10 s at 60 fps — one true boundary at t = 10 s. The edge guard
+    // registers it once it has minPeakDistance (120 frames = 2 s) of after-context.
+    feedSection(analyzer: analyzer, chroma: chromaA(), frames: 600, startTime: 0)
+    feedSection(analyzer: analyzer, chroma: chromaB(), centroid: 0.7, flux: 0.6,
+                frames: 600, startTime: 10.0)
+    let stamps = analyzer.boundaryTimestamps
+    #expect(stamps.count == 1, "Expected exactly one boundary, got \(stamps)")
+    if let ts = stamps.first {
+        #expect(ts >= 0, "Boundary timestamp is negative (\(ts)) — the clock skew regressed (BUG-040).")
+        #expect(abs(ts - 10.0) < 1.5,
+                "Boundary timestamp \(ts) is far from the true transition at 10.0 s.")
+    }
+}
+
 // MARK: - Ring-Wrap Dedup (BUG-035)
 
 @Test func structuralAnalyzer_ringWrap_boundaryRegistersOnce() {

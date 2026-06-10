@@ -54,6 +54,13 @@ public final class NoveltyDetector: @unchecked Sendable {
     /// Threshold multiplier: peaks must exceed mean + k × stddev.
     private let thresholdMultiplier: Float
 
+    /// Absolute novelty floor (BUG-040): the mean + k·σ threshold is purely RELATIVE, so on
+    /// smoothly-evolving material (σ tiny) noise-scale bumps cross it — measured junk peaks on a
+    /// continuous-drift fixture score ~0.0003 while a true section boundary scores ~0.4 (the
+    /// checkerboard response is bounded by the within-vs-cross similarity contrast, ≈ 0.5 for an
+    /// orthogonal A→B). A peak must clear BOTH the adaptive threshold and this absolute floor.
+    private let minNoveltyFloor: Float
+
     /// Maximum history for novelty curve allocation.
     private let maxHistory: Int
 
@@ -78,16 +85,20 @@ public final class NoveltyDetector: @unchecked Sendable {
     ///   - kernelHalfWidth: Half-width of checkerboard kernel (default 8).
     ///   - minPeakDistance: Minimum frames between peaks (default 120 ≈ 2s at 60fps).
     ///   - thresholdMultiplier: Adaptive threshold multiplier (default 1.5).
+    ///   - minNoveltyFloor: Absolute response floor a peak must also clear (BUG-040; default
+    ///     0.02 — ~66× the measured smooth-drift junk, ~20× under a hard A→B boundary).
     public init(
         maxHistory: Int = 600,
         kernelHalfWidth: Int = 8,
         minPeakDistance: Int = 120,
-        thresholdMultiplier: Float = 1.5
+        thresholdMultiplier: Float = 1.5,
+        minNoveltyFloor: Float = 0.02
     ) {
         self.maxHistory = maxHistory
         self.kernelHalfWidth = kernelHalfWidth
         self.minPeakDistance = minPeakDistance
         self.thresholdMultiplier = thresholdMultiplier
+        self.minNoveltyFloor = minNoveltyFloor
         self.noveltyCurve = [Float](repeating: 0, count: maxHistory)
 
         logger.info(
@@ -121,11 +132,25 @@ public final class NoveltyDetector: @unchecked Sendable {
         let frameCount = similarityMatrix.frameCount
         let halfW = kernelHalfWidth
 
-        // Need at least 2 × kernelHalfWidth frames for meaningful detection.
-        guard frameCount >= halfW * 2 else { return [] }
+        // BUG-040 edge guard: a boundary may only register once it is INTERIOR to the
+        // window — at least `minPeakDistance` frames of after-context. On real,
+        // constantly-evolving music the checkerboard response forms a local maximum at
+        // the NEWEST valid position (the after-block holds the freshest, most-different
+        // content); that live-edge peak's ABSOLUTE index advances with the stream, so it
+        // escaped the (BUG-035-fixed, absolute-index) dedup window every
+        // `minPeakDistance / detectInterval` calls and registered a junk "boundary"
+        // every ~1.3–1.6 s on every track (session `2026-06-10T03-09-20Z`). A true
+        // boundary stays at its absolute position, becomes interior as the stream grows
+        // past it, and registers exactly once — `minPeakDistance` frames late, which is
+        // negligible at section timescale.
+        let edgeGuard = max(halfW, minPeakDistance)
 
-        // Compute novelty curve via checkerboard kernel.
-        let validRange = halfW..<(frameCount - halfW)
+        // Need enough frames for an interior detection region.
+        guard frameCount > halfW + edgeGuard else { return [] }
+
+        // Compute novelty curve via checkerboard kernel over the interior region only
+        // (threshold statistics intentionally exclude the elevated live-edge response).
+        let validRange = halfW..<(frameCount - edgeGuard)
         for i in validRange {
             noveltyCurve[i] = checkerboardResponse(
                 matrix: similarityMatrix, center: i, halfWidth: halfW
@@ -145,7 +170,9 @@ public final class NoveltyDetector: @unchecked Sendable {
         let mean = sum / Float(validCount)
         let variance = sumSq / Float(validCount) - mean * mean
         let stddev = sqrtf(max(variance, 0))
-        let threshold = mean + thresholdMultiplier * stddev
+        // Adaptive threshold AND the absolute floor (BUG-040): relative-only thresholds
+        // admit noise-scale "peaks" whenever the window's novelty is uniformly tiny.
+        let threshold = max(mean + thresholdMultiplier * stddev, minNoveltyFloor)
 
         // Offset converting logical ring indices to absolute frame indices.
         // Zero until the ring is full; afterwards grows by 1 per added frame

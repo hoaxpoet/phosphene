@@ -278,6 +278,18 @@ public final class MIRPipeline: @unchecked Sendable {
     private func updateStructuralAnalysis(_ ctx: ProcessContext) {
         let normalizedRolloff = nyquist > 0 ? ctx.spectral.rolloff / nyquist : 0
         let totalEnergy = (ctx.energy.bass + ctx.energy.mid + ctx.energy.treble) / 3.0
+        // BUG-040: the analyzer's clock is the pipeline's OWN track-relative
+        // `elapsedSeconds` — NEVER `ctx.time`. The live caller hardwires
+        // `time: 0` (VisualizerEngine+Audio passes 0; fv.time is populated
+        // separately), which froze the analyzer's clock at zero: boundary
+        // timestamps came out NEGATIVE (0 − frames-from-end/fps ≈ −0.3 s),
+        // section durations were ±0.x s noise, and confidence was
+        // structurally pinned low. `elapsedSeconds` resets on `reset()`
+        // exactly when `structuralAnalyzer.reset()` fires, so the clock and
+        // the frame counter stay in the same (track-relative) timebase.
+        lock.lock()
+        let structuralTime = Float(elapsedSeconds)   // D-079: Double store, Float at the read site
+        lock.unlock()
         let prediction = structuralAnalyzer.process(
             chroma: ctx.chroma.chroma,
             spectral: StructuralAnalyzer.SpectralSummary(
@@ -286,7 +298,7 @@ public final class MIRPipeline: @unchecked Sendable {
                 rolloff: normalizedRolloff,
                 energy: totalEnergy
             ),
-            time: ctx.time
+            time: structuralTime
         )
         // Published-property write goes under the lock like every other
         // CPU-side property (BUG-035 related finding; class is @unchecked Sendable).
