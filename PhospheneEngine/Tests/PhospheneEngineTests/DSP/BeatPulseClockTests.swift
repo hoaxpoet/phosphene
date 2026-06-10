@@ -265,6 +265,108 @@ final class BeatPulseClockTests: XCTestCase {
         XCTAssertGreaterThan(out.amp01, 0.9, "music back → pulse returns (same anchor, no re-anchor)")
     }
 
+    // MARK: - FBS.S3 / D-156: invisible handoff to the live beat
+
+    private struct HandoffFrame {
+        let te: Double; let dt: Float; let energy: Float; let livePhase: Float
+    }
+
+    private func loadHandoffFixture() throws -> [HandoffFrame] {
+        let url = try XCTUnwrap(
+            Bundle.module.url(forResource: "loverehab_handoff_2026-06-10T14-55-32Z",
+                              withExtension: "csv", subdirectory: "fbs"),
+            "real-session handoff fixture missing (FA #27)")
+        let text = try String(contentsOf: url, encoding: .utf8)
+        var frames: [HandoffFrame] = []
+        for line in text.split(separator: "\n").dropFirst() {
+            let c = line.split(separator: ",").compactMap { Double($0) }
+            guard c.count >= 6 else { continue }
+            frames.append(HandoffFrame(te: c[0], dt: Float(max(0.001, min(0.1, c[1]))),
+                                       energy: Float(c[2] + c[3] + c[4]),
+                                       livePhase: Float(c[5])))
+        }
+        XCTAssertGreaterThan(frames.count, 1500)
+        return frames
+    }
+
+    /// Mirrors fo_spike_strength's envelope (rise to 8 %, decay to 85 %, rest).
+    private func env(_ ph: Float) -> Float {
+        let attack = min(max(ph / 0.08, 0), 1)
+        let dec = 1 - min(max((ph - 0.08) / 0.77, 0), 1)
+        return attack * dec
+    }
+
+    /// Replays the real Love Rehab session (40 s, live `beatPhase01` from the
+    /// drift tracker as recorded) and asserts the FBS.S3 handoff contract:
+    /// bridge until ≥10 s, swap only in the envelope's rest window, live
+    /// per-beat phase afterwards, and NO envelope discontinuity at the swap.
+    func test_handoff_swapsToLiveBeat_invisibly_onRealSession() throws {
+        let frames = try loadHandoffFixture()
+        let clock = BeatPulseClock()
+        clock.setTempo(bpm: 118.1)   // the session's cached grid
+        var outs: [BeatPulseClock.Output] = []
+        var handoffIndex: Int?
+        for (i, fr) in frames.enumerated() {
+            let out = clock.update(energySum: fr.energy, time: fr.te,
+                                   deltaTime: fr.dt, liveBeatPhase01: fr.livePhase)
+            if handoffIndex == nil, clock.handedOff { handoffIndex = i }
+            outs.append(out)
+        }
+        let hi = try XCTUnwrap(handoffIndex, "handoff must fire on a 40 s grid track")
+
+        // (a) Not before the convergence window.
+        XCTAssertGreaterThanOrEqual(frames[hi].te, 10.0)
+        // (b) Swap fired in the envelope's rest window on BOTH phase sources.
+        XCTAssertGreaterThanOrEqual(outs[hi].phase01, 0.85,
+                                    "swap frame must be in the envelope rest window")
+        XCTAssertGreaterThanOrEqual(outs[hi - 1].phase01, 0.80,
+                                    "frame before the swap must also be near rest")
+        // (c) Afterwards the pulse IS the live beat (per-beat, energetic).
+        for k in (hi + 1)..<min(hi + 600, frames.count) {
+            XCTAssertEqual(outs[k].phase01, frames[k].livePhase, accuracy: 1e-5,
+                           "post-handoff phase must equal the live drift-tracker phase")
+        }
+        // (d) Invisible seam: around the swap the envelope must never step
+        // beyond its own natural attack slope. The rise spans 8 % of a beat
+        // (≈ 41 ms at 118 BPM); with real frame-time jitter up to ~25 ms a
+        // NATURAL attack step reaches ≈ 0.6 — the bound is 0.65. A bad swap
+        // (zero → mid-punch) would step ≈ 1.0.
+        for k in max(1, hi - 5)...min(hi + 5, outs.count - 1) {
+            let step = abs(env(outs[k].phase01) - env(outs[k - 1].phase01))
+            XCTAssertLessThanOrEqual(step, 0.65,
+                                     "envelope discontinuity at the handoff (frame \(k), step \(step))")
+        }
+        // (e) Before the handoff the bridge ticked at the slow 4-beat period.
+        var preWraps: [Double] = []
+        for k in 1..<hi where outs[k].phase01 < outs[k - 1].phase01 - 0.3 {
+            preWraps.append(frames[k].te)
+        }
+        for (a, b) in zip(preWraps, preWraps.dropFirst()) {
+            XCTAssertEqual(b - a, 4 * 60.0 / 118.1, accuracy: 0.05,
+                           "bridge must tick at the slow 4-beat period before handoff")
+        }
+    }
+
+    func test_handoff_doesNotFire_withoutLivePhase_andResetsPerTrack() throws {
+        let frames = try loadHandoffFixture()
+        let clock = BeatPulseClock()
+        clock.setTempo(bpm: 118.1)
+        for fr in frames {   // reactive shape: no live phase ever
+            _ = clock.update(energySum: fr.energy, time: fr.te,
+                             deltaTime: fr.dt, liveBeatPhase01: nil)
+        }
+        XCTAssertFalse(clock.handedOff, "no grid → no handoff; the bridge keeps running")
+
+        // With live phase it hands off; a track change resets to bridge.
+        for fr in frames {
+            _ = clock.update(energySum: fr.energy, time: fr.te,
+                             deltaTime: fr.dt, liveBeatPhase01: fr.livePhase)
+        }
+        XCTAssertTrue(clock.handedOff)
+        clock.resetAnchor()
+        XCTAssertFalse(clock.handedOff, "new track must re-open on the slow bridge")
+    }
+
     func test_resetAnchor_clearsAnchorButKeepsTempo() {
         let clock = BeatPulseClock()
         clock.setTempo(bpm: 120)

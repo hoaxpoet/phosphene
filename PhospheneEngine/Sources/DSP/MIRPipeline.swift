@@ -385,17 +385,6 @@ public final class MIRPipeline: @unchecked Sendable {
         // MV-1 / D-146 (BUG-027): derive deviation primitives against each band's own
         // running average (per-band EMA), not a fixed 0.5 pivot — see applyBandDeviations.
         applyBandDeviations(to: &fv)
-        // FBS Stage 1 (D-153) — steady first-note-anchored beat pulse. Anchored
-        // at the track's first audible frame, ticking at the cached-grid tempo,
-        // never drift-corrected (deliberately independent of liveDriftTracker —
-        // its correction wanders 50–90 ms over the opening, Stage 0 finding).
-        let pulse = beatPulseClock.update(
-            energySum: fv.bass + fv.mid + fv.treble,
-            time: elapsedSeconds,
-            deltaTime: ctx.deltaTime
-        )
-        fv.pulsePhase01 = pulse.phase01
-        fv.pulseAmp01 = pulse.amp01
         // DSP.2 S7: prefer the offline-grid drift tracker when a cached
         // `BeatGrid` is installed.  In reactive mode (no grid), fall back to
         // the legacy `BeatPredictor` IIR estimator.
@@ -423,6 +412,20 @@ public final class MIRPipeline: @unchecked Sendable {
             fv.barPhase01     = 0   // reactive: no downbeat info
             fv.beatsPerBar    = 4   // assume 4/4 until BeatGrid available
         }
+        // FBS (D-153 + D-156) — the beat pulse. Bridge phase: first-note
+        // anchor + cached tempo, slow 4-beat heave, never corrected. After
+        // ~10 s it HANDS OFF (invisibly — the swap fires only while the punch
+        // envelope is at rest on both sides) to the live drift tracker's
+        // per-beat phase, computed above — Matt's "more energetic" steady
+        // state. Runs AFTER the drift block so the live phase is current.
+        let pulse = beatPulseClock.update(
+            energySum: fv.bass + fv.mid + fv.treble,
+            time: elapsedSeconds,
+            deltaTime: ctx.deltaTime,
+            liveBeatPhase01: liveDriftTracker.hasGrid ? fv.beatPhase01 : nil
+        )
+        fv.pulsePhase01 = pulse.phase01
+        fv.pulseAmp01 = pulse.amp01
         return fv
     }
 
