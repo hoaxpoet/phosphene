@@ -213,7 +213,9 @@ Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — 
 
 ---
 
-### BUG-042 — Mid-playback analysis stall: a 9.6 s gap between analysis frames froze the visuals then lurched (2026-06-10)
+### BUG-043 — Mid-playback analysis stall: a 9.6 s gap between analysis frames froze the visuals then lurched (2026-06-10)
+
+> **Renumbered from BUG-042** (parallel-session number collision, 2026-06-10): BUG-042 = the structural-section geometry defect, filed earlier the same day. The FBS.S3.2 commit message references the old number.
 
 **Severity:** P2 (a multi-second visual freeze + lurch mid-track; observed once, plus a 40 s gap during the silent prep window of the same session).
 **Domain tag:** `pipeline-wiring` (audio-analysis cadence) — possibly BUG-039-adjacent (the video-writer stall instrumented the same week).

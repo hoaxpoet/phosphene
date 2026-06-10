@@ -40,7 +40,7 @@ Matt's Skein.5 M7 follow-ups, in priority order:
 
 ---
 
-## [dev-2026-06-10-fbs-s3.2] FBS.S3.2 — the flashing was the aurora reacting to MID-TRACK stem-deviation bursts (soft-knee + bloom-rate response); BUG-042 filed (9.6 s analysis stall)
+## [dev-2026-06-10-fbs-s3.2] FBS.S3.2 — the flashing was the aurora reacting to MID-TRACK stem-deviation bursts (soft-knee + bloom-rate response); BUG-043 filed (9.6 s analysis stall; renumbered from BUG-042 — number collision)
 
 **Increment:** FBS.S3.2, from Matt's timestamped live read of session `2026-06-10T17-50-56Z` (Money now syncs ✓ — the S3.1 handoff fix confirmed live; flashing persisted with exact times). **Status:** gates green; awaiting Matt's read. The S3.1 punch-attack attribution was WRONG (falsified by Lotus ~5 s / So What ~7 s flashes during the BRIDGE, pre-handoff); the timestamps converge on a single cause: **all-stem deviation bursts (3–30×, So What dev = 35) reaching the aurora through 150 ms smoothing** — mid-track, outside BUG-041's track-start warmup scope.
 
