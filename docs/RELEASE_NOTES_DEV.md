@@ -40,6 +40,14 @@ Matt's Skein.5 M7 follow-ups, in priority order:
 
 ---
 
+## [dev-2026-06-10-fbs-s3.2] FBS.S3.2 — the flashing was the aurora reacting to MID-TRACK stem-deviation bursts (soft-knee + bloom-rate response); BUG-042 filed (9.6 s analysis stall)
+
+**Increment:** FBS.S3.2, from Matt's timestamped live read of session `2026-06-10T17-50-56Z` (Money now syncs ✓ — the S3.1 handoff fix confirmed live; flashing persisted with exact times). **Status:** gates green; awaiting Matt's read. The S3.1 punch-attack attribution was WRONG (falsified by Lotus ~5 s / So What ~7 s flashes during the BRIDGE, pre-handoff); the timestamps converge on a single cause: **all-stem deviation bursts (3–30×, So What dev = 35) reaching the aurora through 150 ms smoothing** — mid-track, outside BUG-041's track-start warmup scope.
+
+- Aurora driver hardened (`auroraDriverStep`): soft-knee input caps bursts (35 → 1.64) while passing musical values; asymmetric response (rise τ 0.45 s — a bloom, never a flash; fall τ 1.2 s); warmup gate retained. Gates: max per-frame output step ≤ 0.08 across the full So What series; legacy-driver red arm keeps the defect visible in the fixtures.
+- **BUG-042 filed:** Love Rehab's ~30 s flash was ALSO a real 9.6 s analysis-frame gap (visuals freeze on stale features, then lurch) — separate defect, instrumentation next.
+- Matt's other reads recorded: Money syncs (drifts a little — the live tracker's character); So What "too energetic until piano/bass" → Stage 2 energy-scaled punch heights is the designed answer, proposed next.
+
 ## [dev-2026-06-10-fbs-s3.1] FBS.S3.1 — Money's handoff was structurally impossible (fixed: envelope-floor swap); the per-beat punch attack was the flashing (fixed: 100 ms attack)
 
 **Increment:** FBS.S3.1, from Matt's live read of session `2026-06-10T17-21-49Z` ("transition works reasonably well… Love Rehab seamless, clearly synchronized; Money never moved over; flashing not fixed"). **Status:** gates green; awaiting Matt's next live read. **Decision:** D-156 amendment.
