@@ -226,23 +226,36 @@ extension RenderPipeline {
         let output: Float
     }
 
-    /// One frame of the aurora drums driver: 150 ms-τ EMA (D-127) gated by the
-    /// per-track quadratic warmup (BUG-041). Pure + deterministic so the
-    /// real-session replay test runs the exact production arithmetic.
+    /// One frame of the aurora drums driver (D-127, hardened by BUG-041 and
+    /// FBS.S3.2). Pure + deterministic so the real-session replay test runs
+    /// the exact production arithmetic.
+    ///
+    /// FBS.S3.2 (2026-06-10, session `17-50-56Z`): Matt's flagged flash
+    /// timestamps all coincide with MID-TRACK stem-deviation bursts (all four
+    /// stems spiking 3–30× the track median together — So What hit dev = 35).
+    /// The original 150 ms EMA passed those to the sky as 2–3-frame flares.
+    /// Two changes:
+    ///  - SOFT-KNEE input: `dev / (1 + 0.6·dev)` — small values pass almost
+    ///    unchanged (0.3 → 0.25), bursts cap (1.0 → 0.63, 35 → 1.64). The
+    ///    aurora still surges on real hits; it cannot be blinded by a burst.
+    ///  - ASYMMETRIC response: rise τ 0.45 s (a visible bloom, not a flash —
+    ///    max per-frame output step ≈ 0.06 at 60 fps), fall τ 1.2 s (glow
+    ///    decays like an afterimage). Replaces the symmetric 150 ms τ.
+    /// The BUG-041 per-track quadratic warmup gate is unchanged on top.
     static func auroraDriverStep(
         smoothed: Float,
         warmup01: Float,
         drumsDev: Float,
         dt: Float
     ) -> AuroraDriverState {
-        let alpha = 1.0 - exp(-dt / 0.15)
-        let nextSmoothed = smoothed + alpha * (max(0, drumsDev) - smoothed)
+        let knee = max(0, drumsDev) / (1.0 + 0.6 * max(0, drumsDev))
+        let tau: Float = knee > smoothed ? 0.45 : 1.2
+        let alpha = 1.0 - exp(-dt / tau)
+        let nextSmoothed = smoothed + alpha * (knee - smoothed)
         let nextWarmup = min(1.0, warmup01 + max(0, dt) / Self.auroraWarmupSeconds)
-        // Quadratic ease-in: the gate stays small exactly where the deviation
-        // overswing peaks (2–6 s; the worst measured spike, Lotus Flower 2.35
-        // at ~4 s, lands on gate ≈ 0.16) and is ~1 by the time the analyzer
-        // has converged. Linear was measured insufficient (Lotus still reached
-        // 1.23 early); quadratic caps all three flagged tracks at ≤ 1.1.
+        // Quadratic ease-in warmup (BUG-041): smallest exactly where the
+        // track-start deviation overswing peaks; ~1 once the analyzer has
+        // converged.
         let gate = nextWarmup * nextWarmup
         return AuroraDriverState(
             smoothed: nextSmoothed,

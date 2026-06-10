@@ -73,21 +73,43 @@ final class AuroraTrackStartWarmupTests: XCTestCase {
         }
     }
 
-    /// Red arm on the two tracks whose flash is unambiguous in the data
-    /// (Lotus Flower 2.35, There, There 1.37 — both far above anything their
-    /// steady state produces). So What is deliberately NOT red-armed: its
-    /// early window (1.23) is within its own hot steady character (1.64) —
-    /// its perceived flashing is general drums-dev jitter on sparse jazz, a
-    /// separate aurora-character question outside BUG-041.
-    func test_withoutWarmup_realDataFlashes_redArm() throws {
+    /// Red arm: the LEGACY driver (plain 150 ms EMA, no soft-knee, no slow
+    /// rise, no warmup — the pre-BUG-041 production arithmetic) must
+    /// reproduce the measured flash on the two unambiguous fixtures. Proves
+    /// the fixtures still carry the defect that the current driver removes.
+    /// (FBS.S3.2 made the response itself flash-proof, so disabling only the
+    /// warmup no longer flashes — this arm replicates the original code.)
+    func test_legacyDriver_realDataFlashes_redArm() throws {
         for name in ["there_there", "lotus_flower"] {
             let frames = try loadFixture(name)
-            let prefix = replay(frames, warmupEnabled: false)
-            let bound = max(1.0, peak(prefix, 10, 20))
-            XCTAssertGreaterThan(peak(prefix, 0, 10), bound,
-                                 "\(name): pre-fix arm must reproduce the measured flash — "
+            var smoothed: Float = 0
+            var outs: [(te: Float, out: Float)] = []
+            for f in frames {
+                let alpha = 1.0 - exp(-f.dt / 0.15)
+                smoothed += alpha * (max(0, f.dev) - smoothed)
+                outs.append((f.te, smoothed))
+            }
+            let bound = max(1.0, peak(outs, 10, 20))
+            XCTAssertGreaterThan(peak(outs, 0, 10), bound,
+                                 "\(name): legacy driver must reproduce the measured flash — "
                                  + "if this fails the fixture no longer carries the defect")
         }
+    }
+
+    /// FBS.S3.2 — MID-TRACK bursts (session `2026-06-10T17-50-56Z`: Matt's
+    /// flash timestamps all coincide with all-stem deviation bursts, So What's
+    /// reaching dev = 35 at ~5 s). The driver's output must change at bloom
+    /// speed, never flash speed, across the WHOLE series: max per-frame step
+    /// bounded, and the 35× burst capped by the soft knee.
+    func test_midTrackBursts_neverStepAtFlashSpeed() throws {
+        let frames = try loadFixture("so_what")
+        let outs = replay(frames, warmupEnabled: true)
+        var maxStep: Float = 0
+        for (a, b) in zip(outs, outs.dropFirst()) { maxStep = max(maxStep, abs(b.out - a.out)) }
+        XCTAssertLessThanOrEqual(maxStep, 0.08,
+                                 "aurora driver must bloom, not flash (max per-frame step \(maxStep))")
+        XCTAssertLessThanOrEqual(outs.map(\.out).max() ?? 0, 1.7,
+                                 "the 35× burst must be capped by the soft knee")
     }
 
     func test_warmup_leavesSteadyStateUntouched() throws {
