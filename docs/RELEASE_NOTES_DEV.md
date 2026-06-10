@@ -6,6 +6,12 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-06-10-c] Skein.5.3b — per-palette canvas grounds + the re-curated library (D-155 amendment)
+
+Matt rejected round 1 (invented hue sets, too similar, fixed beige ground). The redo: every palette is anchored on a named work and carries its OWN canvas ground — light and dark. **Final Matt-curated library: fathom (Full Fathom Five, cream) · poles (Blue Poles, dark indigo + ultramarine/orange/bone/aluminum) · nocturne (all-cool night slate + silver/ultramarine/ice-cyan/cold-violet) · ember (Rothko Four Darks in Red, maroon-black + crimson/orange/parchment/mauve).** Round-2 cut autumn/convergence — multiple pale-ground palettes collapse into one impression (the ground dominates the gestalt). Ground plumbing is end-to-end (state → GPU paint-mask tail → canvas wipe + resize re-clear via a gated override, inert for every other preset); the role grammar generalises to "drums = the starkest ink against the ground". Gates ground-aware; full battery green.
+
+---
+
 ## [dev-2026-06-10-b] Skein.5.3 — curated palette library, per-track (D-155)
 
 Matt's enhancement: palette variety like Lumen Mosaic's profiles. Five curated palettes (fathom — the shipped default — plus nocturne, jewel, inkpop, electric; terra was cut at curation), every one holding the same role grammar (drums = darkest ink, bass = deep weight, vocals = warm lead, other = contrast accent) so the painting reads identically in any palette. Each track deterministically paints in its own palette — the same identity hash that seeds the trajectory picks the colours, so "same song → same painting" now includes the inks, and a playlist rotates the library naturally. Library mode engages only on the live path; every test fixture stays pinned to its explicit palette. Curation gates: pairwise display separability (incl. vs the cream ground) across the full mood-tint swing, pale ceiling, role grammar, picker determinism. Contact sheets: `/tmp/skein_pour_diag/<stamp>/skein_palette_candidates.png` (the same real-stem painting per entry).
