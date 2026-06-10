@@ -132,7 +132,7 @@ public struct DefaultPresetScorer: PresetScoring {
         context: PresetScoringContext
     ) -> PresetScoreBreakdown {
         // -- Hard exclusions -------------------------------------------------
-        if let (reason, tag) = exclusionReasonAndTag(preset: preset, context: context) {
+        if let (reason, tag) = exclusionReasonAndTag(preset: preset, track: track, context: context) {
             return PresetScoreBreakdown(
                 mood: 0,
                 tempoMotion: 0,
@@ -191,6 +191,7 @@ public struct DefaultPresetScorer: PresetScoring {
     /// or `nil` when the preset is eligible for scoring.
     private func exclusionReasonAndTag(
         preset: PresetDescriptor,
+        track: TrackProfile,
         context: PresetScoringContext
     ) -> (String, String)? {
         // V.7.6.D: diagnostic gate — categorical exclusion, no settings toggle.
@@ -237,6 +238,18 @@ public struct DefaultPresetScorer: PresetScoring {
         }
         if preset.id == context.currentPreset?.id {
             return ("preset '\(preset.id)' is already active", "active")
+        }
+        // FBS / D-154: beat-locked presets never see beat-irregular tracks
+        // (Matt's 2026-06-10 rule; Pyramid Song is the canonical case). nil
+        // (unknown regularity — uncached / pre-D-154 entries / reactive before
+        // the cache resolves) does NOT exclude: exclusion requires evidence.
+        if preset.requiresRegularBeat, track.beatIrregular == true {
+            return (
+                "preset '\(preset.id)' requires a regular beat; track's beat is "
+                + "irregular (grid/drums-stem tempo estimators disagree non-octave, "
+                + "or bar confidence is too low)",
+                "beat_irregular"
+            )
         }
         return nil
     }

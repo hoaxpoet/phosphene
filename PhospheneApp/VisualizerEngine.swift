@@ -93,6 +93,13 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// model binds to it. (BUG-016 fix, 2026-05-26.)
     var lastResolvedTrackIdentity: TrackIdentity?
 
+    /// Beat-regularity of the live track (FBS / D-154), resolved from the
+    /// cached grids in `resetStemPipeline` at track change. `true` ⇒ the
+    /// reactive scorer hard-excludes `requires_regular_beat` presets (FFO);
+    /// nil = unknown/uncached — permissive. Stored here because the reactive
+    /// evaluate runs off the analysis path where the caches are not reachable.
+    var currentTrackBeatIrregular: Bool?
+
     /// 0-based index of the live track within `livePlannedSession`, or nil when
     /// the track is not part of the plan (covers, remasters, encoding-different
     /// versions) or when no plan exists. Set by the orchestrator plan walk in

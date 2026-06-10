@@ -456,6 +456,11 @@ extension VisualizerEngine {
 
         stemAnalyzer.reset()
 
+        // FBS / D-154: resolve the new track's beat regularity once, while the
+        // cache is reachable (MainActor). Consumed by the reactive evaluate off
+        // the analysis path. nil (uncached / no identity) = permissive.
+        currentTrackBeatIrregular = identity.flatMap { stemCache?.beatIrregular(for: $0) }
+
         // Clear the per-frame analyzer's source waveforms so stems don't
         // leak across tracks. Next separation will repopulate them.
         stemsStateLock.withLock {

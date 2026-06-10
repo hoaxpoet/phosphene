@@ -448,6 +448,16 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// (Arachne's build cycle is the canonical case). Defaults to `false`.
     public let waitForCompletionEvent: Bool
 
+    // MARK: - Beat Regularity Requirement (FBS / D-154)
+
+    /// When `true`, the orchestrator hard-excludes this preset on tracks whose
+    /// beat is irregular/untrustworthy (`TrackProfile.beatIrregular == true`,
+    /// from octave-folded full-mix-vs-drums BPM disagreement + bar confidence).
+    /// Matt's 2026-06-10 rule: such tracks should NEVER see beat-locked presets
+    /// (Pyramid Song is the canonical case). Unknown regularity (nil) does not
+    /// exclude. Manual preset selection is unaffected. Defaults to `false`.
+    public let requiresRegularBeat: Bool
+
     // MARK: - Text Overlay
 
     /// When `true`, the engine creates a `DynamicTextOverlay` for this preset and binds
@@ -516,7 +526,8 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case rubricHints = "rubric_hints"
         case isDiagnostic = "is_diagnostic"
         case waitForCompletionEvent = "wait_for_completion_event"
-        case textOverlay  = "text_overlay"
+        case requiresRegularBeat = "requires_regular_beat"
+        case textOverlay = "text_overlay"
         case stages
         case marks
     }
@@ -623,6 +634,10 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         // MARK: BUG-011 round 8 — Completion-gated transitions
         waitForCompletionEvent = try container.decodeIfPresent(
             Bool.self, forKey: .waitForCompletionEvent) ?? false
+
+        // MARK: FBS / D-154 — beat-regularity requirement
+        requiresRegularBeat = try container.decodeIfPresent(
+            Bool.self, forKey: .requiresRegularBeat) ?? false
 
         // MARK: Text Overlay
         textOverlay = try container.decodeIfPresent(Bool.self, forKey: .textOverlay) ?? false

@@ -28,6 +28,17 @@
 // inter-track gap or a stop — NOT a between-beat dip) so the pulse never
 // punches into a silent room. Stage 2 will modulate it by live energy.
 //
+// SLOW PULSE (Matt's direction 2026-06-10, D-154): the pulse period is FOUR
+// beats, not one. The Stage-1 live verdict (session 2026-06-10T03-02-32Z)
+// showed a per-beat punch from an arbitrary phase reads as a robotic
+// metronome ignoring the music — on a streaming playlist, tracks 2+ switch
+// mid-audio so the first-note anchor lands on a musically meaningless
+// instant. At 4-beat rate (~2 s at 120 BPM) the same phase error reads as a
+// gentle oceanic heave at a musical rate rather than a wrong beat claim, and
+// sub-1 % tempo error takes 4× longer to smear the phase. A fixed 4 beats is
+// used (not the grid's detected meter — meter detection is itself unreliable
+// and the pulse does not claim downbeat alignment).
+//
 // Deterministic: outputs are a pure function of the input series. No locks —
 // all access happens on MIRPipeline's processing path plus its existing
 // app-layer call sites, mirroring `BandDeviationTracker` / `BeatPredictor`.
@@ -73,6 +84,10 @@ public final class BeatPulseClock: @unchecked Sendable {
     /// `amp01` ramp time constant (seconds), both directions.
     static let ampRampS: Float = 0.25
 
+    /// Pulse period in beats (D-154 slow pulse — see header). One heave per
+    /// four beats: phase errors read as swell character, not a wrong beat.
+    public static let pulseBeats: Double = 4.0
+
     // MARK: - State
 
     /// Beat period in seconds. nil = no usable tempo → pulse stays silent.
@@ -103,7 +118,7 @@ public final class BeatPulseClock: @unchecked Sendable {
     /// The sole tempo authority — called from `MIRPipeline.setBeatGrid`.
     public func setTempo(bpm: Double?) {
         if let bpm, bpm > 0 {
-            periodS = 60.0 / bpm
+            periodS = (60.0 / bpm) * Self.pulseBeats   // slow pulse (D-154)
         } else {
             periodS = nil
         }

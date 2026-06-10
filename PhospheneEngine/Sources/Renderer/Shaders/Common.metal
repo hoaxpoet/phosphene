@@ -40,10 +40,10 @@ struct FeatureVector {
     // OFF, MIRPipeline writes 100.0 here so the smoothstep collapses to
     // the warm path. Float 39 — reclaimed from `_pad3`.
     float track_elapsed_s;
-    // FBS Stage 1 (D-153) — steady first-note-anchored beat pulse.
-    // pulse_phase01: 0 at each pulse beat, rises linearly to 1 at the next;
-    // anchored to the track's first note, ticking at the cached-grid tempo,
-    // NEVER drift-corrected (unlike beat_phase01). pulse_amp01: 0 before the
+    // FBS (D-153 + D-154) — steady first-note-anchored SLOW pulse (4 beats
+    // per cycle). pulse_phase01: 0 at each pulse, rises linearly to 1 at the
+    // next; anchored to the track's first note, cached-grid tempo, NEVER
+    // drift-corrected (unlike beat_phase01). pulse_amp01: 0 before the
     // first note / across sustained silence, 1 while music plays.
     // Floats 40–41 — reclaimed from `_pad4`/`_pad5`.
     float pulse_phase01;

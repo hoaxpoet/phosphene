@@ -179,3 +179,52 @@ public func detectBPMMismatch(
 
     return BPMMismatchWarning(mirBPM: mirBPM, gridBPM: gridBPM, deltaPct: delta)
 }
+
+// MARK: - Beat-Regularity Assessment (FBS / D-154)
+
+/// Does this track have a steady, trustworthy beat — or should beat-locked
+/// presets avoid it entirely?
+///
+/// Matt's product rule (2026-06-10): tracks without a steady beat should
+/// **never see** beat-locked presets like Ferrofluid Ocean (Pyramid Song is
+/// the canonical case). Consumed by `DefaultPresetScorer`'s hard-exclusion
+/// gate via `TrackProfile.beatIrregular` + `PresetDescriptor.requiresRegularBeat`.
+///
+/// **The discriminating signal** (calibrated on real session
+/// `2026-06-10T03-02-32Z`): agreement between the full-mix Beat This! grid and
+/// the drums-stem Beat This! grid, after octave folding. On tracks where the
+/// beat pulse worked or could work, the two agree to 0.1–0.7 % (Love Rehab,
+/// There There, Money, Lotus Flower); on Pyramid Song they disagree by 57 %
+/// raw / ~17 % after octave folding. The MIR estimator is deliberately NOT
+/// consulted — it disagrees by 8–11 % even on tracks where the beat is solid,
+/// so it cannot discriminate. Bar confidence (downbeat-interval consistency)
+/// is a second, independent irregularity signal.
+///
+/// **Octave folding:** a drums grid legitimately reading 2× the full-mix grid
+/// (half/double-time feel) is NOT irregularity — the ratio is folded into
+/// [1, 2) before comparison, so only non-octave disagreement counts.
+///
+/// - Returns: `true` = irregular (exclude beat-locked presets), `false` =
+///   regular, `nil` = unknown (missing estimators — be permissive; exclusion
+///   requires evidence).
+public func assessBeatIrregularity(
+    gridBPM: Double,
+    drumsBPM: Double,
+    barConfidence: Float,
+    foldedDisagreementThreshold: Double = 0.10,
+    barConfidenceFloor: Float = 0.2
+) -> Bool? {
+    guard gridBPM.isFinite, drumsBPM.isFinite, gridBPM > 0, drumsBPM > 0 else {
+        return nil   // missing estimator — unknown, not irregular
+    }
+    // Fold the ratio into [1, 2): octave (half/double-time) relations are fine.
+    var ratio = max(gridBPM, drumsBPM) / min(gridBPM, drumsBPM)
+    while ratio >= 2.0 { ratio /= 2.0 }
+    // Distance to the nearest "clean" relation: 1:1 at ratio 1.0 — but a folded
+    // ratio just under 2.0 is also clean (it was an exact octave before a tiny
+    // error pushed it below the fold), so measure to the nearer of {1.0, 2.0}.
+    let disagreement = min(ratio - 1.0, 2.0 - ratio)
+    if disagreement > foldedDisagreementThreshold { return true }
+    if barConfidence < barConfidenceFloor { return true }
+    return false
+}
