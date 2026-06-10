@@ -427,6 +427,7 @@ public final class MIRPipeline: @unchecked Sendable {
         fv.pulsePhase01 = pulse.phase01
         fv.pulseAmp01 = pulse.amp01
         fv.pulseBeatIndex = pulse.beatIndex
+        fv.pulseRegionalBlend01 = pulse.regionalBlend01
         return fv
     }
 

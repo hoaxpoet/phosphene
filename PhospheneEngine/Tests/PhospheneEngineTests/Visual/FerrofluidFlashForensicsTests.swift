@@ -140,6 +140,10 @@ final class FerrofluidFlashForensicsTests: XCTestCase {
             if let last = lastPulsePhase, phNow < last - 0.3 { beatIndex += 1 }
             lastPulsePhase = phNow
             features.pulseBeatIndex = beatIndex
+            // D-158: recorded from sessions after FBS.S5; earlier sessions
+            // default to 1 (their mid-track windows ran the always-regional
+            // D-157 build — blend 1 reproduces it).
+            features.pulseRegionalBlend01 = r["pulse_regional_blend01"].flatMap { Float($0) } ?? 1
 
             var stems = StemFeatures.zero
             if let srow = stemsByFrame[r["frame"] ?? ""] {

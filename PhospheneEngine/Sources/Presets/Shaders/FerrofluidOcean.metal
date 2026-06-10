@@ -233,8 +233,22 @@ static inline float fo_spike_strength(float2 xz,
     // term (≈ h·|∇mask|·head ≈ 0.3 at the chosen patch/transition scale);
     // trimming the peak keeps the worst-case gradient inside the CSP.3.5
     // Lipschitz /6 budget. Verified by the forensics white-pixel metric.
+    //
+    // D-158 (FBS.S5, Matt's S4 read): the BRIDGE heave is GLOBAL again —
+    // under D-157's regional mask the slow opening heave was not visible
+    // ("the slow opening heave was not visible with regional coverage").
+    // `pulse_regional_blend01` is 0 during the bridge (mask collapses to
+    // 1.0 = whole-ocean heave), ramping to 1 over one 4-beat span after the
+    // handoff so the per-beat punches become regional without a coverage
+    // cliff. Worst-case strength is unchanged (blend ≤ 1 scales the mask
+    // gradient term DOWN, and the 1.55 peak cap holds in both regimes).
+    // The global per-beat strobe cannot return: regional blend is 1 by the
+    // time the per-beat live phase drives the envelope (the strobe was a
+    // POST-handoff phenomenon; the bridge's ~380 ms quarter-cycle attack at
+    // 4-beat rate drew no flash complaint on bridge-only Money in S3).
     float head   = min(0.7, 1.55 - baseline);
-    float mask   = fo_punch_mask(xz, f.pulse_beat_index);
+    float blend  = clamp(f.pulse_regional_blend01, 0.0, 1.0);
+    float mask   = mix(1.0, fo_punch_mask(xz, f.pulse_beat_index), blend);
     return baseline + head * amp * env * mask;
 }
 

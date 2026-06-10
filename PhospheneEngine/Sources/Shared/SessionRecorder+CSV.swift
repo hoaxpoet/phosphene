@@ -172,12 +172,18 @@ extension SessionRecorder {
         // `section_confidence`): the exact StructuralAnalyzer signal the Skein.5 structural
         // bias consumes (D-151), recorded so section firing — and BUG-035-class corruption
         // (sub-second "sections", inflated indices) — is verifiable from session artifacts.
-        let structCols = String(format: ",%d,%.3f,%.4f\n",
+        let structCols = String(format: ",%d,%.3f,%.4f",
                                 structure.sectionIndex,
                                 structure.sectionStartTime,
                                 structure.confidence)
+        // FBS.S5 (D-158) — trailing pulse columns (new columns go at the END;
+        // positional parsers depend on the existing layout): the D-157 punch
+        // mask seed and the D-158 global-bridge → regional blend, so the
+        // flash-forensics replica can replay both exactly.
+        let pulseCols2 = String(format: ",%.0f,%.4f\n",
+                                fv.pulseBeatIndex, fv.pulseRegionalBlend01)
         return base + sync + timing + subTiming + renderTimingCols + rayMarchPassCols
-            + pulseCols + structCols
+            + pulseCols + structCols + pulseCols2
     }
 
     static func csvRow(stems: StemFeatures, frame: Int, wallclock: CFAbsoluteTime) -> String {

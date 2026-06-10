@@ -343,6 +343,51 @@ final class BeatPulseClockTests: XCTestCase {
         }
     }
 
+    /// FBS.S5 / D-158 — the regional-mask blend contract on the same real
+    /// session: 0 for the WHOLE bridge (the slow heave is global — Matt's S4
+    /// read: it was invisible under regional coverage), then a monotonic ramp
+    /// to 1 within ~one 4-beat span after the handoff (regional per-beat
+    /// punches, no coverage cliff), and reset per track.
+    func test_regionalBlend_zeroOnBridge_rampsToOneAfterHandoff() throws {
+        let frames = try loadHandoffFixture()
+        let clock = BeatPulseClock()
+        clock.setTempo(bpm: 118.1)
+        var outs: [BeatPulseClock.Output] = []
+        var handoffIndex: Int?
+        for (i, fr) in frames.enumerated() {
+            let out = clock.update(energySum: fr.energy, time: fr.te,
+                                   deltaTime: fr.dt, liveBeatPhase01: fr.livePhase)
+            if handoffIndex == nil, clock.handedOff { handoffIndex = i }
+            outs.append(out)
+        }
+        let hi = try XCTUnwrap(handoffIndex)
+
+        // (a) Global across the whole bridge.
+        for k in 0..<hi {
+            XCTAssertEqual(outs[k].regionalBlend01, 0,
+                           "bridge heave must be global (blend 0) at frame \(k)")
+        }
+        // (b) Monotonic ramp, complete within ~1.2 × one 4-beat span.
+        let rampS = 4 * 60.0 / 118.1
+        var sawOne = false
+        for k in (hi + 1)..<outs.count {
+            XCTAssertGreaterThanOrEqual(outs[k].regionalBlend01 + 1e-6, outs[k - 1].regionalBlend01,
+                                        "blend must ramp monotonically")
+            if frames[k].te - frames[hi].te > rampS * 1.2 {
+                XCTAssertEqual(outs[k].regionalBlend01, 1.0, accuracy: 1e-4,
+                               "blend must reach 1 within one 4-beat span (+ jitter margin)")
+                sawOne = true
+            }
+        }
+        XCTAssertTrue(sawOne, "fixture must cover the full ramp window")
+
+        // (c) Track change → back to the global bridge.
+        clock.resetAnchor()
+        let fresh = clock.update(energySum: 0.5, time: 0.1, deltaTime: 0.016,
+                                 liveBeatPhase01: nil)
+        XCTAssertEqual(fresh.regionalBlend01, 0, "reset must restore the global bridge")
+    }
+
     func test_handoff_doesNotFire_withoutLivePhase_andResetsPerTrack() throws {
         let frames = try loadHandoffFixture()
         let clock = BeatPulseClock()
