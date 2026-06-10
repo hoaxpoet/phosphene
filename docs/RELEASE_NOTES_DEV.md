@@ -40,6 +40,13 @@ Matt's Skein.5 M7 follow-ups, in priority order:
 
 ---
 
+## [dev-2026-06-10-fbs-s3.1] FBS.S3.1 — Money's handoff was structurally impossible (fixed: envelope-floor swap); the per-beat punch attack was the flashing (fixed: 100 ms attack)
+
+**Increment:** FBS.S3.1, from Matt's live read of session `2026-06-10T17-21-49Z` ("transition works reasonably well… Love Rehab seamless, clearly synchronized; Money never moved over; flashing not fixed"). **Status:** gates green; awaiting Matt's next live read. **Decision:** D-156 amendment.
+
+- **Money:** the swap required both phases in a narrow rest window — but bridge and live phase share one tempo source, so their offset is frozen: the coincidence fires every cycle or NEVER (Money: 0 eligible frames in 63 s; the other tracks drew lucky offsets). Now: both ENVELOPES < 0.15 — the bridge's low span sweeps > 1 full live cycle, so the swap is guaranteed within one bridge cycle, seam bounded by the floor. Money-replay regression test (red under the old condition).
+- **Flashing:** the punch attack spanned 0.08 of a beat ≈ 37 ms ≈ 1–2 frames — a near-single-frame spike-height/reflection step, 8–10× per minute on every handed-off track and ZERO on bridge-only Money (the track without a flashing complaint — the controlled comparison). Attack → 0.20 of the cycle (~100 ms): a punch, not a strobe. The BUG-041 aurora warmup stays; the next look adjudicates the attribution.
+
 ## [dev-2026-06-10-fbs-s3] FBS.S2.1/S2.2/S3 — planner-fallback exclusion hole closed; aurora track-start flash fixed (BUG-041); the pulse hands off invisibly to the live beat (D-156)
 
 **Increments:** FBS.S2.1 (fallback fix), FBS.S2.2 (BUG-041), FBS.S3 (handoff). **Status:** all gates green; **awaiting Matt's live read** (the energetic steady state + no aurora flash + Pyramid exclusion in an auto-rotating session). **Decisions:** D-156; BUG-041 in KNOWN_ISSUES (fix landed, pending M7).

@@ -178,14 +178,22 @@ static inline float fo_spike_strength(constant FeatureVector& f,
     // beat-grid phase may drive timing), NOT Layer-4 onset-pulse motion —
     // no beat_bass/beat_mid/beat_composite onset signals are consumed (those
     // fire on ~97 % of frames on real sessions; BUG-038 root cause).
-    // NOTE: the 0.85 decay-end is load-bearing for the FBS.S3 handoff
-    // (D-156): BeatPulseClock.envelopeRestPhase mirrors it — the CPU swaps
-    // the pulse's phase source only while phase >= 0.85 (envelope at rest)
-    // so the swap is invisible. Change one, change both.
+    // NOTE: this envelope's SHAPE is load-bearing for the FBS.S3 handoff
+    // (D-156): `BeatPulseClock.envelope` mirrors it (attack end 0.20, decay
+    // end 0.85) — the CPU swaps the pulse's phase source only while both
+    // envelopes are < 0.15, bounding the visible seam. Change one, change both.
+    //
+    // Attack 0.20 of the cycle (FBS.S3.1, 2026-06-10): at per-beat rate the
+    // original 0.08 attack spanned ~37 ms = 1–2 frames — a near-single-frame
+    // spike-height (and reflected-light) step that read as FLASHING on every
+    // handed-off track in Matt's session 2026-06-10T17-21-49Z (8–10 such
+    // steps/min on the flashing tracks; ZERO on Money, the one track that
+    // never handed off and drew no flashing complaint). 0.20 ≈ 100 ms at
+    // 120 BPM: still a punch, never a frame-strobe.
     float ph     = clamp(f.pulse_phase01, 0.0, 1.0);
     float amp    = clamp(f.pulse_amp01, 0.0, 1.0);
-    float attack = smoothstep(0.0, 0.08, ph);
-    float decay  = 1.0 - smoothstep(0.08, 0.85, ph);
+    float attack = smoothstep(0.0, 0.20, ph);
+    float decay  = 1.0 - smoothstep(0.20, 0.85, ph);
     float env    = attack * decay;
     float head   = min(0.7, 1.62 - baseline);
     return baseline + head * amp * env;

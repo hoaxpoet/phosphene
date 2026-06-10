@@ -95,13 +95,28 @@ public final class BeatPulseClock: @unchecked Sendable {
     /// window (the tracker's correction wanders over the opening — Stage 0).
     static let handoffAfterS: Double = 10.0
 
-    /// Phase at/after which the punch envelope is at REST (must match the
-    /// envelope decay-end in `FerrofluidOcean.metal`'s `fo_spike_strength` —
-    /// decay completes at 0.85 of the cycle). The handoff swaps the phase
-    /// source only while BOTH the outgoing and incoming phases sit in this
-    /// window, so the envelope is zero across the swap — an invisible seam
-    /// by construction.
-    static let envelopeRestPhase: Float = 0.85
+    /// Envelope threshold below which a swap is seam-safe. The handoff fires
+    /// when BOTH the outgoing and incoming phases have envelope < this — the
+    /// visible seam step is bounded by it. NOT a phase-window coincidence:
+    /// the bridge and the live phase derive from the same tempo, so their
+    /// relative offset is FROZEN — a narrow rest-window coincidence either
+    /// fires every cycle or NEVER (Money, session 2026-06-10T17-21-49Z:
+    /// zero eligible frames in 63 s — the handoff structurally could not
+    /// fire). The bridge's low-envelope span (env < 0.15 ≈ 28 % of its 4-beat
+    /// cycle ≈ 1.1 live cycles of time) sweeps MORE than one full live cycle,
+    /// so a joint-low frame exists in every bridge cycle, guaranteed.
+    static let handoffEnvelopeFloor: Float = 0.15
+
+    /// The punch envelope, CPU-side authority — MUST mirror `fo_spike_strength`
+    /// in `FerrofluidOcean.metal` (rise to `attackEnd`, decay to 0.85, rest).
+    /// Used by the handoff's seam-safety condition.
+    static let attackEnd: Float = 0.20
+    static func envelope(_ phase01: Float) -> Float {
+        let ph = min(max(phase01, 0), 1)
+        let attack = min(max(ph / attackEnd, 0), 1)
+        let decay = 1 - min(max((ph - attackEnd) / (0.85 - attackEnd), 0), 1)
+        return attack * decay
+    }
 
     // MARK: - State
 
@@ -231,8 +246,8 @@ public final class BeatPulseClock: @unchecked Sendable {
         if !handedOff,
            let live = liveBeatPhase01,
            time - anchor >= Self.handoffAfterS,
-           bridgePhase >= Self.envelopeRestPhase,
-           live >= Self.envelopeRestPhase {
+           Self.envelope(bridgePhase) < Self.handoffEnvelopeFloor,
+           Self.envelope(live) < Self.handoffEnvelopeFloor {
             handedOff = true
         }
         if handedOff {
