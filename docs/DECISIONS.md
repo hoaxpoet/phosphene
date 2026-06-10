@@ -4694,3 +4694,18 @@ Plumbing: one gated `mvWarpWetnessDecay` uniform (mirror of `mvWarpChromatic`), 
 **Evidence.** `BeatRegularityExclusionTests` (real catalog values; scorer + reactive exclusion; FFO sidecar flag gate). `BeatPulseClockTests` updated to the 4-beat period (all real-session gates still green: anchor 2 ms, zero wander, motion ≥ frozen baseline). `FerrofluidPulseLivePathTests` green with the slow pulse (punch |δ| = 31.1 luma, rest 0.0 through the live dispatch). Full suite: only the documented timing flakes (SoakTestHarness / MetadataPreFetcher wall-clock budgets under parallel load — both pass isolated).
 
 **References.** D-153 (the pulse), FBS Stage-1 verdict addendum, FA #57 (gates specced against real data — the calibration table), Matt 2026-06-10.
+
+## D-155 — Skein.5.3 palette library: five Matt-curated palettes, fixed role grammar, deterministic per-track picker
+
+**Date:** 2026-06-10 · **Increment:** Skein.5.3 · **Status:** Ratified (Matt's curation + picker choice, 2026-06-10)
+
+**Decision.** Skein paints each track in ONE palette chosen from a curated library, replacing the single Full Fathom Five register:
+
+1. **The library** (`SkeinPaletteLibrary.candidates`, display sRGB): `fathom` (the shipped default, index 0), `nocturne` (ink blue-black / deep violet / moonlit gold / ice blue), `jewel` (deep violet / crimson / saffron / emerald), `inkpop` (near-black / cobalt / hot orange / magenta), `electric` (violet charcoal / magenta / acid orange / cyan). Matt curated from six rendered candidates on identical seed-0 real-stem paintings; `terra` (umber/rust/gold/sage) was cut.
+2. **Fixed role grammar** — in EVERY palette: drums = the darkest ink, bass = the deep heavy saturated weight, vocals = the warm bright lead, other = the contrast accent. The colour→stem vocabulary stays learnable across palettes even as hues change (the trade-off that otherwise argues against a library).
+3. **Picker = per-track, deterministic** (Matt's choice over mood-matched): `SkeinPaletteLibrary.entry(forTrackSeed:)` = `seed % count`, fed by the SAME FNV-1a track identity that seeds the painter trajectory — the same song always paints the same painting in the same colours (§5.7 extends to colour), and a playlist rotates the library naturally. LIBRARY MODE engages only when `SkeinState` is constructed without an explicit palette (the live app path); explicit palettes (every test fixture, the contact-sheet candidates) stay pinned forever, and `reseed` re-picks only in library mode. Seed 0 → `fathom`, so all no-palette fixtures are byte-identical to pre-library behaviour.
+4. **Curation gates** (`SkeinPaletteLibraryTests`, always-on): every entry stays pairwise-separable — including vs the cream ground — at the rendered-display level across the FULL Skein.5 mood-tint swing (valence −1…+1 through the EXACT production transform, `SkeinState.moodTint` extracted static for this); pale-tone ceiling per ink; role grammar (drums darkest); `fathom == defaultPalette` byte-equality; picker determinism + reseed re-pick + explicit-mode pinning.
+
+**Trade-off accepted.** Per-palette character variation (e.g. nocturne's violet bass vs fathom's oxblood) means M7/cert evidence must sample multiple palettes; Skein.6's ≥5-track M7 naturally covers ≥5 palette draws via distinct tracks.
+
+**References.** D-147 (stem palette + the legibility binding constraint), D-150/D-152 (the colour-freeze + lay-time mood tint the library rides), D-LM-palette-library (the Lumen Mosaic precedent Matt pointed at), SKEIN_DESIGN §1.2 ("the palette is open — a tunable"), SHADER_CRAFT §18.8.
