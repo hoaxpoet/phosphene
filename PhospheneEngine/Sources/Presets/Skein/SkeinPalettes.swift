@@ -26,7 +26,7 @@ import simd
 
 // MARK: - SkeinPaletteLibrary
 
-/// The curated palette candidates for Skein (Skein.5.3b — pending Matt's re-curation).
+/// The curated palette library for Skein (Skein.5.3b — Matt-curated 2026-06-10).
 public enum SkeinPaletteLibrary {
 
     /// One curated palette: a name, the named reference work it is anchored on, the canvas
@@ -40,28 +40,18 @@ public enum SkeinPaletteLibrary {
         public let colors: [SIMD3<Float>]
     }
 
-    /// The candidates — three light grounds, three dark. `fathom` is the shipped default and
-    /// MUST stay at index 0 (seed 0 → fathom keeps every no-palette fixture byte-identical).
+    /// The Matt-curated library (2026-06-10, round 2): fathom + the three dark grounds.
+    /// Round-2 curation cut `autumn` and `convergence` — "both too similar to one another and
+    /// to fathom": on a pale ground with a black structural ink, the GROUND dominates the
+    /// gestalt, so multiple light palettes collapse into one impression. A future light-ground
+    /// candidate must differ at the GROUND level, not just the inks. `fathom` is the shipped
+    /// default and MUST stay at index 0 (seed 0 → fathom keeps no-palette fixtures byte-identical).
     public static let candidates: [Entry] = [
         Entry(name: "fathom",
               anchor: "Pollock — Full Fathom Five (1947)",
               ground: creamGroundDisplay,
               colors: [SIMD3(0.12, 0.13, 0.18), SIMD3(0.62, 0.13, 0.16),
                        SIMD3(0.90, 0.62, 0.16), SIMD3(0.12, 0.58, 0.55)]),
-        Entry(name: "autumn",
-              anchor: "Pollock — Autumn Rhythm, Number 30 (1950)",
-              ground: SIMD3(0.75, 0.68, 0.54),                       // raw linen (deep enough for bone to read)
-              colors: [SIMD3(0.07, 0.07, 0.07),                       // black enamel
-                       SIMD3(0.38, 0.25, 0.14),                       // umber
-                       SIMD3(0.94, 0.91, 0.82),                       // bone white (the highlight ink)
-                       SIMD3(0.30, 0.42, 0.45)]),                     // slate teal hint
-        Entry(name: "convergence",
-              anchor: "Pollock — Convergence (1952)",
-              ground: SIMD3(0.84, 0.83, 0.79),                       // grey-white
-              colors: [SIMD3(0.06, 0.06, 0.07),                       // black
-                       SIMD3(0.80, 0.13, 0.10),                       // cadmium red
-                       SIMD3(0.94, 0.78, 0.14),                       // cadmium yellow
-                       SIMD3(0.16, 0.36, 0.76)]),                     // cobalt blue
         Entry(name: "poles",
               anchor: "Pollock — Blue Poles (1952)",
               ground: SIMD3(0.10, 0.10, 0.16),                       // deep indigo-black
