@@ -973,13 +973,22 @@ extension SkeinState {
     /// the per-section warmth emphasis) warms/cools multiplicatively and scales saturation around
     /// luma. v = 0 ⇒ exact identity (existing tests and the silence path are byte-identical).
     func moodTinted(_ linear: SIMD3<Float>) -> SIMD3<Float> {
-        let val = clamp(m5.moodValence + m5.sectionWarm, -1, 1)
-        if abs(val) < 1e-5 { return linear }
-        var col = linear * SIMD3<Float>(1 + Self.moodWarmR * val, 1 + Self.moodWarmG * val, 1 - Self.moodCoolB * val)
+        let val = min(max(m5.moodValence + m5.sectionWarm, -1), 1)
+        return Self.moodTint(linear, valence: val)
+    }
+
+    /// The pure mood-tint math (static so the Skein.5.3 palette-library separability gate
+    /// exercises the EXACT production transform): multiplicative warm/cool on R/B + saturation
+    /// scaled around luma, clamped. Identity at valence = 0.
+    static func moodTint(_ linear: SIMD3<Float>, valence: Float) -> SIMD3<Float> {
+        if abs(valence) < 1e-5 { return linear }
+        var col = linear * SIMD3<Float>(1 + Self.moodWarmR * valence,
+                                        1 + Self.moodWarmG * valence,
+                                        1 - Self.moodCoolB * valence)
         let luma = col.x * 0.2126 + col.y * 0.7152 + col.z * 0.0722
-        let sat = max(Self.moodSatFloor, 1 + Self.moodSatGain * val)
+        let sat = max(Self.moodSatFloor, 1 + Self.moodSatGain * valence)
         col = SIMD3<Float>(repeating: luma) + (col - SIMD3<Float>(repeating: luma)) * sat
-        return SIMD3<Float>(clamp(col.x, 0, 1), clamp(col.y, 0, 1), clamp(col.z, 0, 1))
+        return SIMD3<Float>(min(max(col.x, 0), 1), min(max(col.y, 0), 1), min(max(col.z, 0), 1))
     }
 
     // MARK: Skein.5 test-facing accessors (thread-safe)
