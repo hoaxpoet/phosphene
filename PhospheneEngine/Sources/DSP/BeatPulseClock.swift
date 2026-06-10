@@ -60,8 +60,12 @@ public final class BeatPulseClock: @unchecked Sendable {
         /// Pulse gate: 0 before the first note / across sustained silence,
         /// 1 while music plays (smooth ~250 ms ramps between).
         public var amp01: Float
+        /// Count of completed pulse cycles since the anchor (D-157): seeds the
+        /// per-beat spatial punch mask so a different region of the spike
+        /// field punches each beat. Monotonic within a track; resets per track.
+        public var beatIndex: Float
 
-        public static let zero = Output(phase01: 0, amp01: 0)
+        public static let zero = Output(phase01: 0, amp01: 0, beatIndex: 0)
     }
 
     // MARK: - Tuning constants
@@ -142,6 +146,13 @@ public final class BeatPulseClock: @unchecked Sendable {
     /// track by `resetAnchor()` so every track re-opens on the slow bridge.
     public private(set) var handedOff = false
 
+    /// D-157 — completed-cycle counter for the spatial punch mask. Bridge:
+    /// derived from the metronome. Post-handoff: incremented on live-phase
+    /// wraps (continuity across the handoff is irrelevant — the mask only
+    /// needs to CHANGE each beat). Reset per track.
+    private var liveBeatCount: Float = 0
+    private var lastLivePhase: Float?
+
     // MARK: - Init
 
     public init() {}
@@ -170,6 +181,28 @@ public final class BeatPulseClock: @unchecked Sendable {
         silentRunS = 0
         amp = 0
         handedOff = false
+        liveBeatCount = 0
+        lastLivePhase = nil
+    }
+
+    /// First note = first sustained audible run; the anchor backdates to the
+    /// run's first frame (no confirmation latency).
+    private func acquireAnchorIfNeeded(audible: Bool, time: Double) {
+        guard anchorTime == nil else { return }
+        if audible {
+            if pendingAnchorTime == nil {
+                pendingAnchorTime = time
+                audibleRunFrames = 1
+            } else {
+                audibleRunFrames += 1
+            }
+            if audibleRunFrames >= Self.anchorConfirmFrames {
+                anchorTime = pendingAnchorTime   // backdate to the run's first frame
+            }
+        } else {
+            pendingAnchorTime = nil
+            audibleRunFrames = 0
+        }
     }
 
     // MARK: - Per-frame update
@@ -198,24 +231,7 @@ public final class BeatPulseClock: @unchecked Sendable {
         liveBeatPhase01: Float?
     ) -> Output {
         let audible = energySum > Self.audibleEnergyFloor
-
-        // --- Anchor acquisition (first note = first sustained audible run) ---
-        if anchorTime == nil {
-            if audible {
-                if pendingAnchorTime == nil {
-                    pendingAnchorTime = time
-                    audibleRunFrames = 1
-                } else {
-                    audibleRunFrames += 1
-                }
-                if audibleRunFrames >= Self.anchorConfirmFrames {
-                    anchorTime = pendingAnchorTime   // backdate to the run's first frame
-                }
-            } else {
-                pendingAnchorTime = nil
-                audibleRunFrames = 0
-            }
-        }
+        acquireAnchorIfNeeded(audible: audible, time: time)
 
         // --- Amplitude gate (music present?) ---
         if audible {
@@ -229,10 +245,15 @@ public final class BeatPulseClock: @unchecked Sendable {
 
         // --- Phase ---
         guard let anchor = anchorTime, let period = periodS, time >= anchor else {
-            return Output(phase01: 0, amp01: 0)
+            return Output(phase01: 0, amp01: 0, beatIndex: 0)
         }
         let beats = (time - anchor) / period
         let bridgePhase = Float(beats - beats.rounded(.down))
+        // D-157 — live-wrap counter (used post-handoff; cheap to track always).
+        if let live = liveBeatPhase01 {
+            if let last = lastLivePhase, live < last - 0.3 { liveBeatCount += 1 }
+            lastLivePhase = live
+        }
 
         // FBS.S3 / D-156 — handoff to the live beat. After the convergence
         // window, swap the phase source from the slow bridge metronome to the
@@ -254,9 +275,12 @@ public final class BeatPulseClock: @unchecked Sendable {
             // Live phase gone (grid cleared mid-track) → fall back to the
             // bridge metronome rather than going dark.
             if let live = liveBeatPhase01 {
-                return Output(phase01: live, amp01: amp)
+                return Output(phase01: live, amp01: amp, beatIndex: liveBeatCount)
             }
         }
-        return Output(phase01: bridgePhase, amp01: amp)
+        return Output(
+            phase01: bridgePhase,
+            amp01: amp,
+            beatIndex: Float(beats.rounded(.down)))
     }
 }

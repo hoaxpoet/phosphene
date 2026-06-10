@@ -40,6 +40,10 @@ Matt's Skein.5 M7 follow-ups, in priority order:
 
 ---
 
+## [dev-2026-06-10-fbs-s4] FBS.S4 — regional beat punch (D-157): the strobe is gone from the math, the rhythm stays
+
+**Increment:** FBS.S4, Matt's option B. **Status:** gates green; awaiting Matt's live read. Each beat, smoothly-bounded regions (~⅓ of the spike field, re-drawn per beat via the new `pulse_beat_index` FV float 42) punch instead of the whole field. Acceptance on the convicting So What window: whole-frame flash steps 69 → 1, localized punch motion preserved (block deltas ~65 vs ~22 ambient), no white-pixel regression (punch cap 1.62 → 1.55 for Lipschitz margin). Live-path A/B: global footprint 28 → 8.7 luma, rest-window 0.
+
 ## [dev-2026-06-10-bug039] BUG-039 — video writer death diagnosed live (-11800/-16341) + segment-rolling recovery; flash forensics harness
 
 **Increment:** BUG-039 diagnosis+fix (Matt's call: the session video is the PRIMARY visual-defect evidence — fix the recorder before further flash theorizing). **Status:** recovery landed, gates green; confirmation = the next live session records full-length video (possibly in segments).

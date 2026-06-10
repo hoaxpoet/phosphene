@@ -38,8 +38,9 @@ import Foundation
 ///     float beats_per_bar; // 4 default
 ///     float track_elapsed_s;            // float 39 (reclaimed _pad3, CSP.3)
 ///     float pulse_phase01, pulse_amp01; // floats 40–41 (FBS Stage 1, D-153)
-///     // Padding to 192 bytes (floats 42–48)
-///     float _pad6, _pad7, _pad8, _pad9, _pad10, _pad11, _pad12;
+///     float pulse_beat_index;           // float 42 (D-157 spatial punch mask)
+///     // Padding to 192 bytes (floats 43–48)
+///     float _pad7, _pad8, _pad9, _pad10, _pad11, _pad12;
 /// };
 /// ```
 @frozen
@@ -172,11 +173,8 @@ public struct FeatureVector: Sendable {
     /// Defaults to 4 when no BeatGrid is installed.
     public var beatsPerBar: Float
 
-    /// CSP.3 (2026-05-27) — track-relative elapsed time in seconds. Resets to
-    /// 0 on `MIRPipeline.reset()` (the track-change call). Used by shaders
-    /// for cold-start crossfade signal sourcing — proxy fields (live
-    /// FeatureVector) for the first ~14 s, then live per-frame stem analysis
-    /// once it converges.
+    /// CSP.3 (2026-05-27) — track-relative elapsed seconds; resets to 0 on
+    /// `MIRPipeline.reset()` (track change). Shader cold-start crossfades.
     ///
     /// **When the `ffoColdStartFixEnabled` UserDefaults toggle is OFF**,
     /// `MIRPipeline` populates this field with a large value (100.0) so the
@@ -188,18 +186,19 @@ public struct FeatureVector: Sendable {
     /// fields 1–38.
     public var trackElapsedS: Float
 
-    /// FBS Stage 1 (D-153, float 40): steady first-note-anchored beat-pulse
-    /// phase — 0 at each pulse beat → 1 at the next; cached-grid tempo, NEVER
-    /// drift-corrected (unlike `beatPhase01`). Reclaimed `_pad4`; written by
-    /// `BeatPulseClock`.
+    /// FBS (D-153, float 40, reclaimed `_pad4`): steady first-note-anchored
+    /// pulse phase — 0 at each pulse → 1 at the next; cached-grid tempo,
+    /// never drift-corrected (unlike `beatPhase01`); from `BeatPulseClock`.
     public var pulsePhase01: Float
-    /// Pulse gate: 0 before the first note / in sustained silence, 1 while
-    /// music plays. Stage 2 adds energy scaling. Reclaimed `_pad5`.
+    /// Pulse gate (float 41, reclaimed `_pad5`): 0 before the first note /
+    /// in sustained silence, 1 while music plays.
     public var pulseAmp01: Float
+    /// D-157 (float 42, reclaimed `_pad6`): completed pulse-cycle count —
+    /// seeds the per-beat spatial punch mask.
+    public var pulseBeatIndex: Float
 
-    // --- Padding to 192 bytes (48 floats total — floats 42–48) ---
+    // --- Padding to 192 bytes (48 floats total — floats 43–48) ---
     // swiftlint:disable identifier_name
-    var _pad6: Float
     var _pad7: Float
     var _pad8: Float
     var _pad9: Float
@@ -247,9 +246,9 @@ public struct FeatureVector: Sendable {
         // ffoColdStartFixEnabled toggle is off, MIRPipeline writes 100.0
         // instead so the shader-side crossfade collapses to the warm path.
         self.trackElapsedS = 0
-        // FBS Stage 1 pulse (BeatPulseClock via MIRPipeline) + padding.
-        self.pulsePhase01 = 0; self.pulseAmp01 = 0
-        self._pad6 = 0; self._pad7 = 0; self._pad8 = 0
+        // FBS pulse (BeatPulseClock via MIRPipeline) + padding.
+        self.pulsePhase01 = 0; self.pulseAmp01 = 0; self.pulseBeatIndex = 0
+        self._pad7 = 0; self._pad8 = 0
         self._pad9 = 0; self._pad10 = 0; self._pad11 = 0; self._pad12 = 0
     }
 

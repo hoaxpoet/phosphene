@@ -104,6 +104,8 @@ final class FerrofluidFlashForensicsTests: XCTestCase {
 
         // --- CPU-side modulation state (mirrors applyAudioModulation) ---
         var smoothedLight: Float = 1.0
+        var beatIndex: Float = 0
+        var lastPulsePhase: Float?
         var auroraSmoothed: Float = 0
         var auroraWarmup: Float = 1.0   // mid-track window: warmup long done
         var dollyOffset: Float = 0
@@ -128,6 +130,12 @@ final class FerrofluidFlashForensicsTests: XCTestCase {
             features.trackElapsedS = te
             features.pulsePhase01 = fv(r, "pulse_phase01")
             features.pulseAmp01 = ablate == "pulse" ? 0 : fv(r, "pulse_amp01")
+            // D-157: sessions predating the field — derive the beat index
+            // from recorded phase wraps (exactly what the clock now ships).
+            let phNow = fv(r, "pulse_phase01")
+            if let last = lastPulsePhase, phNow < last - 0.3 { beatIndex += 1 }
+            lastPulsePhase = phNow
+            features.pulseBeatIndex = beatIndex
 
             var stems = StemFeatures.zero
             if let srow = stemsByFrame[r["frame"] ?? ""] {
