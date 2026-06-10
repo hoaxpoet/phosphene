@@ -37,6 +37,39 @@ import Foundation
     #expect(fv.arousal == 0, "Arousal should be 0 (not set by DSP)")
 }
 
+// MARK: - Structural clock (BUG-040)
+
+@Test("structuralPrediction survives the live caller's hardwired time: 0 — timestamps from elapsedSeconds")
+func mirPipeline_structuralPrediction_liveCallerShape_timestampsNonNegative() {
+    // The LIVE analysis loop calls `process(... time: 0 ...)` on EVERY frame
+    // (VisualizerEngine+Audio.processAnalysisFrame) — fv.time is populated separately.
+    // Pre-fix, the structural analyzer used that parameter as its clock: it froze at 0,
+    // boundary timestamps came out NEGATIVE (0 − age ≈ −0.3 s), durations were ±0.x noise
+    // and confidence was structurally pinned (BUG-040, session 2026-06-10T03-09-20Z).
+    // The analyzer clock must come from the pipeline's own track-relative elapsedSeconds.
+    let pipeline = MIRPipeline()
+    func mags(_ phaseA: Bool) -> [Float] {
+        (0..<512).map { bin in
+            if phaseA { return bin >= 12 && bin < 48 ? Float(0.5) : Float(0.01) }
+            return bin >= 120 && bin < 220 ? Float(0.5) : Float(0.01)
+        }
+    }
+    // Phase A 400 frames, phase B 400 frames at 60 fps — one true boundary at ≈ 6.67 s,
+    // replicated through the EXACT live-caller shape (time: 0 every frame).
+    for i in 0..<800 {
+        _ = pipeline.process(magnitudes: mags(i < 400), fps: 60, time: 0, deltaTime: 1.0 / 60.0)
+    }
+    let pred = pipeline.latestStructuralPrediction
+    #expect(pred.sectionIndex >= 1,
+            "The A→B spectral change did not register a boundary (sectionIndex \(pred.sectionIndex)).")
+    #expect(pred.sectionIndex <= 2,
+            "Junk boundaries registered (sectionIndex \(pred.sectionIndex)) — the live-edge guard regressed.")
+    #expect(pred.sectionStartTime > 0,
+            "sectionStartTime \(pred.sectionStartTime) ≤ 0 — the frozen-clock bug regressed (BUG-040).")
+    #expect(pred.sectionStartTime < 13.4,
+            "sectionStartTime \(pred.sectionStartTime) is outside the fed time span (~13.3 s).")
+}
+
 // MARK: - SIMD Alignment
 
 @Test func mirPipeline_featureVector_simdAligned() {
