@@ -1106,6 +1106,24 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 
 ## Resolved (recent)
 
+### BUG-044 — Local-file next/prev/EOF never wipes the Skein canvas: one painting accumulates across every track (2026-06-10)
+
+> **RESOLVED 2026-06-10** — Trivial-collapsed P2 per CLAUDE.md §Defect Handling Protocol (root cause obvious from the session log + a one-helper extraction, no architectural risk; collapse stated explicitly here and in the commit). Landed on the Skein.5.4 branch `claude/skein54-splatter`; reaches main with the 5.4 merge.
+
+**Severity:** P2 (preset contract violation: the §1.5 "a new track paints its OWN canvas" / §5.7 "same song → same painting" properties silently break for every local-file session with more than one track; pre-existing on main since Skein.3 — newly observed because 5.4's eyeball-gate listen was the first multi-track LF Skein session).
+
+**Domain tag:** `pipeline-wiring` (the BUG-024 complementary-path class: per-track preset state reset on the streaming path only).
+
+**Expected behavior.** On any track change — streaming metadata callback OR local-file next/prev/natural-EOF advance — an active Skein wipes the canvas to the new track's palette ground and re-seeds the painter from the new track's identity (Skein.3 §1.5 + 5.3b), and an active Nimbus settles (NB.4).
+
+**Actual behavior.** Local-file advances (`advanceLocalFileQueue`) never wiped: the LF.5.fix.2-FU3 "mirror the streaming callback's destructive resets" block predates Skein.3, and the Skein wipe (added 2026-06-05) + Nimbus settle were only ever wired in the streaming callback (`VisualizerEngine+Capture.swift`). The painting accumulated across tracks; the wipe the user saw at the first transition was the preset-APPLY clear, not a track-change wipe.
+
+**Reproduction.** LF session ≥ 2 tracks, Skein active, press next: canvas keeps the previous track's paint. Session `2026-06-10T19-48-27Z` (the evidence artifact): Skein active continuously from 19:51:15; five `resetStemPipeline caller=trackChange` advances (19:51:27 → 19:52:00) with zero wipes; no `preset → Skein` re-apply between them.
+
+**Fix.** Extract the per-track preset-state reset (Nimbus settle + Skein reseed → ground override → `clearMVWarpCanvasToGround`) into the shared `VisualizerEngine.resetPerTrackPresetState()`, called from BOTH paths. On the LF path it runs AFTER `applyLocalFileTrackState` (the Skein reseed derives from `lastResolvedTrackIdentity`, which that helper sets) and logs a `WIRING:` breadcrumb so the next session artifact verifies it.
+
+**Verification criteria (pre-stated).** Automated: `TrackChangePresetResetRegressionTests` — the helper exists once, both call sites invoke it, neither re-inlines the wipe, and the LF call is ordered after the identity apply. Manual: next multi-track LF listen — every next/prev wipes to a fresh ground (the session.log shows `advanceLocalFileQueue resetPerTrackPresetState COMPLETE` per advance).
+
 ### BUG-024 — Stale LF artwork bleeds into streaming sessions (LF.6, 2026-06-01)
 
 > **RESOLVED 2026-06-01** — Trivial-collapsed P1 per CLAUDE.md §Defect Handling Protocol (< 5 lines, root cause obvious, no architectural risk). Landed as the one-commit `[LF.6.fix.1]` increment.

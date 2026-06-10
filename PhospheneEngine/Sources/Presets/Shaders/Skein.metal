@@ -185,7 +185,8 @@ struct SkeinBurstGPU {        // 12 floats = 48 bytes (matches Swift SkeinBurstG
     float size;                        // base droplet size (attackRatio)
     float visc;                        // viscosity [0,1] (1 − centroid)
     float colR; float colG; float colB;  // frozen stem colour
-    float sharpness;                   // flick sharpness [0,1]
+    float sharpness;                   // flick sharpness [0,1]; < 0 ⇒ pour DRIP (Skein.5.4 marker —
+                                       // the fragment draws drip morphology, skips the flick layers)
     float hashSeed;                    // per-burst droplet-placement seed
 };
 
@@ -398,13 +399,21 @@ fragment float4 skein_geometry_fragment(
         if (cov > bestCover) { bestCover = cov; bestCol = lineCol; }
     }
 
-    // ── Layers B + C: onset-burst RING — per-stem-coloured splatter + filament tendrils ──
-    // Each burst is a real per-stem ONSET (SkeinState rising-edge detection on *_energy_dev), frozen
-    // at the painter position in that stem's colour, with size ← attackRatio, viscosity ← centroid.
-    // We redraw bursts within the bake window (the pour-tail age-ramp), so each fades in then FREEZES
-    // into the held canvas once aged out — identical bake-and-hold to Skein.2, now onset-driven. The
-    // Skein.2 droplet + filament morphology (ragged edge, exp/poly satellites, isotropic AA,
-    // forward-gated filaments) is preserved per burst.
+    // ── Layers B + C: onset-burst RING — Pollock splatter (Skein.5.4 morphology rebuild) ──
+    // Each burst is a real per-stem ONSET (SkeinState detection on *_energy_dev), frozen at the
+    // painter position in that stem's colour. Emission timing is UNCHANGED (Matt 2026-06-10:
+    // keep the spray; fix what the paint LOOKS like). Morphology rebuilt against the reference
+    // set (the round-1 "only dots / confetti" rejection):
+    //   • PRIMARY SPLAT — an irregular LOBED blot at the flick point (the paint mass that hit;
+    //     the large ragged blots in 03_micro_satellite_spatter + 03_micro_filament_threads).
+    //   • FLUNG STREAKS — long thin threads shooting along the throw, slightly curved, each
+    //     ending in a terminal droplet (the white flung threads in both micro refs — the
+    //     signature Pollock element the old 1-2 px tendrils never delivered).
+    //   • SATELLITES — the dense→sparse halo, now with a POWER-LAW size spread (big blots →
+    //     pinprick dust, the refs' ~20:1 range; the old ~4:1 band read as confetti) and
+    //     RADIAL ELONGATION (teardrops pointing away from the impact — splash physics).
+    // burst.size now carries attack × THROW MAGNITUDE (how hard the onset hit) — a heavy hit
+    // flings a bigger blot, longer streaks, wider satellites. Bake-and-hold unchanged.
     int nB = min(int(st.burstCount), kSkeinMaxBursts);
     for (int b = 0; b < nB; ++b) {
         SkeinBurstGPU burst = st.bursts[b];
@@ -413,67 +422,140 @@ fragment float4 skein_geometry_fragment(
         float ageFrac = age / kSkeinBakeWindow;
         float op = mix(0.05, 1.0, smoothstep(0.0, 0.8, ageFrac));
 
-        float2 fpA  = float2(burst.posX * a, burst.posY);                     // flick point (aspect-corrected)
-        float2 dir  = float2(burst.dirX, burst.dirY);                         // throw axis (frozen, aspect-corrected)
+        float2 fpA  = float2(burst.posX * a, burst.posY);                     // landing point (aspect-corrected)
+        float2 dir  = float2(burst.dirX, burst.dirY);                         // throw axis (frozen)
         float  base = atan2(dir.y, dir.x);
         float  visc = clamp(burst.visc, 0.0, 1.0);
+        float  mag  = clamp(burst.size, 0.3, 2.0);                            // attack × throw magnitude (CPU)
+        float  mag01 = (mag - 0.3) / 1.7;                                     // 0 = soft flick, 1 = heavy hit
         float3 col  = float3(burst.colR, burst.colG, burst.colB);
 
-        // Viscosity → burst character (SKEIN_DESIGN §1.2): thin/bright (visc→0) = MANY fine FAR
-        // satellites; thick/dark (visc→1) = FEWER, BIGGER, CLOSER droplets. attackRatio (burst.size)
-        // scales the base droplet size (sharp transient → smaller/tighter); sharpness narrows the
-        // near-satellite splash cone (sharp → tighter forward spray, soft → a full splash halo).
-        float sizeScale = clamp(burst.size, 0.4, 1.3);
-        int   nDrop    = int(mix(46.0, 13.0, visc));
-        float spread   = mix(0.170, 0.075, visc);
-        float dropBig  = mix(0.0065, 0.0135, visc) * sizeScale;             // DISTINCT dots, sized to survive the thin line + read per-stem
-        float edgeAmp  = mix(0.40, 0.26, visc);                              // thin = more feathered / irregular edge
-        float aaScale  = mix(2.6, 1.4, visc);                               // edge AA in PIXELS (thick crisp → thin feathered)
-        float coneNear = mix(3.14159, 1.20, clamp(burst.sharpness, 0.0, 1.0)); // soft = full splash, sharp = narrower
+        // ── DRIP (sharpness < 0 — Skein.5.4): the POUR's by-product, a different technique
+        // from the flick (Matt's distinction). One round heavy drop shed beside the line —
+        // ragged-edged, occasionally with a faint close satellite — in the pour's colour.
+        // No streaks, no spray cone: paint that FELL, not paint that was thrown.
+        if (burst.sharpness < 0.0) {
+            float dripR = mix(0.0030, 0.0085, clamp((mag - 0.5) / 1.1, 0.0, 1.0))
+                        * mix(0.85, 1.25, visc);
+            if (length(q - fpA) < dripR * 3.0 + px * 5.0) {
+                float ragged = 1.0 + 0.30 * skein_fbm2(q * 65.0 + float2(burst.hashSeed * 4.9, 2.7));
+                float drr = max(dripR * ragged, px * 1.3);
+                float cov = (1.0 - smoothstep(drr - px * 1.6, drr + px * 1.6, length(q - fpA))) * op;
+                if (cov > bestCover) { bestCover = cov; bestCol = col; }
+                // One faint micro-satellite (the secondary droplet a heavy drop kicks up).
+                float4 hd = hash_f01_4x(float4(burst.hashSeed, 77.0, 1.0, 0.0));
+                if (hd.x > 0.45) {
+                    float2 sp = fpA + float2(cos(hd.y * 6.2832), sin(hd.y * 6.2832)) * dripR * mix(1.8, 2.6, hd.z);
+                    float sr = max(dripR * mix(0.18, 0.32, hd.w), px * 1.1);
+                    float scov = (1.0 - smoothstep(sr - px * 1.4, sr + px * 1.4, length(q - sp))) * op;
+                    if (scov > bestCover) { bestCover = scov; bestCol = col; }
+                }
+            }
+            continue;
+        }
+        float  sharp = clamp(burst.sharpness, 0.0, 1.0);
 
-        // SCISSOR (§6 — cost ∝ this frame's marks): a fragment outside the burst's bounding disc
-        // skips the whole droplet loop. Bound covers the farthest droplet + its ragged radius.
-        float bound = spread + dropBig * 2.5 + 0.01;
+        // Viscosity → character (SKEIN_DESIGN §1.2): thin/bright = many fine far satellites,
+        // long thin streaks; thick/dark = fewer, bigger, closer drops, stubbier streaks.
+        int   nDrop    = int(mix(46.0, 13.0, visc));
+        float spread   = mix(0.170, 0.075, visc) * mix(0.6, 1.6, mag01);      // heavy hits fling farther
+        float dropBig  = mix(0.0065, 0.0135, visc) * mix(0.6, 1.5, mag01);
+        float edgeAmp  = mix(0.40, 0.26, visc);
+        float aaScale  = mix(2.6, 1.4, visc);
+        float coneNear = mix(3.14159, 1.20, sharp);                           // soft = full halo, sharp = narrower
+        float primR    = mix(0.005, 0.016, mag01) * mix(0.8, 1.3, visc);      // primary blot radius
+        float streakLen = mix(0.035, 0.20, mag01) * mix(1.2, 0.6, visc);      // thin paint throws long
+        int   nStreak  = 1 + int(mag01 > 0.35) + int(mag01 > 0.75);           // 1–3 flung threads
+
+        // SCISSOR (§6 — cost ∝ this frame's marks): the bound covers the farthest satellite AND
+        // the longest streak tip + raggedness.
+        float bound = max(spread + dropBig * 2.5, streakLen + 0.015) + 0.01;
         if (length(q - fpA) > bound) { continue; }
 
+        // ── B1: PRIMARY SPLAT — a 3-lobe irregular blot (union-min SDF), heavy ragged edge.
+        // Soft attacks (sharp→0) pull the lobes together into one rounder, heavier drop — the
+        // "drop from above"; sharp flicks scatter the lobes along the throw.
+        {
+            float lobeScatter = primR * mix(0.45, 1.1, sharp);
+            float blotSDF = 1e9;
+            for (int l = 0; l < 3; ++l) {
+                float4 hl = hash_f01_4x(float4(burst.hashSeed, 300.0 + float(l), 1.0, 0.0));
+                float lAng = base + (hl.x * 2.0 - 1.0) * 2.2;
+                float lDist = (l == 0) ? 0.0 : lobeScatter * mix(0.4, 1.0, hl.y);
+                float2 lPos = fpA + float2(cos(lAng), sin(lAng)) * lDist;
+                float lR = primR * ((l == 0) ? 1.0 : mix(0.35, 0.65, hl.z));
+                blotSDF = min(blotSDF, length(q - lPos) - lR);
+            }
+            float ragged = edgeAmp * 1.2 * primR
+                         * skein_fbm2(q * 55.0 + float2(burst.hashSeed * 3.7, 9.1));
+            float cov = (1.0 - smoothstep(-px, px * aaScale, blotSDF + ragged)) * op;
+            if (cov > bestCover) { bestCover = cov; bestCol = col; }
+        }
+
+        // ── B2: FLUNG STREAKS — long thin slightly-curved threads along the throw, tapering,
+        // each ending in a terminal droplet (refs: the white threads crossing both micro images).
+        // Angular spread tight on sharp hits, looser on soft ones; never a radial starburst
+        // (1–3 threads in the throw's half-plane, not spokes).
+        for (int sIdx = 0; sIdx < nStreak; ++sIdx) {
+            float4 hsk = hash_f01_4x(float4(burst.hashSeed, 200.0 + float(sIdx), 1.0, 0.0));
+            float sAng = base + (hsk.x * 2.0 - 1.0) * mix(0.65, 0.20, sharp);
+            float sLen = streakLen * mix(0.55, 1.0, hsk.y);
+            float2 sDir = float2(cos(sAng), sin(sAng));
+            float2 sPerp = float2(-sDir.y, sDir.x);
+            float2 sMid = fpA + sDir * (sLen * 0.5) + sPerp * sLen * 0.14 * (hsk.z * 2.0 - 1.0);
+            float2 sTip = fpA + sDir * sLen;
+            // Distance to the two-segment polyline + a linear width taper base→tip.
+            float d1 = skeinSegDist(q, fpA, sMid);
+            float d2 = skeinSegDist(q, sMid, sTip);
+            float sd = min(d1, d2);
+            if (sd < px * 6.0 + 0.004) {
+                float tAlong = clamp(dot(q - fpA, sDir) / max(sLen, 1e-5), 0.0, 1.0);
+                float wBase = mix(0.0026, 0.0014, visc) * mix(0.8, 1.4, mag01);
+                float sw = mix(wBase, wBase * 0.30, tAlong)
+                         * (1.0 + 0.45 * skein_fbm2(q * 120.0 + float2(burst.hashSeed * 5.1, float(sIdx) * 7.7)));
+                float swr = max(sw, px * 0.9);
+                float cov = (1.0 - smoothstep(swr - px * 1.5, swr + px * 1.5, sd)) * op * 0.95;
+                if (cov > bestCover) { bestCover = cov; bestCol = col; }
+            }
+            // Terminal droplet — the pearl at the thread's end (string-of-pearls read).
+            float tdR = max(mix(0.0022, 0.0052, mag01) * mix(0.7, 1.3, hsk.w), px * 1.2);
+            float tdc = length(q - sTip);
+            if (tdc < tdR * 2.0 + px * 3.0) {
+                float ragged = 1.0 + edgeAmp * skein_fbm2(q * 80.0 + float2(burst.hashSeed * 6.3, float(sIdx) * 4.4));
+                float cov = (1.0 - smoothstep(tdR * ragged - px * 1.5, tdR * ragged + px * 1.5, tdc)) * op;
+                if (cov > bestCover) { bestCover = cov; bestCol = col; }
+            }
+        }
+
+        // ── B3: SATELLITES — the dense→sparse halo with a POWER-LAW size spread (a few big
+        // blots, many mid drops, a dust tail — the confetti becomes the tail of a real
+        // distribution) and RADIAL ELONGATION (far drops stretch into teardrops pointing away
+        // from the impact). Isotropic px AA + round floor (Matt M7 2026-06-05) retained.
         for (int n = 0; n < nDrop; ++n) {
             float4 hs      = hash_f01_4x(float4(burst.hashSeed, float(n), 1.0, 0.0));
-            float distFrac = pow(hs.x, 1.5);                                  // exp/poly: denser near the line, tail far
+            float distFrac = pow(hs.x, 1.5);
             float dist     = spread * distFrac;
-            // Near satellites scatter (splash halo, cone narrowed by sharpness); far = forward-thrown.
             float coneHalf = mix(coneNear, 0.42, distFrac);
             float ang      = base + coneHalf * (hs.y * 2.0 - 1.0);
-            float2 dpos    = fpA + float2(cos(ang), sin(ang)) * dist;
-            float  dr      = dropBig * mix(0.9, 0.18, distFrac) * mix(0.55, 1.3, hs.z);  // mid near, fine far — DISTINCT dots
+            float2 rd      = float2(cos(ang), sin(ang));
+            float2 dpos    = fpA + rd * dist;
+            // Power-law size: pow(hs.z, 2.2) spans big→pinprick (~20:1 before the px floor).
+            float  dr      = dropBig * mix(1.25, 0.30, distFrac) * mix(0.10, 1.35, pow(hs.z, 2.2));
 
-            // Cheap per-droplet reject BEFORE the noise keeps the inner loop affordable.
-            float dc = length(q - dpos);
-            if (dc < dr * 1.7 + px * 4.5) {
-                // RAGGED organic edge — perturb the radius by ±noise (never a clean circle; anti-ref polka-dots).
+            float2 pd = q - dpos;
+            float cheap = length(pd);
+            if (cheap < dr * 3.2 + px * 4.5) {
+                // Radial elongation: stretch the distance metric ALONG the flight direction —
+                // far, fast drops smear into teardrops; near drops stay round.
+                float stretch = 1.0 + 1.8 * distFrac * mix(0.3, 1.0, mag01);
+                float along = dot(pd, rd) / stretch;
+                float perp  = dot(pd, float2(-rd.y, rd.x));
+                float dc    = length(float2(along, perp));
                 float ragged = 1.0 + edgeAmp * skein_fbm2(q * 70.0 + float2(burst.hashSeed * 7.3, float(n) * 3.1));
-                // ISOTROPIC px-based AA — NOT fwidth(dc) (which runs ~41 % wider at the diagonals →
-                // rounded-SQUARE droplets, Matt M7 2026-06-05) — + a ~1.5 px ROUND radius floor.
-                float drr = max(dr * max(ragged, 0.20), px * 1.5);
+                float drr = max(dr * max(ragged, 0.20), px * 1.2);
                 float aa  = px * aaScale;
                 float cov = (1.0 - smoothstep(drr - aa, drr + aa, dc)) * op;
                 if (cov > bestCover) { bestCover = cov; bestCol = col; }
-            }
-
-            // FILAMENT: a thin ragged FORWARD tendril (ref 03_micro_filament_threads). Forward-gated +
-            // short + sparse (hash) so threads do NOT radiate as a starburst — that radial-spoke
-            // firework IS the particle-burst anti-reference. A few directional spray-streaks, never a web.
-            float2 toDrop = dpos - fpA;
-            float  dlen   = length(toDrop);
-            bool   fwd    = dot(toDrop / max(dlen, 1e-5), dir) > 0.30;        // forward of the throw only
-            if (hs.w < 0.16 && fwd && dlen > spread * 0.18 && dlen < spread * 0.5) {
-                float fd = skeinSegDist(q, fpA, dpos);
-                if (fd < px * 4.0) {
-                    float filR  = 0.0015 * (1.0 + 0.5 * skein_fbm2(q * 130.0 + float2(float(n) * 5.0, burst.hashSeed * 2.0)));
-                    float filRR = max(filR, px * 0.9);            // keep thin threads ≥ ~1 px so they read as strands
-                    float faa   = px * 1.5;                       // isotropic AA (same reason as the droplet edge)
-                    float cov = (1.0 - smoothstep(filRR - faa, filRR + faa, fd)) * op * 0.8;
-                    if (cov > bestCover) { bestCover = cov; bestCol = col; }
-                }
             }
         }
     }

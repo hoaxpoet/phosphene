@@ -316,6 +316,14 @@ extension VisualizerEngine: LocalFilePreparing {
             // `applyLocalFileTrackState(...)`.
             applyLocalFileTrackState(identity: nextIdentity, planIndex: nextIdx)
             sessionRecorder?.log("WIRING: advanceLocalFileQueue orchestratorLock COMPLETE")
+            // BUG-044: mirror the streaming callback's per-track PRESET resets (Nimbus settle +
+            // Skein §1.5 canvas wipe/reseed). Before this call existed, a local-file next/prev/EOF
+            // advance never wiped Skein's canvas — the painting accumulated across tracks
+            // (Matt's live read, session 2026-06-10T19-48-27Z: five track changes with Skein
+            // active, zero wipes). Must run AFTER `applyLocalFileTrackState` — the Skein reseed
+            // derives from `lastResolvedTrackIdentity`, which that helper sets.
+            resetPerTrackPresetState()
+            sessionRecorder?.log("WIRING: advanceLocalFileQueue resetPerTrackPresetState COMPLETE")
             // Re-bind the EOF callback BEFORE start() — AudioInputRouter
             // captures the callback at start time and relays it into the
             // freshly-constructed provider.

@@ -231,12 +231,6 @@ extension VisualizerEngine {
             }
             mir.reset()
             self.pipeline.resetAccumulatedAudioTime()
-            // NB.4: settle Nimbus into the new track. Zeroing the bloom follower
-            // shrinks/dims the body to its floor and the flow phase re-seeds; the
-            // dim settle-in masks the gas re-seed so the body blooms back UP into
-            // the new track rather than popping (DESIGN §1.5). No-op when Nimbus
-            // is not the active preset (state is nil).
-            self.nimbusState?.reset()
             // BUG-016 fix (2026-05-26): persist the resolved identity so
             // `applyPreset` can refresh per-track preset state (Lumen Mosaic
             // palette) when the user activates a preset mid-track. Before this
@@ -244,23 +238,12 @@ extension VisualizerEngine {
             // available to `resetStemPipeline` below — so any preset whose
             // per-track GPU payload is wired through `resetStemPipeline` would
             // render against zero-filled defaults until the next track change.
+            // Must precede `resetPerTrackPresetState()` (the Skein reseed
+            // derives from it).
             self.lastResolvedTrackIdentity = identity
-            // Skein.3 (§1.5): a new track paints its OWN canvas (the held painting is the previous
-            // track's visual fingerprint). Wipe the canvas back to cream and re-seed the painter
-            // from the new track's identity (same track → same painting, §5.7). No-op when Skein
-            // is not the active preset (skeinState is nil → the canvas clear is skipped too).
-            if self.skeinState != nil {
-                self.skeinState?.reseed(self.currentSkeinSeed())
-                // Skein.5.3b: the new track's palette carries its GROUND (light or dark) —
-                // push it as the canvas-ground override BEFORE the wipe so the fresh canvas
-                // clears to the new palette's ground, and any mid-track resize re-clears to
-                // the same. LINEAR (Metal encodes on store for the sRGB canvas).
-                if let skeinGround = self.skeinState?.groundLinear {
-                    self.pipeline.setMVWarpCanvasGround(SIMD4<Double>(
-                        Double(skeinGround.x), Double(skeinGround.y), Double(skeinGround.z), 1.0))
-                }
-                self.pipeline.clearMVWarpCanvasToGround()
-            }
+            // BUG-044: Nimbus settle (NB.4) + Skein §1.5 canvas wipe + reseed, shared with the
+            // local-file advance path. See `resetPerTrackPresetState` in VisualizerEngine+Presets.
+            self.resetPerTrackPresetState()
             self.logTrackChangeObserved(event: event, identity: identity)
             self.resetStemPipeline(for: identity, caller: .trackChange)
             self.kickoffPreFetch(for: event.current, fetcher: fetcher)
