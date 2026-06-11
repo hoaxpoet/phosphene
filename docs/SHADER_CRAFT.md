@@ -2278,6 +2278,14 @@ Consolidated from observed preset iterations. Additive to `CLAUDE.md §Failed Ap
 ---
 
 
+### Relocated from CLAUDE.md §Failed Approaches (DOC.4, 2026-06-11)
+
+**CLAUDE.md #34 — `abs(fract(x) − 0.5)` as an SDF fold for periodic structures (spiral threads, ring bands).** This formula gives 0 at integer positions (in the GAPS between threads) and 0.5 at half-integer positions (ON the threads). It is the inverse of a correct distance field — coverage computed from it is maximal everywhere threads are NOT, filling the entire area instead of drawing thin strands. Use `min(fract(x), 1 − fract(x))` which correctly gives 0 ON the thread and 0.5 in the gaps. Bit both Arachne and Gossamer during Increment 3.5.10/3.5.11 and caused both to render as filled discs. The visual tells: perfectly uniform lit region where web should be, no strand structure visible.
+
+> Moved here 2026-06-11 (DOC.4): a shader-math gotcha of the same class as #42–#44 below — it prevents bugs during 3D/SDF preset authoring, where this handbook is mandatory reading.
+
+**Mapping note (DOC.4):** CLAUDE.md #35 (single-octave noise), #36 (uniform albedo), #37 (constant roughness), #38 (grey fog), and #40 (unmodified SDF primitives) were near-verbatim duplicates of this section's own #35, #36, #38, #39, and #42 respectively; the CLAUDE.md copies were retired 2026-06-11 (DOC.4) and the §13 entries above are now the canonical text. Cross-references to "CLAUDE.md Failed Approach #35–#38/#40" resolve to those §13 entries.
+
 ### Relocated from CLAUDE.md §Failed Approaches (DOC.3b, 2026-05-13)
 
 These three entries are calibration / language gotchas relocated from CLAUDE.md so the shader-specific lessons live with the rest of the shader handbook. Original CLAUDE.md numbering preserved for cross-reference; the §13 #42–#50 numbering above is an independent stream.
