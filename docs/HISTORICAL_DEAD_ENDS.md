@@ -9,7 +9,7 @@ The active-rule equivalents — Failed Approaches that catch real recurring patt
 Two patterns were mixed in CLAUDE.md's Failed Approaches list:
 
 1. **Dead APIs and frameworks:** "AcousticBrainz shut down 2022" / "Spotify Audio Features deprecated 2024" / "MediaRemote private framework banned post-macOS 15." These describe historical events. Useful as "don't go looking for this" pointers but not active behavioral rules.
-2. **Active rules:** "Drive presets from audio deviation, not absolute energy" / "Never use synthetic audio in diagnostics" / "No CoreML ANE Float16 with Float32 bindMemory." These describe rules that prevent recurring bugs today.
+2. **Active rules:** "Drive presets from audio deviation, not absolute energy" / "Never use synthetic audio in diagnostics" / "Beat onset is accent, never the primary motion driver." These describe rules that prevent recurring bugs today.
 
 Mixing the two reduced the signal of every entry. The active rules stay in CLAUDE.md; the historical entries move here.
 
@@ -90,6 +90,18 @@ For entries describing **tech that may have evolved since the original observati
 > Moved to graveyard 2026-05-13 (DOC.3a). Calibration-specific learning; the correct approach (bin-count normalisation, weight = 1 / binsInPitchClass) is documented in CLAUDE.md §Audio Analysis Tuning §Chroma. No active rule needed — `ChromaExtractor.swift` implements the correct form by construction.
 
 ---
+
+### #14 — Raw MLMultiArray.dataPointer with ANE Float16 outputs
+
+**Original entry:** Raw `MLMultiArray.dataPointer` with ANE Float16 outputs — padded strides cause SIGSEGV.
+
+> Moved to graveyard 2026-06-11 (DOC.4). A CoreML-API gotcha for an API Phosphene does not use: D-009 chose MPSGraph over CoreML for all ML inference, and no source file imports CoreML (verified at move time). Companion of #12/#13 above. Re-instate as an active Failed Approach only if a future session revisits CoreML.
+
+### #20 — CoreML ANE outputs with bindMemory(to: Float.self)
+
+**Original entry:** CoreML ANE outputs with `bindMemory(to: Float.self)` — Float16 misinterpreted as Float32.
+
+> Moved to graveyard 2026-06-11 (DOC.4). Same rationale as #14: a CoreML-API gotcha; CoreML is unused (D-009, MPSGraph). Re-instate only if CoreML is revisited.
 
 ## Cold-start beat-phase derivation dead ends
 
