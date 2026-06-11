@@ -6,6 +6,19 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-06-11-c] DOC.4 — pruning pass (first since the 2026-05-13 refactor) + two doc-integrity finds
+
+The four protocol passes, four weeks / 775 commits overdue. CLAUDE.md 542 → 494 lines; nothing deleted — everything moved with provenance and the gap tables extended, every surviving `FA #` / `D-###` cross-reference grep-verified to resolve.
+
+- **Failed Approaches:** CoreML gotchas #14/#20 → graveyard (CoreML unused per D-009, verified); shader-craft gotchas #34–#38/#40 → SHADER_CRAFT §13 (most were already duplicated there verbatim — §13 is now canonical). ~50 entries deliberately KEPT, incl. the beat-detection dead-ends the queued D-145 beat-sync project will need.
+- **Decisions:** a mechanical citation graph (921 files + memory + open issues) showed 154/165 entries still cited — the old ~60-active estimate was wrong, so the cut is the verified subset: D-013/D-031/D-046 (shipped + uncited), D-120 (reverted; lessons live as FA #59/#60), and a D-086 dedupe (it sat in BOTH files since the original half-landed move). The Phase-MD-bloc REVISIT banner that DOC.0 planned finally landed, updated with the since-arrived empirical evidence.
+- **CLAUDE.md sections:** Cold-Start Phase Contract condensed to the operative contract (full history → BEAT_SYNC.md addendum); the 11 Arachne-specific do-nots → ARACHNE_V8_DESIGN.md; Module-Map per-preset histories (Arachne, LumenMosaic) split to their design docs per borderline-call B.
+- **Integrity finds, both pre-existing:** the parallel FBS.S5c commit (`5ac5ad90`) had accidentally deleted the entire **D-155** entry while editing the adjacent D-154 amendment — restored verbatim from `5ac5ad90~1`; and **D-145** was number-reserved at the NB renumbering, cited everywhere, but never actually written — retroactive stub filed.
+- **Reported for the next pass (Matt's call):** the deeper ~30-entry decisions cut needs a rule that narrative/provenance citations don't count as keep-signals; without it the citation graph correctly keeps nearly everything.
+- Battery green post-pass (engine 1430/1430, app tests succeeded, lint 0 — docs-only; zero test movement).
+
+---
+
 ## [dev-2026-06-11-b] Skein.6 — ✅ CERTIFIED (Matt M7 PASS) + BUG-046 fixed pre-flip
 
 **Matt's M7 verdict (session `2026-06-11T01-56-22Z`, streaming audit catalog): "It looks great. Ready to certify."** The ≥5-track + local-file bar was met cumulatively with the 2026-06-10 approved sessions (incl. the BUG-044 wipe verify). `certified: true` flipped; Skein is the **first `painterly`-family certified preset** (D-159). Full battery green post-flip: engine 1430/1430, app build + tests, SwiftLint strict 0.
