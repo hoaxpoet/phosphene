@@ -4766,6 +4766,11 @@ Reactive mode with no grid: no live phase is offered, the bridge keeps running (
 
 **References.** D-153/D-154/D-156/D-157 (the pulse chain), BUG-041 (aurora intensity hardening — stands, was not the flasher), FBS.S5 forensics commits, `docs/prompts/FBS_S5_CONTINUITY.md`.
 
+> **AMENDED 2026-06-10 (FBS.S5b — Matt's pick from the `2026-06-10T20-26-37Z` read).** The live read: flashing "mostly gone" (census 79 → 13 events / 154 s) but the global heave's opening window read as unsynced ("the feeling of sync is mostly lost during this 10s interval"). Census + ablation on the new session attributed the residual cold-start events to **the global bridge heave itself** (pulse OFF → 0; aurora/hue/light → unchanged) — the same whole-frame mechanism D-157 cured mid-track, re-admitted in openings by directive 3; the mid-track paired one-frame blips (3 in 154 s) do not reproduce in the replica (suspected video-encode, not render). Matt chose **C + A** from the presented options:
+> - **(C) Intensity τ reverted to 0.45/1.2 s** — the brightness shimmer returns (it was measured flash-safe by the S3.2 gates + S4 ablation and was never the flasher); the HUE stays slow (τ 3 s, the actual fix). Decision §2 above is superseded for intensity; §1 (hue) stands.
+> - **(A) Early handoff** (amends D-156's fixed 10 s window): when `LiveBeatDriftTracker` reports LOCKED, the handoff window opens at **4 s** (`BeatPulseClock.handoffEarliestS`; envelope-floor seam condition unchanged); the 10 s window remains the unlocked fallback. Measured on the read session: first lock at te 7.0–8.5 s on all five tracks → expect ~2–3 s earlier handoffs, shrinking both the unsynced window and the heave's flash exposure.
+> Gates: `test_earlyHandoff_firesSoonAfter4s_whenTrackerLocked` (real-session replay, locked → handoff in [4, 7) s, seam-safe); forensics windows on the read session unchanged post-revert (cold start 2 steps — the heave, by design until handoff; mid-track 1/1). Full suite 1429 green, app build OK, lint 0.
+
 ## D-159 — Skein.6 certification: lightweight rubric, FNV-1a seed ratified, coverage bound amended to never-solid/never-near-empty, canvas soak replaces the audio-path harness for §5.5
 
 **Date:** 2026-06-10 · **Increment:** Skein.6 · **Status:** Gates landed + Matt's coverage decision ratified; `certified: true` awaits the M7 verdict

@@ -105,6 +105,15 @@ public final class BeatPulseClock: @unchecked Sendable {
     /// window (the tracker's correction wanders over the opening — Stage 0).
     static let handoffAfterS: Double = 10.0
 
+    /// FBS.S5b (Matt's pick, option A): when the live drift tracker reports
+    /// LOCKED (`liveBeatStable`), the handoff may fire this early instead of
+    /// waiting the full `handoffAfterS`. The per-beat punches Matt likes
+    /// arrive sooner and the loosely-synced global heave window shrinks.
+    /// Floor of 4 s: never hand off inside the anchor-acquisition opening.
+    /// Measured on session `2026-06-10T20-26-37Z`: first lock landed at
+    /// te 7.0–8.5 s on all five tracks → expect ~2–3 s earlier handoffs.
+    static let handoffEarliestS: Double = 4.0
+
     /// Envelope threshold below which a swap is seam-safe. The handoff fires
     /// when BOTH the outgoing and incoming phases have envelope < this — the
     /// visible seam step is bounded by it. NOT a phase-window coincidence:
@@ -232,14 +241,19 @@ public final class BeatPulseClock: @unchecked Sendable {
     /// Advance the clock one analysis frame, with the live drift tracker's
     /// per-beat phase available for the FBS.S3 handoff (D-156).
     ///
-    /// - Parameter liveBeatPhase01: `FeatureVector.beatPhase01` from
-    ///   `LiveBeatDriftTracker` when a grid is installed; nil in reactive
-    ///   mode (no handoff — the bridge keeps running).
+    /// - Parameters:
+    ///   - liveBeatPhase01: `FeatureVector.beatPhase01` from
+    ///     `LiveBeatDriftTracker` when a grid is installed; nil in reactive
+    ///     mode (no handoff — the bridge keeps running).
+    ///   - liveBeatStable: true when the drift tracker reports LOCKED
+    ///     (≥ 4 onsets matched within ±30 ms). Enables the FBS.S5b early
+    ///     handoff (`handoffEarliestS`); false keeps the 10 s window.
     public func update(
         energySum: Float,
         time: Double,
         deltaTime: Float,
-        liveBeatPhase01: Float?
+        liveBeatPhase01: Float?,
+        liveBeatStable: Bool = false
     ) -> Output {
         let audible = energySum > Self.audibleEnergyFloor
         acquireAnchorIfNeeded(audible: audible, time: time)
@@ -275,9 +289,13 @@ public final class BeatPulseClock: @unchecked Sendable {
         // the rest of the track (its small continuous corrections read as
         // timing breath at punch rate, not stutter; gross corrections happen
         // in the opening, which the bridge covers).
+        // FBS.S5b: a LOCKED tracker opens the handoff window at 4 s instead
+        // of 10 — the regional per-beat punches arrive as soon as the live
+        // beat is trustworthy, shrinking the loosely-synced bridge window.
+        let eligibleAfter = liveBeatStable ? Self.handoffEarliestS : Self.handoffAfterS
         if !handedOff,
            let live = liveBeatPhase01,
-           time - anchor >= Self.handoffAfterS,
+           time - anchor >= eligibleAfter,
            Self.envelope(bridgePhase) < Self.handoffEnvelopeFloor,
            Self.envelope(live) < Self.handoffEnvelopeFloor {
             handedOff = true

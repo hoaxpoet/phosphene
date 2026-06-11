@@ -20,6 +20,17 @@ All automated cert gates for Skein are in, green, and calibrated against the app
 
 ---
 
+## [dev-2026-06-10-f] FBS.S5b — Matt's read: hue fix CONFIRMED (79 → 13 events); residual = the global heave itself; his pick C+A built (D-158 amendment)
+
+Matt's live read of `2026-06-10T20-26-37Z`: flashing "mostly gone," heave visible, **but the opening 10 s lost the sync feeling**. Census + ablation on the new session (which carries the new pulse diagnostic columns): the 13 residual events = 2 track-change cuts + 3 unreproducible one-frame blips (suspected video-encode) + the rest **the global bridge heave itself** (pulse OFF → 0; aurora/hue/light → unchanged) — the flashing and the unpolished-opening feel are ONE mechanism. Diagnosed → 3 options + recommendation → Matt picked **C + A**:
+
+- **C:** aurora intensity τ back to 0.45/1.2 s (the per-drum-hit shimmer returns — it was flash-safe all along; the HUE stays slow at τ 3 s, which was the actual flasher).
+- **A:** early handoff — a LOCKED drift tracker opens the handoff window at 4 s (`handoffEarliestS`) instead of 10; unlocked keeps 10 s. On the read session all five tracks locked at te 7.0–8.5 s → punches arrive ~2–3 s sooner, shrinking the loosely-synced heave window.
+
+Gates: `test_earlyHandoff_firesSoonAfter4s_whenTrackerLocked` (real-session replay); forensics re-renders flash-neutral post-revert. Engine 1429/0, app build OK, lint 0. **Awaiting Matt's next live read.**
+
+---
+
 ## [dev-2026-06-10-e] FBS.S5 — the flash hunt closes (the hue route, proven then fixed) + Matt's three S4 directives (D-158, BUG-045)
 
 **The proof first (the S5 rule: pixels, not input correlation).** The S4 replica-gap finding resolved exactly as hypothesized: adding the never-replicated `vocalsPitchHz`/`vocalsPitchConfidence` fields to the flash-forensics harness made the replica reproduce the remaining flashes (So What 31–41: 1 → 13 steps; Lotus 45–51: 0 → 15), and the new `aurora-hue` ablation arm (zeroing only those two fields) killed them (1 / 0). Mechanism in the recorded data: pitch confidence flaps across the hue gate ~9×/s, snapping the aurora hue between palette stops across the whole mirrored sky. Filed + resolved as **BUG-045**.

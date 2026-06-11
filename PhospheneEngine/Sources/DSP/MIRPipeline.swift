@@ -422,7 +422,8 @@ public final class MIRPipeline: @unchecked Sendable {
             energySum: fv.bass + fv.mid + fv.treble,
             time: elapsedSeconds,
             deltaTime: ctx.deltaTime,
-            liveBeatPhase01: liveDriftTracker.hasGrid ? fv.beatPhase01 : nil
+            liveBeatPhase01: liveDriftTracker.hasGrid ? fv.beatPhase01 : nil,
+            liveBeatStable: liveDriftTracker.currentLockState == .locked
         )
         applyPulseFields(pulse, to: &fv)
         return fv
