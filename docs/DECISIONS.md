@@ -4773,7 +4773,7 @@ Reactive mode with no grid: no live phase is offered, the bridge keeps running (
 
 ## D-159 — Skein.6 certification: lightweight rubric, FNV-1a seed ratified, coverage bound amended to never-solid/never-near-empty, canvas soak replaces the audio-path harness for §5.5
 
-**Date:** 2026-06-10 · **Increment:** Skein.6 · **Status:** Gates landed + Matt's coverage decision ratified; `certified: true` awaits the M7 verdict
+**Date:** 2026-06-10 · **Increment:** Skein.6 · **Status:** ✅ **CERTIFIED 2026-06-11** — Matt M7 PASS ("It looks great. Ready to certify", session `2026-06-11T01-56-22Z`). The pre-flip session review surfaced **BUG-046** (the structure sub-feature riding BUG-042's note-scale junk at conf 0.78–0.95 on streaming material — the "structure inert on junk" cert premise held only on local-file material); Matt's pick (a 10 wall-s boundary-spacing guard in `SkeinState`) landed before the flip. First `painterly`-family certified preset.
 
 **Context.** Skein's look was Matt-approved at the 5.4 eyeball gate (three live sessions, 2026-06-10, post-round-2 tune). Skein.6 is gates + docs + the D-142(c) deferred engine touch — no behavioural change. Four certification decisions fell out of making the §5.5/§5.7 contracts executable:
 

@@ -6,7 +6,19 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
-## [dev-2026-06-10-f] Skein.6 — certification gates landed (D-159); awaiting Matt's M7
+## [dev-2026-06-11-b] Skein.6 — ✅ CERTIFIED (Matt M7 PASS) + BUG-046 fixed pre-flip
+
+**Matt's M7 verdict (session `2026-06-11T01-56-22Z`, streaming audit catalog): "It looks great. Ready to certify."** The ≥5-track + local-file bar was met cumulatively with the 2026-06-10 approved sessions (incl. the BUG-044 wipe verify). `certified: true` flipped; Skein is the **first `painterly`-family certified preset** (D-159). Full battery green post-flip: engine 1430/1430, app build + tests, SwiftLint strict 0.
+
+**BUG-046, found in the pre-flip session review and fixed at Matt's direction ("If anything looks concerning, let's fix it before we certify").** The session's features.csv falsified the cert premise "Skein's structure sub-feature is conf-gated to zero on BUG-042's junk": on busy streaming material the parked note-scale detector defect fires boundaries every ~1.7 s **at confidence 0.78–0.95** — the gate wide open — so the flurry pulse ran permanently re-armed (≈1.6–2.2× the Matt-tuned spatter rate) and boundary-forced pours chopped at ~1–1.7 s (the rejected "lines too short" character), on streaming only (local files keep the detector quiet → the tuned look). Matt's pick of three presented options: a **10 wall-second boundary-spacing guard** (`SkeinState.minSectionSpacingS`; wall, not painter τ — τ runs 1.5–2× wall on busy music). Real section changes (15–60 s apart) pass untouched; harmless after the eventual BUG-042 detector fix. A/B-validated gate `test_structure_boundarySpacingGuard`: machine-gun replay 16→4 pour breaks / 1650→1250 spawns (both asserts trip without the guard); the sparse real boundary still lands. BUG-042 itself stays open/parked.
+
+**Soak verdict (completing the entry below):** the 2-hour canvas soak PASSES — byte-perfect RGBA hold (0 px) across the settled 89-minute silence window; painting resumes; never-white holds; 8-bit confirmed, no 16-bit fallback. Run 1 surfaced two harness assumption bugs (baseline taken before the designed EMA silence-settle; an "unreachable corner" that flicks legitimately reach at soak scale) — fixed in the harness, documented in the test.
+
+**Next:** the pruning pass (overdue since DOC.3 2026-05-13) is the next increment.
+
+---
+
+## [dev-2026-06-10-g] Skein.6 — certification gates landed (D-159); awaiting Matt's M7 *(slug repaired from a parallel-session `-f` collision)*
 
 All automated cert gates for Skein are in, green, and calibrated against the approved sessions; no behavioural or tuning change (the 5.4 look is untouched). `certified` stays `false` until Matt's M7 verdict (≥5 streaming tracks + a local file, from the main build).
 
