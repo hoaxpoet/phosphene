@@ -142,13 +142,18 @@ final class FerrofluidPulseLivePathTests: XCTestCase {
                 fv.pulsePhase01 = pulses[i].phase01
                 fv.pulseAmp01 = pulseLive ? pulses[i].amp01 : 0   // A/B arm
                 var features = fv
+                // FBS Stage 2: pin the loudness envelope at full so this
+                // test keeps proving FULL-height beat motion (the height
+                // scaling has its own pixel gate below).
+                var stems = StemFeatures.zero
+                stems.totalEnergySmoothed = 1.2
                 let cmdBuf = try XCTUnwrap(context.commandQueue.makeCommandBuffer())
                 pipeline.render(
                     gbufferPipelineState: gbufferState,
                     features: &features,
                     fftBuffer: fftBuf,
                     waveformBuffer: wavBuf,
-                    stemFeatures: .zero,
+                    stemFeatures: stems,
                     outputTexture: outTex,
                     commandBuffer: cmdBuf,
                     noiseTextures: nil,
@@ -209,5 +214,62 @@ final class FerrofluidPulseLivePathTests: XCTestCase {
                              "the change must be AT the beats, ~zero between them "
                              + "(punch |δ|=\(punchMag) vs rest |δ|=\(restMag)) — "
                              + "this is what beat-locked, non-flickering motion means")
+
+        // ── FBS Stage 2 pixel gate: quiet passages punch GENTLY ──
+        // Same punch frame rendered three ways: no pulse / quiet-passage
+        // envelope (So What intro level → height ≈ 0.37) / loud envelope
+        // (height = 1.0). The rendered punch effect must scale accordingly.
+        func renderPunchFrame(amp: Float, energySmoothed: Float) throws -> [Float] {
+            let i = indices[indices.count / 2]
+            var fv = FeatureVector(bass: frames[i].bass, mid: frames[i].mid,
+                                   treble: frames[i].treble,
+                                   time: Float(frames[i].trackElapsedS),
+                                   deltaTime: frames[i].deltaTime)
+            fv.trackElapsedS = Float(frames[i].trackElapsedS)
+            fv.pulsePhase01 = 0.18   // punch peak (attack 0–0.20)
+            fv.pulseAmp01 = amp
+            var stems = StemFeatures.zero
+            stems.totalEnergySmoothed = energySmoothed
+            var features = fv
+            let cmdBuf = try XCTUnwrap(context.commandQueue.makeCommandBuffer())
+            pipeline.render(
+                gbufferPipelineState: gbufferState, features: &features,
+                fftBuffer: fftBuf, waveformBuffer: wavBuf, stemFeatures: stems,
+                outputTexture: outTex, commandBuffer: cmdBuf, noiseTextures: nil,
+                iblManager: iblManager, postProcessChain: ppChain,
+                presetFragmentBuffer3: nil,
+                presetHeightTexture: particles.heightTexture)
+            cmdBuf.commit()
+            cmdBuf.waitUntilCompleted()
+            var pixels = [UInt8](repeating: 0,
+                                 count: Self.renderWidth * Self.renderHeight * 4)
+            outTex.getBytes(&pixels, bytesPerRow: Self.renderWidth * 4,
+                            from: MTLRegionMake2D(0, 0, Self.renderWidth, Self.renderHeight),
+                            mipmapLevel: 0)
+            var lumas: [Float] = []
+            let yLo = Self.renderHeight / 3
+            for y in yLo..<Self.renderHeight {
+                for x in stride(from: 0, to: Self.renderWidth, by: 4) {
+                    let p = (y * Self.renderWidth + x) * 4
+                    lumas.append(0.114 * Float(pixels[p]) + 0.587 * Float(pixels[p + 1])
+                               + 0.299 * Float(pixels[p + 2]))
+                }
+            }
+            return lumas
+        }
+        func meanAbsDelta(_ a: [Float], _ b: [Float]) -> Float {
+            zip(a, b).map { abs($0 - $1) }.reduce(0, +) / Float(a.count)
+        }
+        let noPulse = try renderPunchFrame(amp: 0, energySmoothed: 1.2)
+        let quiet = try renderPunchFrame(amp: 1, energySmoothed: 0.34)   // So What intro level
+        let loud = try renderPunchFrame(amp: 1, energySmoothed: 1.3)
+        let quietPunch = meanAbsDelta(quiet, noPulse)
+        let loudPunch = meanAbsDelta(loud, noPulse)
+        print("[FBS S2 live-path] punch effect: quiet=\(quietPunch) loud=\(loudPunch) luma")
+        XCTAssertGreaterThan(quietPunch, 0.3,
+                             "the floor must keep every beat registering at quiet passages")
+        XCTAssertGreaterThan(loudPunch, 1.8 * quietPunch,
+                             "loud passages must punch clearly taller than quiet ones "
+                             + "(loud \(loudPunch) vs quiet \(quietPunch))")
     }
 }

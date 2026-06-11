@@ -249,7 +249,19 @@ static inline float fo_spike_strength(float2 xz,
     float head   = min(0.7, 1.55 - baseline);
     float blend  = clamp(f.pulse_regional_blend01, 0.0, 1.0);
     float mask   = mix(1.0, fo_punch_mask(xz, f.pulse_beat_index), blend);
-    return baseline + head * amp * env * mask;
+    // FBS Stage 2 — punch HEIGHT from passage loudness (kickoff §Stage 2:
+    // loud → tall, soft → small, a floor so every beat registers while music
+    // plays; `pulse_amp01` already zeroes the punch at true silence). Input
+    // is the CPU-smoothed total stem energy (symmetric τ 2.5 s) — the
+    // signal measured to survive the AGC on real sessions (So What's
+    // bass+piano intro 0.33–0.35 vs 0.8–1.5 with the band in; Love Rehab /
+    // Pyramid open ≥ 1.1 so strong openings keep full height). Mapping:
+    // smoothstep over [0.25, 1.0] → height scale [0.30, 1.0]. So What's
+    // intro lands ≈ 0.37 (gentle pulse), its band sections ≈ 1.0. Scale ≤ 1
+    // only REDUCES the punch — the 1.55 Lipschitz peak cap holds.
+    float loud   = smoothstep(0.25, 1.0, stems.total_energy_smoothed);
+    float height = mix(0.30, 1.0, loud);
+    return baseline + head * amp * env * mask * height;
 }
 
 // Swell amplitude scale — slow energy-driven drift only (round 65, 2026-05-18).

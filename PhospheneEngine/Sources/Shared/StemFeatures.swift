@@ -165,9 +165,19 @@ public struct StemFeatures: Sendable, Equatable {
     /// Slot reclaimed from `_sfPad3`; layout of floats 1–44 unchanged.
     public var auroraPalettePhase: Float
 
-    // --- Floats 46–64: padding to 256 bytes (19 floats) ---
+    // --- Float 46: FBS Stage 2 punch-energy envelope ---
+
+    /// Passage-loudness envelope: symmetric EMA (τ 2.5 s,
+    /// `RenderPipeline.punchEnergyStep`) over the total stem energy
+    /// (drums + bass + vocals + other). Scales the Ferrofluid Ocean beat-punch
+    /// HEIGHT — loud passages punch tall, quiet ones gently (mapping lives in
+    /// `fo_spike_strength`); the beat keeps the timing. Renderer-transient
+    /// (excluded from Codable), populated by `RenderPipeline.drawWithRayMarch`.
+    /// Slot reclaimed from `_sfPad4`; layout of floats 1–45 unchanged.
+    public var totalEnergySmoothed: Float
+
+    // --- Floats 47–64: padding to 256 bytes (18 floats) ---
     // swiftlint:disable identifier_name
-    var _sfPad4: Float
     var _sfPad5: Float; var _sfPad6: Float; var _sfPad7: Float; var _sfPad8: Float
     var _sfPad9: Float; var _sfPad10: Float; var _sfPad11: Float; var _sfPad12: Float
     var _sfPad13: Float; var _sfPad14: Float; var _sfPad15: Float; var _sfPad16: Float
@@ -209,7 +219,7 @@ public struct StemFeatures: Sendable, Equatable {
         self.drumsEnergyDevSmoothed = 0
         self.cachedBassProportion = 0
         self.auroraPalettePhase = 0
-        self._sfPad4  = 0
+        self.totalEnergySmoothed = 0
         self._sfPad5  = 0; self._sfPad6  = 0; self._sfPad7  = 0; self._sfPad8  = 0
         self._sfPad9  = 0; self._sfPad10 = 0; self._sfPad11 = 0; self._sfPad12 = 0
         self._sfPad13 = 0; self._sfPad14 = 0; self._sfPad15 = 0; self._sfPad16 = 0
