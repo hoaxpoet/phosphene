@@ -16,7 +16,7 @@
 | FA | active numbered Failed Approach entries in CLAUDE.md | **49** (#1–4, #11, #15–18, #21–33, #39, #48–73) |
 | DN | Do-NOT bullets: 57 in §What NOT To Do + 6 prohibition bullets embedded in other sections (numbered DN-58…DN-63 here) | **63** |
 | SEC | `##`-level CLAUDE.md sections (each audited as a unit; §Cold-Start Phase Contract is a `###` subsection of SEC-6 and is verdicted inside that row) | **21** |
-| D | active `## D-…` entries in docs/DECISIONS.md: 155 numbered (incl. D-076 reserved/abandoned) + 6 unnumbered `D-LM-*` (audit aliases D-901…D-906) | **161** |
+| D | active `## D-…` entries in docs/DECISIONS.md: 155 numbered (incl. D-076 reserved/abandoned) + 6 unnumbered `D-LM-*` (audited under their `D-LM-*` names — no numeric aliases, which would trip the DOC.4.1 citation gate) | **161** |
 | **total** | | **294** |
 
 ### 1.2 Mass measurements (method: `wc -w` × 1.35)
@@ -375,12 +375,12 @@ Verdict semantics reminder: RETIRE = move to DECISIONS_HISTORY.md (rationale pre
 | D-158 | FBS vocals-pitch → aurora-HUE | 4/105/3 (recency) | active | DEMOTE | stays active | high |
 | D-159 | Skein.6 certification record | 4/59/2 (recency) | active cert record | DEMOTE | stays active | high |
 | D-160 | FBS Stage 2 height-follows-loudness | 1/12/2 (recency) | active | DEMOTE | stays active | high |
-| D-901 | (D-LM-buffer-slot-8) fragment slot 8 reserved for per-preset state | unmeasured | live GPU contract reservation | DEMOTE | ARCHITECTURE §GPU Contract slot table + stays active | high |
-| D-902 | (D-LM-d5) LM band-routed beat dance | unmeasured | shipped; LM design doc (DOC.4 precedent) | RETIRE | DECISIONS_HISTORY; LUMEN_MOSAIC_DESIGN.md carries | high |
-| D-903 | (D-LM-6) LM cell-depth gradient | unmeasured | shipped; design doc | RETIRE | DECISIONS_HISTORY | high |
-| D-904 | (D-LM-7) LM per-track RGB tint projection | unmeasured | shipped; design doc | RETIRE | DECISIONS_HISTORY | high |
-| D-905 | (D-LM-palette-library) curated 18-palette library, anti-repeat N=3 | unmeasured | operative in certified LM | DEMOTE | LUMEN_MOSAIC_DESIGN.md + stays active | high |
-| D-906 | (D-LM-cream-rescission) pale-tone-share ceiling replaces anti-cream rule | unmeasured | operative project-wide palette rule (DN-32 gates) | DEMOTE | SHADER_CRAFT (palette rules) + stays active | high |
+| D-LM-buffer-slot-8 | fragment slot 8 reserved for per-preset state | unmeasured | live GPU contract reservation | DEMOTE | ARCHITECTURE §GPU Contract slot table + stays active | high |
+| D-LM-d5 | LM band-routed beat dance | unmeasured | shipped; LM design doc (DOC.4 precedent) | RETIRE | DECISIONS_HISTORY; LUMEN_MOSAIC_DESIGN.md carries | high |
+| D-LM-6 | LM cell-depth gradient | unmeasured | shipped; design doc | RETIRE | DECISIONS_HISTORY | high |
+| D-LM-7 | LM per-track RGB tint projection | unmeasured | shipped; design doc | RETIRE | DECISIONS_HISTORY | high |
+| D-LM-palette-library | curated 18-palette library, anti-repeat N=3 | unmeasured | operative in certified LM | DEMOTE | LUMEN_MOSAIC_DESIGN.md + stays active | high |
+| D-LM-cream-rescission | pale-tone-share ceiling replaces anti-cream rule | unmeasured | operative project-wide palette rule (DN-32 gates) | DEMOTE | SHADER_CRAFT (palette rules) + stays active | high |
 
 **D tallies:** KEEP 1 · MECHANIZE 9 · DEMOTE 65 · RETIRE 86.
 
@@ -438,18 +438,18 @@ No KEEP overflow to flag (12 rule slots < 15).
 **File split:**
 - **CLAUDE.md (slim core, ≤ 7,000 tokens):** identity, Build & Test, the two protocols, Audio Data Hierarchy (with the FA-4/D-026 canonical statements + compressed cold-start contract + DN-16), a single Handbook-Index block replacing the 8 pointer sections, trimmed Code Style, 5-entry Failed Approaches table + gap-table pointer, universal Authoring Discipline rules, ~10-line invariants list (DN-3/4 + mechanized-rule pointers), Current Status, Development Constraints.
 - **docs/PRESET_SESSION.md (new; read-first for preset sessions):** preset-scope Authoring Discipline operationalia, the reference/README protocol (FA-39/63 hook description + manual fallback), the M7-prep contact-sheet checkpoint (FA-48), per-preset doc index (Arachne, LM, Skein, FFO, Dragon Bloom, Fata Morgana design docs), SHADER_CRAFT §13/§18 pointers.
-- **docs/INFRA_SESSION.md (new; read-first for engine/DSP sessions):** BEAT_SYNC.md pointer + the beat-sync demotions (FA-50/51/68/69, DN-39/40/43), sample-rate and tap rules (FA-21/22, DN-42), orchestrator demotions (FA-53/54, DN-45/46/47/54), GPU-contract demotions (DN-53, D-901).
+- **docs/INFRA_SESSION.md (new; read-first for engine/DSP sessions):** BEAT_SYNC.md pointer + the beat-sync demotions (FA-50/51/68/69, DN-39/40/43), sample-rate and tap rules (FA-21/22, DN-42), orchestrator demotions (FA-53/54, DN-45/46/47/54), GPU-contract demotions (DN-53, D-LM-buffer-slot-8).
 
 **Move list by destination:**
 - `HISTORICAL_DEAD_ENDS.md` (tombstones): FA-1, 2, 3, 11, 17, 18, 59, 60.
 - `DECISIONS_HISTORY.md`: the 86 D-RETIRE rows (§2.4).
-- `SHADER_CRAFT.md` (§13 / §18 / cookbooks / §12.1 dedupes): FA-23, 24, 26, 32, 33, 58, 61, 62, 64, 65, 67, 70, 71; DN-2, 12, 15, 19, 21, 22, 24, 25, 26, 27, 31, 33, 34; D-019, 020, 022, 029, 045, 064, 065, 067, 101, 123, 138, 139, 906 content cross-refs.
+- `SHADER_CRAFT.md` (§13 / §18 / cookbooks / §12.1 dedupes): FA-23, 24, 26, 32, 33, 58, 61, 62, 64, 65, 67, 70, 71; DN-2, 12, 15, 19, 21, 22, 24, 25, 26, 27, 31, 33, 34; D-019, 020, 022, 029, 045, 064, 065, 067, 101, 123, 138, 139, D-LM-cream-rescission content cross-refs.
 - `docs/CAPABILITY_REGISTRY/BEAT_SYNC.md`: FA-50, 51, 68, 69; DN-39, 40, 43; D-075, 077, 145 cross-refs.
-- `docs/ARCHITECTURE.md`: FA-15, 16, 28 notes; DN-8, 10, 42, 50, 53, 54; D-030, 057, 059, 080, 092 (slot table), 099, 901; SEC-20.
+- `docs/ARCHITECTURE.md`: FA-15, 16, 28 notes; DN-8, 10, 42, 50, 53, 54; D-030, 057, 059, 080, 092 (slot table), 099, D-LM-buffer-slot-8; SEC-20.
 - `docs/RUNBOOK.md`: FA-21, 22 (troubleshooting), 27 (diagnostics), 29 env note, 30; DN-36, 37, 38 dedupes.
 - `docs/UX_SPEC.md`: DN-28, 29, 30 dedupes; D-044, 051, 054, 058.
 - `docs/presets/ARACHNE_V8_DESIGN.md`: FA-57; DN-52 pointer relocation.
-- `docs/presets/LUMEN_MOSAIC_DESIGN.md`: D-902/903/904 narrative, D-905.
+- `docs/presets/LUMEN_MOSAIC_DESIGN.md`: D-LM-d5/D-LM-6/D-LM-7 narrative, D-LM-palette-library.
 - Code comments: FA-21, 25, 28, 50, 53 sites; DN-42, 43 sites.
 
 **MECHANIZE gate-build list (priority order):**
