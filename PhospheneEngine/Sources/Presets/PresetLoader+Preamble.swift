@@ -152,8 +152,13 @@ extension PresetLoader {
             // height. Zero on other presets.
             float total_energy_smoothed;
 
-            // Padding to 256 bytes (floats 47–64).
-            float _pad5,  _pad6,  _pad7,  _pad8;
+            // BUG-047 aurora orbit azimuth (float 47) — reclaimed from
+            // `_pad5`. Radians, integrated CPU-side. Consumed by the FFO
+            // sky; zero on other presets.
+            float aurora_orbit_azimuth;
+
+            // Padding to 256 bytes (floats 48–64).
+            float _pad6,  _pad7,  _pad8;
             float _pad9,  _pad10, _pad11, _pad12, _pad13, _pad14, _pad15, _pad16;
             float _pad17, _pad18, _pad19, _pad20, _pad21, _pad22;
         };

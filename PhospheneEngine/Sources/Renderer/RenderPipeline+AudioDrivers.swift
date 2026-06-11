@@ -155,4 +155,41 @@ extension RenderPipeline {
         let alpha = 1.0 - exp(-max(0, dt) / Self.punchEnergyTau)
         return smoothed + alpha * (target - smoothed)
     }
+
+    // MARK: - Aurora orbit driver (BUG-047)
+
+    /// Base curtain revolution period in accumulated-audio-time seconds —
+    /// round 61's Matt-tuned value, moved verbatim from `rm_ferrofluidSky`
+    /// (`kCurtainBaseRevolutionSeconds`). At the typical ~7 % wall-clock
+    /// rate of `accumulated_audio_time`, a palette half-cycle spans ~30 s.
+    static let auroraOrbitBaseRevolutionS: Float = 2.5
+
+    /// One frame of the aurora orbit (BUG-047). Pure + deterministic for
+    /// the forensics replica.
+    ///
+    /// The shader used to compute `azimuth = arousalSpeed × accumulatedTime`
+    /// — the speed factor multiplied the ENTIRE elapsed total, so any
+    /// arousal movement retroactively rescaled history: per-second mood
+    /// wobble on jazz teleported the curtain azimuth ±2+ radians/s and the
+    /// palette marched green→pink→purple second-by-second (Matt's So What
+    /// read, session `2026-06-11T13-10-42Z`; measured palette-t jumps of
+    /// 0.2–0.3/s vs the designed ≤0.03/s). The error grows with elapsed
+    /// time — openings looked fine, minute-two thrashed. The fix is the
+    /// design comment's actual meaning: arousal scales the orbit SPEED, so
+    /// integrate `speed × Δtime` per frame.
+    ///
+    /// `aatDelta` ≤ 0 (track-change reset of the accumulator) advances
+    /// nothing — the orbit simply continues from where it was.
+    static func auroraOrbitStep(
+        azimuth: Float,
+        aatDelta: Float,
+        arousal: Float
+    ) -> Float {
+        // arousalSpeed = mix(0.5, 1.0, smoothstep(-1, 1, arousal)) — verbatim
+        // from the pre-fix shader.
+        let x = min(max((arousal + 1.0) / 2.0, 0.0), 1.0)
+        let speed = 0.5 + 0.5 * (x * x * (3.0 - 2.0 * x))
+        let angular = 2.0 * Float.pi / Self.auroraOrbitBaseRevolutionS
+        return azimuth + max(0, aatDelta) * speed * angular
+    }
 }

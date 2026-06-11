@@ -232,6 +232,16 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// `auroraDrumsSmoothed`.
     var punchEnergySmoothed: Float = 0
 
+    /// BUG-047 — aurora curtain orbit azimuth (radians), integrated per
+    /// frame by `auroraOrbitStep` (arousal scales the SPEED of each
+    /// increment, never rescaling history). Shipped via
+    /// `StemFeatures.auroraOrbitAzimuth`. `lastAuroraAat` tracks the
+    /// previous frame's `accumulatedAudioTime` to form the increment;
+    /// a track-change reset (aat going backwards) advances nothing.
+    /// Ray-march draw path only, like the other aurora drivers.
+    var auroraOrbitAzimuth: Float = 0
+    var lastAuroraAat: Float?
+
     // MARK: - Feedback Textures (Milkdrop-style ping-pong)
 
     /// Double-buffered feedback textures. Index flips each frame.
