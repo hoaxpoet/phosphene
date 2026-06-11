@@ -111,7 +111,7 @@ Trivial P1 defects may collapse steps 1–4 into one increment. State this expli
 
 ## Module Map
 
-The per-file behavioural reference (every Swift source file, every Metal shader, every test target) lives in [docs/ARCHITECTURE.md §Module Map](docs/ARCHITECTURE.md#module-map). Per-preset design history (Arachne V.7.x, LumenMosaic LM.3 → LM.7) is currently inline in those entries; a future pruning pass will split it to `docs/presets/<preset>_DESIGN.md` per borderline-call B of the 2026-05-13 doc-refactor plan.
+The per-file behavioural reference (every Swift source file, every Metal shader, every test target) lives in [docs/ARCHITECTURE.md §Module Map](docs/ARCHITECTURE.md#module-map). Per-preset design history split out at DOC.4 (2026-06-11) per borderline-call B of the 2026-05-13 doc-refactor plan: Arachne V.7.x → `docs/presets/ARACHNE_V8_DESIGN.md §Module-Map history`, LumenMosaic LM.3 → LM.7 → `docs/presets/LUMEN_MOSAIC_DESIGN.md §Module-Map history`; the Module Map entries keep short architectural notes + pointers.
 
 ---
 
