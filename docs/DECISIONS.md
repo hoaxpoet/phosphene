@@ -4384,6 +4384,16 @@ Every other mv_warp preset (Fata Morgana, Gossamer) has no geometry overlay → 
 
 ---
 
+## D-145 — Nimbus beat-grid live phase: deferred to its own project (number reserved at the NB renumbering; entry filed retroactively at DOC.4)
+
+**Date:** 2026-06-05 (reserved) / 2026-06-11 (filed) · **Increment:** NB.9 cert review · **Status:** Accepted — the deferral stands; the project has not started
+
+> **DOC.4 integrity note (2026-06-11):** the number was claimed at the 2026-06-05 renumbering ("the beat-grid project moved to D-144 / D-145" — see D-144's header note) and has been cited ever since (D-144, FidelityRubricTests' Nimbus cert comment, memory), but the entry itself was never written. This retroactive stub records the decision as it was made so the citations resolve; it adds nothing not already decided.
+
+**Decision.** Nimbus's M7 surfaced two findings; the mood half became D-144. The beat half — the cached beat grid's live phase is unreliable at track start (the FA #69 / Cold-Start Phase Contract structural limit) — is NOT a Nimbus defect and was deferred to its own future project, accepted as a known limitation at Nimbus certification. Any such project starts from the Cold-Start Phase Contract's premise constraints (human-tap reference / full-track local-file analysis / manual calibration — never another short-window signal).
+
+**References.** D-144 (the renumbering + the mood half), CLAUDE.md §Cold-Start Phase Contract + Failed Approach #69, the NB.9 cert closeout.
+
 ## D-146 — BUG-027 fix scope: per-band EMA pivot on the FeatureVector band deviation (mirror the stem path); document the stem-energy offset (AGC2.2)
 
 **Date:** 2026-06-05. **Status:** decided (Matt's AGC2.2 call); implementation = AGC2.3; validation + catalog M7 = AGC2.4. Refines D-026 (the deviation-primitive contract).
@@ -4598,6 +4608,23 @@ Plumbing: one gated `mvWarpWetnessDecay` uniform (mirror of `mvWarpChromatic`), 
 **References.** D-153 (the pulse), FBS Stage-1 verdict addendum, FA #57 (gates specced against real data — the calibration table), Matt 2026-06-10.
 
 > **AMENDED 2026-06-11 (FBS.S5c — the FFO ban is RETIRED).** Matt watched FFO on Pyramid Song — the gate's canonical catch — in session `2026-06-11T01-56-22Z` and ruled: *"Remove the FFO ban for Pyramid Song - it looks and moves great!"* Asked retire-entirely vs soften-to-preference; **Matt picked retire entirely.** The session data explains why the ban's premise failed: the live drift tracker **LOCKED on Pyramid at te 5.4 s** (faster than any regular track that session; locked for 61 % of the segment) — the 47.7 % grid-vs-drums disagreement that flagged the track condemned the drums-stem estimate, not the 70 BPM grid FFO actually uses (Pyramid genuinely sits at ~68–70 BPM). Both gate catches Matt has watched (Pyramid, Mingus) looked good, and the post-D-156/157/158 FFO degrades gracefully on unreliable beats (gentle global heave; per-beat punches only after lock or the 10 s window). **Implementation:** `requires_regular_beat` removed from `FerrofluidOcean.json` — no production preset declares it. The MECHANISM (descriptor flag, scorer/planner/reactive hard exclusion, `assessBeatIrregularity` → `TrackProfile.beatIrregular` signal) stays, tested via synthetic presets, available to future presets and as diagnostic data. `test_realFFOSidecar_doesNotDeclareRequiresRegularBeat` pins the retirement — re-adding the flag to FFO requires a new product decision. The D-154 known-gaps list (swing invisibility, threshold tuning) is moot for FFO while no preset declares the flag.
+
+**Date:** 2026-06-10 · **Increment:** Skein.5.3 · **Status:** Ratified (Matt's curation + picker choice, 2026-06-10)
+
+**Decision.** Skein paints each track in ONE palette chosen from a curated library, replacing the single Full Fathom Five register:
+
+1. **The library** (`SkeinPaletteLibrary.candidates`, display sRGB): `fathom` (the shipped default, index 0), `nocturne` (ink blue-black / deep violet / moonlit gold / ice blue), `jewel` (deep violet / crimson / saffron / emerald), `inkpop` (near-black / cobalt / hot orange / magenta), `electric` (violet charcoal / magenta / acid orange / cyan). Matt curated from six rendered candidates on identical seed-0 real-stem paintings; `terra` (umber/rust/gold/sage) was cut.
+2. **Fixed role grammar** — in EVERY palette: drums = the darkest ink, bass = the deep heavy saturated weight, vocals = the warm bright lead, other = the contrast accent. The colour→stem vocabulary stays learnable across palettes even as hues change (the trade-off that otherwise argues against a library).
+3. **Picker = per-track, deterministic** (Matt's choice over mood-matched): `SkeinPaletteLibrary.entry(forTrackSeed:)` = `seed % count`, fed by the SAME FNV-1a track identity that seeds the painter trajectory — the same song always paints the same painting in the same colours (§5.7 extends to colour), and a playlist rotates the library naturally. LIBRARY MODE engages only when `SkeinState` is constructed without an explicit palette (the live app path); explicit palettes (every test fixture, the contact-sheet candidates) stay pinned forever, and `reseed` re-picks only in library mode. Seed 0 → `fathom`, so all no-palette fixtures are byte-identical to pre-library behaviour.
+4. **Curation gates** (`SkeinPaletteLibraryTests`, always-on): every entry stays pairwise-separable — including vs the cream ground — at the rendered-display level across the FULL Skein.5 mood-tint swing (valence −1…+1 through the EXACT production transform, `SkeinState.moodTint` extracted static for this); pale-tone ceiling per ink; role grammar (drums darkest); `fathom == defaultPalette` byte-equality; picker determinism + reseed re-pick + explicit-mode pinning.
+
+**Trade-off accepted.** Per-palette character variation (e.g. nocturne's violet bass vs fathom's oxblood) means M7/cert evidence must sample multiple palettes; Skein.6's ≥5-track M7 naturally covers ≥5 palette draws via distinct tracks.
+
+**References.** D-147 (stem palette + the legibility binding constraint), D-150/D-152 (the colour-freeze + lay-time mood tint the library rides), D-LM-palette-library (the Lumen Mosaic precedent Matt pointed at), SKEIN_DESIGN §1.2 ("the palette is open — a tunable"), SHADER_CRAFT §18.8.
+
+## D-155 — Skein.5.3 palette library: five Matt-curated palettes, fixed role grammar, deterministic per-track picker
+
+> **Restored at DOC.4 (2026-06-11):** this entry was accidentally deleted by the parallel FBS.S5c commit (`5ac5ad90`, 2026-06-11) while the adjacent D-154 amendment was edited — found by the DOC.4 cross-reference sweep (`git log -S` evidence). Text restored verbatim from `5ac5ad90~1`, including the 5.3b amendment.
 
 **Date:** 2026-06-10 · **Increment:** Skein.5.3 · **Status:** Ratified (Matt's curation + picker choice, 2026-06-10)
 
