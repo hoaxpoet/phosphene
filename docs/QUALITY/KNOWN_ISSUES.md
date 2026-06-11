@@ -195,7 +195,7 @@ Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — 
 
 **Severity:** P2 (the Skein.5 structure sub-feature and the orchestrator's `StructuralPrediction` consumer act on a boundary every ~1.5 s with confidence 0.85–1.00 — worse than pre-BUG-040, where low confidence at least kept the gates shut).
 **Domain tag:** dsp.structure
-**Status:** Open — verified from session artifacts (the Skein.5.2 columns doing their job again).
+**Status:** Open — verified from session artifacts (the Skein.5.2 columns doing their job again). **2026-06-11 (BUG-046):** the Skein consumer is now guarded against the junk (10 wall-s boundary spacing in `SkeinState`, landed pre-certification); the orchestrator's `StructuralPrediction` consumer still rides it — fixing the detector geometry remains this bug's scope.
 **Introduced:** structural — the analyzer's defaults were sized for a different feature rate; at the live ~94 Hz analysis rate the geometry detects note/bar novelty, not sections.
 **Resolved:** —
 
@@ -1105,6 +1105,24 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 ---
 
 ## Resolved (recent)
+
+### BUG-046 — Skein's section response rides BUG-042's note-scale junk on streaming material: the confidence gate passes boundaries every ~1.7 s at conf 0.78–0.95 (2026-06-11)
+
+> **RESOLVED 2026-06-11 (Skein.6, pre-certification)** — Trivial-collapsed P2 per CLAUDE.md §Defect Handling Protocol (one guard + one constant + one regression gate; root cause fully evidenced from the M7 session artifacts before any code; Matt picked the fix option in chat — "Add a section-spacing guard"). Found during the Skein.6 M7 session review; fixed before flipping `certified: true` at Matt's direction ("If anything looks concerning, let's fix it before we certify").
+
+**Severity:** P2 (the certified preset's character silently differs by audio source: on busy streaming material the splatter runs ≈1.6–2.2× the Matt-tuned round-2 rate and pours chop at ~1–1.7 s — the rejected D-150 "lines too short" character — while local-file material keeps the tuned behaviour).
+
+**Domain tag:** `preset.fidelity` / failure class `calibration` (a downstream consumer trusting an upstream signal whose failure mode pins the gate's pass condition).
+
+**Expected behavior.** Skein's structure response (flurry pulse + boundary-forced fresh pour + region lean, D-152) fires on real musical section changes — every 15–60 s — and its confidence gate (smoothstep 0.25→0.55) suppresses detector junk. The Skein.6 cert premise was "the structure sub-feature is conf-gated to zero on BUG-042's junk."
+
+**Actual behavior.** BUG-042 (parked: section-detector note-scale geometry) machine-guns boundaries every ~1.7 s on busy streaming material **at confidence 0.78–0.95** — far above the gate top, so the junk flows through at full strength. The cert premise held on the approved local-file sessions only because the detector stays quiet there (conf ≈ 0). Mechanically: the flurry pulse (τ 2.5 s) is re-armed every ~1.7 s → effectively permanent ≈1.6–2.2× spatter-rate boost; `boundaryPourPending` forces pours at the 1.0 τ floor instead of the 2.65 τ min-dwell.
+
+**Reproduction / artifacts.** M7 session `2026-06-11T01-56-22Z` `features.csv` section columns: `section_index` +6 per 10 s sustained (≈1.7 s cadence), `section_confidence` 0.78–0.95, during both Skein windows. Contrast the approved sessions `2026-06-10T19-48-27Z` / `20-05-48Z`: conf 0.0–0.7, boundaries rare. Replay gate: machine-gun structure (boundary/1.67 s @ conf 0.9) on identical tiled single-dominant real stems → 16 pour breaks / 1650 spawns in 30 s vs the sparse control's 2 / 1091 (A/B-validated by reverting the fix).
+
+**Fix (Matt's pick).** `SkeinState.minSectionSpacingS = 10` wall-seconds: a boundary inside the spacing window of the last ACCEPTED boundary is ignored wholesale (`updateSectionBias`). Wall seconds, not painter τ (τ runs 1.5–2× wall on busy music — the first guard draft used τ and leaked ~6 s spacing). Real section changes (≥ 15 s apart) pass untouched; the guard stays harmless after the eventual BUG-042 detector fix. BUG-042 itself remains OPEN and PARKED — this is a consumer-side robustness guard, not the detector fix.
+
+**Verification (pre-stated, met).** Automated: `test_structure_boundarySpacingGuard` — machine-gun replay → 4 breaks / 1250 spawns (≤ 6 / ≤ 1.5× control; unguarded 16 / 1650 trips both asserts), sparse boundary still lands its fresh pour; the existing `test_structure_boundaryBias` (single confident boundary flurries + leans, low-conf exactly zero) stays green. Manual: next streaming Skein listen — pours stay long and spatter stays at the tuned rate on busy material.
 
 ### BUG-045 — FFO aurora hue strobes: vocals-pitch confidence flaps across the hue gate ~9×/s, snapping the reflected sky's colour and stepping whole-frame luminance (2026-06-10)
 
