@@ -6,6 +6,12 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-06-11-d] DOC.4.1 — doc referential-integrity gate (the D-155 corruption class is now test-caught)
+
+Follow-up to the DOC.4 integrity finds, at Matt's "address ASAP". A full-history damage sweep (every doc-touching commit since DOC.3) confirmed **D-155 was the only real casualty** — every other header disappearance was a legitimate relocation or the D-147→D-148 renumber. The durable fix is `DocIntegrityTests` (3 gates, ~0.25 s, in the engine suite every increment runs): D-number continuity + uniqueness across DECISIONS/HISTORY (amendment-header convention respected), BUG continuity + uniqueness in KNOWN_ISSUES (dotted sub-entries excluded, BUG-10 allowlisted), and citation resolution for every `D-###`/`FA #` across CLAUDE.md, sources, tests, and the docs tree. A/B-validated against simulated D-155-deletion and D-086-duplication — both trip with messages that name the fix. A parallel session that eats a neighbouring entry now fails the battery instead of surviving until someone greps.
+
+---
+
 ## [dev-2026-06-11-c] DOC.4 — pruning pass (first since the 2026-05-13 refactor) + two doc-integrity finds
 
 The four protocol passes, four weeks / 775 commits overdue. CLAUDE.md 542 → 494 lines; nothing deleted — everything moved with provenance and the gap tables extended, every surviving `FA #` / `D-###` cross-reference grep-verified to resolve.
