@@ -1043,6 +1043,9 @@ extension SkeinState {
         var sectionLeanTarget = SIMD2<Float>(0, 0)  // this section's patch offset (conf-scaled)
         var sectionPulse: Float = 0         // boundary density pulse, decays exp(τ≈2.5 s)
         var boundaryPourPending: Float = 0  // 1 at a confident boundary → forces a fresh pour
+        var sinceBoundaryS: Float = 1.0e9   // wall seconds since the last ACCEPTED boundary (BUG-046
+                                            // spacing guard; wall, not painter τ — sections are spaced
+                                            // in wall time, and τ runs 1.5–2× wall on busy music)
         var prevBeatPhase: Float = 0        // beatPhase01 last frame (wrap detection)
         var flickEnv: Float = 0             // flick release envelope, decays exp(τ≈90 ms)
         var speedFactor: Float = 1          // diagnostic: last anticipation factor (tests)
@@ -1089,6 +1092,17 @@ extension SkeinState {
     /// Confidence gate (smoothstep lo→hi): below lo the structural bias is exactly zero.
     static var sectionConfLo: Float { 0.25 }
     static var sectionConfHi: Float { 0.55 }
+    /// BUG-046 (Skein.6, Matt-approved): minimum WALL-second spacing between ACCEPTED section
+    /// boundaries. Real musical sections run 15–60 s apart; the section detector's parked
+    /// note-scale defect (BUG-042) machine-guns boundaries every ~1.7 s at HIGH confidence on
+    /// busy streaming material (session `2026-06-11T01-56-22Z`: conf 0.78–0.95 — the confidence
+    /// gate alone does NOT filter the junk). Without the guard the flurry pulse re-arms
+    /// continuously (≈1.6–2.2× the Matt-tuned spatter rate) and boundary-forced pours chop at
+    /// ~1–1.7 s (the rejected "lines too short" character). Boundaries inside the spacing window
+    /// are ignored wholesale; real section changes pass untouched. Wall seconds, not painter τ
+    /// (τ runs 1.5–2× wall on busy music). Harmless after the BUG-042 detector fix (real
+    /// boundaries already exceed the spacing).
+    static var minSectionSpacingS: Float { 10.0 }
     /// Skein.5.1: the FIRST pour commits only after this much painter-clock settle (≈ a quarter
     /// second of music through the 0.3 s stem EMA), so its colour reflects the actual lead stem,
     /// not one frame's instantaneous argmax (the D-150 decisiveness principle applied to the first
@@ -1111,8 +1125,11 @@ extension SkeinState {
     func updateSectionBias(dt: Float, stemMix: Float) {
         m5.sectionPulse *= exp(-dt / Self.sectionPulseTau)
         m5.boundaryPourPending *= exp(-dt / 2.0)   // an unconsumed boundary kick expires
+        m5.sinceBoundaryS = min(m5.sinceBoundaryS + dt, 1.0e9)
         let confGate = smoothstep(Self.sectionConfLo, Self.sectionConfHi, structConfidence)
-        if structBoundaryChanged && confGate > 0.001 && stemMix > 0.001 {
+        if structBoundaryChanged && confGate > 0.001 && stemMix > 0.001
+            && m5.sinceBoundaryS >= Self.minSectionSpacingS {
+            m5.sinceBoundaryS = 0
             m5.sectionPulse = max(m5.sectionPulse, confGate)
             if confGate >= 0.3 { m5.boundaryPourPending = 1.0 }
             let slot = Int(structSectionIndex) % Self.sectionSlots

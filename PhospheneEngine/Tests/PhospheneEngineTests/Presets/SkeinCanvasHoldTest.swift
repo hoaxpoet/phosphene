@@ -950,6 +950,60 @@ struct SkeinCanvasHoldTest {
                 "Low-confidence structure leaked bias (pulse \(lo.skein.sectionPulseCurrent), lean \(loLean), breaks +\(lo.breaksAtBoundary)).")
     }
 
+    // MARK: - BUG-046: section-boundary spacing guard (Skein.6, Matt-approved)
+
+    /// The parked section-detector defect (BUG-042) machine-guns boundaries every ~1.7 s at HIGH
+    /// confidence on busy streaming material (M7 session `2026-06-11T01-56-22Z`: conf 0.78–0.95 —
+    /// the confidence gate alone does NOT filter it). Unguarded, that re-arms the flurry pulse
+    /// continuously (≈2× the Matt-tuned spatter rate) and chops pours at ~1–1.7 τ (the rejected
+    /// D-150 "lines too short" character). The guard: boundaries within `minSectionSpacingS`
+    /// (10 wall-s) of the last ACCEPTED boundary are ignored wholesale. This gate replays tonight's
+    /// cadence (a boundary every 100 frames ≈ 1.7 s, conf 0.9) against a sparse control (one
+    /// boundary) on IDENTICAL tiled single-dominant real audio: pour count and spatter rate must
+    /// stay near the control, and real (sparse) boundaries must still land.
+    @Test("BUG-046: note-scale boundary junk is spacing-guarded — machine-gun sections ≈ sparse; real boundaries still land — live tick path")
+    func test_structure_boundarySpacingGuard() throws {
+        guard let fx = try loadSkeinFixture() else { return }
+        guard let session = Self.firstRecordedSession(),
+              let raw = loadStemFrames(session, maxFrames: 6000), raw.count > 400 else {
+            print("SkeinCanvasHoldTest: no recorded session — skipping spacing-guard gate (real audio: feedback_synthetic_audio)")
+            return
+        }
+        let slice = Self.mostDominatedSlice(raw, stem: Self.mostActiveStem(raw), window: 120).slice
+        let total = 1800   // 30 s
+        let dt: Float = 1.0 / 60.0
+
+        func run(sectionIndex: @escaping (Int) -> Int) throws -> (breaks: Int, spawns: Int) {
+            guard let skein = SkeinState(device: fx.ctx.device, seed: 0) else { throw SkeinHoldError.bufferFailed }
+            for fi in 0..<total {
+                let features = FeatureVector(time: Float(fi) * dt, deltaTime: dt, aspectRatio: 1.0)
+                let structure = StructuralPrediction(
+                    sectionIndex: UInt32(sectionIndex(fi)), sectionStartTime: 0,
+                    predictedNextBoundary: 0, confidence: 0.9)
+                skein.tick(deltaTime: dt, features: features, stems: slice[fi % slice.count],
+                           structure: structure)
+            }
+            return (skein.colorBreakpoints.count, skein.totalBurstsSpawned)
+        }
+
+        let machineGun = try run { $0 / 100 }      // a "section" every 1.67 s — the BUG-042 junk shape
+        let sparse = try run { $0 / 1200 }         // one boundary at 20 s — a real section change
+        print("[skein_bug046] 30 s identical tiled audio: machine-gun breaks=\(machineGun.breaks) spawns=\(machineGun.spawns)  vs sparse breaks=\(sparse.breaks) spawns=\(sparse.spawns)")
+
+        // 1. POURS: the guard caps boundary-forced pours at the 10 wall-s spacing (≈3 accepted in
+        //    30 s) — far below the unguarded ~17 (one per junk boundary). Long pours survive.
+        #expect(machineGun.breaks <= 6,
+                "Machine-gun boundaries chopped \(machineGun.breaks) pours in 30 s — the spacing guard is not holding (unguarded ≈ 17).")
+        // 2. SPATTER: the tuned rate survives — at most a modest elevation over the sparse control
+        //    (unguarded the permanently re-armed pulse runs ≈ 2× the control).
+        #expect(Float(machineGun.spawns) <= Float(sparse.spawns) * 1.5,
+                "Machine-gun boundaries elevated spatter \(machineGun.spawns) vs control \(sparse.spawns) — the flurry pulse is being re-armed past the guard.")
+        // 3. REAL BOUNDARIES STILL LAND: the sparse run's boundary commits its fresh pour
+        //    (first-pour + the boundary pour) — the guard must not eat designed behaviour.
+        #expect(sparse.breaks >= 2,
+                "The sparse (real) boundary did not land a fresh pour (breaks \(sparse.breaks)) — the guard over-suppresses.")
+    }
+
     /// The stem index with the highest total positive deviation over the session (the slice picker's
     /// anchor for a single-dominant tile).
     private static func mostActiveStem(_ stems: [StemFeatures]) -> Int {
