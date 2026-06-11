@@ -1106,6 +1106,24 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 
 ## Resolved (recent)
 
+### BUG-047 — FFO aurora palette MARCHES through its colour stops second-by-second on mood-wobbly tracks: the orbit azimuth multiplied arousal-speed into the ENTIRE elapsed total, retroactively rescaling history (2026-06-11)
+
+> **RESOLVED 2026-06-11 (FBS.S5d)** — found via Matt's So What read ("the color of the ocean was changing every 1-2 seconds… it marches through the palette") after two wrong attributions in-session (mood tint; curtain-vs-base contrast — the latter an R−B metric artifact, see Verification). Trivial-collapse justified: root cause obvious once the per-frame azimuth trajectory was printed (algorithm-class, code contradicts its own design comment), fix < 60 lines across the established driver pattern, no architectural risk.
+
+**Severity:** P2 (character-breaking: the whole ocean visits green/pink/purple second-by-second on affected tracks; violates Matt's directed 8–10 s colour pacing and the round-61 tuned orbit).
+
+**Domain tag:** `preset.fidelity` / failure class `algorithm`.
+
+**Expected.** The aurora curtain's palette position drifts through pink/green/purple at the round-61 pace (~25–37 s per revolution; ≤ ~0.03 palette-t/s), with arousal scaling the orbit SPEED (the round-55 design comment).
+
+**Actual.** `rm_ferrofluidSky` computed `curtainAzimuth = accumulated_audio_time × arousalSpeed(arousal)` — the speed factor multiplied the ENTIRE elapsed total. Any arousal movement retroactively rescaled history: with the mood classifier wobbling per-second on jazz (So What arousal swings ±0.3–0.5/s), the azimuth thrashed ±2+ rad/s and palette-t jumped 0.2–0.3/s across colour stops. The error scales with elapsed accumulated time — track openings looked fine (aat < 1), minute two marched (aat 5–7). Love Rehab's early windows masked it (small aat + steadier mood).
+
+**Reproduction / artifacts.** Session `2026-06-11T13-10-42Z`, So What te 56–80: per-frame azimuth trajectory printed from features.csv (az 12.19 → 10.04 in 1 s; palette zone GREEN→PINK→GREEN→PINK→PURPLE second-by-second); per-second frame-mean hue measured from the video (green +138° → pink −45° → purple −104° within seconds); 12-frame montage confirmed by Matt ("yes, it marches through the palette").
+
+**Fix.** Integrate, don't multiply: `RenderPipeline.auroraOrbitStep` advances `azimuth += arousalSpeed × Δaccumulated-audio-time` per frame (base period 2.5 s verbatim); ships as `StemFeatures.auroraOrbitAzimuth` (float 47); the shader reads it. Track-change resets (negative Δ) advance nothing.
+
+**Verification (pre-stated, met).** Pixel A/B through the forensics replica with a new wrap-aware HUE-ANGLE metric (the prior R−B metric is blind to green↔purple legs — that blindness produced the session's earlier wrong "contrast amplifier" reading): So What 56–80 per-second hue swing **94.7°/s (legacy arm) → 3.3°/s (integrated)**; Love Rehab stays calm-and-alive (4.9°/s). `AuroraOrbitDriverTests`: history-rescale immunity under worst-case wobble at minute-two scale, arousal still scales speed 2×, track-reset holds. Manual: Matt's next live read on So What.
+
 ### BUG-046 — Skein's section response rides BUG-042's note-scale junk on streaming material: the confidence gate passes boundaries every ~1.7 s at conf 0.78–0.95 (2026-06-11)
 
 > **RESOLVED 2026-06-11 (Skein.6, pre-certification)** — Trivial-collapsed P2 per CLAUDE.md §Defect Handling Protocol (one guard + one constant + one regression gate; root cause fully evidenced from the M7 session artifacts before any code; Matt picked the fix option in chat — "Add a section-spacing guard"). Found during the Skein.6 M7 session review; fixed before flipping `certified: true` at Matt's direction ("If anything looks concerning, let's fix it before we certify").

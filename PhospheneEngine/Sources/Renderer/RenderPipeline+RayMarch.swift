@@ -200,6 +200,15 @@ extension RenderPipeline {
             dt: frameDt)
         lightingStems.totalEnergySmoothed = punchEnergySmoothed
 
+        // BUG-047 — aurora orbit azimuth, integrated (arousal scales the
+        // speed of each increment; the old shader-side speed × total product
+        // rescaled history whenever arousal moved).
+        let aatDelta = lastAuroraAat.map { features.accumulatedAudioTime - $0 } ?? 0
+        lastAuroraAat = features.accumulatedAudioTime
+        auroraOrbitAzimuth = Self.auroraOrbitStep(
+            azimuth: auroraOrbitAzimuth, aatDelta: aatDelta, arousal: features.arousal)
+        lightingStems.auroraOrbitAzimuth = auroraOrbitAzimuth
+
         rayMarchState.render(
             gbufferPipelineState: activePipeline,
             features: &features,

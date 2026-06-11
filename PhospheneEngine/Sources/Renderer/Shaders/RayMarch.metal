@@ -419,12 +419,19 @@ static float3 rm_ferrofluidSky(float3 R,
     // strobe. Round-55's 1.0 was the original anti-static fix; round 60
     // bumped 25 % slower; round 61 doubles round-60's value for a
     // smoother breathing rhythm. Total: 2.5× slower than round 55.
-    constexpr float kCurtainBaseRevolutionSeconds = 2.5;
-    constexpr float kCurtainBaseAngularSpeed =
-        2.0 * M_PI_F / kCurtainBaseRevolutionSeconds;
-    float arousalSpeed = mix(0.5, 1.0, smoothstep(-1.0, 1.0, features.arousal));
-    float curtainAzimuth = features.accumulated_audio_time
-                         * arousalSpeed * kCurtainBaseAngularSpeed;
+    //
+    // BUG-047 (2026-06-11): the azimuth is now INTEGRATED CPU-side
+    // (`RenderPipeline.auroraOrbitStep`, base period 2.5 s preserved
+    // verbatim). The former in-shader product
+    // `accumulated_audio_time × arousalSpeed × angular` multiplied the
+    // speed factor into the ENTIRE elapsed total, so any arousal movement
+    // retroactively rescaled history — per-second mood wobble on jazz
+    // teleported the azimuth ±2+ rad/s and the palette marched across
+    // colour stops second-by-second (Matt's So What read, session
+    // `2026-06-11T13-10-42Z`), worsening as the track aged. Arousal still
+    // scales the orbit SPEED — per increment, as the round-55 design
+    // comment intended.
+    float curtainAzimuth = stems.aurora_orbit_azimuth;
 
     // ── Curtain shape: vertical stripe × azimuthal soft-edge wedge ──
     // Elevation stripe sits at kCurtainElevation; thickness gives soft top

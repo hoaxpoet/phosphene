@@ -113,9 +113,21 @@ final class FerrofluidFlashForensicsTests: XCTestCase {
         var auroraWarmup: Float = 1.0   // mid-track window: warmup long done
         var auroraHuePhase: Float = 0
         var punchEnergySmoothed: Float = 0
+        var orbitAzimuth: Float = 0
+        var lastAat: Float?
         var dollyOffset: Float = 0
 
-        struct FrameStat { let te: Float; let mean: Float; let p99: Float; let whiteFrac: Float }
+        struct FrameStat {
+            let te: Float; let mean: Float; let p99: Float; let whiteFrac: Float
+            /// Mean (R − B) — the warm↔cool chroma axis the mood tint moves
+            /// (nearly luma-neutral: red up, blue down). S5d color metric.
+            let meanRB: Float
+            /// Hue angle (degrees) of the frame's mean colour — the metric
+            /// that catches full palette marching (R−B is blind to
+            /// green↔purple legs; that blindness misled the S5d hue-pin
+            /// reading). BUG-047 metric.
+            let hueDeg: Float
+        }
         var stats: [FrameStat] = []
         var prevPixels: [UInt8]?
         var maxBlockDelta: [(te: Float, delta: Float)] = []
@@ -176,15 +188,25 @@ final class FerrofluidFlashForensicsTests: XCTestCase {
                 previous: smoothedLight, target: 1.0 + bassPrimary * 0.4 + beatAccent * 0.15, dt: dt)
             uniforms.lightPositionAndIntensity.w = ablate == "light"
                 ? baseLightIntensity : baseLightIntensity * smoothedLight
-            let warm = max(0, min(1, features.valence))
-            let cool = max(0, min(1, -features.valence))
+            // `mood-tint` arm: freeze the scene-wide valence tint at the
+            // window's first value — isolates the (unsmoothed) mood tint's
+            // contribution to color/luma motion. S5d diagnosis.
+            let tintValence = ablate == "mood-tint"
+                ? (seg.first.map { fv($0, "valence") } ?? 0) : features.valence
+            let warm = max(0, min(1, tintValence))
+            let cool = max(0, min(1, -tintValence))
             let tint = SIMD3<Float>(1.0 + warm * 0.40 - cool * 0.25,
                                     1.0 + warm * 0.15 - cool * 0.10,
                                     1.0 + cool * 0.40 - warm * 0.30)
             uniforms.lightColor = SIMD4(baseLightColor * tint, 0)
             let arousal = max(-1, min(1, features.arousal))
             uniforms.sceneParamsB.y = baseFogFar * (arousal >= 0 ? 1 - arousal * 0.7 : 1 - arousal)
-            uniforms.sceneParamsA.x = features.accumulatedAudioTime
+            // `swell` arm: freeze the surface/orbit clock — the Gerstner
+            // swell stops rolling the spike normals and the curtain stops
+            // sweeping. Isolates geometry-motion-driven color change (S5d).
+            uniforms.sceneParamsA.x = ablate == "swell"
+                ? (seg.first.map { fv($0, "accumulatedAudioTime") } ?? 0)
+                : features.accumulatedAudioTime
             let aurora = RenderPipeline.auroraDriverStep(
                 smoothed: auroraSmoothed, warmup01: auroraWarmup,
                 drumsDev: stems.drumsEnergyDev, dt: dt)
@@ -199,7 +221,14 @@ final class FerrofluidFlashForensicsTests: XCTestCase {
                 pitchHz: stems.vocalsPitchHz,
                 pitchConfidence: stems.vocalsPitchConfidence,
                 valence: features.valence, dt: dt)
-            stems.auroraPalettePhase = auroraHuePhase
+            stems.auroraPalettePhase = ablate == "hue-pin" ? 0.14 : auroraHuePhase
+            // `time` arm: freeze BOTH FV clocks — the Gerstner swell and the
+            // curtain's azimuth sweep stop. Isolates motion-driven color
+            // change from value-driven (S5d).
+            if ablate == "time", let first = seg.first {
+                features.time = fv(first, "track_elapsed_s")
+                features.accumulatedAudioTime = fv(first, "accumulatedAudioTime")
+            }
             // FBS Stage 2 — punch-height passage-loudness envelope. The
             // `punch-height` arm pins it at full (the pre-Stage-2 fixed
             // height) for controlled comparisons.
@@ -209,6 +238,20 @@ final class FerrofluidFlashForensicsTests: XCTestCase {
                     + stems.vocalsEnergy + stems.otherEnergy,
                 dt: dt)
             stems.totalEnergySmoothed = ablate == "punch-height" ? 1.3 : punchEnergySmoothed
+            // BUG-047 — integrated orbit azimuth. The `orbit-legacy` arm
+            // reproduces the pre-fix speed × total product for A/B proof.
+            let aatNow = features.accumulatedAudioTime
+            let aatDelta = lastAat.map { aatNow - $0 } ?? 0
+            lastAat = aatNow
+            orbitAzimuth = RenderPipeline.auroraOrbitStep(
+                azimuth: orbitAzimuth, aatDelta: aatDelta, arousal: features.arousal)
+            if ablate == "orbit-legacy" {
+                let x = min(max((features.arousal + 1) / 2, 0), 1)
+                let speed = 0.5 + 0.5 * (x * x * (3 - 2 * x))
+                stems.auroraOrbitAzimuth = aatNow * speed * 2 * Float.pi / 2.5
+            } else {
+                stems.auroraOrbitAzimuth = orbitAzimuth
+            }
             pipeline.sceneUniforms = uniforms
 
             let cmdBuf = try XCTUnwrap(context.commandQueue.makeCommandBuffer())
@@ -226,6 +269,10 @@ final class FerrofluidFlashForensicsTests: XCTestCase {
                             from: MTLRegionMake2D(0, 0, Self.renderWidth, Self.renderHeight),
                             mipmapLevel: 0)
             var sum: Float = 0
+            var rbSum: Float = 0
+            var rSum: Float = 0
+            var gSum: Float = 0
+            var bSum: Float = 0
             var lumas: [Float] = []
             lumas.reserveCapacity(Self.renderWidth * Self.renderHeight / 16)
             var white = 0
@@ -236,13 +283,20 @@ final class FerrofluidFlashForensicsTests: XCTestCase {
                     let l = 0.114 * Float(pixels[i]) + 0.587 * Float(pixels[i + 1])
                           + 0.299 * Float(pixels[i + 2])
                     sum += l; lumas.append(l); n += 1
+                    rbSum += Float(pixels[i + 2]) - Float(pixels[i])   // BGRA: R − B
+                    bSum += Float(pixels[i]); gSum += Float(pixels[i + 1])
+                    rSum += Float(pixels[i + 2])
                     if l > 240 { white += 1 }
                 }
             }
             lumas.sort()
+            let hue = atan2(sqrt(3.0) * (gSum - bSum), 2 * rSum - gSum - bSum)
+                    * 180 / Float.pi
             stats.append(FrameStat(te: te, mean: sum / Float(n),
                                    p99: lumas[Int(0.99 * Float(lumas.count - 1))],
-                                   whiteFrac: Float(white) / Float(n)))
+                                   whiteFrac: Float(white) / Float(n),
+                                   meanRB: rbSum / Float(n),
+                                   hueDeg: hue))
             // max 30x30-block delta vs previous frame (localised flash detector)
             if let prev = prevPixels {
                 var maxDelta: Float = 0
@@ -278,6 +332,39 @@ final class FerrofluidFlashForensicsTests: XCTestCase {
         }
         print("[FLASH-FORENSICS] window seg\(segIdx) \(lo)-\(hi)s frames=\(stats.count) "
               + "ablate=\(ablate) flashSteps(|dMean|>6)=\(stepCount) totalMag=\(stepSum)")
+        // Per-second mean-luma SWING (max−min within each 1 s of te) — catches
+        // continuous fast oscillation that slides under the per-frame step
+        // detector (the S5d "color changing every 1-2 s" class).
+        func perSecondSwing(_ series: [(te: Float, v: Float)], label: String) {
+            var swings: [Float] = []
+            var winStart = series.first?.te ?? 0
+            var winVals: [Float] = []
+            for s in series {
+                if s.te >= winStart + 1.0 {
+                    if let mn = winVals.min(), let mx = winVals.max() { swings.append(mx - mn) }
+                    winStart = s.te; winVals = []
+                }
+                winVals.append(s.v)
+            }
+            guard swings.count > 2 else { return }
+            let sorted = swings.sorted()
+            print(String(format: "[FLASH-FORENSICS] per-second %@ swing: med=%.2f p90=%.2f max=%.2f",
+                         label, sorted[sorted.count / 2], sorted[Int(0.9 * Float(sorted.count - 1))],
+                         sorted[sorted.count - 1]))
+        }
+        perSecondSwing(stats.map { ($0.te, $0.mean) }, label: "luma")
+        perSecondSwing(stats.map { ($0.te, $0.meanRB) }, label: "warm-cool (R−B)")
+        // Hue with wrap-aware unwrap so a −179°→+179° step counts as 2°.
+        var unwrapped: [(te: Float, v: Float)] = []
+        var offset: Float = 0
+        for (i, s) in stats.enumerated() {
+            if i > 0 {
+                let d = s.hueDeg - stats[i - 1].hueDeg
+                if d > 180 { offset -= 360 } else if d < -180 { offset += 360 }
+            }
+            unwrapped.append((s.te, s.hueDeg + offset))
+        }
+        perSecondSwing(unwrapped, label: "hue (deg)")
         for (a, b) in zip(stats, stats.dropFirst()) {
             let dMean = b.mean - a.mean
             let dWhite = b.whiteFrac - a.whiteFrac

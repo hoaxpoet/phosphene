@@ -176,9 +176,21 @@ public struct StemFeatures: Sendable, Equatable {
     /// Slot reclaimed from `_sfPad4`; layout of floats 1–45 unchanged.
     public var totalEnergySmoothed: Float
 
-    // --- Floats 47–64: padding to 256 bytes (18 floats) ---
+    // --- Float 47: BUG-047 aurora orbit azimuth ---
+
+    /// Aurora curtain orbit azimuth in radians, INTEGRATED CPU-side
+    /// (`RenderPipeline.auroraOrbitStep`: += arousal-speed × Δaccumulated-
+    /// audio-time). Replaces the shader's `speed × total-elapsed` product,
+    /// which retroactively rescaled all past time whenever arousal moved —
+    /// per-second mood wobble on jazz teleported the palette across colour
+    /// stops (BUG-047, So What session `2026-06-11T13-10-42Z`), worsening
+    /// as the track aged. Renderer-transient (excluded from Codable).
+    /// Slot reclaimed from `_sfPad5`; layout of floats 1–46 unchanged.
+    public var auroraOrbitAzimuth: Float
+
+    // --- Floats 48–64: padding to 256 bytes (17 floats) ---
     // swiftlint:disable identifier_name
-    var _sfPad5: Float; var _sfPad6: Float; var _sfPad7: Float; var _sfPad8: Float
+    var _sfPad6: Float; var _sfPad7: Float; var _sfPad8: Float
     var _sfPad9: Float; var _sfPad10: Float; var _sfPad11: Float; var _sfPad12: Float
     var _sfPad13: Float; var _sfPad14: Float; var _sfPad15: Float; var _sfPad16: Float
     var _sfPad17: Float; var _sfPad18: Float; var _sfPad19: Float; var _sfPad20: Float
@@ -220,7 +232,8 @@ public struct StemFeatures: Sendable, Equatable {
         self.cachedBassProportion = 0
         self.auroraPalettePhase = 0
         self.totalEnergySmoothed = 0
-        self._sfPad5  = 0; self._sfPad6  = 0; self._sfPad7  = 0; self._sfPad8  = 0
+        self.auroraOrbitAzimuth = 0
+        self._sfPad6  = 0; self._sfPad7  = 0; self._sfPad8  = 0
         self._sfPad9  = 0; self._sfPad10 = 0; self._sfPad11 = 0; self._sfPad12 = 0
         self._sfPad13 = 0; self._sfPad14 = 0; self._sfPad15 = 0; self._sfPad16 = 0
         self._sfPad17 = 0; self._sfPad18 = 0; self._sfPad19 = 0; self._sfPad20 = 0
