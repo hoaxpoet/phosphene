@@ -195,7 +195,19 @@ struct FidelityRubricGateTests {
     // Matt's reference-packet review is the load-bearing gate per SHADER_CRAFT
     // §12.1 M7. Beat-grid live phase is a known limitation deferred to its own
     // project (D-145), accepted at cert.
-    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana", "Murmuration", "Nimbus"]
+    //
+    // Skein.6 (2026-06-11): Skein certified by Matt after the M7 live review
+    // (session `2026-06-11T01-56-22Z`, streaming audit catalog; the ≥5-track +
+    // local-file bar was met cumulatively with the 2026-06-10 approved LF
+    // sessions incl. the BUG-044 wipe verify) — the first `painterly`-family
+    // preset (D-159). The session review surfaced BUG-046 (the structure
+    // sub-feature riding BUG-042's note-scale junk at high confidence on
+    // streaming material); Matt's pick — the 10 s boundary-spacing guard —
+    // landed BEFORE this flip. The automated rubric gate reads false
+    // (lightweight L2: deviation primitives are consumed CPU-side in
+    // SkeinState, invisible to the MSL heuristic — the Lumen Mosaic
+    // precedent); Matt's M7 is the load-bearing gate per SHADER_CRAFT §12.1.
+    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana", "Murmuration", "Nimbus", "Skein"]
 
     @Test func automatedGate_uncertifiedPresetsAreUncertified() async {
         let store = PresetCertificationStore()
