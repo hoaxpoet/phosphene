@@ -256,12 +256,11 @@ extension RenderPipeline {
     ///    decays like an afterimage). Replaces the symmetric 150 ms τ.
     /// The BUG-041 per-track quadratic warmup gate is unchanged on top.
     ///
-    /// FBS.S5 (D-158, Matt's directive from the `2026-06-10T19-13-14Z` read:
-    /// "the aurora color is shifting too quickly… transition over a longer
-    /// length of time, e.g., 8-10s"): rise τ 0.45 → 2.7 s, fall τ 1.2 → 3.3 s.
-    /// A full transition (~3τ) now completes in ~8 s up / ~10 s down — the
-    /// brightness becomes a slow swell that follows the track's drum energy
-    /// arc rather than individual hits. Soft-knee + warmup unchanged.
+    /// FBS.S5 briefly slowed BOTH τ to 2.7/3.3 s; FBS.S5b (Matt's pick)
+    /// reverted the intensity to 0.45/1.2 — the proven flasher was the HUE
+    /// route (stays slow, `auroraHueStep` τ 3 s), 0.45/1.2 was measured
+    /// flash-safe (S3.2 gates, S4 ablation), and slowing it killed the
+    /// per-drum-hit shimmer that carried the openings' rhythm feel. D-158.
     static func auroraDriverStep(
         smoothed: Float,
         warmup01: Float,
@@ -269,7 +268,7 @@ extension RenderPipeline {
         dt: Float
     ) -> AuroraDriverState {
         let knee = max(0, drumsDev) / (1.0 + 0.6 * max(0, drumsDev))
-        let tau: Float = knee > smoothed ? 2.7 : 3.3
+        let tau: Float = knee > smoothed ? 0.45 : 1.2
         let alpha = 1.0 - exp(-dt / tau)
         let nextSmoothed = smoothed + alpha * (knee - smoothed)
         let nextWarmup = min(1.0, warmup01 + max(0, dt) / Self.auroraWarmupSeconds)

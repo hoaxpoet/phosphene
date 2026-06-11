@@ -343,6 +343,35 @@ final class BeatPulseClockTests: XCTestCase {
         }
     }
 
+    /// FBS.S5b (Matt's option-A pick) — a LOCKED drift tracker opens the
+    /// handoff window at 4 s instead of 10. Same real Love Rehab session,
+    /// stability asserted from frame 1: the handoff must fire after the 4 s
+    /// floor but well before the 10 s legacy window (the envelope-floor seam
+    /// search adds at most ~one bridge cycle ≈ 2 s), with the same seam
+    /// safety. Without stability the legacy 10 s window must be unchanged
+    /// (the existing handoff test pins that via the default parameter).
+    func test_earlyHandoff_firesSoonAfter4s_whenTrackerLocked() throws {
+        let frames = try loadHandoffFixture()
+        let clock = BeatPulseClock()
+        clock.setTempo(bpm: 118.1)
+        var handoffTe: Double?
+        var outs: [BeatPulseClock.Output] = []
+        for fr in frames {
+            let out = clock.update(energySum: fr.energy, time: fr.te, deltaTime: fr.dt,
+                                   liveBeatPhase01: fr.livePhase, liveBeatStable: true)
+            if handoffTe == nil, clock.handedOff { handoffTe = fr.te }
+            outs.append(out)
+        }
+        let te = try XCTUnwrap(handoffTe, "early handoff must fire on a locked track")
+        XCTAssertGreaterThanOrEqual(te, 4.0, "never inside the anchor-acquisition floor")
+        XCTAssertLessThan(te, 7.0,
+                          "locked from frame 1 → handoff within ~one bridge cycle of the 4 s floor "
+                          + "(got \(te)s; ≥ 10 s means the early window did not engage)")
+        // Seam safety is unchanged: low envelope at the swap frame.
+        let hi = outs.firstIndex { $0.regionalBlend01 > 0 } ?? outs.count - 1
+        XCTAssertLessThan(env(outs[hi].phase01), 0.2)
+    }
+
     /// FBS.S5 / D-158 — the regional-mask blend contract on the same real
     /// session: 0 for the WHOLE bridge (the slow heave is global — Matt's S4
     /// read: it was invisible under regional coverage), then a monotonic ramp
