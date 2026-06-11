@@ -138,8 +138,14 @@ struct StemFeatures {
     // when pitch confidence flapped across its gate (~9×/s on real music).
     float aurora_palette_phase;
 
-    // Padding to 256 bytes (floats 46–64).
-    float _pad4,  _pad5,  _pad6,  _pad7,  _pad8;
+    // FBS Stage 2 punch-energy envelope (float 46) — reclaimed from `_pad4`.
+    // Symmetric τ 2.5 s EMA over total stem energy; scales the FFO
+    // beat-punch height in `fo_spike_strength` (loud → tall, quiet →
+    // gentle; the beat keeps the timing). CPU-populated.
+    float total_energy_smoothed;
+
+    // Padding to 256 bytes (floats 47–64).
+    float _pad5,  _pad6,  _pad7,  _pad8;
     float _pad9,  _pad10, _pad11, _pad12, _pad13, _pad14, _pad15, _pad16;
     float _pad17, _pad18, _pad19, _pad20, _pad21, _pad22;
 };

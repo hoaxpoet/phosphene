@@ -32,6 +32,12 @@ All automated cert gates for Skein are in, green, and calibrated against the app
 
 ---
 
+## [dev-2026-06-11-b] FBS.S6 — Stage 2 lands: punch height follows passage loudness (D-160)
+
+The last designed piece of the FBS kickoff. The beat-punch (and the opening heave) now scale with how loud the passage actually is: So What's bass+piano intro punches at ~40 % height, the band sections at full; tracks that open hot (Love Rehab, Pyramid) keep full height from the start; true silence still produces nothing (existing gate). The beat keeps the timing — energy sets ONLY the size (kickoff §Stage 2 rule). Signal = smoothed total stem energy (measured to survive the AGC; the band-energy sum is flat across So What's whole arc). One measured course-correction during the build: a fast-rise envelope peak-followed jazz's bursty stems (intro read 0.67 instead of 0.40) — symmetric τ 2.5 s tracks the passage mean. Gates: real-fixture replay + live-path pixel A/B (quiet 20.6 vs loud 48.7 luma punch effect) + forensics `punch-height` arm (quiet-intro flash steps 3 → 1 vs fixed height). Engine 1430/0, app build OK, lint 0. **Awaiting Matt's live read** (the "how gentle is gentle" floor is his dial).
+
+---
+
 ## [dev-2026-06-11] FBS.S5c — Matt's S5b read: "Looks great"; the FFO beat-irregularity ban RETIRED (D-154 amendment)
 
 S5b validated live (session `2026-06-11T01-56-22Z`, FFO + Skein testing; FFO scope here). Early handoffs measured working: Love Rehab 9.8 s, So What 8.7 s, **Pyramid Song 6.1 s** — and that's the headline: **the live tracker LOCKED on Pyramid at 5.4 s**, the ban's canonical catch, and Matt ruled *"Remove the FFO ban for Pyramid Song - it looks and moves great!"* Offered retire-vs-soften; Matt picked **retire entirely**: `requires_regular_beat` removed from FFO's sidecar (no production preset declares it now); the mechanism + the `beatIrregular` signal stay for diagnostics/future presets; `test_realFFOSidecar_doesNotDeclareRequiresRegularBeat` pins the retirement. The flag's failure mode is now understood: it condemned tracks where the *drums-stem estimate* disagreed with the grid — but on Pyramid the 70 BPM grid FFO actually uses was right. Engine 1429/0, app build OK, lint 0.

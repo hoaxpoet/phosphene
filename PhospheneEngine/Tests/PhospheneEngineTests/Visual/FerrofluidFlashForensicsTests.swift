@@ -112,6 +112,7 @@ final class FerrofluidFlashForensicsTests: XCTestCase {
         var auroraSmoothed: Float = 0
         var auroraWarmup: Float = 1.0   // mid-track window: warmup long done
         var auroraHuePhase: Float = 0
+        var punchEnergySmoothed: Float = 0
         var dollyOffset: Float = 0
 
         struct FrameStat { let te: Float; let mean: Float; let p99: Float; let whiteFrac: Float }
@@ -199,6 +200,15 @@ final class FerrofluidFlashForensicsTests: XCTestCase {
                 pitchConfidence: stems.vocalsPitchConfidence,
                 valence: features.valence, dt: dt)
             stems.auroraPalettePhase = auroraHuePhase
+            // FBS Stage 2 — punch-height passage-loudness envelope. The
+            // `punch-height` arm pins it at full (the pre-Stage-2 fixed
+            // height) for controlled comparisons.
+            punchEnergySmoothed = RenderPipeline.punchEnergyStep(
+                smoothed: punchEnergySmoothed,
+                totalStemEnergy: stems.drumsEnergy + stems.bassEnergy
+                    + stems.vocalsEnergy + stems.otherEnergy,
+                dt: dt)
+            stems.totalEnergySmoothed = ablate == "punch-height" ? 1.3 : punchEnergySmoothed
             pipeline.sceneUniforms = uniforms
 
             let cmdBuf = try XCTUnwrap(context.commandQueue.makeCommandBuffer())

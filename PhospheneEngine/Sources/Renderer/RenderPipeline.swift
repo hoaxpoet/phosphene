@@ -222,6 +222,16 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// ray-march draw path, like `auroraDrumsSmoothed`.
     var auroraHuePhase: Float = 0
 
+    /// FBS Stage 2 — passage-loudness envelope (symmetric τ 2.5 s EMA over
+    /// the total stem energy, `punchEnergyStep`) that scales the FFO
+    /// beat-punch height. Patched into the stems snapshot at
+    /// `StemFeatures.totalEnergySmoothed`. Not reset per track: the EMA
+    /// adapts across a track change on the same ~2.5 s scale as the punch
+    /// becoming audible (anchor + amp ramp), so a loud→quiet segue eases
+    /// rather than pops. Accessed only from the ray-march draw path, like
+    /// `auroraDrumsSmoothed`.
+    var punchEnergySmoothed: Float = 0
+
     // MARK: - Feedback Textures (Milkdrop-style ping-pong)
 
     /// Double-buffered feedback textures. Index flips each frame.
