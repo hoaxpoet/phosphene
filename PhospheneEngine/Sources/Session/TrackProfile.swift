@@ -42,10 +42,13 @@ public struct TrackProfile: Sendable, Codable {
     /// Computed at consumption time from the cached grids via
     /// `assessBeatIrregularity` (octave-folded full-mix-vs-drums BPM
     /// disagreement + bar confidence). `true` ⇒ the scorer hard-excludes
-    /// presets declaring `requires_regular_beat` (Ferrofluid Ocean — Matt's
-    /// 2026-06-10 rule: irregular tracks never see FFO). `nil` = unknown
-    /// (missing estimators / pre-D-154 cache entries) — permissive, no
-    /// exclusion. Optional so old persisted profiles decode unchanged.
+    /// presets declaring `requires_regular_beat`. **No production preset
+    /// declares the flag since the D-154 amendment (2026-06-11): the FFO ban
+    /// is retired** — Matt's pick after FFO on Pyramid Song (the gate's
+    /// canonical catch, where the live tracker in fact LOCKED at 5.4 s)
+    /// "looks and moves great". The signal + mechanism stay for diagnostics
+    /// and future presets. `nil` = unknown — permissive, no exclusion.
+    /// Optional so old persisted profiles decode unchanged.
     public var beatIrregular: Bool?
 
     // MARK: - Init

@@ -20,6 +20,12 @@ All automated cert gates for Skein are in, green, and calibrated against the app
 
 ---
 
+## [dev-2026-06-11] FBS.S5c — Matt's S5b read: "Looks great"; the FFO beat-irregularity ban RETIRED (D-154 amendment)
+
+S5b validated live (session `2026-06-11T01-56-22Z`, FFO + Skein testing; FFO scope here). Early handoffs measured working: Love Rehab 9.8 s, So What 8.7 s, **Pyramid Song 6.1 s** — and that's the headline: **the live tracker LOCKED on Pyramid at 5.4 s**, the ban's canonical catch, and Matt ruled *"Remove the FFO ban for Pyramid Song - it looks and moves great!"* Offered retire-vs-soften; Matt picked **retire entirely**: `requires_regular_beat` removed from FFO's sidecar (no production preset declares it now); the mechanism + the `beatIrregular` signal stay for diagnostics/future presets; `test_realFFOSidecar_doesNotDeclareRequiresRegularBeat` pins the retirement. The flag's failure mode is now understood: it condemned tracks where the *drums-stem estimate* disagreed with the grid — but on Pyramid the 70 BPM grid FFO actually uses was right. Engine 1429/0, app build OK, lint 0.
+
+---
+
 ## [dev-2026-06-10-f] FBS.S5b — Matt's read: hue fix CONFIRMED (79 → 13 events); residual = the global heave itself; his pick C+A built (D-158 amendment)
 
 Matt's live read of `2026-06-10T20-26-37Z`: flashing "mostly gone," heave visible, **but the opening 10 s lost the sync feeling**. Census + ablation on the new session (which carries the new pulse diagnostic columns): the 13 residual events = 2 track-change cuts + 3 unreproducible one-frame blips (suspected video-encode) + the rest **the global bridge heave itself** (pulse OFF → 0; aurora/hue/light → unchanged) — the flashing and the unpolished-opening feel are ONE mechanism. Diagnosed → 3 options + recommendation → Matt picked **C + A**:

@@ -161,9 +161,16 @@ final class BeatRegularityExclusionTests: XCTestCase {
                       "a regular track must still be able to schedule the requiring preset")
     }
 
-    func test_realFFOSidecar_declaresRequiresRegularBeat() throws {
-        // The shipped FerrofluidOcean.json carries the flag (D-154) — locate it
-        // relative to this source file so the gate survives bundle layout changes.
+    func test_realFFOSidecar_doesNotDeclareRequiresRegularBeat() throws {
+        // D-154 AMENDED 2026-06-11: the FFO ban is RETIRED (Matt's pick after
+        // watching FFO on Pyramid Song, the gate's canonical catch: "it looks
+        // and moves great"). The session data showed the live drift tracker
+        // LOCKED on Pyramid at te 5.4 s — the grid-vs-drums disagreement that
+        // flagged it condemned the estimate FFO doesn't use. The MECHANISM
+        // (descriptor flag + scorer/planner/reactive exclusion + the recorded
+        // beatIrregular signal) stays, tested via the synthetic preset above,
+        // for any future preset that genuinely needs it. Re-adding the flag to
+        // FFO requires a new product decision — this gate enforces that.
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()    // → Orchestrator/
             .deletingLastPathComponent()    // → PhospheneEngineTests/
@@ -172,7 +179,7 @@ final class BeatRegularityExclusionTests: XCTestCase {
             .appendingPathComponent("Sources/Presets/Shaders/FerrofluidOcean.json")
         let descriptor = try JSONDecoder().decode(PresetDescriptor.self,
                                                   from: Data(contentsOf: url))
-        XCTAssertTrue(descriptor.requiresRegularBeat,
-                      "Ferrofluid Ocean must declare requires_regular_beat (D-154)")
+        XCTAssertFalse(descriptor.requiresRegularBeat,
+                       "the FFO beat-regularity ban is retired (D-154 amendment, 2026-06-11)")
     }
 }
