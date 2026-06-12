@@ -127,4 +127,55 @@ Anything in the short-window-tap-audio family has been exhaustively explored.
 
 **What lives in production today (AMENDED 2026-05-26):** the pre-BSAudit.3.impl baseline — cached BeatGrid install via `MIRPipeline.setBeatGrid`, `LiveBeatDriftTracker` in pre-impl form, `GridOnsetCalibrator` reinstated, ungated beat accents from frame 1. The BSAudit.3.impl runtime described in the table above was reverted on 2026-05-25 evening (`33cd57e9` / `6758a617` / `002b5f2b` / `35305b5e`) after Choice A's "doc-only closeout"; only the diagnostic tooling was retained per Matt's "yes, keep the tools" sign-off. The contract is documented in [CLAUDE.md §Cold-Start Phase Contract](../CLAUDE.md#cold-start-phase-contract) (rewritten 2026-05-26 to describe the post-revert state). The behavior at the design level: continuous-energy modulation from frame 1; beat accents fire from the cached grid from frame 1 (ungated; wrong-phase tracks fire wrong-phase accents); steady-state lock improves as the `LiveBeatDriftTracker` EMA converges.
 
-> Moved to graveyard 2026-05-25 (BSAudit.3.close). Last verified against capture `2026-05-25T15-20-49Z`. AMENDED 2026-05-26 — the BSAudit.3.impl runtime that was the production architecture at graveyard time was reverted same evening; this dead-ends entry retains the historical iteration table since the structural lesson (no short-window automated signal converges) holds independent of which runtime is in place. The active rule (Failed Approach #69) catches the recurrence pattern; this entry catalogues the six historical iterations so future-Claude can see the dead-end shape at a glance.
+> Moved to graveyard 2026-05-25 (BSAudit.3.close). Last verified against capture `2026-05-25T15-20-49Z`. AMENDED 2026-05-26 — the BSAudit.3.impl runtime that was the production architecture at graveyard time was reverted same evening; this dead-ends entry retains the historical iteration table since the structural lesson (no short-window automated signal converges) holds independent of which runtime is in place. The active rule (Failed Approach #69) catches the recurrence pattern; this entry catalogues the six historical iterations so future-Claude can see the dead-end shape at a glance. *(RB.2 note, 2026-06-11: the FA #69 entry was removed from CLAUDE.md in the rulebook purge; the operative ban lives on in CLAUDE.md §Cold-Start Phase Contract and in this file.)*
+
+---
+
+## RB.2 rulebook purge (2026-06-11)
+
+Matt's per-entry review of every active Failed Approach and Do-NOT bullet (plain-English context: [`docs/diagnostics/RB1_FA_DN_EXPLANATIONS.md`](diagnostics/RB1_FA_DN_EXPLANATIONS.md); decisions given in-session 2026-06-11) removed the entries below from CLAUDE.md. Kept as active CLAUDE.md entries: FA #4 (pending Matt's relevance ruling), #27, #31, #64, #65, #67, #73, and the `@Published` write-or-clear bullet. Full original text of everything removed: git history (CLAUDE.md immediately before the `[RB.2]` purge commit). One line each:
+
+- **FA #1 — IIR energy-difference beat detection.** Machine-gun false positives; superseded by Beat This! + per-band spectral flux.
+- **FA #2 — Rising-edge accumulation.** Same dead technique family as #1.
+- **FA #3 — Per-bin spectral-flux thresholds.** Untunable across genres; same superseded era.
+- **FA #11 — MediaRemote private framework.** Blocked from signed bundles on macOS 15+; comments at the code sites remain.
+- **FA #15 — Chroma from <500 Hz FFT bins.** Bin resolution too coarse for pitch; pre-history mood-pipeline note.
+- **FA #16 — Raw 12-bin chroma into the mood MLP.** Model needs engineered features; pre-history note.
+- **FA #17 — "Autocorrelation half-tempo" narrative (amended).** Misdiagnosis story; real fixes documented as D-075/D-077.
+- **FA #18 — Median threshold on rectified flux.** Mostly-zeros signal → median ≈ 0; superseded era.
+- **FA #21 — Empty-mixdown tap description = silence.** Now a comment at `SystemAudioCapture.buildTapDescription`.
+- **FA #22 — Tap silent without screen-capture permission.** Code requests permission; RUNBOOK troubleshooting documents it.
+- **FA #23 — Audio-deformed architecture reads broken.** D-020 + your M7 carry it.
+- **FA #24 — Tint IBL ambient, not just the key light.** D-022; rendering fact.
+- **FA #25 — Mood must take the `setMood` path to the GPU.** Embodied in `RenderPipeline`; no gate yet (noted follow-up).
+- **FA #26 — Beat pulse from max of bands, not bass alone.** Shipped presets comply.
+- **FA #28 — AVAssetWriter transient drawable-size lock.** Fix embodied in `SessionRecorder+Video` with counters.
+- **FA #29 — 44.1 kHz assumption (environment layer).** `check_sample_rate_literals.sh` + RUNBOOK carry it.
+- **FA #30 — Spotify volume normalization.** RUNBOOK setup fact.
+- **FA #32 — Feedback pass required for compounding motion.** D-027 + Milkdrop doc + handbook.
+- **FA #33 — Free-running `sin(time)` motion.** Handbook craft note.
+- **FA #39 — No authoring without references.** Replaced by `docs/PRESET_SESSION_CHECKLIST.md`.
+- **FA #48 — Spec-faithful but reference-divergent.** Workflow it patched was abandoned (V.8 pivot); contact-sheet practice lives in the checklist + replay infrastructure.
+- **FA #49 — Structural gap vs. tuning gap.** Judgment heuristic; the absolute form over-restricted (Matt 2026-06-11).
+- **FA #50 — Cross-band onset fusion biases IOI tempo.** Fixed in `BeatDetector` (D-075).
+- **FA #51 — Histogram-mode BPM picking.** Fixed (`computeRobustBPM`, D-075).
+- **FA #52 — Literal `44100` in live-rate paths.** CI script enforces (D-079).
+- **FA #53 — Summed AGC stem energies saturate scoring.** Fixed in `PresetScorer` (D-080).
+- **FA #54 — Empty-profile reactive scoring inversion.** Fixed (D-080).
+- **FA #55 — Shadow `SettingsStore` instance.** `SettingsStoreEnvironmentRegressionTests` enforces.
+- **FA #56 — Title+artist string matching.** `PlaybackChromeIndexBindingTests` enforces.
+- **FA #57 — Spider trigger on impossible signal combination.** Arachne design doc carries the corrected trigger.
+- **FA #58 — Concept without a musical role is untunable.** §Authoring Discipline + SHADER_CRAFT concept gate carry it.
+- **FA #59 — Schema additions without a demonstrated consumer.** D-120 episode; strategy clause carries it.
+- **FA #60 — Batch-filed strategy decisions.** Phase MD episode; strategy clause + REVISIT banner carry it.
+- **FA #61 — Mirror-surface beams as point lights.** Handbook material fact (mirror-reflects-sky).
+- **FA #62 — Decoration layers without a musical role.** §Authoring Discipline layer-scope rule carries it.
+- **FA #63 — Authoring without the references README.** Replaced by `docs/PRESET_SESSION_CHECKLIST.md`.
+- **FA #66 — Fixture/live dispatch-path parity.** Habit + infrastructure carry it (`useMeshPath` param, live-path tests in recent work); residue: after 2 rounds of fixture-clean/live-broken, check the test/prod gap first.
+- **FA #68 — Sub-bass onsets are events, not beats.** BEAT_SYNC.md registry documents in full.
+- **FA #69 — Cold-start beat-phase premise falsified ×6.** Ban lives in CLAUDE.md §Cold-Start Phase Contract + this file (above) + BEAT_SYNC.md.
+- **FA #70 — Port a reference's loop wholesale.** Folded under kept FA #73; component facts in D-138.
+- **FA #71 — Colour-space + clock audits when porting.** D-139 + handbook porting notes.
+- **FA #72 — Swift camelCase names in MSL.** `PresetLoaderCompileFailureTest` catches the symptom (noted lint follow-up).
+
+The §What NOT To Do list was reduced in the same review from 57 bullets to one (the `@Published` write-or-clear rule). The removed bullets were restatements of the FAs above, rules enforced by existing scripts/tests, facts embodied in shipped code (with doc comments at the sites), or duplicates of handbook/UX_SPEC/RUNBOOK canonical text — per-bullet context in the explanations doc.
