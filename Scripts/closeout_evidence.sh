@@ -3,7 +3,8 @@
 #
 # REVIEW.3 closeout evidence generator. Runs the canonical verification set
 # (RUNBOOK.md §Build and Test: engine SPM tests, app xcodebuild tests,
-# swiftlint --strict) and emits ONE fenced markdown evidence block to stdout.
+# swiftlint --strict, plus the DOC.6 doc gates via DocIntegrityTests) and
+# emits ONE fenced markdown evidence block to stdout.
 # A byte-identical copy is written to ~/.phosphene/last_closeout_evidence.md
 # so a pasted closeout block can be diffed against what was actually generated.
 #
@@ -228,12 +229,22 @@ else
 fi
 emit ""
 
+# --- Step 4: Doc gates (DocIntegrityTests — rotation / budget / index, DOC.6) --------
+DOC_LOG="$TMP_DIR/doc_gates.log"
+DOC_CMD_STR="swift test --package-path PhospheneEngine --filter DocIntegrityTests"
+t0=$SECONDS
+DOC_EXIT="$(run_step "$DOC_LOG" swift test --package-path PhospheneEngine --filter DocIntegrityTests)"
+DOC_WALL=$((SECONDS - t0))
+render_test_step "Step 4: Doc gates (DocIntegrityTests)" "$DOC_CMD_STR" "$DOC_LOG" "$DOC_EXIT" "$DOC_WALL"
+DOC_PARSE_OK=$STEP_PARSE_OK
+DOC_FAILS=$STEP_FAILURES_PRESENT
+
 # --- Footer -----------------------------------------------------------------------
 emit "--- Footer ---"
-emit "Exit codes: engine=${ENGINE_EXIT} app=${APP_EXIT} swiftlint=${LINT_EXIT}"
-if [ "$ENGINE_EXIT" = "0" ] && [ "$APP_EXIT" = "0" ] && [ "$LINT_EXIT" = "0" ] \
-  && [ "$ENGINE_PARSE_OK" = "1" ] && [ "$APP_PARSE_OK" = "1" ] && [ "$LINT_PARSE_OK" = "1" ] \
-  && [ "$ENGINE_FAILS" = "0" ] && [ "$APP_FAILS" = "0" ] && [ "$LINT_FAILS" = "0" ]; then
+emit "Exit codes: engine=${ENGINE_EXIT} app=${APP_EXIT} swiftlint=${LINT_EXIT} docgates=${DOC_EXIT}"
+if [ "$ENGINE_EXIT" = "0" ] && [ "$APP_EXIT" = "0" ] && [ "$LINT_EXIT" = "0" ] && [ "$DOC_EXIT" = "0" ] \
+  && [ "$ENGINE_PARSE_OK" = "1" ] && [ "$APP_PARSE_OK" = "1" ] && [ "$LINT_PARSE_OK" = "1" ] && [ "$DOC_PARSE_OK" = "1" ] \
+  && [ "$ENGINE_FAILS" = "0" ] && [ "$APP_FAILS" = "0" ] && [ "$LINT_FAILS" = "0" ] && [ "$DOC_FAILS" = "0" ]; then
   emit "EVIDENCE: ALL GREEN"
 else
   emit "EVIDENCE: FAILURES PRESENT (see above)"
