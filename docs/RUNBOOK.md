@@ -56,12 +56,14 @@ xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build
 # Package tests (PhospheneEngine SPM target)
 swift test --package-path PhospheneEngine
 
-# App tests (includes XCTest targets)
+# App tests (app test target only — engine tests run via swift test above)
 xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test
 
 # Lint
 swiftlint lint --strict --config .swiftlint.yml
 ```
+
+**The app scheme's test action runs only `PhospheneAppTests` (BUG-048).** From U.1 until 2026-06-11 it also ran the engine test bundle, which fails under xcodebuild's test-runner context on environment, not code: ffmpeg subprocess spawning and repo-relative file reads are denied ("Operation not permitted"), audio-device tests die instantly, and only ~440 of the engine suite's 1439 tests even load. The engine suite's canonical runner is `swift test --package-path PhospheneEngine`, where all of those pass. `SchemeTestActionRegressionTests` (engine suite) fails loudly if the engine bundle is re-added to the scheme's test action.
 
 **Do NOT pass `SWIFT_TREAT_WARNINGS_AS_ERRORS=YES` on the command line.** It propagates to SPM dependencies and conflicts with `-suppress-warnings`. The flag is enforced per-target via `PhospheneApp/Phosphene.xcconfig`.
 
