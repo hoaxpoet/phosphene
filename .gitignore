@@ -62,3 +62,4 @@ PhospheneEngine/Tests/Fixtures/tempo/
 #   cd vendor/beat_this_repo && git checkout 9d787b9797eaa325856a20897187734175467074
 vendor/
 tools/dragon_bloom_reference/oracle_recording.mov
+__pycache__/
