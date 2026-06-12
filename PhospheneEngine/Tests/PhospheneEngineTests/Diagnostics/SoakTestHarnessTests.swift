@@ -140,14 +140,14 @@ extension SoakTestHarnessTests {
         let report = try await runTask.value
         #expect(report.actualDuration < config.duration,
                 "actualDuration (\(report.actualDuration)s) should be < configured duration (\(config.duration)s)")
-        // 15 s budget (was 5 s) — observed 8.36 s under 1248-test parallel runs
-        // on M-series. The U.11 precedent (CLAUDE.md) carries 2-3× headroom over
-        // the worst observed time. The cancel() cleanup path (audio I/O teardown,
-        // log close, report write) is timing-sensitive under contention but the
+        // 30 s budget (was 15 s; was 5 s) — widened at REVIEW.4 per REVIEW.2's
+        // pre-authorization after two recurrences (17.3 s under the REVIEW.2
+        // churn-suite load, 16.7 s under a parallel-session battery). Worst
+        // observed 17.3 s; the U.11 precedent carries 2-3× headroom. The
         // assertion's intent — "cancel() returned well before the configured
         // 3600 s duration" — survives the wider budget.
-        #expect(report.actualDuration < 15.0,
-                "Should have returned within ~15 s of cancel()")
+        #expect(report.actualDuration < 30.0,
+                "Should have returned within ~30 s of cancel()")
     }
 }
 
