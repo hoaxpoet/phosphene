@@ -48,16 +48,6 @@
             skipped = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "PhospheneEngineTests"
-               BuildableName = "PhospheneEngineTests"
-               BlueprintName = "PhospheneEngineTests"
-               ReferencedContainer = "container:PhospheneEngine">
-            </BuildableReference>
-         </TestableReference>
-         <TestableReference
-            skipped = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
                BlueprintIdentifier = "B50001"
                BuildableName = "PhospheneAppTests.xctest"
                BlueprintName = "PhospheneAppTests"
