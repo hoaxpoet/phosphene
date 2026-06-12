@@ -147,10 +147,12 @@ struct DocIntegrityTests {
         for row in Self.matches(#"^\| (#[^|]+) \|"#, claude) {
             gapped.formUnion(Self.matches(#"#(\d+)"#, row, options: []).compactMap(Int.init))
         }
-        // Floor lowered 40 → 7 at RB.2 (2026-06-11): Matt's per-entry review removed 42 of
-        // 49 active FAs (kept: #4, #27, #31, #64, #65, #67, #73 — see
-        // docs/diagnostics/RB1_FA_DN_EXPLANATIONS.md and HISTORICAL_DEAD_ENDS §RB.2).
-        // The floor still guards wholesale loss of the kept set.
+        // Floor lowered 40 → 7 at RB.2 (2026-06-11): Matt's per-entry review removed 43 of
+        // 49 active FAs (kept: #27, #31, #64, #65, #67, #73; #4 retired into §Audio Data
+        // Hierarchy at RB.2-2 — see docs/diagnostics/RB1_FA_DN_EXPLANATIONS.md and
+        // HISTORICAL_DEAD_ENDS §RB.2). The regex also matches other numbered-bold lists in
+        // CLAUDE.md (protocol steps), so the count stays comfortably above the floor; the
+        // floor guards wholesale loss of the kept set.
         #expect(active.count >= 7 && !gapped.isEmpty, "Failed-Approach inventory imploded (\(active.count) active, \(gapped.count) gapped)")
         let cited = Set(Self.matches(#"(?:Failed Approach|FA) #(\d+)"#, Self.citationCorpus(), options: []).compactMap(Int.init))
         let unresolved = cited.subtracting(active).subtracting(gapped).sorted()
