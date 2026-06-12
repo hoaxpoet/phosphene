@@ -1106,6 +1106,24 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 
 ## Resolved (recent)
 
+### BUG-049 — Skein colour-freeze cert gate is session-content-fragile: dominant-stem switch lands beyond the probe canvas extent → deterministic red on data, not code (2026-06-11)
+
+**Severity:** P2 (the engine suite is red on every full run, so the closeout evidence battery cannot produce ALL GREEN for unrelated increments; no runtime impact).
+
+**Domain tag:** test infrastructure / failure class `test-isolation` (session-content dependence).
+
+**Expected.** The colour-freeze gate ("Line colour is frozen per-segment … — live path", `SkeinCanvasHoldTest.swift:792`) passes on a green tree regardless of which session captures happen to exist in `~/Documents/phosphene_sessions`.
+
+**Actual.** Deterministic failure, identical numbers across 5+ runs: `Switch landed too close to a pour boundary to sample (preLo=7.652855 preHi=8.052645 postLo=8.161678 postHi=5.8849607)`. The selected session's dominant-stem switch sits at τ≈8.05 while the probe canvas only extends to probeTau≈5.88 (`postHi = min(switch+25·dtau, probeTau) < postLo`) — the sampling guard `Issue.record`s instead of skipping to another candidate switch or session.
+
+**Reproduction / artifacts.** `swift test --package-path PhospheneEngine --filter SkeinCanvasHold`, 2026-06-11 evening; session dir contains `2026-06-11T13-10-42Z` (2.98 MB stems.csv — the only non-stub capture) plus five 602-byte stub captures from the day's app/test runs. Fails identically at HEAD (`31bb8307`) and at `4b83b4ef` (whose 19:02 evidence battery ran the same suite GREEN) — the engine-source diff between the green and red runs is EMPTY, proving environment-not-code. Quarantining the post-19:02 stub sessions does NOT clear it; the precise session-set delta between 19:02 and 19:49 could not be reconstructed (a capture present at 19:02 may have since changed or been removed — unverified). Evidence blocks: `~/.phosphene/last_closeout_evidence.md` (19:02 green @ `4b83b4ef`, 19:49 red @ `31bb8307`).
+
+**Suspected failure class:** `test-isolation`, two compounding shapes: (1) app-test/battery runs append stub session captures (602-byte stems.csv) into the live `~/Documents/phosphene_sessions` directory engine tests consume — SessionRecorder runs from launch (D-025, archived); (2) the colour-freeze gate trusts its discovered switch location without verifying it is sampleable within the probe extent, and records an Issue instead of iterating — the exact fragility class the test's own `recordedSessionsBySize()` comment names ("a session-fragile gate goes red on data, not code — the Skein.4.1 `distinctBlobs` lesson").
+
+**Verification criteria (written before any fix):** (1) automated — the gate passes with the `13-10-42Z`-only set, with stub sessions present, and with an empty session dir (skip with a printed reason, never silently); (2) manual/adversarial — the gate still FAILS on a deliberately colour-unfrozen canvas (keep its teeth; A/B per the Skein.4 transient-metric lesson).
+
+**Found by:** the RB.2-2 closeout evidence battery (19:49), diagnosed same evening. Not an RB.2-2 regression (docs-only increment).
+
 ### BUG-048 — `xcodebuild test` ran the engine test bundle in a runner context that denies subprocess/audio/file access: ~30 environment-class failures on every run, in every terminal (2026-06-11)
 
 > **RESOLVED 2026-06-11 (commit `e110b1ca`)** — Single fix increment per the P2 process (root cause documented before code; the fix is one scheme edit + one regression gate). Matt picked the fix option in chat ("scope and run the option-1 increment"). Discovered by the REVIEW.3 closeout evidence script on its first three runs — exactly the defect class the script exists to surface.
