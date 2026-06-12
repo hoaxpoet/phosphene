@@ -1836,3 +1836,19 @@ Plus the D-142(c) deferred engine touch: **`PresetCategory.painterly`** + `Skein
 **Acceptance.** Pure-fn gates (`PunchEnergyDriverTests`): glide-never-step, 3τ transitions, and the real So What fixture replay (intro height 0.40 < 0.5, band 0.97 > 0.85, contrast 2.4×). Live-path pixel gate (`FerrofluidPulseLivePathTests`): same punch frame at intro-level vs loud envelope → punch effect 20.6 vs 48.7 luma (2.4×), floor keeps quiet beats registering. Forensics A/B on the quiet-intro window (new `punch-height` arm pins pre-Stage-2 full height): So What 0–8 s flash steps 3 → 1 (magnitude 27 → 14) — Stage 2 also shrinks the residual cold-start heave flashing. Full suite 1430 green, app build OK, lint 0.
 
 **Open dial (Matt's, at his read):** the floor (how small the quietest punch is — currently 30 % height) and the loud threshold are product constants; both are single numbers in the shader mapping.
+
+---
+
+## D-161: Rulebook restructure + always-loaded token-budget ratchet (RB.1 → RB.3)
+
+**Status:** Accepted (2026-06-11)
+
+The RB series replaced the failure → prose-rule → bigger-rulebook loop with a slim always-loaded core plus mechanized gates and read-on-demand references. Matt's per-entry review (context: `docs/diagnostics/RB1_FA_DN_EXPLANATIONS.md`; audit inventory: `docs/diagnostics/RB1_RULEBOOK_AUDIT.md`) cut CLAUDE.md from ~22,300 to ~6,900 estimated tokens: Failed Approaches 49 → 6 (FA #4 absorbed into §Audio Data Hierarchy in constraint-based form), Do-NOT bullets 57 → 1, ten pointer sections merged into §Handbook Index, preset-session discipline → `PRESET_SESSION_CHECKLIST.md`, U.11 build/test notes → RUNBOOK §Engineering notes; DECISIONS.md 161 → 68 active entries (93 archived to `DECISIONS_HISTORY.md`); ENGINEERING_PLAN completed narratives pre-2026-06-01 → `ENGINEERING_PLAN_HISTORY.md` (headers stay as the status record).
+
+**Standing ratchet rules** (installed in CLAUDE.md §Increment Completion Protocol; budget gated by `DocIntegrityTests`):
+
+1. **Token budget:** CLAUDE.md ≤ 7,000 estimated tokens (`wc -w` × 1.35), one-in-one-out — adding above the cap requires demoting or retiring equal mass in the same commit.
+2. **Admission test:** a new always-loaded rule must name the specific mistake it prevents and why no deterministic gate can express it; otherwise it goes to a handbook, a session checklist, or a gate.
+3. **Violated twice → mechanize:** the second documented violation of a prose rule converts it — the fix increment ships the gate and demotes the prose to a pointer.
+
+**Reason:** instruction-following degrades as the simultaneously-active rule count grows, and the transcript record shows prose rules failing while loaded (REVIEW.1: README-before-edit at 35 % compliance; BUG-036's three realtime-allocation sites written with the no-alloc bullet in context; the FA #66 fixture/live class recurring with the rule present). Gates and feedback loops beat prose; judgment rules earn always-loaded slots only when they must fire at decision time, before any artifact exists that a gate could check.
