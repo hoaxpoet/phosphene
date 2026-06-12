@@ -75,6 +75,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-159 | Accepted | Skein certification: lightweight rubric, FNV-1a seed, canvas soak |
 | D-160 | Accepted | FBS Stage 2: punch height follows passage loudness [0.30, 1.0] |
 | D-161 | Accepted | Rulebook restructure + CLAUDE.md token-budget ratchet |
+| D-162 | Accepted | Doc rotation mechanized (rotate_docs.sh); budgets gated by DocIntegrityTests |
 
 ---
 
@@ -1926,3 +1927,9 @@ The RB series replaced the failure → prose-rule → bigger-rulebook loop with 
 3. **Violated twice → mechanize:** the second documented violation of a prose rule converts it — the fix increment ships the gate and demotes the prose to a pointer.
 
 **Reason:** instruction-following degrades as the simultaneously-active rule count grows, and the transcript record shows prose rules failing while loaded (REVIEW.1: README-before-edit at 35 % compliance; BUG-036's three realtime-allocation sites written with the no-alloc bullet in context; the FA #66 fixture/live class recurring with the rule present). Gates and feedback loops beat prose; judgment rules earn always-loaded slots only when they must fire at decision time, before any artifact exists that a gate could check.
+
+## D-162: Doc rotation is mechanized; budgets are gated
+
+**Status:** Accepted (DOC.6, 2026-06-12)
+
+The pruning-pass prose convention failed twice (measured 2026-06-12: EP narratives four weeks past the RB.3 window; KNOWN_ISSUES 71% resolved-history; release notes unrotated at 696 KB). Per D-161 rule 3, it converts to mechanism: `Scripts/rotate_docs.sh` performs the EP §Recently Completed, KNOWN_ISSUES §Resolved, and release-notes monthly rotations deterministically; DocIntegrityTests gates the budgets (EP narrative age ≤ 14 days, KNOWN_ISSUES §Resolved ≤ 50 KB, pre-current-month release-notes content ≤ 50 KB — the active file keeps the current month, which alone measured 72 KB at filing, so the byte budget gates rotation debt rather than whole-file size) and index completeness (DECISIONS §Index, KNOWN_ISSUES §Open Index). Closeout evidence runs the gates. Rotated content moves verbatim to history files and stays searchable; nothing is deleted. The judgment-requiring pruning items (CLAUDE.md section demotion, DECISIONS shipped+uncited rotation) remain manual on the same cadence.

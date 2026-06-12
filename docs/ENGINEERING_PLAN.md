@@ -12,25 +12,14 @@
 
 ## Current State
 
-The foundation is implemented and tested:
+The foundation is implemented and tested: native Metal render loop with a data-driven render graph; Core Audio tap capture with provider abstraction; full MIR + stem-separation pre-analysis (MPSGraph Open-Unmix, Beat This!); session lifecycle from playlist connection through planned playback (streaming + local-file paths); the Orchestrator scoring/planning/adaptation stack; and the ray-march / feedback / mesh / particle preset substrates with the certification pipeline. Test infrastructure: swift-testing + XCTest across unit, integration, regression, and performance categories; SwiftLint strict; protocol-first DI with test doubles.
 
-- Native Metal render loop with data-driven render graph
-- Core Audio tap capture with provider abstraction and DRM silence detection
-- FFT (vDSP 1024-point → 512 bins) and full MIR pipeline (BPM, key, mood, spectral features, structural analysis)
-- MPSGraph stem separation (Open-Unmix HQ, 142ms warm predict) and Accelerate mood classifier
-- Session lifecycle: `SessionManager` drives `idle → connecting → preparing → ready → playing → ended`
-- Playlist connection (Apple Music AppleScript, Spotify Web API)
-- Preview resolver (iTunes Search API) and batch downloader
-- Batch pre-analysis with StemCache; cache-aware track-change loading (no warmup gap in session mode)
-- Metadata pre-fetching (MusicBrainz, Soundcharts, Spotify search, MusicKit)
-- Feedback textures, mesh shaders (M3+ with M1/M2 fallback), hardware ray tracing, ICBs
-- Ray march pipeline with deferred G-buffer, PBR lighting, IBL, SSGI
-- HDR post-process chain (bloom + ACES tone mapping)
-- Noise texture manager (5 textures via Metal compute)
-- Shader utility library (55 functions across 7 domains)
-- Preset library: Waveform, Plasma, Nebula, Murmuration, Glass Brutalist
+For anything inventory-shaped, read the artifact, not a prose copy of it:
 
-Test infrastructure: swift-testing + XCTest across unit, integration, regression, and performance categories. SwiftLint enforced. Protocol-first DI with test doubles.
+- Certified-preset roster: the preset JSON sidecars (`certified` flag) and [`docs/ENGINE/RENDER_CAPABILITY_REGISTRY.md`](ENGINE/RENDER_CAPABILITY_REGISTRY.md).
+- Recent work: `git log --since="2 weeks ago" --oneline`.
+- Phase status: the phase headers below.
+- Open defects: [`docs/QUALITY/KNOWN_ISSUES.md`](QUALITY/KNOWN_ISSUES.md) §Open Index.
 
 ## Recently Completed
 
