@@ -172,4 +172,132 @@ struct DocIntegrityTests {
         let unresolved = cited.subtracting(active).subtracting(gapped).sorted()
         #expect(unresolved.isEmpty, "Failed Approach citation(s) #\(unresolved) resolve to neither an active CLAUDE.md entry nor a gap-table row — extend the gap table when relocating entries (the DOC.3/DOC.4 convention).")
     }
+
+    // MARK: - DOC.6 rotation / budget / index gates
+    //
+    // The pruning-pass prose convention failed twice (measured 2026-06-12: EP narratives
+    // four weeks past the RB.3 window; KNOWN_ISSUES 71 % resolved-history; release notes
+    // unrotated at 696 KB). Per the D-161 ratchet rule 3 it converts to mechanism:
+    // Scripts/rotate_docs.sh performs the moves; these gates make skipping it red.
+
+    /// Cutoff used by the rotation gates — entries resolved more than 14 days ago
+    /// belong in the history files (Scripts/rotate_docs.sh moves them).
+    private static var rotationCutoff: Date { Date(timeIntervalSinceNow: -14 * 86_400) }
+
+    /// The LAST `YYYY-MM-DD` occurrence in a header line (ranges use the end date) —
+    /// the same rule Scripts/rotate_docs.sh applies.
+    private static func lastISODate(in line: String) -> Date? {
+        let dates = matches(#"\d{4}-\d{2}-\d{2}"#, line, options: [])
+        guard let last = dates.last else { return nil }
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = TimeZone(identifier: "UTC")
+        return df.date(from: last)
+    }
+
+    /// Lines of the section starting at the exact `header` line, up to (exclusive) the
+    /// next top-level `## ` line. Nil when the header is absent.
+    private static func sectionLines(of text: String, header: String) -> [String]? {
+        var inSection = false
+        var out: [String] = []
+        for line in text.components(separatedBy: "\n") {
+            if line == header { inSection = true; continue }
+            if inSection && line.hasPrefix("## ") { break }
+            if inSection { out.append(line) }
+        }
+        return inSection ? out : nil
+    }
+
+    @Test("EP §Recently Completed: entries older than 14 days are header-only (DOC.6 rotation gate)")
+    func engineeringPlanRotationGate() throws {
+        guard Self.docsPresent else { print("DocIntegrityTests: repo docs not present — skipping"); return }
+        let ep = Self.read("docs/ENGINEERING_PLAN.md") ?? ""
+        let section = try #require(Self.sectionLines(of: ep, header: "## Recently Completed"),
+                                    "ENGINEERING_PLAN.md has no §Recently Completed")
+        var violations: [String] = []
+        var header: String?
+        var bodyLines = 0
+        func closeEntry() {
+            if let h = header, let d = Self.lastISODate(in: h), d < Self.rotationCutoff, bodyLines > 3 {
+                violations.append(h)
+            }
+            header = nil; bodyLines = 0
+        }
+        for line in section {
+            if line.hasPrefix("### ") { closeEntry(); header = line }
+            else if header != nil && !line.trimmingCharacters(in: .whitespaces).isEmpty { bodyLines += 1 }
+        }
+        closeEntry()
+        #expect(violations.isEmpty, "EP §Recently Completed entr\(violations.count == 1 ? "y" : "ies") older than 14 days still carr\(violations.count == 1 ? "ies" : "y") a body: \(violations) — run Scripts/rotate_docs.sh (bodies move to ENGINEERING_PLAN_HISTORY.md; headers stay).")
+    }
+
+    @Test("KNOWN_ISSUES §Resolved (recent) stays within its 50 KB budget (DOC.6)")
+    func knownIssuesResolvedBudget() throws {
+        guard Self.docsPresent else { print("DocIntegrityTests: repo docs not present — skipping"); return }
+        let ki = Self.read("docs/QUALITY/KNOWN_ISSUES.md") ?? ""
+        let section = try #require(Self.sectionLines(of: ki, header: "## Resolved (recent)"),
+                                    "KNOWN_ISSUES.md has no §Resolved (recent)")
+        let bytes = section.joined(separator: "\n").utf8.count
+        #expect(bytes <= 50 * 1024, "KNOWN_ISSUES §Resolved (recent) is \(bytes / 1024) KB (budget 50 KB) — run Scripts/rotate_docs.sh (resolved entries older than 14 days move to KNOWN_ISSUES_HISTORY.md).")
+    }
+
+    @Test("RELEASE_NOTES_DEV: pre-current-month content stays within its 50 KB budget (DOC.6)")
+    func releaseNotesRotationBudget() throws {
+        guard Self.docsPresent else { print("DocIntegrityTests: repo docs not present — skipping"); return }
+        let rn = Self.read("docs/RELEASE_NOTES_DEV.md") ?? ""
+        #expect(!rn.isEmpty, "RELEASE_NOTES_DEV.md unreadable")
+        // The budget is on ROTATION DEBT (entries from months before the current one),
+        // not the whole file: the current month legitimately lives in the active file
+        // and alone measured 72 KB on 2026-06-12 — a raw whole-file cap cannot coexist
+        // with the monthly rotation. 50 KB of stale-month content ≈ a rotation skipped
+        // for a couple of weeks past a month boundary.
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM"
+        df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = TimeZone(identifier: "UTC")
+        let currentMonth = df.string(from: Date())
+        var staleBytes = 0
+        var inStale = false
+        for line in rn.components(separatedBy: "\n") {
+            if line.hasPrefix("## [dev-") {
+                let month = String(line.dropFirst("## [dev-".count).prefix(7))
+                inStale = month < currentMonth
+            }
+            if inStale { staleBytes += line.utf8.count + 1 }
+        }
+        #expect(staleBytes <= 50 * 1024, "RELEASE_NOTES_DEV.md carries \(staleBytes / 1024) KB of entries from before \(currentMonth) (budget 50 KB) — run Scripts/rotate_docs.sh (whole months move to RELEASE_NOTES_DEV_YYYY-MM.md files).")
+    }
+
+    @Test("DECISIONS §Index is complete: every ## D- header has a row and vice versa (DOC.6)")
+    func decisionsIndexCompleteness() throws {
+        guard Self.docsPresent else { print("DocIntegrityTests: repo docs not present — skipping"); return }
+        let dec = Self.read("docs/DECISIONS.md") ?? ""
+        #expect(!dec.isEmpty, "DECISIONS.md unreadable")
+        let headers = Set(Self.matches(#"^## (D-[A-Za-z0-9-]+)"#, dec))
+        let rows = Set(Self.matches(#"^\| (D-[A-Za-z0-9-]+) \|"#, dec)).subtracting(["D-###"])
+        #expect(!headers.isEmpty && !rows.isEmpty, "DECISIONS.md header/index inventory empty — §Index missing?")
+        let missingRows = headers.subtracting(rows).sorted()
+        let staleRows = rows.subtracting(headers).sorted()
+        #expect(missingRows.isEmpty, "DECISIONS entr\(missingRows.count == 1 ? "y" : "ies") \(missingRows) ha\(missingRows.count == 1 ? "s" : "ve") no §Index row — update the index table.")
+        #expect(staleRows.isEmpty, "DECISIONS §Index row(s) \(staleRows) have no matching entry — update the index table (rotated entries lose their row; the entry itself lives in DECISIONS_HISTORY.md).")
+    }
+
+    @Test("KNOWN_ISSUES §Open Index is complete: every open entry has a row and vice versa (DOC.6)")
+    func knownIssuesOpenIndexCompleteness() throws {
+        guard Self.docsPresent else { print("DocIntegrityTests: repo docs not present — skipping"); return }
+        let ki = Self.read("docs/QUALITY/KNOWN_ISSUES.md") ?? ""
+        let openSection = try #require(Self.sectionLines(of: ki, header: "## Open"),
+                                        "KNOWN_ISSUES.md has no §Open")
+        // Top-level open entries carry an ALL-CAPS ID prefix (BUG-NNN, AUDIT-…);
+        // narrative sub-headers (### Expected behavior, …) do not match.
+        let openText = openSection.joined(separator: "\n")
+        let entries = Set(Self.matches(#"^### ([A-Z]{2,}-[^\s]+)"#, openText))
+        let rows = Set(Self.matches(#"^\| ([A-Z]{2,}-[^\s]+) \|"#, ki)).subtracting(["ID"])
+        #expect(!entries.isEmpty && !rows.isEmpty, "KNOWN_ISSUES open-entry/index inventory empty — §Open Index missing?")
+        let missingRows = entries.subtracting(rows).sorted()
+        let staleRows = rows.subtracting(entries).sorted()
+        #expect(missingRows.isEmpty, "Open entr\(missingRows.count == 1 ? "y" : "ies") \(missingRows) ha\(missingRows.count == 1 ? "s" : "ve") no §Open Index row — update the index table.")
+        #expect(staleRows.isEmpty, "§Open Index row(s) \(staleRows) have no matching open entry — update the index table (resolved entries lose their row when they move to §Resolved).")
+    }
 }
