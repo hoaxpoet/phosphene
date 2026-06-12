@@ -184,7 +184,14 @@ struct PresetVisualReviewTests {
     // pipeline state to a 1-attachment encoder — a Metal format mismatch
     // that produces raw G-buffer output instead of the deferred lit result.
     @Test("Render preset to PNGs + contact sheet (RENDER_VISUAL=1)",
-          arguments: ["Arachne", "Aurora Veil", "Gossamer", "Volumetric Lithograph", "Lumen Mosaic", "Nimbus"])
+          arguments: ["Arachne", "Aurora Veil", "Gossamer", "Volumetric Lithograph", "Lumen Mosaic", "Nimbus",
+                      // BUG-034: remaining ray-march presets, so before/after step-budget
+                      // pairs cover the full affected set. Ferrofluid Ocean renders its
+                      // legacy SDF path here (no mesh encoder / height texture in this
+                      // harness); Glass Brutalist renders without SSGI/bloom per the
+                      // renderDeferredRayMarchFrame caveats — both halves of an A/B pair
+                      // use the identical harness, so deltas isolate the uniform change.
+                      "Ferrofluid Ocean", "Glass Brutalist", "Kinetic Sculpture"])
     func renderPresetVisualReview(_ presetName: String) throws {
         guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else {
             print("[PresetVisualReview] RENDER_VISUAL not set, skipping \(presetName)")
