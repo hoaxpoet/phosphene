@@ -49,7 +49,7 @@ For entries describing **tech that may have evolved since the original observati
 
 ### #11 placeholder
 
-**Note:** #11 (MediaRemote private framework — "Operation not permitted from signed app bundles") stays in CLAUDE.md as an active Failed Approach because Apple's enforcement of private-framework restrictions is ongoing, and the rule still prevents a recurring bug ("don't reach for MediaRemote when AppleScript polling looks slow"). Cross-referenced here for completeness only.
+**Note:** #11 (MediaRemote private framework — "Operation not permitted from signed app bundles") was removed from CLAUDE.md at RB.2 (2026-06-11; see §RB.2 rulebook purge below). The don't-reach-for-it warning lives as comments at the code sites (`AudioInputRouter.swift`, `StreamingMetadata.swift`).
 
 ---
 
@@ -133,11 +133,12 @@ Anything in the short-window-tap-audio family has been exhaustively explored.
 
 ## RB.2 rulebook purge (2026-06-11)
 
-Matt's per-entry review of every active Failed Approach and Do-NOT bullet (plain-English context: [`docs/diagnostics/RB1_FA_DN_EXPLANATIONS.md`](diagnostics/RB1_FA_DN_EXPLANATIONS.md); decisions given in-session 2026-06-11) removed the entries below from CLAUDE.md. Kept as active CLAUDE.md entries: FA #4 (pending Matt's relevance ruling), #27, #31, #64, #65, #67, #73, and the `@Published` write-or-clear bullet. Full original text of everything removed: git history (CLAUDE.md immediately before the `[RB.2]` purge commit). One line each:
+Matt's per-entry review of every active Failed Approach and Do-NOT bullet (plain-English context: [`docs/diagnostics/RB1_FA_DN_EXPLANATIONS.md`](diagnostics/RB1_FA_DN_EXPLANATIONS.md); decisions given in-session 2026-06-11) removed the entries below from CLAUDE.md. Kept as active CLAUDE.md entries: FA #27, #31, #64, #65, #67, #73, and the `@Published` write-or-clear bullet. (FA #4 was held pending Matt's relevance ruling, then retired at RB.2-2: its absolutist "beat is never primary" form is superseded by the constraint-based framing now in CLAUDE.md §Audio Data Hierarchy Layer 4 — beat-locked motion on the cached grid is a valid technique per D-153 → D-158.) Full original text of everything removed: git history (CLAUDE.md immediately before the `[RB.2]` purge commit). One line each:
 
 - **FA #1 — IIR energy-difference beat detection.** Machine-gun false positives; superseded by Beat This! + per-band spectral flux.
 - **FA #2 — Rising-edge accumulation.** Same dead technique family as #1.
 - **FA #3 — Per-bin spectral-flux thresholds.** Untunable across genres; same superseded era.
+- **FA #4 — Beat-dominant visual design.** Retired at RB.2-2 (Matt's ruling): the physical fact (raw live onsets jitter ±80 ms) moved into §Audio Data Hierarchy Layer 4 as a constraint, not a ban; FBS demonstrated beat-locked motion as a technique.
 - **FA #11 — MediaRemote private framework.** Blocked from signed bundles on macOS 15+; comments at the code sites remain.
 - **FA #15 — Chroma from <500 Hz FFT bins.** Bin resolution too coarse for pitch; pre-history mood-pipeline note.
 - **FA #16 — Raw 12-bin chroma into the mood MLP.** Model needs engineered features; pre-history note.
