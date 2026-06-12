@@ -6,6 +6,12 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-06-11-h] BUG-049 — Skein colour-freeze gate: feasibility-aware switch selection; session-set content can no longer red the suite
+
+The colour-freeze cert gate picked its dominant-stem switch on decisiveness alone and only discovered at sampling time that the switch was un-sample-able (windows < 3·dτ inside the pour's reign / probe extent) — `Issue.record` red on data, not code, whenever a new capture changed the pick (the 19:49 closeout battery hit exactly this). Fix (test-infrastructure only, commit `a6899893`): a CPU-only dry run (`switchSampleInfeasibility`, exact tick replay — no GPU dependence) now vets every candidate during selection, falling back in decisiveness order to the most decisive switch that is ALSO sample-able; the in-run guard remains as a dry-run/live parity safety net. No-candidate session sets (e.g. all header-only stubs) skip LOUDLY instead of recording an Issue, and the Skein.3 real-stem routing gate gained the same scan-all fallback (it hard-depended on the single largest session — red when that's a 602-byte stub). Colour-freeze assertions unchanged. **Armed-path validation pending:** the only real capture (`2026-06-11T13-10-42Z`) vanished from `~/Documents/phosphene_sessions` before the fix session — the next real listening session should show `[skein_colorfreeze] picked …` and green; see the BUG-049 banner in KNOWN_ISSUES.
+
+---
+
 ## [dev-2026-06-11-g] REVIEW.3 + BUG-048 — closeout evidence script; canonical app-test invocation un-broken
 
 **REVIEW.3:** `Scripts/closeout_evidence.sh` replaces hand-transcribed closeout test claims (the CSP.3.4 false-green class) with a script-generated evidence block pasted verbatim — header (timestamp/host/commit/tree), per-step verbatim tool summaries + exit codes + failing-test identifiers, `EVIDENCE: ALL GREEN` / `FAILURES PRESENT` verdict; byte-identical copy at `~/.phosphene/last_closeout_evidence.md` for paste-diff verification. Canary-verified un-greenwashable (deliberate failing test surfaced verbatim, then deleted). CLAUDE.md closeout item 2 now requires the block.
