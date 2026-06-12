@@ -2,6 +2,37 @@
 
 Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `DEFECT_TAXONOMY.md` for severity definitions and process.
 
+## Open Index
+
+| ID | Sev | Domain | One-liner |
+|---|---|---|---|
+| AUDIT-2026-06-09 | P2/P3 | audit backlog | Full-codebase audit findings not individually filed |
+| BUG-030 | P1 | session.prep | Duplicate playlist tracks crash session preparation |
+| BUG-031 | P1 | dsp.stem / concurrency | Shared StemSeparator unlocked across live + prep paths corrupts stems |
+| BUG-032 | P1 | session.lifecycle / concurrency | `endSession()` orphans prep; stale prep can hijack the next session |
+| BUG-033 | P1 | app.ui / performance | 60 Hz `@Published` snapshot invalidates SwiftUI tree; VM retain-cycle leaks |
+| BUG-034 | P1 | renderer / test-isolation | Ray-march fixtures render at 32 steps vs live 128 (`sceneParamsB.z` double-booked) |
+| BUG-035 | P2 | dsp.structure | NoveltyDetector re-detects boundaries ~4-5× after similarity ring wraps |
+| BUG-036 | P2 | audio.capture / performance | Heap allocations on the real-time audio thread (three sites) |
+| BUG-037 | P2 | preset.fidelity | Arachne spiral chord-count contract inconsistent; build pops at ~45 % |
+| BUG-042 | P2 | dsp.structure | Structural sections still ~1.5 s; analyzer geometry is note-scale |
+| BUG-043 | P2 | pipeline-wiring | Mid-playback 9.6 s analysis stall froze visuals, then lurched |
+| BUG-041 | P2 | dsp.stem / preset.fidelity | FFO aurora flashes at track start (stem-deviation cold-start overswing) |
+| BUG-038 | P1 | renderer / dsp.beat | Ray-march light intensity flickers 7-9 steps/sec (BUG-019 residual) |
+| BUG-039 | P2 | resource-management | Session video silently stops appending; recorder stays "running" |
+| BUG-040 | P2 | dsp.structure | Live-edge boundary every ~4 detect intervals; structure signal unusable |
+| BUG-029 | P3 | dsp.beat | AGC `f.bass` cold-start spike pops presets at every track onset |
+| BUG-028 | P2 | dsp.beat | Beat-grid live phase imperfect on ~half of tracks |
+| BUG-027 | P2 | dsp.beat | Positive band deviations near-dead for non-dominant bands |
+| BUG-025 | P3 | dsp.beat | AGC running average poisoned by post-`active` startup transient |
+| BUG-026 | P2 | session.ux | No warning when tap signal level is structurally insufficient |
+| BUG-014 | P3 | preset.fidelity | Lumen Mosaic panel aggregate uniform across tracks |
+| BUG-012 | P1 | ml | MPSGraph EXC_BAD_ACCESS in StemFFTEngine under sustained force-dispatch |
+| BUG-013 | P2 | dsp.beat | No `time_signature` source; meter wrong on some odd-meter tracks |
+| BUG-001 | P2 | dsp.beat | Money 7/4 stays REACTIVE on live path |
+| BUG-005 | P3 | session.ux | Spotify `preview_url` returns null for some tracks |
+
+
 ---
 
 ## Open
