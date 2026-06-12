@@ -113,19 +113,19 @@ P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh dou
 
 **Severity:** P1 (test/prod parity, FA #66 class — golden hashes, RENDER_VISUAL contact sheets, and certification evidence for every ray-march preset are generated at 1/4 the live step budget).
 **Domain tag:** renderer / preset.fidelity / test-isolation
-**Status:** Open — audit finding.
+**Status:** **Resolved 2026-06-12** — `[BUG-034]` increment on the worktree branch (commits: harness baseline coverage `9f25584c` → fix `e2c58905` → parity tests `5fb2035e` → harness production-parity `1a16411e` → golden regen + docs).
 **Introduced:** D-057 frame-budget multiplier was packed into the slot `PresetDescriptor+SceneUniforms` already used for `sceneAmbient`.
-**Resolved:** —
+**Resolved:** 2026-06-12. `sceneParamsB.z` is single-meaning: the D-057 step multiplier, defaulted to 1.0 by `makeSceneUniforms()` and `SceneUniforms()` so fixtures march the live 128-step budget by construction (no slot move needed — Task 1 audit found `.w` is SSGI's radius override, not free, and ambient had no consumer anywhere). Slot-map contract documented at the `SceneUniforms` definition. The M7-lite review also exposed that the deferred ray-march visual harness bound none of noise/IBL/SSGI/post-process/height-texture — upgraded to production-parity bindings (Matt-approved scope extension, mirrors the FerrofluidOceanVisualTests round-56/57 pattern). Certified presets: Lumen Mosaic provably unaffected (byte-identical pairs); Ferrofluid Ocean — Matt accepted live-path-unchanged (2026-06-12), no re-certification.
 
 **Expected:** fixtures march the same step budget the live app uses.
 **Actual:** `makeSceneUniforms()` (`PresetDescriptor+SceneUniforms.swift:99`) packs `sceneAmbient` (default 0.1) into `sceneParamsB.z`; the G-buffer preamble (`PresetLoader+Preamble.swift:417`) reads `.z` as the D-057 step multiplier: `clamp(0.1, 0.25, 1.0) = 0.25` → `maxMarchSteps = 32`. The live path overwrites `.z = 1.0` per frame (`RenderPipeline+RayMarch.swift:118`) → 128 steps. `PresetAcceptanceTests`, `PresetVisualReviewTests`, `PresetRegressionTests`, and `PresetContrastCertificationTests` all bind raw `makeSceneUniforms()` output. Corollary: the `scene_ambient` JSON sidecar field never reaches any shader on the live path — dead config + doc drift in `PresetDescriptor`.
 **Reproduction steps:** render any ray-march preset via the fixture helper and via the live path; compare step counts (or diff a contact-sheet frame against a live capture at identical inputs).
-**Session artifacts:** `docs/diagnostics/CODE_AUDIT_2026-06-09.md` §A6.
+**Session artifacts:** `docs/diagnostics/CODE_AUDIT_2026-06-09.md` §A6; before/after pairs `/tmp/phosphene_visual/BUG-034_pairs/` (M7-lite reviewed by Matt 2026-06-12).
 **Suspected failure class:** `test-isolation` (FA #66 class) + `api-contract` (slot double-booking).
 **Verification criteria:**
-- [ ] Automated: fixture and live path march identical step budgets by construction (move one meaning to a free slot, e.g. `sceneParamsB.w` is SSGI-only; fixtures set the multiplier to 1.0).
-- [ ] Golden-hash regen across all ray-march presets with before/after contact sheets — visual deltas reviewed, not assumed.
-- [ ] `scene_ambient` either wired to a real consumer or removed from the sidecar schema + docs.
+- [x] Automated: fixture and live path march identical step budgets by construction — `StepBudgetParityTests` (parity 128 == 128 derived through both code paths; default-1.0 guard). A/B-proven: temporary revert of the packing line turns both red (32 ≠ 128).
+- [x] Golden-hash regen across all ray-march presets with before/after contact sheets — pairs reviewed by Matt (M7-lite, 2026-06-12) on the production-parity harness; KS + VL regenerated (10–13 bit drift), Glass Brutalist within tolerance (kept), Lumen Mosaic byte-identical, Ferrofluid golden already retired (D-124).
+- [x] `scene_ambient` — **removed as dead config** (Task 1(b): no shader on any path consumed it; every `ambient` term in Metal is sky/IBL-derived). Removed from schema, `PresetDescriptor`, all five sidecars, SHADER_CRAFT §17 + prose, `Metals.metal` comment. A future ambient control starts at the design seat with a D-### and a consumer.
 
 ---
 
