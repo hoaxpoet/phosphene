@@ -162,7 +162,11 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // accent. steady/quiet hashes regenerated to original V.7 values within
     // the 8-bit dHash tolerance; beatHeavy shifts slightly because bass_dev
     // now contributes a small +0.06 to the smooth-union radius.
-    "Kinetic Sculpture": (steady: 0x5EAB7295D25B4A4A, beatHeavy: 0x5AAB72B5564B4A4B, quiet: 0x56AB7295925B4A4A),
+    //
+    // BUG-034 (2026-06-12, M7-lite approved): regen at the live 128-step budget.
+    // Pre-fix fixtures marched 32 steps (ambient packed into the D-057 slot);
+    // the lattice now resolves deeper into the scene. 10-13 bit drift.
+    "Kinetic Sculpture": (steady: 0x5B2B63B5585B1A4A, beatHeavy: 0x5B2B6335504A5A4A, quiet: 0x5B2B62B5585A1A4A),
     // LM.4.5 (full-spectrum palette card model): the regression harness
     // leaves slot 8 bound to the zero placeholder buffer, so every cell
     // picks card slot `(cellHash + 0) % 48` and the per-track seed hash
@@ -227,7 +231,10 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     "Skein": (steady: 0x8080808080808080, beatHeavy: 0x8080808080808080, quiet: 0x8080808080808080),
     "Spectral Cartograph": (steady: 0x00180C0C0C0C0000, beatHeavy: 0x00180C0C0C0C6080, quiet: 0x00180C0C0C0C0000),
     "Staged Sandbox": (steady: 0x000022160A162A00, beatHeavy: 0x000022160A162A00, quiet: 0x000022160A162A00),
-    "Volumetric Lithograph": (steady: 0x8C63D43512030000, beatHeavy: 0x8C63D43512030000, quiet: 0x8C63D43512030000),
+    // BUG-034 (2026-06-12, M7-lite approved): regen at the live 128-step budget.
+    // Terrain now reaches the true horizon (the old "sky holes" at distance
+    // were rays exhausting the 32-step budget mid-terrain). 13 bit drift.
+    "Volumetric Lithograph": (steady: 0x8C63D435F2ADAB00, beatHeavy: 0x8C63D435F2ADAB00, quiet: 0x8C63D435F2ADAB00),
     "Waveform": (steady: 0x000F0F0000000000, beatHeavy: 0x000F0F0000000000, quiet: 0x000F0F0000000000),
 ]
 
