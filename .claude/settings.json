@@ -8,6 +8,39 @@
           {
             "type": "command",
             "command": "bash .claude/hooks/block-destructive.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/preset-session-guard.sh bash-pre"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/preset-session-guard.sh metal-edit"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/preset-session-guard.sh read-track"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/preset-session-guard.sh bash-post"
           }
         ]
       }
