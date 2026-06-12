@@ -696,7 +696,7 @@ Cost: heavy — ~3 ms per full-screen cloud pass at 1080p on Tier 2. Sample half
 
 ```metal
 // Caller responsibilities: none.
-// Exposure should be calibrated for IBL at scene_ambient ≈ 0.06 — gold blows out at > 0.15.
+// Exposure should be calibrated against the IBL ambient floor — gold blows out under a bright ambient term.
 MaterialResult mat_gold(float3 wp, float3 n) {
     MaterialResult m;
     m.albedo   = float3(1.0, 0.78, 0.34);
@@ -998,7 +998,7 @@ Key = warm from above-right (3.0 intensity). Fill = cool from above-left (1.2). 
 
 **Use for:** outdoor / terrain presets (Volumetric Lithograph, Ferrofluid Ocean).
 
-Single light from sun angle, IBL does the heavy lifting. Tint IBL ambient per mood valence via `lightColor` multiplier (existing D-022 behavior). Keep scene_ambient ∼0.06 so shadows have depth.
+Single light from sun angle, IBL does the heavy lifting. Tint IBL ambient per mood valence via `lightColor` multiplier (existing D-022 behavior). Keep the ambient floor low (IBL irradiance term in the lighting pass) so shadows have depth. (`scene_ambient` was removed at BUG-034 — it was dead config that never reached a shader; ambient character comes from IBL.)
 
 ### 5.3 Bioluminescent (rim + back-lit SSS)
 
@@ -1016,7 +1016,7 @@ Directional key from above with cyan tint (`float3(0.4, 0.85, 0.95)`). Strong fo
 
 **Use for:** presets aiming for urban / neon vibe. Glass Brutalist could push this direction.
 
-Multiple low-intensity colored point lights (magenta, cyan, deep orange) spread through the scene. High bloom threshold so only light sources and direct reflections bloom. IBL environment is dark-sky `float3(0.03, 0.03, 0.08)`. Reduce scene_ambient to 0.02.
+Multiple low-intensity colored point lights (magenta, cyan, deep orange) spread through the scene. High bloom threshold so only light sources and direct reflections bloom. IBL environment is dark-sky `float3(0.03, 0.03, 0.08)` — the dark IBL is what keeps the ambient floor near-black.
 
 ### 5.6 Golden hour
 
@@ -1073,7 +1073,7 @@ At `totalStemEnergy == 0`: beams continue orbiting at minimum angular velocity (
 
 **IBL coordination:**
 
-The stage rig is additive to IBL ambient, not a replacement. IBL is still tinted by D-022 mood valence and provides scene-wide soft ambient illumination; the stage rig provides directional specular sweeps over that base. `scene_ambient ~ 0.06` is preserved so that beam highlights have visible shadow contrast against the unlit substrate.
+The stage rig is additive to IBL ambient, not a replacement. IBL is still tinted by D-022 mood valence and provides scene-wide soft ambient illumination; the stage rig provides directional specular sweeps over that base. The IBL ambient floor stays low so that beam highlights have visible shadow contrast against the unlit substrate.
 
 **Cost:**
 
@@ -2447,7 +2447,6 @@ Every preset ships a `<PresetName>.json` sidecar alongside its `.metal` file. Th
   "scene_camera": { "position": [0, 2, -3], "target": [0, 2, 4], "fov": 65 },
   "scene_lights": [{ "position": [0, 4.5, 2], "color": [1, 0.95, 0.9], "intensity": 3.0 }],
   "scene_fog": 0.015,
-  "scene_ambient": 0.08,
   "stem_affinity": {
     "drums": "pillar_squeeze",
     "bass": "pillar_scale",

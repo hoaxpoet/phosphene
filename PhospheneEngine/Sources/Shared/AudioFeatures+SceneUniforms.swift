@@ -28,8 +28,28 @@ import simd
 /// [4]  lightPositionAndIntensity  xyz = world-space light position, w = intensity
 /// [5]  lightColor             xyz = linear RGB light colour, w = 0
 /// [6]  sceneParamsA           x = audioTime, y = aspectRatio, z = nearPlane, w = farPlane
-/// [7]  sceneParamsB           x = fogNear, y = fogFar, zw = reserved (0)
+/// [7]  sceneParamsB           x = fogNear, y = fogFar, z = D-057 step multiplier, w = SSGI radius override
 /// ```
+///
+/// ## Slot map — sceneParamsA / sceneParamsB (the packing contract)
+///
+/// Every component has exactly ONE meaning. A slot is either a static scene value
+/// (written once at preset load) or a per-frame value (placeholder at load,
+/// overwritten by the render loop). Never pack a second meaning into an
+/// "unused-looking" slot — BUG-034 packed `sceneAmbient` into `B.z`, which the
+/// G-buffer preamble reads as the step multiplier, and every ray-march fixture
+/// silently rendered at 1/4 the live step budget.
+///
+/// | Slot  | Meaning                          | Writer(s)                                              | Reader(s) |
+/// |-------|----------------------------------|--------------------------------------------------------|-----------|
+/// | `A.x` | accumulated audio time           | placeholder 0 at load; `RenderPipeline+RayMarch` per frame | preamble + preset shaders |
+/// | `A.y` | aspect ratio (width/height)      | placeholder 16/9 at load; render loop per frame        | preamble, RayMarch, SSGI, FerrofluidMesh |
+/// | `A.z` | ray-march near plane             | `makeSceneUniforms()` (static)                         | march loops |
+/// | `A.w` | ray-march far plane              | `makeSceneUniforms()` (static)                         | march loops, fog |
+/// | `B.x` | fog start distance               | `makeSceneUniforms()` (static)                         | `RayMarch.metal` lighting |
+/// | `B.y` | fog end distance                 | `makeSceneUniforms()`; arousal fog-scale per frame     | `RayMarch.metal` lighting |
+/// | `B.z` | D-057 frame-budget step multiplier (1.0 = 128 steps) | 1.0 at construction; `RenderPipeline+RayMarch` per frame under budget pressure | G-buffer preamble march loop (`clamp(z, 0.25, 1.0)`; `z ≤ 0` → 1.0) |
+/// | `B.w` | SSGI sample-radius override (0 = default 0.08) | nobody (always 0 today)                  | `SSGI.metal` |
 @frozen
 public struct SceneUniforms: Sendable {
 
@@ -61,7 +81,9 @@ public struct SceneUniforms: Sendable {
     /// z = ray march near-plane distance; w = ray march far-plane / max distance.
     public var sceneParamsA: SIMD4<Float>
 
-    /// x = fog start distance; y = fog end distance (fully opaque beyond this); zw = 0.
+    /// x = fog start distance; y = fog end distance (fully opaque beyond this);
+    /// z = D-057 frame-budget step multiplier (1.0 = full 128-step budget);
+    /// w = SSGI sample-radius override (0 = shader default). See the slot map above.
     public var sceneParamsB: SIMD4<Float>
 
     // MARK: Convenience Accessors
@@ -144,6 +166,8 @@ public struct SceneUniforms: Sendable {
         self.lightPositionAndIntensity = SIMD4(lightPos.x, lightPos.y, lightPos.z, lightIntensity)
         self.lightColor = SIMD4(lightColor.x, lightColor.y, lightColor.z, 0)
         self.sceneParamsA = SIMD4(audioTime, aspectRatio, nearPlane, farPlane)
-        self.sceneParamsB = SIMD4(fogNear, fogFar, 0, 0)
+        // B.z = D-057 step multiplier at the full-quality default (1.0 = 128 steps)
+        // so any uniforms constructed for tests march the live budget by default.
+        self.sceneParamsB = SIMD4(fogNear, fogFar, 1.0, 0)
     }
 }

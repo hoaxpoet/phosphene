@@ -35,8 +35,7 @@ final class SceneUniformsConstructionTests: XCTestCase {
         tgtX: Float = -0.3, tgtY: Float = 1.6,  tgtZ: Float = 12.0,
         fov: Float = 65.0,
         intensity: Float = 3.0,
-        fog: Float = 0.015,
-        ambient: Float = 0.08
+        fog: Float = 0.015
     ) throws -> PresetDescriptor {
         let json = """
         {
@@ -53,8 +52,7 @@ final class SceneUniformsConstructionTests: XCTestCase {
                 "color":    [1, 0.95, 0.9],
                 "intensity": \(intensity)
             }],
-            "scene_fog": \(fog),
-            "scene_ambient": \(ambient)
+            "scene_fog": \(fog)
         }
         """
         return try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))

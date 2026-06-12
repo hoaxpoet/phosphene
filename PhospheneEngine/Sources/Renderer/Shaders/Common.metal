@@ -171,7 +171,8 @@ struct StemFeatures {
 ///   [4]  lightPositionAndIntensity  xyz = light position, w = intensity
 ///   [5]  lightColor             xyz = linear RGB, w = 0
 ///   [6]  sceneParamsA           x=audioTime, y=aspectRatio, z=nearPlane, w=farPlane
-///   [7]  sceneParamsB           x=fogNear, y=fogFar, zw=reserved
+///   [7]  sceneParamsB           x=fogNear, y=fogFar, z=D-057 step multiplier, w=SSGI radius override
+///        Slot-map contract: Shared/AudioFeatures+SceneUniforms.swift (BUG-034).
 struct SceneUniforms {
     float4 cameraOriginAndFov;
     float4 cameraForward;

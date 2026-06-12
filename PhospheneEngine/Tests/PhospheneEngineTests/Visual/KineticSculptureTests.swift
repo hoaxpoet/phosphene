@@ -260,7 +260,9 @@ private extension KineticSculptureTests {
         uniforms.lightPositionAndIntensity = SIMD4(4, 7, -4, 3.5)
         uniforms.lightColor                = SIMD4(1, 0.96, 0.88, 0)
         uniforms.sceneParamsA              = SIMD4(0, Float(testWidth) / Float(testHeight), 0.1, 20)
-        uniforms.sceneParamsB              = SIMD4(15, 20, 0.06, 0)
+        // B.z = 1.0: D-057 step multiplier at the live full-quality default
+        // (BUG-034 — the old 0.06 here was ambient, read as a 0.25 multiplier → 32 steps).
+        uniforms.sceneParamsB              = SIMD4(15, 20, 1.0, 0)
         return uniforms
     }
 }

@@ -258,7 +258,6 @@ Tier 2 measured budget approximate breakdown:
   "scene_lights": [
     { "position": [2.0, 4.0, 2.5], "color": [1.0, 0.9, 0.75], "intensity": 1.2 }
   ],
-  "scene_ambient": 0.06,
   "scene_fog": 0.0,
   "feedback": {
     "decay": 0.94,

@@ -96,7 +96,14 @@ extension PresetDescriptor {
         // JSON so the fog band starts at the camera and covers the visible
         // surface. See V.9 Session 2 carry-forward note.
         let fogFar: Float = sceneFog > 0 ? max(1.0, 1.0 / sceneFog) : 1_000_000
-        uniforms.sceneParamsB = SIMD4(sceneFogNear, fogFar, sceneAmbient, 0)
+
+        // sceneParamsB.z is the D-057 frame-budget step multiplier — NOT a preset
+        // config value. It defaults to 1.0 (the live path's full-quality value) so
+        // fixtures march the same 128-step budget as production by construction;
+        // the live render loop overwrites it per frame under frame-budget pressure
+        // (BUG-034: packing sceneAmbient here had every fixture marching at 32
+        // steps). Slot map: see the SceneUniforms definition.
+        uniforms.sceneParamsB = SIMD4(sceneFogNear, fogFar, 1.0, 0)
 
         return uniforms
     }

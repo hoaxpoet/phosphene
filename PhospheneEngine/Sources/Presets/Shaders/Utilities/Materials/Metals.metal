@@ -66,8 +66,8 @@ MaterialResult mat_brushed_aluminum(float3 wp, float3 n, float3 brush_dir) {
 
 /// Gold: warm yellow metallic with fine scratch normal variation.
 ///
-/// Caller responsibilities: none. Exposure should be calibrated for IBL
-/// at scene_ambient ≈ 0.06 — gold blows out at ambient > 0.15.
+/// Caller responsibilities: none. Exposure should be calibrated against the
+/// IBL ambient floor — gold blows out under a bright ambient term.
 MaterialResult mat_gold(float3 wp, float3 n) {
     MaterialResult m;
     m.albedo   = float3(1.0, 0.78, 0.34);

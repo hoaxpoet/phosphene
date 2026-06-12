@@ -344,9 +344,11 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// visible surface for any close-framed preset.
     public let sceneFogNear: Float
 
-    /// Ambient light intensity multiplier for ray march presets (0–1).
-    /// Stored in `sceneParamsB.z`.
-    public let sceneAmbient: Float
+    // `sceneAmbient` / `scene_ambient` was removed at BUG-034: it never reached
+    // any shader (it was packed into sceneParamsB.z, which the G-buffer preamble
+    // reads as the D-057 step multiplier — fixtures marched at 1/4 the live step
+    // budget). A real ambient-light control starts at the design seat with a
+    // D-### and a shader consumer, not by resurrecting the sidecar field.
 
     /// Ray march far plane distance in world units. Rays that travel this far without
     /// hitting geometry are treated as sky misses. Default 30. Increase for deep corridors
@@ -508,7 +510,6 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case ferrofluid
         case sceneFog = "scene_fog"
         case sceneFogNear = "scene_fog_near"
-        case sceneAmbient = "scene_ambient"
         case sceneFarPlane = "scene_far_plane"
         case fragmentFunction = "fragment_function"
         case vertexFunction = "vertex_function"
@@ -566,7 +567,6 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         ferrofluid       = try container.decodeIfPresent(FerrofluidParams.self, forKey: .ferrofluid)
         sceneFog         = try container.decodeIfPresent(Float.self, forKey: .sceneFog) ?? 0
         sceneFogNear     = try container.decodeIfPresent(Float.self, forKey: .sceneFogNear) ?? 20.0
-        sceneAmbient     = try container.decodeIfPresent(Float.self, forKey: .sceneAmbient) ?? 0.1
         sceneFarPlane    = try container.decodeIfPresent(Float.self, forKey: .sceneFarPlane) ?? 30.0
         fragmentFunction = try container.decodeIfPresent(String.self, forKey: .fragmentFunction) ?? "preset_fragment"
         vertexFunction   = try container.decodeIfPresent(String.self, forKey: .vertexFunction) ?? "fullscreen_vertex"
