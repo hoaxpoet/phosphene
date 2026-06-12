@@ -807,6 +807,71 @@ Known limitation: section boundaries still hard-stop completion-gated segments (
 Verification: 36 targeted Arachne tests green; engine 1222 tests / 156 suites with 13 failing assertions all tracing to documented pre-existing flakes per CLAUDE.md baseline (`MatIDDispatch.matID==1`, `MetadataPreFetcher.fetch_networkTimeout`, several `SessionManager.*` parallel-load timing tests); 4 new gate-regression tests added (`silentStateHaltsBuildAdvance`, `silentGateBoundaryIsTwoPercent`, `waitForCompletionEventReturnsInfinity`, `waitForCompletionEventDefaultsFalse`, `arachneIsCompletionGated`, `arachneMaxDurationIsInfinity`); 1 stale test retired (`Arachne is capped by naturalCycleSeconds (60 s)` replaced with `Arachne returns .infinity`); app build clean; SwiftLint 0 violations on touched files. Full narrative in `docs/RELEASE_NOTES_DEV.md` `[dev-2026-05-12-c]` and `docs/QUALITY/KNOWN_ISSUES.md` BUG-011 § "2026-05-12 round-8 follow-up".
 
 
+### Increment 2.5.4 — Session State Machine & Track Change Behavior ✅
+
+`SessionManager` (`@MainActor ObservableObject`, `Session` module) owns the lifecycle. `startSession(source:)` drives `idle → connecting → preparing → ready`. Graceful degradation: connector failure → `ready` with empty plan; partial preparation failure → `ready` with partial plan. `startAdHocSession()` → `playing` directly (reactive mode). `beginPlayback()` advances `ready → playing`. `endSession()` from any state → `ended`.
+
+Key implementation decisions: `SessionState`/`SessionPlan` live in `Session/SessionTypes.swift` (not `Shared`) because `Shared` cannot depend on `Session`. Cache-aware track-change loading already existed in `resetStemPipeline(for:)` from Increment 2.5.3 — no changes required there. `VisualizerEngine` gained a `sessionManager: SessionManager?` property; the app layer wires `cache → stemCache` on state transition to `.ready`.
+
+11 tests.
+
+### Increment 3.5.2 — Murmuration Stem Routing Revision ✅
+
+Replaced the 6-band full-mix frequency workaround with real stem-driven routing via `StemFeatures` at GPU `buffer(3)`.
+
+`Particles.metal` compute kernel gains `constant StemFeatures& stems [[buffer(3)]]`. Routing: **drums** (`drums_beat` decay drives wave front position) → turning wave that sweeps across the flock over ~200ms, not instantaneously; direction alternates per beat epoch; **bass** (`bass_energy`) → macro drift velocity and shape elongation; **other** (`other_energy`) → surface flutter weighted by `distFromCenter` (periphery 1.0×, core 0.25×); **vocals** (`vocals_energy`) → density compression via `densityScale = 1 - vocals * 0.22` applied to `halfLength` and `halfWidth`.
+
+Warmup fallback: `smoothstep(0.02, 0.06, totalStemEnergy)` crossfades from FeatureVector 6-band routing to stem routing. Zero stems → identical behavior to previous implementation.
+
+`ProceduralGeometry.update()` gains `stemFeatures: StemFeatures = .zero` parameter. `Starburst.metal` gains `StemFeatures` param; `vocals_energy` shifts sky gradient ≤10% warmer.
+
+8 new tests in `MurmurationStemRoutingTests.swift`. 288 swift-testing + 91 XCTest = 379 tests total.
+
+### Increment 3.5.4 — Volumetric Lithograph Preset ✅
+
+New ray-march preset: tactile, audio-reactive infinite terrain rendered with a stark linocut/printmaking aesthetic. Uses the existing deferred ray-march pipeline; no engine changes required.
+
+`PhospheneEngine/Sources/Presets/Shaders/VolumetricLithograph.metal` defines only `sceneSDF` and `sceneMaterial`; the marching loop and lighting pass come from `rayMarchGBufferPreamble`.
+
+- **Geometry:** `fbm3D` heightfield over an infinite XZ plane. The noise's third axis is swept by `s.sceneParamsA.x` (accumulated audio time) so topography continuously morphs rather than scrolls. Vertical amplitude scaled by `clamp(f.bass + f.mid, 0, 2.5)`. SDF return scaled by 0.6 to keep the marcher Lipschitz-safe on steep ridges.
+- **Bimodal materials:** Valleys → `albedo=0, roughness=1, metallic=0` (ultra-matte black). Peaks → `albedo=1, roughness∈[0.06, 0.18], metallic=1` (mirror-bright). Pinched smoothstep edges (0.55→0.72) read as printed lines.
+- **Beat accent:** Drum onset shifts the smoothstep window down (`lo -= drumsBeat × 0.18`) so the bright peak region *expands* across the topography on transients. The deferred G-buffer has no emissive channel, so coverage expansion is the contrast-pulse story.
+- **D-019 stem fallback:** `StemFeatures` is not in scope for `sceneSDF`/`sceneMaterial` (preamble forward-declarations omit it — same as KineticSculpture). Uses `f` directly: `max(f.beat_bass, f.beat_mid, f.beat_composite)` for the drum-beat fallback (CLAUDE.md failed-approach #26 — single-band keying misses snare-driven tracks); `f.treble * 1.4` for the "other" stem fallback (closest single-band proxy for the 250 Hz–4 kHz range).
+- **Pipeline:** `["ray_march", "post_process"]` — SSGI intentionally skipped to preserve harsh, high-contrast shadows.
+- **JSON:** `family: "fluid"`, low-angle directional light from above-side, elevated camera looking down at terrain, far-plane 60u, `stem_affinity` documented (drums→contrast_pulse, bass→terrain_height, other→metallic_sheen).
+
+Verified by the existing `presetLoaderBuiltInPresetsHaveValidPipelines` regression gate, which compiles and renders every built-in preset through the actual G-buffer pipeline. No new test files required — the gate covers the new preset automatically.
+
+### Increment 3.5.4.2 — Volumetric Lithograph v3 + shared fog-fallback bug fix ✅
+
+Two issues surfaced during v2 visual review on Love Rehab:
+
+**Bug 1 (shared infra):** `PresetDescriptor+SceneUniforms.makeSceneUniforms()` line 85 had a broken `scene_fog == 0` fallback: it reused `uniforms.sceneParamsB.y` which starts at SIMD4 default 0. The shader formula `fogFactor = clamp((t - 0) / max(0 - 0, 0.001), 0, 1)` then saturates to 1.0 for any terrain hit — so "no fog" actually produced **maximum fog everywhere**. Fixed: fallback now returns `1_000_000` (effectively infinite fogFar), matching the intuitive "0 means no fog" semantic. No test impact — no existing preset set `scene_fog: 0`.
+
+**Rebalance (v3):** v2 over-corrected. `pow(f.beat_bass, 1.5) × 0.7` with `× 0.6` palette brightness multiplier produced visually inert beat response on energetic music — ACES squashed the boost back into SDR before post-process bloom could amplify it. v3 changes:
+- Drum-beat fallback: `pow(f.beat_bass, 1.2) × 1.5` (saturates at beat_bass ≈ 0.7 rather than never).
+- Palette flare: × 1.5 (was × 0.6) — peaks push to 2.5× albedo on strong kicks, bloom-visible.
+- Ridge seam strobe: `× (1.4 + beat × 2.0)` — the cut-line itself strobes at up to 3.4× brightness.
+- Coverage expansion on beat: 0.03 smoothstep shift (v1 had 0.18 which flickered every frame; v2 had 0 which was dead).
+- Transient terrain kick in `sceneSDF`: `f.beat_bass × 0.35` added to attenuated baseline amp — landscape breathes on kicks without replacing the slow-flowing base.
+
+Same regression gate covers both changes.
+
+### Increment D-030 — SpectralHistoryBuffer + SpectralCartograph ✅
+
+New `SpectralHistoryBuffer` class (Shared module): 16 KB UMA MTLBuffer at fragment buffer index 5, bound unconditionally in all direct-pass fragment encoders. Maintains 5 ring buffers of 480 samples (≈8s at 60fps): valence, arousal, beat_phase01, bass_dev, and log-normalized vocal pitch. Updated once per frame in `RenderPipeline.draw(in:)`; reset on track change via `VisualizerEngine.resetStemPipeline(for:)`.
+
+`SpectralCartograph` preset: first `instrument`-family preset. Four-panel real-time MIR diagnostic — TL=FFT spectrum (log-frequency, centroid-driven colour), TR=3-band deviation meters (D-026 compliant: reads only `*_att_rel` and `*_dev`), BL=valence/arousal phase plot with 8-second fading trail, BR=scrolling line graphs for `beat_phase01`, `bass_dev`, and `vocals_pitch_norm`. Direct pass only.
+
+CLAUDE.md GPU Contract corrected: buffer(0)=FeatureVector (not FFT as previously documented). buffer(4)=SceneUniforms (ray march only, not future use). buffer(5)=SpectralHistory.
+
+New `PresetCategory.instrument` case added.
+
+15+ new tests across `SpectralHistoryBufferTests.swift`, `SpectralCartographTests.swift`, and additions to `RenderPipelineTests.swift`.
+
+---
+
+
 ## Phase V — Visual Fidelity Uplift
 
 ### Increment V.3 — Shader utility library: Color + Materials cookbook ✅ 2026-04-26
