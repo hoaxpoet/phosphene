@@ -661,6 +661,7 @@ struct PresetVisualReviewTests {
             return try renderDeferredRayMarchFrame(preset: preset,
                                                     context: context,
                                                     lumenEngine: lumenEngine,
+                                                    noiseTextureManager: noiseTextureManager,
                                                     features: &features)
         }
 
@@ -755,30 +756,35 @@ struct PresetVisualReviewTests {
 
     /// Render a pure-ray-march preset (passes contain `.rayMarch` and NOT
     /// `.mvWarp`) by composing a standalone `RayMarchPipeline` and running the
-    /// full G-buffer → lighting → composite sequence. Returns BGRA pixels
-    /// matching what the production app would draw, modulo:
+    /// full G-buffer → lighting → (SSGI) → (bloom/post-process) sequence with
+    /// production-parity bindings (BUG-034 M7-lite review upgrade, mirroring
+    /// the FerrofluidOceanVisualTests round-56/57 parity work):
     ///
-    /// - **No IBL textures bound.** `iblManager` is nil; the lighting fragment's
-    ///   IBL samples return zero (the documented unbound-texture behaviour on
-    ///   Apple Silicon). matID == 1 emission paths are unaffected (they only
-    ///   read IBL for the small ambient floor `irradiance × 0.05 × ao`); matID
-    ///   == 0 paths fall back to the `albedo × 0.04 × ao` clamp at
-    ///   RayMarch.metal:280. Acceptable for visual review of LM.1 (matID == 1).
-    /// - **No noise textures, no SSGI, no bloom, no post-process chain.**
-    ///   `RayMarchPipeline.render(...)` runs G-buffer → lighting → ACES
-    ///   composite and stops. SSGI / bloom would only matter for matID == 0
-    ///   presets that depend on them (Glass Brutalist's cyan glass bleed,
-    ///   for example) — out of scope until those land in the @Test args list.
-    /// - **Slot 8 (`presetFragmentBuffer3`) bound when `lumenEngine` is non-nil.**
-    ///   LM.2 wired LumenPatternEngine into the harness for Lumen Mosaic so
-    ///   the contact sheet captures the dynamic 4-light backlight rather than
-    ///   the silence-fallback ambient floor. Other ray-march presets pass
-    ///   `lumenEngine: nil` and `RayMarchPipeline` binds the zero-filled
-    ///   placeholder buffer at slot 8.
+    /// - **Noise textures bound at slots 4–8** via the caller's TextureManager
+    ///   (production: `RenderPipeline+RayMarch` passes `textureManager`).
+    /// - **IBL bound** (production always binds `iblManager` on this path).
+    /// - **SSGI enabled when the preset declares `.ssgi`** (Glass Brutalist).
+    /// - **PostProcessChain constructed when the preset declares `.postProcess`**
+    ///   (production: `passesIncludePostProcess ? ppChain : nil`).
+    /// - **Ferrofluid Ocean: 4096² height field baked and bound at texture 10**
+    ///   (production bakes it at preset wire-up; live uses the same SDF path
+    ///   since round 57).
+    /// - **Slot 8 (`presetFragmentBuffer3`) bound when `lumenEngine` is non-nil**
+    ///   (Lumen Mosaic's 4-light pattern state).
+    ///
+    /// Remaining live-path deltas: stems are `.zero` and `audioTime` is 0
+    /// (deterministic review fixtures), and the D-022 valence light tint is
+    /// not applied (fixtures carry neutral valence).
+    ///
+    /// `RENDER_STEP_MULT=<float>` overrides the D-057 step multiplier in
+    /// `sceneParamsB.z` — used to render "before" halves of step-budget A/B
+    /// pairs at the pre-BUG-034 budget (0.25 → 32 steps). Unset = the
+    /// `makeSceneUniforms()` default (1.0 → 128 steps, live parity).
     private func renderDeferredRayMarchFrame(
         preset: PresetLoader.LoadedPreset,
         context: MetalContext,
         lumenEngine: LumenPatternEngine? = nil,
+        noiseTextureManager: TextureManager? = nil,
         features: inout FeatureVector
     ) throws -> [UInt8] {
         let width  = Self.renderWidth
@@ -798,7 +804,38 @@ struct PresetVisualReviewTests {
         // ratio to match the harness render dimensions; audioTime stays at 0.
         var sceneUniforms = preset.descriptor.makeSceneUniforms()
         sceneUniforms.sceneParamsA.y = Float(width) / Float(height)
+
+        // BUG-034 A/B hook: override the D-057 step multiplier for "before"
+        // renders. Production never reads this env var.
+        if let raw = ProcessInfo.processInfo.environment["RENDER_STEP_MULT"],
+           let stepMult = Float(raw) {
+            sceneUniforms.sceneParamsB.z = stepMult
+        }
         pipeline.sceneUniforms = sceneUniforms
+
+        // Production-parity bindings (see doc comment).
+        let iblManager = try IBLManager(context: context, shaderLibrary: shaderLibrary)
+        pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
+
+        let ppChain: PostProcessChain?
+        if preset.descriptor.passes.contains(.postProcess) {
+            let chain = try PostProcessChain(context: context, shaderLibrary: shaderLibrary)
+            chain.allocateTextures(width: width, height: height)
+            ppChain = chain
+        } else {
+            ppChain = nil
+        }
+
+        var heightTexture: MTLTexture?
+        if preset.descriptor.name == "Ferrofluid Ocean" {
+            guard let particles = FerrofluidParticles(device: context.device,
+                                                      library: shaderLibrary.library) else {
+                throw VisualReviewError.preconditionFailed(
+                    "FerrofluidParticles allocation failed — height texture cannot be bound")
+            }
+            particles.bakeHeightField(commandQueue: context.commandQueue)
+            heightTexture = particles.heightTexture
+        }
 
         let floatStride = MemoryLayout<Float>.stride
         guard
@@ -827,10 +864,11 @@ struct PresetVisualReviewTests {
             stemFeatures: .zero,
             outputTexture: outTex,
             commandBuffer: cmdBuf,
-            noiseTextures: nil,
-            iblManager: nil,
-            postProcessChain: nil,
-            presetFragmentBuffer3: lumenEngine?.patternBuffer
+            noiseTextures: noiseTextureManager,
+            iblManager: iblManager,
+            postProcessChain: ppChain,
+            presetFragmentBuffer3: lumenEngine?.patternBuffer,
+            presetHeightTexture: heightTexture
         )
 
         cmdBuf.commit()
