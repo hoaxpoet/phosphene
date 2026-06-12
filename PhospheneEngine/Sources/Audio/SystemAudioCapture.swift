@@ -78,7 +78,12 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
 
     // MARK: - Configuration
 
-    /// Sample rate reported by the tap (typically 48kHz).
+    /// Sample rate reported by the tap (typically 48kHz). Captured once at tap
+    /// install — never mutate from the audio IO callback: an unsynchronized
+    /// cross-core write is not guaranteed visible to other threads and produces
+    /// rare wrong-tempo sessions (D-079). If a capture-mode switch changes the
+    /// rate, tear down and re-init dependent consumers rather than mutating
+    /// this in place.
     public private(set) var sampleRate: Float = 48000
 
     /// Number of audio channels reported by the tap (typically 2).
@@ -252,7 +257,11 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
     private func buildTapDescription(for mode: CaptureMode) throws -> CATapDescription {
         switch mode {
         case .systemAudio:
-            // Capture all system audio — exclude nothing.
+            // Capture all system audio — exclude nothing. This MUST be the
+            // exclude-processes variant. The seemingly equivalent
+            // `CATapDescription(stereoMixdownOfProcesses: [])` ("mix down these
+            // processes", empty list) succeeds but delivers pure silence —
+            // discovered the hard way. Do not swap the initializer.
             let desc = CATapDescription(stereoGlobalTapButExcludeProcesses: [])
             desc.uuid = tapUUID
             desc.name = "PhospheneSystemTap"
