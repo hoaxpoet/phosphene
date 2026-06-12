@@ -118,13 +118,17 @@ struct DocIntegrityTests {
         #expect(unresolved.isEmpty, "Cited but undefined decision(s): \(unresolved.map { "D-\(String(format: "%03d", $0))" }) — either the entry was deleted (restore it) or the number was used without filing (file it).")
     }
 
-    @Test("BUG-numbers: continuous + unique in KNOWN_ISSUES.md (top-level entries)")
+    @Test("BUG-numbers: continuous + unique across KNOWN_ISSUES.md + KNOWN_ISSUES_HISTORY.md (top-level entries)")
     func knownIssuesIntegrity() throws {
         guard Self.docsPresent else { print("DocIntegrityTests: repo docs not present — skipping"); return }
         let ki = Self.read("docs/QUALITY/KNOWN_ISSUES.md") ?? ""
         #expect(!ki.isEmpty, "KNOWN_ISSUES.md unreadable")
+        // Resolved entries older than 14 days rotate to KNOWN_ISSUES_HISTORY.md
+        // (Scripts/rotate_docs.sh, DOC.6) — continuity spans both files,
+        // mirroring the DECISIONS + DECISIONS_HISTORY convention above.
+        let hist = Self.read("docs/QUALITY/KNOWN_ISSUES_HISTORY.md") ?? ""
         // Top-level entries only — `### BUG-007.4` sub-entries are the BUG-007 convention.
-        let nums = Self.matches(#"^### BUG-(\d+)(?![.\d])"#, ki).compactMap(Int.init)
+        let nums = Self.matches(#"^### BUG-(\d+)(?![.\d])"#, ki + "\n" + hist).compactMap(Int.init)
         var counts: [Int: Int] = [:]
         for n in nums { counts[n, default: 0] += 1 }
         let maxN = counts.keys.max() ?? 0
@@ -132,9 +136,9 @@ struct DocIntegrityTests {
         // BUG-10 was never filed (pre-existing, verified at DOC.4.1 against full git history).
         let allowedHoles: Set<Int> = [10]
         let holes = (1...maxN).filter { counts[$0] == nil && !allowedHoles.contains($0) }
-        #expect(holes.isEmpty, "BUG-number hole(s) \(holes.map { "BUG-\(String(format: "%03d", $0))" }): an entry was deleted from KNOWN_ISSUES.md. Resolved entries move to the Resolved section, never out of the file.")
+        #expect(holes.isEmpty, "BUG-number hole(s) \(holes.map { "BUG-\(String(format: "%03d", $0))" }): an entry was deleted. Resolved entries move to §Resolved, then to KNOWN_ISSUES_HISTORY.md via Scripts/rotate_docs.sh — never out of both files.")
         let dupes = counts.filter { $0.value > 1 }.keys.sorted()
-        #expect(dupes.isEmpty, "Duplicate top-level BUG entr\(dupes.count == 1 ? "y" : "ies"): \(dupes.map { "BUG-\(String(format: "%03d", $0))" }) — parallel-session number collision landed twice (the BUG-042/045 renumbering protocol exists for this).")
+        #expect(dupes.isEmpty, "Duplicate top-level BUG entr\(dupes.count == 1 ? "y" : "ies"): \(dupes.map { "BUG-\(String(format: "%03d", $0))" }) — parallel-session number collision landed twice, or a rotation left the entry in both KNOWN_ISSUES.md and KNOWN_ISSUES_HISTORY.md (a move must DELETE the source copy).")
     }
 
     @Test("CLAUDE.md stays within the always-loaded token budget (D-161: ≤ 7,000 est. tokens)")
