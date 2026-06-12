@@ -23,6 +23,12 @@ For anything inventory-shaped, read the artifact, not a prose copy of it:
 
 ## Recently Completed
 
+### Increment DOC.6 — Doc rotation mechanization ✅ (2026-06-12, D-162)
+
+`Scripts/rotate_docs.sh` (idempotent, `--dry-run`) rotates EP §Recently Completed bodies (> 14 d), KNOWN_ISSUES §Resolved entries (> 14 d), and pre-current-month release notes to history files; the first run + manual triage moved 26 EP bodies, 37 resolved entries, and 124 release-notes entries, and the closed-phase narratives (SB/QR/LM/CA/CS/CSP) followed by hand.
+DECISIONS gained §Index (+ preamble fix), KNOWN_ISSUES gained §Open Index; five DocIntegrityTests gates (rotation age, two byte budgets, two index-completeness — all canary-proven) enforce it, and `closeout_evidence.sh` Step 4 runs them. CLAUDE.md's pruning pass is now "run the script + two manual judgment items".
+Deviation from the kickoff, justified in D-162: the release-notes budget gates pre-current-month rotation debt, not whole-file size (the current month alone measured 72 KB at filing).
+
 ### Phase FBS — Ferrofluid Beat Sync ⏳ (2026-06-09, staged; kickoff `docs/prompts/FFO_BEAT_SYNC_KICKOFF.md`)
 
 Make Ferrofluid Ocean's spikes punch on a steady, **first-note-anchored**, tempo-locked beat pulse (FFO currently reads "frozen": its only reactive motion is spike height from the smoothed AGC bass, held near-constant). Stage the core before layering: prove the steady anchored pulse with **measurement** (a manual M7 cannot judge beat-lock) before building energy/mood/handoff. Three standing rules: plain-English-only to Matt (no code/jargon), never over-promise (measure, don't assert), validation = measurement.
