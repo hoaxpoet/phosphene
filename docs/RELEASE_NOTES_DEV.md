@@ -6,6 +6,14 @@ User-visible release notes are not yet in scope (no public build).
 
 ---
 
+## [dev-2026-06-11-g] REVIEW.3 + BUG-048 — closeout evidence script; canonical app-test invocation un-broken
+
+**REVIEW.3:** `Scripts/closeout_evidence.sh` replaces hand-transcribed closeout test claims (the CSP.3.4 false-green class) with a script-generated evidence block pasted verbatim — header (timestamp/host/commit/tree), per-step verbatim tool summaries + exit codes + failing-test identifiers, `EVIDENCE: ALL GREEN` / `FAILURES PRESENT` verdict; byte-identical copy at `~/.phosphene/last_closeout_evidence.md` for paste-diff verification. Canary-verified un-greenwashable (deliberate failing test surfaced verbatim, then deleted). CLAUDE.md closeout item 2 now requires the block.
+
+**BUG-048 (found by the script's first three runs):** the app scheme's test action had included the engine test bundle since U.1; under xcodebuild's runner context it fails on environment, not code (ffmpeg subprocess + repo file reads denied, audio tests insta-fail, only ~440/1439 tests load) — so the canonical `xcodebuild test` was permanently red in every terminal. Fixed by removing the engine bundle from the test action (engine suite's canonical runner stays `swift test`); `xcodebuild test` now runs the app suite only — 382 green, `** TEST SUCCEEDED **`. Regression-locked by `SchemeTestActionRegressionTests`.
+
+---
+
 ## [dev-2026-06-11-f] REVIEW.1 + REVIEW.2 — transcript-mining audit + session-lifecycle churn regression net
 
 **REVIEW.1 (audit-only):** all 108 retained session transcripts (2026-05-08 → 2026-06-11) mined for correction patterns. Headlines: adjusted correction load ~5 % of human turns, flat-to-falling (NOT rising); genuine corrections 86 % live-runtime defects (app-lifecycle hangs, fixture/live parity) — zero reference-skip/spec-drift classifications in the reviewed set (with stated under-sampling caveats); the heaviest preset sessions burned 85 %+ of output tokens before any visual artifact. Findings + rule-usage table (the RB.1 input) live OUTSIDE the repo at `~/phosphene_session_mining/REVIEW1_FINDINGS.md` (private conversation content; public repo). Repo footprint: ENGINEERING_PLAN rows only.

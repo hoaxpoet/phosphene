@@ -1106,6 +1106,26 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 
 ## Resolved (recent)
 
+### BUG-048 — `xcodebuild test` ran the engine test bundle in a runner context that denies subprocess/audio/file access: ~30 environment-class failures on every run, in every terminal (2026-06-11)
+
+> **RESOLVED 2026-06-11 (commit `e110b1ca`)** — Single fix increment per the P2 process (root cause documented before code; the fix is one scheme edit + one regression gate). Matt picked the fix option in chat ("scope and run the option-1 increment"). Discovered by the REVIEW.3 closeout evidence script on its first three runs — exactly the defect class the script exists to surface.
+
+**Severity:** P2 (the canonical app-test invocation was permanently red, so a true app regression could not have been distinguished from the noise floor; no runtime impact).
+
+**Domain tag:** test infrastructure / failure class `test-isolation`.
+
+**Expected.** `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test` (the canonical app-test invocation, CLAUDE.md + RUNBOOK §Build and Test) exits 0 on a green tree.
+
+**Actual.** Exit 65 on every run. The scheme's test action had included `PhospheneEngineTests` since U.1; under xcodebuild's test-runner context the engine bundle hits environment denials that `swift test` does not: ffmpeg subprocess spawn fails (`Error opening input: Operation not permitted` on fixture decode), the REVIEW.2 audio churn tests die in ~1 ms, `DocIntegrityTests` reads an empty DECISIONS.md (repo file reads denied — `(!dec.isEmpty → false)`), and only ~440 of the engine suite's 1439 tests load at all. The pure app run (382 tests) passed inside the same invocation.
+
+**Reproduction / artifacts.** Three closeout evidence blocks, 2026-06-11: sandboxed shell (12:14), unsandboxed shell (12:21, commit `03b27340`), and Matt's own terminal (18:59, commit `23298c64`) — identical failure signature in all three, ruling out the shell environment. Blocks archived at `~/.phosphene/last_closeout_evidence.md` per run and in the REVIEW.3 session transcript.
+
+**Suspected → confirmed failure class.** `test-isolation` — the tests are correct; the xcodebuild runner context (sandbox/entitlements of the test host) denies the environment they need. Same family as the FA #66 fixture/live parity gap: two runners, two environments, one suite.
+
+**Fix.** Removed the `PhospheneEngineTests` `TestableReference` from `PhospheneApp.xcscheme`'s test action (option 1, Matt's pick over making the engine bundle xcodebuild-compatible — double-running 1439 tests in a broken environment added noise, not coverage). The engine suite's canonical runner remains `swift test --package-path PhospheneEngine`; `xcodebuild test` now means "app tests," which is what the 305/382 baseline always actually measured. Regression-locked by `SchemeTestActionRegressionTests` (engine suite): fails loudly if the engine bundle is re-added to the test action, or if the app test target is ever dropped from it.
+
+**Verification (pre-stated, met).** Automated: `xcodebuild test` exits 0 with `** TEST SUCCEEDED **`, 382 app tests green, no engine-bundle run in the output; the new gate passes; full closeout evidence block at the docs commit. Manual: Matt re-runs `Scripts/closeout_evidence.sh` from his terminal — the app step should now be green (pending his next run).
+
 ### BUG-047 — FFO aurora palette MARCHES through its colour stops second-by-second on mood-wobbly tracks: the orbit azimuth multiplied arousal-speed into the ENTIRE elapsed total, retroactively rescaling history (2026-06-11)
 
 > **RESOLVED 2026-06-11 (FBS.S5d)** — found via Matt's So What read ("the color of the ocean was changing every 1-2 seconds… it marches through the palette") after two wrong attributions in-session (mood tint; curtain-vs-base contrast — the latter an R−B metric artifact, see Verification). Trivial-collapse justified: root cause obvious once the per-frame azimuth trajectory was printed (algorithm-class, code contradicts its own design comment), fix < 60 lines across the established driver pattern, no architectural risk.
