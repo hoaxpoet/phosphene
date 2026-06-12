@@ -147,7 +147,11 @@ struct DocIntegrityTests {
         for row in Self.matches(#"^\| (#[^|]+) \|"#, claude) {
             gapped.formUnion(Self.matches(#"#(\d+)"#, row, options: []).compactMap(Int.init))
         }
-        #expect(active.count >= 40 && !gapped.isEmpty, "Failed-Approach inventory imploded (\(active.count) active, \(gapped.count) gapped)")
+        // Floor lowered 40 → 7 at RB.2 (2026-06-11): Matt's per-entry review removed 42 of
+        // 49 active FAs (kept: #4, #27, #31, #64, #65, #67, #73 — see
+        // docs/diagnostics/RB1_FA_DN_EXPLANATIONS.md and HISTORICAL_DEAD_ENDS §RB.2).
+        // The floor still guards wholesale loss of the kept set.
+        #expect(active.count >= 7 && !gapped.isEmpty, "Failed-Approach inventory imploded (\(active.count) active, \(gapped.count) gapped)")
         let cited = Set(Self.matches(#"(?:Failed Approach|FA) #(\d+)"#, Self.citationCorpus(), options: []).compactMap(Int.init))
         let unresolved = cited.subtracting(active).subtracting(gapped).sorted()
         #expect(unresolved.isEmpty, "Failed Approach citation(s) #\(unresolved) resolve to neither an active CLAUDE.md entry nor a gap-table row — extend the gap table when relocating entries (the DOC.3/DOC.4 convention).")
