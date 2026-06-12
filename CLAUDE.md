@@ -6,7 +6,7 @@ Phosphene is a native macOS music visualization engine for Apple Silicon. Before
 
 Phosphene does not control playback — the user starts the music in their streaming app when Phosphene signals it is ready.
 
-See `docs/PRODUCT_SPEC.md` for the full product definition, `docs/ARCHITECTURE.md` for system design, `docs/DECISIONS.md` for rationale behind key choices, `docs/RUNBOOK.md` for build/test/CI/troubleshooting, `docs/MILKDROP_ARCHITECTURE.md` for the research findings that drive the Phase MV (Musicality) work, `docs/UX_SPEC.md` for the user-facing product UX contract (state-to-view mapping, error taxonomy, onboarding), and `docs/SHADER_CRAFT.md` for the preset authoring handbook (detail cascade, material cookbook, per-preset uplift playbook) in `docs/ENGINEERING_PLAN.md`.
+See `docs/PRODUCT_SPEC.md` for the full product definition and the **Handbook Index** below for the per-topic references (architecture, decisions, runbook, UX, shader craft).
 
 ## Build & Test
 
@@ -54,8 +54,11 @@ Every increment — engine, preset, UX, docs, infrastructure — ends the same w
 2. **Decisions:** for each entry whose increment has shipped and is no longer cited by another active decision, move to `docs/DECISIONS_HISTORY.md`.
 3. **CLAUDE.md sections:** for each section, ask "did the last 10 increments need this?" If no, consider moving to a handbook (`docs/ARCHITECTURE.md`, `docs/SHADER_CRAFT.md`, `docs/UX_SPEC.md`, or `docs/RUNBOOK.md`).
 4. **Current Status section:** trim to the last 10 increments; older entries are in `ENGINEERING_PLAN.md` and `git log` already.
+5. **Engineering plan:** move completed-increment narratives older than two weeks to `docs/ENGINEERING_PLAN_HISTORY.md`; headers stay in the plan as the status record (RB.3 convention).
 
-Pruning has a counterweight role: the "Durable learnings stay in docs" rule above is the accumulation side; the pruning pass is the retirement side. Skipping the pruning side reproduces the doc-mass problem the 2026-05-13 refactor was set up to fix (see `docs/diagnostics/DOC-REFACTOR-PLAN-2026-05-13.md`).
+Pruning is the counterweight to "durable learnings stay in docs" — skip it and the doc-mass problem the 2026-05-13 refactor fixed returns. The ratchet below is the hard stop.
+
+**Rulebook ratchet (D-161).** (1) **Token budget:** CLAUDE.md stays ≤ 7,000 estimated tokens (`wc -w` × 1.35 ≈ ≤ 5,185 words), gated by `DocIntegrityTests`; adding above the cap requires demoting or retiring equal mass in the same commit — one-in-one-out. (2) **Admission test:** a new always-loaded rule must name the specific mistake it prevents and why no deterministic gate can express it; failing either, it goes to a handbook, a session checklist, or a gate. (3) **Violated twice → mechanize:** the second documented violation of a prose rule converts it — the fix increment ships the gate and demotes the prose to a pointer.
 
 **Stop and report instead of forging ahead** when:
 

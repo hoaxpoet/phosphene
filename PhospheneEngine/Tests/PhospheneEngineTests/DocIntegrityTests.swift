@@ -137,6 +137,16 @@ struct DocIntegrityTests {
         #expect(dupes.isEmpty, "Duplicate top-level BUG entr\(dupes.count == 1 ? "y" : "ies"): \(dupes.map { "BUG-\(String(format: "%03d", $0))" }) — parallel-session number collision landed twice (the BUG-042/045 renumbering protocol exists for this).")
     }
 
+    @Test("CLAUDE.md stays within the always-loaded token budget (D-161: ≤ 7,000 est. tokens)")
+    func claudeMdTokenBudget() throws {
+        guard Self.docsPresent else { print("DocIntegrityTests: repo docs not present — skipping"); return }
+        let claude = Self.read("CLAUDE.md") ?? ""
+        #expect(!claude.isEmpty, "CLAUDE.md unreadable")
+        let words = claude.split(whereSeparator: { $0.isWhitespace }).count
+        let estTokens = Int(Double(words) * 1.35)
+        #expect(estTokens <= 7000, "CLAUDE.md ≈ \(estTokens) est. tokens (\(words) words) — over the 7,000-token cap (D-161). One-in-one-out: demote or retire equal mass in the same commit (handbooks, PRESET_SESSION_CHECKLIST.md, HISTORICAL_DEAD_ENDS.md, DECISIONS_HISTORY.md).")
+    }
+
     @Test("Failed-Approach citations resolve to an active CLAUDE.md entry or the gap table")
     func failedApproachIntegrity() throws {
         guard Self.docsPresent else { print("DocIntegrityTests: repo docs not present — skipping"); return }
