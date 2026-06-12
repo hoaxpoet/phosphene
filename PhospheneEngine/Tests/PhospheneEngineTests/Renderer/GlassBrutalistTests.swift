@@ -221,7 +221,9 @@ private extension GlassBrutalistTests {
         s.lightPositionAndIntensity = SIMD4(0, 4.5, 2, 3.0)
         s.lightColor                = SIMD4(1, 0.95, 0.9, 0)
         s.sceneParamsA              = SIMD4(0, Float(width) / Float(height), 0.1, 30)
-        s.sceneParamsB              = SIMD4(0, 1.0 / 0.015, 0.08, 0)   // fogFar ≈ 66.7
+        // B.z = 1.0: D-057 step multiplier at the live full-quality default
+        // (BUG-034 — the old 0.08 here was ambient, read as a 0.25 multiplier → 32 steps).
+        s.sceneParamsB              = SIMD4(0, 1.0 / 0.015, 1.0, 0)   // fogFar ≈ 66.7
         pipeline.sceneUniforms = s
     }
 

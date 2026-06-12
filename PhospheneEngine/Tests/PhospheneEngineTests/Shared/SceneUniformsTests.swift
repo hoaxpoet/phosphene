@@ -213,9 +213,10 @@ final class SceneUniformsTests: XCTestCase {
         XCTAssertEqual(desc.sceneLights[0].intensity, Float(2.0), accuracy: Float(0.001))
         assertNearlyEqual(desc.sceneLights[1].position, SIMD3<Float>(-2, 3, 1), eps: 0.001, label: "light1.position")
 
-        // Fog and ambient
+        // Fog. The "scene_ambient" key in the JSON above is intentionally kept:
+        // the field was removed from the schema at BUG-034 (dead config), and a
+        // legacy sidecar still carrying it must decode without error.
         XCTAssertEqual(desc.sceneFog, Float(0.02), accuracy: Float(0.0001))
-        XCTAssertEqual(desc.sceneAmbient, Float(0.1), accuracy: Float(0.001))
     }
 
     // MARK: - Test 6: FOV is stored in radians (JSON field is in degrees)

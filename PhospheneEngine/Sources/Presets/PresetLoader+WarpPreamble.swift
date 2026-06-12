@@ -35,7 +35,7 @@ extension PresetLoader {
         float4 lightPositionAndIntensity; // xyz = light pos, w = intensity
         float4 lightColor;                // xyz = linear RGB, w = 0
         float4 sceneParamsA;              // x=audioTime, y=aspectRatio, z=near, w=far
-        float4 sceneParamsB;              // x=fogNear, y=fogFar, zw=reserved
+        float4 sceneParamsB;              // x=fogNear, y=fogFar, z=D-057 step mult, w=SSGI radius
     };
     #endif
 
