@@ -59,7 +59,7 @@ P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh dou
 
 **Severity:** P1 (silent data corruption — a prepped track's cached stems can be the live track's stems, poisoning orchestrator stem-affinity scoring; plausible contributor to the BUG-012 family).
 **Domain tag:** dsp.stem / concurrency
-**Status:** Open — audit finding.
+**Status:** Open — root cause confirmed + instrumented (CLEAN.1.1, 2026-06-13). Fix is CLEAN.1.2 (lock-strategy decision A-vs-B pending Matt).
 **Introduced:** progressive readiness (Inc 6.1) made prep-during-playback the normal case; the BUG-012 race analysis only covered the serial `stemQueue` and never considered the preparer path.
 **Resolved:** —
 
@@ -69,9 +69,13 @@ P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh dou
 **Session artifacts:** `docs/diagnostics/CODE_AUDIT_2026-06-09.md` §A1.
 **Suspected failure class:** `concurrency`.
 **Verification criteria:**
-- [ ] Instrumentation: a generation/ownership assertion inside `separate()` that fires on interleaved use (per the multi-increment P1 process).
-- [ ] Automated: concurrent live+prep separation stress test produces per-caller-correct stems (e.g. distinct fixture inputs → distinct expected outputs, N iterations).
-- [ ] Fix shape (for the fix increment): one lock across input-write → predict → output-read; return stem waveforms by value instead of exposing shared `stemBuffers`.
+- [x] Instrumentation: a generation/ownership assertion inside `separate()` that fires on interleaved use — landed CLEAN.1.1 (`ConcurrencyAuditProbe`, see below).
+- [ ] Automated: concurrent live+prep separation stress test produces per-caller-correct stems (e.g. distinct fixture inputs → distinct expected outputs, N iterations) — CLEAN.1.2 (red-pre/green-post against the live `StemSeparator`).
+- [ ] Fix shape (for the fix increment): one lock across input-write → predict → output-read; return stem waveforms by value instead of exposing shared `stemBuffers` — CLEAN.1.2, decision A-vs-B pending Matt.
+
+**Root cause (confirmed CLEAN.1.1, 2026-06-13; line numbers as of this commit).** One `StemSeparator` is shared by both paths — `VisualizerEngine.swift:737` builds the single instance, `:771` hands it to the live `stemQueue` pipeline, and `:784` passes the *same* object into `makeSessionManager` → `SessionPreparer` (`VisualizerEngine+InitHelpers.swift:134`), which drives it from `analyzePreview` inside a `Task.detached` (`SessionPreparer.swift:471`; the static analysis fn at `SessionPreparer+Analysis.swift:83`). The live `stemQueue` (serial utility) and the detached prep task run on different threads → genuinely concurrent. Inside `separate()` only `StemModelEngine.predict()` is locked (`StemModel.swift:167`); the input-buffer `memcpy` (Step 5) and the output-buffer read (`StemSeparator+ModelIO.readStemMagnitudes`, extracted from the former in-line loop) run **outside** any lock, and both callers read the shared `stemBuffers` after return with no lock (`VisualizerEngine+Stems.swift:198`, `SessionPreparer+Analysis.swift:92`). Interleave: call A writes input → call B overwrites input → A's `predict()` (≈142 ms, holding the model lock) consumes B's input → A reads B's stems. A returns the wrong track's stems. (The `writeToBuffers` `NSLock` guards only its own write, not the surrounding pipeline, and the callers' reads are unlocked — so it does not prevent the corruption.)
+
+**Instrumentation installed (CLEAN.1.1).** `ConcurrencyAuditProbe` (`Sources/Shared/ConcurrencyAuditProbe.swift`, log category `concurrency-audit`): `enterSeparate`/`exitSeparate` track in-flight `separate()` calls and emit `[BUG-031][ALARM]` when >1 are concurrent on the shared instance (`maxSeparateInFlight`); `recordInputWrite` stamps the model input buffers with the call's audit ID and `checkInputOwnership(stage:"post-predict")` emits `[BUG-031][ALARM]` + increments `separateInterleaveCount` when the stamp has been clobbered by another call — the corruption window made observable. Read: `log show --predicate 'subsystem == "com.phosphene" AND category == "concurrency-audit"' --info | grep '\[BUG-031\]'`. `ConcurrencyAuditProbeTests` proves the probe detects the modeled interleave (9 green, no GPU); the live red→green stress test is CLEAN.1.2.
 
 ---
 
@@ -79,7 +83,7 @@ P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh dou
 
 **Severity:** P1 (next session's plan can be overwritten with the old playlist and flipped `.ready` prematurely; two `_runPreparation` loops can run against the single StemSeparator — compounds BUG-031).
 **Domain tag:** session.lifecycle / concurrency
-**Status:** Open — audit finding. Three related defects, one root cause: the streaming path has no session-generation guard (the LF path fixed exactly this with `localFileSessionGen`, LF.5.fix.3-A).
+**Status:** Open — root cause confirmed + instrumented (CLEAN.1.1, 2026-06-13). Fix is CLEAN.1.3. Three related defects, one root cause: the streaming path has no session-generation guard (the LF path fixed exactly this with `localFileSessionGen`, LF.5.fix.3-A).
 **Introduced:** structural — predates LF.5's generation-guard pattern; streaming path never got the equivalent.
 **Resolved:** —
 
@@ -95,6 +99,15 @@ P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh dou
 - [ ] Automated: end-then-restart test asserts the old prep task cannot mutate the new session's `currentPlan`/state (generation-guard pattern, mirroring `localFileSessionGen`).
 - [ ] Automated: recovery during active prep does not produce two concurrent loops (single-flight assertion).
 - [ ] Automated: rejected `startSession` leaves `sessionSource`/`currentSource` untouched.
+
+(All three automated criteria land with the CLEAN.1.3 fix — red-pre/green-post.)
+
+**Confirmed against HEAD + instrumentation (CLEAN.1.1, 2026-06-13; line numbers as of this commit).** All three defects verified in current code:
+1. `endSession()` (`SessionManager.swift:577`) sets only `currentSource=nil` + `state=.ended` — it does **not** cancel `sessionPreparationTask`/`statusCancellable` or set `cancellationRequested`, unlike `cancel()` (`:554`). A following `startSession` resets `cancellationRequested=false` (`:183`/`:222`), so the orphaned task's completion guard (`:273`) passes and overwrites the new session's `currentPlan`/state. `_beginPreparation` also overwrites `sessionPreparationTask` without cancelling a prior one (`:313`), unlike `prepareLocalFiles` (`:260`).
+2. `resumeFailedNetworkTracks` (`SessionPreparer.swift:506`) unconditionally spawns a second `_runPreparation` (`:530`) and clobbers `preparationTask` (`:532`) while the original loop is typically still running (recovery only fires during `.preparing`) → two loops over the one shared `StemSeparator` (compounds BUG-031) and `cancelPreparation` loses the original.
+3. Both `startSession` variants mutate `sessionSource`/`currentSource` **before** the state guard (`:175-176`+`:177`; `:214-215`+`:216`) — a rejected call still rewrites the published origin.
+
+**Instrumentation installed (CLEAN.1.1).** `ConcurrencyAuditProbe` (category `concurrency-audit`) exposes all three: `markSessionBoundary` (called from `_beginPreparation`/`endSession`/`cancel`) + `recordPrepCompletion` emit `[BUG-032][ALARM]` + increment `staleCompletionCount` when an orphaned task completes under a newer, non-cancelled generation (defect 1); `enterRunPreparation`/`exitRunPreparation` emit `[BUG-032][ALARM]` + `concurrentRunPreparationCount` when two `_runPreparation` loops overlap (defect 2); `recordEndSession` + `orphanedEndSessionCount` flag an `endSession()` that leaves a live task. The probe only *logs* the generation comparison; the behavioural guard mirroring `localFileSessionGen` is the CLEAN.1.3 fix. Read: `log show --predicate 'subsystem == "com.phosphene" AND category == "concurrency-audit"' --info | grep '\[BUG-032\]'`. Defect 3 has no probe (it is a plain ordering bug, fixed by moving the mutations after the guard in 1.3).
 
 ---
 
@@ -828,7 +841,7 @@ The contact-sheet output of `RENDER_VISUAL=1 swift test --package-path Phosphene
 
 **Severity:** P1 (process-fatal crash; surfaced under sustained jank — ML dispatch scheduler hitting the 2100 ms ceiling and force-firing repeatedly. Not reproducible on every session but observed at least once at 2026-05-15T17:54Z.)
 **Domain tag:** ml
-**Status:** Open
+**Status:** Open — CLEAN.1.1 cross-ref (2026-06-13): the original BUG-012 analysis assumed the serial `stemQueue` was the only `separate()` caller; it is not — the session-prep path drives the *same* `StemSeparator` unlocked, now diagnosed + instrumented as **BUG-031**. That shared-unlocked-separator race is a candidate root cause of this crash; if the CLEAN.1.2 lock fix retires it, record that here.
 **Introduced:** Unknown; surfaced 2026-05-15. Stack frames are all in code that predates the V.9 Session 4.5c ferrofluid work — none of the rounds 16-26 commits touched StemFFTEngine, MPSGraph, or live stem separation. Suspect a latent race that requires specific timing patterns to surface.
 **Resolved:** —
 
