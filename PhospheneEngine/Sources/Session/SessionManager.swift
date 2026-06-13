@@ -238,6 +238,10 @@ public final class SessionManager: ObservableObject {
         currentPlan = SessionPlan(tracks: tracks)     // full list available immediately
         progressiveReadinessLevel = .preparing
         state = .preparing
+        // CLEAN.1.1 (BUG-032): tag this session's generation so a prep task
+        // orphaned by a later endSession()/startSession() can be detected when
+        // it completes. Observability only — the generation guard is CLEAN.1.3.
+        let sessionGen = ConcurrencyAuditProbe.markSessionBoundary("beginPreparation")
         logger.info("SessionManager: preparing \(tracks.count) track(s)")
 
         // Subscribe to per-track status changes to drive progressiveReadinessLevel.
@@ -257,6 +261,14 @@ public final class SessionManager: ObservableObject {
         let prepTask = Task { @MainActor [weak self] in
             guard let self else { return }
             let result = await self.preparer.prepare(tracks: tracks)
+
+            // CLEAN.1.1 (BUG-032): a newer session boundary firing during
+            // prepare() means this completion is stale and about to overwrite
+            // the newer session's plan/state. Logging only (guard is CLEAN.1.3).
+            _ = ConcurrencyAuditProbe.recordPrepCompletion(
+                spawnGeneration: sessionGen,
+                cancellationRequested: self.cancellationRequested
+            )
 
             guard !self.cancellationRequested else {
                 logger.info("SessionManager: preparation cancelled")
@@ -541,6 +553,9 @@ public final class SessionManager: ObservableObject {
     /// A no-op when state is already `.idle`.
     public func cancel() {
         guard state != .idle else { return }
+        // CLEAN.1.1 (BUG-032): advance the session generation so any prep task
+        // completing after this cancel is observable as stale.
+        _ = ConcurrencyAuditProbe.markSessionBoundary("cancel")
         cancellationRequested = true
         preparer.cancelPreparation()
         sessionPreparationTask?.cancel()
@@ -560,6 +575,15 @@ public final class SessionManager: ObservableObject {
     ///
     /// Transitions any state → `.ended`. Safe to call at any point.
     public func endSession() {
+        // CLEAN.1.1 (BUG-032): record that endSession() — unlike cancel() —
+        // leaves the prep task / status subscription live (orphaned), and
+        // advance the generation so the orphan's completion reads as stale.
+        // Observability only; the cancel-on-end fix is CLEAN.1.3.
+        ConcurrencyAuditProbe.recordEndSession(
+            hasPrepTask: sessionPreparationTask != nil,
+            hasStatusSubscription: statusCancellable != nil
+        )
+        _ = ConcurrencyAuditProbe.markSessionBoundary("endSession")
         currentSource = nil
         state = .ended
         logger.info("SessionManager: session ended")
