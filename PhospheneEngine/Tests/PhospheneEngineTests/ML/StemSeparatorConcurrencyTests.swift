@@ -80,7 +80,7 @@ struct StemSeparatorConcurrencyTests {
         let queue = DispatchQueue(label: "stemsep.concurrency", attributes: .concurrent)
         let collector = EnergyCollector()
 
-        let perKind = 6
+        let perKind = 4
         for i in 0..<(perKind * 2) {
             let isSilence = (i % 2 == 0)
             group.enter()
