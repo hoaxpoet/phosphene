@@ -34,4 +34,12 @@ public enum Logging {
     /// `log show --predicate 'subsystem == "com.phosphene" AND category == "bug012"'`.
     /// Remove this category once BUG-012 is resolved.
     public static let bug012 = Logger(subsystem: subsystem, category: "bug012")
+
+    /// CLEAN.1.1 diagnostic probe — instrumentation logs for the BUG-031/032
+    /// session + stem concurrency family (shared unlocked `StemSeparator`,
+    /// orphaned prep task, double `_runPreparation` loop). Filter with
+    /// `log show --predicate 'subsystem == "com.phosphene" AND category == "concurrency-audit"'`,
+    /// then grep `[BUG-031]` / `[BUG-032]` / `[ALARM]`. Remove this category
+    /// once the family closes.
+    public static let concurrencyAudit = Logger(subsystem: subsystem, category: "concurrency-audit")
 }
