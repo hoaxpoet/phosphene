@@ -522,15 +522,25 @@ extension SessionPreparer {
             trackStatuses[track] = .queued
         }
 
-        // The original preparationTask may have completed. Always spawn a fresh task
-        // for the recovered set — the sequential loop won't race because we own the
-        // @MainActor here and the new task runs asynchronously. D-061 risk-note.
+        // CLEAN.1.3 (BUG-032 defect 2): never run two `_runPreparation` loops over
+        // the shared StemSeparator at once. If the original preparation loop is
+        // still in flight, wait for it to finish before starting recovery, then run
+        // recovery as a single fresh loop. (Was: an unconditional second Task that
+        // interleaved with the original — progress ping-ponged between two
+        // denominators and `cancelPreparation` lost the original's reference.)
+        if let existing = preparationTask {
+            _ = await existing.value
+        }
         let sortedCandidates = Array(recoverCandidates)
         let task = Task { [self] in
             await self._runPreparation(tracks: sortedCandidates)
         }
         preparationTask = task
-        _ = await task.value
+        _ = await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
         preparationTask = nil
     }
 }
