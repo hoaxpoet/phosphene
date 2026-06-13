@@ -364,6 +364,11 @@ public final class SessionPreparer: ObservableObject {
     // MARK: - Private
 
     private func _runPreparation(tracks: [TrackIdentity]) async -> SessionPreparationResult {
+        // CLEAN.1.1 (BUG-032): more than one loop in flight means
+        // resumeFailedNetworkTracks() spawned a second concurrent loop over the
+        // shared StemSeparator (compounds BUG-031). Observability only.
+        ConcurrencyAuditProbe.enterRunPreparation()
+        defer { ConcurrencyAuditProbe.exitRunPreparation() }
         var cachedTracks: [TrackIdentity] = []
         var failedTracks: [TrackIdentity] = []
 
