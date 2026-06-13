@@ -8,6 +8,12 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-13] CLEAN.0 — 2026-06-13 full-system audit landed; baseline reconciled; BUG-030 integrated to main
+
+A 17-lane multi-agent audit of the codebase + docs (134 verified findings across stability / performance / capability / process, plus 16 verified coverage gaps the lanes missed) landed at [`docs/diagnostics/CODE_AUDIT_2026-06-13.md`](diagnostics/CODE_AUDIT_2026-06-13.md), with a phased **CLEAN** backlog (Phases 0–8). Approved June-30 scope (Matt): Phases 0, 1, 2, 5 + elevated gaps G1 (audio device route-change), G2 (sample-rate contract), G7/G8 (TSan + E2E lifecycle tests), G9 (photosensitivity clamp); Phases 3–4 stretch; 6 / bulk-7 / 8 after June. **Phase 0 baseline reconcile:** `main` confirmed green — the 13 fresh-worktree engine-test failures were *all* the single gitignored tempo fixture `love_rehab.m4a` (failing loud per the no-silent-skip rule, not a regression), restored via `Scripts/fetch_tempo_fixtures.sh`; this validated CLEAN.5.2 (fresh-worktree fixtures) and the CLEAN.5.3 pipe-masks-`swift test`-exit-code closeout-honesty gap live. **BUG-030** dup-track-crash fix integrated to main — `ba4e1cae`, cherry-pick of the stranded `679363a9` from `claude/dreamy-bell-23528b` — see KNOWN_ISSUES §Resolved.
+
+---
+
 ## [dev-2026-06-12-a] DOC.6 — doc rotation mechanized; budgets gated (D-162)
 
 The pruning-pass prose convention converted to mechanism per D-161 rule 3 (it had not executed since mid-May; measured 2026-06-12: EP 660 KB at ~53 % completed-work narrative, KNOWN_ISSUES 386 KB at 71 % resolved-history, release notes 696 KB unrotated). New `Scripts/rotate_docs.sh` performs the three rotations deterministically and idempotently (verbatim moves; unparseable entries reported, never guessed); first run + manual triage + closed-phase rotation brought EP to ~414 KB, KNOWN_ISSUES to ~143 KB, and this file to current-month-only. DECISIONS gained §Index, KNOWN_ISSUES gained §Open Index; DocIntegrityTests gained five gates (EP narrative age, §Resolved ≤ 50 KB, pre-current-month release notes ≤ 50 KB, index completeness ×2 — all canary-proven red-then-green) and the BUG-continuity gate now spans KNOWN_ISSUES_HISTORY.md; `closeout_evidence.sh` runs the doc gates as Step 4. CLAUDE.md: pruning section mechanized, doc-reading discipline rule, release-notes prepend-only rule (net token-negative, 6,909 est.).

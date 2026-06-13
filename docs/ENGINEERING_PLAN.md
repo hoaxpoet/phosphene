@@ -23,6 +23,11 @@ For anything inventory-shaped, read the artifact, not a prose copy of it:
 
 ## Recently Completed
 
+### Phase CLEAN — Clean-by-June full-system audit + baseline reconcile ⏳ (2026-06-13, in progress)
+
+A 17-lane multi-agent audit (134 verified findings + 16 verified coverage gaps the lanes missed) produced the phased **CLEAN** backlog (Phases 0–8) in [`docs/diagnostics/CODE_AUDIT_2026-06-13.md`](diagnostics/CODE_AUDIT_2026-06-13.md) — now the authoritative queue (supersedes the 2026-05-06 QR→SB ordering in §Immediate Next). **Approved June-30 scope (Matt):** CLEAN Phases 0 (baseline reconcile), 1 (P1 correctness — BUG-031/032 concurrency family, BUG-033 app-layer leaks, audio device route-change, TSan + E2E lifecycle tests), 2 (Spotify secret + OAuth + honest-UI), 5 (CI/CD) + elevated gaps G1/G2/G7/G8/G9; Phases 3–4 stretch (M7-throttled); capability (6) / bulk test-infra + docs (7) / large-unit decomposition (8, absorbs QR.6) after June.
+- **CLEAN.0 baseline reconcile** (in progress): audit doc landed; `main` confirmed green (the 13 fresh-worktree engine-test failures were *all* the one gitignored tempo fixture `love_rehab.m4a`, failing loud per the no-silent-skip rule, restored via `Scripts/fetch_tempo_fixtures.sh` — validated CLEAN.5.2 + the CLEAN.5.3 pipe-masks-`swift test`-exit-code closeout-honesty gap live); **BUG-030** dup-track-crash fix integrated to main (`ba4e1cae`, cherry-pick of the stranded `679363a9` from `claude/dreamy-bell-23528b`). Remaining: worktree declutter (21 prune-safe; delete 3 stale/dup refs per Matt; salvage Glass Brutalist / AGC3.6 / LM.3.2 branches), then fast-forward `main`.
+
 ### Increment DOC.6 — Doc rotation mechanization ✅ (2026-06-12, D-162)
 
 `Scripts/rotate_docs.sh` (idempotent, `--dry-run`) rotates EP §Recently Completed bodies (> 14 d), KNOWN_ISSUES §Resolved entries (> 14 d), and pre-current-month release notes to history files; the first run + manual triage moved 26 EP bodies, 37 resolved entries, and 124 release-notes entries, and the closed-phase narratives (SB/QR/LM/CA/CS/CSP) followed by hand.
@@ -311,9 +316,11 @@ These are ordered by dependency. Each has done-when criteria and verification co
 
 > **Capability Audit (Phase CA, 2026-05-20).** The originally-planned `docs/CAPABILITY_GAP_AUDIT.md` single-deliverable was superseded 2026-05-20 by the multi-increment **Phase CA** audit, which produces one per-subsystem registry under [`docs/CAPABILITY_REGISTRY/`](CAPABILITY_REGISTRY/). CA.1 (DSP/MIR) landed 2026-05-20 at [`docs/CAPABILITY_REGISTRY/DSP_MIR.md`](CAPABILITY_REGISTRY/DSP_MIR.md); CA.2+ pending. Preliminary 2026-05-12 inventory data (shader-utility-consumer matrix, distinct from CA's per-subsystem audits) lives at [`docs/diagnostics/capability-audit-pre-2026-05-12.md`](diagnostics/capability-audit-pre-2026-05-12.md) and continues to feed shader-cleanup increments.
 
-**Current priority ordering (post-2026-05-06 multi-agent codebase review):**
+**Current priority ordering — Phase CLEAN (2026-06-13 full-system audit).** The authoritative queue is the **CLEAN** backlog in [`docs/diagnostics/CODE_AUDIT_2026-06-13.md`](diagnostics/CODE_AUDIT_2026-06-13.md) (Phases 0–8). June-30 commit: CLEAN Phases 0 → 1 → 2 → 5 + elevated gaps G1/G2/G7/G8/G9; Phases 3–4 stretch; 6 / bulk-7 / 8 after June. Approved scope detail: §Recently Completed → "Phase CLEAN".
 
-1. **Phase QR — Quality Review Remediation** (QR.1 → QR.6). New top priority. QR.1 → QR.4 are sequenced; QR.5 + QR.6 run after QR.1–QR.4 land. See "Phase QR" section below.
+> The 2026-05-06 ordering below (QR → DSP → V → MD → SB) is **superseded** by Phase CLEAN as the active queue; QR.6 decomposition is folded into CLEAN Phase 8. The phase sections are retained as history.
+
+1. **Phase QR — Quality Review Remediation** (QR.1 → QR.6). *Superseded (2026-06-13) — QR.6 decomposition folded into CLEAN Phase 8.* See "Phase QR" section below.
 2. **Phase DSP — DSP Hardening.** DSP.3.7 (Live drift validation test) merges into QR.3.
 3. **Phase V — Visual Fidelity Uplift** (V.5 reference completion + V.7.7B WORLD pillar) — can run in parallel with QR since they touch disjoint modules.
 4. **Phase MD — Milkdrop Ingestion** (MD.1 → MD.7). Unchanged dependency on V.1–V.3 utilities.

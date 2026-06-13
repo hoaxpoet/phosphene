@@ -7,7 +7,6 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
 | AUDIT-2026-06-09 | P2/P3 | audit backlog | Full-codebase audit findings not individually filed |
-| BUG-030 | P1 | session.prep | Duplicate playlist tracks crash session preparation |
 | BUG-031 | P1 | dsp.stem / concurrency | Shared StemSeparator unlocked across live + prep paths corrupts stems |
 | BUG-032 | P1 | session.lifecycle / concurrency | `endSession()` orphans prep; stale prep can hijack the next session |
 | BUG-033 | P1 | app.ui / performance | 60 Hz `@Published` snapshot invalidates SwiftUI tree; VM retain-cycle leaks |
@@ -53,25 +52,6 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 - **Localization gate only scans `PhospheneApp/Views/`** — verified hardcoded user-facing English in ViewModels/ContentView/indirection helpers bypasses `check_user_strings.sh` (sites listed in the audit doc).
 
 P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh double-spend + form-encoding gaps, PSO cache key, mv_warp buffer(5) omission, PostProcessChain texture aliasing, malformed-sidecar swallowing, Arachne listening-pose FA #57-gate, >2-channel LF corruption, ~94 Hz vs 60 fps chroma hysteresis), ~11 perf items (autocorrelation 2×/frame, drums FFT 2×/frame, mono STFT 2×/track, serial prep pipeline, wasted particle-mode warp pass, unconditional feedback textures), dead code, and 6 in-code doc-drift items.
-
----
-
-### BUG-030 — Duplicate playlist tracks crash `SessionPreparer.prepare(tracks:)` (2026-06-09)
-
-**Severity:** P1 (runtime trap → session preparation crash on ordinary input).
-**Domain tag:** session.prep
-**Status:** Open — audit finding (code-verified, not yet reproduced live).
-**Introduced:** structural — original `trackStatuses` construction.
-**Resolved:** —
-
-**Expected:** a playlist containing the same track twice prepares normally; `PlaylistConnecting`'s doc (`PlaylistConnector.swift:57`) explicitly promises "Duplicate tracks preserve their playlist order."
-**Actual:** `SessionPreparer.swift:183` builds `trackStatuses = Dictionary(uniqueKeysWithValues: tracks.map { ($0, .queued) })`, which **traps at runtime on duplicate keys**. Duplicate tracks yield identical `TrackIdentity` values (same title/artist/album/duration/spotifyID). Same trap at `:256` on the LF path (an M3U listing the same file twice → identical `"local:" + url.path` identities).
-**Reproduction steps:** connect a Spotify playlist containing the same track twice (common on real playlists); preparation crashes at dictionary construction.
-**Session artifacts:** `docs/diagnostics/CODE_AUDIT_2026-06-09.md` §A2 (code-level evidence).
-**Suspected failure class:** `api-contract` (Dictionary uniqueness precondition vs the connector's documented duplicate-preserving contract).
-**Verification criteria:**
-- [ ] Automated: engine test preparing a track list with an exact-duplicate `TrackIdentity` completes without trapping (streaming + LF paths).
-- [ ] Manual: a real Spotify playlist with a duplicated track reaches `.ready`.
 
 ---
 
@@ -1137,6 +1117,27 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 ---
 
 ## Resolved (recent)
+
+### BUG-030 — Duplicate playlist tracks crash `SessionPreparer.prepare(tracks:)` (2026-06-09)
+
+> **RESOLVED 2026-06-12 (fix commit `ba4e1cae`, a cherry-pick of `679363a9` from the stranded `claude/dreamy-bell-23528b` branch onto main during CLEAN.0 baseline reconciliation)** — trivial P1, collapsed per the BUG-030 kickoff (instrument→diagnose→fix→validate in one increment: < 5 lines of behavioural change, root cause obvious from audit §A2, no architectural risk). **Fix shape (A):** both `trackStatuses` builds switched from `Dictionary(uniqueKeysWithValues:)` to `Dictionary(_:uniquingKeysWith:)` (keep the first `.queued`) — at the streaming build in `prepare(tracks:)` and the LF twin in `prepareLocalFiles(…)`. Contract-faithful: the prepare loop still visits both occurrences (the second is a cheap cache hit), so a twice-listed track yields **two** `cachedTracks` entries → two plan slots, honouring `PlaylistConnecting`'s "duplicates preserve their playlist order." Option (B) (dedupe to one slot) was rejected — it would silently drop a playlist position (a product behaviour change, not a crash fix). Two regression tests in `SessionPreparerTests` were confirmed to **trap** against pre-fix code (`Fatal error: Duplicate values for key`) and pass after; the streaming test pins the two-slot contract so an option-(B) refactor fails the gate loudly. Engine suite green (the only fresh-worktree failures were the unfetched `Tests/Fixtures/tempo` clips, restored via `Scripts/fetch_tempo_fixtures.sh`).
+
+**Severity:** P1 (runtime trap → session preparation crash on ordinary input).
+**Domain tag:** session.prep
+**Status:** Resolved — fix landed 2026-06-12 (`ba4e1cae`); automated criterion met, manual criterion pending Matt's integrated-build run.
+**Introduced:** structural — original `trackStatuses` construction.
+**Resolved:** 2026-06-12 — commit `ba4e1cae` (cherry-pick of `679363a9`: fix A, `Dictionary(_:uniquingKeysWith:)` at both the streaming and LF `trackStatuses` builds).
+
+**Expected:** a playlist containing the same track twice prepares normally; `PlaylistConnecting`'s doc (`PlaylistConnector.swift:57`) explicitly promises "Duplicate tracks preserve their playlist order."
+**Actual (pre-fix):** `SessionPreparer.swift:183` built `trackStatuses = Dictionary(uniqueKeysWithValues:)`, which **traps at runtime on duplicate keys**. Duplicate tracks yield identical `TrackIdentity` values; same trap on the LF path (`:256`, an M3U listing the same file twice).
+**Reproduction steps:** connect a Spotify playlist containing the same track twice; preparation crashed at dictionary construction. Reproduced automatically by the two regression tests (both trapped pre-fix).
+**Session artifacts:** `docs/diagnostics/CODE_AUDIT_2026-06-09.md` §A2 (code-level evidence); pre-fix trap captured on both paths.
+**Suspected failure class:** `api-contract` (Dictionary uniqueness precondition vs the connector's documented duplicate-preserving contract).
+**Verification criteria:**
+- [x] Automated: engine test preparing a track list with an exact-duplicate `TrackIdentity` completes without trapping (streaming + LF paths). — **Met** (confirmed trap pre-fix, green post-fix).
+- [ ] Manual: a real Spotify playlist with a duplicated track reaches `.ready`. — **Deferred to Matt's integrated build** (the automated gate is the load-bearing crash-fix proof).
+
+---
 
 ### BUG-049 — Skein colour-freeze cert gate is session-content-fragile: dominant-stem switch lands beyond the probe canvas extent → deterministic red on data, not code (2026-06-11)
 
