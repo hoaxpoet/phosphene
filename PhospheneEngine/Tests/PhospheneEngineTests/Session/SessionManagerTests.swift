@@ -53,7 +53,9 @@ private final class InstantStemSeparator: StemSeparating, @unchecked Sendable {
         let frame = AudioFrame(sampleRate: sampleRate, sampleCount: 4096, channelCount: 1)
         return StemSeparationResult(
             stemData: StemData(vocals: frame, drums: frame, bass: frame, other: frame),
-            sampleCount: 4096
+            sampleCount: 4096,
+            // CLEAN.1.2 (BUG-031): callers read stems by value — mirror the pre-filled buffers.
+            stemWaveforms: stemBuffers.map { Array($0.pointer.prefix(4096)) }
         )
     }
 }

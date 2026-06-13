@@ -8,10 +8,27 @@
 
 import Foundation
 import Metal
+import Audio
+import Shared
 
 // MARK: - Model Output Read
 
 extension StemSeparator {
+
+    /// Build a `StemSeparationResult` carrying the stems by value (CLEAN.1.2).
+    /// `static` (no instance state) — lives here with the other I/O marshalling
+    /// to keep `StemSeparator.swift` within the SwiftLint file-length budget.
+    static func buildResult(sampleCount: Int, stemWaveforms: [[Float]]) -> StemSeparationResult {
+        let frame = AudioFrame(
+            sampleRate: modelSampleRate,
+            sampleCount: UInt32(sampleCount),
+            channelCount: 1
+        )
+        let stemData = StemData(vocals: frame, drums: frame, bass: frame, other: frame)
+        return StemSeparationResult(
+            stemData: stemData, sampleCount: sampleCount, stemWaveforms: stemWaveforms
+        )
+    }
 
     /// Copy the four stems' L/R magnitude spectrograms out of the model's
     /// shared output buffers into per-stem `[Float]` arrays.

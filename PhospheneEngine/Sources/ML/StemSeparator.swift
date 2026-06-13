@@ -141,10 +141,6 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
     public func separate(audio: [Float], channelCount: Int, sampleRate: Float) throws -> StemSeparationResult {
         let bug012ID = logBUG012SeparateEnter(audio: audio, channelCount: channelCount, sampleRate: sampleRate)
         defer { BUG012Probe.log("separate EXIT", dispatchID: bug012ID) }
-        // CLEAN.1.1 (BUG-031): expose the unlocked input→predict→output
-        // interleave on the shared StemSeparator instance. Observability only.
-        let raceID = ConcurrencyAuditProbe.enterSeparate()
-        defer { ConcurrencyAuditProbe.exitSeparate(id: raceID, outcome: "exit") }
         let monoFrames = audio.count / max(channelCount, 1)
         guard monoFrames >= Self.hopLength else {
             throw StemSeparationError.insufficientSamples(audio.count)
@@ -171,39 +167,40 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
 
         let nbFrames = magL.count / Self.nBins
 
-        // Step 5: Write magnitudes into StemModelEngine input buffers and predict.
+        // Step 5–6 (CLEAN.1.2 / BUG-031): hold `lock` across the whole shared
+        // `stemModel` input→predict→output section (predict() locks only its own
+        // graph run). STFT/iSTFT stay outside — fftEngine self-locks.
         let elemCount = nbFrames * Self.nBins
         let byteCount = elemCount * MemoryLayout<Float>.size
 
-        magL.withUnsafeBufferPointer { src in
-            guard let srcBase = src.baseAddress else { return }
-            memcpy(stemModel.inputMagLBuffer.contents(), srcBase, byteCount)
-        }
-        magR.withUnsafeBufferPointer { src in
-            guard let srcBase = src.baseAddress else { return }
-            memcpy(stemModel.inputMagRBuffer.contents(), srcBase, byteCount)
-        }
-        // CLEAN.1.1 (BUG-031): stamp the shared model input buffers with this
-        // call's audit ID. A foreign stamp after predict() means another
-        // separate() clobbered the input mid-pipeline — the corruption window.
-        ConcurrencyAuditProbe.recordInputWrite(id: raceID)
+        let (allStemMagL, allStemMagR) = try lock.withLock {
+            // Probe inside the lock → in-flight ≤1 and interleaveCount 0 (sentinel).
+            let raceID = ConcurrencyAuditProbe.enterSeparate()
+            defer { ConcurrencyAuditProbe.exitSeparate(id: raceID, outcome: "exit") }
 
-        do {
-            try stemModel.predict()
-        } catch {
-            throw StemSeparationError.predictionFailed(error.localizedDescription)
-        }
-        // CLEAN.1.1 (BUG-031): predict() holds the model lock for ~142 ms while
-        // the input/output buffer accesses around it are unlocked — verify this
-        // call still owns the buffers before reading the outputs it just produced.
-        ConcurrencyAuditProbe.checkInputOwnership(id: raceID, stage: "post-predict")
+            magL.withUnsafeBufferPointer { src in
+                guard let srcBase = src.baseAddress else { return }
+                memcpy(stemModel.inputMagLBuffer.contents(), srcBase, byteCount)
+            }
+            magR.withUnsafeBufferPointer { src in
+                guard let srcBase = src.baseAddress else { return }
+                memcpy(stemModel.inputMagRBuffer.contents(), srcBase, byteCount)
+            }
+            ConcurrencyAuditProbe.recordInputWrite(id: raceID)
 
-        // Step 6: Read output magnitudes (loop in StemSeparator+ModelIO.swift) + iSTFT.
+            do {
+                try stemModel.predict()
+            } catch {
+                throw StemSeparationError.predictionFailed(error.localizedDescription)
+            }
+            ConcurrencyAuditProbe.checkInputOwnership(id: raceID, stage: "post-predict")
+
+            return Self.readStemMagnitudes(
+                outputBuffers: stemModel.outputBuffers, elemCount: elemCount
+            )
+        }
+
         let outputFrames = nbFrames
-        let (allStemMagL, allStemMagR) = Self.readStemMagnitudes(
-            outputBuffers: stemModel.outputBuffers, elemCount: elemCount
-        )
-
         let stemWaveforms = reconstructStemWaveforms(
             allStemMagL: allStemMagL,
             allStemMagR: allStemMagR,
@@ -212,11 +209,13 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
             nbFrames: outputFrames
         )
 
-        // Step 7: Write to UMA output buffers.
+        // Step 7: keep `stemBuffers` populated for tests / FixtureSessionCaptureGenerator
+        // (CLEAN.1.2: production reads `result.stemWaveforms` by value). writeToBuffers
+        // self-locks — sequential to the section above, not nested (NSLock is non-recursive).
         let monoSampleCount = stemWaveforms[0].count
         writeToBuffers(stemWaveforms, sampleCount: monoSampleCount)
 
-        let result = buildResult(sampleCount: monoSampleCount)
+        let result = Self.buildResult(sampleCount: monoSampleCount, stemWaveforms: stemWaveforms)
         logger.debug("Separated \(audio.count) samples → \(monoSampleCount) samples/stem (\(nbFrames) STFT frames)")
         return result
     }
@@ -233,17 +232,6 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
             }
         }
         lock.unlock()
-    }
-
-    /// Build a StemSeparationResult from the given sample count.
-    private func buildResult(sampleCount: Int) -> StemSeparationResult {
-        let frame = AudioFrame(
-            sampleRate: Self.modelSampleRate,
-            sampleCount: UInt32(sampleCount),
-            channelCount: 1
-        )
-        let stemData = StemData(vocals: frame, drums: frame, bass: frame, other: frame)
-        return StemSeparationResult(stemData: stemData, sampleCount: sampleCount)
     }
 
     // MARK: - STFT
