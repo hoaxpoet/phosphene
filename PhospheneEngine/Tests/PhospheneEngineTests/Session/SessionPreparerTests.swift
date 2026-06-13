@@ -249,6 +249,77 @@ struct SessionPreparerTests {
         let processed = result.cachedTracks.count + result.failedTracks.count
         #expect(processed < tracks.count)
     }
+
+    // MARK: - Duplicate Tracks (BUG-030)
+
+    // A playlist (or M3U) listing the same track twice yields two identical
+    // `TrackIdentity` values. The original `trackStatuses` build used
+    // `Dictionary(uniqueKeysWithValues:)`, whose uniqueness precondition TRAPS
+    // at runtime on the duplicate key (BUG-030, audit §A2). Both entry points
+    // had the trap: `prepare(tracks:)` (:183, streaming) and
+    // `prepareLocalFiles(…)` (:256, local-file). Fix shape (A) makes only the
+    // dictionary build duplicate-tolerant (`uniquingKeysWith:`), keeping the
+    // `PlaylistConnecting` contract that "duplicates preserve their playlist
+    // order" — so a twice-listed track stays two slots, not one.
+    //
+    // These tests TRAP (crash the process) against the pre-fix code; they pass
+    // only once both sites tolerate duplicate keys.
+
+    /// Streaming path: a twice-listed track must not trap, and — per fix (A) and
+    /// the connector contract — must produce TWO `cachedTracks` entries (two plan
+    /// slots). A future dedupe-to-one refactor fails this gate loudly rather than
+    /// silently dropping a playlist position.
+    @Test func prepare_duplicateTrack_doesNotTrap_andPreservesBothSlots() async throws {
+        let device = try #require(MTLCreateSystemDefaultDevice(), "Metal device required")
+        let separator = try StubStemSeparator(device: device)
+        let preparer = makePreparer(separator: separator)
+        let track = makeTrack("So What")
+
+        // Exact-duplicate identity — the same track listed twice.
+        let result = await preparer.prepare(tracks: [track, track])
+
+        // Contract: two listings → two slots. The second occurrence is a cheap
+        // cache hit (no re-download / re-separation) but still appends.
+        #expect(result.cachedTracks.count == 2)
+        #expect(result.cachedTracks.allSatisfy { $0 == track })
+        #expect(result.failedTracks.isEmpty)
+        // Per-identity status dictionary collapses to one row — the documented
+        // N−1-rows display property, pinned here so it reads as intentional.
+        #expect(preparer.trackStatuses.count == 1)
+        #expect(preparer.trackStatuses[track] == .ready)
+    }
+
+    /// Local-file path: an M3U listing the same file twice yields duplicate
+    /// placeholder identities; the twin dictionary build (:256) must not trap
+    /// either. With no delegate wired both files take the documented LF.1
+    /// no-cache fallthrough (`.partial`), and both placeholder slots survive in
+    /// `failedTracks` in playlist order.
+    @Test func prepareLocalFiles_duplicatePlaceholder_doesNotTrap() async throws {
+        let device = try #require(MTLCreateSystemDefaultDevice(), "Metal device required")
+        let separator = try StubStemSeparator(device: device)
+        let preparer = makePreparer(separator: separator)
+
+        // Same file listed twice → identical placeholder identities + URLs.
+        let url = URL(fileURLWithPath: "/tmp/phosphene-bug030-dup.flac")
+        let placeholder = makeTrack("dup.flac", artist: "Local File")
+
+        let result = await preparer.prepareLocalFiles(
+            urls: [url, url],
+            placeholders: [placeholder, placeholder],
+            via: nil  // no delegate → LF.1 fallthrough, both → .partial
+        )
+
+        // No trap; both duplicate slots preserved.
+        #expect(result.cachedTracks.isEmpty)
+        #expect(result.failedTracks.count == 2)
+        #expect(result.failedTracks.allSatisfy { $0 == placeholder })
+        #expect(preparer.trackStatuses.count == 1)
+        if case .partial = preparer.trackStatuses[placeholder] {
+            // expected terminal state for an unwired delegate
+        } else {
+            Issue.record("duplicate LF placeholder should end .partial, got \(String(describing: preparer.trackStatuses[placeholder]))")
+        }
+    }
 }
 
 // MARK: - StemCache Tests (non-MainActor, stand-alone)

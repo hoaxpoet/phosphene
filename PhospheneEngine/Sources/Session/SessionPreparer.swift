@@ -180,7 +180,14 @@ public final class SessionPreparer: ObservableObject {
         logger.info("\(enterMsg, privacy: .public)")
 
         // Initialize all tracks to .queued at once before any async work begins.
-        trackStatuses = Dictionary(uniqueKeysWithValues: tracks.map { ($0, .queued) })
+        // BUG-030: a playlist can list the same track twice (identical
+        // TrackIdentity); PlaylistConnecting promises duplicates preserve their
+        // playlist order. `uniquingKeysWith` keeps the first .queued instead of
+        // TRAPPING on the duplicate key (`uniqueKeysWithValues` did — audit §A2).
+        // The per-identity status row collapses to one, but the loop below still
+        // visits both occurrences (the second is a cheap cache hit), so a
+        // twice-listed track yields two cachedTracks entries — two plan slots.
+        trackStatuses = Dictionary(tracks.map { ($0, .queued) }, uniquingKeysWith: { first, _ in first })
         progress = (0, tracks.count)
         networkFailedTracks = []
 
@@ -253,7 +260,11 @@ public final class SessionPreparer: ObservableObject {
         preparationTask?.cancel()
 
         // Initialize statuses + progress before any async work begins.
-        trackStatuses = Dictionary(uniqueKeysWithValues: placeholders.map { ($0, .queued) })
+        // BUG-030 (LF twin of the trap in `prepare(tracks:)`): an M3U can list
+        // the same file twice → identical placeholder identities. `uniquingKeysWith`
+        // tolerates the duplicate key instead of trapping; both occurrences are
+        // still walked by `_runLocalFilePreparation` below.
+        trackStatuses = Dictionary(placeholders.map { ($0, .queued) }, uniquingKeysWith: { first, _ in first })
         progress = (0, urls.count)
         networkFailedTracks = []
 
