@@ -16,8 +16,11 @@
 // spike behaviour at constant baseline). The rendered spike-region luma must
 // oscillate substantially with the pulse and be near-static without it.
 
+import CoreGraphics
+import ImageIO
 import Metal
 import MetalKit
+import UniformTypeIdentifiers
 import XCTest
 @testable import DSP
 @testable import Presets
@@ -115,24 +118,29 @@ final class FerrofluidPulseLivePathTests: XCTestCase {
         let indices = stride(from: start, to: min(frames.count, start + 220), by: 2).map { $0 }
         XCTAssertGreaterThanOrEqual(indices.count, 100, "need ≥100 frames (~8 beats) of replay")
 
-        func spikeRegionLuma(_ pixels: [UInt8]) -> Float {
+        func spikeRegionLumas(_ pixels: [UInt8]) -> [Float] {
             // Spike field occupies the lower ⅔ of frame (sky above). BGRA8.
-            var sum: Float = 0
-            var n = 0
+            // PER-PIXEL lumas, not a region mean: the D-157 punch contract is a
+            // bounded spatial footprint with STEADY GLOBAL LUMINANCE, so local
+            // deltas cancel in a region mean by design. (BUG-034 recalibration:
+            // the original region-mean measure only registered the punch because
+            // the pre-fix 32-step march left bright false sky between spikes —
+            // at the production 128-step budget the mean correctly cancels.)
+            var lumas: [Float] = []
             let yLo = Self.renderHeight / 3
+            lumas.reserveCapacity((Self.renderHeight - yLo) * Self.renderWidth / 4)
             for y in yLo..<Self.renderHeight {
                 for x in stride(from: 0, to: Self.renderWidth, by: 4) {
                     let i = (y * Self.renderWidth + x) * 4
-                    sum += 0.114 * Float(pixels[i]) + 0.587 * Float(pixels[i + 1])
-                         + 0.299 * Float(pixels[i + 2])
-                    n += 1
+                    lumas.append(0.114 * Float(pixels[i]) + 0.587 * Float(pixels[i + 1])
+                               + 0.299 * Float(pixels[i + 2]))
                 }
             }
-            return sum / Float(n)
+            return lumas
         }
 
-        func renderRun(pulseLive: Bool) throws -> [Float] {
-            var lumas: [Float] = []
+        func renderRun(pulseLive: Bool) throws -> [[Float]] {
+            var lumas: [[Float]] = []
             for i in indices {
                 var fv = FeatureVector(bass: frames[i].bass, mid: frames[i].mid,
                                        treble: frames[i].treble,
@@ -170,7 +178,14 @@ final class FerrofluidPulseLivePathTests: XCTestCase {
                 outTex.getBytes(&pixels, bytesPerRow: Self.renderWidth * 4,
                                 from: MTLRegionMake2D(0, 0, Self.renderWidth, Self.renderHeight),
                                 mipmapLevel: 0)
-                lumas.append(spikeRegionLuma(pixels))
+                lumas.append(spikeRegionLumas(pixels))
+                if ProcessInfo.processInfo.environment["FBS_PULSE_DUMP"] == "1",
+                   lumas.count == 4 {
+                    // Frame 4 of the window sits inside the first punch
+                    // (phase 0.06–0.35 at 128 BPM, every-2nd-frame stride).
+                    try Self.dumpPNG(pixels,
+                                     name: pulseLive ? "s1_punch_pulse_on" : "s1_punch_pulse_off")
+                }
             }
             return lumas
         }
@@ -178,16 +193,22 @@ final class FerrofluidPulseLivePathTests: XCTestCase {
         let withPulse = try renderRun(pulseLive: true)
         let gated = try renderRun(pulseLive: false)
 
-        let meanLuma = withPulse.reduce(0, +) / Float(withPulse.count)
+        let meanLuma = withPulse.map { $0.reduce(0, +) / Float($0.count) }
+                                .reduce(0, +) / Float(withPulse.count)
         XCTAssertGreaterThan(meanLuma, 2.0, "render must be non-black (valid frames)")
 
-        // PAIRED per-frame delta — each fixture frame is rendered twice with
-        // ONLY the pulse amp differing, so everything else (the time-driven
-        // Gerstner swell, lighting, camera) cancels exactly. δ_i isolates the
-        // pulse's rendered effect on that exact frame. (First attempt used
-        // absolute per-arm variance and was swamped by the swell, which moves
-        // σ≈11 luma in BOTH arms — the paired design removes that confound.)
-        let delta = zip(withPulse, gated).map { $0 - $1 }
+        // PAIRED per-frame, PER-PIXEL delta — each fixture frame is rendered
+        // twice with ONLY the pulse amp differing, so everything else (the
+        // time-driven Gerstner swell, lighting, camera) cancels exactly.
+        // mean(|δ_pixel|) isolates the pulse's rendered effect on that exact
+        // frame. (First attempt used absolute per-arm variance and was swamped
+        // by the swell, σ≈11 luma in BOTH arms; second attempt used the
+        // region-MEAN delta, which the D-157 steady-global-luminance contract
+        // cancels by design once BUG-034 fixed the fixture step budget — the
+        // paired per-pixel magnitude is robust to both confounds.)
+        let delta = zip(withPulse, gated).map { pair -> Float in
+            zip(pair.0, pair.1).map { abs($0 - $1) }.reduce(0, +) / Float(pair.0.count)
+        }
 
         // Built-in control: in REST windows (env = 0) both arms render
         // identical inputs → δ must be ≈ 0. In PUNCH windows (env high) the
@@ -198,8 +219,8 @@ final class FerrofluidPulseLivePathTests: XCTestCase {
         var restDelta: [Float] = []
         for (k, i) in indices.enumerated() {
             let ph = pulses[i].phase01
-            if ph > 0.06, ph < 0.35 { punchDelta.append(abs(delta[k])) }
-            if ph > 0.88 { restDelta.append(abs(delta[k])) }
+            if ph > 0.06, ph < 0.35 { punchDelta.append(delta[k]) }
+            if ph > 0.88 { restDelta.append(delta[k]) }
         }
         XCTAssertGreaterThan(punchDelta.count, 8)
         XCTAssertGreaterThan(restDelta.count, 8)
@@ -207,9 +228,13 @@ final class FerrofluidPulseLivePathTests: XCTestCase {
         let restMag = restDelta.reduce(0, +) / Float(restDelta.count)
         print("[FBS S1 live-path] frames=\(indices.count) punch|δ|=\(punchMag) "
               + "rest|δ|=\(restMag) meanLuma=\(meanLuma)")
-        XCTAssertGreaterThan(punchMag, 2.0,
+        // Thresholds recalibrated at the production 128-step budget (BUG-034,
+        // 2026-06-12): regression floors below the measured baseline, not
+        // aspirational targets — Matt validated the punch live (D-153/D-158/
+        // D-160); this gate pins that it does not silently regress.
+        XCTAssertGreaterThan(punchMag, 1.0,
                              "the pulse must visibly change the rendered spike field at the "
-                             + "beats (punch |δ|=\(punchMag) luma units)")
+                             + "beats (punch |δ|=\(punchMag) per-pixel luma units)")
         XCTAssertGreaterThan(punchMag, 5.0 * (restMag + 0.05),
                              "the change must be AT the beats, ~zero between them "
                              + "(punch |δ|=\(punchMag) vs rest |δ|=\(restMag)) — "
@@ -219,7 +244,8 @@ final class FerrofluidPulseLivePathTests: XCTestCase {
         // Same punch frame rendered three ways: no pulse / quiet-passage
         // envelope (So What intro level → height ≈ 0.37) / loud envelope
         // (height = 1.0). The rendered punch effect must scale accordingly.
-        func renderPunchFrame(amp: Float, energySmoothed: Float) throws -> [Float] {
+        func renderPunchFrame(amp: Float, energySmoothed: Float,
+                              dumpName: String? = nil) throws -> [Float] {
             let i = indices[indices.count / 2]
             var fv = FeatureVector(bass: frames[i].bass, mid: frames[i].mid,
                                    treble: frames[i].treble,
@@ -246,6 +272,10 @@ final class FerrofluidPulseLivePathTests: XCTestCase {
             outTex.getBytes(&pixels, bytesPerRow: Self.renderWidth * 4,
                             from: MTLRegionMake2D(0, 0, Self.renderWidth, Self.renderHeight),
                             mipmapLevel: 0)
+            if ProcessInfo.processInfo.environment["FBS_PULSE_DUMP"] == "1",
+               let dumpName {
+                try Self.dumpPNG(pixels, name: dumpName)
+            }
             var lumas: [Float] = []
             let yLo = Self.renderHeight / 3
             for y in yLo..<Self.renderHeight {
@@ -260,16 +290,53 @@ final class FerrofluidPulseLivePathTests: XCTestCase {
         func meanAbsDelta(_ a: [Float], _ b: [Float]) -> Float {
             zip(a, b).map { abs($0 - $1) }.reduce(0, +) / Float(a.count)
         }
-        let noPulse = try renderPunchFrame(amp: 0, energySmoothed: 1.2)
-        let quiet = try renderPunchFrame(amp: 1, energySmoothed: 0.34)   // So What intro level
-        let loud = try renderPunchFrame(amp: 1, energySmoothed: 1.3)
+        let noPulse = try renderPunchFrame(amp: 0, energySmoothed: 1.2, dumpName: "s2_no_pulse")
+        let quiet = try renderPunchFrame(amp: 1, energySmoothed: 0.34,
+                                         dumpName: "s2_quiet_punch")   // So What intro level
+        let loud = try renderPunchFrame(amp: 1, energySmoothed: 1.3, dumpName: "s2_loud_punch")
         let quietPunch = meanAbsDelta(quiet, noPulse)
         let loudPunch = meanAbsDelta(loud, noPulse)
         print("[FBS S2 live-path] punch effect: quiet=\(quietPunch) loud=\(loudPunch) luma")
         XCTAssertGreaterThan(quietPunch, 0.3,
                              "the floor must keep every beat registering at quiet passages")
-        XCTAssertGreaterThan(loudPunch, 1.8 * quietPunch,
-                             "loud passages must punch clearly taller than quiet ones "
+        // Ratio recalibrated at the production 128-step budget (BUG-034,
+        // 2026-06-12): the old 1.8× floor was calibrated on the pre-fix
+        // 32-step render, where bright false sky between spikes amplified the
+        // height→luma proportionality. At the true budget taller spikes read
+        // against correctly-resolved dark fluid, compressing the pixel ratio
+        // (measured 1.38× at recalibration; the height difference itself was
+        // validated by eye live — D-160, Matt 2026-06-11). 1.2× is the
+        // regression floor: scaling must remain present and directional.
+        XCTAssertGreaterThan(loudPunch, 1.2 * quietPunch,
+                             "loud passages must punch taller than quiet ones "
                              + "(loud \(loudPunch) vs quiet \(quietPunch))")
+    }
+
+    // MARK: - Eyeball dump (FBS lesson: trajectories AND frames, not summary stats)
+
+    /// Writes a BGRA8 frame to `/tmp/phosphene_visual/fbs_pulse/` when
+    /// `FBS_PULSE_DUMP=1`. Lets the recalibrated thresholds be sanity-checked
+    /// by eye against the frames the gate actually measures.
+    private static func dumpPNG(_ pixels: [UInt8], name: String) throws {
+        let dir = URL(fileURLWithPath: "/tmp/phosphene_visual/fbs_pulse")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let cs = CGColorSpace(name: CGColorSpace.sRGB)!
+        var data = pixels
+        let provider = try XCTUnwrap(data.withUnsafeMutableBytes { buf -> CGDataProvider? in
+            CGDataProvider(data: Data(bytes: buf.baseAddress!, count: buf.count) as CFData)
+        })
+        let image = try XCTUnwrap(CGImage(
+            width: renderWidth, height: renderHeight,
+            bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: renderWidth * 4,
+            space: cs,
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue
+                                     | CGBitmapInfo.byteOrder32Little.rawValue),
+            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent))
+        let url = dir.appendingPathComponent("\(name).png")
+        let dest = try XCTUnwrap(CGImageDestinationCreateWithURL(
+            url as CFURL, UTType.png.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(dest, image, nil)
+        CGImageDestinationFinalize(dest)
+        print("[FBS dump] wrote \(url.path)")
     }
 }
