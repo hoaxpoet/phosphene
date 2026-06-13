@@ -1,6 +1,81 @@
 # Phosphene — Decision Log
 
-Append-only. Each decision records the what, why, and any relevant context that would prevent a future contributor from re-litigating it. Decisions are numbered sequentially and never removed — superseded decisions are marked as such with a pointer to the replacement.
+Each decision records the what, why, and any relevant context that would prevent a future contributor from re-litigating it. Numbering is permanent and entries are never deleted — superseded decisions are marked as such with a pointer to the replacement, and inactive entries (shipped long ago, no longer cited by an active decision) rotate to `DECISIONS_HISTORY.md`, where they remain searchable under their D-numbers.
+
+## Index
+
+| D-### | Status | One-liner |
+|---|---|---|
+| D-002 | Accepted | Core Audio process taps are the default capture path |
+| D-009 | Accepted | No CoreML; MPSGraph + Accelerate for all ML inference |
+| D-014 | Proposed | Orchestrator as explicit scoring/policy system |
+| D-019 | Accepted | Stem-routing warmup fallback pattern for compute presets |
+| D-018 | Accepted | SessionManager degrades to ready on any preparation failure |
+| D-020 | Accepted | Architecture-stays-solid for ray-march scene presets (Option A) |
+| D-022 | Accepted | IBL ambient tinted by `lightColor` so mood shifts are visible |
+| D-026 | Accepted | Preset shaders drive from audio deviation, not absolute energy |
+| D-027 | Accepted | Per-vertex feedback warp (mv_warp) as opt-in render pass |
+| D-029 | Accepted | Preset motion sources are alternative paradigms, not composable layers |
+| D-030 | Accepted | SpectralHistoryBuffer as unconditional GPU contract at buffer(5) |
+| D-032 | Accepted (amended D-080) | Preset scoring weights and multiplicative penalty structure |
+| D-033 | Accepted | Transition policy: structural-boundary priority, energy-scaled crossfades |
+| D-044 | Accepted | SwiftUI accessibility identifiers: static constants + binding, not traversal |
+| D-045 | Accepted | Utility library naming: unprefixed snake_case, no legacy renaming |
+| D-051 | Accepted | UserFacingError in engine Shared; condition-ID toast semantics |
+| D-054 | Accepted | AccessibilityState architecture and beat-clamp boundary |
+| D-053 | Accepted | PresetScoringContext gains excludedFamilies + qualityCeiling, backward-compatible |
+| D-057 | Accepted | Frame Budget Manager: governor design, OR-gate, tier targets |
+| D-058 | Accepted | U.6b live-adaptation keyboard semantics and undo architecture |
+| D-059 | Accepted | ML dispatch scheduling: scheduler design, budget signal, deferral caps |
+| D-064 | Accepted | Visual references library structure, exemptions, lint tool, quality reel |
+| D-065 | Accepted | Composite-preset image counts; AI-generated anti-reference carve-out |
+| D-067 | Accepted | Certification pipeline placement, lightweight exemptions, manual gate |
+| D-073 | Accepted | Per-section `maxDuration` linger factors inverted (Option B) |
+| D-074 | Accepted | Diagnostic preset orchestrator semantics |
+| D-075 | Accepted | Tempo BPM via sub_bass-only onsets + trimmed-mean IOI |
+| D-077 | Accepted | Phase DSP.2 pivot from BeatNet to Beat This! |
+| D-078 | Accepted | Diagnostic hold semantics; prepared-BeatGrid authority |
+| D-079 | Accepted | Sample rate captured once per tap install; literal 44100 banned |
+| D-080 | Accepted | Stem-affinity scoring uses deviation primitives + mean formula |
+| D-092 | Accepted | Arachne staged WORLD + WEB port |
+| D-097 | Accepted | Particle preset architecture: siblings, not subclasses |
+| D-099 | Accepted | Engine MSL FeatureVector/StemFeatures extended to match preset preamble |
+| D-101 | Accepted | `stems.drums_beat` as canonical particles-family beat-reactivity field |
+| D-LM-buffer-slot-8 | Accepted | Fragment buffer slot 8 reserved for per-preset CPU-driven state |
+| D-111 | Accepted (amended ×2) | Phase MD license posture: provenance + attribution + takedown |
+| D-113 | Accepted | Phase MD posture reframe: inspired-by, not derivative-of |
+| D-114 | Accepted | Phase MD release model: 20-preset first-release bundle |
+| D-119 | Accepted | Product brand identity: Milkdrop-influenced modern platform |
+| D-121 | Accepted | Phase MD visual-divergence rule |
+| D-122 | Accepted | Phase MD kill-switch / re-evaluation triggers |
+| D-123 | Accepted | `family` taxonomy aligned to cream-of-crop themes; D-120 superseded |
+| D-127 | Accepted | Stage rig retired; aurora reflection via direct audio uniforms |
+| D-LM-palette-library | Accepted (amended ×2) | Curated 18-palette library for Lumen Mosaic cell colour |
+| D-LM-cream-rescission | Accepted | Anti-cream rule rescinded; pale-tone-share compositional ceiling instead |
+| D-128 | Accepted | Local-file playback uses in-process AVAudioEngine, not process tap |
+| D-137 | Accepted | Dragon Bloom: feedback-native uplift, not literal Milkdrop copy |
+| D-138 | Accepted | Dragon Bloom: faithful butterchurn render-loop port, certified |
+| D-139 | Accepted | Fata Morgana: faithful mirage port + bar-sway stem uplift, certified |
+| D-142 | Accepted | Canvas-hold accumulation is identity CONFIG of brush-on-feedback paradigm |
+| D-143 | Accepted | Marks-on-top + per-preset canvas-clear are brush-on-feedback CONFIG |
+| D-145 | Accepted | Nimbus beat-grid live phase deferred to its own project |
+| D-146 | Accepted | BUG-027 fix: per-band EMA pivot for band deviations |
+| D-147 | Accepted | Gated slot-6 marks-on-top buffer + Skein.3 stem-colour contract |
+| D-148 | Accepted | BUG-029 fix: AGC loudness meter eased in per track start |
+| D-149 | Accepted | Canvas alpha carries decaying wetness, read by Skein comp fragment |
+| D-150 | Accepted | Colour-breakpoint ring freezes pour-line colour per-segment |
+| D-151 | Accepted | Gated setStructuralPrediction bridge delivers live section signal to presets |
+| D-152 | Accepted | Skein musicality: lay-time mood, structural pour offsets, anticipation τ-warping |
+| D-153 | Accepted | FBS Stage 1: first-NOTE-anchored cached-tempo beat pulse, never drift-corrected |
+| D-154 | Accepted (FFO ban retired by amendment) | Beat-irregularity exclusion mechanism; pulse becomes slow 4-beat heave |
+| D-155 | Accepted | Skein palette library: five Matt-curated palettes, deterministic per-track picker |
+| D-156 | Accepted (amended) | Invisible handoff from bridge pulse to live beat |
+| D-157 | Accepted | Regional beat punch: bounded spike-field regions, steady global luminance |
+| D-158 | Accepted (amended) | Vocals-pitch hue route was the flasher; aurora transitions slowed |
+| D-159 | Accepted | Skein certification: lightweight rubric, FNV-1a seed, canvas soak |
+| D-160 | Accepted | FBS Stage 2: punch height follows passage loudness [0.30, 1.0] |
+| D-161 | Accepted | Rulebook restructure + CLAUDE.md token-budget ratchet |
+| D-162 | Accepted | Doc rotation mechanized (rotate_docs.sh); budgets gated by DocIntegrityTests |
 
 ---
 
@@ -1852,3 +1927,9 @@ The RB series replaced the failure → prose-rule → bigger-rulebook loop with 
 3. **Violated twice → mechanize:** the second documented violation of a prose rule converts it — the fix increment ships the gate and demotes the prose to a pointer.
 
 **Reason:** instruction-following degrades as the simultaneously-active rule count grows, and the transcript record shows prose rules failing while loaded (REVIEW.1: README-before-edit at 35 % compliance; BUG-036's three realtime-allocation sites written with the no-alloc bullet in context; the FA #66 fixture/live class recurring with the rule present). Gates and feedback loops beat prose; judgment rules earn always-loaded slots only when they must fire at decision time, before any artifact exists that a gate could check.
+
+## D-162: Doc rotation is mechanized; budgets are gated
+
+**Status:** Accepted (DOC.6, 2026-06-12)
+
+The pruning-pass prose convention failed twice (measured 2026-06-12: EP narratives four weeks past the RB.3 window; KNOWN_ISSUES 71% resolved-history; release notes unrotated at 696 KB). Per D-161 rule 3, it converts to mechanism: `Scripts/rotate_docs.sh` performs the EP §Recently Completed, KNOWN_ISSUES §Resolved, and release-notes monthly rotations deterministically; DocIntegrityTests gates the budgets (EP narrative age ≤ 14 days, KNOWN_ISSUES §Resolved ≤ 50 KB, pre-current-month release-notes content ≤ 50 KB — the active file keeps the current month, which alone measured 72 KB at filing, so the byte budget gates rotation debt rather than whole-file size) and index completeness (DECISIONS §Index, KNOWN_ISSUES §Open Index). Closeout evidence runs the gates. Rotated content moves verbatim to history files and stays searchable; nothing is deleted. The judgment-requiring pruning items (CLAUDE.md section demotion, DECISIONS shipped+uncited rotation) remain manual on the same cadence.

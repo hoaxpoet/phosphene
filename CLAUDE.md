@@ -48,13 +48,7 @@ Every increment — engine, preset, UX, docs, infrastructure — ends the same w
 
 **Do not push to the remote without Matt's explicit approval.** Local `main` commits stay local. `git push` requires "yes, push" in the chat. This applies even when the work is clearly green and clearly Matt's request — pushing remains a separate decision.
 
-**Pruning pass — every tenth increment.** Every tenth increment (or every two weeks, whichever fires first), run a pruning pass against the doc set. The pass is its own increment with its own closeout report and does not require per-entry sign-off — borderline calls go through the standard "stop and report" rule below.
-
-1. **Failed Approaches:** for each entry, ask "would this rule prevent a bug today?" If no, move to `docs/HISTORICAL_DEAD_ENDS.md`.
-2. **Decisions:** for each entry whose increment has shipped and is no longer cited by another active decision, move to `docs/DECISIONS_HISTORY.md`.
-3. **CLAUDE.md sections:** for each section, ask "did the last 10 increments need this?" If no, consider moving to a handbook (`docs/ARCHITECTURE.md`, `docs/SHADER_CRAFT.md`, `docs/UX_SPEC.md`, or `docs/RUNBOOK.md`).
-4. **Current Status section:** trim to the last 10 increments; older entries are in `ENGINEERING_PLAN.md` and `git log` already.
-5. **Engineering plan:** move completed-increment narratives older than two weeks to `docs/ENGINEERING_PLAN_HISTORY.md`; headers stay in the plan as the status record (RB.3 convention).
+**Pruning pass — every tenth increment.** Every tenth increment (or every two weeks, whichever fires first): run `Scripts/rotate_docs.sh` (D-162 — deterministically rotates ENGINEERING_PLAN §Recently Completed narratives, resolved KNOWN_ISSUES entries, and pre-current-month release notes to their history files; `DocIntegrityTests` gates the budgets). Then handle by hand: whatever the script reports as unparseable, the CLAUDE.md section-demotion review ("did the last 10 increments need this?" — if no, demote to a handbook), and the DECISIONS shipped+uncited rotation to `DECISIONS_HISTORY.md` using its §Index. Borderline calls go through the standard "stop and report" rule below.
 
 Pruning is the counterweight to "durable learnings stay in docs" — skip it and the doc-mass problem the 2026-05-13 refactor fixed returns. The ratchet below is the hard stop.
 
@@ -87,7 +81,7 @@ See `docs/QUALITY/DEFECT_TAXONOMY.md` for full severity definitions, domain tags
 
 **Fix increment obligations.** Every fix increment must:
 - Update `docs/QUALITY/KNOWN_ISSUES.md` — fill in the `Resolved` field and commit hash.
-- Update `docs/RELEASE_NOTES_DEV.md` — add or extend the current release entry.
+- Update `docs/RELEASE_NOTES_DEV.md` — add or extend the current release entry. The file is prepend-only; read the preamble + first entry only. Older months live in `RELEASE_NOTES_DEV_YYYY-MM.md`.
 - Not skip these updates under "it's obvious from the commit."
 
 **Multi-increment process for P0/P1.** Unless a defect is trivial (< 5 lines of change, root cause obvious from existing artifacts, no architectural risk — requires Matt's explicit approval to collapse), the fix process uses separate increments:
@@ -149,6 +143,8 @@ Full contract history — the six iterations, the revert narrative, the characte
 ## Handbook Index
 
 One-line pointers to the load-bearing references (the former per-topic pointer sections, merged at RB.2). Read the relevant handbook section before working in its area.
+
+**Doc-reading discipline:** for any doc over ~30 KB, locate sections with `grep -n "^## "` and read with view ranges — never read a large file end to end. Read-first lists cite sections (and D-numbers via the DECISIONS §Index), never whole large files.
 
 | Topic | Where |
 |---|---|
