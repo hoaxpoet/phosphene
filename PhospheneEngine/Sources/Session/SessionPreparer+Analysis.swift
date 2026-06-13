@@ -42,10 +42,7 @@ extension SessionPreparer {
     //
     // `analyzePreview` runs sequential pipeline stages (stem separation →
     // analyzer warmup → MIR → beat grid → drums beat grid → grid-onset
-    // calibration). Body length exceeds SwiftLint's default cap because
-    // each stage is a few lines; splitting into helpers would obscure the
-    // sequential pipeline structure that's the point of this function.
-    // swiftlint:disable function_body_length
+    // calibration) — kept inline so the sequential structure stays readable.
 
     /// Run the full analysis pipeline on a decoded preview clip.
     ///
@@ -86,13 +83,10 @@ extension SessionPreparer {
             sampleRate: Float(preview.sampleRate)
         )
 
-        // Step 2: Extract mono waveforms from UMA output buffers.
-        let sampleCount = result.sampleCount
-        var stemWaveforms: [[Float]] = []
-        for buffer in separator.stemBuffers {
-            let count = min(sampleCount, buffer.capacity)
-            stemWaveforms.append(Array(buffer.pointer.prefix(count)))
-        }
+        // Step 2: Read the separated stems BY VALUE (CLEAN.1.2 / BUG-031) — never
+        // from the shared `separator.stemBuffers`, which the live + prep paths
+        // race over. `result.stemWaveforms` is this call's own data.
+        let stemWaveforms = result.stemWaveforms
 
         // Step 3: Multi-frame AGC warmup → StemFeatures snapshot.
         let stemFeatures = warmUpAndAnalyze(
@@ -170,8 +164,6 @@ extension SessionPreparer {
             gridOnsetOffsetMs: gridOnsetOffsetMs
         )
     }
-
-    // swiftlint:enable function_body_length
 
     /// Replay the preview audio through the live BeatDetector offline and
     /// return the median (gridBeat − onsetTime) offset in milliseconds

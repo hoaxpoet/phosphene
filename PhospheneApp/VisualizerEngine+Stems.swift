@@ -192,14 +192,11 @@ extension VisualizerEngine {
             )
             BUG012Probe.notice("separator.separate RETURN", dispatchID: dispatchID)
 
-            // Extract mono waveforms from each stem buffer.
+            // CLEAN.1.2 (BUG-031): read the stems BY VALUE from the result — never
+            // from the shared `separator.stemBuffers`, which the session-prep path
+            // races over. `result.stemWaveforms` is this call's own data.
             let sampleCount = result.sampleCount
-            var stemWaveforms: [[Float]] = []
-            for buffer in separator.stemBuffers {
-                let count = min(sampleCount, buffer.capacity)
-                let waveform = Array(buffer.pointer.prefix(count))
-                stemWaveforms.append(waveform)
-            }
+            let stemWaveforms = result.stemWaveforms
 
             // Hand off to the per-frame analyzer on analysisQueue.
             // runPerFrameStemAnalysis slides a 1024-sample window at ~94 Hz

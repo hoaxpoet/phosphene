@@ -82,7 +82,10 @@ private final class StubSeparator: StemSeparating, @unchecked Sendable {
         )
         return StemSeparationResult(
             stemData: StemData(vocals: frame, drums: frame, bass: frame, other: frame),
-            sampleCount: sampleCount
+            sampleCount: sampleCount,
+            // CLEAN.1.2 (BUG-031): callers read stems by value (incl. the drums
+            // stem at index 1 for the drums beat grid) — mirror the pre-filled buffers.
+            stemWaveforms: stemBuffers.map { Array($0.pointer.prefix(sampleCount)) }
         )
     }
 }

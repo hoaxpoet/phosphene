@@ -54,20 +54,22 @@ final class FakeStemSeparator: StemSeparating, @unchecked Sendable {
 
         let monoCount = min(frameCount, stemBuffers[0].capacity)
 
-        // Zero all buffers.
-        for buf in stemBuffers {
-            buf.write([Float](repeating: 0, count: monoCount))
-        }
-
-        // Copy mono-mixed audio to drums stem (index 1).
+        // Build the four stems: drums (index 1) = mono mix, others silent.
+        var waveforms = [[Float]](repeating: [Float](repeating: 0, count: monoCount), count: 4)
         if channelCount >= 2 {
             var mono = [Float](repeating: 0, count: monoCount)
             for i in 0..<monoCount {
                 mono[i] = (audio[i * channelCount] + audio[i * channelCount + 1]) * 0.5
             }
-            stemBuffers[1].write(mono)
+            waveforms[1] = mono
         } else {
-            stemBuffers[1].write(Array(audio.prefix(monoCount)))
+            waveforms[1] = Array(audio.prefix(monoCount))
+        }
+
+        // Keep `stemBuffers` populated for buffer-reading tests; CLEAN.1.2 callers
+        // read `stemWaveforms` by value instead.
+        for (i, w) in waveforms.enumerated() {
+            stemBuffers[i].write(w)
         }
 
         let stemData = StemData(
@@ -77,6 +79,6 @@ final class FakeStemSeparator: StemSeparating, @unchecked Sendable {
             other: AudioFrame(sampleRate: sampleRate, sampleCount: UInt32(monoCount), channelCount: 1)
         )
 
-        return StemSeparationResult(stemData: stemData, sampleCount: monoCount)
+        return StemSeparationResult(stemData: stemData, sampleCount: monoCount, stemWaveforms: waveforms)
     }
 }

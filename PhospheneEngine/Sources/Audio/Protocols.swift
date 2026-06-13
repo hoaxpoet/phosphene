@@ -127,10 +127,20 @@ public struct StemSeparationResult: Sendable {
     public let stemData: StemData
     /// Number of mono samples written per stem.
     public let sampleCount: Int
+    /// Per-stem mono waveforms, ordered `[vocals, drums, bass, other]`,
+    /// returned **by value**.
+    ///
+    /// CLEAN.1.2 (BUG-031): callers must read separated stems from here, not
+    /// from the separator's shared `stemBuffers` — those buffers are reused by
+    /// the next `separate()` call and reading them after return races across
+    /// the live-playback and session-prep paths. Empty only for legacy test
+    /// doubles that don't populate it.
+    public let stemWaveforms: [[Float]]
 
-    public init(stemData: StemData, sampleCount: Int) {
+    public init(stemData: StemData, sampleCount: Int, stemWaveforms: [[Float]] = []) {
         self.stemData = stemData
         self.sampleCount = sampleCount
+        self.stemWaveforms = stemWaveforms
     }
 }
 
