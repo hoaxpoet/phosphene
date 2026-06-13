@@ -110,6 +110,14 @@ public final class SessionManager: ObservableObject {
     /// 2-of-200 partial plan transitioned to .ready after B took over).
     private var localFileSessionGen: UInt64 = 0
 
+    /// CLEAN.1.3 (BUG-032): streaming-path twin of `localFileSessionGen`.
+    /// Advanced on every streaming lifecycle boundary (`_beginPreparation`,
+    /// `cancel`, `endSession`). The background prep task captures the value at
+    /// spawn and bails post-await when it has advanced, so a task orphaned by a
+    /// later `endSession()`/`startSession()` cannot overwrite the new session's
+    /// `currentPlan`/state. The streaming path previously had no such guard.
+    private var streamingSessionGen: UInt64 = 0
+
     // MARK: - Progressive Readiness
 
     /// Background preparation task. Non-nil while preparation is in flight.
@@ -172,13 +180,16 @@ public final class SessionManager: ObservableObject {
     ///
     /// - Parameter source: The playlist source to connect to.
     public func startSession(source: PlaylistSource) async {
-        sessionSource = source
-        currentSource = .playlist(source)
         guard state == .idle || state == .ended else {
             let current = self.state.rawValue
             logger.info("SessionManager: ignoring startSession (state=\(current))")
             return
         }
+        // CLEAN.1.3 (BUG-032): publish the source only after the guard, so a
+        // rejected call (already connecting/preparing/playing) can't rewrite the
+        // active session's origin (which hid LocalFileTransportBar mid-session).
+        sessionSource = source
+        currentSource = .playlist(source)
 
         cancellationRequested = false
         state = .connecting
@@ -211,13 +222,15 @@ public final class SessionManager: ObservableObject {
     ///   - tracks: Pre-fetched ordered track list.
     ///   - source: The originating playlist source (stored for session metadata).
     public func startSession(preFetchedTracks tracks: [TrackIdentity], source: PlaylistSource) async {
-        sessionSource = source
-        currentSource = .playlist(source)
         guard state == .idle || state == .ended else {
             let current = self.state.rawValue
             logger.info("SessionManager: ignoring startSession (state=\(current))")
             return
         }
+        // CLEAN.1.3 (BUG-032): publish the source only after the guard (see the
+        // `startSession(source:)` twin) — a rejected call must not rewrite origin.
+        sessionSource = source
+        currentSource = .playlist(source)
 
         cancellationRequested = false
         // BUG-006.1 instrumentation: discriminate the Spotify-pre-fetched path
@@ -238,10 +251,11 @@ public final class SessionManager: ObservableObject {
         currentPlan = SessionPlan(tracks: tracks)     // full list available immediately
         progressiveReadinessLevel = .preparing
         state = .preparing
-        // CLEAN.1.1 (BUG-032): tag this session's generation so a prep task
-        // orphaned by a later endSession()/startSession() can be detected when
-        // it completes. Observability only — the generation guard is CLEAN.1.3.
-        let sessionGen = ConcurrencyAuditProbe.markSessionBoundary("beginPreparation")
+        // CLEAN.1.3 (BUG-032): tag this session generation. A prep task orphaned
+        // by a later endSession()/startSession()/cancel() must not mutate the new
+        // session. Mirrors the LF path's `localFileSessionGen` (LF.5.fix.3-A).
+        streamingSessionGen &+= 1
+        let myGen = streamingSessionGen
         logger.info("SessionManager: preparing \(tracks.count) track(s)")
 
         // Subscribe to per-track status changes to drive progressiveReadinessLevel.
@@ -262,13 +276,16 @@ public final class SessionManager: ObservableObject {
             guard let self else { return }
             let result = await self.preparer.prepare(tracks: tracks)
 
-            // CLEAN.1.1 (BUG-032): a newer session boundary firing during
-            // prepare() means this completion is stale and about to overwrite
-            // the newer session's plan/state. Logging only (guard is CLEAN.1.3).
-            _ = ConcurrencyAuditProbe.recordPrepCompletion(
-                spawnGeneration: sessionGen,
-                cancellationRequested: self.cancellationRequested
-            )
+            // CLEAN.1.3 (BUG-032): a newer streaming boundary advanced the
+            // generation while prepare() was in flight → this completion is stale
+            // and must not overwrite the new session's plan/state. The real fix
+            // for the orphan-hijack (replaces the CLEAN.1.1 observability probe).
+            guard self.streamingSessionGen == myGen else {
+                let staleMsg = "SessionManager: ignoring stale prep completion " +
+                    "(gen \(myGen) ≠ current \(self.streamingSessionGen))"
+                logger.info("\(staleMsg, privacy: .public)")
+                return
+            }
 
             guard !self.cancellationRequested else {
                 logger.info("SessionManager: preparation cancelled")
@@ -553,9 +570,9 @@ public final class SessionManager: ObservableObject {
     /// A no-op when state is already `.idle`.
     public func cancel() {
         guard state != .idle else { return }
-        // CLEAN.1.1 (BUG-032): advance the session generation so any prep task
-        // completing after this cancel is observable as stale.
-        _ = ConcurrencyAuditProbe.markSessionBoundary("cancel")
+        // CLEAN.1.3 (BUG-032): advance the generation so a prep task completing
+        // after this cancel cannot mutate a later session.
+        streamingSessionGen &+= 1
         cancellationRequested = true
         preparer.cancelPreparation()
         sessionPreparationTask?.cancel()
@@ -575,15 +592,16 @@ public final class SessionManager: ObservableObject {
     ///
     /// Transitions any state → `.ended`. Safe to call at any point.
     public func endSession() {
-        // CLEAN.1.1 (BUG-032): record that endSession() — unlike cancel() —
-        // leaves the prep task / status subscription live (orphaned), and
-        // advance the generation so the orphan's completion reads as stale.
-        // Observability only; the cancel-on-end fix is CLEAN.1.3.
-        ConcurrencyAuditProbe.recordEndSession(
-            hasPrepTask: sessionPreparationTask != nil,
-            hasStatusSubscription: statusCancellable != nil
-        )
-        _ = ConcurrencyAuditProbe.markSessionBoundary("endSession")
+        // CLEAN.1.3 (BUG-032): endSession() now tears down the in-flight
+        // preparation (mirroring cancel()) AND advances the generation, so the
+        // prep task can neither keep running over the shared StemSeparator nor
+        // complete into the next session. Previously it did neither — the orphan
+        // hijacked the next session's plan/state.
+        streamingSessionGen &+= 1
+        sessionPreparationTask?.cancel()
+        sessionPreparationTask = nil
+        statusCancellable?.cancel()
+        statusCancellable = nil
         currentSource = nil
         state = .ended
         logger.info("SessionManager: session ended")
