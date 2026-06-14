@@ -1,4 +1,6 @@
 // QualityReelAnalyzer — Offline beat-reactivity analysis for Phosphene quality reels.
+// STATUS: retained-diagnostic — standalone CLI (executableTarget), run ad hoc on quality reels.
+//   Zero production importers BY DESIGN; not dead. See docs/AUDIT_KEEPLIST.md.
 //
 // Given a reel video (mp4 / mov), runs the audio track through Phosphene's
 // Beat This! pipeline (BeatThisPreprocessor → BeatThisModel → BeatGridResolver)

@@ -76,6 +76,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-160 | Accepted | FBS Stage 2: punch height follows passage loudness [0.30, 1.0] |
 | D-161 | Accepted | Rulebook restructure + CLAUDE.md token-budget ratchet |
 | D-162 | Accepted | Doc rotation mechanized (rotate_docs.sh); budgets gated by DocIntegrityTests |
+| D-163 | Accepted | Audit keep-list + executableTarget STATUS markers guard dead-code audits |
 
 ---
 
@@ -1933,3 +1934,9 @@ The RB series replaced the failure → prose-rule → bigger-rulebook loop with 
 **Status:** Accepted (DOC.6, 2026-06-12)
 
 The pruning-pass prose convention failed twice (measured 2026-06-12: EP narratives four weeks past the RB.3 window; KNOWN_ISSUES 71% resolved-history; release notes unrotated at 696 KB). Per D-161 rule 3, it converts to mechanism: `Scripts/rotate_docs.sh` performs the EP §Recently Completed, KNOWN_ISSUES §Resolved, and release-notes monthly rotations deterministically; DocIntegrityTests gates the budgets (EP narrative age ≤ 14 days, KNOWN_ISSUES §Resolved ≤ 50 KB, pre-current-month release-notes content ≤ 50 KB — the active file keeps the current month, which alone measured 72 KB at filing, so the byte budget gates rotation debt rather than whole-file size) and index completeness (DECISIONS §Index, KNOWN_ISSUES §Open Index). Closeout evidence runs the gates. Rotated content moves verbatim to history files and stays searchable; nothing is deleted. The judgment-requiring pruning items (CLAUDE.md section demotion, DECISIONS shipped+uncited rotation) remain manual on the same cadence.
+
+## D-163: Audit keep-list + executableTarget STATUS markers guard dead-code audits
+
+**Status:** Accepted (2026-06-14)
+
+A repo-wide over-engineering audit (2026-06-14) flagged three *certified, planner-pickable* presets (Murmuration, Dragon Bloom, Fata Morgana) and a *deliberately-retained* diagnostic tool (ColdStartVerifier — kept per "keep the tools" at the 2026-05-25 cold-start revert) as dead code. The root cause was a documentation/memory gap, not a code problem: nothing distinguished *active* / *retained-diagnostic* / *actually-dead*, so status was inferable only by guessing — and the "zero production importers" heuristic is structurally wrong for the two classes it hit (CLI tools have no importers by design; a quiet certified preset has no recent commits yet is live). **Decision:** every `executableTarget` carries a `// STATUS: active-tool | retained-diagnostic` marker near the top of its entry file (self-describing files), and `docs/AUDIT_KEEPLIST.md` is the read-first register before any deletion — listing the certified presets, the eight tool CLIs, and the gated dev instrumentation that look dead but are kept, plus an honest "genuinely dead" list whose removal is a separate decision. Per the D-161 admission test this is a judgment rule that must fire at audit time, before any artifact a gate could check exists; rather than spend an always-loaded CLAUDE.md slot (the file sits at ~98.7 % of its token cap), it lives at the source + a read-on-demand doc + memory, adding zero CLAUDE.md mass. A second recurrence would, per D-161 rule 3, justify mechanizing (e.g. a gate that fails when a doc claims a file was deleted that is still on disk, or that shields `certified: true` presets from delete-lists) — premature on first occurrence. Filed alongside a doc-drift correction: `ENGINEERING_PLAN_HISTORY.md` claimed `Scripts/convert_beatnet_weights.py` was already removed; it is still on disk.

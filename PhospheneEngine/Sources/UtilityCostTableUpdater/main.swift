@@ -1,4 +1,6 @@
 // UtilityCostTableUpdater — CLI to update SHADER_CRAFT.md §9.4 performance table.
+// STATUS: retained-diagnostic — standalone CLI (executableTarget), run on demand to refresh the perf table.
+//   Zero production importers BY DESIGN; not dead. See docs/AUDIT_KEEPLIST.md.
 //
 // Reads docs/V4_PERF_RESULTS.json and replaces the sentinel-comment-bounded region
 // in SHADER_CRAFT.md §9.4 with a formatted two-column Markdown table.
