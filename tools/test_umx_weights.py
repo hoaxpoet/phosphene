@@ -25,7 +25,7 @@ import numpy as np
 
 
 # ---------------------------------------------------------------------------
-# Architecture constants (must match StemSeparator.swift / convert_stem_model.py)
+# Architecture constants (must match StemSeparator.swift)
 # ---------------------------------------------------------------------------
 
 STEM_NAMES = ["vocals", "drums", "bass", "other"]

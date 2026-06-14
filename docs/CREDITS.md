@@ -6,46 +6,20 @@ Downstream redistributors must preserve these notices.
 
 ---
 
-## BeatNet — beat / downbeat tracking weights
+## BeatNet — beat / downbeat tracking (FORMERLY USED — no longer bundled)
 
-**Used in:** `PhospheneEngine/Sources/ML/Weights/beatnet/` (vendored
-weights), `Scripts/convert_beatnet_weights.py` (converter — derived
-from BeatNet's published architecture).
+**Status:** Removed. Phase DSP.2 pivoted from BeatNet to Beat This! (D-077, 2026-05-04).
+The vendored weights (`PhospheneEngine/Sources/ML/Weights/beatnet/`) were deleted in
+commit `f1788401`, and the derived converter (`Scripts/convert_beatnet_weights.py`) in
+the D-163 follow-up (2026-06-14). **No BeatNet-derived material ships in Phosphene.** The
+notice below is retained as a historical acknowledgment, not a live CC-BY redistribution
+obligation.
 
-**Source:** Mojtaba Heydari, Frank Cwitkowitz, Zhiyao Duan.
-*BeatNet: CRNN and Particle Filtering for Online Joint Beat, Downbeat,
-and Meter Tracking.* Proceedings of the 22nd International Society for
-Music Information Retrieval Conference (ISMIR), 2021.
-
-**Repository:** https://github.com/mjhydri/BeatNet
-
-**Specific artifact:** `src/BeatNet/models/model_1_weights.pt` (GTZAN-
-trained variant), retrieved from the `main` branch on 2026-05-03.
-
-**License:** Creative Commons Attribution 4.0 International
-(CC-BY-4.0) — https://creativecommons.org/licenses/by/4.0/legalcode
-
-**Attribution (CC-BY-4.0 §3(a)) — required wherever the weights or
-derivative code are distributed:**
-
-> BeatNet weights © Mojtaba Heydari et al., used and modified under
-> the Creative Commons Attribution 4.0 International License
-> (CC-BY-4.0). Source: https://github.com/mjhydri/BeatNet. Original
-> publication: Heydari, M., Cwitkowitz, F., Duan, Z. *BeatNet: CRNN
-> and Particle Filtering for Online Joint Beat, Downbeat, and Meter
-> Tracking.* ISMIR 2021. Modifications: PyTorch state_dict converted
-> to flat float32 little-endian binary tensors with accompanying
-> JSON manifest for MPSGraph inference. No model parameters were
-> retrained or fine-tuned.
-
-**Modifications (per CC-BY §3(a)(1)(B)):** original `.pt` checkpoint
-re-encoded to one `.bin` file per tensor + `manifest.json`. Tensor
-values are byte-identical to the source after dtype + endianness
-normalization. No retraining or fine-tuning.
-
-**Disclaimer (CC-BY §5):** the weights are distributed as-is. The
-authors disclaim warranties to the maximum extent permitted by law.
-See license text for the full disclaimer.
+**Source:** Mojtaba Heydari, Frank Cwitkowitz, Zhiyao Duan. *BeatNet: CRNN and Particle
+Filtering for Online Joint Beat, Downbeat, and Meter Tracking.* ISMIR 2021.
+**Repository:** https://github.com/mjhydri/BeatNet — **License:** CC-BY-4.0. While in use,
+the GTZAN-trained `model_1_weights.pt` was re-encoded (PyTorch state_dict → per-tensor
+`.bin` + JSON manifest, byte-identical after endianness normalization; no retraining).
 
 ---
 
@@ -206,8 +180,9 @@ required.
 
 If you ship a derivative of Phosphene, you must:
 
-1. Preserve the MIT notice in `LICENSE`, the BeatNet CC-BY notice, and
-   the Beat This! MIT notice in this file.
+1. Preserve the MIT notice in `LICENSE` and the Beat This! MIT notice
+   in this file. (BeatNet is no longer bundled — its CC-BY section above
+   is a historical note, not a live obligation.)
 2. Make this `CREDITS.md` (or an equivalent compilation of the
    notices) reachable from a user-visible surface — e.g. an "About"
    panel — alongside license text or hyperlinks.
