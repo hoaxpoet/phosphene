@@ -8,6 +8,16 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-14-b] BUG-031 + BUG-032 RESOLVED — manual validation via two real sessions
+
+Matt ran validation sessions on the integrated `da26a3a` build. **Session `17-58-44Z` (streaming):** Spotify playback reacted to music — 96.7% of 16,310 recorded frames carried audio; per-stem deviation live (drums/bass/vocals each range >1.5 mid-stream); 2 streaming track-changes + 4 source loads (Spotify → local folder → two single files), each reaching `→ready` with its OWN correct plan; no orphan-hijack, no premature ready, no crash. **Session `17-22-31Z` (local):** stems felt connected across 3 local track-changes. Together these clear the manual gates for **BUG-031** (per-caller stems, connected, no stall/deadlock) and **BUG-032** (lifecycle: cancel→restart + source switches, no hijack) — both moved to `KNOWN_ISSUES.md §Resolved` (fixes `1447612` / `4762114`, integrated `da26a3a`).
+
+A first session (`17-22-31Z` streaming leg) showed dead streaming visuals; analysis traced it to **environmental output routing** — audio went to a silent BT output, so the system tap captured silence (local files are immune, analyzed file-direct). Confirmed three ways: streaming worked with audio present here, the streaming→local transition worked, and the dead session's own log shows `audio signal → silent`. No Phosphene transition bug, and the existing signal-quality indicator (BUG-026's domain) did fire `red: no signal — check output device`.
+
+**Still open (not closed):** **G1/CLEAN.1.5** output-device swap (needs a mid-session swap between two *working* devices — Matt reconfiguring this week) and **BUG-033** app-layer CPU/leaks (needs an Instruments pass). **BUG-012** (MPSGraph crash): zero crashes across both long sessions — retirement candidate, not yet retired. **BUG-039** (video-writer death) hit its 8/8 restart cap this session — active on macOS 26.5 / M2 Pro, flagged for a separate look.
+
+---
+
 ## [dev-2026-06-14-a] CLEAN.7.10 — RayIntersector 1000-ray perf assertion made contention-robust (best-of-N)
 
 `RayIntersectorTests.test_rayTrace_1000Rays_under2ms` flaked on the Mac mini during the CLEAN.1 Phase-0 closeout re-run (it had passed 1469/1469 on both integration closeouts; isolated it is 5/5 green, the whole class running in 0.42–0.54 s). Root cause: a **single-sample `Date()` wall-clock assertion around one GPU command-buffer submit**, run inside the ~1469-test parallel suite — a saturated GPU/CPU inflates any one submit past the 2 ms budget. Same flake class as CLEAN.7.9, worse shape (a GPU round-trip is more jitter-prone than a timeout race). Per the deterministic-over-budget-widening rule, the 2 ms gate is **kept, not loosened**: the assertion now takes the **minimum of 8 warm `intersect` samples** — contention can only ADD latency to a submit, never subtract it, so the minimum is the clean estimate of true GPU cost and is robust to a few starved samples. The `measure {}` variance-tracking block above it is unchanged. The ray-intersector path is untouched by CLEAN.1 (last modified in render increment 3.3); test-only, no production delta. (Same Phase-0 session: the TSan stress harness ran **CLEAN — 0 data races** on the Mac mini, dynamically validating the BUG-031/032 fixes.) `KNOWN_ISSUES.md §Pre-existing Flakes` carries the resolved note.
