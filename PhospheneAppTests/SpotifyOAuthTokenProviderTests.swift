@@ -7,6 +7,10 @@
 //
 // The suite is .serialized because StubURLProtocol uses a global handler that
 // must not bleed between concurrently-executing tests.
+//
+// Length: one cohesive single-suite test file just over the 400-line limit —
+// splitting would add a file + four project.pbxproj registrations for no gain.
+// swiftlint:disable file_length
 
 import Testing
 import Foundation
@@ -46,6 +50,17 @@ private final class MockKeychainStore: SpotifyKeychainStoring, @unchecked Sendab
     func saveRefreshToken(_ token: String) { stored = token }
     func loadRefreshToken() -> String? { stored }
     func deleteRefreshToken() { stored = nil }
+}
+
+// MARK: - CallCounter
+
+/// Thread-safe request counter — the StubURLProtocol handler runs on URLSession's
+/// queue, so the concurrent-acquire test needs a locked counter.
+private final class CallCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    func increment() { lock.withLock { count += 1 } }
+    var value: Int { lock.withLock { count } }
 }
 
 // MARK: - Helpers
@@ -171,6 +186,32 @@ struct SpotifyOAuthTokenProviderTests {
         #expect(await provider.isAuthenticated == false)
     }
 
+    @Test("concurrent acquire() coalesces onto a single refresh request (no double-spend)")
+    func concurrentAcquireDedupesRefresh() async throws {
+        let counter = CallCounter()
+        let keychain = MockKeychainStore()
+        keychain.saveRefreshToken("valid_refresh")
+
+        let provider = makeProvider(keychain: keychain, tokenHandler: { _ in
+            counter.increment()
+            return try tokenResponseData(accessToken: "refreshed", refreshToken: "rotated")
+        })
+
+        // Fire many concurrent acquires on a cold cache. Without in-flight dedup
+        // each would spend the (rotating) refresh token independently (CLEAN.2.2.2).
+        let tokens = await withTaskGroup(of: String?.self) { group in
+            for _ in 0..<8 {
+                group.addTask { try? await provider.acquire() }
+            }
+            var out: [String?] = []
+            for await token in group { out.append(token) }
+            return out
+        }
+
+        #expect(counter.value == 1)                       // exactly one refresh spent
+        #expect(tokens.allSatisfy { $0 == "refreshed" })  // every caller got the token
+    }
+
     // MARK: isAuthenticated
 
     @Test("isAuthenticated is false when no keychain token exists")
@@ -207,16 +248,97 @@ struct SpotifyOAuthTokenProviderTests {
         // Give login() time to set up the continuation and open the browser.
         try await Task.sleep(for: .milliseconds(30))
 
-        // Simulate the browser redirect.
-        // swiftlint:disable:next force_unwrapping
-        let callbackURL = URL(string: "phosphene://spotify-callback?code=auth_code_xyz")!
+        // Simulate the browser redirect, echoing the CSRF state from the authorize
+        // URL — a real browser round-trip preserves `state` (CLEAN.2.2.3a).
+        let authComps = URLComponents(url: try #require(openedURL), resolvingAgainstBaseURL: false)
+        let state = try #require(authComps?.queryItems?.first(where: { $0.name == "state" })?.value)
+        let callbackURL = try #require(
+            URL(string: "phosphene://spotify-callback?code=auth_code_xyz&state=\(state)")
+        )
         await provider.handleCallback(url: callbackURL)
 
         try await loginTask.value
 
         #expect(await provider.isAuthenticated == true)
         #expect(openedURL?.absoluteString.contains("accounts.spotify.com/authorize") == true)
+        #expect(openedURL?.absoluteString.contains("state=") == true)
         #expect(keychain.loadRefreshToken() == "oauth_refresh")
+    }
+
+    @Test("overlapping login() calls coalesce — one browser, both callers resume")
+    func loginReentrancyCoalesces() async throws {
+        nonisolated(unsafe) var openCount = 0
+        nonisolated(unsafe) var firstAuthorizeURL: URL?
+        let provider = makeProvider(
+            tokenHandler: { _ in
+                try tokenResponseData(accessToken: "oauth_access", refreshToken: "oauth_refresh")
+            },
+            openURL: { url in
+                openCount += 1
+                if firstAuthorizeURL == nil { firstAuthorizeURL = url }
+            }
+        )
+
+        // Two overlapping logins: the second must coalesce onto the first's
+        // in-flight attempt, not overwrite its continuation (CLEAN.2.2.1).
+        let login1 = Task { try await provider.login() }
+        try await Task.sleep(for: .milliseconds(30))
+        let login2 = Task { try await provider.login() }
+        try await Task.sleep(for: .milliseconds(30))
+
+        // One browser round-trip: echo the state from the single authorize URL.
+        let authComps = URLComponents(url: try #require(firstAuthorizeURL), resolvingAgainstBaseURL: false)
+        let state = try #require(authComps?.queryItems?.first(where: { $0.name == "state" })?.value)
+        let callbackURL = try #require(
+            URL(string: "phosphene://spotify-callback?code=auth_code_xyz&state=\(state)")
+        )
+        await provider.handleCallback(url: callbackURL)
+
+        // Both callers must resume. Race against a watchdog so the pre-fix actor
+        // (which orphans the first continuation) fails fast instead of hanging.
+        let bothResumed = await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                _ = try? await login1.value
+                _ = try? await login2.value
+                return true
+            }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(2))
+                return false
+            }
+            let first = await group.next() ?? false
+            group.cancelAll()
+            return first
+        }
+
+        #expect(bothResumed)                                 // neither continuation leaked
+        #expect(openCount == 1)                              // exactly one browser open
+        #expect(await provider.isAuthenticated == true)
+    }
+
+    @Test("login rejects a callback whose state does not match (CSRF/replay guard)")
+    func loginRejectsStateMismatch() async throws {
+        let provider = makeProvider(
+            tokenHandler: { _ in try tokenResponseData() },
+            openURL: { _ in }
+        )
+
+        let loginTask = Task { try await provider.login() }
+        try await Task.sleep(for: .milliseconds(30))
+
+        // Forged / mismatched state — must be rejected even though code is valid.
+        let callbackURL = try #require(
+            URL(string: "phosphene://spotify-callback?code=auth_code_xyz&state=WRONG_STATE")
+        )
+        await provider.handleCallback(url: callbackURL)
+
+        do {
+            try await loginTask.value
+            Issue.record("Expected spotifyAuthFailure for state mismatch")
+        } catch PlaylistConnectorError.spotifyAuthFailure {
+            // Expected.
+        }
+        #expect(await provider.isAuthenticated == false)
     }
 
     @Test("login fails when handleCallback delivers OAuth error")
@@ -287,5 +409,15 @@ struct SpotifyOAuthTokenProviderTests {
 
         // Refresh token in keychain should be untouched.
         #expect(keychain.loadRefreshToken() == "refresh_persisted")
+    }
+
+    // MARK: form encoding
+
+    @Test("formEncoded percent-encodes reserved characters .urlQueryAllowed would leak")
+    func formEncodingEscapesReserved() throws {
+        // +, /, =, & all carry meaning in an x-www-form-urlencoded body and must
+        // be escaped or the token endpoint mis-parses the auth code (CLEAN.2.2.3b).
+        let encoded = try #require(["code": "a+b/c=d&e"].formEncoded())
+        #expect(String(data: encoded, encoding: .utf8) == "code=a%2Bb%2Fc%3Dd%26e")
     }
 }
