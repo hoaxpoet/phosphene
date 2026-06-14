@@ -276,35 +276,3 @@ struct SpotifyWebAPIConnectorTests {
         }
     }
 }
-
-// MARK: - SpotifyIntegrationTests
-
-/// Integration tests that call the real Spotify API.
-/// Gated behind SPOTIFY_INTEGRATION_TESTS=1 env var.
-///
-/// To run:
-///   SPOTIFY_INTEGRATION_TESTS=1 swift test --package-path PhospheneEngine \
-///       --filter SpotifyIntegrationTests
-@Suite("SpotifyIntegrationTests")
-struct SpotifyIntegrationTests {
-
-    @Test("connect to public playlist returns ≥40 tracks with valid metadata")
-    func publicPlaylistHasTracksWithMetadata() async throws {
-        guard ProcessInfo.processInfo.environment["SPOTIFY_INTEGRATION_TESTS"] == "1" else {
-            return  // Skip when flag is not set.
-        }
-        let tokenProvider = try DefaultSpotifyTokenProvider()
-        let connector = SpotifyWebAPIConnector(tokenProvider: tokenProvider)
-
-        // "Today's Top Hits" — consistently public and large.
-        let playlistID = "37i9dQZF1DXcBWIGoYBM5M"
-        let tracks = try await connector.connect(playlistID: playlistID)
-
-        #expect(tracks.count >= 40, "Expected ≥40 tracks, got \(tracks.count)")
-        for track in tracks {
-            #expect(!track.title.isEmpty, "Track title must not be empty")
-            #expect(!track.artist.isEmpty, "Track artist must not be empty")
-            #expect(track.spotifyID != nil, "Track must have a Spotify ID")
-        }
-    }
-}

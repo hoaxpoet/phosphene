@@ -1,7 +1,7 @@
 // SpotifyWebAPIConnector — Fetches Spotify playlist track lists via the Web API.
 //
-// Uses OAuth (user-level) token via SpotifyOAuthTokenProvider for full playlist access.
-// Client-credentials (public playlists only) is supported via DefaultSpotifyTokenProvider.
+// Uses an OAuth (user-level) token via SpotifyOAuthTokenProvider (PKCE) for full
+// playlist access. The token provider is injected — no client secret is involved.
 //
 // Endpoint: /v1/playlists/{id}/items (not the deprecated /tracks — deprecated 2024,
 // returns 403 for development-mode apps). Per Spotify Web API docs, each PlaylistTrackObject
@@ -13,7 +13,7 @@
 // Status code mapping:
 //   200 → success
 //   401 → invalidate token, retry once; second 401 → .spotifyAuthFailure
-//   403 → .spotifyLoginRequired (client-credentials hitting OAuth-gated endpoint)
+//   403 → .spotifyLoginRequired (token lacks access to an OAuth-gated endpoint)
 //   404 → .spotifyPlaylistNotFound
 //   429 → .rateLimited (parses Retry-After if present)
 //   other → .networkFailure
@@ -64,17 +64,13 @@ public final class SpotifyWebAPIConnector: SpotifyWebAPIConnecting, @unchecked S
         self.urlSession = urlSession
     }
 
-    /// Convenience factory for the production default.
-    ///
-    /// If credentials are missing from Info.plist, returns a connector backed by a
-    /// stub token provider that throws `.spotifyAuthFailure` on every `acquire()`.
-    /// This ensures `PlaylistConnector.init()` is non-throwing while still surfacing
-    /// missing-credentials as a real error at connect time rather than silently degrading.
+    /// Default for `PlaylistConnector.init()` when no authenticated Spotify
+    /// provider is injected. Backed by `MissingCredentialsTokenProvider`, so a
+    /// Spotify connect through the bare default throws `.spotifyAuthFailure`
+    /// rather than silently degrading. The production Spotify flow injects the
+    /// app-layer `SpotifyOAuthTokenProvider` (PKCE user token) explicitly.
     public static func makeLive(urlSession: URLSession = .shared) -> SpotifyWebAPIConnector {
-        if let provider = try? DefaultSpotifyTokenProvider(urlSession: urlSession) {
-            return SpotifyWebAPIConnector(tokenProvider: provider, urlSession: urlSession)
-        }
-        return SpotifyWebAPIConnector(
+        SpotifyWebAPIConnector(
             tokenProvider: MissingCredentialsTokenProvider(),
             urlSession: urlSession
         )
