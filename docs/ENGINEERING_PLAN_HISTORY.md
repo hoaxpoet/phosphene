@@ -1540,7 +1540,7 @@ Plus a separate observation: "should the preset draw the SAME web in the SAME po
 | # | Cleanup | Status | Notes |
 |---|---|---|---|
 | 1 | Delete `Sources/ML/Weights/beatnet/` | ✅ | Session A commit `f1788401`. |
-| 2 | Delete `Scripts/convert_beatnet_weights.py` | ⊘ | Removed earlier in commit `7d64ad6f` (DSP.2 pivot to Beat This!). |
+| 2 | Delete `Scripts/convert_beatnet_weights.py` | ❗ | **CORRECTION (2026-06-14): still on disk.** Only the BeatNet *weights dir* was removed (#1, `f1788401`); this converter script was never deleted. BeatNet abandoned at D-077 → clean delete candidate, pending a separate decision. See `docs/AUDIT_KEEPLIST.md`. |
 | 3 | Delete IOI histogram + `dumpHistogram` | ↪ | Histogram is documented DSP.1 baseline-capture instrumentation gated behind `BEATDETECTOR_DUMP_HIST=1` (per D-075 + CLAUDE.md). Diagnostic-only, intentionally kept. |
 | 4 | Dedup `ShaderUtilities.metal` legacy bodies | → | **Reduced scope:** 13 confirmed duplicates ≈ **200–250 LOC** (not 400). 5 ambiguous (need body-compare): `simplex2D`, `worley2D/3D`, `curl2D/3D`, `opRoundBox`, `opTwist/opBend`. 35 unique keepers (UV transforms, tone mapping, atmosphere, PBR wrappers). Track as **B.5**. |
 | 5 | Migrate presets to V.1+V.2 utility names | → | **Split.** **B.1 (HIGH conf, literal-equivalent):** GlassBrutalist `sdBox`→`sd_box` (3 calls) + `sdPlane`→`sd_plane` (2 calls). **B.2 (HIGH conf, new find):** KineticSculpture `sdSphere`→`sd_sphere`. **B.3 (held, visual change expected):** GlassBrutalist `perlin2D`→`perlin2d` — legacy uses cubic fade (3t² − 2t³); V.1+V.2 uses C² quintic (6t⁵ − 15t⁴ + 10t³). Not literal-equivalent. **B.4 (held, refactor needed):** VolumetricLithograph `fbm3D(p, octaves)` has no V.1+V.2 equivalent (variable octave count + different rotation-matrix algorithm). |
@@ -1610,7 +1610,7 @@ Plus a separate observation: "should the preset draw the SAME web in the SAME po
 - `1c0a6d9d` `[QR.5] Shared:` centralize FPS-independent EMA in Smoother value type (C.1)
 
 **Retired-stale catalog items** (no code change; catalog premise no longer held):
-- #2 `Scripts/convert_beatnet_weights.py` — already removed in commit `7d64ad6f` (DSP.2 pivot)
+- #2 `Scripts/convert_beatnet_weights.py` — **CORRECTION (2026-06-14): NOT removed — still on disk.** Only the BeatNet weights dir went (`f1788401`). Abandoned at D-077; clean delete candidate, never actioned.
 - #3 IOI histogram + `dumpHistogram` — documented DSP.1 baseline-capture instrumentation
 - #7 `Session.swift` — load-bearing `@_exported import Shared` re-export since 2.5.1
 - #8 `PresetSignaling.swift` — load-bearing post-D-095 (ArachneState emits `presetCompletionEvent`)
