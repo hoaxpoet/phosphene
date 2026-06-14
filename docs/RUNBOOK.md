@@ -359,7 +359,7 @@ Root causes, in order of likelihood:
 1. `"item"` key — the `/items` endpoint uses `"item"` (not `"track"`) as the PlaylistTrackObject key since 2024. A `"track"` key lookup returns nil for all items. Check console for `hasItem=true hasTrack=false`.
 2. `fields` query parameter — field-filtered responses silently return `{}` for items where the filter path doesn't match. Check console for `first-item keys: []`. Fix: remove `fields` from the request.
 3. `market` parameter missing — region-restricted tracks return null track objects. Add `market=from_token`.
-4. Dual-connector re-fetch — `SessionManager`'s own client-credentials connector re-fetches after OAuth succeeds → 401. Routes via `startSession(preFetchedTracks:source:)` should prevent this; check `IdleView` source routing.
+4. Dual-connector re-fetch — the non-OAuth default connector must not re-fetch after OAuth succeeds. CLEAN.2.1 removed the client-credentials provider, so the no-arg `PlaylistConnector()` default now throws `.spotifyAuthFailure` instead of silently re-fetching (and 401-ing); the production path injects the OAuth connector and routes via `startSession(preFetchedTracks:source:)`. Check `IdleView` source routing if a Spotify session still re-fetches.
 
 **Rate limit exhausted** (after [2s, 5s, 15s] backoff fails):
 - Spotify API quota exceeded.

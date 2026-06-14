@@ -74,7 +74,7 @@ None this increment.
 
 **Production-orphan claims at the field / type / method level: zero.** Notable visibility cross-checks I performed against the file-level reads (per the CA.3 visibility-verification rule):
 
-- `MissingCredentialsTokenProvider` (`SpotifyTokenProvider.swift:185`) — **`internal`**, not public. Consumers: `SpotifyWebAPIConnector.makeLive(urlSession:)` fallback (`:77`) + 1 test (`SpotifyTokenProviderTests.swift:193` via `@testable import Session`). Visibility is correctly scoped.
+- `MissingCredentialsTokenProvider` (`SpotifyTokenProvider.swift`) — **`internal`**, not public. Consumers: `SpotifyWebAPIConnector.makeLive(urlSession:)` default + 1 test (`SpotifyTokenProviderTests.swift` via `@testable import Session`). Visibility is correctly scoped. (CLEAN.2.1 removed the sibling `DefaultSpotifyTokenProvider` actor; the file now holds only this fallback + the protocol.)
 - `SessionPreparer.sessionRecorder` (`SessionPreparer.swift:93`) — **`internal`**, not public. The comment at `:92` says verbatim: `Visibility is internal so SessionPreparer+WiringLogs.swift can access it.` Single internal-cross-file consumer (the extension). Verified.
 - `SessionPreparationError` (`SessionPreparer.swift:48`) — **`internal`**, not public. Thrown inside `prepareTrack`, caught inside `_runPreparation`. No external consumers.
 - `PlaylistConnector.appleScriptReader` (`PlaylistConnector.swift:105`) — **`internal var`** (no explicit access modifier; the `var` is at type level, default is internal). Testing seam used by `PlaylistConnectorTests`. Production code never assigns it.
@@ -115,7 +115,7 @@ None. Every public, internal, or fileprivate symbol in `Sources/Session/` has at
    - `GridOnsetCalibrator.swift` — BUG-007.8 per-track grid-vs-onset offset calibrator. CA.1 boundary-deferred to here; verdict assigned below.
    - `BPMMismatchCheck.swift` — `detectBPMMismatch(...)` 2-way (BUG-008.2) + `detectThreeWayBPMDisagreement(...)` 3-way (DSP.4) diagnostic functions; consumed only by `SessionPreparer+WiringLogs`.
    - `LocalFolderConnector.swift` — `#if`-gated stub (above).
-   - `Connectors/SpotifyTokenProvider.swift` — `SpotifyTokenProviding` protocol + `DefaultSpotifyTokenProvider` actor (client-credentials, D-068) + `MissingCredentialsTokenProvider` internal fallback.
+   - `Connectors/SpotifyTokenProvider.swift` — `SpotifyTokenProviding` protocol + `MissingCredentialsTokenProvider` internal fallback. (CLEAN.2.1 removed the `DefaultSpotifyTokenProvider` client-credentials actor with the bundled secret; OAuth Authorization Code + PKCE via the App-layer `SpotifyOAuthTokenProvider` is now the sole Spotify token source.)
    - `Connectors/SpotifyWebAPIConnector.swift` — `SpotifyWebAPIConnecting` protocol + `SpotifyWebAPIConnector` implementation (D-070 `/items` schema, `preview_url` capture, OAuth + 401-retry mapping).
 
    Doc-drift correction applied in this increment — Session/ block extended to cover all 22 files with one-line behavioural descriptions.
@@ -153,7 +153,7 @@ The audit produced no new `boundary-deferred` findings. The following Session-mo
 - **Track / Playlist value types (3 files):** `TrackIdentity` (cache key with the `spotifyPreviewURL` hint excluded from Equatable/Hashable/Codable per D-070), `TrackProfile`, `PlaylistConnector` (Apple Music AppleScript + Spotify routing).
 - **Boundary-resolved-from-CA.1 (2 files):** `BeatGridAnalyzer` (`BeatGridAnalyzing` protocol + `DefaultBeatGridAnalyzer` composing DSP + ML), `GridOnsetCalibrator` (BUG-007.8 per-track offset calibration). See §Resolution-of-CA.1/CA.2-boundary-deferred-items below.
 - **Quality gates (1 file):** `BPMMismatchCheck` (`detectBPMMismatch` 2-way BUG-008.2 + `detectThreeWayBPMDisagreement` 3-way DSP.4).
-- **Connectors subdirectory (2 files):** `Connectors/SpotifyTokenProvider` (D-068 client-credentials + `MissingCredentialsTokenProvider` fallback), `Connectors/SpotifyWebAPIConnector` (D-070 `/items` schema + `preview_url` capture + 401-retry + 403→`spotifyLoginRequired` mapping).
+- **Connectors subdirectory (2 files):** `Connectors/SpotifyTokenProvider` (`SpotifyTokenProviding` protocol + `MissingCredentialsTokenProvider` fallback; CLEAN.2.1 removed the D-068 client-credentials provider — OAuth/D-069 via the App-layer `SpotifyOAuthTokenProvider` is now the sole token source), `Connectors/SpotifyWebAPIConnector` (D-070 `/items` schema + `preview_url` capture + 401-retry + 403→`spotifyLoginRequired` mapping).
 
 ---
 
@@ -339,22 +339,23 @@ Test consumers: `GridOnsetCalibratorTests` (5 cases — empty-grid, insufficient
 
 Sole production consumer: `SessionPreparer+WiringLogs.logBPMMismatchIfAny(track:)` at lines 81 (3-way) and 104 (2-way). Test consumer: `BPMMismatchCheckTests` (16+ cases). No App-layer or non-Session consumer — diagnostic-only.
 
-### `Connectors/SpotifyTokenProvider.swift` (192 lines) — `production-active`
+### `Connectors/SpotifyTokenProvider.swift` — `production-active`
 
-Three types:
-- `public protocol SpotifyTokenProviding: AnyObject, Sendable` — two requirements (`acquire() async throws -> String`, `invalidate() async`). Conformers: `DefaultSpotifyTokenProvider` (engine-side, client-credentials), `SpotifyOAuthTokenProvider` (App-side, OAuth + PKCE per D-069), `MissingCredentialsTokenProvider` (engine-side fallback), test doubles in `SpotifyWebAPIConnectorTests`.
-- `public actor DefaultSpotifyTokenProvider` — D-068 client-credentials. Reads `Bundle.main.infoDictionary["SpotifyClientID"]` + `"SpotifyClientSecret"`; throws `.spotifyAuthFailure` on empty. Deduplicates concurrent `acquire()` calls onto a single `refreshTask` (no thundering herd). Cached token returned until within 60 s of expiry.
-- `final class MissingCredentialsTokenProvider: SpotifyTokenProviding` — **`internal`**, not public. Fallback used by `SpotifyWebAPIConnector.makeLive()` when Info.plist credentials are absent. Every `acquire()` throws `.spotifyAuthFailure` with the documented copy.
+> **CLEAN.2.1:** the `public actor DefaultSpotifyTokenProvider` (D-068 client-credentials provider) was **removed**, along with the bundled `SpotifyClientSecret` (a native app must not embed a client secret). The file now holds the protocol + the internal fallback only. The sole production Spotify token source is the App-layer `SpotifyOAuthTokenProvider` (Authorization Code + PKCE, no secret; D-069).
 
-Visibility cross-check: `MissingCredentialsTokenProvider` is `internal` — verified by `grep ^public SpotifyTokenProvider.swift` returning only `SpotifyTokenProviding`, `DefaultSpotifyTokenProvider`, and four public methods. Test consumer (`SpotifyTokenProviderTests:193`) imports `Session` via `@testable import` (line 7 verified).
+Two types:
+- `public protocol SpotifyTokenProviding: AnyObject, Sendable` — two requirements (`acquire() async throws -> String`, `invalidate() async`). Conformers: `SpotifyOAuthTokenProvider` (App-side, OAuth + PKCE per D-069), `MissingCredentialsTokenProvider` (engine-side fallback), test doubles in `SpotifyWebAPIConnectorTests`.
+- `final class MissingCredentialsTokenProvider: SpotifyTokenProviding` — **`internal`**, not public. The `SpotifyWebAPIConnector.makeLive()` default, used when no authenticated provider is injected. Every `acquire()` throws `.spotifyAuthFailure` with the documented copy.
 
-Tests: 9 cases covering successful fetch, cache hit, near-expiry refresh, 400/401 → `spotifyAuthFailure`, network error, malformed JSON, deduplicated concurrent acquires, missing-credentials always-throws.
+Visibility cross-check: `MissingCredentialsTokenProvider` is `internal` — verified by `grep ^public SpotifyTokenProvider.swift` returning only `SpotifyTokenProviding` + its methods (after CLEAN.2.1, no `public` type remains besides the protocol). Test consumer (`SpotifyTokenProviderTests`) imports `Session` via `@testable import`.
+
+Tests: cover the `MissingCredentialsTokenProvider` always-throws contract (`.spotifyAuthFailure`).
 
 ### `Connectors/SpotifyWebAPIConnector.swift` (252 lines) — `production-active`
 
 Two types:
 - `public protocol SpotifyWebAPIConnecting: AnyObject, Sendable` — one requirement (`connect(playlistID:) async throws -> [TrackIdentity]`).
-- `public final class SpotifyWebAPIConnector: SpotifyWebAPIConnecting, @unchecked Sendable` — D-070 `/items` schema, `preview_url` capture, pagination via `next` URL, 401-retry-once-with-fresh-token, 403 → `.spotifyLoginRequired` (`SpotifyOAuthPlaylistConnector` in App layer remaps to `.spotifyPlaylistInaccessible` when authenticated per D-069 Decision 6). `makeLive(urlSession:)` factory builds with `DefaultSpotifyTokenProvider` or `MissingCredentialsTokenProvider` fallback.
+- `public final class SpotifyWebAPIConnector: SpotifyWebAPIConnecting, @unchecked Sendable` — D-070 `/items` schema, `preview_url` capture, pagination via `next` URL, 401-retry-once-with-fresh-token, 403 → `.spotifyLoginRequired` (`SpotifyOAuthPlaylistConnector` in App layer remaps to `.spotifyPlaylistInaccessible` when authenticated per D-069 Decision 6). `makeLive(urlSession:)` factory always builds with `MissingCredentialsTokenProvider` (CLEAN.2.1 removed the `DefaultSpotifyTokenProvider` branch); the authenticated `SpotifyOAuthTokenProvider` is injected explicitly by `ConnectorPickerView`.
 
 `networkFetcher: (@Sendable (URLRequest) async throws -> (Data, URLResponse))?` (internal `var`) is the test-time injection point. Production code never assigns it. Tests assign it for canned-response replay (`SpotifyWebAPIConnectorTests` + `SpotifyItemsSchemaTests` via `@testable import Session`).
 
@@ -434,7 +435,7 @@ Applied in this increment as doc-only corrections:
    - `GridOnsetCalibrator.swift` — BUG-007.8 per-track median grid-vs-onset offset calibrator.
    - `BPMMismatchCheck.swift` — `detectBPMMismatch` 2-way (BUG-008.2) + `detectThreeWayBPMDisagreement` 3-way (DSP.4) pure-function detectors.
    - `LocalFolderConnector.swift` — `#if`-gated v2 stub; never compiles in v1.
-   - `Connectors/SpotifyTokenProvider.swift` — D-068 `DefaultSpotifyTokenProvider` (client-credentials actor) + `MissingCredentialsTokenProvider` internal fallback + `SpotifyTokenProviding` protocol.
+   - `Connectors/SpotifyTokenProvider.swift` — `MissingCredentialsTokenProvider` internal fallback + `SpotifyTokenProviding` protocol. (CLEAN.2.1 removed the D-068 `DefaultSpotifyTokenProvider` client-credentials actor; OAuth + PKCE via the App-layer `SpotifyOAuthTokenProvider` per D-069 is the sole token source.)
    - `Connectors/SpotifyWebAPIConnector.swift` — D-070 `/items` schema + `preview_url` capture + 401-retry + 403→`spotifyLoginRequired` mapping; `SpotifyWebAPIConnecting` protocol.
 
 3. **`§Module Map Tests/Session/` block (line 580) — remove phantom `StemCacheTests`, add 6 missing files:**
@@ -462,7 +463,7 @@ None. The audit verified every D-008, D-017, D-018, D-019, D-046, D-052, D-056, 
 - D-052 (capture-mode reconciler) — App-layer; not Session-module.
 - D-056 (progressive readiness) — verified at `SessionManager+Readiness.computeReadiness(...)` (line 21) + `defaultProgressiveReadinessThreshold` (`SessionTypes.swift:63`) + `.partial` threshold rule (`SessionManager+Readiness.swift:60-65`).
 - D-061 (long-session resilience) — App-layer coordinators; verified `SessionPreparer.resumeFailedNetworkTracks()` exists at `:346` and `SessionManager.resumeFailedNetworkTracks()` wraps it at `:324`.
-- D-068 (client-credentials connector) — verified at `SpotifyTokenProvider.swift` (Info.plist read, deduplicated refresh task, MissingCredentialsTokenProvider fallback).
+- D-068 (client-credentials connector) — the `DefaultSpotifyTokenProvider` client-credentials token provider was **retired in CLEAN.2.1** (the bundled client secret was eliminated). The `SpotifyWebAPIConnector` + `SpotifyTokenProviding` protocol remain; OAuth + PKCE (D-069) is the token source. `MissingCredentialsTokenProvider` is the `makeLive()` fallback.
 - D-069 (OAuth + PKCE) — App-layer concrete (`PhospheneApp/Services/SpotifyOAuthTokenProvider.swift`) conforms to engine-side `SpotifyTokenProviding` protocol; correctly placed per Decision 2.
 - D-070 (`/items` schema + `preview_url` capture) — verified at `SpotifyWebAPIConnector.parseTrack(_:)` (line 228, especially line 241), `TrackIdentity.spotifyPreviewURL` excluded from Equatable/Hashable/Codable (lines 65-67, 119-127, 134-141), `PreviewResolver` short-circuit (line 73-76).
 - D-091 (QR.4 SettingsStore collapse + `currentTrackIndex`) — App-layer; the Session-side touchpoint (`PlannedSession.canonicalIdentity(matchingTitle:artist:)`) lives in Orchestrator, not Session — boundary-noted.

@@ -45,7 +45,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 - **Mood-override cooldown never reset** across repeat plays/sessions — override effectively permanently dead from a track's second play (`LiveAdapter.swift:180-385`).
 - **Unbounded in-memory StemCache** (~7 MB/track, no eviction; disk sibling has a 500 MB LRU cap) (`StemCache.swift:76`).
 - **Re-entrant `login()` leaks the pending continuation** + arms a stray timeout against the second login (`SpotifyOAuthTokenProvider.swift:122-147`).
-- **Spotify client secret baked into the built Info.plist** — extractable from any distributed binary; PKCE doesn't need it. Must be resolved before any distribution (`PhospheneApp/Info.plist:13`).
+- ✅ **RESOLVED (CLEAN.2.1, 2026-06-14)** — Spotify client secret baked into the built Info.plist. Removed `SpotifyClientSecret` from `Info.plist` + `Phosphene.xcconfig` and deleted its only consumer, the D-068 client-credentials `DefaultSpotifyTokenProvider`. The production flow already used OAuth Authorization Code + PKCE (`SpotifyOAuthTokenProvider`), which needs no secret; no build-bundled secret remains. See `RELEASE_NOTES_DEV.md [dev-2026-06-14-d]`.
 - **Two honest-UI violations:** "Use Apple Music instead" footer button wired to `{ }` (`ConnectorPickerView.swift:149,223`); Settings "Local file" capture mode says "coming in a future update" though LF shipped, and selection is a silent no-op (`AudioSettingsSection.swift:42-46`, `CaptureModeSwitchCoordinator.swift:89`).
 - **Localization gate only scans `PhospheneApp/Views/`** — verified hardcoded user-facing English in ViewModels/ContentView/indirection helpers bypasses `check_user_strings.sh` (sites listed in the audit doc).
 
