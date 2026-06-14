@@ -51,14 +51,18 @@ final class SessionStateViewModel: ObservableObject {
         self.state = sessionManager.state
         self.reduceMotion = accessibilityState.reduceMotion
 
+        // CLEAN.1.4 (BUG-033): `sink { [weak self] }`, not `assign(to:on: self)`.
+        // `Subscribers.Assign` retains its target, and the cancellable is stored
+        // on `self.cancellables` → a retain cycle that left this VM (and every
+        // discarded instance constructed per body-eval) leaked forever.
         sessionManager.$state
             .receive(on: DispatchQueue.main)
-            .assign(to: \.state, on: self)
+            .sink { [weak self] state in self?.state = state }
             .store(in: &cancellables)
 
         accessibilityState.$reduceMotion
             .receive(on: DispatchQueue.main)
-            .assign(to: \.reduceMotion, on: self)
+            .sink { [weak self] reduce in self?.reduceMotion = reduce }
             .store(in: &cancellables)
     }
 }

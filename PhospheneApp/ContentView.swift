@@ -147,7 +147,7 @@ struct ContentView: View {
             reduceMotionPublisher: accessibilityState.$reduceMotion.eraseToAnyPublisher(),
             progressiveReadinessPublisher: engine.sessionManager.$progressiveReadinessLevel
                 .eraseToAnyPublisher(),
-            dashboardSnapshotPublisher: engine.$dashboardSnapshot.eraseToAnyPublisher(),
+            dashboardSnapshotPublisher: engine.dashboardSnapshotSubject.eraseToAnyPublisher(),
             currentSourcePublisher: engine.sessionManager.$currentSource.eraseToAnyPublisher(),
             isLocalFilePausedPublisher: engine.$isLocalFilePaused.eraseToAnyPublisher(),
             onEndSession: { engine.sessionManager.endSession() },

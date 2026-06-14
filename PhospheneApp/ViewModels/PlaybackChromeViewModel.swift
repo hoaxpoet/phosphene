@@ -156,7 +156,9 @@ final class PlaybackChromeViewModel: ObservableObject {
         // Replaces the direct NSWorkspace observation from U.6 (U.9 migration).
         reduceMotionPublisher
             .receive(on: DispatchQueue.main)
-            .assign(to: \.reduceMotion, on: self)
+            // CLEAN.1.4 (BUG-033): sink [weak self], not assign(to:on: self) —
+            // Subscribers.Assign retains self, leaking this VM (deinit never ran).
+            .sink { [weak self] reduce in self?.reduceMotion = reduce }
             .store(in: &cancellables)
 
         // Listening badge: show only on definite .silent (≥3 s per SilenceDetector SM).
@@ -252,7 +254,8 @@ final class PlaybackChromeViewModel: ObservableObject {
             .store(in: &cancellables)
         isLocalFilePausedPublisher
             .receive(on: DispatchQueue.main)
-            .assign(to: \.isLocalFilePaused, on: self)
+            // CLEAN.1.4 (BUG-033): sink [weak self], not assign(to:on: self).
+            .sink { [weak self] paused in self?.isLocalFilePaused = paused }
             .store(in: &cancellables)
     }
 
