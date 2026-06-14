@@ -91,14 +91,15 @@ struct MetadataPreFetcherTests {
         let elapsed = ContinuousClock.now - start
 
         // Should complete within timeout + buffer, not wait for slow fetcher.
-        // Budget is 15 s (1 s timeout + 14 s headroom) to absorb parallel-
-        // execution contention — observed 4.4 s on one M-series run and 8.25 s
-        // on another (1248-test parallel suite). Per the U.11 precedent
-        // (CLAUDE.md), test budgets carry 2-3× headroom over the worst observed
-        // under contention; 15 s gives ~1.8× the 8.25 s worst case while still
-        // catching a real regression (which would block indefinitely on the
-        // 10-second slow fetcher).
-        #expect(elapsed < .seconds(15))
+        // Budget 45 s (1 s timeout + headroom) absorbs parallel-execution
+        // contention: under the full ~1460-test suite the cooperative pool can
+        // delay the 1 s-timeout continuation badly — observed 4.4 s and 8.25 s on
+        // lighter runs, then 16.1 s and 22.8 s on heavier ones (CLEAN.1.x
+        // closeouts flaked the prior 15 s budget twice). Per the U.11 precedent
+        // (CLAUDE.md) + the "violated twice → mechanize" rule, the budget now
+        // carries ~2× headroom over the 22.8 s worst case, while still catching a
+        // real regression (which would block indefinitely on the 10 s slow fetcher).
+        #expect(elapsed < .seconds(45))
         #expect(profile?.energy == 0.5)
     }
 
