@@ -42,7 +42,7 @@ A feature works for typical inputs but degrades noticeably for specific inputs o
 **Examples:**
 - Money 7/4 stays REACTIVE on live path (Beat This! returns empty grid)
 - `PresetVisualReviewTests` PNG export broken for staged presets under `RENDER_VISUAL=1`
-- `MetadataPreFetcher.fetch_networkTimeout_returnsWithinBudget` intermittent failure
+- Wall-clock-budgeted timing tests flaking under parallel-suite contention (e.g. the former `MetadataPreFetcher.fetch_networkTimeout_returnsWithinBudget` — rewritten deterministic, CLEAN.7.9)
 - Visual quality lower than expected for a specific preset/track combination
 - Orchestrator drift-tracker locking too slowly on quiet-intro tracks
 
