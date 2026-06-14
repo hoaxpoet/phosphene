@@ -59,7 +59,7 @@ P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh dou
 
 **Severity:** P1 (silent data corruption — a prepped track's cached stems can be the live track's stems, poisoning orchestrator stem-affinity scoring; plausible contributor to the BUG-012 family).
 **Domain tag:** dsp.stem / concurrency
-**Status:** Open — **fix implemented (CLEAN.1.2, 2026-06-13, strategy A — Matt-approved): the full input→predict→output critical section on the single shared `StemSeparator` is now atomic under one lock, and stems are returned BY VALUE (`StemSeparationResult.stemWaveforms`) so callers no longer read the shared `stemBuffers`.** Awaiting Matt's manual concurrency validation (real connect→play→track-change→end→restart session) + integration to main before Resolved. (Was: instrumented CLEAN.1.1.)
+**Status:** Open — **fix implemented (CLEAN.1.2, 2026-06-13, strategy A — Matt-approved): the full input→predict→output critical section on the single shared `StemSeparator` is now atomic under one lock, and stems are returned BY VALUE (`StemSeparationResult.stemWaveforms`) so callers no longer read the shared `stemBuffers`.** **Integrated to `main` + pushed to origin as `da26a3a` (2026-06-14).** Matt's manual concurrency validation (real connect→play→track-change→end→restart session) is now the only remaining gate before Resolved. (Was: instrumented CLEAN.1.1.)
 **Introduced:** progressive readiness (Inc 6.1) made prep-during-playback the normal case; the BUG-012 race analysis only covered the serial `stemQueue` and never considered the preparer path.
 **Resolved:** —
 
@@ -85,7 +85,7 @@ P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh dou
 
 **Severity:** P1 (next session's plan can be overwritten with the old playlist and flipped `.ready` prematurely; two `_runPreparation` loops can run against the single StemSeparator — compounds BUG-031).
 **Domain tag:** session.lifecycle / concurrency
-**Status:** Open — **fix implemented (CLEAN.1.3, 2026-06-13).** All three defects fixed: `endSession()` now cancels `sessionPreparationTask`/`statusCancellable` (mirrors `cancel()`); a per-instance `streamingSessionGen` (twin of `localFileSessionGen`, LF.5.fix.3-A) gates the prep-completion closure so an orphan can't mutate the new session; `resumeFailedNetworkTracks` awaits the in-flight loop before starting recovery (single-flight — no second `_runPreparation`); both `startSession` variants mutate the published source only after the state guard. Awaiting Matt's manual lifecycle validation + integration to main before Resolved.
+**Status:** Open — **fix implemented (CLEAN.1.3, 2026-06-13).** All three defects fixed: `endSession()` now cancels `sessionPreparationTask`/`statusCancellable` (mirrors `cancel()`); a per-instance `streamingSessionGen` (twin of `localFileSessionGen`, LF.5.fix.3-A) gates the prep-completion closure so an orphan can't mutate the new session; `resumeFailedNetworkTracks` awaits the in-flight loop before starting recovery (single-flight — no second `_runPreparation`); both `startSession` variants mutate the published source only after the state guard. **Integrated to `main` + pushed to origin as `da26a3a` (2026-06-14).** Matt's manual lifecycle validation (real end→restart / mid-prep-stop) is now the only remaining gate before Resolved.
 **Introduced:** structural — predates LF.5's generation-guard pattern; streaming path never got the equivalent.
 **Resolved:** —
 
@@ -117,7 +117,7 @@ P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh dou
 
 **Severity:** P1 (steady main-thread burn for the entire duration of every playback session + unbounded VM leak at frame rate; one chrome VM additionally leaks per session).
 **Domain tag:** app.ui / performance / leak
-**Status:** Open — **fix implemented (CLEAN.1.4, 2026-06-13).** (1) The per-frame dashboard snapshot now flows through a dedicated `CurrentValueSubject` (`dashboardSnapshotSubject`), **not** `@Published` on the engine — so it no longer fires `objectWillChange`/re-evaluates the whole SwiftUI tree at 60 Hz; the publish is additionally skipped when the overlay is hidden (`dashboardOverlayVisible`, the default). (2) Both VMs' `assign(to:on: self)` subscriptions are now `sink { [weak self] }`, breaking the retain cycles. Awaiting Matt's manual Instruments validation + integration to main before Resolved.
+**Status:** Open — **fix implemented (CLEAN.1.4, 2026-06-13).** (1) The per-frame dashboard snapshot now flows through a dedicated `CurrentValueSubject` (`dashboardSnapshotSubject`), **not** `@Published` on the engine — so it no longer fires `objectWillChange`/re-evaluates the whole SwiftUI tree at 60 Hz; the publish is additionally skipped when the overlay is hidden (`dashboardOverlayVisible`, the default). (2) Both VMs' `assign(to:on: self)` subscriptions are now `sink { [weak self] }`, breaking the retain cycles. **Integrated to `main` + pushed to origin as `da26a3a` (2026-06-14).** Matt's manual Instruments validation (main-thread CPU drop + zero leaked VMs) is now the only remaining gate before Resolved.
 **Introduced:** dashboard snapshot pump (dashboard increment); `assign(to:on:)` subscriptions in VM inits.
 **Resolved:** —
 
