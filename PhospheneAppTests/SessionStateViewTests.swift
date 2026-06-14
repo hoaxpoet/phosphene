@@ -63,6 +63,25 @@ struct SessionStateViewModelTests {
         let vm = SessionStateViewModel(sessionManager: manager, accessibilityState: a11y)
         #expect(vm.reduceMotion == NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
     }
+
+    // CLEAN.1.4 (BUG-033): the VM must deallocate once nothing strong-references
+    // it. Before the fix, `assign(to:\.state, on: self)` (Subscribers.Assign
+    // retains its target) + storing the cancellable on `self.cancellables` closed
+    // a retain cycle, so every instance — including the one re-created on each
+    // PhospheneApp body evaluation — leaked forever. The `sink { [weak self] }`
+    // fix breaks the cycle. Red pre-fix (weakVM != nil), green post-fix.
+    @Test("deallocates — no assign(to:on:self) retain cycle")
+    func deallocates_noRetainCycle() {
+        weak var weakVM: SessionStateViewModel?
+        do {
+            let manager = SessionManager.testInstance()
+            let a11y = AccessibilityState(workspace: NSWorkspace.shared)
+            let vm = SessionStateViewModel(sessionManager: manager, accessibilityState: a11y)
+            weakVM = vm
+            #expect(weakVM != nil)
+        }
+        #expect(weakVM == nil, "SessionStateViewModel leaked — assign(to:on:self) retain cycle regressed")
+    }
 }
 
 // MARK: - ContentView Routing Tests (synchronously-reachable states)

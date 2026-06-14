@@ -61,7 +61,20 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Per-frame dashboard snapshot (BeatSync + Stems + Perf). Republished from
     /// `onFrameRendered` on `@MainActor`; the SwiftUI dashboard overlay view
     /// model (DASH.7) subscribes via Combine and throttles to ~30 Hz.
-    @Published var dashboardSnapshot: DashboardSnapshot?
+    ///
+    /// CLEAN.1.4 (BUG-033): this is a dedicated `CurrentValueSubject`, **not**
+    /// `@Published`. As `@Published` on this `@EnvironmentObject`-wide engine,
+    /// writing it every rendered frame fired `objectWillChange` and re-evaluated
+    /// the *entire* SwiftUI tree at 60 Hz. Routing it through its own subject means
+    /// only `DashboardOverlayViewModel` (which throttles to ~30 Hz) re-renders.
+    let dashboardSnapshotSubject = CurrentValueSubject<DashboardSnapshot?, Never>(nil)
+
+    /// Whether the dashboard overlay is currently visible. `PlaybackView` pushes
+    /// its local `showDebug` here. CLEAN.1.4 (BUG-033): the per-frame snapshot
+    /// pump skips all snapshot work when this is false — and the dashboard
+    /// defaults to hidden. Plain (non-`@Published`): toggled rarely, and it must
+    /// not itself invalidate the tree.
+    var dashboardOverlayVisible = false
 
     /// Whether uncertified presets are eligible for reactive-mode selection.
     /// Mirrors `SettingsStore.showUncertifiedPresets`; pushed via `applyShowUncertifiedPresets(_:)`.

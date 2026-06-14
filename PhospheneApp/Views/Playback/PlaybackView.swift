@@ -183,7 +183,14 @@ struct PlaybackView: View {
             if case .active = phase { chromeVM.onActivity() }
         }
         .onAppear { setup() }
-        .onDisappear { teardown() }
+        // CLEAN.1.4 (BUG-033): tell the engine whether the dashboard overlay is
+        // shown, so its per-frame snapshot pump can skip all work when hidden
+        // (the default). `showDebug` is this view's local state.
+        .onChange(of: showDebug) { _, visible in engine.dashboardOverlayVisible = visible }
+        .onDisappear {
+            teardown()
+            engine.dashboardOverlayVisible = false
+        }
         .sheet(isPresented: $showPlanPreview) {
             PlanPreviewView(
                 initialPlan: engine.livePlannedSession,

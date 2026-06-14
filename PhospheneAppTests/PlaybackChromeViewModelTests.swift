@@ -69,6 +69,22 @@ struct PlaybackChromeViewModelTests {
         #expect(vm.overlayVisible)
     }
 
+    // CLEAN.1.4 (BUG-033): the VM must deallocate once nothing strong-references
+    // it (its `deinit` cancels `hideTask`). Before the fix, two
+    // `assign(to:on: self)` subscriptions (Subscribers.Assign retains its target)
+    // stored on `self.cancellables` closed a retain cycle → the VM leaked every
+    // session and `deinit` never ran. The `sink { [weak self] }` fix breaks it.
+    // Red pre-fix (weakVM != nil), green post-fix.
+    @Test func deallocates_noRetainCycle() {
+        weak var weakVM: PlaybackChromeViewModel?
+        do {
+            let (vm, _, _, _, _) = makeVM()
+            weakVM = vm
+            #expect(weakVM != nil)
+        }
+        #expect(weakVM == nil, "PlaybackChromeViewModel leaked — assign(to:on:self) retain cycle regressed")
+    }
+
     @Test func onActivity_resetsHideTimer_andKeepsOverlayVisible() async throws {
         let (vm, _, _, _, _) = makeVM(delay: InstantDelay())
         // After instant hide fires

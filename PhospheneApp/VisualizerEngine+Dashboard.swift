@@ -1,9 +1,12 @@
 // VisualizerEngine+Dashboard — Dashboard snapshot publisher (DASH.7).
 //
 // Replaces the DASH.6 Metal composer path. Each rendered frame the engine
-// assembles a `DashboardSnapshot` (BeatSync + Stems + Perf) and writes it to
-// `@Published var dashboardSnapshot`. SwiftUI subscribers (the dashboard
-// overlay view model) throttle the stream to ~30 Hz before redrawing.
+// assembles a `DashboardSnapshot` (BeatSync + Stems + Perf) and sends it to
+// `dashboardSnapshotSubject`. SwiftUI subscribers (the dashboard overlay view
+// model) throttle the stream to ~30 Hz before redrawing. CLEAN.1.4 (BUG-033):
+// a dedicated subject, not `@Published` on the engine, so the per-frame write no
+// longer invalidates the whole SwiftUI tree; the publish is skipped entirely
+// when the overlay is hidden (`dashboardOverlayVisible`).
 
 import Combine
 import Foundation
@@ -16,9 +19,12 @@ extension VisualizerEngine {
     /// Called from the per-frame `onFrameRendered` hook on `@MainActor`.
     @MainActor
     func publishDashboardSnapshot(stems: StemFeatures) {
+        // CLEAN.1.4 (BUG-033): skip when the overlay is hidden (the default) —
+        // no snapshot assembly, no send, no downstream view-model work.
+        guard dashboardOverlayVisible else { return }
         let beat = beatSyncLock.withLock { latestBeatSyncSnapshot }
         let perf = assemblePerfSnapshot(pipeline: pipeline)
-        dashboardSnapshot = DashboardSnapshot(beat: beat, stems: stems, perf: perf)
+        dashboardSnapshotSubject.send(DashboardSnapshot(beat: beat, stems: stems, perf: perf))
     }
 
     /// Build a `PerfSnapshot` from the current `FrameBudgetManager` +
