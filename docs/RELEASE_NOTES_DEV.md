@@ -8,6 +8,16 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-14-c] BUG-033 RESOLVED + BUG-050 filed (recorder ≈ doubles CPU — the 99% Matt saw)
+
+Matt validated BUG-033 via Activity Monitor: toggling the debug overlay produces the expected CPU swing (dashboard work present only while the overlay is shown) — the `@Published`→`CurrentValueSubject` decoupling + skip-when-hidden working as designed; the VM retain-cycle half was already unit-proven. **BUG-033 → §Resolved** (fix `f95d645`, integrated `da26a3a`).
+
+The check also showed PhospheneApp at ~99–115% CPU. Per-frame artifact analysis (`2026-06-14T17-58-44Z/features.csv`) traced that to the **always-on session recorder**, not BUG-033: `frame_cpu_ms` mean 15.78 = `renderframe` ~8.6 + `encode` ~7.2 (additive); when the recorder stalled between BUG-039 video-writer deaths, `encode_cpu_ms` → ~0.6 and total CPU **halved to ~9 ms**. Encode is on its own thread, so 60 fps holds (render alone ~52% budget, 98.8% of frames <20 ms) — the cost is sustained CPU/power/heat (~2 cores on the mini), not frame rate. Filed as **BUG-050** (P2, resource-management). Per Matt's call (option A), recording stays on while the session artifacts are in active use; the proper fix (cheaper/off-thread per-frame capture, or default-off gating) is deferred.
+
+**Phase-1 manual gates:** BUG-031/032/033 all Resolved; only **G1** (mid-session output-device swap) remains, pending Matt's reconfigured session this week.
+
+---
+
 ## [dev-2026-06-14-b] BUG-031 + BUG-032 RESOLVED — manual validation via two real sessions
 
 Matt ran validation sessions on the integrated `da26a3a` build. **Session `17-58-44Z` (streaming):** Spotify playback reacted to music — 96.7% of 16,310 recorded frames carried audio; per-stem deviation live (drums/bass/vocals each range >1.5 mid-stream); 2 streaming track-changes + 4 source loads (Spotify → local folder → two single files), each reaching `→ready` with its OWN correct plan; no orphan-hijack, no premature ready, no crash. **Session `17-22-31Z` (local):** stems felt connected across 3 local track-changes. Together these clear the manual gates for **BUG-031** (per-caller stems, connected, no stall/deadlock) and **BUG-032** (lifecycle: cancel→restart + source switches, no hijack) — both moved to `KNOWN_ISSUES.md §Resolved` (fixes `1447612` / `4762114`, integrated `da26a3a`).
