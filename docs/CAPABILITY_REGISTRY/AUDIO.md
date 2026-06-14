@@ -610,7 +610,7 @@ Parallel-async LRU fetcher. `public final class MetadataPreFetcher: @unchecked S
 
 **Internal:** `fetchWithTimeout(_:title:artist:timeout:)` static at `:148-170` — uses nested `withTaskGroup` race between the fetcher task and a `Task.sleep(for:.seconds(timeout))` task; first-result wins; `group.cancelAll()` on result; `result.flatMap { $0 }` flattens `Optional<Optional<_>>`. `merge(_:)` at `:176-211` is the first-non-nil-wins reducer (genre tags unioned + dedup).
 
-**No findings at the producer side.** Known pre-existing flake: `MetadataPreFetcherTests.fetch_networkTimeout_returnsWithinBudget` (per `KNOWN_ISSUES.md §Pre-existing Flakes` line 800) — out of CA-Audio scope; document only.
+**No findings at the producer side.** The pre-existing `MetadataPreFetcherTests.fetch_networkTimeout` wall-clock flake that CA-Audio noted (`KNOWN_ISSUES.md §Pre-existing Flakes`) was rewritten deterministic in CLEAN.7.9 (2026-06-13) — behavioural assertion on the merged profile (fast fetcher's `energy` present, slow fetcher's `bpm` excluded by the 1 s timeout), no elapsed-time budget; renamed `fetch_networkTimeout_returnsFastResultNotSlow`. Resolved.
 
 #### MusicBrainzFetcher.swift (119 LoC) — `production-active`
 

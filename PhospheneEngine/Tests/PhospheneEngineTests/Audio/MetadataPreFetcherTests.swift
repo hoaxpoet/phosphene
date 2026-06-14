@@ -71,7 +71,7 @@ struct MetadataPreFetcherTests {
         #expect(profile?.bpm == 120)
     }
 
-    @Test func fetch_networkTimeout_returnsWithinBudget() async {
+    @Test func fetch_networkTimeout_returnsFastResultNotSlow() async {
         let slowFetcher = MockMetadataFetcher(
             sourceName: "Slow",
             stubbedResult: PartialTrackProfile(bpm: 999),
@@ -86,21 +86,22 @@ struct MetadataPreFetcherTests {
             timeoutSeconds: 1.0
         )
 
-        let start = ContinuousClock.now
         let profile = await prefetcher.prefetch(for: makeTrack())
-        let elapsed = ContinuousClock.now - start
 
-        // Should complete within timeout + buffer, not wait for slow fetcher.
-        // Budget 45 s (1 s timeout + headroom) absorbs parallel-execution
-        // contention: under the full ~1460-test suite the cooperative pool can
-        // delay the 1 s-timeout continuation badly — observed 4.4 s and 8.25 s on
-        // lighter runs, then 16.1 s and 22.8 s on heavier ones (CLEAN.1.x
-        // closeouts flaked the prior 15 s budget twice). Per the U.11 precedent
-        // (CLAUDE.md) + the "violated twice → mechanize" rule, the budget now
-        // carries ~2× headroom over the 22.8 s worst case, while still catching a
-        // real regression (which would block indefinitely on the 10 s slow fetcher).
-        #expect(elapsed < .seconds(45))
+        // Deterministic behavioural check — no wall-clock budget. The 1 s
+        // timeout fires ~9 s before the 10 s slow fetcher could finish, so the
+        // merged profile carries the fast fetcher's `energy` but NOT the slow
+        // fetcher's `bpm`. The outcome depends only on the 1 s-vs-10 s ordering
+        // (the 1 s timer's continuation is enqueued ~9 s before the 10 s one —
+        // contention delays both, never inverts them), never on measured
+        // elapsed time. This removes the flake that ratcheted the old wall-clock
+        // budget 3 s → 8.25 → 15 → 45 s without ever converging (16.1 s / 22.8 s
+        // observed under the ~1460-test parallel suite). A broken timeout would
+        // let the slow fetcher's `bpm: 999` through — caught here by the
+        // `bpm == nil` assertion (the test blocks ~10 s on the slow fetcher and
+        // fails, rather than hanging).
         #expect(profile?.energy == 0.5)
+        #expect(profile?.bpm == nil)
     }
 
     @Test func fetch_allSourcesFail_returnsNil() async {
