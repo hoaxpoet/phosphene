@@ -105,6 +105,18 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
     private var _isCapturing = false
     private var tapUUID = UUID()
 
+    /// The mode the active capture was started with — replayed by
+    /// `performReinstall` when the default output device changes (CLEAN.1.5).
+    private var currentMode: CaptureMode?
+
+    /// Watches the default output device; on change the tap is reinstalled so the
+    /// visualizer keeps receiving audio instead of freezing (CLEAN.1.5 / GAP-1).
+    private let deviceMonitor = DefaultOutputDeviceMonitor()
+
+    /// Serial queue for tap reinstall — kept OFF the monitor's listener queue so
+    /// teardown/destroy never runs reentrantly from inside the Core Audio callback.
+    private let reinstallQueue = DispatchQueue(label: "com.phosphene.audio.tapReinstall")
+
     private let stateLock = NSLock()
 
     public var isCapturing: Bool {
@@ -139,6 +151,7 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
             throw AudioCaptureError.alreadyCapturing
         }
         _isCapturing = true
+        currentMode = mode
         stateLock.unlock()
 
         do {
@@ -147,6 +160,14 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
             let newAggregateID = try createAggregateDevice()
             let newProcID = try createIOProc(aggregateID: newAggregateID)
             try startDevice(aggregateID: newAggregateID, procID: newProcID)
+
+            // CLEAN.1.5 (GAP-1): reinstall the tap when the default output device
+            // changes (AirPods connect / monitor unplug) so visuals don't freeze
+            // on the now-dead device. The listener fires on the monitor's queue;
+            // the actual reinstall is dispatched to `reinstallQueue`.
+            deviceMonitor.start { [weak self] in
+                self?.reinstallQueue.async { [weak self] in self?.performReinstall() }
+            }
 
             let sr = self.sampleRate
             let ch = self.channelCount
@@ -301,7 +322,32 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
         }
     }
 
-    private func cleanup() {
+    /// Reinstall the tap against the current default output device (CLEAN.1.5 /
+    /// GAP-1). Runs on `reinstallQueue` — never the monitor's listener queue — so
+    /// the teardown/create calls (incl. `cleanup()` on a create failure, which
+    /// removes the listener) never reenter the Core Audio property callback.
+    private func performReinstall() {
+        let mode: CaptureMode? = stateLock.withLock { _isCapturing ? currentMode : nil }
+        guard let mode else { return }
+        logger.info("Default output device changed — reinstalling tap")
+        teardownTapResources()
+        do {
+            let newTapID = try createProcessTap(for: mode)
+            readTapFormat(tapID: newTapID)
+            let newAggregateID = try createAggregateDevice()
+            let newProcID = try createIOProc(aggregateID: newAggregateID)
+            try startDevice(aggregateID: newAggregateID, procID: newProcID)
+            logger.info("Tap reinstalled after device change (tap \(newTapID))")
+        } catch {
+            // The create steps already tore down + stopped the monitor on failure.
+            logger.error("Tap reinstall failed after device change: \(String(describing: error))")
+        }
+    }
+
+    /// Destroy the tap / aggregate / IO-proc without touching the monitor or the
+    /// `_isCapturing` flag — the teardown half of `performReinstall`. `cleanup()`
+    /// wraps this with monitor-stop + `_isCapturing = false`.
+    private func teardownTapResources() {
         stateLock.lock()
         let agg = aggregateID
         let tap = tapID
@@ -321,8 +367,13 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
         aggregateID = 0
         tapID = 0
         procID = nil
-        _isCapturing = false
         stateLock.unlock()
+    }
+
+    private func cleanup() {
+        deviceMonitor.stop()
+        teardownTapResources()
+        stateLock.withLock { _isCapturing = false }
     }
 
     deinit {
