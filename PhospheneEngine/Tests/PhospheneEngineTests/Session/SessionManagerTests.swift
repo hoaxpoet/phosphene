@@ -134,12 +134,14 @@ private func makeManager(
 /// so the common case exits in well under a second. The loop returns the instant
 /// state leaves `.preparing`, so a generous deadline never slows a passing run —
 /// it only prevents a false failure when @MainActor starvation during the full
-/// parallel suite delays the background Task. 3 s was too tight for that role under
-/// the ~1300-test engine run; 15 s gives ample headroom while still catching a
-/// genuine hang. (hardening pass, 2026-06-01 — was a recurring flake.)
+/// parallel suite delays the background Task. 3 s → 15 s → 30 s: the CLEAN.1.x
+/// real-GPU concurrency tests added enough suite load that 15 s flaked
+/// intermittently (same `.ready`-deadline class as cancel_fromReady /
+/// waitUntilNotPreparing); 30 s gives headroom while still catching a genuine
+/// hang. (hardening pass, 2026-06-01; widened again 2026-06-14.)
 @MainActor
 private func waitForReady(_ manager: SessionManager) async {
-    let deadline = Date().addingTimeInterval(15)
+    let deadline = Date().addingTimeInterval(30)
     while manager.state == .preparing && Date() < deadline {
         try? await Task.sleep(nanoseconds: 10_000_000)
     }

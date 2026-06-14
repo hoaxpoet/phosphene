@@ -108,12 +108,13 @@ private func makeSessionManager(
 
 @MainActor
 private func waitUntilNotPreparing(_ manager: SessionManager) async {
-    // 10 s deadline (was 3 s) to absorb parallel-execution contention during
-    // 1248-test runs — observed manager.state == .preparing at the 3 s mark
-    // on a worktree session with the broader suite under heavy load. The
-    // U.11 precedent (CLAUDE.md) carries 2-3× headroom over the worst
-    // observed delay.
-    let deadline = Date().addingTimeInterval(10)
+    // 30 s deadline (was 10 s) to absorb parallel-execution contention. The
+    // CLEAN.1.x suite added real-GPU concurrency tests (StemSeparatorConcurrencyTests)
+    // that saturate CPU/GPU enough to starve this MainActor-bound prep past 10 s
+    // intermittently (CLEAN.1.7 merge closeout flaked `startNow_atThreshold` at the
+    // 10 s mark; same class as the cancel_fromReady widening). U.11 precedent
+    // (CLAUDE.md): 2-3× headroom over the worst observed delay.
+    let deadline = Date().addingTimeInterval(30)
     while manager.state == .preparing && Date() < deadline {
         try? await Task.sleep(nanoseconds: 10_000_000)
     }
