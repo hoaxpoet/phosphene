@@ -1,4 +1,6 @@
 // TempoDumpRunner — DSP.1 baseline-capture CLI.
+// STATUS: active-tool — standalone CLI (executableTarget), run by Scripts/dump_tempo_baselines.sh.
+//   Zero production importers BY DESIGN; not dead. See docs/AUDIT_KEEPLIST.md.
 //
 // Replays a single audio file through FFTProcessor + BeatDetector at the
 // same 1024-sample hop the engine uses, with the dump helper enabled.

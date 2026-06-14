@@ -1,4 +1,6 @@
 // CheckVisualReferences — Lint check for docs/VISUAL_REFERENCES/.
+// STATUS: active-tool — standalone CLI (executableTarget), the visual-reference lint gate.
+//   Zero production importers BY DESIGN; not dead. See docs/AUDIT_KEEPLIST.md.
 //
 // Validates that every preset registered in the Presets shader directory has a
 // corresponding VISUAL_REFERENCES folder with a populated README, and that all

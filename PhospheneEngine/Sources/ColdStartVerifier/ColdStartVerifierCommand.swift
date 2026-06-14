@@ -1,4 +1,8 @@
 // ColdStartVerifier — Phase CS increment CS.1.
+// STATUS: retained-diagnostic — NOT dead. The cold-start phase-correction *runtime* was reverted
+//   (2026-05-25); this verifier is kept per Matt's "keep the tools" sign-off
+//   (docs/CAPABILITY_REGISTRY/BEAT_SYNC.md §Cold-Start). executableTarget → zero production
+//   importers BY DESIGN. Before deleting, read docs/AUDIT_KEEPLIST.md.
 //
 // Empirically verifies Phosphene's cold-start beat-sync bar: "beat-synced from
 // frame 1 of every track" (design doc COLD_START_SYNC_DESIGN_2026-05-20.md §3).

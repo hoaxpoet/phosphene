@@ -1,4 +1,6 @@
 // BeatThisActivationDumper — Swift counterpart to Scripts/dump_beatthis_activations.py.
+// STATUS: retained-diagnostic — standalone CLI (executableTarget), run ad hoc to regenerate/diff
+//   Beat This! activation fixtures. Zero production importers BY DESIGN; not dead. See docs/AUDIT_KEEPLIST.md.
 //
 // Runs BeatThisModel on a given audio file, captures every intermediate
 // tensor exposed via BeatThisGraphBundle.intermediates, dumps per-stage

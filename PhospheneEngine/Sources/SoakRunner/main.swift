@@ -1,4 +1,6 @@
 // SoakRunner — CLI entry point for headless soak test runs (Increment 7.1).
+// STATUS: active-tool — standalone CLI (executableTarget), run by Scripts/run_soak_test.sh.
+//   Zero production importers BY DESIGN; not dead. See docs/AUDIT_KEEPLIST.md.
 //
 // Usage:
 //   .build/release/SoakRunner --duration 7200

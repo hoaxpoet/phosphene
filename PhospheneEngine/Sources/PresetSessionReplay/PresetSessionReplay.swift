@@ -1,4 +1,6 @@
 // PresetSessionReplay.swift — CLI entrypoint for the session-replay harness.
+// STATUS: active-tool — standalone CLI (executableTarget), mandatory per docs/PRESET_SESSION_CHECKLIST.md.
+//   Zero production importers BY DESIGN; not dead. See docs/AUDIT_KEEPLIST.md.
 //
 // Invocation:
 //   swift run preset-session-replay \
