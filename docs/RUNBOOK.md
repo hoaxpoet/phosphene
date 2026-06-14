@@ -459,6 +459,24 @@ Every Phosphene launch creates `~/Documents/phosphene_sessions/<ISO-timestamp>/`
 - Any preset that includes `mv_warp` in its `passes` array must implement `mvWarpPerFrame()` and `mvWarpPerVertex()` in its `.metal` file. Missing implementations cause a linker error at preset-library compile time. See `VolumetricLithograph.metal` for a reference implementation. (Note: Murmuration — formerly `Starburst.metal` — does **not** use mv_warp; it is `["feedback", "particles"]` per D-029.)
 - New ray-march presets should include `mv_warp` in their passes unless there is a deliberate reason not to. Without per-vertex feedback accumulation, ray-march presets show only instantaneous audio state regardless of how sophisticated the shader drivers are (MV-2, D-027).
 
+## ThreadSanitizer concurrency validation (CLEAN.1.6 / GAP-7)
+
+```bash
+Scripts/tsan_stress.sh
+```
+
+Runs the concurrency + session-lifecycle stress and regression tests under
+`swift test --sanitize=thread` to prove the BUG-031/032 fixes are race-free
+(not merely moved). The script sets `PHOSPHENE_STRESS=1`, the opt-in gate for
+`ConcurrencyStressTests` — the heavy overlapping-`separate()` + rapid
+session-start/end/cancel-churn harness, which skips in the normal suite so the
+per-increment closeout stays light. Pass condition: exit 0 **and** zero
+`ThreadSanitizer: data race` lines; the script greps for races and emits a
+`TSAN CLEAN` / `TSAN FAILURES PRESENT` verdict. TSan rebuilds with instrumentation
+on first use (~5-15× slower), so this is an on-demand gate, not part of the
+closeout. Verified 2026-06-13: TSan builds and runs clean against the real
+Metal/MPSGraph `StemSeparator` — no suppressions file needed.
+
 ## Running a Soak Test (Increment 7.1)
 
 ### Quick smoke run (60 seconds, in test suite)
