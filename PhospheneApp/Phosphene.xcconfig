@@ -12,11 +12,11 @@
 
 SWIFT_TREAT_WARNINGS_AS_ERRORS = YES
 
-// Spotify Web API client credentials (public-playlist access, v1).
-// Do NOT put real values here — this file is checked in.
+// Spotify Web API client ID for the OAuth Authorization Code + PKCE flow.
+// PKCE uses only the public client ID — NO client secret (a native app must
+// not embed one). Do NOT put a real value here — this file is checked in.
 // Override in Phosphene.local.xcconfig (see RUNBOOK §Spotify connector setup).
 SPOTIFY_CLIENT_ID =
-SPOTIFY_CLIENT_SECRET =
 
 // Local credential overrides — gitignored, never checked in.
 #include? "Phosphene.local.xcconfig"
