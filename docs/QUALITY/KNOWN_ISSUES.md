@@ -7,7 +7,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
 | AUDIT-2026-06-09 | P2/P3 | audit backlog | Full-codebase audit findings not individually filed |
-| BUG-033 | P1 | app.ui / performance | 60 Hz `@Published` snapshot invalidates SwiftUI tree; VM retain-cycle leaks |
+| BUG-050 | P2 | resource-management / perf | Always-on session recorder ~doubles per-frame CPU (encode stacked on render) |
 | BUG-034 | P1 | renderer / test-isolation | Ray-march fixtures render at 32 steps vs live 128 (`sceneParamsB.z` double-booked) |
 | BUG-035 | P2 | dsp.structure | NoveltyDetector re-detects boundaries ~4-5× after similarity ring wraps |
 | BUG-036 | P2 | audio.capture / performance | Heap allocations on the real-time audio thread (three sites) |
@@ -53,27 +53,23 @@ P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh dou
 
 ---
 
-### BUG-033 — App layer: per-frame `@Published dashboardSnapshot` invalidates the whole SwiftUI tree at 60 Hz; `assign(to:on: self)` retain cycles leak view models (2026-06-09)
+### BUG-050 — Always-on session recorder ~doubles per-frame CPU (encode stacked on render); ungated in normal use (2026-06-14)
 
-**Severity:** P1 (steady main-thread burn for the entire duration of every playback session + unbounded VM leak at frame rate; one chrome VM additionally leaks per session).
-**Domain tag:** app.ui / performance / leak
-**Status:** Open — **fix implemented (CLEAN.1.4, 2026-06-13).** (1) The per-frame dashboard snapshot now flows through a dedicated `CurrentValueSubject` (`dashboardSnapshotSubject`), **not** `@Published` on the engine — so it no longer fires `objectWillChange`/re-evaluates the whole SwiftUI tree at 60 Hz; the publish is additionally skipped when the overlay is hidden (`dashboardOverlayVisible`, the default). (2) Both VMs' `assign(to:on: self)` subscriptions are now `sink { [weak self] }`, breaking the retain cycles. **Integrated to `main` + pushed to origin as `da26a3a` (2026-06-14).** Matt's manual Instruments validation (main-thread CPU drop + zero leaked VMs) is now the only remaining gate before Resolved.
-**Introduced:** dashboard snapshot pump (dashboard increment); `assign(to:on:)` subscriptions in VM inits.
+**Severity:** P2 (no fps/correctness impact — render alone holds ~52 % of the 60 fps frame budget and 60 fps holds; the cost is sustained extra CPU/power/heat, ~2 cores on the Mac mini, for the entire duration of every session).
+**Domain tag:** resource-management / performance
+**Status:** Open — **diagnosed 2026-06-14 from session artifacts; no fix yet (Matt's option A: keep recording on while in active use, fix the per-frame capture/encode properly when prioritized).** Surfaced when Matt's Activity Monitor read PhospheneApp at ~99–115 % during the BUG-033 validation.
+**Introduced:** the SessionRecorder video-capture path; instantiated unconditionally (`VisualizerEngine.swift:785`, `SessionRecorder()` with `enabled: true` default) — no production gate.
 **Resolved:** —
 
-**Expected:** hidden diagnostics cost nothing; view models deallocate when their views go away.
-**Actual:**
-1. `setupDashboardSnapshotPump` (`VisualizerEngine+InitHelpers.swift:75-84`) writes `engine.dashboardSnapshot` (`@Published` on `VisualizerEngine`) from `onFrameRendered` **every rendered frame, unconditionally** (dashboard hidden or not), allocating a `Task { @MainActor }` per frame. `VisualizerEngine` is `@StateObject`/`@EnvironmentObject` across the tree → `objectWillChange` re-evaluates the App body, `ContentView.playbackView` (12 fresh `eraseToAnyPublisher()` per frame), and the full `PlaybackView` diff at ~60 Hz throughout playback. The dashboard VM's 30 Hz throttle is downstream of the damage.
-2. `SessionStateViewModel.swift:56,61` and `PlaybackChromeViewModel.swift:159,255` use `assign(to: \.x, on: self)` with the cancellable stored in `self.cancellables` — `Subscribers.Assign` retains its target, closing a retain cycle; the VMs never deallocate (`PlaybackChromeViewModel.deinit`, which cancels `hideTask`, never runs). Compounding: `PhospheneApp.swift:57-62` constructs a **new** `SessionStateViewModel` eagerly in the scene body on every body evaluation — at 60 Hz during playback via (1) — and every discarded instance has already subscribed in init and is leaked permanently, each still receiving every state change.
-**Reproduction steps:** play any session; observe main-thread CPU + Instruments leaks/allocations for `SessionStateViewModel` instances growing at frame rate; end a session and observe `PlaybackChromeViewModel` never deallocates.
-**Session artifacts:** `docs/diagnostics/CODE_AUDIT_2026-06-09.md` §A4/§A5.
+**Expected:** the diagnostic session recorder adds modest overhead; it should not roughly double the app's CPU in normal use.
+**Actual:** the recorder runs every session (ungated). Its per-frame `encode_cpu_ms` (~7–9 ms — drawable→pixel-buffer capture + AVAssetWriter feed) is **additive** to `renderframe_cpu_ms` (~8.6 ms): `frame_cpu_ms` ≈ encode + render ≈ 15.8 ms ≈ a full 60 fps budget → ~1 core for the frame path, plus audio/main threads → Activity Monitor ~99–115 %. Encode is on its own thread, so it does not (much) cost frame rate — render alone is ~52 % budget and 60 fps holds for 98.8 % of frames — the impact is sustained CPU/power/heat. Compounded by BUG-039 (the same recorder's video writer dying + restarting, hitting its 8/8 cap on macOS 26.5 / M2 Pro).
+**Reproduction steps:** play any session; Activity Monitor shows PhospheneApp ~99 %+. Confirmed from artifacts: `~/Documents/phosphene_sessions/2026-06-14T17-58-44Z/features.csv` — `frame_cpu_ms` mean 15.78 (encode 7.16 + render 7.10); in the two 30 s windows where the writer was dead between BUG-039 restarts, `encode_cpu_ms` → ~0.6 and total CPU halved to ~9 ms.
+**Session artifacts:** `2026-06-14T17-58-44Z/features.csv` (per-frame `frame_cpu_ms` / `encode_cpu_ms` / `renderframe_cpu_ms` breakdown).
 **Suspected failure class:** `resource-management`.
-**Verification criteria:**
-- [x] Automated: VM deallocation tests (weak ref nils after teardown) — `SessionStateViewTests.deallocates_noRetainCycle` + `PlaybackChromeViewModelTests.deallocates_noRetainCycle` (CLEAN.1.4; red pre-fix via `assign`, green post-fix via `sink [weak self]`).
-- [x] Dashboard writes go through a non-`@Published` subject — `dashboardSnapshotSubject` (CurrentValueSubject) replaces `@Published dashboardSnapshot`, and `publishDashboardSnapshot` skips when `dashboardOverlayVisible == false`. Verified structurally + by the app build; a runtime engine-level test is impractical in the app-test sandbox (VisualizerEngine needs Metal/ML/render-loop) — covered by the manual Instruments leg.
-- [ ] Manual: Instruments before/after — main-thread CPU during playback drops measurably; zero leaked VM instances after a session — **pending**; required before Resolved.
-
-**Scoping note (CLEAN.1.4).** The audit's third compounding factor — `PhospheneApp` re-constructing `SessionStateViewModel` per scene-body evaluation — is neutralised by the two landed fixes: the 60 Hz invalidation is gone (body evals are now rare), `ContentView` already holds the VM as `@StateObject` (keeps the first instance; later ones are discarded), and the `sink [weak self]` fix means those discarded instances now **deallocate** instead of leaking. Converting the App-side construction to a once-only `@StateObject` is a deferred micro-optimisation — the highest-risk change (SwiftUI App-init ordering) for the least remaining benefit now that the leak is closed.
+**Verification criteria (for the eventual fix):**
+- [ ] Either the per-frame capture/encode is moved fully off the render-adjacent path / made cheaper (throttled or lower-cost pixel capture) so total `frame_cpu_ms` ≈ `renderframe_cpu_ms`, OR recording is gated off by default with an explicit per-session enable.
+- [ ] Activity Monitor steady-state CPU in normal use roughly halves vs the current ~99 %.
+- [ ] 60 fps unaffected; the session-artifact recordings (features.csv / stems.csv / video) remain available when recording is enabled.
 
 ---
 
@@ -1077,6 +1073,26 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 ---
 
 ## Resolved (recent)
+
+### BUG-033 — App layer: per-frame `@Published dashboardSnapshot` invalidates the whole SwiftUI tree at 60 Hz; `assign(to:on: self)` retain cycles leak view models (2026-06-09)
+
+> **RESOLVED 2026-06-14 — fix `f95d645` ([CLEAN.1.4]); integrated to `main` + pushed as `da26a3a`; manual validation completed (Matt, Activity Monitor overlay-on/off toggle).** (1) The per-frame dashboard snapshot flows through a dedicated `CurrentValueSubject` (`dashboardSnapshotSubject`), **not** `@Published` on the engine — no more 60 Hz whole-tree SwiftUI invalidation; the publish is skipped while the overlay is hidden (the default). (2) Both VMs' `assign(to:on: self)` → `sink { [weak self] }`, breaking the retain cycles (VMs now `deinit`).
+
+**Severity:** P1 (steady main-thread burn for the entire duration of every playback session + unbounded VM leak at frame rate).
+**Domain tag:** app.ui / performance / leak
+**Status:** Resolved — automated (VM deinit tests) + manual (Matt's overlay-toggle CPU check) criteria met. The high *absolute* CPU Matt observed during the check is a separate finding — the always-on session recorder, filed **BUG-050** — not this defect.
+**Introduced:** dashboard snapshot pump (dashboard increment); `assign(to:on:)` subscriptions in VM inits.
+**Resolved:** 2026-06-14 — commit `f95d645` ([CLEAN.1.4]: dashboard snapshot off `@Published` → `CurrentValueSubject` + skip-when-hidden; VM `sink { [weak self] }`), integrated to main as `da26a3a`.
+
+**Expected:** hidden diagnostics cost nothing; view models deallocate when their views go away.
+**Actual (pre-fix):** the per-frame dashboard snapshot was `@Published` on the `@EnvironmentObject`-wide engine → `objectWillChange` re-evaluated the whole SwiftUI tree at ~60 Hz throughout playback; and both VMs' `assign(to:on:self)` subscriptions retained `self` → the VMs never deallocated (one chrome VM leaked per session).
+**Suspected failure class:** `resource-management`.
+**Verification criteria:**
+- [x] Automated: VM deallocation tests (weak ref nils after teardown) — `SessionStateViewTests.deallocates_noRetainCycle` + `PlaybackChromeViewModelTests.deallocates_noRetainCycle` (red pre-fix via `assign`, green post-fix via `sink [weak self]`).
+- [x] Dashboard writes go through a non-`@Published` subject (`dashboardSnapshotSubject`), publish skipped when the overlay is hidden.
+- [x] Manual: Matt's Activity Monitor check — toggling the overlay produces the expected CPU swing (the decoupling working); the residual high CPU traced to the separate recorder cost (BUG-050), not this path.
+
+---
 
 ### BUG-031 — StemSeparator shared between live pipeline and session preparer with unlocked I/O: cross-path stem corruption (2026-06-09)
 
