@@ -51,7 +51,7 @@ extension VisualizerEngine {
     }
 
     /// Build the metadata fetcher list — MusicBrainz + iTunes Search are always
-    /// active (free), Soundcharts and Spotify enable when env vars are set.
+    /// active (free); Soundcharts enables when its env var is set.
     static func buildFetcherList() -> [any MetadataFetching] {
         var fetchers: [any MetadataFetching] = [
             ITunesSearchFetcher(),
@@ -60,10 +60,6 @@ extension VisualizerEngine {
         if let soundcharts = SoundchartsFetcher.fromEnvironment() {
             fetchers.append(soundcharts)
             logger.info("Soundcharts fetcher enabled (audio features)")
-        }
-        if let spotify = SpotifyFetcher.fromEnvironment() {
-            fetchers.append(spotify)
-            logger.info("Spotify fetcher enabled (search only)")
         }
         return fetchers
     }
