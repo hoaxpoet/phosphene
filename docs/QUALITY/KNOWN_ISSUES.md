@@ -117,7 +117,7 @@ P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh dou
 
 **Severity:** P1 (steady main-thread burn for the entire duration of every playback session + unbounded VM leak at frame rate; one chrome VM additionally leaks per session).
 **Domain tag:** app.ui / performance / leak
-**Status:** Open — audit finding. Two root causes that compound each other.
+**Status:** Open — **fix implemented (CLEAN.1.4, 2026-06-13).** (1) The per-frame dashboard snapshot now flows through a dedicated `CurrentValueSubject` (`dashboardSnapshotSubject`), **not** `@Published` on the engine — so it no longer fires `objectWillChange`/re-evaluates the whole SwiftUI tree at 60 Hz; the publish is additionally skipped when the overlay is hidden (`dashboardOverlayVisible`, the default). (2) Both VMs' `assign(to:on: self)` subscriptions are now `sink { [weak self] }`, breaking the retain cycles. Awaiting Matt's manual Instruments validation + integration to main before Resolved.
 **Introduced:** dashboard snapshot pump (dashboard increment); `assign(to:on:)` subscriptions in VM inits.
 **Resolved:** —
 
@@ -129,9 +129,11 @@ P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh dou
 **Session artifacts:** `docs/diagnostics/CODE_AUDIT_2026-06-09.md` §A4/§A5.
 **Suspected failure class:** `resource-management`.
 **Verification criteria:**
-- [ ] Automated: VM deallocation tests (weak reference nils after teardown) for both VMs.
-- [ ] Automated: with dashboard hidden, no `dashboardSnapshot` writes occur during rendering (or writes go through a non-`@Published` subject).
-- [ ] Manual: Instruments before/after — main-thread CPU during playback drops measurably; zero leaked VM instances after a session.
+- [x] Automated: VM deallocation tests (weak ref nils after teardown) — `SessionStateViewTests.deallocates_noRetainCycle` + `PlaybackChromeViewModelTests.deallocates_noRetainCycle` (CLEAN.1.4; red pre-fix via `assign`, green post-fix via `sink [weak self]`).
+- [x] Dashboard writes go through a non-`@Published` subject — `dashboardSnapshotSubject` (CurrentValueSubject) replaces `@Published dashboardSnapshot`, and `publishDashboardSnapshot` skips when `dashboardOverlayVisible == false`. Verified structurally + by the app build; a runtime engine-level test is impractical in the app-test sandbox (VisualizerEngine needs Metal/ML/render-loop) — covered by the manual Instruments leg.
+- [ ] Manual: Instruments before/after — main-thread CPU during playback drops measurably; zero leaked VM instances after a session — **pending**; required before Resolved.
+
+**Scoping note (CLEAN.1.4).** The audit's third compounding factor — `PhospheneApp` re-constructing `SessionStateViewModel` per scene-body evaluation — is neutralised by the two landed fixes: the 60 Hz invalidation is gone (body evals are now rare), `ContentView` already holds the VM as `@StateObject` (keeps the first instance; later ones are discarded), and the `sink [weak self]` fix means those discarded instances now **deallocate** instead of leaking. Converting the App-side construction to a once-only `@StateObject` is a deferred micro-optimisation — the highest-risk change (SwiftUI App-init ordering) for the least remaining benefit now that the leak is closed.
 
 ---
 
