@@ -44,15 +44,27 @@ that is a product decision — raise it with Matt, do not infer it.
 - `ARACHNE_DIAG` / `ARACHNE_M7_DIAG` blocks — opt-in instrumentation, compiled only with `-D` flags.
 - `includeMilkdropPresets` setting — placeholder until Phase MD ships.
 
-## Genuinely dead (confirmed) — but deletion is a separate decision
+**Retained history (keep — not dead weight):**
+- `archive/` — old CLAUDE snapshots, architectural blueprints, V4 audits, and `electron-prototype`.
+  The prototype is the primary-source artifact behind CLAUDE.md's Audio Data Hierarchy rule ("Learned
+  in the Electron prototype and validated across every preset since"). swiftlint-excluded on purpose;
+  slimming it is a deferred repo-size decision (Matt owns) — NOT an audit delete.
 
-These ARE dead, but per Matt (2026-06-14) nothing gets deleted off the audit that produced the false
-positives above. List them, do not auto-cut:
-- `Scripts/convert_beatnet_weights.py` — BeatNet abandoned at D-077; weights dir already gone.
-  (ENGINEERING_PLAN_HISTORY claimed this was already removed; it is still on disk — corrected 2026-06-14.)
-- Dead CoreML stem toolchain (`tools/test_stem_model.py`, `tools/convert_stem_model.py`) — D-009 removed the CoreML path.
-- Inception-era spikes (`tools/audio-capture-test.swift`, `tools/audio-tap-test.swift`).
-- `archive/` — old snapshots + electron prototype; unreferenced, swiftlint-excluded.
+## Removed 2026-06-14 (D-163 follow-up — decision-backed, not "no references found")
+
+Deleted because the path each served was abandoned by an explicit decision (not an empty reference
+search — that signal is what produced this doc's false positives):
+- CoreML stem toolchain (`tools/convert_stem_model.py`, `tools/test_stem_model.py`) — D-009 rejected
+  CoreML. The live stem path (`extract_umx_weights.py` → `.bin`) is unaffected; the
+  `tools/test_umx_weights.py` constants comment was updated.
+- `Scripts/convert_beatnet_weights.py` — last BeatNet-derived artifact (D-077 pivot; weights dir
+  already gone). The BeatNet section in `docs/CREDITS.md` was historicized to match.
+
+## Unconfirmed — verify with Matt before cutting
+
+- Inception-era spikes (`tools/audio-capture-test.swift`, `tools/audio-tap-test.swift`) — not compiled
+  by any target and the capture-method decision shipped, BUT the only "unused" signal is no-references,
+  which is exactly what misfired above. Could be kept probes. Ask before cutting.
 
 ## Before you delete anything
 
