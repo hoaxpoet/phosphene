@@ -6,14 +6,14 @@
 // SpotifyOAuthPlaylistConnector (separate file) wraps PlaylistConnector with
 // OAuth-aware 403 remapping (.spotifyLoginRequired ↔ .spotifyPlaylistInaccessible).
 //
-// File length: 413 lines, slightly over the 400-line lint limit. The actor
-// owns four logically inseparable concerns — actor state + protocol surface,
-// PKCE plumbing, token-exchange HTTP, and base64URL/form-encoding helpers —
+// File length: ~494 lines, over the 400-line lint limit. The actor owns four
+// logically inseparable concerns — actor state + protocol surface, PKCE +
+// state plumbing, token-exchange HTTP, and base64URL/form-encoding helpers —
 // and splitting across files would require either (a) widening access on the
 // `private` token-exchange and continuation helpers to module-internal, or
 // (b) duplicating the `Bundle.main.infoDictionary` / Keychain access surface
-// across two files. Both compromises lose more than the 13-line lint budget
-// gains. Revisit when the next significant Spotify-OAuth increment lands.
+// across two files. Both compromises lose more than the lint budget gains.
+// Revisit when the next significant Spotify-OAuth increment lands.
 // swiftlint:disable file_length
 
 import AppKit           // NSWorkspace.shared.open(_:)
@@ -66,12 +66,20 @@ public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLogin
     private var cachedAccessToken: String?
     private var tokenExpiry: Date?
     private var codeVerifier: String?
+    /// CSRF/replay guard: the `state` sent on the in-flight authorize request,
+    /// verified against the value echoed back in `handleCallback` (CLEAN.2.2.3a).
+    private var pendingState: String?
     /// Set to `true` when a valid refresh token has been stored in Keychain.
     private var _isAuthenticated: Bool = false
-    /// Pending continuation from an in-flight `login()` call.
-    private var pendingContinuation: CheckedContinuation<Void, Error>?
-    /// Task that cancels the pending continuation after a timeout.
+    /// Continuations awaiting the in-flight `login()` attempt. A concurrent
+    /// `login()` coalesces onto this same attempt rather than overwriting it,
+    /// so there is exactly one browser round-trip and one timeout (CLEAN.2.2.1).
+    private var pendingContinuations: [CheckedContinuation<Void, Error>] = []
+    /// Task that fails the in-flight login after a timeout.
     private var timeoutTask: Task<Void, Never>?
+    /// In-flight silent-refresh task. Concurrent `acquire()` calls await this
+    /// instead of each spending the (rotating) refresh token (CLEAN.2.2.2).
+    private var refreshTask: Task<String, Error>?
 
     // MARK: - Constants
 
@@ -120,14 +128,27 @@ public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLogin
     }
 
     public func login() async throws {
-        // Generate PKCE pair.
+        // Coalesce a concurrent login onto the in-flight attempt: one browser
+        // round-trip, one continuation set, one timeout. Without this guard a
+        // second login() would overwrite the first's continuation (orphaning the
+        // caller) and arm a second stray timeout (CLEAN.2.2.1).
+        if !pendingContinuations.isEmpty {
+            try await withCheckedThrowingContinuation { pendingContinuations.append($0) }
+            return
+        }
+
+        // Generate PKCE pair + CSRF state.
         let verifier = makePKCEVerifier()
         let challenge = makePKCEChallenge(verifier: verifier)
+        let state = randomURLSafeToken(byteCount: 32)
         codeVerifier = verifier
+        pendingState = state
 
         // Build authorize URL.
         let clientID = try resolveClientID()
-        guard let authURL = makeAuthorizeURL(clientID: clientID, challenge: challenge) else {
+        guard let authURL = makeAuthorizeURL(clientID: clientID, challenge: challenge, state: state) else {
+            codeVerifier = nil
+            pendingState = nil
             throw PlaylistConnectorError.spotifyAuthFailure("Failed to construct authorize URL")
         }
 
@@ -137,7 +158,7 @@ public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLogin
 
         // Await callback with timeout.
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            self.pendingContinuation = continuation
+            self.pendingContinuations.append(continuation)
             self.timeoutTask = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(Self.loginTimeoutSeconds))
                 guard !Task.isCancelled else { return }
@@ -149,20 +170,30 @@ public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLogin
     public func handleCallback(url: URL) async {
         guard
             let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+            components.scheme == "phosphene",
             components.host == "spotify-callback"
         else { return }
 
         // Check for OAuth error response (user denied, etc.).
         if let error = components.queryItems?.first(where: { $0.name == "error" })?.value {
             logger.error("SpotifyOAuth: authorization denied — \(error)")
-            resumeContinuation(throwing: PlaylistConnectorError.spotifyAuthFailure("Authorization denied: \(error)"))
+            finishLogin(.failure(PlaylistConnectorError.spotifyAuthFailure("Authorization denied: \(error)")))
+            return
+        }
+
+        // CSRF/replay guard: the returned `state` must match what we sent
+        // (CLEAN.2.2.3a). A nil `pendingState` means no login is in flight.
+        let returnedState = components.queryItems?.first(where: { $0.name == "state" })?.value
+        guard let expectedState = pendingState, returnedState == expectedState else {
+            logger.error("SpotifyOAuth: callback state mismatch — rejecting (possible CSRF/replay)")
+            finishLogin(.failure(PlaylistConnectorError.spotifyAuthFailure("Callback state mismatch")))
             return
         }
 
         guard let code = components.queryItems?.first(where: { $0.name == "code" })?.value,
               let verifier = codeVerifier else {
             logger.error("SpotifyOAuth: missing code or verifier in callback")
-            resumeContinuation(throwing: PlaylistConnectorError.spotifyAuthFailure("Invalid callback URL"))
+            finishLogin(.failure(PlaylistConnectorError.spotifyAuthFailure("Invalid callback URL")))
             return
         }
 
@@ -170,7 +201,7 @@ public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLogin
         do {
             clientID = try resolveClientID()
         } catch {
-            resumeContinuation(throwing: error)
+            finishLogin(.failure(error))
             return
         }
 
@@ -183,17 +214,14 @@ public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLogin
             cachedAccessToken = tok.access
             tokenExpiry = Date().addingTimeInterval(TimeInterval(tok.expiresIn))
             if let refresh = tok.refresh {
-                try? keychainStore.saveRefreshToken(refresh)
+                persistRefreshToken(refresh)
                 _isAuthenticated = true
             }
-            codeVerifier = nil
-            timeoutTask?.cancel()
-            timeoutTask = nil
-            logger.info("SpotifyOAuth: token exchange succeeded; authenticated=true")
-            resumeContinuation(with: ())
+            logger.info("SpotifyOAuth: token exchange succeeded; authenticated=\(self._isAuthenticated)")
+            finishLogin(.success(()))
         } catch {
             logger.error("SpotifyOAuth: token exchange failed — \(error)")
-            resumeContinuation(throwing: PlaylistConnectorError.spotifyAuthFailure(error.localizedDescription))
+            finishLogin(.failure(PlaylistConnectorError.spotifyAuthFailure(error.localizedDescription)))
         }
     }
 
@@ -201,6 +229,7 @@ public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLogin
         cachedAccessToken = nil
         tokenExpiry = nil
         codeVerifier = nil
+        pendingState = nil
         _isAuthenticated = false
         keychainStore.deleteRefreshToken()
         logger.info("SpotifyOAuth: logged out")
@@ -215,33 +244,57 @@ public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLogin
             return token
         }
 
-        // 2. Try silent refresh.
-        if let refreshToken = keychainStore.loadRefreshToken() {
-            let clientID = try resolveClientID()
-            do {
-                let tok = try await refreshAccessToken(
-                    refreshToken: refreshToken,
-                    clientID: clientID
-                )
-                cachedAccessToken = tok.access
-                tokenExpiry = Date().addingTimeInterval(TimeInterval(tok.expiresIn))
-                if let newRefresh = tok.refresh {
-                    try? keychainStore.saveRefreshToken(newRefresh)
-                }
-                logger.debug("SpotifyOAuth: silent refresh succeeded")
-                return tok.access
-            } catch {
-                // Refresh token expired or revoked — require re-login.
-                logger.warning("SpotifyOAuth: silent refresh failed (\(error)); clearing tokens")
-                cachedAccessToken = nil
-                tokenExpiry = nil
-                _isAuthenticated = false
-                keychainStore.deleteRefreshToken()
-            }
+        // 2. Coalesce onto an in-flight refresh — concurrent callers must not
+        //    each spend the (rotating) refresh token (CLEAN.2.2.2).
+        if let inFlight = refreshTask {
+            return try await inFlight.value
         }
 
-        // 3. No valid token and no refresh token — user must log in.
-        throw PlaylistConnectorError.spotifyLoginRequired
+        // 3. Need a stored refresh token to proceed.
+        guard let refreshToken = keychainStore.loadRefreshToken() else {
+            throw PlaylistConnectorError.spotifyLoginRequired
+        }
+        let clientID = try resolveClientID()
+        let task = Task { try await self.runSilentRefresh(refreshToken: refreshToken, clientID: clientID) }
+        refreshTask = task
+        return try await task.value
+    }
+
+    /// Spend the stored refresh token for a fresh access token, update the cache,
+    /// and rotate the stored refresh token. Clears `refreshTask` on completion so
+    /// the next `acquire()` starts clean. On any failure the refresh token is
+    /// treated as dead: tokens are cleared and `.spotifyLoginRequired` surfaces.
+    private func runSilentRefresh(refreshToken: String, clientID: String) async throws -> String {
+        defer { refreshTask = nil }
+        do {
+            let tok = try await refreshAccessToken(refreshToken: refreshToken, clientID: clientID)
+            cachedAccessToken = tok.access
+            tokenExpiry = Date().addingTimeInterval(TimeInterval(tok.expiresIn))
+            if let newRefresh = tok.refresh {
+                persistRefreshToken(newRefresh)
+            }
+            logger.debug("SpotifyOAuth: silent refresh succeeded")
+            return tok.access
+        } catch {
+            // Refresh token expired or revoked — require re-login.
+            logger.warning("SpotifyOAuth: silent refresh failed (\(error)); clearing tokens")
+            cachedAccessToken = nil
+            tokenExpiry = nil
+            _isAuthenticated = false
+            keychainStore.deleteRefreshToken()
+            throw PlaylistConnectorError.spotifyLoginRequired
+        }
+    }
+
+    /// Persist the refresh token, logging (not failing) on a Keychain error: the
+    /// access token still works this session; only the next cold start is affected
+    /// (CLEAN.2.2.3c).
+    private func persistRefreshToken(_ token: String) {
+        do {
+            try keychainStore.saveRefreshToken(token)
+        } catch {
+            logger.error("SpotifyOAuth: failed to persist refresh token to Keychain — \(error)")
+        }
     }
 
     public func invalidate() async {
@@ -267,10 +320,15 @@ public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLogin
 
     // MARK: - PKCE Helpers
 
-    private func makePKCEVerifier() -> String {
-        var bytes = [UInt8](repeating: 0, count: 96)
+    /// Cryptographically-random URL-safe token (PKCE verifier, OAuth `state`).
+    private func randomURLSafeToken(byteCount: Int) -> String {
+        var bytes = [UInt8](repeating: 0, count: byteCount)
         _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
         return Data(bytes).base64URLEncodedString()
+    }
+
+    private func makePKCEVerifier() -> String {
+        randomURLSafeToken(byteCount: 96)
     }
 
     private func makePKCEChallenge(verifier: String) -> String {
@@ -279,13 +337,14 @@ public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLogin
         return Data(hash).base64URLEncodedString()
     }
 
-    private func makeAuthorizeURL(clientID: String, challenge: String) -> URL? {
+    private func makeAuthorizeURL(clientID: String, challenge: String, state: String) -> URL? {
         var comps = URLComponents(string: Self.authEndpoint)
         comps?.queryItems = [
             URLQueryItem(name: "client_id", value: clientID),
             URLQueryItem(name: "response_type", value: "code"),
             URLQueryItem(name: "redirect_uri", value: Self.redirectURI),
             URLQueryItem(name: "scope", value: Self.scopes),
+            URLQueryItem(name: "state", value: state),
             URLQueryItem(name: "code_challenge_method", value: "S256"),
             URLQueryItem(name: "code_challenge", value: challenge)
         ]
@@ -380,23 +439,25 @@ public actor SpotifyOAuthTokenProvider: SpotifyTokenProviding, SpotifyOAuthLogin
 
     // MARK: - Continuation Helpers
 
-    private func resumeContinuation(with value: Void) {
-        let cont = pendingContinuation
-        pendingContinuation = nil
-        cont?.resume(returning: value)
-    }
-
-    private func resumeContinuation(throwing error: Error) {
-        let cont = pendingContinuation
-        pendingContinuation = nil
-        cont?.resume(throwing: error)
+    /// Conclude the in-flight login attempt: cancel the timeout, clear transient
+    /// PKCE/state, and resume (then clear) every coalesced continuation. Safe to
+    /// call with no login pending — it simply resumes nothing (CLEAN.2.2.1).
+    private func finishLogin(_ result: Result<Void, Error>) {
+        timeoutTask?.cancel()
+        timeoutTask = nil
+        codeVerifier = nil
+        pendingState = nil
+        let conts = pendingContinuations
+        pendingContinuations.removeAll()
+        for cont in conts {
+            cont.resume(with: result)
+        }
     }
 
     private func timeoutLogin() {
-        guard pendingContinuation != nil else { return }
+        guard !pendingContinuations.isEmpty else { return }
         logger.warning("SpotifyOAuth: login timed out after \(Self.loginTimeoutSeconds)s")
-        codeVerifier = nil
-        resumeContinuation(throwing: PlaylistConnectorError.spotifyAuthFailure("Login timed out"))
+        finishLogin(.failure(PlaylistConnectorError.spotifyAuthFailure("Login timed out")))
     }
 }
 
@@ -414,10 +475,20 @@ private extension Data {
 
 // MARK: - Dictionary + form encoding
 
-private extension [String: String] {
+extension [String: String] {
+    /// `application/x-www-form-urlencoded` body. Percent-encodes everything
+    /// outside the RFC 3986 "unreserved" set — `.urlQueryAllowed` leaves `+`,
+    /// `&`, `=`, `/` intact, which corrupts auth codes / tokens that contain
+    /// them (CLEAN.2.2.3b). `internal` (not `private`) so it is unit-testable.
     func formEncoded() -> Data? {
-        map { "\($0.key)=\($0.value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")" }
-            .joined(separator: "&")
-            .data(using: .utf8)
+        var unreserved = CharacterSet.alphanumerics
+        unreserved.insert(charactersIn: "-._~")
+        return map { key, value in
+            let key = key.addingPercentEncoding(withAllowedCharacters: unreserved) ?? ""
+            let value = value.addingPercentEncoding(withAllowedCharacters: unreserved) ?? ""
+            return "\(key)=\(value)"
+        }
+        .joined(separator: "&")
+        .data(using: .utf8)
     }
 }
