@@ -19,6 +19,12 @@ final class ConnectorPickerViewModel: ObservableObject {
 
     @Published private(set) var appleMusicRunning: Bool = false
 
+    /// Drives `ConnectorPickerView`'s `NavigationStack`. The tiles push via
+    /// `NavigationLink(value:)`; the cross-links ("Use Apple Music instead" /
+    /// "Use Spotify instead") call `switchConnector(to:)` to replace the pushed
+    /// flow in place (CLEAN.2.3.1 — these were no-op `{ }` handlers before).
+    @Published var connectorPath: [ConnectorType] = []
+
     /// Whether the Local Folder connector tile is enabled.
     let localFolderEnabled: Bool = false
 
@@ -53,6 +59,13 @@ final class ConnectorPickerViewModel: ObservableObject {
         if let url = URL(string: "music://") {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    /// Replaces the currently pushed connector flow with `type` — backs the
+    /// "Use Apple Music / Spotify instead" cross-links so they actually switch
+    /// connectors instead of dismissing or no-op'ing.
+    func switchConnector(to type: ConnectorType) {
+        connectorPath = [type]
     }
 
     // MARK: - Private
