@@ -257,6 +257,16 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
                                   callback: callback)
         }
 
+        // Test hygiene (BUG-052): under XCTest / `swift test`, mute the device
+        // output so the suite never plays (churned, choppy) fixture audio through
+        // the developer's output device. The analysis tap is on the PLAYER node
+        // (pre-mixer, above), so zeroing the mixer's output volume silences the
+        // hardware without touching the captured signal or the start/stop/cancel
+        // lifecycle — SessionLifecycleChurnTests drives this provider for real.
+        if NSClassFromString("XCTestCase") != nil {
+            engine.mainMixerNode.outputVolume = 0
+        }
+
         try engine.start()
         scheduleFileLoop(player: player, file: file)
         player.play()

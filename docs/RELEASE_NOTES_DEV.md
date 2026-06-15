@@ -8,6 +8,12 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-15-f] BUG-052 — silence engine-test playback of love_rehab through the device
+
+`swift test` (engine suite) audibly played a choppy `love_rehab.m4a` through the developer's output device. `SessionLifecycleChurnTests` exercises the real `.localFilePlayback` / `LocalFilePlaybackProvider` path (audible *by design* — the LF "open a file" feature), and its rapid start/stop/cancel churn made playback restart from the top repeatedly = choppy. **Fix:** `LocalFilePlaybackProvider.startPlayback` zeroes `engine.mainMixerNode.outputVolume` under XCTest (`NSClassFromString("XCTestCase") != nil`); the analysis tap is on the player node (pre-mixer), so the device goes silent without touching the captured signal or the playback lifecycle. Churn test stays 6/6 green; production audio unchanged. Collapsed P3 (Matt's call). BUG-052 → Resolved.
+
+---
+
 ## [dev-2026-06-15-e] BUG-012 retired — MPSGraph EXC_BAD_ACCESS in StemFFTEngine (resolved by inference via CLEAN.1.2)
 
 Retired the long-standing P1 stem-engine crash. BUG-012 was a latent, intermittent `EXC_BAD_ACCESS` in `StemFFTEngine` under sustained force-dispatch, **never deterministically reproduced** — so it's resolved *by inference*, not a reproduced fix. Its candidate root cause (the session-prep path driving the **same** `StemSeparator` unlocked alongside the live `stemQueue`) was closed by **CLEAN.1.2** (the BUG-031 fix: full input→predict→output serialized under one lock, stems returned by value; `da26a3a`).
