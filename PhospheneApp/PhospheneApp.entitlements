@@ -4,5 +4,10 @@
 <dict>
 	<key>com.apple.security.app-sandbox</key>
 	<false/>
+	<!-- Hardened runtime (CLEAN.2.5) gates outbound Apple Events; the
+	     StreamingMetadata AppleScript bridge queries Apple Music / Spotify
+	     now-playing. Required for that bridge to resolve under HR. -->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
 </dict>
 </plist>
