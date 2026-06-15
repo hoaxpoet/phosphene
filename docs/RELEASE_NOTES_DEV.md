@@ -8,6 +8,22 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-15-h] CLEAN.2.5a — Enable hardened runtime + Apple Events entitlement (GAP-10 fix, HR half; notarization deferred)
+
+Hardened runtime is now **on** for the app target — the deliberate build-settings flip CLEAN.2.4 deferred. Split from CLEAN.2.5: the Developer ID signing + notarization half (2.5b) needs a **paid Apple Developer Program membership the project does not have** (Matt, 2026-06-15), so only the hardened-runtime half landed here.
+
+- **Step 1 — hardened runtime (Release config).** `ENABLE_HARDENED_RUNTIME = YES` on the app target's **Release** build config (`project.pbxproj`). **Debug is left unhardened deliberately:** HR turns on library validation, and a hardened test host refuses to `dlopen` the injected `PhospheneAppTests.xctest` (`… non-platform … different Team IDs`), so HR-on-Debug breaks `xcodebuild test`. HR is a distribution/Release property — Release-only keeps the test suite green and hardens the config that ships + notarizes. Signs with `--options runtime` under the existing "Apple Development" identity. (The first attempt put it in `Phosphene.xcconfig` = both configs; the app-test bundle-load failure forced the Release-only scope — durable learning recorded in `SECURITY_POSTURE.md §3`.)
+- **Step 3 — Apple Events entitlement.** Added `com.apple.security.automation.apple-events` to `PhospheneApp/PhospheneApp.entitlements`. HR gates outbound Apple Events, and the `StreamingMetadata` now-playing bridge sends in-process `NSAppleScript` to Apple Music / Spotify — without the entitlement those calls fail under HR.
+- **Step 2 — tap.** No change. The global `.systemAudio` tap is TCC-gated (screen-recording), not entitlement-gated, and is expected to survive HR; **no `com.apple.security.cs.*` entitlement was added speculatively** — one is added only if a real run shows the tap break.
+
+**Verified (automated):** Release `xcodebuild build` green; `codesign -dv --verbose=4` on the Release product shows `flags=0x10000(runtime)` + a Runtime Version; `codesign -d --entitlements` shows `com.apple.security.automation.apple-events` on the signed binary; library validation left on (no `disable-library-validation`); the Debug `xcodebuild test` suite stays green (the unhardened host loads the XCTest bundle).
+
+**Manual runtime gates pending (Matt, Mac mini — not automatable, like CLEAN.1.5's G1):** (i) the app launches under HR; (ii) the `.systemAudio` tap installs + delivers audio under HR (visuals react); (iii) Apple Music + Spotify now-playing metadata still resolves during a session.
+
+**Deferred — CLEAN.2.5b** (blocked on the paid membership): switch to `Developer ID Application` signing, notarize (`xcrun notarytool submit --wait` + `xcrun stapler staple`), and Gatekeeper-test on a clean account. GAP-10 is therefore **half-landed, not fully closed**. Two-line production diff (xcconfig + entitlements); no Swift source touched. `SECURITY_POSTURE.md` §3/§4 + summary row 3 + `CODE_AUDIT_2026-06-13.md` G10/Part C updated.
+
+---
+
 ## [dev-2026-06-15-g] CLEAN.7.11 — `ToastManager` auto-dismiss test made deterministic (await the task, not a sleep budget)
 
 `ToastManagerTests.autoDismiss_afterDuration` — filed as a flake in CLEAN.2.3.8 (`7558ca0`) with this exact fix prescribed — is now deterministic. It enqueued a `duration: 0.05` s toast, slept a **fixed 1000 ms** (already ratcheted up from 400 ms), then asserted `visibleToasts.isEmpty`; under @MainActor parallel-suite contention the auto-dismiss continuation could slip past that fixed window. Same flake class as CLEAN.7.9/7.10. Per the deterministic-over-budget-widening rule the budget is **removed, not widened**: `ToastManager` gains a `#if DEBUG` test seam `dismissTask(for:)` exposing the in-flight auto-dismiss `Task`, and the test now `await`s its `.value` — blocking exactly until the real dismissal completes, racing no deadline. Behavioural intent unchanged: a finite-duration toast auto-dismisses; an `.infinity` one schedules no task (early `guard`). Production dismiss logic untouched; test-only. Removed from `KNOWN_ISSUES.md §Pre-existing Flakes`.
