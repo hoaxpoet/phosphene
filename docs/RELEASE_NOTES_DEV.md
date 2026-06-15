@@ -8,6 +8,27 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-15-a] CLEAN.2.4 — macOS entitlement / local threat-model review (GAP-10); closes Phase 2
+
+The last Phase-2 item and the remaining audit security finding (GAP-10). **Review + document increment — no security build settings were flipped** (enabling hardened runtime / the sandbox / Developer ID can break the audio tap, the Apple Events bridge, or signing; each needs a build + a real run, so they are filed, not applied blind). Produced **`docs/SECURITY_POSTURE.md`**: the verified security posture + a local threat model across seven surfaces, each with verified-state / threat / decision-or-filed-fix. Doc-only — no production code changed, not visually verifiable, no tests added.
+
+Every posture claim was re-verified against source (2026-06-15):
+- **Sandbox off** — `PhospheneApp.entitlements` declares only `app-sandbox = false`. Incompatible with the global Core Audio tap + Apple Events + arbitrary file-open; partial sandboxing not viable → documented, no fix.
+- **Hardened runtime + notarization absent** — `ENABLE_HARDENED_RUNTIME` not present anywhere (pbxproj/entitlements/xcconfig); signing is `Apple Development` (dev-signed, **not** Developer ID, not notarized). Blocks Gatekeeper-clean distribution.
+- **Tap scope** — `.systemAudio` = global tap excluding nothing; `.application` = single PID. TCC-gated on screen-recording; **audio-only, no screen pixels**. `SessionRecorder` records the app's **own Metal output** to `~/Documents/phosphene_sessions/` (local, no network) — so the `NSScreenCaptureUsageDescription` "No video is recorded" claim is honest about *screen* capture.
+- **OAuth callback** — `handleCallback` validates scheme + host + `state` (CSRF/replay) + nil-pending rejection (CLEAN.2.2); `.onOpenURL` double-checks scheme/host → mitigated, no fix.
+- **Library validation** — not declared; links Apple frameworks + SPM static libs only → not required (keep on under hardened runtime).
+- **m3u / local-file** — parser is defensive (BOM/UTF-8/readability/throw), but resolves arbitrary absolute/relative paths with no extension/traversal guard. Consequence bounded by the no-egress local-file path → P3 defense-in-depth.
+- **Secrets + no-telemetry** — OAuth tokens in Keychain; only the public client ID checked in (empty `Phosphene.xcconfig`); no telemetry/cloud; tap audio + recordings never uploaded. Documented as the headline posture strength.
+
+**Decision (Matt, 2026-06-15): eventual distribution is on the roadmap.** This keeps 2.4 a review increment but makes hardened-runtime + notarization a **near-term filed follow-up** rather than indefinitely deferred:
+- **CLEAN.2.5** (filed) — enable hardened runtime + Developer ID + notarization; verify the tap installs under it, Apple Events reach the music apps, Gatekeeper accepts the notarized build, library validation stays on. Its own increment (signing pipeline + real Gatekeeper/tap test).
+- **BUG-051** (filed, P3) — m3u entry input-validation hardening (extension allow-list + path canonicalization). Low value given no-egress; tracked.
+
+GAP-10 marked **reviewed** in `CODE_AUDIT_2026-06-13.md` (Part B G10 + Part C); `SECURITY_POSTURE.md` referenced from `RUNBOOK.md`; **not** added to the CLAUDE.md handbook index (D-161 budget ratchet). **Phase 2 (Spotify secret → OAuth → honest-UI → entitlement review) complete.** Not pushed (awaits "yes, push").
+
+---
+
 ## [dev-2026-06-14-g] DOC.6.1 — rotate_docs.sh ↔ DocIntegrityTests rotation-boundary fix + due pruning pass
 
 The DOC.6 rotation gate (`DocIntegrityTests.engineeringPlanRotationGate`) was RED on `main` — it flagged three 2026-06-01 `ENGINEERING_PLAN.md` §Recently Completed entries as overdue for rotation, but `Scripts/rotate_docs.sh --dry-run` said "nothing to move," so the gate's prescribed remedy was a no-op. Pre-existing calendar pruning debt (CLAUDE.md "every 10th increment / 2 weeks") compounded by a gate↔script boundary inconsistency; surfaced by CLEAN.2.3's `closeout_evidence.sh`.

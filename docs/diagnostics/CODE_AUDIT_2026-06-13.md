@@ -179,7 +179,7 @@ the code; **status** records what I confirmed.
 | G7 | **Dynamic concurrency validation** — no ThreadSanitizer scheme / stress harness | **CONFIRMED** — static review can't prove absence of races; needed to validate the P1 fixes | **P1** | P1 |
 | G8 | **End-to-end session-lifecycle integration test** (connect→prepare→play→track-change→end→restart) | **CONFIRMED** — only per-VM unit + beat-grid wiring tests; the orphaning class lives exactly here | **P1** | P1 |
 | G9 | **Photosensitivity flash-safety as an enforced invariant** (Harding/WCAG ≤3 flashes/s) | **CONFIRMED** — per-preset/manual only; `RayMarchPipeline:94` defers strict mode | **P1 (safety)** | P7 `[DEC]` |
-| G10 | **macOS entitlement / local threat model** — un-sandboxed app + system audio tap | **CONFIRMED** — `app-sandbox=false`, no hardened-runtime/library-validation entitlements declared | P2 | P2 |
+| G10 | **macOS entitlement / local threat model** — un-sandboxed app + system audio tap | **CONFIRMED** → ✅ **REVIEWED 2026-06-15 (CLEAN.2.4)** — posture documented in `docs/SECURITY_POSTURE.md`; sandbox-off rationale + minimal-exfiltration strength stated, hardened-runtime/notarization filed as CLEAN.2.5, m3u input validation filed as BUG-051 | P2 | P2 |
 | G11 | **ML weight integrity / LFS supply chain** (333 `.bin`) | **LARGELY REFUTED** — `beat_this/manifest.json` carries per-tensor `sha256`; narrow Q: does loader validate + does stem manifest match? | P3 | P5 |
 | G12 | **Cold-install / resource-bootstrap** (LFS absent, no weights/fixtures/permissions, empty defaults) | **PLAUSIBLE (untested)** — no first-run-degraded path verified | P2 | P7 |
 | G13 | **Build reproducibility & toolchain pinning** (Package.resolved, Xcode/Swift, LFS-present check) | **CONFIRMED class** (decompose of the CI finding) | P2 | P5 |
@@ -222,7 +222,8 @@ IDs are proposed (`CLEAN.<phase>.<n>`); on approval they map into ENGINEERING_PL
 | CLEAN.2.1 | Remove Spotify client secret from bundled `Info.plist` (PKCE) | secret absent from build; auth-code flow verified E2E | June |
 | CLEAN.2.2 | OAuth correctness: fix re-entrant `login()` leak + stray timeout, refresh double-spend (in-flight dedup), consolidate token providers; + P3s (state param, encoding, host validation, Keychain checks) | tests for re-entrancy/refresh; providers unified | June |
 | CLEAN.2.3 | Wire-or-hide dead UI (LF capture-mode picker, two "Use Apple Music" no-ops, Swap-preset stub) + close localization-gate bypass | no shipped no-op control; checker scans ViewModels/ContentView | June |
-| CLEAN.2.4 | `[GAP-10]` macOS entitlement / local threat-model review | documented posture: tap PID scope, hardened-runtime/library-validation, notarization; fixes filed | June/Stretch |
+| CLEAN.2.4 | `[GAP-10]` macOS entitlement / local threat-model review ✅ **REVIEWED 2026-06-15** | documented posture: tap PID scope, hardened-runtime/library-validation, notarization; fixes filed → `docs/SECURITY_POSTURE.md`; filed **CLEAN.2.5** (hardened runtime + notarization, distribution planned) + **BUG-051** (m3u input validation, P3). Closes Phase 2. | June ✅ |
+| CLEAN.2.5 | `[GAP-10 fix]` Enable hardened runtime + Developer ID signing + notarization (distribution planned, Matt 2026-06-15) | hardened runtime on; Developer ID signed; notarized; **verified**: `.systemAudio` tap installs under hardened runtime, Apple Events to Apple Music/Spotify reachable, Gatekeeper accepts the notarized build on a clean machine; library validation left on | When distribution is in scope (own increment — touches signing pipeline + needs a real Gatekeeper/tap test) |
 
 ### Phase 3 — P2 quality hardening (June/Stretch)
 | ID | Item | Done-when | Timing |
