@@ -191,10 +191,10 @@ struct ContentView: View {
         } else {
             // Fallback (should not normally occur — SessionPreparer is always the publisher).
             VStack(spacing: 12) {
-                Text("Preparing")
+                Text(String(localized: "content.preparing_fallback.title"))
                     .font(.largeTitle)
                     .foregroundColor(.white)
-                Text("Analyzing tracks…")
+                Text(String(localized: "content.preparing_fallback.subtitle"))
                     .font(.body)
                     .foregroundColor(.white.opacity(0.5))
             }

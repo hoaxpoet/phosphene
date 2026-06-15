@@ -231,10 +231,12 @@ struct PreparationProgressView: View {
             return String(format: String(localized: "preparation.header.lf_from"),
                           playlist.lastPathComponent)
         case .playlist, nil:
-            let suffix = total == 1 ? "track" : "tracks"
+            let base = total == 1
+                ? String(format: String(localized: "preparation.subtitle.track_one"), total)
+                : String(format: String(localized: "preparation.subtitle.track_other"), total)
             return playlistName.isEmpty
-                ? "\(total) \(suffix)"
-                : "\(total) \(suffix) from \(playlistName)"
+                ? base
+                : String(format: String(localized: "preparation.subtitle.from"), base, playlistName)
         }
     }
 

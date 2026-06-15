@@ -85,7 +85,7 @@ final class ReadyViewModel: ObservableObject {
         reduceMotion: Bool,
         delayProvider: any DelayProviding = RealDelay()
     ) {
-        self.sourceName = sessionSource?.displayName ?? "your music app"
+        self.sourceName = sessionSource?.displayName ?? String(localized: "ready.source.fallback")
         self.sessionManager = sessionManager
         self.reduceMotion = reduceMotion
         self.firstAudioDetector = FirstAudioDetector(
@@ -165,8 +165,8 @@ extension ReadyViewModel {
         let hours = total / 3600
         let minutes = (total % 3600) / 60
         if hours > 0 {
-            return "about \(hours) hr \(minutes) min"
+            return String(format: String(localized: "ready.duration.hours_minutes"), hours, minutes)
         }
-        return "about \(max(1, minutes)) min"
+        return String(format: String(localized: "ready.duration.minutes"), max(1, minutes))
     }
 }

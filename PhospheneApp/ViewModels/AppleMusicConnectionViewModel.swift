@@ -142,11 +142,11 @@ final class AppleMusicConnectionViewModel: ObservableObject {
     private func userMessage(for error: Error) -> String {
         switch error {
         case PlaylistConnectorError.networkFailure(let msg):
-            return "Something went wrong talking to Apple Music. \(msg)"
+            return String(format: String(localized: "connector.apple_music.error.network"), msg)
         case PlaylistConnectorError.parseFailure:
-            return "Something went wrong reading the Apple Music playlist."
+            return String(localized: "connector.apple_music.error.parse")
         default:
-            return "Something went wrong talking to Apple Music."
+            return String(localized: "connector.apple_music.error.headline")
         }
     }
 }

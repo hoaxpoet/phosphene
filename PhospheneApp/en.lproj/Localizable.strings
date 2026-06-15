@@ -475,3 +475,41 @@
 "settings.lf.recents.confirm_title"         = "Clear recently-opened list?";
 "settings.lf.recents.confirm_button"        = "Clear";
 "settings.lf.recents.confirm_message"       = "Every item in File → Open Recent will be removed. The files themselves stay on disk.";
+
+// ── CLEAN.2.3.4 — strings externalized from ViewModels / ContentView / indirection helpers ──
+
+// Connector type tiles (ConnectorType.swift)
+"connector.type.apple_music.title"          = "Apple Music";
+"connector.type.apple_music.subtitle"       = "Read your current Apple Music playlist";
+"connector.type.spotify.title"              = "Spotify";
+"connector.type.spotify.subtitle"           = "Connect with a Spotify playlist link";
+"connector.type.local_folder.title"         = "Local files";
+"connector.type.local_folder.subtitle"      = "Play a file, folder, or playlist from disk";
+
+// Connector error copy (SpotifyConnectionViewModel / AppleMusicConnectionViewModel)
+"connector.spotify.error.network"           = "Couldn’t reach Spotify. Check your network or try a different source.";
+"connector.spotify.error.unrecognized_url"  = "That doesn’t look like a Spotify playlist link.";
+"connector.apple_music.error.network"       = "Something went wrong talking to Apple Music. %@";
+"connector.apple_music.error.parse"         = "Something went wrong reading the Apple Music playlist.";
+
+// Ready view (ReadyViewModel)
+"ready.source.fallback"                     = "your music app";
+"ready.duration.hours_minutes"              = "about %d hr %d min";
+"ready.duration.minutes"                    = "about %d min";
+
+// Preparation fallback overlay (ContentView)
+"content.preparing_fallback.title"          = "Preparing";
+"content.preparing_fallback.subtitle"       = "Analyzing tracks…";
+
+// Preparation streaming subtitle — track count (PreparationProgressView)
+"preparation.subtitle.track_one"            = "%d track";
+"preparation.subtitle.track_other"          = "%d tracks";
+"preparation.subtitle.from"                 = "%@ from %@";
+
+// Plan-preview transition labels (PlanPreviewTransitionView)
+"plan_preview.transition.cut"               = "cut";
+"plan_preview.transition.cut_structural"    = "cut at structural boundary";
+"plan_preview.transition.crossfade"         = "crossfade";
+"plan_preview.transition.crossfade_duration" = "crossfade %.1fs";
+"plan_preview.transition.morph"             = "morph";
+"plan_preview.transition.morph_duration"    = "morph %.1fs";

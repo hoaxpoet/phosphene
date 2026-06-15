@@ -29,17 +29,19 @@ struct PlanPreviewTransitionView: View {
     private var label: String {
         switch summary.style {
         case "cut":
-            return summary.isStructural ? "cut at structural boundary" : "cut"
+            return summary.isStructural
+                ? String(localized: "plan_preview.transition.cut_structural")
+                : String(localized: "plan_preview.transition.cut")
         case "crossfade":
             if let dur = summary.duration {
-                return String(format: "crossfade %.1fs", dur)
+                return String(format: String(localized: "plan_preview.transition.crossfade_duration"), dur)
             }
-            return "crossfade"
+            return String(localized: "plan_preview.transition.crossfade")
         case "morph":
             if let dur = summary.duration {
-                return String(format: "morph %.1fs", dur)
+                return String(format: String(localized: "plan_preview.transition.morph_duration"), dur)
             }
-            return "morph"
+            return String(localized: "plan_preview.transition.morph")
         default:
             return summary.style
         }
