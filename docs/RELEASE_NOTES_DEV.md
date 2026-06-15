@@ -20,7 +20,7 @@ This is the cross-session divergence flagged in CLEAN.2.4's closeout. The fix al
 - **Updated `SECURITY_POSTURE.md §1`** — the engine retains an `.application` single-PID tap path in code, but it is no longer user-selectable (production always uses `.systemAudio`).
 - **Kept main's DOC.6.1.** Explicitly **dropped the branch's competing `[DOC.6]` change** (`71f050d` gate rewrite + `09270ab` rotation) — resolving the two-parallel-fixes divergence in main's favour (gate authoritative). Took the registry-doc cleanups (ARCHITECTURE / APP.md / AUDIO.md / DECISIONS_HISTORY) so they no longer describe deleted code.
 
-Supersedes **D-052** (full) and **D-061(b,c)**. Resolves the two CLEAN.2.3 out-of-scope findings (`CaptureModeReconciler` unwired; `specific_app` key mismatch). CLEAN.2.4 / CLEAN.2.3.7 work preserved intact. Engine + app build green; full closeout pending. Not pushed (awaits "yes, push").
+Supersedes **D-052** (full) and **D-061(b,c)**. Resolves the two CLEAN.2.3 out-of-scope findings (`CaptureModeReconciler` unwired; `specific_app` key mismatch). CLEAN.2.4 / CLEAN.2.3.7 work preserved intact. App tests 377 (retry-green), swiftlint clean, doc gates 9/9; the engine block shows only the pre-existing `SkeinCanvasHold` (BUG-049) + a `ToastManager.autoDismiss` timing flake — both confirmed unrelated to this change (zero shared symbols; app code byte-identical to the prior 377-green run). Pushed to `origin/main` 2026-06-15.
 
 ---
 
@@ -37,7 +37,7 @@ Fix (Matt's pick: **bordered secondary** — the app's existing `.buttonStyle(.b
 - Apple Music's error-only copy was removed (the footer now covers the error state too).
 - Added `accessibilityIdentifier`s to both.
 
-`switchConnector` / NavigationStack wiring is unchanged — this is the CLEAN.2.3.1 *action* made visible, not a behaviour change. View-only (declarative layout/style, no logic), so no new automated test; the 388 app tests are the regression gate and final placement/contrast is a visual check on the build. Switching is also still available via the back chevron → picker tiles. App build + 388 tests green, swiftlint clean. Not pushed (awaits "yes, push").
+`switchConnector` / NavigationStack wiring is unchanged — this is the CLEAN.2.3.1 *action* made visible, not a behaviour change. View-only (declarative layout/style, no logic), so no new automated test; the 388 app tests are the regression gate and final placement/contrast is a visual check on the build. Switching is also still available via the back chevron → picker tiles. App build + 388 tests green, swiftlint clean. Pushed to `origin/main` 2026-06-15.
 
 ---
 
