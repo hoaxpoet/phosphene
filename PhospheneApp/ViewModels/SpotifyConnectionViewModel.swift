@@ -17,6 +17,7 @@
 // AppKit/NSWorkspace dependencies. In tests it can be replaced with a stub.
 
 import Combine
+import Foundation
 import Session
 
 // MARK: - SpotifyConnectionState
@@ -266,7 +267,7 @@ final class SpotifyConnectionViewModel: ObservableObject {
                 return
             }
         }
-        state = .error("Couldn't reach Spotify. Check your network or try a different source.")
+        state = .error(String(localized: "connector.spotify.error.network"))
     }
 
     // MARK: - Private — Attempt
@@ -300,9 +301,9 @@ final class SpotifyConnectionViewModel: ObservableObject {
         } catch PlaylistConnectorError.rateLimited {
             return .rateLimited
         } catch PlaylistConnectorError.unrecognizedPlaylistURL {
-            return .error("That doesn't look like a Spotify playlist link.")
+            return .error(String(localized: "connector.spotify.error.unrecognized_url"))
         } catch {
-            return .error("Couldn't reach Spotify.")
+            return .error(String(localized: "connector.spotify.error.headline"))
         }
     }
 }

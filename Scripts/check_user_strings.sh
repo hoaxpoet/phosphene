@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 # check_user_strings.sh
 #
-# Phase QR.4 / D-091 lint gate. Bans hardcoded user-facing string literals in
-# `PhospheneApp/Views/`. Every `Text("...")`, `.help("...")`, and
-# `.accessibilityLabel("...")` argument must resolve through
-# `Localizable.strings` via `String(localized:)` / `NSLocalizedString` /
-# `Text(verbatim:)`.
+# Phase QR.4 / D-091 lint gate (scope widened in CLEAN.2.3.4). Bans hardcoded
+# user-facing string literals in `PhospheneApp/Views/`, `PhospheneApp/ViewModels/`,
+# and `ContentView.swift`. Every `Text("...")`, `.help("...")`,
+# `.accessibilityLabel("...")`, and connection-state `.error("...")` argument must
+# resolve through `Localizable.strings` via `String(localized:)` /
+# `NSLocalizedString` / `Text(verbatim:)`.
+#
+# Scope limit (honest): this is a literal-prefix matcher, not a full audit. It
+# catches the SwiftUI text modifiers above plus `.error("…")` state copy. It does
+# NOT catch lowercase or string-interpolated fragments (e.g. `"\(n) tracks"`, a
+# computed label fragment) — those rely on review. `logger.error("…")` is excluded.
 #
 # Allowlisted files (developer-only surfaces, never displayed to end users):
 #   - DebugOverlayView.swift          (gated on showDebug; D-key toggle)
@@ -20,6 +26,8 @@ set -euo pipefail
 
 ROOTS=(
   "PhospheneApp/Views"
+  "PhospheneApp/ViewModels"
+  "PhospheneApp/ContentView.swift"
 )
 
 # Files whose hardcoded strings are intentional (developer-only surfaces).
@@ -43,7 +51,7 @@ EXCLUDE_PATTERN="${EXCLUDE_PATTERN:1}"  # drop leading |
 # .accessibilityLabel("X...") where X is an uppercase letter. The leading-cap
 # heuristic skips numeric-only / variable-interpolation patterns like
 # Text("\(foo)") which start with `\` after the open quote.
-PATTERN='Text\("[A-Z]|\.help\("[A-Z]|\.accessibilityLabel\("[A-Z]'
+PATTERN='Text\("[A-Z]|\.help\("[A-Z]|\.accessibilityLabel\("[A-Z]|\.error\("[A-Z]'
 
 violations=$(
   grep -rEnH --include='*.swift' "$PATTERN" "${ROOTS[@]}" 2>/dev/null \
@@ -51,6 +59,7 @@ violations=$(
     | grep -v 'Text(verbatim:' \
     | grep -v 'String(localized:' \
     | grep -v 'NSLocalizedString' \
+    | grep -vE 'logger\.error|\.log\.error' \
     || true
 )
 

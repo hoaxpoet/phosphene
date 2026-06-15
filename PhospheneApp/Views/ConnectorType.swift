@@ -1,5 +1,7 @@
 // ConnectorType — Enum representing the three available playlist connectors.
 
+import Foundation
+
 // MARK: - ConnectorType
 
 /// Identifies one of the three available playlist connectors in `ConnectorPickerView`.
@@ -10,17 +12,17 @@ enum ConnectorType: String, CaseIterable, Codable, Hashable {
 
     var title: String {
         switch self {
-        case .appleMusic:  return "Apple Music"
-        case .spotify:     return "Spotify"
-        case .localFolder: return "Local files"
+        case .appleMusic:  return String(localized: "connector.type.apple_music.title")
+        case .spotify:     return String(localized: "connector.type.spotify.title")
+        case .localFolder: return String(localized: "connector.type.local_folder.title")
         }
     }
 
     var subtitle: String {
         switch self {
-        case .appleMusic:  return "Read your current Apple Music playlist"
-        case .spotify:     return "Connect with a Spotify playlist link"
-        case .localFolder: return "Play a file, folder, or playlist from disk"
+        case .appleMusic:  return String(localized: "connector.type.apple_music.subtitle")
+        case .spotify:     return String(localized: "connector.type.spotify.subtitle")
+        case .localFolder: return String(localized: "connector.type.local_folder.subtitle")
         }
     }
 
