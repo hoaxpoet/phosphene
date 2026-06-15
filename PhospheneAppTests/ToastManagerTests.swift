@@ -24,16 +24,15 @@ struct ToastManagerTests {
         #expect(tm.visibleToasts.isEmpty)
     }
 
-    @Test func autoDismiss_afterDuration() async throws {
+    @Test func autoDismiss_afterDuration() async {
         let tm = ToastManager()
         let toast = PhospheneToast(severity: .info, copy: "Short-lived", duration: 0.05)
         tm.enqueue(toast)
         #expect(tm.visibleToasts.count == 1)
-        // 1000ms gives 950ms margin over the 50ms toast duration. Previously
-        // 400ms; the wider budget absorbs @MainActor contention during the
-        // 328-test parallel app run (CLAUDE.md U.11 precedent — 2-3× headroom
-        // over the worst-observed delay).
-        try await Task.sleep(for: .milliseconds(1000))
+        // Await the actual auto-dismiss task to completion rather than racing a
+        // fixed sleep budget — deterministic under @MainActor parallel contention
+        // (was a flake: a fixed 1000ms window could be exceeded; see KNOWN_ISSUES).
+        await tm.dismissTask(for: toast.id)?.value
         #expect(tm.visibleToasts.isEmpty)
     }
 

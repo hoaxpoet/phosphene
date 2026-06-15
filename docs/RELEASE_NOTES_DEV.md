@@ -8,6 +8,12 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-15-g] CLEAN.7.11 — `ToastManager` auto-dismiss test made deterministic (await the task, not a sleep budget)
+
+`ToastManagerTests.autoDismiss_afterDuration` — filed as a flake in CLEAN.2.3.8 (`7558ca0`) with this exact fix prescribed — is now deterministic. It enqueued a `duration: 0.05` s toast, slept a **fixed 1000 ms** (already ratcheted up from 400 ms), then asserted `visibleToasts.isEmpty`; under @MainActor parallel-suite contention the auto-dismiss continuation could slip past that fixed window. Same flake class as CLEAN.7.9/7.10. Per the deterministic-over-budget-widening rule the budget is **removed, not widened**: `ToastManager` gains a `#if DEBUG` test seam `dismissTask(for:)` exposing the in-flight auto-dismiss `Task`, and the test now `await`s its `.value` — blocking exactly until the real dismissal completes, racing no deadline. Behavioural intent unchanged: a finite-duration toast auto-dismisses; an `.infinity` one schedules no task (early `guard`). Production dismiss logic untouched; test-only. Removed from `KNOWN_ISSUES.md §Pre-existing Flakes`.
+
+---
+
 ## [dev-2026-06-15-f] BUG-052 — silence engine-test playback of love_rehab through the device
 
 `swift test` (engine suite) audibly played a choppy `love_rehab.m4a` through the developer's output device. `SessionLifecycleChurnTests` exercises the real `.localFilePlayback` / `LocalFilePlaybackProvider` path (audible *by design* — the LF "open a file" feature), and its rapid start/stop/cancel churn made playback restart from the top repeatedly = choppy. **Fix:** `LocalFilePlaybackProvider.startPlayback` zeroes `engine.mainMixerNode.outputVolume` under XCTest (`NSClassFromString("XCTestCase") != nil`); the analysis tap is on the player node (pre-mixer), so the device goes silent without touching the captured signal or the playback lifecycle. Churn test stays 6/6 green; production audio unchanged. Collapsed P3 (Matt's call). BUG-052 → Resolved.
