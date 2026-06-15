@@ -282,9 +282,7 @@
 "settings.audio.capture_mode.label"    = "Audio source";
 "settings.audio.capture_mode.system"   = "System audio";
 "settings.audio.capture_mode.app"      = "Specific app";
-"settings.audio.capture_mode.file"     = "Local file";
 "settings.audio.source_app.label"      = "App";
-"settings.audio.local_file.coming_later" = "Local file playback is coming in a future update.";
 
 // Visuals — device tier
 "settings.visuals.device_tier.label"  = "Device tier";

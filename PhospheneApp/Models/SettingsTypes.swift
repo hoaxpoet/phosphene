@@ -13,8 +13,6 @@ enum CaptureMode: String, Codable, CaseIterable, Sendable {
     case systemAudio
     /// A specific running application selected via SourceAppPicker.
     case specificApp
-    /// A local audio file on disk. Coming later — shows informational toast on selection.
-    case localFile
 }
 
 // MARK: - DeviceTierOverride

@@ -610,6 +610,8 @@ Arachne is now a 2D SDF shader that evaluates each web entirely in UV space:
 
 **Status:** Accepted (2026-04-24)
 
+> **Superseded in part (CLEAN.2.3.2, 2026-06-14):** the `.localFile` branch — which showed a "coming in a future update" toast and did not touch the router — was removed along with the `CaptureMode.localFile` case. Local-file playback is reached by opening a file (LF.5), not a capture-mode toggle. The `.systemAudio` / `.specificApp` live-switch path this decision established is unchanged.
+
 **Context:** When the user changes the capture mode in Settings (systemAudio / specificApp / localFile), Phosphene must route audio to the new source. Two paths were considered: (1) defer to next session start, (2) live-switch the running router.
 
 **Decision:** LIVE-SWITCH PATH. `AudioInputRouter.switchMode(_:)` exists and calls `stopInternal()` (resetting `SilenceDetector`) then restarts in the new `InputMode`. `CaptureModeReconciler` subscribes to `SettingsStore.captureModeChanged` and calls `router.switchMode(_:)` immediately on the main actor. The `SilenceDetector` briefly enters `.suspect` during the switch, then recovers to `.active` within a few seconds. No DRM false-silent risk because recovery is fast.

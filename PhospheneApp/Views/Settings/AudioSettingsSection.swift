@@ -22,8 +22,6 @@ struct AudioSettingsSection: View {
                         .tag(CaptureMode.systemAudio)
                     Text(NSLocalizedString("settings.audio.capture_mode.specific_app", comment: ""))
                         .tag(CaptureMode.specificApp)
-                    Text(NSLocalizedString("settings.audio.capture_mode.local_file", comment: ""))
-                        .tag(CaptureMode.localFile)
                 }
                 .pickerStyle(.radioGroup)
                 .labelsHidden()
@@ -36,12 +34,6 @@ struct AudioSettingsSection: View {
                         )
                     )
                     .padding(.top, 4)
-                }
-
-                if viewModel.captureMode == .localFile {
-                    Text(NSLocalizedString("settings.audio.local_file.coming_later", comment: ""))
-                        .font(.caption)
-                        .foregroundColor(.secondary)
                 }
             }
 
