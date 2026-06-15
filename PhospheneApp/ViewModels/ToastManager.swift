@@ -79,6 +79,16 @@ final class ToastManager: ObservableObject {
         visibleToasts.contains { $0.conditionID == conditionID }
     }
 
+    // MARK: - Test Hooks
+
+    #if DEBUG
+    /// The in-flight auto-dismiss task for `id`, or nil if none is scheduled.
+    ///
+    /// Test-only seam: lets a test `await` the real dismissal instead of racing a
+    /// fixed `Task.sleep` budget (which flaked under parallel @MainActor contention).
+    func dismissTask(for id: UUID) -> Task<Void, Never>? { dismissTasks[id] }
+    #endif
+
     // MARK: - Private
 
     private func dropOldest() {
