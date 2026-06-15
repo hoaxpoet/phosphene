@@ -961,6 +961,15 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 
 ## Resolved (recent)
 
+### BUG-052 — Engine tests play (choppy) love_rehab through the device output (2026-06-15)
+
+**Severity:** P3 (test hygiene — no product/correctness impact) · **Domain tag:** test-isolation
+**Status:** **Resolved 2026-06-15** — collapsed single-increment (trivial-P3 path: <5 lines, root cause obvious, no architectural risk; Matt's call "a is the fix"). Fix in this commit.
+
+**Symptom.** During `swift test` (engine suite — e.g. `closeout_evidence.sh` step 1) an extremely choppy fragment of `love_rehab.m4a` plays through the developer's output device, timed with test runs. `SessionLifecycleChurnTests` (REVIEW.2, not env-gated) drives the **real** `.localFilePlayback` path — `AudioInputRouter.start(mode: .localFilePlayback(love_rehab))` + `LocalFilePlaybackProvider` directly — which connects an `AVAudioPlayerNode` to `engine.mainMixerNode` and runs the engine in real-time output mode (audible *by design* — it is the LF "open a file → it plays" feature). The churn test rapidly starts/stops/cancels, so playback restarts from the top repeatedly = choppy.
+
+**Fix.** `LocalFilePlaybackProvider.startPlayback` zeroes `engine.mainMixerNode.outputVolume` when running under XCTest (`NSClassFromString("XCTestCase") != nil`). The analysis tap is on the **player** node (pre-mixer), so muting the mixer output silences the device without altering the captured signal or the start/stop/cancel lifecycle the churn test validates. `SessionLifecycleChurnTests` stays green (6/6); production playback is unaffected (XCTest absent → audible as before). `RELEASE_NOTES_DEV.md [dev-2026-06-15-f]`.
+
 ### BUG-012 — MPSGraph EXC_BAD_ACCESS in StemFFTEngine during sustained force-dispatch (2026-05-15)
 
 **Severity:** P1 (crash) · **Domain tag:** ml
