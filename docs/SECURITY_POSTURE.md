@@ -2,6 +2,8 @@
 
 > CLEAN.2.4 / audit GAP-10 (`docs/diagnostics/CODE_AUDIT_2026-06-13.md` Part B G10, Part C row).
 > Review + document increment — **no security build settings were flipped here**; fixes are filed, not applied blind (each needs a build + real run). Posture below verified against source 2026-06-15.
+>
+> **Update (CLEAN.2.5a, 2026-06-15):** the hardened-runtime half of GAP-10 is now applied — `ENABLE_HARDENED_RUNTIME=YES` + the `com.apple.security.automation.apple-events` entitlement (§3, §4, summary row 3 updated). Developer ID signing + notarization (CLEAN.2.5b) remain deferred — **blocked on a paid Apple Developer Program membership**.
 
 ## What this is
 
@@ -21,7 +23,7 @@ Phosphene is **macOS-only**, single-user, **on-device only — no cloud, no tele
 |---|---|---|---|
 | 1 | System-audio tap | `.systemAudio` = global tap, excludes nothing (production always uses this); `.application` = single-PID path retained in engine code but not user-selectable (CLEAN.2.3.5). TCC-gated on screen-recording; audio-only, no screen pixels. | Document — core mechanism, consent-gated. |
 | 2 | App sandbox | **Off** — `app-sandbox = false` is the only entitlement. | Document — incompatible with the tap; partial sandbox not viable. |
-| 3 | Hardened runtime + notarization | **Neither enabled.** Dev-signed ("Apple Development"), not Developer ID, not notarized. Blocks Gatekeeper-clean distribution. | **Filed: CLEAN.2.5** (near-term, distribution planned). |
+| 3 | Hardened runtime + notarization | **Hardened runtime ON** (CLEAN.2.5a — `ENABLE_HARDENED_RUNTIME=YES` on the app target **Release** config; Debug left unhardened so XCTest injection works; signs `-o runtime`; `automation.apple-events` entitlement added). Still dev-signed ("Apple Development"), **not yet Developer ID / notarized**. | **CLEAN.2.5a done** (HR; runtime gates pending Matt's Mac-mini run on a Release build); **CLEAN.2.5b deferred** — Developer ID + notarization, blocked on a paid Apple Developer Program membership. |
 | 4 | Library validation | Not declared. Links Apple frameworks + SPM static libs only. | Document — not required; keep ON under hardened runtime. |
 | 5 | `phosphene://` OAuth callback | scheme + host + `state` (CSRF/replay) + nil-pending rejection; double-checked at `.onOpenURL`. | Document — mitigated (CLEAN.2.2). |
 | 6 | Local-file open path | Defensive m3u parser + AVFoundation decoders; arbitrary resolved paths, no traversal guard. | Document; **filed: BUG-051 P3** (defense-in-depth). |
@@ -58,11 +60,13 @@ The tap is **TCC-gated**: macOS requires the user to grant screen-recording perm
 
 ## 3. Hardened runtime + notarization
 
-**Current posture (verified — `PhospheneApp.xcodeproj/project.pbxproj`).** `ENABLE_HARDENED_RUNTIME` is **absent** (grep across pbxproj/entitlements/xcconfig: no hits). Signing is `CODE_SIGN_IDENTITY = "Apple Development"`, `CODE_SIGN_STYLE = Automatic`, `DEVELOPMENT_TEAM = 2LBTN9PB4Z` — **dev-signed, not Developer ID, not notarized**.
+**Current posture (CLEAN.2.5a, 2026-06-15 — `PhospheneApp.xcodeproj/project.pbxproj` + `PhospheneApp/PhospheneApp.entitlements`).** Hardened runtime is **ON for the app target's Release config** — `ENABLE_HARDENED_RUNTIME = YES` (verified: `codesign -dv` on the Release product shows `flags=0x10000(runtime)`, `Runtime Version` present). **The Debug config is deliberately left unhardened.** HR enables library validation, and a hardened *test host* refuses to `dlopen` the injected `PhospheneAppTests.xctest` bundle — `mapping process and mapped file (non-platform) have different Team IDs` — so HR-on-Debug breaks `xcodebuild test`. HR is a distribution/Release property; scoping it to Release keeps the test suite green and hardens the config that actually ships + notarizes. (Durable learning: the first attempt set HR in `Phosphene.xcconfig`, which applies to both configs, and the app-test bundle-load failure forced the Release-only scope.) The outbound-Apple-Events entitlement `com.apple.security.automation.apple-events` was added (entitlements apply to both configs) — the `StreamingMetadata` now-playing bridge (`NSAppleScript` → Apple Music / Spotify) needs it under HR. Signing is still `CODE_SIGN_IDENTITY = "Apple Development"` / `Automatic` / team `2LBTN9PB4Z` — **dev-signed, not yet Developer ID, not yet notarized** (the deferred CLEAN.2.5b half); the dev-signed Release build still carries `get-task-allow` (auto-injected for development certs — it drops out under Developer ID signing in 2.5b, which notarization requires). No `com.apple.security.cs.*` entitlement was added — the tap is TCC-gated and expected to survive HR; one is added only if a real run shows a break.
 
 **Threat / rationale.** Without the hardened runtime + a Developer ID signature + notarization, a build cannot pass Gatekeeper cleanly on a machine other than the dev machine — it blocks the distribution Matt now has on the roadmap. Enabling the hardened runtime is **not** a one-line flip: it restricts code-injection/JIT/loading and **may break the audio tap or the Apple Events bridge**, so it needs a real run (tap still installs, music apps still reachable) plus a Gatekeeper test of a notarized artifact.
 
-**Decision — FILED: CLEAN.2.5 (near-term, distribution planned).** Enable hardened runtime, switch to Developer ID signing, notarize, and **verify**: (i) the `.systemAudio` tap still installs under the hardened runtime (add the audio-input / required entitlement if the tap needs one); (ii) Apple Events to Apple Music / Spotify still succeed; (iii) Gatekeeper accepts the notarized build on a clean machine. Keep library validation **on** (§4). This is its own increment — it touches the build/signing pipeline and cannot be verified from a doc.
+**Decision — CLEAN.2.5 SPLIT (Matt, 2026-06-15).** Split because Developer ID signing + notarization require a **paid Apple Developer Program membership** the project does not currently have.
+- **CLEAN.2.5a (done, this increment):** enable the hardened runtime (Release config) + add the Apple Events entitlement; Release build + sign verified green (`-o runtime`, entitlement present on the binary); Debug `xcodebuild test` suite stays green. **Manual runtime gates pending (Matt, Mac mini)** — like CLEAN.1.5's G1, not automatable, **on a Release build** (`xcodebuild -scheme PhospheneApp -configuration Release build`, then launch — Debug is unhardened): (i) the app launches under HR; (ii) the `.systemAudio` tap installs + delivers audio under HR; (iii) Apple Events to Apple Music / Spotify still resolve during a session.
+- **CLEAN.2.5b (deferred, blocked on paid membership):** switch `CODE_SIGN_IDENTITY` → `Developer ID Application`, notarize (`xcrun notarytool submit --wait` + `xcrun stapler staple`), and Gatekeeper-test on a clean machine/account (`spctl --assess` + a real first launch). Mechanical once the cert + notarization key exist. Keep library validation **on** (§4).
 
 ## 4. Library validation
 
@@ -70,7 +74,7 @@ The tap is **TCC-gated**: macOS requires the user to grant screen-recording perm
 
 **Threat / rationale.** `disable-library-validation` is only needed when an app loads code signed by a different team (plugins, unsigned dylibs); disabling it weakens the binary. Phosphene loads none, so it should never disable it.
 
-**Decision.** Document — **not required, no fix**. Note for CLEAN.2.5: when the hardened runtime is enabled, library validation is on by default — **leave it on**.
+**Decision.** Document — **not required, no fix**. Verified under hardened runtime (CLEAN.2.5a): library validation is on by default and was **left on** — no `disable-library-validation` declared, confirmed on the signed binary (`codesign -d --entitlements`).
 
 ## 5. `phosphene://` OAuth callback
 
@@ -109,7 +113,8 @@ The **consequence is bounded**, which is why this is P3 not higher: a resolved n
 
 | ID | Sev | What | Why filed, not applied here |
 |---|---|---|---|
-| **CLEAN.2.5** | — | Enable hardened runtime + Developer ID signing + notarization; verify tap installs, Apple Events reachable, Gatekeeper accepts; keep library validation on. | Touches the signing pipeline; needs a build + real run + Gatekeeper test — cannot be flipped blind (§3). Near-term per the distribution decision. |
+| **CLEAN.2.5a** | — | **Done (2026-06-15)** — hardened runtime enabled (app-target-scoped) + `automation.apple-events` entitlement; build + sign verified (`-o runtime`). Runtime gates (tap + Apple Events under HR) pending Matt's Mac-mini run. | The deliberate flip 2.4 deferred — applied here with a build behind it (§3). |
+| **CLEAN.2.5b** | — | Developer ID signing + notarization + Gatekeeper test; keep library validation on. | **Deferred — blocked on a paid Apple Developer Program membership.** Mechanical once the cert + notarization key exist (§3). |
 | **BUG-051** | P3 | m3u entry input validation: extension allow-list + path canonicalization on resolved playlist entries. | Defense-in-depth; consequence is bounded by the no-egress local-file path (§6). Low value, tracked so it isn't lost. |
 
 No fix was filed for §2 (partial sandbox — not viable), §4 (library validation — not required), §5 (OAuth — mitigated), §1/§7 (core mechanism / posture strength).
