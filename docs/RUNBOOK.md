@@ -255,7 +255,7 @@ Likely causes: screen capture permission not granted, wrong capture mode, proces
 Checks:
 - Call `CGPreflightScreenCaptureAccess()` / `CGRequestScreenCaptureAccess()` before starting capture.
 - `AudioHardwareCreateProcessTap` succeeds without permission but delivers zeros.
-- Confirm system-wide tap vs per-app tap mode.
+- Confirm the system-wide tap installed (system audio is the only capture mode).
 - Check `SilenceDetector` state transitions (`.active` → `.suspect` at 1.5s → `.silent` at 3s).
 - DRM silence: Apple Music lossless/FairPlay and Spotify DRM can zero out the tap buffer. This is expected — Phosphene degrades to ambient visual mode and monitors for recovery.
 - Scrub-induced silence: scrubbing in Spotify / Apple Music tears down the source process's audio session and the existing tap stays alive but delivers permanent silence. `AudioInputRouter` automatically reinstalls the tap on backoff `[3s, 10s, 30s]` after `.silent` is confirmed. Look for `Tap reinstall scheduled` / `Tap reinstall #N succeeded` lines in `session.log` to confirm recovery fired.
@@ -396,17 +396,6 @@ Expected behaviour:
 - Quality level (`currentLevel`) is **not** reset — the governor retains its downshift position.
 
 If quality unexpectedly drops to `.reducedMesh` after reconnect: check `session.log` for `quality: rolling window cleared (display event)` — if absent, `DisplayChangeCoordinator` was not wired in `PlaybackView.setup()`. See [Architecture §Long-Session Resilience](ARCHITECTURE.md#long-session-resilience-increment-72-d-061).
-
-### Capture-mode switch during playback triggers spurious preset change
-
-When the user changes the capture mode (Settings → Audio) while music is playing, `CaptureModeReconciler` relaunches the audio tap. `SilenceDetector` briefly enters `.silent`, which can cause `LiveAdapter` to compute a large mood delta and trigger a preset override.
-
-Expected behaviour:
-- `CaptureModeSwitchCoordinator` opens a 5-second grace window: `VisualizerEngine.captureModeSwitchGraceWindowEndsAt` is set and `PlaybackErrorBridge.effectiveThresholdSeconds` is raised to 20 s.
-- `applyLiveUpdate` discards any `presetOverride` events during the window. Structural-boundary transitions still fire normally.
-- The silence toast does not appear unless audio is still absent after 20 s.
-
-If the preset still changes during mode switch: verify `isCaptureModeSwitchGraceActive` guard in `VisualizerEngine+Orchestrator.swift:applyLiveUpdate`. If the silence toast still fires at 15 s: verify `PlaybackErrorBridge.effectiveThresholdSeconds` is being raised by `CaptureModeSwitchCoordinator.openGraceWindow()`.
 
 ### Preparation stalls after brief network outage (tracks remain .failed)
 
