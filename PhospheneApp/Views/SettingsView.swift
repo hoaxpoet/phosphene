@@ -1,5 +1,7 @@
-// SettingsView — Settings sheet with four sections: Audio, Visuals, Diagnostics, About.
-// Full implementation in U.8 Part B.
+// SettingsView — Settings sheet: Local Files, Visuals, Diagnostics, About.
+// Full implementation in U.8 Part B. (The Audio tab was removed in CLEAN.2.3.8
+// once the per-app-capture picker was deleted — System audio is the only source,
+// so the screen had no controls left; rebuild a source picker if one is added back.)
 
 import SwiftUI
 
@@ -11,7 +13,7 @@ struct SettingsView: View {
     static let accessibilityID = "phosphene.view.settings"
 
     @StateObject private var viewModel: SettingsViewModel
-    @State private var selection: SettingsSection? = .audio
+    @State private var selection: SettingsSection? = .localFiles
     @Environment(\.dismiss) private var dismiss
 
     init(store: SettingsStore) {
@@ -27,8 +29,7 @@ struct SettingsView: View {
             .navigationSplitViewColumnWidth(160)
         } detail: {
             Group {
-                switch selection ?? .audio {
-                case .audio:       AudioSettingsSection()
+                switch selection ?? .localFiles {
                 case .localFiles:  LocalFilesSettingsSection()
                 case .visuals:     VisualsSettingsSection(viewModel: viewModel)
                 case .diagnostics: DiagnosticsSettingsSection(viewModel: viewModel)
@@ -52,12 +53,11 @@ struct SettingsView: View {
 // MARK: - SettingsSection
 
 enum SettingsSection: String, CaseIterable, Identifiable {
-    case audio, localFiles, visuals, diagnostics, about
+    case localFiles, visuals, diagnostics, about
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .audio:       return NSLocalizedString("settings.group.audio", comment: "")
         case .localFiles:  return NSLocalizedString("settings.group.local_files", comment: "")
         case .visuals:     return NSLocalizedString("settings.group.visuals", comment: "")
         case .diagnostics: return NSLocalizedString("settings.group.diagnostics", comment: "")
@@ -67,7 +67,6 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
     var systemImage: String {
         switch self {
-        case .audio:       return "waveform"
         case .localFiles:  return "folder"
         case .visuals:     return "eye"
         case .diagnostics: return "stethoscope"

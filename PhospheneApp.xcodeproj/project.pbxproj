@@ -164,7 +164,6 @@
 		K10003 /* SettingsMigrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20003; };
 		K10004 /* SettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20004; };
 		K10010 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20010; };
-		K10011 /* AudioSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20011; };
 		K10012 /* VisualsSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20012; };
 		K10013 /* DiagnosticsSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20013; };
 		K10014 /* AboutSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20014; };
@@ -359,7 +358,6 @@
 		K20003 /* SettingsMigrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsMigrator.swift; sourceTree = "<group>"; };
 		K20004 /* SettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModel.swift; sourceTree = "<group>"; };
 		K20010 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
-		K20011 /* AudioSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioSettingsSection.swift; sourceTree = "<group>"; };
 		K20012 /* VisualsSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualsSettingsSection.swift; sourceTree = "<group>"; };
 		K20013 /* DiagnosticsSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsSettingsSection.swift; sourceTree = "<group>"; };
 		K20014 /* AboutSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutSettingsSection.swift; sourceTree = "<group>"; };
@@ -757,7 +755,6 @@
 		K40001 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
-				K20011 /* AudioSettingsSection.swift */,
 				Q20008 /* LocalFilesSettingsSection.swift */,
 				K20012 /* VisualsSettingsSection.swift */,
 				K20013 /* DiagnosticsSettingsSection.swift */,
@@ -949,7 +946,6 @@
 				K10003 /* SettingsMigrator.swift in Sources */,
 				K10004 /* SettingsViewModel.swift in Sources */,
 				K10010 /* SettingsView.swift in Sources */,
-				K10011 /* AudioSettingsSection.swift in Sources */,
 				Q10008 /* LocalFilesSettingsSection.swift in Sources */,
 				K10012 /* VisualsSettingsSection.swift in Sources */,
 				K10013 /* DiagnosticsSettingsSection.swift in Sources */,
