@@ -55,14 +55,14 @@ struct SettingsStoreTests {
         defer { teardown(defaults) }
         let store = SettingsStore(defaults: defaults)
 
-        store.captureMode = .localFile
+        store.captureMode = .specificApp
         store.deviceTierOverride = .forceTier2
         store.qualityCeiling = .ultra
         store.reducedMotion = .alwaysOn
         store.sessionRetention = .oneWeek
 
         let store2 = SettingsStore(defaults: defaults)
-        #expect(store2.captureMode == .localFile)
+        #expect(store2.captureMode == .specificApp)
         #expect(store2.deviceTierOverride == .forceTier2)
         #expect(store2.qualityCeiling == .ultra)
         #expect(store2.reducedMotion == .alwaysOn)

@@ -11,7 +11,7 @@
 //   2. PlaybackErrorBridge fires the silence-extended toast at 15s even though the
 //      silence is expected and transient.
 //
-// The coordinator opens a 5-second grace window on every non-.localFile mode switch.
+// The coordinator opens a 5-second grace window on every capture-mode switch.
 // During the window:
 //   · VisualizerEngine.captureModeSwitchGraceWindowEndsAt is set so applyLiveUpdate
 //     filters out presetOverride events.
@@ -84,10 +84,6 @@ final class CaptureModeSwitchCoordinator {
     // MARK: - Private
 
     private func handleModeChange() {
-        // .localFile shows a "coming later" toast and doesn't touch the router (D-052).
-        // No audio disruption → no grace window needed.
-        if settingsStore.captureMode == .localFile { return }
-
         openGraceWindow()
     }
 

@@ -7,7 +7,6 @@
 // Apply semantics:
 //   .systemAudio  → InputMode.systemAudio
 //   .specificApp  → InputMode.application(processID: pid) via NSWorkspace pid lookup
-//   .localFile    → shows "coming later" toast; no router call
 //
 // The SilenceDetector briefly enters .suspect during the switch, recovers to .active
 // within a few seconds as audio resumes. No DRM false-silent risk.
@@ -54,18 +53,6 @@ final class CaptureModeReconciler {
     func reconcile() {
         let mode = settingsStore.captureMode
 
-        // localFile mode shows a "coming later" toast without touching the router.
-        if mode == .localFile {
-            let toast = PhospheneToast(
-                severity: .info,
-                copy: NSLocalizedString("settings.audio.local_file.coming_later", comment: ""),
-                source: .liveAdaptationAck
-            )
-            toastManager.enqueue(toast)
-            logger.info("CaptureModeReconciler: localFile mode — showing coming-later toast")
-            return
-        }
-
         guard let router else { return }
 
         switch mode {
@@ -88,9 +75,6 @@ final class CaptureModeReconciler {
             } catch {
                 logger.error("CaptureModeReconciler: switchMode(application) failed — \(error)")
             }
-
-        case .localFile:
-            break // handled above
         }
     }
 }

@@ -59,7 +59,7 @@ Supported capture modes (abstracted by `AudioInputRouter`):
 
 - `.systemAudio` — system-wide Core Audio process tap (default)
 - `.application(bundleIdentifier:)` — per-app Core Audio process tap
-- `.localFile(URL)` — diagnostic PCM injection from a file; does NOT play audio through speakers. Used by `SoakTestHarness` and the `D-052` settings toggle.
+- `.localFile(URL)` — diagnostic PCM injection from a file; does NOT play audio through speakers. Used by `SoakTestHarness` (the `CaptureMode.localFile` settings toggle that also used it was removed in CLEAN.2.3.2).
 - `.localFilePlayback(URL)` — `AVAudioEngine`-based playback through the default output device with a tap on the player node (pre-mixer, pre-volume). Bypasses Core Audio process taps entirely — no screen-capture permission required. LF.1 spike (D-128). Activated at app launch via the `PHOSPHENE_LOCAL_FILE_PLAYBACK` env var; `VisualizerEngine.startLocalFilePlayback(url:)` transitions the session to ad-hoc and skips `startAudio()`'s tap path.
 
 Operational requirements:
@@ -353,7 +353,7 @@ Owned by `PlaybackView` as `@State`. Subscribes to `SettingsStore.captureModeCha
 - Setting `VisualizerEngine.captureModeSwitchGraceWindowEndsAt = Date() + 5s`
 - Raising `PlaybackErrorBridge.effectiveThresholdSeconds` to 20 s (from the normal 15 s)
 
-`applyLiveUpdate` in `VisualizerEngine+Orchestrator.swift` checks `isCaptureModeSwitchGraceActive` and discards `presetOverride` events while the window is open; `updatedTransition` (boundary rescheduling) still fires normally. After 5 seconds a `Task` calls `closeGraceWindow()` which restores both values. Consecutive `openGraceWindow()` calls cancel the prior task. `.localFile` mode gets no grace window (D-052 path, D-061(b,c)).
+`applyLiveUpdate` in `VisualizerEngine+Orchestrator.swift` checks `isCaptureModeSwitchGraceActive` and discards `presetOverride` events while the window is open; `updatedTransition` (boundary rescheduling) still fires normally. After 5 seconds a `Task` calls `closeGraceWindow()` which restores both values. Consecutive `openGraceWindow()` calls cancel the prior task. Every capture-mode switch opens a grace window — the former `.localFile` exemption was removed with that mode (CLEAN.2.3.2; D-061(b,c)).
 
 ### NetworkRecoveryCoordinator
 
@@ -398,8 +398,8 @@ PhospheneApp/               → SwiftUI shell, views, view models
   Services/
     AccessibilityLabels.swift → Centralised VoiceOver label/hint lookup under "a11y.*" Localizable.strings keys. Factory methods for connector tiles, track info cards, toasts. (U.9)
     AccessibilityState.swift → @MainActor ObservableObject (U.9 / D-054). Combines NSWorkspace.accessibilityDisplayShouldReduceMotion + SettingsStore.reducedMotion into single reduceMotion: Bool. Distributes to engine via applyAccessibility(_:). shouldExecuteMVWarp(presetEnabled:) and shouldExecuteSSGI per-frame queries. Beat amplitude 0.5 (reduced) / 1.0 (normal).
-    CaptureModeReconciler.swift → @MainActor (macOS 14.2+); routes SettingsStore.captureMode changes to AudioInputRouter.switchMode(_:) per D-052 live-switch path. .localFile shows "coming later" toast.
-    CaptureModeSwitchCoordinator.swift → @MainActor; opens 5s grace window on non-.localFile mode switches; suppresses presetOverride in applyLiveUpdate via VisualizerEngine.captureModeSwitchGraceWindowEndsAt; raises PlaybackErrorBridge.effectiveThresholdSeconds 15s→20s. CaptureModeSwitchEngineInterface protocol for testability. graceWindowSeconds: 5. D-061(b,c).
+    CaptureModeReconciler.swift → @MainActor (macOS 14.2+); routes SettingsStore.captureMode changes to AudioInputRouter.switchMode(_:) per D-052 live-switch path.
+    CaptureModeSwitchCoordinator.swift → @MainActor; opens 5s grace window on every capture-mode switch; suppresses presetOverride in applyLiveUpdate via VisualizerEngine.captureModeSwitchGraceWindowEndsAt; raises PlaybackErrorBridge.effectiveThresholdSeconds 15s→20s. CaptureModeSwitchEngineInterface protocol for testability. graceWindowSeconds: 5. D-061(b,c).
     DefaultPlaybackActionRouter.swift → Concrete PlaybackActionRouter per D-050 / U.6b. @unchecked Sendable, @MainActor. AdaptationFields snapshot type returned by adaptationFields(at:). Seven router methods (moreLikeThis, lessLikeThis, reshuffleUpcoming, presetNudge(_:immediate:), rePlanSession, undoLastAdaptation, toggleMoodLock). Family-boost cap 0.3, family-exclusion window 600s, ambient-hint window 90s, override ceiling 8s, undo capacity 8. Static live(engine:toastBridge:onShowPlanPreview:) factory wires weak engine refs.
     DelayProviding.swift    → Protocol for injectable sleep (RealDelay + InstantDelay); makes retry loops unit-testable without wall-clock waits.
     DisplayChangeCoordinator.swift → @MainActor; subscribes to DisplayManager publishers; calls FrameBudgetManager.resetRecentFrameBuffer() on active-screen removal or window move. No session-state changes. D-061(a). Event enum (.screenAdded / .screenRemoved(wasActive:) / .windowMovedToScreen) for tests.

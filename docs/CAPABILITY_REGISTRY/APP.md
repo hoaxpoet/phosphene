@@ -517,7 +517,7 @@ D-061(b,c) grace window. `@MainActor final class` owned by `PlaybackView` as `@S
 
 #### CaptureModeReconciler.swift (96 lines) — `production-active`
 
-Live-switch path per D-052. Subscribes to `SettingsStore.captureModeChanged` and routes to `AudioInputRouter.switchMode(_:)`. `.systemAudio` → `.systemAudio`; `.specificApp` → `.application(bundleIdentifier:)`; `.localFile` → "coming later" info toast (no router call yet).
+Live-switch path per D-052. Subscribes to `SettingsStore.captureModeChanged` and routes to `AudioInputRouter.switchMode(_:)`. `.systemAudio` → `.systemAudio`; `.specificApp` → `.application(bundleIdentifier:)`. (The `.localFile` capture mode and its "coming later" toast were removed in CLEAN.2.3.2.)
 
 | Capability | Verdict | Consumers | Notes |
 |---|---|---|---|

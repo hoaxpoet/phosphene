@@ -1,7 +1,7 @@
 // CaptureModeReconcilerTests — Tests for CaptureModeReconciler (U.8 Part C).
 //
 // Decision: LIVE-SWITCH PATH via AudioInputRouter.switchMode(_:).
-// These tests verify the reconciler's logic: mode mapping and "coming later" toast.
+// These tests verify the reconciler's logic: capture-mode mapping.
 // Live AudioInputRouter switching is integration-tested manually (smoke test step 2).
 
 import Audio
@@ -34,11 +34,14 @@ struct CaptureModeReconcilerTests {
     }
 
     @available(macOS 14.2, *)
-    @Test func localFileMode_showsComingLaterToast() {
+    @Test func specificAppWithoutSelection_doesNotToast() {
+        // CLEAN.2.3.2 removed the .localFile capture mode (the only toasting path).
+        // The remaining non-systemAudio mode (.specificApp) with no app chosen yet must
+        // early-return cleanly — no toast, no router touch.
         let fixture = makeReconciler()
-        fixture.store.captureMode = .localFile
+        fixture.store.captureMode = .specificApp
         fixture.reconciler.reconcile()
-        #expect(fixture.toasts.visibleToasts.count == 1)
+        #expect(fixture.toasts.visibleToasts.isEmpty)
     }
 
     @Test func captureModeChange_publishesEventFromStore() {

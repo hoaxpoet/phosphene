@@ -2,11 +2,10 @@
 // preservation contract (Increment 7.2, D-061).
 //
 // Tests verify D-061(b,c):
-//  1. Non-localFile switch → grace window flag set; silence threshold raised.
+//  1. Mode switch → grace window flag set; silence threshold raised.
 //  2. Grace window raises PlaybackErrorBridge threshold to 20s.
 //  3. After window closes: thresholds restored; isGraceWindowActive == false.
-//  4. localFile switch → no grace window (D-052 path preserved).
-//  5. Consecutive grace window opens: second cancels first (idempotent).
+//  4. Consecutive grace window opens: second cancels first (idempotent).
 
 import Audio
 import Combine
@@ -100,18 +99,6 @@ struct CaptureModeSwitchCoordinatorTests {
 
         #expect(fix.coordinator.isGraceWindowActive == false)
         #expect(fix.mockEngine.captureModeSwitchGraceWindowEndsAt == nil)
-        #expect(fix.errorBridge.effectiveThresholdSeconds ==
-                PlaybackErrorBridge.silenceToastThresholdSeconds)
-    }
-
-    @Test("localFile mode does not open grace window")
-    func test_localFile_noGraceWindow() {
-        let fix = makeFixture()
-        fix.store.captureMode = .localFile
-
-        // The coordinator's handleModeChange returns early for .localFile.
-        // Grace window state should be untouched.
-        #expect(fix.coordinator.isGraceWindowActive == false)
         #expect(fix.errorBridge.effectiveThresholdSeconds ==
                 PlaybackErrorBridge.silenceToastThresholdSeconds)
     }
