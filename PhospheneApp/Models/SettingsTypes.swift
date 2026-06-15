@@ -1,19 +1,9 @@
 // SettingsTypes — Value types for all PhospheneApp settings (app-layer only).
 //
 // Engine-facing types (QualityCeiling, PresetCategory) live in PhospheneEngine.
-// These types cover capture source, device tier override, motion preference, and retention.
+// These types cover device tier override, motion preference, and retention.
 
 import Foundation
-
-// MARK: - CaptureMode
-
-/// Where PhospheneApp captures audio from.
-enum CaptureMode: String, Codable, CaseIterable, Sendable {
-    /// System-wide audio mix (all apps). Default.
-    case systemAudio
-    /// A specific running application selected via SourceAppPicker.
-    case specificApp
-}
 
 // MARK: - DeviceTierOverride
 
@@ -53,12 +43,4 @@ enum SessionRetentionPolicy: String, Codable, CaseIterable, Sendable {
     case oneDay
     /// Delete sessions older than 7 days.
     case oneWeek
-}
-
-// MARK: - SourceAppOverride
-
-/// Identifies a specific application selected as the audio capture source.
-struct SourceAppOverride: Codable, Equatable, Hashable, Sendable {
-    let bundleIdentifier: String
-    let displayName: String
 }

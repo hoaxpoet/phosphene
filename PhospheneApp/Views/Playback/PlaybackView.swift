@@ -61,7 +61,6 @@ struct PlaybackView: View {
     @State private var displayManager: DisplayManager?
     @State private var multiDisplayBridge: MultiDisplayToastBridge?
     @State private var displayChangeCoordinator: DisplayChangeCoordinator?
-    @State private var captureModeSwitchCoordinator: CaptureModeSwitchCoordinator?
 
     @Namespace private var trackAnimNamespace
 
@@ -241,13 +240,6 @@ struct PlaybackView: View {
             toastManager: toastManager
         )
         playbackErrorBridge = errorBridge
-
-        // 7.2: capture-mode switch coordinator — 5s grace window on mode changes.
-        captureModeSwitchCoordinator = CaptureModeSwitchCoordinator(
-            engine: engine,
-            playbackErrorBridge: errorBridge,
-            settingsStore: settingsStore
-        )
 
         // Build registry — closures capture weak refs to avoid retain cycles
         let registry = buildRegistry(router: router)

@@ -32,8 +32,8 @@ struct SettingsViewModelTests {
     @Test func bindings_forwardToStore() {
         let (vm, store) = makeVM()
 
-        vm.captureMode = .specificApp
-        #expect(store.captureMode == .specificApp)
+        vm.deviceTierOverride = .forceTier2
+        #expect(store.deviceTierOverride == .forceTier2)
 
         vm.showLiveAdaptationToasts = true
         #expect(store.showLiveAdaptationToasts == true)

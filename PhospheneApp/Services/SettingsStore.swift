@@ -1,19 +1,7 @@
 // SettingsStore — Typed UserDefaults wrapper for all Phosphene settings.
 //
-// Pre-flight audit findings (U.8, 2026-04-24):
-//   1. AudioInputRouter has switchMode(_:) — LIVE-SWITCH PATH wired in CaptureModeReconciler.
-//   2. PresetScoringContext extended with excludedFamilies + qualityCeiling (defaults keep
-//      existing call sites compiling).
-//   3. DeviceTier override implemented in PresetScoringContextProvider (app layer only).
-//   4. PresetCategory enum used for blocklist (no PresetFamily in codebase).
-//   5. Only phosphene.showLiveAdaptationToasts requires migration. (showPerformanceWarnings
-//      was deleted in QR.4 / D-091 — no consumer ever wired it; FrameBudgetManager's
-//      dashboard PERF card already surfaces frame-budget overruns.)
-//   6. SessionRecorder gains enabled: Bool param (applies at next session start).
-//
 // Key scheme: "phosphene.settings.<group>.<key>"
 // Apply semantics:
-//   - captureMode:              live-switch via CaptureModeReconciler (may hiccup <2s)
 //   - excludedPresetCategories, qualityCeiling, deviceTierOverride: next preset transition
 //   - sessionRecorderEnabled:   next session start
 //   - reducedMotion:            next frame / render tick (read by SessionStateViewModel)
@@ -38,9 +26,6 @@ final class SettingsStore: ObservableObject {
     // MARK: - UserDefaults Key Scheme
 
     enum Keys {
-        // Audio
-        static let captureMode         = "phosphene.settings.audio.captureMode"
-        static let sourceAppOverride   = "phosphene.settings.audio.sourceAppOverride"
         // Visuals
         static let deviceTierOverride  = "phosphene.settings.visuals.deviceTierOverride"
         static let qualityCeiling      = "phosphene.settings.visuals.qualityCeiling"
@@ -54,16 +39,6 @@ final class SettingsStore: ObservableObject {
         static let sessionRetention        = "phosphene.settings.diagnostics.sessionRetention"
         // Onboarding (not settings — cleared by resetOnboarding only)
         static let photosensitivityAcknowledged = "phosphene.onboarding.photosensitivityAcknowledged"
-    }
-
-    // MARK: - Audio
-
-    @Published var captureMode: CaptureMode = .systemAudio {
-        didSet { encode(captureMode, forKey: Keys.captureMode) }
-    }
-
-    @Published var sourceAppOverride: SourceAppOverride? {
-        didSet { encodeOptional(sourceAppOverride, forKey: Keys.sourceAppOverride) }
     }
 
     // MARK: - Visuals
@@ -109,12 +84,6 @@ final class SettingsStore: ObservableObject {
         didSet { encode(sessionRetention, forKey: Keys.sessionRetention) }
     }
 
-    // MARK: - Events
-
-    /// Published when captureMode or sourceAppOverride changes so CaptureModeReconciler
-    /// can react without polling. Distinct from @Published to avoid double-firing.
-    let captureModeChanged = PassthroughSubject<Void, Never>()
-
     // MARK: - Private
 
     private let defaults: UserDefaults
@@ -140,8 +109,6 @@ final class SettingsStore: ObservableObject {
     // MARK: - Private Load
 
     private func loadAll() {
-        captureMode = decodeOrDefault(.systemAudio, forKey: Keys.captureMode)
-        sourceAppOverride = decodeOptional(SourceAppOverride.self, forKey: Keys.sourceAppOverride)
         deviceTierOverride = decodeOrDefault(.auto, forKey: Keys.deviceTierOverride)
         qualityCeiling = decodeOrDefault(.auto, forKey: Keys.qualityCeiling)
         includeMilkdropPresets = defaults.object(forKey: Keys.includeMilkdropPresets) == nil
@@ -162,21 +129,6 @@ final class SettingsStore: ObservableObject {
     private func encode<T: Encodable>(_ value: T, forKey key: String) {
         guard let data = try? encoder.encode(value) else { return }
         defaults.set(data, forKey: key)
-        if key == Keys.captureMode || key == Keys.sourceAppOverride {
-            captureModeChanged.send()
-        }
-    }
-
-    private func encodeOptional<T: Encodable>(_ value: T?, forKey key: String) {
-        if let value {
-            guard let data = try? encoder.encode(value) else { return }
-            defaults.set(data, forKey: key)
-        } else {
-            defaults.removeObject(forKey: key)
-        }
-        if key == Keys.captureMode || key == Keys.sourceAppOverride {
-            captureModeChanged.send()
-        }
     }
 
     private func encodeSet<T: RawRepresentable & Codable>(_ set: Set<T>, forKey key: String) {
@@ -193,11 +145,6 @@ final class SettingsStore: ObservableObject {
         guard let data = defaults.data(forKey: key),
               let value = try? decoder.decode(T.self, from: data) else { return defaultValue }
         return value
-    }
-
-    private func decodeOptional<T: Decodable>(_ type: T.Type, forKey key: String) -> T? {
-        guard let data = defaults.data(forKey: key) else { return nil }
-        return try? decoder.decode(T.self, from: data)
     }
 
     private func decodeSet<T: Decodable & Hashable & RawRepresentable>(

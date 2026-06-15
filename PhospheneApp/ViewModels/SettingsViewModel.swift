@@ -72,16 +72,6 @@ final class SettingsViewModel: ObservableObject {
 
     // MARK: - Bindings (forwarded to store)
 
-    var captureMode: CaptureMode {
-        get { store.captureMode }
-        set { store.captureMode = newValue }
-    }
-
-    var sourceAppOverride: SourceAppOverride? {
-        get { store.sourceAppOverride }
-        set { store.sourceAppOverride = newValue }
-    }
-
     var deviceTierOverride: DeviceTierOverride {
         get { store.deviceTierOverride }
         set { store.deviceTierOverride = newValue }

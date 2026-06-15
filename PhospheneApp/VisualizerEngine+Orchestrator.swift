@@ -222,8 +222,7 @@ extension VisualizerEngine {
         let activePresetWaitsForCompletion = activeSegment?.preset.waitForCompletionEvent ?? false
 
         let effectiveAdaptation: LiveAdaptation
-        let suppressOverride = isCaptureModeSwitchGraceActive
-            || diagnosticPresetLocked
+        let suppressOverride = diagnosticPresetLocked
             || activePresetWaitsForCompletion
         if suppressOverride, adaptation.presetOverride != nil {
             effectiveAdaptation = LiveAdaptation(
@@ -231,14 +230,7 @@ extension VisualizerEngine {
                 presetOverride: nil,
                 events: adaptation.events.filter { $0.kind != .presetOverrideTriggered }
             )
-            let reason: String
-            if isCaptureModeSwitchGraceActive {
-                reason = "grace window"
-            } else if diagnosticPresetLocked {
-                reason = "diagnostic hold"
-            } else {
-                reason = "wait_for_completion_event"
-            }
+            let reason = diagnosticPresetLocked ? "diagnostic hold" : "wait_for_completion_event"
             logger.info("Orchestrator: \(reason) active — preset override suppressed")
         } else {
             effectiveAdaptation = adaptation
