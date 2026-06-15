@@ -8,6 +8,18 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-14-g] DOC.6.1 — rotate_docs.sh ↔ DocIntegrityTests rotation-boundary fix + due pruning pass
+
+The DOC.6 rotation gate (`DocIntegrityTests.engineeringPlanRotationGate`) was RED on `main` — it flagged three 2026-06-01 `ENGINEERING_PLAN.md` §Recently Completed entries as overdue for rotation, but `Scripts/rotate_docs.sh --dry-run` said "nothing to move," so the gate's prescribed remedy was a no-op. Pre-existing calendar pruning debt (CLAUDE.md "every 10th increment / 2 weeks") compounded by a gate↔script boundary inconsistency; surfaced by CLEAN.2.3's `closeout_evidence.sh`.
+
+Aligned `rotate_docs.sh` to the gate (the gate is authoritative for the rotation contract):
+- **local-vs-UTC.** The gate parses header dates in UTC and compares against `Date()`; the script computed its 14-day cutoff in local time. At 23:15 CDT (= 04:15 next-day UTC) the local cutoff (`2026-05-31`) sat a day behind the gate's UTC cutoff (`2026-06-01`), excluding the 06-01 entries. `TODAY`/`CUTOFF` are now `TZ=UTC` (this also brings `CUR_MONTH` into line with the UTC-parsed release-notes budget gate).
+- **strict-vs-inclusive + marker.** The gate flags any bodied entry dated 14+ days ago regardless of ✅/⏳; the script's move predicate required `dated < cutoff` (strict — excludes the exact-14-day boundary) *and* a ✅/⏳ marker. One flagged entry (`Mid-Spike-1 fix`) carried no marker, so a date-only fix would have left the gate red. The predicate is now marker-agnostic and inclusive (`dated <= cutoff`), matching the gate; the unparseable-date triage report (the one case that genuinely needs a human) is retained.
+
+Then ran the now-due pruning pass: `rotate_docs.sh` moved the three entry bodies (Dragon Bloom Spike 1, Mid-Spike-1 fix, LF.6.streaming) verbatim to `ENGINEERING_PLAN_HISTORY.md`, leaving header-only stubs; KNOWN_ISSUES §Resolved + monthly release-notes rotations were already current. `Mid-Spike-1 re-tune` (2026-06-02) correctly stayed full (the inclusive boundary did not over-rotate the not-yet-14-day entry). Verified: `swift test --package-path PhospheneEngine --filter DocIntegrityTests` 9/9 green (rotation gate passes), a second `--dry-run` is a no-op (idempotency intact), and a verbatim spot-check confirms moved-not-lost (`kWaveTargetRMS` / `StreamingArtworkURLResolver.swift` now resolve only in the history file). Script + docs only — no production code touched. Not pushed (awaits "yes, push").
+
+---
+
 ## [dev-2026-06-14-f] CLEAN.2.3 — Wire-or-hide dead UI + close the localization-gate bypass (honest-UI increment)
 
 Third Phase 2 increment: the honest-UI pass (audit T5 / AUDIT-2026-06-09). Four sub-increments, each gated on Matt's product call (wire vs hide), committed separately. Build + 388 app tests green, swiftlint clean, `check_user_strings.sh` green. Not pushed (awaits "yes, push").
