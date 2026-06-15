@@ -19,7 +19,7 @@ Phosphene is **macOS-only**, single-user, **on-device only — no cloud, no tele
 
 | # | Aspect | Current state | Verdict |
 |---|---|---|---|
-| 1 | System-audio tap | `.systemAudio` = global tap, excludes nothing; `.application` = single PID. TCC-gated on screen-recording; audio-only, no screen pixels. | Document — core mechanism, consent-gated. |
+| 1 | System-audio tap | `.systemAudio` = global tap, excludes nothing (production always uses this); `.application` = single-PID path retained in engine code but not user-selectable (CLEAN.2.3.5). TCC-gated on screen-recording; audio-only, no screen pixels. | Document — core mechanism, consent-gated. |
 | 2 | App sandbox | **Off** — `app-sandbox = false` is the only entitlement. | Document — incompatible with the tap; partial sandbox not viable. |
 | 3 | Hardened runtime + notarization | **Neither enabled.** Dev-signed ("Apple Development"), not Developer ID, not notarized. Blocks Gatekeeper-clean distribution. | **Filed: CLEAN.2.5** (near-term, distribution planned). |
 | 4 | Library validation | Not declared. Links Apple frameworks + SPM static libs only. | Document — not required; keep ON under hardened runtime. |
@@ -33,13 +33,13 @@ Phosphene is **macOS-only**, single-user, **on-device only — no cloud, no tele
 
 **Current posture (verified — `PhospheneEngine/Sources/Audio/SystemAudioCapture.swift` `buildTapDescription`).** Two modes:
 - `.systemAudio` → `CATapDescription(stereoGlobalTapButExcludeProcesses: [])` — a **global tap that excludes nothing**, i.e. it captures the entire system audio mix (every app). (The empty-exclude variant is load-bearing — the seemingly-equivalent `stereoMixdownOfProcesses: []` delivers silence; see the code comment + Failed Approaches #21/#22 at the tap-install site / `docs/RUNBOOK.md`.)
-- `.application(bundleID)` → `CATapDescription(stereoMixdownOfProcesses: [pid])` — narrows to a **single process**.
+- `.application(bundleID)` → `CATapDescription(stereoMixdownOfProcesses: [pid])` — narrows to a **single process**. This case remains in the engine, but is **not currently user-selectable**: the Settings per-app picker and the `switchMode`/`availableApplications` plumbing were removed as inert (CLEAN.2.3.5/2.3.6), so production always uses `.systemAudio`.
 
 The tap is **TCC-gated**: macOS requires the user to grant screen-recording permission before `AudioHardwareCreateProcessTap` will install. That grant is the consent boundary.
 
 **`NSScreenCaptureUsageDescription` honesty (verified).** The string reads *"Phosphene captures system audio to generate real-time music visualizations. No video is recorded."* This is honest: the screen-recording permission is purely the OS gate for the **audio** tap — **no screen pixels are ever read**. `SessionRecorder` (`PhospheneEngine/Sources/Shared/SessionRecorder+Video.swift`) does write video, but it encodes the app's **own rendered Metal texture** (`appendVideoFrame(from tex: MTLTexture …)`) — Phosphene's generated visuals, not the user's screen — to local disk (`~/Documents/phosphene_sessions/<stamp>/`, `SessionRecorder.swift:210-238`). "No video is recorded" is true of *screen/user content*; the only video recorded is Phosphene's own output, on-device.
 
-**Threat / rationale.** A global audio tap is a real privacy surface: while active it can observe audio from any app. Mitigations: (a) the OS consent gate (user must explicitly grant screen-recording); (b) **audio-only** — no screen content; (c) **no exfiltration** — tapped audio is analyzed on-device and never uploaded (see §7); (d) `.application` mode exists for users who want to narrow to one app.
+**Threat / rationale.** A global audio tap is a real privacy surface: while active it can observe audio from any app. Mitigations: (a) the OS consent gate (user must explicitly grant screen-recording); (b) **audio-only** — no screen content; (c) **no exfiltration** — tapped audio is analyzed on-device and never uploaded (see §7); (d) the engine retains an `.application` (single-PID) tap path in code, though it is not currently user-selectable (CLEAN.2.3.5).
 
 **Decision.** Document — no fix. The global tap is the product's core mechanism and is consent-gated. No change.
 

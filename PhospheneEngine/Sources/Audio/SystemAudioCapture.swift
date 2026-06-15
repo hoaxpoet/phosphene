@@ -40,21 +40,6 @@ public enum CaptureMode: Sendable, Equatable {
     case application(bundleIdentifier: String)
 }
 
-// MARK: - RunningApplication
-
-/// A lightweight description of a running application that produces audio.
-public struct RunningApplication: Sendable, Identifiable {
-    public let id: String  // bundle identifier
-    public let name: String
-    public let processID: pid_t
-
-    public init(id: String, name: String, processID: pid_t) {
-        self.id = id
-        self.name = name
-        self.processID = processID
-    }
-}
-
 // MARK: - SystemAudioCapture
 
 /// Captures system or per-app audio via Core Audio process taps.
@@ -121,22 +106,6 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
 
     public var isCapturing: Bool {
         stateLock.withLock { _isCapturing }
-    }
-
-    // MARK: - Enumeration
-
-    /// Lists running applications (by inspecting NSRunningApplication).
-    public static func availableApplications() -> [RunningApplication] {
-        NSWorkspace.shared.runningApplications.compactMap { app in
-            guard let bundleID = app.bundleIdentifier,
-                  !bundleID.isEmpty,
-                  app.activationPolicy == .regular else { return nil }
-            return RunningApplication(
-                id: bundleID,
-                name: app.localizedName ?? bundleID,
-                processID: app.processIdentifier
-            )
-        }
     }
 
     // MARK: - Capture
@@ -263,14 +232,6 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
     public func stopCapture() {
         cleanup()
         logger.info("Audio capture stopped")
-    }
-
-    /// Switch capture mode. Stops current capture and starts new one.
-    public func switchMode(_ mode: CaptureMode) throws {
-        if isCapturing {
-            stopCapture()
-        }
-        try startCapture(mode: mode)
     }
 
     // MARK: - Private Helpers

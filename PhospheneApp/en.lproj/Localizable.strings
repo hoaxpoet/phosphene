@@ -278,6 +278,10 @@
 "settings.group.about"       = "About";
 "settings.done_button"       = "Done";
 
+// Audio — quality hints (informational caption; the capture-source picker was removed in CLEAN.2.3.5)
+"settings.audio.quality_hints.title" = "Audio quality";
+"settings.audio.quality_hints.body"  = "Phosphene visualizes whatever is playing through your Mac's current output device. Keep it at a normal listening volume — very quiet audio weakens the signal the visuals react to.";
+
 // Visuals — device tier
 "settings.visuals.device_tier.label"  = "Device tier";
 "settings.visuals.device_tier.auto"   = "Auto";
