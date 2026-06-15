@@ -25,7 +25,6 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 | BUG-025 | P3 | dsp.beat | AGC running average poisoned by post-`active` startup transient |
 | BUG-026 | P2 | session.ux | No warning when tap signal level is structurally insufficient |
 | BUG-014 | P3 | preset.fidelity | Lumen Mosaic panel aggregate uniform across tracks |
-| BUG-012 | P1 | ml | MPSGraph EXC_BAD_ACCESS in StemFFTEngine under sustained force-dispatch |
 | BUG-013 | P2 | dsp.beat | No `time_signature` source; meter wrong on some odd-meter tracks |
 | BUG-001 | P2 | dsp.beat | Money 7/4 stays REACTIVE on live path |
 | BUG-005 | P3 | session.ux | Spotify `preview_url` returns null for some tracks |
@@ -796,138 +795,6 @@ The contact-sheet output of `RENDER_VISUAL=1 swift test --package-path Phosphene
 
 ---
 
-### BUG-012 — MPSGraph EXC_BAD_ACCESS in StemFFTEngine during sustained force-dispatch
-
-**Severity:** P1 (process-fatal crash; surfaced under sustained jank — ML dispatch scheduler hitting the 2100 ms ceiling and force-firing repeatedly. Not reproducible on every session but observed at least once at 2026-05-15T17:54Z.)
-**Domain tag:** ml
-**Status:** Open — CLEAN.1.1/1.2 cross-ref (2026-06-13): the original BUG-012 analysis assumed the serial `stemQueue` was the only `separate()` caller; it is not — the session-prep path drove the *same* `StemSeparator` unlocked (diagnosed as **BUG-031**). **CLEAN.1.2 fixed BUG-031**: the full input→predict→output section is now serialized under one lock, so the live + prep paths can no longer drive concurrent MPSGraph work on the shared model buffers — a candidate root cause of this crash. Whether it actually retires BUG-012 needs confirmation from Matt's manual concurrency session + crash-watch; record the outcome here.
-**Introduced:** Unknown; surfaced 2026-05-15. Stack frames are all in code that predates the V.9 Session 4.5c ferrofluid work — none of the rounds 16-26 commits touched StemFFTEngine, MPSGraph, or live stem separation. Suspect a latent race that requires specific timing patterns to surface.
-**Resolved:** —
-
----
-
-### Expected behavior
-
-`StemFFTEngine.runForwardGraph()` completes its MPSGraph dispatch on every call, returning the forward STFT real + imag outputs to `StemSeparator.stft(mono:)`. No nil-pointer dereference, no process termination.
-
-### Actual behavior
-
-`EXC_BAD_ACCESS (code=1, address=0x8)` at `MPSGraph.run(withMTLCommandQueue:feeds:targetOperations:resultsDictionary:)`, called from `StemFFTEngine.runForwardGraph()`. Address 0x8 is "offset 8 from nil" — typical signature of accessing a member on a nil object reference. The session that captured the crash (`~/Documents/phosphene_sessions/2026-05-15T17-54-49Z/`) shows clean shutdown in session.log (`SessionRecorder finished (7140 frames, 15 stem dumps)`) — the crash fired after the session-recorder finalised, during continued playback or teardown.
-
-Stack:
-
-```
-Thread 71 — com.phosphene.stemSeparator queue
-0  MPSGraphOSLog
-6  -[MPSGraph runWithMTLCommandQueue:feeds:targetOperations:resultsDictionary:]
-7  StemFFTEngine.runForwardGraph()
-8  StemFFTEngine.gpuForward(mono:)
-9  StemFFTEngine.forward(mono:)
-10 StemSeparator.stft(mono:)
-11 StemSeparator.separate(audio:channelCount:sampleRate:)
-12 VisualizerEngine.performStemSeparation()
-13 closure #2 in closure #1 in VisualizerEngine.runStemSeparation()
-```
-
-Preceding session.log lines show repeated `ML: force-dispatch after 2100ms — ceiling hit, jank ignored` messages — the ML dispatch scheduler force-firing because the previous separation exceeded the 2100 ms ceiling.
-
-### Reproduction steps
-
-1. Start a session with a Spotify-prepared playlist.
-2. Run playback for ≥ 3 minutes (Love Rehab + Money has reproduced once at 2026-05-15T17:54Z).
-3. Observe sustained `force-dispatch after >2100ms` messages in session.log indicating ML scheduler backpressure.
-4. The crash may fire mid-playback or during teardown — not deterministic.
-
-**Minimum reproducer:** unknown — single observed occurrence so far. Suspected trigger: high concurrent load on the stem separator queue (multiple in-flight separations + force-dispatch races) on Tier 2 hardware.
-
----
-
-### Session artifacts
-
-**Session directory:** `~/Documents/phosphene_sessions/2026-05-15T17-54-49Z/`
-
-**Hardware:** Apple M2 Pro (Mac mini), macOS 26.4.1.
-
-**Xcode screenshot (manually captured):** EXC_BAD_ACCESS dialog at the MPSGraph.run call site, Thread 71 — com.phosphene.stemSeparator queue.
-
-session.log tail at the time of the crash:
-
-```log
-[2026-05-15T17:57:27Z] stem separation 14 (440320 samples) track=Money → 0014_Money
-SessionRecorder finished (7140 frames, 15 stem dumps)
-```
-
-(Crash fired after this line — outside the session-recorder's captured range.)
-
----
-
-### Suspected failure class
-
-`concurrency` — race between the ML dispatch scheduler's force-dispatch path and a stem separator's in-flight buffer / graph reference. Address 0x8 = nil-pointer offset → a held reference was concurrently freed.
-
-**Evidence for this class:** The force-dispatch messages preceding the crash indicate sustained backpressure. The ML scheduler force-fires a NEW dispatch while a PRIOR dispatch may still be holding buffers. If teardown of the prior dispatch races with the new one's setup, you get a nil-pointer access at MPSGraph.run.
-
----
-
-### Verification criteria
-
-When this defect is resolved:
-
-- [ ] Sustained 5+ minutes of stem-separation-heavy playback with multiple force-dispatch events does not crash.
-- [ ] An instrumented capture shows MPSGraph buffer lifetimes are properly scoped to one dispatch (no overlapping references).
-- [ ] If concurrency is confirmed: a regression test exercises the force-dispatch path with deliberately racing setup/teardown.
-
-**Manual validation required:** Yes — multi-minute capture on Tier 2 hardware under sustained load.
-
----
-
-### Fix scope
-
-Investigation: 2-4 hours (instrument MPSGraph buffer lifetimes, audit force-dispatch path for concurrent buffer access). Fix: depends on findings — could be a single missing lock or a larger refactor of the dispatch scheduler's concurrent semantics.
-
-### 2026-05-20 race-surface analysis (no fix; instrumentation only)
-
-A dispatch-path analysis was completed against the one observed crash. Findings:
-
-- `stemQueue` (`com.phosphene.stemSeparator`) is a serial `DispatchQueue` (utility QoS). The 5 s `DispatchSourceTimer`, the MainActor scheduler-decide hop, and the `stemQueue.async { performStemSeparation() }` re-entry all enqueue onto the same serial queue. By construction `performStemSeparation` cannot be concurrent with itself.
-- `StemFFTEngine` holds its `MPSGraph`, `commandQueue`, and `MTLBuffer`s as `let` members. `StemSeparator` holds the engine via `private let fftEngine`. `VisualizerEngine` holds the separator via `let stemSeparator: StemSeparator?`. Strong references — the engine's resources cannot be torn down while a `performStemSeparation` call is in flight unless `VisualizerEngine` itself is being deallocated.
-- `StemFFTEngine.forward(mono:)` acquires an internal `NSLock` before entering `gpuForward → runForwardGraph`. Concurrent callers (if they ever existed) would block, not race.
-- The `MLDispatchScheduler` is pure-state. It does not mutate any cross-thread resource on `forceDispatch`; the caller is the one that submits the new dispatch.
-- The crash fired *after* `SessionRecorder finished` in `session.log`. That correlates with teardown — the surviving hypothesis is a teardown race during a MainActor scheduler hop where `[weak self]` resolves non-nil at the boundary and the engine deinitialises while a `stemQueue.async` is enqueued.
-
-What we *don't* know and the next reproduction must capture: (a) whether `[weak self]` was nil at the MainActor or stemQueue hop, (b) whether the engine was actively being deinit'd, (c) whether MPSGraph buffer addresses were valid immediately before the call, (d) where the 2100 ms force-dispatch ceiling fired *relative to* the dispatching that crashed, (e) whether two `performStemSeparation` calls were somehow in flight despite the serial-queue contract.
-
-**Instrumentation installed (`[BUG-012-i1]`, 2026-05-20).** Pure-observability additions across `PhospheneEngine/Sources/Shared/`, `Sources/ML/`, `Sources/Renderer/`, and `PhospheneApp/`:
-
-- `Logging.bug012` (new os.Logger category `com.phosphene/bug012`).
-- `BUG012Probe` namespace (`Sources/Shared/BUG012Probe.swift`) with: monotonic dispatch-ID generator, in-flight counters for `stem dispatch` and `fft forward` / `fft inverse` with `.notice`-level **ALARM** logs if any counter exceeds 1, lifecycle counters for `StemFFTEngine` / `StemSeparator` / `VisualizerEngine` init+deinit, free-form `log()` / `notice()` helpers tagged `[BUG-012]`.
-- `StemFFTEngine.init/deinit/forward/inverse` — lifecycle + in-flight + lock-acquire/release events.
-- `StemFFTEngine.runForwardGraph/runInverseGraph` — buffer-address + storage-mode dump immediately before `MPSGraph.run`; matching post-call line.
-- `StemSeparator.init/deinit/separate` — lifecycle + ENTER/EXIT log per call.
-- `MLDispatchScheduler.decide` — log every decision (was only `.forceDispatch`).
-- `VisualizerEngine.init/deinit` — lifecycle markers.
-- `VisualizerEngine+Stems.runStemSeparation` — timer-fire log, MainActor `self?` resolution, scheduler decision, queued performStemSeparation, weak-self resolution at each `stemQueue.async` re-entry (logs explicitly if `self == nil`).
-- `VisualizerEngine+Stems.performStemSeparation` — `enterStemDispatch` / `exitStemDispatch` with outcome label (`ok` / `threw` / `warmup-skip` / `silence-skip` / `no-separator`); the separator.separate call is wrapped in `.notice`-level CALL/RETURN log lines.
-
-Regression test: `BUG012ConcurrencyTest` (4 threads × 3 forwards on one engine) regression-locks the engine's thread-safety contract. The test does not reproduce the crash today; it fires if a future change exposes `StemFFTEngine.forward` to genuinely concurrent callers (a stricter contract than the dispatch path requires, hence safer).
-
-**Centralised instrumentation reading-aid:** the complete per-line BUG-012-i1 probe map (every `BUG012Probe` call site labelled with its dispatch-ID semantics and severity) is published as part of the CA.2 ML capability audit at [`docs/CAPABILITY_REGISTRY/ML.md §BUG-012 instrumentation map`](../CAPABILITY_REGISTRY/ML.md#bug-012-instrumentation-map). The CA.2 audit's read of every BUG-012-adjacent code path (2026-05-20) did not edit any instrumented file and surfaced no new candidate root cause beyond the race-surface analysis above. One small diagnostic enrichment is suggested for the next instrumentation tranche — `CA.2-FU-2` in the audit's Follow-up Backlog.
-
-**How to read the next reproduction:**
-```
-log show --predicate 'subsystem == "com.phosphene" AND category == "bug012"' --info --last 30m | grep '[BUG-012]'
-```
-- Look for the last `[BUG-012] MPSGraph.run forward CALL id=N input=...` before the crash. The buffer-address line tells you whether the buffers were the expected ones.
-- Look for any `[BUG-012][ALARM]` lines. Any alarm at all is diagnostic gold — it means a serial-queue or lock contract was violated.
-- Look for `[BUG-012] VisualizerEngine deinit` near the crash. Presence = teardown race; absence = steady-state crash.
-- Look for `[BUG-012] stemQueue.async self=nil` lines. Presence = the engine was already nil when stemQueue picked the closure up.
-
-### Related
-
-Out of scope for V.9 Session 4.5c ferrofluid preset work (none of rounds 16-26 touched StemFFTEngine or MPSGraph). Filed for a future dedicated investigation. Step 1 (instrumentation) landed 2026-05-20 as increment `[BUG-012-i1]`; step 2 (diagnosis from instrumented reproduction) and step 3 (fix) follow.
-
----
-
 ### BUG-013 — Soundcharts does not expose `time_signature`; ML meter detection wrong on some odd-meter tracks
 
 **Severity:** P2 (visual artifact on a subset of odd-meter tracks. Bar-locked motion presets (Ferrofluid Ocean) cycle at the wrong rate on tracks where the ML meter detector guesses wrong AND the metadata source can't override. Current production playlist only surfaces this on Pink Floyd's Money 7/4 → cycles at 5.85 s/cycle on Ferrofluid Ocean instead of the intended 20.5 s/cycle. Visual still reads as "ocean swell" per Matt's 2026-05-15T17-54-49Z review.)
@@ -1093,6 +960,17 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 ---
 
 ## Resolved (recent)
+
+### BUG-012 — MPSGraph EXC_BAD_ACCESS in StemFFTEngine during sustained force-dispatch (2026-05-15)
+
+**Severity:** P1 (crash) · **Domain tag:** ml
+**Status:** **Resolved 2026-06-15 — retired by inference** (no direct repro→fix; see rationale). Fix landed in **CLEAN.1.2** (`da26a3a`).
+
+**Root cause / fix.** The original analysis assumed the serial `stemQueue` was `separate()`'s only caller; it was not — the session-prep path drove the **same** `StemSeparator` unlocked (diagnosed as **BUG-031**). CLEAN.1.2 serialized the full input→predict→output critical section under one lock and returns stems by value, so the live + prep paths can no longer drive concurrent MPSGraph work on the shared model buffers — the candidate root cause of this `EXC_BAD_ACCESS`.
+
+**Why retired without a reproduced fix.** BUG-012 was a latent, intermittent crash never deterministically reproduced, so it is retired on convergent evidence rather than a reproduced fix: (1) **CLEAN.1.6 TSan stress** — overlapping live+prep `separate()` on one shared `StemSeparator` + rapid session churn ran **TSan-clean, 0 data races**, directly exercising this crash's race surface; (2) **zero crashes** across Matt's two real validation sessions (`17-22-31Z` local + `17-58-44Z` streaming, 2026-06-14), which include sustained dispatch + prep-during-playback. **If a `StemFFTEngine` `EXC_BAD_ACCESS` recurs, reopen under a new BUG number** — the `BUG012Probe` diagnostic infra (`Sources/Shared/BUG012Probe.swift`) is retained for that. Full diagnosis + instrumentation history is in git (`[BUG-012-i1]`, 2026-05-20) and `docs/CAPABILITY_REGISTRY/ML.md §BUG-012 instrumentation map`. `RELEASE_NOTES_DEV.md [dev-2026-06-15-d]`.
+
+---
 
 ### BUG-033 — App layer: per-frame `@Published dashboardSnapshot` invalidates the whole SwiftUI tree at 60 Hz; `assign(to:on: self)` retain cycles leak view models (2026-06-09)
 

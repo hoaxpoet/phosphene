@@ -8,6 +8,14 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-15-e] BUG-012 retired — MPSGraph EXC_BAD_ACCESS in StemFFTEngine (resolved by inference via CLEAN.1.2)
+
+Retired the long-standing P1 stem-engine crash. BUG-012 was a latent, intermittent `EXC_BAD_ACCESS` in `StemFFTEngine` under sustained force-dispatch, **never deterministically reproduced** — so it's resolved *by inference*, not a reproduced fix. Its candidate root cause (the session-prep path driving the **same** `StemSeparator` unlocked alongside the live `stemQueue`) was closed by **CLEAN.1.2** (the BUG-031 fix: full input→predict→output serialized under one lock, stems returned by value; `da26a3a`).
+
+Retired on convergent evidence: (1) the **CLEAN.1.6 TSan stress harness** — overlapping live+prep `separate()` on one shared `StemSeparator` + rapid session churn — ran **TSan-clean, 0 data races**, directly exercising this crash's race surface; (2) **zero crashes** across Matt's two real validation sessions (`17-22-31Z` + `17-58-44Z`, 2026-06-14), which cover sustained dispatch + prep-during-playback. If a `StemFFTEngine EXC_BAD_ACCESS` ever recurs it reopens under a new BUG number; the `BUG012Probe` diagnostic infra (`Sources/Shared/BUG012Probe.swift`) is retained for that. Moved to KNOWN_ISSUES §Resolved (condensed — the verbose instrumentation appendix stays in git `[BUG-012-i1]` + `ML.md`). Doc-only, no code change. Pushed to `origin/main` 2026-06-15.
+
+---
+
 ## [dev-2026-06-15-d] DOC.6.2 — adopt 2.3.6's date-string rotation gate; supersede DOC.6.1's script-align
 
 Resolves the last thread of the `upbeat-haslett` divergence: which of the two opposite DOC.6 fixes wins. DOC.6.1 (on main) had bent `rotate_docs.sh` to the gate's **datetime** cutoff and dropped the ✅/⏳ marker; CLEAN.2.3.6 (`71f050d`, on the now-retired branch) instead rewrote the **gate** to compare calendar-date **strings** + require a marker, mirroring the tool. CLEAN.2.3.8 had kept DOC.6.1 as a tie-break when landing the per-app deletion.
