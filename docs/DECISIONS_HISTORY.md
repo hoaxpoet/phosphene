@@ -608,9 +608,11 @@ Arachne is now a 2D SDF shader that evaluates each web entirely in UV space:
 **Rejected alternative:** Place the protocol in `PhospheneApp`. This would prevent the engine's `LiveAdapter` and other Orchestrator types from referencing it (circular dependency since `PhospheneApp` links `PhospheneEngine`, not the reverse). The Orchestrator module is the correct home.
 ## D-052 — CaptureModeReconciler: LIVE-SWITCH PATH via AudioInputRouter.switchMode(_:) (Increment U.8)
 
-**Status:** Accepted (2026-04-24)
+**Status:** Superseded — feature removed (CLEAN.2.3.5, 2026-06-15)
 
-> **Superseded in part (CLEAN.2.3.2, 2026-06-14):** the `.localFile` branch — which showed a "coming in a future update" toast and did not touch the router — was removed along with the `CaptureMode.localFile` case. Local-file playback is reached by opening a file (LF.5), not a capture-mode toggle. The `.systemAudio` / `.specificApp` live-switch path this decision established is unchanged.
+> **Superseded — feature removed (CLEAN.2.3.5, 2026-06-15).** This live-switch path was never wired in production: `CaptureModeReconciler` was constructed only in tests, and `startAudioCapture` always started `.systemAudio`, so the Settings "Audio source" picker (`.specificApp`) never took effect — not live, not at session start. Matt's call (Delete) removed per-app capture entirely: the `CaptureMode` enum, `captureMode`/`sourceAppOverride` settings, `captureModeChanged`, `CaptureModeReconciler`, `CaptureModeSwitchCoordinator` (the D-061(b,c) grace window), the `SourceAppPicker`, and the Settings picker row. `AudioInputRouter.switchMode(_:)` survives as orphaned public engine API (candidate for removal). Everything below is retained as historical record.
+>
+> **Earlier partial supersession (CLEAN.2.3.2, 2026-06-14):** the `.localFile` branch — a "coming in a future update" toast that did not touch the router — was removed along with the `CaptureMode.localFile` case.
 
 **Context:** When the user changes the capture mode in Settings (systemAudio / specificApp / localFile), Phosphene must route audio to the new source. Two paths were considered: (1) defer to next session start, (2) live-switch the running router.
 
@@ -698,6 +700,8 @@ Force dispatches (stem separation fired despite over-budget frames) are a signal
 
 ---
 ## D-061 — Display hot-plug & source-switch resilience: coordinator design and session-state preservation (Increment 7.2)
+
+> **(b) and (c) superseded — removed (CLEAN.2.3.5, 2026-06-15).** The capture-mode-switch grace window and its `presetOverride` suppression were deleted with the per-app capture feature (see D-052): the switch they smoothed never happened in production (`CaptureModeReconciler` was test-only, and `startAudioCapture` always started `.systemAudio`). `CaptureModeSwitchCoordinator`, `VisualizerEngine.captureModeSwitchGraceWindowEndsAt`/`isCaptureModeSwitchGraceActive`, and `PlaybackErrorBridge.effectiveThresholdSeconds` are gone. Decisions **(a)** display hot-plug, **(d)** and **(e)** network recovery are unaffected and remain in force. The text below is historical.
 
 ### Context
 

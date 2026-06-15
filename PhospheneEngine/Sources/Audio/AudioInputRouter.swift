@@ -232,15 +232,6 @@ public final class AudioInputRouter: @unchecked Sendable {
         }
     }
 
-    /// Switch to a different input mode.
-    public func switchMode(_ mode: InputMode) throws {
-        let current = lock.withLock { currentMode }
-        guard mode != current else { return }
-
-        stopInternal()
-        try start(mode: mode)
-    }
-
     /// Stop all audio input.
     public func stop() {
         stopInternal()

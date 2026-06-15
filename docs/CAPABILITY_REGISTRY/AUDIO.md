@@ -427,13 +427,13 @@ UMA ring buffer for GPU consumption. `public final class AudioBuffer: AudioBuffe
 
 **No findings.** RMS computation does not allocate (pre-allocated scratch + manual loop); the audio-IO contract is honoured. The lock protects the write path; the read path (`metalBuffer`) is GPU-only and synchronised via Metal command-buffer ordering (per the in-code comment at lines 6-10).
 
-#### AudioInputRouter.swift (313 LoC) — `production-active` (field-level orphans noted)
+#### AudioInputRouter.swift (391 LoC) — `production-active` (field-level orphans noted)
 
 `@available(macOS 14.2, *) public final class AudioInputRouter: @unchecked Sendable`. Unified audio-input abstraction over `SystemAudioCapture` / file playback / metadata observation.
 
 | Public API | Verdict | Consumer | Note |
 |---|---|---|---|
-| `enum InputMode { .systemAudio, .application(bundleIdentifier:), .localFile(URL) }` | `production-active` | App's `CaptureModeReconciler` (maps from `SettingsStore.CaptureMode`); SoakTestHarness; SoakRunner; integration tests | |
+| `enum InputMode { .systemAudio, .application(bundleIdentifier:), .localFile(URL) }` | `production-active` | App `startAudioCapture` (`.systemAudio` only); SoakTestHarness; SoakRunner; integration tests | App only ever starts `.systemAudio`; `.application` has no production caller since CLEAN.2.3.5 |
 | `init(capture:metadata:)` / `init(capture:metadata:silenceDetector:)` (internal) | `production-active` | App `VisualizerEngine+Audio.swift:26`; tests | |
 | `var onAudioSamples` | `production-active` | App `+Audio.swift:30` (`makeAudioSampleCallback`) | Audio thread; no-alloc; calls `updateTapSampleRate(Double(rate))` |
 | `var onAnalysisFrame` | **`production-orphan`** (field-level) | (declared but no production assignment) | Part of LookaheadBuffer architecture; never wired |
@@ -443,7 +443,6 @@ UMA ring buffer for GPU consumption. `public final class AudioBuffer: AudioBuffe
 | `var signalState: AudioSignalState` | `production-active` | (computed from internal SilenceDetector) | |
 | `start(mode:)` | `production-active` | App `startAudioCapture` (`+PublicAPI.swift:54`) | Throws if capture-mode start fails |
 | `startMetadataOnly()` | `production-active` | App pre-permission path | Metadata polling does not require screen-capture permission |
-| `switchMode(_ mode:)` | `production-active` | App `CaptureModeReconciler.swift:38-...` (D-052 live-switch) | |
 | `stop()` | `production-active` | App teardown path | |
 | `activeMode: InputMode?` | `production-active` | Tests + diagnostics | |
 | `sampleRate: Float` | `production-active` | (via `AudioCapturing.sampleRate`) | Read-only computed |
@@ -458,7 +457,7 @@ UMA ring buffer for GPU consumption. `public final class AudioBuffer: AudioBuffe
 
 1. `onAnalysisFrame` + `onRenderFrame` are **production-orphan**. No production code assigns either callback. The `LookaheadBuffer` (which would source these callbacks) is also never instantiated in production. See §LookaheadBuffer below + **CA-Audio-FU-2** (Matt's product call needed).
 
-2. `lock` is declared `let lock = NSLock()` (line 45) — used by `start(mode:)`, `switchMode`, `stop`, `activeMode`, and the `+SignalState.swift` extension. Cross-thread safe.
+2. `lock` is declared `let lock = NSLock()` (line 45) — used by `start(mode:)`, `stop`, `activeMode`, and the `+SignalState.swift` extension. Cross-thread safe.
 
 3. `filePlaybackTask` (line 44) — `Task<Void, Never>?` for local-file playback (testing/offline path). Pre-allocates the interleaved buffer once (lines 247) per the no-allocation-in-tight-loop discipline; comment notes the stale-tail trick is safe because the callback only sees `totalSamples` per chunk.
 
@@ -476,24 +475,21 @@ Tap-reinstall state machine extension. Verified clean against ARCH §68 above. *
 
 **Doc-drift:** ARCH §Module Map Audio/ block does NOT list this extension file.
 
-#### SystemAudioCapture.swift (322 LoC) — `production-active`
+#### SystemAudioCapture.swift (343 LoC) — `production-active`
 
 Core Audio process taps. `@available(macOS 14.2, *) public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable`. FA #21 + #22 verified clean above.
 
 | Public API | Verdict | Consumer | Note |
 |---|---|---|---|
-| `enum CaptureMode { .systemAudio, .application(bundleIdentifier:) }` | `production-active` | AudioInputRouter; SettingsTypes (different enum, same name) | |
+| `enum CaptureMode { .systemAudio, .application(bundleIdentifier:) }` | `production-active` | AudioInputRouter (`InputMode.application` → this) | App's same-named `SettingsTypes.CaptureMode` deleted in CLEAN.2.3.5 |
 | `enum AudioCaptureError` (9 cases) | `production-active` | `AudioCapturing` callers; UserFacingError mapping | |
-| `struct RunningApplication: Sendable, Identifiable` | `production-active` | App settings UI (capture mode picker) | |
 | `init()` | `production-active` | AudioInputRouter default; FerrofluidLiveAudioTests | |
 | `sampleRate: Float` (private(set)) | `production-active` | AudioCapturing protocol; AudioInputRouter | Set in `readTapFormat` |
 | `channelCount: UInt32` (private(set)) | `production-active` | (same) | |
 | `onAudioBuffer` | `production-active` | AudioInputRouter wires inside `start(mode:)` | Audio thread; no-alloc closure |
 | `isCapturing: Bool` | `production-active` | tests + tap-reinstall defensive checks | NSLock-protected |
-| `availableApplications() -> [RunningApplication]` static | `production-active` | App settings UI | NSWorkspace enumeration |
 | `startCapture(mode:)` throws | `production-active` | AudioInputRouter | Full chain: createProcessTap → readTapFormat → createAggregateDevice → createIOProc → startDevice |
 | `stopCapture()` | `production-active` | AudioInputRouter; tap-reinstall path | Calls `cleanup()` |
-| `switchMode(_ mode:)` throws | `production-active` | AudioInputRouter `switchMode` | stop + start |
 
 **Internal:**
 - `createProcessTap(for:)` / `createAggregateDevice()` / `createIOProc(aggregateID:)` / `startDevice(aggregateID:procID:)` — full Core Audio setup chain.

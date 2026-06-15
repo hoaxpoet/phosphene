@@ -8,6 +8,22 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-15-c] CLEAN.2.3.8 — Land the per-app-capture deletion onto main + fix quality-hints strings
+
+Matt's manual test of **Settings → Audio Source** found the "Specific app" control broken: a raw `settings.audio.capture_mode.specific_app` label, a non-functional app list (couldn't select, no scrollbar), and a tab-switch-then-it's-selected quirk (the unwired `CaptureModeReconciler`). The `quality_hints` info section below it also rendered raw keys (`title`/`body`).
+
+This is the cross-session divergence flagged in CLEAN.2.4's closeout. The fix already existed: in a parallel session Matt decided to **delete the per-app-capture subsystem** (CLEAN.2.3.5/2.3.6 on `origin/claude/upbeat-haslett-93311c`), but that work was never merged to `main` — which is why his build still showed the broken control. Per Matt's pick (AskUserQuestion: "land the deletion"), this increment brings it to main rather than rebuilding it:
+
+- **Cherry-picked `a9c99ea`** (preserved as `cc1f086`, original attribution) — deletes the `CaptureMode`/`SourceAppOverride` types, `SettingsStore.captureMode`/`sourceAppOverride`, `CaptureModeReconciler` + `CaptureModeSwitchCoordinator` (and with them the D-061(b,c) capture-switch grace window in `VisualizerEngine`/`PlaybackErrorBridge` — the UX_SPEC §9.4 silence threshold is now the constant 15 s), `SourceAppPicker`, the AudioSettingsSection capture-mode picker, 4 `Localizable` keys, 5 `project.pbxproj` registrations, and the dead reconciler/coordinator/SettingsStore tests. App tests **388 → 377**.
+- **Ported the 2.3.6 orphan-API removal** (`30689f9`) — `AudioInputRouter.switchMode`, `SystemAudioCapture.switchMode`/`availableApplications`, and the `RunningApplication` struct (all caller-less after 2.3.5). The engine `CaptureMode.application` case itself remains (just no longer reachable).
+- **Fixed the separate `quality_hints` bug** — `settings.audio.quality_hints.title`/`.body` were never defined (raw on both main *and* the deletion branch). Added real copy (a **draft** — easy to reword).
+- **Updated `SECURITY_POSTURE.md §1`** — the engine retains an `.application` single-PID tap path in code, but it is no longer user-selectable (production always uses `.systemAudio`).
+- **Kept main's DOC.6.1.** Explicitly **dropped the branch's competing `[DOC.6]` change** (`71f050d` gate rewrite + `09270ab` rotation) — resolving the two-parallel-fixes divergence in main's favour (gate authoritative). Took the registry-doc cleanups (ARCHITECTURE / APP.md / AUDIO.md / DECISIONS_HISTORY) so they no longer describe deleted code.
+
+Supersedes **D-052** (full) and **D-061(b,c)**. Resolves the two CLEAN.2.3 out-of-scope findings (`CaptureModeReconciler` unwired; `specific_app` key mismatch). CLEAN.2.4 / CLEAN.2.3.7 work preserved intact. Engine + app build green; full closeout pending. Not pushed (awaits "yes, push").
+
+---
+
 ## [dev-2026-06-15-b] CLEAN.2.3.7 — Connector cross-link discoverability + affordance polish
 
 Follow-up to CLEAN.2.3.1, surfaced by Matt's manual walk of the now-wired "Use [other service] instead" cross-links. The walk found they don't read as tappable, and that the two connectors handle them inconsistently — exactly the kind of thing a view-model test can't catch.
