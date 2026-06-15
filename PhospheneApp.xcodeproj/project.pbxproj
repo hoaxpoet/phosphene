@@ -168,10 +168,8 @@
 		K10012 /* VisualsSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20012; };
 		K10013 /* DiagnosticsSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20013; };
 		K10014 /* AboutSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20014; };
-		K10015 /* SourceAppPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20015; };
 		K10016 /* PresetCategoryBlocklistPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20016; };
 		K10020 /* PresetScoringContextProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20020; };
-		K10021 /* CaptureModeReconciler.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20021; };
 		K10022 /* SessionRecorderRetentionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20022; };
 		K10023 /* OnboardingReset.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20023; };
 		K10040 /* SettingsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20040; };
@@ -182,9 +180,7 @@
 		K10050 /* PresetScoringContextProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20050; };
 		K10051 /* SessionRecorderRetentionPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20051; };
 		K10052 /* OnboardingResetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20052; };
-		K10053 /* CaptureModeReconcilerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20053; };
 		M10004 /* DisplayChangeCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20004; };
-		M10005 /* CaptureModeSwitchCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20005; };
 		M10006 /* NetworkRecoveryCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20006; };
 		L10001 /* AccessibilityState.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20001; };
 		L10002 /* AccessibilityLabels.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20002; };
@@ -194,7 +190,6 @@
 		L10042 /* AccessibilityLabelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20042; };
 		L10043 /* LocalFileRecentsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20043; };
 		M10001 /* DisplayChangeCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20001; };
-		M10002 /* CaptureModeSwitchCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20002; };
 		M10003 /* NetworkRecoveryCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20003; };
 		N10001 /* SpotifyKeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = N20001; };
 		N10002 /* SpotifyOAuthTokenProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = N20002; };
@@ -368,10 +363,8 @@
 		K20012 /* VisualsSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualsSettingsSection.swift; sourceTree = "<group>"; };
 		K20013 /* DiagnosticsSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsSettingsSection.swift; sourceTree = "<group>"; };
 		K20014 /* AboutSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutSettingsSection.swift; sourceTree = "<group>"; };
-		K20015 /* SourceAppPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SourceAppPicker.swift; sourceTree = "<group>"; };
 		K20016 /* PresetCategoryBlocklistPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetCategoryBlocklistPicker.swift; sourceTree = "<group>"; };
 		K20020 /* PresetScoringContextProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetScoringContextProvider.swift; sourceTree = "<group>"; };
-		K20021 /* CaptureModeReconciler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureModeReconciler.swift; sourceTree = "<group>"; };
 		K20022 /* SessionRecorderRetentionPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecorderRetentionPolicy.swift; sourceTree = "<group>"; };
 		K20023 /* OnboardingReset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingReset.swift; sourceTree = "<group>"; };
 		K20040 /* SettingsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStoreTests.swift; sourceTree = "<group>"; };
@@ -382,9 +375,7 @@
 		K20050 /* PresetScoringContextProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetScoringContextProviderTests.swift; sourceTree = "<group>"; };
 		K20051 /* SessionRecorderRetentionPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecorderRetentionPolicyTests.swift; sourceTree = "<group>"; };
 		K20052 /* OnboardingResetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingResetTests.swift; sourceTree = "<group>"; };
-		K20053 /* CaptureModeReconcilerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureModeReconcilerTests.swift; sourceTree = "<group>"; };
 		M20004 /* DisplayChangeCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayChangeCoordinatorTests.swift; sourceTree = "<group>"; };
-		M20005 /* CaptureModeSwitchCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureModeSwitchCoordinatorTests.swift; sourceTree = "<group>"; };
 		M20006 /* NetworkRecoveryCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkRecoveryCoordinatorTests.swift; sourceTree = "<group>"; };
 		L20001 /* AccessibilityState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityState.swift; sourceTree = "<group>"; };
 		L20002 /* AccessibilityLabels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityLabels.swift; sourceTree = "<group>"; };
@@ -394,7 +385,6 @@
 		L20042 /* AccessibilityLabelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityLabelsTests.swift; sourceTree = "<group>"; };
 		L20043 /* LocalFileRecentsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFileRecentsStoreTests.swift; sourceTree = "<group>"; };
 		M20001 /* DisplayChangeCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayChangeCoordinator.swift; sourceTree = "<group>"; };
-		M20002 /* CaptureModeSwitchCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureModeSwitchCoordinator.swift; sourceTree = "<group>"; };
 		M20003 /* NetworkRecoveryCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkRecoveryCoordinator.swift; sourceTree = "<group>"; };
 		N20001 /* SpotifyKeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyKeychainStore.swift; sourceTree = "<group>"; };
 		N20002 /* SpotifyOAuthTokenProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpotifyOAuthTokenProvider.swift; sourceTree = "<group>"; };
@@ -579,13 +569,11 @@
 				K20002 /* SettingsStore.swift */,
 				K20003 /* SettingsMigrator.swift */,
 				K20020 /* PresetScoringContextProvider.swift */,
-				K20021 /* CaptureModeReconciler.swift */,
 				K20022 /* SessionRecorderRetentionPolicy.swift */,
 				K20023 /* OnboardingReset.swift */,
 				L20001 /* AccessibilityState.swift */,
 				L20002 /* AccessibilityLabels.swift */,
 				M20001 /* DisplayChangeCoordinator.swift */,
-				M20002 /* CaptureModeSwitchCoordinator.swift */,
 				M20003 /* NetworkRecoveryCoordinator.swift */,
 				N20001 /* SpotifyKeychainStore.swift */,
 				N20002 /* SpotifyOAuthTokenProvider.swift */,
@@ -732,9 +720,7 @@
 				K20050 /* PresetScoringContextProviderTests.swift */,
 				K20051 /* SessionRecorderRetentionPolicyTests.swift */,
 				K20052 /* OnboardingResetTests.swift */,
-				K20053 /* CaptureModeReconcilerTests.swift */,
 				M20004 /* DisplayChangeCoordinatorTests.swift */,
-				M20005 /* CaptureModeSwitchCoordinatorTests.swift */,
 				M20006 /* NetworkRecoveryCoordinatorTests.swift */,
 				L20040 /* AccessibilityStateTests.swift */,
 				L20041 /* DynamicTypeRegressionTests.swift */,
@@ -776,7 +762,6 @@
 				K20012 /* VisualsSettingsSection.swift */,
 				K20013 /* DiagnosticsSettingsSection.swift */,
 				K20014 /* AboutSettingsSection.swift */,
-				K20015 /* SourceAppPicker.swift */,
 				K20016 /* PresetCategoryBlocklistPicker.swift */,
 			);
 			path = Settings;
@@ -969,17 +954,14 @@
 				K10012 /* VisualsSettingsSection.swift in Sources */,
 				K10013 /* DiagnosticsSettingsSection.swift in Sources */,
 				K10014 /* AboutSettingsSection.swift in Sources */,
-				K10015 /* SourceAppPicker.swift in Sources */,
 				K10016 /* PresetCategoryBlocklistPicker.swift in Sources */,
 				K10020 /* PresetScoringContextProvider.swift in Sources */,
-				K10021 /* CaptureModeReconciler.swift in Sources */,
 				K10022 /* SessionRecorderRetentionPolicy.swift in Sources */,
 				K10023 /* OnboardingReset.swift in Sources */,
 				L10001 /* AccessibilityState.swift in Sources */,
 				L10002 /* AccessibilityLabels.swift in Sources */,
 				L10010 /* QualityGradeIndicator.swift in Sources */,
 				M10001 /* DisplayChangeCoordinator.swift in Sources */,
-				M10002 /* CaptureModeSwitchCoordinator.swift in Sources */,
 				M10003 /* NetworkRecoveryCoordinator.swift in Sources */,
 				N10001 /* SpotifyKeychainStore.swift in Sources */,
 				N10002 /* SpotifyOAuthTokenProvider.swift in Sources */,
@@ -1032,9 +1014,7 @@
 				K10050 /* PresetScoringContextProviderTests.swift in Sources */,
 				K10051 /* SessionRecorderRetentionPolicyTests.swift in Sources */,
 				K10052 /* OnboardingResetTests.swift in Sources */,
-				K10053 /* CaptureModeReconcilerTests.swift in Sources */,
 				M10004 /* DisplayChangeCoordinatorTests.swift in Sources */,
-				M10005 /* CaptureModeSwitchCoordinatorTests.swift in Sources */,
 				M10006 /* NetworkRecoveryCoordinatorTests.swift in Sources */,
 				L10040 /* AccessibilityStateTests.swift in Sources */,
 				L10041 /* DynamicTypeRegressionTests.swift in Sources */,

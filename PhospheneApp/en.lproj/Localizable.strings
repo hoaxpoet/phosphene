@@ -278,12 +278,6 @@
 "settings.group.about"       = "About";
 "settings.done_button"       = "Done";
 
-// Audio — capture mode
-"settings.audio.capture_mode.label"    = "Audio source";
-"settings.audio.capture_mode.system"   = "System audio";
-"settings.audio.capture_mode.app"      = "Specific app";
-"settings.audio.source_app.label"      = "App";
-
 // Visuals — device tier
 "settings.visuals.device_tier.label"  = "Device tier";
 "settings.visuals.device_tier.auto"   = "Auto";

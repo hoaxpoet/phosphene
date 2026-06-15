@@ -27,8 +27,6 @@ struct SettingsStoreTests {
         defer { teardown(defaults) }
         let store = SettingsStore(defaults: defaults)
 
-        #expect(store.captureMode == .systemAudio)
-        #expect(store.sourceAppOverride == nil)
         #expect(store.deviceTierOverride == .auto)
         #expect(store.qualityCeiling == .auto)
         #expect(store.includeMilkdropPresets == true)
@@ -39,30 +37,17 @@ struct SettingsStoreTests {
         #expect(store.sessionRetention == .lastN10)
     }
 
-    @Test func setCaptureMode_persistsToUserDefaults() {
-        let defaults = makeSuite()
-        defer { teardown(defaults) }
-        let store = SettingsStore(defaults: defaults)
-
-        store.captureMode = .specificApp
-
-        let store2 = SettingsStore(defaults: defaults)
-        #expect(store2.captureMode == .specificApp)
-    }
-
     @Test func setAndReload_roundTripsAllEnumSettings() {
         let defaults = makeSuite()
         defer { teardown(defaults) }
         let store = SettingsStore(defaults: defaults)
 
-        store.captureMode = .specificApp
         store.deviceTierOverride = .forceTier2
         store.qualityCeiling = .ultra
         store.reducedMotion = .alwaysOn
         store.sessionRetention = .oneWeek
 
         let store2 = SettingsStore(defaults: defaults)
-        #expect(store2.captureMode == .specificApp)
         #expect(store2.deviceTierOverride == .forceTier2)
         #expect(store2.qualityCeiling == .ultra)
         #expect(store2.reducedMotion == .alwaysOn)
@@ -80,30 +65,6 @@ struct SettingsStoreTests {
         #expect(store2.excludedPresetCategories == [.geometric, .particles])
     }
 
-    @Test func setSourceAppOverride_roundTrips() {
-        let defaults = makeSuite()
-        defer { teardown(defaults) }
-        let store = SettingsStore(defaults: defaults)
-
-        let override = SourceAppOverride(bundleIdentifier: "com.spotify.client", displayName: "Spotify")
-        store.sourceAppOverride = override
-
-        let store2 = SettingsStore(defaults: defaults)
-        #expect(store2.sourceAppOverride == override)
-    }
-
-    @Test func clearSourceAppOverride_removesValue() {
-        let defaults = makeSuite()
-        defer { teardown(defaults) }
-        let store = SettingsStore(defaults: defaults)
-
-        store.sourceAppOverride = SourceAppOverride(bundleIdentifier: "com.x", displayName: "X")
-        store.sourceAppOverride = nil
-
-        let store2 = SettingsStore(defaults: defaults)
-        #expect(store2.sourceAppOverride == nil)
-    }
-
     @Test func resetOnboarding_clearsOnboardingKeys_preservesOtherSettings() {
         let defaults = makeSuite()
         defer { teardown(defaults) }
@@ -117,20 +78,6 @@ struct SettingsStoreTests {
         #expect(defaults.object(forKey: "phosphene.onboarding.photosensitivityAcknowledged") == nil)
         let store2 = SettingsStore(defaults: defaults)
         #expect(store2.sessionRecorderEnabled == false)
-    }
-
-    @Test func captureModeChange_publishesEvent() async {
-        let defaults = makeSuite()
-        defer { teardown(defaults) }
-        let store = SettingsStore(defaults: defaults)
-
-        var received = false
-        let cancellable = store.captureModeChanged.sink { received = true }
-        _ = cancellable
-
-        store.captureMode = .specificApp
-
-        #expect(received)
     }
 
     @Test func deviceTierOverride_enforcesAutoDefault() {

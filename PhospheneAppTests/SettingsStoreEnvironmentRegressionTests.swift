@@ -4,8 +4,8 @@
 // `PlaybackView` instantiated `@StateObject private var settingsStore =
 // SettingsStore()` while `PhospheneApp.swift` injected the global store via
 // `@EnvironmentObject`. Toggles in Settings updated the global store but the
-// playback-side reconciler was subscribed to the parallel one, silently
-// swallowing every capture-mode change.
+// playback-side consumer was bound to the parallel one, silently swallowing
+// every settings change.
 //
 // The two assertions:
 // 1. An `@EnvironmentObject` consumer of the same store sees a toggle.
@@ -14,7 +14,8 @@
 //
 // This is the regression discriminator: the second assertion is the one that
 // fails if anyone re-introduces a `@StateObject SettingsStore()` anywhere in
-// the playback path.
+// the playback path. The probe property is `reducedMotion` — any `@Published`
+// setting works; it just needs to be one a playback-side consumer reads.
 
 import AppKit
 import Combine
@@ -29,9 +30,9 @@ struct SettingsStoreEnvironmentRegressionTests {
 
     // MARK: - Probe view + observer (test seam)
 
-    private final class CaptureObserver: ObservableObject {
-        @Published var fromEnvironment: CaptureMode?
-        @Published var fromShadowStateObject: CaptureMode?
+    private final class SettingObserver: ObservableObject {
+        @Published var fromEnvironment: ReducedMotionPreference?
+        @Published var fromShadowStateObject: ReducedMotionPreference?
     }
 
     private struct ProbeView: View {
@@ -42,18 +43,18 @@ struct SettingsStoreEnvironmentRegressionTests {
         @StateObject var shadowStore = SettingsStore(
             defaults: UserDefaults(suiteName: "qr4.shadow.\(UUID().uuidString)") ?? .standard
         )
-        @ObservedObject var observer: CaptureObserver
+        @ObservedObject var observer: SettingObserver
 
         var body: some View {
             Color.clear
                 .onAppear {
-                    observer.fromEnvironment = globalStore.captureMode
-                    observer.fromShadowStateObject = shadowStore.captureMode
+                    observer.fromEnvironment = globalStore.reducedMotion
+                    observer.fromShadowStateObject = shadowStore.reducedMotion
                 }
-                .onChange(of: globalStore.captureMode) { _, new in
+                .onChange(of: globalStore.reducedMotion) { _, new in
                     observer.fromEnvironment = new
                 }
-                .onChange(of: shadowStore.captureMode) { _, new in
+                .onChange(of: shadowStore.reducedMotion) { _, new in
                     observer.fromShadowStateObject = new
                 }
         }
@@ -73,12 +74,12 @@ struct SettingsStoreEnvironmentRegressionTests {
 
     // MARK: - Tests
 
-    @Test("captureMode toggle on global store propagates to env-object consumer")
-    func test_captureModeChangePropagates() {
+    @Test("setting toggle on global store propagates to env-object consumer")
+    func test_settingChangePropagates() {
         let globalStore = makeIsolatedStore()
-        globalStore.captureMode = .systemAudio
+        globalStore.reducedMotion = .matchSystem
 
-        let observer = CaptureObserver()
+        let observer = SettingObserver()
         let host = NSHostingView(rootView: ProbeView(observer: observer)
             .environmentObject(globalStore))
 
@@ -94,11 +95,11 @@ struct SettingsStoreEnvironmentRegressionTests {
         tickRunloop()
 
         // Mutate the global store; env-object consumer should observe the change.
-        globalStore.captureMode = .specificApp
+        globalStore.reducedMotion = .alwaysOn
         tickRunloop()
 
-        #expect(observer.fromEnvironment == .specificApp,
-                "env-object consumer must observe global captureMode changes")
+        #expect(observer.fromEnvironment == .alwaysOn,
+                "env-object consumer must observe global settings changes")
     }
 
     @Test("@StateObject SettingsStore() shadow does NOT see global-store changes")
@@ -106,9 +107,9 @@ struct SettingsStoreEnvironmentRegressionTests {
         // The load-bearing assertion: prove the bug shape (a separate
         // @StateObject SettingsStore instance) is provably incorrect.
         let globalStore = makeIsolatedStore()
-        globalStore.captureMode = .systemAudio
+        globalStore.reducedMotion = .matchSystem
 
-        let observer = CaptureObserver()
+        let observer = SettingObserver()
         let host = NSHostingView(rootView: ProbeView(observer: observer)
             .environmentObject(globalStore))
         let window = NSWindow(
@@ -122,10 +123,10 @@ struct SettingsStoreEnvironmentRegressionTests {
         tickRunloop()
 
         // Mutate the global store; shadow @StateObject must NOT observe.
-        globalStore.captureMode = .specificApp
+        globalStore.reducedMotion = .alwaysOn
         tickRunloop()
 
-        #expect(observer.fromShadowStateObject == .systemAudio,
+        #expect(observer.fromShadowStateObject == .matchSystem,
                 "shadow @StateObject must NOT receive updates from the global store (QR.4 bug)")
     }
 

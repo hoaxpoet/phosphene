@@ -28,7 +28,7 @@ struct SettingsView: View {
         } detail: {
             Group {
                 switch selection ?? .audio {
-                case .audio:       AudioSettingsSection(viewModel: viewModel)
+                case .audio:       AudioSettingsSection()
                 case .localFiles:  LocalFilesSettingsSection()
                 case .visuals:     VisualsSettingsSection(viewModel: viewModel)
                 case .diagnostics: DiagnosticsSettingsSection(viewModel: viewModel)
