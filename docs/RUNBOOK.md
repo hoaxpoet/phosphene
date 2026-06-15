@@ -8,6 +8,8 @@
 - Screen capture permission for live audio capture
 - Swift 6.0, Metal 3.1+
 
+> **Security posture & local threat model:** [`SECURITY_POSTURE.md`](SECURITY_POSTURE.md) — why the app is un-sandboxed, the system-audio tap scope + consent gate, hardened-runtime/notarization status (filed CLEAN.2.5 for distribution), the `phosphene://` OAuth callback, the local-file parsing surface, and the no-telemetry posture. Read it before changing any signing/entitlement/tap setting.
+
 ## Spotify connector setup (U.11 — OAuth PKCE)
 
 Phosphene uses Spotify's Authorization Code + PKCE flow (user-level OAuth). The user logs in once via their system browser; the refresh token is stored in the macOS Keychain and used silently on subsequent launches.
