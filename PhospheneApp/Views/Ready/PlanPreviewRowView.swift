@@ -9,8 +9,8 @@ import SwiftUI
 
 /// Displays one `PlanPreviewRow`: track number + title + artist + preset + family pill + duration.
 ///
-/// A lock icon appears on locked rows. Long-press / right-click shows a context menu
-/// with "Swap preset" (stub — disabled until U.5b) and "Reset to planner pick".
+/// A lock icon appears on locked rows. Long-press / right-click shows a "Reset to planner
+/// pick" item; the "Swap preset" action is hidden behind `ENABLE_PRESET_SWAP` until U.5b.
 struct PlanPreviewRowView: View {
 
     let row: PlanPreviewRow
@@ -81,9 +81,15 @@ struct PlanPreviewRowView: View {
         .contentShape(Rectangle())
         .onTapGesture { onPreview(row) }
         .contextMenu {
-            // TODO(U.5.C): Enable "Swap preset" when preview loop lands in U.5b.
+            // QR.4 / D-091 honest-UI: the disabled "Swap preset" stub is a dead control
+            // until U.5b's preview loop lands — hide it behind a build flag (mirrors the
+            // ENABLE_PLAN_MODIFICATION-gated Modify button in PlanPreviewView) rather than
+            // shipping a greyed, do-nothing item. onSwap / swapPreset plumbing stays intact.
+            #if ENABLE_PRESET_SWAP
+            // TODO(U.5b): wire to onSwap(row.id, …) when the preview loop can host the swap UI.
             Button(String(localized: "plan_preview.row.swap_preset")) {}
                 .disabled(true)
+            #endif
 
             if row.isLocked {
                 Button(String(localized: "plan_preview.row.reset_lock")) {
