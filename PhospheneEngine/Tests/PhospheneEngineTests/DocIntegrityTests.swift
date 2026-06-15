@@ -180,20 +180,41 @@ struct DocIntegrityTests {
     // unrotated at 696 KB). Per the D-161 ratchet rule 3 it converts to mechanism:
     // Scripts/rotate_docs.sh performs the moves; these gates make skipping it red.
 
-    /// Cutoff used by the rotation gates — entries resolved more than 14 days ago
-    /// belong in the history files (Scripts/rotate_docs.sh moves them).
-    private static var rotationCutoff: Date { Date(timeIntervalSinceNow: -14 * 86_400) }
-
-    /// The LAST `YYYY-MM-DD` occurrence in a header line (ranges use the end date) —
-    /// the same rule Scripts/rotate_docs.sh applies.
-    private static func lastISODate(in line: String) -> Date? {
-        let dates = matches(#"\d{4}-\d{2}-\d{2}"#, line, options: [])
-        guard let last = dates.last else { return nil }
+    /// Cutoff date (`YYYY-MM-DD`) for the rotation gate — entries dated strictly
+    /// BEFORE this string belong in the history files. Computed as today − 14 days
+    /// in the LOCAL calendar and compared as a STRING, byte-for-byte matching
+    /// `Scripts/rotate_docs.sh` (`date -v-14d +%Y-%m-%d` then awk string `<`).
+    /// Comparing dates-as-strings (not `Date` objects) is what keeps the gate and
+    /// the tool agreeing on the exact boundary day: a datetime cutoff flagged
+    /// day-14 entries that the date-only script refused to move (the CLEAN.2.3.5
+    /// closeout red-gate class).
+    private static var rotationCutoffString: String {
+        let calendar = Calendar(identifier: .gregorian)   // local TZ, matches `date`
+        let cutoff = calendar.date(byAdding: .day, value: -14, to: Date())
+            ?? Date(timeIntervalSinceNow: -14 * 86_400)
         let df = DateFormatter()
         df.dateFormat = "yyyy-MM-dd"
         df.locale = Locale(identifier: "en_US_POSIX")
-        df.timeZone = TimeZone(identifier: "UTC")
-        return df.date(from: last)
+        return df.string(from: cutoff)
+    }
+
+    /// The LAST `YYYY-MM-DD` string in a header line (ranges use the end date) —
+    /// the same rule `Scripts/rotate_docs.sh` applies. Returned as a string so the
+    /// comparison against `rotationCutoffString` is chronological-via-lexicographic.
+    private static func lastISODateString(in line: String) -> String? {
+        matches(#"\d{4}-\d{2}-\d{2}"#, line, options: []).last
+    }
+
+    /// True when an EP §Recently Completed entry should already be header-only in
+    /// the plan (its body rotated to history). Selection mirrors `rotate_docs.sh`
+    /// exactly — ✅/⏳-marked, dated strictly before `cutoff`, still carrying a body —
+    /// so the gate flags only entries the tool will actually move. Extracted from the
+    /// gate loop so the boundary/marker logic is unit-testable (it was a red-gate
+    /// source: CLEAN.2.3.5 closeout).
+    static func epEntryNeedsRotation(header: String, bodyLines: Int, cutoff: String) -> Bool {
+        guard header.contains("✅") || header.contains("⏳") else { return false }
+        guard let dated = lastISODateString(in: header), dated < cutoff else { return false }
+        return bodyLines > 3
     }
 
     /// Lines of the section starting at the exact `header` line, up to (exclusive) the
@@ -218,8 +239,9 @@ struct DocIntegrityTests {
         var violations: [String] = []
         var header: String?
         var bodyLines = 0
+        let cutoff = Self.rotationCutoffString
         func closeEntry() {
-            if let h = header, let d = Self.lastISODate(in: h), d < Self.rotationCutoff, bodyLines > 3 {
+            if let h = header, Self.epEntryNeedsRotation(header: h, bodyLines: bodyLines, cutoff: cutoff) {
                 violations.append(h)
             }
             header = nil; bodyLines = 0
@@ -229,7 +251,27 @@ struct DocIntegrityTests {
             else if header != nil && !line.trimmingCharacters(in: .whitespaces).isEmpty { bodyLines += 1 }
         }
         closeEntry()
-        #expect(violations.isEmpty, "EP §Recently Completed entr\(violations.count == 1 ? "y" : "ies") older than 14 days still carr\(violations.count == 1 ? "ies" : "y") a body: \(violations) — run Scripts/rotate_docs.sh (bodies move to ENGINEERING_PLAN_HISTORY.md; headers stay).")
+        #expect(violations.isEmpty, "EP §Recently Completed ✅/⏳ entr\(violations.count == 1 ? "y" : "ies") older than 14 days still carr\(violations.count == 1 ? "ies" : "y") a body: \(violations) — run Scripts/rotate_docs.sh (bodies move to ENGINEERING_PLAN_HISTORY.md; headers stay).")
+    }
+
+    @Test("EP rotation predicate matches rotate_docs selection — boundary + ✅/⏳ marker (DOC.6)")
+    func engineeringPlanRotationPredicate() {
+        // Deterministic (fixed cutoff, no wall-clock). Guards the gate against
+        // silently going green and re-pins the two CLEAN.2.3.5 boundary bugs.
+        let cutoff = "2026-06-01"
+        // old + ✅ + body → must rotate (flagged)
+        #expect(Self.epEntryNeedsRotation(header: "### Foo ✅ (2026-05-01)", bodyLines: 10, cutoff: cutoff))
+        // ⏳ marker also counts
+        #expect(Self.epEntryNeedsRotation(header: "### Bar ⏳ (2026-05-01)", bodyLines: 10, cutoff: cutoff))
+        // BOUNDARY: dated exactly == cutoff → NOT flagged (string `<` is false), matching
+        // the date-only script — this is the day-14 false-positive the old datetime cutoff hit.
+        #expect(!Self.epEntryNeedsRotation(header: "### Foo ✅ (2026-06-01)", bodyLines: 10, cutoff: cutoff))
+        // recent → not flagged
+        #expect(!Self.epEntryNeedsRotation(header: "### Foo ✅ (2026-06-10)", bodyLines: 10, cutoff: cutoff))
+        // old but UNMARKED → not flagged (rotate_docs leaves it for manual triage)
+        #expect(!Self.epEntryNeedsRotation(header: "### Foo (2026-05-01)", bodyLines: 10, cutoff: cutoff))
+        // old + ✅ but already header-only (no body) → not flagged
+        #expect(!Self.epEntryNeedsRotation(header: "### Foo ✅ (2026-05-01)", bodyLines: 0, cutoff: cutoff))
     }
 
     @Test("KNOWN_ISSUES §Resolved (recent) stays within its 50 KB budget (DOC.6)")
