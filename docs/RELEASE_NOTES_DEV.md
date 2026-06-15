@@ -8,6 +8,23 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-15-b] CLEAN.2.3.7 — Connector cross-link discoverability + affordance polish
+
+Follow-up to CLEAN.2.3.1, surfaced by Matt's manual walk of the now-wired "Use [other service] instead" cross-links. The walk found they don't read as tappable, and that the two connectors handle them inconsistently — exactly the kind of thing a view-model test can't catch.
+
+Root cause (verified in source):
+- **Spotify** (`SpotifyConnectionView`) — the "Use Apple Music instead" footer renders in *every* state (it's unconditional), but at `white @ 40 % opacity`. 40 % opacity is this app's *disabled* visual convention (e.g. `ReadyView`'s preview-plan button dims to `0.4` when disabled), so a fully-functional link read as greyed-out / absent.
+- **Apple Music** (`AppleMusicConnectionView`) — worse: "Use Spotify instead" existed *only* in the error state. On the normal "Start a playlist… checking every 2 s" screen there was no cross-link at all, so you couldn't jump to Spotify except via the back arrow.
+
+Fix (Matt's pick: **bordered secondary** — the app's existing `.buttonStyle(.bordered)` convention, used by ConnectingView/ReadyView/etc.):
+- Both cross-links now use `.buttonStyle(.bordered)` and render as an **unconditional footer** in every state of both connection screens, placed consistently at the bottom.
+- Apple Music's error-only copy was removed (the footer now covers the error state too).
+- Added `accessibilityIdentifier`s to both.
+
+`switchConnector` / NavigationStack wiring is unchanged — this is the CLEAN.2.3.1 *action* made visible, not a behaviour change. View-only (declarative layout/style, no logic), so no new automated test; the 388 app tests are the regression gate and final placement/contrast is a visual check on the build. Switching is also still available via the back chevron → picker tiles. App build + 388 tests green, swiftlint clean. Not pushed (awaits "yes, push").
+
+---
+
 ## [dev-2026-06-15-a] CLEAN.2.4 — macOS entitlement / local threat-model review (GAP-10); closes Phase 2
 
 The last Phase-2 item and the remaining audit security finding (GAP-10). **Review + document increment — no security build settings were flipped** (enabling hardened runtime / the sandbox / Developer ID can break the audio tap, the Apple Events bridge, or signing; each needs a build + a real run, so they are filed, not applied blind). Produced **`docs/SECURITY_POSTURE.md`**: the verified security posture + a local threat model across seven surfaces, each with verified-state / threat / decision-or-filed-fix. Doc-only — no production code changed, not visually verifiable, no tests added.

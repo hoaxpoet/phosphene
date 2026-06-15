@@ -243,7 +243,7 @@ struct SpotifyConnectionView: View {
         Button(String(localized: "connector.spotify.use_apple_music")) {
             onUseAppleMusicInstead()
         }
-        .foregroundColor(.white.opacity(0.4))
-        .font(.subheadline)
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("phosphene.spotify.useAppleMusicInstead")
     }
 }

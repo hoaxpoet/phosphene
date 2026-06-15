@@ -24,6 +24,7 @@ struct AppleMusicConnectionView: View {
                 Spacer()
                 stateContent
                 Spacer()
+                footer
             }
             .padding(.horizontal, 32)
             .padding(.vertical, 24)
@@ -38,6 +39,18 @@ struct AppleMusicConnectionView: View {
         }
         .navigationTitle(String(localized: "connector.apple_music.title"))
         .accessibilityIdentifier(Self.accessibilityID)
+    }
+
+    // MARK: - Footer
+
+    // Shown in every state (not just on error) so the user can switch to
+    // Spotify from the waiting screen without backing out to the picker.
+    private var footer: some View {
+        Button(String(localized: "connector.apple_music.use_spotify_button")) {
+            onUseSpotifyInstead()
+        }
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("phosphene.appleMusic.useSpotifyInstead")
     }
 
     // MARK: - State content
@@ -156,18 +169,11 @@ struct AppleMusicConnectionView: View {
                     .foregroundColor(.white.opacity(0.4))
                     .multilineTextAlignment(.center)
             }
-            VStack(spacing: 12) {
-                Button(String(localized: "connector.apple_music.try_again_button")) {
-                    viewModel.retry()
-                }
-                .buttonStyle(.borderedProminent)
-                .keyboardShortcut(.defaultAction)
-                Button(String(localized: "connector.apple_music.use_spotify_button")) {
-                    onUseSpotifyInstead()
-                }
-                .foregroundColor(.white.opacity(0.5))
-                .font(.subheadline)
+            Button(String(localized: "connector.apple_music.try_again_button")) {
+                viewModel.retry()
             }
+            .buttonStyle(.borderedProminent)
+            .keyboardShortcut(.defaultAction)
         }
     }
 }
