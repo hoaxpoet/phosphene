@@ -6,12 +6,13 @@
 # to execute twice (D-161 rule 3: violated twice → mechanize). Three rotations,
 # each idempotent — a second run on a rotated tree is a no-op:
 #
-#   (a) ENGINEERING_PLAN.md §Recently Completed — every `### ` entry whose
-#       header carries ✅ or ⏳ and a parseable (YYYY-MM-DD) date older than
-#       14 days has its BODY moved to the top of ENGINEERING_PLAN_HISTORY.md
-#       §Recently Completed (header + body land there; the header line alone
-#       stays in the plan — the RB.3 convention). Date = the LAST
-#       YYYY-MM-DD occurrence in the header line (ranges use the end date).
+#   (a) ENGINEERING_PLAN.md §Recently Completed — every `### ` entry with a
+#       parseable (YYYY-MM-DD) date 14 days or older (UTC, marker-agnostic —
+#       matching the DocIntegrityTests rotation gate) has its BODY moved to the
+#       top of ENGINEERING_PLAN_HISTORY.md §Recently Completed (header + body
+#       land there; the header line alone stays in the plan — the RB.3
+#       convention). Date = the LAST YYYY-MM-DD occurrence in the header line
+#       (ranges use the end date).
 #   (b) KNOWN_ISSUES.md §Resolved (recent) — every `### BUG…` entry whose
 #       header date is older than 14 days moves WHOLE (header included) to
 #       docs/QUALITY/KNOWN_ISSUES_HISTORY.md, newest-first. §Open and
@@ -47,12 +48,11 @@ for arg in "$@"; do
   esac
 done
 
-TODAY="${PHOSPHENE_TODAY:-$(date +%Y-%m-%d)}"
-if [ -n "${PHOSPHENE_TODAY:-}" ]; then
-  CUTOFF="$(date -j -v-14d -f %Y-%m-%d "$PHOSPHENE_TODAY" +%Y-%m-%d)"
-else
-  CUTOFF="$(date -v-14d +%Y-%m-%d)"
-fi
+# "Today" and the cutoff are UTC: the DocIntegrityTests rotation gate parses
+# header dates in UTC vs Date(), so an evening-local run (next-day UTC) must
+# measure age in UTC too or script and gate disagree at the day boundary.
+TODAY="${PHOSPHENE_TODAY:-$(TZ=UTC date +%Y-%m-%d)}"
+CUTOFF="$(TZ=UTC date -j -v-14d -f "%Y-%m-%d" "$TODAY" "+%Y-%m-%d")"
 CUR_MONTH="${TODAY%-*}"
 
 EP="docs/ENGINEERING_PLAN.md"
@@ -108,14 +108,15 @@ awk -v cutoff="$CUTOFF" -v MAIN="$EP_MAIN" -v MOVED="$EP_MOVED" -v REPORT="$EP_R
   function flush_entry(    moves) {
     if (header == "") return
     moves = 0
-    if (marker && dated != "" && dated < cutoff && bodylines > 0) moves = 1
+    # Marker-agnostic + inclusive (<=) to match the DocIntegrityTests gate,
+    # which flags any bodied entry dated 14+ days ago regardless of ✅/⏳.
+    if (dated != "" && dated <= cutoff && bodylines > 0) moves = 1
     if (moves) {
       print header >> MAIN                       # header stays (RB.3 convention)
       printf "%s\n%s", header, body >> MOVED      # header + verbatim body to history
     } else {
       printf "%s\n%s", header, body >> MAIN
       if (bodylines > 0 && dated == "") print header >> REPORT
-      else if (bodylines > 0 && !marker && dated != "" && dated < cutoff) print header " [old but no ✅/⏳ marker]" >> REPORT
     }
     header = ""; body = ""; bodylines = 0
   }
@@ -128,7 +129,6 @@ awk -v cutoff="$CUTOFF" -v MAIN="$EP_MAIN" -v MOVED="$EP_MOVED" -v REPORT="$EP_R
   /^### / && in_rc {
     flush_entry()
     header = $0
-    marker = (index($0, "✅") > 0 || index($0, "⏳") > 0)
     dated = lastdate($0)
     next
   }
