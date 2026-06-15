@@ -8,6 +8,18 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-15-d] DOC.6.2 — adopt 2.3.6's date-string rotation gate; supersede DOC.6.1's script-align
+
+Resolves the last thread of the `upbeat-haslett` divergence: which of the two opposite DOC.6 fixes wins. DOC.6.1 (on main) had bent `rotate_docs.sh` to the gate's **datetime** cutoff and dropped the ✅/⏳ marker; CLEAN.2.3.6 (`71f050d`, on the now-retired branch) instead rewrote the **gate** to compare calendar-date **strings** + require a marker, mirroring the tool. CLEAN.2.3.8 had kept DOC.6.1 as a tie-break when landing the per-app deletion.
+
+After a robustness review (this session): a **date-string** comparison is day-granular and cannot flake at the sub-day boundary that caused the original false-red; DOC.6.1's **datetime** gate retains that fragility (it only passes because the script was bent to match it). **Matt's call (2026-06-15): adopt 2.3.6's gate.** This **reverses CLEAN.2.3.8's keep-DOC.6.1 resolution** — informed by the robustness data the tie-break lacked.
+
+- Ported `71f050d`'s gate to `DocIntegrityTests` — `rotationCutoffString` (local date-string, byte-for-byte matching `rotate_docs.sh`'s `date -v-14d +%Y-%m-%d` awk `<`) + the extracted `epEntryNeedsRotation(header:bodyLines:cutoff:)` predicate + a deterministic unit test (`engineeringPlanRotationPredicate`, fixed cutoff). **DocIntegrity 10/10** (was 9).
+- **Reverted DOC.6.1's `rotate_docs.sh` change** to its original marker-aware / local-date-string form — now aligned with the date-string gate (no `TZ=UTC`, ✅/⏳-required, unparseable-date triage retained).
+- Verified: DocIntegrity 10/10 green on origin/main's already-rotated docs; the 3-entry pruning DOC.6.1 performed stands. `upbeat-haslett` retired (its only unique content was this gate). Origin's `SECURITY_POSTURE.md §1` already reflected the per-app deletion (CLEAN.2.3.8); no change needed.
+
+---
+
 ## [dev-2026-06-15-c] CLEAN.2.3.8 — Land the per-app-capture deletion onto main + fix quality-hints strings
 
 Matt's manual test of **Settings → Audio Source** found the "Specific app" control broken: a raw `settings.audio.capture_mode.specific_app` label, a non-functional app list (couldn't select, no scrollbar), and a tab-switch-then-it's-selected quirk (the unwired `CaptureModeReconciler`). The `quality_hints` info section below it also rendered raw keys (`title`/`body`).
