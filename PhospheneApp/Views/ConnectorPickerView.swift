@@ -23,7 +23,7 @@ struct ConnectorPickerView: View {
     @Environment(\.spotifyOAuthProvider) private var spotifyOAuth
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $viewModel.connectorPath) {
             ZStack {
                 Color.black.ignoresSafeArea()
                 VStack(spacing: 0) {
@@ -117,7 +117,7 @@ struct ConnectorPickerView: View {
             // `OAuthSpotifyConnectionWrapper` below.
             AppleMusicConnectionWrapper(
                 onConnect: onConnect,
-                onUseSpotifyInstead: { dismiss() }
+                onUseSpotifyInstead: { viewModel.switchConnector(to: .spotify) }
             )
         case .spotify:
             spotifyDestination
@@ -139,14 +139,18 @@ struct ConnectorPickerView: View {
     @ViewBuilder
     private var spotifyDestination: some View {
         if let oauth = spotifyOAuth {
-            OAuthSpotifyConnectionWrapper(oauth: oauth, onConnect: onConnect)
+            OAuthSpotifyConnectionWrapper(
+                oauth: oauth,
+                onConnect: onConnect,
+                onUseAppleMusicInstead: { viewModel.switchConnector(to: .appleMusic) }
+            )
         } else {
             // Fallback: no OAuth provider injected (e.g. SwiftUI preview or plain unit test).
             // SpotifyConnectionView now expects ([TrackIdentity], PlaylistSource) — pass through.
             SpotifyConnectionView(
                 viewModel: SpotifyConnectionViewModel(),
                 onConnect: onConnect,
-                onUseAppleMusicInstead: { }
+                onUseAppleMusicInstead: { viewModel.switchConnector(to: .appleMusic) }
             )
         }
     }
@@ -196,13 +200,16 @@ private struct OAuthSpotifyConnectionWrapper: View {
 
     let oauth: SpotifyOAuthTokenProvider
     let onConnect: @Sendable ([TrackIdentity], PlaylistSource) async -> Void
+    let onUseAppleMusicInstead: () -> Void
 
     @StateObject private var viewModel: SpotifyConnectionViewModel
 
     init(oauth: SpotifyOAuthTokenProvider,
-         onConnect: @escaping @Sendable ([TrackIdentity], PlaylistSource) async -> Void) {
+         onConnect: @escaping @Sendable ([TrackIdentity], PlaylistSource) async -> Void,
+         onUseAppleMusicInstead: @escaping () -> Void) {
         self.oauth = oauth
         self.onConnect = onConnect
+        self.onUseAppleMusicInstead = onUseAppleMusicInstead
         let connector = SpotifyOAuthPlaylistConnector(
             inner: PlaylistConnector(
                 spotifyConnector: SpotifyWebAPIConnector(tokenProvider: oauth)
@@ -220,7 +227,7 @@ private struct OAuthSpotifyConnectionWrapper: View {
         SpotifyConnectionView(
             viewModel: viewModel,
             onConnect: onConnect,
-            onUseAppleMusicInstead: { }
+            onUseAppleMusicInstead: onUseAppleMusicInstead
         )
     }
 }

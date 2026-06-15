@@ -36,6 +36,20 @@ struct ConnectorPickerViewModelTests {
         vm.openAppleMusic()
     }
 
+    @Test("switchConnector drives a real navigation (CLEAN.2.3.1 cross-links no longer no-op)")
+    func switchConnectorSetsPath() {
+        let vm = ConnectorPickerViewModel()
+        #expect(vm.connectorPath.isEmpty)
+
+        // "Use Apple Music instead" on the Spotify screen.
+        vm.switchConnector(to: .appleMusic)
+        #expect(vm.connectorPath == [.appleMusic])
+
+        // "Use Spotify instead" on the Apple Music screen — replaces, doesn't stack.
+        vm.switchConnector(to: .spotify)
+        #expect(vm.connectorPath == [.spotify])
+    }
+
     @Test("appleMusicRunning accessibilityID constants are stable")
     func accessibilityIDPrefix() {
         #expect(ConnectorTileView.accessibilityIDPrefix == "phosphene.connector.tile")
