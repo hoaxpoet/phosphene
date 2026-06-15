@@ -25,7 +25,7 @@ Every posture claim was re-verified against source (2026-06-15):
 - **CLEAN.2.5** (filed) — enable hardened runtime + Developer ID + notarization; verify the tap installs under it, Apple Events reach the music apps, Gatekeeper accepts the notarized build, library validation stays on. Its own increment (signing pipeline + real Gatekeeper/tap test).
 - **BUG-051** (filed, P3) — m3u entry input-validation hardening (extension allow-list + path canonicalization). Low value given no-egress; tracked.
 
-GAP-10 marked **reviewed** in `CODE_AUDIT_2026-06-13.md` (Part B G10 + Part C); `SECURITY_POSTURE.md` referenced from `RUNBOOK.md`; **not** added to the CLAUDE.md handbook index (D-161 budget ratchet). **Phase 2 (Spotify secret → OAuth → honest-UI → entitlement review) complete.** Not pushed (awaits "yes, push").
+GAP-10 marked **reviewed** in `CODE_AUDIT_2026-06-13.md` (Part B G10 + Part C); `SECURITY_POSTURE.md` referenced from `RUNBOOK.md`; **not** added to the CLAUDE.md handbook index (D-161 budget ratchet). **Phase 2 (Spotify secret → OAuth → honest-UI → entitlement review) complete.** Pushed to `origin/main` 2026-06-15 (`1c5d899`). (Closeout fully green after restoring the worktree's gitignored licensed tempo fixtures from the main checkout per RUNBOOK §Worktree setup — environmental, no code change.)
 
 ---
 
