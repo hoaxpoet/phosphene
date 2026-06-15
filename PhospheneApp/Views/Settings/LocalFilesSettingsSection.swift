@@ -1,6 +1,6 @@
 // LocalFilesSettingsSection — GAP G (2026-05-28). Settings panel for local-
 // file playback state: persistent stem-cache size + clear, Recents count +
-// clear. Mirrors the structure of `AudioSettingsSection` etc.
+// clear. Mirrors the structure of `VisualsSettingsSection` etc.
 //
 // Reads engine + recentsStore via `@EnvironmentObject` — same wiring the
 // LF chrome elsewhere uses. SwiftUI propagates environment into sheets so
