@@ -32,7 +32,7 @@ jobs:
     # that SDK still targets — build SDK != run target.
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6 # v6 runs on Node 24 (Node 20 actions deprecated 2026-06-16)
         with:
           lfs: true # build bundles ML weights (PhospheneEngine/Sources/ML/Weights/**/*.bin)
 
