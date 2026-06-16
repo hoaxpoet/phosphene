@@ -8,6 +8,14 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-16-c] CLEAN.7.12 — `UMABuffer` concurrency test made deterministic
+
+`UMABufferExtendedTests.test_concurrentWriteRead_noDataRace` raced a **fixed 30 s** `DispatchGroup.wait(timeout:)` against 200 trivially-fast concurrent blocks (100 writes + 100 reads). Under the full ~1479-test parallel `swift test` run, GCD thread-pool scheduling latency exceeded the deadline and the wait returned `.timedOut` (observed 34.9 s, CLEAN.7.6 closeout, 2026-06-16); isolated, the whole class runs in 0.048 s. The budget had nothing to do with the work — the blocks are lock-free and cannot deadlock; only pool-drain latency under contention varies.
+
+Per the deterministic-over-budget-widening rule (CLEAN.7.9/7.10/7.11), the deadline is **removed, not widened**: the test now `wait()`s with no timeout — it returns exactly when the 200 blocks drain, however loaded the pool is, so it cannot flake on elapsed time. A genuine deadlock regression surfaces as a CI hang (same trade as CLEAN.7.11's `await …?.value`), not a flaky pass/fail. Added a smoke-level post-condition: each writer wrote a distinct index (`i < 100 < 1024`), so after the barrier `buf[i] == Float(i)` for all i — catching gross corruption / lost writes. True data-race detection still requires TSan, as the file header already notes. Test-only, no production delta (`UMABuffer` untouched). Engine class 12/12 green (0.048 s). `KNOWN_ISSUES §Pre-existing Flakes` + `ENGINEERING_PLAN.md`.
+
+---
+
 ## [dev-2026-06-16-b] CLEAN.7.6 — photosensitivity flash-safety: enforced measurement gate (partial), runtime clamp deferred to A-next
 
 G9 was the only open *safety* gap (P1) — flash-safety was per-preset convention (`SHADER_CRAFT` anti-strobe + the FFO anti-references) with **no enforced output-side clamp**; CLEAN.2.5a's hardened-runtime/notarization path made shipping outside the dev box real. This lands the **measurement half** of an enforced Harding/WCAG 2.3.1 invariant (≤ 3 flashes/s); the look-altering runtime clamp is a deliberate A-next follow-up (it would force a golden regen + M7 re-review of every certified preset). `[DEC D-164]`.
