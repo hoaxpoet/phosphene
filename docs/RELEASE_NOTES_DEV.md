@@ -8,7 +8,7 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
-## [dev-2026-06-16-f] CLEAN.7.6b Stage 1 (partial) — flash-safety gate now measures Nimbus (3/7)
+## [dev-2026-06-16-h] CLEAN.7.6b Stage 1 (partial) — flash-safety gate now measures Nimbus (3/7)
 
 CLEAN.7.6 left the photosensitivity gate measuring 2 of 7 certified presets (FFO + Murmuration); the other 5 rendered static in the single-pass `FeatureVector` harness and were tracked in `unmeasurableInHarness` (never asserted safe). Stage 1's goal: faithfully measure the 5 by reproducing their real render paths headless.
 
@@ -20,7 +20,26 @@ CLEAN.7.6 left the photosensitivity gate measuring 2 of 7 certified presets (FFO
 
 ---
 
-## [dev-2026-06-16-e] CLEAN.3.7-fix — live MIR adopts the actual capture rate (BUG-053)
+## [dev-2026-06-16-e] CLEAN.7.14 — SSGI 1080p perf gate made contention-robust (best-of-N; drop the `measure {}` variance check)
+
+`SSGITests.test_ssgi_performance_under1ms_at1080p` flaked under the full ~1479-test parallel `swift test` run — the GPU-heavy parallel load the CLEAN.7.6 flash-safety suite added is what exposed this whole family (CLEAN.7.12/7.13/7.14). Two flake sources, both contention-driven, neither a real regression: (1) an `XCTest measure {}` block benchmarking the 1080p SSGI render **failed on relative standard deviation > 10 %** (~17.7 % observed under contention — XCTest's default variance bound), and (2) the actual overhead gate averaged **5 paired (with − without) `Date()` timings**, so a contention spike on any one submit inflated the mean. Isolated, the class is 7/7 green in ~0.13 s. Same flake class as CLEAN.7.9/7.10/7.11/7.12 and the structural twin of CLEAN.7.13 (the sibling single-sample ICB frame-perf gate, consolidated onto this same branch). Per the deterministic-over-budget-widening rule, the **sub-1 ms gate is kept, not loosened**: the `measure {}` benchmark is dropped, and overhead is now `minSSGI − minBase` over the **minimum of 8 warm samples per path** — contention can only ADD latency to a GPU submit, never subtract it, so each path's minimum is the clean estimate of its true cost and the difference of the two floors is the clean overhead. Test-only, no production delta (the SSGI render path is untouched). `KNOWN_ISSUES.md §Pre-existing Flakes` carries the resolved note.
+
+**Consolidation note.** This branch (`confident-bohr`) consolidates **both** GPU-perf flake fixes: CLEAN.7.13 (ICB gate — the parallel `peaceful-ishizaka` session's commit `b49905b`, merged in preserving its hash) **+** CLEAN.7.14 (SSGI gate, this session). `peaceful-ishizaka` forked from `main` at CLEAN.7.6; the merge brings 7.13 onto the `main`-based line. The two branches independently used release tag `-c` (7.12 / 7.13) → reconciled here by renumbering **7.13 → `-d`, 7.14 → `-e`** (7.12 keeps `-c` — already on origin/main). `main` fast-forwards to this branch to land both; retire `peaceful-ishizaka` after.
+
+---
+
+## [dev-2026-06-16-d] CLEAN.7.13 — `RenderPipelineICBTests` ICB-frame perf assertion made contention-robust
+
+The structural twin of CLEAN.7.10, surfaced under the full ~1469-test parallel `swift test` during the CLEAN.7.12 closeout. `RenderPipelineICBTests.test_gpuDrivenRendering_cpuFrameTimeReduced` gated one **warm ICB frame** (blit + compute + render) at `< 2 ms` via a **single `Date()` sample** around the submit — the most contention-fragile shape there is. Under the parallel suite a saturated GPU/CPU inflated that lone submit past 2 ms (the case-level wall time was a benign 0.277 s; the *timed inner submit* is what blew the gate); isolated, the test passes in ~0.37 s. Not a real perf regression — a single-sample timing artifact.
+
+- **Fix (copies CLEAN.7.10 verbatim).** Keep the 2 ms gate, drop the flake: assert the **minimum of 8 warm samples** instead of one. Contention can only ADD latency to a GPU submit, never subtract it, so the min across N warm runs is the clean estimate of true cost and is robust to a few starved samples — the gate stays at 2 ms and still traps a real regression. Per Matt's deterministic-over-budget-widening rule (`feedback_deterministic_tests_over_budget_widening`); the threshold is **not** loosened. The `measure {}` variance block (10 iterations, reports average) is unchanged.
+- **Scope.** Test-only — the ICB renderer path (`IndirectCommandBufferState`, the blit/compute/render encode helpers) is untouched, no production delta. One file changed: `RenderPipelineICBTests.swift`.
+
+**Verified:** `swift test --filter RenderPipelineICBTests` green in isolation. Same flake class as CLEAN.7.9/7.10/7.11/7.12. `KNOWN_ISSUES §Pre-existing Flakes` (Resolved 2026-06-16) + `ENGINEERING_PLAN.md` (CLEAN.7.13 row). Not visually verifiable.
+
+---
+
+## [dev-2026-06-16-g] CLEAN.3.7-fix — live MIR adopts the actual capture rate (BUG-053)
 
 Matt's call on the 3.7a verdict: **fix it properly.** The live `MIRPipeline` was built at app init (before the tap installs) with the 48 kHz default and `process()` carried no rate, so its sub-analyzers stayed frozen at 48 kHz bin→Hz tables regardless of the real capture rate.
 
@@ -36,7 +55,7 @@ Engine + app build green; swiftlint `--strict` 0; analyzer/MIR/stem/DocIntegrity
 
 ---
 
-## [dev-2026-06-16-d] CLEAN.3.7a — Sample-rate contract trace (GAP-2): live-tap MIR is frozen at 48 kHz (BUG-053)
+## [dev-2026-06-16-f] CLEAN.3.7a — Sample-rate contract trace (GAP-2): live-tap MIR is frozen at 48 kHz (BUG-053)
 
 Diagnosis-only increment (the kickoff's "trace & decide … commit the trace and stop if the fix is non-trivial"). Traced the tap sample rate end-to-end and **refuted the pre-kickoff hypothesis** that the streaming MIR is already rate-aware.
 

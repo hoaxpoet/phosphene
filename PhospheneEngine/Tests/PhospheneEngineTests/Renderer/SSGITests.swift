@@ -254,33 +254,43 @@ final class SSGITests: XCTestCase {
         pipeline.ssgiEnabled = true
         try runRender(gbufferPipeline: gbufferPipeline, width: w, height: h, outputTexture: outTex)
 
-        // XCTest measure block benchmarks the full pipeline with SSGI.
-        pipeline.ssgiEnabled = true
-        measure {
-            try? runRender(gbufferPipeline: gbufferPipeline, width: w, height: h, outputTexture: outTex)
-        }
+        // SSGI overhead = the floor cost the pass adds at 1080p. Timing a GPU
+        // submit by wall-clock is contention-sensitive: under the full parallel
+        // suite, unrelated tests saturating the GPU/CPU inflate any one sample.
+        // The previous shape flaked two ways — an `XCTest measure {}` block here
+        // failed on >10% relative standard deviation (~17.7% observed under
+        // contention), and a 5-pair MEAN of (with − without) folds those same
+        // contention spikes straight into the result. Contention can only ADD
+        // latency to a submit, never subtract it, so the MINIMUM of N warm
+        // samples is the clean estimate of each path's true cost, and the
+        // difference of the two floors is the clean overhead estimate (best-of-N
+        // — same flake class + fix as CLEAN.7.10/7.13 for the sibling ray/ICB
+        // perf gates). The sub-1 ms gate is preserved, not loosened: measured
+        // honestly, not from contention-exposed means.
+        let perfSampleCount = 8
 
-        // Measure SSGI overhead: average over 5 pairs (with - without) to reduce variance.
-        var totalOverhead: Double = 0.0
-        let iterations = 5
-        for _ in 0..<iterations {
+        var bestBaseMs = Double.greatestFiniteMagnitude
+        pipeline.ssgiEnabled = false
+        for _ in 0..<perfSampleCount {
             let t0 = Date()
-            pipeline.ssgiEnabled = false
             try runRender(gbufferPipeline: gbufferPipeline, width: w, height: h, outputTexture: outTex)
-            let baseMs = Date().timeIntervalSince(t0) * 1000.0
-
-            let t1 = Date()
-            pipeline.ssgiEnabled = true
-            try runRender(gbufferPipeline: gbufferPipeline, width: w, height: h, outputTexture: outTex)
-            let ssgiMs = Date().timeIntervalSince(t1) * 1000.0
-
-            totalOverhead += max(0, ssgiMs - baseMs)
+            bestBaseMs = min(bestBaseMs, Date().timeIntervalSince(t0) * 1000.0)
         }
-        let avgOverhead = totalOverhead / Double(iterations)
 
-        XCTAssertLessThan(avgOverhead, 1.0,
-            "SSGI pass overhead at 1080p averaged \(String(format: "%.2f", avgOverhead)) ms "
-            + "over \(iterations) iterations; SSGI at half-res (960×540) must add under 1 ms")
+        var bestSSGIMs = Double.greatestFiniteMagnitude
+        pipeline.ssgiEnabled = true
+        for _ in 0..<perfSampleCount {
+            let t0 = Date()
+            try runRender(gbufferPipeline: gbufferPipeline, width: w, height: h, outputTexture: outTex)
+            bestSSGIMs = min(bestSSGIMs, Date().timeIntervalSince(t0) * 1000.0)
+        }
+
+        let overhead = max(0, bestSSGIMs - bestBaseMs)
+
+        XCTAssertLessThan(overhead, 1.0,
+            "SSGI pass overhead at 1080p (best-of-\(perfSampleCount): "
+            + "\(String(format: "%.2f", bestSSGIMs)) − \(String(format: "%.2f", bestBaseMs)) = "
+            + "\(String(format: "%.2f", overhead)) ms); SSGI at half-res (960×540) must add under 1 ms")
     }
 }
 
