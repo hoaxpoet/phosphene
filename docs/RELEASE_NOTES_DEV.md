@@ -8,6 +8,14 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-16-d] CLEAN.7.14 — SSGI 1080p perf gate made contention-robust (best-of-N; drop the `measure {}` variance check)
+
+`SSGITests.test_ssgi_performance_under1ms_at1080p` flaked under the full ~1479-test parallel `swift test` run — the GPU-heavy parallel load the CLEAN.7.6 flash-safety suite added is what exposed this whole family (CLEAN.7.12/7.13/7.14). Two flake sources, both contention-driven, neither a real regression: (1) an `XCTest measure {}` block benchmarking the 1080p SSGI render **failed on relative standard deviation > 10 %** (~17.7 % observed under contention — XCTest's default variance bound), and (2) the actual overhead gate averaged **5 paired (with − without) `Date()` timings**, so a contention spike on any one submit inflated the mean. Isolated, the class is 7/7 green in ~0.13 s. Same flake class as CLEAN.7.9/7.10/7.11/7.12 and the structural twin of CLEAN.7.13 (the sibling single-sample ICB frame-perf gate). Per the deterministic-over-budget-widening rule, the **sub-1 ms gate is kept, not loosened**: the `measure {}` benchmark is dropped, and overhead is now `minSSGI − minBase` over the **minimum of 8 warm samples per path** — contention can only ADD latency to a GPU submit, never subtract it, so each path's minimum is the clean estimate of its true cost and the difference of the two floors is the clean overhead. Test-only, no production delta (the SSGI render path is untouched). `KNOWN_ISSUES.md §Pre-existing Flakes` carries the resolved note.
+
+**Branch/integration note (transient).** This landed on `confident-bohr` (= `main` + this one fix). Its twin **CLEAN.7.13** (ICB frame-perf gate, identical fix shape) is on the parallel `peaceful-ishizaka` branch, which forked from `main` at CLEAN.7.6 and is **not yet integrated** — so on `main` the ICB gate is still the single-sample (flaky) version until 7.13 merges. Both branches independently used the `-c` release tag (7.12 here / 7.13 there) and both append to the same flake-doc sections, so 7.13 + 7.14 need sequencing into `main` (trivial doc-section merges). Delete this note once 7.13 + 7.14 are both on `main`.
+
+---
+
 ## [dev-2026-06-16-c] CLEAN.7.12 — `UMABuffer` concurrency test made deterministic
 
 `UMABufferExtendedTests.test_concurrentWriteRead_noDataRace` raced a **fixed 30 s** `DispatchGroup.wait(timeout:)` against 200 trivially-fast concurrent blocks (100 writes + 100 reads). Under the full ~1479-test parallel `swift test` run, GCD thread-pool scheduling latency exceeded the deadline and the wait returned `.timedOut` (observed 34.9 s, CLEAN.7.6 closeout, 2026-06-16); isolated, the whole class runs in 0.048 s. The budget had nothing to do with the work — the blocks are lock-free and cannot deadlock; only pool-drain latency under contention varies.
