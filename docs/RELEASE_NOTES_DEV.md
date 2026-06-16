@@ -8,6 +8,20 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-16-b] CLEAN.3.7a — Sample-rate contract trace (GAP-2): live-tap MIR is frozen at 48 kHz (BUG-053)
+
+Diagnosis-only increment (the kickoff's "trace & decide … commit the trace and stop if the fix is non-trivial"). Traced the tap sample rate end-to-end and **refuted the pre-kickoff hypothesis** that the streaming MIR is already rate-aware.
+
+**Finding (BUG-053, P2):** the **live** `MIRPipeline` — the one `processAnalysisFrame` runs every frame — is constructed once at app init with `MIRPipeline()`, i.e. the `sampleRate: Float = 48000` **default** (`VisualizerEngine.swift:740`), and `MIRPipeline.process()` takes **no** sample-rate argument. Its four sub-analyzers (`SpectralAnalyzer`/`BandEnergyProcessor`/`ChromaExtractor`/`BeatDetector`) precompute their bin→Hz tables at init from 48000 and never see the live rate. The FFT's per-call `sampleRate: rate` only populates `FFTResult.binResolution`/`dominantFrequency` *metadata* — the magnitude array handed downstream is rate-independent — so passing the live rate to the FFT does **not** make the MIR rate-aware. The captured `tapSampleRate` is threaded to the **stem** path but never the live MIR.
+
+**Impact (only when tap ≠ 48 kHz):** chroma/key estimate ~1.5 semitones sharp (`12·log2(48000/44100)`), band cutoffs ~8.8 % low; normalized centroid/rolloff cancel out, tempo/flux are rate-independent. **Masked on the common 48 kHz config** (the tap's typical rate + `readTapFormat`'s fallback are both 48 kHz), so silent today — manifests on a 44.1 kHz output device or a device-swap to one (couples to **G1/CLEAN.1.5**). The **offline** session-prep MIR is correct (`SessionPreparer+Analysis.swift:256` passes the file's real rate); the stem/Beat-This! resamples are correct. `check_sample_rate_literals.sh` bans `44100` but not `48000`, so it never caught this.
+
+**Decision:** real (latent) defect → per the Defect Protocol the fix is a **separate increment** (`CLEAN.3.7-fix`), architectural (the MIR is built before the tap installs and holds per-track state), **pending Matt's pick of approach** — re-init-on-rate-change (honors the `SystemAudioCapture.sampleRate:66-71` contract, couples to G1) vs per-call rate threading vs make-the-48k-assumption-explicit-and-loud. 3.7b/c (doc reconcile + default-trap removal + regression gate) fold into that increment.
+
+**Changed:** docs only — `KNOWN_ISSUES.md` (BUG-053 + index), `CODE_AUDIT_2026-06-13.md` (G2 row traced + CLEAN.3.7 backlog split), `ENGINEERING_PLAN.md` (3.7a entry). No production code changed → not visually verifiable; no new tests (the gate ships with the fix). Doc gates + lints green.
+
+---
+
 ## [dev-2026-06-16-a] CLEAN.5.5 — ML-weight load-time `sha256` integrity gate (closes Phase 5)
 
 5.4d proved the ML weight `.bin` are **present** (not LFS pointer stubs). 5.5 is the complementary layer — proving they're **correct**. A truncated download, a partial smudge, bit-rot, a wrong-version checkpoint, or a tampered file all pass the present-check and then feed garbage into the stem separator / beat tracker with **no crash** (bad stems / wrong beats, not an error). The load-time `sha256` gate makes that fail loud. Present (5.4d) + correct (5.5) = the weight supply chain is closed. The audit's **G11** is **resolved**.

@@ -171,7 +171,7 @@ the code; **status** records what I confirmed.
 | # | Gap | Verified status | Rec. severity | Phase |
 |---|-----|-----------------|---------------|-------|
 | G1 | **Audio output-device change mid-session** (AirPods/monitor/DAC) freezes visuals silently | **CONFIRMED** — no `kAudioHardwarePropertyDefaultOutputDevice` listener / route-change handling anywhere | **P1** | P1 |
-| G2 | **Sample-rate contract drift** — tap 48 kHz, `Protocols.swift:111` documents 44.1 kHz resample, resampler only in local-file path | **CONFIRMED drift** (needs trace: does live-tap stem path resample, or run bins at wrong Nyquist?) | **P1/P2** | P3 |
+| G2 | **Sample-rate contract drift** — tap 48 kHz, `Protocols.swift:111` documents 44.1 kHz resample, resampler only in local-file path | **TRACED (CLEAN.3.7a → BUG-053):** live-tap STEM path resamples correctly (→44.1k); live-tap **MIR/FFT** runs bins at the wrong Nyquist when tap≠48k — the live `MIRPipeline` is frozen at the 48000 default (`VisualizerEngine.swift:740`; `process()` has no rate), so chroma/key shift ~1.5 semitones + bands ~8.8% at 44.1k. Masked at 48k. Fix + doc-reconcile + gate = the BUG-053 fix increment (architectural). | **P2** | P3 |
 | G3 | **DSP NaN/Inf/denormal robustness** on audio→GPU path (silence/DC/0-length) | **CONFIRMED** — no `isNaN`/`isFinite` guards in DSP or Audio | P2 | P4 |
 | G4 | **Thermal throttling & Low Power Mode** unaddressed on fanless 60 fps + MPSGraph load | **CONFIRMED** — zero `thermalState`/`lowPowerMode` references | P2 | P4 |
 | G5 | **GPU device-loss / drawable-invalid** under eviction or display teardown | **PARTIAL** — `DisplayManager` *does* observe `didChangeScreenParameters`; but MTLDevice-loss/command-buffer-error handling absent | P2 | P6 |
@@ -235,7 +235,8 @@ IDs are proposed (`CLEAN.<phase>.<n>`); on approval they map into ENGINEERING_PL
 | CLEAN.3.4 | BUG-037 Arachne chord-count single source of truth (CPU/shader/test) | one constant; goldens regen | Stretch `[M7]` |
 | CLEAN.3.5 | StemCache eviction (size/LRU); close diag-log handle; retire dead helpers (`percentileOfBuffer`,`printHistogram`,`depthDebugEnabled`) | bounded cache; handle closed; dead code gone | June |
 | CLEAN.3.6 | SessionRecorder running-vs-actually-writing invariant (BUG-039 follow-through) | invariant asserted; recovery confirmed | Stretch |
-| CLEAN.3.7 | `[GAP-2]` Resolve sample-rate contract: confirm live-tap stem path rate; resample to contract OR fix doc + bin/Nyquist math | live-tap stem path provably correct; doc matches code | June |
+| CLEAN.3.7a ✅ | `[GAP-2]` Trace & decide: does the live-tap path deliver the correct rate to every rate-sensitive stage? | **DONE 2026-06-16** — traced end-to-end; verdict = real (latent) defect, **BUG-053**: live MIR frozen at 48k (stem path correct). Refutes the "already rate-aware" hypothesis. | June |
+| CLEAN.3.7-fix | `[GAP-2]` Fix the live-MIR rate wiring + reconcile doc + add regression gate (was 3.7b/c) | live MIR consumes the actual tap rate; doc matches code; gate locks it | **pending Matt's pick of fix approach** (BUG-053 §Fix approaches) |
 | CLEAN.3.8 | `[GAP-6]` Disk-full / write-failure graceful degradation (recorder, caches) | capacity check + honest stop, no silent corruption | Stretch |
 
 ### Phase 4 — Performance (June/Stretch, partly M7)
