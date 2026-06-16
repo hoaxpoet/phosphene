@@ -561,6 +561,13 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Running frame count for the analysis queue.
     var analysisFrameCount = 0
 
+    /// Last MIR analysis sample rate written to `session.log` (BUG-053). 0 until
+    /// the first frame logs it. Lets each session's artifact self-document the
+    /// rate the live MIR actually ran at — the verification signal for the
+    /// rate-reconfigure fix (key estimation is unreliable; the `os_log`
+    /// `MIR_RATE` line isn't persisted). Re-logged on any change (device swap).
+    var lastLoggedAnalysisRate: Float = 0
+
     /// 10-second EMA accumulator matching DEAM's track-level feature averages.
     var accumulatedFeatures = [Float](repeating: 0, count: 10)
 
