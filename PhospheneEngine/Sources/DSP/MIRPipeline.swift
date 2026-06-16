@@ -129,7 +129,13 @@ public final class MIRPipeline: @unchecked Sendable {
     /// installed by `setBeatGrid`; the anchor resets per track in `reset()`;
     /// the per-frame output lands on `FeatureVector.pulsePhase01/pulseAmp01`.
     private let beatPulseClock = BeatPulseClock()
-    private let nyquist: Float
+
+    /// Sample rate the pipeline (and its bin→Hz sub-analyzers) is configured
+    /// for. The live path adopts the actual tap rate via `setSampleRate(_:)`
+    /// once the tap installs (BUG-053); the offline path is constructed with
+    /// the file's rate directly. Read/written only on the analysis queue.
+    public private(set) var sampleRate: Float
+    private var nyquist: Float
     private let lock = NSLock()
 
     // MARK: - Init
@@ -156,6 +162,7 @@ public final class MIRPipeline: @unchecked Sendable {
         self.structuralAnalyzer = StructuralAnalyzer()
         self.beatPredictor = BeatPredictor()
         self.liveDriftTracker = LiveBeatDriftTracker()
+        self.sampleRate = sampleRate
         self.nyquist = sampleRate / 2.0
 
         logger.info("MIRPipeline created: \(binCount) bins, \(sampleRate) Hz")
@@ -499,5 +506,33 @@ public final class MIRPipeline: @unchecked Sendable {
         lastOnsetRateTime = 0
         lastRecordTime = 0
         lock.unlock()
+    }
+}
+
+// MARK: - Reconfigure
+
+extension MIRPipeline {
+
+    /// Adopt a new sample rate across every bin→Hz sub-analyzer + the centroid
+    /// Nyquist normalizer (BUG-053). The live pipeline is built before the tap
+    /// installs, so it starts at the default rate and switches to the real tap
+    /// rate on the first analysis frame (and on a device-swap rate change). The
+    /// FFT magnitude array is rate-independent, so this is the ONLY place the
+    /// live analysis learns the true rate. No-op when unchanged. Running
+    /// per-track state (beat grid, drift EMA, chroma/AGC accumulators) is
+    /// preserved. **Call on the analysis queue** (same serial context as
+    /// `process(...)`); `nyquist`/`sampleRate` are queue-confined.
+    ///
+    /// Housed in a same-file extension so it keeps private access to
+    /// `sampleRate`/`nyquist` without inflating the class's `type_body_length`.
+    public func setSampleRate(_ newSampleRate: Float) {
+        guard newSampleRate > 0, abs(newSampleRate - sampleRate) > 0.5 else { return }
+        spectralAnalyzer.setSampleRate(newSampleRate)
+        bandEnergyProcessor.setSampleRate(newSampleRate)
+        chromaExtractor.setSampleRate(newSampleRate)
+        beatDetector.setSampleRate(newSampleRate)
+        sampleRate = newSampleRate
+        nyquist = newSampleRate / 2.0
+        logger.info("MIR_RATE: reconfigured to \(newSampleRate) Hz")
     }
 }
