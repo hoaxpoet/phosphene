@@ -18,6 +18,7 @@ struct BeatThisManifest: Decodable {
         let file: String
         let shape: [Int]
         let bytes: Int
+        let sha256: String  // CLEAN.5.5: required — every entry must carry a digest
     }
 
     enum CodingKeys: String, CodingKey {
@@ -90,6 +91,7 @@ enum BeatThisWeightError: Error, Sendable {
     case tensorNotFound(String)
     case tensorFileMissing(String)
     case tensorSizeMismatch(String, expected: Int, got: Int)
+    case checksumMismatch(key: String, expected: String, got: String)
 }
 
 // MARK: - Loading
@@ -272,6 +274,9 @@ private func loadBeatThisTensor(key: String, manifest: BeatThisManifest) throws 
             expected: entry.bytes,
             got: raw.count
         )
+    }
+    try WeightChecksum.verify(raw, expected: entry.sha256, key: key) {
+        BeatThisWeightError.checksumMismatch(key: $0, expected: $1, got: $2)
     }
     let count = raw.count / MemoryLayout<Float>.size
     return raw.withUnsafeBytes { buf in
