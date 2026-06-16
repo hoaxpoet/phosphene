@@ -10,6 +10,12 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-16-203759] BUG-053 RESOLVED — live-MIR sample-rate fix validated on a 44.1 kHz file
+
+Matt's manual validation of CLEAN.3.7-fix (the SPM-untestable live-wiring leg). Session `2026-06-16T20-22-12Z` — Limo Wreck via 44.1 kHz local-file playback — logged `raw tap capture started sr=44100 Hz` then `MIR analysis rate → 44100 Hz (tap 44100 Hz)`: the live MIR adopted the file's real rate instead of the frozen 48 kHz default, end-to-end. The persisted `MIR analysis rate` line (`c68cc74`) was the signal; key estimation stayed out of it (unreliable — BUG-054). **BUG-053 → Resolved** (moved to `KNOWN_ISSUES.md §Resolved`; ENGINEERING_PLAN CLEAN.3.7-fix marked validated). Doc-status only, no code change.
+
+---
+
 ## [dev-2026-06-16-202717] DOC.8 — doc-merge safeguards: union-merge the release log + collision-free entry ids
 
 Every git conflict across the CLEAN.3.7 / BUG-053 / CLEAN.7.6b work this session was in two append-only doc logs (this file + ENGINEERING_PLAN §Recently Completed), never in code — two parallel sessions each prepending an entry at the same top-of-file region, plus hand-assigned `-a/-b/-c` ids colliding when sessions independently grabbed the next letter. Matt's pick (the cheap, targeted fixes):
