@@ -291,37 +291,25 @@ extension RenderPipeline {
         descriptor.colorAttachments[0].storeAction = .store
 
         if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) {
-            encoder.setRenderPipelineState(warpState.blitPipeline)
-            encoder.setFragmentTexture(warpState.composeTexture, index: 0)
-            // Beat pulse (Dragon Bloom only): a crisp per-beat pump+brighten at the
-            // comp/display stage (not fed back). Per-preset since D-143 — other presets
-            // (incl. marks-on-top canvas-hold presets like Skein) get 0 (identity).
-            let beatEnabled = mvWarpLock.withLock { mvWarpBeatPulseEnabled }
-            let beat = beatEnabled ? mvWarpBeatPulse(features: features, stems: stemFeatures) : 0
-            var post = mvWarpLock.withLock {
-                SIMD4<Float>(mvWarpInvert, mvWarpEcho, mvWarpGamma, beat)
-            }
-            encoder.setFragmentBytes(&post, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
-            bindCompStagePresetBuffer(encoder)
-            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            encodeMVWarpBlitContent(
+                encoder: encoder,
+                warpState: warpState,
+                features: features,
+                stemFeatures: stemFeatures)
             encoder.endEncoding()
         }
 
         commandBuffer.present(drawable)
-
-        // ── Swap: composeTexture becomes next frame's warpTexture ─────────────
-        mvWarpLock.withLock {
-            guard var state = mvWarpState else { return }
-            swap(&state.warpTexture, &state.composeTexture)
-            mvWarpState = state
-        }
+        swapMVWarpTextures()
     }
 
     // MARK: - Warp Pass Encoder
 
     /// Encodes the 32×24 vertex-grid warp pass to `warpState.composeTexture`.
+    /// `internal` (not private) so the headless seam in `RenderPipeline+MVWarpHeadless`
+    /// can run the identical warp pass (FA #66 — one code path for live + harness).
     @MainActor
-    private func encodeMVWarpPass(
+    func encodeMVWarpPass(
         commandBuffer: MTLCommandBuffer,
         features: inout FeatureVector,
         stemFeatures: StemFeatures,
