@@ -121,7 +121,8 @@ jobs:
             --filter PresetScorer \
             --filter SessionPlanner \
             --filter TransitionPolicy \
-            --filter BeatCardBuilder
+            --filter BeatCardBuilder \
+            --filter WeightChecksumTests
 
       - name: User-facing string lint (D-091)
         run: Scripts/check_user_strings.sh
