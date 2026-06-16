@@ -64,13 +64,23 @@ run_step() {
 
 # Additive extraction of test-summary lines from a log. Recognizes both
 # XCTest aggregate lines and swift-testing run-summary lines.
+#
+# CLEAN.5.3: a swift-testing-only suite (e.g. DocIntegrityTests) still emits the
+# XCTest aggregate "Executed 0 tests, with 0 failures" — misleading next to the
+# real "Test run with N tests … passed". When a swift-testing summary is present
+# AND the XCTest aggregate is zero, drop the zero line. Display-only; the verdict
+# logic reads xctest_failure_count + exit codes directly, so honesty is intact.
 summary_lines() {
   local log="$1"
-  {
-    grep -E "Test Suite 'All tests' (passed|failed)" "$log" | tail -2
-    grep -E "Executed [0-9]+ tests?," "$log" | tail -1
-    grep -E "Test run with [0-9]+ tests?.*(passed|failed)" "$log" | tail -2
-  } 2> /dev/null | sed 's/^[[:space:]]*//' | awk '!seen[$0]++'
+  local allsuite xctest swifttesting
+  allsuite="$(grep -E "Test Suite 'All tests' (passed|failed)" "$log" 2> /dev/null | tail -2)"
+  xctest="$(grep -E "Executed [0-9]+ tests?," "$log" 2> /dev/null | tail -1)"
+  swifttesting="$(grep -E "Test run with [0-9]+ tests?.*(passed|failed)" "$log" 2> /dev/null | tail -2)"
+  if [ -n "$swifttesting" ] && printf '%s' "$xctest" | grep -qE "Executed 0 tests?,"; then
+    xctest=""
+  fi
+  printf '%s\n%s\n%s\n' "$allsuite" "$xctest" "$swifttesting" \
+    | sed 's/^[[:space:]]*//' | awk 'NF' | awk '!seen[$0]++'
 }
 
 # Additive extraction of failing-test identifier lines (XCTest + swift-testing).
