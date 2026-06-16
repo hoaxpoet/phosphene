@@ -8,6 +8,21 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-15-j] CLEAN.5.1 CI green on GitHub (4 runs) + CLEAN.5.7 (checkout@v6)
+
+The fast gate from `[dev-2026-06-15-i]` is now **green on `main`** ([run #4](https://github.com/hoaxpoet/phosphene/actions/runs/27592398557), `86c6532`). It took four runs — **each red was a real CI-vs-dev environment gap, not a flake**, which is exactly what a first CI surfaces:
+
+1. **Run #1 (`macos-14`) red** — 18 errors, all `stored property … has non-sendable type 'any MTLDevice/MTLCommandQueue/MTLRenderPipelineState'`. macos-14 ships Xcode 16.2 / Swift 6.0.3, whose SDK doesn't mark Metal protocol types `Sendable`; dev (26.5) does. **Fix: `runs-on: macos-26`** (GA 2026-02; ships Xcode 26.5 — exact dev match). The build SDK must be Xcode 26; the deployment target stays macOS 14.0 via that SDK (the kickoff's "macos-14 matches 14.0" conflated build-SDK with run-target). Did **not** weaken production `Sendable` annotations.
+2. **Run #2 (`macos-26`) red** — `macos-26` has no preinstalled swiftlint, so the `|| brew install swiftlint` fallback pulled latest **0.63.3** vs dev's **0.63.2**; 0.63.3 stopped flagging `URL(string: <literal>)!` as `force_unwrapping`, turning two `// swiftlint:disable:next force_unwrapping` into `superfluous_disable_command` errors. **Fix: remove the force-unwrap** (`try #require(URL(string:))` — version-independent, honors the project `force_unwrapping=error` stance).
+3. **Run #3 red** — `PlaylistConnector`'s `appleMusic*` tests throw `.appleMusicNotRunning` on the headless runner (they pass on a dev Mac with Apple Music). "GPU/fixture-free" missed a third axis — **external-app runtime**. **Fix: drop `PlaylistConnector` from the allow-list** (it stays in the manual closeout gate, like the licensed-fixture suites).
+4. **Run #4 green** — build, swiftlint, doc gates, 12-filter logic subset (14 suites), and both lint scripts all pass; the Node-20 deprecation annotation is gone.
+
+**CLEAN.5.7** (folded in): `actions/checkout@v4 → @v6` (Node 24; GitHub deprecates Node-20 actions 2026-06-16) — the only Node-based action in the workflow.
+
+**Durable lessons** (now in the workflow comments + `[[project_clean_audit_2026_06_13]]`): the macos image's Xcode determines whether Metal types are `Sendable`; CI tool versions must match dev or pin (→ **CLEAN.5.4**, kickoff drafted at `docs/prompts/CLEAN_5.4_REPRODUCIBILITY_KICKOFF.md`); the CI logic subset must be GPU-, fixture-, **and external-app-runtime-free**; `swift test --filter` matches the **type** name, not the `@Suite("display")` string. **Still pending Matt:** the GitHub branch-protection "required check" toggle (the only part of 5.1's done-when that isn't a code artifact). Not visually verifiable.
+
+---
+
 ## [dev-2026-06-15-i] CLEAN.5.1/5.2/5.3/5.6 — CI fast gate on GitHub
 
 First CI for the project: a **fast gate on GitHub-hosted runners** (Matt's strategy, 2026-06-15) — required-green on `main`, with the heavy suites left on the manual `Scripts/closeout_evidence.sh` gate. Code-complete and locally validated; the green-on-GitHub run + required-check toggle need Matt's push.
