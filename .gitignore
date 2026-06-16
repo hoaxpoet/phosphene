@@ -13,7 +13,7 @@ DerivedData/
 *.profraw
 *.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/
-*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+*.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/*
 xcuserdata/
 *.pbxuser
 *.mode1v3
@@ -29,6 +29,10 @@ xcuserdata/
 .build/
 .swiftpm/
 Package.resolved
+# CLEAN.5.4c: commit the two resolved files CI builds from (pin transitive SPM
+# deps). Anchored '/' so PhospheneTools/ and worktree copies stay ignored.
+!/PhospheneEngine/Package.resolved
+!/PhospheneApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
 # Metal
 *.metallib
