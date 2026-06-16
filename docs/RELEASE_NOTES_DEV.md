@@ -8,6 +8,36 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-16-e] CLEAN.3.7-fix — live MIR adopts the actual capture rate (BUG-053)
+
+Matt's call on the 3.7a verdict: **fix it properly.** The live `MIRPipeline` was built at app init (before the tap installs) with the 48 kHz default and `process()` carried no rate, so its sub-analyzers stayed frozen at 48 kHz bin→Hz tables regardless of the real capture rate.
+
+**Fix.** Each rate-sensitive sub-analyzer (`SpectralAnalyzer`/`BandEnergyProcessor`/`ChromaExtractor`/`BeatDetector`) gains an in-place `setSampleRate(_:)` that recomputes its bin→Hz tables under its lock, **preserving running state** (AGC/chroma accumulators, onset history). `MIRPipeline.setSampleRate` (a same-file extension, to keep the class under `type_body_length`) forwards to the four and recomputes its Nyquist. `VisualizerEngine+Audio.processAnalysisFrame` calls it with the captured `tapSampleRate` — on the **analysis queue, off the RT thread** — so it's a **no-op on a 48 kHz tap** (zero behavioural change for the common config) and a recompute on a 44.1 kHz path or device-swap (couples to G1/CLEAN.1.5). Also replaced the **hardcoded 24 kHz mood-centroid divisor** with the live Nyquist: pre-fix the bin over-count and the fixed divisor *cancelled* (so the normalized centroid/mood were ≈ right by accident); fixing the analyzer alone would have reintroduced an ~8.8 % mood error, so the paired change keeps mood ≈ unchanged while making the raw centroid honest.
+
+**Scope of the real-world bug.** Not just rare hardware — **local-file playback of 44.1 kHz files** (a normal feature) fed 44.1 kHz to the live MIR, so every such session mapped chroma/key ~1.5 semitones sharp + bands ~8.8 % low. The *offline* session-prep MIR was already correct (built with the file's rate).
+
+**Gate.** `MIRSampleRateReconfigureTests` (GPU-free, on the CI fast-gate allow-list): raw centroid scales with the rate (48k/44.1k ratio), a fixed spike maps to a different pitch class across rates, a band cutoff lands on a different bin, sub-analyzer tables recompute, defensive no-op/zero-rate guards. The live wiring (VisualizerEngine) isn't SPM-testable (Metal) — that leg is the **manual 44.1 kHz / LF-playback key check** (BUG-053 §Status), same documented limit as `TapSampleRateRegressionTests`.
+
+**Doc reconcile (3.7b).** `Audio/Protocols.swift` (`separate`'s rate is the *separator's* internal 44.1 kHz target, not a pipeline rate); ARCHITECTURE §Audio Analysis Tuning gains a **Sample-rate contract** subsection (per-stage rates) and the centroid/mood/key cross-path notes corrected (centroid/mood ≈ unchanged by the fix; key now correct per path). Default-trap framing: the 48 kHz/44.1 kHz construction defaults stay (tests rely on them) — the live path now actively reconfigures rather than relying on the default; `check_sample_rate_literals.sh` (bans `44100`, untouched) stays green.
+
+Engine + app build green; swiftlint `--strict` 0; analyzer/MIR/stem/DocIntegrity suites green (61 GPU-free). Commits `91a973e` (code+test+CI) + `07bd2aa` (doc reconcile). **BUG-053: fix landed, pending Matt's manual validation** (not yet marked Resolved).
+
+---
+
+## [dev-2026-06-16-d] CLEAN.3.7a — Sample-rate contract trace (GAP-2): live-tap MIR is frozen at 48 kHz (BUG-053)
+
+Diagnosis-only increment (the kickoff's "trace & decide … commit the trace and stop if the fix is non-trivial"). Traced the tap sample rate end-to-end and **refuted the pre-kickoff hypothesis** that the streaming MIR is already rate-aware.
+
+**Finding (BUG-053, P2):** the **live** `MIRPipeline` — the one `processAnalysisFrame` runs every frame — is constructed once at app init with `MIRPipeline()`, i.e. the `sampleRate: Float = 48000` **default** (`VisualizerEngine.swift:740`), and `MIRPipeline.process()` takes **no** sample-rate argument. Its four sub-analyzers (`SpectralAnalyzer`/`BandEnergyProcessor`/`ChromaExtractor`/`BeatDetector`) precompute their bin→Hz tables at init from 48000 and never see the live rate. The FFT's per-call `sampleRate: rate` only populates `FFTResult.binResolution`/`dominantFrequency` *metadata* — the magnitude array handed downstream is rate-independent — so passing the live rate to the FFT does **not** make the MIR rate-aware. The captured `tapSampleRate` is threaded to the **stem** path but never the live MIR.
+
+**Impact (only when tap ≠ 48 kHz):** chroma/key estimate ~1.5 semitones sharp (`12·log2(48000/44100)`), band cutoffs ~8.8 % low; normalized centroid/rolloff cancel out, tempo/flux are rate-independent. **Masked on the common 48 kHz config** (the tap's typical rate + `readTapFormat`'s fallback are both 48 kHz), so silent today — manifests on a 44.1 kHz output device or a device-swap to one (couples to **G1/CLEAN.1.5**). The **offline** session-prep MIR is correct (`SessionPreparer+Analysis.swift:256` passes the file's real rate); the stem/Beat-This! resamples are correct. `check_sample_rate_literals.sh` bans `44100` but not `48000`, so it never caught this.
+
+**Decision:** real (latent) defect → per the Defect Protocol the fix is a **separate increment** (`CLEAN.3.7-fix`), architectural (the MIR is built before the tap installs and holds per-track state), **pending Matt's pick of approach** — re-init-on-rate-change (honors the `SystemAudioCapture.sampleRate:66-71` contract, couples to G1) vs per-call rate threading vs make-the-48k-assumption-explicit-and-loud. 3.7b/c (doc reconcile + default-trap removal + regression gate) fold into that increment.
+
+**Changed:** docs only — `KNOWN_ISSUES.md` (BUG-053 + index), `CODE_AUDIT_2026-06-13.md` (G2 row traced + CLEAN.3.7 backlog split), `ENGINEERING_PLAN.md` (3.7a entry). No production code changed → not visually verifiable; no new tests (the gate ships with the fix). Doc gates + lints green.
+
+---
+
 ## [dev-2026-06-16-c] CLEAN.7.12 — `UMABuffer` concurrency test made deterministic
 
 `UMABufferExtendedTests.test_concurrentWriteRead_noDataRace` raced a **fixed 30 s** `DispatchGroup.wait(timeout:)` against 200 trivially-fast concurrent blocks (100 writes + 100 reads). Under the full ~1479-test parallel `swift test` run, GCD thread-pool scheduling latency exceeded the deadline and the wait returned `.timedOut` (observed 34.9 s, CLEAN.7.6 closeout, 2026-06-16); isolated, the whole class runs in 0.048 s. The budget had nothing to do with the work — the blocks are lock-free and cannot deadlock; only pool-drain latency under contention varies.

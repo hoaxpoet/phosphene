@@ -108,7 +108,12 @@ public protocol StemSeparating: AnyObject, Sendable {
     /// - Parameters:
     ///   - audio: Interleaved float32 PCM samples.
     ///   - channelCount: Number of channels (1 for mono, 2 for stereo).
-    ///   - sampleRate: Sample rate in Hz (will be resampled to 44100 if different).
+    ///   - sampleRate: Sample rate of the supplied audio, in Hz. The stem
+    ///     separator's internal model rate is 44100 Hz (`StemSeparator.modelSampleRate`)
+    ///     and it resamples to that if the input differs — this is the SEPARATOR's
+    ///     contract, not a global pipeline rate. The live FFT/MIR analysis runs at
+    ///     the actual capture rate end-to-end (BUG-053); see ARCHITECTURE
+    ///     §Audio Analysis Tuning → Sample-rate contract.
     /// - Returns: Separation result with metadata and sample count.
     func separate(audio: [Float], channelCount: Int, sampleRate: Float) throws -> StemSeparationResult
 
