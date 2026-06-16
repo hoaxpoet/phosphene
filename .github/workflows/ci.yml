@@ -23,15 +23,21 @@ concurrency:
 
 jobs:
   fast-gate:
-    runs-on: macos-14
+    # macos-26 (GA 2026-02; arm64) ships Xcode 26 — required: the codebase stores
+    # Metal protocol types (MTLDevice/MTLCommandQueue/MTLRenderPipelineState) in
+    # Sendable types, and those `: Sendable` SDK conformances only exist from the
+    # Xcode-26 SDK. macos-14 (Xcode 16.2 / Swift 6.0.3) red-built all 18 with
+    # "non-sendable type 'any MTL…'". The BUILD SDK must be Xcode 26; the
+    # DEPLOYMENT TARGET stays macOS 14.0 (set in pbxproj / Package.swift), which
+    # that SDK still targets — build SDK != run target.
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
         with:
           lfs: true # build bundles ML weights (PhospheneEngine/Sources/ML/Weights/**/*.bin)
 
-      # Pick the newest installed Xcode — the project is Swift 6.0 language mode
-      # (needs Xcode 16+); the runner default may be older. Toolchain PINNING is
-      # CLEAN.5.4 (out of scope here); this just avoids a stale-default red.
+      # Pick the newest installed Xcode (26.x on macos-26); the runner default may
+      # be older. Toolchain PINNING to an exact 26.x is CLEAN.5.4 (out of scope).
       - name: Select Xcode
         run: |
           sel=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1 || true)
