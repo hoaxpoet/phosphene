@@ -146,6 +146,16 @@ extension VisualizerEngine {
         // the real rate. No-op once matched; recomputes the bin→Hz tables on a
         // device-swap rate change (couples to G1/CLEAN.1.5).
         mir.setSampleRate(Float(tapSampleRate))
+        // BUG-053 observability: persist the analysis rate to session.log the
+        // first frame it's established and on any change (device swap), so the
+        // session artifact self-documents the rate the live MIR actually ran at
+        // — the verification signal for this fix (key estimation is unreliable;
+        // the `os_log` MIR_RATE line isn't kept in the artifact). `log()`
+        // dispatches to its own queue, so it's safe from the analysis queue.
+        if mir.sampleRate != lastLoggedAnalysisRate {
+            lastLoggedAnalysisRate = mir.sampleRate
+            sessionRecorder?.log("MIR analysis rate → \(Int(mir.sampleRate)) Hz (tap \(Int(tapSampleRate)) Hz)")
+        }
         let mirT0 = DispatchTime.now().uptimeNanoseconds
         let fv = mir.process(
             magnitudes: magnitudes,
