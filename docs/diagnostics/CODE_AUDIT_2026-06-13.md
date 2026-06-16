@@ -258,6 +258,7 @@ IDs are proposed (`CLEAN.<phase>.<n>`); on approval they map into ENGINEERING_PL
 | CLEAN.5.4 | `[GAP-13]` Build reproducibility: pin toolchain + Package.resolved audit + LFS-present check | documented reproducible build; missing-LFS fails fast | Stretch — dev toolchain is **Xcode 26.5 / Swift 6.3**, CI is `macos-14` (Xcode 16); code is Swift 6.0 language mode so expected to compile, but toolchain pin belongs here |
 | CLEAN.5.5 | `[GAP-11]` Verify ML weight loader validates `sha256`; extend coverage to stem manifest | load-time checksum gate confirmed/added | Stretch |
 | CLEAN.5.6 ✅ | Reconcile RUNBOOK / RELEASE_CHECKLIST with real gate structure | docs match closeout + CI reality | ✅ 06-15 — RUNBOOK §Gate structure added (CI fast gate vs manual closeout) |
+| CLEAN.5.7 ✅ | Keep GitHub Actions on a supported Node runtime (Node 20 actions deprecated 2026-06-16) | actions on Node 24; no deprecation warning | ✅ 06-15 — `actions/checkout@v4` → `@v6` (the only Node-based action; runs on Node 24). Exact-SHA pinning is CLEAN.5.4 |
 
 ### Phase 6 — Capability (goal 3) (After June; M7 + premise-gated)
 | ID | Item | Timing |
