@@ -161,11 +161,21 @@ import Metal
         }
     }
 
-    // Use a generous timeout — GCD thread pool scheduling on a loaded machine
-    // can exceed 5s for 200 concurrent blocks. The operations themselves are
-    // trivially fast; the bottleneck is thread pool contention during tests.
-    let result = group.wait(timeout: .now() + 30)
-    #expect(result == .success, "Concurrent access should complete without deadlock")
+    // Wait for the work itself to drain — no wall-clock deadline. The blocks are
+    // trivially fast and lock-free, so they cannot deadlock; the only variable is
+    // GCD thread-pool scheduling latency under full-suite contention. A fixed
+    // timeout raced that latency and flaked (CLEAN.7.6 closeout); awaiting
+    // completion directly is deterministic — it returns exactly when the 200
+    // blocks finish, however loaded the pool is. (deterministic-over-budget rule,
+    // CLEAN.7.9/7.10/7.11.) A genuine deadlock regression surfaces as a CI hang.
+    group.wait()
+
+    // Smoke-level post-condition: each writer wrote a distinct index, so after the
+    // barrier every written slot holds its value. This catches gross corruption /
+    // lost writes; true data-race detection still requires TSan (see file header).
+    for i in 0..<100 {
+        #expect(buf[i] == Float(i), "Concurrent write to index \(i) did not land")
+    }
 }
 
 // MARK: - Float Fast-Path Tests
