@@ -61,20 +61,23 @@ jobs:
       - name: Doc gates (DocIntegrityTests)
         run: swift test --package-path PhospheneEngine --filter DocIntegrityTests
 
-      # Option A lean allow-list (CLEAN.5.1). Explicit GPU/fixture-free suites,
-      # ~130 logic tests. NOTE: `--filter` matches the TYPE name (struct/class),
-      # NOT the @Suite("display") string — e.g. `PresetScorer` matches
-      # `struct PresetScorerTests`, `DefaultPresetScorer` would match nothing.
+      # Option A lean allow-list (CLEAN.5.1). Suites with NO GPU/Metal, NO
+      # licensed fixtures, and NO external-app runtime (headless runner has no
+      # Apple Music — `PlaylistConnector`'s appleMusic* tests throw
+      # `.appleMusicNotRunning` here though they pass on a dev Mac; that suite
+      # stays in the manual closeout gate, like the licensed-fixture suites).
+      # NOTE: `--filter` matches the TYPE name (struct/class), NOT the
+      # @Suite("display") string — `PresetScorer` matches `struct
+      # PresetScorerTests`; `DefaultPresetScorer` would match nothing.
       # UNDER-COVERS BY DESIGN: a new pure-logic suite is NOT run until added
       # here. Widening to a full-suite-minus-skip-list is the CLEAN.5.1 Option-B
-      # follow-up (prove macos-14 has a working Metal device first).
-      - name: Logic tests (GPU/fixture-free subset)
+      # follow-up (prove the macos-26 runner has a working Metal device first).
+      - name: Logic tests (GPU/fixture/external-app-free subset)
         run: |
           swift test --package-path PhospheneEngine \
             --filter ConcurrencyAuditProbeTests \
             --filter SpotifyTokenProvider \
             --filter SpotifyWebAPIConnector \
-            --filter PlaylistConnector \
             --filter MetadataPreFetcher \
             --filter StreamingMetadata \
             --filter MoodClassifierGolden \
