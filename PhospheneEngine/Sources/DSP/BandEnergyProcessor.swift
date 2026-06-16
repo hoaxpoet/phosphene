@@ -109,13 +109,20 @@ public final class BandEnergyProcessor: @unchecked Sendable {
     // MARK: - Configuration
 
     public let binCount: Int
-    public let sampleRate: Float
 
-    /// Precomputed bin ranges for 3-band: [(startBin, endBin)] exclusive end.
-    private let bandRanges3: [(start: Int, end: Int)]
+    /// Sample rate in Hz. Mutable via `setSampleRate(_:)` so the live pipeline
+    /// can adopt the actual tap rate once it is known (BUG-053).
+    public private(set) var sampleRate: Float
 
-    /// Precomputed bin ranges for 6-band.
-    private let bandRanges6: [(start: Int, end: Int)]
+    /// FFT size used to derive band→bin mappings; needed to recompute the
+    /// ranges on a `setSampleRate(_:)` reconfigure.
+    private let fftSize: Int
+
+    /// Bin ranges for 3-band: [(startBin, endBin)] exclusive end. Recomputed on rate change.
+    private var bandRanges3: [(start: Int, end: Int)]
+
+    /// Bin ranges for 6-band. Recomputed on rate change.
+    private var bandRanges6: [(start: Int, end: Int)]
 
     // MARK: - AGC State
 
@@ -182,23 +189,41 @@ public final class BandEnergyProcessor: @unchecked Sendable {
     public init(binCount: Int = 512, sampleRate: Float = 48000, fftSize: Int = 1024) {
         self.binCount = binCount
         self.sampleRate = sampleRate
+        self.fftSize = fftSize
 
         let binResolution = sampleRate / Float(fftSize)
-
-        // Precompute bin ranges for each band.
-        self.bandRanges3 = Self.bands3.map { band in
-            let start = max(0, Int(floor(band.low / binResolution)))
-            let end = min(binCount, Int(ceil(band.high / binResolution)))
-            return (start, end)
-        }
-
-        self.bandRanges6 = Self.bands6.map { band in
-            let start = max(0, Int(floor(band.low / binResolution)))
-            let end = min(binCount, Int(ceil(band.high / binResolution)))
-            return (start, end)
-        }
+        self.bandRanges3 = Self.ranges(for: Self.bands3, binResolution: binResolution, binCount: binCount)
+        self.bandRanges6 = Self.ranges(for: Self.bands6, binResolution: binResolution, binCount: binCount)
 
         logger.info("BandEnergyProcessor created: \(binCount) bins, 3+6 bands")
+    }
+
+    /// Map a set of Hz bands to inclusive-start/exclusive-end bin ranges.
+    private static func ranges(
+        for bands: [BandRange], binResolution: Float, binCount: Int
+    ) -> [(start: Int, end: Int)] {
+        bands.map { band in
+            let start = max(0, Int(floor(band.low / binResolution)))
+            let end = min(binCount, Int(ceil(band.high / binResolution)))
+            return (start, end)
+        }
+    }
+
+    // MARK: - Reconfigure
+
+    /// Adopt a new sample rate, recomputing the band→bin ranges (BUG-053).
+    /// Running AGC/smoothing state is preserved. No-op when unchanged. Call on
+    /// the same serial context as `process(...)` — recompute runs under `lock`.
+    public func setSampleRate(_ newSampleRate: Float) {
+        guard newSampleRate > 0 else { return }
+        lock.lock()
+        defer { lock.unlock() }
+        guard abs(newSampleRate - sampleRate) > 0.5 else { return }
+        sampleRate = newSampleRate
+        let binResolution = newSampleRate / Float(fftSize)
+        bandRanges3 = Self.ranges(for: Self.bands3, binResolution: binResolution, binCount: binCount)
+        bandRanges6 = Self.ranges(for: Self.bands6, binResolution: binResolution, binCount: binCount)
+        logger.info("BandEnergyProcessor reconfigured: \(newSampleRate) Hz")
     }
 
     // MARK: - Processing

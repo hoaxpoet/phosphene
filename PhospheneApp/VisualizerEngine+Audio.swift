@@ -139,6 +139,13 @@ extension VisualizerEngine {
         // attributed from features.csv. No allocations on the hot path; cost
         // of the measurement itself is sub-microsecond.
         let mir = mirPipeline
+        // BUG-053: the live MIR is constructed at app init, before the tap
+        // installs and its rate is known, so it starts at the 48 kHz default.
+        // Adopt the actual tap rate here — on the analysis queue, off the RT
+        // thread — so every bin→Hz stage (chroma/key, bands, centroid) reads
+        // the real rate. No-op once matched; recomputes the bin→Hz tables on a
+        // device-swap rate change (couples to G1/CLEAN.1.5).
+        mir.setSampleRate(Float(tapSampleRate))
         let mirT0 = DispatchTime.now().uptimeNanoseconds
         let fv = mir.process(
             magnitudes: magnitudes,
@@ -283,7 +290,12 @@ extension VisualizerEngine {
 
     /// EMA-accumulate the 10 features that the mood classifier consumes.
     func accumulateMoodFeatures(fv: FeatureVector, mir: MIRPipeline) {
-        let nyquist: Float = 24000.0
+        // BUG-053: normalize by the live Nyquist (tap rate / 2), not a hardcoded
+        // 24 kHz. With the rate-aware SpectralAnalyzer, `rawSmoothedCentroid` is
+        // now true Hz; a fixed 24 kHz divisor would mis-scale the mood centroid
+        // feature on any tap ≠ 48 kHz (previously the over-count and the fixed
+        // divisor cancelled — fixing one without the other reintroduces error).
+        let nyquist = mir.sampleRate / 2.0
         let centroidNorm = mir.rawSmoothedCentroid / nyquist
         let frameFeatures: [Float] = [
             fv.subBass, fv.lowBass, fv.lowMid,

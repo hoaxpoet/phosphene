@@ -47,16 +47,21 @@ public final class SpectralAnalyzer: @unchecked Sendable {
     /// Number of magnitude bins.
     public let binCount: Int
 
-    /// Sample rate in Hz.
-    public let sampleRate: Float
+    /// Sample rate in Hz. Mutable via `setSampleRate(_:)` so the live pipeline
+    /// can adopt the actual tap rate once it is known (BUG-053).
+    public private(set) var sampleRate: Float
+
+    /// FFT size used to derive the bin→Hz mapping. Needed to recompute the
+    /// frequency table on a `setSampleRate(_:)` reconfigure.
+    private let fftSize: Int
 
     /// Frequency resolution per bin (sampleRate / fftSize).
-    public let binResolution: Float
+    public private(set) var binResolution: Float
 
     // MARK: - Pre-allocated Buffers
 
-    /// Frequency value for each bin index, precomputed at init.
-    private let frequencyBins: [Float]
+    /// Frequency value for each bin index, recomputed on every rate change.
+    private var frequencyBins: [Float]
 
     /// Previous frame's magnitudes for flux computation.
     private var previousMagnitudes: [Float]
@@ -104,6 +109,7 @@ public final class SpectralAnalyzer: @unchecked Sendable {
     public init(binCount: Int = 512, sampleRate: Float = 48000, fftSize: Int = 1024) {
         self.binCount = binCount
         self.sampleRate = sampleRate
+        self.fftSize = fftSize
         self.binResolution = sampleRate / Float(fftSize)
 
         // Precompute frequency for each bin.
@@ -115,6 +121,28 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         self.squaredBuffer = [Float](repeating: 0, count: binCount)
 
         logger.info("SpectralAnalyzer created: \(binCount) bins, \(sampleRate) Hz")
+    }
+
+    // MARK: - Reconfigure
+
+    /// Adopt a new sample rate, recomputing the bin→Hz frequency table.
+    ///
+    /// BUG-053: the live pipeline constructs at a default rate before the tap
+    /// installs; this lets it switch to the actual tap rate (and a device-swap
+    /// rate change) without rebuilding. Running smoothing state is preserved.
+    /// No-op when the rate is unchanged. Call on the same serial context as
+    /// `process(...)` (the analysis queue) — the recompute runs under `lock`.
+    public func setSampleRate(_ newSampleRate: Float) {
+        guard newSampleRate > 0 else { return }
+        lock.lock()
+        defer { lock.unlock() }
+        guard abs(newSampleRate - sampleRate) > 0.5 else { return }
+        sampleRate = newSampleRate
+        binResolution = newSampleRate / Float(fftSize)
+        for i in 0..<binCount {
+            frequencyBins[i] = Float(i) * binResolution
+        }
+        logger.info("SpectralAnalyzer reconfigured: \(newSampleRate) Hz")
     }
 
     // MARK: - Processing
