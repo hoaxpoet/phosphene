@@ -8,6 +8,18 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-16-f] CLEAN.7.6b Stage 1 (partial) — flash-safety gate now measures Nimbus (3/7)
+
+CLEAN.7.6 left the photosensitivity gate measuring 2 of 7 certified presets (FFO + Murmuration); the other 5 rendered static in the single-pass `FeatureVector` harness and were tracked in `unmeasurableInHarness` (never asserted safe). Stage 1's goal: faithfully measure the 5 by reproducing their real render paths headless.
+
+**Scoping correction (verified against the code before building):** the 5 are not one problem. Only **Nimbus** is a `.direct` preset whose music response is a CPU follower buffer — cheaply reproducible in the existing single-pass harness. The other 4 need multi-pass headless rendering: **Lumen Mosaic / Dragon Bloom / Fata Morgana** are rayMarch G-buffer chains (Lumen is `.rayMarch`+`.postProcess`, *not* a single-pass follower as first assumed), and **Skein** needs the mvWarp feedback ping-pong. A prior harness effort (`MaterialRenderHarness`) explicitly rejected driving the full pipeline headless as too much scaffolding. **Matt's call: ship Nimbus now, the multi-pass 4 as a separate sub-increment.**
+
+**This increment (Nimbus):** `renderLuminanceSequence` now constructs `NimbusState(device:)` for the Nimbus preset, ticks it per frame with the worst-case drive, and binds its live slot-6 state buffer instead of the zeroed one. `StemFeatures.zero` is correct for the 3 s window — Nimbus's directional stem lobes are gated out by its ~9–13 s cold-start ramp, so the full-frame flash signal is the FeatureVector-driven whole-body kick/bloom, which the beat train drives from frame 1. Nimbus removed from `unmeasurableInHarness`.
+
+**Result:** `Nimbus: MEASURED | 0.00 flashes/s — SAFE | luma 0.009…0.035 (Δ0.026)`. Gate green (20 cases). **G9 coverage 2/7 → 3/7** (FFO, Murmuration, Nimbus all 0 flashes/s SAFE). Test-only, no production delta, no M7. The remaining 4 (rayMarch + feedback) are the **A-next multi-pass headless harness** sub-increment (CLEAN.7.6b Stage 1b), per `docs/prompts/CLEAN_7.6b_PHOTOSENSITIVITY_RUNTIME_KICKOFF.md`. Stage 2 (runtime clamp, `[M7]`) unchanged.
+
+---
+
 ## [dev-2026-06-16-e] CLEAN.3.7-fix — live MIR adopts the actual capture rate (BUG-053)
 
 Matt's call on the 3.7a verdict: **fix it properly.** The live `MIRPipeline` was built at app init (before the tap installs) with the 48 kHz default and `process()` carried no rate, so its sub-analyzers stayed frozen at 48 kHz bin→Hz tables regardless of the real capture rate.

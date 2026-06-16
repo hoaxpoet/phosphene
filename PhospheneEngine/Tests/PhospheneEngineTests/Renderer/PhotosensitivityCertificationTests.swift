@@ -22,9 +22,12 @@
 // the FeatureVector in that pass — verified: Ferrofluid Ocean and Murmuration
 // (both SAFE). The other certified presets render STATIC here because their
 // music response arrives via paths this harness does not run:
-//   - Lumen Mosaic, Nimbus: CPU follower-state buffer (slots 6/8) — zeroed here.
-//   - Dragon Bloom, Fata Morgana: rayMarch — need the multi-pass G-buffer chain.
-//   - Skein: painterly — needs feedback-texture history.
+//   - Nimbus: `.direct` + CPU follower-state buffer (slot 6). CLEAN.7.6b ticks
+//     the real NimbusState in `renderLuminanceSequence`, so it is now MEASURED.
+//   - Lumen Mosaic, Dragon Bloom, Fata Morgana: rayMarch multi-pass G-buffer
+//     chain (Lumen is rayMarch+postProcess, not a single-pass follower).
+//   - Skein: painterly — needs mvWarp feedback-texture history.
+// The latter four need the A-next multi-pass headless harness (sub-increment).
 // A static render is NEVER asserted "safe" (that would be a vacuous pass — the
 // cardinal sin for a safety gate). Such presets are tracked in
 // `unmeasurableInHarness` and the gate FAILS LOUD on drift: if a known-static
@@ -66,7 +69,11 @@ struct PhotosensitivityCertificationTests {
     /// gate FAILS LOUD on drift rather than silently passing them. Closing these
     /// out is the A-next runtime-clamp increment (real RenderPipeline, headless).
     static let unmeasurableInHarness: Set<String> = [
-        "Lumen Mosaic", "Nimbus", "Dragon Bloom", "Fata Morgana", "Skein",
+        // CLEAN.7.6b Stage 1 now measures Nimbus (`.direct` + follower state,
+        // ticked in `renderLuminanceSequence`). The remaining four need the
+        // multi-pass headless harness (follow-up sub-increment): Lumen / Dragon
+        // Bloom / Fata Morgana (rayMarch G-buffer chain) + Skein (mvWarp feedback).
+        "Lumen Mosaic", "Dragon Bloom", "Fata Morgana", "Skein",
     ]
 
     // MARK: - Gate
@@ -229,6 +236,18 @@ struct PhotosensitivityCertificationTests {
             scene = buf
         }
 
+        // CLEAN.7.6b Stage 1: Nimbus is a `.direct` preset whose music response
+        // is computed by a CPU follower engine and fed to the shader at fragment
+        // buffer 6 — zeroed in the single-pass harness, so it otherwise renders
+        // static. Reproduce the engine: construct it, tick it per frame (in the
+        // loop below), and bind its live buffer. `StemFeatures.zero` is correct
+        // for the 3 s window — Nimbus's directional stem lobes are gated out by
+        // its ~9-13 s cold-start ramp, so the FULL-FRAME flash signal is the
+        // FeatureVector-driven whole-body kick/bloom, which the worst-case beat
+        // train drives from frame 1.
+        let nimbusState: NimbusState? =
+            preset.descriptor.name == "Nimbus" ? NimbusState(device: ctx.device) : nil
+
         var luma: [Double] = []
         luma.reserveCapacity(features.count)
         var pixels = [UInt8](repeating: 0, count: size * size * 4)
@@ -253,7 +272,15 @@ struct PhotosensitivityCertificationTests {
             enc.setFragmentBuffer(stem, offset: 0, index: 3)
             if let sceneBuf = scene { enc.setFragmentBuffer(sceneBuf, offset: 0, index: 4) }
             enc.setFragmentBuffer(hist, offset: 0, index: 5)
-            enc.setFragmentBuffer(slot, offset: 0, index: 6)
+            // Follower-state presets (Nimbus): tick the real engine with this
+            // frame's drive and bind its live state buffer at slot 6, so the
+            // pass reads the genuine per-frame response instead of a zeroed slot.
+            if let ns = nimbusState {
+                ns.tick(deltaTime: fv.deltaTime, features: fv, stems: .zero)
+                enc.setFragmentBuffer(ns.stateBuffer, offset: 0, index: 6)
+            } else {
+                enc.setFragmentBuffer(slot, offset: 0, index: 6)
+            }
             enc.setFragmentBuffer(slot, offset: 0, index: 7)
             enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
             enc.endEncoding()
