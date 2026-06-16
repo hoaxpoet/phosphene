@@ -8,6 +8,17 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-16-c] CLEAN.7.13 — `RenderPipelineICBTests` ICB-frame perf assertion made contention-robust
+
+The structural twin of CLEAN.7.10, surfaced under the full ~1469-test parallel `swift test` during the CLEAN.7.12 closeout. `RenderPipelineICBTests.test_gpuDrivenRendering_cpuFrameTimeReduced` gated one **warm ICB frame** (blit + compute + render) at `< 2 ms` via a **single `Date()` sample** around the submit — the most contention-fragile shape there is. Under the parallel suite a saturated GPU/CPU inflated that lone submit past 2 ms (the case-level wall time was a benign 0.277 s; the *timed inner submit* is what blew the gate); isolated, the test passes in ~0.37 s. Not a real perf regression — a single-sample timing artifact.
+
+- **Fix (copies CLEAN.7.10 verbatim).** Keep the 2 ms gate, drop the flake: assert the **minimum of 8 warm samples** instead of one. Contention can only ADD latency to a GPU submit, never subtract it, so the min across N warm runs is the clean estimate of true cost and is robust to a few starved samples — the gate stays at 2 ms and still traps a real regression. Per Matt's deterministic-over-budget-widening rule (`feedback_deterministic_tests_over_budget_widening`); the threshold is **not** loosened. The `measure {}` variance block (10 iterations, reports average) is unchanged.
+- **Scope.** Test-only — the ICB renderer path (`IndirectCommandBufferState`, the blit/compute/render encode helpers) is untouched, no production delta. One file changed: `RenderPipelineICBTests.swift`.
+
+**Verified:** `swift test --filter RenderPipelineICBTests` green in isolation. Same flake class as CLEAN.7.9/7.10/7.11/7.12. `KNOWN_ISSUES §Pre-existing Flakes` (Resolved 2026-06-16) + `ENGINEERING_PLAN.md` (CLEAN.7.13 row). Not visually verifiable.
+
+---
+
 ## [dev-2026-06-16-b] CLEAN.7.6 — photosensitivity flash-safety: enforced measurement gate (partial), runtime clamp deferred to A-next
 
 G9 was the only open *safety* gap (P1) — flash-safety was per-preset convention (`SHADER_CRAFT` anti-strobe + the FFO anti-references) with **no enforced output-side clamp**; CLEAN.2.5a's hardened-runtime/notarization path made shipping outside the dev box real. This lands the **measurement half** of an enforced Harding/WCAG 2.3.1 invariant (≤ 3 flashes/s); the look-altering runtime clamp is a deliberate A-next follow-up (it would force a golden regen + M7 re-review of every certified preset). `[DEC D-164]`.
