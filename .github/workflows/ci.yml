@@ -1,0 +1,86 @@
+# Phosphene CI — fast gate (CLEAN.5.1 / 5.3).
+#
+# Scope (decided 2026-06-15): build + lint + doc/string/sample-rate gates +
+# a GPU/fixture-free LOGIC-TEST subset, required-green on `main`. The heavy
+# GPU + licensed-fixture + perf-timing suites stay the manual
+# `Scripts/closeout_evidence.sh` gate — see docs/RUNBOOK.md §Gate structure.
+#
+# Why not the full suite here: 74 tests create a Metal device (fail, not skip,
+# without a GPU), the tempo fixtures are licensed/gitignored, and perf-timing
+# asserts flake under shared-runner contention.
+
+name: CI fast gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Supersede in-flight runs on a new push to the same ref (saves runner minutes).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast-gate:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true # build bundles ML weights (PhospheneEngine/Sources/ML/Weights/**/*.bin)
+
+      # Pick the newest installed Xcode — the project is Swift 6.0 language mode
+      # (needs Xcode 16+); the runner default may be older. Toolchain PINNING is
+      # CLEAN.5.4 (out of scope here); this just avoids a stale-default red.
+      - name: Select Xcode
+        run: |
+          sel=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1 || true)
+          [ -n "$sel" ] && sudo xcode-select -s "$sel"
+          xcodebuild -version
+          swift --version
+
+      # Catches the #1 regression class (compile breaks) with no GPU. Signing is
+      # disabled — there's no Developer cert in CI and we ship no artifact here.
+      - name: Build (app + engine, signing disabled)
+        run: |
+          xcodebuild -scheme PhospheneApp -destination 'platform=macOS' \
+            CODE_SIGNING_ALLOWED=NO build
+          swift build --package-path PhospheneEngine
+
+      - name: SwiftLint (strict)
+        run: |
+          command -v swiftlint >/dev/null 2>&1 || brew install swiftlint
+          swiftlint lint --strict --config .swiftlint.yml
+
+      - name: Doc gates (DocIntegrityTests)
+        run: swift test --package-path PhospheneEngine --filter DocIntegrityTests
+
+      # Option A lean allow-list (CLEAN.5.1). Explicit GPU/fixture-free suites,
+      # ~130 logic tests. NOTE: `--filter` matches the TYPE name (struct/class),
+      # NOT the @Suite("display") string — e.g. `PresetScorer` matches
+      # `struct PresetScorerTests`, `DefaultPresetScorer` would match nothing.
+      # UNDER-COVERS BY DESIGN: a new pure-logic suite is NOT run until added
+      # here. Widening to a full-suite-minus-skip-list is the CLEAN.5.1 Option-B
+      # follow-up (prove macos-14 has a working Metal device first).
+      - name: Logic tests (GPU/fixture-free subset)
+        run: |
+          swift test --package-path PhospheneEngine \
+            --filter ConcurrencyAuditProbeTests \
+            --filter SpotifyTokenProvider \
+            --filter SpotifyWebAPIConnector \
+            --filter PlaylistConnector \
+            --filter MetadataPreFetcher \
+            --filter StreamingMetadata \
+            --filter MoodClassifierGolden \
+            --filter TrackPreparationStatus \
+            --filter UserFacingError \
+            --filter PresetScorer \
+            --filter SessionPlanner \
+            --filter TransitionPolicy \
+            --filter BeatCardBuilder
+
+      - name: User-facing string lint (D-091)
+        run: Scripts/check_user_strings.sh
+
+      - name: Sample-rate literal lint (D-079)
+        run: Scripts/check_sample_rate_literals.sh
