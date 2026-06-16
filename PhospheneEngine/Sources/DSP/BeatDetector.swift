@@ -1,6 +1,9 @@
 // BeatDetector — 6-band onset detection with adaptive thresholds and tempo estimation.
 // Spectral flux per 6 bands, adaptive median threshold, per-band cooldowns,
 // grouped beat pulses with exponential decay. Zero-alloc per-frame processing.
+// swiftlint:disable file_length
+// Was at the 400-line cap; the BUG-053 rate reconfigure tips it over. Long but
+// cohesive (onset detection + reconfigure); tempo lives in +Tempo extensions.
 
 import Foundation
 import Accelerate
@@ -83,8 +86,15 @@ public final class BeatDetector: @unchecked Sendable {
 
     public let binCount: Int
 
-    /// Precomputed bin ranges for 6 bands.
-    let bandRanges: [(start: Int, end: Int)]
+    /// FFT size used to derive band→bin mappings; needed to recompute the
+    /// ranges on a `setSampleRate(_:)` reconfigure (BUG-053).
+    private let fftSize: Int
+
+    /// Sample rate the band ranges are computed for. Reconfigurable.
+    public private(set) var sampleRate: Float
+
+    /// Bin ranges for the 6 onset bands. Recomputed on rate change.
+    private(set) var bandRanges: [(start: Int, end: Int)]
 
     // MARK: - State
 
@@ -164,14 +174,10 @@ public final class BeatDetector: @unchecked Sendable {
     ///   - fftSize: FFT size (default 1024).
     public init(binCount: Int = 512, sampleRate: Float = 48000, fftSize: Int = 1024) {
         self.binCount = binCount
+        self.fftSize = fftSize
+        self.sampleRate = sampleRate
 
-        let binResolution = sampleRate / Float(fftSize)
-
-        self.bandRanges = Self.bands.map { band in
-            let start = max(0, Int(floor(band.low / binResolution)))
-            let end = min(binCount, Int(ceil(band.high / binResolution)))
-            return (start, end)
-        }
+        self.bandRanges = Self.ranges(binResolution: sampleRate / Float(fftSize), binCount: binCount)
 
         // Pre-allocate all state.
         self.previousBandRMS = [Float](repeating: 0, count: 6)
@@ -186,6 +192,31 @@ public final class BeatDetector: @unchecked Sendable {
         self.tempoEstimates = [Float](repeating: 0, count: Self.tempoEstimateBufferSize)
 
         logger.info("BeatDetector created: \(binCount) bins, 6-band onset detection")
+    }
+
+    /// Map the 6 onset bands to inclusive-start/exclusive-end bin ranges.
+    private static func ranges(binResolution: Float, binCount: Int) -> [(start: Int, end: Int)] {
+        Self.bands.map { band in
+            let start = max(0, Int(floor(band.low / binResolution)))
+            let end = min(binCount, Int(ceil(band.high / binResolution)))
+            return (start, end)
+        }
+    }
+
+    // MARK: - Reconfigure
+
+    /// Adopt a new sample rate, recomputing the band→bin ranges (BUG-053).
+    /// Onset/tempo state is preserved (tempo is time-domain, rate-independent).
+    /// No-op when unchanged. Call on the same serial context as `process(...)`
+    /// — recompute runs under `lock`.
+    public func setSampleRate(_ newSampleRate: Float) {
+        guard newSampleRate > 0 else { return }
+        lock.lock()
+        defer { lock.unlock() }
+        guard abs(newSampleRate - sampleRate) > 0.5 else { return }
+        sampleRate = newSampleRate
+        bandRanges = Self.ranges(binResolution: newSampleRate / Float(fftSize), binCount: binCount)
+        logger.info("BeatDetector reconfigured: \(newSampleRate) Hz")
     }
 
     // MARK: - Processing

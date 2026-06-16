@@ -1,6 +1,9 @@
 // ChromaExtractor — 12-bin chroma vector extraction and key estimation.
 // Maps FFT magnitude bins to pitch classes and estimates musical key via
 // Krumhansl-Schmuckler profile correlation. All allocations at init time.
+// swiftlint:disable file_length
+// Long but cohesive algorithmic file (pitch mapping + Krumhansl key estimation
+// + rate reconfigure); same call as MIRPipeline's file_length disable (BUG-053).
 
 import Foundation
 import Accelerate
@@ -68,16 +71,26 @@ public final class ChromaExtractor: @unchecked Sendable {
     // MARK: - Configuration
 
     public let binCount: Int
-    public let sampleRate: Float
 
-    /// Precomputed pitch class for each bin. -1 means skip (below minFrequency).
-    private let binPitchClass: [Int]
+    /// Sample rate in Hz. Mutable via `setSampleRate(_:)` so the live pipeline
+    /// can adopt the actual tap rate once it is known (BUG-053). A wrong rate
+    /// shifts every pitch class — e.g. assuming 48 kHz on a 44.1 kHz tap maps
+    /// bins ~1.5 semitones sharp, so the key estimate is wrong.
+    public private(set) var sampleRate: Float
 
-    /// Precomputed per-bin weight: 1/binsInPitchClass, to compensate for non-uniform
+    /// FFT size + A4 reference, retained to recompute the pitch tables on a
+    /// `setSampleRate(_:)` reconfigure.
+    private let fftSize: Int
+    private let referenceA4: Float
+
+    /// Pitch class for each bin. -1 means skip (below minFrequency). Recomputed on rate change.
+    private var binPitchClass: [Int]
+
+    /// Per-bin weight: 1/binsInPitchClass, to compensate for non-uniform
     /// FFT-to-pitch mapping. Without this, pitch classes with more bins (F=55, E=50)
     /// accumulate more energy than those with fewer bins (G=31, G#=31), biasing
-    /// key estimation by up to 1.77x.
-    private let binWeight: [Float]
+    /// key estimation by up to 1.77x. Recomputed on rate change.
+    private var binWeight: [Float]
 
     /// Precomputed 24 key profiles: [0..11] = major, [12..23] = minor.
     /// Each profile is rotated to its root pitch class.
@@ -133,37 +146,14 @@ public final class ChromaExtractor: @unchecked Sendable {
     ) {
         self.binCount = binCount
         self.sampleRate = sampleRate
+        self.fftSize = fftSize
+        self.referenceA4 = referenceA4
 
-        let binResolution = sampleRate / Float(fftSize)
-
-        // Map each bin to a pitch class.
-        self.binPitchClass = (0..<binCount).map { i in
-            let freq = Float(i) * binResolution
-            guard freq >= Self.minFrequency else { return -1 }
-
-            // MIDI note number: 69 = A4 = 440 Hz
-            let midiNote = 69.0 + 12.0 * log2f(freq / referenceA4)
-            // Pitch class: 0=C, 1=C#, ..., 11=B
-            // MIDI note 60 = C4, so pitchClass = midiNote % 12
-            let pitchClass = Int(roundf(midiNote)) % 12
-            return pitchClass < 0 ? pitchClass + 12 : pitchClass
-        }
-
-        // Count bins per pitch class and compute per-bin normalization weights.
-        // FFT bins are linear in frequency but pitch classes are logarithmic,
-        // so some pitch classes get up to 1.77x more bins than others (F=55, G=31).
-        // Without normalization, key estimation is biased toward high-bin-count PCs.
-        var binsPerPC = [Int](repeating: 0, count: 12)
-        for pc in self.binPitchClass where pc >= 0 {
-            binsPerPC[pc] += 1
-        }
-
-        // Each bin's weight = 1 / (number of bins in its pitch class).
-        // This ensures each pitch class contributes equally regardless of bin count.
-        self.binWeight = self.binPitchClass.map { pc in
-            guard pc >= 0, binsPerPC[pc] > 0 else { return Float(0) }
-            return 1.0 / Float(binsPerPC[pc])
-        }
+        let tables = Self.computeBinTables(
+            binCount: binCount, sampleRate: sampleRate, fftSize: fftSize, referenceA4: referenceA4
+        )
+        self.binPitchClass = tables.pitchClass
+        self.binWeight = tables.weight
 
         // Precompute all 24 key profiles (12 major rotations + 12 minor rotations).
         var profiles = [[Float]]()
@@ -175,12 +165,56 @@ public final class ChromaExtractor: @unchecked Sendable {
         }
         self.keyProfiles = profiles
 
-        let binsPerPCDesc = binsPerPC.enumerated()
-            .map { "\(Self.pitchNames[$0.offset])=\($0.element)" }
-            .joined(separator: " ")
-        logger.info("ChromaExtractor bins per pitch class: \(binsPerPCDesc)")
-
         logger.info("ChromaExtractor created: \(binCount) bins, reference A4=\(referenceA4) Hz")
+    }
+
+    /// Map each FFT bin to a pitch class (-1 = skip, below `minFrequency`) and
+    /// a per-pitch-class inverse-bin-count weight. Pure function of the rate so
+    /// it can be recomputed on a `setSampleRate(_:)` reconfigure (BUG-053).
+    private static func computeBinTables(
+        binCount: Int, sampleRate: Float, fftSize: Int, referenceA4: Float
+    ) -> (pitchClass: [Int], weight: [Float]) {
+        let binResolution = sampleRate / Float(fftSize)
+
+        let pitchClass: [Int] = (0..<binCount).map { i in
+            let freq = Float(i) * binResolution
+            guard freq >= Self.minFrequency else { return -1 }
+            // MIDI note number: 69 = A4 = 440 Hz; pitch class = midiNote % 12.
+            let midiNote = 69.0 + 12.0 * log2f(freq / referenceA4)
+            let pc = Int(roundf(midiNote)) % 12
+            return pc < 0 ? pc + 12 : pc
+        }
+
+        // FFT bins are linear in frequency but pitch classes are logarithmic,
+        // so some pitch classes get up to 1.77x more bins than others (F=55, G=31).
+        // Each bin's weight = 1 / (bins in its pitch class) → equal PC contribution.
+        var binsPerPC = [Int](repeating: 0, count: 12)
+        for pc in pitchClass where pc >= 0 { binsPerPC[pc] += 1 }
+        let weight: [Float] = pitchClass.map { pc in
+            guard pc >= 0, binsPerPC[pc] > 0 else { return Float(0) }
+            return 1.0 / Float(binsPerPC[pc])
+        }
+        return (pitchClass, weight)
+    }
+
+    // MARK: - Reconfigure
+
+    /// Adopt a new sample rate, recomputing the bin→pitch-class tables (BUG-053).
+    /// Accumulated chroma / key-hysteresis state is preserved. No-op when
+    /// unchanged. Call on the same serial context as `process(...)` — the
+    /// recompute runs under `lock`.
+    public func setSampleRate(_ newSampleRate: Float) {
+        guard newSampleRate > 0 else { return }
+        lock.lock()
+        defer { lock.unlock() }
+        guard abs(newSampleRate - sampleRate) > 0.5 else { return }
+        sampleRate = newSampleRate
+        let tables = Self.computeBinTables(
+            binCount: binCount, sampleRate: newSampleRate, fftSize: fftSize, referenceA4: referenceA4
+        )
+        binPitchClass = tables.pitchClass
+        binWeight = tables.weight
+        logger.info("ChromaExtractor reconfigured: \(newSampleRate) Hz")
     }
 
     // MARK: - Processing
