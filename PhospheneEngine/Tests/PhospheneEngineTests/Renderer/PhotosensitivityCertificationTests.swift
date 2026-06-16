@@ -15,25 +15,24 @@
 // pattern. (Matt's pick, 2026-06-16: synthetic CI gate now; the blind spots
 // below fold into the A-next runtime-clamp increment.)
 //
-// COVERAGE (CLEAN.7.6 finding, 2026-06-16; Matt's call: partial gate now, the
-// rest folds into the A-next real-pipeline harness). This lightweight harness
-// drives only the FeatureVector through a single fragment pass. It therefore
-// VALIDLY measures only presets that read their music response directly from
-// the FeatureVector in that pass — verified: Ferrofluid Ocean and Murmuration
-// (both SAFE). The other certified presets render STATIC here because their
-// music response arrives via paths this harness does not run:
-//   - Nimbus: `.direct` + CPU follower-state buffer (slot 6). CLEAN.7.6b ticks
-//     the real NimbusState in `renderLuminanceSequence`, so it is now MEASURED.
-//   - Lumen Mosaic, Dragon Bloom, Fata Morgana: rayMarch multi-pass G-buffer
-//     chain (Lumen is rayMarch+postProcess, not a single-pass follower).
-//   - Skein: painterly — needs mvWarp feedback-texture history.
-// The latter four need the A-next multi-pass headless harness (sub-increment).
-// A static render is NEVER asserted "safe" (that would be a vacuous pass — the
-// cardinal sin for a safety gate). Such presets are tracked in
-// `unmeasurableInHarness` and the gate FAILS LOUD on drift: if a known-static
-// preset starts responding, or a known-responsive one (FFO/Murmuration) goes
-// static, or a new certified preset renders static. Valid flash-safety for the
-// static set requires the A-next headless real-RenderPipeline harness.
+// COVERAGE. This lightweight harness drives only the FeatureVector through a single
+// fragment pass, so it VALIDLY measures only presets that read their music response
+// directly from the FeatureVector in that pass:
+//   - Ferrofluid Ocean, Murmuration — measured here, both SAFE.
+//   - Nimbus — `.direct` + a CPU follower buffer (slot 6); `renderLuminanceSequence`
+//     ticks the real NimbusState, so it is measured here too (CLEAN.7.6b).
+// The other four certified presets read their response through multi-pass / feedback
+// paths this single-pass harness does not run, so they render static here and are
+// measured for real by `MultiPassFlashHarnessTests` (CLEAN.7.6c), which drives the live
+// RenderPipeline headless — all four 0–1 flashes/s SAFE (G9 fully enforced, 7/7):
+//   - Lumen Mosaic — ray_march + post_process + the 4-light follower (slot 8).
+//   - Dragon Bloom, Fata Morgana, Skein — mv_warp FEEDBACK (NOT rayMarch: CLEAN.7.6 /
+//     7.6b persistently mislabelled DB+FM as rayMarch; their passes are in fact
+//     ["direct","mv_warp"], 0 raymarch loops). Fata Morgana has the bespoke
+//     `renderFataMorgana` mirage path.
+// This gate SKIPS that set (see `multiPassMeasured`) and FAILS LOUD if a NEW certified
+// preset renders static here without joining the multi-pass harness — a static render is
+// NEVER asserted "safe" (a vacuous pass, the cardinal sin for a safety gate, CLEAN.0).
 //
 // FURTHER blind spots (all A-next): full-frame mean only (a sub-region flash <
 // 10 % of the mean passes — regional/area-gating is the refinement); no
@@ -51,34 +50,26 @@ import Metal
 struct PhotosensitivityCertificationTests {
 
     private let renderSize = 64
-    private let fps = 60.0
-    /// Worst-case accent rate: comfortably above the 3/s Harding limit (so a
-    /// genuine full-frame strobe fails with margin) yet low enough that a
-    /// preset's luminance smoothing cannot attenuate it away.
-    private let accentHz = 4.5
-    private let driveSeconds = 3.0
-    /// Minimum full-frame luminance range for a render to count as "responded
-    /// to the drive". Below this the single-pass harness produced a static frame
-    /// (music response is follower-state / multi-pass / feedback-driven) and the
-    /// measurement is not valid — observed responders sit at Δ ≥ 0.010, static
-    /// presets at Δ = 0.000, so 0.003 cleanly separates them.
-    private let responsiveLumaRange = 0.003
+    // The worst-case drive, the responsiveness threshold, and the WCAG luminance
+    // reducer are shared with the multi-pass gate via `FlashHarnessSupport` (one set
+    // of terms for both halves — kickoff: reuse, don't fork).
 
-    /// Certified presets the single-pass FeatureVector harness cannot validly
-    /// measure (they render static — see the file header). Tracked here so the
-    /// gate FAILS LOUD on drift rather than silently passing them. Closing these
-    /// out is the A-next runtime-clamp increment (real RenderPipeline, headless).
-    static let unmeasurableInHarness: Set<String> = [
-        // CLEAN.7.6b Stage 1 now measures Nimbus (`.direct` + follower state,
-        // ticked in `renderLuminanceSequence`). The remaining four need the
-        // multi-pass headless harness (follow-up sub-increment): Lumen / Dragon
-        // Bloom / Fata Morgana (rayMarch G-buffer chain) + Skein (mvWarp feedback).
-        "Lumen Mosaic", "Dragon Bloom", "Fata Morgana", "Skein",
+    /// Certified presets whose music response is multi-pass / feedback-driven, so the
+    /// single-pass FeatureVector harness renders them static. They are measured for real
+    /// by `MultiPassFlashHarnessTests` (CLEAN.7.6c — the faithful headless RenderPipeline
+    /// harness), so this single-pass gate SKIPS them. Kept explicit so the gate stays
+    /// honest about the division of labour and FAILS LOUD if a NEW certified preset
+    /// renders static here without joining the multi-pass harness.
+    static let multiPassMeasured: Set<String> = [
+        "Lumen Mosaic",   // ray_march + post_process + the 4-light follower (slot 8)
+        "Dragon Bloom",   // mv_warp feedback (strands-on-top + per-beat display pulse)
+        "Fata Morgana",   // mv_warp feedback (bespoke renderFataMorgana mirage path)
+        "Skein",          // mv_warp feedback (cream canvas-hold + per-stem paint + sheen)
     ]
 
     // MARK: - Gate
 
-    @Test("Certified preset is flash-safe under a worst-case beat train (or tracked as unmeasurable)",
+    @Test("Certified preset is flash-safe under a worst-case beat train (single-pass set)",
           arguments: _acceptanceFixture.presets)
     func certifiedPresetIsFlashSafe(_ preset: PresetLoader.LoadedPreset) throws {
         // Gate covers the certified, shipping set. Mesh-shader presets cannot
@@ -86,57 +77,49 @@ struct PhotosensitivityCertificationTests {
         guard preset.descriptor.certified else { return }
         guard !preset.descriptor.passes.contains(.meshShader) else { return }
         let name = preset.descriptor.name
+        // The multi-pass / feedback presets are measured for real by
+        // `MultiPassFlashHarnessTests`; this single-pass harness cannot reach their
+        // response, so it does not (and must not) assert anything about them.
+        guard !Self.multiPassMeasured.contains(name) else { return }
 
         let ctx = try MetalContext()
-        let drive = worstCaseBeatTrain(accentHz: accentHz, seconds: driveSeconds, fps: fps)
+        let drive = FlashHarnessSupport.worstCaseBeatTrain()
         let luma = try renderLuminanceSequence(preset: preset, features: drive, context: ctx)
-        let report = FlashAnalyzer.analyze(relativeLuminance: luma, fps: fps)
+        let report = FlashAnalyzer.analyze(relativeLuminance: luma, fps: FlashHarnessSupport.fps)
 
-        // Did the preset actually respond to the drive? A static render means the
-        // harness cannot reach this preset's music response (see file header).
         let lo = luma.min() ?? 0, hi = luma.max() ?? 0
         let range = hi - lo
-        let responded = range >= responsiveLumaRange
+        let responded = range >= FlashHarnessSupport.responsiveLumaRange
         let mean = luma.reduce(0, +) / Double(max(luma.count, 1))
 
-        // Evidence line (closeout per-preset table). This gate's measured output
-        // is its visual evidence; printed for every certified preset.
+        // Evidence line (closeout per-preset table). This gate's measured output is its
+        // visual evidence; printed for every preset it measures.
         print(String(
             format: "[flash-safety] %@: %@ | peak %.2f flashes/s (%d transitions) — %@ | luma %.3f…%.3f (Δ%.3f, mean %.3f) [limit 3.0]",
             name, responded ? "MEASURED" : "UNMEASURED(static)",
             report.peakFlashesPerSecond, report.transitionCount,
             report.isSafe ? "SAFE" : "UNSAFE", lo, hi, range, mean))
 
-        if responded {
-            // Validly measured → real Harding/WCAG safety assertion.
-            #expect(
-                report.isSafe,
-                """
-                '\(name)' peaks at \(String(format: "%.2f", report.peakFlashesPerSecond)) \
-                flashes/s (limit 3) under a \(String(format: "%.1f", accentHz)) Hz worst-case beat train \
-                — exceeds Harding/WCAG 2.3.1. P1 safety finding: bring to Matt, do not tune away.
-                """
-            )
-            // A preset we thought was unmeasurable now responds — good news, but
-            // the tracking set is stale and it should be promoted to a real gate.
-            #expect(
-                !Self.unmeasurableInHarness.contains(name),
-                "'\(name)' now responds to the flash drive — remove it from `unmeasurableInHarness`; it is now genuinely gated."
-            )
-        } else {
-            // Static render → measurement is NOT valid; never assert "safe".
-            // Fail only if this static render is unexpected (a regression in a
-            // responsive preset, or a new certified preset needing the A-next harness).
-            #expect(
-                Self.unmeasurableInHarness.contains(name),
-                """
-                '\(name)' rendered static (Δ\(String(format: "%.3f", range))) under the flash drive but is NOT in \
-                `unmeasurableInHarness` — it cannot be validly flash-gated by this single-pass harness. \
-                Either a responsive preset regressed, or a new certified preset needs the A-next \
-                real-pipeline harness; add it to the set and track it.
-                """
-            )
-        }
+        // A static render here means a NEW certified preset reads its response through a
+        // path this single-pass harness can't drive — it must join the multi-pass harness,
+        // not be silently passed (the CLEAN.0 vacuous-pass rule). Fail loud.
+        #expect(
+            responded,
+            """
+            '\(name)' rendered static (Δ\(String(format: "%.3f", range))) under the flash drive but is not in \
+            `multiPassMeasured` — this single-pass FeatureVector harness cannot validly flash-gate it. \
+            Add it to `MultiPassFlashHarnessTests` (and `multiPassMeasured`); do not let it pass unmeasured.
+            """
+        )
+        // Validly measured → real Harding/WCAG safety assertion.
+        #expect(
+            report.isSafe,
+            """
+            '\(name)' peaks at \(String(format: "%.2f", report.peakFlashesPerSecond)) \
+            flashes/s (limit 3) under a \(String(format: "%.1f", FlashHarnessSupport.accentHz)) Hz worst-case beat train \
+            — exceeds Harding/WCAG 2.3.1. P1 safety finding: bring to Matt, do not tune away.
+            """
+        )
     }
 
     /// Guards against a vacuous pass: if the Shaders bundle fails to load, the
@@ -145,58 +128,6 @@ struct PhotosensitivityCertificationTests {
     func certifiedSetIsPresent() {
         let certified = _acceptanceFixture.presets.filter { $0.descriptor.certified }
         #expect(!certified.isEmpty, "No certified presets loaded — Shaders bundle missing? The flash gate would pass vacuously.")
-    }
-
-    // MARK: - Worst-case beat train
-
-    /// A synthetic drive that maximally exercises the beat-accent / deviation
-    /// pathway (the FBS "beat-punch" flash class) at `accentHz`: sharp,
-    /// full-amplitude, impulse-decayed accents over energetic-but-smoothed
-    /// continuous bands, in the normal certified regime.
-    private func worstCaseBeatTrain(accentHz: Double, seconds: Double, fps: Double) -> [FeatureVector] {
-        let count = Int(seconds * fps)
-        let period = fps / accentHz          // frames per accent
-        let barLen = period * 4
-        var out: [FeatureVector] = []
-        out.reserveCapacity(count)
-        for i in 0..<count {
-            let t = Float(Double(i) / fps)
-            let phase = Double(i).truncatingRemainder(dividingBy: period) / period   // 0…1 within a beat
-            let env = Float(exp(-phase * 6.0))    // 1.0 at onset → impulse decay before next beat
-
-            // Continuous bands: energetic, only mildly beat-coupled — real AGC'd
-            // bands are smoothed and do not strobe. The sharp signal lives in the
-            // accents and deviation spikes below.
-            let cont = 0.55 + 0.15 * env
-            var fv = FeatureVector(
-                bass: cont, mid: cont * 0.95, treble: cont * 0.9,
-                bassAtt: 0.55 + 0.08 * env, midAtt: 0.52 + 0.08 * env, trebleAtt: 0.5 + 0.08 * env,
-                subBass: cont, lowBass: cont, lowMid: cont * 0.95,
-                midHigh: cont * 0.9, highMid: cont * 0.9, high: cont * 0.85,
-                beatBass: env, beatMid: env, beatTreble: env, beatComposite: env,
-                spectralCentroid: 0.5 + 0.3 * env, spectralFlux: env,
-                valence: 0.2, arousal: 0.85,
-                time: t, deltaTime: Float(1.0 / fps),
-                accumulatedAudioTime: t * 0.6)
-
-            // Deviation primitives: mild continuous Rel + sharp positive Dev
-            // spikes to the real p99 (~0.85) — the accent/threshold flash pathway.
-            let contRel = (cont - 0.5) * 2.0
-            fv.bassRel = contRel; fv.midRel = contRel; fv.trebRel = contRel
-            fv.bassDev = env * 0.85; fv.midDev = env * 0.85; fv.trebDev = env * 0.85
-            fv.bassAttRel = contRel * 0.7; fv.midAttRel = contRel * 0.7; fv.trebAttRel = contRel * 0.7
-
-            // Phase signals: normal progression through beats / bars / pulses.
-            fv.beatPhase01 = Float(phase); fv.beatsUntilNext = Float(1.0 - phase)
-            fv.barPhase01 = Float(Double(i).truncatingRemainder(dividingBy: barLen) / barLen)
-            fv.beatsPerBar = 4
-            fv.pulsePhase01 = Float(phase); fv.pulseAmp01 = 1.0
-            fv.pulseBeatIndex = Float(Int(Double(i) / period))
-            fv.pulseRegionalBlend01 = 1.0    // certified regional regime (FBS fix engaged)
-            fv.trackElapsedS = t             // warm — past any cold-start crossfade
-            out.append(fv)
-        }
-        return out
     }
 
     // MARK: - Rendering
@@ -289,33 +220,9 @@ struct PhotosensitivityCertificationTests {
             guard cmdBuf.status == .completed else { throw FlashGateError.renderFailed }
             texture.getBytes(&pixels, bytesPerRow: size * 4,
                              from: MTLRegionMake2D(0, 0, size, size), mipmapLevel: 0)
-            luma.append(meanRelativeLuminance(pixels))
+            luma.append(FlashHarnessSupport.meanRelativeLuminance(pixels))
         }
         return luma
-    }
-
-    /// Mean WCAG relative luminance (linear-light, Rec. 709) of a BGRA buffer.
-    /// Per-pixel sRGB → linear via a 256-entry LUT (linearise then average — the
-    /// correct order for luminance, unlike a gamma-encoded mean).
-    private func meanRelativeLuminance(_ bgra: [UInt8]) -> Double {
-        let pixelCount = bgra.count / 4
-        guard pixelCount > 0 else { return 0 }
-        var sum = 0.0
-        var i = 0
-        while i < bgra.count {
-            let bLin = Self.srgbToLinear[Int(bgra[i])]
-            let gLin = Self.srgbToLinear[Int(bgra[i + 1])]
-            let rLin = Self.srgbToLinear[Int(bgra[i + 2])]
-            sum += 0.2126 * rLin + 0.7152 * gLin + 0.0722 * bLin
-            i += 4
-        }
-        return sum / Double(pixelCount)
-    }
-
-    /// sRGB byte (0…255) → linear relative-luminance component (0…1).
-    private static let srgbToLinear: [Double] = (0..<256).map { byte in
-        let c = Double(byte) / 255.0
-        return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
     }
 
     private enum FlashGateError: Error {
