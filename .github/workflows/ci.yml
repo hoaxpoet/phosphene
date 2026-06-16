@@ -32,31 +32,66 @@ jobs:
     # that SDK still targets — build SDK != run target.
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v6 # v6 runs on Node 24 (Node 20 actions deprecated 2026-06-16)
+      # SHA-pinned for supply-chain reproducibility (CLEAN.5.4e, folds in 5.7).
+      # Bump: take the target tag's commit from
+      #   git ls-remote --tags https://github.com/actions/checkout
+      # and update the SHA + the trailing `# vX.Y.Z` comment together.
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3 (Node 24; Node 20 actions deprecated 2026-06-16)
         with:
           lfs: true # build bundles ML weights (PhospheneEngine/Sources/ML/Weights/**/*.bin)
 
-      # Pick the newest installed Xcode (26.x on macos-26); the runner default may
-      # be older. Toolchain PINNING to an exact 26.x is CLEAN.5.4 (out of scope).
-      - name: Select Xcode
+      # Select the EXACT Xcode declared in .xcode-version (CLEAN.5.4a) — not
+      # "newest wins". The Xcode-26 SDK is the real floor: it marks Metal protocol
+      # types Sendable, Xcode 16 does not (that was CI run #1's red). Fails LOUD if
+      # the declared version isn't on the image — that means the runner image
+      # rotated the point release, so bump .xcode-version (it's a pin bump, not a
+      # code regression). Dev box matches (RUNBOOK §Preconditions).
+      - name: Select Xcode (pinned)
         run: |
-          sel=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1 || true)
-          [ -n "$sel" ] && sudo xcode-select -s "$sel"
+          ver=$(cat .xcode-version)
+          app="/Applications/Xcode_${ver}.app"
+          if [ ! -d "$app" ]; then
+            echo "::error::Pinned Xcode ${ver} not at ${app}. Installed:"
+            ls -d /Applications/Xcode_*.app 2>/dev/null || echo "  (none)"
+            echo "Image rotated the point release — bump .xcode-version to an installed version."
+            exit 1
+          fi
+          sudo xcode-select -s "$app"
           xcodebuild -version
           swift --version
 
+      # Fail fast if Git-LFS didn't smudge (CLEAN.5.4d): a pointer-file checkout
+      # would bundle ~130-byte stubs for the ML weights and "build green".
+      - name: Verify LFS smudged
+        run: Scripts/check_lfs_smudged.sh
+
       # Catches the #1 regression class (compile breaks) with no GPU. Signing is
       # disabled — there's no Developer cert in CI and we ship no artifact here.
-      - name: Build (app + engine, signing disabled)
+      # Build from the committed Package.resolved files (CLEAN.5.4c) — fail on
+      # dep-graph drift instead of silently floating transitive SPM deps. The app
+      # build reads PhospheneApp.xcodeproj/…/swiftpm/Package.resolved; the engine
+      # build reads PhospheneEngine/Package.resolved. Both pin the same 4 deps.
+      - name: Build (app + engine, signing disabled, deps pinned)
         run: |
           xcodebuild -scheme PhospheneApp -destination 'platform=macOS' \
+            -disableAutomaticPackageResolution \
             CODE_SIGNING_ALLOWED=NO build
-          swift build --package-path PhospheneEngine
+          swift build --package-path PhospheneEngine \
+            --only-use-versions-from-resolved-file
 
-      - name: SwiftLint (strict)
+      # Pinned to the dev version (CLEAN.5.4b) — NOT `brew install` latest, which
+      # floats (0.63.3 ≠ dev 0.63.2 was CI run #2's red). Download the exact
+      # portable binary (universal; runs on arm64). Bump: change SWIFTLINT_VERSION
+      # here AND the dev version in RUNBOOK §Preconditions together.
+      - name: SwiftLint (strict, pinned)
+        env:
+          SWIFTLINT_VERSION: "0.63.2"
         run: |
-          command -v swiftlint >/dev/null 2>&1 || brew install swiftlint
-          swiftlint lint --strict --config .swiftlint.yml
+          curl -sSfL "https://github.com/realm/SwiftLint/releases/download/${SWIFTLINT_VERSION}/portable_swiftlint.zip" -o /tmp/swiftlint.zip
+          unzip -oq /tmp/swiftlint.zip -d /tmp/swiftlint
+          got=$(/tmp/swiftlint/swiftlint version)
+          [ "$got" = "$SWIFTLINT_VERSION" ] || { echo "::error::SwiftLint ${got} ≠ pinned ${SWIFTLINT_VERSION}"; exit 1; }
+          /tmp/swiftlint/swiftlint lint --strict --config .swiftlint.yml
 
       - name: Doc gates (DocIntegrityTests)
         run: swift test --package-path PhospheneEngine --filter DocIntegrityTests
