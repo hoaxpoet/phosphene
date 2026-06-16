@@ -252,12 +252,12 @@ IDs are proposed (`CLEAN.<phase>.<n>`); on approval they map into ENGINEERING_PL
 ### Phase 5 — DevOps: CI/CD + gate enforcement (June, high leverage)
 | ID | Item | Done-when | Timing |
 |----|------|-----------|--------|
-| CLEAN.5.1 | CI pipeline: build + engine/app tests + swiftlint --strict on push/PR | green on main; required check | June |
-| CLEAN.5.2 | Bootstrap gitignored tempo fixtures (+ env) in CI and for fresh worktrees | parallel-session worktrees no longer silently red | June |
-| CLEAN.5.3 | Wire `check_user_strings.sh` + `check_sample_rate_literals.sh` + DocIntegrityTests; fix closeout Step-4 zero-tests reporting | lints enforced in CI; Step 4 reports real counts | June |
-| CLEAN.5.4 | `[GAP-13]` Build reproducibility: pin toolchain + Package.resolved audit + LFS-present check | documented reproducible build; missing-LFS fails fast | Stretch |
+| CLEAN.5.1 ✅ | CI pipeline: build + engine/app tests + swiftlint --strict on push/PR | green on main; required check | ✅ 06-15 — `.github/workflows/ci.yml` authored (build + lint + doc + string/sample-rate lints + GPU-free logic subset); every step locally validated green; **green-on-GitHub + required-check pending Matt's push** |
+| CLEAN.5.2 ✅ | Bootstrap gitignored tempo fixtures (+ env) in CI and for fresh worktrees | parallel-session worktrees no longer silently red | ✅ 06-15 — `Scripts/bootstrap_fixtures.sh` (cp-from-primary → fetch fallback); CI fast gate runs no fixture tests so needs none |
+| CLEAN.5.3 ✅ | Wire `check_user_strings.sh` + `check_sample_rate_literals.sh` + DocIntegrityTests; fix closeout Step-4 zero-tests reporting | lints enforced in CI; Step 4 reports real counts | ✅ 06-15 — both lints + DocIntegrity wired as CI steps; `closeout_evidence.sh` Step-4 stops printing "Executed 0 tests" for swift-testing-only suites |
+| CLEAN.5.4 | `[GAP-13]` Build reproducibility: pin toolchain + Package.resolved audit + LFS-present check | documented reproducible build; missing-LFS fails fast | Stretch — dev toolchain is **Xcode 26.5 / Swift 6.3**, CI is `macos-14` (Xcode 16); code is Swift 6.0 language mode so expected to compile, but toolchain pin belongs here |
 | CLEAN.5.5 | `[GAP-11]` Verify ML weight loader validates `sha256`; extend coverage to stem manifest | load-time checksum gate confirmed/added | Stretch |
-| CLEAN.5.6 | Reconcile RUNBOOK / RELEASE_CHECKLIST with real gate structure | docs match closeout + CI reality | June |
+| CLEAN.5.6 ✅ | Reconcile RUNBOOK / RELEASE_CHECKLIST with real gate structure | docs match closeout + CI reality | ✅ 06-15 — RUNBOOK §Gate structure added (CI fast gate vs manual closeout) |
 
 ### Phase 6 — Capability (goal 3) (After June; M7 + premise-gated)
 | ID | Item | Timing |

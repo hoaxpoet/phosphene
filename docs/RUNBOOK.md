@@ -69,6 +69,26 @@ swiftlint lint --strict --config .swiftlint.yml
 
 **Do NOT pass `SWIFT_TREAT_WARNINGS_AS_ERRORS=YES` on the command line.** It propagates to SPM dependencies and conflicts with `-suppress-warnings`. The flag is enforced per-target via `PhospheneApp/Phosphene.xcconfig`.
 
+### Gate structure — CI fast gate vs manual closeout (CLEAN.5)
+
+Two gates, deliberately split (Matt, 2026-06-15). Know which one enforces what:
+
+**CI fast gate — `.github/workflows/ci.yml`, automatic on push-to-`main` + every PR** (`runs-on: macos-14`). Required-green on `main`. Runs only what's reliable on a headless GitHub runner:
+
+- **Build** — `xcodebuild build` (app, `CODE_SIGNING_ALLOWED=NO`) + `swift build` (engine). Catches the #1 regression class — compile breaks — with no GPU.
+- **SwiftLint** `--strict`.
+- **Doc gate** — `DocIntegrityTests`.
+- **Logic tests** — an explicit allow-list of GPU/fixture-free suites (Option A). It **under-covers by design**: a new pure-logic suite is not run until its filter is added to the workflow. (Filter strings match the test *type* name, e.g. `PresetScorer`, not the `@Suite("DefaultPresetScorer")` display string.)
+- **Lints** — `check_user_strings.sh` + `check_sample_rate_literals.sh`.
+
+**Manual closeout — `Scripts/closeout_evidence.sh`, run at every increment closeout** (see CLAUDE.md §Increment Completion Protocol). This is the full gate and the *only* place these run:
+
+- The **full** engine SPM suite + the app `xcodebuild test` suite (incl. the ~74 Metal/GPU tests that `MTLCreateSystemDefaultDevice()` and so *fail, not skip,* without a GPU).
+- The **licensed-fixture** suites (BeatThis / tempo / live-drift / identity) — fixtures are gitignored, so CI can't run them.
+- The **perf-timing** assertions (single-sample wall-clock budgets that flake under shared-runner contention).
+
+CI green ≠ closeout green. CI is the fast push/PR signal; the closeout block is still mandatory before merge. The loud-on-missing-fixture rule (`BeatThisFixturePresenceGate`) stays loud **locally** — CI simply doesn't run those suites; it is never weakened into a silent skip.
+
 ### Worktree setup: fetch local audio fixtures
 
 `PhospheneEngine/Tests/Fixtures/tempo/` is gitignored — the directory contains 30-second iTunes preview clips for the DSP.1 / BUG-008 / BeatThis regression tests, and those clips are licensed (do not commit). Fresh checkouts and new `git worktree add` sessions do not inherit them.
@@ -76,13 +96,13 @@ swiftlint lint --strict --config .swiftlint.yml
 If `swift test --package-path PhospheneEngine` reports 4 `BeatThis*` / `LiveDriftValidation` / `BeatGridAccuracyDiagnostic` failures with messages like *"love_rehab.m4a missing at .../Tests/Fixtures/tempo/love_rehab.m4a"*, the fixtures are missing. Either:
 
 ```bash
-# Re-fetch from the public iTunes Search CDN (covers love_rehab/so_what/there_there)
-Scripts/fetch_tempo_fixtures.sh
-
-# OR (in a worktree) copy from your main checkout if it already has them
-cp /path/to/main/checkout/PhospheneEngine/Tests/Fixtures/tempo/*.m4a \
-   PhospheneEngine/Tests/Fixtures/tempo/
+# One command (CLEAN.5.2): byte-identical copy from the primary checkout
+# (so the sha256 exact-bytes test passes), falling back to the iTunes re-fetch.
+# Idempotent — no-op if the fixtures are already present.
+Scripts/bootstrap_fixtures.sh
 ```
+
+Under the hood that prefers a `cp` from your main checkout and falls back to `Scripts/fetch_tempo_fixtures.sh` (public iTunes Search CDN — covers love_rehab/so_what/there_there). Either can still be run directly.
 
 The `BeatThisFixturePresenceGate` suite is intentionally designed to fail loudly when the fixture tree is empty — silent skips have masked the DSP.2 S8 four-bug regression surface in the past (see CLAUDE.md *§What NOT To Do* on silent fixture skips).
 
