@@ -236,7 +236,7 @@ IDs are proposed (`CLEAN.<phase>.<n>`); on approval they map into ENGINEERING_PL
 | CLEAN.3.5 | StemCache eviction (size/LRU); close diag-log handle; retire dead helpers (`percentileOfBuffer`,`printHistogram`,`depthDebugEnabled`) | bounded cache; handle closed; dead code gone | June |
 | CLEAN.3.6 | SessionRecorder running-vs-actually-writing invariant (BUG-039 follow-through) | invariant asserted; recovery confirmed | Stretch |
 | CLEAN.3.7a ✅ | `[GAP-2]` Trace & decide: does the live-tap path deliver the correct rate to every rate-sensitive stage? | **DONE 2026-06-16** — traced end-to-end; verdict = real (latent) defect, **BUG-053**: live MIR frozen at 48k (stem path correct). Refutes the "already rate-aware" hypothesis. | June |
-| CLEAN.3.7-fix | `[GAP-2]` Fix the live-MIR rate wiring + reconcile doc + add regression gate (was 3.7b/c) | live MIR consumes the actual tap rate; doc matches code; gate locks it | **pending Matt's pick of fix approach** (BUG-053 §Fix approaches) |
+| CLEAN.3.7-fix ✅ | `[GAP-2]` Fix the live-MIR rate wiring + reconcile doc + add regression gate (was 3.7b/c) | live MIR consumes the actual tap rate; doc matches code; gate locks it | **code-complete `91a973e` (2026-06-16); pending Matt's manual 44.1 kHz / LF-playback key check** before BUG-053 → Resolved |
 | CLEAN.3.8 | `[GAP-6]` Disk-full / write-failure graceful degradation (recorder, caches) | capacity check + honest stop, no silent corruption | Stretch |
 
 ### Phase 4 — Performance (June/Stretch, partly M7)

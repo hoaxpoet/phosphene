@@ -8,6 +8,22 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-16-c] CLEAN.3.7-fix — live MIR adopts the actual capture rate (BUG-053)
+
+Matt's call on the 3.7a verdict: **fix it properly.** The live `MIRPipeline` was built at app init (before the tap installs) with the 48 kHz default and `process()` carried no rate, so its sub-analyzers stayed frozen at 48 kHz bin→Hz tables regardless of the real capture rate.
+
+**Fix.** Each rate-sensitive sub-analyzer (`SpectralAnalyzer`/`BandEnergyProcessor`/`ChromaExtractor`/`BeatDetector`) gains an in-place `setSampleRate(_:)` that recomputes its bin→Hz tables under its lock, **preserving running state** (AGC/chroma accumulators, onset history). `MIRPipeline.setSampleRate` (a same-file extension, to keep the class under `type_body_length`) forwards to the four and recomputes its Nyquist. `VisualizerEngine+Audio.processAnalysisFrame` calls it with the captured `tapSampleRate` — on the **analysis queue, off the RT thread** — so it's a **no-op on a 48 kHz tap** (zero behavioural change for the common config) and a recompute on a 44.1 kHz path or device-swap (couples to G1/CLEAN.1.5). Also replaced the **hardcoded 24 kHz mood-centroid divisor** with the live Nyquist: pre-fix the bin over-count and the fixed divisor *cancelled* (so the normalized centroid/mood were ≈ right by accident); fixing the analyzer alone would have reintroduced an ~8.8 % mood error, so the paired change keeps mood ≈ unchanged while making the raw centroid honest.
+
+**Scope of the real-world bug.** Not just rare hardware — **local-file playback of 44.1 kHz files** (a normal feature) fed 44.1 kHz to the live MIR, so every such session mapped chroma/key ~1.5 semitones sharp + bands ~8.8 % low. The *offline* session-prep MIR was already correct (built with the file's rate).
+
+**Gate.** `MIRSampleRateReconfigureTests` (GPU-free, on the CI fast-gate allow-list): raw centroid scales with the rate (48k/44.1k ratio), a fixed spike maps to a different pitch class across rates, a band cutoff lands on a different bin, sub-analyzer tables recompute, defensive no-op/zero-rate guards. The live wiring (VisualizerEngine) isn't SPM-testable (Metal) — that leg is the **manual 44.1 kHz / LF-playback key check** (BUG-053 §Status), same documented limit as `TapSampleRateRegressionTests`.
+
+**Doc reconcile (3.7b).** `Audio/Protocols.swift` (`separate`'s rate is the *separator's* internal 44.1 kHz target, not a pipeline rate); ARCHITECTURE §Audio Analysis Tuning gains a **Sample-rate contract** subsection (per-stage rates) and the centroid/mood/key cross-path notes corrected (centroid/mood ≈ unchanged by the fix; key now correct per path). Default-trap framing: the 48 kHz/44.1 kHz construction defaults stay (tests rely on them) — the live path now actively reconfigures rather than relying on the default; `check_sample_rate_literals.sh` (bans `44100`, untouched) stays green.
+
+Engine + app build green; swiftlint `--strict` 0; analyzer/MIR/stem/DocIntegrity suites green (61 GPU-free). Commit `91a973e` (code+test+CI) + the doc commit. **BUG-053: fix landed, pending Matt's manual validation** (not yet marked Resolved). Not pushed (awaits "yes, push").
+
+---
+
 ## [dev-2026-06-16-b] CLEAN.3.7a — Sample-rate contract trace (GAP-2): live-tap MIR is frozen at 48 kHz (BUG-053)
 
 Diagnosis-only increment (the kickoff's "trace & decide … commit the trace and stop if the fix is non-trivial"). Traced the tap sample rate end-to-end and **refuted the pre-kickoff hypothesis** that the streaming MIR is already rate-aware.
