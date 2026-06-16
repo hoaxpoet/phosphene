@@ -7,3 +7,13 @@ docs/diagnostics/*.png filter=lfs diff=lfs merge=lfs -text
 docs/diagnostics/**/*.png filter=lfs diff=lfs merge=lfs -text
 docs/diagnostics/*.jpg filter=lfs diff=lfs merge=lfs -text
 docs/diagnostics/**/*.jpg filter=lfs diff=lfs merge=lfs -text
+
+# Append-only narrative log (DOC.8 git-safeguard). When two parallel sessions
+# each prepend a release-notes entry they touch the same top-of-file region and
+# git conflicts. `merge=union` (built-in driver) keeps BOTH sides' new lines
+# instead of conflicting — correct for a prepend-only prose log (worst case:
+# two same-session entries interleave in order, which DocIntegrity doesn't gate).
+# SAFE ONLY because this file is never edited in place (no tables / no rewrites
+# of existing entries — union would duplicate those). Do NOT add structured docs
+# with tables here (ENGINEERING_PLAN / KNOWN_ISSUES / CODE_AUDIT stay normal-merge).
+docs/RELEASE_NOTES_DEV.md merge=union

@@ -6,6 +6,19 @@ User-visible release notes are not yet in scope (no public build).
 
 Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
+**Entry ids are `[dev-YYYY-MM-DD-HHMMSS]`** (UTC time-of-day the entry is written — e.g. `date -u +%Y-%m-%d-%H%M%S`). They are unique by construction, so **never hand-assign sequential `-a`/`-b`/`-c` letters** — parallel sessions independently picking the next letter was a recurring merge-renumbering tax (DOC.8). Older `-a/-b/-c` entries are grandfathered; `rotate_docs.sh` / `DocIntegrityTests` key only on the `YYYY-MM-DD` date, so the suffix format is free. This file is also **`merge=union`** (`.gitattributes`): concurrent appends from two sessions auto-combine instead of conflicting — so keep it **prepend-only prose**, never edit an existing entry in place (union would duplicate it).
+
+---
+
+## [dev-2026-06-16-202717] DOC.8 — doc-merge safeguards: union-merge the release log + collision-free entry ids
+
+Every git conflict across the CLEAN.3.7 / BUG-053 / CLEAN.7.6b work this session was in two append-only doc logs (this file + ENGINEERING_PLAN §Recently Completed), never in code — two parallel sessions each prepending an entry at the same top-of-file region, plus hand-assigned `-a/-b/-c` ids colliding when sessions independently grabbed the next letter. Matt's pick (the cheap, targeted fixes):
+
+- **`.gitattributes`: `docs/RELEASE_NOTES_DEV.md merge=union`** — the built-in union driver keeps both sides' new entries instead of conflicting. Correct for a prepend-only prose log; documented in `.gitattributes` as SAFE-only-here (no in-place edits / no tables — union would duplicate those, so ENGINEERING_PLAN / KNOWN_ISSUES / CODE_AUDIT deliberately stay normal-merge).
+- **Collision-free entry ids `[dev-YYYY-MM-DD-HHMMSS]`** (this entry dogfoods it) — unique by construction, no more hand-renumbering. `rotate_docs.sh` (date-regex) and `DocIntegrityTests` (`YYYY-MM` prefix) key only on the date, so the suffix change is transparent; older `-a/-b/-c` entries are grandfathered. Convention documented in this file's preamble.
+
+Not adopted (Matt may revisit): changelog-fragments (a file per increment) and branch-per-session + PR-gated merge — the structural fixes for the residual ENGINEERING_PLAN/concurrent-`main` conflicts. Test-only/infra; no production code. Verified: `rotate_docs.sh --dry-run` clean, DocIntegrity 10/10.
+
 ---
 
 ## [dev-2026-06-16-h] CLEAN.7.6b Stage 1 (partial) — flash-safety gate now measures Nimbus (3/7)
