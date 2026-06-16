@@ -10,6 +10,33 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-16-214242] CLEAN.7.6c — multi-pass flash-safety harness: G9 fully ENFORCED (7/7)
+
+Closes the photosensitivity gate's remaining blind spot. CLEAN.7.6 / 7.6b validly measured only **3/7** certified presets (FFO + Murmuration + Nimbus); the other four read their music response through multi-pass / feedback paths the single-pass FeatureVector harness cannot drive, so they rendered static and were tracked-but-never-asserted-safe. CLEAN.7.6c drives those four through the REAL render paths headless and measures them — **all four 0–1 flashes/s SAFE, so G9 is now fully enforced 7/7.**
+
+**Scoping correction (the kickoff's premise was wrong — verified against the JSON sidecars + the shaders).** CLEAN.7.6 / 7.6b persistently called Dragon Bloom + Fata Morgana "rayMarch multi-pass." They are not: their passes are `["direct","mv_warp"]` (0 raymarch loops) — mv_warp FEEDBACK presets, like Skein. The real split is **1 rayMarch (Lumen Mosaic) + 3 mv_warp feedback (Dragon Bloom, Fata Morgana, Skein)**, not 3 + 1. (Matt also flagged the numbering: this was drafted as "7.6b Stage 1b," but 7.6b is the runtime-clamp increment — renumbered to its own letter **CLEAN.7.6c**; the runtime clamp becomes 7.6d.)
+
+**Route (spike-first; FA #73 — reuse the reference, don't rebuild):**
+- **Lumen Mosaic** — extends BUG-034's production-parity ray-march harness: `RayMarchPipeline.render` at the live 128-step budget, post-process chain, the 4-light follower bound at slot 8, ticked per frame, with a real palette loaded (an unloaded palette renders black cells — BUG-016 — which would falsely read static).
+- **Fata Morgana** — reuses its already-target-agnostic production method `renderFataMorgana(target:)` (FA #66 — no reimplemented encode path).
+- **Dragon Bloom + Skein** — needed one small production seam: `renderMVWarpToTexture` (new `RenderPipeline+MVWarpHeadless.swift`) factors the present out of the mv_warp blit. A pure extract-method — the live `encodeMVWarpBlitPresentSwap` and the headless path now share `encodeMVWarpBlitContent` + `swapMVWarpTextures` verbatim, so they cannot drift. **Behaviour-preserving:** PresetRegression goldens unchanged. **Matt approved the seam** (the only deviation from the kickoff's "test-only" line; no look change, no M7).
+
+**All-7 peak-flashes/s table** (worst-case 4.5 Hz beat + stem train, full-frame WCAG relative luminance, limit 3.0):
+
+| Preset | peak flashes/s | gate |
+|---|---|---|
+| Ferrofluid Ocean | 0.00 | single-pass |
+| Murmuration | 0.00 | single-pass |
+| Nimbus | 0.00 | single-pass |
+| Lumen Mosaic | 0.00 | multi-pass |
+| Dragon Bloom | 1.00 | multi-pass |
+| Fata Morgana | 0.50 | multi-pass |
+| Skein | 0.00 | multi-pass |
+
+**Files:** new `RenderPipeline+MVWarpHeadless.swift` (the seam + the shared blit-content / swap helpers, moved here so `+MVWarp` stays under `file_length`), new `MultiPassFlashHarnessTests.swift` (the 4) + `FlashHarnessSupport.swift` (the shared worst-case drive + WCAG luminance reducer, factored out of the single-pass gate). `PhotosensitivityCertificationTests` now skips the multi-pass set (`multiPassMeasured`) and still **fails loud** if a NEW certified preset renders static here without joining the multi-pass harness; its header's rayMarch mislabel is corrected. GPU tests — manual-closeout suite, not the CI fast gate. `swiftlint --strict` clean; photosensitivity 6/6 + PresetRegression 4/4 green. Docs: CODE_AUDIT G9 → ENFORCED (7/7) + Part C, RENDER_CAPABILITY_REGISTRY §9 → Supported (7/7), ENGINEERING_PLAN CLEAN.7.6c.
+
+---
+
 ## [dev-2026-06-16-203759] BUG-053 RESOLVED — live-MIR sample-rate fix validated on a 44.1 kHz file
 
 Matt's manual validation of CLEAN.3.7-fix (the SPM-untestable live-wiring leg). Session `2026-06-16T20-22-12Z` — Limo Wreck via 44.1 kHz local-file playback — logged `raw tap capture started sr=44100 Hz` then `MIR analysis rate → 44100 Hz (tap 44100 Hz)`: the live MIR adopted the file's real rate instead of the frozen 48 kHz default, end-to-end. The persisted `MIR analysis rate` line (`c68cc74`) was the signal; key estimation stayed out of it (unreliable — BUG-054). **BUG-053 → Resolved** (moved to `KNOWN_ISSUES.md §Resolved`; ENGINEERING_PLAN CLEAN.3.7-fix marked validated). Doc-status only, no code change.
