@@ -22,6 +22,7 @@ struct WeightManifest: Decodable {
         let file: String
         let shape: [Int]
         let bytes: Int
+        let sha256: String  // CLEAN.5.5: required — every entry must carry a digest
     }
 
     enum CodingKeys: String, CodingKey {
@@ -77,6 +78,7 @@ enum StemModelWeightError: Error, Sendable {
     case tensorNotFound(String)
     case tensorFileMissing(String)
     case tensorSizeMismatch(String, expected: Int, got: Int)
+    case checksumMismatch(String, expected: String, got: String)
 }
 
 /// Load all 4 stems' weights from the bundle.
@@ -235,6 +237,9 @@ private func loadTensor(key: String, manifest: WeightManifest) throws -> [Float]
         throw StemModelWeightError.tensorSizeMismatch(
             key, expected: expectedBytes, got: data.count
         )
+    }
+    try WeightChecksum.verify(data, expected: entry.sha256, key: key) {
+        StemModelWeightError.checksumMismatch($0, expected: $1, got: $2)
     }
     let count = data.count / MemoryLayout<Float>.size
     return data.withUnsafeBytes { raw in
