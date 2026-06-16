@@ -8,6 +8,32 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-16-b] CLEAN.7.6 — photosensitivity flash-safety: enforced measurement gate (partial), runtime clamp deferred to A-next
+
+G9 was the only open *safety* gap (P1) — flash-safety was per-preset convention (`SHADER_CRAFT` anti-strobe + the FFO anti-references) with **no enforced output-side clamp**; CLEAN.2.5a's hardened-runtime/notarization path made shipping outside the dev box real. This lands the **measurement half** of an enforced Harding/WCAG 2.3.1 invariant (≤ 3 flashes/s); the look-altering runtime clamp is a deliberate A-next follow-up (it would force a golden regen + M7 re-review of every certified preset). `[DEC D-164]`.
+
+**Three Matt decisions (AskUserQuestion), in order:** (1) enforce by **measurement now / runtime clamp A-next** (the staged hybrid, not a clamp bundled now); (2) a **synthetic worst-case drive** for the gate; (3) after the gate exposed a harness limit, **ship the partial gate now, fold the rest into A-next**.
+
+- **Work A — `FlashAnalyzer`** (`Sources/Renderer/FlashAnalyzer.swift`). Pure Harding/WCAG analyzer on a chronological full-frame relative-luminance sequence: hysteresis turning-point extraction (≥ 10 % swing), dark-state < 0.80 gate, peak flashes/s over a 1 s sliding window (a flash = a pair of opposing transitions). 8 synthetic self-checks (`FlashAnalyzerTests`) pin the semantics — steady/ramp safe, 6 Hz strobe unsafe, 2 Hz safe, 2.5/3.5 Hz brackets, dark-ceiling + 10 %-floor gating. **This substitutes for the prompt's intended FBS A/B validation, which is not runnable** — the "373-events" pre/post video was never committed (only 3-band feature CSVs survive); synthetic sequences at known rates prove the detector more precisely than a single real A/B.
+- **Work B — `PhotosensitivityCertificationTests`** (sibling of `PresetContrastCertificationTests`). Renders each certified preset over a synthetic worst-case 4.5 Hz beat train (sharp full-amplitude accents + dev spikes over energetic-but-smoothed continuous bands, in the normal certified regime), measures rendered full-frame WCAG relative luminance (per-pixel sRGB→linear LUT), **fails cert at > 3 flashes/s**.
+- **The forced-partial finding.** Three kickoff premises were false against the repo (surfaced before building): the FBS A/B video is gone; the `Fixtures/fbs` CSVs are 3-band extracts (no beat/dev/stem) and not `SessionDataLoader`-compatible; `PresetSessionReplay` is an un-importable `executableTarget`. Running the gate then revealed the structural limit: the single-pass `FeatureVector`-only harness validly measures only presets that read music response from the FeatureVector in-shader — **Ferrofluid Ocean (Δ0.010) + Murmuration (Δ0.022), both 0 flashes/s SAFE.** The other five render **static**: Lumen Mosaic + Nimbus (music response via CPU follower-state buffers, slots 6/8, zeroed here), Dragon Bloom + Fata Morgana (rayMarch — need the multi-pass G-buffer/lighting chain), Skein (painterly — needs feedback-texture history). A static render is **never asserted "safe"** (CLEAN.0 — the cardinal sin for a safety gate); the five are tracked in `unmeasurableInHarness` and the gate **fails loud on drift** (a known-static preset that starts responding, a responsive one that regresses to static, or a new certified preset that renders static). Valid coverage for the five **and** the runtime clamp both require the **A-next headless real-`RenderPipeline` harness** (followers ticked + feedback + multi-pass). Further A-next blind spots: regional/area-gating (full-frame mean only), the saturated-red-flash channel.
+
+**Per-preset evidence (4.5 Hz worst-case beat train; full-frame WCAG luminance; limit 3.0):**
+
+| Preset | Status | Peak flashes/s | luma Δ |
+|---|---|---|---|
+| Ferrofluid Ocean | MEASURED · SAFE | 0.00 | 0.010 |
+| Murmuration | MEASURED · SAFE | 0.00 | 0.022 |
+| Lumen Mosaic | unmeasurable (static) → A-next | — | 0.000 |
+| Nimbus | unmeasurable (static) → A-next | — | 0.000 |
+| Dragon Bloom | unmeasurable (static) → A-next | — | 0.000 |
+| Fata Morgana | unmeasurable (static) → A-next | — | 0.000 |
+| Skein | unmeasurable (static) → A-next | — | 0.000 |
+
+**Verified:** `FlashAnalyzerTests` 8/8 + `PhotosensitivityCertificationTests` green (2 tests — FFO + Murmuration validly SAFE, 5 tracked-unmeasurable, non-empty guard passes); swiftlint `--strict` 0 violations on both new files. Test-only + one new Renderer source; **no production-render delta, not a look change → no M7 needed** (the A-next runtime clamp is the look-altering half and gets its own M7 sitting). Docs: `DECISIONS.md` D-164 (+ Index), `ENGINEERING_PLAN.md` (Recently Completed + U.9 deferral note), `CODE_AUDIT_2026-06-13.md` (G9 Part B + Part C 7.6), `SHADER_CRAFT.md` (anti-strobe → cited enforced invariant), `RENDER_CAPABILITY_REGISTRY.md §9` (new Partial capability). **G9 → PARTIALLY ENFORCED**; the runtime clamp + the 5 static presets are the recommended A-next increment.
+
+---
+
 ## [dev-2026-06-16-a] CLEAN.5.5 — ML-weight load-time `sha256` integrity gate (closes Phase 5)
 
 5.4d proved the ML weight `.bin` are **present** (not LFS pointer stubs). 5.5 is the complementary layer — proving they're **correct**. A truncated download, a partial smudge, bit-rot, a wrong-version checkpoint, or a tampered file all pass the present-check and then feed garbage into the stem separator / beat tracker with **no crash** (bad stems / wrong beats, not an error). The load-time `sha256` gate makes that fail loud. Present (5.4d) + correct (5.5) = the weight supply chain is closed. The audit's **G11** is **resolved**.
