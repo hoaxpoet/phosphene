@@ -348,8 +348,7 @@ struct SpotifyOAuthTokenProviderTests {
         let loginTask = Task { try await provider.login() }
         try await Task.sleep(for: .milliseconds(30))
 
-        // swiftlint:disable:next force_unwrapping
-        let callbackURL = URL(string: "phosphene://spotify-callback?error=access_denied")!
+        let callbackURL = try #require(URL(string: "phosphene://spotify-callback?error=access_denied"))
         await provider.handleCallback(url: callbackURL)
 
         do {
@@ -363,11 +362,10 @@ struct SpotifyOAuthTokenProviderTests {
     }
 
     @Test("handleCallback with wrong URL scheme is a no-op")
-    func handleCallbackWrongScheme() async {
+    func handleCallbackWrongScheme() async throws {
         let provider = makeProvider()
         // Should not crash or affect state.
-        // swiftlint:disable:next force_unwrapping
-        let wrongURL = URL(string: "https://not-a-callback.com/path?code=abc")!
+        let wrongURL = try #require(URL(string: "https://not-a-callback.com/path?code=abc"))
         await provider.handleCallback(url: wrongURL)
         #expect(await provider.isAuthenticated == false)
     }
