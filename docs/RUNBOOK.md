@@ -4,9 +4,10 @@
 
 - macOS 14.0+ (Sonoma)
 - Apple Silicon Mac (M1+)
-- Xcode 16+ with Command Line Tools
+- **Xcode 26.5** with Command Line Tools — pinned in [`.xcode-version`](../.xcode-version) (CLEAN.5.4a); CI selects this exact version, not "newest installed". The real floor is the **Xcode 26 SDK**, not the OS: it marks the Metal protocol types (`MTLDevice`/`MTLCommandQueue`/`MTLRenderPipelineState`) `Sendable`, which the codebase stores in `Sendable` types; Xcode 16 does not (build SDK ≠ deployment target — the 26 SDK still targets macOS 14.0). Bump location: `.xcode-version` + the CI `runs-on` image.
+- **SwiftLint 0.63.2** — pinned in `.github/workflows/ci.yml` (`SWIFTLINT_VERSION`; CLEAN.5.4b). Match it locally; `brew install swiftlint` floats to latest (0.63.3 drifted the `force_unwrapping` rule and red-built CI). Bump both together.
 - Screen capture permission for live audio capture
-- Swift 6.0, Metal 3.1+
+- Swift 6.0 language mode (Xcode 26.5 toolchain ships Swift 6.3.x), Metal 3.1+
 
 > **Security posture & local threat model:** [`SECURITY_POSTURE.md`](SECURITY_POSTURE.md) — why the app is un-sandboxed, the system-audio tap scope + consent gate, hardened-runtime/notarization status (filed CLEAN.2.5 for distribution), the `phosphene://` OAuth callback, the local-file parsing surface, and the no-telemetry posture. Read it before changing any signing/entitlement/tap setting.
 
