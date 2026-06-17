@@ -24,6 +24,9 @@ extension VisualizerEngine {
     ) -> AudioInputRouter {
         let metadata = StreamingMetadata()
         let audioRouter = AudioInputRouter(metadata: metadata)
+        // CLEAN.3.5: close any prior handle before reopening so a re-setup can't leak
+        // an FD (the file is truncated + reopened each call). Also closed in deinit.
+        diagLog?.closeFile()
         diagLog = Self.openDiagnosticLog()
         lastAnalysisTime = CFAbsoluteTimeGetCurrent()
 

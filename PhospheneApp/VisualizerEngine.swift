@@ -983,6 +983,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// crashed" signal. Remove once BUG-012 closes.
     deinit {
         BUG012Probe.recordVisualizerEngineDeinit()
+        diagLog?.closeFile()   // CLEAN.3.5: release the ~/phosphene_diag.log handle
     }
 
     /// Build the flock used by the Murmuration preset — the **3D version of the
