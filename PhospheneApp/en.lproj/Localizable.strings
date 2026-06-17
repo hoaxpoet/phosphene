@@ -85,6 +85,17 @@
 "error.playback.negative_nudge_twice"   = "Not quite hitting the mark? Try \u2318R to re-plan.";
 "error.playback.replan_succeeded"       = "Re-planned. Next transition will use the new plan.";
 
+// MARK: - Audio-stall overlay (silent-tap family — BUG-057/055/058)
+
+"playback.audioStall.headline"      = "Phosphene isn’t hearing any audio";
+"playback.audioStall.body"          = "The visualizer is paused because no sound is reaching it. A few things to try:";
+"playback.audioStall.step1"         = "Restart the Mac’s audio engine — paste this into Terminal:";
+"playback.audioStall.step2"         = "If you just rebuilt Phosphene, re-grant Screen & System Audio Recording in System Settings → Privacy & Security, then quit and reopen the app.";
+"playback.audioStall.step3"         = "Check that the right output device is selected in System Settings → Sound → Output.";
+"playback.audioStall.autoClearHint" = "This message clears itself as soon as audio comes back.";
+
+"a11y.audioStallCard.label"         = "Phosphene is not receiving audio. On-screen steps explain how to restore it.";
+
 // MARK: - Onboarding
 
 "onboarding.permission.headline"        = "Phosphene needs permission to hear music playing on your Mac.";

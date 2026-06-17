@@ -128,6 +128,7 @@
 		H10014 /* SessionProgressDotsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20014; };
 		H10015 /* PlaybackControlsCluster.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20015; };
 		H10016 /* ListeningBadgeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20016; };
+		H10041 /* AudioStallOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20041; };
 		H10017 /* PlaybackChromeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20017; };
 		H10018 /* ShortcutHelpOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20018; };
 		H10019 /* ToastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = H20019; };
@@ -322,6 +323,7 @@
 		H20014 /* SessionProgressDotsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionProgressDotsView.swift; sourceTree = "<group>"; };
 		H20015 /* PlaybackControlsCluster.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackControlsCluster.swift; sourceTree = "<group>"; };
 		H20016 /* ListeningBadgeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListeningBadgeView.swift; sourceTree = "<group>"; };
+		H20041 /* AudioStallOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioStallOverlayView.swift; sourceTree = "<group>"; };
 		H20017 /* PlaybackChromeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackChromeView.swift; sourceTree = "<group>"; };
 		H20018 /* ShortcutHelpOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortcutHelpOverlayView.swift; sourceTree = "<group>"; };
 		H20019 /* ToastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastView.swift; sourceTree = "<group>"; };
@@ -623,6 +625,7 @@
 				H20014 /* SessionProgressDotsView.swift */,
 				H20015 /* PlaybackControlsCluster.swift */,
 				H20016 /* ListeningBadgeView.swift */,
+				H20041 /* AudioStallOverlayView.swift */,
 				H20017 /* PlaybackChromeView.swift */,
 				Q20005 /* LocalFileTransportBar.swift */,
 				H20018 /* ShortcutHelpOverlayView.swift */,
@@ -924,6 +927,7 @@
 				H10014 /* SessionProgressDotsView.swift in Sources */,
 				H10015 /* PlaybackControlsCluster.swift in Sources */,
 				H10016 /* ListeningBadgeView.swift in Sources */,
+				H10041 /* AudioStallOverlayView.swift in Sources */,
 				H10017 /* PlaybackChromeView.swift in Sources */,
 				H10018 /* ShortcutHelpOverlayView.swift in Sources */,
 				H10019 /* ToastView.swift in Sources */,
