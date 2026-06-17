@@ -155,13 +155,6 @@ public final class RayMarchPipeline: @unchecked Sendable {
 
     // MARK: - Depth Debug Mode
 
-    /// When `true`, `render(...)` bypasses all lighting, SSGI, and post-processing and
-    /// renders a split-screen depth/albedo diagnostic:
-    ///   Left half:  depth map — white = near, dark = far, RED = sky/miss.
-    ///   Right half: raw unlit albedo from gbuf2.
-    /// Temporarily enabled in applyPreset for diagnostic review — disable after.
-    public var depthDebugEnabled: Bool = false
-
     /// Direct depth+albedo diagnostic pipeline — compiled from `raymarch_depth_debug_fragment`.
     let depthDebugPipeline: MTLRenderPipelineState
 
