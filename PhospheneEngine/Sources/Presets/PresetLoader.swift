@@ -301,20 +301,48 @@ public final class PresetLoader: @unchecked Sendable {
         }
     }
 
+    /// Decode a preset's JSON sidecar.
+    ///
+    /// - Returns `nil` when no sidecar file exists — benign; the caller substitutes a
+    ///   name-only default (presets without a sidecar use defaults by design).
+    /// - Throws when a sidecar exists but is unreadable or malformed — the caller logs
+    ///   loudly and still degrades to the name-only default, so a typo'd sidecar can't
+    ///   *silently* demote a preset to the wrong family/feedback params (CLEAN.3.1).
+    static func decodeSidecar(at jsonURL: URL) throws -> PresetDescriptor? {
+        guard FileManager.default.fileExists(atPath: jsonURL.path) else { return nil }
+        let data = try Data(contentsOf: jsonURL)
+        return try JSONDecoder().decode(PresetDescriptor.self, from: data)
+    }
+
     private func loadDescriptor(from jsonURL: URL, fallbackName: String) -> PresetDescriptor {
-        guard FileManager.default.fileExists(atPath: jsonURL.path),
-              let data = try? Data(contentsOf: jsonURL),
-              let descriptor = try? JSONDecoder().decode(PresetDescriptor.self, from: data)
-        else {
-            // No sidecar — create a default descriptor from the file name.
+        do {
+            if let descriptor = try Self.decodeSidecar(at: jsonURL) {
+                return descriptor
+            }
+            // No sidecar at all — benign.
             logger.info("No JSON sidecar for \(fallbackName), using defaults")
-            let json = """
-            {"name": "\(fallbackName)"}
-            """
-            return (try? JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8)))
-                ?? PresetDescriptor.fallback(name: fallbackName)
+        } catch {
+            // Sidecar present but malformed/unreadable: surface it loudly, then degrade.
+            // Before CLEAN.3.1 this fell into the same `.info` "no sidecar" branch as a
+            // genuinely-absent file, so a typo'd sidecar silently dropped the preset to
+            // default family/feedback params with no on-disk signal.
+            logger.error("""
+                Malformed JSON sidecar for \(fallbackName): \(error) — \
+                degrading to default descriptor (default family/feedback params).
+                """)
         }
-        return descriptor
+        return defaultDescriptor(name: fallbackName)
+    }
+
+    /// Name-only default for a preset whose sidecar is absent or unusable. Mirrors a
+    /// bare `{"name": "X"}` decode — `family` stays `nil` (a defaulted preset claims no
+    /// aesthetic family rather than being mis-sorted into `waveform`).
+    private func defaultDescriptor(name: String) -> PresetDescriptor {
+        let json = """
+        {"name": "\(name)"}
+        """
+        return (try? JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8)))
+            ?? PresetDescriptor.fallback(name: name)
     }
 
     // MARK: - Shader Compilation
