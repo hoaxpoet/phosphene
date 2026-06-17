@@ -92,6 +92,17 @@ public final class SessionRecorder: @unchecked Sendable {
     /// diagnostic motion is readable at 30 fps).
     private let minVideoInterval: CFAbsoluteTime = 1.0 / 30.0
 
+    /// BUG-050: gate for the per-frame video capture. The drawable blit →
+    /// `tex.getBytes` → AVAssetWriter append costs ~7 ms/frame, additive to
+    /// render, ≈ doubling the app's CPU for the entire session (sustained
+    /// power/heat — no fps cost). It is **OFF by default**; the CSV / log /
+    /// raw-tap / stem artifacts (nearly free, and where ~all the diagnostic
+    /// value lives) always record. Enable per session with
+    /// `PHOSPHENE_RECORD_VIDEO=1` (e.g. to capture a quality reel). When off,
+    /// `ensureCaptureTexture` returns nil → the blit, the byte read, and the
+    /// encoder are all skipped.
+    let videoEnabled: Bool
+
     // Capture texture (reused across frames; resized on view-size change).
     var captureTexture: MTLTexture?
 
@@ -219,7 +230,11 @@ public final class SessionRecorder: @unchecked Sendable {
 
     /// Create a new session directory under ~/Documents/phosphene_sessions/.
     /// Returns `nil` if disabled or if the directory could not be created.
-    public init?(baseDir: URL? = nil, enabled: Bool = true) {
+    ///
+    /// - Parameter videoEnabled: gate the per-frame video capture (BUG-050).
+    ///   `nil` (the production default) reads `PHOSPHENE_RECORD_VIDEO` from the
+    ///   environment → off unless set to `1`. Tests pass an explicit value.
+    public init?(baseDir: URL? = nil, enabled: Bool = true, videoEnabled: Bool? = nil) {
         guard enabled else {
             logger.info("SessionRecorder: disabled by settings — no session directory created")
             return nil
@@ -260,6 +275,8 @@ public final class SessionRecorder: @unchecked Sendable {
         self.featuresHandle = handles.features
         self.stemsHandle    = handles.stems
         self.logHandle      = handles.log
+        self.videoEnabled   = videoEnabled
+            ?? (ProcessInfo.processInfo.environment["PHOSPHENE_RECORD_VIDEO"] == "1")
 
         logger.info("SessionRecorder started: \(dir.path, privacy: .public)")
         writeStartupBanner(dir: dir)
@@ -278,6 +295,9 @@ public final class SessionRecorder: @unchecked Sendable {
         height: Int,
         pixelFormat: MTLPixelFormat
     ) -> MTLTexture? {
+        // BUG-050: video off → no capture texture, so the caller skips the blit
+        // and `recordFrame`'s `captureTexture` guard skips the encode entirely.
+        guard videoEnabled else { return nil }
         if let existing = captureTexture,
            existing.width == width,
            existing.height == height,
@@ -468,5 +488,9 @@ public final class SessionRecorder: @unchecked Sendable {
         let device = MTLCreateSystemDefaultDevice()?.name ?? "unknown"
         log("SessionRecorder started schema=1 dir=\(dir.path)")
         log("host macOS=\(osVersion) gpu=\(device) hostname=\(proc.hostName)")
+        let videoState = videoEnabled
+            ? "ENABLED"
+            : "OFF — CSV/log/stems only (BUG-050; set PHOSPHENE_RECORD_VIDEO=1 to capture video.mp4)"
+        log("video recording: \(videoState)")
     }
 }
