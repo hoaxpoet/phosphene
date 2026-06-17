@@ -49,7 +49,11 @@ extension SessionRecorder {
             videoWriter?.startSession(atSourceTime: startTime)
         }
         let pts = CMTime(value: CMTimeValue(wallclock * 1_000_000), timescale: 1_000_000)
-        if !adaptor.append(pixelBuffer, withPresentationTime: pts) {
+        if adaptor.append(pixelBuffer, withPresentationTime: pts) {
+            // BUG-039 invariant (CLEAN.3.6): the "actually-writing" signal, asserted at finish().
+            videoFramesAppended += 1
+            lastVideoAppendFrameIndex = frameIndex
+        } else {
             videoAppendFailCount += 1
             let err = videoWriter?.error.map { String(describing: $0) } ?? "nil"
             let statusRaw = videoWriter?.status.rawValue ?? -1
@@ -236,5 +240,47 @@ extension SessionRecorder {
             videoLogger.error("AVAssetWriter init failed: \(error.localizedDescription)")
             return false
         }
+    }
+
+    // MARK: - BUG-039 invariant (CLEAN.3.6)
+
+    /// At `finish()` (on the queue): flag a silent video stop loudly and return the
+    /// video-outcome fragment for the session-end summary line. The recorder keeps
+    /// "running" (CSV/log advance) even when the writer stops, so this is the single
+    /// place the running-vs-actually-writing invariant is asserted on the artifacts.
+    func finalizeVideoInvariant() -> String {
+        if Self.isSilentVideoStop(
+            videoLocked: writerLockedDims != nil,
+            framesAppended: videoFramesAppended,
+            restarts: videoWriterRestartCount,
+            disabled: videoFailureLogged,
+            framesSinceLastAppend: frameIndex - lastVideoAppendFrameIndex
+        ) {
+            writeLogLine("BUG-039 invariant VIOLATED: video locked but appends stopped "
+                + "\(frameIndex - lastVideoAppendFrameIndex) frames before session end "
+                + "(\(videoFramesAppended) appended) with no writer death/restart and "
+                + "video not disabled — silent stop")
+        }
+        return "video \(videoFramesAppended) appended / \(videoSegmentIndex) segment(s) / "
+            + "\(videoWriterRestartCount) restart(s) / disabled=\(videoFailureLogged)"
+    }
+
+    /// BUG-039 invariant predicate: true when the writer locked and appended frames, then
+    /// stopped appending well before session end (`framesSinceLastAppend` over
+    /// `videoSilentStopFrameThreshold`) with NO logged cause — no writer death/restart and
+    /// video not disabled. Every *explained* stop is excluded. Pure → unit-testable without
+    /// a Metal device / AVAssetWriter.
+    static func isSilentVideoStop(
+        videoLocked: Bool,
+        framesAppended: Int,
+        restarts: Int,
+        disabled: Bool,
+        framesSinceLastAppend: Int
+    ) -> Bool {
+        videoLocked
+            && framesAppended > 0
+            && restarts == 0
+            && !disabled
+            && framesSinceLastAppend > videoSilentStopFrameThreshold
     }
 }
