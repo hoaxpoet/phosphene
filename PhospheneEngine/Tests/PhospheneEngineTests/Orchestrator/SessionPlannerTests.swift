@@ -61,6 +61,28 @@ struct SessionPlannerTests {
         #expect(session.totalDuration == duration)
     }
 
+    // MARK: 3b — Zero-duration track never installs a diagnostic (CLEAN.3.2)
+
+    @Test("Zero-duration track falls back to an eligible preset, never the diagnostic catalog.first")
+    func zeroDurationTrack_neverInstallsDiagnostic() throws {
+        // A zero-duration (or section-degenerate) track emits no segments in the
+        // normal loop and hits the defensive fallback. Before CLEAN.3.2 that grabbed
+        // a raw `catalog.first`, so a diagnostic sitting first installed despite the
+        // D-074 exclusion gate. The fallback must pick the eligible preset instead.
+        let diagnostic = makePreset(name: "AAADiagnostic", isDiagnostic: true)
+        let eligible   = makePreset(name: "ZZZEligible")
+        let catalog    = [diagnostic, eligible]   // diagnostic is catalog.first
+        let track      = (makeIdentity(title: "ZeroLen", duration: 0), makeProfile())
+
+        let session = try planner.plan(tracks: [track], catalog: catalog, deviceTier: .tier1)
+
+        let entry = try #require(session.tracks.first)
+        #expect(entry.preset.isDiagnostic == false,
+                "Defensive fallback installed a diagnostic — D-074 bypass via catalog.first")
+        #expect(entry.preset.id == eligible.id,
+                "Expected the eligible preset, got '\(entry.preset.id)'")
+    }
+
     // MARK: 4 — No consecutive same family (or it's warned)
 
     @Test("Five-track plan: consecutive same-family always accompanied by a warning")
@@ -388,7 +410,8 @@ private func makePreset(
     sectionSuitability: [SongSection] = SongSection.allCases,
     stemAffinity: [String: String] = [:],
     complexityCost: ComplexityCost = ComplexityCost(tier1: 2.0, tier2: 1.5),
-    transitionAffordances: [TransitionAffordance] = [.crossfade]
+    transitionAffordances: [TransitionAffordance] = [.crossfade],
+    isDiagnostic: Bool = false
 ) -> PresetDescriptor {
     let sectionJSON = sectionSuitability.map { "\"\($0.rawValue)\"" }.joined(separator: ",")
     let stemJSON    = stemAffinity.map { "\"\($0.key)\": \"\($0.value)\"" }.joined(separator: ",")
@@ -404,6 +427,7 @@ private func makePreset(
         "stem_affinity": {\(stemJSON)},
         "complexity_cost": {"tier1": \(complexityCost.tier1), "tier2": \(complexityCost.tier2)},
         "transition_affordances": [\(affordJSON)],
+        "is_diagnostic": \(isDiagnostic),
         "certified": true
     }
     """
