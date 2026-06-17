@@ -4,6 +4,55 @@ Resolved entries rotated out of [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) §Resolved 
 
 ---
 
+### BUG-012 — MPSGraph EXC_BAD_ACCESS in StemFFTEngine during sustained force-dispatch (2026-05-15)
+
+**Severity:** P1 (crash) · **Domain tag:** ml
+**Status:** **Resolved 2026-06-15 — retired by inference** (no direct repro→fix; see rationale). Fix landed in **CLEAN.1.2** (`da26a3a`).
+
+**Root cause / fix.** The original analysis assumed the serial `stemQueue` was `separate()`'s only caller; it was not — the session-prep path drove the **same** `StemSeparator` unlocked (diagnosed as **BUG-031**). CLEAN.1.2 serialized the full input→predict→output critical section under one lock and returns stems by value, so the live + prep paths can no longer drive concurrent MPSGraph work on the shared model buffers — the candidate root cause of this `EXC_BAD_ACCESS`.
+
+**Why retired without a reproduced fix.** BUG-012 was a latent, intermittent crash never deterministically reproduced, so it is retired on convergent evidence rather than a reproduced fix: (1) **CLEAN.1.6 TSan stress** — overlapping live+prep `separate()` on one shared `StemSeparator` + rapid session churn ran **TSan-clean, 0 data races**, directly exercising this crash's race surface; (2) **zero crashes** across Matt's two real validation sessions (`17-22-31Z` local + `17-58-44Z` streaming, 2026-06-14), which include sustained dispatch + prep-during-playback. **If a `StemFFTEngine` `EXC_BAD_ACCESS` recurs, reopen under a new BUG number** — the `BUG012Probe` diagnostic infra (`Sources/Shared/BUG012Probe.swift`) is retained for that. Full diagnosis + instrumentation history is in git (`[BUG-012-i1]`, 2026-05-20) and `docs/CAPABILITY_REGISTRY/ML.md §BUG-012 instrumentation map`. `RELEASE_NOTES_DEV.md [dev-2026-06-15-d]`.
+
+---
+
+### BUG-024 — Stale LF artwork bleeds into streaming sessions (LF.6, 2026-06-01)
+
+> **RESOLVED 2026-06-01** — Trivial-collapsed P1 per CLAUDE.md §Defect Handling Protocol (< 5 lines, root cause obvious, no architectural risk). Landed as the one-commit `[LF.6.fix.1]` increment.
+
+**Severity:** P1 (visual mis-attribution: the chrome rendered the wrong album's artwork against every streaming track for the entire post-LF session lifetime).
+
+**Domain tag:** `pipeline-wiring`.
+
+**Expected behavior.** When transitioning from an LF session (with embedded artwork) to a streaming session, `engine.currentTrackArtworkData` becomes `nil`. `TrackInfoCardView.showArtworkSlot` evaluates `(albumArtData != nil) || isLocalFileSession` → `false` for streaming + nil → slot hides entirely. The streaming chrome renders text-only — visually identical to pre-LF.6 streaming chrome. (The LF.6 kickoff's Critical Invariants section: *"Streaming-path behaviour is byte-identical to pre-LF.6. `engine.currentTrack` continues to be set by `makeTrackChangeCallback` for streaming, `currentTrackArtworkData` stays `nil` on streaming sessions."*)
+
+**Actual behavior.** `engine.currentTrackArtworkData` retained the previous LF session's bytes indefinitely. The streaming track-change callback at [VisualizerEngine+Capture.swift:189-202](PhospheneApp/VisualizerEngine+Capture.swift:189-202) wrote `self.currentTrack = event.current` for every streaming track but never touched `currentTrackArtworkData`. The `@Published` retained the LF bytes. `TrackInfoCardView.showArtworkSlot` evaluated `true` (stale bytes) → rendered the wrong art (e.g. The Cure's Kiss Me cover for every Spotify track).
+
+**Reproduction (Matt's manual smoke, 2026-06-01).**
+1. Open `02_cure_m4a.m4a` via Open Local File (LF session with MP4 covr atom artwork).
+2. End the LF session.
+3. Start a Spotify playlist with multiple tracks (e.g. Radiohead "There, There" + Chaim "Love Rehab").
+4. Observe: every streaming track's chrome card shows The Cure's Kiss Me cover in the artwork slot, regardless of the actual track's identity.
+
+**Session artifacts.** Three screenshots from Matt's smoke session: Radiohead track + Chaim track both displaying The Cure's artwork. No session.log captured — visual evidence is the load-bearing artifact.
+
+**Suspected failure class.** `pipeline-wiring`. The LF.6-L2 implementation correctly publishes `currentTrackArtworkData` on every LF state-change site (`handleLocalFileReady` + `advanceLocalFileQueue`) via `applyLocalFileTrackState(...)` but doesn't clear the publisher on the streaming or session-boundary paths. The publisher's last value persists across session and source transitions.
+
+**Verification criteria.**
+- *Automated:* extend `PlaybackChromeArtworkBindingTests` with a "LF → streaming transition: artwork-nil emission clears prior LF bytes" case.
+- *Manual:* re-run Test 4 from the LF.6 smoke (LF session → end → Spotify playlist). Expected: streaming chrome text-only, no artwork tile, no fallback glyph (slot entirely hidden, card geometry matches pre-LF.6).
+
+**Root cause.** Two LF.6 sites write `currentTrack` (LF: `publishLocalFileTrackSurface`; streaming: `makeTrackChangeCallback`). Only the LF site was paired with a `currentTrackArtworkData` write. The streaming site needs the same pairing (writing `nil` to clear the publisher). Additionally, the `.connecting` state-observer is a natural session-boundary clearing point — adding the clear there is defense-in-depth for ad-hoc / reactive paths that may not fire a track-change callback immediately.
+
+**Fix.**
+- `[LF.6.fix.1]` ([VisualizerEngine+Capture.swift:190](PhospheneApp/VisualizerEngine+Capture.swift:190)): streaming track-change callback writes `self.currentTrackArtworkData = nil` alongside `self.currentTrack = event.current`, back-to-back in the same MainActor block.
+- `[LF.6.fix.1]` ([VisualizerEngine.swift:807](PhospheneApp/VisualizerEngine.swift:807)): `.connecting` state observer clears `currentTrackArtworkData = nil` alongside `currentSessionPlanSeed = nil`.
+- `[LF.6.fix.1]` ([PlaybackChromeArtworkBindingTests.swift](PhospheneAppTests/PlaybackChromeArtworkBindingTests.swift)): new "LF → streaming transition" regression test (6 tests in suite total).
+
+**Resolved:** 2026-06-01, commit `45021472`.
+
+---
+
+
 ### BUG-023 — Folder pick race during in-flight prep produces wrong-folder playback + parallel preps + mid-track restart (LF.5, 2026-05-28)
 
 > **RESOLVED 2026-05-28** — Three sub-symptoms (A / B / C) of one upstream concurrency cluster; landed as the three-commit LF.5.fix.3 increment (`0596b8ea` → `ef15d90d` → `1839d3e3`). Multi-increment process per CLAUDE.md §Defect Handling Protocol: instrumentation (already on disk from BUG-021's WIRING breadcrumbs) → diagnosis → fix B → fix A → fix C.
