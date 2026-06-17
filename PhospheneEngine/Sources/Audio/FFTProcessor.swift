@@ -234,47 +234,6 @@ public final class FFTProcessor: FFTProcessing, @unchecked Sendable {
 
         return runFFTCore(sampleRate: sampleRate)
     }
-
-    // MARK: - Debug
-
-    /// Print a text histogram of the current magnitude spectrum to the console.
-    /// Groups bins into `barCount` frequency bands for readability.
-    public func printHistogram(barCount: Int = 32) {
-        lock.lock()
-        let result = latestResult
-        lock.unlock()
-
-        let binsPerBar = Self.binCount / barCount
-        let binRes = result.binResolution
-
-        var bars = [Float](repeating: 0, count: barCount)
-        for bar in 0..<barCount {
-            var maxInBar: Float = 0
-            for bin in 0..<binsPerBar {
-                let idx = bar * binsPerBar + bin
-                if idx < Self.binCount {
-                    maxInBar = max(maxInBar, magnitudeBuffer[idx])
-                }
-            }
-            bars[bar] = maxInBar
-        }
-
-        // Find global max for scaling.
-        let globalMax = bars.max() ?? 1.0
-        let scale = globalMax > 0 ? 1.0 / globalMax : 1.0
-
-        let freqStr = String(format: "%.0f", result.dominantFrequency)
-        let magStr = String(format: "%.3f", result.dominantMagnitude)
-        var output = "FFT Spectrum (dominant: \(freqStr)Hz @ \(magStr))\n"
-        for bar in 0..<barCount {
-            let freq = Float(bar * binsPerBar) * binRes
-            let normalized = bars[bar] * scale
-            let width = Int(normalized * 40)
-            let barStr = String(repeating: "█", count: width)
-            output += String(format: "%5.0fHz |%s\n", freq, barStr)
-        }
-        logger.debug("\(output)")
-    }
 }
 
 // MARK: - FFTError

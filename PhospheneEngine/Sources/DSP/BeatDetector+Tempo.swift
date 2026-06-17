@@ -41,14 +41,6 @@ extension BeatDetector {
         }
         return slice[count / 2]
     }
-
-    /// Compute a given percentile (0–1) of the first `count` elements in a buffer.
-    func percentileOfBuffer(_ buffer: [Float], count: Int, percentile: Float) -> Float {
-        guard count > 0 else { return 0 }
-        let slice = Array(buffer.prefix(count)).sorted()
-        let idx = min(Int(Float(count) * percentile), count - 1)
-        return slice[idx]
-    }
 }
 
 // MARK: - Stable Tempo (IOI Histogram)
