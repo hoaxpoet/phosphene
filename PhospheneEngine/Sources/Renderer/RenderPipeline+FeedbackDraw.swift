@@ -8,23 +8,14 @@ extension RenderPipeline {
 
     /// Feedback render path. Two modes depending on whether particles are attached:
     ///
-    /// - **Particle mode** (Murmuration): warp (unused) → preset + particles drawn
-    ///   directly to the drawable. The feedback texture is maintained but not shown.
+    /// - **Particle mode** (Murmuration): preset + particles drawn directly to the
+    ///   drawable. No warp pass and no ping-pong texture — particle mode never samples
+    ///   feedback (CLEAN.4.4; the warp formerly ran every frame into an unread target).
     ///
     /// - **Surface mode** (Membrane): warp → composite (additive) → blit to drawable.
     ///   The preset's contribution accumulates into the feedback texture each frame.
     @MainActor
     func drawWithFeedback(_ ctx: inout FeedbackDrawContext) {
-        let currentTex = ctx.textures[ctx.texIndex]
-        let previousTex = ctx.textures[1 - ctx.texIndex]
-        ctx.params.beatValue = ctx.params.beatValue
-        runWarpPass(
-            commandBuffer: ctx.commandBuffer,
-            features: &ctx.features,
-            params: &ctx.params,
-            target: currentTex,
-            source: previousTex
-        )
         if ctx.particles != nil {
             drawParticleMode(
                 commandBuffer: ctx.commandBuffer,
@@ -34,16 +25,27 @@ extension RenderPipeline {
                 activePipeline: ctx.activePipeline,
                 particles: ctx.particles
             )
-        } else {
-            drawSurfaceMode(
-                commandBuffer: ctx.commandBuffer,
-                view: ctx.view,
-                features: &ctx.features,
-                stemFeatures: ctx.stemFeatures,
-                composePipeline: ctx.composePipeline,
-                feedbackTexture: currentTex
-            )
+            return
         }
+
+        // Surface mode: warp the previous frame, composite the preset additively, blit.
+        let currentTex = ctx.textures[ctx.texIndex]
+        let previousTex = ctx.textures[1 - ctx.texIndex]
+        runWarpPass(
+            commandBuffer: ctx.commandBuffer,
+            features: &ctx.features,
+            params: &ctx.params,
+            target: currentTex,
+            source: previousTex
+        )
+        drawSurfaceMode(
+            commandBuffer: ctx.commandBuffer,
+            view: ctx.view,
+            features: &ctx.features,
+            stemFeatures: ctx.stemFeatures,
+            composePipeline: ctx.composePipeline,
+            feedbackTexture: currentTex
+        )
     }
 
     /// Pass 1 of the feedback loop: read the previous texture, apply decay and

@@ -260,6 +260,17 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// Bilinear, clamp-to-edge sampler for feedback texture reads.
     let feedbackSamplerState: MTLSamplerState
 
+    /// True when the active preset actually samples the feedback ping-pong, i.e.
+    /// surface-mode feedback (Membrane: warp → composite → blit). Particle-mode
+    /// feedback presets (Murmuration) draw straight to the drawable and never sample
+    /// the ping-pong, and non-feedback presets have no params — both are false.
+    /// Gates ping-pong allocation + the warp/compose passes (CLEAN.4.4). Thread-safe.
+    var activePresetSamplesFeedback: Bool {
+        let hasParams = feedbackLock.withLock { currentFeedbackParams != nil }
+        let hasParticles = particleLock.withLock { particleGeometry != nil }
+        return hasParams && !hasParticles
+    }
+
     // MARK: - Mesh Shader State
 
     /// Optional mesh generator — attached when the active preset has `useMeshShader: true`.
@@ -588,22 +599,32 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         let width = max(Int(size.width), 1)
         let height = max(Int(size.height), 1)
 
-        var textures: [MTLTexture] = []
-        for i in 0..<2 {
-            guard let tex = context.makeSharedTexture(
-                width: width,
-                height: height,
-                usage: [.renderTarget, .shaderRead]
-            ) else {
-                logger.error("Failed to allocate feedback texture \(i)")
-                return
+        // CLEAN.4.4: only (re)allocate the ping-pong for a preset that samples it.
+        // A non-feedback or particle-mode preset gets none — and any pair left over
+        // from a previous feedback preset is released here (the resize is the natural
+        // boundary if the switch-away free was missed). Feedback presets re-allocate
+        // at the new size, preserving the D-061(a) hot-plug no-torn-frames contract.
+        // The other subsystems below (post-process, ray march, mv_warp, staged) keep
+        // their unconditional reallocation — they are gated by their own attachment.
+        if activePresetSamplesFeedback {
+            var textures: [MTLTexture] = []
+            for i in 0..<2 {
+                guard let tex = context.makeSharedTexture(
+                    width: width,
+                    height: height,
+                    usage: [.renderTarget, .shaderRead]
+                ) else {
+                    logger.error("Failed to allocate feedback texture \(i)")
+                    return
+                }
+                textures.append(tex)
             }
-            textures.append(tex)
-        }
-
-        feedbackLock.withLock {
-            feedbackTextures = textures
-            feedbackIndex = 0
+            feedbackLock.withLock {
+                feedbackTextures = textures
+                feedbackIndex = 0
+            }
+        } else {
+            feedbackLock.withLock { feedbackTextures = [] }
         }
 
         // Reallocate post-process textures if a chain is attached.
@@ -624,7 +645,7 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         // Reallocate per-stage offscreen textures for staged-composition presets.
         reallocateStagedTextures(size: size)
 
-        logger.info("Feedback textures allocated: \(width)×\(height)")
+        logger.info("Drawable resized to \(width)×\(height)")
     }
 
     @MainActor

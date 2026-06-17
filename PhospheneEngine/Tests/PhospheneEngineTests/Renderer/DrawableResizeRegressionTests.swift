@@ -3,9 +3,14 @@
 //
 // Hot-plug display events trigger drawableSizeWillChange when the window reparents onto
 // a different display. These tests guard against:
-//  · Feedback textures left at the old size (torn frames).
+//  · Feedback textures left at the old size (torn frames) — for presets that sample them.
 //  · mv_warp textures left at the old size (D-027 feedback smear).
 //  · currentDrawableSize stale after reparent.
+//
+// CLEAN.4.4: the feedback ping-pong is only allocated for presets that actually sample
+// it (surface-mode feedback, e.g. Membrane). A non-feedback preset, or a particle-mode
+// feedback preset (Murmuration, which draws straight to the drawable), allocates none —
+// these tests pin that gate via `setFeedbackParams` / `setParticleGeometry`.
 
 import Testing
 import Metal
@@ -33,12 +38,14 @@ struct DrawableResizeRegressionTests {
         return (pipeline, ctx)
     }
 
-    @Test("drawableSizeWillChange allocates two feedback textures at the new size")
-    func test_drawableSizeWillChange_allocatesFeedbackTextures() throws {
+    @Test("drawableSizeWillChange allocates two feedback textures for a surface-feedback preset")
+    func test_drawableSizeWillChange_surfaceFeedback_allocatesTextures() throws {
         let (pipeline, ctx) = try makePipeline()
         let view = MTKView(frame: .zero, device: ctx.device)
         let newSize = CGSize(width: 1920, height: 1080)
 
+        // Surface-mode feedback preset: params set, no particles.
+        pipeline.setFeedbackParams(FeedbackParams())
         pipeline.mtkView(view, drawableSizeWillChange: newSize)
 
         // Two feedback textures (ping-pong) must exist and match the requested size.
@@ -47,6 +54,49 @@ struct DrawableResizeRegressionTests {
             #expect(tex.width == Int(newSize.width))
             #expect(tex.height == Int(newSize.height))
         }
+    }
+
+    // CLEAN.4.4: a non-feedback preset (no params) allocates ZERO feedback textures
+    // on resize — the core "no wasted alloc" done-when. RED before the gate (the old
+    // handler allocated unconditionally), GREEN after.
+    @Test("drawableSizeWillChange allocates no feedback textures for a non-feedback preset")
+    func test_drawableSizeWillChange_nonFeedbackPreset_allocatesZeroFeedbackTextures() throws {
+        let (pipeline, ctx) = try makePipeline()
+        let view = MTKView(frame: .zero, device: ctx.device)
+
+        // No feedback params set — the default state for ~18 of 20 presets.
+        pipeline.mtkView(view, drawableSizeWillChange: CGSize(width: 3840, height: 2160))
+
+        #expect(pipeline.feedbackTextures.isEmpty)
+    }
+
+    // CLEAN.4.4: a particle-mode feedback preset (Murmuration) draws straight to the
+    // drawable and never samples the ping-pong → zero feedback textures even with params.
+    @Test("drawableSizeWillChange allocates no feedback textures for a particle-mode preset")
+    func test_drawableSizeWillChange_particleMode_allocatesZeroFeedbackTextures() throws {
+        let (pipeline, ctx) = try makePipeline()
+        let view = MTKView(frame: .zero, device: ctx.device)
+
+        pipeline.setFeedbackParams(FeedbackParams())
+        pipeline.setParticleGeometry(NoOpParticleGeometry())
+        pipeline.mtkView(view, drawableSizeWillChange: CGSize(width: 3840, height: 2160))
+
+        #expect(pipeline.feedbackTextures.isEmpty)
+    }
+
+    // CLEAN.4.4: switching away from a feedback preset (setFeedbackParams(nil)) releases
+    // the ping-pong — it must not stay resident (~32 MB @ 4K) for the rest of the session.
+    @Test("setFeedbackParams(nil) releases the ping-pong textures")
+    func test_setFeedbackParamsNil_releasesPingPong() throws {
+        let (pipeline, ctx) = try makePipeline()
+        let view = MTKView(frame: .zero, device: ctx.device)
+
+        pipeline.setFeedbackParams(FeedbackParams())
+        pipeline.mtkView(view, drawableSizeWillChange: CGSize(width: 1920, height: 1080))
+        #expect(pipeline.feedbackTextures.count == 2)
+
+        pipeline.setFeedbackParams(nil)   // switch to a non-feedback preset
+        #expect(pipeline.feedbackTextures.isEmpty)
     }
 
     @Test("drawableSizeWillChange updates mvWarpDrawableSize")
@@ -64,6 +114,7 @@ struct DrawableResizeRegressionTests {
     func test_drawableSizeWillChange_secondResize_replacesFirst() throws {
         let (pipeline, ctx) = try makePipeline()
         let view = MTKView(frame: .zero, device: ctx.device)
+        pipeline.setFeedbackParams(FeedbackParams())   // surface-feedback preset
 
         // Simulate Retina→non-Retina transition: first a large size, then a smaller one.
         pipeline.mtkView(view, drawableSizeWillChange: CGSize(width: 3840, height: 2160))
@@ -77,4 +128,15 @@ struct DrawableResizeRegressionTests {
         }
         #expect(pipeline.mvWarpDrawableSize == CGSize(width: 1920, height: 1080))
     }
+}
+
+// MARK: - Test Double
+
+/// Minimal no-op `ParticleGeometry` — makes `particleGeometry != nil` so the pipeline
+/// reports particle mode. Its compute/render methods are never invoked by the resize
+/// path under test (CLEAN.4.4).
+private final class NoOpParticleGeometry: ParticleGeometry, @unchecked Sendable {
+    var activeParticleFraction: Float = 1.0
+    func update(features: FeatureVector, stemFeatures: StemFeatures, commandBuffer: MTLCommandBuffer) {}
+    func render(encoder: MTLRenderCommandEncoder, features: FeatureVector) {}
 }
