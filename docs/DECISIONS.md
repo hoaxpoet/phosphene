@@ -78,6 +78,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-162 | Accepted | Doc rotation mechanized (rotate_docs.sh); budgets gated by DocIntegrityTests |
 | D-163 | Accepted | Audit keep-list + executableTarget STATUS markers guard dead-code audits |
 | D-164 | Accepted | Photosensitivity flash-safety enforced by measurement (cert gate now) + runtime clamp (A-next); single-pass harness validly covers 2/7 presets, rest deferred to a real-pipeline harness |
+| D-165 | Accepted | Silent-tap family: detect don't churn — only rebuild a never-delivered tap; pause-suppressed card; self-healing > manual remediation |
 
 ---
 
@@ -1957,3 +1958,17 @@ The only open *safety* gap (audit **G9**, P1; the strict-photosensitivity mode *
 **Runtime clamp (A-next), when taken:** a final full-screen luminance slew-limiter at `RenderPipeline.draw(in:)` *before* the `onFrameRendered` recorder hook, transparent below the danger band; gated behind the OR-flag pattern reserved at `RayMarchPipeline:94` (never assign `reducedMotion` directly). It will move goldens and **requires an M7 re-review of every certified preset** — its own M7 sitting, not a bundle.
 
 **References.** Audit G9 (`CODE_AUDIT_2026-06-13.md:181` + Part C CLEAN.7.6), D-054/U.9 (the deferred strict mode this resolves), D-157/D-158 (the FBS regional-punch / hue-route fixes that made the certified beat-luminance safe — the metric must pass that motion, not flatten it), FA #73 (reuse the forensics machinery, don't rebuild), the kickoff `docs/prompts/CLEAN_7.6_PHOTOSENSITIVITY_KICKOFF.md`.
+
+## D-165: Silent-tap family — detect, don't churn; only rebuild a never-delivered tap
+
+**Status:** Accepted (2026-06-17)
+
+The streaming process tap can deliver persistent silence (a wedged `coreaudiod`; a stale Screen-Recording grant after a re-signed rebuild — BUG-055) or freeze (a device swap stalls the IO-proc — BUG-058). Instrumented live sessions (2026-06-17) corrected two earlier beliefs: the silence is often **environmental, not a Phosphene bug** — but the `.silent → reinstall` recovery was itself **harmful**. It fired on *any* sustained silence, including a user pause, churning the tap; intermittently a recreate came up created-but-dead and never recovered (the visualizer froze with live audio playing). Three decisions:
+
+1. **The reinstall machine only rebuilds a tap that NEVER delivered audio this session** (`SilenceDetector.hasEverDetectedSignal`, RMS-thresholded, reset per `start(mode:)`). A session that *has* had audio and then goes silent is a pause — the working tap is left alone and resumes on its own when audio returns. This keeps recovery for a genuinely broken cold install (BUG-055 / wedged daemon) while removing the pause-churn + dead-tap lottery. Validated 2026-06-17: 3/3 clean pause/resume recoveries on the same tap generation, zero churn. (Supersedes the prior ARCHITECTURE "reinstall on any prolonged silence" behaviour.) The **device-change** reinstall (`SystemAudioCapture.performReinstall`, CLEAN.1.5) is a separate path and is NOT gated — a real default-output change genuinely needs a new tap.
+
+2. **A user-facing detector surfaces "no useful audio is reaching the visualizer" instead of a silent flatline.** `PlaybackErrorBridge` runs a ~1 Hz freshness poll and raises a prominent non-blocking `AudioStallOverlayView` card (a fix ladder) after ~10 s of no fresh audio while playing — catching **both** failure modes: RMS≈0 (`.silent`) AND a frozen IO-proc (tap frame count stops advancing). It is **suppressed on a likely pause** (the same `hasEverDetectedSignal` signal: callbacks advancing + `.silent` + session has had audio) so it only fires on a genuine break, and auto-clears on recovery. Implemented as a **bespoke Bool-driven overlay, not a new `UserFacingError` case** — an enum case plus a presentation mode nothing dispatches on would be ceremony and would churn the 29-case coverage test; the copy is externalized directly.
+
+3. **Doctrine (`feedback_self_healing_over_manual_remediation`): the manual fix-ladder card is a fallback, not the fix.** The end-state must not make a user run Terminal commands or toggle System Settings panes — the user-friendly answer is the app **self-healing** (decision 1) plus stable signing (CLEAN.2.5b). The card is the developer / safety-net surface until then; soften its copy before any public build.
+
+**References.** BUG-057/055/058 (`KNOWN_ISSUES.md`), the kickoffs `docs/prompts/SILENT_TAP_DETECTOR_KICKOFF.md` + `BUG-057_TAP_REINSTALL_SILENCE_KICKOFF.md`, ARCHITECTURE §Audio Capture (tap recovery) + §Module Map (`PlaybackErrorBridge`), UX_SPEC §7.5, memory `feedback_self_healing_over_manual_remediation`. FA #73 (reuse `PlaybackErrorBridge` + the existing reinstall machinery — no parallel detector, no new reinstall path).

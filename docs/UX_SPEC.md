@@ -393,6 +393,8 @@ During `.silent` / `.suspect` / `.recovering` states from `AudioInputRouter`, th
 
 Additionally: a subtle "Listening…" badge appears top-center during prolonged silence (>3 s). Disappears on signal return.
 
+**Total loss of audio (silent-tap card, BUG-057/055/058, D-165).** When *no fresh audio* reaches the visualizer for ~10 s while playing — a genuinely broken tap (a wedged `coreaudiod`, a stale Screen-Recording grant after a rebuild, or a frozen IO-proc) — a more prominent **non-blocking centre card** (`AudioStallOverlayView`, raised by `PlaybackErrorBridge`'s freshness poll) overlays the frozen/black visualizer: a plain-language line plus a fix ladder (restart the audio engine; re-grant Screen & System Audio Recording then relaunch; check the macOS output device). It is **suppressed on a deliberate pause** — a session that has had audio and goes silent leaves its working tap alone, which resumes on play (so a normal pause never shows the card) — and it **auto-clears** when audio returns. The card supersedes the 15 s `silenceExtended` toast while up. Copy is developer-facing for now; soften before any public build (a `Cmd+Shift+Option+A` DEBUG toggle force-shows it for look-checks). Per D-165 the card is a fallback — the real fix is the app self-healing, not asking the user to use Terminal.
+
 ### 7.6 Track-change indication
 
 Every track boundary triggers:
