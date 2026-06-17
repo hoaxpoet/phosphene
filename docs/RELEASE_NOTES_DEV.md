@@ -10,6 +10,14 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-17-204433] CLEAN.3.3 — mood-override cooldown survives repeat plays/sessions
+
+Third Phase-3 increment. The per-track mood-override cooldown was **permanently dead from the 2nd play of any track**. `DefaultLiveAdapter` is created once for the engine's lifetime and keeps `lastOverrideTimePerTrack: [TrackIdentity: TimeInterval]`, recording the *per-track-relative* `elapsedTrackTime` at which an override last fired. `cooldownAdaptation` then suppressed if `elapsedTrackTime - last < 30s` — with no lower bound. On a replay (or a new session with the same track), the per-track clock resets to ~0 while `last` still holds the prior play's value (say 20 s), so `0 − 20 = −18 < 30` reads as "cooldown active." It stays active until `elapsedTrackTime` climbs back past `last` (75 s for a 20 s mark + 30 s window + headroom) — which a 30 s preview clip never reaches, so override never fires again after play 1.
+
+Fix (engine-only, root cause): a backwards delta (`sinceOverride < 0`) now means the per-track clock went backwards — a replay or a new session reset it — so the stored timestamp is stale and the cooldown is **not** active (`recordOverride` refreshes it on the next fire). The three existing cooldown semantics (first fires, 2nd-within-30s suppressed, after-30s fires again) are unchanged.
+
+"Report swallowed attempts" was already satisfied: the cooldown suppression returns a `.moodDivergenceDetected` event ("Mood diverging … but cooldown active (Xs / 30s)") that the consumer logs at `VisualizerEngine+Orchestrator.swift:198` — verified, not added (per-frame logging there would be 94 Hz spam). The `lastOverrideTimePerTrack` dict is unbounded by distinct tracks but immaterial (small structs, per-engine-lifetime); deferred to CLEAN.3.5's eviction sweep if it ever matters. Gate: `LiveAdapterTests.moodOverrideCooldown_survivesReplay`; LiveAdapter suite 12/12, swiftlint `--strict` 0. Not visually verifiable. `KNOWN_ISSUES.md` untouched (audit item, no filed bug). EP §Recently Completed ✅.
+
 ## [dev-2026-06-17-203109] CLEAN.3.2 — PresetScorer exclusion contract + zero-duration catalog.first bypass
 
 Second Phase-3 increment. Two ways an **excluded/diagnostic preset could auto-install** despite the D-074 gate, both closed:
