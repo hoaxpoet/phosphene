@@ -1,5 +1,7 @@
 # CLEAN Phase 7 — Kickoff: photosensitivity flash-safety, the A-next half (CLEAN.7.6b, [GAP-9], [M7])
 
+> **⛔ SUPERSEDED (2026-06-17, D-166) for the runtime-clamp half.** Stage 1 (the faithful headless harness) shipped as CLEAN.7.6b + 7.6c → **G9 7/7 ENFORCED**. Stage 2 (the runtime luminance clamp) was evaluated under CLEAN.7.6d and **NOT pursued** (Matt) — the **certification gate is the photosensitivity enforcement mechanism**. All shipped presets are ≤ 1 flash/s under the worst-case drive, and a *uniform* clamp would be a pipeline-wide reroute of the **8 separate present paths** in `renderFrame` (`RenderPipeline+Draw.swift:126`) — regression risk across every certified preset for a net that never engages on shipped content. **Do not build the clamp from this doc.** See **D-166** (amends D-164) before reopening; reopen only on a new premise (un-certified / user-authored presets, or live arbitrary-source rendering).
+
 > **This is the deferred half of CLEAN.7.6 / D-164.** 7.6 shipped the *measurement* gate (B-now). This is the *faithful coverage + runtime clamp* half (A-next). It has **two stages**; Stage 2 is `[M7]` + golden regen. **Do Stage 1 first** — it tells you whether Stage 2 is fixing a real defect or only adding a forward-looking backstop, and it produces the data needed to tune the clamp without guessing. Surface the Stage-2 decision to Matt *with Stage-1 numbers in hand*, not before.
 
 ## Why this is next
