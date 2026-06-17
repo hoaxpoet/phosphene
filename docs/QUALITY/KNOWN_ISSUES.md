@@ -7,6 +7,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
 | AUDIT-2026-06-09 | P2/P3 | audit backlog | Full-codebase audit findings not individually filed |
+| BUG-057 | P1 | audio.capture | Cold tap install delivers persistent silence on streaming (Spotify); only a manual output-device switch (reinstall) captures audio — streaming cold-start never animates without the toggle. Local-file unaffected — sibling of BUG-055 |
 | BUG-056 | P3 | local-file / audio | Local-file playback restarts the track from the top on an output-device change (AVAudioEngine teardown/restart, no resume-from-position) |
 | BUG-055 | P2 | app.ui / permission | Silent system-audio tap after a rebuild: stale Screen-Recording grant; `CGPreflightScreenCaptureAccess` returns stale-`true` → app shows "ready", renders a flatline, no guidance |
 | BUG-054 | P3 | dsp.key | Key detection has never been accurate enough to use — 1024-pt FFT can't resolve semitones < 1 kHz, full-mix chroma, no constant-Q. Non-load-bearing today |
@@ -53,6 +54,104 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 - ✅ **RESOLVED (CLEAN.2.3.4, 2026-06-14)** — localization gate only scanned `PhospheneApp/Views/`. `check_user_strings.sh` ROOTS widened to `PhospheneApp/ViewModels` + `ContentView.swift`, pattern extended with a connection-state `.error("…")` arm (`logger.error` excluded); the bypassing copy (Spotify/AppleMusic error strings, ConnectorType tiles, ReadyViewModel duration/source, ContentView fallback, PreparationProgressView subtitle, PlanPreviewTransitionView labels) externalized to `Localizable.strings`. Gate header documents its honest scope limit (literal-prefix matcher — lowercase/interpolated fragments still rely on review). Commit `46d836b`.
 
 P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh double-spend + form-encoding gaps [Resolved CLEAN.2.2, see above], PSO cache key, mv_warp buffer(5) omission, PostProcessChain texture aliasing, malformed-sidecar swallowing, Arachne listening-pose FA #57-gate, >2-channel LF corruption, ~94 Hz vs 60 fps chroma hysteresis), ~11 perf items (autocorrelation 2×/frame, drums FFT 2×/frame, mono STFT 2×/track, serial prep pipeline, wasted particle-mode warp pass, unconditional feedback textures), dead code, and 6 in-code doc-drift items.
+
+---
+
+### BUG-057 — Cold tap install delivers persistent silence on streaming audio; only a manual output-device switch (tap reinstall) recovers it (2026-06-17)
+
+**Severity:** P1 (the core streaming-visualization flow does not work on a cold start — visuals stay motionless with live Spotify audio — and the only recovery is a manual output-device toggle no user would discover).
+**Domain tag:** audio.capture
+**Status:** Open — instrumented (step 1 landed 2026-06-17; awaiting a cold-start Spotify session for diagnosis)
+**Introduced:** Unknown — the tap was observed healthy in earlier sessions (`project_streaming_tap_signal_health`: −6 dBFS, full spectrum), so diagnosis must determine whether this is a macOS-26.5 regression, a latent cold-install gap newly exposed, or an artifact of the current permission-churn state. Not introduced by CLEAN.7.6c (test-only).
+**Resolved:**
+
+---
+
+### Expected behavior
+
+On a cold start — connect Spotify → load playlist → Phosphene signals ready → user presses play in Spotify — the system-audio tap captures the live output and visuals animate within a few seconds, with no manual intervention. A silent tap should be auto-recovered by the existing `.silent → reinstall` state machine.
+
+### Actual behavior
+
+The tap installs (`AudioHardwareCreateProcessTap` returns `noErr`, `raw tap capture started sr=… Hz` logs) but delivers **persistent silence** — `features.csv` mid/treble = exactly 0.0, `signal quality → red: no signal`, `audio signal → silent`. The existing `.silent → scheduleNextReinstall` recovery does **not** rescue it (silent for the full session in 4 of 5 sessions). The ONLY thing that recovers it is a **manual output-device switch**: in session `2026-06-17T01-51-11Z` the tap was silent for ~75 s, then at the instant the default output device changed (rate flipped 48 k → 44.1 k → `performReinstall`) it captured **~5.6 s of real music** (mid up to 0.527, treble 0.106, `signal quality → green: peak -0 dBFS — OK`). So the audio is tappable; the *cold-install* tap is the one that comes up dead.
+
+Ruled out: output routing (silent on both the Apogee Duet 3 and built-in Mac-mini speakers); signing (proper `Apple Development` cert, Team `2LBTN9PB4Z`, not ad-hoc); Screen Recording permission (granted, toggled off/on + relaunched; `NSScreenCaptureUsageDescription` present); audio actually playing (audible through the Duet 3); the engine/render path (local-file playback animates normally — file-direct, bypasses the tap).
+
+### Reproduction steps
+
+1. Connect Spotify, load a playlist, let Phosphene reach ready.
+2. Press play in Spotify (audible through the system output).
+3. Observe: visuals motionless; `session.log` shows `raw tap capture started` then `audio signal → silent`; `features.csv` mid/treble = 0.
+4. With Phosphene running + audio playing, switch the system output device (System Settings → Sound → Output → another device, then back).
+5. Observe: at the switch, the tap reinstalls and motion appears (briefly green / real signal).
+
+**Minimum reproducer:** any DRM streaming source (Spotify) on a cold start. The device-switch recovery is the discriminator.
+
+---
+
+### Session artifacts
+
+**Session directories:** `~/Documents/phosphene_sessions/2026-06-17T01-37-54Z/`, `…01-48-33Z/`, `…01-51-11Z/` (+ `2026-06-16T22-10-16Z`, `22-39-46Z`).
+
+- Silent cold-install sessions: `01-48-33Z` mean mid/treble = 0.0000 over 1658 rows; `01-37-54Z` mid/treble = 0.0000 over 1929 rows; same `signal quality → red: no signal` log line.
+- Recovery session `01-51-11Z`: silent rows 0–75.7 s, then signal t=75.8 → 81.4 s (341/2548 rows mid > 0.05, max mid 0.527), `signal quality → green: peak -0 dBFS, treble 2.06% — OK`. (`max bass=29.0` at the switch instant is a reinstall-pop transient — secondary, worth a glance.)
+
+```log
+[01:49:06] raw tap capture started sr=48000 Hz ch=2
+[01:49:07] signal quality → red: no signal — check output device / app is playing
+[01:49:09] audio signal → silent
+  --- (01-51-11Z, after a device switch) ---
+[01:52:14] audio signal → active
+[01:52:26] MIR analysis rate → 44100 Hz (tap 44100 Hz)
+[01:52:29] signal quality → green: peak -0 dBFS, treble 2.06% — OK
+```
+
+- Code seams (the cold-vs-reinstall divergence):
+  - `PhospheneEngine/Sources/Audio/SystemAudioCapture.swift:116` `startCapture` (cold install) and `:290` `performReinstall` run the **identical** create sequence (`createProcessTap → readTapFormat → createAggregateDevice → createIOProc → startDevice`); the only difference is `performReinstall` tears down first (`teardownTapResources` `:311`) and runs later. So the divergence is timing/state, not code.
+  - `PhospheneEngine/Sources/Audio/AudioInputRouter+SignalState.swift:13` — the `.silent → scheduleNextReinstall` recovery machine ("the tap stays alive but delivers permanent silence … recovery is destroy and recreate") — present but did not recover the cold install.
+  - `PhospheneEngine/Sources/Audio/SilenceDetector.swift:4` — "Core Audio process taps succeed even when playing **DRM-protected content**, but macOS silently zeros the audio buffer … the tap appears healthy while delivering silence." Spotify is DRM; this is the candidate mechanism, but the device-switch capture of real Spotify audio argues against *pure* persistent DRM-zeroing.
+  - `PhospheneEngine/Sources/Audio/DefaultOutputDeviceMonitor.swift` — the CLEAN.1.5/G1 monitor whose device-change callback drives the recovering `performReinstall`.
+
+---
+
+### Suspected failure class
+
+`pipeline-wiring` — the recovery module exists (`.silent → reinstall`, `performReinstall`) but does not fire / does not recover for the cold-install-silence case, while the device-change path does. Candidate root causes to separate during diagnosis: (a) the Screen Recording grant is not yet effective on the very first tap right after launch/grant (the granted-but-silent note in `project_streaming_tap_signal_health`); (b) DRM-zeroing of the cold tap that a fresh device-bound tap escapes; (c) the cold tap binds before audio flows and enters a dead state; (d) the auto-reinstall's delays/attempt-cap or same-device reinstall is insufficient where a different-device reinstall succeeds.
+
+**Evidence for this class:** identical create steps cold vs reinstall (so not an algorithm/precision bug); the device-change reinstall demonstrably captures the same audio the cold install cannot.
+
+---
+
+### Verification criteria
+
+- [ ] Instrumentation (step 1): a session captures, for both cold install and any reinstall, the tap RMS over the first N seconds, whether/when `.silent → reinstall` fires, the device id + rate, and the Screen-Recording preflight state at install — enough to separate the four candidate causes.
+- [ ] Manual (the real gate): a **cold start** with live Spotify animates within ~5 s with **no manual device toggle** — `features.csv` mid/treble > 0, `signal quality → green` — across ≥ 2 sessions.
+- [ ] No regression: local-file playback still animates; the CLEAN.1.5/G1 device-swap recovery still works (switch output mid-session → stays live).
+
+**Manual validation required:** Yes — the tap path is not SPM-testable (real Core Audio + a DRM streaming source). Listen/look: cold-start Spotify → motion without touching the output device.
+
+---
+
+### Instrumentation (step 1 — landed 2026-06-17, instrument → STOP)
+
+Added to `session.log` (grep `TAP:`) so the four candidates above are separable from ONE real cold-start Spotify session:
+
+- **Per (re)install:** `install via startCapture` / `reinstall via device-change` + `gen=N defaultOutputDevice=<id> rate=<Hz> screenRecordingPreflight=<bool>` (`SystemAudioCapture.armInstallProbeAndLog`). Discriminates same-device vs different-device reinstall (candidate d) and pins the preflight at install (candidate a).
+- **First-10 s RMS probe:** `tap RMS gen=N t=+Xs rms=… peak=…` at ~1 Hz from the IO proc (`SystemAudioCapture.probeInstallRMS`) — shows whether THIS tap delivered signal or stayed zero (candidates b, c). Correlate with the existing `audio signal → …` transitions + `signal quality → …` lines.
+- **Reinstall scheduler timeline:** the `.silent → reinstall` lines (scheduled/attempt#/skipped/succeeded/failed/exhausted), previously os_log-only (`AudioInputRouter+SignalState`, mirrored via `onAudioCaptureDiagnostic`).
+
+Wired `SystemAudioCapture.onCaptureDiagnostic` → `AudioInputRouter.onAudioCaptureDiagnostic` → `SessionRecorder.log` in `VisualizerEngine+Audio.setupAudioRouting`. New protocol member `AudioCapturing.onCaptureDiagnostic`. No fix code; no behaviour change (FA #73 — reuses the existing reinstall machine + `DefaultOutputDeviceMonitor`). Regression: 2 routing-lock tests in `AudioInputRouterSignalStateTests`. **Diagnose next (step 2):** Matt runs an instrumented cold-start session + a device switch; identify the holding candidate(s) and record the root cause here. Build from the PRIMARY checkout with Screen Recording granted (`project_canonical_app_screenrecording`) — a fresh worktree build re-churns the grant and reproduces *unrelated* silence (don't conflate it with this bug). Commit: see `RELEASE_NOTES_DEV.md [dev-2026-06-17-041554]`.
+
+### Fix scope
+
+Likely contained but root-cause-gated (P1 multi-increment: instrument → diagnose → fix → validate). Candidate fixes once diagnosed: schedule an initial `performReinstall` shortly after `startCapture` (or after first audio / after the grant settles); make the `.silent` recovery actually fire + recover on cold start; or cycle the bound device once on install. Kickoff: `docs/prompts/BUG-057_TAP_COLD_INSTALL_SILENCE_KICKOFF.md`.
+
+### Related
+
+- `project_streaming_tap_signal_health` (the granted-but-silent-tap note; output-routing as the *other* silent-tap cause), CLEAN.1.5 / GAP-1 (G1 device-swap reinstall — the path that DOES recover), D-061 (capture-mode resilience).
+- **Sibling: BUG-055** (stale Screen-Recording grant → silent tap) — same silent-tap family, **distinct root cause**: BUG-055 is permission-denied-after-resign (`CGPreflightScreenCaptureAccess` stale-`true`, fixed by re-grant + relaunch); BUG-057 keeps the grant (audio IS on the tapped device) and recovers only on a device-switch reinstall. This bug's `TAP:` instrumentation (per-install preflight state + the device-change reinstall's RMS) is what tells the two apart in one session.
+- Renumbered from BUG-056 (2026-06-17): a parallel session filed an unrelated BUG-055/BUG-056 first (origin `82db932`); this work moved to BUG-057 to avoid the collision.
+- Surfaced 2026-06-17 during the CLEAN.7.6c canonical-app live-test debugging.
 
 ---
 
