@@ -13,8 +13,18 @@ public final class ShaderLibrary: @unchecked Sendable {
     /// Compiled Metal library containing all shader functions.
     public let library: MTLLibrary
 
-    /// Cached render pipeline states, keyed by name.
-    private var pipelineStates: [String: MTLRenderPipelineState] = [:]
+    /// Full identity of a cached render pipeline state. The compiled descriptor
+    /// varies by `pixelFormat` (color attachment 0) and `supportICB`, so the name
+    /// alone is not a sufficient key — two calls with the same name but a different
+    /// format/ICB capability compile *different* pipelines (CLEAN.4.4).
+    private struct PipelineKey: Hashable {
+        let name: String
+        let pixelFormat: MTLPixelFormat.RawValue
+        let supportICB: Bool
+    }
+
+    /// Cached render pipeline states, keyed by full compiled identity.
+    private var pipelineStates: [PipelineKey: MTLRenderPipelineState] = [:]
     private let lock = NSLock()
 
     // MARK: - Init
@@ -93,8 +103,9 @@ public final class ShaderLibrary: @unchecked Sendable {
         device: MTLDevice,
         supportICB: Bool = false
     ) throws -> MTLRenderPipelineState {
+        let key = PipelineKey(name: name, pixelFormat: pixelFormat.rawValue, supportICB: supportICB)
         lock.lock()
-        if let cached = pipelineStates[name] {
+        if let cached = pipelineStates[key] {
             lock.unlock()
             return cached
         }
@@ -116,7 +127,7 @@ public final class ShaderLibrary: @unchecked Sendable {
         let state = try device.makeRenderPipelineState(descriptor: descriptor)
 
         lock.lock()
-        pipelineStates[name] = state
+        pipelineStates[key] = state
         lock.unlock()
 
         logger.info("Created pipeline state '\(name)': \(vertexFunction) → \(fragmentFunction)")
