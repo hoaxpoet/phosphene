@@ -10,6 +10,22 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-17-223835] CLEAN.3.4 — BUG-037 Arachne chord-count single source of truth (code-complete; M7 pending)
+
+Phase-3 `[M7]` stretch item. The Arachne spiral reveal popped at ~45 %: three uncoordinated constants for one contract — CPU `spiralChordsTotal = min(200, radialCount × spiralRevolutions)`, shader `spiral_packed / 441.0`, test `104`. Post-BUG-011 the product is 324–576, so the 200 cap always fired; the CPU laid ≤ 200 chords while the shader normalized by 441, so the reveal gate maxed at 200/441 ≈ 0.45 and `.stable` popped the remaining ~55 % in one frame (halving the build cycle, firing the completion event early).
+
+Matt's pick (`AskUserQuestion`): **restore the intended density/build**, not propagate the truncated cap. Fix — the CPU is the single source of truth:
+- `recomputeSpiralChordTable` cap raised `200 → maxSpiralChords = 600` (a degenerate-case guard above the legitimate 576 max — it never truncates a normal build; the old 200 sat *below* the range).
+- `spiralPacked` is now published **already-normalized** (`min(1, (index + progress) / spiralChordsTotal)`), so the shader reveals by it directly — `saturate(spiral_packed)`, with the hardcoded `kSpiralChordsTotalCPUDefault = 441` deleted. The shader holds no chord count; the CPU owns it.
+- The test fixture's `104` → `1.0` (the normalized reveal fraction; `.stable` ⇒ the shader uses 1.0 regardless).
+- **No struct/GPU-contract change** — pre-normalizing reuses the existing `spiral_packed` float (the shader never decoded a chord index from it), so the WebGPU stride stays 96 bytes and the test's raw Row-5 byte-seeding is unchanged. The radial stage's accepted ±drift (`/21.0`, D-095) is intentionally left alone — out of BUG-037's scope.
+
+**Build-phase-temporal change.** The chord count governs the reveal *animation* (how smoothly/over-what-duration the spiral lays in), **not** the final spider's density (`spiralRevolutions` sets that, drawn procedurally). So the `.stable` golden is **unchanged** — `PresetRegressionTests` stays green, no golden regen. The visible change is the build: a smooth reveal to the core over the documented ~73 s cycle instead of the 45 %-then-pop.
+
+Automated lock: `ArachneStateBuildTests.spiralChordCountHonoursProduct` — `spiralChordsTotal == radialCount × spiralRevolutions` (> 200) across seeds, the chord-radii table holds the full count, the guard still bounds it (BUG-037's "uncapped product is honoured" criterion). All 44 Arachne / acceptance / regression tests green; swiftlint `--strict` 0.
+
+**M7 pending (Matt).** The manual/visual criterion — the build reveals continuously to the core with no pop — is **not** verifiable from the existing RENDER_VISUAL harness (it warms only ~0.5 s, an early-build frame; it never reaches the spiral phase). Honest status: **cannot verify the reveal here; pending your M7** (live, or a build-sequence render I can add if you want a static artifact first). `KNOWN_ISSUES.md` BUG-037 (automated ✓, manual M7 ☐). EP §Recently Completed ⏳.
+
 ## [dev-2026-06-17-220337] CLEAN.3.8 — disk-full / write-failure graceful degradation (GAP-6)
 
 Sixth Phase-3 increment, and the last of the non-M7 Phase-3 work. GAP-6 (audit-verified: no `volumeAvailableCapacity`/ENOSPC handling). The real risk was `SessionRecorder`: per-frame CSV + log used the **non-throwing `FileHandle.write(_:)`**, which raises an *uncatchable* Objective-C exception on a full disk → the app **crashes** mid-session (and can leave a half-written final row).
