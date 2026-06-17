@@ -10,6 +10,10 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-17-193009] silent-tap card pause-suppression — VALIDATED + RESOLVED
+
+Matt validated the suppress-on-pause behaviour: a deliberate > 10 s streaming pause no longer raises the silent-tap card. With the broken-cold-install and Mode-B-freeze cases still firing (unit-proven) and the card surface already screenshot-validated, the BUG-057 card-on-pause UX residual is **Resolved**. This closes the entire silent-tap arc (detect → reinstall fix → card → pause-suppression), all on `origin`, full gate ALL GREEN. Docs-only entry. `KNOWN_ISSUES.md` BUG-057 §Card pause-suppression.
+
 ## [dev-2026-06-17-192429] Skein real-audio gates — pin to the deterministic fixture (kill a data-flake)
 
 Two `SkeinCanvasHoldTest` "live tick path" structure gates went red during the BUG-057 closeout — **not a code regression** (Skein code byte-identical to the prior all-green run; `git diff` was audio/app/docs only). Root cause: the harness picks its real-audio input as *whichever live session has the largest `stems.csv`*, and the session Matt recorded to validate the reinstall fix (`2026-06-17T18-16-41Z`, now the largest at 3.8 MB) became the input — its most-stem-dominated 120-frame slice starts with **58 silent frames**, so the test's section boundary landed on a silent frame and production's correct silence gate (`SkeinState.swift:1130`, `stemMix > 0.001`) dropped it → no density pulse / lean / break. A textbook *red-on-data-not-code* flake (the helper's own comment warned about it). Fix (test-only): `recordedSessionsBySize()` now **prefers the deterministic `fixturegen-*` captures** (generated from committed audio fixtures, loud `slice[0]`) over live recordings, with live as a fallback and the skip-when-none path intact — so recording a session can't flip the gates red. Full `SkeinCanvasHold` suite **21/21 green**; swiftlint clean. No production/render change. `feedback_deterministic_tests_over_budget_widening` (deterministic input > machine-state-dependent).
