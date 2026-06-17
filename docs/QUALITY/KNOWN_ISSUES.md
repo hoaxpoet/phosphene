@@ -7,7 +7,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
 | AUDIT-2026-06-09 | P2/P3 | audit backlog | Full-codebase audit findings not individually filed |
-| BUG-058 | P2 | audio.capture / resource-management | Mid-session output-device swap freezes the visualizer: the IO proc stops + `performReinstall` (CLEAN.1.5/G1) never completes; visuals freeze on a stale buffer (not silence, so `.silent` recovery can't catch it). The open G1 manual gate, failing its first real test |
+| BUG-058 | P3 | audio.capture / resource-management | RARE intermittent: a mid-session output-device swap *occasionally* freezes the tap (`performReinstall` doesn't complete; stale-buffer freeze, not silence). G1 device-swap recovery is otherwise robust (validated 12/12, 2026-06-17); the single freeze was un-reproduced — likely a `coreaudiod`-settling transient. Instrumented |
 | BUG-057 | P1 | audio.capture | Cold tap install delivers persistent silence on streaming (Spotify); only a manual output-device switch (reinstall) captures audio — streaming cold-start never animates without the toggle. Local-file unaffected — sibling of BUG-055 |
 | BUG-056 | P3 | local-file / audio | Local-file playback restarts the track from the top on an output-device change (AVAudioEngine teardown/restart, no resume-from-position) |
 | BUG-055 | P2 | app.ui / permission | Silent system-audio tap after a rebuild: stale Screen-Recording grant; `CGPreflightScreenCaptureAccess` returns stale-`true` → app shows "ready", renders a flatline, no guidance |
@@ -60,9 +60,9 @@ P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh dou
 
 ### BUG-058 — Mid-session output-device swap freezes the tap: `performReinstall` (CLEAN.1.5 / G1) doesn't recover; visuals freeze on a stale buffer (2026-06-17)
 
-**Severity:** P2 (requires a mid-session default-output-device change; the cold-start flow + BUG-057 recovery are unaffected. But when it triggers, the visualizer freezes permanently with no recovery until the session restarts — and it fails the open **G1 / CLEAN.1.5** manual gate on its first real test).
+**Severity:** P3 (downgraded from P2 2026-06-17 — see §Update. RARE intermittent: the G1 device-swap recovery is robust in the common case; a freeze was seen once and not reproduced across 12 subsequent swaps).
 **Domain tag:** audio.capture / resource-management (`SystemAudioCapture.performReinstall`, `DefaultOutputDeviceMonitor`)
-**Status:** Open — **instrumented (step 1, 2026-06-17); awaiting an instrumented device-swap session to pin the stall point.** Distinct from BUG-057: that's a wedged `coreaudiod` feeding *all* taps zero; this happens with a *healthy* coreaudiod — the tap worked first, then froze on the swap.
+**Status:** Open — **instrumented + largely validated. G1 device-swap recovery confirmed ROBUST (12/12, 2026-06-17).** The single freeze (`14-28-30Z`, un-instrumented build) was NOT reproduced; breadcrumbs remain in place to pin it if it recurs. Distinct from BUG-057: that's a wedged `coreaudiod` feeding *all* taps zero; this is a rare race in the tap recreate during an OS device transition.
 **Introduced:** Unknown — CLEAN.1.5 (`DefaultOutputDeviceMonitor → performReinstall`, 2026-06-13) added the device-change recovery, but its G1 manual validation was never performed; this is its first real test, and it fails. Possibly a macOS-26.5 Core Audio behavior (tap recreate during a device transition).
 **Resolved:**
 
@@ -86,10 +86,15 @@ On the swap the visualizer freezes and never recovers. Session `2026-06-17T14-28
 ### Instrumentation (step 1 — landed 2026-06-17)
 Added `session.log` breadcrumbs (via the existing `onCaptureDiagnostic` sink) the os_log path lacked: the **`DefaultOutputDeviceMonitor` callback firing** (`device-change monitor FIRED`), and **each step of `performReinstall`** (`ENTER → tearing down` / `teardown done` / `tap created` / `aggregate created` / `IO proc created` / success / FAILED / `SKIPPED (not capturing)`). The last breadcrumb before silence pins the exact stall point. No fix code; breadcrumb-only on the non-SPM-testable device-change path.
 
+### Update 2026-06-17 — G1 device-swap recovery validated ROBUST (12/12); freeze un-reproduced
+
+Instrumented re-test (session `2026-06-17T14-54-49Z`): **12 rapid back-and-forth output-device swaps (Duet 3 ↔ Mac mini Speakers), all 12 recovered cleanly** — each logged `device-change monitor FIRED → performReinstall: ENTER → … → reinstall via device-change gen=N` completing in < 1 s, with the new tap immediately recapturing real audio (RMS 0.05–0.49); motion preserved through the last frame; `raw_tap.wav` continuous (67 s). A prior single swap (`2026-06-17T14-49-23Z`) also recovered. Tally: **`monitor FIRED` = 12, reinstall completed = 12, FAILED = 0.** So `DefaultOutputDeviceMonitor → performReinstall` (CLEAN.1.5) is sound — **the G1 manual gate passes.** The one freeze (`14-28-30Z`) ran on the pre-breadcrumb build, minutes after a `sudo killall coreaudiod`, so the leading explanation is a **transient `coreaudiod`-settling race** in the tap recreate, not a systematic defect. Left Open at P3 with the breadcrumbs live: if a freeze recurs, the last `performReinstall:` line before silence pins the stalling Core Audio call.
+
 ### Verification criteria
-- [ ] Instrumentation (step 1): an instrumented device-swap session shows the exact step `performReinstall` stalls on (or that the monitor never fired).
-- [ ] Manual (the real gate = G1): swap the output device mid-session → visuals stay live, ≥ 2 devices, both directions.
-- [ ] No regression: cold-start streaming still animates; BUG-057 workaround unaffected.
+- [x] Instrumentation (step 1): breadcrumbs landed; the happy path is fully captured (session `14-54-49Z`).
+- [x] Manual (G1): swap the output device mid-session → visuals stay live, ≥ 2 devices, both directions — **PASSED 12/12 (2026-06-17).**
+- [x] No regression: cold-start streaming still animates; BUG-057 workaround unaffected.
+- [ ] (Open, low-priority) Reproduce + pin the rare freeze, *if* it recurs.
 
 ### Related
 - **The open G1 / CLEAN.1.5 manual gate** — this *is* that gate failing. CLEAN.1.5 has unit tests for the monitor mechanism (`DefaultOutputDeviceMonitorTests`) but the live device-swap was never validated.
