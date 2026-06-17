@@ -288,6 +288,35 @@ else
   echo "rotate_docs: (c) RELEASE_NOTES_DEV.md — nothing to move (already rotated)"
 fi
 
+# =============================================================================
+# (d) Doc-artifact hygiene — docs/diagnostics + docs/prompts (GAP-14 / CLEAN.7.4)
+#     REPORT-ONLY. Unlike (a)–(c), these dirs hold whole FILES, not datable
+#     entries, and "is this prompt/diagnostic spent?" has no reliable machine
+#     signal — so this NEVER moves or deletes (the never-guess contract). It
+#     surfaces the residual GAP-14 risk for the manual pruning pass: tracked
+#     files NOT covered by Git LFS that are large enough to bloat clone history
+#     (the diagnostics png/jpg LFS rule landed in DOC.7; anything else big is the
+#     next loose blob waiting to happen). Fix = add an LFS rule for that
+#     extension, or prune the file. Runs identically under --dry-run (read-only).
+# =============================================================================
+HYGIENE_KB=512
+for dir in docs/diagnostics docs/prompts; do
+  [ -d "$dir" ] || continue
+  n_files=$(git ls-files "$dir" | grep -c . || true)
+  n_flagged=0
+  # ponytail: one check-attr per file; these dirs hold a few hundred files at most.
+  while IFS= read -r f; do
+    [ -n "$f" ] && [ -f "$f" ] || continue
+    fkb=$(( ($(wc -c < "$f") + 512) / 1024 ))
+    [ "$fkb" -ge "$HYGIENE_KB" ] || continue
+    if [ "$(git check-attr filter -- "$f" | sed 's/.*: //')" != "lfs" ]; then
+      echo "rotate_docs: (d) ⚠ ${f} — ${fkb} KB, NOT LFS-tracked: prune it or add an LFS rule [manual triage]" >&2
+      n_flagged=$((n_flagged + 1))
+    fi
+  done < <(git ls-files "$dir")
+  echo "rotate_docs: (d) ${dir} — ${n_files} tracked files, ${n_flagged} large non-LFS flagged (≥ ${HYGIENE_KB} KB)"
+done
+
 if [ "$DRY_RUN" = "1" ]; then
   echo "rotate_docs: dry run — nothing written"
 fi
