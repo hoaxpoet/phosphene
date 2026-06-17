@@ -163,10 +163,15 @@ extension VisualizerEngine {
                 pipeline.setMeshGenerator(gen)
 
             case .postProcess:
-                if let chain = try? PostProcessChain(context: context, shaderLibrary: shaderLibrary) {
+                do {
+                    // `try?` here discarded the PostProcessError; surface it (parity with
+                    // the rayMarch path below) so a sampler/shader-function failure is
+                    // diagnosable. Fallback: chain stays nil (set above), so the preset
+                    // renders its base pass without post-processing — degraded, not black.
+                    let chain = try PostProcessChain(context: context, shaderLibrary: shaderLibrary)
                     pipeline.setPostProcessChain(chain)
-                } else {
-                    logger.error("Failed to create PostProcessChain for preset: \(desc.name)")
+                } catch {
+                    logger.error("Failed to create PostProcessChain for preset '\(desc.name)': \(error)")
                 }
 
             case .rayMarch:
