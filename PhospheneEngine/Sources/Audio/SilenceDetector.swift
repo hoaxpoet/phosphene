@@ -57,6 +57,11 @@ final class SilenceDetector: @unchecked Sendable {
     // MARK: - Private State
 
     private var _state: AudioSignalState = .active
+    /// Latches true once any non-silent buffer is seen since the last
+    /// `resetSignalHistory()`. BUG-057: lets the router distinguish a genuinely
+    /// broken cold install (never delivered audio → reinstall) from a user pause
+    /// (was delivering, now silent → leave the tap alone, it resumes on play).
+    private var _hasEverDetectedSignal = false
     /// Absolute time when silence first began (cleared when signal returns in `.active`/`.suspect`).
     private var silenceStartTime: CFAbsoluteTime?
     /// Absolute time when signal first returned from `.silent` (cleared if silence resumes).
@@ -97,6 +102,19 @@ final class SilenceDetector: @unchecked Sendable {
         lock.withLock { _state }
     }
 
+    /// True once any non-silent audio has been seen since the last
+    /// `resetSignalHistory()`. Thread-safe. BUG-057 — see `_hasEverDetectedSignal`.
+    var hasEverDetectedSignal: Bool {
+        lock.withLock { _hasEverDetectedSignal }
+    }
+
+    /// Clear the "ever detected signal" latch — call at the start of a fresh
+    /// capture session so a new cold install is evaluated on its own merits.
+    /// Does not touch the silence state machine.
+    func resetSignalHistory() {
+        lock.withLock { _hasEverDetectedSignal = false }
+    }
+
     // MARK: - Update
 
     /// Process a chunk of interleaved PCM samples. Computes RMS and advances the state machine.
@@ -123,6 +141,7 @@ final class SilenceDetector: @unchecked Sendable {
         var newState: AudioSignalState?
 
         lock.withLock {
+            if !isSilent { _hasEverDetectedSignal = true }
             switch _state {
             case .active:     newState = advanceActive(isSilent: isSilent, now: now)
             case .suspect:    newState = advanceSuspect(isSilent: isSilent, now: now)
