@@ -230,7 +230,7 @@ IDs are proposed (`CLEAN.<phase>.<n>`); on approval they map into ENGINEERING_PL
 | ID | Item | Done-when | Timing |
 |----|------|-----------|--------|
 | CLEAN.3.1 ✅ | Surface init failures (PostProcess/RayMarch refuse-or-fallback loudly; PresetLoader distinguishes malformed vs missing) | logged + observable; no silent broken preset | **DONE 2026-06-17** — `PresetLoader.decodeSidecar` splits missing (`.info`) vs malformed (`.error` + real decode error); `.postProcess` call-site now `do/catch` surfaces the real `PostProcessError` (rayMarch + shader-compile already loud). `PresetLoaderSidecarTests` (3). |
-| CLEAN.3.2 | PresetScorer exclusion-filter contract + zero-duration `catalog.first` bypass | excluded/diagnostic presets can never install; test | June |
+| CLEAN.3.2 ✅ | PresetScorer exclusion-filter contract + zero-duration `catalog.first` bypass | excluded/diagnostic presets can never install; test | **DONE 2026-06-17** — zero-duration fallback now picks the best *eligible* preset (shared `categoricallyEligiblePool`), never raw `catalog.first`; `rank()` doc states the `.first(where: { $0.1 > 0 })` install idiom + `ReactiveOrchestrator` tightened to it. Tests: `zeroDurationTrack_neverInstallsDiagnostic`, `rankContract_excludedKeptButNotInstallable`. |
 | CLEAN.3.3 | Mood-override cooldown reset across repeat plays/sessions; report swallowed attempts | override survives 2nd play; test | June |
 | CLEAN.3.4 | BUG-037 Arachne chord-count single source of truth (CPU/shader/test) | one constant; goldens regen | Stretch `[M7]` |
 | CLEAN.3.5 | StemCache eviction (size/LRU); close diag-log handle; retire dead helpers (`percentileOfBuffer`,`printHistogram`,`depthDebugEnabled`) | bounded cache; handle closed; dead code gone | June |
