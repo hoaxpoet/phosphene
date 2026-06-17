@@ -10,6 +10,18 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-17-212025] CLEAN.3.5 — StemCache eviction + close diag-log handle + retire dead helpers
+
+Fourth Phase-3 increment (3.4 is Stretch/M7). Three resource/cleanup items from the audit's T4:
+
+1. **StemCache eviction (the bound).** The in-memory streaming `StemCache` — `[TrackIdentity: CachedTrackData]`, ~7 MB/track (4 separated stems × ~10 s), no disk backing — had no eviction and is never `clear()`ed during normal operation, so it grew unbounded across the engine's lifetime under track churn (multi-GB). Added LRU eviction: `init(maxEntries: Int = 64)` (≈450 MB, same order as the on-disk `PersistentStemCache` LRU); an `lruOrder` array bumps recency on `store` + `loadForPlayback` only (the metadata accessors — `stemFeatures`/`trackProfile`/`beatGrid`/`beatIrregular` — are planning-time peeks, not playback, so they don't reorder); `store` evicts the least-recently-used entry past the cap. `init()` → `init(maxEntries: Int = 64)` is source-compatible (`StemCache()` callers unchanged). Streaming preview data has no disk backing, so an evicted track is re-prepared on next demand — acceptable vs unbounded memory.
+
+2. **Diag-log handle closed.** `VisualizerEngine.diagLog` (`~/phosphene_diag.log`) was opened in `setupAudioRouting` (called once per engine at line 850) and never closed → one leaked FD for the engine's lifetime. Now `diagLog?.closeFile()` before reopen (defensive — `openDiagnosticLog` truncates + reopens, so a future re-setup can't dangle a handle) and in `deinit`.
+
+3. **Dead helpers deleted.** `FFTProcessor.printHistogram` (console spectrum dump), `BeatDetector.percentileOfBuffer`, `RayMarchPipeline.depthDebugEnabled` — all verified zero references (incl. tests). `depthDebugEnabled` was a vestigial flag; the depth-debug pass (`runDepthDebugPass` / `depthDebugPipeline`) is gated by `debugGBufferMode`, untouched.
+
+Gate: `StemCacheEvictionTests` (3 GPU-free — LRU evicts the oldest / re-storing a key doesn't grow / `clear` empties). A stale incremental `.o` (`ConcurrencyStressTests` referencing the old `StemCache.init()` symbol) surfaced at link and was resolved by a clean rebuild — a clean checkout (CI / Matt) never hits it. Engine + app build green, swiftlint `--strict` 0. Not visually verifiable. `KNOWN_ISSUES.md` untouched (audit item, no filed bug). EP §Recently Completed ✅.
+
 ## [dev-2026-06-17-204433] CLEAN.3.3 — mood-override cooldown survives repeat plays/sessions
 
 Third Phase-3 increment. The per-track mood-override cooldown was **permanently dead from the 2nd play of any track**. `DefaultLiveAdapter` is created once for the engine's lifetime and keeps `lastOverrideTimePerTrack: [TrackIdentity: TimeInterval]`, recording the *per-track-relative* `elapsedTrackTime` at which an override last fired. `cooldownAdaptation` then suppressed if `elapsedTrackTime - last < 30s` — with no lower bound. On a replay (or a new session with the same track), the per-track clock resets to ~0 while `last` still holds the prior play's value (say 20 s), so `0 − 20 = −18 < 30` reads as "cooldown active." It stays active until `elapsedTrackTime` climbs back past `last` (75 s for a 20 s mark + 30 s window + headroom) — which a 30 s preview clip never reaches, so override never fires again after play 1.
