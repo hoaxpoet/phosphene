@@ -253,6 +253,47 @@ final class SessionRecorderTests: XCTestCase {
             framesSinceLastAppend: overThreshold))
     }
 
+    // MARK: - CLEAN.3.8 disk-full / write-failure graceful degradation (GAP-6)
+
+    /// The pure capacity predicate: enough space passes, low space fails, unknown is permissive.
+    func test_diskGuard_capacityPredicate() {
+        let need = SessionRecorder.minFreeBytesForRecording
+        XCTAssertTrue(SessionRecorder.hasSufficientDiskSpace(availableBytes: need, required: need))
+        XCTAssertTrue(SessionRecorder.hasSufficientDiskSpace(availableBytes: need + 1, required: need))
+        XCTAssertFalse(SessionRecorder.hasSufficientDiskSpace(availableBytes: need - 1, required: need))
+        XCTAssertTrue(SessionRecorder.hasSufficientDiskSpace(availableBytes: nil, required: need),
+                      "unknown capacity is permissive — never refuse recording on a query failure")
+    }
+
+    /// Honest stop: once halted (the disk-full code path), no further rows are written and
+    /// recordFrame does not crash — partial artifacts are retained, not corrupted.
+    func test_diskGuard_haltStopsFurtherWrites() throws {
+        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
+        let csv = recorder.sessionDir.appendingPathComponent("features.csv")
+        recorder.recordFrame(features: FeatureVector.zero, stems: StemFeatures.zero)
+        recorder.queue.sync {}   // drain the async write
+        let sizeBeforeHalt = fileSize(csv)
+
+        // Simulate the disk-full halt the write-failure path would trigger.
+        recorder.queue.sync { recorder.haltRecording(reason: "test: simulated disk full") }
+        XCTAssertTrue(recorder.recordingHalted)
+
+        recorder.recordFrame(features: FeatureVector.zero, stems: StemFeatures.zero)
+        recorder.queue.sync {}   // drain
+        XCTAssertEqual(fileSize(csv), sizeBeforeHalt,
+                       "no rows may be written after the recorder halts (honest stop)")
+
+        // Idempotent — a second halt is a no-op.
+        recorder.queue.sync { recorder.haltRecording(reason: "test: again") }
+        XCTAssertTrue(recorder.recordingHalted)
+    }
+
+    private func fileSize(_ url: URL) -> Int {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attrs[.size] as? Int else { return 0 }
+        return size
+    }
+
     // MARK: - FBS Stage 1 (D-153) pulse columns
 
     func test_recordFrame_writesPulseColumns_beforeStructuralTail() throws {

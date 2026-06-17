@@ -226,6 +226,13 @@ public final class SessionRecorder: @unchecked Sendable {
     /// True once `finish()` has closed all handles.
     var didFinish: Bool = false
 
+    /// Set when a session-file write fails (disk full / ENOSPC). Once halted, all writes
+    /// early-out — the recorder stops honestly instead of crashing on the non-throwing
+    /// `FileHandle.write` exception or writing partial/corrupt rows. Only ever set by
+    /// `haltRecording` (SessionRecorder+DiskGuard); accessed on the serial `queue`.
+    /// CLEAN.3.8 / GAP-6.
+    var recordingHalted = false
+
     // MARK: Init
 
     /// Create a new session directory under ~/Documents/phosphene_sessions/.
@@ -280,6 +287,7 @@ public final class SessionRecorder: @unchecked Sendable {
 
         logger.info("SessionRecorder started: \(dir.path, privacy: .public)")
         writeStartupBanner(dir: dir)
+        Self.warnIfLowDiskSpace(at: dir)   // CLEAN.3.8: pre-flight capacity check
     }
 
     deinit {
@@ -328,7 +336,7 @@ public final class SessionRecorder: @unchecked Sendable {
         let now = CFAbsoluteTimeGetCurrent()
         let throttled = (now - lastVideoFrameTime) < minVideoInterval
         queue.async { [weak self] in
-            guard let self = self else { return }
+            guard let self = self, !self.recordingHalted else { return }
             let idx = self.frameIndex
             self.frameIndex += 1
             let cpuMs = self.latestFrameCPUms
@@ -358,9 +366,9 @@ public final class SessionRecorder: @unchecked Sendable {
                                               rayMarchPass: passTiming,
                                               structure: self.latestStructuralPrediction)
             // swiftlint:enable multiline_arguments
-            self.featuresHandle.write(fRow.data(using: .utf8) ?? Data())
+            self.safeWrite(fRow.data(using: .utf8) ?? Data(), to: self.featuresHandle)
             let sRow = SessionRecorder.csvRow(stems: stems, frame: idx, wallclock: now)
-            self.stemsHandle.write(sRow.data(using: .utf8) ?? Data())
+            self.safeWrite(sRow.data(using: .utf8) ?? Data(), to: self.stemsHandle)
             guard !throttled, let tex = self.captureTexture else { return }
             self.lastVideoFrameTime = now
             self.appendVideoFrame(from: tex, wallclock: now)
@@ -371,7 +379,7 @@ public final class SessionRecorder: @unchecked Sendable {
     func writeLogLine(_ message: String) {
         let stamp = ISO8601DateFormatter().string(from: Date())
         let line = "[\(stamp)] \(message)\n"
-        self.logHandle.write(line.data(using: .utf8) ?? Data())
+        self.safeWrite(line.data(using: .utf8) ?? Data(), to: self.logHandle)
     }
 
     // MARK: - Public API: Logging
@@ -382,7 +390,7 @@ public final class SessionRecorder: @unchecked Sendable {
         let line = "[\(stamp)] \(message)\n"
         queue.async { [weak self] in
             guard let self = self, !self.didFinish else { return }
-            self.logHandle.write(line.data(using: .utf8) ?? Data())
+            self.safeWrite(line.data(using: .utf8) ?? Data(), to: self.logHandle)
         }
     }
 
