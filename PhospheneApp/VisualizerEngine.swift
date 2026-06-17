@@ -253,6 +253,16 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// AudioInputRouter requires macOS 14.2+; stored as Any to avoid propagating availability.
     var router: Any?
 
+    /// True once the live tap has delivered any non-silent audio this session
+    /// (BUG-057). Drives the silent-tap card's pause-suppression: a session that
+    /// has had audio and goes silent is a user pause (suppress), not a broken tap.
+    var hasEverDetectedAudio: Bool {
+        if #available(macOS 14.2, *), let audioRouter = router as? AudioInputRouter {
+            return audioRouter.hasEverDetectedSignal
+        }
+        return false
+    }
+
     /// Metadata pre-fetcher for external API queries.
     var preFetcher: MetadataPreFetcher?
 

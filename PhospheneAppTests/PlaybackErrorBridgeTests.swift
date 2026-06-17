@@ -182,7 +182,8 @@ struct PlaybackStallDetectorTests {
     private func makeSUT(
         session: SessionState = .playing,
         paused: Bool = false,
-        dwell: Int = 3
+        dwell: Int = 3,
+        hasEverDetectedSignal: Bool = false
     ) async -> Fixture {
         let signal = CurrentValueSubject<AudioSignalState, Never>(.active)
         let sessionSubj = CurrentValueSubject<SessionState, Never>(session)
@@ -196,6 +197,7 @@ struct PlaybackStallDetectorTests {
             sessionStatePublisher: sessionSubj.eraseToAnyPublisher(),
             isPausedPublisher: pausedSubj.eraseToAnyPublisher(),
             frameCountProvider: { [frames] in frames.value },
+            hasEverDetectedSignalProvider: { hasEverDetectedSignal },
             stallTickPublisher: tick.eraseToAnyPublisher(),
             stallDwellTicks: dwell,
             onStallChanged: { [events] active in events.value = active }
@@ -282,6 +284,33 @@ struct PlaybackStallDetectorTests {
         await pump(fix, ticks: 1, advanceFrames: true)    // fresh → counter resets
         await pump(fix, ticks: 2, advanceFrames: false)   // 2 again, still < 3
         #expect(fix.bridge.audioStallActive == false)
+    }
+
+    // MARK: - Pause suppression (BUG-057: don't alarm on a deliberate pause)
+
+    @Test("likely pause (had audio, callbacks advancing, now silent) does NOT fire")
+    func test_likelyPause_doesNotFire() async {
+        let fix = await makeSUT(dwell: 3, hasEverDetectedSignal: true)
+        fix.signal.send(.silent)
+        await Task.yield()
+        await pump(fix, ticks: 10, advanceFrames: true)   // alive tap reading zeros (paused source)
+        #expect(fix.bridge.audioStallActive == false)
+    }
+
+    @Test("never-had-audio (broken cold install) still fires while silent + advancing")
+    func test_neverHadAudio_firesWhileAdvancing() async {
+        let fix = await makeSUT(dwell: 3, hasEverDetectedSignal: false)
+        fix.signal.send(.silent)
+        await Task.yield()
+        await pump(fix, ticks: 3, advanceFrames: true)
+        #expect(fix.bridge.audioStallActive == true)
+    }
+
+    @Test("Mode B (frozen frames) fires even after audio — a real freeze is not a pause")
+    func test_modeB_firesEvenAfterAudio() async {
+        let fix = await makeSUT(dwell: 3, hasEverDetectedSignal: true)
+        await pump(fix, ticks: 3, advanceFrames: false)   // frozen IO-proc; state stays .active
+        #expect(fix.bridge.audioStallActive == true)
     }
 
     // MARK: - Auto-clear

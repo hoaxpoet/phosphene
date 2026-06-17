@@ -67,6 +67,12 @@ final class PlaybackErrorBridge {
     /// alone (Mode A only). Production wires this to the engine's InputLevelMonitor.
     private let frameCountProvider: (@MainActor () -> Int)?
 
+    /// Reads the engine's "session has had real audio" latch (BUG-057). When the
+    /// tap is silent-but-alive (callbacks still advancing) AND this is true, the
+    /// silence is a user pause → the card is suppressed (the fix-ladder doesn't
+    /// apply, and it auto-clears on resume). `nil` disables pause-suppression.
+    private let hasEverDetectedSignalProvider: (@MainActor () -> Bool)?
+
     /// Pushes the card's visibility to the view layer. The truth is
     /// `audioStallActive`; this is the side-channel that drives SwiftUI.
     private let onStallChanged: (@MainActor (Bool) -> Void)?
@@ -96,6 +102,7 @@ final class PlaybackErrorBridge {
         isPausedPublisher: AnyPublisher<Bool, Never> =
             Just(false).eraseToAnyPublisher(),
         frameCountProvider: (@MainActor () -> Int)? = nil,
+        hasEverDetectedSignalProvider: (@MainActor () -> Bool)? = nil,
         stallTickPublisher: AnyPublisher<Void, Never> =
             Timer.publish(every: 1.0, on: .main, in: .common)
                 .autoconnect()
@@ -107,6 +114,7 @@ final class PlaybackErrorBridge {
         self.toastManager = toastManager
         self.tracker = tracker
         self.frameCountProvider = frameCountProvider
+        self.hasEverDetectedSignalProvider = hasEverDetectedSignalProvider
         self.onStallChanged = onStallChanged
         self.stallDwellTicks = stallDwellTicks
 
@@ -229,7 +237,16 @@ final class PlaybackErrorBridge {
         }
 
         let fresh = advanced && currentSignalState != .silent
-        if fresh {
+        // Suppress the card on a likely PAUSE: the tap is alive (callbacks still
+        // advancing) but silent, AND the session has already had real audio — so
+        // the source is paused, not broken (the fix-ladder doesn't apply, and the
+        // card would auto-clear on resume anyway). A genuinely broken tap (never
+        // delivered → provider false) or a frozen IO-proc (Mode B → !advanced)
+        // still raises the card.
+        let isLikelyPause = advanced
+            && currentSignalState == .silent
+            && (hasEverDetectedSignalProvider?() ?? false)
+        if fresh || isLikelyPause {
             nonFreshTicks = 0
             hideStallCard()
         } else {

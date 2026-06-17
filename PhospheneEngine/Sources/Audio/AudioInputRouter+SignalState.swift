@@ -24,6 +24,14 @@ extension AudioInputRouter {
 
     // MARK: - Signal-State Handling + Tap Reinstall
 
+    /// True once this session's tap has delivered any non-silent audio (BUG-057).
+    /// Lets the UI distinguish a genuinely broken tap (never delivered → show the
+    /// silent-tap card) from a user pause (was delivering, now silent → suppress
+    /// the card). Reset per session in `start(mode:)` via `resetSignalHistory()`.
+    public var hasEverDetectedSignal: Bool {
+        silenceDetector.hasEverDetectedSignal
+    }
+
     /// Forward signal state to subscribers and drive the tap-reinstall state
     /// machine. `AudioHardwareCreateProcessTap` does not gracefully handle
     /// the source process tearing down its audio session (e.g. during a

@@ -143,9 +143,8 @@ struct PlaybackView: View {
                 onLocalFileNext: { engine.skipToNextLocalFileTrack() }
             )
 
-            // Layer 3.5: Audio-stall overlay card (silent-tap family —
-            // BUG-057/055/058). Center, non-blocking; auto-clears when audio
-            // returns. Above chrome so total audio loss is unmissable.
+            // Layer 3.5: Audio-stall overlay card (silent-tap family,
+            // BUG-057/055/058). Non-blocking, center; auto-clears on fresh audio.
             AudioStallOverlayView(
                 isVisible: audioStallActive || debugForceStallCard,
                 reduceMotion: reduceMotion
@@ -265,6 +264,7 @@ struct PlaybackView: View {
             frameCountProvider: { [weak engine = self.engine] in
                 engine?.inputLevelMonitor.currentSnapshot().frameCount ?? 0
             },
+            hasEverDetectedSignalProvider: { [weak engine = self.engine] in engine?.hasEverDetectedAudio ?? false },
             onStallChanged: { active in stallBinding.wrappedValue = active }
         )
         playbackErrorBridge = errorBridge
