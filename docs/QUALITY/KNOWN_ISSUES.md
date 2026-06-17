@@ -486,7 +486,7 @@ Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — 
 
 **Severity:** P1 (chronic visible artifact across all ray-march presets; the symptom Matt has reported "since FFO existed" — a strobe that blocks fair evaluation of FFO and any beat-sync work). Continuation of **BUG-019** (PERF.3 reduced it 76→53–60 oscillation events but did not eliminate it).
 **Domain tag:** `renderer` (light-intensity modulation) + `dsp.beat` (beat-onset signals near-constant).
-**Status:** **Fix landed (FBS pre-step), automated validation green; awaiting Matt's M7** (visual confirm the flicker is gone). Local worktree branch — **not yet on `main`/his build** (see Related).
+**Status:** **Fix landed + on `main` (commit `5c349eb`, `RayMarchPipeline.smoothLightIntensity`), automated validation green; awaiting Matt's M7** (visual confirm the flicker is gone). **Testable on the current build** (the earlier "not yet on main" note was superseded — the fix reached main; corrected 2026-06-17).
 **Introduced:** structural — `applyAudioModulation` (`RenderPipeline+RayMarch.swift`, preset-agnostic for all ray-march presets) set light intensity = `base × (1 + f.bass·0.4 + beatAccent·0.15)` *per frame with no temporal smoothing*. `beatAccent = max(beatBass, beatMid, beatComposite)` fires on ~97% of frames on real sessions (a near-constant jitter, not clean beats), and `f.bass` is noisy → the whole scene's brightness steps frame-to-frame.
 **Resolved:** — (code fixed; pending M7)
 
@@ -505,14 +505,14 @@ Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — 
 **Verification criteria:**
 - [x] **Automated (pure-function):** `RayMarchPipelineTests.test_smoothLightIntensity_suppressesFrameToFrameFlicker` — synthetic jittery target (mimics the 97%-firing beat + bass noise) → smoothed output < 5 steps over 600 frames (raw > 400), still tracks the slow swell. `_firstFrameHasNoLag` covers `dt ≤ 0`.
 - [x] **Regression:** `PresetRegressionTests` golden hashes unchanged (single-frame, dt=0 = target = pre-fix value); full ray-march/FFO/acceptance suites green.
-- [ ] **Manual (M7):** Matt confirms FFO (and other ray-march presets) no longer flicker — steady lighting through a continuous-playback session. *Requires the fix to reach his build (see Related).*
+- [ ] **Manual (M7):** Matt confirms FFO (and other ray-march presets) no longer flicker — steady lighting through a continuous-playback session. *Fix is on the current build (2026-06-17) — M7-ready.*
 
 **Manual validation required:** Yes — it's a felt visual artifact; only a human can confirm the strobe is gone.
 
 **Related:**
 - **BUG-019** — the original beat-dominant-brightness flicker (`0.4 + beatPulse·2.6`); PERF.3 fixed the worst of it but left this residual (still had a beat term + no smoothing). This is its continuation.
 - **FBS** (Ferrofluid Beat Sync) — done as the pre-step so FFO has a steady baseline to evaluate the new beat pulse against (Matt's call, 2026-06-09). The noisy beat-onset signals are also *why* FBS times its pulse off the steady tempo grid, not these signals.
-- **Worktree → build:** the fix is on branch `claude/intelligent-shirley-1ce3b4`; Matt's build runs `main`. Must integrate to local `main` (or have him build the branch) before the M7 — else he tests stranded old code (`feedback_worktree_changes_reach_build`).
+- **Worktree → build (SUPERSEDED 2026-06-17):** the fix **reached `main`** (commit `5c349eb`; `smoothLightIntensity` is in `origin/main`'s `RayMarchPipeline`) and is on the current build — **M7-ready now.** (The original note — fix on branch `claude/intelligent-shirley-1ce3b4`, not on main — no longer applies.)
 
 ---
 
