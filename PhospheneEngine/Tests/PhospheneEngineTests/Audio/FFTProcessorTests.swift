@@ -126,6 +126,79 @@ import Metal
     #expect(hasNonZero, "FFT magnitude buffer should have non-zero values after processing a sine wave")
 }
 
+@Test func fftProcessorStereoPointerMatchesArrayPath() throws {
+    // BUG-036: the zero-alloc pointer path must be bit-for-bit equivalent to the
+    // allocating array path (which now delegates to it). L≠R so the mixdown and
+    // the partial-front zero-pad (short buffer) are both exercised.
+    guard let device = MTLCreateSystemDefaultDevice() else {
+        throw FFTProcessorTestError.noMetalDevice
+    }
+    let sampleRate: Float = 48000
+
+    func makeInterleaved(frames: Int) -> [Float] {
+        var interleaved = [Float](repeating: 0, count: frames * 2)
+        for i in 0..<frames {
+            interleaved[i * 2]     = sinf(2.0 * .pi * 440.0 * Float(i) / sampleRate)
+            interleaved[i * 2 + 1] = 0.5 * sinf(2.0 * .pi * 880.0 * Float(i) / sampleRate)
+        }
+        return interleaved
+    }
+
+    for frames in [1024, 300] {  // full and short (partial zero-pad)
+        let interleaved = makeInterleaved(frames: frames)
+
+        let fftArray = try FFTProcessor(device: device)
+        let arrayResult = fftArray.processStereo(interleavedSamples: interleaved, sampleRate: sampleRate)
+        let arrayMags = (0..<FFTProcessor.binCount).map { fftArray.magnitudeBuffer[$0] }
+
+        let fftPtr = try FFTProcessor(device: device)
+        let ptrResult = interleaved.withUnsafeBufferPointer {
+            fftPtr.processStereo(interleaved: $0, sampleRate: sampleRate)
+        }
+        let ptrMags = (0..<FFTProcessor.binCount).map { fftPtr.magnitudeBuffer[$0] }
+
+        #expect(ptrResult.dominantFrequency == arrayResult.dominantFrequency)
+        #expect(ptrResult.dominantMagnitude == arrayResult.dominantMagnitude)
+        #expect(ptrMags == arrayMags)
+    }
+}
+
+@Test func fftProcessorStereoPointerReuseIsStable() throws {
+    // BUG-036: reusing windowedSamples / magnitudesScratch across calls must not
+    // corrupt results — the same input yields identical output every call.
+    guard let device = MTLCreateSystemDefaultDevice() else {
+        throw FFTProcessorTestError.noMetalDevice
+    }
+    let fft = try FFTProcessor(device: device)
+    let sampleRate: Float = 48000
+
+    var interleaved = [Float](repeating: 0, count: 2048)
+    for i in 0..<1024 {
+        let s = sinf(2.0 * .pi * 1000.0 * Float(i) / sampleRate)
+        interleaved[i * 2] = s
+        interleaved[i * 2 + 1] = s
+    }
+
+    let first = interleaved.withUnsafeBufferPointer {
+        fft.processStereo(interleaved: $0, sampleRate: sampleRate)
+    }
+    let firstMags = (0..<FFTProcessor.binCount).map { fft.magnitudeBuffer[$0] }
+
+    for _ in 0..<64 {
+        let r = interleaved.withUnsafeBufferPointer {
+            fft.processStereo(interleaved: $0, sampleRate: sampleRate)
+        }
+        let mags = (0..<FFTProcessor.binCount).map { fft.magnitudeBuffer[$0] }
+        #expect(r.dominantFrequency == first.dominantFrequency)
+        #expect(r.dominantMagnitude == first.dominantMagnitude)
+        #expect(mags == firstMags)
+    }
+
+    let tolerance = first.binResolution * 1.5
+    #expect(abs(first.dominantFrequency - 1000.0) < tolerance,
+            "Expected ~1000Hz, got \(first.dominantFrequency)Hz")
+}
+
 // MARK: - Helpers
 
 enum FFTProcessorTestError: Error {

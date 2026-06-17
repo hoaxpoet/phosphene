@@ -54,6 +54,32 @@ import Metal
     #expect(latest == [5, 6, 7, 8])
 }
 
+@Test func audioBufferLatestSamplesIntoMatchesAllocating() throws {
+    // BUG-036: the allocation-free latestSamples(into:) must produce the same
+    // bytes as latestSamples(count:), including the partial-fill (ring not yet
+    // full) case and the ring-wrap case.
+    guard let device = MTLCreateSystemDefaultDevice() else {
+        throw AudioBufferTestError.noMetalDevice
+    }
+
+    let buffer = try AudioBuffer(device: device, capacity: 8)
+
+    // Partial fill: only 3 of 8 written, request 4 → should return 3.
+    buffer.write(samples: [1, 2, 3])
+    var dst = [Float](repeating: -1, count: 4)
+    let nPartial = dst.withUnsafeMutableBufferPointer { buffer.latestSamples(into: $0) }
+    #expect(nPartial == 3)
+    #expect(Array(dst.prefix(3)) == buffer.latestSamples(count: 4))
+
+    // After a wrap, the two APIs must still agree.
+    buffer.write(samples: [4, 5, 6, 7, 8, 9])  // total 9 into capacity 8 → wrapped
+    var dst2 = [Float](repeating: -1, count: 4)
+    let n = dst2.withUnsafeMutableBufferPointer { buffer.latestSamples(into: $0) }
+    #expect(n == 4)
+    #expect(Array(dst2.prefix(4)) == buffer.latestSamples(count: 4))
+    #expect(Array(dst2.prefix(4)) == [6, 7, 8, 9])
+}
+
 @Test func audioBufferRingOverwrite() throws {
     guard let device = MTLCreateSystemDefaultDevice() else {
         throw AudioBufferTestError.noMetalDevice

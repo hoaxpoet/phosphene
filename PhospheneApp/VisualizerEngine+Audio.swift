@@ -80,6 +80,11 @@ extension VisualizerEngine {
         buf: AudioBuffer,
         fft: FFTProcessor
     ) -> (UnsafePointer<Float>, Int, Float, UInt32) -> Void {
+        // BUG-036: pre-allocated interleaved scratch, reused across callbacks so
+        // the FFT input is filled allocation-free. Captured by (and only ever
+        // touched on) the single real-time audio thread — no cross-thread share,
+        // so no lock is needed (unlike tapSampleRate, D-079).
+        var interleavedScratch = [Float](repeating: 0, count: FFTProcessor.fftSize * 2)
         return { [weak self, weak buf, weak fft] samples, count, rate, channels in
             guard let buf, let fft else { return }
             buf.write(from: samples, count: count)
@@ -113,12 +118,26 @@ extension VisualizerEngine {
             // Feed stem sample buffer (interleaved stereo, lightweight write).
             self?.stemSampleBuffer.write(samples: samples, count: count)
 
-            let latest = buf.latestSamples(count: FFTProcessor.fftSize * 2)
-            guard !latest.isEmpty else { return }
+            // BUG-036: fill the reused scratch + run the zero-alloc stereo FFT
+            // path instead of allocating a fresh [Float] per callback.
+            let frameSampleCount = interleavedScratch.withUnsafeMutableBufferPointer {
+                buf.latestSamples(into: $0)
+            }
+            guard frameSampleCount > 0 else { return }
 
-            let fftResult = fft.processStereo(interleavedSamples: latest, sampleRate: rate)
+            let fftResult = interleavedScratch.withUnsafeBufferPointer {
+                fft.processStereo(
+                    interleaved: UnsafeBufferPointer(rebasing: $0[0..<frameSampleCount]),
+                    sampleRate: rate
+                )
+            }
 
             // Copy magnitudes off the real-time thread for analysis.
+            // BUG-036 NOTE: this snapshot copy + the `analysisQueue.async` closure
+            // below (and the raw-tap `Data()`/`queue.async` in recordRawTapSamples)
+            // are the remaining IO-proc allocations. Removing them safely needs a
+            // pre-allocated ring drained by a persistent consumer — a hand-off
+            // redesign coupled to BUG-043's analysis cadence, deferred to that work.
             let binCount = Int(fftResult.binCount)
             let magnitudes = Array(fft.magnitudeBuffer.pointer.prefix(binCount))
 
