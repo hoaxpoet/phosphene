@@ -172,7 +172,7 @@ final class SessionRecorderTests: XCTestCase {
         guard let device = MTLCreateSystemDefaultDevice() else {
             throw XCTSkip("No Metal device")
         }
-        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
+        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir, videoEnabled: true))
         let width = 128, height = 72
         let captureTex = try XCTUnwrap(recorder.ensureCaptureTexture(
             device: device, width: width, height: height,
@@ -624,13 +624,51 @@ final class SessionRecorderTests: XCTestCase {
         }
     }
 
+    // MARK: - BUG-050 — video gated off by default; CSV always records
+
+    func test_videoDisabled_noCaptureTexture_csvStillRecords() throws {
+        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir, videoEnabled: false))
+
+        // The gate: ensureCaptureTexture returns nil even with a valid device, so
+        // the caller skips the blit and recordFrame skips the ~7 ms encode (BUG-050).
+        if let device = MTLCreateSystemDefaultDevice() {
+            XCTAssertNil(
+                recorder.ensureCaptureTexture(device: device, width: 64, height: 64, pixelFormat: .bgra8Unorm),
+                "video disabled → no capture texture (blit + encode gated off)")
+        }
+
+        // CSV recording is unaffected — that's where the diagnostic value lives.
+        recorder.recordFrame(features: FeatureVector(bass: 0.3, mid: 0.4, treble: 0.5, time: 1.0),
+                             stems: StemFeatures.zero)
+        recorder.finish()
+
+        let csv = try String(
+            contentsOf: recorder.sessionDir.appendingPathComponent("features.csv"), encoding: .utf8)
+        XCTAssertEqual(csv.split(separator: "\n").count, 2,
+                       "header + 1 data row — features.csv records with video off")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: recorder.sessionDir.appendingPathComponent("video.mp4").path),
+            "no video.mp4 when video is disabled")
+    }
+
+    func test_videoEnabled_allocatesCaptureTexture() throws {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            throw XCTSkip("No Metal device available")
+        }
+        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir, videoEnabled: true))
+        XCTAssertNotNil(
+            recorder.ensureCaptureTexture(device: device, width: 64, height: 64, pixelFormat: .bgra8Unorm),
+            "video enabled → capture texture allocates")
+        recorder.finish()
+    }
+
     // MARK: - Video file is created and readable
 
     func test_recordFrame_withCaptureTexture_producesReadableVideo() throws {
         guard let device = MTLCreateSystemDefaultDevice() else {
             throw XCTSkip("No Metal device available")
         }
-        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
+        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir, videoEnabled: true))
 
         // Allocate a known capture texture and fill with a solid color pattern.
         let width = 128
@@ -692,7 +730,7 @@ final class SessionRecorderTests: XCTestCase {
         guard let device = MTLCreateSystemDefaultDevice() else {
             throw XCTSkip("No Metal device available")
         }
-        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
+        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir, videoEnabled: true))
 
         // Phase 1: 35 frames at the "transient" Retina-native size.
         // Passes the 30-frame stability threshold → writer locks here.
