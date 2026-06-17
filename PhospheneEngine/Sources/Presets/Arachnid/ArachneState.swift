@@ -57,8 +57,10 @@ public enum WebStage: UInt32, Sendable {
 /// V.7.7C.2 (D-095) extends the struct from 80 → 96 bytes by appending a Row 5
 /// of 4 individual `Float` fields carrying packed BuildState — `buildStage`,
 /// `frameProgress`, `radialPacked` (radialIndex + radialProgress), and
-/// `spiralPacked` (spiralChordIndex + spiralChordProgress). Row 5 is written
-/// only for the foreground hero web (`webs[0]`); background webs zero it.
+/// `spiralPacked` (the CPU-normalized spiral reveal fraction 0..1; BUG-037 — the
+/// shader holds no chord count, so the reveal is exact and `spiralChordsTotal` is
+/// the single source of truth). Row 5 is written only for the foreground hero web
+/// (`webs[0]`); background webs zero it.
 ///
 /// **Important**: the four Row 5 fields are individual `Float`s, NOT a
 /// `SIMD4<Float>`. `SIMD4<Float>` carries 16-byte alignment, which would push
@@ -312,6 +314,11 @@ public final class ArachneState: @unchecked Sendable {
     // the composition does not feel busy. minSpawnGapBeats raised 2→8 to slow
     // spawn cadence to ~one transient web every 4 s at 120 BPM.
     public static let maxWebs: Int = 4
+    /// Degenerate-case cap on the spiral chord count (BUG-037). The legitimate
+    /// radialCount × spiralRevolutions product (both ∈ [18, 24]) maxes at 576, so this
+    /// guard never truncates a normal build — unlike the old cap of 200, which always
+    /// fired and truncated the spiral to ~45 %.
+    static let maxSpiralChords: Int = 600
     static let spawnThreshold: Float = 3.0
     static let minSpawnGapBeats: Float = 8.0
 
@@ -998,11 +1005,18 @@ public final class ArachneState: @unchecked Sendable {
     /// Pre-compute `spiralChordsTotal` and `spiralChordRadii` from the current
     /// radialCount + spiralRevolutions. Strictly INWARD: chord k+1's radius
     /// is strictly less than chord k's radius (`test_spiralChordsAreInward`).
-    /// Capped at 200 chords (V.7.7C.2 STOP CONDITION on degenerate cases).
+    /// `spiralChordsTotal` is the actual per-build chord count, radialCount ×
+    /// spiralRevolutions (both ∈ [18, 24] → 324–576). Capped at `maxSpiralChords`
+    /// only as a degenerate-case guard. BUG-037: the old cap of 200 sat *below* the
+    /// legitimate range, so it always fired — the CPU laid ≤ 200 chords while the
+    /// shader normalized by a hardcoded 441, revealing only ~45 % before `.stable`
+    /// popped the rest. The cap is raised to honour the intended density, and the
+    /// reveal is now driven by the CPU-normalized `spiralPacked` (the shader holds no
+    /// chord count), so this total is the single source of truth.
     func recomputeSpiralChordTable() {
         let revs = buildState.spiralRevolutions
         let count = buildState.radialCount
-        let total = min(200, max(0, Int(revs) * count))
+        let total = min(Self.maxSpiralChords, max(0, Int(revs) * count))
         buildState.spiralChordsTotal = total
         buildState.spiralChordRadii.removeAll(keepingCapacity: true)
         buildState.spiralChordRadii.reserveCapacity(total)
@@ -1037,8 +1051,13 @@ public final class ArachneState: @unchecked Sendable {
         webs[0].buildStage = Float(buildState.stage.rawValue)
         webs[0].frameProgress = buildState.frameProgress
         webs[0].radialPacked = Float(buildState.radialIndex) + buildState.radialProgress
-        webs[0].spiralPacked =
-            Float(buildState.spiralChordIndex) + buildState.spiralChordProgress
+        // BUG-037: publish the *normalized* reveal fraction (0..1), not the raw chord
+        // index. The shader holds no chord count to divide by, so the CPU's
+        // `spiralChordsTotal` is the single source of truth and the reveal reaches 1.0
+        // exactly when the last chord is laid — no hardcoded 441, no ~45 % pop.
+        let spiralTotal = Float(max(buildState.spiralChordsTotal, 1))
+        webs[0].spiralPacked = min(1.0,
+            (Float(buildState.spiralChordIndex) + buildState.spiralChordProgress) / spiralTotal)
         webs[0].rngSeed = Self.packPolygonAnchors(buildState.anchors)
     }
 

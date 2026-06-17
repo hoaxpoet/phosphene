@@ -1273,15 +1273,16 @@ fragment float4 arachne_composite_fragment(
     // Row 5 → legacy (stage, progress) mapping:
     //   .frame    (0) → stage=0u, progress=frame_progress
     //   .radial   (1) → stage=1u, progress=radial_packed / radialCount_cpu
-    //   .spiral   (2) → stage=2u, progress=spiral_packed / spiralChordsTotal_cpu
+    //   .spiral   (2) → stage=2u, progress=spiral_packed   (CPU-normalized 0..1; BUG-037)
     //   ≥ .stable (3) → stage=3u, progress=1.0  (.evicting clamped to .stable)
     //
-    // Normalisation constants below mirror CPU defaults (`radialCount = 21`,
-    // `spiralRevolutions × radialCount = 16 × 21 = 336`, post-BUG-011-follow-up);
-    // shader-side `arachSpokeCount(ancSeed)` may differ from CPU's
-    // `radialCount` by ±1-2, which produces a visually negligible ±2-spoke
-    // lead/lag at the radial boundary. Acceptable for V.7.7C.2 — see D-095
-    // carry-forward.
+    // The radial normalisation constant below mirrors the CPU default
+    // (`radialCount = 21`); shader-side `arachSpokeCount(ancSeed)` may differ from
+    // CPU's `radialCount` by ±1-2, a visually negligible ±2-spoke lead/lag at the
+    // radial boundary — acceptable for V.7.7C.2, the D-095 carry-forward. The SPIRAL
+    // stage carries no such constant: BUG-037 moved its normalisation onto the CPU
+    // (`spiralPacked` is published already in 0..1), so the reveal is exact and the
+    // cap-vs-441 truncation that popped the build at ~45 % is gone.
     //
     // V.7.7C.5 (D-100, Q15): hub UV moved from the V.7.5/V.7.7C.4 anchor
     // (0.42, 0.40) to canvas centre (0.5, 0.5) and webR bumped from 0.22 to
@@ -1333,7 +1334,6 @@ fragment float4 arachne_composite_fragment(
         // at the range edges is the same compromise D-095 already accepts
         // (now centred on the new medians).
         constexpr float kRadialCountCPUDefault = 21.0;
-        constexpr float kSpiralChordsTotalCPUDefault = 441.0;
         float buildStageF = clamp(webs[0].build_stage, 0.0, 4.0);
         uint  fgStage;
         float fgProgress;
@@ -1345,7 +1345,7 @@ fragment float4 arachne_composite_fragment(
             fgProgress = saturate(webs[0].radial_packed / kRadialCountCPUDefault);
         } else if (buildStageF < 2.5) {
             fgStage    = 2u;
-            fgProgress = saturate(webs[0].spiral_packed / kSpiralChordsTotalCPUDefault);
+            fgProgress = saturate(webs[0].spiral_packed);   // BUG-037: CPU-normalized 0..1
         } else {
             fgStage    = 3u;
             fgProgress = 1.0;

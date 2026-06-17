@@ -332,7 +332,7 @@ struct PresetAcceptanceTests {
             let buildStage: Float = 3.0     // .stable
             let frameProgress: Float = 1.0  // 100 %
             let radialPacked: Float = 13.0  // CPU radialCount default; "all radials drawn"
-            let spiralPacked: Float = 104.0 // CPU spiralChordsTotal default (8 × 13)
+            let spiralPacked: Float = 1.0   // BUG-037: spiral_packed is now the CPU-normalized reveal fraction (0..1); .stable ⇒ shader uses 1.0 regardless
             let row5: [Float] = [buildStage, frameProgress, radialPacked, spiralPacked]
             row5.withUnsafeBytes { src in
                 let dst = presetState.contents().advanced(by: row5Offset)

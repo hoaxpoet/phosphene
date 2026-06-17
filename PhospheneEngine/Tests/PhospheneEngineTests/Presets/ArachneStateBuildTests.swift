@@ -366,4 +366,34 @@ private func audibleStems() -> StemFeatures {
         #expect(state.buildState.segmentElapsed > 0,
                 "sum=0.04 should be above the 0.02 silent-gate threshold")
     }
+
+    // MARK: - Test 13: BUG-037 — spiral chord count honours the uncapped product
+
+    /// The spiral reveal pops at ~45 % when the CPU caps the chord count below the
+    /// legitimate range while the shader normalises by a different constant. The fix
+    /// makes `spiralChordsTotal` the single source of truth: the cap (`maxSpiralChords`)
+    /// is a degenerate-case guard only, never a truncation of the real
+    /// radialCount × spiralRevolutions product (both ∈ [18, 24] → 324–576). The shader
+    /// then reveals by the CPU-normalised `spiralPacked`, reaching 1.0 (no pop).
+    @Test("spiralChordsTotal honours the full radialCount × spiralRevolutions product (BUG-037: no 200-cap truncation)")
+    func spiralChordCountHonoursProduct() throws {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            throw ArachneBuildTestError.noMetalDevice
+        }
+        // Several seeds → several radialCount / spiralRevolutions draws in [18, 24].
+        for seed in [UInt32(7), 42, 100, 2024] {
+            let state = try #require(ArachneState(device: device, seed: seed))
+            state.reset()
+            let bs = state.buildState
+            let product = Int(bs.spiralRevolutions) * bs.radialCount
+            #expect(bs.spiralChordsTotal == product,
+                    "seed \(seed): total \(bs.spiralChordsTotal) ≠ uncapped product \(product) (BUG-037)")
+            #expect(bs.spiralChordsTotal > 200,
+                    "seed \(seed): product \(product) must exceed the retired 200 cap")
+            #expect(bs.spiralChordsTotal <= ArachneState.maxSpiralChords,
+                    "seed \(seed): degenerate guard bounds the count")
+            #expect(bs.spiralChordRadii.count == bs.spiralChordsTotal,
+                    "seed \(seed): radii table holds the full count")
+        }
+    }
 }
