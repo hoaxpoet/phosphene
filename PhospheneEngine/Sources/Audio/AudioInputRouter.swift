@@ -189,7 +189,7 @@ public final class AudioInputRouter: @unchecked Sendable {
 
         captureStartTime = CACurrentMediaTime()
         lock.withLock { currentMode = mode }
-
+        silenceDetector.resetSignalHistory()  // BUG-057: clear "ever had audio" latch (fresh session)
         switch mode {
         case .systemAudio:
             systemCapture.onAudioBuffer = { [weak self] samples, count, rate, channels in

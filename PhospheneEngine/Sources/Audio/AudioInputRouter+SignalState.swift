@@ -66,6 +66,24 @@ extension AudioInputRouter {
             break
         }
 
+        // BUG-057 fix (step 3): only auto-reinstall a tap that NEVER delivered
+        // audio (a genuinely broken cold install — stale Screen-Recording grant
+        // / wedged coreaudiod). If the session HAS had real audio, this silence
+        // is almost certainly a user pause: the working tap reads silence because
+        // the source is paused, and resumes on its own when audio returns.
+        // Reinstalling it is pointless churn that intermittently lands a
+        // created-but-dead tap (the 2026-06-17T16-59-43Z freeze; diagnosis in
+        // KNOWN_ISSUES BUG-057 §Reinstall fix step 2). Tradeoff: a tap that
+        // delivered then died for real mid-session is treated as a pause and not
+        // auto-recovered — rare, the reinstall was unreliable for it anyway, and
+        // the silent-tap detector card surfaces it.
+        if silenceDetector.hasEverDetectedSignal {
+            logReinstall(
+                "Tap reinstall SKIPPED — session has had audio; treating this silence as a user "
+                + "pause (working tap resumes on play), not a broken tap")
+            return
+        }
+
         let attempt: Int
         let delay: TimeInterval
         let shouldSchedule: Bool

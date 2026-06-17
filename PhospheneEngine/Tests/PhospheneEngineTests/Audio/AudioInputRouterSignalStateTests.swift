@@ -29,9 +29,11 @@ private final class TestClock {
     var now: Double = 0
     func tick(_ dt: Double) { now += dt }
     func provider() -> () -> Double {
-        // Capture self strongly — the SilenceDetector holds the closure for
-        // its lifetime; releasing the clock mid-test would crash.
-        { [unowned self] in self.now }
+        // Capture self strongly — the SilenceDetector holds the closure for its
+        // lifetime, so the clock must live as long as the detector (no cycle: the
+        // clock references nothing). A prior `[unowned self]` here crashed any
+        // test that discards the clock binding and then drives `update(rms:)`.
+        { self.now }
     }
 }
 
@@ -134,6 +136,51 @@ private func clearPendingWithoutResettingAttempts(_ router: AudioInputRouter) {
     #expect(router.reinstallAttempts == 1)         // unchanged
     let secondWorkItem = router.lock.withLock { router.reinstallWorkItem }
     #expect(secondWorkItem === firstWorkItem)      // same workItem object
+}
+
+// MARK: - BUG-057 fix: skip reinstall on a pause (a tap that was delivering)
+
+/// A session that NEVER delivered audio (a broken cold install) DOES schedule a
+/// reinstall — preserves BUG-055 / wedged-daemon cold-install recovery.
+@available(macOS 14.2, *)
+@Test func test_scheduleNextReinstall_firesWhenSessionNeverHadAudio() {
+    let (router, _, detector, _) = makeTestRouter()
+    router.lock.withLock { router.currentMode = .systemAudio }
+    defer { router.cancelPendingReinstall() }
+
+    #expect(detector.hasEverDetectedSignal == false)
+    router.handleSignalStateChange(.silent)
+    #expect(router.reinstallAttempts == 1)
+    #expect(router.reinstallWorkItem != nil)
+}
+
+/// A session that HAS delivered audio then goes silent (= a user pause) does NOT
+/// schedule a reinstall — the working tap is left alone to resume on play. This
+/// is the BUG-057 pause-churn fix (instrumented session 17-45-44Z).
+@available(macOS 14.2, *)
+@Test func test_scheduleNextReinstall_skipsWhenSessionHadAudio() {
+    let (router, _, detector, _) = makeTestRouter()
+    router.lock.withLock { router.currentMode = .systemAudio }
+    defer { router.cancelPendingReinstall() }
+
+    detector.update(rms: 0.1)   // the tap delivered real audio this session
+    #expect(detector.hasEverDetectedSignal == true)
+
+    router.handleSignalStateChange(.silent)   // a pause
+    #expect(router.reinstallAttempts == 0)
+    #expect(router.reinstallWorkItem == nil)
+}
+
+/// `resetSignalHistory()` clears the latch so a fresh session re-evaluates a cold
+/// install on its own merits (`router.start()` calls it).
+@available(macOS 14.2, *)
+@Test func test_resetSignalHistory_clearsDeliveredLatch() {
+    let detector = SilenceDetector(
+        silenceRMSThreshold: 1e-6, silenceDuration: 3.0, recoveryDuration: 0.5)
+    detector.update(rms: 0.1)
+    #expect(detector.hasEverDetectedSignal == true)
+    detector.resetSignalHistory()
+    #expect(detector.hasEverDetectedSignal == false)
 }
 
 // MARK: - BUG-057 instrumentation routing
