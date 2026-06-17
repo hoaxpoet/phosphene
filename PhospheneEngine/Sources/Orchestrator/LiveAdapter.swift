@@ -367,7 +367,15 @@ public final class DefaultLiveAdapter: LiveAdapting, @unchecked Sendable {
         arousalDiff: Float
     ) -> LiveAdaptation? {
         let last = cooldownLock.withLock { lastOverrideTimePerTrack[trackID] }
-        guard let last, elapsedTrackTime - last < Self.moodOverrideCooldown else { return nil }
+        guard let last else { return nil }
+        // CLEAN.3.3: a negative delta means the per-track clock went backwards — the
+        // track was replayed or a new session reset it — so the stored timestamp is
+        // stale and the cooldown is NOT active (`recordOverride` refreshes it on the
+        // next fire). Before this guard a replay read e.g. `2 - 20 = -18 < 30` and kept
+        // the override suppressed for the whole 2nd play (a 30 s preview clip never
+        // re-passes the stale mark, so mood override was permanently dead from play 2).
+        let sinceOverride = elapsedTrackTime - last
+        guard sinceOverride >= 0, sinceOverride < Self.moodOverrideCooldown else { return nil }
         return LiveAdaptation(events: [AdaptationEvent(
             kind: .moodDivergenceDetected,
             trackIndex: trackIndex,
