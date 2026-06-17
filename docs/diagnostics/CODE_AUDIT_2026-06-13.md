@@ -229,7 +229,7 @@ IDs are proposed (`CLEAN.<phase>.<n>`); on approval they map into ENGINEERING_PL
 ### Phase 3 — P2 quality hardening (June/Stretch)
 | ID | Item | Done-when | Timing |
 |----|------|-----------|--------|
-| CLEAN.3.1 | Surface init failures (PostProcess/RayMarch refuse-or-fallback loudly; PresetLoader distinguishes malformed vs missing) | logged + observable; no silent broken preset | June |
+| CLEAN.3.1 ✅ | Surface init failures (PostProcess/RayMarch refuse-or-fallback loudly; PresetLoader distinguishes malformed vs missing) | logged + observable; no silent broken preset | **DONE 2026-06-17** — `PresetLoader.decodeSidecar` splits missing (`.info`) vs malformed (`.error` + real decode error); `.postProcess` call-site now `do/catch` surfaces the real `PostProcessError` (rayMarch + shader-compile already loud). `PresetLoaderSidecarTests` (3). |
 | CLEAN.3.2 | PresetScorer exclusion-filter contract + zero-duration `catalog.first` bypass | excluded/diagnostic presets can never install; test | June |
 | CLEAN.3.3 | Mood-override cooldown reset across repeat plays/sessions; report swallowed attempts | override survives 2nd play; test | June |
 | CLEAN.3.4 | BUG-037 Arachne chord-count single source of truth (CPU/shader/test) | one constant; goldens regen | Stretch `[M7]` |
