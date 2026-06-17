@@ -74,17 +74,47 @@ public final class StemCache: @unchecked Sendable {
     // MARK: - State
 
     private var storage: [TrackIdentity: CachedTrackData] = [:]
+    /// LRU order, least-recently-used first. `touchLocked` moves a key to the end on
+    /// store and on `loadForPlayback` (the metadata accessors don't bump recency —
+    /// they're planning-time peeks, not playback). ponytail: O(n) array reorder is fine
+    /// — n ≤ `maxEntries` and this is touched per track-change, never per frame.
+    private var lruOrder: [TrackIdentity] = []
+    private let maxEntries: Int
     private let lock = NSLock()
 
     // MARK: - Init
 
-    public init() {}
+    /// Default in-memory LRU cap. Each `CachedTrackData` holds ~10 s of 4 separated
+    /// stems (~7 MB), so 64 bounds the cache to ~450 MB — the same order as the on-disk
+    /// `PersistentStemCache` LRU. Streaming preview data has no disk backing, so an
+    /// evicted track is re-prepared on next demand (CLEAN.3.5).
+    public static let defaultMaxEntries = 64
+
+    /// Creates a cache with the default LRU cap. Kept as a distinct no-arg initializer
+    /// (rather than a defaulted parameter on `init(maxEntries:)`) so existing
+    /// `StemCache()` call sites keep the same mangled `init()` symbol — changing it to a
+    /// defaulted parameter alters the symbol and breaks incremental builds whose
+    /// dependents weren't recompiled (e.g. `SessionPreparer.init`'s
+    /// `cache: StemCache = StemCache()` default-argument thunk). CLEAN.3.5.
+    public convenience init() {
+        self.init(maxEntries: Self.defaultMaxEntries)
+    }
+
+    /// Creates a cache with an explicit LRU cap (used by tests).
+    public init(maxEntries: Int) {
+        self.maxEntries = max(1, maxEntries)
+    }
 
     // MARK: - Write
 
-    /// Store pre-analyzed data for a track, replacing any existing entry.
+    /// Store pre-analyzed data for a track, replacing any existing entry, and evict the
+    /// least-recently-used track if this pushes the cache past `maxEntries` (CLEAN.3.5).
     public func store(_ data: CachedTrackData, for identity: TrackIdentity) {
-        lock.withLock { storage[identity] = data }
+        lock.withLock {
+            storage[identity] = data
+            touchLocked(identity)
+            evictIfNeededLocked()
+        }
     }
 
     // MARK: - Read
@@ -134,7 +164,11 @@ public final class StemCache: @unchecked Sendable {
     /// Called by `VisualizerEngine` on track change to populate the stem pipeline
     /// from pre-separated waveforms rather than waiting for live separation.
     public func loadForPlayback(track: TrackIdentity) -> CachedTrackData? {
-        lock.withLock { storage[track] }
+        lock.withLock {
+            guard let data = storage[track] else { return nil }
+            touchLocked(track)   // playback use bumps LRU recency
+            return data
+        }
     }
 
     // MARK: - Housekeeping
@@ -146,6 +180,27 @@ public final class StemCache: @unchecked Sendable {
 
     /// Remove all cached entries.
     public func clear() {
-        lock.withLock { storage.removeAll() }
+        lock.withLock {
+            storage.removeAll()
+            lruOrder.removeAll()
+        }
+    }
+
+    // MARK: - LRU (caller must hold `lock`)
+
+    /// Move `identity` to the most-recently-used end of `lruOrder`.
+    private func touchLocked(_ identity: TrackIdentity) {
+        if let idx = lruOrder.firstIndex(of: identity) {
+            lruOrder.remove(at: idx)
+        }
+        lruOrder.append(identity)
+    }
+
+    /// Evict least-recently-used entries until `storage.count <= maxEntries`.
+    private func evictIfNeededLocked() {
+        while storage.count > maxEntries, let oldest = lruOrder.first {
+            lruOrder.removeFirst()
+            storage[oldest] = nil
+        }
     }
 }
