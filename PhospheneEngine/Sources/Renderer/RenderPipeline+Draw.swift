@@ -105,9 +105,15 @@ extension RenderPipeline {
         let mvWarpActive = passes.contains(.mvWarp) && mvWarpSnap != nil
 
         // Lazy-allocate feedback textures if needed (drawableSizeWillChange may not fire).
+        // Only surface-mode feedback presets sample the ping-pong — particle-mode
+        // feedback presets (Murmuration) draw straight to the drawable, so they
+        // allocate nothing here (CLEAN.4.4). `ensureFeedbackTexturesAllocated` itself
+        // still no-ops when `currentFeedbackParams == nil` (every non-feedback preset).
         let drawableSize = view.drawableSize
-        feedbackLock.withLock {
-            ensureFeedbackTexturesAllocated(size: drawableSize)
+        if particles == nil {
+            feedbackLock.withLock {
+                ensureFeedbackTexturesAllocated(size: drawableSize)
+            }
         }
         let (fbParams, fbCompose, fbTextures, fbIndex) = feedbackLock.withLock {
             (currentFeedbackParams, feedbackComposePipelineState, feedbackTextures, feedbackIndex)
@@ -194,8 +200,10 @@ extension RenderPipeline {
 
             case .feedback:
                 guard let params  = fbParams,
-                      let compose = fbCompose,
-                      fbTextures.count == 2 else { continue }
+                      let compose = fbCompose else { continue }
+                // Surface mode (Membrane) needs the ping-pong; particle mode
+                // (Murmuration) draws straight to the drawable without it (CLEAN.4.4).
+                guard particles != nil || fbTextures.count == 2 else { continue }
                 var ctx = FeedbackDrawContext(
                     commandBuffer: commandBuffer,
                     view: view,

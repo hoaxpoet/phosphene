@@ -17,8 +17,19 @@ extension RenderPipeline {
 
     /// Set feedback parameters for the active preset. Pass nil to disable feedback.
     /// Thread-safe — can be called from any queue.
+    ///
+    /// Passing `nil` (switching to a non-feedback preset) also releases the
+    /// ping-pong textures — a non-feedback preset never samples them, so holding
+    /// the ~32 MB @ 4K pair resident for the rest of the session is pure waste
+    /// (CLEAN.4.4). A feedback preset re-allocates lazily on its next frame via
+    /// `ensureFeedbackTexturesAllocated` (or on the next resize).
     public func setFeedbackParams(_ params: FeedbackParams?) {
-        feedbackLock.withLock { currentFeedbackParams = params }
+        feedbackLock.withLock {
+            currentFeedbackParams = params
+            if params == nil {
+                feedbackTextures = []
+            }
+        }
     }
 
     /// Set the additive-blended pipeline state for feedback composite pass.
