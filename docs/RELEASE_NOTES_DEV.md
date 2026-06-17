@@ -10,6 +10,14 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-17-153519] BUG-038 → Resolved — ray-march light-flicker M7 passed
+
+The ray-march light-intensity strobe (BUG-038, the BUG-019 residual: a 7–9 Hz brightness step from the un-smoothed per-frame light uniform) is **resolved by M7**. The EMA fix (`RayMarchPipeline.smoothLightIntensity`, τ ≈ 0.12 s; commit `5c349eb`) had been on `main` with automated validation green but awaited the human visual confirm. Matt's M7 (session `2026-06-17T15-10-28Z`, Ferrofluid Ocean on real audio, ~220 s): **steady lighting, no strobe.**
+
+Data corroboration: the **raw** brightness target in `features.csv` still steps **8.0/sec** — identical to the pre-fix baseline — because `features.csv` records the raw FeatureVector, *upstream* of the in-shader EMA. Yet the rendered output is steady → the EMA suppresses a real, full-load ~8/sec jitter into a steady light uniform (not a calm-input fluke), mean-preserving so brightness still follows the energy swell. Three independent signals triangulate it: human M7, raw-jitter-present-but-render-steady, and the green `test_smoothLightIntensity_suppressesFrameToFrameFlicker`.
+
+`KNOWN_ISSUES.md` BUG-038 → Resolved (removed from the Open Index; closes the BUG-019 flicker lineage). Surfaced during the post-BUG-057 live-test arc (the tap had to be working first to run a fair ray-march M7). Docs-only (the fix shipped earlier).
+
 ## [dev-2026-06-17-041554] BUG-057.instrument — cold-tap-install-silence: capture-install diagnostics to session.log
 
 P1 multi-increment **step 1 only** (Defect Protocol: instrument → commit → STOP; no fix code). The streaming cold start installs the system-audio tap (`AudioHardwareCreateProcessTap` → `noErr`) but delivers persistent silence; the only recovery observed is a manual output-device switch, which fires `SystemAudioCapture.performReinstall` and then captures real Spotify audio (BUG-057). Identical create steps cold-vs-reinstall ⇒ the divergence is timing/state. This increment adds the observability to separate the four candidates — (a) TCC grant not yet effective on the first tap, (b) DRM-zeroing, (c) cold tap binds before audio flows, (d) the `.silent → reinstall` recovery is insufficient — from ONE real cold-start session, persisted to `session.log` (os_log rolls off).
