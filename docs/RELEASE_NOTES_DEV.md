@@ -10,6 +10,16 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-17-214707] CLEAN.3.6 — SessionRecorder running-vs-actually-writing invariant (BUG-039)
+
+Fifth Phase-3 increment. BUG-039 (session video silently stops appending while the recorder keeps "running") had its **recovery** landed 2026-06-10 — on writer death the partial is retained and recording rolls to `video_N.mp4`, bounded at 8 restarts. What was missing (the audit's "invariant missing") is anything tying *"recorder running"* to *"video actually advancing"*: after the restart budget exhausts, or on any silent stall the death-check doesn't catch, the recorder keeps writing CSV/log while video is dead — and the only signal was a mid-session log line.
+
+Added the invariant. A successful-append counter `videoFramesAppended` + `lastVideoAppendFrameIndex` are the "actually-writing" signal (incremented on each `adaptor.append` success). At `finish()`, `finalizeVideoInvariant()`:
+- appends a **video-outcome summary** to the session-end log line — `video N appended / S segment(s) / R restart(s) / disabled=bool` — so a recorder that ran while writing no video can never look healthy from the artifacts; and
+- logs a loud **`BUG-039 invariant VIOLATED`** line when the silent-stop *signature* is present: the writer locked, then appends stopped more than `videoSilentStopFrameThreshold` (300 frames ≈ 5 s; the field signature was tens of thousands) before session end, with no writer death/restart and video not disabled. Every *explained* stop (restart, budget-exhausted disable, never-locked) is excluded, so it only fires on the genuinely-silent case.
+
+The predicate `isSilentVideoStop` is pure (unit-tested GPU-free via `test_bug039Invariant_silentStopPredicate` — signature true, every excluded case false); the existing `test_videoWriterDeath_rollsToNewSegment_bothFilesReadable` was extended to **confirm recovery** — `videoFramesAppended > 0` after the roll (appends resumed) and no false violation. The invariant logic lives in the `SessionRecorder+Video` extension to keep the class under `type_body_length`. Engine build green, swiftlint `--strict` 0; SessionRecorder suite green. Not visually verifiable. `KNOWN_ISSUES.md` BUG-039 updated — **closure still pends Matt's live multi-session confirmation** that the affected-session signature no longer occurs (the recovery + invariant are the durable mitigation for an undocumented intermittent AVFoundation encoder failure). EP §Recently Completed ✅.
+
 ## [dev-2026-06-17-212025] CLEAN.3.5 — StemCache eviction + close diag-log handle + retire dead helpers
 
 Fourth Phase-3 increment (3.4 is Stretch/M7). Three resource/cleanup items from the audit's T4:
