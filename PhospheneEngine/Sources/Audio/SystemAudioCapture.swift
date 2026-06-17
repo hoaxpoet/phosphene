@@ -8,11 +8,19 @@
 //
 // This is Phosphene's primary audio input. Local file playback exists
 // only as a testing/offline fallback.
+//
+// swiftlint:disable file_length
+// Crossed the 400-line warning with the BUG-057 install-probe instrumentation
+// (per-(re)install device/rate/preflight logging + a first-seconds RMS probe).
+// This is temporary diagnostic mass for the cold-tap-silence defect; the fix
+// increment will trim or relocate it. Splitting now would obscure the capture
+// lifecycle the probe is measuring.
 
 import Foundation
 import CoreAudio
 import AudioToolbox
 import AppKit
+import CoreGraphics
 import os.log
 
 private let logger = Logger(subsystem: "com.phosphene.audio", category: "SystemAudioCapture")
@@ -82,6 +90,10 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
     public var onAudioBuffer: ((_ samples: UnsafePointer<Float>, _ sampleCount: Int,
                                 _ sampleRate: Float, _ channelCount: UInt32) -> Void)?
 
+    /// BUG-057 instrumentation sink — install lifecycle + first-seconds RMS.
+    /// See `AudioCapturing.onCaptureDiagnostic`.
+    public var onCaptureDiagnostic: ((_ message: String) -> Void)?
+
     // MARK: - State
 
     private var tapID: AudioObjectID = 0
@@ -103,6 +115,18 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
     private let reinstallQueue = DispatchQueue(label: "com.phosphene.audio.tapReinstall")
 
     private let stateLock = NSLock()
+
+    // MARK: - BUG-057 install-probe state (guarded by stateLock)
+
+    /// Increments on every successful (re)install so each session.log RMS line
+    /// is attributable to a specific tap install (cold vs device-change reinstall).
+    private var installGeneration = 0
+    /// CFAbsoluteTime the current install armed its probe window.
+    private var installWallclock: CFAbsoluteTime = 0
+    /// CFAbsoluteTime of the last emitted RMS sample (throttles the probe to ~1 Hz).
+    private var lastInstallRMSLogTime: CFAbsoluteTime = 0
+    /// How long after each install to keep sampling tap RMS into session.log.
+    private let installProbeWindowSeconds: CFAbsoluteTime = 10.0
 
     public var isCapturing: Bool {
         stateLock.withLock { _isCapturing }
@@ -141,6 +165,11 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
             let sr = self.sampleRate
             let ch = self.channelCount
             logger.info("Audio capture started: \(String(describing: mode)), \(sr) Hz, \(ch) ch")
+            // BUG-057: the very first call is the cold install; subsequent calls
+            // are the router's `.silent`-recovery reinstalls (stopCapture +
+            // startCapture). The generation counter + the preceding router
+            // "Tap reinstall #N" line disambiguate the two in session.log.
+            armInstallProbeAndLog(kind: "install via startCapture")
         } catch {
             stateLock.withLock { _isCapturing = false }
             throw error
@@ -196,7 +225,7 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
         var newProcID: AudioDeviceIOProcID?
         let procStatus = AudioDeviceCreateIOProcIDWithBlock(
             &newProcID, aggregateID, nil
-        ) { _, inInputData, _, _, _ in
+        ) { [weak self] _, inInputData, _, _, _ in
             let buffers = UnsafeMutableAudioBufferListPointer(
                 UnsafeMutablePointer(mutating: inInputData)
             )
@@ -207,6 +236,7 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
 
                 let floatPtr = data.bindMemory(to: Float.self, capacity: floatCount)
                 callback?(floatPtr, floatCount, sr, ch)
+                self?.probeInstallRMS(floatPtr, floatCount)  // BUG-057
                 break  // Process first buffer only (stereo interleaved)
             }
         }
@@ -299,9 +329,11 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
             let newProcID = try createIOProc(aggregateID: newAggregateID)
             try startDevice(aggregateID: newAggregateID, procID: newProcID)
             logger.info("Tap reinstalled after device change (tap \(newTapID))")
+            armInstallProbeAndLog(kind: "reinstall via device-change")  // BUG-057
         } catch {
             // The create steps already tore down + stopped the monitor on failure.
             logger.error("Tap reinstall failed after device change: \(String(describing: error))")
+            onCaptureDiagnostic?("reinstall via device-change FAILED: \(String(describing: error))")
         }
     }
 
@@ -329,6 +361,66 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
         tapID = 0
         procID = nil
         stateLock.unlock()
+    }
+
+    // MARK: - BUG-057 Instrumentation
+
+    /// Log the bound default-output device, tap rate, and Screen-Recording
+    /// preflight at a successful (re)install, and (re)arm the first-seconds RMS
+    /// probe for a fresh generation. The diagnostic candidates (TCC-not-yet-
+    /// effective, DRM-zeroing, cold-bind-before-audio, insufficient reinstall)
+    /// are separable from this line + the per-generation RMS samples + the
+    /// existing `audio signal → …` transitions, all interleaved in session.log.
+    private func armInstallProbeAndLog(kind: String) {
+        let deviceID = deviceMonitor.currentDefaultOutputDeviceID()
+        let preflight = CGPreflightScreenCaptureAccess()
+        let rate = self.sampleRate
+        let gen: Int = stateLock.withLock {
+            installGeneration += 1
+            installWallclock = CFAbsoluteTimeGetCurrent()
+            lastInstallRMSLogTime = 0
+            return installGeneration
+        }
+        onCaptureDiagnostic?(
+            "\(kind) gen=\(gen) defaultOutputDevice=\(deviceID) rate=\(Int(rate)) Hz "
+            + "screenRecordingPreflight=\(preflight)")
+    }
+
+    /// For the first `installProbeWindowSeconds` of each install, emit a ~1 Hz
+    /// RMS/peak sample tagged with the install generation, so session.log shows
+    /// whether THIS tap delivered signal or stayed silent. Called from the RT IO
+    /// proc; the uncontended per-buffer stateLock matches `SilenceDetector`'s
+    /// existing per-buffer lock in the same call chain.
+    /// ponytail: scalar RMS loop runs only at the ~1 Hz emit boundary, not every
+    /// buffer — no Accelerate dependency needed for a temporary diagnostic.
+    private func probeInstallRMS(_ samples: UnsafePointer<Float>, _ count: Int) {
+        guard count > 0 else { return }
+        let now = CFAbsoluteTimeGetCurrent()
+        var gen = 0
+        var wallclock: CFAbsoluteTime = 0
+        var shouldLog = false
+        stateLock.withLock {
+            gen = installGeneration
+            wallclock = installWallclock
+            let elapsed = now - installWallclock
+            if elapsed <= installProbeWindowSeconds, now - lastInstallRMSLogTime >= 1.0 {
+                lastInstallRMSLogTime = now
+                shouldLog = true
+            }
+        }
+        guard shouldLog else { return }
+
+        var sumSq: Float = 0
+        var peak: Float = 0
+        for i in 0..<count {
+            let sample = samples[i]
+            sumSq += sample * sample
+            let mag = abs(sample)
+            if mag > peak { peak = mag }
+        }
+        let rms = (sumSq / Float(count)).squareRoot()
+        onCaptureDiagnostic?(String(
+            format: "tap RMS gen=%d t=+%.1fs rms=%.6f peak=%.6f", gen, now - wallclock, rms, peak))
     }
 
     private func cleanup() {

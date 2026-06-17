@@ -30,6 +30,15 @@ extension VisualizerEngine {
         audioRouter.onAudioSamples = makeAudioSampleCallback(buf: buf, fft: fft)
         audioRouter.onSignalStateChanged = makeSignalStateCallback()
 
+        // BUG-057: persist tap-install lifecycle + first-seconds RMS + the
+        // `.silent → reinstall` scheduler timeline to session.log so the
+        // cold-install-vs-reinstall divergence is diagnosable from one session
+        // artifact (os_log rolls off). Instrumentation only — no behaviour change.
+        let recorder = sessionRecorder
+        audioRouter.onAudioCaptureDiagnostic = { [weak recorder] msg in
+            recorder?.log("TAP: \(msg)")
+        }
+
         // Round 26 (2026-05-15): `preFetcher` is now constructed early in
         // `VisualizerEngine.init` so SessionPreparer can share the same
         // cache + fetcher list. Reuse it here for the track-change

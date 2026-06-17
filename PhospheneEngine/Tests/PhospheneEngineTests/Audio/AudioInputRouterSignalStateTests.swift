@@ -57,6 +57,14 @@ private func makeTestRouter(
     return (router, mock, detector, clock)
 }
 
+/// Thread-safe capture of `onAudioCaptureDiagnostic` lines for assertions.
+private final class DiagnosticSink: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _messages: [String] = []
+    func append(_ message: String) { lock.withLock { _messages.append(message) } }
+    var messages: [String] { lock.withLock { _messages } }
+}
+
 /// Clear the pending workItem WITHOUT resetting the attempt counter.
 /// Simulates "the workItem fired and ran" for counter-sequence tests
 /// without actually waiting for the 3/10/30 s asyncAfter delay.
@@ -126,6 +134,47 @@ private func clearPendingWithoutResettingAttempts(_ router: AudioInputRouter) {
     #expect(router.reinstallAttempts == 1)         // unchanged
     let secondWorkItem = router.lock.withLock { router.reinstallWorkItem }
     #expect(secondWorkItem === firstWorkItem)      // same workItem object
+}
+
+// MARK: - BUG-057 instrumentation routing
+
+/// BUG-057: the `.silent → reinstall` scheduler must mirror its diagnostic to
+/// `onAudioCaptureDiagnostic` (the app wires this to `SessionRecorder.log`), so
+/// the cold-install recovery timeline lands in session.log where os_log can't.
+/// Locks the routing so a refactor can't silently drop the artifact the
+/// diagnosis depends on.
+@available(macOS 14.2, *)
+@Test func test_silentReinstall_emitsCaptureDiagnostic() {
+    let (router, _, _, _) = makeTestRouter()
+    router.lock.withLock { router.currentMode = .systemAudio }  // LF.1 mode-gate
+    defer { router.cancelPendingReinstall() }
+
+    let sink = DiagnosticSink()
+    router.onAudioCaptureDiagnostic = { sink.append($0) }
+
+    // Drives scheduleNextReinstall, which emits the "scheduled" line synchronously.
+    router.handleSignalStateChange(.silent)
+
+    #expect(sink.messages.contains { $0.contains("Tap reinstall scheduled") })
+}
+
+/// The diagnostic mirror must respect the LF.1 mode-gate: in local-file modes
+/// `scheduleNextReinstall` returns before logging, so the sink stays empty —
+/// the engine-side guarantee behind the LF.1 "no reinstall lines in session.log"
+/// grep, now that those lines also route to the recorder.
+@available(macOS 14.2, *)
+@Test func test_silentReinstall_emitsNothingInLocalFileMode() {
+    let (router, _, _, _) = makeTestRouter()
+    let url = URL(fileURLWithPath: "/dev/null")
+    router.lock.withLock { router.currentMode = .localFilePlayback(url) }
+    defer { router.cancelPendingReinstall() }
+
+    let sink = DiagnosticSink()
+    router.onAudioCaptureDiagnostic = { sink.append($0) }
+
+    router.handleSignalStateChange(.silent)
+
+    #expect(sink.messages.isEmpty)
 }
 
 // MARK: - cancelPendingReinstall

@@ -165,6 +165,10 @@ public final class AudioInputRouter: @unchecked Sendable {
     /// next `start()`.
     public var onLocalFilePlaybackDiagnostic: ((String) -> Void)?
 
+    /// BUG-057 sink — `SystemAudioCapture` install/RMS lines + this router's
+    /// `.silent → reinstall` events. App wires it to `SessionRecorder.log`.
+    public var onAudioCaptureDiagnostic: ((String) -> Void)?
+
     /// Current audio signal state as determined by the silence detector.
     public var signalState: AudioSignalState {
         silenceDetector.state
@@ -177,6 +181,11 @@ public final class AudioInputRouter: @unchecked Sendable {
     /// - Parameter mode: Which source to use. Defaults to `.systemAudio`.
     public func start(mode: InputMode = .systemAudio) throws {
         stopInternal()
+
+        // BUG-057: forward capture install/RMS diagnostics to the app sink (cold install + device-change reinstalls).
+        systemCapture.onCaptureDiagnostic = { [weak self] msg in
+            self?.onAudioCaptureDiagnostic?(msg)
+        }
 
         captureStartTime = CACurrentMediaTime()
         lock.withLock { currentMode = mode }
