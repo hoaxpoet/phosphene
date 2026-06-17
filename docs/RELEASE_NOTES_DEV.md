@@ -10,6 +10,17 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-17-220337] CLEAN.3.8 — disk-full / write-failure graceful degradation (GAP-6)
+
+Sixth Phase-3 increment, and the last of the non-M7 Phase-3 work. GAP-6 (audit-verified: no `volumeAvailableCapacity`/ENOSPC handling). The real risk was `SessionRecorder`: per-frame CSV + log used the **non-throwing `FileHandle.write(_:)`**, which raises an *uncatchable* Objective-C exception on a full disk → the app **crashes** mid-session (and can leave a half-written final row).
+
+Fix (engine-only, in a new `SessionRecorder+DiskGuard` extension):
+- **Honest stop.** Every per-frame/log write now goes through `safeWrite(_:to:)` — the *throwing* `write(contentsOf:)` in a do/catch. On failure (disk full), `haltRecording(reason:)` sets `recordingHalted`, logs **once** to the unified log (`os.Logger`, since `session.log` itself may be unwritable), and from then on every write and `recordFrame` early-outs. Result: the recorder stops cleanly with its partial artifacts retained — no crash, no silent corruption, no partial rows.
+- **Pre-flight capacity check.** `warnIfLowDiskSpace(at:)` at session start logs a loud warning when `volumeAvailableCapacityForImportantUsage` is below `minFreeBytesForRecording` (200 MB). Recording still proceeds (a short session may fit); the honest-stop covers actual exhaustion. Unknown capacity (query failure) is permissive — never refuse recording because the volume couldn't be read.
+- **Caches were already safe** — `PersistentStemCache.store` uses atomic `write(to:options:.atomic)` (no partial-file corruption) and throws, caught at its call site (`VisualizerEngine+LocalFilePlayback`). Verified, untouched.
+
+The disk-guard logic lives in the extension to keep `SessionRecorder` under `type_body_length`. Gates: `test_diskGuard_capacityPredicate` (pure — enough/low/unknown) + `test_diskGuard_haltStopsFurtherWrites` (after `haltRecording`, `recordFrame` writes no further rows and doesn't crash; idempotent). SessionRecorder suite 26/26; engine build green, swiftlint `--strict` 0. The ENOSPC path itself isn't unit-triggerable (can't fill a disk in a test) — verified by routing + the halt-gate test; the predicate + gate are the locked behaviour. Not visually verifiable. `KNOWN_ISSUES.md` untouched (audit GAP, no filed bug). EP §Recently Completed ✅.
+
 ## [dev-2026-06-17-214707] CLEAN.3.6 — SessionRecorder running-vs-actually-writing invariant (BUG-039)
 
 Fifth Phase-3 increment. BUG-039 (session video silently stops appending while the recorder keeps "running") had its **recovery** landed 2026-06-10 — on writer death the partial is retained and recording rolls to `video_N.mp4`, bounded at 8 restarts. What was missing (the audit's "invariant missing") is anything tying *"recorder running"* to *"video actually advancing"*: after the restart budget exhausts, or on any silent stall the death-check doesn't catch, the recorder keeps writing CSV/log while video is dead — and the only signal was a mid-session log line.
