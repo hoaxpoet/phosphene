@@ -217,6 +217,40 @@ final class SessionRecorderTests: XCTestCase {
                              encoding: .utf8)
         XCTAssertTrue(log.contains("BUG-039 recovery"),
                       "the restart must be visible in session.log")
+        // CLEAN.3.6 invariant: appends RESUMED after the roll (running ⟺ actually-writing),
+        // and finish() reports the real video outcome — a recovered session is never a
+        // silent "ran but wrote nothing".
+        XCTAssertGreaterThan(recorder.videoFramesAppended, 0,
+                             "video appends must resume after recovery")
+        XCTAssertTrue(log.contains("SessionRecorder finished") && log.contains("appended /"),
+                      "finish() must report the video-writing outcome")
+        XCTAssertFalse(log.contains("invariant VIOLATED"),
+                       "a recovered session is not a silent stop (restart is a logged cause)")
+    }
+
+    /// CLEAN.3.6: the running-vs-actually-writing invariant predicate. Pure, GPU-free —
+    /// exercises the silent-stop signature and every excluded (explained) case directly.
+    func test_bug039Invariant_silentStopPredicate() {
+        let overThreshold = SessionRecorder.videoSilentStopFrameThreshold + 1
+        // Silent stop: locked + appended, then stalled long before end, no logged cause.
+        XCTAssertTrue(SessionRecorder.isSilentVideoStop(
+            videoLocked: true, framesAppended: 120, restarts: 0, disabled: false,
+            framesSinceLastAppend: overThreshold))
+        // Healthy: appended within the throttle window of the end.
+        XCTAssertFalse(SessionRecorder.isSilentVideoStop(
+            videoLocked: true, framesAppended: 1000, restarts: 0, disabled: false,
+            framesSinceLastAppend: 2))
+        // Explained stops are NOT invariant violations:
+        XCTAssertFalse(SessionRecorder.isSilentVideoStop(
+            videoLocked: true, framesAppended: 120, restarts: 1, disabled: false,
+            framesSinceLastAppend: overThreshold), "a restart is a logged cause")
+        XCTAssertFalse(SessionRecorder.isSilentVideoStop(
+            videoLocked: true, framesAppended: 120, restarts: 0, disabled: true,
+            framesSinceLastAppend: overThreshold), "budget-exhausted disable is a logged cause")
+        // Never locked (e.g. dims never stabilized) → no invariant to violate.
+        XCTAssertFalse(SessionRecorder.isSilentVideoStop(
+            videoLocked: false, framesAppended: 0, restarts: 0, disabled: false,
+            framesSinceLastAppend: overThreshold))
     }
 
     // MARK: - FBS Stage 1 (D-153) pulse columns

@@ -176,6 +176,18 @@ public final class SessionRecorder: @unchecked Sendable {
     var videoPoolFailCount = 0
     var videoAppendFailCount = 0
 
+    /// BUG-039 invariant (CLEAN.3.6): successful video appends this session and the
+    /// `frameIndex` at the most recent one. `finish()` asserts the running-vs-actually-
+    /// writing invariant from these — the recorder keeps "running" (CSV/log advance) even
+    /// when the video writer silently stops, so a writer that locked then stopped appending
+    /// well before session end, with no death/restart and not disabled, is the silent-stop
+    /// signature and is logged loudly. Accessed only from the serial `queue`.
+    var videoFramesAppended = 0
+    var lastVideoAppendFrameIndex = 0
+    /// Frames the recorder may run past the last successful append before `finish()` calls
+    /// it a silent stop (≈5 s at 60 fps; the field signature was tens of thousands).
+    static let videoSilentStopFrameThreshold = 300
+
     // MARK: Structural prediction (Skein.5.2 — section evidence in artifacts).
     // Updated by `recordStructuralPrediction(_:)` from the per-frame MIR publish
     // (the same site that calls `RenderPipeline.setStructuralPrediction`).
@@ -377,8 +389,13 @@ public final class SessionRecorder: @unchecked Sendable {
                     self.rawTapHandle = nil
                 }
             }
+            // BUG-039 invariant (CLEAN.3.6): flag a silent video stop + summarise the real
+            // video-writing outcome, so a recorder that kept "running" while the writer
+            // stopped can never look healthy from the artifacts. (Logic lives in the
+            // SessionRecorder+Video extension to keep this type under `type_body_length`.)
+            let videoSummary = self.finalizeVideoInvariant()
             let msg = "SessionRecorder finished (\(self.frameIndex) frames, "
-                    + "\(self.stemDumpIndex) stem dumps)\n"
+                    + "\(self.stemDumpIndex) stem dumps; \(videoSummary))\n"
             try? self.logHandle.write(contentsOf: Data(msg.utf8))
             try? self.logHandle.close()
         }
