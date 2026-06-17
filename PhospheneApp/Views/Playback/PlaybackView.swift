@@ -34,6 +34,8 @@ struct PlaybackView: View {
     @EnvironmentObject private var engine: VisualizerEngine
     private let onEndSession: () -> Void
     private let reduceMotion: Bool
+    /// Session lifecycle, for the silent-tap detector's `.playing` gate.
+    private let sessionStatePublisher: AnyPublisher<SessionState, Never>
 
     // MARK: - Owned (publisher-injected @StateObjects)
 
@@ -61,6 +63,8 @@ struct PlaybackView: View {
     @State private var displayManager: DisplayManager?
     @State private var multiDisplayBridge: MultiDisplayToastBridge?
     @State private var displayChangeCoordinator: DisplayChangeCoordinator?
+    /// Driven by `PlaybackErrorBridge`'s stall detector — shows the audio-stall card.
+    @State private var audioStallActive: Bool = false
 
     @Namespace private var trackAnimNamespace
 
@@ -89,6 +93,7 @@ struct PlaybackView: View {
     ) {
         self.onEndSession = onEndSession
         self.reduceMotion = reduceMotion
+        self.sessionStatePublisher = sessionManager.$state.eraseToAnyPublisher()
         _chromeVM = StateObject(wrappedValue: PlaybackChromeViewModel(
             audioSignalStatePublisher: audioSignalStatePublisher,
             currentTrackPublisher: currentTrackPublisher,
@@ -134,6 +139,11 @@ struct PlaybackView: View {
                 onLocalFilePlayPause: { engine.togglePauseLocalFile() },
                 onLocalFileNext: { engine.skipToNextLocalFileTrack() }
             )
+
+            // Layer 3.5: Audio-stall overlay card (silent-tap family —
+            // BUG-057/055/058). Center, non-blocking; auto-clears when audio
+            // returns. Above chrome so total audio loss is unmissable.
+            AudioStallOverlayView(isVisible: audioStallActive, reduceMotion: reduceMotion)
 
             // Layer 4: Shortcut help overlay
             if showHelp, let registry = currentRegistry {
@@ -234,10 +244,22 @@ struct PlaybackView: View {
             )
         }
 
-        // §9.4 playback errors — silence at 15s, condition-ID auto-dismiss
+        // §9.4 playback errors — silence at 15s, condition-ID auto-dismiss.
+        // Silent-tap detector (BUG-057/055/058): raise the audio-stall card when
+        // no fresh audio reaches the visualizer while playing. Mode A keys on
+        // `.silent`; Mode B on the tap frame count (InputLevelMonitor) ceasing to
+        // advance. Gated on `.playing` && not paused so it never false-fires
+        // pre-play, in `.ready`, or on a deliberate local-file pause.
+        let stallBinding = $audioStallActive
         let errorBridge = PlaybackErrorBridge(
             audioSignalStatePublisher: engine.$audioSignalState.eraseToAnyPublisher(),
-            toastManager: toastManager
+            toastManager: toastManager,
+            sessionStatePublisher: sessionStatePublisher,
+            isPausedPublisher: engine.$isLocalFilePaused.eraseToAnyPublisher(),
+            frameCountProvider: { [weak engine = self.engine] in
+                engine?.inputLevelMonitor.currentSnapshot().frameCount ?? 0
+            },
+            onStallChanged: { active in stallBinding.wrappedValue = active }
         )
         playbackErrorBridge = errorBridge
 

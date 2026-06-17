@@ -8,11 +8,31 @@
 //   On recovery  → dismissByCondition("silence.extended") auto-clears the toast.
 //
 // Implements injectable publishers for unit-testable silence timing.
+//
+// Silent-tap detector (BUG-057 / BUG-055 / BUG-058 fix increment).
+// On top of the silence toast, the bridge raises a prominent overlay card when
+// NO FRESH audio is reaching the visualizer while we should be playing. This
+// catches the whole silent-tap family — which all present identically to the
+// user (the app shows "playing" but the visualizer is silent or frozen):
+//   • Mode A — RMS ≈ 0 (wedged coreaudiod feeding zeros [BUG-057]; stale
+//     Screen-Recording grant after a rebuild [BUG-055]). `audioSignalState`
+//     goes `.silent`.
+//   • Mode B — a device-swap freezes the tap IO-proc [BUG-058]; the render loop
+//     coasts on the last buffer, so RMS stays NON-zero and `.silent` never
+//     fires. The tell is that tap callbacks stop advancing.
+// Both reduce to "no fresh audio": a ~1 Hz poll samples whether the tap frame
+// count is still advancing AND the signal isn't confirmed silent. `dwell`
+// consecutive not-fresh samples raise the card; it auto-clears when fresh audio
+// resumes and supersedes the 15 s silence toast while up (no double-surface).
+// The gate (playing && !paused, with a freshness baseline reset on entry) is the
+// whole point — it must NOT fire pre-play, in the `.ready` wait, on a deliberate
+// local-file pause, or during quiet musical passages.
 
 import Audio
 import Combine
 import Foundation
 import os.log
+import Session
 import Shared
 
 private let logger = Logger(subsystem: "com.phosphene.app", category: "PlaybackErrorBridge")
@@ -28,6 +48,10 @@ final class PlaybackErrorBridge {
     /// Seconds of sustained silence before the degradation toast fires.
     static let silenceToastThresholdSeconds: TimeInterval = 15
 
+    /// Consecutive not-fresh poll samples before the stall card is raised.
+    /// At the production 1 Hz poll cadence this is ~10 s — the approved dwell.
+    static let defaultStallDwellTicks: Int = 10
+
     // MARK: - Private
 
     private let toastManager: ToastManager
@@ -36,26 +60,84 @@ final class PlaybackErrorBridge {
 
     private var silenceTask: Task<Void, Never>?
 
+    // MARK: - Silent-tap detector state
+
+    /// Reads the monotonic tap-callback frame count (Mode-B freshness signal).
+    /// `nil` disables the frame-count axis — the card then keys on `.silent`
+    /// alone (Mode A only). Production wires this to the engine's InputLevelMonitor.
+    private let frameCountProvider: (@MainActor () -> Int)?
+
+    /// Pushes the card's visibility to the view layer. The truth is
+    /// `audioStallActive`; this is the side-channel that drives SwiftUI.
+    private let onStallChanged: (@MainActor (Bool) -> Void)?
+
+    private let stallDwellTicks: Int
+
+    /// True while the prominent audio-stall overlay card should be shown.
+    /// Source of truth for the card; exposed for unit tests of the gate.
+    private(set) var audioStallActive = false
+
+    private var currentSignalState: AudioSignalState = .active
+    private var isPlaying = false
+    private var isPaused = false
+    /// `isPlaying && !isPaused` — "we should be hearing audio right now".
+    private var stallGateActive = false
+    private var lastFrameCount = 0
+    private var nonFreshTicks = 0
+
     // MARK: - Init
 
     init(
         audioSignalStatePublisher: AnyPublisher<AudioSignalState, Never>,
         toastManager: ToastManager,
-        tracker: PlaybackErrorConditionTracker = PlaybackErrorConditionTracker()
+        tracker: PlaybackErrorConditionTracker = PlaybackErrorConditionTracker(),
+        sessionStatePublisher: AnyPublisher<SessionState, Never> =
+            Just(SessionState.playing).eraseToAnyPublisher(),
+        isPausedPublisher: AnyPublisher<Bool, Never> =
+            Just(false).eraseToAnyPublisher(),
+        frameCountProvider: (@MainActor () -> Int)? = nil,
+        stallTickPublisher: AnyPublisher<Void, Never> =
+            Timer.publish(every: 1.0, on: .main, in: .common)
+                .autoconnect()
+                .map { _ in () }
+                .eraseToAnyPublisher(),
+        stallDwellTicks: Int = PlaybackErrorBridge.defaultStallDwellTicks,
+        onStallChanged: (@MainActor (Bool) -> Void)? = nil
     ) {
         self.toastManager = toastManager
         self.tracker = tracker
+        self.frameCountProvider = frameCountProvider
+        self.onStallChanged = onStallChanged
+        self.stallDwellTicks = stallDwellTicks
 
         audioSignalStatePublisher
             .receive(on: DispatchQueue.main)
             .removeDuplicates()
             .sink { [weak self] state in self?.handle(state: state) }
             .store(in: &cancellables)
+
+        sessionStatePublisher
+            .receive(on: DispatchQueue.main)
+            .removeDuplicates()
+            .sink { [weak self] state in self?.updatePlaying(state == .playing) }
+            .store(in: &cancellables)
+
+        isPausedPublisher
+            .receive(on: DispatchQueue.main)
+            .removeDuplicates()
+            .sink { [weak self] paused in self?.updatePaused(paused) }
+            .store(in: &cancellables)
+
+        stallTickPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] in self?.evaluateStall() }
+            .store(in: &cancellables)
     }
 
     // MARK: - Private
 
     private func handle(state: AudioSignalState) {
+        currentSignalState = state
         switch state {
         case .silent:
             beginSilenceTracking()
@@ -92,6 +174,8 @@ final class PlaybackErrorBridge {
     }
 
     private func showSilenceExtendedToast() {
+        // The stall card supersedes the toast while playing — never both.
+        guard !audioStallActive else { return }
         let error = UserFacingError.silenceExtended
         guard let conditionID = error.conditionID else { return }
         guard !tracker.isAsserted(conditionID) else { return }
@@ -100,6 +184,82 @@ final class PlaybackErrorBridge {
         tracker.assert(conditionID)
         let threshold = Self.silenceToastThresholdSeconds
         logger.info("PlaybackErrorBridge: \(threshold, format: .fixed(precision: 0))s silence — toast shown")
+    }
+
+    // MARK: - Silent-tap detector
+
+    private func updatePlaying(_ playing: Bool) {
+        isPlaying = playing
+        recomputeStallGate()
+    }
+
+    private func updatePaused(_ paused: Bool) {
+        isPaused = paused
+        recomputeStallGate()
+    }
+
+    /// Recompute `stallGateActive` (= playing && !paused). On any transition,
+    /// reset the freshness baseline so we get a full dwell of grace after
+    /// play/resume (never fire during audio ramp-up); leaving the gate (pause,
+    /// end-of-session) clears any shown card immediately.
+    private func recomputeStallGate() {
+        let active = isPlaying && !isPaused
+        guard active != stallGateActive else { return }
+        stallGateActive = active
+        nonFreshTicks = 0
+        lastFrameCount = frameCountProvider?() ?? 0
+        if !active { hideStallCard() }
+    }
+
+    /// One freshness sample, driven by `stallTickPublisher` (~1 Hz in production).
+    /// "Fresh" = tap callbacks are still advancing AND the signal isn't confirmed
+    /// silent. Mode A (RMS ≈ 0 → `.silent`) and Mode B (frozen IO-proc → frame
+    /// count stops advancing) both read not-fresh; `stallDwellTicks` consecutive
+    /// not-fresh samples raise the card.
+    private func evaluateStall() {
+        guard stallGateActive else { return }
+
+        let advanced: Bool
+        if let frameCountProvider {
+            let count = frameCountProvider()
+            advanced = count > lastFrameCount
+            if advanced { lastFrameCount = count }
+        } else {
+            advanced = true   // Mode-B signal not wired — key on `.silent` alone
+        }
+
+        let fresh = advanced && currentSignalState != .silent
+        if fresh {
+            nonFreshTicks = 0
+            hideStallCard()
+        } else {
+            nonFreshTicks += 1
+            if nonFreshTicks >= stallDwellTicks { showStallCard() }
+        }
+    }
+
+    private func showStallCard() {
+        guard !audioStallActive else { return }
+        audioStallActive = true
+        onStallChanged?(true)
+        // Supersede the 15 s silence toast — drop any pending/visible one so the
+        // card is the single surface for total audio loss while playing.
+        silenceTask?.cancel()
+        silenceTask = nil
+        let conditionID = UserFacingError.silenceExtended.conditionID ?? "silence.extended"
+        if tracker.isAsserted(conditionID) {
+            toastManager.dismissByCondition(conditionID)
+            tracker.clear(conditionID)
+        }
+        let dwell = stallDwellTicks
+        logger.info("PlaybackErrorBridge: audio stall (no fresh audio for \(dwell) ticks) — overlay card shown")
+    }
+
+    private func hideStallCard() {
+        guard audioStallActive else { return }
+        audioStallActive = false
+        onStallChanged?(false)
+        logger.info("PlaybackErrorBridge: fresh audio resumed — overlay card cleared")
     }
 
     /// Build a `PhospheneToast` for a `UserFacingError`, gating `duration` and
