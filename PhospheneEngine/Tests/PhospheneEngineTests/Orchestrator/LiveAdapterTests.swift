@@ -318,6 +318,32 @@ struct LiveAdapterTests {
                 "moodDivergenceDetected should still appear when cooldown blocks override")
     }
 
+    @Test("Mood override survives a replay: a reset (backwards) track clock is not an active cooldown (CLEAN.3.3)")
+    func moodOverrideCooldown_survivesReplay() throws {
+        let catalog = overrideCatalog()
+        let plan = try planWithCatalog(catalog,
+                                       mood: EmotionalState(valence: -0.5, arousal: -0.5),
+                                       duration: 120)
+        let divergentMood = EmotionalState(valence: 0.7, arousal: 0.7)
+
+        // Play 1: override fires at t=20s, recording the cooldown timestamp for the track.
+        _ = adapter.adapt(
+            plan: plan, currentTrackIndex: 0, elapsedTrackTime: 20,
+            liveBoundary: noBoundarySignal(), liveMood: divergentMood, catalog: catalog
+        )
+
+        // Replay: the same track restarts, so elapsedTrackTime resets to ~2s — earlier
+        // than the recorded t=20. Before CLEAN.3.3 the cooldown read `2 - 20 = -18 < 30`
+        // and stayed "active" for the entire 2nd play (override permanently dead from
+        // play 2). A backwards clock must instead be treated as no active cooldown.
+        let result = adapter.adapt(
+            plan: plan, currentTrackIndex: 0, elapsedTrackTime: 2,
+            liveBoundary: noBoundarySignal(), liveMood: divergentMood, catalog: catalog
+        )
+        #expect(result.events.contains { $0.kind == .presetOverrideTriggered },
+                "Override must fire on replay — a reset track clock is not an active cooldown")
+    }
+
     @Test("Third mood override after 30 s cooldown fires again (QR.2 cooldown)")
     func moodOverrideCooldown_afterCooldownOverrideFiresAgain() throws {
         let catalog = overrideCatalog()
