@@ -159,6 +159,10 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
             // on the now-dead device. The listener fires on the monitor's queue;
             // the actual reinstall is dispatched to `reinstallQueue`.
             deviceMonitor.start { [weak self] in
+                // BUG-058: breadcrumb the monitor FIRING (os_log .info isn't persisted,
+                // so session.log is the only post-hoc record of whether the
+                // default-output-change listener actually delivered).
+                self?.onCaptureDiagnostic?("device-change monitor FIRED → scheduling performReinstall")
                 self?.reinstallQueue.async { [weak self] in self?.performReinstall() }
             }
 
@@ -319,14 +323,28 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
     /// removes the listener) never reenter the Core Audio property callback.
     private func performReinstall() {
         let mode: CaptureMode? = stateLock.withLock { _isCapturing ? currentMode : nil }
-        guard let mode else { return }
+        guard let mode else {
+            // BUG-058: a fired monitor whose reinstall no-ops (capture already torn
+            // down) is itself a diagnosis — record it rather than returning silently.
+            onCaptureDiagnostic?("performReinstall: SKIPPED (not capturing / no mode)")
+            return
+        }
         logger.info("Default output device changed — reinstalling tap")
+        // BUG-058 step breadcrumbs: os_log .info isn't persisted, so the last
+        // session.log line before silence pins exactly which Core Audio call
+        // stalls during the device transition (monitor-fired vs teardown vs a
+        // specific create call hanging vs a clean success).
+        onCaptureDiagnostic?("performReinstall: ENTER → tearing down")
         teardownTapResources()
+        onCaptureDiagnostic?("performReinstall: teardown done → createProcessTap")
         do {
             let newTapID = try createProcessTap(for: mode)
+            onCaptureDiagnostic?("performReinstall: tap created (\(newTapID)) → readTapFormat + createAggregateDevice")
             readTapFormat(tapID: newTapID)
             let newAggregateID = try createAggregateDevice()
+            onCaptureDiagnostic?("performReinstall: aggregate created (\(newAggregateID)) → createIOProc")
             let newProcID = try createIOProc(aggregateID: newAggregateID)
+            onCaptureDiagnostic?("performReinstall: IO proc created → startDevice")
             try startDevice(aggregateID: newAggregateID, procID: newProcID)
             logger.info("Tap reinstalled after device change (tap \(newTapID))")
             armInstallProbeAndLog(kind: "reinstall via device-change")  // BUG-057
