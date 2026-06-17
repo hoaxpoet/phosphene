@@ -212,10 +212,12 @@ public struct DefaultReactiveOrchestrator: ReactiveOrchestrating {
         )
         let ranked = scorer.rank(presets: catalog, track: liveProfile, context: altCtx)
 
-        // V.7.6.D: defensive filter — Scorer returns total 0 for diagnostics, but a
-        // catalog-only-of-diagnostics (or scoring tie) could otherwise elevate one.
-        // Per D-074, diagnostics are categorically auto-selection-ineligible.
-        guard let (topPreset, topScore) = ranked.first(where: { !$0.0.isDiagnostic }) else {
+        // CLEAN.3.2: take the top *eligible* preset (score > 0). `rank` keeps
+        // hard-excluded presets in the output at score 0, so a `!isDiagnostic`-only
+        // filter could elevate a 0-scored non-diagnostic exclusion (uncertified,
+        // over-budget, beat-irregular, active) when every preset is excluded. `score
+        // > 0` subsumes all of them, diagnostics (D-074) included.
+        guard let (topPreset, topScore) = ranked.first(where: { $0.1 > 0 }) else {
             return holdDecision(
                 state: state,
                 confidence: confidence,
