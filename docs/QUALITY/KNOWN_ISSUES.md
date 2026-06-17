@@ -61,9 +61,9 @@ P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh dou
 
 **Severity:** P1 (the core streaming-visualization flow does not work on a cold start — visuals stay motionless with live Spotify audio — and the only recovery is a manual output-device toggle no user would discover).
 **Domain tag:** audio.capture
-**Status:** Open — instrumented (step 1 landed 2026-06-17; awaiting a cold-start Spotify session for diagnosis)
-**Introduced:** Unknown — the tap was observed healthy in earlier sessions (`project_streaming_tap_signal_health`: −6 dBFS, full spectrum), so diagnosis must determine whether this is a macOS-26.5 regression, a latent cold-install gap newly exposed, or an artifact of the current permission-churn state. Not introduced by CLEAN.7.6c (test-only).
-**Resolved:**
+**Status:** **Diagnosed (2026-06-17) — root cause is environmental, NOT a Phosphene code defect.** A wedged `coreaudiod` (up 15+ days) was feeding *every* Core Audio process tap pure-zero buffers; `sudo killall coreaudiod` (or a reboot) restores capture immediately. See §Diagnosis below. The remaining Phosphene-side work is the *detector* (surface "granted+installed but no signal" instead of a silent flatline) — shared with BUG-055; not a cold-install fix.
+**Introduced:** Not a Phosphene regression. macOS audio-daemon state degraded over a 15-day `coreaudiod` uptime on a box with heavy virtual-device churn (BlackHole, Teams audio device, Apogee Duet, repeated aggregate-device creation). Earlier healthy sessions (`project_streaming_tap_signal_health`: −6 dBFS) predate the wedge.
+**Resolved:** Workaround confirmed (`sudo killall coreaudiod`). No code fix required for the silence itself; the detector follow-up is tracked here + BUG-055.
 
 ---
 
@@ -116,9 +116,9 @@ Ruled out: output routing (silent on both the Apogee Duet 3 and built-in Mac-min
 
 ### Suspected failure class
 
-`pipeline-wiring` — the recovery module exists (`.silent → reinstall`, `performReinstall`) but does not fire / does not recover for the cold-install-silence case, while the device-change path does. Candidate root causes to separate during diagnosis: (a) the Screen Recording grant is not yet effective on the very first tap right after launch/grant (the granted-but-silent note in `project_streaming_tap_signal_health`); (b) DRM-zeroing of the cold tap that a fresh device-bound tap escapes; (c) the cold tap binds before audio flows and enters a dead state; (d) the auto-reinstall's delays/attempt-cap or same-device reinstall is insufficient where a different-device reinstall succeeds.
+**RESOLVED to `resource-management` (external OS daemon state) — see §Diagnosis.** A wedged `coreaudiod` fed every process tap silence; none of the four pre-diagnosis candidates below held (the diagnosis falsified all of them — see §Diagnosis). Retained for the record:
 
-**Evidence for this class:** identical create steps cold vs reinstall (so not an algorithm/precision bug); the device-change reinstall demonstrably captures the same audio the cold install cannot.
+> ~~`pipeline-wiring`~~ — Candidate root causes considered during diagnosis: (a) Screen Recording grant not yet effective on the first tap; (b) DRM-zeroing the cold tap escapes; (c) cold tap binds before audio flows; (d) auto-reinstall delays/attempt-cap or same-device reinstall insufficient. **All four falsified:** a separate granted binary (`audio-tap-test`) was equally silent (kills a + d), on non-DRM audio (kills b), on a freshly-bound tap on two devices (kills c) — until `coreaudiod` was restarted.
 
 ---
 
@@ -142,9 +142,19 @@ Added to `session.log` (grep `TAP:`) so the four candidates above are separable 
 
 Wired `SystemAudioCapture.onCaptureDiagnostic` → `AudioInputRouter.onAudioCaptureDiagnostic` → `SessionRecorder.log` in `VisualizerEngine+Audio.setupAudioRouting`. New protocol member `AudioCapturing.onCaptureDiagnostic`. No fix code; no behaviour change (FA #73 — reuses the existing reinstall machine + `DefaultOutputDeviceMonitor`). Regression: 2 routing-lock tests in `AudioInputRouterSignalStateTests`. **Diagnose next (step 2):** Matt runs an instrumented cold-start session + a device switch; identify the holding candidate(s) and record the root cause here. Build from the PRIMARY checkout with Screen Recording granted (`project_canonical_app_screenrecording`) — a fresh worktree build re-churns the grant and reproduces *unrelated* silence (don't conflate it with this bug). Commit: see `RELEASE_NOTES_DEV.md [dev-2026-06-17-041554]`.
 
+### Diagnosis (step 2 — 2026-06-17, CONFIRMED: wedged `coreaudiod`)
+
+The instrumented cold-start session (`~/Documents/phosphene_sessions/2026-06-17T13-29-13Z/`) + a standalone cross-check pinned the root cause to **macOS audio-daemon state, not Phosphene**:
+
+1. **Instrumentation (PhospheneApp).** All 4 installs — cold `startCapture` gen=1 + the three `.silent`-recovery reinstalls gen=2/3/4 — logged `defaultOutputDevice=128 rate=48000 screenRecordingPreflight=true`, and the first-10 s RMS probe read `rms=0.000000 peak=0.000000` on **every** one. The `.silent → reinstall` machine fired correctly (attempt #1/#2/#3 → backoff exhausted). `raw_tap.wav` = −inf; `features.csv` 0/7721 rows nonzero. So: the recovery code works; every tap was simply fed silence. No `reinstall via device-change` fired (the manual "source change" was not a macOS *default-output* change — device stayed 128).
+2. **Decisive cross-check.** `tools/audio-tap-test` (a **separate binary**, its own `audio_tap` Screen-Recording grant, identical `CATapDescription(stereoGlobalTapButExcludeProcesses:[])`) **also** captured pure-zero — on Spotify (DRM), on `say`/`afplay` (non-DRM, `afplay` confirmed running), on **both** Duet 3 *and* built-in Mac-mini Speakers. ⇒ not app-specific (rules out stale-grant/BUG-055), not DRM, not the device.
+3. **The proof.** `coreaudiod` had been up **15 days 20 h** (`ps -o etime`), no orphaned aggregate devices. **`sudo killall coreaudiod` → the same tool immediately captured real audio** (RMS to 0.31 / −10 dB, 47 Hz-dominant music spectrum). Single-variable flip.
+
+The `01-51-11Z` "device-switch recovery" (≈5.6 s then degraded) was a coincidental partial nudge to the same wedged daemon, not a Phosphene fix. **Failure class corrected: `resource-management` (external OS daemon state) — not `pipeline-wiring`.**
+
 ### Fix scope
 
-Likely contained but root-cause-gated (P1 multi-increment: instrument → diagnose → fix → validate). Candidate fixes once diagnosed: schedule an initial `performReinstall` shortly after `startCapture` (or after first audio / after the grant settles); make the `.silent` recovery actually fire + recover on cold start; or cycle the bound device once on install. Kickoff: `docs/prompts/BUG-057_TAP_COLD_INSTALL_SILENCE_KICKOFF.md`.
+**No Phosphene code fix is needed for the silence itself** — the tap path is correct (it captures the instant `coreaudiod` is healthy). **Workaround: `sudo killall coreaudiod`** (daemon auto-relaunches, ~1 s audio blip) or reboot. The one worthwhile Phosphene-side increment is the **granted-but-silent detector** (shared with BUG-055): when the tap is installed + `screenRecordingPreflight=true` but RMS ≈ 0 for N s while a session is "playing," surface an actionable state ("audio isn't reaching the tap — restart audio with `sudo killall coreaudiod`, check Screen Recording, check output device") instead of a silent "ready" flatline. The step-1 instrumentation's `TAP:` RMS probe is exactly the signal that detector consumes. **Awaiting Matt's go to scope it as the fix increment.** Kickoff: `docs/prompts/BUG-057_TAP_COLD_INSTALL_SILENCE_KICKOFF.md`.
 
 ### Related
 
