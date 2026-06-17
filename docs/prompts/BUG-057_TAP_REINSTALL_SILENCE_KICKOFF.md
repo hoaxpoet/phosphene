@@ -2,6 +2,8 @@
 
 > **Scope the fix for the *real* silent-tap mechanism the detector surfaced: a tap reinstall hangs / comes up delivering silence mid-recreate, so audio never recovers — reproducible on a HEALTHY `coreaudiod`.** This is a P1 multi-increment fix (Defect Protocol: instrument → diagnose → fix → validate). **It needs Matt's go before step 1 — this doc is the scope, not an execution order.** FA #73: extend the existing reinstall breadcrumbs; do NOT build a new reinstall path.
 
+> **Why this is a priority, not just a correctness bug (Matt, 2026-06-17):** the silent-tap *detector* card (the fallback we shipped) tells the user to run `sudo killall coreaudiod` and toggle System Settings — **not an acceptable end-state for a real user.** This fix is what turns that card from a routine surface into a rare edge case: when the tap self-heals on a pause/stall, the user sees motion resume with **zero Terminal/Settings steps**. So treat this as a user-experience fix. (Half-measures that still end in System Settings — e.g. deep-link buttons on the card — don't meet the bar; see `feedback_self_healing_over_manual_remediation`.)
+
 ## Why this exists (the detector earned this)
 
 The silent-tap *detector* (shipped 2026-06-17, `[dev-2026-06-17-161332]`) did its job and exposed that BUG-057 is **not** purely the "wedged 15-day `coreaudiod`" environmental story the original diagnosis settled on. Session `2026-06-17T16-59-43Z` reproduced a silent tap **on a healthy daemon**:

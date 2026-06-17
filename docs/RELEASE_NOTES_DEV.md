@@ -10,6 +10,12 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-17-173204] silent-tap detector — card APPROVED; BUG-055 symptom + BUG-057 detector-half → Resolved
+
+Matt validated the card surface via the DEBUG toggle (screenshot 2026-06-17): headline, body, the 3-step fix ladder, the `sudo killall coreaudiod` pill, and the auto-clear hint all render correctly with the right copy. **Card approved as the safety-net surface.** `KNOWN_ISSUES.md`: BUG-055 symptom (silent flatline, no guidance) → **Resolved** (the detector now surfaces an actionable re-grant step; durable signing CLEAN.2.5b still separate/open); BUG-057 detector-half → **DONE** (live auto-clear pends the reinstall fix). EP bullet ✅.
+
+**Product direction recorded (Matt) — `feedback_self_healing_over_manual_remediation`:** the manual fix-ladder is a *fallback*, not the fix. The end-state must not make the user touch Terminal or System Settings. There is **no quick fix** that clears that bar — the Terminal step needs root (a signed privileged helper, not a button), and deep-linking the Settings panes only speeds the same manual toggling. The user-friendly answer is the app **self-healing** (the scoped BUG-057 reinstall auto-recovery → the common reinstall-hang recovers with zero user action → no card; plus stable signing for the re-grant step). So the leverage is the reinstall fix, not card polish. No code change in this entry (validation + tracker/doc closeout).
+
 ## [dev-2026-06-17-171140] silent-tap detector — validation finding + DEBUG force-toggle
 
 Matt's first validation attempt (Spotify-pause, session `2026-06-17T16-59-43Z`) **confirmed the detector is correct** and exposed why the pause-repro is a bad test. The card appeared at ~15 s of silence but **never cleared on resume** — because the pause itself triggered the existing `.silent → reinstall` machine (`TAP: Tap reinstall scheduled … starting`), and the recreated tap came up **silent** (BUG-057's cold-install-silence, reproduced live far more easily than the 15-day `coreaudiod` wedge). `features.csv` is all-zero for the final ~150 s → audio genuinely never returned → the card *correctly* stayed up. Verified it's not a detector bug: `InputLevelMonitor.frameCount` is monotonic in production (`reset()` only ever runs in a unit test), so the freshness poll has no backwards-counter hazard, and `test_recovery_clearsCard` already proves auto-clear fires when fresh audio resumes.
