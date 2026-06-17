@@ -242,7 +242,7 @@ IDs are proposed (`CLEAN.<phase>.<n>`); on approval they map into ENGINEERING_PL
 ### Phase 4 — Performance (June/Stretch, partly M7)
 | ID | Item | Done-when | Timing |
 |----|------|-----------|--------|
-| CLEAN.4.1 | BUG-036 remove RT-thread allocations (preallocate FFT buffers; allocation-free `latestSamples`; raw-tap copy off RT thread) | allocation-on-RT-thread regression test | June |
+| CLEAN.4.1 ⏳ | BUG-036 remove RT-thread allocations (preallocate FFT buffers; allocation-free `latestSamples`; raw-tap copy off RT thread) | allocation-on-RT-thread regression test | **PARTIAL 2026-06-17 (`8fd8c82`)** — sites 1+2 (FFT `magnitudesScratch` + zero-alloc `processStereo(interleaved:)`; `latestSamples(into:)`) done, pointer↔array byte-identical + 3 regression tests; site 3 (raw-tap) + analysis hand-off deferred to **BUG-043** (cross-thread → needs a pre-alloc ring + persistent-consumer drain). Pending Matt's no-glitch validation. |
 | CLEAN.4.2 | Remove redundant DSP compute (drums FFT 2×, autocorrelation ~85×, mono STFT 2×) | single-compute; perf delta recorded | Stretch |
 | CLEAN.4.3 | Renderer texture aliasing + resize stale-size fix (correctness-flavored) | standalone post-process renders correct texture; goldens regen | Stretch `[M7]` |
 | CLEAN.4.4 | Gate feedback ping-pong + particle-warp alloc/exec to presets that sample; fix PSO cache key (pixelFormat/ICB) | no wasted alloc/pass; cache key correct | Stretch |
