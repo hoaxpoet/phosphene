@@ -65,6 +65,9 @@ struct PlaybackView: View {
     @State private var displayChangeCoordinator: DisplayChangeCoordinator?
     /// Driven by `PlaybackErrorBridge`'s stall detector — shows the audio-stall card.
     @State private var audioStallActive: Bool = false
+    /// DEBUG-only force-on for the audio-stall card (Cmd+Shift+Option+A), so the
+    /// surface can be validated without a real tap stall. Always false in release.
+    @State private var debugForceStallCard: Bool = false
 
     @Namespace private var trackAnimNamespace
 
@@ -143,7 +146,10 @@ struct PlaybackView: View {
             // Layer 3.5: Audio-stall overlay card (silent-tap family —
             // BUG-057/055/058). Center, non-blocking; auto-clears when audio
             // returns. Above chrome so total audio loss is unmissable.
-            AudioStallOverlayView(isVisible: audioStallActive, reduceMotion: reduceMotion)
+            AudioStallOverlayView(
+                isVisible: audioStallActive || debugForceStallCard,
+                reduceMotion: reduceMotion
+            )
 
             // Layer 4: Shortcut help overlay
             if showHelp, let registry = currentRegistry {
@@ -318,10 +324,14 @@ struct PlaybackView: View {
                 ))
             }
         }
+        let audioStallCardAction: (@MainActor () -> Void)? = { [stall = $debugForceStallCard] in
+            stall.wrappedValue.toggle()
+        }
         #else
         let forceSpiderAction: (@MainActor () -> Void)? = nil
         let debugNext: (@MainActor () -> Void)? = nil
         let debugPrev: (@MainActor () -> Void)? = nil
+        let audioStallCardAction: (@MainActor () -> Void)? = nil
         #endif
         let diagHoldAction: (@MainActor () -> Void)? = { [weak engine = self.engine, weak tm = self.toastManager] in
             guard let engine, let tm else { return }
@@ -367,6 +377,7 @@ struct PlaybackView: View {
             onShowPlanPreview: { showPlanPreview = true },
             onToggleDiagnosticHold: diagHoldAction,
             onToggleForceSpider: forceSpiderAction,
+            onToggleAudioStallCard: audioStallCardAction,
             onDebugNextPreset: debugNext,
             onDebugPreviousPreset: debugPrev,
             onDecreaseBeatPhaseOffset: { [weak engine] in

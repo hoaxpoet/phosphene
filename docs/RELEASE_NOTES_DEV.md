@@ -10,6 +10,14 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-17-171140] silent-tap detector — validation finding + DEBUG force-toggle
+
+Matt's first validation attempt (Spotify-pause, session `2026-06-17T16-59-43Z`) **confirmed the detector is correct** and exposed why the pause-repro is a bad test. The card appeared at ~15 s of silence but **never cleared on resume** — because the pause itself triggered the existing `.silent → reinstall` machine (`TAP: Tap reinstall scheduled … starting`), and the recreated tap came up **silent** (BUG-057's cold-install-silence, reproduced live far more easily than the 15-day `coreaudiod` wedge). `features.csv` is all-zero for the final ~150 s → audio genuinely never returned → the card *correctly* stayed up. Verified it's not a detector bug: `InputLevelMonitor.frameCount` is monotonic in production (`reset()` only ever runs in a unit test), so the freshness poll has no backwards-counter hazard, and `test_recovery_clearsCard` already proves auto-clear fires when fresh audio resumes.
+
+**Consequence:** any real Mode-A trigger (pause, or a genuine stall) routes through `.silent → reinstall → BUG-057`, so the card can't be observed auto-clearing that way. Added a **`#if DEBUG` force-toggle (Cmd+Shift+Option+A)** that shows the real `AudioStallOverlayView` on demand — decoupled from the broken tap recovery — so the surface (look/copy/fade) can be validated. Matches the existing force-spider debug-shortcut pattern; never ships in release (the `@State debugForceStallCard` is OR'd into the card's visibility and is always false in release). `PlaybackShortcutRegistry` (+ `debugToggleAudioStallCard`), `PlaybackView`. App build green, swiftlint `--strict` 0; `PlaybackShortcutRegistryTests` unaffected (the optional closure defaults nil; coverage test uses `subtracting`).
+
+**Product question raised (Matt's call):** until BUG-057's reinstall-comes-up-silent is fixed, the card fires (correctly) on every streaming pause > dwell, recoverable only by a manual output-device switch. Options: longer dwell, infer a deliberate pause, or fix the reinstall. Also worth a look: should `.silent → reinstall` fire on a *user pause* at all? See `KNOWN_ISSUES.md` BUG-057 §Validation note.
+
 ## [dev-2026-06-17-161332] BUG-057/055/058 — silent-tap detector (the user-facing fix; pending Matt's manual UX validation)
 
 The whole silent-tap family presents identically to the user — the app shows "playing" but the visualizer is silent or frozen, with **no actionable hint**. This is the **fix increment (Defect Protocol step 3)** for that family: it does not fix the (environmental) silence; it **detects "no useful audio is reaching the visualizer" and tells the user what to do.** One surface closes the user-facing gap for all three bugs.
