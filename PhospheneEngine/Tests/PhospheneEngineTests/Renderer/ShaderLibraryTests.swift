@@ -60,6 +60,60 @@ import Metal
     #expect(state1 === state2, "Cached pipeline states should be the same object instance")
 }
 
+// CLEAN.4.4 — the cache key is (name, pixelFormat, supportICB), not name alone.
+// A name-only key returns the first-compiled PSO for any later call sharing the
+// name, handing back the wrong pixel format / ICB capability. These two tests are
+// RED on the name-only key (same instance returned) and GREEN once the key carries
+// the full compiled identity.
+
+@Test func test_cachedPipelineState_differentPixelFormat_returnsDistinctInstances() throws {
+    let ctx = try MetalContext()
+    let lib = try ShaderLibrary(context: ctx)
+
+    let bgra = try lib.renderPipelineState(
+        named: "waveform",
+        vertexFunction: "fullscreen_vertex",
+        fragmentFunction: "waveform_fragment",
+        pixelFormat: .bgra8Unorm,
+        device: ctx.device
+    )
+    let rgba16 = try lib.renderPipelineState(
+        named: "waveform",
+        vertexFunction: "fullscreen_vertex",
+        fragmentFunction: "waveform_fragment",
+        pixelFormat: .rgba16Float,
+        device: ctx.device
+    )
+
+    #expect(bgra !== rgba16,
+            "Same name + different pixelFormat must compile distinct pipeline states")
+}
+
+@Test func test_cachedPipelineState_differentSupportICB_returnsDistinctInstances() throws {
+    let ctx = try MetalContext()
+    let lib = try ShaderLibrary(context: ctx)
+
+    let noICB = try lib.renderPipelineState(
+        named: "waveform",
+        vertexFunction: "fullscreen_vertex",
+        fragmentFunction: "waveform_fragment",
+        pixelFormat: ctx.pixelFormat,
+        device: ctx.device,
+        supportICB: false
+    )
+    let withICB = try lib.renderPipelineState(
+        named: "waveform",
+        vertexFunction: "fullscreen_vertex",
+        fragmentFunction: "waveform_fragment",
+        pixelFormat: ctx.pixelFormat,
+        device: ctx.device,
+        supportICB: true
+    )
+
+    #expect(noICB !== withICB,
+            "Same name + different supportICB must compile distinct pipeline states")
+}
+
 @Test func test_allShaderNames_returnsNonEmptySet() throws {
     let ctx = try MetalContext()
     let lib = try ShaderLibrary(context: ctx)
