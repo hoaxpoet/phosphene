@@ -415,7 +415,7 @@ Recommended sequencing: Tier 1 measured against the labeled set first; escalate 
 
 **Severity:** P2 (violates the standing "do not allocate in the Core Audio IO proc callback" rule on every callback of every session; priority-inversion / glitch risk under memory pressure rather than observed breakage).
 **Domain tag:** audio.capture / performance
-**Status:** Partially fixed (2026-06-17, `58a37c0`) — sites 1 + 2 (the RT-thread-local array allocations) are now allocation-free with regression tests; site 3 (raw-tap) + the analysis hand-off remain, coupled to BUG-043 (see Progress).
+**Status:** Open (mostly fixed) — sites 1 + 2 fixed + **validated in production** (2026-06-17, `58a37c0`; session `2026-06-17T20-52-27Z` — no audible glitch, steady 60 Hz cadence, worst gap 84 ms). Site 3 (raw-tap) + the analysis hand-off **parked** as an accepted low-risk residual (re-open the ring rework only if a stall/glitch implicates it — BUG-043 is not recurring; Matt 2026-06-17). See Progress.
 **Introduced:** structural — predates the rule's enforcement attention; the "zero-alloc" header comments in both DSP files are currently false.
 **Resolved:** — (sites 1 + 2 done; bug stays open until site 3 + the hand-off land)
 
@@ -430,12 +430,12 @@ Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — 
 
 **Progress (2026-06-17, `58a37c0`) — sites 1 + 2 landed; site 3 + hand-off deferred to BUG-043.** The three named allocations split into two groups by whether they cross the audio-thread boundary:
 - **Sites 1 + 2 (RT-thread-local) — FIXED.** `FFTProcessor` reuses a pre-allocated `magnitudesScratch`; a new zero-alloc `processStereo(interleaved: UnsafeBufferPointer)` mixes L/R straight into the windowed-sample scratch (no `mono` array); the array overloads delegate to it. `AudioBuffer.latestSamples(into:)` fills a caller-owned buffer (the callback reuses a pre-allocated `interleavedScratch`). All scratch is touched only on the single RT thread → no lock needed (cf. D-079's cross-core `tapSampleRate`). FFT output is byte-identical (pointer↔array bit-equivalence test + unchanged FFT/Chroma/BeatDetector goldens).
-- **Site 3 (raw-tap `Data()` + `queue.async`) + the analysis hand-off (`Array(...prefix())` + `analysisQueue.async`) — DEFERRED.** Both cross the thread boundary. Making them allocation-free safely requires a pre-allocated ring drained by a persistent consumer (the "pre-allocated ring for raw-tap" fix below): an unbounded→bounded hand-off is a cadence/concurrency change that lands directly on **BUG-043**'s analysis-stall surface. Doing it blind before BUG-043 is instrumented is backwards; sequence it with that work (the prompt's own `036 → re-test → 043` ordering).
+- **Site 3 (raw-tap `Data()` + `queue.async`) + the analysis hand-off (`Array(...prefix())` + `analysisQueue.async`) — PARKED (accepted low-risk residual).** Both cross the thread boundary. Making them allocation-free safely requires a pre-allocated ring drained by a persistent consumer (the "pre-allocated ring for raw-tap" fix below): an unbounded→bounded hand-off is a cadence/concurrency change that lands directly on **BUG-043**'s analysis-stall surface. The hand-off allocates every callback — a *continuous but low-impact* RT-rule violation — and the fix is a real concurrency redesign. With **BUG-043 not recurring** after sites 1 + 2 (the forcing function is gone), the cost/benefit doesn't justify the rework now (Matt 2026-06-17); re-open if a future stall/glitch implicates the remaining allocations. (Originally deferred to sequence *with* BUG-043 per the `036 → re-test → 043` ordering; the re-test came back clean, so it's parked rather than queued.)
 
 **Verification criteria:**
 - [x] Automated (sites 1 + 2): `FFTProcessorTests.fftProcessorStereoPointerMatchesArrayPath` + `…ReuseIsStable`, `AudioBufferTests.audioBufferLatestSamplesIntoMatchesAllocating` — pre-allocated members, pointer path bit-for-bit == array path (incl. short/partial-fill + ring-wrap), scratch reuse stable over 64 calls.
-- [ ] Automated (site 3 + hand-off): pre-allocated ring for raw-tap + allocation-free analysis hand-off — deferred to the BUG-043 cadence work.
-- [ ] Manual: a full session with the os allocator instrumented shows zero mallocs attributable to the IO-proc path (will remain partial until site 3 + the hand-off land).
+- [x] Manual (sites 1 + 2): no audible-glitch regression + healthy analysis cadence — session `2026-06-17T20-52-27Z` (Matt): median Δt 0.0167 s (60 Hz) over 25,017 audible frames / 8 tracks, worst gap 84 ms, no freeze-lurch. (The stricter os-allocator Instruments proof is optional given byte-identical output + green tests + this cadence — not pursued, Matt's call.)
+- [—] Automated (site 3 + hand-off): pre-allocated ring + allocation-free hand-off — PARKED with the remainder (see Progress); not required while BUG-043 stays quiet.
 
 ---
 
@@ -486,7 +486,7 @@ Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — 
 
 **Severity:** P2 (a multi-second visual freeze + lurch mid-track; observed once, plus a 40 s gap during the silent prep window of the same session).
 **Domain tag:** `pipeline-wiring` (audio-analysis cadence) — possibly BUG-039-adjacent (the video-writer stall instrumented the same week).
-**Status:** Open — observed + filed; not yet instrumented/diagnosed.
+**Status:** Open — **monitoring; no recurrence after BUG-036 sites 1 + 2** (2026-06-17, see Validation). Observed once (2026-06-10); not instrumented. Retire after a few more clean sessions (BUG-058 / BUG-012 pattern) or instrument if it recurs.
 **Resolved:** —
 
 **Expected:** analysis frames arrive continuously (~60 Hz) for the whole session; `deltaTime` stays ~0.017 s.
@@ -499,9 +499,11 @@ Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — 
 
 **Suspected failure class:** `resource-management` or `concurrency` (analysis-queue starvation / tap callback stall). The PERF-era "probably-environmental CPU bump" family is a prior with a similar smell.
 
+**Validation (2026-06-17, session `2026-06-17T20-52-27Z`, after BUG-036 sites 1 + 2):** a full 8-track streaming session showed a rock-steady **60 Hz** analysis cadence — median Δt 0.0167 s, p99 0.0194 s, **worst gap 84 ms** over 25,017 audible frames — vs the 0.44 / 0.33 / **9.59 s** original incident. No freeze-lurch (Matt). The only > 0.2 s Δt gaps were the pre-play startup window (frame 0, silent) and a doorbell lull correctly handled as a user pause (BUG-057 suppression — analysis kept ticking on silence, so no gap). N = 1 for an intermittent defect → not closed; consistent with "fixed/mitigated by BUG-036," monitoring. The deferred BUG-036 site 3 + hand-off rework (the candidate concurrency fix) is **parked** because this came back clean.
+
 **Verification criteria (when fixed):**
 - [ ] Instrumentation: a log line whenever inter-analysis-frame dt exceeds 0.25 s during audible playback (with queue depths / tap callback timing).
-- [ ] No dt > 0.5 s gaps during audible playback across a full session.
+- [ ] No dt > 0.5 s gaps during audible playback across a full session. — *held across session `20-52-27Z` (max 0.084 s during playback); needs to hold across several more before retirement.*
 
 **Manual validation required:** Only if reproducible.
 
