@@ -98,6 +98,7 @@ Instrumented re-test (session `2026-06-17T14-54-49Z`): **12 rapid back-and-forth
 ### Related
 - **The open G1 / CLEAN.1.5 manual gate** — this *is* that gate failing. CLEAN.1.5 has unit tests for the monitor mechanism (`DefaultOutputDeviceMonitorTests`) but the live device-swap was never validated.
 - BUG-057 (sibling silent-tap; different mechanism — wedged coreaudiod / pure-zero, vs this frozen-buffer / IO-proc-stopped). The planned granted-but-silent **detector** must catch THIS state too (no *fresh* audio / IO-proc-stopped), not just RMS≈0.
+  - **Detector landed 2026-06-17** (see BUG-057 §Fix increment): `PlaybackErrorBridge`'s freshness poll catches THIS Mode-B state — `InputLevelMonitor.frameCount` ceasing to advance while `.silent` never fires — and raises the `AudioStallOverlayView` card. This bug stays its own (the rare freeze itself is still un-fixed); the detector just makes the frozen state visible + actionable instead of a silent frozen frame.
 - Surfaced 2026-06-17 during the G1 manual test (run right after the BUG-057 coreaudiod fix).
 
 ---
@@ -201,6 +202,10 @@ The `01-51-11Z` "device-switch recovery" (≈5.6 s then degraded) was a coincide
 
 **No Phosphene code fix is needed for the silence itself** — the tap path is correct (it captures the instant `coreaudiod` is healthy). **Workaround: `sudo killall coreaudiod`** (daemon auto-relaunches, ~1 s audio blip) or reboot. The one worthwhile Phosphene-side increment is the **granted-but-silent detector** (shared with BUG-055): when the tap is installed + `screenRecordingPreflight=true` but RMS ≈ 0 for N s while a session is "playing," surface an actionable state ("audio isn't reaching the tap — restart audio with `sudo killall coreaudiod`, check Screen Recording, check output device") instead of a silent "ready" flatline. The step-1 instrumentation's `TAP:` RMS probe is exactly the signal that detector consumes. **Awaiting Matt's go to scope it as the fix increment.** Kickoff: `docs/prompts/BUG-057_TAP_COLD_INSTALL_SILENCE_KICKOFF.md`.
 
+### Fix increment — silent-tap detector landed 2026-06-17 (pending Matt's manual UX validation)
+
+The *detector half* is implemented (this surfaces the silence; it does NOT fix the environmental cause — `sudo killall coreaudiod` remains the cure). `PlaybackErrorBridge` (`PhospheneApp/Services/PlaybackErrorBridge.swift`) now runs a ~1 Hz freshness poll while playing and raises a prominent **`AudioStallOverlayView`** card when *no fresh audio* reaches the visualizer for ~10 s. "Fresh" = the tap frame count is still advancing AND the signal isn't confirmed `.silent`, so it catches **both** failure modes the family presents: **Mode A** (RMS≈0 → `.silent`; wedged `coreaudiod` [this bug] / stale grant [BUG-055]) via `audioSignalState`, and **Mode B** (frozen IO-proc; BUG-058) via `InputLevelMonitor.frameCount` ceasing to advance — Mode B keeps RMS nonzero so `.silent` never fires and an RMS-only detector would miss it. The card carries the fix ladder (`sudo killall coreaudiod`; re-grant Screen & System Audio Recording + relaunch; check the output device) and auto-clears when audio returns; it supersedes the existing 15 s silence toast while up. Gated on `.playing && !paused` (with a freshness baseline reset on gate entry) so it never false-fires pre-play, in `.ready`, on a deliberate local-file pause, or during quiet passages. 8 new gate tests (`PlaybackStallDetectorTests` in `PlaybackErrorBridgeTests`) lock the four false-fire guards + both modes + auto-clear; all green. **Reuses `PlaybackErrorBridge` per FA #73 — no parallel detector, zero engine changes.** Commit: see `RELEASE_NOTES_DEV.md`. **The `Resolved` field stays blank pending Matt's manual UX validation** (card renders, copy correct, appears only on a real stall, auto-dismisses on recovery) — the Defect Protocol gate for a UX-flow change.
+
 ### Related
 
 - `project_streaming_tap_signal_health` (the granted-but-silent-tap note; output-routing as the *other* silent-tap cause), CLEAN.1.5 / GAP-1 (G1 device-swap reinstall — the path that DOES recover), D-061 (capture-mode resilience).
@@ -249,6 +254,8 @@ The `01-51-11Z` "device-switch recovery" (≈5.6 s then degraded) was a coincide
 - [ ] **Manual:** after a rebuild with a stale grant, the app guides the user to re-grant rather than showing a dead session.
 
 **Durable fix:** dev-signing re-signs every build, so the grant never persists → this recurs every rebuild; the root fix is **stable signing (Developer ID / notarization — CLEAN.2.5b, blocked on no paid Apple membership)**. Related: G1 (CLEAN.1.5 output-device handling) and the `signal quality → red: no signal` detector (BUG-026 domain). Note: a *separate* silent-tap cause is environmental output-routing (audio playing on a device the tap isn't bound to) — this BUG is the distinct, real defect where audio IS on the tapped device but the permission is silently denied.
+
+**Detector fix increment — landed 2026-06-17 (pending Matt's manual UX validation):** the **Detection** criterion above is satisfied by the shared silent-tap detector (see BUG-057 §Fix increment) — `PlaybackErrorBridge` raises the `AudioStallOverlayView` card on sustained RMS≈0 (Mode A) while playing, with "re-grant Screen & System Audio Recording, then quit + relaunch" in the on-card fix ladder, instead of a silent flatline reported as "ready." The durable signing fix (CLEAN.2.5b) is still separate and still blocked. Mark this bug `Resolved` (the detector half) after Matt's manual UX validation of the card.
 
 ---
 
