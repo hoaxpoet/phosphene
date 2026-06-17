@@ -10,6 +10,21 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-17-041554] BUG-057.instrument — cold-tap-install-silence: capture-install diagnostics to session.log
+
+P1 multi-increment **step 1 only** (Defect Protocol: instrument → commit → STOP; no fix code). The streaming cold start installs the system-audio tap (`AudioHardwareCreateProcessTap` → `noErr`) but delivers persistent silence; the only recovery observed is a manual output-device switch, which fires `SystemAudioCapture.performReinstall` and then captures real Spotify audio (BUG-057). Identical create steps cold-vs-reinstall ⇒ the divergence is timing/state. This increment adds the observability to separate the four candidates — (a) TCC grant not yet effective on the first tap, (b) DRM-zeroing, (c) cold tap binds before audio flows, (d) the `.silent → reinstall` recovery is insufficient — from ONE real cold-start session, persisted to `session.log` (os_log rolls off).
+
+**What now lands in `session.log` (prefix `TAP:`):**
+- Per (re)install: `install via startCapture` / `reinstall via device-change`, with `gen=N defaultOutputDevice=<id> rate=<Hz> screenRecordingPreflight=<bool>` — separates same-device vs different-device reinstall (candidate d) and pins the preflight state at the moment of install (candidate a).
+- A ~1 Hz `tap RMS gen=N t=+Xs rms=… peak=…` probe over the first 10 s of each install (computed in the IO proc; throttled, scalar, window-gated) — shows whether THIS specific tap delivered signal or stayed zero (candidates b, c).
+- The `.silent → reinstall` scheduler timeline (`scheduled in …s (attempt #N)` / `skipped` / `succeeded` / `failed` / `backoff exhausted`), previously os_log-only.
+
+**Wiring (FA #73 — reuse, no new machinery):** new protocol member `AudioCapturing.onCaptureDiagnostic`; `SystemAudioCapture` emits the install + RMS lines; `AudioInputRouter` exposes one `onAudioCaptureDiagnostic` (forwards the capture sink + mirrors its own reinstall lines), wired by `VisualizerEngine+Audio.setupAudioRouting` to `SessionRecorder.log`. The existing `.silent → reinstall` machine, `SilenceDetector`, and CLEAN.1.5 `DefaultOutputDeviceMonitor` are untouched. No production behaviour change.
+
+**Files:** `Protocols.swift`, `SystemAudioCapture.swift` (+probe, `import CoreGraphics`, a `file_length` disable for the temporary diagnostic mass), `AudioInputRouter.swift`, `AudioInputRouter+SignalState.swift`, `MockAudioCapture.swift`, `AudioInputRouterSignalStateTests.swift` (+2 routing-lock tests), `VisualizerEngine+Audio.swift`. Engine+app build green; swiftlint `--strict` 0; signal-state suite 13/13. Not visually verifiable (diagnostic logging only); the live tap is not SPM-testable — the diagnosis artifact comes from Matt's instrumented cold-start session (step 2). No `RENDER_CAPABILITY_REGISTRY` change (audio-capture instrumentation).
+
+**Next:** step 2 (diagnose) — Matt runs a cold-start Spotify session + a mid-session device switch (build from the PRIMARY checkout with Screen Recording granted — a fresh worktree build re-churns the grant and reproduces unrelated silence); from `session.log` identify which candidate(s) hold; document the root cause in `KNOWN_ISSUES.md` BUG-057. No fix code until diagnosed.
+
 ## [dev-2026-06-16-214242] CLEAN.7.6c — multi-pass flash-safety harness: G9 fully ENFORCED (7/7)
 
 Closes the photosensitivity gate's remaining blind spot. CLEAN.7.6 / 7.6b validly measured only **3/7** certified presets (FFO + Murmuration + Nimbus); the other four read their music response through multi-pass / feedback paths the single-pass FeatureVector harness cannot drive, so they rendered static and were tracked-but-never-asserted-safe. CLEAN.7.6c drives those four through the REAL render paths headless and measures them — **all four 0–1 flashes/s SAFE, so G9 is now fully enforced 7/7.**
