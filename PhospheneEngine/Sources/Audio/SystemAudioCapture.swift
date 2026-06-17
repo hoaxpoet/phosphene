@@ -148,11 +148,22 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
         stateLock.unlock()
 
         do {
+            // BUG-057 reinstall instrumentation (kickoff: TAP_REINSTALL_SILENCE):
+            // per-step breadcrumbs mirroring performReinstall, so a hang in the
+            // `.silent → reinstall` recreate — which routes through here via
+            // performTapReinstall → stopCapture + startCapture — is pinned to the
+            // exact Core Audio call (session 2026-06-17T16-59-43Z showed `starting`
+            // then no completion line). Also instruments the cold install for free.
+            onCaptureDiagnostic?("startCapture: ENTER → createProcessTap")
             let newTapID = try createProcessTap(for: mode)
+            onCaptureDiagnostic?("startCapture: tap created (\(newTapID)) → readTapFormat + createAggregateDevice")
             readTapFormat(tapID: newTapID)
             let newAggregateID = try createAggregateDevice()
+            onCaptureDiagnostic?("startCapture: aggregate created (\(newAggregateID)) → createIOProc")
             let newProcID = try createIOProc(aggregateID: newAggregateID)
+            onCaptureDiagnostic?("startCapture: IO proc created → startDevice")
             try startDevice(aggregateID: newAggregateID, procID: newProcID)
+            onCaptureDiagnostic?("startCapture: startDevice done → start deviceMonitor")
 
             // CLEAN.1.5 (GAP-1): reinstall the tap when the default output device
             // changes (AirPods connect / monitor unplug) so visuals don't freeze
@@ -264,7 +275,13 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
 
     /// Stop the current audio capture session.
     public func stopCapture() {
+        // BUG-057 reinstall instrumentation: the `.silent → reinstall` recreate
+        // calls stopCapture() before startCapture(); breadcrumb the teardown so a
+        // hang inside cleanup() (AudioDeviceStop / DestroyAggregate / DestroyTap)
+        // is distinguishable from a hang in the subsequent create sequence.
+        onCaptureDiagnostic?("stopCapture: ENTER → cleanup")
         cleanup()
+        onCaptureDiagnostic?("stopCapture: cleanup done")
         logger.info("Audio capture stopped")
     }
 
