@@ -353,7 +353,7 @@ Recommended sequencing: Tier 1 measured against the labeled set first; escalate 
 
 **Severity:** P2 (no fps/correctness impact — render alone holds ~52 % of the 60 fps frame budget and 60 fps holds; the cost is sustained extra CPU/power/heat, ~2 cores on the Mac mini, for the entire duration of every session).
 **Domain tag:** resource-management / performance
-**Status:** Open — **diagnosed 2026-06-14 from session artifacts; no fix yet (Matt's option A: keep recording on while in active use, fix the per-frame capture/encode properly when prioritized).** Surfaced when Matt's Activity Monitor read PhospheneApp at ~99–115 % during the BUG-033 validation.
+**Status:** **Fix landed 2026-06-17 (`64d8285`) — video capture gated OFF by default (`PHOSPHENE_RECORD_VIDEO=1` to enable); CSV/log/stem artifacts always record. Pending Matt's manual Activity-Monitor confirm that steady-state CPU ~halves.** (Diagnosed 2026-06-14; the deferred "option A" was reversed — Matt 2026-06-17 — once it was clear the video is rarely needed vs the always-on CSVs and gating it is a small, output-preserving change.) Surfaced when Matt's Activity Monitor read PhospheneApp at ~99–115 % during the BUG-033 validation.
 **Introduced:** the SessionRecorder video-capture path; instantiated unconditionally (`VisualizerEngine.swift:785`, `SessionRecorder()` with `enabled: true` default) — no production gate.
 **Resolved:** —
 
@@ -362,10 +362,10 @@ Recommended sequencing: Tier 1 measured against the labeled set first; escalate 
 **Reproduction steps:** play any session; Activity Monitor shows PhospheneApp ~99 %+. Confirmed from artifacts: `~/Documents/phosphene_sessions/2026-06-14T17-58-44Z/features.csv` — `frame_cpu_ms` mean 15.78 (encode 7.16 + render 7.10); in the two 30 s windows where the writer was dead between BUG-039 restarts, `encode_cpu_ms` → ~0.6 and total CPU halved to ~9 ms.
 **Session artifacts:** `2026-06-14T17-58-44Z/features.csv` (per-frame `frame_cpu_ms` / `encode_cpu_ms` / `renderframe_cpu_ms` breakdown).
 **Suspected failure class:** `resource-management`.
-**Verification criteria (for the eventual fix):**
-- [ ] Either the per-frame capture/encode is moved fully off the render-adjacent path / made cheaper (throttled or lower-cost pixel capture) so total `frame_cpu_ms` ≈ `renderframe_cpu_ms`, OR recording is gated off by default with an explicit per-session enable.
-- [ ] Activity Monitor steady-state CPU in normal use roughly halves vs the current ~99 %.
-- [ ] 60 fps unaffected; the session-artifact recordings (features.csv / stems.csv / video) remain available when recording is enabled.
+**Verification criteria:**
+- [x] Recording gated off by default with an explicit per-session enable (`PHOSPHENE_RECORD_VIDEO=1`) — `SessionRecorderTests.test_videoDisabled_noCaptureTexture_csvStillRecords` (video off → nil capture texture, no video.mp4, features.csv still records) + `test_videoEnabled_allocatesCaptureTexture`. CSV/stems unaffected.
+- [ ] Manual (Matt): Activity-Monitor steady-state CPU in normal use roughly halves vs the prior ~99 %.
+- [ ] Manual (Matt): 60 fps unaffected; `video.mp4` still produced when `PHOSPHENE_RECORD_VIDEO=1`.
 
 ---
 
