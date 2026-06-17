@@ -444,7 +444,7 @@ Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — 
 
 **Severity:** P2 (visible build defect: per-chord reveal gate saturates at 200/441 ≈ 0.45, then the `.stable` snap shows the remaining ~55 % in one frame; build cycle halves to ~62 beats vs the documented ~136, firing `_presetCompletionEvent` early).
 **Domain tag:** preset.fidelity (Arachne)
-**Status:** Open — audit finding.
+**Status:** **Code fix landed (CLEAN.3.4, 2026-06-17); automated criterion met; Resolved pending Matt's M7 visual cert.** Single source of truth: the CPU's `spiralChordsTotal` (`ArachneState.recomputeSpiralChordTable`) now owns the count — the 200 cap (which sat *below* the legitimate 324–576 product so it always fired) was raised to `maxSpiralChords = 600`, a degenerate-case guard only; `spiralPacked` is published already-normalized (0..1) and the shader reveals by it directly (`saturate(spiral_packed)`), so the hardcoded 441 and the test's 104 are gone. The change is build-phase-temporal (the `.stable` golden is unchanged — the final spider is identical; only the reveal animation differs), so `PresetRegressionTests` stays green with no golden regen. **The manual/visual criterion needs a live M7** (the build reveal animates over the documented ~73 s; the existing RENDER_VISUAL harness only captures an early-build frame, so it cannot demonstrate the spiral reveal — best validated live or via a build-sequence render).
 **Introduced:** post-BUG-011 ranges (`radialCount`/`spiralRevolutions` ∈ [18, 24], `ArachneState._reset()` :1086-1087) made the uncapped chord product 324-576, so the `min(200, …)` cap at `recomputeSpiralChordTable()` (`ArachneState.swift:1005`) **always** fires; the shader normalizes `spiral_packed / 441.0` (`Arachne.metal:1336`); `PresetAcceptanceTests.swift:335` uses a third value (104).
 **Resolved:** —
 
@@ -454,8 +454,8 @@ Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — 
 **Session artifacts:** `docs/diagnostics/CODE_AUDIT_2026-06-09.md` (Presets P2 section).
 **Suspected failure class:** `api-contract` (three uncoordinated constants for one contract).
 **Verification criteria:**
-- [ ] Automated: one shared constant (or CPU-published total) consumed by CPU table, shader normalization, and tests; test asserts the uncapped product is honoured (or the cap is propagated).
-- [ ] Manual/visual: contact-sheet build sequence shows continuous chord reveal to the core with no completion pop.
+- [x] Automated (CLEAN.3.4): the CPU `spiralChordsTotal` is the single source — shader reveals by the CPU-normalized `spiralPacked` (no constant), test fixture aligned. `ArachneStateBuildTests.spiralChordCountHonoursProduct` asserts the uncapped product is honoured across seeds (not the old 200 cap).
+- [ ] Manual/visual (M7, Matt): build-sequence shows continuous spiral reveal to the core with no completion pop, over the documented build cycle.
 
 ---
 
