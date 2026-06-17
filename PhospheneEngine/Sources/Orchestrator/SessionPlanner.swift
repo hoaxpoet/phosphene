@@ -269,6 +269,24 @@ public struct DefaultSessionPlanner: SessionPlanning {
         )
     }
 
+    /// Catalog filtered to presets eligible to auto-install on this track: never a
+    /// diagnostic (D-074), never a beat-locked preset on an irregular track (D-154).
+    /// Falls back to the full `catalog` only when *nothing* is categorically eligible
+    /// (a degenerate catalog) — rendering something beats rendering nothing, and the
+    /// caller has already warned. Single source of truth for the planner's two
+    /// defensive fallbacks (zero-duration `planSegments`, budget `cheapestFallback`):
+    /// both filter identically so a diagnostic can never reach a segment via either
+    /// path (CLEAN.3.2).
+    func categoricallyEligiblePool(
+        _ catalog: [PresetDescriptor],
+        onIrregularBeat: Bool
+    ) -> [PresetDescriptor] {
+        let eligible = catalog.filter {
+            !$0.isDiagnostic && !($0.requiresRegularBeat && onIrregularBeat)
+        }
+        return eligible.isEmpty ? catalog : eligible
+    }
+
     /// Picks the cheapest preset that is not the current preset.
     /// If no alternative exists, returns the globally cheapest with a `.budgetExceeded` warning.
     private func cheapestFallback(
@@ -289,11 +307,7 @@ public struct DefaultSessionPlanner: SessionPlanning {
         // and scheduled the excluded preset. Degenerate catalogs (everything
         // categorical) keep the old behaviour — the warning above already
         // fired and rendering something beats rendering nothing.
-        let categoricallyEligible = catalog.filter { preset in
-            !preset.isDiagnostic
-                && !(preset.requiresRegularBeat && profile.beatIrregular == true)
-        }
-        let pool = categoricallyEligible.isEmpty ? catalog : categoricallyEligible
+        let pool = categoricallyEligiblePool(catalog, onIrregularBeat: profile.beatIrregular == true)
         let sorted = pool.sorted { $0.complexityCost.cost(for: tier) < $1.complexityCost.cost(for: tier) }
         let excludingID = context.currentPreset?.id
         if let fallback = sorted.first(where: { $0.id != excludingID }) {

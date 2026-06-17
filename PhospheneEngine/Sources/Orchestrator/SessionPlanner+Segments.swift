@@ -105,27 +105,33 @@ extension DefaultSessionPlanner {
             }
         }
 
-        // Defensive: every track must have at least one segment.
-        if segments.isEmpty, let preset = catalog.first {
-            let breakdown = scorer.breakdown(
-                preset: preset,
-                track: profile,
-                context: PresetScoringContext(
-                    deviceTier: deviceTier,
-                    elapsedSessionTime: trackStart,
-                    includeUncertifiedPresets: includeUncertifiedPresets
-                )
+        // Defensive: every track must have at least one segment (a zero-duration or
+        // section-degenerate track emits none above). Never fall back to a raw
+        // `catalog.first` — array/alphabetical order can put a diagnostic (D-074) or a
+        // beat-locked preset (D-154) there, bypassing every exclusion gate. Pick the
+        // best *eligible* preset (score > 0); only a fully degenerate catalog renders
+        // something categorical, matching `cheapestFallback` (CLEAN.3.2).
+        if segments.isEmpty {
+            let context = PresetScoringContext(
+                deviceTier: deviceTier,
+                elapsedSessionTime: trackStart,
+                includeUncertifiedPresets: includeUncertifiedPresets
             )
-            segments.append(PlannedPresetSegment(
-                preset: preset,
-                presetScore: breakdown.total,
-                scoreBreakdown: breakdown,
-                plannedStartTime: trackStart,
-                plannedEndTime: trackEnd,
-                incomingTransition: nil,
-                terminationReason: .trackEnded
-            ))
-            currentPreset = preset
+            let pool = categoricallyEligiblePool(catalog, onIrregularBeat: profile.beatIrregular == true)
+            let ranked = scorer.rank(presets: pool, track: profile, context: context)
+            if let preset = ranked.first(where: { $0.1 > 0 })?.0 ?? pool.first {
+                let breakdown = scorer.breakdown(preset: preset, track: profile, context: context)
+                segments.append(PlannedPresetSegment(
+                    preset: preset,
+                    presetScore: breakdown.total,
+                    scoreBreakdown: breakdown,
+                    plannedStartTime: trackStart,
+                    plannedEndTime: trackEnd,
+                    incomingTransition: nil,
+                    terminationReason: .trackEnded
+                ))
+                currentPreset = preset
+            }
         }
 
         return (segments, currentPreset)
