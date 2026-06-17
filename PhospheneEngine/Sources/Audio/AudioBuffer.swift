@@ -163,6 +163,29 @@ public final class AudioBuffer: AudioBuffering, @unchecked Sendable {
         return result
     }
 
+    /// Copy the most recent `dst.count` interleaved samples into a caller-owned
+    /// buffer — the allocation-free variant of ``latestSamples(count:)`` for the
+    /// real-time audio thread (BUG-036). Returns the number of samples written
+    /// (fewer than `dst.count` until the ring has filled).
+    ///
+    /// - Parameter dst: Pre-allocated destination, sized to the desired count.
+    /// - Returns: Number of samples written, oldest first.
+    public func latestSamples(into dst: UnsafeMutableBufferPointer<Float>) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let available = min(dst.count, pcmRingBuffer.count)
+        guard available > 0 else { return 0 }
+
+        let startLogical = pcmRingBuffer.count - available
+        // ponytail: per-element ring read, same as latestSamples(count:); a
+        // two-segment memcpy honouring the wrap is the upgrade if ever profiled.
+        for i in 0..<available {
+            dst[i] = pcmRingBuffer.read(at: startLogical + i)
+        }
+        return available
+    }
+
     // MARK: - Debug
 
     /// Reset the buffer to empty state.
