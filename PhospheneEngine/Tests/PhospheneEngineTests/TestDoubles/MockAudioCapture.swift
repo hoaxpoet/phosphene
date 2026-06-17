@@ -23,6 +23,8 @@ final class MockAudioCapture: AudioCapturing, @unchecked Sendable {
     var onAudioBuffer: ((_ samples: UnsafePointer<Float>, _ sampleCount: Int,
                          _ sampleRate: Float, _ channelCount: UInt32) -> Void)?
 
+    var onCaptureDiagnostic: ((_ message: String) -> Void)?
+
     private(set) var isCapturing = false
     let sampleRate: Float = 48000
     let channelCount: UInt32 = 2

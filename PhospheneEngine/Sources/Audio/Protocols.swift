@@ -45,6 +45,13 @@ public protocol AudioCapturing: AnyObject, Sendable {
     /// Number of audio channels (typically 2 for stereo).
     var channelCount: UInt32 { get }
 
+    /// Diagnostic sink for tap-install lifecycle events: each (re)install's
+    /// bound output device + rate + Screen-Recording preflight, and a ~1 Hz
+    /// RMS/peak probe over the first seconds of each install. Wired by the app
+    /// to `SessionRecorder.log` so the cold-install-vs-reinstall timeline is
+    /// greppable from `session.log` (os_log rolls off). BUG-057 instrumentation.
+    var onCaptureDiagnostic: ((_ message: String) -> Void)? { get set }
+
     /// Start capturing audio.
     func startCapture(mode: CaptureMode) throws
 

@@ -7,6 +7,21 @@ private let signalStateLogger = Logger(subsystem: "com.phosphene.audio", categor
 @available(macOS 14.2, *)
 extension AudioInputRouter {
 
+    // MARK: - BUG-057 Instrumentation
+
+    /// Mirror a reinstall-scheduler line to os_log AND the
+    /// `onAudioCaptureDiagnostic` sink, so the `.silent → reinstall` recovery
+    /// timeline survives in session.log (os_log rolls off). The sink is nil in
+    /// headless/test contexts that don't opt in, so this is a no-op there.
+    func logReinstall(_ message: String, isError: Bool = false) {
+        if isError {
+            signalStateLogger.error("\(message)")
+        } else {
+            signalStateLogger.info("\(message)")
+        }
+        onAudioCaptureDiagnostic?(message)
+    }
+
     // MARK: - Signal-State Handling + Tap Reinstall
 
     /// Forward signal state to subscribers and drive the tap-reinstall state
@@ -58,7 +73,7 @@ extension AudioInputRouter {
         let lockHandle = self.lock
         attempt = lockHandle.withLock { reinstallAttempts }
         guard attempt < reinstallDelays.count else {
-            signalStateLogger.info(
+            logReinstall(
                 "Tap reinstall: backoff exhausted (\(attempt) attempts) — treating silence as real pause")
             return
         }
@@ -74,7 +89,7 @@ extension AudioInputRouter {
         }
         lockHandle.withLock { reinstallWorkItem = workItem }
         tapMgmtQueue.asyncAfter(deadline: .now() + delay, execute: workItem)
-        signalStateLogger.info("Tap reinstall scheduled in \(delay)s (attempt #\(attempt + 1))")
+        logReinstall("Tap reinstall scheduled in \(delay)s (attempt #\(attempt + 1))")
     }
 
     /// Cancel any pending reinstall and reset the attempt counter.
@@ -93,7 +108,7 @@ extension AudioInputRouter {
         lock.withLock { reinstallWorkItem = nil }
         let state = silenceDetector.state
         guard state == .silent else {
-            signalStateLogger.info(
+            logReinstall(
                 "Tap reinstall #\(attemptNumber) skipped — state is \(String(describing: state))")
             cancelPendingReinstall()
             return
@@ -115,16 +130,16 @@ extension AudioInputRouter {
     }
 
     func performTapReinstall(captureMode: CaptureMode, attemptNumber: Int) {
-        signalStateLogger.info(
+        logReinstall(
             "Tap reinstall #\(attemptNumber) starting (mode: \(String(describing: captureMode)))")
         systemCapture.stopCapture()
         do {
             try systemCapture.startCapture(mode: captureMode)
-            signalStateLogger.info(
+            logReinstall(
                 "Tap reinstall #\(attemptNumber) succeeded — fresh tap installed; waiting to see if audio flows on it")
         } catch {
-            signalStateLogger.error(
-                "Tap reinstall #\(attemptNumber) failed: \(error.localizedDescription)")
+            logReinstall(
+                "Tap reinstall #\(attemptNumber) failed: \(error.localizedDescription)", isError: true)
         }
         scheduleNextReinstall()
     }
