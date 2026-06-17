@@ -415,7 +415,7 @@ Recommended sequencing: Tier 1 measured against the labeled set first; escalate 
 
 **Severity:** P2 (violates the standing "do not allocate in the Core Audio IO proc callback" rule on every callback of every session; priority-inversion / glitch risk under memory pressure rather than observed breakage).
 **Domain tag:** audio.capture / performance
-**Status:** Partially fixed (2026-06-17, `8fd8c82`) — sites 1 + 2 (the RT-thread-local array allocations) are now allocation-free with regression tests; site 3 (raw-tap) + the analysis hand-off remain, coupled to BUG-043 (see Progress).
+**Status:** Partially fixed (2026-06-17, `58a37c0`) — sites 1 + 2 (the RT-thread-local array allocations) are now allocation-free with regression tests; site 3 (raw-tap) + the analysis hand-off remain, coupled to BUG-043 (see Progress).
 **Introduced:** structural — predates the rule's enforcement attention; the "zero-alloc" header comments in both DSP files are currently false.
 **Resolved:** — (sites 1 + 2 done; bug stays open until site 3 + the hand-off land)
 
@@ -428,7 +428,7 @@ Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — 
 **Session artifacts:** `docs/diagnostics/CODE_AUDIT_2026-06-09.md` (Audio/DSP P2 section).
 **Suspected failure class:** `resource-management` (RT-safety).
 
-**Progress (2026-06-17, `8fd8c82`) — sites 1 + 2 landed; site 3 + hand-off deferred to BUG-043.** The three named allocations split into two groups by whether they cross the audio-thread boundary:
+**Progress (2026-06-17, `58a37c0`) — sites 1 + 2 landed; site 3 + hand-off deferred to BUG-043.** The three named allocations split into two groups by whether they cross the audio-thread boundary:
 - **Sites 1 + 2 (RT-thread-local) — FIXED.** `FFTProcessor` reuses a pre-allocated `magnitudesScratch`; a new zero-alloc `processStereo(interleaved: UnsafeBufferPointer)` mixes L/R straight into the windowed-sample scratch (no `mono` array); the array overloads delegate to it. `AudioBuffer.latestSamples(into:)` fills a caller-owned buffer (the callback reuses a pre-allocated `interleavedScratch`). All scratch is touched only on the single RT thread → no lock needed (cf. D-079's cross-core `tapSampleRate`). FFT output is byte-identical (pointer↔array bit-equivalence test + unchanged FFT/Chroma/BeatDetector goldens).
 - **Site 3 (raw-tap `Data()` + `queue.async`) + the analysis hand-off (`Array(...prefix())` + `analysisQueue.async`) — DEFERRED.** Both cross the thread boundary. Making them allocation-free safely requires a pre-allocated ring drained by a persistent consumer (the "pre-allocated ring for raw-tap" fix below): an unbounded→bounded hand-off is a cadence/concurrency change that lands directly on **BUG-043**'s analysis-stall surface. Doing it blind before BUG-043 is instrumented is backwards; sequence it with that work (the prompt's own `036 → re-test → 043` ordering).
 
