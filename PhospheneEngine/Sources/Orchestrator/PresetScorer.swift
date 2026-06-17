@@ -65,7 +65,19 @@ public protocol PresetScoring: Sendable {
 // MARK: PresetScoring default extensions
 
 public extension PresetScoring {
-    /// Ranks a catalog of presets from highest to lowest score, excluding zeroed presets.
+    /// Ranks a catalog of presets from highest to lowest score.
+    ///
+    /// Hard-excluded presets (diagnostic per D-074, uncertified, over-budget,
+    /// beat-irregular, already-active, user-excluded — see `breakdown`'s exclusion
+    /// gate) score 0 and sort last; they are **kept in the output, not removed**, so
+    /// callers can inspect *why* a preset scored 0 (e.g. `PresetScorerTests.
+    /// rankStabilityAcrossTiers` compares the zero across device tiers).
+    ///
+    /// Therefore a caller selecting a preset to **install** MUST take
+    /// `.first(where: { $0.1 > 0 })`, never a bare `.first` or a `!isDiagnostic`-only
+    /// filter — otherwise an excluded preset installs whenever everything ahead of it
+    /// is also excluded (CLEAN.3.2; `score > 0` subsumes every exclusion, diagnostics
+    /// included).
     ///
     /// Ties are broken by the preset's position in the input array (stable sort).
     func rank(

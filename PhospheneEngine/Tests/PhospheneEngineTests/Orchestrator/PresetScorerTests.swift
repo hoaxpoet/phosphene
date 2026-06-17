@@ -47,6 +47,29 @@ struct PresetScorerTests {
                 "High-motion preset should rank first for a 140 BPM high-arousal track")
     }
 
+    // MARK: 2b — rank() keeps excluded presets at 0; the install idiom skips them (CLEAN.3.2)
+
+    @Test("rank keeps a diagnostic at score 0; .first(where: > 0) skips it to an eligible preset")
+    func rankContract_excludedKeptButNotInstallable() {
+        let diagnostic = makePreset(name: "AAADiag", isDiagnostic: true)
+        let eligible   = makePreset(name: "Eligible", motionIntensity: 0.5)
+        let track      = makeTrack(bpm: 120)
+        let context    = makeContext()
+
+        // Diagnostic is the array-first preset — a bare `.first` or `!isDiagnostic`
+        // filter could elevate it. `rank` keeps it (callers may inspect the 0) at 0.
+        let ranked = scorer.rank(presets: [diagnostic, eligible], track: track, context: context)
+
+        #expect(ranked.count == 2, "Excluded presets are kept in rank output, not removed")
+        let diagEntry = ranked.first(where: { $0.0.id == diagnostic.id })
+        #expect(diagEntry?.1 == 0, "Diagnostic must score 0 (D-074 exclusion)")
+
+        // The documented install idiom selects score > 0 only — never the diagnostic.
+        let installed = ranked.first(where: { $0.1 > 0 })?.0
+        #expect(installed?.id == eligible.id,
+                "Install idiom .first(where: > 0) must skip the 0-scored diagnostic")
+    }
+
     // MARK: 3 — Mood mismatch penalized
 
     @Test("Sad track (valence -0.8) scores higher against cool-palette preset")
@@ -271,7 +294,8 @@ private func makePreset(
     fatigueRisk: FatigueRisk = .medium,
     sectionSuitability: [SongSection] = SongSection.allCases,
     stemAffinity: [String: String] = [:],
-    complexityCost: ComplexityCost = ComplexityCost(tier1: 2.0, tier2: 1.5)
+    complexityCost: ComplexityCost = ComplexityCost(tier1: 2.0, tier2: 1.5),
+    isDiagnostic: Bool = false
 ) -> PresetDescriptor {
     // Build a minimal JSON blob and decode it so all defaults are applied correctly.
     let json = """
@@ -285,6 +309,7 @@ private func makePreset(
         "section_suitability": [\(sectionSuitability.map { "\"\($0.rawValue)\"" }.joined(separator: ","))],
         "stem_affinity": {\(stemAffinity.map { "\"\($0.key)\": \"\($0.value)\"" }.joined(separator: ","))},
         "complexity_cost": {"tier1": \(complexityCost.tier1), "tier2": \(complexityCost.tier2)},
+        "is_diagnostic": \(isDiagnostic),
         "certified": true
     }
     """
