@@ -2272,17 +2272,28 @@ struct SkeinCanvasHoldTest {
 
     // MARK: - Real-stem replay (real audio only — feedback_synthetic_audio)
 
-    /// The recorded session under ~/Documents/phosphene_sessions with the largest stems.csv (most
-    /// onsets → the most per-stem colour activity). nil when none exist (local-only artifact).
+    /// The preferred real-audio session under ~/Documents/phosphene_sessions:
+    /// the deterministic `fixturegen-*` capture (generated from a committed audio
+    /// fixture) when present, else the largest live recording. nil when none exist
+    /// (local-only artifact). Preferring the fixture keeps these real-audio gates
+    /// deterministic — see `recordedSessionsBySize()`.
     private static func firstRecordedSession() -> URL? {
         recordedSessionsBySize().first
     }
 
-    /// All recorded sessions with a non-empty stems.csv, largest first. Tests whose assertion
-    /// depends on a *property* of the session content (e.g. the colour-freeze gate needs two
-    /// stem-dominated slices) iterate this list instead of hard-depending on the single largest
-    /// session — every new live session Matt records changes which session is largest, and a
-    /// session-fragile gate goes red on data, not code (the Skein.4.1 `distinctBlobs` lesson).
+    /// All recorded sessions with a non-empty stems.csv. **Deterministic `fixturegen-*`
+    /// captures first** (generated from committed audio fixtures by
+    /// `FixtureSessionCaptureGenerator`), then live recordings largest-first.
+    ///
+    /// Preferring the fixtures pins these real-audio gates to a stable input so they
+    /// don't go *red on data, not code*: previously this returned whichever LIVE
+    /// session was largest, so every new recording could change the input — and a
+    /// live session whose most-dominated slice happens to start with silence broke
+    /// the structure gates (the section boundary landed on a silent frame, which the
+    /// `stemMix > 0.001` gate correctly drops). Live sessions remain as a fallback,
+    /// and tests whose assertion depends on a *property* of the content (e.g. the
+    /// colour-freeze gate needs a stem switch) still iterate the whole list. The
+    /// skip-when-none path is unchanged.
     private static func recordedSessionsBySize() -> [URL] {
         let base = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Documents/phosphene_sessions")
@@ -2293,7 +2304,11 @@ struct SkeinCanvasHoldTest {
             guard FileManager.default.fileExists(atPath: path) else { return 0 }
             return ((try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int) ?? 0
         }
-        return entries.filter { stemsSize($0) > 0 }.sorted { stemsSize($0) > stemsSize($1) }
+        func isFixture(_ url: URL) -> Bool { url.lastPathComponent.hasPrefix("fixturegen-") }
+        return entries.filter { stemsSize($0) > 0 }.sorted { lhs, rhs in
+            if isFixture(lhs) != isFixture(rhs) { return isFixture(lhs) }   // fixtures first
+            return stemsSize(lhs) > stemsSize(rhs)                          // then largest
+        }
     }
 
     /// Parse a session's stems.csv into replayable StemFeatures frames (the routing-relevant
