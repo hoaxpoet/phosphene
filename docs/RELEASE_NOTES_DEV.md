@@ -10,6 +10,18 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-18-205803] CLEAN.7.2b COMPLETE — remainder reconciled (coupling/budget/allocation already covered; tags descoped)
+
+[CLEAN.7.2b] Worked the 7.2b remainder and found — like 7.1 — that it's a reconcile, not fresh test-building: the audit's items were filled by work that landed AFTER the 2026-06-13 audit. Rebuilding them would be the duplication the audit itself flags.
+
+- **Visual/audio-coupling regression (BUG-038/041):** done. BUG-038 (ray-march light-intensity flicker) resolved 2026-06-17 (`5c349eb`) with `RayMarchPipelineTests.test_smoothLightIntensity_suppressesFrameToFrameFlicker` + `_firstFrameHasNoLag`. BUG-041 (FFO aurora cold-start flash) shipped `AuroraTrackStartWarmupTests` (real-session replay, early-window driver-peak bound + legacy red-arm). Both confirmed green.
+- **Frame-budget regression:** `RenderLoopPerformanceTests` (<8 ms/frame) + the SSGI (sub-1ms) and RayIntersector (1000-ray <2ms) budget gates.
+- **Per-frame-allocation regression:** `MemorySoakGateTests` (CLEAN.4.7) gates `phys_footprint` growth over soaks on the two heaviest per-frame paths (FFT→MIR, StemAnalyzer — where BUG-036's RT-audio allocations live).
+- **Per-test tags: descoped.** The fast/slow tiering is delivered by `Scripts/test_fast.sh` (7.2a), which works for both swift-testing and XCTest; native swift-testing `.tags` would cover only the ~1,528 `@Test` half (not the 837 XCTest funcs) and duplicate the tiering. Not worth the churn.
+- **Render-path allocation soak: declined.** No evidence of a render per-frame leak; CLEAN.4.4 fixed the known render over-allocations, guarded by PresetRegression goldens + DrawableResizeRegressionTests. A bespoke render soak would be speculative.
+
+Net: 7.2b is complete (foundation + opportunistic migration + remainder reconcile). The fixture-builder foundation remains the durable win; doc-only reconcile, no code change.
+
 ## [dev-2026-06-18-204529] CLEAN.7.2b — fixture-builder migration wave 1 + dedup-scope finding
 
 [CLEAN.7.2b] First migration wave for the FeatureFixtures builders. Migrated `SpectralHistoryBufferTests`' one-shot construct-then-mutate sites to `makeFeatureVector(...)` — `test_singleAppend` collapses 5 field mutations into one call. Suite green (17 tests).
