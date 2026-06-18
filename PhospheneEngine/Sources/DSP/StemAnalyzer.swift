@@ -206,10 +206,11 @@ public final class StemAnalyzer: StemAnalyzing, @unchecked Sendable {
         defer { lock.unlock() }
         let dt = fps > 0 ? 1.0 / fps : (1.0 / 60.0)
         let (vocalsResult, vocalsMags) = analyzeStem(stemWaveforms[0], processor: energyProcessors[0], fps: fps)
-        let (drumsResult, _) = analyzeStem(stemWaveforms[1], processor: energyProcessors[1], fps: fps)
+        let (drumsResult, drumsMags) = analyzeStem(stemWaveforms[1], processor: energyProcessors[1], fps: fps)
         let (bassResult, bassMags) = analyzeStem(stemWaveforms[2], processor: energyProcessors[2], fps: fps)
         let (otherResult, otherMags) = analyzeStem(stemWaveforms[3], processor: energyProcessors[3], fps: fps)
-        let drumsMags = computeMagnitudes(from: stemWaveforms[1])
+        // CLEAN.4.2: reuse the magnitudes analyzeStem already computed for the drums
+        // stem (was discarded with `_` then recomputed identically here — a second FFT/frame).
         // PERF.1 — time the drums beat detector + vocals pitch tracker
         // independently inside the stem analyzer so the BUG-019 attribution
         // can drill below `stem_analyzer_ms` without a second instrumentation
