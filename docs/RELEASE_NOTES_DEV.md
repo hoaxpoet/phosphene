@@ -10,6 +10,12 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-18-143356] BUG-037 RESOLVED — Arachne pop fixed (Matt live-validated)
+
+Matt re-validated the planner-span fix (session `2026-06-18T14-30-52Z`): **the full web draws continuously to the core, then transitions on the completion event — no pop.** Arachne ran ~43 s (14:31:25 → 14:32:08) and ended on the build's `presetCompletionEvent`, not a section boundary (the live electronic beat density laid the ~441-chord spiral faster than the 118 BPM grid estimate). BUG-037 → **Resolved** — both halves were needed: the chord-count single source of truth (so the reveal *can* reach 1.0) **and** `wait_for_completion_event` spanning sections (so the build is *allowed* to finish before a transition). KNOWN_ISSUES BUG-037 Resolved (commits `d430d64` + `e6a530d`); EP CLEAN.3.4 ✅; CODE_AUDIT Part C ✅.
+
+**Process lesson recorded:** the audit's static-analysis framing (three inconsistent constants) was necessary but not sufficient — the dominant cause was a *runtime pacing* interaction (build duration vs section scheduling) invisible to static review and only surfaced by a live M7. A visual/temporal fix isn't done until it's validated live; the green automated tests on the first attempt were real but measured the wrong thing. Docs-only entry.
+
 ## [dev-2026-06-18-035306] CLEAN.3.4 M7-followup — wait_for_completion spans sections (the real Arachne pop fix)
 
 Matt's M7 of the chord-count fix **failed** (session `2026-06-18T01-21-18Z`): the spiral pop persisted. The chord-count normalization was verified *correct* (new test `spiralRevealClimbsPastOldCeiling` drives the build and reads the actual `webs[0].spiralPacked` climbing past 0.6 — the stuck-at-0.45 ceiling is gone in code), so the audit's three-constant framing was incomplete.
