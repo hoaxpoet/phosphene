@@ -80,6 +80,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-164 | Accepted | Photosensitivity flash-safety enforced by measurement (cert gate now) + runtime clamp (A-next); single-pass harness validly covers 2/7 presets, rest deferred to a real-pipeline harness (clamp half closed by D-166) |
 | D-165 | Accepted | Silent-tap family: detect don't churn — only rebuild a never-delivered tap; pause-suppressed card; self-healing > manual remediation |
 | D-166 | Accepted | Photosensitivity runtime clamp NOT pursued (amends D-164) — the certification gate is the enforcement mechanism; pipeline has no single clamp chokepoint (8 present paths), all shipped presets ≤ 1 flash/s; `RayMarchPipeline:94` OR-flag slot reserved |
+| D-167 | Accepted | Thermal + Low Power Mode feed a quality floor into the D-057 budget governor (CLEAN.4.6): applied level = `max(timing, thermalFloor)` pre-empts the GPU's own throttle; FBM stays `ProcessInfo`-free; serious→no-bloom, critical→step-0.75, LPM→≥no-SSGI; ultra/recording still exempt |
 
 ---
 
@@ -1989,3 +1990,17 @@ Closes the "runtime clamp (A-next)" half of [D-164] with a decision **not to bui
 **Go-forward.** The **certification gate is the photosensitivity enforcement mechanism** — not a runtime clamp. New certified presets must pass `PhotosensitivityCertificationTests`; its multi-pass set fails loud if a new preset renders static without joining the harness (D-164). The `RayMarchPipeline:94` OR-flag slot stays **reserved**. Reopen only on a new premise — shipping un-certified / user-authored presets, or live arbitrary-source rendering — and reopen *with the 8-path reroute cost in hand* (this entry), do not re-derive it. A non-altering **live monitor** (detect-but-don't-correct) was offered and also declined for now.
 
 **References.** Amends [D-164] (the "runtime clamp A-next" line this closes). Audit G9 (`CODE_AUDIT_2026-06-13.md` §G9 / CLEAN.7.6d), `RENDER_CAPABILITY_REGISTRY §9`, the runtime kickoff `docs/prompts/CLEAN_7.6b_PHOTOSENSITIVITY_RUNTIME_KICKOFF.md` (superseded for the clamp half). D-054/U.9 (the original strict-mode deferral), D-157/D-158 (the certified beat-luminance motion the cert gate must pass, not flatten).
+
+## D-167: Thermal + Low Power Mode feed a quality floor into the frame-budget governor (CLEAN.4.6)
+
+**Status:** Accepted (2026-06-18)
+
+Wires `ProcessInfo` thermal state + Low Power Mode into the [D-057] frame-budget governor so visual load drops *ahead* of the GPU's own thermal throttle, and the user's Low Power Mode choice is respected. Closes audit **G4** (GAP-4) — previously zero `thermalState`/`lowPowerMode` references anywhere.
+
+**Mechanism.** `FrameBudgetManager` gains a `thermalFloor: QualityLevel`; the applied level is `max(currentLevel, thermalFloor)` — independent of the timing hysteresis. A rising thermal state therefore pre-empts the downshift (no waiting for the 3 timing-overrun detection), and clearing it restores quality *immediately* (the timing `currentLevel` was never raised, so no 180-frame recovery wait). The governor stays `ProcessInfo`-free and pure: the listener reads `ProcessInfo` and calls `setThermalFloor`. `VisualizerEngine` observes `thermalStateDidChangeNotification` + `NSProcessInfoPowerStateDidChange`, maps via the pure static `FrameBudgetManager.qualityFloor(thermalState:lowPowerMode:)`, and seeds the floor at FBM creation (in case the app launches already hot / in LPM). The new floor takes effect on the next `observe(_:)` — under render load, the next frame (~16 ms, far ahead of the seconds-scale thermal build-up).
+
+**Mapping (tunable policy).** thermal `.nominal`/`.fair` → `.full` (no floor); `.serious` → `.noBloom` (drop SSGI + bloom); `.critical` → `.reducedRayMarch` (+ 0.75× ray-march steps). Low Power Mode imposes at least `.noSSGI` and never weakens a stronger thermal floor (`max`). Chosen for "meaningful GPU/power relief without gutting the look"; only visible under thermal stress, and tunable in one function.
+
+**Scope.** The `QualityCeiling.ultra` recording exemption (D-057(d), `enabled == false`) still bypasses the floor — recording deliberately wants full quality; overriding that under thermal stress is a separate decision (reopen if fanless recording-under-thermal becomes real). The mechanism is unit-tested (the floor clamps the applied level without touching the timing state; timing can still downshift below the floor; the floor survives `reset()`; the mapping is correct). The actual thermal-induced pre-emption needs **device validation under load** — the Mac mini's active cooling rarely throttles, so this matters mainly for fanless deployment.
+
+**References.** Extends [D-057] (the budget governor). Audit G4 / CLEAN.4.6 (`CODE_AUDIT_2026-06-13.md`). `FrameBudgetManager.swift`, `VisualizerEngine+InitHelpers.swift`, `RENDER_CAPABILITY_REGISTRY` (budget-governor row).

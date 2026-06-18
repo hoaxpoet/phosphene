@@ -151,7 +151,7 @@ Entries should cite source files. When adding a capability, link to the files th
 
 | Capability | Status | Evidence | Notes |
 |---|---|---|---|
-| Frame budget governor (quality ladder, asymmetric hysteresis, per-tier configuration) | Supported | `FrameBudgetManager.swift` (Increment 6.2, D-057) | Six levels: full → noSSGI → noBloom → reducedRayMarch → reducedParticles → reducedMesh. |
+| Frame budget governor (quality ladder, asymmetric hysteresis, per-tier config, thermal/LPM floor) | Supported | `FrameBudgetManager.swift` (Increment 6.2, D-057; thermal/LPM floor CLEAN.4.6 / D-167) | Six levels: full → noSSGI → noBloom → reducedRayMarch → reducedParticles → reducedMesh. CLEAN.4.6: a `thermalFloor` (applied level = `max(timing, floor)`) driven by `ProcessInfo` thermal state + Low Power Mode pre-empts the GPU's own throttle (`VisualizerEngine` listener → pure `qualityFloor` map; serious→no-bloom, critical→step-0.75, LPM→≥no-SSGI). Ultra/recording exempt; device validation of the live thermal response pending. |
 | Quality ceiling override (Auto / Performance / Balanced / Ultra) | Supported | `QualityCeiling` enum; `SettingsStore.qualityCeiling` (Increment U.8) | Ultra exempts the governor. |
 | ML dispatch gating (defer stem separation when frames are over budget) | Supported | `MLDispatchScheduler.swift` (Increment 6.3, D-059) | Tier-aware; max defer 2 s / 1.5 s. |
 | Memory reporter (`phys_footprint`, matches Activity Monitor) | Supported | `Sources/Diagnostics/MemoryReporter.swift` (Increment 7.1, D-060) | |
