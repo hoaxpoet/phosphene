@@ -10,6 +10,16 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-18-035306] CLEAN.3.4 M7-followup — wait_for_completion spans sections (the real Arachne pop fix)
+
+Matt's M7 of the chord-count fix **failed** (session `2026-06-18T01-21-18Z`): the spiral pop persisted. The chord-count normalization was verified *correct* (new test `spiralRevealClimbsPastOldCeiling` drives the build and reads the actual `webs[0].spiralPacked` climbing past 0.6 — the stuck-at-0.45 ceiling is gone in code), so the audit's three-constant framing was incomplete.
+
+**The dominant root cause:** Arachne's build (~92 s — frame + radial + the full ~441-chord spiral at 3.24 chords/beat) **outlives its planned segment.** `wait_for_completion_event: true` only sets `maxDuration = .infinity` (`PresetMaxDuration:101`), which fills the current SECTION — but `planOneSegment` still bounds the segment at `remainingInSection` and terminates `.sectionBoundary` (`SessionPlanner+Segments:177-192`). Love Rehab's section ≈ 38 s, so the plan-driven boundary cut the build mid-reveal → forced `.stable` snap = the pop. And the cap-raise (the "restore intended density" pick) *worsened* it: the build went 54 s → 92 s, so the cut lands at a lower reveal %. I own the mis-diagnosis — I shipped a fix that couldn't help and made the symptom worse.
+
+**Fix (Matt's pick: make `wait_for_completion_event` truly span sections).** `planOneSegment` now gives a completion-gated preset a segment spanning its `naturalCycleSeconds` (capped at `trackEnd`) instead of the section boundary; `planSegments` tracks `coveredUntil` so a later section the spanning segment already covers doesn't re-emit. The non-wait path is byte-equivalent (existing segment behaviour unchanged). So the plan boundary now lands *past* the build's completion: the build finishes (reveal → 1.0), the live `presetCompletionEvent` drives the transition, no pop. The normalization + cap-raise stay — they're correct once the build is allowed to complete.
+
+Gate: `SessionPlannerTests.waitForCompletion_segmentSpansSections` (a 90 s-cycle preset gets one ~90 s segment in a 300 s track; plan stays contiguous). 25 SessionPlanner + 99 orchestrator/integration/lifecycle tests green; swiftlint `--strict` 0. **Pending Matt's live re-validation that the pop is gone.** Known follow-up (not a pop): the completion event advances via `presetLoader.nextPreset()` (loader cycle), so the preset *after* a completed wait-preset is off-plan — minor variety deviation, flag if it matters. `KNOWN_ISSUES.md` BUG-037 (M7-failed → planner fix).
+
 ## [dev-2026-06-17-223835] CLEAN.3.4 — BUG-037 Arachne chord-count single source of truth (code-complete; M7 pending)
 
 Phase-3 `[M7]` stretch item. The Arachne spiral reveal popped at ~45 %: three uncoordinated constants for one contract — CPU `spiralChordsTotal = min(200, radialCount × spiralRevolutions)`, shader `spiral_packed / 441.0`, test `104`. Post-BUG-011 the product is 324–576, so the 200 cap always fired; the CPU laid ≤ 200 chords while the shader normalized by 441, so the reveal gate maxed at 200/441 ≈ 0.45 and `.stable` popped the remaining ~55 % in one frame (halving the build cycle, firing the completion event early).
