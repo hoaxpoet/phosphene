@@ -430,8 +430,12 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
     private func handleConfigurationChange() {
         logger.info("[LF.1] AVAudioEngine config change — restarting engine")
         // Dispatch off the notification thread so we don't block it while
-        // we tear down + restart. The public `start()` / `stop()` take the
-        // lock, so concurrent calls serialize naturally.
+        // we tear down + restart. `start()` / `stop()` serialize on `lock` for
+        // the provider's OWN state, and the loop re-schedule is hopped off the
+        // AVAudioPlayerNode completion queue (`rescheduleQueue`, BUG-059) — so
+        // this restart can race a MainActor track-advance without the
+        // AVFoundation completion-queue ⇄ engine-lock ABBA. NB the provider
+        // `lock` alone does NOT prevent that deadlock; it isn't in the cycle.
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self else { return }
             self.stop()

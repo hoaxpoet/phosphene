@@ -98,7 +98,7 @@ n/a — not a session defect; the artifact is the process stack `sample` above (
 Written before the fix (per template). When resolved, all of:
 - [x] `concurrentDoubleStart_serializesWithoutDeadlock` passes reliably — **11/11 green (6× isolated + 5× in-suite), ~3.5 s each**, on the same dev Mac mini that wedged on round 0 before the fix. (A fresh `sample` is no longer meaningful — the process no longer hangs; the 6-min-hang → 3.5 s-pass swing on a reliably-wedging machine is the proof the cycle is gone.)
 - [x] No regression in the REVIEW.2 siblings: full `SessionLifecycleChurnTests` suite **5/5 green (all 6 tests), ~17 s each** — `routerChurn_…`, `completionCallbackVsStop_…`, `onFileEnded_queueAdvanceChurn_…`, `transportChurn_…`, `deinitWhilePlaying_…` included.
-- [ ] Full engine `swift test` with no recurrence (closeout evidence — `closeout_evidence.sh`).
+- [x] Full engine `swift test` with no recurrence — closeout 2026-06-17 (`70c7619`): **1512 tests, 0 failures** under full parallel load (the exact condition the original intermittent failure needed); app 388 ✓, swiftlint 0/433, doc gates 10/10 — ALL GREEN.
 - [ ] **Manual (pending Matt):** local-file playback loops with no audible gap/glitch newly introduced by moving the re-schedule off the completion thread; multi-file **Next** still advances; an output-device swap mid local-file playback no longer hangs (intersects G1 / BUG-056).
 
 **Manual validation required:** Yes — session-lifecycle + playback-loop behavior change. Needs a live local-file session; the worktree change must reach the `main` build first (or Matt builds the worktree) before the live test.
