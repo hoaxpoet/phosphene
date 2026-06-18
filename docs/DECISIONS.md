@@ -82,6 +82,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-166 | Accepted | Photosensitivity runtime clamp NOT pursued (amends D-164) — the certification gate is the enforcement mechanism; pipeline has no single clamp chokepoint (8 present paths), all shipped presets ≤ 1 flash/s; `RayMarchPipeline:94` OR-flag slot reserved |
 | D-167 | Accepted | Thermal + Low Power Mode feed a quality floor into the D-057 budget governor (CLEAN.4.6): applied level = `max(timing, thermalFloor)` pre-empts the GPU's own throttle; FBM stays `ProcessInfo`-free; serious→no-bloom, critical→step-0.75, LPM→≥no-SSGI; ultra/recording still exempt |
 | D-168 | Accepted | ARCHITECTURE Module Map completeness gated by DocIntegrityTests (CLEAN.7.3) — backfilled 62 undocumented files incl. 4 certified presets; D-161 "violated twice → mechanize" applied |
+| D-169 | Accepted | Defer public-release-readiness work (extended a11y settings 7.7, cold-install resilience 7.8) until there's a public build; daily single-user dev use is covered by the existing a11y/robustness basics |
 
 ---
 
@@ -2019,3 +2020,15 @@ The Module Map (`ARCHITECTURE.md`) is the per-file behavioural reference read be
 **Ongoing obligation.** Every new source file under those two roots now needs a one-line Module-Map entry (or a mention in its module's group entry) or the suite reds — folded into the closeout doc-update step the Increment Completion Protocol already requires.
 
 **References.** Extends [D-161] (the ratchet) + [D-162] (DocIntegrityTests as the doc-gate home). CLEAN.7.3 / audit T14 (`CODE_AUDIT_2026-06-13.md`). `DocIntegrityTests.swift`, `ARCHITECTURE.md §Module Map`.
+
+## D-169: Defer public-release-readiness work (extended a11y settings, cold-install resilience) until there is a public build
+
+**Status:** Accepted (2026-06-18)
+
+CLEAN.7.7 (live Reduce-Transparency + Increase-Contrast) and CLEAN.7.8 (cold-install / resource-bootstrap resilience) are **deferred — not built — until Phosphene has a public build.** Both are public-release-readiness features: HIG accessibility-setting support beyond the basics (7.7), and degraded-but-honest first-run for fresh installs (7.8). Phosphene has no public build and no users beyond the developer; the accessibility + robustness BASICS that serve daily single-user dev use are already in place — Reduce Motion is wired + live (`AccessibilityState`, observing `accessibilityDisplayOptionsDidChangeNotification`), VoiceOver labels exist (`AccessibilityLabels`), and the photosensitivity notice + flash-safety certification (G9) are done. Wiring Reduce-Transparency / Increase-Contrast + cold-install resilience for users who do not yet exist is YAGNI.
+
+**Trigger to revisit:** a public-build / release-readiness pass, OR the developer personally running macOS with those accessibility settings enabled (then it degrades a real daily experience and is worth doing).
+
+**Scope.** This defers the audit *gaps* GAP-15 (7.7) and GAP-12 (7.8). It does NOT remove or weaken any shipped accessibility behavior — Reduce Motion's current art + chrome calming stays as-is. Establishes the standing principle: **don't build public-release-readiness features for users who don't exist yet; the bar for daily single-user dev use is the existing basics.**
+
+**References.** CLEAN.7.7 / GAP-15, CLEAN.7.8 / GAP-12 (`CODE_AUDIT_2026-06-13.md`). Matt's call, 2026-06-18.

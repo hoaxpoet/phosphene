@@ -10,6 +10,12 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-18-212623] CLEAN.7.7 + 7.8 DEFERRED (D-169) — Phase 7 closed
+
+[CLEAN.7.7 / 7.8 / D-169] Matt's call after questioning whether these are requirements. They aren't — for Phosphene's current stage. Both are **public-release-readiness** work: 7.7 wires the remaining HIG accessibility settings (Reduce-Transparency, Increase-Contrast — Reduce-Motion is already wired + live), 7.8 adds degraded-but-honest cold-install / first-run resilience. Phosphene has no public build and no users beyond the developer, and the accessibility + robustness BASICS that serve daily single-user dev use are already in place (Reduce-Motion live via `AccessibilityState`, VoiceOver labels via `AccessibilityLabels`, the photosensitivity notice + flash-safety certification G9). Building reduce-transparency/contrast wiring + fresh-install resilience for users who don't exist yet is YAGNI. Deferred until a public-release-readiness pass (or the dev personally running those macOS settings). Recorded as D-169; audit rows GAP-15/GAP-12 marked deferred. No shipped behavior changed (Reduce Motion's existing art+chrome calming stays).
+
+**Phase 7 is now closed:** 7.1 (test-isolation reconcile), 7.2a (fast test tier), 7.2b (fixture builders + reconcile), 7.3 (Module Map gate, D-168), 7.4, 7.5 (doc-overlap curation + CLAUDE.md demote), 7.6 done; 7.7/7.8 deferred per D-169. Doc-only change.
+
 ## [dev-2026-06-18-211055] CLEAN.7.5 — doc-overlap curation + CLAUDE.md token-budget demote
 
 [CLEAN.7.5] Doc-curation. Three parts, one with real teeth and two that the 2026-06-13 audit overstated.
