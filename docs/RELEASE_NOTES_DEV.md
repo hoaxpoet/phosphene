@@ -10,6 +10,10 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-18-203530] CLEAN.7.1 — test-isolation reconcile (BUG-048/049 already resolved)
+
+[CLEAN.7.1] Status-reconcile, no code change. BUG-048 (app-scheme sandbox test-runner) and BUG-049 (Skein colour-freeze session-fragility) were both resolved 2026-06-11 with regression gates (`SchemeTestActionRegressionTests`; SkeinCanvasHold's fixture-generated armed path). Confirmed both gates green in this session's closeouts and flipped the Phase 7 audit row to ✅. No residual test-infra — each shipped with its gate (as the audit anticipated).
+
 ## [dev-2026-06-18-202731] CLEAN.7.2b (foundation) — shared FeatureVector/StemFeatures fixture builders
 
 [CLEAN.7.2b] The dedup half of the test-suite work. `FeatureVector` is inline-constructed at ~119 sites across 41 test files and `StemFeatures` at ~55 across 22 — both have an `init` that takes the core fields and zeroes the deviation primitives, so tests construct-then-mutate (`var fv = FeatureVector(bass: 0.5); fv.bassDev = 0.4`).
