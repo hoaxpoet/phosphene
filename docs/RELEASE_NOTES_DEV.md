@@ -10,6 +10,14 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-18-204529] CLEAN.7.2b — fixture-builder migration wave 1 + dedup-scope finding
+
+[CLEAN.7.2b] First migration wave for the FeatureFixtures builders. Migrated `SpectralHistoryBufferTests`' one-shot construct-then-mutate sites to `makeFeatureVector(...)` — `test_singleAppend` collapses 5 field mutations into one call. Suite green (17 tests).
+
+The wave surfaced a **scope-correcting finding**: the raw construct-then-mutate count overstated the dedup opportunity. Many "mutation" sites are a `var fv` reused across a loop or successive `append`s (the builder gives nothing there), and several high-count files (e.g. `MurmurationStemRoutingTests`) use the `init` only with no post-mutation, so they're already minimal. The genuine win is **one-shot multi-field constructions** + the standard for all NEW tests. Conclusion: the remaining migration is best done **opportunistically** (migrate clean one-shot sites when a file is touched), not as a dedicated ~40-file sweep — which would be churn for little gain. The durable win remains the builder foundation. The substantive 7.2b remainder is the new frame-budget/allocation + BUG-038/041 coupling regression tests + per-test tags.
+
+Migration note (in `FeatureFixtures.swift`): builder params are ordered core → deviation → beat/bar → pulse; Swift requires call-site args in declaration order (e.g. `bassDev:` before `beatPhase01:`).
+
 ## [dev-2026-06-18-203530] CLEAN.7.1 — test-isolation reconcile (BUG-048/049 already resolved)
 
 [CLEAN.7.1] Status-reconcile, no code change. BUG-048 (app-scheme sandbox test-runner) and BUG-049 (Skein colour-freeze session-fragility) were both resolved 2026-06-11 with regression gates (`SchemeTestActionRegressionTests`; SkeinCanvasHold's fixture-generated armed path). Confirmed both gates green in this session's closeouts and flipped the Phase 7 audit row to ✅. No residual test-infra — each shipped with its gate (as the audit anticipated).

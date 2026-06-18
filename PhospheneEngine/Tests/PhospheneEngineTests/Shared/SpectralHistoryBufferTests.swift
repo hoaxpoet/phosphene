@@ -43,14 +43,9 @@ private func readFloat(_ buf: MTLBuffer, at index: Int) -> Float {
     let device   = try makeDevice()
     let history  = SpectralHistoryBuffer(device: device)
 
-    var fv    = FeatureVector.zero
-    fv.valence     = 0.75
-    fv.arousal     = -0.5
-    fv.beatPhase01 = 0.42
-    fv.bassDev     = 0.31
-
-    var stems = StemFeatures.zero
-    fv.barPhase01 = 0.25
+    let fv = FeatureFixtures.makeFeatureVector(
+        valence: 0.75, arousal: -0.5, bassDev: 0.31, beatPhase01: 0.42, barPhase01: 0.25)
+    let stems = StemFeatures.zero
 
     history.append(features: fv, stems: stems)
 
@@ -175,9 +170,8 @@ private func readFloat(_ buf: MTLBuffer, at index: Int) -> Float {
 @Test func test_bassDevPassthrough_noRescaling() throws {
     let device  = try makeDevice()
     let history = SpectralHistoryBuffer(device: device)
-    var fv      = FeatureVector.zero
-    fv.bassDev  = 0.42
-    var stems   = StemFeatures.zero
+    let fv = FeatureFixtures.makeFeatureVector(bassDev: 0.42)
+    let stems = StemFeatures.zero
 
     history.append(features: fv, stems: stems)
 
