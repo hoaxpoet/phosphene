@@ -10,6 +10,17 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-18-214251] BUG-039 RESOLVED + BUG-053 audit-row reconcile — Phase 3 fully closed
+
+Matt confirmed CLEAN.3.6 and 3.7 manually.
+
+- **BUG-039 / CLEAN.3.6** (recorder silently stops appending video while "running") — **genuinely open** (Status was "awaiting live multi-session confirmation"). Matt's live multi-session check 2026-06-18 passed (the silent-stop signature no longer occurs; the running-vs-actually-writing invariant + segment-roll recovery hold). **→ RESOLVED.** Flipped across KNOWN_ISSUES (entry + Open Index), the audit 3.6 row, and ENGINEERING_PLAN.
+- **BUG-053 / CLEAN.3.7-fix** (live MIR was frozen at 48 kHz) — was **already RESOLVED + validated by Matt on 2026-06-16** (its KNOWN_ISSUES entry + the EP CLEAN.3.7-fix bullet both said so: session `20-22-12Z`, live MIR adopted 44100 Hz). But the **CODE_AUDIT 3.7-fix row had drifted stale** ("pending Matt's manual key check") and was never back-edited — so when asked "what remains from Phase 3" I wrongly reported 3.7 as pending (read the stale audit row, not the authoritative bug entry — the same G1-class drift, same session). Audit row reconciled to match.
+
+**Process note:** this is the second stale-audit-row miss in one session (after G1). The bug ENTRIES were correct both times; the AUDIT ROWS and older EP narrative bullets had drifted, and I quoted those. Standing correction recorded in memory ([[feedback_status_from_authoritative_surface]]): assert status from the KNOWN_ISSUES entry / authoritative row, never a narrative bullet.
+
+**Phase 3 is now fully closed** — 3.1–3.8 all done and validated; no remaining manual gates. Doc-only change.
+
 ## [dev-2026-06-18-212623] CLEAN.7.7 + 7.8 DEFERRED (D-169) — Phase 7 closed
 
 [CLEAN.7.7 / 7.8 / D-169] Matt's call after questioning whether these are requirements. They aren't — for Phosphene's current stage. Both are **public-release-readiness** work: 7.7 wires the remaining HIG accessibility settings (Reduce-Transparency, Increase-Contrast — Reduce-Motion is already wired + live), 7.8 adds degraded-but-honest cold-install / first-run resilience. Phosphene has no public build and no users beyond the developer, and the accessibility + robustness BASICS that serve daily single-user dev use are already in place (Reduce-Motion live via `AccessibilityState`, VoiceOver labels via `AccessibilityLabels`, the photosensitivity notice + flash-safety certification G9). Building reduce-transparency/contrast wiring + fresh-install resilience for users who don't exist yet is YAGNI. Deferred until a public-release-readiness pass (or the dev personally running those macOS settings). Recorded as D-169; audit rows GAP-15/GAP-12 marked deferred. No shipped behavior changed (Reduce Motion's existing art+chrome calming stays).
