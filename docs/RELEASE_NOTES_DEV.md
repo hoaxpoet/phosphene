@@ -10,6 +10,16 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-18-164609] CLEAN.4.3 — renderer texture-lifecycle correctness (aliasing / resize / NaN)
+
+Three latent renderer-correctness fixes from the Phase-4 backlog (audit T7). All output-preserving — the PresetRegression goldens are byte-identical, so despite the `[M7]` tag this needed no golden regen and no visual review (same outcome as CLEAN.4.4's "latent, not live").
+
+- **sceneTexture aliasing + leak (`PostProcessChain`)** — `runBloomAndComposite` fed the ray-march lit texture into the bloom/composite passes by assigning `self.sceneTexture = externalSceneTexture`, but never restored it. A later standalone `.postProcess` preset's `runScenePass` then rendered into the ray-march texture (wrong target), and the chain retained that full-res rgba16f texture after detach. Now the member is saved and `defer`-restored: the passes still read the external texture during the call (identical output), but `sceneTexture` returns to the chain's own texture afterward.
+- **resize stale-size (`RenderPipeline.mtkView(drawableSizeWillChange:)`)** — a feedback-texture allocation failure `return`ed out of the whole handler, leaving the post-process, ray-march, and mv_warp textures stranded at the previous size. Now it drops the feedback pair (feedback rendering already guards on empty) and falls through so the other subsystems still resize.
+- **ray-march /height NaN (`RenderPipeline+RayMarch`)** — the aspect-ratio uniform guarded `width > 0` but divided by `height`, producing +inf/NaN on a zero-height drawable. Guard the divisor (`height > 0`) instead; identical for any height > 0.
+
+Verification: PresetRegressionTests byte-identical across 20 presets × 3 fixtures (the output-preserving gate); a new `test_runBloomAndComposite_restoresOwnSceneTexture` asserts the member is restored to the chain's own texture, not the external one (PostProcessChainTests 7/7 — it fails pre-fix); DrawableResizeRegression 6/6, RayMarchPipeline + PostProcessBloomGate green. Build clean, swiftlint 0 (PostProcessChain now sits at the 400-line `file_length` ceiling — next addition needs a trim or split). Out of scope: the DynamicTextOverlay in-flight-frame race (unfiled, not confirmed).
+
 ## [dev-2026-06-18-161943] CLEAN.4.2 — remove redundant DSP compute (autocorrelation / drums FFT / mono STFT)
 
 Three output-preserving single-compute dedups from the Phase-4 backlog (audit T6 / `CODE_AUDIT_2026-06-09` §Performance):
