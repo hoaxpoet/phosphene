@@ -18,7 +18,9 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 - FFT→MIR path — 500 warmup + 2.5K soak frames.
 - StemAnalyzer path — 200 warmup + 1.2K soak frames (heavier per frame — 4 FFTs + YIN pitch tracking — so a smaller soak).
 
-Both pass green: growth is well under budget, i.e. no leak. The gate is frame-count-based (not wall-clock) so it's deterministic in `swift test` and the closeout, ~5.6 s wall-clock. A real per-frame leak (whole objects accumulating — KBs/frame) shows as tens of MB over the soak, while allocator noise is a few MB, so the 25 MB budget catches leaks without flaking.
+Both pass green: growth is well under budget, i.e. no leak. A real per-frame leak (whole objects accumulating — KBs/frame) shows as tens of MB over the soak, while allocator noise is a few MB, so the 25 MB budget catches leaks without flaking.
+
+`phys_footprint` is **process-wide**, so the gate is only meaningful run **isolated**: `SOAK_TESTS=1 swift test --filter MemorySoakGate` (~7.7 s, `.serialized`). Under the normal parallel `swift test` / closeout it **early-returns** (skips) — a full-suite run swamps the measurement with other suites' GPU/stem allocations (an initial always-run version recorded a spurious +625 MB). This is the same reason the existing `SoakTestHarness` 5-minute check is `SOAK_TESTS`-gated and "observability only".
 
 Division of labour: the automated gate catches *gross* leaks (the common regression). Slow sub-KB/frame creep and the absolute steady-state + 2-hour growth curve stay the manual `SoakRunner` diagnostic (`Scripts/run_soak_test.sh`) — a device-time measurement that can't run in CI. swiftlint 0.
 
