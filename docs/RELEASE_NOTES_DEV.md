@@ -10,6 +10,22 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-18-175030] CLEAN.4.5 — NaN/Inf robustness sweep on the audio→GPU path
+
+[GAP-3 / G3] Hardens the two GPU-bound audio structs — FeatureVector (fragment buffer 0) and StemFeatures (buffer 3) — against non-finite values. Both are all-Float, so the tests scan every field via `withUnsafeBytes`.
+
+The sweep split into a latent half and a live half:
+- **Latent (the literal done-when):** silence, DC, and cold-start frames already produce no NaN. The spectral features short-circuit at zero sums, and `StemAnalyzer` seeds its fast/slow RMS EMAs at `1e-8` rather than 0, so the 0/0 cases never arise. Confirmed by the new tests — no code change needed there.
+- **Live (the real gap):** a NaN or ±Inf in the *input samples* — a corrupted tap at the audio hardware/driver trust boundary — propagated straight through the FFT into both structs every frame (energy bands, centroid, deviation primitives, attack ratios). The epsilon floors can't catch this (`NaN / 1e-8 = NaN`). A full-frame GPU NaN reads as a black/garbage frame, so the blast radius is high even though the trigger is rare.
+
+Fix — sanitize at the FFT entry points (`isFinite ? value : 0`), where audio first enters the GPU-bound pipeline:
+- `FFTProcessor.process(samples:)` and `processStereo(interleaved:)` — folded into the existing copy/mix loops (zero extra alloc, preserving the CLEAN.4.1 allocation-free path).
+- `StemAnalyzer.computeMagnitudes` — an in-place scrub of the copied window region (it uses a bulk pointer copy).
+
+Output-preserving for finite audio (the guards are pass-through): PresetRegression goldens byte-identical (20 presets × 3 fixtures), no M7. Verification: two new integration tests run real degenerate *audio samples* (silence / DC / cold-start / NaN-input; silent / DC / NaN stems) through the actual FFT→MIR and StemAnalyzer paths (FA #27 — not hand-authored feature vectors) and assert every FeatureVector / StemFeatures field stays finite on every frame; both fail pre-fix on the NaN-input case. swiftlint 0.
+
+Out of scope: `GridOnsetCalibrator.computeMagnitudes` is a third FFT entry, but it runs at preparation time on clean preview audio and produces a one-time CPU calibration offset (not a per-frame GPU uniform) — a follow-up if its path ever needs hardening.
+
 ## [dev-2026-06-18-164609] CLEAN.4.3 — renderer texture-lifecycle correctness (aliasing / resize / NaN)
 
 Three latent renderer-correctness fixes from the Phase-4 backlog (audit T7). All output-preserving — the PresetRegression goldens are byte-identical, so despite the `[M7]` tag this needed no golden regen and no visual review (same outcome as CLEAN.4.4's "latent, not live").
