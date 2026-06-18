@@ -155,6 +155,16 @@ public final class FrameBudgetManager {
     /// Current quality level. Read from the main actor, where `applyQualityLevel` runs.
     public private(set) var currentLevel: QualityLevel = .full
 
+    /// Minimum quality level imposed by thermal pressure / Low Power Mode (CLEAN.4.6 / D-167).
+    /// Independent of the timing hysteresis: the applied level is `max(currentLevel,
+    /// thermalFloor)`, so thermal pressure pre-empts the timing-based downshift and clearing
+    /// it restores quality immediately (subject to timing). `.full` = no floor.
+    public private(set) var thermalFloor: QualityLevel = .full
+
+    /// The level actually applied to subsystems: the worse (higher rawValue) of the
+    /// timing-decided `currentLevel` and the thermal/LPM `thermalFloor`.
+    public var appliedLevel: QualityLevel { max(currentLevel, thermalFloor) }
+
     private var consecutiveOverruns: Int = 0
     private var consecutiveRecovered: Int = 0
 
@@ -239,7 +249,41 @@ public final class FrameBudgetManager {
             consecutiveRecovered = 0
         }
 
-        return currentLevel
+        return appliedLevel
+    }
+
+    // MARK: - Thermal / Low Power Floor (CLEAN.4.6 / D-167)
+
+    /// Set the thermal/LPM quality floor. Called by the thermal/LPM listener on
+    /// `thermalStateDidChange` / power-state change. The new floor takes effect on the
+    /// next `observe(_:)` — under active render load, the very next frame, so a rising
+    /// thermal state pre-empts the GPU's own thermal throttle. No-op if unchanged.
+    public func setThermalFloor(_ floor: QualityLevel) {
+        guard floor != thermalFloor else { return }
+        let was = thermalFloor
+        thermalFloor = floor
+        logger.info("quality floor: \(was.displayName, privacy: .public) → \(floor.displayName, privacy: .public) (thermal/LPM)")
+    }
+
+    /// Map a thermal state + Low Power Mode flag to a minimum quality floor. Pure — the
+    /// listener reads `ProcessInfo` and feeds the values here, keeping this controller
+    /// `ProcessInfo`-free. Tunable policy (D-167): serious → no-bloom, critical →
+    /// step-0.75; Low Power Mode imposes at least no-SSGI.
+    public static func qualityFloor(
+        thermalState: ProcessInfo.ThermalState,
+        lowPowerMode: Bool
+    ) -> QualityLevel {
+        var floor: QualityLevel
+        switch thermalState {
+        case .nominal, .fair: floor = .full
+        case .serious:        floor = .noBloom
+        case .critical:       floor = .reducedRayMarch
+        @unknown default:     floor = .noBloom
+        }
+        if lowPowerMode {
+            floor = max(floor, .noSSGI)
+        }
+        return floor
     }
 
     // MARK: - Reset

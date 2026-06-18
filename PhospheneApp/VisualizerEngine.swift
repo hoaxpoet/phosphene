@@ -834,6 +834,14 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         let isUltra = qualityCeilingRaw == "ultra"
         self.deviceTier = tier
         pipe.frameBudgetManager = FrameBudgetManager(deviceTier: tier, qualityCeilingIsUltra: isUltra)
+        // CLEAN.4.6: seed the quality floor in case the app launches already under thermal
+        // pressure or Low Power Mode (the observer only fires on subsequent changes).
+        pipe.frameBudgetManager?.setThermalFloor(
+            FrameBudgetManager.qualityFloor(
+                thermalState: ProcessInfo.processInfo.thermalState,
+                lowPowerMode: ProcessInfo.processInfo.isLowPowerModeEnabled
+            )
+        )
         self.mlDispatchScheduler = MLDispatchScheduler(deviceTier: tier, qualityCeilingIsUltra: isUltra)
 
         setupCaptureHook(pipe: pipe, ctx: ctx)
@@ -972,6 +980,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             }
 
         setupTerminationObserver()
+        setupThermalGovernorObserver()
 
         BUG012Probe.recordVisualizerEngineInit()
     }

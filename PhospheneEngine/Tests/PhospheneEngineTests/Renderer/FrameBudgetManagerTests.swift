@@ -226,4 +226,48 @@ struct FrameBudgetManagerTests {
         _ = observe(mgr, cpuMs: 18.0)
         #expect(mgr.currentLevel == .full)
     }
+
+    // MARK: - Thermal / Low Power floor (CLEAN.4.6 / D-167)
+
+    @Test func thermalFloor_clampsAppliedLevel_butNotTimingState() {
+        let mgr = makeManager()
+        _ = observe(mgr, cpuMs: 5.0)                 // fast frame → timing wants .full
+        #expect(mgr.currentLevel == .full)
+
+        mgr.setThermalFloor(.noBloom)
+        #expect(mgr.appliedLevel == .noBloom)
+        #expect(observe(mgr, cpuMs: 5.0) == .noBloom, "applied level is floored even when timing is fine")
+        #expect(mgr.currentLevel == .full, "thermal floor must not alter the timing-decided level")
+
+        mgr.setThermalFloor(.full)                   // thermal cleared
+        #expect(observe(mgr, cpuMs: 5.0) == .full, "clearing the floor restores full immediately — no recovery wait")
+    }
+
+    @Test func thermalFloor_timingCanStillDownshiftBelowFloor() {
+        let mgr = makeManager(overrunsNeeded: 3)
+        mgr.setThermalFloor(.noSSGI)                 // floor at level 1
+        var level: FrameBudgetManager.QualityLevel = .full
+        for _ in 0..<12 { level = observe(mgr, cpuMs: 30.0) }   // way over the 16 ms budget
+        #expect(level > .noSSGI, "timing must be able to downshift worse than the thermal floor")
+        #expect(mgr.appliedLevel == max(mgr.currentLevel, .noSSGI))
+    }
+
+    @Test func thermalFloor_survivesReset() {
+        let mgr = makeManager()
+        mgr.setThermalFloor(.noBloom)
+        mgr.reset()                                  // preset change
+        #expect(mgr.thermalFloor == .noBloom, "thermal state is preset-independent — reset must not clear the floor")
+        #expect(mgr.appliedLevel == .noBloom)
+    }
+
+    @Test func qualityFloor_mapsThermalStateAndLowPowerMode() {
+        typealias FBM = FrameBudgetManager
+        #expect(FBM.qualityFloor(thermalState: .nominal,  lowPowerMode: false) == .full)
+        #expect(FBM.qualityFloor(thermalState: .fair,     lowPowerMode: false) == .full)
+        #expect(FBM.qualityFloor(thermalState: .serious,  lowPowerMode: false) == .noBloom)
+        #expect(FBM.qualityFloor(thermalState: .critical, lowPowerMode: false) == .reducedRayMarch)
+        // Low Power Mode imposes at least no-SSGI and never weakens a stronger thermal floor.
+        #expect(FBM.qualityFloor(thermalState: .nominal,  lowPowerMode: true) == .noSSGI)
+        #expect(FBM.qualityFloor(thermalState: .critical, lowPowerMode: true) == .reducedRayMarch)
+    }
 }
