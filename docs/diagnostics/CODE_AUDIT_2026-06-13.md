@@ -170,7 +170,7 @@ the code; **status** records what I confirmed.
 
 | # | Gap | Verified status | Rec. severity | Phase |
 |---|-----|-----------------|---------------|-------|
-| G1 | **Audio output-device change mid-session** (AirPods/monitor/DAC) freezes visuals silently | **CONFIRMED** — no `kAudioHardwarePropertyDefaultOutputDevice` listener / route-change handling anywhere | **P1** | P1 |
+| G1 | **Audio output-device change mid-session** (AirPods/monitor/DAC) freezes visuals silently | **CONFIRMED → FIXED + VALIDATED (CLEAN.1.5; Matt manual validation 2026-06-17):** `kAudioHardwarePropertyDefaultOutputDevice` listener → `performReinstall` keeps visuals live across an AirPods/monitor/DAC swap (12/12 swaps clean; the one un-reproduced freeze is the rare BUG-058 P3). Phase-1 device-route-change gate **closed.** | **P1** | P1 |
 | G2 | **Sample-rate contract drift** — tap 48 kHz, `Protocols.swift:111` documents 44.1 kHz resample, resampler only in local-file path | **TRACED (CLEAN.3.7a → BUG-053):** live-tap STEM path resamples correctly (→44.1k); live-tap **MIR/FFT** runs bins at the wrong Nyquist when tap≠48k — the live `MIRPipeline` is frozen at the 48000 default (`VisualizerEngine.swift:740`; `process()` has no rate), so chroma/key shift ~1.5 semitones + bands ~8.8% at 44.1k. Masked at 48k. Fix + doc-reconcile + gate = the BUG-053 fix increment (architectural). | **P2** | P3 |
 | G3 | **DSP NaN/Inf/denormal robustness** on audio→GPU path (silence/DC/0-length) | **CONFIRMED** — no `isNaN`/`isFinite` guards in DSP or Audio | P2 | P4 |
 | G4 | **Thermal throttling & Low Power Mode** unaddressed on fanless 60 fps + MPSGraph load | **CONFIRMED** — zero `thermalState`/`lowPowerMode` references | P2 | P4 |
@@ -212,7 +212,7 @@ IDs are proposed (`CLEAN.<phase>.<n>`); on approval they map into ENGINEERING_PL
 | CLEAN.1.2 | BUG-031 fix: serialize StemSeparator across live+prep (lock full input→predict→output, or per-path instance; return-by-value) | race regression test red-pre/green-post | June |
 | CLEAN.1.3 | BUG-032 fix: cancel prep in `endSession`; gate prep by session generation; stop `resumeFailedNetworkTracks` second loop; fix source-mutation-before-guard | lifecycle + failure-path tests | June |
 | CLEAN.1.4 | BUG-033 fix: decouple/throttle dashboard snapshot off per-frame + skip when hidden; `[weak self]` for assign | ViewModel deinit/retain tests; no 60 Hz tree invalidation | June |
-| CLEAN.1.5 | `[GAP-1]` Audio output-device route-change handling | device-change listener → tap reinstall; manual AirPods/monitor swap keeps visuals live | June |
+| CLEAN.1.5 ✅ | `[GAP-1]` Audio output-device route-change handling | device-change listener → tap reinstall; manual AirPods/monitor swap keeps visuals live | **DONE + VALIDATED 2026-06-17** (Matt manual: 12/12 swaps keep visuals live; rare BUG-058 P3 the only residual). Phase-1 fully complete. |
 | CLEAN.1.6 | `[GAP-7]` ThreadSanitizer scheme + concurrency stress harness (overlapping live+prep, rapid start/end churn) | TSan-clean under stress; validates 1.2–1.3 | June |
 | CLEAN.1.7 | `[GAP-8]` E2E session-lifecycle integration test | drives connect→prepare→play→track-change→end→restart; would catch the orphan class | June |
 
