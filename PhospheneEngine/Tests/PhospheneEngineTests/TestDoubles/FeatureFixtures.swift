@@ -16,6 +16,11 @@
 // ponytail: only the COMMONLY-set fields are params. The rare ones (FeatureVector pads;
 // StemFeatures rich metadata / pitch / aurora) are still set post-construction at the few
 // sites that need them — adding 40 more never-used params would be the bloat this replaces.
+//
+// Param order = core → deviation primitives → beat/bar → pulse (Swift requires call-site
+// args in declaration order), so a call setting both passes e.g. `bassDev:` before
+// `beatPhase01:`. Migration value is real only for ONE-SHOT construct-then-mutate sites;
+// a `var fv` reused/mutated across a loop or successive appends gains nothing (CLEAN.7.2b).
 
 import Foundation
 @testable import Shared
