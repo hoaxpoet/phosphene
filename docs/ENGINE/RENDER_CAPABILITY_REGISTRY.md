@@ -156,7 +156,7 @@ Entries should cite source files. When adding a capability, link to the files th
 | ML dispatch gating (defer stem separation when frames are over budget) | Supported | `MLDispatchScheduler.swift` (Increment 6.3, D-059) | Tier-aware; max defer 2 s / 1.5 s. |
 | Memory reporter (`phys_footprint`, matches Activity Monitor) | Supported | `Sources/Diagnostics/MemoryReporter.swift` (Increment 7.1, D-060) | |
 | Frame timing histogram + rolling buffer | Supported | `Sources/Diagnostics/FrameTimingReporter.swift` | 100-bucket 0.5 ms histogram + 1000-frame rolling window. |
-| Soak test harness (headless, JSON+Markdown report) | Supported | `Sources/Diagnostics/SoakTestHarness.swift`; `SoakRunner` CLI | `Scripts/run_soak_test.sh` for 2-hour runs. |
+| Soak test harness (headless JSON+Markdown report) + peak-RSS leak regression gate | Supported | `Sources/Diagnostics/SoakTestHarness.swift` + `SoakRunner` CLI (2 h runs); `MemorySoakGateTests` (CLEAN.4.7 — frame-count `phys_footprint` growth gate) | `Scripts/run_soak_test.sh` for the manual 2-hour growth curve. `MemorySoakGateTests` (FFT→MIR + StemAnalyzer soaks, < 25 MB growth after warmup) runs every `swift test`/closeout and catches gross leaks. |
 | Display hot-plug / capture-mode switch resilience | Supported | `DisplayChangeCoordinator`, `CaptureModeSwitchCoordinator`, `NetworkRecoveryCoordinator` (Increment 7.2, D-061) | |
 | Per-preset complexity cost gate (per device tier) | Supported | `ComplexityCost`; `DefaultPresetScorer` exclusion (Increment 4.0) | |
 | Certification rubric ladder (mandatory / expected / preferred) | Supported | V.6 `FidelityRubric` + `PresetDescriptor.certified` | Uncertified presets excluded from Orchestrator by default (D-067). |
