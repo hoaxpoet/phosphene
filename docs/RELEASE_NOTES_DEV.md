@@ -10,6 +10,10 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-18-223600] CLEAN.5.1 required-check toggle reconciled — gate is ENABLED, not "pending Matt"
+
+Matt asked to "push CLEAN.5.1." Investigated: there's nothing to push — CLEAN.5.1's CI is already on `main` (workflow `4256743`/`dc46154`/`86c6532`, 06-15) and the fast-gate runs on every push (the BUG-037 reconcile commit `8b85a20` shows a `success` run). The one part the docs still called **"pending Matt"** — the GitHub branch-protection required-check toggle — is in fact **already ENABLED**: `repos/hoaxpoet/phosphene/branches/main/protection/required_status_checks` returns `{strict: true, contexts: ["fast-gate"]}` (which is why the earlier direct push reported "Bypassed rule violations … Required status check 'fast-gate' is expected"). So CLEAN.5.1's last open item is closed in reality but stale in the docs — the same drift class as today's sweep, just with the live GitHub branch-protection API as the authoritative surface. Reconciled the audit CLEAN.5.1 row + the EP CLEAN.5.1/5.2/5.3/5.6/5.7 bullet from "toggle pending Matt" → "toggle ENABLED, CLEAN.5.1 fully complete." Doc-only.
+
 ## [dev-2026-06-18-222834] BUG-037 Status-line reconciled — Matt confirmed resolved
 
 Follow-up to the flag raised in `[dev-2026-06-18-221436]`. Matt confirmed BUG-037 (Arachne spiral chord-count pop) is **tested and resolved**. KNOWN_ISSUES §BUG-037 had drifted internally — the **Open-Index** row already read "✅ RESOLVED 2026-06-18" and the entry's own M7 narrative recorded Matt's live validation (session `2026-06-18T14-30-52Z`, "full web to completion, no pop"), but the full-entry **`Status:` line** still read "Resolved pending Matt's M7 visual cert." Flipped that one stale line to **✅ RESOLVED 2026-06-18**, so the entry is now internally consistent and matches the audit CLEAN.3.4 row + EP CLEAN.3.4 bullet. Audit banner stamp updated from "flagged for Matt" to "reconciled." Doc-only; no code or bug-resolution change (the resolution was Matt's, already recorded).
