@@ -10,6 +10,16 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-18-161943] CLEAN.4.2 — remove redundant DSP compute (autocorrelation / drums FFT / mono STFT)
+
+Three output-preserving single-compute dedups from the Phase-4 backlog (audit T6 / `CODE_AUDIT_2026-06-09` §Performance):
+
+- **Autocorrelation (`BeatDetector+Tempo`)** — `estimateTempo` swept the lag range twice: `findBestLag` for the peak and `computeAutocorrelationConfidence` for the mean, recomputing identical `vDSP_dotpr` correlations. Merged into one `autocorrelationSweep` (best-lag + mean in a single pass); offset pointers (`base + lag`) replace the ~85 per-lag `Array(linear[...])` slice copies, dropping the per-call heap allocation to zero. Confidence formula unchanged.
+- **Drums FFT (`StemAnalyzer`)** — `analyze` discarded `analyzeStem`'s drums magnitudes (`_`) then recomputed the identical `computeMagnitudes(from:)`; now reuses the returned mags. One fewer FFT per analysis frame.
+- **Mono STFT (`StemSeparator`)** — for mono input `deinterleave` returns `(audio, audio)`, so `left == right` and the 4096-pt STFT ran twice on identical data. Now reuses the left STFT for the right when `channelCount < 2`. One fewer 431-frame STFT per mono preview separation; stereo unchanged.
+
+Output equivalence is the gate. The merged tempo sweep is numerically identical (same `dotpr` values, same peak, same mean) — 9 `BeatDetector` tempo/onset tests green; the drums/mono mags feed unchanged `StemAnalyzer` assertions; and a new `test_separate_monoReusesStereoStft_outputUnchanged` separates the same signal as mono (ch 1) and stereo-duplicated (ch 2) and asserts every stem sample matches (< 1e-5), with the stereo path as unchanged reference code. Build clean; swiftlint 0 (the 3-tuple return became a small `AutocorrelationSweepResult` struct to satisfy `large_tuple`). Not in scope: NoveltyDetector full-recompute and the SessionPreparer serial-prep prefetch (separate audit items).
+
 ## [dev-2026-06-18-143356] BUG-037 RESOLVED — Arachne pop fixed (Matt live-validated)
 
 Matt re-validated the planner-span fix (session `2026-06-18T14-30-52Z`): **the full web draws continuously to the core, then transitions on the completion event — no pop.** Arachne ran ~43 s (14:31:25 → 14:32:08) and ended on the build's `presetCompletionEvent`, not a section boundary (the live electronic beat density laid the ~441-chord spiral faster than the 118 BPM grid estimate). BUG-037 → **Resolved** — both halves were needed: the chord-count single source of truth (so the reveal *can* reach 1.0) **and** `wait_for_completion_event` spanning sections (so the build is *allowed* to finish before a transition). KNOWN_ISSUES BUG-037 Resolved (commits `d430d64` + `e6a530d`); EP CLEAN.3.4 ✅; CODE_AUDIT Part C ✅.
