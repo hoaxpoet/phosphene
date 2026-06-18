@@ -266,6 +266,42 @@ final class PostProcessChainTests: XCTestCase {
         XCTAssertLessThan(elapsed, 5.0,
             "Full post-process chain took \(String(format: "%.2f", elapsed)) ms at 1080p; must be < 5 ms")
     }
+
+    // MARK: - 7. runBloomAndComposite restores sceneTexture (CLEAN.4.3 aliasing fix)
+
+    /// `runBloomAndComposite` feeds an external (ray-march) texture into the bloom/
+    /// composite passes, but must NOT leave `sceneTexture` aliased to it — otherwise a
+    /// later standalone `.postProcess` preset's `runScenePass` would render into (and the
+    /// chain would retain) the ray-march texture. After the call, `sceneTexture` must be
+    /// the chain's own allocated texture again.
+    func test_runBloomAndComposite_restoresOwnSceneTexture() throws {
+        chain.allocateTextures(width: 32, height: 32)
+        let ownScene = try XCTUnwrap(chain.sceneTexture)
+
+        // A distinct external "ray-march lit" texture and an SDR output target.
+        let extDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba16Float, width: 32, height: 32, mipmapped: false)
+        extDesc.usage = [.renderTarget, .shaderRead]
+        extDesc.storageMode = .shared
+        let external = try XCTUnwrap(context.device.makeTexture(descriptor: extDesc))
+
+        let outDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: context.pixelFormat, width: 32, height: 32, mipmapped: false)
+        outDesc.usage = [.renderTarget, .shaderRead]
+        outDesc.storageMode = .shared
+        let output = try XCTUnwrap(context.device.makeTexture(descriptor: outDesc))
+
+        XCTAssertFalse(ownScene === external, "test setup: external must differ from own")
+
+        try runPasses { commandBuffer in
+            self.chain.runBloomAndComposite(from: external, to: output, commandBuffer: commandBuffer)
+        }
+
+        XCTAssertTrue(chain.sceneTexture === ownScene,
+            "sceneTexture must be restored to the chain's own texture after runBloomAndComposite")
+        XCTAssertFalse(chain.sceneTexture === external,
+            "sceneTexture must NOT remain aliased to the external ray-march texture (CLEAN.4.3)")
+    }
 }
 
 // MARK: - Helpers

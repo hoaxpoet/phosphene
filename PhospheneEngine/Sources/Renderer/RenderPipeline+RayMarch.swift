@@ -112,7 +112,9 @@ extension RenderPipeline {
 
         // Update per-frame uniforms: accumulated audio time, aspect ratio, and step-count multiplier.
         rayMarchState.sceneUniforms.sceneParamsA.x = features.accumulatedAudioTime
-        rayMarchState.sceneUniforms.sceneParamsA.y = width > 0 ? Float(width) / Float(height) : 1.0
+        // CLEAN.4.3: guard the divisor (height), not width — a zero-height drawable
+        // divided to +inf/NaN aspect. Identical for any height > 0.
+        rayMarchState.sceneUniforms.sceneParamsA.y = height > 0 ? Float(width) / Float(height) : 1.0
         // sceneParamsB.z carries the frame-budget step-count multiplier (D-057).
         // Default 1.0 = 128 steps; 0.75 = 96 steps (reducedRayMarch quality level).
         rayMarchState.sceneUniforms.sceneParamsB.z = rayMarchState.stepCountMultiplier

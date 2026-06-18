@@ -247,7 +247,12 @@ public final class PostProcessChain: @unchecked Sendable {
         to outputTexture: MTLTexture,
         commandBuffer: MTLCommandBuffer
     ) {
-        // Treat the external texture as our scene texture for the bloom passes.
+        // CLEAN.4.3: feed the external texture into the bloom/composite passes via
+        // `sceneTexture`, but restore it on exit (the defer covers the guard below too)
+        // — otherwise a later standalone `.postProcess` render() draws into, and leaks,
+        // this ray-march texture (the sceneTexture-aliasing bug).
+        let ownSceneTexture = sceneTexture
+        defer { sceneTexture = ownSceneTexture }
         sceneTexture = externalSceneTexture
 
         ensureAllocated(width: externalSceneTexture.width,
