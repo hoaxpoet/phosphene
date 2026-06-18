@@ -342,4 +342,48 @@ struct DocIntegrityTests {
         #expect(missingRows.isEmpty, "Open entr\(missingRows.count == 1 ? "y" : "ies") \(missingRows) ha\(missingRows.count == 1 ? "s" : "ve") no §Open Index row — update the index table.")
         #expect(staleRows.isEmpty, "§Open Index row(s) \(staleRows) have no matching open entry — update the index table (resolved entries lose their row when they move to §Resolved).")
     }
+
+    // MARK: - Module Map completeness gate (CLEAN.7.3 / D-168)
+    //
+    // The ARCHITECTURE Module Map claims to be a per-file behavioural reference for
+    // every source file. With no enforcement it drifted: the 2026-06-13 audit found 18
+    // undocumented files; by 2026-06-18 it was 62 — including four entire CERTIFIED
+    // presets (Skein, Murmuration, Dragon Bloom, Fata Morgana) and recent infra
+    // (FlashAnalyzer, DefaultOutputDeviceMonitor). An incomplete "read this before
+    // grep-ing" index is worse than none. Per the D-161 ratchet rule 3 (violated twice
+    // → mechanize) this converts to a gate.
+
+    /// Every `.swift` / `.metal` under PhospheneEngine/Sources + PhospheneApp must be
+    /// findable in the Module Map by its filename-minus-extension (a substring match).
+    /// Diagnostic/tooling modules and utility trees are documented as ONE group entry
+    /// that names its files, so a stem match — not a per-file entry line — is the
+    /// contract.
+    ///
+    /// ponytail: substring membership, not entry-line parsing. A short common stem
+    /// ("main", "Audio") can match spuriously, so the gate is permissive — it never
+    /// false-reds an unrelated increment (the BUG-049 class). Its job is catching a
+    /// whole file/subsystem added with NO mention (the FlashAnalyzer / Skein-cluster
+    /// class), which it does. Tighten to entry-line parsing only if spurious passes bite.
+    @Test("ARCHITECTURE Module Map documents every Swift/Metal source file (CLEAN.7.3 / D-168)")
+    func moduleMapCompleteness() throws {
+        guard Self.docsPresent else { print("DocIntegrityTests: repo docs not present — skipping"); return }
+        let arch = Self.read("docs/ARCHITECTURE.md") ?? ""
+        #expect(!arch.isEmpty, "ARCHITECTURE.md unreadable")
+        let mapText = try #require(Self.sectionLines(of: arch, header: "## Module Map"),
+                                   "ARCHITECTURE.md has no ## Module Map section").joined(separator: "\n")
+        let fm = FileManager.default
+        var undocumented: [String] = []
+        for root in ["PhospheneEngine/Sources", "PhospheneApp"] {
+            let base = Self.repoRoot.appendingPathComponent(root)
+            guard let walker = fm.enumerator(at: base, includingPropertiesForKeys: nil) else { continue }
+            for case let url as URL in walker {
+                guard ["swift", "metal"].contains(url.pathExtension) else { continue }
+                let stem = url.deletingPathExtension().lastPathComponent
+                if !mapText.contains(stem) { undocumented.append(url.lastPathComponent) }
+            }
+        }
+        undocumented.sort()
+        let shown = undocumented.prefix(25).joined(separator: ", ")
+        #expect(undocumented.isEmpty, "ARCHITECTURE Module Map omits \(undocumented.count) source file(s) under PhospheneEngine/Sources or PhospheneApp/: \(shown). Add a one-line entry under ## Module Map (or name the file in its module's group entry) — per-file completeness is the map's contract (CLEAN.7.3 / D-168).")
+    }
 }

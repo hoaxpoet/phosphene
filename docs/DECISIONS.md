@@ -81,6 +81,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-165 | Accepted | Silent-tap family: detect don't churn — only rebuild a never-delivered tap; pause-suppressed card; self-healing > manual remediation |
 | D-166 | Accepted | Photosensitivity runtime clamp NOT pursued (amends D-164) — the certification gate is the enforcement mechanism; pipeline has no single clamp chokepoint (8 present paths), all shipped presets ≤ 1 flash/s; `RayMarchPipeline:94` OR-flag slot reserved |
 | D-167 | Accepted | Thermal + Low Power Mode feed a quality floor into the D-057 budget governor (CLEAN.4.6): applied level = `max(timing, thermalFloor)` pre-empts the GPU's own throttle; FBM stays `ProcessInfo`-free; serious→no-bloom, critical→step-0.75, LPM→≥no-SSGI; ultra/recording still exempt |
+| D-168 | Accepted | ARCHITECTURE Module Map completeness gated by DocIntegrityTests (CLEAN.7.3) — backfilled 62 undocumented files incl. 4 certified presets; D-161 "violated twice → mechanize" applied |
 
 ---
 
@@ -2004,3 +2005,17 @@ Wires `ProcessInfo` thermal state + Low Power Mode into the [D-057] frame-budget
 **Scope.** The `QualityCeiling.ultra` recording exemption (D-057(d), `enabled == false`) still bypasses the floor — recording deliberately wants full quality; overriding that under thermal stress is a separate decision (reopen if fanless recording-under-thermal becomes real). The mechanism is unit-tested (the floor clamps the applied level without touching the timing state; timing can still downshift below the floor; the floor survives `reset()`; the mapping is correct). The actual thermal-induced pre-emption needs **device validation under load** — the Mac mini's active cooling rarely throttles, so this matters mainly for fanless deployment.
 
 **References.** Extends [D-057] (the budget governor). Audit G4 / CLEAN.4.6 (`CODE_AUDIT_2026-06-13.md`). `FrameBudgetManager.swift`, `VisualizerEngine+InitHelpers.swift`, `RENDER_CAPABILITY_REGISTRY` (budget-governor row).
+
+## D-168: ARCHITECTURE Module Map completeness is a gated invariant (CLEAN.7.3)
+
+**Status:** Accepted (2026-06-18)
+
+The Module Map (`ARCHITECTURE.md`) is the per-file behavioural reference read before grep-ing the codebase. Its "every file" claim was unenforced and drifted: the 2026-06-13 audit (T14) found 18 undocumented files; by 2026-06-18 it was **62** — including four entire CERTIFIED presets (Skein, Murmuration, Dragon Bloom, Fata Morgana) and recent infra (FlashAnalyzer, DefaultOutputDeviceMonitor, ConcurrencyAuditProbe, the streaming-artwork cluster). An incomplete "read this before grep-ing" index is worse than none — it reads as authoritative while silently omitting whole subsystems.
+
+**Decision (Matt, via the CLEAN.7.3 scoping question).** Backfill all 62 entries AND mechanize completeness with a gate — rather than a one-time backfill (band-aid; would re-drift) or folding it into CLEAN.7.5. This is the [D-161] ratchet rule 3 ("violated twice → mechanize") applied: the prose contract failed at least twice, so it converts to a test.
+
+**Mechanism.** `DocIntegrityTests.moduleMapCompleteness` walks every `.swift` / `.metal` under `PhospheneEngine/Sources` + `PhospheneApp/` and reds if a file's name-minus-extension is not a substring of the `## Module Map` section. Diagnostic/tooling modules and utility trees are documented as ONE group entry that NAMES its files (the established V.1-noise-tree convention), so a group entry satisfies the gate for all its files. **Accepted ceiling:** substring membership, not entry-line parsing — a short common stem (`main`, `Audio`) can match spuriously, so the gate is permissive (it never false-reds an unrelated increment — the BUG-049 lesson) and targets the real failure mode: a whole file/subsystem added with no mention. Tighten only if spurious passes ever bite.
+
+**Ongoing obligation.** Every new source file under those two roots now needs a one-line Module-Map entry (or a mention in its module's group entry) or the suite reds — folded into the closeout doc-update step the Increment Completion Protocol already requires.
+
+**References.** Extends [D-161] (the ratchet) + [D-162] (DocIntegrityTests as the doc-gate home). CLEAN.7.3 / audit T14 (`CODE_AUDIT_2026-06-13.md`). `DocIntegrityTests.swift`, `ARCHITECTURE.md §Module Map`.
