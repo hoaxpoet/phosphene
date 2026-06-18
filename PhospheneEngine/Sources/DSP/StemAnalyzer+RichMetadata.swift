@@ -130,6 +130,11 @@ extension StemAnalyzer {
                     from: srcBase.advanced(by: offset),
                     count: available
                 )
+                // CLEAN.4.5: sanitize the copied region — a NaN/Inf stem sample would
+                // otherwise propagate through the FFT into the GPU-bound StemFeatures.
+                for i in copyStart..<(copyStart + available) where !dst[i].isFinite {
+                    dst[i] = 0
+                }
             }
         }
 

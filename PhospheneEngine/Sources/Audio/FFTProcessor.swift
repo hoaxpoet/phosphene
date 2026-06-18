@@ -127,7 +127,10 @@ public final class FFTProcessor: FFTProcessing, @unchecked Sendable {
 
             samples.withUnsafeBufferPointer { src in
                 for i in 0..<sampleCount {
-                    dst[i] = src[sourceOffset + i]
+                    // CLEAN.4.5: sanitize the tap trust boundary — a NaN/Inf input sample
+                    // otherwise propagates through the FFT into every GPU-bound feature.
+                    let sample = src[sourceOffset + i]
+                    dst[i] = sample.isFinite ? sample : 0
                 }
             }
         }
@@ -228,7 +231,9 @@ public final class FFTProcessor: FFTProcessing, @unchecked Sendable {
             for i in 0..<validFrames {
                 let left = samples[(frameOffset + i) * 2]
                 let right = samples[(frameOffset + i) * 2 + 1]
-                dst[i] = (left + right) * 0.5
+                // CLEAN.4.5: sanitize the tap trust boundary (see process(samples:)).
+                let mono = (left + right) * 0.5
+                dst[i] = mono.isFinite ? mono : 0
             }
         }
 
