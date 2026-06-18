@@ -10,6 +10,22 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-18-221436] CODE_AUDIT status-row reconcile sweep — Phase 0/1/2 tables + Part-B gaps vs authoritative entries
+
+Doc-only. Full cross-check of every status claim in `docs/diagnostics/CODE_AUDIT_2026-06-13.md` against the authoritative `KNOWN_ISSUES.md` bug entries + `ENGINEERING_PLAN.md` §Phase CLEAN (the third sweep this week after G1 `f24650a` and BUG-039/053 `4d20103`). Same drift class both prior times: the hand-maintained audit summary tables lag the bug entries; a validation updates the entry but not always the row. This pass swept the *whole* doc rather than one row at a time.
+
+**Reconciled (audit row was-X → authoritative-said-Y → fixed):**
+
+- **Phase 0 table, CLEAN.0.1–0.5** — all unmarked (Timing col "June", no ✅) → EP "**CLEAN.0 baseline reconcile ✅ (2026-06-13)** … CLEAN.0 complete" (BUG-030 integrated `ba4e1cae`, 22 worktrees pruned, closeout ALL GREEN) → marked ✅ DONE, each citing EP §CLEAN.0.
+- **Phase 1 table, CLEAN.1.1/1.2/1.3/1.4/1.6/1.7** — all unmarked (only 1.5 had ✅) → EP "**Phase 1 is fully complete**" + each `✅ (2026-06-13)`; BUG-031/032/033 all **Resolved** → marked ✅ DONE citing the bug entries / EP rows. This was the single biggest gap — a reader scanning Phase 1 saw it as ~1/7 done.
+- **Phase 2 table, CLEAN.2.1/2.2/2.3** — unmarked (2.4/2.5a had ✅) → EP "**Phase 2 (security + honest-UI) complete**" (CLEAN.2.2/2.3/2.4 ✅) → marked ✅ DONE. (2.5b correctly stays Deferred — blocked on paid Apple Developer membership.)
+- **CLEAN.4.1** (BUG-036 RT-thread allocs) — row tail said "**Pending Matt's no-glitch validation**" → KNOWN_ISSUES §BUG-036 records sites 1+2 "**validated in production 2026-06-17**" (session `20-52-27Z`, no audible glitch) with site 3 parked → updated; **kept ⏳** because BUG-036 is still "Open (mostly fixed)".
+- **Part-B gap rows** — G2 "TRACED … = the BUG-053 fix increment" → **RESOLVED 2026-06-16** (CLEAN.3.7-fix, §BUG-053); G7 / G8 "CONFIRMED" → **CLOSED** (CLEAN.1.6 / 1.7 ✅, EP Phase 1 complete); G13 "CONFIRMED class" → **RESOLVED 2026-06-15** (CLEAN.5.4 ✅ build-repro); G15 "PARTIAL … reduce-motion init-only" → reduce-motion now **wired + live** (CLEAN.7.7), transparency/contrast **DEFERRED** (D-169); G12 "PLAUSIBLE (untested)" → **DEFERRED** (CLEAN.7.8, D-169). Matches the post-13th "→ RESOLVED/DEFERRED" annotation pattern already on G3/G4/G6/G10/G11/G14/G16.
+
+**Flagged for Matt (not edited — a bug-status line is outside this reconcile's scope):** `KNOWN_ISSUES.md` §BUG-037 is internally inconsistent — the **Open-Index row** (line ~22) says "✅ RESOLVED 2026-06-18 — Arachne pop fixed" but the **full-entry Status: line** (line ~531) still reads "Resolved pending Matt's M7 visual cert." The audit's CLEAN.3.4 row and the EP CLEAN.3.4 bullet both record Matt's 2026-06-18 re-validation (session `…T14-30-52Z`, "full web to completion, no pop. BUG-037 RESOLVED"), so the lone stale surface is that one entry Status: line. Proposed one-liner for Matt: flip it to "Resolved 2026-06-18 (Matt's M7 — full web to completion, no pop)."
+
+No code, tests, or bug resolutions changed. Reconcile, not rewrite — Part A (point-in-time findings) untouched.
+
 ## [dev-2026-06-18-214251] BUG-039 RESOLVED + BUG-053 audit-row reconcile — Phase 3 fully closed
 
 Matt confirmed CLEAN.3.6 and 3.7 manually.
