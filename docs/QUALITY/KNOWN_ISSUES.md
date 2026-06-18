@@ -27,7 +27,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 | BUG-040 | P2 | dsp.structure | **✅ RESOLVED 2026-06-10** — live-edge boundary every ~4 detect intervals; fixed (frozen-clock unfreeze + live-edge guard + absolute novelty floor; residual section-scale geometry tracked as the open BUG-042). Files to §Resolved at next pruning |
 | BUG-029 | P3 | dsp.beat | AGC `f.bass` cold-start spike pops presets at every track onset |
 | BUG-028 | P2 | dsp.beat | Beat-grid live phase imperfect on ~half of tracks |
-| BUG-027 | P2 | dsp.beat | Positive band deviations near-dead for non-dominant bands |
+| BUG-027 | P2 | dsp.beat | **✅ RESOLVED 2026-06-06 (D-146)** — positive band deviations near-dead for non-dominant bands; fixed via the AGC2 per-band EMA deviation pivot (the system-wide "true 0.5 centre" normalization remains a separate future project, not a reopen). Files to §Resolved at next pruning |
 | BUG-025 | P3 | dsp.beat | AGC running average poisoned by post-`active` startup transient |
 | BUG-026 | P2 | session.ux | No warning when tap signal level is structurally insufficient |
 | BUG-014 | P3 | preset.fidelity | Lumen Mosaic panel aggregate uniform across tracks |
@@ -771,7 +771,7 @@ multi-track recording is needed to close this (flagged for Matt).
 **Domain tag:** dsp.beat (deviation-primitive derivation)
 **Status:** **Resolved 2026-06-06 (AGC2.1 → 2.5).** Matt chose the (b)+(c)-split at the AGC2.2 gate (**D-146**): a per-band EMA pivot on the FeatureVector band deviation (mirror the stem path) + document the stem-energy offset. Implemented in AGC2.3 (`BandDeviationTracker`); a cold-start warmup was added in AGC2.4.1 after the M7 exposed a session-start hole. See the **Resolution** block below. Surfaced during the BUG-025 A/B correction. **Re-confirmed 2026-06-05 (Nimbus NB.10 r1.6):** the same wrong "centres at 0.5" assumption mis-calibrated Nimbus's `bloom` (stem-energy = 3 AGC bands summed, centres ~0.30 not 0.5 → tiny bodies on normal music). Nimbus was fixed with a local recalibration, but this is the second preset bitten by the system-wide root cause — a normalisation fix here (make the AGC produce a true 0.5 centre per band/stem) would let every preset calibrate against a real 0.5 and is the proper permanent fix. Candidate for its own project (cf. the beat-grid D-145 pattern).
 **Introduced:** D-026 / MV-1 (the deviation-primitive design). The fixed 0.5 pivot has always assumed each band's AGC-normalised value centres at 0.5; it doesn't.
-**Resolved:** 2026-06-06 — commits `bf711edf` (AGC2.1 measure), `b1c1d1b7` (D-146 decision), `41d87bf9` + `0d2ddb51` (AGC2.3 fix), `95a16881` (AGC2.4.1 cold-start warmup). Local `main` (not pushed).
+**Resolved:** 2026-06-06 — commits `bf711edf` (AGC2.1 measure), `b1c1d1b7` (D-146 decision), `41d87bf9` + `0d2ddb51` (AGC2.3 fix), `95a16881` (AGC2.4.1 cold-start warmup). On `main` (origin/main).
 
 ### Expected behavior
 
