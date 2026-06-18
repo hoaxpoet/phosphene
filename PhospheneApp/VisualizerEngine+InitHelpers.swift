@@ -156,6 +156,40 @@ extension VisualizerEngine {
         }
     }
 
+    /// Register thermal-state + Low-Power-Mode observers that drive the frame-budget
+    /// governor's quality floor (CLEAN.4.6 / D-167). A rising thermal state pre-empts the
+    /// GPU's own thermal throttle by reducing visual load one floor ahead of it; Low Power
+    /// Mode imposes a mild reduction. Both recompute from `ProcessInfo` and hand the floor
+    /// to the active `FrameBudgetManager`, which applies it on the next frame.
+    func setupThermalGovernorObserver() {
+        NotificationCenter.default.addObserver(
+            forName: ProcessInfo.thermalStateDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.applyCurrentThermalFloor()
+        }
+        NotificationCenter.default.addObserver(
+            forName: .NSProcessInfoPowerStateDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.applyCurrentThermalFloor()
+        }
+    }
+
+    /// Recompute the budget-governor quality floor from the current thermal state + Low
+    /// Power Mode and hand it to the active `FrameBudgetManager` (CLEAN.4.6 / D-167).
+    func applyCurrentThermalFloor() {
+        let info = ProcessInfo.processInfo
+        pipeline.frameBudgetManager?.setThermalFloor(
+            FrameBudgetManager.qualityFloor(
+                thermalState: info.thermalState,
+                lowPowerMode: info.isLowPowerModeEnabled
+            )
+        )
+    }
+
     // MARK: - Device Tier Detection
 
     /// Infer the Apple Silicon generation from the Metal device name.
