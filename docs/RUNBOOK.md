@@ -70,6 +70,12 @@ swiftlint lint --strict --config .swiftlint.yml
 
 **Do NOT pass `SWIFT_TREAT_WARNINGS_AS_ERRORS=YES` on the command line.** It propagates to SPM dependencies and conflicts with `-suppress-warnings`. The flag is enforced per-target via `PhospheneApp/Phosphene.xcconfig`.
 
+### Fast local tier — `Scripts/test_fast.sh` (CLEAN.7.2a)
+
+For the inner dev loop, `Scripts/test_fast.sh` runs the pure-logic core — ~978 of the ~1,524 engine tests (DSP / Orchestrator / Shared / Session-logic / Audio-core / Doc gates) in ~13 s — skipping the GPU / ML / audio-fixture / visual / perf / integration / soak suites. It is **green in a worktree**: it excludes exactly the gitignored-fixture suites that fail loud when fixtures are absent, so it's the quickest "did I break the core logic" signal *without* running `fetch_tempo_fixtures.sh`.
+
+It is **not the gate** — it's the local mirror of the CI fast gate (below). The full `swift test --package-path PhospheneEngine` via `Scripts/closeout_evidence.sh` stays the merge/closeout gate and runs everything (GPU, ML, fixture, perf). For a tighter targeted loop, `swift test --package-path PhospheneEngine --filter <SuiteName>` runs exactly one suite. The skip-list is curated (exclusion by `--skip` regex, so a *new* heavy suite is not auto-skipped) — when you add a heavy GPU/ML/fixture/visual suite, add its name fragment to the relevant group in the script.
+
 ### Gate structure — CI fast gate vs manual closeout (CLEAN.5)
 
 Two gates, deliberately split (Matt, 2026-06-15). Know which one enforces what:

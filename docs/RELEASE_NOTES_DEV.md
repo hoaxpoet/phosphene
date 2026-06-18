@@ -10,6 +10,16 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-18-201300] CLEAN.7.2a — fast local test tier (Scripts/test_fast.sh)
+
+[CLEAN.7.2a, split from CLEAN.7.2] In response to "can we reduce the number of tests without hurting performance": tests don't ship, so they have zero effect on app runtime — and ~a third of the test files are BUG/Failed-Approach/golden regression locks (scar tissue worth keeping). So rather than cut count, this makes the inner dev loop fast while keeping every test in the gate.
+
+`Scripts/test_fast.sh` runs the pure-logic core — ~978 of the ~1,524 engine tests (DSP / Orchestrator / Shared / Session-logic / Audio-core / Doc gates) in ~13 s of test time, vs ~97 s for the full engine suite. It skips the GPU / ML / audio-fixture / visual / perf / integration / soak suites by `swift test --skip <regex>` (matches swift-testing display names + XCTest class names). Bonus: it's **green in a git worktree** — it excludes exactly the gitignored-fixture suites (love_rehab.m4a, …) that fail loud when fixtures are absent, so it's a clean signal without `fetch_tempo_fixtures.sh`.
+
+Notable finding while measuring: the full suite's wall time is dominated by a single file — `SkeinCanvasHoldTest` (2,477 lines, ~100 s as the serial long pole); everything else sits in a ~20–24 s parallel band.
+
+It is **not the gate** — it's the local mirror of the CLEAN.5 CI fast gate. The full `swift test` via `Scripts/closeout_evidence.sh` stays the merge/closeout gate and runs everything; **zero coverage removed**. For a tighter targeted loop, `swift test --filter <Suite>`. The skip-list is curated (exclusion-based), documented in RUNBOOK §Build and Test; new heavy suites get added to the script. Remaining CLEAN.7.2 scope is now CLEAN.7.2b (shared fixture builders + frame-budget/allocation + BUG-038/041 coupling regressions + per-test tags).
+
 ## [dev-2026-06-18-193946] CLEAN.7.3 — ARCHITECTURE Module Map drift fixed + completeness gated (D-168)
 
 [CLEAN.7.3 / audit T14 / D-168] The Module Map is the per-file behavioural reference read before grep-ing the codebase. Its "every file" claim was unenforced and had drifted: the 2026-06-13 audit found 18 undocumented files; today it was **62** — including four entire CERTIFIED presets (Skein, Murmuration, Dragon Bloom, Fata Morgana) and recent infra (FlashAnalyzer, DefaultOutputDeviceMonitor, ConcurrencyAuditProbe, the streaming-artwork cluster).
