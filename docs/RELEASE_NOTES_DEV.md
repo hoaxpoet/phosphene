@@ -10,6 +10,14 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-18-202731] CLEAN.7.2b (foundation) — shared FeatureVector/StemFeatures fixture builders
+
+[CLEAN.7.2b] The dedup half of the test-suite work. `FeatureVector` is inline-constructed at ~119 sites across 41 test files and `StemFeatures` at ~55 across 22 — both have an `init` that takes the core fields and zeroes the deviation primitives, so tests construct-then-mutate (`var fv = FeatureVector(bass: 0.5); fv.bassDev = 0.4`).
+
+`FeatureFixtures.makeFeatureVector` / `makeStemFeatures` (PhospheneEngineTests/TestDoubles) collapse that to one defaulted call — `makeFeatureVector(bass: 0.5, bassDev: 0.4, beatPhase01: 0.2)` — making the deviation primitives (D-026) and beat/bar/pulse fields first-class params even though the struct `init` omits them. `FeatureFixturesTests` (5 tests) proves the builders are **byte-identical** to the struct inits with no overrides, and match construct-then-mutate byte-for-byte with overrides — so migrating a call site is a pure readability change that cannot alter a test's meaning.
+
+This is the **foundation only** — the builders + their verifying test + the documented standard for new tests. The ~40-file migration is deliberately deferred to careful verified waves (biggest dedup in the stem-routing/preset suites; plumbing tests like CSP.3 that set rare fields gain little). ponytail: only the commonly-set fields are builder params — rare ones (FeatureVector pads; StemFeatures rich metadata / pitch / aurora / cachedBassProportion) stay post-set at the few sites that need them. Remaining 7.2b: the migration rollout + the new frame-budget/allocation + BUG-038/041 coupling regression tests + per-test tags.
+
 ## [dev-2026-06-18-201300] CLEAN.7.2a — fast local test tier (Scripts/test_fast.sh)
 
 [CLEAN.7.2a, split from CLEAN.7.2] In response to "can we reduce the number of tests without hurting performance": tests don't ship, so they have zero effect on app runtime — and ~a third of the test files are BUG/Failed-Approach/golden regression locks (scar tissue worth keeping). So rather than cut count, this makes the inner dev loop fast while keeping every test in the gate.
