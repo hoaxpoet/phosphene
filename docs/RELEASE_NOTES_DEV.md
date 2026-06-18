@@ -10,6 +10,10 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-18-222834] BUG-037 Status-line reconciled — Matt confirmed resolved
+
+Follow-up to the flag raised in `[dev-2026-06-18-221436]`. Matt confirmed BUG-037 (Arachne spiral chord-count pop) is **tested and resolved**. KNOWN_ISSUES §BUG-037 had drifted internally — the **Open-Index** row already read "✅ RESOLVED 2026-06-18" and the entry's own M7 narrative recorded Matt's live validation (session `2026-06-18T14-30-52Z`, "full web to completion, no pop"), but the full-entry **`Status:` line** still read "Resolved pending Matt's M7 visual cert." Flipped that one stale line to **✅ RESOLVED 2026-06-18**, so the entry is now internally consistent and matches the audit CLEAN.3.4 row + EP CLEAN.3.4 bullet. Audit banner stamp updated from "flagged for Matt" to "reconciled." Doc-only; no code or bug-resolution change (the resolution was Matt's, already recorded).
+
 ## [dev-2026-06-18-221436] CODE_AUDIT status-row reconcile sweep — Phase 0/1/2 tables + Part-B gaps vs authoritative entries
 
 Doc-only. Full cross-check of every status claim in `docs/diagnostics/CODE_AUDIT_2026-06-13.md` against the authoritative `KNOWN_ISSUES.md` bug entries + `ENGINEERING_PLAN.md` §Phase CLEAN (the third sweep this week after G1 `f24650a` and BUG-039/053 `4d20103`). Same drift class both prior times: the hand-maintained audit summary tables lag the bug entries; a validation updates the entry but not always the row. This pass swept the *whole* doc rather than one row at a time.
