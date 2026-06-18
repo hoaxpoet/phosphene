@@ -244,17 +244,18 @@ extension BeatDetector {
         let linear = linearizeOnsetHistory()
         let effectiveMaxLag = min(maxLag, onsetHistoryCount / 2)
 
-        // Find best autocorrelation lag.
-        let (bestLag, bestCorrelation) = findBestLag(
+        // Single autocorrelation sweep: best lag + mean correlation in one pass
+        // (CLEAN.4.2 — was two identical sweeps, findBestLag + the confidence loop).
+        let sweep = autocorrelationSweep(
             linear: linear, minLag: minLag, maxLag: effectiveMaxLag
         )
-        guard bestLag > 0 else { return (nil, 0) }
+        guard sweep.lag > 0 else { return (nil, 0) }
 
         // Check half-lag (octave correction) and compute BPM.
         var bpm = correctForHalfLag(
             linear: linear,
-            bestLag: bestLag,
-            bestCorrelation: bestCorrelation,
+            bestLag: sweep.lag,
+            bestCorrelation: sweep.correlation,
             minLag: minLag,
             fps: fps
         )
@@ -264,13 +265,11 @@ extension BeatDetector {
         // (D-079) so genuinely slow tracks (Pyramid Song ~68 BPM) survive.
         if bpm > 160 { bpm /= 2 }
 
-        // Compute confidence.
-        let confidence = computeAutocorrelationConfidence(
-            linear: linear,
-            bestCorrelation: bestCorrelation,
-            minLag: minLag,
-            maxLag: effectiveMaxLag
-        )
+        // Confidence = best / mean / 3, clamped (formula unchanged; mean now
+        // comes from the single sweep above instead of a second identical loop).
+        let confidence = sweep.meanCorrelation > 1e-10
+            ? min(sweep.correlation / sweep.meanCorrelation / 3.0, 1.0)
+            : 0
 
         return (bpm, confidence)
     }
@@ -288,36 +287,51 @@ extension BeatDetector {
         return linear
     }
 
-    /// Find the lag with the highest autocorrelation in the given range.
-    private func findBestLag(
+    /// Result of one autocorrelation sweep: the best lag, its correlation, and the mean
+    /// correlation across the swept range.
+    private struct AutocorrelationSweepResult {
+        let lag: Int
+        let correlation: Float
+        let meanCorrelation: Float
+    }
+
+    /// Single autocorrelation sweep over `minLag...maxLag`: returns the best lag, its
+    /// correlation, and the mean correlation across the range. Uses offset pointers into
+    /// `linear` (no per-lag `Array(linear[...])` slice copy). The correlation at each lag
+    /// is `dotpr(linear[0..<overlap], linear[lag..<lag+overlap]) / overlap` — numerically
+    /// identical to the previous findBestLag + computeAutocorrelationConfidence pair, which
+    /// swept this same range twice (CLEAN.4.2 dedup).
+    private func autocorrelationSweep(
         linear: [Float],
         minLag: Int,
         maxLag: Int
-    ) -> (lag: Int, correlation: Float) {
+    ) -> AutocorrelationSweepResult {
         var bestCorrelation: Float = 0
         var bestLag = 0
+        var sum: Float = 0
+        var count = 0
 
-        for lag in minLag...maxLag {
-            var correlation: Float = 0
-            let overlapCount = linear.count - lag
-            let lagged = Array(linear[lag..<lag + overlapCount])
+        linear.withUnsafeBufferPointer { buf in
+            guard let base = buf.baseAddress else { return }
+            for lag in minLag...maxLag {
+                let overlapCount = linear.count - lag
+                var correlation: Float = 0
+                vDSP_dotpr(base, 1, base + lag, 1, &correlation, vDSP_Length(overlapCount))
+                correlation /= Float(overlapCount)
 
-            vDSP_dotpr(
-                linear,
-                1,
-                lagged,
-                1,
-                &correlation,
-                vDSP_Length(overlapCount)
-            )
-            correlation /= Float(overlapCount)
-
-            if correlation > bestCorrelation {
-                bestCorrelation = correlation
-                bestLag = lag
+                if correlation > bestCorrelation {
+                    bestCorrelation = correlation
+                    bestLag = lag
+                }
+                sum += correlation
+                count += 1
             }
         }
-        return (bestLag, bestCorrelation)
+
+        let meanCorrelation = sum / Float(max(count, 1))
+        return AutocorrelationSweepResult(
+            lag: bestLag, correlation: bestCorrelation, meanCorrelation: meanCorrelation
+        )
     }
 
     /// Check if the half-lag (double BPM) has strong correlation and prefer it if so.
@@ -350,38 +364,5 @@ extension BeatDetector {
             }
         }
         return bpm
-    }
-
-    /// Compute confidence as ratio of best correlation to mean correlation.
-    private func computeAutocorrelationConfidence(
-        linear: [Float],
-        bestCorrelation: Float,
-        minLag: Int,
-        maxLag: Int
-    ) -> Float {
-        var meanCorrelation: Float = 0
-        var count = 0
-        for lag in minLag...maxLag {
-            var corr: Float = 0
-            let overlapCount = linear.count - lag
-            let lagged = Array(linear[lag..<lag + overlapCount])
-
-            vDSP_dotpr(
-                linear,
-                1,
-                lagged,
-                1,
-                &corr,
-                vDSP_Length(overlapCount)
-            )
-            corr /= Float(overlapCount)
-            meanCorrelation += corr
-            count += 1
-        }
-        meanCorrelation /= Float(max(count, 1))
-
-        return meanCorrelation > 1e-10
-            ? min(bestCorrelation / meanCorrelation / 3.0, 1.0)
-            : 0
     }
 }

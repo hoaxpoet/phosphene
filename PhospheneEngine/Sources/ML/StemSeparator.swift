@@ -162,8 +162,11 @@ public final class StemSeparator: StemSeparating, @unchecked Sendable {
         let right = padOrTruncate(rightRaw, to: Self.requiredMonoSamples)
 
         // Step 4: STFT both channels (center-padded to produce modelFrameCount frames).
+        // CLEAN.4.2: mono input deinterleaves to (audio, audio) → left == right, so the
+        // right STFT is identical to the left; compute it once and reuse. Stereo (>= 2 ch)
+        // still runs the real right channel.
         let (magL, phaseL) = stft(mono: left)
-        let (magR, phaseR) = stft(mono: right)
+        let (magR, phaseR) = channelCount >= 2 ? stft(mono: right) : (magL, phaseL)
 
         let nbFrames = magL.count / Self.nBins
 

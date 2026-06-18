@@ -132,6 +132,48 @@ import Metal
     }
 }
 
+// CLEAN.4.2: mono input (channelCount 1) reuses the left STFT for the right instead of
+// recomputing the identical transform. A mono separation must therefore produce the SAME
+// stems as the un-optimized stereo-duplicated path (channelCount 2, L == R == the mono
+// signal) — both feed magL == magR == stft(mono) to the model. The stereo path is unchanged
+// reference code, so any divergence means the mono dedup altered the output.
+@Test func test_separate_monoReusesStereoStft_outputUnchanged() throws {
+    guard let device = MTLCreateSystemDefaultDevice() else {
+        throw StemTestError.noMetalDevice
+    }
+
+    let separator = try StemSeparator(device: device)
+    let mono = AudioFixtures.sineWave(frequency: 440, sampleRate: 44100, duration: 1.0)
+
+    func snapshotStems(sampleCount: Int) -> [[Float]] {
+        separator.stemBuffers.map { buf in
+            let n = min(sampleCount, buf.capacity)
+            return (0..<n).map { buf[$0] }
+        }
+    }
+
+    // Mono path (the dedup) — then snapshot before the buffers are reused.
+    let monoResult = try separator.separate(audio: mono, channelCount: 1, sampleRate: 44100)
+    let monoStems = snapshotStems(sampleCount: monoResult.sampleCount)
+
+    // Stereo-duplicated reference path (unchanged code).
+    let stereo = AudioFixtures.mixStereo(left: mono, right: mono)
+    let stereoResult = try separator.separate(audio: stereo, channelCount: 2, sampleRate: 44100)
+    let stereoStems = snapshotStems(sampleCount: stereoResult.sampleCount)
+
+    #expect(monoResult.sampleCount == stereoResult.sampleCount,
+            "mono and stereo-duplicated separations must yield the same sample count")
+    for stem in 0..<min(monoStems.count, stereoStems.count) {
+        #expect(monoStems[stem].count == stereoStems[stem].count, "stem \(stem) length mismatch")
+        var maxDiff: Float = 0
+        for i in 0..<min(monoStems[stem].count, stereoStems[stem].count) {
+            maxDiff = max(maxDiff, abs(monoStems[stem][i] - stereoStems[stem][i]))
+        }
+        // Identical model input → identical output; tolerance absorbs only GPU float noise.
+        #expect(maxDiff < 1e-5, "stem \(stem): mono dedup changed the output (maxDiff \(maxDiff))")
+    }
+}
+
 @Test func test_conformsToStemSeparating() throws {
     guard let device = MTLCreateSystemDefaultDevice() else {
         throw StemTestError.noMetalDevice
