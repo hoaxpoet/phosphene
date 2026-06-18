@@ -10,6 +10,18 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-18-211055] CLEAN.7.5 — doc-overlap curation + CLAUDE.md token-budget demote
+
+[CLEAN.7.5] Doc-curation. Three parts, one with real teeth and two that the 2026-06-13 audit overstated.
+
+**CLAUDE.md demote (the real win).** CLAUDE.md was at 5,118/5,185 words — 67 words from the D-161 cap, so any future rule addition would red the budget gate. The §Defect Handling Protocol held two demotable blocks: the "Multi-increment process for P0/P1" was a *verbatim duplicate* of `DEFECT_TAXONOMY.md §Defect Process by Severity`, and the "Domain-specific artifact requirements" (beat-sync / stem / preset-fidelity / render diagnostic artifacts) were lookup-when-filing reference, not always-loaded mistake-preventers (D-161 rule 2). Demoted both — the process to a one-line pointer that keeps the instrument→diagnose→fix→validate→notes *shape*, the artifacts relocated into DEFECT_TAXONOMY (moved, never deleted) with a pointer. Kept the always-loaded *rules* (evidence-before-implementation, fix-increment obligations, manual-validation-required). **Freed 154 words → headroom 67 → 221 (≈99% → 95.7%).** Budget gate + FA #48 citation (which moved with the bullet, still resolves via the gap table) green.
+
+**ARCHITECTURE ↔ RENDER_CAPABILITY_REGISTRY.** Verified complementary, not duplicative — ARCHITECTURE is code-location + GPU contract; the registry is capability *status* (Supported/Partial/Missing) and the gating doc for new preset families — and they weren't even cross-linked (ARCHITECTURE's only "CAPABILITY_REGISTRY" hit was to the *audio* registry). Resolved by delineation: a one-line §Presets scope cross-link, not content-moving.
+
+**SHADER_CRAFT ↔ design-docs.** The audit overstated this. §18 (painterly drip/pour) is explicitly "the authoring handbook for the mark vocabulary" — reusable craft for *any* feedback-canvas preset — and already cross-refs `SKEIN_DESIGN §1.4/§5.5`; §10 (Per-Preset Fidelity Playbook) recipes already reference the per-preset design docs. Already delineated (general craft vs preset-specific history) → no churn; rebuilding/moving would risk conflating distinct content.
+
+Doc-only; DocIntegrity 11/11. Phase 7 now has only 7.7/7.8 left (both need Matt's product scoping).
+
 ## [dev-2026-06-18-205803] CLEAN.7.2b COMPLETE — remainder reconciled (coupling/budget/allocation already covered; tags descoped)
 
 [CLEAN.7.2b] Worked the 7.2b remainder and found — like 7.1 — that it's a reconcile, not fresh test-building: the audit's items were filled by work that landed AFTER the 2026-06-13 audit. Rebuilding them would be the duplication the audit itself flags.

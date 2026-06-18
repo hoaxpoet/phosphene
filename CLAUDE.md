@@ -84,22 +84,9 @@ See `docs/QUALITY/DEFECT_TAXONOMY.md` for full severity definitions, domain tags
 - Update `docs/RELEASE_NOTES_DEV.md` — add or extend the current release entry. The file is prepend-only; read the preamble + first entry only. Older months live in `RELEASE_NOTES_DEV_YYYY-MM.md`.
 - Not skip these updates under "it's obvious from the commit."
 
-**Multi-increment process for P0/P1.** Unless a defect is trivial (< 5 lines of change, root cause obvious from existing artifacts, no architectural risk — requires Matt's explicit approval to collapse), the fix process uses separate increments:
+**Multi-increment process for P0/P1** (unless trivial — < 5 lines, root cause obvious from existing artifacts, no architectural risk, and Matt-approved to collapse): separate, separately-committed increments — **instrument → diagnose** (no fix code) **→ fix** (+ regression tests) **→ validate → release-notes**. Full step detail + the P2/P3 process: [`docs/QUALITY/DEFECT_TAXONOMY.md` §Defect Process by Severity](docs/QUALITY/DEFECT_TAXONOMY.md).
 
-1. **Instrumentation** — add logging, diagnostic capture, or test infrastructure to expose the failure. Commit and stop.
-2. **Diagnosis** — reproduce from artifacts, identify root cause, document in `KNOWN_ISSUES.md`. Do not write fix code in this increment.
-3. **Fix** — implement the fix, add or extend regression tests.
-4. **Validation** — run full test suite, produce required domain artifacts, perform manual validation where mandated.
-5. **Release notes** — update `RELEASE_NOTES_DEV.md`, mark resolved in `KNOWN_ISSUES.md`.
-
-Trivial P1 defects may collapse steps 1–4 into one increment. State this explicitly in the commit message and in `KNOWN_ISSUES.md`.
-
-**Domain-specific artifact requirements.** These domains require diagnostic artifacts before and after fix work:
-
-- **Beat sync / tempo** (`dsp.beat`): `features.csv` beat-sync columns (`lock_state`, `grid_bpm`, `drift_ms`, `barPhase01_permille`), SpectralCartograph mode label capture, and `BeatSyncSnapshot` data from a real music session. Minimum: Love Rehab at 125 BPM.
-- **Stem routing** (`dsp.stem`): `stems.csv` showing non-constant deviation-field values across 500+ frames, plus manual observation that visual response feels musically connected.
-- **Preset fidelity** (`preset.fidelity`): contact sheet from `RENDER_VISUAL=1` compared against `docs/VISUAL_REFERENCES/<preset>/` reference images. Anti-references must be explicitly checked (see Failed Approach #48).
-- **Render pipeline** (`renderer`): `PresetRegressionTests` golden hash before and after; Metal GPU trace if frame budget is affected.
+**Domain-specific artifact requirements** — beat-sync (`dsp.beat`), stem-routing (`dsp.stem`), preset-fidelity (`preset.fidelity`), and render-pipeline (`renderer`) defects each require specific before/after diagnostic artifacts (the `Validation` step): [`docs/QUALITY/DEFECT_TAXONOMY.md` §Domain-specific artifact requirements](docs/QUALITY/DEFECT_TAXONOMY.md).
 
 **Manual validation is required for:**
 - Musical feel: beat alignment, stem-visual coupling, tempo tracking. Automated tests prove pipeline correctness; they do not prove the result feels musical. These judgments require listening at normal volume.

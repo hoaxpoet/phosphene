@@ -124,3 +124,14 @@ Used in bug reports to group defects by root-cause category. See `BUG_REPORT_TEM
 | `render-state` | Missing or incorrect Metal pipeline state setup |
 | `regression` | Previously-passing behavior broken by a subsequent change |
 | `documentation-drift` | Code and docs describe different behavior; both may be correct |
+
+---
+
+## Domain-specific artifact requirements
+
+These domains require diagnostic artifacts before AND after fix work (the `Validation increment` of the P0/P1 process above). CLAUDE.md §Defect Handling Protocol points here. (Relocated from CLAUDE.md at CLEAN.7.5 to regain always-loaded token budget — D-161 rule 2: this is lookup-when-filing reference, not an always-loaded mistake-preventer.)
+
+- **Beat sync / tempo** (`dsp.beat`): `features.csv` beat-sync columns (`lock_state`, `grid_bpm`, `drift_ms`, `barPhase01_permille`), SpectralCartograph mode label capture, and `BeatSyncSnapshot` data from a real music session. Minimum: Love Rehab at 125 BPM.
+- **Stem routing** (`dsp.stem`): `stems.csv` showing non-constant deviation-field values across 500+ frames, plus manual observation that visual response feels musically connected.
+- **Preset fidelity** (`preset.fidelity`): contact sheet from `RENDER_VISUAL=1` compared against `docs/VISUAL_REFERENCES/<preset>/` reference images. Anti-references must be explicitly checked (see Failed Approach #48).
+- **Render pipeline** (`renderer`): `PresetRegressionTests` golden hash before and after; Metal GPU trace if frame budget is affected.
