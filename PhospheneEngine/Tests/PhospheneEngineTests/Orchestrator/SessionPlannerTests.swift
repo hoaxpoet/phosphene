@@ -83,6 +83,32 @@ struct SessionPlannerTests {
                 "Expected the eligible preset, got '\(entry.preset.id)'")
     }
 
+    // MARK: 3c — wait_for_completion_event spans sections (BUG-037)
+
+    @Test("wait_for_completion_event preset's segment spans its natural cycle, not a section")
+    func waitForCompletion_segmentSpansSections() throws {
+        // A completion-gated preset with a 90 s natural cycle in a 300 s track. Sections
+        // are far shorter, so pre-fix the segment was chopped at each section boundary
+        // (the cause of the Arachne build-cut-short → `.stable` pop, BUG-037).
+        let weaver = makePreset(name: "Weaver", waitForCompletionEvent: true, naturalCycleSeconds: 90)
+        let identity = makeIdentity(title: "Long", duration: 300)
+
+        let session = try planner.plan(tracks: [(identity, makeProfile())],
+                                       catalog: [weaver], deviceTier: .tier1)
+        let segments = session.tracks.first?.segments ?? []
+
+        let first = try #require(segments.first)
+        #expect(first.preset.id == weaver.id)
+        let firstLen = first.plannedEndTime - first.plannedStartTime
+        #expect(firstLen >= 89.9,
+                "wait_for_completion segment must span its ~90 s natural cycle, got \(firstLen)")
+        // The spanning segment must not break plan contiguity (no gaps/overlaps).
+        for (a, b) in zip(segments, segments.dropFirst()) {
+            #expect(abs(b.plannedStartTime - a.plannedEndTime) < 0.001,
+                    "segments must stay contiguous; gap at \(a.plannedEndTime)→\(b.plannedStartTime)")
+        }
+    }
+
     // MARK: 4 — No consecutive same family (or it's warned)
 
     @Test("Five-track plan: consecutive same-family always accompanied by a warning")
@@ -411,11 +437,16 @@ private func makePreset(
     stemAffinity: [String: String] = [:],
     complexityCost: ComplexityCost = ComplexityCost(tier1: 2.0, tier2: 1.5),
     transitionAffordances: [TransitionAffordance] = [.crossfade],
-    isDiagnostic: Bool = false
+    isDiagnostic: Bool = false,
+    waitForCompletionEvent: Bool = false,
+    naturalCycleSeconds: Float? = nil
 ) -> PresetDescriptor {
     let sectionJSON = sectionSuitability.map { "\"\($0.rawValue)\"" }.joined(separator: ",")
     let stemJSON    = stemAffinity.map { "\"\($0.key)\": \"\($0.value)\"" }.joined(separator: ",")
     let affordJSON  = transitionAffordances.map { "\"\($0.rawValue)\"" }.joined(separator: ",")
+    // Only emit natural_cycle_seconds when set — it caps maxDuration for NON-wait presets,
+    // so leaving it nil keeps existing fixtures' durations unchanged.
+    let cycleJSON   = naturalCycleSeconds.map { "\"natural_cycle_seconds\": \($0),\n        " } ?? ""
     let json = """
     {
         "name": "\(name)",
@@ -427,7 +458,8 @@ private func makePreset(
         "stem_affinity": {\(stemJSON)},
         "complexity_cost": {"tier1": \(complexityCost.tier1), "tier2": \(complexityCost.tier2)},
         "transition_affordances": [\(affordJSON)],
-        "is_diagnostic": \(isDiagnostic),
+        \(cycleJSON)"is_diagnostic": \(isDiagnostic),
+        "wait_for_completion_event": \(waitForCompletionEvent),
         "certified": true
     }
     """
