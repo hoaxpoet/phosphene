@@ -396,4 +396,36 @@ private func audibleStems() -> StemFeatures {
                     "seed \(seed): radii table holds the full count")
         }
     }
+
+    // MARK: - Test 14: BUG-037 — the published reveal climbs past the old 0.45 ceiling
+
+    /// Drives the build through the spiral phase and reads the ACTUAL `webs[0].spiralPacked`
+    /// the shader consumes. Pre-fix it maxed at 200/441 ≈ 0.45 (then `.stable` popped the
+    /// rest); post-fix it climbs continuously toward 1.0. This is the regression lock for
+    /// the reveal itself (the `spiralChordCountHonoursProduct` test covers the count).
+    @Test("webs[0].spiralPacked climbs well past the old 200/441 ≈ 0.45 ceiling (BUG-037 reveal)")
+    func spiralRevealClimbsPastOldCeiling() throws {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            throw ArachneBuildTestError.noMetalDevice
+        }
+        let state = try #require(ArachneState(device: device, seed: 42))
+        state.reset()
+
+        var maxRevealInSpiral: Float = 0
+        let dt: Float = 1.0 / 60.0
+        // Drive frame → radial → spiral with audible stems + a fast beat cadence
+        // (rising edge every 8 ticks) so the spiral lays chords quickly.
+        for i in 0..<8000 {
+            var fv = midEnergyFV(deltaTime: dt, midAttRel: 1.0)
+            fv.beatComposite = (i % 8 < 4) ? 0.0 : 0.9   // rising edges drive the spiral
+            state.tick(features: fv, stems: audibleStems())
+            if state.buildState.stage == .spiral {
+                maxRevealInSpiral = max(maxRevealInSpiral, state.webs[0].spiralPacked)
+            }
+            if state.buildState.stage == .stable { break }
+        }
+
+        #expect(maxRevealInSpiral > 0.6,
+                "reveal must climb past the old ~0.45 ceiling; got \(maxRevealInSpiral)")
+    }
 }
