@@ -10,6 +10,16 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-18-193946] CLEAN.7.3 — ARCHITECTURE Module Map drift fixed + completeness gated (D-168)
+
+[CLEAN.7.3 / audit T14 / D-168] The Module Map is the per-file behavioural reference read before grep-ing the codebase. Its "every file" claim was unenforced and had drifted: the 2026-06-13 audit found 18 undocumented files; today it was **62** — including four entire CERTIFIED presets (Skein, Murmuration, Dragon Bloom, Fata Morgana) and recent infra (FlashAnalyzer, DefaultOutputDeviceMonitor, ConcurrencyAuditProbe, the streaming-artwork cluster).
+
+Backfilled all 62. The two large clusters are diagnostic CLI targets documented as group entries that name their files (the established V.1-noise-tree convention): `ColdStartVerifier/` (16 files — the BSAudit cold-start beat-sync verifier) and `PresetSessionReplay/` (14 files — offline replay + rubric scoring), plus `QualityReelAnalyzer/` and `BeatThisActivationDumper/`. The rest got per-file entries under Renderer / DSP / Audio / ML / Shared / Session and the App streaming-artwork cluster; the three certified presets + Skein state/palettes + the two uncertified shaders (FractalTree, StagedSandbox) got preset entries.
+
+Fixed two stale `LumenPatternState` stride claims (`stride 376` + `(336 B)` → the real **568 B**; the LM.3.2-history "376 B" note is correct and untouched). The "canvas-hold spec" drift item resolved as the now-documented Skein entry (D-142: canvas-hold is pure preset config, not an engine mode).
+
+Per Matt's scoping call, completeness is now **gated** (not just backfilled): `DocIntegrityTests.moduleMapCompleteness` (D-168) reds when any `.swift` / `.metal` under `PhospheneEngine/Sources` or `PhospheneApp/` lacks a Map entry — the D-161 ratchet rule 3 ("violated twice → mechanize"). Adversarially proven: red on an undocumented probe file, green once removed. Substring membership (named ceiling: short common stems can match spuriously — kept permissive so it never false-reds an unrelated increment, the BUG-049 lesson). DocIntegrity 11/11 green; swiftlint 0 (DocIntegrityTests.swift 389 lines, under the 400 ceiling).
+
 ## [dev-2026-06-18-184228] CLEAN.4.7 — peak-RSS leak regression gate (memory soak)
 
 [GAP-16 / G16] `MemoryReporter` (phys_footprint) and the `SoakTestHarness` already *observed* memory growth, but explicitly asserted nothing ("observability only, not a hard gate"). This adds the missing regression gate.
