@@ -608,20 +608,30 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         // their unconditional reallocation — they are gated by their own attachment.
         if activePresetSamplesFeedback {
             var textures: [MTLTexture] = []
+            var feedbackAllocOK = true
             for i in 0..<2 {
                 guard let tex = context.makeSharedTexture(
                     width: width,
                     height: height,
                     usage: [.renderTarget, .shaderRead]
                 ) else {
+                    // CLEAN.4.3: do NOT `return` here — that abandoned the post-process /
+                    // ray-march / mv_warp reallocations below, stranding them at the stale
+                    // size. Drop the feedback pair (feedback rendering guards on empty) and
+                    // fall through so the other subsystems still resize.
                     logger.error("Failed to allocate feedback texture \(i)")
-                    return
+                    feedbackAllocOK = false
+                    break
                 }
                 textures.append(tex)
             }
             feedbackLock.withLock {
-                feedbackTextures = textures
-                feedbackIndex = 0
+                if feedbackAllocOK {
+                    feedbackTextures = textures
+                    feedbackIndex = 0
+                } else {
+                    feedbackTextures = []
+                }
             }
         } else {
             feedbackLock.withLock { feedbackTextures = [] }
