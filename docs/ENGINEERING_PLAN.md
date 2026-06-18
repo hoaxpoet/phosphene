@@ -128,7 +128,7 @@ The FeatureVector band deviation primitives (`bassDev`/`midDev`/`trebDev`) were 
 - **AGC2.4 / 2.4.1** (`95a16881`): the M7 exposed a cold-start hole (EMA seeded from the session-start AGC spike, no per-track `MIRPipeline.reset()`, poisoned ~3-4 min). Fixed with a two-speed warmup + value ceiling; a **live-path** test now guards it (FA #66). M7 catalog cycle: deviation presets read well.
 - **AGC2.5** (close): KNOWN_ISSUES BUG-027 → Resolved; RELEASE_NOTES `[dev-2026-06-06]`; SHADER_CRAFT §14.1 softened; filed **BUG-029** (the AGC `f.bass` cold-start spike — out of scope, the Ferrofluid Ocean startup root).
 
-Local `main`, not pushed.
+On `main` (origin/main).
 
 ### Increment AGC3 — BUG-029: AGC `f.bass` cold-start spike (continuous-energy presets pop-and-drop at track onset) ⏳ (2026-06-05; fix landed, awaiting M7)
 
@@ -140,7 +140,7 @@ At every track onset preceded by silence, `BandEnergyProcessor`'s total-energy A
 - **AGC3.4 ⏳** (validate): full engine suite green (modulo the pre-existing absent `love_rehab.m4a` fixture + MemoryReporter flake — both verified identical with the fix stashed); app build `BUILD SUCCEEDED`; SwiftLint `--strict` clean; **no `PresetRegressionTests` golden drift** (fixtures bypass the live AGC). **Pending: Matt catalog M7 both paths, Ferrofluid Ocean first.**
 - **AGC3.5** (close): KNOWN_ISSUES BUG-029 → Resolved; RELEASE_NOTES; ENGINEERING_PLAN; RENDER_CAPABILITY_REGISTRY + CLAUDE.md if documented AGC behaviour changes.
 
-AGC3.1–3.3 on local `main` (worktree branch), not pushed. AGC3.5 close gated on Matt's M7.
+AGC3.1–3.3 on `main` (origin/main). AGC3.5 close still gated on Matt's M7.
 
 ### Increment FM.0 + FM.L1 + FM.L2 — Fata Morgana port: mirage substrate + shapes + stem uplift, CERTIFIED ✅ (2026-06-02 → 2026-06-03, D-139)
 ### Increment Dragon Bloom L4 + music response — faithful butterchurn render-loop port, CERTIFIED ✅ (2026-06-02, D-138)
