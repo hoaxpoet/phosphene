@@ -74,10 +74,13 @@ extension DefaultSessionPlanner {
         var segments: [PlannedPresetSegment] = []
         let sections = Self.makeSections(trackStart: trackStart, trackEnd: trackEnd, profile: profile)
         var firstSegmentEmitted = false
+        // BUG-037: a `wait_for_completion_event` segment can span past its own section,
+        // so a later section it already covers must not re-emit a segment.
+        var coveredUntil = trackStart
 
         for (sectionIdx, sectionEntry) in sections.enumerated() {
             let isLastSection = sectionIdx == sections.count - 1
-            var sectionClock = sectionEntry.start
+            var sectionClock = max(sectionEntry.start, coveredUntil)
 
             while sectionClock < sectionEntry.end {
                 let result = planOneSegment(
@@ -99,6 +102,7 @@ extension DefaultSessionPlanner {
                 )
                 segments.append(result.segment)
                 sectionClock = result.segment.plannedEndTime
+                coveredUntil = max(coveredUntil, result.segment.plannedEndTime)
                 firstSegmentEmitted = true
                 if result.segment.plannedEndTime <= sectionClock - 0.001 { break }
                 if !result.advanced { break }
@@ -176,16 +180,33 @@ extension DefaultSessionPlanner {
 
         let remainingInSection = sectionEntry.end - sectionClock
         let maxByPreset = chosen.maxDuration(forSection: sectionEntry.section)
-        let segLen = max(1.0, min(remainingInSection, maxByPreset))
-        let actualLen = min(segLen, remainingInSection)
         let segStart = sectionClock
-        let segEnd = sectionClock + actualLen
 
-        let isLastSegmentOfTrack = isLastSection && segEnd >= trackEnd - 0.001
+        // BUG-037: a completion-gated preset (`wait_for_completion_event`) runs until its
+        // `PresetSignaling.presetCompletionEvent` — the live path transitions on that
+        // event. Reserve a generous span (its natural cycle) so a section boundary can't
+        // cut a long build short and force a `.stable` pop mid-reveal (Arachne's ~92 s
+        // weave outlived a ~38 s section). The live completion event ends the segment
+        // earlier when the build actually finishes; this `plannedEndTime` is the ceiling.
+        let segEnd: TimeInterval
+        if chosen.waitForCompletionEvent {
+            let span = TimeInterval(chosen.naturalCycleSeconds ?? Float(chosen.duration))
+            segEnd = min(trackEnd, segStart + max(span, remainingInSection))
+        } else {
+            let segLen = max(1.0, min(remainingInSection, maxByPreset))
+            segEnd = segStart + min(segLen, remainingInSection)
+        }
+        let actualLen = segEnd - segStart
+
+        // A segment that reaches the track end is the last one regardless of which
+        // section it started in (a completion-gated span can reach it from an earlier
+        // section). `isLastSection` is retained for the call-site contract.
+        _ = isLastSection
+        let isLastSegmentOfTrack = segEnd >= trackEnd - 0.001
         let terminationReason: SegmentTerminationReason
         if isLastSegmentOfTrack {
             terminationReason = .trackEnded
-        } else if maxByPreset < remainingInSection {
+        } else if chosen.waitForCompletionEvent || maxByPreset < remainingInSection {
             terminationReason = .maxDurationReached
         } else {
             terminationReason = .sectionBoundary
