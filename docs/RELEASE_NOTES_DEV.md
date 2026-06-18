@@ -10,6 +10,18 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-18-184228] CLEAN.4.7 — peak-RSS leak regression gate (memory soak)
+
+[GAP-16 / G16] `MemoryReporter` (phys_footprint) and the `SoakTestHarness` already *observed* memory growth, but explicitly asserted nothing ("observability only, not a hard gate"). This adds the missing regression gate.
+
+`MemorySoakGateTests` (Diagnostics target) drives the per-frame steady-state paths for a fixed frame count and fails if `phys_footprint` grows past a 25 MB budget after a warmup window:
+- FFT→MIR path — 500 warmup + 2.5K soak frames.
+- StemAnalyzer path — 200 warmup + 1.2K soak frames (heavier per frame — 4 FFTs + YIN pitch tracking — so a smaller soak).
+
+Both pass green: growth is well under budget, i.e. no leak. The gate is frame-count-based (not wall-clock) so it's deterministic in `swift test` and the closeout, ~5.6 s wall-clock. A real per-frame leak (whole objects accumulating — KBs/frame) shows as tens of MB over the soak, while allocator noise is a few MB, so the 25 MB budget catches leaks without flaking.
+
+Division of labour: the automated gate catches *gross* leaks (the common regression). Slow sub-KB/frame creep and the absolute steady-state + 2-hour growth curve stay the manual `SoakRunner` diagnostic (`Scripts/run_soak_test.sh`) — a device-time measurement that can't run in CI. swiftlint 0.
+
 ## [dev-2026-06-18-181837] CLEAN.4.6 — thermal + Low Power Mode adaptation in the frame-budget governor
 
 [GAP-4 / G4 / D-167] The frame-budget governor now responds to thermal pressure and Low Power Mode, closing G4 (previously zero `thermalState`/`lowPowerMode` references). Visual load drops one floor *ahead* of the GPU's own thermal throttle instead of waiting for frames to start dropping, and the user's Low Power Mode choice is respected.
