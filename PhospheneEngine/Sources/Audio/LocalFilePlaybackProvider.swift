@@ -63,6 +63,17 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
     /// Retained so `removeObserver` can be called during teardown.
     private var configChangeObserver: NSObjectProtocol?
 
+    /// Serial queue the loop re-schedule / `onFileEnded` advance hops onto,
+    /// OFF the AVAudioPlayerNode completion-handler queue (BUG-059). Re-entering
+    /// the player (`scheduleFile`) directly from inside the completion handler
+    /// deadlocks against a concurrent `stop()`: `stop()` → `player.stop()` holds
+    /// the engine lock and `dispatch_sync`s the completion queue, while the
+    /// inline `scheduleFile()` holds the completion queue and blocks on that
+    /// engine lock (the BUG-021 ABBA, on AVFoundation's internal locks rather
+    /// than the provider `lock`). Hopping lets the completion handler return at
+    /// once, freeing the completion queue so `stop()`'s `dispatch_sync` can win.
+    private let rescheduleQueue = DispatchQueue(label: "com.phosphene.localfile.reschedule")
+
     // MARK: - Callback
 
     /// Receives interleaved float32 PCM samples from the player-node tap.
@@ -344,15 +355,25 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
     private func scheduleFileLoop(player: AVAudioPlayerNode, file: AVAudioFile) {
         player.scheduleFile(file, at: nil) { [weak self, weak player, weak file] in
             guard let self, let player, let file else { return }
-            let stillActive: Bool = self.lock.withLock {
-                self.playerNode === player && self.audioFile === file
+            // BUG-059: hop OFF the AVAudioPlayerNode completion-handler queue
+            // before re-scheduling / advancing. Doing this inline re-enters the
+            // engine lock while owning the completion queue, which deadlocks
+            // against a concurrent `stop()` (see `rescheduleQueue`). The async
+            // hop returns the completion handler immediately; the (player, file)
+            // identity is re-checked under `lock` on the serial queue, so a
+            // `stop()` that lands in between cancels the loop cleanly.
+            self.rescheduleQueue.async { [weak self, weak player, weak file] in
+                guard let self, let player, let file else { return }
+                let stillActive: Bool = self.lock.withLock {
+                    self.playerNode === player && self.audioFile === file
+                }
+                guard stillActive else { return }
+                if let onFileEnded = self.onFileEnded {
+                    onFileEnded()
+                    return                                          // LF.5 advance — caller takes over
+                }
+                self.scheduleFileLoop(player: player, file: file)   // LF.1 single-file loop default
             }
-            guard stillActive else { return }
-            if let onFileEnded = self.onFileEnded {
-                onFileEnded()
-                return                                              // LF.5 advance — caller takes over
-            }
-            self.scheduleFileLoop(player: player, file: file)       // LF.1 single-file loop default
         }
     }
 

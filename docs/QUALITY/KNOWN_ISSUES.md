@@ -7,7 +7,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
 | AUDIT-2026-06-09 | P2/P3 | audit backlog | Full-codebase audit findings not individually filed |
-| BUG-059 | P1 | local-file / concurrency | Two concurrent `LocalFilePlaybackProvider` start/stop sequences ABBA-deadlock (hang): `stop()`→`player.stop()` holds the engine lock + `dispatch_sync`s the completion queue, while our `scheduleFileLoop` completion closure re-schedules `scheduleFile()` inline and waits on that engine lock. Reachable in prod via `handleConfigurationChange` (device-swap) racing a track advance. Diagnosed |
+| BUG-059 | P1 | local-file / concurrency | Two concurrent `LocalFilePlaybackProvider` start/stop sequences ABBA-deadlock (hang): `stop()`→`player.stop()` holds the engine lock + `dispatch_sync`s the completion queue, while our `scheduleFileLoop` completion closure re-schedules `scheduleFile()` inline and waits on that engine lock. Reachable in prod via `handleConfigurationChange` (device-swap) racing a track advance. **Fix landed 2026-06-17** (re-schedule hopped off the completion queue); pending Matt's manual validation |
 | BUG-058 | P3 | audio.capture / resource-management | RARE intermittent: a mid-session output-device swap *occasionally* freezes the tap (`performReinstall` doesn't complete; stale-buffer freeze, not silence). G1 device-swap recovery is otherwise robust (validated 12/12, 2026-06-17); the single freeze was un-reproduced — likely a `coreaudiod`-settling transient. Instrumented |
 | BUG-057 | P1 | audio.capture | **✅ RESOLVED 2026-06-17 (D-165)** — silent-tap family closed: detector card + reinstall-fix (no rebuild of a working tap on a pause) + card pause-suppression, all validated + pushed. Residual = environmental wedged-`coreaudiod` only (`killall coreaudiod` workaround; not a code bug). Detail entry files to §Resolved at the next pruning pass (`rotate_docs.sh`) |
 | BUG-056 | P3 | local-file / audio | Local-file playback restarts the track from the top on an output-device change (AVAudioEngine teardown/restart, no resume-from-position) |
@@ -63,9 +63,9 @@ P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh dou
 
 **Severity:** P1 (a hang — the provider's lifecycle thread and AVFoundation's completion-handler queue both wedge permanently; in production this freezes audio/visuals with no recovery).
 **Domain tag:** local-file / concurrency (`LocalFilePlaybackProvider.scheduleFileLoop` / `teardownAVFoundation` / `handleConfigurationChange`)
-**Status:** Diagnosed — root cause confirmed from a live `sample` of the hung process (stack below). Surfaced 2026-06-17 while de-flaking `concurrentDoubleStart_serializesWithoutDeadlock` (the "load flake" was this deadlock firing intermittently, not a wall-clock budget slip).
+**Status:** **Fix landed 2026-06-17 (automated-validated; pending Matt's manual validation)** — root cause confirmed from a live `sample` of the hung process (stack below). Surfaced 2026-06-17 while de-flaking `concurrentDoubleStart_serializesWithoutDeadlock` (the "load flake" was this deadlock firing intermittently, not a wall-clock budget slip).
 **Introduced:** The LF.1 spike — `scheduleFileLoop` re-schedules `scheduleFile()` synchronously from inside the AVAudioPlayerNode completion handler; `handleConfigurationChange` (LF.1, `:414`) added the off-MainActor `stop()+start()` restart that supplies the concurrency. The BUG-021 fix (2026-05-28) moved teardown outside the *provider's* `NSLock`, but this cycle is on AVFoundation's *internal* locks, which that fix does not cover.
-**Resolved:**
+**Resolved:** Fix in `LocalFilePlaybackProvider` (step 2, 2026-06-17) — see §Fix below; full closure pends Matt's manual validation (worktree branch `claude/suspicious-lamport-878cbb`, not yet on `main`).
 
 ### Expected behavior
 Two overlapping start/stop sequences on one provider (e.g. an `AVAudioEngineConfigurationChange` restart racing a track advance) serialize and complete; the provider ends in a clean stopped or playing state. No thread blocks indefinitely.
@@ -96,12 +96,15 @@ n/a — not a session defect; the artifact is the process stack `sample` above (
 
 ### Verification criteria
 Written before the fix (per template). When resolved, all of:
-- [ ] `concurrentDoubleStart_serializesWithoutDeadlock` passes reliably — ≥ 10/10 isolated runs (it currently wedges on round 0 on the dev Mac mini), completing well within its watchdog, and a fresh `sample` during the run shows **no** `__psynch_mutexwait` in `scheduleFile` / no `dispatch_sync` hang in `player.stop()`.
-- [ ] Full engine `swift test` run ≥ 3× with no recurrence of the original intermittent failure.
-- [ ] No regression in the REVIEW.2 siblings: `routerChurn_…`, `completionCallbackVsStop_…`, `onFileEnded_queueAdvanceChurn_…`, `transportChurn_…`, `deinitWhilePlaying_…` all green.
-- [ ] **Manual:** local-file playback loops with no audible gap/glitch newly introduced by moving the re-schedule off the completion thread; multi-file **Next** still advances; an output-device swap mid local-file playback no longer hangs (intersects G1 / BUG-056).
+- [x] `concurrentDoubleStart_serializesWithoutDeadlock` passes reliably — **11/11 green (6× isolated + 5× in-suite), ~3.5 s each**, on the same dev Mac mini that wedged on round 0 before the fix. (A fresh `sample` is no longer meaningful — the process no longer hangs; the 6-min-hang → 3.5 s-pass swing on a reliably-wedging machine is the proof the cycle is gone.)
+- [x] No regression in the REVIEW.2 siblings: full `SessionLifecycleChurnTests` suite **5/5 green (all 6 tests), ~17 s each** — `routerChurn_…`, `completionCallbackVsStop_…`, `onFileEnded_queueAdvanceChurn_…`, `transportChurn_…`, `deinitWhilePlaying_…` included.
+- [ ] Full engine `swift test` with no recurrence (closeout evidence — `closeout_evidence.sh`).
+- [ ] **Manual (pending Matt):** local-file playback loops with no audible gap/glitch newly introduced by moving the re-schedule off the completion thread; multi-file **Next** still advances; an output-device swap mid local-file playback no longer hangs (intersects G1 / BUG-056).
 
 **Manual validation required:** Yes — session-lifecycle + playback-loop behavior change. Needs a live local-file session; the worktree change must reach the `main` build first (or Matt builds the worktree) before the live test.
+
+### Fix (step 2 — 2026-06-17)
+`scheduleFileLoop`'s completion handler no longer re-schedules `scheduleFile()` (or fires `onFileEnded`) **inline** on the AVAudioPlayerNode completion-handler queue. It now hops that work onto a provider-owned serial `rescheduleQueue` and re-checks the `(playerNode, audioFile)` identity under `lock` there before touching the player. The completion handler returns immediately, freeing the completion queue — so a concurrent `stop()` (whose `player.stop()` holds the engine lock and `dispatch_sync`s that queue) is no longer blocked by an inline `scheduleFile()` waiting on the engine lock. The two sides now serialize on the engine lock (mutual exclusion) instead of forming a cycle. `onFileEnded`'s production consumer already re-dispatches to the MainActor (`VisualizerEngine+LocalFilePlayback.swift:161`), so its callback thread change is immaterial; LF.1 single-file looping restarts at a file boundary where a sub-millisecond hop is inaudible. Test-only files untouched; the existing REVIEW.2 watchdog test is the regression net (it reliably reproduced the deadlock pre-fix).
 
 ### Fix scope
 Contained to `LocalFilePlaybackProvider.scheduleFileLoop`: hop the re-schedule (and the `onFileEnded` advance) **off** the AVAudioPlayerNode completion-handler queue onto a provider-owned serial queue, re-checking `stillActive` under the lock before touching the player. That frees the completion queue immediately, so a concurrent `player.stop()` can no longer find it occupied-and-blocked-on-the-engine-lock. Changes the callback thread and the loop re-schedule timing → not a < 5-line trivial collapse; proper fix increment + regression + manual validation.
