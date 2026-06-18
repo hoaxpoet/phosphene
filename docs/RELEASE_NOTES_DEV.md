@@ -10,6 +10,19 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-18-181837] CLEAN.4.6 — thermal + Low Power Mode adaptation in the frame-budget governor
+
+[GAP-4 / G4 / D-167] The frame-budget governor now responds to thermal pressure and Low Power Mode, closing G4 (previously zero `thermalState`/`lowPowerMode` references). Visual load drops one floor *ahead* of the GPU's own thermal throttle instead of waiting for frames to start dropping, and the user's Low Power Mode choice is respected.
+
+Mechanism — `FrameBudgetManager` gains a `thermalFloor: QualityLevel`; the applied level is `max(currentLevel, thermalFloor)`, independent of the timing hysteresis:
+- A rising thermal state pre-empts the downshift (no waiting for the 3 timing-overrun detection).
+- Clearing it restores quality immediately — the timing `currentLevel` was never raised, so there's no 180-frame recovery wait.
+- The governor stays `ProcessInfo`-free and pure: `VisualizerEngine` observes `thermalStateDidChangeNotification` + `NSProcessInfoPowerStateDidChange`, maps via the pure static `FrameBudgetManager.qualityFloor(thermalState:lowPowerMode:)`, and seeds the floor at FBM creation (in case the app launches already hot / in LPM). The floor takes effect on the next frame.
+
+Mapping (D-167, tunable): thermal serious → no-bloom, critical → step-0.75; Low Power Mode → at least no-SSGI (and never weaker than a stronger thermal floor). The `QualityCeiling.ultra` recording exemption still bypasses the floor.
+
+Verification: 5 new `FrameBudgetManagerTests` — the floor clamps the applied level without altering the timing state; timing can still downshift below the floor; the floor survives `reset()` (thermal is preset-independent); the mapping is correct for each thermal state × LPM combination. Engine + app builds clean, swiftlint 0. Remaining manual gate: actual thermal-induced pre-emption needs device validation under load — the Mac mini's active cooling rarely throttles, so this matters mainly for fanless deployment.
+
 ## [dev-2026-06-18-175030] CLEAN.4.5 — NaN/Inf robustness sweep on the audio→GPU path
 
 [GAP-3 / G3] Hardens the two GPU-bound audio structs — FeatureVector (fragment buffer 0) and StemFeatures (buffer 3) — against non-finite values. Both are all-Float, so the tests scan every field via `withUnsafeBytes`.
