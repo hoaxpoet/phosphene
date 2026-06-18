@@ -7,6 +7,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
 | AUDIT-2026-06-09 | P2/P3 | audit backlog | Full-codebase audit findings not individually filed |
+| BUG-060 | P3 | renderer / app.hang | One-off app hang (force-quit required): render loop died one frame after a `preset → Gossamer` switch (`22-10-50Z`); NOT reproduced (Gossamer ran 3× clean in `13-57-23Z`); no stack captured. Monitored |
 | BUG-059 | P1 | local-file / concurrency | **✅ RESOLVED 2026-06-18** (`70c7619`, local `main`, unpushed) — concurrent `LocalFilePlaybackProvider` start/stop ABBA deadlock (`player.stop()`'s completion-queue `dispatch_sync` ⇄ inline `scheduleFile()` from the completion handler); fixed by hopping the re-schedule off the completion queue. Automated 11/11 + Matt's live no-hang device-swap validation. (The track restart-on-swap Matt saw is the separate BUG-056.) Files to §Resolved at the next pruning pass |
 | BUG-058 | P3 | audio.capture / resource-management | RARE intermittent: a mid-session output-device swap *occasionally* freezes the tap (`performReinstall` doesn't complete; stale-buffer freeze, not silence). G1 device-swap recovery is otherwise robust (validated 12/12, 2026-06-17); the single freeze was un-reproduced — likely a `coreaudiod`-settling transient. Instrumented |
 | BUG-057 | P1 | audio.capture | **✅ RESOLVED 2026-06-17 (D-165)** — silent-tap family closed: detector card + reinstall-fix (no rebuild of a working tap on a pause) + card pause-suppression, all validated + pushed. Residual = environmental wedged-`coreaudiod` only (`killall coreaudiod` workaround; not a code bug). Detail entry files to §Resolved at the next pruning pass (`rotate_docs.sh`) |
@@ -14,7 +15,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 | BUG-055 | P2 | app.ui / permission | Silent system-audio tap after a rebuild: stale Screen-Recording grant; `CGPreflightScreenCaptureAccess` returns stale-`true` → app shows "ready", renders a flatline, no guidance |
 | BUG-054 | P3 | dsp.key | Key detection has never been accurate enough to use — 1024-pt FFT can't resolve semitones < 1 kHz, full-mix chroma, no constant-Q. Non-load-bearing today |
 | BUG-051 | P3 | local-file / security | m3u entry paths resolved with no extension/traversal guard (bounded: no egress) |
-| BUG-050 | P2 | resource-management / perf | Always-on session recorder ~doubles per-frame CPU (encode stacked on render) |
+| BUG-050 | P2 | resource-management / perf | **✅ RESOLVED 2026-06-17 (reframed)** — video gate landed (frame loop halved 15.78→~8.1 ms; `video 0 appended`); the "Activity Monitor halves" criterion was a misdiagnosis (the ~2-core cost is live stem separation, not the recorder) — retired |
 | BUG-034 | P1 | renderer / test-isolation | Ray-march fixtures render at 32 steps vs live 128 (`sceneParamsB.z` double-booked) |
 | BUG-035 | P2 | dsp.structure | NoveltyDetector re-detects boundaries ~4-5× after similarity ring wraps |
 | BUG-036 | P2 | audio.capture / performance | Heap allocations on the real-time audio thread (three sites) |
@@ -114,6 +115,34 @@ Contained to `LocalFilePlaybackProvider.scheduleFileLoop`: hop the re-schedule (
 - **BUG-056** (local-file restarts from the top on a device change) — same `handleConfigurationChange` restart path; a fix here should be coordinated with any resume-from-position work there.
 - **G1 / CLEAN.1.5 / BUG-058** — the device-swap scenario is one production trigger (config change during local-file playback).
 - Test: `SessionLifecycleChurnTests.concurrentDoubleStart_serializesWithoutDeadlock` (REVIEW.2). Failed Approach #27 (real audio, not synthetic) — why the test drives the real provider.
+
+---
+
+### BUG-060 — One-off app hang: the render loop died on a `preset → Gossamer` switch; force-quit required; not reproduced (2026-06-18)
+
+**Severity:** P3 (a full app hang requiring force-quit is P1-*impact*, but it was seen once and did not reproduce — Gossamer ran 3× clean the next session; filed as **monitored**, like BUG-058, pending a recurrence with a captured stack).
+**Domain tag:** renderer / app.hang (suspected preset-apply or first-frame GPU hang on Gossamer).
+**Status:** Open — monitored; **un-reproduced, no diagnostic stack.** Cannot be diagnosed from the session CSV/log artifacts (they show only that the render loop stopped, not where it blocked).
+**Introduced:** Unknown.
+**Resolved:** —
+
+**Expected:** switching presets (incl. Gossamer) never hangs the app.
+
+**Actual (session `2026-06-17T22-10-50Z`):** the render loop was healthy — 60 fps, `frame_gpu_ms` 0.13–1.5 ms, no `deltaTime` gap — through the **last recorded frame (9459) at `22:14:01Z`**, which is **one second after `session.log`'s last event, `preset → Gossamer` at `22:14:00Z`**. `features.csv` then stops while the stem-separation / orchestrator threads keep logging for ~30 s more → a **render-path hang** (main or GPU), not an analysis stall (cf. BUG-043, a freeze-then-lurch) and not a tap freeze (cf. BUG-058). Video was OFF (BUG-050), so the recorder's video path is excluded. Matt force-quit from Xcode **without hitting Pause**, so no thread stacks were captured.
+
+**Non-reproduction (session `2026-06-18T13-57-23Z`):** Gossamer was applied **3×** (13:58:35, 14:00:13, 14:00:36) and rendered clean; the session ended with a normal `SessionRecorder finished` shutdown. So the hang is rare/intermittent, not a deterministic Gossamer defect.
+
+**Reproduction steps:** unknown trigger. Lead: a `preset → Gossamer` switch under live load (continuous stem separation running) — possibly transient GPU contention between the stem-separation MPSGraph and Gossamer's first-frame render, or a preset-apply race.
+
+**Session artifacts:** `~/Documents/phosphene_sessions/2026-06-17T22-10-50Z/` (features.csv ends at frame 9459 / `22:14:01Z`; session.log last line `preset → Gossamer`); clean counter-example `2026-06-18T13-57-23Z`.
+
+**Suspected failure class:** `concurrency` or `render-state` (a hang, not a crash).
+
+**Verification criteria (when diagnosable):**
+- [ ] **On the next recurrence: hit Pause (⏸) in Xcode BEFORE force-quitting**, and capture the Debug-Navigator thread stacks (main thread + any thread in Metal/MPSGraph) — the one artifact that locates a hang. Add a `Debug → Capture GPU Frame` if a GPU hang is suspected.
+- [ ] Root cause identified from a captured stack; regression guard added.
+
+**Manual validation required:** Yes — a hang is felt, and only a captured stack diagnoses it.
 
 ---
 
@@ -413,9 +442,9 @@ Recommended sequencing: Tier 1 measured against the labeled set first; escalate 
 
 **Severity:** P2 (no fps/correctness impact — render alone holds ~52 % of the 60 fps frame budget and 60 fps holds; the cost is sustained extra CPU/power/heat, ~2 cores on the Mac mini, for the entire duration of every session).
 **Domain tag:** resource-management / performance
-**Status:** **Fix landed 2026-06-17 (`64d8285`) — video capture gated OFF by default (`PHOSPHENE_RECORD_VIDEO=1` to enable); CSV/log/stem artifacts always record. Pending Matt's manual Activity-Monitor confirm that steady-state CPU ~halves.** (Diagnosed 2026-06-14; the deferred "option A" was reversed — Matt 2026-06-17 — once it was clear the video is rarely needed vs the always-on CSVs and gating it is a small, output-preserving change.) Surfaced when Matt's Activity Monitor read PhospheneApp at ~99–115 % during the BUG-033 validation.
+**Status:** **✅ RESOLVED 2026-06-17 (`702697d`) — reframed.** The video gate landed (OFF by default; `PHOSPHENE_RECORD_VIDEO=1` to enable) and is validated on two real sessions (`2026-06-17T22-10-50Z`, `2026-06-18T13-57-23Z`): `video 0 appended`, `frame_cpu_ms` **15.78 → ~8.1 ms** — the render loop genuinely halved. **The original "Activity Monitor steady-state CPU halves" criterion was a MISDIAGNOSIS and is retired:** Activity Monitor stayed 89–115% because the dominant cost is the **continuous real-time stem separation** (the Demucs-style MPSGraph model re-running every ~5 s — 28–29× per ~3 min session) + the preset-dependent render, NOT the video. `encode_cpu_ms` (~6 ms, unchanged with video off) is the *Metal command-encode* metric — the 2026-06-14 entry mis-read it as the video-capture cost. The gate is a real, free frame-loop reduction and is kept; the leftover ~2-core cost is the live-stems feature working as designed (acceptable on the plugged-in Mac mini at 60 fps; a separate question only if laptops/battery become a target). (Diagnosed 2026-06-14; "option A" defer reversed by Matt 2026-06-17.) Surfaced when Matt's Activity Monitor read PhospheneApp at ~99–115 % during the BUG-033 validation.
 **Introduced:** the SessionRecorder video-capture path; instantiated unconditionally (`VisualizerEngine.swift:785`, `SessionRecorder()` with `enabled: true` default) — no production gate.
-**Resolved:** —
+**Resolved:** 2026-06-17 (`702697d`, video gate) — reframed: the gate IS the fix (the video tax is gone); the "halve Activity Monitor" criterion was retired as a misdiagnosis (dominant CPU = live stem separation, not the recorder). Validated sessions `22-10-50Z` + `13-57-23Z`.
 
 **Expected:** the diagnostic session recorder adds modest overhead; it should not roughly double the app's CPU in normal use.
 **Actual:** the recorder runs every session (ungated). Its per-frame `encode_cpu_ms` (~7–9 ms — drawable→pixel-buffer capture + AVAssetWriter feed) is **additive** to `renderframe_cpu_ms` (~8.6 ms): `frame_cpu_ms` ≈ encode + render ≈ 15.8 ms ≈ a full 60 fps budget → ~1 core for the frame path, plus audio/main threads → Activity Monitor ~99–115 %. Encode is on its own thread, so it does not (much) cost frame rate — render alone is ~52 % budget and 60 fps holds for 98.8 % of frames — the impact is sustained CPU/power/heat. Compounded by BUG-039 (the same recorder's video writer dying + restarting, hitting its 8/8 cap on macOS 26.5 / M2 Pro).
@@ -424,8 +453,8 @@ Recommended sequencing: Tier 1 measured against the labeled set first; escalate 
 **Suspected failure class:** `resource-management`.
 **Verification criteria:**
 - [x] Recording gated off by default with an explicit per-session enable (`PHOSPHENE_RECORD_VIDEO=1`) — `SessionRecorderTests.test_videoDisabled_noCaptureTexture_csvStillRecords` (video off → nil capture texture, no video.mp4, features.csv still records) + `test_videoEnabled_allocatesCaptureTexture`. CSV/stems unaffected.
-- [ ] Manual (Matt): Activity-Monitor steady-state CPU in normal use roughly halves vs the prior ~99 %.
-- [ ] Manual (Matt): 60 fps unaffected; `video.mp4` still produced when `PHOSPHENE_RECORD_VIDEO=1`.
+- [x] Validated on real sessions (`22-10-50Z`, `13-57-23Z`, Matt): `video 0 appended` across a full session; `frame_cpu_ms` 15.78 → ~8.1 ms (render loop halved); 60 fps held; CSV/stems/raw-tap intact.
+- [retired] ~~Activity-Monitor steady-state CPU roughly halves~~ — misdiagnosis (Activity Monitor is stem-separation-dominated, not video; see Status). The *frame-loop* CPU halved, which is what the gate can affect.
 
 ---
 
