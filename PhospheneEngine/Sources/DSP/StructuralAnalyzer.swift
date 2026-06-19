@@ -48,14 +48,32 @@ public final class StructuralAnalyzer: @unchecked Sendable {
     /// How often to run novelty detection (every N frames).
     private let detectionInterval: Int
 
-    /// Current frame count since start/reset.
-    private var frameCount: Int = 0
+    /// Emitted decimated-frame count since start/reset (one per `bucketPeriod`).
+    /// Drives the detection cadence — NOT the raw per-call count (BUG-042).
+    private var structuralFrameCount: Int = 0
 
-    /// Current timestamp (updated each frame).
+    /// Current timestamp (updated each raw frame).
     private var currentTime: Float = 0
 
-    /// Current assumed FPS (updated from deltaTime).
-    private var currentFPS: Float = 60
+    /// Section-scale decimation period (BUG-042). Incoming raw frames (~94 Hz)
+    /// are averaged into one structural frame every `bucketPeriod` seconds before
+    /// they reach the similarity matrix, so the fixed frame-denominated geometry
+    /// (600-frame ring, 8-frame checkerboard) lands at SECTION scale (5 min / 4 s)
+    /// instead of NOTE scale (6.4 s / 85 ms). The decimated stream is exactly
+    /// `1/bucketPeriod` Hz, so timestamp conversion uses that rate, not an estimate.
+    private let bucketPeriod: Float
+
+    /// Running sum of raw frames in the current decimation bucket.
+    private var bucketSum: [Float]
+
+    /// Raw frames accumulated in the current bucket.
+    private var bucketFrameCount: Int = 0
+
+    /// Analyzer-clock time the last bucket was emitted.
+    private var lastBucketEmitTime: Float = 0
+
+    /// Pre-allocated buffer for the decimated (bucket-mean) frame.
+    private var decimatedBuffer: [Float]
 
     /// Detected section boundaries as timestamps.
     private var sectionBoundaries: [Float] = []
@@ -83,27 +101,36 @@ public final class StructuralAnalyzer: @unchecked Sendable {
     /// Create a structural analyzer.
     ///
     /// - Parameters:
-    ///   - maxHistory: Maximum frame history for the similarity matrix (default 600).
+    ///   - maxHistory: Maximum DECIMATED-frame history for the similarity matrix
+    ///     (default 600 ≈ 5 min at the 2 Hz decimated rate).
     ///   - featureDim: Feature vector dimension (default 16: 12 chroma + 4 spectral).
-    ///   - detectionInterval: Run novelty detection every N frames (default 30 ≈ 0.5s at 60fps).
+    ///   - detectionInterval: Run novelty detection every N decimated frames
+    ///     (default 2 ≈ 1 s at the 2 Hz decimated rate).
+    ///   - bucketPeriod: Decimation window in seconds (default 0.5 → 2 Hz). Raw
+    ///     ~94 Hz frames are mean-aggregated per bucket before the SSM (BUG-042).
     public init(
         maxHistory: Int = 600,
         featureDim: Int = 16,
-        detectionInterval: Int = 30
+        detectionInterval: Int = 2,
+        bucketPeriod: Float = 0.5
     ) {
         self.featureDim = featureDim
         self.detectionInterval = detectionInterval
+        self.bucketPeriod = bucketPeriod
         self.similarityMatrix = SelfSimilarityMatrix(
             maxHistory: maxHistory, featureDim: featureDim
         )
         self.noveltyDetector = NoveltyDetector(maxHistory: maxHistory)
         self.featureBuffer = [Float](repeating: 0, count: featureDim)
+        self.decimatedBuffer = [Float](repeating: 0, count: featureDim)
         self.currentSectionSum = [Float](repeating: 0, count: featureDim)
+        self.bucketSum = [Float](repeating: 0, count: featureDim)
 
         logger.info(
             """
             StructuralAnalyzer created: maxHistory=\(maxHistory), \
-            featureDim=\(featureDim), detectionInterval=\(detectionInterval)
+            featureDim=\(featureDim), detectionInterval=\(detectionInterval), \
+            bucketPeriod=\(bucketPeriod)s
             """
         )
     }
@@ -154,35 +181,53 @@ public final class StructuralAnalyzer: @unchecked Sendable {
         featureBuffer[14] = spectral.rolloff
         featureBuffer[15] = spectral.energy
 
-        // Add to similarity matrix.
-        similarityMatrix.addFrame(featureBuffer)
+        // BUG-042: accumulate into the current decimation bucket. The SSM insert
+        // and the expensive novelty detection run on the bucket MEAN, not every
+        // raw frame, so the geometry operates at section scale.
+        for i in 0..<featureDim { bucketSum[i] += featureBuffer[i] }
+        bucketFrameCount += 1
 
-        // Accumulate features for current section average.
-        for i in 0..<featureDim {
-            currentSectionSum[i] += featureBuffer[i]
+        // Emit one decimated frame per `bucketPeriod` of analyzer-clock time.
+        if bucketFrameCount > 0, time - lastBucketEmitTime >= bucketPeriod {
+            emitDecimatedFrame(at: time)
         }
+
+        return computePrediction()
+    }
+
+    /// Average the current bucket into one structural frame and push it through
+    /// the similarity matrix + periodic novelty detection (BUG-042 decimation).
+    private func emitDecimatedFrame(at time: Float) {
+        let inv = 1.0 / Float(bucketFrameCount)
+        for i in 0..<featureDim {
+            decimatedBuffer[i] = bucketSum[i] * inv
+            bucketSum[i] = 0
+        }
+        bucketFrameCount = 0
+        lastBucketEmitTime = time
+
+        // Add the decimated frame to the similarity matrix.
+        similarityMatrix.addFrame(decimatedBuffer)
+
+        // Accumulate the current section average over DECIMATED frames.
+        for i in 0..<featureDim { currentSectionSum[i] += decimatedBuffer[i] }
         currentSectionFrameCount += 1
 
-        frameCount += 1
+        structuralFrameCount += 1
 
-        // Estimate FPS from time progression.
-        if frameCount > 1, time > 0 {
-            currentFPS = Float(frameCount) / time
-        }
-
-        // Run novelty detection periodically.
-        if frameCount % detectionInterval == 0 {
+        // Run novelty detection periodically. The decimated stream is exactly
+        // `1/bucketPeriod` Hz, so that fixed rate converts frame indices to
+        // timestamps (no FPS estimate needed).
+        if structuralFrameCount % detectionInterval == 0 {
             let newBoundaries = noveltyDetector.detect(
                 similarityMatrix: similarityMatrix,
                 currentTime: time,
-                fps: currentFPS
+                fps: 1.0 / bucketPeriod
             )
             for boundary in newBoundaries {
                 registerBoundary(at: boundary.timestamp)
             }
         }
-
-        return computePrediction()
     }
 
     // MARK: - Public Accessors
@@ -210,9 +255,11 @@ public final class StructuralAnalyzer: @unchecked Sendable {
         lock.lock()
         similarityMatrix.reset()
         noveltyDetector.reset()
-        frameCount = 0
+        structuralFrameCount = 0
         currentTime = 0
-        currentFPS = 60
+        bucketFrameCount = 0
+        lastBucketEmitTime = 0
+        for i in 0..<featureDim { bucketSum[i] = 0 }
         sectionBoundaries.removeAll()
         sectionFeatureSums.removeAll()
         sectionFrameCounts.removeAll()
