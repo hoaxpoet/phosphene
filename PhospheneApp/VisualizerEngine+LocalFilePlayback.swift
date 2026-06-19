@@ -125,21 +125,21 @@ extension VisualizerEngine: LocalFilePreparing {
         // wrote into it).
         resetStemPipeline(for: identity, caller: .other)
 
-        // BUG-021 revert (2026-05-28) — D-LF5-4's `buildPlan()` call here was
-        // implicated in pathological orchestrator behaviour: session
-        // `2026-05-28T19-04-51Z` showed the orchestrator cycling through every
-        // preset alphabetically (one every ~5 s), and the user-pressed Next
-        // button locked the app (force-quit required). Two hypotheses: (a)
-        // the planner produces broken segmentation with only 2 certified
-        // presets in the catalog (FerrofluidOcean + LumenMosaic) — the
-        // orchestrator then walks the catalog when the segment scoring ties;
-        // (b) the constant applyPreset churn saturates MainActor so the
-        // Next-press click can't get serviced. Either way, reverting to
-        // pre-D-LF5-4 behaviour (no buildPlan → orchestrator stays reactive
-        // for LF; no multi-preset variety per song but no chaos) buys back a
-        // working app while the planner side is investigated separately.
-        // Re-enable buildPlan for LF when the certified catalog grows
-        // AND the plan walker's behaviour for short segments is verified.
+        // LFPLAN.1 (2026-06-19) — AI plan RE-ENABLED for local files. The
+        // 2026-05-28 BUG-021 revert disabled `buildPlan()` here: with a 2-preset
+        // catalog the orchestrator cycled presets "one every ~5 s" and a Next
+        // press force-quit the app. The cycling's root cause was BUG-042's
+        // note-scale section detector inflating `estimatedSectionCount`
+        // (= `StructuralAnalyzer` boundary count, SessionPreparer+Analysis) to
+        // ~180 → ~180 tiny planner segments per track. All THREE re-enable
+        // preconditions the revert named are now met: (1) BUG-042's section-scale
+        // decimation (2026-06-19) collapses the count to ~9 sane sections
+        // (`PlannerSectionCountScalingTests` pins 180→9); (2) the certified
+        // catalog is now 7 (was 2); (3) the Next-button lockup was the
+        // separately-resolved BUG-059 ABBA deadlock (2026-06-18). buildPlan() is
+        // source-agnostic (reads `currentPlan` + cached profiles, both present on
+        // the LF path) and sets `livePlan`, flipping the orchestrator to session mode.
+        buildPlan()
 
         // LF.5.fix D-LF5-1 + LF.6: orchestrator plan-mode wire (mirrors
         // `makeTrackChangeCallback` in VisualizerEngine+Capture.swift:129 —
