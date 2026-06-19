@@ -1,5 +1,11 @@
-// StructuralAnalysisRegressionTests — Golden-value regression tests for structural analysis.
-// Feeds a known AABA feature sequence and asserts detected boundaries match golden timestamps.
+// StructuralAnalysisRegressionTests — Golden-value regression test for structural analysis.
+// Feeds a known AABA section sequence and asserts detected boundaries match golden times.
+//
+// BUG-042: the analyzer decimates to 2 Hz before the similarity matrix, so the minimum
+// detectable section is ~8 s. The AABA pattern therefore uses 20 s sections (golden
+// boundaries at 40 s and 60 s), not the note-scale 2.5 s sections of the pre-fix fixture.
+// The pattern is generated inline — it is just constant feature blocks per section, so a
+// 60 KB on-disk JSON blob bought nothing over a 6-line loop.
 
 import Testing
 import Foundation
@@ -8,70 +14,45 @@ import Foundation
 
 // MARK: - AABA Boundary Regression
 
-@Test func structuralAnalysis_aabaPattern_boundariesMatchGolden() throws {
-    // Load fixture.
-    guard let url = Bundle.module.url(
-        forResource: "aaba_structural_fixture",
-        withExtension: "json",
-        subdirectory: "Fixtures"
-    ) else {
-        throw StructuralRegressionError.fixtureNotFound("aaba_structural_fixture")
-    }
-    let data = try Data(contentsOf: url)
-    guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-          let framesArray = json["frames"] as? [[String: Any]],
-          let goldenBoundaries = json["goldenBoundaries"] as? [Double] else {
-        throw StructuralRegressionError.fixtureParseError("aaba_structural_fixture")
-    }
+@Test func structuralAnalysis_aabaPattern_boundariesMatchGolden() {
+    // 16-dim feature blocks (12 chroma + centroid/flux/rolloff/energy) for two
+    // contrasting sections. A→A is identical (no boundary); A→B and B→A are sharp.
+    let sectionA: [Float] = [0.9, 0.05, 0.05, 0.05, 0.8, 0.05, 0.05, 0.7, 0.05, 0.05, 0.05, 0.05,
+                             0.3, 0.1, 0.4, 0.3]
+    let sectionB: [Float] = [0.05, 0.8, 0.05, 0.05, 0.05, 0.05, 0.9, 0.05, 0.05, 0.05, 0.7, 0.05,
+                             0.8, 0.7, 0.9, 0.8]
 
-    // Create analyzer with matching parameters.
     let analyzer = StructuralAnalyzer(
-        maxHistory: 600, featureDim: 16, detectionInterval: 10
+        maxHistory: 600, featureDim: 16, detectionInterval: 2
     )
 
-    // Feed all frames.
-    for frameDict in framesArray {
-        guard let features = frameDict["features"] as? [Double],
-              let time = frameDict["time"] as? Double else {
-            continue
-        }
-        let floatFeatures = features.map { Float($0) }
-        guard floatFeatures.count >= 16 else { continue }
-
-        let chroma = Array(floatFeatures[0..<12])
-        _ = analyzer.process(
-            chroma: chroma,
-            spectral: StructuralAnalyzer.SpectralSummary(
-                centroid: floatFeatures[12],
-                flux: floatFeatures[13],
-                rolloff: floatFeatures[14],
-                energy: floatFeatures[15]
-            ),
-            time: Float(time)
+    // AABA at 20 s/section, 60 fps: A[0,20) A[20,40) B[40,60) A[60,80).
+    // True boundaries at 40 s (A→B) and 60 s (B→A); the A→A seam at 20 s is NOT a boundary.
+    let pattern: [[Float]] = [sectionA, sectionA, sectionB, sectionA]
+    let secondsPerSection: Float = 20
+    let fps: Float = 60
+    for (sectionIndex, block) in pattern.enumerated() {
+        let chroma = Array(block[0..<12])
+        let summary = StructuralAnalyzer.SpectralSummary(
+            centroid: block[12], flux: block[13], rolloff: block[14], energy: block[15]
         )
+        let base = Float(sectionIndex) * secondsPerSection
+        for i in 0..<Int(secondsPerSection * fps) {
+            _ = analyzer.process(chroma: chroma, spectral: summary, time: base + Float(i) / fps)
+        }
     }
 
-    // Check detected boundaries against golden values.
     let detected = analyzer.boundaryTimestamps
-    let golden = goldenBoundaries.map { Float($0) }
-    let tolerance: Float = 0.5  // ±500ms
+    let golden: [Float] = [40.0, 60.0]
+    let tolerance: Float = 3.0  // 4 s checkerboard block + 0.5 s decimation quantization.
 
-    // The AABA pattern has 2 real boundaries (A→B at 5.0s, B→A at 7.5s).
-    // The A→A boundary at 2.5s should NOT be detected (same features).
     #expect(detected.count >= golden.count,
             "Should detect at least \(golden.count) boundaries, got \(detected.count): \(detected)")
 
-    // For each golden boundary, find the closest detected boundary.
+    // For each golden boundary, the closest detected boundary must be within tolerance.
     for goldenTime in golden {
         let closestDistance = detected.map { abs($0 - goldenTime) }.min() ?? Float.infinity
         #expect(closestDistance <= tolerance,
                 "Golden boundary at \(goldenTime)s: closest detected is \(closestDistance)s away (tolerance \(tolerance)s). Detected: \(detected)")
     }
-}
-
-// MARK: - Errors
-
-private enum StructuralRegressionError: Error {
-    case fixtureNotFound(String)
-    case fixtureParseError(String)
 }

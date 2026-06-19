@@ -54,10 +54,12 @@ func mirPipeline_structuralPrediction_liveCallerShape_timestampsNonNegative() {
             return bin >= 120 && bin < 220 ? Float(0.5) : Float(0.01)
         }
     }
-    // Phase A 400 frames, phase B 400 frames at 60 fps — one true boundary at ≈ 6.67 s,
-    // replicated through the EXACT live-caller shape (time: 0 every frame).
-    for i in 0..<800 {
-        _ = pipeline.process(magnitudes: mags(i < 400), fps: 60, time: 0, deltaTime: 1.0 / 60.0)
+    // BUG-042 section scale: phase A 15 s + phase B 15 s at 60 fps — one true boundary at
+    // ≈ 15 s (the 8 s minimum section needs ≥ 8 s of after-context to register), replicated
+    // through the EXACT live-caller shape (time: 0 every frame; the analyzer clock is the
+    // pipeline's own elapsedSeconds, which advances via deltaTime to ~30 s).
+    for i in 0..<1800 {
+        _ = pipeline.process(magnitudes: mags(i < 900), fps: 60, time: 0, deltaTime: 1.0 / 60.0)
     }
     let pred = pipeline.latestStructuralPrediction
     #expect(pred.sectionIndex >= 1,
@@ -66,8 +68,8 @@ func mirPipeline_structuralPrediction_liveCallerShape_timestampsNonNegative() {
             "Junk boundaries registered (sectionIndex \(pred.sectionIndex)) — the live-edge guard regressed.")
     #expect(pred.sectionStartTime > 0,
             "sectionStartTime \(pred.sectionStartTime) ≤ 0 — the frozen-clock bug regressed (BUG-040).")
-    #expect(pred.sectionStartTime < 13.4,
-            "sectionStartTime \(pred.sectionStartTime) is outside the fed time span (~13.3 s).")
+    #expect(abs(pred.sectionStartTime - 15.0) < 4.0,
+            "sectionStartTime \(pred.sectionStartTime) is far from the true transition at ~15 s (fed span ~30 s).")
 }
 
 // MARK: - SIMD Alignment

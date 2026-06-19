@@ -1,5 +1,11 @@
 // StructuralAnalyzerTests — Unit tests for progressive structural analysis.
 // Validates boundary detection, prediction, repetition, and confidence scoring.
+//
+// BUG-042: the analyzer decimates its ~94 Hz input to one structural frame every
+// 0.5 s (2 Hz) before the similarity matrix, so the frame-denominated geometry is
+// section-scale: 8-frame checkerboard = 4 s, minPeakDistance 16 = 8 s minimum
+// section, 600-frame ring = 5 min. These tests therefore use SECOND-scale section
+// durations (15–20 s) — note-scale fixtures (2–3 s) no longer register boundaries.
 
 import Testing
 import Foundation
@@ -19,6 +25,9 @@ private func chromaB() -> [Float] {
     // Strong F#, A#, C# (F# major triad).
     [0.05, 0.8, 0.05, 0.05, 0.05, 0.05, 0.9, 0.05, 0.05, 0.05, 0.7, 0.05]
 }
+
+/// Frames for `seconds` of audio at the helper's feed rate (60 raw fps).
+private func frames(_ seconds: Float) -> Int { Int(seconds * 60) }
 
 /// Feed a section of N frames with given chroma to the analyzer.
 @discardableResult
@@ -54,31 +63,32 @@ private func feedSection(
 // MARK: - Live-Edge Guard (BUG-040)
 
 @Test func structuralAnalyzer_evolvingMusicNoBoundary_registersNothing() {
-    // Real music varies CONTINUOUSLY — the checkerboard novelty response forms a local
-    // maximum at the newest valid window position (the after-block holds the freshest
-    // content), and pre-fix that live-edge peak's advancing ABSOLUTE index escaped the
-    // dedup window every ~4 detect calls: 20-35 junk "boundaries" per track at ~1.3-1.6 s
-    // cadence (BUG-040, session 2026-06-10T03-09-20Z). This fixture is continuously
-    // evolving with NO structural discontinuity anywhere — production geometry — and must
-    // register ZERO boundaries.
-    let analyzer = StructuralAnalyzer(maxHistory: 600, featureDim: 16, detectionInterval: 30)
-    for i in 0..<3000 {
-        let t = Float(i)
-        var chroma = [Float](repeating: 0, count: 12)
-        for bin in 0..<12 {
-            // Slow, smooth, never-repeating drift across bins (incommensurate rates).
-            chroma[bin] = 0.35 + 0.25 * sinf(0.0041 * t + Float(bin) * 0.524)
-                               + 0.10 * sinf(0.0173 * t + Float(bin) * 1.31)
-        }
+    // BUG-040 live-edge guard: continuously-evolving material with NO structural
+    // discontinuity must register ZERO boundaries — pre-fix, the advancing live-edge
+    // novelty peak escaped the dedup window and machine-gunned 20-35 junk boundaries
+    // (session 2026-06-10T03-09-20Z).
+    //
+    // BUG-042 re-expression: the material must be non-sectional AT SECTION SCALE. The
+    // pre-fix fixture used incommensurate sinusoids whose slowest term has a ~25 s period
+    // — note-scale noise, but a legitimate ~25 s SECTION once the geometry is section-scale
+    // (it correctly found 3). A monotonic linear A→B drift over the whole 50 s has constant
+    // novelty everywhere — no local peak, no section — the section-scale analogue of
+    // "smoothly evolving, no boundary" (cf. the detector-level gradualChange test).
+    let analyzer = StructuralAnalyzer(maxHistory: 600, featureDim: 16, detectionInterval: 2)
+    let startChroma = chromaA(), endChroma = chromaB()
+    let total = 3000
+    for i in 0..<total {
+        let u = Float(i) / Float(total - 1)            // 0 → 1, monotonic.
+        let chroma = (0..<12).map { startChroma[$0] + (endChroma[$0] - startChroma[$0]) * u }
         _ = analyzer.process(
             chroma: chroma,
             spectral: StructuralAnalyzer.SpectralSummary(
-                centroid: 0.5 + 0.12 * sinf(0.0031 * t),
-                flux: 0.3 + 0.12 * sinf(0.0053 * t),
-                rolloff: 0.6 + 0.08 * sinf(0.0023 * t),
-                energy: 0.5 + 0.10 * sinf(0.0019 * t)
+                centroid: 0.3 + 0.5 * u,
+                flux: 0.1 + 0.6 * u,
+                rolloff: 0.4 + 0.5 * u,
+                energy: 0.3 + 0.5 * u
             ),
-            time: t / 60.0
+            time: Float(i) / 60.0
         )
     }
     #expect(analyzer.boundaryCount == 0,
@@ -90,36 +100,37 @@ private func feedSection(
     // freezing the analyzer clock — boundary timestamps came out NEGATIVE (≈ −0.3 s) and
     // durations were noise. At the ANALYZER layer the contract is: fed a sane clock, the
     // registered boundary timestamp is non-negative and lands near the transition.
-    let analyzer = StructuralAnalyzer(maxHistory: 600, featureDim: 16, detectionInterval: 30)
-    // A for 10 s, B for 10 s at 60 fps — one true boundary at t = 10 s. The edge guard
-    // registers it once it has minPeakDistance (120 frames = 2 s) of after-context.
-    feedSection(analyzer: analyzer, chroma: chromaA(), frames: 600, startTime: 0)
+    // Section-scale (BUG-042): A for 15 s, B for 15 s — one true boundary at t = 15 s.
+    // Tolerance ±3 s reflects the 4 s checkerboard block + 0.5 s decimation quantization.
+    let analyzer = StructuralAnalyzer(maxHistory: 600, featureDim: 16, detectionInterval: 2)
+    feedSection(analyzer: analyzer, chroma: chromaA(), frames: frames(15), startTime: 0)
     feedSection(analyzer: analyzer, chroma: chromaB(), centroid: 0.7, flux: 0.6,
-                frames: 600, startTime: 10.0)
+                frames: frames(15), startTime: 15.0)
     let stamps = analyzer.boundaryTimestamps
     #expect(stamps.count == 1, "Expected exactly one boundary, got \(stamps)")
     if let ts = stamps.first {
         #expect(ts >= 0, "Boundary timestamp is negative (\(ts)) — the clock skew regressed (BUG-040).")
-        #expect(abs(ts - 10.0) < 1.5,
-                "Boundary timestamp \(ts) is far from the true transition at 10.0 s.")
+        #expect(abs(ts - 15.0) < 3.0,
+                "Boundary timestamp \(ts) is far from the true transition at 15.0 s.")
     }
 }
 
 // MARK: - Ring-Wrap Dedup (BUG-035)
 
 @Test func structuralAnalyzer_ringWrap_boundaryRegistersOnce() {
-    // Production geometry (maxHistory 600, minPeakDistance 120): the
-    // pre-fix stale-index dedup re-admitted the boundary every 4 detect
-    // calls while it slid through the 600-frame ring (~4-5 duplicates).
+    // The pre-fix stale-index dedup re-admitted a boundary every ~4 detect calls while it
+    // slid through the ring (~4-5 duplicates). Post-BUG-042 the ring holds DECIMATED
+    // frames, so to exercise a wrap with a fast test we shrink the ring to 40 decimated
+    // frames (= 20 s) and slide one real A→B boundary fully out with 40 s of B.
     let analyzer = StructuralAnalyzer(
-        maxHistory: 600, featureDim: 16, detectionInterval: 30
+        maxHistory: 40, featureDim: 16, detectionInterval: 2
     )
 
-    // One real A→B transition, then enough B to slide it fully out of history.
-    feedSection(analyzer: analyzer, chroma: chromaA(), frames: 200, startTime: 0)
+    // One real A→B transition at t = 10 s, then enough B to slide it fully out of history.
+    feedSection(analyzer: analyzer, chroma: chromaA(), frames: frames(10), startTime: 0)
     feedSection(
         analyzer: analyzer, chroma: chromaB(), centroid: 0.7, flux: 0.6,
-        frames: 1400, startTime: 200.0 / 60.0
+        frames: frames(40), startTime: 10.0
     )
 
     // Pre-fix: stale logical-index dedup re-registered the boundary ~4-5×,
@@ -140,13 +151,13 @@ private func feedSection(
 
 @Test func structuralAnalyzer_oneSection_noPrediction() {
     let analyzer = StructuralAnalyzer(
-        maxHistory: 400, featureDim: 16, detectionInterval: 10
+        maxHistory: 400, featureDim: 16, detectionInterval: 2
     )
 
-    // Feed 300 frames of section A — no transition, so no boundaries.
+    // Feed 30 s of section A — no transition, so detection runs but finds no boundaries.
     let prediction = feedSection(
         analyzer: analyzer, chroma: chromaA(),
-        frames: 300, startTime: 0
+        frames: frames(30), startTime: 0
     )
 
     #expect(prediction.confidence == 0,
@@ -159,25 +170,25 @@ private func feedSection(
 
 @Test func structuralAnalyzer_twoSections_predictsThirdBoundary() {
     let analyzer = StructuralAnalyzer(
-        maxHistory: 600, featureDim: 16, detectionInterval: 10
+        maxHistory: 600, featureDim: 16, detectionInterval: 2
     )
 
-    // Section A: 150 frames (2.5s at 60fps).
+    // Section A: 15 s.
     feedSection(
         analyzer: analyzer, chroma: chromaA(),
-        frames: 150, startTime: 0
+        frames: frames(15), startTime: 0
     )
 
-    // Section B: 150 frames.
+    // Section B: 15 s.
     feedSection(
         analyzer: analyzer, chroma: chromaB(),
-        frames: 150, startTime: 2.5
+        frames: frames(15), startTime: 15.0
     )
 
-    // Partial section A again: 100 frames — enough to trigger detection.
+    // Partial section A again: 12 s — enough after-context for the B→A boundary.
     let prediction = feedSection(
         analyzer: analyzer, chroma: chromaA(),
-        frames: 100, startTime: 5.0
+        frames: frames(12), startTime: 30.0
     )
 
     // After A→B and B→A boundaries, should have a prediction.
@@ -194,21 +205,21 @@ private func feedSection(
 
 @Test func structuralAnalyzer_sectionBoundary_detectedOnNoveltyPeak() {
     let analyzer = StructuralAnalyzer(
-        maxHistory: 400, featureDim: 16, detectionInterval: 10
+        maxHistory: 400, featureDim: 16, detectionInterval: 2
     )
 
-    // Clear section A.
+    // Clear section A — 15 s.
     feedSection(
         analyzer: analyzer, chroma: chromaA(),
         centroid: 0.3, flux: 0.1, rolloff: 0.4, energy: 0.3,
-        frames: 150, startTime: 0
+        frames: frames(15), startTime: 0
     )
 
-    // Very different section B.
+    // Very different section B — 15 s.
     feedSection(
         analyzer: analyzer, chroma: chromaB(),
         centroid: 0.8, flux: 0.7, rolloff: 0.9, energy: 0.8,
-        frames: 150, startTime: 2.5
+        frames: frames(15), startTime: 15.0
     )
 
     #expect(analyzer.boundaryCount >= 1,
@@ -219,15 +230,15 @@ private func feedSection(
 
 @Test func structuralAnalyzer_repetition_identifiedCorrectly() {
     let analyzer = StructuralAnalyzer(
-        maxHistory: 600, featureDim: 16, detectionInterval: 10
+        maxHistory: 600, featureDim: 16, detectionInterval: 2
     )
 
-    // ABAB pattern — sections 1 & 3 (A) should be similar, 2 & 4 (B) similar.
-    feedSection(analyzer: analyzer, chroma: chromaA(), frames: 120, startTime: 0)
-    feedSection(analyzer: analyzer, chroma: chromaB(), frames: 120, startTime: 2.0)
-    feedSection(analyzer: analyzer, chroma: chromaA(), frames: 120, startTime: 4.0)
+    // ABAB pattern (15 s sections) — sections 1 & 3 (A) should be similar, 2 & 4 (B) similar.
+    feedSection(analyzer: analyzer, chroma: chromaA(), frames: frames(15), startTime: 0)
+    feedSection(analyzer: analyzer, chroma: chromaB(), frames: frames(15), startTime: 15.0)
+    feedSection(analyzer: analyzer, chroma: chromaA(), frames: frames(15), startTime: 30.0)
     let prediction = feedSection(
-        analyzer: analyzer, chroma: chromaB(), frames: 120, startTime: 6.0
+        analyzer: analyzer, chroma: chromaB(), frames: frames(15), startTime: 45.0
     )
 
     // With an ABAB pattern, if boundaries are detected, confidence should
@@ -242,14 +253,14 @@ private func feedSection(
 
 @Test func structuralAnalyzer_confidence_lowForAmbientTrack() {
     let analyzer = StructuralAnalyzer(
-        maxHistory: 600, featureDim: 16, detectionInterval: 10
+        maxHistory: 600, featureDim: 16, detectionInterval: 2
     )
 
     // Feed random-ish features — slowly varying, no clear sections.
     var prediction = StructuralPrediction.none
-    for i in 0..<500 {
+    for i in 0..<1800 {
         let time = Float(i) / 60.0
-        let phase = Float(i) * 0.037  // Slow irrational phase.
+        let phase = Float(i) * 0.0037  // Slow irrational phase.
         let chroma: [Float] = (0..<12).map { bin in
             0.3 + 0.2 * sinf(phase + Float(bin) * 0.5)
         }
@@ -273,29 +284,29 @@ private func feedSection(
 
 @Test func structuralAnalyzer_confidence_highForRepetitiveTrack() {
     let analyzer = StructuralAnalyzer(
-        maxHistory: 600, featureDim: 16, detectionInterval: 10
+        maxHistory: 600, featureDim: 16, detectionInterval: 2
     )
 
-    // ABAB pattern with very distinct sections and consistent durations.
+    // ABAB pattern (15 s sections) with very distinct sections and consistent durations.
     feedSection(
         analyzer: analyzer, chroma: chromaA(),
         centroid: 0.3, flux: 0.1, rolloff: 0.4, energy: 0.3,
-        frames: 120, startTime: 0
+        frames: frames(15), startTime: 0
     )
     feedSection(
         analyzer: analyzer, chroma: chromaB(),
         centroid: 0.8, flux: 0.7, rolloff: 0.9, energy: 0.8,
-        frames: 120, startTime: 2.0
+        frames: frames(15), startTime: 15.0
     )
     feedSection(
         analyzer: analyzer, chroma: chromaA(),
         centroid: 0.3, flux: 0.1, rolloff: 0.4, energy: 0.3,
-        frames: 120, startTime: 4.0
+        frames: frames(15), startTime: 30.0
     )
     let prediction = feedSection(
         analyzer: analyzer, chroma: chromaB(),
         centroid: 0.8, flux: 0.7, rolloff: 0.9, energy: 0.8,
-        frames: 120, startTime: 6.0
+        frames: frames(15), startTime: 45.0
     )
 
     if analyzer.boundaryCount >= 3 {
@@ -308,12 +319,12 @@ private func feedSection(
 
 @Test func structuralAnalyzer_reset_clearsHistory() {
     let analyzer = StructuralAnalyzer(
-        maxHistory: 400, featureDim: 16, detectionInterval: 10
+        maxHistory: 400, featureDim: 16, detectionInterval: 2
     )
 
     // Feed some data.
-    feedSection(analyzer: analyzer, chroma: chromaA(), frames: 100, startTime: 0)
-    feedSection(analyzer: analyzer, chroma: chromaB(), frames: 100, startTime: 1.67)
+    feedSection(analyzer: analyzer, chroma: chromaA(), frames: frames(10), startTime: 0)
+    feedSection(analyzer: analyzer, chroma: chromaB(), frames: frames(10), startTime: 10.0)
 
     // Reset.
     analyzer.reset()
