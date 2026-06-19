@@ -718,6 +718,11 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// (Matt 2026-06-19: "resume next track"). Reset on track change. Guarded by `orchestratorLock`.
     var manualPresetOverrideThisTrack: Bool = false
 
+    /// LFPLAN.4: track-relative time (seconds since this track began) of the last planned
+    /// auto-apply, for the min-dwell gate in `applyPlannedSegment`. Reset on track change.
+    /// Guarded by `orchestratorLock`.
+    var lastPlannedApplyTrackTime: TimeInterval = 0
+
     // MARK: - Initialization
 
     // swiftlint:disable cyclomatic_complexity function_body_length

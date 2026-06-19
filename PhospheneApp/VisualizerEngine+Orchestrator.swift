@@ -222,7 +222,11 @@ extension VisualizerEngine {
         let activePresetWaitsForCompletion = activeSegment?.preset.waitForCompletionEvent ?? false
 
         // LFPLAN.3: EXECUTE the plan — apply the active segment's preset when it changes.
-        applyPlannedSegment(activeSegment, waitsForCompletion: activePresetWaitsForCompletion)
+        applyPlannedSegment(
+            activeSegment,
+            waitsForCompletion: activePresetWaitsForCompletion,
+            elapsedTrackTime: elapsedTrackTime
+        )
 
         let effectiveAdaptation: LiveAdaptation
         let suppressOverride = diagnosticPresetLocked
@@ -248,18 +252,51 @@ extension VisualizerEngine {
         orchestratorLock.withLock { livePlan = patched }
     }
 
+    /// LFPLAN.4: cold-start suppression window for plan execution. Planned auto-applies
+    /// *after the first per track* are blocked until the track has played this long —
+    /// covering the ~24 s stem/mood/structure convergence window during which the
+    /// LiveAdapter re-patches the plan on nearly every ~3 Hz tick. Set just under the
+    /// observed convergence so the track lands on the settled preset rather than a
+    /// mid-convergence transient. The first apply per track is never gated.
+    static let planColdStartSuppressWindow: TimeInterval = 20.0
+
+    /// LFPLAN.4: minimum dwell between consecutive planned auto-applies, measured from the
+    /// previous apply. Mirrors the reactive path's 60 s cooldown (`lastReactiveSwitchTime`)
+    /// but shorter — planned sessions *want* section-scale switches, just not per-tick churn.
+    static let planApplyMinDwell: TimeInterval = 15.0
+
     /// LFPLAN.3: apply the active segment's planned preset when it changes — the
     /// plan-execution the orchestrator previously lacked (`currentPreset(at:)` had zero
     /// callers, so planned sessions never auto-switched). Suppressed by a diagnostic hold,
     /// a `wait_for_completion_event` preset, or a manual override held until the next track.
-    private func applyPlannedSegment(_ activeSegment: PlannedPresetSegment?, waitsForCompletion: Bool) {
+    ///
+    /// LFPLAN.4: the FIRST planned segment of each track applies promptly (the track starts
+    /// on its planned visual; also closes the ~0.5 s default-preset flash). Every subsequent
+    /// auto-apply is gated by a cold-start suppression window (from track start) AND a
+    /// min-dwell (from the previous apply) so the volatile cold-start churn — 8 presets in
+    /// the first 24 s on the 2026-06-19 trace — can't machine-gun the visuals.
+    private func applyPlannedSegment(
+        _ activeSegment: PlannedPresetSegment?,
+        waitsForCompletion: Bool,
+        elapsedTrackTime: TimeInterval
+    ) {
         guard let plannedID = activeSegment?.preset.id else { return }
-        let (manualHold, lastApplied) = orchestratorLock.withLock {
-            (manualPresetOverrideThisTrack, lastAppliedPlannedPresetID)
+        let (manualHold, lastApplied, lastApplyTime) = orchestratorLock.withLock {
+            (manualPresetOverrideThisTrack, lastAppliedPlannedPresetID, lastPlannedApplyTrackTime)
         }
         guard !diagnosticPresetLocked, !waitsForCompletion, !manualHold,
               plannedID != lastApplied else { return }
-        orchestratorLock.withLock { lastAppliedPlannedPresetID = plannedID }
+
+        // LFPLAN.4: gate every apply after the first-per-track (lastApplied != nil).
+        if lastApplied != nil {
+            guard elapsedTrackTime >= Self.planColdStartSuppressWindow,
+                  elapsedTrackTime - lastApplyTime >= Self.planApplyMinDwell else { return }
+        }
+
+        orchestratorLock.withLock {
+            lastAppliedPlannedPresetID = plannedID
+            lastPlannedApplyTrackTime = elapsedTrackTime
+        }
         DispatchQueue.main.async { [weak self] in
             guard let self,
                   let loaded = self.presetLoader.presets.first(where: { $0.descriptor.id == plannedID })

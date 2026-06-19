@@ -416,6 +416,8 @@ extension VisualizerEngine: LocalFilePreparing {
             // segment applies (clear the last-applied marker).
             manualPresetOverrideThisTrack = false
             lastAppliedPlannedPresetID = nil
+            // LFPLAN.4: reset the min-dwell clock so the new track's first apply lands promptly.
+            lastPlannedApplyTrackTime = 0
         }
         publishLocalFileTrackSurface(identity: identity)
     }
