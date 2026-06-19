@@ -108,9 +108,8 @@ public final class StructuralAnalyzer: @unchecked Sendable {
     ///     (default 2 ≈ 1 s at the 2 Hz decimated rate).
     ///   - bucketPeriod: Decimation window in seconds (default 0.5 → 2 Hz). Raw
     ///     ~94 Hz frames are mean-aggregated per bucket before the SSM (BUG-042).
-    ///   - minNoveltyFloor: Absolute novelty floor a peak must clear (pass-through
-    ///     to `NoveltyDetector`; default 0.01 — recalibrated for the decimated stream, BUG-042).
-    ///   - thresholdMultiplier: Adaptive-threshold k (pass-through; default 1.5).
+    ///   - minNoveltyFloor: Novelty floor, pass-through to `NoveltyDetector` (default 0.01, recalibrated — BUG-042).
+    ///   - thresholdMultiplier: Adaptive-threshold k, pass-through (default 1.5).
     public init(
         maxHistory: Int = 600,
         featureDim: Int = 16,

@@ -159,9 +159,7 @@ public final class MIRPipeline: @unchecked Sendable {
         self.chromaExtractor = ChromaExtractor(
             binCount: binCount, sampleRate: sampleRate, fftSize: fftSize
         )
-        self.beatDetector = BeatDetector(
-            binCount: binCount, sampleRate: sampleRate, fftSize: fftSize
-        )
+        self.beatDetector = BeatDetector(binCount: binCount, sampleRate: sampleRate, fftSize: fftSize)
         self.structuralAnalyzer = structuralAnalyzer ?? StructuralAnalyzer()
         self.beatPredictor = BeatPredictor()
         self.liveDriftTracker = LiveBeatDriftTracker()
