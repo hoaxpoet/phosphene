@@ -37,6 +37,8 @@ extension VisualizerEngine {
     /// Advance to the next preset and update the pipeline.
     func nextPreset() {
         guard let preset = presetLoader.nextPreset() else { return }
+        // LFPLAN.3: manual cycle holds the plan until the next track.
+        orchestratorLock.withLock { manualPresetOverrideThisTrack = true }
         applyPreset(preset)
         showPresetName(preset.descriptor.name)
     }
@@ -44,6 +46,8 @@ extension VisualizerEngine {
     /// Go back to the previous preset and update the pipeline.
     func previousPreset() {
         guard let preset = presetLoader.previousPreset() else { return }
+        // LFPLAN.3: manual cycle holds the plan until the next track.
+        orchestratorLock.withLock { manualPresetOverrideThisTrack = true }
         applyPreset(preset)
         showPresetName(preset.descriptor.name)
     }

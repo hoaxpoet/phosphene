@@ -221,6 +221,9 @@ extension VisualizerEngine {
         }()
         let activePresetWaitsForCompletion = activeSegment?.preset.waitForCompletionEvent ?? false
 
+        // LFPLAN.3: EXECUTE the plan — apply the active segment's preset when it changes.
+        applyPlannedSegment(activeSegment, waitsForCompletion: activePresetWaitsForCompletion)
+
         let effectiveAdaptation: LiveAdaptation
         let suppressOverride = diagnosticPresetLocked
             || activePresetWaitsForCompletion
@@ -243,6 +246,28 @@ extension VisualizerEngine {
 
         let patched = plan.applying(effectiveAdaptation, at: trackIndex)
         orchestratorLock.withLock { livePlan = patched }
+    }
+
+    /// LFPLAN.3: apply the active segment's planned preset when it changes — the
+    /// plan-execution the orchestrator previously lacked (`currentPreset(at:)` had zero
+    /// callers, so planned sessions never auto-switched). Suppressed by a diagnostic hold,
+    /// a `wait_for_completion_event` preset, or a manual override held until the next track.
+    private func applyPlannedSegment(_ activeSegment: PlannedPresetSegment?, waitsForCompletion: Bool) {
+        guard let plannedID = activeSegment?.preset.id else { return }
+        let (manualHold, lastApplied) = orchestratorLock.withLock {
+            (manualPresetOverrideThisTrack, lastAppliedPlannedPresetID)
+        }
+        guard !diagnosticPresetLocked, !waitsForCompletion, !manualHold,
+              plannedID != lastApplied else { return }
+        orchestratorLock.withLock { lastAppliedPlannedPresetID = plannedID }
+        DispatchQueue.main.async { [weak self] in
+            guard let self,
+                  let loaded = self.presetLoader.presets.first(where: { $0.descriptor.id == plannedID })
+            else { return }
+            self.applyPreset(loaded)
+            self.showPresetName(loaded.descriptor.name)
+            logger.info("Orchestrator: applied planned preset '\(loaded.descriptor.name)' (segment)")
+        }
     }
 
     // MARK: - BUG-015 Wire (Analysis-Queue Tick → applyLiveUpdate)
@@ -484,6 +509,8 @@ extension VisualizerEngine {
             logger.warning("Orchestrator: applyPresetByID '\(presetID)' not found in loader")
             return
         }
+        // LFPLAN.3: a nudge is a manual pick — hold the plan until the next track.
+        orchestratorLock.withLock { manualPresetOverrideThisTrack = true }
         presetLoader.selectPreset(named: loaded.descriptor.name)
         applyPreset(loaded)
         showPresetName(loaded.descriptor.name)

@@ -707,6 +707,17 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Toggled via the L dev shortcut. Structural-boundary rescheduling still runs.
     var diagnosticPresetLocked: Bool = false
 
+    /// LFPLAN.3: the planned preset id the orchestrator wire last auto-applied on the
+    /// current track (`nil` at track start → the first planned segment applies). Lets
+    /// `applyLiveUpdate` detect a segment-boundary change and apply the new preset
+    /// exactly once. Reset on track change. Guarded by `orchestratorLock`.
+    var lastAppliedPlannedPresetID: String?
+
+    /// LFPLAN.3: set when the USER manually picks a preset (cycle or nudge) so the plan
+    /// stops auto-applying for the rest of the track and resumes at the next one
+    /// (Matt 2026-06-19: "resume next track"). Reset on track change. Guarded by `orchestratorLock`.
+    var manualPresetOverrideThisTrack: Bool = false
+
     // MARK: - Initialization
 
     // swiftlint:disable cyclomatic_complexity function_body_length
