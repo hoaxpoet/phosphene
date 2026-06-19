@@ -22,6 +22,10 @@ extension DefaultSessionPlanner {
         let start: TimeInterval
         let end: TimeInterval
         let section: SongSection?
+        /// LFPLAN.7: true when this section came from real detected boundaries (LFPLAN.5),
+        /// so `planSegments` runs one preset for the whole section instead of capping at the
+        /// preset's `maxDuration` (Matt: "one visual per section"). False for equal slices.
+        let isRealSection: Bool
     }
 
     /// LFPLAN.5: minimum planned section length. Matches the StructuralAnalyzer's 8 s
@@ -49,7 +53,7 @@ extension DefaultSessionPlanner {
     ) -> [TrackSection] {
         let span = trackEnd - trackStart
         guard span > 0 else {
-            return [TrackSection(start: trackStart, end: trackEnd, section: nil)]
+            return [TrackSection(start: trackStart, end: trackEnd, section: nil, isRealSection: false)]
         }
 
         if let real = realSections(trackStart: trackStart, trackEnd: trackEnd, span: span, profile: profile) {
@@ -64,7 +68,7 @@ extension DefaultSessionPlanner {
         for idx in 0..<count {
             let secStart = trackStart + Double(idx) * perSection
             let secEnd = (idx == count - 1) ? trackEnd : trackStart + Double(idx + 1) * perSection
-            sections.append(TrackSection(start: secStart, end: secEnd, section: nil))
+            sections.append(TrackSection(start: secStart, end: secEnd, section: nil, isRealSection: false))
         }
         return sections
     }
@@ -102,7 +106,7 @@ extension DefaultSessionPlanner {
         sections.reserveCapacity(starts.count)
         for (idx, secStart) in starts.enumerated() {
             let secEnd = (idx == starts.count - 1) ? trackEnd : starts[idx + 1]
-            sections.append(TrackSection(start: secStart, end: secEnd, section: nil))
+            sections.append(TrackSection(start: secStart, end: secEnd, section: nil, isRealSection: true))
         }
         return sections
     }
@@ -253,6 +257,11 @@ extension DefaultSessionPlanner {
         if chosen.waitForCompletionEvent {
             let span = TimeInterval(chosen.naturalCycleSeconds ?? Float(chosen.duration))
             segEnd = min(trackEnd, segStart + max(span, remainingInSection))
+        } else if sectionEntry.isRealSection {
+            // LFPLAN.7: one preset per real (detected) section — run to the section boundary,
+            // not the preset's maxDuration cap (Matt: "one visual per section"). The cap still
+            // governs equal-slice sections (old cached profiles / streaming previews).
+            segEnd = segStart + remainingInSection
         } else {
             let segLen = max(1.0, min(remainingInSection, maxByPreset))
             segEnd = segStart + min(segLen, remainingInSection)
@@ -267,7 +276,8 @@ extension DefaultSessionPlanner {
         let terminationReason: SegmentTerminationReason
         if isLastSegmentOfTrack {
             terminationReason = .trackEnded
-        } else if chosen.waitForCompletionEvent || maxByPreset < remainingInSection {
+        } else if chosen.waitForCompletionEvent
+            || (!sectionEntry.isRealSection && maxByPreset < remainingInSection) {
             terminationReason = .maxDurationReached
         } else {
             terminationReason = .sectionBoundary
