@@ -412,6 +412,10 @@ extension VisualizerEngine: LocalFilePreparing {
         orchestratorLock.withLock {
             liveTrackPlanIndex = planIndex
             orchestratorWireLoggedThisTrack = false
+            // LFPLAN.3: new track → plan resumes (clear manual hold) + first planned
+            // segment applies (clear the last-applied marker).
+            manualPresetOverrideThisTrack = false
+            lastAppliedPlannedPresetID = nil
         }
         publishLocalFileTrackSurface(identity: identity)
     }
