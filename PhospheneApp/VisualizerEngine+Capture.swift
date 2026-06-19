@@ -188,6 +188,8 @@ extension VisualizerEngine {
                 // first planned segment applies (clear the last-applied marker).
                 self.manualPresetOverrideThisTrack = false
                 self.lastAppliedPlannedPresetID = nil
+                // LFPLAN.4: reset the min-dwell clock so the new track's first apply lands promptly.
+                self.lastPlannedApplyTrackTime = 0
             }
 
             // LF.6.streaming-S5: resolve the canonical identity BEFORE the
