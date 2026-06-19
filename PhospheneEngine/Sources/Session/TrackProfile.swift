@@ -38,6 +38,14 @@ public struct TrackProfile: Sendable, Codable {
     /// Typically 1–3 for a 30-second preview window.
     public var estimatedSectionCount: Int
 
+    /// LFPLAN.5: detected section-boundary times in seconds, relative to track start
+    /// (the structural detector's `boundaryTimestamps` — section starts, not including 0).
+    /// Present only when the pre-analysis ran on the **full** track (local-file playback);
+    /// `nil` for streaming 30 s previews and for profiles cached before LFPLAN.5. The
+    /// planner segments on these real times when they span the track, else equal slices.
+    /// Optional so old persisted profiles decode unchanged.
+    public var sectionStartTimes: [TimeInterval]?
+
     /// Does the track lack a steady, trustworthy beat? (FBS / D-154.)
     /// Computed at consumption time from the cached grids via
     /// `assessBeatIrregularity` (octave-folded full-mix-vs-drums BPM
@@ -61,6 +69,7 @@ public struct TrackProfile: Sendable, Codable {
         genreTags: [String] = [],
         stemEnergyBalance: StemFeatures = .zero,
         estimatedSectionCount: Int = 0,
+        sectionStartTimes: [TimeInterval]? = nil,
         beatIrregular: Bool? = nil
     ) {
         self.bpm = bpm
@@ -70,6 +79,7 @@ public struct TrackProfile: Sendable, Codable {
         self.genreTags = genreTags
         self.stemEnergyBalance = stemEnergyBalance
         self.estimatedSectionCount = estimatedSectionCount
+        self.sectionStartTimes = sectionStartTimes
         self.beatIrregular = beatIrregular
     }
 
