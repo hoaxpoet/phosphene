@@ -184,6 +184,10 @@ extension VisualizerEngine {
                 // line for this new track. Pairs with the latch set in
                 // `runOrchestratorLiveUpdate(mir:)`.
                 self.orchestratorWireLoggedThisTrack = false
+                // LFPLAN.3: new track → plan resumes (clear the manual hold) and the
+                // first planned segment applies (clear the last-applied marker).
+                self.manualPresetOverrideThisTrack = false
+                self.lastAppliedPlannedPresetID = nil
             }
 
             // LF.6.streaming-S5: resolve the canonical identity BEFORE the
