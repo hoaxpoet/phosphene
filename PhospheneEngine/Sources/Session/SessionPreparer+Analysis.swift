@@ -18,6 +18,10 @@ private struct MIRAnalysisResult {
     var mood: EmotionalState
     var centroidAvg: Float
     var sectionCount: Int
+    /// LFPLAN.5: detected section-boundary times (track-relative seconds). Empty when
+    /// the detector found no boundaries. Real full-track times for local-file playback;
+    /// preview-scale (≤ ~30 s) for streaming previews — the planner gates on coverage.
+    var sectionStartTimes: [TimeInterval]
 }
 
 /// Working buffers for the per-frame vDSP FFT computation.
@@ -109,7 +113,10 @@ extension SessionPreparer {
             spectralCentroidAvg: mir.centroidAvg,
             genreTags: [],
             stemEnergyBalance: stemFeatures,
-            estimatedSectionCount: mir.sectionCount
+            estimatedSectionCount: mir.sectionCount,
+            // LFPLAN.5: nil when empty so the planner's "no real times" fall-back fires
+            // cleanly (vs an empty array that reads as "analysed, found nothing").
+            sectionStartTimes: mir.sectionStartTimes.isEmpty ? nil : mir.sectionStartTimes
         )
 
         // Step 5: Beat This! offline beat grid on full mix (nil analyzer → BeatGrid.empty).
@@ -234,7 +241,9 @@ extension SessionPreparer {
 
         let log2n = vDSP_Length(log2(Double(fftSize)))
         guard let fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2)) else {
-            return MIRAnalysisResult(bpm: nil, key: nil, mood: .neutral, centroidAvg: 0, sectionCount: 0)
+            return MIRAnalysisResult(
+                bpm: nil, key: nil, mood: .neutral, centroidAvg: 0, sectionCount: 0, sectionStartTimes: []
+            )
         }
         defer { vDSP_destroy_fftsetup(fftSetup) }
 
@@ -287,13 +296,18 @@ extension SessionPreparer {
         let sectionCount = frameCount > 0
             ? Int(mir.latestStructuralPrediction.sectionIndex) + 1
             : 0
+        // LFPLAN.5: the detector's boundary timestamps (track-relative seconds). For a
+        // local file `samples` is the full decoded track, so these are real full-track
+        // section starts; for a 30 s streaming preview they only cover the first ~30 s.
+        let sectionStartTimes = mir.structuralAnalyzer.boundaryTimestamps.map { TimeInterval($0) }
 
         return MIRAnalysisResult(
             bpm: mir.stableBPM,
             key: mir.stableKey,
             mood: classifier.currentState,
             centroidAvg: centroidAvg,
-            sectionCount: sectionCount
+            sectionCount: sectionCount,
+            sectionStartTimes: sectionStartTimes
         )
     }
 

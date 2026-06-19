@@ -24,23 +24,84 @@ extension DefaultSessionPlanner {
         let section: SongSection?
     }
 
-    /// Produces the section list for a track from its `estimatedSectionCount`.
+    /// LFPLAN.5: minimum planned section length. Matches the StructuralAnalyzer's 8 s
+    /// section floor (`minPeakDistance` 16 × 0.5 s buckets). Detected boundaries closer
+    /// than this — intro/outro fragments — are merged so the planner never emits a
+    /// sub-perception flash.
+    static let minSectionSeconds: TimeInterval = 8.0
+
+    /// LFPLAN.5: detected boundaries must span at least this fraction of the track to be
+    /// used (else equal slices). Separates full-track analysis (local files, final
+    /// boundary lands deep in the track) from 30 s-preview analysis (streaming, boundaries
+    /// bunch in the first ~30 s of a multi-minute track).
+    static let minSectionCoverageFraction: Double = 0.4
+
+    /// Produces the section list for a track.
+    ///
+    /// LFPLAN.5: when the profile carries detected section-boundary times that span the
+    /// track (local-file full-track analysis), segments land on the real sections. Falls
+    /// back to equal slices from `estimatedSectionCount` for nil/empty times (old cached
+    /// profiles), or preview-scale times that don't span the track (streaming previews).
     static func makeSections(
         trackStart: TimeInterval,
         trackEnd: TimeInterval,
         profile: TrackProfile
     ) -> [TrackSection] {
-        let count = max(1, profile.estimatedSectionCount)
         let span = trackEnd - trackStart
         guard span > 0 else {
             return [TrackSection(start: trackStart, end: trackEnd, section: nil)]
         }
+
+        if let real = realSections(trackStart: trackStart, trackEnd: trackEnd, span: span, profile: profile) {
+            return real
+        }
+
+        // Equal-slice fallback (unchanged behaviour).
+        let count = max(1, profile.estimatedSectionCount)
         let perSection = span / Double(count)
         var sections: [TrackSection] = []
         sections.reserveCapacity(count)
         for idx in 0..<count {
             let secStart = trackStart + Double(idx) * perSection
             let secEnd = (idx == count - 1) ? trackEnd : trackStart + Double(idx + 1) * perSection
+            sections.append(TrackSection(start: secStart, end: secEnd, section: nil))
+        }
+        return sections
+    }
+
+    /// LFPLAN.5: build a section list from `profile.sectionStartTimes` (track-relative
+    /// boundary offsets, not including 0). Returns `nil` — caller falls back to equal
+    /// slices — when there are no usable boundaries or they don't span enough of the track.
+    static func realSections(
+        trackStart: TimeInterval,
+        trackEnd: TimeInterval,
+        span: TimeInterval,
+        profile: TrackProfile
+    ) -> [TrackSection]? {
+        guard let rawTimes = profile.sectionStartTimes, !rawTimes.isEmpty else { return nil }
+
+        // Interior boundaries only — the filter drops any within the section floor of the
+        // track start (short intro) or end (short outro), so those fragments are absorbed
+        // into the neighbouring section. Sorted ascending.
+        let interior = rawTimes
+            .filter { $0 > minSectionSeconds && $0 < span - minSectionSeconds }
+            .sorted()
+        guard let last = interior.last, last >= span * minSectionCoverageFraction else { return nil }
+
+        // Section starts = track start + each boundary kept ≥ minSection from the previous
+        // (drops close-together boundaries). The interior filter already guarantees the
+        // final section runs ≥ minSection to trackEnd.
+        var starts: [TimeInterval] = [trackStart]
+        for time in interior {
+            let absolute = trackStart + time
+            if absolute - (starts.last ?? trackStart) >= minSectionSeconds { starts.append(absolute) }
+        }
+        guard starts.count > 1 else { return nil }
+
+        var sections: [TrackSection] = []
+        sections.reserveCapacity(starts.count)
+        for (idx, secStart) in starts.enumerated() {
+            let secEnd = (idx == starts.count - 1) ? trackEnd : starts[idx + 1]
             sections.append(TrackSection(start: secStart, end: secEnd, section: nil))
         }
         return sections
