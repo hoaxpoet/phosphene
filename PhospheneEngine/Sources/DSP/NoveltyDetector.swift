@@ -88,15 +88,18 @@ public final class NoveltyDetector: @unchecked Sendable {
     ///     minimum section at the 2 Hz decimated rate; was 120 = note-scale, BUG-042).
     ///   - thresholdMultiplier: Adaptive threshold multiplier (default 1.5).
     ///   - minNoveltyFloor: Absolute response floor a peak must also clear (BUG-040; default
-    ///     0.02). INTERIM — calibrated on the pre-decimation per-frame stream; the
-    ///     decimated stream's novelty distribution differs, so this is pending
-    ///     recalibration against a real session feature stream (CLEAN.6.2 validate step).
+    ///     0.01). RECALIBRATED 0.02→0.01 for the decimated stream (BUG-042, against the real
+    ///     full-track capture `2026-06-19T14-50-27Z/raw_tap.wav`, Smells Like Teen Spirit):
+    ///     0.5 s decimation smooths the stream so real-section novelty peaks land at
+    ///     ~0.005–0.02, so the old 0.02 gated out every real section (1 boundary/track at
+    ///     confidence 0). 0.01 is the clean knee — ~9 sections at conf 0.64 on that track,
+    ///     no junk on the 30 s tempo fixtures; 0.005 starts adding near-duplicates.
     public init(
         maxHistory: Int = 600,
         kernelHalfWidth: Int = 8,
         minPeakDistance: Int = 16,
         thresholdMultiplier: Float = 1.5,
-        minNoveltyFloor: Float = 0.02
+        minNoveltyFloor: Float = 0.01
     ) {
         self.maxHistory = maxHistory
         self.kernelHalfWidth = kernelHalfWidth
