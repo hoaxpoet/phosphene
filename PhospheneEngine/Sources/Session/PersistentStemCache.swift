@@ -149,7 +149,12 @@ public final class PersistentStemCache: @unchecked Sendable {
     ///   v2 (LF.5 / D-132) — adds `metadata: LocalFileMetadata?` (ID3 /
     ///                       Vorbis title / artist / album) + optional
     ///                       sibling `artwork.bin` file with raw image bytes.
-    public static let currentSchemaVersion: Int = 2
+    ///   v3 (LFPLAN.6) — adds `TrackProfile.sectionStartTimes` (detected section
+    ///                       boundary times). Decodes fine on v2 (the field is
+    ///                       optional → nil), but the planner can't segment on
+    ///                       real sections without it, so v2 entries must be
+    ///                       re-analysed rather than read back with nil times.
+    public static let currentSchemaVersion: Int = 3
 
     /// Names of the stem `.f32` files. Order matches `CachedTrackData.stemWaveforms`
     /// (`[vocals, drums, bass, other]`).
