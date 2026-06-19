@@ -45,6 +45,31 @@ struct StructuralSectionScaleReplay {
             print("StructuralSectionScaleReplay: no Metal device, skipping")
             return
         }
+
+        // Diagnostic override: replay one arbitrary capture (e.g. a session's
+        // raw_tap.wav — a full real track, not a 30 s preview) to validate the
+        // POSITIVE direction (does it find real 15–60 s sections?). No assertions
+        // (arbitrary input); prints the boundary table for offline diagnosis.
+        if let wav = ProcessInfo.processInfo.environment["PHOSPHENE_REPLAY_WAV"], !wav.isEmpty {
+            let sr = Float(ProcessInfo.processInfo.environment["PHOSPHENE_REPLAY_SR"] ?? "") ?? 44_100
+            let url = URL(fileURLWithPath: (wav as NSString).expandingTildeInPath)
+            let samples = try Self.decodeMonoFloat32(url: url, targetSampleRate: Int(sr))
+            print("=== BUG-042 floor/threshold sweep: \(url.lastPathComponent) @ \(Int(sr)) Hz, "
+                  + String(format: "%.0fs ===", Float(samples.count) / sr))
+            print("  (production default = floor 0.02, threshold 1.5; lower = more sensitive)")
+            for th: Float in [1.5, 0.8] {
+                for fl: Float in [0.02, 0.01, 0.005, 0.002, 0.0] {
+                    let mir = MIRPipeline(sampleRate: sr, structuralAnalyzer:
+                        StructuralAnalyzer(minNoveltyFloor: fl, thresholdMultiplier: th))
+                    let (boundaries, _, conf) = try runThrough(samples: samples, device: device, sampleRate: sr, mir: mir)
+                    print(String(format: "  thr=%.1f floor=%.3f → %2d boundary(ies)  conf=%.2f  @[%@]s",
+                                 th, fl, boundaries.count, conf,
+                                 boundaries.prefix(14).map { String(format: "%.0f", $0) }.joined(separator: ",") as NSString))
+                }
+            }
+            return
+        }
+
         let fixturesDir = URL(fileURLWithPath: String(#filePath))
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Fixtures/tempo")
@@ -56,7 +81,7 @@ struct StructuralSectionScaleReplay {
                 Issue.record("Fixture absent: \(url.path)")
                 continue
             }
-            let (boundaries, durationS, finalConf) = try replay(url: url, device: device)
+            let (boundaries, durationS, finalConf) = try replay(url: url, device: device, sampleRate: Self.sampleRate)
 
             // Inter-boundary gaps (section durations between detected boundaries).
             let gaps = zip(boundaries.dropFirst(), boundaries).map { $0 - $1 }
@@ -84,21 +109,27 @@ struct StructuralSectionScaleReplay {
 
     /// Decode → FFT (1024/512) → MIRPipeline.process per 1024-hop, returning the
     /// detected boundary timestamps, the clip duration, and the final confidence.
-    private func replay(url: URL, device: MTLDevice) throws -> (boundaries: [Float], durationS: Float, finalConf: Float) {
-        let samples = try Self.decodeMonoFloat32(url: url, targetSampleRate: Int(Self.sampleRate))
-        let fft = try FFTProcessor(device: device)
-        let mir = MIRPipeline(sampleRate: Self.sampleRate)
-        var magnitudes = [Float](repeating: 0, count: FFTProcessor.binCount)
+    private func replay(url: URL, device: MTLDevice, sampleRate: Float) throws -> (boundaries: [Float], durationS: Float, finalConf: Float) {
+        let samples = try Self.decodeMonoFloat32(url: url, targetSampleRate: Int(sampleRate))
+        return try runThrough(samples: samples, device: device, sampleRate: sampleRate,
+                              mir: MIRPipeline(sampleRate: sampleRate))
+    }
 
+    /// Drive a decoded clip through FFT → the given MIRPipeline, returning the
+    /// detected boundary timestamps, the clip duration, and the final confidence.
+    private func runThrough(samples: [Float], device: MTLDevice, sampleRate: Float, mir: MIRPipeline)
+        throws -> (boundaries: [Float], durationS: Float, finalConf: Float) {
+        let fft = try FFTProcessor(device: device)
+        var magnitudes = [Float](repeating: 0, count: FFTProcessor.binCount)
         let hop = FFTProcessor.fftSize                 // 1024
-        let dt = Float(hop) / Self.sampleRate          // ~0.0213 s → ~46.9 Hz feed
+        let dt = Float(hop) / sampleRate               // feed interval
         let fps = 1.0 / dt
         var elapsed: Float = 0
         var finalConf: Float = 0
         var start = 0
         while start + hop <= samples.count {
             let frame = Array(samples[start..<start + hop])
-            _ = fft.process(samples: frame, sampleRate: Self.sampleRate)
+            _ = fft.process(samples: frame, sampleRate: sampleRate)
             for bin in 0..<FFTProcessor.binCount { magnitudes[bin] = fft.magnitudeBuffer[bin] }
             _ = mir.process(magnitudes: magnitudes, fps: fps, time: elapsed, deltaTime: dt)
             finalConf = mir.latestStructuralPrediction.confidence
