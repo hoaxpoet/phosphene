@@ -81,16 +81,20 @@ public final class NoveltyDetector: @unchecked Sendable {
     /// Create a novelty detector.
     ///
     /// - Parameters:
-    ///   - maxHistory: Maximum frame history (matches SelfSimilarityMatrix).
-    ///   - kernelHalfWidth: Half-width of checkerboard kernel (default 8).
-    ///   - minPeakDistance: Minimum frames between peaks (default 120 ≈ 2s at 60fps).
+    ///   - maxHistory: Maximum DECIMATED-frame history (matches SelfSimilarityMatrix).
+    ///   - kernelHalfWidth: Half-width of checkerboard kernel (default 8 ≈ 4 s
+    ///     checkerboard block on the 2 Hz decimated stream, BUG-042).
+    ///   - minPeakDistance: Minimum decimated frames between peaks (default 16 ≈ 8 s
+    ///     minimum section at the 2 Hz decimated rate; was 120 = note-scale, BUG-042).
     ///   - thresholdMultiplier: Adaptive threshold multiplier (default 1.5).
     ///   - minNoveltyFloor: Absolute response floor a peak must also clear (BUG-040; default
-    ///     0.02 — ~66× the measured smooth-drift junk, ~20× under a hard A→B boundary).
+    ///     0.02). INTERIM — calibrated on the pre-decimation per-frame stream; the
+    ///     decimated stream's novelty distribution differs, so this is pending
+    ///     recalibration against a real session feature stream (CLEAN.6.2 validate step).
     public init(
         maxHistory: Int = 600,
         kernelHalfWidth: Int = 8,
-        minPeakDistance: Int = 120,
+        minPeakDistance: Int = 16,
         thresholdMultiplier: Float = 1.5,
         minNoveltyFloor: Float = 0.02
     ) {

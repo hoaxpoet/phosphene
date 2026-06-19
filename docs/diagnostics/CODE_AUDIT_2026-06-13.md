@@ -267,7 +267,7 @@ IDs are proposed (`CLEAN.<phase>.<n>`); on approval they map into ENGINEERING_PL
 | ID | Item | Timing |
 |----|------|--------|
 | CLEAN.6.1 | `[DEC]` Beat-sync cold-start: surface premise change to Matt (human-tap / full-track local / manual calibration). **Do NOT iterate the retired automated path.** | After |
-| CLEAN.6.2 | BUG-042 re-express structural stream at ~2 Hz section scale; recalibrate vs real session streams; re-express BUG-035/040 tests | After |
+| CLEAN.6.2 | BUG-042 re-express structural stream at ~2 Hz section scale; recalibrate vs real session streams; re-express BUG-035/040 tests | **⏳ fix landed 2026-06-19** — 2 Hz time-bucketed decimation + BUG-035/040/AABA tests re-expressed (DSP 23/23 green); `minNoveltyFloor` recalibration + Matt's live read pending a real capture (§KNOWN_ISSUES BUG-042) |
 | CLEAN.6.3 | Screen-space scene-texture sampling (unblocks refractive 2D) `[M7]` | After |
 | CLEAN.6.4 | Per-stage anchor-position metadata (Arachne v8 WEB); depth attachment; whole-scene shake; per-pass GPU timing `[M7]` | After |
 | CLEAN.6.5 | Land/verify Glass Brutalist; verify Nimbus fog live; wire-or-retire light-shafts + mesh-RT infra | After |
