@@ -58,6 +58,20 @@ struct PlannerSectionTimesTests {
         #expect(sections.allSatisfy { $0.end - $0.start >= 8.0 })
     }
 
+    @Test("real SMTS detector output segments on its sections, not equal slices")
+    func realSMTSSectionsAligned() {
+        // The exact offline detector output for Smells Like Teen Spirit (301 s),
+        // session 2026-06-19T21-44-30Z. Guards the live-observed case end to end.
+        let profile = TrackProfile(
+            estimatedSectionCount: 11,
+            sectionStartTimes: [7.3, 24.7, 46.1, 46.1, 92.1, 111.5, 124.3, 205.5, 228.0, 287.3]
+        )
+        let sections = DefaultSessionPlanner.makeSections(trackStart: 0, trackEnd: 301, profile: profile)
+        let starts = sections.map { Int($0.start.rounded()) }
+        // 7.3 intro merged (< 8 s floor), 46.1 duplicate dropped → boundaries land on sections.
+        #expect(starts == [0, 25, 46, 92, 112, 124, 206, 228, 287])
+    }
+
     @Test("a near-track-end boundary is excluded so the final section isn't sub-floor")
     func nearEndBoundaryExcluded() {
         // 200 s track; boundary at 196 is within the 8 s floor of the end → excluded,
