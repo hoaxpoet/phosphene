@@ -10,6 +10,12 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-19-182557] LFPLAN.3 — wire automatic plan execution (the orchestrator now APPLIES the plan)
+
+Matt's first re-enabled-LF session read as "planned" but still stayed on one preset the whole playlist. Root cause, verified: **automatic plan execution was never wired** — `currentPreset(at:)` / `currentTransition(at:)` have zero callers, and `applyLiveUpdate` only *adapts/patches* the plan (`liveAdapter.adapt` → `livePlan = patched`). So planned mode — streaming OR local files — never auto-applied planned presets; the only automatic switching was the reactive path (plus manual nudges). Re-enabling LF planning (LFPLAN.2) had therefore moved local files into a mode that auto-switched *less* than reactive did.
+
+**LFPLAN.3:** the orchestrator wire (`applyLiveUpdate`, ~3 Hz) now applies the active segment's planned preset whenever it changes (new `applyPlannedSegment` helper). Suppressed by a diagnostic hold, a `wait_for_completion_event` preset, or a **manual override that holds until the next track** (Matt's pick — a manual pick sticks for the current song; the plan resumes at the next track). Manual picks (`nextPreset` / `previousPreset` / `applyPresetByID` nudge) set the hold; both track-change sites clear it + the last-applied marker so the new track's first planned segment applies. **Engine-wide** — this fixes streaming planned sessions too, not just local files. Closeout ALL GREEN (engine 1531 / app 388 / lint 0 / doc 11). Runtime (auto-switches on the plan, manual hold feels right, no cycling) is Matt's live-validation gate — `VisualizerEngine` isn't constructible in the app-test sandbox.
+
 ## [dev-2026-06-19-171552] BUG-042 RESOLVED (live-validated) + LFPLAN — local-file AI planning re-enabled
 
 Matt's live re-test (Smells Like Teen Spirit, session `2026-06-19T15-48-25Z`) confirmed BUG-042's detector: **5 sections at confidence up to 0.91** at musically real times (start_s 8.5/25.4/47.4/93.2/110.3) — the section-scale decimation + 0.02→0.01 floor recalibration work live. **BUG-042 → RESOLVED.**
