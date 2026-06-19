@@ -146,7 +146,10 @@ public final class MIRPipeline: @unchecked Sendable {
     ///   - binCount: Number of FFT magnitude bins (default 512).
     ///   - sampleRate: Sample rate in Hz (default 48000).
     ///   - fftSize: FFT size (default 1024).
-    public init(binCount: Int = 512, sampleRate: Float = 48000, fftSize: Int = 1024) {
+    ///   - structuralAnalyzer: Injectable analyzer (default nil → production default).
+    ///     Used by the BUG-042 floor/threshold-sweep diagnostic; production passes nil.
+    public init(binCount: Int = 512, sampleRate: Float = 48000, fftSize: Int = 1024,
+                structuralAnalyzer: StructuralAnalyzer? = nil) {
         self.spectralAnalyzer = SpectralAnalyzer(
             binCount: binCount, sampleRate: sampleRate, fftSize: fftSize
         )
@@ -159,7 +162,7 @@ public final class MIRPipeline: @unchecked Sendable {
         self.beatDetector = BeatDetector(
             binCount: binCount, sampleRate: sampleRate, fftSize: fftSize
         )
-        self.structuralAnalyzer = StructuralAnalyzer()
+        self.structuralAnalyzer = structuralAnalyzer ?? StructuralAnalyzer()
         self.beatPredictor = BeatPredictor()
         self.liveDriftTracker = LiveBeatDriftTracker()
         self.sampleRate = sampleRate
