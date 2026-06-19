@@ -20,7 +20,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 | BUG-035 | P2 | dsp.structure | **✅ RESOLVED 2026-06-09** — NoveltyDetector re-detected boundaries ~4-5× after similarity-ring wrap; fixed pre-Skein.5 (residual section-scale geometry tracked as the open BUG-042). Files to §Resolved at next pruning |
 | BUG-036 | P2 | audio.capture / performance | Heap allocations on the real-time audio thread (three sites) |
 | BUG-037 | P2 | preset.fidelity | ✅ RESOLVED 2026-06-18 — Arachne pop fixed (chord-count single-source + wait_for_completion spans sections); files to §Resolved at next pruning |
-| BUG-042 | P2 | dsp.structure | Structural sections still ~1.5 s; analyzer geometry is note-scale |
+| BUG-042 | P2 | dsp.structure | **Fix landed CLEAN.6.2 (2026-06-19) — code-complete, pending real-capture validation** (2 Hz section-scale decimation; BUG-035/040 + AABA tests re-expressed and green). Was: sections ~1.5 s, note-scale geometry |
 | BUG-043 | P2 | pipeline-wiring | Mid-playback 9.6 s analysis stall froze visuals, then lurched |
 | BUG-041 | P2 | dsp.stem / preset.fidelity | FFO aurora flashes at track start (stem-deviation cold-start overswing) |
 | BUG-039 | P2 | resource-management | **✅ RESOLVED 2026-06-18** — silent-stop running-vs-writing invariant + segment-roll recovery (CLEAN.3.6); Matt's live multi-session confirm passed (signature no longer occurs). Files to §Resolved at next pruning |
@@ -553,7 +553,7 @@ Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — 
 
 **Severity:** P2 (the Skein.5 structure sub-feature and the orchestrator's `StructuralPrediction` consumer act on a boundary every ~1.5 s with confidence 0.85–1.00 — worse than pre-BUG-040, where low confidence at least kept the gates shut).
 **Domain tag:** dsp.structure
-**Status:** Open — verified from session artifacts (the Skein.5.2 columns doing their job again). **2026-06-11 (BUG-046):** the Skein consumer is now guarded against the junk (10 wall-s boundary spacing in `SkeinState`, landed pre-certification); the orchestrator's `StructuralPrediction` consumer still rides it — fixing the detector geometry remains this bug's scope.
+**Status:** **Fix landed (CLEAN.6.2, 2026-06-19) — code-complete, pending validation.** The analyzer now decimates its ~94 Hz input to one structural frame every 0.5 s (2 Hz) before the similarity matrix, so the fixed frame-denominated geometry is section-scale: 8-frame checkerboard = 4 s, `minPeakDistance` 16 = 8 s minimum section, 600-frame ring = 5 min. BUG-035/040 + AABA regression tests re-expressed and green at the new rate (DSP suite 23/23 + MIRPipeline structural green). **Two validation criteria remain, both real-capture-gated (FA #27 — no synthetic):** (1) recalibrate `minNoveltyFloor` (interim 0.02, calibrated on the pre-decimation per-frame stream) against a real session feature stream; (2) Matt's live read that orchestrator preset-switching lands on real musical sections. **Resolved only after Matt's validation.** 2026-06-11 (BUG-046): the Skein consumer's 10 wall-s boundary-spacing guard stays (harmless after the fix).
 **Introduced:** structural — the analyzer's defaults were sized for a different feature rate; at the live ~94 Hz analysis rate the geometry detects note/bar novelty, not sections.
 **Resolved:** —
 
@@ -564,10 +564,10 @@ Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — 
 **Session artifacts:** `~/Documents/phosphene_sessions/2026-06-10T17-39-41Z/features.csv` (cols 53–55).
 **Suspected failure class:** `calibration` (detector geometry vs feature rate).
 **Proposed direction (next increment):** run the STRUCTURAL feature stream at section scale — aggregate the 16-dim feature vector to ~2 Hz (mean over ~0.5 s) before it enters the similarity matrix. The same code then gives: 600-frame ring = **5 minutes** of memory, 8-frame kernel = **4-second** checkerboard blocks, `minPeakDistance` retuned to ~16 (≈ 8 s minimum section). Re-calibrate `minNoveltyFloor` against REAL session feature streams (replayable from raw_tap/preview audio), not synthetic fixtures. The Skein conf-gate thresholds stay; the existing BUG-035/040 regression tests must be re-expressed at the new rate.
-**Verification criteria (before any fix):**
-- [ ] Automated: a real-audio-derived feature stream (fixture from a recorded session) yields plausible section counts (1–6 per 3–5 min track) with multi-second-to-minute durations.
-- [ ] Automated: BUG-035 (ring-wrap dedup) + BUG-040 (edge guard / floor / clock) regression tests green at the new feature rate.
-- [ ] Manual: a live session's section columns show 15–60 s sections; confidence high only on genuinely sectional material.
+**Verification criteria:**
+- [ ] Automated (real-capture-gated): a real-audio-derived feature stream (fixture from a recorded session) yields plausible section counts (1–6 per 3–5 min track) with multi-second-to-minute durations. *(Pending — CLEAN.6.2 validate step; no real capture with the 16-dim structural input is on disk, and `features.csv` records no chroma, so it needs a `FixtureSessionCaptureGenerator` run from the primary checkout or a live session.)*
+- [x] Automated: BUG-035 (ring-wrap dedup) + BUG-040 (edge guard / floor / clock) regression tests green at the new feature rate. **DONE (CLEAN.6.2)** — re-expressed at section scale; the live-edge guard's "evolving material registers nothing" fixture was made monotonic (the pre-fix incommensurate sinusoids had a ~25 s period that is now a legitimate section).
+- [ ] Manual: a live session's section columns show 15–60 s sections; confidence high only on genuinely sectional material. *(Pending Matt's live read.)*
 
 ---
 
