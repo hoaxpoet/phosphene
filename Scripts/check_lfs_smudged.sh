@@ -14,12 +14,19 @@ command -v git-lfs >/dev/null 2>&1 || {
   exit 1
 }
 
+# Scope to the ML weights only (CLEAN.5.8): CI pulls weights-only to stay under the
+# LFS bandwidth quota (ci.yml: `git lfs pull --include=…/Weights/**`), deliberately
+# leaving the reel / visual-reference images as pointers. The weights are what the
+# build bundles, so they're the only thing this gate must prove smudged. A local
+# full checkout smudges everything, so the scope is a no-op there.
+weights='PhospheneEngine/Sources/ML/Weights/**'
+
 # `git lfs ls-files` column 2: '*' = object present/smudged, '-' = pointer only.
-pointers=$(git lfs ls-files | awk '$2 == "-"')
+pointers=$(git lfs ls-files -I "$weights" | awk '$2 == "-"')
 if [ -n "$pointers" ]; then
-  echo "FAIL (CLEAN.5.4d): LFS files un-smudged (still pointers) — run 'git lfs pull':" >&2
+  echo "FAIL (CLEAN.5.4d): ML-weight LFS files un-smudged (still pointers) — run 'git lfs pull --include=\"$weights\"':" >&2
   echo "$pointers" >&2
   exit 1
 fi
 
-echo "OK (CLEAN.5.4d): all $(git lfs ls-files | wc -l | tr -d ' ') LFS files smudged."
+echo "OK (CLEAN.5.4d): all $(git lfs ls-files -I "$weights" | wc -l | tr -d ' ') ML-weight LFS files smudged."
