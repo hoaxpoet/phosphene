@@ -5,6 +5,37 @@ Completed-increment narratives moved out of `ENGINEERING_PLAN.md` at RB.3 (2026-
 
 ## Recently Completed
 
+### Mid-Spike-1 re-tune — Route to signals alive on both capture paths ✅ (2026-06-02, Matt's "barely reactive on Spotify" report)
+
+Matt re-tested at correct Spotify volume (100 %): "Better, but the signal is still a little low — barely reactive." Session `2026-06-02T01-12-51Z`.
+
+**Diagnosis (the important part — it killed a wrong increment before it was built).** This started as the AGC.1 increment to fix BUG-025 (the kickoff blamed an AGC cold-start transient for session-wide deviation-primitive starvation). Step 1 of AGC.1 (confirm-in-code) ran an LF↔Spotify A/B that **invalidated the BUG-025 root cause**:
+- The cold-start transient is real but **one-time, ~2 s, first-onset only** — track changes `reset()` and re-init the AGC cleanly (gentle ramps, no transient). It does not poison the session.
+- The session-wide `bassDev ≈ 0` starvation is **structural** (`bassDev = max(0, (bass−0.5)×2)` fires only when a band exceeds the *total-energy* AGC average — rare for bass-dominant music) and is **identical on the LF session that "danced"**: `bassDev` fires 2.9 % LF vs 1.5 % Spotify. So bassDev is not the LF↔Spotify differentiator.
+- What actually differs LF↔Spotify is raw amplitude (fixed in `cffefe65`) and the *music* (the Spotify playlist is sparser). Per-signal liveness (frame-to-frame stddev), measured on both sessions, identified which primitives are alive on BOTH paths.
+
+Per CLAUDE.md "stop and report instead of forging ahead," AGC.1 was **shelved** (kickoff banner-marked DO-NOT-IMPLEMENT) and the real structural issue filed as **BUG-027**. Matt chose "fix the Dragon Bloom shader first" — route each visual layer to a primitive that is alive on both paths, rather than chase the AGC.
+
+**The re-tune (signal liveness → routing).** Measured stddev (Spotify / LF): `bass_rel` signed 0.20/0.22, `beatComposite` 0.25/0.37, `spectralFlux` 0.22/0.15, `bass` 0.10/0.11, `mid` 0.007/0.015 (near-dead), `treble` ≈ 0.001 (dead). The Spike-1 shader drove feather flow from `mid_att_rel` (≈ 0 → feathers frozen) and breathing from `max(0, bass_att_rel)` (clamped the signed signal to 0 → no breathing) — both dead on bass-dominant music. New routing (one primitive per layer, per `feedback_audio_layer_one_primitive`):
+
+| Visual layer | Primitive | Why |
+|---|---|---|
+| Bloom silhouette | waveform buffer (RMS-normalised, `cffefe65`) | the music's shape |
+| Bloom breathing (radius) | **signed `bass_rel`**, recentered `+0.5` | stddev 0.21 both paths; recenter so it rests at base radius and expands on hits (was clamped dead) |
+| Feather flow (warp displacement) | **`spectralFlux`** | stddev 0.15–0.22 both paths (was `mid_att_rel` ≈ 0) |
+| Brightness/presence | `bass` (Layer-1) + small flux shimmer | stddev 0.10 both paths |
+| Per-beat flare | `beatComposite`, bounded **0.15** | small accent — mv_warp feedback amplifies beat flashes (FA #4) |
+
+**Files touched.**
+- `PhospheneEngine/Sources/Presets/Shaders/DragonBloom.metal` — fragment driver block + radius (recentered signed `bass_rel`) + brightness (`bass` + flux, dropped dead `mid_att_rel`/`bass_dev`) + beat boost 0.40 → 0.15; `mvWarpPerFrame` q-channels rerouted (q1 feather ← flux, q3 breathing ← signed `bass_rel`; rot ← flux).
+- `PhospheneEngine/Tests/PhospheneEngineTests/Presets/DragonBloomMVWarpAccumulationTest.swift` — `.spotifyTapPattern` + `.syntheticMusic` fixtures rewritten to the *measured* time-varying distributions of the two real sessions; new **`radiusMotion`** metric (temporal range of envelope radius across checkpoints — the "does it dance" measure, not final-frame size) with assertions that music + Spotify both move clearly more than silence.
+- `PhospheneEngine/Tests/PhospheneEngineTests/Renderer/PresetAcceptanceTests.swift` — Dragon Bloom added to the FA #4 beat-bounded-response exemption (same fixture-conflation as Aurora Veil / Ferrofluid Ocean; empirically the beat is not the culprit — cutting beat boost 2.7× moved beatMotion only 9 %, proving 91 % of the steady→beatHeavy delta is the continuous bass response the shared fixture cranks).
+
+**Verification.** `radiusMotion`: silence 0.000 / music (LF-like) 0.011 / Spotify (tap-like) 0.011 — the re-tuned bloom moves **identically** on both synthetic patterns (was: Spotify near-static). All preset-side tests green (4 acceptance × 17 + 3 regression × 17 + DragonBloom 3 + PresetLoader count). App build green. Render PNG at `/tmp/dragon_bloom_mvwarp_diag/20260602T122659Z/spotify_final.png` shows a feathered petal bloom (vs the Spike-1 near-static ring). **Matt M7 on the live Spotify path: ✅ PASSED 2026-06-02** ("Looks good", session `2026-06-02T12-43-25Z`) — Spike 1 closed, Spike 2 is next.
+
+**Durable lesson.** Promoted to `docs/SHADER_CRAFT.md` (signal-liveness rule): before routing audio to a visual layer, measure each candidate primitive's frame-to-frame stddev on a real session of the target music — drive motion only from signals that are alive (high stddev) on the capture paths you'll ship. `bassDev`/`midDev`/`trebDev` are structurally near-dead for non-dominant bands (BUG-027); prefer signed `*Rel`, `spectralFlux`, and beat fields. A primitive being *named* "the deviation driver" (D-026) does not mean it carries motion for your music — verify with data, not the doc.
+
+
 ### Increment AGC2 — BUG-027: per-band EMA deviation pivot + cold-start warmup ✅ (2026-06-05 → 06, D-146)
 
 The FeatureVector band deviation primitives (`bassDev`/`midDev`/`trebDev`) were derived against a fixed 0.5 pivot while the AGC normalises *total* 6-band energy to 0.5 → `midDev`/`trebDev` fired ~0 % on all music (BUG-027). Staged measure → decide → fix → validate → close:
