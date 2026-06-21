@@ -10,6 +10,10 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-21-230939] DOC.10 — pruning pass completed (manual triage after DOC.9's deterministic rotation)
+
+The manual half of the D-162 pruning pass DOC.9 flagged. (1) **Unparseable EP entry:** `Mid-Spike-1 re-tune` (2026-06-02) lacked the `✅` marker `rotate_docs` keys on, so it sat un-rotated past 14 days (the gate ignores marker-less entries, so it wasn't red — just stale). Added the marker (the entry is a completed, M7-passed change — the durable lesson was already promoted to SHADER_CRAFT) and re-ran `rotate_docs` → body moved to `ENGINEERING_PLAN_HISTORY.md`, header-only stub stays (EP 489→484 KB). (2) **CLAUDE.md section-demotion review:** within budget (6,701/7,000 est. tokens); all 12 sections are core reference or were exercised by recent increments — nothing demotable, no cuts (the rulebook ratchet forces cuts only when *adding* over cap). (3) **DECISIONS shipped+uncited rotation:** reviewed the §Index — no candidates; the one Proposed entry (D-014) is active and cited in 3 Orchestrator source files + ORCHESTRATOR.md, the rest are Accepted+active or amended-but-active, and prior passes already moved the bulk to the 434 KB history. Docs-only; DocIntegrity 11/11 green.
+
 ## [dev-2026-06-21-210449] CLEAN.5.8 — Git-LFS bandwidth remediation (CI weights-only + cache; reel → Release asset)
 
 Triggered by a GitHub alert: the `hoaxpoet` account hit 100 % of its 10 GB/mo Git-LFS **bandwidth** (resets Jul 01). Bandwidth meters *downloads*, and two things were downloading the full **796 MB** LFS payload at HEAD:
