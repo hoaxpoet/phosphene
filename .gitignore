@@ -67,3 +67,9 @@ PhospheneEngine/Tests/Fixtures/tempo/
 vendor/
 tools/dragon_bloom_reference/oracle_recording.mov
 __pycache__/
+
+# quality_reel.mp4 (572 MB) lives as a GitHub Release asset (tag: assets-quality-reel),
+# NOT in Git-LFS (CLEAN.5.8) — keeps it off the 10 GB/mo LFS bandwidth quota that
+# public clones + CI were exhausting. Keep your local copy here to run
+# QualityReelAnalyzer; re-download from the release on a fresh checkout.
+docs/quality_reel.mp4
