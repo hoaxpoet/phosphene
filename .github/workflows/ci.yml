@@ -37,8 +37,27 @@ jobs:
       #   git ls-remote --tags https://github.com/actions/checkout
       # and update the SHA + the trailing `# vX.Y.Z` comment together.
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3 (Node 24; Node 20 actions deprecated 2026-06-16)
+        # No `lfs: true` (CLEAN.5.8): it smudges the ENTIRE LFS payload on every run
+        # — including large media CI never uses — and Actions checkouts are metered
+        # against the 10 GB/mo LFS bandwidth quota, so 71 runs x ~800 MB = ~55 GB
+        # blew the quota 5.5x in three days. CI needs only the ML weights; the steps
+        # below pull + cache exactly those (the build bundles
+        # PhospheneEngine/Sources/ML/Weights/**/*.bin).
+
+      # Cache the ML-weight LFS objects: download once, re-pull only when a weight
+      # changes (the .bin pointer files then hash differently). actions/cache storage
+      # is separate from the LFS bandwidth quota, so a cache hit costs 0 LFS GB.
+      # SHA-pinned like every action here (CLEAN.5.4e bump procedure).
+      - name: Cache ML-weight LFS objects
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          lfs: true # build bundles ML weights (PhospheneEngine/Sources/ML/Weights/**/*.bin)
+          path: .git/lfs
+          key: lfs-weights-${{ hashFiles('PhospheneEngine/Sources/ML/Weights/**/*.bin') }}
+
+      # Smudge ONLY the weights (not the reel / visual-reference images). On a cache
+      # hit they are already in .git/lfs, so this fetches nothing from the LFS store.
+      - name: Pull ML weights (LFS, weights-only)
+        run: git lfs pull --include="PhospheneEngine/Sources/ML/Weights/**"
 
       # Select the EXACT Xcode declared in .xcode-version (CLEAN.5.4a) — not
       # "newest wins". The Xcode-26 SDK is the real floor: it marks Metal protocol
