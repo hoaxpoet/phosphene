@@ -10,6 +10,24 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-21-210449] CLEAN.5.8 — Git-LFS bandwidth remediation (CI weights-only + cache; reel → Release asset)
+
+Triggered by a GitHub alert: the `hoaxpoet` account hit 100 % of its 10 GB/mo Git-LFS **bandwidth** (resets Jul 01). Bandwidth meters *downloads*, and two things were downloading the full **796 MB** LFS payload at HEAD:
+
+- **CI (the provable bleed)** — `actions/checkout` ran `lfs: true`, smudging the *entire* payload every run. 71 runs Jun 16–19 × ~800 MB ≈ **55 GB** — 5.5× the quota by itself (Actions checkouts are metered against the LFS bandwidth quota).
+- **Public clones (latent exposure)** — 2,680 clones / 14 d on a public repo; full clones smudge the payload (bots without git-lfs only pull pointers ≈ 0).
+
+72 % of every pull was a single **572 MB** file — `docs/quality_reel.mp4`, an input to the manual `QualityReelAnalyzer` CLI that the build never touches.
+
+**Fix — two parts (Matt's calls via AskUserQuestion: reel → Release asset; repo stays *public* + lean LFS):**
+
+1. **CI pulls weights-only, cached** (`7d2fd5d`). `ci.yml` drops `lfs: true`; SHA-pinned `actions/cache@v5.0.5` restores `.git/lfs` keyed on the weight `.bin` pointer hashes; then `git lfs pull --include="PhospheneEngine/Sources/ML/Weights/**"` smudges only the 150 MB / 333 weight files the build bundles. Cache storage is separate from the LFS quota → steady-state CI cost **~0 LFS GB** (re-pull only when a weight changes). `Scripts/check_lfs_smudged.sh` scoped to the weights to match (the reel / visual-reference images are intentionally left as pointers in CI). **CI: 55 GB → ~0.**
+2. **Reel out of LFS → Release asset** (`3b5afba`). `docs/quality_reel.mp4` removed from `.gitattributes` + `git rm --cached` (kept locally, now gitignored, for the analyzer) → uploaded to a `assets-quality-reel` GitHub Release. New default clones/CI stop fetching it; the blob stays in LFS *history* (storage, not bandwidth — **no history rewrite**, which a bandwidth problem doesn't require). **Per-pull payload: 796 MB → 224 MB.**
+
+**Deliberately NOT done:** no `$0` LFS budget (it blocks *all* LFS → breaks CI's weight pull + clone smudges until the Jul 01 reset; the post-fix overage for the remaining days is pennies); no history rewrite (storage-side, force-push-reclone — out of proportion); repo stays public.
+
+CI-side behaviour (weights smudge, build green, cache hit on re-run) is validated by the next push's fast-gate run — **not locally reproducible**. No Swift changed; local closeout green. Commits `7d2fd5d` (CI) + `3b5afba` (reel) + this docs commit.
+
 ## [dev-2026-06-19-222152] LFPLAN.6 + .7 — section times reach the planner (schema bump), then segment one preset per section
 
 Two live tests drove this — `2026-06-19T21-13-07Z`, then `…T21-44-30Z`. After LFPLAN.5, transitions still didn't track sections; diagnosed in two layers.
