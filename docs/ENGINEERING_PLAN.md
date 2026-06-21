@@ -133,29 +133,7 @@ Make Ferrofluid Ocean's spikes punch on a steady, **first-note-anchored**, tempo
 Beat-phase is the known-hard FA #69 area — tempo solid, phase is perception-not-precision.
 
 ### Increment AGC2 — BUG-027: per-band EMA deviation pivot + cold-start warmup ✅ (2026-06-05 → 06, D-146)
-
-The FeatureVector band deviation primitives (`bassDev`/`midDev`/`trebDev`) were derived against a fixed 0.5 pivot while the AGC normalises *total* 6-band energy to 0.5 → `midDev`/`trebDev` fired ~0 % on all music (BUG-027). Staged measure → decide → fix → validate → close:
-
-- **AGC2.1** (`bf711edf`): measured the centring on 4 real sessions, both paths, 4 spectral classes (`tools/agc2/measure_deviation_centring.py`; `docs/diagnostics/AGC2_1_DEVIATION_CENTRING_2026-06-05.md`). `bassDev` 2-8 %, `midDev`/`trebDev` ~0 % even on mid/treble-rich tracks.
-- **AGC2.2** (`b1c1d1b7`, **D-146**): Matt chose the (b)+(c)-split — per-band EMA pivot (mirror the stem path) + document the stem-energy offset.
-- **AGC2.3** (`41d87bf9` + `0d2ddb51`): `BandDeviationTracker` (per-band EMA, additive form), wired into `MIRPipeline`; `RelDevTests` updated (fixed-0.5 pin retired → unit tests + the ≥ 20 % recorded-fixture gate). No golden drift (fixtures bypass the live derivation).
-- **AGC2.4 / 2.4.1** (`95a16881`): the M7 exposed a cold-start hole (EMA seeded from the session-start AGC spike, no per-track `MIRPipeline.reset()`, poisoned ~3-4 min). Fixed with a two-speed warmup + value ceiling; a **live-path** test now guards it (FA #66). M7 catalog cycle: deviation presets read well.
-- **AGC2.5** (close): KNOWN_ISSUES BUG-027 → Resolved; RELEASE_NOTES `[dev-2026-06-06]`; SHADER_CRAFT §14.1 softened; filed **BUG-029** (the AGC `f.bass` cold-start spike — out of scope, the Ferrofluid Ocean startup root).
-
-On `main` (origin/main).
-
 ### Increment AGC3 — BUG-029: AGC `f.bass` cold-start spike (continuous-energy presets pop-and-drop at track onset) ⏳ (2026-06-05; fix landed, awaiting M7)
-
-At every track onset preceded by silence, `BandEnergyProcessor`'s total-energy AGC denominator has decayed (it is not reset per track), so the first audible frame over-scales and `f.bass` spikes to ~3.5–4.0 (steady ~0.25) — `f.bass`-driven presets (Ferrofluid Ocean's `1.0 + 0.8·clamp(f.bass,0,1)`) pop to their clamp ceiling then collapse. Separate from AGC2: AGC2's warmup is at the *deviation* layer (`BandDeviationTracker`) and does not touch `f.bass`. Staged measure → decide → fix → validate → close (cross-cutting AGC change; do not collapse):
-
-- **AGC3.1 ✅** (measure, `ea2326e0`): permanent diagnostic `tools/agc3/measure_coldstart_spike.py` + `docs/diagnostics/AGC3_1_COLDSTART_SPIKE_2026-06-05.md`. Reference session `2026-06-06T01-18-36Z` (LF). Findings: spike is **per-track** (not one-time — refutes the BUG-025 shelving premise), gated by the silent pre-roll (every onset with *any* gap spikes; the one zero-gap onset did not); absolute peak ~3.5–4.0 = **11–17×** steady; the **inter-track** mode lasts *longer* (0.9–1.2 s) than the session-start mode (0.10 s, fast warmup); `fo_spike_strength` pins to 1.800 (+40–55 % height pop); the **per-stem path does NOT spike** (it resets per track — `StemAnalyzer.reset()`). Coverage gap: LF only (no streaming multi-track session on disk).
-- **AGC3.2 ✅** (decision gate, **D-148**): Matt chose **(a) ease the meter in per track**. Filed in `DECISIONS.md`.
-- **AGC3.3 ✅** (fix): **seed-from-first-audible + hold-through-*sustained*-silence** in `BandEnergyProcessor` (cold-start/silence only). Live-path gate `AGC3ColdStartSpikeTests` written first (FA #66): session-start 32.6×→<2×, inter-track 10.6×→<2×, + a byte-identical steady-state lock. The *sustained*-silence gate (30 frames) keeps within-track between-beat gaps byte-identical (caught when a single-step hold shifted `FerrofluidBeatSyncTests`' sparse pattern). BUG-018 stem gate green.
-- **AGC3.4 ⏳** (validate): full engine suite green (modulo the pre-existing absent `love_rehab.m4a` fixture + MemoryReporter flake — both verified identical with the fix stashed); app build `BUILD SUCCEEDED`; SwiftLint `--strict` clean; **no `PresetRegressionTests` golden drift** (fixtures bypass the live AGC). **Pending: Matt catalog M7 both paths, Ferrofluid Ocean first.**
-- **AGC3.5** (close): KNOWN_ISSUES BUG-029 → Resolved; RELEASE_NOTES; ENGINEERING_PLAN; RENDER_CAPABILITY_REGISTRY + CLAUDE.md if documented AGC behaviour changes.
-
-AGC3.1–3.3 on `main` (origin/main). AGC3.5 close still gated on Matt's M7.
-
 ### Increment FM.0 + FM.L1 + FM.L2 — Fata Morgana port: mirage substrate + shapes + stem uplift, CERTIFIED ✅ (2026-06-02 → 2026-06-03, D-139)
 ### Increment Dragon Bloom L4 + music response — faithful butterchurn render-loop port, CERTIFIED ✅ (2026-06-02, D-138)
 ### Increment Dragon Bloom Spike 2 — bilateral mirror fold without clipart ⏳ Matt-M7-pending (2026-06-02)
