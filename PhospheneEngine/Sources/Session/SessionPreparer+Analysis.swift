@@ -299,7 +299,11 @@ extension SessionPreparer {
         // LFPLAN.5: the detector's boundary timestamps (track-relative seconds). For a
         // local file `samples` is the full decoded track, so these are real full-track
         // section starts; for a 30 s streaming preview they only cover the first ~30 s.
-        let sectionStartTimes = mir.structuralAnalyzer.boundaryTimestamps.map { TimeInterval($0) }
+        // LFPLAN.8: keep only the STRONG boundaries (novelty peak ≥ half the track's
+        // strongest) so the plan transitions on the big audible section changes, not every
+        // sub-section novelty wiggle (Matt: "moderate", session 2026-06-22).
+        let sa = mir.structuralAnalyzer
+        let sectionStartTimes = strongBoundaryTimes(times: sa.boundaryTimestamps, scores: sa.boundaryNoveltyScores)
 
         return MIRAnalysisResult(
             bpm: mir.stableBPM,
@@ -309,6 +313,27 @@ extension SessionPreparer {
             sectionCount: sectionCount,
             sectionStartTimes: sectionStartTimes
         )
+    }
+
+    // MARK: - Boundary Strength Filter (LFPLAN.8)
+
+    /// Keep only the boundaries whose novelty peak is ≥ `strengthFraction` of the track's
+    /// strongest — drops sub-section blips (fills, riff changes) + cold-start artifacts so
+    /// planned transitions land on the big audible section changes. Relative (not absolute)
+    /// because raw novelty values are tiny (~0.005–0.02) and vary per track. Falls back to
+    /// all boundaries when no scores are available (max ≤ 0). `times`/`scores` are the
+    /// parallel arrays from `StructuralAnalyzer.boundaryTimestamps` / `boundaryNoveltyScores`.
+    nonisolated static func strongBoundaryTimes(
+        times: [Float],
+        scores: [Float],
+        strengthFraction: Float = 0.5
+    ) -> [TimeInterval] {
+        let maxScore = scores.max() ?? 0
+        guard maxScore > 0 else { return times.map { TimeInterval($0) } }
+        let cutoff = maxScore * strengthFraction
+        return zip(times, scores)
+            .filter { $0.1 >= cutoff }
+            .map { TimeInterval($0.0) }
     }
 
     // MARK: - FFT Helper

@@ -1,3 +1,4 @@
+// swiftlint:disable file_length
 // StructuralAnalyzer — Real-time progressive structural analysis.
 // Builds a self-similarity matrix from chroma + spectral features, detects
 // section boundaries via novelty detection, and predicts the next boundary
@@ -77,6 +78,10 @@ public final class StructuralAnalyzer: @unchecked Sendable {
 
     /// Detected section boundaries as timestamps.
     private var sectionBoundaries: [Float] = []
+    /// Novelty-peak score for each boundary in `sectionBoundaries` (parallel array;
+    /// higher = sharper transition). Lets the offline planner keep only the strong,
+    /// section-scale boundaries and drop sub-section blips (LFPLAN.8).
+    private var sectionBoundaryScores: [Float] = []
 
     /// Average feature vector per section (for repetition detection).
     private var sectionFeatureSums: [[Float]] = []
@@ -233,7 +238,7 @@ public final class StructuralAnalyzer: @unchecked Sendable {
                 fps: 1.0 / bucketPeriod
             )
             for boundary in newBoundaries {
-                registerBoundary(at: boundary.timestamp)
+                registerBoundary(at: boundary.timestamp, score: boundary.noveltyScore)
             }
         }
     }
@@ -256,6 +261,15 @@ public final class StructuralAnalyzer: @unchecked Sendable {
         return timestamps
     }
 
+    /// Novelty-peak scores parallel to `boundaryTimestamps` (LFPLAN.8). Higher = sharper
+    /// transition; the offline planner filters boundaries by relative score.
+    public var boundaryNoveltyScores: [Float] {
+        lock.lock()
+        let scores = sectionBoundaryScores
+        lock.unlock()
+        return scores
+    }
+
     // MARK: - Reset
 
     /// Clear all state (call on track change).
@@ -269,6 +283,7 @@ public final class StructuralAnalyzer: @unchecked Sendable {
         lastBucketEmitTime = 0
         for i in 0..<featureDim { bucketSum[i] = 0 }
         sectionBoundaries.removeAll()
+        sectionBoundaryScores.removeAll()
         sectionFeatureSums.removeAll()
         sectionFrameCounts.removeAll()
         currentSectionSum = [Float](repeating: 0, count: featureDim)
@@ -280,8 +295,8 @@ public final class StructuralAnalyzer: @unchecked Sendable {
 
     // MARK: - Private
 
-    /// Register a new section boundary.
-    private func registerBoundary(at timestamp: Float) {
+    /// Register a new section boundary with its novelty-peak score (LFPLAN.8).
+    private func registerBoundary(at timestamp: Float, score: Float) {
         // Finalize current section's average features.
         if currentSectionFrameCount > 0 {
             var avg = [Float](repeating: 0, count: featureDim)
@@ -294,6 +309,7 @@ public final class StructuralAnalyzer: @unchecked Sendable {
         }
 
         sectionBoundaries.append(timestamp)
+        sectionBoundaryScores.append(score)
 
         // Reset current section accumulator.
         for i in 0..<featureDim { currentSectionSum[i] = 0 }
