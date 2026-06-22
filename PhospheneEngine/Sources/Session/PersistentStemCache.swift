@@ -154,7 +154,11 @@ public final class PersistentStemCache: @unchecked Sendable {
     ///                       optional → nil), but the planner can't segment on
     ///                       real sections without it, so v2 entries must be
     ///                       re-analysed rather than read back with nil times.
-    public static let currentSchemaVersion: Int = 3
+    ///   v4 (LFPLAN.8) — `sectionStartTimes` is now strength-filtered (only boundaries
+    ///                       ≥ 0.5× the track's strongest novelty peak). v3 entries hold
+    ///                       the old UNFILTERED times, so they must be re-analysed for the
+    ///                       filter to reach the planner.
+    public static let currentSchemaVersion: Int = 4
 
     /// Names of the stem `.f32` files. Order matches `CachedTrackData.stemWaveforms`
     /// (`[vocals, drums, bass, other]`).
