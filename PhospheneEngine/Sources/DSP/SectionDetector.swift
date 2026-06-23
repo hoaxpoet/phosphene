@@ -93,7 +93,7 @@ public struct SectionDetector {
             // floatChannelData is non-nil for a standardFormat Float32 buffer;
             // baseAddress is non-nil for srcCount ≥ 1 (guarded above).
             // swiftlint:disable:next force_unwrapping
-            memcpy(srcBuf.floatChannelData![0], src.baseAddress!, srcCount * MemoryLayout<Float>.size)
+            _ = memcpy(srcBuf.floatChannelData![0], src.baseAddress!, srcCount * MemoryLayout<Float>.size)
         }
 
         // nonisolated(unsafe): touched only by the convert callback, which
