@@ -83,6 +83,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-167 | Accepted | Thermal + Low Power Mode feed a quality floor into the D-057 budget governor (CLEAN.4.6): applied level = `max(timing, thermalFloor)` pre-empts the GPU's own throttle; FBM stays `ProcessInfo`-free; serious→no-bloom, critical→step-0.75, LPM→≥no-SSGI; ultra/recording still exempt |
 | D-168 | Accepted | ARCHITECTURE Module Map completeness gated by DocIntegrityTests (CLEAN.7.3) — backfilled 62 undocumented files incl. 4 certified presets; D-161 "violated twice → mechanize" applied |
 | D-169 | Accepted | Defer public-release-readiness work (extended a11y settings 7.7, cold-install resilience 7.8) until there's a public build; daily single-user dev use is covered by the existing a11y/robustness basics |
+| D-170 | Accepted | Section detection = McFee/Ellis Laplacian spectral clustering on a beat-synced 252-bin log-CQT (+ 13 MFCC), replacing the novelty-only detector; the full 252-CQT (not 12-chroma) is load-bearing; unsupervised, no ML/CoreML (SECDET; validated offline on 433 live + 174 studio tracks) |
 
 ---
 
@@ -2032,3 +2033,19 @@ CLEAN.7.7 (live Reduce-Transparency + Increase-Contrast) and CLEAN.7.8 (cold-ins
 **Scope.** This defers the audit *gaps* GAP-15 (7.7) and GAP-12 (7.8). It does NOT remove or weaken any shipped accessibility behavior — Reduce Motion's current art + chrome calming stays as-is. Establishes the standing principle: **don't build public-release-readiness features for users who don't exist yet; the bar for daily single-user dev use is the existing basics.**
 
 **References.** CLEAN.7.7 / GAP-15, CLEAN.7.8 / GAP-12 (`CODE_AUDIT_2026-06-13.md`). Matt's call, 2026-06-18.
+
+## D-170: Section detection via McFee/Ellis spectral clustering on a beat-synced 252-bin log-CQT
+
+**Status:** Accepted (2026-06-23)
+
+Phosphene's section detector was novelty-only (Foote checkerboard on a chroma+spectral SSM — `StructuralAnalyzer` / `NoveltyDetector`). Novelty finds *change* points and ignores *repetition*, but a chorus is defined by repeating — so it over-fires on sub-section fills/riffs and under-fires on uniform-loud material (verse≈chorus timbre → no local contrast). This is a structural limit of the novelty *principle*, not a tuning bug (TISMIR 2020 survey), and it is why live transitions never tracked section breaks even after the LFPLAN.1–.8 plumbing was proven correct.
+
+**Decision (Matt, 2026-06-22 directive "identify sections within songs — get this right FIRST").** Replace the offline/cached section source with **McFee & Ellis 2014 Laplacian spectral clustering** (the algorithm in `librosa.segment` / MSAF `scluster`): a k-NN recurrence graph (repetition) fused with a local sequence diagonal (contiguity) → normalized Laplacian → eigen-cluster → section labels → boundaries at label changes. Repetition-aware; fixes both novelty failure modes; produces recurrence labels (the recurring chorus gets the same label) the AI-VJ wants. Fully on-device: pure DSP + Accelerate (CQT/MFCC + LAPACK symmetric eig + hand-rolled Lloyd's k-means). **No ML / no CoreML** ([D-009] preserved) — the chosen methods are unsupervised, so no training corpus is needed; a standard annotated corpus is used only for parameter validation.
+
+**The load-bearing feature finding.** Recurrence must be built on the **full 252-bin log-CQT in dB** (`bins_per_octave=36, n_bins=252`), NOT folded 12-chroma. 12-chroma discards register/voicing → label thrashing → over-segmentation; switching to 252-CQT lifted studio-pop F@3 from 0.36 to 0.82 on the held-out probe. CRP chroma, auto-k, Serrà SF, and CBM were all tested and dropped; **k = 5 fixed** (matches the ~6–10-section use case and beats auto-k, which over-segments studio pop).
+
+**Validation (offline, against ground truth — never live).** Faithful McFee k=5 (252-CQT) beats Foote novelty by ~55–80% on F@3 across three datasets: SALAMI-IA (433 live tracks, F@3 0.29 vs 0.18), Isophonics-Beatles (174 studio tracks, 0.412 vs 0.230), and held-out Nirvana (0.61 vs 0.475). Lab bench + evidence: `~/phosphene_section_lab/` (`BASELINE.md`, `tune_corpus.py`, `precompute.py`). Live-session iteration was retired after it ate 4 sessions — the lab Python is the oracle; the Swift port is correct when its boundaries + F-scores reproduce the lab's on the same tracks.
+
+**Port (SECDET epic, staged).** Stage A (features: beat-synced 252-CQT + 13 MFCC @ 22050, validated vs librosa goldens — SSM corr 0.9995 / MFCC corr 1.0) is done; Stages B (graph + LAPACK eigensolve + k-means + boundary merge), C (wire-in to `SessionPreparer.analyzeMIR`, replacing `strongBoundaryTimes`, + cache schema bump), and D (offline F-score acceptance gate) follow. Output contract preserved: `TrackProfile.sectionStartTimes` → the planner is untouched.
+
+**References.** SECDET kickoff `~/phosphene_section_lab/PORT_KICKOFF.md`; McFee & Ellis ISMIR 2014; supersedes the novelty-only section role of `StructuralAnalyzer` (offline path) and the LFPLAN.8 strength-filter dead end. [D-009] (no CoreML). `docs/ENGINEERING_PLAN.md §Phase SECDET`.
