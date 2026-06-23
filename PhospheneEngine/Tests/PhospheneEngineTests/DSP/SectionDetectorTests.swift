@@ -30,6 +30,27 @@ struct SectionDetectorTests {
         #expect(r0 > 0 && abs(r1 - r0) / r0 < 0.1, "RMS \(r1) vs \(r0)")
     }
 
+    // MARK: - Hermetic: full-track beat extension (SECDET.5)
+
+    @Test("fullTrackBeats extends a 30s-capped grid to the full track at the median period")
+    func test_fullTrackBeats_extends() {
+        // 30 s of beats at 0.5 s (120 bpm); the track is 100 s (Beat This! would cap at 30 s).
+        let beats = stride(from: 0.0, through: 29.5, by: 0.5).map { $0 }
+        let out = SectionDetector.fullTrackBeats(beats, duration: 100.0)
+        #expect(out.count > beats.count, "grid should extend past 30 s")
+        #expect(Array(out.prefix(beats.count)) == beats, "original beats preserved as the prefix")
+        #expect(out.last! < 100.0 && out.last! >= 100.0 - 0.6, "extends to within a beat of duration")
+        let lastGap = out[out.count - 1] - out[out.count - 2]
+        #expect(abs(lastGap - 0.5) < 1e-6, "extension uses the median inter-beat period")
+    }
+
+    @Test("fullTrackBeats leaves an already-full grid unchanged")
+    func test_fullTrackBeats_noExtensionWhenCovered() {
+        let beats = stride(from: 0.0, through: 99.5, by: 0.5).map { $0 }   // already spans ~100 s
+        let out = SectionDetector.fullTrackBeats(beats, duration: 100.0)
+        #expect(out == beats, "no extension when the grid already covers the track")
+    }
+
     // MARK: - Golden: façade reproduces the lab boundaries end-to-end
 
     @Test("golden: façade reproduces lab McFee boundaries from raw PCM + beats")

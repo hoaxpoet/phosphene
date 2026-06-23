@@ -51,8 +51,11 @@ public struct SectionDetector {
             : Self.resampleMono(samples, from: sampleRate, to: targetSR)
         guard !pcm.isEmpty else { return [] }
 
+        // Beat This! caps its grid at ~30 s (BeatThisModel.tMax=1500 frames); McFee can
+        // only segment the span its beats cover, so extend to the full track (SECDET.5).
+        let covered = Self.fullTrackBeats(beatTimes, duration: duration)
         // Beat times (s) → hop-512 frame indices on the 22050 grid.
-        let beatFrames = beatTimes.map { Int(($0 * targetSR / hop).rounded()) }
+        let beatFrames = covered.map { Int(($0 * targetSR / hop).rounded()) }
         let features = SectionFeatureExtractor().extract(samples22k: pcm, beatFrames: beatFrames)
         let bounds = SectionFeatureExtractor.syncBoundaries(
             beatFrames: beatFrames, frameCount: features.frameCount)
@@ -63,6 +66,28 @@ public struct SectionDetector {
         // SpectralSectionDetector returns [0, t1, …, duration]; strip the framing
         // boundaries to match the interior-starts contract the planner consumes.
         return detected.dropFirst().dropLast().map { TimeInterval($0) }
+    }
+
+    // MARK: - Full-track coverage
+
+    /// Beat This! truncates its grid to a fixed ~30 s window (`BeatThisModel.tMax`), so on a
+    /// longer track `beatTimes` only spans the first 30 s — and McFee can only place
+    /// boundaries where it has beats (the live failure: a 282 s track segmented only its
+    /// first 30 s → coverage gate → equal slices). Extend the grid past its last beat at the
+    /// median inter-beat period so the beat-sync covers the whole track. Beat-sync is just
+    /// frame-pooling for the recurrence graph, so synthetic beats beyond the tracked region
+    /// are adequate for section structure (validated offline, SECDET.5); the real beats
+    /// anchor phase + tempo for the part Beat This! actually tracked.
+    static func fullTrackBeats(_ beatTimes: [Double], duration: Double) -> [Double] {
+        guard beatTimes.count >= 2, let last = beatTimes.last else { return beatTimes }
+        let diffs = zip(beatTimes.dropFirst(), beatTimes).map { $0 - $1 }.filter { $0 > 0 }.sorted()
+        guard !diffs.isEmpty else { return beatTimes }
+        let period = diffs[diffs.count / 2]
+        guard period > 0.05, last < duration - period else { return beatTimes }
+        var out = beatTimes
+        var time = last + period
+        while time < duration { out.append(time); time += period }
+        return out
     }
 
     // MARK: - Resampling
