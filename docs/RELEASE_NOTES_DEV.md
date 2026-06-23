@@ -10,6 +10,14 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-23-201942] SECDET.3a — section-detector port, Stage C.1: the CQT "2 min/track" is a debug-build artifact (no port needed)
+
+Stage C.1 was scoped to fix the Stage A CQT perf: `ConstantQTransform`'s single-65536-pt-FFT-per-frame kernel was flagged at ≈2 min/track — "too slow for session-prep" — with a recommended port of librosa's per-octave-downsampling recursive CQT. **Measured first (kickoff Step 1): the 2-min figure is a debug-build artifact.** On the SMTS golden (5.02 min @ 22050), the CQT runs **104.6 s in debug but 2.72 s in release (`-O`)** — a 38× penalty on the tight scalar inner loop that vanishes under optimization. The whole section front-end (`extract` = CQT + MFCC + beat-sync) is **3.46 s/track in release**. Production session-prep builds release, so the true cost is ~3.5 s — negligible beside the stem-separation + Beat This! + MIR it runs alongside.
+
+**Decision: skip the recursive-CQT port.** The existing Brown-Puckette kernel CQT is already fast enough; porting librosa's recursive method would be a large, complex change for zero user-visible benefit — and the kernel CQT is the one already validated at Cq-SSM 0.9995. Stage C.1 lands **no production-code change**, only the finding. The SECDET golden + clustering suites stay green (Cq-SSM 0.9995/0.9996, F@3 vs lab = 1.000).
+
+Measurement method (reproducible): the full test target can't release-compile today — unrelated `ArachneSpiderRenderTests`/`SoakTestHarnessTests` reference a `#if DEBUG`-only `forceActivateForTest` hook absent in release — so the release number came from a standalone `swiftc -O -framework Accelerate ConstantQTransform.swift VDSPRealFFT.swift MFCCProcessor.swift SectionFeatureExtractor.swift main.swift` over the four DSP sources (the `#if DEBUG` test-target gap is pre-existing, out of this increment's scope). Next: SECDET.3b (wire the batch detector into `analyzeMIR`) + SECDET.3c (cache schema bump). Committed on the worktree branch only; not pushed.
+
 ## [dev-2026-06-23-193340] SECDET.2 — section-detector port, Stage B: McFee/Ellis spectral clustering reproduces the lab boundaries
 
 Stage B of the SECDET port (D-170): the clustering that turns Stage A's beat-synced features into section boundaries. Four new DSP files: `RecurrenceGraph` (the deterministic affinity stages), `SymmetricEigen` (LAPACK `ssyev` — first LAPACK in the codebase), `KMeans` (hand-rolled Lloyd's + k-means++), `SpectralSectionDetector` (orchestration → boundary times). Each stage replicates its librosa/scipy counterpart, pinned by probing librosa's source directly (recurrence_matrix's mutual-kNN + med_k_scalar bandwidth + width-3 diagonal exclusion; timelag_filter's reflect-time/zero-lag diagonal median; csgraph.laplacian's normed convention).
