@@ -18,10 +18,6 @@ private struct MIRAnalysisResult {
     var mood: EmotionalState
     var centroidAvg: Float
     var sectionCount: Int
-    /// LFPLAN.5: detected section-boundary times (track-relative seconds). Empty when
-    /// the detector found no boundaries. Real full-track times for local-file playback;
-    /// preview-scale (≤ ~30 s) for streaming previews — the planner gates on coverage.
-    var sectionStartTimes: [TimeInterval]
 }
 
 /// Working buffers for the per-frame vDSP FFT computation.
@@ -106,20 +102,9 @@ extension SessionPreparer {
             classifier: classifier
         )
 
-        let profile = TrackProfile(
-            bpm: mir.bpm,
-            key: mir.key,
-            mood: mir.mood,
-            spectralCentroidAvg: mir.centroidAvg,
-            genreTags: [],
-            stemEnergyBalance: stemFeatures,
-            estimatedSectionCount: mir.sectionCount,
-            // LFPLAN.5: nil when empty so the planner's "no real times" fall-back fires
-            // cleanly (vs an empty array that reads as "analysed, found nothing").
-            sectionStartTimes: mir.sectionStartTimes.isEmpty ? nil : mir.sectionStartTimes
-        )
-
         // Step 5: Beat This! offline beat grid on full mix (nil analyzer → BeatGrid.empty).
+        // SECDET.3b: the grid is resolved *before* the profile now — section detection
+        // (Step 8) is beat-synced, so it needs `beatGrid.beats`.
         let beatGridRaw: BeatGrid
         if let gridAnalyzer = beatGridAnalyzer {
             beatGridRaw = gridAnalyzer.analyzeBeatGrid(
@@ -162,6 +147,11 @@ extension SessionPreparer {
         // Step 7 (BUG-007.8): per-track grid-vs-onset offset calibration.
         let gridOnsetOffsetMs = Self.computeGridOnsetOffsetMs(preview: preview, grid: beatGrid)
 
+        // Step 8 (SECDET.3b): batch section detection on the full-track decode + cached
+        // grid, then assemble the profile (extracted to keep this function readable).
+        let profile = makeProfile(
+            mir: mir, stemFeatures: stemFeatures, preview: preview, beatGrid: beatGrid)
+
         return CachedTrackData(
             stemWaveforms: stemWaveforms,
             stemFeatures: stemFeatures,
@@ -169,6 +159,39 @@ extension SessionPreparer {
             beatGrid: beatGrid,
             drumsBeatGrid: drumsBeatGrid,
             gridOnsetOffsetMs: gridOnsetOffsetMs
+        )
+    }
+
+    // MARK: - Track Profile
+
+    /// Assemble the cached `TrackProfile`, running batch section detection on the
+    /// full-track decode (SECDET.3b).
+    ///
+    /// McFee/Ellis spectral clustering (`SectionDetector`, D-170) on the full-track decode
+    /// + cached grid replaces the live-novelty boundary source. Empty boundaries (too
+    /// short, no grid, or a streaming preview the planner's coverage gate rejects) → `nil`
+    /// so segmentation falls back to equal slices cleanly (LFPLAN.5 convention).
+    nonisolated private static func makeProfile(
+        mir: MIRAnalysisResult,
+        stemFeatures: StemFeatures,
+        preview: PreviewAudio,
+        beatGrid: BeatGrid
+    ) -> TrackProfile {
+        let sectionStartTimes = SectionDetector().boundaryTimes(
+            samples: preview.pcmSamples,
+            sampleRate: Double(preview.sampleRate),
+            beatTimes: beatGrid.beats,
+            duration: Double(preview.pcmSamples.count) / Double(preview.sampleRate)
+        )
+        return TrackProfile(
+            bpm: mir.bpm,
+            key: mir.key,
+            mood: mir.mood,
+            spectralCentroidAvg: mir.centroidAvg,
+            genreTags: [],
+            stemEnergyBalance: stemFeatures,
+            estimatedSectionCount: mir.sectionCount,
+            sectionStartTimes: sectionStartTimes.isEmpty ? nil : sectionStartTimes
         )
     }
 
@@ -242,7 +265,7 @@ extension SessionPreparer {
         let log2n = vDSP_Length(log2(Double(fftSize)))
         guard let fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2)) else {
             return MIRAnalysisResult(
-                bpm: nil, key: nil, mood: .neutral, centroidAvg: 0, sectionCount: 0, sectionStartTimes: []
+                bpm: nil, key: nil, mood: .neutral, centroidAvg: 0, sectionCount: 0
             )
         }
         defer { vDSP_destroy_fftsetup(fftSetup) }
@@ -296,44 +319,19 @@ extension SessionPreparer {
         let sectionCount = frameCount > 0
             ? Int(mir.latestStructuralPrediction.sectionIndex) + 1
             : 0
-        // LFPLAN.5: the detector's boundary timestamps (track-relative seconds). For a
-        // local file `samples` is the full decoded track, so these are real full-track
-        // section starts; for a 30 s streaming preview they only cover the first ~30 s.
-        // LFPLAN.8: keep only the STRONG boundaries (novelty peak ≥ half the track's
-        // strongest) so the plan transitions on the big audible section changes, not every
-        // sub-section novelty wiggle (Matt: "moderate", session 2026-06-22).
-        let sa = mir.structuralAnalyzer
-        let sectionStartTimes = strongBoundaryTimes(times: sa.boundaryTimestamps, scores: sa.boundaryNoveltyScores)
+        // SECDET.3b (C.4): the live StructuralAnalyzer keeps its count role
+        // (sectionIndex → estimatedSectionCount) but its *boundary* role is retired —
+        // section-boundary times now come from the batch McFee detector (SectionDetector,
+        // analyzePreview Step 8), built on the cached BeatGrid. (`boundaryTimestamps` /
+        // `boundaryNoveltyScores` remain on StructuralAnalyzer for diagnostics, unread.)
 
         return MIRAnalysisResult(
             bpm: mir.stableBPM,
             key: mir.stableKey,
             mood: classifier.currentState,
             centroidAvg: centroidAvg,
-            sectionCount: sectionCount,
-            sectionStartTimes: sectionStartTimes
+            sectionCount: sectionCount
         )
-    }
-
-    // MARK: - Boundary Strength Filter (LFPLAN.8)
-
-    /// Keep only the boundaries whose novelty peak is ≥ `strengthFraction` of the track's
-    /// strongest — drops sub-section blips (fills, riff changes) + cold-start artifacts so
-    /// planned transitions land on the big audible section changes. Relative (not absolute)
-    /// because raw novelty values are tiny (~0.005–0.02) and vary per track. Falls back to
-    /// all boundaries when no scores are available (max ≤ 0). `times`/`scores` are the
-    /// parallel arrays from `StructuralAnalyzer.boundaryTimestamps` / `boundaryNoveltyScores`.
-    nonisolated static func strongBoundaryTimes(
-        times: [Float],
-        scores: [Float],
-        strengthFraction: Float = 0.5
-    ) -> [TimeInterval] {
-        let maxScore = scores.max() ?? 0
-        guard maxScore > 0 else { return times.map { TimeInterval($0) } }
-        let cutoff = maxScore * strengthFraction
-        return zip(times, scores)
-            .filter { $0.1 >= cutoff }
-            .map { TimeInterval($0.0) }
     }
 
     // MARK: - FFT Helper
