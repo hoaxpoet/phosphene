@@ -158,7 +158,12 @@ public final class PersistentStemCache: @unchecked Sendable {
     ///                       ≥ 0.5× the track's strongest novelty peak). v3 entries hold
     ///                       the old UNFILTERED times, so they must be re-analysed for the
     ///                       filter to reach the planner.
-    public static let currentSchemaVersion: Int = 4
+    ///   v5 (SECDET.3b) — `sectionStartTimes` now means the McFee/Ellis batch detector's
+    ///                       boundaries (SectionDetector), not the novelty detector's. The
+    ///                       payload decodes identically, but v4 entries hold the old
+    ///                       novelty boundaries, so they must be re-analysed for the real
+    ///                       sections to reach the planner.
+    public static let currentSchemaVersion: Int = 5
 
     /// Names of the stem `.f32` files. Order matches `CachedTrackData.stemWaveforms`
     /// (`[vocals, drums, bass, other]`).

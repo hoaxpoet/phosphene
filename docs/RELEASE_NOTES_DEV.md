@@ -10,6 +10,10 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-23-204846] SECDET.3c — section-detector port, Stage C.3: cache schema v4 → v5
+
+Bumped `PersistentStemCache.currentSchemaVersion` 4 → 5. The on-disk payload is unchanged, but `TrackProfile.sectionStartTimes` now *means* the McFee/Ellis batch detector's boundaries (SECDET.3b), not the novelty detector's — so v4 entries hold stale novelty boundaries under the same field. Without the bump they'd decode fine and silently replay the old (wrong) sections; with it they're treated as a miss and re-analysed, so the real McFee sections reach the planner (the LFPLAN.6/.8 lesson: changing what the cache means needs a version bump). The version-history comment gains a v5 line. All 27 PersistentStemCache tests stay green — the version-roundtrip assertion reads `currentSchemaVersion` dynamically, so it tracks the bump. Committed on the worktree branch only; not pushed.
+
 ## [dev-2026-06-23-204534] SECDET.3b — section-detector port, Stage C.2: McFee wired into prep (replaces the novelty boundary source)
 
 The wire-in (D-170). New `SectionDetector` — a public DSP façade that takes the full-track decode + the cached BeatGrid and runs the whole SECDET chain: resample → 22050 mono (AVAudioConverter, mirroring `BeatThisPreprocessor.resample`) → beat-sync on `BeatGrid.beats` → `SectionFeatureExtractor` (252-CQT + MFCC) → `SpectralSectionDetector` (McFee/Ellis clustering) → interior boundary times (strips the framing 0/duration to match the planner contract). `SessionPreparer.analyzePreview` now resolves the BeatGrid **before** the profile (extracted into `makeProfile`, Step 8) — McFee needs the beats, but the grid used to be computed *after* the profile was built — and sets `TrackProfile.sectionStartTimes` from `SectionDetector` instead of the live novelty detector's `strongBoundaryTimes`.
