@@ -76,30 +76,4 @@ struct MultiSegmentSmokeTest {
         }
         #expect(totalSegments >= 4, "Expected at least one segment per track")
     }
-
-    @Test("LFPLAN.7: real sections are not subdivided — segments start only on section boundaries")
-    func realSectionsNotSubdivided() throws {
-        let catalog = try loadProductionCatalog()
-        guard !catalog.isEmpty else { return }
-        // 200 s track whose final section (100→200, 100 s) exceeds every preset's maxDuration.
-        // Pre-LFPLAN.7 the planner would split it into 2–3 sub-segments at non-section times;
-        // LFPLAN.7 runs one preset for the whole real section.
-        let identity = TrackIdentity(title: "RealSec", artist: "A", duration: 200)
-        let profile = TrackProfile(
-            mood: EmotionalState(valence: 0.5, arousal: 0.5),
-            estimatedSectionCount: 3,
-            sectionStartTimes: [40, 100]
-        )
-        let plan = try DefaultSessionPlanner().plan(
-            tracks: [(identity, profile)], catalog: catalog, deviceTier: .tier2
-        )
-        let track = try #require(plan.tracks.first)
-        // Every segment must start on a real section boundary (0/40/100) — no mid-section
-        // maxDuration split. (A wait_for_completion preset may span sections, only reducing
-        // the count; it can never introduce a non-section start.)
-        let sectionStarts: Set<Int> = [0, 40, 100]
-        let segStarts = Set(track.segments.map { Int($0.plannedStartTime.rounded()) })
-        #expect(segStarts.isSubset(of: sectionStarts),
-                "segments must start only on section boundaries; got \(segStarts.sorted())")
-    }
 }

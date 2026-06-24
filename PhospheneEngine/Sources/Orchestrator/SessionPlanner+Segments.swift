@@ -28,24 +28,7 @@ extension DefaultSessionPlanner {
         let isRealSection: Bool
     }
 
-    /// LFPLAN.5: minimum planned section length. Matches the StructuralAnalyzer's 8 s
-    /// section floor (`minPeakDistance` 16 × 0.5 s buckets). Detected boundaries closer
-    /// than this — intro/outro fragments — are merged so the planner never emits a
-    /// sub-perception flash.
-    static let minSectionSeconds: TimeInterval = 8.0
-
-    /// LFPLAN.5: detected boundaries must span at least this fraction of the track to be
-    /// used (else equal slices). Separates full-track analysis (local files, final
-    /// boundary lands deep in the track) from 30 s-preview analysis (streaming, boundaries
-    /// bunch in the first ~30 s of a multi-minute track).
-    static let minSectionCoverageFraction: Double = 0.4
-
-    /// Produces the section list for a track.
-    ///
-    /// LFPLAN.5: when the profile carries detected section-boundary times that span the
-    /// track (local-file full-track analysis), segments land on the real sections. Falls
-    /// back to equal slices from `estimatedSectionCount` for nil/empty times (old cached
-    /// profiles), or preview-scale times that don't span the track (streaming previews).
+    /// Produces the section list for a track: equal slices from `estimatedSectionCount`.
     static func makeSections(
         trackStart: TimeInterval,
         trackEnd: TimeInterval,
@@ -56,11 +39,6 @@ extension DefaultSessionPlanner {
             return [TrackSection(start: trackStart, end: trackEnd, section: nil, isRealSection: false)]
         }
 
-        if let real = realSections(trackStart: trackStart, trackEnd: trackEnd, span: span, profile: profile) {
-            return real
-        }
-
-        // Equal-slice fallback (unchanged behaviour).
         let count = max(1, profile.estimatedSectionCount)
         let perSection = span / Double(count)
         var sections: [TrackSection] = []
@@ -71,68 +49,6 @@ extension DefaultSessionPlanner {
             sections.append(TrackSection(start: secStart, end: secEnd, section: nil, isRealSection: false))
         }
         return sections
-    }
-
-    /// LFPLAN.5: build a section list from `profile.sectionStartTimes` (track-relative
-    /// boundary offsets, not including 0). Returns `nil` — caller falls back to equal
-    /// slices — when there are no usable boundaries or they don't span enough of the track.
-    static func realSections(
-        trackStart: TimeInterval,
-        trackEnd: TimeInterval,
-        span: TimeInterval,
-        profile: TrackProfile
-    ) -> [TrackSection]? {
-        guard let rawTimes = profile.sectionStartTimes, !rawTimes.isEmpty else { return nil }
-
-        // Interior boundaries only — the filter drops any within the section floor of the
-        // track start (short intro) or end (short outro), so those fragments are absorbed
-        // into the neighbouring section. Sorted ascending.
-        let interior = rawTimes
-            .filter { $0 > minSectionSeconds && $0 < span - minSectionSeconds }
-            .sorted()
-        guard let last = interior.last, last >= span * minSectionCoverageFraction else { return nil }
-
-        // Section starts = track start + each boundary kept ≥ minSection from the previous
-        // (drops close-together boundaries). The interior filter already guarantees the
-        // final section runs ≥ minSection to trackEnd.
-        var starts: [TimeInterval] = [trackStart]
-        for time in interior {
-            let absolute = trackStart + time
-            if absolute - (starts.last ?? trackStart) >= minSectionSeconds { starts.append(absolute) }
-        }
-        guard starts.count > 1 else { return nil }
-
-        var sections: [TrackSection] = []
-        sections.reserveCapacity(starts.count)
-        for (idx, secStart) in starts.enumerated() {
-            let secEnd = (idx == starts.count - 1) ? trackEnd : starts[idx + 1]
-            sections.append(TrackSection(start: secStart, end: secEnd, section: nil, isRealSection: true))
-        }
-        return sections
-    }
-
-    /// SECDET.6 — section-length gate for completion-gated presets.
-    ///
-    /// A `wait_for_completion_event` preset reserves its full `natural_cycle_seconds`
-    /// (`planOneSegment`), so on a non-last real section a preset whose cycle exceeds the
-    /// section swallows the later sections via `coveredUntil` — collapsing one-transition-
-    /// per-section into a single transition (live-test 2: Arachne's 150 s cycle ate a 203 s
-    /// track's 4 later boundaries). Filter such presets out unless they fit, so section-rich
-    /// tracks transition per section; a long-form preset still runs its full cycle on a
-    /// section long enough to hold it, or on the last section (nothing after to swallow).
-    /// Never returns empty when `catalog` is non-empty (non-completion-gated presets remain).
-    static func sectionEligibleCatalog(
-        _ catalog: [PresetDescriptor],
-        sectionLength: TimeInterval,
-        isRealSection: Bool,
-        isLastSection: Bool
-    ) -> [PresetDescriptor] {
-        guard isRealSection, !isLastSection else { return catalog }
-        let fitted = catalog.filter { preset in
-            !preset.waitForCompletionEvent
-                || TimeInterval(preset.naturalCycleSeconds ?? Float(preset.duration)) <= sectionLength
-        }
-        return fitted.isEmpty ? catalog : fitted
     }
 
     // swiftlint:disable function_parameter_count
@@ -259,14 +175,8 @@ extension DefaultSessionPlanner {
             currentSection: sectionEntry.section,
             includeUncertifiedPresets: includeUncertifiedPresets
         )
-        // SECDET.6: keep a long completion-gated preset from swallowing later sections.
-        let sectionCatalog = Self.sectionEligibleCatalog(
-            catalog,
-            sectionLength: remainingInSection,
-            isRealSection: sectionEntry.isRealSection,
-            isLastSection: isLastSection)
         let (chosen, breakdown) = selectPreset(
-            catalog: sectionCatalog,
+            catalog: catalog,
             profile: profile,
             context: ctx,
             trackRef: (trackIndex, identity.title),
