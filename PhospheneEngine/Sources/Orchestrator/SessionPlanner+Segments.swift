@@ -111,6 +111,30 @@ extension DefaultSessionPlanner {
         return sections
     }
 
+    /// SECDET.6 — section-length gate for completion-gated presets.
+    ///
+    /// A `wait_for_completion_event` preset reserves its full `natural_cycle_seconds`
+    /// (`planOneSegment`), so on a non-last real section a preset whose cycle exceeds the
+    /// section swallows the later sections via `coveredUntil` — collapsing one-transition-
+    /// per-section into a single transition (live-test 2: Arachne's 150 s cycle ate a 203 s
+    /// track's 4 later boundaries). Filter such presets out unless they fit, so section-rich
+    /// tracks transition per section; a long-form preset still runs its full cycle on a
+    /// section long enough to hold it, or on the last section (nothing after to swallow).
+    /// Never returns empty when `catalog` is non-empty (non-completion-gated presets remain).
+    static func sectionEligibleCatalog(
+        _ catalog: [PresetDescriptor],
+        sectionLength: TimeInterval,
+        isRealSection: Bool,
+        isLastSection: Bool
+    ) -> [PresetDescriptor] {
+        guard isRealSection, !isLastSection else { return catalog }
+        let fitted = catalog.filter { preset in
+            !preset.waitForCompletionEvent
+                || TimeInterval(preset.naturalCycleSeconds ?? Float(preset.duration)) <= sectionLength
+        }
+        return fitted.isEmpty ? catalog : fitted
+    }
+
     // swiftlint:disable function_parameter_count
     /// Walk a single track's section list emitting one or more `PlannedPresetSegment`.
     ///
@@ -226,6 +250,7 @@ extension DefaultSessionPlanner {
         currentPreset: inout PresetDescriptor?,
         warnings: inout [PlanningWarning]
     ) -> (segment: PlannedPresetSegment, advanced: Bool) {
+        let remainingInSection = sectionEntry.end - sectionClock
         let ctx = PresetScoringContext(
             deviceTier: deviceTier,
             recentHistory: history,
@@ -234,8 +259,14 @@ extension DefaultSessionPlanner {
             currentSection: sectionEntry.section,
             includeUncertifiedPresets: includeUncertifiedPresets
         )
+        // SECDET.6: keep a long completion-gated preset from swallowing later sections.
+        let sectionCatalog = Self.sectionEligibleCatalog(
+            catalog,
+            sectionLength: remainingInSection,
+            isRealSection: sectionEntry.isRealSection,
+            isLastSection: isLastSection)
         let (chosen, breakdown) = selectPreset(
-            catalog: catalog,
+            catalog: sectionCatalog,
             profile: profile,
             context: ctx,
             trackRef: (trackIndex, identity.title),
@@ -243,7 +274,6 @@ extension DefaultSessionPlanner {
             warnings: &warnings
         )
 
-        let remainingInSection = sectionEntry.end - sectionClock
         let maxByPreset = chosen.maxDuration(forSection: sectionEntry.section)
         let segStart = sectionClock
 
