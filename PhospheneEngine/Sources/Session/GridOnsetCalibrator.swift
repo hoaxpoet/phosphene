@@ -76,7 +76,7 @@ public struct GridOnsetCalibrator {
             sampleRate: Float(sampleRate),
             fftSize: Self.fftSize
         )
-        var fftSetup = vDSP_create_fftsetup(Self.log2n, FFTRadix(kFFTRadix2))
+        let fftSetup = vDSP_create_fftsetup(Self.log2n, FFTRadix(kFFTRadix2))
         defer { vDSP_destroy_fftsetup(fftSetup) }
         let window = makeHannWindow(size: Self.fftSize)
 
