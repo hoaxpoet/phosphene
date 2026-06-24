@@ -10,6 +10,12 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-24-213739] Post-SECDET warning sweep — leftover compiler warnings silenced
+
+The SECDET removal (`8242fab`) deleted the files holding **4 of the 5** compiler warnings Xcode was showing for PhospheneApp: `RecurrenceGraph.swift` (`cblas_sgemm` CLAPACK deprecation), `SymmetricEigen.swift` (`ssyev_` CLAPACK deprecation ×2), and `SectionDetector.swift` (unused `withUnsafeBufferPointer` result). A Clean-Build-Folder + rebuild confirms all four are gone, and a grep confirms **no CLAPACK/BLAS reference survives** the removal — that deleted McFee DSP was the codebase's only LAPACK/BLAS use, so the `-DACCELERATE_NEW_LAPACK` deprecations have nothing left to fire on.
+
+The **one real, current** warning — `GridOnsetCalibrator.swift:79`, a `var fftSetup` that's never mutated (used only in the `defer` destroy and passed by value into `computeMagnitudes`) — is fixed to `let`. Engine clean build, app clean build (warnings-as-errors enforced per-target via `Phosphene.xcconfig`), and `swiftlint --strict` are all green with zero warnings. A one-line `var`→`let`; no behaviour change. Committed on the worktree branch only; not pushed.
+
 ## [dev-2026-06-24-165320] SECDET removed — section-aligned transitions deleted; planner equal-slices for every track
 
 After three live tests, section detection (the SECDET arc, D-170) is **removed**. The pipeline worked by the end — full-track detection (.5) and a planner that no longer collapsed transitions (.6) — but the detector's *output* was the problem, and two facts made removal the right call.
