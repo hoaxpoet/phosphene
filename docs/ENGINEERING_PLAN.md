@@ -23,7 +23,7 @@ For anything inventory-shaped, read the artifact, not a prose copy of it:
 
 ## Recently Completed
 
-### Phase SECDET — Section-detection rebuild: port McFee/Ellis spectral clustering to Swift/Accelerate ⏳ (2026-06-24; **SECDET.1–.6 done** — offline port reproduces the lab (≈0.41/0.61); two live tests drove fixes — **.5** (the 30 s Beat-This! grid cap confined sections to the first 30 s → full-track beat extension) + **.6** (a long completion-gated preset was swallowing the section transitions in the planner); **the live re-test (Release build) is the remaining step**; kickoff `~/phosphene_section_lab/PORT_KICKOFF.md`, D-170)
+### Phase SECDET — Section-detection rebuild ✅ REMOVED (2026-06-24; built SECDET.1–.6 + 3 live tests, then **deleted**. Section detection is structurally **local-file-only** — streaming has only a 30 s preview, no algorithm fixes that — AND below the perceptual bar there (live F@3 ≈ 0.29–0.41, ~half the transitions wrong); the "no-ML" premise was a misreading of D-009 (= no-CoreML, not no-ML). The McFee detector + `~/phosphene_section_lab/` were deleted; the planner equal-slices. Full rationale: DECISIONS D-170 §Reversal. The SECDET.1–.6 rows below are kept as the build record; kickoff `~/phosphene_section_lab/PORT_KICKOFF.md`, D-170)
 
 Replace the novelty-only offline section detector (`StructuralAnalyzer` boundary role) with the lab-validated **McFee/Ellis Laplacian spectral clustering** (D-170) — repetition-aware, on-device DSP+Accelerate, no ML. The lab (`~/phosphene_section_lab/`) is the offline oracle; the port is correct when its boundaries + F-scores reproduce the lab's on the same tracks (validate offline, never live — live iteration ate 4 sessions before the offline pivot).
 

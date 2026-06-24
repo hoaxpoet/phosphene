@@ -124,8 +124,6 @@ extension VisualizerEngine {
             let warnCount = plan.warnings.count
             logger.info("Orchestrator: plan — \(plan.tracks.count)/\(fullCount) tracks, \(totalSecs)s, \(warnCount) warnings")
 
-            logPlanDiagnostic(plan: plan, readyTracks: readyTracks)   // LFPLAN.6
-
             // Pre-load the BeatGrid for the first planned track so Spectral Cartograph
             // shows "PLANNED · UNLOCKED" immediately after plan-build. DSP.3.2.
             let firstTrackTitle = plan.tracks.first?.track.title ?? "<none>"
@@ -138,41 +136,6 @@ extension VisualizerEngine {
         } catch {
             logger.error("Orchestrator: plan failed — \(error)")
             logWiringBuildPlanFailed(error)
-        }
-    }
-
-    /// LFPLAN.6 diagnostic: per-track, log the detected section times the planner *received*
-    /// and the segment boundaries it *produced* (both track-relative) to `session.log`. Live
-    /// preset-cadence alone can't distinguish a section-aligned plan from an equal-slice one
-    /// through the executor dwell; this line can. Reads:
-    ///   sectionTimes=nil(no-profile)       → cache lookup missed (identity gap)
-    ///   sectionTimes=nil(no-section-times) → profile reached buildPlan without times (data path)
-    ///   sectionTimes=[…] + segStarts evenly spaced → makeSections/coverage fell back to slices
-    ///   sectionTimes=[…] + segStarts on the times  → plan IS section-aligned (look downstream)
-    @MainActor
-    private func logPlanDiagnostic(plan: PlannedSession, readyTracks: [(TrackIdentity, TrackProfile)]) {
-        let profileByTrack = Dictionary(readyTracks, uniquingKeysWith: { first, _ in first })
-        for plannedTrack in plan.tracks {
-            let span = plannedTrack.plannedEndTime - plannedTrack.plannedStartTime
-            let segStarts = plannedTrack.segments
-                .map { String(format: "%.0f", $0.plannedStartTime - plannedTrack.plannedStartTime) }
-                .joined(separator: ",")
-            let secTimes: String
-            if let profile = profileByTrack[plannedTrack.track] {
-                if let times = profile.sectionStartTimes {
-                    secTimes = times.isEmpty
-                        ? "empty"
-                        : times.map { String(format: "%.0f", $0) }.joined(separator: ",")
-                } else {
-                    secTimes = "nil(no-section-times)"
-                }
-            } else {
-                secTimes = "nil(no-profile)"
-            }
-            sessionRecorder?.log(
-                "PLAN_DIAG: '\(plannedTrack.track.title)' "
-                + "span=\(String(format: "%.0f", span))s sectionTimes=[\(secTimes)] segStarts=[\(segStarts)]"
-            )
         }
     }
 

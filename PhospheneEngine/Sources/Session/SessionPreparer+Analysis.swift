@@ -103,8 +103,6 @@ extension SessionPreparer {
         )
 
         // Step 5: Beat This! offline beat grid on full mix (nil analyzer → BeatGrid.empty).
-        // SECDET.3b: the grid is resolved *before* the profile now — section detection
-        // (Step 8) is beat-synced, so it needs `beatGrid.beats`.
         let beatGridRaw: BeatGrid
         if let gridAnalyzer = beatGridAnalyzer {
             beatGridRaw = gridAnalyzer.analyzeBeatGrid(
@@ -147,10 +145,15 @@ extension SessionPreparer {
         // Step 7 (BUG-007.8): per-track grid-vs-onset offset calibration.
         let gridOnsetOffsetMs = Self.computeGridOnsetOffsetMs(preview: preview, grid: beatGrid)
 
-        // Step 8 (SECDET.3b): batch section detection on the full-track decode + cached
-        // grid, then assemble the profile (extracted to keep this function readable).
-        let profile = makeProfile(
-            mir: mir, stemFeatures: stemFeatures, preview: preview, beatGrid: beatGrid)
+        let profile = TrackProfile(
+            bpm: mir.bpm,
+            key: mir.key,
+            mood: mir.mood,
+            spectralCentroidAvg: mir.centroidAvg,
+            genreTags: [],
+            stemEnergyBalance: stemFeatures,
+            estimatedSectionCount: mir.sectionCount
+        )
 
         return CachedTrackData(
             stemWaveforms: stemWaveforms,
@@ -159,39 +162,6 @@ extension SessionPreparer {
             beatGrid: beatGrid,
             drumsBeatGrid: drumsBeatGrid,
             gridOnsetOffsetMs: gridOnsetOffsetMs
-        )
-    }
-
-    // MARK: - Track Profile
-
-    /// Assemble the cached `TrackProfile`, running batch section detection on the
-    /// full-track decode (SECDET.3b).
-    ///
-    /// McFee/Ellis spectral clustering (`SectionDetector`, D-170) on the full-track decode
-    /// + cached grid replaces the live-novelty boundary source. Empty boundaries (too
-    /// short, no grid, or a streaming preview the planner's coverage gate rejects) → `nil`
-    /// so segmentation falls back to equal slices cleanly (LFPLAN.5 convention).
-    nonisolated private static func makeProfile(
-        mir: MIRAnalysisResult,
-        stemFeatures: StemFeatures,
-        preview: PreviewAudio,
-        beatGrid: BeatGrid
-    ) -> TrackProfile {
-        let sectionStartTimes = SectionDetector().boundaryTimes(
-            samples: preview.pcmSamples,
-            sampleRate: Double(preview.sampleRate),
-            beatTimes: beatGrid.beats,
-            duration: Double(preview.pcmSamples.count) / Double(preview.sampleRate)
-        )
-        return TrackProfile(
-            bpm: mir.bpm,
-            key: mir.key,
-            mood: mir.mood,
-            spectralCentroidAvg: mir.centroidAvg,
-            genreTags: [],
-            stemEnergyBalance: stemFeatures,
-            estimatedSectionCount: mir.sectionCount,
-            sectionStartTimes: sectionStartTimes.isEmpty ? nil : sectionStartTimes
         )
     }
 
