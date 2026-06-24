@@ -10,6 +10,16 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-24-152151] SECDET.6 — planner: stop a long completion-gated preset from swallowing the section transitions
+
+Live test 2 (Without You, Harry Nilsson, 203 s) confirmed the SECDET.5 fix landed: McFee now detects **full-track** sections (`sectionTimes=[38,67,97,127,183,194]`, which `makeSections` turns into 7 real sections). But only one transition fired, and the plan had just 3 segments (`segStarts=[0,38,67]`). The detector was finally handing over good full-track sections, and the **planner** was collapsing them.
+
+**Root cause — a completion-gated preset's natural cycle swallows later sections.** When `planOneSegment` picks a preset with `wait_for_completion_event` (so a long build isn't cut mid-reveal — BUG-037), it reserves the preset's full `natural_cycle_seconds`, and `coveredUntil` then skips every section that span covers. **Arachne is the only such preset, with a 150 s cycle** — picked for an early section on a 203 s track, it runs to the end and eats the 4 later boundaries, producing exactly `[0,38,67]`. This is a real design tension: representational/long-form presets are *meant* to run their full cycle, which conflicts with one-transition-per-section.
+
+**Fix (Matt's call — gate by section length).** New `DefaultSessionPlanner.sectionEligibleCatalog` filters completion-gated presets out of a *non-last real* section when their cycle exceeds the section length, before the scorer runs. So a long-form preset is only eligible where there's genuinely room for it (or on the last section, where there's nothing after to swallow); short verse/chorus sections get presets that fit and transition per section. The filter never empties the catalog (non-completion-gated presets always remain). 6 hermetic gate tests cover drop/keep/last-section/equal-slice/duration-fallback/non-empty; the planner suites (MultiSegment, PlannerSection) stay green; swiftlint 0.
+
+End-to-end ("the plan no longer collapses on a real track") is covered by `MultiSegmentSmokeTest.realSectionsNotSubdivided` and the live re-test — both need the production preset-catalog bundle, which isn't present in worktree test builds, so they validate on the primary checkout / live. **Next: the live re-test (Release build) — confirm transitions now land across the whole song, not just once.** Committed on the worktree branch only; not pushed.
+
 ## [dev-2026-06-23-230614] SECDET.5 — full-track beats: McFee section detection works past the first 30 s (live-test fix)
 
 The first live test (Heart-Shaped Box, 282 s, macOS 26.5.1) ran with the SECDET wire-in and surfaced three things; only one was a real bug. **(1) "No audio" was not Phosphene** — the tap captured the song at peak −0.98 / RMS 0.175, features varied, the signal monitor logged green; Matt's Apogee Duet 3 output settings had reset on the OS restart. **(3) The ~2-minute prep** was the full-track McFee CQT running in a *Debug* build (~95 s, per SECDET.3a's debug=104 s/5-min); a Release build drops it to seconds.
