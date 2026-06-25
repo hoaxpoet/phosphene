@@ -1,0 +1,6 @@
+# Render-harness artifacts — regenerable, and music.wav is a copyrighted clip. Do not commit.
+node_modules/
+music.wav
+renders/
+royal_variants/
+builtins/
