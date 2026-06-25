@@ -143,6 +143,14 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var fataSwayClock: Float = 0
     var fataPrevBarPhase: Float = 0
 
+    /// Nacre (NACRE.3): hue ← harmony. `nacreCentroidNorm` is a slow EMA of the spectral
+    /// centroid (the section's brightness baseline, ~5 s); the palette-phase nudge tracks
+    /// the centroid's DEVIATION from it (track-robust — responds to harmonic/timbral shifts,
+    /// not absolute level). `nacreHueEMA` is the calm-smoothed output (the `hueShift` bound).
+    /// MainActor-only (the mv_warp draw path), no lock — same convention as the fata accumulators.
+    var nacreCentroidNorm: Float = 0
+    var nacreHueEMA: Float = 0
+
     // MARK: - Live Audio Features
 
     /// Latest audio features from MIR analysis (band energy, beats, spectral).

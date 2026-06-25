@@ -50,7 +50,7 @@ struct NacreUniforms {
     float  time;         // features.time — palette rotation, grain scroll, radial-pulse phase
     float  trebleGrain;  // max(0, trebleDev) — gates the warp grain (faithful treb_att route)
     float  coreEnergy;   // overall volume (0 at silence) — gates the core seed (faithful modwavealphabyvolume)
-    float  pad0;
+    float  hueShift;     // NACRE.3: harmony → palette-phase nudge (seconds, bounded ±1.5)
     float2 texel;        // (1/feedbackW, 1/feedbackH) — comp luminance-sobel offsets (texsize.zw)
     float2 pad1;
     float4 aspect;       // (aspectx, aspecty, 1/aspectx, 1/aspecty) — comp cell aspect
@@ -254,7 +254,10 @@ fragment float4 nacre_warp_fragment(
     float  r        = length(in.uv - 0.5);
     float  coreGate = 0.22 + 0.75 * clamp(nu.coreEnergy, 0.0, 1.0);
     float  core     = exp(-r * r * kNacreCoreTight) * kNacreCoreBase * coreGate;
-    c += core * nacrePalette(nu.time);
+    // Palette phase nudged by the harmony (NACRE.3): the seed colour drifts ±~10% of the
+    // cycle with the music's spectral colour, layered on the slow time-rotation. The seed
+    // carries the palette into the feedback, so the whole field's hue follows the harmony.
+    c += core * nacrePalette(nu.time + nu.hueShift);
 
     // Slight desaturate toward luma (source warp final step).
     c = mix(c, float3(dot(c, kLuma)), kNacreDesat);
