@@ -1,44 +1,165 @@
-# NACRE.2b Kickoff — port the look + the three uplifts
+# NACRE.2b Kickoff — port `$$$ Royal - Mashup (431)` faithfully, then uplift
 
-**Paste this (or "Resume NACRE.2b — follow docs/prompts/NACRE_2B_KICKOFF.md") to start the session.**
+**Paste "Resume NACRE.2b — follow docs/prompts/NACRE_2B_KICKOFF.md" to start the session.**
 
-You are implementing **NACRE.2b**, the shader-craft half of the Nacre preset — a faithful
-uplift of the Milkdrop preset `$$$ Royal - Mashup (431)` (the translucent refractive
-"jello-mirror" cell-field) on Phosphene's `mv_warp`. NACRE.1 (design+refs) and NACRE.2a
-(wiring + a stub) are **done and committed** (`374791d`, `1daab73`, `42641de` on branch
-`claude/stupefied-volhard-554a97`, local/unpushed).
+Bring the butterchurn preset **`$$$ Royal - Mashup (431)`** into Phosphene as a **certified** preset
+named **Nacre**, faithful FIRST then uplifted to stems + beat — following the **Dragon Bloom (D-138)**
+and **Fata Morgana (D-139)** butterchurn→Phosphene ports. This doc supersedes the earlier
+`ROYAL_MASHUP_431_KICKOFF.md` (merged in) and the lighter first draft of this file.
 
-## Step 0 — MANDATORY session start (do before opening any .metal)
+> Lineage: `$$$ Royal - Mashup (220)` became **Dragon Bloom**. 431 shares the author/name, **not the
+> look** — do NOT build "Dragon Bloom v2" (D-097: siblings, not subclasses).
 
-Run the preset session-start checklist: **[docs/PRESET_SESSION_CHECKLIST.md](../PRESET_SESSION_CHECKLIST.md)**. Concretely, read, cover to cover:
-1. **[docs/presets/NACRE_PLAN.md](../presets/NACRE_PLAN.md)** §"NACRE.2 — Committed scope & architecture" + §1 (musical role) + §2 (temporal contract) + §6 (one-primitive-per-layer table). This is the contract.
-2. **[docs/VISUAL_REFERENCES/nacre/README.md](../VISUAL_REFERENCES/nacre/README.md)** + the 3 annotated stills + `target_animated.gif` (the target) — and **[source_shaders.txt](../VISUAL_REFERENCES/nacre/source_shaders.txt)**, which is (431)'s **actual** warp/comp shaders + per-frame eqs. **Port these verbatim; do not re-derive (FA #73/#65).**
+## 0. THE one rule — read before writing any code
 
-## Locked decisions (do NOT relitigate — Matt sanctioned these)
+**Replicate butterchurn's render loop WHOLESALE by reading its source. Do NOT patch Phosphene's
+`mv_warp`/comp piecemeal and tune the divergences** (CLAUDE.md FA #70 + #73 + #64; the whole Dragon
+Bloom lesson). Read the reference, port the loop; never guess-and-tune.
 
-- **Faithful character base + three 2026 uplifts:** (1) **stem-instrument routing** (vocals→core, bass→swell/kick, drums→rim sparkle, harmonic *other*→iridescence shift); (2) **real thin-film iridescence + HDR** (replace (431)'s 2-px chromatic hack with `iridescence()`/`fresnel()`, hue←chroma/centroid; on `.rgba16Float` feedback); (3) **smooth-Voronoi refractive cells** (replace the `sin(4·uv)` lattice). Beat-grid/chroma-palette lock is **deferred** to tuning.
-- **Architecture (load-bearing):** the signature look is a **DISPLAY-stage transform** in `nacre_comp_fragment` (it samples the feedback `warpTex` at texture 0; output is *not* fed back — Milkdrop comp semantics). The scene fragment (`nacre_fragment`) only draws **new** content (the core) and has **no feedback access**. The feedback loop itself is `mvWarpPerFrame`/`mvWarpPerVertex` (drift + zoom).
-- **Wiring is done — NO renderer edits.** `nacre_comp_fragment` auto-selects via PresetLoader naming convention; `NacreUniforms` arrives at comp **buffer(1)** (populated by `NacreState.tick` → `directPresetFragmentBuffer`). HDR opt-in is already in `PresetLoader.feedbackFormat`.
+## 0.5. Current state — NACRE.1 + NACRE.2a are DONE (on `main`, `9ff5a3e`)
 
-## The work, in order
+This is a **resume at 2b**, not a from-scratch port. Already landed:
+- **NACRE.1** — design + curated references: `docs/presets/NACRE_PLAN.md`, `docs/VISUAL_REFERENCES/nacre/`
+  (incl. **`source_shaders.txt` — (431)'s verbatim warp + comp + per-frame eqs, already extracted**;
+  `source_preset.json`; annotated GIF/stills).
+- **NACRE.2a** — wiring + a STUB: `Shaders/Nacre.{metal,json}`, `Presets/Nacre/NacreState.swift`
+  (`NacreUniforms` 64 B → comp buffer(1)), HDR opt-in in `PresetLoader.feedbackFormat`,
+  `VisualizerEngine(+Presets)` wiring, `NacreMVWarpAccumulationTest` (static + compile guards). Green.
 
-1. **Harness FIRST (checklist item: multi-frame before shader work).** Extend `PhospheneEngine/Tests/PhospheneEngineTests/Presets/NacreMVWarpAccumulationTest.swift` with a real multi-frame loop: drive `RenderPipeline.renderMVWarpToTexture` (the shared headless seam in `RenderPipeline+MVWarpHeadless.swift`) for ≥60 frames at **silence** and at **synthetic music**, read back the final frame, and assert it stays **non-black** and never **whites out**. Adapt `DragonBloomMVWarpAccumulationTest.runAccumulationLoop` (its private harness is the reference; the seam is shared). **Produce an early `RENDER_VISUAL=1` contact sheet before any look-tuning** (item 6 — rendered evidence early ends tuning spirals).
-2. **Port (431)'s comp shader** into `nacre_comp_fragment` (from `source_shaders.txt`): 4-layer radial-pulse zoom `dist = 1 − fract(k/4 + t/18)` (k=0..3), luminance-Sobel emboss `dz`, sine-cell domain warp — then **swap the cheap bits for the uplifts**: emboss rims → real `iridescence()` (hue ← `nu.hueDrive` from centroid; band shift ← `nu.iriShift` from *other*); `sin(4·uv)` cells → **smooth Voronoi** (`smin`/Worley). **Inline** the iridescence/`smin`/Voronoi helpers into `Nacre.metal` (presets are self-contained — only `ShaderUtilities.metal` auto-merges; copy from `Utilities/PBR/Fresnel.metal`, `Utilities/Materials/Exotic.metal`, `Utilities/Noise/Worley.metal`).
-3. **Stem routing.** Scene `nacre_fragment`: vocals→core brightness + waveform→core shape. `mvWarpPerVertex`: bass→cell swell + displacement-kick. `nacre_comp_fragment` (via `NacreUniforms`): drums→rim sparkle, treble→rim grain. Populate `NacreUniforms` in `NacreState.tick`. **Verify the exact Swift field names first** (MSL names are confirmed in `Renderer/Shaders/Common.metal`: `vocals_energy`, `bass_energy_dev`, `drums_energy_dev`, `other_energy`, `mid_rel`, `bass_dev`, `spectral_centroid`, `treb_att_rel`; the Swift `StemFeatures`/`FeatureVector` camelCase equivalents need a quick grep — there is **no** `treble_dev`, use `treb_att_rel`). Use **deviation primitives (D-026)**, never absolute thresholds on AGC values (FA #31). Hold **one primitive per layer per timescale** (FA #67 — NACRE_PLAN §6).
+**Three 2a choices to CORRECT in 2b (they diverged from this spec — Matt's call is to align):**
+1. 2a used the **shared decay warp** + deferred the blur. **431 has a CUSTOM warp shader** (unsharp via
+   a 3-level blur pyramid + treble-gated grain + **0.9 decay INSIDE the warp**). 2b must add
+   `nacre_warp_fragment` (with its own decay; do NOT also apply compose decay — D-138).
+2. 2a took the lighter Skein convention path (no blur pipeline). **Use the Fata Morgana template** —
+   it already ships the custom-warp + fully-replacing-custom-comp + **blur-of-prev pipeline** + uniform
+   struct (`blurState` is renderer-wired in `RenderPipeline+MVWarp.swift`/`+FataMorgana.swift`).
+3. **Feedback format: HDR-with-fallback (Matt).** Try `.rgba16Float` (already set) for unclamped
+   iridescence/bloom; the white-out gate + oracle catch over-accumulation → **fall back to 8-bit** if the
+   look breaks. (431's in-warp 0.9 decay may make HDR viable where Dragon Bloom's no-decay loop wasn't.)
 
-## Cautions
+## 1. The target — what 431 actually IS
 
-- **Faithful character first at silence**, audio coupling second (FA #65) — get the cell-field + chromatic/iridescent rims + slow palette right with time-only, then layer audio.
-- **Watch HDR over-accumulation.** `feedbackFormat` is `.rgba16Float`; decay (0.94) bounds it, but the no-clamp float buffer can over-bloom — the white-out gate + contact sheet catch it. Tune `kNacreDecay`/core gain if it blooms to white (Dragon Bloom hit exactly this with a *no-decay* float loop).
-- **Compare side-by-side against `(431)`** (`tools/milkdrop-render/renders/$$$ Royal - Mashup (431).gif`; re-render via `tools/milkdrop-render/render-gif.js royal_variants/*.json`) — never self-judge "looks reasonable" (checklist item 5).
-- After each M7 round write the one sentence "what I now believe about why this is failing"; if it doesn't change between rounds, stop and re-scope (authoring-discipline escalation).
+An **iridescent refractive field** — read it as **molten iridescent metal / oil-on-water** with a
+mother-of-pearl translucency: a gold-green viscous base with a reaction-diffusion crinkle and a
+rainbow oil-slick / nacreous core. **NOT symmetric, NOT floral** (that's 220/Dragon Bloom). Closest
+catalog cousin is **Ferrofluid Ocean** (reflective metal + thin-film iridescence) — but FFO is a 3D
+ray-march; 431 is a 2D feedback+comp preset. Its own register. Three layers (verify every claim
+line-by-line against `source_shaders.txt` / the JSON — FA #73):
+1. **Custom warp (feedback transfer):** `prev = texture(sampler_main)`; unsharp-sharpen via the blur
+   pyramid (`blur1*0.3 + blur2*0.4 + blur3*0.3`, high-pass); `*0.9` decay (INSIDE the warp);
+   **treble-gated scrolling low-freq noise** (`treb_att` → grain); slight desaturate toward luma. The
+   reaction-diffusion churn.
+2. **Custom comp (display — but it IS the signature):** four expanding radial ripples
+   (`fract(phase + time/18)`) → a luminance-gradient bump field (`dz`) + a max-brightness field
+   (`ret1`); then **chromatic-dispersed sine interference** (`sin(uv1 + dz*{1.0,1.4,1.8})` per R/G/B →
+   the iridescence), `inversesqrt` filaments for thin specular highlights, bump-lit + tinted by
+   per-preset randoms + a slow roam. A heavy custom HLSL comp that renders the whole look (like Fata
+   Morgana's fully-replacing comp — that path is SOLVED; reuse it).
+3. **Default waveform:** `wave_mode 7`, additive, `wave_thick`, `modwavealphabyvolume`, colour drifting
+   near-white via slow sines. A bright additive line threading the field.
 
-## Done-when / gates
+**Source audio coupling (the faithful map for §7 uplift):** volume → waveform alpha; `treb_att` →
+warp grain; `bass_att` → onset detector (`bass_thresh` snaps to 2.13) → `dx/dy_residual` positional
+**jolts** (field kicks on bass); `mid_att` → `rg`→`q9`→`zoom += .1*q9` (mid → **zoom breath/surge**).
 
-Accumulation loop ≥60 frames, no white-out (silence + music); `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter PresetVisualReview` contact sheet (silence/mid/beat) committed; side-by-side vs (431) reads as the same preset, **uplifted**; `swift test --package-path PhospheneEngine --filter Nacre` green; `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build`; `swiftlint lint --strict` 0 violations. Then **NACRE.2 closeout** (`Scripts/closeout_evidence.sh` block) + commit `[NACRE.2b] …`, and take the render to **Matt for M7** (do not flip `certified` — that's NACRE.4 after his live sign-off).
+## 2. Read-first (mandatory — before any .metal)
 
-## Key files
+1. **`docs/PRESET_SESSION_CHECKLIST.md`** cover to cover (governs the session).
+2. **`CLAUDE.md`** §Audio Data Hierarchy + FA #70/#73/#64 + §Authoring Discipline.
+3. **`docs/DECISIONS.md` D-137 + D-138 + D-139** (uplift framing + the butterchurn render-loop facts:
+   swap → warp(prev) → waves on top → comp is display; custom-warp = no extra decay; 32×24 warp mesh;
+   6×-boosted audio).
+4. **Fata Morgana as the closest template** (the verified custom warp+comp+blur pattern):
+   `FataMorgana.metal` + `.json` (read end-to-end — uv-origin flip + sRGB-write notes), `FATA_MORGANA_PLAN.md`,
+   `PresetLoader+WarpPreamble.swift`, `RenderPipeline+MVWarp.swift`/`+FataMorgana.swift`/`+MVWarpScene.swift`,
+   `DragonBloomMVWarpAccumulationTest.swift` (real-session CSV replay).
+5. **`docs/presets/NACRE_PLAN.md`** + **`docs/VISUAL_REFERENCES/nacre/source_shaders.txt`** (already-extracted (431) shaders) + the reference dir.
+6. **`tools/dragon_bloom_reference/`** — how to stand up a faithful butterchurn oracle + the
+   `fixWarpShader` lesson (the converter mistranslates custom HLSL warp/comp → hand-fix the GLSL body).
 
-- Author: `PhospheneEngine/Sources/Presets/Shaders/Nacre.metal` (stub now — the 2a comp is a palette tint to replace), `PhospheneEngine/Sources/Presets/Nacre/NacreState.swift` (`NacreUniforms` 64 B — extend fields as needed, keep Swift/MSL byte-matched).
-- Scaffold/reference: `Shaders/DragonBloom.metal` (per-frame/per-vertex + scene pattern), `Renderer/RenderPipeline+MVWarpHeadless.swift` (`renderMVWarpToTexture`), `Tests/…/DragonBloomMVWarpAccumulationTest.swift` (loop to adapt), `Presets/PresetLoader+WarpPreamble.swift` (the mv_warp preamble: `MVWarpPerFrame`, `VertexOut`, `warpSampler`).
-- Memory: `project_nacre_preset.md` carries this same state.
+## 3. Stand up the live oracle FIRST (before port code)
+
+Mirror `tools/dragon_bloom_reference/` for 431: `convert.js`, vendored `butterchurn.min.js`,
+`index.html` with the `fixWarpShader` splice, a `.claude/launch.json` `nacre-ref` entry,
+`preview_start` → `preview_screenshot`. The converted preset is at
+`tools/milkdrop-render/node_modules/butterchurn-presets/presets/converted/$$$ Royal - Mashup (431).json`
+(or `royal_variants/$$$ Royal - Mashup (431).json`; regenerate the gallery via `tools/milkdrop-render/README.md`
+if `~/mdrender` is gone). Drive it with a real session's `raw_tap.wav` (under `~/Documents/phosphene_sessions/`;
+TCC-protected — copy somewhere the sandbox can read). **431 ships BOTH a custom warp AND a custom comp →
+expect the converter to mistranslate both; hand-fix each GLSL body against `source_shaders.txt`.** This
+oracle is the per-layer comparison gate — compare frame-by-frame, never against a single still. Matt's
+live M7 against the oracle is the load-bearing certification gate.
+
+## 4. Decode the mechanic — checklist EVERY element against the source
+
+Build a faithful-port checklist (like Dragon Bloom's) from `source_shaders.txt` / the JSON. **Verify
+§1's decode — do not trust it.** Cover: all `baseVals` (`decay`, `zoom`, `warp`, `warpscale`,
+`warpanimspeed`, `wave_mode 7` + `additivewave`/`wave_thick`/`modwavealphabyvolume`/`wave_scale`/`wave_smoothing`,
+`gammaadj`, `mv_*` — `mv_a:0` so the motion grid is NOT drawn); the full `frame_eqs_str` (the
+`bass_thresh` onset detector, `dx/dy_residual` jolts, `rg`/`q9` zoom, the `wave_r/g/b` sines,
+`decay -= .01*equal(mod(frame,6),0)`); `init_eqs_str`; **the custom warp** (unsharp + 0.9 decay +
+treble noise + desat); **the custom comp** (ripples + bump + chromatic-dispersion filaments). Shapes +
+custom waves are disabled — the only drawn geometry is the default waveform.
+
+## 5. Reuse vs net-new — Fata Morgana is the structural template (VERIFIED)
+
+FM (D-139) already ships exactly 431's pattern: `fata_morgana_warp_fragment` (custom feedback warp that
+bakes its own decay, `pf.decay=1.0`, no compose decay), `fata_morgana_comp_fragment` (fully replaces
+fixed-function), `fata_morgana_blur_fragment` (blur of prev), `FataUniforms` (CPU-computed comp
+uniforms). 431 is **simpler than FM** (no custom shapes). So custom-warp + fully-replacing-custom-comp
+is **not a new engine surface** — port 431's warp/comp bodies onto FM's structure. The **net-new** (confirm
+each against `FataMorgana.metal`/`PresetLoader+WarpPreamble.swift`, surface the bundle to Matt — three-part bar):
+1. **Built-in waveform** (`wave_mode 7` additive) — FM drew shapes, DB drew strands; neither drew a
+   built-in waveform. Add a small additive-line draw (the only drawn geometry in 431).
+2. **3-level blur pyramid** — 431's warp samples `blur1/2/3`. FM's blur may be single-level → extend to three.
+3. **Low-freq noise texture** (`sampler_noise_lq`) for the treble-gated warp grain — confirm one is in
+   the mv_warp texture set or bind one.
+4. **A few comp/warp uniforms** beyond `FataUniforms`/`NacreUniforms` (`rand_frame`, `roam_*`,
+   `slow_roam_*`, `treb_att`) — extend the struct (cheap; `NacreUniforms` already exists, extend it).
+
+Three-part bar: (1) iconic subject at fidelity — the iridescent molten field; cite FFO as proof
+iridescence is achievable but note FFO took ~69 rounds (Matt's fidelity-warning rule — pitch within the
+achievable bar); (2) one-sentence musical role of the hero element; (3) infra-feasible — YES (FM path).
+
+## 6. Faithful port — harness first, replicate the loop, verify each layer vs the oracle
+
+**Harness FIRST** (checklist: multi-frame before shader work): extend `NacreMVWarpAccumulationTest`
+with a real loop driving `RenderPipeline.renderMVWarpToTexture` (the shared headless seam) for ≥60
+frames — **real-session `features.csv` + `stems.csv` replay, NEVER synthetic** (FA #27) — through the
+live dispatch path (scene → warp → scene-pass → comp → blit → swap), write `/tmp` PNGs, compare to the
+oracle. Assert non-black + no white-out (the HDR-fallback trip-wire). Produce an **early contact sheet
+before tuning**. Then port every checklist element verbatim, **6× audio boost** on volume-modulated
+terms. Watch D-138 pitfalls: **pipeline format must match texture format** (else GPU stall/beachball at
+transition); with HDR-fallback, if the float buffer over-blooms, set `feedbackFormat` back to 8-bit; all
+shared-pipeline additions gated so other mv_warp presets stay byte-identical (`PresetRegression`).
+
+## 7. Uplift to Phosphene (AFTER faithful replication)
+
+Map the source's drivers (§1) onto **stems + beat** (D-137). One primitive per layer; continuous
+energy primary, beats accent. Starting map: **drums/bass-onset → the `dx/dy_residual` jolt** (on the
+cached `BeatGrid`/drums energy-dev, not raw onsets — Layer-4: bound the footprint, steady global
+luminance); **treble → grain** (warp noise); **mid/harmony → zoom breath**; **vocals → iridescence hue
+(or the waveform)**. Motion on energy-weighted `accumulated_audio_time`, not free-running (FA #33).
+Comp-stage beat accents are display-side (smoothed envelope, not raw per-frame). Articulate the
+one-sentence musical role before authoring. (NACRE_PLAN §6 has the one-primitive-per-layer table.)
+
+## 8. Certify + closeout (full Increment Completion Protocol)
+
+Matt live M7 across several real tracks (Spotify + a local file) vs the oracle. Then: finalize
+`NACRE_PLAN.md`; a **DECISIONS** entry (grep `^## D-` for the next number); **CLAUDE.md** durable
+learnings + any new Failed Approach; **ENGINEERING_PLAN** row; **RENDER_CAPABILITY_REGISTRY** (a
+custom-comp-shader port path = a capability row if newly built); flip `certified` in `Nacre.json` + add
+"Nacre" to the ground-truth sets in `FidelityRubricTests.swift` + `PresetDescriptorRubricFieldsTests.swift`;
+HDR/format exemptions in `PresetAcceptanceTests.swift` if HDR is kept. Confirm 60 fps at 1080p
+(`MTL_HUD_ENABLED=1`). `swiftlint --strict`. `Scripts/closeout_evidence.sh` block. Commit `[NACRE.2b]…`;
+**do not push without Matt's "yes, push."**
+
+---
+
+**TL;DR:** Nacre = a molten iridescent-metal / oil-slick / nacreous feedback preset, a DIFFERENT
+register from Dragon Bloom despite the shared name. NACRE.1+2a are done (named, wired, stub on `main`);
+2b **aligns to this spec**: add the **custom warp + 3-level blur pyramid on the Fata Morgana template**
+(2a's shared-decay/convention path was the divergence to fix), stand up the **live oracle**, port the
+warp+comp bodies verbatim, verify each layer vs the oracle on real-audio replay, then uplift to
+stems/beat (drums→jolt, treble→grain, mid→zoom breath). Feedback = **HDR, fall back to 8-bit if it
+over-blooms**. Cardinal rule: port the loop wholesale; never patch-and-tune (FA #70/#73).

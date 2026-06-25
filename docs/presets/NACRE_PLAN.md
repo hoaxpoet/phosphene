@@ -12,6 +12,16 @@
 
 ## NACRE.2 — Committed scope & architecture (revised 2026-06-25, post-greenlight)
 
+> **⚠️ 2026-06-25 spec-alignment (Matt): the architecture below is SUPERSEDED on three points** by
+> `docs/prompts/NACRE_2B_KICKOFF.md` §0.5 (which merges Matt's `ROYAL_MASHUP_431_KICKOFF` spec). 2a's
+> choices to correct in 2b: (a) **custom `nacre_warp_fragment` + a 3-level blur pyramid on the Fata
+> Morgana template** — NOT the shared decay warp / convention-only path (431's warp is custom: unsharp
+> blur-pyramid + treble grain + 0.9 in-warp decay; the blur pyramid needs FM's renderer-wired
+> `blurState`, so "no renderer edit" was incomplete); (b) **feedback HDR with 8-bit fallback** if it
+> over-blooms; (c) **stand up a live butterchurn oracle** for per-layer comparison. The musical role,
+> temporal contract, stem routing (§6), and "the look is a DISPLAY-stage comp transform" all still hold.
+> **NACRE_2B_KICKOFF.md is the authoritative 2b guide.**
+
 **Greenlit (Matt):** faithful (431) character base **+ three 2026 uplifts** (substantially exceed the 2003 original, like Dragon Bloom was "faithful + uplifted"):
 1. **Stem-instrument routing** — vocals→luminous core; bass→cell swell + displacement-kick; drums→rim sparkle; harmonic *other*→refraction / iridescence shift. The doctrine win (each instrument visible); Dragon Bloom precedent.
 2. **Real thin-film iridescence + HDR** — replace (431)'s 2-px chromatic-offset rims with genuine `iridescence()`/`fresnel()` (`Utilities/PBR/Fresnel.metal`, `Materials/Exotic.metal`, Ferrofluid — FA #65), hue driven by chroma/centroid; on `.rgba16Float` feedback (unclamped colour + bloom). The on-theme headliner (nacre = mother-of-pearl = thin-film). Most M7-iteration-prone.
