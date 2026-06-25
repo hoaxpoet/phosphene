@@ -153,4 +153,35 @@ extension RenderPipeline {
             mvWarpState = state
         }
     }
+
+    /// Reduced-motion (U.9 / a11y) Nacre frame into `target`: the signature comp of the
+    /// CURRENT (un-advanced) feedback — NO warp pass, NO swap → no feedback accumulation,
+    /// hence no motion. Target-agnostic (FA #66) so the live drawable path and a headless
+    /// test drive the same code.
+    ///
+    /// This exists because the shared `drawMVWarpReducedMotion` renders a preset's DIRECT
+    /// pipeline straight to the drawable, and Nacre's direct pipeline is compiled for its
+    /// `.rgba16Float` feedback format — a 16-float pipeline → 8-bit drawable is an
+    /// attachment-format mismatch that crashes (BUG-061). The comp (blit) pipeline is
+    /// compiled for the drawable format, so routing reduced-motion Nacre through it is
+    /// both crash-safe and the correct "static frame" the U.9 contract wants.
+    @MainActor
+    func renderNacreReducedMotion(
+        commandBuffer: MTLCommandBuffer,
+        features: FeatureVector,
+        warpState: MVWarpState,
+        target: MTLTexture
+    ) {
+        var uni = computeNacreUniforms(features: features)
+        let desc = MTLRenderPassDescriptor()
+        desc.colorAttachments[0].texture     = target
+        desc.colorAttachments[0].loadAction  = .dontCare
+        desc.colorAttachments[0].storeAction = .store
+        guard let enc = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
+        enc.setRenderPipelineState(warpState.blitPipeline)        // nacre_comp (drawable format)
+        enc.setFragmentTexture(warpState.warpTexture, index: 0)   // current feedback, NOT advanced
+        enc.setFragmentBytes(&uni, length: MemoryLayout<NacreUniforms>.stride, index: 1)
+        enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        enc.endEncoding()
+    }
 }

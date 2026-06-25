@@ -22,6 +22,23 @@ extension RenderPipeline {
         sceneAlreadyRendered: Bool
     ) {
         guard let drawable = view.currentDrawable else { return }
+        // Nacre (BUG-061): its direct pipeline is compiled for the .rgba16Float feedback
+        // format, so the `renderSceneToTexture(... target: drawable)` branch below would
+        // render a 16-float pipeline to the 8-bit drawable → attachment-format mismatch →
+        // crash (every OTHER mv_warp preset's direct pipeline is the drawable format).
+        // Reduced motion instead presents Nacre's signature comp of the un-advanced
+        // feedback (no warp → no accumulation = no motion; the comp pipeline IS the
+        // drawable format). Checked before the shared path; warpState.isNacre is false
+        // for every other preset (byte-identical).
+        if warpState.isNacre {
+            renderNacreReducedMotion(
+                commandBuffer: commandBuffer,
+                features: features,
+                warpState: warpState,
+                target: drawable.texture)
+            commandBuffer.present(drawable)
+            return
+        }
         if !sceneAlreadyRendered {
             renderSceneToTexture(
                 commandBuffer: commandBuffer,
