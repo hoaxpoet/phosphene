@@ -27,7 +27,7 @@ struct NacreUniforms {
     var time: Float = 0
     var trebleGrain: Float = 0
     var coreEnergy: Float = 0
-    var pad0: Float = 0
+    var hueShift: Float = 0            // NACRE.3: harmony → palette-phase nudge (seconds), bounded
     var texel: SIMD2<Float> = .init(1, 1)
     var pad1: SIMD2<Float> = .init(0, 0)
     var aspect: SIMD4<Float> = .init(1, 1, 1, 1)
@@ -38,6 +38,12 @@ struct NacreUniforms {
     var slowRoamSin: SIMD4<Float> = .init(repeating: 0.5)
     var roamCos: SIMD4<Float> = .init(repeating: 0.5)
 }
+
+// NACRE.3 hue ← harmony tuning. The centroid deviation runs ~±0.03 (session 22-42-45Z),
+// so a gain of 40 maps it to ~±1.2 palette-seconds; the bound caps it at ±1.5 s ≈ ±10 % of
+// the ~14 s palette cycle — a subtle colour drift, not a hue meter. Both are feel knobs.
+private let kNacreHueGain: Float = 40.0
+private let kNacreHueBound: Float = 1.5
 
 extension RenderPipeline {
 
@@ -53,7 +59,26 @@ extension RenderPipeline {
         uni.trebleGrain = max(0, features.trebDev)
         // Overall volume → core brightness gate (faithful modwavealphabyvolume). 0 at
         // silence (dim churn, dark ground); rises with the music (the hero core pulses).
-        uni.coreEnergy = max(0, (features.bass + features.mid + features.treble) / 3.0)
+        let energy = max(0, (features.bass + features.mid + features.treble) / 3.0)
+        uni.coreEnergy = energy
+
+        // ── Hue ← harmony (NACRE.3) ──────────────────────────────────────────────
+        // Nudge the palette PHASE (a subtle drift on top of the slow time-rotation, NOT a
+        // hue meter) by the music's spectral colour. Track-robust + calm by construction:
+        //   · drive from the centroid's DEVIATION from a slow section-norm (not its absolute
+        //     value — which is track-dependent), so it responds to harmonic/timbral SHIFTS;
+        //   · gate by energy so silence holds the base palette (no hue jump at track gaps);
+        //   · heavily smoothed + bounded → responds to the slow harmonic drift, not every
+        //     note (Matt: half/quarter-time is fine). v1 uses the whole-mix centroid as the
+        //     harmony proxy (chroma isn't available); can narrow to the `other` stem later.
+        let gate = max(0, min(1, (energy - 0.03) / 0.09))             // 0 at silence → 1 with music
+        if energy > 0.05 {                                            // track the norm only on signal
+            nacreCentroidNorm += (features.spectralCentroid - nacreCentroidNorm) * 0.003   // ~5 s
+        }
+        let dev = (features.spectralCentroid - nacreCentroidNorm) * gate
+        let hueTarget = max(-kNacreHueBound, min(kNacreHueBound, dev * kNacreHueGain))
+        nacreHueEMA += (hueTarget - nacreHueEMA) * 0.04              // ~0.4 s calm output smoothing
+        uni.hueShift = nacreHueEMA
 
         let size = mvWarpDrawableSize
         let wPx = max(Float(size.width), 1), hPx = max(Float(size.height), 1)
