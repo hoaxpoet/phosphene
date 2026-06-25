@@ -698,6 +698,12 @@ public final class PresetLoader: @unchecked Sendable {
         // space — a divergence from the source. Use the non-sRGB `.bgra8Unorm` for the
         // feedback textures (the blit still targets the sRGB drawable for display).
         if descriptor.name == "Fata Morgana" { return .bgra8Unorm }
+        // Nacre (NACRE.2): HDR float feedback so the iridescent rims + luminous core
+        // accumulate unclamped (real bloom; no banding in the slow palette rotation).
+        // Safe here — unlike Dragon Bloom's no-decay loop (which over-accumulated to
+        // pale white on a float buffer, per above), Nacre uses DECAY feedback
+        // (kNacreDecay 0.94), which bounds the accumulation.
+        if descriptor.name == "Nacre" { return .rgba16Float }
         return pixelFormat
     }
 

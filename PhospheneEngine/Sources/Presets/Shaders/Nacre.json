@@ -1,0 +1,27 @@
+{
+  "name": "Nacre",
+  "family": "hypnotic",
+  "duration": 45,
+  "description": "Translucent refractive mother-of-pearl cell-field — a faithful port of the Milkdrop preset `$$$ Royal - Mashup (431)`'s jello-mirror character (drifting overlapping lens-cells, chromatic-fringed rims, pulsing central core, slow palette rotation) on Phosphene's mv_warp, substantially uplifted with 2026 capabilities: stem-instrument routing (vocals→core, bass→swell/kick, drums→rim sparkle, harmonic other→iridescence shift), real thin-film iridescence on the rims (vs the original's 2-px chromatic hack), and smooth-Voronoi refractive cells, on HDR float feedback. See docs/presets/NACRE_PLAN.md.",
+  "author": "Matt",
+  "passes": ["direct", "mv_warp"],
+  "fragment_function": "nacre_fragment",
+  "vertex_function": "fullscreen_vertex",
+  "beat_source": "composite",
+  "decay": 0.940,
+  "stem_affinity": {
+    "vocals": "core",
+    "bass": "swell_kick",
+    "drums": "rim_sparkle",
+    "other": "iridescence"
+  },
+  "visual_density": 0.50,
+  "motion_intensity": 0.45,
+  "color_temperature_range": [0.35, 0.85],
+  "fatigue_risk": "low",
+  "transition_affordances": ["crossfade", "morph"],
+  "section_suitability": ["buildup", "bridge", "comedown"],
+  "complexity_cost": { "tier1": 2.0, "tier2": 1.0 },
+  "certified": false,
+  "rubric_profile": "lightweight"
+}
