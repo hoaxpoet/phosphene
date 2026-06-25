@@ -7,7 +7,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
 | AUDIT-2026-06-09 | P2/P3 | audit backlog | Full-codebase audit findings not individually filed |
-| BUG-061 | P1 | renderer / render-state | **✅ RESOLVED 2026-06-25 (NACRE.2b)** — Nacre crashed on load **when macOS "Reduce Motion" is on** (session `20-51-58Z`, log ends exactly at `preset → Nacre`). `drawWithMVWarp` checks `frameReduceMotion` BEFORE the Nacre branch → `drawMVWarpReducedMotion` renders the preset's DIRECT pipeline to the 8-bit drawable; Nacre's direct pipeline is compiled for its `.rgba16Float` feedback format → attachment-format mismatch → GPU abort (every other mv_warp preset's direct pipeline is the drawable format, so they survive — Dragon Bloom/Fata Morgana passed in the same Cmd+] cycle). Fix: `renderNacreReducedMotion` presents the signature comp of the un-advanced feedback (the comp pipeline IS the drawable format; no warp = no motion). Regression: `NacreMVWarpAccumulationTest.test_reducedMotion_…` (validation-clean to an 8-bit target). Possibly the same class as BUG-060 (render loop died after a preset switch) but distinct + diagnosed. Files to §Resolved at the next pruning pass |
+| BUG-061 | P1 | renderer / render-state | **✅ RESOLVED 2026-06-25 (NACRE.2b)** — Nacre crashed on load (session `20-51-58Z`, log ends at `preset → Nacre`; no `.ips`). **Root cause = a preset-apply race (the BUG-060 class).** `applyPreset` (main thread) clears `activePasses` to `[]` then republishes them only at its end, while `draw(in:)` runs on MTKView's display-link thread; a frame in that window sees empty passes + the new preset's already-published direct pipeline → `renderFrame` falls to `drawDirect`, sending the direct pipeline to the 8-bit drawable. 8-bit presets survive (benign stray frame — the intermittent BUG-060); Nacre's `.rgba16Float` direct pipeline → 8-bit drawable is a hard format mismatch (Metal-validation-gated → abort in the Debug build). **Nacre is the deterministic reproducer BUG-060 lacked.** Fix: `draw(in:)` skips the frame while `activePasses` is empty (`willRenderActiveFrame`) — fixes Nacre + the BUG-060 class for all presets. Secondary latent fix: `renderNacreReducedMotion` (the reduced-motion path had the same direct→drawable mismatch; reduce-motion was OFF this session, so NOT the trigger — my initial reduced-motion diagnosis was an unverified assumption, corrected). Regression: `test_emptyActivePasses_skipsRenderFrame` + `test_reducedMotion_…`. Files to §Resolved at the next pruning pass |
 | BUG-060 | P3 | renderer / app.hang | One-off app hang (force-quit required): render loop died one frame after a `preset → Gossamer` switch (`22-10-50Z`); NOT reproduced (Gossamer ran 3× clean in `13-57-23Z`); no stack captured. Monitored |
 | BUG-059 | P1 | local-file / concurrency | **✅ RESOLVED 2026-06-18** (`a285a22`, integrated to `main`/origin) — concurrent `LocalFilePlaybackProvider` start/stop ABBA deadlock (`player.stop()`'s completion-queue `dispatch_sync` ⇄ inline `scheduleFile()` from the completion handler); fixed by hopping the re-schedule off the completion queue. Automated 11/11 + Matt's live no-hang device-swap validation. (The track restart-on-swap Matt saw is the separate BUG-056.) Files to §Resolved at the next pruning pass |
 | BUG-058 | P3 | audio.capture / resource-management | RARE intermittent: a mid-session output-device swap *occasionally* freezes the tap (`performReinstall` doesn't complete; stale-buffer freeze, not silence). G1 device-swap recovery is otherwise robust (validated 12/12, 2026-06-17); the single freeze was un-reproduced — likely a `coreaudiod`-settling transient. Instrumented |
@@ -61,31 +61,33 @@ P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh dou
 
 ---
 
-### BUG-061 — Nacre crashes on load when macOS "Reduce Motion" is on: its `.rgba16Float` direct pipeline is rendered to the 8-bit drawable by the reduced-motion path (2026-06-25)
+### BUG-061 — Nacre crashes on load: a preset-apply race renders its `.rgba16Float` direct pipeline to the 8-bit drawable (the deterministic BUG-060 reproducer) (2026-06-25)
 
-**Severity:** P1 (hard crash requiring force-quit; narrow trigger — Reduce Motion on AND the uncertified Nacre preset, reachable via the Cmd+] dev cycle / "show uncertified presets").
-**Domain tag:** renderer / render-state (api-contract: render-pipeline attachment-format mismatch).
-**Status:** ✅ RESOLVED 2026-06-25 (NACRE.2b). Reproduced + diagnosed from the headless-passes/live-crashes split + the dispatch order (no `.ips`/stack was written).
-**Introduced:** NACRE.2b (the `.rgba16Float` feedback opt-in for Nacre + the dedicated draw branch).
+**Severity:** P1 (hard crash; narrow trigger — the uncertified Nacre preset reachable via the Cmd+] dev cycle / "show uncertified presets", AND a Debug build with Metal validation on).
+**Domain tag:** renderer / render-state (concurrency: a preset-apply race surfacing as a render-pipeline attachment-format mismatch).
+**Status:** ✅ RESOLVED 2026-06-25 (NACRE.2b). Diagnosed from the code (the `applyPreset` publish ordering + the off-main display-link draw + the per-field locks); the live crash has no `.ips`/stack and is validation-gated, so it is not headless-reproducible.
+**Introduced:** NACRE.2b for the deterministic Nacre crash (the `.rgba16Float` feedback opt-in made the latent race fatal); the underlying race is **pre-existing** (= BUG-060, the intermittent Gossamer render-death).
 **Resolved:** 2026-06-25, NACRE.2b fix commit (this increment).
 
-**Expected:** switching to Nacre (incl. with Reduce Motion enabled) renders a frame; never crashes.
+**Expected:** switching to any preset (incl. Nacre) renders a frame; never crashes.
 
-**Actual (session `2026-06-25T20-51-58Z`):** Matt cycled presets with Cmd+] (Arachne → … → Murmuration, all fine) and the app crashed exactly at `preset → Nacre` (the last `session.log` line). `drawWithMVWarp` checks `frameReduceMotion` (the macOS Reduce-Motion a11y setting, `PhospheneApp.swift:81-87`) BEFORE the Nacre branch → `drawMVWarpReducedMotion` → `renderSceneToTexture(activePipeline:, target: drawable.texture)` renders the preset's DIRECT pipeline to the 8-bit drawable. Nacre's direct pipeline (`nacre_fragment`) is compiled for its `.rgba16Float` feedback format (`PresetLoader.makeDirectPrimaryPipeline` uses `feedbackFormat(descriptor)`) → a 16-float pipeline → 8-bit target is an attachment-format mismatch → GPU abort. Dragon Bloom (direct pipeline = drawable format) and Fata Morgana (`.bgra8Unorm`, 8-bit layout-compatible) survived the same cycle; only Nacre's 16-float→8-bit hard-crashes.
+**Actual (session `2026-06-25T20-51-58Z`):** Matt cycled presets with Cmd+] (Arachne → … → Murmuration, all fine) and the app crashed exactly at `preset → Nacre`. `applyPreset` (main thread) clears `activePasses` to `[]` (`VisualizerEngine+Presets:117`), publishes the new preset's direct pipeline (`:150`, `nacre_fragment`, `.rgba16Float`), and republishes `activePasses` only at the very end (`:721`). `draw(in:)` runs concurrently on MTKView's CVDisplayLink thread (hence the `pipelineLock`/`passesLock`/`mvWarpLock`). A frame in the `117→721` window reads **empty passes + the new `.rgba16Float` direct pipeline** → `renderFrame`'s pass loop matches nothing → falls to `drawDirect`, which renders that pipeline **to the 8-bit drawable** → attachment-format mismatch → GPU abort (Metal-validation-gated; the Debug build has validation on). 8-bit presets (DB/FM/Gossamer/Murmuration) render their direct fragment harmlessly in that window — a benign stray frame (the intermittent **BUG-060**). Only Nacre's `.rgba16Float` direct pipeline → 8-bit drawable hard-crashes, deterministically.
 
-**Reproduction steps:** enable System Settings → Accessibility → Display → Reduce Motion; run the app; Cmd+] to Nacre. Crashes on the first Nacre frame.
+**★ Diagnosis-process note:** my FIRST diagnosis blamed the reduced-motion path (`drawMVWarpReducedMotion` has the same direct→drawable mismatch). That was an **unverified assumption** — I inferred "reduce motion is on" from the crash path without checking. Matt confirmed Reduce Motion was OFF (Accessibility → Motion), falsifying it. The reduced-motion mismatch is a real *latent* bug (fixed too, secondary) but was NOT this session's trigger. Lesson: do not assert a root cause from an inferred precondition without confirming the precondition.
 
-**Session artifacts:** `~/Documents/phosphene_sessions/2026-06-25T20-51-58Z/` (`session.log` ends at `preset → Nacre`; no `.ips` — the app writes no crash log). The headless `NacreMVWarpAccumulationTest` passed (it bypasses the reduced-motion dispatch), and `renderNacre` is validation-clean under `MTL_DEBUG_LAYER=1` — the split localised the bug to the live reduced-motion path.
+**Reproduction steps:** Debug build (Metal validation on); Cmd+] to Nacre. Crashes on the first Nacre frame (deterministic). The benign 8-bit form (BUG-060) is intermittent on any preset switch under load.
 
-**Suspected failure class:** `render-state` (render-pipeline attachment-format mismatch / api-contract).
+**Session artifacts:** `~/Documents/phosphene_sessions/2026-06-25T20-51-58Z/` (`session.log` ends at `preset → Nacre`; no `.ips`). `cmd.error` is **nil** for the 16-float→8-bit mismatch without validation (`test_directPipelineToDrawableFormat` — removed; documented here) → the crash needs the Debug validation layer.
 
-**Fix:** `RenderPipeline+Nacre.renderNacreReducedMotion` presents Nacre's signature comp of the **un-advanced** feedback (no warp pass → no accumulation = no motion; the comp/blit pipeline IS the drawable format). `drawMVWarpReducedMotion` routes `warpState.isNacre` to it before the shared direct-to-drawable render; byte-identical for every other preset.
+**Suspected failure class:** `concurrency` (preset-apply race) surfacing as `render-state` (attachment-format mismatch).
+
+**Fix:** `RenderPipeline.draw(in:)` skips the frame while `activePasses` is empty (`willRenderActiveFrame`) — empty passes only ever exists transiently mid-swap, so skipping is correct (MTKView holds the last frame for the ~ms of the swap). Fixes Nacre's crash **and** the BUG-060 class for every preset. Secondary: `renderNacreReducedMotion` fixes the same mismatch on the (off-this-session) reduced-motion path.
 
 **Verification criteria:**
-- [x] Regression: `NacreMVWarpAccumulationTest.test_reducedMotion_rendersToDrawableFormatNoMismatch` drives `renderNacreReducedMotion` to an 8-bit (drawable-format) target and asserts no command-buffer error; the whole Nacre suite is green under `MTL_DEBUG_LAYER=1`.
-- [ ] **Manual (Matt):** with Reduce Motion ON, Cmd+] to Nacre renders without crashing.
+- [x] Regression: `NacreMVWarpAccumulationTest.test_emptyActivePasses_skipsRenderFrame` (the skip-condition the guard keys on) + `test_reducedMotion_…`; PresetRegression byte-identical; Nacre suite green under `MTL_DEBUG_LAYER=1`.
+- [ ] **Manual (Matt):** Cmd+] to Nacre renders without crashing (and watch for BUG-060 non-recurrence on other preset switches).
 
-**Manual validation required:** Yes — the trigger is the live a11y setting; the static render proves no format mismatch, Matt's live re-test proves the crash is gone.
+**Manual validation required:** Yes — the live crash is validation + drawable gated (not headless-reproducible); Matt's live re-test is the confirmation.
 
 ---
 
@@ -151,9 +153,9 @@ Contained to `LocalFilePlaybackProvider.scheduleFileLoop`: hop the re-schedule (
 
 **Severity:** P3 (a full app hang requiring force-quit is P1-*impact*, but it was seen once and did not reproduce — Gossamer ran 3× clean the next session; filed as **monitored**, like BUG-058, pending a recurrence with a captured stack).
 **Domain tag:** renderer / app.hang (suspected preset-apply or first-frame GPU hang on Gossamer).
-**Status:** Open — monitored; **un-reproduced, no diagnostic stack.** Cannot be diagnosed from the session CSV/log artifacts (they show only that the render loop stopped, not where it blocked).
-**Introduced:** Unknown.
-**Resolved:** —
+**Status:** **LIKELY RESOLVED by NACRE.2b's BUG-061 fix (2026-06-25) — pending non-recurrence.** BUG-061 confirmed the suspected **preset-apply race**: `applyPreset` clears `activePasses` to `[]` then republishes them at its end, while `draw(in:)` runs concurrently on the display-link thread; a frame in that window falls to `drawDirect` with the new preset's direct pipeline. Nacre's `.rgba16Float` pipeline made it a deterministic crash and exposed the mechanism; for an 8-bit preset like Gossamer it's the benign/intermittent stray frame seen here. The `willRenderActiveFrame` guard (skip frames while `activePasses` is empty) removes the stray `drawDirect` for ALL presets. Keep monitored until a few clean Gossamer-switch sessions confirm non-recurrence (the original was a *hang*, not a crash, so a small chance it's a distinct GPU-contention issue remains).
+**Introduced:** Unknown (the apply-race predates NACRE.2b).
+**Resolved:** Likely 2026-06-25 (NACRE.2b empty-passes guard); confirm by non-recurrence.
 
 **Expected:** switching presets (incl. Gossamer) never hangs the app.
 

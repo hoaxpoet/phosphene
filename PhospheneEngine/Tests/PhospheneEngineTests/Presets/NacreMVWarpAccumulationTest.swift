@@ -113,6 +113,33 @@ struct NacreMVWarpAccumulationTest {
         #expect(display != nil, "Nacre reduced-motion render setup failed")
     }
 
+    // MARK: - Preset-swap guard (BUG-061/BUG-060: empty activePasses → skip the frame)
+
+    @Test("draw skips the frame while activePasses is empty (the transient preset-swap window)")
+    @MainActor
+    func test_emptyActivePasses_skipsRenderFrame() throws {
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let floatStride = MemoryLayout<Float>.stride
+        guard let fft = ctx.makeSharedBuffer(length: 512 * floatStride),
+              let wav = ctx.makeSharedBuffer(length: 2048 * floatStride) else {
+            Issue.record("buffer alloc failed"); return
+        }
+        let pipeline = try RenderPipeline(context: ctx, shaderLibrary: lib, fftBuffer: fft, waveformBuffer: wav)
+        // `applyPreset` clears activePasses to [] mid-swap before republishing them; a frame
+        // that lands there must skip, else `drawDirect` renders the half-applied (Nacre:
+        // .rgba16Float) direct pipeline to the 8-bit drawable → BUG-061 crash. The full live
+        // crash is Metal-validation-gated + needs a live drawable (not reproducible headless),
+        // so this locks the skip CONDITION the guard keys on (the reduced-motion gate tests'
+        // precedent: test the gate logic when the GPU path needs a live MTKView drawable).
+        pipeline.setActivePasses([])
+        #expect(pipeline.willRenderActiveFrame == false,
+                "empty activePasses (the preset-swap window) must skip the frame, not fall through to drawDirect")
+        pipeline.setActivePasses([.direct, .mvWarp])
+        #expect(pipeline.willRenderActiveFrame == true,
+                "a configured preset (non-empty passes) must render")
+    }
+
     // MARK: - Env-gated PNG diag (the M7 pre-check; render BEFORE tuning)
 
     @Test("Nacre render diag (env-gated NACRE_MVWARP_DIAG=1)")
