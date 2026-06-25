@@ -1,6 +1,6 @@
 # Nacre — Preset Plan
 
-**Status:** NACRE.1 (design + reference curation) — code-free, pending Matt's review before any shader work.
+**Status:** NACRE.1 ✅ committed (`374791d`). NACRE.2 in progress — Matt greenlit the faithful base **+ 3 uplifts** (stem-instrument routing / real iridescence + HDR / smooth-Voronoi cells) and the engine-shader approach. See **NACRE.2 — Committed scope** below.
 **Target:** faithful Phosphene uplift of the Milkdrop preset `$$$ Royal - Mashup (431)` (butterchurn built-in; cream-of-the-crop legends).
 **Substrate:** `direct + mv_warp` (same family as the certified Dragon Bloom / Fata Morgana).
 **Scaffold:** Dragon Bloom (`DragonBloom.metal` / `.json` / `DragonBloomMVWarpAccumulationTest`). (Starburst → renamed Murmuration, no longer mv_warp.)
@@ -9,6 +9,26 @@
 > Discipline: this is a faithful port. The source shaders in `source_shaders.txt` are the thing to port, not a starting point to re-derive (FA #73 / #65). Adopt the reference's mechanics; adapt only context (audio routing → our deviation primitives, palette anchoring, scale). Render the actual `(431)` beside every Nacre iteration.
 
 ---
+
+## NACRE.2 — Committed scope & architecture (revised 2026-06-25, post-greenlight)
+
+**Greenlit (Matt):** faithful (431) character base **+ three 2026 uplifts** (substantially exceed the 2003 original, like Dragon Bloom was "faithful + uplifted"):
+1. **Stem-instrument routing** — vocals→luminous core; bass→cell swell + displacement-kick; drums→rim sparkle; harmonic *other*→refraction / iridescence shift. The doctrine win (each instrument visible); Dragon Bloom precedent.
+2. **Real thin-film iridescence + HDR** — replace (431)'s 2-px chromatic-offset rims with genuine `iridescence()`/`fresnel()` (`Utilities/PBR/Fresnel.metal`, `Materials/Exotic.metal`, Ferrofluid — FA #65), hue driven by chroma/centroid; on `.rgba16Float` feedback (unclamped colour + bloom). The on-theme headliner (nacre = mother-of-pearl = thin-film). Most M7-iteration-prone.
+3. **Smooth-Voronoi refractive cells** — replace (431)'s `sin(4·uv)` lattice with C¹ smooth Voronoi (`Utilities/Noise/Worley.metal` + `smin`, FA #64) for organic depth-stacked membranes.
+*(Deferred to tuning stage: beat-grid-lock pulse + chroma-driven palette.)*
+
+**Architecture (corrects §5's pass-map — the signature look is a DISPLAY-stage transform of the feedback, NOT the scene fragment):**
+- **Feedback loop** — `mvWarpPerFrame`/`mvWarpPerVertex` (direct FeatureVector+stems): the drifting accumulated cell-field — dense cell-advection warp + slow roam; **mid→zoom**, **bass→displacement-kick** (D-026 primitives). Plain decay feedback via shared `mvWarp_fragment` (chromatic=0). `.rgba16Float` feedback.
+- **Scene fragment** — `nacre_fragment` (buf 0/1/2/3): draws the additive **central core** (vocals→brightness, waveform→shape) that seeds the field.
+- **Custom comp/blit** — `nacre_comp_fragment` (DISPLAY-ONLY, samples feedback `warpTex` at tex 0): the signature look — radial-pulse zoom + **luminance-emboss rims → real iridescence** (hue←chroma; *other*→shift) + **smooth-Voronoi refractive cells** + drums→sparkle + treble→grain. Reads `NacreUniforms` (time + audio/spectral drive, precomputed CPU-side) at buffer 1; texsize from `warpTex.get_width/height()`.
+
+**Wiring is convention-based — NO `RenderPipeline+MVWarp.swift` edit (confirmed).** `PresetLoader.makeWarpPipelines` auto-selects `<prefix>_comp_fragment` / `<prefix>_warp_fragment` from the JSON `fragment_function` (else the shared fns); the standard `drawWithMVWarp` path already uses the per-preset `blitState` + `bindCompStagePresetBuffer` (unconditional; Skein precedent). Minimal change-set:
+- NEW `Shaders/Nacre.metal` (`nacre_fragment` + `mvWarpPerFrame`/`mvWarpPerVertex` + `nacre_comp_fragment`) + `Shaders/Nacre.json`.
+- NEW `Presets/Nacre/NacreState.swift` (`NacreUniforms` + per-frame `tick`→`writeToGPU`; lighter than SkeinState — no ring buffers).
+- `PresetLoader.feedbackFormat`: add `if name == "Nacre" { return .rgba16Float }`.
+- `VisualizerEngine+Presets.swift`: Nacre block (alloc `NacreState` + `setDirectPresetFragmentBuffer` + tick), mirroring Skein; `VisualizerEngine.swift`: `nacreState` property + reset.
+- NEW `Tests/.../NacreMVWarpAccumulationTest.swift` (adapt DragonBloom's; env-gate `NACRE_MVWARP_DIAG=1`).
 
 ## 1. Musical role (the one-sentence rule)
 
@@ -78,8 +98,9 @@ No two visual layers share a primitive at the same timescale. ✓ (mids→volume
 
 | ID | Outcome | Done-when |
 |---|---|---|
-| **NACRE.1** | Design + reference curation (this doc + `VISUAL_REFERENCES/nacre/`). | Matt reviews the musical role + temporal contract + this plan; greenlights NACRE.2. **← current** |
-| **NACRE.2** | Static faithful port: `Nacre.metal` + `Nacre.json` (uncertified) + `NacreMVWarpAccumulationTest` (adapted from Dragon Bloom's, env-gated). Cell-field + chromatic rims + palette rotation + slow roam, **silence-faithful**. | Multi-frame accumulation test runs the live `warp→compose→swap` path ≥60 frames without white-out/smear; `RENDER_VISUAL=1` contact sheet (silence/mid/beat) committed; side-by-side vs `(431)` at silence reads as the same preset. |
+| **NACRE.1** | Design + reference curation. | ✅ committed `374791d`; uplifts greenlit by Matt. |
+| **NACRE.2a** | Wire the custom-comp preset + a STUB look, test-reachable: `Nacre.{metal,json}` (stub `nacre_comp_fragment` + minimal scene + warp fns), `NacreState`, `feedbackFormat` + `VisualizerEngine` wiring, `NacreMVWarpAccumulationTest`. | App + engine build clean; accumulation test runs the live `warp→compose→blit` path ≥60 frames at silence without white-out; preset loads + renders non-black. **← current** |
+| **NACRE.2b** | Port the look + 3 uplifts into the shaders: cell-advection warp + core (scene) + comp shader (radial pulse + emboss→iridescence + Voronoi cells + stem/treble drive). | `RENDER_VISUAL=1` contact sheet (silence/mid/beat) committed; side-by-side vs `(431)` reads as the same preset, uplifted; one-primitive-per-layer audit holds; → M7. |
 | **NACRE.3** | Audio coupling (§6 routes, one at a time). | Each route's firing shown in a session-replay diagnostic (`features.csv`); one-primitive-per-layer audit holds; M7 round 1. |
 | **NACRE.4** | Tuning to certification. | Matt's live M7 sign-off; `certified: true`; capability registry + plan updated. |
 

@@ -125,6 +125,7 @@ extension VisualizerEngine {
         auroraVeilState = nil
         nimbusState = nil
         skeinState = nil
+        nacreState = nil
         lumenPatternEngine = nil
         ferrofluidParticles = nil
         ferrofluidMesh = nil
@@ -558,6 +559,22 @@ extension VisualizerEngine {
                         }
                     } else {
                         logger.error("SkeinState: failed to allocate painter state for preset '\(desc.name)'")
+                    }
+                }
+
+                // Nacre-specific (NACRE.2): allocate the comp-stage uniforms state + wire
+                // the per-frame tick. The buffer reaches `nacre_comp_fragment` at the mv_warp
+                // blit stage via setDirectPresetFragmentBuffer → bindCompStagePresetBuffer
+                // (fragment buffer 1). HDR float feedback is opted in by name in PresetLoader.
+                if desc.name == "Nacre" {
+                    if let state = NacreState(device: context.device) {
+                        nacreState = state
+                        pipeline.setDirectPresetFragmentBuffer(state.nacreBuffer)   // buffer(1) at comp/blit
+                        pipeline.setMeshPresetTick { [weak state] features, stems in
+                            state?.tick(deltaTime: features.deltaTime, features: features, stems: stems)
+                        }
+                    } else {
+                        logger.error("NacreState: failed to allocate state for preset '\(desc.name)'")
                     }
                 }
 
