@@ -68,11 +68,11 @@ constant float kNacreUnsharp    = 0.25;    // (431) warp `ret + (ret - blur)*0.3
 constant float kNacreBlurSpread = 5.0;     // unsharp blur radius (texels). WIDE = big smooth cells; the
                                            // source's 3-level pyramid is wide — a narrow blur shatters cells
 constant float kNacreBaseZoom   = 1.009;   // (431) baseVals.zoom (slight zoom-in)
-constant float kNacreZoomGain    = 0.040;  // mid continuous energy → zoom pump (source `zoom += .1*rg`)
+constant float kNacreZoomGain    = 0.030;  // mid continuous energy → zoom pump (source `zoom += .1*rg`)
 constant float kNacreRotAmp     = 0.020;   // slow roam rotation (source `rot += .01*(...)` sines)
 constant float kNacreRoamAmp    = 0.010;   // slow centre roam (source `cx/cy += .21*(...)` sines, scaled down)
 constant float kNacreDriftAmp   = 0.004;   // slow translation (source `dx/dy += .003*(...)` sines)
-constant float kNacreBassKick   = 0.018;   // bass onset → dx/dy positional jolt (source dx/dy_residual ~.016/.012)
+constant float kNacreBassKick   = 0.011;   // bass onset → dx/dy positional jolt (source dx/dy_residual ~.016/.012)
 
 // Palette-coloured SEED (replaces the (431) waveform draw — wave_a 0.001 + wave_r/g/b,
 // whose role is to inject fresh palette-coloured content across the frame each frame so
@@ -150,17 +150,24 @@ MVWarpPerFrame mvWarpPerFrame(
     // the Nacre branch. pf.decay is informational only.
     pf.decay = kNacreDecay;
     // Mid-band continuous energy → zoom pump (PRIMARY motion; Audio Data Hierarchy).
-    // Deviation primitive (D-026), not an absolute threshold (FA #31). Source: the
-    // `rg = max(.77*rg, .5*max(0,mid_att-1)); zoom += .1*rg` EMA breath.
-    pf.zoom = kNacreBaseZoom + kNacreZoomGain * max(0.0, f.mid_rel);
+    // SOFT-SATURATED (tanh) + from the ATTACK-SMOOTHED band (`mid_att_rel`, not the
+    // instantaneous `mid_rel`): real-music deviations spike to ~3× (bassDev peak 3.34,
+    // session 22-23-55Z), so an un-saturated gain on the raw deviation jerked ~3× harder
+    // than tuned and the instantaneous band jolted on every transient. tanh caps the spike
+    // to ~1; the att band gives a pump-and-settle envelope — restoring the source's
+    // `rg = max(.77*rg, …)` zoom EMA the first port dropped (Matt M7: "jerky, a touch too
+    // much"; project_deviation_primitive_real_range — soft-saturate vs p99, never vs 1.0).
+    pf.zoom = kNacreBaseZoom + kNacreZoomGain * tanh(max(0.0, f.mid_att_rel));
     // Slow bounded roam (faithful (431) rot/cx/cy/dx/dy sines) — alive at silence.
     pf.rot = kNacreRotAmp * (0.6 * sin(0.381 * t) + 0.4 * sin(0.579 * t));
     pf.cx  = kNacreRoamAmp * (0.6 * sin(0.374 * t) + 0.4 * sin(0.294 * t));
     pf.cy  = kNacreRoamAmp * (0.6 * sin(0.393 * t) + 0.4 * sin(0.223 * t));
     // Slow drift + bass-onset positional kick (source dx/dy_residual = .016*sin(7t),
-    // .012*sin(9t) latched on a bass threshold-crossing; driven here off bassDev so the
-    // jolt fires on Phosphene's onset primitive, decays naturally, bounded — Layer 4).
-    float kick = kNacreBassKick * max(0.0, f.bass_dev);
+    // .012*sin(9t) latched on a bass threshold-crossing, decaying ~.96/frame). Driven off
+    // the SOFT-SATURATED, ATTACK-SMOOTHED bass band so the lurch SWELLS-and-settles (gentle
+    // sway) instead of the instantaneous 6%-of-frame jerk the first port produced on a hard
+    // bass hit — the source's threshold-decay envelope, restored. Layer 4 (bounded).
+    float kick = kNacreBassKick * tanh(max(0.0, f.bass_att_rel));
     pf.dx = kNacreDriftAmp * (0.6 * sin(0.234 * t) + 0.4 * sin(0.277 * t)) + kick * sin(7.0 * t);
     pf.dy = kNacreDriftAmp * (0.6 * sin(0.284 * t) + 0.4 * sin(0.247 * t)) + kick * sin(9.0 * t);
     pf.warp = 0.0;   // source warp 0.00054 — negligible, omitted (ponytail: a value that never matters)
