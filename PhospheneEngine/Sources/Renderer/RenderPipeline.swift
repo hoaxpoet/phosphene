@@ -593,6 +593,20 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         passesLock.withLock { activePasses }
     }
 
+    /// Whether `draw(in:)` renders this frame, or skips it as a transient preset-SWAP
+    /// state. `applyPreset` (main thread) clears `activePasses` to `[]` before republishing
+    /// the new preset's passes at the very end, while `draw(in:)` runs concurrently on
+    /// MTKView's display-link thread. A frame that lands in that window must NOT render:
+    /// `renderFrame` would fall through to `drawDirect` with the new preset's
+    /// already-published direct pipeline, sending it to the 8-bit drawable — a benign stray
+    /// frame for an 8-bit preset (the rare BUG-060 glitch), a hard format-mismatch GPU
+    /// abort for Nacre's `.rgba16Float` direct pipeline (BUG-061). Empty `activePasses`
+    /// only ever exists mid-swap (every applied preset has non-empty passes), so skipping
+    /// is correct — MTKView holds the last presented frame for the ~ms of the swap.
+    var willRenderActiveFrame: Bool {
+        passesLock.withLock { !activePasses.isEmpty }
+    }
+
     // MARK: - MTKViewDelegate
 
     public func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
@@ -699,14 +713,28 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         // (the big switch over active passes) separately from the surrounding
         // setup + commit overhead, so the CPU bump can be attributed.
         let renderframeStart = CACurrentMediaTime()
-        renderFrame(commandBuffer: commandBuffer, view: view, features: &features)
-        let renderframeCpuMs = Float((CACurrentMediaTime() - renderframeStart) * 1000)
-
-        // Session recording hook — after renderFrame so drawable has the final image.
-        if let hook = onFrameRendered, let drawable = view.currentDrawable {
-            let stems = stemFeaturesLock.withLock { latestStemFeatures }
-            hook(drawable.texture, features, stems, commandBuffer)
+        // Skip the frame during the transient preset-SWAP window (BUG-061 / BUG-060).
+        // `applyPreset` runs on the main thread while this draw runs on MTKView's
+        // CVDisplayLink thread (hence the per-field locks); it clears `activePasses` to
+        // [] up front and republishes the real passes only at the very end. A frame that
+        // lands in that window sees EMPTY passes + the new preset's already-published
+        // direct pipeline → `renderFrame` falls through to `drawDirect`, rendering that
+        // pipeline straight to the 8-bit drawable. For an 8-bit preset that's a benign
+        // stray frame (the rare BUG-060 glitch); for Nacre's `.rgba16Float` direct
+        // pipeline it's a hard attachment-format-mismatch GPU abort. Empty `activePasses`
+        // only ever exists mid-swap (every applied preset has non-empty passes), so
+        // skipping it is correct — MTKView holds the last presented frame for the ~ms of
+        // the swap. The empty command buffer still commits + signals the inflight
+        // semaphore below, so triple-buffering never stalls.
+        if willRenderActiveFrame {
+            renderFrame(commandBuffer: commandBuffer, view: view, features: &features)
+            // Session recording hook — after renderFrame so drawable has the final image.
+            if let hook = onFrameRendered, let drawable = view.currentDrawable {
+                let stems = stemFeaturesLock.withLock { latestStemFeatures }
+                hook(drawable.texture, features, stems, commandBuffer)
+            }
         }
+        let renderframeCpuMs = Float((CACurrentMediaTime() - renderframeStart) * 1000)
 
         // PERF.2-render — total CPU encode time, from draw() entry through
         // commandBuffer.commit(). Excludes the inflight-semaphore wait (which
