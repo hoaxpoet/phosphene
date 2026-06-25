@@ -83,6 +83,7 @@ extension RenderPipeline {
             feedbackFormat: bundle.feedbackFormat,
             blurPipeline: bundle.blurState,
             blurTexture: blurTex,
+            isNacre: bundle.isNacre,
             canvasClearColor: bundle.canvasClearColor
         )
         mvWarpLock.withLock { mvWarpState = state }
@@ -117,6 +118,7 @@ extension RenderPipeline {
             pixelFormat: existing.pixelFormat,
             feedbackFormat: existing.feedbackFormat,
             blurState: existing.blurPipeline,
+            isNacre: existing.isNacre,
             canvasClearColor: existing.canvasClearColor   // resize re-clears to the same ground (D-143)
         )
         setupMVWarp(bundle: bundle, size: size)
@@ -209,6 +211,21 @@ extension RenderPipeline {
             return
         }
 
+        // Nacre (NACRE.2b): the (431) jello-mirror branch — custom feedback warp
+        // (unsharp + grain + palette-tinted core seed) → signature comp (display-only)
+        // → swap. Checked before the blur heuristic so Nacre isn't mistaken for Fata
+        // Morgana (Nacre uses no blur target).
+        if warpState.isNacre {
+            drawWithNacre(
+                commandBuffer: commandBuffer,
+                view: view,
+                features: &features,
+                stemFeatures: stemFeatures,
+                warpState: warpState
+            )
+            return
+        }
+
         // Fata Morgana (D-139): when a blur pipeline is attached, run the fata
         // branch — blur(prev) → custom feedback warp → [shapes on top, L2] →
         // procedural mirage comp (display-only) → swap.
@@ -223,6 +240,28 @@ extension RenderPipeline {
             return
         }
 
+        drawWithMVWarpStandard(
+            commandBuffer: commandBuffer,
+            view: view,
+            features: &features,
+            stemFeatures: stemFeatures,
+            activePipeline: activePipeline,
+            warpState: warpState,
+            sceneAlreadyRendered: sceneAlreadyRendered)
+    }
+
+    /// The standard / Dragon-Bloom / Skein mv_warp pass chain (everything after the
+    /// reduced-motion / Fata Morgana / Nacre branch dispatch in `drawWithMVWarp`).
+    @MainActor
+    private func drawWithMVWarpStandard(
+        commandBuffer: MTLCommandBuffer,
+        view: MTKView,
+        features: inout FeatureVector,
+        stemFeatures: StemFeatures,
+        activePipeline: MTLRenderPipelineState,
+        warpState: MVWarpState,
+        sceneAlreadyRendered: Bool
+    ) {
         // Dragon Bloom (D-137): when a scene-geometry overlay (the strands) is
         // attached, replicate butterchurn's custom-warp loop exactly — warp the
         // previous frame (NO decay; the custom warp self-regulates) then draw the

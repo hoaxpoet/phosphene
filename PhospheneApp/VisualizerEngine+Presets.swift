@@ -125,7 +125,6 @@ extension VisualizerEngine {
         auroraVeilState = nil
         nimbusState = nil
         skeinState = nil
-        nacreState = nil
         lumenPatternEngine = nil
         ferrofluidParticles = nil
         ferrofluidMesh = nil
@@ -427,8 +426,14 @@ extension VisualizerEngine {
                 // Fata Morgana (D-139): LINEAR feedback (.bgra8Unorm) matching butterchurn
                 // + PresetLoader.feedbackFormat — MUST match the format the pipelines were
                 // compiled for or the GPU stalls (the D-138 attachment-mismatch pitfall).
-                let fbFormat: MTLPixelFormat = desc.name == "Fata Morgana"
-                    ? .bgra8Unorm : context.pixelFormat
+                // Nacre (NACRE.2b): HDR .rgba16Float feedback (unclamped iridescence/bloom;
+                // bounded by the 0.9 in-warp decay) — also MUST mirror PresetLoader.feedbackFormat.
+                let fbFormat: MTLPixelFormat
+                switch desc.name {
+                case "Fata Morgana": fbFormat = .bgra8Unorm
+                case "Nacre":        fbFormat = .rgba16Float
+                default:             fbFormat = context.pixelFormat
+                }
                 // Skein.ENGINE.1.1 (D-143): per-preset canvas clear ground. Marks-on-top
                 // presets skip Pass 0, so the feedback-texture clear IS the held ground
                 // (Skein's cream). Sourced from the preset's `marks.canvas_clear`; black
@@ -446,6 +451,9 @@ extension VisualizerEngine {
                     // branch (blur → custom warp → mirage comp). nil for every other
                     // mv_warp preset (their libraries define no `*_blur_fragment`).
                     blurState: warpPipelines.blurState,
+                    // Nacre (NACRE.2b): routes the draw path to the nacre branch (custom
+                    // warp → signature comp → swap). false for every other mv_warp preset.
+                    isNacre: desc.name == "Nacre",
                     canvasClearColor: canvasClear
                 )
                 // Use the last drawable size reported by drawableSizeWillChange so
@@ -562,21 +570,11 @@ extension VisualizerEngine {
                     }
                 }
 
-                // Nacre-specific (NACRE.2): allocate the comp-stage uniforms state + wire
-                // the per-frame tick. The buffer reaches `nacre_comp_fragment` at the mv_warp
-                // blit stage via setDirectPresetFragmentBuffer → bindCompStagePresetBuffer
-                // (fragment buffer 1). HDR float feedback is opted in by name in PresetLoader.
-                if desc.name == "Nacre" {
-                    if let state = NacreState(device: context.device) {
-                        nacreState = state
-                        pipeline.setDirectPresetFragmentBuffer(state.nacreBuffer)   // buffer(1) at comp/blit
-                        pipeline.setMeshPresetTick { [weak state] features, stems in
-                            state?.tick(deltaTime: features.deltaTime, features: features, stems: stems)
-                        }
-                    } else {
-                        logger.error("NacreState: failed to allocate state for preset '\(desc.name)'")
-                    }
-                }
+                // Nacre (NACRE.2b): no per-preset CPU state. The render branch
+                // (RenderPipeline+Nacre) computes NacreUniforms inline each frame (time +
+                // drawable size + trebleDev — stateless, like Fata Morgana) and binds them
+                // to the warp + comp passes; the bass-onset kick runs GPU-side off bassDev.
+                // HDR float feedback is opted in by name (PresetLoader.feedbackFormat).
 
                 // (Aurora Veil's per-preset state was previously here, inside
                 // case .mvWarp. AV.2.2 dropped mv_warp from Aurora Veil's

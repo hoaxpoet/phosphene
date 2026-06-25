@@ -8,7 +8,7 @@
   "fragment_function": "nacre_fragment",
   "vertex_function": "fullscreen_vertex",
   "beat_source": "composite",
-  "decay": 0.940,
+  "decay": 0.900,
   "stem_affinity": {
     "vocals": "core",
     "bass": "swell_kick",

@@ -86,6 +86,10 @@ struct PresetAcceptanceTests {
         // `fata_morgana_fragment` this harness renders is intentionally black.
         // Production coverage: FataMorganaMVWarpAccumulationTest.
         guard preset.descriptor.name != "Fata Morgana" else { return }
+        // Nacre (NACRE.2b): same rationale — the jello-mirror is built by the warp+comp
+        // feedback branch (drawWithNacre); the standalone `nacre_fragment` this harness
+        // renders is intentionally black. Production coverage: NacreMVWarpAccumulationTest.
+        guard preset.descriptor.name != "Nacre" else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture
         let pixels = try renderFrame(preset: preset, features: &fixture, context: ctx)
@@ -114,6 +118,10 @@ struct PresetAcceptanceTests {
         // `fata_morgana_fragment` this harness renders is intentionally black.
         // Production coverage: FataMorganaMVWarpAccumulationTest.
         guard preset.descriptor.name != "Fata Morgana" else { return }
+        // Nacre (NACRE.2b): same rationale — the jello-mirror is built by the warp+comp
+        // feedback branch (drawWithNacre); the standalone `nacre_fragment` this harness
+        // renders is intentionally black. Production coverage: NacreMVWarpAccumulationTest.
+        guard preset.descriptor.name != "Nacre" else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture
         let pixels = try renderFrame(preset: preset, features: &fixture, context: ctx)
@@ -171,6 +179,7 @@ struct PresetAcceptanceTests {
         // bass_rel + flux). See the BUG-025 A/B diagnosis (2026-06-02).
         if preset.descriptor.name == "Dragon Bloom" { return }
         if preset.descriptor.name == "Fata Morgana" { return }
+        if preset.descriptor.name == "Nacre" { return }   // NACRE.2b: feedback-branch preset (see above)
         let ctx = try MetalContext()
         var silence = silenceFixture
         var steady = steadyFixture
@@ -214,6 +223,10 @@ struct PresetAcceptanceTests {
         // `fata_morgana_fragment` this harness renders is intentionally black.
         // Production coverage: FataMorganaMVWarpAccumulationTest.
         guard preset.descriptor.name != "Fata Morgana" else { return }
+        // Nacre (NACRE.2b): same rationale — the jello-mirror is built by the warp+comp
+        // feedback branch (drawWithNacre); the standalone `nacre_fragment` this harness
+        // renders is intentionally black. Production coverage: NacreMVWarpAccumulationTest.
+        guard preset.descriptor.name != "Nacre" else { return }
         // Skein (D-143): its readable content (the test stamp; later the poured line) is
         // the marks-on-top overlay (skein_geometry_*) composited onto the held canvas in
         // the mv_warp path. This fragment-only harness renders the flat cream GROUND only
