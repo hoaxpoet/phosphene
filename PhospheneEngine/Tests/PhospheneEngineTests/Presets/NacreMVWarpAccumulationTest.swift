@@ -95,6 +95,24 @@ struct NacreMVWarpAccumulationTest {
                 "Nacre field whites out (\(Int(stats.saturatedFraction * 100))% saturated) — over-accumulation.")
     }
 
+    // MARK: - Reduced-motion regression (BUG-061: 16-float direct pipeline → 8-bit drawable crash)
+
+    @Test("Nacre reduced-motion frame renders to the 8-bit drawable format without a format mismatch")
+    @MainActor
+    func test_reducedMotion_rendersToDrawableFormatNoMismatch() throws {
+        guard let ctx = try? MetalContext() else {
+            Issue.record("No Metal device — cannot run the reduced-motion gate"); return
+        }
+        // The crash class: Nacre's direct pipeline is compiled for .rgba16Float (its
+        // feedback format); the reduced-motion path used to render it to the 8-bit
+        // drawable → attachment-format mismatch. `renderNacreReducedMotion` must instead
+        // use the comp (blit) pipeline, which IS the drawable format. Drive it to an
+        // 8-bit target (== the live drawable format) and assert no command-buffer error.
+        let display = try Self.runNacre(ctx: ctx, width: 192, height: 128, frames: 3,
+                                        session: nil, energy: 0, reducedMotion: true)
+        #expect(display != nil, "Nacre reduced-motion render setup failed")
+    }
+
     // MARK: - Env-gated PNG diag (the M7 pre-check; render BEFORE tuning)
 
     @Test("Nacre render diag (env-gated NACRE_MVWARP_DIAG=1)")
@@ -131,7 +149,7 @@ struct NacreMVWarpAccumulationTest {
     /// features.csv; otherwise silence (worktree-safe). Returns nil on setup failure.
     @MainActor
     static func runNacre(ctx: MetalContext, width: Int, height: Int, frames: Int,
-                         session: String?, energy: Float) throws -> MTLTexture? {
+                         session: String?, energy: Float, reducedMotion: Bool = false) throws -> MTLTexture? {
         let lib = try ShaderLibrary(context: ctx)
         let texMgr = try TextureManager(context: ctx, shaderLibrary: lib)
         let floatStride = MemoryLayout<Float>.stride
@@ -178,9 +196,23 @@ struct NacreMVWarpAccumulationTest {
             }
             guard let cmd = ctx.commandQueue.makeCommandBuffer(),
                   let warpState = pipeline.mvWarpState else { return display }
-            pipeline.renderNacre(commandBuffer: cmd, features: feat, stemFeatures: .zero,
-                                 warpState: warpState, target: display)
+            if reducedMotion {
+                // BUG-061: the reduced-motion frame must target the 8-bit drawable format
+                // WITHOUT rendering Nacre's .rgba16Float direct pipeline to it.
+                pipeline.renderNacreReducedMotion(commandBuffer: cmd, features: feat,
+                                                  warpState: warpState, target: display)
+            } else {
+                pipeline.renderNacre(commandBuffer: cmd, features: feat, stemFeatures: .zero,
+                                     warpState: warpState, target: display)
+            }
             cmd.commit(); cmd.waitUntilCompleted()
+            // A render-pipeline / attachment-format mismatch sets the command-buffer error
+            // (and aborts under MTL_DEBUG_LAYER). Fail loud if the Nacre path ever binds a
+            // pipeline whose colour format doesn't match its target (the BUG-061 class).
+            if let err = cmd.error {
+                Issue.record("Nacre frame \(i) command buffer error (format mismatch?): \(err)")
+                return display
+            }
         }
         return display
     }

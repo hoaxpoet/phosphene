@@ -7,6 +7,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
 | AUDIT-2026-06-09 | P2/P3 | audit backlog | Full-codebase audit findings not individually filed |
+| BUG-061 | P1 | renderer / render-state | **✅ RESOLVED 2026-06-25 (NACRE.2b)** — Nacre crashed on load **when macOS "Reduce Motion" is on** (session `20-51-58Z`, log ends exactly at `preset → Nacre`). `drawWithMVWarp` checks `frameReduceMotion` BEFORE the Nacre branch → `drawMVWarpReducedMotion` renders the preset's DIRECT pipeline to the 8-bit drawable; Nacre's direct pipeline is compiled for its `.rgba16Float` feedback format → attachment-format mismatch → GPU abort (every other mv_warp preset's direct pipeline is the drawable format, so they survive — Dragon Bloom/Fata Morgana passed in the same Cmd+] cycle). Fix: `renderNacreReducedMotion` presents the signature comp of the un-advanced feedback (the comp pipeline IS the drawable format; no warp = no motion). Regression: `NacreMVWarpAccumulationTest.test_reducedMotion_…` (validation-clean to an 8-bit target). Possibly the same class as BUG-060 (render loop died after a preset switch) but distinct + diagnosed. Files to §Resolved at the next pruning pass |
 | BUG-060 | P3 | renderer / app.hang | One-off app hang (force-quit required): render loop died one frame after a `preset → Gossamer` switch (`22-10-50Z`); NOT reproduced (Gossamer ran 3× clean in `13-57-23Z`); no stack captured. Monitored |
 | BUG-059 | P1 | local-file / concurrency | **✅ RESOLVED 2026-06-18** (`a285a22`, integrated to `main`/origin) — concurrent `LocalFilePlaybackProvider` start/stop ABBA deadlock (`player.stop()`'s completion-queue `dispatch_sync` ⇄ inline `scheduleFile()` from the completion handler); fixed by hopping the re-schedule off the completion queue. Automated 11/11 + Matt's live no-hang device-swap validation. (The track restart-on-swap Matt saw is the separate BUG-056.) Files to §Resolved at the next pruning pass |
 | BUG-058 | P3 | audio.capture / resource-management | RARE intermittent: a mid-session output-device swap *occasionally* freezes the tap (`performReinstall` doesn't complete; stale-buffer freeze, not silence). G1 device-swap recovery is otherwise robust (validated 12/12, 2026-06-17); the single freeze was un-reproduced — likely a `coreaudiod`-settling transient. Instrumented |
@@ -57,6 +58,34 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 - ✅ **RESOLVED (CLEAN.2.3.4, 2026-06-14)** — localization gate only scanned `PhospheneApp/Views/`. `check_user_strings.sh` ROOTS widened to `PhospheneApp/ViewModels` + `ContentView.swift`, pattern extended with a connection-state `.error("…")` arm (`logger.error` excluded); the bypassing copy (Spotify/AppleMusic error strings, ConnectorType tiles, ReadyViewModel duration/source, ContentView fallback, PreparationProgressView subtitle, PlanPreviewTransitionView labels) externalized to `Localizable.strings`. Gate header documents its honest scope limit (literal-prefix matcher — lowercase/interpolated fragments still rely on review). Commit `46d836b`.
 
 P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh double-spend + form-encoding gaps [Resolved CLEAN.2.2, see above], PSO cache key, mv_warp buffer(5) omission, PostProcessChain texture aliasing, malformed-sidecar swallowing, Arachne listening-pose FA #57-gate, >2-channel LF corruption, ~94 Hz vs 60 fps chroma hysteresis), ~11 perf items (autocorrelation 2×/frame, drums FFT 2×/frame, mono STFT 2×/track, serial prep pipeline, wasted particle-mode warp pass, unconditional feedback textures), dead code, and 6 in-code doc-drift items.
+
+---
+
+### BUG-061 — Nacre crashes on load when macOS "Reduce Motion" is on: its `.rgba16Float` direct pipeline is rendered to the 8-bit drawable by the reduced-motion path (2026-06-25)
+
+**Severity:** P1 (hard crash requiring force-quit; narrow trigger — Reduce Motion on AND the uncertified Nacre preset, reachable via the Cmd+] dev cycle / "show uncertified presets").
+**Domain tag:** renderer / render-state (api-contract: render-pipeline attachment-format mismatch).
+**Status:** ✅ RESOLVED 2026-06-25 (NACRE.2b). Reproduced + diagnosed from the headless-passes/live-crashes split + the dispatch order (no `.ips`/stack was written).
+**Introduced:** NACRE.2b (the `.rgba16Float` feedback opt-in for Nacre + the dedicated draw branch).
+**Resolved:** 2026-06-25, NACRE.2b fix commit (this increment).
+
+**Expected:** switching to Nacre (incl. with Reduce Motion enabled) renders a frame; never crashes.
+
+**Actual (session `2026-06-25T20-51-58Z`):** Matt cycled presets with Cmd+] (Arachne → … → Murmuration, all fine) and the app crashed exactly at `preset → Nacre` (the last `session.log` line). `drawWithMVWarp` checks `frameReduceMotion` (the macOS Reduce-Motion a11y setting, `PhospheneApp.swift:81-87`) BEFORE the Nacre branch → `drawMVWarpReducedMotion` → `renderSceneToTexture(activePipeline:, target: drawable.texture)` renders the preset's DIRECT pipeline to the 8-bit drawable. Nacre's direct pipeline (`nacre_fragment`) is compiled for its `.rgba16Float` feedback format (`PresetLoader.makeDirectPrimaryPipeline` uses `feedbackFormat(descriptor)`) → a 16-float pipeline → 8-bit target is an attachment-format mismatch → GPU abort. Dragon Bloom (direct pipeline = drawable format) and Fata Morgana (`.bgra8Unorm`, 8-bit layout-compatible) survived the same cycle; only Nacre's 16-float→8-bit hard-crashes.
+
+**Reproduction steps:** enable System Settings → Accessibility → Display → Reduce Motion; run the app; Cmd+] to Nacre. Crashes on the first Nacre frame.
+
+**Session artifacts:** `~/Documents/phosphene_sessions/2026-06-25T20-51-58Z/` (`session.log` ends at `preset → Nacre`; no `.ips` — the app writes no crash log). The headless `NacreMVWarpAccumulationTest` passed (it bypasses the reduced-motion dispatch), and `renderNacre` is validation-clean under `MTL_DEBUG_LAYER=1` — the split localised the bug to the live reduced-motion path.
+
+**Suspected failure class:** `render-state` (render-pipeline attachment-format mismatch / api-contract).
+
+**Fix:** `RenderPipeline+Nacre.renderNacreReducedMotion` presents Nacre's signature comp of the **un-advanced** feedback (no warp pass → no accumulation = no motion; the comp/blit pipeline IS the drawable format). `drawMVWarpReducedMotion` routes `warpState.isNacre` to it before the shared direct-to-drawable render; byte-identical for every other preset.
+
+**Verification criteria:**
+- [x] Regression: `NacreMVWarpAccumulationTest.test_reducedMotion_rendersToDrawableFormatNoMismatch` drives `renderNacreReducedMotion` to an 8-bit (drawable-format) target and asserts no command-buffer error; the whole Nacre suite is green under `MTL_DEBUG_LAYER=1`.
+- [ ] **Manual (Matt):** with Reduce Motion ON, Cmd+] to Nacre renders without crashing.
+
+**Manual validation required:** Yes — the trigger is the live a11y setting; the static render proves no format mismatch, Matt's live re-test proves the crash is gone.
 
 ---
 
