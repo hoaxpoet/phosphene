@@ -84,6 +84,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-168 | Accepted | ARCHITECTURE Module Map completeness gated by DocIntegrityTests (CLEAN.7.3) — backfilled 62 undocumented files incl. 4 certified presets; D-161 "violated twice → mechanize" applied |
 | D-169 | Accepted | Defer public-release-readiness work (extended a11y settings 7.7, cold-install resilience 7.8) until there's a public build; daily single-user dev use is covered by the existing a11y/robustness basics |
 | D-170 | Reversed | Section detection (McFee/Ellis spectral clustering, SECDET) — built + live-tested, then **removed** 2026-06-24: structurally local-file-only (streaming has only a 30 s preview) and below the perceptual bar (live F@3 ≈ 0.29–0.41); the "no-ML" rationale was a misreading of D-009 (= no-CoreML). Planner equal-slices. See §Reversal. |
+| D-171 | Accepted | Nacre — faithful port of butterchurn `$$$ Royal - Mashup (431)` (iridescent jello-mirror) onto a dedicated custom-warp+comp mv_warp branch (`RenderPipeline+Nacre`, mirroring Fata Morgana / D-139; `isNacre` discriminator). Faithful base first (NACRE.2b); the 3 greenlit uplifts deferred to NACRE.3+. Corrected source decode (mv_a-0 grid doesn't advect; volume-gated core seed; bassDev kick). Code-complete, pending Matt's live M7. |
 
 ---
 
@@ -2055,3 +2056,50 @@ Phosphene's section detector was novelty-only (Foote checkerboard on a chroma+sp
 **Port (SECDET epic, staged).** Stages A (features: beat-synced 252-CQT + 13 MFCC @ 22050 — SSM corr 0.9995 / MFCC corr 1.0), B (graph + LAPACK eigensolve + k-means + boundary merge — F@3 vs lab = 1.000), and C (perf — the flagged ≈2 min/track CQT was a *debug* artifact, 2.7 s in release, so no recursive-CQT port [SECDET.3a]; wire-in [SECDET.3b] — `SectionDetector` replaces `strongBoundaryTimes` in `SessionPreparer.analyzePreview`, validated end-to-end on raw PCM at F@3 = 1.000) are done. **C.4 call (folded here, no separate D-number):** the live `StructuralAnalyzer`'s *boundary* role is retired — section boundaries come from the cached batch detector (like the BeatGrid); its section-*count* role stays (`sectionIndex` → `estimatedSectionCount`, equal-slice fallback), and `boundaryTimestamps`/`boundaryNoveltyScores` remain for diagnostics, unread. The cache schema bump is done (SECDET.3c, v4 → v5). **Stage D done (SECDET.4):** the Swift detector scores **F@3 ≈ 0.41 vs hand-annotated ground truth** on real tracks (Nirvana 0.55 / Beatles 0.40 over a 20-track subset), landing at the lab's published acceptance target (0.61 / 0.41); it reproduces the lab boundaries exactly on most tracks, with a ~0.05 aggregate gap on clustering-sensitive tracks from the kernel-CQT's non-bit-identical features (the recursive CQT would close it — deferred, the bar is met). **Live test 1 → SECDET.5 (full-track beats):** the first live run exposed that **Beat This! truncates its beat grid to a fixed ~30 s window** (`BeatThisModel.tMax` = 1500 frames), so McFee — which beat-syncs on that grid — only segmented the first 30 s of a 282 s track (→ coverage gate → equal slices). Not a detector bug (SECDET.4 used full-track librosa beats); the gap was *beat coverage*, not tracker quality. Fix: `SectionDetector.fullTrackBeats` extends the grid past its last beat at the median inter-beat period so the beat-sync spans the whole track — synthetic beats beyond the tracked region suffice for the recurrence pooling. Offline A/B: 30 s-capped grid + extension scores F@3 0.48, ≥ the full-beat baseline. (Chunking Beat This! over the full track stays the heavier alternative if a tempo-varying track ever needs it.) **Offline port + the full-track-beats fix are validated; the live re-test is the remaining step.** Output contract preserved throughout: `TrackProfile.sectionStartTimes` → the planner is untouched.
 
 **References.** SECDET kickoff `~/phosphene_section_lab/PORT_KICKOFF.md`; McFee & Ellis ISMIR 2014; supersedes the novelty-only section role of `StructuralAnalyzer` (offline path) and the LFPLAN.8 strength-filter dead end. [D-009] (no CoreML). `docs/ENGINEERING_PLAN.md §Phase SECDET`.
+
+## D-171: Nacre — faithful port of `$$$ Royal - Mashup (431)` onto a dedicated custom-warp+comp mv_warp branch (NACRE.2b)
+
+**Decision.** Port the iridescent jello-mirror character of the butterchurn builtin `$$$ Royal - Mashup
+(431)` as the certified preset **Nacre**, faithful base FIRST (this increment), the 3 greenlit 2026
+uplifts (stem-instrument routing, real thin-film iridescence on HDR, smooth-Voronoi cells) deferred to
+NACRE.3+ AFTER Matt's live M7 confirms the base reads as (431) (FA #65 — do not pre-empt/subtract from
+the reference before it's proven). Sibling, NOT subclass, of Dragon Bloom ((220)) — a different register
+(molten iridescent metal / oil-on-water) despite the shared author/name (D-097).
+
+**Architecture — a dedicated draw branch, mirroring Fata Morgana (D-139), not the 2a convention path.**
+The look is a custom feedback warp (reading per-frame uniforms + a wide-blur unsharp) plus a
+fully-replacing comp. The shared `encodeMVWarpPass` binds `chromatic@0`/`wetness@1` and no per-frame
+uniform to the warp fragment, so overloading it would risk the byte-identity guarantee for every other
+mv_warp preset. Instead: `RenderPipeline+Nacre.swift` (`drawWithNacre`/`renderNacre`: warp → comp →
+swap), dispatched by a one-field `isNacre` discriminator on `MVWarpPipelineBundle`/`MVWarpState`
+(checked before the FM blur heuristic, since Nacre uses no blur target). `NacreUniforms` (96 B) is
+computed CPU-side per frame and bound at fragment buffer(1) of both passes (the FM pattern) — so 2a's
+`NacreState` (the convention-path comp buffer + `directPresetFragmentBuffer` wiring) was deleted (one
+mechanism). The shared path is byte-identical (PresetRegression + DB/FM accumulation green).
+
+**Faithful-base choices (the corrected decode + the renders that drove them):**
+- **Seed folded into the warp, volume-gated.** (431)'s only drawn geometry is a `wave_a 0.001`
+  `modwavealphabyvolume` waveform whose role is to inject fresh palette-coloured content. Ported as a
+  palette-tinted central core seed in the warp, gated by overall energy — faithful `modwavealphabyvolume`
+  AND the "core brightness ← volume" musical route. A *constant* core floods the frame to opaque warm
+  metal over ~16 s (anti-reference); gating keeps the silence ground dark (D-019) and makes the core
+  pulse with audio. No separate waveform-geometry draw (the line is negligible-as-geometry).
+- **`mv_x/mv_y` with `mv_a 0` does NOT advect** (it's the hidden Milkdrop debug-grid; the plan §4 was a
+  misread, FA #73). Advection = zoom 1.009 + the slow roam sines only.
+- **Bass kick from `bassDev`**, not (431)'s `bass_thresh` absolute-threshold hysteresis (FA #31).
+- **Feedback clamped to `[0,1]`** (the source's 8-bit-UNORM store) — the unsharp + rectified grain bloom
+  to white on an unclamped HDR buffer (the kickoff's documented fallback). `.rgba16Float` is kept for the
+  NACRE.3 iridescence uplift's headroom but today carries `[0,1]`. Comp→drawable uses the FM sRGB-decode
+  so the near-black ground survives the sRGB encode.
+- **Cell scale is set by the unsharp blur WIDTH** (and grain frequency), not the comp's sine frequency:
+  smooth feedback → big glassy cells, high-freq feedback → oil-slick flecks. A single wide inline gaussian
+  stands in for (431)'s 3-level blur pyramid (deferred, NACRE_PLAN §9).
+
+**Status / coverage.** Code-complete, pending Matt's live M7 (the load-bearing cert gate vs the live
+butterchurn oracle). Production coverage: `NacreMVWarpAccumulationTest` (non-black + no-white-out at
+silence over the live `renderNacre` path). `certified: false` until NACRE.4. `expectedProductionPresetCount`
+20 → 21. Exempt from `PresetAcceptanceTests` single-frame invariants (feedback-branch preset, like DB/FM).
+
+**References.** `docs/prompts/NACRE_2B_KICKOFF.md`; `docs/presets/NACRE_PLAN.md §10`;
+`docs/VISUAL_REFERENCES/nacre/source_shaders.txt`. [D-138] (butterchurn render-loop facts), [D-139]
+(Fata Morgana custom-warp+comp+branch template), [D-097] (siblings not subclasses), [D-026]/[D-019].

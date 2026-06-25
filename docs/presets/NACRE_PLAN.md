@@ -1,6 +1,6 @@
 # Nacre — Preset Plan
 
-**Status:** NACRE.1 ✅ committed (`374791d`). NACRE.2 in progress — Matt greenlit the faithful base **+ 3 uplifts** (stem-instrument routing / real iridescence + HDR / smooth-Voronoi cells) and the engine-shader approach. See **NACRE.2 — Committed scope** below.
+**Status:** NACRE.1 ✅ + NACRE.2a ✅ + **NACRE.2b ✅ code-complete (faithful base, pending Matt's live M7)** — `[NACRE.2b]` commits. The faithful (431) jello-mirror character is ported onto a dedicated custom-warp+comp mv_warp branch; the 3 greenlit uplifts (stem routing / real iridescence+HDR / smooth-Voronoi) are deferred to NACRE.3+ (AFTER M7 confirms the base; FA #65). See **§10 NACRE.2b — what landed** below; D-171.
 **Target:** faithful Phosphene uplift of the Milkdrop preset `$$$ Royal - Mashup (431)` (butterchurn built-in; cream-of-the-crop legends).
 **Substrate:** `direct + mv_warp` (same family as the certified Dragon Bloom / Fata Morgana).
 **Scaffold:** Dragon Bloom (`DragonBloom.metal` / `.json` / `DragonBloomMVWarpAccumulationTest`). (Starburst → renamed Murmuration, no longer mv_warp.)
@@ -110,7 +110,7 @@ No two visual layers share a primitive at the same timescale. ✓ (mids→volume
 |---|---|---|
 | **NACRE.1** | Design + reference curation. | ✅ committed `374791d`; uplifts greenlit by Matt. |
 | **NACRE.2a** | Wire the custom-comp preset + a STUB look, test-reachable: `Nacre.{metal,json}` (stub `nacre_comp_fragment` + minimal scene + warp fns), `NacreState`, `feedbackFormat` + `VisualizerEngine` wiring, `NacreMVWarpAccumulationTest`. | App + engine build clean; accumulation test runs the live `warp→compose→blit` path ≥60 frames at silence without white-out; preset loads + renders non-black. **← current** |
-| **NACRE.2b** | Port the look + 3 uplifts into the shaders: cell-advection warp + core (scene) + comp shader (radial pulse + emboss→iridescence + Voronoi cells + stem/treble drive). | `RENDER_VISUAL=1` contact sheet (silence/mid/beat) committed; side-by-side vs `(431)` reads as the same preset, uplifted; one-primitive-per-layer audit holds; → M7. |
+| **NACRE.2b** | ✅ Port the FAITHFUL BASE (warp + comp + seed) onto a dedicated custom branch; uplifts deferred to NACRE.3+ (faithful-first, FA #65). | ✅ Custom `nacre_warp_fragment` (unsharp + 0.9 decay + grain + palette-tinted volume-gated core seed) + `nacre_comp_fragment` (radial-pulse emboss → chromatic-dispersion `inversesqrt` filaments + sine cells + slow roam) + `RenderPipeline+Nacre.swift` branch; `NacreMVWarpAccumulationTest` (non-black + no-white-out at silence over the live `renderNacre` path); contact frames read as the molten-iridescent (431) register on a dark ground with chromatic rims + luminous core. → Matt's live M7. |
 | **NACRE.3** | Audio coupling (§6 routes, one at a time). | Each route's firing shown in a session-replay diagnostic (`features.csv`); one-primitive-per-layer audit holds; M7 round 1. |
 | **NACRE.4** | Tuning to certification. | Matt's live M7 sign-off; `certified: true`; capability registry + plan updated. |
 
@@ -131,3 +131,51 @@ No two visual layers share a primitive at the same timescale. ✓ (mids→volume
 - **`family` field** — "hypnotic" vs a new "fluid" grouping (orchestrator fatigue/transition impact of two hypnotic feedback presets). Product-adjacent; decide with Matt at NACRE.2.
 - **Palette anchoring** — keep faithful time-driven rotation, or nudge toward album-art / arousal warmth? Faithful-first; arousal-nudge is a NACRE.3+ tuning lever, not a NACRE.2 requirement.
 - **butterchurn-only uniforms** (`rand_preset`, `slow_roam`, etc.) — substitution table authored at NACRE.2; risk that fixed seeds flatten variety vs the original's per-load randomness (acceptable — a preset instance is deterministic anyway).
+
+---
+
+## 10. NACRE.2b — what landed (the faithful base)
+
+**Architecture (the dedicated branch — the cleaner correction of 2a's convention path).** The
+signature look needs a custom feedback warp reading per-frame uniforms + a fully-replacing comp; the
+shared `encodeMVWarpPass` binds `chromatic@0`/`wetness@1` and no per-frame uniform to the warp
+fragment, so overloading it would have risked the byte-identity guarantee. Instead Nacre gets its own
+draw branch `RenderPipeline+Nacre.swift` (`drawWithNacre`/`renderNacre`: warp → comp → swap), mirroring
+Fata Morgana, dispatched by a one-field `isNacre` discriminator on `MVWarpPipelineBundle`/`MVWarpState`
+(checked before the FM blur heuristic). `NacreUniforms` (96 B) is computed CPU-side each frame (FM
+pattern) and bound at fragment buffer(1) of both passes — so the 2a `NacreState` (the convention-path
+comp buffer) was deleted (one mechanism, no dead code). Shared path stays byte-identical
+(PresetRegression + DB/FM accumulation green).
+
+**Corrected source facts (verify-the-decode, FA #73):**
+- **`mv_x 25.6 / mv_y 9.6` with `mv_a 0` does NOT advect.** Those are the count of Milkdrop's HIDDEN
+  motion-vector debug-grid overlay (`mv_a` is its opacity); with `mv_a 0` they're invisible and have
+  no effect on the warp. The plan §4 "dense motion-vector field advects the feedback into the drifting
+  cell structure" was a misread. The drift is zoom (1.009) + the slow `rot/cx/cy/dx/dy` roam sines only.
+- **The waveform seed is volume-gated** (`modwavealphabyvolume`): faint at silence, bright with audio.
+  Ported as a palette-tinted central core gated by overall energy (`coreEnergy`) — which is also the
+  faithful "core brightness ← volume" musical route. A *constant* bright core flooded the frame to
+  opaque warm metal over ~16 s (anti-reference); gating fixes it AND keeps the silence ground dark.
+- **Bass kick via `bassDev`, not the source's `bass_thresh` absolute-threshold hysteresis** — driving
+  motion from an absolute threshold on AGC-normalized energy is FA #31; `bassDev` is the Phosphene-
+  correct onset primitive and gives the same bounded decaying lurch.
+
+**Faithful-port tuning learnings (feedback-preset craft):**
+- **Cell scale is governed by the unsharp blur WIDTH, not the comp's sine frequency.** The comp's
+  `sin(4·uv + dz)` already makes big cells when `dz` (the feedback's luminance gradient) is SMOOTH. A
+  narrow unsharp blur (or strong/high-freq grain) makes the feedback high-frequency → `dz` shatters the
+  cells into an oil-slick fleck crinkle. Wide blur + low-frequency smooth value-noise grain → big glassy
+  membranes. (This is why the source uses a wide 3-level blur pyramid; a single wide inline gaussian
+  stands in — the pyramid is deferred, NACRE_PLAN §9 / kickoff §5.)
+- **Unclamped HDR feedback blooms to white.** The source stores feedback to 8-bit UNORM (clamps each
+  frame); the unsharp + rectified grain grow unbounded on a float buffer. Clamping the warp output to
+  `[0,1]` replicates the source's bound (the kickoff's "fall back if it over-blooms"). The `.rgba16Float`
+  buffer is retained for the NACRE.3 iridescence uplift's headroom but today carries `[0,1]`.
+- **The dark ground needs the FM sRGB-decode at the comp→drawable write.** Without it, the sRGB drawable
+  encode lifts the near-black ground to a pale grey midtone (D-139's "deeper black needed").
+
+**Deferred (the 3 greenlit uplifts — AFTER M7 confirms the base, FA #65):** stem-instrument routing,
+real thin-film iridescence on HDR (re-unclamp the feedback), smooth-Voronoi cells. NACRE.3 = the audio
+routes (§6) one at a time; NACRE.4 = cert. The streaky-flow vs glassy-bubble balance, the exact cell
+scale/crispness, and `randPreset`/grain constants are live-M7 tuning levers — not over-tuned headless
+against the static stills (the live butterchurn oracle, kickoff §3, is the per-frame gate Matt runs).
