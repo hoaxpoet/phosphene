@@ -49,7 +49,11 @@ struct PresetLoaderCompileFailureTest {
     /// D-142; direct + mv_warp). ENGINE.1 ships an identity-warp recipe + a fixed
     /// test stamp only — no audio/marks/family yet (family `painterly` + emission
     /// at Skein.1+). Not certified.
-    static let expectedProductionPresetCount = 20
+    /// 20 → 21 at NACRE.2b (Nacre — faithful port of `$$$ Royal - Mashup (431)`'s
+    /// iridescent jello-mirror onto the custom-warp+comp mv_warp branch; direct +
+    /// mv_warp, HDR feedback). Family `hypnotic`. Not certified (cert at NACRE.4 after
+    /// Matt's live M7). NACRE.2a added the preset to the catalog but did not bump this.
+    static let expectedProductionPresetCount = 21
 
     @Test("PresetLoader.presets.count matches expectedProductionPresetCount — catches Failed Approach #44 silent drops")
     func test_presetLoaderProductionCount() {

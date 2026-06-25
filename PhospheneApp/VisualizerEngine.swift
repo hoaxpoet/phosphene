@@ -192,11 +192,6 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// buffer). Re-seeded on track change for the §5.7 determinism property.
     var skeinState: SkeinState?
 
-    /// NACRE.2: per-frame comp-stage uniforms for the Nacre preset, bound at the mv_warp
-    /// blit stage via `setDirectPresetFragmentBuffer` → `bindCompStagePresetBuffer`
-    /// (fragment buffer 1). nil unless Nacre is the active preset.
-    var nacreState: NacreState?
-
     /// Lumen Mosaic 4-light pattern engine — allocated when the Lumen Mosaic
     /// preset is active, nil otherwise. Tick closure flushes the engine state
     /// to a 336-byte UMA buffer bound at fragment slot 8 of the ray-march

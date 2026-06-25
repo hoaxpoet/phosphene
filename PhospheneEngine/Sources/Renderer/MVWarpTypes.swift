@@ -27,6 +27,11 @@ public struct MVWarpPipelineBundle: Sendable {
     /// path runs the fata branch: blur(prev) → custom warp → shapes-on-top → custom
     /// mirage comp → swap. nil ⇒ the standard Dragon-Bloom/default mv_warp path.
     public let blurState: MTLRenderPipelineState?
+    /// Nacre (NACRE.2b): routes the draw path to the nacre branch (custom warp → custom
+    /// signature comp → swap; the seed is folded into the warp). Keyed on the preset
+    /// name at bundle build — Nacre and Fata Morgana would both otherwise match the
+    /// blur heuristic, so this disambiguates. false for every other mv_warp preset.
+    public let isNacre: Bool
     /// Initial clear colour for the three feedback textures (Skein.ENGINE.1.1, D-143).
     /// On the marks-on-top path the background fragment (Pass 0) is skipped, so this is
     /// the held GROUND the marks sit on (Skein's cream). Stored as RGBA components
@@ -41,6 +46,7 @@ public struct MVWarpPipelineBundle: Sendable {
         pixelFormat: MTLPixelFormat,
         feedbackFormat: MTLPixelFormat? = nil,
         blurState: MTLRenderPipelineState? = nil,
+        isNacre: Bool = false,
         canvasClearColor: SIMD4<Double> = SIMD4<Double>(0, 0, 0, 1)
     ) {
         self.warpState    = warpState
@@ -49,6 +55,7 @@ public struct MVWarpPipelineBundle: Sendable {
         self.pixelFormat  = pixelFormat
         self.feedbackFormat = feedbackFormat ?? pixelFormat
         self.blurState    = blurState
+        self.isNacre      = isNacre
         self.canvasClearColor = canvasClearColor
     }
 }
@@ -79,6 +86,8 @@ public struct MVWarpState: @unchecked Sendable {
     /// the fata draw branch runs. nil for Dragon Bloom / default mv_warp presets.
     public let blurPipeline: MTLRenderPipelineState?
     public var blurTexture: MTLTexture?
+    /// Nacre (NACRE.2b): routes `drawWithMVWarp` to the nacre branch. false otherwise.
+    public var isNacre: Bool = false
     /// Initial feedback-texture clear colour (Skein.ENGINE.1.1, D-143), as RGBA
     /// components. Carried so `reallocateMVWarpTextures` (resize) re-clears to the same
     /// ground. (0,0,0,1) for every preset except marks-on-top canvas-hold presets
