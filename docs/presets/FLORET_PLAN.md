@@ -1,6 +1,6 @@
 # Floret — Preset Plan
 
-**Status:** FLORET.1 ✅ (design + reference curation) — this doc + `docs/VISUAL_REFERENCES/floret/`. Scope + name greenlit by Matt 2026-06-26 (**faithful base + uplifts**; named **Floret**). No code yet; FLORET.2a is next.
+**Status:** FLORET.1 ✅ (design + reference curation) + FLORET.2a ✅ (wiring stub, test-reachable) — `[FLORET.1]`/`[FLORET.2a]` commits. Scope + name greenlit by Matt 2026-06-26 (**faithful base + uplifts**; named **Floret**). The faithful base lands at FLORET.2b. See **§10 FLORET.2a — what landed** below.
 **Target:** a faithful Phosphene uplift of the Milkdrop preset `suksma - Rovastar - Sunflower Passion (Enlightment Mix)_Phat_edit + flexi und martin shaders - circumflex in character classes in regular expression` (butterchurn built-in; cream-of-the-crop legends; pick #1 on `MILKDROP_UPLIFT_PICKS.md`).
 **Substrate:** `direct + mv_warp` (same family as the certified Dragon Bloom / Fata Morgana / Nacre).
 **Scaffold:** Nacre (`RenderPipeline+Nacre.swift` dedicated-branch + `Nacre.metal`/`.json` + `NacreMVWarpAccumulationTest`) — Floret has the same custom-warp + custom-comp shape, including the comp-stage blur dependency (see §3).
@@ -88,7 +88,7 @@ No two visual layers share a primitive at the same timescale. ✓
 | ID | Outcome | Done-when |
 |---|---|---|
 | **FLORET.1** | Design + reference curation. | ✅ this doc + `docs/VISUAL_REFERENCES/floret/` (source JSON + shaders + GIF + 3 annotated stills + README); scope + name greenlit. |
-| **FLORET.2a** | Wire the custom warp+comp preset + a STUB look, test-reachable: `Floret.{metal,json}` (stub `floret_comp_fragment` + minimal scene + warp fns), state, `feedbackFormat` `.rgba16Float`, `VisualizerEngine` wiring, `FloretMVWarpAccumulationTest`. | App + engine build clean; accumulation test runs the live `warp→compose→blit` path ≥60 frames at silence without white-out; preset loads + renders non-black. |
+| **FLORET.2a** | ✅ Wire the custom warp+comp preset + a STUB look, test-reachable: `Floret.{metal,json}` (stub `floret_comp_fragment` + minimal scene + warp fns), `RenderPipeline+Floret.swift` branch (`isFloret` discriminator), `feedbackFormat` `.rgba16Float`, app bundle wiring, `FloretMVWarpAccumulationTest`. | ✅ App build + engine build clean; `FloretMVWarpAccumulationTest` 6/6 (compile/load + live `renderFloret` 64-frame accumulation: non-black + no white-out at silence + reduced-motion format-safe); preset/rubric/regression 62/62 unaffected; swiftlint 0. |
 | **FLORET.2b** | Port the FAITHFUL BASE (z² warp + vortex per-vertex + 3-fold radial-pulse high-pass comp + seed discs + palette cycle), **flash-safe** (luminance floor). Decide blur path (§3) by render. Uplifts deferred. | Live `renderFloret` path: non-black + no-white-out + flash-safe at silence over ≥60 frames; contact frames read as the 3-fold bloom on dark ground; side-by-side vs source. → Matt M7. |
 | **FLORET.3** | Audio coupling (§6) + the 2 uplifts (iridescence rims, stem routing), one route at a time. | Each route's firing shown in a session-replay diagnostic (`features.csv`/`stems.csv`); one-primitive-per-layer holds; M7. |
 | **FLORET.4** | Tuning to certification. | Matt's live M7 sign-off; `certified: true`; flash harness measured SAFE; rubric + capability registry + module map + plan updated. |
@@ -112,3 +112,17 @@ No two visual layers share a primitive at the same timescale. ✓
 - **`family` field** — "hypnotic" vs a new grouping; three hypnotic feedback presets risks orchestrator fatigue/transition monotony. Product-adjacent; decide with Matt before cert.
 - **Iridescence over-bloom** — the on-`.rgba16Float` HDR iridescence is the most M7-prone uplift (Nacre/Ferrofluid history); 8-bit fallback if it over-blooms.
 - **butterchurn-only uniforms** (`scale1/bias1`, `aspect`, dead `q4..q32`) — substitution table authored at 2b; fixed seeds acceptable (a preset instance is deterministic).
+
+---
+
+## 10. FLORET.2a — what landed (the wiring stub)
+
+The Nacre dedicated-branch structure, mirrored for Floret (FA #70 — port the proven loop wholesale):
+- **`Floret.metal`** — `FloretUniforms` (32 B: time/coreEnergy/texel/aspect), `floret_fragment` (near-black loader placeholder), `mvWarpPerFrame`/`mvWarpPerVertex` (stub zoom + slow rot), `floret_warp_fragment` (decay + faint palette wash + volume-gated core seed + `[0,1]` clamp), `floret_comp_fragment` (display feedback + sRGB decode). Every stub carries a `TODO(FLORET.2b)` for the faithful mechanic (vortex + z² fold, 3-fold radial-pulse high-pass kaleidoscope, 4-disc seed).
+- **`RenderPipeline+Floret.swift`** — `FloretUniforms` (Swift, byte-matched) + stateless `computeFloretUniforms` + `drawWithFloret`/`renderFloret` (warp→comp→swap, target-agnostic, FA #66) + `renderFloretReducedMotion` (BUG-061-safe, comp pipeline to the drawable format).
+- **Wiring (mirrors Nacre):** `isFloret` discriminator on `MVWarpPipelineBundle` + `MVWarpState`; dispatch branch in `drawWithMVWarp` + the reduced-motion path; `PresetLoader.feedbackFormat` `.rgba16Float`; app `VisualizerEngine+Presets` fbFormat case + `isFloret: desc.name == "Floret"`. All new files are SPM-engine / copied `Shaders/` → **no pbxproj edits**.
+- **Test:** `FloretMVWarpAccumulationTest` (6/6) — static fn/JSON guards, GPU compile/load, the live `renderFloret` 64-frame silence accumulation gate (non-black `meanLuma > 0.01` + no white-out `< 85 %` saturated), the BUG-061 reduced-motion format gate, env-gated PNG diag (`FLORET_MVWARP_DIAG=1`).
+
+**Durable learnings:**
+- **`RenderPipeline+MVWarp.swift` is at the `file_length` 400-line cap.** Adding Floret's dispatch branch pushed it to 416; recovered by tightening verbose comments (all D-refs preserved). **A 3rd custom-warp+comp preset should extract `drawWithMVWarpStandard` to its own file** (the established split pattern — `+Nacre`/`+FataMorgana`/`+MVWarpReducedMotion` already split out) rather than trim further.
+- **The dispatch now carries two name-keyed bools** (`isNacre`, `isFloret`) + the `blurPipeline` check. Two is fine; **a 4th custom branch → replace the bool chain with an enum** (`MVWarpBranch`) on the bundle. Not worth it yet (YAGNI).
