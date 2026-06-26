@@ -65,8 +65,14 @@ extension RenderPipeline {
         // connection"). A gentler total-energy floor keeps the core alive in instrumental
         // sections; the warp's coreGate baseline holds it dim-but-visible at silence (D-019).
         // Smoothed ~0.16 s — swells with the vocal phrasing, doesn't flicker.
+        // SOFT-SATURATE the vocal signal (tanh): vocalsEnergy spikes to ~3× on peaks
+        // (max 2.95 in session 13-40-34Z), so the raw value slammed the core to max
+        // brightness → over-bloom → the bright core dragged outward by the zoom into
+        // "stretches and smears" (Matt M7). tanh caps the spike to ~1, smooth knee — the
+        // core still swells with the voice but never blooms. Same fix as the zoom/kick
+        // (project_deviation_primitive_real_range — soft-saturate vs p99, never vs 1.0).
         let total = max(0, (features.bass + features.mid + features.treble) / 3.0)
-        let coreTarget = max(max(0, stems.vocalsEnergy), 0.35 * total)
+        let coreTarget = max(tanh(max(0, stems.vocalsEnergy)), 0.35 * total)
         nacreCoreEMA += (coreTarget - nacreCoreEMA) * 0.10
         uni.coreEnergy = nacreCoreEMA
 
