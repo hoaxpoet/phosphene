@@ -40,18 +40,11 @@ extension RenderPipeline {
             return
         }
 
-        // AV.2.1: clear freshly-allocated textures to the canvas ground. storageMode =
-        // .private GPU memory is NOT guaranteed zero-initialised — without this, the
-        // first post-preset-switch frame can read whatever bit pattern previously
-        // occupied that memory (live AV.2 session read as full-screen magenta for ~1 s
-        // after preset switch).
-        //
-        // Skein.ENGINE.1.1 (D-143): the clear colour is per-preset. Black for every
-        // existing preset (byte-identical); on the marks-on-top path Pass 0 is skipped,
-        // so this clear IS the held ground (Skein's cream).
-        // Skein.5.3b: a per-track ground override (the palette library's light/dark grounds)
-        // wins over the preset-static colour — including on the resize re-clear path, so a
-        // mid-track window resize re-clears to the CURRENT track's ground, not the JSON cream.
+        // Clear freshly-allocated textures to the canvas ground (AV.2.1: `.private` GPU memory
+        // isn't zero-init → a post-switch frame could read stale bits, e.g. AV.2's magenta flash).
+        // The clear colour is per-preset (Skein.ENGINE.1.1/D-143: black = byte-identical default;
+        // the marks-on-top path uses it as the held ground). A per-track override wins over the
+        // preset-static colour, incl. on resize re-clear (Skein.5.3b).
         let cc = mvWarpLock.withLock { mvWarpCanvasGroundOverride } ?? bundle.canvasClearColor
         let canvasClear = MTLClearColor(red: cc.x, green: cc.y, blue: cc.z, alpha: cc.w)
         clearWarpTextures([warpTex, composeTex, sceneTex], to: canvasClear)
@@ -61,13 +54,18 @@ extension RenderPipeline {
         // downsample + the warp's bilinear read are what make it a WIDE low-pass (which
         // drives the warp's coherent large-scale smearing of the blobs into ribbons). A
         // full-res blur was too narrow (blobs stayed discrete particles).
-        let blurW = max(width / 4, 1), blurH = max(height / 4, 1)
-        let blurTex = bundle.blurState != nil
-            ? makeWarpTexture(width: blurW, height: blurH, format: bundle.feedbackFormat)
-            : nil
-        // The blur-of-prev intermediate (Fata Morgana) always starts black — it is not
-        // the canvas ground.
-        if let blurTex { clearWarpTextures([blurTex], to: MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)) }
+        // Glaze (GLAZE.2b.1): a 3-level pyramid (½ + ¼ + ⅛ res) — the resolution halving
+        // widens the per-level gaussian for the multi-scale gel sheen (warp uses blur1+2,
+        // comp uses blur1+2+3). FM: a single ¼-res blur. Others: none.
+        func mk(_ div: Int) -> MTLTexture? {
+            makeWarpTexture(width: max(width / div, 1), height: max(height / div, 1), format: bundle.feedbackFormat)
+        }
+        let blurTex  = bundle.isGlaze ? mk(2) : (bundle.blurState != nil ? mk(4) : nil)
+        let blurTex2 = bundle.isGlaze ? mk(4) : nil
+        let blurTex3 = bundle.isGlaze ? mk(8) : nil
+        // The blur intermediates always start black — they are not the canvas ground.
+        let blurClear = [blurTex, blurTex2, blurTex3].compactMap { $0 }
+        if !blurClear.isEmpty { clearWarpTextures(blurClear, to: MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)) }
 
         let state = MVWarpState(
             warpTexture: warpTex,
@@ -80,6 +78,8 @@ extension RenderPipeline {
             feedbackFormat: bundle.feedbackFormat,
             blurPipeline: bundle.blurState,
             blurTexture: blurTex,
+            blurTexture2: blurTex2,
+            blurTexture3: blurTex3,
             isNacre: bundle.isNacre,
             isGlaze: bundle.isGlaze,
             canvasClearColor: bundle.canvasClearColor

@@ -71,6 +71,35 @@ struct GlazeMVWarpAccumulationTest {
                 "Glaze.mvWarpPipelines is nil — the .metal failed to compile (incl. glaze_comp_fragment) or passes are misconfigured.")
     }
 
+    // MARK: - Blur pyramid (GLAZE.2b.1): the 3-level pyramid allocates + compiles
+
+    @Test("Glaze allocates a 3-level blur pyramid (½ + ¼ + ⅛ res) and compiles glaze_blur_fragment")
+    @MainActor
+    func test_blurPyramid_allocatesThreeLevels() throws {
+        guard let ctx = try? MetalContext() else { Issue.record("No Metal device"); return }
+        let lib = try ShaderLibrary(context: ctx)
+        let floatStride = MemoryLayout<Float>.stride
+        guard let fft = ctx.makeSharedBuffer(length: 512 * floatStride),
+              let wav = ctx.makeSharedBuffer(length: 2048 * floatStride) else {
+            Issue.record("buffer alloc failed"); return
+        }
+        let pipeline = try RenderPipeline(context: ctx, shaderLibrary: lib, fftBuffer: fft, waveformBuffer: wav)
+        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat, loadBuiltIn: true)
+        guard let preset = loader.presets.first(where: { $0.descriptor.name == "Glaze" }),
+              let mvWarp = preset.mvWarpPipelines else { Issue.record("Glaze not loaded"); return }
+        #expect(mvWarp.blurState != nil, "Glaze must compile glaze_blur_fragment (the pyramid pipeline)")
+        let bundle = MVWarpPipelineBundle(
+            warpState: mvWarp.warpState, composeState: mvWarp.composeState, blitState: mvWarp.blitState,
+            pixelFormat: ctx.pixelFormat, feedbackFormat: .rgba16Float,
+            blurState: mvWarp.blurState, isGlaze: true)
+        pipeline.setupMVWarp(bundle: bundle, size: CGSize(width: 256, height: 256))
+        let state = pipeline.mvWarpState
+        // Progressive downsample (½, ¼, ⅛ of 256) — the resolution halving widens each level.
+        #expect(state?.blurTexture?.width == 128, "blur1 should be ½-res (got \(state?.blurTexture?.width ?? -1))")
+        #expect(state?.blurTexture2?.width == 64, "blur2 should be ¼-res (got \(state?.blurTexture2?.width ?? -1))")
+        #expect(state?.blurTexture3?.width == 32, "blur3 should be ⅛-res (got \(state?.blurTexture3?.width ?? -1))")
+    }
+
     // MARK: - Accumulation gate (ALWAYS run): live dispatch path, non-black + no white-out
 
     @Test("Glaze field stays alive (non-black) and never whites out over 64 silence frames")
@@ -160,6 +189,7 @@ struct GlazeMVWarpAccumulationTest {
             blitState: mvWarp.blitState,
             pixelFormat: ctx.pixelFormat,
             feedbackFormat: .rgba16Float,
+            blurState: mvWarp.blurState,   // GLAZE.2b.1: the glaze_blur pipeline (3-level pyramid)
             isGlaze: true)
         pipeline.setupMVWarp(bundle: bundle, size: size)
         pipeline.setMVWarpDecay(preset.descriptor.decay)
