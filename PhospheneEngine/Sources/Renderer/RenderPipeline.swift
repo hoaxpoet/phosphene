@@ -150,10 +150,11 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// MainActor-only (the mv_warp draw path), no lock — same convention as the fata accumulators.
     var nacreCentroidNorm: Float = 0
     var nacreHueEMA: Float = 0
-    /// Nacre (NACRE.3): core ← voice. Smoothed vocal-energy envelope driving the central
-    /// core's brightness (hero light ← hero voice) — ~0.16 s, fast enough to feel the
-    /// vocal phrasing, smooth enough not to flicker.
-    var nacreCoreEMA: Float = 0
+    /// Nacre (NACRE.3): the DISPLAY-stage voice glow envelope (smoothed tanh'd vocal
+    /// energy, ~0.16 s) — drives the comp's central core glow (the connection; display-only
+    /// so it can't smear). `nacreSeedEMA` is the SLOW (~0.5 s) total-energy envelope driving
+    /// the WARP's core SEED, kept near-steady so the fed-back seed never flares into smears.
+    var nacreCoreEMA: Float = 0, nacreSeedEMA: Float = 0
 
     // MARK: - Live Audio Features
 
