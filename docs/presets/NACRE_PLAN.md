@@ -212,9 +212,36 @@ increment was about making it move with the music.
 3. **Audit autonomous-but-uncoupled motion early.** Nacre's `rot`/`cx`/`cy` roam were pure time-sines —
    the most expressive levers sat untapped while brightness carried (badly) the whole connection.
 
-**OPEN (→ NACRE.4):** the turning connection reads WEAKLY — a featureless radial field has nothing to
-clock rotation against. The next connection attempt should target a VISIBLE feature (cell motion, a
-directional flow, a localized response), not whole-field rotation. Cert is gated on a detectable
-connection + Matt's formal multi-track sign-off. Diagnostic note: the brightness was diagnosed from the
-session CSV (driver trace), not a render harness — `loadSessionRich` was scoped then deferred (YAGNI:
-the CSV trace sufficed). Stand it up only if a future brightness/colour defect can't be read from the CSV.
+Diagnostic note: the brightness was diagnosed from the session CSV (driver trace), not a render harness
+— `loadSessionRich` was scoped then deferred (YAGNI: the CSV trace sufficed). Stand it up only if a
+future brightness/colour defect can't be read from the CSV.
+
+## 12. NACRE.4 — the connection lands + CERTIFIED (2026-06-26)
+
+The turning read weakly (a featureless field has nothing to clock rotation against). The M7 history had
+pinned the gap exactly: the **downbeat rhythm DID read** ("the pulse is accurate") — brightness was just
+the wrong medium (flash) and whole-field rotation the wrong medium (invisible). The untried intersection
+— *the detectable rhythm in a visible-motion medium* — is the answer: a **display-stage downbeat camera
+push** (`nu.barPush`, a sharp-attack/bar-decay envelope on `barPhase01`, contracts the comp's view coords
+→ the whole field magnifies ~5 % on the downbeat, settling over the bar). Display-stage → no smear; the
+field visibly *surges with the beat*. Matt M7: "looking good… comfortable with certifying."
+
+**Certification is not the flag flip — the flip makes the cert gates ENFORCE.** Registering Nacre:
+- `Nacre.json certified: true`.
+- `FidelityRubricTests.certifiedPresets` += Nacre — automated rubric: L1 silence-fallback, L2 deviation-
+  primitives, L3 performance all pass; **L4 reference frame-match is the manual item, satisfied by Matt's
+  live M7** (SHADER_CRAFT §12.1 — Matt's M7 is the load-bearing gate).
+- `PhotosensitivityCertificationTests.multiPassMeasured` += Nacre — **feedback presets are flash-measured
+  by the MULTI-PASS harness**, not the single-pass FeatureVector gate (which fails loud if a certified
+  preset renders static there → that was the first apparent "failure," meaning "join the multi-pass set").
+- A real `renderNacre` flash test in `MultiPassFlashHarnessTests` (+ `configureMVWarp` Nacre wiring:
+  `.rgba16Float` feedback, `isNacre` branch). The worst-case beat train drives `barPhase01`, so the push
+  FIRES and is measured: **peak 0.00 flashes/s, Δluma 0.090, SAFE** (limit 3.0) — the magnify doesn't
+  strobe. All cert gates green (34 tests / 5 suites); app 388; lint 0.
+
+**Follow-ups surfaced (separate, NOT NACRE.4):** `PresetDescriptorRubricFieldsTests`' certified +
+lightweight allowlists are stale for several presets (Nimbus/Skein/Aurora Veil/Dragon Bloom/Fata Morgana/
+Staged Sandbox) and the test only passes because it skips when the Shaders bundle isn't accessible — a
+cert guard that doesn't run; and this file's §1/the sidecar `description` + `stem_affinity` still describe
+the deferred uplifts (thin-film / smooth-Voronoi / per-stem routing) rather than what shipped (energy/
+beat/harmony coupling). Both flagged to Matt.
