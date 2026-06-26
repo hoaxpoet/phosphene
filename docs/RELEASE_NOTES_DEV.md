@@ -10,6 +10,15 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-26-180650] NACRE.5 — Nacre sidecar metadata honesty (`description` + `stem_affinity`)
+
+`Nacre.json`'s `description` and `stem_affinity` described deferred uplifts that never shipped (per-stem instrument routing, thin-film iridescence, smooth-Voronoi cells) rather than the energy/beat/harmony coupling that actually landed in NACRE.3/.4. Corrected — **metadata-only, no shader/renderer change**:
+
+- **`description`** now states the shipped coupling: hue ← harmony (spectral-centroid deviation → palette phase), turning ← overall energy (avg-stem-energy → continuous swirl), a display-stage downbeat camera push (`barPhase01`), and the continuous bands → zoom/sway/grain. Nacre responds to **overall energy + beat + harmony, not specific stems**. The un-shipped thin-film / smooth-Voronoi / per-stem claims are removed.
+- **`stem_affinity`** was `{vocals:core, bass:swell_kick, drums:rim_sparkle, other:iridescence}` — only `bass` was loosely accurate (and via the bass *band*, not the stem); vocals→core was cut (the voice glow read as blinding), drums→rim and other→iridescence were never built. `PresetScorer.stemAffinitySubScore` reads only the affinity **keys** (the value strings are documentation), so those four false keys mis-steered planning toward tracks where every stem peaks. Set to **empty `{}`** → Nacre is **stem-agnostic** (Matt's product call 2026-06-26): the planner matches it on mood/energy/section, and an empty dict scores a tested-neutral 0.5.
+
+Verification: app build SUCCEEDED; `PresetRegression` 4/4 + preset-load / affinity-scoring suites green; `Nacre.json` validates. Docs: `NACRE_PLAN.md §12`, `ENGINEERING_PLAN.md` (NACRE.5 row). Worktree branch only; not pushed.
+
 ## [dev-2026-06-25-220441] BUG-061 root cause corrected — Nacre crash is a preset-apply race (the BUG-060 class), not reduced motion
 
 Supersedes the diagnosis in `[dev-2026-06-25-211735]`. Matt confirmed macOS Reduce Motion was **off**, falsifying my first diagnosis (which I'd inferred from the crash path without verifying the precondition — a mistake). The **real** root cause: `applyPreset` runs on the main thread and clears `activePasses` to `[]` before republishing the new preset's passes at its very end, while `draw(in:)` runs concurrently on MTKView's CVDisplayLink thread (hence the per-field locks in `renderFrame`). A frame that lands in that swap window sees **empty passes + the new preset's already-published direct pipeline** → `renderFrame` falls through to `drawDirect`, which renders that pipeline to the 8-bit drawable. For 8-bit presets that's a benign stray frame (the intermittent, never-reproduced **BUG-060** Gossamer render-death); for Nacre's `.rgba16Float` direct pipeline → 8-bit drawable it's a hard attachment-format mismatch → GPU abort (Metal-validation-gated; the Debug build has validation on). **Nacre is the deterministic reproducer BUG-060 never had.**

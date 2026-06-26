@@ -242,6 +242,11 @@ field visibly *surges with the beat*. Matt M7: "looking good… comfortable with
 **Follow-ups surfaced (separate, NOT NACRE.4):** `PresetDescriptorRubricFieldsTests`' certified +
 lightweight allowlists are stale for several presets (Nimbus/Skein/Aurora Veil/Dragon Bloom/Fata Morgana/
 Staged Sandbox) and the test only passes because it skips when the Shaders bundle isn't accessible — a
-cert guard that doesn't run; and this file's §1/the sidecar `description` + `stem_affinity` still describe
-the deferred uplifts (thin-film / smooth-Voronoi / per-stem routing) rather than what shipped (energy/
-beat/harmony coupling). Both flagged to Matt.
+cert guard that doesn't run (**STILL OPEN**, flagged to Matt).
+
+The sidecar `description` + `stem_affinity` were corrected in **NACRE.5** (2026-06-26): the description now
+states the shipped energy/beat/harmony coupling (the deferred thin-film / smooth-Voronoi / per-stem-routing
+claims removed), and `stem_affinity` is **empty** — Nacre is **stem-agnostic** (Matt's call: the planner
+matches it on mood/energy/section, not a fictional per-stem routing; the scorer reads only affinity *keys*,
+so an empty dict scores neutral 0.5). §1's musical-role is left verbatim as original *design intent* —
+§10–12 are the as-built reconciliation, and the plan is not retconned.
