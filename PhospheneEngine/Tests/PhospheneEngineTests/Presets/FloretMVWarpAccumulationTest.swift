@@ -94,6 +94,27 @@ struct FloretMVWarpAccumulationTest {
                 "Floret field whites out (\(Int(stats.saturatedFraction * 100))% saturated) — over-accumulation.")
     }
 
+    // MARK: - Flash-safety sentry (FLORET.2b — the ~0.5 Hz radial-pulse breath must not strobe)
+
+    @Test("Floret's radial-pulse breath stays below the flash band (bounded per-frame luma delta)")
+    @MainActor
+    func test_flashSafety_pulseBelowFlashBand() throws {
+        guard let ctx = try? MetalContext() else {
+            Issue.record("No Metal device — cannot run the flash-safety sentry"); return
+        }
+        // 150 frames (>2 pulse cycles at 60 fps) at silence. The comp's radial pulse is
+        // time-driven at ~0.5 Hz — well below the ≥3 Hz flash band — so the WHOLE-FRAME mean
+        // luma must change only gradually frame-to-frame. A large per-frame jump would mean a
+        // strobe (the source's near-black↔bright swing) and the cert flash gate (FLORET.4)
+        // would red. Lightweight 2b sentry; the Harding multi-pass gate comes at FLORET.4.
+        var lumas: [Float] = []
+        _ = try Self.runFloret(ctx: ctx, width: 192, height: 128, frames: 150, energy: 0,
+                               perFrame: { lumas.append(Self.frameStats($0).meanLuma) })
+        let maxDelta = zip(lumas, lumas.dropFirst()).map { abs($1 - $0) }.max() ?? 0
+        #expect(maxDelta < 0.06,
+                "Floret per-frame mean-luma jump \(maxDelta) exceeds the flash bound — the radial pulse is strobing, not breathing (D-157).")
+    }
+
     // MARK: - Reduced-motion regression (BUG-061: 16-float direct pipeline → 8-bit drawable crash)
 
     @Test("Floret reduced-motion frame renders to the 8-bit drawable format without a format mismatch")
@@ -141,7 +162,8 @@ struct FloretMVWarpAccumulationTest {
     /// constant band level (dev preview only). Returns nil on setup failure.
     @MainActor
     static func runFloret(ctx: MetalContext, width: Int, height: Int, frames: Int,
-                          energy: Float, reducedMotion: Bool = false) throws -> MTLTexture? {
+                          energy: Float, reducedMotion: Bool = false,
+                          perFrame: ((MTLTexture) -> Void)? = nil) throws -> MTLTexture? {
         let lib = try ShaderLibrary(context: ctx)
         let texMgr = try TextureManager(context: ctx, shaderLibrary: lib)
         let floatStride = MemoryLayout<Float>.stride
@@ -195,6 +217,7 @@ struct FloretMVWarpAccumulationTest {
                 Issue.record("Floret frame \(i) command buffer error (format mismatch?): \(err)")
                 return display
             }
+            perFrame?(display)
         }
         return display
     }
