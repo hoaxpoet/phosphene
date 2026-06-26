@@ -44,7 +44,7 @@ constant float  kGlazePokeRadius = 0.2;                  // source pixel_eqs `r 
 // The source runs decay 1.0 on an 8-bit feedback whose quantisation + butterchurn dynamics
 // bound the R-channel +0.006 grow; on our float buffer that grow floods to white (the Nacre
 // float-bloom lesson). A gentle decay equilibrates R at ~0.006·d/(1−d) instead of saturating.
-constant float  kGlazeWarpDecay = 0.93;
+constant float  kGlazeWarpDecay = 0.96;   // persistence = how many nested seed-rings the zoom accretes
 
 // MARK: - Palette (the source's saturated neon rotation; substitutes butterchurn hue_shader)
 // Slow red→green→teal→violet drift. Values in [0.2, 1.0] so the comp's `pow(hue, g9)` mix
@@ -185,10 +185,16 @@ fragment float4 glaze_warp_fragment(
     float3 gy  = blur1.sample(s, uv1 + float2(0, g.y)).rgb - blur1.sample(s, uv1 - float2(0, g.y)).rgb;
 
     float3 ret;
-    // R: flow along the red gradient, unsharp against blur2, slow grow (self-seed).
-    float2 flow = fract(uv1 - float2(gx.x, gy.x) * gu.texel);
+    float2 flow = fract(uv1 - float2(gx.x, gy.x) * gu.texel);   // sample prev along the red gradient
+    // R = the advected feedback ONLY. NO in-warp unsharp (the GLAZE.2b.2 grain root cause):
+    // the source's `(main−blur2)*0.4` unsharp is a high-pass boost with feedback gain > 1, so on
+    // our float buffer it compounds into a razor-filament sharpening instability = the grain (the
+    // source's 8-bit storage quantizes the runaway; we can't). Sharpening is DISPLAY-only — the
+    // comp embosses the smooth feedback into the gel sheen, never fed back. And NO +0.006 uniform
+    // grow (it floods the ground grey + isn't needed — the explicit curve seed below provides the
+    // structure; dropping it keeps the oracle's dark ground). The rings come from persistence:
+    // the zoom carries each frame's seed outward, the decay sets how many nested rings persist.
     ret.x = prev.sample(s, flow).x;
-    ret.x = ret.x + (ret.x - blur2.sample(s, flow).x) * 0.4 + 0.006;
     // B: max(blur1 edge threshold, B flowed along perp + blue gradient, decay −0.008).
     float2 perp = float2(gy.x, -gx.x);
     float2 gz   = float2(gx.z, gy.z);
@@ -207,7 +213,11 @@ fragment float4 glaze_warp_fragment(
     float yCurve = 0.5 + 0.16 * sin(in.uv.x * 8.0 + gu.time * 0.6)
                        + 0.07 * sin(in.uv.x * 15.0 - gu.time * 0.4);
     float dCurve = in.uv.y - yCurve;
-    float seed = exp(-dCurve * dCurve * 500.0) * 0.12;
+    // A bright curve (the waveform) + a faint LOW-frequency noise field. The noise now fills the
+    // frame with smooth contour variation the zoom accretes into nested rings — safe only because
+    // the unsharp instability is gone (it would have amplified any noise into grain before).
+    float seed = exp(-dCurve * dCurve * 500.0) * 0.12
+               + (glazeValueNoise(in.uv * 2.0 + gu.time * 0.03) - 0.5) * 0.03;
     ret.x += seed; ret.y += seed;
 
     // Bounding decay (the float-bloom fix; the source's 8-bit storage bounded this implicitly).
