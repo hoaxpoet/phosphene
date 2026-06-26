@@ -154,7 +154,11 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// energy, ~0.16 s) — drives the comp's central core glow (the connection; display-only
     /// so it can't smear). `nacreSeedEMA` is the SLOW (~0.5 s) total-energy envelope driving
     /// the WARP's core SEED, kept near-steady so the fed-back seed never flares into smears.
-    var nacreCoreEMA: Float = 0, nacreSeedEMA: Float = 0
+    /// `nacreFullnessEMA`: smoothed stem-fullness (avg of the four stem energies, ~0.3 s) —
+    /// rolls the downbeat pulse off when the FULL BAND is in (the bright field already
+    /// carries the excitement; the pulse multiply would white-clip the rims). The band
+    /// average is blind to full-band entries — the energy is in the stems (Matt M7).
+    var nacreCoreEMA: Float = 0, nacreSeedEMA: Float = 0, nacreFullnessEMA: Float = 0
 
     // MARK: - Live Audio Features
 
