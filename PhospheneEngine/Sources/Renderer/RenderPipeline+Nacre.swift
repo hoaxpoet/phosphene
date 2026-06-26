@@ -30,7 +30,7 @@ struct NacreUniforms {
     var hueShift: Float = 0            // NACRE.3: harmony → palette-phase nudge (seconds), bounded
     var texel: SIMD2<Float> = .init(1, 1)
     var voiceLevel: Float = 0          // NACRE.3: vocal envelope → the comp's display-stage core glow
-    var barPulse: Float = 0            // NACRE.3: downbeat pulse → display-stage rhythmic accent
+    var spin: Float = 0                // NACRE.3: energy → continuous warp rotation (turning ← music)
     var aspect: SIMD4<Float> = .init(1, 1, 1, 1)
     // Fixed per-load random (the comp's tint + dz-scale character). Chosen in the
     // green-gold register the (431) reference sits in (tint 1+rand ≈ (1.62,1.74,1.30)).
@@ -45,13 +45,18 @@ struct NacreUniforms {
 // the ~14 s palette cycle — a subtle colour drift, not a hue meter. Both are feel knobs.
 private let kNacreHueGain: Float = 40.0
 private let kNacreHueBound: Float = 1.5
+// Turning ← energy. `spin` is radians/frame of continuous warp rotation. At ~60 fps the
+// peak envelope (~0.55 − floor 0.18 = 0.37) × gain 0.012 ≈ 0.0044 rad/frame ≈ 15°/s (a full
+// turn ~24 s); the quietest passages sit near-still. Both are feel knobs (Matt tunes live).
+private let kNacreSpinGain: Float = 0.012
+private let kNacreSpinFloor: Float = 0.18
 
 extension RenderPipeline {
 
     // MARK: Per-frame uniforms
 
-    /// Compute the Nacre warp/comp uniforms for this frame. Pure (time + drawable size +
-    /// features.trebleDev) — no stateful accumulators.
+    /// Compute the Nacre warp/comp uniforms for this frame. Holds smoothing accumulators
+    /// (`nacreSeedEMA`/`nacreCoreEMA`/`nacreSpinEMA`/`nacreHueEMA`) — the audio routes.
     @MainActor
     func computeNacreUniforms(features: FeatureVector, stems: StemFeatures) -> NacreUniforms {
         var uni = NacreUniforms()
@@ -76,27 +81,22 @@ extension RenderPipeline {
         nacreCoreEMA += (voiceTarget - nacreCoreEMA) * 0.10
         uni.voiceLevel = nacreCoreEMA
 
-        // ── Downbeat pulse (NACRE.3) — the "events on the bar" half of the connection ──
-        // The 5 continuous-energy routes fire but sit below the perceptual threshold against
-        // the preset's autonomous motion (Matt M7: "not perceiving any connection"). Rhythm
-        // is what the eye reads as connected. A sharp-attack / bar-decay accent on the cached
-        // BeatGrid's barPhase01 (1 at the downbeat → 0 over the bar), applied DISPLAY-stage in
-        // the comp (no smear) — bar-rate so it breathes, not strobes. Static (no pulse) on
-        // beatless tracks (barPhase01 doesn't advance). Couple to the bar, not the beat (Matt).
-        //
-        // …but roll it OFF as the full band comes in (Matt M7: "still too bright at really
-        // excited stages, like when the full band comes in for Cherub Rock"). The pulse is a
-        // brightness multiply; on a loud full-band field it pushes the rims to white-clip. The
-        // band average is BLIND to that moment (≈0.14 at the full-band entry — all the energy
-        // is in the STEMS, which jump together to ~0.55), so drive the rolloff off stem
-        // fullness, not bands. Window [0.35→0.55]: the track's median (0.32) keeps the full
-        // pulse; only the top ~10% (p90 0.50, p99 0.77) backs off — to ~30% depth at the peak,
-        // where the bright, busy field carries the excitement on its own.
+        // ── Turning speed ← the music's energy (NACRE.3) — motion, not brightness ──
+        // The downbeat brightness pulse read as a flash on the bright iridescent field no
+        // matter how it was tuned (Matt M7: "the pulse is accurate, but the brightness is
+        // still bothersome"). Nacre speaks in flow + swirl, so move the connection into the
+        // lever Matt named — the field's TURNING. `nu.spin` is a continuous per-frame rotation
+        // the warp adds to its swirl: the molten field turns faster as the music fills out,
+        // slower when sparse. Driven off avgStem (full-band-aware — bands are BLIND to full-band
+        // entries, ≈0.14 there; the energy lives in the stems, which jump together to ~0.55) on
+        // a smooth ~0.5 s envelope, so it reads as intensity, not the per-beat jerk of the first
+        // port. The floor keeps the quietest passages near-still; the spin ACCUMULATES (the warp
+        // re-samples the already-spun feedback) so even a small rate reads as a clear swirl.
+        // ~2× envelope swing across this song's arc (p10 0.27 → p90 0.55, session 15-44-34Z).
         let avgStem = max(0, (stems.drumsEnergy + stems.bassEnergy
                               + stems.vocalsEnergy + stems.otherEnergy) * 0.25)
-        let fullness = max(0, min(1, (avgStem - 0.35) / 0.20))
-        nacreFullnessEMA += (fullness - nacreFullnessEMA) * 0.05     // ~0.3 s, no flicker
-        uni.barPulse = pow(max(0, 1 - features.barPhase01), 2.5) * (1 - 0.7 * nacreFullnessEMA)
+        nacreSpinEMA += (avgStem - nacreSpinEMA) * 0.03               // ~0.5 s — tracks the song's arc
+        uni.spin = kNacreSpinGain * max(0, nacreSpinEMA - kNacreSpinFloor)
 
         // ── Hue ← harmony (NACRE.3) ──────────────────────────────────────────────
         // Nudge the palette PHASE (a subtle drift on top of the slow time-rotation, NOT a
