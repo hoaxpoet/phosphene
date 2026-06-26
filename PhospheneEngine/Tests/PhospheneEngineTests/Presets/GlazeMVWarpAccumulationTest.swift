@@ -121,6 +121,98 @@ struct GlazeMVWarpAccumulationTest {
                 "Glaze field whites out (\(Int(stats.saturatedFraction * 100))% saturated) — over-accumulation.")
     }
 
+    // MARK: - GLAZE.3a anchor route (audio → spring anchor → swirl-poke); §6 routing table
+
+    /// Drive `computeGlazeUniforms` for `frames` frames at a CONSTANT audio level (deviation
+    /// primitives set directly) and return the final spring state. Resets the spring + EMAs
+    /// first so runs are independent. CPU-only — the route is CPU-side, no GPU dispatch.
+    @MainActor
+    private static func driveAnchor(_ pipeline: RenderPipeline, frames: Int,
+                                    bassDev: Float = 0, trebDev: Float = 0,
+                                    bassRel: Float = 0, trebRel: Float = 0) -> GlazeSpring {
+        pipeline.glazeSpring = GlazeSpring()   // also zeroes the anchor-drive EMAs
+        for i in 0..<frames {
+            var f = FeatureVector.zero
+            f.deltaTime = deltaTime
+            f.time = Float(i) * deltaTime
+            f.bassDev = bassDev; f.trebDev = trebDev
+            f.bassRel = bassRel; f.trebRel = trebRel
+            _ = pipeline.computeGlazeUniforms(features: f, stems: .zero)
+        }
+        return pipeline.glazeSpring
+    }
+
+    @MainActor
+    private static func makePipeline(_ ctx: MetalContext) throws -> RenderPipeline? {
+        let lib = try ShaderLibrary(context: ctx)
+        let floatStride = MemoryLayout<Float>.stride
+        guard let fft = ctx.makeSharedBuffer(length: 512 * floatStride),
+              let wav = ctx.makeSharedBuffer(length: 2048 * floatStride) else { return nil }
+        return try RenderPipeline(context: ctx, shaderLibrary: lib, fftBuffer: fft, waveformBuffer: wav)
+    }
+
+    /// Mechanism gate (always run): the §6 anchor routing fires in the right directions —
+    /// bass deviation swings the tail one way, treble the other (opposite directions of the one
+    /// anchor axis), and sustained energy lifts it. Deterministic; the identical idle sine runs
+    /// in every case, so the only difference is the audio term. No real-audio claim (FA #27) —
+    /// that's the session-replay test below + Matt's live M7.
+    @Test("GLAZE.3a: bass deviation swings the anchor one way, treble the other, energy lifts it")
+    @MainActor
+    func test_anchorRoute_directionalDeflection() throws {
+        guard let ctx = try? MetalContext() else { Issue.record("No Metal device"); return }
+        guard let pipeline = try Self.makePipeline(ctx) else { Issue.record("pipeline setup failed"); return }
+
+        let frames = 300
+        let bassRun = Self.driveAnchor(pipeline, frames: frames, bassDev: 1.0)
+        let trebRun = Self.driveAnchor(pipeline, frames: frames, trebDev: 1.0)
+        let silentRun = Self.driveAnchor(pipeline, frames: frames)
+        let energyRun = Self.driveAnchor(pipeline, frames: frames, bassRel: 0.8, trebRel: 0.8)
+
+        // Lateral swing: bass and treble pull the tail to OPPOSITE sides of the one anchor axis.
+        #expect(bassRun.x4 - trebRun.x4 > 0.05,
+                "bass/treble should split the tail laterally (bass x4=\(bassRun.x4), treble x4=\(trebRun.x4))")
+        // Lift: sustained energy raises the anchor → the tail rides clear of the silence (gravity) rest.
+        #expect(energyRun.y4 - silentRun.y4 > 0.02,
+                "energy should lift the tail above the silence rest (energy y4=\(energyRun.y4), silent y4=\(silentRun.y4))")
+    }
+
+    /// Session-replay evidence (env-gated GLAZE_SESSION_CSV=<features.csv>): drive the REAL
+    /// recorded features through the route and confirm the jelly actually moves on music — the
+    /// FA #27-compliant evidence the closeout cites (synthetic envelopes don't prove real-audio
+    /// firing). NB the current `features.csv` records only bass Rel/Dev (not treble) → this is
+    /// bass + energy evidence; the treble direction is covered by the mechanism gate above.
+    @Test("GLAZE.3a: real-session replay — the anchor moves on recorded music (env-gated)")
+    @MainActor
+    func test_anchorRoute_realSessionReplay() throws {
+        guard let csvPath = ProcessInfo.processInfo.environment["GLAZE_SESSION_CSV"] else {
+            print("GlazeMVWarpAccumulationTest: GLAZE_SESSION_CSV not set, skipping real-session replay")
+            return
+        }
+        guard let audio = Self.sessionAudioRows(path: csvPath), !audio.isEmpty else {
+            Issue.record("Could not parse \(csvPath) (missing bassDev/bassRel?)"); return
+        }
+        guard let ctx = try? MetalContext() else { Issue.record("No Metal device"); return }
+        guard let pipeline = try Self.makePipeline(ctx) else { Issue.record("pipeline setup failed"); return }
+        pipeline.glazeSpring = GlazeSpring()   // also zeroes the anchor-drive EMAs
+
+        var pokeXs: [Float] = []; var tailYs: [Float] = []; var maxBassDev: Float = 0
+        for (i, r) in audio.enumerated() {
+            var fv = FeatureVector.zero
+            fv.deltaTime = Self.deltaTime; fv.time = Float(i) * Self.deltaTime
+            fv.bassDev = r.x; fv.bassRel = r.y; fv.trebDev = r.z; fv.trebRel = r.w
+            let uni = pipeline.computeGlazeUniforms(features: fv, stems: .zero)
+            pokeXs.append(uni.pokeCenter.x); tailYs.append(pipeline.glazeSpring.y4)
+            maxBassDev = max(maxBassDev, r.x)
+        }
+        let xMin = pokeXs.min() ?? 0, xMax = pokeXs.max() ?? 0
+        let yMin = tailYs.min() ?? 0, yMax = tailYs.max() ?? 0
+        print("[glaze_replay] frames=\(pokeXs.count) maxBassDev=\(maxBassDev) " +
+              "pokeX=[\(xMin),\(xMax)] span=\(xMax - xMin) tailY=[\(yMin),\(yMax)] span=\(yMax - yMin)")
+        // The jelly must sweep a meaningful fraction of the field on real music (not a static point).
+        #expect(xMax - xMin > 0.05, "anchor barely moved on real audio (pokeX span \(xMax - xMin)) — route not firing")
+        #expect(yMax - yMin > 0.02, "tail lift barely moved on real audio (tailY span \(yMax - yMin))")
+    }
+
     // MARK: - Reduced-motion regression (BUG-061: 16-float direct pipeline → 8-bit drawable)
 
     @Test("Glaze reduced-motion frame renders to the 8-bit drawable format without a format mismatch")
@@ -150,8 +242,12 @@ struct GlazeMVWarpAccumulationTest {
         // DEV PREVIEW ONLY (FA #27): with no real session in the worktree, GLAZE_ENERGY
         // injects a constant band energy so the seed can be eyeballed. Real-audio = Matt's M7.
         let energy = ProcessInfo.processInfo.environment["GLAZE_ENERGY"].flatMap { Float($0) } ?? 0
+        // GLAZE.3a: GLAZE_SESSION_CSV=<features.csv> drives the deviation-primitive route from a
+        // REAL recorded session (the FA #27-correct render evidence for the audio coupling).
+        let audio = ProcessInfo.processInfo.environment["GLAZE_SESSION_CSV"].flatMap { Self.sessionAudioRows(path: $0) }
+        if let audio { print("[glaze_diag] driving \(audio.count) real-session frames (deviation route)") }
         guard let display = try Self.runGlaze(ctx: ctx, width: wPix, height: hPix,
-                                              frames: frames, energy: energy) else {
+                                              frames: frames, energy: energy, audio: audio) else {
             Issue.record("Glaze render setup failed"); return
         }
         let outDir = FileManager.default.temporaryDirectory.appendingPathComponent("glaze_mvwarp_diag")
@@ -168,7 +264,8 @@ struct GlazeMVWarpAccumulationTest {
     /// `energy` is dev-preview only). Returns nil on setup failure.
     @MainActor
     static func runGlaze(ctx: MetalContext, width: Int, height: Int, frames: Int,
-                         energy: Float, reducedMotion: Bool = false) throws -> MTLTexture? {
+                         energy: Float, reducedMotion: Bool = false,
+                         audio: [SIMD4<Float>]? = nil) throws -> MTLTexture? {
         let lib = try ShaderLibrary(context: ctx)
         let texMgr = try TextureManager(context: ctx, shaderLibrary: lib)
         let floatStride = MemoryLayout<Float>.stride
@@ -206,6 +303,12 @@ struct GlazeMVWarpAccumulationTest {
             feat.deltaTime = deltaTime
             feat.time = Float(i) * deltaTime
             feat.bass = energy; feat.mid = energy; feat.treble = energy   // dev preview only
+            // GLAZE.3a render evidence: drive the deviation-primitive route from a REAL session
+            // (the synthetic `energy` knob can't — it sets absolute bands, not bassDev/bassRel).
+            if let audio, !audio.isEmpty {
+                let r = audio[min(i, audio.count - 1)]
+                feat.bassDev = r.x; feat.bassRel = r.y; feat.trebDev = r.z; feat.trebRel = r.w
+            }
             guard let cmd = ctx.commandQueue.makeCommandBuffer(),
                   let warpState = pipeline.mvWarpState else { return display }
             if reducedMotion {
@@ -267,6 +370,25 @@ struct GlazeMVWarpAccumulationTest {
     enum GlazeDiagError: Error { case pngFailed }
 
     // MARK: - Helpers
+
+    /// Parse a recorded `features.csv` into per-frame (bassDev, bassRel, trebDev, trebRel) rows
+    /// for the GLAZE.3a route evidence. Columns located by NAME (schema-drift-tolerant); treble
+    /// Rel/Dev are absent in the current schema → 0 (bass + energy evidence). nil on missing file.
+    static func sessionAudioRows(path: String) -> [SIMD4<Float>]? {
+        guard let csv = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+        var lines = csv.split(separator: "\n").map(String.init)
+        guard lines.count > 1 else { return nil }
+        let header = lines.removeFirst().split(separator: ",").map(String.init)
+        func col(_ n: String) -> Int? { header.firstIndex(of: n) }
+        guard let iBassDev = col("bassDev"), let iBassRel = col("bassRel") else { return nil }
+        let iTrebDev = col("trebDev"), iTrebRel = col("trebRel")
+        return lines.compactMap { line -> SIMD4<Float>? in
+            let f = line.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+            guard f.count > iBassDev else { return nil }
+            func v(_ i: Int?) -> Float { i.flatMap { $0 < f.count ? Float(f[$0]) : nil } ?? 0 }
+            return SIMD4<Float>(v(iBassDev), v(iBassRel), v(iTrebDev), v(iTrebRel))
+        }
+    }
 
     private static func shaderURL(_ name: String) -> URL {
         URL(fileURLWithPath: #filePath)
