@@ -27,15 +27,21 @@ GLAZE_MVWARP_DIAG=1 GLAZE_W=600 GLAZE_H=450 GLAZE_FRAMES=600 GLAZE_ENERGY=0 \
 
 ## View it live (the real M7 — production render pipeline)
 
-1. Open this worktree's `PhospheneApp.xcodeproj` in Xcode → **Run (⌘R)** (a Debug build — the preset-cycle
-   shortcuts are `#if DEBUG`). Build is green (app 388 tests, lint 0).
-   *(Worktree builds can't do Spotify — empty client ID. Use a local file.)*
-2. Play a **local audio file** (the app's local-file feature). The base is time-driven, so even at silence/
-   pause it renders alive.
-3. Press **⌘]** to cycle presets (bypasses the orchestrator; a toast names each — "Preset → Glaze"). Keep
-   pressing until you land on **Glaze** (it's uncertified, so the planner won't pick it on its own; the
-   manual cycle holds it for the track). ⌘[ goes back.
-4. Compare against the motion reference: `docs/VISUAL_REFERENCES/glaze/target_animated.gif`.
+**⚠️ Run the WORKTREE build, not your usual app.** Glaze only exists on this worktree branch — your
+primary/canonical app (on `main`) has no Glaze, which is why cycling showed nothing. A fresh worktree build
+is ready (verified: its bundled `Glaze.metal` is byte-identical to the current source). Open it directly:
+
+```sh
+open ~/Library/Developer/Xcode/DerivedData/PhospheneApp-fjevhlmowimaxjdcdeahnfybpseg/Build/Products/Debug/PhospheneApp.app
+```
+(Or open *this worktree's* `PhospheneApp.xcodeproj` in Xcode → ⌘R — it uses the same DerivedData.) It's a
+Debug build, so the preset-cycle shortcuts are live. *(Worktree builds can't do Spotify — use a local file.)*
+
+1. Play a **local audio file** (the app's local-file feature). The base is time-driven, so it renders alive.
+2. Press **⌘]** to cycle presets (bypasses the orchestrator; a toast names each — "Preset → Glaze"). It's
+   one of 22; keep pressing until the toast says **Glaze** (uncertified, so the planner won't pick it itself;
+   the manual cycle holds it for the track). ⌘[ goes back.
+3. Compare against the motion reference: `docs/VISUAL_REFERENCES/glaze/target_animated.gif`.
 
 ## Tuning levers (so your feedback maps to a knob)
 
