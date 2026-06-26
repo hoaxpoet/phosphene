@@ -121,9 +121,9 @@ share a primitive at a timescale.
 
 | ID | Outcome | Done-when |
 |---|---|---|
-| **GLAZE.1** ✅ | Design + reference curation (**this increment**). | ✅ references curated, source decoded, plan written; name + scope greenlit by Matt. |
-| **GLAZE.2a** | Blur-pyramid extension + wire a STUB preset, test-reachable. | App+engine build clean; accumulation test runs the live warp→comp→swap path ≥60 frames at silence without white-out; loads + renders non-black. |
-| **GLAZE.2b** | Port the FAITHFUL BASE (spring + warp + comp + gel sheen + seed) at silence/time-driven. | Side-by-side reads as the glossy contour-jelly; spring idles alive at silence; → Matt live M7. |
+| **GLAZE.1** ✅ | Design + reference curation. | ✅ references curated, source decoded, plan written; name + scope greenlit by Matt. |
+| **GLAZE.2a** ✅ | Wire the dedicated Glaze branch + STUB shaders, test-reachable. **Blur-pyramid deferred to 2b** (its shader consumers + the 3-level state extension land together — no speculative unused infra; re-scope from the original "blur in 2a"). | ✅ engine+app build clean, swiftlint strict 0; `GlazeMVWarpAccumulationTest` runs the live warp→comp→swap path 64 frames at silence — non-black + no white-out; reduced-motion BUG-061-safe; PresetRegression + Nacre/FM accumulation byte-identical. |
+| **GLAZE.2b** | **Blur-pyramid extension (3-level)** + port the FAITHFUL BASE (spring warp center + emboss/sheen comp + seed) at silence/time-driven. | Side-by-side reads as the glossy contour-jelly; spring idles alive at silence; → Matt live M7. |
 | **GLAZE.3** | Base audio coupling (§6, one route at a time). | Each route's firing shown in session-replay (`features.csv`); one-primitive-per-layer holds; M7. |
 | **GLAZE.4** | Tune the faithful base to **base cert / live M7 confirmed**. | Matt live M7 sign-off on the base (gate for uplifts, FA #65). |
 | **GLAZE.5 (A)** | Uplift A — per-stem instrument routing into the spring. | Per-stem firing in session-replay; one-primitive-per-layer holds; M7. |
