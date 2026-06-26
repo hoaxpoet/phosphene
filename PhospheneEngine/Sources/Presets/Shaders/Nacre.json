@@ -22,6 +22,6 @@
   "transition_affordances": ["crossfade", "morph"],
   "section_suitability": ["buildup", "bridge", "comedown"],
   "complexity_cost": { "tier1": 2.0, "tier2": 1.0 },
-  "certified": false,
+  "certified": true,
   "rubric_profile": "lightweight"
 }
