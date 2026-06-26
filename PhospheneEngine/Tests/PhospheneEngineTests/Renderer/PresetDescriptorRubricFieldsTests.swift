@@ -6,7 +6,7 @@
 //   2. Round-trip Codable: certified + rubric_profile + rubric_hints encode then decode.
 //   3. Malformed rubric_profile: unknown string falls back to .full with a warning.
 //   4. Lightweight preset classification: rubric_profile "lightweight" decodes correctly.
-//   5. All 13 production sidecars decode without warnings (certified: false, correct profiles).
+//   5. All built-in sidecars decode; any declared rubric_profile is a known value.
 //   6. rubric_hints hero_specular and dust_motes decode from JSON.
 
 import Testing
@@ -69,52 +69,41 @@ import Foundation
     #expect(d.rubricProfile == .lightweight)
 }
 
-// MARK: - 5. All 13 production sidecars decode correctly
+// MARK: - 5. All built-in sidecars decode; declared profiles are valid
 
 @Test func presetDescriptorRubric_allBuiltInPresetsHaveCertificationFields() throws {
-    guard let shadersURL = Bundle.module.url(forResource: "Shaders", withExtension: nil) else {
-        return  // Shaders bundle not accessible from this test target — skip gracefully
-    }
-    let contents = try FileManager.default.contentsOfDirectory(
+    // `Bundle.module` is module-scoped: from this test target it resolves to the
+    // test bundle, which has no `Shaders` resource, so this guard used to skip
+    // silently (BUG-002). `PresetLoader.bundledShadersURL` runs the same lookup
+    // inside the Presets module, where the resource lives, so the guard enforces
+    // instead of skipping. (Don't "fix" this by copying Shaders into the test
+    // target — there's no such directory under Tests/, and it would duplicate the
+    // whole shader corpus.)
+    let shadersURL = try #require(PresetLoader.bundledShadersURL,
+        "Shaders resource not found via PresetLoader.bundledShadersURL")
+    let jsonFiles = try FileManager.default.contentsOfDirectory(
         at: shadersURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
-    )
-    let jsonFiles = contents.filter { $0.pathExtension == "json" }
+    ).filter { $0.pathExtension == "json" }
     #expect(jsonFiles.count >= 13, "Expected at least 13 JSON sidecars")
 
-    // NOTE (NACRE.4): this set is STALE for several presets vs their JSON sidecars (e.g.
-    // Aurora Veil / Dragon Bloom / Fata Morgana / Skein / Staged Sandbox declare lightweight
-    // but are absent here). It has only been green because the test skips when the Shaders
-    // bundle isn't bundle-accessible (line ~76). Nacre added here for its certification;
-    // the broader reconciliation is a separate follow-up (surfaced to Matt).
-    let lightweightExpected: Set<String> = ["Plasma", "Waveform", "Nebula", "Spectral Cartograph", "Murmuration", "Nacre"]
+    // The certified-flag ground truth is owned and enforced against the real rubric
+    // pipeline by FidelityRubricTests.automatedGate_uncertifiedPresetsAreUncertified
+    // (its `certifiedPresets` set). Duplicating that list here is exactly what let
+    // it go stale, so this test no longer mirrors it. We assert only schema
+    // integrity over the real corpus: every sidecar decodes, and any declared
+    // rubric_profile is a known value — i.e. nothing silently fell back to .full
+    // from a typo'd string (the decoder's behaviour for an unknown profile).
     let decoder = JSONDecoder()
-    var loaded = 0
-
     for jsonURL in jsonFiles {
         let data = try Data(contentsOf: jsonURL)
         let descriptor = try decoder.decode(PresetDescriptor.self, from: data)
-        loaded += 1
 
-        // Certified presets (Matt M7-approved): Lumen Mosaic, Ferrofluid Ocean, Dragon Bloom,
-        // Fata Morgana, Murmuration, Nacre (NACRE.4, 2026-06-26). NOTE: also STALE — Nimbus and
-        // Skein declare certified:true in their JSON but are absent here (the set has only been
-        // green because the test skips when the Shaders bundle isn't accessible). Reconciling
-        // Nimbus/Skein is a separate follow-up (surfaced to Matt). Everything else uncertified.
-        let certifiedExpected: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom",
-                                              "Fata Morgana", "Murmuration", "Nacre"]
-        #expect(descriptor.certified == certifiedExpected.contains(descriptor.name),
-                "\(descriptor.name): certified flag does not match the M7-approved set")
-
-        // Lightweight presets must declare the correct profile.
-        if lightweightExpected.contains(descriptor.name) {
-            #expect(descriptor.rubricProfile == .lightweight,
-                    "\(descriptor.name): expected rubric_profile: lightweight")
-        } else {
-            #expect(descriptor.rubricProfile == .full,
-                    "\(descriptor.name): expected rubric_profile: full (or missing)")
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        if let profileString = object?["rubric_profile"] as? String {
+            #expect(RubricProfile(rawValue: profileString) != nil,
+                    "\(descriptor.name): unknown rubric_profile \"\(profileString)\" (falls back to .full)")
         }
     }
-    #expect(loaded >= 13)
 }
 
 // MARK: - 6. rubric_hints decode
