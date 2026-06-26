@@ -32,7 +32,7 @@ struct GlazeUniforms {
     float  time;          // features.time — palette rotation
     float  coreEnergy;    // reserved (silence-floor lever; faithful warp self-seeds via +0.006)
     float  pokeStrength;  // pixel-eq poke scale (spring mass-3 x → `q3`)
-    float  pad0;
+    float  seedY;         // spring tail Y → the seed band's vertical centre (GLAZE.3b audio fill)
     float2 texel;         // (1/feedbackW, 1/feedbackH) = the source's texsize.zw
     float2 pokeCenter;    // spring tail position (cx1, cy1) — the swirl-poke centre
 };
@@ -208,10 +208,12 @@ fragment float4 glaze_warp_fragment(
     // the spring poke (the zoomexp carries it outward into concentric rings) + a faint
     // time-varying noise floor so the field is alive + structured at silence (D-019).
     // The seed is a CURVE (the source's waveform `wave_a 0.207`), not a point — the zoomexp flow
-    // rings a curve into nested CONCENTRIC contours (a point → radial rays). At silence a slow
-    // time-varying wiggly line stands in for the audio waveform; GLAZE.3 feeds the real one.
-    float yCurve = 0.5 + 0.16 * sin(in.uv.x * 8.0 + gu.time * 0.6)
-                       + 0.07 * sin(in.uv.x * 15.0 - gu.time * 0.4);
+    // rings a curve into nested CONCENTRIC contours (a point → radial rays). GLAZE.3b: the curve's
+    // vertical centre rides the audio-driven spring tail (`gu.seedY`), so the bright band sweeps
+    // the whole frame as the jelly bounces (filling the field); a slow time wiggle keeps it organic
+    // and alive when the tail idles at silence.
+    float yCurve = gu.seedY + 0.16 * sin(in.uv.x * 8.0 + gu.time * 0.6)
+                            + 0.07 * sin(in.uv.x * 15.0 - gu.time * 0.4);
     float dCurve = in.uv.y - yCurve;
     // A bright curve (the waveform) + a faint LOW-frequency noise field. The noise now fills the
     // frame with smooth contour variation the zoom accretes into nested rings — safe only because
