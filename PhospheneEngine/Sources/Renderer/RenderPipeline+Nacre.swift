@@ -52,15 +52,23 @@ extension RenderPipeline {
     /// Compute the Nacre warp/comp uniforms for this frame. Pure (time + drawable size +
     /// features.trebleDev) — no stateful accumulators.
     @MainActor
-    func computeNacreUniforms(features: FeatureVector) -> NacreUniforms {
+    func computeNacreUniforms(features: FeatureVector, stems: StemFeatures) -> NacreUniforms {
         var uni = NacreUniforms()
         let tSec = features.time
         uni.time = tSec
         uni.trebleGrain = max(0, features.trebDev)
-        // Overall volume → core brightness gate (faithful modwavealphabyvolume). 0 at
-        // silence (dim churn, dark ground); rises with the music (the hero core pulses).
-        let energy = max(0, (features.bass + features.mid + features.treble) / 3.0)
-        uni.coreEnergy = energy
+
+        // ── Core ← voice (NACRE.3) ───────────────────────────────────────────────
+        // The central light is the visual hero, the voice is the hero sound — pulse the
+        // core with the VOCALS stem (dynamic: phrases come and go) rather than the near-
+        // constant total volume that read as static (Matt M7: "not registering a
+        // connection"). A gentler total-energy floor keeps the core alive in instrumental
+        // sections; the warp's coreGate baseline holds it dim-but-visible at silence (D-019).
+        // Smoothed ~0.16 s — swells with the vocal phrasing, doesn't flicker.
+        let total = max(0, (features.bass + features.mid + features.treble) / 3.0)
+        let coreTarget = max(max(0, stems.vocalsEnergy), 0.35 * total)
+        nacreCoreEMA += (coreTarget - nacreCoreEMA) * 0.10
+        uni.coreEnergy = nacreCoreEMA
 
         // ── Hue ← harmony (NACRE.3) ──────────────────────────────────────────────
         // Nudge the palette PHASE (a subtle drift on top of the slow time-rotation, NOT a
@@ -71,8 +79,8 @@ extension RenderPipeline {
         //   · heavily smoothed + bounded → responds to the slow harmonic drift, not every
         //     note (Matt: half/quarter-time is fine). v1 uses the whole-mix centroid as the
         //     harmony proxy (chroma isn't available); can narrow to the `other` stem later.
-        let gate = max(0, min(1, (energy - 0.03) / 0.09))             // 0 at silence → 1 with music
-        if energy > 0.05 {                                            // track the norm only on signal
+        let gate = max(0, min(1, (total - 0.03) / 0.09))              // 0 at silence → 1 with music
+        if total > 0.05 {                                            // track the norm only on signal
             nacreCentroidNorm += (features.spectralCentroid - nacreCentroidNorm) * 0.003   // ~5 s
         }
         let dev = (features.spectralCentroid - nacreCentroidNorm) * gate
@@ -136,7 +144,7 @@ extension RenderPipeline {
         warpState: MVWarpState,
         target: MTLTexture
     ) {
-        var uni = computeNacreUniforms(features: features)
+        var uni = computeNacreUniforms(features: features, stems: stemFeatures)
 
         // ── Warp pass: warp(prev, u) → composeTexture ─────────────────────────
         let wdesc = MTLRenderPassDescriptor()
@@ -197,7 +205,7 @@ extension RenderPipeline {
         warpState: MVWarpState,
         target: MTLTexture
     ) {
-        var uni = computeNacreUniforms(features: features)
+        var uni = computeNacreUniforms(features: features, stems: .zero)   // static frame; no vocal pulse
         let desc = MTLRenderPassDescriptor()
         desc.colorAttachments[0].texture     = target
         desc.colorAttachments[0].loadAction  = .dontCare
