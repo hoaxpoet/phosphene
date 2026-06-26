@@ -1,6 +1,6 @@
 # Floret — Preset Plan
 
-**Status:** FLORET.1 ✅ (design + reference curation) + FLORET.2a ✅ (wiring stub, test-reachable) — `[FLORET.1]`/`[FLORET.2a]` commits. Scope + name greenlit by Matt 2026-06-26 (**faithful base + uplifts**; named **Floret**). The faithful base lands at FLORET.2b. See **§10 FLORET.2a — what landed** below.
+**Status:** FLORET.1 ✅ (design + refs) + FLORET.2a ✅ (wiring stub) + **FLORET.2b ✅ code-complete (faithful base, pending Matt's live M7)** — `[FLORET.1]`/`[FLORET.2a]`/`[FLORET.2b]` commits. Scope + name greenlit by Matt 2026-06-26 (**faithful base + uplifts**; named **Floret**). 2b ports the source verbatim (z² warp + 3-fold radial-pulse high-pass comp + 4 seed-discs); contact frames read as the source register (color-cycling fractal-filament bloom + sparkle tips on a dark ground), flash-safe by measurement. The 3 uplifts (iridescence / stem routing) are FLORET.3+. See **§10** below.
 **Target:** a faithful Phosphene uplift of the Milkdrop preset `suksma - Rovastar - Sunflower Passion (Enlightment Mix)_Phat_edit + flexi und martin shaders - circumflex in character classes in regular expression` (butterchurn built-in; cream-of-the-crop legends; pick #1 on `MILKDROP_UPLIFT_PICKS.md`).
 **Substrate:** `direct + mv_warp` (same family as the certified Dragon Bloom / Fata Morgana / Nacre).
 **Scaffold:** Nacre (`RenderPipeline+Nacre.swift` dedicated-branch + `Nacre.metal`/`.json` + `NacreMVWarpAccumulationTest`) — Floret has the same custom-warp + custom-comp shape, including the comp-stage blur dependency (see §3).
@@ -89,7 +89,7 @@ No two visual layers share a primitive at the same timescale. ✓
 |---|---|---|
 | **FLORET.1** | Design + reference curation. | ✅ this doc + `docs/VISUAL_REFERENCES/floret/` (source JSON + shaders + GIF + 3 annotated stills + README); scope + name greenlit. |
 | **FLORET.2a** | ✅ Wire the custom warp+comp preset + a STUB look, test-reachable: `Floret.{metal,json}` (stub `floret_comp_fragment` + minimal scene + warp fns), `RenderPipeline+Floret.swift` branch (`isFloret` discriminator), `feedbackFormat` `.rgba16Float`, app bundle wiring, `FloretMVWarpAccumulationTest`. | ✅ App build + engine build clean; `FloretMVWarpAccumulationTest` 6/6 (compile/load + live `renderFloret` 64-frame accumulation: non-black + no white-out at silence + reduced-motion format-safe); preset/rubric/regression 62/62 unaffected; swiftlint 0. |
-| **FLORET.2b** | Port the FAITHFUL BASE (z² warp + vortex per-vertex + 3-fold radial-pulse high-pass comp + seed discs + palette cycle), **flash-safe** (luminance floor). Decide blur path (§3) by render. Uplifts deferred. | Live `renderFloret` path: non-black + no-white-out + flash-safe at silence over ≥60 frames; contact frames read as the 3-fold bloom on dark ground; side-by-side vs source. → Matt M7. |
+| **FLORET.2b** | ✅ Port the FAITHFUL BASE (z² warp + 3-fold radial-pulse high-pass comp + 4 seed-discs + palette cycle), **flash-safe**. Blur path decided: **in-comp multi-tap** (the source vortex pixel_eqs were vestigial — the warp samples z²(uv_orig), bypassing the mesh warp). Uplifts deferred. | ✅ `FloretMVWarpAccumulationTest` 7/7 over the live `renderFloret` path: non-black + no-white-out at silence (64 f) + reduced-motion format-safe + **flash sentry** (per-frame mean-luma Δ < 0.06 over 150 f — the ~0.5 Hz pulse breathes, doesn't strobe). Contact frames (silence + energy, full cycle) read as the source register — color-cycling fractal-filament bloom + sparkle tips on a dark ground; side-by-side vs `source 02_midcycle`. **→ Matt's live M7** (the 3-fold centering + white-highlight balance are M7 calls; FA #64 — not guessed solo). |
 | **FLORET.3** | Audio coupling (§6) + the 2 uplifts (iridescence rims, stem routing), one route at a time. | Each route's firing shown in a session-replay diagnostic (`features.csv`/`stems.csv`); one-primitive-per-layer holds; M7. |
 | **FLORET.4** | Tuning to certification. | Matt's live M7 sign-off; `certified: true`; flash harness measured SAFE; rubric + capability registry + module map + plan updated. |
 
@@ -107,8 +107,8 @@ No two visual layers share a primitive at the same timescale. ✓
 
 ## 9. Risks / open decisions
 
-- **Comp-stage blur (§3)** — the central infra decision. The bubble-foam rims ARE the unsharp high-pass; an under-powered blur approximation may flatten the signature. Decide by render (FM blur target vs multi-tap). Medium risk — higher than Nacre's deferred sharpen because here it's the signature, not polish.
-- **Flash-safety vs faithfulness** — the source's ×4 / near-black-trough breathing is intrinsic to its character; the flash-safe floor will make Floret breathe more gently than the source. Accept the divergence (cert gate is non-negotiable); tune the floor for maximum perceived breath within SAFE.
+- **Comp-stage blur (§3) — RESOLVED at 2b: in-comp multi-tap.** A 5-tap cross blur of `main` stands in for butterchurn's `blur1`; the foam-cell/filament read came through without an FM-style ¼-res blur target (no renderer edit). Revisit only if M7 wants finer/wider cells (then add the blur target).
+- **Flash-safety vs faithfulness — RESOLVED at 2b: the breath is NOT a flash.** The source's near-black↔bright swing is a **~0.5 Hz** radial pulse — below the ≥3 Hz flash band — so it doesn't strobe; the flash sentry measures per-frame mean-luma Δ < 0.06 (D-157). Only a faint luma floor (0.02) is kept (stops a fully dead trough). The earlier "must breathe more gently" worry was over-weighted; comp gain is near the source's (3.8 vs ×4). The Harding multi-pass gate is the FLORET.4 cert step.
 - **`family` field** — "hypnotic" vs a new grouping; three hypnotic feedback presets risks orchestrator fatigue/transition monotony. Product-adjacent; decide with Matt before cert.
 - **Iridescence over-bloom** — the on-`.rgba16Float` HDR iridescence is the most M7-prone uplift (Nacre/Ferrofluid history); 8-bit fallback if it over-blooms.
 - **butterchurn-only uniforms** (`scale1/bias1`, `aspect`, dead `q4..q32`) — substitution table authored at 2b; fixed seeds acceptable (a preset instance is deterministic).
@@ -126,3 +126,18 @@ The Nacre dedicated-branch structure, mirrored for Floret (FA #70 — port the p
 **Durable learnings:**
 - **`RenderPipeline+MVWarp.swift` is at the `file_length` 400-line cap.** Adding Floret's dispatch branch pushed it to 416; recovered by tightening verbose comments (all D-refs preserved). **A 3rd custom-warp+comp preset should extract `drawWithMVWarpStandard` to its own file** (the established split pattern — `+Nacre`/`+FataMorgana`/`+MVWarpReducedMotion` already split out) rather than trim further.
 - **The dispatch now carries two name-keyed bools** (`isNacre`, `isFloret`) + the `blurPipeline` check. Two is fine; **a 4th custom branch → replace the bool chain with an enum** (`MVWarpBranch`) on the bundle. Not worth it yet (YAGNI).
+
+---
+
+## 11. FLORET.2b — what landed (the faithful base)
+
+The source ported verbatim into `Floret.metal` (FA #73 — port, don't re-derive), tuned by render against `docs/VISUAL_REFERENCES/floret/02_midcycle_fractal_bloom.png`:
+- **`floret_warp_fragment`** — the z² conformal feedback fold (`z² of (uv_orig−0.5)·1.81 + (0.448,0.701)`, subtractive fade) + the 4 nested colour-cycling seed-discs near (0.3,0.4) (volume-gated; the source shapes folded in, Nacre pattern) + a faint palette wash. `mvWarpPerVertex`/`mvWarpPerFrame` are **identity** — the source warp samples `uv_orig`, so its per-vertex vortex pixel_eqs are **vestigial** (verified by render; the cousin of Nacre's `mv_x/y` debug-grid misread, FA #73).
+- **`floret_comp_fragment`** — the 3-fold radial-pulse high-pass kaleidoscope: 4 layers at k·120° (the 4th duplicates the 0th), `dist = 1 − fract(k/3 + t/2)`, `inten = √dist·(1−dist)·8`, tile `fract(3·uvʀ·dist + 0.525)`, unsharp high-pass (`main − blur·0.9`, blur = inline 5-tap), `max`-combined, ×3.8, + a faint flash floor + sRGB decode.
+
+**Decode/tuning learnings (durable):**
+- **The breath is ~0.5 Hz → NOT a flash.** The pre-build "must breathe gently for flash-safety" worry was over-weighted: the radial pulse is far below the ≥3 Hz flash band. Measured per-frame mean-luma Δ < 0.06 (flash sentry). Comp gain sits near the source's (3.8 vs ×4); only a faint floor (0.02) is kept. (Contrast Nacre, where a *fast* brightness bump on a bright field DID read as a flash — there the issue was transient brightness, not a slow pulse.)
+- **Brightness + seed density drive the read.** First render (gain 2.6 / seed 0.45) was too dim/sparse → warm-only, weak 3-fold. Gain 3.8 + seed 0.80 brought the white-clipping filaments + filled the 3-fold max-combine → matches the source's white+colour-accent register; the palette cycles orange→magenta→… across the loop.
+- **The blur target wasn't needed** (the in-comp 5-tap suffices; §9).
+
+**Open for M7 (Matt's eye, not guessed solo — FA #64):** the 3-fold *centering* reads more as an organic fractal swirl than a rigid centred mandala (the source morphs between both); white-highlight + green-accent balance. **`renderFloret` is the live path; M7 needs a build** (worktree → integrate to main or build the worktree; memory [[feedback_worktree_changes_reach_build]]). Render evidence regenerable via `FLORET_MVWARP_DIAG=1 FLORET_ENERGY=0.5`.
