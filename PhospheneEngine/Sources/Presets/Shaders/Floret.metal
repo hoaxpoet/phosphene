@@ -36,12 +36,17 @@
 
 // MARK: - FloretUniforms (CPU-computed per frame; matches FloretUniforms in Swift)
 //
-// Bound at fragment buffer(1) of BOTH the warp and comp passes. 32 bytes — see
-// FloretUniforms in RenderPipeline+Floret.swift for the byte layout.
+// Bound at fragment buffer(1) of BOTH the warp and comp passes. 48 bytes — see
+// FloretUniforms in RenderPipeline+Floret.swift for the byte layout. FLORET.3a adds the
+// motion-bundle routes (swell / spin / barPush — one primitive per visual channel, FA #67).
 struct FloretUniforms {
     float  time;        // features.time — palette cycle + seed jitter + comp radial-pulse phase
     float  coreEnergy;  // total energy — volume-gates the seed discs (faithful modwavealphabyvolume)
+    float  swell;       // FLORET.3a: avg-stem energy envelope → bloom inflation (warp seed extent/brightness)
+    float  spin;        // FLORET.3a: bass-accumulated rotation angle (rad) → the comp field spins on bass
     float2 texel;       // (1/feedbackW, 1/feedbackH) — comp high-pass blur tap spread
+    float  barPush;     // FLORET.3a: downbeat envelope (cached BeatGrid) → comp camera magnify (beat-lock)
+    float  pad0;
     float4 aspect;      // (aspectx, aspecty, 1/aspectx, 1/aspecty) — comp keeps the bloom round
 };
 
@@ -63,6 +68,11 @@ constant float  kFloretHighpass  = 0.90;                 // unsharp weight (main
 constant float  kFloretBlurSpread = 2.5;                 // high-pass blur radius (texels) → foam-cell scale
 constant float  kFloretLumaFloor = 0.02;                 // a faint floor only (the ~0.5 Hz pulse is below the
                                                          // flash band; this just stops a fully dead trough)
+// FLORET.3a motion bundle (Matt M7: "add movement"; grounded in the SOSB session — bass is
+// the dynamic band, mid/treble dead, beat strong+locked). One primitive per visual channel:
+constant float  kFloretSwellGain = 1.1;                  // energy envelope → seed extent/brightness (warp; slow)
+constant float  kFloretPush      = 0.06;                 // downbeat camera magnify depth (comp; beat-locked, Nacre NACRE.4)
+constant float  kFloretSpinMax   = 0.020;               // max comp rotation rate (rad/frame) at full bass (motion, bounded)
 
 constant float3 kLuma = float3(0.299, 0.587, 0.114);
 
@@ -138,7 +148,11 @@ fragment float4 floret_warp_fragment(
 
     // Seed: 4 nested colour-cycling discs near (0.3, 0.4), volume-gated (faithful
     // modwavealphabyvolume + the musical role: brighter with energy, dim-but-alive at silence).
-    float  gate = (0.30 + 0.70 * clamp(fu.coreEnergy, 0.0, 1.0)) * kFloretSeedGain;
+    // FLORET.3a swell: the slow avg-stem envelope inflates the seed → the bloom fills/grows when
+    // the music fills out (brightness+extent in the warp; a separate visual channel from the
+    // comp's beat magnify + bass spin — FA #67). Slow EMA → not a flash.
+    float  gate = (0.30 + 0.70 * clamp(fu.coreEnergy, 0.0, 1.0)) * kFloretSeedGain
+                * (1.0 + kFloretSwellGain * fu.swell);
     float  t = fu.time;
     float3 pal = floretPalette(t);
     float3 seed = float3(0.0);
@@ -171,7 +185,16 @@ fragment float4 floret_comp_fragment(
 ) {
     constexpr sampler m(filter::linear, address::repeat);
     float2 uv1 = (in.uv - 0.5) * fu.aspect.xy;
-    float  tph = fu.time / 2.0;                          // radial-pulse phase (~2 s)
+    // FLORET.3a bass spin (comp rotation): rotate the whole 3-fold field by the bass-accumulated
+    // angle — visible rotational motion, faster when the bass is busy. A separate visual channel
+    // from the beat magnify + energy swell (FA #67).
+    float cs = cos(fu.spin), ss = sin(fu.spin);
+    uv1 = float2(cs * uv1.x - ss * uv1.y, ss * uv1.x + cs * uv1.y);
+    // FLORET.3a beat-lock (comp camera magnify): contract the view on the downbeat so the field
+    // surges forward on the beat, settling over the bar (cached BeatGrid → barPush). The motion
+    // Matt validated by eye, made real on every track (Nacre NACRE.4; display-stage → no smear).
+    uv1 *= (1.0 - kFloretPush * fu.barPush);
+    float  tph = fu.time / 2.0;                          // radial-pulse phase (~2 s, time-driven expansion)
     float2 bs = fu.texel * kFloretBlurSpread;            // high-pass blur tap spread
 
     float3 ret1 = float3(0.0);

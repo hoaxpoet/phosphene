@@ -157,7 +157,10 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// fills out, slower when sparse (the motion connection). The band average is blind to
     /// full-band entries — energy is in the stems (Matt M7). [The DISPLAY-stage voice-glow
     /// envelope `nacreCoreEMA` was removed — Matt M7: blinding on the vocal peaks, no read.]
-    var nacreSeedEMA: Float = 0, nacreSpinEMA: Float = 0
+    /// (`floretSwellEMA`: Floret ~0.5 s avg-stem envelope → warp-seed bloom inflation;
+    /// `floretSpin`: Floret accumulated rotation angle (rad) → the comp's bass-driven spin —
+    /// FLORET.3a; folded onto this line to stay under the type_body_length cap, see FLORET_PLAN §12.)
+    var nacreSeedEMA: Float = 0, nacreSpinEMA: Float = 0, floretSwellEMA: Float = 0, floretSpin: Float = 0
 
     // MARK: - Live Audio Features
 

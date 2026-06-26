@@ -19,28 +19,63 @@ import Shared
 // MARK: - FloretUniforms (matches `struct FloretUniforms` in Floret.metal)
 
 /// 32-byte uniform bound at fragment buffer(1) of the warp + comp passes.
-/// Layout: time/coreEnergy/texel fill the first 16-byte slot, then a 16-aligned
-/// SIMD4<Float> — byte-identical to the MSL struct.
+/// 48-byte uniform. Layout: time/coreEnergy/swell/spin (16) · texel/barPush/pad0 (16) ·
+/// aspect (16) — byte-identical to the MSL struct.
 struct FloretUniforms {
     var time: Float = 0
     var coreEnergy: Float = 0          // total energy → the warp's volume-gated core seed
+    var swell: Float = 0               // FLORET.3a: avg-stem envelope → bloom inflation (warp)
+    var spin: Float = 0                // FLORET.3a: bass-accumulated rotation angle (rad) → comp spin
     var texel: SIMD2<Float> = .init(1, 1)
+    var barPush: Float = 0             // FLORET.3a: downbeat envelope → comp camera magnify (beat-lock)
+    var pad0: Float = 0
     var aspect: SIMD4<Float> = .init(1, 1, 1, 1)
 }
+
+// FLORET.3a motion-bundle tuning (Matt M7 "add movement"; grounded in the SOSB session).
+// Energy swell tracks the song's arc on a ~0.5 s envelope (full-band-aware avg-stem, since raw
+// mid/treble are dead on shoegaze). Spin accumulates a rotation from the bass deviation
+// (soft-saturated — bassDev spikes to ~2.2×) + a faint base rate so the field is never frozen.
+private let kFloretSwellSmooth: Float = 0.03      // ~0.5 s EMA at 60 fps
+private let kFloretSpinBase: Float = 0.0015       // rad/frame floor (alive at silence)
+private let kFloretSpinBassGain: Float = 0.020    // rad/frame added at full bass (matches kFloretSpinMax)
 
 extension RenderPipeline {
 
     // MARK: Per-frame uniforms
 
-    /// Compute the Floret warp/comp uniforms for this frame. FLORET.2a is stateless — no
-    /// EMA accumulators yet (the audio routes that need them land at FLORET.2b/.3).
+    /// Compute the Floret warp/comp uniforms for this frame. FLORET.3a holds the motion-bundle
+    /// accumulators (`floretSwellEMA`/`floretSpin`) — the audio routes Matt greenlit.
     @MainActor
-    func computeFloretUniforms(features: FeatureVector) -> FloretUniforms {
+    func computeFloretUniforms(features: FeatureVector, stems: StemFeatures) -> FloretUniforms {
         var uni = FloretUniforms()
         uni.time = features.time
-        // STUB seed gate: instantaneous total energy. TODO(FLORET.2b): ~0.5 s EMA so the
-        // bloom swells-and-settles (the source's energy envelope) instead of jolting.
         uni.coreEnergy = max(0, (features.bass + features.mid + features.treble) / 3.0)
+
+        // ── Energy swell ← avg-stem envelope (FLORET.3a) ──────────────────────────
+        // The bloom inflates as the music fills out. Driven off the average stem energy
+        // (full-band-aware — raw mid/treble are ~dead on real shoegaze, the session showed;
+        // the energy lives in the stems) on a ~0.5 s EMA, so it reads as the song's arc, not a
+        // per-frame jolt. The Nacre "turning ← energy" precedent, re-aimed at bloom extent.
+        let avgStem = max(0, (stems.drumsEnergy + stems.bassEnergy
+                              + stems.vocalsEnergy + stems.otherEnergy) * 0.25)
+        floretSwellEMA += (avgStem - floretSwellEMA) * kFloretSwellSmooth
+        uni.swell = floretSwellEMA
+
+        // ── Bass spin ← bass deviation, accumulated (FLORET.3a) ───────────────────
+        // The field rotates; the rate rises with the bass (bassDev — the dynamic band here,
+        // spikes ~2.2×). Soft-saturated (tanh) so a transient can't fling it (the deviation-
+        // real-range lesson); a faint base rate keeps it turning at silence. Accumulates → the
+        // comp re-samples the already-rotated field, so even a small rate reads as a clear spin.
+        let bassKick = tanh(max(0, features.bassDev))
+        floretSpin += kFloretSpinBase + kFloretSpinBassGain * bassKick
+        uni.spin = floretSpin
+
+        // ── Beat-lock camera push ← the cached downbeat (FLORET.3a) ───────────────
+        // The motion Matt validated by eye, made real on EVERY track: a sharp-attack / bar-decay
+        // envelope on the cached BeatGrid's barPhase01 → the comp magnifies the field on the
+        // downbeat (display-stage, no smear). Static on beatless tracks. (Nacre NACRE.4.)
+        uni.barPush = pow(max(0, 1 - features.barPhase01), 2.5)
 
         let size = mvWarpDrawableSize
         let wPx = max(Float(size.width), 1), hPx = max(Float(size.height), 1)
@@ -88,7 +123,7 @@ extension RenderPipeline {
         warpState: MVWarpState,
         target: MTLTexture
     ) {
-        var uni = computeFloretUniforms(features: features)
+        var uni = computeFloretUniforms(features: features, stems: stemFeatures)
 
         // ── Warp pass: warp(prev, u) → composeTexture ─────────────────────────
         let wdesc = MTLRenderPassDescriptor()
@@ -144,7 +179,7 @@ extension RenderPipeline {
         warpState: MVWarpState,
         target: MTLTexture
     ) {
-        var uni = computeFloretUniforms(features: features)
+        var uni = computeFloretUniforms(features: features, stems: .zero)
         let desc = MTLRenderPassDescriptor()
         desc.colorAttachments[0].texture     = target
         desc.colorAttachments[0].loadAction  = .dontCare
