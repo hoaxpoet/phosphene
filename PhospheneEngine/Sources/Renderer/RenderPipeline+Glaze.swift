@@ -19,14 +19,44 @@ import Shared
 
 // MARK: - GlazeUniforms (matches `struct GlazeUniforms` in Glaze.metal)
 
-/// 32-byte uniform bound at fragment buffer(1) of the warp + comp passes.
-/// Layout: time/coreEnergy fill the first 8 bytes, texel the next 8, then the
-/// 16-aligned aspect SIMD4 — byte-identical to the MSL struct.
+/// 32-byte uniform bound at fragment buffer(1) of the warp + comp passes — byte-identical
+/// to the MSL `GlazeUniforms` (time/coreEnergy/pokeStrength/pad0 | texel | pokeCenter).
 struct GlazeUniforms {
     var time: Float = 0
-    var coreEnergy: Float = 0      // STEADY total energy → gates the warp seed (no smear)
+    var coreEnergy: Float = 0       // reserved (silence-floor lever; the faithful warp self-seeds)
+    var pokeStrength: Float = 0     // spring mass-3 x → the pixel-eq poke scale (`q3`)
+    var pad0: Float = 0
     var texel: SIMD2<Float> = .init(1, 1)
-    var aspect: SIMD4<Float> = .init(1, 1, 1, 1)
+    var pokeCenter: SIMD2<Float> = .init(0.5, 0.5)   // spring tail (cx1, cy1) — the poke centre
+}
+
+/// The source's 3-mass damped spring chain (frame_eqs), stepped CPU-side each frame. Masses
+/// 2/3/4 hang off a driven anchor (mass 1); the free tail (mass 4) position + speed and mass-3
+/// x drive the swirl-poke. Faithful constants (spring 18, grav 1, resist 5, bounce .9, dt .0003).
+struct GlazeSpring {
+    var x2: Float = 0, y2: Float = 0, vx2: Float = 0, vy2: Float = 0
+    var x3: Float = 0, y3: Float = 0, vx3: Float = 0, vy3: Float = 0
+    var x4: Float = 0, y4: Float = 0, vx4: Float = 0, vy4: Float = 0
+
+    mutating func step(anchorX x1: Float, anchorY y1: Float) {
+        let spring: Float = 18, grav: Float = 1, dt: Float = 0.0003, bounce: Float = 0.9
+        let damp: Float = 1 - 5 * dt   // resist = 5
+        vx2 = vx2 * damp + dt * (x1 + x3 - 2 * x2) * spring
+        vy2 = vy2 * damp + dt * ((y1 + y3 - 2 * y2) * spring - grav)
+        vx3 = vx3 * damp + dt * (x2 + x4 - 2 * x3) * spring
+        vy3 = vy3 * damp + dt * ((y2 + y4 - 2 * y3) * spring - grav)
+        vx4 = vx4 * damp + dt * (x3 - x4) * spring
+        vy4 = vy4 * damp + dt * ((y3 - y4) * spring - grav)
+        x2 += vx2; y2 += vy2; x3 += vx3; y3 += vy3; x4 += vx4; y4 += vy4
+        wall(&x2, &vx2, bounce); wall(&y2, &vy2, bounce)
+        wall(&x3, &vx3, bounce); wall(&y3, &vy3, bounce)
+        wall(&x4, &vx4, bounce); wall(&y4, &vy4, bounce)
+    }
+
+    /// Reflect velocity off the [0,1] walls (source `above`/`below` bounce guards).
+    private func wall(_ pos: inout Float, _ vel: inout Float, _ bnc: Float) {
+        if pos <= 0 { vel = abs(vel) * bnc } else if pos >= 1 { vel = -abs(vel) * bnc }
+    }
 }
 
 extension RenderPipeline {
@@ -39,23 +69,22 @@ extension RenderPipeline {
     @MainActor
     func computeGlazeUniforms(features: FeatureVector, stems: StemFeatures) -> GlazeUniforms {
         var uni = GlazeUniforms()
-        uni.time = features.time
+        let tSec = features.time
+        uni.time = tSec
 
-        // Seed ← STEADY total energy (~0.5 s EMA): faithful modwavealphabyvolume + the
-        // musical role (the field is alive at silence via the seed's floor, brighter with
-        // audio). Steady (not transient) so the fed-back seed never flares into smears.
-        let total = max(0, (features.bass + features.mid + features.treble) / 3.0)
-        glazeSeedEMA += (total - glazeSeedEMA) * 0.03
-        uni.coreEnergy = glazeSeedEMA
+        // Spring anchor — a slow time-driven idle at silence so the chained masses perpetually
+        // chase a moving target → the field stays alive (D-019). Audio drive (bass/treble →
+        // lateral, energy → lift) lands in GLAZE.3; here the anchor is pure time.
+        let anchorX = 0.5 + 0.18 * sin(tSec * 0.37)
+        let anchorY = 0.5 + 0.14 * sin(tSec * 0.53)
+        glazeSpring.step(anchorX: anchorX, anchorY: anchorY)
+        // Source pixel_eqs: poke centre = (mass-4 x, tail SPEED), poke scale = mass-3 x.
+        let tailSpeed = (glazeSpring.vx4 * glazeSpring.vx4 + glazeSpring.vy4 * glazeSpring.vy4).squareRoot()
+        uni.pokeCenter = SIMD2<Float>(glazeSpring.x4, tailSpeed)
+        uni.pokeStrength = glazeSpring.x3
 
         let size = mvWarpDrawableSize
-        let wPx = max(Float(size.width), 1), hPx = max(Float(size.height), 1)
-        uni.texel = SIMD2<Float>(1.0 / wPx, 1.0 / hPx)
-        // butterchurn aspect: the LONGER axis is normalised to 1, the shorter carries the
-        // ratio — keeps the contour field round on a wide canvas.
-        let aspectX: Float = wPx >= hPx ? hPx / wPx : 1
-        let aspectY: Float = hPx > wPx ? wPx / hPx : 1
-        uni.aspect = SIMD4<Float>(aspectX, aspectY, 1.0 / aspectX, 1.0 / aspectY)
+        uni.texel = SIMD2<Float>(1.0 / max(Float(size.width), 1), 1.0 / max(Float(size.height), 1))
         return uni
     }
 

@@ -1,54 +1,54 @@
 // Glaze.metal — Phosphene port of the Milkdrop/butterchurn builtin
 // `Flexi + stahlregen - jelly showoff parade` (cream-of-crop legends; the glossy
 // "wet jelly" contour-gel). See docs/presets/GLAZE_PLAN.md +
-// docs/VISUAL_REFERENCES/glaze/ (source_shaders.txt = the decoded port artifact).
+// docs/VISUAL_REFERENCES/glaze/ (source_shaders.txt + the raw warp/comp HLSL = the port spec).
 //
-// Character (faithful target): nested concentric contour-ring striations under a thick
-// embossed gel sheen (specular highlights + dark rims), a saturated neon palette that
-// rotates, on an accreting feedback field — flowing as an audio-driven spring-mass
-// "jelly" drags a swirl-poke across it. A DIFFERENT register from Nacre's translucent
-// lens-cells despite the shared mv_warp substrate.
+// Character: nested concentric contour-ring striations under a thick embossed gel sheen
+// (specular highlights + dark rims), a saturated neon palette that rotates, on an accreting
+// feedback field — flowing as a spring-mass "jelly" drags a swirl-poke across it.
 //
-// ── INCREMENT STATUS — GLAZE.2a (THIS FILE = STUB) ─────────────────────────────────
-// This is the 2a WIRING STUB, NOT the faithful look. Goal: a Glaze preset that loads,
-// renders non-black through the live warp→comp→swap dispatch, accretes via feedback, and
-// never whites out at silence — so the dedicated branch + test harness are proven end to
-// end before the faithful shader math lands. Deliberately minimal (ponytail):
-//   · warp  = gentle advection + decay + a palette-tinted, energy-gated, silence-floored
-//             seed (alive at silence, D-019) + [0,1] clamp (the Nacre white-out bound).
-//   · comp  = sample feedback + mild glossy contrast + sRGB decode. NO blur-pyramid emboss.
-// GLAZE.2b fills in: the 3-mass spring warp center + emboss/sheen comp + the 3-level blur
-// pyramid (its consumer lands with it — not built speculatively in 2a). The greenlit 2026
-// uplifts (A per-stem routing, B HDR glossy bloom, C shiver mode) are GLAZE.5+ — AFTER the
-// faithful base passes Matt's live M7 (FA #65).
+// ── INCREMENT STATUS — GLAZE.2b.2 (the FAITHFUL BASE) ──────────────────────────────
+// Faithful HLSL→MSL port of the source warp + comp (FA #73 — port, don't re-derive):
+//   · warp = blur1 emboss gradient → per-channel decoupled flow (R unsharp+grow, G/B max of
+//            flowed taps) + the pixel-eq swirl-poke around the spring tail + [0,1] clamp
+//            (the source's 8-bit feedback bound; an unclamped float loop blooms — Nacre lesson).
+//            The R-channel `+0.006` self-seeds the field from black (no separate seed needed).
+//   · comp = multi-scale unsharp/bandpass from blur1/2/3 (0.8·blur3−blur1 + 0.6·blur1 −
+//            (blur2−blur1) + 1.2·main) + dual-direction gradient sampling + palette hue +
+//            `ret*ret`/`sqrt` contrast + sRGB-decode.
+// The 3-mass spring runs CPU-side (RenderPipeline+Glaze); at silence the anchor is a slow
+// time-driven idle (audio drive → GLAZE.3). butterchurn-only uniforms substituted: hue_shader
+// → glazePalette(time); scale*/bias* → identity (we store linear blur); texsize.zw → gu.texel.
+// The greenlit uplifts (A per-stem, B HDR bloom, C shiver) are GLAZE.5+ (after Matt's M7).
 //
 // SceneUniforms / MVWarpPerFrame / WarpVertexOut / VertexOut / fullscreen_vertex /
-// FeatureVector / StemFeatures / warpSampler come from the mvWarp preamble + Common.metal
-// (the loader prepends them; do not redefine — Nacre.metal precedent).
+// FeatureVector / StemFeatures / warpSampler come from the mvWarp preamble + Common.metal.
 
 // MARK: - GlazeUniforms (CPU-computed per frame; matches GlazeUniforms in Swift)
 //
-// Bound at fragment buffer(1) of BOTH the warp and comp passes (the Nacre/FM pattern).
-// 32 bytes — see GlazeUniforms in RenderPipeline+Glaze.swift for the byte layout.
+// Bound at fragment buffer(1) of the warp + comp passes. 32 bytes — see GlazeUniforms in
+// RenderPipeline+Glaze.swift for the byte layout.
 struct GlazeUniforms {
-    float  time;        // features.time — palette rotation + seed scroll
-    float  coreEnergy;  // STEADY total energy → gates the warp seed (faithful modwavealphabyvolume role)
-    float2 texel;       // (1/feedbackW, 1/feedbackH) — comp/warp sample offsets (texsize.zw)
-    float4 aspect;      // (aspectx, aspecty, 1/aspectx, 1/aspecty) — keeps the field round on a wide canvas
+    float  time;          // features.time — palette rotation
+    float  coreEnergy;    // reserved (silence-floor lever; faithful warp self-seeds via +0.006)
+    float  pokeStrength;  // pixel-eq poke scale (spring mass-3 x → `q3`)
+    float  pad0;
+    float2 texel;         // (1/feedbackW, 1/feedbackH) = the source's texsize.zw
+    float2 pokeCenter;    // spring tail position (cx1, cy1) — the swirl-poke centre
 };
 
-// MARK: - Constants (2a stub)
+// MARK: - Constants
 
-constant float  kGlazeDecay     = 0.94;    // feedback persistence (bounded; source decay 1.0 needs the [0,1] clamp)
-constant float  kGlazeBaseZoom  = 1.012;   // slight inward zoom (source zoom 1.06/zoomexp — rings flow inward)
-constant float  kGlazeRoamAmp   = 0.010;   // slow centre roam (alive at silence)
-constant float  kGlazeCoreTight = 14.0;    // luminous seed spot tightness
-constant float  kGlazeCoreBase  = 0.16;    // seed glow
-constant float3 kGlazeLuma      = float3(0.32, 0.49, 0.29);   // the source's luma weight
+constant float3 kGlazeLuma = float3(0.32, 0.49, 0.29);   // the source's exact luma weight
+constant float  kGlazePokeRadius = 0.2;                  // source pixel_eqs `r = .2`
+// The source runs decay 1.0 on an 8-bit feedback whose quantisation + butterchurn dynamics
+// bound the R-channel +0.006 grow; on our float buffer that grow floods to white (the Nacre
+// float-bloom lesson). A gentle decay equilibrates R at ~0.006·d/(1−d) instead of saturating.
+constant float  kGlazeWarpDecay = 0.97;
 
-// MARK: - Palette (the source's saturated neon rotation, stand-in for hue_shader)
-// Slow red→green→teal→violet drift. Faithful technique: tints the SEED (accumulates in
-// feedback), NOT the display (hue-strobing the display is an anti-reference).
+// MARK: - Palette (the source's saturated neon rotation; substitutes butterchurn hue_shader)
+// Slow red→green→teal→violet drift. Values in [0.2, 1.0] so the comp's `pow(hue, g9)` mix
+// reads as a hue tint, not a brightness change.
 static inline float3 glazePalette(float t) {
     return float3(0.60 + 0.40 * sin(0.27 * t + 0.0),
                   0.60 + 0.40 * sin(0.31 * t + 2.1),
@@ -58,7 +58,6 @@ static inline float3 glazePalette(float t) {
 static inline float glazeHash(float2 p) {
     return fract(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453);
 }
-
 static inline float glazeValueNoise(float2 p) {
     float2 i = floor(p), f = fract(p);
     f = f * f * (3.0 - 2.0 * f);
@@ -68,18 +67,22 @@ static inline float glazeValueNoise(float2 p) {
 }
 
 // MARK: - Scene fragment (loader placeholder; unused in the Glaze draw branch)
-//
-// PresetLoader needs a `fragment_function` to build the direct pipeline, but the Glaze
-// branch never renders it (the seed is folded into the warp). Near-black, like Nacre.
 fragment float4 glaze_fragment(VertexOut in [[stage_in]]) {
     return float4(0.0, 0.0, 0.0, 1.0);
 }
 
-// MARK: - MV-Warp mesh functions (per-vertex feedback transform — stub advection)
+// MARK: - MV-Warp mesh functions (per-vertex feedback transform)
 //
-// 2a stub: slight inward zoom + a slow roam so the feedback accretes/drifts (proves the
-// loop). GLAZE.2b replaces this with the source's spring-physics swirl-poke (pixel_eqs:
-// a local radial vortex around the audio-driven bouncing tail).
+// Source per-frame overrides: zoom 1.001 (≈identity), rot 0, warp 0.2. The strong baseVals
+// zoom 1.06/zoomexp is overridden to 1.001 by the frame_eqs — the inward flow comes from the
+// accreting feedback + the fragment poke, NOT a big zoom. A slight zoom + a gentle warp ripple
+// + a slow roam keep the field flowing + alive at silence. The swirl-poke is applied in the
+// FRAGMENT (the vertex stage can't receive the CPU spring state).
+// Source baseVals carried as constants (frame_eqs override zoom→1.001, rot→0, warp→0.2).
+constant float kGlazeZoom     = 1.001;    // per-frame zoom (the zoomexp radial weighting does the work)
+constant float kGlazeZoomExp  = 11.56;    // baseVals zoomexp — strong edge-inward flow → concentric rings
+constant float kGlazeWarp     = 0.2;      // per-frame warp ripple amplitude
+constant float kGlazeWarpScaleInv = 1.0 / 16.016;   // baseVals warpscale
 
 MVWarpPerFrame mvWarpPerFrame(
     constant FeatureVector& f,
@@ -87,38 +90,57 @@ MVWarpPerFrame mvWarpPerFrame(
     constant SceneUniforms& s
 ) {
     MVWarpPerFrame pf;
-    float t = f.time;
-    pf.decay = kGlazeDecay;   // informational on the dedicated branch (decay baked in glaze_warp_fragment)
-    pf.zoom  = kGlazeBaseZoom;
-    pf.rot   = 0.012 * (0.6 * sin(0.31 * t) + 0.4 * sin(0.47 * t));
-    pf.cx    = kGlazeRoamAmp * (0.6 * sin(0.29 * t) + 0.4 * sin(0.19 * t));
-    pf.cy    = kGlazeRoamAmp * (0.6 * sin(0.33 * t) + 0.4 * sin(0.23 * t));
-    pf.dx    = 0.0; pf.dy = 0.0; pf.warp = 0.0; pf.sx = 1.0; pf.sy = 1.0;
+    pf.decay = 1.0;                          // source decay 1.0 (the warp's bounding decay caps it)
+    pf.zoom = kGlazeZoom; pf.rot = 0.0; pf.warp = kGlazeWarp;
+    pf.cx = 0.0; pf.cy = 0.0; pf.dx = 0.0; pf.dy = 0.0; pf.sx = 1.0; pf.sy = 1.0;
     pf.q1 = 0.0; pf.q2 = 0.0; pf.q3 = 0.0; pf.q4 = 0.0;
     pf.q5 = 0.0; pf.q6 = 0.0; pf.q7 = 0.0; pf.q8 = 0.0;
     return pf;
 }
 
+// Faithful port of butterchurn's per-vertex warp mesh (butterchurn.js L2627–2660):
+// the zoomexp radial zoom (near-identity at centre, strong inward at the edges → the
+// concentric contour rings) + the 4-term time-varying warp ripple + rot + translation.
+// The pixel-eq swirl-poke runs in the fragment (the vertex stage can't see the CPU spring).
 float2 mvWarpPerVertex(
     float2 uv, float rad, float ang,
     thread const MVWarpPerFrame& pf,
     constant FeatureVector& f,
     constant StemFeatures& stems
 ) {
-    float2 centre = float2(0.5 + pf.cx, 0.5 + pf.cy);
-    float2 p = (uv - centre) / max(pf.zoom, 0.001);
-    float c = cos(pf.rot), sn = sin(pf.rot);
-    return float2(c * p.x - sn * p.y, sn * p.x + c * p.y) + centre;
+    // zoomexp radial zoom: zoom2V = pow(zoom, pow(zoomExp, rad*2−1)). rad ∈ [0, ~1.414].
+    float zoom2V = pow(max(pf.zoom, 1e-4), pow(kGlazeZoomExp, rad * 2.0 - 1.0));
+    zoom2V = clamp(zoom2V, 0.5, 4.0);
+    float2 c = float2(0.5 + pf.cx, 0.5 + pf.cy);
+    float2 sp = 0.5 + (uv - 0.5) / zoom2V;          // contract toward centre (inward flow)
+    sp = (sp - c) / float2(pf.sx, pf.sy) + c;        // sx/sy stretch
+
+    // 4-term time-varying warp ripple (butterchurn warpf0–3 + warpScaleInv).
+    if (pf.warp != 0.0) {
+        float x = (uv.x - 0.5) * 2.0, y = (uv.y - 0.5) * 2.0;   // NDC [-1,1]
+        float wt = f.time;                                     // warpTimeV (warpanimspeed 1)
+        float wf0 = 11.68 + 4.0 * cos(wt * 1.413 + 10.0);
+        float wf1 =  8.77 + 3.0 * cos(wt * 1.113 +  7.0);
+        float wf2 = 10.54 + 3.0 * cos(wt * 1.233 +  3.0);
+        float wf3 = 11.49 + 4.0 * cos(wt * 0.933 +  5.0);
+        float a = pf.warp * 0.0035, wsi = kGlazeWarpScaleInv;
+        sp.x += a * sin(wt * 0.333 + wsi * (x * wf0 - y * wf3));
+        sp.y += a * cos(wt * 0.375 - wsi * (x * wf2 + y * wf1));
+        sp.x += a * cos(wt * 0.753 - wsi * (x * wf1 - y * wf2));
+        sp.y += a * sin(wt * 0.825 + wsi * (x * wf0 + y * wf3));
+    }
+    // rotation about (cx,cy) + translation.
+    float2 d = sp - c;
+    float co = cos(pf.rot), si = sin(pf.rot);
+    sp = float2(d.x * co - d.y * si, d.x * si + d.y * co) + c - float2(pf.dx, pf.dy);
+    return sp;
 }
 
 // MARK: - Blur pyramid (GLAZE.2b.1) — butterchurn sampler_blur1/2/3
 //
-// The source's glossy gel sheen is a multi-scale unsharp/bandpass of three progressively
-// wider blurs of the feedback (warp uses blur1+blur2; comp uses blur1+blur2+blur3). We run
-// this ONE 9-tap (1-2-4) gaussian three times into progressively smaller targets
-// (blur1 ½-res ← prev, blur2 ¼ ← blur1, blur3 ⅛ ← blur2) — the resolution halving widens the
-// effective blur per level (FM's blur-of-prev pattern, D-139, extended to a pyramid). `src`
-// is the previous level; tap spacing from its own texel size (no per-level uniform).
+// One 9-tap (1-2-4) gaussian run three times into progressively smaller targets (blur1 ½-res
+// ← prev, blur2 ¼ ← blur1, blur3 ⅛ ← blur2) — the resolution halving widens each level. `src`
+// is the previous level; tap spacing from its own texel size.
 fragment float4 glaze_blur_fragment(
     VertexOut        in  [[stage_in]],
     texture2d<float> src [[texture(0)]]
@@ -133,49 +155,99 @@ fragment float4 glaze_blur_fragment(
     return float4(c * (1.0 / 16.0), 1.0);
 }
 
-// MARK: - Custom WARP fragment (feedback transfer — 2a STUB)
+// MARK: - Custom WARP fragment (the feedback transfer — faithful port of warp.hlsl)
 //
-// Stub: warped prev × decay + a palette-tinted, energy-gated, silence-floored central
-// seed + [0,1] clamp. The seed keeps the field alive at silence (D-019) and carries the
-// rotating palette into the feedback; the clamp bounds accumulation (source stores 8-bit;
-// an unclamped float loop blooms to white — the Nacre lesson). GLAZE.2b: spring swirl-poke
-// + blur-pyramid emboss + treble grain.
+// blur1 Sobel gradient (8-texel taps) → per-channel decoupled flow: R unsharps against blur2
+// and grows (+0.006, self-seeding from black); B = max(blur1 edge, B flowed along the perp +
+// blue gradient, −0.008 decay); G = max(R, G flowed along the green gradient, −0.016 decay).
+// The differing per-channel flow + decay = the chromatic trailing. Plus the pixel-eq swirl-poke
+// around the spring tail. [0,1] clamp = the source's 8-bit feedback bound (Nacre lesson).
 fragment float4 glaze_warp_fragment(
-    WarpVertexOut           in   [[stage_in]],
-    texture2d<float>        prev [[texture(0)]],
-    constant GlazeUniforms& gu   [[buffer(1)]]
+    WarpVertexOut           in    [[stage_in]],
+    texture2d<float>        prev  [[texture(0)]],   // sampler_main / sampler_fc_main
+    texture2d<float>        blur1 [[texture(1)]],
+    texture2d<float>        blur2 [[texture(2)]],
+    constant GlazeUniforms& gu    [[buffer(1)]]
 ) {
-    float3 c = prev.sample(warpSampler, in.warped_uv).rgb * kGlazeDecay;
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
 
-    // Palette-tinted central seed, volume-gated with a silence floor (alive at silence,
-    // bright with audio). A low-freq value-noise blob breaks the radial symmetry so the
-    // accreting field reads as organic contours, not a clean ring.
-    float r        = length(in.uv - 0.5);
-    float coreGate = 0.20 + 0.80 * clamp(gu.coreEnergy, 0.0, 1.0);
-    float blob     = 0.6 + 0.4 * glazeValueNoise(in.uv * 4.0 + gu.time * 0.10);
-    float core     = exp(-r * r * kGlazeCoreTight) * kGlazeCoreBase * coreGate * blob;
-    c += core * glazePalette(gu.time);
+    // Pixel-eq swirl-poke (source pixel_eqs): within radius r of the spring tail, a curl
+    // displacement scaled by pokeStrength, dragged across the field as the jelly bounces.
+    float2 dpc = in.uv - gu.pokeCenter;
+    float  dd  = dot(dpc, dpc);
+    float  r2  = kGlazePokeRadius * kGlazePokeRadius;
+    float  dir = (dd < r2) ? -(r2 - dd) * gu.pokeStrength : 0.0;
+    float2 poke = float2(sin(in.uv.y - gu.pokeCenter.y) * dir, -sin(in.uv.x - gu.pokeCenter.x) * dir);
 
-    return float4(clamp(c, 0.0, 1.0), 1.0);
+    float2 uv1 = 0.5 + (in.warped_uv - 0.5) * 1.002 + poke;
+    float2 g   = gu.texel * 8.0;
+    float3 gx  = blur1.sample(s, uv1 + float2(g.x, 0)).rgb - blur1.sample(s, uv1 - float2(g.x, 0)).rgb;
+    float3 gy  = blur1.sample(s, uv1 + float2(0, g.y)).rgb - blur1.sample(s, uv1 - float2(0, g.y)).rgb;
+
+    float3 ret;
+    // R: flow along the red gradient, unsharp against blur2, slow grow (self-seed).
+    float2 flow = fract(uv1 - float2(gx.x, gy.x) * gu.texel);
+    ret.x = prev.sample(s, flow).x;
+    ret.x = ret.x + (ret.x - blur2.sample(s, flow).x) * 0.4 + 0.006;
+    // B: max(blur1 edge threshold, B flowed along perp + blue gradient, decay −0.008).
+    float2 perp = float2(gy.x, -gx.x);
+    float2 gz   = float2(gx.z, gy.z);
+    float2 uvB  = uv1 - perp * gu.texel * 8.0 + gz * gu.texel * 4.0;
+    ret.z = max(clamp(blur1.sample(s, uv1).x - 0.3, 0.0, 1.0) * 2.0, prev.sample(s, uvB).z - 0.008);
+    // G: max(R, G flowed along the green gradient, decay −0.016).
+    ret.y = max(ret.x, prev.sample(s, uv1 + float2(gx.y, gy.y) * gu.texel).y - 0.016);
+
+    // Structure SEED (the source's waveform `wave_a 0.207` role): a uniform field has no
+    // gradient → the zoomexp flow + unsharp have nothing to propagate. Inject a bright spot at
+    // the spring poke (the zoomexp carries it outward into concentric rings) + a faint
+    // time-varying noise floor so the field is alive + structured at silence (D-019).
+    float dPoke = length(in.uv - gu.pokeCenter);
+    float seed  = exp(-dPoke * dPoke * 50.0) * 0.10
+                + (glazeValueNoise(in.uv * 1.6 + gu.time * 0.05) - 0.5) * 0.012;
+    ret.x += seed; ret.y += seed;
+
+    // Bounding decay (the float-bloom fix; the source's 8-bit storage bounded this implicitly).
+    return float4(clamp(ret * kGlazeWarpDecay, 0.0, 1.0), 1.0);
 }
 
-// MARK: - Custom COMP fragment (the display look — 2a STUB, DISPLAY ONLY)
+// MARK: - Custom COMP fragment (the display look — faithful port of comp.hlsl, DISPLAY ONLY)
 //
-// Stub: sample the warped feedback + a mild glossy contrast lift + sRGB decode. GLAZE.2b
-// replaces this with the source's multi-scale blur-pyramid emboss (the wet-gel sheen) +
-// dual-direction gradient sampling.
+// blur1 luminance Sobel (6-texel) → dual-direction gradient-displaced sampling (uvA/uvB);
+// multi-scale unsharp/bandpass: 0.8·blur3(uvA) − blur1(uvA) + 0.6·blur1(uv) − (blur2(uvB) −
+// blur1(uvB)) + 1.2·main(uvB) + 0.15·blur1(uvB) + 1.0 → the glossy embossed gel sheen. Then
+// the palette hue mix, `ret*ret`/`sqrt` contrast, and the sRGB-decode (FM/Nacre, D-139).
 fragment float4 glaze_comp_fragment(
     VertexOut               in      [[stage_in]],
-    texture2d<float>        mainTex [[texture(0)]],
+    texture2d<float>        mainTex [[texture(0)]],   // composeTexture (the warped feedback)
+    texture2d<float>        blur1   [[texture(1)]],
+    texture2d<float>        blur2   [[texture(2)]],
+    texture2d<float>        blur3   [[texture(3)]],
     constant GlazeUniforms& gu      [[buffer(1)]]
 ) {
-    constexpr sampler m(filter::linear, address::clamp_to_edge);
-    float3 ret = mainTex.sample(m, in.uv).rgb;
-    ret = ret * (1.0 + ret);   // mild contrast lift (stand-in for the source's ret*ret/sqrt curve)
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float2 uv = in.uv;
+    float2 g  = gu.texel * 6.0;
+    float3 gx = blur1.sample(s, uv + float2(g.x, 0)).rgb - blur1.sample(s, uv - float2(g.x, 0)).rgb;
+    float3 gy = blur1.sample(s, uv + float2(0, g.y)).rgb - blur1.sample(s, uv - float2(0, g.y)).rgb;
+    float2 lum = float2(dot(gx, kGlazeLuma), dot(gy, kGlazeLuma));
+    float2 uvA = uv - 0.25 * lum;
+    float2 uvB = uv + 0.25 * lum;
 
-    // sRGB round-trip cancellation (the FM/Nacre fix, D-139): the source writes to an
-    // sRGB-naive canvas; Phosphene's drawable is .bgra8Unorm_srgb, so decode here so the
-    // drawable's encode round-trips back to the intended value (keeps the ground deep).
+    float3 ret = 0.8 * blur3.sample(s, uvA).rgb - blur1.sample(s, uvA).rgb;
+    ret += 0.6 * blur1.sample(s, uv).rgb;
+    ret -= (blur2.sample(s, uvB).rgb - blur1.sample(s, uvB).rgb);
+    ret += 1.2 * mainTex.sample(s, uvB).rgb + 0.15 * blur1.sample(s, uvB).rgb;
+    ret += 1.0;
+
+    float  g9 = dot(ret, kGlazeLuma);
+    float3 tint = 0.75 * float3(g9) * dot(0.6 * blur3.sample(s, uvA).rgb
+                  - 0.7 * mainTex.sample(s, uv).rgb - 0.3 * blur1.sample(s, uvB).rgb, kGlazeLuma);
+    ret = mix(float3(g9), tint, pow(glazePalette(gu.time), float3(g9))) * 0.9;
+    ret = ret * ret;
+    ret = sqrt(ret);
+
+    // sRGB round-trip cancellation (FM/Nacre fix, D-139): decode so the .bgra8Unorm_srgb
+    // drawable's encode round-trips back to the intended (sRGB-naive) display value.
     float3 v = saturate(ret);
     float3 lin = select(v / 12.92, pow((v + 0.055) / 1.055, float3(2.4)), v > 0.04045);
     return float4(lin, 1.0);
