@@ -53,7 +53,10 @@ struct PresetLoaderCompileFailureTest {
     /// iridescent jello-mirror onto the custom-warp+comp mv_warp branch; direct +
     /// mv_warp, HDR feedback). Family `hypnotic`. Not certified (cert at NACRE.4 after
     /// Matt's live M7). NACRE.2a added the preset to the catalog but did not bump this.
-    static let expectedProductionPresetCount = 21
+    /// 21 → 22 at GLAZE.2a (Glaze — port of `Flexi + stahlregen - jelly showoff parade`'s
+    /// glossy contour-gel onto a dedicated mv_warp branch; direct + mv_warp, HDR feedback).
+    /// Family `hypnotic`. GLAZE.2a is the wired STUB (faithful base at 2b); not certified.
+    static let expectedProductionPresetCount = 22
 
     @Test("PresetLoader.presets.count matches expectedProductionPresetCount — catches Failed Approach #44 silent drops")
     func test_presetLoaderProductionCount() {
