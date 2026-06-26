@@ -53,7 +53,7 @@ struct NacreUniforms {
     float  hueShift;     // NACRE.3: harmony → palette-phase nudge (seconds, bounded ±1.5)
     float2 texel;        // (1/feedbackW, 1/feedbackH) — comp luminance-sobel offsets (texsize.zw)
     float  voiceLevel;   // NACRE.3: tanh-saturated vocal envelope → the comp's DISPLAY-stage core glow
-    float  pad1;
+    float  barPulse;     // NACRE.3: downbeat pulse envelope (1 at the downbeat, decays over the bar)
     float4 aspect;       // (aspectx, aspecty, 1/aspectx, 1/aspecty) — comp cell aspect
     float4 randPreset;   // fixed per-load random vec4 (the comp's tint + dz scale character)
     float4 slowRoamSin;  // [0.5+0.5 sin(t·{slow})] — comp slow colour roam (subtractive)
@@ -95,6 +95,9 @@ constant float  kNacreCoreBase  = 0.10;    // central core glow (the "light thro
 // the comp so it can't smear the feedback. Brightness × the tanh'd vocal envelope.
 constant float  kNacreVoiceGlow      = 0.60;
 constant float  kNacreVoiceGlowTight = 10.0;
+// Downbeat pulse depth (NACRE.3, comp): +30% field brightness on the downbeat, settling
+// over the bar — the rhythmic accent that makes the connection read. Feel knob.
+constant float  kNacreBarPulse       = 0.30;
 
 // Warp grain (the reaction-diffusion churn; source warp noise term, treble-gated).
 // SIGNED ±; the [0,1] clamp rectifies the positive half into the churn texture. LOW
@@ -360,6 +363,12 @@ fragment float4 nacre_comp_fragment(
     float rc = length(base);
     ret += kNacreVoiceGlow * exp(-rc * rc * kNacreVoiceGlowTight) * nu.voiceLevel
          * float3(1.0, 0.97, 0.92);
+
+    // Downbeat pulse (NACRE.3, display-stage): the field swells brighter on the downbeat,
+    // settling over the bar — the RHYTHMIC accent that makes the music connection read (the
+    // continuous routes fire but sit below the threshold). Bar-rate → a breath, not a strobe;
+    // applied at the comp, never fed back → no smear. The dark ground (~0) stays dark.
+    ret *= (1.0 + kNacreBarPulse * nu.barPulse);
 
     // sRGB round-trip cancellation (the FM fix, D-139). butterchurn writes to an
     // sRGB-NAIVE canvas (the shader value IS the display value); Phosphene's drawable is
