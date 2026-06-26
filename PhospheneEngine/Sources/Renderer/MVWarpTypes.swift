@@ -32,6 +32,10 @@ public struct MVWarpPipelineBundle: Sendable {
     /// name at bundle build — Nacre and Fata Morgana would both otherwise match the
     /// blur heuristic, so this disambiguates. false for every other mv_warp preset.
     public let isNacre: Bool
+    /// Floret (FLORET.2a): routes the draw path to the floret branch (custom warp →
+    /// signature comp → swap; the seed is folded into the warp — same shape as Nacre).
+    /// Keyed on the preset name at bundle build. false for every other mv_warp preset.
+    public let isFloret: Bool
     /// Initial clear colour for the three feedback textures (Skein.ENGINE.1.1, D-143).
     /// On the marks-on-top path the background fragment (Pass 0) is skipped, so this is
     /// the held GROUND the marks sit on (Skein's cream). Stored as RGBA components
@@ -47,6 +51,7 @@ public struct MVWarpPipelineBundle: Sendable {
         feedbackFormat: MTLPixelFormat? = nil,
         blurState: MTLRenderPipelineState? = nil,
         isNacre: Bool = false,
+        isFloret: Bool = false,
         canvasClearColor: SIMD4<Double> = SIMD4<Double>(0, 0, 0, 1)
     ) {
         self.warpState    = warpState
@@ -56,6 +61,7 @@ public struct MVWarpPipelineBundle: Sendable {
         self.feedbackFormat = feedbackFormat ?? pixelFormat
         self.blurState    = blurState
         self.isNacre      = isNacre
+        self.isFloret     = isFloret
         self.canvasClearColor = canvasClearColor
     }
 }
@@ -88,6 +94,8 @@ public struct MVWarpState: @unchecked Sendable {
     public var blurTexture: MTLTexture?
     /// Nacre (NACRE.2b): routes `drawWithMVWarp` to the nacre branch. false otherwise.
     public var isNacre: Bool = false
+    /// Floret (FLORET.2a): routes `drawWithMVWarp` to the floret branch. false otherwise.
+    public var isFloret: Bool = false
     /// Initial feedback-texture clear colour (Skein.ENGINE.1.1, D-143), as RGBA
     /// components. Carried so `reallocateMVWarpTextures` (resize) re-clears to the same
     /// ground. (0,0,0,1) for every preset except marks-on-top canvas-hold presets

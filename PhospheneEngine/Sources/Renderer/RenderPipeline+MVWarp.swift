@@ -4,12 +4,9 @@
 // to `mvWarpState.sceneTexture` by a preceding pass (`.rayMarch` + optional
 // `.postProcess`), or — for direct-render presets like Starburst — it renders
 // the preset fragment to `sceneTexture` itself before applying the warp.
-//
-// Three-pass rendering per frame:
-//   1. Warp pass   — 32×24 vertex grid warps `warpTexture` (previous frame) at
-//                    per-vertex displaced UVs × decay → `composeTexture`
-//   2. Compose pass— fullscreen quad, scene alpha-blended onto `composeTexture`
-//   3. Blit pass   — `composeTexture` → drawable; swap warp ↔ compose
+// Three-pass per frame: (1) warp — 32×24 vertex grid warps `warpTexture` (prev) at
+// per-vertex displaced UVs × decay → `composeTexture`; (2) compose — scene alpha-blended
+// onto `composeTexture`; (3) blit — `composeTexture` → drawable; swap warp ↔ compose.
 
 import Metal
 @preconcurrency import MetalKit
@@ -43,33 +40,25 @@ extension RenderPipeline {
             return
         }
 
-        // AV.2.1: clear freshly-allocated textures to the canvas ground. storageMode =
-        // .private GPU memory is NOT guaranteed zero-initialised — without this, the
-        // first post-preset-switch frame can read whatever bit pattern previously
-        // occupied that memory (live AV.2 session read as full-screen magenta for ~1 s
-        // after preset switch).
-        //
-        // Skein.ENGINE.1.1 (D-143): the clear colour is per-preset. Black for every
-        // existing preset (byte-identical); on the marks-on-top path Pass 0 is skipped,
-        // so this clear IS the held ground (Skein's cream).
-        // Skein.5.3b: a per-track ground override (the palette library's light/dark grounds)
-        // wins over the preset-static colour — including on the resize re-clear path, so a
-        // mid-track window resize re-clears to the CURRENT track's ground, not the JSON cream.
+        // AV.2.1: clear freshly-allocated textures to the canvas ground — .private GPU
+        // memory isn't zero-initialised, so the first post-switch frame can read stale bits
+        // (live AV.2: full-screen magenta for ~1 s after preset switch).
+        // Skein.ENGINE.1.1 (D-143): clear colour is per-preset (black byte-identical for all
+        // but marks-on-top presets, where this clear IS the held ground — Skein's cream).
+        // Skein.5.3b: a per-track ground override (palette light/dark grounds) wins over the
+        // preset-static colour, incl. on the resize re-clear (→ the current track's ground).
         let cc = mvWarpLock.withLock { mvWarpCanvasGroundOverride } ?? bundle.canvasClearColor
         let canvasClear = MTLClearColor(red: cc.x, green: cc.y, blue: cc.z, alpha: cc.w)
         clearWarpTextures([warpTex, composeTex, sceneTex], to: canvasClear)
 
-        // Fata Morgana (D-139): the blur-of-prev target at 1/4 RESOLUTION — butterchurn's
-        // blur1 is a downsampled separable gaussian (blurRatios ~0.25), and the
-        // downsample + the warp's bilinear read are what make it a WIDE low-pass (which
-        // drives the warp's coherent large-scale smearing of the blobs into ribbons). A
-        // full-res blur was too narrow (blobs stayed discrete particles).
+        // Fata Morgana (D-139): blur-of-prev target at 1/4 RESOLUTION — butterchurn's blur1 is
+        // a downsampled separable gaussian (~0.25); the downsample + bilinear read make it a WIDE
+        // low-pass (drives the warp's coherent smearing of blobs into ribbons; full-res was too narrow).
         let blurW = max(width / 4, 1), blurH = max(height / 4, 1)
         let blurTex = bundle.blurState != nil
             ? makeWarpTexture(width: blurW, height: blurH, format: bundle.feedbackFormat)
             : nil
-        // The blur-of-prev intermediate (Fata Morgana) always starts black — it is not
-        // the canvas ground.
+        // The blur-of-prev intermediate (Fata Morgana) always starts black (not the ground).
         if let blurTex { clearWarpTextures([blurTex], to: MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)) }
 
         let state = MVWarpState(
@@ -84,6 +73,7 @@ extension RenderPipeline {
             blurPipeline: bundle.blurState,
             blurTexture: blurTex,
             isNacre: bundle.isNacre,
+            isFloret: bundle.isFloret,
             canvasClearColor: bundle.canvasClearColor
         )
         mvWarpLock.withLock { mvWarpState = state }
@@ -119,6 +109,7 @@ extension RenderPipeline {
             feedbackFormat: existing.feedbackFormat,
             blurState: existing.blurPipeline,
             isNacre: existing.isNacre,
+            isFloret: existing.isFloret,
             canvasClearColor: existing.canvasClearColor   // resize re-clears to the same ground (D-143)
         )
         setupMVWarp(bundle: bundle, size: size)
@@ -211,10 +202,9 @@ extension RenderPipeline {
             return
         }
 
-        // Nacre (NACRE.2b): the (431) jello-mirror branch — custom feedback warp
-        // (unsharp + grain + palette-tinted core seed) → signature comp (display-only)
-        // → swap. Checked before the blur heuristic so Nacre isn't mistaken for Fata
-        // Morgana (Nacre uses no blur target).
+        // Nacre (NACRE.2b): the (431) jello-mirror branch — custom warp (unsharp + grain +
+        // core seed) → signature comp (display-only) → swap. Before the blur heuristic so
+        // Nacre isn't mistaken for Fata Morgana (Nacre uses no blur target).
         if warpState.isNacre {
             drawWithNacre(
                 commandBuffer: commandBuffer,
@@ -226,9 +216,21 @@ extension RenderPipeline {
             return
         }
 
-        // Fata Morgana (D-139): when a blur pipeline is attached, run the fata
-        // branch — blur(prev) → custom feedback warp → [shapes on top, L2] →
-        // procedural mirage comp (display-only) → swap.
+        // Floret (FLORET.2a): the Sunflower Passion radial-bloom branch — same shape as Nacre
+        // (custom warp → signature comp → swap; no blur target on the 2a stub).
+        if warpState.isFloret {
+            drawWithFloret(
+                commandBuffer: commandBuffer,
+                view: view,
+                features: &features,
+                stemFeatures: stemFeatures,
+                warpState: warpState
+            )
+            return
+        }
+
+        // Fata Morgana (D-139): a blur pipeline ⇒ the fata branch — blur(prev) → custom warp
+        // → [shapes on top, L2] → procedural mirage comp (display-only) → swap.
         if warpState.blurPipeline != nil {
             drawWithFataMorgana(
                 commandBuffer: commandBuffer,
@@ -250,8 +252,8 @@ extension RenderPipeline {
             sceneAlreadyRendered: sceneAlreadyRendered)
     }
 
-    /// The standard / Dragon-Bloom / Skein mv_warp pass chain (everything after the
-    /// reduced-motion / Fata Morgana / Nacre branch dispatch in `drawWithMVWarp`).
+    /// The standard / Dragon-Bloom / Skein mv_warp pass chain (after the reduced-motion /
+    /// Nacre / Floret / Fata Morgana branch dispatch in `drawWithMVWarp`).
     @MainActor
     private func drawWithMVWarpStandard(
         commandBuffer: MTLCommandBuffer,
@@ -262,12 +264,10 @@ extension RenderPipeline {
         warpState: MVWarpState,
         sceneAlreadyRendered: Bool
     ) {
-        // Dragon Bloom (D-137): when a scene-geometry overlay (the strands) is
-        // attached, replicate butterchurn's custom-warp loop exactly — warp the
-        // previous frame (NO decay; the custom warp self-regulates) then draw the
-        // waves NORMAL-ALPHA directly ON TOP of the warp result; that IS the
-        // feedback (comp/echo/invert is display-only at blit). No separate scene
-        // texture, no decayed compose. Other presets keep the scene+decayed-compose.
+        // Dragon Bloom (D-137): with a scene-geometry overlay (strands) attached, replicate
+        // butterchurn's custom-warp loop — warp prev (NO decay; the custom warp self-regulates),
+        // draw the waves NORMAL-ALPHA ON TOP (that IS the feedback; comp/echo/invert is
+        // display-only at blit). Other presets keep the scene + decayed-compose.
         let strandsOnTop = sceneGeometryLock.withLock { sceneGeometryState != nil }
 
         // ── Pass 0: Scene render (non-strands presets) ───────────────────────
