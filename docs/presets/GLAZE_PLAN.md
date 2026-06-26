@@ -35,6 +35,15 @@ in the display comp. (Sibling of the Nacre "brightness is the wrong medium" + "w
 **Still open (M7 tuning, not grain):** the silence base is band-like (the full contour field fills in with
 audio = GLAZE.3, as the source's waveform jumps around); the ground reads green (the comp `+1.0` lift).
 
+> **GLAZE.3 learning (seed-fill):** the audio-driven *anchor* sweeps only the warp **poke**; the **seed**
+> (the bright structure source) was a fixed horizontal band, so the field stayed band-like even with audio.
+> Fix: the seed band's vertical centre rides the spring **tail Y** (`gu.seedY`) → it sweeps the frame with
+> the music. **Anchor ≠ fill** — to fill an accreting feedback field you must move the *seed*, not just the
+> poke. What's left for **GLAZE.4** is a `decay`-vs-dark-ground tension: `decay 0.96` gives the oracle's dark
+> ground but retains only ~1–1.5 s of sweep, so the field doesn't accrete to the oracle's full nested-ring
+> density (which uses `decay 1.0` on 8-bit). Raising decay toward 1.0 fills more but risks the float bloom
+> (the §0/Nacre lesson) and lifts the ground — that trade is Matt's live-M7 call, not audio wiring.
+
 ## 0. Greenlit scope (Matt, 2026-06-26)
 
 **Name: Glaze.** **Scope: faithful base + 3 uplifts** (the Nacre/Dragon Bloom "substantially exceed the
@@ -148,7 +157,7 @@ share a primitive at a timescale.
 | **GLAZE.2a** ✅ | Wire the dedicated Glaze branch + STUB shaders, test-reachable. **Blur-pyramid deferred to 2b** (its shader consumers + the 3-level state extension land together — no speculative unused infra; re-scope from the original "blur in 2a"). | ✅ engine+app build clean, swiftlint strict 0; `GlazeMVWarpAccumulationTest` runs the live warp→comp→swap path 64 frames at silence — non-black + no white-out; reduced-motion BUG-061-safe; PresetRegression + Nacre/FM accumulation byte-identical. |
 | **GLAZE.2b.1** ✅ | **Blur-pyramid extension (3-level)** — `glaze_blur_fragment` (9-tap downsample) run progressively (prev→blur1 ½ → blur2 ¼ → blur3 ⅛); `MVWarpState` += `blurTexture2/3`; `setupMVWarp`/`renderGlaze` allocate + fill + bind to warp(blur1/2)+comp(blur1/2/3). Infra only — stub shaders don't sample yet. | ✅ pyramid allocates (128/64/32 of 256) + `glaze_blur` compiles + 3 passes run clean in the live path (no cmd error, still non-black/no-whiteout); PresetRegression + Nacre/FM byte-identical; lint 0. |
 | **GLAZE.2b.2** ✅ mechanism-complete (M7 tuning pending) | Faithful base LANDED + the structure mechanism now WORKS. The port chain: 3-mass spring (CPU) → fragment swirl-poke; butterchurn's exact per-vertex **zoomexp radial zoom** (`pow(zoom, pow(zoomExp, rad·2−1))`, butterchurn.js L2637) + 4-term warp ripple; channel-flow emboss warp + bounding decay (the float-bloom fix); structure **seed** at the poke (the source's `wave_a 0.207` waveform role) + faint noise floor; multi-scale unsharp comp (blur1/2/3) + palette + contrast + sRGB. **Debug journey:** white-flood → (decay) flat → (zoomexp) still flat → **isolation diagnostic** (comp passthrough showed the *warp feedback was uniform*) → the missing piece was a **structure seed** (a uniform `+0.006` self-seed has no gradient for the flow/emboss to bite on). With the seed, the field develops glossy embossed flowing structure. **Current state:** reads as glossy contour-gel but **grainy + washed-out** vs the oracle's clean concentric rings — a visual-tuning gap (blur width / seed coherence / contrast), the M7 loop (Nacre took ~9 rounds). | Mechanism renders the glossy contour-gel register; non-black + no white-out gate green; → **Matt M7 tuning** (grain → smooth rings, contrast). |
-| **GLAZE.3** | Base audio coupling (§6, one route at a time). | Each route's firing shown in session-replay (`features.csv`); one-primitive-per-layer holds; M7. |
+| **GLAZE.3** ⏳ code-complete, pending live M7 | Base audio coupling (§6). **Anchor route** (`479f145`): anchor X ← EMA(bassDev)−EMA(trebDev), anchor Y ← EMA(bassRel+trebRel), off deviation primitives (D-026); the spring integrates → smooth momentum. **Seed fill** (`3d0691e`): the seed band rides the spring tail Y (`gu.seedY`) so it sweeps the frame with the audio — anchor alone moves only the poke, the seed was a fixed band (the 2b.2 band-like gap). | ✅ route firing in session-replay (real `features.csv` via `GLAZE_SESSION_CSV`: pokeX span 1.05, tailY span 1.03); one-primitive-per-layer holds (FA #67); mechanism gate + replay green; **live M7 = Matt** (gate for GLAZE.4). |
 | **GLAZE.4** | Tune the faithful base to **base cert / live M7 confirmed**. | Matt live M7 sign-off on the base (gate for uplifts, FA #65). |
 | **GLAZE.5 (A)** | Uplift A — per-stem instrument routing into the spring. | Per-stem firing in session-replay; one-primitive-per-layer holds; M7. |
 | **GLAZE.6 (B)** | Uplift B — HDR glossy bloom (re-unclamp + display-stage bloom). | No white-out under worst-case beat train; flash-safe (multi-pass harness); M7. |
