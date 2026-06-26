@@ -157,7 +157,9 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// fills out, slower when sparse (the motion connection). The band average is blind to
     /// full-band entries — energy is in the stems (Matt M7). [The DISPLAY-stage voice-glow
     /// envelope `nacreCoreEMA` was removed — Matt M7: blinding on the vocal peaks, no read.]
-    var nacreSeedEMA: Float = 0, nacreSpinEMA: Float = 0
+    /// `glazeSeedEMA` (Glaze, GLAZE.2a): the same ~0.5 s total-energy envelope gating Glaze's
+    /// warp seed (faithful modwavealphabyvolume role); GLAZE.2b+ adds its spring-physics state.
+    var nacreSeedEMA: Float = 0, nacreSpinEMA: Float = 0, glazeSeedEMA: Float = 0
 
     // MARK: - Live Audio Features
 

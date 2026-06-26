@@ -1,15 +1,12 @@
 // RenderPipeline+MVWarp — Milkdrop-style per-vertex feedback warp pass (MV-2, D-027).
 //
-// `drawWithMVWarp` is called from `renderFrame` after the scene has been rendered
-// to `mvWarpState.sceneTexture` by a preceding pass (`.rayMarch` + optional
-// `.postProcess`), or — for direct-render presets like Starburst — it renders
-// the preset fragment to `sceneTexture` itself before applying the warp.
+// `drawWithMVWarp` is called from `renderFrame` after the scene is rendered to
+// `mvWarpState.sceneTexture` by a preceding pass (`.rayMarch` + optional `.postProcess`), or
+// — for direct-render presets — it renders the preset fragment to `sceneTexture` first.
 //
-// Three-pass rendering per frame:
-//   1. Warp pass   — 32×24 vertex grid warps `warpTexture` (previous frame) at
-//                    per-vertex displaced UVs × decay → `composeTexture`
-//   2. Compose pass— fullscreen quad, scene alpha-blended onto `composeTexture`
-//   3. Blit pass   — `composeTexture` → drawable; swap warp ↔ compose
+// Three passes/frame: (1) warp — 32×24 vertex grid warps `warpTexture` (prev) at displaced
+// UVs × decay → `composeTexture`; (2) compose — fullscreen quad, scene alpha-blended on;
+// (3) blit — `composeTexture` → drawable; swap warp ↔ compose.
 
 import Metal
 @preconcurrency import MetalKit
@@ -84,6 +81,7 @@ extension RenderPipeline {
             blurPipeline: bundle.blurState,
             blurTexture: blurTex,
             isNacre: bundle.isNacre,
+            isGlaze: bundle.isGlaze,
             canvasClearColor: bundle.canvasClearColor
         )
         mvWarpLock.withLock { mvWarpState = state }
@@ -119,6 +117,7 @@ extension RenderPipeline {
             feedbackFormat: existing.feedbackFormat,
             blurState: existing.blurPipeline,
             isNacre: existing.isNacre,
+            isGlaze: existing.isGlaze,
             canvasClearColor: existing.canvasClearColor   // resize re-clears to the same ground (D-143)
         )
         setupMVWarp(bundle: bundle, size: size)
@@ -211,24 +210,27 @@ extension RenderPipeline {
             return
         }
 
-        // Nacre (NACRE.2b): the (431) jello-mirror branch — custom feedback warp
-        // (unsharp + grain + palette-tinted core seed) → signature comp (display-only)
-        // → swap. Checked before the blur heuristic so Nacre isn't mistaken for Fata
-        // Morgana (Nacre uses no blur target).
+        // Dedicated branches (see RenderPipeline+Nacre / +Glaze / +FataMorgana). Nacre/Glaze
+        // are checked before the blur heuristic so they aren't taken for Fata Morgana (Glaze
+        // gains a blur pyramid in 2b; the name flag disambiguates).
         if warpState.isNacre {
             drawWithNacre(
                 commandBuffer: commandBuffer,
                 view: view,
                 features: &features,
                 stemFeatures: stemFeatures,
-                warpState: warpState
-            )
+                warpState: warpState)
             return
         }
-
-        // Fata Morgana (D-139): when a blur pipeline is attached, run the fata
-        // branch — blur(prev) → custom feedback warp → [shapes on top, L2] →
-        // procedural mirage comp (display-only) → swap.
+        if warpState.isGlaze {
+            drawWithGlaze(
+                commandBuffer: commandBuffer,
+                view: view,
+                features: &features,
+                stemFeatures: stemFeatures,
+                warpState: warpState)
+            return
+        }
         if warpState.blurPipeline != nil {
             drawWithFataMorgana(
                 commandBuffer: commandBuffer,
@@ -262,12 +264,10 @@ extension RenderPipeline {
         warpState: MVWarpState,
         sceneAlreadyRendered: Bool
     ) {
-        // Dragon Bloom (D-137): when a scene-geometry overlay (the strands) is
-        // attached, replicate butterchurn's custom-warp loop exactly — warp the
-        // previous frame (NO decay; the custom warp self-regulates) then draw the
-        // waves NORMAL-ALPHA directly ON TOP of the warp result; that IS the
-        // feedback (comp/echo/invert is display-only at blit). No separate scene
-        // texture, no decayed compose. Other presets keep the scene+decayed-compose.
+        // Dragon Bloom (D-137): with a scene-geometry overlay (strands) attached, replicate
+        // butterchurn's custom-warp loop — warp prev (NO decay; self-regulating) then draw the
+        // waves NORMAL-ALPHA ON TOP (that IS the feedback; comp/echo/invert is display-only at
+        // blit; no separate scene texture/decayed compose). Other presets keep scene+compose.
         let strandsOnTop = sceneGeometryLock.withLock { sceneGeometryState != nil }
 
         // ── Pass 0: Scene render (non-strands presets) ───────────────────────

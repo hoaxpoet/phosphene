@@ -1,0 +1,22 @@
+{
+  "name": "Glaze",
+  "family": "hypnotic",
+  "duration": 45,
+  "description": "Glossy 'wet jelly' contour-gel — a port of the Milkdrop preset `Flexi + stahlregen - jelly showoff parade`: nested concentric contour-ring striations under a thick embossed gel sheen, a saturated neon palette that slowly rotates, on an accreting feedback field, flowing as an audio-driven spring-mass 'jelly' drags a swirl-poke across it. GLAZE.2a is the wiring STUB (loads + renders non-black through the live warp→comp→swap path); the faithful spring physics + blur-pyramid gel sheen land in GLAZE.2b, and the greenlit uplifts (per-stem routing, HDR glossy bloom, shiver mode) in GLAZE.5+. See docs/presets/GLAZE_PLAN.md.",
+  "author": "Matt",
+  "passes": ["direct", "mv_warp"],
+  "fragment_function": "glaze_fragment",
+  "vertex_function": "fullscreen_vertex",
+  "beat_source": "composite",
+  "decay": 0.940,
+  "stem_affinity": {},
+  "visual_density": 0.60,
+  "motion_intensity": 0.55,
+  "color_temperature_range": [0.30, 0.90],
+  "fatigue_risk": "medium",
+  "transition_affordances": ["crossfade", "morph"],
+  "section_suitability": ["buildup", "peak", "bridge"],
+  "complexity_cost": { "tier1": 2.0, "tier2": 1.0 },
+  "certified": false,
+  "rubric_profile": "lightweight"
+}

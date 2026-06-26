@@ -32,6 +32,11 @@ public struct MVWarpPipelineBundle: Sendable {
     /// name at bundle build — Nacre and Fata Morgana would both otherwise match the
     /// blur heuristic, so this disambiguates. false for every other mv_warp preset.
     public let isNacre: Bool
+    /// Glaze (GLAZE.2a): routes the draw path to the glaze branch (custom warp → display
+    /// comp → swap). Like Nacre, keyed on the preset name at bundle build (Glaze also uses
+    /// `.rgba16Float` feedback; in 2b it adds the blur pyramid, so this disambiguates it
+    /// from the Fata Morgana blur heuristic). false for every other mv_warp preset.
+    public let isGlaze: Bool
     /// Initial clear colour for the three feedback textures (Skein.ENGINE.1.1, D-143).
     /// On the marks-on-top path the background fragment (Pass 0) is skipped, so this is
     /// the held GROUND the marks sit on (Skein's cream). Stored as RGBA components
@@ -47,6 +52,7 @@ public struct MVWarpPipelineBundle: Sendable {
         feedbackFormat: MTLPixelFormat? = nil,
         blurState: MTLRenderPipelineState? = nil,
         isNacre: Bool = false,
+        isGlaze: Bool = false,
         canvasClearColor: SIMD4<Double> = SIMD4<Double>(0, 0, 0, 1)
     ) {
         self.warpState    = warpState
@@ -56,6 +62,7 @@ public struct MVWarpPipelineBundle: Sendable {
         self.feedbackFormat = feedbackFormat ?? pixelFormat
         self.blurState    = blurState
         self.isNacre      = isNacre
+        self.isGlaze      = isGlaze
         self.canvasClearColor = canvasClearColor
     }
 }
@@ -88,6 +95,8 @@ public struct MVWarpState: @unchecked Sendable {
     public var blurTexture: MTLTexture?
     /// Nacre (NACRE.2b): routes `drawWithMVWarp` to the nacre branch. false otherwise.
     public var isNacre: Bool = false
+    /// Glaze (GLAZE.2a): routes `drawWithMVWarp` to the glaze branch. false otherwise.
+    public var isGlaze: Bool = false
     /// Initial feedback-texture clear colour (Skein.ENGINE.1.1, D-143), as RGBA
     /// components. Carried so `reallocateMVWarpTextures` (resize) re-clears to the same
     /// ground. (0,0,0,1) for every preset except marks-on-top canvas-hold presets
