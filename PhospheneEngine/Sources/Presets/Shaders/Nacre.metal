@@ -53,7 +53,7 @@ struct NacreUniforms {
     float  hueShift;     // NACRE.3: harmony → palette-phase nudge (seconds, bounded ±1.5)
     float2 texel;        // (1/feedbackW, 1/feedbackH) — comp luminance-sobel offsets (texsize.zw)
     float  voiceLevel;   // NACRE.3: tanh-saturated vocal envelope → the comp's DISPLAY-stage core glow
-    float  barPulse;     // NACRE.3: downbeat pulse envelope (1 at the downbeat, decays over the bar)
+    float  spin;         // NACRE.3: energy → continuous warp rotation (rad/frame; turning ← music)
     float4 aspect;       // (aspectx, aspecty, 1/aspectx, 1/aspecty) — comp cell aspect
     float4 randPreset;   // fixed per-load random vec4 (the comp's tint + dz scale character)
     float4 slowRoamSin;  // [0.5+0.5 sin(t·{slow})] — comp slow colour roam (subtractive)
@@ -95,10 +95,6 @@ constant float  kNacreCoreBase  = 0.10;    // central core glow (the "light thro
 // the comp so it can't smear the feedback. Brightness × the tanh'd vocal envelope.
 constant float  kNacreVoiceGlow      = 0.60;
 constant float  kNacreVoiceGlowTight = 10.0;
-// Downbeat pulse depth (NACRE.3, comp): +20% field brightness on the downbeat, settling
-// over the bar — the rhythmic accent that makes the connection read. Trimmed 0.30→0.20
-// (Matt M7: "a little too bright"); still clearly perceptible, less white-clip on the rims.
-constant float  kNacreBarPulse       = 0.20;
 
 // Warp grain (the reaction-diffusion churn; source warp noise term, treble-gated).
 // SIGNED ±; the [0,1] clamp rectifies the positive half into the churn texture. LOW
@@ -233,6 +229,16 @@ fragment float4 nacre_warp_fragment(
     constant NacreUniforms& nu  [[buffer(1)]]
 ) {
     float2 uv = in.warped_uv;
+    // Energy-driven continuous spin (NACRE.3, turning ← music). Rotate the feedback sample
+    // about centre by nu.spin rad on top of the vertex advection; because we sample the
+    // already-spun `prev`, the rotation ACCUMULATES → a continuous swirl whose RATE rises with
+    // the music. Display medium = motion (Matt M7: brightness was bothersome). uv-space (like
+    // the vertex rotation) — the blobby molten field shows no aspect skew.
+    if (nu.spin > 0.0) {
+        float2 d = uv - 0.5;
+        float cs = cos(nu.spin), ss = sin(nu.spin);
+        uv = float2(cs * d.x - ss * d.y, ss * d.x + cs * d.y) + 0.5;
+    }
     float3 c  = prev.sample(warpSampler, uv).rgb;
 
     // Inline gaussian blur of `prev` for the unsharp high-pass. WIDE radius
@@ -364,12 +370,8 @@ fragment float4 nacre_comp_fragment(
     float rc = length(base);
     ret += kNacreVoiceGlow * exp(-rc * rc * kNacreVoiceGlowTight) * nu.voiceLevel
          * float3(1.0, 0.97, 0.92);
-
-    // Downbeat pulse (NACRE.3, display-stage): the field swells brighter on the downbeat,
-    // settling over the bar — the RHYTHMIC accent that makes the music connection read (the
-    // continuous routes fire but sit below the threshold). Bar-rate → a breath, not a strobe;
-    // applied at the comp, never fed back → no smear. The dark ground (~0) stays dark.
-    ret *= (1.0 + kNacreBarPulse * nu.barPulse);
+    // (The downbeat BRIGHTNESS pulse was removed at NACRE.3 — Matt M7: "the brightness is
+    //  still bothersome". The rhythmic/energy connection moved to the warp's turning, nu.spin.)
 
     // sRGB round-trip cancellation (the FM fix, D-139). butterchurn writes to an
     // sRGB-NAIVE canvas (the shader value IS the display value); Phosphene's drawable is
