@@ -148,8 +148,7 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// the centroid's DEVIATION from it (track-robust — responds to harmonic/timbral shifts,
     /// not absolute level). `nacreHueEMA` is the calm-smoothed output (the `hueShift` bound).
     /// MainActor-only (the mv_warp draw path), no lock — same convention as the fata accumulators.
-    var nacreCentroidNorm: Float = 0
-    var nacreHueEMA: Float = 0
+    var nacreCentroidNorm: Float = 0, nacreHueEMA: Float = 0
     /// Nacre (NACRE.3): `nacreSeedEMA` is the SLOW (~0.5 s) total-energy envelope driving the
     /// WARP's core SEED, kept near-steady so the fed-back seed never flares into smears.
     /// `nacreSpinEMA`: smoothed stem-fullness (avg of the four stem energies, ~0.5 s) → the
@@ -157,9 +156,10 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// fills out, slower when sparse (the motion connection). The band average is blind to
     /// full-band entries — energy is in the stems (Matt M7). [The DISPLAY-stage voice-glow
     /// envelope `nacreCoreEMA` was removed — Matt M7: blinding on the vocal peaks, no read.]
-    /// `glazeSeedEMA` (Glaze, GLAZE.2a): the same ~0.5 s total-energy envelope gating Glaze's
-    /// warp seed (faithful modwavealphabyvolume role); GLAZE.2b+ adds its spring-physics state.
-    var nacreSeedEMA: Float = 0, nacreSpinEMA: Float = 0, glazeSeedEMA: Float = 0
+    var nacreSeedEMA: Float = 0, nacreSpinEMA: Float = 0
+    /// Glaze (GLAZE.2b.2): the 3-mass spring chain (CPU-side; the swirl-poke centre), stepped
+    /// each frame in `computeGlazeUniforms`. MainActor-only, same convention as the above.
+    var glazeSpring = GlazeSpring()
 
     // MARK: - Live Audio Features
 
