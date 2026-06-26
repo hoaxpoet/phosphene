@@ -93,6 +93,11 @@ public struct MVWarpState: @unchecked Sendable {
     /// the fata draw branch runs. nil for Dragon Bloom / default mv_warp presets.
     public let blurPipeline: MTLRenderPipelineState?
     public var blurTexture: MTLTexture?
+    /// Glaze (GLAZE.2b.1): the 2nd + 3rd blur-pyramid levels (`blurTexture` is level 1).
+    /// Allocated only when `isGlaze` (¼ + ⅛ res); nil for FM (single ¼-res blur) and every
+    /// other preset. The glaze branch fills them progressively (prev→1→2→3).
+    public var blurTexture2: MTLTexture?
+    public var blurTexture3: MTLTexture?
     /// Nacre (NACRE.2b): routes `drawWithMVWarp` to the nacre branch. false otherwise.
     public var isNacre: Bool = false
     /// Glaze (GLAZE.2a): routes `drawWithMVWarp` to the glaze branch. false otherwise.

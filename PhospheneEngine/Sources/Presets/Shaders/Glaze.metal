@@ -111,6 +111,28 @@ float2 mvWarpPerVertex(
     return float2(c * p.x - sn * p.y, sn * p.x + c * p.y) + centre;
 }
 
+// MARK: - Blur pyramid (GLAZE.2b.1) — butterchurn sampler_blur1/2/3
+//
+// The source's glossy gel sheen is a multi-scale unsharp/bandpass of three progressively
+// wider blurs of the feedback (warp uses blur1+blur2; comp uses blur1+blur2+blur3). We run
+// this ONE 9-tap (1-2-4) gaussian three times into progressively smaller targets
+// (blur1 ½-res ← prev, blur2 ¼ ← blur1, blur3 ⅛ ← blur2) — the resolution halving widens the
+// effective blur per level (FM's blur-of-prev pattern, D-139, extended to a pyramid). `src`
+// is the previous level; tap spacing from its own texel size (no per-level uniform).
+fragment float4 glaze_blur_fragment(
+    VertexOut        in  [[stage_in]],
+    texture2d<float> src [[texture(0)]]
+) {
+    constexpr sampler s(filter::linear, address::clamp_to_edge);
+    float2 t = float2(1.0 / float(src.get_width()), 1.0 / float(src.get_height())) * 1.5;
+    float3 c = src.sample(s, in.uv).rgb * 4.0;
+    c += (src.sample(s, in.uv + float2( t.x, 0)).rgb + src.sample(s, in.uv + float2(-t.x, 0)).rgb +
+          src.sample(s, in.uv + float2(0,  t.y)).rgb + src.sample(s, in.uv + float2(0, -t.y)).rgb) * 2.0;
+    c += (src.sample(s, in.uv + t).rgb + src.sample(s, in.uv - t).rgb +
+          src.sample(s, in.uv + float2( t.x, -t.y)).rgb + src.sample(s, in.uv + float2(-t.x, t.y)).rgb);
+    return float4(c * (1.0 / 16.0), 1.0);
+}
+
 // MARK: - Custom WARP fragment (feedback transfer — 2a STUB)
 //
 // Stub: warped prev × decay + a palette-tinted, energy-gated, silence-floored central

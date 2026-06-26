@@ -95,7 +95,18 @@ extension RenderPipeline {
     ) {
         var uni = computeGlazeUniforms(features: features, stems: stemFeatures)
 
-        // ── Warp pass: warp(prev, u) → composeTexture ─────────────────────────
+        // ── Blur pyramid (GLAZE.2b.1): prev → blur1 → blur2 → blur3 (progressive
+        // downsample; FM's blur-of-prev pattern). Both warp and comp sample these — a
+        // 1-frame blur lag vs the current warp output, visually negligible on a coherent
+        // feedback field. Skipped if the pyramid isn't allocated (defensive).
+        if let blurPipe = warpState.blurPipeline,
+           let b1 = warpState.blurTexture, let b2 = warpState.blurTexture2, let b3 = warpState.blurTexture3 {
+            encodeGlazeBlur(commandBuffer, blurPipe, src: warpState.warpTexture, dst: b1)
+            encodeGlazeBlur(commandBuffer, blurPipe, src: b1, dst: b2)
+            encodeGlazeBlur(commandBuffer, blurPipe, src: b2, dst: b3)
+        }
+
+        // ── Warp pass: warp(prev, blur1/2, u) → composeTexture ────────────────
         let wdesc = MTLRenderPassDescriptor()
         wdesc.colorAttachments[0].texture = warpState.composeTexture
         wdesc.colorAttachments[0].loadAction = .clear
@@ -110,12 +121,14 @@ extension RenderPipeline {
             var scene = getSceneUniforms()
             enc.setVertexBytes(&scene, length: MemoryLayout<SceneUniforms>.stride, index: 2)
             enc.setFragmentTexture(warpState.warpTexture, index: 0)
+            enc.setFragmentTexture(warpState.blurTexture, index: 1)
+            enc.setFragmentTexture(warpState.blurTexture2, index: 2)
             enc.setFragmentBytes(&uni, length: MemoryLayout<GlazeUniforms>.stride, index: 1)
             enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 4278)  // 31×23 quads
             enc.endEncoding()
         }
 
-        // ── Comp blit: display(compose, u) → target (display-only) ────────────
+        // ── Comp blit: display(compose, blur1/2/3, u) → target (display-only) ──
         let cdesc = MTLRenderPassDescriptor()
         cdesc.colorAttachments[0].texture     = target
         cdesc.colorAttachments[0].loadAction  = .dontCare
@@ -123,6 +136,9 @@ extension RenderPipeline {
         if let enc = commandBuffer.makeRenderCommandEncoder(descriptor: cdesc) {
             enc.setRenderPipelineState(warpState.blitPipeline)
             enc.setFragmentTexture(warpState.composeTexture, index: 0)
+            enc.setFragmentTexture(warpState.blurTexture, index: 1)
+            enc.setFragmentTexture(warpState.blurTexture2, index: 2)
+            enc.setFragmentTexture(warpState.blurTexture3, index: 3)
             enc.setFragmentBytes(&uni, length: MemoryLayout<GlazeUniforms>.stride, index: 1)
             enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
             enc.endEncoding()
@@ -134,6 +150,22 @@ extension RenderPipeline {
             swap(&state.warpTexture, &state.composeTexture)
             mvWarpState = state
         }
+    }
+
+    /// One blur-pyramid pass: a fullscreen `glaze_blur_fragment` of `src` into the
+    /// (smaller) `dst`. Run progressively (prev→1→2→3) by `renderGlaze`.
+    @MainActor
+    private func encodeGlazeBlur(_ commandBuffer: MTLCommandBuffer, _ pipeline: MTLRenderPipelineState,
+                                 src: MTLTexture, dst: MTLTexture) {
+        let desc = MTLRenderPassDescriptor()
+        desc.colorAttachments[0].texture = dst
+        desc.colorAttachments[0].loadAction = .dontCare
+        desc.colorAttachments[0].storeAction = .store
+        guard let enc = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
+        enc.setRenderPipelineState(pipeline)
+        enc.setFragmentTexture(src, index: 0)
+        enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        enc.endEncoding()
     }
 
     /// Reduced-motion (U.9 / a11y) Glaze frame into `target`: the display comp of the
