@@ -234,7 +234,18 @@ import Metal
     #expect(jsonFiles.count >= 13, "Expected at least 13 JSON sidecars")
     let decoder = JSONDecoder()
     for jsonURL in jsonFiles {
-        let desc = try decoder.decode(PresetDescriptor.self, from: try Data(contentsOf: jsonURL))
+        // Name the file + error on a decode throw. A single bad enum (e.g.
+        // section_suitability "drop") throws the whole descriptor decode, and at
+        // runtime loadDescriptor then silently demotes the preset out of the catalog
+        // (CLEAN.3.1) — a bare `try` here fails but names neither file nor field.
+        // Record-and-continue so every malformed sidecar surfaces in one run.
+        let desc: PresetDescriptor
+        do {
+            desc = try decoder.decode(PresetDescriptor.self, from: try Data(contentsOf: jsonURL))
+        } catch {
+            Issue.record("Malformed sidecar \(jsonURL.lastPathComponent): \(error)")
+            continue
+        }
         #expect(!desc.passes.isEmpty,
                 "\(desc.name): decoded to empty passes — would freeze in draw(in:) (BUG-062)")
     }

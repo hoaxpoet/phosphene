@@ -96,7 +96,16 @@ import Foundation
     let decoder = JSONDecoder()
     for jsonURL in jsonFiles {
         let data = try Data(contentsOf: jsonURL)
-        let descriptor = try decoder.decode(PresetDescriptor.self, from: data)
+
+        // Name the file + error on a decode throw (see shippedPresets_neverDecodeToEmptyPasses):
+        // one bad enum throws the whole descriptor decode, and a bare `try` names neither.
+        let descriptor: PresetDescriptor
+        do {
+            descriptor = try decoder.decode(PresetDescriptor.self, from: data)
+        } catch {
+            Issue.record("Malformed sidecar \(jsonURL.lastPathComponent): \(error)")
+            continue
+        }
 
         let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         if let profileString = object?["rubric_profile"] as? String {
