@@ -30,7 +30,7 @@ struct NacreUniforms {
     var hueShift: Float = 0            // NACRE.3: harmony → palette-phase nudge (seconds), bounded
     var texel: SIMD2<Float> = .init(1, 1)
     var voiceLevel: Float = 0          // NACRE.3: vocal envelope → the comp's display-stage core glow
-    var pad1: Float = 0
+    var barPulse: Float = 0            // NACRE.3: downbeat pulse → display-stage rhythmic accent
     var aspect: SIMD4<Float> = .init(1, 1, 1, 1)
     // Fixed per-load random (the comp's tint + dz-scale character). Chosen in the
     // green-gold register the (431) reference sits in (tint 1+rand ≈ (1.62,1.74,1.30)).
@@ -75,6 +75,15 @@ extension RenderPipeline {
         let voiceTarget = Float(tanh(Double(max(0, stems.vocalsEnergy))))
         nacreCoreEMA += (voiceTarget - nacreCoreEMA) * 0.10
         uni.voiceLevel = nacreCoreEMA
+
+        // ── Downbeat pulse (NACRE.3) — the "events on the bar" half of the connection ──
+        // The 5 continuous-energy routes fire but sit below the perceptual threshold against
+        // the preset's autonomous motion (Matt M7: "not perceiving any connection"). Rhythm
+        // is what the eye reads as connected. A sharp-attack / bar-decay accent on the cached
+        // BeatGrid's barPhase01 (1 at the downbeat → 0 over the bar), applied DISPLAY-stage in
+        // the comp (no smear) — bar-rate so it breathes, not strobes. Static (no pulse) on
+        // beatless tracks (barPhase01 doesn't advance). Couple to the bar, not the beat (Matt).
+        uni.barPulse = pow(max(0, 1 - features.barPhase01), 2.5)
 
         // ── Hue ← harmony (NACRE.3) ──────────────────────────────────────────────
         // Nudge the palette PHASE (a subtle drift on top of the slow time-rotation, NOT a
