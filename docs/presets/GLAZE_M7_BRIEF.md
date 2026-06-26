@@ -1,11 +1,15 @@
-# Glaze — M7 review brief (GLAZE.2b.2 faithful base)
+# Glaze — M7 review brief (GLAZE.3 base audio coupling)
 
-**What you're judging:** the faithful-base *look* — does it read as the glossy "wet jelly" contour-gel
-(`docs/VISUAL_REFERENCES/glaze/`)? This is the **silence / time-driven base** (the spring idles on a time
-anchor; palette rotates slowly). **Audio reactivity is GLAZE.3, not here** — so it won't react much to music
-yet; judge the *register, structure, and sheen*, the Nacre-2b pattern (confirm the base, then wire audio).
+**What you're judging (GLAZE.3):** the field is now **audio-coupled** — does the jelly **move with the music**,
+and does the contour field **fill** when audio drives it (vs the band-like silence base you saw at GLAZE.2b.2)?
+The spring anchor is driven by bass/treble (lateral swing) + energy (lift), and the structure **seed now rides
+the jelly's height** so it sweeps the frame with the music. Judge: (a) does the motion read as *physical*
+(momentum/overshoot/settle), not a per-beat twitch; (b) does the field fill / develop structure on loud
+sections; (c) is it still the glossy gel register. The **full-field-density vs dark-ground** tuning (decay) is
+deliberately deferred to GLAZE.4 — don't judge that as a fail; judge whether the audio coupling *feels* right.
 
-Branch: `claude/nice-rubin-9c10c7` (pushed). Commits: `bcba561` (mechanism) → `7ce0f38` (tuning).
+Branch: `claude/nice-rubin-9c10c7` (UNPUSHED — local). GLAZE.3 commits: `479f145` (anchor route) → `3d0691e`
+(seed fill) → `3d71fed` (docs). The worktree app was rebuilt for GLAZE.3 (the `open` path below is current).
 
 ---
 
@@ -29,7 +33,7 @@ GLAZE_MVWARP_DIAG=1 GLAZE_W=600 GLAZE_H=450 GLAZE_FRAMES=600 GLAZE_ENERGY=0 \
 
 **⚠️ Run the WORKTREE build, not your usual app.** Glaze only exists on this worktree branch — your
 primary/canonical app (on `main`) has no Glaze, which is why cycling showed nothing. A fresh worktree build
-is ready (verified: its bundled `Glaze.metal` is byte-identical to the current source). Open it directly:
+was made for GLAZE.3 (`xcodebuild build` BUILD SUCCEEDED at `3d71fed`; the bundle below is current). Open it directly:
 
 ```sh
 open ~/Library/Developer/Xcode/DerivedData/PhospheneApp-fjevhlmowimaxjdcdeahnfybpseg/Build/Products/Debug/PhospheneApp.app
@@ -65,8 +69,11 @@ and the **brightness/contrast** — I hit the limit of solo headless tuning (9 r
 jelly" without your eye). The most likely high-impact moves: **drop the decay** (dark ground) and **simplify
 the seed toward a single clean slow curve** (clean rings). Your call on direction.
 
-## M7 questions
+## M7 questions (GLAZE.3)
 
-1. Does it read as the glossy contour-gel register at all, or is it the wrong family?
-2. Biggest single miss — the bright/no-dark-ground, the chaotic-vs-clean-rings, or the grain?
-3. Is the faithful direction worth continuing, or should the seed/structure approach change?
+1. Does the jelly **move with the music** — and does it read as *physical* (momentum, overshoot, settle),
+   not a mechanical per-beat twitch? (The spring integrates the audio; this is the core deliverable.)
+2. Does the contour field **fill / develop** on loud sections vs the band-like silence base?
+3. Is the **seed-rides-the-jelly** fill approach right, or should it bind the literal audio waveform instead?
+4. For GLAZE.4: how much more fill do you want (raise `decay` toward 1.0 — fills more, lifts the ground +
+   bloom risk), and where should the ground brightness land?
