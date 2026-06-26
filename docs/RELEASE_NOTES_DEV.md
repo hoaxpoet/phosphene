@@ -10,6 +10,17 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-26-225322] BUG-063 — Lumen Mosaic froze on a stale slot-8 buffer (write-during-read race); triple-buffered the fix
+
+Lumen Mosaic froze a second or two after selection, on a static but still-colourful frame, recovering only when Matt switched preset. A two-step live diagnosis pinned it:
+
+- **Static analysis exhausted it to a runtime corruption.** The per-frame tick (`meshPresetTick` → `LumenPatternEngine.tick`) fires unconditionally every frame; the engine math is NaN-free and bounded; the scene/camera are valid but constant; dolly (speed 0), the frame-budget governor (≤0.75 step mult), the bounded audio modulation, and the recent CLEAN.4.3/4.6 commits are all ruled out. Every readable path said Lumen should render fine. A single-fragment headless harness can't reproduce it — `preset.pipelineState` for a deferred ray-march preset renders only the static G-buffer; the animated lit output (where the freeze lives) needs the full deferred pipeline.
+- **A live `LUMEN_DIAG` instrument settled it.** Gated to Lumen, it logged the slot-8 light state + `cam_t`/aspect/FOV/finiteness to `session.log` each second. Across a ~48 s dwell every line was `ok lights=finite` with `cam_t`/aspect/FOV rock-steady and the light intensities responding to the music — the CPU state was **clean the whole time**. Matt confirmed the freeze is static-*colourful* (not dark), which rules out the "lights drop to zero in quiet passages" alternative. So the corruption was purely the **GPU read of a stale buffer**.
+
+**Root cause:** the slot-8 `LumenPatternState` buffer was a **single** shared `MTLBuffer`, overwritten by the CPU on every `tick()` while the GPU read it across up to 3 in-flight frames (`MetalContext.maxFramesInFlight` = 3). The lighting pass periodically locked onto bytes the CPU was mid-overwriting → a frozen, still-lit frame. (It's latent for any per-frame-ticked preset, but Lumen's deferred lighting pass + cell-quantized backlight surfaces it as a full-frame freeze.)
+
+**Fix:** `LumenPatternEngine` now triple-buffers the slot-8 buffer — a 3-deep ring; each `tick()` rotates to and writes the next slot. `applyPreset` re-binds `engine.currentBuffer` every frame from the per-frame tick closure (weak-captured pipeline, no retain cycle), so the lighting pass always reads this frame's data and a slot is never overwritten while an in-flight frame still reads it. Output is byte-identical (`PresetRegression` non-drift; Lumen multi-pass flash harness still SAFE). Regression: `test_tickRotatesThroughThreeDistinctRingBuffers` (3 ticks → 3 distinct ring buffers, wraps after 3; a single buffer would fail it). App build + 388 app tests pass; swiftlint strict 0; DocIntegrity 11/11. **Code-complete, pending Matt's live confirm** (dwell on Lumen ≥10 s, no freeze) — the `LUMEN_DIAG` instrument is kept until then, then removed. Pushed to origin/main.
+
 ## [dev-2026-06-26-204626] BUG-062 — Nimbus (+ Aurora Veil) froze: direct-fragment presets with `"passes": []` (regression from BUG-061)
 
 Matt reported Nimbus would not display across his last few sessions: advancing to it left the *previous* preset's last frame frozen on screen, "unfreezing" only when he moved to the next/previous preset. Session `2026-06-26T20-28-03Z` shows `preset → Nimbus` logged four times (each bounced to Nebula ~2–4 s later) with **zero Metal/pipeline errors** — a silent non-present, not a crash.
