@@ -25,7 +25,7 @@ struct GlazeUniforms {
     var time: Float = 0
     var coreEnergy: Float = 0       // reserved (silence-floor lever; the faithful warp self-seeds)
     var pokeStrength: Float = 0     // spring mass-3 x → the pixel-eq poke scale (`q3`)
-    var pad0: Float = 0
+    var seedY: Float = 0.5          // spring tail Y position → the seed band's vertical centre (GLAZE.3b)
     var texel: SIMD2<Float> = .init(1, 1)
     var pokeCenter: SIMD2<Float> = .init(0.5, 0.5)   // spring tail (cx1, cy1) — the poke centre
 }
@@ -37,6 +37,10 @@ struct GlazeSpring {
     var x2: Float = 0, y2: Float = 0, vx2: Float = 0, vy2: Float = 0
     var x3: Float = 0, y3: Float = 0, vx3: Float = 0, vy3: Float = 0
     var x4: Float = 0, y4: Float = 0, vx4: Float = 0, vy4: Float = 0
+    /// Anchor-drive envelopes (GLAZE.3a; source frame_eqs xx1/xx2/yy1): bass/treble DEVIATION
+    /// accents → opposite directions of the lateral anchor swing; sustained Rel energy → lift.
+    /// Resetting the struct zeroes these too (the test relies on that).
+    var bassEMA: Float = 0, trebEMA: Float = 0, liftEMA: Float = 0
 
     mutating func step(anchorX x1: Float, anchorY y1: Float) {
         let spring: Float = 18, grav: Float = 1, dt: Float = 0.0003, bounce: Float = 0.9
@@ -59,29 +63,51 @@ struct GlazeSpring {
     }
 }
 
+// MARK: - GLAZE.3a audio-anchor gains (M7 render-tune levers)
+
+/// Lateral anchor swing per unit of (bassDev − trebDev) envelope — the source's `x1` gain `1.5`.
+private let kGlazeSwing: Float = 1.5
+/// Anchor lift per unit of the sustained (bassRel + trebRel) envelope — the source's `y1` energy push.
+private let kGlazeLift: Float = 1.2
+
 extension RenderPipeline {
 
     // MARK: Per-frame uniforms
 
-    /// Compute the Glaze warp/comp uniforms for this frame. Holds the `glazeSeedEMA`
-    /// smoothing accumulator (the seed's total-energy envelope). GLAZE.2b+ extends this
-    /// with the spring-physics state (anchor ← per-stem audio; 3 masses; tail pos/speed).
+    /// Compute the Glaze warp/comp uniforms for this frame. Steps the 3-mass spring off an
+    /// audio-driven anchor (GLAZE.3a — bass/treble deviation → lateral swing, energy → lift;
+    /// the `glaze*EMA` accumulators are the source's xx1/xx2/yy1 envelopes). Per-stem routing
+    /// into the anchor is the greenlit uplift A (GLAZE.5), not here.
     @MainActor
     func computeGlazeUniforms(features: FeatureVector, stems: StemFeatures) -> GlazeUniforms {
         var uni = GlazeUniforms()
         let tSec = features.time
         uni.time = tSec
 
-        // Spring anchor — a slow time-driven idle at silence so the chained masses perpetually
-        // chase a moving target → the field stays alive (D-019). Audio drive (bass/treble →
-        // lateral, energy → lift) lands in GLAZE.3; here the anchor is pure time.
-        let anchorX = 0.5 + 0.18 * sin(tSec * 0.37)
-        let anchorY = 0.5 + 0.14 * sin(tSec * 0.53)
+        // Spring anchor (source frame_eqs x1/y1) — AUDIO-DRIVEN (GLAZE.3a, §6 routing table).
+        // Bass yanks the anchor right, treble flicks it left (lateral swing); sustained energy
+        // lifts it. EMA envelopes off the DEVIATION primitives (D-026 / FA #31 — never absolute
+        // AGC energy), so the spring integrates spiky onsets into smooth organic momentum (the
+        // FA #4/#31 "no primary motion from raw onsets" failure sidestepped by construction).
+        // A small time idle keeps the anchor roaming at silence so the field stays alive (D-019).
+        // One physical input (FA #67): bass/treble are opposite directions of the SAME anchor
+        // axis, energy is the other axis — no two visual layers share a primitive at a timescale.
+        glazeSpring.bassEMA = 0.9 * glazeSpring.bassEMA + 0.1 * features.bassDev
+        glazeSpring.trebEMA = 0.9 * glazeSpring.trebEMA + 0.1 * features.trebDev
+        glazeSpring.liftEMA = 0.94 * glazeSpring.liftEMA + 0.06 * max(0, features.bassRel + features.trebRel) * 0.5
+        // ponytail: kGlazeSwing/kGlazeLift are the render-tune levers (M7); start at the source's
+        // 1.5 lateral gain + a gentle lift, adjust by render-compare against the oracle.
+        let anchorX = 0.5 + 0.10 * sin(tSec * 0.37) + kGlazeSwing * (glazeSpring.bassEMA - glazeSpring.trebEMA)
+        let anchorY = 0.5 + 0.08 * sin(tSec * 0.53) + kGlazeLift * glazeSpring.liftEMA
         glazeSpring.step(anchorX: anchorX, anchorY: anchorY)
         // Source pixel_eqs: poke centre = (mass-4 x, tail SPEED), poke scale = mass-3 x.
         let tailSpeed = (glazeSpring.vx4 * glazeSpring.vx4 + glazeSpring.vy4 * glazeSpring.vy4).squareRoot()
         uni.pokeCenter = SIMD2<Float>(glazeSpring.x4, tailSpeed)
         uni.pokeStrength = glazeSpring.x3
+        // GLAZE.3b: the seed band rides the jelly's vertical position — as the audio-driven tail
+        // sweeps up/down (full [0,1] range on real music), the bright seed paints the whole frame
+        // and the zoom accretes it into the nested field (band-only when the tail idles at silence).
+        uni.seedY = glazeSpring.y4
 
         let size = mvWarpDrawableSize
         uni.texel = SIMD2<Float>(1.0 / max(Float(size.width), 1), 1.0 / max(Float(size.height), 1))

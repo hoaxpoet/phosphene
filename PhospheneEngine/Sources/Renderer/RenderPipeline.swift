@@ -158,7 +158,8 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// envelope `nacreCoreEMA` was removed — Matt M7: blinding on the vocal peaks, no read.]
     var nacreSeedEMA: Float = 0, nacreSpinEMA: Float = 0
     /// Glaze (GLAZE.2b.2): the 3-mass spring chain (CPU-side; the swirl-poke centre), stepped
-    /// each frame in `computeGlazeUniforms`. MainActor-only, same convention as the above.
+    /// each frame in `computeGlazeUniforms`. The anchor-drive EMAs (GLAZE.3a) live on the struct.
+    /// MainActor-only, same convention as the above.
     var glazeSpring = GlazeSpring()
 
     // MARK: - Live Audio Features
