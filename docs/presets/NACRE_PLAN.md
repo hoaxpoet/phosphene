@@ -179,3 +179,42 @@ real thin-film iridescence on HDR (re-unclamp the feedback), smooth-Voronoi cell
 routes (§6) one at a time; NACRE.4 = cert. The streaky-flow vs glassy-bubble balance, the exact cell
 scale/crispness, and `randPreset`/grain constants are live-M7 tuning levers — not over-tuned headless
 against the static stills (the live butterchurn oracle, kickoff §3, is the per-frame gate Matt runs).
+
+## 11. NACRE.3 — what landed (audio coupling), and the brightness dead-end
+
+M7-driven with Matt over ~9 commits (`f95038b`→`a5a2e68`, 2026-06-26). The base was confirmed live; this
+increment was about making it move with the music.
+
+**Routes that LANDED:**
+- **hue ← harmony** — the spectral centroid's deviation from a slow section-norm nudges the palette PHASE
+  (bounded ±1.5 s ≈ ±10 % of the ~14 s cycle). Track-robust (deviation, not absolute), heavily smoothed.
+- **turning ← energy** — a continuous warp rotation `nu.spin` (rad/frame) whose rate ← a smoothed
+  avg-stem-energy envelope (floor 0.18, gain 0.012). The molten field swirls faster as the music fills
+  out (~2 °/s sparse → ~15–20 °/s at the climax). Applied in `nacre_warp_fragment` (rotate the re-sampled
+  `prev` about centre) so it ACCUMULATES into a continuous swirl. Smooth envelope, not transients → reads
+  as intensity, not jerk. Uses **avg-stem-energy** because the band average is BLIND to full-band entries
+  (it reads ~0.14 at a full-band crash — the energy is in the stems).
+- The warp **core seed** stays STEADY total-energy; base motion routes (zoom ← mid, sway ← bass, grain ←
+  treble) all `tanh`-soft-saturated + attack-smoothed (the deviation-range lesson: real signals spike ~3×).
+
+**Tried and REMOVED — both were brightness-medium, and brightness is the wrong medium for this preset:**
+- **downbeat brightness pulse** (bar-locked `ret *= 1+barPulse`): timing landed ("pulse is accurate") but
+  "a little too bright" → stem-fullness rolloff at full-band → "still bothersome". 
+- **core ← voice display glow** (`0.60·tanh(vocals)` central add): "blindingly bright at some points" — a
+  session brightness-driver trace showed it added **+0.46 at centre on the vocal peaks** (vocals spike to
+  1.56), saturating the already-bright field. Removing it fixed the brightness (Matt confirmed live).
+
+**The load-bearing lessons (also in CLAUDE.md memory / [[nacre-preset]]):**
+1. **Brightness is the wrong connection medium for a bright/molten feedback field.** Any luminance bump
+   reads as a flash no matter how it's tuned — a DEAD END for this preset class. Use motion.
+2. **The connection axis is transient-vs-envelope, not motion-vs-colour.** Per-beat transient motion is
+   the "jerk"; smooth *envelope* motion (turning ← slow energy) is what reads as connected without jerk.
+3. **Audit autonomous-but-uncoupled motion early.** Nacre's `rot`/`cx`/`cy` roam were pure time-sines —
+   the most expressive levers sat untapped while brightness carried (badly) the whole connection.
+
+**OPEN (→ NACRE.4):** the turning connection reads WEAKLY — a featureless radial field has nothing to
+clock rotation against. The next connection attempt should target a VISIBLE feature (cell motion, a
+directional flow, a localized response), not whole-field rotation. Cert is gated on a detectable
+connection + Matt's formal multi-track sign-off. Diagnostic note: the brightness was diagnosed from the
+session CSV (driver trace), not a render harness — `loadSessionRich` was scoped then deferred (YAGNI:
+the CSV trace sufficed). Stand it up only if a future brightness/colour defect can't be read from the CSV.
