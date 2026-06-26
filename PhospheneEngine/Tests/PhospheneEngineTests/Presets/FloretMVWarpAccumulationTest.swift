@@ -115,6 +115,72 @@ struct FloretMVWarpAccumulationTest {
                 "Floret per-frame mean-luma jump \(maxDelta) exceeds the flash bound — the radial pulse is strobing, not breathing (D-157).")
     }
 
+    // MARK: - FLORET.3a motion routes fire on real audio (evidence-based; FA #27 real session)
+
+    // Replays a recorded session's features.csv + stems.csv through the REAL `computeFloretUniforms`
+    // and asserts each motion route varies as designed — the per-route firing evidence a coupling
+    // closeout must cite. Env-gated (FLORET_SESSION=<dir>); skips when no session is present
+    // (worktree/CI-safe). Pure-function test (no GPU): the routes are CPU-computed.
+    @Test("FLORET.3a motion routes (swell / spin / barPush) fire on a real session")
+    @MainActor
+    func test_motionRoutes_fireOnRealSession() throws {
+        guard let dir = ProcessInfo.processInfo.environment["FLORET_SESSION"] else {
+            print("FloretMVWarpAccumulationTest: FLORET_SESSION not set, skipping route-firing test"); return
+        }
+        let rows = Self.loadFloretSession(dir: dir)
+        guard rows.count > 100 else { Issue.record("session \(dir) unreadable / too short (\(rows.count) rows)"); return }
+        guard let ctx = try? MetalContext() else { Issue.record("No Metal device"); return }
+        let lib = try ShaderLibrary(context: ctx)
+        let fs = MemoryLayout<Float>.stride
+        guard let fft = ctx.makeSharedBuffer(length: 512 * fs), let wav = ctx.makeSharedBuffer(length: 2048 * fs) else {
+            Issue.record("buffer alloc failed"); return
+        }
+        let pipeline = try RenderPipeline(context: ctx, shaderLibrary: lib, fftBuffer: fft, waveformBuffer: wav)
+        pipeline.currentDrawableSize = CGSize(width: 192, height: 128)
+
+        var swell: [Float] = [], spin: [Float] = [], push: [Float] = []
+        for r in rows {
+            var feat = FeatureVector.zero
+            feat.time = r.t; feat.bass = r.bass; feat.bassDev = r.bassDev; feat.barPhase01 = r.barPhase01
+            var stm = StemFeatures.zero
+            stm.drumsEnergy = r.drums; stm.bassEnergy = r.bassStem; stm.vocalsEnergy = r.vocals; stm.otherEnergy = r.other
+            let u = pipeline.computeFloretUniforms(features: feat, stems: stm)
+            swell.append(u.swell); spin.append(u.spin); push.append(u.barPush)
+        }
+        let swMax = swell.max() ?? 0, swMin = swell.min() ?? 0
+        let spinTotal = (spin.last ?? 0) - (spin.first ?? 0)
+        let spinMonotone = zip(spin, spin.dropFirst()).allSatisfy { $1 >= $0 }
+        let pushMax = push.max() ?? 0, pushMin = push.min() ?? 0
+        print("[floret_routes] swell min=\(swMin) max=\(swMax) | spin total=\(spinTotal) rad monotone=\(spinMonotone) | barPush min=\(pushMin) max=\(pushMax)")
+        // Swell tracks the song's arc (fires + varies).
+        #expect(swMax > 0.05 && (swMax - swMin) > 0.02, "swell route did not fire/vary (min \(swMin) max \(swMax))")
+        // Spin accumulates a visible rotation, monotonically (never reverses).
+        #expect(spinMonotone && spinTotal > 0.5, "spin route did not accumulate a visible rotation (total \(spinTotal) rad, monotone \(spinMonotone))")
+        // Beat-lock push peaks on downbeats (→1) and relaxes between (the bar decay).
+        #expect(pushMax > 0.9 && pushMin < 0.3, "barPush route did not pulse with the beat (min \(pushMin) max \(pushMax))")
+    }
+
+    /// Parse a recorded session: features.csv (time/bass/bassDev/barPhase01) + stems.csv (the four
+    /// stem energies), zipped by frame index. Cols match the live logger headers. [] if unreadable.
+    static func loadFloretSession(dir: String) -> [(t: Float, bass: Float, bassDev: Float, barPhase01: Float,
+                                                    drums: Float, bassStem: Float, vocals: Float, other: Float)] {
+        let base = URL(fileURLWithPath: dir)
+        guard let fTxt = try? String(contentsOf: base.appendingPathComponent("features.csv"), encoding: .utf8),
+              let sTxt = try? String(contentsOf: base.appendingPathComponent("stems.csv"), encoding: .utf8) else { return [] }
+        let fLines = fTxt.split(separator: "\n").dropFirst(), sLines = sTxt.split(separator: "\n").dropFirst()
+        let sArr = Array(sLines)
+        var out: [(Float, Float, Float, Float, Float, Float, Float, Float)] = []
+        for (i, line) in fLines.enumerated() {
+            let c = line.split(separator: ",", omittingEmptySubsequences: false)
+            guard c.count > 27, i < sArr.count else { continue }
+            let s = sArr[i].split(separator: ",", omittingEmptySubsequences: false)
+            guard s.count > 15 else { continue }
+            out.append((Float(c[2]) ?? 0, Float(c[4]) ?? 0, max(0, Float(c[24]) ?? 0), (Float(c[26]) ?? 0) / 1000.0,
+                        Float(s[2]) ?? 0, Float(s[6]) ?? 0, Float(s[10]) ?? 0, Float(s[14]) ?? 0))
+        }
+        return out
+    }
+
     // MARK: - Reduced-motion regression (BUG-061: 16-float direct pipeline → 8-bit drawable crash)
 
     @Test("Floret reduced-motion frame renders to the 8-bit drawable format without a format mismatch")
