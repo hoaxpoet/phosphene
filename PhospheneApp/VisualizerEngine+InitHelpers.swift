@@ -6,6 +6,7 @@ import DSP
 import Foundation
 import Metal
 import ML
+import Presets
 import Renderer
 import Session
 import Shared
@@ -43,6 +44,8 @@ extension VisualizerEngine {
             commandBuffer.addCompletedHandler { [weak recorder] _ in
                 recorder?.recordFrame(features: features, stems: stems, beatSync: beatSync)
             }
+            // BUG-063 live diagnostic (temporary) — probe the Lumen Mosaic freeze.
+            self?.lumenFreezeDiagnosticTick(features: features)
         }
         // Feed full-pipeline timing into features.csv frame_cpu_ms /
         // frame_gpu_ms columns. Lag: 1–3 frames behind the row's features
@@ -66,6 +69,61 @@ extension VisualizerEngine {
                 postProcessMs: postMs
             )
         }
+    }
+
+    // MARK: - BUG-063 Lumen freeze diagnostic (TEMPORARY)
+
+    /// Per-frame Lumen Mosaic freeze probe. No-op unless Lumen is active. Logs the
+    /// slot-8 light state + ray-march scene uniforms (cam_t / aspect / FOV / finiteness)
+    /// to session.log every ~30 frames and loudly on the first degenerate value, so one
+    /// ~10 s Lumen dwell pins whether the freeze is a degenerate scene uniform, a
+    /// degenerate slot-8 light, or clean-CPU-but-frozen-GPU (the buffer race / shader).
+    /// Reset per preset apply. Remove this method + its call site + the two `lumenDiag*`
+    /// vars on `VisualizerEngine` once BUG-063 is pinned.
+    func lumenFreezeDiagnosticTick(features: FeatureVector) {
+        guard let engine = lumenPatternEngine else { return }   // Lumen active only
+        lumenDiagFrame += 1
+
+        let state = engine.snapshot()
+        let lights = [state.lights.0, state.lights.1, state.lights.2, state.lights.3]
+        var worstAbs: Float = 0
+        var lightsNonFinite = false
+        for light in lights {
+            let vals = [light.positionX, light.positionY, light.positionZ,
+                        light.attenuationRadius, light.intensity]
+            for val in vals {
+                if val.isFinite { worstAbs = max(worstAbs, abs(val)) } else { lightsNonFinite = true }
+            }
+        }
+
+        // cam_t = tan(FOV/2) * aspect — the panel-sizing term. Collapse → 0 shrinks the
+        // panel the rays hit to nothing (frozen/blank); blow-up degenerates the uv divide.
+        var camT = Float.nan, aspect = Float.nan, fov = Float.nan
+        var sceneBad = false
+        if let rm = currentRayMarchPipeline {
+            let su = rm.sceneUniforms
+            fov = su.cameraOriginAndFov.w
+            aspect = su.sceneParamsA.y
+            camT = tan(fov * 0.5) * aspect
+            if !fov.isFinite || !aspect.isFinite || !camT.isFinite
+                || abs(camT) < 1e-4 || abs(camT) > 1e4 {
+                sceneBad = true
+            }
+        }
+
+        let bad = lightsNonFinite || sceneBad
+        let firstBad = bad && !lumenDiagSeenBad
+        if firstBad { lumenDiagSeenBad = true }
+
+        guard firstBad || lumenDiagFrame % 30 == 0 else { return }
+        func fmt(_ value: Float, _ places: Int = 2) -> String { String(format: "%.\(places)f", value) }
+        let tag = bad ? (firstBad ? "FIRST-DEGENERATE" : "degenerate") : "ok"
+        let intens = "[\(fmt(lights[0].intensity)) \(fmt(lights[1].intensity)) "
+            + "\(fmt(lights[2].intensity)) \(fmt(lights[3].intensity))]"
+        let msg = "LUMEN_DIAG \(tag) lights=\(lightsNonFinite ? "NONFINITE" : "finite")"
+            + " f=\(lumenDiagFrame) t=\(fmt(features.time)) maxAbs=\(fmt(worstAbs, 3))"
+            + " camT=\(fmt(camT, 4)) aspect=\(fmt(aspect, 3)) fov=\(fmt(fov, 3)) intens=\(intens)"
+        sessionRecorder?.log(msg)
     }
 
     /// Wire per-frame dashboard snapshot push. Replaces the DASH.6 GPU
