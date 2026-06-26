@@ -39,6 +39,18 @@ extension RenderPipeline {
             commandBuffer.present(drawable)
             return
         }
+        // Floret (FLORET.2a): same .rgba16Float-direct-pipeline crash class as Nacre
+        // (BUG-061) → present its comp of the un-advanced feedback (the drawable-format
+        // pipeline). false for every other preset (byte-identical).
+        if warpState.isFloret {
+            renderFloretReducedMotion(
+                commandBuffer: commandBuffer,
+                features: features,
+                warpState: warpState,
+                target: drawable.texture)
+            commandBuffer.present(drawable)
+            return
+        }
         if !sceneAlreadyRendered {
             renderSceneToTexture(
                 commandBuffer: commandBuffer,

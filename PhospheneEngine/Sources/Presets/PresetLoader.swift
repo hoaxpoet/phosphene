@@ -704,6 +704,9 @@ public final class PresetLoader: @unchecked Sendable {
         // pale white on a float buffer, per above), Nacre uses DECAY feedback
         // (kNacreDecay 0.94), which bounds the accumulation.
         if descriptor.name == "Nacre" { return .rgba16Float }
+        // Floret (FLORET.2a): HDR float feedback — same register as Nacre (decay-bounded),
+        // headroom for the FLORET.3 iridescence uplift. The custom warp clamps [0,1] today.
+        if descriptor.name == "Floret" { return .rgba16Float }
         return pixelFormat
     }
 

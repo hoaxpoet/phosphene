@@ -432,6 +432,7 @@ extension VisualizerEngine {
                 switch desc.name {
                 case "Fata Morgana": fbFormat = .bgra8Unorm
                 case "Nacre":        fbFormat = .rgba16Float
+                case "Floret":       fbFormat = .rgba16Float
                 default:             fbFormat = context.pixelFormat
                 }
                 // Skein.ENGINE.1.1 (D-143): per-preset canvas clear ground. Marks-on-top
@@ -454,6 +455,9 @@ extension VisualizerEngine {
                     // Nacre (NACRE.2b): routes the draw path to the nacre branch (custom
                     // warp → signature comp → swap). false for every other mv_warp preset.
                     isNacre: desc.name == "Nacre",
+                    // Floret (FLORET.2a): same dedicated-branch route (custom warp →
+                    // signature comp → swap). false for every other mv_warp preset.
+                    isFloret: desc.name == "Floret",
                     canvasClearColor: canvasClear
                 )
                 // Use the last drawable size reported by drawableSizeWillChange so

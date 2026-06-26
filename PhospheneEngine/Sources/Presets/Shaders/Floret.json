@@ -1,0 +1,22 @@
+{
+  "name": "Floret",
+  "family": "hypnotic",
+  "duration": 45,
+  "description": "WORK IN PROGRESS (FLORET.2a stub) — a faithful port of the Milkdrop preset `suksma - Rovastar - Sunflower Passion (Enlightment Mix)`: a breathing 3-fold radial fractal bloom on a near-black ground (a 1/r² vortex swirl + z² conformal fold blooming colour-cycling seed-discs into iridescent cells), on Phosphene's mv_warp with HDR float feedback. The faithful base + audio coupling + uplifts land at FLORET.2b/.3; this stub only wires the custom warp+comp branch test-reachably. certified:false until FLORET.4. See docs/presets/FLORET_PLAN.md.",
+  "author": "Matt",
+  "passes": ["direct", "mv_warp"],
+  "fragment_function": "floret_fragment",
+  "vertex_function": "fullscreen_vertex",
+  "beat_source": "composite",
+  "decay": 0.900,
+  "stem_affinity": {},
+  "visual_density": 0.55,
+  "motion_intensity": 0.50,
+  "color_temperature_range": [0.30, 0.85],
+  "fatigue_risk": "low",
+  "transition_affordances": ["crossfade", "morph"],
+  "section_suitability": ["buildup", "bridge", "comedown"],
+  "complexity_cost": { "tier1": 2.0, "tier2": 1.0 },
+  "certified": false,
+  "rubric_profile": "lightweight"
+}
