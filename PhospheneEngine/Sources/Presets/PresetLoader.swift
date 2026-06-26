@@ -704,6 +704,10 @@ public final class PresetLoader: @unchecked Sendable {
         // pale white on a float buffer, per above), Nacre uses DECAY feedback
         // (kNacreDecay 0.94), which bounds the accumulation.
         if descriptor.name == "Nacre" { return .rgba16Float }
+        // Glaze (GLAZE.2a): HDR float feedback (headroom for the greenlit uplift B glossy
+        // bloom). Safe — Glaze uses DECAY feedback (kGlazeDecay 0.94) which bounds the
+        // accumulation (the base clamps to [0,1]; uplift B re-unclamps with a bloom).
+        if descriptor.name == "Glaze" { return .rgba16Float }
         return pixelFormat
     }
 
