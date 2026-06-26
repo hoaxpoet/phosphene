@@ -210,6 +210,36 @@ import Metal
     #expect(desc.useParticles   == false)
 }
 
+// BUG-062: a direct-fragment preset (Nimbus, Aurora Veil) ships an explicit
+// "passes": []. That must normalise to [.direct] — identical to omitting the key —
+// so activePasses stays non-empty and draw(in:)'s BUG-061 empty-passes skip (which
+// treats empty activePasses as a transient preset-swap state) never permanently
+// freezes the preset. Before the fix an explicit [] decoded to [] → the preset
+// rendered nothing live (the prior frame stayed frozen until you switched away).
+@Test func renderPassExplicitEmptyArrayNormalisesToDirect() throws {
+    let json = #"{"name": "DirectPreset", "passes": []}"#
+    let desc = try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
+    #expect(desc.passes == [.direct], "Explicit empty passes array → [.direct]")
+}
+
+// BUG-062 corpus guard: NO shipped sidecar may decode to empty passes — an empty
+// activePasses is indistinguishable from the transient swap state and freezes the
+// preset in draw(in:). This is the test that would have caught Nimbus + Aurora Veil.
+@Test func shippedPresets_neverDecodeToEmptyPasses() throws {
+    let shadersURL = try #require(PresetLoader.bundledShadersURL,
+        "Shaders resource not found via PresetLoader.bundledShadersURL")
+    let jsonFiles = try FileManager.default.contentsOfDirectory(
+        at: shadersURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+    ).filter { $0.pathExtension == "json" }
+    #expect(jsonFiles.count >= 13, "Expected at least 13 JSON sidecars")
+    let decoder = JSONDecoder()
+    for jsonURL in jsonFiles {
+        let desc = try decoder.decode(PresetDescriptor.self, from: try Data(contentsOf: jsonURL))
+        #expect(!desc.passes.isEmpty,
+                "\(desc.name): decoded to empty passes — would freeze in draw(in:) (BUG-062)")
+    }
+}
+
 @Test func renderPassSynthesisedFromLegacyFeedbackAndParticles() throws {
     let json = """
     {"name": "Legacy", "use_feedback": true, "use_particles": true}

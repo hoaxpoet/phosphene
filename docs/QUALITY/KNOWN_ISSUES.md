@@ -7,6 +7,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
 | AUDIT-2026-06-09 | P2/P3 | audit backlog | Full-codebase audit findings not individually filed |
+| BUG-062 | P1 | renderer / regression | **✅ FIX LANDED 2026-06-26 (code-complete, pending Matt's live M7) — regression from BUG-061 (`00b0625`).** Nimbus (and Aurora Veil) froze: advancing to it displayed the *previous* preset's last frame, "unfreezing" only when switching to the next/previous preset (session `2026-06-26T20-28-03Z`: `preset → Nimbus` ×4, each bounced to Nebula ~2–4 s later; zero Metal/pipeline errors — a silent non-present, not a crash). **Root cause:** BUG-061 wrapped `renderFrame` in `if willRenderActiveFrame` (`!activePasses.isEmpty`) to skip the transient preset-swap window, on the stated premise "every applied preset has non-empty passes." False — Nimbus + Aurora Veil are direct-fragment presets that ship `"passes": []` → `activePasses` is *permanently* empty → `renderFrame`/`drawDirect` never runs → the drawable is never presented → frozen prior frame. They are the only 2 sidecars with empty passes; every other preset has ≥1 pass, so the freeze is unique to them. Headless render tests call `renderFrame` directly (bypassing `draw(in:)`'s guard), so CI never caught it. **Fix (engine, 1 line):** `PresetDescriptor` decode normalises an explicit empty `passes` array to `[.direct]` — identical to omitting the key (see `renderPassDefaultIsDirect`) — restoring the guard's premise; BUG-061 stays fixed (mid-swap `setActivePasses([])` still yields empty → skip). Render output byte-identical (PresetRegression goldens non-drift; `[.direct]` → same `drawDirect` path). Regression: `renderPassExplicitEmptyArrayNormalisesToDirect` + corpus guard `shippedPresets_neverDecodeToEmptyPasses`. **Manual (required):** Matt's live confirm that Nimbus + Aurora Veil render and animate with no freeze. |
 | BUG-061 | P1 | renderer / render-state | **✅ RESOLVED 2026-06-25 (NACRE.2b)** — Nacre crashed on load (session `20-51-58Z`, log ends at `preset → Nacre`; no `.ips`). **Root cause = a preset-apply race (the BUG-060 class).** `applyPreset` (main thread) clears `activePasses` to `[]` then republishes them only at its end, while `draw(in:)` runs on MTKView's display-link thread; a frame in that window sees empty passes + the new preset's already-published direct pipeline → `renderFrame` falls to `drawDirect`, sending the direct pipeline to the 8-bit drawable. 8-bit presets survive (benign stray frame — the intermittent BUG-060); Nacre's `.rgba16Float` direct pipeline → 8-bit drawable is a hard format mismatch (Metal-validation-gated → abort in the Debug build). **Nacre is the deterministic reproducer BUG-060 lacked.** Fix: `draw(in:)` skips the frame while `activePasses` is empty (`willRenderActiveFrame`) — fixes Nacre + the BUG-060 class for all presets. Secondary latent fix: `renderNacreReducedMotion` (the reduced-motion path had the same direct→drawable mismatch; reduce-motion was OFF this session, so NOT the trigger — my initial reduced-motion diagnosis was an unverified assumption, corrected). Regression: `test_emptyActivePasses_skipsRenderFrame` + `test_reducedMotion_…`. Files to §Resolved at the next pruning pass |
 | BUG-060 | P3 | renderer / app.hang | One-off app hang (force-quit required): render loop died one frame after a `preset → Gossamer` switch (`22-10-50Z`); NOT reproduced (Gossamer ran 3× clean in `13-57-23Z`); no stack captured. Monitored |
 | BUG-059 | P1 | local-file / concurrency | **✅ RESOLVED 2026-06-18** (`a285a22`, integrated to `main`/origin) — concurrent `LocalFilePlaybackProvider` start/stop ABBA deadlock (`player.stop()`'s completion-queue `dispatch_sync` ⇄ inline `scheduleFile()` from the completion handler); fixed by hopping the re-schedule off the completion queue. Automated 11/11 + Matt's live no-hang device-swap validation. (The track restart-on-swap Matt saw is the separate BUG-056.) Files to §Resolved at the next pruning pass |
@@ -58,6 +59,36 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 - ✅ **RESOLVED (CLEAN.2.3.4, 2026-06-14)** — localization gate only scanned `PhospheneApp/Views/`. `check_user_strings.sh` ROOTS widened to `PhospheneApp/ViewModels` + `ContentView.swift`, pattern extended with a connection-state `.error("…")` arm (`logger.error` excluded); the bypassing copy (Spotify/AppleMusic error strings, ConnectorType tiles, ReadyViewModel duration/source, ContentView fallback, PreparationProgressView subtitle, PlanPreviewTransitionView labels) externalized to `Localizable.strings`. Gate header documents its honest scope limit (literal-prefix matcher — lowercase/interpolated fragments still rely on review). Commit `46d836b`.
 
 P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh double-spend + form-encoding gaps [Resolved CLEAN.2.2, see above], PSO cache key, mv_warp buffer(5) omission, PostProcessChain texture aliasing, malformed-sidecar swallowing, Arachne listening-pose FA #57-gate, >2-channel LF corruption, ~94 Hz vs 60 fps chroma hysteresis), ~11 perf items (autocorrelation 2×/frame, drums FFT 2×/frame, mono STFT 2×/track, serial prep pipeline, wasted particle-mode warp pass, unconditional feedback textures), dead code, and 6 in-code doc-drift items.
+
+---
+
+### BUG-062 — Nimbus (and Aurora Veil) freeze: direct-fragment presets with `"passes": []` are skipped by the BUG-061 empty-passes guard (regression) (2026-06-26)
+
+**P1** · renderer / regression · **✅ FIX LANDED 2026-06-26 (code-complete) — pending Matt's live M7 confirm.** Introduced by the BUG-061 fix (`00b0625`).
+
+#### Expected behavior
+Advancing to Nimbus (or Aurora Veil) renders and animates the preset with the music, like every other preset.
+
+#### Actual behavior
+Selecting Nimbus leaves the *previous* preset's last frame frozen on screen; Nimbus never displays. It "unfreezes" only on switching to the next/previous preset. No crash, no error. Observed across several of Matt's recent sessions.
+
+#### Reproduction steps
+Deterministic: start a session, advance to Nimbus (or Aurora Veil) — the drawable stops updating until you switch away. Session `2026-06-26T20-28-03Z`: `preset → Nimbus` logged 4×, each bounced to Nebula ~2–4 s later.
+
+#### Session artifacts
+`session.log` shows the four `preset → Nimbus` transitions with **zero** Metal/pipeline/exception lines — a silent non-present, not a crash. Discriminator: of all sidecars, only `Nimbus.json` and `AuroraVeil.json` ship `"passes": []`; every preset that rendered fine has ≥1 pass.
+
+#### Suspected failure class
+`regression` (render-state).
+
+#### Root cause
+BUG-061 wrapped the previously-unconditional `renderFrame(...)` in `draw(in:)` with `if willRenderActiveFrame` (`!activePasses.isEmpty`) to skip the transient preset-apply swap window, on the stated premise "every applied preset has non-empty passes." Nimbus and Aurora Veil are direct-fragment presets (`fragment_function` + `"passes": []`); `applyPreset` republishes `setActivePasses(desc.passes)` = `setActivePasses([])`, so their `activePasses` is *permanently* empty → `willRenderActiveFrame` permanently false → `renderFrame`/`drawDirect` never runs → the drawable is never presented. The headless render harnesses call `renderFrame` directly (bypassing `draw(in:)`'s guard), so the regression escaped CI.
+
+#### Fix (2026-06-26)
+`PresetDescriptor` decode normalises an explicit empty `passes` array to `[.direct]` — identical to omitting the key (the existing `renderPassDefaultIsDirect` contract). This keeps `activePasses` non-empty for direct presets (restoring the guard's premise) while leaving BUG-061 fully intact (`applyPreset`'s mid-swap `setActivePasses([])` still yields empty → still skipped). Render output byte-identical (`[.direct]` resolves to the same `drawDirect` path; PresetRegression goldens for Nimbus + Aurora Veil non-drift).
+
+#### Verification criteria
+Automated: `renderPassExplicitEmptyArrayNormalisesToDirect` (`"passes": []` → `[.direct]`) + corpus guard `shippedPresets_neverDecodeToEmptyPasses` (no sidecar may decode to empty passes — the test that would have caught this); PresetRegression 4/4 (Nimbus + Aurora Veil hashes unchanged); app 388; lint 0. **Manual (required):** Matt's live confirm that Nimbus + Aurora Veil render and animate with no freeze — a render fix is code-complete, not resolved, until live M7.
 
 ---
 

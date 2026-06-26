@@ -573,8 +573,14 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         shaderFileName   = try container.decodeIfPresent(String.self, forKey: .shaderFileName) ?? ""
 
         // Render graph: prefer the new "passes" key; fall back to legacy boolean flags.
+        // An explicit empty array normalises to [.direct] — identical to omitting the key
+        // (see synthesizePasses / renderPassDefaultIsDirect): a preset with no declared
+        // passes renders via the default direct fragment. This keeps activePasses
+        // non-empty for direct-fragment presets (Nimbus, Aurora Veil ship "passes": []),
+        // so draw(in:)'s BUG-061 empty-passes skip — which treats an empty activePasses as
+        // a transient preset-swap state — can never permanently freeze them (BUG-062).
         if let decoded = try container.decodeIfPresent([RenderPass].self, forKey: .passes) {
-            passes = decoded
+            passes = decoded.isEmpty ? [.direct] : decoded
         } else {
             passes = try Self.synthesizePasses(from: decoder)
         }
