@@ -95,9 +95,10 @@ constant float  kNacreCoreBase  = 0.10;    // central core glow (the "light thro
 // the comp so it can't smear the feedback. Brightness × the tanh'd vocal envelope.
 constant float  kNacreVoiceGlow      = 0.60;
 constant float  kNacreVoiceGlowTight = 10.0;
-// Downbeat pulse depth (NACRE.3, comp): +30% field brightness on the downbeat, settling
-// over the bar — the rhythmic accent that makes the connection read. Feel knob.
-constant float  kNacreBarPulse       = 0.30;
+// Downbeat pulse depth (NACRE.3, comp): +20% field brightness on the downbeat, settling
+// over the bar — the rhythmic accent that makes the connection read. Trimmed 0.30→0.20
+// (Matt M7: "a little too bright"); still clearly perceptible, less white-clip on the rims.
+constant float  kNacreBarPulse       = 0.20;
 
 // Warp grain (the reaction-diffusion churn; source warp noise term, treble-gated).
 // SIGNED ±; the [0,1] clamp rectifies the positive half into the churn texture. LOW
