@@ -49,10 +49,11 @@
 struct NacreUniforms {
     float  time;         // features.time — palette rotation, grain scroll, radial-pulse phase
     float  trebleGrain;  // max(0, trebleDev) — gates the warp grain (faithful treb_att route)
-    float  coreEnergy;   // overall volume (0 at silence) — gates the core seed (faithful modwavealphabyvolume)
+    float  coreEnergy;   // STEADY total energy — gates the warp's core SEED (faithful modwavealphabyvolume)
     float  hueShift;     // NACRE.3: harmony → palette-phase nudge (seconds, bounded ±1.5)
     float2 texel;        // (1/feedbackW, 1/feedbackH) — comp luminance-sobel offsets (texsize.zw)
-    float2 pad1;
+    float  voiceLevel;   // NACRE.3: tanh-saturated vocal envelope → the comp's DISPLAY-stage core glow
+    float  pad1;
     float4 aspect;       // (aspectx, aspecty, 1/aspectx, 1/aspecty) — comp cell aspect
     float4 randPreset;   // fixed per-load random vec4 (the comp's tint + dz scale character)
     float4 slowRoamSin;  // [0.5+0.5 sin(t·{slow})] — comp slow colour roam (subtractive)
@@ -62,16 +63,23 @@ struct NacreUniforms {
 // MARK: - Constants
 
 // Feedback warp. (431): zoom 1.009 (slight zoom-in), in-warp decay 0.9, unsharp 0.3.
-constant float kNacreDecay      = 0.90;    // (431) warp `ret = ret*0.9` (baked; NO compose decay — D-138)
+constant float kNacreDecay      = 0.88;    // (431) warp `ret = ret*0.9` (baked); trimmed 0.90→0.88 to
+                                           // shorten the feedback TRAILS (the "smeary" half) — shorter
+                                           // persistence = shorter streaks. The grain sustains the field.
 constant float kNacreUnsharp    = 0.25;    // (431) warp `ret + (ret - blur)*0.3`. Governs cell contrast;
                                            // too high → fine flecks, too low → washed/structureless
 constant float kNacreBlurSpread = 5.0;     // unsharp blur radius (texels). WIDE = big smooth cells; the
                                            // source's 3-level pyramid is wide — a narrow blur shatters cells
-constant float kNacreBaseZoom   = 1.009;   // (431) baseVals.zoom (slight zoom-in)
+constant float kNacreBaseZoom   = 1.004;   // (431) baseVals.zoom was 1.009 — halved to TAME the radial
+                                           // advection smear (the warp drags everything outward ~0.9%/frame
+                                           // at 1.009 → a ~9% radial streak over the decay window; the
+                                           // "stretchy/smeary" Matt flagged as present from the base). The
+                                           // comp's time-driven radial pulse keeps the expanding character.
 constant float kNacreZoomGain    = 0.030;  // mid continuous energy → zoom pump (source `zoom += .1*rg`)
 constant float kNacreRotAmp     = 0.020;   // slow roam rotation (source `rot += .01*(...)` sines)
 constant float kNacreRoamAmp    = 0.010;   // slow centre roam (source `cx/cy += .21*(...)` sines, scaled down)
-constant float kNacreDriftAmp   = 0.004;   // slow translation (source `dx/dy += .003*(...)` sines)
+constant float kNacreDriftAmp   = 0.002;   // slow translation (source `dx/dy += .003*(...)` sines) —
+                                           // halved to reduce the directional smear component
 constant float kNacreBassKick   = 0.011;   // bass onset → dx/dy positional jolt (source dx/dy_residual ~.016/.012)
 
 // Palette-coloured SEED (replaces the (431) waveform draw — wave_a 0.001 + wave_r/g/b,
@@ -83,6 +91,10 @@ constant float kNacreBassKick   = 0.011;   // bass onset → dx/dy positional jo
 constant float  kNacreCoreTight = 18.0;    // luminous core spot — tight enough that a sustained-loud
                                            // section can't flood the frame (it accumulates ~10× via decay)
 constant float  kNacreCoreBase  = 0.10;    // central core glow (the "light through the lenses")
+// Display-stage voice glow (NACRE.3, comp): the dynamic core ← voice connection, added at
+// the comp so it can't smear the feedback. Brightness × the tanh'd vocal envelope.
+constant float  kNacreVoiceGlow      = 0.60;
+constant float  kNacreVoiceGlowTight = 10.0;
 
 // Warp grain (the reaction-diffusion churn; source warp noise term, treble-gated).
 // SIGNED ±; the [0,1] clamp rectifies the positive half into the churn texture. LOW
@@ -252,12 +264,10 @@ fragment float4 nacre_warp_fragment(
     // energy): faint at silence (the field is a dim iridescent churn, never flooding the
     // ground), bright with audio (the hero luminous core pulses with the music).
     float  r        = length(in.uv - 0.5);
-    // Wider range than the faithful base (0.22 + 0.75) so the voice-driven pulse is
-    // PERCEPTIBLE (NACRE.3): dim baseline 0.16 → ~0.86 peak. nu.coreEnergy is now a
-    // tanh-saturated vocal envelope (≤1), so the core swells with the voice but never
-    // blooms — peak matches the "looks good" total-volume level, just dynamic. (Gain was
-    // 1.3 before the tanh; with the spike capped, 1.0 holds the peak where it belongs.)
-    float  coreGate = 0.16 + 1.0 * clamp(nu.coreEnergy, 0.0, 1.0);
+    // STEADY warp core seed (nu.coreEnergy = total energy): faithful modwavealphabyvolume,
+    // the no-smear "looks good" level. The voice DYNAMIC moved to the comp's display-stage
+    // glow (it flared + smeared when it lived here, in the fed-back warp — NACRE.3).
+    float  coreGate = 0.22 + 0.75 * clamp(nu.coreEnergy, 0.0, 1.0);
     float  core     = exp(-r * r * kNacreCoreTight) * kNacreCoreBase * coreGate;
     // Palette phase nudged by the harmony (NACRE.3): the seed colour drifts ±~10% of the
     // cycle with the music's spectral colour, layered on the slow time-rotation. The seed
@@ -342,6 +352,14 @@ fragment float4 nacre_comp_fragment(
                 * float3(nu.roamCos.z, nu.roamCos.x, nu.roamCos.y);
     ret -= roam * 0.4;
     ret  = ret * (1.0 + ret);   // contrast lift
+
+    // DISPLAY-stage core glow ← voice (NACRE.3): a soft warm-white central light that
+    // swells with the vocal envelope (nu.voiceLevel). Added HERE, at the comp (presented,
+    // NEVER swapped into the feedback), so the dynamic pulse cannot smear — the hero light
+    // ← hero voice, smear-free (the warp's core seed stays steady). Aspect-corrected radius.
+    float rc = length(base);
+    ret += kNacreVoiceGlow * exp(-rc * rc * kNacreVoiceGlowTight) * nu.voiceLevel
+         * float3(1.0, 0.97, 0.92);
 
     // sRGB round-trip cancellation (the FM fix, D-139). butterchurn writes to an
     // sRGB-NAIVE canvas (the shader value IS the display value); Phosphene's drawable is
