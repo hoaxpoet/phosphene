@@ -60,9 +60,9 @@ extension RenderPipeline {
         func mk(_ div: Int) -> MTLTexture? {
             makeWarpTexture(width: max(width / div, 1), height: max(height / div, 1), format: bundle.feedbackFormat)
         }
-        let blurTex  = bundle.isGlaze ? mk(2) : (bundle.blurState != nil ? mk(4) : nil)
-        let blurTex2 = bundle.isGlaze ? mk(4) : nil
-        let blurTex3 = bundle.isGlaze ? mk(8) : nil
+        let blurTex  = bundle.isGlaze ? mk(4) : (bundle.blurState != nil ? mk(4) : nil)
+        let blurTex2 = bundle.isGlaze ? mk(8) : nil
+        let blurTex3 = bundle.isGlaze ? mk(16) : nil
         // The blur intermediates always start black — they are not the canvas ground.
         let blurClear = [blurTex, blurTex2, blurTex3].compactMap { $0 }
         if !blurClear.isEmpty { clearWarpTextures(blurClear, to: MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)) }

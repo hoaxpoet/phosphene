@@ -73,7 +73,7 @@ struct GlazeMVWarpAccumulationTest {
 
     // MARK: - Blur pyramid (GLAZE.2b.1): the 3-level pyramid allocates + compiles
 
-    @Test("Glaze allocates a 3-level blur pyramid (½ + ¼ + ⅛ res) and compiles glaze_blur_fragment")
+    @Test("Glaze allocates a 3-level blur pyramid (¼ + ⅛ + 1⁄16 res) and compiles glaze_blur_fragment")
     @MainActor
     func test_blurPyramid_allocatesThreeLevels() throws {
         guard let ctx = try? MetalContext() else { Issue.record("No Metal device"); return }
@@ -94,10 +94,11 @@ struct GlazeMVWarpAccumulationTest {
             blurState: mvWarp.blurState, isGlaze: true)
         pipeline.setupMVWarp(bundle: bundle, size: CGSize(width: 256, height: 256))
         let state = pipeline.mvWarpState
-        // Progressive downsample (½, ¼, ⅛ of 256) — the resolution halving widens each level.
-        #expect(state?.blurTexture?.width == 128, "blur1 should be ½-res (got \(state?.blurTexture?.width ?? -1))")
-        #expect(state?.blurTexture2?.width == 64, "blur2 should be ¼-res (got \(state?.blurTexture2?.width ?? -1))")
-        #expect(state?.blurTexture3?.width == 32, "blur3 should be ⅛-res (got \(state?.blurTexture3?.width ?? -1))")
+        // Progressive downsample (¼, ⅛, 1⁄16 of 256) — wider blur → smoother gel membranes
+        // (the Nacre "narrow blur → flecks, wide → membranes" lesson; GLAZE.2b.2 tuning).
+        #expect(state?.blurTexture?.width == 64, "blur1 should be ¼-res (got \(state?.blurTexture?.width ?? -1))")
+        #expect(state?.blurTexture2?.width == 32, "blur2 should be ⅛-res (got \(state?.blurTexture2?.width ?? -1))")
+        #expect(state?.blurTexture3?.width == 16, "blur3 should be 1⁄16-res (got \(state?.blurTexture3?.width ?? -1))")
     }
 
     // MARK: - Accumulation gate (ALWAYS run): live dispatch path, non-black + no white-out
