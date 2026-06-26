@@ -29,7 +29,7 @@ struct NacreUniforms {
     var coreEnergy: Float = 0          // STEADY total energy → the warp's core seed (no smear)
     var hueShift: Float = 0            // NACRE.3: harmony → palette-phase nudge (seconds), bounded
     var texel: SIMD2<Float> = .init(1, 1)
-    var pad1: Float = 0                // (was voiceLevel — the display-stage voice glow, cut at NACRE.3)
+    var barPush: Float = 0             // NACRE.4: downbeat envelope → display-stage camera push (visible motion)
     var spin: Float = 0                // NACRE.3: energy → continuous warp rotation (turning ← music)
     var aspect: SIMD4<Float> = .init(1, 1, 1, 1)
     // Fixed per-load random (the comp's tint + dz-scale character). Chosen in the
@@ -91,6 +91,13 @@ extension RenderPipeline {
                               + stems.vocalsEnergy + stems.otherEnergy) * 0.25)
         nacreSpinEMA += (avgStem - nacreSpinEMA) * 0.03               // ~0.5 s — tracks the song's arc
         uni.spin = kNacreSpinGain * max(0, nacreSpinEMA - kNacreSpinFloor)
+
+        // ── Downbeat camera push (NACRE.4) — the connection as VISIBLE MOTION ──
+        // The detectable rhythm (the downbeat DID read in M7 — "the pulse is accurate") in a
+        // medium that isn't brightness (flashes) or invisible (whole-field rotation): a sharp-
+        // attack / bar-decay envelope on the cached BeatGrid's barPhase01 → the comp magnifies
+        // the whole field on the downbeat (display-stage, no smear). Static on beatless tracks.
+        uni.barPush = pow(max(0, 1 - features.barPhase01), 2.5)
 
         // ── Hue ← harmony (NACRE.3) ──────────────────────────────────────────────
         // Nudge the palette PHASE (a subtle drift on top of the slow time-rotation, NOT a

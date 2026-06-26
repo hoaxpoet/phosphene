@@ -52,7 +52,7 @@ struct NacreUniforms {
     float  coreEnergy;   // STEADY total energy — gates the warp's core SEED (faithful modwavealphabyvolume)
     float  hueShift;     // NACRE.3: harmony → palette-phase nudge (seconds, bounded ±1.5)
     float2 texel;        // (1/feedbackW, 1/feedbackH) — comp luminance-sobel offsets (texsize.zw)
-    float  pad1;         // (was voiceLevel — the DISPLAY-stage voice glow, cut at NACRE.3)
+    float  barPush;      // NACRE.4: downbeat envelope → display-stage camera push (connection as visible motion)
     float  spin;         // NACRE.3: energy → continuous warp rotation (rad/frame; turning ← music)
     float4 aspect;       // (aspectx, aspecty, 1/aspectx, 1/aspecty) — comp cell aspect
     float4 randPreset;   // fixed per-load random vec4 (the comp's tint + dz scale character)
@@ -91,8 +91,10 @@ constant float kNacreBassKick   = 0.011;   // bass onset → dx/dy positional jo
 constant float  kNacreCoreTight = 18.0;    // luminous core spot — tight enough that a sustained-loud
                                            // section can't flood the frame (it accumulates ~10× via decay)
 constant float  kNacreCoreBase  = 0.10;    // central core glow (the "light through the lenses")
-// Display-stage voice glow (NACRE.3, comp): the dynamic core ← voice connection, added at
-// the comp so it can't smear the feedback. Brightness × the tanh'd vocal envelope.
+// Downbeat camera push (NACRE.4, comp): the music connection as VISIBLE MOTION — the field
+// magnifies ~5 % on the downbeat (a forward surge), settling over the bar. Display-stage
+// (scales the steady feedback at sample time → no smear). Feel knob.
+constant float  kNacrePush      = 0.05;
 
 // Warp grain (the reaction-diffusion churn; source warp noise term, treble-gated).
 // SIGNED ±; the [0,1] clamp rectifies the positive half into the churn texture. LOW
@@ -317,7 +319,12 @@ fragment float4 nacre_comp_fragment(
     float2 dxoff = float2(nu.texel.x, 0.0);   // texsize.z, 0
     float2 dyoff = float2(0.0, nu.texel.y);   // 0, texsize.w
 
-    float2 base = (uv - 0.5) * nu.aspect.xy;  // tmpvar_8 = (uv-0.5)*aspect.xy
+    // Downbeat camera push (NACRE.4): contract the view coords on the downbeat so the whole
+    // field magnifies (a gentle forward surge), settling over the bar — the music connection
+    // as VISIBLE MOTION on the beat (the rhythm that read, in a non-brightness, non-invisible
+    // medium). DISPLAY-stage: scales the steady feedback at sample time, never fed back → no
+    // smear. nu.barPush is the sharp-attack / bar-decay envelope on the cached downbeat.
+    float2 base = (uv - 0.5) * nu.aspect.xy * (1.0 - kNacrePush * nu.barPush);
     float  tph  = nu.time / 18.0;             // radial-pulse phase
 
     float2 dz   = float2(0.0);
