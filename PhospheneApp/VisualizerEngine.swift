@@ -199,6 +199,13 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// `applyPreset`. (LM.2 / D-LM-buffer-slot-8.)
     var lumenPatternEngine: LumenPatternEngine?
 
+    /// BUG-063 live diagnostic — frame counter within the current preset activation
+    /// and a "already logged a degenerate value" latch, both reset on every preset
+    /// apply. Drive `lumenFreezeDiagnosticTick` from the per-frame hook; temporary
+    /// instrument, remove once the Lumen Mosaic freeze is pinned.
+    var lumenDiagFrame: Int = 0
+    var lumenDiagSeenBad: Bool = false
+
     /// Ferrofluid Ocean particle scaffolding (V.9 Session 4.5b Phase 1) —
     /// allocated when that preset is active, nil otherwise. Owns the 2048-
     /// particle UMA buffer + 512×512 r16Float baked height texture bound at
