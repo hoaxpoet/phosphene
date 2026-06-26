@@ -44,7 +44,7 @@ constant float  kGlazePokeRadius = 0.2;                  // source pixel_eqs `r 
 // The source runs decay 1.0 on an 8-bit feedback whose quantisation + butterchurn dynamics
 // bound the R-channel +0.006 grow; on our float buffer that grow floods to white (the Nacre
 // float-bloom lesson). A gentle decay equilibrates R at ~0.006·d/(1−d) instead of saturating.
-constant float  kGlazeWarpDecay = 0.97;
+constant float  kGlazeWarpDecay = 0.93;
 
 // MARK: - Palette (the source's saturated neon rotation; substitutes butterchurn hue_shader)
 // Slow red→green→teal→violet drift. Values in [0.2, 1.0] so the comp's `pow(hue, g9)` mix
@@ -201,9 +201,13 @@ fragment float4 glaze_warp_fragment(
     // gradient → the zoomexp flow + unsharp have nothing to propagate. Inject a bright spot at
     // the spring poke (the zoomexp carries it outward into concentric rings) + a faint
     // time-varying noise floor so the field is alive + structured at silence (D-019).
-    float dPoke = length(in.uv - gu.pokeCenter);
-    float seed  = exp(-dPoke * dPoke * 50.0) * 0.10
-                + (glazeValueNoise(in.uv * 1.6 + gu.time * 0.05) - 0.5) * 0.012;
+    // The seed is a CURVE (the source's waveform `wave_a 0.207`), not a point — the zoomexp flow
+    // rings a curve into nested CONCENTRIC contours (a point → radial rays). At silence a slow
+    // time-varying wiggly line stands in for the audio waveform; GLAZE.3 feeds the real one.
+    float yCurve = 0.5 + 0.16 * sin(in.uv.x * 8.0 + gu.time * 0.6)
+                       + 0.07 * sin(in.uv.x * 15.0 - gu.time * 0.4);
+    float dCurve = in.uv.y - yCurve;
+    float seed = exp(-dCurve * dCurve * 500.0) * 0.12;
     ret.x += seed; ret.y += seed;
 
     // Bounding decay (the float-bloom fix; the source's 8-bit storage bounded this implicitly).
