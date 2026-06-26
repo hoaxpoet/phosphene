@@ -83,7 +83,20 @@ extension RenderPipeline {
         // BeatGrid's barPhase01 (1 at the downbeat → 0 over the bar), applied DISPLAY-stage in
         // the comp (no smear) — bar-rate so it breathes, not strobes. Static (no pulse) on
         // beatless tracks (barPhase01 doesn't advance). Couple to the bar, not the beat (Matt).
-        uni.barPulse = pow(max(0, 1 - features.barPhase01), 2.5)
+        //
+        // …but roll it OFF as the full band comes in (Matt M7: "still too bright at really
+        // excited stages, like when the full band comes in for Cherub Rock"). The pulse is a
+        // brightness multiply; on a loud full-band field it pushes the rims to white-clip. The
+        // band average is BLIND to that moment (≈0.14 at the full-band entry — all the energy
+        // is in the STEMS, which jump together to ~0.55), so drive the rolloff off stem
+        // fullness, not bands. Window [0.35→0.55]: the track's median (0.32) keeps the full
+        // pulse; only the top ~10% (p90 0.50, p99 0.77) backs off — to ~30% depth at the peak,
+        // where the bright, busy field carries the excitement on its own.
+        let avgStem = max(0, (stems.drumsEnergy + stems.bassEnergy
+                              + stems.vocalsEnergy + stems.otherEnergy) * 0.25)
+        let fullness = max(0, min(1, (avgStem - 0.35) / 0.20))
+        nacreFullnessEMA += (fullness - nacreFullnessEMA) * 0.05     // ~0.3 s, no flicker
+        uni.barPulse = pow(max(0, 1 - features.barPhase01), 2.5) * (1 - 0.7 * nacreFullnessEMA)
 
         // ── Hue ← harmony (NACRE.3) ──────────────────────────────────────────────
         // Nudge the palette PHASE (a subtle drift on top of the slow time-rotation, NOT a
