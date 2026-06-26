@@ -81,7 +81,12 @@ import Foundation
     let jsonFiles = contents.filter { $0.pathExtension == "json" }
     #expect(jsonFiles.count >= 13, "Expected at least 13 JSON sidecars")
 
-    let lightweightExpected: Set<String> = ["Plasma", "Waveform", "Nebula", "Spectral Cartograph", "Murmuration"]
+    // NOTE (NACRE.4): this set is STALE for several presets vs their JSON sidecars (e.g.
+    // Aurora Veil / Dragon Bloom / Fata Morgana / Skein / Staged Sandbox declare lightweight
+    // but are absent here). It has only been green because the test skips when the Shaders
+    // bundle isn't bundle-accessible (line ~76). Nacre added here for its certification;
+    // the broader reconciliation is a separate follow-up (surfaced to Matt).
+    let lightweightExpected: Set<String> = ["Plasma", "Waveform", "Nebula", "Spectral Cartograph", "Murmuration", "Nacre"]
     let decoder = JSONDecoder()
     var loaded = 0
 
@@ -90,9 +95,13 @@ import Foundation
         let descriptor = try decoder.decode(PresetDescriptor.self, from: data)
         loaded += 1
 
-        // Certified presets (Matt M7-approved): Lumen Mosaic, Ferrofluid Ocean,
-        // Dragon Bloom, Fata Morgana, Murmuration. Everything else must be uncertified. (Field must decode.)
-        let certifiedExpected: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana", "Murmuration"]
+        // Certified presets (Matt M7-approved): Lumen Mosaic, Ferrofluid Ocean, Dragon Bloom,
+        // Fata Morgana, Murmuration, Nacre (NACRE.4, 2026-06-26). NOTE: also STALE — Nimbus and
+        // Skein declare certified:true in their JSON but are absent here (the set has only been
+        // green because the test skips when the Shaders bundle isn't accessible). Reconciling
+        // Nimbus/Skein is a separate follow-up (surfaced to Matt). Everything else uncertified.
+        let certifiedExpected: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom",
+                                              "Fata Morgana", "Murmuration", "Nacre"]
         #expect(descriptor.certified == certifiedExpected.contains(descriptor.name),
                 "\(descriptor.name): certified flag does not match the M7-approved set")
 

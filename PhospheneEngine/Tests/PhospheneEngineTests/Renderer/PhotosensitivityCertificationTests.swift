@@ -65,6 +65,7 @@ struct PhotosensitivityCertificationTests {
         "Dragon Bloom",   // mv_warp feedback (strands-on-top + per-beat display pulse)
         "Fata Morgana",   // mv_warp feedback (bespoke renderFataMorgana mirage path)
         "Skein",          // mv_warp feedback (cream canvas-hold + per-stem paint + sheen)
+        "Nacre",          // mv_warp feedback (bespoke renderNacre; downbeat camera push) — NACRE.4
     ]
 
     // MARK: - Gate

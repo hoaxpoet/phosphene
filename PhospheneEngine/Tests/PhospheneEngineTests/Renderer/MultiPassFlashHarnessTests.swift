@@ -68,6 +68,11 @@ struct MultiPassFlashHarnessTests {
         assertFlashSafe(name: "Skein", luma: try renderMVWarp(presetName: "Skein"))
     }
 
+    @Test("Nacre is flash-safe (mv_warp feedback, downbeat camera push, real headless render)")
+    func nacreIsFlashSafe() throws {
+        assertFlashSafe(name: "Nacre", luma: try renderNacre())
+    }
+
     // MARK: - Assertion (shared)
 
     /// Print the per-preset evidence line (the closeout all-7 table is these four plus the
@@ -279,6 +284,45 @@ struct MultiPassFlashHarnessTests {
         }
     }
 
+    // MARK: - Render: Nacre (bespoke mv_warp, NACRE.4)
+
+    /// Nacre — `direct` + `mv_warp` with the bespoke `renderNacre` path (custom warp → comp →
+    /// swap; HDR .rgba16Float feedback). The worst-case train drives `barPhase01` (line ~82),
+    /// so the NACRE.4 downbeat camera push fires and IS measured (not a push-less render).
+    private func renderNacre() throws -> [Double] {
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let noise = try TextureManager(context: ctx, shaderLibrary: lib)
+        let floatStride = MemoryLayout<Float>.stride
+        guard let fft = ctx.makeSharedBuffer(length: 512 * floatStride),
+              let wav = ctx.makeSharedBuffer(length: 2048 * floatStride) else {
+            throw FlashHarnessError.setupFailed("audio buffers")
+        }
+        let pipeline = try RenderPipeline(context: ctx, shaderLibrary: lib, fftBuffer: fft, waveformBuffer: wav)
+        pipeline.setTextureManager(noise)
+        guard let preset = _acceptanceFixture.presets.first(where: { $0.descriptor.name == "Nacre" }) else {
+            throw FlashHarnessError.presetNotFound("Nacre")
+        }
+        let size = CGSize(width: Self.width, height: Self.height)
+        pipeline.currentDrawableSize = size
+        try configureMVWarp(pipeline: pipeline, preset: preset, context: ctx, size: size)
+
+        let outTex = try makeOutputTexture(ctx)
+        let drive = FlashHarnessSupport.worstCaseBeatTrain()
+        let stems = FlashHarnessSupport.worstCaseStemTrain()
+        return try renderLoop(ctx, outTex) { i, pixels in
+            guard let cmd = ctx.commandQueue.makeCommandBuffer(),
+                  let warpState = pipeline.mvWarpState else { throw FlashHarnessError.renderFailed }
+            pipeline.renderNacre(
+                commandBuffer: cmd,
+                features: drive[i],
+                stemFeatures: stems[i],
+                warpState: warpState,
+                target: outTex)
+            try commit(cmd, outTex, into: &pixels)
+        }
+    }
+
     // MARK: - mv_warp setup (mirrors VisualizerEngine+Presets applyPreset, MV-2)
 
     /// Reproduce the app's per-preset mv_warp wiring: build the pipeline bundle (with the
@@ -295,9 +339,15 @@ struct MultiPassFlashHarnessTests {
         guard let warp = preset.mvWarpPipelines else {
             throw FlashHarnessError.setupFailed("\(desc.name) mvWarpPipelines missing")
         }
-        // Fata Morgana feeds back in LINEAR .bgra8Unorm (butterchurn parity); the rest use
-        // the drawable format. MUST match the format the pipelines were compiled for.
-        let feedbackFormat: MTLPixelFormat = desc.name == "Fata Morgana" ? .bgra8Unorm : ctx.pixelFormat
+        // Fata Morgana feeds back in LINEAR .bgra8Unorm (butterchurn parity); Nacre in HDR
+        // .rgba16Float (NACRE.4); the rest use the drawable format. MUST match the format the
+        // pipelines were compiled for.
+        let feedbackFormat: MTLPixelFormat
+        switch desc.name {
+        case "Fata Morgana": feedbackFormat = .bgra8Unorm
+        case "Nacre":        feedbackFormat = .rgba16Float
+        default:             feedbackFormat = ctx.pixelFormat
+        }
         // Skein's cream canvas-hold ground is the held feedback clear; black for the rest.
         let canvasClear = desc.marks?.canvasClear.map {
             SIMD4<Double>(Double($0.x), Double($0.y), Double($0.z), 1)
@@ -309,6 +359,7 @@ struct MultiPassFlashHarnessTests {
             pixelFormat: ctx.pixelFormat,
             feedbackFormat: feedbackFormat,
             blurState: warp.blurState,                // non-nil ⇒ Fata Morgana fata branch
+            isNacre: desc.name == "Nacre",            // ⇒ drawWithNacre branch (NACRE.4)
             canvasClearColor: canvasClear)
         pipeline.setupMVWarp(bundle: bundle, size: size)
         pipeline.setMVWarpDecay(desc.decay)
