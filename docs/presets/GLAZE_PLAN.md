@@ -12,6 +12,29 @@ No shader code yet (faithful-port discipline: references + plan before `.metal`,
 > (FA #73 / #65). Adopt the mechanics; adapt only context (audio → deviation primitives, palette, scale).
 > Render the actual source beside every iteration (`tools/milkdrop-render`).
 
+## ★ GLAZE.2b.2 grain ROOT CAUSE (2026-06-26, Matt's live M7 flagged grain as preset-sinking)
+
+**Root cause: a feedback sharpening instability.** The source's warp does `ret = main + (main − blur2)·0.4`
+— an unsharp mask, i.e. a high-pass *boost*. In a feedback loop that term has gain > 1 at high spatial
+frequencies, so on our **float** buffer it compounds every frame and amplifies any tiny variation into
+ever-thinner razor filaments → a dense crackle/grain that reads as noise. The source gets away with it only
+because its **8-bit** feedback storage quantizes the runaway each frame; we can't replicate that bound on a
+float buffer.
+
+**Found by isolation** (FA #64 — diagnose, don't guess): comp-passthrough showed the grain was in the *warp
+feedback*, not the comp → collapsing the R/G/B channel decoupling kept the thin filaments (so colour wasn't
+it) → **disabling the unsharp made the feedback perfectly smooth.** Decisive.
+
+**Fix (durable craft rule): sharpening belongs DISPLAY-only, never in the fed-back warp.** The warp now just
+advects + decays + seeds (smooth); the *comp* embosses the smooth feedback into the gel sheen (display-only,
+never fed back) — so the high-pass can't compound. Also dropped the `+0.006` uniform self-seed (it flooded the
+ground; the explicit curve seed replaces it, and dropping it restores a darker ground). **Generalises:** any
+mv_warp/feedback preset that puts an unsharp/high-pass in the warp loop will grain on a float buffer — keep it
+in the display comp. (Sibling of the Nacre "brightness is the wrong medium" + "wide blur → membranes" lessons.)
+
+**Still open (M7 tuning, not grain):** the silence base is band-like (the full contour field fills in with
+audio = GLAZE.3, as the source's waveform jumps around); the ground reads green (the comp `+1.0` lift).
+
 ## 0. Greenlit scope (Matt, 2026-06-26)
 
 **Name: Glaze.** **Scope: faithful base + 3 uplifts** (the Nacre/Dragon Bloom "substantially exceed the
