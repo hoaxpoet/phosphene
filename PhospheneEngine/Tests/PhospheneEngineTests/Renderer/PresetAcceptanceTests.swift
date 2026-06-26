@@ -90,6 +90,10 @@ struct PresetAcceptanceTests {
         // feedback branch (drawWithNacre); the standalone `nacre_fragment` this harness
         // renders is intentionally black. Production coverage: NacreMVWarpAccumulationTest.
         guard preset.descriptor.name != "Nacre" else { return }
+        // Glaze (GLAZE.2a): same — the contour-gel is built by the warp+comp feedback branch
+        // (drawWithGlaze); the standalone `glaze_fragment` is intentionally black. Production
+        // coverage: GlazeMVWarpAccumulationTest.
+        guard preset.descriptor.name != "Glaze" else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture
         let pixels = try renderFrame(preset: preset, features: &fixture, context: ctx)
@@ -122,6 +126,10 @@ struct PresetAcceptanceTests {
         // feedback branch (drawWithNacre); the standalone `nacre_fragment` this harness
         // renders is intentionally black. Production coverage: NacreMVWarpAccumulationTest.
         guard preset.descriptor.name != "Nacre" else { return }
+        // Glaze (GLAZE.2a): same — the contour-gel is built by the warp+comp feedback branch
+        // (drawWithGlaze); the standalone `glaze_fragment` is intentionally black. Production
+        // coverage: GlazeMVWarpAccumulationTest.
+        guard preset.descriptor.name != "Glaze" else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture
         let pixels = try renderFrame(preset: preset, features: &fixture, context: ctx)
@@ -180,6 +188,7 @@ struct PresetAcceptanceTests {
         if preset.descriptor.name == "Dragon Bloom" { return }
         if preset.descriptor.name == "Fata Morgana" { return }
         if preset.descriptor.name == "Nacre" { return }   // NACRE.2b: feedback-branch preset (see above)
+        if preset.descriptor.name == "Glaze" { return }   // GLAZE.2a: feedback-branch preset (see above)
         let ctx = try MetalContext()
         var silence = silenceFixture
         var steady = steadyFixture
@@ -227,6 +236,10 @@ struct PresetAcceptanceTests {
         // feedback branch (drawWithNacre); the standalone `nacre_fragment` this harness
         // renders is intentionally black. Production coverage: NacreMVWarpAccumulationTest.
         guard preset.descriptor.name != "Nacre" else { return }
+        // Glaze (GLAZE.2a): same — the contour-gel is built by the warp+comp feedback branch
+        // (drawWithGlaze); the standalone `glaze_fragment` is intentionally black. Production
+        // coverage: GlazeMVWarpAccumulationTest.
+        guard preset.descriptor.name != "Glaze" else { return }
         // Skein (D-143): its readable content (the test stamp; later the poured line) is
         // the marks-on-top overlay (skein_geometry_*) composited onto the held canvas in
         // the mv_warp path. This fragment-only harness renders the flat cream GROUND only
