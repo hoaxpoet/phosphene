@@ -52,7 +52,7 @@ struct NacreUniforms {
     float  coreEnergy;   // STEADY total energy — gates the warp's core SEED (faithful modwavealphabyvolume)
     float  hueShift;     // NACRE.3: harmony → palette-phase nudge (seconds, bounded ±1.5)
     float2 texel;        // (1/feedbackW, 1/feedbackH) — comp luminance-sobel offsets (texsize.zw)
-    float  voiceLevel;   // NACRE.3: tanh-saturated vocal envelope → the comp's DISPLAY-stage core glow
+    float  pad1;         // (was voiceLevel — the DISPLAY-stage voice glow, cut at NACRE.3)
     float  spin;         // NACRE.3: energy → continuous warp rotation (rad/frame; turning ← music)
     float4 aspect;       // (aspectx, aspecty, 1/aspectx, 1/aspecty) — comp cell aspect
     float4 randPreset;   // fixed per-load random vec4 (the comp's tint + dz scale character)
@@ -93,8 +93,6 @@ constant float  kNacreCoreTight = 18.0;    // luminous core spot — tight enoug
 constant float  kNacreCoreBase  = 0.10;    // central core glow (the "light through the lenses")
 // Display-stage voice glow (NACRE.3, comp): the dynamic core ← voice connection, added at
 // the comp so it can't smear the feedback. Brightness × the tanh'd vocal envelope.
-constant float  kNacreVoiceGlow      = 0.60;
-constant float  kNacreVoiceGlowTight = 10.0;
 
 // Warp grain (the reaction-diffusion churn; source warp noise term, treble-gated).
 // SIGNED ±; the [0,1] clamp rectifies the positive half into the churn texture. LOW
@@ -363,15 +361,11 @@ fragment float4 nacre_comp_fragment(
     ret -= roam * 0.4;
     ret  = ret * (1.0 + ret);   // contrast lift
 
-    // DISPLAY-stage core glow ← voice (NACRE.3): a soft warm-white central light that
-    // swells with the vocal envelope (nu.voiceLevel). Added HERE, at the comp (presented,
-    // NEVER swapped into the feedback), so the dynamic pulse cannot smear — the hero light
-    // ← hero voice, smear-free (the warp's core seed stays steady). Aspect-corrected radius.
-    float rc = length(base);
-    ret += kNacreVoiceGlow * exp(-rc * rc * kNacreVoiceGlowTight) * nu.voiceLevel
-         * float3(1.0, 0.97, 0.92);
-    // (The downbeat BRIGHTNESS pulse was removed at NACRE.3 — Matt M7: "the brightness is
-    //  still bothersome". The rhythmic/energy connection moved to the warp's turning, nu.spin.)
+    // [NACRE.3: the display-stage voice GLOW and the downbeat brightness PULSE were both
+    //  removed here — Matt M7: "still blindingly bright at some points". The glow added up to
+    //  +0.46 at centre on the vocal peaks (session 16-14-24Z) and never registered as a
+    //  connection. The energy connection lives in the warp's turning (nu.spin); the comp is
+    //  back to the faithful combine + sRGB decode.]
 
     // sRGB round-trip cancellation (the FM fix, D-139). butterchurn writes to an
     // sRGB-NAIVE canvas (the shader value IS the display value); Phosphene's drawable is

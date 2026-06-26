@@ -29,7 +29,7 @@ struct NacreUniforms {
     var coreEnergy: Float = 0          // STEADY total energy → the warp's core seed (no smear)
     var hueShift: Float = 0            // NACRE.3: harmony → palette-phase nudge (seconds), bounded
     var texel: SIMD2<Float> = .init(1, 1)
-    var voiceLevel: Float = 0          // NACRE.3: vocal envelope → the comp's display-stage core glow
+    var pad1: Float = 0                // (was voiceLevel — the display-stage voice glow, cut at NACRE.3)
     var spin: Float = 0                // NACRE.3: energy → continuous warp rotation (turning ← music)
     var aspect: SIMD4<Float> = .init(1, 1, 1, 1)
     // Fixed per-load random (the comp's tint + dz-scale character). Chosen in the
@@ -56,7 +56,7 @@ extension RenderPipeline {
     // MARK: Per-frame uniforms
 
     /// Compute the Nacre warp/comp uniforms for this frame. Holds smoothing accumulators
-    /// (`nacreSeedEMA`/`nacreCoreEMA`/`nacreSpinEMA`/`nacreHueEMA`) — the audio routes.
+    /// (`nacreSeedEMA`/`nacreSpinEMA`/`nacreHueEMA`/`nacreCentroidNorm`) — the audio routes.
     @MainActor
     func computeNacreUniforms(features: FeatureVector, stems: StemFeatures) -> NacreUniforms {
         var uni = NacreUniforms()
@@ -64,22 +64,16 @@ extension RenderPipeline {
         uni.time = tSec
         uni.trebleGrain = max(0, features.trebDev)
 
-        // ── Core SEED (warp) STEADY + voice connection at the DISPLAY stage (NACRE.3) ──
-        // The core ← voice connection must NOT live in the warp seed: a dynamic core flares,
-        // and the warp advects each flare outward into a radial streak → "stretches and
-        // smears" (Matt M7, twice). The Dragon Bloom precedent: audio DYNAMICS belong at the
-        // display (comp) stage, never fed back. So:
-        //   · the warp's core SEED is STEADY total energy (the no-smear "looks good"
-        //     behaviour) — it sustains the field's central convergence without flaring;
-        //   · the VOICE connection becomes a display-only glow in the comp (`voiceLevel`),
-        //     which is presented, never swapped into the feedback → it pulses with the voice
-        //     but cannot smear. tanh-saturated (vocalsEnergy spikes to ~3×) + smoothed ~0.16 s.
+        // ── Core SEED (warp), STEADY (NACRE.3) ──
+        // The warp's core seed is STEADY total energy (~0.5 s EMA) — it sustains the field's
+        // central convergence without flaring (a dynamic seed advects into a radial smear;
+        // audio dynamics stay display-stage, the Dragon Bloom precedent). [The display-stage
+        // voice GLOW that used to ride on top was cut — Matt M7: "blindingly bright at some
+        // points"; it added +0.46 at centre on the vocal peaks and never read as a connection.
+        // nacreCoreEMA / voiceLevel removed with it.]
         let total = max(0, (features.bass + features.mid + features.treble) / 3.0)
         nacreSeedEMA += (total - nacreSeedEMA) * 0.03    // ~0.5 s → near-steady seed (no warp smear)
         uni.coreEnergy = nacreSeedEMA
-        let voiceTarget = Float(tanh(Double(max(0, stems.vocalsEnergy))))
-        nacreCoreEMA += (voiceTarget - nacreCoreEMA) * 0.10
-        uni.voiceLevel = nacreCoreEMA
 
         // ── Turning speed ← the music's energy (NACRE.3) — motion, not brightness ──
         // The downbeat brightness pulse read as a flash on the bright iridescent field no

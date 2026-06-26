@@ -150,16 +150,14 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// MainActor-only (the mv_warp draw path), no lock — same convention as the fata accumulators.
     var nacreCentroidNorm: Float = 0
     var nacreHueEMA: Float = 0
-    /// Nacre (NACRE.3): the DISPLAY-stage voice glow envelope (smoothed tanh'd vocal
-    /// energy, ~0.16 s) — drives the comp's central core glow (the connection; display-only
-    /// so it can't smear). `nacreSeedEMA` is the SLOW (~0.5 s) total-energy envelope driving
-    /// the WARP's core SEED, kept near-steady so the fed-back seed never flares into smears.
+    /// Nacre (NACRE.3): `nacreSeedEMA` is the SLOW (~0.5 s) total-energy envelope driving the
+    /// WARP's core SEED, kept near-steady so the fed-back seed never flares into smears.
     /// `nacreSpinEMA`: smoothed stem-fullness (avg of the four stem energies, ~0.5 s) → the
     /// warp's energy-driven TURNING (`nu.spin`): the molten field swirls faster as the music
-    /// fills out, slower when sparse (NACRE.3, the motion connection that replaced the
-    /// brightness pulse). The band average is blind to full-band entries — energy is in the
-    /// stems (Matt M7). [Was `nacreFullnessEMA`, the brightness-pulse rolloff — superseded.]
-    var nacreCoreEMA: Float = 0, nacreSeedEMA: Float = 0, nacreSpinEMA: Float = 0
+    /// fills out, slower when sparse (the motion connection). The band average is blind to
+    /// full-band entries — energy is in the stems (Matt M7). [The DISPLAY-stage voice-glow
+    /// envelope `nacreCoreEMA` was removed — Matt M7: blinding on the vocal peaks, no read.]
+    var nacreSeedEMA: Float = 0, nacreSpinEMA: Float = 0
 
     // MARK: - Live Audio Features
 
