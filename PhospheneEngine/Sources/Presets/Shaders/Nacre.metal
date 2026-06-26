@@ -253,10 +253,11 @@ fragment float4 nacre_warp_fragment(
     // ground), bright with audio (the hero luminous core pulses with the music).
     float  r        = length(in.uv - 0.5);
     // Wider range than the faithful base (0.22 + 0.75) so the voice-driven pulse is
-    // PERCEPTIBLE (NACRE.3): dim baseline 0.16 → ~1.1 on a loud vocal (~5× swing; verified
-    // 2.7× more per-second variation than the old static total-volume drive). The [0,1]
-    // feedback clamp + the comp bound the bloom on peaks.
-    float  coreGate = 0.16 + 1.3 * clamp(nu.coreEnergy, 0.0, 1.2);
+    // PERCEPTIBLE (NACRE.3): dim baseline 0.16 → ~0.86 peak. nu.coreEnergy is now a
+    // tanh-saturated vocal envelope (≤1), so the core swells with the voice but never
+    // blooms — peak matches the "looks good" total-volume level, just dynamic. (Gain was
+    // 1.3 before the tanh; with the spike capped, 1.0 holds the peak where it belongs.)
+    float  coreGate = 0.16 + 1.0 * clamp(nu.coreEnergy, 0.0, 1.0);
     float  core     = exp(-r * r * kNacreCoreTight) * kNacreCoreBase * coreGate;
     // Palette phase nudged by the harmony (NACRE.3): the seed colour drifts ±~10% of the
     // cycle with the music's spectral colour, layered on the slow time-rotation. The seed
