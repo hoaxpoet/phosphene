@@ -139,15 +139,26 @@ Distinct from every certified preset: this is the catalog's first **physics-of-t
 
 | Visual layer | Audio primitive | Timescale | Source-eq origin |
 |---|---|---|---|
-| Spring anchor X (lateral swing) | `f.bassDev` (one dir) **and** `f.trebleDev` (other dir) of **one anchor** | continuous (EMA) | `xx1`/`xx2` → `x1` |
-| Spring anchor Y (lift) | avg energy envelope | continuous (EMA) | `yy1` → `y1` |
+| Spring anchor X (lateral swing) | `stems.bassEnergyDev` (one dir) **and** `stems.otherEnergyDev` (other dir) of **one anchor** | continuous (EMA) | `xx1`/`xx2` → `x1` |
+| Spring anchor Y (lift) | mean of the four stem `EnergyRel`s (fullness) | continuous (EMA) | `yy1` → `y1` |
+| Seed band vertical centre | — (spring tail Y → `gu.seedY`) | physical | `wave_a` seed |
 | All visible field motion (lurch/wobble/flow) | — (pure spring integration of the anchor) | physical | the spring chain |
 | Warp swirl-poke center | — (spring tail pos/speed) | physical | `q4`/`q5` → pixel_eqs |
 | Palette hue rotation | **time** [+ optional chroma/centroid nudge] | very slow (10–14 s) | `hue_shader` + drift |
 
-The anchor is **one physical input**; bass and treble drive opposite directions of it (not two layers), energy
-drives a different axis, and every visible motion is the spring's single integrated response. ✓ No two layers
-share a primitive at a timescale.
+The anchor is **one physical input**; the bass stem and the harmonic **other** stem drive opposite directions of
+it (not two layers), fullness drives a different axis, and every visible motion is the spring's single integrated
+response. ✓ No two layers share a primitive at a timescale.
+
+> **Stem-drive (Matt M7 2026-06-27).** The lateral swing originally used the bass/treble **bands** — but on real
+> tracks those are often the quietest channels (School of Seven Bells `2026-06-27T02-00-44Z`: treble active ~4%
+> of frames, band bassDev 19%), so the spring integrated a thin, sparse signal → "musical but loosely connected"
+> (Matt). The separated **stems** are 4× denser (the `other` = guitar/synth dev active 83%); driving the anchor
+> off `bassStemDev ↔ otherStemDev` (+ four-stem fullness for the lift) gives the spring a continuous, melodic
+> signal — the bass-vs-harmonic opposition is also more musical than the bass-vs-treble frequency split. The
+> spring itself is unchanged: a denser signal is the connection lever, not looser damping (which reintroduces
+> FA #4/#31 jitter). This pulls the lateral slice of uplift A forward; the rest (drums punch, vocals swell) stays
+> the GLAZE.5 path.
 
 ## 7. Staged increments (proposed)
 
@@ -157,7 +168,7 @@ share a primitive at a timescale.
 | **GLAZE.2a** ✅ | Wire the dedicated Glaze branch + STUB shaders, test-reachable. **Blur-pyramid deferred to 2b** (its shader consumers + the 3-level state extension land together — no speculative unused infra; re-scope from the original "blur in 2a"). | ✅ engine+app build clean, swiftlint strict 0; `GlazeMVWarpAccumulationTest` runs the live warp→comp→swap path 64 frames at silence — non-black + no white-out; reduced-motion BUG-061-safe; PresetRegression + Nacre/FM accumulation byte-identical. |
 | **GLAZE.2b.1** ✅ | **Blur-pyramid extension (3-level)** — `glaze_blur_fragment` (9-tap downsample) run progressively (prev→blur1 ½ → blur2 ¼ → blur3 ⅛); `MVWarpState` += `blurTexture2/3`; `setupMVWarp`/`renderGlaze` allocate + fill + bind to warp(blur1/2)+comp(blur1/2/3). Infra only — stub shaders don't sample yet. | ✅ pyramid allocates (128/64/32 of 256) + `glaze_blur` compiles + 3 passes run clean in the live path (no cmd error, still non-black/no-whiteout); PresetRegression + Nacre/FM byte-identical; lint 0. |
 | **GLAZE.2b.2** ✅ mechanism-complete (M7 tuning pending) | Faithful base LANDED + the structure mechanism now WORKS. The port chain: 3-mass spring (CPU) → fragment swirl-poke; butterchurn's exact per-vertex **zoomexp radial zoom** (`pow(zoom, pow(zoomExp, rad·2−1))`, butterchurn.js L2637) + 4-term warp ripple; channel-flow emboss warp + bounding decay (the float-bloom fix); structure **seed** at the poke (the source's `wave_a 0.207` waveform role) + faint noise floor; multi-scale unsharp comp (blur1/2/3) + palette + contrast + sRGB. **Debug journey:** white-flood → (decay) flat → (zoomexp) still flat → **isolation diagnostic** (comp passthrough showed the *warp feedback was uniform*) → the missing piece was a **structure seed** (a uniform `+0.006` self-seed has no gradient for the flow/emboss to bite on). With the seed, the field develops glossy embossed flowing structure. **Current state:** reads as glossy contour-gel but **grainy + washed-out** vs the oracle's clean concentric rings — a visual-tuning gap (blur width / seed coherence / contrast), the M7 loop (Nacre took ~9 rounds). | Mechanism renders the glossy contour-gel register; non-black + no white-out gate green; → **Matt M7 tuning** (grain → smooth rings, contrast). |
-| **GLAZE.3** ⏳ code-complete, pending live M7 | Base audio coupling (§6). **Anchor route** (`479f145`): anchor X ← EMA(bassDev)−EMA(trebDev), anchor Y ← EMA(bassRel+trebRel), off deviation primitives (D-026); the spring integrates → smooth momentum. **Seed fill** (`3d0691e`): the seed band rides the spring tail Y (`gu.seedY`) so it sweeps the frame with the audio — anchor alone moves only the poke, the seed was a fixed band (the 2b.2 band-like gap). | ✅ route firing in session-replay (real `features.csv` via `GLAZE_SESSION_CSV`: pokeX span 1.05, tailY span 1.03); one-primitive-per-layer holds (FA #67); mechanism gate + replay green; **live M7 = Matt** (gate for GLAZE.4). |
+| **GLAZE.3** ⏳ code-complete, pending live M7 | Base audio coupling (§6). **Anchor route** (`479f145` → stem-swapped `a34f9d3`): anchor X ← EMA(bassStemDev)−EMA(otherStemDev), anchor Y ← EMA(four-stem fullness), off the stem deviation primitives (D-026); the spring integrates → smooth momentum. Started on the bass/treble bands; Matt's M7 ("loosely connected") + the session analysis (bands near-dead, stems 4× denser) moved it to stems. **Seed fill** (`3d0691e`): the seed band rides the spring tail Y (`gu.seedY`) so it sweeps the frame with the audio (anchor alone moves only the poke; the seed was a fixed band — the 2b.2 band-like gap). | ✅ route firing in session-replay (real stems.csv via `GLAZE_SESSION_CSV`: pokeX span 1.085, tailY span 1.048); one-primitive-per-layer holds (FA #67); mechanism gate + replay green; **live M7 = Matt** (gate for GLAZE.4). |
 | **GLAZE.4** | Tune the faithful base to **base cert / live M7 confirmed**. | Matt live M7 sign-off on the base (gate for uplifts, FA #65). |
 | **GLAZE.5 (A)** | Uplift A — per-stem instrument routing into the spring. | Per-stem firing in session-replay; one-primitive-per-layer holds; M7. |
 | **GLAZE.6 (B)** | Uplift B — HDR glossy bloom (re-unclamp + display-stage bloom). | No white-out under worst-case beat train; flash-safe (multi-pass harness); M7. |

@@ -1,15 +1,16 @@
 # Glaze — M7 review brief (GLAZE.3 base audio coupling)
 
-**What you're judging (GLAZE.3):** the field is now **audio-coupled** — does the jelly **move with the music**,
-and does the contour field **fill** when audio drives it (vs the band-like silence base you saw at GLAZE.2b.2)?
-The spring anchor is driven by bass/treble (lateral swing) + energy (lift), and the structure **seed now rides
-the jelly's height** so it sweeps the frame with the music. Judge: (a) does the motion read as *physical*
-(momentum/overshoot/settle), not a per-beat twitch; (b) does the field fill / develop structure on loud
-sections; (c) is it still the glossy gel register. The **full-field-density vs dark-ground** tuning (decay) is
-deliberately deferred to GLAZE.4 — don't judge that as a fail; judge whether the audio coupling *feels* right.
+**What you're judging (GLAZE.3, stem-drive round):** last round you saw it as "musical but loosely connected"
+and asked for the Other stem. The jelly is now driven by the **separated stems** instead of the frequency bands
+— the **bass stem and the Other (guitar/synth) stem pull it in opposite directions**, overall stem energy lifts
+it (the bands were near-dead on your track: treble ~4% active, so the old motion rode a thin signal). The
+structure **seed rides the jelly's height** so it sweeps the frame. Judge: **(a) is it more *connected* now**
+— does the motion track the guitar/synth/bass you actually hear, vs the looser "feeling" before? (b) does it
+still read as *physical* (momentum, not twitch); (c) still the glossy gel register. The **full-field-density vs
+dark-ground** tuning (decay) is still deferred to GLAZE.4 — don't judge that as a fail.
 
-Branch: `claude/nice-rubin-9c10c7` (UNPUSHED — local). GLAZE.3 commits: `479f145` (anchor route) → `3d0691e`
-(seed fill) → `3d71fed` (docs). The worktree app was rebuilt for GLAZE.3 (the `open` path below is current).
+Branch: `claude/nice-rubin-9c10c7` (UNPUSHED — local). GLAZE.3 commits: `479f145` (anchor) → `3d0691e` (seed
+fill) → `3d71fed`/`20af87d` (docs) → **`a34f9d3` (stem-drive — this round)**. The worktree app is rebuilt below.
 
 ---
 
