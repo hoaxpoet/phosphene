@@ -85,10 +85,13 @@ constant float  kFloretSwirlCore = 0.09;                // 1/(r²+core) softenin
 // FLORET.3b drum sparkle (Matt M7 #3 pick): drum-driven twinkle at the filament tips. Sparse +
 // brightness-masked + display-stage (not fed back) → fine high-freq motion, flash-safe. Drives
 // from the DRUMS stem (raw treble is dead on these tracks); the source's treble grain, re-aimed.
-constant float  kFloretSparkleDensity = 130.0;          // sparkle cells across the frame (fine points)
-constant float  kFloretSparkleRate    = 13.0;           // twinkle re-randomisations / sec (fast flicker)
-constant float  kFloretSparkleThresh  = 0.93;           // sparsity — only the top cells light (sparse)
-constant float  kFloretSparkleGain    = 0.65;           // sparkle brightness (additive, saturate-capped)
+constant float  kFloretSparkleDensity = 105.0;          // sparkle cells across the frame
+constant float  kFloretSparkleRate    = 6.0;            // twinkle re-randomisations / sec (slow — the drift
+                                                        // carries the motion; slow blink reads as glints not noise)
+constant float  kFloretSparkleThresh  = 0.90;           // sparsity — top ~10 % of cells light
+constant float  kFloretSparkleGain    = 1.7;            // bright WHITE glints (M7 #4: was 0.65 → swallowed by the
+                                                        // bright filaments; a strong white pop reads against gold)
+constant float  kFloretSparkleDrift   = 0.012;          // slow grid drift → the sparkle field MOVES (sparkle motion)
 
 constant float3 kLuma = float3(0.299, 0.587, 0.114);
 
@@ -252,11 +255,15 @@ fragment float4 floret_comp_fragment(
     // high-freq motion with no smear. Sparse × tip-mask → tiny whole-frame luma (flash-safe). The
     // twinkle cells are screen-fixed (in.uv) so the flicker reads as sparkle, not a moving grid.
     if (fu.drumSparkle > 0.001) {
-        float2 cell = floor(in.uv * kFloretSparkleDensity) + floor(fu.time * kFloretSparkleRate) * 17.0;
+        float2 gp = (in.uv + kFloretSparkleDrift * float2(1.0, -0.7) * fu.time) * kFloretSparkleDensity;
+        float2 cell = floor(gp) + floor(fu.time * kFloretSparkleRate) * 17.0;   // re-randomises (twinkle)
         float h = fract(sin(dot(cell, float2(12.9898, 78.233))) * 43758.5453);
-        float spk = smoothstep(kFloretSparkleThresh, 1.0, h);             // sparse points
-        float tip = smoothstep(0.25, 0.70, dot(ret, kLuma));             // only where the filaments are bright
-        ret += spk * tip * fu.drumSparkle * kFloretSparkleGain;
+        float spk = smoothstep(kFloretSparkleThresh, 1.0, h);                   // top ~10 % of cells
+        spk *= smoothstep(0.5, 0.05, length(fract(gp) - 0.5));                  // soft ROUND glint within the cell
+        // On the filaments (incl. dimmer ones) — NOT gated to the clipped peaks where a glint is
+        // swallowed (M7 #4). A near-white pop reads as sparkle against the gold/red filaments.
+        float onField = smoothstep(0.04, 0.20, dot(ret, kLuma));
+        ret += spk * onField * fu.drumSparkle * kFloretSparkleGain;
     }
 
     // Flash-safety floor (D-157): lift the trough so the radial pulse reads as expanding

@@ -43,6 +43,10 @@ private let kFloretSpinBassGain: Float = 0.020    // rad/frame added at full bas
 // 0.16) the bass term barely lifts the spin off its floor → add an energy term so the field also
 // turns more when the mix fills out (avg-stem envelope, the fuller signal).
 private let kFloretSpinEnergyGain: Float = 0.014  // rad/frame added at full avg-stem energy
+// FLORET.3b drum sparkle (M7 #4: "not seeing it"). drumsBeat's median is low (~0.1) so a pure
+// gate left the sparkle off most of the time → a small always-on floor keeps it visibly
+// twinkling, still flaring to full on the hits.
+private let kFloretSparkleBase: Float = 0.30      // always-present twinkle floor; drumsBeat adds the flare
 
 extension RenderPipeline {
 
@@ -88,7 +92,7 @@ extension RenderPipeline {
         // Used directly (drumsBeat already carries an onset envelope) — no extra accumulator, which
         // keeps RenderPipeline under its type/line-length caps (FLORET_PLAN §12 — the god-class
         // is full; a 3rd Floret accumulator wouldn't fit, and the look doesn't need it).
-        uni.drumSparkle = min(1.0, max(0, stems.drumsBeat))
+        uni.drumSparkle = min(1.0, kFloretSparkleBase + max(0, stems.drumsBeat))
 
         let size = mvWarpDrawableSize
         let wPx = max(Float(size.width), 1), hPx = max(Float(size.height), 1)
