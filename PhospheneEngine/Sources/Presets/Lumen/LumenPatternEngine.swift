@@ -640,12 +640,18 @@ public final class LumenPatternEngine: @unchecked Sendable {
     }
 
     /// Advance one rendered frame and flush the resulting state to GPU.
-    public func tick(features: FeatureVector, stems: StemFeatures) {
+    ///
+    /// `stemsLive` is the render path's "the StemFeatures are live, not the
+    /// frozen warmup snapshot" signal (BUG-063). It defaults to `true` so unit
+    /// tests that drive warmed-up stems keep exercising the stem-direct path;
+    /// production passes the pipeline's `stemFeaturesAreLive` flag, which is
+    /// `false` until the live stem analyzer converges (~10 s after track start).
+    public func tick(features: FeatureVector, stems: StemFeatures, stemsLive: Bool = true) {
         lock.withLock {
             // BUG-063: rotate to the next ring slot before writing, so this frame's
             // bytes land in a buffer no in-flight frame is still reading.
             writeIndex = (writeIndex + 1) % patternBuffers.count
-            _tick(features: features, stems: stems)
+            _tick(features: features, stems: stems, stemsLive: stemsLive)
         }
         writeToGPU()
     }
@@ -792,7 +798,7 @@ public final class LumenPatternEngine: @unchecked Sendable {
 
     // MARK: - Private: tick (called while holding lock)
 
-    private func _tick(features: FeatureVector, stems: StemFeatures) {
+    private func _tick(features: FeatureVector, stems: StemFeatures, stemsLive: Bool) {
         let dt = max(features.deltaTime, 0)
         elapsedTime += dt
 
@@ -804,11 +810,22 @@ public final class LumenPatternEngine: @unchecked Sendable {
         smoothedValence += (features.valence - smoothedValence) * alpha
         smoothedArousal += (features.arousal - smoothedArousal) * alpha
 
-        // D-019 warmup mix.
+        // D-019 warmup mix — BUG-063 hardened against frozen warmup stems.
+        // Until the live stem analyzer converges (~10 s after track start) the
+        // render path feeds the cached 5a snapshot, which is byte-identical every
+        // tick. Its energy clears the D-019 threshold, so the unguarded smoothstep
+        // would select the stem-direct path (stemMix → 1) and the four lights freeze
+        // on the snapshot. Lumen's SDF geometry is audio-static, so frozen lights =
+        // a fully frozen frame (the BUG-063 symptom). While the stems are not live,
+        // pin the mix to the FV fallback (Layer 1 continuous energy, which varies
+        // from frame 1). The lights are already unsmoothed per-frame, so the one-tick
+        // handoff to live stems reads no differently than the normal per-beat jump.
         let totalStemEnergy =
             stems.drumsEnergy + stems.bassEnergy +
             stems.vocalsEnergy + stems.otherEnergy
-        let stemMix = lumenSmoothstep(Self.stemWarmupLow, Self.stemWarmupHigh, totalStemEnergy)
+        let stemMix: Float = stemsLive
+            ? lumenSmoothstep(Self.stemWarmupLow, Self.stemWarmupHigh, totalStemEnergy)
+            : 0
 
         // Drift-speed map. (smoothedArousal + 1) / 2 maps arousal ∈ [-1, +1]
         // into [0, 1] for the lerp. Uses the smoothed arousal so the drift

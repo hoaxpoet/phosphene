@@ -481,7 +481,10 @@ extension VisualizerEngine {
 
         if let identity, let cached = stemCache?.loadForPlayback(track: identity) {
             let replacedExisting = mirPipeline.liveDriftTracker.hasGrid
-            pipeline.setStemFeatures(cached.stemFeatures)
+            // BUG-063: the cached preview snapshot is static — mark it not-live so
+            // stem-only-animated presets (Lumen) drive from live continuous-energy
+            // until the per-frame analyzer converges, instead of freezing on it.
+            pipeline.setStemFeatures(cached.stemFeatures, live: false)
             // CSP.3 (2026-05-27) — install the cached bass proportion for
             // the track. When the ffoColdStartFixEnabled toggle is ON,
             // compute proportion = bassEnergy / total from the preview
@@ -524,7 +527,7 @@ extension VisualizerEngine {
                 logger.info("BEAT_GRID_INSTALL: source=preparedCache, track='\(title)' — empty grid, live inference will be allowed")
             }
         } else {
-            pipeline.setStemFeatures(.zero)
+            pipeline.setStemFeatures(.zero, live: false)   // BUG-063: not-live until convergence
             // CSP.3.1 — no cached preview available (live reactive mode /
             // ad-hoc playback / cache miss). Install the formula pivot
             // (0.15) so the FFO baseline contribution is 0; the Layer-2
