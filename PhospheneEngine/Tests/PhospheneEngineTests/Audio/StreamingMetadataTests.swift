@@ -112,9 +112,42 @@ struct StreamingMetadataTests {
         try await Task.sleep(for: .milliseconds(300))
         metadata.stopObserving()
 
-        #expect(events.value.count == 2)
-        #expect(events.value[1].previous?.title == "Track A")
-        #expect(events.value[1].current.title == "Track B")
+        // Assert the observed sequence, not a raw count: first Track A with no
+        // previous, then Track B carrying Track A as previous. stopObserving() now
+        // guards against post-stop events, so no spurious teardown event can race in.
+        let captured = events.value
+        #expect(captured.first?.current.title == "Track A")
+        #expect(captured.first?.previous == nil)
+
+        let bChange = captured.first { $0.current.title == "Track B" }
+        #expect(bChange?.previous?.title == "Track A")
+        #expect(bChange?.current.title == "Track B")
+    }
+
+    @Test func inFlightPoll_afterStopObserving_doesNotFire() async throws {
+        // Regression: stopObserving() cancels the polling task but cannot await an
+        // in-flight poll. A poll that was mid-read when stop ran must not fire an
+        // event afterward (it previously raced in as a spurious (nil, current)
+        // event because stop had just reset lastTrackIdentity). Block the reader so
+        // a poll is guaranteed in flight across the stop, release it, confirm silence.
+        let metadata = StreamingMetadata(pollInterval: .milliseconds(50))
+        let callCount = AtomicValue(0)
+        let releasePoll = AtomicValue(false)
+        let trackA = makeInfo(title: "Track A", artist: "Artist A")
+
+        metadata.nowPlayingReader = {
+            while !releasePoll.value { try? await Task.sleep(for: .milliseconds(5)) }
+            return trackA
+        }
+        metadata.onTrackChange = { _ in callCount.value += 1 }
+
+        metadata.startObserving()
+        try await Task.sleep(for: .milliseconds(50))   // poll is now blocked in the reader
+        metadata.stopObserving()                       // stop with the poll in flight
+        releasePoll.value = true                        // let the in-flight poll complete
+        try await Task.sleep(for: .milliseconds(50))   // give it time to (not) fire
+
+        #expect(callCount.value == 0)
     }
 
     @Test func noNowPlaying_returnsNilMetadata() async throws {

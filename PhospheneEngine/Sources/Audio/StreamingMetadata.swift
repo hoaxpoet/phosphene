@@ -149,6 +149,7 @@ public final class StreamingMetadata: MetadataProviding, @unchecked Sendable {
     private var pollingTask: Task<Void, Never>?
     private var _currentTrack: TrackMetadata?
     private var lastTrackIdentity: String?
+    private var isObserving = false
     private let lock = NSLock()
 
     /// Polling interval.
@@ -179,6 +180,7 @@ public final class StreamingMetadata: MetadataProviding, @unchecked Sendable {
 
     public func startObserving() {
         stopObserving()
+        lock.withLock { isObserving = true }
 
         pollingTask = Task { [weak self] in
             guard let self else { return }
@@ -200,6 +202,7 @@ public final class StreamingMetadata: MetadataProviding, @unchecked Sendable {
         pollingTask?.cancel()
         pollingTask = nil
         lock.withLock {
+            isObserving = false
             _currentTrack = nil
             lastTrackIdentity = nil
         }
@@ -243,6 +246,10 @@ public final class StreamingMetadata: MetadataProviding, @unchecked Sendable {
         )
 
         let (shouldFire, previous) = lock.withLock { () -> (Bool, TrackMetadata?) in
+            // stopObserving() cancels the polling task but cannot await an in-flight
+            // poll. If it ran while this poll was reading, don't fire — or re-pollute
+            // the reset state — after observation has stopped.
+            guard isObserving else { return (false, nil) }
             let prev = _currentTrack
             let changed = identity != lastTrackIdentity
             _currentTrack = track
