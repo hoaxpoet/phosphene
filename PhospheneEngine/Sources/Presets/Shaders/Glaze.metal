@@ -30,7 +30,7 @@
 // RenderPipeline+Glaze.swift for the byte layout.
 struct GlazeUniforms {
     float  time;          // features.time — palette rotation
-    float  coreEnergy;    // reserved (silence-floor lever; faithful warp self-seeds via +0.006)
+    float  warpDecay;     // energy-adaptive feedback persistence (CPU-computed; dense music → lower → no wash)
     float  pokeStrength;  // pixel-eq poke scale (spring mass-3 x → `q3`)
     float  seedY;         // spring tail Y → the seed band's vertical centre (GLAZE.3b audio fill)
     float2 texel;         // (1/feedbackW, 1/feedbackH) = the source's texsize.zw
@@ -41,10 +41,11 @@ struct GlazeUniforms {
 
 constant float3 kGlazeLuma = float3(0.32, 0.49, 0.29);   // the source's exact luma weight
 constant float  kGlazePokeRadius = 0.2;                  // source pixel_eqs `r = .2`
-// The source runs decay 1.0 on an 8-bit feedback whose quantisation + butterchurn dynamics
-// bound the R-channel +0.006 grow; on our float buffer that grow floods to white (the Nacre
-// float-bloom lesson). A gentle decay equilibrates R at ~0.006·d/(1−d) instead of saturating.
-constant float  kGlazeWarpDecay = 0.96;   // persistence = how many nested seed-rings the zoom accretes
+// Feedback persistence is ENERGY-ADAPTIVE and CPU-computed (`gu.warpDecay`). The source's decay 1.0
+// floods a float buffer to white (the Nacre float-bloom lesson); and even a fixed gentle decay
+// over-accumulates on dense/loud music, because the steady-state level ~1/(1−decay) is hyper-sensitive
+// near 1 — so dense tracks washed out bright (Matt M7 2026-06-27, Cherub Rock). The renderer drops the
+// decay as stem fullness rises to hold global luminance steady (a no-op at silence → calm look unchanged).
 
 // MARK: - Palette (the source's saturated neon rotation; substitutes butterchurn hue_shader)
 // Slow red→green→teal→violet drift. Values in [0.2, 1.0] so the comp's `pow(hue, g9)` mix
@@ -223,7 +224,7 @@ fragment float4 glaze_warp_fragment(
     ret.x += seed; ret.y += seed;
 
     // Bounding decay (the float-bloom fix; the source's 8-bit storage bounded this implicitly).
-    return float4(clamp(ret * kGlazeWarpDecay, 0.0, 1.0), 1.0);
+    return float4(clamp(ret * gu.warpDecay, 0.0, 1.0), 1.0);
 }
 
 // MARK: - Custom COMP fragment (the display look — faithful port of comp.hlsl, DISPLAY ONLY)
