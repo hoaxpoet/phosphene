@@ -160,6 +160,53 @@ struct PhysarumSketchRenderTests {
         #expect(maxL < 1.6 * baseline, "collapse must not spike luminance (flash-safe): max \(maxL) vs baseline \(baseline)")
     }
 
+    // MARK: - Criterion 3 (PHYS.4): per-beat accent reads AND stays flash-safe
+
+    /// Sustained energy + periodic drum transients (`drumsEnergyDev` spikes). The
+    /// PHYS.4 event channel must make the web visibly pulse ON the beats (the
+    /// connection the live M7 found missing) while holding global luminance steady
+    /// (no strobe — D-157).
+    @Test("Per-beat accent pulses the web on drum hits without strobing")
+    func test_perBeatAccent() throws {
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let geo = try makeGeo(ctx, lib, PhysarumConfiguration(), pixelFormat: ctx.pixelFormat)
+        let tex = try target(ctx, 640, 360)
+        var t: Float = 0
+        func beatStep(_ fr: Int) throws {
+            var f = FeatureVector(time: t, deltaTime: 1.0 / 60.0); f.bass = 0.5; f.mid = 0.4
+            var s = StemFeatures()
+            s.bassEnergy = 0.5; s.drumsEnergy = 0.5; s.otherEnergy = 0.4; s.vocalsEnergy = 0.3
+            let phase = fr % 24                                     // ~2.5 Hz at 60 fps
+            s.drumsEnergyDev = phase < 2 ? 1.2 : (phase < 6 ? 0.35 : 0.03)
+            try frame(geo, f, s, tex, ctx); t += 1.0 / 60.0
+        }
+        for fr in 0..<260 { try beatStep(fr) }                      // settle into the beat regime
+        var lumas: [Float] = [], hitAtBeat: [Float] = [], hitOffBeat: [Float] = []
+        for fr in 0..<240 {
+            try beatStep(fr)
+            lumas.append(lumaStats(tex, 640, 360).mean)
+            if fr % 24 == 2 { hitAtBeat.append(geo.currentHitEnv) }     // just after a spike
+            if fr % 24 == 20 { hitOffBeat.append(geo.currentHitEnv) }   // between beats
+        }
+        lumas.sort()
+        let median = lumas[lumas.count / 2], lo = lumas.first ?? 0, hi = lumas.last ?? 0
+        let mean = lumas.reduce(0, +) / Float(lumas.count)
+        let varc = lumas.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Float(lumas.count)
+        let cov = varc.squareRoot() / max(mean, 1e-4)
+        let beatHit = hitAtBeat.reduce(0, +) / Float(max(hitAtBeat.count, 1))
+        let offHit = hitOffBeat.reduce(0, +) / Float(max(hitOffBeat.count, 1))
+        print(String(format: "[PHYS] beat accent: luma median %.3f (min %.3f, max %.3f) cov %.3f | hitEnv beat %.2f vs off %.2f",
+                     median, lo, hi, cov, beatHit, offHit))
+        // Envelope fires on beats, decays between (the event channel works).
+        #expect(beatHit > 3 * offHit && beatHit > 0.2, "hitEnv must spike on beats: beat \(beatHit) vs off \(offHit)")
+        // Reads: the web visibly pulses frame-to-frame (not a static field).
+        #expect(cov > 0.03, "per-beat luminance must visibly pulse: cov \(cov)")
+        // Flash-safe: bounded excursions, no strobe / no crater (D-157).
+        #expect(hi < 1.4 * median, "accent must not strobe global luminance: max \(hi) vs median \(median)")
+        #expect(lo > 0.6 * median, "accent must not crater global luminance: min \(lo) vs median \(median)")
+    }
+
     // MARK: - Look: PNG sequences (RENDER_VISUAL=1)
 
     @Test("Render sequences (RENDER_VISUAL=1)")
@@ -330,6 +377,36 @@ struct PhysarumSketchRenderTests {
                     try frame(geo, f, s, tex, ctx); t += 1.0 / 60.0
                 }
                 try writePNG(tex, w, h, outDir.appendingPathComponent("\(pname)_\(sname).png"))
+            }
+        }
+    }
+
+    /// On-beat vs off-beat frames so the per-beat accent can be eyeballed (PHYS.4).
+    @Test("Render beat accent on/off frames (RENDER_VISUAL=1)")
+    func test_render_beat() throws {
+        guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else { return }
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let cfg = PhysarumConfiguration()
+        let geo = try makeGeo(ctx, lib, cfg, pixelFormat: ctx.pixelFormat)
+        let w = cfg.width, h = cfg.height
+        let tex = try target(ctx, w, h)
+        var u = URL(fileURLWithPath: #filePath)
+        for _ in 0..<5 { u.deleteLastPathComponent() }
+        let outDir = u.appendingPathComponent("tools/physarum_sketch/frames", isDirectory: true)
+        try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+        var t: Float = 0
+        var shot = 0
+        for fr in 0..<400 {
+            var f = FeatureVector(time: t, deltaTime: 1.0 / 60.0); f.bass = 0.5; f.mid = 0.4
+            var s = StemFeatures()
+            s.bassEnergy = 0.5; s.drumsEnergy = 0.5; s.otherEnergy = 0.4; s.vocalsEnergy = 0.3
+            let phase = fr % 24
+            s.drumsEnergyDev = phase < 2 ? 1.2 : (phase < 6 ? 0.35 : 0.03)
+            try frame(geo, f, s, tex, ctx); t += 1.0 / 60.0
+            if fr >= 300 && shot < 2 {
+                if phase == 2 { try writePNG(tex, w, h, outDir.appendingPathComponent("phys_beat_on.png")); shot += 1 }
+                if phase == 20 { try writePNG(tex, w, h, outDir.appendingPathComponent("phys_beat_off.png")); shot += 1 }
             }
         }
     }

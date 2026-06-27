@@ -120,6 +120,7 @@ public final class PhysarumGeometry: ParticleGeometry, @unchecked Sendable {
 
     // CPU-side music envelopes (the global-envelope coupling, like Murmuration).
     private var energyEnv: Float = 0       // slow continuous energy → consolidation
+    private var hitEnv: Float = 0          // fast drum/bass transient → per-beat accent (PHYS.4)
     private var collapseEnv: Float = 0     // triggered pulse → dissolve/regrow accent
     private var frameCounter: UInt32 = 0
 
@@ -200,6 +201,10 @@ public final class PhysarumGeometry: ParticleGeometry, @unchecked Sendable {
     /// consolidation assertions.
     public var currentEnergyEnv: Float { energyEnv }
 
+    /// Fast drum/bass transient envelope (PHYS.4 per-beat accent). Exposed for the
+    /// render test's beat-response assertions.
+    public var currentHitEnv: Float { hitEnv }
+
     // MARK: - ParticleGeometry
 
     public func update(features: FeatureVector, stemFeatures: StemFeatures, commandBuffer: MTLCommandBuffer) {
@@ -275,19 +280,30 @@ public final class PhysarumGeometry: ParticleGeometry, @unchecked Sendable {
         let stemEnergy = (stems.drumsEnergy + stems.bassEnergy + stems.otherEnergy) / 3 + 0.4 * stems.vocalsEnergy
         let fullEnergy = (features.bass + features.mid) * 0.5
         let rawEnergy = fullEnergy + (stemEnergy - fullEnergy) * blend
-        energyEnv += Float(dt / (0.45 + dt)) * (rawEnergy - energyEnv)
+        energyEnv += Float(dt / (0.30 + dt)) * (rawEnergy - energyEnv)   // PHYS.4: faster than 0.45 (track surges)
+
+        // Per-beat transient (PHYS.4 event channel): fast-attack / fast-release
+        // envelope of the drum (+ bass) deviation primitives — the sharp signals that
+        // actually spike on real-music hits (session: drumsEnergyDev p95 ~0.83, max
+        // ~3.4), which the slow energyEnv smooths away. Warmup-gated by `blend`.
+        let hitRaw = max(stems.drumsEnergyDev, 0.7 * stems.bassEnergyDev) * blend
+        let hitAlpha = hitRaw > hitEnv ? dt / (0.012 + dt) : dt / (0.16 + dt)
+        hitEnv += Float(hitAlpha) * (hitRaw - hitEnv)
 
         // Collapse: 0.6 s linear release after a trigger.
         collapseEnv = max(0, collapseEnv - Float(dt) / 0.6)
     }
 
     private func makeConfig() -> PhysConfig {
-        // Web is home. Continuous energy (`en`) only brightens/quickens it;
-        // `bloom` (real peaks only) coarsens the sensor/move range and adds trail
-        // persistence, so consolidated veins are the rare payoff at a drop — not
-        // the default. Decay rides bloom (web: fast decay/searching; peak: hold).
+        // Web is home. Sustained energy (`en`) raises the baseline consolidation
+        // (`bloomBase`); each drum/bass transient (`hit`) punches a brief bloom +
+        // motion + brightness accent on top — the per-beat event the eye locks onto
+        // (PHYS.4). Threshold lowered 0.55→0.40 to the measured real-music energyEnv
+        // range (p50 ~0.48) so the baseline tracks, not just rare peaks.
         let en = max(0, min(1.2, energyEnv))
-        let bloom = Self.smoothstep(0.55, 0.95, en) * configuration.formEnergyCoupling
+        let hit = min(1.3, hitEnv)
+        let bloomBase = Self.smoothstep(0.40, 0.90, en) * configuration.formEnergyCoupling
+        let bloom = min(1.0, bloomBase + 0.60 * hit)   // PHYS.4: bold per-beat contraction (flash-free redistribution)
         return PhysConfig(
             width: UInt32(configuration.width),
             height: UInt32(configuration.height),
@@ -296,8 +312,8 @@ public final class PhysarumGeometry: ParticleGeometry, @unchecked Sendable {
             sensorDistance: configuration.baseSensorDistance * (1 + 1.4 * bloom),
             sensorAngle: configuration.sensorAngle,
             rotationAngle: configuration.rotationAngle,
-            moveDistance: configuration.baseMoveDistance * (1 + 1.0 * bloom),
-            depositF: configuration.baseDepositF * (0.7 + 0.7 * en + 1.0 * bloom),
+            moveDistance: configuration.baseMoveDistance * (1 + 1.0 * bloom + 0.7 * hit),
+            depositF: configuration.baseDepositF * (0.7 + 0.7 * en + 1.0 * bloom + 0.5 * hit),
             decay: Self.mix(0.86, 0.965, bloom),
             collapseEnv: collapseEnv,
             energyEnv: en,
