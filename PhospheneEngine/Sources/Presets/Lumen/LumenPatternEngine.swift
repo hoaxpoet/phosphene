@@ -459,27 +459,11 @@ public final class LumenPatternEngine: @unchecked Sendable {
 
     // MARK: - Public API
 
-    /// 3-deep ring of UMA buffers carrying the per-frame `LumenPatternState`,
-    /// bound at fragment slot 8 of the ray-march lighting pass. **BUG-063:** a
-    /// single buffer overwritten by every `tick()` raced the GPU read — the
-    /// lighting pass runs asynchronously up to `MetalContext.maxFramesInFlight`
-    /// (3) frames behind the CPU write, so the CPU's next tick could overwrite
-    /// the bytes the GPU was still reading, freezing Lumen on a stale (but
-    /// fully-lit, still-colourful) frame. The instrument (`LUMEN_DIAG`) proved
-    /// the CPU state was clean throughout, so the corruption was purely the GPU
-    /// read of this buffer. Each `tick()` now rotates to + writes the next ring
-    /// slot; the production path re-binds `currentBuffer` per frame so a slot is
-    /// never overwritten while an in-flight frame still reads it.
-    private let patternBuffers: [MTLBuffer]
-    private var writeIndex = 0
-
-    /// The ring slot holding the most recently flushed state. Bind this each
-    /// frame (single-frame test harnesses bind it once, after a single `tick()`).
-    public var currentBuffer: MTLBuffer { patternBuffers[writeIndex] }
-
-    /// Back-compat alias for `currentBuffer` (single-frame harnesses + the
-    /// initial bind in `applyPreset`).
-    public var patternBuffer: MTLBuffer { currentBuffer }
+    /// UMA buffer carrying the current `LumenPatternState`. Bound at fragment
+    /// slot 8 of the ray-march lighting pass via
+    /// `RenderPipeline.setDirectPresetFragmentBuffer3` while LumenMosaic is
+    /// the active preset; null otherwise.
+    public let patternBuffer: MTLBuffer
 
     /// Smoothed valence (5 s low-pass). Read-only — published for diagnostics.
     public private(set) var smoothedValence: Float = 0
@@ -597,24 +581,20 @@ public final class LumenPatternEngine: @unchecked Sendable {
         _ = seed   // reserved for LM.4 deterministic pattern seeding.
 
         let bufSize = MemoryLayout<LumenPatternState>.stride
-        var buffers: [MTLBuffer] = []
-        for _ in 0..<3 {   // BUG-063: triple-buffer to match MetalContext.maxFramesInFlight.
-            guard let buf = device.makeBuffer(length: bufSize, options: .storageModeShared) else {
-                // BUG-016 / CA-Presets-FU-4 instrumentation: this branch was silent
-                // before 2026-05-21. Logs to unified log under category "session".
-                // The App-side caller logs to category "VisualizerEngine" AND writes
-                // a corresponding line to ~/Documents/phosphene_sessions/<ts>/session.log
-                // via SessionRecorder.log — see VisualizerEngine+Presets.swift line ~172.
-                Logging.session.error(
-                    """
-                    LumenPatternEngine init failed: device.makeBuffer returned nil \
-                    for \(bufSize) bytes (LumenPatternState stride)
-                    """)
-                return nil
-            }
-            buffers.append(buf)
+        guard let buf = device.makeBuffer(length: bufSize, options: .storageModeShared) else {
+            // BUG-016 / CA-Presets-FU-4 instrumentation: this branch was silent
+            // before 2026-05-21. Logs to unified log under category "session".
+            // The App-side caller logs to category "VisualizerEngine" AND writes
+            // a corresponding line to ~/Documents/phosphene_sessions/<ts>/session.log
+            // via SessionRecorder.log — see VisualizerEngine+Presets.swift line ~172.
+            Logging.session.error(
+                """
+                LumenPatternEngine init failed: device.makeBuffer returned nil \
+                for \(bufSize) bytes (LumenPatternState stride)
+                """)
+            return nil
         }
-        self.patternBuffers = buffers
+        self.patternBuffer = buf
         self.basePositions = Self.agentBasePositions
 
         // Seed agents with their base positions, raw per-stem base colours
@@ -641,12 +621,7 @@ public final class LumenPatternEngine: @unchecked Sendable {
 
     /// Advance one rendered frame and flush the resulting state to GPU.
     public func tick(features: FeatureVector, stems: StemFeatures) {
-        lock.withLock {
-            // BUG-063: rotate to the next ring slot before writing, so this frame's
-            // bytes land in a buffer no in-flight frame is still reading.
-            writeIndex = (writeIndex + 1) % patternBuffers.count
-            _tick(features: features, stems: stems)
-        }
+        lock.withLock { _tick(features: features, stems: stems) }
         writeToGPU()
     }
 
@@ -1006,8 +981,8 @@ public final class LumenPatternEngine: @unchecked Sendable {
     // MARK: - Private: GPU flush
 
     private func writeToGPU() {
-        let (stateCopy, index) = lock.withLock { (state, writeIndex) }
-        let ptr = patternBuffers[index].contents().bindMemory(to: LumenPatternState.self, capacity: 1)
+        let stateCopy = lock.withLock { state }
+        let ptr = patternBuffer.contents().bindMemory(to: LumenPatternState.self, capacity: 1)
         ptr[0] = stateCopy
     }
 
