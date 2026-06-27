@@ -30,8 +30,8 @@
 // RenderPipeline+Glaze.swift for the byte layout.
 struct GlazeUniforms {
     float  time;          // features.time — palette rotation
-    float  coreEnergy;    // reserved (silence-floor lever; faithful warp self-seeds via +0.006)
-    float  pokeStrength;  // pixel-eq poke scale (spring mass-3 x → `q3`)
+    float  vocalsGlow;    // GLAZE.5: vocals presence → a small bounded add to the comp brightness floor
+    float  pokeStrength;  // pixel-eq poke scale (spring mass-3 x + GLAZE.5 drums punch)
     float  seedY;         // spring tail Y → the seed band's vertical centre (GLAZE.3b audio fill)
     float2 texel;         // (1/feedbackW, 1/feedbackH) = the source's texsize.zw
     float2 pokeCenter;    // spring tail position (cx1, cy1) — the swirl-poke centre
@@ -263,7 +263,7 @@ fragment float4 glaze_comp_fragment(
     ret += 0.6 * blur1.sample(s, uv).rgb;
     ret -= (blur2.sample(s, uvB).rgb - blur1.sample(s, uvB).rgb);
     ret += 1.2 * mainTex.sample(s, uvB).rgb + 0.15 * blur1.sample(s, uvB).rgb;
-    ret += kGlazeCompLift;   // GLAZE.4: was +1.0 — the flat brightness floor that washed the field over time
+    ret += kGlazeCompLift + gu.vocalsGlow;   // GLAZE.4 floor (was +1.0) + GLAZE.5 bounded vocals glow
 
     float  g9 = dot(ret, kGlazeLuma);
     float3 tint = 0.75 * float3(g9) * dot(0.6 * blur3.sample(s, uvA).rgb
