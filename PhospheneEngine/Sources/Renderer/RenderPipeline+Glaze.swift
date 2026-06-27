@@ -23,7 +23,7 @@ import Shared
 /// to the MSL `GlazeUniforms` (time/coreEnergy/pokeStrength/pad0 | texel | pokeCenter).
 struct GlazeUniforms {
     var time: Float = 0
-    var warpDecay: Float = 0.96     // energy-adaptive feedback persistence (lower on dense music → no wash-out)
+    var coreEnergy: Float = 0       // reserved (silence-floor lever; the faithful warp self-seeds)
     var pokeStrength: Float = 0     // spring mass-3 x → the pixel-eq poke scale (`q3`)
     var seedY: Float = 0.5          // spring tail Y position → the seed band's vertical centre (GLAZE.3b)
     var texel: SIMD2<Float> = .init(1, 1)
@@ -72,13 +72,6 @@ private let kGlazeSwing: Float = 2.5
 /// Anchor lift per unit of the sustained four-stem fullness envelope — the source's `y1` energy push.
 private let kGlazeLift: Float = 1.2
 
-/// Base feedback persistence at low energy (calm music) — the GLAZE.2b.2 value, the look Matt liked.
-private let kGlazeBaseDecay: Float = 0.96
-/// How much the feedback decay drops as the stem-fullness envelope rises — holds global luminance
-/// steady so dense/loud music doesn't over-accumulate into wash-out (Matt M7 2026-06-27, Cherub Rock).
-/// Energy-ADAPTIVE: ≈0 at silence, so the calm look is byte-unchanged; only active music is pulled back.
-private let kGlazeDecayEnergy: Float = 0.16
-
 extension RenderPipeline {
 
     // MARK: Per-frame uniforms
@@ -115,11 +108,6 @@ extension RenderPipeline {
         let anchorX = 0.5 + 0.10 * sin(tSec * 0.37) + kGlazeSwing * (glazeSpring.bassStemEMA - glazeSpring.otherStemEMA)
         let anchorY = 0.5 + 0.08 * sin(tSec * 0.53) + kGlazeLift * glazeSpring.liftEMA
         glazeSpring.step(anchorX: anchorX, anchorY: anchorY)
-        // Energy-adaptive feedback decay: dense/loud music sweeps the seed across the whole frame and
-        // over-fills the accumulator (steady-state ~1/(1−decay) is hyper-sensitive near 1) → wash-out
-        // (Matt M7: Cherub Rock). Drop the decay as the fullness envelope rises to hold luminance steady;
-        // ≈0 effect at silence so the calm look is unchanged. liftEMA is the four-stem fullness envelope.
-        uni.warpDecay = kGlazeBaseDecay - kGlazeDecayEnergy * min(glazeSpring.liftEMA, 0.6)
         // Source pixel_eqs: poke centre = (mass-4 x, tail SPEED), poke scale = mass-3 x.
         let tailSpeed = (glazeSpring.vx4 * glazeSpring.vx4 + glazeSpring.vy4 * glazeSpring.vy4).squareRoot()
         uni.pokeCenter = SIMD2<Float>(glazeSpring.x4, tailSpeed)
