@@ -66,6 +66,7 @@ struct PhotosensitivityCertificationTests {
         "Fata Morgana",   // mv_warp feedback (bespoke renderFataMorgana mirage path)
         "Skein",          // mv_warp feedback (cream canvas-hold + per-stem paint + sheen)
         "Nacre",          // mv_warp feedback (bespoke renderNacre; downbeat camera push) — NACRE.4
+        "Floret",         // mv_warp feedback (bespoke renderFloret; z² bloom + bass-kick ripple) — FLORET.4
     ]
 
     // MARK: - Gate

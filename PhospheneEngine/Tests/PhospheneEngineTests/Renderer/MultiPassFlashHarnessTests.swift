@@ -73,6 +73,11 @@ struct MultiPassFlashHarnessTests {
         assertFlashSafe(name: "Nacre", luma: try renderNacre())
     }
 
+    @Test("Floret is flash-safe (mv_warp feedback, bass-kick ripple + swirl + downbeat push, real headless render)")
+    func floretIsFlashSafe() throws {
+        assertFlashSafe(name: "Floret", luma: try renderFloret())
+    }
+
     // MARK: - Assertion (shared)
 
     /// Print the per-preset evidence line (the closeout all-7 table is these four plus the
@@ -323,6 +328,46 @@ struct MultiPassFlashHarnessTests {
         }
     }
 
+    // MARK: - Render: Floret (bespoke mv_warp, FLORET.4)
+
+    /// Floret — `direct` + `mv_warp` with the bespoke `renderFloret` path (z² warp → 3-fold
+    /// radial-pulse comp → swap; HDR .rgba16Float). The worst-case train drives `barPhase01`
+    /// (→ the downbeat camera push) AND `bassDev` (→ the bass-kick radial ripple, at the accent
+    /// Hz — so the new motion is stressed in the flash danger band, not a kick-less render).
+    private func renderFloret() throws -> [Double] {
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let noise = try TextureManager(context: ctx, shaderLibrary: lib)
+        let floatStride = MemoryLayout<Float>.stride
+        guard let fft = ctx.makeSharedBuffer(length: 512 * floatStride),
+              let wav = ctx.makeSharedBuffer(length: 2048 * floatStride) else {
+            throw FlashHarnessError.setupFailed("audio buffers")
+        }
+        let pipeline = try RenderPipeline(context: ctx, shaderLibrary: lib, fftBuffer: fft, waveformBuffer: wav)
+        pipeline.setTextureManager(noise)
+        guard let preset = _acceptanceFixture.presets.first(where: { $0.descriptor.name == "Floret" }) else {
+            throw FlashHarnessError.presetNotFound("Floret")
+        }
+        let size = CGSize(width: Self.width, height: Self.height)
+        pipeline.currentDrawableSize = size
+        try configureMVWarp(pipeline: pipeline, preset: preset, context: ctx, size: size)
+
+        let outTex = try makeOutputTexture(ctx)
+        let drive = FlashHarnessSupport.worstCaseBeatTrain()
+        let stems = FlashHarnessSupport.worstCaseStemTrain()
+        return try renderLoop(ctx, outTex) { i, pixels in
+            guard let cmd = ctx.commandQueue.makeCommandBuffer(),
+                  let warpState = pipeline.mvWarpState else { throw FlashHarnessError.renderFailed }
+            pipeline.renderFloret(
+                commandBuffer: cmd,
+                features: drive[i],
+                stemFeatures: stems[i],
+                warpState: warpState,
+                target: outTex)
+            try commit(cmd, outTex, into: &pixels)
+        }
+    }
+
     // MARK: - mv_warp setup (mirrors VisualizerEngine+Presets applyPreset, MV-2)
 
     /// Reproduce the app's per-preset mv_warp wiring: build the pipeline bundle (with the
@@ -346,6 +391,7 @@ struct MultiPassFlashHarnessTests {
         switch desc.name {
         case "Fata Morgana": feedbackFormat = .bgra8Unorm
         case "Nacre":        feedbackFormat = .rgba16Float
+        case "Floret":       feedbackFormat = .rgba16Float
         default:             feedbackFormat = ctx.pixelFormat
         }
         // Skein's cream canvas-hold ground is the held feedback clear; black for the rest.
@@ -360,6 +406,7 @@ struct MultiPassFlashHarnessTests {
             feedbackFormat: feedbackFormat,
             blurState: warp.blurState,                // non-nil ⇒ Fata Morgana fata branch
             isNacre: desc.name == "Nacre",            // ⇒ drawWithNacre branch (NACRE.4)
+            isFloret: desc.name == "Floret",          // ⇒ drawWithFloret branch (FLORET.4)
             canvasClearColor: canvasClear)
         pipeline.setupMVWarp(bundle: bundle, size: size)
         pipeline.setMVWarpDecay(desc.decay)
