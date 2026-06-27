@@ -9,19 +9,18 @@ structure **seed rides the jelly's height** so it sweeps the frame. Judge: **(a)
 still read as *physical* (momentum, not twitch); (c) still the glossy gel register. The **full-field-density vs
 dark-ground** tuning (decay) is still deferred to GLAZE.4 — don't judge that as a fail.
 
-**This round = GLAZE.5 uplift A (per-stem instruments).** The base is signed off (you confirmed the wash fix:
-"looks good"). Now every instrument drives the jelly differently — on top of the bass/other lateral sway you
-already have: **drums → a sharp "punch"** (the swirl-poke jabs harder on hits) and **vocals → a gentle glow**
-(the gel brightens a touch when vocals come in). The glow is deliberately small + bounded so it can't bring the
-wash back (held at playback length: 0.34 → 0.38, no creep). **The check: can you SEE the drums punching and the
-vocals glowing, distinct from the bass/guitar sway?** Each has a knob in `Glaze.metal`/`RenderPipeline+Glaze.swift`
-(`kGlazeDrumsPunch`, `kGlazeVocalsGlow`) — tell me if either is too weak/strong.
+**This round = GLAZE.6 uplift B (HDR glossy bloom).** Uplift A is confirmed ("fits the music well"). B adds the
+headline glow: a soft **luminous halo around the bright glossy structure** (the "wet glaze" sheen). It's built
+display-only + bounded so it **can't** bring the wash back (warp stays the GLAZE.4 base; verified at playback
+length, and the field is flash-safe — 0.00 flashes/s on the worst-case beat train). **The check: does it read as
+a luminous, wet glossy glow — and is the strength right?** `kGlazeBloom` / `kGlazeBloomThreshold` in `Glaze.metal`
+are the knobs (strength / how much of the structure glows) — say if it wants more or less.
 
-**One design call for you:** I kept the *other* (guitar/synth) stem driving the lateral sway (from the base);
-the original plan had it doing a palette *tint* instead. It can't do both (one stem, one layer). If you'd rather
-see other tint the colour, say so and I'll swap it (and give the lateral a different counter).
+**Still open from the session read:** uplift C ("treble shiver") — your music has almost no high treble, so C as
+specced would barely fire; we'll re-point its trigger before building it. And the dead per-stem beats
+(bass/vocals/other) — by-design or a bug to fix? Either is fine to defer past B.
 
-Branch: `claude/nice-rubin-9c10c7` (pushed through `be4c475`; GLAZE.4 `9371bad` + GLAZE.5 `7804d77` local). App rebuilt below.
+Branch: `claude/nice-rubin-9c10c7` (pushed through `9a010a2`; GLAZE.6 `861c9a4` local). App rebuilt below.
 
 ---
 
