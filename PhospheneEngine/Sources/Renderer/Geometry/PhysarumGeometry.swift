@@ -103,9 +103,9 @@ public final class PhysarumGeometry: ParticleGeometry, @unchecked Sendable {
 
     public let configuration: PhysarumConfiguration
 
-    /// Protocol requirement (D-057 governor). Physarum agents are a coupled
-    /// field — always all-active; stored to satisfy the protocol, unused.
-    // ponytail: governor fraction unused — a slime network can't drop a fraction of agents.
+    /// Protocol requirement (D-057 governor), unused: physarum agents are a
+    /// coupled field — a slime network can't drop a fraction of its agents, so
+    /// all are updated every frame. Stored only to satisfy `ParticleGeometry`.
     public var activeParticleFraction: Float = 1.0
 
     public let agentBuffer: MTLBuffer
@@ -186,14 +186,14 @@ public final class PhysarumGeometry: ParticleGeometry, @unchecked Sendable {
         } else {
             self.renderPipeline = nil
         }
-        logger.info("PhysarumGeometry: \(configuration.agentCount) agents @ \(configuration.width)×\(configuration.height)")
+        logger.info("Physarum: \(configuration.agentCount) agents, \(configuration.width)×\(configuration.height)")
     }
 
+    // ponytail: collapse is an input, not a detector — detection is promotion/Orchestrator work (§8).
     /// Trigger the collapse-regrow accent. Driven externally — by the render
     /// test for deterministic frames, and (Phase 2) by the real structural
     /// signal. The sketch ships no auto-detector: structural detection isn't
     /// available headless and beat phase is the wrong source (spec §5).
-    // ponytail: collapse trigger is an input, not a detector — the detector is promotion/Orchestrator work (§8).
     public func requestCollapse() { collapseEnv = 1.0 }
 
     /// Smoothed energy envelope [0, ~1.2]. Exposed for the render test's
@@ -241,8 +241,10 @@ public final class PhysarumGeometry: ParticleGeometry, @unchecked Sendable {
         enc.setTexture(src, index: 0)
         enc.setTexture(dst, index: 1)
         let tpg = MTLSize(width: 16, height: 16, depth: 1)
-        let groups = MTLSize(width: (configuration.width + 15) / 16,
-                             height: (configuration.height + 15) / 16, depth: 1)
+        let groups = MTLSize(
+            width: (configuration.width + 15) / 16,
+            height: (configuration.height + 15) / 16,
+            depth: 1)
         enc.dispatchThreadgroups(groups, threadsPerThreadgroup: tpg)
         enc.endEncoding()
 
@@ -280,11 +282,12 @@ public final class PhysarumGeometry: ParticleGeometry, @unchecked Sendable {
     }
 
     private func makeConfig() -> PhysConfig {
-        let e = max(0, min(1.2, energyEnv))
-        // Web is home. Continuous energy only brightens/quickens it; `bloom`
-        // (real peaks only) is what coarsens the range and adds persistence, so
-        // consolidated veins are the rare payoff at a drop, not the default state.
-        let bloom = Self.smoothstep(0.55, 0.95, e) * configuration.formEnergyCoupling
+        // Web is home. Continuous energy (`en`) only brightens/quickens it;
+        // `bloom` (real peaks only) coarsens the sensor/move range and adds trail
+        // persistence, so consolidated veins are the rare payoff at a drop — not
+        // the default. Decay rides bloom (web: fast decay/searching; peak: hold).
+        let en = max(0, min(1.2, energyEnv))
+        let bloom = Self.smoothstep(0.55, 0.95, en) * configuration.formEnergyCoupling
         return PhysConfig(
             width: UInt32(configuration.width),
             height: UInt32(configuration.height),
@@ -294,10 +297,10 @@ public final class PhysarumGeometry: ParticleGeometry, @unchecked Sendable {
             sensorAngle: configuration.sensorAngle,
             rotationAngle: configuration.rotationAngle,
             moveDistance: configuration.baseMoveDistance * (1 + 1.0 * bloom),
-            depositF: configuration.baseDepositF * (0.7 + 0.7 * e + 1.0 * bloom),  // web brightens w/ energy; veins brightest
-            decay: Self.mix(0.86, 0.965, bloom),    // web: fast decay (searching); peak: persistence (veins hold)
+            depositF: configuration.baseDepositF * (0.7 + 0.7 * en + 1.0 * bloom),
+            decay: Self.mix(0.86, 0.965, bloom),
             collapseEnv: collapseEnv,
-            energyEnv: e,
+            energyEnv: en,
             paletteId: configuration.paletteId)
     }
 
@@ -315,17 +318,20 @@ public final class PhysarumGeometry: ParticleGeometry, @unchecked Sendable {
     /// Deterministic uniform seed: agents scattered across the field with random
     /// headings (reproducible — same scatter every run, like Murmuration's seed).
     private static func seed(into buffer: MTLBuffer, configuration: PhysarumConfiguration) {
-        let n = configuration.agentCount
-        let ptr = buffer.contents().bindMemory(to: PhysAgent.self, capacity: n)
+        let count = configuration.agentCount
+        let ptr = buffer.contents().bindMemory(to: PhysAgent.self, capacity: count)
         var rng: UInt64 = 0x2545F4914F6CDD1D
         func next() -> Float {
             rng = rng &* 6364136223846793005 &+ 1442695040888963407
             return Float((rng >> 33) & 0xFFFFFF) / Float(0xFFFFFF)
         }
-        let w = Float(configuration.width), h = Float(configuration.height)
-        for i in 0..<n {
-            ptr[i] = PhysAgent(positionX: next() * w, positionY: next() * h,
-                               heading: next() * 2 * .pi, age: 0)
+        let fwidth = Float(configuration.width), fheight = Float(configuration.height)
+        for i in 0..<count {
+            ptr[i] = PhysAgent(
+                positionX: next() * fwidth,
+                positionY: next() * fheight,
+                heading: next() * 2 * .pi,
+                age: 0)
         }
     }
 
@@ -334,18 +340,19 @@ public final class PhysarumGeometry: ParticleGeometry, @unchecked Sendable {
         let zeros = [UInt16](repeating: 0, count: width * height)   // r16Float 0 == bits 0
         let region = MTLRegionMake2D(0, 0, width, height)
         zeros.withUnsafeBytes { raw in
+            guard let base = raw.baseAddress else { return }
             for tex in textures {
-                tex.replace(region: region, mipmapLevel: 0, withBytes: raw.baseAddress!, bytesPerRow: width * 2)
+                tex.replace(region: region, mipmapLevel: 0, withBytes: base, bytesPerRow: width * 2)
             }
         }
     }
 
     private static func smoothstep(_ e0: Float, _ e1: Float, _ x: Float) -> Float {
-        let t = max(0, min(1, (x - e0) / (e1 - e0)))
-        return t * t * (3 - 2 * t)
+        let tn = max(0, min(1, (x - e0) / (e1 - e0)))
+        return tn * tn * (3 - 2 * tn)
     }
 
-    private static func mix(_ a: Float, _ b: Float, _ t: Float) -> Float { a + (b - a) * t }
+    private static func mix(_ lo: Float, _ hi: Float, _ tn: Float) -> Float { lo + (hi - lo) * tn }
 }
 
 // MARK: - Errors
