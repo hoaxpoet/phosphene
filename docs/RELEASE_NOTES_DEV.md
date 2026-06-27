@@ -10,6 +10,18 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-27-021456] BUG-064 — StreamingMetadata fired a track-change event after stopObserving() (in-flight poll race)
+
+De-flaked `StreamingMetadataTests.trackChange_secondTrack_hasPrevious` (intermittent on the GitHub `fast-gate` runner: an extra metadata event → `count → 3 == 2`) and fixed the real defect behind it.
+
+**Root cause.** `StreamingMetadata.stopObserving()` cancels the polling `Task` but cannot await a `pollNowPlaying()` already in flight. A poll that had read its `NowPlayingInfo` before the stop reaches its locked identity check *after* `stopObserving()` reset `lastTrackIdentity`/`_currentTrack` to nil → the non-nil identity ≠ nil → it fires a spurious `(previous: nil, current: <track>)` `onTrackChange` on an observer that has already stopped. In the test, that stray teardown event is the third event that intermittently broke the count assertion.
+
+**Fix (engine).** An `isObserving` flag, set in `startObserving()` and cleared in `stopObserving()` under the same lock that resets identity. `pollNowPlaying`'s critical section bails (`guard isObserving`) once observation has stopped, so a late in-flight poll neither fires nor re-pollutes the just-reset state. The lock serialises the poll's check against the stop's reset.
+
+**Tests.** `trackChange_secondTrack_hasPrevious` now asserts the event *sequence* (Track A, then Track B carrying Track A as previous) instead of a raw count (per `feedback_deterministic_tests_over_budget_widening` — assert behaviour, not wall-clock/count). New `inFlightPoll_afterStopObserving_doesNotFire` blocks the reader to force the in-flight-across-stop race deterministically — verified failing with the guard neutered (`callCount → 1 == 0`), passing with it restored. Full `StreamingMetadata` suite 8/8 green ×5; swiftlint --strict clean. No timeout was widened.
+
+KNOWN_ISSUES: BUG-064 filed + resolved (`7fd52f2`). Worktree branch `claude/gifted-hoover-4f7434`; not pushed.
+
 ## [dev-2026-06-26-204626] BUG-062 — Nimbus (+ Aurora Veil) froze: direct-fragment presets with `"passes": []` (regression from BUG-061)
 
 Matt reported Nimbus would not display across his last few sessions: advancing to it left the *previous* preset's last frame frozen on screen, "unfreezing" only when he moved to the next/previous preset. Session `2026-06-26T20-28-03Z` shows `preset → Nimbus` logged four times (each bounced to Nebula ~2–4 s later) with **zero Metal/pipeline errors** — a silent non-present, not a crash.
