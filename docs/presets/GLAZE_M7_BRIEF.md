@@ -9,8 +9,14 @@ structure **seed rides the jelly's height** so it sweeps the frame. Judge: **(a)
 still read as *physical* (momentum, not twitch); (c) still the glossy gel register. The **full-field-density vs
 dark-ground** tuning (decay) is still deferred to GLAZE.4 — don't judge that as a fail.
 
+**This round also fixes the wash-out** you saw on active music (Cherub Rock): the feedback decay is now
+energy-adaptive — it drops on loud/dense passages so the field holds steady brightness instead of over-filling
+into a bright wash, and it's a no-op on calm music (so the calm look is unchanged). Headless: Cherub meanLuma
+0.69→0.57 (≈ the calm 0.62). The check: **does active music still wash out, and does calm still look right?**
+The trade is active music gets slightly softer structure — flag it if that reads as too soft.
+
 Branch: `claude/nice-rubin-9c10c7` (UNPUSHED — local). GLAZE.3 commits: `479f145` (anchor) → `3d0691e` (seed
-fill) → `3d71fed`/`20af87d` (docs) → **`a34f9d3` (stem-drive — this round)**. The worktree app is rebuilt below.
+fill) → `a34f9d3` (stem-drive) → **`61f62d4` (wash-out fix — this round)** + docs. The worktree app is rebuilt below.
 
 ---
 
