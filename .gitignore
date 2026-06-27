@@ -73,3 +73,6 @@ __pycache__/
 # public clones + CI were exhausting. Keep your local copy here to run
 # QualityReelAnalyzer; re-download from the release on a fresh checkout.
 docs/quality_reel.mp4
+
+# Physarum/Filigree throwaway sketch renders (regenerate with RENDER_VISUAL=1)
+tools/physarum_sketch/
