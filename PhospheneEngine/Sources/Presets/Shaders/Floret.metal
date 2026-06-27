@@ -46,7 +46,7 @@ struct FloretUniforms {
     float  spin;        // FLORET.3a: bass-accumulated rotation angle (rad) → the comp field spins on bass
     float2 texel;       // (1/feedbackW, 1/feedbackH) — comp high-pass blur tap spread
     float  barPush;     // FLORET.3a: downbeat envelope (cached BeatGrid) → comp camera magnify (beat-lock)
-    float  drumSparkle; // FLORET.3b: drum-onset envelope → twinkle at the filament tips (was pad0)
+    float  bassKick;    // FLORET.3b: bass-onset impulse → radial shockwave ripple (whole-field punch)
     float4 aspect;      // (aspectx, aspecty, 1/aspectx, 1/aspecty) — comp keeps the bloom round
 };
 
@@ -82,16 +82,13 @@ constant float  kFloretSwirlGain = 0.014;               // vortex rate (rad/fram
                                                         // (0.010→0.014, M7 #3: "a touch too subtle")
 constant float  kFloretSwirlBase = 0.40;                // energy floor so the churn never fully stops (alive)
 constant float  kFloretSwirlCore = 0.09;                // 1/(r²+core) softening — caps the centre rate
-// FLORET.3b drum sparkle (Matt M7 #3 pick): drum-driven twinkle at the filament tips. Sparse +
-// brightness-masked + display-stage (not fed back) → fine high-freq motion, flash-safe. Drives
-// from the DRUMS stem (raw treble is dead on these tracks); the source's treble grain, re-aimed.
-constant float  kFloretSparkleDensity = 105.0;          // sparkle cells across the frame
-constant float  kFloretSparkleRate    = 6.0;            // twinkle re-randomisations / sec (slow — the drift
-                                                        // carries the motion; slow blink reads as glints not noise)
-constant float  kFloretSparkleThresh  = 0.90;           // sparsity — top ~10 % of cells light
-constant float  kFloretSparkleGain    = 1.7;            // bright WHITE glints (M7 #4: was 0.65 → swallowed by the
-                                                        // bright filaments; a strong white pop reads against gold)
-constant float  kFloretSparkleDrift   = 0.012;          // slow grid drift → the sparkle field MOVES (sparkle motion)
+// FLORET.3b bass kick (Matt M7 #4 pivot — drum sparkle camouflaged into the bulb field, so a
+// whole-field punch instead): a radial shockwave RIPPLE on bass onsets. A displacement channel,
+// distinct from barPush (uniform magnify) + spin/swirl (rotation) — FA #67. Unmissable (it
+// distorts the whole pattern) where fine points were lost.
+constant float  kFloretKickFreq  = 16.0;                // ripple ring frequency (radial)
+constant float  kFloretKickSpeed = 7.0;                 // ring travel speed (outward shockwave)
+constant float  kFloretKickAmp   = 0.07;                // peak radial displacement (uv) at full kick
 
 constant float3 kLuma = float3(0.299, 0.587, 0.114);
 
@@ -225,6 +222,14 @@ fragment float4 floret_comp_fragment(
     // surges forward on the beat, settling over the bar (cached BeatGrid → barPush). The motion
     // Matt validated by eye, made real on every track (Nacre NACRE.4; display-stage → no smear).
     uv1 *= (1.0 - kFloretPush * fu.barPush);
+    // FLORET.3b bass kick (M7 #4 pivot): a radial shockwave ripple — on a bass onset the whole
+    // field punches/ripples outward, settling as the impulse decays. A displacement channel (not
+    // magnify/rotation) so it reads as a distinct percussive hit on the kick.
+    if (fu.bassKick > 0.001) {
+        float kr = length(uv1);
+        float ripple = sin(kr * kFloretKickFreq - fu.time * kFloretKickSpeed) * fu.bassKick * kFloretKickAmp;
+        uv1 += (uv1 / max(kr, 1e-4)) * ripple;
+    }
     float  tph = fu.time / 2.0;                          // radial-pulse phase (~2 s, time-driven expansion)
     float2 bs = fu.texel * kFloretBlurSpread;            // high-pass blur tap spread
 
@@ -249,22 +254,6 @@ fragment float4 floret_comp_fragment(
         ret1 = max(ret1, neu * inten);
     }
     float3 ret = ret1 * kFloretCompGain;
-
-    // FLORET.3b drum sparkle (Matt M7 #3 pick): sparse, fast per-cell twinkle gated to the bright
-    // filament TIPS, flaring on drum onsets (fu.drumSparkle). Display-stage (not fed back) → fine
-    // high-freq motion with no smear. Sparse × tip-mask → tiny whole-frame luma (flash-safe). The
-    // twinkle cells are screen-fixed (in.uv) so the flicker reads as sparkle, not a moving grid.
-    if (fu.drumSparkle > 0.001) {
-        float2 gp = (in.uv + kFloretSparkleDrift * float2(1.0, -0.7) * fu.time) * kFloretSparkleDensity;
-        float2 cell = floor(gp) + floor(fu.time * kFloretSparkleRate) * 17.0;   // re-randomises (twinkle)
-        float h = fract(sin(dot(cell, float2(12.9898, 78.233))) * 43758.5453);
-        float spk = smoothstep(kFloretSparkleThresh, 1.0, h);                   // top ~10 % of cells
-        spk *= smoothstep(0.5, 0.05, length(fract(gp) - 0.5));                  // soft ROUND glint within the cell
-        // On the filaments (incl. dimmer ones) — NOT gated to the clipped peaks where a glint is
-        // swallowed (M7 #4). A near-white pop reads as sparkle against the gold/red filaments.
-        float onField = smoothstep(0.04, 0.20, dot(ret, kLuma));
-        ret += spk * onField * fu.drumSparkle * kFloretSparkleGain;
-    }
 
     // Flash-safety floor (D-157): lift the trough so the radial pulse reads as expanding
     // light, not a full-field dark↔bright strobe (the source's near-black-trough breathing
