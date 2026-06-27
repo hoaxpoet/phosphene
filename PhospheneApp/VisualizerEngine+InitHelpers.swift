@@ -96,19 +96,31 @@ extension VisualizerEngine {
             }
         }
 
-        // cam_t = tan(FOV/2) * aspect — the panel-sizing term. Collapse → 0 shrinks the
-        // panel the rays hit to nothing (frozen/blank); blow-up degenerates the uv divide.
+        // cam_t = tan(FOV/2) * aspect (panel-sizing term); cameraOriginAndFov.xyz = camera
+        // position; litTexture = the ray-march render target. The 0.88ms-constant freeze =
+        // rays terminating immediately, which happens if the camera flew off / into the
+        // panel, or the render target collapsed to a tiny size / went nil. The earlier
+        // probe logged cam_t + lights (both clean) but NOT these — so they're the gap.
         var camT = Float.nan, aspect = Float.nan, fov = Float.nan
+        var camX = Float.nan, camY = Float.nan, camZ = Float.nan
+        var litW = -1, litH = -1
         var sceneBad = false
         if let rm = currentRayMarchPipeline {
             let su = rm.sceneUniforms
             fov = su.cameraOriginAndFov.w
             aspect = su.sceneParamsA.y
             camT = tan(fov * 0.5) * aspect
-            if !fov.isFinite || !aspect.isFinite || !camT.isFinite
-                || abs(camT) < 1e-4 || abs(camT) > 1e4 {
+            camX = su.cameraOriginAndFov.x
+            camY = su.cameraOriginAndFov.y
+            camZ = su.cameraOriginAndFov.z
+            if let lit = rm.litTexture { litW = lit.width; litH = lit.height }
+            if !fov.isFinite || !aspect.isFinite || !camT.isFinite || abs(camT) < 1e-4 || abs(camT) > 1e4
+                || !camX.isFinite || !camY.isFinite || !camZ.isFinite
+                || litW < 64 || litH < 64 {
                 sceneBad = true
             }
+        } else {
+            sceneBad = true   // ray-march pipeline gone mid-Lumen = the collapse itself
         }
 
         let bad = lightsNonFinite || sceneBad
@@ -122,7 +134,8 @@ extension VisualizerEngine {
             + "\(fmt(lights[2].intensity)) \(fmt(lights[3].intensity))]"
         let msg = "LUMEN_DIAG \(tag) lights=\(lightsNonFinite ? "NONFINITE" : "finite")"
             + " f=\(lumenDiagFrame) t=\(fmt(features.time)) maxAbs=\(fmt(worstAbs, 3))"
-            + " camT=\(fmt(camT, 4)) aspect=\(fmt(aspect, 3)) fov=\(fmt(fov, 3)) intens=\(intens)"
+            + " camT=\(fmt(camT, 4)) aspect=\(fmt(aspect, 3)) fov=\(fmt(fov, 3))"
+            + " camPos=[\(fmt(camX)) \(fmt(camY)) \(fmt(camZ))] litTex=\(litW)x\(litH) intens=\(intens)"
         sessionRecorder?.log(msg)
     }
 
