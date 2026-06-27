@@ -73,6 +73,11 @@ struct MultiPassFlashHarnessTests {
         assertFlashSafe(name: "Nacre", luma: try renderNacre())
     }
 
+    @Test("Glaze is flash-safe (mv_warp feedback + GLAZE.6 glossy bloom, real headless render)")
+    func glazeIsFlashSafe() throws {
+        assertFlashSafe(name: "Glaze", luma: try renderGlaze())
+    }
+
     // MARK: - Assertion (shared)
 
     /// Print the per-preset evidence line (the closeout all-7 table is these four plus the
@@ -314,6 +319,52 @@ struct MultiPassFlashHarnessTests {
             guard let cmd = ctx.commandQueue.makeCommandBuffer(),
                   let warpState = pipeline.mvWarpState else { throw FlashHarnessError.renderFailed }
             pipeline.renderNacre(
+                commandBuffer: cmd,
+                features: drive[i],
+                stemFeatures: stems[i],
+                warpState: warpState,
+                target: outTex)
+            try commit(cmd, outTex, into: &pixels)
+        }
+    }
+
+    // MARK: - Render: Glaze (bespoke mv_warp, GLAZE.3–6)
+
+    /// Glaze — `direct` + `mv_warp`, the bespoke `renderGlaze` path (blur pyramid → custom warp →
+    /// comp → swap; HDR .rgba16Float feedback). The worst-case stem train drives the per-stem routes
+    /// (bass/other lateral, drums punch, vocals glow) and the GLAZE.6 bloom, so the brightness signal
+    /// the analyzer reads is the real audio-driven one — the uplift-B flash check.
+    private func renderGlaze() throws -> [Double] {
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let noise = try TextureManager(context: ctx, shaderLibrary: lib)
+        let floatStride = MemoryLayout<Float>.stride
+        guard let fft = ctx.makeSharedBuffer(length: 512 * floatStride),
+              let wav = ctx.makeSharedBuffer(length: 2048 * floatStride) else {
+            throw FlashHarnessError.setupFailed("audio buffers")
+        }
+        let pipeline = try RenderPipeline(context: ctx, shaderLibrary: lib, fftBuffer: fft, waveformBuffer: wav)
+        pipeline.setTextureManager(noise)
+        guard let preset = _acceptanceFixture.presets.first(where: { $0.descriptor.name == "Glaze" }),
+              let mvWarp = preset.mvWarpPipelines else {
+            throw FlashHarnessError.presetNotFound("Glaze")
+        }
+        let size = CGSize(width: Self.width, height: Self.height)
+        pipeline.currentDrawableSize = size
+        let bundle = MVWarpPipelineBundle(
+            warpState: mvWarp.warpState, composeState: mvWarp.composeState, blitState: mvWarp.blitState,
+            pixelFormat: ctx.pixelFormat, feedbackFormat: .rgba16Float,
+            blurState: mvWarp.blurState, isGlaze: true)
+        pipeline.setupMVWarp(bundle: bundle, size: size)
+        pipeline.setMVWarpDecay(preset.descriptor.decay)
+
+        let outTex = try makeOutputTexture(ctx)
+        let drive = FlashHarnessSupport.worstCaseBeatTrain()
+        let stems = FlashHarnessSupport.worstCaseStemTrain()
+        return try renderLoop(ctx, outTex) { i, pixels in
+            guard let cmd = ctx.commandQueue.makeCommandBuffer(),
+                  let warpState = pipeline.mvWarpState else { throw FlashHarnessError.renderFailed }
+            pipeline.renderGlaze(
                 commandBuffer: cmd,
                 features: drive[i],
                 stemFeatures: stems[i],
