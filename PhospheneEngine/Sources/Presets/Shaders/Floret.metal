@@ -78,8 +78,9 @@ constant float  kFloretSpinMax   = 0.020;               // max comp rotation rat
 // ENERGY-SCALED internal swirl in the warp → the filaments churn faster as the music fills out
 // (accumulates through the feedback). A separate channel from the comp's global spin (FA #67):
 // warp = internal vortex churn, comp = whole-field rotation.
-constant float  kFloretSwirlGain = 0.010;               // vortex rate (rad/frame near the core) × energy
-constant float  kFloretSwirlBase = 0.35;                // energy floor so the churn never fully stops (alive)
+constant float  kFloretSwirlGain = 0.014;               // vortex rate (rad/frame near the core) × energy
+                                                        // (0.010→0.014, M7 #3: "a touch too subtle")
+constant float  kFloretSwirlBase = 0.40;                // energy floor so the churn never fully stops (alive)
 constant float  kFloretSwirlCore = 0.09;                // 1/(r²+core) softening — caps the centre rate
 
 constant float3 kLuma = float3(0.299, 0.587, 0.114);
