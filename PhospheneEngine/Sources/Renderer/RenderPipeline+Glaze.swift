@@ -20,11 +20,11 @@ import Shared
 // MARK: - GlazeUniforms (matches `struct GlazeUniforms` in Glaze.metal)
 
 /// 32-byte uniform bound at fragment buffer(1) of the warp + comp passes — byte-identical
-/// to the MSL `GlazeUniforms` (time/coreEnergy/pokeStrength/pad0 | texel | pokeCenter).
+/// to the MSL `GlazeUniforms` (time/vocalsGlow/pokeStrength/seedY | texel | pokeCenter).
 struct GlazeUniforms {
     var time: Float = 0
-    var coreEnergy: Float = 0       // reserved (silence-floor lever; the faithful warp self-seeds)
-    var pokeStrength: Float = 0     // spring mass-3 x → the pixel-eq poke scale (`q3`)
+    var vocalsGlow: Float = 0       // GLAZE.5: vocals presence → a small BOUNDED display glow (added to the comp lift)
+    var pokeStrength: Float = 0     // spring mass-3 x (+ GLAZE.5 drums punch) → the pixel-eq poke scale
     var seedY: Float = 0.5          // spring tail Y position → the seed band's vertical centre (GLAZE.3b)
     var texel: SIMD2<Float> = .init(1, 1)
     var pokeCenter: SIMD2<Float> = .init(0.5, 0.5)   // spring tail (cx1, cy1) — the poke centre
@@ -42,6 +42,10 @@ struct GlazeSpring {
     /// opposite directions of the lateral anchor swing; overall stem-energy fullness → lift.
     /// (Was bass/treble BANDS — near-dead on real tracks.) Resetting the struct zeroes these too.
     var bassStemEMA: Float = 0, otherStemEMA: Float = 0, liftEMA: Float = 0
+    /// GLAZE.5 uplift A — the two stems not yet visible: drums transient → the poke "punch"
+    /// envelope (fast attack/decay); vocals presence → a gentle display-glow envelope (slow swell).
+    /// Reset with the struct.
+    var drumsPunchEMA: Float = 0, vocalsGlowEMA: Float = 0
 
     mutating func step(anchorX x1: Float, anchorY y1: Float) {
         let spring: Float = 18, grav: Float = 1, dt: Float = 0.0003, bounce: Float = 0.9
@@ -71,6 +75,15 @@ struct GlazeSpring {
 private let kGlazeSwing: Float = 2.5
 /// Anchor lift per unit of the sustained four-stem fullness envelope — the source's `y1` energy push.
 private let kGlazeLift: Float = 1.2
+
+// MARK: - GLAZE.5 uplift-A per-stem gains (M7 levers)
+
+/// Drums poke-punch gain: the swirl-poke jabs harder on drum transients (a bounded, localised
+/// "punch" at the jelly tail — added on top of the physics-driven poke strength).
+private let kGlazeDrumsPunch: Float = 0.6
+/// Vocals glow gain: a BOUNDED display-stage add to the comp brightness floor (≤ ~0.12) so the gel
+/// brightens gently on vocals WITHOUT re-introducing the wash (display-only, never fed back).
+private let kGlazeVocalsGlow: Float = 0.12
 
 extension RenderPipeline {
 
@@ -103,6 +116,12 @@ extension RenderPipeline {
         let stemFullness = 0.25 * (stems.drumsEnergyRel + stems.bassEnergyRel
             + stems.vocalsEnergyRel + stems.otherEnergyRel)
         glazeSpring.liftEMA = 0.94 * glazeSpring.liftEMA + 0.06 * max(0, stemFullness)
+        // GLAZE.5 uplift A — the two stems not yet visible get their own distinct layers (FA #67):
+        // drums → a fast "punch" envelope (the swirl-poke jabs harder on hits); vocals → a slow
+        // "glow" envelope (a gentle display brightening). Off the per-stem DEVIATION primitives
+        // (D-026; the per-stem BEAT channels except drums are dead — use *EnergyDev).
+        glazeSpring.drumsPunchEMA = 0.6 * glazeSpring.drumsPunchEMA + 0.4 * stems.drumsEnergyDev
+        glazeSpring.vocalsGlowEMA = 0.9 * glazeSpring.vocalsGlowEMA + 0.1 * stems.vocalsEnergyDev
         // ponytail: kGlazeSwing/kGlazeLift are the render-tune levers (M7) — set by render-compare
         // on the real session (the bass↔other differential is denser but smaller than the old band gap).
         let anchorX = 0.5 + 0.10 * sin(tSec * 0.37) + kGlazeSwing * (glazeSpring.bassStemEMA - glazeSpring.otherStemEMA)
@@ -111,7 +130,10 @@ extension RenderPipeline {
         // Source pixel_eqs: poke centre = (mass-4 x, tail SPEED), poke scale = mass-3 x.
         let tailSpeed = (glazeSpring.vx4 * glazeSpring.vx4 + glazeSpring.vy4 * glazeSpring.vy4).squareRoot()
         uni.pokeCenter = SIMD2<Float>(glazeSpring.x4, tailSpeed)
-        uni.pokeStrength = glazeSpring.x3
+        // GLAZE.5: drums jab the swirl-poke harder (the "punch"); vocals add a small bounded glow
+        // to the display (the comp lift) — display-only so it can't re-accumulate into the wash.
+        uni.pokeStrength = glazeSpring.x3 + kGlazeDrumsPunch * glazeSpring.drumsPunchEMA
+        uni.vocalsGlow = kGlazeVocalsGlow * min(glazeSpring.vocalsGlowEMA, 1.0)
         // GLAZE.3b: the seed band rides the jelly's vertical position — as the audio-driven tail
         // sweeps up/down (full [0,1] range on real music), the bright seed paints the whole frame
         // and the zoom accretes it into the nested field (band-only when the tail idles at silence).

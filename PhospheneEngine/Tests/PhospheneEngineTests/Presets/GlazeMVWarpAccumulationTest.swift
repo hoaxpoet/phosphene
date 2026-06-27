@@ -178,6 +178,45 @@ struct GlazeMVWarpAccumulationTest {
                 "stem fullness should lift the tail above the silence rest (energy y4=\(energyRun.y4), silent y4=\(silentRun.y4))")
     }
 
+    /// Drive `computeGlazeUniforms` for `frames` frames at a constant per-stem level and return the
+    /// final uniforms (for the uplift-A drums-punch / vocals-glow assertions). Resets the spring.
+    @MainActor
+    private static func driveUniforms(_ pipeline: RenderPipeline, frames: Int,
+                                      drumsDev: Float = 0, vocalsDev: Float = 0) -> GlazeUniforms {
+        pipeline.glazeSpring = GlazeSpring()
+        var stems = StemFeatures.zero
+        stems.drumsEnergyDev = drumsDev; stems.vocalsEnergyDev = vocalsDev
+        var uni = GlazeUniforms()
+        for i in 0..<frames {
+            var f = FeatureVector.zero
+            f.deltaTime = deltaTime; f.time = Float(i) * deltaTime
+            uni = pipeline.computeGlazeUniforms(features: f, stems: stems)
+        }
+        return uni
+    }
+
+    /// Uplift-A mechanism gate (always run): drums boost the poke-punch, vocals raise the glow —
+    /// and the glow stays BOUNDED (the wash fix must not regress). Deterministic; no real-audio
+    /// claim (FA #27 — the session replay + Matt's live M7 cover that).
+    @Test("GLAZE.5: drums boost the poke-punch, vocals raise the bounded glow")
+    @MainActor
+    func test_upliftA_drumsPunchVocalsGlow() throws {
+        guard let ctx = try? MetalContext() else { Issue.record("No Metal device"); return }
+        guard let pipeline = try Self.makePipeline(ctx) else { Issue.record("pipeline setup failed"); return }
+        let frames = 200
+        let base = Self.driveUniforms(pipeline, frames: frames)
+        let drumsRun = Self.driveUniforms(pipeline, frames: frames, drumsDev: 1.0)
+        let vocalsRun = Self.driveUniforms(pipeline, frames: frames, vocalsDev: 1.0)
+        // Drums jab the swirl-poke harder (on top of the identical physics-driven base poke).
+        #expect(drumsRun.pokeStrength - base.pokeStrength > 0.05,
+                "drums should boost the poke-punch (drums \(drumsRun.pokeStrength) vs base \(base.pokeStrength))")
+        // Vocals raise the display glow — but it MUST stay bounded (≤ ~0.12) so it can't re-wash.
+        #expect(vocalsRun.vocalsGlow > base.vocalsGlow + 0.01,
+                "vocals should raise the glow (vocals \(vocalsRun.vocalsGlow) vs base \(base.vocalsGlow))")
+        #expect(vocalsRun.vocalsGlow <= 0.13,
+                "vocals glow must stay bounded ≤ ~0.12 (got \(vocalsRun.vocalsGlow)) — else it re-introduces the wash")
+    }
+
     /// Session-replay evidence (env-gated GLAZE_SESSION_CSV=<stems.csv>): drive the REAL recorded
     /// STEMS through the route and confirm the jelly actually moves on music — the FA #27-compliant
     /// evidence the closeout cites (synthetic envelopes don't prove real-audio firing). stems.csv
@@ -382,14 +421,16 @@ struct GlazeMVWarpAccumulationTest {
         guard let iBd = col("bassEnergyDev"), let iOd = col("otherEnergyDev"),
               let iDr = col("drumsEnergyRel"), let iBr = col("bassEnergyRel"),
               let iVr = col("vocalsEnergyRel"), let iOr = col("otherEnergyRel") else { return nil }
+        let iDd = col("drumsEnergyDev"), iVd = col("vocalsEnergyDev")   // GLAZE.5 punch/glow drivers
         return lines.compactMap { line -> StemFeatures? in
             let f = line.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
             guard f.count > iOr else { return nil }
-            func v(_ i: Int) -> Float { i < f.count ? (Float(f[i]) ?? 0) : 0 }
+            func v(_ i: Int?) -> Float { i.flatMap { $0 < f.count ? Float(f[$0]) : nil } ?? 0 }
             var s = StemFeatures.zero
             s.bassEnergyDev = v(iBd); s.otherEnergyDev = v(iOd)
             s.drumsEnergyRel = v(iDr); s.bassEnergyRel = v(iBr)
             s.vocalsEnergyRel = v(iVr); s.otherEnergyRel = v(iOr)
+            s.drumsEnergyDev = v(iDd); s.vocalsEnergyDev = v(iVd)
             return s
         }
     }
