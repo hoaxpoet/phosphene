@@ -254,6 +254,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// presets via `ParticleGeometry` (D-097).
     var murmurationGeometry: (any ParticleGeometry)?
 
+    /// Physarum agent-network for the Filigree preset — attached via
+    /// `ParticleGeometry` (D-097, PHYS.2). Built eagerly like Murmuration.
+    var filigreeGeometry: (any ParticleGeometry)?
+
     /// Shader library for creating post-process chains on preset switch.
     let shaderLibrary: Renderer.ShaderLibrary
 
@@ -801,6 +805,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         self.mirPipeline.ffoColdStartFixEnabled = ffoColdStartFixEnabled
         let tier = Self.detectDeviceTier(device: ctx.device)
         self.murmurationGeometry = Self.makeMurmurationGeometry(context: ctx, library: lib)
+        self.filigreeGeometry = Self.makeFiligreeGeometry(context: ctx, library: lib)
         self.moodClassifier = classifier
         self.stemAnalyzer = analyzer
         self.stemSeparator = sep
@@ -1045,6 +1050,25 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         return flock
     }
 
+    /// Build the physarum agent-network for the Filigree preset
+    /// (`PhysarumGeometry` + `Physarum.metal`, PHYS.2). Returns
+    /// `any ParticleGeometry` (D-097, siblings not subclasses).
+    private static func makeFiligreeGeometry(
+        context: MetalContext,
+        library: Renderer.ShaderLibrary
+    ) -> (any ParticleGeometry)? {
+        guard let web = try? PhysarumGeometry(
+            device: context.device,
+            library: library.library,
+            configuration: PhysarumConfiguration(),
+            pixelFormat: context.pixelFormat
+        ) else {
+            return nil
+        }
+        logger.info("Filigree created: physarum agent-network (\(PhysarumConfiguration().agentCount) agents)")
+        return web
+    }
+
     /// Resolve a particle-preset name to the geometry conformer the engine
     /// has built for it. Returns `nil` for any unknown preset name; the
     /// caller is expected to log + fall through. Exposed as `internal` so
@@ -1053,6 +1077,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     func resolveParticleGeometry(forPresetName name: String) -> (any ParticleGeometry)? {
         switch name {
         case "Murmuration": return murmurationGeometry
+        case "Filigree":    return filigreeGeometry
         default:            return nil
         }
     }

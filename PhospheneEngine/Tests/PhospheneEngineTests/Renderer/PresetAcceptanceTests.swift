@@ -93,6 +93,11 @@ struct PresetAcceptanceTests {
         // Floret (FLORET.2a): same — built by the warp+comp feedback branch (drawWithFloret);
         // the standalone `floret_fragment` is intentionally black. Coverage: FloretMVWarpAccumulationTest.
         guard preset.descriptor.name != "Floret" else { return }
+        // Filigree (PHYS.2): the gold web is the `PhysarumGeometry` particle trail;
+        // the standalone `filigree_ground_fragment` this harness renders is the
+        // intentionally pure-black Kintsugi ground (covered by the trail in
+        // production). Coverage: PhysarumSketchRenderTests (multi-frame trail render).
+        guard preset.descriptor.name != "Filigree" else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture
         let pixels = try renderFrame(preset: preset, features: &fixture, context: ctx)
@@ -245,6 +250,11 @@ struct PresetAcceptanceTests {
         // non-black / no-white-clip / contrast invariants — its cream ground (unlike the
         // near-black DB/FM fragments) genuinely passes those.
         guard preset.descriptor.name != "Skein" else { return }
+        // Filigree (PHYS.2): same rationale as Dragon Bloom / Fata Morgana / Nacre —
+        // the readable gold web is the `PhysarumGeometry` particle trail; the standalone
+        // `filigree_ground_fragment` is the intentionally pure-black Kintsugi ground.
+        // Coverage: PhysarumSketchRenderTests.
+        guard preset.descriptor.name != "Filigree" else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture
         let pixels = try renderFrame(preset: preset, features: &fixture, context: ctx)
