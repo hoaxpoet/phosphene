@@ -697,3 +697,28 @@ struct LumenPalettePayloadTests {
                 "setPalette did not populate all 12 slots correctly")
     }
 }
+
+// MARK: - BUG-063: slot-8 triple-buffering
+
+@Suite("BUG-063 slot-8 triple-buffering")
+struct LumenSlot8RingTests {
+    /// The slot-8 buffer must be triple-buffered: three consecutive ticks bind
+    /// three DISTINCT ring slots, so the CPU's next write never lands in the buffer
+    /// an in-flight frame's GPU read is still consuming (the write-during-read race
+    /// that froze Lumen on a stale, fully-lit frame — BUG-063). A single buffer
+    /// (the pre-fix state) would return the same `currentBuffer` every tick.
+    @Test func test_tickRotatesThroughThreeDistinctRingBuffers() throws {
+        let engine = try makeEngine()
+        let frame = FeatureVector(time: 0, deltaTime: 0.016)
+        var ids: [ObjectIdentifier] = []
+        for _ in 0..<3 {
+            engine.tick(features: frame, stems: StemFeatures.zero)
+            ids.append(ObjectIdentifier(engine.currentBuffer as AnyObject))
+        }
+        #expect(Set(ids).count == 3, "tick() must rotate through 3 distinct slot-8 buffers")
+        // The ring wraps after 3 (matches MetalContext.maxFramesInFlight).
+        engine.tick(features: frame, stems: StemFeatures.zero)
+        #expect(ObjectIdentifier(engine.currentBuffer as AnyObject) == ids[0],
+                "the ring wraps after 3 buffers")
+    }
+}
