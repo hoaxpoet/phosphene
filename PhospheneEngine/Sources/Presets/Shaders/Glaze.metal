@@ -50,6 +50,11 @@ constant float  kGlazeWarpDecay = 0.96;   // persistence = how many nested seed-
 // dropping it to 0.4 gives the oracle's dark ground with bright structure standing out. Raise toward
 // 1.0 for a brighter ground, lower for darker. (Validated at playback length — 8000 frames, both tracks.)
 constant float  kGlazeCompLift = 0.4;
+// GLAZE.6 uplift B — glossy bloom: intensity of the luminous halo added around bright structure,
+// and the blur3-luma threshold above which a region blooms (zero below → the dark ground never
+// blooms). Display-only + bounded → wash-safe + flash-safe. Raise kGlazeBloom for a stronger glow.
+constant float  kGlazeBloom = 1.6;
+constant float  kGlazeBloomThreshold = 0.3;
 
 // MARK: - Palette (the source's saturated neon rotation; substitutes butterchurn hue_shader)
 // Slow red→green→teal→violet drift. Values in [0.2, 1.0] so the comp's `pow(hue, g9)` mix
@@ -269,6 +274,16 @@ fragment float4 glaze_comp_fragment(
     float3 tint = 0.75 * float3(g9) * dot(0.6 * blur3.sample(s, uvA).rgb
                   - 0.7 * mainTex.sample(s, uv).rgb - 0.3 * blur1.sample(s, uvB).rgb, kGlazeLuma);
     ret = mix(float3(g9), tint, pow(glazePalette(gu.time), float3(g9))) * 0.9;
+
+    // GLAZE.6 uplift B — HDR glossy BLOOM: a soft luminous halo around the bright structure (the
+    // "wet glaze" headline). Reuses blur3 (the widest feedback blur) as the bloom source — extract
+    // the part above a brightness threshold + add a bounded, palette-tinted glow. DISPLAY-ONLY (the
+    // comp, never fed back) so it CANNOT re-accumulate the GLAZE.4 wash; bounded by kGlazeBloom and
+    // gated by the threshold (zero on the dark ground) so it stays localised + flash-safe.
+    float bloomSrc = dot(blur3.sample(s, uv).rgb, kGlazeLuma);
+    float bloom = kGlazeBloom * max(0.0, bloomSrc - kGlazeBloomThreshold);
+    ret += bloom * glazePalette(gu.time);
+
     ret = ret * ret;
     ret = sqrt(ret);
 
