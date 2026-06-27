@@ -37,10 +37,11 @@ struct GlazeSpring {
     var x2: Float = 0, y2: Float = 0, vx2: Float = 0, vy2: Float = 0
     var x3: Float = 0, y3: Float = 0, vx3: Float = 0, vy3: Float = 0
     var x4: Float = 0, y4: Float = 0, vx4: Float = 0, vy4: Float = 0
-    /// Anchor-drive envelopes (GLAZE.3a; source frame_eqs xx1/xx2/yy1): bass/treble DEVIATION
-    /// accents → opposite directions of the lateral anchor swing; sustained Rel energy → lift.
-    /// Resetting the struct zeroes these too (the test relies on that).
-    var bassEMA: Float = 0, trebEMA: Float = 0, liftEMA: Float = 0
+    /// Anchor-drive envelopes (source frame_eqs xx1/xx2/yy1), GLAZE.3 stem-drive (Matt M7
+    /// 2026-06-27): the bass STEM and the harmonic OTHER STEM (guitar/synth) deviations pull
+    /// opposite directions of the lateral anchor swing; overall stem-energy fullness → lift.
+    /// (Was bass/treble BANDS — near-dead on real tracks.) Resetting the struct zeroes these too.
+    var bassStemEMA: Float = 0, otherStemEMA: Float = 0, liftEMA: Float = 0
 
     mutating func step(anchorX x1: Float, anchorY y1: Float) {
         let spring: Float = 18, grav: Float = 1, dt: Float = 0.0003, bounce: Float = 0.9
@@ -63,11 +64,12 @@ struct GlazeSpring {
     }
 }
 
-// MARK: - GLAZE.3a audio-anchor gains (M7 render-tune levers)
+// MARK: - GLAZE.3 audio-anchor gains (M7 render-tune levers)
 
-/// Lateral anchor swing per unit of (bassDev − trebDev) envelope — the source's `x1` gain `1.5`.
-private let kGlazeSwing: Float = 1.5
-/// Anchor lift per unit of the sustained (bassRel + trebRel) envelope — the source's `y1` energy push.
+/// Lateral anchor swing per unit of the (bassStem − otherStem) deviation differential. Higher than
+/// the source's `1.5` because the stem differential is denser but smaller than the old band gap.
+private let kGlazeSwing: Float = 2.5
+/// Anchor lift per unit of the sustained four-stem fullness envelope — the source's `y1` energy push.
 private let kGlazeLift: Float = 1.2
 
 extension RenderPipeline {
@@ -75,29 +77,35 @@ extension RenderPipeline {
     // MARK: Per-frame uniforms
 
     /// Compute the Glaze warp/comp uniforms for this frame. Steps the 3-mass spring off an
-    /// audio-driven anchor (GLAZE.3a — bass/treble deviation → lateral swing, energy → lift;
-    /// the `glaze*EMA` accumulators are the source's xx1/xx2/yy1 envelopes). Per-stem routing
-    /// into the anchor is the greenlit uplift A (GLAZE.5), not here.
+    /// audio-driven anchor — the bass STEM and OTHER (guitar/synth) STEM deviations drive the
+    /// lateral swing, overall stem fullness the lift (GLAZE.3 stem-drive, Matt M7 2026-06-27;
+    /// the `glaze*StemEMA`/`liftEMA` accumulators are the source's xx1/xx2/yy1 envelopes). The
+    /// richer per-stem instrument routing (drums punch, vocals swell) is still the uplift A path.
     @MainActor
     func computeGlazeUniforms(features: FeatureVector, stems: StemFeatures) -> GlazeUniforms {
         var uni = GlazeUniforms()
         let tSec = features.time
         uni.time = tSec
 
-        // Spring anchor (source frame_eqs x1/y1) — AUDIO-DRIVEN (GLAZE.3a, §6 routing table).
-        // Bass yanks the anchor right, treble flicks it left (lateral swing); sustained energy
-        // lifts it. EMA envelopes off the DEVIATION primitives (D-026 / FA #31 — never absolute
-        // AGC energy), so the spring integrates spiky onsets into smooth organic momentum (the
-        // FA #4/#31 "no primary motion from raw onsets" failure sidestepped by construction).
-        // A small time idle keeps the anchor roaming at silence so the field stays alive (D-019).
-        // One physical input (FA #67): bass/treble are opposite directions of the SAME anchor
-        // axis, energy is the other axis — no two visual layers share a primitive at a timescale.
-        glazeSpring.bassEMA = 0.9 * glazeSpring.bassEMA + 0.1 * features.bassDev
-        glazeSpring.trebEMA = 0.9 * glazeSpring.trebEMA + 0.1 * features.trebDev
-        glazeSpring.liftEMA = 0.94 * glazeSpring.liftEMA + 0.06 * max(0, features.bassRel + features.trebRel) * 0.5
-        // ponytail: kGlazeSwing/kGlazeLift are the render-tune levers (M7); start at the source's
-        // 1.5 lateral gain + a gentle lift, adjust by render-compare against the oracle.
-        let anchorX = 0.5 + 0.10 * sin(tSec * 0.37) + kGlazeSwing * (glazeSpring.bassEMA - glazeSpring.trebEMA)
+        // Spring anchor (source frame_eqs x1/y1) — AUDIO-DRIVEN off the SEPARATED STEMS (Matt M7
+        // 2026-06-27). The frequency BANDS are near-dead on real tracks (treble ~silent, bassDev
+        // sparse → band-driven motion read as "loosely connected"); the stems carry dense, musical
+        // signal (other = guitar/synth active ~83% of frames). The bass stem yanks the anchor one
+        // way, the harmonic OTHER stem flicks it the other (a more musical opposition than
+        // bass/treble); overall four-stem fullness lifts it. Off the stem DEVIATION primitives
+        // (D-026 / FA #31), so the spring integrates the dense signal into smooth momentum (the
+        // FA #4/#31 "no primary motion from raw onsets" failure sidestepped by construction). A
+        // small time idle keeps the anchor roaming when stems are silent so the field stays alive
+        // (D-019). One physical input per axis (FA #67): bass/other are opposite directions of the
+        // SAME lateral axis, fullness is the other axis — no two layers share a primitive/timescale.
+        glazeSpring.bassStemEMA = 0.9 * glazeSpring.bassStemEMA + 0.1 * stems.bassEnergyDev
+        glazeSpring.otherStemEMA = 0.9 * glazeSpring.otherStemEMA + 0.1 * stems.otherEnergyDev
+        let stemFullness = 0.25 * (stems.drumsEnergyRel + stems.bassEnergyRel
+            + stems.vocalsEnergyRel + stems.otherEnergyRel)
+        glazeSpring.liftEMA = 0.94 * glazeSpring.liftEMA + 0.06 * max(0, stemFullness)
+        // ponytail: kGlazeSwing/kGlazeLift are the render-tune levers (M7) — set by render-compare
+        // on the real session (the bass↔other differential is denser but smaller than the old band gap).
+        let anchorX = 0.5 + 0.10 * sin(tSec * 0.37) + kGlazeSwing * (glazeSpring.bassStemEMA - glazeSpring.otherStemEMA)
         let anchorY = 0.5 + 0.08 * sin(tSec * 0.53) + kGlazeLift * glazeSpring.liftEMA
         glazeSpring.step(anchorX: anchorX, anchorY: anchorY)
         // Source pixel_eqs: poke centre = (mass-4 x, tail SPEED), poke scale = mass-3 x.
