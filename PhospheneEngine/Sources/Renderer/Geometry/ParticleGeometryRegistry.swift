@@ -27,6 +27,7 @@ public enum ParticleGeometryRegistry {
     /// "Murmuration" is a literal because `ProceduralGeometry` is part of
     /// DM.0's frozen surface (D-097) and cannot host a static identifier.
     public static let knownPresetNames: Set<String> = [
-        "Murmuration"
+        "Murmuration",
+        "Filigree"
     ]
 }
