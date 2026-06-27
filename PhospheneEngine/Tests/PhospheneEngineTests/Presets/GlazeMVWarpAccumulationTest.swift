@@ -254,8 +254,7 @@ struct GlazeMVWarpAccumulationTest {
         try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
         let url = outDir.appendingPathComponent("glaze_frame\(frames).png")
         try Self.writePNG(display, to: url)
-        let st = Self.frameStats(display)   // wash-out metric: meanLuma ↑ = brighter/washed
-        print("[glaze_diag] wrote \(url.path) (\(wPix)×\(hPix), \(frames) frames) meanLuma=\(st.meanLuma) saturated=\(st.saturatedFraction)")
+        print("[glaze_diag] wrote \(url.path) (\(wPix)×\(hPix), \(frames) frames, energy=\(energy))")
     }
 
     // MARK: - Shared render driver (live dispatch path — FA #66, no reimplemented encode)
