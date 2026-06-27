@@ -9,14 +9,15 @@ structure **seed rides the jelly's height** so it sweeps the frame. Judge: **(a)
 still read as *physical* (momentum, not twitch); (c) still the glossy gel register. The **full-field-density vs
 dark-ground** tuning (decay) is still deferred to GLAZE.4 — don't judge that as a fail.
 
-**This round also fixes the wash-out** you saw on active music (Cherub Rock): the feedback decay is now
-energy-adaptive — it drops on loud/dense passages so the field holds steady brightness instead of over-filling
-into a bright wash, and it's a no-op on calm music (so the calm look is unchanged). Headless: Cherub meanLuma
-0.69→0.57 (≈ the calm 0.62). The check: **does active music still wash out, and does calm still look right?**
-The trade is active music gets slightly softer structure — flag it if that reads as too soft.
+**Wash-out status:** the energy-adaptive decay I tried was the WRONG lever and is **reverted** — the wash is a
+slow accumulation creep to white over MINUTES of playback (both tracks, energy-independent; my short headless
+renders missed it). It's a base brightness-budget retune = **GLAZE.4**, to do with your eye — not part of the
+audio coupling. This build is back to the round-1 base (decay 0.96, the "calm great" look) + the good stem-drive
+audio coupling. So judging the wash here isn't the point; the audio coupling (does the jelly move with the
+guitar/synth) is the GLAZE.3 thing that stands.
 
-Branch: `claude/nice-rubin-9c10c7` (UNPUSHED — local). GLAZE.3 commits: `479f145` (anchor) → `3d0691e` (seed
-fill) → `a34f9d3` (stem-drive) → **`61f62d4` (wash-out fix — this round)** + docs. The worktree app is rebuilt below.
+Branch: `claude/nice-rubin-9c10c7` (UNPUSHED — local). GLAZE.3: `479f145` (anchor) → `3d0691e` (seed fill) →
+`a34f9d3` (stem-drive) → `61f62d4` wash-fix **reverted** `aa868d3` (wrong lever). The worktree app is rebuilt below.
 
 ---
 
