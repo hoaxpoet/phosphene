@@ -10,6 +10,14 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-27-213626] BUG-063 — the slot-8 triple-buffer "fix" was the regression; reverted Lumen to known-good
+
+Matt (session `…T21-14-35Z`): Lumen Mosaic "worked like a dream before" and is now frozen for nearly the whole playback — it "moved twice," with a faint beat pulse but **no cell-colour change** — "possibly the worst yet." That reframed BUG-063 as a **regression we introduced**, not a latent bug.
+
+The data named the culprit. `beatPhase01` wraps every beat (grid locked at 171 BPM), and the CPU-side band counters and light intensities advance the whole playback — **yet the GPU image is frozen.** That's a stale slot-8 read: the GPU isn't seeing the CPU's updates. The only change to that path since the known-good Lumen (`cb8cb0b` + the LM.* work) is **`f5ad0e2` — the slot-8 triple-buffering "fix."** It was built on an *unverified* write-during-read race theory; the single buffer was UMA-coherent and delivered the latest state to the GPU every frame, but the 3-slot ring + per-frame rebind does not, so the cells and lights freeze while a slot-0 (`FeatureVector`) beat term still pulses faintly. The race it "fixed" was never actually reproduced — it fixed a non-problem and created a real one.
+
+**Reverted both BUG-063 fix attempts:** `f5ad0e2` (triple-buffer) and the layered stem-warmup gate (`dev-2026-06-27-192634`, which never reached Matt's build). `LumenPatternEngine` and its tests are restored to the exact known-good `cb8cb0b` state — single `patternBuffer`, bound once at `applyPreset`, written each `tick()` — with the BUG-016 palette test preserved and the `LUMEN_DIAG` instrument kept for the confirm. Engine build + 31 Lumen suites + app build + swiftlint strict 0. **Pending Matt's live confirm** that Lumen animates like a dream again. The frozen-stem-warmup observation from the prior entry is real but secondary; it's deferred and will be re-scoped cleanly off the restored baseline if it matters. **Lesson (the load-bearing one):** don't ship a fix for a race you haven't reproduced — `f5ad0e2` traded a working UMA single-buffer for a triple-buffer that broke the very delivery it was meant to protect. When a "fix" doesn't resolve the symptom on the first live test, suspect the fix before adding another layer.
+
 ## [dev-2026-06-27-192634] BUG-063 — real root cause found: Lumen freezes on a frozen stem-warmup snapshot (the slot-8 + "GPU collapse" diagnoses were both wrong)
 
 Matt kept seeing Lumen Mosaic freeze, and the `dev-2026-06-26-225322` triple-buffer fix below did **not** resolve it. Two more sessions plus an Xcode **GPU frame capture** finally pinned it — and overturned both prior diagnoses.
