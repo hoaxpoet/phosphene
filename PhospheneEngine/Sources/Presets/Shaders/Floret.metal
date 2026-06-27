@@ -73,6 +73,14 @@ constant float  kFloretLumaFloor = 0.02;                 // a faint floor only (
 constant float  kFloretSwellGain = 1.1;                  // energy envelope → seed extent/brightness (warp; slow)
 constant float  kFloretPush      = 0.06;                 // downbeat camera magnify depth (comp; beat-locked, Nacre NACRE.4)
 constant float  kFloretSpinMax   = 0.020;               // max comp rotation rate (rad/frame) at full bass (motion, bounded)
+// FLORET.3a tuning (Matt M7: "synced is great, but the motion is subtle — drive the swirls
+// WITHIN the pattern by music/energy"). Revive the source's 1/r² vortex (vestigial, §10) as an
+// ENERGY-SCALED internal swirl in the warp → the filaments churn faster as the music fills out
+// (accumulates through the feedback). A separate channel from the comp's global spin (FA #67):
+// warp = internal vortex churn, comp = whole-field rotation.
+constant float  kFloretSwirlGain = 0.010;               // vortex rate (rad/frame near the core) × energy
+constant float  kFloretSwirlBase = 0.35;                // energy floor so the churn never fully stops (alive)
+constant float  kFloretSwirlCore = 0.09;                // 1/(r²+core) softening — caps the centre rate
 
 constant float3 kLuma = float3(0.299, 0.587, 0.114);
 
@@ -140,8 +148,20 @@ fragment float4 floret_warp_fragment(
 ) {
     float2 uv = in.uv;                                   // uv_orig (the source warp ignores the mesh warp)
 
-    // z² complex-conformal fold of the sample coordinate.
-    float2 p = (uv - 0.5) * kFloretFoldScale;
+    // FLORET.3a tuning: energy-scaled 1/r² vortex swirl on the SAMPLE coord only (the source's
+    // vestigial pixel_eqs vortex, revived + music-driven). Rotate the fold's sample point about
+    // centre by an angle that rises near the core and with the energy envelope → the inner
+    // filaments churn faster as the music fills out; it ACCUMULATES through the feedback (we sample
+    // the already-swirled prev), so even a small rate reads as a continuous internal swirl. This is
+    // the "swirls within the pattern" Matt asked to drive by music. (The seed below keeps in.uv, so
+    // only the fed-back field churns, not the seed placement.)
+    float2 d0 = uv - 0.5;
+    float swirl = kFloretSwirlGain * (kFloretSwirlBase + fu.swell) / (dot(d0, d0) + kFloretSwirlCore);
+    float cw = cos(swirl), sw = sin(swirl);
+    float2 suv = float2(cw * d0.x - sw * d0.y, sw * d0.x + cw * d0.y) + 0.5;
+
+    // z² complex-conformal fold of the (swirled) sample coordinate.
+    float2 p = (suv - 0.5) * kFloretFoldScale;
     float2 z2 = float2(p.x * p.x - p.y * p.y, 2.0 * p.x * p.y);
     float3 c = prev.sample(warpSampler, z2 + kFloretFoldOffset).rgb;
     c -= kFloretWarpFade;                                // subtractive decay (faithful)
