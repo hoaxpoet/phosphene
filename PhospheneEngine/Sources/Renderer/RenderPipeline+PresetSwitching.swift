@@ -209,12 +209,24 @@ extension RenderPipeline {
     /// track's duration" contract — live per-frame stem analysis must not
     /// overwrite the cached preview-derived proportion that Ferrofluid
     /// Ocean's spike-height baseline depends on.
-    public func setStemFeatures(_ features: StemFeatures) {
+    ///
+    /// `live` (BUG-063) marks whether `features` is live per-frame stem analysis
+    /// (`true`, the default — the audio path) or the frozen cached 5a snapshot
+    /// installed at track change (`false`). Stem-only-animated presets read
+    /// `stemFeaturesAreLive` to avoid locking onto the frozen snapshot.
+    public func setStemFeatures(_ features: StemFeatures, live: Bool = true) {
         stemFeaturesLock.withLock {
             var next = features
             next.cachedBassProportion = latestStemFeatures.cachedBassProportion
             latestStemFeatures = next
+            latestStemFeaturesAreLive = live
         }
+    }
+
+    /// BUG-063: whether the latest StemFeatures are live per-frame analysis
+    /// rather than the frozen cached 5a snapshot. Thread-safe.
+    public func stemFeaturesAreLive() -> Bool {
+        stemFeaturesLock.withLock { latestStemFeaturesAreLive }
     }
 
     /// CSP.3 — install the cached bass proportion for the current track.

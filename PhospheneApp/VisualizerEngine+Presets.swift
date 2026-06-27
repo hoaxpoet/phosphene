@@ -253,7 +253,14 @@ extension VisualizerEngine {
                             let renderPipe = pipeline
                             pipeline.setMeshPresetTick { [weak engine, weak renderPipe] features, stems in
                                 guard let engine else { return }
-                                engine.tick(features: features, stems: stems)
+                                // BUG-063: pass the render path's live-vs-frozen-snapshot
+                                // signal so the engine drives from live continuous-energy
+                                // during the ~10 s stem warmup instead of freezing on the
+                                // cached snapshot (Lumen's geometry is audio-static).
+                                engine.tick(
+                                    features: features,
+                                    stems: stems,
+                                    stemsLive: renderPipe?.stemFeaturesAreLive() ?? false)
                                 renderPipe?.setDirectPresetFragmentBuffer3(engine.currentBuffer)
                             }
                             // BUG-016 fix (2026-05-26): load the per-song
