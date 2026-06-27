@@ -28,7 +28,7 @@ struct FloretUniforms {
     var spin: Float = 0                // FLORET.3a: bass-accumulated rotation angle (rad) → comp spin
     var texel: SIMD2<Float> = .init(1, 1)
     var barPush: Float = 0             // FLORET.3a: downbeat envelope → comp camera magnify (beat-lock)
-    var drumSparkle: Float = 0         // FLORET.3b: drum-onset envelope → twinkle at the filament tips
+    var bassKick: Float = 0            // FLORET.3b: bass-onset impulse → radial shockwave ripple
     var aspect: SIMD4<Float> = .init(1, 1, 1, 1)
 }
 
@@ -43,10 +43,6 @@ private let kFloretSpinBassGain: Float = 0.020    // rad/frame added at full bas
 // 0.16) the bass term barely lifts the spin off its floor → add an energy term so the field also
 // turns more when the mix fills out (avg-stem envelope, the fuller signal).
 private let kFloretSpinEnergyGain: Float = 0.014  // rad/frame added at full avg-stem energy
-// FLORET.3b drum sparkle (M7 #4: "not seeing it"). drumsBeat's median is low (~0.1) so a pure
-// gate left the sparkle off most of the time → a small always-on floor keeps it visibly
-// twinkling, still flaring to full on the hits.
-private let kFloretSparkleBase: Float = 0.30      // always-present twinkle floor; drumsBeat adds the flare
 
 extension RenderPipeline {
 
@@ -86,13 +82,12 @@ extension RenderPipeline {
         // downbeat (display-stage, no smear). Static on beatless tracks. (Nacre NACRE.4.)
         uni.barPush = pow(max(0, 1 - features.barPhase01), 2.5)
 
-        // ── Drum sparkle ← the drums-stem onset (FLORET.3b) ───────────────────────
-        // Twinkle intensity at the filament tips tracks the drum onset (drumsBeat — the real
-        // percussion onset, phase-correct, and the dynamic channel here since raw treble is dead).
-        // Used directly (drumsBeat already carries an onset envelope) — no extra accumulator, which
-        // keeps RenderPipeline under its type/line-length caps (FLORET_PLAN §12 — the god-class
-        // is full; a 3rd Floret accumulator wouldn't fit, and the look doesn't need it).
-        uni.drumSparkle = min(1.0, kFloretSparkleBase + max(0, stems.drumsBeat))
+        // ── Bass kick ← the bass-onset deviation (FLORET.3b) ──────────────────────
+        // A percussive impulse → the comp's radial shockwave ripple (the whole field punches on
+        // the kick). bassDev is impulse-like (spikes on onset, ~0 between — p99 ~1.0, median ~0),
+        // so it's used directly, soft-saturated (tanh); a punch is meant to be sharp, so no
+        // envelope/accumulator is needed (which also keeps RenderPipeline under its caps, §12).
+        uni.bassKick = tanh(max(0, features.bassDev))
 
         let size = mvWarpDrawableSize
         let wPx = max(Float(size.width), 1), hPx = max(Float(size.height), 1)
