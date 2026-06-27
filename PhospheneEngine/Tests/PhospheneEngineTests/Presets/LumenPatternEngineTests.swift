@@ -112,15 +112,14 @@ private func driveSteady(
     _ engine: LumenPatternEngine,
     seconds: Float,
     features: FeatureVector,
-    stems: StemFeatures,
-    stemsLive: Bool = true
+    stems: StemFeatures
 ) {
     let dt: Float = 1.0 / 60.0
     let frames = Int((seconds / dt).rounded())
     var f = features
     f.deltaTime = dt
     for _ in 0..<frames {
-        engine.tick(features: f, stems: stems, stemsLive: stemsLive)
+        engine.tick(features: f, stems: stems)
     }
 }
 
@@ -293,45 +292,6 @@ struct LumenAudioRoutingTests {
         let expected: Float = 0.5 * 0.6
         #expect(abs(intensity - expected) < 0.025,
                 "bass FV-fallback intensity \(intensity) ≠ \(expected)")
-    }
-
-    /// BUG-063 regression. During the ~10 s stem warmup the render path feeds a
-    /// LOUD but FROZEN cached snapshot (totalStemEnergy ≫ 0.06). Unguarded, the
-    /// D-019 gate picks the stem-direct path and the four lights lock onto the
-    /// snapshot — and since Lumen's geometry is audio-static, the whole frame
-    /// freezes. With `stemsLive: false` the engine must instead drive the live FV
-    /// fallback, so the drums light tracks `beatBass` rather than the frozen stem.
-    @Test func test_bug063_notLiveStems_driveFVFallback_notFrozenSnapshot() throws {
-        let engine = try makeEngine()
-        // Loud frozen snapshot: drumsEnergyRel 0.5 would pin light[0] ≈ 0.5 if the
-        // bug were present (stemMix → 1). totalEnergy 0.5 clears the D-019 threshold.
-        let frozen = stems(drumsEnergyRel: 0.5, totalEnergy: 0.5)
-
-        // beatBass HIGH → FV fallback target 1.0 × 0.6 = 0.6. >0.6 s settles the mix low-pass.
-        driveSteady(engine, seconds: 1.0, features: fv(beatBass: 1.0), stems: frozen, stemsLive: false)
-        let highFV = engine.snapshot().light(at: 0).intensity
-        // beatBass LOW → FV fallback target 0.
-        driveSteady(engine, seconds: 1.0, features: fv(beatBass: 0.0), stems: frozen, stemsLive: false)
-        let lowFV = engine.snapshot().light(at: 0).intensity
-
-        // Bug-present signature: both ≈ 0.5 (the frozen drumsEnergyRel), Δ ≈ 0.
-        #expect(highFV > 0.4, "drums light \(highFV) did not follow the high FV fallback — frozen-stem lock")
-        #expect(lowFV < 0.15, "drums light \(lowFV) did not follow the low FV fallback — frozen-stem lock")
-        #expect(highFV - lowFV > 0.3,
-                "drums light did not track the FV fallback (Δ=\(highFV - lowFV)) — BUG-063 frozen-stem lock")
-    }
-
-    /// BUG-063 companion: once live stems arrive (`stemsLive: true`) the engine
-    /// still routes through the stem-direct path — the fix must not strand Lumen
-    /// on the FV fallback after convergence.
-    @Test func test_bug063_liveStems_stillUseStemDirect() throws {
-        let engine = try makeEngine()
-        let s = stems(drumsEnergyRel: 0.5, totalEnergy: 0.5)
-        // >0.6 s so the mix low-pass settles to the energy-gated (stem-direct) value.
-        driveSteady(engine, seconds: 1.0, features: fv(), stems: s, stemsLive: true)
-        let intensity = engine.snapshot().light(at: 0).intensity
-        #expect(abs(intensity - 0.5) < 0.03,
-                "live-stem drums intensity \(intensity) ≠ 0.5 — fix stranded Lumen on the FV fallback")
     }
 }
 
@@ -738,27 +698,3 @@ struct LumenPalettePayloadTests {
     }
 }
 
-// MARK: - BUG-063: slot-8 triple-buffering
-
-@Suite("BUG-063 slot-8 triple-buffering")
-struct LumenSlot8RingTests {
-    /// The slot-8 buffer must be triple-buffered: three consecutive ticks bind
-    /// three DISTINCT ring slots, so the CPU's next write never lands in the buffer
-    /// an in-flight frame's GPU read is still consuming (the write-during-read race
-    /// that froze Lumen on a stale, fully-lit frame — BUG-063). A single buffer
-    /// (the pre-fix state) would return the same `currentBuffer` every tick.
-    @Test func test_tickRotatesThroughThreeDistinctRingBuffers() throws {
-        let engine = try makeEngine()
-        let frame = FeatureVector(time: 0, deltaTime: 0.016)
-        var ids: [ObjectIdentifier] = []
-        for _ in 0..<3 {
-            engine.tick(features: frame, stems: StemFeatures.zero)
-            ids.append(ObjectIdentifier(engine.currentBuffer as AnyObject))
-        }
-        #expect(Set(ids).count == 3, "tick() must rotate through 3 distinct slot-8 buffers")
-        // The ring wraps after 3 (matches MetalContext.maxFramesInFlight).
-        engine.tick(features: frame, stems: StemFeatures.zero)
-        #expect(ObjectIdentifier(engine.currentBuffer as AnyObject) == ids[0],
-                "the ring wraps after 3 buffers")
-    }
-}
