@@ -45,6 +45,11 @@ constant float  kGlazePokeRadius = 0.2;                  // source pixel_eqs `r 
 // bound the R-channel +0.006 grow; on our float buffer that grow floods to white (the Nacre
 // float-bloom lesson). A gentle decay equilibrates R at ~0.006·d/(1−d) instead of saturating.
 constant float  kGlazeWarpDecay = 0.96;   // persistence = how many nested seed-rings the zoom accretes
+// GLAZE.4 — the comp's flat brightness floor, THE wash knob. The source's `+1.0` lift read bright
+// everywhere and (with the accumulating field) crept to a white wash over minutes of playback;
+// dropping it to 0.4 gives the oracle's dark ground with bright structure standing out. Raise toward
+// 1.0 for a brighter ground, lower for darker. (Validated at playback length — 8000 frames, both tracks.)
+constant float  kGlazeCompLift = 0.4;
 
 // MARK: - Palette (the source's saturated neon rotation; substitutes butterchurn hue_shader)
 // Slow red→green→teal→violet drift. Values in [0.2, 1.0] so the comp's `pow(hue, g9)` mix
@@ -220,7 +225,12 @@ fragment float4 glaze_warp_fragment(
     // the unsharp instability is gone (it would have amplified any noise into grain before).
     float seed = exp(-dCurve * dCurve * 500.0) * 0.12
                + (glazeValueNoise(in.uv * 2.0 + gu.time * 0.03) - 0.5) * 0.03;
-    ret.x += seed; ret.y += seed;
+    // GLAZE.4: SELF-LIMITING seed injection — add proportional to the remaining headroom (1−ret), so
+    // the seed fully fills DARK regions but adds nothing where the field is already bright. The plain
+    // `+= seed` let the accumulator creep toward white over MINUTES (a contributor to the wash); gating
+    // by headroom bounds it at a stable sub-white equilibrium (halves the saturated-highlight fraction
+    // at playback length) while keeping structure in the valleys.
+    ret.x += seed * (1.0 - ret.x); ret.y += seed * (1.0 - ret.y);
 
     // Bounding decay (the float-bloom fix; the source's 8-bit storage bounded this implicitly).
     return float4(clamp(ret * kGlazeWarpDecay, 0.0, 1.0), 1.0);
@@ -253,7 +263,7 @@ fragment float4 glaze_comp_fragment(
     ret += 0.6 * blur1.sample(s, uv).rgb;
     ret -= (blur2.sample(s, uvB).rgb - blur1.sample(s, uvB).rgb);
     ret += 1.2 * mainTex.sample(s, uvB).rgb + 0.15 * blur1.sample(s, uvB).rgb;
-    ret += 1.0;
+    ret += kGlazeCompLift;   // GLAZE.4: was +1.0 — the flat brightness floor that washed the field over time
 
     float  g9 = dot(ret, kGlazeLuma);
     float3 tint = 0.75 * float3(g9) * dot(0.6 * blur3.sample(s, uvA).rgb
