@@ -56,7 +56,10 @@ struct PresetLoaderCompileFailureTest {
     /// 21 → 22 at FLORET.2a (Floret — port of butterchurn `Sunflower Passion` onto the
     /// same custom-warp+comp mv_warp branch; direct + mv_warp, HDR feedback; family
     /// `hypnotic`). WIP wiring stub, not certified (cert at FLORET.4).
-    static let expectedProductionPresetCount = 22
+    /// 22 → 23 at PHYS.2 (Filigree — physarum agent-network graduated from the throwaway
+    /// sketch; family `particles`, `PhysarumGeometry` conformer). Not certified (cert at
+    /// PHYS.5 after Matt's live M7, per the Nacre precedent). See docs/presets/FILIGREE_DESIGN.md.
+    static let expectedProductionPresetCount = 23
 
     @Test("PresetLoader.presets.count matches expectedProductionPresetCount — catches Failed Approach #44 silent drops")
     func test_presetLoaderProductionCount() {
