@@ -28,7 +28,7 @@ struct FloretUniforms {
     var spin: Float = 0                // FLORET.3a: bass-accumulated rotation angle (rad) → comp spin
     var texel: SIMD2<Float> = .init(1, 1)
     var barPush: Float = 0             // FLORET.3a: downbeat envelope → comp camera magnify (beat-lock)
-    var pad0: Float = 0
+    var drumSparkle: Float = 0         // FLORET.3b: drum-onset envelope → twinkle at the filament tips
     var aspect: SIMD4<Float> = .init(1, 1, 1, 1)
 }
 
@@ -81,6 +81,14 @@ extension RenderPipeline {
         // envelope on the cached BeatGrid's barPhase01 → the comp magnifies the field on the
         // downbeat (display-stage, no smear). Static on beatless tracks. (Nacre NACRE.4.)
         uni.barPush = pow(max(0, 1 - features.barPhase01), 2.5)
+
+        // ── Drum sparkle ← the drums-stem onset (FLORET.3b) ───────────────────────
+        // Twinkle intensity at the filament tips tracks the drum onset (drumsBeat — the real
+        // percussion onset, phase-correct, and the dynamic channel here since raw treble is dead).
+        // Used directly (drumsBeat already carries an onset envelope) — no extra accumulator, which
+        // keeps RenderPipeline under its type/line-length caps (FLORET_PLAN §12 — the god-class
+        // is full; a 3rd Floret accumulator wouldn't fit, and the look doesn't need it).
+        uni.drumSparkle = min(1.0, max(0, stems.drumsBeat))
 
         let size = mvWarpDrawableSize
         let wPx = max(Float(size.width), 1), hPx = max(Float(size.height), 1)
