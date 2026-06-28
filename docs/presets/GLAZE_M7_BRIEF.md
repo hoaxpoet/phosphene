@@ -44,7 +44,11 @@ GLAZE_MVWARP_DIAG=1 GLAZE_W=600 GLAZE_H=450 GLAZE_FRAMES=600 GLAZE_ENERGY=0 \
 
 **⚠️ Run the WORKTREE build, not your usual app.** Glaze only exists on this worktree branch — your
 primary/canonical app (on `main`) has no Glaze, which is why cycling showed nothing. A fresh worktree build
-was made for GLAZE.3 (`xcodebuild build` BUILD SUCCEEDED at `3d71fed`; the bundle below is current). Open it directly:
+is kept current (rebuilt each increment; the bundle below is fresh).
+
+**⚠️⚠️ QUIT every running Phosphene first.** The worktree build and your canonical app share the bundle ID
+`com.phosphene.app`, so if a Phosphene is already running, `open <worktree path>` just re-focuses the RUNNING
+one (your canonical, no Glaze) — it will NOT launch the worktree build. ⌘Q all of them (check Force-Quit), THEN:
 
 ```sh
 open ~/Library/Developer/Xcode/DerivedData/PhospheneApp-fjevhlmowimaxjdcdeahnfybpseg/Build/Products/Debug/PhospheneApp.app
