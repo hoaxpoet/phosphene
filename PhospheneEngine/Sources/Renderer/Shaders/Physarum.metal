@@ -37,6 +37,7 @@ struct PhysConfig {
     float decay;            // per-frame trail multiply, energy-scaled toward persistence
     float collapseEnv;      // 0..1 collapse pulse — perturbs headings + gentle trail dip
     float energyEnv;        // 0..1 smoothed energy — palette + consolidation
+    float explore;          // heading-noise gain — drives cell DIVIDING (PHYS.5)
     uint  paletteId;        // 0 biolum · 1 physarum · 2 kintsugi (display only)
 };
 
@@ -80,6 +81,25 @@ kernel void physarum_agents(device PhysAgent*    agents [[buffer(0)]],
     PhysAgent a = agents[gid];
     float2 size = float2(cfg.width, cfg.height);
 
+    // Re-seed RESPAWN (PHYS.5 option A "divide"): during a re-seed, agents teleport to
+    // uniform-random positions so the regrown network is FINE (like startup). Scattering
+    // headings alone leaves agents clustered on the old coarse veins → they re-aggregate
+    // coarse. Probabilistic per frame so over the ~0.6 s re-seed the whole population
+    // redistributes uniformly, then re-grows a fresh fine web as energy returns.
+    if (cfg.collapseEnv > 0.001) {
+        float rr = phys_hash(gid * 2654435761u + cfg.frame * 40503u);
+        if (rr < cfg.collapseEnv * 0.12) {
+            float hx = phys_hash(gid * 668265263u + cfg.frame * 374761u);
+            float hy = phys_hash(gid * 2246822519u + cfg.frame * 3266489917u);
+            a.pos = float2(hx, hy) * size;
+            a.heading = phys_hash(gid * 374761393u + cfg.frame * 668265u) * 6.2831853;
+            a.age = 0.0;
+            // Relocate only — no instant deposit. The agent senses + deposits normally
+            // below from its new spot, so the re-seed reads as a smooth coarse→fine
+            // crossfade as the old veins fade, not a bright uniform-deposit flash.
+        }
+    }
+
     // Sense the trail ahead, ahead-left, ahead-right at sensorDistance.
     float sd = cfg.sensorDistance, sa = cfg.sensorAngle;
     float2 dF = float2(cos(a.heading),      sin(a.heading));
@@ -109,6 +129,16 @@ kernel void physarum_agents(device PhysAgent*    agents [[buffer(0)]],
     if (cfg.collapseEnv > 0.001) {
         float jitter = phys_hash(gid * 668265263u + cfg.frame * 374761u) - 0.5;
         a.heading += jitter * cfg.collapseEnv * 2.5;
+    }
+
+    // Exploration (PHYS.5): random heading noise so agents leave established veins and
+    // lay new paths in open cells — the mechanism that makes cells DIVIDE (the uphill
+    // counterpart to merging, which is just veins decaying). High at low energy →
+    // subdivide into many cells; low at high energy → let cells consolidate. A baseline
+    // keeps the network perpetually restless so merging+dividing never freezes.
+    if (cfg.explore > 0.0001) {
+        float je = phys_hash(gid * 2246822519u + cfg.frame * 3266489917u) - 0.5;
+        a.heading += je * cfg.explore;
     }
 
     // Step forward; wrap toroidally into [0,size).
@@ -149,9 +179,11 @@ kernel void physarum_diffuse(constant PhysConfig& cfg [[buffer(0)]],
     uint count = atomic_load_explicit(&acc[gid.y * W + gid.x], memory_order_relaxed);
     float deposit = sqrt(float(count)) * cfg.depositF;
 
-    // Decay toward persistence; collapse adds a gentle, bounded dip. Clamp
-    // keeps the sqrt mapping stable under feedback (§9 precision risk).
-    float decay = cfg.decay * (1.0 - 0.15 * cfg.collapseEnv);
+    // Decay toward persistence. The re-seed (collapseEnv, PHYS.5 option A) strongly
+    // clears the trail so the consolidated veins dissolve and a fresh fine web can
+    // regrow — physarum ratchets to coarse, so this trail wipe is the only way to
+    // "divide" back. Clamp keeps the sqrt mapping stable under feedback.
+    float decay = cfg.decay * (1.0 - 0.20 * cfg.collapseEnv);
     float v = blurred * decay + deposit;
     dst.write(float4(clamp(v, 0.0, 1.5), 0.0, 0.0, 1.0), gid);
 }
