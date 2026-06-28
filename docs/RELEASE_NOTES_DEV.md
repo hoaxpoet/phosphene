@@ -10,6 +10,10 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-28-212024] Filigree — physarum agent-network preset CERTIFIED (energy-accompaniment)
+
+Filigree, a physarum (slime-mold) agent network, is certified. Its gold web's cell structure tracks the music's energy — loud passages divide it into a fine, busy lattice; quiet passages merge it into a few large, calm cells — with a per-beat pulse, on the Kintsugi palette (gold veins on pure black). It graduated from a throwaway sketch (proven framerate, look, flash-safety), then went through a sync arc: three live reviews found it a strong *accompaniment* but not tightly beat-synced, diagnosed to the trail substrate (it couples smoothly to continuous energy; event-locked "bursts" land rarely and blend into the continuous loud=fine state). Certified on that basis; tightly-synced cell division (mitosis) is a planned separate reaction-diffusion preset. First certified compute-agent-network preset — runs on existing paths (per-frame compute + atomic accumulator + ping-pong trail + particle-mode draw), no new engine primitive. Flash-safe (0.00 flashes/s, measured in the real headless harness).
+
 ## [dev-2026-06-27-213626] BUG-063 — the slot-8 triple-buffer "fix" was the regression; reverted Lumen to known-good
 
 Matt (session `…T21-14-35Z`): Lumen Mosaic "worked like a dream before" and is now frozen for nearly the whole playback — it "moved twice," with a faint beat pulse but **no cell-colour change** — "possibly the worst yet." That reframed BUG-063 as a **regression we introduced**, not a latent bug.
