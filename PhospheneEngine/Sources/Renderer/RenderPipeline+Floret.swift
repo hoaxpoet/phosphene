@@ -28,7 +28,7 @@ struct FloretUniforms {
     var spin: Float = 0                // FLORET.3a: bass-accumulated rotation angle (rad) → comp spin
     var texel: SIMD2<Float> = .init(1, 1)
     var barPush: Float = 0             // FLORET.3a: downbeat envelope → comp camera magnify (beat-lock)
-    var pad0: Float = 0
+    var bassKick: Float = 0            // FLORET.3b: bass-onset impulse → radial shockwave ripple
     var aspect: SIMD4<Float> = .init(1, 1, 1, 1)
 }
 
@@ -39,6 +39,10 @@ struct FloretUniforms {
 private let kFloretSwellSmooth: Float = 0.03      // ~0.5 s EMA at 60 fps
 private let kFloretSpinBase: Float = 0.0015       // rad/frame floor (alive at silence)
 private let kFloretSpinBassGain: Float = 0.020    // rad/frame added at full bass (matches kFloretSpinMax)
+// FLORET.3a tuning (Matt M7: motion too subtle). On modest-bass tracks (Love Rehab bassDev p90
+// 0.16) the bass term barely lifts the spin off its floor → add an energy term so the field also
+// turns more when the mix fills out (avg-stem envelope, the fuller signal).
+private let kFloretSpinEnergyGain: Float = 0.014  // rad/frame added at full avg-stem energy
 
 extension RenderPipeline {
 
@@ -69,6 +73,7 @@ extension RenderPipeline {
         // comp re-samples the already-rotated field, so even a small rate reads as a clear spin.
         let bassKick = tanh(max(0, features.bassDev))
         floretSpin += kFloretSpinBase + kFloretSpinBassGain * bassKick
+                    + kFloretSpinEnergyGain * floretSwellEMA   // 3a tuning: turn more when the mix fills out
         uni.spin = floretSpin
 
         // ── Beat-lock camera push ← the cached downbeat (FLORET.3a) ───────────────
@@ -76,6 +81,13 @@ extension RenderPipeline {
         // envelope on the cached BeatGrid's barPhase01 → the comp magnifies the field on the
         // downbeat (display-stage, no smear). Static on beatless tracks. (Nacre NACRE.4.)
         uni.barPush = pow(max(0, 1 - features.barPhase01), 2.5)
+
+        // ── Bass kick ← the bass-onset deviation (FLORET.3b) ──────────────────────
+        // A percussive impulse → the comp's radial shockwave ripple (the whole field punches on
+        // the kick). bassDev is impulse-like (spikes on onset, ~0 between — p99 ~1.0, median ~0),
+        // so it's used directly, soft-saturated (tanh); a punch is meant to be sharp, so no
+        // envelope/accumulator is needed (which also keeps RenderPipeline under its caps, §12).
+        uni.bassKick = tanh(max(0, features.bassDev))
 
         let size = mvWarpDrawableSize
         let wPx = max(Float(size.width), 1), hPx = max(Float(size.height), 1)

@@ -133,31 +133,33 @@ struct PhysarumSketchRenderTests {
         #expect(variance > 0.002, "network must have vein/gap structure, not a flat field: var \(variance)")
     }
 
-    // MARK: - Criterion 4: collapse-regrow is flash-safe
+    // MARK: - Criterion 4: the re-seed burst is a bounded, gradual transient
 
-    @Test("Collapse holds steady global luminance (flash-safe re-route, not a blackout)")
-    func test_collapseFlashSafe() throws {
+    /// The re-seed "divide" (PHYS.5 option A) is a deliberate dramatic transient — the
+    /// web bursts to fine then merges back — so it is NOT steady luminance. The flash
+    /// bar for it: GRADUAL (no single-frame strobe/cut) and BOUNDED (never a full black-
+    /// or white-out). It's rare (per-phrase, 2.5 s cooldown), so not a seizure strobe.
+    @Test("Re-seed burst is a bounded, gradual transient (no strobe, no black/white-out)")
+    func test_reseedBurstBounded() throws {
         let ctx = try MetalContext()
         let lib = try ShaderLibrary(context: ctx)
         let geo = try makeGeo(ctx, lib, PhysarumConfiguration(), pixelFormat: ctx.pixelFormat)
         let tex = try target(ctx, 640, 360)
         var t: Float = 0
-        for _ in 0..<300 { let (f, s) = energetic(t); try frame(geo, f, s, tex, ctx); t += 1.0 / 60.0 }  // settle to veins
-
-        var baseline: Float = 0
-        for _ in 0..<60 { let (f, s) = energetic(t); try frame(geo, f, s, tex, ctx); baseline += lumaStats(tex, 640, 360).mean; t += 1.0 / 60.0 }
-        baseline /= 60.0
-
+        for _ in 0..<240 { let (f, s) = energetic(t); try frame(geo, f, s, tex, ctx); t += 1.0 / 60.0 }  // settle
         geo.requestCollapse()
-        var minL: Float = .greatestFiniteMagnitude, maxL: Float = 0
-        for _ in 0..<120 {   // 2 s across the collapse + regrow
+        var prev = lumaStats(tex, 640, 360).mean
+        var maxDelta: Float = 0, lo: Float = prev, hi: Float = prev
+        for _ in 0..<150 {   // burst + settle (~2.5 s)
             let (f, s) = energetic(t); try frame(geo, f, s, tex, ctx)
             let m = lumaStats(tex, 640, 360).mean
-            minL = min(minL, m); maxL = max(maxL, m); t += 1.0 / 60.0
+            maxDelta = max(maxDelta, abs(m - prev)); lo = min(lo, m); hi = max(hi, m); prev = m
+            t += 1.0 / 60.0
         }
-        print(String(format: "[PHYS] collapse luma: baseline %.3f  min %.3f  max %.3f", baseline, minL, maxL))
-        #expect(minL > 0.6 * baseline, "collapse must not crater luminance (flash-safe): min \(minL) vs baseline \(baseline)")
-        #expect(maxL < 1.6 * baseline, "collapse must not spike luminance (flash-safe): max \(maxL) vs baseline \(baseline)")
+        print(String(format: "[PHYS] reseed burst: maxΔ/frame %.3f  range %.3f–%.3f", maxDelta, lo, hi))
+        #expect(maxDelta < 0.12, "re-seed must be gradual, not a single-frame strobe: maxΔ \(maxDelta)")
+        #expect(lo > 0.02, "re-seed must not black out: min \(lo)")
+        #expect(hi < 0.97, "re-seed must not white out: max \(hi)")
     }
 
     // MARK: - Criterion 3 (PHYS.4): per-beat accent reads AND stays flash-safe
@@ -409,6 +411,123 @@ struct PhysarumSketchRenderTests {
                 if phase == 20 { try writePNG(tex, w, h, outDir.appendingPathComponent("phys_beat_off.png")); shot += 1 }
             }
         }
+    }
+
+    /// Count dark "cells" (enclosed regions below a luma floor) above a min area —
+    /// a proxy for merge (count drops) / divide (count rises). 4-connected flood fill.
+    private func countCells(_ tex: MTLTexture, _ w: Int, _ h: Int) -> Int {
+        var px = [UInt8](repeating: 0, count: w * h * 4)
+        tex.getBytes(&px, bytesPerRow: w * 4, from: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0)
+        var dark = [Bool](repeating: false, count: w * h)
+        for i in 0..<(w * h) {
+            let lum = (0.299 * Float(px[i * 4 + 2]) + 0.587 * Float(px[i * 4 + 1]) + 0.114 * Float(px[i * 4])) / 255
+            dark[i] = lum < 0.12
+        }
+        var seen = [Bool](repeating: false, count: w * h)
+        var stack = [Int](); var count = 0
+        let minArea = (w * h) / 2000
+        for start in 0..<(w * h) where dark[start] && !seen[start] {
+            var area = 0; stack.removeAll(keepingCapacity: true); stack.append(start); seen[start] = true
+            while let p = stack.popLast() {
+                area += 1; let x = p % w, y = p / w
+                if x > 0, dark[p - 1], !seen[p - 1] { seen[p - 1] = true; stack.append(p - 1) }
+                if x < w - 1, dark[p + 1], !seen[p + 1] { seen[p + 1] = true; stack.append(p + 1) }
+                if y > 0, dark[p - w], !seen[p - w] { seen[p - w] = true; stack.append(p - w) }
+                if y < h - 1, dark[p + w], !seen[p + w] { seen[p + w] = true; stack.append(p + w) }
+            }
+            if area > minArea { count += 1 }
+        }
+        return count
+    }
+
+    /// Merge/divide arc (PHYS.5): energy quiet → loud → quiet so cells should merge
+    /// (count drops) then divide (count rises). Dumps labelled stills + a dense
+    /// sequence for a GIF, and prints cell counts. (RENDER_VISUAL=1.)
+    @Test("Render merge/divide arc (RENDER_VISUAL=1)")
+    func test_render_mergedivide() throws {
+        guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else { return }
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let cfg = PhysarumConfiguration()
+        let geo = try makeGeo(ctx, lib, cfg, pixelFormat: ctx.pixelFormat)
+        let w = cfg.width, h = cfg.height
+        let tex = try target(ctx, w, h)
+        var base = URL(fileURLWithPath: #filePath)
+        for _ in 0..<5 { base.deleteLastPathComponent() }
+        let dir = base.appendingPathComponent("tools/physarum_sketch/frames/motion_md", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        var t: Float = 0; var seq = 0
+        // energy(level) over the arc, by elapsed seconds
+        func levelAt(_ s: Float) -> Float {
+            if s < 4 { return 0.10 }       // quiet → coarse (merge)
+            if s < 10 { return 0.85 }      // SURGE (drop) at 4 s → burst → fine, sustained
+            if s < 15 { return 0.10 }      // fade → merge back to coarse
+            if s < 21 { return 0.85 }      // 2nd surge → burst again
+            return 0.10
+        }
+        let total = 22 * 60
+        for fr in 0..<total {
+            let s = Float(fr) / 60
+            let lvl = levelAt(s)
+            var f = FeatureVector(time: t, deltaTime: 1.0 / 60.0); f.bass = lvl; f.mid = lvl * 0.85
+            var st = StemFeatures()
+            st.bassEnergy = lvl; st.drumsEnergy = lvl; st.otherEnergy = lvl * 0.8; st.vocalsEnergy = lvl * 0.5
+            let ph = fr % 24
+            st.drumsEnergyDev = ph < 2 ? 1.0 * lvl : 0.03
+            try frame(geo, f, st, tex, ctx); t += 1.0 / 60.0
+            if fr % 4 == 0 { try writePNG(tex, w, h, dir.appendingPathComponent(String(format: "f_%03d.png", seq))); seq += 1 }
+        }
+        // Labelled stills + cell counts at the arc's key moments (re-run deterministic arc).
+        let geo2 = try makeGeo(ctx, lib, cfg, pixelFormat: ctx.pixelFormat)
+        t = 0
+        let shots: [(Float, String)] = [(3.5, "0_quiet_coarse"), (5.0, "1_burst_fine"), (9.0, "2_loud_fine"), (14.0, "3_faded_coarse"), (20.0, "4_burst2")]
+        var si = 0
+        for fr in 0..<total {
+            let s = Float(fr) / 60; let lvl = levelAt(s)
+            var f = FeatureVector(time: t, deltaTime: 1.0 / 60.0); f.bass = lvl; f.mid = lvl * 0.85
+            var st = StemFeatures()
+            st.bassEnergy = lvl; st.drumsEnergy = lvl; st.otherEnergy = lvl * 0.8; st.vocalsEnergy = lvl * 0.5
+            st.drumsEnergyDev = (fr % 24) < 2 ? 1.0 * lvl : 0.03
+            try frame(geo2, f, st, tex, ctx); t += 1.0 / 60.0
+            if si < shots.count, s >= shots[si].0 {
+                let cells = countCells(tex, w, h)
+                print("[PHYS] md \(shots[si].1): energy=\(String(format: "%.2f", geo2.currentEnergyEnv)) cells=\(cells)")
+                try writePNG(tex, w, h, base.appendingPathComponent("tools/physarum_sketch/frames/md_\(shots[si].1).png"))
+                si += 1
+            }
+        }
+    }
+
+    /// Can a collapse serve as the DIVIDE event? Settle coarse (loud), then drop to
+    /// low energy + collapse, and see if the network re-subdivides to a fine web.
+    /// (RENDER_VISUAL=1.)
+    @Test("Render collapse-as-divide check (RENDER_VISUAL=1)")
+    func test_render_collapseDivide() throws {
+        guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else { return }
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let cfg = PhysarumConfiguration()
+        let geo = try makeGeo(ctx, lib, cfg, pixelFormat: ctx.pixelFormat)
+        let w = cfg.width, h = cfg.height
+        let tex = try target(ctx, w, h)
+        var u = URL(fileURLWithPath: #filePath)
+        for _ in 0..<5 { u.deleteLastPathComponent() }
+        let outDir = u.appendingPathComponent("tools/physarum_sketch/frames", isDirectory: true)
+        var t: Float = 0
+        func step(_ lvl: Float) throws {
+            var f = FeatureVector(time: t, deltaTime: 1.0 / 60.0); f.bass = lvl; f.mid = lvl * 0.85
+            var s = StemFeatures()
+            s.bassEnergy = lvl; s.drumsEnergy = lvl; s.otherEnergy = lvl * 0.8; s.vocalsEnergy = lvl * 0.5
+            try frame(geo, f, s, tex, ctx); t += 1.0 / 60.0
+        }
+        for _ in 0..<420 { try step(0.90) }                     // settle coarse
+        let coarse = countCells(tex, w, h)
+        try writePNG(tex, w, h, outDir.appendingPathComponent("md_collapse_before.png"))
+        geo.requestCollapse()                                   // the divide event
+        for _ in 0..<360 { try step(0.12) }                     // low energy → re-subdivide
+        let fine = countCells(tex, w, h)
+        try writePNG(tex, w, h, outDir.appendingPathComponent("md_collapse_after.png"))
+        print("[PHYS] collapse-as-divide: coarse=\(coarse) → after collapse+low energy=\(fine)")
     }
 
     private func writePNG(_ tex: MTLTexture, _ w: Int, _ h: Int, _ url: URL) throws {
