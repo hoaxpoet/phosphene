@@ -10,6 +10,14 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-28-211819] BUG-064 — Lumen local-file freeze: the cell-step wrap detector missed coarse-cadence beat phases
+
+After the BUG-063 revert fixed Lumen on Spotify, Matt found it still frozen on **local files** — a correct but static mosaic, cells never recolouring, only a faint beat pulse. I'd initially guessed a "stale slot-8 GPU read." This time I didn't ship the guess — I added a **decisive buffer-binding instrument** to the `LUMEN_DIAG` probe (does the GPU bind the engine's own buffer? do the cell-step counters advance? does the bound buffer's bytes match engine state?) and had Matt run one local-file session.
+
+The probe **disproved the stale-buffer hypothesis**: `boundIsEngine=true` every frame, and the bound buffer's `bassCounter` tracked the engine state exactly — the GPU read was never the problem. What it showed instead: the **band counters stall** (bass 0→5 over 12 s, then frozen). Those counters step the cells, and they advance on a `beatPhase01` wrap detected as `prev > 0.85 && now < 0.15`. But the analyzer publishes `beatPhase01` at ~10 Hz, so on a fast track (171 BPM here) it advances in ~0.27 jumps that **skip both narrow windows** — `0.795→0.109` (prev < 0.85), `0.934→0.203` (now > 0.15) — so ~5 of ~34 beats registered, then none. The cells froze; the lights (driven off stems, separately) kept pulsing. Exactly the symptom.
+
+**Fix:** `updateBandCounters` now detects a wrap as a **half-cycle phase drop** (`prev − now > 0.5`) instead of two narrow magnitude windows. A wrap-around is always a big drop; a forward advance or a small drift-correction never is — so it catches every beat regardless of the analyzer's cadence or the track tempo, on every playback source. Regression `test_bug064_largeStepWraps_stillIncrementCounter` drives the exact recorded 171-BPM trajectory: the old detector counts **0** wraps on it, the new one counts **4**. All 32 Lumen suites + app build + swiftlint strict 0. **Code-complete, pending Matt's live confirm** the cells recolour on local files (and still on Spotify). **Lesson:** when the symptom looks like a GPU/render fault but every render value reads clean, instrument the *data path* (here: the bound buffer's bytes + the counters that feed it) before theorizing about the GPU — the freeze was an engine wrap-detector four layers upstream of the pixels.
+
 ## [dev-2026-06-27-213626] BUG-063 — the slot-8 triple-buffer "fix" was the regression; reverted Lumen to known-good
 
 Matt (session `…T21-14-35Z`): Lumen Mosaic "worked like a dream before" and is now frozen for nearly the whole playback — it "moved twice," with a faint beat pulse but **no cell-colour change** — "possibly the worst yet." That reframed BUG-063 as a **regression we introduced**, not a latent bug.
