@@ -35,6 +35,7 @@ struct GlazeUniforms {
     float  seedY;         // spring tail Y → the seed band's vertical centre (GLAZE.3b audio fill)
     float2 texel;         // (1/feedbackW, 1/feedbackH) = the source's texsize.zw
     float2 pokeCenter;    // spring tail position (cx1, cy1) — the swirl-poke centre
+    float  downbeatPush;  // GLAZE.7: camera-push envelope, peaks on the cached-grid downbeat (the "snap")
 };
 
 // MARK: - Constants
@@ -55,6 +56,10 @@ constant float  kGlazeCompLift = 0.4;
 // blooms). Display-only + bounded → wash-safe + flash-safe. Raise kGlazeBloom for a stronger glow.
 constant float  kGlazeBloom = 1.6;
 constant float  kGlazeBloomThreshold = 0.3;
+// GLAZE.7 — downbeat camera-push magnitude: the field lunges toward the viewer by this fraction on
+// the downbeat (envelope in `gu.downbeatPush`), then settles. A discrete, MOTION-based beat you can
+// SEE land (not brightness → flash-safe); the connection the smooth spring can't give (Nacre lesson).
+constant float  kGlazePush = 0.08;
 
 // MARK: - Palette (the source's saturated neon rotation; substitutes butterchurn hue_shader)
 // Slow red→green→teal→violet drift. Values in [0.2, 1.0] so the comp's `pow(hue, g9)` mix
@@ -256,7 +261,9 @@ fragment float4 glaze_comp_fragment(
     constant GlazeUniforms& gu      [[buffer(1)]]
 ) {
     constexpr sampler s(filter::linear, address::clamp_to_edge);
-    float2 uv = in.uv;
+    // GLAZE.7 downbeat camera push: lunge the whole field toward the viewer on the downbeat
+    // (sample a slightly contracted region) → a discrete, visible beat that settles back.
+    float2 uv = 0.5 + (in.uv - 0.5) * (1.0 - kGlazePush * gu.downbeatPush);
     float2 g  = gu.texel * 6.0;
     float3 gx = blur1.sample(s, uv + float2(g.x, 0)).rgb - blur1.sample(s, uv - float2(g.x, 0)).rgb;
     float3 gy = blur1.sample(s, uv + float2(0, g.y)).rgb - blur1.sample(s, uv - float2(0, g.y)).rgb;
