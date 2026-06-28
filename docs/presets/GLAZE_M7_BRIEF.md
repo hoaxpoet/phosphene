@@ -9,18 +9,17 @@ structure **seed rides the jelly's height** so it sweeps the frame. Judge: **(a)
 still read as *physical* (momentum, not twitch); (c) still the glossy gel register. The **full-field-density vs
 dark-ground** tuning (decay) is still deferred to GLAZE.4 — don't judge that as a fail.
 
-**This round = GLAZE.6 uplift B (HDR glossy bloom).** Uplift A is confirmed ("fits the music well"). B adds the
-headline glow: a soft **luminous halo around the bright glossy structure** (the "wet glaze" sheen). It's built
-display-only + bounded so it **can't** bring the wash back (warp stays the GLAZE.4 base; verified at playback
-length, and the field is flash-safe — 0.00 flashes/s on the worst-case beat train). **The check: does it read as
-a luminous, wet glossy glow — and is the strength right?** `kGlazeBloom` / `kGlazeBloomThreshold` in `Glaze.metal`
-are the knobs (strength / how much of the structure glows) — say if it wants more or less.
+**This round = GLAZE.7: a downbeat "snap" — the fix for "no connection to the music."** Your fresh-eyes critique
+was right and useful: the coupling was smooth/ambient by design (the spring integrates → motion that happens
+*alongside* the music, never *on* it). So I added a discrete **downbeat camera push** — on each downbeat the whole
+field lunges toward you and settles, one crisp beat you can SEE land (the move that finally connected Nacre). The
+smooth jelly stays underneath; this rides on top. It's motion (not a brightness flash → safe) and rides the cached
+beat-grid. **The check: does it land ON the beat and make it feel connected now?** Two things to watch: (a) the
+lunge size — `kGlazePush` in `Glaze.metal` (bigger = more emphatic); (b) whether it lands on-beat (if it feels
+consistently *off* the beat, that's the cold-start grid-phase limit, a separate thing). Uplift B's bloom is also
+in this build (the glossy glow) — still pending your eye on it too.
 
-**Still open from the session read:** uplift C ("treble shiver") — your music has almost no high treble, so C as
-specced would barely fire; we'll re-point its trigger before building it. And the dead per-stem beats
-(bass/vocals/other) — by-design or a bug to fix? Either is fine to defer past B.
-
-Branch: `claude/nice-rubin-9c10c7` (pushed through `9a010a2`; GLAZE.6 `861c9a4` local). App rebuilt below.
+Branch: `claude/nice-rubin-9c10c7` (pushed through `9a010a2`; GLAZE.6 `861c9a4` + GLAZE.7 `685927c` local). App rebuilt below.
 
 ---
 
