@@ -534,13 +534,16 @@ public final class LumenPatternEngine: @unchecked Sendable {
     // every 4 beats. Cell-team assignment is unchanged shader-side
     // (hash-derived 30/35/25/10 split with the static team).
     //
-    // Beat wrap detection thresholds: `prev > beatWrapHigh && now < beatWrapLow`.
-    // Wider band than 0.5/0.5 to handle drift-tracker jitter at lock
-    // boundaries without spurious double-fires; the band must be at
-    // least ~10% wide on each side or fast-rendering tracks can clip a
-    // wrap on a single ~16 ms tick.
-    private static let beatWrapHigh: Float = 0.85
-    private static let beatWrapLow: Float  = 0.15
+    // Beat wrap detection: a grid-beat wrap is `beatPhase01` dropping by more
+    // than half a cycle (`prev − now > beatWrapDropThreshold`). BUG-064: the
+    // earlier `prev > 0.85 && now < 0.15` two-window test assumed small per-frame
+    // phase steps. But the analyzer publishes `beatPhase01` at ~10 Hz, so on a
+    // fast track (171 BPM here) it advances in ~0.27 jumps that skip BOTH narrow
+    // windows — so most wraps went undetected, the cell-step counters stalled, and
+    // the mosaic froze while the (separately driven) lights still pulsed. A
+    // half-cycle drop catches every wrap regardless of step size; a forward
+    // advance (+step) or small drift-correction (≪ 0.5) never trips it.
+    private static let beatWrapDropThreshold: Float = 0.5
 
     private var prevBeatPhase01: Float = 0
 
@@ -898,9 +901,11 @@ public final class LumenPatternEngine: @unchecked Sendable {
     /// pattern-spawn trigger) was deleted at LM.4.4. The field stays
     /// in `LumenPatternState` for GPU ABI continuity.
     ///
-    /// Trigger source: `f.beatPhase01` wraps from `> beatWrapHigh` to
-    /// `< beatWrapLow` (each grid beat). The phase comes from the
-    /// `LiveBeatDriftTracker` when the grid is locked, or the
+    /// Trigger source: `f.beatPhase01` wrapping each grid beat, detected as a
+    /// drop of more than `beatWrapDropThreshold` (half a cycle) — robust to the
+    /// analyzer's ~10 Hz publish cadence, which advances the phase in steps far
+    /// too large for the old two-narrow-window test (BUG-064). The phase comes
+    /// from the `LiveBeatDriftTracker` when the grid is locked, or the
     /// `BeatPredictor` fallback in reactive mode pre-grid. It stays
     /// at 0 in pure silence / before any beat detection has converged
     /// — in that case no counters tick and the panel is visually
@@ -919,8 +924,8 @@ public final class LumenPatternEngine: @unchecked Sendable {
     /// fastest, treble team steps slowest. The LM.3.2 team-percentage
     /// split (30/35/25/10) is preserved on the shader side.
     private func updateBandCounters(features: FeatureVector) {
-        let beatWrapped = (prevBeatPhase01 > Self.beatWrapHigh)
-            && (features.beatPhase01 < Self.beatWrapLow)
+        let beatWrapped =
+            (prevBeatPhase01 - features.beatPhase01) > Self.beatWrapDropThreshold
 
         if beatWrapped {
             state.bassCounter += 1

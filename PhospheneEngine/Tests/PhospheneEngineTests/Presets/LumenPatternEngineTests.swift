@@ -567,6 +567,26 @@ struct LumenLM44CounterTests {
                 "trebleCounter \(snap.trebleCounter) ≠ 1 after 4 beat wraps (expected every-4 cadence)")
     }
 
+    /// BUG-064 regression: the analyzer publishes `beatPhase01` at ~10 Hz, so on a
+    /// fast track it advances in big (~0.27) steps that skip the old
+    /// `prev > 0.85 && now < 0.15` windows — wraps went undetected and the cell-step
+    /// counters stalled (Lumen froze on local files). This drives the exact recorded
+    /// 171-BPM trajectory (4 wraps: 0.795→0.109, 0.934→0.203, 0.761→0.021, 0.860→0.152
+    /// — every one has prev < 0.85 or now > 0.15, so the old test caught NONE). The
+    /// half-cycle-drop detector must count all four.
+    @Test func test_bug064_largeStepWraps_stillIncrementCounter() throws {
+        let engine = try makeEngine()
+        let phases: [Float] = [0.517, 0.795, 0.109, 0.377, 0.625, 0.934, 0.203,
+                               0.495, 0.761, 0.021, 0.330, 0.595, 0.860, 0.152]
+        let before = engine.snapshot().bassCounter
+        for phase in phases {
+            engine.tick(features: fv(beatPhase01: phase), stems: StemFeatures.zero)
+        }
+        let advanced = engine.snapshot().bassCounter - before
+        #expect(advanced == 4.0,
+                "bassCounter advanced \(advanced), expected 4 — old test missed large-step wraps (BUG-064)")
+    }
+
     /// LM.4.4: `barCounter` no longer advances under any input — its only
     /// consumer (the LM.4 pattern-spawn trigger) was deleted. The field
     /// stays in `LumenPatternState` for GPU ABI continuity. This test
