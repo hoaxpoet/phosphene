@@ -19,8 +19,8 @@ import Shared
 
 // MARK: - GlazeUniforms (matches `struct GlazeUniforms` in Glaze.metal)
 
-/// 32-byte uniform bound at fragment buffer(1) of the warp + comp passes — byte-identical
-/// to the MSL `GlazeUniforms` (time/vocalsGlow/pokeStrength/seedY | texel | pokeCenter).
+/// Per-frame uniform bound at fragment buffer(1) of the warp + comp passes — byte-identical
+/// to the MSL `GlazeUniforms` (time/vocalsGlow/pokeStrength/seedY | texel | pokeCenter | downbeatPush).
 struct GlazeUniforms {
     var time: Float = 0
     var vocalsGlow: Float = 0       // GLAZE.5: vocals presence → a small BOUNDED display glow (added to the comp lift)
@@ -28,6 +28,7 @@ struct GlazeUniforms {
     var seedY: Float = 0.5          // spring tail Y position → the seed band's vertical centre (GLAZE.3b)
     var texel: SIMD2<Float> = .init(1, 1)
     var pokeCenter: SIMD2<Float> = .init(0.5, 0.5)   // spring tail (cx1, cy1) — the poke centre
+    var downbeatPush: Float = 0     // GLAZE.7: a bounded camera-push envelope, peaks on the cached-grid downbeat
 }
 
 /// The source's 3-mass damped spring chain (frame_eqs), stepped CPU-side each frame. Masses
@@ -138,6 +139,17 @@ extension RenderPipeline {
         // sweeps up/down (full [0,1] range on real music), the bright seed paints the whole frame
         // and the zoom accretes it into the nested field (band-only when the tail idles at silence).
         uni.seedY = glazeSpring.y4
+        // GLAZE.7 — discrete DOWNBEAT PUSH envelope (the connection "snap" Matt's higher bar wants):
+        // peaks on the cached-grid downbeat (barPhase01≈0), decays over ~1/8 bar, and is GATED by
+        // energy so it's silent at silence/warmup (the grid advances barPhase01 by playback time, so
+        // during a track it fires on the downbeats). The smooth spring gives the organic body; this
+        // gives the one crisp, attributable beat you can SEE land (the Nacre connection lesson — a
+        // continuous field needs a discrete beat-locked motion). Driven by the cached BeatGrid, not
+        // live onsets, so it sidesteps the cold-start onset-phase trap (phase may still be slightly
+        // off early; a small phase error reads as a small offset, not a wrong-beat firing).
+        let pushEnv = exp(-features.barPhase01 * 8.0)
+        let pushGate = min(1.0, glazeSpring.liftEMA * 4.0)   // ≈0 at silence, ≈1 on music
+        uni.downbeatPush = pushEnv * pushGate
 
         let size = mvWarpDrawableSize
         uni.texel = SIMD2<Float>(1.0 / max(Float(size.width), 1), 1.0 / max(Float(size.height), 1))

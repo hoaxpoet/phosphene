@@ -217,6 +217,36 @@ struct GlazeMVWarpAccumulationTest {
                 "vocals glow must stay bounded ≤ ~0.12 (got \(vocalsRun.vocalsGlow)) — else it re-introduces the wash")
     }
 
+    /// GLAZE.7 mechanism gate (always run): the downbeat push peaks on the downbeat (barPhase01≈0)
+    /// with energy, is far weaker mid-bar, and is GATED OFF at silence (so the warmup/silence frame
+    /// has no spurious push). Deterministic; the live "does it land on the beat" feel is Matt's M7.
+    @Test("GLAZE.7: the downbeat push fires on the downbeat with energy, gated off at silence")
+    @MainActor
+    func test_downbeatPush_firesOnDownbeatGatedAtSilence() throws {
+        guard let ctx = try? MetalContext() else { Issue.record("No Metal device"); return }
+        guard let pipeline = try Self.makePipeline(ctx) else { Issue.record("pipeline setup failed"); return }
+        func probe(barPhase: Float, energy: Float) -> Float {
+            pipeline.glazeSpring = GlazeSpring()
+            var stems = StemFeatures.zero
+            stems.drumsEnergyRel = energy; stems.bassEnergyRel = energy
+            stems.vocalsEnergyRel = energy; stems.otherEnergyRel = energy
+            var uni = GlazeUniforms()
+            for i in 0..<120 {   // build the energy gate (liftEMA)
+                var f = FeatureVector.zero
+                f.deltaTime = Self.deltaTime; f.time = Float(i) * Self.deltaTime
+                f.barPhase01 = barPhase
+                uni = pipeline.computeGlazeUniforms(features: f, stems: stems)
+            }
+            return uni.downbeatPush
+        }
+        let onBeat = probe(barPhase: 0.0, energy: 0.8)   // downbeat + energy
+        let midBar = probe(barPhase: 0.5, energy: 0.8)   // mid-bar + energy
+        let silent = probe(barPhase: 0.0, energy: 0.0)   // downbeat + silence → gated off
+        #expect(onBeat > 0.3, "push should fire on the downbeat with energy (got \(onBeat))")
+        #expect(onBeat - midBar > 0.2, "push should snap on the downbeat, not mid-bar (on \(onBeat) vs mid \(midBar))")
+        #expect(silent < 0.02, "push MUST be gated off at silence (got \(silent)) — no push on the warmup/silence")
+    }
+
     /// Session-replay evidence (env-gated GLAZE_SESSION_CSV=<stems.csv>): drive the REAL recorded
     /// STEMS through the route and confirm the jelly actually moves on music — the FA #27-compliant
     /// evidence the closeout cites (synthetic envelopes don't prove real-audio firing). stems.csv
