@@ -33,6 +33,7 @@ struct PhysConfig {
     var decay: Float
     var collapseEnv: Float
     var energyEnv: Float
+    var explore: Float
     var paletteId: UInt32
 }
 
@@ -119,9 +120,11 @@ public final class PhysarumGeometry: ParticleGeometry, @unchecked Sendable {
     private let renderPipeline: MTLRenderPipelineState?
 
     // CPU-side music envelopes (the global-envelope coupling, like Murmuration).
-    private var energyEnv: Float = 0       // slow continuous energy → consolidation
+    private var energyEnv: Float = 0       // continuous energy → cell fineness (loud = fine)
     private var hitEnv: Float = 0          // fast drum/bass transient → per-beat accent (PHYS.4)
-    private var collapseEnv: Float = 0     // triggered pulse → dissolve/regrow accent
+    private var energySlow: Float = 0      // ~1.5 s baseline; a surge above it fires the burst
+    private var collapseEnv: Float = 0     // re-seed BURST → dissolve/regrow fine (the "divide")
+    private var burstCooldown: Float = 0   // min gap between bursts (per-phrase, not per-beat)
     private var frameCounter: UInt32 = 0
 
     public init(
@@ -280,7 +283,7 @@ public final class PhysarumGeometry: ParticleGeometry, @unchecked Sendable {
         let stemEnergy = (stems.drumsEnergy + stems.bassEnergy + stems.otherEnergy) / 3 + 0.4 * stems.vocalsEnergy
         let fullEnergy = (features.bass + features.mid) * 0.5
         let rawEnergy = fullEnergy + (stemEnergy - fullEnergy) * blend
-        energyEnv += Float(dt / (0.30 + dt)) * (rawEnergy - energyEnv)   // PHYS.4: faster than 0.45 (track surges)
+        energyEnv += Float(dt / (0.30 + dt)) * (rawEnergy - energyEnv)   // calm continuous level
 
         // Per-beat transient (PHYS.4 event channel): fast-attack / fast-release
         // envelope of the drum (+ bass) deviation primitives — the sharp signals that
@@ -290,33 +293,49 @@ public final class PhysarumGeometry: ParticleGeometry, @unchecked Sendable {
         let hitAlpha = hitRaw > hitEnv ? dt / (0.012 + dt) : dt / (0.16 + dt)
         hitEnv += Float(hitAlpha) * (hitRaw - hitEnv)
 
-        // Collapse: 0.6 s linear release after a trigger.
-        collapseEnv = max(0, collapseEnv - Float(dt) / 0.6)
+        // Re-seed BURST on an energy SURGE (PHYS.5 flip): a sharp rise above the ~1.5 s
+        // baseline — a drop / build / phrase-onset — bursts the web into a fine bright
+        // web (the "divide"), which then merges back to calm coarse cells until the next
+        // surge. This lands the divide ON the musical moment (the sync that was missing).
+        // Cooldown keeps it per-phrase, not per-beat (the per-beat pulse is `hitEnv`).
+        energySlow += Float(dt / (1.5 + dt)) * (energyEnv - energySlow)
+        burstCooldown = max(0, burstCooldown - Float(dt))
+        collapseEnv = max(0, collapseEnv - Float(dt) / 0.6)   // 0.6 s burst release
+        if energyEnv - energySlow > 0.22 && burstCooldown <= 0 && collapseEnv < 0.05 {
+            collapseEnv = 1.0
+            burstCooldown = 2.5
+        }
     }
 
     private func makeConfig() -> PhysConfig {
-        // Web is home. Sustained energy (`en`) raises the baseline consolidation
-        // (`bloomBase`); each drum/bass transient (`hit`) punches a brief bloom +
-        // motion + brightness accent on top — the per-beat event the eye locks onto
-        // (PHYS.4). Threshold lowered 0.55→0.40 to the measured real-music energyEnv
-        // range (p50 ~0.48) so the baseline tracks, not just rare peaks.
+        // PHYS.5 re-scope (Matt 2026-06-27): the spectacle is cells visibly MERGING
+        // and DIVIDING. Cell SIZE tracks energy across the full range — louder → bigger,
+        // fewer cells (merge); quieter → smaller, more cells (divide). Persistence is
+        // kept LOW so the network stays restless and the reorganisation is visibly in
+        // motion, not a frozen lattice creeping "at the speed of years". The per-beat
+        // `hit` nudges toward merge (a pulse of consolidation), so beats read as the web
+        // briefly pulling cells together.
         let en = max(0, min(1.2, energyEnv))
         let hit = min(1.3, hitEnv)
-        let bloomBase = Self.smoothstep(0.40, 0.90, en) * configuration.formEnergyCoupling
-        let bloom = min(1.0, bloomBase + 0.60 * hit)   // PHYS.4: bold per-beat contraction (flash-free redistribution)
+        // Flipped polarity (Matt 2026-06-27): LOUD → fine/busy/bright (divide); QUIET →
+        // few big calm cells (merge). `fine` 0=coarse, 1=fine; `hit` flicks finer on the
+        // kick. Calm baselines + moderate persistence → motion is music-driven, not churn.
+        let fine = min(1.0, Self.smoothstep(0.15, 0.85, en) * configuration.formEnergyCoupling + 0.4 * hit)
+        let explore = 0.04 + 0.30 * fine          // loud holds the fine web; quiet lets it merge
         return PhysConfig(
             width: UInt32(configuration.width),
             height: UInt32(configuration.height),
             agentCount: UInt32(configuration.agentCount),
             frame: frameCounter,
-            sensorDistance: configuration.baseSensorDistance * (1 + 1.4 * bloom),
+            sensorDistance: configuration.baseSensorDistance * Self.mix(2.6, 1.0, fine),   // quiet coarse · loud fine
             sensorAngle: configuration.sensorAngle,
             rotationAngle: configuration.rotationAngle,
-            moveDistance: configuration.baseMoveDistance * (1 + 1.0 * bloom + 0.7 * hit),
-            depositF: configuration.baseDepositF * (0.7 + 0.7 * en + 1.0 * bloom + 0.5 * hit),
-            decay: Self.mix(0.86, 0.965, bloom),
+            moveDistance: configuration.baseMoveDistance * (Self.mix(1.6, 0.9, fine) + 0.6 * hit),
+            depositF: configuration.baseDepositF * (0.9 + 0.45 * en + 0.4 * hit),
+            decay: Self.mix(0.90, 0.93, fine),     // loud holds the fine web; quiet merges to coarse (no interior fill)
             collapseEnv: collapseEnv,
             energyEnv: en,
+            explore: explore,
             paletteId: configuration.paletteId)
     }
 

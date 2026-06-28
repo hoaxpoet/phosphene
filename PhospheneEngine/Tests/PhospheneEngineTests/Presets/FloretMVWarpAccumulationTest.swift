@@ -113,6 +113,17 @@ struct FloretMVWarpAccumulationTest {
         let maxDelta = zip(lumas, lumas.dropFirst()).map { abs($1 - $0) }.max() ?? 0
         #expect(maxDelta < 0.06,
                 "Floret per-frame mean-luma jump \(maxDelta) exceeds the flash bound — the radial pulse is strobing, not breathing (D-157).")
+
+        // FLORET.3b: re-run with the bass kick ACTIVE (constant bassDev → the radial ripple fires).
+        // The kick is a DISPLACEMENT (it moves where the field samples, not its brightness), so the
+        // whole-frame mean luma must stay stable — a large jump would mean the ripple is flashing
+        // the frame, not rippling it. Guards the new motion element.
+        var kickLumas: [Float] = []
+        _ = try Self.runFloret(ctx: ctx, width: 192, height: 128, frames: 150, energy: 0, bassDev: 0.8,
+                               perFrame: { kickLumas.append(Self.frameStats($0).meanLuma) })
+        let kickDelta = zip(kickLumas, kickLumas.dropFirst()).map { abs($1 - $0) }.max() ?? 0
+        #expect(kickDelta < 0.06,
+                "Floret bass-kick per-frame mean-luma jump \(kickDelta) exceeds the flash bound — the ripple is strobing the frame, not displacing it (D-157).")
     }
 
     // MARK: - FLORET.3a motion routes fire on real audio (evidence-based; FA #27 real session)
@@ -138,45 +149,49 @@ struct FloretMVWarpAccumulationTest {
         let pipeline = try RenderPipeline(context: ctx, shaderLibrary: lib, fftBuffer: fft, waveformBuffer: wav)
         pipeline.currentDrawableSize = CGSize(width: 192, height: 128)
 
-        var swell: [Float] = [], spin: [Float] = [], push: [Float] = []
+        var swell: [Float] = [], spin: [Float] = [], push: [Float] = [], kick: [Float] = []
         for r in rows {
             var feat = FeatureVector.zero
             feat.time = r.t; feat.bass = r.bass; feat.bassDev = r.bassDev; feat.barPhase01 = r.barPhase01
             var stm = StemFeatures.zero
             stm.drumsEnergy = r.drums; stm.bassEnergy = r.bassStem; stm.vocalsEnergy = r.vocals; stm.otherEnergy = r.other
             let u = pipeline.computeFloretUniforms(features: feat, stems: stm)
-            swell.append(u.swell); spin.append(u.spin); push.append(u.barPush)
+            swell.append(u.swell); spin.append(u.spin); push.append(u.barPush); kick.append(u.bassKick)
         }
         let swMax = swell.max() ?? 0, swMin = swell.min() ?? 0
         let spinTotal = (spin.last ?? 0) - (spin.first ?? 0)
         let spinMonotone = zip(spin, spin.dropFirst()).allSatisfy { $1 >= $0 }
         let pushMax = push.max() ?? 0, pushMin = push.min() ?? 0
-        print("[floret_routes] swell min=\(swMin) max=\(swMax) | spin total=\(spinTotal) rad monotone=\(spinMonotone) | barPush min=\(pushMin) max=\(pushMax)")
+        let kickMax = kick.max() ?? 0, kickMin = kick.min() ?? 0
+        print("[floret_routes] swell min=\(swMin) max=\(swMax) | spin total=\(spinTotal) rad monotone=\(spinMonotone) | barPush min=\(pushMin) max=\(pushMax) | bassKick min=\(kickMin) max=\(kickMax)")
         // Swell tracks the song's arc (fires + varies).
         #expect(swMax > 0.05 && (swMax - swMin) > 0.02, "swell route did not fire/vary (min \(swMin) max \(swMax))")
         // Spin accumulates a visible rotation, monotonically (never reverses).
         #expect(spinMonotone && spinTotal > 0.5, "spin route did not accumulate a visible rotation (total \(spinTotal) rad, monotone \(spinMonotone))")
         // Beat-lock push peaks on downbeats (→1) and relaxes between (the bar decay).
         #expect(pushMax > 0.9 && pushMin < 0.3, "barPush route did not pulse with the beat (min \(pushMin) max \(pushMax))")
+        // Bass kick punches on onsets (fires) and relaxes between (impulse → varies).
+        #expect(kickMax > 0.2 && (kickMax - kickMin) > 0.1, "bass-kick route did not fire/vary (min \(kickMin) max \(kickMax))")
     }
 
     /// Parse a recorded session: features.csv (time/bass/bassDev/barPhase01) + stems.csv (the four
     /// stem energies), zipped by frame index. Cols match the live logger headers. [] if unreadable.
     static func loadFloretSession(dir: String) -> [(t: Float, bass: Float, bassDev: Float, barPhase01: Float,
-                                                    drums: Float, bassStem: Float, vocals: Float, other: Float)] {
+                                                    drums: Float, bassStem: Float, vocals: Float, other: Float,
+                                                    drumsBeat: Float)] {
         let base = URL(fileURLWithPath: dir)
         guard let fTxt = try? String(contentsOf: base.appendingPathComponent("features.csv"), encoding: .utf8),
               let sTxt = try? String(contentsOf: base.appendingPathComponent("stems.csv"), encoding: .utf8) else { return [] }
         let fLines = fTxt.split(separator: "\n").dropFirst(), sLines = sTxt.split(separator: "\n").dropFirst()
         let sArr = Array(sLines)
-        var out: [(Float, Float, Float, Float, Float, Float, Float, Float)] = []
+        var out: [(Float, Float, Float, Float, Float, Float, Float, Float, Float)] = []
         for (i, line) in fLines.enumerated() {
             let c = line.split(separator: ",", omittingEmptySubsequences: false)
             guard c.count > 27, i < sArr.count else { continue }
             let s = sArr[i].split(separator: ",", omittingEmptySubsequences: false)
             guard s.count > 15 else { continue }
             out.append((Float(c[2]) ?? 0, Float(c[4]) ?? 0, max(0, Float(c[24]) ?? 0), (Float(c[26]) ?? 0) / 1000.0,
-                        Float(s[2]) ?? 0, Float(s[6]) ?? 0, Float(s[10]) ?? 0, Float(s[14]) ?? 0))
+                        Float(s[2]) ?? 0, Float(s[6]) ?? 0, Float(s[10]) ?? 0, Float(s[14]) ?? 0, Float(s[3]) ?? 0))
         }
         return out
     }
@@ -210,8 +225,9 @@ struct FloretMVWarpAccumulationTest {
         // DEV PREVIEW ONLY (not a faithfulness/pipeline claim — FA #27): a constant band
         // energy so the volume-gated seed can be eyeballed. Real-audio behaviour = Matt's M7.
         let energy = ProcessInfo.processInfo.environment["FLORET_ENERGY"].flatMap { Float($0) } ?? 0
+        let bassDev = ProcessInfo.processInfo.environment["FLORET_BASSDEV"].flatMap { Float($0) } ?? 0
         guard let display = try Self.runFloret(ctx: ctx, width: wPix, height: hPix,
-                                               frames: frames, energy: energy) else {
+                                               frames: frames, energy: energy, bassDev: bassDev) else {
             Issue.record("Floret render setup failed"); return
         }
         let outDir = FileManager.default.temporaryDirectory.appendingPathComponent("floret_mvwarp_diag")
@@ -228,7 +244,7 @@ struct FloretMVWarpAccumulationTest {
     /// constant band level (dev preview only). Returns nil on setup failure.
     @MainActor
     static func runFloret(ctx: MetalContext, width: Int, height: Int, frames: Int,
-                          energy: Float, reducedMotion: Bool = false,
+                          energy: Float, reducedMotion: Bool = false, bassDev: Float = 0,
                           perFrame: ((MTLTexture) -> Void)? = nil) throws -> MTLTexture? {
         let lib = try ShaderLibrary(context: ctx)
         let texMgr = try TextureManager(context: ctx, shaderLibrary: lib)
@@ -266,6 +282,7 @@ struct FloretMVWarpAccumulationTest {
             feat.deltaTime = deltaTime
             feat.time = Float(i) * deltaTime
             feat.bass = energy; feat.mid = energy; feat.treble = energy   // dev preview only
+            feat.bassDev = bassDev                                        // FLORET.3b bass-kick driver
             guard let cmd = ctx.commandQueue.makeCommandBuffer(),
                   let warpState = pipeline.mvWarpState else { return display }
             if reducedMotion {

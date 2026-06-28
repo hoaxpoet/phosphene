@@ -46,7 +46,7 @@ struct FloretUniforms {
     float  spin;        // FLORET.3a: bass-accumulated rotation angle (rad) → the comp field spins on bass
     float2 texel;       // (1/feedbackW, 1/feedbackH) — comp high-pass blur tap spread
     float  barPush;     // FLORET.3a: downbeat envelope (cached BeatGrid) → comp camera magnify (beat-lock)
-    float  pad0;
+    float  bassKick;    // FLORET.3b: bass-onset impulse → radial shockwave ripple (whole-field punch)
     float4 aspect;      // (aspectx, aspecty, 1/aspectx, 1/aspecty) — comp keeps the bloom round
 };
 
@@ -73,6 +73,22 @@ constant float  kFloretLumaFloor = 0.02;                 // a faint floor only (
 constant float  kFloretSwellGain = 1.1;                  // energy envelope → seed extent/brightness (warp; slow)
 constant float  kFloretPush      = 0.06;                 // downbeat camera magnify depth (comp; beat-locked, Nacre NACRE.4)
 constant float  kFloretSpinMax   = 0.020;               // max comp rotation rate (rad/frame) at full bass (motion, bounded)
+// FLORET.3a tuning (Matt M7: "synced is great, but the motion is subtle — drive the swirls
+// WITHIN the pattern by music/energy"). Revive the source's 1/r² vortex (vestigial, §10) as an
+// ENERGY-SCALED internal swirl in the warp → the filaments churn faster as the music fills out
+// (accumulates through the feedback). A separate channel from the comp's global spin (FA #67):
+// warp = internal vortex churn, comp = whole-field rotation.
+constant float  kFloretSwirlGain = 0.014;               // vortex rate (rad/frame near the core) × energy
+                                                        // (0.010→0.014, M7 #3: "a touch too subtle")
+constant float  kFloretSwirlBase = 0.40;                // energy floor so the churn never fully stops (alive)
+constant float  kFloretSwirlCore = 0.09;                // 1/(r²+core) softening — caps the centre rate
+// FLORET.3b bass kick (Matt M7 #4 pivot — drum sparkle camouflaged into the bulb field, so a
+// whole-field punch instead): a radial shockwave RIPPLE on bass onsets. A displacement channel,
+// distinct from barPush (uniform magnify) + spin/swirl (rotation) — FA #67. Unmissable (it
+// distorts the whole pattern) where fine points were lost.
+constant float  kFloretKickFreq  = 16.0;                // ripple ring frequency (radial)
+constant float  kFloretKickSpeed = 7.0;                 // ring travel speed (outward shockwave)
+constant float  kFloretKickAmp   = 0.07;                // peak radial displacement (uv) at full kick
 
 constant float3 kLuma = float3(0.299, 0.587, 0.114);
 
@@ -140,8 +156,20 @@ fragment float4 floret_warp_fragment(
 ) {
     float2 uv = in.uv;                                   // uv_orig (the source warp ignores the mesh warp)
 
-    // z² complex-conformal fold of the sample coordinate.
-    float2 p = (uv - 0.5) * kFloretFoldScale;
+    // FLORET.3a tuning: energy-scaled 1/r² vortex swirl on the SAMPLE coord only (the source's
+    // vestigial pixel_eqs vortex, revived + music-driven). Rotate the fold's sample point about
+    // centre by an angle that rises near the core and with the energy envelope → the inner
+    // filaments churn faster as the music fills out; it ACCUMULATES through the feedback (we sample
+    // the already-swirled prev), so even a small rate reads as a continuous internal swirl. This is
+    // the "swirls within the pattern" Matt asked to drive by music. (The seed below keeps in.uv, so
+    // only the fed-back field churns, not the seed placement.)
+    float2 d0 = uv - 0.5;
+    float swirl = kFloretSwirlGain * (kFloretSwirlBase + fu.swell) / (dot(d0, d0) + kFloretSwirlCore);
+    float cw = cos(swirl), sw = sin(swirl);
+    float2 suv = float2(cw * d0.x - sw * d0.y, sw * d0.x + cw * d0.y) + 0.5;
+
+    // z² complex-conformal fold of the (swirled) sample coordinate.
+    float2 p = (suv - 0.5) * kFloretFoldScale;
     float2 z2 = float2(p.x * p.x - p.y * p.y, 2.0 * p.x * p.y);
     float3 c = prev.sample(warpSampler, z2 + kFloretFoldOffset).rgb;
     c -= kFloretWarpFade;                                // subtractive decay (faithful)
@@ -194,6 +222,14 @@ fragment float4 floret_comp_fragment(
     // surges forward on the beat, settling over the bar (cached BeatGrid → barPush). The motion
     // Matt validated by eye, made real on every track (Nacre NACRE.4; display-stage → no smear).
     uv1 *= (1.0 - kFloretPush * fu.barPush);
+    // FLORET.3b bass kick (M7 #4 pivot): a radial shockwave ripple — on a bass onset the whole
+    // field punches/ripples outward, settling as the impulse decays. A displacement channel (not
+    // magnify/rotation) so it reads as a distinct percussive hit on the kick.
+    if (fu.bassKick > 0.001) {
+        float kr = length(uv1);
+        float ripple = sin(kr * kFloretKickFreq - fu.time * kFloretKickSpeed) * fu.bassKick * kFloretKickAmp;
+        uv1 += (uv1 / max(kr, 1e-4)) * ripple;
+    }
     float  tph = fu.time / 2.0;                          // radial-pulse phase (~2 s, time-driven expansion)
     float2 bs = fu.texel * kFloretBlurSpread;            // high-pass blur tap spread
 
