@@ -132,10 +132,26 @@ extension VisualizerEngine {
         let tag = bad ? (firstBad ? "FIRST-DEGENERATE" : "degenerate") : "ok"
         let intens = "[\(fmt(lights[0].intensity)) \(fmt(lights[1].intensity)) "
             + "\(fmt(lights[2].intensity)) \(fmt(lights[3].intensity))]"
+
+        // BUG-064 (local-file freeze: CPU engine alive, GPU image static): three
+        // decisive checks. (1) `counters` — do the cell-step band counters advance
+        // in the engine state? (2) `boundIsEngine` — is the buffer the GPU binds at
+        // slot 8 the engine's OWN `patternBuffer`, or a stale/different one? (3)
+        // `boundBass` — the bass counter as it sits in the GPU-readable bound buffer;
+        // if it lags `state.bassCounter`, `writeToGPU` isn't reaching the bound buffer.
+        let counters = "[\(fmt(state.bassCounter, 0)) \(fmt(state.midCounter, 0)) "
+            + "\(fmt(state.trebleCounter, 0))]"
+        let boundBuf = pipeline.boundSlot8BufferForDiag
+        let boundIsEngine = boundBuf.map { $0 === engine.patternBuffer } ?? false
+        let boundBass: Float = boundBuf.map {
+            $0.contents().bindMemory(to: LumenPatternState.self, capacity: 1).pointee.bassCounter
+        } ?? -1
+
         let msg = "LUMEN_DIAG \(tag) lights=\(lightsNonFinite ? "NONFINITE" : "finite")"
             + " f=\(lumenDiagFrame) t=\(fmt(features.time)) maxAbs=\(fmt(worstAbs, 3))"
             + " camT=\(fmt(camT, 4)) aspect=\(fmt(aspect, 3)) fov=\(fmt(fov, 3))"
             + " camPos=[\(fmt(camX)) \(fmt(camY)) \(fmt(camZ))] litTex=\(litW)x\(litH) intens=\(intens)"
+            + " counters=\(counters) boundIsEngine=\(boundIsEngine) boundBass=\(fmt(boundBass, 0))"
         sessionRecorder?.log(msg)
     }
 
