@@ -1,8 +1,21 @@
 # Filigree — physarum agent-network preset
 
-**Status:** PHYS.1 (design + references). Foundation proven in the throwaway
-sketch (framerate, look, dynamics, flash-safety) — see `git log` for the sketch
-and the `tools/physarum_sketch/` renders. Advancing to a real preset.
+**Status:** ✅ CERTIFIED 2026-06-28 (PHYS.5) as a **loose energy-accompaniment**.
+Final shipped coupling (after the sync arc PHYS.3→.5): energy drives cell merge/divide
+— LOUD → fine/busy/bright web, QUIET → few calm cells (Matt's polarity) — via a
+continuous map + a re-seed that respawns agents to regrow fine; per-beat `hit` pulse;
+flash-safe (0.00 flashes/s, real `renderFiligree` harness).
+
+**The sync finding (load-bearing for the next preset).** Three live M7s converged
+on the same verdict: physarum reads as a *good accompaniment* but **not tightly synced**
+to the music. Root cause (diagnosed off the session CSVs, not guessed): the trail
+substrate couples smoothly to the continuous energy envelope, and event-locked
+attempts don't land — the per-beat accent is subtle on the fine web, and the
+re-seed "burst" is both rare on sustained-loud tracks (the surge detector's baseline
+catches up) and redundant with the continuous loud=fine state. Tight, event-synced
+cell *division* (mitosis) is **reaction-diffusion's native behaviour**, not physarum's
+— so it is a SEPARATE planned preset, not more tuning here (Matt's call; 5 divide
+attempts + 3 sync attempts confirm the substrate limit).
 
 **Origin:** Research → organic agent networks → Drift Motes diagnosis (died of
 musical role, FA #58, not technique) → musical role locked with Matt → throwaway

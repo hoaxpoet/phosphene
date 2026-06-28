@@ -2,7 +2,7 @@
   "name": "Filigree",
   "family": "particles",
   "duration": 45,
-  "description": "A physarum (slime-mold) agent network — a fine gold searching-web on pure black that consolidates into bright load-bearing veins as the music's energy sustains, then dissolves back to searching as it thins. ~262K agents deposit onto a diffusing trail map (Jones / Bleuje / Sage-Jenson model); continuous energy brightens and quickens the web (primary), and a structural peak blooms it into consolidated veins (the drop payoff). Kintsugi palette: gold veins on pure black. Graduated from the throwaway physarum sketch (PHYS.1-2); not yet certified.",
+  "description": "A physarum (slime-mold) agent network whose cell structure tracks the music's energy: loud passages divide the gold web into a fine, busy lattice of many small cells; quiet passages merge it into a few large, calm cells. ~262K agents deposit onto a diffusing trail map (Jones / Bleuje / Sage-Jenson model); continuous energy drives the merge/divide, with a per-beat pulse on the kick. Kintsugi palette: gold veins on pure black. A loose energy-accompaniment (continuous-energy coupling, not beat-locked — the trail substrate can't carry tight event-sync; tightly-synced cell division is the separate reaction-diffusion preset). Graduated from the throwaway physarum sketch; certified PHYS.5.",
   "author": "Matt",
   "passes": ["feedback", "particles"],
   "beat_source": "bass",
@@ -21,5 +21,5 @@
   "section_suitability": ["ambient", "buildup", "peak"],
   "complexity_cost": { "tier1": 1.5, "tier2": 0.8 },
   "rubric_profile": "lightweight",
-  "certified": false
+  "certified": true
 }

@@ -67,6 +67,7 @@ struct PhotosensitivityCertificationTests {
         "Skein",          // mv_warp feedback (cream canvas-hold + per-stem paint + sheen)
         "Nacre",          // mv_warp feedback (bespoke renderNacre; downbeat camera push) — NACRE.4
         "Floret",         // mv_warp feedback (bespoke renderFloret; z² bloom + bass-kick ripple) — FLORET.4
+        "Filigree",       // particles (PhysarumGeometry trail — geometry-driven, black backdrop) — PHYS.5
     ]
 
     // MARK: - Gate
