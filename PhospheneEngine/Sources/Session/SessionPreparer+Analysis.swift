@@ -8,22 +8,6 @@ import DSP
 import Foundation
 import ML
 import Shared
-import os.log
-
-// MARK: - Prep-stage timing (acceleration analysis)
-
-// ponytail: measurement-only instrumentation for the prep-pipeline acceleration work.
-// Emits "TIMING:" lines (per-stage wall-clock ms) to session.log + Console so we have
-// real numbers before deciding what to parallelise. Remove once the prefetch-pipeline
-// increment lands and the baseline is banked. Upgrade path if kept: structured metrics
-// instead of log scraping.
-let prepTimingLogger = Logger(subsystem: "com.phosphene", category: "PrepTiming")
-
-/// Fractional milliseconds for a `Duration`. (1 ms = 1e15 attoseconds.)
-func durationMs(_ duration: Duration) -> Double {
-    let parts = duration.components
-    return Double(parts.seconds) * 1_000 + Double(parts.attoseconds) / 1_000_000_000_000_000
-}
 
 // MARK: - Internal Types
 
@@ -60,7 +44,6 @@ extension SessionPreparer {
     // analyzer warmup → MIR → beat grid → drums beat grid → grid-onset
     // calibration) — kept inline so the sequential structure stays readable.
 
-    // swiftlint:disable function_body_length
     /// Run the full analysis pipeline on a decoded preview clip.
     ///
     /// Executes stem separation → StemAnalyzer warmup → MIR analysis in sequence.
@@ -90,12 +73,8 @@ extension SessionPreparer {
         analyzer: any StemAnalyzing,
         classifier: any MoodClassifying,
         beatGridAnalyzer: (any BeatGridAnalyzing)? = nil,
-        prefetchedProfile: PreFetchedTrackProfile? = nil,
-        logTiming: (@Sendable (String) -> Void)? = nil
+        prefetchedProfile: PreFetchedTrackProfile? = nil
     ) throws -> CachedTrackData {
-
-        let clock = ContinuousClock()
-        var stageStart = clock.now
 
         // Step 1: Separate stems from preview PCM.
         let result = try separator.separate(
@@ -103,7 +82,6 @@ extension SessionPreparer {
             channelCount: 1,
             sampleRate: Float(preview.sampleRate)
         )
-        logTiming?("stem \(durationMs(clock.now - stageStart))ms")
 
         // Step 2: Read the separated stems BY VALUE (CLEAN.1.2 / BUG-031) — never
         // from the shared `separator.stemBuffers`, which the live + prep paths
@@ -111,25 +89,20 @@ extension SessionPreparer {
         let stemWaveforms = result.stemWaveforms
 
         // Step 3: Multi-frame AGC warmup → StemFeatures snapshot.
-        stageStart = clock.now
         let stemFeatures = warmUpAndAnalyze(
             stemWaveforms: stemWaveforms,
             sampleRate: Float(preview.sampleRate),
             analyzer: analyzer
         )
-        logTiming?("warmup \(durationMs(clock.now - stageStart))ms")
 
         // Step 4: Offline MIR analysis (BPM, key, mood, centroid).
-        stageStart = clock.now
         let mir = analyzeMIR(
             samples: preview.pcmSamples,
             sampleRate: preview.sampleRate,
             classifier: classifier
         )
-        logTiming?("mir \(durationMs(clock.now - stageStart))ms")
 
         // Step 5: Beat This! offline beat grid on full mix (nil analyzer → BeatGrid.empty).
-        stageStart = clock.now
         let beatGridRaw: BeatGrid
         if let gridAnalyzer = beatGridAnalyzer {
             beatGridRaw = gridAnalyzer.analyzeBeatGrid(
@@ -139,7 +112,6 @@ extension SessionPreparer {
         } else {
             beatGridRaw = .empty
         }
-        logTiming?("beatGrid \(durationMs(clock.now - stageStart))ms")
 
         // Round 26 (2026-05-15): metadata-driven meter override. The ML
         // detector sometimes guesses the meter wrong on odd
@@ -160,7 +132,6 @@ extension SessionPreparer {
         // Step 6: Beat This! offline beat grid on drums stem only (DSP.4 diagnostic).
         // Drums stem is at index 1 per StemSeparator.stemLabels: ["vocals","drums","bass","other"].
         // Same analyzer instance — the MPSGraph graph is reusable across calls (no re-init).
-        stageStart = clock.now
         let drumsBeatGrid: BeatGrid
         if let gridAnalyzer = beatGridAnalyzer, stemWaveforms.count > 1 {
             drumsBeatGrid = gridAnalyzer.analyzeBeatGrid(
@@ -170,12 +141,9 @@ extension SessionPreparer {
         } else {
             drumsBeatGrid = .empty
         }
-        logTiming?("drumsBeatGrid \(durationMs(clock.now - stageStart))ms")
 
         // Step 7 (BUG-007.8): per-track grid-vs-onset offset calibration.
-        stageStart = clock.now
         let gridOnsetOffsetMs = Self.computeGridOnsetOffsetMs(preview: preview, grid: beatGrid)
-        logTiming?("calibration \(durationMs(clock.now - stageStart))ms")
 
         let profile = TrackProfile(
             bpm: mir.bpm,
@@ -196,7 +164,6 @@ extension SessionPreparer {
             gridOnsetOffsetMs: gridOnsetOffsetMs
         )
     }
-    // swiftlint:enable function_body_length
 
     /// Replay the preview audio through the live BeatDetector offline and
     /// return the median (gridBeat − onsetTime) offset in milliseconds
