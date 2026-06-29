@@ -2741,6 +2741,24 @@ The Phase V uplift trajectory left several presets at the post-V.6 cert baseline
 
 ---
 
+## Phase RIC — Ricercar (contrapuntal visual-music painting preset, `painterly`)
+
+New preset combining two certified stacks: Skein's canvas-hold mv_warp (reconfigured to a **flowing field** — curl-noise flow warp + slow decay, Matt-confirmed 2026-06-29) carrying a small set of Filigree-class compute-agent "voices," one per orchestral register, woken/steered by the 3-band deviation primitives, with onset entry-flares + beat splatters as accents. Design: [`docs/presets/RICERCAR_DESIGN.md`](presets/RICERCAR_DESIGN.md). Showcased on Bach BWV 565 but reusable. **Feasibility (audited 2026-06-29): no new audio/feature primitives; one bounded engine bridge** (Ricercar.3.x — particle-mode deposit into the mv_warp feedback canvas, ~60 lines, RENDER_CAPABILITY_REGISTRY row added). Critical path: Ricercar.1 → 2 → 3.x → 3 → 4 → 5 → 6 → 7.
+
+### Ricercar.1 — Reference lock ✅ (doc-only, 2026-06-29)
+Design doc (`RICERCAR_DESIGN.md`) landed in-repo with the §0/§5 audit corrections (the pitch's "zero new engine surfaces" falsified → one confirmed bounded bridge); `docs/VISUAL_REFERENCES/ricercar/README.md` scaffold (trait matrix + 5 anti-references + audio routing + "still to source"); RENDER_CAPABILITY_REGISTRY row for the feedback-canvas + agent-deposit bridge (Missing → planned Ricercar.3.x). **Curated reference IMAGES pending Matt** (the second half of the reference lock — copyright-safe visual-music / Fischinger / color-organ stills, as the Skein positives were sourced by Matt); image curation gates Ricercar.2 authoring, not Ricercar.1. No code, no tests (doc-only). Open §9 decisions: name / family / lanes / Phase-2 pitch / locus (substrate fork resolved — flowing field).
+
+### Ricercar.2 — Substrate spike (planned)
+Flowing colour field: mv_warp canvas + curl-noise flow warp + slow decay, seeded per track, hand-fed colour (no audio). Gate-before-the-gate: must read as flowing/merging painterly colour before voices are added.
+
+### Ricercar.3.x — Integration bridge (infra, planned; surface scope to Matt before starting)
+`ParticleGeometry.rendersToFeedbackTexture` + `RenderPipeline+Draw.swift` reroute + `PhysarumGeometry` opt-in; golden-locked. The §0 audit confirmed this is needed (not pure config).
+
+### Ricercar.3–.7 — voices → lanes+routing → mood+arc → polish → cert (planned)
+One voice → three lanes + §3.2 audio routing (highest aesthetic iteration) → mood/three-act arc → silence/track-change/governor → certification (acceptance §8 + determinism + Matt M7 ≥5 tracks + BWV 565). Ricercar.8 (pitch contour) optional.
+
+---
+
 These milestones map to product-level outcomes, not implementation phases.
 
 **Milestone A — Trustworthy Playback Session.** ✅ **MET (2026-04-25).** A user can connect a playlist, obtain a usable prepared session, and complete a full listening session without instability. *Requires: ~~2.5.4~~ ✅, ~~Phase U increments U.1–U.7~~ ✅, ~~progressive readiness basics (6.1)~~ ✅.*
