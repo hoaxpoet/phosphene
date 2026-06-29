@@ -35,10 +35,11 @@ struct MitosisConfig {
     float feed;         // F — feed rate; slow envelope shifts the regime
     float kill;         // k — kill rate
     float dt;           // integration step (≈1.0; energy can quicken metabolism)
-    float feedBurst;    // 0..1 onset pulse → localized B injection = visible mitosis
+    float feedBurst;    // 0..1 reseed gate (cluster nucleation)
     float energyEnv;    // 0..1 smoothed energy — display brightness
     uint  paletteId;    // display only
-    float _pad;
+    float huePhase;     // music-paced accumulating hue animation (energy → speed)
+    float colorBias;    // spectral-centroid hue offset (timbre → colour)
 };
 
 // MARK: - Toroidal neighbour read (wrap for free is via % since access::read has no sampler wrap)
@@ -105,22 +106,40 @@ kernel void mitosis_react(constant MitosisConfig& cfg [[buffer(0)]],
     dst.write(float4(clamp(nA, 0.0, 1.0), clamp(nB, 0.0, 1.0), 0.0, 1.0), gid);
 }
 
-// MARK: - Fragment: colorize B for display
+// MARK: - Fragment: fluorescence-microscopy colorize (MITOSIS.2c)
 
+// "Psychedelic cell division" (Matt): magenta nuclei (cell interiors) + electric
+// cyan/green membranes (the B-gradient at cell boundaries) glowing on black — the look
+// of fluorescence microscopy of dividing cells. A slow hue shimmer over space+time gives
+// the psychedelic shift. The gradient-driven membrane sharpens the cell read (the blur
+// complaint is also addressed by the higher sim resolution).
 fragment float4 mitosis_fragment(VertexOut in [[stage_in]],
                                  constant MitosisConfig& cfg [[buffer(0)]],
                                  texture2d<float, access::sample> state [[texture(0)]]) {
     constexpr sampler s(address::repeat, filter::linear, coord::normalized);
-    float B = state.sample(s, in.uv).g;
-    float tone = pow(clamp(B * 2.4, 0.0, 1.0), 0.75);   // lift mids so spot rims read
+    float2 texel = float2(1.0 / float(cfg.width), 1.0 / float(cfg.height));
+    float bC = state.sample(s, in.uv).g;
+    float bL = state.sample(s, in.uv - float2(texel.x, 0.0)).g;
+    float bR = state.sample(s, in.uv + float2(texel.x, 0.0)).g;
+    float bD = state.sample(s, in.uv - float2(0.0, texel.y)).g;
+    float bU = state.sample(s, in.uv + float2(0.0, texel.y)).g;
+    float grad = length(float2(bR - bL, bU - bD));        // cell boundary (membrane)
 
-    // 3-stop ramp ground → membrane → nucleus. Sketch palette only (final grade
-    // is increment work, §10) — abstract cells, cyan-on-dark biological reading.
-    float3 ground = float3(0.01, 0.02, 0.03);
-    float3 membrane = float3(0.05, 0.45, 0.55);
-    float3 nucleus = float3(0.85, 0.98, 1.00);
-    float3 col = tone < 0.5 ? mix(ground, membrane, tone * 2.0)
-                            : mix(membrane, nucleus, (tone - 0.5) * 2.0);
-    col *= 0.90 + 0.30 * cfg.energyEnv;
-    return float4(col, 1.0);
+    float nucleus  = smoothstep(0.22, 0.55, bC);          // bright cell interior → nucleus stain
+    float membrane = smoothstep(0.03, 0.16, grad);        // cell boundary → membrane stain
+
+    // Psychedelic hue tied to the MUSIC (Matt MITOSIS.2c): `huePhase` accumulates
+    // energy-paced (louder → faster colour motion); `colorBias` from the spectral
+    // centroid shifts the palette with the timbre; a spatial term sends colour waves
+    // travelling across the field. The two-stain identity holds — nucleus stays in the
+    // magenta family, membrane in the cyan/green family — but both drift with the music.
+    float wave = cfg.huePhase + in.uv.x * 0.9 + in.uv.y * 0.5;
+    float nucHue = fract(0.88 + cfg.colorBias * 0.35 + 0.10 * sin(wave));         // magenta family, drifting
+    float memHue = fract(0.48 + cfg.colorBias * 0.35 + 0.10 * sin(wave + 2.0));   // cyan/green family, drifting
+    float3 nucCol = hsv2rgb(float3(nucHue, 0.95, 1.0));
+    float3 memCol = hsv2rgb(float3(memHue, 0.85, 1.0));
+
+    float3 col = nucCol * nucleus * 1.15 + memCol * membrane * 1.5;   // additive fluorescence on black
+    col *= 0.9 + 0.3 * clamp(cfg.energyEnv, 0.0, 1.0);
+    return float4(min(col, 1.4), 1.0);                    // bright cores allowed; clamp the bloom
 }

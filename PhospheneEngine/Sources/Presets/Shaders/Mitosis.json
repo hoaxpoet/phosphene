@@ -2,7 +2,7 @@
   "name": "Mitosis",
   "family": "particles",
   "duration": 45,
-  "description": "A living cell colony rendered by Gray–Scott reaction–diffusion: abstract glowing cells on dark that visibly divide (mitosis) and merge in time with the music. Drum/percussive onsets trigger visible bursts of cell division on the beat (the colony buds new cells); sustained energy sets the division rate and density, shifting the colony between sparse and teeming; cells divide and merge across the song. The discrete, localized, on-beat division reaction-diffusion delivers natively is the tight event-sync the physarum trail substrate (Filigree) could not carry. Two-texture (A,B) ping-pong compute, no new render primitive. Graduated from the throwaway reaction-diffusion sketch (MITOSIS.0).",
+  "description": "Psychedelic cell division. A Gray–Scott reaction–diffusion colony: a few cells divide into many until the field is crowded (~25–35 s), then the colony dissolves back to a few cells and regrows — a continuous birth→crowd→dissolve cycle paced by the music's energy. Rendered as fluorescence microscopy — magenta nuclei and electric cyan/green membranes glowing on black — with the hue shifting in response to the music (energy paces the colour motion, the spectral centroid biases the palette). Two-texture (A,B) ping-pong compute, no new render primitive.",
   "author": "Matt",
   "passes": ["feedback", "particles"],
   "beat_source": "bass",
