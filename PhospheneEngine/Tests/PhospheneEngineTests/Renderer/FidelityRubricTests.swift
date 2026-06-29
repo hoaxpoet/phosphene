@@ -99,6 +99,11 @@ private let expectedAutomatedGate: [String: Bool] = [
     "Arachne":              false,   // full; V.7.5 §10.1.9 — M3 fails (chitin removed from spider)
     "Aurora Veil":          true,    // lightweight; AV.2 wired seven audio routes — L1/L2/L3 all pass
     "Ferrofluid Ocean":     false,   // full; M3 fails
+    "Filigree":             false,   // lightweight; coupling (energyEnv/hitEnv from stems.*EnergyDev)
+                                     // is computed CPU-side in PhysarumGeometry and reaches the kernel
+                                     // via PhysConfig, so the MSL-source heuristic can't see it
+                                     // (Skein/Lumen precedent). Certified via Matt's M7 sign-off as a
+                                     // loose energy-accompaniment (PHYS.5; not beat-synced by design).
     "Fractal Tree":         false,   // full; M3 fails
     "Glass Brutalist":      false,   // full; M3 fails
     "Gossamer":             false,   // full; M3 fails
@@ -207,7 +212,7 @@ struct FidelityRubricGateTests {
     // (lightweight L2: deviation primitives are consumed CPU-side in
     // SkeinState, invisible to the MSL heuristic — the Lumen Mosaic
     // precedent); Matt's M7 is the load-bearing gate per SHADER_CRAFT §12.1.
-    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana", "Murmuration", "Nimbus", "Skein", "Nacre", "Floret", "Glaze"]
+    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana", "Murmuration", "Nimbus", "Skein", "Nacre", "Floret", "Glaze", "Filigree"]
 
     @Test func automatedGate_uncertifiedPresetsAreUncertified() async {
         let store = PresetCertificationStore()

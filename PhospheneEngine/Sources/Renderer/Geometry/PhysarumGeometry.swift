@@ -285,22 +285,19 @@ public final class PhysarumGeometry: ParticleGeometry, @unchecked Sendable {
         let rawEnergy = fullEnergy + (stemEnergy - fullEnergy) * blend
         energyEnv += Float(dt / (0.30 + dt)) * (rawEnergy - energyEnv)   // calm continuous level
 
-        // Per-beat transient (PHYS.4 event channel): fast-attack / fast-release
-        // envelope of the drum (+ bass) deviation primitives — the sharp signals that
-        // actually spike on real-music hits (session: drumsEnergyDev p95 ~0.83, max
-        // ~3.4), which the slow energyEnv smooths away. Warmup-gated by `blend`.
+        // Per-beat transient (PHYS.4): fast-attack/fast-release envelope of the drum
+        // (+ bass) deviation primitives — the sharp per-hit signals. Warmup-gated by `blend`.
         let hitRaw = max(stems.drumsEnergyDev, 0.7 * stems.bassEnergyDev) * blend
         let hitAlpha = hitRaw > hitEnv ? dt / (0.012 + dt) : dt / (0.16 + dt)
         hitEnv += Float(hitAlpha) * (hitRaw - hitEnv)
 
-        // Re-seed BURST on an energy SURGE (PHYS.5 flip): a sharp rise above the ~1.5 s
-        // baseline — a drop / build / phrase-onset — bursts the web into a fine bright
-        // web (the "divide"), which then merges back to calm coarse cells until the next
-        // surge. This lands the divide ON the musical moment (the sync that was missing).
-        // Cooldown keeps it per-phrase, not per-beat (the per-beat pulse is `hitEnv`).
+        // Re-seed when energy rises above its ~1.5 s baseline (a drop/build): respawns
+        // agents so the web re-subdivides to fine — the load-bearing coarse→fine mechanism
+        // (explore alone ratchets to ~half-fine). Per-phrase cooldown; not a perceptible
+        // "burst" on real music (rare on sustained-loud), but it carries loud→fine.
         energySlow += Float(dt / (1.5 + dt)) * (energyEnv - energySlow)
         burstCooldown = max(0, burstCooldown - Float(dt))
-        collapseEnv = max(0, collapseEnv - Float(dt) / 0.6)   // 0.6 s burst release
+        collapseEnv = max(0, collapseEnv - Float(dt) / 0.6)   // 0.6 s release
         if energyEnv - energySlow > 0.22 && burstCooldown <= 0 && collapseEnv < 0.05 {
             collapseEnv = 1.0
             burstCooldown = 2.5
