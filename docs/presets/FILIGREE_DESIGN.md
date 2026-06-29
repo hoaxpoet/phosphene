@@ -203,6 +203,28 @@ trail, multi-species) at promotion if wanted.
 
 ---
 
+## Reuse — building the next agent-network preset
+
+The substrate (§3, §5) is reusable; capability is registered in
+`docs/ENGINE/RENDER_CAPABILITY_REGISTRY.md` (Supported, "Compute-driven
+agent-network simulation"). What the next preset needs beyond §3–5:
+
+- **Reuse `PhysarumGeometry` via `ParticleGeometryRegistry` — don't fork
+  Filigree.** Siblings, not subclasses (D-097). Your preset supplies params + the
+  trail-sampling fragment; it does not copy the 3-kernel loop.
+- **Drive params + deposit/decay from continuous-energy deviation primitives**
+  (`bassRel`, `energyDev`; D-026, Audio Hierarchy L1) — the validated certifiable
+  coupling. One primitive per layer (FA #67): the substrate already encodes
+  energy, so pick a different primitive/timescale for any second layer.
+- **36-Points variety:** make params functions of the local trail value `x`
+  (`p = p1 + p2·x^p3`) for per-section/per-track regime variety.
+- **Don't promise event-sync.** Tight beat/structural sync on agents is gated by
+  BUG-065 (live BeatGrid drift) and reads against the substrate's loose-accompaniment
+  character (structural collapse-bloom was tried + removed). Fix the grid and prove
+  the sync before scoping an event-synced agent preset.
+
+---
+
 ## Module-Map history
 
 `PhysarumGeometry.swift`, `Physarum.metal`, `PhysarumSketchRenderTests.swift` —
