@@ -3,7 +3,7 @@
 **Family:** `painterly` (sibling of Skein)
 **Render pipeline:** `direct + mv_warp` (flowing-field config) **+ compute-agent voices** — Skein's canvas-hold mv_warp reconfigured to a curl-noise flow warp + slow decay (the colour *flows and merges*, it does not permanently accumulate), carrying a small set of Filigree-class agent "voices." See [`docs/presets/RICERCAR_DESIGN.md`](../../presets/RICERCAR_DESIGN.md).
 **Rubric:** expected `rubric_profile: "lightweight"` (matching sibling Skein/Dragon Bloom — a 2D painterly feedback preset; the §12.2/§12.3 3D-surface items are N/A-by-paradigm). Confirm at the certification increment.
-**Last curated:** **not yet — images pending Matt** (see *Still to source*). This folder currently holds the README scaffold only; the image set is sourced before Ricercar.2.
+**Last curated:** 2026-06-29 — `01_macro_weaving_lines.jpg` is a hand-authored synthetic **anchor** (SVG → `qlmanage` raster; see *Reference images* / *Provenance*). Matt sourced photographic candidates for `02` (ink-in-water plume) and `04` (tulip-field colour bands), 2026-06-29 — **pending file handoff** to place + annotate. Remaining slots in *Still to source*.
 
 > **Architectural reminder.** Ricercar is **abstract visual music**, not depiction. The subject is a small set of independent **lines** (the voices), each owned by a frequency register and carrying a stable colour family, drawn on a **flowing colour-field ground**. There is no orchestra, no scene, no representational object. Every reference below is read for *morphology, colour-as-identity, and flow* — never for any literal imagery.
 
@@ -19,6 +19,16 @@
 
 1. **Trustworthy = morphology + colour-identity logic; everything else is illustrative.** Trust the *idiom* — independent weaving lines, distinct stable colour per voice, drifting/merging colour ground, spray accents. The specific hues in any reference are illustrative. The single binding colour constraint is **legibility: one stable, well-separated colour family per register-lane** (dark-low / warm-mid / bright-high), with valence shifting warmth/saturation and arousal shifting vigour.
 2. **Density ranges with the music — never read a single image's density as the target.** Voice count = active-lane count = how many registers sound at once. Sparse passages light few lanes; dense counterpoint lights all three and braids. The resting state keeps the field open. The trait to **actively disregard** in any single image is its density-as-a-target.
+
+---
+
+## Reference images
+
+| File | Mandatory — read this | Actively disregard | Provenance |
+|---|---|---|---|
+| `01_macro_weaving_lines.jpg` | **The headline composition.** ≥3 **distinct register-coloured lines** (indigo LOW / amber MID / cyan HIGH) that **weave and cross** — voices enter banded in their registers at the left, interweave through the centre (the counterpoint), a second high voice enters from the right. Colour = register identity; soft **painterly** edges on a flowing, merging light colour ground. Read for: line *multiplicity*, *crossing/braiding*, register→colour, ground reading through. | The **smoothness / cleanliness** — a schematic anchor, **not** a fidelity target; the live preset's lines are more organic, varied-width, pigment-textured, and braid more densely. The specific hues (tunable). The exact crossing count/placement. | **Hand-authored synthetic anchor** (not photographic, not AI-gen): SVG composed by Claude + rasterised via macOS `qlmanage`, 2026-06-29. **Replacement plan (D-065(b) spirit):** swap for a real `RENDER_VISUAL=1` frame once Ricercar.3/.4 renders weaving voices. |
+
+*(Photographic positives for `02` / `04` chosen by Matt 2026-06-29 — ink-in-water plume + one tulip-field aerial — pending file handoff; their annotations land when the files are placed.)*
 
 ---
 
@@ -69,10 +79,10 @@ The §3.2 contract — **one audio primitive per visual layer** (FA #67), all **
 
 Ricercar.1 is the design + scaffold; the curated image set is the second half of the reference lock and is **Matt's to source** (as the Skein positives were). Target idiom — copyright-safe stills/photography preferred, original abstract imagery, no photographs of copyrighted artworks:
 
-- **`01_macro_*` — independent weaving lines on a colour ground.** A Fischinger-study-idiom frame (or original abstract animation still) where ≥3 distinct coloured lines weave and braid. The macro target.
-- **`02_meso_*` — flowing/merging colour masses.** The drifting, wet-into-wet colour-field ground (Fischinger colour masses / color-organ projection still).
-- **`03_micro_*` — line crispness range.** A fine, crisp filament pole and a broad, smeared wash pole (the centroid axis).
-- **`04_palette_*` — register colour legibility.** A reference showing well-separated colour families reading as distinct parts (the color-organ identity principle).
+- ✅ **`01_macro_weaving_lines.jpg` — independent weaving lines on a colour ground.** Placed as a hand-authored synthetic anchor (2026-06-29); replace with a real preset frame post-Ricercar.3/.4.
+- ⏳ **`02_meso_*` — flowing/merging colour masses.** **Chosen by Matt** (ink-in-water multicolour plume — distinct colours bleeding wet-into-wet side by side); pending file handoff to place + annotate. *Disregard when placed:* the upward-plume directionality + pure-white ground.
+- **`03_micro_*` — line crispness range.** A fine, crisp filament pole and a broad, smeared wash pole (the centroid axis). *(The `02` plume half-covers this — wisp tendrils vs broad billows; a dedicated micro is optional.)*
+- ⏳ **`04_palette_*` — register colour legibility.** **Chosen by Matt** (one tulip-field aerial — well-separated colour bands read as distinct parts); pending file handoff. *Disregard when placed:* the **ruler-straight parallel rows** (voices weave, never run straight) + perspective/horizon. Keep one tulip shot, not both (D-065(a) — no padding).
 - **The five `05_anti_*`** above.
 - ***Fantasia* Bach segment — annotated INSPIRATION, not a positive.** If a still is included, its annotation must mark **every** representational property (clouds, comets, orchestra silhouettes, the blue-and-gold live-action opening) as **disregard** — take only the idea of independent music-tied lines on a flowing colour ground.
 
