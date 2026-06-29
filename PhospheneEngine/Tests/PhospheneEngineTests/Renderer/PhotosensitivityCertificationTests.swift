@@ -69,6 +69,7 @@ struct PhotosensitivityCertificationTests {
         "Floret",         // mv_warp feedback (bespoke renderFloret; z² bloom + bass-kick ripple) — FLORET.4
         "Glaze",          // mv_warp feedback (bespoke renderGlaze; spring jelly + downbeat camera push) — GLAZE.8
         "Filigree",       // particles (PhysarumGeometry trail — geometry-driven, black backdrop) — PHYS.5
+        "Mitosis",        // particles (MitosisGeometry RD field — geometry-driven, dark backdrop) — MITOSIS.2c
     ]
 
     // MARK: - Gate

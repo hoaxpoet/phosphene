@@ -109,6 +109,11 @@ private let expectedAutomatedGate: [String: Bool] = [
     "Gossamer":             false,   // full; M3 fails
     "Kinetic Sculpture":    false,   // full; M3 fails
     "Membrane":             false,   // full; M3 fails
+    "Mitosis":              false,   // lightweight; the colour/cycle coupling (energyEnv/cycleClock/
+                                     // huePhase/centroid) is computed CPU-side in MitosisGeometry and
+                                     // reaches the kernel/fragment via MitosisConfig, so the MSL-source
+                                     // heuristic can't see it (Filigree/Skein precedent). Certified via
+                                     // Matt's M7 sign-off (MITOSIS.2c, "psychedelic cell division")
     "Murmuration":          false,   // full; M3 fails (file: Murmuration.metal)
     "Nebula":               false,   // lightweight; L2 fails — no deviation primitives in source
     "Plasma":               false,   // lightweight; L2 fails — no deviation primitives in source
@@ -212,7 +217,7 @@ struct FidelityRubricGateTests {
     // (lightweight L2: deviation primitives are consumed CPU-side in
     // SkeinState, invisible to the MSL heuristic — the Lumen Mosaic
     // precedent); Matt's M7 is the load-bearing gate per SHADER_CRAFT §12.1.
-    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana", "Murmuration", "Nimbus", "Skein", "Nacre", "Floret", "Glaze", "Filigree"]
+    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana", "Murmuration", "Nimbus", "Skein", "Nacre", "Floret", "Glaze", "Filigree", "Mitosis"]
 
     @Test func automatedGate_uncertifiedPresetsAreUncertified() async {
         let store = PresetCertificationStore()

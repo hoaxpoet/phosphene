@@ -88,6 +88,11 @@ struct MultiPassFlashHarnessTests {
         assertFlashSafe(name: "Filigree", luma: try renderFiligree())
     }
 
+    @Test("Mitosis is flash-safe (reaction–diffusion cell colony, real headless render)")
+    func mitosisIsFlashSafe() throws {
+        assertFlashSafe(name: "Mitosis", luma: try renderMitosis())
+    }
+
     // MARK: - Assertion (shared)
 
     /// Print the per-preset evidence line (the closeout all-7 table is these four plus the
@@ -155,6 +160,42 @@ struct MultiPassFlashHarnessTests {
             rpd.colorAttachments[0].storeAction = .store
             guard let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) else { continue }
             geo.render(encoder: enc, features: drive[i])
+            enc.endEncoding()
+            try commit(cmd, tex, into: &pixels)
+            luma.append(FlashHarnessSupport.meanRelativeLuminance(pixels))
+        }
+        return luma
+    }
+
+    // MARK: - Render: particle (Mitosis)
+
+    /// Mitosis — `particles`. Drives the real `MitosisGeometry` reaction–diffusion colony
+    /// over the worst-case beat+stem train and renders its field fullscreen each frame.
+    /// The big luminance excursions are the SLOW growth + dissolve of the cell-division
+    /// cycle (not per-beat — Mitosis has no beat flash), so the long span here captures
+    /// growth toward the crowded peak and the dissolve; both must be gradual (no strobe).
+    private func renderMitosis() throws -> [Double] {
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let geo = try MitosisGeometry(device: ctx.device, library: lib.library,
+                                      configuration: MitosisConfiguration(), pixelFormat: ctx.pixelFormat)
+        let tex = try makeOutputTexture(ctx)
+        let drive = FlashHarnessSupport.worstCaseBeatTrain()
+        let stems = FlashHarnessSupport.worstCaseStemTrain()
+        var pixels = [UInt8](repeating: 0, count: Self.width * Self.height * 4)
+        var luma: [Double] = []
+        // ~25 s — the growth-to-crowded + the dissolve are the largest luma swings; measure
+        // across them (no settle — the grow-in IS the response we must show is gradual).
+        for i in 0..<1500 {
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
+            geo.update(features: drive[i % drive.count], stemFeatures: stems[i % stems.count], commandBuffer: cmd)
+            let rpd = MTLRenderPassDescriptor()
+            rpd.colorAttachments[0].texture = tex
+            rpd.colorAttachments[0].loadAction = .clear
+            rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+            rpd.colorAttachments[0].storeAction = .store
+            guard let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) else { continue }
+            geo.render(encoder: enc, features: drive[i % drive.count])
             enc.endEncoding()
             try commit(cmd, tex, into: &pixels)
             luma.append(FlashHarnessSupport.meanRelativeLuminance(pixels))
