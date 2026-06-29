@@ -88,7 +88,8 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-172 | Accepted | Floret — faithful port of butterchurn `suksma - Rovastar - Sunflower Passion` onto the dedicated `RenderPipeline+Floret` mv_warp branch (`isFloret`, the D-171 register). z² conformal warp + 1/r² vortex swirl + 3-fold radial-pulse kaleidoscope comp; motion = beat-lock downbeat magnify + energy swell + bass spin + bass-onset kick. **CERTIFIED FLORET.4** (Matt live M7). Drum sparkle tried + removed (camouflaged into the bright field). |
 | D-173 | Accepted | Glaze — faithful port of butterchurn `Flexi + stahlregen - jelly showoff parade` onto the dedicated `RenderPipeline+Glaze` mv_warp branch (`isGlaze`, the D-171 register). A 3-mass spring-mass "jelly" (bass↔other stem anchor + fullness lift) drags a swirl-poke across an accreting field; 3-level blur-pyramid emboss/sheen + per-stem accents (drums punch / vocals glow) + HDR bloom; connection lands via a discrete downbeat camera push. The catalog's first physics-of-the-beat preset. **CERTIFIED GLAZE.8** (Matt live M7). |
 | D-174 | Accepted | Filigree — physarum agent-network preset (`PhysarumGeometry`, a `ParticleGeometry` sibling per D-097; Kintsugi gold-on-black). Energy drives merge/divide (LOUD → fine/busy/bright web; QUIET → few calm cells) + a per-beat hit pulse + a rare re-seed burst. **Substrate verdict (Matt-accepted): physarum carries a loose energy-accompaniment, not tight event-sync** — tightly-synced cell merge/divide is reaction-diffusion's domain (a separate future preset). **CERTIFIED PHYS.5** (Matt live M7) — the first certified compute-agent-network preset. |
-| D-175 | Accepted | Ricercar — contrapuntal visual-music painting preset (Fischinger / color-organ; Bach BWV 565 showcase, reusable). Ricercar.2 lands the flowing-colour-field SUBSTRATE: Skein's canvas-hold mv_warp reconfigured to a curl-noise flow warp + **decay toward a LIGHT GROUND** (a per-prefix `ricercar_warp_fragment` override — preset-side, no engine work) so the field breathes back to light at rest (silence-non-black, D-037) and matches the `02_meso` ink-plume reference. Hand-fed colour masses; voices/audio/cert at Ricercar.3.x→.7. Uncertified. |
+| D-175 | Accepted | Ricercar — contrapuntal visual-music painting preset (Fischinger / color-organ; Bach BWV 565 showcase, reusable). Ricercar.2 lands the flowing-colour-field SUBSTRATE: Skein's canvas-hold mv_warp reconfigured to a curl-noise flow warp + **decay toward a LIGHT GROUND** (a per-prefix `ricercar_warp_fragment` override — preset-side, no engine work) so the field breathes back to light at rest (silence-non-black, D-037) and matches the `02_meso` ink-plume reference. Hand-fed colour masses; voices/audio/cert at Ricercar.3.x→.7. Uncertified. **★ Substrate concept SUPERSEDED by D-176.** |
+| D-176 | Accepted | Ricercar concept REVISED (Matt, 2026-06-29) — **the orchestra painting itself**: each section gets a painterly IDENTITY (colour + weight + texture + material), sync rides on top. Built on **Skein's marks-on-top painterly engine** (the elegant/luminous sibling — graceful composed strokes + Fantasia jewel-palette on a light canvas, vs Skein's chaotic earthy drip; FA #73 reuse). Abandons the D-175 flowing-colour substrate (a passive field reads as slick wallpaper, not art) AND the Filigree agent-voices + Ricercar.3.x engine bridge (use Skein's overlay marks → **no engine touch**). Five register-archetype sections. Design center = the per-section identity table in RICERCAR_DESIGN §CONCEPT. |
 
 ---
 
@@ -2224,3 +2225,42 @@ The gate-before-the-gate (RICERCAR_DESIGN §7): does it read as flowing, merging
 **References.** `docs/presets/RICERCAR_DESIGN.md`, `docs/VISUAL_REFERENCES/ricercar/`. [D-142]/[D-143]
 (canvas-hold mv_warp), [D-149] (per-prefix `<prefix>_warp_fragment` override precedent), [D-037]
 (silence-non-black), [D-026] (deviation primitives — the later audio increments).
+
+## D-176: Ricercar concept revision — the orchestra painting itself, per-section painterly identity on Skein's engine
+
+**Decision (Matt, 2026-06-29, after the Ricercar.2 substrate spike).** Replace Ricercar's concept. The
+original — abstract weaving "voices" on a flowing colour-field substrate — is abandoned: a *passive* flowing
+field reads as slick wallpaper, not art (the spike's smooth-blob + glossy-ribbon attempts both confirmed it;
+clean procedural primitives — blobs, ribbons, gradients — plateau at "wallpaper" and structurally cannot be
+*painterly*, which needs texture, ragged/feathered edges, pressure-taper, visible media).
+
+**The locked concept.** Ricercar is **the orchestra painting itself**: each orchestral section has a distinct
+painterly **identity — colour + weight + texture + material** — and the painting builds **in sync** with the
+music. *Identity is the soul; sync is the second layer* (Matt's framing: "colour, weight, texture, and other
+qualities per section of the orchestra, then the ability to sync"). Spirit of *Fantasia* (art emerging, the
+music as the invisible painter), elegant + luminous — **not** a depicted artist (3D representational, declined),
+**not** Skein's chaos.
+
+**Architecture: build on Skein, don't reinvent (FA #73).** Skein's marks-on-top mv_warp engine (D-142/143/149)
+already renders per-mark colour + viscosity/texture + weight + wet/dry sheen as convincing paint (M7-loved).
+Ricercar = the **elegant/luminous sibling**: graceful *composed* strokes building a picture (vs Pollock drip)
+on a **light** canvas with a luminous **Fantasia jewel-palette** (vs Skein's earthy drip). Section = frequency
+**REGISTER** (no instrument separation, §6) — five register-archetypes (basses / brass / violas / violins /
+flutes), each differing on *every* axis (colour / weight / texture / gloss / gesture) so the material reads the
+section before the hue does.
+
+**Consequences.** (1) The **Ricercar.2 flowing-colour substrate (D-175) is SUPERSEDED** — `Ricercar.metal` /
+`.json` / `RicercarSubstrateTest` are rebuilt next increment (git history retains the spike; the
+`ricercar_warp_fragment` decay-to-ground trick may or may not carry, TBD at build). (2) **Filigree compute-agent
+voices + the Ricercar.3.x engine bridge are DROPPED** — section-marks use Skein's marks-on-top overlay, not
+compute-agents, which removes the *only* engine touch (no `ParticleGeometry.rendersToFeedbackTexture`, no
+`RenderPipeline+Draw` reroute; the RENDER_CAPABILITY_REGISTRY "Missing" feedback-canvas+agent-deposit row is no
+longer on Ricercar's critical path). (3) RICERCAR_DESIGN.md §CONCEPT carries the revision + the five-section
+identity table (the design center); the original §1.1 / §1.4 / §0 are marked superseded.
+
+**Status.** Accepted (concept). Next: rewrite the increment plan around per-section painterly marks on Skein's
+engine, then build — design spine recorded first (design upstream of code).
+
+**References.** RICERCAR_DESIGN.md §CONCEPT (the five-section table). [D-142]/[D-143]/[D-149] (Skein painterly
+engine, reused), [D-175] (the superseded substrate spike), [D-097] (siblings not subclasses — Ricercar is
+Skein's sibling), [D-026] (deviation primitives), §6 (no instrument separation — load-bearing).

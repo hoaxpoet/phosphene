@@ -8,6 +8,39 @@
 
 ---
 
+## CONCEPT — REVISED 2026-06-29 (Matt; supersedes the original abstract-voices / flowing-substrate framing below)
+
+After the Ricercar.2 substrate spike, Matt redirected the concept. The original frame — "abstract weaving voices on a flowing colour-field substrate" — was wrong: a *passive* flowing field reads as slick wallpaper, not art (the spike's smooth-blob and ribbon attempts both confirmed it). The locked concept:
+
+**Ricercar is the orchestra painting itself. Each orchestral section has a distinct painterly IDENTITY — colour + weight + texture + material — and the painting is built in sync with the music. Identity is the soul; sync rides on top.** In the spirit of *Fantasia* (art emerging, the music as the invisible painter), elegant and luminous — NOT a depicted artist, NOT Skein's chaotic Pollock drip.
+
+**Built on Skein's painterly mark engine** (D-142 / D-143 / D-149 — the marks-on-top mv_warp canvas with per-mark colour, viscosity/texture, weight, and wet/dry sheen, *proven* to read as paint and M7-loved). Ricercar is the **elegant / luminous sibling of Skein**: the same proven painterly marks, but a *graceful composing painter* (sweeping, composed strokes building a picture) instead of chaotic drip, and a *luminous Fantasia jewel-palette on a light canvas* instead of Skein's earthy drip. It is **not** a new painterly technique (FA #73 — reuse the working reference, don't reinvent).
+
+### The per-section painterly identity — THE design center (Matt, 2026-06-29: "colour, weight, texture, and other qualities per section of the orchestra, then the ability to sync")
+
+"Section" is driven by frequency **REGISTER** — the engine cannot separate instruments (§6, the load-bearing constraint); register-archetypes stand in for orchestral sections (basses live low, flutes live high — register correlates with section). It evokes the orchestra; it does not transcribe it.
+
+| Section (register) | Colour | Weight | Texture / material | Gesture |
+|---|---|---|---|---|
+| **Basses · cellos · organ pedal** (sub / low) | deep indigo → blue-black | heaviest — broad, slow | dense, matte, smeared (gloopy) | grave, sustained, pooling |
+| **Brass — horns · trombones · tuba** (low-mid) | burnished gold / bronze | heavy but burnished | smooth, **metallic gloss** | grand, declamatory arcs |
+| **Violas · clarinets · bassoons** (mid) | warm amber / russet | medium | soft-grained, warm matte | flowing, connective, lyrical |
+| **Violins · oboes** (high-mid) | scarlet / rose | medium-light | crisp but singing, slight gloss | agile, soaring melodic lines |
+| **Flutes · piccolo · harp · bells** (high) | cool cyan / silver-white | feather-light — fine | crisp, **sparkling**, translucent, glinting | quick, darting, shimmering |
+
+Each section differs on **every** axis — colour, weight, texture, gloss, gesture — so the listener reads brass-vs-flutes from the *material*, not just the hue. Skein already varies colour + viscosity + weight + gloss per stem, so these axes are demonstrated-achievable. **Five sections approved (Matt) — richer than the legibility-3 fallback; they stay distinguishable because they differ by weight/texture, not only colour.**
+
+### Sync — the second layer
+Each section's marks wake and intensify on its register's **continuous energy** (deviation primitives, D-026 — primary driver); per-band **onsets** flick its accents (Layer 4). The painting builds in step with who is playing. The §3.2 audio-routing table still holds, re-pointed from "voice lines" to "section marks."
+
+### What this revision SUPERSEDES vs RETAINS
+- **Superseded:** §1.1 abstract weaving "voices" → per-section painterly **marks** with full material identity. §1.4 flowing colour-field **substrate** (curl-noise flow + decay-to-ground) → **ABANDONED**; the canvas is Skein-style (held / lightly-decaying), painted by section-marks, no passive field (the Ricercar.2 substrate spike code is superseded — git history retains it). §0 / §4 **Filigree compute-agent voices + the Ricercar.3.x integration bridge → likely UNNEEDED** (section-marks use Skein's marks-on-top overlay, not compute-agents — which removes the only engine touch; re-confirm at the build increment).
+- **Retained:** §2 reference lock, §3 musical contract / three-act arc, §3.2 audio routing (one-primitive-per-layer, FA #67), §5 audio primitives (all exist), §6 honest constraints (no instrument separation — load-bearing), §8 acceptance, §10 failed approaches.
+
+Everything below predates this revision — read it through the lens above.
+
+---
+
 ## 0. Verdict
 
 **Feasible today with no new audio/feature primitives and one bounded, audited engine touch.** Ricercar is assembled from two already-certified stacks:
