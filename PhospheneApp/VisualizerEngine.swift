@@ -251,6 +251,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// `ParticleGeometry` (D-097, PHYS.2). Built eagerly like Murmuration.
     var filigreeGeometry: (any ParticleGeometry)?
 
+    /// Reaction–diffusion cell colony for the Mitosis preset — attached via
+    /// `ParticleGeometry` (D-097, MITOSIS.1). Built eagerly like Filigree.
+    var mitosisGeometry: (any ParticleGeometry)?
+
     /// Shader library for creating post-process chains on preset switch.
     let shaderLibrary: Renderer.ShaderLibrary
 
@@ -799,6 +803,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         let tier = Self.detectDeviceTier(device: ctx.device)
         self.murmurationGeometry = Self.makeMurmurationGeometry(context: ctx, library: lib)
         self.filigreeGeometry = Self.makeFiligreeGeometry(context: ctx, library: lib)
+        self.mitosisGeometry = Self.makeMitosisGeometry(context: ctx, library: lib)
         self.moodClassifier = classifier
         self.stemAnalyzer = analyzer
         self.stemSeparator = sep
@@ -1062,6 +1067,26 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         return web
     }
 
+    /// Build the reaction–diffusion cell colony for the Mitosis preset
+    /// (`MitosisGeometry` + `Mitosis.metal`, MITOSIS.1). Returns
+    /// `any ParticleGeometry` (D-097, siblings not subclasses).
+    private static func makeMitosisGeometry(
+        context: MetalContext,
+        library: Renderer.ShaderLibrary
+    ) -> (any ParticleGeometry)? {
+        guard let colony = try? MitosisGeometry(
+            device: context.device,
+            library: library.library,
+            configuration: MitosisConfiguration(),
+            pixelFormat: context.pixelFormat
+        ) else {
+            return nil
+        }
+        let cfg = MitosisConfiguration()
+        logger.info("Mitosis created: reaction–diffusion cell colony (\(cfg.width)×\(cfg.height) sim)")
+        return colony
+    }
+
     /// Resolve a particle-preset name to the geometry conformer the engine
     /// has built for it. Returns `nil` for any unknown preset name; the
     /// caller is expected to log + fall through. Exposed as `internal` so
@@ -1071,6 +1096,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         switch name {
         case "Murmuration": return murmurationGeometry
         case "Filigree":    return filigreeGeometry
+        case "Mitosis":     return mitosisGeometry
         default:            return nil
         }
     }

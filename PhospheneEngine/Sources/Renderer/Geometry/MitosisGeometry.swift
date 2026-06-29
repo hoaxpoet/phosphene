@@ -24,8 +24,8 @@ struct MitosisConfig {
     var width: UInt32
     var height: UInt32
     var frame: UInt32
-    var Da: Float
-    var Db: Float
+    var diffuseA: Float   // MSL `Da`
+    var diffuseB: Float   // MSL `Db`
     var feed: Float
     var kill: Float
     var dt: Float
@@ -136,7 +136,8 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
         } else {
             self.renderPipeline = nil
         }
-        logger.info("Mitosis: \(configuration.width)×\(configuration.height), \(configuration.baseSubsteps)–\(configuration.maxSubsteps) substeps/frame")
+        let cfg = configuration
+        logger.info("Mitosis: \(cfg.width)×\(cfg.height) sim, \(cfg.baseSubsteps)–\(cfg.maxSubsteps) substeps/frame")
     }
 
     /// Smoothed energy envelope. Exposed for the render test's metabolism assertions.
@@ -171,10 +172,10 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
             depth: 1)
 
         for step in 0..<substeps {
-            var cfg = makeConfig(energy: en, frameSalt: frameCounter &+ UInt32(step),
-                                 // Inject the onset burst only on the first substep — one
-                                 // bounded pulse per frame, not N× (flash-safe).
-                                 burst: step == 0 ? min(1, hitEnv) : 0)
+            // Inject the onset burst only on the first substep — one bounded pulse
+            // per frame, not N× (flash-safe).
+            let burst: Float = step == 0 ? min(1, hitEnv) : 0
+            var cfg = makeConfig(energy: en, frameSalt: frameCounter &+ UInt32(step), burst: burst)
             let src = state[cur], dst = state[1 - cur]
             enc.setBytes(&cfg, length: MemoryLayout<MitosisConfig>.stride, index: 0)
             enc.setTexture(src, index: 0)
@@ -231,8 +232,8 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
             width: UInt32(configuration.width),
             height: UInt32(configuration.height),
             frame: frameSalt,
-            Da: 1.0,
-            Db: 0.5,
+            diffuseA: 1.0,
+            diffuseB: 0.5,
             feed: configuration.feed,
             kill: killEff,
             dt: 1.0,
@@ -246,34 +247,35 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
     /// Background A=1, B=0 (the stable rest state); stamp deterministic random B
     /// blobs to start the reaction (Karl Sims seed). Same scatter every run.
     private static func seed(textures: [MTLTexture], configuration: MitosisConfiguration) {
-        let w = configuration.width, h = configuration.height
+        let width = configuration.width, height = configuration.height
         // rg16Float: two Float16 per cell. Default (A,B) = (1, 0).
-        var buf = [Float16](repeating: 0, count: w * h * 2)
-        for i in 0..<(w * h) { buf[i * 2] = 1.0 }   // A=1 everywhere
+        var buf = [Float16](repeating: 0, count: width * height * 2)
+        for i in 0..<(width * height) { buf[i * 2] = 1.0 }   // A=1 everywhere
 
         var rng: UInt64 = 0x2545F4914F6CDD1D
         func next() -> Float {
             rng = rng &* 6364136223846793005 &+ 1442695040888963407
             return Float((rng >> 33) & 0xFFFFFF) / Float(0xFFFFFF)
         }
-        let blobs = max(8, (w * h) / 4000)
+        let blobs = max(8, (width * height) / 4000)
         for _ in 0..<blobs {
-            let cx = Int(next() * Float(w)), cy = Int(next() * Float(h))
-            let r = 3 + Int(next() * 3)
-            for dy in -r...r {
-                for dx in -r...r where dx * dx + dy * dy <= r * r {
-                    let x = ((cx + dx) % w + w) % w
-                    let y = ((cy + dy) % h + h) % h
-                    buf[(y * w + x) * 2 + 1] = 0.5   // B=0.5 in the blob (A stays 1)
+            let cx = Int(next() * Float(width)), cy = Int(next() * Float(height))
+            let radius = 3 + Int(next() * 3)
+            for dy in -radius...radius {
+                for dx in -radius...radius where dx * dx + dy * dy <= radius * radius {
+                    let x = ((cx + dx) % width + width) % width
+                    let y = ((cy + dy) % height + height) % height
+                    buf[(y * width + x) * 2 + 1] = 0.5   // B=0.5 in the blob (A stays 1)
                 }
             }
         }
 
-        let region = MTLRegionMake2D(0, 0, w, h)
+        let region = MTLRegionMake2D(0, 0, width, height)
+        let bytesPerRow = width * 2 * MemoryLayout<Float16>.stride
         buf.withUnsafeBytes { raw in
             guard let base = raw.baseAddress else { return }
             for tex in textures {
-                tex.replace(region: region, mipmapLevel: 0, withBytes: base, bytesPerRow: w * 2 * MemoryLayout<Float16>.stride)
+                tex.replace(region: region, mipmapLevel: 0, withBytes: base, bytesPerRow: bytesPerRow)
             }
         }
     }

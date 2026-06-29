@@ -28,6 +28,7 @@ public enum ParticleGeometryRegistry {
     /// DM.0's frozen surface (D-097) and cannot host a static identifier.
     public static let knownPresetNames: Set<String> = [
         "Murmuration",
-        "Filigree"
+        "Filigree",
+        "Mitosis"
     ]
 }
