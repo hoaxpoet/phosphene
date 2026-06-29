@@ -117,6 +117,10 @@ public final class SessionPreparer: ObservableObject {
     /// only the subset that can actually recover from a network change. D-061(d).
     private var networkFailedTracks: Set<TrackIdentity> = []
 
+    /// PREPPERF.2 ②: set once the ML-graph warm-up has been launched, so a
+    /// `resumeFailedNetworkTracks()` re-run doesn't warm an already-compiled graph.
+    private var modelsWarmed = false
+
     // MARK: - Init
 
     /// Create a preparer with all injectable dependencies.
@@ -369,6 +373,8 @@ public final class SessionPreparer: ObservableObject {
         // shared StemSeparator (compounds BUG-031). Observability only.
         ConcurrencyAuditProbe.enterRunPreparation()
         defer { ConcurrencyAuditProbe.exitRunPreparation() }
+        launchModelWarmUpIfNeeded()
+
         var cachedTracks: [TrackIdentity] = []
         var failedTracks: [TrackIdentity] = []
 
@@ -430,6 +436,40 @@ public final class SessionPreparer: ObservableObject {
             failedTracks: failedTracks,
             cache: cache
         )
+    }
+
+    /// PREPPERF.2 ②: kick the ML-graph warm-up once per preparer, on the first
+    /// `_runPreparation` (a `resumeFailedNetworkTracks()` re-run skips it). Pre-compiles
+    /// the stem + beat-grid MPSGraphs on a silent buffer so the ~1 s first-call
+    /// compilation (the cold tax on track 1, PREPPERF.1 data) overlaps the track-1
+    /// network fetch instead of landing on the critical path. Both graphs are
+    /// fixed-shape (StemSeparator pads to requiredMonoSamples; BeatThisModel's
+    /// placeholder is tMax), so a short buffer compiles the identical real graph. The
+    /// StemSeparator's internal lock serialises this vs the first real separate().
+    private func launchModelWarmUpIfNeeded() {
+        guard !modelsWarmed else { return }
+        modelsWarmed = true
+        let separator = stemSeparator
+        let gridAnalyzer = beatGridAnalyzer
+        Task.detached(priority: .userInitiated) {
+            SessionPreparer.warmUpModels(separator: separator, beatGridAnalyzer: gridAnalyzer)
+        }
+    }
+
+    /// PREPPERF.2 ②: best-effort pre-compilation of the stem + beat-grid MPSGraphs.
+    /// Runs one separation + one beat-grid pass over a short silent buffer to force
+    /// MPSGraph compilation off the critical path. Both models pad/clamp internally to
+    /// a fixed shape, so any buffer ≥ one hop compiles the same graph the real calls
+    /// use. Errors are ignored — `predict()` compiles the graph regardless of any
+    /// post-processing hiccup on silence, and a missed warm-up just means track 1 pays
+    /// the cold tax (status quo). 1 s @ 44.1 kHz clears both models' minimum-frame needs.
+    nonisolated static func warmUpModels(
+        separator: any StemSeparating,
+        beatGridAnalyzer: (any BeatGridAnalyzing)?
+    ) {
+        let silent = [Float](repeating: 0, count: 44_100)
+        _ = try? separator.separate(audio: silent, channelCount: 1, sampleRate: 44_100)
+        _ = beatGridAnalyzer?.analyzeBeatGrid(samples: silent, sampleRate: 44_100)
     }
 
     private func prepareTrack(_ track: TrackIdentity) async throws -> CachedTrackData {
