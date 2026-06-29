@@ -178,7 +178,8 @@ func cacheHit_skipsAnalyzer() async throws {
         stemSeparator: separator,
         stemAnalyzer: StubAnalyzer(),
         moodClassifier: MoodClassifier(),
-        beatGridAnalyzer: counting
+        beatGridAnalyzer: counting,
+        prewarmModels: false   // PREPPERF.2 ②: keep analyzeBeatGrid call-count deterministic
     )
 
     let track = TrackIdentity(title: "Cache Hit", artist: "Test")
@@ -271,7 +272,8 @@ func drumsBeatGrid_wiring_populatesCachedField() async throws {
         stemSeparator: separator,
         stemAnalyzer: StubAnalyzer(),
         moodClassifier: MoodClassifier(),
-        beatGridAnalyzer: counting
+        beatGridAnalyzer: counting,
+        prewarmModels: false   // PREPPERF.2 ②: keep analyzeBeatGrid call-count deterministic
     )
 
     let track = TrackIdentity(title: "DSP.4 Wiring", artist: "Test")
