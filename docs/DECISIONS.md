@@ -87,6 +87,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-171 | Accepted | Nacre — faithful port of butterchurn `$$$ Royal - Mashup (431)` (iridescent jello-mirror) onto a dedicated custom-warp+comp mv_warp branch (`RenderPipeline+Nacre`, mirroring Fata Morgana / D-139; `isNacre` discriminator). Faithful base first (NACRE.2b); the 3 greenlit uplifts deferred to NACRE.3+. Corrected source decode (mv_a-0 grid doesn't advect; volume-gated core seed; bassDev kick). **CERTIFIED NACRE.4** — connection lands via a downbeat camera push. |
 | D-172 | Accepted | Floret — faithful port of butterchurn `suksma - Rovastar - Sunflower Passion` onto the dedicated `RenderPipeline+Floret` mv_warp branch (`isFloret`, the D-171 register). z² conformal warp + 1/r² vortex swirl + 3-fold radial-pulse kaleidoscope comp; motion = beat-lock downbeat magnify + energy swell + bass spin + bass-onset kick. **CERTIFIED FLORET.4** (Matt live M7). Drum sparkle tried + removed (camouflaged into the bright field). |
 | D-173 | Accepted | Glaze — faithful port of butterchurn `Flexi + stahlregen - jelly showoff parade` onto the dedicated `RenderPipeline+Glaze` mv_warp branch (`isGlaze`, the D-171 register). A 3-mass spring-mass "jelly" (bass↔other stem anchor + fullness lift) drags a swirl-poke across an accreting field; 3-level blur-pyramid emboss/sheen + per-stem accents (drums punch / vocals glow) + HDR bloom; connection lands via a discrete downbeat camera push. The catalog's first physics-of-the-beat preset. **CERTIFIED GLAZE.8** (Matt live M7). |
+| D-174 | Accepted | Filigree — physarum agent-network preset (`PhysarumGeometry`, a `ParticleGeometry` sibling per D-097; Kintsugi gold-on-black). Energy drives merge/divide (LOUD → fine/busy/bright web; QUIET → few calm cells) + a per-beat hit pulse + a rare re-seed burst. **Substrate verdict (Matt-accepted): physarum carries a loose energy-accompaniment, not tight event-sync** — tightly-synced cell merge/divide is reaction-diffusion's domain (a separate future preset). **CERTIFIED PHYS.5** (Matt live M7) — the first certified compute-agent-network preset. |
 
 ---
 
@@ -2160,3 +2161,36 @@ top** (the downbeat camera push), not tuning the smooth layer harder (the Nacre 
 
 **References.** `docs/presets/GLAZE_PLAN.md §7`. [D-171] (the cert register), [D-139], [D-157]/[D-158],
 [D-026]/[D-019], [D-097].
+
+---
+
+## D-174: Filigree — physarum agent-network preset, certified as a loose energy-accompaniment (PHYS.5)
+
+**Decision.** Ship **Filigree** — a living slime-mold network (physarum / neural web / river-delta) in the
+Kintsugi palette (gold veins on pure black) — as the catalog's **first certified compute-agent-network
+preset**. The form is the song's energy: the fine searching-web is the resting state, continuous energy
+brightens/quickens it, structural peaks bloom consolidated veins (the inverse of the original sketch — chosen
+from rendered evidence; FA #58, the form carries the music).
+
+**Architecture.** `PhysarumGeometry` — a `ParticleGeometry` sibling (D-097, NOT a new render primitive) —
+drives a 3-kernel physarum loop (`physarum_reset → _agents → _diffuse`, own MSL, no CC-BY-NC-SA source
+copied) over an atomic deposit accumulator + ping-pong `r16Float` trail, drawn in particle mode. The
+`Filigree.metal` `filigree_ground_fragment` is just the pure-black backdrop the trail covers. Audio coupling
+(energyEnv / hitEnv from `stems.*EnergyDev`) is computed CPU-side in `PhysarumGeometry` and reaches the kernel
+via `PhysConfig`, so the MSL-source rubric heuristic can't see it (`expectedAutomatedGate` false — the
+Skein/Lumen slot-buffer precedent; Matt's M7 is the load-bearing gate).
+
+**The substrate verdict (Matt-accepted, after 3 connection M7s).** Polarity: LOUD → fine/busy/bright web
+(divide), QUIET → few calm cells (merge). The re-seed bursts on an energy surge to land the "divide" on a
+musical moment; a per-beat `hit` pulse + a calm baseline keep motion event-driven, not frantic churn. But
+physarum **ratchets to coarse irreversibly** (5 attempts confirmed; the only "divide" is a trail-wipe
+re-seed), and on sustained-loud material the surge burst fires rarely and is redundant with the continuous
+loud=fine read → it reads as **a loose energy-accompaniment, not tight event-sync.** Matt accepted that
+verdict and certified on that basis. **Tightly-synced bidirectional cell merge/divide is reaction-diffusion's
+domain → a separate future preset.**
+
+**Status.** **CERTIFIED PHYS.5** (Matt's live M7). `certified: true` + FidelityRubric `certifiedPresets` +
+`multiPassMeasured` + a real `renderFiligree` flash test (0.00 flashes/s, SAFE).
+
+**References.** `docs/presets/FILIGREE_DESIGN.md`. [D-097] (siblings not subclasses / `ParticleGeometry`),
+[D-026]/[D-019], [D-157]/[D-158] (flash-safe), [D-159] (Skein CPU-side-coupling rubric precedent).
