@@ -83,6 +83,11 @@ struct MultiPassFlashHarnessTests {
         assertFlashSafe(name: "Glaze", luma: try renderGlaze())
     }
 
+    @Test("Filigree is flash-safe (particle physarum trail, real headless render)")
+    func filigreeIsFlashSafe() throws {
+        assertFlashSafe(name: "Filigree", luma: try renderFiligree())
+    }
+
     // MARK: - Assertion (shared)
 
     /// Print the per-preset evidence line (the closeout all-7 table is these four plus the
@@ -116,6 +121,45 @@ struct MultiPassFlashHarnessTests {
             \(String(format: "%.1f", FlashHarnessSupport.accentHz)) Hz worst-case beat train — exceeds Harding/WCAG 2.3.1. \
             P1 safety finding: bring to Matt, do NOT tune away (the certified motion was hand-built safe, D-157/D-158).
             """)
+    }
+
+    // MARK: - Render: particle (Filigree)
+
+    /// Filigree — `particles`. Drives the real `PhysarumGeometry` (262K-agent physarum
+    /// trail) over the worst-case beat+stem train and renders its trail fullscreen each
+    /// frame — the same update→render the live particle-mode path runs. The per-beat
+    /// accent is the repeating flash channel measured here (the re-seed is rare/per-phrase).
+    private func renderFiligree() throws -> [Double] {
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let geo = try PhysarumGeometry(device: ctx.device, library: lib.library,
+                                       configuration: PhysarumConfiguration(), pixelFormat: ctx.pixelFormat)
+        let tex = try makeOutputTexture(ctx)
+        let drive = FlashHarnessSupport.worstCaseBeatTrain()
+        let stems = FlashHarnessSupport.worstCaseStemTrain()
+        var pixels = [UInt8](repeating: 0, count: Self.width * Self.height * 4)
+        // Settle the web first so we measure the steady accent, not the initial grow-in.
+        for i in 0..<150 {
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
+            geo.update(features: drive[i % drive.count], stemFeatures: stems[i % stems.count], commandBuffer: cmd)
+            cmd.commit(); cmd.waitUntilCompleted()
+        }
+        var luma: [Double] = []
+        for i in 0..<drive.count {
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
+            geo.update(features: drive[i], stemFeatures: stems[i], commandBuffer: cmd)
+            let rpd = MTLRenderPassDescriptor()
+            rpd.colorAttachments[0].texture = tex
+            rpd.colorAttachments[0].loadAction = .clear
+            rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+            rpd.colorAttachments[0].storeAction = .store
+            guard let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) else { continue }
+            geo.render(encoder: enc, features: drive[i])
+            enc.endEncoding()
+            try commit(cmd, tex, into: &pixels)
+            luma.append(FlashHarnessSupport.meanRelativeLuminance(pixels))
+        }
+        return luma
     }
 
     // MARK: - Render: ray-march (Lumen Mosaic)
