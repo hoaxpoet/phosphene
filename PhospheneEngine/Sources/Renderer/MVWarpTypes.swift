@@ -36,6 +36,11 @@ public struct MVWarpPipelineBundle: Sendable {
     /// signature comp → swap; the seed is folded into the warp — same shape as Nacre).
     /// Keyed on the preset name at bundle build. false for every other mv_warp preset.
     public let isFloret: Bool
+    /// Glaze (GLAZE.2a): routes the draw path to the glaze branch (custom warp → display
+    /// comp → swap). Like Nacre, keyed on the preset name at bundle build (Glaze also uses
+    /// `.rgba16Float` feedback; in 2b it adds the blur pyramid, so this disambiguates it
+    /// from the Fata Morgana blur heuristic). false for every other mv_warp preset.
+    public let isGlaze: Bool
     /// Initial clear colour for the three feedback textures (Skein.ENGINE.1.1, D-143).
     /// On the marks-on-top path the background fragment (Pass 0) is skipped, so this is
     /// the held GROUND the marks sit on (Skein's cream). Stored as RGBA components
@@ -52,6 +57,7 @@ public struct MVWarpPipelineBundle: Sendable {
         blurState: MTLRenderPipelineState? = nil,
         isNacre: Bool = false,
         isFloret: Bool = false,
+        isGlaze: Bool = false,
         canvasClearColor: SIMD4<Double> = SIMD4<Double>(0, 0, 0, 1)
     ) {
         self.warpState    = warpState
@@ -62,6 +68,7 @@ public struct MVWarpPipelineBundle: Sendable {
         self.blurState    = blurState
         self.isNacre      = isNacre
         self.isFloret     = isFloret
+        self.isGlaze      = isGlaze
         self.canvasClearColor = canvasClearColor
     }
 }
@@ -92,10 +99,17 @@ public struct MVWarpState: @unchecked Sendable {
     /// the fata draw branch runs. nil for Dragon Bloom / default mv_warp presets.
     public let blurPipeline: MTLRenderPipelineState?
     public var blurTexture: MTLTexture?
+    /// Glaze (GLAZE.2b.1): the 2nd + 3rd blur-pyramid levels (`blurTexture` is level 1).
+    /// Allocated only when `isGlaze` (¼ + ⅛ res); nil for FM (single ¼-res blur) and every
+    /// other preset. The glaze branch fills them progressively (prev→1→2→3).
+    public var blurTexture2: MTLTexture?
+    public var blurTexture3: MTLTexture?
     /// Nacre (NACRE.2b): routes `drawWithMVWarp` to the nacre branch. false otherwise.
     public var isNacre: Bool = false
     /// Floret (FLORET.2a): routes `drawWithMVWarp` to the floret branch. false otherwise.
     public var isFloret: Bool = false
+    /// Glaze (GLAZE.2a): routes `drawWithMVWarp` to the glaze branch. false otherwise.
+    public var isGlaze: Bool = false
     /// Initial feedback-texture clear colour (Skein.ENGINE.1.1, D-143), as RGBA
     /// components. Carried so `reallocateMVWarpTextures` (resize) re-clears to the same
     /// ground. (0,0,0,1) for every preset except marks-on-top canvas-hold presets

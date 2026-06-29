@@ -707,6 +707,10 @@ public final class PresetLoader: @unchecked Sendable {
         // Floret (FLORET.2a): HDR float feedback — same register as Nacre (decay-bounded),
         // headroom for the FLORET.3 iridescence uplift. The custom warp clamps [0,1] today.
         if descriptor.name == "Floret" { return .rgba16Float }
+        // Glaze (GLAZE.2a): HDR float feedback (headroom for the greenlit uplift B glossy
+        // bloom). Safe — Glaze uses DECAY feedback (kGlazeDecay 0.94) which bounds the
+        // accumulation (the base clamps to [0,1]; uplift B re-unclamps with a bloom).
+        if descriptor.name == "Glaze" { return .rgba16Float }
         return pixelFormat
     }
 
