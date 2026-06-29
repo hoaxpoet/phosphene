@@ -62,6 +62,11 @@ enum SessionPreparationError: Error, Sendable {
 
 // MARK: - SessionPreparer
 
+// type_body_length: this class owns the full prep state machine for BOTH the
+// streaming and local-file pipelines (see the file-header note) plus the
+// PREPPERF.2 prefetch/warm-up methods; splitting it would widen property access
+// across the module, which leaks worse than the length. Re-enabled after the class.
+// swiftlint:disable type_body_length
 /// Runs the full batch pre-analysis pipeline for a playlist.
 ///
 /// Call `prepare(tracks:)` before playback to populate `StemCache`. The method
@@ -121,6 +126,15 @@ public final class SessionPreparer: ObservableObject {
     /// `resumeFailedNetworkTracks()` re-run doesn't warm an already-compiled graph.
     private var modelsWarmed = false
 
+    /// PREPPERF.2 ②: gates the ML-graph warm-up (see init). Production: true.
+    private let prewarmModels: Bool
+
+    /// PREPPERF.2 ①: how many tracks' network fetch (resolve + download) may run
+    /// ahead of the serial analysis cursor. Bounds concurrent downloads and stays
+    /// within the resolver's rate limiter (D-011); matches `PreviewDownloader`'s
+    /// default download concurrency.
+    private static let prefetchWindow = 4
+
     // MARK: - Init
 
     /// Create a preparer with all injectable dependencies.
@@ -135,6 +149,11 @@ public final class SessionPreparer: ObservableObject {
     ///     `CachedTrackData.beatGrid` is `.empty` for every track — the live
     ///     beat-detection path remains the source of truth.
     ///   - cache: The StemCache to populate. Defaults to a fresh instance.
+    ///   - prewarmModels: PREPPERF.2 ②. When `true` (production default), the first
+    ///     `prepare` kicks a detached ML-graph warm-up. Tests that assert exact
+    ///     `separate` / `analyzeBeatGrid` call counts pass `false` — the warm-up's
+    ///     extra (and detached, hence non-deterministically-timed) model call would
+    ///     otherwise pollute those counts.
     public init(
         resolver: any PreviewResolving,
         downloader: any PreviewDownloading,
@@ -144,7 +163,8 @@ public final class SessionPreparer: ObservableObject {
         beatGridAnalyzer: (any BeatGridAnalyzing)? = nil,
         metadataFetcher: MetadataPreFetcher? = nil,
         cache: StemCache = StemCache(),
-        sessionRecorder: SessionRecorder? = nil
+        sessionRecorder: SessionRecorder? = nil,
+        prewarmModels: Bool = true
     ) {
         self.resolver = resolver
         self.downloader = downloader
@@ -155,6 +175,7 @@ public final class SessionPreparer: ObservableObject {
         self.metadataFetcher = metadataFetcher
         self.cache = cache
         self.sessionRecorder = sessionRecorder
+        self.prewarmModels = prewarmModels
     }
 
     // MARK: - Prepare
@@ -378,54 +399,74 @@ public final class SessionPreparer: ObservableObject {
         var cachedTracks: [TrackIdentity] = []
         var failedTracks: [TrackIdentity] = []
 
-        for track in tracks {
-            if Task.isCancelled { break }
+        // PREPPERF.2 ①: prefetch the network half (resolve + download) up to a
+        // bounded window AHEAD of the serial analysis cursor, so a track's ~2 s
+        // download overlaps the previous track's analysis instead of running
+        // back-to-back. Analysis stays strictly in playlist order (one StemSeparator
+        // call at a time — BUG-031) and the readiness prefix logic is unchanged.
+        typealias FetchResult = Result<(PreviewAudio, PreFetchedTrackProfile?), Error>
+        var fetchTasks: [Int: Task<FetchResult, Never>] = [:]
+        defer { for task in fetchTasks.values { task.cancel() } }
 
-            // Cache-hit short-circuit — idempotent prepare(tracks:) skips re-analysis.
+        // Launch the fetch for `index` unless out of range, already launched, or a
+        // cache hit (the consumer serves cache hits in order, no network needed).
+        func launchFetch(_ index: Int) {
+            guard index < tracks.count, fetchTasks[index] == nil else { return }
+            let track = tracks[index]
+            if cache.loadForPlayback(track: track) != nil { return }
+            fetchTasks[index] = Task { [self] in
+                do { return .success(try await fetchTrack(track)) } catch { return .failure(error) }
+            }
+        }
+
+        for index in 0..<min(Self.prefetchWindow, tracks.count) { launchFetch(index) }
+
+        for index in 0..<tracks.count {
+            if Task.isCancelled { break }
+            let track = tracks[index]
+
+            // Cache-hit short-circuit — idempotent prepare, duplicates (BUG-030), resume.
             if cache.loadForPlayback(track: track) != nil {
+                fetchTasks[index]?.cancel()
+                fetchTasks[index] = nil
                 trackStatuses[track] = .ready
                 cachedTracks.append(track)
-                let done = cachedTracks.count + failedTracks.count
-                progress = (done, tracks.count)
+                progress = (cachedTracks.count + failedTracks.count, tracks.count)
                 logger.info("Cache hit: \(track.title) — skipping re-analysis")
+                launchFetch(index + Self.prefetchWindow)
                 continue
             }
 
-            do {
-                let data = try await prepareTrack(track)
+            if fetchTasks[index] == nil { launchFetch(index) }
+            guard let fetchTask = fetchTasks[index] else { continue }
+            // Await the (usually already-finished) prefetched fetch. The cancellation
+            // handler cancels the in-flight fetch promptly so a Stop doesn't wait out a
+            // full download — preserves prompt cancellation (processed == 0).
+            let fetchResult = await withTaskCancellationHandler {
+                await fetchTask.value
+            } onCancel: {
+                fetchTask.cancel()
+            }
+            fetchTasks[index] = nil
+            // Check cancellation BEFORE refilling — otherwise a cancel mid-await would
+            // still launch the next track's fetch, flipping it out of .queued (the
+            // "unprocessed tracks stay .queued" contract).
+            if Task.isCancelled { break }
+            launchFetch(index + Self.prefetchWindow)   // keep the window full
 
+            do {
+                let (preview, profile) = try fetchResult.get()
+                let data = try await analyzeFetched(preview, profile: profile, track: track)
                 trackStatuses[track] = .analyzing(stage: .caching)
                 cache.store(data, for: track)
                 trackStatuses[track] = .ready
-
                 cachedTracks.append(track)
                 logger.info("Cached: \(track.title) by \(track.artist)")
-            } catch is CancellationError {
-                logger.info("Preparation cancelled after \(cachedTracks.count) tracks")
-                break
-            } catch SessionPreparationError.noPreviewURL(let title) {
-                failedTracks.append(track)
-                trackStatuses[track] = .failed(reason: "Preview not available")
-                networkFailedTracks.insert(track)
-                logger.info("No preview for '\(title)'")
-            } catch SessionPreparationError.downloadFailed(let title) {
-                failedTracks.append(track)
-                trackStatuses[track] = .failed(reason: "Download failed")
-                networkFailedTracks.insert(track)
-                logger.info("Download failed for '\(title)'")
-            } catch SessionPreparationError.analysisError(let detail) {
-                // Download succeeded; stems failed — playable in reactive mode.
-                failedTracks.append(track)
-                trackStatuses[track] = .partial(reason: "Stems unavailable")
-                logger.info("Analysis failed for '\(track.title)': \(detail)")
             } catch {
-                failedTracks.append(track)
-                trackStatuses[track] = .failed(reason: "Unexpected error")
-                logger.info("Failed to prepare '\(track.title)': \(error)")
+                if recordPreparationFailure(error, track: track, failedTracks: &failedTracks) { break }
             }
 
-            let done = cachedTracks.count + failedTracks.count
-            progress = (done, tracks.count)
+            progress = (cachedTracks.count + failedTracks.count, tracks.count)
         }
 
         logger.info("Preparation complete: \(cachedTracks.count)/\(tracks.count) cached, \(failedTracks.count) failed")
@@ -438,6 +479,42 @@ public final class SessionPreparer: ObservableObject {
         )
     }
 
+    /// Map a fetch/analysis error to the track's terminal status + bookkeeping.
+    /// Extracted from `_runPreparation` (PREPPERF.2 ①) to keep that loop under the
+    /// complexity gate; the classification is byte-identical to the prior catch
+    /// ladder. Returns `true` if the loop should break (cancellation).
+    private func recordPreparationFailure(
+        _ error: Error,
+        track: TrackIdentity,
+        failedTracks: inout [TrackIdentity]
+    ) -> Bool {
+        switch error {
+        case is CancellationError:
+            logger.info("Preparation cancelled")
+            return true
+        case SessionPreparationError.noPreviewURL(let title):
+            failedTracks.append(track)
+            trackStatuses[track] = .failed(reason: "Preview not available")
+            networkFailedTracks.insert(track)
+            logger.info("No preview for '\(title)'")
+        case SessionPreparationError.downloadFailed(let title):
+            failedTracks.append(track)
+            trackStatuses[track] = .failed(reason: "Download failed")
+            networkFailedTracks.insert(track)
+            logger.info("Download failed for '\(title)'")
+        case SessionPreparationError.analysisError(let detail):
+            // Download succeeded; stems failed — playable in reactive mode.
+            failedTracks.append(track)
+            trackStatuses[track] = .partial(reason: "Stems unavailable")
+            logger.info("Analysis failed for '\(track.title)': \(detail)")
+        default:
+            failedTracks.append(track)
+            trackStatuses[track] = .failed(reason: "Unexpected error")
+            logger.info("Failed to prepare '\(track.title)': \(error)")
+        }
+        return false
+    }
+
     /// PREPPERF.2 ②: kick the ML-graph warm-up once per preparer, on the first
     /// `_runPreparation` (a `resumeFailedNetworkTracks()` re-run skips it). Pre-compiles
     /// the stem + beat-grid MPSGraphs on a silent buffer so the ~1 s first-call
@@ -447,7 +524,7 @@ public final class SessionPreparer: ObservableObject {
     /// placeholder is tMax), so a short buffer compiles the identical real graph. The
     /// StemSeparator's internal lock serialises this vs the first real separate().
     private func launchModelWarmUpIfNeeded() {
-        guard !modelsWarmed else { return }
+        guard prewarmModels, !modelsWarmed else { return }
         modelsWarmed = true
         let separator = stemSeparator
         let gridAnalyzer = beatGridAnalyzer
@@ -472,18 +549,27 @@ public final class SessionPreparer: ObservableObject {
         _ = beatGridAnalyzer?.analyzeBeatGrid(samples: silent, sampleRate: 44_100)
     }
 
-    private func prepareTrack(_ track: TrackIdentity) async throws -> CachedTrackData {
-        // ponytail: per-track stage timing for the prep-acceleration analysis. The
-        // closure is @Sendable so analyzePreview can call it from Task.detached;
-        // SessionRecorder.log is nonisolated. Lines land in session.log + Console
-        // under "TIMING:" — grep them to see where prep wall-clock actually goes.
+    /// Build the per-track "TIMING:" sink (PREPPERF.1). `@Sendable` so `analyzePreview`
+    /// can call it from `Task.detached`; `SessionRecorder.log` is nonisolated. Lines
+    /// land in session.log + Console — grep "TIMING:" to see where prep time goes.
+    private func makeTimingSink(for track: TrackIdentity) -> @Sendable (String) -> Void {
         let recorder = sessionRecorder
         let label = track.title
-        let logTiming: @Sendable (String) -> Void = { msg in
+        return { msg in
             let line = "TIMING: [\(label)] \(msg)"
             recorder?.log(line)
             prepTimingLogger.info("\(line, privacy: .public)")
         }
+    }
+
+    /// PREPPERF.2 ①: the network half — resolve → download + parallel metadata.
+    /// Split from analysis so it can run AHEAD of the serial analysis stage in a
+    /// bounded prefetch window (the StemSeparator lock constrains analysis, not the
+    /// network). Sets `.resolving` / `.downloading` and emits resolve/download timing.
+    /// Throws the same errors the old `prepareTrack` did, so the consumer's failure
+    /// classification (and `networkFailedTracks` membership) is unchanged.
+    private func fetchTrack(_ track: TrackIdentity) async throws -> (PreviewAudio, PreFetchedTrackProfile?) {
+        let logTiming = makeTimingSink(for: track)
         let clock = ContinuousClock()
         var stageStart = clock.now
 
@@ -495,37 +581,42 @@ public final class SessionPreparer: ObservableObject {
         logTiming("resolve \(durationMs(clock.now - stageStart))ms")
         stageStart = clock.now
 
-        // Download and decode to mono PCM.
+        // Download + parallel metadata fetch (Round 26, 2026-05-15): the fetcher hits
+        // Soundcharts / iTunes Search / MusicBrainz — same I/O class as the download.
+        // Async-let gates: download required (throw on failure); metadata optional
+        // (best-effort; nil means no meter override, ML-detected value stands).
         // TODO(U.4-followup): wire URLSession download progress callback; use -1 until then.
         trackStatuses[track] = .downloading(progress: -1)
-        // Round 26 (2026-05-15): fetch metadata in parallel with the PCM
-        // download. The fetcher hits Soundcharts / iTunes Search /
-        // MusicBrainz over the network — same I/O class as the download.
-        // Async-let gates: the download value is required (throw on
-        // failure); the metadata is optional (best-effort; nil on
-        // failure means no override gets applied, ML-detected meter
-        // stands).
         async let previewTask = downloader.download(track: track, from: url)
         async let profileTask: PreFetchedTrackProfile? = {
             guard let fetcher = self.metadataFetcher else { return nil }
-            let trackMetadata = TrackMetadata(
-                title: track.title,
-                artist: track.artist
-            )
+            let trackMetadata = TrackMetadata(title: track.title, artist: track.artist)
             return await fetcher.prefetch(for: trackMetadata)
         }()
         guard let preview = await previewTask else {
+            _ = await profileTask
             throw SessionPreparationError.downloadFailed(track.title)
         }
         let prefetchedProfile = await profileTask
-        // Download + parallel metadata fetch share this window (metadata is
-        // best-effort and usually faster, so this reads as the download wall time).
+        // Metadata is best-effort + usually faster, so this reads as download wall time.
         logTiming("download \(durationMs(clock.now - stageStart))ms")
-        stageStart = clock.now
+        return (preview, prefetchedProfile)
+    }
 
-        // All CPU-bound analysis runs off the main actor.
-        // NOTE: .mir and .beatGrid sub-stages are not emitted separately
-        // (both run inside the detached task alongside stem separation).
+    /// PREPPERF.2 ①: the analysis half — stem separation → MIR → beat grid → cache
+    /// data. Runs strictly serially in the consumer loop; the StemSeparator must
+    /// never run concurrently (BUG-031). All CPU/GPU work is off the main actor via
+    /// `Task.detached`. `.mir`/`.beatGrid` sub-stages aren't emitted separately
+    /// (they run inside the detached task alongside stem separation).
+    private func analyzeFetched(
+        _ preview: PreviewAudio,
+        profile: PreFetchedTrackProfile?,
+        track: TrackIdentity
+    ) async throws -> CachedTrackData {
+        let logTiming = makeTimingSink(for: track)
+        let clock = ContinuousClock()
+        let stageStart = clock.now
+
         trackStatuses[track] = .analyzing(stage: .stemSeparation)
         let separator = stemSeparator
         let analyzer = stemAnalyzer
@@ -540,7 +631,7 @@ public final class SessionPreparer: ObservableObject {
                     analyzer: analyzer,
                     classifier: classifier,
                     beatGridAnalyzer: gridAnalyzer,
-                    prefetchedProfile: prefetchedProfile,
+                    prefetchedProfile: profile,
                     logTiming: logTiming
                 )
             }.value
@@ -551,6 +642,7 @@ public final class SessionPreparer: ObservableObject {
         }
     }
 }
+// swiftlint:enable type_body_length
 
 // MARK: - Network Recovery
 
