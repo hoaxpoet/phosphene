@@ -10,6 +10,14 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-29-233601] Mitosis — "psychedelic cell division" reaction–diffusion preset CERTIFIED
+
+Phosphene's first reaction–diffusion preset, and the first certified one. A Gray–Scott cell colony: a few cells divide into many until the field is **crowded** (cells touching, ~25–35 s), then the colony **dissolves** back to a few cells and **regrows** — a continuous birth→crowd→dissolve cycle paced by the music's energy. Rendered as **fluorescence microscopy** — magenta nuclei + electric cyan/green membranes (the B-gradient) glowing on black, 640×360 sim (sharp) — with a **music-tied psychedelic hue** (energy-paced phase + spectral-centroid bias + a travelling spatial wave).
+
+The arc to get here is the story: it shipped MITOSIS.0 (sketch) → .1 (graduated, registered) → **three live-M7 misses** building a *per-beat churn* (onset-driven k-oscillation → "obscure"; grid-driven → "deep sea dive" on a non-percussive track; then "much too fast/blurry"). Matt's reframe — *"this preset should be 'psychedelic cell division'"* — invalidated the whole churn arc: the per-beat machinery was over-engineering, **fighting the natural Gray–Scott growth transient that IS the division**. Reconceived as the slow growth cycle (above), with Matt's two picks (fluorescence colour, dissolve-&-regrow cycle) and the colour tied to the music. "Awesome — I love it" → one tune (pack denser, cells touching) → **"Signed off."**
+
+Certified on Matt's M7: rubric `certifiedPresets` + `expectedAutomatedGate: false` (the colour/cycle coupling is CPU-side in `MitosisGeometry`, invisible to the MSL-source heuristic — Filigree/Skein precedent); `PhotosensitivityCertificationTests.multiPassMeasured` + a real `MultiPassFlashHarnessTests.renderMitosis` (**0.00 flashes/s** — the growth and dissolve are gradual, no strobe); `certified: true`. Framerate 0.38 ms/frame @1080p (640×360 sim). **Lesson:** when a preset keeps missing live, get the one-line *concept* from Matt before more mechanics — three M7s went to churn before "psychedelic cell division" pointed at the growth transient that was the answer all along. Future (post-cert): a detailed/"realistic" gen-2 with per-cell procedural detail (spindle asters, cleavage furrow, chromatin) — a different renderer; reference image locked.
+
 ## [dev-2026-06-29-131102] LM.5 — Lumen lights respond during the cached-stem warmup (BUG-064 follow-up)
 
 Closing the one follow-up from BUG-064: for the first ~10 s of a track, Lumen's four lights sat static (`[0.10 0.12 0.12 0.10]`) while the cells already animated. Cause: the lights are stem-driven, and the cached 5a stem snapshot fed during warmup is a static, *loud* value — its energy clears the D-019 warmup threshold, so `stemMix` went to the stem-direct path and the lights locked onto the snapshot until the live analyzer converged.
