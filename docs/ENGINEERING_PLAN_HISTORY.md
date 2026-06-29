@@ -5,6 +5,15 @@ Completed-increment narratives moved out of `ENGINEERING_PLAN.md` at RB.3 (2026-
 
 ## Recently Completed
 
+### Increment DOC.6.1 — rotate_docs.sh ↔ DocIntegrityTests boundary reconciliation + due pruning pass ✅ (2026-06-14)
+
+The DOC.6 rotation gate (`DocIntegrityTests.engineeringPlanRotationGate`) was RED on `main`: it flagged three 2026-06-01 EP §Recently Completed entries as overdue, but `Scripts/rotate_docs.sh --dry-run` reported "nothing to move," so the prescribed remedy was a no-op (calendar pruning debt — CLAUDE.md "every 10th / 2 weeks" — compounded by a gate/script boundary bug; surfaced by CLEAN.2.3's `closeout_evidence.sh`). Two mismatches, fixed in the script (the gate is authoritative):
+- **local-vs-UTC.** The gate parses header dates in UTC vs `Date()`; the script's cutoff was *local*. An evening-local run (= next-day UTC) left the cutoff a day behind the gate. `TODAY`/`CUTOFF` now `TZ=UTC` (also aligns `CUR_MONTH` with the UTC release-notes gate).
+- **strict-vs-inclusive + marker.** The gate flags any old bodied entry regardless of ✅/⏳ (`d < now−14d`); the script required `dated < cutoff` (strict, excluding the exact-14-day boundary) **and** a ✅/⏳ marker. One flagged entry (`Mid-Spike-1 fix`) had no marker → a date-only fix would still leave it red. Now moves on date alone (`dated <= cutoff`, marker-agnostic); unparseable-date triage (the one case needing human judgment) is kept.
+
+Then ran the now-due pruning pass: `rotate_docs.sh` moved the three bodies (Dragon Bloom Spike 1, Mid-Spike-1 fix, LF.6.streaming) **verbatim** to `ENGINEERING_PLAN_HISTORY.md`, leaving header-only stubs; KNOWN_ISSUES + release-notes rotations were already current; `Mid-Spike-1 re-tune` (06-02) correctly stayed (inclusive boundary did not over-rotate). **Verification:** `swift test --filter DocIntegrityTests` 9/9 green; a second `--dry-run` is a no-op (idempotent); verbatim spot-check (`kWaveTargetRMS` / `StreamingArtworkURLResolver.swift` now history-only). No production code touched. `RELEASE_NOTES_DEV.md [dev-2026-06-14-g]`.
+
+
 ### Phase CLEAN — Clean-by-June full-system audit + baseline reconcile ⏳ (2026-06-13, in progress)
 
 A 17-lane multi-agent audit (134 verified findings + 16 verified coverage gaps the lanes missed) produced the phased **CLEAN** backlog (Phases 0–8) in [`docs/diagnostics/CODE_AUDIT_2026-06-13.md`](diagnostics/CODE_AUDIT_2026-06-13.md) — now the authoritative queue (supersedes the 2026-05-06 QR→SB ordering in §Immediate Next). **Approved June-30 scope (Matt):** CLEAN Phases 0 (baseline reconcile), 1 (P1 correctness — BUG-031/032 concurrency family, BUG-033 app-layer leaks, audio device route-change, TSan + E2E lifecycle tests), 2 (Spotify secret + OAuth + honest-UI), 5 (CI/CD) + elevated gaps G1/G2/G7/G8/G9; Phases 3–4 stretch (M7-throttled); capability (6) / bulk test-infra + docs (7) / large-unit decomposition (8, absorbs QR.6) after June.
