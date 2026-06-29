@@ -100,6 +100,127 @@ struct MitosisSketchRenderTests {
         return count
     }
 
+    /// The B field as a flat [Float] (g channel) — for the activity (churn-vs-freeze) metric.
+    private func bField(_ geo: MitosisGeometry, _ w: Int, _ h: Int) -> [Float] {
+        var px = [Float16](repeating: 0, count: w * h * 2)
+        geo.currentStateTexture.getBytes(&px, bytesPerRow: w * 2 * MemoryLayout<Float16>.stride,
+                                         from: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0)
+        var out = [Float](repeating: 0, count: w * h)
+        for i in 0..<(w * h) { out[i] = Float(px[i * 2 + 1]) }
+        return out
+    }
+
+    /// MITOSIS.2 diagnosis — does a regime CHURN (continuous division + death) or FREEZE
+    /// to a static packed grid? Seeds a couple of cells, runs 30 s at the real track's
+    /// steady ~0.4 energy (no onsets — isolate substrate dynamics), and reports the
+    /// spot-count trajectory + end-of-run field activity (mean |ΔB|/frame ≈ 0 ⇒ frozen).
+    /// Live M7: the shipped u-skate regime fills then freezes; we want a perpetually
+    /// dynamic one. (RENDER_VISUAL=1.)
+    @Test("Probe RD regimes for churn-not-freeze from a sparse seed (RENDER_VISUAL=1)")
+    func test_regimeProbeDynamic() throws {
+        guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else { return }
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let w = 320, h = 180
+        let tex = try target(ctx, w, h)
+        var base = URL(fileURLWithPath: #filePath)
+        for _ in 0..<5 { base.deleteLastPathComponent() }
+        let dir = base.appendingPathComponent("tools/mitosis_sketch/frames/dynamic", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        // (F, k, label) — spread across the spot→chaos boundary.
+        let regimes: [(Float, Float, String)] = [
+            (0.034, 0.0630, "0_current"), (0.034, 0.0645, "1_hiK"),
+            (0.030, 0.0620, "2"), (0.026, 0.0600, "3"), (0.026, 0.0555, "4"),
+            (0.038, 0.0620, "5"), (0.042, 0.0635, "6"), (0.046, 0.0648, "7"),
+            (0.022, 0.0510, "8"), (0.030, 0.0565, "9")
+        ]
+        for (fF, kK, label) in regimes {
+            let geo = try makeGeo(ctx, lib, MitosisConfiguration(feed: fF, kill: kK, seedBlobs: 3),
+                                  pixelFormat: ctx.pixelFormat)
+            var t: Float = 0
+            func runTo(_ frames: Int) throws {
+                while Int(t * 60) < frames {
+                    var f = FeatureVector(time: t, deltaTime: 1.0 / 60.0); f.bass = 0.4; f.mid = 0.34
+                    var s = StemFeatures()
+                    s.bassEnergy = 0.4; s.drumsEnergy = 0.4; s.otherEnergy = 0.32; s.vocalsEnergy = 0.24
+                    try frame(geo, f, s, tex, ctx); t += 1.0 / 60.0
+                }
+            }
+            try runTo(300);  let c5 = spotCount(geo, w, h)
+            try writePNG(tex, w, h, dir.appendingPathComponent("\(label)_05s.png"))
+            try runTo(900);  let c15 = spotCount(geo, w, h)
+            try runTo(1800); let c30 = spotCount(geo, w, h)
+            try writePNG(tex, w, h, dir.appendingPathComponent("\(label)_30s.png"))
+            // Activity over the final 60 frames: mean per-cell |ΔB|. Frozen ⇒ ≈ 0.
+            var prev = bField(geo, w, h); var activity: Float = 0
+            for _ in 0..<60 {
+                var f = FeatureVector(time: t, deltaTime: 1.0 / 60.0); f.bass = 0.4; f.mid = 0.34
+                var s = StemFeatures()
+                s.bassEnergy = 0.4; s.drumsEnergy = 0.4; s.otherEnergy = 0.32; s.vocalsEnergy = 0.24
+                try frame(geo, f, s, tex, ctx); t += 1.0 / 60.0
+                let cur = bField(geo, w, h)
+                var d: Float = 0; for i in 0..<cur.count { d += abs(cur[i] - prev[i]) }
+                activity += d / Float(cur.count); prev = cur
+            }
+            activity /= 60
+            print(String(format: "[MITO] dyn %@ (F=%.3f k=%.4f): spots 5s=%d 15s=%d 30s=%d | end-activity=%.5f%@",
+                         label, fF, kK, c5, c15, c30, activity, activity < 0.0008 ? "  ← FROZEN" : "  ← churning"))
+        }
+        print("[MITO] dynamic-probe frames: \(dir.path)")
+    }
+
+    /// MITOSIS.2 fix probe — with onset-driven k-oscillation, does the field sustain a
+    /// divide↔merge CHURN under a realistic drum-onset train (the real track fired onsets
+    /// in 58.9% of frames)? Sweeps base k from a sparse seed; reports spot range (must go
+    /// UP and DOWN = divide AND merge), survival, and end activity (must stay > 0 =
+    /// not frozen). (RENDER_VISUAL=1.)
+    @Test("Probe onset-driven divide/merge churn vs base k (RENDER_VISUAL=1)")
+    func test_onsetChurnProbe() throws {
+        guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else { return }
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let w = 320, h = 180
+        let tex = try target(ctx, w, h)
+        var base = URL(fileURLWithPath: #filePath)
+        for _ in 0..<5 { base.deleteLastPathComponent() }
+        let dir = base.appendingPathComponent("tools/mitosis_sketch/frames/churn", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        for baseK: Float in [0.0615, 0.0625, 0.0635, 0.0645, 0.0655] {
+            let geo = try makeGeo(ctx, lib, MitosisConfiguration(feed: 0.034, kill: baseK, seedBlobs: 3),
+                                  pixelFormat: ctx.pixelFormat)
+            var t: Float = 0; var loSpot = 99999; var hiSpot = 0; var samples: [Int] = []
+            // ~2.1 Hz drum-onset train + steady 0.4 energy (the live track's profile).
+            func step() throws {
+                let ph = Int(t * 60) % 28
+                var f = FeatureVector(time: t, deltaTime: 1.0 / 60.0); f.bass = 0.4; f.mid = 0.34
+                var s = StemFeatures()
+                s.bassEnergy = 0.4; s.drumsEnergy = 0.4; s.otherEnergy = 0.32; s.vocalsEnergy = 0.24
+                s.drumsEnergyDev = ph < 2 ? 1.2 : 0.05
+                try frame(geo, f, s, tex, ctx); t += 1.0 / 60.0
+            }
+            for fr in 0..<1800 {
+                try step()
+                if fr > 300 && fr % 30 == 0 {           // after the initial populate transient
+                    let c = spotCount(geo, w, h); loSpot = min(loSpot, c); hiSpot = max(hiSpot, c); samples.append(c)
+                }
+                if fr == 300 { try writePNG(tex, w, h, dir.appendingPathComponent(String(format: "k%.4f_05s.png", baseK))) }
+                if fr == 1799 { try writePNG(tex, w, h, dir.appendingPathComponent(String(format: "k%.4f_30s.png", baseK))) }
+            }
+            var prev = bField(geo, w, h); var activity: Float = 0
+            for _ in 0..<60 { try step(); let cur = bField(geo, w, h)
+                var d: Float = 0; for i in 0..<cur.count { d += abs(cur[i] - prev[i]) }
+                activity += d / Float(cur.count); prev = cur }
+            activity /= 60
+            let mean = samples.isEmpty ? 0 : samples.reduce(0, +) / samples.count
+            print(String(format: "[MITO] churn baseK=%.4f: spots lo=%d hi=%d mean=%d swing=%d | activity=%.5f %@",
+                         baseK, loSpot, hiSpot, mean, hiSpot - loSpot, activity,
+                         activity > 0.0008 && loSpot > 3 && (hiSpot - loSpot) > 15 ? "← CHURNS" : ""))
+        }
+        print("[MITO] churn frames: \(dir.path)")
+    }
+
     // MARK: - Criterion 1: framerate
 
     @Test("Holds the 60 fps frame budget @ 1080p")
@@ -127,19 +248,50 @@ struct MitosisSketchRenderTests {
         print(String(format: "[MITO] 640×360 sim @1080p: median %.2f ms/frame", bt[bt.count / 2]))
     }
 
-    // MARK: - Criterion 2: stable, bounded field
+    // MARK: - Onset-driven churn helpers (MITOSIS.2)
 
-    @Test("Field stays bounded and structured — no blow-up, no all-on/all-off")
-    func test_stability() throws {
+    /// One frame: steady energy + an optional ~2.1 Hz drum-onset train. The field is
+    /// onset-driven now (constant-parameter Gray–Scott freezes), so realistic tests
+    /// must supply onsets — energy-only is silence to the percussion channel.
+    private func churnStep(_ geo: MitosisGeometry, _ energy: Float, onsets: Bool,
+                           _ tex: MTLTexture, _ ctx: MetalContext, _ t: inout Float) throws {
+        let ph = Int(t * 60) % 28
+        var f = FeatureVector(time: t, deltaTime: 1.0 / 60.0); f.bass = energy; f.mid = energy * 0.85
+        var s = StemFeatures()
+        s.bassEnergy = energy; s.drumsEnergy = energy; s.otherEnergy = energy * 0.8; s.vocalsEnergy = energy * 0.5
+        s.drumsEnergyDev = onsets ? (ph < 2 ? 1.2 : 0.05) : 0.02
+        try frame(geo, f, s, tex, ctx); t += 1.0 / 60.0
+    }
+
+    /// Mean per-cell |ΔB|/frame over `frames` driven frames — ≈ 0 ⇒ frozen, > 0 ⇒ churning.
+    private func churnActivity(_ geo: MitosisGeometry, _ w: Int, _ h: Int, energy: Float, onsets: Bool,
+                               frames: Int, _ tex: MTLTexture, _ ctx: MetalContext, _ t: inout Float) throws -> Float {
+        var prev = bField(geo, w, h); var act: Float = 0
+        for _ in 0..<frames {
+            try churnStep(geo, energy, onsets: onsets, tex, ctx, &t)
+            let cur = bField(geo, w, h)
+            var d: Float = 0; for i in 0..<cur.count { d += abs(cur[i] - prev[i]) }
+            act += d / Float(cur.count); prev = cur
+        }
+        return act / Float(frames)
+    }
+
+    // MARK: - Criterion: churns — divides AND merges, never freezes (the MITOSIS.2 fix)
+
+    /// The live-M7 failure was fill-to-a-static-grid-then-freeze. Under an onset train the
+    /// field must stay alive + bounded, keep CHURNING (activity > 0), and its cell count
+    /// must SWING (cells both divide and die) — not lock into a static lattice.
+    @Test("Field churns — divides AND merges, bounded, never freezes (MITOSIS.2)")
+    func test_churnsNotFreezes() throws {
         let ctx = try MetalContext()
         let lib = try ShaderLibrary(context: ctx)
         let cfg = MitosisConfiguration()
         let geo = try makeGeo(ctx, lib, cfg, pixelFormat: ctx.pixelFormat)
         let tex = try target(ctx, cfg.width, cfg.height)
         var t: Float = 0
-        for _ in 0..<900 { let (f, s) = energetic(t); try frame(geo, f, s, tex, ctx); t += 1.0 / 60.0 }
+        for _ in 0..<600 { try churnStep(geo, 0.55, onsets: true, tex, ctx, &t) }   // populate from the seed
 
-        // State stays finite and in [0,1] (clamped in-shader; verify no NaN leak).
+        // Finite + bounded in [0,1] (clamped in-shader; verify no NaN leak).
         var px = [Float16](repeating: 0, count: cfg.width * cfg.height * 2)
         geo.currentStateTexture.getBytes(&px, bytesPerRow: cfg.width * 2 * MemoryLayout<Float16>.stride,
                                          from: MTLRegionMake2D(0, 0, cfg.width, cfg.height), mipmapLevel: 0)
@@ -147,92 +299,68 @@ struct MitosisSketchRenderTests {
         for v in px where !Float(v).isFinite || Float(v) < -0.01 || Float(v) > 1.01 { bad = true; break }
         #expect(!bad, "RD field must stay finite and bounded in [0,1]")
 
-        // Not degenerate: a healthy population of spots, neither empty nor saturated.
-        let spots = spotCount(geo, cfg.width, cfg.height)
+        // Cell count swings (divide AND merge) over a steady onset section; stays alive.
+        var lo = 99999, hi = 0
+        for fr in 0..<600 {
+            try churnStep(geo, 0.55, onsets: true, tex, ctx, &t)
+            if fr % 30 == 0 { let c = spotCount(geo, cfg.width, cfg.height); lo = min(lo, c); hi = max(hi, c) }
+        }
         let mean = lumaMean(tex, cfg.width, cfg.height)
-        print("[MITO] steady-state: spots=\(spots) lumaMean=\(String(format: "%.3f", mean))")
-        #expect(spots > 5, "colony must have many distinct cells, not collapse: spots \(spots)")
-        #expect(mean > 0.02 && mean < 0.70, "field must be bounded, not blown-out/empty: mean \(mean)")
+        var t2 = t
+        let activity = try churnActivity(geo, cfg.width, cfg.height, energy: 0.55, onsets: true, frames: 60, tex, ctx, &t2)
+        print("[MITO] churn: spots lo=\(lo) hi=\(hi) swing=\(hi - lo) lumaMean=\(String(format: "%.3f", mean)) activity=\(String(format: "%.5f", activity))")
+        #expect(lo > 5, "colony must stay alive under onsets: min spots \(lo)")
+        #expect(mean > 0.02 && mean < 0.75, "field must be bounded, not blown-out/empty: lumaMean \(mean)")
+        #expect(activity > 0.0008, "field must keep churning, not freeze to a static grid: activity \(activity)")
+        #expect(hi - lo > 15, "cells must both divide and merge (count must swing): swing \(hi - lo)")
     }
 
-    // MARK: - Criterion 4: divide AND merge
-
-    /// Quiet → loud → quiet. Louder = faster metabolism = more division (spot count
-    /// rises); quieter lets spots merge/settle (count falls). Both directions must show.
-    @Test("Cells divide (count rises with energy) and merge (count falls)")
-    func test_divideAndMerge() throws {
+    /// Density tracks energy: loud teems, quiet thins — but quiet stays alive (the
+    /// energy-survival floor), so a drum-sparse section doesn't kill the colony.
+    @Test("Density tracks energy under onsets (loud teems, quiet thins but survives)")
+    func test_densityTracksEnergy() throws {
         let ctx = try MetalContext()
         let lib = try ShaderLibrary(context: ctx)
         let cfg = MitosisConfiguration()
         let geo = try makeGeo(ctx, lib, cfg, pixelFormat: ctx.pixelFormat)
         let tex = try target(ctx, cfg.width, cfg.height)
         var t: Float = 0
-        func hold(_ lvl: Float, _ frames: Int) throws {
-            for _ in 0..<frames {
-                var f = FeatureVector(time: t, deltaTime: 1.0 / 60.0); f.bass = lvl; f.mid = lvl * 0.85
-                var s = StemFeatures()
-                s.bassEnergy = lvl; s.drumsEnergy = lvl; s.otherEnergy = lvl * 0.8; s.vocalsEnergy = lvl * 0.5
-                try frame(geo, f, s, tex, ctx); t += 1.0 / 60.0
-            }
+        func holdMean(_ lvl: Float) throws -> Int {
+            for _ in 0..<600 { try churnStep(geo, lvl, onsets: true, tex, ctx, &t) }
+            var s: [Int] = []
+            for fr in 0..<120 { try churnStep(geo, lvl, onsets: true, tex, ctx, &t); if fr % 20 == 0 { s.append(spotCount(geo, cfg.width, cfg.height)) } }
+            return s.reduce(0, +) / s.count
         }
-        try hold(0.10, 600); let quietA = spotCount(geo, cfg.width, cfg.height)
-        try hold(0.85, 600); let loud = spotCount(geo, cfg.width, cfg.height)
-        try hold(0.10, 600); let quietB = spotCount(geo, cfg.width, cfg.height)
-        print("[MITO] divide/merge: quiet=\(quietA) → loud=\(loud) → quiet=\(quietB)")
-        #expect(loud > quietA, "loud must drive more division than quiet: \(loud) vs \(quietA)")
-        #expect(quietB < loud, "quieting must let cells merge/settle back: \(quietB) vs \(loud)")
+        let loud = try holdMean(0.85), quiet = try holdMean(0.12)
+        print("[MITO] density: loud=\(loud) quiet=\(quiet)")
+        #expect(loud > quiet, "loud must teem denser than quiet: \(loud) vs \(quiet)")
+        #expect(quiet > 0, "quiet must stay alive (energy-survival floor): \(quiet)")
     }
 
-    // MARK: - Criterion: onset CAUSES division (the make-or-break sync mechanism)
+    // MARK: - Criterion: onsets DRIVE the churn (the make-or-break sync mechanism)
 
-    /// A/B causal proof. Two identically-seeded colonies settle to the same state,
-    /// then one receives a drum-onset train and the other doesn't. The onset run must
-    /// show measurably more division — this is the mechanism physarum/Filigree lacked
-    /// (FILIGREE §"sync finding"). Whether it READS as locked is the live gate (FA #27).
-    @Test("Drum onsets cause extra mitosis vs the no-onset control")
-    func test_onsetCausesDivision() throws {
+    /// Two identically-seeded colonies at the same energy: one gets a drum-onset train,
+    /// the other none. The onset run must keep CHURNING while the no-onset control
+    /// settles toward a frozen grid — i.e. the onsets are what drive the dynamics
+    /// physarum/Filigree couldn't (FILIGREE §"sync finding"). Whether it READS as locked
+    /// is the live gate (FA #27).
+    @Test("Onsets drive the churn — onset run churns, no-onset control freezes")
+    func test_onsetDrivesChurn() throws {
         let ctx = try MetalContext()
         let lib = try ShaderLibrary(context: ctx)
         let cfg = MitosisConfiguration()
         let onset = try makeGeo(ctx, lib, cfg, pixelFormat: ctx.pixelFormat)
         let control = try makeGeo(ctx, lib, cfg, pixelFormat: ctx.pixelFormat)
         let tex = try target(ctx, cfg.width, cfg.height)
-        let t: Float = 0
-
-        // Settle both identically (no onsets) to the same moderate-energy state.
-        func settle(_ g: MitosisGeometry) throws {
-            var tt = t
-            for _ in 0..<360 {
-                var f = FeatureVector(time: tt, deltaTime: 1.0 / 60.0); f.bass = 0.45; f.mid = 0.38
-                var s = StemFeatures(); s.bassEnergy = 0.45; s.drumsEnergy = 0.45; s.otherEnergy = 0.36; s.vocalsEnergy = 0.27
-                try frame(g, f, s, tex, ctx); tt += 1.0 / 60.0
-            }
-        }
-        try settle(onset); try settle(control)
-        let onset0 = spotCount(onset, cfg.width, cfg.height)
-        let ctrl0 = spotCount(control, cfg.width, cfg.height)
-
-        // 240 frames: `onset` gets a ~2.5 Hz drum train; `control` stays flat.
-        var tt = t
-        for fr in 0..<240 {
-            let phase = fr % 24
-            var f = FeatureVector(time: tt, deltaTime: 1.0 / 60.0); f.bass = 0.45; f.mid = 0.38
-            var sOn = StemFeatures(); sOn.bassEnergy = 0.45; sOn.drumsEnergy = 0.45; sOn.otherEnergy = 0.36; sOn.vocalsEnergy = 0.27
-            var sOff = sOn
-            sOn.drumsEnergyDev = phase < 2 ? 1.2 : (phase < 6 ? 0.3 : 0.02)
-            sOff.drumsEnergyDev = 0.02
-            try frame(onset, f, sOn, tex, ctx)
-            try frame(control, f, sOff, tex, ctx)
-            tt += 1.0 / 60.0
-        }
-        let onset1 = spotCount(onset, cfg.width, cfg.height)
-        let ctrl1 = spotCount(control, cfg.width, cfg.height)
-        let onsetGain = onset1 - onset0, ctrlGain = ctrl1 - ctrl0
-        print("[MITO] onset-causes-division: onset \(onset0)→\(onset1) (Δ\(onsetGain)) | control \(ctrl0)→\(ctrl1) (Δ\(ctrlGain)) | hitEnv-fires=\(onset.currentHitEnv > control.currentHitEnv)")
-        // The onset envelope must actually fire (the event channel is wired).
+        var tO: Float = 0, tC: Float = 0
+        for _ in 0..<600 { try churnStep(onset, 0.55, onsets: true, tex, ctx, &tO) }
+        for _ in 0..<600 { try churnStep(control, 0.55, onsets: false, tex, ctx, &tC) }
+        let aOn = try churnActivity(onset, cfg.width, cfg.height, energy: 0.55, onsets: true, frames: 90, tex, ctx, &tO)
+        let aOff = try churnActivity(control, cfg.width, cfg.height, energy: 0.55, onsets: false, frames: 90, tex, ctx, &tC)
+        print("[MITO] onset-drives-churn: onset activity=\(String(format: "%.5f", aOn)) | control activity=\(String(format: "%.5f", aOff)) | hitEnv=\(String(format: "%.2f", onset.currentHitEnv))")
         #expect(onset.currentHitEnv > 0.1, "onset envelope must fire on the drum train: \(onset.currentHitEnv)")
-        // And it must produce more division than the identical no-onset colony.
-        #expect(onsetGain > ctrlGain, "drum onsets must cause more mitosis than the control: Δ\(onsetGain) vs Δ\(ctrlGain)")
+        #expect(aOn > 0.0008, "onset run must keep churning: activity \(aOn)")
+        #expect(aOn > 2.5 * aOff, "onsets must drive the churn — onset activity ≫ no-onset control: \(aOn) vs \(aOff)")
     }
 
     // MARK: - Criterion: flash-safe under a worst-case onset train (D-157)
@@ -245,8 +373,10 @@ struct MitosisSketchRenderTests {
         let geo = try makeGeo(ctx, lib, cfg, pixelFormat: ctx.pixelFormat)
         let tex = try target(ctx, cfg.width, cfg.height)
         var t: Float = 0
-        // Settle, then a relentless ~4 Hz onset train (worst case).
-        for _ in 0..<360 { let (f, s) = energetic(t); try frame(geo, f, s, tex, ctx); t += 1.0 / 60.0 }
+        // Populate a LIVE churning field with onsets (settling without onsets would die
+        // and make this a false pass on an empty ground), then measure under a relentless
+        // ~4 Hz onset train (worst case).
+        for _ in 0..<600 { try churnStep(geo, 0.6, onsets: true, tex, ctx, &t) }
         var lumas: [Float] = []; var prev = lumaMean(tex, cfg.width, cfg.height); var maxDelta: Float = 0
         for fr in 0..<240 {
             var f = FeatureVector(time: t, deltaTime: 1.0 / 60.0); f.bass = 0.6; f.mid = 0.5
@@ -283,29 +413,24 @@ struct MitosisSketchRenderTests {
         try? FileManager.default.createDirectory(at: seqDir, withIntermediateDirectories: true)
         var t: Float = 0; var seq = 0
 
-        // Arc: quiet (merge) → surge w/ onsets (divide burst) → quiet → surge.
+        // Production-coupling arc: a steady ~2.1 Hz drum-onset train throughout (real
+        // music always has the beat), with the continuous-energy envelope swinging
+        // quiet↔loud. Captures the sparse-seed populate, the loud teem, and the quiet thin.
         func levelAt(_ s: Float) -> Float {
-            if s < 5 { return 0.10 }
-            if s < 12 { return 0.85 }
-            if s < 17 { return 0.10 }
-            if s < 24 { return 0.85 }
-            return 0.10
+            if s < 8 { return 0.45 }       // populate from the couple of seed cells
+            if s < 15 { return 0.85 }      // loud → teeming
+            if s < 21 { return 0.18 }      // quiet → thin but alive
+            return 0.85
         }
-        let shots: [(Float, String)] = [(4.5, "0_quiet_merged"), (8.0, "1_onset_divide"), (12.5, "2_loud_teeming"),
-                                        (16.5, "3_merged_again"), (23.0, "4_onset_divide2")]
+        let shots: [(Float, String)] = [(2.0, "0_seed_dividing"), (6.0, "1_populated"), (12.0, "2_loud_teeming"),
+                                        (19.0, "3_quiet_thinned"), (25.0, "4_loud_again")]
         var si = 0
-        let total = 25 * 60
+        let total = 27 * 60
         for fr in 0..<total {
-            let s = Float(fr) / 60; let lvl = levelAt(s)
-            var f = FeatureVector(time: t, deltaTime: 1.0 / 60.0); f.bass = lvl; f.mid = lvl * 0.85
-            var st = StemFeatures()
-            st.bassEnergy = lvl; st.drumsEnergy = lvl; st.otherEnergy = lvl * 0.8; st.vocalsEnergy = lvl * 0.5
-            st.drumsEnergyDev = (fr % 24) < 2 ? 1.2 * lvl : 0.02   // onsets only when loud
-            try frame(geo, f, st, tex, ctx); t += 1.0 / 60.0
+            try churnStep(geo, levelAt(Float(fr) / 60), onsets: true, tex, ctx, &t)
             if fr % 4 == 0 { try writePNG(tex, w, h, seqDir.appendingPathComponent(String(format: "f_%03d.png", seq))); seq += 1 }
-            if si < shots.count, s >= shots[si].0 {
-                let spots = spotCount(geo, w, h)
-                print("[MITO] arc \(shots[si].1): energy=\(String(format: "%.2f", geo.currentEnergyEnv)) spots=\(spots)")
+            if si < shots.count, Float(fr) / 60 >= shots[si].0 {
+                print("[MITO] arc \(shots[si].1): energy=\(String(format: "%.2f", geo.currentEnergyEnv)) spots=\(spotCount(geo, w, h))")
                 try writePNG(tex, w, h, dir.appendingPathComponent("mito_\(shots[si].1).png"))
                 si += 1
             }

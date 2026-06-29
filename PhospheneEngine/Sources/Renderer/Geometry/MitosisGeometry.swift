@@ -50,21 +50,27 @@ public struct MitosisConfiguration: Sendable {
     public var feed: Float
     public var kill: Float
     public var paletteId: UInt32
+    /// Number of B seed blobs. Few cells → the colony divides/spreads as a visible
+    /// process (Matt, MITOSIS.2: "if this preset favors division, start with only a
+    /// couple of cells"); a dense seed fills instantly into a static grid.
+    public var seedBlobs: Int
 
     public init(
         width: Int = 320,
         height: Int = 180,
         baseSubsteps: Int = 8,
         maxSubsteps: Int = 18,
-        // Regime: F=0.034 with k swept across the death boundary by energy (see
-        // `makeConfig`). Empirically (MitosisSketchRenderTests.test_regimeProbe) the
-        // canonical "mitosis" F=0.0367/k=0.0649 DECAYS to extinction in this r16Float
-        // discretisation; k≈0.063 (the "u-skate" regime) self-sustains a living field
-        // of discrete, dividing cells, and k climbing toward ~0.0645 dies them back —
-        // which is the merge/divide handle.
+        // Regime (MITOSIS.2): F=0.034, base k=0.0655 leans to the DEATH side — cells
+        // continuously die back (merge) — and each drum onset transiently drops k to
+        // trigger a division burst (see `update`). Constant-parameter Gray–Scott always
+        // FREEZES to a static grid (the live M7 failure; every regime in
+        // `test_regimeProbeDynamic` ended with activity ≈ 0), so the music drives the
+        // churn. At this death-leaning base the cells stay DISCRETE + round (lower k
+        // writhes into connected worms — `test_onsetChurnProbe` frames).
         feed: Float = 0.034,
-        kill: Float = 0.063,
-        paletteId: UInt32 = 0
+        kill: Float = 0.0655,
+        paletteId: UInt32 = 0,
+        seedBlobs: Int = 3
     ) {
         self.width = width
         self.height = height
@@ -73,6 +79,7 @@ public struct MitosisConfiguration: Sendable {
         self.feed = feed
         self.kill = kill
         self.paletteId = paletteId
+        self.seedBlobs = seedBlobs
     }
 }
 
@@ -155,9 +162,24 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
         advanceEnvelopes(features: features, stems: stemFeatures)
         frameCounter &+= 1
 
-        // Metabolism: louder → more substeps/frame → faster division. (§6 sustained
-        // energy sets the division/growth rate.)
+        // Constant-parameter Gray–Scott always FREEZES to a static grid (MITOSIS.2
+        // probe: every regime end-activity ≈ 0) — the "mitosis" is the transient, not a
+        // steady state. So the music must keep the field out of equilibrium. Base k
+        // leans to the death side → cells continuously die back (MERGE) between beats;
+        // each drum onset drops k → a DIVISION burst on the beat (Matt's locked role).
+        // The field perpetually divides-on-beat / merges-between, never freezing.
         let en = max(0, min(1.2, energyEnv))
+        let hit = min(1.4, hitEnv)
+        // Keep the SUSTAINED base k inside the discrete-cell band (≈0.063–0.066) at all
+        // energies — a sustained low k writhes into a connected worm labyrinth, not cells
+        // (MITOSIS.2 production render). Energy nudges it only slightly (loud a touch
+        // denser). The churn comes from the BRIEF per-onset k-dip: a short excursion
+        // divides without time to worm-ify (cf. test_onsetChurnProbe discrete frames).
+        let killBase = configuration.kill - 0.002 * min(1, en)   // 0.0655 quiet → 0.0635 loud (both discrete)
+        let killEff = killBase - 0.0085 * hit                    // onset → brief division burst
+        // Survival-floor nucleation gate: only while music plays (no Drift-Motes in
+        // silence), keeps the death-leaning field recoverable.
+        let nucleate = Self.smoothstep(0.03, 0.12, energyEnv)
         let substeps = configuration.baseSubsteps +
             Int(Float(configuration.maxSubsteps - configuration.baseSubsteps) * min(1, en))
 
@@ -172,10 +194,9 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
             depth: 1)
 
         for step in 0..<substeps {
-            // Inject the onset burst only on the first substep — one bounded pulse
-            // per frame, not N× (flash-safe).
-            let burst: Float = step == 0 ? min(1, hitEnv) : 0
-            var cfg = makeConfig(energy: en, frameSalt: frameCounter &+ UInt32(step), burst: burst)
+            // Nucleation trickle on the first substep only (one bounded pass/frame).
+            let burst: Float = step == 0 ? nucleate : 0
+            var cfg = makeConfig(energy: en, killEff: killEff, burst: burst, frameSalt: frameCounter &+ UInt32(step))
             let src = state[cur], dst = state[1 - cur]
             enc.setBytes(&cfg, length: MemoryLayout<MitosisConfig>.stride, index: 0)
             enc.setTexture(src, index: 0)
@@ -191,7 +212,8 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
 
     public func render(encoder: MTLRenderCommandEncoder, features: FeatureVector) {
         guard let state = renderPipeline else { return }
-        var cfg = makeConfig(energy: max(0, min(1.2, energyEnv)), frameSalt: frameCounter, burst: 0)
+        let en = max(0, min(1.2, energyEnv))
+        var cfg = makeConfig(energy: en, killEff: configuration.kill, burst: 0, frameSalt: frameCounter)
         encoder.setRenderPipelineState(state)
         encoder.setFragmentBytes(&cfg, length: MemoryLayout<MitosisConfig>.stride, index: 0)
         encoder.setFragmentTexture(self.state[cur], index: 0)
@@ -221,14 +243,10 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
         hitEnv += Float(hitAlpha) * (hitRaw - hitEnv)
     }
 
-    private func makeConfig(energy: Float, frameSalt: UInt32, burst: Float) -> MitosisConfig {
-        // Energy shifts k across the death boundary (the divide↔merge layer): quiet →
-        // high k → cells shrink/coalesce (merge, sparse); loud → low k → teeming
-        // division. Centred so rest sits in the living regime, clamped short of full
-        // extinction. (Substep count — set in `update` — carries the metabolism rate.)
-        let en = max(0, min(1, energy))
-        let killEff = configuration.kill + 0.0008 - 0.0026 * en   // [≈0.0612 loud … ≈0.0638 quiet]
-        return MitosisConfig(
+    /// `killEff` is computed per-frame in `update` (base k − energy density shift −
+    /// onset division pulse); the onset drives the divide↔merge churn (see `update`).
+    private func makeConfig(energy: Float, killEff: Float, burst: Float, frameSalt: UInt32) -> MitosisConfig {
+        MitosisConfig(
             width: UInt32(configuration.width),
             height: UInt32(configuration.height),
             frame: frameSalt,
@@ -237,7 +255,7 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
             feed: configuration.feed,
             kill: killEff,
             dt: 1.0,
-            feedBurst: burst,
+            feedBurst: burst,   // energy-gated survival-floor nucleation (MITOSIS.2)
             energyEnv: energy,
             paletteId: configuration.paletteId)
     }
@@ -257,7 +275,7 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
             rng = rng &* 6364136223846793005 &+ 1442695040888963407
             return Float((rng >> 33) & 0xFFFFFF) / Float(0xFFFFFF)
         }
-        let blobs = max(8, (width * height) / 4000)
+        let blobs = max(1, configuration.seedBlobs)
         for _ in 0..<blobs {
             let cx = Int(next() * Float(width)), cy = Int(next() * Float(height))
             let radius = 3 + Int(next() * 3)

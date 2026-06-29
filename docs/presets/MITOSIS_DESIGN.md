@@ -93,22 +93,33 @@ Public-domain math, re-implemented in our own MSL. References: Karl Sims
 **★ Load-bearing regime finding (empirical, `test_regimeProbe`).** The canonical
 "mitosis" parameters F=0.0367/k=0.0649 **decay to extinction** in this `rg16Float`
 discretisation (autonomous spot count → 1). k≈0.063 (the "u-skate" regime)
-self-sustains a living field of discrete dividing cells; k climbing toward ~0.0645
-dies them back — which *is* the merge↔divide handle. Base regime: **F=0.034,
-k=0.063**, with energy shifting `k` across the death boundary
-(`killEff = 0.063 + 0.0008 − 0.0026·energy`).
+self-sustains a living field of discrete dividing cells. Base regime: **F=0.034,
+k=0.0655** (death-leaning; lower k writhes into a connected worm labyrinth).
 
-## 6. Audio routing
+**★★ MITOSIS.2 correction (the live-M7 fix — load-bearing).** The first cut shifted
+`k` *gently* with energy and "painted nuclei into open space" on onsets. Matt's live
+M7: *"after the initial cell division to form a regular grid, it slows down
+immensely… division but not a combination of division and merging."* Diagnosed from
+the session (`2026-06-29T19-44-15Z`): the audio was rich (drum onsets in **58.9 %** of
+frames, steady ~0.4 energy) — the failure was the substrate. A direct probe
+(`test_regimeProbeDynamic`) found the load-bearing fact: **every constant-parameter
+Gray–Scott regime FREEZES** to a static attractor (end-activity ≈ 0). The "mitosis"
+is the *transient*; the music must keep the field out of equilibrium. So the coupling
+is now **onset-driven k-oscillation** (below), and the open-space nucleation is retired
+to a music-gated *survival floor* only.
+
+## 6. Audio routing (MITOSIS.2)
 
 | Visual layer | Primitive | Timescale | Mechanism |
 |---|---|---|---|
-| Division rate + density (sparse↔teeming) | smoothed continuous energy (`energyEnv`, Murmuration-style stem/full-mix blend) | slow | scales substeps/frame + shifts `k` across the death boundary |
-| Mitosis burst (the synced event) | `drumsEnergyDev` (+ `bassEnergyDev`), fast-attack/slow-release `hitEnv` | per-beat | paints sparse B nuclei into OPEN space → new cells bud on the beat |
+| Division burst (the synced event + the churn driver) | `drumsEnergyDev`(+ `bassEnergyDev`) → fast `hitEnv` | per-beat | each onset DROPS `k` briefly → a division burst; between beats the death-leaning base `k` culls cells (MERGE). The field perpetually divides-on-beat / merges-between, never freezing. |
+| Density + survival (sparse↔teeming) | smoothed `energyEnv` | slow | nudges base `k` *within the discrete-cell band* (loud a touch denser) + scales substeps. Capped so loud never drops into the worm regime. |
+| Survival floor (anti-extinction) | `smoothstep(energyEnv)` gate | continuous | a sparse nucleation trickle ONLY while music plays — dead Gray–Scott can't revive (no B → no reaction), so this keeps a couple of cells alive + recoverable. Silent → calm fade (no Drift-Motes). |
 
-**Why onsets paint into open space, not at cell rims:** rim injection floods the
-gaps of a packed field and *merges* it (measured Δ-40 in the sketch). Painting B
-into empty cells (the canonical interactive-RD seed, pmneila/Karl Sims) nucleates
-new cells, is density-independent, and is luminance-bounded → flash-safe.
+`killEff = (0.0655 − 0.002·energy) − 0.0085·hitEnv`. The base stays in [0.0635, 0.0655]
+(discrete cells); only the *brief* onset dip excurses lower — too short to worm-ify, just
+long enough to divide. Seed = **3 cells** (Matt: "start with a couple of cells") → the
+colony spreads as visible dividing chains.
 
 Cold-start safe: continuous energy + deviation primitives available frame 1; no
 beat-phase dependency (the burst keys off `drumsEnergyDev` magnitude, not grid phase).
@@ -132,24 +143,23 @@ the *mechanism*, only listening confirms the *feel*.
 
 ---
 
-## 8. Known tuning items / risks (carried into the increment)
+## 8. Known tuning items / risks
 
-- **Onset effect is modest in a packed field** — empty-space nucleation has little
-  room when the colony is dense; the on-beat budding reads best in mid-density.
-- **"Merge" reads weaker than "divide"** — once the field fills it tends to stay
-  full; short quiet phases don't die back fully. Balance the energy→k die-back rate.
+- **Live re-confirm pending** — MITOSIS.2's churn fix is code-complete and proven
+  headless (never freezes, divides+merges, discrete cells, flash-safe); only Matt's
+  ears/eyes confirm it reads right on a real track ([[feedback_visual_fix_needs_live_m7]]).
+- **Very-early sparse phase shows hollow rings** — isolated cells grow as rings before
+  dividing (natural RD); transient (first ~1–2 s). Acceptable but watch in live.
 - **Palette unlocked** — cyan-on-dark is a placeholder; final grade is a curation
-  step with Matt.
-- **Live sync unproven** — headless proves pipeline, not feel (FA #27). The live
-  listen is the gating real-feel test.
+  step with Matt (MITOSIS.3).
 
 ## 9. Phased plan
 
 | ID | Done-when |
 |---|---|
 | **MITOSIS.0** | Throwaway sketch + §8 go/no-go gate (all green). ✅ |
-| **MITOSIS.1** | Graduated to a registered preset: JSON sidecar + `ParticleGeometryRegistry` + `VisualizerEngine` factory/resolve + multi-frame production-path test; wired into the live app. (this) |
-| **MITOSIS.2** | Live sync listen on real music (the gating real-feel test, FA #27). |
+| **MITOSIS.1** | Graduated to a registered preset; wired into the live app. ✅ |
+| **MITOSIS.2** | Live sync listen → ❌ first cut (fill-then-freeze, no merge) → **churn fix** (onset-driven k-oscillation; constant-GS-freezes finding). Code-complete, all gates green; **pending Matt's live re-confirm.** |
 | **MITOSIS.3** | Palette curation (reference-anchored, Matt's pick). |
 | **MITOSIS.4** | Certification — M7, rubric, flash-safety cert (`renderMitosis`), sidecar `certified: true`. |
 
