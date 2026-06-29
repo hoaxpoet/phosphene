@@ -51,13 +51,6 @@ extension RenderPipeline {
 
 extension RenderPipeline {
 
-    /// BUG-064 diagnostic accessor: the buffer the ray-march lighting pass actually
-    /// binds at slot 8 this frame. Compared against `LumenPatternEngine.patternBuffer`
-    /// to confirm the GPU is bound to the engine's own live buffer on the local-file path.
-    public var boundSlot8BufferForDiag: MTLBuffer? {
-        directPresetFragmentBuffer3Lock.withLock { directPresetFragmentBuffer3 }
-    }
-
     // swiftlint:disable function_parameter_count function_body_length
     // `drawWithRayMarch` takes 7 parameters — the minimal render-pass context plus
     // an optional scene output texture for the mv_warp handoff. PERF.2-pass adds
