@@ -62,7 +62,11 @@ struct PresetLoaderCompileFailureTest {
     /// 23 → 24 at GLAZE.2a (Glaze — port of `Flexi + stahlregen - jelly showoff parade`'s
     /// glossy contour-gel onto a dedicated mv_warp branch; direct + mv_warp, HDR feedback;
     /// family `hypnotic`). Certified at GLAZE.8.
-    static let expectedProductionPresetCount = 24
+    /// 24 → 25 at MITOSIS.1 (Mitosis — Gray–Scott reaction–diffusion cell colony graduated
+    /// from its throwaway sketch; family `particles`, `MitosisGeometry` conformer). Not
+    /// certified (cert at MITOSIS.4 after Matt's live sync listen + M7). See
+    /// docs/presets/MITOSIS_DESIGN.md.
+    static let expectedProductionPresetCount = 25
 
     @Test("PresetLoader.presets.count matches expectedProductionPresetCount — catches Failed Approach #44 silent drops")
     func test_presetLoaderProductionCount() {

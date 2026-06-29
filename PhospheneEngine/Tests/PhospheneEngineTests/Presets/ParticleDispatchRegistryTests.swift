@@ -51,4 +51,27 @@ struct ParticleDispatchRegistryTests {
     func test_murmurationRegistered() {
         #expect(ParticleGeometryRegistry.knownPresetNames.contains("Murmuration"))
     }
+
+    /// Mitosis loads as a real particles preset via the production load path
+    /// (MITOSIS.1). Guards the silent-degrade regression: an invalid sidecar field
+    /// (e.g. an out-of-enum `beat_source`) makes PresetLoader fall back to a default
+    /// descriptor — dropping the `.particles` pass and the backdrop fragment — which
+    /// would let `test_everyParticlesPresetIsRegistered` pass *vacuously*.
+    @Test("Mitosis loads as a particles preset (sidecar not degraded)")
+    func test_mitosisLoadsAsParticles() {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            print("ParticleDispatchRegistryTests: no Metal device — skipping")
+            return
+        }
+        let loader = PresetLoader(device: device, pixelFormat: .bgra8Unorm_srgb)
+        guard let mitosis = loader.presets.first(where: { $0.descriptor.name == "Mitosis" }) else {
+            Issue.record("Mitosis preset did not load — sidecar malformed (degrades + drops) or shader-compile dropped it")
+            return
+        }
+        #expect(mitosis.descriptor.passes.contains(.particles),
+                "Mitosis must keep its .particles pass — a degraded default descriptor drops it")
+        #expect(mitosis.descriptor.fragmentFunction == "mitosis_ground_fragment",
+                "a degraded default descriptor falls back to 'preset_fragment'")
+        #expect(ParticleGeometryRegistry.knownPresetNames.contains("Mitosis"))
+    }
 }

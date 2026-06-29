@@ -197,7 +197,7 @@ struct MitosisSketchRenderTests {
         let onset = try makeGeo(ctx, lib, cfg, pixelFormat: ctx.pixelFormat)
         let control = try makeGeo(ctx, lib, cfg, pixelFormat: ctx.pixelFormat)
         let tex = try target(ctx, cfg.width, cfg.height)
-        var t: Float = 0
+        let t: Float = 0
 
         // Settle both identically (no onsets) to the same moderate-energy state.
         func settle(_ g: MitosisGeometry) throws {
