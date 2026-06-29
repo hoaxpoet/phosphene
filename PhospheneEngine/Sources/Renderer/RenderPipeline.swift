@@ -148,8 +148,7 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// the centroid's DEVIATION from it (track-robust — responds to harmonic/timbral shifts,
     /// not absolute level). `nacreHueEMA` is the calm-smoothed output (the `hueShift` bound).
     /// MainActor-only (the mv_warp draw path), no lock — same convention as the fata accumulators.
-    var nacreCentroidNorm: Float = 0
-    var nacreHueEMA: Float = 0
+    var nacreCentroidNorm: Float = 0, nacreHueEMA: Float = 0
     /// Nacre (NACRE.3): `nacreSeedEMA` is the SLOW (~0.5 s) total-energy envelope driving the
     /// WARP's core SEED, kept near-steady so the fed-back seed never flares into smears.
     /// `nacreSpinEMA`: smoothed stem-fullness (avg of the four stem energies, ~0.5 s) → the
@@ -161,6 +160,10 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// `floretSpin`: Floret accumulated rotation angle (rad) → the comp's bass-driven spin —
     /// FLORET.3a; folded onto this line to stay under the type_body_length cap, see FLORET_PLAN §12.)
     var nacreSeedEMA: Float = 0, nacreSpinEMA: Float = 0, floretSwellEMA: Float = 0, floretSpin: Float = 0
+    /// Glaze (GLAZE.2b.2): the 3-mass spring chain (CPU-side; the swirl-poke centre), stepped
+    /// each frame in `computeGlazeUniforms`. The anchor-drive EMAs (GLAZE.3a) live on the struct.
+    /// MainActor-only, same convention as the above.
+    var glazeSpring = GlazeSpring()
 
     // MARK: - Live Audio Features
 

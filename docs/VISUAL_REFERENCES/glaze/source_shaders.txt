@@ -1,0 +1,121 @@
+SOURCE PORT ARTIFACT — "Flexi + stahlregen - jelly showoff parade"
+butterchurn built-in (Milkdrop 2 / cream-of-the-crop legends set). Captured verbatim 2026-06-26.
+This is the thing to PORT (FA #73 — adopt the mechanics, adapt only context). Full JSON: source_preset.json.
+
+shapes: 4 (all enabled:0)   waves: 4 (all enabled:0)   → pure feedback+warp+comp, no custom geometry.
+
+================================================================================
+baseVals (the static knobs)
+================================================================================
+decay 1.0            full feedback persistence (the field accretes; nothing fades on its own)
+gammaadj 1.0
+zoom 1.05971  zoomexp 11.56276   inward zoom, strong at frame edge (zoomexp) → the "rings flow toward center"
+warp 0.13126  warpscale 16.016   per-pixel warp amount + spatial frequency of the warp
+wave_a 0.207  wave_scale 0.397  wave_mystery 0.24  modwavealphabyvolume 1   → the SEED: a volume-gated waveform
+ob_size 0.005 ob_a 1            thin opaque outer border (the bright frame piping)
+mv_x 64  mv_y 48  mv_a 0        HIDDEN motion-vector debug grid (mv_a 0 = invisible, NO advection — cf. Nacre decode)
+
+================================================================================
+frame_eqs — THE SIGNATURE: a 3-segment spring chain ("jelly on a spring") driven by audio
+================================================================================
+  decay = 1
+  # audio → driven anchor (x1,y1). EMA-smoothed bass/treble.
+  xx1 = .9*xx1 + .01*bass                 # bass envelope (slow EMA)
+  xx2 = .9*xx2 + .01*treb                 # treble envelope (slow EMA)
+  yy1 = .94*yy1 + .0075*(treb+bass)       # combined-energy envelope (slower EMA)
+  x1  = .5 + 1.5*(xx1 - xx2)              # anchor X: bass pulls right, treble pulls left → lateral swing
+  y1  = .5 + yy1                          # anchor Y: total energy pushes up
+
+  # spring constants
+  spring=18  grav=1  resist=5  bounce=.9  dt=.0003
+
+  # 3 masses (2,3,4) chained off the driven anchor (1); each is a damped spring to its neighbours, + gravity.
+  #   vx2 = vx2*(1-resist*dt) + dt*(x1+x3-2*x2)*spring      (and vy2 with -grav)
+  #   vx3 = vx3*(1-resist*dt) + dt*(x2+x4-2*x3)*spring      (vy3 with -grav)
+  #   vx4 = vx4*(1-resist*dt) + dt*(x3-x4)*spring           (vy4 with -grav)   ← free tail end
+  #   x2+=vx2; y2+=vy2; x3+=vx3; y3+=vy3; x4+=vx4; y4+=vy4
+  # wall bounce on [0,1] for every mass: if it crosses a wall, reflect the velocity * bounce(.9)
+  #   (the above()/below() guards are Milkdrop's branch-free "did it cross the wall" test)
+
+  # outputs consumed by pixel_eqs / warp center:
+  q1..q4 = x1..x4 ;  q5..q8 = y1..y4         (positions)
+  q6 = atan2(vx4, vy4)                        # direction the free tail is moving
+  q5 = sqrt(vx4^2 + vy4^2)                    # SPEED of the free tail  ← reused as a warp-center coord
+
+  zoom=1.001  rot=0  warp=.2  wave_a=0   (per-frame overrides of the base knobs)
+
+================================================================================
+pixel_eqs — the warp center: a LOCAL radial swirl-poke around the bouncing tail
+================================================================================
+  r   = .2                                   # poke radius
+  cx1 = q4 (= tail x) ;  cy1 = q5 (= tail SPEED, used as a y-coord — Flexi being Flexi)
+  d   = dist(pixel, (cx1,cy1))
+  dir = -(r^2 - d^2) * q3                     # bump profile, scaled by mass-3 x-pos; 0 outside radius r
+  dx  = sin(y - cy1) * dir   (inside r, else 0)   # curl-like swirl displacement
+  dy  = -sin(x - cx1) * dir  (inside r, else 0)
+  → a soft rotational vortex that the jelly tail drags across the feedback field as it bounces.
+
+================================================================================
+WARP shader (HLSL→GLSL as butterchurn emits it) — blur-pyramid emboss + per-channel decoupled flow
+================================================================================
+ shader_body {
+  vec2 uv_1 = 0.5 + (uv - 0.5)*1.002;                       // tiny zoom
+  vec2 px8  = texsize.zw * 8.0;                             // wide tap step
+  // luminance Sobel from blur mip 1 (R-channel of the diffs):
+  vec3 gx = (blur1(uv_1 + x*px8)*scale1+bias1) - (blur1(uv_1 - x*px8)*scale1+bias1);
+  vec3 gy = (blur1(uv_1 + y*px8)*scale1+bias1) - (blur1(uv_1 - y*px8)*scale1+bias1);
+  vec2 grad  = vec2(gx.x, gy.x);
+  vec2 flow  = fract(0.5 + (uv_1-0.5) - grad*texsize.zw);   // displace UV along the emboss gradient
+  ret.x = main(flow).x;
+  ret.x = ret.x + ((ret.x - (blur2(flow)*scale2+bias2)).x * 0.4 + 0.006);   // unsharp + slow brighten
+  // B and G channels flow along DIFFERENT (rotated/scaled) gradient directions, each maxed against a
+  // decayed feedback-channel tap → the channels separate over time = chromatic trailing:
+  vec2 gPerp = vec2(gy.x, -gx.x);  vec2 gZ = vec2(gx.z, gy.z);  vec2 gY = vec2(gx.y, gy.y);
+  ret.z = max( clamp((blur1(uv_1)*scale1+bias1).x - 0.3, 0,1)*2.0,
+               fc_main(uv_1 - gPerp*texsize.zw*8.0 + gZ*texsize.zw*4.0).z - 0.008 );
+  ret.y = max( ret.x, fc_main(uv_1 + gY*texsize.zw).y - 0.016 );
+ }
+  NOTE: sampler_blur1 / blur2 are the engine BLUR PYRAMID. Same deferral question as Nacre §3,
+  but here the blur is used in BOTH passes and is more central to the look.
+
+================================================================================
+COMP shader — the glossy "wet jelly" finish: multi-scale unsharp from blur1/2/3 + hue + contrast
+================================================================================
+ shader_body {
+  vec2 px6 = texsize.zw*6.0;
+  vec3 gx = blur1(uv+x*px6)*scale1+bias1 - (blur1(uv-x*px6)*scale1+bias1);   // emboss gradient again
+  vec3 gy = blur1(uv+y*px6)*scale1+bias1 - (blur1(uv-y*px6)*scale1+bias1);
+  vec2 lum = vec2(dot(gx, L), dot(gy, L));   L = vec3(0.32,0.49,0.29)        // luminance-weighted gradient
+  vec2 uvA = uv - 0.25*lum;   vec2 uvB = uv + 0.25*lum;                      // dual-direction sampling
+  vec3 ret = 0.8*(blur3(uvA)*scale3+bias3) - (blur1(uvA)*scale1+bias1);      // big-blur minus small = band
+  ret += 0.6*(blur1(uv)*scale1+bias1);
+  ret -= ((blur2(uvB)*scale2+bias2) - (blur1(uvB)*scale1+bias1));            // another bandpass
+  ret += 1.2*main(uvB).xyz + 0.15*(blur1(uvB)*scale1+bias1);                 // sharp main on top
+  ret += 1.0;                                                               // lift
+  float g = dot(ret, L);
+  ret = mix( vec3(g),                                                        // desaturated luminance ...
+             0.75*vec3(g) * dot( 0.6*(blur3(uvA)*scale3+bias3) - 0.7*main(uv).xyz
+                                 - 0.3*(blur1(uvB)*scale1+bias1), L),
+             pow(hue_shader, vec3(g)) ) * 0.9;                               // ... mixed toward the per-pixel HUE
+  ret = ret*ret;  ret = sqrt(ret);                                          // contrast curve (≈gamma)
+ }
+  NOTE: hue_shader = butterchurn's per-pixel preset hue field (the rainbow). Substitute with a
+        Phosphene palette (time-rotated + chroma/centroid-nudged), per the plan's audio table.
+        blur1/blur2/blur3 = the 3-level blur pyramid → the crux of the glossy sheen.
+
+================================================================================
+PORT DECODE SUMMARY (what makes the look)
+================================================================================
+1. SPRING-JELLY MOTION  — a damped 3-mass spring chain, anchored by an audio-driven point (bass→right,
+   treble→left, energy→up), bouncing off the [0,1] walls. Its free tail's position+speed is the moving
+   center of a local radial swirl-poke. The spring INTEGRATES the audio → smooth organic bounce/overshoot/
+   settle, never raw-onset jitter (this is why it sidesteps FA #4/#31 by construction).
+2. ACCRETING FEEDBACK   — decay 1.0 + inward zoom (zoomexp 11.56): the poke's trails are dragged inward and
+   never fade → the nested concentric "fingerprint" contour rings that fill the frame.
+3. GLOSSY GEL SHEEN      — blur-pyramid emboss (Sobel of a blurred copy) used as both a displacement and a
+   multi-scale unsharp/bandpass in the comp → the thick wet specular-highlight + dark-rim gel surface.
+4. CHROMATIC TRAILING    — R/G/B feedback channels flow along different gradient directions at different
+   decay → colour fringes separate along the contours over time.
+5. NEON HUE ROTATION     — hue_shader rainbow + the slow palette drift → red→green→purple across ~12 s.
+6. SEED                  — a single volume-gated waveform; with decay 1.0 the whole image is built from it.
+                           (no audio volume → no seed → permanent black; cf. the dead-preset render note.)

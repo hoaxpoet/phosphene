@@ -51,6 +51,18 @@ extension RenderPipeline {
             commandBuffer.present(drawable)
             return
         }
+        // Glaze (BUG-061, same class as Nacre): its direct pipeline is .rgba16Float, so the
+        // shared scene-to-drawable path would format-mismatch-crash. Present the comp of the
+        // un-advanced feedback (no warp/swap → no motion; the comp pipeline IS drawable format).
+        if warpState.isGlaze {
+            renderGlazeReducedMotion(
+                commandBuffer: commandBuffer,
+                features: features,
+                warpState: warpState,
+                target: drawable.texture)
+            commandBuffer.present(drawable)
+            return
+        }
         if !sceneAlreadyRendered {
             renderSceneToTexture(
                 commandBuffer: commandBuffer,

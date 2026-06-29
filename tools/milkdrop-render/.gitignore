@@ -6,3 +6,9 @@ music.wav
 renders/
 royal_variants/
 builtins/
+# npm install is run ad hoc per README (deps not committed); per-preset render inputs/outputs are regenerable.
+package.json
+package-lock.json
+*.json.tmp
+jelly.json
+*.webm

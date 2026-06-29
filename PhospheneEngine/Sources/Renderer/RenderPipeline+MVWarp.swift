@@ -51,15 +51,23 @@ extension RenderPipeline {
         let canvasClear = MTLClearColor(red: cc.x, green: cc.y, blue: cc.z, alpha: cc.w)
         clearWarpTextures([warpTex, composeTex, sceneTex], to: canvasClear)
 
-        // Fata Morgana (D-139): blur-of-prev target at 1/4 RESOLUTION — butterchurn's blur1 is
-        // a downsampled separable gaussian (~0.25); the downsample + bilinear read make it a WIDE
-        // low-pass (drives the warp's coherent smearing of blobs into ribbons; full-res was too narrow).
-        let blurW = max(width / 4, 1), blurH = max(height / 4, 1)
-        let blurTex = bundle.blurState != nil
-            ? makeWarpTexture(width: blurW, height: blurH, format: bundle.feedbackFormat)
-            : nil
-        // The blur-of-prev intermediate (Fata Morgana) always starts black (not the ground).
-        if let blurTex { clearWarpTextures([blurTex], to: MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)) }
+        // Fata Morgana (D-139): the blur-of-prev target at 1/4 RESOLUTION — butterchurn's
+        // blur1 is a downsampled separable gaussian (blurRatios ~0.25), and the
+        // downsample + the warp's bilinear read are what make it a WIDE low-pass (which
+        // drives the warp's coherent large-scale smearing of the blobs into ribbons). A
+        // full-res blur was too narrow (blobs stayed discrete particles).
+        // Glaze (GLAZE.2b.1): a 3-level pyramid (½ + ¼ + ⅛ res) — the resolution halving
+        // widens the per-level gaussian for the multi-scale gel sheen (warp uses blur1+2,
+        // comp uses blur1+2+3). FM: a single ¼-res blur. Others: none.
+        func mk(_ div: Int) -> MTLTexture? {
+            makeWarpTexture(width: max(width / div, 1), height: max(height / div, 1), format: bundle.feedbackFormat)
+        }
+        let blurTex  = bundle.isGlaze ? mk(4) : (bundle.blurState != nil ? mk(4) : nil)
+        let blurTex2 = bundle.isGlaze ? mk(8) : nil
+        let blurTex3 = bundle.isGlaze ? mk(16) : nil
+        // The blur intermediates always start black — they are not the canvas ground.
+        let blurClear = [blurTex, blurTex2, blurTex3].compactMap { $0 }
+        if !blurClear.isEmpty { clearWarpTextures(blurClear, to: MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)) }
 
         let state = MVWarpState(
             warpTexture: warpTex,
@@ -72,8 +80,11 @@ extension RenderPipeline {
             feedbackFormat: bundle.feedbackFormat,
             blurPipeline: bundle.blurState,
             blurTexture: blurTex,
+            blurTexture2: blurTex2,
+            blurTexture3: blurTex3,
             isNacre: bundle.isNacre,
             isFloret: bundle.isFloret,
+            isGlaze: bundle.isGlaze,
             canvasClearColor: bundle.canvasClearColor
         )
         mvWarpLock.withLock { mvWarpState = state }
@@ -110,6 +121,7 @@ extension RenderPipeline {
             blurState: existing.blurPipeline,
             isNacre: existing.isNacre,
             isFloret: existing.isFloret,
+            isGlaze: existing.isGlaze,
             canvasClearColor: existing.canvasClearColor   // resize re-clears to the same ground (D-143)
         )
         setupMVWarp(bundle: bundle, size: size)
@@ -202,17 +214,25 @@ extension RenderPipeline {
             return
         }
 
-        // Nacre (NACRE.2b): the (431) jello-mirror branch — custom warp (unsharp + grain +
-        // core seed) → signature comp (display-only) → swap. Before the blur heuristic so
-        // Nacre isn't mistaken for Fata Morgana (Nacre uses no blur target).
+        // Dedicated branches (see RenderPipeline+Nacre / +Glaze / +Floret / +FataMorgana).
+        // Nacre/Glaze/Floret are checked before the blur heuristic so they aren't taken for
+        // Fata Morgana (Glaze gains a blur pyramid in 2b; the name flag disambiguates).
         if warpState.isNacre {
             drawWithNacre(
                 commandBuffer: commandBuffer,
                 view: view,
                 features: &features,
                 stemFeatures: stemFeatures,
-                warpState: warpState
-            )
+                warpState: warpState)
+            return
+        }
+        if warpState.isGlaze {
+            drawWithGlaze(
+                commandBuffer: commandBuffer,
+                view: view,
+                features: &features,
+                stemFeatures: stemFeatures,
+                warpState: warpState)
             return
         }
 
@@ -310,91 +330,4 @@ extension RenderPipeline {
         )
     }
     // swiftlint:enable function_parameter_count
-
-    /// Pass 3 of the standard/Dragon-Bloom mv_warp path: blit `composeTexture` to
-    /// the drawable (with the display-stage post + Dragon Bloom beat pulse), present,
-    /// then swap compose ↔ warp for the next frame. (Fata Morgana has its own blit in
-    /// `drawWithFataMorgana`.)
-    @MainActor
-    private func encodeMVWarpBlitPresentSwap(
-        commandBuffer: MTLCommandBuffer,
-        view: MTKView,
-        warpState: MVWarpState,
-        features: FeatureVector,
-        stemFeatures: StemFeatures
-    ) {
-        guard let drawable = view.currentDrawable,
-              let descriptor = view.currentRenderPassDescriptor else { return }
-        // .dontCare is correct — the full-screen triangle overwrites every pixel.
-        descriptor.colorAttachments[0].loadAction  = .dontCare
-        descriptor.colorAttachments[0].storeAction = .store
-
-        if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: descriptor) {
-            encodeMVWarpBlitContent(
-                encoder: encoder,
-                warpState: warpState,
-                features: features,
-                stemFeatures: stemFeatures)
-            encoder.endEncoding()
-        }
-
-        commandBuffer.present(drawable)
-        swapMVWarpTextures()
-    }
-
-    // MARK: - Warp Pass Encoder
-
-    /// Encodes the 32×24 vertex-grid warp pass to `warpState.composeTexture`.
-    /// `internal` (not private) so the headless seam in `RenderPipeline+MVWarpHeadless`
-    /// can run the identical warp pass (FA #66 — one code path for live + harness).
-    @MainActor
-    func encodeMVWarpPass(
-        commandBuffer: MTLCommandBuffer,
-        features: inout FeatureVector,
-        stemFeatures: StemFeatures,
-        warpState: MVWarpState
-    ) {
-        let desc = MTLRenderPassDescriptor()
-        desc.colorAttachments[0].texture = warpState.composeTexture
-        desc.colorAttachments[0].loadAction = .clear
-        desc.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
-        desc.colorAttachments[0].storeAction = .store
-        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: desc) else { return }
-        encoder.setRenderPipelineState(warpState.warpPipeline)
-        var featuresCopy = features
-        encoder.setVertexBytes(&featuresCopy, length: MemoryLayout<FeatureVector>.stride, index: 0)
-        var stemsCopy = stemFeatures
-        encoder.setVertexBytes(&stemsCopy, length: MemoryLayout<StemFeatures>.stride, index: 1)
-        var sceneUni = getSceneUniforms()
-        encoder.setVertexBytes(&sceneUni, length: MemoryLayout<SceneUniforms>.stride, index: 2)
-        encoder.setFragmentTexture(warpState.warpTexture, index: 0)
-        var chromatic = mvWarpLock.withLock { mvWarpChromatic }   // L3: 0 ⇒ identity for non-DB
-        encoder.setFragmentBytes(&chromatic, length: MemoryLayout<Float>.stride, index: 0)
-        // Skein.ENGINE.2: per-frame wetness-channel decay (ALPHA only) for canvas-hold presets.
-        // 1.0 ⇒ A held unchanged. Only Skein's own `skein_warp_fragment` declares buffer 1; the
-        // shared `mvWarp_fragment` does not, so binding it here is inert for every other preset
-        // (byte-identical — PresetRegression + the DB/FM MVWarp accumulation tests confirm).
-        var wetnessDecay = mvWarpLock.withLock { mvWarpWetnessDecay }
-        encoder.setFragmentBytes(&wetnessDecay, length: MemoryLayout<Float>.stride, index: 1)
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 4278)  // 31×23 quads
-        encoder.endEncoding()
-    }
-
-    // MARK: Helpers
-
-    /// Skein.5: bind the per-preset comp-stage buffer (the display-only painter locus reads
-    /// SkeinUniforms) at fragment buffer 1 of the blit pass. Only Skein's `skein_comp_fragment`
-    /// declares buffer 1 — inert for every other preset (the ENGINE.2 wetnessDecay precedent);
-    /// nil (e.g. Dragon Bloom) ⇒ nothing bound, exactly as before.
-    func bindCompStagePresetBuffer(_ encoder: MTLRenderCommandEncoder) {
-        if let presetBuf = directPresetFragmentBufferLock.withLock({ directPresetFragmentBuffer }) {
-            encoder.setFragmentBuffer(presetBuf, offset: 0, index: 1)
-        }
-    }
-
-    /// Extract the current SceneUniforms from the attached ray march pipeline (if any).
-    /// Falls back to a zeroed struct for direct-render presets.
-    func getSceneUniforms() -> SceneUniforms {
-        return rayMarchLock.withLock { rayMarchPipeline?.sceneUniforms } ?? SceneUniforms()
-    }
 }

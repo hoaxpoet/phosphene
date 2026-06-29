@@ -55,11 +55,14 @@ struct PresetLoaderCompileFailureTest {
     /// Matt's live M7). NACRE.2a added the preset to the catalog but did not bump this.
     /// 21 → 22 at FLORET.2a (Floret — port of butterchurn `Sunflower Passion` onto the
     /// same custom-warp+comp mv_warp branch; direct + mv_warp, HDR feedback; family
-    /// `hypnotic`). WIP wiring stub, not certified (cert at FLORET.4).
+    /// `hypnotic`). Certified at FLORET.4.
     /// 22 → 23 at PHYS.2 (Filigree — physarum agent-network graduated from the throwaway
     /// sketch; family `particles`, `PhysarumGeometry` conformer). Not certified (cert at
     /// PHYS.5 after Matt's live M7, per the Nacre precedent). See docs/presets/FILIGREE_DESIGN.md.
-    static let expectedProductionPresetCount = 23
+    /// 23 → 24 at GLAZE.2a (Glaze — port of `Flexi + stahlregen - jelly showoff parade`'s
+    /// glossy contour-gel onto a dedicated mv_warp branch; direct + mv_warp, HDR feedback;
+    /// family `hypnotic`). Certified at GLAZE.8.
+    static let expectedProductionPresetCount = 24
 
     @Test("PresetLoader.presets.count matches expectedProductionPresetCount — catches Failed Approach #44 silent drops")
     func test_presetLoaderProductionCount() {
