@@ -10,6 +10,10 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+## [dev-2026-06-29-125801] BUG-064 RESOLVED — Lumen local-file freeze fix live-confirmed; diagnostic instrument removed
+
+Matt confirmed the half-cycle-drop wrap fix on the correct build (two sessions: "looks good", then "much better" after a wrong-build false alarm). The data backs it: the bass cell-step counter climbs steadily (2→100+ over the track, no stall), `boundBass` tracks the engine state every frame, zero degenerate frames. BUG-064 is closed. Removed the temporary `LUMEN_DIAG` instrument (the per-frame probe, its `boundSlot8BufferForDiag` accessor, the two `lumenDiag*` state vars, the call site, and the per-preset reset) — it did its job: it disproved the "stale slot-8" guess and pinned the wrap-detector. Engine + app build, swiftlint strict 0, DocIntegrity 11/11. **Known follow-up (deferred, Matt's call):** for the first ~10 s the four lights sit static during the cached-stem warmup — the cells animate from frame 1 so it's not a freeze, but the backlight doesn't react until live stems converge.
+
 ## [dev-2026-06-28-211819] BUG-064 — Lumen local-file freeze: the cell-step wrap detector missed coarse-cadence beat phases
 
 After the BUG-063 revert fixed Lumen on Spotify, Matt found it still frozen on **local files** — a correct but static mosaic, cells never recolouring, only a faint beat pulse. I'd initially guessed a "stale slot-8 GPU read." This time I didn't ship the guess — I added a **decisive buffer-binding instrument** to the `LUMEN_DIAG` probe (does the GPU bind the engine's own buffer? do the cell-step counters advance? does the bound buffer's bytes match engine state?) and had Matt run one local-file session.
