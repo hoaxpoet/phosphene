@@ -84,7 +84,9 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-168 | Accepted | ARCHITECTURE Module Map completeness gated by DocIntegrityTests (CLEAN.7.3) — backfilled 62 undocumented files incl. 4 certified presets; D-161 "violated twice → mechanize" applied |
 | D-169 | Accepted | Defer public-release-readiness work (extended a11y settings 7.7, cold-install resilience 7.8) until there's a public build; daily single-user dev use is covered by the existing a11y/robustness basics |
 | D-170 | Reversed | Section detection (McFee/Ellis spectral clustering, SECDET) — built + live-tested, then **removed** 2026-06-24: structurally local-file-only (streaming has only a 30 s preview) and below the perceptual bar (live F@3 ≈ 0.29–0.41); the "no-ML" rationale was a misreading of D-009 (= no-CoreML). Planner equal-slices. See §Reversal. |
-| D-171 | Accepted | Nacre — faithful port of butterchurn `$$$ Royal - Mashup (431)` (iridescent jello-mirror) onto a dedicated custom-warp+comp mv_warp branch (`RenderPipeline+Nacre`, mirroring Fata Morgana / D-139; `isNacre` discriminator). Faithful base first (NACRE.2b); the 3 greenlit uplifts deferred to NACRE.3+. Corrected source decode (mv_a-0 grid doesn't advect; volume-gated core seed; bassDev kick). Code-complete, pending Matt's live M7. |
+| D-171 | Accepted | Nacre — faithful port of butterchurn `$$$ Royal - Mashup (431)` (iridescent jello-mirror) onto a dedicated custom-warp+comp mv_warp branch (`RenderPipeline+Nacre`, mirroring Fata Morgana / D-139; `isNacre` discriminator). Faithful base first (NACRE.2b); the 3 greenlit uplifts deferred to NACRE.3+. Corrected source decode (mv_a-0 grid doesn't advect; volume-gated core seed; bassDev kick). **CERTIFIED NACRE.4** — connection lands via a downbeat camera push. |
+| D-172 | Accepted | Floret — faithful port of butterchurn `suksma - Rovastar - Sunflower Passion` onto the dedicated `RenderPipeline+Floret` mv_warp branch (`isFloret`, the D-171 register). z² conformal warp + 1/r² vortex swirl + 3-fold radial-pulse kaleidoscope comp; motion = beat-lock downbeat magnify + energy swell + bass spin + bass-onset kick. **CERTIFIED FLORET.4** (Matt live M7). Drum sparkle tried + removed (camouflaged into the bright field). |
+| D-173 | Accepted | Glaze — faithful port of butterchurn `Flexi + stahlregen - jelly showoff parade` onto the dedicated `RenderPipeline+Glaze` mv_warp branch (`isGlaze`, the D-171 register). A 3-mass spring-mass "jelly" (bass↔other stem anchor + fullness lift) drags a swirl-poke across an accreting field; 3-level blur-pyramid emboss/sheen + per-stem accents (drums punch / vocals glow) + HDR bloom; connection lands via a discrete downbeat camera push. The catalog's first physics-of-the-beat preset. **CERTIFIED GLAZE.8** (Matt live M7). |
 
 ---
 
@@ -2095,11 +2097,66 @@ mechanism). The shared path is byte-identical (PresetRegression + DB/FM accumula
   smooth feedback → big glassy cells, high-freq feedback → oil-slick flecks. A single wide inline gaussian
   stands in for (431)'s 3-level blur pyramid (deferred, NACRE_PLAN §9).
 
-**Status / coverage.** Code-complete, pending Matt's live M7 (the load-bearing cert gate vs the live
-butterchurn oracle). Production coverage: `NacreMVWarpAccumulationTest` (non-black + no-white-out at
-silence over the live `renderNacre` path). `certified: false` until NACRE.4. `expectedProductionPresetCount`
-20 → 21. Exempt from `PresetAcceptanceTests` single-frame invariants (feedback-branch preset, like DB/FM).
+**Status / coverage.** **CERTIFIED NACRE.4** (Matt's live M7 — the connection lands via a display-stage
+downbeat camera push; flash-safe + rubric-passed). Production coverage: `NacreMVWarpAccumulationTest`
+(non-black + no-white-out at silence over the live `renderNacre` path) + the multi-pass flash harness.
+`certified: true`. Exempt from `PresetAcceptanceTests` single-frame invariants (feedback-branch preset,
+like DB/FM).
 
 **References.** `docs/prompts/NACRE_2B_KICKOFF.md`; `docs/presets/NACRE_PLAN.md §10`;
 `docs/VISUAL_REFERENCES/nacre/source_shaders.txt`. [D-138] (butterchurn render-loop facts), [D-139]
 (Fata Morgana custom-warp+comp+branch template), [D-097] (siblings not subclasses), [D-026]/[D-019].
+
+---
+
+## D-172: Floret — faithful port of `Sunflower Passion` onto a dedicated mv_warp branch (FLORET.4)
+
+**Decision.** Port butterchurn's `suksma - Rovastar - Sunflower Passion` as the certified preset **Floret**,
+on its own `RenderPipeline+Floret` dedicated draw branch (`isFloret` discriminator) — the same
+custom-warp+comp register as Nacre (the D-171 register). NOT a literal sunflower: a breathing, colour-cycling
+3-fold radial fractal bloom on black. Faithful base first (FLORET.2b), then the M7-driven motion bundle.
+
+**Architecture.** `floret_warp_fragment` = z² conformal feedback fold + energy-scaled 1/r² internal vortex
+swirl + 4 colour-cycling seed-discs + `[0,1]` clamp; `floret_comp_fragment` = a 3-fold radial-pulse
+unsharp-high-pass kaleidoscope + bass spin + downbeat camera push + bass-onset radial-shockwave kick +
+sRGB-decode. `.rgba16Float` feedback (Nacre register). BUG-061-safe reduced-motion path.
+
+**Motion (Matt's live M7, 5 rounds).** One primitive per channel (FA #67): beat-lock downbeat magnify ←
+cached `barPhase01`; energy swell ← avg-stem EMA; bass spin ← `bassDev`; internal vortex swirl (energy-
+scaled). **★ Drum sparkle was tried + REMOVED** — fine bright-points camouflage into an already-busy bright
+field; a whole-field displacement (the bass kick) reads where points don't (FLORET_PLAN §12).
+
+**Status.** **CERTIFIED FLORET.4** (Matt: "looks good"). Flash-safe (multi-pass harness, 0.00 flashes/s).
+Exempt from `PresetAcceptanceTests` single-frame invariants (feedback-branch preset).
+
+**References.** `docs/presets/FLORET_PLAN.md §12`. [D-171] (the cert register), [D-139], [D-157]/[D-158]
+(flash-safe beat motion), [D-026]/[D-019].
+
+---
+
+## D-173: Glaze — faithful port of `jelly showoff parade` onto a dedicated mv_warp branch (GLAZE.8)
+
+**Decision.** Port butterchurn's `Flexi + stahlregen - jelly showoff parade` as the certified preset
+**Glaze**, on its own `RenderPipeline+Glaze` dedicated draw branch (`isGlaze` discriminator) — the D-171
+custom-warp+comp register. The catalog's **first physics-of-the-beat preset**: a 3-mass damped spring chain
+*integrates* the audio into smooth physical momentum (sidesteps FA #4/#31 by construction).
+
+**Architecture.** A 3-mass spring (CPU) anchored by bass↔other stem opposition (lateral) + fullness (lift)
+drags a radial swirl-poke across an accreting feedback field; `glaze_warp_fragment` advects+decays+seeds
+(the seed band rides the spring tail Y to fill the field); `glaze_comp_fragment` = a 3-level blur-pyramid
+emboss/sheen + display-only HDR glossy bloom + the discrete downbeat camera push. Per-stem accents: drums
+poke-punch, vocals glow. `.rgba16Float` feedback; BUG-061-safe reduced-motion path.
+
+**Durable craft rules (earned on Glaze).** (1) **Sharpening is DISPLAY-only, never in the fed-back warp** —
+an unsharp high-pass with feedback gain > 1 compounds into grain on a float buffer (the 8-bit source
+quantises it; we can't); generalises to any mv_warp feedback preset (FA #64). (2) **Validate brightness/wash
+at PLAYBACK LENGTH** (thousands of frames), never a 25 s render — the wash is a slow base-accumulation creep
+over minutes. (3) **Connection on a smooth/integrated coupling needs a DISCRETE beat-locked visible motion on
+top** (the downbeat camera push), not tuning the smooth layer harder (the Nacre precedent).
+
+**Status.** **CERTIFIED GLAZE.8** (Matt's live M7 — the downbeat push lands the connection). Flash-safe
+(multi-pass harness, 0.00 flashes/s). Stem-agnostic (`stem_affinity` empty). Exempt from
+`PresetAcceptanceTests` single-frame invariants (feedback-branch preset).
+
+**References.** `docs/presets/GLAZE_PLAN.md §7`. [D-171] (the cert register), [D-139], [D-157]/[D-158],
+[D-026]/[D-019], [D-097].
