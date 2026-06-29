@@ -88,6 +88,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-172 | Accepted | Floret — faithful port of butterchurn `suksma - Rovastar - Sunflower Passion` onto the dedicated `RenderPipeline+Floret` mv_warp branch (`isFloret`, the D-171 register). z² conformal warp + 1/r² vortex swirl + 3-fold radial-pulse kaleidoscope comp; motion = beat-lock downbeat magnify + energy swell + bass spin + bass-onset kick. **CERTIFIED FLORET.4** (Matt live M7). Drum sparkle tried + removed (camouflaged into the bright field). |
 | D-173 | Accepted | Glaze — faithful port of butterchurn `Flexi + stahlregen - jelly showoff parade` onto the dedicated `RenderPipeline+Glaze` mv_warp branch (`isGlaze`, the D-171 register). A 3-mass spring-mass "jelly" (bass↔other stem anchor + fullness lift) drags a swirl-poke across an accreting field; 3-level blur-pyramid emboss/sheen + per-stem accents (drums punch / vocals glow) + HDR bloom; connection lands via a discrete downbeat camera push. The catalog's first physics-of-the-beat preset. **CERTIFIED GLAZE.8** (Matt live M7). |
 | D-174 | Accepted | Filigree — physarum agent-network preset (`PhysarumGeometry`, a `ParticleGeometry` sibling per D-097; Kintsugi gold-on-black). Energy drives merge/divide (LOUD → fine/busy/bright web; QUIET → few calm cells) + a per-beat hit pulse + a rare re-seed burst. **Substrate verdict (Matt-accepted): physarum carries a loose energy-accompaniment, not tight event-sync** — tightly-synced cell merge/divide is reaction-diffusion's domain (a separate future preset). **CERTIFIED PHYS.5** (Matt live M7) — the first certified compute-agent-network preset. |
+| D-175 | Accepted | Ricercar — contrapuntal visual-music painting preset (Fischinger / color-organ; Bach BWV 565 showcase, reusable). Ricercar.2 lands the flowing-colour-field SUBSTRATE: Skein's canvas-hold mv_warp reconfigured to a curl-noise flow warp + **decay toward a LIGHT GROUND** (a per-prefix `ricercar_warp_fragment` override — preset-side, no engine work) so the field breathes back to light at rest (silence-non-black, D-037) and matches the `02_meso` ink-plume reference. Hand-fed colour masses; voices/audio/cert at Ricercar.3.x→.7. Uncertified. |
 
 ---
 
@@ -2194,3 +2195,32 @@ domain → a separate future preset.**
 
 **References.** `docs/presets/FILIGREE_DESIGN.md`. [D-097] (siblings not subclasses / `ParticleGeometry`),
 [D-026]/[D-019], [D-157]/[D-158] (flash-safe), [D-159] (Skein CPU-side-coupling rubric precedent).
+
+## D-175: Ricercar — contrapuntal visual-music painting; substrate decays to a light ground, not black (Ricercar.2)
+
+**Decision.** Register **Ricercar** — a contrapuntal visual-music painting preset (Fischinger / color-organ
+lineage; showcased on Bach BWV 565, built reusable) — and land its flowing-colour-field **substrate** first.
+Ricercar reuses Skein's canvas-hold mv_warp machinery (D-142/D-143) but reconfigured: a divergence-free
+curl-noise **flow warp** (`mvWarpPerVertex` returns `uv + curl(...)`) so deposited colour advects and merges,
+instead of Skein's identity hold. `certified: false` (voices, audio routing, and cert arrive Ricercar.3.x→.7).
+
+**The load-bearing refinement — decay toward a LIGHT GROUND, not black.** A flowing field needs decay < 1 (the
+§1.4 "moving present with a fading memory," Matt-confirmed 2026-06-29), but the shared `mvWarp_fragment` decays
+`prev × decay` → toward **black**, which fails silence-non-black (D-037) at rest. Ricercar therefore supplies
+its own `ricercar_warp_fragment` (the per-prefix `<prefix>_warp_fragment` override — the `skein_warp_fragment` /
+D-149 precedent; preset-side, auto-resolved by `PresetLoader.makeWarpPipelines`, **no engine work**, every other
+mv_warp preset byte-identical) that advects AND blends toward a light ground: `mix(ground, prev, decay)`. The
+field breathes back to light when idle → **D-037 satisfied by construction**, and it matches the `02_meso`
+ink-plume-on-near-white reference. This refines RICERCAR_DESIGN §4's "pure preset config" to "pure preset config
++ one per-prefix warp-fragment override."
+
+**Ricercar.2 scope.** Substrate only — colour is **hand-fed** (three drifting LOW/MID/HIGH lane-coloured masses
+in `ricercar_geometry_fragment`; Path A / closed-form `f(features.time)`, no CPU state, no per-track seed yet).
+The gate-before-the-gate (RICERCAR_DESIGN §7): does it read as flowing, merging painterly colour? Preset count
+24 → 25.
+
+**Status.** Accepted (Ricercar.2). Substrate spike; not certified.
+
+**References.** `docs/presets/RICERCAR_DESIGN.md`, `docs/VISUAL_REFERENCES/ricercar/`. [D-142]/[D-143]
+(canvas-hold mv_warp), [D-149] (per-prefix `<prefix>_warp_fragment` override precedent), [D-037]
+(silence-non-black), [D-026] (deviation primitives — the later audio increments).
