@@ -76,3 +76,6 @@ docs/quality_reel.mp4
 
 # Physarum/Filigree throwaway sketch renders (regenerate with RENDER_VISUAL=1)
 tools/physarum_sketch/
+
+# Mitosis (reaction–diffusion) throwaway sketch renders (regenerate with RENDER_VISUAL=1)
+tools/mitosis_sketch/
