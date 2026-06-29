@@ -75,8 +75,8 @@ public struct MitosisConfiguration: Sendable {
         feed: Float = 0.0260,
         kill: Float = 0.0600,
         paletteId: UInt32 = 0,
-        seedBlobs: Int = 4,
-        cyclePeriod: Float = 34
+        seedBlobs: Int = 8,
+        cyclePeriod: Float = 40
     ) {
         self.width = width
         self.height = height
@@ -185,11 +185,12 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
         let regrew = cycleClock >= 1
         if regrew { cycleClock -= 1 }
 
-        // Grow for the first ~82 % of the cycle (killEff = growth regime → cells divide
-        // and fill); DISSOLVE over the last ~18 % (killEff ramps high → the field melts
+        // Grow for the first ~91 % of the cycle (killEff = growth regime → cells divide
+        // and fill until the colonies meet and pack TOUCHING, holes filled — Matt
+        // MITOSIS.2c2); DISSOLVE over the last ~9 % (killEff ramps high → the field melts
         // back). A fresh seed-cluster burst at the very top of each cycle gives the
         // "few cells" the regrowth starts from.
-        let growFrac: Float = 0.82
+        let growFrac: Float = 0.91
         let killEff: Float
         if cycleClock < growFrac {
             killEff = configuration.kill                      // growth regime
