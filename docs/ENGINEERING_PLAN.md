@@ -23,7 +23,7 @@ For anything inventory-shaped, read the artifact, not a prose copy of it:
 
 ## Recently Completed
 
-### Phase PHYS — Filigree (physarum agent-network preset) ⏳ (2026-06-27; PHYS.1 done — sketch graduated)
+### Phase PHYS — Filigree (physarum agent-network preset) ✅ CERTIFIED (2026-06-27→28; PHYS.1 design → PHYS.5 certified — first certified compute-agent-network preset)
 
 A living slime-mold network (physarum / neural web / river-delta) whose **form is the song's energy**: the fine gold searching-web is the resting state, continuous energy brightens/quickens it, and a structural peak blooms it into consolidated load-bearing veins (the drop payoff). This is the **inverse** of the original sketch spec (web-home, not veins-home), chosen from rendered evidence — it answers the Drift-Motes lesson (FA #58): the form changes with the energy, so the form carries the music. Originated as a throwaway harness sketch (go/no-go gate); all headless criteria passed — 0.66 ms/frame @ 1080p (262k agents; 1M ~0.55 ms, vast headroom), stable bounded network, flash-safe collapse — and Matt locked the web-dominant concept + the **Kintsugi** palette (gold veins on pure black) from a rendered candidate comparison.
 
