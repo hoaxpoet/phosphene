@@ -23,7 +23,7 @@ import Foundation
 @testable import Presets
 @testable import Shared
 
-@Suite("Ricercar.2 — flowing-colour-field substrate")
+@Suite("Ricercar.3 — per-section painterly marks (canvas-hold)")
 @MainActor
 struct RicercarSubstrateTest {
 
@@ -34,7 +34,7 @@ struct RicercarSubstrateTest {
 
     // MARK: - Live-path substrate run
 
-    @Test("Substrate flows: colour deposited, field advects (not held), never black")
+    @Test("Section marks paint, accumulate (canvas-hold), on a light canvas")
     func test_substrate_flowsAndBreathes() throws {
         guard MTLCreateSystemDefaultDevice() != nil else {
             print("RicercarSubstrateTest: no Metal device — skipping"); return
@@ -64,28 +64,28 @@ struct RicercarSubstrateTest {
             if checkpoints.contains(i) { captured[i] = pixels }
         }
 
-        let finalBuf = captured[checkpoints.max()!]!
-        let depositFrac = saturatedFraction(finalBuf)          // colour masses present + persisting
-        // FLOW over time: the field at 3 s vs 7 s differs substantially. A canvas-HOLD (Skein) would
-        // be ~0 here; this is the substrate's defining inverse property. Per-frame deltas are tiny for
-        // SMOOTH flow, so the gate is measured over a 4 s interval (240 frames), not frame-to-frame.
-        let evolve = meanAbsDiff(captured[180]!, captured[900]!)
+        let satSeries = checkpoints.map { captured[$0].map { saturatedFraction($0) } ?? 0 }
+        let depositFrac = satSeries.last ?? 0
         let lumas = checkpoints.compactMap { captured[$0] }.map { meanLuma($0) }
         let minLuma = lumas.min() ?? 0
+        // Canvas-HOLD accumulation: painted coverage only GROWS (no decay — the painting builds + persists).
+        var monotone = true
+        for i in 1..<satSeries.count where satSeries[i] + 2e-3 < satSeries[i - 1] { monotone = false }
 
         print("""
-        [ricercar_substrate] live scene→warp→overlay→blit→swap, \(w)×\(h), \(frames) frames:
-          deposited-colour fraction (final) = \(String(format: "%.3f", depositFrac))
-          field evolution (3 s vs 15 s)     = \(String(format: "%.4f", evolve))   (canvas-hold would be ~0)
-          checkpoint mean luminance         = \(lumas.map { String(format: "%.3f", $0) })
+        [ricercar_marks] live scene→warp→overlay→blit→swap, \(w)×\(h), \(frames) frames:
+          painted-colour fraction per checkpoint = \(satSeries.map { String(format: "%.3f", $0) })  (canvas-hold → grows)
+          checkpoint mean luminance              = \(lumas.map { String(format: "%.3f", $0) })  (light canvas)
         """)
 
-        // 1. Colour is deposited and persists into the field.
-        #expect(depositFrac > 0.05, "Almost no deposited colour (\(depositFrac)) — the masses are not painting / persisting.")
-        // 2. The field FLOWS — it evolves over seconds, it does not freeze (the inverse of Skein's canvas-hold).
-        #expect(evolve > 0.02, "Field barely changed across 12 s (\(evolve)) — the substrate is frozen, not flowing.")
-        // 3. It never goes black — decay is toward the LIGHT ground (D-037 by construction).
-        #expect(minLuma > 0.20, "Canvas darkened to mean luma \(minLuma) — the field is decaying toward black, not the light ground.")
+        // 1. The section strokes paint colour onto the canvas.
+        #expect(depositFrac > 0.03, "Almost no painted colour (\(depositFrac)) — the section strokes aren't painting.")
+        // 2. Canvas-HOLD: coverage only accumulates, never shrinks (no decay — the painting builds, Skein-hold).
+        #expect(monotone, "Painted coverage shrank (\(satSeries)) — canvas-hold accumulation broken (marks must only build).")
+        // 3. Strokes accumulate meaningfully over the run (not a single static stamp).
+        #expect((satSeries.last ?? 0) > (satSeries.first ?? 1) * 1.5, "Coverage barely grew (\(satSeries)) — strokes aren't accumulating.")
+        // 4. It stays a LIGHT Fantasia canvas (paint on light, never black).
+        #expect(minLuma > 0.30, "Canvas mean luma \(minLuma) — not a light canvas (paint should sit on a luminous ground).")
     }
 
     @Test("Substrate contact sheet (env-gated: RICERCAR_VISUAL=1 / RENDER_VISUAL=1)")
