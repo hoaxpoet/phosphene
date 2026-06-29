@@ -433,11 +433,27 @@ public final class SessionPreparer: ObservableObject {
     }
 
     private func prepareTrack(_ track: TrackIdentity) async throws -> CachedTrackData {
+        // ponytail: per-track stage timing for the prep-acceleration analysis. The
+        // closure is @Sendable so analyzePreview can call it from Task.detached;
+        // SessionRecorder.log is nonisolated. Lines land in session.log + Console
+        // under "TIMING:" — grep them to see where prep wall-clock actually goes.
+        let recorder = sessionRecorder
+        let label = track.title
+        let logTiming: @Sendable (String) -> Void = { msg in
+            let line = "TIMING: [\(label)] \(msg)"
+            recorder?.log(line)
+            prepTimingLogger.info("\(line, privacy: .public)")
+        }
+        let clock = ContinuousClock()
+        var stageStart = clock.now
+
         // Resolve 30-second preview URL.
         trackStatuses[track] = .resolving
         guard let url = try await resolver.resolvePreviewURL(for: track) else {
             throw SessionPreparationError.noPreviewURL(track.title)
         }
+        logTiming("resolve \(durationMs(clock.now - stageStart))ms")
+        stageStart = clock.now
 
         // Download and decode to mono PCM.
         // TODO(U.4-followup): wire URLSession download progress callback; use -1 until then.
@@ -462,6 +478,10 @@ public final class SessionPreparer: ObservableObject {
             throw SessionPreparationError.downloadFailed(track.title)
         }
         let prefetchedProfile = await profileTask
+        // Download + parallel metadata fetch share this window (metadata is
+        // best-effort and usually faster, so this reads as the download wall time).
+        logTiming("download \(durationMs(clock.now - stageStart))ms")
+        stageStart = clock.now
 
         // All CPU-bound analysis runs off the main actor.
         // NOTE: .mir and .beatGrid sub-stages are not emitted separately
@@ -473,16 +493,19 @@ public final class SessionPreparer: ObservableObject {
         let gridAnalyzer = beatGridAnalyzer
 
         do {
-            return try await Task.detached(priority: .userInitiated) {
+            let data = try await Task.detached(priority: .userInitiated) {
                 try SessionPreparer.analyzePreview(
                     preview,
                     separator: separator,
                     analyzer: analyzer,
                     classifier: classifier,
                     beatGridAnalyzer: gridAnalyzer,
-                    prefetchedProfile: prefetchedProfile
+                    prefetchedProfile: prefetchedProfile,
+                    logTiming: logTiming
                 )
             }.value
+            logTiming("analysisTotal \(durationMs(clock.now - stageStart))ms")
+            return data
         } catch {
             throw SessionPreparationError.analysisError(error.localizedDescription)
         }
