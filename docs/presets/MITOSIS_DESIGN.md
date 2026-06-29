@@ -9,8 +9,11 @@ into many until the field is **crowded** (cells touching, ~25–35 s), then the 
 **dissolves** back to a few cells and **regrows** — a continuous birth→crowd→dissolve
 cycle paced by the music's energy. Rendered as **fluorescence microscopy** — magenta
 nuclei + electric cyan/green membranes (the B-gradient) glowing on black, at a 640×360
-sim (sharp). The **psychedelic hue is tied to the music**: a phase that accumulates
-energy-paced + a spectral-centroid bias + a travelling spatial wave. Regime F=0.0260,
+sim (sharp). The **psychedelic hue responds strongly + obviously to the music**
+(MITOSIS.5): the spectral centroid swings the whole palette wide with the timbre
+(dark/quiet → muted teal, bright timbre → vivid orange/pink), energy raises
+saturation/vividness, a travelling spatial wave drifts the colour, and a drum
+transient kicks the hue + a small bounded glow pulse (chromatic → flash-safe). Regime F=0.0260,
 k=0.0600 (dense-fill discrete cells); LOW substeps (2–5) pace the slow growth; a high-k
 pulse dissolves; a cluster reseed gives the "few cells" to regrow from. **Key arc:** the
 natural GS growth transient (few→crowded) IS the division — earlier work fought it.
@@ -192,6 +195,7 @@ the *mechanism*, only listening confirms the *feel*.
 | **MITOSIS.2** | Live → ❌ fill-then-freeze → onset-driven k-oscillation churn (constant-GS-freezes finding). |
 | **MITOSIS.2b** | Live → ❌ "deep sea dive" (onset-driven collapsed on a 0.6%-onset track) → grid-driven churn. Still wrong concept (per-beat churn). |
 | **MITOSIS.2c** | Live → "much too fast/blurry" → Matt's vision **"psychedelic cell division"**: reconceived as a slow GROWTH cycle (few→crowded→dissolve→regrow) + fluorescence colour + music-tied hue; packed denser (cells touching). **Matt's M7 sign-off → ✅ CERTIFIED** (rubric `certifiedPresets`/`expectedAutomatedGate` false, `multiPassMeasured` + `renderMitosis` flash harness 0.00 flashes/s, `certified: true`). |
+| **MITOSIS.5** | Colour responsiveness (Matt: "more responsive to the music, mainly the colour"): timbre (spectral centroid) swings the palette wide, energy → vividness, drum transient → hue + bounded glow pulse. Flash-safe (0.00/s). Cycle timing left as-is. ✅ |
 | **MITOSIS gen-2** | (future, post-cert) A detailed/"realistic" version — per-cell procedural detail (spindle asters, cleavage furrow, chromatin) over the RD/agent layer. Reference image locked. A different renderer; a fresh increment. |
 | **MITOSIS.3** | Palette curation (reference-anchored, Matt's pick). |
 | **MITOSIS.4** | Certification — M7, rubric, flash-safety cert (`renderMitosis`), sidecar `certified: true`. |

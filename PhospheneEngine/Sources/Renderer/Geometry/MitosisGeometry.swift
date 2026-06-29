@@ -34,6 +34,7 @@ struct MitosisConfig {
     var paletteId: UInt32
     var huePhase: Float = 0
     var colorBias: Float = 0
+    var hit: Float = 0
 }
 
 // MARK: - Configuration
@@ -111,6 +112,7 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
     private var cycleClock: Float = 0   // 0→1 grow→crowd→dissolve cycle position
     private var huePhase: Float = 0     // music-paced hue animation (the psychedelic colour sync)
     private var centroidEnv: Float = 0  // smoothed spectral centroid → hue bias (timbre → colour)
+    private var hitEnv: Float = 0       // fast drum transient → per-hit colour/glow pulse (MITOSIS.5)
     private var frameCounter: UInt32 = 0
 
     public init(
@@ -260,6 +262,14 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
         // music rather than free-running.
         huePhase += Float(dt) * (0.10 + 0.9 * max(0, min(1.2, energyEnv)))
         centroidEnv += Float(dt / (0.50 + dt)) * (max(0, min(1, features.spectralCentroid)) - centroidEnv)
+
+        // Drum transient → a per-hit colour/glow pulse (MITOSIS.5: make the colour
+        // respond strongly + obviously to the music). Fast attack, ~0.22 s release →
+        // reads as the cells throbbing colour on the beat, not a strobe (chromatic, so
+        // flash-safe; only a small bounded brightness lift rides with it).
+        let hitRaw = max(stems.drumsEnergyDev, 0.7 * stems.bassEnergyDev) * blend
+        let hitAlpha = hitRaw > hitEnv ? dt / (0.015 + dt) : dt / (0.22 + dt)
+        hitEnv += Float(hitAlpha) * (hitRaw - hitEnv)
     }
 
     /// `killEff` (growth regime, or the high dissolve k) and `burst` (cycle-start reseed)
@@ -278,7 +288,8 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
             energyEnv: energy,
             paletteId: configuration.paletteId,
             huePhase: huePhase,
-            colorBias: centroidEnv)
+            colorBias: centroidEnv,
+            hit: min(1.4, hitEnv))
     }
 
     // MARK: - Seeding
