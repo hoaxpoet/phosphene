@@ -268,6 +268,11 @@ struct PresetAcceptanceTests {
         // `filigree_ground_fragment` is the intentionally pure-black Kintsugi ground.
         // Coverage: PhysarumSketchRenderTests.
         guard preset.descriptor.name != "Filigree" else { return }
+        // Mitosis (MITOSIS.1): same as Filigree — the readable cell colony is the
+        // `MitosisGeometry` reaction–diffusion field; the standalone
+        // `mitosis_ground_fragment` is the intentionally flat dark ground.
+        // Coverage: MitosisSketchRenderTests (multi-frame field render + spot metric).
+        guard preset.descriptor.name != "Mitosis" else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture
         let pixels = try renderFrame(preset: preset, features: &fixture, context: ctx)
