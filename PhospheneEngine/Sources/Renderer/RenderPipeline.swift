@@ -209,9 +209,12 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
 
     // MARK: - Per-Stem Features
 
-    /// Latest per-stem features from the background stem pipeline.
-    /// Set from the stem queue (~5s cadence), read every frame in the render loop.
-    var latestStemFeatures = StemFeatures.zero
+    /// Latest per-stem features from the background stem pipeline (set from the
+    /// stem queue ~5s cadence, read every frame). `…AreLive` (BUG-064 light warmup)
+    /// is `false` for the frozen cached 5a snapshot installed at track change,
+    /// `true` once the live per-frame analyzer converges (~10 s); stem-only-animated
+    /// presets (Lumen's lights) read it to drive off live continuous-energy until then.
+    var latestStemFeatures = StemFeatures.zero, latestStemFeaturesAreLive = false
     let stemFeaturesLock = NSLock()
 
     /// 150 ms τ EMA of `StemFeatures.drumsEnergyDev`, updated by

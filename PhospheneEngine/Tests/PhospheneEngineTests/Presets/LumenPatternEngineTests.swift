@@ -112,14 +112,15 @@ private func driveSteady(
     _ engine: LumenPatternEngine,
     seconds: Float,
     features: FeatureVector,
-    stems: StemFeatures
+    stems: StemFeatures,
+    stemsLive: Bool = true
 ) {
     let dt: Float = 1.0 / 60.0
     let frames = Int((seconds / dt).rounded())
     var f = features
     f.deltaTime = dt
     for _ in 0..<frames {
-        engine.tick(features: f, stems: stems)
+        engine.tick(features: f, stems: stems, stemsLive: stemsLive)
     }
 }
 
@@ -292,6 +293,36 @@ struct LumenAudioRoutingTests {
         let expected: Float = 0.5 * 0.6
         #expect(abs(intensity - expected) < 0.025,
                 "bass FV-fallback intensity \(intensity) ≠ \(expected)")
+    }
+
+    /// BUG-064 light-warmup follow-up. During the ~10 s stem warmup the render path
+    /// feeds a LOUD but FROZEN cached snapshot (totalStemEnergy ≫ 0.06). Unguarded,
+    /// the D-019 gate picks the stem-direct path and the four lights lock onto the
+    /// snapshot for the whole warmup. With `stemsLive: false` the engine must drive
+    /// the live FV fallback, so the drums light tracks `beatBass`, not the frozen stem.
+    @Test func test_bug064_notLiveStems_driveFVFallback_notFrozenSnapshot() throws {
+        let engine = try makeEngine()
+        let frozen = stems(drumsEnergyRel: 0.5, totalEnergy: 0.5)   // loud snapshot
+        driveSteady(engine, seconds: 0.3, features: fv(beatBass: 1.0), stems: frozen, stemsLive: false)
+        let highFV = engine.snapshot().light(at: 0).intensity
+        driveSteady(engine, seconds: 0.3, features: fv(beatBass: 0.0), stems: frozen, stemsLive: false)
+        let lowFV = engine.snapshot().light(at: 0).intensity
+        // Bug-present signature: both ≈ 0.5 (the frozen drumsEnergyRel), Δ ≈ 0.
+        #expect(highFV > 0.4, "drums light \(highFV) did not follow the high FV fallback — frozen-stem lock")
+        #expect(lowFV < 0.15, "drums light \(lowFV) did not follow the low FV fallback — frozen-stem lock")
+        #expect(highFV - lowFV > 0.3, "drums light did not track the FV fallback (Δ=\(highFV - lowFV))")
+    }
+
+    /// BUG-064 companion: once live stems arrive (`stemsLive: true`) the engine still
+    /// routes through the stem-direct path — the fix must not strand the lights on the
+    /// FV fallback after convergence.
+    @Test func test_bug064_liveStems_stillUseStemDirect() throws {
+        let engine = try makeEngine()
+        let s = stems(drumsEnergyRel: 0.5, totalEnergy: 0.5)
+        driveSteady(engine, seconds: 0.3, features: fv(), stems: s, stemsLive: true)
+        let intensity = engine.snapshot().light(at: 0).intensity
+        #expect(abs(intensity - 0.5) < 0.03,
+                "live-stem drums intensity \(intensity) ≠ 0.5 — fix stranded the lights on the fallback")
     }
 }
 

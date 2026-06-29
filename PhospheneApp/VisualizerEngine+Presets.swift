@@ -239,8 +239,15 @@ extension VisualizerEngine {
                         if let engine = LumenPatternEngine(device: context.device) {
                             lumenPatternEngine = engine
                             pipeline.setDirectPresetFragmentBuffer3(engine.patternBuffer)
-                            pipeline.setMeshPresetTick { [weak engine] features, stems in
-                                engine?.tick(features: features, stems: stems)
+                            // BUG-064 light warmup: pass the render path's live-vs-cached
+                            // stem signal so the lights drive from continuous-energy during
+                            // the ~10 s warmup instead of freezing on the cached snapshot.
+                            let renderPipe = pipeline
+                            pipeline.setMeshPresetTick { [weak engine, weak renderPipe] features, stems in
+                                engine?.tick(
+                                    features: features,
+                                    stems: stems,
+                                    stemsLive: renderPipe?.stemFeaturesAreLive() ?? false)
                             }
                             // BUG-016 fix (2026-05-26): load the per-song
                             // palette immediately on preset activation. Before

@@ -623,8 +623,16 @@ public final class LumenPatternEngine: @unchecked Sendable {
     }
 
     /// Advance one rendered frame and flush the resulting state to GPU.
-    public func tick(features: FeatureVector, stems: StemFeatures) {
-        lock.withLock { _tick(features: features, stems: stems) }
+    ///
+    /// `stemsLive` is the render path's "the StemFeatures are live per-frame
+    /// analysis, not the frozen cached 5a snapshot" signal. It defaults to `true`
+    /// so unit tests that drive warmed-up stems still exercise the stem-direct
+    /// path; production passes the pipeline's `stemFeaturesAreLive` flag, which is
+    /// `false` until the live analyzer converges (~10 s after track start). While
+    /// not live, the four lights run on the FV fallback (Layer 1 continuous energy,
+    /// which varies from frame 1) instead of freezing on the static snapshot.
+    public func tick(features: FeatureVector, stems: StemFeatures, stemsLive: Bool = true) {
+        lock.withLock { _tick(features: features, stems: stems, stemsLive: stemsLive) }
         writeToGPU()
     }
 
@@ -770,7 +778,7 @@ public final class LumenPatternEngine: @unchecked Sendable {
 
     // MARK: - Private: tick (called while holding lock)
 
-    private func _tick(features: FeatureVector, stems: StemFeatures) {
+    private func _tick(features: FeatureVector, stems: StemFeatures, stemsLive: Bool) {
         let dt = max(features.deltaTime, 0)
         elapsedTime += dt
 
@@ -782,11 +790,21 @@ public final class LumenPatternEngine: @unchecked Sendable {
         smoothedValence += (features.valence - smoothedValence) * alpha
         smoothedArousal += (features.arousal - smoothedArousal) * alpha
 
-        // D-019 warmup mix.
+        // D-019 warmup mix — gated on stem liveness (BUG-064 light-warmup follow-up).
+        // The cached 5a snapshot fed before the live analyzer converges (~10 s) is a
+        // static, loud value: its energy clears the D-019 threshold, so the unguarded
+        // smoothstep would pick the stem-direct path and the four lights would freeze
+        // on the snapshot for the whole warmup. While the stems are not live, pin the
+        // mix to the FV fallback (Layer 1 continuous energy — varies from frame 1) so
+        // the lights respond immediately; hand over to stems once live ones arrive.
+        // The lights are already unsmoothed per-frame, so the one-tick handoff reads
+        // no differently than the normal per-beat jump.
         let totalStemEnergy =
             stems.drumsEnergy + stems.bassEnergy +
             stems.vocalsEnergy + stems.otherEnergy
-        let stemMix = lumenSmoothstep(Self.stemWarmupLow, Self.stemWarmupHigh, totalStemEnergy)
+        let stemMix: Float = stemsLive
+            ? lumenSmoothstep(Self.stemWarmupLow, Self.stemWarmupHigh, totalStemEnergy)
+            : 0
 
         // Drift-speed map. (smoothedArousal + 1) / 2 maps arousal ∈ [-1, +1]
         // into [0, 1] for the lerp. Uses the smoothed arousal so the drift
