@@ -2,13 +2,13 @@
   "name": "Ricercar",
   "duration": 45,
   "family": "painterly",
-  "description": "Contrapuntal visual-music painting (Ricercar.2 — substrate spike). A flowing colour FIELD: Skein's canvas-hold mv_warp reconfigured to a divergence-free curl-noise FLOW warp + slow decay-toward-light-ground, so deposited colour drifts, merges wet-into-wet, and breathes back to light at rest (silence-non-black by construction). Colour is hand-fed here (three drifting LOW/MID/HIGH lane masses); the Filigree-class agent 'voices', audio routing, and per-track seed arrive at Ricercar.3.x/.3/.4. See docs/presets/RICERCAR_DESIGN.md.",
+  "description": "The orchestra painting itself (Ricercar.3 — per-section mark engine, D-176). Each orchestral SECTION has a distinct painterly identity (colour + weight + texture + material); the painting builds in sync with the music (identity first, sync second). Spirit of Fantasia, elegant + luminous on a LIGHT canvas — the elegant/luminous sibling of Skein, built on Skein's canvas-hold marks-on-top engine (graceful composed strokes, not Pollock drip). Ricercar.3 shows 3 of the 5 sections (basses/violas/flutes), hand-fed; the full five + audio sync are Ricercar.4/.5. See docs/presets/RICERCAR_DESIGN.md §CONCEPT.",
   "author": "Matt",
   "passes": ["direct", "mv_warp"],
   "fragment_function": "ricercar_fragment",
   "vertex_function": "fullscreen_vertex",
   "beat_source": "composite",
-  "decay": 0.97,
+  "decay": 1.0,
   "marks": {
     "vertex_count": 3,
     "instance_count": 1,
@@ -16,12 +16,12 @@
     "chromatic": 0.0,
     "comp": { "invert": 0.0, "echo": 0.0, "gamma": 1.0 },
     "beat_pulse": false,
-    "canvas_clear": [0.90, 0.88, 0.84]
+    "canvas_clear": [0.93, 0.91, 0.86]
   },
   "visual_density": 0.55,
   "motion_intensity": 0.50,
   "fatigue_risk": "low",
-  "complexity_cost": { "tier1": 0.6, "tier2": 0.3 },
+  "complexity_cost": { "tier1": 0.7, "tier2": 0.3 },
   "certified": false,
   "rubric_profile": "lightweight"
 }
