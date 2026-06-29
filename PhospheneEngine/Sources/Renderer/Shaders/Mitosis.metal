@@ -82,15 +82,19 @@ kernel void mitosis_react(constant MitosisConfig& cfg [[buffer(0)]],
     float nA = A + (cfg.Da * lap.r - reaction + F * (1.0 - A)) * dt;
     float nB = B + (cfg.Db * lap.g + reaction - (k + F) * B) * dt;
 
-    // Onset burst (the sync handle): paint sparse B nuclei into OPEN space on the beat
-    // — the canonical interactive-RD seed (pmneila / Karl Sims "paint reactant"). Each
-    // seed blooms into a new dividing cell, so a drum hit reads as a pulse of new cells
-    // budding into the colony. Density-INDEPENDENT (only empty cells) — unlike rim
-    // injection, which floods the gaps of a packed field and MERGES it. Sparse + bounded
-    // count → bounded luminance step (flash-safe, D-157).
-    if (cfg.feedBurst > 0.001 && B < 0.04 && A > 0.5) {
+    // Division↔merge is driven by the onset-oscillated kill rate `k` (CPU-side in
+    // MitosisGeometry.update — onset drops k → division burst; base k leans to the death
+    // side → cells die back between beats). Constant-k Gray–Scott freezes to a static
+    // grid (MITOSIS.2), so the music keeps the field churning.
+    //
+    // Survival floor: a sparse nucleation trickle GATED BY MUSIC ENERGY (`cfg.feedBurst`,
+    // set on the first substep only). At the death-leaning base k the field would
+    // otherwise die out — and dead Gray–Scott can't revive (no B → no A·B² reaction) —
+    // so this keeps a couple of cells alive while music plays (and reads as "starting
+    // from a couple of cells", Matt MITOSIS.2). Silence → no nucleation → calm fade.
+    if (cfg.feedBurst > 0.0001 && B < 0.04 && A > 0.5) {
         float r = rd_hash((gid.y * cfg.width + gid.x) * 2654435761u + cfg.frame * 40503u);
-        if (r < cfg.feedBurst * 0.0016) { nB = 0.5; nA = 0.5; }   // nucleate a cell
+        if (r < cfg.feedBurst * 0.00002) { nB = 0.5; nA = 0.5; }   // nucleate a cell
     }
 
     dst.write(float4(clamp(nA, 0.0, 1.0), clamp(nB, 0.0, 1.0), 0.0, 1.0), gid);
