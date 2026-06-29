@@ -112,11 +112,6 @@ extension VisualizerEngine {
         // unknown cost characteristics; start optimistic and let the controller re-converge.
         pipeline.frameBudgetManager?.reset()
 
-        // BUG-063 (temporary): reset the Lumen freeze diagnostic so each preset visit
-        // logs from frame 0 with a fresh first-degenerate latch.
-        lumenDiagFrame = 0
-        lumenDiagSeenBad = false
-
         // Reset all active passes and subsystems before applying the new preset.
         // This prevents stale subsystem state from the previous preset bleeding through.
         pipeline.setActivePasses([])
