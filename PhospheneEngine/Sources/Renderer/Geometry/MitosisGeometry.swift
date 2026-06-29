@@ -32,7 +32,8 @@ struct MitosisConfig {
     var feedBurst: Float
     var energyEnv: Float
     var paletteId: UInt32
-    var pad: Float = 0
+    var huePhase: Float = 0
+    var colorBias: Float = 0
 }
 
 // MARK: - Configuration
@@ -55,22 +56,27 @@ public struct MitosisConfiguration: Sendable {
     /// couple of cells"); a dense seed fills instantly into a static grid.
     public var seedBlobs: Int
 
+    /// Seconds for one grow→crowd→dissolve cycle at moderate energy (Matt MITOSIS.2c:
+    /// few cells divide into many until crowded over 25–35 s, then dissolve & regrow).
+    public var cyclePeriod: Float
+
     public init(
-        width: Int = 320,
-        height: Int = 180,
-        baseSubsteps: Int = 8,
-        maxSubsteps: Int = 18,
-        // Regime (MITOSIS.2): F=0.034, base k=0.0655 leans to the DEATH side — cells
-        // continuously die back (merge) — and each drum onset transiently drops k to
-        // trigger a division burst (see `update`). Constant-parameter Gray–Scott always
-        // FREEZES to a static grid (the live M7 failure; every regime in
-        // `test_regimeProbeDynamic` ended with activity ≈ 0), so the music drives the
-        // churn. At this death-leaning base the cells stay DISCRETE + round (lower k
-        // writhes into connected worms — `test_onsetChurnProbe` frames).
-        feed: Float = 0.034,
-        kill: Float = 0.0655,
+        // Higher sim res than 1080p/6 → cells are crisp on upscale, not blurry
+        // (Matt MITOSIS.2c "much too blurry"). 640×360 = 3× upscale.
+        width: Int = 640,
+        height: Int = 360,
+        // LOW substep count paces the SLOW growth (Matt: "much too fast"; 25–35 s to
+        // crowded, not < 10 s). Energy modulates the division rate within that.
+        baseSubsteps: Int = 2,
+        maxSubsteps: Int = 5,
+        // GROWTH regime (MITOSIS.2c): few seeds divide into a crowded field of discrete
+        // cells, then saturate ("too crowded to divide further"). The dissolve phase
+        // raises k to melt the field back to a few cells; then it regrows (cycle).
+        feed: Float = 0.0260,
+        kill: Float = 0.0600,
         paletteId: UInt32 = 0,
-        seedBlobs: Int = 3
+        seedBlobs: Int = 4,
+        cyclePeriod: Float = 34
     ) {
         self.width = width
         self.height = height
@@ -80,6 +86,7 @@ public struct MitosisConfiguration: Sendable {
         self.kill = kill
         self.paletteId = paletteId
         self.seedBlobs = seedBlobs
+        self.cyclePeriod = cyclePeriod
     }
 }
 
@@ -100,9 +107,10 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
     private let renderPipeline: MTLRenderPipelineState?
 
     // CPU-side music envelopes (one primitive per layer — D-026, FA #67).
-    private var energyEnv: Float = 0   // smoothed continuous energy → vigour + density (PRIMARY)
-    private var hitEnv: Float = 0      // fast drum transient → per-beat division ACCENT
-    private var beatPhase: Float = 0   // continuous cached-grid phase (0 at beat → 1) → divide pulse
+    private var energyEnv: Float = 0   // smoothed continuous energy → division rate / cycle pace (PRIMARY)
+    private var cycleClock: Float = 0   // 0→1 grow→crowd→dissolve cycle position
+    private var huePhase: Float = 0     // music-paced hue animation (the psychedelic colour sync)
+    private var centroidEnv: Float = 0  // smoothed spectral centroid → hue bias (timbre → colour)
     private var frameCounter: UInt32 = 0
 
     public init(
@@ -150,8 +158,8 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
 
     /// Smoothed energy envelope. Exposed for the render test's metabolism assertions.
     public var currentEnergyEnv: Float { energyEnv }
-    /// Fast transient envelope (onset burst). Exposed for the render test's sync assertions.
-    public var currentHitEnv: Float { hitEnv }
+    /// Cycle position 0→1 (grow→dissolve). Exposed for the render test.
+    public var currentCycleClock: Float { cycleClock }
 
     /// The latest state texture — exposed so the render test can read back the B
     /// channel and count spots (the divide/merge metric).
@@ -162,39 +170,34 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
     public func update(features: FeatureVector, stemFeatures: StemFeatures, commandBuffer: MTLCommandBuffer) {
         advanceEnvelopes(features: features, stems: stemFeatures)
         frameCounter &+= 1
-
-        // Constant-parameter Gray–Scott always FREEZES to a static grid (MITOSIS.2
-        // probe: every regime end-activity ≈ 0) — the "mitosis" is the transient, not a
-        // steady state. So the music must keep the field out of equilibrium. Base k
-        // leans to the death side → cells continuously die back (MERGE) between beats;
-        // each drum onset drops k → a DIVISION burst on the beat (Matt's locked role).
-        // The field perpetually divides-on-beat / merges-between, never freezing.
         let en = max(0, min(1.2, energyEnv))
-        let hit = min(1.4, hitEnv)
-        // MITOSIS.2b — the divide/merge churn is driven by the CONTINUOUS cached-grid
-        // beat phase, NOT drum onsets. The grid advances on every track (percussive or
-        // not — `beatPhase01` from the Beat-This! preview grid), so the field perpetually
-        // divides-on-beat / merges-between and never freezes regardless of how drum-heavy
-        // the track is. The onset-driven version collapsed on a 0.6%-onset track
-        // (session 20-21-43Z, "deep sea dive"); continuous energy is the primary driver
-        // (Audio Data Hierarchy), the grid phase carries the sync, drum hits are an accent.
-        //
-        // Keep the SUSTAINED base k in the discrete-cell band (≈0.063–0.066); only the
-        // BRIEF per-beat divide pulse dips lower (too short to worm-ify).
-        // Base k is FIXED in the discrete-cell band at ALL energies — lowering it with
-        // energy (for density) kept pushing loud into the connected-worm regime
-        // (MITOSIS.2b render). Density instead tracks energy via the cluster-reseed RATE
-        // (below); base k only ever dips for the BRIEF per-beat divide pulse (too short to
-        // worm-ify). The cluster reseed is the population backbone (survives at any energy
-        // / onset density); the grid pulse modulates the divide/merge RHYTHM on top.
-        let killBase = configuration.kill                        // fixed 0.0655 → always discrete cells
-        let gridDivide = (1 - beatPhase) * (1 - beatPhase)       // 1 at each beat → 0 before the next
-        let divideAmp = 0.0042 + 0.001 * min(1, en)              // per-beat divide pulse (rhythm; shallow → flash-safe)
-        let killEff = killBase - divideAmp * gridDivide - 0.004 * hit   // grid pulse + onset accent
-        // Cluster-reseed rate = the density driver (PRIMARY): a survival floor while any
-        // music plays (no Drift-Motes in silence) that RAMPS with energy → loud teems,
-        // quiet thins. The base regime stays discrete; reseed sets how many cells live.
-        let nucleate = Self.smoothstep(0.02, 0.08, energyEnv) * (0.3 + 0.7 * min(1, en))
+
+        // MITOSIS.2c — "psychedelic cell division" as a SLOW GROWTH ARC, not a per-beat
+        // churn (the churn was over-engineering). Few cells divide into many until the
+        // field is crowded, over ~25–35 s; then it DISSOLVES back to a few cells and
+        // REGROWS (Matt's cycle). Continuous energy paces the cycle + division rate
+        // (Audio Data Hierarchy: energy primary). One grow→dissolve loop per `cyclePeriod`.
+        var dt = features.deltaTime
+        if !(dt > 0) { dt = 1.0 / 60.0 }
+        dt = min(dt, 1.0 / 30.0)
+        let pace = 0.6 + 0.8 * min(1, en)                     // louder → faster division/cycle
+        cycleClock += Float(dt) * pace / configuration.cyclePeriod
+        let regrew = cycleClock >= 1
+        if regrew { cycleClock -= 1 }
+
+        // Grow for the first ~82 % of the cycle (killEff = growth regime → cells divide
+        // and fill); DISSOLVE over the last ~18 % (killEff ramps high → the field melts
+        // back). A fresh seed-cluster burst at the very top of each cycle gives the
+        // "few cells" the regrowth starts from.
+        let growFrac: Float = 0.82
+        let killEff: Float
+        if cycleClock < growFrac {
+            killEff = configuration.kill                      // growth regime
+        } else {
+            let diss = (cycleClock - growFrac) / (1 - growFrac)  // 0→1 across the dissolve
+            killEff = configuration.kill + 0.013 * Self.smoothstep(0, 1, diss)   // high k melts the field
+        }
+        let reseed: Float = cycleClock < 0.05 ? 1.0 : 0       // seed the few cells to regrow from
         let substeps = configuration.baseSubsteps +
             Int(Float(configuration.maxSubsteps - configuration.baseSubsteps) * min(1, en))
 
@@ -209,8 +212,7 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
             depth: 1)
 
         for step in 0..<substeps {
-            // Nucleation trickle on the first substep only (one bounded pass/frame).
-            let burst: Float = step == 0 ? nucleate : 0
+            let burst: Float = step == 0 ? reseed : 0
             var cfg = makeConfig(energy: en, killEff: killEff, burst: burst, frameSalt: frameCounter &+ UInt32(step))
             let src = state[cur], dst = state[1 - cur]
             enc.setBytes(&cfg, length: MemoryLayout<MitosisConfig>.stride, index: 0)
@@ -237,8 +239,8 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
 
     // MARK: - Music envelopes
 
-    /// Continuous energy (metabolism) + fast transient (onset burst). Energy blend
-    /// mirrors Murmuration/Physarum so it's sized to real music (stems when present).
+    /// Smoothed continuous energy — the primary driver (Audio Data Hierarchy): paces the
+    /// growth/cycle rate. Blend mirrors Murmuration/Physarum so it's sized to real music.
     private func advanceEnvelopes(features: FeatureVector, stems: StemFeatures) {
         var dt = features.deltaTime
         if !(dt > 0) { dt = 1.0 / 60.0 }
@@ -251,19 +253,16 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
         let rawEnergy = fullEnergy + (stemEnergy - fullEnergy) * blend
         energyEnv += Float(dt / (0.30 + dt)) * (rawEnergy - energyEnv)
 
-        // Per-beat transient: fast-attack/slow-release envelope of the drum (+bass)
-        // deviation primitives — the onset signal that fires the mitosis burst.
-        let hitRaw = max(stems.drumsEnergyDev, 0.7 * stems.bassEnergyDev) * blend
-        let hitAlpha = hitRaw > hitEnv ? dt / (0.012 + dt) : dt / (0.16 + dt)
-        hitEnv += Float(hitAlpha) * (hitRaw - hitEnv)
-
-        // Continuous cached-grid beat phase (0 at the beat → 1 at the next) — the
-        // primary churn driver (advances on every track, unlike onset transients).
-        beatPhase = max(0, min(1, features.beatPhase01))
+        // Psychedelic colour SYNC (Matt MITOSIS.2c "tie shimmer to the music"): the hue
+        // animation phase accumulates faster when louder; the spectral centroid (timbre
+        // brightness) biases which hues dominate. So the colour visibly responds to the
+        // music rather than free-running.
+        huePhase += Float(dt) * (0.10 + 0.9 * max(0, min(1.2, energyEnv)))
+        centroidEnv += Float(dt / (0.50 + dt)) * (max(0, min(1, features.spectralCentroid)) - centroidEnv)
     }
 
-    /// `killEff` is computed per-frame in `update` (base k − energy density shift −
-    /// onset division pulse); the onset drives the divide↔merge churn (see `update`).
+    /// `killEff` (growth regime, or the high dissolve k) and `burst` (cycle-start reseed)
+    /// are computed per-frame in `update`; `huePhase`/`colorBias` carry the music→colour sync.
     private func makeConfig(energy: Float, killEff: Float, burst: Float, frameSalt: UInt32) -> MitosisConfig {
         MitosisConfig(
             width: UInt32(configuration.width),
@@ -274,9 +273,11 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
             feed: configuration.feed,
             kill: killEff,
             dt: 1.0,
-            feedBurst: burst,   // energy-gated survival-floor nucleation (MITOSIS.2)
+            feedBurst: burst,   // cycle-start cluster reseed (the "few cells" to regrow from)
             energyEnv: energy,
-            paletteId: configuration.paletteId)
+            paletteId: configuration.paletteId,
+            huePhase: huePhase,
+            colorBias: centroidEnv)
     }
 
     // MARK: - Seeding
