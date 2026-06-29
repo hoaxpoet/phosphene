@@ -100,8 +100,9 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
     private let renderPipeline: MTLRenderPipelineState?
 
     // CPU-side music envelopes (one primitive per layer — D-026, FA #67).
-    private var energyEnv: Float = 0   // smoothed continuous energy → metabolism + brightness
-    private var hitEnv: Float = 0      // fast drum/bass transient → onset mitosis burst (the sync)
+    private var energyEnv: Float = 0   // smoothed continuous energy → vigour + density (PRIMARY)
+    private var hitEnv: Float = 0      // fast drum transient → per-beat division ACCENT
+    private var beatPhase: Float = 0   // continuous cached-grid phase (0 at beat → 1) → divide pulse
     private var frameCounter: UInt32 = 0
 
     public init(
@@ -170,16 +171,30 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
         // The field perpetually divides-on-beat / merges-between, never freezing.
         let en = max(0, min(1.2, energyEnv))
         let hit = min(1.4, hitEnv)
-        // Keep the SUSTAINED base k inside the discrete-cell band (≈0.063–0.066) at all
-        // energies — a sustained low k writhes into a connected worm labyrinth, not cells
-        // (MITOSIS.2 production render). Energy nudges it only slightly (loud a touch
-        // denser). The churn comes from the BRIEF per-onset k-dip: a short excursion
-        // divides without time to worm-ify (cf. test_onsetChurnProbe discrete frames).
-        let killBase = configuration.kill - 0.002 * min(1, en)   // 0.0655 quiet → 0.0635 loud (both discrete)
-        let killEff = killBase - 0.0085 * hit                    // onset → brief division burst
-        // Survival-floor nucleation gate: only while music plays (no Drift-Motes in
-        // silence), keeps the death-leaning field recoverable.
-        let nucleate = Self.smoothstep(0.03, 0.12, energyEnv)
+        // MITOSIS.2b — the divide/merge churn is driven by the CONTINUOUS cached-grid
+        // beat phase, NOT drum onsets. The grid advances on every track (percussive or
+        // not — `beatPhase01` from the Beat-This! preview grid), so the field perpetually
+        // divides-on-beat / merges-between and never freezes regardless of how drum-heavy
+        // the track is. The onset-driven version collapsed on a 0.6%-onset track
+        // (session 20-21-43Z, "deep sea dive"); continuous energy is the primary driver
+        // (Audio Data Hierarchy), the grid phase carries the sync, drum hits are an accent.
+        //
+        // Keep the SUSTAINED base k in the discrete-cell band (≈0.063–0.066); only the
+        // BRIEF per-beat divide pulse dips lower (too short to worm-ify).
+        // Base k is FIXED in the discrete-cell band at ALL energies — lowering it with
+        // energy (for density) kept pushing loud into the connected-worm regime
+        // (MITOSIS.2b render). Density instead tracks energy via the cluster-reseed RATE
+        // (below); base k only ever dips for the BRIEF per-beat divide pulse (too short to
+        // worm-ify). The cluster reseed is the population backbone (survives at any energy
+        // / onset density); the grid pulse modulates the divide/merge RHYTHM on top.
+        let killBase = configuration.kill                        // fixed 0.0655 → always discrete cells
+        let gridDivide = (1 - beatPhase) * (1 - beatPhase)       // 1 at each beat → 0 before the next
+        let divideAmp = 0.0042 + 0.001 * min(1, en)              // per-beat divide pulse (rhythm; shallow → flash-safe)
+        let killEff = killBase - divideAmp * gridDivide - 0.004 * hit   // grid pulse + onset accent
+        // Cluster-reseed rate = the density driver (PRIMARY): a survival floor while any
+        // music plays (no Drift-Motes in silence) that RAMPS with energy → loud teems,
+        // quiet thins. The base regime stays discrete; reseed sets how many cells live.
+        let nucleate = Self.smoothstep(0.02, 0.08, energyEnv) * (0.3 + 0.7 * min(1, en))
         let substeps = configuration.baseSubsteps +
             Int(Float(configuration.maxSubsteps - configuration.baseSubsteps) * min(1, en))
 
@@ -241,6 +256,10 @@ public final class MitosisGeometry: ParticleGeometry, @unchecked Sendable {
         let hitRaw = max(stems.drumsEnergyDev, 0.7 * stems.bassEnergyDev) * blend
         let hitAlpha = hitRaw > hitEnv ? dt / (0.012 + dt) : dt / (0.16 + dt)
         hitEnv += Float(hitAlpha) * (hitRaw - hitEnv)
+
+        // Continuous cached-grid beat phase (0 at the beat → 1 at the next) — the
+        // primary churn driver (advances on every track, unlike onset transients).
+        beatPhase = max(0, min(1, features.beatPhase01))
     }
 
     /// `killEff` is computed per-frame in `update` (base k − energy density shift −

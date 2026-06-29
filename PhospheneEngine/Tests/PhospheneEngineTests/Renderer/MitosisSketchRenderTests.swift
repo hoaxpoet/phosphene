@@ -250,16 +250,18 @@ struct MitosisSketchRenderTests {
 
     // MARK: - Onset-driven churn helpers (MITOSIS.2)
 
-    /// One frame: steady energy + an optional ~2.1 Hz drum-onset train. The field is
-    /// onset-driven now (constant-parameter Gray–Scott freezes), so realistic tests
-    /// must supply onsets — energy-only is silence to the percussion channel.
+    /// One frame at a fixed tempo: the continuous cached-grid `beatPhase01` always
+    /// advances (this is the primary churn driver, MITOSIS.2b), with `onsets` toggling
+    /// whether the track is percussive (drum-hit accents on the beat) or sparse/ambient
+    /// (grid only). 117 BPM matches the "deep sea dive" failure track (session 20-21-43Z).
     private func churnStep(_ geo: MitosisGeometry, _ energy: Float, onsets: Bool,
-                           _ tex: MTLTexture, _ ctx: MetalContext, _ t: inout Float) throws {
-        let ph = Int(t * 60) % 28
+                           _ tex: MTLTexture, _ ctx: MetalContext, _ t: inout Float, bpm: Float = 117) throws {
+        let beatPhase = (t * bpm / 60).truncatingRemainder(dividingBy: 1)
         var f = FeatureVector(time: t, deltaTime: 1.0 / 60.0); f.bass = energy; f.mid = energy * 0.85
+        f.beatPhase01 = beatPhase
         var s = StemFeatures()
         s.bassEnergy = energy; s.drumsEnergy = energy; s.otherEnergy = energy * 0.8; s.vocalsEnergy = energy * 0.5
-        s.drumsEnergyDev = onsets ? (ph < 2 ? 1.2 : 0.05) : 0.02
+        s.drumsEnergyDev = onsets ? (beatPhase < 0.07 ? 1.2 : 0.05) : 0.02   // a drum hit at each beat, or none
         try frame(geo, f, s, tex, ctx); t += 1.0 / 60.0
     }
 
@@ -331,36 +333,38 @@ struct MitosisSketchRenderTests {
             for fr in 0..<120 { try churnStep(geo, lvl, onsets: true, tex, ctx, &t); if fr % 20 == 0 { s.append(spotCount(geo, cfg.width, cfg.height)) } }
             return s.reduce(0, +) / s.count
         }
-        let loud = try holdMean(0.85), quiet = try holdMean(0.12)
+        let loud = try holdMean(0.80), quiet = try holdMean(0.22)
         print("[MITO] density: loud=\(loud) quiet=\(quiet)")
         #expect(loud > quiet, "loud must teem denser than quiet: \(loud) vs \(quiet)")
         #expect(quiet > 0, "quiet must stay alive (energy-survival floor): \(quiet)")
     }
 
-    // MARK: - Criterion: onsets DRIVE the churn (the make-or-break sync mechanism)
+    // MARK: - Criterion: the grid drives the churn ROBUSTLY across track types (MITOSIS.2b)
 
-    /// Two identically-seeded colonies at the same energy: one gets a drum-onset train,
-    /// the other none. The onset run must keep CHURNING while the no-onset control
-    /// settles toward a frozen grid — i.e. the onsets are what drive the dynamics
-    /// physarum/Filigree couldn't (FILIGREE §"sync finding"). Whether it READS as locked
-    /// is the live gate (FA #27).
-    @Test("Onsets drive the churn — onset run churns, no-onset control freezes")
-    func test_onsetDrivesChurn() throws {
+    /// The "deep sea dive" failure was a non-percussive track (drum onsets in 0.6% of
+    /// frames) collapsing the onset-driven field to near-empty. The grid-phase driver
+    /// must keep the field churning on BOTH a drum-heavy AND a sparse/ambient track —
+    /// the cached beat grid advances either way. This is the robustness proof.
+    @Test("Grid drives churn on both drum-heavy AND sparse tracks (MITOSIS.2b)")
+    func test_churnsOnBothProfiles() throws {
         let ctx = try MetalContext()
         let lib = try ShaderLibrary(context: ctx)
         let cfg = MitosisConfiguration()
-        let onset = try makeGeo(ctx, lib, cfg, pixelFormat: ctx.pixelFormat)
-        let control = try makeGeo(ctx, lib, cfg, pixelFormat: ctx.pixelFormat)
         let tex = try target(ctx, cfg.width, cfg.height)
-        var tO: Float = 0, tC: Float = 0
-        for _ in 0..<600 { try churnStep(onset, 0.55, onsets: true, tex, ctx, &tO) }
-        for _ in 0..<600 { try churnStep(control, 0.55, onsets: false, tex, ctx, &tC) }
-        let aOn = try churnActivity(onset, cfg.width, cfg.height, energy: 0.55, onsets: true, frames: 90, tex, ctx, &tO)
-        let aOff = try churnActivity(control, cfg.width, cfg.height, energy: 0.55, onsets: false, frames: 90, tex, ctx, &tC)
-        print("[MITO] onset-drives-churn: onset activity=\(String(format: "%.5f", aOn)) | control activity=\(String(format: "%.5f", aOff)) | hitEnv=\(String(format: "%.2f", onset.currentHitEnv))")
-        #expect(onset.currentHitEnv > 0.1, "onset envelope must fire on the drum train: \(onset.currentHitEnv)")
-        #expect(aOn > 0.0008, "onset run must keep churning: activity \(aOn)")
-        #expect(aOn > 2.5 * aOff, "onsets must drive the churn — onset activity ≫ no-onset control: \(aOn) vs \(aOff)")
+        for (label, onsets) in [("drum-heavy", true), ("sparse/ambient", false)] {
+            let geo = try makeGeo(ctx, lib, cfg, pixelFormat: ctx.pixelFormat)
+            var t: Float = 0
+            for _ in 0..<600 { try churnStep(geo, 0.35, onsets: onsets, tex, ctx, &t) }
+            var lo = 99999, hi = 0
+            for fr in 0..<360 { try churnStep(geo, 0.35, onsets: onsets, tex, ctx, &t)
+                if fr % 30 == 0 { let c = spotCount(geo, cfg.width, cfg.height); lo = min(lo, c); hi = max(hi, c) } }
+            var t2 = t
+            let activity = try churnActivity(geo, cfg.width, cfg.height, energy: 0.35, onsets: onsets, frames: 90, tex, ctx, &t2)
+            print("[MITO] profile \(label): spots lo=\(lo) hi=\(hi) swing=\(hi - lo) activity=\(String(format: "%.5f", activity))")
+            #expect(lo > 5, "[\(label)] colony must stay alive (not a deep-sea-dive): min spots \(lo)")
+            #expect(activity > 0.0008, "[\(label)] field must churn, not freeze: activity \(activity)")
+            #expect(hi - lo > 10, "[\(label)] cells must divide AND merge (count must swing): swing \(hi - lo)")
+        }
     }
 
     // MARK: - Criterion: flash-safe under a worst-case onset train (D-157)
@@ -436,6 +440,19 @@ struct MitosisSketchRenderTests {
             }
         }
         print("[MITO] motion frames: \(seqDir.path)")
+
+        // The "deep sea dive" failure case: a sparse/ambient track (grid only, NO drum
+        // onsets) at the failure track's ~0.3 energy — must read as a living churning
+        // colony, not a few dots drifting in the dark.
+        let sparse = try makeGeo(ctx, lib, cfg, pixelFormat: ctx.pixelFormat)
+        var ts: Float = 0
+        for fr in 0..<1200 {
+            try churnStep(sparse, 0.32, onsets: false, tex, ctx, &ts)
+            if fr == 360 || fr == 1199 {
+                print("[MITO] sparse-profile @\(fr): spots=\(spotCount(sparse, w, h))")
+                try writePNG(tex, w, h, dir.appendingPathComponent("mito_sparse_\(fr).png"))
+            }
+        }
     }
 
     /// Empirical regime probe (RENDER_VISUAL=1): sweep published (F,k) pairs with NO

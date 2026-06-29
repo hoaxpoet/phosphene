@@ -104,25 +104,36 @@ the session (`2026-06-29T19-44-15Z`): the audio was rich (drum onsets in **58.9 
 frames, steady ~0.4 energy) — the failure was the substrate. A direct probe
 (`test_regimeProbeDynamic`) found the load-bearing fact: **every constant-parameter
 Gray–Scott regime FREEZES** to a static attractor (end-activity ≈ 0). The "mitosis"
-is the *transient*; the music must keep the field out of equilibrium. So the coupling
-is now **onset-driven k-oscillation** (below), and the open-space nucleation is retired
-to a music-gated *survival floor* only.
+is the *transient*; the music must keep the field out of equilibrium.
 
-## 6. Audio routing (MITOSIS.2)
+**★★★ MITOSIS.2b correction (the 2nd live-M7 fix — load-bearing).** The MITOSIS.2 cut
+drove the churn off *drum onsets* (`hitEnv`). 2nd live M7: *"complete failure… deep
+sea dive."* The track (`2026-06-29T20-21-43Z`) had drum onsets in **0.6 %** of frames
+(vs 58.9 % on the first) — a non-percussive track — so the onset-driven field collapsed
+to a few sparse cells. Two errors: (1) I made the *beat* the primary driver of whether
+cells exist (inverting the Audio Data Hierarchy — continuous energy is the default
+primary, beats are accents); (2) the survival floor seeded *isolated* cells, which die
+at the death-base before they can establish. The fix:
+
+## 6. Audio routing (MITOSIS.2b)
 
 | Visual layer | Primitive | Timescale | Mechanism |
 |---|---|---|---|
-| Division burst (the synced event + the churn driver) | `drumsEnergyDev`(+ `bassEnergyDev`) → fast `hitEnv` | per-beat | each onset DROPS `k` briefly → a division burst; between beats the death-leaning base `k` culls cells (MERGE). The field perpetually divides-on-beat / merges-between, never freezing. |
-| Density + survival (sparse↔teeming) | smoothed `energyEnv` | slow | nudges base `k` *within the discrete-cell band* (loud a touch denser) + scales substeps. Capped so loud never drops into the worm regime. |
-| Survival floor (anti-extinction) | `smoothstep(energyEnv)` gate | continuous | a sparse nucleation trickle ONLY while music plays — dead Gray–Scott can't revive (no B → no reaction), so this keeps a couple of cells alive + recoverable. Silent → calm fade (no Drift-Motes). |
+| Divide↔merge RHYTHM (the sync, PRIMARY) | **continuous cached-grid `beatPhase01`** | per-beat | a shallow per-beat `k`-dip pulse (`(1−beatPhase01)²`) → division on the beat; base `k` culls between (merge). The grid advances on **every** track (percussive or not), so the field churns robustly regardless of drum density. |
+| Density (sparse↔teeming) | smoothed `energyEnv` → **cluster-reseed RATE** | slow | energy ramps how many establishing clusters seed/sec → loud teems, quiet thins. Base `k` stays FIXED in the discrete band (lowering it for density pushed loud into worms). |
+| Vigour | `energyEnv` → substeps/frame | slow | louder = faster churn. |
+| Division accent | `drumsEnergyDev` → `hitEnv` | per-beat | actual drum hits add a small extra `k`-dip — an accent on percussive tracks, absent (harmlessly) on ambient ones. |
 
-`killEff = (0.0655 − 0.002·energy) − 0.0085·hitEnv`. The base stays in [0.0635, 0.0655]
-(discrete cells); only the *brief* onset dip excurses lower — too short to worm-ify, just
-long enough to divide. Seed = **3 cells** (Matt: "start with a couple of cells") → the
-colony spreads as visible dividing chains.
+`killEff = 0.0655 − (0.0042 + 0.001·energy)·(1−beatPhase01)² − 0.004·hitEnv`. Base `k`
+is FIXED at 0.0655 (always discrete cells); only the brief per-beat pulse dips lower
+(too short to worm-ify). **Survival = the cluster reseed:** a ~2 px disk at a per-frame
+hashed centre, music-energy-gated — *clusters establish where isolated cells die*, so the
+field survives at any energy/onset density and never permanently dies (dead Gray–Scott
+can't revive: no B → no A·B² reaction). Silence → no reseed → calm fade (no Drift-Motes).
+Seed = **3 cells** (Matt: "start with a couple of cells").
 
-Cold-start safe: continuous energy + deviation primitives available frame 1; no
-beat-phase dependency (the burst keys off `drumsEnergyDev` magnitude, not grid phase).
+Cold-start: `beatPhase01` is available frame 1; a wrong cold-start phase reads as a small
+divide/merge offset, not a wrong-beat firing (the cold-start contract's safe-use case).
 
 ---
 
@@ -159,7 +170,8 @@ the *mechanism*, only listening confirms the *feel*.
 |---|---|
 | **MITOSIS.0** | Throwaway sketch + §8 go/no-go gate (all green). ✅ |
 | **MITOSIS.1** | Graduated to a registered preset; wired into the live app. ✅ |
-| **MITOSIS.2** | Live sync listen → ❌ first cut (fill-then-freeze, no merge) → **churn fix** (onset-driven k-oscillation; constant-GS-freezes finding). Code-complete, all gates green; **pending Matt's live re-confirm.** |
+| **MITOSIS.2** | Live → ❌ fill-then-freeze → onset-driven k-oscillation churn (constant-GS-freezes finding). |
+| **MITOSIS.2b** | Live → ❌ "deep sea dive" (onset-driven collapsed on a 0.6%-onset track) → **grid-driven churn**: continuous `beatPhase01` drives divide/merge (robust to non-percussive tracks), density via cluster-reseed rate, base `k` fixed discrete. All gates green across BOTH drum-heavy & sparse profiles; **pending Matt's live re-confirm.** |
 | **MITOSIS.3** | Palette curation (reference-anchored, Matt's pick). |
 | **MITOSIS.4** | Certification — M7, rubric, flash-safety cert (`renderMitosis`), sidecar `certified: true`. |
 

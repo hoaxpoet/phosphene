@@ -87,14 +87,19 @@ kernel void mitosis_react(constant MitosisConfig& cfg [[buffer(0)]],
     // side → cells die back between beats). Constant-k Gray–Scott freezes to a static
     // grid (MITOSIS.2), so the music keeps the field churning.
     //
-    // Survival floor: a sparse nucleation trickle GATED BY MUSIC ENERGY (`cfg.feedBurst`,
-    // set on the first substep only). At the death-leaning base k the field would
-    // otherwise die out — and dead Gray–Scott can't revive (no B → no A·B² reaction) —
-    // so this keeps a couple of cells alive while music plays (and reads as "starting
-    // from a couple of cells", Matt MITOSIS.2). Silence → no nucleation → calm fade.
-    if (cfg.feedBurst > 0.0001 && B < 0.04 && A > 0.5) {
-        float r = rd_hash((gid.y * cfg.width + gid.x) * 2654435761u + cfg.frame * 40503u);
-        if (r < cfg.feedBurst * 0.00002) { nB = 0.5; nA = 0.5; }   // nucleate a cell
+    // Survival floor: a CLUSTER reseed GATED BY MUSIC ENERGY (`cfg.feedBurst`, set on
+    // the first substep only). At the death-leaning base k an ISOLATED nucleated cell
+    // dies (below critical mass) — only a small cluster establishes (MITOSIS.2b) — so
+    // each event stamps a ~2 px disk at a per-frame hashed centre. Keeps a couple of
+    // cells alive while music plays regardless of energy level (dead Gray–Scott can't
+    // revive: no B → no A·B² reaction). Silence → no reseed → calm fade (no Drift-Motes).
+    if (cfg.feedBurst > 0.0001 && B < 0.20) {
+        uint cx = uint(rd_hash(cfg.frame * 9781u + 17u) * float(cfg.width));
+        uint cy = uint(rd_hash(cfg.frame * 6271u + 31u) * float(cfg.height));
+        float dx = float(gid.x) - float(cx), dy = float(gid.y) - float(cy);
+        if (dx * dx + dy * dy < 4.0 && rd_hash(cfg.frame * 40503u) < cfg.feedBurst * 0.20) {
+            nB = 0.5; nA = 0.5;   // stamp a small establishing cluster (population backbone)
+        }
     }
 
     dst.write(float4(clamp(nA, 0.0, 1.0), clamp(nB, 0.0, 1.0), 0.0, 1.0), gid);
