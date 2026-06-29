@@ -62,11 +62,6 @@ enum SessionPreparationError: Error, Sendable {
 
 // MARK: - SessionPreparer
 
-// type_body_length: this class owns the full prep state machine for BOTH the
-// streaming and local-file pipelines (see the file-header note) plus the
-// PREPPERF.2 prefetch/warm-up methods; splitting it would widen property access
-// across the module, which leaks worse than the length. Re-enabled after the class.
-// swiftlint:disable type_body_length
 /// Runs the full batch pre-analysis pipeline for a playlist.
 ///
 /// Call `prepare(tracks:)` before playback to populate `StemCache`. The method
@@ -549,37 +544,18 @@ public final class SessionPreparer: ObservableObject {
         _ = beatGridAnalyzer?.analyzeBeatGrid(samples: silent, sampleRate: 44_100)
     }
 
-    /// Build the per-track "TIMING:" sink (PREPPERF.1). `@Sendable` so `analyzePreview`
-    /// can call it from `Task.detached`; `SessionRecorder.log` is nonisolated. Lines
-    /// land in session.log + Console — grep "TIMING:" to see where prep time goes.
-    private func makeTimingSink(for track: TrackIdentity) -> @Sendable (String) -> Void {
-        let recorder = sessionRecorder
-        let label = track.title
-        return { msg in
-            let line = "TIMING: [\(label)] \(msg)"
-            recorder?.log(line)
-            prepTimingLogger.info("\(line, privacy: .public)")
-        }
-    }
-
     /// PREPPERF.2 ①: the network half — resolve → download + parallel metadata.
     /// Split from analysis so it can run AHEAD of the serial analysis stage in a
     /// bounded prefetch window (the StemSeparator lock constrains analysis, not the
-    /// network). Sets `.resolving` / `.downloading` and emits resolve/download timing.
-    /// Throws the same errors the old `prepareTrack` did, so the consumer's failure
-    /// classification (and `networkFailedTracks` membership) is unchanged.
+    /// network). Sets `.resolving` / `.downloading`. Throws the same errors the old
+    /// `prepareTrack` did, so the consumer's failure classification (and
+    /// `networkFailedTracks` membership) is unchanged.
     private func fetchTrack(_ track: TrackIdentity) async throws -> (PreviewAudio, PreFetchedTrackProfile?) {
-        let logTiming = makeTimingSink(for: track)
-        let clock = ContinuousClock()
-        var stageStart = clock.now
-
         // Resolve 30-second preview URL.
         trackStatuses[track] = .resolving
         guard let url = try await resolver.resolvePreviewURL(for: track) else {
             throw SessionPreparationError.noPreviewURL(track.title)
         }
-        logTiming("resolve \(durationMs(clock.now - stageStart))ms")
-        stageStart = clock.now
 
         // Download + parallel metadata fetch (Round 26, 2026-05-15): the fetcher hits
         // Soundcharts / iTunes Search / MusicBrainz — same I/O class as the download.
@@ -598,8 +574,6 @@ public final class SessionPreparer: ObservableObject {
             throw SessionPreparationError.downloadFailed(track.title)
         }
         let prefetchedProfile = await profileTask
-        // Metadata is best-effort + usually faster, so this reads as download wall time.
-        logTiming("download \(durationMs(clock.now - stageStart))ms")
         return (preview, prefetchedProfile)
     }
 
@@ -613,10 +587,6 @@ public final class SessionPreparer: ObservableObject {
         profile: PreFetchedTrackProfile?,
         track: TrackIdentity
     ) async throws -> CachedTrackData {
-        let logTiming = makeTimingSink(for: track)
-        let clock = ContinuousClock()
-        let stageStart = clock.now
-
         trackStatuses[track] = .analyzing(stage: .stemSeparation)
         let separator = stemSeparator
         let analyzer = stemAnalyzer
@@ -624,25 +594,21 @@ public final class SessionPreparer: ObservableObject {
         let gridAnalyzer = beatGridAnalyzer
 
         do {
-            let data = try await Task.detached(priority: .userInitiated) {
+            return try await Task.detached(priority: .userInitiated) {
                 try SessionPreparer.analyzePreview(
                     preview,
                     separator: separator,
                     analyzer: analyzer,
                     classifier: classifier,
                     beatGridAnalyzer: gridAnalyzer,
-                    prefetchedProfile: profile,
-                    logTiming: logTiming
+                    prefetchedProfile: profile
                 )
             }.value
-            logTiming("analysisTotal \(durationMs(clock.now - stageStart))ms")
-            return data
         } catch {
             throw SessionPreparationError.analysisError(error.localizedDescription)
         }
     }
 }
-// swiftlint:enable type_body_length
 
 // MARK: - Network Recovery
 
