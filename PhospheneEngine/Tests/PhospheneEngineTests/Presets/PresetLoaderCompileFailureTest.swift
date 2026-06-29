@@ -62,7 +62,11 @@ struct PresetLoaderCompileFailureTest {
     /// 23 → 24 at GLAZE.2a (Glaze — port of `Flexi + stahlregen - jelly showoff parade`'s
     /// glossy contour-gel onto a dedicated mv_warp branch; direct + mv_warp, HDR feedback;
     /// family `hypnotic`). Certified at GLAZE.8.
-    static let expectedProductionPresetCount = 24
+    /// 24 → 25 at Ricercar.2 (Ricercar — contrapuntal visual-music painting; this increment lands
+    /// the flowing-colour-field SUBSTRATE only: Skein's canvas-hold mv_warp reconfigured to a
+    /// curl-noise flow warp + decay-toward-light-ground; family `painterly`. Uncertified — voices +
+    /// audio + cert arrive at Ricercar.3.x→.7, D-175). See docs/presets/RICERCAR_DESIGN.md.
+    static let expectedProductionPresetCount = 25
 
     @Test("PresetLoader.presets.count matches expectedProductionPresetCount — catches Failed Approach #44 silent drops")
     func test_presetLoaderProductionCount() {

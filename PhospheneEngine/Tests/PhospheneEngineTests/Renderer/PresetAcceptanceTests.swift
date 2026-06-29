@@ -268,6 +268,13 @@ struct PresetAcceptanceTests {
         // `filigree_ground_fragment` is the intentionally pure-black Kintsugi ground.
         // Coverage: PhysarumSketchRenderTests.
         guard preset.descriptor.name != "Filigree" else { return }
+        // Ricercar (Ricercar.2): the flowing colour FIELD develops over MANY frames — deposited
+        // colour masses advect + merge + decay-to-ground through the mv_warp feedback loop. This
+        // single-frame fragment harness renders only the light ground (1 luma bin), so the
+        // readable-form invariant doesn't apply — same exemption form as Skein. It is NOT exempted
+        // from non-black / no-white-clip / beat-bounded (its light ground passes those). Multi-frame
+        // coverage: RicercarSubstrateTest (flow + deposit + non-black, live mv_warp path).
+        guard preset.descriptor.name != "Ricercar" else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture
         let pixels = try renderFrame(preset: preset, features: &fixture, context: ctx)
