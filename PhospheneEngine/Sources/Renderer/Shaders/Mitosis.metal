@@ -40,6 +40,7 @@ struct MitosisConfig {
     uint  paletteId;    // display only
     float huePhase;     // music-paced accumulating hue animation (energy → speed)
     float colorBias;    // spectral-centroid hue offset (timbre → colour)
+    float hit;          // drum-transient envelope → per-hit colour/glow pulse (MITOSIS.5)
 };
 
 // MARK: - Toroidal neighbour read (wrap for free is via % since access::read has no sampler wrap)
@@ -128,18 +129,23 @@ fragment float4 mitosis_fragment(VertexOut in [[stage_in]],
     float nucleus  = smoothstep(0.22, 0.55, bC);          // bright cell interior → nucleus stain
     float membrane = smoothstep(0.03, 0.16, grad);        // cell boundary → membrane stain
 
-    // Psychedelic hue tied to the MUSIC (Matt MITOSIS.2c): `huePhase` accumulates
-    // energy-paced (louder → faster colour motion); `colorBias` from the spectral
-    // centroid shifts the palette with the timbre; a spatial term sends colour waves
-    // travelling across the field. The two-stain identity holds — nucleus stays in the
-    // magenta family, membrane in the cyan/green family — but both drift with the music.
+    // Psychedelic hue that responds STRONGLY + OBVIOUSLY to the music (Matt MITOSIS.5):
+    //  • `colorBias` (spectral centroid) swings the whole palette wide with the timbre;
+    //  • `huePhase` (energy-paced) sends colour waves travelling across the field;
+    //  • energy raises saturation/vividness (loud = electric, quiet = muted);
+    //  • a drum-transient `hit` kicks the hue + a small bounded glow pulse (the cells
+    //    throb colour on the beat — chromatic, so flash-safe).
+    // The two-stain identity holds (nucleus magenta family, membrane cyan/green) but
+    // both ride the music.
+    float energy = clamp(cfg.energyEnv, 0.0, 1.2);
     float wave = cfg.huePhase + in.uv.x * 0.9 + in.uv.y * 0.5;
-    float nucHue = fract(0.88 + cfg.colorBias * 0.35 + 0.10 * sin(wave));         // magenta family, drifting
-    float memHue = fract(0.48 + cfg.colorBias * 0.35 + 0.10 * sin(wave + 2.0));   // cyan/green family, drifting
-    float3 nucCol = hsv2rgb(float3(nucHue, 0.95, 1.0));
-    float3 memCol = hsv2rgb(float3(memHue, 0.85, 1.0));
+    float nucHue = fract(0.86 + cfg.colorBias * 0.6 + 0.12 * sin(wave) + 0.07 * cfg.hit);
+    float memHue = fract(0.46 + cfg.colorBias * 0.6 + 0.12 * sin(wave + 2.0) + 0.07 * cfg.hit);
+    float sat = 0.72 + 0.24 * min(1.0, energy);          // louder → more saturated/vivid
+    float3 nucCol = hsv2rgb(float3(nucHue, sat, 1.0));
+    float3 memCol = hsv2rgb(float3(memHue, sat * 0.92, 1.0));
 
     float3 col = nucCol * nucleus * 1.15 + memCol * membrane * 1.5;   // additive fluorescence on black
-    col *= 0.9 + 0.3 * clamp(cfg.energyEnv, 0.0, 1.0);
-    return float4(min(col, 1.4), 1.0);                    // bright cores allowed; clamp the bloom
+    col *= 0.82 + 0.30 * min(1.0, energy) + 0.18 * min(1.0, cfg.hit);  // energy brightness + a bounded drum glow throb
+    return float4(min(col, 1.5), 1.0);                    // bright cores allowed; clamp the bloom
 }

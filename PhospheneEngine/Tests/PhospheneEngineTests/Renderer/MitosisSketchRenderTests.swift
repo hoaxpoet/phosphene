@@ -227,6 +227,50 @@ struct MitosisSketchRenderTests {
         print("[MITO] cycle frames: \(dir.path)")
     }
 
+    /// MITOSIS.5 — show the colour responding to the music: a populated field rendered
+    /// under different energy/timbre/drum conditions, so the palette swing + glow pulse
+    /// are visible side by side. (RENDER_VISUAL=1.)
+    @Test("Render colour response to music (RENDER_VISUAL=1)")
+    func test_renderColorResponse() throws {
+        guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else { return }
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let cfg = MitosisConfiguration()
+        let geo = try makeGeo(ctx, lib, cfg, pixelFormat: ctx.pixelFormat)
+        let w = cfg.width, h = cfg.height
+        let tex = try target(ctx, w, h)
+        var base = URL(fileURLWithPath: #filePath)
+        for _ in 0..<5 { base.deleteLastPathComponent() }
+        let dir = base.appendingPathComponent("tools/mitosis_sketch/frames/color", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        var t: Float = 0
+        for _ in 0..<720 { try step(geo, 0.5, tex, ctx, &t) }   // ~12 s — a populated mid-growth field
+
+        func hold(_ energy: Float, _ centroid: Float, drum: Bool, frames: Int) throws {
+            for fr in 0..<frames {
+                var f = FeatureVector(time: t, deltaTime: 1.0 / 60.0); f.bass = energy; f.mid = energy * 0.85
+                f.spectralCentroid = centroid
+                var s = StemFeatures()
+                s.bassEnergy = energy; s.drumsEnergy = energy; s.otherEnergy = energy * 0.8; s.vocalsEnergy = energy * 0.5
+                s.drumsEnergyDev = (drum && fr % 24 < 2) ? 1.3 : 0.03
+                try frame(geo, f, s, tex, ctx); t += 1.0 / 60.0
+            }
+        }
+        try hold(0.15, 0.15, drum: false, frames: 150); try writePNG(tex, w, h, dir.appendingPathComponent("0_quiet_dark.png"))
+        try hold(0.85, 0.85, drum: false, frames: 150); try writePNG(tex, w, h, dir.appendingPathComponent("1_loud_bright.png"))
+        try hold(0.85, 0.35, drum: false, frames: 150); try writePNG(tex, w, h, dir.appendingPathComponent("2_loud_lowtimbre.png"))
+        // On a drum hit vs between (the glow/colour pulse).
+        try hold(0.55, 0.5, drum: true, frames: 120)
+        for fr in 0..<24 { var f = FeatureVector(time: t, deltaTime: 1.0 / 60.0); f.bass = 0.55; f.mid = 0.47; f.spectralCentroid = 0.5
+            var s = StemFeatures(); s.bassEnergy = 0.55; s.drumsEnergy = 0.55; s.otherEnergy = 0.44; s.vocalsEnergy = 0.33
+            s.drumsEnergyDev = fr < 2 ? 1.3 : 0.03
+            try frame(geo, f, s, tex, ctx); t += 1.0 / 60.0
+            if fr == 1 { try writePNG(tex, w, h, dir.appendingPathComponent("3_on_drum_hit.png")) }
+            if fr == 20 { try writePNG(tex, w, h, dir.appendingPathComponent("4_between_hits.png")) }
+        }
+        print("[MITO] colour-response frames: \(dir.path)")
+    }
+
     private func writePNG(_ tex: MTLTexture, _ w: Int, _ h: Int, _ url: URL) throws {
         var px = [UInt8](repeating: 0, count: w * h * 4)
         tex.getBytes(&px, bytesPerRow: w * 4, from: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0)
