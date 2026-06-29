@@ -90,6 +90,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-174 | Accepted | Filigree — physarum agent-network preset (`PhysarumGeometry`, a `ParticleGeometry` sibling per D-097; Kintsugi gold-on-black). Energy drives merge/divide (LOUD → fine/busy/bright web; QUIET → few calm cells) + a per-beat hit pulse + a rare re-seed burst. **Substrate verdict (Matt-accepted): physarum carries a loose energy-accompaniment, not tight event-sync** — tightly-synced cell merge/divide is reaction-diffusion's domain (a separate future preset). **CERTIFIED PHYS.5** (Matt live M7) — the first certified compute-agent-network preset. |
 | D-175 | Accepted | Ricercar — contrapuntal visual-music painting preset (Fischinger / color-organ; Bach BWV 565 showcase, reusable). Ricercar.2 lands the flowing-colour-field SUBSTRATE: Skein's canvas-hold mv_warp reconfigured to a curl-noise flow warp + **decay toward a LIGHT GROUND** (a per-prefix `ricercar_warp_fragment` override — preset-side, no engine work) so the field breathes back to light at rest (silence-non-black, D-037) and matches the `02_meso` ink-plume reference. Hand-fed colour masses; voices/audio/cert at Ricercar.3.x→.7. Uncertified. **★ Substrate concept SUPERSEDED by D-176.** |
 | D-176 | Accepted | Ricercar concept REVISED (Matt, 2026-06-29) — **the orchestra painting itself**: each section gets a painterly IDENTITY (colour + weight + texture + material), sync rides on top. Built on **Skein's marks-on-top painterly engine** (the elegant/luminous sibling — graceful composed strokes + Fantasia jewel-palette on a light canvas, vs Skein's chaotic earthy drip; FA #73 reuse). Abandons the D-175 flowing-colour substrate (a passive field reads as slick wallpaper, not art) AND the Filigree agent-voices + Ricercar.3.x engine bridge (use Skein's overlay marks → **no engine touch**). Five register-archetype sections. Design center = the per-section identity table in RICERCAR_DESIGN §CONCEPT. |
+| D-177 | Accepted (finding; build deferred) | Instrument-family CAPTURE is feasible via on-device audio-tagging **RECOGNITION (not separation)**. Spike (2026-06-29, PANNs CNN14 on Sym5 + a Beethoven wind octet): family-level activity captures + **discriminates** strings/brass/woodwinds/percussion, tracks the music, reports absence — a leap over 4-stem (→"other") + register-proxy. Separation is unsolved for orchestra (0–4.5 dB SDR). Ceilings: family-level only, cross-family confusion on sustained timbres, buried families approximate. Scoped as a ~Beat This!-scale MPSGraph increment (`docs/INSTRUMENT_FAMILY_CAPTURE_SCOPING.md`); **DEFERRED to a fresh session pending Matt's comparison with a competing musicality idea.** Resolves Ricercar's instrument-capture hold (D-176). |
 
 ---
 
@@ -2264,3 +2265,37 @@ engine, then build — design spine recorded first (design upstream of code).
 **References.** RICERCAR_DESIGN.md §CONCEPT (the five-section table). [D-142]/[D-143]/[D-149] (Skein painterly
 engine, reused), [D-175] (the superseded substrate spike), [D-097] (siblings not subclasses — Ricercar is
 Skein's sibling), [D-026] (deviation primitives), §6 (no instrument separation — load-bearing).
+
+## D-177: Instrument-family capture feasible via on-device recognition (not separation) — scoped, deferred
+
+**Finding (Matt-directed spike, 2026-06-29).** Phosphene cannot capture orchestral instrument families: 4-stem
+Open-Unmix collapses all pitched orchestral content to "other," and register-bands are a weak proxy. This caps
+the musicality of orchestral presets (Ricercar's whole concept, D-176 — Matt is holding its quality bar on it).
+
+**The reframe.** Do NOT *separate* (isolate each family's audio — unsolved for orchestra: 2025 research, even
+purpose-built family separators get 0–4.5 dB SDR; "MSS for classical music is an unsolved problem"). *Recognize*
+instead — multi-label instrument **activity** detection, a tractable supervised problem with pretrained AudioSet
+taggers (PANNs).
+
+**Evidence.** PANNs CNN14 on two public-domain clips: (A) Sym5 i. (string-dominant) — strings captured strongly
++ dynamically (peak 0.74), brass correctly localized at the horn entry (t≈24 s); (B) Beethoven wind octet (no
+strings) — Brass 0.58 / Clarinet 0.16 / Flute 0.13 top tags, and it **discriminates brass-led vs woodwind-led
+moments within the ensemble** (brass 0.64↔0.06 as woodwinds go 0.04↔0.53), timpani ~0 (correct absence).
+Family-level capture + discrimination + absence detection all work — a categorical leap over the status quo.
+**Ceilings:** family-level only (over-calls specific instruments), cross-family confusion on sustained timbres,
+buried families approximate (mitigate by driving off each family's own deviation, D-026).
+
+**Architecture.** Supervised net via MPSGraph (D-009 = no-*CoreML* only; Beat This! / Open-Unmix precedent), run
+on the 30 s preview clip (no live-latency constraint on the primary signal). Portability low-risk for a CNN.
+Likely production pick: a MobileNet-class tagger (MobileNetV1-PANN / YAMNet) for budget + clean licensing.
+
+**Decision.** Adopt **recognition (not separation)** as the path to instrument capture; **scope it as a discrete
+~Beat This!-scale increment** (`docs/INSTRUMENT_FAMILY_CAPTURE_SCOPING.md` — work breakdown, candidate models,
+risks, reproduction); **DEFER the build to a fresh session pending Matt's comparison with a competing musicality
+idea** (Matt, 2026-06-29). Not committed to the roadmap until that comparison resolves.
+
+**Status.** Accepted (finding + direction); build deferred pending the plan comparison.
+
+**References.** `docs/INSTRUMENT_FAMILY_CAPTURE_SCOPING.md` (the plan). [D-176] (Ricercar — the consuming preset
++ its hold), [D-009] (no-CoreML / MPSGraph), [D-026] (deviation primitives). arXiv 2505.17823 (separation
+unsolved), arXiv 1912.10211 (PANNs).
