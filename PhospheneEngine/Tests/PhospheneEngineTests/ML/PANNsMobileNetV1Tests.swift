@@ -123,7 +123,7 @@ import Testing
         guard let device = MTLCreateSystemDefaultDevice() else { return }
         let model = try PANNsMobileNetV1(device: device)
         let doc = try Self.loadJSON("windows", WindowsDoc.self)
-        let order = ["strings", "brass", "woodwinds", "timpani", "orchestra"]
+        let order = ["strings", "brass", "woodwinds", "percussion"]
 
         func pad(_ s: String, _ n: Int) -> String {
             s.count >= n ? s : s + String(repeating: " ", count: n - s.count)
