@@ -1,18 +1,26 @@
 # Mitosis gen-2 — detailed fluorescence-microscopy cell division
 
-**Status:** 🔨 **GRADUATED (MITOSIS-G2.1, 2026-06-30).** Sketch look approved; the
-preset (**Cytokinesis**) is built, wired, and playable uncertified. Next = G2.2 audio +
-live M7. Sibling of the certified gen-1 (`MITOSIS_DESIGN.md`), NOT an edit of it (D-097).
+**Status:** 🔨 **G2.2 iter 1 (2026-06-30)** — grow→crowd→dissolve→regrow arc with
+non-overlapping cells (reworked from G2.1's rejected capped/cull model); pending Matt's
+re-look. Preset **Cytokinesis**, playable uncertified. Sibling of the certified gen-1
+(`MITOSIS_DESIGN.md`), NOT an edit of it (D-097).
 Kickoff: `MITOSIS_GEN2_KICKOFF.md`. Reference + traits:
 `docs/VISUAL_REFERENCES/mitosis/README.md §Gen-2`.
 
-**★ Concept (locked, Matt 2026-06-30).** A small number of **LARGE, procedurally-detailed
-dividing cells**, rendered like confocal immunofluorescence microscopy — each cell a
-dumbbell mid-cytokinesis with two radial green microtubule asters, a **solid opaque
-membrane wall**, a coloured cortical ring, blue chromatin, a magenta spindle midzone, and
-vesicle speckles, over a green filament field. The preset lives in the **early-growth /
-first-division phase** so the per-cell detail stays legible — it never crowds down to tiny
-dots (that is gen-1's job). Music-tied fluorescence palette (gen-1 MITOSIS.5 reuse).
+**★ Concept (Matt; arc REVISED at the G2.2 live look, 2026-06-30).** Procedurally-detailed
+dividing cells rendered like confocal immunofluorescence microscopy — each cell a dumbbell
+mid-cytokinesis with two radial green microtubule asters, a **solid opaque membrane wall**,
+a coloured cortical ring, blue chromatin, a magenta spindle midzone, vesicle speckles, over
+a green filament field. **Arc (G2.2 live):** the canvas **starts with a few large cells that
+divide until much of the screen is crowded**, the cells **never overlap**, then the field
+dissolves and regrows — a continuous grow→crowd→dissolve→regrow cycle (the gen-1 arc, with
+detailed non-overlapping cells). The early/large divisions are the detail showcase; cells
+shrink as the colony packs. Music-tied fluorescence palette (gen-1 MITOSIS.5 reuse).
+
+> **Superseded:** the pre-live G2.1 lock was "few large cells, *always* (never crowds)" with
+> a bounded cap + cull governor. Matt's live look (G2.2) rejected it — the cull read as
+> "frequent respawning" — and asked for the grow-to-crowded arc above. Do not restore the
+> capped/cull model.
 
 ---
 
@@ -61,14 +69,19 @@ would compete with the split).
 
 ## 3. Locked decisions (Matt 2026-06-30)
 
-- **Name / family:** Mitosis gen-2 (preset id TBD — e.g. "MitosisHD" / "Cytokinesis";
-  confirm at graduation). A separate preset + sidecar (D-097).
-- **Arc:** few large cells, always — early-division showcase, never crowds to dots.
+- **Name / family:** **Cytokinesis** (preset id). A separate preset + sidecar (D-097).
+- **Arc (G2.2 live):** start few large cells → **divide until much of the screen is crowded**
+  → dissolve → regrow (cycle). Cells **never overlap**. (Supersedes the G2.1 "few large,
+  always / capped + cull" model, which read as frequent respawning.)
 - **Substrate:** explicit per-cell objects (position, radius, orientation, division phase,
-  seed), NOT Gray–Scott.
+  seed), NOT Gray–Scott. Monotonic growth (divisions only add); a circle-packing relaxation
+  keeps cells non-overlapping; radius shrinks with count so the colony fills the screen.
 - **Look:** confocal fluorescence — solid opaque membrane wall, coloured cortical ring,
   green asters, blue chromatin, magenta midzone, vesicle speckles, green filament field.
 - **Palette:** music-tied (MITOSIS.5 model — centroid → hue, energy → vividness).
+- **Music coupling:** the §1 musical role is the TARGET; G2.2 runs the arc **autonomously**
+  (energy gently nudges the growth pace) — full coupling (onset→snap etc.) is a later step
+  (Matt: "we will *ultimately* attach the behaviour to musical signal").
 
 ---
 
@@ -77,26 +90,27 @@ would compete with the split).
 **`MitosisGen2Geometry`** — a `ParticleGeometry` sibling (like `MitosisGeometry`), but
 *without* the RD compute path:
 
-- **State = a small CPU `Cell` array** (`var cells: [Cell]`, cap ~16; the locked arc keeps
-  ~3–10 large cells live). `Cell` = `{ pos: SIMD2, radius, axis, phase, phaseRate, seed,
-  alive }`.
-- **`update(features:stemFeatures:commandBuffer:)`** advances the music envelopes
-  (`energyEnv`, `centroidEnv`, `hitEnv`, `huePhase` — port gen-1's `advanceEnvelopes`
-  verbatim), then advances the cell model on the CPU:
-  - each live cell's `phase += dt * phaseRate * energyPace`;
-  - on a `hitEnv` onset, the most-ready cell (highest phase past a threshold) **snaps**:
-    its phase completes, and it is replaced by **two daughter cells** (split along its axis,
-    radii halved-then-regrow, fresh seeds);
-  - a slow population governor keeps the count in the "few large cells" band (cull the
-    smallest/oldest when over cap; spawn when energy is up and under floor), giving the
-    grow→divide cycle without ever crowding.
-  - No compute encoder needed (the RD field is gone); `commandBuffer` goes unused.
-- **`render(encoder:features:)`** packs the live cells into a `setFragmentBytes` buffer
-  (≤16 cells × 32 B ≈ 512 B, well under the 4 KB limit — no MTLBuffer management, ponytail)
-  plus a uniforms struct (time, resolution, energy, centroid, huePhase, hit), and draws the
-  fullscreen triangle. The fragment shader (ported from the sketch `Gen2Cell.metal`) loops
-  over the cell buffer, composites each cell **over** the background + each other (opaque
-  membrane occludes — the sketch's alpha-composite model), then applies the music hue/vividness.
+- **State = a CPU `Cell` array** (`var cells: [Cell]`, hard cap 64; grows from `seedCells`=3
+  to `crowdCount`=40). `Cell` = `{ pos: SIMD2, radius, targetRadius, axis, phase, phaseRate,
+  seed }`. A `Stage` machine: `.growing → .holding → .dissolving → (reseed) → .growing`.
+- **`update(features:stemFeatures:commandBuffer:)`** advances the music envelopes (port of
+  gen-1 `advanceEnvelopes` — `energyEnv`/`centroidEnv`/`hitEnv`/`huePhase`), then the cell
+  model on the CPU (no compute encoder; `commandBuffer` unused):
+  - **radius** lerps toward `packRadius(count, aspect)` — the size at which `count` cells
+    fill `coverage` (0.62) of the screen without overlap → cells shrink as the colony grows;
+  - while `.growing`, each cell's `phase += dt · phaseRate · pace` (pace energy-nudged);
+  - **division** (`.growing`): a completed cell (`phase ≥ 1`) splits into **two daughters**
+    along its axis — **monotonic, NO culling** — until `count ≥ crowdCount` → `.holding`
+    (completed cells then re-cycle in place, no growth); after `holdSeconds` → `.dissolving`
+    (radius → 0, cells drop out as they melt) → reseed 3 cells → `.growing`;
+  - **non-overlap:** a soft **circle-packing relaxation** (`relax`, O(n²)/iter × 4 iters,
+    collision radius inflated by division phase for the dumbbell) pushes overlapping cells
+    apart every frame — measured settled overlap ≈ 0.0001 at 40 cells.
+- **`render(encoder:features:)`** packs the live cells (≤ 64 × 24 B ≈ 1.5 KB) + a uniforms
+  struct (aspect, energy, centroid, huePhase, hit, cellCount, time) via `setFragmentBytes`
+  and draws the fullscreen triangle. The fragment (`mitosisgen2_fragment`, ported from the
+  sketch) loops the cell buffer, composites each cell **over** the background + earlier cells
+  (opaque membrane occludes — alpha-composite), then applies the music hue/vividness.
 - **Backdrop:** the green filament field is drawn by the fragment itself (background term),
   or a `mitosisgen2_ground_fragment` like gen-1 — TBD at graduation; the sketch does it in
   one shader, which is the lazy default.
@@ -125,7 +139,7 @@ cold-start beat phase reads as a slightly-mistimed split, not a wrong-beat firin
 |---|---|
 | **MITOSIS-G2.0** | Throwaway sketch proves the detailed-dividing-cell look at 60 fps; `RENDER_VISUAL=1` contact sheet vs the reference; **Matt approves the look.** ✅ (2026-06-30) |
 | **MITOSIS-G2.1** | Graduate. ✅ (2026-06-30) `MitosisGen2Geometry` (CPU `Cell` list + phase/snap/cull governor, no compute) + `mitosisgen2_fragment` (ported, `g2_`-prefixed) + `Cytokinesis.json`/`MitosisGen2.metal` backdrop + `ParticleGeometryRegistry`/`VisualizerEngine` wiring + count 25→26. Tests green: framerate 4.2 ms/frame @1080p; lifecycle (seed 3 → grows to cap 8, bounded; onset-driven 5 > silent control 3 — the snap mechanism); flash-safe maxΔ 0.015. App build SUCCEEDED, lint 0. Playable uncertified via `showUncertifiedPresets`. |
-| **MITOSIS-G2.2** | Audio coupling + **live M7**: energy→phase, onset→snap, centroid→palette wired to the live stream; Matt's live look; iterate the cell model + look against his feedback (this is where the aster-character / cell-count / snap-feel tuning lands). |
+| **MITOSIS-G2.2** | Live-M7 iteration on the cell model. ⏳ pending re-look. **Iter 1 (2026-06-30):** Matt's live look rejected the G2.1 capped/cull model ("frequent respawning … cells should not overlap"). Reworked: monotonic growth few→`crowdCount`=40 (no cull), radius shrinks with count (`packRadius`, 0.62 coverage), a circle-packing `relax` so cells never overlap (settled overlap 0.0001 @ 40), then dissolve→regrow cycle; seed cells fade in (flash-safe reseed). Onset-snap removed (music coupling deferred — Matt: attach to music "ultimately"); arc runs autonomously, energy nudges pace. Tests rewritten (`test_growthArcAndPacking`: grows to crowd, non-overlap, dissolves & regrows); framerate 5.3 ms@1080p, flash-safe 0.014, app build + lint 0. → pending Matt's re-look. Later: wire the §1 musical role; tune aster character / crowd density / cycle timing. |
 | **MITOSIS-G2.3** | Certify: rubric `certifiedPresets` + `expectedAutomatedGate`, `PhotosensitivityCertificationTests.multiPassMeasured` + a `renderMitosisGen2` multi-pass flash harness, sidecar `certified: true`. First certified explicit-cell preset. |
 
 ## 7. Design grounding (descending preference — per checklist)
