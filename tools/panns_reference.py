@@ -120,12 +120,19 @@ def load_labels():
     return [r[2] for r in rows[1:]]
 
 
+# IFC.3 orchestral instrument-family taxonomy (AudioSet labels → 4 families).
+# Single source of truth — the Swift InstrumentFamily.audioSetClasses mirror is
+# cross-checked against the resolved indices in the fixtures (windows.json).
+# woodwinds includes the "Wind instrument, woodwind instrument" catch-all (oboe/
+# bassoon have no dedicated AudioSet class); percussion is the orchestral set
+# anchored on Timpani; vehicle/air/train/foghorns are excluded from brass.
 FAMILIES = {
-    "strings":   ["Bowed string instrument", "String section", "Violin, fiddle", "Pizzicato", "Cello", "Double bass"],
-    "brass":     ["Brass instrument", "Trumpet", "French horn", "Trombone"],
-    "woodwinds": ["Wind instrument, woodwind", "Flute", "Clarinet", "Oboe", "Bassoon"],
-    "timpani":   ["Timpani", "Drum"],
-    "orchestra": ["Orchestra"],
+    "strings":    ["Bowed string instrument", "String section", "Violin, fiddle",
+                   "Pizzicato", "Cello", "Double bass", "Harp"],
+    "brass":      ["Brass instrument", "French horn", "Trumpet", "Trombone"],
+    "woodwinds":  ["Wind instrument, woodwind instrument", "Flute", "Saxophone", "Clarinet"],
+    "percussion": ["Percussion", "Drum", "Bass drum", "Timpani", "Cymbal",
+                   "Mallet percussion", "Marimba, xylophone", "Glockenspiel", "Vibraphone"],
 }
 
 
