@@ -1,8 +1,9 @@
 # Mitosis gen-2 — detailed fluorescence-microscopy cell division
 
-**Status:** 🔨 **SCOPED (2026-06-30).** Sketch look approved by Matt; real increment
-not yet built. Sibling of the certified gen-1 (`MITOSIS_DESIGN.md`), NOT an edit of it
-(D-097). Kickoff: `MITOSIS_GEN2_KICKOFF.md`. Reference + traits:
+**Status:** 🔨 **GRADUATED (MITOSIS-G2.1, 2026-06-30).** Sketch look approved; the
+preset (**Cytokinesis**) is built, wired, and playable uncertified. Next = G2.2 audio +
+live M7. Sibling of the certified gen-1 (`MITOSIS_DESIGN.md`), NOT an edit of it (D-097).
+Kickoff: `MITOSIS_GEN2_KICKOFF.md`. Reference + traits:
 `docs/VISUAL_REFERENCES/mitosis/README.md §Gen-2`.
 
 **★ Concept (locked, Matt 2026-06-30).** A small number of **LARGE, procedurally-detailed
@@ -123,7 +124,7 @@ cold-start beat phase reads as a slightly-mistimed split, not a wrong-beat firin
 | ID | Done-when |
 |---|---|
 | **MITOSIS-G2.0** | Throwaway sketch proves the detailed-dividing-cell look at 60 fps; `RENDER_VISUAL=1` contact sheet vs the reference; **Matt approves the look.** ✅ (2026-06-30) |
-| **MITOSIS-G2.1** | Graduate: `MitosisGen2Geometry` (explicit cell list + CPU phase/split/governor) + the ported fragment shader in the engine GPU contract + sidecar (`family: particles`, `certified: false`) + registry/`VisualizerEngine` wiring + `expectedProductionPresetCount++` + headless tests (framerate, cell lifecycle: spawn→advance→snap→two daughters→cull, flash-safe). Playable uncertified via `showUncertifiedPresets`. |
+| **MITOSIS-G2.1** | Graduate. ✅ (2026-06-30) `MitosisGen2Geometry` (CPU `Cell` list + phase/snap/cull governor, no compute) + `mitosisgen2_fragment` (ported, `g2_`-prefixed) + `Cytokinesis.json`/`MitosisGen2.metal` backdrop + `ParticleGeometryRegistry`/`VisualizerEngine` wiring + count 25→26. Tests green: framerate 4.2 ms/frame @1080p; lifecycle (seed 3 → grows to cap 8, bounded; onset-driven 5 > silent control 3 — the snap mechanism); flash-safe maxΔ 0.015. App build SUCCEEDED, lint 0. Playable uncertified via `showUncertifiedPresets`. |
 | **MITOSIS-G2.2** | Audio coupling + **live M7**: energy→phase, onset→snap, centroid→palette wired to the live stream; Matt's live look; iterate the cell model + look against his feedback (this is where the aster-character / cell-count / snap-feel tuning lands). |
 | **MITOSIS-G2.3** | Certify: rubric `certifiedPresets` + `expectedAutomatedGate`, `PhotosensitivityCertificationTests.multiPassMeasured` + a `renderMitosisGen2` multi-pass flash harness, sidecar `certified: true`. First certified explicit-cell preset. |
 

@@ -255,6 +255,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// `ParticleGeometry` (D-097, MITOSIS.1). Built eagerly like Filigree.
     var mitosisGeometry: (any ParticleGeometry)?
 
+    /// Detailed fluorescence-microscopy cell division for the Cytokinesis preset
+    /// (Mitosis gen-2) — explicit per-cell `ParticleGeometry` (D-097, MITOSIS-G2.1).
+    var cytokinesisGeometry: (any ParticleGeometry)?
+
     /// Shader library for creating post-process chains on preset switch.
     let shaderLibrary: Renderer.ShaderLibrary
 
@@ -804,6 +808,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         self.murmurationGeometry = Self.makeMurmurationGeometry(context: ctx, library: lib)
         self.filigreeGeometry = Self.makeFiligreeGeometry(context: ctx, library: lib)
         self.mitosisGeometry = Self.makeMitosisGeometry(context: ctx, library: lib)
+        self.cytokinesisGeometry = Self.makeCytokinesisGeometry(context: ctx, library: lib)
         self.moodClassifier = classifier
         self.stemAnalyzer = analyzer
         self.stemSeparator = sep
@@ -1087,6 +1092,25 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         return colony
     }
 
+    /// Build the detailed fluorescence-microscopy cell-division geometry for the
+    /// Cytokinesis preset (`MitosisGen2Geometry` + `MitosisGen2.metal`, MITOSIS-G2.1).
+    /// Returns `any ParticleGeometry` (D-097, siblings not subclasses).
+    private static func makeCytokinesisGeometry(
+        context: MetalContext,
+        library: Renderer.ShaderLibrary
+    ) -> (any ParticleGeometry)? {
+        guard let cells = try? MitosisGen2Geometry(
+            device: context.device,
+            library: library.library,
+            configuration: MitosisGen2Configuration(),
+            pixelFormat: context.pixelFormat
+        ) else {
+            return nil
+        }
+        logger.info("Cytokinesis created: detailed explicit-cell division (Mitosis gen-2)")
+        return cells
+    }
+
     /// Resolve a particle-preset name to the geometry conformer the engine
     /// has built for it. Returns `nil` for any unknown preset name; the
     /// caller is expected to log + fall through. Exposed as `internal` so
@@ -1097,6 +1121,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         case "Murmuration": return murmurationGeometry
         case "Filigree":    return filigreeGeometry
         case "Mitosis":     return mitosisGeometry
+        case "Cytokinesis": return cytokinesisGeometry
         default:            return nil
         }
     }
