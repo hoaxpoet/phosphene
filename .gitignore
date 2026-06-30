@@ -79,3 +79,4 @@ tools/physarum_sketch/
 
 # Mitosis (reaction–diffusion) throwaway sketch renders (regenerate with RENDER_VISUAL=1)
 tools/mitosis_sketch/
+tools/data/panns_reference/
