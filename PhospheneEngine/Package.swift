@@ -169,6 +169,7 @@ let package = Package(
                 .copy("Regression/Fixtures"),
                 .copy("Fixtures/beat_this_reference"),
                 .copy("Fixtures/fbs"),
+                .copy("Fixtures/panns_reference"),
             ]
         ),
     ]

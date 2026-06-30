@@ -76,6 +76,10 @@ import Foundation
         try assertCompleteHashes(manifest: beatThisManifestURL, weightsDir: beatThisWeightsDir)
     }
 
+    @Test func test_completeness_panns() throws {
+        try assertCompleteHashes(manifest: pannsManifestURL, weightsDir: pannsWeightsDir)
+    }
+
     // MARK: - 5. Happy Path — Real Loaders Validate (GPU-free)
 
     /// These call the real load paths (with the checksum guard inside), so a
@@ -131,4 +135,6 @@ import Foundation
     private var stemManifestURL: URL { weightsRoot.appendingPathComponent("manifest.json") }
     private var beatThisWeightsDir: URL { weightsRoot.appendingPathComponent("beat_this") }
     private var beatThisManifestURL: URL { beatThisWeightsDir.appendingPathComponent("manifest.json") }
+    private var pannsWeightsDir: URL { weightsRoot.appendingPathComponent("panns_mobilenetv1") }
+    private var pannsManifestURL: URL { pannsWeightsDir.appendingPathComponent("manifest.json") }
 }
