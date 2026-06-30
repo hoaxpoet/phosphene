@@ -476,6 +476,12 @@ extension VisualizerEngine {
 
         pipeline.spectralHistory.reset()
 
+        // IFC.4 (D-177) — clear instrument-family activity unconditionally on
+        // every track-change path so a prior track's series can't leak. The
+        // cache-hit branch below reinstalls; the next analysis frame samples it.
+        currentFamilySeries = []
+        pipeline.setInstrumentFamilyActivity(smoothed: .zero, dev: .zero)
+
         // BUG-006.1 instrumentation: cache-lookup log (see WiringLogs helpers).
         if let identity { logWiringStemCacheLookup(identity: identity) }
 
@@ -505,6 +511,10 @@ extension VisualizerEngine {
                 proportionForFFO = 0.15  // pivot — collapses baseline to 0
             }
             pipeline.setCachedBassProportion(proportionForFFO)
+            // IFC.4 (D-177) — install the cached preview instrument-family
+            // activity series (Layer 5a). Sampled by playback position each
+            // analysis frame (see processAnalysisFrame).
+            currentFamilySeries = cached.instrumentFamilySeries
             // BUG-007.8: pass per-track grid-vs-onset offset as initial drift bias.
             mirPipeline.setBeatGrid(
                 cached.beatGrid.offsetBy(0),

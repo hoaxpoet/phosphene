@@ -66,6 +66,21 @@ extension VisualizerEngine: LocalFilePreparing {
             }
         }
         let gridAnalyzer = liveBeatGridAnalyzer
+        // IFC.4 (D-177) — eager-init the PANNs family analyzer for the LF
+        // pre-analysis path (mirrors the beat-grid analyzer above).
+        if liveFamilyAnalyzer == nil {
+            do {
+                liveFamilyAnalyzer = try await MainActor.run {
+                    try InstrumentFamilyAnalyzer(device: self.context.device)
+                }
+            } catch {
+                let msg = error.localizedDescription
+                lfLogger.warning(
+                    "[LF.4] InstrumentFamilyAnalyzer init failed: \(msg, privacy: .public) — family series empty"
+                )
+            }
+        }
+        let famAnalyzer = liveFamilyAnalyzer
         let persistentCache = persistentStemCache
         let recorder = sessionRecorder
         let filename = url.lastPathComponent
@@ -77,6 +92,7 @@ extension VisualizerEngine: LocalFilePreparing {
             analyzer: analyzer,
             classifier: classifier,
             beatGridAnalyzer: gridAnalyzer,
+            familyAnalyzer: famAnalyzer,
             persistentCache: persistentCache,
             recorder: recorder
         )
@@ -571,6 +587,7 @@ extension VisualizerEngine: LocalFilePreparing {
                 analyzer: inputs.analyzer,
                 classifier: inputs.classifier,
                 beatGridAnalyzer: inputs.beatGridAnalyzer,
+                familyAnalyzer: inputs.familyAnalyzer,
                 prefetchedProfile: nil
             )
         } catch {
@@ -679,6 +696,7 @@ struct LocalFilePrepWorkerInputs: Sendable {
     let analyzer: StemAnalyzer
     let classifier: any MoodClassifying
     let beatGridAnalyzer: (any BeatGridAnalyzing)?
+    let familyAnalyzer: (any InstrumentFamilyAnalyzing)?
     let persistentCache: PersistentStemCache?
     let recorder: SessionRecorder?
 }
