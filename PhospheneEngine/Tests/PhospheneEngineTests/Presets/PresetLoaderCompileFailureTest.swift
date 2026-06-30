@@ -66,7 +66,10 @@ struct PresetLoaderCompileFailureTest {
     /// from its throwaway sketch; family `particles`, `MitosisGeometry` conformer). Not
     /// certified (cert at MITOSIS.4 after Matt's live sync listen + M7). See
     /// docs/presets/MITOSIS_DESIGN.md.
-    static let expectedProductionPresetCount = 25
+    /// 26: Cytokinesis (Mitosis gen-2 — detailed explicit-cell division, family `particles`,
+    /// `MitosisGen2Geometry` conformer; certified:false, cert at MITOSIS-G2.3). See
+    /// docs/presets/MITOSIS_GEN2_DESIGN.md.
+    static let expectedProductionPresetCount = 26
 
     @Test("PresetLoader.presets.count matches expectedProductionPresetCount — catches Failed Approach #44 silent drops")
     func test_presetLoaderProductionCount() {

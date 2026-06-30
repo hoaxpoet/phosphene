@@ -29,6 +29,7 @@ public enum ParticleGeometryRegistry {
     public static let knownPresetNames: Set<String> = [
         "Murmuration",
         "Filigree",
-        "Mitosis"
+        "Mitosis",
+        "Cytokinesis"
     ]
 }

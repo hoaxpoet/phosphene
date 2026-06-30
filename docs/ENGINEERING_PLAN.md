@@ -68,14 +68,20 @@ framerate ~4.7 ms/frame @1080p (~3.5× under budget) + `RENDER_VISUAL=1` contact
 (c) interior colour around the membrane. **Done-when:** ✅ look approved; musical role
 confirmed. Renders gitignored under `tools/mitosis_gen2_sketch/frames/`.
 
-**MITOSIS-G2.1 — graduate to a registered preset ⏳ (next).** `MitosisGen2Geometry`
-(`ParticleGeometry` sibling: CPU `Cell` array + phase/split/population governor in `update`,
-no compute pass; `render` packs cells via `setFragmentBytes` to the ported fragment shader)
-+ sidecar (`family: particles`, `certified: false`) + `ParticleGeometryRegistry` +
-`VisualizerEngine` geo/factory/init/resolver + `expectedProductionPresetCount++` + a
-load-degrade guard test. **Done-when:** headless tests green (framerate; cell lifecycle
-spawn→advance→snap→two daughters→cull; flash-safe), app build SUCCEEDED, lint 0; playable
-uncertified via `showUncertifiedPresets`.
+**MITOSIS-G2.1 — graduate to a registered preset ✅ (2026-06-30).** Preset **Cytokinesis**.
+`MitosisGen2Geometry` (`ParticleGeometry` sibling: CPU `Cell` array + phase/snap/cull
+governor in `update`, NO compute pass; `render` packs ≤8 cells via `setFragmentBytes` +
+aspect from `features.aspectRatio` to `mitosisgen2_fragment`, the sketch ported with
+`g2_`-prefixed helpers to avoid the shared-library ODR collision) + `Cytokinesis.json`
+sidecar (`family: particles`, `certified: false`) + `MitosisGen2.metal` backdrop +
+`ParticleGeometryRegistry` += "Cytokinesis" + `VisualizerEngine` stored geo / factory /
+init / resolver + `expectedProductionPresetCount` 25→26. **Done-when:** ✅ `MitosisGen2GeometryTests`
+green on the production update→render path — framerate 4.2 ms/frame @1080p (~4× under
+budget); lifecycle (seeds 3 → divides up to the cap 8, never exceeds, never dies; onset-driven
+5 > silent control 3 = the snap mechanism); flash-safe maxΔ 0.015 (gradual, no strobe).
+`PresetLoaderCompileFailure` count 26, `ParticleDispatchRegistry` (Cytokinesis registered +
+resolves), lint 0/441, `xcodebuild` app build **SUCCEEDED**. `certified:false` → Orchestrator
+filters it from the live planner until G2.3; selectable via `showUncertifiedPresets`.
 
 **MITOSIS-G2.2 — audio coupling + live M7 ⏳.** Wire energy→phase-rate, onset→cytokinesis
 snap, centroid→palette to the live stream; Matt's live look; iterate the cell model + look
