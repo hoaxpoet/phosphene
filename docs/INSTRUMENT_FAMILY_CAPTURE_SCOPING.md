@@ -106,8 +106,8 @@ The 2026-06-29 spike is reproducible:
 |---|---|---|
 | 1 | Model + license | ✅ IFC.1 (2026-06-30) — PANNs MobileNetV1; weights CC-BY-4.0 (Zenodo 3987831), code MIT (reimplemented), AudioSet CC-BY |
 | 2 | MPSGraph port + front-end parity | ✅ IFC.2 (2026-06-30) — numerical parity on both spike clips |
-| 3 | Per-family activity + normalization | ⏭ next |
-| 4 | Pipeline integration (+ attribution notice) | pending |
+| 3 | Per-family activity + normalization | ✅ IFC.3 (2026-06-30) — `InstrumentFamilyActivity` + taxonomy + D-026 tracker |
+| 4 | Pipeline integration (+ attribution notice) | ⏭ next |
 | 5 | Validation | pending |
 | 6 | Preset consumption (Ricercar drive-layer swap) | pending |
 
@@ -119,4 +119,16 @@ The 2026-06-29 spike is reproducible:
 - **Grouped (depthwise) convolution is the only op beyond the existing CNN ports** and it works in MPSGraph via `MPSGraphConvolution2DOpDescriptor.groups` with HWIO weights `[kH,kW,1,inC]` (PyTorch `[inC,1,3,3]` rearranged). No op-coverage gap.
 - **Fix T = 201 (the 2 s inference window)** so the graph has a fixed input shape; this is the natural per-family unit and avoids dynamic-shape pooling/reduction headaches.
 - Reproduce: `tools/.venv/bin/python tools/convert_panns_weights.py` (weights → `Sources/ML/Weights/panns_mobilenetv1/`) and `tools/panns_reference.py` (reference + test fixtures; needs `~/panns_data/MobileNetV1_mAP=0.389.pth` + the two clips, dev-only/uncommitted).
+
+**IFC.3 — the orchestral family taxonomy (AudioSet 527-class → 4 families).** Single source of truth: `tools/panns_reference.py` FAMILIES ↔ `InstrumentFamily.audioSetClasses` (Swift), cross-checked in tests. The spike's keyword set under-covered woodwinds (it matched only Flute + a mis-spelled "Wind instrument, woodwind"); the corrected set adds the catch-all + saxophone.
+
+| family | AudioSet indices | notes |
+|---|---|---|
+| strings | 189–194, 199 | bowed-string core + harp |
+| brass | 185–188 | Brass / French horn / Trumpet / Trombone — **excludes** vehicle/air/train/foghorn (308/318/331/401) |
+| woodwinds | 195–198 | `195 Wind instrument, woodwind instrument` catch-all (oboe/bassoon have no dedicated class) + Flute/Saxophone/Clarinet |
+| percussion | 161,164,168,169,171,179–182 | orchestral set anchored on Timpani (169); Percussion/Drum/Bass-drum/Cymbal + the mallet family |
+
+- **Normalization mirrors `BandDeviationTracker` (D-026), not a new design** — per-family smoothing EMA (decay 0.5, ~1.4 windows at the 1 s hop) then a slower running-mean pivot (decay 0.9, ~10 s) with `rel = (value − avg)·gain`, `dev = max(0, rel)`, seed-from-first-non-zero, `reset()` on track change. `devGain` is a placeholder (2.0, the band convention) to be tuned against the real per-family p99 in IFC.6 ([[project_deviation_primitive_real_range]]).
+- **5-section split deferred to IFC.6** — Ricercar's five register-archetype sections (e.g. low vs high strings) is a product-shaping choice best decided alongside the preset, not baked into the base taxonomy.
 </content>
