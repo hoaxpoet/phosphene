@@ -169,6 +169,35 @@ MPSGraph init time, not at conversion.
 
 ---
 
+## PANNs MobileNetV1 — instrument-family activity weights
+
+**Used in:** `PhospheneEngine/Sources/ML/Weights/panns_mobilenetv1/`
+(vendored AudioSet 527-class audio-tagger weights). Phosphene runs the
+tagger over the 30 s preview clip to derive per-family instrument
+activity (strings / brass / woodwinds / percussion) for orchestral
+presets (IFC / D-177).
+
+**Source:** Qiuqiang Kong, Yin Cao, Turab Iqbal, Yuxuan Wang, Wenwu
+Wang, Mark D. Plumbley. *PANNs: Large-Scale Pretrained Audio Neural
+Networks for Audio Pattern Recognition.* IEEE/ACM TASLP, 2020.
+
+**Repository:** https://github.com/qiuqiangkong/audioset_tagging_cnn
+
+**Weights:** `MobileNetV1_mAP=0.389.pth`, Zenodo record 3987831 —
+**License: CC-BY-4.0.** **Model-definition code:** MIT (the repository
+above) — reimplemented for MPSGraph, not vendored.
+
+**AudioSet ontology** (the 527-class label set the tagger predicts):
+Google, **CC-BY-4.0** — https://research.google.com/audioset/
+
+**Modifications:** PyTorch `.pth` → flat `.bin` per-tensor with JSON
+manifest for MPSGraph inference (mirrors the Open-Unmix / Beat This!
+treatment). The torchlibrosa STFT basis and librosa mel filterbank are
+exported from the checkpoint and run as exact matmuls in the Swift
+front-end. BatchNorm folded at MPSGraph init time.
+
+---
+
 ## Other dependencies
 
 System frameworks (Apple): Metal, MetalKit, MetalPerformanceShadersGraph,
@@ -183,6 +212,9 @@ If you ship a derivative of Phosphene, you must:
 1. Preserve the MIT notice in `LICENSE` and the Beat This! MIT notice
    in this file. (BeatNet is no longer bundled — its CC-BY section above
    is a historical note, not a live obligation.)
+1a. Preserve the CC-BY-4.0 attribution for the PANNs MobileNetV1 weights
+   (Kong et al., Zenodo 3987831) and the AudioSet ontology — both are
+   live CC-BY redistribution obligations.
 2. Make this `CREDITS.md` (or an equivalent compilation of the
    notices) reachable from a user-visible surface — e.g. an "About"
    panel — alongside license text or hyperlinks.
