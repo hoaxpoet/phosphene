@@ -4,6 +4,7 @@
 
 import DSP
 import Foundation
+import ML
 import Shared
 
 // MARK: - CachedTrackData
@@ -43,6 +44,15 @@ public struct CachedTrackData: Sendable {
     /// Defaults to 0 for backward compatibility — pre-fix calibration omitted.
     public let gridOnsetOffsetMs: Double
 
+    /// IFC.4 (D-177) — per-window instrument-family activity over the preview
+    /// clip (2 s window / 1 s hop, in playback order). Layer 5a: available from
+    /// frame 1 but not time-aligned to live playback; the live frame samples it
+    /// by playback position (`InstrumentFamilyActivity.sample`). Empty when no
+    /// `InstrumentFamilyAnalyzing` was wired. In-memory only — NOT persisted to
+    /// `PersistentStemCache` (IFC.4 scope; disk-cache reload yields an empty
+    /// series → family fields clear to 0, the no-activity fallback).
+    public let instrumentFamilySeries: [InstrumentFamilyActivity]
+
     // MARK: - Init
 
     public init(
@@ -51,7 +61,8 @@ public struct CachedTrackData: Sendable {
         trackProfile: TrackProfile,
         beatGrid: BeatGrid = .empty,
         drumsBeatGrid: BeatGrid = .empty,
-        gridOnsetOffsetMs: Double = 0
+        gridOnsetOffsetMs: Double = 0,
+        instrumentFamilySeries: [InstrumentFamilyActivity] = []
     ) {
         self.stemWaveforms = stemWaveforms
         self.stemFeatures = stemFeatures
@@ -59,6 +70,7 @@ public struct CachedTrackData: Sendable {
         self.beatGrid = beatGrid
         self.drumsBeatGrid = drumsBeatGrid
         self.gridOnsetOffsetMs = gridOnsetOffsetMs
+        self.instrumentFamilySeries = instrumentFamilySeries
     }
 }
 
