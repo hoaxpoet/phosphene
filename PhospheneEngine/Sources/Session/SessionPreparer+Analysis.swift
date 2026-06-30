@@ -90,6 +90,7 @@ extension SessionPreparer {
         analyzer: any StemAnalyzing,
         classifier: any MoodClassifying,
         beatGridAnalyzer: (any BeatGridAnalyzing)? = nil,
+        familyAnalyzer: (any InstrumentFamilyAnalyzing)? = nil,
         prefetchedProfile: PreFetchedTrackProfile? = nil,
         logTiming: (@Sendable (String) -> Void)? = nil
     ) throws -> CachedTrackData {
@@ -177,6 +178,12 @@ extension SessionPreparer {
         let gridOnsetOffsetMs = Self.computeGridOnsetOffsetMs(preview: preview, grid: beatGrid)
         logTiming?("calibration \(durationMs(clock.now - stageStart))ms")
 
+        // Step 8 (IFC.4 / D-177): PANNs family-activity sweep over the preview clip (Tier-1; nil → empty). Log ms.
+        stageStart = clock.now
+        let familySeries = familyAnalyzer?.analyzeFamilyActivity(
+            samples: preview.pcmSamples, sampleRate: Double(preview.sampleRate)) ?? []
+        logTiming?("panns \(durationMs(clock.now - stageStart))ms (\(familySeries.count) windows)")
+
         let profile = TrackProfile(
             bpm: mir.bpm,
             key: mir.key,
@@ -193,7 +200,8 @@ extension SessionPreparer {
             trackProfile: profile,
             beatGrid: beatGrid,
             drumsBeatGrid: drumsBeatGrid,
-            gridOnsetOffsetMs: gridOnsetOffsetMs
+            gridOnsetOffsetMs: gridOnsetOffsetMs,
+            instrumentFamilySeries: familySeries
         )
     }
     // swiftlint:enable function_body_length

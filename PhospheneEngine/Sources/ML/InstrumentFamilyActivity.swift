@@ -79,6 +79,42 @@ public struct InstrumentFamilyActivity: Sendable {
         let i = family.index
         return FamilyReading(raw: raw[i], smoothed: smoothed[i], rel: rel[i], dev: dev[i])
     }
+
+    /// Smoothed activity packed for the GPU StemFeatures setter, in
+    /// `InstrumentFamily.allCases` order (strings, brass, woodwinds, percussion).
+    public var smoothedSIMD4: SIMD4<Float> {
+        SIMD4(smoothed[0], smoothed[1], smoothed[2], smoothed[3])
+    }
+    /// Positive deviation packed for the GPU StemFeatures setter (same order).
+    public var devSIMD4: SIMD4<Float> { SIMD4(dev[0], dev[1], dev[2], dev[3]) }
+
+    /// All-zero activity (no family information available). Used as the live-frame
+    /// fallback when no cached series is installed (track has no preview activity).
+    public static let zero = InstrumentFamilyActivity(
+        raw: [Float](repeating: 0, count: InstrumentFamily.allCases.count),
+        smoothed: [Float](repeating: 0, count: InstrumentFamily.allCases.count),
+        rel: [Float](repeating: 0, count: InstrumentFamily.allCases.count),
+        dev: [Float](repeating: 0, count: InstrumentFamily.allCases.count))
+
+    /// Sample a per-window activity `series` (Layer 5a) by live playback
+    /// position. The series is at `hopSeconds` spacing; `playbackSeconds` is
+    /// nearest-window-clamped into `[0, series.count)`.
+    ///
+    /// IFC.4 alignment caveat (scoping §4): the preview clip may not be the
+    /// section currently playing, and tracks run longer than the ~30 s preview —
+    /// past the series end this clamps to the last window. A small phase error
+    /// reads as a small offset; section-accurate alignment is IFC.6 work.
+    /// Returns `.zero` for an empty series.
+    public static func sample(
+        _ series: [InstrumentFamilyActivity],
+        atPlaybackSeconds playbackSeconds: Double,
+        hopSeconds: Double = 1.0
+    ) -> InstrumentFamilyActivity {
+        guard !series.isEmpty else { return .zero }
+        let hop = max(hopSeconds, 1e-6)
+        let idx = Int((max(0, playbackSeconds) / hop).rounded())
+        return series[min(idx, series.count - 1)]
+    }
 }
 
 // MARK: - InstrumentFamilyTracker

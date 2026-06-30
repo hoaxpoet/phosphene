@@ -107,4 +107,40 @@ import Testing
         let out = tracker.derive(probs: Self.probs(.percussion, 0.4))
         #expect(out.dev.allSatisfy { abs($0) < 1e-6 }, "after reset the next window seeds → dev 0")
     }
+
+    // MARK: - IFC.4 series sampling by playback position
+
+    /// A 3-window series, each window a distinct constant per-family value, so
+    /// the sampled window is identifiable from its `raw` vector.
+    static func series() -> [InstrumentFamilyActivity] {
+        (0..<3).map { i in
+            let v = Float(i + 1) / 10  // 0.1, 0.2, 0.3
+            return InstrumentFamilyActivity(
+                raw: [v, v, v, v], smoothed: [v, v, v, v],
+                rel: [0, 0, 0, 0], dev: [v, v, v, v])
+        }
+    }
+
+    @Test func test_sample_emptySeriesReturnsZero() {
+        let out = InstrumentFamilyActivity.sample([], atPlaybackSeconds: 5)
+        #expect(out.raw.allSatisfy { $0 == 0 })
+        #expect(out.dev.allSatisfy { $0 == 0 })
+    }
+
+    @Test func test_sample_nearestWindowByPosition() {
+        let s = Self.series()
+        // hop 1 s: t≈0 → window 0, t≈1 → window 1, t≈2 → window 2.
+        #expect(InstrumentFamilyActivity.sample(s, atPlaybackSeconds: 0.0).raw[0] == 0.1)
+        #expect(InstrumentFamilyActivity.sample(s, atPlaybackSeconds: 1.0).raw[0] == 0.2)
+        #expect(InstrumentFamilyActivity.sample(s, atPlaybackSeconds: 1.4).raw[0] == 0.2)  // rounds down
+        #expect(InstrumentFamilyActivity.sample(s, atPlaybackSeconds: 1.6).raw[0] == 0.3)  // rounds up
+    }
+
+    @Test func test_sample_clampsPastSeriesEndAndBelowZero() {
+        let s = Self.series()
+        // Past the ~3 s series end (a 4-min track) clamps to the last window
+        // (the IFC.4 alignment caveat); negative time clamps to window 0.
+        #expect(InstrumentFamilyActivity.sample(s, atPlaybackSeconds: 240).raw[0] == 0.3)
+        #expect(InstrumentFamilyActivity.sample(s, atPlaybackSeconds: -5).raw[0] == 0.1)
+    }
 }
