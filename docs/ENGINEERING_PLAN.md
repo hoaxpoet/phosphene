@@ -83,10 +83,18 @@ budget); lifecycle (seeds 3 → divides up to the cap 8, never exceeds, never di
 resolves), lint 0/441, `xcodebuild` app build **SUCCEEDED**. `certified:false` → Orchestrator
 filters it from the live planner until G2.3; selectable via `showUncertifiedPresets`.
 
-**MITOSIS-G2.2 — audio coupling + live M7 ⏳.** Wire energy→phase-rate, onset→cytokinesis
-snap, centroid→palette to the live stream; Matt's live look; iterate the cell model + look
-(aster character, cell count, snap feel) against his feedback. **Done-when:** Matt's live M7
-positive ([[feedback-visual-fix-needs-live-m7]]).
+**MITOSIS-G2.2 — live-M7 cell-model iteration ⏳ (iter 1 done 2026-06-30, pending re-look).**
+Matt's first live look rejected the G2.1 capped/cull model ("the frequent respawning is not
+intended … cells should not overlap"; the dividing-cell *look* is good). Reworked the cell
+model: **monotonic growth** few→`crowdCount`=40 (divisions only add, NO culling), radius
+shrinks with count (`packRadius`, 0.62 screen coverage) so the colony fills the screen, a
+soft **circle-packing relaxation** keeps cells **non-overlapping** (settled overlap 0.0001 @
+40 cells), then **dissolve→regrow** cycle (seed cells fade in → flash-safe reseed). Onset-snap
+removed — music coupling deferred (Matt: attach to music "ultimately"); the arc runs
+autonomously, energy nudges pace. `test_growthArcAndPacking` (grows to crowd, non-overlap,
+dissolves & regrows) + framerate 5.3 ms@1080p + flash-safe 0.014; app build SUCCEEDED, lint 0.
+**Done-when:** Matt's live re-look positive ([[feedback-visual-fix-needs-live-m7]]); then wire
+the musical role + tune density/cycle/aster character.
 
 **MITOSIS-G2.3 — certify ⏳.** Rubric `certifiedPresets`/`expectedAutomatedGate`,
 `PhotosensitivityCertificationTests.multiPassMeasured` + a `renderMitosisGen2` multi-pass

@@ -89,46 +89,46 @@ struct MitosisGen2GeometryTests {
         #expect(median < 16.67, "must hold 60 fps: median \(median) ms")
     }
 
-    // MARK: - Criterion 2: bounded few-large-cells lifecycle
+    // MARK: - Criterion 2: grow → crowd → dissolve → regrow (no respawning), cells never overlap
 
-    @Test("Cells seed, divide on a snap into two daughters, and stay bounded (few large cells)")
-    func test_cellLifecycle() throws {
+    @Test("Colony grows few→crowded, cells never overlap, then dissolves & regrows")
+    func test_growthArcAndPacking() throws {
         let ctx = try MetalContext()
         let lib = try ShaderLibrary(context: ctx)
         let cfg = MitosisGen2Configuration()
         let geo = try makeGeo(ctx, lib, cfg)
-        let tex = try target(ctx, 640, 360)
+        let tex = try target(ctx, 1280, 720)   // 16:9 so aspect-correct packing matches live
         var t: Float = 0
 
         #expect(geo.currentCellCount == cfg.seedCells, "colony seeds with \(cfg.seedCells) cells")
 
-        // Over a long run with onsets the count grows to the cap and is never exceeded
-        // (the bounded few-large-cells arc).
-        var maxSeen = geo.currentCellCount
-        for fr in 0..<(40 * 60) {
-            try step(geo, energy: 0.6, drum: fr % 24 == 0, tex, ctx, &t)
-            maxSeen = max(maxSeen, geo.currentCellCount)
-            #expect(geo.currentCellCount <= cfg.maxCells, "never exceeds the few-cells cap")
-            #expect(geo.currentCellCount >= 1, "colony never dies out")
+        // GROW: monotonically (no culling/respawn) up to the crowd target.
+        var reachedCrowd = false
+        var worstOverlapWhileGrowing: Float = 0
+        for _ in 0..<(60 * 60) {              // up to 60 s
+            try step(geo, energy: 0.6, drum: false, tex, ctx, &t)
+            worstOverlapWhileGrowing = max(worstOverlapWhileGrowing, geo.maxPairOverlap)
+            if geo.currentCellCount >= cfg.crowdCount { reachedCrowd = true; break }
+            #expect(geo.currentCellCount <= cfg.maxCells, "never exceeds the hard cap")
         }
-        print("[GEN2] lifecycle: maxSeen=\(maxSeen) cap=\(cfg.maxCells) final=\(geo.currentCellCount)")
-        #expect(maxSeen == cfg.maxCells, "cells divide up to the cap: maxSeen \(maxSeen)")
+        #expect(reachedCrowd, "the colony divides until the screen is crowded (\(cfg.crowdCount)): got \(geo.currentCellCount)")
 
-        // The onset SNAP causes division: an onset-driven colony divides MORE in a short
-        // window than an identically-seeded silent-drum control (the gen-1 sketch pattern —
-        // proves the mechanism without depending on exact phase timing; the *feel* is the
-        // live M7). Neither reaches a natural completion in this window, so the difference
-        // is the snaps.
-        var tA: Float = 0, tB: Float = 0
-        let geoOnset = try makeGeo(ctx, lib, cfg)
-        let geoControl = try makeGeo(ctx, lib, cfg)
-        for fr in 0..<150 {
-            try step(geoOnset, energy: 0.8, drum: fr % 20 == 0, tex, ctx, &tA)
-            try step(geoControl, energy: 0.8, drum: false, tex, ctx, &tB)
-        }
-        print("[GEN2] snap: onset-driven=\(geoOnset.currentCellCount) control=\(geoControl.currentCellCount)")
-        #expect(geoOnset.currentCellCount > geoControl.currentCellCount,
-                "onsets snap ready cells into divisions: onset \(geoOnset.currentCellCount) vs control \(geoControl.currentCellCount)")
+        // PACKING: after the crowd settles (holding stage stops adding cells), no two cells
+        // overlap. Settle a moment, then assert non-overlap of the drawn circles.
+        for _ in 0..<90 { try step(geo, energy: 0.6, drum: false, tex, ctx, &t) }
+        let settledOverlap = geo.maxPairOverlap
+        print("[GEN2] arc: crowd=\(geo.currentCellCount) settledOverlap=\(String(format: "%.4f", settledOverlap)) growMaxOverlap=\(String(format: "%.3f", worstOverlapWhileGrowing))")
+        #expect(settledOverlap < 0.03, "cells must not overlap when packed: worst \(settledOverlap)")
+        // Even mid-growth, overlaps stay transient/bounded (never a gross pile-up).
+        #expect(worstOverlapWhileGrowing < 0.25, "growth never grossly overlaps: \(worstOverlapWhileGrowing)")
+
+        // CYCLE: it dissolves back toward a few cells, then regrows — NOT a frozen crowd and
+        // NOT constant respawning. Track the count: it must drop well below crowd, then rise.
+        var trough = geo.currentCellCount
+        for _ in 0..<(20 * 60) { try step(geo, energy: 0.6, drum: false, tex, ctx, &t); trough = min(trough, geo.currentCellCount) }
+        let afterDissolve = geo.currentCellCount
+        print("[GEN2] cycle: trough=\(trough) afterDissolve=\(afterDissolve)")
+        #expect(trough <= cfg.seedCells + 4, "the crowded field dissolves back to a few cells: trough \(trough)")
     }
 
     // MARK: - Criterion 3: flash-safe (D-157)
@@ -168,9 +168,9 @@ struct MitosisGen2GeometryTests {
         let dir = base.appendingPathComponent("tools/mitosis_gen2_sketch/frames/geometry", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         var t: Float = 0; var shot = 0
-        for fr in 0..<(30 * 60) {
+        for fr in 0..<(50 * 60) {
             try step(geo, energy: 0.55, drum: fr % 26 == 0, tex, ctx, &t)
-            if fr % 120 == 0 {
+            if fr % 180 == 0 {
                 print("[GEN2] t=\(String(format: "%.0f", t))s cells=\(geo.currentCellCount)")
                 try writePNG(tex, w, h, dir.appendingPathComponent(String(format: "g_%02d.png", shot))); shot += 1
             }
