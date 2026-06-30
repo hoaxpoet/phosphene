@@ -47,6 +47,45 @@ The preset Filigree's substrate couldn't be: tight onset→division sync. Filigr
 
 **MITOSIS.5 — colour responds strongly to the music ✅ shipped (2026-06-29).** Matt flagged the post-cert coupling as too loose (the dissolve runs on a timer) and chose a colour-focused responsiveness pass (cycle timing left as-is). The fluorescence hue now swings WIDE with the spectral centroid (timbre: dark/quiet → muted teal, bright → vivid orange/pink, low-timbre → magenta/violet), saturation/brightness track energy, and a drum transient (`hitEnv`) kicks the hue + a small bounded glow pulse (chromatic + 0.22 s release → flash-safe). `MitosisConfig += hit`. Verified: `renderMitosis` still **0.00 flashes/s** with the glow pulse on the worst-case train; 6 sketch gates + lint green. Matt: "Looks great. Ship it." Pushed to `origin/main` (`5c0dd31`). **Next: gen-2 (detailed/realistic, fresh session) — kickoff `docs/presets/MITOSIS_GEN2_KICKOFF.md`.**
 
+### Phase MITOSIS-G2 — detailed fluorescence-microscopy cell division (gen-2) 🔨 (2026-06-30; sketch approved → scoped)
+
+A higher-fidelity sibling of certified gen-1 (D-097, NOT an edit of it): a few **LARGE,
+procedurally-detailed** dividing cells rendered like confocal immunofluorescence — dumbbell
+furrow, two radial green asters, a solid opaque membrane wall, coloured cortex, blue
+chromatin, magenta spindle midzone, vesicle speckles, on a green filament field. Locked
+arc: *few large cells, always* (early-division showcase; never crowds to dots). Substrate:
+**explicit per-cell objects**, NOT Gray–Scott — strictly simpler than gen-1 (no compute
+pass). Design: `docs/presets/MITOSIS_GEN2_DESIGN.md`. Reference + traits:
+`docs/VISUAL_REFERENCES/mitosis/README.md §Gen-2`.
+
+**MITOSIS-G2.0 — throwaway sketch + look gate ✅ (2026-06-30).** `tools/mitosis_gen2_sketch/Gen2Cell.metal`
+(runtime-compiled, isolated from the engine) renders a procedural dividing cell: smooth-min
+dumbbell + phase-driven furrow pinch, ring-sampled-noise green asters, alpha-composited
+**opaque membrane wall** (occludes), coloured cortical ring, blue chromatin, magenta
+midzone, vesicle speckles, ridged-fbm filament field, music hue-coupling. `MitosisGen2SketchRenderTests`:
+framerate ~4.7 ms/frame @1080p (~3.5× under budget) + `RENDER_VISUAL=1` contact sheet.
+**Matt approved the look** after iterating on (a) aster character, (b) solid membrane wall,
+(c) interior colour around the membrane. **Done-when:** ✅ look approved; musical role
+confirmed. Renders gitignored under `tools/mitosis_gen2_sketch/frames/`.
+
+**MITOSIS-G2.1 — graduate to a registered preset ⏳ (next).** `MitosisGen2Geometry`
+(`ParticleGeometry` sibling: CPU `Cell` array + phase/split/population governor in `update`,
+no compute pass; `render` packs cells via `setFragmentBytes` to the ported fragment shader)
++ sidecar (`family: particles`, `certified: false`) + `ParticleGeometryRegistry` +
+`VisualizerEngine` geo/factory/init/resolver + `expectedProductionPresetCount++` + a
+load-degrade guard test. **Done-when:** headless tests green (framerate; cell lifecycle
+spawn→advance→snap→two daughters→cull; flash-safe), app build SUCCEEDED, lint 0; playable
+uncertified via `showUncertifiedPresets`.
+
+**MITOSIS-G2.2 — audio coupling + live M7 ⏳.** Wire energy→phase-rate, onset→cytokinesis
+snap, centroid→palette to the live stream; Matt's live look; iterate the cell model + look
+(aster character, cell count, snap feel) against his feedback. **Done-when:** Matt's live M7
+positive ([[feedback-visual-fix-needs-live-m7]]).
+
+**MITOSIS-G2.3 — certify ⏳.** Rubric `certifiedPresets`/`expectedAutomatedGate`,
+`PhotosensitivityCertificationTests.multiPassMeasured` + a `renderMitosisGen2` multi-pass
+flash harness, sidecar `certified: true`. First certified explicit-cell preset.
+
 ### Phase PHYS — Filigree (physarum agent-network preset) ✅ CERTIFIED (2026-06-27→28; PHYS.1 design → PHYS.5 certified — first certified compute-agent-network preset)
 
 A living slime-mold network (physarum / neural web / river-delta) whose **form is the song's energy**: the fine gold searching-web is the resting state, continuous energy brightens/quickens it, and a structural peak blooms it into consolidated load-bearing veins (the drop payoff). This is the **inverse** of the original sketch spec (web-home, not veins-home), chosen from rendered evidence — it answers the Drift-Motes lesson (FA #58): the form changes with the energy, so the form carries the music. Originated as a throwaway harness sketch (go/no-go gate); all headless criteria passed — 0.66 ms/frame @ 1080p (262k agents; 1M ~0.55 ms, vast headroom), stable bounded network, flash-safe collapse — and Matt locked the web-dominant concept + the **Kintsugi** palette (gold veins on pure black) from a rendered candidate comparison.
