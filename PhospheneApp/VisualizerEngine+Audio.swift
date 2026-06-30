@@ -210,6 +210,15 @@ extension VisualizerEngine {
         // and this site is UNCONDITIONAL — the `setMood` path early-returns when the mood classifier
         // is absent or `classify` throws, which would intermittently stall the section signal.
         pipeline.setStructuralPrediction(mir.latestStructuralPrediction)
+        // IFC.4 (D-177): sample the cached preview instrument-family activity
+        // series (Layer 5a) by live playback position and write it into the
+        // live StemFeatures (floats 48–55). Empty series → `.zero` (cleared on
+        // track change), so this is inert for every non-orchestral track.
+        let family = InstrumentFamilyActivity.sample(
+            currentFamilySeries,
+            atPlaybackSeconds: mir.elapsedSeconds,
+            hopSeconds: InstrumentFamilyAnalyzer.hopSeconds)
+        pipeline.setInstrumentFamilyActivity(smoothed: family.smoothedSIMD4, dev: family.devSIMD4)
         // Skein.5.2: mirror the same prediction into the session recorder so features.csv carries
         // `section_index` / `section_start_s` / `section_confidence` — the artifact that makes the
         // Skein.5 structural bias (and BUG-035-class corruption) verifiable from a session.
