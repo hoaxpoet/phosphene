@@ -108,7 +108,7 @@ The 2026-06-29 spike is reproducible:
 | 2 | MPSGraph port + front-end parity | ✅ IFC.2 (2026-06-30) — numerical parity on both spike clips |
 | 3 | Per-family activity + normalization | ✅ IFC.3 (2026-06-30) — `InstrumentFamilyActivity` + taxonomy + D-026 tracker |
 | 4 | Pipeline integration (+ attribution notice) | ✅ IFC.4 (2026-06-30) — `InstrumentFamilyAnalyzer` runs in `analyzePreview`; series on `CachedTrackData`; StemFeatures floats 48–55 + Metal mirror + CSV; live sample-by-position; CREDITS PANNs section |
-| 5 | Validation | pending |
+| 5 | Validation | 🟡 IFC.5 (2026-06-30) — diagnostic surface (`InstrumentFamilyDumper`) + production-path validation on real audio done; **full-orchestra corpus pending audio** (see §13) |
 | 6 | Preset consumption (Ricercar drive-layer swap) | pending |
 
 **IFC.2 result (numerical parity vs the PyTorch reference, both spike clips):** front-end log-mel **1.5e-5 dB**, network probs **1.7e-7** (logits 4.8e-6), end-to-end **1.4e-7** with the top class matching, per-family activity **4.2e-7** across 6 musical windows. The model reproduces the spike's discrimination — sym5 strings 0.51–0.57; octet@8s woodwind-led (0.397 > 0.113), @14s/@17s brass tutti (0.55/0.64), strings ≈ 0.04 (correct near-absence).
@@ -139,4 +139,16 @@ The 2026-06-29 spike is reproducible:
 - **Where it runs.** `InstrumentFamilyAnalyzer` (PANNs-backed, injected like `BeatGridAnalyzing`) runs inside `analyzePreview` as Step 8 with a `panns` TIMING stage; the series is stored on `CachedTrackData.instrumentFamilySeries` (in-memory only — **not** persisted to `PersistentStemCache` this increment; disk-cache reload yields an empty series → clean zero fallback. Disk persistence is a documented IFC.6-or-later follow-up). Wired on both the streaming (`SessionPreparer`) and local-file (`runLocalFilePreparation`) paths.
 - **Live write/clear (anti-leak, §What NOT To Do).** `resetStemPipeline` clears the series + zeroes the pipeline family activity **unconditionally** on every track-change path, then the cache-hit branch reinstalls. `MIRPipeline` can't hold the series (DSP can't import ML), so the per-frame sampling lives in the app's `processAnalysisFrame` using `mir.elapsedSeconds`, writing via `RenderPipeline.setInstrumentFamilyActivity` (preserved across the ~5 s live `setStemFeatures` pushes, same contract as `cachedBassProportion`).
 - **`devGain` stays 2.0** (the placeholder) — tuning against the real per-family p99 is IFC.6, not this increment.
+
+## 13. IFC.5 — validation (partial: pipeline ✅, orchestral corpus pending)
+
+**Diagnostic surface (✅).** `InstrumentFamilyDumper` (`executableTarget`, retained-diagnostic) decodes a clip → runs the **production** `InstrumentFamilyAnalyzer` (44.1 kHz decode → resample 44.1→32 kHz → 2 s/1 s windows → PANNs → D-026 tracker) → prints the per-window strings/brass/woodwinds/percussion activity table + leader-per-window, `--out` writes JSON. This exercises the **resample path IFC.2's parity did not cover** (parity fed 32 kHz directly). Run: `swift run --package-path PhospheneEngine InstrumentFamilyDumper --audio <clip> [--start s --duration s --out j.json]`.
+
+**Production-path validation on real audio (✅, 2026-06-30).** Ran the dumper on the committed tempo fixtures (real recordings). Firing is musically correct:
+- **`so_what.m4a` (Miles Davis — muted trumpet lead + alto sax + ride/drums):** **brass leads** most windows (peak smoothed 0.42 / dev 0.50 at t≈9 s), **percussion** surfaces at the ride/drum-fill moments (dev 0.31–0.32), woodwinds track brass lower (the sax under the trumpet), **strings ≈ 0** (correct — no strings in the quintet). Real acoustic **brass discrimination** confirmed on a real recording — the capability generalizes beyond the two spike clips.
+- **`money.m4a` / `love_rehab.m4a` (electric / electronic):** all orchestral families near-zero — **correct absence-reporting** (PANNs does not false-fire strings/brass on guitars/synths).
+- **`pyramid_song.m4a` (subtle piano/strings):** near-zero — matches the documented "buried families stay approximate" ceiling (§3).
+- **Observation → IFC.6 note:** on near-silent-family material the leader-picker flaps on 0.00–0.01 dev noise; a consuming preset must gate on a small `dev` floor (couples to the `devGain` p99 tuning).
+
+**Still pending — full-orchestra corpus.** The Ricercar-defining cases — a **strings-dominant** orchestral passage and a **wind-ensemble brass↔woodwind trade** — need the Beethoven-class clips (Sym 5 i. + Wind Octet Op. 103), which were dev-only in `/tmp` and are **now gone**. IFC.2's numerical parity already proved the model reproduces exactly that discrimination against the PyTorch reference on those clips (4.2e-7); IFC.5 needs the same, end-to-end through the production dumper, on the real orchestral corpus. **Blocked on an audio source** (Matt supplies orchestral files, or authorizes re-fetching the public-domain Musopen/archive.org clips). Not a code gap.
 </content>
