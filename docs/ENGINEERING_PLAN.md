@@ -52,10 +52,10 @@ The preset Filigree's substrate couldn't be: tight onset→division sync. Filigr
 A higher-fidelity sibling of certified gen-1 (D-097, NOT an edit of it): a few **LARGE,
 procedurally-detailed** dividing cells rendered like confocal immunofluorescence — dumbbell
 furrow, two radial green asters, a solid opaque membrane wall, coloured cortex, blue
-chromatin, magenta spindle midzone, vesicle speckles, on a green filament field. Locked
-arc: *few large cells, always* (early-division showcase; never crowds to dots). Substrate:
-**explicit per-cell objects**, NOT Gray–Scott — strictly simpler than gen-1 (no compute
-pass). Design: `docs/presets/MITOSIS_GEN2_DESIGN.md`. Reference + traits:
+chromatin, magenta spindle midzone, vesicle speckles, on a green filament field. Arc
+(G2.2 live): *few large cells divide until much of the screen is crowded* (non-overlapping),
+then dissolve → regrow. Substrate: **explicit per-cell objects**, NOT Gray–Scott — strictly
+simpler than gen-1 (no compute pass). Design: `docs/presets/MITOSIS_GEN2_DESIGN.md`. Reference + traits:
 `docs/VISUAL_REFERENCES/mitosis/README.md §Gen-2`.
 
 **MITOSIS-G2.0 — throwaway sketch + look gate ✅ (2026-06-30).** `tools/mitosis_gen2_sketch/Gen2Cell.metal`
@@ -93,8 +93,13 @@ soft **circle-packing relaxation** keeps cells **non-overlapping** (settled over
 removed — music coupling deferred (Matt: attach to music "ultimately"); the arc runs
 autonomously, energy nudges pace. `test_growthArcAndPacking` (grows to crowd, non-overlap,
 dissolves & regrows) + framerate 5.3 ms@1080p + flash-safe 0.014; app build SUCCEEDED, lint 0.
+**Iter 2 (2026-07-01):** Matt "more cell division needed; more space left to fill." Found the
+gaps' root cause — the shader draws a cell at only ≈ 0.55× its packing `radius`, so cells sat
+≈ 1.8× their visible size apart; a `visibleFraction` mapping now packs by the visible radius.
+Tuned denser + more active (`crowdCount` 40→64, `divPeriod` 11→8, `coverage` 0.60 visible =
+the non-overlapping max; 0.66+ forces overlap). Overlap 0.0000 @ 64, framerate 3 ms, flash 0.026, lint 0.
 **Done-when:** Matt's live re-look positive ([[feedback-visual-fix-needs-live-m7]]); then wire
-the musical role + tune density/cycle/aster character.
+the musical role.
 
 **MITOSIS-G2.3 — certify ⏳.** Rubric `certifiedPresets`/`expectedAutomatedGate`,
 `PhotosensitivityCertificationTests.multiPassMeasured` + a `renderMitosisGen2` multi-pass

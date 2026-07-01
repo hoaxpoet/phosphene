@@ -96,8 +96,14 @@ would compete with the split).
 - **`update(features:stemFeatures:commandBuffer:)`** advances the music envelopes (port of
   gen-1 `advanceEnvelopes` — `energyEnv`/`centroidEnv`/`hitEnv`/`huePhase`), then the cell
   model on the CPU (no compute encoder; `commandBuffer` unused):
-  - **radius** lerps toward `packRadius(count, aspect)` — the size at which `count` cells
-    fill `coverage` (0.62) of the screen without overlap → cells shrink as the colony grows;
+  - **radius** lerps toward `packRadius(count, aspect)` — sized so `count` cells fill
+    `coverage` (0.60) of the screen → cells shrink as the colony grows (defaults:
+    `crowdCount` 64, `divPeriod` 8 s). **★ visible-radius gotcha:** the shader draws a cell
+    to only ≈ `poleR` (0.55) × its `radius`, so packing/collision/coverage all use the
+    VISIBLE radius (`visibleFraction·radius`) and `radius` is scaled up by 1/0.55 — otherwise
+    cells pack ≈ 1.8× their visible size apart and leave large gaps (the G2.2-iter-2 fix for
+    "more space to fill"). 0.60 is the max fill that packs provably non-overlapping (0.66+
+    forces overlap — circle-packing limit for this dynamic, unequal, dividing field);
   - while `.growing`, each cell's `phase += dt · phaseRate · pace` (pace energy-nudged);
   - **division** (`.growing`): a completed cell (`phase ≥ 1`) splits into **two daughters**
     along its axis — **monotonic, NO culling** — until `count ≥ crowdCount` → `.holding`
@@ -139,7 +145,7 @@ cold-start beat phase reads as a slightly-mistimed split, not a wrong-beat firin
 |---|---|
 | **MITOSIS-G2.0** | Throwaway sketch proves the detailed-dividing-cell look at 60 fps; `RENDER_VISUAL=1` contact sheet vs the reference; **Matt approves the look.** ✅ (2026-06-30) |
 | **MITOSIS-G2.1** | Graduate. ✅ (2026-06-30) `MitosisGen2Geometry` (CPU `Cell` list + phase/snap/cull governor, no compute) + `mitosisgen2_fragment` (ported, `g2_`-prefixed) + `Cytokinesis.json`/`MitosisGen2.metal` backdrop + `ParticleGeometryRegistry`/`VisualizerEngine` wiring + count 25→26. Tests green: framerate 4.2 ms/frame @1080p; lifecycle (seed 3 → grows to cap 8, bounded; onset-driven 5 > silent control 3 — the snap mechanism); flash-safe maxΔ 0.015. App build SUCCEEDED, lint 0. Playable uncertified via `showUncertifiedPresets`. |
-| **MITOSIS-G2.2** | Live-M7 iteration on the cell model. ⏳ pending re-look. **Iter 1 (2026-06-30):** Matt's live look rejected the G2.1 capped/cull model ("frequent respawning … cells should not overlap"). Reworked: monotonic growth few→`crowdCount`=40 (no cull), radius shrinks with count (`packRadius`, 0.62 coverage), a circle-packing `relax` so cells never overlap (settled overlap 0.0001 @ 40), then dissolve→regrow cycle; seed cells fade in (flash-safe reseed). Onset-snap removed (music coupling deferred — Matt: attach to music "ultimately"); arc runs autonomously, energy nudges pace. Tests rewritten (`test_growthArcAndPacking`: grows to crowd, non-overlap, dissolves & regrows); framerate 5.3 ms@1080p, flash-safe 0.014, app build + lint 0. → pending Matt's re-look. Later: wire the §1 musical role; tune aster character / crowd density / cycle timing. |
+| **MITOSIS-G2.2** | Live-M7 iteration on the cell model. ⏳ pending re-look. **Iter 1 (2026-06-30):** Matt's live look rejected the G2.1 capped/cull model ("frequent respawning … cells should not overlap"). Reworked: monotonic growth few→`crowdCount`=40 (no cull), radius shrinks with count (`packRadius`, 0.62 coverage), a circle-packing `relax` so cells never overlap (settled overlap 0.0001 @ 40), then dissolve→regrow cycle; seed cells fade in (flash-safe reseed). Onset-snap removed (music coupling deferred — Matt: attach to music "ultimately"); arc runs autonomously, energy nudges pace. Tests rewritten (`test_growthArcAndPacking`: grows to crowd, non-overlap, dissolves & regrows); framerate 5.3 ms@1080p, flash-safe 0.014, app build + lint 0. **Iter 2 (2026-07-01):** Matt "more cell division needed; more space left to fill." Root cause of the gaps found — cells were drawn at only 0.55× their packing radius (`visibleFraction` mapping now fixes it so packing = visible size). Tuned denser + more active: `crowdCount` 40→64, `divPeriod` 11→8, `coverage` = 0.60 visible (max that packs non-overlapping). Overlap 0.0000 @ 64, framerate 3 ms, flash 0.026. → pending Matt's re-look. Later: wire the §1 musical role. |
 | **MITOSIS-G2.3** | Certify: rubric `certifiedPresets` + `expectedAutomatedGate`, `PhotosensitivityCertificationTests.multiPassMeasured` + a `renderMitosisGen2` multi-pass flash harness, sidecar `certified: true`. First certified explicit-cell preset. |
 
 ## 7. Design grounding (descending preference — per checklist)
