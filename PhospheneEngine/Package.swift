@@ -133,6 +133,14 @@ let package = Package(
             path: "Sources/QualityReelAnalyzer"
         ),
         .executableTarget(
+            name: "InstrumentFamilyDumper",
+            dependencies: [
+                "ML",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            path: "Sources/InstrumentFamilyDumper"
+        ),
+        .executableTarget(
             name: "UtilityCostTableUpdater",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),

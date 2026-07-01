@@ -37,7 +37,8 @@ that is a product decision — raise it with Matt, do not infer it.
   PRESET_SESSION_CHECKLIST), SoakRunner (run_soak_test.sh), TempoDumpRunner (dump_tempo_baselines.sh).
 - `retained-diagnostic`: ColdStartVerifier (cold-start phase-correction *runtime* reverted 2026-05-25;
   tool kept per "keep the tools", BEAT_SYNC.md §Cold-Start), BeatThisActivationDumper,
-  QualityReelAnalyzer, UtilityCostTableUpdater.
+  QualityReelAnalyzer, UtilityCostTableUpdater, InstrumentFamilyDumper (IFC.5 per-family
+  activity diagnostic — the ad-hoc surface for eyeballing family firing on a clip).
 
 **Intentional dead-looking code (gated dev instrumentation — keep):**
 - IOI histogram + `dumpHistogram` — DSP.1 baseline capture, gated behind `BEATDETECTOR_DUMP_HIST=1` (D-075).
