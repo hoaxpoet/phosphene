@@ -64,10 +64,10 @@ public struct MitosisGen2Configuration: Sendable {
 
     public init(
         seedCells: Int = 3,
-        crowdCount: Int = 40,
-        maxCells: Int = 64,
-        divPeriod: Float = 11,
-        coverage: Float = 0.62,
+        crowdCount: Int = 64,
+        maxCells: Int = 96,
+        divPeriod: Float = 8,
+        coverage: Float = 0.60,   // max fill that packs provably non-overlapping (0.66 forces overlap)
         holdSeconds: Float = 4,
         dissolveSeconds: Float = 5
     ) {
@@ -168,12 +168,18 @@ public final class MitosisGen2Geometry: ParticleGeometry, @unchecked Sendable {
         SIMD2(min(max(pos.x, -1.7), 1.7), min(max(pos.y, -0.92), 0.92))
     }
 
-    /// Displayed radius so `count` cells fill `coverage` of the screen without overlapping —
-    /// few cells start large (the detail showcase), and they shrink as the colony crowds.
+    /// The shader draws a cell out to ≈ `poleR` × its `radius`, so the VISIBLE radius is
+    /// `visibleFraction · radius`. Packing/collision/coverage use the visible radius; `radius`
+    /// is scaled up by 1/visibleFraction so the drawn cells fill `coverage` and pack touching.
+    private static let visibleFraction: Float = 0.55   // == `poleR` in MitosisGen2.metal
+
+    /// Cell `radius` so `count` cells' VISIBLE disks fill `coverage` of the screen without
+    /// overlapping — few cells start large (the detail showcase), shrinking as the colony crowds.
     private func packRadius(count: Int, aspect: Float) -> Float {
         let screenArea = 4.0 * max(1.0, aspect)            // (2·aspect) × 2 in aspect space
         let perCell = configuration.coverage * screenArea / Float(max(1, count))
-        return min(0.62, max(0.10, (perCell / .pi).squareRoot()))
+        let visible = (perCell / .pi).squareRoot()
+        return min(1.1, max(0.16, visible / Self.visibleFraction))
     }
 
     private func seedColony() {
@@ -215,7 +221,7 @@ public final class MitosisGen2Geometry: ParticleGeometry, @unchecked Sendable {
         }
 
         advanceStage(dt: dt)
-        relax(aspect: aspect, iterations: 4)   // circle-packing → cells never overlap
+        relax(aspect: aspect, iterations: 8)   // circle-packing → cells never overlap (denser fill needs more iters)
     }
 
     /// The grow → hold → dissolve → regrow life-cycle.
@@ -281,8 +287,9 @@ public final class MitosisGen2Geometry: ParticleGeometry, @unchecked Sendable {
     private func relax(aspect: Float, iterations: Int) {
         guard cells.count > 1 else { return }
         func collisionR(_ cell: Cell) -> Float {
-            let sep = smoothstepF(0.2, 1.0, cell.phase)
-            return cell.radius * (1.0 + 0.22 * sep)
+            let sep = Self.smoothstep(0.2, 1.0, cell.phase)
+            // visible radius (+ a hair of margin) inflated with division phase for the dumbbell reach
+            return cell.radius * Self.visibleFraction * (1.05 + 0.55 * sep)
         }
         for _ in 0..<iterations {
             for ia in 0..<cells.count {
@@ -304,11 +311,6 @@ public final class MitosisGen2Geometry: ParticleGeometry, @unchecked Sendable {
                 }
             }
         }
-    }
-
-    private func smoothstepF(_ e0: Float, _ e1: Float, _ x: Float) -> Float {
-        let tn = max(0, min(1, (x - e0) / (e1 - e0)))
-        return tn * tn * (3 - 2 * tn)
     }
 
     public func render(encoder: MTLRenderCommandEncoder, features: FeatureVector) {
@@ -365,18 +367,17 @@ public final class MitosisGen2Geometry: ParticleGeometry, @unchecked Sendable {
 
     /// Live cell count — exposed so the lifecycle test can assert the grow→crowd→regrow arc.
     public var currentCellCount: Int { cells.count }
-    /// Smoothed energy envelope (test).
-    public var currentEnergyEnv: Float { energyEnv }
 
     /// Worst pairwise overlap of the drawn cell circles (`r_a + r_b − dist`); ≤ 0 means no
     /// two cells overlap. Exposed so the packing gate can assert non-overlap (Matt G2.2).
     public var maxPairOverlap: Float {
+        let vf = Self.visibleFraction
         var worst: Float = 0
         for ia in 0..<cells.count {
             for ib in (ia + 1)..<cells.count {
                 let delta = cells[ib].pos - cells[ia].pos
                 let dist = (delta.x * delta.x + delta.y * delta.y).squareRoot()
-                worst = max(worst, cells[ia].radius + cells[ib].radius - dist)
+                worst = max(worst, (cells[ia].radius + cells[ib].radius) * vf - dist)
             }
         }
         return worst

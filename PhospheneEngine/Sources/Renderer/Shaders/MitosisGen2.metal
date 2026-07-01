@@ -156,7 +156,7 @@ fragment float4 mitosisgen2_fragment(VertexOut in [[stage_in]],
     float3 col = float3(0.08, 0.52, 0.14) * fil * 0.55;
 
     // composite each live cell OVER the background (and earlier cells) — opaque objects
-    uint n = min(u.cellCount, 64u);
+    uint n = min(u.cellCount, 96u);
     for (uint i = 0; i < n; i++) {
         float4 c = g2_drawCell(p - cells[i].pos, cells[i].phase, cells[i].radius, cells[i].axis, cells[i].seed);
         col = mix(col, c.rgb, c.a);
