@@ -209,9 +209,17 @@ extension SessionRecorder {
                           stems.vocalsAttackRatio, stems.vocalsEnergySlope,
                           stems.otherOnsetRate, stems.otherCentroid,
                           stems.otherAttackRatio, stems.otherEnergySlope)
-        let pitch = String(format: ",%.3f,%.4f\n",
+        let pitch = String(format: ",%.3f,%.4f",
                            stems.vocalsPitchHz, stems.vocalsPitchConfidence)
-        return base + dev + rich + pitch
+        // IFC.4 (D-177) — per-family instrument activity (smoothed + D-026 dev).
+        // The diagnostic artifact for the family-capture pipeline. New columns
+        // at the END (positional parsers depend on the existing layout).
+        let family = String(format: ",%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f\n",
+                            stems.stringsActivity, stems.stringsActivityDev,
+                            stems.brassActivity, stems.brassActivityDev,
+                            stems.woodwindsActivity, stems.woodwindsActivityDev,
+                            stems.percussionActivity, stems.percussionActivityDev)
+        return base + dev + rich + pitch + family
     }
     // swiftlint:enable multiline_arguments
 }

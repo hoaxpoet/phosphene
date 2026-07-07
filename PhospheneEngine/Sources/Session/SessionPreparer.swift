@@ -87,6 +87,9 @@ public final class SessionPreparer: ObservableObject {
     private let stemAnalyzer: any StemAnalyzing
     private let moodClassifier: any MoodClassifying
     private let beatGridAnalyzer: (any BeatGridAnalyzing)?
+    /// Optional PANNs instrument-family analyzer (IFC.4 / D-177). When `nil`,
+    /// `CachedTrackData.instrumentFamilySeries` is empty for every track.
+    private let familyAnalyzer: (any InstrumentFamilyAnalyzing)?
     /// Optional metadata fetcher used to override ML-detected meter on
     /// odd time-signature tracks. Fetched in parallel with the preview
     /// PCM download during `prepareTrack`. When `nil` (e.g. tests, or no
@@ -156,6 +159,7 @@ public final class SessionPreparer: ObservableObject {
         stemAnalyzer: any StemAnalyzing,
         moodClassifier: any MoodClassifying,
         beatGridAnalyzer: (any BeatGridAnalyzing)? = nil,
+        familyAnalyzer: (any InstrumentFamilyAnalyzing)? = nil,
         metadataFetcher: MetadataPreFetcher? = nil,
         cache: StemCache = StemCache(),
         sessionRecorder: SessionRecorder? = nil,
@@ -167,6 +171,7 @@ public final class SessionPreparer: ObservableObject {
         self.stemAnalyzer = stemAnalyzer
         self.moodClassifier = moodClassifier
         self.beatGridAnalyzer = beatGridAnalyzer
+        self.familyAnalyzer = familyAnalyzer
         self.metadataFetcher = metadataFetcher
         self.cache = cache
         self.sessionRecorder = sessionRecorder
@@ -592,6 +597,7 @@ public final class SessionPreparer: ObservableObject {
         let analyzer = stemAnalyzer
         let classifier = moodClassifier
         let gridAnalyzer = beatGridAnalyzer
+        let famAnalyzer = familyAnalyzer
 
         do {
             return try await Task.detached(priority: .userInitiated) {
@@ -601,6 +607,7 @@ public final class SessionPreparer: ObservableObject {
                     analyzer: analyzer,
                     classifier: classifier,
                     beatGridAnalyzer: gridAnalyzer,
+                    familyAnalyzer: famAnalyzer,
                     prefetchedProfile: profile
                 )
             }.value

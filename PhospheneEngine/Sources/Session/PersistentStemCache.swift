@@ -42,6 +42,7 @@
 
 import DSP
 import Foundation
+import ML
 import Shared
 
 // MARK: - Errors
@@ -124,6 +125,11 @@ private struct PersistentStemCacheEntryMetadata: Codable {
     /// AVAsset.commonMetadata-extracted title / artist / album. Added in
     /// schema v2 (LF.5). Nil when the source file shipped no metadata.
     let metadata: LocalFileMetadata?
+    /// Per-window instrument-family activity series (Layer 5a, IFC.6 / D-177).
+    /// Added in schema v6. Optional so a decode never fails on it; empty on
+    /// non-orchestral tracks. Without it, a disk-cache hit on a local
+    /// orchestral file replays with no family activity (the sections go dark).
+    let instrumentFamilySeries: [InstrumentFamilyActivity]?
 }
 
 // MARK: - PersistentStemCache
@@ -163,7 +169,11 @@ public final class PersistentStemCache: @unchecked Sendable {
     ///                       payload decodes identically, but v4 entries hold the old
     ///                       novelty boundaries, so they must be re-analysed for the real
     ///                       sections to reach the planner.
-    public static let currentSchemaVersion: Int = 5
+    ///   v6 (IFC.6 / D-177) — adds `instrumentFamilySeries` (the per-window PANNs
+    ///                       instrument-family activity, Layer 5a). v5 entries lack it, so an
+    ///                       orchestral local file cached under v5 would replay with no family
+    ///                       activity — re-analyse so the family series reaches the preset.
+    public static let currentSchemaVersion: Int = 6
 
     /// Names of the stem `.f32` files. Order matches `CachedTrackData.stemWaveforms`
     /// (`[vocals, drums, bass, other]`).
@@ -298,7 +308,8 @@ public final class PersistentStemCache: @unchecked Sendable {
                 trackProfile: metadata.trackProfile,
                 beatGrid: metadata.beatGrid,
                 drumsBeatGrid: metadata.drumsBeatGrid,
-                gridOnsetOffsetMs: metadata.gridOnsetOffsetMs
+                gridOnsetOffsetMs: metadata.gridOnsetOffsetMs,
+                instrumentFamilySeries: metadata.instrumentFamilySeries ?? []
             )
 
             // Artwork is optional — missing file or empty bytes is fine.
@@ -347,7 +358,8 @@ public final class PersistentStemCache: @unchecked Sendable {
                 gridOnsetOffsetMs: data.gridOnsetOffsetMs,
                 stemSampleCounts: sampleCounts,
                 decodedDuration: decodedDuration,
-                metadata: metadata.isEmpty ? nil : metadata
+                metadata: metadata.isEmpty ? nil : metadata,
+                instrumentFamilySeries: data.instrumentFamilySeries.isEmpty ? nil : data.instrumentFamilySeries
             )
 
             // Write stems first so a partial-store leaves metadata

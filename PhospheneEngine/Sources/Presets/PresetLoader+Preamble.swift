@@ -157,9 +157,19 @@ extension PresetLoader {
             // sky; zero on other presets.
             float aurora_orbit_azimuth;
 
-            // Padding to 256 bytes (floats 48–64).
-            float _pad6,  _pad7,  _pad8;
-            float _pad9,  _pad10, _pad11, _pad12, _pad13, _pad14, _pad15, _pad16;
+            // IFC.4 / D-177 instrument-family activity (floats 48–55) — reclaimed
+            // from `_pad6`…`_pad13`. Per-family activity sampled from the preview
+            // PANNs sweep by playback position. `*_activity` = smoothed absolute;
+            // `*_activity_dev` = positive D-026 deviation (the trigger — drive
+            // presets from `_dev`, not the absolutes, per Failed Approach #31).
+            // Zero on tracks with no cached series (non-orchestral / cache-miss).
+            float strings_activity;    float strings_activity_dev;
+            float brass_activity;      float brass_activity_dev;
+            float woodwinds_activity;  float woodwinds_activity_dev;
+            float percussion_activity; float percussion_activity_dev;
+
+            // Padding to 256 bytes (floats 56–64).
+            float _pad14, _pad15, _pad16;
             float _pad17, _pad18, _pad19, _pad20, _pad21, _pad22;
         };
 
