@@ -1,17 +1,19 @@
-// RicercarSubstrateTest — Ricercar.2 gate-before-the-gate (RICERCAR_DESIGN §7).
+// RicercarSubstrateTest — IFC.6 per-section painterly marks driven by real instrument-family capture.
 //
 // Drives the Ricercar preset through the SAME live mv_warp dispatch path the app runs
 // (scene → warp → marks-on-top overlay → blit → swap, in a loop) via the headless
 // `renderMVWarpToTexture` seam — feedback persists across frames through the production swap.
-// Ricercar.2 has NO CPU state (Path A: the flow warp + hand-fed colour masses are closed-form
-// f(features.time)), so the harness is the generic mv_warp setup with NO follower (unlike Skein).
 //
-// The substrate's headline property is the INVERSE of Skein's canvas-hold Hamming-0: the field must
-// ADVECT and BREATHE, not freeze. The assertions: (1) colour is deposited and persists; (2) the field
-// changes frame-to-frame (it flows, it does not hold); (3) it never goes black — decay is toward the
-// LIGHT GROUND (D-037 by construction, the `ricercar_warp_fragment` override, D-175). The real gate is
-// the env-gated contact sheet (RICERCAR_VISUAL=1 / RENDER_VISUAL=1): does it READ as flowing, merging
-// painterly colour? If not, re-tune before any voices land.
+// IFC.6 (D-177): sections no longer paint unconditionally — each wakes on its family's `*_activity_dev`
+// (the drive-layer swap). So the harness now FEEDS staggered per-family activity (`ricercarFamilyStem`)
+// to exercise the sections; with zero stems nothing would paint (the family-dormant contract). The
+// schedule stands the orchestra up section by section (strings throughout, brass ~3 s, woodwinds ~7 s,
+// percussion hits) so the contact sheet shows the five sections entering.
+//
+// Assertions: (1) the section strokes paint colour when their family sounds; (2) canvas-HOLD — coverage
+// only accumulates (no decay, the painting builds); (3) it never goes black — the LIGHT GROUND (D-037).
+// The real gate is the env-gated contact sheet (RICERCAR_VISUAL=1 / RENDER_VISUAL=1): does it READ as
+// the orchestra painting itself, section by section? Live M7 (Matt) is the perceptual gate.
 
 import Testing
 import Metal
@@ -23,7 +25,7 @@ import Foundation
 @testable import Presets
 @testable import Shared
 
-@Suite("Ricercar.3 — per-section painterly marks (canvas-hold)")
+@Suite("Ricercar IFC.6 — family-driven per-section painterly marks (canvas-hold)")
 @MainActor
 struct RicercarSubstrateTest {
 
@@ -46,13 +48,13 @@ struct RicercarSubstrateTest {
 
         let (pipeline, ctx, preset) = try makeRicercarPipeline()
         let outTex = try makeOutputTexture(ctx)
-        let stem = StemFeatures()                        // zero stems — substrate is time-driven only
 
         var captured: [Int: [UInt8]] = [:]
         var pixels = [UInt8](repeating: 0, count: w * h * 4)
 
         for i in 0..<frames {
             var fv = FeatureVector(time: Float(i) * dt, deltaTime: dt, aspectRatio: Float(w) / Float(h))
+            let stem = ricercarFamilyStem(atSeconds: Float(i) * dt)   // IFC.6: sections wake on family dev
             guard let cmd = ctx.commandQueue.makeCommandBuffer(),
                   let warpState = pipeline.mvWarpState else {
                 throw RicercarTestError.setup("command buffer / warp state")
@@ -103,12 +105,12 @@ struct RicercarSubstrateTest {
 
         let (pipeline, ctx, preset) = try makeRicercarPipeline()
         let outTex = try makeOutputTexture(ctx)
-        let stem = StemFeatures()
         var captured: [Int: [UInt8]] = [:]
         var pixels = [UInt8](repeating: 0, count: w * h * 4)
 
         for i in 0..<frames {
             var fv = FeatureVector(time: Float(i) * dt, deltaTime: dt, aspectRatio: Float(w) / Float(h))
+            let stem = ricercarFamilyStem(atSeconds: Float(i) * dt)
             guard let cmd = ctx.commandQueue.makeCommandBuffer(), let warpState = pipeline.mvWarpState else {
                 throw RicercarTestError.setup("command buffer / warp state")
             }
@@ -134,6 +136,22 @@ struct RicercarSubstrateTest {
           → ricercar_substrate_contact_sheet.png  +  ricercar_t01/03/07/15s.png
         """)
         #expect(tiles.count == checkpoints.count, "Missing contact-sheet checkpoints.")
+    }
+
+    // MARK: - IFC.6 family-activity feed
+
+    /// Staggered per-family activity (the orchestra painting itself, section by section). Values are
+    /// above the shader's per-family wake floor/saturation (measured from the dumper corpus). Strings
+    /// run throughout; brass enters ~3 s, woodwinds ~7 s; percussion pulses. `f.bass`/`f.treble` are
+    /// left zero here, so the strings low/high split falls to the shader's 50/50 fallback — both string
+    /// register sections paint (indigo + scarlet), which is what the harness needs to prove five sections.
+    private func ricercarFamilyStem(atSeconds s: Float) -> StemFeatures {
+        var st = StemFeatures()
+        st.stringsActivityDev    = 0.45                                       // strings sing throughout
+        st.brassActivityDev      = s > 3 ? 0.65 : 0.0                         // brass enters ~3 s
+        st.woodwindsActivityDev  = s > 7 ? 0.32 : 0.0                         // woodwinds enter ~7 s
+        st.percussionActivityDev = s.truncatingRemainder(dividingBy: 2.0) < 0.25 ? 0.18 : 0.0  // hits ~every 2 s
+        return st
     }
 
     // MARK: - Setup (generic mv_warp; mirrors MultiPassFlashHarnessTests.configureMVWarp for the no-follower path)
