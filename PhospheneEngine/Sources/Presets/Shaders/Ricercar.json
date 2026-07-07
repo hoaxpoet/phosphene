@@ -2,7 +2,7 @@
   "name": "Ricercar",
   "duration": 45,
   "family": "painterly",
-  "description": "The orchestra painting itself (Ricercar.3 — per-section mark engine, D-176). Each orchestral SECTION has a distinct painterly identity (colour + weight + texture + material); the painting builds in sync with the music (identity first, sync second). Spirit of Fantasia, elegant + luminous on a LIGHT canvas — the elegant/luminous sibling of Skein, built on Skein's canvas-hold marks-on-top engine (graceful composed strokes, not Pollock drip). Ricercar.3 shows 3 of the 5 sections (basses/violas/flutes), hand-fed; the full five + audio sync are Ricercar.4/.5. See docs/presets/RICERCAR_DESIGN.md §CONCEPT.",
+  "description": "The orchestra painting itself (IFC.6 — per-section mark engine driven by real instrument-family capture, D-176/D-177). Each orchestral SECTION has a distinct painterly identity (colour + weight + texture + material) and paints only while its family sounds: low-strings (indigo, heavy), brass (gold, glossy), woodwinds (russet, matte), high-strings (scarlet, crisp) weave on their register bands; percussion sparkles on hits. Five sections activated by the D-026 per-family deviation (strings split low/high by register); spirit of Fantasia, elegant + luminous on a LIGHT canvas — the elegant/luminous sibling of Skein, built on Skein's canvas-hold marks-on-top engine (graceful composed strokes, not Pollock drip). See docs/presets/RICERCAR_DESIGN.md §CONCEPT + §IFC.6.",
   "author": "Matt",
   "passes": ["direct", "mv_warp"],
   "fragment_function": "ricercar_fragment",
