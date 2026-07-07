@@ -41,6 +41,38 @@ Everything below predates this revision — read it through the lens above.
 
 ---
 
+## IFC.6 — the drive-layer swap: REAL instrument-family capture (2026-07-07, D-177)
+
+R.3 shipped three HAND-FED sections (closed-form `f(time)`, no audio). IFC.6 replaces the hand-feed with the real instrument-family capture (StemFeatures floats 48–55, the preview-clip PANNs sweep sampled by playback position): **each section paints only while its family sounds above its own running mean.** This resolves Matt's Ricercar hold ("unless there is instrument separation, I will hold") — the sections are now driven by actual detected instrument families, not a register proxy alone.
+
+**Section mapping (Matt's IFC.6 product call).** The capture is TIMBRE-family-based (strings / brass / woodwinds / percussion), not register-based — so the painterly sections became the families. **Five sections:**
+
+| Section | Family driver | Colour | Weight / material | Canvas band |
+|---|---|---|---|---|
+| **Low-strings** | `strings_activity_dev` × low-register frac | deep indigo | heaviest, broad, gloopy/smeared | low |
+| **Brass** | `brass_activity_dev` | burnished gold | heavy but GLOSSY (tight edge) | low-mid |
+| **Woodwinds** | `woodwinds_activity_dev` | warm russet | medium, soft-grained matte | centre |
+| **High-strings** | `strings_activity_dev` × high-register frac | scarlet / rose | medium-light, crisp singing | high-mid |
+| **Percussion** | `percussion_activity_dev` | cool teal glint | SPARKLE (flecks on hits, not a weaving line) | scattered |
+
+- **Strings split low/high (the 5th section)** — PANNs is family-level (can't split cello vs violin), so the split is REGISTER-based: partition the strings dev by the 3-band `bass`/`treble` balance so the two register sections **trade** (they sum to the family dev, never double — FA #67). The register ratio is a position mask; gating stays on the strings dev (FA #31). Matt chose 5 (richer) over 4 knowing the split is a proxy.
+- **Percussion = sparkle** (Matt's call) — percussion is transient (hits, not a sustained line), so it paints as bright teal flecks on `percussion_activity_dev` spikes, not a weaving stroke. Teal because a light silver-white would vanish on the cream canvas (the reference "bells sparkle" colour reads on light).
+
+**Measured drive constants (IFC.6 dumper corpus — Sym5 / Gran Partita / Clarinet Concerto, NOT guessed).** Per-family dev p99 at `devGain` 2.0: strings 0.45, brass 0.89, woodwinds 0.37, percussion 0.05; the near-zero leader-flap (the IFC.5 finding) lives below the pooled dev p75 ≈ 0.012.
+- **Wake floor = 0.04** — kills the flap (real family entries sit ≥ 0.05).
+- **Per-section saturation = each family's own dev p99** (strings-split 0.30 partitioned, brass 0.85, woodwinds 0.35, percussion 0.20) — a characteristic strong entry paints FULL regardless of the family's natural loudness (soft-saturate vs p99, not vs 1.0). This normalizes the VISUAL response despite genuinely different per-family dynamic ranges.
+- **`devGain` stays 2.0** — confirmed, not changed: brass (the loud, peaky family) p99 0.89 already sits at the band-primitive target (~0.85), and the families' different ranges CANNOT be normalized by a single global gain (lifting woodwinds would clip brass past 1.0). Per-section saturation in the shader is the right normalizer, not the gain.
+
+**Ceilings designed around (IFC.5 §3/§13).** Family-level only (not oboe-vs-clarinet); sustained winds over strings read as strings; buried families approximate (drive off each family's OWN dev); brass absolute over-calls (that's why the design drives off `dev`). The preset is forgiving/evocative, not a transcription. **Layer-5a alignment (accepted):** the family series is the 30 s preview sampled by playback position and CLAMPS past 30 s (family drive freezes on the last window). For a held-canvas painting that BUILDS this is acceptable — a small phase error reads as a small offset, and after 30 s the composition holds with the last-active families. Live-tap PANNs (Layer 5b) is the mitigation, deferred/optional.
+
+**Persistence (IFC.6).** The per-window series is now persisted to `PersistentStemCache` (schema v6) so a disk-cache hit on a local orchestral file replays with its family activity (was in-memory only in IFC.4).
+
+**Wiring.** Shader-only in the preset — the marks VERTEX reads live `StemFeatures` at buffer(1) (already bound by `drawSceneGeometryOverlay`), computes the five activations, flat-passes them to the fragment; no renderer change. The live sampling/install path (IFC.4) is unchanged.
+
+**Status: code-complete, pending live M7** (Matt's eye + ear on the BWV 565 local file + orchestral tracks). A visual/temporal preset is not "resolved" until Matt confirms live.
+
+---
+
 ## 0. Verdict
 
 **Feasible today with no new audio/feature primitives and one bounded, audited engine touch.** Ricercar is assembled from two already-certified stacks:
