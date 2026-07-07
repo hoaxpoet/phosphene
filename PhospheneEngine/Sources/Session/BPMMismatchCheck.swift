@@ -214,17 +214,30 @@ public func assessBeatIrregularity(
     foldedDisagreementThreshold: Double = 0.10,
     barConfidenceFloor: Float = 0.2
 ) -> Bool? {
-    guard gridBPM.isFinite, drumsBPM.isFinite, gridBPM > 0, drumsBPM > 0 else {
+    guard let disagreement = foldedBPMDisagreement(gridBPM, drumsBPM) else {
         return nil   // missing estimator — unknown, not irregular
     }
-    // Fold the ratio into [1, 2): octave (half/double-time) relations are fine.
-    var ratio = max(gridBPM, drumsBPM) / min(gridBPM, drumsBPM)
-    while ratio >= 2.0 { ratio /= 2.0 }
-    // Distance to the nearest "clean" relation: 1:1 at ratio 1.0 — but a folded
-    // ratio just under 2.0 is also clean (it was an exact octave before a tiny
-    // error pushed it below the fold), so measure to the nearer of {1.0, 2.0}.
-    let disagreement = min(ratio - 1.0, 2.0 - ratio)
     if disagreement > foldedDisagreementThreshold { return true }
     if barConfidence < barConfidenceFloor { return true }
     return false
+}
+
+/// Octave-folded disagreement between two BPM values, in `[0, 1)`.
+///
+/// The continuous evidence behind `assessBeatIrregularity` (D-154), extracted so
+/// the production gate and the CENSUS batch harness compute it identically.
+/// Folds the ratio into `[1, 2)` (half/double-time octave relations are clean),
+/// then returns the distance to the nearer of `{1.0, 2.0}` — 0 for a 1:1 or exact
+/// octave relation, larger for genuinely non-octave disagreement (Pyramid Song:
+/// 57 % raw → ~0.17 folded).
+///
+/// - Returns: the folded disagreement, or `nil` if either input is non-finite or
+///   non-positive (missing estimator).
+public func foldedBPMDisagreement(_ lhs: Double, _ rhs: Double) -> Double? {
+    guard lhs.isFinite, rhs.isFinite, lhs > 0, rhs > 0 else { return nil }
+    var ratio = max(lhs, rhs) / min(lhs, rhs)
+    while ratio >= 2.0 { ratio /= 2.0 }
+    // A folded ratio just under 2.0 is also clean (it was an exact octave before a
+    // tiny error pushed it below the fold), so measure to the nearer of {1.0, 2.0}.
+    return min(ratio - 1.0, 2.0 - ratio)
 }
