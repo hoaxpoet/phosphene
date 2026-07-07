@@ -8,7 +8,9 @@
 /// Floats 25–40: MV-3a rich metadata (4 per stem: onsetRate, centroid, attackRatio, energySlope).
 /// Floats 41–42: MV-3c vocal pitch (vocalsPitchHz, vocalsPitchConfidence).
 /// Float 43:     V.9 / D-127 drumsEnergyDev 150 ms τ EMA (aurora curtain intensity).
-/// Floats 44–64: padding to 256-byte boundary.
+/// Float 44:      CSP.3 cachedBassProportion. Floats 45–47: FBS aurora hue/punch/orbit.
+/// Floats 48–55: IFC.4 / D-177 instrument-family activity (4 families × {Activity, ActivityDev}).
+/// Floats 56–64: padding to 256-byte boundary.
 ///
 /// Band slot semantics:
 /// - **vocals**: band0 = presence (1–4 kHz), band1 = air (4–8 kHz)
@@ -188,11 +190,35 @@ public struct StemFeatures: Sendable, Equatable {
     /// Slot reclaimed from `_sfPad5`; layout of floats 1–46 unchanged.
     public var auroraOrbitAzimuth: Float
 
-    // --- Floats 48–64: padding to 256 bytes (17 floats) ---
+    // --- Floats 48–55: IFC.4 / D-177 instrument-family activity (Layer 5a) ---
+    // Per-family activity sampled from the preview-clip PANNs sweep by live
+    // playback position (`InstrumentFamilyActivity.sample`). `Activity` is the
+    // smoothed absolute level; `ActivityDev` the positive D-026 deviation — the
+    // clean trigger. Drive presets from `*ActivityDev`, NOT the absolutes (Failed
+    // Approach #31). Zero on tracks with no cached series (cleared on track
+    // change). Renderer-transient — populated each frame via
+    // `RenderPipeline.setInstrumentFamilyActivity`; excluded from Codable like the
+    // padding floats. Slots reclaimed from `_sfPad6`…`_sfPad13`.
+    /// Strings smoothed activity (bowed-string core + harp).
+    public var stringsActivity: Float
+    /// Strings positive deviation (D-026) — the trigger.
+    public var stringsActivityDev: Float
+    /// Brass smoothed activity.
+    public var brassActivity: Float
+    /// Brass positive deviation (D-026) — the trigger.
+    public var brassActivityDev: Float
+    /// Woodwinds smoothed activity.
+    public var woodwindsActivity: Float
+    /// Woodwinds positive deviation (D-026) — the trigger.
+    public var woodwindsActivityDev: Float
+    /// Percussion smoothed activity (orchestral, timpani-anchored).
+    public var percussionActivity: Float
+    /// Percussion positive deviation (D-026) — the trigger.
+    public var percussionActivityDev: Float
+
+    // --- Floats 56–64: padding to 256 bytes (9 floats) ---
     // swiftlint:disable identifier_name
-    var _sfPad6: Float; var _sfPad7: Float; var _sfPad8: Float
-    var _sfPad9: Float; var _sfPad10: Float; var _sfPad11: Float; var _sfPad12: Float
-    var _sfPad13: Float; var _sfPad14: Float; var _sfPad15: Float; var _sfPad16: Float
+    var _sfPad14: Float; var _sfPad15: Float; var _sfPad16: Float
     var _sfPad17: Float; var _sfPad18: Float; var _sfPad19: Float; var _sfPad20: Float
     var _sfPad21: Float; var _sfPad22: Float
     // swiftlint:enable identifier_name
@@ -233,9 +259,11 @@ public struct StemFeatures: Sendable, Equatable {
         self.auroraPalettePhase = 0
         self.totalEnergySmoothed = 0
         self.auroraOrbitAzimuth = 0
-        self._sfPad6  = 0; self._sfPad7  = 0; self._sfPad8  = 0
-        self._sfPad9  = 0; self._sfPad10 = 0; self._sfPad11 = 0; self._sfPad12 = 0
-        self._sfPad13 = 0; self._sfPad14 = 0; self._sfPad15 = 0; self._sfPad16 = 0
+        self.stringsActivity = 0; self.stringsActivityDev = 0
+        self.brassActivity = 0; self.brassActivityDev = 0
+        self.woodwindsActivity = 0; self.woodwindsActivityDev = 0
+        self.percussionActivity = 0; self.percussionActivityDev = 0
+        self._sfPad14 = 0; self._sfPad15 = 0; self._sfPad16 = 0
         self._sfPad17 = 0; self._sfPad18 = 0; self._sfPad19 = 0; self._sfPad20 = 0
         self._sfPad21 = 0; self._sfPad22 = 0
     }

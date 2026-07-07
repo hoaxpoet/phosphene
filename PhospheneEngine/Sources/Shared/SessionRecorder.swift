@@ -472,7 +472,9 @@ public final class SessionRecorder: @unchecked Sendable {
             bassOnsetRate,bassCentroid,bassAttackRatio,bassEnergySlope,\
             vocalsOnsetRate,vocalsCentroid,vocalsAttackRatio,vocalsEnergySlope,\
             otherOnsetRate,otherCentroid,otherAttackRatio,otherEnergySlope,\
-            vocalsPitchHz,vocalsPitchConfidence
+            vocalsPitchHz,vocalsPitchConfidence,\
+            stringsActivity,stringsActivityDev,brassActivity,brassActivityDev,\
+            woodwindsActivity,woodwindsActivityDev,percussionActivity,percussionActivityDev
 
             """
         FileManager.default.createFile(atPath: featuresCSVURL.path,

@@ -437,6 +437,16 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// use in `runLiveBeatAnalysisIfNeeded()` — weight loading is heavy.
     var liveBeatGridAnalyzer: DefaultBeatGridAnalyzer?
 
+    /// IFC.4 (D-177) — PANNs instrument-family analyzer for the LF pre-analysis
+    /// path. Eager-init alongside the LF beat-grid analyzer; nil → empty series.
+    var liveFamilyAnalyzer: InstrumentFamilyAnalyzer?
+
+    /// IFC.4 (D-177) — the active track's preview-derived instrument-family
+    /// activity series (Layer 5a). Installed at track change from the cache;
+    /// sampled by playback position each analysis frame. Empty → family fields
+    /// clear to zero. Cleared on every track-change path (anti-leak, §What NOT To Do).
+    var currentFamilySeries: [InstrumentFamilyActivity] = []
+
     /// Number of live Beat This! analysis attempts made for the current track.
     /// Reset to 0 on `resetStemPipeline(for:)`. Allows one retry at 20 s if the
     /// first attempt at 10 s returns an empty grid (e.g. quiet intros, complex

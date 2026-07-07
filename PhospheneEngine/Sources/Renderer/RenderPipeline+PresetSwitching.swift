@@ -218,8 +218,40 @@ extension RenderPipeline {
         stemFeaturesLock.withLock {
             var next = features
             next.cachedBassProportion = latestStemFeatures.cachedBassProportion
+            // IFC.4 (D-177) — instrument-family activity is Layer 5a (preview-
+            // derived), updated by `setInstrumentFamilyActivity` on the analysis
+            // frame, NOT by live per-frame stem analysis. Preserve it across the
+            // ~5 s live stem pushes (same contract as `cachedBassProportion`).
+            next.stringsActivity = latestStemFeatures.stringsActivity
+            next.stringsActivityDev = latestStemFeatures.stringsActivityDev
+            next.brassActivity = latestStemFeatures.brassActivity
+            next.brassActivityDev = latestStemFeatures.brassActivityDev
+            next.woodwindsActivity = latestStemFeatures.woodwindsActivity
+            next.woodwindsActivityDev = latestStemFeatures.woodwindsActivityDev
+            next.percussionActivity = latestStemFeatures.percussionActivity
+            next.percussionActivityDev = latestStemFeatures.percussionActivityDev
             latestStemFeatures = next
             latestStemFeaturesAreLive = live
+        }
+    }
+
+    /// IFC.4 (D-177) — write the per-family instrument activity into the live
+    /// `StemFeatures` (floats 48–55). Called each analysis frame from the app
+    /// layer with the cached preview series sampled by playback position
+    /// (`InstrumentFamilyActivity.sample`). Pass `.zero` SIMD4s to clear (track
+    /// with no cached series / track change). Preserved across the ~5 s live
+    /// `setStemFeatures` pushes. Family order: strings, brass, woodwinds,
+    /// percussion (matches `InstrumentFamily.allCases`). Thread-safe.
+    public func setInstrumentFamilyActivity(smoothed: SIMD4<Float>, dev: SIMD4<Float>) {
+        stemFeaturesLock.withLock {
+            latestStemFeatures.stringsActivity = smoothed.x
+            latestStemFeatures.stringsActivityDev = dev.x
+            latestStemFeatures.brassActivity = smoothed.y
+            latestStemFeatures.brassActivityDev = dev.y
+            latestStemFeatures.woodwindsActivity = smoothed.z
+            latestStemFeatures.woodwindsActivityDev = dev.z
+            latestStemFeatures.percussionActivity = smoothed.w
+            latestStemFeatures.percussionActivityDev = dev.w
         }
     }
 

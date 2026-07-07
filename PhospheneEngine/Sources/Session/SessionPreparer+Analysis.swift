@@ -73,6 +73,7 @@ extension SessionPreparer {
         analyzer: any StemAnalyzing,
         classifier: any MoodClassifying,
         beatGridAnalyzer: (any BeatGridAnalyzing)? = nil,
+        familyAnalyzer: (any InstrumentFamilyAnalyzing)? = nil,
         prefetchedProfile: PreFetchedTrackProfile? = nil
     ) throws -> CachedTrackData {
 
@@ -145,6 +146,12 @@ extension SessionPreparer {
         // Step 7 (BUG-007.8): per-track grid-vs-onset offset calibration.
         let gridOnsetOffsetMs = Self.computeGridOnsetOffsetMs(preview: preview, grid: beatGrid)
 
+        // Step 8 (IFC.4 / D-177): PANNs family-activity sweep over the preview clip (Tier-1; nil → empty).
+        // The PREPPERF.2 TIMING scaffolding (clock/stageStart/durationMs) was removed on main; the family
+        // analysis itself is unchanged.
+        let familySeries = familyAnalyzer?.analyzeFamilyActivity(
+            samples: preview.pcmSamples, sampleRate: Double(preview.sampleRate)) ?? []
+
         let profile = TrackProfile(
             bpm: mir.bpm,
             key: mir.key,
@@ -161,7 +168,8 @@ extension SessionPreparer {
             trackProfile: profile,
             beatGrid: beatGrid,
             drumsBeatGrid: drumsBeatGrid,
-            gridOnsetOffsetMs: gridOnsetOffsetMs
+            gridOnsetOffsetMs: gridOnsetOffsetMs,
+            instrumentFamilySeries: familySeries
         )
     }
 

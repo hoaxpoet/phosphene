@@ -129,6 +129,15 @@ extension VisualizerEngine {
             }
             return analyzer
         }()
+        // IFC.4 (D-177) — PANNs instrument-family analyzer for orchestral
+        // section capture. nil → empty family series (graceful degrade).
+        let familyAnalyzer: (any InstrumentFamilyAnalyzing)? = {
+            guard let analyzer = try? InstrumentFamilyAnalyzer(device: device) else {
+                initLogger.warning("InstrumentFamilyAnalyzer init failed — family activity disabled")
+                return nil
+            }
+            return analyzer
+        }()
         let preparer = SessionPreparer(
             resolver: PreviewResolver(),
             downloader: PreviewDownloader(),
@@ -136,6 +145,7 @@ extension VisualizerEngine {
             stemAnalyzer: analyzer,
             moodClassifier: classifier ?? MoodClassifier(),
             beatGridAnalyzer: beatGridAnalyzer,
+            familyAnalyzer: familyAnalyzer,
             metadataFetcher: metadataFetcher,
             sessionRecorder: sessionRecorder
         )
