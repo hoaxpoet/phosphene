@@ -65,7 +65,11 @@ public struct FamilyReading: Sendable {
 
 /// Per-family activity for one analysis window. Arrays are aligned to
 /// `InstrumentFamily.allCases` order (strings, brass, woodwinds, percussion).
-public struct InstrumentFamilyActivity: Sendable {
+///
+/// `Codable` (IFC.6) so the per-clip series persists in `PersistentStemCache`
+/// (schema v6) — otherwise a disk-cached local orchestral file replays with no
+/// family activity (the IFC.4 deferred follow-up).
+public struct InstrumentFamilyActivity: Sendable, Codable {
     /// Max class probability per family (un-smoothed).
     public let raw: [Float]
     /// Raw, temporally smoothed by the tracker's short EMA.
