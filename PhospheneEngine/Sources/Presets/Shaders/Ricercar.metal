@@ -174,9 +174,9 @@ vertex RicercarGeoVertexOut ricercar_geometry_vertex(
 }
 
 // Percussion SPARKLE (Matt's IFC.6 call — percussion is transient, flecks not a weaving line). A sparse
-// animated hash-dot field gated by percussion activation: bright silver specks that land on hits. On the
-// held canvas they deposit where percussion fired (percussion is near-zero most of the time, so the
-// field stays sparse — the specks accumulate as the piece's hit-print, not a flood).
+// animated hash-dot field gated by percussion activation: teal glints that land on hits (colour set at the
+// call site). On the held canvas they deposit where percussion fired (percussion is near-zero most of the
+// time, so the field stays sparse — the specks accumulate as the piece's hit-print, not a flood).
 static inline float ricHash(float2 c) {
     return fract(sin(dot(c, float2(127.1, 311.7))) * 43758.5453);
 }
