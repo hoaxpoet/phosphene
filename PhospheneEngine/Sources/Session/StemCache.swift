@@ -48,9 +48,9 @@ public struct CachedTrackData: Sendable {
     /// clip (2 s window / 1 s hop, in playback order). Layer 5a: available from
     /// frame 1 but not time-aligned to live playback; the live frame samples it
     /// by playback position (`InstrumentFamilyActivity.sample`). Empty when no
-    /// `InstrumentFamilyAnalyzing` was wired. In-memory only — NOT persisted to
-    /// `PersistentStemCache` (IFC.4 scope; disk-cache reload yields an empty
-    /// series → family fields clear to 0, the no-activity fallback).
+    /// `InstrumentFamilyAnalyzing` was wired. Persisted to `PersistentStemCache`
+    /// (schema v6, IFC.6) so a disk-cache hit on a local orchestral file carries
+    /// its family series; empty on non-orchestral tracks (the no-activity fallback).
     public let instrumentFamilySeries: [InstrumentFamilyActivity]
 
     // MARK: - Init

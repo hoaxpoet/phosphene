@@ -8,6 +8,7 @@
 import Foundation
 import Testing
 @testable import DSP
+@testable import ML
 @testable import Session
 @testable import Shared
 
@@ -146,6 +147,36 @@ struct PersistentStemCacheTests {
         #expect(loaded.stemFeatures.vocalsPitchConfidence == 0.83)
         #expect(loaded.stemFeatures.cachedBassProportion == 0.34)
         #expect(loaded.stemFeatures.drumsEnergyDevSmoothed == 0.12)
+    }
+
+    @Test("Roundtrip preserves the instrument-family series (schema v6, IFC.6)")
+    func test_roundtrip_instrumentFamilySeries() throws {
+        let tempDir = try Self.makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        let cache = try PersistentStemCache(rootDirectory: tempDir)
+
+        // A 3-window series with distinct per-window/per-family values.
+        let series: [InstrumentFamilyActivity] = (0..<3).map { i in
+            let v = Float(i + 1) / 10
+            return InstrumentFamilyActivity(
+                raw: [v, v + 0.01, v + 0.02, v + 0.03],
+                smoothed: [v, v, v, v],
+                rel: [0, 0.1, 0.2, 0.3],
+                dev: [v, 0, v, 0])
+        }
+        let data = CachedTrackData(
+            stemWaveforms: (0..<4).map { _ in [Float]([0.1, 0.2, 0.3]) },
+            stemFeatures: .zero,
+            trackProfile: TrackProfile(),
+            instrumentFamilySeries: series)
+
+        try cache.store(data, hash: Self.fixtureHash, decodedDuration: Self.defaultDuration)
+        let loaded = try cache.load(hash: Self.fixtureHash).cached.instrumentFamilySeries
+        #expect(loaded.count == 3, "series window count survives the round-trip")
+        // Float→Double→Float JSON round-trip is lossless, so compare to the originals.
+        #expect(loaded[1].raw == series[1].raw)
+        #expect(loaded[2].dev == series[2].dev)
+        #expect(loaded[0].smoothed == series[0].smoothed)
     }
 
     @Test("Load on a non-existent hash throws corruptMetadata")
