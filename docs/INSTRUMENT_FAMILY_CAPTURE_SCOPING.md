@@ -109,7 +109,7 @@ The 2026-06-29 spike is reproducible:
 | 3 | Per-family activity + normalization | ✅ IFC.3 (2026-06-30) — `InstrumentFamilyActivity` + taxonomy + D-026 tracker |
 | 4 | Pipeline integration (+ attribution notice) | ✅ IFC.4 (2026-06-30) — `InstrumentFamilyAnalyzer` runs in `analyzePreview`; series on `CachedTrackData`; StemFeatures floats 48–55 + Metal mirror + CSV; live sample-by-position; CREDITS PANNs section |
 | 5 | Validation | ✅ IFC.5 (2026-06-30) — `InstrumentFamilyDumper` + production-path validation on real audio + full-orchestra corpus (strings-dominant / brass / brass↔woodwind trade), all firing correctly (see §13) |
-| 6 | Preset consumption (Ricercar drive-layer swap) | pending |
+| 6 | Preset consumption (Ricercar drive-layer swap) | ✅ IFC.6 (2026-07-07) — code-complete, pending live M7. Ricercar's 5 painterly sections driven by the family `*_activity_dev` (strings split low/high by register; percussion = sparkle; Matt's product calls); floor 0.04 + per-family p99 saturation measured from the dumper corpus (`devGain` 2.0 confirmed); series disk-persisted (schema v6). See RICERCAR_DESIGN §IFC.6 |
 
 **IFC.2 result (numerical parity vs the PyTorch reference, both spike clips):** front-end log-mel **1.5e-5 dB**, network probs **1.7e-7** (logits 4.8e-6), end-to-end **1.4e-7** with the top class matching, per-family activity **4.2e-7** across 6 musical windows. The model reproduces the spike's discrimination — sym5 strings 0.51–0.57; octet@8s woodwind-led (0.397 > 0.113), @14s/@17s brass tutti (0.55/0.64), strings ≈ 0.04 (correct near-absence).
 
