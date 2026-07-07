@@ -5,6 +5,11 @@ Completed-increment narratives moved out of `ENGINEERING_PLAN.md` at RB.3 (2026-
 
 ## Recently Completed
 
+### Increment DOC.6.2 — adopt 2.3.6's date-string rotation gate; supersede DOC.6.1's script-align ✅ (2026-06-15)
+
+The DOC.6 rotation-gate ↔ `rotate_docs.sh` boundary divergence had two *opposite* fixes: **DOC.6.1** (on main) bent `rotate_docs.sh` to the gate's **datetime** cutoff + dropped the ✅/⏳ marker; **CLEAN.2.3.6** (orphaned `upbeat-haslett` branch, `71f050d`) instead rewrote the **gate** to compare date-**strings** + require a marker, mirroring the tool. CLEAN.2.3.8 had resolved the divergence by keeping DOC.6.1 (a "main's-favour" tie-break, no robustness analysis). After a date-string-vs-datetime review (2026-06-15) — **Matt's call: adopt 2.3.6's gate** — a calendar-date-string comparison is day-granular and **cannot** flake at the sub-day boundary that produced the original false-red, whereas DOC.6.1's datetime gate keeps that fragility (it passes only because the script was bent to match it). Ported `71f050d`'s gate (`rotationCutoffString` + extracted `epEntryNeedsRotation` predicate + a deterministic unit test → DocIntegrity **10/10**, was 9) and **reverted DOC.6.1's `rotate_docs.sh` change** to the original marker-aware/local-date form the gate mirrors. **Reverses CLEAN.2.3.8's "kept main's DOC.6.1" resolution** (informed by the robustness data that tie-break lacked). The 3-entry pruning DOC.6.1 ran stands; gate green on the already-rotated docs. `RELEASE_NOTES_DEV.md [dev-2026-06-15-d]`.
+
+
 ### Increment DOC.6.1 — rotate_docs.sh ↔ DocIntegrityTests boundary reconciliation + due pruning pass ✅ (2026-06-14)
 
 The DOC.6 rotation gate (`DocIntegrityTests.engineeringPlanRotationGate`) was RED on `main`: it flagged three 2026-06-01 EP §Recently Completed entries as overdue, but `Scripts/rotate_docs.sh --dry-run` reported "nothing to move," so the prescribed remedy was a no-op (calendar pruning debt — CLAUDE.md "every 10th / 2 weeks" — compounded by a gate/script boundary bug; surfaced by CLEAN.2.3's `closeout_evidence.sh`). Two mismatches, fixed in the script (the gate is authoritative):
