@@ -133,6 +133,16 @@ let package = Package(
             path: "Sources/QualityReelAnalyzer"
         ),
         .executableTarget(
+            name: "CorpusCensusRunner",
+            dependencies: [
+                "DSP",
+                "ML",
+                "Session",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            path: "Sources/CorpusCensusRunner"
+        ),
+        .executableTarget(
             name: "InstrumentFamilyDumper",
             dependencies: [
                 "ML",
@@ -171,6 +181,7 @@ let package = Package(
             dependencies: [
                 "Shared", "Audio", "DSP", "ML", "Presets",
                 "Renderer", "Session", "Orchestrator", "Diagnostics",
+                "CorpusCensusRunner",
             ],
             path: "Tests/PhospheneEngineTests",
             resources: [
