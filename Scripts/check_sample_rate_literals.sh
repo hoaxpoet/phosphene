@@ -40,6 +40,12 @@ ALLOWLIST_FILES=(
   "PhospheneEngine/Sources/Shared/StemSampleBuffer.swift"
   "PhospheneEngine/Sources/DSP/StemAnalyzer.swift"
   "PhospheneEngine/Sources/DSP/PitchTracker.swift"
+  # Offline diagnostic CLIs (same category as SoakTestHarness): not on the live
+  # tap path. The census runner's dual-rate mode intentionally analyzes the same
+  # window at 44100 AND 48000 Hz (cross-path mood-skew calibration); the dumper
+  # decodes fixtures at the preview-native rate.
+  "PhospheneEngine/Sources/CorpusCensusRunner/CorpusCensusRunner.swift"
+  "PhospheneEngine/Sources/InstrumentFamilyDumper/Dumper.swift"
 )
 
 # Build a `grep -v` pattern from the allowlist. Escape the `+` since it has
