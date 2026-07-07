@@ -544,9 +544,10 @@ public final class SessionPreparer: ObservableObject {
         separator: any StemSeparating,
         beatGridAnalyzer: (any BeatGridAnalyzing)?
     ) {
-        let silent = [Float](repeating: 0, count: 44_100)
-        _ = try? separator.separate(audio: silent, channelCount: 1, sampleRate: 44_100)
-        _ = beatGridAnalyzer?.analyzeBeatGrid(samples: silent, sampleRate: 44_100)
+        let rate = StemSeparator.modelSampleRate
+        let silent = [Float](repeating: 0, count: Int(rate))
+        _ = try? separator.separate(audio: silent, channelCount: 1, sampleRate: rate)
+        _ = beatGridAnalyzer?.analyzeBeatGrid(samples: silent, sampleRate: Double(rate))
     }
 
     /// PREPPERF.2 ①: the network half — resolve → download + parallel metadata.
