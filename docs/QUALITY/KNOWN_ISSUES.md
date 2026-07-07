@@ -1448,21 +1448,3 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 
 ## Resolved (recent)
 
-### BUG-053 — Live MIR was frozen at a hardcoded 48 kHz, ignoring the actual capture rate (2026-06-16)
-
-**Severity:** P2 (masked at 48 kHz; mis-mapped chroma/key + bands at 44.1 kHz — including normal local-file playback of 44.1 kHz files) · **Domain tag:** sample-rate / dsp
-**Status:** **Resolved 2026-06-16** — fix `91a973e` (CLEAN.3.7-fix) + observability `c68cc74`, on `main` (merge `6b23286`; pushed origin `8b80717`). **Validated by Matt:** session `2026-06-16T20-22-12Z` (Limo Wreck, 44.1 kHz local-file playback) logged `raw tap capture started sr=44100 Hz` + `MIR analysis rate → 44100 Hz (tap 44100 Hz)` — the live MIR adopted the file's real rate (not the frozen 48 kHz default). Filed by CLEAN.3.7a (GAP-2 trace), which refuted the pre-kickoff "streaming MIR already rate-aware" assumption.
-
-**Symptom.** The live `MIRPipeline` was constructed once at app init with the `sampleRate: Float = 48000` default, and `process()` carried no rate, so its four sub-analyzers kept 48 kHz bin→Hz tables regardless of the real capture rate. The FFT's per-call rate only set `FFTResult` metadata (the magnitude array is rate-independent), and the captured `tapSampleRate` was wired to the stem path but never the live MIR. At 44.1 kHz: chroma/key ~1.5 semitones sharp, band cutoffs ~8.8 % low (the normalized centroid/mood cancelled out; tempo/flux rate-independent). The offline session-prep MIR was already correct.
-
-**Fix.** Each rate-sensitive sub-analyzer (`SpectralAnalyzer`/`BandEnergyProcessor`/`ChromaExtractor`/`BeatDetector`) gained an in-place `setSampleRate(_:)` (recomputes bin→Hz tables under lock, preserves running state); `MIRPipeline.setSampleRate` (same-file extension) forwards to the four + recomputes its Nyquist; `VisualizerEngine+Audio.processAnalysisFrame` calls it with the captured `tapSampleRate` on the analysis queue — a no-op at 48 kHz, a recompute on a 44.1 kHz path / device-swap (couples to G1). Paired the hardcoded 24 kHz mood-centroid divisor → live Nyquist (so mood stays unchanged while the raw centroid becomes honest). Gate: `MIRSampleRateReconfigureTests` (GPU-free). `c68cc74` persists `MIR analysis rate → <hz> Hz` to `session.log` — that line is the validation signal (key estimation is unreliable, see BUG-054). Doc reconcile: `Protocols.swift`, ARCHITECTURE §Sample-rate contract. `RELEASE_NOTES_DEV.md [dev-2026-06-16-g]`.
-
-### BUG-052 — Engine tests play (choppy) love_rehab through the device output (2026-06-15)
-
-**Severity:** P3 (test hygiene — no product/correctness impact) · **Domain tag:** test-isolation
-**Status:** **Resolved 2026-06-15** — collapsed single-increment (trivial-P3 path: <5 lines, root cause obvious, no architectural risk; Matt's call "a is the fix"). Fix in this commit.
-
-**Symptom.** During `swift test` (engine suite — e.g. `closeout_evidence.sh` step 1) an extremely choppy fragment of `love_rehab.m4a` plays through the developer's output device, timed with test runs. `SessionLifecycleChurnTests` (REVIEW.2, not env-gated) drives the **real** `.localFilePlayback` path — `AudioInputRouter.start(mode: .localFilePlayback(love_rehab))` + `LocalFilePlaybackProvider` directly — which connects an `AVAudioPlayerNode` to `engine.mainMixerNode` and runs the engine in real-time output mode (audible *by design* — it is the LF "open a file → it plays" feature). The churn test rapidly starts/stops/cancels, so playback restarts from the top repeatedly = choppy.
-
-**Fix.** `LocalFilePlaybackProvider.startPlayback` zeroes `engine.mainMixerNode.outputVolume` when running under XCTest (`NSClassFromString("XCTestCase") != nil`). The analysis tap is on the **player** node (pre-mixer), so muting the mixer output silences the device without altering the captured signal or the start/stop/cancel lifecycle the churn test validates. `SessionLifecycleChurnTests` stays green (6/6); production playback is unaffected (XCTest absent → audible as before). `RELEASE_NOTES_DEV.md [dev-2026-06-15-f]`.
-
