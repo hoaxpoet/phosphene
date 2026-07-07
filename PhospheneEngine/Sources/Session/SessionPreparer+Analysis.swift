@@ -103,45 +103,13 @@ extension SessionPreparer {
             classifier: classifier
         )
 
-        // Step 5: Beat This! offline beat grid on full mix (nil analyzer → BeatGrid.empty).
-        let beatGridRaw: BeatGrid
-        if let gridAnalyzer = beatGridAnalyzer {
-            beatGridRaw = gridAnalyzer.analyzeBeatGrid(
-                samples: preview.pcmSamples,
-                sampleRate: Double(preview.sampleRate)
-            )
-        } else {
-            beatGridRaw = .empty
-        }
-
-        // Round 26 (2026-05-15): metadata-driven meter override. The ML
-        // detector sometimes guesses the meter wrong on odd
-        // time-signature tracks (Money's 7/4 → detected as 2/X). When
-        // the external metadata source returns a `time_signature`,
-        // override the auto-detected meter before caching the grid so
-        // the cached value is correct on disk and the live drift
-        // tracker installs the corrected meter from the moment
-        // playback begins (no runtime-correction race window).
-        let beatGrid: BeatGrid
-        if let timeSignature = prefetchedProfile?.timeSignature,
-           !beatGridRaw.beats.isEmpty {
-            beatGrid = beatGridRaw.overridingBeatsPerBar(timeSignature)
-        } else {
-            beatGrid = beatGridRaw
-        }
-
-        // Step 6: Beat This! offline beat grid on drums stem only (DSP.4 diagnostic).
-        // Drums stem is at index 1 per StemSeparator.stemLabels: ["vocals","drums","bass","other"].
-        // Same analyzer instance — the MPSGraph graph is reusable across calls (no re-init).
-        let drumsBeatGrid: BeatGrid
-        if let gridAnalyzer = beatGridAnalyzer, stemWaveforms.count > 1 {
-            drumsBeatGrid = gridAnalyzer.analyzeBeatGrid(
-                samples: stemWaveforms[1],
-                sampleRate: Double(preview.sampleRate)
-            )
-        } else {
-            drumsBeatGrid = .empty
-        }
+        // Steps 5 + 6: offline beat grids (full mix + drums stem), with metadata meter override.
+        let (beatGrid, drumsBeatGrid) = computeBeatGrids(
+            preview: preview,
+            stemWaveforms: stemWaveforms,
+            beatGridAnalyzer: beatGridAnalyzer,
+            prefetchedProfile: prefetchedProfile
+        )
 
         // Step 7 (BUG-007.8): per-track grid-vs-onset offset calibration.
         let gridOnsetOffsetMs = Self.computeGridOnsetOffsetMs(preview: preview, grid: beatGrid)
@@ -171,6 +139,55 @@ extension SessionPreparer {
             gridOnsetOffsetMs: gridOnsetOffsetMs,
             instrumentFamilySeries: familySeries
         )
+    }
+
+    /// Compute the full-mix and drums-stem offline beat grids (Steps 5 + 6).
+    ///
+    /// Full-mix grid gets the metadata-driven meter override (Round 26,
+    /// 2026-05-15): the ML detector sometimes guesses the meter wrong on odd
+    /// time-signature tracks (Money's 7/4 → detected as 2/X). When the external
+    /// metadata source returns a `time_signature`, override the auto-detected
+    /// meter before caching so the cached value is correct on disk and the live
+    /// drift tracker installs the corrected meter from the moment playback
+    /// begins (no runtime-correction race window). Drums grid is the DSP.4
+    /// diagnostic on stem index 1 (StemSeparator.stemLabels: vocals, drums,
+    /// bass, other) — same analyzer instance (the MPSGraph graph is reusable
+    /// across calls, no re-init). `nil` analyzer → both `.empty`.
+    nonisolated private static func computeBeatGrids(
+        preview: PreviewAudio,
+        stemWaveforms: [[Float]],
+        beatGridAnalyzer: (any BeatGridAnalyzing)?,
+        prefetchedProfile: PreFetchedTrackProfile?
+    ) -> (beatGrid: BeatGrid, drumsBeatGrid: BeatGrid) {
+        let beatGridRaw: BeatGrid
+        if let gridAnalyzer = beatGridAnalyzer {
+            beatGridRaw = gridAnalyzer.analyzeBeatGrid(
+                samples: preview.pcmSamples,
+                sampleRate: Double(preview.sampleRate)
+            )
+        } else {
+            beatGridRaw = .empty
+        }
+
+        let beatGrid: BeatGrid
+        if let timeSignature = prefetchedProfile?.timeSignature,
+           !beatGridRaw.beats.isEmpty {
+            beatGrid = beatGridRaw.overridingBeatsPerBar(timeSignature)
+        } else {
+            beatGrid = beatGridRaw
+        }
+
+        let drumsBeatGrid: BeatGrid
+        if let gridAnalyzer = beatGridAnalyzer, stemWaveforms.count > 1 {
+            drumsBeatGrid = gridAnalyzer.analyzeBeatGrid(
+                samples: stemWaveforms[1],
+                sampleRate: Double(preview.sampleRate)
+            )
+        } else {
+            drumsBeatGrid = .empty
+        }
+
+        return (beatGrid, drumsBeatGrid)
     }
 
     /// Replay the preview audio through the live BeatDetector offline and
