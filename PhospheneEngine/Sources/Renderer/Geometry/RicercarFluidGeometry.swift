@@ -73,6 +73,8 @@ public final class RicercarFluidGeometry: ParticleGeometry, @unchecked Sendable 
     private let renderPSO: MTLRenderPipelineState?
 
     private var time: Float = 0
+    private var prevBeat: Float = 0     // FL.8 beat rising-edge detection (spray trigger)
+    private var bloomPhase: Float = 0   // FL.8 slow wander so summoned blooms don't pin to fixed columns
 
     /// The dye texture currently holding the field — exposed for render tests to read back.
     public var currentDyeTexture: MTLTexture { dye[dcur] }
@@ -101,10 +103,10 @@ public final class RicercarFluidGeometry: ParticleGeometry, @unchecked Sendable 
             height: UInt32(height),
             dt: 1.0,                        // per-frame integration; velocities are in TEXELS/FRAME
             velocityDissipation: 0.08,      // gentle drag → currents persist and roll
-            dyeDissipation: 0.015,          // slow fade → dye accumulates into masses, then breathes out
-            vorticity: 0.8,                 // confinement rolls the plumes into billows (ref-02 tell);
-                                            // 0.4 left them as smooth teardrops — raised with the render
-                                            // checked for the dye-tearing failure the FL.2 note warns of
+            dyeDissipation: 0.022,          // gentle fade → soft edges + the field breathes back to rest
+            vorticity: 0.15,                // FL.8: LOW confinement — high vorticity (0.8) combed the dye
+                                            // into spiky radial filaments (hairy-ball look); ref 02's ink
+                                            // is soft, so let diffusion/advection dominate, not curl
             pressure: 0.8,
             exposure: 1.2,
             time: 0,
@@ -198,11 +200,12 @@ public final class RicercarFluidGeometry: ParticleGeometry, @unchecked Sendable 
         let dt = features.deltaTime > 0 ? features.deltaTime : 1.0 / 60.0
         time += dt
         cfg.time = time
-        applyAudioDrive(features: features, stems: stemFeatures)   // FL.4
+        applyRibbonDrive(features: features, stems: stemFeatures)   // FL.8: family→brightness, silence rests
         var cfgLocal = cfg
 
-        // Hand-animated section blooms (silence baseline, FL.3), then FL.4 audio modulation on top.
-        var splats = modulatedSplats(proceduralSplats(time: time), features: features, stems: stemFeatures)
+        // FL.8 — the music paints: forms are SUMMONED by musical events, none autonomous. Silence
+        // returns [] and the field dissipates to the warm ground (rests).
+        var splats = summonForms(features: features, stems: stemFeatures)
         var splatCount = UInt32(splats.count)
 
         guard let enc = commandBuffer.makeComputeCommandEncoder() else { return }
@@ -269,126 +272,126 @@ public final class RicercarFluidGeometry: ParticleGeometry, @unchecked Sendable 
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
     }
 
-    // MARK: - FL.4 audio drive
+    // MARK: - FL.8 — the music paints (Fantasia principle)
     //
-    // The discipline that killed Ricercar three times, applied here (Audio Data Hierarchy + FA #67):
-    //   • IDENTITY — which family is playing → its dye blooms + its ribbon brightens. Driven by the
-    //     instrument-family capture (`*ActivityDev`, StemFeatures 48–55), which is a ~2–4 s-latency
-    //     signal by construction. Lag is fine for identity: a colour arriving a beat late reads as a
-    //     small offset (IFC.6 lesson — drive COLOUR off family, never MOTION).
-    //   • MOTION — flow vigour, splat force, ribbon undulation, beat impulses. Driven by ZERO-LAG
-    //     continuous energy (`bass/mid/trebDev`) + `beatComposite`. This is the felt sync; family
-    //     capture never touches motion (that WAS the IFC.6 "lag" failure — a fixed clock gated by a
-    //     laggy signal).
-    //   • One primitive per layer (FA #67): each ribbon's undulation rides its OWN register band, so
-    //     the voices weave independently (counterpoint) rather than all pumping on one beat.
-    // Per-family soft-saturation vs the IFC.6-measured working points, so a characteristic entry
-    // paints full regardless of each family's natural loudness (soft-sat vs the section constant,
-    // not vs 1.0 — D-026 / FA #31). At silence (all-zero features, e.g. the render gate) the drive is
-    // inert and the FL.3 hand-animated look renders unchanged.
+    // Fantasia (Bach T&F segment, Matt 2026-07-08): "art appears and moves in time with the music."
+    // NOTHING is autonomous — the canvas rests until a musical event SUMMONS a form whose motion IS the
+    // music's. This inverts FL.2–FL.4 (a self-animating texture with audio sprinkled on top).
+    //   APPEAR — blooms on register energy, sprays on beats; MOVE — zero-lag band devs + beats (felt sync,
+    //   Audio Data Hierarchy); FEEL — instrument family → colour (lag-tolerant). One primitive per layer
+    //   (FA #67): each register band drives its own bloom; beats drive sprays.
 
-    /// Per-family soft-saturation constants (IFC.6 dumper corpus): strings, woodwinds, brass, percussion.
+    /// Family palette — strings violet, woodwinds russet, brass gold, percussion teal (allCases order).
+    private static let familyHue: [SIMD3<Float>] = [
+        SIMD3(0.42, 0.28, 0.86), SIMD3(0.90, 0.46, 0.22),
+        SIMD3(0.98, 0.72, 0.20), SIMD3(0.16, 0.78, 0.82)
+    ]
+    /// Per-family soft-saturation working points (IFC.6 dumper corpus): strings, woodwinds, brass, perc.
     private static let familySaturation = SIMD4<Float>(0.30, 0.35, 0.85, 0.20)
 
-    /// True once any family or band signal is meaningfully non-zero (real audio playing, not silence).
-    private func audioPresent(_ feat: FeatureVector, _ stem: StemFeatures) -> Bool {
-        let band = max(feat.bassDev, max(feat.midDev, feat.trebDev))
-        let fam = max(stem.stringsActivityDev, max(stem.woodwindsActivityDev,
-                    max(stem.brassActivityDev, stem.percussionActivityDev)))
-        return max(band, fam) > 1e-3
-    }
+    /// soft-saturate a deviation vs its working point → 0…~1 (1 − e^(−x/sat)).
+    private func softSat(_ dev: Float, _ sat: Float) -> Float { 1.0 - exp(-max(0, dev) / max(sat, 1e-4)) }
 
-    /// soft-saturate a deviation vs its section working point → 0…~1 (1 − e^(−dev/sat)).
-    private func softSat(_ dev: Float, _ sat: Float) -> Float {
-        1.0 - exp(-max(0, dev) / max(sat, 1e-4))
-    }
-
-    /// Compute the per-ribbon brightness (family identity) + undulation (zero-lag band energy) and
-    /// store them on `cfg` so both the compute splats and `render` see the same frame's drive.
-    private func applyAudioDrive(features feat: FeatureVector, stems stem: StemFeatures) {
-        guard audioPresent(feat, stem) else {
-            cfg.rbLevel0 = 1; cfg.rbLevel1 = 1; cfg.rbLevel2 = 1; cfg.rbLevel3 = 1
-            cfg.rbUndulate0 = 1; cfg.rbUndulate1 = 1; cfg.rbUndulate2 = 1; cfg.rbUndulate3 = 1
-            return
-        }
+    /// The four family soft-sat activations (strings, woodwinds, brass, percussion).
+    private func familyActivations(_ stem: StemFeatures) -> SIMD4<Float> {
         let sat = Self.familySaturation
-        // brightness ← family identity (0.32 floor keeps the resting weave visible — silence-non-black,
-        // D-037 — then the active family surges).
-        let famStrings = softSat(stem.stringsActivityDev, sat.x)
-        let famWood = softSat(stem.woodwindsActivityDev, sat.y)
-        let famBrass = softSat(stem.brassActivityDev, sat.z)
-        let famPerc = softSat(stem.percussionActivityDev, sat.w)
-        cfg.rbLevel0 = 0.32 + 0.68 * famStrings
-        cfg.rbLevel1 = 0.32 + 0.68 * famWood
-        cfg.rbLevel2 = 0.32 + 0.68 * famBrass
-        cfg.rbLevel3 = 0.32 + 0.68 * famPerc
-        // undulation ← zero-lag band energy of each ribbon's register (low/mid/mid/high).
+        return SIMD4(
+            softSat(stem.stringsActivityDev, sat.x),
+            softSat(stem.woodwindsActivityDev, sat.y),
+            softSat(stem.brassActivityDev, sat.z),
+            softSat(stem.percussionActivityDev, sat.w))
+    }
+
+    /// Colour for a register bloom: the dominant instrument family's hue when the family capture is
+    /// present (orchestral tracks — identity), else a fixed register hue so non-orchestral tracks still
+    /// paint (low→violet, mid→gold, high→teal). `bias` nudges the fallback across the registers.
+    private func bloomHue(_ fam: SIMD4<Float>, fallback: SIMD3<Float>) -> SIMD3<Float> {
+        let maxFam = max(fam.x, max(fam.y, max(fam.z, fam.w)))
+        guard maxFam > 0.12 else { return fallback }
+        let idx = (0..<4).max(by: { fam[$0] < fam[$1] }) ?? 0
+        return Self.familyHue[idx]
+    }
+
+    /// FL.8 ribbon drive — a ribbon is a music-drawn voice: dark at rest, brightening only while its
+    /// family sounds (identity, lag-tolerant), undulating with its register's zero-lag energy (motion).
+    /// Silence → all ribbons rest near-invisible (the canvas is empty until the music draws it).
+    private func applyRibbonDrive(features feat: FeatureVector, stems stem: StemFeatures) {
+        let fam = familyActivations(stem)
+        // 0.06 rest floor (barely-there thread), family surges it to full — no bright resting ribbons.
+        cfg.rbLevel0 = 0.06 + 0.94 * fam.x      // strings  → violet
+        cfg.rbLevel1 = 0.06 + 0.94 * fam.y      // woodwinds → russet
+        cfg.rbLevel2 = 0.06 + 0.94 * fam.z      // brass    → gold
+        cfg.rbLevel3 = 0.06 + 0.94 * fam.w      // percussion → teal
         func und(_ dev: Float) -> Float { min(2.4, 1.0 + 1.5 * max(0, dev)) }
-        cfg.rbUndulate0 = und(feat.bassDev)   // strings — low
-        cfg.rbUndulate1 = und(feat.midDev)    // woodwinds — mid
-        cfg.rbUndulate2 = und(feat.midDev)    // brass — low-mid
-        cfg.rbUndulate3 = und(feat.trebDev)   // percussion — high
+        cfg.rbUndulate0 = und(feat.bassDev)
+        cfg.rbUndulate1 = und(feat.midDev)
+        cfg.rbUndulate2 = und(feat.midDev)
+        cfg.rbUndulate3 = und(feat.trebDev)
     }
 
-    /// FL.4: modulate the FL.3 baseline splats by audio — an active family's dye surges (identity) and
-    /// the inflow force scales with zero-lag energy + a bounded per-beat impulse (motion). Inert at
-    /// silence (returns the input unchanged) so the FL.3 gate/contact-sheets render byte-identical.
-    private func modulatedSplats(_ base: [FluidSplat],
-                                 features feat: FeatureVector, stems stem: StemFeatures) -> [FluidSplat] {
-        guard audioPresent(feat, stem) else { return base }
-        let sat = Self.familySaturation
-        // Source→family map (matches proceduralSplats colour order): russet, gold, violet, gold, violet,
-        // teal = woodwinds, brass, strings, brass, strings, percussion.
-        let str = softSat(stem.stringsActivityDev, sat.x)
-        let wood = softSat(stem.woodwindsActivityDev, sat.y)
-        let brass = softSat(stem.brassActivityDev, sat.z)
-        let perc = softSat(stem.percussionActivityDev, sat.w)
-        let famDev: [Float] = [wood, brass, str, brass, str, perc]
-        // Global flow vigour ← weighted zero-lag energy; beat impulse ← composite (bounded ≪ base 2.2).
-        let energy = 0.5 * max(0, feat.bassDev) + 0.3 * max(0, feat.midDev) + 0.2 * max(0, feat.trebDev)
-        let forceFactor = 1.0 + 1.6 * energy
-        let beatKick = 1.2 * max(0, feat.beatComposite)
-        var out = base
-        for i in 0..<out.count {
-            let surge = 1.0 + 1.2 * famDev[i]
-            let col = out[i].colorRad, vel = out[i].posVel
-            let vy = vel.w * forceFactor + beatKick
-            out[i].colorRad = SIMD4(col.x * surge, col.y * surge, col.z * surge, col.w)   // .w=radius
-            out[i].posVel = SIMD4(vel.x * forceFactor, vel.y * forceFactor, vel.z * forceFactor, vy)
-        }
-        return out
-    }
+    /// FL.8 — SUMMON the fluid forms from the current musical moment. Returns [] at silence so the field
+    /// dissipates to the warm ground (rests). No autonomous animation: every splat here is caused by a
+    /// live musical signal this frame.
+    private func summonForms(features feat: FeatureVector, stems stem: StemFeatures) -> [FluidSplat] {
+        let bass = max(0, feat.bassDev), mid = max(0, feat.midDev), treb = max(0, feat.trebDev)
+        let beat = max(0, feat.beatComposite)
+        let energy = bass + mid + treb
+        defer { prevBeat = beat }
+        // Silence rests.
+        guard energy > 0.02 || beat > 0.05 else { return [] }
 
-    // MARK: - FL.3 procedural splats (no audio — judge the LOOK against ref 02)
-
-    /// Six section-sources spread across the top of the frame, billowing DOWNWARD like the ref-02
-    /// ink drop (docs/VISUAL_REFERENCES/ricercar/02: dense side-by-side hues hanging from the top,
-    /// bleeding wet-into-wet). FL.2's version rose from mid-frame and pulse-gated OFF, so only 1–2
-    /// wispy columns showed at a time; ref 02 shows all hues simultaneously — the pulses now overlap
-    /// (a breathing floor, never fully off) and adjacent sources sit close enough to merge.
-    private func proceduralSplats(time seconds: Float) -> [FluidSplat] {
-        // family palette (strings violet, brass gold, woodwinds russet, percussion teal), warm→cool
-        // across the width like ref 02; violet + gold doubled for six plumes.
-        let violet = SIMD3<Float>(0.34, 0.24, 0.64), gold = SIMD3<Float>(0.88, 0.62, 0.16)
-        let russet = SIMD3<Float>(0.76, 0.38, 0.18), teal = SIMD3<Float>(0.13, 0.60, 0.66)
-        let colors: [SIMD3<Float>] = [russet, gold, violet, gold, violet, teal]
-        let xs: [Float] = [0.12, 0.27, 0.42, 0.57, 0.72, 0.88]
+        let fam = familyActivations(stem)
+        bloomPhase += energy * 0.015            // a slow wander so blooms don't pin to fixed columns
         var out: [FluidSplat] = []
-        for i in 0..<colors.count {
-            let phase = Float(i) * 1.9
-            let x = xs[i] + 0.04 * sin(seconds * 0.13 + phase)         // slow sway, sources stay banded
-            let y = 0.08 + 0.03 * sin(seconds * 0.21 + phase * 1.3)    // sim y=0 is screen TOP
-            // Overlapping breath: never off (floor 0.35), surging blooms staggered per source.
-            let pulse = 0.35 + 0.65 * max(0.0, sin(seconds * (0.35 + 0.04 * Float(i)) + phase))
-            // Velocities are TEXELS/FRAME (~1–3; the FL.2 blank-canvas lesson). +y = down-screen:
-            // the plumes sink into the frame; an alternating outward lean makes neighbours bloom into
-            // each other (wet-into-wet merging) instead of falling as parallel fingers.
-            let lean: Float = (i % 2 == 0 ? 0.7 : -0.7)
-            let vel = SIMD2<Float>(lean + 0.6 * sin(seconds * 0.3 + phase), 2.2)
-            let color = colors[i] * (1.1 * pulse)
-            out.append(FluidSplat(posVel: SIMD4(x, y, vel.x, vel.y),
-                                  colorRad: SIMD4(color.x, color.y, color.z, 0.085)))
+
+        // BLOOMS — one per active register band, flowering where the energy is. Spread ACROSS the frame
+        // by register (bass left → treble right, warm→cool like ref 02's side-by-side hues), wandering
+        // locally; GENTLE, mostly-lateral velocity so vorticity rolls them into rounded billows (the FL.2
+        // curtains came from a strong constant down-push). Colour = dominant family (identity) or the
+        // register's fallback hue.
+        let loHue = bloomHue(fam, fallback: Self.familyHue[0])   // low → violet (strings)
+        let midHue = bloomHue(fam, fallback: Self.familyHue[2])  // mid → gold (brass)
+        let hiHue = bloomHue(fam, fallback: Self.familyHue[3])   // high → teal (percussion)
+        appendBloom(&out, band: bass, xBand: 0.24, phase: bloomPhase, hue: loHue)
+        appendBloom(&out, band: mid, xBand: 0.50, phase: bloomPhase + 2.1, hue: midHue)
+        appendBloom(&out, band: treb, xBand: 0.76, phase: bloomPhase + 4.2, hue: hiHue)
+
+        // SPRAY — a beat rising edge scatters bright flecks that shoot outward ("sprays of falling
+        // stars"). Percussion-teal by default; fast small splats, so they read as a burst, not a mass.
+        if beat > 0.22 && beat > prevBeat + 0.04 {
+            appendSpray(&out, strength: beat, hue: bloomHue(fam, fallback: Self.familyHue[3]))
         }
         return out
+    }
+
+    /// A soft flowering bloom centred on its register's frame-band `xBand`; injected only while its band
+    /// sings; large radius + gentle lateral drift so it billows rather than streaks. Skips a silent band.
+    private func appendBloom(_ out: inout [FluidSplat], band: Float, xBand: Float, phase: Float,
+                             hue: SIMD3<Float>) {
+        let level = softSat(band, 0.55)                     // soft-sat vs a mid band working point
+        guard level > 0.04 else { return }
+        let posX = xBand + 0.10 * sin(phase)                // wander locally within the register's band
+        let posY = 0.5 + 0.14 * sin(phase * 0.7)            // drift around mid-height
+        let velX = 0.9 * sin(phase * 1.3)                   // gentle lateral swirl (no strong down-push)
+        let velY = -0.5 + 0.4 * sin(phase * 0.9)            // slight buoyant drift; vorticity does the rest
+        let color = hue * (1.3 * level)                     // luminous; intensity tracks the band energy
+        let posVel = SIMD4<Float>(posX, posY, velX, velY)
+        let colorRad = SIMD4<Float>(color.x, color.y, color.z, 0.11)
+        out.append(FluidSplat(posVel: posVel, colorRad: colorRad))
+    }
+
+    /// A beat spray: a handful of small bright splats radiating from a point, fast so they scatter.
+    private func appendSpray(_ out: inout [FluidSplat], strength: Float, hue: SIMD3<Float>) {
+        let cx = 0.35 + 0.30 * (0.5 + 0.5 * sin(bloomPhase * 1.7))
+        let cy = 0.30 + 0.10 * sin(bloomPhase * 2.3)
+        let count = 5
+        let color = hue * (1.6 * strength)
+        let speed = 2.2 * strength
+        for idx in 0..<count {
+            let ang = Float(idx) / Float(count) * 2 * Float.pi + bloomPhase
+            let posVel = SIMD4<Float>(cx, cy, cos(ang) * speed, sin(ang) * speed)
+            let colorRad = SIMD4<Float>(color.x, color.y, color.z, 0.035)
+            out.append(FluidSplat(posVel: posVel, colorRad: colorRad))
+        }
     }
 }
