@@ -69,10 +69,10 @@ struct PresetLoaderCompileFailureTest {
     /// 26: Cytokinesis (Mitosis gen-2 — detailed explicit-cell division, family `particles`,
     /// `MitosisGen2Geometry` conformer; certified:false, cert at MITOSIS-G2.3). See
     /// docs/presets/MITOSIS_GEN2_DESIGN.md.
-    /// 27: Ricercar (contrapuntal visual-music painting; per-section painterly MARK engine on
-    /// Skein's canvas-hold mv_warp, family `painterly`; IFC.6 drives its 5 sections off real
-    /// instrument-family activity (D-177). Uncertified — pending live M7). See
-    /// docs/presets/RICERCAR_DESIGN.md §CONCEPT + §IFC.6.
+    /// 27: Ricercar (Fantasia rebuild — Stam stable-fluids dye sim + glow ribbons, family
+    /// `painterly`, `RicercarFluidGeometry` conformer; the marks/Skein paradigm was rejected 3×.
+    /// Uncertified — FL.4 audio + M7 pending). See docs/presets/RICERCAR_DESIGN.md
+    /// §FANTASIA REBUILD.
     static let expectedProductionPresetCount = 27
 
     @Test("PresetLoader.presets.count matches expectedProductionPresetCount — catches Failed Approach #44 silent drops")

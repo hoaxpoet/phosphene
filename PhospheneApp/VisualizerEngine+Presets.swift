@@ -61,6 +61,17 @@ extension VisualizerEngine {
         return UInt32(truncatingIfNeeded: Self.lumenTrackSeedHash(for: identity))
     }
 
+    /// RICERCAR-RW: the fixed instrument-family palette Ricercar feeds SkeinState in
+    /// `colorFromFamily` mode. Display sRGB, one well-separated colour per family, indexed to
+    /// `InstrumentFamily.allCases` order (strings, brass, woodwinds, percussion) — the same order
+    /// `SkeinState.updateDominantLine` reads the family-dev argmax. Legible on the light warm ground.
+    static let ricercarFamilyPalette: [SIMD3<Float>] = [
+        SIMD3(0.34, 0.24, 0.64),   // strings    — deep violet-indigo
+        SIMD3(0.88, 0.62, 0.16),   // brass      — burnished gold
+        SIMD3(0.76, 0.38, 0.18),   // woodwinds  — warm russet
+        SIMD3(0.13, 0.60, 0.66)    // percussion — cool teal
+    ]
+
     /// BUG-044: per-track preset-state reset shared by BOTH track-change paths — the streaming
     /// metadata callback (`VisualizerEngine+Capture`) AND the local-file queue advance
     /// (`advanceLocalFileQueue` — next / prev / natural EOF). Any preset whose per-track state
@@ -551,8 +562,25 @@ extension VisualizerEngine {
                 // slot-6 binding (RenderPipeline+MVWarpScene). The per-track seed is installed
                 // on track change (resetSkeinSeed); construct with the current track's seed so
                 // the painting is deterministic from frame 1.
-                if desc.name == "Skein" {
-                    if let state = SkeinState(device: context.device, seed: currentSkeinSeed()) {
+                // RICERCAR-RW: Ricercar reuses this exact painter engine in FAMILY-colour mode
+                // (SkeinState `colorFromFamily` + a fixed family palette) on a light canvas — same
+                // buffer(6) binding, per-frame tick, and ground-wipe. Skein keeps the dominant-stem path.
+                let painterState: SkeinState? = {
+                    switch desc.name {
+                    case "Skein":
+                        return SkeinState(device: context.device, seed: currentSkeinSeed())
+                    case "Ricercar":
+                        return SkeinState(
+                            device: context.device,
+                            seed: currentSkeinSeed(),
+                            palette: Self.ricercarFamilyPalette,
+                            colorFromFamily: true)
+                    default:
+                        return nil
+                    }
+                }()
+                if desc.name == "Skein" || desc.name == "Ricercar" {
+                    if let state = painterState {
                         skeinState = state
                         pipeline.setDirectPresetFragmentBuffer(state.skeinBuffer)   // buffer(6)
                         // Skein.5.3b: the palette's GROUND travels with the track. setupMVWarp
