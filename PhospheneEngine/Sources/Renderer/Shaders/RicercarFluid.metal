@@ -33,14 +33,8 @@ struct FluidConfig {
     float vorticity;           // vorticity-confinement strength (the billowing)
     float pressure;            // pressure-fade per frame (Jacobi warm-start), ~0.8
     float exposure;            // display: dye → luminance gain (HDR feel)
-    float time;                // seconds — animates the ribbon paths (FL.3, hand-animated)
-    float ribbonBrightness;    // master ribbon gain (0 disables the overlay — masses-only render)
-    // FL.4 audio drive — per-ribbon brightness (family identity, lag-tolerant) + undulation-amplitude
-    // scale (zero-lag band energy, the felt motion). Individual floats, not float4, to keep the
-    // struct 4-byte-aligned (no float3/float4 16-byte-alignment trap — cf. the FluidSplat packing note).
-    // Ribbon order: 0 strings/violet, 1 woodwinds/russet, 2 brass/gold, 3 percussion/teal.
-    float rbLevel0, rbLevel1, rbLevel2, rbLevel3;
-    float rbUndulate0, rbUndulate1, rbUndulate2, rbUndulate3;
+    float time;                // seconds
+    float ribbonBrightness;    // FL.9: soft-wash gain for the demoted fluid dye (1 in production; 0 = wash off)
 };
 
 // MARK: - Grid helpers
@@ -295,40 +289,37 @@ kernel void fluid_advect_dye(
     dyeOut.write(float4(result * decay, 1.0), gid);
 }
 
-// MARK: - Ribbons (ref 01): glowing weaving light-lines with soft halos (FL.3)
+// MARK: - Drawn voices (FL.9, option B): luminous lines DRAWN IN TIME, tracking the musical line
 //
-// docs/VISUAL_REFERENCES/ricercar/01_macro_weaving_lines.jpg — a small set of smooth luminous ribbons
-// (saturated core + wide soft same-hue halo) weaving/crossing on the light ground. One per instrument
-// family. Paths are two-sine curves y(x,t): cheap, smooth, and the distance-to-curve is well
-// approximated by the slope-corrected vertical distance because the ribbons stay mostly horizontal
-// (as in ref 01). Hand-animated by cfg.time until the audio drive lands (FL.4).
+// docs/VISUAL_REFERENCES/ricercar/01 — glowing weaving light-lines. The FL.3 ribbons were fixed sine
+// curves (always fully present, position not audio-driven → static, primitive, lagged — measured
+// r=+0.25 / σ=0.028). Option B replaces them with the primary: each voice is a scrolling CONTOUR whose
+// height at the right edge is set from THIS frame's audio (zero accumulation lag), scrolling left into
+// history — the music drawing its own line. CPU maintains the per-voice (height, brightness) history
+// and hands it to the fragment at buffer(1); x = position in that history, so the contour value at a
+// pixel is a direct lookup (no fluid latency). Colour = instrument family; brightness = family activity
+// (bright where the family sang, fading where it didn't). Counterpoint = the voices' contours crossing.
+//   buffer(1) layout: kVoices runs of [ height[0..N-1], brightness[0..N-1] ], oldest→newest (newest = right).
 
-struct RibbonDef {
-    float  base;               // resting height in uv (1 = screen top)
-    float4 wave1;              // amp, spatial freq (rad/uv-x), phase, drift speed (rad/s)
-    float4 wave2;
-    float3 color;              // luminous family colour
+constant int   kVoices  = 4;
+constant int   kStrokeN = 96;
+// strings violet, woodwinds russet, brass gold, percussion teal — luminous family palette.
+constant float3 rc_voiceColor[4] = {
+    float3(0.42, 0.28, 0.86), float3(0.90, 0.46, 0.22),
+    float3(0.98, 0.72, 0.20), float3(0.16, 0.78, 0.82)
 };
 
-// strings violet (low), woodwinds russet, brass gold (mid), percussion teal (high) — the register
-// layout of ref 01 (cyan top / gold mid / indigo low) mapped onto the family palette. gold/russet
-// bases sit close so those two braid mid-frame; teal/gold cross on the right like ref 01.
-constant RibbonDef rb_ribbons[4] = {
-    { 0.26, float4(0.085, 4.2, 1.9, -0.07), float4(0.050, 6.5, 4.1, 0.13), float3(0.42, 0.28, 0.86) },
-    { 0.44, float4(0.100, 5.0, 0.4,  0.09), float4(0.045, 9.0, 2.6, -0.11), float3(0.88, 0.42, 0.20) },
-    { 0.57, float4(0.105, 3.6, 3.2, -0.08), float4(0.040, 7.0, 5.3, 0.12), float3(0.95, 0.68, 0.18) },
-    { 0.78, float4(0.120, 4.5, 5.0,  0.10), float4(0.050, 8.0, 1.2, -0.16), float3(0.12, 0.75, 0.80) }
-};
-
-// Path height + slope at x. Returns (y, dy/dx). `und` scales the undulation amplitude (FL.4: the
-// ribbon's register energy widens its weave — zero-lag motion; 1 = the FL.3 resting amplitude).
-static inline float2 rb_path(constant RibbonDef& r, float x, float t, float und) {
-    float a1 = r.wave1.y * x + r.wave1.z + r.wave1.w * t;
-    float a2 = r.wave2.y * x + r.wave2.z + r.wave2.w * t;
-    float amp1 = r.wave1.x * und, amp2 = r.wave2.x * und;
-    float y  = r.base + amp1 * sin(a1) + amp2 * sin(a2);
-    float dy = amp1 * r.wave1.y * cos(a1) + amp2 * r.wave2.y * cos(a2);
-    return float2(y, dy);
+// Sample voice `v`'s history at fractional index `fx` → (height, brightness), linearly interpolated.
+static inline float2 rc_voiceAt(constant float* strokes, int v, float fx) {
+    int stride = kStrokeN * 2;
+    int base = v * stride;
+    float clamped = clamp(fx, 0.0, float(kStrokeN - 1));
+    int i0 = int(floor(clamped));
+    int i1 = min(i0 + 1, kStrokeN - 1);
+    float f = clamped - float(i0);
+    float y = mix(strokes[base + i0], strokes[base + i1], f);
+    float b = mix(strokes[base + kStrokeN + i0], strokes[base + kStrokeN + i1], f);
+    return float2(y, b);
 }
 
 // MARK: - Display: dye field → luminous flowing colour masses (ref 02)
@@ -349,41 +340,35 @@ vertex FluidVSOut ricercar_fluid_vertex(uint vid [[vertex_id]]) {
 fragment float4 ricercar_fluid_fragment(
     FluidVSOut               in  [[stage_in]],
     texture2d<float, access::sample> dye [[texture(0)]],
-    constant FluidConfig&    cfg [[buffer(0)]]
+    constant FluidConfig&    cfg [[buffer(0)]],
+    constant float*          strokes [[buffer(1)]]
 ) {
     constexpr sampler s(filter::linear, address::clamp_to_edge);
-    // The stored dye is HDR density; tonemap softly so masses read luminous, not clipped, and let the
-    // warm light ground show through where dye is thin (ref 02 = colour on a clean light ground).
     float2 duv = float2(in.uv.x, 1.0 - in.uv.y);
-    float3 d = dye.sample(s, duv).rgb * cfg.exposure;
     float3 ground = float3(0.95, 0.94, 0.92);
-    // Luminous "over": dye density attenuates the ground (Beer-Lambert) and adds its own emission, so
-    // masses read as glowing colour bleeding on a clean light ground (ref 02) without clipping to white.
+    // FL.9 (option B): the fluid dye is demoted to a soft background WASH — dial its contribution down
+    // (cfg.ribbonBrightness doubles as the wash gain, 1 in production) so the drawn voices read as the
+    // subject over a gentle colour field, not a busy mass.
+    float3 d = dye.sample(s, duv).rgb * cfg.exposure;
     float density = d.x + d.y + d.z;
-    float3 hue = d / max(density, 1e-4);                 // colour direction
-    float cover = 1.0 - exp(-density);                   // 0 (thin) → 1 (thick)
-    // FL.8: luminous ink over a light ground — NO directional self-shading (the FL.3 density-gradient
-    // shade made the masses read as ridged plastic, the opposite of ref 02's soft glow). The dye is
-    // light: keep the hue at full luminosity and let thin edges bleed softly into the ground.
+    float3 hue = d / max(density, 1e-4);
+    float cover = (1.0 - exp(-density)) * 0.45 * cfg.ribbonBrightness;   // soft wash
     float3 col = ground * (1.0 - cover) + hue * cover;
 
-    // Ribbon overlay (ref 01) — same emissive-over model as the dye: the wide halo tints the ground
-    // gently, the core saturates to the full luminous hue; a small additive term keeps the core
-    // reading as LIGHT where it passes over dark dye masses (on the light ground it just glows).
-    float aspect = float(cfg.width) / float(cfg.height);
-    float rbLvl[4] = { cfg.rbLevel0, cfg.rbLevel1, cfg.rbLevel2, cfg.rbLevel3 };
-    float rbUnd[4] = { cfg.rbUndulate0, cfg.rbUndulate1, cfg.rbUndulate2, cfg.rbUndulate3 };
-    for (int i = 0; i < 4; ++i) {
-        float lvl = cfg.ribbonBrightness * rbLvl[i];      // master × per-family brightness (FL.4)
-        float2 pd = rb_path(rb_ribbons[i], in.uv.x, cfg.time, rbUnd[i]);
-        float m = pd.y / aspect;                          // slope in isotropic (aspect-corrected) space
-        float dist = fabs(in.uv.y - pd.x) * rsqrt(1.0 + m * m);
-        float core = exp(-dist * dist / (0.007 * 0.007));
-        float halo = exp(-dist * dist / (0.055 * 0.055));
-        float rDensity = lvl * (3.5 * core + 0.55 * halo);
-        float rCover = 1.0 - exp(-rDensity);
-        col = mix(col, rb_ribbons[i].color, rCover);
-        col += rb_ribbons[i].color * (0.15 * lvl * core);
+    // DRAWN VOICES (ref 01) — each voice's scrolling contour: look up its height at this pixel's x
+    // (direct, zero-lag), glow by vertical distance, brighten by the stored per-column activity. The
+    // line is LIGHT: saturated core + soft same-hue halo, composited over the wash.
+    float fx = in.uv.x * float(kStrokeN - 1);
+    for (int v = 0; v < kVoices; ++v) {
+        float2 hb = rc_voiceAt(strokes, v, fx);           // (height in uv-y, brightness 0…1)
+        float dist = fabs((1.0 - in.uv.y) - hb.x);        // uv.y is bottom-up; contour stored top-down
+        float core = exp(-dist * dist / (0.006 * 0.006));
+        float halo = exp(-dist * dist / (0.045 * 0.045));
+        float lvl = hb.y;
+        float glow = lvl * (3.2 * core + 0.5 * halo);
+        float rCover = 1.0 - exp(-glow);
+        col = mix(col, rc_voiceColor[v], rCover);
+        col += rc_voiceColor[v] * (0.20 * lvl * core);    // keeps the core reading as light
     }
     return float4(col, 1.0);
 }
