@@ -135,6 +135,7 @@ let package = Package(
         .executableTarget(
             name: "CorpusCensusRunner",
             dependencies: [
+                "Audio",
                 "DSP",
                 "ML",
                 "Session",
