@@ -295,9 +295,53 @@ public final class PresetLoader: @unchecked Sendable {
             }
         }
 
+        loadShaderReusePresets(contents: contents, metalFiles: metalFiles, directory: directory, fm: fm)
+
         // Sort by name for stable ordering.
         lock.withLock {
             presets.sort { $0.descriptor.name < $1.descriptor.name }
+        }
+    }
+
+    /// RICERCAR-RW: a JSON with NO sibling `.metal` but an explicit `shader_file` REUSES another
+    /// preset's shader (Ricercar reuses Skein's painter shader — it differs only in its family-mode
+    /// SkeinState + palette, not the marks shader). Compile the referenced `.metal` with the orphan
+    /// descriptor. Keeps one shader backing multiple presets (no verbatim duplication) inside the
+    /// per-file compile architecture; a hot-reload of the shared `.metal` re-runs this pass too.
+    private func loadShaderReusePresets(
+        contents: [URL], metalFiles: [URL], directory: URL, fm: FileManager
+    ) {
+        let metalBaseNames = Set(metalFiles.map { $0.deletingPathExtension().lastPathComponent })
+        let orphanJSONs = contents
+            .filter { $0.pathExtension == "json" }
+            .filter { !metalBaseNames.contains($0.deletingPathExtension().lastPathComponent) }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        for jsonURL in orphanJSONs {
+            let baseName = jsonURL.deletingPathExtension().lastPathComponent
+            let descriptor = loadDescriptor(from: jsonURL, fallbackName: baseName)
+            guard !descriptor.shaderFileName.isEmpty else { continue }   // no `shader_file` → not a redirect
+            let targetMetal = directory.appendingPathComponent(descriptor.shaderFileName)
+            guard fm.fileExists(atPath: targetMetal.path) else {
+                logger.warning("Preset '\(descriptor.name)': shader_file '\(descriptor.shaderFileName)' not found")
+                continue
+            }
+            guard let pipelines = compileShader(at: targetMetal, descriptor: descriptor) else { continue }
+            let loaded = LoadedPreset(
+                descriptor: descriptor,
+                pipelineState: pipelines.standard,
+                feedbackPipelineState: pipelines.feedback,
+                rayMarchPipelineState: pipelines.rayMarch,
+                mvWarpPipelines: pipelines.mvWarp,
+                stages: pipelines.stages
+            )
+            lock.withLock {
+                if let existingIndex = presets.firstIndex(where: { $0.descriptor.name == descriptor.name }) {
+                    presets[existingIndex] = loaded
+                } else {
+                    presets.append(loaded)
+                    logger.info("Loaded preset: \(descriptor.name) (shader_file → \(descriptor.shaderFileName))")
+                }
+            }
         }
     }
 
