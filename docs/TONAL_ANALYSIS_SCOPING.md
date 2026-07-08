@@ -1,6 +1,6 @@
 # Tonal Interval Vector (TIV) Analysis — Scoping Proposal
 
-**Status:** Scoped + capability-audited 2026-07-08 (TONAL.0; D-178 reserved, **Proposed**). **Awaiting Matt's go/no-go** and his first-preset pick (§7). This doc is self-contained — a fresh session should be able to execute TONAL.1 from it. No Swift was touched in TONAL.0; every decision below carries code evidence (file:line), not a guess.
+**Status:** Scoped + capability-audited 2026-07-08 (TONAL.0; D-178 **Accepted**). **Matt GO (2026-07-08); first preset = Nacre (§7).** TONAL.1 in build. This doc is self-contained — a fresh session should be able to execute TONAL.1 from it. No Swift was touched in TONAL.0; every decision below carries code evidence (file:line), not a guess.
 
 ---
 
@@ -109,7 +109,7 @@ Two candidates where the channel already exists:
 - **Nacre (recommended default).** Its sidecar `description` *already claims* "hue ← harmony" while actually using centroid deviation — so swapping to real TIV is the cleanest possible "does the real signal read better than the proxy" test **and** closes an honesty gap (the NACRE.5 rule: the description must match the shipped coupling). Single clean hue driver; it's a certified feedback preset whose multi-pass flash harness (NACRE.4) is already wired for the re-measure.
 - **Mitosis.** MITOSIS.2c's "psychedelic" hue is energy-paced phase + centroid bias + a travelling spatial wave — more moving parts, and the deliberately swimmy psychedelic intent may *fight* a harmony-coherent palette.
 
-**This is Matt's product-level pick** (what he'll see/feel differs per option) — recorded at go/no-go.
+**Matt's pick (2026-07-08): Nacre.**
 
 ## 8. Work breakdown (the phased increments)
 
