@@ -6,6 +6,7 @@
 
 import Accelerate
 import AVFoundation
+import Audio
 import DSP
 import Foundation
 import ML
@@ -105,11 +106,8 @@ func resampleMono(_ samples: [Float], from srcRate: Double, to dstRate: Double) 
 func runMIR(samples: [Float], sampleRate: Double) -> MIRResult {
     let fftSize = 1024
     let binCount = fftSize / 2
-    let log2n = vDSP_Length(log2(Double(fftSize)))
-    guard let fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2)) else { return .empty }
-    defer { vDSP_destroy_fftsetup(fftSetup) }
+    guard let fft = try? FFTMagnitudeKernel(fftSize: fftSize) else { return .empty }
 
-    var ctx = FFTScratch(fftSize: fftSize, binCount: binCount, log2n: log2n, fftSetup: fftSetup)
     let mir = MIRPipeline(binCount: binCount, sampleRate: Float(sampleRate), fftSize: fftSize)
     let fps = Float(sampleRate) / Float(fftSize)
     let deltaTime = 1.0 / fps
@@ -120,9 +118,10 @@ func runMIR(samples: [Float], sampleRate: Double) -> MIRResult {
     var frames = 0
     var offset = 0
     while offset + fftSize <= samples.count {
-        ctx.computeMagnitudes(samples: samples, offset: offset)
+        fillWindow(fft, samples: samples, offset: offset)
+        fft.computeMagnitudes()
         let time = Float(frames) * deltaTime
-        let feat = mir.process(magnitudes: ctx.magnitudes, fps: fps, time: time, deltaTime: deltaTime)
+        let feat = mir.process(magnitudes: fft.magnitudes, fps: fps, time: time, deltaTime: deltaTime)
         let frameVec: [Float] = [
             feat.subBass, feat.lowBass, feat.lowMid, feat.midHigh, feat.highMid, feat.high,
             feat.spectralCentroid, mir.rawSmoothedFlux,
@@ -171,11 +170,8 @@ struct MoodABResult {
 func runMoodAB(samples: [Float], sampleRate: Double) -> MoodABResult? {
     let fftSize = 1024
     let binCount = fftSize / 2
-    let log2n = vDSP_Length(log2(Double(fftSize)))
-    guard let fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2)) else { return nil }
-    defer { vDSP_destroy_fftsetup(fftSetup) }
+    guard let fft = try? FFTMagnitudeKernel(fftSize: fftSize) else { return nil }
 
-    var ctx = FFTScratch(fftSize: fftSize, binCount: binCount, log2n: log2n, fftSetup: fftSetup)
     let mirNew = MIRPipeline(binCount: binCount, sampleRate: Float(sampleRate), fftSize: fftSize)
     let mirOld = MIRPipeline(binCount: binCount, sampleRate: Float(sampleRate), fftSize: fftSize)
     let clfNew = MoodClassifier()
@@ -190,10 +186,11 @@ func runMoodAB(samples: [Float], sampleRate: Double) -> MoodABResult? {
     var frames = 0
     var offset = 0
     while offset + fftSize <= samples.count {
-        ctx.computeMagnitudes(samples: samples, offset: offset)   // fixed (new) magnitudes
+        fillWindow(fft, samples: samples, offset: offset)
+        fft.computeMagnitudes()                                   // fixed (new) magnitudes
         let time = Float(frames) * deltaTime
-        let fvNew = mirNew.process(magnitudes: ctx.magnitudes, fps: fps, time: time, deltaTime: deltaTime)
-        for idx in 0..<binCount { oldMag[idx] = ctx.magnitudes[idx] * 16 }   // pre-fix |FFT|/32 scale
+        let fvNew = mirNew.process(magnitudes: fft.magnitudes, fps: fps, time: time, deltaTime: deltaTime)
+        for idx in 0..<binCount { oldMag[idx] = fft.magnitudes[idx] * 16 }   // pre-fix |FFT|/32 scale
         let fvOld = mirOld.process(magnitudes: oldMag, fps: fps, time: time, deltaTime: deltaTime)
         fluxSum += Double(mirNew.rawSmoothedFlux)
         if frames % 30 == 0 {   // production classify cadence (analyzeMIR)
@@ -222,63 +219,16 @@ func runMoodAB(samples: [Float], sampleRate: Double) -> MoodABResult? {
 
 // MARK: - FFT scratch
 
-/// Reusable 1024-pt Hann FFT scratch producing magnitude spectra — the same
-/// non-overlapping vDSP path SessionPreparer.computeFFTMagnitudes uses.
-private struct FFTScratch {
-    let fftSize: Int
-    let binCount: Int
-    let log2n: vDSP_Length
-    let fftSetup: FFTSetup
-    var hann: [Float]
-    var windowed: [Float]
-    var realPart: [Float]
-    var imagPart: [Float]
-    var magnitudes: [Float]
-
-    init(fftSize: Int, binCount: Int, log2n: vDSP_Length, fftSetup: FFTSetup) {
-        self.fftSize = fftSize
-        self.binCount = binCount
-        self.log2n = log2n
-        self.fftSetup = fftSetup
-        self.hann = [Float](repeating: 0, count: fftSize)
-        vDSP_hann_window(&hann, vDSP_Length(fftSize), Int32(vDSP_HANN_NORM))
-        self.windowed = [Float](repeating: 0, count: fftSize)
-        self.realPart = [Float](repeating: 0, count: binCount)
-        self.imagPart = [Float](repeating: 0, count: binCount)
-        self.magnitudes = [Float](repeating: 0, count: binCount)
-    }
-
-    mutating func computeMagnitudes(samples: [Float], offset: Int) {
-        samples.withUnsafeBufferPointer { src in
-            windowed.withUnsafeMutableBufferPointer { dst in
-                guard let srcBase = src.baseAddress, let dstBase = dst.baseAddress else { return }
-                dstBase.update(from: srcBase.advanced(by: offset), count: fftSize)
-            }
+/// Copy this frame's `fftSize`-sample window into the shared kernel's input scratch.
+/// MOOD-FLUX.3: the magnitude math itself lives in `FFTMagnitudeKernel` — the single
+/// production formula — so this diagnostic mirror can never drift from the offline
+/// path it exists to reproduce (BUG-066). Caller then invokes `fft.computeMagnitudes()`.
+private func fillWindow(_ fft: FFTMagnitudeKernel, samples: [Float], offset: Int) {
+    samples.withUnsafeBufferPointer { src in
+        fft.windowed.withUnsafeMutableBufferPointer { dst in
+            guard let srcBase = src.baseAddress, let dstBase = dst.baseAddress else { return }
+            dstBase.update(from: srcBase.advanced(by: offset), count: fft.fftSize)
         }
-        vDSP_vmul(windowed, 1, hann, 1, &windowed, 1, vDSP_Length(fftSize))
-        realPart.withUnsafeMutableBufferPointer { realBuf in
-            imagPart.withUnsafeMutableBufferPointer { imagBuf in
-                guard let realBase = realBuf.baseAddress, let imagBase = imagBuf.baseAddress else { return }
-                var split = DSPSplitComplex(realp: realBase, imagp: imagBase)
-                windowed.withUnsafeBufferPointer { input in
-                    guard let inputBase = input.baseAddress else { return }
-                    inputBase.withMemoryRebound(to: DSPComplex.self, capacity: binCount) { complex in
-                        vDSP_ctoz(complex, 2, &split, 1, vDSP_Length(binCount))
-                    }
-                }
-                vDSP_fft_zrip(fftSetup, &split, 1, log2n, FFTDirection(kFFTDirection_Forward))
-                magnitudes.withUnsafeMutableBufferPointer { magBuf in
-                    guard let magBase = magBuf.baseAddress else { return }
-                    // MOOD-FLUX.2: match the LIVE FFTProcessor magnitude formula exactly
-                    // — |FFT| (zvabs) × 2/fftSize — so offline flux lands on the same
-                    // scale the MoodClassifier was trained against (BUG-066). The prior
-                    // sqrt(power/fftSize) formula ran 16× hot, saturating the flux input.
-                    vDSP_zvabs(&split, 1, magBase, 1, vDSP_Length(binCount))
-                }
-            }
-        }
-        var scale = 2.0 / Float(fftSize)
-        vDSP_vsmul(magnitudes, 1, &scale, &magnitudes, 1, vDSP_Length(binCount))
     }
 }
 

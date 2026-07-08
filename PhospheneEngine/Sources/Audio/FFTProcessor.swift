@@ -37,23 +37,12 @@ public final class FFTProcessor: FFTProcessing, @unchecked Sendable {
     /// Number of output magnitude bins (fftSize / 2).
     public static let binCount = fftSize / 2
 
-    /// Log2 of FFT size, required by vDSP.
-    private static let log2n = vDSP_Length(log2(Double(fftSize)))
-
     // MARK: - vDSP Resources
 
-    /// The vDSP FFT setup (allocated once, reused every frame).
-    private let fftSetup: FFTSetup
-
-    /// Hann window applied before FFT to reduce spectral leakage.
-    private var window: [Float]
-
-    /// Split complex buffers for vDSP FFT input/output.
-    private var realPart: [Float]
-    private var imagPart: [Float]
-
-    /// Windowed time-domain samples (pre-FFT).
-    private var windowedSamples: [Float]
+    /// Shared window→magnitude kernel (BUG-066 / MOOD-FLUX.3 — the single formula
+    /// the offline `analyzeMIR` path also uses). Owns the FFT setup and all per-frame
+    /// scratch, so the real-time path stays allocation-free (BUG-036).
+    private let kernel: FFTMagnitudeKernel
 
     // MARK: - Output Buffers
 
@@ -62,12 +51,6 @@ public final class FFTProcessor: FFTProcessing, @unchecked Sendable {
 
     /// Most recent FFT result metadata.
     public private(set) var latestResult = FFTResult()
-
-    /// Reused magnitude scratch (BUG-036). Written only inside `runFFTCore`,
-    /// whose sole caller is the real-time audio thread, then copied into the
-    /// GPU `magnitudeBuffer` under `lock`. Pre-allocating it keeps the per-frame
-    /// path allocation-free (the `// per-frame processing is zero-alloc` header).
-    private var magnitudesScratch: [Float]
 
     /// Lock for thread safety.
     private let lock = NSLock()
@@ -78,29 +61,12 @@ public final class FFTProcessor: FFTProcessing, @unchecked Sendable {
     ///
     /// - Parameter device: Metal device for UMA buffer allocation.
     public init(device: MTLDevice) throws {
-        guard let setup = vDSP_create_fftsetup(Self.log2n, FFTRadix(kFFTRadix2)) else {
-            throw FFTError.setupFailed
-        }
-        self.fftSetup = setup
-
-        // Pre-allocate all working buffers.
-        self.window = [Float](repeating: 0, count: Self.fftSize)
-        self.realPart = [Float](repeating: 0, count: Self.binCount)
-        self.imagPart = [Float](repeating: 0, count: Self.binCount)
-        self.windowedSamples = [Float](repeating: 0, count: Self.fftSize)
-        self.magnitudesScratch = [Float](repeating: 0, count: Self.binCount)
-
-        // Generate Hann window.
-        vDSP_hann_window(&self.window, vDSP_Length(Self.fftSize), Int32(vDSP_HANN_NORM))
+        self.kernel = try FFTMagnitudeKernel(fftSize: Self.fftSize)
 
         // Allocate GPU-shared magnitude buffer.
         self.magnitudeBuffer = try UMABuffer<Float>(device: device, capacity: Self.binCount)
 
         logger.info("FFTProcessor created: \(Self.fftSize)-point FFT → \(Self.binCount) bins")
-    }
-
-    deinit {
-        vDSP_destroy_fftsetup(fftSetup)
     }
 
     // MARK: - Processing
@@ -118,7 +84,7 @@ public final class FFTProcessor: FFTProcessing, @unchecked Sendable {
         let fftLength = Self.fftSize
 
         // Fill windowed samples: use the latest `fftSize` samples, zero-pad if short.
-        windowedSamples.withUnsafeMutableBufferPointer { dst in
+        kernel.windowed.withUnsafeMutableBufferPointer { dst in
             // Zero the buffer first.
             dst.update(repeating: 0)
 
@@ -138,62 +104,34 @@ public final class FFTProcessor: FFTProcessing, @unchecked Sendable {
         return runFFTCore(sampleRate: sampleRate)
     }
 
-    /// Shared FFT core. Assumes `windowedSamples` already holds the latest
-    /// `fftSize` time-domain samples (zero-padded). Applies the Hann window,
-    /// runs the forward FFT, writes magnitudes to the GPU buffer, and returns
-    /// metadata. Allocation-free — reuses `magnitudesScratch` (BUG-036).
+    /// Shared FFT core. Assumes `kernel.windowed` already holds the latest
+    /// `fftSize` time-domain samples (zero-padded). Runs the shared window→magnitude
+    /// kernel, writes magnitudes to the GPU buffer, and returns metadata.
+    /// Allocation-free — the kernel reuses its own scratch (BUG-036).
     private func runFFTCore(sampleRate: Float) -> FFTResult {
         let fftLength = Self.fftSize
 
-        // Apply Hann window.
-        vDSP_vmul(windowedSamples, 1, window, 1, &windowedSamples, 1, vDSP_Length(fftLength))
+        // Window → forward FFT → |FFT| × 2/fftSize, via the single shared kernel
+        // (BUG-066 / MOOD-FLUX.3 — same formula the offline path uses).
+        kernel.computeMagnitudes()
 
-        // Convert to split complex format for vDSP FFT.
-        // swiftlint:disable force_unwrapping
-        windowedSamples.withUnsafeBufferPointer { srcPtr in
-            realPart.withUnsafeMutableBufferPointer { realPtr in
-                imagPart.withUnsafeMutableBufferPointer { imagPtr in
-                    var splitComplex = DSPSplitComplex(
-                        realp: realPtr.baseAddress!,
-                        imagp: imagPtr.baseAddress!
-                    )
-                    srcPtr.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: Self.binCount) { complexPtr in
-                        vDSP_ctoz(complexPtr, 2, &splitComplex, 1, vDSP_Length(Self.binCount))
-                    }
+        lock.lock()
+        // Write to UMA buffer for GPU.
+        magnitudeBuffer.write(kernel.magnitudes)
 
-                    // Perform forward FFT.
-                    vDSP_fft_zrip(fftSetup, &splitComplex, 1, Self.log2n, FFTDirection(FFT_FORWARD))
+        // Find dominant frequency (FFTProcessor-specific metadata).
+        var maxMag: Float = 0
+        var maxIdx: vDSP_Length = 0
+        vDSP_maxvi(kernel.magnitudes, 1, &maxMag, &maxIdx, vDSP_Length(Self.binCount))
 
-                    // Compute magnitudes: sqrt(real² + imag²) into the reused
-                    // scratch (BUG-036 — no per-frame [Float] allocation).
-                    vDSP_zvabs(&splitComplex, 1, &magnitudesScratch, 1, vDSP_Length(Self.binCount))
-
-                    // swiftlint:enable force_unwrapping
-
-                    // Normalize by FFT size.
-                    var scale = 2.0 / Float(fftLength)
-                    vDSP_vsmul(magnitudesScratch, 1, &scale, &magnitudesScratch, 1, vDSP_Length(Self.binCount))
-
-                    // Write to UMA buffer for GPU.
-                    lock.lock()
-                    magnitudeBuffer.write(magnitudesScratch)
-
-                    // Find dominant frequency.
-                    var maxMag: Float = 0
-                    var maxIdx: vDSP_Length = 0
-                    vDSP_maxvi(magnitudesScratch, 1, &maxMag, &maxIdx, vDSP_Length(Self.binCount))
-
-                    let binResolution = sampleRate / Float(fftLength)
-                    latestResult = FFTResult(
-                        binCount: UInt32(Self.binCount),
-                        binResolution: binResolution,
-                        dominantFrequency: Float(maxIdx) * binResolution,
-                        dominantMagnitude: maxMag
-                    )
-                    lock.unlock()
-                }
-            }
-        }
+        let binResolution = sampleRate / Float(fftLength)
+        latestResult = FFTResult(
+            binCount: UInt32(Self.binCount),
+            binResolution: binResolution,
+            dominantFrequency: Float(maxIdx) * binResolution,
+            dominantMagnitude: maxMag
+        )
+        lock.unlock()
 
         return latestResult
     }
@@ -222,7 +160,7 @@ public final class FFTProcessor: FFTProcessing, @unchecked Sendable {
         let fftLength = Self.fftSize
         let frameCount = samples.count / 2
 
-        windowedSamples.withUnsafeMutableBufferPointer { dst in
+        kernel.windowed.withUnsafeMutableBufferPointer { dst in
             dst.update(repeating: 0)
 
             // Use the latest `fftLength` frames; zero-pad (front) if short.

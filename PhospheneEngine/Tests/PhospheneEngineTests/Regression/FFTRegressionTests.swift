@@ -3,6 +3,7 @@
 // silent changes to FFT windowing, normalization, or bin layout.
 
 import Testing
+import Accelerate
 import Foundation
 import Metal
 @testable import Audio
@@ -80,6 +81,57 @@ import Metal
             "Peak bin should be \(expectedPeakBin) (golden), got \(actualPeakBin) — FFT windowing or normalization may have changed")
     #expect(abs(actualPeakMag - expectedPeakMag) < 0.0001,
             "Peak magnitude should match golden reference within 0.0001")
+}
+
+// MARK: - Divergence Guard (BUG-066 / MOOD-FLUX.3)
+
+/// The load-bearing mechanization guard: the live `FFTProcessor` and the shared
+/// `FFTMagnitudeKernel` (which the offline `analyzeMIR` + census mirror call) MUST
+/// produce bit-identical magnitudes for the same input. BUG-066 was a silent 16×
+/// drift between two hand-copied magnitude formulas; this fails CI the moment a
+/// second implementation reappears.
+@Test func fftMagnitudeKernel_matchesLiveFFTProcessorBinForBin() throws {
+    guard let device = MTLCreateSystemDefaultDevice() else {
+        throw FFTRegressionError.noMetalDevice
+    }
+
+    let sineSamples = try loadFixture("440hz_sine_4800")
+    let input = Array(sineSamples.prefix(FFTProcessor.fftSize))
+
+    // Live path.
+    let fftProcessor = try FFTProcessor(device: device)
+    fftProcessor.process(samples: input, sampleRate: 48000)
+    let liveMags = (0..<FFTProcessor.binCount).map { fftProcessor.magnitudeBuffer[$0] }
+
+    // Offline path: the exact scratch setup analyzeMIR / the census mirror use.
+    let kernelMags = kernelMagnitudes(input)
+
+    #expect(kernelMags == liveMags,
+            "FFTMagnitudeKernel must be bit-identical to FFTProcessor — a divergence is BUG-066 reappearing")
+}
+
+/// Parity / no-behaviour-change: the shared kernel still matches the golden the
+/// live pipeline produced (the MoodClassifier scaler is calibrated to this scale).
+@Test func fftMagnitudeKernel_matchesGolden() throws {
+    let sineSamples = try loadFixture("440hz_sine_4800")
+    let expected = try loadFixture("440hz_fft_expected")
+    let kernelMags = kernelMagnitudes(Array(sineSamples.prefix(1024)))
+
+    var maxDiff: Float = 0
+    for i in 0..<512 { maxDiff = max(maxDiff, abs(kernelMags[i] - expected[i])) }
+    #expect(maxDiff < 0.0001, "Offline kernel drifted from golden — max diff \(maxDiff)")
+}
+
+/// Drive `FFTMagnitudeKernel` exactly as the offline paths do (raw 1024-sample
+/// window in via the kernel's own scratch, magnitudes out).
+private func kernelMagnitudes(_ input: [Float]) -> [Float] {
+    guard let fft = try? FFTMagnitudeKernel(fftSize: 1024) else { return [] }
+    fft.windowed.withUnsafeMutableBufferPointer { dst in
+        dst.update(repeating: 0)
+        for i in 0..<min(input.count, fft.fftSize) { dst[i] = input[i] }
+    }
+    fft.computeMagnitudes()
+    return fft.magnitudes
 }
 
 // MARK: - Fixture Loading
