@@ -20,6 +20,9 @@ public final class MIRPipeline: @unchecked Sendable {
     public let spectralAnalyzer: SpectralAnalyzer
     public let bandEnergyProcessor: BandEnergyProcessor
     public let chromaExtractor: ChromaExtractor
+    /// TONAL (D-178): Tonal Interval Vector over the chroma vector. Consumes
+    /// `chroma.chroma` — a consumer, not a new fold.
+    public let tonalAnalyzer: TonalAnalyzer
     public let beatDetector: BeatDetector
     public let structuralAnalyzer: StructuralAnalyzer
     /// MV-3b: Beat phase predictor — used in reactive mode (no offline grid).
@@ -159,6 +162,7 @@ public final class MIRPipeline: @unchecked Sendable {
         self.chromaExtractor = ChromaExtractor(
             binCount: binCount, sampleRate: sampleRate, fftSize: fftSize
         )
+        self.tonalAnalyzer = TonalAnalyzer()
         self.beatDetector = BeatDetector(binCount: binCount, sampleRate: sampleRate, fftSize: fftSize)
         self.structuralAnalyzer = structuralAnalyzer ?? StructuralAnalyzer()
         self.beatPredictor = BeatPredictor()
@@ -191,6 +195,9 @@ public final class MIRPipeline: @unchecked Sendable {
         let spectral = spectralAnalyzer.process(magnitudes: magnitudes)
         let energy = bandEnergyProcessor.process(magnitudes: magnitudes, fps: fps)
         let chroma = chromaExtractor.process(magnitudes: magnitudes)
+        // TONAL (D-178): TIV over the chroma vector — a consumer of the fold
+        // ChromaExtractor already ran, no new FFT.
+        let tonal = tonalAnalyzer.process(chroma: chroma.chroma, deltaTime: deltaTime)
         let beat = beatDetector.process(
             magnitudes: magnitudes, fps: fps, deltaTime: deltaTime
         )
@@ -205,6 +212,7 @@ public final class MIRPipeline: @unchecked Sendable {
             spectral: spectral,
             energy: energy,
             chroma: chroma,
+            tonal: tonal,
             beat: beat,
             normalizedCentroid: normalizedCentroid,
             normalizedFlux: normalizedFlux,
@@ -228,6 +236,7 @@ public final class MIRPipeline: @unchecked Sendable {
         let spectral: SpectralAnalyzer.Result
         let energy: BandEnergyProcessor.Result
         let chroma: ChromaExtractor.Result
+        let tonal: TonalAnalyzer.Result
         let beat: BeatDetector.Result
         let normalizedCentroid: Float
         let normalizedFlux: Float
@@ -338,26 +347,6 @@ public final class MIRPipeline: @unchecked Sendable {
     /// and write them into the FeatureVector. The total-energy AGC (fv.bass/mid/treble) is
     /// untouched — only the *Rel/*Dev derivation moves off the fixed 0.5 pivot. Mirrors
     /// StemAnalyzer's per-stem EMA so the long-dead midDev/trebDev fire on real music again.
-    private func applyBandDeviations(to fv: inout FeatureVector) {
-        let out = bandDeviationTracker.derive(BandDeviationTracker.BandEnergies(
-            bass: fv.bass,
-            mid: fv.mid,
-            treble: fv.treble,
-            bassAtt: fv.bassAtt,
-            midAtt: fv.midAtt,
-            trebleAtt: fv.trebleAtt
-        ))
-        fv.bassRel = out.bassRel
-        fv.bassDev = out.bassDev
-        fv.midRel = out.midRel
-        fv.midDev = out.midDev
-        fv.trebRel = out.trebRel
-        fv.trebDev = out.trebDev
-        fv.bassAttRel = out.bassAttRel
-        fv.midAttRel = out.midAttRel
-        fv.trebAttRel = out.trebAttRel
-    }
-
     private func buildFeatureVector(_ ctx: ProcessContext) -> FeatureVector {
         var fv = FeatureVector(
             bass: ctx.energy.bass,
@@ -434,16 +423,8 @@ public final class MIRPipeline: @unchecked Sendable {
             liveBeatStable: liveDriftTracker.currentLockState == .locked
         )
         applyPulseFields(pulse, to: &fv)
+        applyTonalFields(ctx.tonal, to: &fv)   // TONAL (D-178), floats 44–48
         return fv
-    }
-
-    /// Write the `BeatPulseClock` output onto the FeatureVector pulse fields
-    /// (floats 40–43: D-153 phase/amp, D-157 beat index, D-158 regional blend).
-    private func applyPulseFields(_ pulse: BeatPulseClock.Output, to fv: inout FeatureVector) {
-        fv.pulsePhase01 = pulse.phase01
-        fv.pulseAmp01 = pulse.amp01
-        fv.pulseBeatIndex = pulse.beatIndex
-        fv.pulseRegionalBlend01 = pulse.regionalBlend01
     }
 
     // MARK: - Live Drift Grid
@@ -474,6 +455,7 @@ public final class MIRPipeline: @unchecked Sendable {
         bandEnergyProcessor.reset()
         beatDetector.reset()
         chromaExtractor.resetAccumulators()
+        tonalAnalyzer.reset()   // TONAL (D-178): centers/prev-TIV reset per track
         structuralAnalyzer.reset()
         beatPredictor.reset()
         liveDriftTracker.reset()
@@ -507,6 +489,50 @@ public final class MIRPipeline: @unchecked Sendable {
         lastOnsetRateTime = 0
         lastRecordTime = 0
         lock.unlock()
+    }
+}
+
+// MARK: - FeatureVector field appliers
+//
+// Housed in a same-file extension (like `setSampleRate`) so they keep private
+// access to the trackers without inflating the class's `type_body_length`.
+extension MIRPipeline {
+
+    /// MV-1 / D-146 (BUG-027): derive the deviation primitives against each
+    /// band's own running-average pivot (per-band EMA), not a fixed 0.5. The
+    /// total-energy AGC (fv.bass/mid/treble) is untouched — only *Rel/*Dev move
+    /// off the fixed pivot. Mirrors StemAnalyzer's per-stem EMA (D-026).
+    func applyBandDeviations(to fv: inout FeatureVector) {
+        let out = bandDeviationTracker.derive(BandDeviationTracker.BandEnergies(
+            bass: fv.bass,
+            mid: fv.mid,
+            treble: fv.treble,
+            bassAtt: fv.bassAtt,
+            midAtt: fv.midAtt,
+            trebleAtt: fv.trebleAtt
+        ))
+        fv.bassRel = out.bassRel; fv.bassDev = out.bassDev
+        fv.midRel = out.midRel; fv.midDev = out.midDev
+        fv.trebRel = out.trebRel; fv.trebDev = out.trebDev
+        fv.bassAttRel = out.bassAttRel; fv.midAttRel = out.midAttRel; fv.trebAttRel = out.trebAttRel
+    }
+
+    /// Write the `BeatPulseClock` output onto the pulse fields (floats 40–43:
+    /// D-153 phase/amp, D-157 beat index, D-158 regional blend).
+    func applyPulseFields(_ pulse: BeatPulseClock.Output, to fv: inout FeatureVector) {
+        fv.pulsePhase01 = pulse.phase01
+        fv.pulseAmp01 = pulse.amp01
+        fv.pulseBeatIndex = pulse.beatIndex
+        fv.pulseRegionalBlend01 = pulse.regionalBlend01
+    }
+
+    /// TONAL (D-178): write the Tonal Interval Vector signals onto floats 44–48.
+    func applyTonalFields(_ tonal: TonalAnalyzer.Result, to fv: inout FeatureVector) {
+        fv.tonalPhaseFifths = tonal.phaseFifths
+        fv.tonalPhaseThirds = tonal.phaseThirds
+        fv.tonalConsonance  = tonal.consonance
+        fv.tonalTension     = tonal.tension
+        fv.harmonicFlux     = tonal.harmonicFlux
     }
 }
 

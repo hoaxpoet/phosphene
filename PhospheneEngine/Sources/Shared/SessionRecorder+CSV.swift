@@ -180,10 +180,17 @@ extension SessionRecorder {
         // positional parsers depend on the existing layout): the D-157 punch
         // mask seed and the D-158 global-bridge → regional blend, so the
         // flash-forensics replica can replay both exactly.
-        let pulseCols2 = String(format: ",%.0f,%.4f\n",
+        let pulseCols2 = String(format: ",%.0f,%.4f",
                                 fv.pulseBeatIndex, fv.pulseRegionalBlend01)
+        // TONAL (D-178) — continuous harmonic state (fifths/thirds phase,
+        // consonance, tension, flux). New columns at the END (positional
+        // parsers depend on the existing layout); the objective cross-check
+        // for the TONAL.3 M7 (the fifths phase should migrate at modulations).
+        let tonalCols = String(format: ",%.4f,%.4f,%.5f,%.5f,%.5f\n",
+                               fv.tonalPhaseFifths, fv.tonalPhaseThirds,
+                               fv.tonalConsonance, fv.tonalTension, fv.harmonicFlux)
         return base + sync + timing + subTiming + renderTimingCols + rayMarchPassCols
-            + pulseCols + structCols + pulseCols2
+            + pulseCols + structCols + pulseCols2 + tonalCols
     }
 
     static func csvRow(stems: StemFeatures, frame: Int, wallclock: CFAbsoluteTime) -> String {

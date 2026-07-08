@@ -68,8 +68,14 @@ extension PresetLoader {
             // 0 → 1 over one 4-beat span after the handoff (regional
             // per-beat punches). FFO mixes `mix(1.0, mask, blend)`.
             float pulse_regional_blend01;
-            // Padding to 192 bytes (floats 44–48).
-            float _pad8, _pad9, _pad10, _pad11, _pad12;
+            // TONAL (D-178, floats 44–48): continuous harmonic state from the
+            // Tonal Interval Vector. tonal_phase_fifths (arg T(5), circle of
+            // fifths, radians) is the hue driver; tonal_consonance (0–1) gates
+            // saturation; tonal_tension (0–1) is a slow "distance from home";
+            // harmonic_flux (0–1) spikes at chord changes. Relationships, not
+            // labels; hue, not brightness. See TONAL_ANALYSIS_SCOPING.md.
+            float tonal_phase_fifths, tonal_phase_thirds;
+            float tonal_consonance, tonal_tension, harmonic_flux;
         };
 
         struct VertexOut {
