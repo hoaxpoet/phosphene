@@ -39,8 +39,8 @@ import Foundation
 ///     float track_elapsed_s;            // float 39 (reclaimed _pad3, CSP.3)
 ///     float pulse_phase01, pulse_amp01; // floats 40–41 (FBS Stage 1, D-153)
 ///     float pulse_beat_index;           // float 42 (D-157 spatial punch mask)
-///     // Padding to 192 bytes (floats 43–48)
-///     float _pad7, _pad8, _pad9, _pad10, _pad11, _pad12;
+///     float pulse_regional_blend01;  // float 43 (D-158)
+///     float tonal_phase_fifths, tonal_phase_thirds, tonal_consonance, tonal_tension, harmonic_flux; // 44–48 (D-178)
 /// };
 /// ```
 @frozen
@@ -201,11 +201,11 @@ public struct FeatureVector: Sendable {
     /// after the handoff. FFO mixes `mix(1.0, mask, blend)` into the punch.
     public var pulseRegionalBlend01: Float
 
-    // --- Padding to 192 bytes (48 floats total — floats 44–48) ---
-    // swiftlint:disable identifier_name
-    var _pad8: Float
-    var _pad9: Float, _pad10: Float, _pad11: Float, _pad12: Float
-    // swiftlint:enable identifier_name
+    // --- TONAL (D-178, floats 44–48, reclaimed _pad8…_pad12): TonalAnalyzer's
+    // Tonal Interval Vector — fifths=hue, consonance gates saturation, tension=
+    // distance-from-home (resets/track), flux=chord-change accent. Scoping doc. ---
+    public var tonalPhaseFifths, tonalPhaseThirds: Float
+    public var tonalConsonance, tonalTension, harmonicFlux: Float
 
     public init(
         bass: Float = 0, mid: Float = 0, treble: Float = 0,
@@ -249,8 +249,8 @@ public struct FeatureVector: Sendable {
         // FBS pulse (BeatPulseClock via MIRPipeline) + padding.
         self.pulsePhase01 = 0; self.pulseAmp01 = 0; self.pulseBeatIndex = 0
         self.pulseRegionalBlend01 = 0
-        self._pad8 = 0
-        self._pad9 = 0; self._pad10 = 0; self._pad11 = 0; self._pad12 = 0
+        self.tonalPhaseFifths = 0; self.tonalPhaseThirds = 0; self.tonalConsonance = 0
+        self.tonalTension = 0; self.harmonicFlux = 0   // TONAL (D-178), set by TonalAnalyzer
     }
 
     /// All-zero feature vector.
