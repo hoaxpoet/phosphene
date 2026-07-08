@@ -20,20 +20,6 @@ private struct MIRAnalysisResult {
     var sectionCount: Int
 }
 
-/// Working buffers for the per-frame vDSP FFT computation.
-/// Allocated once per `analyzeMIR` call to avoid per-frame heap pressure.
-private struct FFTContext {
-    var hannWindow: [Float]
-    var windowed: [Float]
-    var realPart: [Float]
-    var imagPart: [Float]
-    var magnitudes: [Float]
-    let log2n: vDSP_Length
-    let fftSetup: FFTSetup
-    let fftSize: Int
-    let binCount: Int
-}
-
 // MARK: - Analysis Pipeline
 
 extension SessionPreparer {
@@ -257,28 +243,13 @@ extension SessionPreparer {
         let fftSize = 1024
         let binCount = fftSize / 2   // 512
 
-        let log2n = vDSP_Length(log2(Double(fftSize)))
-        guard let fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2)) else {
+        // The window→magnitude formula (Hann → |FFT| × 2/fftSize) lives in the shared
+        // FFTMagnitudeKernel — byte-identical to the live FFTProcessor (BUG-066 / MOOD-FLUX.3).
+        guard let fft = try? FFTMagnitudeKernel(fftSize: fftSize) else {
             return MIRAnalysisResult(
                 bpm: nil, key: nil, mood: .neutral, centroidAvg: 0, sectionCount: 0
             )
         }
-        defer { vDSP_destroy_fftsetup(fftSetup) }
-
-        var hannWindow = [Float](repeating: 0, count: fftSize)
-        vDSP_hann_window(&hannWindow, vDSP_Length(fftSize), Int32(vDSP_HANN_NORM))
-
-        var ctx = FFTContext(
-            hannWindow: hannWindow,
-            windowed: [Float](repeating: 0, count: fftSize),
-            realPart: [Float](repeating: 0, count: binCount),
-            imagPart: [Float](repeating: 0, count: binCount),
-            magnitudes: [Float](repeating: 0, count: binCount),
-            log2n: log2n,
-            fftSetup: fftSetup,
-            fftSize: fftSize,
-            binCount: binCount
-        )
 
         let mir = MIRPipeline(binCount: binCount, sampleRate: Float(sampleRate), fftSize: fftSize)
         let fps = Float(sampleRate) / Float(fftSize)
@@ -289,10 +260,18 @@ extension SessionPreparer {
         var offset = 0
 
         while offset + fftSize <= samples.count {
-            computeFFTMagnitudes(samples: samples, offset: offset, ctx: &ctx)
+            // Copy this frame's window into the kernel scratch, then run the shared formula.
+            samples.withUnsafeBufferPointer { srcBuf in
+                fft.windowed.withUnsafeMutableBufferPointer { dstBuf in
+                    guard let srcBase = srcBuf.baseAddress,
+                          let dstBase = dstBuf.baseAddress else { return }
+                    dstBase.update(from: srcBase.advanced(by: offset), count: fftSize)
+                }
+            }
+            fft.computeMagnitudes()
 
             let time = Float(frameCount) * dt
-            let fv = mir.process(magnitudes: ctx.magnitudes, fps: fps, time: time, deltaTime: dt)
+            let fv = mir.process(magnitudes: fft.magnitudes, fps: fps, time: time, deltaTime: dt)
             centroidSum += fv.spectralCentroid
             frameCount += 1
 
@@ -327,63 +306,5 @@ extension SessionPreparer {
             centroidAvg: centroidAvg,
             sectionCount: sectionCount
         )
-    }
-
-    // MARK: - FFT Helper
-
-    /// Compute magnitude bins from a sample window using vDSP FFT.
-    /// Writes results into `ctx.magnitudes` in-place.
-    nonisolated private static func computeFFTMagnitudes(
-        samples: [Float],
-        offset: Int,
-        ctx: inout FFTContext
-    ) {
-        let fftSize = ctx.fftSize
-        let binCount = ctx.binCount
-
-        // Copy window from input.
-        samples.withUnsafeBufferPointer { srcBuf in
-            ctx.windowed.withUnsafeMutableBufferPointer { dstBuf in
-                guard let srcBase = srcBuf.baseAddress,
-                      let dstBase = dstBuf.baseAddress else { return }
-                dstBase.update(from: srcBase.advanced(by: offset), count: fftSize)
-            }
-        }
-
-        // Apply Hann window.
-        vDSP_vmul(ctx.windowed, 1, ctx.hannWindow, 1, &ctx.windowed, 1, vDSP_Length(fftSize))
-
-        // Forward FFT → squared magnitudes.
-        ctx.realPart.withUnsafeMutableBufferPointer { realBuf in
-            ctx.imagPart.withUnsafeMutableBufferPointer { imagBuf in
-                guard let rBase = realBuf.baseAddress, let iBase = imagBuf.baseAddress else { return }
-                var split = DSPSplitComplex(realp: rBase, imagp: iBase)
-
-                ctx.windowed.withUnsafeBufferPointer { input in
-                    guard let inp = input.baseAddress else { return }
-                    inp.withMemoryRebound(to: DSPComplex.self, capacity: binCount) { complex in
-                        vDSP_ctoz(complex, 2, &split, 1, vDSP_Length(binCount))
-                    }
-                }
-
-                vDSP_fft_zrip(ctx.fftSetup, &split, 1, ctx.log2n, FFTDirection(kFFTDirection_Forward))
-
-                ctx.magnitudes.withUnsafeMutableBufferPointer { magBuf in
-                    guard let mBase = magBuf.baseAddress else { return }
-                    // BUG-066 / MOOD-FLUX.2: use |FFT| (zvabs), NOT power (zvmags), to
-                    // match the live FFTProcessor magnitude formula exactly.
-                    vDSP_zvabs(&split, 1, mBase, 1, vDSP_Length(binCount))
-                }
-            }
-        }
-
-        // BUG-066 / MOOD-FLUX.2: scale by 2/fftSize — byte-identical to the live
-        // FFTProcessor. The prior `sqrt(power/fftSize)` ran magnitudes 16× hot, which
-        // (via raw spectral flux) saturated the MoodClassifier's flux input on every
-        // track — the classifier was trained on live-pipeline features at THIS scale.
-        // Ratio/AGC features (centroid, bands, chroma/key) are ~invariant; raw flux is
-        // the one that was exposed. See docs/diagnostics/BUG-066-diagnosis.md.
-        var scale = 2.0 / Float(fftSize)
-        vDSP_vsmul(ctx.magnitudes, 1, &scale, &ctx.magnitudes, 1, vDSP_Length(binCount))
     }
 }
