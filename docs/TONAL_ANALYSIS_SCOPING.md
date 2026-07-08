@@ -116,7 +116,8 @@ Two candidates where the channel already exists:
 | # | Increment | Gate |
 |---|---|---|
 | TONAL.0 | capability audit + this doc + go/no-go | **← here.** Done-when: doc committed, decisions carry code evidence, Matt's go/no-go + preset pick recorded, D-178 reserved |
-| TONAL.1 | `TonalAnalyzer` in `MIRPipeline` (infra only, no preset touches) | unit suite (triads/cadence/noise/transposition) green; 192 B held; CSV + one `SpectralCartograph` row; goldens byte-identical |
+| TONAL.1 | `TonalAnalyzer` in `MIRPipeline` (infra only, no preset touches) | **✅ code-complete 2026-07-08** — 6-test synthetic suite green, 192 B held, CSV columns + contract across all 3 mirrors, DocIntegrity Module Map row. Live-session CSV pending Matt's build |
+| TONAL.1b | `SpectralCartograph` tonal trace row (fifths-phase wrapped trace + consonance) | **deferred** — a Metal + Core-Text live-diagnostic change; split from .1 to keep .1 worktree-testable |
 | TONAL.2 | `TonalDumper` + corpus calibration over `tools/data/corpus_pilot_1000.csv` | drive constants set from measured percentiles (IFC.6 discipline), not guesses; `docs/diagnostics/TONAL_PILOT_REPORT.md` |
 | TONAL.3 | first-preset consumption (Nacre or Mitosis) | M7-gated, 2 rounds max (PHYS escalation rule); flash re-measured; sidecar `description` updated to shipped coupling |
 
