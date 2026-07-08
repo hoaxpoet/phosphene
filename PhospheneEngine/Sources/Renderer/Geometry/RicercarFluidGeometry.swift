@@ -21,7 +21,7 @@ import Shared
 
 // MARK: - GPU-mirrored structs (layouts match RicercarFluid.metal exactly)
 
-/// Mirror of MSL `FluidConfig`. 2×uint + 6×float = 32 bytes, align 4.
+/// Mirror of MSL `FluidConfig`. 2×uint + 8×float = 40 bytes, align 4.
 struct RicercarFluidConfig {
     var width: UInt32
     var height: UInt32
@@ -31,6 +31,8 @@ struct RicercarFluidConfig {
     var vorticity: Float
     var pressure: Float
     var exposure: Float
+    var time: Float
+    var ribbonBrightness: Float
 }
 
 /// Mirror of MSL `FluidSplat` — two float4 for a guaranteed layout match (no float3 alignment trap).
@@ -44,6 +46,10 @@ struct FluidSplat {
 public final class RicercarFluidGeometry: ParticleGeometry, @unchecked Sendable {
 
     public var activeParticleFraction: Float = 1.0   // a fluid field is fully coupled; governor unused
+
+    /// Ribbon-overlay gain (ref 01). 1 = full glowing ribbons; 0 = masses-only (used by the
+    /// contact-sheet test to render the ref-02 comparison without the ref-01 layer).
+    public var ribbonBrightness: Float = 1.0
 
     private let width: Int
     private let height: Int
@@ -73,8 +79,8 @@ public final class RicercarFluidGeometry: ParticleGeometry, @unchecked Sendable 
     public init(
         device: MTLDevice,
         library: MTLLibrary,
-        width: Int = 320,
-        height: Int = 180,
+        width: Int = 480,
+        height: Int = 270,
         pressureIterations: Int = 25,
         pixelFormat: MTLPixelFormat? = nil
     ) throws {
@@ -87,9 +93,13 @@ public final class RicercarFluidGeometry: ParticleGeometry, @unchecked Sendable 
             dt: 1.0,                        // per-frame integration; velocities are in TEXELS/FRAME
             velocityDissipation: 0.08,      // gentle drag → currents persist and roll
             dyeDissipation: 0.015,          // slow fade → dye accumulates into masses, then breathes out
-            vorticity: 0.4,                 // small confinement → the plumes roll/billow (ref-02 tell)
+            vorticity: 0.8,                 // confinement rolls the plumes into billows (ref-02 tell);
+                                            // 0.4 left them as smooth teardrops — raised with the render
+                                            // checked for the dye-tearing failure the FL.2 note warns of
             pressure: 0.8,
-            exposure: 1.2)
+            exposure: 1.2,
+            time: 0,
+            ribbonBrightness: 1.0)
 
         self.velocity = [try Self.makeField(device, .rg16Float, width, height),
                          try Self.makeField(device, .rg16Float, width, height)]
@@ -170,6 +180,7 @@ public final class RicercarFluidGeometry: ParticleGeometry, @unchecked Sendable 
     public func update(features: FeatureVector, stemFeatures: StemFeatures, commandBuffer: MTLCommandBuffer) {
         let dt = features.deltaTime > 0 ? features.deltaTime : 1.0 / 60.0
         time += dt
+        cfg.time = time
         var cfgLocal = cfg
 
         var splats = proceduralSplats(time: time)   // FL.2 prototype: hand-animated section blooms
@@ -232,37 +243,42 @@ public final class RicercarFluidGeometry: ParticleGeometry, @unchecked Sendable 
     public func render(encoder: MTLRenderCommandEncoder, features: FeatureVector) {
         guard let pso = renderPSO else { return }
         var cfgLocal = cfg
+        cfgLocal.ribbonBrightness = ribbonBrightness
         encoder.setRenderPipelineState(pso)
         encoder.setFragmentTexture(dye[dcur], index: 0)
         encoder.setFragmentBytes(&cfgLocal, length: MemoryLayout<RicercarFluidConfig>.stride, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
     }
 
-    // MARK: - FL.2 procedural splats (no audio — judge the LOOK against ref 02)
+    // MARK: - FL.3 procedural splats (no audio — judge the LOOK against ref 02)
 
-    /// A few gentle blooming section-sources in family colours, drifting slowly, each puffing
-    /// upward-ish so the dye rolls and merges like the ink in ref 02.
+    /// Six section-sources spread across the top of the frame, billowing DOWNWARD like the ref-02
+    /// ink drop (docs/VISUAL_REFERENCES/ricercar/02: dense side-by-side hues hanging from the top,
+    /// bleeding wet-into-wet). FL.2's version rose from mid-frame and pulse-gated OFF, so only 1–2
+    /// wispy columns showed at a time; ref 02 shows all hues simultaneously — the pulses now overlap
+    /// (a breathing floor, never fully off) and adjacent sources sit close enough to merge.
     private func proceduralSplats(time seconds: Float) -> [FluidSplat] {
-        // strings violet, brass gold, woodwinds russet, percussion teal
-        let colors: [SIMD3<Float>] = [
-            SIMD3(0.34, 0.24, 0.64), SIMD3(0.88, 0.62, 0.16),
-            SIMD3(0.76, 0.38, 0.18), SIMD3(0.13, 0.60, 0.66)
-        ]
+        // family palette (strings violet, brass gold, woodwinds russet, percussion teal), warm→cool
+        // across the width like ref 02; violet + gold doubled for six plumes.
+        let violet = SIMD3<Float>(0.34, 0.24, 0.64), gold = SIMD3<Float>(0.88, 0.62, 0.16)
+        let russet = SIMD3<Float>(0.76, 0.38, 0.18), teal = SIMD3<Float>(0.13, 0.60, 0.66)
+        let colors: [SIMD3<Float>] = [russet, gold, violet, gold, violet, teal]
+        let xs: [Float] = [0.12, 0.27, 0.42, 0.57, 0.72, 0.88]
         var out: [FluidSplat] = []
         for i in 0..<colors.count {
-            let phase = Float(i) * 1.7
-            // slow horizontal drift across the lower field; each source pulses in/out over ~6 s
-            let x = 0.2 + 0.6 * (0.5 + 0.5 * sin(seconds * 0.11 + phase))
-            let y = 0.30 + 0.12 * sin(seconds * 0.17 + phase * 1.3)
-            let pulse = max(0.0, sin(seconds * 0.5 + phase))          // gated blooms, not constant
-            if pulse < 0.15 { continue }
-            // Velocities are TEXELS/FRAME — a gentle buoyant rise (~2.5 tx/frame) that vorticity rolls
-            // into billows. (The first pass used ~34 → advection sampled 19% of the frame away and wiped
-            // the dye every frame — the blank-canvas bug.)
-            let up = SIMD2<Float>(1.0 * sin(seconds * 0.3 + phase), -2.5)
-            let color = colors[i] * (0.8 * pulse)
-            out.append(FluidSplat(posVel: SIMD4(x, y, up.x, up.y),
-                                  colorRad: SIMD4(color.x, color.y, color.z, 0.06)))
+            let phase = Float(i) * 1.9
+            let x = xs[i] + 0.04 * sin(seconds * 0.13 + phase)         // slow sway, sources stay banded
+            let y = 0.08 + 0.03 * sin(seconds * 0.21 + phase * 1.3)    // sim y=0 is screen TOP
+            // Overlapping breath: never off (floor 0.35), surging blooms staggered per source.
+            let pulse = 0.35 + 0.65 * max(0.0, sin(seconds * (0.35 + 0.04 * Float(i)) + phase))
+            // Velocities are TEXELS/FRAME (~1–3; the FL.2 blank-canvas lesson). +y = down-screen:
+            // the plumes sink into the frame; an alternating outward lean makes neighbours bloom into
+            // each other (wet-into-wet merging) instead of falling as parallel fingers.
+            let lean: Float = (i % 2 == 0 ? 0.7 : -0.7)
+            let vel = SIMD2<Float>(lean + 0.6 * sin(seconds * 0.3 + phase), 2.2)
+            let color = colors[i] * (1.1 * pulse)
+            out.append(FluidSplat(posVel: SIMD4(x, y, vel.x, vel.y),
+                                  colorRad: SIMD4(color.x, color.y, color.z, 0.085)))
         }
         return out
     }
