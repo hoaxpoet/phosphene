@@ -1,79 +1,56 @@
-# BUG-066 — MoodClassifier flux input is ~32× the scaler's trained scale (diagnosis)
+# BUG-066 — MoodClassifier flux input ran 16× hot on the offline path (diagnosis + fix)
 
-**Severity:** P2 · **Domain:** ml.mood / calibration · **Class:** calibration / api-contract
-**Filed:** 2026-07-08 (MOOD-FLUX.1, instrument→diagnose — no fix code) · **Surfaced by:** CENSUS.3 pilot (`docs/diagnostics/CENSUS_PILOT_REPORT.md` §3)
-**Status:** diagnosed; fix scoped as MOOD-FLUX.2 (awaiting Matt's option pick).
+**Severity:** P2 · **Domain:** ml.mood / dsp.mir · **Class:** regression / pipeline-wiring (not calibration — see the correction below)
+**Filed:** 2026-07-08 (MOOD-FLUX.1) · **Fixed:** 2026-07-08 (MOOD-FLUX.2) — code-complete, **pending Matt's live M7 (before/after preset picks)**.
+**Surfaced by:** CENSUS.3 pilot (`docs/diagnostics/CENSUS_PILOT_REPORT.md` §3).
 
 ## Expected behavior
 
-The MoodClassifier z-scores its 10 inputs against `tools/data/mood_scaler.json` (means/stds fit during DEAM training), so each input should land within a few sigma of the scaler's mean and the MLP should see all 10 features in their trained range. `spectralFlux` (input [7]) has scaler mean **0.25**, std **0.20** — a typical track's flux should z-score to roughly `[-1, +3]`.
+The MoodClassifier z-scores its 10 inputs against the scaler baked into `MoodClassifier.swift` (`scalerMeans`/`scalerStds`, mirrored in `tools/data/mood_scaler.json`). Those stats were fit on the **live** MIR pipeline's feature distribution (the model was retrained on live-pipeline annotated features, commit `d586e57`, Apr 2026). `spectralFlux` (input [7]) has scaler mean **0.25**, std **0.20**; a track's flux should z-score to a few sigma.
 
 ## Actual behavior
 
-Across the 1,000-track pilot the per-track mean of the runtime flux input is **8.06** (std 6.66) — the flux z-score is `(8.06 − 0.25) / 0.20 ≈ +38`. The flux channel is **saturated far past the trained range on essentially every track**. The other nine inputs are fine: band energies (feat0–5) sit within ~20 % of the scaler, centroid within ~26 %. Only flux is off, and it is off by **~32×**, not a distribution difference.
-
-Measured means/stds (pilot, n=993), from `CENSUS_PILOT_REPORT.md §3`:
-
-```
-feature      deploy_mean  DEAM_mean  Δmean(σ)  std_ratio
-flux            8.05583     0.25158    +38.17     32.59
-centroid        0.09889     0.11827     -0.26      0.57
-subBass         0.12909     0.12720     +0.02      0.54
-lowBass         0.24552     0.20594     +0.30      0.49
-```
+Across the 1,000-track pilot the **offline** session-prep flux input mean is **8.06** (z ≈ **+38**) — saturated far past range on every track. Band energies and centroid match the scaler within ~20 %. Only flux is off, by a uniform **16×**.
 
 ## Reproduction
 
-Deterministic; not track-specific (fires on every track). Minimum reproducer:
-`.build/release/CorpusCensusRunner --root <corpus> --manifest tools/data/corpus_pilot_1000.csv --out <csv>` then compare column `feat7` mean against `mood_scaler.json.means[7]`. The same feature path runs in production `SessionPreparer.analyzeMIR`.
+`.build/release/CorpusCensusRunner --manifest tools/data/corpus_pilot_1000.csv …` then compare column `feat7` mean against `mood_scaler.json.means[7]`. The census mirrors the production `SessionPreparer.analyzeMIR` offline path exactly.
 
 ## Session artifacts
 
-- `CENSUS_PILOT_REPORT.md` §3 (feature means/stds vs scaler) — the primary artifact.
-- Code paths compared below.
+- `CENSUS_PILOT_REPORT.md` §3 (feature means/stds vs scaler).
+- `~/phosphene_features_annotated.csv` (the live training set) — flux mean **0.2516**, identical to the scaler; proves the model is correctly calibrated to the **live** pipeline.
+- The two feature-extraction code paths, below.
 
-## Root cause
+## Root cause (corrected — this is NOT a DEAM/train-vs-inference mismatch)
 
-The DEAM training feature extractor and the runtime mood feature path compute **spectral flux with different STFT parameters**, and flux — an unnormalized frame-to-frame difference sum — is fed **raw** into the classifier's z-score, so it is the only feature exposed to the mismatch.
+The initial framing (DEAM-training-vs-runtime) was **wrong**: the shipped model was retrained on live features (`d586e57`), and the live training CSV's flux mean (0.2516) matches the scaler feature-for-feature. The model is correct.
 
-| Parameter | Training (`tools/train_mood_classifier.py`) | Runtime (`SessionPreparer.analyzeMIR` + census `CensusAnalysis.runMIR`) |
+The real cause is a **live-vs-offline feature-path divergence**. The offline session-prep path (`SessionPreparer.analyzeMIR.computeFFTMagnitudes`) **reimplemented** the FFT magnitude formula differently from the live `Audio/FFTProcessor`:
+
+| | Live `FFTProcessor.runFFTCore` | Offline `analyzeMIR.computeFFTMagnitudes` (pre-fix) |
 |---|---|---|
-| STFT hop | `librosa.stft(hop_length=512)` — 50 % overlap | `offset += fftSize` — **hop 1024, non-overlapping** |
-| Magnitude norm | `stft * (2.0 / fftSize)` = ÷512 | `sqrt(power / fftSize)` = ÷√1024 = ÷32 → **16× larger** |
-| Sample rate | fixed 48 000 | file-native (44 100 typical) |
-| Flux formula | `sum(max(mag[t]−mag[t−1], 0))`, track-**mean** | `SpectralAnalyzer.computeFlux` (same form), EMA(α=0.25), census track-mean |
+| Magnitude | `vDSP_zvabs` → **\|FFT\|** | `vDSP_zvmags` → **power** |
+| Scale | `× 2 / fftSize` → \|FFT\|/512 | `/ fftSize` then `sqrt` → \|FFT\|/32 |
+| Net | \|FFT\|/512 | **\|FFT\|/32 → 16× larger** |
+| Hop | 1024 non-overlapping (`AudioInputRouter` chunk) | 1024 non-overlapping — **same** |
 
-Two multiplicative effects both inflate runtime flux: the **16× magnitude-normalization** difference (flux is linear in magnitude), and the **hop/overlap** difference (non-overlapping frames are 1024 samples apart, so adjacent spectra differ more → larger rectified diff, ~2×). 16 × ~2 ≈ **32×**, matching the observed gap.
+Both paths feed the **same** `MIRPipeline`/`SpectralAnalyzer`. Spectral flux is fed **raw** into the classifier's z-score (`MIRPipeline.swift:66` — "not normalized, for mood classifier z-score input"), so it is the only feature exposed to the 16× magnitude difference. Band energies are AGC-normalized and centroid/chroma are ratios → scale-invariant → they matched despite the divergence. That is the discriminator. (Confirmed empirically: the pre/post flux ratio is exactly **16.000** on every track, σ=0.)
 
-**Why only flux is affected** (`PhospheneEngine/Sources/DSP/MIRPipeline.swift`):
-- **flux** — line 66 comment: *"Raw smoothed spectral flux (not normalized). For mood classifier z-score input."* Fed **raw** → fully exposed to magnitude scale + hop.
-- **band energies** — `bandEnergyProcessor` applies total-energy AGC → scale-invariant → immune.
-- **centroid** — a magnitude-weighted frequency **ratio**, then ÷Nyquist → invariant to magnitude scale and (nearly) to hop.
+`analyzeMIR` sets `TrackProfile.mood`, which the planner scores presets on before playback. So the **offline (pre-playback) mood was saturated; the live mood was always fine**. Mood is 30 % of `DefaultPresetScorer`, so preset selection ran on 9 effective features. No crash / plausible values from the other 9 → P2.
 
-So band/centroid match the scaler regardless of the STFT-parameter divergence; flux does not. This is the discriminator that confirms the cause.
+## Fix (MOOD-FLUX.2)
 
-## Impact
+One-line-of-intent change in `SessionPreparer+Analysis.swift` (and its census mirror `CensusAnalysis.swift`): make the offline magnitude formula **byte-identical to the live `FFTProcessor`** — `vDSP_zvabs` + `× 2/fftSize` instead of `sqrt(power/fftSize)`. Only the raw-flux-fed feature moves; ratio/AGC features are invariant.
 
-`TrackProfile.mood` (valence/arousal) is produced by this offline path and is **30 % of `DefaultPresetScorer`'s weight** — the largest single factor in which visualizer each track receives. With the flux z-score pinned at ~+38 on every track, the MLP's flux input is effectively a saturated constant: **mood — and therefore preset selection — has been running on 9 effective features on every session** since the scaler and the runtime feature path diverged. Not a crash and not silent-fail (mood still produces plausible values from the other 9), which is why it went unnoticed — hence P2, not P1.
+## Verification
 
-## Suspected failure class
-
-`calibration` (the scaler is fit against a feature scale the runtime does not produce) compounded by `api-contract` (the training extractor's comment claims to "match Phosphene's MIRPipeline" but uses a different hop and magnitude normalization).
-
-## Verification criteria (written before the fix)
-
-A fix is accepted only when **both** hold:
-
-1. **Automated:** re-running the census (or a `MoodFeatureParityTests` unit) shows the flux input's deployment mean within a small multiple (≤ ~2×) of the scaler mean, i.e. the flux z-score is no longer saturated (|z| for a typical track < ~4); the MoodClassifier golden-fixture test is regenerated and green; band/centroid features are unchanged.
-2. **Manual (required — musical feel):** Matt reviews before/after **preset picks** on a set of known tracks. Mood is a taste-bearing output; a green parity test proves the pipeline is consistent, not that the resulting mood (and the presets it selects) reads right. No automated metric substitutes.
-
-## Fix options (→ MOOD-FLUX.2, Matt's call)
-
-1. **(Recommended) Regenerate the mood model against the real runtime features, on the corpus.** Fix the extractor to use the runtime STFT params (hop 1024, `÷√fftSize`, native-rate handling), re-extract features, re-fit `mood_scaler.json`, and retrain the MLP — on the 28k in-domain corpus (§5 Tier-2) rather than the 1,802 DEAM excerpts, since a retrain is required regardless. Correct + durable + upgrades the weakest shipped model. Needs the manual before/after M7 pass.
-2. **Scale-correct flux at the runtime boundary (stopgap).** Divide `rawSmoothedFlux` by ~32 before the classifier. Cheap, un-pins the channel this week, but a magic constant over a real divergence (the hop factor is not a clean constant). Fragile; only as a bridge.
-3. **Re-fit the scaler alone on corpus stats — rejected.** The MLP weights were trained on DEAM-scaled flux; re-scaling only the scaler misaligns weights ↔ inputs. Collapses into (1) once the retrain is acknowledged.
+1. **Automated:** flux z-score **+38 → +1.43** (un-saturated); the 16× correction is **uniform** across tracks (σ=0), so it generalizes corpus-wide without a re-run. Full mood/MIR/session-prep/spectral suites green (103 tests), incl. `MoodClassifierGolden` (unchanged — the fix is feature-extraction, not the classifier).
+2. **Blast radius** (measured, 40-track pre/post): `mir_bpm` **0/40 changed**; `key_class` shifted 6/40 and only empty→resolved (harmless; key is unused, BUG-054); centroid ~unchanged (ratio). The change aligns the *entire* offline MIR feature scale to live — a broader correctness improvement — but with benign collateral.
+3. **Manual (required, outstanding):** Matt reviews before/after **preset picks** on known tracks. Mood is taste-bearing; a green parity test is necessary, not sufficient. **This gate is open** — MOOD-FLUX.2 is code-complete, not resolved, until Matt confirms live.
 
 ## Related
 
-- BUG-054 (dsp.key) — separate weak-signal issue (key), not this.
-- `docs/research/CORPUS_ML_OPPORTUNITIES.md` §5 — the mood-model calibration/retrain opportunity this fix realizes.
+- `CENSUS_PILOT_REPORT.md` §3 is the pre-fix measurement (the finding); the fix landed after.
+- BUG-054 (dsp.key) — separate weak-key issue.
+- The live path was never affected; no live regression.

@@ -370,15 +370,20 @@ extension SessionPreparer {
 
                 ctx.magnitudes.withUnsafeMutableBufferPointer { magBuf in
                     guard let mBase = magBuf.baseAddress else { return }
-                    vDSP_zvmags(&split, 1, mBase, 1, vDSP_Length(binCount))
+                    // BUG-066 / MOOD-FLUX.2: use |FFT| (zvabs), NOT power (zvmags), to
+                    // match the live FFTProcessor magnitude formula exactly.
+                    vDSP_zvabs(&split, 1, mBase, 1, vDSP_Length(binCount))
                 }
             }
         }
 
-        // Scale: divide by fftSize, then square-root for magnitude (not power).
-        var scale = Float(fftSize)
-        vDSP_vsdiv(ctx.magnitudes, 1, &scale, &ctx.magnitudes, 1, vDSP_Length(binCount))
-        var cnt = Int32(binCount)
-        vvsqrtf(&ctx.magnitudes, ctx.magnitudes, &cnt)
+        // BUG-066 / MOOD-FLUX.2: scale by 2/fftSize — byte-identical to the live
+        // FFTProcessor. The prior `sqrt(power/fftSize)` ran magnitudes 16× hot, which
+        // (via raw spectral flux) saturated the MoodClassifier's flux input on every
+        // track — the classifier was trained on live-pipeline features at THIS scale.
+        // Ratio/AGC features (centroid, bands, chroma/key) are ~invariant; raw flux is
+        // the one that was exposed. See docs/diagnostics/BUG-066-diagnosis.md.
+        var scale = 2.0 / Float(fftSize)
+        vDSP_vsmul(ctx.magnitudes, 1, &scale, &ctx.magnitudes, 1, vDSP_Length(binCount))
     }
 }
