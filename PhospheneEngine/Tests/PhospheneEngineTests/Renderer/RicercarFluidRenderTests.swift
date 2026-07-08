@@ -176,33 +176,29 @@ struct RicercarFluidRenderTests {
         return (f, s)
     }
 
-    @Test("FL.4 routing: a leading family brightens its own ribbon; drive stays bounded")
-    func test_fl4_familyRoutesToRibbon() throws {
+    @Test("FL.9 position sync: a voice's drawn height moves with its band energy (zero-lag)")
+    func test_fl9_voiceHeightTracksAudio() throws {
         guard MTLCreateSystemDefaultDevice() != nil else {
             print("RicercarFluidRenderTests: no Metal device — skipping"); return
         }
         let ctx = try MetalContext()
         let lib = try ShaderLibrary(context: ctx)
         let geo = try makeGeo(ctx, lib)
+        let base = RicercarFluidGeometry.voiceBase          // rest heights: strings, woodwinds, brass, perc
 
-        // Strings lead → ribbon 0 (violet/strings) must be the brightest of the four.
-        let (fs, ss) = famFrame(strings: 0.6, bassDev: 0.5, t: 0.1)
-        geo.update(features: fs, stemFeatures: ss, commandBuffer: ctx.commandQueue.makeCommandBuffer()!)
-        let ls = geo.ribbonLevelsForTest
-        #expect(ls.x > ls.y && ls.x > ls.z && ls.x > ls.w,
-                "strings-led frame should brighten ribbon 0 (violet) most, got \(ls)")
-
-        // Brass lead → ribbon 2 (gold/brass) brightest.
-        let (fb, sb) = famFrame(brass: 0.9, midDev: 0.5, t: 0.2)
+        // High bass → voice 0 (strings, bass-driven) head rises (top-down height DROPS below its base),
+        // immediately (the head is set from THIS frame's audio — no accumulation lag).
+        let (fb, sb) = famFrame(bassDev: 0.8, t: 0.1)
         geo.update(features: fb, stemFeatures: sb, commandBuffer: ctx.commandQueue.makeCommandBuffer()!)
-        let lb = geo.ribbonLevelsForTest
-        #expect(lb.z > lb.x && lb.z > lb.y && lb.z > lb.w,
-                "brass-led frame should brighten ribbon 2 (gold) most, got \(lb)")
+        let hb = geo.voiceHeadHeightsForTest
+        #expect(hb.x < base[0] - 0.05, "high bass should raise voice 0 (got \(hb.x) vs base \(base[0]))")
 
-        // Bounded (FL.8: 0.06 rest floor for a silent family → full when it sings; no blow-up).
-        for v in [ls.x, ls.y, ls.z, ls.w, lb.x, lb.y, lb.z, lb.w] {
-            #expect(v >= 0.05 && v <= 1.05, "ribbon level out of range: \(v)")
-        }
+        // High treble → voice 3 (percussion, treble-driven) rises; voice 0 returns toward its base.
+        let (ft, st) = famFrame(trebDev: 0.8, t: 0.2)
+        geo.update(features: ft, stemFeatures: st, commandBuffer: ctx.commandQueue.makeCommandBuffer()!)
+        let ht = geo.voiceHeadHeightsForTest
+        #expect(ht.w < base[3] - 0.05, "high treble should raise voice 3 (got \(ht.w) vs base \(base[3]))")
+        #expect(ht.x > hb.x, "voice 0 head should fall back toward base once bass drops")
     }
 
     @Test("FL.4 synthetic contact sheet (env-gated) — response-shape preview, NOT a fidelity gate")
