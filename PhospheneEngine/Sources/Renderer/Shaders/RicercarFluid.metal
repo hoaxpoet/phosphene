@@ -362,15 +362,10 @@ fragment float4 ricercar_fluid_fragment(
     float density = d.x + d.y + d.z;
     float3 hue = d / max(density, 1e-4);                 // colour direction
     float cover = 1.0 - exp(-density);                   // 0 (thin) → 1 (thick)
-    // Self-shading from the density gradient (ref 02's dimensionality): billow faces toward the
-    // top-light brighten, faces away darken. Without this the cover term saturates and the masses
-    // read as flat colour sheets — the internal roll structure exists in the field, so show it.
-    float2 px = float2(1.0) / float2(cfg.width, cfg.height);
-    float3 dR = dye.sample(s, duv + float2(px.x, 0.0)).rgb;
-    float3 dD = dye.sample(s, duv + float2(0.0, px.y)).rgb;   // texture +y = down-screen
-    float2 grad = float2(dR.x + dR.y + dR.z, dD.x + dD.y + dD.z) * cfg.exposure - density;
-    float shade = clamp(1.0 + 0.30 * grad.y - 0.12 * grad.x, 0.62, 1.25);
-    float3 col = ground * (1.0 - cover) + hue * shade * cover;
+    // FL.8: luminous ink over a light ground — NO directional self-shading (the FL.3 density-gradient
+    // shade made the masses read as ridged plastic, the opposite of ref 02's soft glow). The dye is
+    // light: keep the hue at full luminosity and let thin edges bleed softly into the ground.
+    float3 col = ground * (1.0 - cover) + hue * cover;
 
     // Ribbon overlay (ref 01) — same emissive-over model as the dye: the wide halo tints the ground
     // gently, the core saturates to the full luminous hue; a small additive term keeps the core

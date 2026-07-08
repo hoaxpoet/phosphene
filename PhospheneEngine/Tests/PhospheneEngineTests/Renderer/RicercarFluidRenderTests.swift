@@ -67,10 +67,18 @@ struct RicercarFluidRenderTests {
         return Double(n) / Double(count)
     }
 
-    // MARK: - Gate: the sim runs, fills, stays bounded
+    // MARK: - Gate: the music paints (forms appear on energy, rest at silence, stay bounded)
 
-    @Test("Fluid sim produces a non-empty bounded billowing dye field through the live path")
-    func test_fluid_producesDyeField() throws {
+    /// A driving frame: sustained band energy + a periodic beat, so the FL.8 drive summons blooms/sprays.
+    private func drivenFrame(_ t: Float) -> FeatureVector {
+        var f = FeatureVector(time: t, deltaTime: 1.0 / 60.0, aspectRatio: Float(Self.outW) / Float(Self.outH))
+        f.bassDev = 0.45; f.midDev = 0.35; f.trebDev = 0.25
+        f.beatComposite = (Int(t * 2) % 2 == 0) ? 0.8 : 0.0
+        return f
+    }
+
+    @Test("FL.8: music paints a bounded field; silence rests")
+    func test_fluid_musicPaints_silenceRests() throws {
         guard MTLCreateSystemDefaultDevice() != nil else {
             print("RicercarFluidRenderTests: no Metal device — skipping"); return
         }
@@ -80,24 +88,32 @@ struct RicercarFluidRenderTests {
         geo.ribbonBrightness = 0            // gate measures the DYE field, not the ribbon overlay
         let tex = try target(ctx)
 
+        // 1. Drive with music for 60 s: forms appear, field stays bounded, no wash-out creep.
         var t: Float = 0
         var last = [UInt8]()
         var frac6: Double = 0
-        for i in 0..<3600 {                                  // ~60 s at 60 fps
-            let f = FeatureVector(time: t, deltaTime: 1.0 / 60.0, aspectRatio: Float(Self.outW) / Float(Self.outH))
-            last = try frame(geo, f, tex, ctx)
+        for i in 0..<3600 {
+            last = try frame(geo, drivenFrame(t), tex, ctx)
             if i == 359 { frac6 = dyeFraction(last) }
             t += 1.0 / 60.0
         }
         let frac60 = dyeFraction(last)
-        print("[ricercar_fluid] dye-covered fraction: 6 s = \(String(format: "%.3f", frac6)), 60 s = \(String(format: "%.3f", frac60))")
-        // The sources bloom + advect → a meaningful part of the frame carries dye, but it must NOT fill
-        // the whole frame (dissipation keeps it breathing) and must not be NaN-black.
-        #expect(frac6 > 0.03, "Fluid produced almost no dye (\(frac6)) — sim not advecting from the sources.")
-        #expect(frac6 < 0.95, "Fluid filled the whole frame (\(frac6)) — dissipation/instability broken.")
-        // Accumulation-creep guard at playback length (the Glaze wash-out lesson: a 6 s render cannot
-        // catch a field that slowly fills over minutes — injection must equilibrate with dissipation).
-        #expect(frac60 < 0.85, "Dye coverage still climbing at 60 s (\(frac60)) — injection outruns dissipation.")
+        print("[ricercar_fluid] driven dye fraction: 6 s = \(String(format: "%.3f", frac6)), 60 s = \(String(format: "%.3f", frac60))")
+        #expect(frac6 > 0.03, "Music drove almost no dye (\(frac6)) — summonForms not painting from energy.")
+        #expect(frac6 < 0.95, "Field filled the frame (\(frac6)) — dissipation/instability broken.")
+        #expect(frac60 < 0.85, "Coverage still climbing at 60 s (\(frac60)) — injection outruns dissipation.")
+
+        // 2. Then go silent: nothing new is summoned and the field dissipates toward the ground (rests).
+        var restFrac = frac60
+        for _ in 0..<600 {                                    // ~10 s of silence
+            let f = FeatureVector(time: t, deltaTime: 1.0 / 60.0, aspectRatio: Float(Self.outW) / Float(Self.outH))
+            last = try frame(geo, f, tex, ctx)
+            t += 1.0 / 60.0
+        }
+        restFrac = dyeFraction(last)
+        print("[ricercar_fluid] rest dye fraction after 10 s silence = \(String(format: "%.3f", restFrac))")
+        #expect(restFrac < frac60 * 0.5,
+                "Field did not rest at silence (\(restFrac) vs driven \(frac60)) — the drive is autonomous, not music-painted.")
     }
 
     // MARK: - Contact sheets (env-gated: RICERCAR_VISUAL=1 / RENDER_VISUAL=1)
@@ -125,8 +141,7 @@ struct RicercarFluidRenderTests {
             var tiles: [[UInt8]] = []
             var t: Float = 0
             for i in 0..<frames {
-                let f = FeatureVector(time: t, deltaTime: 1.0 / 60.0, aspectRatio: Float(Self.outW) / Float(Self.outH))
-                let px = try frame(geo, f, tex, ctx)
+                let px = try frame(geo, drivenFrame(t), tex, ctx)   // FL.8: music paints — drive with energy
                 if checkpoints.contains(i) { tiles.append(px) }
                 t += 1.0 / 60.0
             }
@@ -184,9 +199,9 @@ struct RicercarFluidRenderTests {
         #expect(lb.z > lb.x && lb.z > lb.y && lb.z > lb.w,
                 "brass-led frame should brighten ribbon 2 (gold) most, got \(lb)")
 
-        // All levels bounded to a sane range (master × per-family, floor 0.32, no blow-up).
+        // Bounded (FL.8: 0.06 rest floor for a silent family → full when it sings; no blow-up).
         for v in [ls.x, ls.y, ls.z, ls.w, lb.x, lb.y, lb.z, lb.w] {
-            #expect(v >= 0.30 && v <= 1.05, "ribbon level out of range: \(v)")
+            #expect(v >= 0.05 && v <= 1.05, "ribbon level out of range: \(v)")
         }
     }
 
