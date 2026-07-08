@@ -75,6 +75,11 @@ struct RicercarFluidVideoHarness {
 
         let hop = InstrumentFamilyAnalyzer.hopSeconds
         var captured = 0
+        // Sync instrumentation (per captured frame): the audio drive vs what the render did, so
+        // "is it synced?" is a number, not an opinion. energy = total band deviation; balance =
+        // treb−bass (a left/right position cue); coverage + centroidX = how much dye + where it is.
+        var audioEnergy: [Double] = [], audioBalance: [Double] = []
+        var visCoverage: [Double] = [], visCentroidX: [Double] = []
         for (i, fv) in features.enumerated() {
             // Sample the family series by playback position, exactly as VisualizerEngine+Audio does.
             var stem = StemFeatures.zero
@@ -107,10 +112,15 @@ struct RicercarFluidVideoHarness {
                              from: MTLRegionMake2D(0, 0, Self.outW, Self.outH), mipmapLevel: 0)
                 let url = frameDir.appendingPathComponent(String(format: "f%05d.png", captured))
                 try writeBGRAToPNG(px, w: Self.outW, h: Self.outH, url: url)
+                let (cov, cx) = coverageAndCentroidX(px)
+                audioEnergy.append(Double(max(0, fv.bassDev) + max(0, fv.midDev) + max(0, fv.trebDev)))
+                audioBalance.append(Double(fv.trebDev - fv.bassDev))
+                visCoverage.append(cov); visCentroidX.append(cx)
                 captured += 1
             }
         }
         print("[ricercar_video] wrote \(captured) frames")
+        reportSync(energy: audioEnergy, balance: audioBalance, coverage: visCoverage, centroidX: visCentroidX)
 
         // 4. Encode MP4 (yuv420p for QuickTime).
         let stem = URL(fileURLWithPath: audioPath).deletingPathExtension().lastPathComponent
@@ -127,6 +137,61 @@ struct RicercarFluidVideoHarness {
         var url = URL(fileURLWithPath: file)
         for _ in 0..<5 { url.deleteLastPathComponent() }   // Diagnostics/PhospheneEngineTests/Tests/PhospheneEngine/<root>
         return url.appendingPathComponent("PhospheneEngine/Tests/Fixtures/tempo/pyramid_song.m4a").path
+    }
+
+    // MARK: - Sync determination (audio ↔ visual correlation + lag)
+
+    /// Fraction of coloured pixels + the mean x (0…1) of those pixels — how much dye and where it is.
+    private func coverageAndCentroidX(_ px: [UInt8]) -> (Double, Double) {
+        var n = 0, sumX = 0.0
+        let count = px.count / 4
+        for i in 0..<count {
+            let b = Int(px[i * 4]), g = Int(px[i * 4 + 1]), r = Int(px[i * 4 + 2])
+            if abs(r - 242) + abs(g - 240) + abs(b - 235) > 60 {
+                n += 1; sumX += Double((i % Self.outW)) / Double(Self.outW)
+            }
+        }
+        let cov = Double(n) / Double(count)
+        return (cov, n > 0 ? sumX / Double(n) : 0.5)
+    }
+
+    private func pearson(_ a: [Double], _ b: [Double]) -> Double {
+        let n = min(a.count, b.count); guard n > 2 else { return 0 }
+        let ma = a.prefix(n).reduce(0, +) / Double(n), mb = b.prefix(n).reduce(0, +) / Double(n)
+        var num = 0.0, da = 0.0, db = 0.0
+        for i in 0..<n { let x = a[i] - ma, y = b[i] - mb; num += x * y; da += x * x; db += y * y }
+        return (da > 0 && db > 0) ? num / (da * db).squareRoot() : 0
+    }
+
+    /// Best correlation of `vis` against `audio` over integer lags (vis delayed by `lag` frames).
+    private func bestLag(audio: [Double], vis: [Double], maxLag: Int) -> (r: Double, lag: Int) {
+        var best = (r: -2.0, lag: 0)
+        for lag in -maxLag...maxLag {
+            var a: [Double] = [], v: [Double] = []
+            for i in 0..<vis.count where i - lag >= 0 && i - lag < audio.count {
+                a.append(audio[i - lag]); v.append(vis[i])
+            }
+            let r = pearson(a, v)
+            if r > best.r { best = (r, lag) }
+        }
+        return best
+    }
+
+    private func reportSync(energy: [Double], balance: [Double], coverage: [Double], centroidX: [Double]) {
+        // INTENSITY sync: does the AMOUNT of visual track the music's energy? (best lag, 30 fps → frames×33 ms)
+        let intensity = bestLag(audio: energy, vis: coverage, maxLag: 18)
+        // POSITION sync: does WHERE the visual sits track a left/right audio cue (treb−bass balance)?
+        let position = pearson(balance, centroidX)
+        let cxStd = { () -> Double in
+            let m = centroidX.reduce(0, +) / Double(max(1, centroidX.count))
+            return (centroidX.map { ($0 - m) * ($0 - m) }.reduce(0, +) / Double(max(1, centroidX.count))).squareRoot()
+        }()
+        print("""
+        [ricercar_sync] ── audio↔visual determination (\(coverage.count) frames @ \(Self.videoFPS) fps) ──
+          INTENSITY: coverage vs energy   r=\(String(format: "%+.2f", intensity.r)) at lag \(intensity.lag) frame(s) (\(intensity.lag * 1000 / Self.videoFPS) ms)
+          POSITION : centroidX vs treb−bass r=\(String(format: "%+.2f", position))   centroidX σ=\(String(format: "%.3f", cxStd)) (of frame width)
+          READ: intensity r≳0.5 near lag 0 = the amount of visual tracks the music; position |r|≲0.2 or σ≈0 = the visual does NOT move with the music.
+        """)
     }
 
     // MARK: - Real MIR feature stream (production FFT → MIR, 60 fps)
