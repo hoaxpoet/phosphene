@@ -2313,6 +2313,6 @@ unsolved), arXiv 1912.10211 (PANNs).
 
 **Decision.** Adopt TIV as the harmonic-state representation; **scope as 4 increments** (TONAL.0 audit → .1 `TonalAnalyzer` infra → .2 dumper + corpus calibration → .3 first-preset M7). Infra and preset increments never bundled. **Matt GO (2026-07-08)**; first-preset consumer = **Nacre** (its description already claims harmony-hue → real TIV closes an honesty gap and is the cleanest "real signal vs proxy" M7).
 
-**Status.** Accepted (Matt go/no-go, 2026-07-08). TONAL.1 in build.
+**Status.** Accepted (Matt go/no-go, 2026-07-08). TONAL.1 (`TonalAnalyzer` infra) code-complete 2026-07-08 — floats 44–48 populated, 6-test synthetic suite green, 192 B held; no preset reads them yet. TONAL.1b (Cartograph trace) deferred; TONAL.2/.3 next.
 
 **References.** `docs/TONAL_ANALYSIS_SCOPING.md` (the plan + TIV math + the three decisions with file:line). [D-026] (deviation/reset discipline), [D-099] (FeatureVector/MSL contract), [D-009] (no-CoreML — TONAL adds no ML), [D-171] (Nacre — candidate consumer). Bernardes et al. 2016 (TIV); Harte et al. 2006 (HCDF); Chew 2000 (spiral array).
