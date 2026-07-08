@@ -30,6 +30,7 @@ public enum ParticleGeometryRegistry {
         "Murmuration",
         "Filigree",
         "Mitosis",
-        "Cytokinesis"
+        "Cytokinesis",
+        "Ricercar"
     ]
 }

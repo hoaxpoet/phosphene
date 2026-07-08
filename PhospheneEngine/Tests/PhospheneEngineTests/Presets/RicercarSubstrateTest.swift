@@ -1,12 +1,11 @@
-// RicercarSubstrateTest — RICERCAR-RW: Ricercar rebuilt on Skein's painter engine, family-coloured.
+// RicercarSubstrateTest — RICERCAR-FL.5: Ricercar is the fluid-dye + glow-ribbons particle preset.
 //
-// The IFC.6 per-section mark shader (ricercar_geometry_*) FAILED live M7 (lines lagged the music; the
-// paint read as a fat line + speckles; boring — see docs/presets/RICERCAR_DESIGN.md §IFC.6). Ricercar
-// now REUSES Skein's proven painter engine (audio-modulated painterTau clock + onset-burst splatter +
-// rich marks) via `fragment_function: skein_fragment`, with the pour/burst COLOUR driven by the dominant
-// instrument FAMILY instead of the dominant stem (`SkeinState(colorFromFamily: true)` + a family palette).
-// The rich-marks / sync / canvas-hold behaviour is covered by SkeinCanvasHoldTest (same engine); this
-// file guards the RW-specific wiring + family-colour contract.
+// History: the IFC.6 marks failed live M7 (lag + boring); the RW Skein-recolour was rejected ("just
+// Skein — I want Fantasia"); the Fantasia rebuild replaced the marks paradigm with a Stam stable-fluids
+// dye sim + ribbon overlay (`RicercarFluidGeometry`, docs/presets/RICERCAR_DESIGN.md §FANTASIA REBUILD).
+// This file guards the FL.5 preset wiring (particles pass + registry membership) and the SkeinState
+// family-colour mode the RW increment added (engine feature, kept — a candidate colour source for FL.4).
+// The fluid sim + ribbon rendering itself is covered by RicercarFluidRenderTests (live dispatch path).
 
 import Testing
 import Metal
@@ -15,7 +14,7 @@ import Foundation
 @testable import Presets
 @testable import Shared
 
-@Suite("Ricercar-RW — Skein engine, family-coloured")
+@Suite("Ricercar-FL — fluid-dye particle preset + family-colour mode")
 @MainActor
 struct RicercarSubstrateTest {
 
@@ -26,21 +25,24 @@ struct RicercarSubstrateTest {
         SIMD3(0.76, 0.38, 0.18), SIMD3(0.13, 0.60, 0.66)
     ]
 
-    // MARK: - 1. The sidecar reuses Skein's engine
+    // MARK: - 1. The sidecar is the fluid-dye particle preset (FL.5)
 
-    @Test("Ricercar loads and resolves Skein's geometry pipeline (skein_fragment reuse)")
-    func test_ricercar_reusesSkeinGeometry() throws {
+    @Test("Ricercar loads as a particles preset backed by the fluid geometry registry entry")
+    func test_ricercar_isFluidParticlePreset() throws {
         guard MTLCreateSystemDefaultDevice() != nil else {
             print("RicercarSubstrateTest: no Metal device — skipping"); return
         }
         let preset = try #require(
             _acceptanceFixture.presets.first { $0.descriptor.name == "Ricercar" },
             "Ricercar preset not loaded")
-        #expect(preset.descriptor.fragmentFunction == "skein_fragment",
-                "Ricercar must reuse Skein's shader (family-coloured sibling)")
-        let warp = try #require(preset.mvWarpPipelines, "Ricercar mvWarpPipelines nil — passes misconfigured")
-        #expect(warp.sceneGeometryState != nil,
-                "skein_geometry_* not resolved for Ricercar — the marks-on-top overlay is missing")
+        #expect(preset.descriptor.passes.contains(.particles),
+                "Ricercar must declare the particles pass (fluid sim renders through ParticleGeometry)")
+        #expect(preset.descriptor.fragmentFunction == "ricercar_ground_fragment",
+                "Ricercar's backdrop must be the warm-ground fragment (the fluid field covers it)")
+        #expect(preset.mvWarpPipelines == nil,
+                "Ricercar must NOT compile mv_warp pipelines — the marks/Skein paradigm was rejected 3×")
+        #expect(ParticleGeometryRegistry.knownPresetNames.contains("Ricercar"),
+                "Ricercar missing from ParticleGeometryRegistry — the app would render backdrop only")
     }
 
     // MARK: - 2. Family-mode SkeinState: colour locks onto the dominant family

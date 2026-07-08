@@ -259,6 +259,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// (Mitosis gen-2) — explicit per-cell `ParticleGeometry` (D-097, MITOSIS-G2.1).
     var cytokinesisGeometry: (any ParticleGeometry)?
 
+    /// Fluid dye simulation + glow ribbons for the Ricercar preset (Fantasia rebuild)
+    /// — Stam stable-fluids `ParticleGeometry` (D-097, RICERCAR-FL.5).
+    var ricercarGeometry: (any ParticleGeometry)?
+
     /// Shader library for creating post-process chains on preset switch.
     let shaderLibrary: Renderer.ShaderLibrary
 
@@ -819,6 +823,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         self.filigreeGeometry = Self.makeFiligreeGeometry(context: ctx, library: lib)
         self.mitosisGeometry = Self.makeMitosisGeometry(context: ctx, library: lib)
         self.cytokinesisGeometry = Self.makeCytokinesisGeometry(context: ctx, library: lib)
+        self.ricercarGeometry = Self.makeRicercarGeometry(context: ctx, library: lib)
         self.moodClassifier = classifier
         self.stemAnalyzer = analyzer
         self.stemSeparator = sep
@@ -1121,6 +1126,24 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         return cells
     }
 
+    /// Build the fluid dye simulation + glow-ribbon geometry for the Ricercar
+    /// preset (Fantasia rebuild — `RicercarFluidGeometry` + `RicercarFluid.metal`,
+    /// RICERCAR-FL). Returns `any ParticleGeometry` (D-097, siblings not subclasses).
+    private static func makeRicercarGeometry(
+        context: MetalContext,
+        library: Renderer.ShaderLibrary
+    ) -> (any ParticleGeometry)? {
+        guard let fluid = try? RicercarFluidGeometry(
+            device: context.device,
+            library: library.library,
+            pixelFormat: context.pixelFormat
+        ) else {
+            return nil
+        }
+        logger.info("Ricercar created: Stam stable-fluids dye sim + glow ribbons (Fantasia rebuild)")
+        return fluid
+    }
+
     /// Resolve a particle-preset name to the geometry conformer the engine
     /// has built for it. Returns `nil` for any unknown preset name; the
     /// caller is expected to log + fall through. Exposed as `internal` so
@@ -1132,6 +1155,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         case "Filigree":    return filigreeGeometry
         case "Mitosis":     return mitosisGeometry
         case "Cytokinesis": return cytokinesisGeometry
+        case "Ricercar":    return ricercarGeometry
         default:            return nil
         }
     }
