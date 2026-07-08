@@ -21,7 +21,8 @@ import Shared
 
 // MARK: - GPU-mirrored structs (layouts match RicercarFluid.metal exactly)
 
-/// Mirror of MSL `FluidConfig`. 2×uint + 8×float = 40 bytes, align 4.
+/// Mirror of MSL `FluidConfig`. All 4-byte-aligned scalars (no float4 → no alignment trap). 18×float
+/// + 2×uint = 80 bytes, align 4. Ribbon order: 0 strings, 1 woodwinds, 2 brass, 3 percussion.
 struct RicercarFluidConfig {
     var width: UInt32
     var height: UInt32
@@ -33,6 +34,8 @@ struct RicercarFluidConfig {
     var exposure: Float
     var time: Float
     var ribbonBrightness: Float
+    var rbLevel0: Float, rbLevel1: Float, rbLevel2: Float, rbLevel3: Float
+    var rbUndulate0: Float, rbUndulate1: Float, rbUndulate2: Float, rbUndulate3: Float
 }
 
 /// Mirror of MSL `FluidSplat` — two float4 for a guaranteed layout match (no float3 alignment trap).
@@ -74,6 +77,12 @@ public final class RicercarFluidGeometry: ParticleGeometry, @unchecked Sendable 
     /// The dye texture currently holding the field — exposed for render tests to read back.
     public var currentDyeTexture: MTLTexture { dye[dcur] }
 
+    /// Per-ribbon brightness after the last `update` (FL.4 audio drive) — strings, woodwinds, brass,
+    /// percussion. Exposed so a test can assert the family→ribbon routing without pixel-diffing.
+    public var ribbonLevelsForTest: SIMD4<Float> {
+        SIMD4(cfg.rbLevel0, cfg.rbLevel1, cfg.rbLevel2, cfg.rbLevel3)
+    }
+
     public enum FluidError: Error { case textureAllocationFailed, functionNotFound(String) }
 
     public init(
@@ -99,7 +108,15 @@ public final class RicercarFluidGeometry: ParticleGeometry, @unchecked Sendable 
             pressure: 0.8,
             exposure: 1.2,
             time: 0,
-            ribbonBrightness: 1.0)
+            ribbonBrightness: 1.0,
+            rbLevel0: 1,
+            rbLevel1: 1,
+            rbLevel2: 1,
+            rbLevel3: 1,
+            rbUndulate0: 1,
+            rbUndulate1: 1,
+            rbUndulate2: 1,
+            rbUndulate3: 1)
 
         self.velocity = [try Self.makeField(device, .rg16Float, width, height),
                          try Self.makeField(device, .rg16Float, width, height)]
@@ -181,9 +198,11 @@ public final class RicercarFluidGeometry: ParticleGeometry, @unchecked Sendable 
         let dt = features.deltaTime > 0 ? features.deltaTime : 1.0 / 60.0
         time += dt
         cfg.time = time
+        applyAudioDrive(features: features, stems: stemFeatures)   // FL.4
         var cfgLocal = cfg
 
-        var splats = proceduralSplats(time: time)   // FL.2 prototype: hand-animated section blooms
+        // Hand-animated section blooms (silence baseline, FL.3), then FL.4 audio modulation on top.
+        var splats = modulatedSplats(proceduralSplats(time: time), features: features, stems: stemFeatures)
         var splatCount = UInt32(splats.count)
 
         guard let enc = commandBuffer.makeComputeCommandEncoder() else { return }
@@ -248,6 +267,96 @@ public final class RicercarFluidGeometry: ParticleGeometry, @unchecked Sendable 
         encoder.setFragmentTexture(dye[dcur], index: 0)
         encoder.setFragmentBytes(&cfgLocal, length: MemoryLayout<RicercarFluidConfig>.stride, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+    }
+
+    // MARK: - FL.4 audio drive
+    //
+    // The discipline that killed Ricercar three times, applied here (Audio Data Hierarchy + FA #67):
+    //   • IDENTITY — which family is playing → its dye blooms + its ribbon brightens. Driven by the
+    //     instrument-family capture (`*ActivityDev`, StemFeatures 48–55), which is a ~2–4 s-latency
+    //     signal by construction. Lag is fine for identity: a colour arriving a beat late reads as a
+    //     small offset (IFC.6 lesson — drive COLOUR off family, never MOTION).
+    //   • MOTION — flow vigour, splat force, ribbon undulation, beat impulses. Driven by ZERO-LAG
+    //     continuous energy (`bass/mid/trebDev`) + `beatComposite`. This is the felt sync; family
+    //     capture never touches motion (that WAS the IFC.6 "lag" failure — a fixed clock gated by a
+    //     laggy signal).
+    //   • One primitive per layer (FA #67): each ribbon's undulation rides its OWN register band, so
+    //     the voices weave independently (counterpoint) rather than all pumping on one beat.
+    // Per-family soft-saturation vs the IFC.6-measured working points, so a characteristic entry
+    // paints full regardless of each family's natural loudness (soft-sat vs the section constant,
+    // not vs 1.0 — D-026 / FA #31). At silence (all-zero features, e.g. the render gate) the drive is
+    // inert and the FL.3 hand-animated look renders unchanged.
+
+    /// Per-family soft-saturation constants (IFC.6 dumper corpus): strings, woodwinds, brass, percussion.
+    private static let familySaturation = SIMD4<Float>(0.30, 0.35, 0.85, 0.20)
+
+    /// True once any family or band signal is meaningfully non-zero (real audio playing, not silence).
+    private func audioPresent(_ feat: FeatureVector, _ stem: StemFeatures) -> Bool {
+        let band = max(feat.bassDev, max(feat.midDev, feat.trebDev))
+        let fam = max(stem.stringsActivityDev, max(stem.woodwindsActivityDev,
+                    max(stem.brassActivityDev, stem.percussionActivityDev)))
+        return max(band, fam) > 1e-3
+    }
+
+    /// soft-saturate a deviation vs its section working point → 0…~1 (1 − e^(−dev/sat)).
+    private func softSat(_ dev: Float, _ sat: Float) -> Float {
+        1.0 - exp(-max(0, dev) / max(sat, 1e-4))
+    }
+
+    /// Compute the per-ribbon brightness (family identity) + undulation (zero-lag band energy) and
+    /// store them on `cfg` so both the compute splats and `render` see the same frame's drive.
+    private func applyAudioDrive(features feat: FeatureVector, stems stem: StemFeatures) {
+        guard audioPresent(feat, stem) else {
+            cfg.rbLevel0 = 1; cfg.rbLevel1 = 1; cfg.rbLevel2 = 1; cfg.rbLevel3 = 1
+            cfg.rbUndulate0 = 1; cfg.rbUndulate1 = 1; cfg.rbUndulate2 = 1; cfg.rbUndulate3 = 1
+            return
+        }
+        let sat = Self.familySaturation
+        // brightness ← family identity (0.32 floor keeps the resting weave visible — silence-non-black,
+        // D-037 — then the active family surges).
+        let famStrings = softSat(stem.stringsActivityDev, sat.x)
+        let famWood = softSat(stem.woodwindsActivityDev, sat.y)
+        let famBrass = softSat(stem.brassActivityDev, sat.z)
+        let famPerc = softSat(stem.percussionActivityDev, sat.w)
+        cfg.rbLevel0 = 0.32 + 0.68 * famStrings
+        cfg.rbLevel1 = 0.32 + 0.68 * famWood
+        cfg.rbLevel2 = 0.32 + 0.68 * famBrass
+        cfg.rbLevel3 = 0.32 + 0.68 * famPerc
+        // undulation ← zero-lag band energy of each ribbon's register (low/mid/mid/high).
+        func und(_ dev: Float) -> Float { min(2.4, 1.0 + 1.5 * max(0, dev)) }
+        cfg.rbUndulate0 = und(feat.bassDev)   // strings — low
+        cfg.rbUndulate1 = und(feat.midDev)    // woodwinds — mid
+        cfg.rbUndulate2 = und(feat.midDev)    // brass — low-mid
+        cfg.rbUndulate3 = und(feat.trebDev)   // percussion — high
+    }
+
+    /// FL.4: modulate the FL.3 baseline splats by audio — an active family's dye surges (identity) and
+    /// the inflow force scales with zero-lag energy + a bounded per-beat impulse (motion). Inert at
+    /// silence (returns the input unchanged) so the FL.3 gate/contact-sheets render byte-identical.
+    private func modulatedSplats(_ base: [FluidSplat],
+                                 features feat: FeatureVector, stems stem: StemFeatures) -> [FluidSplat] {
+        guard audioPresent(feat, stem) else { return base }
+        let sat = Self.familySaturation
+        // Source→family map (matches proceduralSplats colour order): russet, gold, violet, gold, violet,
+        // teal = woodwinds, brass, strings, brass, strings, percussion.
+        let str = softSat(stem.stringsActivityDev, sat.x)
+        let wood = softSat(stem.woodwindsActivityDev, sat.y)
+        let brass = softSat(stem.brassActivityDev, sat.z)
+        let perc = softSat(stem.percussionActivityDev, sat.w)
+        let famDev: [Float] = [wood, brass, str, brass, str, perc]
+        // Global flow vigour ← weighted zero-lag energy; beat impulse ← composite (bounded ≪ base 2.2).
+        let energy = 0.5 * max(0, feat.bassDev) + 0.3 * max(0, feat.midDev) + 0.2 * max(0, feat.trebDev)
+        let forceFactor = 1.0 + 1.6 * energy
+        let beatKick = 1.2 * max(0, feat.beatComposite)
+        var out = base
+        for i in 0..<out.count {
+            let surge = 1.0 + 1.2 * famDev[i]
+            let col = out[i].colorRad, vel = out[i].posVel
+            let vy = vel.w * forceFactor + beatKick
+            out[i].colorRad = SIMD4(col.x * surge, col.y * surge, col.z * surge, col.w)   // .w=radius
+            out[i].posVel = SIMD4(vel.x * forceFactor, vel.y * forceFactor, vel.z * forceFactor, vy)
+        }
+        return out
     }
 
     // MARK: - FL.3 procedural splats (no audio — judge the LOOK against ref 02)
