@@ -281,6 +281,19 @@ public final class SkeinState: @unchecked Sendable {
     /// True when the palette comes from the library by track seed (Skein.5.3 — the live mode).
     private let usesLibraryPalette: Bool
 
+    /// IFC.6-RW (Ricercar rebuild, 2026-07-07): when true, the pour/burst COLOUR tracks the dominant
+    /// instrument FAMILY (strings/brass/woodwinds/percussion, D-026 dev argmax over StemFeatures 48–55)
+    /// instead of the dominant stem, while flow/motion stay on the zero-lag stem energy. Skein leaves it
+    /// `false` → the class is byte-identical (every branch below is gated on this flag). Ricercar sets it
+    /// true + an explicit family palette so it reuses Skein's proven painter engine, recoloured by which
+    /// instruments are playing. Rationale: the family signal is a slow ~2–4 s identity signal — a colour
+    /// lag reads fine, a motion lag does not (the IFC.6 M7 failure).
+    private let colorFromFamily: Bool
+
+    /// Family-dev floor below which no family "leads" and the pour HOLDS its current colour (rather than
+    /// snapping to strings[0]) — measured from the IFC.6 dumper corpus (noise < 0.012, real entries ≥ 0.05).
+    static let familyColorFloor: Float = 0.03
+
     /// The canvas GROUND for the current palette (display sRGB; Skein.5.3b — the ground is
     /// part of the palette: light AND dark grounds). Library mode re-picks it with the palette
     /// on reseed; explicit mode keeps the classic cream. Written only under `lock`.
@@ -369,8 +382,10 @@ public final class SkeinState: @unchecked Sendable {
     public init?(device: MTLDevice,
                  seed: UInt32 = 0,
                  palette: [SIMD3<Float>]? = nil,
-                 locusEnabled: Bool = SkeinState.defaultLocusEnabled) {
+                 locusEnabled: Bool = SkeinState.defaultLocusEnabled,
+                 colorFromFamily: Bool = false) {
         self.locusEnabled = locusEnabled
+        self.colorFromFamily = colorFromFamily
         let bufferSize = MemoryLayout<SkeinHeaderGPU>.stride
             + Self.maxBursts * MemoryLayout<SkeinBurstGPU>.stride
             + Self.maxColorBreaks * MemoryLayout<SkeinBreakGPU>.stride
@@ -709,9 +724,21 @@ extension SkeinState {
     /// at `boundaryPourMinTau` so a boundary right after a switch never chops pours into confetti
     /// (the D-150 long-pour intent). Colours are mood-tinted AT LAY TIME and frozen.
     func updateDominantLine(stems: StemFeatures, stemMix: Float) {
+        // Skein: colour tracks the dominant STEM (colour + motion coupled). Ricercar (colorFromFamily):
+        // colour tracks the dominant instrument FAMILY (D-026 dev argmax over StemFeatures 48–55 — FA #31,
+        // never the absolute activity that over-calls brass), while flow/width stay on the ZERO-LAG stem
+        // energy so the pour keeps breathing with the music (the family signal is a slow ~2–4 s identity
+        // signal: a colour lag reads fine, a motion lag does not — the IFC.6 M7 failure).
+        let domScore: [Float] = colorFromFamily
+            ? [stems.stringsActivityDev, stems.brassActivityDev,
+               stems.woodwindsActivityDev, stems.percussionActivityDev]
+            : stemEnergySmoothed
         var domIdx = 0
-        var domVal = stemEnergySmoothed[0]
-        for i in 1..<4 where stemEnergySmoothed[i] > domVal { domVal = stemEnergySmoothed[i]; domIdx = i }
+        var domVal = domScore[0]
+        for i in 1..<4 where domScore[i] > domVal { domVal = domScore[i]; domIdx = i }
+        // Family mode: through a lull (no family notably leads) HOLD the current colour rather than
+        // snapping to strings[0] — the palette persists, it doesn't flicker to a default.
+        if colorFromFamily && domVal < Self.familyColorFloor && lineDomIdx >= 0 { domIdx = lineDomIdx }
         guard stemMix > 0.001 else { lineFlow = 0; lineVisc = 0; jitter = 0; return }
 
         let committed: Bool
@@ -721,7 +748,7 @@ extension SkeinState {
             committed = painterTau >= Self.firstPourSettleTau
         } else if domIdx != lineDomIdx
             && (painterTau - lastSwitchTau) >= Self.minPourTau
-            && stemEnergySmoothed[domIdx] > stemEnergySmoothed[lineDomIdx] * Self.pourSwitchHysteresis {
+            && domScore[domIdx] > domScore[lineDomIdx] * Self.pourSwitchHysteresis {
             committed = true
         } else {
             committed = m5.boundaryPourPending > 0.5
@@ -740,14 +767,19 @@ extension SkeinState {
         }
         // Skein.5.1: during the first-pour settle no pour exists yet — nothing to colour or width.
         guard lineDomIdx >= 0 else { lineFlow = 0; lineVisc = 0; jitter = 0; return }
-        // Colour / flow / viscosity all reflect the COMMITTED pour (lineDomIdx) — the whole pour is
-        // coherent, and the width doesn't breathe with a louder non-committed stem mid-pour. The
-        // rendered colour is the breakpoint's, FROZEN at lay-time (the canvas archives the mood arc).
+        // Colour reflects the COMMITTED pour (lineDomIdx), FROZEN at lay-time (the canvas archives the arc).
         lineCol = moodTinted(paletteLinear[lineDomIdx])
-        // Arousal → pour width (slight): vigorous music pours a slightly fuller line.
-        lineFlow = stemEnergySmoothed[lineDomIdx] * stemMix
+        // Flow/width from ZERO-LAG stem energy in BOTH modes. Skein uses the committed stem's energy;
+        // family mode can't index the stem array by a family index, so it uses the loudest stem — the
+        // pour breathes with the overall music, never with the laggy family signal.
+        let flowEnergy = colorFromFamily ? (stemEnergySmoothed.max() ?? 0) : stemEnergySmoothed[lineDomIdx]
+        lineFlow = flowEnergy * stemMix
             * (1.0 + Self.arousalWidthGain * max(0, m5.moodArousal))
-        let domCentroid = centroid(of: SkeinStem(rawValue: lineDomIdx) ?? .drums, stems: stems)
+        // Viscosity: Skein uses the dominant STEM's centroid; family mode can't map family→stem-centroid,
+        // so it uses the broadband centroid proxy — the line's crispness stays music-driven either way.
+        let domCentroid = colorFromFamily
+            ? clamp(stems.otherCentroid, 0, 1)
+            : centroid(of: SkeinStem(rawValue: lineDomIdx) ?? .drums, stems: stems)
         lineVisc = clamp(1.0 - domCentroid, 0, 1) * stemMix
 
         // Local jitter ← high-band energy / onset rate (a fast continuous primitive distinct from
@@ -828,7 +860,11 @@ extension SkeinState {
         let visc = clamp(1.0 - centroid(of: stemEnum, stems: stems), 0, 1)
         // Skein.5: the burst colour is mood-tinted at SPAWN and frozen — like the line breakpoints,
         // the canvas archives the mood each mark was laid under (valence = 0 ⇒ identity tint).
-        let col = moodTinted(paletteLinear[stem])
+        // Ricercar (colorFromFamily): the accent takes the CURRENT dominant-family colour (the onset
+        // timing stays the zero-lag per-stem detection; only its colour is the family's), so splatter
+        // reads as the same section that's pouring, not a per-stem palette Ricercar doesn't use.
+        let colIdx = (colorFromFamily && lineDomIdx >= 0) ? lineDomIdx : stem
+        let col = moodTinted(paletteLinear[colIdx])
 
         // Per-burst droplet-placement seed: the same per-track seed + monotonic spawn counter
         // (incremented above) so the same track places identical marks (§5.7 determinism).
