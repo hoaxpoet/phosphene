@@ -1,7 +1,7 @@
 # Visual References — Ricercar
 
 **Family:** `painterly` (sibling of Skein)
-**Render pipeline:** `direct + mv_warp` (flowing-field config) **+ compute-agent voices** — Skein's canvas-hold mv_warp reconfigured to a curl-noise flow warp + slow decay (the colour *flows and merges*, it does not permanently accumulate), carrying a small set of Filigree-class agent "voices." See [`docs/presets/RICERCAR_DESIGN.md`](../../presets/RICERCAR_DESIGN.md).
+**Render pipeline (FANTASIA REBUILD, 2026-07-08):** `particles` — a GPU **fluid dye simulation** (Stam stable-fluids, `RicercarFluidGeometry`) rendering ref-02's luminous ink-in-water masses, with ref-01's **glowing weaving ribbons** (curve-SDF + halo) overlaid in the display fragment. The mv_warp/agent-voice architecture this file originally described was dropped with the marks paradigm after three rejections — see [`docs/presets/RICERCAR_DESIGN.md §FANTASIA REBUILD`](../../presets/RICERCAR_DESIGN.md). Per-image annotations below predate the rebuild: read `01` as **glowing luminous light-lines** (the rebuild's confirmed target, per Matt), not as the old painterly-marks gloss; the ink-in-water traits of `02` carry unchanged.
 **Rubric:** expected `rubric_profile: "lightweight"` (matching sibling Skein/Dragon Bloom — a 2D painterly feedback preset; the §12.2/§12.3 3D-surface items are N/A-by-paradigm). Confirm at the certification increment.
 **Last curated:** 2026-06-29 — three positives in place: `01_macro_weaving_lines.jpg` (hand-authored synthetic anchor), `02_meso_flowing_colour_masses.jpg` + `04_palette_register_legibility.jpg` (Matt-sourced photographs). `03_micro` and the five `05_anti_*` remain on the text spec (deferred, non-blocking) — see *Still to source*.
 
