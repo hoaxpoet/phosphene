@@ -58,6 +58,9 @@ struct CorpusCensusRunnerCommand: ParsableCommand {
     @Option(name: .long, help: "Seconds of audio analyzed from track start. Default 30 (preview parity).")
     var windowSeconds: Double = 30
 
+    @Flag(name: .long, help: "BUG-066 before/after: emit old-flux vs new-flux mood (V/A) per track, not the census.")
+    var moodAb: Bool = false
+
     // MARK: - Run
 
     func run() throws {
@@ -79,6 +82,12 @@ struct CorpusCensusRunnerCommand: ParsableCommand {
         }
         var pending = allRows.filter { !done.contains($0.relpath) }
         if let limit { pending = Array(pending.prefix(limit)) }
+
+        if moodAb {
+            try runMoodABMode(pending: pending, rootURL: rootURL, outURL: outURL)
+            return
+        }
+
         logLine("[census] manifest=\(allRows.count) ok · done=\(done.count) · pending=\(pending.count)"
             + (dualRate ? " · dual-rate" : ""))
 
@@ -122,6 +131,39 @@ struct CorpusCensusRunnerCommand: ParsableCommand {
                 + "total=\(String(format: "%.2f", total))s \(timing)\(flag)")
         }
         logLine("[census] done → \(out)")
+    }
+
+    // MARK: - Mood A/B mode (BUG-066 before/after)
+
+    private func runMoodABMode(pending: [ManifestRow], rootURL: URL, outURL: URL) throws {
+        logLine("[mood-ab] pending=\(pending.count) · window=\(windowSeconds)s")
+        let header = "relpath,old_valence,old_arousal,new_valence,new_arousal,d_valence,d_arousal,flux_new"
+        let handle = try openForAppend(outURL, headerIfNew: header)
+        defer { try? handle.close() }
+        for (idx, mrow) in pending.enumerated() {
+            let fileURL = rootURL.appendingPathComponent(mrow.relpath)
+            var line: String
+            do {
+                let (samples, nativeRate) = try decodeMonoFloat32(url: fileURL)
+                let rate = Double(nativeRate)
+                let windowCount = min(samples.count, Int(windowSeconds * rate))
+                let window = Array(samples[0..<max(windowCount, 0)])
+                guard windowCount >= 2048, let ab = runMoodAB(samples: window, sampleRate: rate) else {
+                    throw CensusError("too short or no frames")
+                }
+                func num(_ value: Double) -> String { String(format: "%.4f", value) }
+                line = CensusCSV.row([
+                    mrow.relpath, num(ab.oldV), num(ab.oldA), num(ab.newV), num(ab.newA),
+                    num(ab.newV - ab.oldV), num(ab.newA - ab.oldA), num(ab.fluxNew),
+                ])
+            } catch {
+                line = CensusCSV.row([mrow.relpath, "", "", "", "", "", "", errorText(error)])
+            }
+            handle.write(Data((line + "\n").utf8))
+            try? handle.synchronize()
+            if (idx + 1) % 10 == 0 { logLine("[mood-ab] \(idx + 1)/\(pending.count)") }
+        }
+        logLine("[mood-ab] done → \(outURL.path)")
     }
 
     // MARK: - Per-track analysis

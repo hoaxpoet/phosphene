@@ -154,6 +154,72 @@ func runMIR(samples: [Float], sampleRate: Double) -> MIRResult {
     )
 }
 
+// MARK: - Mood A/B (BUG-066 before/after)
+
+/// Before/after mood for one track: run the real MoodClassifier production-style
+/// (classify every 30 frames, EMA-accumulated) on TWO parallel MIR pipelines —
+/// `old` fed magnitudes ×16 (the pre-fix |FFT|/32 scale) and `new` fed the fixed
+/// |FFT|/512 scale. Faithful full-pipeline comparison, not just a flux rescale.
+struct MoodABResult {
+    var oldV: Double
+    var oldA: Double
+    var newV: Double
+    var newA: Double
+    var fluxNew: Double   // mean new-flux (drives the correlation)
+}
+
+func runMoodAB(samples: [Float], sampleRate: Double) -> MoodABResult? {
+    let fftSize = 1024
+    let binCount = fftSize / 2
+    let log2n = vDSP_Length(log2(Double(fftSize)))
+    guard let fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2)) else { return nil }
+    defer { vDSP_destroy_fftsetup(fftSetup) }
+
+    var ctx = FFTScratch(fftSize: fftSize, binCount: binCount, log2n: log2n, fftSetup: fftSetup)
+    let mirNew = MIRPipeline(binCount: binCount, sampleRate: Float(sampleRate), fftSize: fftSize)
+    let mirOld = MIRPipeline(binCount: binCount, sampleRate: Float(sampleRate), fftSize: fftSize)
+    let clfNew = MoodClassifier()
+    let clfOld = MoodClassifier()
+    let fps = Float(sampleRate) / Float(fftSize)
+    let deltaTime = 1.0 / fps
+
+    var oldMag = [Float](repeating: 0, count: binCount)
+    var newV = 0.0, newA = 0.0, oldV = 0.0, oldA = 0.0
+    var gotResult = false
+    var fluxSum = 0.0
+    var frames = 0
+    var offset = 0
+    while offset + fftSize <= samples.count {
+        ctx.computeMagnitudes(samples: samples, offset: offset)   // fixed (new) magnitudes
+        let time = Float(frames) * deltaTime
+        let fvNew = mirNew.process(magnitudes: ctx.magnitudes, fps: fps, time: time, deltaTime: deltaTime)
+        for idx in 0..<binCount { oldMag[idx] = ctx.magnitudes[idx] * 16 }   // pre-fix |FFT|/32 scale
+        let fvOld = mirOld.process(magnitudes: oldMag, fps: fps, time: time, deltaTime: deltaTime)
+        fluxSum += Double(mirNew.rawSmoothedFlux)
+        if frames % 30 == 0 {   // production classify cadence (analyzeMIR)
+            let inNew: [Float] = [
+                fvNew.subBass, fvNew.lowBass, fvNew.lowMid, fvNew.midHigh, fvNew.highMid, fvNew.high,
+                fvNew.spectralCentroid, mirNew.rawSmoothedFlux,
+                mirNew.latestMajorKeyCorrelation, mirNew.latestMinorKeyCorrelation,
+            ]
+            let inOld: [Float] = [
+                fvOld.subBass, fvOld.lowBass, fvOld.lowMid, fvOld.midHigh, fvOld.highMid, fvOld.high,
+                fvOld.spectralCentroid, mirOld.rawSmoothedFlux,
+                mirOld.latestMajorKeyCorrelation, mirOld.latestMinorKeyCorrelation,
+            ]
+            if let sNew = try? clfNew.classify(features: inNew), let sOld = try? clfOld.classify(features: inOld) {
+                newV = Double(sNew.valence); newA = Double(sNew.arousal)
+                oldV = Double(sOld.valence); oldA = Double(sOld.arousal)
+                gotResult = true
+            }
+        }
+        frames += 1
+        offset += fftSize
+    }
+    guard gotResult, frames > 0 else { return nil }
+    return MoodABResult(oldV: oldV, oldA: oldA, newV: newV, newA: newA, fluxNew: fluxSum / Double(frames))
+}
+
 // MARK: - FFT scratch
 
 /// Reusable 1024-pt Hann FFT scratch producing magnitude spectra — the same
