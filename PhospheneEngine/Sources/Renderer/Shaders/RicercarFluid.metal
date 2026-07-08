@@ -34,7 +34,13 @@ struct FluidConfig {
     float pressure;            // pressure-fade per frame (Jacobi warm-start), ~0.8
     float exposure;            // display: dye → luminance gain (HDR feel)
     float time;                // seconds — animates the ribbon paths (FL.3, hand-animated)
-    float ribbonBrightness;    // 0 disables the ribbon overlay (masses-only render)
+    float ribbonBrightness;    // master ribbon gain (0 disables the overlay — masses-only render)
+    // FL.4 audio drive — per-ribbon brightness (family identity, lag-tolerant) + undulation-amplitude
+    // scale (zero-lag band energy, the felt motion). Individual floats, not float4, to keep the
+    // struct 4-byte-aligned (no float3/float4 16-byte-alignment trap — cf. the FluidSplat packing note).
+    // Ribbon order: 0 strings/violet, 1 woodwinds/russet, 2 brass/gold, 3 percussion/teal.
+    float rbLevel0, rbLevel1, rbLevel2, rbLevel3;
+    float rbUndulate0, rbUndulate1, rbUndulate2, rbUndulate3;
 };
 
 // MARK: - Grid helpers
@@ -314,12 +320,14 @@ constant RibbonDef rb_ribbons[4] = {
     { 0.78, float4(0.120, 4.5, 5.0,  0.10), float4(0.050, 8.0, 1.2, -0.16), float3(0.12, 0.75, 0.80) }
 };
 
-// Path height + slope at x. Returns (y, dy/dx).
-static inline float2 rb_path(constant RibbonDef& r, float x, float t) {
+// Path height + slope at x. Returns (y, dy/dx). `und` scales the undulation amplitude (FL.4: the
+// ribbon's register energy widens its weave — zero-lag motion; 1 = the FL.3 resting amplitude).
+static inline float2 rb_path(constant RibbonDef& r, float x, float t, float und) {
     float a1 = r.wave1.y * x + r.wave1.z + r.wave1.w * t;
     float a2 = r.wave2.y * x + r.wave2.z + r.wave2.w * t;
-    float y  = r.base + r.wave1.x * sin(a1) + r.wave2.x * sin(a2);
-    float dy = r.wave1.x * r.wave1.y * cos(a1) + r.wave2.x * r.wave2.y * cos(a2);
+    float amp1 = r.wave1.x * und, amp2 = r.wave2.x * und;
+    float y  = r.base + amp1 * sin(a1) + amp2 * sin(a2);
+    float dy = amp1 * r.wave1.y * cos(a1) + amp2 * r.wave2.y * cos(a2);
     return float2(y, dy);
 }
 
@@ -368,16 +376,19 @@ fragment float4 ricercar_fluid_fragment(
     // gently, the core saturates to the full luminous hue; a small additive term keeps the core
     // reading as LIGHT where it passes over dark dye masses (on the light ground it just glows).
     float aspect = float(cfg.width) / float(cfg.height);
+    float rbLvl[4] = { cfg.rbLevel0, cfg.rbLevel1, cfg.rbLevel2, cfg.rbLevel3 };
+    float rbUnd[4] = { cfg.rbUndulate0, cfg.rbUndulate1, cfg.rbUndulate2, cfg.rbUndulate3 };
     for (int i = 0; i < 4; ++i) {
-        float2 pd = rb_path(rb_ribbons[i], in.uv.x, cfg.time);
+        float lvl = cfg.ribbonBrightness * rbLvl[i];      // master × per-family brightness (FL.4)
+        float2 pd = rb_path(rb_ribbons[i], in.uv.x, cfg.time, rbUnd[i]);
         float m = pd.y / aspect;                          // slope in isotropic (aspect-corrected) space
         float dist = fabs(in.uv.y - pd.x) * rsqrt(1.0 + m * m);
         float core = exp(-dist * dist / (0.007 * 0.007));
         float halo = exp(-dist * dist / (0.055 * 0.055));
-        float rDensity = cfg.ribbonBrightness * (3.5 * core + 0.55 * halo);
+        float rDensity = lvl * (3.5 * core + 0.55 * halo);
         float rCover = 1.0 - exp(-rDensity);
         col = mix(col, rb_ribbons[i].color, rCover);
-        col += rb_ribbons[i].color * (0.15 * cfg.ribbonBrightness * core);
+        col += rb_ribbons[i].color * (0.15 * lvl * core);
     }
     return float4(col, 1.0);
 }
