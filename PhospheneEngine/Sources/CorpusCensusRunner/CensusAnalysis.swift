@@ -203,14 +203,16 @@ private struct FFTScratch {
                 vDSP_fft_zrip(fftSetup, &split, 1, log2n, FFTDirection(kFFTDirection_Forward))
                 magnitudes.withUnsafeMutableBufferPointer { magBuf in
                     guard let magBase = magBuf.baseAddress else { return }
-                    vDSP_zvmags(&split, 1, magBase, 1, vDSP_Length(binCount))
+                    // MOOD-FLUX.2: match the LIVE FFTProcessor magnitude formula exactly
+                    // — |FFT| (zvabs) × 2/fftSize — so offline flux lands on the same
+                    // scale the MoodClassifier was trained against (BUG-066). The prior
+                    // sqrt(power/fftSize) formula ran 16× hot, saturating the flux input.
+                    vDSP_zvabs(&split, 1, magBase, 1, vDSP_Length(binCount))
                 }
             }
         }
-        var scale = Float(fftSize)
-        vDSP_vsdiv(magnitudes, 1, &scale, &magnitudes, 1, vDSP_Length(binCount))
-        var cnt = Int32(binCount)
-        vvsqrtf(&magnitudes, magnitudes, &cnt)
+        var scale = 2.0 / Float(fftSize)
+        vDSP_vsmul(magnitudes, 1, &scale, &magnitudes, 1, vDSP_Length(binCount))
     }
 }
 
