@@ -18,7 +18,7 @@ import Foundation
 struct RicercarFluidRenderTests {
 
     private enum E: Error { case setup, render, png }
-    static let simW = 320, simH = 180
+    static let simW = 480, simH = 270
     static let outW = 960, outH = 540
 
     // MARK: - Harness
@@ -77,26 +77,34 @@ struct RicercarFluidRenderTests {
         let ctx = try MetalContext()
         let lib = try ShaderLibrary(context: ctx)
         let geo = try makeGeo(ctx, lib)
+        geo.ribbonBrightness = 0            // gate measures the DYE field, not the ribbon overlay
         let tex = try target(ctx)
 
         var t: Float = 0
         var last = [UInt8]()
-        for _ in 0..<360 {                                   // ~6 s at 60 fps
+        var frac6: Double = 0
+        for i in 0..<3600 {                                  // ~60 s at 60 fps
             let f = FeatureVector(time: t, deltaTime: 1.0 / 60.0, aspectRatio: Float(Self.outW) / Float(Self.outH))
             last = try frame(geo, f, tex, ctx)
+            if i == 359 { frac6 = dyeFraction(last) }
             t += 1.0 / 60.0
         }
-        let frac = dyeFraction(last)
-        print("[ricercar_fluid] dye-covered fraction after 6 s = \(String(format: "%.3f", frac))")
+        let frac60 = dyeFraction(last)
+        print("[ricercar_fluid] dye-covered fraction: 6 s = \(String(format: "%.3f", frac6)), 60 s = \(String(format: "%.3f", frac60))")
         // The sources bloom + advect → a meaningful part of the frame carries dye, but it must NOT fill
         // the whole frame (dissipation keeps it breathing) and must not be NaN-black.
-        #expect(frac > 0.03, "Fluid produced almost no dye (\(frac)) — sim not advecting from the sources.")
-        #expect(frac < 0.95, "Fluid filled the whole frame (\(frac)) — dissipation/instability broken.")
+        #expect(frac6 > 0.03, "Fluid produced almost no dye (\(frac6)) — sim not advecting from the sources.")
+        #expect(frac6 < 0.95, "Fluid filled the whole frame (\(frac6)) — dissipation/instability broken.")
+        // Accumulation-creep guard at playback length (the Glaze wash-out lesson: a 6 s render cannot
+        // catch a field that slowly fills over minutes — injection must equilibrate with dissipation).
+        #expect(frac60 < 0.85, "Dye coverage still climbing at 60 s (\(frac60)) — injection outruns dissipation.")
     }
 
-    // MARK: - Contact sheet (env-gated: RICERCAR_VISUAL=1 / RENDER_VISUAL=1) — judge vs ref 02
+    // MARK: - Contact sheets (env-gated: RICERCAR_VISUAL=1 / RENDER_VISUAL=1)
+    // Two sheets: masses-only (judge vs ref 02) and masses+ribbons (judge vs ref 01 + 02 — the FL.3
+    // combined look). The comparison against the reference IMAGES is the gate, not these tests.
 
-    @Test("Fluid contact sheet (env-gated) — compare against docs/VISUAL_REFERENCES/ricercar/02")
+    @Test("Fluid contact sheets (env-gated) — compare against docs/VISUAL_REFERENCES/ricercar/01 + 02")
     func test_fluid_contactSheet() throws {
         let env = ProcessInfo.processInfo.environment
         guard env["RICERCAR_VISUAL"] == "1" || env["RENDER_VISUAL"] == "1" else {
@@ -105,29 +113,32 @@ struct RicercarFluidRenderTests {
         guard MTLCreateSystemDefaultDevice() != nil else { return }
         let ctx = try MetalContext()
         let lib = try ShaderLibrary(context: ctx)
-        let geo = try makeGeo(ctx, lib)
-        let tex = try target(ctx)
-
-        let secs: [Float] = [2, 5, 9, 14]
-        let checkpoints = Set(secs.map { Int(($0 * 60).rounded()) })
-        let frames = (checkpoints.max() ?? 0) + 1
-        var tiles: [[UInt8]] = []
-        var t: Float = 0
-        for i in 0..<frames {
-            let f = FeatureVector(time: t, deltaTime: 1.0 / 60.0, aspectRatio: Float(Self.outW) / Float(Self.outH))
-            let px = try frame(geo, f, tex, ctx)
-            if checkpoints.contains(i) { tiles.append(px) }
-            t += 1.0 / 60.0
-        }
         let dir = try makeOutputDir()
-        for (i, tile) in tiles.enumerated() {
-            try writeBGRAToPNG(tile, w: Self.outW, h: Self.outH,
-                               url: dir.appendingPathComponent(String(format: "ricercar_fluid_t%02.0fs.png", secs[i])))
+        let variants: [(ribbons: Float, stem: String)] = [(0, "masses"), (1, "combined")]
+        for v in variants {
+            let geo = try makeGeo(ctx, lib)
+            geo.ribbonBrightness = v.ribbons
+            let tex = try target(ctx)
+            let secs: [Float] = [2, 5, 9, 14]
+            let checkpoints = Set(secs.map { Int(($0 * 60).rounded()) })
+            let frames = (checkpoints.max() ?? 0) + 1
+            var tiles: [[UInt8]] = []
+            var t: Float = 0
+            for i in 0..<frames {
+                let f = FeatureVector(time: t, deltaTime: 1.0 / 60.0, aspectRatio: Float(Self.outW) / Float(Self.outH))
+                let px = try frame(geo, f, tex, ctx)
+                if checkpoints.contains(i) { tiles.append(px) }
+                t += 1.0 / 60.0
+            }
+            for (i, tile) in tiles.enumerated() {
+                try writeBGRAToPNG(tile, w: Self.outW, h: Self.outH,
+                                   url: dir.appendingPathComponent(String(format: "ricercar_%@_t%02.0fs.png", v.stem, secs[i])))
+            }
+            try writeMontage(tiles, tileW: Self.outW, tileH: Self.outH,
+                             url: dir.appendingPathComponent("ricercar_\(v.stem)_contact_sheet.png"))
+            print("[ricercar_fluid_contact_sheet] \(dir.path)/ricercar_\(v.stem)_contact_sheet.png")
+            #expect(tiles.count == checkpoints.count)
         }
-        try writeMontage(tiles, tileW: Self.outW, tileH: Self.outH,
-                         url: dir.appendingPathComponent("ricercar_fluid_contact_sheet.png"))
-        print("[ricercar_fluid_contact_sheet] \(dir.path)/ricercar_fluid_contact_sheet.png")
-        #expect(tiles.count == checkpoints.count)
     }
 
     // MARK: - PNG (minimal, BGRA→RGBA)

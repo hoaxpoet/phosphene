@@ -33,6 +33,8 @@ struct FluidConfig {
     float vorticity;           // vorticity-confinement strength (the billowing)
     float pressure;            // pressure-fade per frame (Jacobi warm-start), ~0.8
     float exposure;            // display: dye → luminance gain (HDR feel)
+    float time;                // seconds — animates the ribbon paths (FL.3, hand-animated)
+    float ribbonBrightness;    // 0 disables the ribbon overlay (masses-only render)
 };
 
 // MARK: - Grid helpers
@@ -287,6 +289,40 @@ kernel void fluid_advect_dye(
     dyeOut.write(float4(result * decay, 1.0), gid);
 }
 
+// MARK: - Ribbons (ref 01): glowing weaving light-lines with soft halos (FL.3)
+//
+// docs/VISUAL_REFERENCES/ricercar/01_macro_weaving_lines.jpg — a small set of smooth luminous ribbons
+// (saturated core + wide soft same-hue halo) weaving/crossing on the light ground. One per instrument
+// family. Paths are two-sine curves y(x,t): cheap, smooth, and the distance-to-curve is well
+// approximated by the slope-corrected vertical distance because the ribbons stay mostly horizontal
+// (as in ref 01). Hand-animated by cfg.time until the audio drive lands (FL.4).
+
+struct RibbonDef {
+    float  base;               // resting height in uv (1 = screen top)
+    float4 wave1;              // amp, spatial freq (rad/uv-x), phase, drift speed (rad/s)
+    float4 wave2;
+    float3 color;              // luminous family colour
+};
+
+// strings violet (low), woodwinds russet, brass gold (mid), percussion teal (high) — the register
+// layout of ref 01 (cyan top / gold mid / indigo low) mapped onto the family palette. gold/russet
+// bases sit close so those two braid mid-frame; teal/gold cross on the right like ref 01.
+constant RibbonDef rb_ribbons[4] = {
+    { 0.26, float4(0.085, 4.2, 1.9, -0.07), float4(0.050, 6.5, 4.1, 0.13), float3(0.42, 0.28, 0.86) },
+    { 0.44, float4(0.100, 5.0, 0.4,  0.09), float4(0.045, 9.0, 2.6, -0.11), float3(0.88, 0.42, 0.20) },
+    { 0.57, float4(0.105, 3.6, 3.2, -0.08), float4(0.040, 7.0, 5.3, 0.12), float3(0.95, 0.68, 0.18) },
+    { 0.78, float4(0.120, 4.5, 5.0,  0.10), float4(0.050, 8.0, 1.2, -0.16), float3(0.12, 0.75, 0.80) }
+};
+
+// Path height + slope at x. Returns (y, dy/dx).
+static inline float2 rb_path(constant RibbonDef& r, float x, float t) {
+    float a1 = r.wave1.y * x + r.wave1.z + r.wave1.w * t;
+    float a2 = r.wave2.y * x + r.wave2.z + r.wave2.w * t;
+    float y  = r.base + r.wave1.x * sin(a1) + r.wave2.x * sin(a2);
+    float dy = r.wave1.x * r.wave1.y * cos(a1) + r.wave2.x * r.wave2.y * cos(a2);
+    return float2(y, dy);
+}
+
 // MARK: - Display: dye field → luminous flowing colour masses (ref 02)
 
 struct FluidVSOut {
@@ -310,13 +346,38 @@ fragment float4 ricercar_fluid_fragment(
     constexpr sampler s(filter::linear, address::clamp_to_edge);
     // The stored dye is HDR density; tonemap softly so masses read luminous, not clipped, and let the
     // warm light ground show through where dye is thin (ref 02 = colour on a clean light ground).
-    float3 d = dye.sample(s, float2(in.uv.x, 1.0 - in.uv.y)).rgb * cfg.exposure;
+    float2 duv = float2(in.uv.x, 1.0 - in.uv.y);
+    float3 d = dye.sample(s, duv).rgb * cfg.exposure;
     float3 ground = float3(0.95, 0.94, 0.92);
     // Luminous "over": dye density attenuates the ground (Beer-Lambert) and adds its own emission, so
     // masses read as glowing colour bleeding on a clean light ground (ref 02) without clipping to white.
     float density = d.x + d.y + d.z;
     float3 hue = d / max(density, 1e-4);                 // colour direction
     float cover = 1.0 - exp(-density);                   // 0 (thin) → 1 (thick)
-    float3 col = ground * (1.0 - cover) + hue * cover;
+    // Self-shading from the density gradient (ref 02's dimensionality): billow faces toward the
+    // top-light brighten, faces away darken. Without this the cover term saturates and the masses
+    // read as flat colour sheets — the internal roll structure exists in the field, so show it.
+    float2 px = float2(1.0) / float2(cfg.width, cfg.height);
+    float3 dR = dye.sample(s, duv + float2(px.x, 0.0)).rgb;
+    float3 dD = dye.sample(s, duv + float2(0.0, px.y)).rgb;   // texture +y = down-screen
+    float2 grad = float2(dR.x + dR.y + dR.z, dD.x + dD.y + dD.z) * cfg.exposure - density;
+    float shade = clamp(1.0 + 0.30 * grad.y - 0.12 * grad.x, 0.62, 1.25);
+    float3 col = ground * (1.0 - cover) + hue * shade * cover;
+
+    // Ribbon overlay (ref 01) — same emissive-over model as the dye: the wide halo tints the ground
+    // gently, the core saturates to the full luminous hue; a small additive term keeps the core
+    // reading as LIGHT where it passes over dark dye masses (on the light ground it just glows).
+    float aspect = float(cfg.width) / float(cfg.height);
+    for (int i = 0; i < 4; ++i) {
+        float2 pd = rb_path(rb_ribbons[i], in.uv.x, cfg.time);
+        float m = pd.y / aspect;                          // slope in isotropic (aspect-corrected) space
+        float dist = fabs(in.uv.y - pd.x) * rsqrt(1.0 + m * m);
+        float core = exp(-dist * dist / (0.007 * 0.007));
+        float halo = exp(-dist * dist / (0.055 * 0.055));
+        float rDensity = cfg.ribbonBrightness * (3.5 * core + 0.55 * halo);
+        float rCover = 1.0 - exp(-rDensity);
+        col = mix(col, rb_ribbons[i].color, rCover);
+        col += rb_ribbons[i].color * (0.15 * cfg.ribbonBrightness * core);
+    }
     return float4(col, 1.0);
 }
