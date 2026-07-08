@@ -53,6 +53,10 @@ One-line-of-intent change in `SessionPreparer+Analysis.swift` (and its census mi
    - **32 % of tracks flip mood quadrant** (mean |Δvalence| 0.60, |Δarousal| 0.57 on a [−1,1] scale) → preset selection materially changes for ~a third of the library, in the correct direction (energetic tracks stay high-arousal; calm tracks drop).
    The pre-fix mood was effectively a constant "happy/energetic" for all tracks (flux, the transient/energy signal, was dead); the fix restores real per-track mood. (Quadrant flip is a strong proxy for a preset-pick change — mood is 30 % of the scorer and the quadrant is its coarse driver — though the full `DefaultPresetScorer` was not re-run per track.)
 
+## Mechanized (MOOD-FLUX.3, 2026-07-08)
+
+The bug **class** is now mechanized: the window→magnitude formula lives in one shared `FFTMagnitudeKernel` (`Audio`), consumed by the live `FFTProcessor`, the offline `analyzeMIR`, and the census mirror — the duplicate `computeFFTMagnitudes`/`FFTContext`/`FFTScratch` are deleted. `FFTRegressionTests.fftMagnitudeKernel_matchesLiveFFTProcessorBinForBin` fails CI if a second implementation ever forks the formula again.
+
 ## Related
 
 - `CENSUS_PILOT_REPORT.md` §3 is the pre-fix measurement (the finding); the fix landed after.
