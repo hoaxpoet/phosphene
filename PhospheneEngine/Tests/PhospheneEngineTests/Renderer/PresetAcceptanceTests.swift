@@ -273,12 +273,11 @@ struct PresetAcceptanceTests {
         // `mitosis_ground_fragment` is the intentionally flat dark ground.
         // Coverage: MitosisSketchRenderTests (multi-frame field render + spot metric).
         guard preset.descriptor.name != "Mitosis" else { return }
-        // Ricercar (IFC.6): the per-section painterly MARKS build over MANY frames on the canvas-hold
-        // mv_warp canvas, and the sections only paint while their instrument family sounds. This
-        // single-frame fragment harness renders only the light ground (1 luma bin), so the
-        // readable-form invariant doesn't apply — same exemption form as Skein. It is NOT exempted
+        // Ricercar (RICERCAR-FL.5): same as Mitosis — the readable content is the
+        // `RicercarFluidGeometry` fluid dye field + ribbon overlay (particles pass); the standalone
+        // `ricercar_ground_fragment` is the intentionally flat warm light ground. It is NOT exempted
         // from non-black / no-white-clip / beat-bounded (its light ground passes those). Multi-frame
-        // coverage: RicercarSubstrateTest (family-driven marks + accumulation + non-black, live path).
+        // coverage: RicercarFluidRenderTests (fluid + ribbons through the live ParticleGeometry path).
         guard preset.descriptor.name != "Ricercar" else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture

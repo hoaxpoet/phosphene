@@ -1,299 +1,74 @@
-// RicercarSubstrateTest — IFC.6 per-section painterly marks driven by real instrument-family capture.
+// RicercarSubstrateTest — RICERCAR-FL.5: Ricercar is the fluid-dye + glow-ribbons particle preset.
 //
-// Drives the Ricercar preset through the SAME live mv_warp dispatch path the app runs
-// (scene → warp → marks-on-top overlay → blit → swap, in a loop) via the headless
-// `renderMVWarpToTexture` seam — feedback persists across frames through the production swap.
-//
-// IFC.6 (D-177): sections no longer paint unconditionally — each wakes on its family's `*_activity_dev`
-// (the drive-layer swap). So the harness now FEEDS staggered per-family activity (`ricercarFamilyStem`)
-// to exercise the sections; with zero stems nothing would paint (the family-dormant contract). The
-// schedule stands the orchestra up section by section (strings throughout, brass ~3 s, woodwinds ~7 s,
-// percussion hits) so the contact sheet shows the five sections entering.
-//
-// Assertions: (1) the section strokes paint colour when their family sounds; (2) canvas-HOLD — coverage
-// only accumulates (no decay, the painting builds); (3) it never goes black — the LIGHT GROUND (D-037).
-// The real gate is the env-gated contact sheet (RICERCAR_VISUAL=1 / RENDER_VISUAL=1): does it READ as
-// the orchestra painting itself, section by section? Live M7 (Matt) is the perceptual gate.
+// History: the IFC.6 marks failed live M7 (lag + boring); the RW Skein-recolour was rejected ("just
+// Skein — I want Fantasia"); the Fantasia rebuild replaced the marks paradigm with a Stam stable-fluids
+// dye sim + ribbon overlay (`RicercarFluidGeometry`, docs/presets/RICERCAR_DESIGN.md §FANTASIA REBUILD).
+// This file guards the FL.5 preset wiring (particles pass + registry membership) and the SkeinState
+// family-colour mode the RW increment added (engine feature, kept — a candidate colour source for FL.4).
+// The fluid sim + ribbon rendering itself is covered by RicercarFluidRenderTests (live dispatch path).
 
 import Testing
 import Metal
-import CoreGraphics
-import ImageIO
-import UniformTypeIdentifiers
 import Foundation
 @testable import Renderer
 @testable import Presets
 @testable import Shared
 
-@Suite("Ricercar IFC.6 — family-driven per-section painterly marks (canvas-hold)")
+@Suite("Ricercar-FL — fluid-dye particle preset + family-colour mode")
 @MainActor
 struct RicercarSubstrateTest {
 
-    static let width = 480
-    static let height = 270   // 16:9, the live viewport shape
+    /// The family palette Ricercar feeds SkeinState (mirror of VisualizerEngine.ricercarFamilyPalette,
+    /// InstrumentFamily.allCases order: strings, brass, woodwinds, percussion).
+    static let familyPalette: [SIMD3<Float>] = [
+        SIMD3(0.34, 0.24, 0.64), SIMD3(0.88, 0.62, 0.16),
+        SIMD3(0.76, 0.38, 0.18), SIMD3(0.13, 0.60, 0.66)
+    ]
 
-    enum RicercarTestError: Error { case setup(String) }
+    // MARK: - 1. The sidecar is the fluid-dye particle preset (FL.5)
 
-    // MARK: - Live-path substrate run
-
-    @Test("Section marks paint, accumulate (canvas-hold), on a light canvas")
-    func test_substrate_flowsAndBreathes() throws {
+    @Test("Ricercar loads as a particles preset backed by the fluid geometry registry entry")
+    func test_ricercar_isFluidParticlePreset() throws {
         guard MTLCreateSystemDefaultDevice() != nil else {
             print("RicercarSubstrateTest: no Metal device — skipping"); return
         }
-        let w = Self.width, h = Self.height
+        let preset = try #require(
+            _acceptanceFixture.presets.first { $0.descriptor.name == "Ricercar" },
+            "Ricercar preset not loaded")
+        #expect(preset.descriptor.passes.contains(.particles),
+                "Ricercar must declare the particles pass (fluid sim renders through ParticleGeometry)")
+        #expect(preset.descriptor.fragmentFunction == "ricercar_ground_fragment",
+                "Ricercar's backdrop must be the warm-ground fragment (the fluid field covers it)")
+        #expect(preset.mvWarpPipelines == nil,
+                "Ricercar must NOT compile mv_warp pipelines — the marks/Skein paradigm was rejected 3×")
+        #expect(ParticleGeometryRegistry.knownPresetNames.contains("Ricercar"),
+                "Ricercar missing from ParticleGeometryRegistry — the app would render backdrop only")
+    }
+
+    // MARK: - 2. Family-mode SkeinState: colour locks onto the dominant family
+
+    @Test("Family mode: the pour colour locks onto the fed dominant instrument family")
+    func test_familyMode_colourTracksDominantFamily() throws {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            print("RicercarSubstrateTest: no Metal device — skipping"); return
+        }
+        let state = try #require(
+            SkeinState(device: device, seed: 0, palette: Self.familyPalette, colorFromFamily: true),
+            "family-mode SkeinState failed to allocate")
+
+        // Feed frames where WOODWINDS (family index 2) clearly leads by deviation, over real stem
+        // energy (so the painter clock advances + a pour commits). ~4 s at 60 fps.
+        var stem = StemFeatures.zero
+        stem.otherEnergy = 0.5; stem.drumsEnergy = 0.3                    // stem mix > 0 → the painter paints
+        stem.woodwindsActivity = 0.55; stem.woodwindsActivityDev = 0.6   // the clear family lead
+        stem.stringsActivity = 0.15; stem.stringsActivityDev = 0.05
         let dt: Float = 1.0 / 60.0
-        let checkpoints = [60, 180, 420, 900]            // ~1 / 3 / 7 / 15 s
-        let frames = (checkpoints.max() ?? 0) + 1
-
-        let (pipeline, ctx, preset) = try makeRicercarPipeline()
-        let outTex = try makeOutputTexture(ctx)
-
-        var captured: [Int: [UInt8]] = [:]
-        var pixels = [UInt8](repeating: 0, count: w * h * 4)
-
-        for i in 0..<frames {
-            var fv = FeatureVector(time: Float(i) * dt, deltaTime: dt, aspectRatio: Float(w) / Float(h))
-            let stem = ricercarFamilyStem(atSeconds: Float(i) * dt)   // IFC.6: sections wake on family dev
-            guard let cmd = ctx.commandQueue.makeCommandBuffer(),
-                  let warpState = pipeline.mvWarpState else {
-                throw RicercarTestError.setup("command buffer / warp state")
-            }
-            pipeline.renderMVWarpToTexture(
-                commandBuffer: cmd, target: outTex, features: &fv, stemFeatures: stem,
-                activePipeline: preset.pipelineState, warpState: warpState, sceneAlreadyRendered: false)
-            try commitReadback(cmd, outTex, into: &pixels, w: w, h: h)
-            if checkpoints.contains(i) { captured[i] = pixels }
+        for i in 0..<240 {
+            let f = FeatureVector(time: Float(i) * dt, deltaTime: dt, aspectRatio: 16.0 / 9.0)
+            state.tick(deltaTime: dt, features: f, stems: stem)          // must not crash
         }
-
-        let satSeries = checkpoints.map { captured[$0].map { saturatedFraction($0) } ?? 0 }
-        let depositFrac = satSeries.last ?? 0
-        let lumas = checkpoints.compactMap { captured[$0] }.map { meanLuma($0) }
-        let minLuma = lumas.min() ?? 0
-        // Canvas-HOLD accumulation: painted coverage only GROWS (no decay — the painting builds + persists).
-        var monotone = true
-        for i in 1..<satSeries.count where satSeries[i] + 2e-3 < satSeries[i - 1] { monotone = false }
-
-        print("""
-        [ricercar_marks] live scene→warp→overlay→blit→swap, \(w)×\(h), \(frames) frames:
-          painted-colour fraction per checkpoint = \(satSeries.map { String(format: "%.3f", $0) })  (canvas-hold → grows)
-          checkpoint mean luminance              = \(lumas.map { String(format: "%.3f", $0) })  (light canvas)
-        """)
-
-        // 1. The section strokes paint colour onto the canvas.
-        #expect(depositFrac > 0.03, "Almost no painted colour (\(depositFrac)) — the section strokes aren't painting.")
-        // 2. Canvas-HOLD: coverage only accumulates, never shrinks (no decay — the painting builds, Skein-hold).
-        #expect(monotone, "Painted coverage shrank (\(satSeries)) — canvas-hold accumulation broken (marks must only build).")
-        // 3. Strokes accumulate meaningfully over the run (not a single static stamp).
-        #expect((satSeries.last ?? 0) > (satSeries.first ?? 1) * 1.5, "Coverage barely grew (\(satSeries)) — strokes aren't accumulating.")
-        // 4. It stays a LIGHT Fantasia canvas (paint on light, never black).
-        #expect(minLuma > 0.30, "Canvas mean luma \(minLuma) — not a light canvas (paint should sit on a luminous ground).")
-    }
-
-    @Test("Substrate contact sheet (env-gated: RICERCAR_VISUAL=1 / RENDER_VISUAL=1)")
-    func test_substrate_contactSheet() throws {
-        let env = ProcessInfo.processInfo.environment
-        guard env["RICERCAR_VISUAL"] == "1" || env["RENDER_VISUAL"] == "1" else {
-            print("RicercarSubstrateTest: RICERCAR_VISUAL/RENDER_VISUAL not set, skipping contact sheet"); return
-        }
-        guard MTLCreateSystemDefaultDevice() != nil else { return }
-        let w = Self.width, h = Self.height
-        let dt: Float = 1.0 / 60.0
-        let secs: [Float] = [1, 3, 7, 15]
-        let checkpoints = secs.map { Int(($0 / dt).rounded()) }
-        let frames = (checkpoints.max() ?? 0) + 1
-
-        let (pipeline, ctx, preset) = try makeRicercarPipeline()
-        let outTex = try makeOutputTexture(ctx)
-        var captured: [Int: [UInt8]] = [:]
-        var pixels = [UInt8](repeating: 0, count: w * h * 4)
-
-        for i in 0..<frames {
-            var fv = FeatureVector(time: Float(i) * dt, deltaTime: dt, aspectRatio: Float(w) / Float(h))
-            let stem = ricercarFamilyStem(atSeconds: Float(i) * dt)
-            guard let cmd = ctx.commandQueue.makeCommandBuffer(), let warpState = pipeline.mvWarpState else {
-                throw RicercarTestError.setup("command buffer / warp state")
-            }
-            pipeline.renderMVWarpToTexture(
-                commandBuffer: cmd, target: outTex, features: &fv, stemFeatures: stem,
-                activePipeline: preset.pipelineState, warpState: warpState, sceneAlreadyRendered: false)
-            try commitReadback(cmd, outTex, into: &pixels, w: w, h: h)
-            if checkpoints.contains(i) { captured[i] = pixels }
-        }
-
-        let outDir = try makeOutputDir()
-        var tiles: [[UInt8]] = []
-        for (i, f) in checkpoints.enumerated() {
-            guard let buf = captured[f] else { continue }
-            tiles.append(buf)
-            try writeBGRAToPNG(buf, w: w, h: h,
-                               url: outDir.appendingPathComponent(String(format: "ricercar_t%02.0fs.png", secs[i])))
-        }
-        try writeMontage(tiles, tileW: w, tileH: h, url: outDir.appendingPathComponent("ricercar_substrate_contact_sheet.png"))
-        print("""
-        [ricercar_contact_sheet] live mv_warp path, \(w)×\(h):
-          output dir: \(outDir.path)
-          → ricercar_substrate_contact_sheet.png  +  ricercar_t01/03/07/15s.png
-        """)
-        #expect(tiles.count == checkpoints.count, "Missing contact-sheet checkpoints.")
-    }
-
-    // MARK: - IFC.6 family-activity feed
-
-    /// Staggered per-family activity (the orchestra painting itself, section by section). Values are
-    /// above the shader's per-family wake floor/saturation (measured from the dumper corpus). Strings
-    /// run throughout; brass enters ~3 s, woodwinds ~7 s; percussion pulses. `f.bass`/`f.treble` are
-    /// left zero here, so the strings low/high split falls to the shader's 50/50 fallback — both string
-    /// register sections paint (indigo + scarlet), which is what the harness needs to prove five sections.
-    private func ricercarFamilyStem(atSeconds s: Float) -> StemFeatures {
-        var st = StemFeatures()
-        st.stringsActivityDev    = 0.45                                       // strings sing throughout
-        st.brassActivityDev      = s > 3 ? 0.65 : 0.0                         // brass enters ~3 s
-        st.woodwindsActivityDev  = s > 7 ? 0.32 : 0.0                         // woodwinds enter ~7 s
-        st.percussionActivityDev = s.truncatingRemainder(dividingBy: 2.0) < 0.25 ? 0.18 : 0.0  // hits ~every 2 s
-        return st
-    }
-
-    // MARK: - Setup (generic mv_warp; mirrors MultiPassFlashHarnessTests.configureMVWarp for the no-follower path)
-
-    private func makeRicercarPipeline() throws -> (RenderPipeline, MetalContext, PresetLoader.LoadedPreset) {
-        let ctx = try MetalContext()
-        let lib = try ShaderLibrary(context: ctx)
-        let noise = try TextureManager(context: ctx, shaderLibrary: lib)
-        let fstride = MemoryLayout<Float>.stride
-        guard let fft = ctx.makeSharedBuffer(length: 512 * fstride),
-              let wav = ctx.makeSharedBuffer(length: 2048 * fstride) else {
-            throw RicercarTestError.setup("audio buffers")
-        }
-        let pipeline = try RenderPipeline(context: ctx, shaderLibrary: lib, fftBuffer: fft, waveformBuffer: wav)
-        pipeline.setTextureManager(noise)
-        guard let preset = _acceptanceFixture.presets.first(where: { $0.descriptor.name == "Ricercar" }) else {
-            throw RicercarTestError.setup("Ricercar preset not loaded — bundle resource not copied?")
-        }
-        guard let warp = preset.mvWarpPipelines else {
-            throw RicercarTestError.setup("Ricercar mvWarpPipelines nil — JSON passes misconfigured")
-        }
-        guard warp.sceneGeometryState != nil else {
-            throw RicercarTestError.setup("ricercar_geometry_* not resolved (per-prefix lookup) — overlay missing")
-        }
-        let size = CGSize(width: Self.width, height: Self.height)
-        pipeline.currentDrawableSize = size
-
-        let desc = preset.descriptor
-        let canvasClear = desc.marks?.canvasClear.map { SIMD4<Double>(Double($0.x), Double($0.y), Double($0.z), 1) }
-            ?? SIMD4<Double>(0, 0, 0, 1)
-        let bundle = MVWarpPipelineBundle(
-            warpState: warp.warpState, composeState: warp.composeState, blitState: warp.blitState,
-            pixelFormat: ctx.pixelFormat, feedbackFormat: ctx.pixelFormat,
-            blurState: warp.blurState, isNacre: false, isFloret: false, canvasClearColor: canvasClear)
-        pipeline.setupMVWarp(bundle: bundle, size: size)
-        pipeline.setMVWarpDecay(desc.decay)
-        if let geoState = warp.sceneGeometryState, let marks = desc.marks {
-            pipeline.setSceneGeometry(geoState, vertexCount: marks.vertexCount,
-                                      instanceCount: marks.instanceCount, primitive: .triangle)
-            pipeline.setMVWarpChromatic(marks.chromatic)
-            pipeline.setMVWarpPost(invert: marks.comp.invert, echo: marks.comp.echo,
-                                   gamma: marks.comp.gamma, beatPulse: marks.beatPulse)
-        }
-        pipeline.setFataShapePipelines(additive: warp.shapeAdditiveState, normal: warp.shapeNormalState)
-        return (pipeline, ctx, preset)
-    }
-
-    private func makeOutputTexture(_ ctx: MetalContext) throws -> MTLTexture {
-        let d = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: ctx.pixelFormat, width: Self.width, height: Self.height, mipmapped: false)
-        d.usage = [.renderTarget, .shaderRead]
-        d.storageMode = .shared
-        guard let t = ctx.device.makeTexture(descriptor: d) else {
-            throw RicercarTestError.setup("output texture allocation")
-        }
-        return t
-    }
-
-    private func commitReadback(_ cmd: MTLCommandBuffer, _ tex: MTLTexture, into pixels: inout [UInt8], w: Int, h: Int) throws {
-        cmd.commit(); cmd.waitUntilCompleted()
-        guard cmd.status == .completed else { throw RicercarTestError.setup("render failed") }
-        tex.getBytes(&pixels, bytesPerRow: w * 4, from: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0)
-    }
-
-    // MARK: - Pixel metrics
-
-    /// Fraction of pixels whose channel spread (max−min) is high → saturated deposited colour
-    /// (the LOW/MID/HIGH masses), vs the near-neutral light ground.
-    private func saturatedFraction(_ bgra: [UInt8]) -> Double {
-        var n = 0, total = 0, i = 0
-        while i < bgra.count {
-            let b = Int(bgra[i]), g = Int(bgra[i + 1]), r = Int(bgra[i + 2])
-            let spread = max(max(r, g), b) - min(min(r, g), b)
-            if spread > 40 { n += 1 }
-            total += 1; i += 4
-        }
-        return total > 0 ? Double(n) / Double(total) : 0
-    }
-
-    private func meanAbsDiff(_ a: [UInt8], _ b: [UInt8]) -> Double {
-        var acc = 0.0, i = 0
-        while i < a.count {
-            acc += Double(abs(Int(a[i]) - Int(b[i])) + abs(Int(a[i + 1]) - Int(b[i + 1])) + abs(Int(a[i + 2]) - Int(b[i + 2])))
-            i += 4
-        }
-        return acc / Double(a.count / 4) / (3.0 * 255.0)
-    }
-
-    private func meanLuma(_ bgra: [UInt8]) -> Double {
-        var acc = 0.0, i = 0
-        while i < bgra.count {
-            acc += (0.0722 * Double(bgra[i]) + 0.7152 * Double(bgra[i + 1]) + 0.2126 * Double(bgra[i + 2])) / 255.0
-            i += 4
-        }
-        return acc / Double(bgra.count / 4)
-    }
-
-    // MARK: - PNG / montage (copied minimal from SkeinCanvasHoldTest)
-
-    private func writeBGRAToPNG(_ bgra: [UInt8], w: Int, h: Int, url: URL) throws {
-        var rgba = [UInt8](repeating: 0, count: bgra.count)
-        for i in stride(from: 0, to: bgra.count, by: 4) {
-            rgba[i] = bgra[i + 2]; rgba[i + 1] = bgra[i + 1]; rgba[i + 2] = bgra[i]; rgba[i + 3] = 255
-        }
-        let cs = CGColorSpaceCreateDeviceRGB()
-        let info = CGImageAlphaInfo.noneSkipLast.rawValue
-        guard let provider = CGDataProvider(data: Data(rgba) as CFData),
-              let img = CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32,
-                                bytesPerRow: w * 4, space: cs, bitmapInfo: CGBitmapInfo(rawValue: info),
-                                provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent),
-              let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)
-        else { throw RicercarTestError.setup("png encode") }
-        CGImageDestinationAddImage(dest, img, nil)
-        guard CGImageDestinationFinalize(dest) else { throw RicercarTestError.setup("png finalize") }
-    }
-
-    private func writeMontage(_ tiles: [[UInt8]], tileW: Int, tileH: Int, url: URL) throws {
-        guard !tiles.isEmpty else { return }
-        let sep = 4
-        let bigW = tiles.count * tileW + (tiles.count - 1) * sep
-        let bigH = tileH
-        var out = [UInt8](repeating: 40, count: bigW * bigH * 4)
-        for i in stride(from: 3, to: out.count, by: 4) { out[i] = 255 }
-        for (t, tile) in tiles.enumerated() {
-            let x0 = t * (tileW + sep)
-            for y in 0..<tileH {
-                for x in 0..<tileW {
-                    let src = (y * tileW + x) * 4
-                    let dst = (y * bigW + (x0 + x)) * 4
-                    out[dst] = tile[src]; out[dst + 1] = tile[src + 1]; out[dst + 2] = tile[src + 2]; out[dst + 3] = 255
-                }
-            }
-        }
-        try writeBGRAToPNG(out, w: bigW, h: bigH, url: url)
-    }
-
-    private func makeOutputDir() throws -> URL {
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime, .withColonSeparatorInTime]
-        let stamp = iso.string(from: Date()).replacingOccurrences(of: ":", with: "").replacingOccurrences(of: "-", with: "")
-        let url = URL(fileURLWithPath: "/tmp/ricercar_substrate_diag/\(stamp)")
-        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
-        return url
+        // The committed pour must be the WOODWINDS family (index 2) — colour ← family, the RW contract.
+        #expect(state.lineDominantStem == 2,
+                "pour colour should lock onto the dominant family (woodwinds=2), got \(state.lineDominantStem)")
     }
 }
