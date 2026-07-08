@@ -1,7 +1,7 @@
 # BUG-066 — MoodClassifier flux input ran 16× hot on the offline path (diagnosis + fix)
 
 **Severity:** P2 · **Domain:** ml.mood / dsp.mir · **Class:** regression / pipeline-wiring (not calibration — see the correction below)
-**Filed:** 2026-07-08 (MOOD-FLUX.1) · **Fixed:** 2026-07-08 (MOOD-FLUX.2) — code-complete, **pending Matt's live M7 (before/after preset picks)**.
+**Filed:** 2026-07-08 (MOOD-FLUX.1) · **Fixed:** 2026-07-08 (MOOD-FLUX.2, `1d61830`) · **✅ RESOLVED 2026-07-08** — Matt signed off on the objective `--mood-ab` before/after (the live M7 was retired as unfit for a diffuse scoring change).
 **Surfaced by:** CENSUS.3 pilot (`docs/diagnostics/CENSUS_PILOT_REPORT.md` §3).
 
 ## Expected behavior
