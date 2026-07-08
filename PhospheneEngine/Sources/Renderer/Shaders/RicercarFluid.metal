@@ -86,14 +86,24 @@ static inline float fl_r(texture2d<float, access::read> t, int x, int y, uint W,
     return t.read(uint2(uint(sx), uint(sy))).r;
 }
 
+// MARK: - Clear a field to zero (init; makeTexture does not guarantee zeroed contents)
+
+kernel void fluid_clear(
+    texture2d<float, access::write> dst [[texture(0)]],
+    constant FluidConfig&           cfg [[buffer(0)]],
+    uint2                           gid [[thread_position_in_grid]]
+) {
+    if (gid.x >= cfg.width || gid.y >= cfg.height) { return; }
+    dst.write(float4(0.0), gid);
+}
+
 // MARK: - Splats (inject velocity + dye from the sections). Up to 8 per frame.
 
+// Packed as two float4 for a guaranteed Swift↔MSL layout match (no float3 16-byte-alignment trap):
+//   posVel   = (pos.xy, vel.xy)      colorRad = (color.rgb, radius)
 struct FluidSplat {
-    float2 pos;      // uv [0,1]
-    float2 vel;      // velocity impulse
-    float3 color;    // dye colour
-    float  radius;   // gaussian radius (uv units)
-    float  _pad;
+    float4 posVel;
+    float4 colorRad;
 };
 
 // Additive gaussian splat of velocity (rg) into the velocity field.
@@ -110,10 +120,11 @@ kernel void fluid_splat_velocity(
     float aspect = float(cfg.width) / float(cfg.height);
     float2 vel = src.read(gid).rg;
     for (uint i = 0; i < count; ++i) {
-        float2 d = uv - splats[i].pos;
+        float2 d = uv - splats[i].posVel.xy;
         d.x *= aspect;                                   // isotropic gaussian
-        float g = exp(-dot(d, d) / max(splats[i].radius * splats[i].radius, 1e-6));
-        vel += splats[i].vel * g;
+        float radius = splats[i].colorRad.w;
+        float g = exp(-dot(d, d) / max(radius * radius, 1e-6));
+        vel += splats[i].posVel.zw * g;
     }
     dst.write(float4(vel, 0.0, 1.0), gid);
 }
@@ -132,10 +143,11 @@ kernel void fluid_splat_dye(
     float aspect = float(cfg.width) / float(cfg.height);
     float3 dye = src.read(gid).rgb;
     for (uint i = 0; i < count; ++i) {
-        float2 d = uv - splats[i].pos;
+        float2 d = uv - splats[i].posVel.xy;
         d.x *= aspect;
-        float g = exp(-dot(d, d) / max(splats[i].radius * splats[i].radius, 1e-6));
-        dye += splats[i].color * g;
+        float radius = splats[i].colorRad.w;
+        float g = exp(-dot(d, d) / max(radius * radius, 1e-6));
+        dye += splats[i].colorRad.rgb * g;
     }
     dst.write(float4(dye, 1.0), gid);
 }
@@ -300,7 +312,11 @@ fragment float4 ricercar_fluid_fragment(
     // warm light ground show through where dye is thin (ref 02 = colour on a clean light ground).
     float3 d = dye.sample(s, float2(in.uv.x, 1.0 - in.uv.y)).rgb * cfg.exposure;
     float3 ground = float3(0.95, 0.94, 0.92);
-    // soft "over" of luminous dye onto the light ground: 1 - exp keeps highlights from clipping.
-    float3 col = ground * exp(-d) + (1.0 - exp(-d)) * (d / max(max(d.x, max(d.y, d.z)), 1e-4));
+    // Luminous "over": dye density attenuates the ground (Beer-Lambert) and adds its own emission, so
+    // masses read as glowing colour bleeding on a clean light ground (ref 02) without clipping to white.
+    float density = d.x + d.y + d.z;
+    float3 hue = d / max(density, 1e-4);                 // colour direction
+    float cover = 1.0 - exp(-density);                   // 0 (thin) → 1 (thick)
+    float3 col = ground * (1.0 - cover) + hue * cover;
     return float4(col, 1.0);
 }
