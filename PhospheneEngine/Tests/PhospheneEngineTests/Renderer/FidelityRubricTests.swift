@@ -258,6 +258,34 @@ struct FidelityRubricGateTests {
             }
         }
     }
+
+    /// QG.1 — certification requires an `audio_routes` manifest. This is the
+    /// "present" half of the gate; the "green" half is `RouteCoverageTests`, which
+    /// independently reddens if any declared route's primitive fails to fire on the
+    /// canonical fixtures. Together: a preset cannot be certified without a manifest
+    /// (here) whose every route demonstrably fires on real music (there). Mechanizes
+    /// the per-route firing evidence that was a prose closeout obligation (the
+    /// `vocalsPitchConfidence`-at-0%-for-5-months failure class).
+    @Test func certifiedPresetsDeclareAudioRoutes() throws {
+        let shadersURL = try #require(PresetLoader.bundledShadersURL,
+            "Shaders resource not found via PresetLoader.bundledShadersURL")
+        let jsonFiles = try FileManager.default.contentsOfDirectory(
+            at: shadersURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+        ).filter { $0.pathExtension == "json" }
+
+        let decoder = JSONDecoder()
+        var missing: [String] = []
+        for jsonURL in jsonFiles {
+            let descriptor = try decoder.decode(PresetDescriptor.self,
+                                                from: try Data(contentsOf: jsonURL))
+            if descriptor.certified && descriptor.audioRoutes.isEmpty {
+                missing.append(descriptor.name)
+            }
+        }
+        let joined = missing.joined(separator: ", ")
+        #expect(missing.isEmpty,
+                "Certified presets missing an audio_routes manifest (QG.1 requires one for certification): \(joined)")
+    }
 }
 
 // MARK: - Suite 3: Heuristic Correctness (Synthetic Source)
