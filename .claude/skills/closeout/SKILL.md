@@ -11,7 +11,7 @@ Every increment ends the same way. Skipping a step turns a finished increment in
 
 1. **Files changed** — concrete paths, grouped new vs. edited.
 2. **Tests run** — run `Scripts/closeout_evidence.sh` and paste its evidence block **verbatim**. Prose may annotate anomalies below the block (known timing squeezes, parallel-session tree noise) but never replaces or summarizes it. A closeout without the block, or with a block whose commit hash does not match the closeout's commit, is incomplete.
-3. **Visual harness output** — when the increment is preset-facing or visually observable, include the `RENDER_VISUAL=1` per-stage / contact-sheet output paths or attach key frames. State explicitly when a change is not visually verifiable.
+3. **Visual harness output** — when the increment is preset-facing or visually observable, include the `RENDER_VISUAL=1` output paths or key frames; for preset increments the canonical artifact is the `Scripts/compare_render.sh` comparison sheet (D-181) plus its verdict table. State explicitly when a change is not visually verifiable.
 4. **Documentation updates** — list every doc file touched.
 5. **Capability registry updates** — cite the rows changed (see below).
 6. **Engineering plan updates** — cite the increment ID (see below).
