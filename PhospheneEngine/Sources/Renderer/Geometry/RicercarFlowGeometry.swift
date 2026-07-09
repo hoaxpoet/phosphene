@@ -60,7 +60,7 @@ public struct RicercarFlowConfiguration: Sendable {
     /// Particle count (evenly split across the four instrument families).
     public var particleCount: Int
 
-    public init(width: Int = 1280, height: Int = 720, particleCount: Int = 6_000) {
+    public init(width: Int = 1280, height: Int = 720, particleCount: Int = 1_200) {
         self.width = width
         self.height = height
         self.particleCount = particleCount
@@ -314,16 +314,16 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
             flowSpeed: 0.0015 + 0.0040 * en,
             turbulence: 0.06 + 0.40 * en,   // near-laminar → long coherent streams (ribbons)
             scatter: scatterEnv,
-            decay: 0.93,                    // trail length (ribbon) vs fill — shorter keeps the field open
+            decay: 0.950,                   // long light-trails → each sparse particle draws a long ribbon
             exposure: 1.0,
             homePull: 0.005,                // very loose → the flow carries families across → weaving, not stripes
             famStrings: fam.x,
             famBrass: fam.y,
             famWoodwinds: fam.z,
             famPercussion: fam.w,
-            pointSize: 7.0,
-            baseGlow: 0.012,       // dim baseline (keeps the energy→brightness dynamic range) yet non-black
-            energyGlow: 0.42,
+            pointSize: 6.0,                 // clean light-lines (few, distinct ribbons over dark space)
+            baseGlow: 0.006,                // dark ground — the ribbons are the content, dark space between
+            energyGlow: 0.60,               // few particles → each ribbon glows bright
             energy: en,
             aspect: Float(configuration.width) / Float(configuration.height))
     }
