@@ -1,14 +1,18 @@
 // RicercarFlowGeometry.swift — audio-reactive glowing particle flow-field conformer (Fantasia rebuild).
 //
-// A `ParticleGeometry` sibling (D-097) modelled on Mitosis/Physarum's per-frame-compute + ping-pong-trail
-// contract (kernels in RicercarFlow.metal); Robert Hodgin *Magnetosphere* lineage. Thousands of particles
-// advect through curl-noise + audio force fields, each carrying an instrument-family colour, deposited as
-// additive glowing sprites into an HDR trail that decays each frame — the deposit-and-fade trail IS the
-// glowing weaving ribbon of light, over a deep ground (RICERCAR_DESIGN §FANTASIA REBUILD).
+// Replaces the rejected fluid-dye geometry (git history preserved via `git mv`). A `ParticleGeometry`
+// sibling (D-097), modelled on MitosisGeometry/PhysarumGeometry's per-frame-compute + ping-pong-trail
+// contract. The technique is Robert Hodgin's *Magnetosphere* lineage (kernels in RicercarFlow.metal):
+// thousands of particles advected through curl-noise turbulence + audio force fields, each carrying an
+// instrument-family colour, deposited as additive glowing sprites into an HDR trail that decays each
+// frame — the deposit-and-fade trail IS the glowing weaving ribbon of light, tonemapped luminous over a
+// deep ground (RICERCAR_DESIGN §FANTASIA REBUILD; refs 01 morphology, deep-space spirit not the light ground).
 //
-// Audio (Audio Data Hierarchy + FA #67 — one primitive per layer): MOTION (zero-lag) ← band deviations
-// per-colour drift; COLOUR/identity (lag-tolerant) ← band-stem|family hybrid; LINE CHARACTER ← per-stem
-// AttackRatio (FL.14: staccato→short choppy life, legato→long flowing life).
+// Audio (Audio Data Hierarchy + FA #67 — one primitive per layer):
+//   • MOTION (primary, zero-lag): band deviations `bass/mid/trebDev` → flow speed + turbulence;
+//     `beatComposite` rising edge → outward scatter impulse. Motion never rides the laggy family signal.
+//   • COLOUR / identity (lag-tolerant): instrument-family capture (StemFeatures 48–55) → per-particle
+//     colour brightness. A family lagging a beat reads fine; motion lagging does not (the IFC.6 failure).
 
 import Metal
 import simd
@@ -16,7 +20,7 @@ import Shared
 
 // MARK: - GPU-mirrored structs (layouts match RicercarFlow.metal exactly)
 
-/// Mirror of MSL `FlowConfig` — 4 uint + 28 float, all 4-byte members, no padding.
+/// Mirror of MSL `FlowConfig` — 4 uint + 16 float, all 4-byte members ⇒ 80 bytes, no padding.
 struct RicercarFlowConfig {
     var width: UInt32
     var height: UInt32
@@ -42,8 +46,6 @@ struct RicercarFlowConfig {
     var d1x: Float; var d1y: Float   //   brass
     var d2x: Float; var d2y: Float   //   woodwinds
     var d3x: Float; var d3y: Float   //   percussion
-    // per-family articulation 0..1 (0=legato→long life, 1=staccato→short life)
-    var art0: Float; var art1: Float; var art2: Float; var art3: Float
 }
 
 /// Mirror of MSL `FlowParticle` — two float4 (32 bytes), no alignment trap.
@@ -77,7 +79,7 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
 
     public let configuration: RicercarFlowConfiguration
 
-    let particleBuffer: MTLBuffer   // internal: FL.14 tests read per-particle age (meanAge) via @testable
+    private let particleBuffer: MTLBuffer
     private let trail: [MTLTexture]        // 2× rgba16Float, ping-pong
     private var cur = 0
 
@@ -88,13 +90,15 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
 
     // CPU music envelopes (one primitive per layer — D-026, FA #67).
     private var energyEnv: Float = 0       // zero-lag continuous energy → flow vigour + turbulence (PRIMARY)
-    private var beatEnv: Float = 0         // cached-grid beat pulse (computed + tested; unwired since FL.13)
+    private var beatEnv: Float = 0         // cached-grid beat pulse (computed + tested; NOT driving the
+                                           // visual after FL.13 — a global beat pump read as herky-jerky)
     private var driftAngle = SIMD4<Float>(0.7, 2.1, 3.8, 5.2)   // per-family current directions (diverge, turn slowly)
     private var fam = SIMD4<Float>(repeating: 0)   // per-family HYBRID env: max(band-stem dev, family-capture dev)
-    private var artic = SIMD4<Float>(repeating: 0) // per-family articulation 0..1 (0=legato, 1=staccato)
-    private var time: Float = 0; private var frameCounter: UInt32 = 0
+    private var time: Float = 0
+    private var frameCounter: UInt32 = 0
 
-    /// Per-family soft-saturation working points (IFC.6 corpus; hue order) — a strong entry paints full.
+    /// Per-family soft-saturation working points (IFC.6 dumper corpus) — strings, brass, woodwinds, perc
+    /// (hue order). A characteristic strong entry paints full regardless of the family's natural loudness.
     private static let familySaturation = SIMD4<Float>(0.30, 0.85, 0.35, 0.20)
 
     public enum FlowError: Error { case bufferAllocationFailed, textureAllocationFailed, functionNotFound(String) }
@@ -115,7 +119,8 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
         self.particleBuffer = buf
         Self.seed(into: buf, configuration: configuration)
 
-        // HDR ping-pong trail (rgba16Float — additive deposit accumulates light; filterable for bloom taps).
+        // HDR ping-pong trail (rgba16Float — additive deposit accumulates light; filterable for the
+        // display bloom taps).
         let td = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .rgba16Float, width: configuration.width, height: configuration.height, mipmapped: false)
         td.usage = [.shaderRead, .renderTarget]
@@ -171,7 +176,8 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
             self.displayPSO = nil
         }
 
-        // Zero the trail textures — `.private` contents are undefined; a NaN there NEVER decays (the FL.10 bug).
+        // Zero the trail textures — `.private` contents are undefined, and any NaN there NEVER decays
+        // (NaN × decay = NaN), so an unclearedd trail leaves permanent garbage channels (the FL.10 bug).
         Self.clear(textures: textures, device: device)
     }
 
@@ -196,8 +202,6 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
     public var currentEnergyEnv: Float { energyEnv }
     /// Cached-grid beat-pulse envelope (0…1). Exposed so a test can assert it pulses on the beat.
     public var currentBeatEnv: Float { beatEnv }
-    /// Per-family articulation env (0=legato→flowing, 1=staccato→choppy). FL.14 test hook.
-    public var currentArticulation: SIMD4<Float> { artic }
     /// The latest trail texture — exposed so a render test can read it back.
     public var currentTrailTexture: MTLTexture { trail[cur] }
 
@@ -264,29 +268,42 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
         1.0 - exp(-max(0, dev) / max(sat, 1e-4))
     }
 
-    /// Advance the CPU envelopes: energy (primary), beat (unwired), hybrid activity (motion+colour), articulation.
+    /// Advance the CPU envelopes. Energy is the zero-lag primary (band deviations), smoothed just enough
+    /// to avoid strobe; the beat drives a fast-attack/decay scatter pulse; family activations are the
+    /// lag-tolerant colour identity (slower smoothing).
     private func advanceEnvelopes(features feat: FeatureVector, stems stem: StemFeatures) {
         var dt = feat.deltaTime
         if !(dt > 0) { dt = 1.0 / 60.0 }
         dt = min(dt, 1.0 / 30.0)
         time += dt
 
-        // Zero-lag energy: soft-saturated band-deviation sum (D-026), sat 0.5 sized to REAL band-dev (sum ~0.2–0.6).
+        // Zero-lag energy: soft-saturated band-deviation sum (D-026), fast smoothing so the flow visibly
+        // surges with the music without frame jitter. Saturation 0.5 sizes the response to REAL band-dev
+        // magnitudes (typical sum ~0.2–0.6, peaks ~1.5 — devs run small; synthetic 0.45s overstated it).
         let rawEnergy = Self.softSat(max(0, feat.bassDev) + max(0, feat.midDev) + max(0, feat.trebDev), 0.5)
         energyEnv += Float(dt / (0.10 + dt)) * (rawEnergy - energyEnv)
 
-        // Beat pulse from the CACHED GRID (beatPhase01), NOT the saturated live `beatComposite` (FL.10 sync gap).
-        // Sharp on the beat, sharper on the downbeat, gated by pulseAmp01. NOT wired to the render after FL.13.
+        // Beat pulse from the CACHED GRID (beatPhase01 — a clean per-beat 0→1 ramp, live-drift-locked to
+        // ±~20 ms), NOT the live `beatComposite` (saturated near 1.0 on real sessions → fires ~95% of
+        // frames → no rhythm at all: the FL.10 sync gap, diagnosed from session 2026-07-09T02-11-28Z).
+        // Sharp ON the beat, decaying across it; a stronger accent on the downbeat (barPhase01); gated by
+        // pulseAmp01 so silence doesn't pulse. Beat-locked motion on the cached grid is the sanctioned
+        // technique (Audio Data Hierarchy Layer 4; the Ferrofluid D-153→D-158 precedent).
         let amp = max(0, min(1, feat.pulseAmp01))
         let beatPulse = powf(max(0, 1 - feat.beatPhase01), 5.0)   // 1.0 at the beat → ~0 by mid-beat
         let downbeat = powf(max(0, 1 - feat.barPhase01), 6.0)     // sharper, peaks on the bar's "1"
         let rawBeat = amp * min(1.0, beatPulse + 0.7 * downbeat)
-        // Instant attack + short release floor so a near-miss frame still reads as a crisp bloom, not a strobe.
+        // Instant attack (snap up on the beat) + a short release floor so a frame that just misses the
+        // exact beat instant still reads as a crisp bloom, not a strobe.
         beatEnv = max(rawBeat, beatEnv - Float(dt) / 0.12)
 
-        // Per-family HYBRID activity env (FL.13): MAX of a colour's mapped BAND-STEM dev (zero-lag, alive on
-        // rock/pop) and its FAMILY capture dev (alive on orchestral, laggy) → differentiates on ANY genre.
-        // Warmup-gated, soft-saturated, smoothed ~0.3 s. colour←(band-stem|family). Drives motion + colour.
+        // Per-family HYBRID activity env (FL.13, Matt "each color should behave differently"): the MAX of a
+        // colour's mapped real-time BAND-STEM dev (drums/bass/vocals/other — zero-lag, alive on rock/pop)
+        // and its INSTRUMENT-FAMILY capture dev (strings/brass/woodwinds/percussion — alive on orchestral,
+        // ~2–4 s laggy). Whichever is active drives it → differentiates on ANY genre. Warmup-gated (D-019),
+        // soft-saturated to 0..1, smoothed ~0.3 s → CONTINUOUS smooth motion (no jitter, no beat pump).
+        // colour←(band-stem | family): strings←(vocals|strings), brass←(bass|brass),
+        // woodwinds←(other|woodwinds), percussion←(drums|percussion).
         let stemTotal = stem.drumsEnergy + stem.bassEnergy + stem.otherEnergy + stem.vocalsEnergy
         let blend = Self.smoothstep(0.02, 0.06, stemTotal)
         let fsat = Self.familySaturation
@@ -304,26 +321,18 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
         let alpha = Float(dt / (0.30 + dt))
         fam += (target - fam) * alpha
 
-        // Per-family ARTICULATION env (FL.14) — each colour reads its stem's AttackRatio via the FL.13 hybrid.
-        // Baseline+brief-spikes → an instantaneous map + symmetric EMA collapses to ~0 = ALWAYS-LEGATO (FL.14
-        // 1st live miss). FL.14.1: map 1.0→1.6 into a FAST-ATTACK(τ0.08s)/SLOW-RELEASE(τ1.5s) PEAK-HOLD → a
-        // staccato passage HOLDS a high env, legato decays to 0.
-        let inst = SIMD4<Float>(
-            Self.smoothstep(1.0, 1.6, stem.vocalsAttackRatio),
-            Self.smoothstep(1.0, 1.6, stem.bassAttackRatio),
-            Self.smoothstep(1.0, 1.6, stem.otherAttackRatio),
-            Self.smoothstep(1.0, 1.6, stem.drumsAttackRatio)) * blend
-        let aA = Float(dt / (0.08 + dt)), aR = Float(dt / (1.5 + dt))   // fast attack, slow release
-        for i in 0..<4 { artic[i] += (inst[i] - artic[i]) * (inst[i] > artic[i] ? aA : aR) }
-
-        // Turn each family's drift slowly at its OWN rate (colours diverge), a touch faster when it's active.
+        // Turn each family's drift direction slowly at its OWN rate (so the four colours diverge and move
+        // differently), a touch faster when that family is active — organic wandering currents, never a
+        // rigid scroll.
         let turnRate = SIMD4<Float>(0.13, -0.10, 0.17, -0.15)
         driftAngle += (turnRate + fam * 0.30) * Float(dt)
     }
 
     private func makeConfig() -> RicercarFlowConfig {
         let en = max(0, min(1.2, energyEnv))
-        // Per-family drift: each colour follows its OWN current — own turning angle, own speed (slow base + env).
+        // Per-family drift: each colour follows its OWN current — direction = its own slowly-turning angle
+        // (the four diverge), speed = a slow base + its own hybrid env. Each colour moves DIFFERENTLY,
+        // faster while its instrument plays, SMOOTHLY (continuous, no beat pump); below the pointSize budget.
         func drift(_ i: Int) -> (Float, Float) {
             let mag = 0.0010 + 0.0042 * fam[i]
             return (cosf(driftAngle[i]) * mag, sinf(driftAngle[i]) * mag)
@@ -339,7 +348,8 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
             frame: frameCounter,
             dt: 1.0 / 60.0,
             time: time,
-            // flowSpeed = CURL SWIRL strength (gentle so each family's drift direction dominates, not churn).
+            // flowSpeed is the CURL SWIRL strength — the coherent texture riding ON each family's drift
+            // (gentle so the drift direction dominates → coordinated per-colour motion, not churn).
             flowSpeed: 0.0012 + 0.0016 * en,
             turbulence: 0.06 + 0.40 * en,   // near-laminar → long coherent streams (ribbons)
             decay: 0.950,                   // long light-trails → each sparse particle draws a long ribbon
@@ -361,17 +371,13 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
             d2x: d2x,
             d2y: d2y,
             d3x: d3x,
-            d3y: d3y,
-            art0: artic.x,
-            art1: artic.y,
-            art2: artic.z,
-            art3: artic.w)
+            d3y: d3y)
     }
 
     // MARK: - Seeding
 
-    /// Deterministic seed: families split evenly, spawned near home with staggered ages (misc.z legacy — the
-    /// shader computes life from articulation each frame, FL.14).
+    /// Deterministic seed: particles split evenly across the four families, each spawned near its home
+    /// band with a random x and staggered ages/lives (so respawns don't pulse in sync).
     private static func seed(into buffer: MTLBuffer, configuration: RicercarFlowConfiguration) {
         let count = configuration.particleCount
         let ptr = buffer.contents().bindMemory(to: FlowParticle.self, capacity: count)
@@ -383,11 +389,12 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
         let homeY: [Float] = [0.42, 0.24, 0.58, 0.78]   // strings, brass, woodwinds, percussion
         for i in 0..<count {
             let family = i % 4
-            let age = next() * 16.0                      // staggered start over a legato-scale life span
+            let life = 8.0 + next() * 12.0              // 8–20 s (long-lived → long continuous ribbons)
+            let age = next() * life                     // staggered start
             let y = min(0.98, max(0.02, homeY[family] + (next() - 0.5) * 0.42))
             ptr[i] = FlowParticle(
                 posVel: SIMD4<Float>(next(), y, 0, 0),
-                misc: SIMD4<Float>(Float(family), age, 0, next()))   // misc.z (life) legacy — set in-shader
+                misc: SIMD4<Float>(Float(family), age, life, next()))
         }
     }
 }
