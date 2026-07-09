@@ -87,6 +87,10 @@ struct FixtureSessionCaptureGenerator {
             .appendingPathComponent("Fixtures/tempo")
 
         let separator = try StemSeparator(device: device)
+        // QG.1.3 — PANN family sweep, offline, so the stems.csv `*Activity[Dev]`
+        // columns carry real (non-constant) family-capture values instead of
+        // structural 0. Same analyzer SessionPreparer.analyzePreview uses.
+        let familyAnalyzer = try InstrumentFamilyAnalyzer(device: device)
         for fixture in Self.fixtures {
             let audioURL = fixturesDir.appendingPathComponent(fixture)
             guard FileManager.default.fileExists(atPath: audioURL.path) else {
@@ -102,7 +106,8 @@ struct FixtureSessionCaptureGenerator {
             let maxSamples = Int(Self.maxSeconds * sampleRate)
             if samples.count > maxSamples { samples = Array(samples.prefix(maxSamples)) }
 
-            var stemRows = try generateStemRows(samples: samples, separator: separator)
+            var stemRows = try generateStemRows(
+                samples: samples, separator: separator, familyAnalyzer: familyAnalyzer)
             var featureRows = try generateFeatureRows(samples: samples, device: device)
             // SessionDataLoader requires features/stems row alignment; the stem
             // waveforms can run a hop short of the input (chunk-tail trim).
@@ -120,9 +125,18 @@ struct FixtureSessionCaptureGenerator {
     // MARK: - Production-pipeline replay: stems half (BUG-049)
 
     /// Separate (10 s chunks) → analyze per 1024-hop, returning one
-    /// production-format stems.csv row per analysis frame.
-    private func generateStemRows(samples: [Float], separator: StemSeparator) throws -> [String] {
+    /// production-format stems.csv row per analysis frame. The PANN family sweep
+    /// (QG.1.3) runs once over the whole clip and is sampled per frame by
+    /// playback position, exactly as the live analysis frame does via
+    /// `InstrumentFamilyActivity.sample` (SessionPreparer+Analysis / IFC.4).
+    private func generateStemRows(
+        samples: [Float], separator: StemSeparator,
+        familyAnalyzer: any InstrumentFamilyAnalyzing
+    ) throws -> [String] {
         let sampleRate = StemSeparator.modelSampleRate
+        // Layer-5a family-capture series (1 s hop); sampled by playback position below.
+        let familySeries = familyAnalyzer.analyzeFamilyActivity(
+            samples: samples, sampleRate: Double(sampleRate))
         // Separate in ≤10 s chunks (the separator's output-buffer capacity);
         // trim each chunk's output to its input length to drop tail zero-pad.
         let chunkLen = 441_000
@@ -153,7 +167,20 @@ struct FixtureSessionCaptureGenerator {
             for stem in stemWaveforms {
                 frameWaveforms.append(Array(stem[hopStart..<hopStart + Self.hop]))
             }
-            let features = analyzer.analyze(stemWaveforms: frameWaveforms, fps: fps)
+            var features = analyzer.analyze(stemWaveforms: frameWaveforms, fps: fps)
+            // Merge the family-capture activity for this frame's playback position
+            // (mirrors the live analysis-frame `setInstrumentFamilyActivity`).
+            let family = InstrumentFamilyActivity.sample(
+                familySeries, atPlaybackSeconds: Double(frame) / Double(fps),
+                hopSeconds: InstrumentFamilyAnalyzer.hopSeconds)
+            features.stringsActivity = family[.strings].smoothed
+            features.stringsActivityDev = family[.strings].dev
+            features.brassActivity = family[.brass].smoothed
+            features.brassActivityDev = family[.brass].dev
+            features.woodwindsActivity = family[.woodwinds].smoothed
+            features.woodwindsActivityDev = family[.woodwinds].dev
+            features.percussionActivity = family[.percussion].smoothed
+            features.percussionActivityDev = family[.percussion].dev
             rows.append(SessionRecorder.csvRow(
                 stems: features, frame: frame, wallclock: Double(frame) / Double(fps)))
             frame += 1
