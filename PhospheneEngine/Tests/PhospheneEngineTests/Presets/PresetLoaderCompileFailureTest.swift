@@ -69,9 +69,9 @@ struct PresetLoaderCompileFailureTest {
     /// 26: Cytokinesis (Mitosis gen-2 — detailed explicit-cell division, family `particles`,
     /// `MitosisGen2Geometry` conformer; certified:false, cert at MITOSIS-G2.3). See
     /// docs/presets/MITOSIS_GEN2_DESIGN.md.
-    /// 27: Ricercar (Fantasia rebuild — Stam stable-fluids dye sim + glow ribbons, family
-    /// `painterly`, `RicercarFluidGeometry` conformer; the marks/Skein paradigm was rejected 3×.
-    /// Uncertified — FL.4 audio + M7 pending). See docs/presets/RICERCAR_DESIGN.md
+    /// 27: Ricercar (Fantasia rebuild — audio-reactive glowing particle flow-field, Magnetosphere
+    /// lineage, family `painterly`, `RicercarFlowGeometry` conformer; the marks/Skein + fluid-dye
+    /// paradigms were rejected. Uncertified — FL.10 look + M7 pending). See docs/presets/RICERCAR_DESIGN.md
     /// §FANTASIA REBUILD.
     static let expectedProductionPresetCount = 27
 

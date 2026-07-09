@@ -2,7 +2,7 @@
   "name": "Ricercar",
   "duration": 45,
   "family": "painterly",
-  "description": "Fantasia: luminous flowing colour (RICERCAR-FL rebuild, the corrected paradigm after three marks-on-canvas rejections). A real GPU fluid dye simulation — family-coloured ink masses (strings violet, brass gold, woodwinds russet, percussion teal) billow down from the top of frame, bleeding and merging wet-into-wet on a warm light ground — with four glowing ribbons, one per instrument family, weaving and crossing across the frame as light-lines with soft halos. FL.3 state: hand-animated look-lock (no audio drive yet — FL.4 wires family capture to which colours bloom and zero-lag energy to flow vigour and ribbon undulation). See docs/presets/RICERCAR_DESIGN.md §FANTASIA REBUILD.",
+  "description": "Fantasia: a visual fantasia set to music — an audio-reactive glowing particle flow-field (Robert Hodgin Magnetosphere lineage). Thousands of light particles are advected through curl-noise turbulence and audio force fields, each carrying an instrument-family colour (strings blue-violet, brass gold, woodwinds amber, percussion cyan), deposited as additive glowing sprites into an HDR light-trail that decays each frame — the deposit-and-fade trail is the glowing weaving ribbon of light, luminous over a deep/dark ground. Zero-lag band energy drives flow vigour and turbulence; beats scatter the particles outward; instrument-family capture colours them. See docs/presets/RICERCAR_DESIGN.md §FANTASIA REBUILD.",
   "author": "Matt",
   "passes": ["feedback", "particles"],
   "beat_source": "composite",
