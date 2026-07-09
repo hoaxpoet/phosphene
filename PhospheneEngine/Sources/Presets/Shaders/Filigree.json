@@ -21,5 +21,15 @@
   "section_suitability": ["ambient", "buildup", "peak"],
   "complexity_cost": { "tier1": 1.5, "tier2": 0.8 },
   "rubric_profile": "lightweight",
+  "audio_routes": [
+    { "route": "cell_fineness", "primitive": "drumsEnergy", "kind": "continuous" },
+    { "route": "cell_fineness", "primitive": "bassEnergy", "kind": "continuous" },
+    { "route": "cell_fineness", "primitive": "otherEnergy", "kind": "continuous" },
+    { "route": "cell_fineness", "primitive": "vocalsEnergy", "kind": "continuous" },
+    { "route": "energy_fallback", "primitive": "bass", "kind": "continuous" },
+    { "route": "energy_fallback", "primitive": "mid", "kind": "continuous" },
+    { "route": "beat_consolidation", "primitive": "drumsEnergyDev", "kind": "accent" },
+    { "route": "beat_consolidation", "primitive": "bassEnergyDev", "kind": "accent" }
+  ],
   "certified": true
 }

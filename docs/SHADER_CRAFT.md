@@ -2481,6 +2481,24 @@ Every preset ships a `<PresetName>.json` sidecar alongside its `.metal` file. Th
 | `certified` | `false` | Matt-approved reference-frame match. Only flipped to `true` after reviewing against `docs/VISUAL_REFERENCES/<preset>/` references. Orchestrator excludes uncertified presets by default. (Increment V.6) |
 | `rubric_profile` | `"full"` | Which rubric ladder to apply. `"full"` = 7 mandatory + 4 expected + 4 preferred. `"lightweight"` = 4 items for stylized 2D / diagnostic presets (Plasma, Waveform, Nebula, SpectralCartograph). Unknown strings fall back to `"full"` with a warning. (Increment V.6) |
 | `rubric_hints` | `{}` | Author-asserted flags for rubric items the analyzer cannot auto-detect. `"hero_specular": true` satisfies P1; `"dust_motes": true` satisfies P3. Missing keys default to `false`. (Increment V.6) |
+| `audio_routes` | `[]` | The preset's audio-routing manifest — see §17.1. Required non-empty for certification (QG.1). |
+
+### 17.1 `audio_routes` — the audio-routing manifest (QG.1)
+
+Every route the preset's code actually consumes, declared so the route-coverage gate can assert it fires on real music:
+
+```json
+"audio_routes": [
+  { "route": "downbeat_camera_push", "primitive": "barPhase01", "kind": "accent" },
+  { "route": "vortex_swirl",         "primitive": "bassDev",    "kind": "continuous" }
+]
+```
+
+- `route` — short snake_case name of the **visual behaviour** driven (what a viewer would see change).
+- `primitive` — the **Swift-side field name** of `FeatureVector` / `StemFeatures` the code reads (camelCase: `bassDev`, `drumsEnergyDev`, `barPhase01`, `pulseAmp01`, …). Validated against the session-CSV-recordable primitive allowlist by `AudioRouteSchemaTests` — an unknown primitive fails the suite.
+- `kind` — the floor class `RouteCoverageTests` applies over the canonical fixture set (`Tests/PhospheneEngineTests/Fixtures/route_coverage/`): `continuous` = non-constant + variance floor; `accent` = ≥ 1 firing per fixture; `structural` = ≥ 1 section event on a fixture that contains one.
+
+Rules: **audit before declaring** — a declared route the code doesn't read is as wrong as an unread route left undeclared; enumerate from the `.metal` (snake_case fields) *and* the preset's CPU driver (`RenderPipeline+<Preset>.swift` / `<Preset>State.swift` / `<Preset>Geometry.swift` — mv_warp and geometry presets consume most primitives on the CPU). One row per (behaviour × primitive); a stem-summed drive declares each contributing primitive. A red route in `RouteCoverageTests` is a **defect to file, not a floor to tune** (QG.1: "red route = the gate working").
 
 ---
 

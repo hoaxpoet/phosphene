@@ -21,5 +21,21 @@
   "section_suitability": ["buildup", "peak"],
   "complexity_cost": { "tier1": 2.5, "tier2": 1.4 },
   "rubric_profile": "lightweight",
+  "audio_routes": [
+    { "route": "energy_env", "primitive": "drumsEnergy", "kind": "continuous" },
+    { "route": "energy_env", "primitive": "bassEnergy", "kind": "continuous" },
+    { "route": "energy_env", "primitive": "otherEnergy", "kind": "continuous" },
+    { "route": "energy_env", "primitive": "vocalsEnergy", "kind": "continuous" },
+    { "route": "energy_env_fallback", "primitive": "bass", "kind": "continuous" },
+    { "route": "energy_env_fallback", "primitive": "mid", "kind": "continuous" },
+    { "route": "banking_wave", "primitive": "beatBass", "kind": "accent" },
+    { "route": "banking_wave", "primitive": "drumsBeat", "kind": "accent" },
+    { "route": "density_breathing", "primitive": "vocalsEnergy", "kind": "continuous" },
+    { "route": "edge_flutter", "primitive": "highMid", "kind": "continuous" },
+    { "route": "edge_flutter", "primitive": "high", "kind": "continuous" },
+    { "route": "wind_arcs", "primitive": "bassAtt", "kind": "continuous" },
+    { "route": "flock_yaw", "primitive": "trebleAtt", "kind": "continuous" },
+    { "route": "flock_pitch", "primitive": "spectralCentroid", "kind": "continuous" }
+  ],
   "certified": true
 }
