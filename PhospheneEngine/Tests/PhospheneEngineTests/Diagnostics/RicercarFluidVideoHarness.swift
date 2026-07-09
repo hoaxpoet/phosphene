@@ -134,6 +134,75 @@ struct RicercarFluidVideoHarness {
         #expect(FileManager.default.fileExists(atPath: mp4.path), "ffmpeg did not produce the MP4")
     }
 
+    /// FANTASIA-FUGUE PROTOTYPE (RICERCAR_ECHO=1): drive `RicercarEchoGeometry` with the same real MIR stream
+    /// and render an MP4 + frames, so Matt and I can judge whether a clear gesture that ANSWERS ITSELF reads as
+    /// a fugue and stays locked to the music. Onsets spawn subjects; echoes answer (transformed); density
+    /// scales with energy. Uncoupled from the app — this test is the only driver.
+    @Test("Fugue-echo prototype: gestures answer themselves, driven by real audio → MP4")
+    func test_echoPrototypeVideo() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard env["RICERCAR_ECHO"] == "1" else {
+            print("RicercarFluidVideoHarness: RICERCAR_ECHO not set — skipping echo prototype"); return
+        }
+        guard MTLCreateSystemDefaultDevice() != nil else { return }
+        let audioPath = env["RICERCAR_AUDIO"] ?? Self.defaultFixture()
+        let seconds = Double(env["RICERCAR_SECONDS"] ?? "18") ?? 18
+        guard FileManager.default.fileExists(atPath: audioPath) else {
+            print("RicercarFluidVideoHarness: audio not found at \(audioPath) — skipping"); return
+        }
+        let mirSamples = try decodeMono(audioPath, sampleRate: 48_000, seconds: seconds)
+        let features = try mirFeatureStream(mirSamples, sampleRate: 48_000)
+        print("[ricercar_echo] MIR: \(features.count) frames from \(URL(fileURLWithPath: audioPath).lastPathComponent)")
+
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let geo = try RicercarEchoGeometry(
+            device: ctx.device, library: lib.library,
+            configuration: RicercarEchoConfiguration(width: Self.simW, height: Self.simH),
+            pixelFormat: ctx.pixelFormat)
+        let tex = try target(ctx)
+        let dir = try makeOutputDir()
+        let frameDir = dir.appendingPathComponent("echo_frames")
+        try? FileManager.default.removeItem(at: frameDir)
+        try FileManager.default.createDirectory(at: frameDir, withIntermediateDirectories: true)
+
+        var captured = 0
+        var audioEnergy: [Double] = [], visCoverage: [Double] = []
+        for (i, fv) in features.enumerated() {
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { throw E.setup }
+            geo.update(features: fv, stemFeatures: StemFeatures.zero, commandBuffer: cmd)
+            let capture = (i % 2 == 0)
+            if capture {
+                let rpd = MTLRenderPassDescriptor()
+                rpd.colorAttachments[0].texture = tex
+                rpd.colorAttachments[0].loadAction = .clear
+                rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0.015, green: 0.017, blue: 0.04, alpha: 1)
+                rpd.colorAttachments[0].storeAction = .store
+                guard let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) else { throw E.render }
+                geo.render(encoder: enc, features: fv)
+                enc.endEncoding()
+            }
+            cmd.commit(); cmd.waitUntilCompleted()
+            if capture {
+                var px = [UInt8](repeating: 0, count: Self.outW * Self.outH * 4)
+                tex.getBytes(&px, bytesPerRow: Self.outW * 4,
+                             from: MTLRegionMake2D(0, 0, Self.outW, Self.outH), mipmapLevel: 0)
+                try writeBGRAToPNG(px, w: Self.outW, h: Self.outH,
+                                   url: frameDir.appendingPathComponent(String(format: "f%05d.png", captured)))
+                audioEnergy.append(Double(max(0, fv.bassDev) + max(0, fv.midDev) + max(0, fv.trebDev)))
+                visCoverage.append(coverageAndCentroid(px).0)
+                captured += 1
+            }
+        }
+        let intensity = bestLag(audio: audioEnergy, vis: visCoverage, maxLag: 18)
+        print("[ricercar_echo] wrote \(captured) frames; INTENSITY coverage vs energy r=\(String(format: "%+.2f", intensity.r)) at lag \(intensity.lag)f")
+        let stem = URL(fileURLWithPath: audioPath).deletingPathExtension().lastPathComponent
+        let mp4 = dir.appendingPathComponent("ricercar_echo_\(stem).mp4")
+        try encodeMP4(frameDir: frameDir, fps: Self.videoFPS, out: mp4)
+        print("[ricercar_echo] MP4 → \(mp4.path)")
+        #expect(captured > 0)
+    }
+
     /// Repo-relative fixture resolved from this file's path (…/PhospheneEngine/Tests/PhospheneEngineTests/
     /// Diagnostics/ → up 4 → repo root), so the default works regardless of the test's working directory.
     private static func defaultFixture(file: String = #filePath) -> String {
