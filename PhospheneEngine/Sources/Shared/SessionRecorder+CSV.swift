@@ -89,6 +89,54 @@ public struct RayMarchPassTimingSnapshot: Sendable {
 
 extension SessionRecorder {
 
+    // MARK: - CSV headers (single source — the row writers below MUST stay in column-lockstep)
+
+    /// features.csv header. CSV invariant: append-only. Existing columns stay in
+    /// their existing positions so positional parsers (DSP.1 baselines, manual awk
+    /// diagnostics) keep working. New columns go at the end. See test
+    /// `test_featuresHeader_includesFrameTimingColumns` for the canonical column
+    /// layout and the increments that added each block. (QG.1: promoted from a
+    /// `makeFileHandles` local so offline generators share the exact literal.)
+    public static let featuresCSVHeader = """
+        frame,wallclock_s,time,deltaTime,bass,mid,treble,\
+        subBass,lowBass,lowMid,midHigh,highMid,high,\
+        beatBass,beatMid,beatTreble,beatComposite,\
+        spectralCentroid,spectralFlux,valence,arousal,accumulatedAudioTime,\
+        beatPhase01,bassRel,bassDev,bassAttRel,\
+        barPhase01_permille,beatsPerBar,beat_in_bar,is_downbeat,\
+        beat_sync_mode,lock_state,grid_bpm,playback_time_s,drift_ms,\
+        frame_cpu_ms,frame_gpu_ms,track_elapsed_s,cached_bass_proportion,\
+        mir_pipeline_ms,stem_analyzer_ms,beat_detector_ms,pitch_tracker_ms,mood_classifier_ms,\
+        encode_cpu_ms,renderframe_cpu_ms,\
+        gbuffer_pass_ms,lighting_pass_ms,ssgi_pass_ms,post_process_pass_ms,\
+        pulse_phase01,pulse_amp01,\
+        section_index,section_start_s,section_confidence,\
+        pulse_beat_index,pulse_regional_blend01,\
+        tonal_phase_fifths,tonal_phase_thirds,tonal_consonance,tonal_tension,harmonic_flux
+
+        """
+
+    /// stems.csv header — same append-only invariant as `featuresCSVHeader`.
+    public static let stemsCSVHeader = """
+        frame,wallclock_s,\
+        drumsEnergy,drumsBeat,drumsBand0,drumsBand1,\
+        bassEnergy,bassBeat,bassBand0,bassBand1,\
+        vocalsEnergy,vocalsBeat,vocalsBand0,vocalsBand1,\
+        otherEnergy,otherBeat,otherBand0,otherBand1,\
+        drumsEnergyRel,drumsEnergyDev,\
+        bassEnergyRel,bassEnergyDev,\
+        vocalsEnergyRel,vocalsEnergyDev,\
+        otherEnergyRel,otherEnergyDev,\
+        drumsOnsetRate,drumsCentroid,drumsAttackRatio,drumsEnergySlope,\
+        bassOnsetRate,bassCentroid,bassAttackRatio,bassEnergySlope,\
+        vocalsOnsetRate,vocalsCentroid,vocalsAttackRatio,vocalsEnergySlope,\
+        otherOnsetRate,otherCentroid,otherAttackRatio,otherEnergySlope,\
+        vocalsPitchHz,vocalsPitchConfidence,\
+        stringsActivity,stringsActivityDev,brassActivity,brassActivityDev,\
+        woodwindsActivity,woodwindsActivityDev,percussionActivity,percussionActivityDev
+
+        """
+
     // MARK: - CSV row formatting
 
     // swiftlint:disable multiline_arguments
