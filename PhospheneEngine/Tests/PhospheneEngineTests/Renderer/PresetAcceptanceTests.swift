@@ -273,11 +273,11 @@ struct PresetAcceptanceTests {
         // `mitosis_ground_fragment` is the intentionally flat dark ground.
         // Coverage: MitosisSketchRenderTests (multi-frame field render + spot metric).
         guard preset.descriptor.name != "Mitosis" else { return }
-        // Ricercar (RICERCAR-FL.5): same as Mitosis — the readable content is the
-        // `RicercarFluidGeometry` fluid dye field + ribbon overlay (particles pass); the standalone
-        // `ricercar_ground_fragment` is the intentionally flat warm light ground. It is NOT exempted
-        // from non-black / no-white-clip / beat-bounded (its light ground passes those). Multi-frame
-        // coverage: RicercarFluidRenderTests (fluid + ribbons through the live ParticleGeometry path).
+        // Ricercar (RICERCAR-FL.10): same as Mitosis — the readable content is the
+        // `RicercarFlowGeometry` glowing particle flow-field (particles pass); the standalone
+        // `ricercar_ground_fragment` is the intentionally flat DEEP ground (the light-trail covers it),
+        // so the fragment-alone render is exempted here. Multi-frame coverage: RicercarFlowRenderTests
+        // + RicercarFluidVideoHarness (the flow field through the live ParticleGeometry path).
         guard preset.descriptor.name != "Ricercar" else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture

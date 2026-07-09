@@ -3,7 +3,7 @@
 // Matt's bar (2026-07-08): "the most important thing is how the visuals appear in RESPONSE to musical
 // signals." A static contact sheet cannot show that. This harness runs a REAL track through the
 // PRODUCTION analysis path (FFTProcessor → MIRPipeline for the zero-lag band/beat features;
-// InstrumentFamilyAnalyzer for the family capture, StemFeatures 48–55), drives RicercarFluidGeometry
+// InstrumentFamilyAnalyzer for the family capture, StemFeatures 48–55), drives RicercarFlowGeometry
 // with that real per-frame stream exactly as the live app does (`RenderPipeline+Draw`), renders every
 // frame, and encodes an MP4 via ffmpeg. It is NOT synthetic (FA #27) — the only thing it does not
 // reproduce is a live streaming session; the response to real music, in motion, is real.
@@ -30,7 +30,7 @@ import UniformTypeIdentifiers
 struct RicercarFluidVideoHarness {
 
     private enum E: Error { case setup, render, decode, encode }
-    static let simW = 480, simH = 270
+    static let simW = 960, simH = 540      // trail (sim) resolution — matches the output, no upscale blur
     static let outW = 960, outH = 540
     static let simFPS: Float = 60          // sim advances at production rate (texels/frame calibration)
     static let videoFPS = 30               // capture every 2nd sim frame
@@ -65,8 +65,10 @@ struct RicercarFluidVideoHarness {
         // 3. Drive the geometry with the real stream, render every 2nd frame, write PNGs.
         let ctx = try MetalContext()
         let lib = try ShaderLibrary(context: ctx)
-        let geo = try RicercarFluidGeometry(device: ctx.device, library: lib.library,
-                                            width: Self.simW, height: Self.simH, pixelFormat: ctx.pixelFormat)
+        let geo = try RicercarFlowGeometry(
+            device: ctx.device, library: lib.library,
+            configuration: RicercarFlowConfiguration(width: Self.simW, height: Self.simH),
+            pixelFormat: ctx.pixelFormat)
         let tex = try target(ctx)
         let dir = try makeOutputDir()
         let frameDir = dir.appendingPathComponent("frames")
@@ -99,7 +101,7 @@ struct RicercarFluidVideoHarness {
                 let rpd = MTLRenderPassDescriptor()
                 rpd.colorAttachments[0].texture = tex
                 rpd.colorAttachments[0].loadAction = .clear
-                rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0.95, green: 0.94, blue: 0.92, alpha: 1)
+                rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0.015, green: 0.017, blue: 0.04, alpha: 1)
                 rpd.colorAttachments[0].storeAction = .store
                 guard let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) else { throw E.render }
                 geo.render(encoder: enc, features: fv)
@@ -142,13 +144,15 @@ struct RicercarFluidVideoHarness {
 
     // MARK: - Sync determination (audio ↔ visual correlation + lag)
 
-    /// Coloured-pixel fraction + the mean (x, y) of those pixels (0…1) — how much, and where.
+    /// Lit-pixel fraction + the mean (x, y) of the lit pixels (0…1) — how much light, and where. A pixel
+    /// is "lit" when its luminance rises above the deep ground (sRGB luminance ≈ 42 for the ground; 70 is
+    /// a clean margin), so the metric measures the glowing light-trail, not the whole frame.
     private func coverageAndCentroid(_ px: [UInt8]) -> (Double, Double, Double) {
         var n = 0, sumX = 0.0, sumY = 0.0
         let count = px.count / 4
         for i in 0..<count {
-            let b = Int(px[i * 4]), g = Int(px[i * 4 + 1]), r = Int(px[i * 4 + 2])
-            if abs(r - 242) + abs(g - 240) + abs(b - 235) > 60 {
+            let b = Double(px[i * 4]), g = Double(px[i * 4 + 1]), r = Double(px[i * 4 + 2])
+            if 0.299 * r + 0.587 * g + 0.114 * b > 70 {
                 n += 1
                 sumX += Double(i % Self.outW) / Double(Self.outW)
                 sumY += Double(i / Self.outW) / Double(Self.outH)
@@ -187,11 +191,11 @@ struct RicercarFluidVideoHarness {
 
     private func reportSync(energy: [Double], balance: [Double], coverage: [Double],
                             centroidX: [Double], centroidY: [Double]) {
-        // INTENSITY: does the AMOUNT of visual track the music's energy, and at what lag?
+        // INTENSITY (the key flow-field metric): does the AMOUNT of glowing light track the music's
+        // energy, and at what lag? A strong r near lag 0 = the flow surges WITH the music (motion sync).
         let intensity = bestLag(audio: energy, vis: coverage, maxLag: 18)
-        // VERTICAL MOTION (the B axis): the voices RISE with energy, so the visual's vertical centre
-        // should track energy at ~0 lag (height is set from THIS frame's audio). Negative r expected —
-        // rising = smaller top-down y — so report |r| and the best lag.
+        // VERTICAL: the mean height of the light vs energy — a weaker cue for a flow field (families sit
+        // in loose bands), reported for completeness. σ shows how much the light's centre moves.
         let vertical = bestLag(audio: energy, vis: centroidY.map { -$0 }, maxLag: 18)
         print("""
         [ricercar_sync] ── audio↔visual determination (\(coverage.count) frames @ \(Self.videoFPS) fps) ──
