@@ -112,7 +112,8 @@ extension SessionRecorder {
         pulse_phase01,pulse_amp01,\
         section_index,section_start_s,section_confidence,\
         pulse_beat_index,pulse_regional_blend01,\
-        tonal_phase_fifths,tonal_phase_thirds,tonal_consonance,tonal_tension,harmonic_flux
+        tonal_phase_fifths,tonal_phase_thirds,tonal_consonance,tonal_tension,harmonic_flux,\
+        bass_att,mid_att,treble_att,mid_rel,mid_dev,treb_rel,treb_dev,mid_att_rel,treb_att_rel,beats_until_next
 
         """
 
@@ -234,11 +235,21 @@ extension SessionRecorder {
         // consonance, tension, flux). New columns at the END (positional
         // parsers depend on the existing layout); the objective cross-check
         // for the TONAL.3 M7 (the fifths phase should migrate at modulations).
-        let tonalCols = String(format: ",%.4f,%.4f,%.5f,%.5f,%.5f\n",
+        let tonalCols = String(format: ",%.4f,%.4f,%.5f,%.5f,%.5f",
                                fv.tonalPhaseFifths, fv.tonalPhaseThirds,
                                fv.tonalConsonance, fv.tonalTension, fv.harmonicFlux)
+        // QG.1 — the remaining FeatureVector primitives presets consume that the
+        // CSV never carried (attenuated bands + mid/treb deviation family +
+        // beats_until_next). Without them, RouteCoverageTests cannot replay
+        // routes like Murmuration's bass_att vigor or Nacre's mid_att_rel sway.
+        // New columns at the END (positional parsers depend on the layout).
+        let primitiveCols = String(
+            format: ",%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.4f\n",
+            fv.bassAtt, fv.midAtt, fv.trebleAtt,
+            fv.midRel, fv.midDev, fv.trebRel, fv.trebDev,
+            fv.midAttRel, fv.trebAttRel, fv.beatsUntilNext)
         return base + sync + timing + subTiming + renderTimingCols + rayMarchPassCols
-            + pulseCols + structCols + pulseCols2 + tonalCols
+            + pulseCols + structCols + pulseCols2 + tonalCols + primitiveCols
     }
 
     static func csvRow(stems: StemFeatures, frame: Int, wallclock: CFAbsoluteTime) -> String {
