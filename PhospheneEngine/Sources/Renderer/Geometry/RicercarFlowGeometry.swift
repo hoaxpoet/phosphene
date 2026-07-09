@@ -77,7 +77,7 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
 
     public let configuration: RicercarFlowConfiguration
 
-    private let particleBuffer: MTLBuffer
+    let particleBuffer: MTLBuffer   // internal: FL.14 tests read per-particle age (meanAge) via @testable
     private let trail: [MTLTexture]        // 2× rgba16Float, ping-pong
     private var cur = 0
 
@@ -198,14 +198,6 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
     public var currentBeatEnv: Float { beatEnv }
     /// Per-family articulation env (0=legato→flowing, 1=staccato→choppy). FL.14 test hook.
     public var currentArticulation: SIMD4<Float> { artic }
-    /// Mean particle age (s) per family. Staccato families respawn faster ⇒ lower mean age. FL.14 hook.
-    public func meanAgeByFamily() -> SIMD4<Float> {
-        let count = configuration.particleCount
-        let ptr = particleBuffer.contents().bindMemory(to: FlowParticle.self, capacity: count)
-        var sum = SIMD4<Float>(repeating: 0), cnt = SIMD4<Float>(repeating: 0)
-        for i in 0..<count { let fm = Int(ptr[i].misc.x.rounded()) & 3; sum[fm] += ptr[i].misc.y; cnt[fm] += 1 }
-        return sum / cnt   // families split evenly across the buffer ⇒ each count ≥ 1
-    }
     /// The latest trail texture — exposed so a render test can read it back.
     public var currentTrailTexture: MTLTexture { trail[cur] }
 
@@ -312,16 +304,17 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
         let alpha = Float(dt / (0.30 + dt))
         fam += (target - fam) * alpha
 
-        // Per-family ARTICULATION env (FL.14, Matt "staccato → shorter choppier lines; strings flowing"): each
-        // colour reads ITS stem's AttackRatio (baseline ~1.0, sharp peaks ~3.0) via FL.13's colour→stem hybrid.
-        // A real-time band-stem signal, alive on ALL genres → no family fallback. Same warmup `blend` gate +
-        // ~0.3 s smoothing (shift by section, not per-note). Drives per-family LIFE at respawn; MOTION untouched.
-        let staccato = SIMD4<Float>(
-            Self.smoothstep(1.05, 2.2, stem.vocalsAttackRatio),
-            Self.smoothstep(1.05, 2.2, stem.bassAttackRatio),
-            Self.smoothstep(1.05, 2.2, stem.otherAttackRatio),
-            Self.smoothstep(1.05, 2.2, stem.drumsAttackRatio)) * blend
-        artic += (staccato - artic) * alpha
+        // Per-family ARTICULATION env (FL.14) — each colour reads its stem's AttackRatio via the FL.13 hybrid.
+        // Baseline+brief-spikes → an instantaneous map + symmetric EMA collapses to ~0 = ALWAYS-LEGATO (FL.14
+        // 1st live miss). FL.14.1: map 1.0→1.6 into a FAST-ATTACK(τ0.08s)/SLOW-RELEASE(τ1.5s) PEAK-HOLD → a
+        // staccato passage HOLDS a high env, legato decays to 0.
+        let inst = SIMD4<Float>(
+            Self.smoothstep(1.0, 1.6, stem.vocalsAttackRatio),
+            Self.smoothstep(1.0, 1.6, stem.bassAttackRatio),
+            Self.smoothstep(1.0, 1.6, stem.otherAttackRatio),
+            Self.smoothstep(1.0, 1.6, stem.drumsAttackRatio)) * blend
+        let aA = Float(dt / (0.08 + dt)), aR = Float(dt / (1.5 + dt))   // fast attack, slow release
+        for i in 0..<4 { artic[i] += (inst[i] - artic[i]) * (inst[i] > artic[i] ? aA : aR) }
 
         // Turn each family's drift slowly at its OWN rate (colours diverge), a touch faster when it's active.
         let turnRate = SIMD4<Float>(0.13, -0.10, 0.17, -0.15)
@@ -377,8 +370,8 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
 
     // MARK: - Seeding
 
-    /// Deterministic seed: particles split evenly across families, spawned near their home band with staggered
-    /// ages. misc.z (life) is legacy — the shader computes life from articulation each frame (FL.14).
+    /// Deterministic seed: families split evenly, spawned near home with staggered ages (misc.z legacy — the
+    /// shader computes life from articulation each frame, FL.14).
     private static func seed(into buffer: MTLBuffer, configuration: RicercarFlowConfiguration) {
         let count = configuration.particleCount
         let ptr = buffer.contents().bindMemory(to: FlowParticle.self, capacity: count)

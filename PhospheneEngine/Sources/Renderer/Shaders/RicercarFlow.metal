@@ -117,7 +117,9 @@ static inline float flow_family_articulation(constant FlowConfig& cfg, int fam) 
 // particles respawn constantly ⇒ the family reads as short, choppy, restless segments. Only the RESPAWN
 // cadence changes — per-frame motion is identical either way, so this never reintroduces the FL.12
 // herky-jerky (which came from disrupting MOTION). ~16 s legato ≈ the pre-FL.14 seeded life, so the
-// no-articulation-signal look (silence / warmup / harness) is unchanged.
+// no-articulation-signal look (silence / warmup / harness) is unchanged. Life interpolates GEOMETRICALLY
+// (life is a timescale) so mid-range articulation already reads choppy — a linear mix left art≈0.5 at ~8 s
+// (still flowing); geometric puts art≈0.5 at ~3.5 s. FL.14.1 calibration (first live miss was all-legato).
 static constexpr constant float kFlowLegatoLife  = 16.0;   // seconds — long flowing ribbons
 static constexpr constant float kFlowStaccatoLife = 0.75;  // seconds — short choppy segments
 
@@ -176,7 +178,7 @@ kernel void ricercar_flow_update(device FlowParticle*  particles [[buffer(0)]],
     // of waiting out a stale seeded life). Per-particle ±spread via `seed` so respawns stagger (no synced
     // pulse). The seeded p.misc.z is superseded by this and left unread.
     float staccato = flow_family_articulation(cfg, fam);
-    float life = mix(kFlowLegatoLife, kFlowStaccatoLife, staccato) * (0.6 + 0.8 * seed);
+    float life = kFlowLegatoLife * pow(kFlowStaccatoLife / kFlowLegatoLife, staccato) * (0.6 + 0.8 * seed);
 
     // SHARED curl-noise swirl — NO per-particle seed offset, so neighbours sample the SAME field and move
     // TOGETHER as coherent currents (the seed offset made every line move in its own random direction →

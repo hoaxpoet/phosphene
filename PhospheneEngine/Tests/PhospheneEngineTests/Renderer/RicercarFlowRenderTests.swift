@@ -172,6 +172,16 @@ struct RicercarFlowRenderTests {
 
     // MARK: - FL.14 articulation: staccato → shorter/choppier lines, legato → longer/flowing
 
+    // Mean particle age (s) per family, read from the geometry's shared particle buffer (@testable). Staccato
+    // families respawn faster ⇒ lower mean age ⇒ shorter/choppier lines. FL.14 differentiation measure.
+    private func meanAgeByFamily(_ geo: RicercarFlowGeometry) -> SIMD4<Float> {
+        let count = geo.configuration.particleCount
+        let ptr = geo.particleBuffer.contents().bindMemory(to: FlowParticle.self, capacity: count)
+        var sum = SIMD4<Float>.zero, cnt = SIMD4<Float>.zero
+        for i in 0..<count { let fm = Int(ptr[i].misc.x.rounded()) & 3; sum[fm] += ptr[i].misc.y; cnt[fm] += 1 }
+        return sum / cnt
+    }
+
     // A frame with per-stem AttackRatio set (the FL.14 line-character signal). vocals→strings, bass→brass,
     // other→woodwinds, drums→percussion (FL.13 hybrid mapping). Energy on the stems so the warmup gate opens.
     private func articFrame(vocalsAttack: Float, bassAttack: Float, otherAttack: Float, drumsAttack: Float,
@@ -206,7 +216,7 @@ struct RicercarFlowRenderTests {
             _ = try frame(geo, f, s, tex, ctx); t += 1.0 / 60.0
         }
         let art = geo.currentArticulation
-        let age = geo.meanAgeByFamily()
+        let age = meanAgeByFamily(geo)
         print("[ricercar_flow] artic strings=\(String(format: "%.2f", art.x)) perc=\(String(format: "%.2f", art.w)); " +
               "meanAge strings=\(String(format: "%.2f", age.x))s perc=\(String(format: "%.2f", age.w))s")
         #expect(art.x > 0.5, "staccato strings articulation should be high (got \(art.x))")
@@ -214,6 +224,37 @@ struct RicercarFlowRenderTests {
         #expect(age.x < 1.5, "staccato family should be short-lived / choppy (mean age \(age.x)s)")
         #expect(age.w > age.x * 2.0,
                 "legato family should trace much longer lines than staccato (perc \(age.w)s vs strings \(age.x)s)")
+    }
+
+    /// FL.14.1 regression guard for the FIRST LIVE MISS: real AttackRatio is baseline (~1.0) with brief,
+    /// sparse spikes — NOT a held-high value. The shipped instantaneous-map + symmetric-EMA collapsed such a
+    /// stream to ~0 (always-legato). The fast-attack/slow-release PEAK-HOLD must instead build and sustain a
+    /// high env across a burst-dense passage. Feed a realistic staccato burst pattern (spike 3 frames, rest 12
+    /// — ~20% duty, like the measured session) on strings vs a FLAT baseline on percussion, and assert the
+    /// bursty family holds a high env + short life while the flat one stays legato.
+    @Test("FL.14.1: sparse staccato bursts build+hold a high articulation env (not smoothed to legato)")
+    func test_articulation_peakHoldSurvivesSparseBursts() throws {
+        guard MTLCreateSystemDefaultDevice() != nil else {
+            print("RicercarFlowRenderTests: no Metal device — skipping"); return
+        }
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let geo = try makeGeo(ctx, lib)
+        let tex = try target(ctx)
+
+        var t: Float = 0
+        for i in 0..<1200 {
+            let burst = (i % 15) < 3          // strings: sharp attack 3 of every 15 frames (~20% duty)
+            let (f, s) = articFrame(vocalsAttack: burst ? 2.5 : 1.0, bassAttack: 1.0,
+                                    otherAttack: 1.0, drumsAttack: 1.0, t: t)   // percussion flat = legato
+            _ = try frame(geo, f, s, tex, ctx); t += 1.0 / 60.0
+        }
+        let art = geo.currentArticulation, age = meanAgeByFamily(geo)
+        print("[ricercar_flow] bursty strings art=\(String(format: "%.2f", art.x)) age=\(String(format: "%.2f", age.x))s; " +
+              "flat perc art=\(String(format: "%.2f", art.w)) age=\(String(format: "%.2f", age.w))s")
+        #expect(art.x > 0.4, "sparse bursts must HOLD a high env (regression: symmetric EMA smoothed it to ~0), got \(art.x)")
+        #expect(art.w < 0.15, "flat baseline stays legato (got \(art.w))")
+        #expect(age.x < age.w * 0.6, "the bursty (staccato) family must trace shorter lines (\(age.x)s vs \(age.w)s)")
     }
 
     // MARK: - Contact sheet (env-gated: RICERCAR_VISUAL=1 / RENDER_VISUAL=1)
