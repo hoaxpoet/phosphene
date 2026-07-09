@@ -61,6 +61,20 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
+### QG.1.1 — Ricercar route-coverage: 4 family-capture reads not-yet-armed (2026-07-09)
+
+**NOTE · coverage-gap (documented, not a defect).** The BUG-067 follow-up backfilled Ricercar's `audio_routes` manifest. Ricercar (FL.13 flow-field) reads **11** audio primitives; **7 are declared** and pass `RouteCoverageTests` on the canonical fixtures (`flow_vigour` ← `bass/mid/trebDev`; `{strings,brass,woodwinds,percussion}_ribbon` ← the band-stem `{vocals,bass,other,drums}EnergyDev` half of each per-colour hybrid). **4 reads are deferred as not-yet-armed** (QG1_REPLAY_AUDIT §not-yet-armed convention):
+
+- The family-capture half of each colour's `max(band-stem dev, family-capture dev)` hybrid — `stringsActivityDev`, `brassActivityDev`, `woodwindsActivityDev`, `percussionActivityDev`. In the checked-in fixtures these columns are exactly 0 (stddev 0.00), so declaring them would red the un-gated battery. Not a dead route: each ribbon's visual behaviour is already gate-covered via its band-stem primitive.
+
+**Root cause of the 0 (verified 2026-07-09):** the offline `FixtureSessionCaptureGenerator` runs only `StemAnalyzer.analyze` (no PANN). Family-capture is **Layer-5a preview-derived** — the `InstrumentFamilyAnalyzer` (PANNs MobileNetV1) sweep, injected live via `RenderPipeline.setInstrumentFamilyActivity` (IFC.4/D-177) — which the generator never runs, so `*Activity` is written as structural 0 **regardless of clip**. This is the same offline-can't-populate class as the existing QG.1.1 boundary, not merely a genre-of-fixture gap.
+
+**Arm trigger:** extend `FixtureSessionCaptureGenerator` to run `InstrumentFamilyAnalyzer.analyzeFamilyActivity` offline (headless samples-in → activity-out, the path SessionPreparer uses) and merge per-frame `*Activity`/`*ActivityDev` into the stems rows — that alone makes the columns non-constant (PANN prob jitter) → the 4 routes clear the just-above-noise `continuous` floor. An orchestral `route_coverage` fixture then gives them real amplitude. Then declare the 4. **Do NOT tune the floor to pass them** (QG.1).
+
+**FL.14 sequencing:** FL.14 (per-family articulation, on `claude/ricercar-fl14-prompt-7de805`, not yet on main) adds 4 more reads — `{vocals,bass,other,drums}AttackRatio` → `*_articulation` line-character routes. `AttackRatio` is alive on all genres, so those 4 **are** armable and should be declared in the FL.14 integration commit (manifest → 11 declared once FL.14 lands). Certifying Ricercar (`FidelityRubricTests.certifiedPresetsDeclareAudioRoutes`) requires a non-empty manifest — already satisfied.
+
+---
+
 ### BUG-066 — MoodClassifier flux input ran 16× hot on the offline path; saturated on every track (2026-07-08)
 
 **P2 · ml.mood / dsp.mir · ✅ RESOLVED 2026-07-08 (MOOD-FLUX.2, `1d61830`).** Matt signed off on the objective `--mood-ab` before/after evidence (no live M7 — an eyeball made no sense for a diffuse scoring change). Full record: [`docs/diagnostics/BUG-066-diagnosis.md`](../diagnostics/BUG-066-diagnosis.md).
