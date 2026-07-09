@@ -54,12 +54,16 @@ public final class TonalAnalyzer {
     /// `‖T‖_max = √(Σ w(k)²)` = √1080 ≈ 32.863. The consonance denominator.
     private static let normMax: Float = weights.reduce(0) { $0 + $1 * $1 }.squareRoot()
 
-    // ponytail: placeholder drive constants — calibrated from corpus percentiles
-    // in TONAL.2 (the IFC.6 discipline), NOT tuned here. Marked so the pilot
-    // report knows what to replace.
+    // Consonance gate — CALIBRATED from the TONAL.2b pilot (1000 stratified
+    // tracks, 2.66M frames; docs/diagnostics/TONAL_PILOT_REPORT.md). Real
+    // full-mix consonance is p5≈0.06 / p50≈0.12 / p99≈0.32 (far below an
+    // isolated triad's ~0.5 — the chroma is smeared across 12 PCs). The gate
+    // must sit at the ATONAL floor (percussion / noise / silence, the p1–p5
+    // band 0.018–0.061), NOT the median — the placeholder 0.12 sat at the
+    // corpus median and would have gated off half the library.
     /// Consonance below this reads as atonal/percussive → tension & flux gate off.
-    private static let consonanceFloor: Float = 0.12   // TONAL.2: set from pilot p-low
-    private static let consonanceGateWidth: Float = 0.10
+    private static let consonanceFloor: Float = 0.05   // ≈p3–4: genuine noise/silence floor
+    private static let consonanceGateWidth: Float = 0.03  // full signal by 0.08 (≈p22); all genre medians ≥0.10 pass
 
     /// EMA time constants (seconds). Fast/slow centers of effect for tension;
     /// a short smoother for consonance (so the gate reads "sustained") and flux.
