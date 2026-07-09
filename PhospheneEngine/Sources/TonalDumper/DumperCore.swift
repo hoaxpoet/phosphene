@@ -105,9 +105,7 @@ extension TonalDumperCommand {
     /// Parse a manifest CSV (needs a `relpath` column; `genre_bucket` optional).
     func readManifest(_ path: String) throws -> [ManifestRow] {
         let text = try String(contentsOf: URL(fileURLWithPath: path), encoding: .utf8)
-        // Split on \n; strip a trailing \r so CRLF files parse (the census gotcha).
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: true)
-            .map { $0.hasSuffix("\r") ? String($0.dropLast()) : String($0) }
+        let lines = TonalStats.splitLines(text)   // CRLF-safe (the Swift grapheme gotcha)
         guard let header = lines.first else { return [] }
         let cols = TonalStats.parseCSVLine(header)
         guard let relIdx = cols.firstIndex(of: "relpath") else {
