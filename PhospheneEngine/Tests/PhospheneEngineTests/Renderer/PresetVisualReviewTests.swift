@@ -355,6 +355,16 @@ struct PresetVisualReviewTests {
                 var advance = fv
                 advance.deltaTime = 1.0 / 60.0
                 for _ in 0..<30 { engine.tick(features: advance, stems: .zero) }
+                // LM.4.7: cell colour comes from the Orchestrator-set palette
+                // table (`lumen.palette[0..11]`), not self-generated per-cell RGB.
+                // Without `setPalette`, every entry reads (0,0,0,0) and the shader
+                // returns black cells (the frost seams still render white, which
+                // masks the miss). Bind a curated palette LAST so its writeToGPU
+                // flush carries the payload — mirrors the palette-library sheet and
+                // PresetRegressionTests' Autumnal-bound fixture. Track-seed variety
+                // still reads: `lm_track_seed_hash` walks the same palette differently
+                // per seed.
+                engine.setPalette(LumenMosaicPaletteLibrary.all[0])
             }
             // AV.2: tick AuroraVeilState so the slot-6 buffer reflects the
             // current fixture's kink + pitch. With stems.zero in the
