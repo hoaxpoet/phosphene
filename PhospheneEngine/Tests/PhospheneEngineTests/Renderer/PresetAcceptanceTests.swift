@@ -279,6 +279,11 @@ struct PresetAcceptanceTests {
         // from non-black / no-white-clip / beat-bounded (its light ground passes those). Multi-frame
         // coverage: RicercarFluidRenderTests (fluid + ribbons through the live ParticleGeometry path).
         guard preset.descriptor.name != "Ricercar" else { return }
+        // Cytokinesis (MITOSIS-GEN2): same as Mitosis — the readable content is the
+        // `MitosisGen2Geometry` cell-division field (particles pass); the standalone
+        // `mitosisgen2_ground_fragment` is the intentionally flat dark ground.
+        // Coverage: MitosisGen2SketchRenderTests (multi-frame field render).
+        guard preset.descriptor.name != "Cytokinesis" else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture
         let pixels = try renderFrame(preset: preset, features: &fixture, context: ctx)
