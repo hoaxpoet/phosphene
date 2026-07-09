@@ -140,6 +140,35 @@ private func submitSamples(_ monitor: InputLevelMonitor, _ samples: [Float]) {
     #expect(monitor.currentSnapshot().quality == .green)
 }
 
+// MARK: - Green low-treble hint (FL.11 follow-up)
+
+/// A GREEN-level signal (peak well above the warning floor) with essentially no treble energy —
+/// a dark/vintage recording (Beethoven/Walter ≈ 0.58%) or a bass-heavy modern mix — stays GREEN but
+/// appends a neutral "high-register visuals will read faint" note, so the quiet high/cyan family isn't
+/// mistaken for a bug. A bright signal must NOT flag it. The grade itself never changes (treble never
+/// gates the grade — the 2026-04-17 lesson).
+@Test func test_greenLowTreble_appendsFaintHint() {
+    let low = InputLevelMonitor(sampleRate: 48_000)
+    for _ in 0..<60 { submitSamples(low, [0.5]) }        // warmup + green peak (−6 dBFS)
+    var bassMags = [Float](repeating: 0, count: 128)
+    for i in 0..<20 { bassMags[i] = 1.0 }                // sub band only → treble ratio ≈ 0
+    low.submitMagnitudes(bassMags, sampleRate: 48_000)
+    let lowSnap = low.currentSnapshot()
+    #expect(lowSnap.quality == .green)
+    #expect(lowSnap.reason.contains("low treble"),
+            "green + near-zero treble should append the faint-highs note (got: \(lowSnap.reason))")
+
+    let bright = InputLevelMonitor(sampleRate: 48_000)
+    for _ in 0..<60 { submitSamples(bright, [0.5]) }
+    var trebMags = [Float](repeating: 0, count: 128)
+    for i in 21..<106 { trebMags[i] = 1.0 }              // treble band → healthy treble ratio
+    bright.submitMagnitudes(trebMags, sampleRate: 48_000)
+    let brightSnap = bright.currentSnapshot()
+    #expect(brightSnap.quality == .green)
+    #expect(!brightSnap.reason.contains("low treble"),
+            "a bright signal must not flag low treble (got: \(brightSnap.reason))")
+}
+
 // MARK: - Below-Critical Classification
 
 /// Audit recommendation #4: recompute_belowCriticalReturnsRed.
