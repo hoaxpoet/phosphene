@@ -68,8 +68,7 @@ extension SoakTestHarness {
             hardFailure = true
         }
 
-        let assessment: Report.Assessment = hardFailure
-            ? .hardFailure : (alerts.isEmpty ? .pass : .passWithSoftAlerts)
+        let assessment: Report.Assessment = hardFailure ? .hardFailure : (alerts.isEmpty ? .pass : .passWithSoftAlerts)
 
         return Report(
             configuration: .init(
@@ -81,6 +80,7 @@ extension SoakTestHarness {
             startedAt: startedAt,
             finishedAt: finishedAt,
             actualDuration: actualDuration,
+            cancelledEarly: cancelledEarly,
             snapshots: snapshots,
             signalTransitions: signalTransitions,
             qualityLevelTransitions: qualityTransitions,

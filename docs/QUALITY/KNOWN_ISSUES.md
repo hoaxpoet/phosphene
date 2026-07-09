@@ -6,6 +6,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
+| BUG-067 | P3 | preset.fidelity / regression | **✅ RESOLVED 2026-07-09** — the `claude/ricercar-rework` merge (FL.10 dark-ground flow-field, replacing the FL.5 light-ground fluid state) landed on main; `PresetContrastCertificationTests` now passes for Ricercar in isolation (0.12 s). The FL.5 light ground was the low-contrast cause. Files to §Resolved at next pruning. |
 | BUG-066 | P2 | ml.mood / dsp.mir | **✅ RESOLVED 2026-07-08 (MOOD-FLUX.2, `1d61830`) — Matt signed off on the objective `--mood-ab` before/after (no live M7; an eyeball made no sense for a diffuse scoring change).** The OFFLINE session-prep mood flux input ran **16× hot** (CENSUS.3 measured feat7 mean **8.06** vs scaler **0.25**, z ≈ +38 → saturated on every track). Root cause was NOT the model (correctly trained on live features — the live training CSV flux mean 0.2516 = the scaler): the offline `analyzeMIR.computeFFTMagnitudes` **reimplemented the FFT magnitude formula** differently from the live `FFTProcessor` — `sqrt(power/fftSize)` (=\|FFT\|/32) vs live `\|FFT\|×2/fftSize` (=\|FFT\|/512), a uniform 16×. Flux is the only exposed feature (fed raw to the z-score; bands AGC-normalized, centroid a ratio). `analyzeMIR` sets `TrackProfile.mood` (30 % of the preset scorer) → offline preset selection ran on 9 effective features; the live path was always fine. **Fix:** align the offline formula to live (`zvabs` + `×2/fftSize`). Validated: flux z **+38 → +1.43**, uniform 16× correction (σ=0), 103 mood/MIR/session tests green incl. the classifier golden (unchanged); blast radius benign (mir_bpm 0/40 changed, key harmless). **Objective sign-off** (`--mood-ab`, 80-track sample): before, saturated flux railed arousal high for every track → non-discriminative "happy"; after, arousal spans [−0.87,+0.81], spread ~doubled, **32 % of tracks flip mood quadrant** in the correct direction. Full record: [`BUG-066-diagnosis.md`](../diagnostics/BUG-066-diagnosis.md). Files to §Resolved at next pruning. |
 | BUG-065 | P3 | dsp.beat | **Live BeatGrid phase drifts off the audible beat over a track** — the cached grid has the right BPM but `LiveBeatDriftTracker` *bounds* the live drift without *tightening* it: drift grows ~11 ms (track start) → **50–70 ms (mid/late-track)**, and **28 % of frames exceed the ~60 ms perceptual window** (evidence: session `2026-06-29T12-43-51Z`, Cherub Rock 171.3 BPM 4/4 — drift-by-10s-window 11/37/49/54/69/66/55/48 ms; lock_state=2 only 67 %-within-60 ms). **Caps how frame-locked beat-driven presets can feel** — the live example is Glaze's GLAZE.7 downbeat push (reads connected but not *tight*; tightest early, loosens as the track plays). NOT a functional break (phase is approximately right). **Suggested improvement (Matt 2026-06-29):** live re-lock / cached-BPM-error correction so drift holds < ~30 ms across the track. The cold-start *automated phase* premise was retired (CLAUDE.md §Cold-Start), but this is **mid-track drift convergence** — a different surface (the tracker should tighten, not just bound). Logged for a dedicated beat-sync session |
 | AUDIT-2026-06-09 | P2/P3 | audit backlog | Full-codebase audit findings not individually filed |
@@ -31,7 +32,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 | BUG-041 | P2 | dsp.stem / preset.fidelity | FFO aurora flashes at track start (stem-deviation cold-start overswing) |
 | BUG-039 | P2 | resource-management | **✅ RESOLVED 2026-06-18** — silent-stop running-vs-writing invariant + segment-roll recovery (CLEAN.3.6); Matt's live multi-session confirm passed (signature no longer occurs). Files to §Resolved at next pruning |
 | BUG-040 | P2 | dsp.structure | **✅ RESOLVED 2026-06-10** — live-edge boundary every ~4 detect intervals; fixed (frozen-clock unfreeze + live-edge guard + absolute novelty floor; residual section-scale geometry tracked as the open BUG-042). Files to §Resolved at next pruning |
-| BUG-029 | P3 | dsp.beat | AGC `f.bass` cold-start spike pops presets at every track onset |
+| BUG-029 | P3 | dsp.beat | **✅ RESOLVED 2026-07-09** — AGC `f.bass` cold-start spike; AGC3.5 fast-attack peak floor (onset-window gated, `261c65a`); Matt live "Smooth" + objective onset worst band 0.875 (pre-fix 4.8). Files to §Resolved at next pruning |
 | BUG-028 | P2 | dsp.beat | Beat-grid live phase imperfect on ~half of tracks |
 | BUG-027 | P2 | dsp.beat | **✅ RESOLVED 2026-06-06 (D-146)** — positive band deviations near-dead for non-dominant bands; fixed via the AGC2 per-band EMA deviation pivot (the system-wide "true 0.5 centre" normalization remains a separate future project, not a reopen). Files to §Resolved at next pruning |
 | BUG-025 | P3 | dsp.beat | AGC running average poisoned by post-`active` startup transient |
@@ -45,6 +46,34 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 ---
 
 ## Open
+
+---
+
+### BUG-067 — Ricercar FL.5 fails the WCAG overlay-contrast gate on main (2026-07-09)
+
+**P3 · preset.fidelity / regression · ✅ RESOLVED 2026-07-09 (Ricercar-rework merge).** Surfaced by the QG.1 pre-flight full battery; resolved by merging the FL.10 dark-ground flow-field.
+
+**Expected:** `PresetContrastCertificationTests` requires white overlay text to clear WCAG 4.5:1 contrast over any preset frame + overlay backdrop.
+**Actual (before):** Ricercar failed deterministically on all three fixtures — contrast **3.52 < 4.5** (`PresetContrastCertificationTests.swift:59/78/97`). Reproduced in isolation, not environmental, not flaky.
+**Root cause:** main's Ricercar was the FL.5 fluid-dye state (a **light** warm ground → low contrast under white text), superseded by the `claude/ricercar-rework` branch (FL.10 glowing particle flow-field on a **dark** ground, M7-passed 2026-07-08 — see the ricercar-and-instrument-capture memory).
+**Resolution:** merged `claude/ricercar-rework` to main (2026-07-09, merge `694bbc0`). The FL.5 fluid geometry (`RicercarFluid*`) was replaced by the FL.10 flow-field (`RicercarFlow*`) on a deep/dark ground; `PresetContrastCertificationTests` now passes for Ricercar in isolation (0.12 s). Ricercar remains `certified: false` (FL.10 M7-passed but not yet formally certified); a route-coverage manifest backfill is a spun-off follow-up.
+**Failure class:** pre-existing regression on a superseded preset state, cleared by the intended replacement.
+
+---
+
+### QG.1.1 — Ricercar route-coverage: 4 family-capture reads (armed + green at QG.1.3)
+
+**✅ RESOLVED 2026-07-09 (QG.1.3).** The 4 family-capture reads are armed and green. `FixtureSessionCaptureGenerator` now runs `InstrumentFamilyAnalyzer.analyzeFamilyActivity` over each clip and merges the per-frame `*Activity`/`*ActivityDev` into the stems rows (sampled by playback position, mirroring the live `setInstrumentFamilyActivity`); the 4 `*ActivityDev` routes are declared in `Ricercar.json`; the 3 route-coverage fixtures were regenerated (52-col stems.csv). `RouteCoverageTests`: **156 routes / 14 presets, 0 red**; `AudioRouteSchemaTests` green. The minimal variant held — PANN prob jitter clears the 1e-5 `continuous` floor on all 3 non-orchestral clips (audited per-column before declaring: strongest is `so_what`'s trumpet-led `brassActivityDev`, max 0.497; weakest is `love_rehab`'s `woodwindsActivityDev`, stddev 1.5e-4, still ~15× the floor). No orchestral fixture needed.
+
+**NOTE · coverage-gap history (documented, not a defect).** The BUG-067 follow-up backfilled Ricercar's `audio_routes` manifest. Ricercar (FL.13 flow-field) reads **11** audio primitives; **7 were declared** at QG.1.2 (`flow_vigour` ← `bass/mid/trebDev`; `{strings,brass,woodwinds,percussion}_ribbon` ← the band-stem `{vocals,bass,other,drums}EnergyDev` half of each per-colour hybrid). The other **4 reads** — the family-capture half of each colour's hybrid — were deferred as not-yet-armed (QG1_REPLAY_AUDIT §not-yet-armed convention) and are armed at QG.1.3 (see RESOLVED above):
+
+- The family-capture half of each colour's `max(band-stem dev, family-capture dev)` hybrid — `stringsActivityDev`, `brassActivityDev`, `woodwindsActivityDev`, `percussionActivityDev`. In the checked-in fixtures these columns are exactly 0 (stddev 0.00), so declaring them would red the un-gated battery. Not a dead route: each ribbon's visual behaviour is already gate-covered via its band-stem primitive.
+
+**Root cause of the 0 (verified 2026-07-09):** the offline `FixtureSessionCaptureGenerator` runs only `StemAnalyzer.analyze` (no PANN). Family-capture is **Layer-5a preview-derived** — the `InstrumentFamilyAnalyzer` (PANNs MobileNetV1) sweep, injected live via `RenderPipeline.setInstrumentFamilyActivity` (IFC.4/D-177) — which the generator never runs, so `*Activity` is written as structural 0 **regardless of clip**. This is the same offline-can't-populate class as the existing QG.1.1 boundary, not merely a genre-of-fixture gap.
+
+**Arm trigger:** extend `FixtureSessionCaptureGenerator` to run `InstrumentFamilyAnalyzer.analyzeFamilyActivity` offline (headless samples-in → activity-out, the path SessionPreparer uses) and merge per-frame `*Activity`/`*ActivityDev` into the stems rows — that alone makes the columns non-constant (PANN prob jitter) → the 4 routes clear the just-above-noise `continuous` floor. An orchestral `route_coverage` fixture then gives them real amplitude. Then declare the 4. **Do NOT tune the floor to pass them** (QG.1).
+
+**FL.14 sequencing:** FL.14 (per-family articulation, on `claude/ricercar-fl14-prompt-7de805`, not yet on main) adds 4 more reads — `{vocals,bass,other,drums}AttackRatio` → `*_articulation` line-character routes. `AttackRatio` is alive on all genres, so those 4 **are** armable and should be declared in the FL.14 integration commit (manifest → 11 declared once FL.14 lands). Certifying Ricercar (`FidelityRubricTests.certifiedPresetsDeclareAudioRoutes`) requires a non-empty manifest — already satisfied.
 
 ---
 
@@ -834,9 +863,9 @@ Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — 
 
 **Severity:** P3 (cosmetic startup artifact, ~1-2 s at each track onset; not a crash). Re-rate to P2 if judged to materially hurt the per-track first impression.
 **Domain tag:** dsp.beat (AGC cold-start) — same family as BUG-025.
-**Status:** Open — **fix landed (AGC3.3), automated validation green; awaiting Matt's catalog M7 (AGC3.4) before close.** AGC3.1 measured (2026-06-05); AGC3.2 decided **D-148** ("ease the meter in per track" — Matt's call); AGC3.3 implemented seed-from-first-audible + hold-through-sustained-silence in `BandEnergyProcessor`, regression-locked by `AGC3ColdStartSpikeTests` (live-path, FA #66). Filed at Matt's request 2026-06-06 after the AGC2.4 re-M7. AGC3.1 evidence subsection below.
+**Status:** ✅ **RESOLVED 2026-07-09 (AGC3.5, `261c65a`).** Both halves of the non-waivable gate met: Matt's live M7 (session `2026-07-09T19-33-09Z`, Wake Up + Ferrofluid Ocean, correctly built from `origin/main`) — "Smooth" — AND the objective measurement on that real session: onset worst band **0.875** (physical; pre-fix 4.8), peak f.bass **0.798** (pre-fix 4.4), FFO `fo_spike` **1.64/1.14** — blowup eliminated, no pop-and-drop. **★ The first "fixed" session (`19-22-35Z`) still showed 23× because it was built WITHOUT the fix** (`ricercar-rework`, not `origin/main`) — discriminated by replaying its exact `raw_tap.wav` through the fixed code (worst band 1.05, not 4.8) before assuming a fix defect ([[feedback_worktree_changes_reach_build]]). AGC3.3 (`144f824`) was a PARTIAL fix (soft onsets only), falsely closed 2026-07-08 then reopened same day. **AGC3.5 (2026-07-09)** added a **fast-attack peak floor** to `BandEnergyProcessor`'s AGC, confined to a bounded onset window. Root cause: AGC3.3 seeded the running average from the first audible frame (the tiny leading edge of a percussive attack) and set `agcScale = 0.5/avg` immediately, while the slow warmup EMA (0.95, 5 %/frame) lagged the full transient landing ~0.3–0.5 s later → the blowup. The fix: within a **60-frame onset window** (opened at a session-start seed or on exit from a sustained-silence/inter-track hold), a frame whose energy exceeds 3.5× the running average snaps the average up toward it so the scale can't lag. **Gated to the onset window** — a first threshold-only version flattened mid-track snares (caught by `FerrofluidBeatSyncTests` mid-energy gate in closeout); the window confines the fast-attack to cold-start so mid-track transients get the normal EMA. **Validated on the real reproducer** (`AGC3RealAudioReplayTests` replaying the Wake Up `raw_tap.wav`): cold-start worst band **2.57 → 0.71** (physical; blowup gone). A committed **ramped-onset** synthetic (`agc3_rampedOnset_doesNotBlowUp_liveBandProcessor`) now catches the bug the step-function fixture missed (FA #27); steady-state byte-identical lock still green. Reproducers: sessions `2026-07-09T02-04-02Z` (SZ2 20×), `T17-35-12Z` (Wake Up 20× / KITM inter-track 16.1×). **To close: Matt watches FFO arrive smoothly on a fresh hard-onset session.**
 **Introduced:** structural — `BandEnergyProcessor`'s total-energy AGC seeds its running average from whatever energy is present at capture start; during the inter-track silence the running average decays toward zero, so the first audio frame of every track explodes the AGC scale before it catches up.
-**Resolved:** —
+**Resolved:** — (reopened; AGC3.3 is a partial fix)
 
 **Expected:** continuous-energy presets (those reading `f.bass`/`f.mid`/`f.treble` directly) arrive smoothly when a track's audio starts.
 
@@ -844,15 +873,16 @@ Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — 
 
 **Reproduction steps:** play any local-file or streaming session; inspect `features.csv` `bass` at each track's first audible frame — it spikes ~5-15× the steady value for ~1-2 s while the AGC scale catches up.
 
-**Session artifacts:** `~/Documents/phosphene_sessions/2026-06-06T01-18-36Z/features.csv` (Cherub Rock + Alameda startups).
+**Session artifacts:** `~/Documents/phosphene_sessions/2026-06-06T01-18-36Z/features.csv` (Cherub Rock + Alameda startups); **`~/Documents/phosphene_sessions/2026-07-09T02-04-02Z/` (track SZ2 — the hard-onset reproducer the earlier close lacked: 14.8×, `fo_spike` 1.80/1.21).**
 
-**Suspected failure class:** `calibration` — AGC seed/scale on the silence→onset transition.
+**Suspected failure class:** `calibration` — AGC seed/scale on the silence→onset transition. **Reopen hypothesis (unverified — instrument, don't guess):** with ~0 s pre-roll the seed-from-first-audible logic seeds off a near-silent lead-in frame, so the running-average denominator is still too small when the bass slams in ~1 s later.
 
 **Verification criteria (when resolved):**
-- [x] **Automated (live-path):** on a silence→onset fixture through the real `MIRPipeline.process`, `f.bass` does not exceed 2× its steady value. *(`AGC3ColdStartSpikeTests` — session-start 32.6×→<2×, inter-track 10.6×→<2×; plus a byte-identical steady-state lock. FA #66 live-path, not isolation.)*
-- [ ] **Manual:** Matt confirms continuous-energy presets (Ferrofluid Ocean) arrive smoothly at track onset — no pop-and-drop. *(AGC3.4 catalog M7, both paths — pending.)*
+- [x] **Automated (synthetic fixture — PASSES BUT INSUFFICIENT):** on a silence→onset fixture through the real `MIRPipeline.process`, `f.bass` does not exceed 2× steady. *(`AGC3ColdStartSpikeTests` — 32.6×→<2×, 10.6×→<2×.)* **This green did not catch the real-track spike (FA #27) — the fixture must be extended with an immediate/hard-onset case (0 s pre-roll, energy slam ~1 s in) that reproduces the 14.8× before any re-fix.**
+- [x] **Automated (real-audio + committed ramped reproducer):** `AGC3RealAudioReplayTests` replays a hard-onset `raw_tap.wav` (env `AGC3_REAL_WAV`; copyrighted audio is not committed, per repo policy) — Wake Up cold-start worst band **2.57 → 0.71**. Plus the committed synthetic **ramped-onset** `agc3_rampedOnset_doesNotBlowUp_liveBandProcessor` (fails at 2.14 without the fix, passes with it — the FA #27-aware reproducer the step-function fixture wasn't). Criterion refined: the gate is the AGC-scale **blowup** (worst band < 2.0 through the convergence window), not onset-vs-steady ratio (a loud intro legitimately exceeds 2× a quieter steady).
+- [x] **Manual (non-waivable):** Matt confirmed Ferrofluid Ocean arrives smoothly on Wake Up (hard-onset) — "Smooth" — on the correctly-built session `2026-07-09T19-33-09Z`; corroborated objectively (onset worst band 0.875 vs pre-fix 4.8).
 
-**Manual validation required:** Yes — it's a felt visual artifact.
+**Manual validation required:** Yes — it's a felt visual artifact. **The 2026-07-08 close waived this and was wrong (see Status); do not re-close without a hard-onset real-audio check.**
 
 **Related:**
 - BUG-025 — the AGC cold-start transient (shelved as P3); same AGC-seed family, re-surfaced via its effect on `f.bass`-driven presets.

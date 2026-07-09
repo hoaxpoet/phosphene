@@ -122,6 +122,16 @@ public final class InputLevelMonitor: @unchecked Sendable {
     /// of scope for a per-session monitor.  Peak dBFS remains the reliable
     /// signal — chain-wide attenuation is genre-independent.
 
+    /// Treble fraction below which the GREEN readout appends a neutral
+    /// "high-register visuals will read faint" note. This does NOT change the
+    /// grade (the 2026-04-17 lesson above stands — a low-treble ratio cannot
+    /// distinguish a dark/vintage source from a legitimately bass-heavy mix, so
+    /// it must never gate the grade). It only describes the *consequence* — the
+    /// high/cyan family + trebDev run quiet either way — so the faint highs
+    /// aren't mistaken for a bug. ~2% separates a dark 1950s orchestral transfer
+    /// (Beethoven/Walter ≈ 0.58%) from a bright mix (Nirvana ≈ 9.56%).
+    public static let trebleFaintRatio: Float = 0.02
+
     /// Minimum samples before a classification is emitted (avoids
     /// flapping during warmup).
     public static let warmupFrames: Int = 60  // ~0.6s at 94 Hz
@@ -271,10 +281,13 @@ public final class InputLevelMonitor: @unchecked Sendable {
                 "peak %.0f dBFS — raise system volume, check source-app normalization",
                 peakDB))
         } else {
-            // Treble ratio is shown for reference only — many modern productions
-            // are genuinely bass-heavy and register below 1% without any chain
-            // issue (Billie Eilish / Oxytocin verified clean at 0.2% treble).
-            let msg = String(format: "peak %.0f dBFS, treble %.2f%% — OK", peakDB, 100 * treR)
+            // Level is fine → GREEN. The treble ratio is informational only (never gates the grade —
+            // see the trebleFaintRatio note). When it's low, append a neutral hint so the faint
+            // high-register response (dark/vintage OR bass-heavy source) isn't mistaken for a bug.
+            let base = String(format: "peak %.0f dBFS, treble %.2f%%", peakDB, 100 * treR)
+            let msg = treR < Self.trebleFaintRatio
+                ? "\(base) — OK (low treble: high-register visuals will read faint)"
+                : "\(base) — OK"
             (quality, reason) = (.green, msg)
         }
 

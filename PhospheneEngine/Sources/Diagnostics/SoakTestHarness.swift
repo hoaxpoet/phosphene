@@ -118,6 +118,11 @@ public final class SoakTestHarness {
         public let startedAt: Date
         public let finishedAt: Date
         public let actualDuration: TimeInterval
+        /// True when `run()` returned because `cancel()` was called (or the task was
+        /// cancelled), rather than the configured duration elapsing. The deterministic
+        /// signal that cancellation took effect — `actualDuration` is wall-clock and
+        /// inflates under load, so tests assert this instead (TESTFLAKE.1).
+        public let cancelledEarly: Bool
         public let snapshots: [PeriodicSnapshot]
         public let signalTransitions: [SignalTransition]
         public let qualityLevelTransitions: [QualityTransition]
@@ -137,6 +142,12 @@ public final class SoakTestHarness {
     public let frameTimingReporter: FrameTimingReporter
 
     var cancelled = false
+
+    /// Set by the last `run()` when it returned for a cancel rather than the
+    /// configured duration elapsing. Read by `buildReport` in +Reporting.swift
+    /// (TESTFLAKE.1) — an instance property (not a `buildReport` param) to keep its
+    /// arity ≤ 5; internal (like `cancelled`) so the cross-file extension can read it.
+    var cancelledEarly = false
 
     // Mutable soak state — only accessed on @MainActor.
     var snapshots: [Report.PeriodicSnapshot] = []
@@ -217,7 +228,7 @@ public final class SoakTestHarness {
         }
 
         // Wait for duration or cancellation.
-        var cancelledEarly = false
+        cancelledEarly = false
         do {
             var remaining = configuration.duration
             // Poll in 0.25s increments so cancel() is noticed quickly without busy-waiting.
@@ -237,7 +248,7 @@ public final class SoakTestHarness {
         let finishDate = Date()
         let actualDuration = CACurrentMediaTime() - runStartTime
 
-        logger.info("Soak: run finished. duration=\(String(format: "%.1f", actualDuration))s cancelled=\(cancelledEarly)")
+        logger.info("Soak: run finished. duration=\(String(format: "%.1f", actualDuration))s cancelled=\(self.cancelledEarly)")
 
         let report = buildReport(
             configuration: configuration,

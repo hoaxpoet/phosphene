@@ -25,6 +25,13 @@
   "scene_fog": 0.04,
   "scene_fog_near": 0.0,
   "scene_far_plane": 40.0,
+  "audio_routes": [
+    { "route": "spike_punch_pulse", "primitive": "pulsePhase01", "kind": "accent" },
+    { "route": "spike_punch_gate", "primitive": "pulseAmp01", "kind": "continuous" },
+    { "route": "spike_punch_region", "primitive": "pulseBeatIndex", "kind": "accent" },
+    { "route": "spike_punch_regional_blend", "primitive": "pulseRegionalBlend01", "kind": "continuous" },
+    { "route": "swell_amplitude", "primitive": "arousal", "kind": "continuous" }
+  ],
   "certified": true,
   "rubric_hints": { "hero_specular": true, "dust_motes": false }
 }

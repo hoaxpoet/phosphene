@@ -96,6 +96,36 @@ private let kSpikeRatioCeiling: Float = 2.0
 /// the PRE-FIX BandEnergyProcessor; the post-fix code must reproduce them exactly, proving the total-
 /// energy AGC's mix-density-stability response (D-026) is untouched (the change is cold-start/silence
 /// ONLY). Any drift here means the fix leaked into steady state — a regression, not a pass.
+/// AGC3.5 / BUG-029 — the committed reproducer the suite lacked. A REALISTIC attack-ramp onset:
+/// silence, then energy rises from a tiny leading edge to full over ~15 frames (an instrument /
+/// drum attack), then steady. Unlike the step-function onsets above — whose first audible frame IS
+/// the full sustained level, so the seed is correct and the bug does NOT reproduce (FA #27, the
+/// exact reason BUG-029 was once falsely closed on a green synthetic + a soft-onset session) — the
+/// ramp seeds off a tiny first-audible frame while the full transient lands ~0.25 s later, so the
+/// slow warmup EMA lags and the AGC scale explodes, railing ALL bands together (the real Wake Up /
+/// KITM behaviour: worst band 2.4–4.3 un-fixed). The fast-attack peak floor keeps them physical.
+/// Cross-checked against real audio in AGC3RealAudioReplayTests (Wake Up: 2.57 → 0.71 worst band).
+@Test func agc3_rampedOnset_doesNotBlowUp_liveBandProcessor() {
+    let proc = BandEnergyProcessor()
+    func worstBand(_ r: BandEnergyProcessor.Result) -> Float {
+        max(r.subBass, r.lowBass, r.lowMid, r.midHigh, r.highMid, r.high)
+    }
+    var coldWorst: Float = 0
+    var steadySum: Float = 0, steadyN: Float = 0
+    for i in 0..<400 {
+        // 60-frame silent pre-roll, then a tiny-edge → full exponential attack over ~15 frames.
+        let amp: Float = i < 60 ? 0 : min(0.5, 0.02 + 0.5 * (1 - exp(-Float(i - 60) / 5.0)))
+        let r = proc.process(magnitudes: bassMags(amp), fps: 60)
+        let sinceOnset = i - 60
+        if (0..<Int(1.5 * 60)).contains(sinceOnset) { coldWorst = max(coldWorst, worstBand(r)) }
+        if i >= 300 { steadySum += r.bass; steadyN += 1 }
+    }
+    let steady = steadySum / steadyN
+    #expect(steady > 0.01, "sanity: steady f.bass non-zero, got \(steady)")
+    #expect(coldWorst < 2.0,
+            "BUG-029: ramped-onset AGC-scale blowup — worst band \(coldWorst) in the first 1.5 s must stay physical (< 2.0; un-fixed rails to 2.4+)")
+}
+
 @Test func agc3_steadyState_continuousAudible_byteIdentical() {
     let proc = BandEnergyProcessor()
     let mags = bassMags(0.5)
