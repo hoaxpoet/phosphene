@@ -2,7 +2,7 @@
   "name": "Cytokinesis",
   "family": "particles",
   "duration": 45,
-  "description": "Detailed psychedelic cell division. A few large cells, rendered like confocal fluorescence microscopy, visibly divide in time with the music: each cell pinches through its cleavage furrow into a dumbbell and splits into two daughters — two radial green microtubule asters bursting from the spindle poles, a solid red cortical membrane, blue chromatin, and a magenta spindle midzone. Sustained energy paces each cell toward its split; a drum onset triggers the cytokinesis snap on the beat; the spectral centroid swings the fluorescence palette. The detailed-fidelity sibling of Mitosis. Explicit per-cell rendering, no new render primitive.",
+  "description": "Detailed psychedelic cell division. A few large cells, rendered like confocal fluorescence microscopy, cycle through the division life-cycle: each cell pinches through its cleavage furrow into a dumbbell and splits into two daughters — two radial green microtubule asters bursting from the spindle poles, a solid red cortical membrane, blue chromatin, and a magenta spindle midzone — growing few→crowded, then dissolving and regrowing. Sustained energy paces each cell toward its split (louder = faster division); a drum onset drives a bounded fluorescence glow accent; the spectral centroid swings the fluorescence palette. The detailed-fidelity sibling of Mitosis. Explicit per-cell rendering, no new render primitive.",
   "author": "Matt",
   "passes": ["feedback", "particles"],
   "beat_source": "bass",
@@ -21,5 +21,5 @@
   "section_suitability": ["buildup", "peak"],
   "complexity_cost": { "tier1": 1.3, "tier2": 0.7 },
   "rubric_profile": "lightweight",
-  "certified": false
+  "certified": true
 }

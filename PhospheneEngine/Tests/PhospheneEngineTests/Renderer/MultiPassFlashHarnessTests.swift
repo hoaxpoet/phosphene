@@ -93,6 +93,11 @@ struct MultiPassFlashHarnessTests {
         assertFlashSafe(name: "Mitosis", luma: try renderMitosis())
     }
 
+    @Test("Cytokinesis is flash-safe (explicit-cell division, real headless render)")
+    func cytokinesisIsFlashSafe() throws {
+        assertFlashSafe(name: "Cytokinesis", luma: try renderCytokinesis())
+    }
+
     // MARK: - Assertion (shared)
 
     /// Print the per-preset evidence line (the closeout all-7 table is these four plus the
@@ -186,6 +191,39 @@ struct MultiPassFlashHarnessTests {
         var luma: [Double] = []
         // ~25 s — the growth-to-crowded + the dissolve are the largest luma swings; measure
         // across them (no settle — the grow-in IS the response we must show is gradual).
+        for i in 0..<1500 {
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
+            geo.update(features: drive[i % drive.count], stemFeatures: stems[i % stems.count], commandBuffer: cmd)
+            let rpd = MTLRenderPassDescriptor()
+            rpd.colorAttachments[0].texture = tex
+            rpd.colorAttachments[0].loadAction = .clear
+            rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+            rpd.colorAttachments[0].storeAction = .store
+            guard let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) else { continue }
+            geo.render(encoder: enc, features: drive[i % drive.count])
+            enc.endEncoding()
+            try commit(cmd, tex, into: &pixels)
+            luma.append(FlashHarnessSupport.meanRelativeLuminance(pixels))
+        }
+        return luma
+    }
+
+    // MARK: - Render: particle (Cytokinesis)
+
+    /// Cytokinesis — `particles`. Drives the real `MitosisGen2Geometry` explicit-cell colony
+    /// over the worst-case beat+stem train. Like Mitosis, the large luminance swings are the
+    /// SLOW grow→crowded→dissolve life-cycle (division is energy-paced, drum only glows), so
+    /// the long span captures the whole cycle; all excursions must be gradual (no strobe).
+    private func renderCytokinesis() throws -> [Double] {
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let geo = try MitosisGen2Geometry(device: ctx.device, library: lib.library,
+                                          configuration: MitosisGen2Configuration(), pixelFormat: ctx.pixelFormat)
+        let tex = try makeOutputTexture(ctx)
+        let drive = FlashHarnessSupport.worstCaseBeatTrain()
+        let stems = FlashHarnessSupport.worstCaseStemTrain()
+        var pixels = [UInt8](repeating: 0, count: Self.width * Self.height * 4)
+        var luma: [Double] = []
         for i in 0..<1500 {
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
             geo.update(features: drive[i % drive.count], stemFeatures: stems[i % stems.count], commandBuffer: cmd)
