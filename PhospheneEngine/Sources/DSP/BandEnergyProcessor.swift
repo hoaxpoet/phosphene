@@ -137,6 +137,11 @@ public final class BandEnergyProcessor: @unchecked Sendable {
     /// average; brief within-track gaps decay as before.
     private var silentRun: Int = 0
 
+    /// Frames remaining in the cold-start onset window during which the fast-attack peak floor may
+    /// fire (AGC3.5 / BUG-029). Set at a session-start seed or on exit from a sustained-silence hold;
+    /// counts down. Zero mid-track → the fast-attack never touches musical transients.
+    private var onsetWarmupRemaining: Int = 0
+
     /// Number of frames for fast warmup phase (~1s at 60fps).
     private static let warmupFastFrames = 60
 
@@ -163,6 +168,25 @@ public final class BandEnergyProcessor: @unchecked Sendable {
     /// multi-second inter-track silences AGC3.1 measured. Below this count, behaviour is byte-
     /// identical to the prior algorithm.
     private static let sustainedSilenceFrames = 30
+
+    /// AGC3.5 / BUG-029 — fast-attack peak floor threshold. WITHIN the onset window
+    /// (`onsetWarmupRemaining` > 0, see below), a frame whose total energy exceeds this multiple of
+    /// the running average is the cold-start transient: the average was seeded from the tiny leading
+    /// edge of the attack and the slow warmup EMA (0.95, 5 %/frame) lags the full hit landing
+    /// ~0.3–0.5 s later, so `agcScale = 0.5/avg` spikes `f.bass` 16–20× (SZ2 / Wake Up / KITM).
+    private static let onsetSpikeRatio: Float = 3.5
+
+    /// AGC3.5 / BUG-029 — on a cold-start transient, snap the running average this fraction of the
+    /// way toward the loud energy in ONE frame (0.15 ⇒ 85 %) so `agcScale` can't lag.
+    private static let fastAttackRate: Float = 0.15
+
+    /// AGC3.5 / BUG-029 — the fast-attack fires ONLY for this many frames after audio (re)starts —
+    /// a session-start seed or the first audible frame out of a sustained-silence (inter-track) hold.
+    /// This bounds it to the actual cold-start convergence and NEVER lets it touch a mid-track musical
+    /// transient (a snare/clap/kick), which would flatten dynamics (`FerrofluidBeatSyncTests`
+    /// mid-energy gate). 60 frames ≈ 1–1.4 s — covers the convergence; a mid-track drop with no
+    /// preceding silence gets the normal EMA (a real loud moment should read loud).
+    private static let onsetWarmupFrames = 60
 
     // MARK: - Smoothing State
 
@@ -268,13 +292,28 @@ public final class BandEnergyProcessor: @unchecked Sendable {
         let totalRawEnergy = raw6.reduce(0, +)
         let agcRate = frameCount < Self.warmupFastFrames ? Self.agcRateFast : Self.agcRateModerate
         let nearSilent = agcRunningAvg != 0 && totalRawEnergy < Self.silenceFraction * agcRunningAvg
+        let wasHeld = silentRun >= Self.sustainedSilenceFrames   // was in a sustained-silence hold last frame
         silentRun = nearSilent ? silentRun + 1 : 0
+
+        // AGC3.5 / BUG-029 — open the cold-start onset window when audio (re)starts: a session-start
+        // seed, or the first audible frame out of a sustained-silence (inter-track) hold. The
+        // fast-attack peak floor is confined to this window so it can never flatten a mid-track beat.
+        if (agcRunningAvg == 0 && totalRawEnergy > 0) || (wasHeld && !nearSilent) {
+            onsetWarmupRemaining = Self.onsetWarmupFrames
+        }
+        if onsetWarmupRemaining > 0 { onsetWarmupRemaining -= 1 }
 
         if agcRunningAvg == 0 {
             // Unseeded (session start / pre-audio): seed from the first audible frame, not silence.
             if totalRawEnergy > 0 { agcRunningAvg = totalRawEnergy }
         } else if nearSilent && silentRun >= Self.sustainedSilenceFrames {
             // Sustained silence (inter-track gap): hold the running average (no decay toward zero).
+        } else if onsetWarmupRemaining > 0 && totalRawEnergy > Self.onsetSpikeRatio * agcRunningAvg {
+            // AGC3.5 / BUG-029 — fast-attack peak floor, cold-start window ONLY. Energy massively
+            // exceeds the running average (which was seeded from the attack's tiny leading edge):
+            // snap the average up toward it so `agcScale` (below) can't lag and spike f.bass. Confined
+            // to the onset window, so mid-track transients (snare/clap/kick) get the normal EMA.
+            agcRunningAvg = Self.fastAttackRate * agcRunningAvg + (1 - Self.fastAttackRate) * totalRawEnergy
         } else {
             agcRunningAvg = agcRate * agcRunningAvg + (1 - agcRate) * totalRawEnergy
         }
