@@ -128,6 +128,48 @@ struct RicercarFlowRenderTests {
         #expect(restLit < drivenLit, "the flow did not calm at silence (\(restLit) vs driven \(drivenLit))")
     }
 
+    // MARK: - Beat-grid sync: the pulse fires ON the beat, not off the saturated live beatComposite
+
+    /// Drive the geometry with a synthetic CACHED-GRID beat phase (beatPhase01 sawtooth) and assert the
+    /// beat envelope blooms on the beat and stays quiet mid-beat — and stays ~0 at silence (pulseAmp01=0).
+    /// This is the FL.11 fix: the live `beatComposite` was saturated (~95% of frames) so it carried no
+    /// rhythm; the grid phase does. (No BeatGrid install needed here — we feed the phase columns directly.)
+    @Test("FL.11: the beat pulse blooms on the grid beat, is quiet mid-beat, and silent at silence")
+    func test_beatPulse_tracksGridPhase() throws {
+        guard MTLCreateSystemDefaultDevice() != nil else {
+            print("RicercarFlowRenderTests: no Metal device — skipping"); return
+        }
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let geo = try makeGeo(ctx, lib)
+
+        func drive(beatPhase: Float, barPhase: Float, amp: Float, t: Float) {
+            var f = FeatureVector(time: t, deltaTime: 1.0 / 60.0, aspectRatio: 16.0 / 9.0)
+            f.bassDev = 0.2; f.midDev = 0.1                     // some energy so the field is live
+            f.beatPhase01 = beatPhase; f.barPhase01 = barPhase; f.pulseAmp01 = amp
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { return }
+            geo.update(features: f, stemFeatures: StemFeatures.zero, commandBuffer: cmd)
+            cmd.commit(); cmd.waitUntilCompleted()
+        }
+
+        // Sit at mid-beat for a moment → the pulse should be low.
+        var t: Float = 0
+        for _ in 0..<12 { drive(beatPhase: 0.5, barPhase: 0.5, amp: 1, t: t); t += 1.0 / 60.0 }
+        let midBeat = geo.currentBeatEnv
+        // Now hit the beat (phase ≈ 0) → the pulse should snap high.
+        drive(beatPhase: 0.02, barPhase: 0.5, amp: 1, t: t); t += 1.0 / 60.0
+        let onBeat = geo.currentBeatEnv
+        print("[ricercar_flow] beatEnv: mid-beat=\(String(format: "%.3f", midBeat)) on-beat=\(String(format: "%.3f", onBeat))")
+        #expect(onBeat > 0.7, "the beat pulse should bloom on the grid beat (got \(onBeat))")
+        #expect(midBeat < 0.25, "the pulse should be quiet mid-beat (got \(midBeat))")
+
+        // Silence (pulseAmp01 = 0): even at phase 0 the pulse must stay dark (no ghost pulsing).
+        for _ in 0..<20 { drive(beatPhase: 0.02, barPhase: 0.02, amp: 0, t: t); t += 1.0 / 60.0 }
+        let silent = geo.currentBeatEnv
+        print("[ricercar_flow] beatEnv at silence=\(String(format: "%.3f", silent))")
+        #expect(silent < 0.05, "the beat must not pulse at silence (pulseAmp01=0), got \(silent)")
+    }
+
     // MARK: - Contact sheet (env-gated: RICERCAR_VISUAL=1 / RENDER_VISUAL=1)
     // A little "score": strings enter, brass joins, then a woodwinds+percussion beat passage — so the
     // sheet shows different family colours leading over time. The judgement is Matt's eye vs the Fantasia

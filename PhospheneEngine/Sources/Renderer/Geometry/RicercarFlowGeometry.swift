@@ -30,7 +30,7 @@ struct RicercarFlowConfig {
     var time: Float
     var flowSpeed: Float
     var turbulence: Float
-    var scatter: Float
+    var beat: Float
     var decay: Float
     var exposure: Float
     var homePull: Float
@@ -87,8 +87,7 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
 
     // CPU music envelopes (one primitive per layer — D-026, FA #67).
     private var energyEnv: Float = 0       // zero-lag continuous energy → flow vigour + turbulence (PRIMARY)
-    private var scatterEnv: Float = 0      // beat rising-edge → outward scatter impulse (ACCENT)
-    private var prevBeat: Float = 0
+    private var beatEnv: Float = 0         // cached-grid beat pulse → on-beat bloom + surge (ACCENT)
     private var fam = SIMD4<Float>(repeating: 0)   // smoothed family activations (identity, lag-tolerant)
     private var time: Float = 0
     private var frameCounter: UInt32 = 0
@@ -196,6 +195,8 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
 
     /// Smoothed zero-lag energy envelope. Exposed for the render test's motion assertions.
     public var currentEnergyEnv: Float { energyEnv }
+    /// Cached-grid beat-pulse envelope (0…1). Exposed so a test can assert it pulses on the beat.
+    public var currentBeatEnv: Float { beatEnv }
     /// The latest trail texture — exposed so a render test can read it back.
     public var currentTrailTexture: MTLTexture { trail[cur] }
 
@@ -277,11 +278,19 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
         let rawEnergy = Self.softSat(max(0, feat.bassDev) + max(0, feat.midDev) + max(0, feat.trebDev), 0.5)
         energyEnv += Float(dt / (0.10 + dt)) * (rawEnergy - energyEnv)
 
-        // Beat scatter: rising edge of beatComposite arms a pulse; ~0.28 s release → a brief flare + kick.
-        let beat = max(0, feat.beatComposite)
-        if beat > 0.22 && beat > prevBeat + 0.04 { scatterEnv = 1.0 }
-        prevBeat = beat
-        scatterEnv = max(0, scatterEnv - Float(dt) / 0.28)
+        // Beat pulse from the CACHED GRID (beatPhase01 — a clean per-beat 0→1 ramp, live-drift-locked to
+        // ±~20 ms), NOT the live `beatComposite` (saturated near 1.0 on real sessions → fires ~95% of
+        // frames → no rhythm at all: the FL.10 sync gap, diagnosed from session 2026-07-09T02-11-28Z).
+        // Sharp ON the beat, decaying across it; a stronger accent on the downbeat (barPhase01); gated by
+        // pulseAmp01 so silence doesn't pulse. Beat-locked motion on the cached grid is the sanctioned
+        // technique (Audio Data Hierarchy Layer 4; the Ferrofluid D-153→D-158 precedent).
+        let amp = max(0, min(1, feat.pulseAmp01))
+        let beatPulse = powf(max(0, 1 - feat.beatPhase01), 5.0)   // 1.0 at the beat → ~0 by mid-beat
+        let downbeat = powf(max(0, 1 - feat.barPhase01), 6.0)     // sharper, peaks on the bar's "1"
+        let rawBeat = amp * min(1.0, beatPulse + 0.7 * downbeat)
+        // Instant attack (snap up on the beat) + a short release floor so a frame that just misses the
+        // exact beat instant still reads as a crisp bloom, not a strobe.
+        beatEnv = max(rawBeat, beatEnv - Float(dt) / 0.12)
 
         // Family activations (identity): warmup-gate on the stem mix (D-019), soft-saturate vs each
         // family's working point, smooth ~0.25 s. Order: strings, brass, woodwinds, percussion (hue order).
@@ -310,10 +319,11 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
             // kept LOW so the curl cells are large and particles follow long COHERENT paths — the trail
             // then reads as a weaving ribbon of light (ref 01), not a dense turbulent fuzz.
             // flowSpeed is kept BELOW pointSize (in px) so each particle's per-frame deposits OVERLAP into
-            // a continuous ribbon — if the step exceeds the sprite width the trail reads as spaced dots.
-            flowSpeed: 0.0015 + 0.0040 * en,
+            // a continuous ribbon — if the step exceeds the sprite width the trail reads as spaced dots. A
+            // small on-beat surge (beatEnv) quickens the flow on the beat — an accent ≪ the energy term.
+            flowSpeed: 0.0015 + 0.0040 * en + 0.0030 * beatEnv,
             turbulence: 0.06 + 0.40 * en,   // near-laminar → long coherent streams (ribbons)
-            scatter: scatterEnv,
+            beat: beatEnv,
             decay: 0.950,                   // long light-trails → each sparse particle draws a long ribbon
             exposure: 1.0,
             homePull: 0.005,                // very loose → the flow carries families across → weaving, not stripes
