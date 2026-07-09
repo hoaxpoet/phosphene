@@ -15,6 +15,21 @@
   "transition_affordances": ["crossfade", "morph"],
   "section_suitability": ["ambient", "comedown", "bridge", "buildup", "peak"],
   "complexity_cost": { "tier1": 9.0, "tier2": 4.0 },
+  "audio_routes": [
+    { "route": "bloom_swell", "primitive": "drumsEnergy", "kind": "continuous" },
+    { "route": "bloom_swell", "primitive": "bassEnergy", "kind": "continuous" },
+    { "route": "bloom_swell", "primitive": "vocalsEnergy", "kind": "continuous" },
+    { "route": "bloom_swell", "primitive": "otherEnergy", "kind": "continuous" },
+    { "route": "bloom_warmup_proxy", "primitive": "bassAttRel", "kind": "continuous" },
+    { "route": "kick_punch", "primitive": "beatPhase01", "kind": "accent" },
+    { "route": "kick_punch", "primitive": "beatBass", "kind": "accent" },
+    { "route": "kick_punch", "primitive": "beatComposite", "kind": "accent" },
+    { "route": "bass_lobe", "primitive": "bassEnergyDev", "kind": "accent" },
+    { "route": "vocals_lobe", "primitive": "vocalsEnergyDev", "kind": "accent" },
+    { "route": "other_lobe", "primitive": "otherEnergyDev", "kind": "accent" },
+    { "route": "mood_tint", "primitive": "valence", "kind": "continuous" },
+    { "route": "mood_agitation", "primitive": "arousal", "kind": "continuous" }
+  ],
   "certified": true,
   "rubric_profile": "full"
 }

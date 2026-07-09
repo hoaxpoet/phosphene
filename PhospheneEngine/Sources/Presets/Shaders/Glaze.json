@@ -17,6 +17,17 @@
   "transition_affordances": ["crossfade", "morph"],
   "section_suitability": ["buildup", "peak", "bridge"],
   "complexity_cost": { "tier1": 2.0, "tier2": 1.0 },
+  "audio_routes": [
+    { "route": "anchor_swing", "primitive": "bassEnergyDev", "kind": "continuous" },
+    { "route": "anchor_swing", "primitive": "otherEnergyDev", "kind": "continuous" },
+    { "route": "anchor_lift", "primitive": "drumsEnergyRel", "kind": "continuous" },
+    { "route": "anchor_lift", "primitive": "bassEnergyRel", "kind": "continuous" },
+    { "route": "anchor_lift", "primitive": "vocalsEnergyRel", "kind": "continuous" },
+    { "route": "anchor_lift", "primitive": "otherEnergyRel", "kind": "continuous" },
+    { "route": "drums_poke", "primitive": "drumsEnergyDev", "kind": "accent" },
+    { "route": "vocals_glow", "primitive": "vocalsEnergyDev", "kind": "continuous" },
+    { "route": "downbeat_push", "primitive": "barPhase01", "kind": "accent" }
+  ],
   "certified": true,
   "rubric_profile": "lightweight"
 }
