@@ -86,13 +86,9 @@ private func makeE2EManager(connector: any PlaylistConnecting, device: MTLDevice
     return SessionManager(connector: connector, preparer: preparer)
 }
 
-@MainActor
-private func waitUntil(timeoutSeconds: Double = 20, _ predicate: () -> Bool) async {
-    let deadline = Date().addingTimeInterval(timeoutSeconds)
-    while !predicate() && Date() < deadline {
-        try? await Task.sleep(nanoseconds: 10_000_000)
-    }
-}
+// Readiness is awaited deterministically via `manager.sessionPreparationTask?.value`
+// (TESTFLAKE.1) — no wall-clock predicate poll, which starved under parallel-suite
+// load. See `SessionManager.sessionPreparationTask`.
 
 // MARK: - Suite
 
@@ -114,7 +110,7 @@ struct SessionLifecycleE2ETests {
         #expect(manager.currentPlan?.tracks.count == 2, "connect installed session A's plan")
 
         // 2–3. PREPARE → READY (background prep completes; fast fakes).
-        await waitUntil { manager.state == .ready }
+        await awaitSessionReady(manager)
         #expect(manager.state == .ready, "preparation completed")
         #expect(manager.cache.loadForPlayback(track: a1) != nil, "A1 prepared + cached")
 
@@ -136,7 +132,7 @@ struct SessionLifecycleE2ETests {
         //    have A's stale prep overwrite B's plan/state; the generation guard
         //    prevents it.
         await manager.startSession(source: .appleMusicPlaylistURL("B"))
-        await waitUntil { manager.state == .ready }
+        await awaitSessionReady(manager)
         #expect(manager.state == .ready, "session B reached ready")
         #expect(manager.currentPlan?.tracks.count == 1, "restart installed session B's plan")
         #expect(
@@ -162,7 +158,7 @@ struct SessionLifecycleE2ETests {
         #expect(manager.state == .idle, "cancel returns to idle")
 
         await manager.startSession(source: .appleMusicPlaylistURL("D"))
-        await waitUntil { manager.state == .ready }
+        await awaitSessionReady(manager)
         #expect(manager.state == .ready)
         #expect(Set((manager.currentPlan?.tracks ?? []).map(\.title)) == ["D1"])
 

@@ -121,7 +121,14 @@ public final class SessionManager: ObservableObject {
     // MARK: - Progressive Readiness
 
     /// Background preparation task. Non-nil while preparation is in flight.
-    private var sessionPreparationTask: Task<Void, Never>?
+    ///
+    /// Internally readable (`private(set)`) so `@testable` tests can `await` its
+    /// `.value` for a deterministic readiness wait instead of racing a wall-clock
+    /// deadline (which starves under parallel-suite load — TESTFLAKE.1). MainActor
+    /// serialization makes the read race-free: the task nils this and sets `.ready`
+    /// in one synchronous MainActor block, so a captured handle resolves exactly at
+    /// `.ready`, and a nil read means `.ready` was already set.
+    private(set) var sessionPreparationTask: Task<Void, Never>?
 
     /// Retains the trackStatuses subscription during preparation.
     private var statusCancellable: AnyCancellable?
