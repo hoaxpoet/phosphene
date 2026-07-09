@@ -30,11 +30,10 @@ struct RicercarFlowConfig {
     var time: Float
     var flowSpeed: Float
     var turbulence: Float
-    var beat: Float
     var decay: Float
     var exposure: Float
     var homePull: Float
-    var famStrings: Float
+    var famStrings: Float       // per-family HYBRID activity env (drives colour brightness + motion)
     var famBrass: Float
     var famWoodwinds: Float
     var famPercussion: Float
@@ -43,8 +42,10 @@ struct RicercarFlowConfig {
     var energyGlow: Float
     var energy: Float
     var aspect: Float
-    var driftX: Float
-    var driftY: Float
+    var d0x: Float; var d0y: Float   // per-family drift: strings
+    var d1x: Float; var d1y: Float   //   brass
+    var d2x: Float; var d2y: Float   //   woodwinds
+    var d3x: Float; var d3y: Float   //   percussion
 }
 
 /// Mirror of MSL `FlowParticle` — two float4 (32 bytes), no alignment trap.
@@ -89,9 +90,10 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
 
     // CPU music envelopes (one primitive per layer — D-026, FA #67).
     private var energyEnv: Float = 0       // zero-lag continuous energy → flow vigour + turbulence (PRIMARY)
-    private var beatEnv: Float = 0         // cached-grid beat pulse → on-beat bloom + surge (ACCENT)
-    private var driftAngle: Float = 0.7    // direction of the shared global current (turns slowly)
-    private var fam = SIMD4<Float>(repeating: 0)   // smoothed family activations (identity, lag-tolerant)
+    private var beatEnv: Float = 0         // cached-grid beat pulse (computed + tested; NOT driving the
+                                           // visual after FL.13 — a global beat pump read as herky-jerky)
+    private var driftAngle = SIMD4<Float>(0.7, 2.1, 3.8, 5.2)   // per-family current directions (diverge, turn slowly)
+    private var fam = SIMD4<Float>(repeating: 0)   // per-family HYBRID env: max(band-stem dev, family-capture dev)
     private var time: Float = 0
     private var frameCounter: UInt32 = 0
 
@@ -295,32 +297,50 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
         // exact beat instant still reads as a crisp bloom, not a strobe.
         beatEnv = max(rawBeat, beatEnv - Float(dt) / 0.12)
 
-        // Family activations (identity): warmup-gate on the stem mix (D-019), soft-saturate vs each
-        // family's working point, smooth ~0.25 s. Order: strings, brass, woodwinds, percussion (hue order).
+        // Per-family HYBRID activity env (FL.13, Matt "each color should behave differently"): the MAX of a
+        // colour's mapped real-time BAND-STEM dev (drums/bass/vocals/other — zero-lag, alive on rock/pop)
+        // and its INSTRUMENT-FAMILY capture dev (strings/brass/woodwinds/percussion — alive on orchestral,
+        // ~2–4 s laggy). Whichever is active drives it → differentiates on ANY genre. Warmup-gated (D-019),
+        // soft-saturated to 0..1, smoothed ~0.3 s → CONTINUOUS smooth motion (no jitter, no beat pump).
+        // colour←(band-stem | family): strings←(vocals|strings), brass←(bass|brass),
+        // woodwinds←(other|woodwinds), percussion←(drums|percussion).
         let stemTotal = stem.drumsEnergy + stem.bassEnergy + stem.otherEnergy + stem.vocalsEnergy
         let blend = Self.smoothstep(0.02, 0.06, stemTotal)
-        let sat = Self.familySaturation
-        let target = SIMD4<Float>(
-            Self.softSat(stem.stringsActivityDev, sat.x) * blend,
-            Self.softSat(stem.brassActivityDev, sat.y) * blend,
-            Self.softSat(stem.woodwindsActivityDev, sat.z) * blend,
-            Self.softSat(stem.percussionActivityDev, sat.w) * blend)
-        let alpha = Float(dt / (0.25 + dt))
+        let fsat = Self.familySaturation
+        let bandStem = SIMD4<Float>(                    // zero-lag band stems (soft-sat vs the dev p99 ~0.85)
+            Self.softSat(stem.vocalsEnergyDev, 0.85),
+            Self.softSat(stem.bassEnergyDev, 0.85),
+            Self.softSat(stem.otherEnergyDev, 0.85),
+            Self.softSat(stem.drumsEnergyDev, 0.85))
+        let familyCap = SIMD4<Float>(                   // orchestral-section capture (soft-sat vs its working point)
+            Self.softSat(stem.stringsActivityDev, fsat.x),
+            Self.softSat(stem.brassActivityDev, fsat.y),
+            Self.softSat(stem.woodwindsActivityDev, fsat.z),
+            Self.softSat(stem.percussionActivityDev, fsat.w))
+        let target = max(bandStem, familyCap) * blend   // whichever separation is alive
+        let alpha = Float(dt / (0.30 + dt))
         fam += (target - fam) * alpha
 
-        // Turn the shared drift direction slowly (a wandering current, ~1 rev / 40 s), a touch faster when
-        // loud. The whole field's collective travel direction evolves so it's never a monotonous scroll.
-        driftAngle += Float(dt) * (0.15 + 0.25 * energyEnv)
+        // Turn each family's drift direction slowly at its OWN rate (so the four colours diverge and move
+        // differently), a touch faster when that family is active — organic wandering currents, never a
+        // rigid scroll.
+        let turnRate = SIMD4<Float>(0.13, -0.10, 0.17, -0.15)
+        driftAngle += (turnRate + fam * 0.30) * Float(dt)
     }
 
     private func makeConfig() -> RicercarFlowConfig {
         let en = max(0, min(1.2, energyEnv))
-        // The GLOBAL shared current (coordinated movement, Matt FL.11): a slow base drift the whole field
-        // follows, surging with energy and — the key beat read — SWEEPING FORWARD together on the beat.
-        // Kept below the pointSize budget (in normalized px) so the streaks stay continuous ribbons.
-        let driftMag = 0.0012 + 0.0028 * en + 0.0026 * beatEnv
-        let driftX = cosf(driftAngle) * driftMag
-        let driftY = sinf(driftAngle) * driftMag
+        // Per-family drift: each colour follows its OWN current — direction = its own slowly-turning angle
+        // (the four diverge), speed = a slow base + its own hybrid env. Each colour moves DIFFERENTLY,
+        // faster while its instrument plays, SMOOTHLY (continuous, no beat pump); below the pointSize budget.
+        func drift(_ i: Int) -> (Float, Float) {
+            let mag = 0.0010 + 0.0042 * fam[i]
+            return (cosf(driftAngle[i]) * mag, sinf(driftAngle[i]) * mag)
+        }
+        let (d0x, d0y) = drift(0)
+        let (d1x, d1y) = drift(1)
+        let (d2x, d2y) = drift(2)
+        let (d3x, d3y) = drift(3)
         return RicercarFlowConfig(
             width: UInt32(configuration.width),
             height: UInt32(configuration.height),
@@ -328,15 +348,13 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
             frame: frameCounter,
             dt: 1.0 / 60.0,
             time: time,
-            // flowSpeed is now the CURL SWIRL strength — the coherent texture riding ON the shared drift
-            // (gentle so the drift's shared direction dominates → coordinated motion, not churn). Kept
-            // below pointSize (px) with the drift so deposits overlap into continuous ribbons, not dots.
-            flowSpeed: 0.0012 + 0.0018 * en,
+            // flowSpeed is the CURL SWIRL strength — the coherent texture riding ON each family's drift
+            // (gentle so the drift direction dominates → coordinated per-colour motion, not churn).
+            flowSpeed: 0.0012 + 0.0016 * en,
             turbulence: 0.06 + 0.40 * en,   // near-laminar → long coherent streams (ribbons)
-            beat: beatEnv,
             decay: 0.950,                   // long light-trails → each sparse particle draws a long ribbon
             exposure: 1.0,
-            homePull: 0.005,                // very loose → the current carries families across → weaving
+            homePull: 0.006,                // loose home band → colour identity, currents still weave across
             famStrings: fam.x,
             famBrass: fam.y,
             famWoodwinds: fam.z,
@@ -346,8 +364,14 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
             energyGlow: 0.60,               // few particles → each ribbon glows bright
             energy: en,
             aspect: Float(configuration.width) / Float(configuration.height),
-            driftX: driftX,
-            driftY: driftY)
+            d0x: d0x,
+            d0y: d0y,
+            d1x: d1x,
+            d1y: d1y,
+            d2x: d2x,
+            d2y: d2y,
+            d3x: d3x,
+            d3y: d3y)
     }
 
     // MARK: - Seeding
