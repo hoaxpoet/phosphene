@@ -54,6 +54,13 @@ struct FlowConfig {
     float d1x; float d1y;   // brass
     float d2x; float d2y;   // woodwinds
     float d3x; float d3y;   // percussion
+    // Per-family ARTICULATION 0..1 (FL.14): 0 = legato/sustained → long particle life → long flowing
+    // ribbons; 1 = staccato/sharp → short life → frequent respawn → short choppy line segments. Read only
+    // at respawn (motion untouched → no herky-jerky, FL.12). Derived from each stem's AttackRatio on the CPU.
+    float art0;   // strings   ← vocals-stem AttackRatio
+    float art1;   // brass     ← bass-stem   AttackRatio
+    float art2;   // woodwinds ← other-stem  AttackRatio
+    float art3;   // percussion← drums-stem  AttackRatio
 };
 
 // MARK: - FlowParticle (mirror of Swift FlowParticle, 32 bytes — two float4, no alignment trap)
@@ -95,6 +102,24 @@ static inline float flow_family_activation(constant FlowConfig& cfg, int fam) {
         default: return cfg.famPercussion;
     }
 }
+
+static inline float flow_family_articulation(constant FlowConfig& cfg, int fam) {
+    switch (fam) {
+        case 0:  return cfg.art0;
+        case 1:  return cfg.art1;
+        case 2:  return cfg.art2;
+        default: return cfg.art3;
+    }
+}
+
+// FL.14 line character: particle life scales inversely with articulation. Legato/sustained (art→0) gives a
+// long life ⇒ each particle traces a long continuous ribbon; staccato/sharp (art→1) gives a short life ⇒
+// particles respawn constantly ⇒ the family reads as short, choppy, restless segments. Only the RESPAWN
+// cadence changes — per-frame motion is identical either way, so this never reintroduces the FL.12
+// herky-jerky (which came from disrupting MOTION). ~16 s legato ≈ the pre-FL.14 seeded life, so the
+// no-articulation-signal look (silence / warmup / harness) is unchanged.
+static constexpr constant float kFlowLegatoLife  = 16.0;   // seconds — long flowing ribbons
+static constexpr constant float kFlowStaccatoLife = 0.75;  // seconds — short choppy segments
 
 // MARK: - Hash + curl noise (Bridson 2007 — curl of a scalar noise potential = divergence-free flow)
 
@@ -144,8 +169,14 @@ kernel void ricercar_flow_update(device FlowParticle*  particles [[buffer(0)]],
     float2 vel = p.posVel.zw;
     int  fam  = int(round(p.misc.x));
     float age = p.misc.y + cfg.dt;
-    float life = p.misc.z;
     float seed = p.misc.w;
+
+    // FL.14 per-family life from articulation (recomputed each frame from the CURRENT smoothed env, so a
+    // section turning staccato shortens life immediately — long-lived legato particles respawn NOW instead
+    // of waiting out a stale seeded life). Per-particle ±spread via `seed` so respawns stagger (no synced
+    // pulse). The seeded p.misc.z is superseded by this and left unread.
+    float staccato = flow_family_articulation(cfg, fam);
+    float life = mix(kFlowLegatoLife, kFlowStaccatoLife, staccato) * (0.6 + 0.8 * seed);
 
     // SHARED curl-noise swirl — NO per-particle seed offset, so neighbours sample the SAME field and move
     // TOGETHER as coherent currents (the seed offset made every line move in its own random direction →
