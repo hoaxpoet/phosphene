@@ -249,6 +249,23 @@ render_test_step "Step 4: Doc gates (DocIntegrityTests)" "$DOC_CMD_STR" "$DOC_LO
 DOC_PARSE_OK=$STEP_PARSE_OK
 DOC_FAILS=$STEP_FAILURES_PRESENT
 
+# --- Step 5: Comparison sheet (QG.2 — canonical §3 artifact for preset increments) ---
+# If a RENDER_VISUAL=1 session produced a compare_render.sh sheet, surface its path
+# so preset closeouts cite the side-by-side sheet, not a bare contact sheet. Absence
+# is normal for non-preset increments — reported as "none", never fatal.
+emit "--- Step 5: Comparison sheet (compare_render.sh) ---"
+COMPARE_SHEET=""
+if [ -d /tmp/phosphene_visual ]; then
+  COMPARE_SHEET="$(find /tmp/phosphene_visual -maxdepth 2 -type f -name '*_compare.png' 2> /dev/null \
+    | sort | tail -1)"
+fi
+if [ -n "$COMPARE_SHEET" ]; then
+  emit "Sheet     : ${COMPARE_SHEET}"
+else
+  emit "Sheet     : none (no compare_render.sh output this session)"
+fi
+emit ""
+
 # --- Footer -----------------------------------------------------------------------
 emit "--- Footer ---"
 emit "Exit codes: engine=${ENGINE_EXIT} app=${APP_EXIT} swiftlint=${LINT_EXIT} docgates=${DOC_EXIT}"

@@ -11,7 +11,7 @@ description: Mandatory opener for any preset-related increment in Phosphene — 
 2. `docs/VISUAL_REFERENCES/<preset>/README.md` — per-image trait-trustability annotations and anti-references. No curated set → curate first or escalate to Matt.
 3. The preset's design doc (`docs/presets/<PRESET>_DESIGN.md`) if one exists.
 
-Render early: produce a `RENDER_VISUAL=1` contact sheet before the first tuning commit.
+Render early: produce a `RENDER_VISUAL=1` contact sheet before the first tuning commit. Then before EVERY tuning commit, run the mandatory perception check — `Scripts/compare_render.sh <preset>`, Read the composite sheet, and write the per-trait verdict table (D-181; full protocol in `docs/PRESET_SESSION_CHECKLIST.md` Part 1 step 5).
 
 ## Audio data hierarchy (canonical home: this skill, from CLAUDE.md at DOC.9)
 
