@@ -219,7 +219,7 @@ vertex FlowPointOut ricercar_flow_point_vertex(uint vid [[vertex_id]],
     float activation = flow_family_activation(cfg, fam);
     // Beat FLARE: the beat's primary read is the light briefly brightening (an accent), not a geometric
     // burst — cfg.scatter is the beat envelope (0..1).
-    float bright = cfg.baseGlow + cfg.energy * cfg.energyGlow + activation * 0.30 + cfg.scatter * 0.16;
+    float bright = cfg.baseGlow + cfg.energy * cfg.energyGlow + activation * 0.55 + cfg.scatter * 0.16;
     o.color = flow_family_hue(fam) * bright;
     o.pointSize = cfg.pointSize;
     return o;
