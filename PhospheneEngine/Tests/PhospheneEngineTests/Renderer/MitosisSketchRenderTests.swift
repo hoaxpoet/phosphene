@@ -117,7 +117,13 @@ struct MitosisSketchRenderTests {
         let median = times[times.count / 2]
         print(String(format: "[MITO] %d×%d sim @1080p: median %.2f ms/frame (min %.2f, max %.2f) — budget 16.67",
                      cfg.width, cfg.height, median, times.first ?? 0, times.last ?? 0))
-        #expect(median < 16.67, "must hold 60 fps: median \(median) ms")
+        // Env-gated (PERF_TESTS=1, run serially): render + measurement run every pass
+        // (crash/NaN coverage) and always print the median; the numeric 60 fps budget
+        // is enforced only in a deliberate serial perf run, not the parallel battery
+        // where GPU-timestamp time inflates under contention. (TESTFLAKE.1)
+        if ProcessInfo.processInfo.environment["PERF_TESTS"] == "1" {
+            #expect(median < 16.67, "must hold 60 fps: median \(median) ms")
+        }
     }
 
     // MARK: - Criterion 2: stable, bounded field

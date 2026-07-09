@@ -124,27 +124,20 @@ private func makeManager(
     return SessionManager(connector: connector, preparer: preparer)
 }
 
-/// Poll until the manager leaves `.preparing` (or the safety deadline elapses).
+/// Await the manager's background preparation, deterministically.
 ///
-/// Required because `startSession()` now returns while still in `.preparing` — the
-/// background preparation Task completes asynchronously on the main actor.
-///
-/// The deadline is a *failure safety net*, not a timing assertion: prep here runs
-/// on instant mocks (InstantStemSeparator / InstantDownloader / InstantStemAnalyzer)
-/// so the common case exits in well under a second. The loop returns the instant
-/// state leaves `.preparing`, so a generous deadline never slows a passing run —
-/// it only prevents a false failure when @MainActor starvation during the full
-/// parallel suite delays the background Task. 3 s → 15 s → 30 s: the CLEAN.1.x
-/// real-GPU concurrency tests added enough suite load that 15 s flaked
-/// intermittently (same `.ready`-deadline class as cancel_fromReady /
-/// waitUntilNotPreparing); 30 s gives headroom while still catching a genuine
-/// hang. (hardening pass, 2026-06-01; widened again 2026-06-14.)
+/// `startSession()` returns while still in `.preparing`; the background prep Task
+/// completes asynchronously on the main actor and sets `.ready`. Rather than race a
+/// wall-clock deadline — which starves under parallel-suite load, the flake this
+/// replaces (the deadline was widened 3 s → 15 s → 30 s and still flaked once the
+/// Ricercar FL.10 render tests added GPU/CPU load) — await the actual task's value.
+/// MainActor serialization makes it race-free (see `SessionManager.sessionPreparationTask`):
+/// a captured handle resolves exactly at `.ready`; a nil handle means a synchronous
+/// path already set `.ready`. A genuine prep *deadlock* now hangs (correctly surfacing
+/// a real bug) instead of masquerading as a 30 s timeout. (TESTFLAKE.1)
 @MainActor
 private func waitForReady(_ manager: SessionManager) async {
-    let deadline = Date().addingTimeInterval(30)
-    while manager.state == .preparing && Date() < deadline {
-        try? await Task.sleep(nanoseconds: 10_000_000)
-    }
+    await awaitSessionReady(manager)
 }
 
 // MARK: - Suite
