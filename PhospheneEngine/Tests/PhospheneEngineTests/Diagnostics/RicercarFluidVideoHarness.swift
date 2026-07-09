@@ -212,6 +212,27 @@ struct RicercarFluidVideoHarness {
         guard let device = MTLCreateSystemDefaultDevice() else { throw E.setup }
         let fft = try FFTProcessor(device: device)
         let mir = MIRPipeline()
+        // FL.11 beat-sync demo: install a fixed-BPM BeatGrid so `beatPhase01`/`pulseAmp01` populate and the
+        // rendered light PULSES on the grid beat (set RICERCAR_BPM=143.2 for the session's Beethoven).
+        // CAVEAT: a fixed grid has the right CADENCE but not the real onset-calibrated PHASE — the live
+        // app's cached grid (±~20 ms lock) is what aligns the pulse to the actual downbeats. Off by default.
+        if let bpmStr = ProcessInfo.processInfo.environment["RICERCAR_BPM"], let bpm = Double(bpmStr), bpm > 0 {
+            let secs = Double(samples.count) / Double(sampleRate)
+            let beatsPerBar = 4
+            let period = 60.0 / bpm
+            var beats: [Double] = [], downbeats: [Double] = []
+            var i = 0
+            while Double(i) * period < secs + period {
+                let tb = Double(i) * period
+                beats.append(tb)
+                if i % beatsPerBar == 0 { downbeats.append(tb) }
+                i += 1
+            }
+            mir.setBeatGrid(BeatGrid(beats: beats, downbeats: downbeats, bpm: bpm,
+                                     beatsPerBar: beatsPerBar, barConfidence: 1,
+                                     frameRate: Double(Self.simFPS), frameCount: beats.count))
+            print("[ricercar_video] installed fixed BeatGrid bpm=\(bpm) beats=\(beats.count) (beat-sync demo)")
+        }
         let hopSize = Int(sampleRate / Self.simFPS)
         var out: [FeatureVector] = []
         var offset = 0

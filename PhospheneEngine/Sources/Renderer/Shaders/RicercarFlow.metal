@@ -33,7 +33,7 @@ struct FlowConfig {
     float time;             // accumulated seconds (curl-noise animation clock)
     float flowSpeed;        // energy-driven advection speed (fraction of frame / frame)
     float turbulence;       // energy-driven curl-noise spatial frequency
-    float scatter;          // beat scatter impulse envelope 0..1 (outward burst)
+    float beat;             // beat-pulse envelope 0..1 from the CACHED GRID (beatPhase01/barPhase01)
     float decay;            // per-frame trail multiply (the fade → light-trail length)
     float exposure;         // display tonemap gain
     float homePull;         // spring gain toward each family's home band (loose spatial identity)
@@ -157,7 +157,7 @@ kernel void ricercar_flow_update(device FlowParticle*  particles [[buffer(0)]],
     // let the beat drive primary motion (Audio Hierarchy Layer 4: beats accent, never lead). The beat's
     // main read is a brightness FLARE in the point shader; this kick just adds a little scatter energy.
     float2 kick = float2(flow_hash21(pos * 13.1 + seed) - 0.5, flow_hash21(pos * 7.7 + seed * 3.0) - 0.5);
-    float2 scat = kick * cfg.scatter * 0.004;
+    float2 scat = kick * cfg.beat * 0.004;
 
     // Integrate: ease velocity toward the flow target, add the beat impulse, step, then wrap in a domain
     // slightly LARGER than the [0,1] view. Wrapping exactly at the view edge makes every crossing deposit
@@ -217,9 +217,9 @@ vertex FlowPointOut ricercar_flow_point_vertex(uint vid [[vertex_id]],
     // flow is never fully dark, + the global zero-lag energy (motion sync reads as light), + the family's
     // colour activation (identity, lag-tolerant). No per-particle speed term (it exploded the budget).
     float activation = flow_family_activation(cfg, fam);
-    // Beat FLARE: the beat's primary read is the light briefly brightening (an accent), not a geometric
-    // burst — cfg.scatter is the beat envelope (0..1).
-    float bright = cfg.baseGlow + cfg.energy * cfg.energyGlow + activation * 0.55 + cfg.scatter * 0.16;
+    // Beat FLARE: the beat's primary read is the light briefly BLOOMING on the beat (an accent), driven
+    // by the cached-grid beat envelope cfg.beat (0..1) — a crisp on-beat pulse, harder on the downbeat.
+    float bright = cfg.baseGlow + cfg.energy * cfg.energyGlow + activation * 0.55 + cfg.beat * 0.22;
     o.color = flow_family_hue(fam) * bright;
     o.pointSize = cfg.pointSize;
     return o;
@@ -254,6 +254,12 @@ fragment float4 ricercar_flow_display_fragment(VertexOut in [[stage_in]],
 
     // Filmic-ish tonemap → luminous, saturating gracefully instead of clipping to flat white.
     float3 tone = 1.0 - exp(-hdr);
+
+    // Beat bloom (display-level): a smooth, bounded luminous breath ON the beat, applied AFTER the trail
+    // so it's crisp (not smeared by the trail decay) — the light "breathes" with the pulse. Only the light
+    // blooms, never the ground; the beat envelope decays smoothly across the beat (no hard strobe → the
+    // ~2–3 Hz brightness change stays gentle, flash-safe).
+    tone *= (1.0 + cfg.beat * 0.20);
 
     // Deep ground: dark indigo with a gentle top-darker vertical gradient (dramatic T&F space).
     float3 groundTop = float3(0.010, 0.012, 0.030);
