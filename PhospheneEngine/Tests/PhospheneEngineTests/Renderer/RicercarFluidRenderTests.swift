@@ -67,10 +67,18 @@ struct RicercarFluidRenderTests {
         return Double(n) / Double(count)
     }
 
-    // MARK: - Gate: the sim runs, fills, stays bounded
+    // MARK: - Gate: the music paints (forms appear on energy, rest at silence, stay bounded)
 
-    @Test("Fluid sim produces a non-empty bounded billowing dye field through the live path")
-    func test_fluid_producesDyeField() throws {
+    /// A driving frame: sustained band energy + a periodic beat, so the FL.8 drive summons blooms/sprays.
+    private func drivenFrame(_ t: Float) -> FeatureVector {
+        var f = FeatureVector(time: t, deltaTime: 1.0 / 60.0, aspectRatio: Float(Self.outW) / Float(Self.outH))
+        f.bassDev = 0.45; f.midDev = 0.35; f.trebDev = 0.25
+        f.beatComposite = (Int(t * 2) % 2 == 0) ? 0.8 : 0.0
+        return f
+    }
+
+    @Test("FL.8: music paints a bounded field; silence rests")
+    func test_fluid_musicPaints_silenceRests() throws {
         guard MTLCreateSystemDefaultDevice() != nil else {
             print("RicercarFluidRenderTests: no Metal device — skipping"); return
         }
@@ -80,24 +88,32 @@ struct RicercarFluidRenderTests {
         geo.ribbonBrightness = 0            // gate measures the DYE field, not the ribbon overlay
         let tex = try target(ctx)
 
+        // 1. Drive with music for 60 s: forms appear, field stays bounded, no wash-out creep.
         var t: Float = 0
         var last = [UInt8]()
         var frac6: Double = 0
-        for i in 0..<3600 {                                  // ~60 s at 60 fps
-            let f = FeatureVector(time: t, deltaTime: 1.0 / 60.0, aspectRatio: Float(Self.outW) / Float(Self.outH))
-            last = try frame(geo, f, tex, ctx)
+        for i in 0..<3600 {
+            last = try frame(geo, drivenFrame(t), tex, ctx)
             if i == 359 { frac6 = dyeFraction(last) }
             t += 1.0 / 60.0
         }
         let frac60 = dyeFraction(last)
-        print("[ricercar_fluid] dye-covered fraction: 6 s = \(String(format: "%.3f", frac6)), 60 s = \(String(format: "%.3f", frac60))")
-        // The sources bloom + advect → a meaningful part of the frame carries dye, but it must NOT fill
-        // the whole frame (dissipation keeps it breathing) and must not be NaN-black.
-        #expect(frac6 > 0.03, "Fluid produced almost no dye (\(frac6)) — sim not advecting from the sources.")
-        #expect(frac6 < 0.95, "Fluid filled the whole frame (\(frac6)) — dissipation/instability broken.")
-        // Accumulation-creep guard at playback length (the Glaze wash-out lesson: a 6 s render cannot
-        // catch a field that slowly fills over minutes — injection must equilibrate with dissipation).
-        #expect(frac60 < 0.85, "Dye coverage still climbing at 60 s (\(frac60)) — injection outruns dissipation.")
+        print("[ricercar_fluid] driven dye fraction: 6 s = \(String(format: "%.3f", frac6)), 60 s = \(String(format: "%.3f", frac60))")
+        #expect(frac6 > 0.03, "Music drove almost no dye (\(frac6)) — summonForms not painting from energy.")
+        #expect(frac6 < 0.95, "Field filled the frame (\(frac6)) — dissipation/instability broken.")
+        #expect(frac60 < 0.85, "Coverage still climbing at 60 s (\(frac60)) — injection outruns dissipation.")
+
+        // 2. Then go silent: nothing new is summoned and the field dissipates toward the ground (rests).
+        var restFrac = frac60
+        for _ in 0..<600 {                                    // ~10 s of silence
+            let f = FeatureVector(time: t, deltaTime: 1.0 / 60.0, aspectRatio: Float(Self.outW) / Float(Self.outH))
+            last = try frame(geo, f, tex, ctx)
+            t += 1.0 / 60.0
+        }
+        restFrac = dyeFraction(last)
+        print("[ricercar_fluid] rest dye fraction after 10 s silence = \(String(format: "%.3f", restFrac))")
+        #expect(restFrac < frac60 * 0.5,
+                "Field did not rest at silence (\(restFrac) vs driven \(frac60)) — the drive is autonomous, not music-painted.")
     }
 
     // MARK: - Contact sheets (env-gated: RICERCAR_VISUAL=1 / RENDER_VISUAL=1)
@@ -125,8 +141,7 @@ struct RicercarFluidRenderTests {
             var tiles: [[UInt8]] = []
             var t: Float = 0
             for i in 0..<frames {
-                let f = FeatureVector(time: t, deltaTime: 1.0 / 60.0, aspectRatio: Float(Self.outW) / Float(Self.outH))
-                let px = try frame(geo, f, tex, ctx)
+                let px = try frame(geo, drivenFrame(t), tex, ctx)   // FL.8: music paints — drive with energy
                 if checkpoints.contains(i) { tiles.append(px) }
                 t += 1.0 / 60.0
             }
@@ -139,6 +154,105 @@ struct RicercarFluidRenderTests {
             print("[ricercar_fluid_contact_sheet] \(dir.path)/ricercar_\(v.stem)_contact_sheet.png")
             #expect(tiles.count == checkpoints.count)
         }
+    }
+
+    // MARK: - FL.4 audio drive: routing fires (mechanical) + a synthetic-stream contact sheet
+    //
+    // FA #27: this feeds a HAND-BUILT feature stream, so it proves the ROUTING (family → which ribbon
+    // brightens; energy → flow/undulation; beat → inflow) fires and stays bounded — it is NOT a claim
+    // about audio-musical FEEL. That gate is Matt's live M7 on a real track (no captured session CSV is
+    // available to replay here). The contact sheet is a response-shape preview, not a fidelity artifact.
+
+    /// A frame with one family clearly leading by deviation, over moderate band energy.
+    private func famFrame(strings: Float = 0, woodwinds: Float = 0, brass: Float = 0,
+                          percussion: Float = 0, bassDev: Float = 0, midDev: Float = 0,
+                          trebDev: Float = 0, beat: Float = 0, t: Float) -> (FeatureVector, StemFeatures) {
+        var f = FeatureVector(time: t, deltaTime: 1.0 / 60.0, aspectRatio: Float(Self.outW) / Float(Self.outH))
+        f.bassDev = bassDev; f.midDev = midDev; f.trebDev = trebDev; f.beatComposite = beat
+        var s = StemFeatures.zero
+        s.otherEnergy = 0.4
+        s.stringsActivityDev = strings; s.woodwindsActivityDev = woodwinds
+        s.brassActivityDev = brass; s.percussionActivityDev = percussion
+        return (f, s)
+    }
+
+    @Test("FL.9 position sync: a voice's drawn height moves with its band energy (zero-lag)")
+    func test_fl9_voiceHeightTracksAudio() throws {
+        guard MTLCreateSystemDefaultDevice() != nil else {
+            print("RicercarFluidRenderTests: no Metal device — skipping"); return
+        }
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let geo = try makeGeo(ctx, lib)
+        let base = RicercarFluidGeometry.voiceBase          // rest heights: strings, woodwinds, brass, perc
+
+        // High bass → voice 0 (strings, bass-driven) head rises (top-down height DROPS below its base),
+        // immediately (the head is set from THIS frame's audio — no accumulation lag).
+        let (fb, sb) = famFrame(bassDev: 0.8, t: 0.1)
+        geo.update(features: fb, stemFeatures: sb, commandBuffer: ctx.commandQueue.makeCommandBuffer()!)
+        let hb = geo.voiceHeadHeightsForTest
+        #expect(hb.x < base[0] - 0.05, "high bass should raise voice 0 (got \(hb.x) vs base \(base[0]))")
+
+        // High treble → voice 3 (percussion, treble-driven) rises; voice 0 returns toward its base.
+        let (ft, st) = famFrame(trebDev: 0.8, t: 0.2)
+        geo.update(features: ft, stemFeatures: st, commandBuffer: ctx.commandQueue.makeCommandBuffer()!)
+        let ht = geo.voiceHeadHeightsForTest
+        #expect(ht.w < base[3] - 0.05, "high treble should raise voice 3 (got \(ht.w) vs base \(base[3]))")
+        #expect(ht.x > hb.x, "voice 0 head should fall back toward base once bass drops")
+    }
+
+    @Test("FL.4 synthetic contact sheet (env-gated) — response-shape preview, NOT a fidelity gate")
+    func test_fl4_contactSheet() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard env["RICERCAR_VISUAL"] == "1" || env["RENDER_VISUAL"] == "1" else {
+            print("RicercarFluidRenderTests: RICERCAR_VISUAL/RENDER_VISUAL not set, skipping FL.4 sheet"); return
+        }
+        guard MTLCreateSystemDefaultDevice() != nil else { return }
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let geo = try makeGeo(ctx, lib)
+        let tex = try target(ctx)
+
+        // A little "score": strings enter, then brass joins, then a percussion beat burst — so the sheet
+        // shows different families blooming/brightening over time.
+        func drive(_ t: Float) -> (FeatureVector, StemFeatures) {
+            switch t {
+            case ..<4:  return famFrame(strings: 0.6, bassDev: 0.5, midDev: 0.15, t: t)
+            case ..<9:  return famFrame(strings: 0.3, brass: 0.85, bassDev: 0.3, midDev: 0.55, t: t)
+            default:    return famFrame(woodwinds: 0.4, percussion: 0.05, midDev: 0.4, trebDev: 0.5,
+                                        beat: (Int(t * 2) % 2 == 0) ? 0.9 : 0.0, t: t)
+            }
+        }
+        let secs: [Float] = [2, 6, 12, 16]
+        let checkpoints = Set(secs.map { Int(($0 * 60).rounded()) })
+        let frames = (checkpoints.max() ?? 0) + 1
+        var tiles: [[UInt8]] = []
+        var t: Float = 0
+        for i in 0..<frames {
+            let (f, s) = drive(t)
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { throw E.setup }
+            geo.update(features: f, stemFeatures: s, commandBuffer: cmd)
+            let rpd = MTLRenderPassDescriptor()
+            rpd.colorAttachments[0].texture = tex
+            rpd.colorAttachments[0].loadAction = .clear
+            rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0.95, green: 0.94, blue: 0.92, alpha: 1)
+            rpd.colorAttachments[0].storeAction = .store
+            guard let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) else { throw E.render }
+            geo.render(encoder: enc, features: f)
+            enc.endEncoding(); cmd.commit(); cmd.waitUntilCompleted()
+            if checkpoints.contains(i) {
+                var px = [UInt8](repeating: 0, count: Self.outW * Self.outH * 4)
+                tex.getBytes(&px, bytesPerRow: Self.outW * 4,
+                             from: MTLRegionMake2D(0, 0, Self.outW, Self.outH), mipmapLevel: 0)
+                tiles.append(px)
+            }
+            t += 1.0 / 60.0
+        }
+        let dir = try makeOutputDir()
+        try writeMontage(tiles, tileW: Self.outW, tileH: Self.outH,
+                         url: dir.appendingPathComponent("ricercar_fl4_audio_contact_sheet.png"))
+        print("[ricercar_fl4_audio_contact_sheet] \(dir.path)/ricercar_fl4_audio_contact_sheet.png")
+        #expect(tiles.count == checkpoints.count)
     }
 
     // MARK: - PNG (minimal, BGRA→RGBA)
