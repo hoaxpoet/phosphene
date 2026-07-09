@@ -405,6 +405,45 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// visual-wiring layer; the scorer only checks key membership.
     public let stemAffinity: [String: String]
 
+    // MARK: - QG.1 Audio Route Manifest
+
+    /// One declared audio route: a visual behaviour driven by one analysis primitive.
+    ///
+    /// The manifest is the preset's routing contract: RouteCoverageTests replays the
+    /// canonical fixture set (`Fixtures/route_coverage/`) and asserts every declared
+    /// primitive is alive per its kind's floor. A declared route the code doesn't read
+    /// is as wrong as an unread route left undeclared — the backfill rule is
+    /// audit-before-declare (QG.1).
+    public struct AudioRoute: Sendable, Codable, Equatable {
+        /// Floor class applied by RouteCoverageTests (QG.1).
+        public enum Kind: String, Sendable, Codable {
+            /// Drives motion/colour every frame (energies, deviations, mood,
+            /// phase ramps) — floor: non-constant + variance.
+            case continuous
+            /// Event-shaped response (beat accents, onset kicks, downbeat
+            /// pushes) — floor: ≥ 1 firing per fixture.
+            case accent
+            /// Section-boundary driven — floor: ≥ 1 event on a fixture that
+            /// contains a section boundary.
+            case structural
+        }
+        /// Short snake_case name of the visual behaviour (e.g. "downbeat_camera_push").
+        public let route: String
+        /// The FeatureVector/StemFeatures field the behaviour reads (Swift camelCase name).
+        public let primitive: String
+        public let kind: Kind
+
+        public init(route: String, primitive: String, kind: Kind) {
+            self.route = route
+            self.primitive = primitive
+            self.kind = kind
+        }
+    }
+
+    /// Declared audio routes (QG.1). Empty = preset predates the manifest or is
+    /// diagnostic; certification requires a non-empty manifest (Task 4 gate).
+    public let audioRoutes: [AudioRoute]
+
     // MARK: - V.6 Certification Metadata
 
     /// V.6 certification flag. Set to `true` only after Matt has performed a visual
@@ -522,6 +561,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case sectionSuitability = "section_suitability"
         case complexityCost = "complexity_cost"
         case stemAffinity = "stem_affinity"
+        case audioRoutes = "audio_routes"
         case certified
         case rubricProfile = "rubric_profile"
         case rubricHints = "rubric_hints"
@@ -615,6 +655,8 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
             ComplexityCost.self, forKey: .complexityCost) ?? ComplexityCost()
         stemAffinity = try container.decodeIfPresent(
             [String: String].self, forKey: .stemAffinity) ?? [:]
+        audioRoutes = try container.decodeIfPresent(
+            [AudioRoute].self, forKey: .audioRoutes) ?? []
 
         // MARK: V.6 Certification Fields
         certified = try container.decodeIfPresent(Bool.self, forKey: .certified) ?? false
