@@ -31,7 +31,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 | BUG-041 | P2 | dsp.stem / preset.fidelity | FFO aurora flashes at track start (stem-deviation cold-start overswing) |
 | BUG-039 | P2 | resource-management | **✅ RESOLVED 2026-06-18** — silent-stop running-vs-writing invariant + segment-roll recovery (CLEAN.3.6); Matt's live multi-session confirm passed (signature no longer occurs). Files to §Resolved at next pruning |
 | BUG-040 | P2 | dsp.structure | **✅ RESOLVED 2026-06-10** — live-edge boundary every ~4 detect intervals; fixed (frozen-clock unfreeze + live-edge guard + absolute novelty floor; residual section-scale geometry tracked as the open BUG-042). Files to §Resolved at next pruning |
-| BUG-029 | P3 | dsp.beat | AGC `f.bass` cold-start spike pops presets at every track onset |
+| BUG-029 | P3 | dsp.beat | **✅ RESOLVED 2026-07-08** — AGC `f.bass` cold-start spike; fix AGC3.3 (`144f824`); closed on automated (both onset types <2×) + real-session `fo_spike` (1.23/1.19, smooth) evidence, catalog M7 waived. Files to §Resolved at next pruning |
 | BUG-028 | P2 | dsp.beat | Beat-grid live phase imperfect on ~half of tracks |
 | BUG-027 | P2 | dsp.beat | **✅ RESOLVED 2026-06-06 (D-146)** — positive band deviations near-dead for non-dominant bands; fixed via the AGC2 per-band EMA deviation pivot (the system-wide "true 0.5 centre" normalization remains a separate future project, not a reopen). Files to §Resolved at next pruning |
 | BUG-025 | P3 | dsp.beat | AGC running average poisoned by post-`active` startup transient |
@@ -834,9 +834,9 @@ Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — 
 
 **Severity:** P3 (cosmetic startup artifact, ~1-2 s at each track onset; not a crash). Re-rate to P2 if judged to materially hurt the per-track first impression.
 **Domain tag:** dsp.beat (AGC cold-start) — same family as BUG-025.
-**Status:** Open — **fix landed (AGC3.3), automated validation green; awaiting Matt's catalog M7 (AGC3.4) before close.** AGC3.1 measured (2026-06-05); AGC3.2 decided **D-148** ("ease the meter in per track" — Matt's call); AGC3.3 implemented seed-from-first-audible + hold-through-sustained-silence in `BandEnergyProcessor`, regression-locked by `AGC3ColdStartSpikeTests` (live-path, FA #66). Filed at Matt's request 2026-06-06 after the AGC2.4 re-M7. AGC3.1 evidence subsection below.
+**Status:** ✅ **RESOLVED 2026-07-08** — fix landed (AGC3.3, `144f824`); closed on automated + real-session evidence (Matt's call to waive the separate catalog M7). AGC3.1 measured (2026-06-05); AGC3.2 decided **D-148** ("ease the meter in per track" — Matt's call); AGC3.3 implemented seed-from-first-audible + hold-through-sustained-silence in `BandEnergyProcessor`, regression-locked by `AGC3ColdStartSpikeTests` (live-path, FA #66). Files to §Resolved at next pruning.
 **Introduced:** structural — `BandEnergyProcessor`'s total-energy AGC seeds its running average from whatever energy is present at capture start; during the inter-track silence the running average decays toward zero, so the first audio frame of every track explodes the AGC scale before it catches up.
-**Resolved:** —
+**Resolved:** 2026-07-08 — fix `144f824` (AGC3.3, D-147/D-148). Verified: automated `AGC3ColdStartSpikeTests` (session-start 32.6×→<2×, inter-track 10.6×→<2×) + a real post-fix session (`2026-07-08T15-07-53Z`, 10,253 frames) measured via `tools/agc3/measure_coldstart_spike.py`: onset `f.bass` peak 0.287 vs steady 0.225 = **1.27×** (goal <2×), FFO's `fo_spike` consumer **1.23 peak / 1.19 steady** — a smooth arrival, no pop. Real session covers session-start only (single track); the inter-track onset is test-covered, not separately eyeballed — Matt closed on that basis.
 
 **Expected:** continuous-energy presets (those reading `f.bass`/`f.mid`/`f.treble` directly) arrive smoothly when a track's audio starts.
 
@@ -850,7 +850,7 @@ Related P3 (same rule, rarer path): `AudioInputRouter+SignalState.swift:45` — 
 
 **Verification criteria (when resolved):**
 - [x] **Automated (live-path):** on a silence→onset fixture through the real `MIRPipeline.process`, `f.bass` does not exceed 2× its steady value. *(`AGC3ColdStartSpikeTests` — session-start 32.6×→<2×, inter-track 10.6×→<2×; plus a byte-identical steady-state lock. FA #66 live-path, not isolation.)*
-- [ ] **Manual:** Matt confirms continuous-energy presets (Ferrofluid Ocean) arrive smoothly at track onset — no pop-and-drop. *(AGC3.4 catalog M7, both paths — pending.)*
+- [x] **Manual (waived → objective):** the separate catalog M7 was waived (Matt, 2026-07-08); closed instead on the real-session `fo_spike` measurement (1.23 pk / 1.19 steady = smooth FFO arrival) plus both-onset-type automated coverage.
 
 **Manual validation required:** Yes — it's a felt visual artifact.
 
