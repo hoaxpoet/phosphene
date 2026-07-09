@@ -94,7 +94,7 @@ The preset Filigree's substrate couldn't be: tight onset→division sync. Filigr
 
 **MITOSIS.5 — colour responds strongly to the music ✅ shipped (2026-06-29).** Matt flagged the post-cert coupling as too loose (the dissolve runs on a timer) and chose a colour-focused responsiveness pass (cycle timing left as-is). The fluorescence hue now swings WIDE with the spectral centroid (timbre: dark/quiet → muted teal, bright → vivid orange/pink, low-timbre → magenta/violet), saturation/brightness track energy, and a drum transient (`hitEnv`) kicks the hue + a small bounded glow pulse (chromatic + 0.22 s release → flash-safe). `MitosisConfig += hit`. Verified: `renderMitosis` still **0.00 flashes/s** with the glow pulse on the worst-case train; 6 sketch gates + lint green. Matt: "Looks great. Ship it." Pushed to `origin/main` (`5c0dd31`). **Next: gen-2 (detailed/realistic, fresh session) — kickoff `docs/presets/MITOSIS_GEN2_KICKOFF.md`.**
 
-### Phase MITOSIS-G2 — detailed fluorescence-microscopy cell division (gen-2) 🔨 (2026-06-30; sketch approved → scoped)
+### Phase MITOSIS-G2 — detailed fluorescence-microscopy cell division (gen-2) ✅ CERTIFIED (2026-06-30 → G2.3 cert 2026-07-09; sidecar certified=true; Cytokinesis)
 
 A higher-fidelity sibling of certified gen-1 (D-097, NOT an edit of it): a few **LARGE,
 procedurally-detailed** dividing cells rendered like confocal immunofluorescence — dumbbell
@@ -153,9 +153,7 @@ the harness renders only the flat `mitosisgen2_ground_fragment` (→ formComplex
 is `MitosisGen2GeometryTests` (growth-arc/packing/flash + `renderLook`, confirmed rich via offline contact sheet).
 Acceptance suite green. The remaining cert blocker is Matt's live M7 (G2.2), not the automated gate.
 
-**MITOSIS-G2.3 — certify ⏳.** Rubric `certifiedPresets`/`expectedAutomatedGate`,
-`PhotosensitivityCertificationTests.multiPassMeasured` + a `renderMitosisGen2` multi-pass
-flash harness, sidecar `certified: true`. First certified explicit-cell preset.
+**MITOSIS-G2.3 — certify ✅ (2026-07-09).** Matt's live M7 (session `2026-07-09T02-04-02Z`, track SZ2, ~73 s, no errors) positive → certified. Sidecar `certified: true`; FidelityRubric `certifiedPresets` + `expectedAutomatedGate:false` (coupling is CPU-side in `MitosisGen2Geometry` — energyEnv→pace / centroidEnv→palette / hit→glow — invisible to the MSL heuristic, Mitosis/Filigree/Skein precedent); `PhotosensitivityCertificationTests.multiPassMeasured` + a real `renderCytokinesis` multi-pass flash harness (`MultiPassFlashHarnessTests`): **MEASURED 0.00 flashes/s, SAFE** (luma 0.050–0.366 gradual). **Sidecar description corrected** to the shipped coupling (NACRE.5 honesty): the "drum onset triggers the cytokinesis snap on the beat" claim was aspirational — division is energy-paced autonomous; the drum drives only a bounded glow accent. Cert suite 50 tests/6 suites green. First certified explicit-cell preset; the readable-form automated gate was unblocked in the G2.2 gate-precursor. Cytokinesis enters the production rotation.
 
 ### Phase PHYS — Filigree (physarum agent-network preset) ✅ CERTIFIED (2026-06-27→28; PHYS.1 design → PHYS.5 certified — first certified compute-agent-network preset)
 
