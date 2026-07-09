@@ -161,15 +161,18 @@ struct DocIntegrityTests {
         for row in Self.matches(#"^\| (#[^|]+) \|"#, claude) {
             gapped.formUnion(Self.matches(#"#(\d+)"#, row, options: []).compactMap(Int.init))
         }
-        // Floor lowered 40 → 7 at RB.2 (2026-06-11): Matt's per-entry review removed 43 of
-        // 49 active FAs (kept: #27, #31, #64, #65, #67, #73; #4 retired into §Audio Data
-        // Hierarchy at RB.2-2 — see docs/diagnostics/RB1_FA_DN_EXPLANATIONS.md and
-        // HISTORICAL_DEAD_ENDS §RB.2). The regex also matches other numbered-bold lists in
-        // CLAUDE.md (protocol steps), so the count stays comfortably above the floor; the
-        // floor guards wholesale loss of the kept set.
-        #expect(active.count >= 7 && !gapped.isEmpty, "Failed-Approach inventory imploded (\(active.count) active, \(gapped.count) gapped)")
+        // At DOC.9 the last six always-loaded FAs (#27/#31/#67 → preset-session,
+        // #64/#65/#73 → shader-authoring) moved to .claude/skills, so `active` (numbered-bold
+        // entries in CLAUDE.md) may now be EMPTY — the full text is gated in the skill bodies
+        // by skillIntegrity(). The invariant here is resolution, not a live-entry floor: the
+        // gap table must be non-empty and the six relocated numbers must resolve via it.
+        let relocated: Set<Int> = [27, 31, 64, 65, 67, 73]
+        let resolvableHere = active.union(gapped)
+        #expect(!gapped.isEmpty, "Failed-Approach gap table imploded (\(gapped.count) gapped) — wholesale loss?")
+        let lostRelocated = relocated.subtracting(resolvableHere).sorted()
+        #expect(lostRelocated.isEmpty, "Relocated FA(s) #\(lostRelocated) resolve to neither an active CLAUDE.md entry nor a gap-table row — they live in .claude/skills as of DOC.9 and must keep a gap-table row.")
         let cited = Set(Self.matches(#"(?:Failed Approach|FA) #(\d+)"#, Self.citationCorpus(), options: []).compactMap(Int.init))
-        let unresolved = cited.subtracting(active).subtracting(gapped).sorted()
+        let unresolved = cited.subtracting(resolvableHere).sorted()
         #expect(unresolved.isEmpty, "Failed Approach citation(s) #\(unresolved) resolve to neither an active CLAUDE.md entry nor a gap-table row — extend the gap table when relocating entries (the DOC.3/DOC.4 convention).")
     }
 
