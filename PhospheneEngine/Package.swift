@@ -182,7 +182,7 @@ let package = Package(
             dependencies: [
                 "Shared", "Audio", "DSP", "ML", "Presets",
                 "Renderer", "Session", "Orchestrator", "Diagnostics",
-                "CorpusCensusRunner",
+                "CorpusCensusRunner", "PresetSessionReplay",
             ],
             path: "Tests/PhospheneEngineTests",
             resources: [
@@ -190,6 +190,7 @@ let package = Package(
                 .copy("Fixtures/beat_this_reference"),
                 .copy("Fixtures/fbs"),
                 .copy("Fixtures/panns_reference"),
+                .copy("Fixtures/route_coverage"),
             ]
         ),
     ]
