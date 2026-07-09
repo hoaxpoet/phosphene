@@ -49,6 +49,19 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
+### BUG-067 — Ricercar FL.5 fails the WCAG overlay-contrast gate on main (2026-07-09)
+
+**P3 · preset.fidelity / regression · OPEN (expected to resolve on the Ricercar-rework merge; verify then).** Surfaced by the QG.1 pre-flight full battery.
+
+**Expected:** `PresetContrastCertificationTests` requires white overlay text to clear WCAG 4.5:1 contrast over any preset frame + overlay backdrop.
+**Actual:** Ricercar fails deterministically on all three fixtures — contrast **3.52 < 4.5** (`PresetContrastCertificationTests.swift:59/78/97`). Reproduced in isolation, not environmental, not flaky.
+**Root cause:** main's Ricercar is the FL.5 fluid-dye state (a **light** warm ground → low contrast under white text). It is superseded by the unmerged `claude/ricercar-rework` branch (FL.10 glowing particle flow-field on a **dark** ground, M7-passed 2026-07-08, "fucking brilliant" — see the ricercar-and-instrument-capture memory). Ricercar is `certified: false`, mid-increment.
+**Impact:** the full `swift test` battery is red on main independent of QG.1 (QG.1 touches none of the contrast path). Does not block QG.1.
+**Failure class:** pre-existing regression on a superseded preset state.
+**Action:** no code change on main warranted — the rework branch replaces this shader. **When `claude/ricercar-rework` merges, re-run `PresetContrastCertificationTests` and confirm it goes green before closing.** If the FL.10 dark-ground shader still fails contrast, this becomes a real FL.10 defect to fix there.
+
+---
+
 ### BUG-066 — MoodClassifier flux input ran 16× hot on the offline path; saturated on every track (2026-07-08)
 
 **P2 · ml.mood / dsp.mir · ✅ RESOLVED 2026-07-08 (MOOD-FLUX.2, `1d61830`).** Matt signed off on the objective `--mood-ab` before/after evidence (no live M7 — an eyeball made no sense for a diffuse scoring change). Full record: [`docs/diagnostics/BUG-066-diagnosis.md`](../diagnostics/BUG-066-diagnosis.md).
