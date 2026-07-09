@@ -31,29 +31,21 @@ struct FlowConfig {
     uint  frame;            // per-frame RNG salt
     float dt;               // clamped frame dt (seconds) — envelope integration only; motion is per-frame
     float time;             // accumulated seconds (curl-noise animation clock)
-    float flowSpeed;        // curl-noise swirl strength (the coherent texture ON each family's drift)
+    float flowSpeed;        // energy-driven advection speed (fraction of frame / frame)
     float turbulence;       // energy-driven curl-noise spatial frequency
+    float scatter;          // beat scatter impulse envelope 0..1 (outward burst)
     float decay;            // per-frame trail multiply (the fade → light-trail length)
     float exposure;         // display tonemap gain
     float homePull;         // spring gain toward each family's home band (loose spatial identity)
-    // Per-family HYBRID activity env 0..1 (max of the mapped real-time band-stem dev and the instrument-
-    // family capture dev) — drives BOTH the family's colour brightness AND its motion vigour (below).
-    float famStrings;       //   strings (violet)   ← vocals-stem | strings-section
-    float famBrass;         //   brass   (gold)     ← bass-stem   | brass-section
-    float famWoodwinds;     //   woodwinds (amber)  ← other-stem  | woodwinds-section
-    float famPercussion;    //   percussion (cyan)  ← drums-stem  | percussion-section
+    float famStrings;       // per-family colour activation (identity, lag-tolerant): strings
+    float famBrass;         //   brass
+    float famWoodwinds;     //   woodwinds
+    float famPercussion;    //   percussion
     float pointSize;        // base sprite size (px in the trail texture)
     float baseGlow;         // floor deposit so a silent family still faintly drifts
     float energyGlow;       // deposit gain from the global zero-lag energy (louder = brighter light)
     float energy;           // smoothed zero-lag energy 0..~1 (brightness driver)
     float aspect;           // width/height, to keep curl cells round in sample space
-    // Per-family GLOBAL drift — each colour follows its OWN shared current (its own direction, turning
-    // slowly; its own speed = that family's activity env). So each colour moves DIFFERENTLY, driven by
-    // its own separated instrument — smooth, no beat pump (Matt FL.12). Indexed by family 0..3.
-    float d0x; float d0y;   // strings
-    float d1x; float d1y;   // brass
-    float d2x; float d2y;   // woodwinds
-    float d3x; float d3y;   // percussion
 };
 
 // MARK: - FlowParticle (mirror of Swift FlowParticle, 32 bytes — two float4, no alignment trap)
@@ -147,34 +139,32 @@ kernel void ricercar_flow_update(device FlowParticle*  particles [[buffer(0)]],
     float life = p.misc.z;
     float seed = p.misc.w;
 
-    // SHARED curl-noise swirl — NO per-particle seed offset, so neighbours sample the SAME field and move
-    // TOGETHER as coherent currents (the seed offset made every line move in its own random direction →
-    // "a bunch of things happening at once", Matt FL.11). Normalised so flowSpeed is the step size (the
-    // raw finite-difference gradient is uncontrolled). This is the swirl TEXTURE on top of the drift.
-    float2 sp = float2(pos.x * cfg.aspect, pos.y) * (1.5 + cfg.turbulence);
+    // Curl-noise flow in an aspect-corrected sample space (round cells). Turbulence raises the spatial
+    // frequency (louder = more chaotic swirl); the per-particle seed offsets the field so families don't
+    // move in lockstep. Normalise the curl to a unit direction so flowSpeed is the ACTUAL step size
+    // (the raw finite-difference gradient magnitude is uncontrolled — it must not set the speed).
+    float2 sp = float2(pos.x * cfg.aspect, pos.y) * (1.5 + cfg.turbulence) + seed * 17.0;
     float2 c = flow_curl(sp, cfg.time);
     float cm = length(c);
-    float2 swirl = (cm > 1e-5 ? c / cm : float2(0.0)) * cfg.flowSpeed;
+    float2 flow = (cm > 1e-5 ? c / cm : float2(0.0)) * cfg.flowSpeed;
 
-    // PER-FAMILY drift — each colour follows its OWN shared current (its own direction + speed, computed
-    // on the CPU from that family's activity). Neighbours in the same family move together (coherent), but
-    // each colour moves DIFFERENTLY, driven by its own separated instrument. Smooth (no beat pump).
-    float2 drift;
-    if      (fam == 0) { drift = float2(cfg.d0x, cfg.d0y); }
-    else if (fam == 1) { drift = float2(cfg.d1x, cfg.d1y); }
-    else if (fam == 2) { drift = float2(cfg.d2x, cfg.d2y); }
-    else               { drift = float2(cfg.d3x, cfg.d3y); }
-
-    // Loose homeward pull toward the family band → colour-band identity without freezing the weave.
+    // Loose homeward pull toward the family band → spatial identity without freezing the weave.
     float homeY = flow_family_homeY(fam);
     float2 home = float2(0.0, homeY - pos.y) * cfg.homePull;
 
-    // Integrate: ease velocity toward the shared target, step, then wrap in a domain slightly LARGER than
-    // the [0,1] view. Wrapping exactly at the view edge makes every crossing deposit at BOTH seam edges →
-    // the visible edges/corners double-accumulate into bright bands (the FL.10 corner hotspot). Wrapping at
-    // ±margin puts the seam off-screen (clipped), so the visible edges stay clean.
-    float2 target = drift + swirl + home;
-    vel = mix(vel, target, 0.18);
+    // Beat accent: a SMALL random-direction velocity kick on the beat (a burst of liveliness). It is NOT
+    // a radial-from-centre impulse — that made the whole field a symmetric starburst (kaleidoscope) and
+    // let the beat drive primary motion (Audio Hierarchy Layer 4: beats accent, never lead). The beat's
+    // main read is a brightness FLARE in the point shader; this kick just adds a little scatter energy.
+    float2 kick = float2(flow_hash21(pos * 13.1 + seed) - 0.5, flow_hash21(pos * 7.7 + seed * 3.0) - 0.5);
+    float2 scat = kick * cfg.scatter * 0.004;
+
+    // Integrate: ease velocity toward the flow target, add the beat impulse, step, then wrap in a domain
+    // slightly LARGER than the [0,1] view. Wrapping exactly at the view edge makes every crossing deposit
+    // at BOTH seam edges → the visible edges/corners double-accumulate into bright bands (the FL.10 corner
+    // hotspot). Wrapping at ±margin puts the seam off-screen (clipped), so the visible edges stay clean.
+    float2 target = flow + home;
+    vel = mix(vel, target, 0.18) + scat;
     pos += vel;
     const float2 lo = float2(-0.07), span = float2(1.14);
     pos = lo + fract((pos - lo) / span) * span;   // wrap into [-0.07, 1.07); the margin is off-screen
@@ -224,11 +214,12 @@ vertex FlowPointOut ricercar_flow_point_vertex(uint vid [[vertex_id]],
     o.position = float4(pos.x * 2.0 - 1.0, pos.y * 2.0 - 1.0, 0.0, 1.0);
 
     // Deposit brightness (kept small — it accumulates ~1/(1−decay)× in the trail): a tiny floor so the
-    // flow is never fully dark, + a small shared zero-lag energy floor, + THIS family's own hybrid
-    // activity env (so the colour BRIGHTENS when its own instrument plays — the same per-family signal
-    // that drives its motion). Smooth, continuous — no beat pump (Matt FL.12).
+    // flow is never fully dark, + the global zero-lag energy (motion sync reads as light), + the family's
+    // colour activation (identity, lag-tolerant). No per-particle speed term (it exploded the budget).
     float activation = flow_family_activation(cfg, fam);
-    float bright = cfg.baseGlow + cfg.energy * cfg.energyGlow * 0.5 + activation * 0.70;
+    // Beat FLARE: the beat's primary read is the light briefly brightening (an accent), not a geometric
+    // burst — cfg.scatter is the beat envelope (0..1).
+    float bright = cfg.baseGlow + cfg.energy * cfg.energyGlow + activation * 0.55 + cfg.scatter * 0.16;
     o.color = flow_family_hue(fam) * bright;
     o.pointSize = cfg.pointSize;
     return o;
