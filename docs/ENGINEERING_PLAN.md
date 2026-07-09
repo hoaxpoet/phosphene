@@ -143,6 +143,11 @@ Tuned denser + more active (`crowdCount` 40→64, `divPeriod` 11→8, `coverage`
 the non-overlapping max; 0.66+ forces overlap). Overlap 0.0000 @ 64, framerate 3 ms, flash 0.026, lint 0.
 **Done-when:** Matt's live re-look positive ([[feedback-visual-fix-needs-live-m7]]); then wire
 the musical role.
+**Gate precursor ✅ (2026-07-08):** exempted Cytokinesis from the fragment-only `test_readableForm_atSteadyEnergy`
+acceptance gate (`PresetAcceptanceTests`) — same Mitosis-class mis-metric as the 8 other geometry-pass presets:
+the harness renders only the flat `mitosisgen2_ground_fragment` (→ formComplexity 1); real readable-form coverage
+is `MitosisGen2GeometryTests` (growth-arc/packing/flash + `renderLook`, confirmed rich via offline contact sheet).
+Acceptance suite green. The remaining cert blocker is Matt's live M7 (G2.2), not the automated gate.
 
 **MITOSIS-G2.3 — certify ⏳.** Rubric `certifiedPresets`/`expectedAutomatedGate`,
 `PhotosensitivityCertificationTests.multiPassMeasured` + a `renderMitosisGen2` multi-pass
