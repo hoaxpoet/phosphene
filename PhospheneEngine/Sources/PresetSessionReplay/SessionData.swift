@@ -164,9 +164,10 @@ public enum SessionDataLoader {
     // MARK: - Internal CSV utilities
 
     /// Parsed CSV: ordered list of (column-name-keyed) row dictionaries.
-    fileprivate typealias Row = [String: String]
+    typealias Row = [String: String]
 
-    fileprivate static func parseCSV(_ url: URL, label: String) throws -> [Row] {
+    // internal (not fileprivate): SessionColumnSeries below shares the parser.
+    static func parseCSV(_ url: URL, label: String) throws -> [Row] {
         let text = try String(contentsOf: url, encoding: .utf8)
         // Split on \n; skip trailing empty.
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
@@ -215,6 +216,68 @@ public enum SessionDataLoader {
             throw SessionDataError.parseFailure(file: file, line: 0, detail: "column '\(name)' = '\(s)' not Int")
         }
         return v
+    }
+}
+
+// MARK: - Column-oriented access (QG.1)
+
+/// Column-oriented view of a session directory's CSVs, exposing ANY recorded
+/// column by name — not just the `SessionFrame` subset above.
+///
+/// QG.1's RouteCoverageTests assert per-`audio_routes` primitive activity over
+/// the canonical fixture captures; the primitives a preset may declare span the
+/// full features.csv/stems.csv surface, so the loader must not gatekeep columns.
+/// Same strictness as `SessionDataLoader.load`: both files required, per-file
+/// header/row field counts enforced, features/stems row counts must align.
+public struct SessionColumnSeries {
+    /// Column names present in features.csv.
+    public let featuresColumns: Set<String>
+    /// Column names present in stems.csv.
+    public let stemsColumns: Set<String>
+    /// Aligned row count (frames) across both files.
+    public let frameCount: Int
+
+    private let featuresRows: [[String: String]]
+    private let stemsRows: [[String: String]]
+
+    /// Load both CSVs of a session directory (e.g. a `fixturegen-<name>` or
+    /// recorded `<timestamp>Z` directory).
+    public static func load(directory: URL) throws -> SessionColumnSeries {
+        let featuresURL = directory.appendingPathComponent("features.csv")
+        let stemsURL = directory.appendingPathComponent("stems.csv")
+        guard FileManager.default.fileExists(atPath: featuresURL.path) else {
+            throw SessionDataError.missingFile(featuresURL)
+        }
+        guard FileManager.default.fileExists(atPath: stemsURL.path) else {
+            throw SessionDataError.missingFile(stemsURL)
+        }
+        let featuresRows = try SessionDataLoader.parseCSV(featuresURL, label: "features.csv")
+        let stemsRows = try SessionDataLoader.parseCSV(stemsURL, label: "stems.csv")
+        guard featuresRows.count == stemsRows.count else {
+            throw SessionDataError.rowCountMismatch(features: featuresRows.count, stems: stemsRows.count)
+        }
+        return SessionColumnSeries(
+            featuresColumns: Set(featuresRows.first?.keys ?? [String: String]().keys),
+            stemsColumns: Set(stemsRows.first?.keys ?? [String: String]().keys),
+            frameCount: featuresRows.count,
+            featuresRows: featuresRows,
+            stemsRows: stemsRows)
+    }
+
+    /// Per-frame values of `column`, searched in features.csv first, then
+    /// stems.csv. Returns nil when neither file has the column. Cells that do
+    /// not parse as Float (the empty perf/timing cells) surface as nil entries —
+    /// callers decide whether absence is acceptable for their assertion.
+    public func floatSeries(_ column: String) -> [Float?]? {
+        let rows: [[String: String]]
+        if featuresColumns.contains(column) {
+            rows = featuresRows
+        } else if stemsColumns.contains(column) {
+            rows = stemsRows
+        } else {
+            return nil
+        }
+        return rows.map { Float($0[column] ?? "") }
     }
 }
 
