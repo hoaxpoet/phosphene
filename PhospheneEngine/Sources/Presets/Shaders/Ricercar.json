@@ -21,5 +21,14 @@
   "section_suitability": ["ambient", "bridge", "comedown"],
   "complexity_cost": { "tier1": 1.2, "tier2": 0.6 },
   "rubric_profile": "lightweight",
-  "certified": false
+  "certified": false,
+  "audio_routes": [
+    { "route": "flow_vigour", "primitive": "bassDev", "kind": "continuous" },
+    { "route": "flow_vigour", "primitive": "midDev", "kind": "continuous" },
+    { "route": "flow_vigour", "primitive": "trebDev", "kind": "continuous" },
+    { "route": "strings_ribbon", "primitive": "vocalsEnergyDev", "kind": "continuous" },
+    { "route": "brass_ribbon", "primitive": "bassEnergyDev", "kind": "continuous" },
+    { "route": "woodwinds_ribbon", "primitive": "otherEnergyDev", "kind": "continuous" },
+    { "route": "percussion_ribbon", "primitive": "drumsEnergyDev", "kind": "continuous" }
+  ]
 }
