@@ -40,7 +40,10 @@ that is a product decision — raise it with Matt, do not infer it.
   QualityReelAnalyzer, UtilityCostTableUpdater, InstrumentFamilyDumper (IFC.5 per-family
   activity diagnostic — the ad-hoc surface for eyeballing family firing on a clip),
   CorpusCensusRunner (CENSUS.2 batch corpus-analysis harness — drives the existing pipeline
-  over Matt's local archive to produce the calibration census; zero production importers).
+  over Matt's local archive to produce the calibration census; zero production importers),
+  TonalDumper (TONAL.2 / D-178 — runs the production MIRPipeline TIV path over a clip or the
+  CENSUS pilot to measure the tonal-signal distributions and set TonalAnalyzer's drive constants
+  from percentiles; zero production importers, `TonalStats` pure math unit-tested).
 
 **Intentional dead-looking code (gated dev instrumentation — keep):**
 - IOI histogram + `dumpHistogram` — DSP.1 baseline capture, gated behind `BEATDETECTOR_DUMP_HIST=1` (D-075).

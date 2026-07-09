@@ -152,6 +152,15 @@ let package = Package(
             path: "Sources/InstrumentFamilyDumper"
         ),
         .executableTarget(
+            name: "TonalDumper",
+            dependencies: [
+                "Audio",
+                "DSP",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            path: "Sources/TonalDumper"
+        ),
+        .executableTarget(
             name: "UtilityCostTableUpdater",
             dependencies: [
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
@@ -182,7 +191,7 @@ let package = Package(
             dependencies: [
                 "Shared", "Audio", "DSP", "ML", "Presets",
                 "Renderer", "Session", "Orchestrator", "Diagnostics",
-                "CorpusCensusRunner", "PresetSessionReplay",
+                "CorpusCensusRunner", "TonalDumper", "PresetSessionReplay",
             ],
             path: "Tests/PhospheneEngineTests",
             resources: [
