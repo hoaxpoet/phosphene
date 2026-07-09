@@ -32,10 +32,10 @@ case "$MODE" in
         if [ ! -f "$DIR/readme_read" ] && [ ! -f "$DIR/warned_readme" ]; then
           touch "$DIR/warned_readme"
           jq -n '{
-            systemMessage: "⚠ .metal edit with no VISUAL_REFERENCES README read this session (PRESET_SESSION_CHECKLIST.md item 1).",
+            systemMessage: "⚠ .metal edit before the preset-session skill / a VISUAL_REFERENCES README this session (preset-session skill; PRESET_SESSION_CHECKLIST.md item 1).",
             hookSpecificOutput: {
               hookEventName: "PreToolUse",
-              additionalContext: "Hook notice: no docs/VISUAL_REFERENCES/<preset>/README.md has been Read this session. If this is preset-facing work, run docs/PRESET_SESSION_CHECKLIST.md before continuing. If this is engine/infra work that touches .metal incidentally, proceed."
+              additionalContext: "Hook notice: no docs/VISUAL_REFERENCES/<preset>/README.md has been Read this session. If this is preset-facing work, invoke the preset-session skill (.claude/skills/preset-session/ — the mandatory opener) and run docs/PRESET_SESSION_CHECKLIST.md before continuing. If this is engine/infra work that touches .metal incidentally, proceed. (This nudge keys off the observable README-read proxy; the harness does not expose Skill-tool invocation to this hook, so skill-load itself is not checked here.)"
             }
           }'
         fi

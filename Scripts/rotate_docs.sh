@@ -317,6 +317,24 @@ for dir in docs/diagnostics docs/prompts; do
   echo "rotate_docs: (d) ${dir} — ${n_files} tracked files, ${n_flagged} large non-LFS flagged (≥ ${HYGIENE_KB} KB)"
 done
 
+# --- (d) .claude/skills integrity surface (DOC.9 / D-179; doc-pruning skill pass 6) ---
+#     REPORT-ONLY. The deep contract (frontmatter, doc-pointer + D-/FA citation
+#     resolution, CLAUDE.md pointer validity) is DocIntegrityTests.skillIntegrity.
+#     Here we only surface the skill set on the same pruning cadence and flag a
+#     structurally-missing SKILL.md. Never moves or edits (the never-guess contract).
+SKILLS_DIR=".claude/skills"
+if [ -d "$SKILLS_DIR" ]; then
+  n_skills=0; n_missing=0
+  for name in closeout defect-handling doc-pruning preset-session shader-authoring; do
+    n_skills=$((n_skills + 1))
+    if [ ! -f "$SKILLS_DIR/$name/SKILL.md" ]; then
+      echo "rotate_docs: (d) ⚠ ${SKILLS_DIR}/${name}/SKILL.md missing [DocIntegrityTests.skillIntegrity gates this]" >&2
+      n_missing=$((n_missing + 1))
+    fi
+  done
+  echo "rotate_docs: (d) ${SKILLS_DIR} — ${n_skills} skills, ${n_missing} missing SKILL.md (citations gated by DocIntegrityTests.skillIntegrity)"
+fi
+
 if [ "$DRY_RUN" = "1" ]; then
   echo "rotate_docs: dry run — nothing written"
 fi
