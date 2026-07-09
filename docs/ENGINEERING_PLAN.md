@@ -248,7 +248,9 @@ Numbering note: kickoff suggested SECDET (this epic) or LFPLAN.9 (keep in the LF
 ### Increment DOC.6 — Doc rotation mechanization ✅ (2026-06-12, D-162)
 ### Phase FBS — Ferrofluid Beat Sync ⏳ (2026-06-09, staged; kickoff `docs/prompts/FFO_BEAT_SYNC_KICKOFF.md`)
 ### Increment AGC2 — BUG-027: per-band EMA deviation pivot + cold-start warmup ✅ (2026-06-05 → 06, D-146)
-### Increment AGC3 — BUG-029: AGC `f.bass` cold-start spike (continuous-energy presets pop-and-drop at track onset) ⏳ (2026-06-05; fix landed, awaiting M7)
+### Increment AGC3 — BUG-029: AGC `f.bass` cold-start spike (continuous-energy presets pop-and-drop at track onset) ⏳ (2026-06-05; AGC3.3 fix PARTIAL — M7 2026-07-09 reproduced a 14.8× spike on a hard-onset track; reopened after a false close)
+
+**AGC3.4 — live M7 ❌ (2026-07-09).** A brief false close on 2026-07-08 (waived the required manual check, closed on the synthetic fixture + a soft-onset session — FA #27) was reverted the same day. The M7 reproducer is session `2026-07-09T02-04-02Z` (track SZ2, zero pre-roll): f.bass **14.8×** at te=1.28 s, FFO `fo_spike` 1.80/1.21. AGC3.3 only handles soft/pre-rolled onsets. **Next (AGC3.5): instrument→diagnose→fix** — extend `AGC3ColdStartSpikeTests` with a hard-onset (0 s pre-roll) case that reproduces the spike BEFORE any re-fix; the real-audio + hard-onset manual check are now blocking criteria (see BUG-029).
 ### Increment FM.0 + FM.L1 + FM.L2 — Fata Morgana port: mirage substrate + shapes + stem uplift, CERTIFIED ✅ (2026-06-02 → 2026-06-03, D-139)
 ### Increment Dragon Bloom L4 + music response — faithful butterchurn render-loop port, CERTIFIED ✅ (2026-06-02, D-138)
 ### Increment Dragon Bloom Spike 2 — bilateral mirror fold without clipart ❌ RETIRED (2026-07-08; abandoned — no work since 2026-06-02, Dragon Bloom certified without it)
