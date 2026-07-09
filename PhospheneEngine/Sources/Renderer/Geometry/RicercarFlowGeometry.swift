@@ -43,6 +43,8 @@ struct RicercarFlowConfig {
     var energyGlow: Float
     var energy: Float
     var aspect: Float
+    var driftX: Float
+    var driftY: Float
 }
 
 /// Mirror of MSL `FlowParticle` — two float4 (32 bytes), no alignment trap.
@@ -88,6 +90,7 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
     // CPU music envelopes (one primitive per layer — D-026, FA #67).
     private var energyEnv: Float = 0       // zero-lag continuous energy → flow vigour + turbulence (PRIMARY)
     private var beatEnv: Float = 0         // cached-grid beat pulse → on-beat bloom + surge (ACCENT)
+    private var driftAngle: Float = 0.7    // direction of the shared global current (turns slowly)
     private var fam = SIMD4<Float>(repeating: 0)   // smoothed family activations (identity, lag-tolerant)
     private var time: Float = 0
     private var frameCounter: UInt32 = 0
@@ -304,10 +307,20 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
             Self.softSat(stem.percussionActivityDev, sat.w) * blend)
         let alpha = Float(dt / (0.25 + dt))
         fam += (target - fam) * alpha
+
+        // Turn the shared drift direction slowly (a wandering current, ~1 rev / 40 s), a touch faster when
+        // loud. The whole field's collective travel direction evolves so it's never a monotonous scroll.
+        driftAngle += Float(dt) * (0.15 + 0.25 * energyEnv)
     }
 
     private func makeConfig() -> RicercarFlowConfig {
         let en = max(0, min(1.2, energyEnv))
+        // The GLOBAL shared current (coordinated movement, Matt FL.11): a slow base drift the whole field
+        // follows, surging with energy and — the key beat read — SWEEPING FORWARD together on the beat.
+        // Kept below the pointSize budget (in normalized px) so the streaks stay continuous ribbons.
+        let driftMag = 0.0012 + 0.0028 * en + 0.0026 * beatEnv
+        let driftX = cosf(driftAngle) * driftMag
+        let driftY = sinf(driftAngle) * driftMag
         return RicercarFlowConfig(
             width: UInt32(configuration.width),
             height: UInt32(configuration.height),
@@ -315,18 +328,15 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
             frame: frameCounter,
             dt: 1.0 / 60.0,
             time: time,
-            // Flow: a slow autonomous drift at rest, surging when loud (the motion sync). Turbulence is
-            // kept LOW so the curl cells are large and particles follow long COHERENT paths — the trail
-            // then reads as a weaving ribbon of light (ref 01), not a dense turbulent fuzz.
-            // flowSpeed is kept BELOW pointSize (in px) so each particle's per-frame deposits OVERLAP into
-            // a continuous ribbon — if the step exceeds the sprite width the trail reads as spaced dots. A
-            // small on-beat surge (beatEnv) quickens the flow on the beat — an accent ≪ the energy term.
-            flowSpeed: 0.0015 + 0.0040 * en + 0.0030 * beatEnv,
+            // flowSpeed is now the CURL SWIRL strength — the coherent texture riding ON the shared drift
+            // (gentle so the drift's shared direction dominates → coordinated motion, not churn). Kept
+            // below pointSize (px) with the drift so deposits overlap into continuous ribbons, not dots.
+            flowSpeed: 0.0012 + 0.0018 * en,
             turbulence: 0.06 + 0.40 * en,   // near-laminar → long coherent streams (ribbons)
             beat: beatEnv,
             decay: 0.950,                   // long light-trails → each sparse particle draws a long ribbon
             exposure: 1.0,
-            homePull: 0.005,                // very loose → the flow carries families across → weaving, not stripes
+            homePull: 0.005,                // very loose → the current carries families across → weaving
             famStrings: fam.x,
             famBrass: fam.y,
             famWoodwinds: fam.z,
@@ -335,7 +345,9 @@ public final class RicercarFlowGeometry: ParticleGeometry, @unchecked Sendable {
             baseGlow: 0.006,                // dark ground — the ribbons are the content, dark space between
             energyGlow: 0.60,               // few particles → each ribbon glows bright
             energy: en,
-            aspect: Float(configuration.width) / Float(configuration.height))
+            aspect: Float(configuration.width) / Float(configuration.height),
+            driftX: driftX,
+            driftY: driftY)
     }
 
     // MARK: - Seeding

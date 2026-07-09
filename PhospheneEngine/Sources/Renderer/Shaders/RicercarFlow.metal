@@ -31,7 +31,7 @@ struct FlowConfig {
     uint  frame;            // per-frame RNG salt
     float dt;               // clamped frame dt (seconds) — envelope integration only; motion is per-frame
     float time;             // accumulated seconds (curl-noise animation clock)
-    float flowSpeed;        // energy-driven advection speed (fraction of frame / frame)
+    float flowSpeed;        // curl-noise swirl strength (the coherent texture ON the shared drift)
     float turbulence;       // energy-driven curl-noise spatial frequency
     float beat;             // beat-pulse envelope 0..1 from the CACHED GRID (beatPhase01/barPhase01)
     float decay;            // per-frame trail multiply (the fade → light-trail length)
@@ -46,6 +46,8 @@ struct FlowConfig {
     float energyGlow;       // deposit gain from the global zero-lag energy (louder = brighter light)
     float energy;           // smoothed zero-lag energy 0..~1 (brightness driver)
     float aspect;           // width/height, to keep curl cells round in sample space
+    float driftX;           // GLOBAL shared current (all particles): direction turns slowly, speed
+    float driftY;           //   surges with energy + on the beat → the whole field moves TOGETHER
 };
 
 // MARK: - FlowParticle (mirror of Swift FlowParticle, 32 bytes — two float4, no alignment trap)
@@ -139,32 +141,32 @@ kernel void ricercar_flow_update(device FlowParticle*  particles [[buffer(0)]],
     float life = p.misc.z;
     float seed = p.misc.w;
 
-    // Curl-noise flow in an aspect-corrected sample space (round cells). Turbulence raises the spatial
-    // frequency (louder = more chaotic swirl); the per-particle seed offsets the field so families don't
-    // move in lockstep. Normalise the curl to a unit direction so flowSpeed is the ACTUAL step size
-    // (the raw finite-difference gradient magnitude is uncontrolled — it must not set the speed).
-    float2 sp = float2(pos.x * cfg.aspect, pos.y) * (1.5 + cfg.turbulence) + seed * 17.0;
+    // SHARED curl-noise swirl — NO per-particle seed offset, so neighbours sample the SAME field and move
+    // TOGETHER as coherent currents (the seed offset made every line move in its own random direction →
+    // "a bunch of things happening at once", Matt FL.11). Normalised so flowSpeed is the step size (the
+    // raw finite-difference gradient is uncontrolled). This is the swirl TEXTURE on top of the drift.
+    float2 sp = float2(pos.x * cfg.aspect, pos.y) * (1.5 + cfg.turbulence);
     float2 c = flow_curl(sp, cfg.time);
     float cm = length(c);
-    float2 flow = (cm > 1e-5 ? c / cm : float2(0.0)) * cfg.flowSpeed;
+    float2 swirl = (cm > 1e-5 ? c / cm : float2(0.0)) * cfg.flowSpeed;
 
-    // Loose homeward pull toward the family band → spatial identity without freezing the weave.
+    // GLOBAL drift — one shared current the WHOLE field follows (direction turns slowly on the CPU;
+    // magnitude surges with energy + on the beat). This is the coordinated movement: the field moves in
+    // the SAME direction and sweeps together WITH the music (couple to the global envelope, not per-
+    // particle — Matt's design doctrine). The beat's MOTION read is this shared surge (a per-particle kick
+    // read as incoherent); its BRIGHTNESS read is the flare/bloom in the point + display shaders.
+    float2 drift = float2(cfg.driftX, cfg.driftY);
+
+    // Loose homeward pull toward the family band → colour-band identity without freezing the weave.
     float homeY = flow_family_homeY(fam);
     float2 home = float2(0.0, homeY - pos.y) * cfg.homePull;
 
-    // Beat accent: a SMALL random-direction velocity kick on the beat (a burst of liveliness). It is NOT
-    // a radial-from-centre impulse — that made the whole field a symmetric starburst (kaleidoscope) and
-    // let the beat drive primary motion (Audio Hierarchy Layer 4: beats accent, never lead). The beat's
-    // main read is a brightness FLARE in the point shader; this kick just adds a little scatter energy.
-    float2 kick = float2(flow_hash21(pos * 13.1 + seed) - 0.5, flow_hash21(pos * 7.7 + seed * 3.0) - 0.5);
-    float2 scat = kick * cfg.beat * 0.004;
-
-    // Integrate: ease velocity toward the flow target, add the beat impulse, step, then wrap in a domain
-    // slightly LARGER than the [0,1] view. Wrapping exactly at the view edge makes every crossing deposit
-    // at BOTH seam edges → the visible edges/corners double-accumulate into bright bands (the FL.10 corner
-    // hotspot). Wrapping at ±margin puts the seam off-screen (clipped), so the visible edges stay clean.
-    float2 target = flow + home;
-    vel = mix(vel, target, 0.18) + scat;
+    // Integrate: ease velocity toward the shared target, step, then wrap in a domain slightly LARGER than
+    // the [0,1] view. Wrapping exactly at the view edge makes every crossing deposit at BOTH seam edges →
+    // the visible edges/corners double-accumulate into bright bands (the FL.10 corner hotspot). Wrapping at
+    // ±margin puts the seam off-screen (clipped), so the visible edges stay clean.
+    float2 target = drift + swirl + home;
+    vel = mix(vel, target, 0.18);
     pos += vel;
     const float2 lo = float2(-0.07), span = float2(1.14);
     pos = lo + fract((pos - lo) / span) * span;   // wrap into [-0.07, 1.07); the margin is off-screen
