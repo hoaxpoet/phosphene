@@ -1126,22 +1126,22 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         return cells
     }
 
-    /// Build the fluid dye simulation + glow-ribbon geometry for the Ricercar
-    /// preset (Fantasia rebuild — `RicercarFluidGeometry` + `RicercarFluid.metal`,
-    /// RICERCAR-FL). Returns `any ParticleGeometry` (D-097, siblings not subclasses).
+    /// Build the audio-reactive glowing particle flow-field geometry for the Ricercar
+    /// preset (Fantasia rebuild — `RicercarFlowGeometry` + `RicercarFlow.metal`,
+    /// RICERCAR-FL.10). Returns `any ParticleGeometry` (D-097, siblings not subclasses).
     private static func makeRicercarGeometry(
         context: MetalContext,
         library: Renderer.ShaderLibrary
     ) -> (any ParticleGeometry)? {
-        guard let fluid = try? RicercarFluidGeometry(
+        guard let flow = try? RicercarFlowGeometry(
             device: context.device,
             library: library.library,
             pixelFormat: context.pixelFormat
         ) else {
             return nil
         }
-        logger.info("Ricercar created: Stam stable-fluids dye sim + glow ribbons (Fantasia rebuild)")
-        return fluid
+        logger.info("Ricercar created: audio-reactive glowing particle flow-field (Magnetosphere lineage)")
+        return flow
     }
 
     /// Resolve a particle-preset name to the geometry conformer the engine
