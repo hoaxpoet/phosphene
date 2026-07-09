@@ -389,4 +389,71 @@ struct DocIntegrityTests {
         let shown = undocumented.prefix(25).joined(separator: ", ")
         #expect(undocumented.isEmpty, "ARCHITECTURE Module Map omits \(undocumented.count) source file(s) under PhospheneEngine/Sources or PhospheneApp/: \(shown). Add a one-line entry under ## Module Map (or name the file in its module's group entry) — per-file completeness is the map's contract (CLEAN.7.3 / D-168).")
     }
+
+    // MARK: - Skill-integrity gate (DOC.9 / D-179)
+    //
+    // DOC.9 moved the increment-type-scoped protocols (closeout, defect-handling, doc-pruning)
+    // plus the preset audio-data-hierarchy and reference-porting rules out of always-loaded
+    // CLAUDE.md into .claude/skills/*/SKILL.md (progressive disclosure). A skill that silently
+    // loses a doc pointer or a D-/FA citation is the same drift class the earlier gates catch,
+    // so the same referential-integrity contract applies to the skills.
+
+    private static let expectedSkills = ["closeout", "defect-handling", "doc-pruning", "preset-session", "shader-authoring"]
+
+    @Test("Skills: present, well-formed frontmatter, and every doc/D-/FA citation resolves (DOC.9)")
+    func skillIntegrity() throws {
+        guard Self.docsPresent else { print("DocIntegrityTests: repo docs not present — skipping"); return }
+        let fm = FileManager.default
+        let skillsDir = Self.repoRoot.appendingPathComponent(".claude/skills")
+
+        // (a) each expected skill dir has a SKILL.md; (b) frontmatter name matches the dir and
+        // description is present and ≤ 500 chars.
+        var bodies: [String: String] = [:]
+        for name in Self.expectedSkills {
+            let path = skillsDir.appendingPathComponent("\(name)/SKILL.md")
+            guard let text = try? String(contentsOf: path, encoding: .utf8) else {
+                Issue.record("Skill '\(name)' has no SKILL.md at .claude/skills/\(name)/SKILL.md")
+                continue
+            }
+            bodies[name] = text
+            let fmName = Self.matches(#"^name:\s*(.+?)\s*$"#, text).first
+            let fmDesc = Self.matches(#"^description:\s*(.+?)\s*$"#, text).first
+            #expect(fmName == name, "Skill '\(name)' frontmatter name is \(fmName.map { "'\($0)'" } ?? "missing") — must equal the directory name.")
+            #expect((fmDesc?.isEmpty == false) && (fmDesc?.count ?? .max) <= 500, "Skill '\(name)' frontmatter description is missing, empty, or > 500 chars.")
+        }
+
+        // (c) every docs/… path token in a skill body resolves (placeholders containing '<' skipped).
+        var missingPaths: [String] = []
+        for (name, text) in bodies {
+            for token in Self.matches(#"docs/[\w./-]+"#, text, options: []) {
+                if token.contains("<") { continue }
+                let clean = token.hasSuffix(".") ? String(token.dropLast()) : token
+                if !fm.fileExists(atPath: Self.repoRoot.appendingPathComponent(clean).path) {
+                    missingPaths.append("\(name): \(clean)")
+                }
+            }
+        }
+        #expect(missingPaths.isEmpty, "Skill doc pointer(s) do not resolve: \(missingPaths.sorted()) — fix the path or the skill body.")
+
+        // (d) D-NNN and FA #N citations in skill bodies resolve (same resolvers as the gates above).
+        let dec = (Self.read("docs/DECISIONS.md") ?? "") + "\n" + (Self.read("docs/DECISIONS_HISTORY.md") ?? "")
+        let definedD = Set(Self.matches(#"^## D-(\d{3})"#, dec).compactMap(Int.init))
+        let claude = Self.read("CLAUDE.md") ?? ""
+        var faResolvable = Set(Self.matches(#"^(\d+)\. \*\*"#, claude).compactMap(Int.init))
+        for row in Self.matches(#"^\| (#[^|]+) \|"#, claude) {
+            faResolvable.formUnion(Self.matches(#"#(\d+)"#, row, options: []).compactMap(Int.init))
+        }
+        let skillText = bodies.values.joined(separator: "\n")
+        let citedD = Set(Self.matches(#"D-(\d{3})(?![\d.\w])"#, skillText, options: []).compactMap(Int.init))
+        let unresolvedD = citedD.subtracting(definedD).sorted()
+        #expect(unresolvedD.isEmpty, "Skill-body decision citation(s) \(unresolvedD.map { "D-\(String(format: "%03d", $0))" }) resolve to no DECISIONS header.")
+        let citedFA = Set(Self.matches(#"(?:Failed Approach|FA) #(\d+)"#, skillText, options: []).compactMap(Int.init))
+        let unresolvedFA = citedFA.subtracting(faResolvable).sorted()
+        #expect(unresolvedFA.isEmpty, "Skill-body Failed-Approach citation(s) #\(unresolvedFA) resolve to neither a CLAUDE.md entry nor a gap-table row.")
+
+        // (e) CLAUDE.md `.claude/skills/<name>` pointers reference only existing skills.
+        let pointered = Set(Self.matches(#"\.claude/skills/([\w-]+)"#, claude, options: []))
+        let unknown = pointered.subtracting(Set(Self.expectedSkills)).sorted()
+        #expect(unknown.isEmpty, "CLAUDE.md points to non-existent skill(s): \(unknown) — pointers reference only .claude/skills/{\(Self.expectedSkills.joined(separator: ","))}.")
+    }
 }
