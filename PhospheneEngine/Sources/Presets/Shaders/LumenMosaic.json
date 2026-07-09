@@ -31,6 +31,21 @@
     "mood_smoothing_seconds": 5.0,
     "back_plane_depth": 1.5
   },
+  "audio_routes": [
+    { "route": "palette_valence", "primitive": "valence", "kind": "continuous" },
+    { "route": "palette_arousal", "primitive": "arousal", "kind": "continuous" },
+    { "route": "stem_warmup_gate", "primitive": "drumsEnergy", "kind": "continuous" },
+    { "route": "stem_warmup_gate", "primitive": "bassEnergy", "kind": "continuous" },
+    { "route": "stem_warmup_gate", "primitive": "vocalsEnergy", "kind": "continuous" },
+    { "route": "stem_warmup_gate", "primitive": "otherEnergy", "kind": "continuous" },
+    { "route": "agent_beat_dance", "primitive": "beatPhase01", "kind": "continuous" },
+    { "route": "cell_step_advance", "primitive": "beatPhase01", "kind": "accent" },
+    { "route": "drums_light", "primitive": "drumsEnergyRel", "kind": "continuous" },
+    { "route": "bass_light", "primitive": "bassEnergyRel", "kind": "continuous" },
+    { "route": "vocals_light", "primitive": "vocalsEnergyDev", "kind": "continuous" },
+    { "route": "other_light", "primitive": "otherEnergyRel", "kind": "continuous" },
+    { "route": "cell_bar_pulse", "primitive": "barPhase01", "kind": "accent" }
+  ],
   "certified": true,
   "rubric_profile": "full",
   "rubric_hints": { "hero_specular": false, "dust_motes": false }

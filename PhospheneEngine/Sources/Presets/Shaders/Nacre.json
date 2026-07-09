@@ -17,6 +17,20 @@
   "transition_affordances": ["crossfade", "morph"],
   "section_suitability": ["buildup", "bridge", "comedown"],
   "complexity_cost": { "tier1": 2.0, "tier2": 1.0 },
+  "audio_routes": [
+    { "route": "treble_grain", "primitive": "trebDev", "kind": "continuous" },
+    { "route": "core_seed", "primitive": "bass", "kind": "continuous" },
+    { "route": "core_seed", "primitive": "mid", "kind": "continuous" },
+    { "route": "core_seed", "primitive": "treble", "kind": "continuous" },
+    { "route": "energy_spin", "primitive": "drumsEnergy", "kind": "continuous" },
+    { "route": "energy_spin", "primitive": "bassEnergy", "kind": "continuous" },
+    { "route": "energy_spin", "primitive": "vocalsEnergy", "kind": "continuous" },
+    { "route": "energy_spin", "primitive": "otherEnergy", "kind": "continuous" },
+    { "route": "downbeat_camera_push", "primitive": "barPhase01", "kind": "accent" },
+    { "route": "hue_from_harmony", "primitive": "spectralCentroid", "kind": "continuous" },
+    { "route": "zoom_breath", "primitive": "midAttRel", "kind": "continuous" },
+    { "route": "bass_onset_kick", "primitive": "bassAttRel", "kind": "accent" }
+  ],
   "certified": true,
   "rubric_profile": "lightweight"
 }

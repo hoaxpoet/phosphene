@@ -50,9 +50,9 @@ tools/audio-tap-test
 
 # Claude Code / agent tooling (not project source)
 .agents/
-.claude/skills/
 .impeccable.md
 skills-lock.json
+# Note: .claude/skills/ IS project source as of DOC.9 (D-179) — committed, gated by DocIntegrityTests.
 
 # Local xcconfig overrides — contain real credentials; never commit.
 *.local.xcconfig

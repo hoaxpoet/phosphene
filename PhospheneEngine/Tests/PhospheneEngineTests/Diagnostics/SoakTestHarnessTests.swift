@@ -56,6 +56,7 @@ struct SoakTestHarnessTests {
             startedAt: Date(timeIntervalSince1970: 1_000_000),
             finishedAt: Date(timeIntervalSince1970: 1_000_300),
             actualDuration: 300,
+            cancelledEarly: false,
             snapshots: [
                 .init(
                     elapsedSeconds: 30,
@@ -138,16 +139,14 @@ extension SoakTestHarnessTests {
         harness.cancel()
 
         let report = try await runTask.value
+        // Deterministic: cancel() interrupted the run (the harness sets this when it
+        // stops for a cancel rather than the configured duration elapsing). Replaces a
+        // wall-clock `actualDuration < 30 s` responsiveness bound that flaked under
+        // parallel-suite load — widened 5 s → 15 s → 30 s and still slipped (39–60 s
+        // once the FL.10 render tests added load). TESTFLAKE.1.
+        #expect(report.cancelledEarly, "cancel() should have interrupted the run early")
         #expect(report.actualDuration < config.duration,
-                "actualDuration (\(report.actualDuration)s) should be < configured duration (\(config.duration)s)")
-        // 30 s budget (was 15 s; was 5 s) — widened at REVIEW.4 per REVIEW.2's
-        // pre-authorization after two recurrences (17.3 s under the REVIEW.2
-        // churn-suite load, 16.7 s under a parallel-session battery). Worst
-        // observed 17.3 s; the U.11 precedent carries 2-3× headroom. The
-        // assertion's intent — "cancel() returned well before the configured
-        // 3600 s duration" — survives the wider budget.
-        #expect(report.actualDuration < 30.0,
-                "Should have returned within ~30 s of cancel()")
+                "actualDuration (\(report.actualDuration)s) should be « configured duration (\(config.duration)s)")
     }
 }
 

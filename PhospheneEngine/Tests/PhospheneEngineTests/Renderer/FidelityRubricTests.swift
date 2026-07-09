@@ -109,6 +109,11 @@ private let expectedAutomatedGate: [String: Bool] = [
     "Gossamer":             false,   // full; M3 fails
     "Kinetic Sculpture":    false,   // full; M3 fails
     "Membrane":             false,   // full; M3 fails
+    "Cytokinesis":          false,   // lightweight; coupling (energyEnv→pace / centroidEnv→palette /
+                                     // hit→glow) is computed CPU-side in MitosisGen2Geometry and reaches
+                                     // the fragment via Gen2 uniforms, invisible to the MSL heuristic
+                                     // (Mitosis/Filigree/Skein precedent). Certified via Matt's M7
+                                     // sign-off (MITOSIS-G2.3, live session 2026-07-09T02-04-02Z)
     "Mitosis":              false,   // lightweight; the colour/cycle coupling (energyEnv/cycleClock/
                                      // huePhase/centroid) is computed CPU-side in MitosisGeometry and
                                      // reaches the kernel/fragment via MitosisConfig, so the MSL-source
@@ -217,7 +222,7 @@ struct FidelityRubricGateTests {
     // (lightweight L2: deviation primitives are consumed CPU-side in
     // SkeinState, invisible to the MSL heuristic — the Lumen Mosaic
     // precedent); Matt's M7 is the load-bearing gate per SHADER_CRAFT §12.1.
-    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana", "Murmuration", "Nimbus", "Skein", "Nacre", "Floret", "Glaze", "Filigree", "Mitosis"]
+    private static let certifiedPresets: Set<String> = ["Lumen Mosaic", "Ferrofluid Ocean", "Dragon Bloom", "Fata Morgana", "Murmuration", "Nimbus", "Skein", "Nacre", "Floret", "Glaze", "Filigree", "Mitosis", "Cytokinesis"]
 
     @Test func automatedGate_uncertifiedPresetsAreUncertified() async {
         let store = PresetCertificationStore()
@@ -252,6 +257,34 @@ struct FidelityRubricGateTests {
                 )
             }
         }
+    }
+
+    /// QG.1 — certification requires an `audio_routes` manifest. This is the
+    /// "present" half of the gate; the "green" half is `RouteCoverageTests`, which
+    /// independently reddens if any declared route's primitive fails to fire on the
+    /// canonical fixtures. Together: a preset cannot be certified without a manifest
+    /// (here) whose every route demonstrably fires on real music (there). Mechanizes
+    /// the per-route firing evidence that was a prose closeout obligation (the
+    /// `vocalsPitchConfidence`-at-0%-for-5-months failure class).
+    @Test func certifiedPresetsDeclareAudioRoutes() throws {
+        let shadersURL = try #require(PresetLoader.bundledShadersURL,
+            "Shaders resource not found via PresetLoader.bundledShadersURL")
+        let jsonFiles = try FileManager.default.contentsOfDirectory(
+            at: shadersURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+        ).filter { $0.pathExtension == "json" }
+
+        let decoder = JSONDecoder()
+        var missing: [String] = []
+        for jsonURL in jsonFiles {
+            let descriptor = try decoder.decode(PresetDescriptor.self,
+                                                from: try Data(contentsOf: jsonURL))
+            if descriptor.certified && descriptor.audioRoutes.isEmpty {
+                missing.append(descriptor.name)
+            }
+        }
+        let joined = missing.joined(separator: ", ")
+        #expect(missing.isEmpty,
+                "Certified presets missing an audio_routes manifest (QG.1 requires one for certification): \(joined)")
     }
 }
 
