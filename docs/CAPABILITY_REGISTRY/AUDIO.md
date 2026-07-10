@@ -612,6 +612,8 @@ Input-chain health classifier. `public final class SignalHealthMonitor: @uncheck
 
 **Detectors → RUNBOOK failure modes:** `peakBand` (healthy ≥ −12 / low −15…−12 / critical dBFS) → §"Audio levels too low"; `deadTap` (`.silent` past 45 s confirm) → §"App captures silence" permission-invalidation trap; `sampleRateMismatch` (default-output rate outside 44.1/48 kHz) → §"Audio levels too low" Audio MIDI Setup. **Tests:** `SignalHealthMonitorTests.swift` (12 cases — each state transition, attenuated real-waveform gain levels).
 
+**ASH.2 / D-184 surfacing (`ChainAnalyzer` in Shared, not Audio — grades finished sessions):** `peakBand == .low` drives a once-per-session user toast (the `audioLevelsLow` remediation nudge, `PlaybackErrorBridge`); `deadTap` is surfaced by the pre-existing `AudioStallOverlayView` card (not a toast); `sampleRateMismatch` stays overlay/log-only. Every finished session dir is graded by `ChainAnalyzer` → `chain_health.json` + a `CHAIN_HEALTH:` line (verdict from raw_tap peak + SIGNAL_HEALTH/DRM/dead-tap log scans). **★ AGC-invariance finding:** the Love Rehab sub-bass onset count is level-independent (attenuation/compression/limiting all hold ~11/5 s — D-026) — REPORTED in `chain_health.json`, never a verdict input. Normalization is caught by the PEAK check, not onsets.
+
 ### Metadata fetcher cluster (5 files + 1 streaming poll, 943 + 269 = 1,212 LoC)
 
 #### MetadataPreFetcher.swift (212 LoC) — `production-active`

@@ -631,11 +631,21 @@ quality, this is acceptable. See D-066.
 3. **Tap-reinstall scan**: `grep -i "tap reinstall" ~/Documents/phosphene_sessions/<timestamp>/session.log`.
    Any reinstall entries indicate a scrub-induced silence; if they appear inside a
    recording segment, that segment's visuals will show a freeze gap — discard.
-4. **Love Rehab onset-count spot-check**: From the session's `features.csv`, count
-   `sub_bass` onset rows in any consecutive 5-second window during the Love Rehab
-   segment. Reference: 11 sub_bass onsets per 5 s at ~125 BPM (CLAUDE.md Validated
-   Onset Counts table). Counts below 6 indicate normalization was active or Lossless
-   quality was not set.
+4. **Love Rehab onset-count spot-check** *(informational only — see the warning below)*:
+   the analyzer reports `loveRehabMedianOnsetsPer5s` in `chain_health.json`. Reference:
+   11 sub_bass onsets per 5 s at ~125 BPM (ARCHITECTURE §Validated Onset Counts).
+   > ⚠️ **This count does NOT detect normalization (ASH.2 / D-184).** It was empirically
+   > established that the `beatBass` onset count is AGC-invariant — attenuation, dynamic
+   > compression, and hard limiting all leave it at ~11/5 s (level-independent rhythm,
+   > D-026). Normalization is caught by the **peak check (step 1)**, not onsets. Treat a
+   > low onset count as a signal-*loss* hint (silence/dead tap), not a normalization hint.
+
+**Mechanized (ASH.2 / D-184):** steps 1–3 above are now run automatically — `ChainAnalyzer`
+writes `chain_health.json` + a `CHAIN_HEALTH: verdict=<clean|degraded|broken> reasons=[…]`
+line into every session dir at session end. **A reel recording must carry `verdict=clean`.**
+Regrade any dir (including a just-finished one, or a pre-ASH historical dir) with
+`Scripts/analyze_session_chain.sh <session-dir>` (exit 0 iff clean). See §"Post-session
+chain analyzer" below.
 
 **Clone instructions (if LFS not yet pulled):**
 
@@ -651,6 +661,40 @@ prior reel as `quality_reel_v<N>.mp4` so prior artefacts remain referenceable.
 **Do NOT build an in-engine capture pipeline for this.** QuickTime is sufficient;
 adding video output to the engine is a cross-cutting change with frame-pacing
 and file-handling scope that doesn't belong in a curation increment. (D-064(d))
+
+---
+
+## Post-session chain analyzer (ASH.2 / D-184)
+
+`ChainAnalyzer` grades the audio chain that produced a session and leaves a
+machine-written verdict in the dir, so no M7 review, reel recording, or fidelity
+closeout runs on degraded audio without a red flag in the artifacts.
+
+**Automatic.** At the end of every session (`SessionRecorder.finish()`) the analyzer
+writes two things into `~/Documents/phosphene_sessions/<timestamp>/`:
+- `chain_health.json` — `{verdict, reasons[], peakDBFS, outputSampleRateHz, loveRehabMedianOnsetsPer5s, notes[]}`
+- a `session.log` line: `CHAIN_HEALTH: verdict=<clean|degraded|broken> reasons=[…]`
+
+**On demand / retroactive** (grades any dir, including pre-ASH ones — missing
+artifacts are noted, never fatal):
+
+```bash
+Scripts/analyze_session_chain.sh ~/Documents/phosphene_sessions/<timestamp>
+# exit 0 iff verdict=clean; prints the verdict + peak + onset median
+```
+
+**Verdict meaning:**
+- `broken` — capture unusable: a confirmed dead tap (`SIGNAL_HEALTH deadTap=true`) or a
+  critical raw_tap peak (< −15 dBFS / silence). Discard; fix the chain (see §"App
+  captures silence" / `killall coreaudiod`).
+- `degraded` — usable but compromised: low peak (−15…−12 dBFS — the normalization/
+  attenuation signal), `DRM silence` lines, `band=low/critical`, or tap reinstalls.
+  **Do not certify or record a reel off a `degraded` capture without re-capturing.**
+- `clean` — no degradation evidence. Required for reel + M7-bound sessions.
+
+**`loveRehabMedianOnsetsPer5s` is informational only** — AGC-invariant (D-184), not a
+verdict input. Do not read a low onset count as "normalization"; that is the peak
+check's job.
 
 ---
 
