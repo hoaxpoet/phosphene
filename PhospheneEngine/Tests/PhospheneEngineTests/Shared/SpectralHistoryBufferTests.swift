@@ -277,3 +277,27 @@ private func readFloat(_ buf: MTLBuffer, at index: Int) -> Float {
         #expect(ptr[slot].isInfinite, "unused downbeat slot \(i) should be ∞")
     }
 }
+
+// MARK: - TONAL.1b tonal trace rings
+
+@Test func test_tonalRings_normalizeAndScale() throws {
+    let device  = try makeDevice()
+    let history = SpectralHistoryBuffer(device: device)
+    let ptr     = history.gpuBuffer.contents().assumingMemoryBound(to: Float.self)
+
+    // Fifths phase normalizes (θ+π)/2π → 0..1; consonance scales by 1/p99 (0.32).
+    var fv = FeatureVector.zero
+    fv.tonalPhaseFifths = Float.pi / 2   // → (π/2 + π) / 2π = 0.75
+    fv.tonalConsonance  = 0.16           // → 0.16 / 0.32 = 0.5
+    history.append(features: fv, stems: .zero)
+    #expect(abs(ptr[SpectralHistoryBuffer.offsetFifths + 0] - 0.75) < 0.001)
+    #expect(abs(ptr[SpectralHistoryBuffer.offsetConsonance + 0] - 0.5) < 0.001)
+
+    // Consonance clamps at p99 (0.32 → 1.0), phase −π maps to 0.
+    var fv2 = FeatureVector.zero
+    fv2.tonalConsonance  = 0.5           // > p99 → clamps to 1.0
+    fv2.tonalPhaseFifths = -Float.pi     // → 0.0
+    history.append(features: fv2, stems: .zero)
+    #expect(ptr[SpectralHistoryBuffer.offsetConsonance + 1] == 1.0)
+    #expect(abs(ptr[SpectralHistoryBuffer.offsetFifths + 1]) < 0.001)
+}

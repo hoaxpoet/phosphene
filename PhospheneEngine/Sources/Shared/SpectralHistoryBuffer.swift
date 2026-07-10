@@ -1,7 +1,8 @@
 // SpectralHistoryBuffer — Per-frame MIR history ring buffer, bound at buffer(5).
 //
-// Maintains 5 parallel ring buffers of 480 float samples (~8s at 60 fps):
-//   valence, arousal, beat_phase01, bass_dev, bar_phase01.
+// Maintains 7 parallel ring buffers of 480 float samples (~8s at 60 fps):
+//   valence, arousal, beat_phase01, bass_dev, bar_phase01,
+//   tonal_fifths (TONAL.1b), tonal_consonance (TONAL.1b).
 //
 // Single-writer (render thread), single-reader (GPU). No lock required.
 // Bound unconditionally at fragment buffer index 5 in all direct-pass encoders.
@@ -31,7 +32,9 @@ private let logger = Logger(subsystem: "com.phosphene", category: "SpectralHisto
 /// [2420]       session_mode       (0=reactive / 1=planned+unlocked / 2=planned+locking / 3=planned+locked)
 /// [2421..2428] downbeat_times[8]  (seconds relative to playback head; Float.infinity = unused)
 /// [2429]       drift_ms           (drift-tracker correction; 0 = no grid / reactive)
-/// [2430..4095] reserved           (zeroed; future consumers)
+/// [2430..2909] tonal_fifths       (0..1, circle-of-fifths phase normalized (θ+π)/2π; TONAL.1b)
+/// [2910..3389] tonal_consonance   (0..1, consonance scaled to its pilot p99 0.32; TONAL.1b)
+/// [3390..4095] reserved           (zeroed; future consumers)
 /// ```
 public final class SpectralHistoryBuffer: @unchecked Sendable {
 
@@ -69,6 +72,15 @@ public final class SpectralHistoryBuffer: @unchecked Sendable {
     /// Current drift tracker correction in milliseconds (positive = beats arrive earlier).
     /// 0 = no grid / reactive mode.
     public static let offsetDriftMs: Int = 2429
+    /// TONAL.1b (D-178): circle-of-fifths phase ring, normalized `(θ+π)/2π` → 0..1
+    /// (a wrapped sawtooth — jumps mark modulations). The diagnostic cross-check
+    /// for the TONAL.3 hue coupling.
+    public static let offsetFifths: Int = 2430
+    /// TONAL.1b (D-178): consonance ring, scaled to its pilot p99 (0.32) → 0..1
+    /// so the row fills readably; the saturation gate signal.
+    public static let offsetConsonance: Int = 2910
+    /// Consonance display scale = 1 / pilot p99 (TONAL_PILOT_REPORT.md).
+    public static let consonanceDisplayP99: Float = 0.32
 
     // MARK: - State
 
@@ -110,6 +122,10 @@ public final class SpectralHistoryBuffer: @unchecked Sendable {
         ptr[Self.offsetBeatPhase + slot] = features.beatPhase01
         ptr[Self.offsetBassDev + slot] = features.bassDev
         ptr[Self.offsetBarPhase + slot] = features.barPhase01
+        // TONAL.1b: store plot-ready (0..1) — fifths phase wrapped, consonance
+        // scaled to its pilot p99 — so the shader's uniform row-drawing works.
+        ptr[Self.offsetFifths + slot] = (features.tonalPhaseFifths + .pi) / (2 * .pi)
+        ptr[Self.offsetConsonance + slot] = min(1, max(0, features.tonalConsonance / Self.consonanceDisplayP99))
 
         writeHead = (writeHead + 1) % Self.historyLength
         samplesValid = min(samplesValid + 1, Self.historyLength)
