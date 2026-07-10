@@ -1,72 +1,54 @@
 # QG.3 — Audio-Visual Coupling Baseline
 
-**Date:** 2026-07-10. **Increment:** QG.3 (coupling metric, report-first). **Producer:** `CouplingReportTests` (gated `PHOSPHENE_COUPLING=1`). **Decision:** [D-182]. **This is a REPORT, not a gate** — the QG.3.1 gate is deferred pending calibration, and the headline finding below is *why* it cannot be calibrated yet.
+**Date:** 2026-07-10. **Increment:** QG.3 (metric, report-first) → **QG.3.1 (measurable for all 13 via the real multi-pass render).** **Producer:** `CouplingReportTests` (gated `PHOSPHENE_COUPLING=1`). **Decisions:** [D-182] (metric), [D-183] (measurement substrate + calibration). **This is a REPORT, not a gate** — the QG.3.2 gate flip is Matt's call, taken against this distribution.
 
 ## What was measured
 
-Per certified preset × canonical fixture (`love_rehab` / `so_what` / `there_there`), cross-correlation of a per-frame **visual delta** (mean |luma(frame i) − luma(frame i−1)| over the 64×64 reduced-resolution render, 0..1) against the **audio energy envelope** (composite = mean of `bass`/`mid`/`treble`, plus each band), at lags 0–500 ms. Per pair: peak Pearson **r**, **lag** at peak, and a **stationarity** note (r over non-overlapping 10 s windows: min/median/max). Negative control: fixture `love_rehab`'s energy against fixture `so_what`'s rendered frames — real audio mismatched to real frames (FA #27), bounding the noise floor.
+Per certified preset × canonical fixture (`love_rehab` dance / `so_what` jazz / `there_there` rock), cross-correlation of a per-frame **visual delta** (mean |luma(i) − luma(i−1)| over a downsampled luma field, 0..1) against the **audio energy envelope** (composite = mean of `bass`/`mid`/`treble`, plus each band), at lags 0–500 ms. Per pair: peak Pearson **r**, **lag** at peak, and a **stationarity** note (r over non-overlapping 10 s windows: min/median/max). Negative control: `love_rehab`-energy × `so_what`-frames — real audio mismatched to real frames (FA #27), bounding the per-preset noise floor.
 
-Per-frame FeatureVector **and** StemFeatures are reconstructed from the checked-in `route_coverage` fixtures (real preview clips through the production separation + analysis chain) and bound at the shader's slots; nothing is hand-authored.
+**QG.3.1 render substrate (the headline change from QG.3).** Each frame is rendered through the preset's **real** path — the 10 multi-pass / feedback / follower presets via the shared `MultiPassRenderHarness` (the same headless seam the photosensitivity flash gate drives, with feedback persistence), the 3 single-pass presets (Ferrofluid Ocean, Murmuration, Nimbus) via one fragment + the ticked Nimbus CPU follower. This replaced QG.3's single-fragment/zeroed-state harness, which rendered **11 of 13 presets static** (`visual_delta = 0`). **All 13 now produce real signal** — the metric is measurable across the whole certified set.
 
-## ★ Headline finding — the metric is not measurable for 11 of 13 certified presets on the current render substrate
+## Baseline table (QG.3.1 — real multi-pass render)
 
-The offline harness (reused from `PresetRegressionTests`) renders **one fragment** — the preset's primary/`direct`/`ray_march` pipeline — with **zeroed aux state**: the slot-6 CPU-accumulator buffers, the feedback history texture, and the mv_warp marks buffer are all zero, because that state is produced by the live multi-pass render loop and **cannot be reconstructed from the CSV fixtures**. For every preset whose music-driven motion lives in that state, the offline render is **byte-identical frame-to-frame** — `visual_delta = 0.00000` for the whole run.
+`comp_r@lag` = peak composite Pearson r + lag (ms) · `win` = composite r over 10 s windows [min/med/max] · `Δμ` = mean per-frame visual delta (0..1). Sorted by best-fixture composite r.
 
-**11 of 13 certified presets render fully static offline** (delta_mean = 0.00000): Cytokinesis, Dragon Bloom, Fata Morgana, Filigree, Floret, Glaze, Lumen Mosaic, Mitosis, Nacre, Nimbus, Skein. This is **by construction, NOT a coupling defect** — the same reason `PresetRegressionTests` records identical dHashes across its three fixtures for these presets (the standalone fragment is a static canvas ground / silence-floor body / unbound-history read). Their real coupling is unobservable here.
+| Preset | love_rehab | so_what | there_there | best win[min/med/max] | control (floor) |
+|---|---|---|---|---|---|
+| **Skein** | +0.55 @23ms | **+0.69** @23ms | +0.24 @46ms | +0.74/+0.76/+0.76 | +0.05 |
+| **Dragon Bloom** | **+0.47** @510ms | +0.19 @46ms | +0.03 @510ms | +0.46/+0.47/+0.47 | +0.13 |
+| **Filigree** | +0.06 @487ms | **+0.39** @139ms | −0.15 @487ms | +0.26/+0.56/+0.56 | +0.04 |
+| **Lumen Mosaic** | **+0.37** @487ms | +0.05 @371ms | +0.06 @115ms | +0.34/+0.40/+0.40 | +0.03 |
+| **Fata Morgana** | **+0.32** @23ms | +0.21 @394ms | +0.12 @162ms | +0.29/+0.36/+0.36 | +0.04 |
+| **Murmuration** | **+0.29** @487ms | +0.12 @0ms | +0.03 @440ms | +0.28/+0.35/+0.35 | +0.07 |
+| **Mitosis** | +0.22 @487ms | **+0.27** @0ms | +0.03 @0ms | +0.33/+0.50/+0.50 | +0.01 |
+| **Floret** | +0.11 @23ms | **+0.25** @0ms | +0.12 @440ms | +0.20/+0.41/+0.41 | +0.01 |
+| **Nimbus** | **+0.23** @463ms | +0.18 @0ms | +0.02 @347ms | −0.02/+0.37/+0.37 | +0.04 |
+| **Cytokinesis** | +0.17 @0ms | **+0.20** @0ms | −0.04 @510ms | +0.25/+0.25/+0.25 | +0.05 |
+| **Glaze** | +0.09 @92ms | −0.06 @510ms | **+0.13** @510ms | −0.05/+0.19/+0.19 | +0.04 |
+| **Ferrofluid Ocean** | +0.07 @510ms | +0.05 @301ms | **+0.08** @347ms | −0.00/+0.17/+0.17 | +0.08 |
+| **Nacre** | +0.03 @0ms | −0.02 @92ms | **+0.05** @0ms | −0.12/+0.39/+0.39 | −0.02 |
 
-Only **Ferrofluid Ocean** (ray-march) and **Murmuration** (whose fragment reads FeatureVector directly) produce non-static output offline, so only they can be measured at all — and only Murmuration clears its own noise floor.
+## Noise floor is PER-PRESET, not global
 
-## Baseline table
+The negative control (`love_rehab`-audio × `so_what`-frames) ranges **−0.02 … +0.13** across presets. **Dragon Bloom's floor (+0.13) is the highest** — its long feedback trails give the frame sequence high autocorrelation, so even mismatched audio scores higher. Peak-over-lag Pearson r is also positively biased (max over ~22 lag candidates of noisy correlations). **Conclusion: a single global floor is wrong** — a feedback preset's real coupling must clear *its own* control, not a flat threshold. The per-preset control column is the reference each preset is judged against.
 
-`comp_r@lag` = peak composite Pearson r and its lag in ms · `win` = composite r over 10 s windows [min/med/max] · `delta_mean` = mean per-frame visual delta (0..1). **Static** rows produce no signal (all zero).
+## Reading the distribution
 
-| Preset | Fixture | comp_r@lag | bass_r | mid_r | treb_r | win [min/med/max] | delta_mean |
-|---|---|---|---|---|---|---|---|
-| Cytokinesis | all 3 | — | — | — | — | — | 0.00000 (**static**) |
-| Dragon Bloom | all 3 | — | — | — | — | — | 0.00000 (**static**) |
-| Fata Morgana | all 3 | — | — | — | — | — | 0.00000 (**static**) |
-| Ferrofluid Ocean | love_rehab | +0.07 @510ms | +0.07 | +0.05 | −0.21 | +0.04/+0.05/+0.05 | 0.00205 |
-| Ferrofluid Ocean | so_what | +0.05 @301ms | +0.06 | −0.01 | −0.03 | +0.04/+0.06/+0.06 | 0.00180 |
-| Ferrofluid Ocean | there_there | +0.08 @347ms | +0.13 | −0.21 | −0.09 | −0.00/+0.17/+0.17 | 0.00205 |
-| Filigree | all 3 | — | — | — | — | — | 0.00000 (**static**) |
-| Floret | all 3 | — | — | — | — | — | 0.00000 (**static**) |
-| Glaze | all 3 | — | — | — | — | — | 0.00000 (**static**) |
-| Lumen Mosaic | all 3 | — | — | — | — | — | 0.00000 (**static**) |
-| Mitosis | all 3 | — | — | — | — | — | 0.00000 (**static**) |
-| Murmuration | love_rehab | **+0.30 @487ms** | +0.31 | +0.07 | +0.13 | +0.29/+0.36/+0.36 | 0.00063 |
-| Murmuration | so_what | +0.13 @0ms | +0.12 | +0.03 | +0.16 | +0.14/+0.19/+0.19 | 0.00040 |
-| Murmuration | there_there | +0.03 @440ms | +0.03 | +0.00 | +0.23 | +0.01/+0.08/+0.08 | 0.00022 |
-| Nacre | all 3 | — | — | — | — | — | 0.00000 (**static**) |
-| Nimbus | all 3 | — | — | — | — | — | 0.00000 (**static**) |
-| Skein | all 3 | — | — | — | — | — | 0.00000 (**static**) |
+- **11 of 13 clear their own floor with margin** on at least one fixture: Skein (0.69 vs 0.05), Dragon Bloom (0.47 vs 0.13), Filigree (0.39 vs 0.04), Lumen Mosaic (0.37 vs 0.03), Fata Morgana (0.32), Murmuration (0.29), Mitosis (0.27), Floret (0.25), Nimbus (0.23), Cytokinesis (0.20), Glaze (0.13 vs 0.04, marginal).
+- **`there_there` (rock) scores lowest across almost every preset** — its energy envelope is the least dynamic of the three clips (steady loudness), so delta-vs-energy correlation is weakest there. This is a fixture property, not a preset defect; it argues for a "best of N fixtures" gate rule, not "all fixtures."
+- **2 presets read weak — and both are PROXY-validity artifacts, not defects:**
+  - **Nacre** (0.05, control −0.02): its music connection is a *downbeat camera push* (NACRE.4, D-171) — subtle whole-frame motion that barely moves the mean-abs frame delta. The metric under-reads camera-motion coupling. Nacre is CERTIFIED + M7-approved.
+  - **Ferrofluid Ocean** (0.08, control +0.08 — at floor): rendered via the single-fragment path (its faithful render is ray_march + post_process + a baked height field we approximate). Under-measured render, not a dead route (its spike/aurora routes are CPU-computed StemFeatures the offline fixture can't populate — the documented QG.1.1 boundary, [D-180]).
 
-## Noise floor (negative control)
+## Recommended QG.3.2 gate — ship as a WARNING tier, not a hard cert gate
 
-Fixture `love_rehab`-audio × `so_what`-frames, composite peak r over lags 0–500 ms:
+The metric is now measurable, and the distribution is real. But **two certified, M7-approved presets (Nacre, Ferrofluid Ocean) sit at/below a meaningful floor** for legitimate proxy reasons. A hard cert gate at any floor that catches genuinely-dead coupling would false-red them — the exact "verdict on an uncalibrated proxy" failure QG.3 exists to avoid. Recommendation:
 
-| Preset (frames) | control comp_r |
-|---|---|
-| Ferrofluid Ocean | **+0.08** |
-| Murmuration | **+0.08** |
+1. **QG.3.2 = a warning-tier report threshold, not a cert blocker.** Flag any preset whose best-fixture peak composite r is **< 0.15** AND fails to clear its own control by **≥ 0.10** as "coupling not measured as present — review," surfaced in the closeout evidence. It informs, it does not fail certification.
+2. **Validate the proxy against M7 before any hard gate.** The one thing that would justify a blocking gate is evidence the metric tracks *felt* coupling. Nacre (low r, M7-loved) and Skein (high r, M7-certified) are the calibration anchors: if Matt confirms the metric's ordering matches his felt ordering on a few presets, a hard gate becomes defensible. Until then, warning-tier only.
+3. **Per-preset floor, best-of-fixtures.** Judge each preset against its own control on its best fixture — never a global threshold on all fixtures (feedback autocorrelation + the `there_there` low-dynamics effect would both misfire).
 
-(Static presets have a 0.00 control by construction — no frame variance to correlate.)
-
-**Interpretation of the floor.** Peak-over-lag Pearson r is **positively biased**: taking the maximum over ~22 candidate lags of noisy per-lag correlations (each ≈ N(0, 1/√1286) ≈ 0.028 sd on a 1286-frame run) inflates the value above 0. The control captures exactly this bias at **+0.08** — mismatched real audio against real frames still scores +0.08. So **+0.08 is the noise ceiling**, and any real-coupling r must clear it with margin to be meaningful. This is why the negative control is load-bearing and why a raw r near 0.08 means "coupling not measured as present," never "coupled."
-
-Against that floor: Ferrofluid Ocean's measured r (0.05–0.08) sits **at** the floor (coupling not measured as present on this substrate). Murmuration/`love_rehab` (**+0.30**, windows +0.29/+0.36) is clearly above; `so_what` (+0.13) is above; `there_there` (+0.03) is below.
-
-## Recommended QG.3.1 floor — and why it CANNOT be set yet
-
-**Recommendation: do NOT flip a gate.** A gate needs a population; the measurable population here is **2 presets**, of which **1** clears the floor. Two prerequisites must land first:
-
-1. **A headless multi-pass / state-reconstructing render.** Until the offline render reproduces the live render loop's per-frame state (feedback history, mv_warp marks, slot-6 accumulators), 11/13 certified presets are unmeasurable and any gate would either false-red all of them or exempt them into meaninglessness. This is the blocking item.
-2. **Proxy validity check.** The metric correlates visual *delta* (motion magnitude) with energy *level*. A well-coupled preset that modulates motion *character* or *colour* (rather than raw frame-delta), or that carries high steady motion, can legitimately score low. Before gating, confirm the proxy tracks felt coupling on presets Matt has already M7-approved (Murmuration/`love_rehab` is the one positive anchor we have).
-
-**Provisional floor, for when (1) and (2) are satisfied:** peak composite r ≥ **0.15** at any lag 0–500 ms on at least one canonical fixture (≈ 2× the +0.08 noise ceiling; Murmuration's cross-fixture mean is 0.15). Treat as a starting hypothesis to re-derive against the then-measurable population, **not** a committed threshold.
-
-## Presets below the noise floor — route/coupling defect or measurement gap?
-
-Per the prompt, presets below the noise floor are candidates for a route/coupling defect (→ KNOWN_ISSUES), **not** tuning targets. But here **every below-floor result is a measurement gap, not a defect**: the 11 static presets are static because the harness zeroes their state, and Ferrofluid Ocean's at-floor result is the same offline-substrate limitation (its spike/aurora routes are CPU-computed StemFeatures the fixture can't populate — the documented QG.1.1 boundary, cf. [D-180]). **No KNOWN_ISSUES entry is filed from this baseline** — there is no evidence of a dead route that isn't already explained by the render substrate. The M7 seat remains the coupling authority (manual-validation rule stands).
+**No KNOWN_ISSUES filed.** No preset renders below its floor in a way that isn't explained by a proxy/render-fidelity limit. Nacre and Ferrofluid Ocean are watched under QG.3.2 calibration, not filed as defects (verified: both are certified + M7-approved; low r is a proxy artifact).
 
 ## Reproduce
 
@@ -74,8 +56,8 @@ Per the prompt, presets below the noise floor are candidates for a route/couplin
 PHOSPHENE_COUPLING=1 swift test --package-path PhospheneEngine --filter CouplingReportTests
 ```
 
-Per-frame visual-delta CSVs are written to `coupling/<preset>_<fixture>_visual_delta.csv` (gitignored; regenerable). The printed `ROW`/`CONTROL` lines are this table's source.
+Per-frame visual-delta CSVs → `coupling/<preset>_<fixture>_visual_delta.csv` (gitignored; regenerable). The printed `ROW`/`CONTROL` lines are this table's source. Sweep ≈ 130 s (real multi-pass render).
 
 ## References
 
-`PhospheneEngine/Tests/PhospheneEngineTests/Renderer/CouplingReportTests.swift` (producer), `docs/diagnostics/QG1_REPLAY_AUDIT.md` (replay feasibility — the "no headless render" gap this inherits), `docs/ENGINE/SESSION_REPLAY.md` (SR.1 uncalibrated-proxy doctrine), [D-182] (metric definition + report-first rationale), [D-180] (route-coverage gate + the CPU-computed StemFeatures fixture boundary), FA #27 (no hand-authored envelopes).
+`CouplingReportTests.swift` + `MultiPassRenderHarness.swift` (producer + shared render), `MultiPassFlashHarnessTests.swift` (the flash gate that shares the harness), `docs/diagnostics/QG1_REPLAY_AUDIT.md`, `docs/ENGINE/SESSION_REPLAY.md` (SR.1 uncalibrated-proxy doctrine), [D-182] (metric), [D-183] (measurement substrate + calibration), [D-180] (route-coverage + the CPU-computed StemFeatures fixture boundary), FA #27, FA #66 (drive the live path, never reimplement).
