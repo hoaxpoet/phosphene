@@ -46,6 +46,12 @@ ALLOWLIST_FILES=(
   # decodes fixtures at the preview-native rate.
   "PhospheneEngine/Sources/CorpusCensusRunner/CorpusCensusRunner.swift"
   "PhospheneEngine/Sources/InstrumentFamilyDumper/Dumper.swift"
+  # ASH.1 / D-183: SignalHealthMonitor.expectedRates is the reference set of
+  # known-good OUTPUT-DEVICE rates its sampleRateMismatch detector compares the
+  # queried device rate against — a validation constant, NOT a tap-rate consumer
+  # (FA #52). The detector exists to flag rates outside the 44.1/48 kHz family,
+  # so the family is named literally. See the comment at the `expectedRates` init default.
+  "PhospheneEngine/Sources/Audio/SignalHealthMonitor.swift"
 )
 
 # Build a `grep -v` pattern from the allowlist. Escape the `+` since it has
