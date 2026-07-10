@@ -186,6 +186,11 @@ let package = Package(
             ],
             path: "Sources/ColdStartVerifier"
         ),
+        .executableTarget(
+            name: "ChainHealthAnalyzer",
+            dependencies: ["Shared"],
+            path: "Sources/ChainHealthAnalyzer"
+        ),
         .testTarget(
             name: "PhospheneEngineTests",
             dependencies: [
