@@ -426,6 +426,13 @@ public final class SessionRecorder: @unchecked Sendable {
                     + "\(self.stemDumpIndex) stem dumps; \(videoSummary))\n"
             try? self.logHandle.write(contentsOf: Data(msg.utf8))
             try? self.logHandle.close()
+
+            // ASH.2 — grade the audio chain that produced this session and leave a
+            // machine-written verdict in the dir (chain_health.json + a
+            // CHAIN_HEALTH: line), so no M7/reel/fidelity review runs on degraded
+            // audio without a red flag in the artifacts. Runs once (didFinish
+            // guard), after every handle is closed (analyzer re-opens to append).
+            ChainAnalyzer.analyzeAndWrite(sessionDir: self.sessionDir)
         }
     }
 
