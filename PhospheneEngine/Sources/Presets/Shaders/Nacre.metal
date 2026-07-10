@@ -45,12 +45,12 @@
 // Carries the (431) builtins those shaders reference: time (palette + grain scroll +
 // radial-pulse phase), the treble grain gate, the feedback texel size + aspect (comp
 // sobel offsets + cell scale), and the fixed per-load randoms + slow colour roam.
-// 80 bytes — see NacreUniforms in RenderPipeline+Nacre.swift for the byte layout.
+// 112 bytes — see NacreUniforms in RenderPipeline+Nacre.swift for the byte layout.
 struct NacreUniforms {
     float  time;         // features.time — palette rotation, grain scroll, radial-pulse phase
     float  trebleGrain;  // max(0, trebleDev) — gates the warp grain (faithful treb_att route)
     float  coreEnergy;   // STEADY total energy — gates the warp's core SEED (faithful modwavealphabyvolume)
-    float  hueShift;     // NACRE.3: harmony → palette-phase nudge (seconds, bounded ±1.5)
+    float  hueShift;     // TONAL.3: circle-of-fifths phase → palette-phase offset (seconds, ±7.2 = ±½ cycle, consonance-gated)
     float2 texel;        // (1/feedbackW, 1/feedbackH) — comp luminance-sobel offsets (texsize.zw)
     float  barPush;      // NACRE.4: downbeat envelope → display-stage camera push (connection as visible motion)
     float  spin;         // NACRE.3: energy → continuous warp rotation (rad/frame; turning ← music)
@@ -58,6 +58,7 @@ struct NacreUniforms {
     float4 randPreset;   // fixed per-load random vec4 (the comp's tint + dz scale character)
     float4 slowRoamSin;  // [0.5+0.5 sin(t·{slow})] — comp slow colour roam (subtractive)
     float4 roamCos;      // [0.5+0.5 cos(t·{slow})] — comp slow colour roam (subtractive)
+    float4 tonal;        // TONAL.3 (D-178): x=palette desaturate (consonance-gated). y,z,w spare (y reserved for the deferred tension→dispersion route)
 };
 
 // MARK: - Constants
@@ -284,8 +285,10 @@ fragment float4 nacre_warp_fragment(
     // carries the palette into the feedback, so the whole field's hue follows the harmony.
     c += core * nacrePalette(nu.time + nu.hueShift);
 
-    // Slight desaturate toward luma (source warp final step).
-    c = mix(c, float3(dot(c, kLuma)), kNacreDesat);
+    // Slight desaturate toward luma (source warp final step). TONAL.3: the amount is
+    // consonance-gated (nu.tonal.x) — atonal / percussive passages desaturate toward the
+    // neutral rest state, tonal passages keep the faithful (431) 0.20.
+    c = mix(c, float3(dot(c, kLuma)), nu.tonal.x);
 
     // Clamp to [0,1] — the source stores the feedback to an 8-bit UNORM target (butterchurn
     // clamps each frame); replicating that bounds the unsharp+grain accumulation (an
