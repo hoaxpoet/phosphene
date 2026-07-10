@@ -308,11 +308,16 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
             sub.colorIndex = Int(rand() * 4) & 3
         }
         sub.strength = strength
-        // Articulation → the shape AND DURATION of the mark. Legato must FLOW (a long line drawn slowly →
-        // a flowing ribbon), staccato is SHORT + CLIPPED (a quick dab), pizz a pluck dot.
-        if sharp > 0.72 { sub.markKind = 2; sub.scale = 0.16; sub.drawDuration = 0.09 }   // pizz — a tiny pluck dot
-        else if sharp > 0.45 { sub.markKind = 1; sub.scale = 0.42; sub.drawDuration = 0.12 } // staccato — short clip
-        else { sub.markKind = 0; sub.scale = 1.7; sub.drawDuration = 0.90 }               // legato — LONG flowing line
+        // VOICE CHARACTER — colour (section) picks the FORM (drawn in writePens); articulation modulates how far
+        // it's drawn: legato = long/flowing, sharp = short/clipped. Each voice keeps its own natural range.
+        let legato = 1 - min(1, sharp)
+        switch sub.colorIndex {
+        case 1:  sub.scale = 0.7 + 0.8 * legato; sub.drawDuration = 0.20 + 0.30 * legato   // brass — blocky slab
+        case 2:  sub.scale = 0.7 + 0.6 * legato; sub.drawDuration = 0.28 + 0.34 * legato   // woodwinds — twirl
+        case 3:  sub.scale = 1;                  sub.drawDuration = 0.10                     // percussion — spark
+        default: sub.scale = 1.2 + 1.0 * legato; sub.drawDuration = 0.45 + 0.55 * legato    // strings — flowing arc
+        }
+        sub.markKind = sharp > 0.6 ? 2 : (sharp > 0.4 ? 1 : 0)   // diagnostic bucket only (form is per-voice)
         spawnKindCounts[sub.markKind] += 1
         launch(sub)
         // ECHOES REMOVED (2026-07-10): the scheduled fake echoes fired on a TIMER, so most marks appeared when
@@ -347,27 +352,32 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
                 let ph = ges.prevPhase + (ges.phase - ges.prevPhase) * frac
                 let world: SIMD2<Float>
                 let sz: Float
-                // A brush TAPER along the stroke (thin at the ends, full in the middle) so it reads as a
-                // drawn/bowed mark, not a uniform line. Dots don't taper.
-                let taper = 0.28 + 0.72 * sinf(ph * .pi)
-                if ges.markKind == 2 {                        // PIZZ DOT — a tiny pluck at one spot
-                    world = ges.origin
-                    sz = 11
-                } else if ges.markKind == 1 {                 // STACCATO DASH — a tiny straight bowed tick
-                    let along = (ph - 0.5) * 0.055            // a short line along the rotation axis
-                    world = ges.origin + SIMD2(cs, sn) * along
-                    sz = 15 * taper
-                } else {                                       // LEGATO STREAK — a tapered traced brushstroke
-                    var loc = Self.subject(ph, ges.variant)
-                    loc.y *= ges.flipY
+                // VOICE HANDWRITING — each section draws its OWN form so you know it without reading colour:
+                // strings glide, brass stabs blocky, woodwinds twirl, percussion sparks. Taper = full middle,
+                // thin ends (a bowed mark). Articulation set the length/duration per voice in spawnSubject.
+                let taper = 0.24 + 0.76 * sinf(ph * .pi)
+                var square: Float = 0
+                switch ges.colorIndex {
+                case 1:                                        // BRASS — a bold BLOCKY slab (square sprites)
+                    world = ges.origin + SIMD2(cs, sn) * ((ph - 0.5) * 0.10 * ges.scale)
+                    sz = 22; square = 1
+                case 2:                                        // WOODWINDS — a quick twirly CURL (a little loop)
+                    let th = ph * 2.3 * .pi, rad = (0.02 + 0.06 * ph) * ges.scale
+                    let lx = cosf(th) * rad, ly = sinf(th) * rad * ges.flipY
+                    world = ges.origin + SIMD2(lx * cs - ly * sn, lx * sn + ly * cs)
+                    sz = 11 * taper
+                case 3:                                        // PERCUSSION — a bright SPARK dot
+                    world = ges.origin; sz = 15
+                default:                                       // STRINGS — a flowing tapered ARC
+                    var loc = Self.subject(ph, ges.variant); loc.y *= ges.flipY
                     world = ges.origin + SIMD2(loc.x * cs - loc.y * sn, loc.x * sn + loc.y * cs) * ges.scale
-                    sz = 20 * taper                           // painterly body — soft width, not a hairline
+                    sz = 16 * taper
                 }
                 // Soft attack/release along the draw; a dot/dab pops sharper (its whole life is short anyway).
                 let env = min(1, ph * 6) * min(1, (1 - ph) * 6)
                 ptr[base + ss] = EchoPen(
                     posSize: SIMD4(world.x, world.y, sz, ges.strength * (0.9 + 0.5 * env)),
-                    color: SIMD4(hue.x, hue.y, hue.z, 0))
+                    color: SIMD4(hue.x, hue.y, hue.z, square))
             }
         }
     }

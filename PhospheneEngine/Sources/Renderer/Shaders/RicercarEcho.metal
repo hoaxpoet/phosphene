@@ -38,6 +38,7 @@ struct EchoPointOut {
     float4 position [[position]];
     float  pointSize [[point_size]];
     float3 color;
+    float  square;     // 0 = round sprite (strings/woodwinds/percussion), 1 = blocky square (brass)
 };
 
 vertex EchoPointOut ricercar_echo_point_vertex(uint vid [[vertex_id]],
@@ -49,15 +50,18 @@ vertex EchoPointOut ricercar_echo_point_vertex(uint vid [[vertex_id]],
     o.position = float4(pos.x * 2.0 - 1.0, pos.y * 2.0 - 1.0, 0.0, 1.0);
     o.pointSize = max(1.0, p.posSize.z) * (p.posSize.w > 0.0 ? 1.0 : 0.0);   // size 0 ⇒ culled when inactive
     o.color = p.color.rgb * p.posSize.w;                                     // brightness gates emission
+    o.square = p.color.a;                                                    // per-voice sprite shape
     return o;
 }
 
 fragment float4 ricercar_echo_point_fragment(EchoPointOut in [[stage_in]],
                                              float2 pc [[point_coord]]) {
-    // Painterly sprite — a soft wide BODY (the stroke's paint mass) with a tight bright CORE glowing through
-    // it, so overlapping deposits fuse into a stroke that has weight and a luminous centre (not a hairline).
-    float d = length(pc - 0.5) * 2.0;              // 0 centre → 1 edge
-    float halo = smoothstep(1.0, 0.0, d);           // soft outer falloff — the painted edge
+    // Painterly sprite — a soft BODY (the stroke's paint mass) with a tight bright CORE glowing through it.
+    // Round for flowing/spark voices; a soft-edged SQUARE for brass so its marks read blocky and architectural.
+    float2 dv = pc - 0.5;
+    float haloR = smoothstep(1.0, 0.0, length(dv) * 2.0);                    // round falloff — the painted edge
+    float haloS = 1.0 - smoothstep(0.60, 1.0, max(abs(dv.x), abs(dv.y)) * 2.0);  // soft square (blocky brass)
+    float halo = mix(haloR, haloS, in.square);
     float body = halo * halo;                        // soft shoulder → the stroke's mass
     float coreHot = pow(halo, 5.0);                  // tight bright core — the glow-centre of the brushstroke
     return float4(in.color * (body + coreHot * 0.9), body);
