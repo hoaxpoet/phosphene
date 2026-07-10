@@ -25,7 +25,7 @@ struct RicercarEchoConfig {
     var exposure: Float
     var aspect: Float
     var groundBlend: Float
-    var pad0: Float
+    var time: Float
 }
 
 /// Mirror of MSL `EchoPen` — two float4 (32 bytes).
@@ -354,9 +354,9 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
             height: UInt32(configuration.height),
             penCount: UInt32(configuration.maxGestures * Self.subSteps),
             decay: 0.945,          // FAST fade → each spark is transient (pops and vanishes, no smear/lag)
-            exposure: 1.6,
+            exposure: 1.25,        // modest — painterly, keep the marks' COLOUR (readable over the ground, not neon)
             aspect: Float(configuration.width) / Float(configuration.height),
-            groundBlend: 0,
-            pad0: 0)
+            groundBlend: 1.0,      // soft painterly atmospheric ground (recessive, not the subject)
+            time: time)
     }
 }
