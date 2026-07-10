@@ -166,11 +166,27 @@ struct RicercarFluidVideoHarness {
         try? FileManager.default.removeItem(at: frameDir)
         try FileManager.default.createDirectory(at: frameDir, withIntermediateDirectories: true)
 
+        // Real instrument-family series (PANNs) → each spark's colour is the section actually playing.
+        // Alive on orchestral (Beethoven), ~dead on rock (the geometry falls back to a rotating hue then).
+        let familySeries = familyStream(audioPath, seconds: seconds)
+        let hop = InstrumentFamilyAnalyzer.hopSeconds
+        print("[ricercar_echo] family: \(familySeries.count) windows (empty = PANNs unavailable → colour falls back)")
+
         var captured = 0
         var audioEnergy: [Double] = [], visCoverage: [Double] = []
         for (i, fv) in features.enumerated() {
+            var stem = StemFeatures.zero
+            if !familySeries.isEmpty {
+                let fam = InstrumentFamilyActivity.sample(
+                    familySeries, atPlaybackSeconds: Double(i) / Double(Self.simFPS), hopSeconds: hop)
+                let sm = fam.smoothedSIMD4, dv = fam.devSIMD4
+                stem.stringsActivity = sm.x; stem.brassActivity = sm.y
+                stem.woodwindsActivity = sm.z; stem.percussionActivity = sm.w
+                stem.stringsActivityDev = dv.x; stem.brassActivityDev = dv.y
+                stem.woodwindsActivityDev = dv.z; stem.percussionActivityDev = dv.w
+            }
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { throw E.setup }
-            geo.update(features: fv, stemFeatures: StemFeatures.zero, commandBuffer: cmd)
+            geo.update(features: fv, stemFeatures: stem, commandBuffer: cmd)
             let capture = (i % 2 == 0)
             if capture {
                 let rpd = MTLRenderPassDescriptor()
