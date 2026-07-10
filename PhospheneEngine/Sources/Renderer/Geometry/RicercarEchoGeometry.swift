@@ -96,6 +96,7 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
     private var energyFast: Float = 0       // slow band LEVEL (music presence → strength/brightness)
     private var levFast: Float = 0          // fast band level (attack peak)
     private var levMed: Float = 0           // fast-reset baseline — onset = levFast − levMed (local transient)
+    private var levFloor: Float = 0         // level floor (min-tracker) — sits low in staccato gaps, high in legato
     private var refractory: Float = 0       // s until the next mark may fire (spaces attacks)
     private var famActivity = SIMD4<Float>(repeating: 0)   // per-section presence (strings/brass/woodwinds/perc)
     private var time: Float = 0
@@ -177,6 +178,7 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
     /// Marks spawned so far, and the `time` (s) each one fired — the sync/density diagnostic (no render needed).
     public private(set) var totalSpawns = 0
     public private(set) var spawnTimes: [Float] = []
+    public private(set) var spawnKindCounts = [0, 0, 0]   // [legato stroke, staccato dash, pizz dot]
 
     private func rand() -> Float {
         rng = rng &* 6364136223846793005 &+ 1442695040888963407
@@ -255,13 +257,19 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
         energyFast += Float(dt / (0.06 + dt)) * (level - energyFast)   // slow level → strength/brightness
         refractory = max(0, refractory - Float(dt))
 
+        // STACCATO vs LEGATO = does the level DROP between notes (staccato) or SUSTAIN (legato)? Track a level
+        // FLOOR (falls instantly with the level, rises slowly): in legato it stays near the level; in staccato/
+        // detached playing it sinks toward the gaps. staccatoness = how far the floor sits below the current level.
+        if levFast < levFloor { levFloor = levFast } else { levFloor += Float(dt / (0.55 + dt)) * (levFast - levFloor) }
+        let staccatoness = 1.0 - min(1, levFloor / max(0.05, levMed))
+
         // Onset = a local rise RELATIVE to the current level (so a small attack inside a loud sustained
         // passage still counts, where an absolute transient washes out under AGC flattening).
         let onset = (levFast - levMed) / max(0.08, levMed)
         if refractory <= 0 && onset > 0.045 && levFast > 0.045 {
-            let devSum = max(0, feat.bassDev) + max(0, feat.midDev) + max(0, feat.trebDev)
-            let treble = max(0, feat.trebDev) / max(0.05, devSum)
-            let sharp = min(1, onset * 2.2 + treble * 0.55)             // sharper attack ⇒ more staccato/pizz
+            let devs = max(0, feat.bassDev) + max(0, feat.midDev) + max(0, feat.trebDev)
+            let treble = max(0, feat.trebDev) / max(0.05, devs)
+            let sharp = min(1, staccatoness * 0.9 + treble * 0.35)     // sustained gaps ⇒ staccato; smooth ⇒ legato
             spawnSubject(strength: min(1, 0.4 + energyFast), sharp: sharp)
             refractory = 0.05                                           // ≤ ~20 marks/s — one per note attack
         }
@@ -299,11 +307,12 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
             sub.colorIndex = Int(rand() * 4) & 3
         }
         sub.strength = strength
-        // Articulation → the shape of the TINY mark: flowing streak ↔ short dash ↔ pluck dot. All small +
-        // short-lived (pop-and-fade sparks), so each is a tight, transient response to a note — not a floater.
-        if sharp > 0.74 { sub.markKind = 2; sub.scale = 0.18; sub.drawDuration = 0.09 }       // pizz — a pluck dot
-        else if sharp > 0.34 { sub.markKind = 1; sub.scale = 0.5; sub.drawDuration = 0.10 }   // staccato — a short dash
-        else { sub.markKind = 0; sub.scale = 0.5; sub.drawDuration = 0.26 }                   // legato — a small streak
+        // Articulation → the shape AND DURATION of the mark. Legato must FLOW (a long line drawn slowly →
+        // a flowing ribbon), staccato is SHORT + CLIPPED (a quick dab), pizz a pluck dot.
+        if sharp > 0.72 { sub.markKind = 2; sub.scale = 0.16; sub.drawDuration = 0.09 }   // pizz — a tiny pluck dot
+        else if sharp > 0.45 { sub.markKind = 1; sub.scale = 0.42; sub.drawDuration = 0.12 } // staccato — short clip
+        else { sub.markKind = 0; sub.scale = 1.7; sub.drawDuration = 0.90 }               // legato — LONG flowing line
+        spawnKindCounts[sub.markKind] += 1
         launch(sub)
         // ECHOES REMOVED (2026-07-10): the scheduled fake echoes fired on a TIMER, so most marks appeared when
         // nothing was happening in the music → "no connection" (r≈0.25 vs FL.10's 0.69). Every mark is now a
