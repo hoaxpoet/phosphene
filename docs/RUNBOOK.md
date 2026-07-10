@@ -267,6 +267,7 @@ Every session that modifies Swift code must end with all four passing:
 - Active capture provider
 - Permission state
 - Signal present / absent (`AudioSignalState`)
+- Signal health (`health:` line — peak band + `⚠ DEAD-TAP` / `⚠ RATE!<hz>` flags, ASH.1 / see §"Signal health monitor")
 - Sample rate
 - Current track
 - Preparation state
@@ -318,6 +319,18 @@ To localize degradation:
 4. **Post-separation stem WAVs are unreliable for chain diagnostics** — they reflect the stem separator's per-instrument isolation, not the mix. A track with minimal drums will produce a narrow-spectrum `drums.wav` regardless of chain quality.
 
 This procedure was established after session 2026-04-17T21-05-47Z, where earlier guesses at Voice Isolation / Multi-Output Device / BT codec degradation were all wrong — `raw_tap.wav` analysis confirmed the chain was clean and Oxytocin's bass-heavy spectrum was the song, not chain loss. Always test Stage 4 before concluding anything about upstream stages.
+
+### Signal health monitor
+
+`SignalHealthMonitor` (ASH.1 / D-182) turns the triage above into running code: it classifies the input chain continuously from the raw pre-AGC tap and surfaces the result in the debug overlay `health:` line and in `session.log` as `SIGNAL_HEALTH: peak=<dBFS> band=<b> deadTap=<bool> rate=<hz>` (logged on state CHANGE only, not per window). Three detectors, each mapping to a failure mode + remediation above:
+
+| Detector | Overlay / log | Failure mode | Remediation |
+|---|---|---|---|
+| `peakBand` | `band=healthy` (≥ −12 dBFS) / `low` (−15…−12) / `critical` (< −15) | §"Audio levels too low" — source-app normalization, chain attenuation, low system volume | Turn off Spotify **Normalize volume** / Apple Music **Sound Check**; raise system volume; check the output chain isn't a Multi-Output/BlackHole device. |
+| `deadTap` | `⚠ DEAD-TAP` | §"App captures silence" — the permission-invalidation trap: the tap installs and delivers silent zeros with no error (invalidated Screen-Recording grant after a default-output change, wedged `coreaudiod`) | Re-grant Screen Recording (toggle off/on, relaunch); `killall coreaudiod` if a wedged daemon is feeding all taps zero. See D-165 for the reinstall machinery. |
+| `sampleRateMismatch` | `⚠ RATE!<hz>` | §"Audio levels too low" (Audio MIDI Setup) — default output device outside the 44.1/48 kHz family, forcing resample | Audio MIDI Setup → set the interface Format to 48,000.0 Hz on both Input and Output. |
+
+`deadTap` fires only after `.silent` persists ~45 s (past the [3,10,30]s reinstall backoff), distinguishing a genuinely dead tap from an ordinary between-tracks gap. It is gated to process-tap modes; local-file playback silence is real musical silence, not a broken tap. The monitor **observes only** — it never steers tap recovery (that is `AudioInputRouter`'s job, D-165). Note: a very long deliberate pause also trips `deadTap` (indistinguishable from a dead tap from the zero stream alone); ASH.2 decides the user-facing response.
 
 ### Jank / dropped frames
 
