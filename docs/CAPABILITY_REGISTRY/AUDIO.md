@@ -559,7 +559,7 @@ PhospheneEngine/Sources/Audio/AudioInputRouter.swift:117:    public var onRender
 
 **Doc-level consequence:** ARCH §Audio Capture line 40 claims `→ LookaheadBuffer (2.5s analysis/render split)` in the pipeline. This is **`broken-but-claimed` at the documentation level** — the diagram is load-bearing for new contributors trying to understand the audio chain, and it lies. Fix: remove the arrow OR annotate as planned-but-unwired (similar to ARCH's annotation for RayTracing entries post-CA.7b). Doc fix landed in this increment (see §Cross-references).
 
-### Signal-quality monitors (2 files, 538 LoC)
+### Signal-quality monitors (3 files — SilenceDetector, InputLevelMonitor, SignalHealthMonitor)
 
 #### SilenceDetector.swift (216 LoC) — `production-active` (internal)
 
@@ -595,6 +595,22 @@ Continuous tap-quality assessment. `public final class InputLevelMonitor: @unche
 | `reset()` | `production-active` | (tap-restart path) | |
 
 **Finding: no dedicated tests** (filed as CA-Audio-FU-5 above).
+
+#### SignalHealthMonitor.swift — `production-active` (ASH.1 / D-182, added 2026-07-10)
+
+Input-chain health classifier. `public final class SignalHealthMonitor: @unchecked Sendable`. Consumes the raw pre-AGC tap; rolling 5 s peak window + tap signal state → `SignalHealth` published on change. **Observes only — never steers tap recovery** (that is D-165's `AudioInputRouter`; this classifies). Sibling of `InputLevelMonitor` (that grades quality green/yellow/red; this adds the two failure-mode *flags*).
+
+| Public API | Verdict | Consumer | Note |
+|---|---|---|---|
+| `struct SignalHealth { peakBand, peakDBFS, deadTap, sampleRateMismatch, outputSampleRateHz }` | `production-active` | App `@Published signalHealth` → debug overlay | `Sendable, Equatable`; `PeakBand ∈ {unknown, healthy, low, critical}` |
+| `init(windowSeconds:deadTapConfirmSeconds:expectedRates:timeProvider:outputSampleRateProvider:evaluationQueue:)` | `production-active` | App `VisualizerEngine`; all deps injectable for tests | defaults 5 s / 45 s / {44100,48000} |
+| `ingest(samples:count:)` | `production-active` | App `+Audio.swift` (audio thread) | vDSP peak; realtime-safe, no per-buffer alloc; async-dispatches eval on window close |
+| `updateContext(signalState:tapModeActive:)` | `production-active` | App `+Capture.swift` signal-state callback | dead-tap gated to process-tap modes |
+| `onHealthChanged` | `production-active` | App → `SIGNAL_HEALTH:` session.log + overlay | fires on classified change only; non-realtime queue |
+| `reset()` | `production-active` | App `setupAudioRouting` (per session) | clears silence timing + last-published |
+| `static queryDefaultOutputSampleRate()` | `production-active` | default `outputSampleRateProvider` | CoreAudio nominal-rate query; 0 if unreadable |
+
+**Detectors → RUNBOOK failure modes:** `peakBand` (healthy ≥ −12 / low −15…−12 / critical dBFS) → §"Audio levels too low"; `deadTap` (`.silent` past 45 s confirm) → §"App captures silence" permission-invalidation trap; `sampleRateMismatch` (default-output rate outside 44.1/48 kHz) → §"Audio levels too low" Audio MIDI Setup. **Tests:** `SignalHealthMonitorTests.swift` (12 cases — each state transition, attenuated real-waveform gain levels).
 
 ### Metadata fetcher cluster (5 files + 1 streaming poll, 943 + 269 = 1,212 LoC)
 
