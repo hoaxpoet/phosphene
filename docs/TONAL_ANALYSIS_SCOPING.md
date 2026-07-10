@@ -111,6 +111,8 @@ Two candidates where the channel already exists:
 
 **Matt's pick (2026-07-08): Nacre.**
 
+**TONAL.2b-measured saturation targets for the Nacre coupling** (soft-saturate against the realized p99, NOT 1.0 — the deviation-primitive discipline): `tonal_consonance` → 0.32, `tonal_tension` → 0.163, `harmonic_flux` → 0.110. The consonance gate is already applied analyzer-side (`consonanceFloor` 0.05); the preset maps [floor…0.32] → [pale…saturated], and tension [0…0.163] → its slow secondary range.
+
 ## 8. Work breakdown (the phased increments)
 
 | # | Increment | Gate |
@@ -119,7 +121,7 @@ Two candidates where the channel already exists:
 | TONAL.1 | `TonalAnalyzer` in `MIRPipeline` (infra only, no preset touches) | **✅ code-complete 2026-07-08** — 6-test synthetic suite green, 192 B held, CSV columns + contract across all 3 mirrors, DocIntegrity Module Map row. Live-session CSV pending Matt's build |
 | TONAL.1b | `SpectralCartograph` tonal trace row (fifths-phase wrapped trace + consonance) | **deferred** — a Metal + Core-Text live-diagnostic change; split from .1 to keep .1 worktree-testable |
 | TONAL.2a | `TonalDumper` executable (retained-diagnostic) | **✅ code-complete 2026-07-08** — production MIR loop at 512-hop, `--audio`/`--manifest` modes, `TonalStats` pure math + 6 unit tests, lint 0, wiring smoke-tested. No constant changed |
-| TONAL.2b | corpus calibration run + `TONAL_PILOT_REPORT.md` | **pending Matt's machine** (SSD corpus) — `swift run TonalDumper --manifest tools/data/corpus_pilot_1000.csv --root "/Volumes/Extreme SSD" --out tonal_pilot.json` → set constants from percentiles (IFC.6) |
+| TONAL.2b | corpus calibration run + `TONAL_PILOT_REPORT.md` | **✅ done 2026-07-08** — 1000-track pilot (2.66M frames, 0 skips). Per-genre consonance ranks classical 0.18 > jazz 0.14 > … > hiphop 0.10 (measures real harmony). Gate recalibrated `consonanceFloor` 0.12→**0.05** / width 0.10→**0.03** (the 0.12 placeholder sat at the corpus median). Saturation p99s for TONAL.3: consonance **0.32**, tension **0.163**, flux **0.110**. See [`docs/diagnostics/TONAL_PILOT_REPORT.md`](diagnostics/TONAL_PILOT_REPORT.md) |
 | TONAL.3 | first-preset consumption (Nacre or Mitosis) | M7-gated, 2 rounds max (PHYS escalation rule); flash re-measured; sidecar `description` updated to shipped coupling |
 
 **Infra and preset increments are never bundled** — TONAL.1 lands with *no preset reading the new floats.*

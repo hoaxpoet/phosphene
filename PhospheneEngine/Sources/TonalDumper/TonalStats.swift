@@ -81,6 +81,14 @@ public enum TonalStats {
         percentile(values.sorted(), 0.5)
     }
 
+    /// Split text into non-empty lines, handling LF **and** CRLF. Swift fuses
+    /// `\r\n` into a SINGLE grapheme, so `split(separator: "\n")` finds no
+    /// separator in a CRLF file and returns the whole file as one line (the
+    /// CENSUS gotcha) — split on both the bare-LF and the CRLF grapheme.
+    public static func splitLines(_ text: String) -> [String] {
+        text.split(whereSeparator: { $0 == "\n" || $0 == "\r\n" }).map(String.init)
+    }
+
     /// Split one CSV line into fields, honouring double-quoted fields with
     /// embedded commas and `""` escapes (the manifest relpaths can contain
     /// commas). Minimal RFC-4180 reader — enough for the pilot manifest.

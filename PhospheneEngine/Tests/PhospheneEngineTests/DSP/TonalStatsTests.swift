@@ -82,4 +82,15 @@ struct TonalStatsTests {
         // Escaped quotes ("") collapse to one.
         #expect(TonalStats.parseCSVLine("\"a\"\"b\",c")[0] == "a\"b")
     }
+
+    @Test("splitLines handles CRLF (the Swift \\r\\n-grapheme gotcha) and LF alike")
+    func crlfLineSplit() {
+        // CRLF: Swift fuses \r\n into one grapheme, so split(separator:\"\\n\") fails.
+        let crlf = "relpath,genre\r\na.m4a,rock\r\nb.m4a,jazz\r\n"
+        let lines = TonalStats.splitLines(crlf)
+        #expect(lines.count == 3, "header + 2 rows — NOT 1 (the CRLF bug)")
+        #expect(lines[1] == "a.m4a,rock", "no trailing \\r left on the line")
+        // Plain LF still works.
+        #expect(TonalStats.splitLines("x\ny\nz").count == 3)
+    }
 }
