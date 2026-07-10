@@ -95,7 +95,6 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
     private var energyEnv: Float = 0        // smoothed energy (density / stretto driver)
     private var energyFast: Float = 0       // fast energy for onset edges
     private var refractory: Float = 0       // s until next subject allowed
-    private var lastOnset: Float = -1       // time of the previous onset (→ onset rate = staccato cue)
     private var time: Float = 0
     private var rng: UInt64 = 0x2545F4914F6CDD1D
 
@@ -237,15 +236,13 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
 
         // Onset = a fast rise clearly above the slow envelope → a SUBJECT enters (gated by a refractory).
         if refractory <= 0 && energyFast - energyEnv > 0.10 && energyFast > 0.18 {
-            // ARTICULATION sharpness (0 legato … 1 pizz), read ONLY at the onset (so it can't fire in silence):
-            //  • a sharper/bigger energy jump = more percussive attack;
-            //  • more treble share = a brighter, more transient attack (pizz/staccato are transient-rich);
-            //  • a short gap since the last onset = a rapid run (staccato passage).
+            // ARTICULATION sharpness (0 legato … 1 pizz) of THIS note, read ONLY at the onset (never in silence).
+            // Per-NOTE cues (not "how busy the passage is" — that conflates fast-legato with staccato):
+            //  • a sharper/bigger energy jump = a more percussive attack;
+            //  • more treble share = a brighter, more transient attack (pizz/staccato are transient-rich).
             let total = max(0.05, max(0, feat.bassDev) + max(0, feat.midDev) + max(0, feat.trebDev))
             let treble = max(0, feat.trebDev) / total
-            let gap = lastOnset < 0 ? 1 : min(1, time - lastOnset)   // 1 = isolated, →0 = rapid run
-            let sharp = min(1, (energyFast - energyEnv) * 2.2 + treble * 0.6 + (1 - gap) * 0.5)
-            lastOnset = time
+            let sharp = min(1, (energyFast - energyEnv) * 1.7 + treble * 0.75)
             spawnSubject(strength: min(1, 0.4 + energyFast), sharp: sharp)
             refractory = 0.12   // low → staccato runs fire rapid marks (a held note needs a fresh rise to re-trigger)
         }
@@ -271,9 +268,9 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
         sub.flipY = 1; sub.rot = (rand() - 0.5) * 0.3
         sub.colorIndex = Int(rand() * 4) & 3
         sub.strength = strength
-        // Articulation → the shape of the mark (the thing you SEE differ): flowing stroke ↔ sharp dab ↔ pluck dot.
-        if sharp > 0.62 { sub.markKind = 2; sub.scale = 0.28; sub.drawDuration = 0.13 }       // pizz — a pluck dot
-        else if sharp > 0.38 { sub.markKind = 1; sub.scale = 0.5; sub.drawDuration = 0.20 }   // staccato — a short dab
+        // Articulation → the shape of the mark (the thing you SEE differ): flowing stroke ↔ short dash ↔ pluck dot.
+        if sharp > 0.74 { sub.markKind = 2; sub.scale = 0.28; sub.drawDuration = 0.12 }       // pizz — a pluck dot
+        else if sharp > 0.34 { sub.markKind = 1; sub.scale = 0.5; sub.drawDuration = 0.17 }   // staccato — a short dash
         else { sub.markKind = 0; sub.scale = 1.0; sub.drawDuration = 0.52 }                   // legato — flowing stroke
         launch(sub)
 
@@ -324,11 +321,15 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
                 if ges.markKind == 2 {                        // PIZZ DOT — a pluck at one spot, no tracing
                     world = ges.origin
                     sz = 17
-                } else {                                       // STROKE / DAB — trace the curve
+                } else if ges.markKind == 1 {                 // STACCATO DASH — a short straight bowed tick
+                    let along = (ph - 0.5) * 0.10             // a short line along the rotation axis
+                    world = ges.origin + SIMD2(cs, sn) * along
+                    sz = 12
+                } else {                                       // LEGATO STROKE — trace the flowing curve
                     var loc = Self.subject(ph)
                     loc.y *= ges.flipY
                     world = ges.origin + SIMD2(loc.x * cs - loc.y * sn, loc.x * sn + loc.y * cs) * ges.scale
-                    sz = ges.markKind == 1 ? 10 : 14 * ges.scale   // dab = short thick tick; stroke = bold line
+                    sz = 14 * ges.scale
                 }
                 // Soft attack/release along the draw; a dot/dab pops sharper (its whole life is short anyway).
                 let env = min(1, ph * 6) * min(1, (1 - ph) * 6)
