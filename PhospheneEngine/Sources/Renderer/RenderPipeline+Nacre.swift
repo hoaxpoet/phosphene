@@ -51,6 +51,12 @@ struct NacreUniforms {
 // secondary is DEFERRED to round 2 (it under-develops on 30 s preview fixtures, so the
 // QG.1 route-coverage gate can't exercise it — a fixture-breadth limit, not a dead route).
 private let kNacrePalettePeriod: Float = 14.4
+// Round 2 drift rates (palette-seconds per real second). At silence/atonal the palette
+// rotates at the faithful ~14.4 s cycle (rate 1.0); when tonal the clock nearly stops
+// (0.06 ≈ a 240 s cycle) so the KEY holds the hue — the palette's motion then comes from
+// the harmony moving through the song's chords, not the clock. Matt tunes the tonal rate.
+private let kNacreFaithfulRate: Float = 1.0
+private let kNacreTonalDriftRate: Float = 0.06
 private let kNacreDesatTonal: Float = 0.20     // the faithful (431) desaturate (shader kNacreDesat)
 private let kNacreDesatAtonal: Float = 0.38    // atonal → gentle desaturate toward rest (mud-safe; Matt tunes in M7)
 // Turning ← energy. `spin` is radians/frame of continuous warp rotation. At ~60 fps the
@@ -122,7 +128,17 @@ extension RenderPipeline {
         let fifthsVec = SIMD2<Float>(cos(features.tonalPhaseFifths), sin(features.tonalPhaseFifths))
         nacreFifthsVec += (fifthsVec - nacreFifthsVec) * 0.025                    // ~0.8 s circular smoothing
         let smoothedFifths = atan2(nacreFifthsVec.y, nacreFifthsVec.x)
-        uni.hueShift = (smoothedFifths / (2 * .pi)) * kNacrePalettePeriod * tonalGate
+        // Round 2: harmony SETS the hue position — the key you're in IS the colour (a POSITION
+        // on the palette wheel), not a nudge on the clock. Round 1's `time + offset` let the
+        // clock rotate the palette ~14× over a song while harmony only wobbled ±½ cycle, so
+        // the coupling was invisible (M7 session 15-00-03Z: fifths swept the full range but the
+        // palette read as the usual time rotation). Now the clock is DEMOTED to a slow drift
+        // when tonal (harmony holds the hue on a vamp) and restored to the faithful full
+        // rotation at silence/atonal — a continuous accumulator so the rate change never snaps.
+        let harmonyAnchor = (smoothedFifths / (2 * .pi)) * kNacrePalettePeriod
+        let driftRate = kNacreFaithfulRate + (kNacreTonalDriftRate - kNacreFaithfulRate) * tonalGate
+        nacrePaletteDrift += features.deltaTime * driftRate
+        uni.hueShift = harmonyAnchor * tonalGate + nacrePaletteDrift              // FULL palette phase
 
         // ── Saturation ← consonance (TONAL.3) ── atonal MUSIC desaturates toward the rest
         // state; SILENCE keeps the faithful palette (D-019 warmup must stay colourful — the
