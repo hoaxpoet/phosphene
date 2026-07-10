@@ -143,12 +143,13 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     var fataSwayClock: Float = 0
     var fataPrevBarPhase: Float = 0
 
-    /// Nacre (NACRE.3): hue ← harmony. `nacreCentroidNorm` is a slow EMA of the spectral
-    /// centroid (the section's brightness baseline, ~5 s); the palette-phase nudge tracks
-    /// the centroid's DEVIATION from it (track-robust — responds to harmonic/timbral shifts,
-    /// not absolute level). `nacreHueEMA` is the calm-smoothed output (the `hueShift` bound).
-    /// MainActor-only (the mv_warp draw path), no lock — same convention as the fata accumulators.
-    var nacreCentroidNorm: Float = 0, nacreHueEMA: Float = 0
+    /// Nacre (TONAL.3, D-178): hue ← real harmony. `nacreFifthsVec` is a slow (~0.8 s)
+    /// EMA of the circle-of-fifths phase as a UNIT VECTOR (cos,sin) — a circular mean so
+    /// modulations glide, wrap-safe (a scalar EMA sweeps the long way across ±π). Its
+    /// angle drives the palette-phase offset; consonance gates the whole coupling toward
+    /// the neutral rest state (atonal → the faithful time rotation). Replaces the NACRE.3
+    /// centroid-deviation proxy. MainActor-only (the mv_warp draw path), no lock.
+    var nacreFifthsVec: SIMD2<Float> = .zero
     /// Nacre (NACRE.3): `nacreSeedEMA` is the SLOW (~0.5 s) total-energy envelope driving the
     /// WARP's core SEED, kept near-steady so the fed-back seed never flares into smears.
     /// `nacreSpinEMA`: smoothed stem-fullness (avg of the four stem energies, ~0.5 s) → the

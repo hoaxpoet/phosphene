@@ -158,8 +158,13 @@ struct NacreMVWarpAccumulationTest {
         // session in the worktree, NACRE_ENERGY injects a constant band energy so the
         // volume-gated core can be eyeballed. Real-audio behaviour is Matt's live M7.
         let energy = ProcessInfo.processInfo.environment["NACRE_ENERGY"].flatMap { Float($0) } ?? 0
+        // TONAL.3 hue-coupling preview: NACRE_FIFTHS (radians −π…π) + NACRE_CONS drive the
+        // real tonal fields so the palette shift is eyeballable (dev preview only, FA #27).
+        let fifths = ProcessInfo.processInfo.environment["NACRE_FIFTHS"].flatMap { Float($0) } ?? 0
+        let cons = ProcessInfo.processInfo.environment["NACRE_CONS"].flatMap { Float($0) } ?? 0
         guard let display = try Self.runNacre(ctx: ctx, width: wPix, height: hPix,
-                                              frames: frames, session: session, energy: energy) else {
+                                              frames: frames, session: session, energy: energy,
+                                              fifths: fifths, cons: cons) else {
             Issue.record("Nacre render setup failed"); return
         }
         let outDir = FileManager.default.temporaryDirectory.appendingPathComponent("nacre_mvwarp_diag")
@@ -176,7 +181,8 @@ struct NacreMVWarpAccumulationTest {
     /// features.csv; otherwise silence (worktree-safe). Returns nil on setup failure.
     @MainActor
     static func runNacre(ctx: MetalContext, width: Int, height: Int, frames: Int,
-                         session: String?, energy: Float, reducedMotion: Bool = false) throws -> MTLTexture? {
+                         session: String?, energy: Float, reducedMotion: Bool = false,
+                         fifths: Float = 0, cons: Float = 0) throws -> MTLTexture? {
         let lib = try ShaderLibrary(context: ctx)
         let texMgr = try TextureManager(context: ctx, shaderLibrary: lib)
         let floatStride = MemoryLayout<Float>.stride
@@ -216,6 +222,7 @@ struct NacreMVWarpAccumulationTest {
                 feat.time = Float(i) * deltaTime
                 feat.bass = energy; feat.mid = energy; feat.treble = energy   // dev preview only
                 feat.midRel = energy; feat.bassDev = energy; feat.trebDev = energy
+                feat.tonalPhaseFifths = fifths; feat.tonalConsonance = cons   // TONAL.3 hue-coupling preview
             } else {
                 let r = rows[min(i, rows.count - 1)]
                 feat.time = r.t; feat.bass = r.bass; feat.mid = r.mid; feat.treble = r.treble
