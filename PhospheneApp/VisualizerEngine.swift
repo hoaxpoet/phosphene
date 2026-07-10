@@ -584,6 +584,13 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Last logged quality grade; avoids spamming session.log on every frame.
     var lastLoggedQuality: SignalQuality = .unknown
 
+    /// ASH.1 — input-chain health classifier (peak band / dead tap / rate
+    /// mismatch). Fed raw pre-AGC tap samples; publishes on state change only.
+    let signalHealthMonitor = SignalHealthMonitor()
+
+    /// Latest classified signal health, surfaced in the debug overlay (ASH.1).
+    @Published var signalHealth = SignalHealth()
+
     /// Task that hides the preset name after a delay.
     var hideNameTask: Task<Void, Never>?
 

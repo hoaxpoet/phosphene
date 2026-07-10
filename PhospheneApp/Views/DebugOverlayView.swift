@@ -100,6 +100,16 @@ struct DebugOverlayView: View {
                 .foregroundColor(.white.opacity(0.7))
                 .lineLimit(3)
 
+            // ASH.1 signal-health classifier: peak band + the two failure-mode
+            // flags (dead tap / output-rate mismatch) the level readout can't show.
+            let health = engine.signalHealth
+            let healthFlags = [
+                health.deadTap ? "DEAD-TAP" : nil,
+                health.sampleRateMismatch ? "RATE!\(Int(health.outputSampleRateHz))" : nil
+            ].compactMap { $0 }.joined(separator: " ")
+            label("health", health.peakBand.rawValue
+                  + (healthFlags.isEmpty ? "" : "  ⚠ \(healthFlags)"))
+
             Divider().background(.white.opacity(0.3))
 
             // Frame-budget quality level + ML dispatch state moved to the
