@@ -26,7 +26,11 @@ Run this at the **start** of any preset-related increment — authoring, uplift,
 
 **Test in the production-grade rendering pipeline. No shortcuts.** Every preset increment that depends on temporal behaviour must include a test running the same dispatch path the live app uses — for ≥ N frames covering the relevant accumulator decay window — and inspect the multi-frame output. "Same dispatch path" means: `mv_warp` → scene → warp → compose → swap in a loop; `staged` → all stages with the same slot-6/slot-7 bindings production uses; `ray_march` → G-buffer → lighting → composite. Tests that hit `preset.pipelineState` alone verify instantaneous output only — three Aurora Veil increments shipped green that way while smearing in live playback. Obligations:
 1. Before authoring a preset using `mv_warp` / `staged` / `feedback` / `ray_march` + `post_process`, write or extend the multi-frame harness FIRST — verify the live path is reachable from a test before any shader work.
-2. For mv_warp presets, `AuroraVeilMVWarpAccumulationTest` is the reference pattern (env-gated, 60 frames at silence, accumulator capture + quantitative metric). Adapt; do not reinvent.
+2. Every paradigm has a named reference template to copy-adapt (QG.4, D-182) — env-gated `HARNESS_TEMPLATES=1`, 60 frames at silence, capture + metric, all built on the shared `HarnessTemplateCore` spine. Adapt the one matching your paradigm; do not reinvent:
+   - `mv_warp` → `AuroraVeilMVWarpAccumulationTest` (scene → warp → compose → swap; accumulator capture + quantitative metric).
+   - `staged` → `StagedPathHarnessTemplate` (all stages via the production `encodeStage`, slot-6/7 bindings; per-stage non-degenerate + composite dHash golden).
+   - `ray_march` → `RayMarchPathHarnessTemplate` (live `RayMarchPipeline.render`: G-buffer → lighting → composite → post; non-degenerate + composite dHash golden).
+   - `feedback` → `FeedbackPathHarnessTemplate` (surface-mode `runWarpPass` → composite → swap; accumulator bounded between the D-037 non-black floor and saturation).
 3. Single-frame tests stay valuable for shader-math gates; they are not sufficient alone.
 4. Closeout reports state which dispatch path the tests exercised — "tests pass" alone is not evidence of correctness. Tell-tale bypass phrasing: "the silence test passes, so silence is stable" / "the visual review PNG looks clean."
 
