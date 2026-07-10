@@ -266,6 +266,20 @@ else
 fi
 emit ""
 
+# --- Step 6: Paradigm harness templates (QG.4, D-182 — env-gated) ------------------
+# The per-paradigm multi-frame harnesses (mv_warp / staged / ray_march / feedback) that
+# a preset increment adapts. Env-gated off the default battery (timing budget), so run
+# them here explicitly. Informational — not folded into the ALL GREEN aggregate below
+# (GPU-golden, hardware-specific; a preset increment reads this step directly).
+emit "--- Step 6: Paradigm harness templates (HARNESS_TEMPLATES=1) ---"
+HARNESS_LOG="$TMP_DIR/harness_templates.log"
+HARNESS_CMD_STR="HARNESS_TEMPLATES=1 swift test --package-path PhospheneEngine --filter HarnessTemplate"
+t0=$SECONDS
+HARNESS_EXIT="$(HARNESS_TEMPLATES=1 run_step "$HARNESS_LOG" swift test --package-path PhospheneEngine --filter HarnessTemplate)"
+HARNESS_WALL=$((SECONDS - t0))
+render_test_step "Step 6: Paradigm harness templates" "$HARNESS_CMD_STR" "$HARNESS_LOG" "$HARNESS_EXIT" "$HARNESS_WALL"
+emit ""
+
 # --- Footer -----------------------------------------------------------------------
 emit "--- Footer ---"
 emit "Exit codes: engine=${ENGINE_EXIT} app=${APP_EXIT} swiftlint=${LINT_EXIT} docgates=${DOC_EXIT}"
