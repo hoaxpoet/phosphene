@@ -266,6 +266,22 @@ else
 fi
 emit ""
 
+# --- Step 6: Coupling report (QG.3 — attached to preset closeouts, NEVER asserted) ---
+# The audio-visual coupling baseline is a REPORT, not a gate (D-182): surfaced for
+# preset increments and read alongside the M7 seat, never a pass/fail. Low coupling
+# means "not measured as present," not "bad." The per-frame sweep is expensive
+# (PHOSPHENE_COUPLING=1, ~50k renders), so this step points at the standing baseline
+# + regeneration command; it does not run the sweep and never affects the verdict.
+emit "--- Step 6: Coupling report (QG.3, report-only) ---"
+COUPLING_BASELINE="docs/diagnostics/QG3_COUPLING_BASELINE.md"
+if [ -f "$COUPLING_BASELINE" ]; then
+  emit "Baseline  : ${COUPLING_BASELINE} (report-only, D-182 — never a gate)"
+  emit "Regenerate: PHOSPHENE_COUPLING=1 swift test --package-path PhospheneEngine --filter CouplingReportTests"
+else
+  emit "Baseline  : ${COUPLING_BASELINE} not found"
+fi
+emit ""
+
 # --- Footer -----------------------------------------------------------------------
 emit "--- Footer ---"
 emit "Exit codes: engine=${ENGINE_EXIT} app=${APP_EXIT} swiftlint=${LINT_EXIT} docgates=${DOC_EXIT}"
