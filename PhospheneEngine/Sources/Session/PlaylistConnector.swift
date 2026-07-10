@@ -76,6 +76,15 @@ extension PlaylistSource {
             return "Spotify"
         }
     }
+
+    /// True for Spotify sources — lets the App layer pick Spotify-specific
+    /// remediation copy (e.g. the "Normalize Volume" nudge, ASH.2).
+    public var isSpotify: Bool {
+        switch self {
+        case .spotifyCurrentQueue, .spotifyPlaylistURL: return true
+        case .appleMusicCurrentPlaylist, .appleMusicPlaylistURL: return false
+        }
+    }
 }
 
 // MARK: - Connectors directory

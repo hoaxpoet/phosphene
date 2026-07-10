@@ -159,6 +159,7 @@
 		J10002 /* PlaybackErrorBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = J20002; };
 		J10003 /* PlaybackErrorConditionTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = J20003; };
 		J10004 /* PlaybackErrorBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = J20004; };
+		J100A2 /* PlaybackHealthToastTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = J200A2; };
 		J10005 /* ToastManagerConditionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = J20005; };
 		K10001 /* SettingsTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20001; };
 		K10002 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20002; };
@@ -354,6 +355,7 @@
 		J20002 /* PlaybackErrorBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackErrorBridge.swift; sourceTree = "<group>"; };
 		J20003 /* PlaybackErrorConditionTrackerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackErrorConditionTrackerTests.swift; sourceTree = "<group>"; };
 		J20004 /* PlaybackErrorBridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackErrorBridgeTests.swift; sourceTree = "<group>"; };
+		J200A2 /* PlaybackHealthToastTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackHealthToastTests.swift; sourceTree = "<group>"; };
 		J20005 /* ToastManagerConditionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToastManagerConditionTests.swift; sourceTree = "<group>"; };
 		K20001 /* SettingsTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTypes.swift; sourceTree = "<group>"; };
 		K20002 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
@@ -712,6 +714,7 @@
 				I20010 /* ReachabilityMonitorTests.swift */,
 				J20003 /* PlaybackErrorConditionTrackerTests.swift */,
 				J20004 /* PlaybackErrorBridgeTests.swift */,
+				J200A2 /* PlaybackHealthToastTests.swift */,
 				J20005 /* ToastManagerConditionTests.swift */,
 				K20040 /* SettingsStoreTests.swift */,
 				K20041 /* SettingsMigratorTests.swift */,
@@ -1005,6 +1008,7 @@
 				I10010 /* ReachabilityMonitorTests.swift in Sources */,
 				J10003 /* PlaybackErrorConditionTrackerTests.swift in Sources */,
 				J10004 /* PlaybackErrorBridgeTests.swift in Sources */,
+				J100A2 /* PlaybackHealthToastTests.swift in Sources */,
 				J10005 /* ToastManagerConditionTests.swift in Sources */,
 				K10040 /* SettingsStoreTests.swift in Sources */,
 				K10041 /* SettingsMigratorTests.swift in Sources */,
