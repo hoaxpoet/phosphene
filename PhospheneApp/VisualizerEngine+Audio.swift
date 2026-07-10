@@ -42,6 +42,18 @@ extension VisualizerEngine {
             recorder?.log("TAP: \(msg)")
         }
 
+        // ASH.1: fresh session → clear stale silence timing / prior health, and
+        // log + publish each health state CHANGE (not per-window). The overlay
+        // reads `signalHealth`; the log line mirrors the RUNBOOK triage catalog.
+        signalHealthMonitor.reset()
+        signalHealthMonitor.onHealthChanged = { [weak self, weak recorder] health in
+            recorder?.log(
+                "SIGNAL_HEALTH: peak=\(String(format: "%.1f", health.peakDBFS))dBFS "
+                + "band=\(health.peakBand.rawValue) deadTap=\(health.deadTap) "
+                + "rate=\(Int(health.outputSampleRateHz))")
+            Task { @MainActor [weak self] in self?.signalHealth = health }
+        }
+
         // Round 26 (2026-05-15): `preFetcher` is now constructed early in
         // `VisualizerEngine.init` so SessionPreparer can share the same
         // cache + fetcher list. Reuse it here for the track-change
@@ -108,6 +120,10 @@ extension VisualizerEngine {
             // (two vDSP reductions).  Spectral balance is filled in on the
             // analysis queue from the FFT magnitudes already computed below.
             self?.inputLevelMonitor.submitSamples(pointer: samples, count: count)
+
+            // ASH.1: input-chain health (peak band / dead tap / rate mismatch).
+            // Realtime-safe; classification + publish happen off this thread.
+            self?.signalHealthMonitor.ingest(samples: samples, count: count)
 
             // Capture the actual tap sample rate so Beat This! and the
             // snapshot helper use the correct frame count. The setter is
