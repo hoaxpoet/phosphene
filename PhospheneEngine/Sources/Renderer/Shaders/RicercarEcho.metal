@@ -54,11 +54,13 @@ vertex EchoPointOut ricercar_echo_point_vertex(uint vid [[vertex_id]],
 
 fragment float4 ricercar_echo_point_fragment(EchoPointOut in [[stage_in]],
                                              float2 pc [[point_coord]]) {
-    // Soft round sprite — bright core, smooth halo, so overlapping deposits fuse into a continuous stroke.
+    // Painterly sprite — a soft wide BODY (the stroke's paint mass) with a tight bright CORE glowing through
+    // it, so overlapping deposits fuse into a stroke that has weight and a luminous centre (not a hairline).
     float d = length(pc - 0.5) * 2.0;              // 0 centre → 1 edge
-    float core = smoothstep(1.0, 0.0, d);
-    float w = core * core;                          // soft shoulder
-    return float4(in.color * w, w);
+    float halo = smoothstep(1.0, 0.0, d);           // soft outer falloff — the painted edge
+    float body = halo * halo;                        // soft shoulder → the stroke's mass
+    float coreHot = pow(halo, 5.0);                  // tight bright core — the glow-centre of the brushstroke
+    return float4(in.color * (body + coreHot * 0.9), body);
 }
 
 // MARK: - Decay the previous trail into the current target (opaque)

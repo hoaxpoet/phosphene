@@ -352,16 +352,16 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
                 let taper = 0.28 + 0.72 * sinf(ph * .pi)
                 if ges.markKind == 2 {                        // PIZZ DOT — a tiny pluck at one spot
                     world = ges.origin
-                    sz = 5
+                    sz = 11
                 } else if ges.markKind == 1 {                 // STACCATO DASH — a tiny straight bowed tick
                     let along = (ph - 0.5) * 0.055            // a short line along the rotation axis
                     world = ges.origin + SIMD2(cs, sn) * along
-                    sz = 6 * taper
-                } else {                                       // LEGATO STREAK — a small tapered traced curve
+                    sz = 15 * taper
+                } else {                                       // LEGATO STREAK — a tapered traced brushstroke
                     var loc = Self.subject(ph, ges.variant)
                     loc.y *= ges.flipY
                     world = ges.origin + SIMD2(loc.x * cs - loc.y * sn, loc.x * sn + loc.y * cs) * ges.scale
-                    sz = 8 * taper
+                    sz = 20 * taper                           // painterly body — soft width, not a hairline
                 }
                 // Soft attack/release along the draw; a dot/dab pops sharper (its whole life is short anyway).
                 let env = min(1, ph * 6) * min(1, (1 - ph) * 6)
