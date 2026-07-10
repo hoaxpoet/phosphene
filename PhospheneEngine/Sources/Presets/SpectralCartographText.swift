@@ -23,7 +23,7 @@
 //   • TR row labels (BASS / MID / TREBLE)  (SF Mono Regular 11pt)
 //   • TR axis tick labels (–1 / 0 / +1)   (SF Mono Regular 9pt)
 //   • BL axis labels + quadrant hints      (SF Mono Regular 9pt)
-//   • BR row labels (BEAT φ / BASS DEV / BAR φ)   (SF Mono Regular 11pt)
+//   • BR row labels (BEAT φ / BASS DEV / BAR φ / 5TH φ / CONS)   (SF Mono Regular 11pt; TONAL.1b)
 //   • BR time axis (← 8s … now →)          (SF Mono Regular 9pt)
 //   • BPM number (SF Mono Bold 32pt)
 //   • Session-mode label (SF Mono Regular 13pt, colour-coded)
@@ -127,10 +127,16 @@ public enum SpectralCartographText {
         let beatPhaseClr = CGColor(red: 1.0, green: 0.784, blue: 0.341, alpha: 0.9)
         let bassDevClr = CGColor(red: 1.0, green: 0.361, blue: 0.361, alpha: 0.9)
         let barPhaseClr = CGColor(red: 0.482, green: 0.361, blue: 1.0, alpha: 0.9)
+        let fifthsClr = CGColor(red: 0.361, green: 1.0, blue: 0.706, alpha: 0.9)   // TONAL.1b teal
+        let consonanceClr = CGColor(red: 1.0, green: 0.831, blue: 0.984, alpha: 0.9)  // TONAL.1b pink
 
-        drawLabel("BEAT φ", at: metalToCG(0.513, 0.605, cw, ch), font: rowFont, color: beatPhaseClr, ctx: ctx)
-        drawLabel("BASS DEV", at: metalToCG(0.513, 0.742, cw, ch), font: rowFont, color: bassDevClr, ctx: ctx)
-        drawLabel("BAR φ", at: metalToCG(0.513, 0.879, cw, ch), font: rowFont, color: barPhaseClr, ctx: ctx)
+        // Five rows now (TONAL.1b added fifths φ + consonance) — evenly spaced
+        // across the BR content region below the panel header.
+        drawLabel("BEAT φ", at: metalToCG(0.513, 0.577, cw, ch), font: rowFont, color: beatPhaseClr, ctx: ctx)
+        drawLabel("BASS DEV", at: metalToCG(0.513, 0.659, cw, ch), font: rowFont, color: bassDevClr, ctx: ctx)
+        drawLabel("BAR φ", at: metalToCG(0.513, 0.741, cw, ch), font: rowFont, color: barPhaseClr, ctx: ctx)
+        drawLabel("5TH φ", at: metalToCG(0.513, 0.823, cw, ch), font: rowFont, color: fifthsClr, ctx: ctx)
+        drawLabel("CONS", at: metalToCG(0.513, 0.905, cw, ch), font: rowFont, color: consonanceClr, ctx: ctx)
 
         drawLabel("← 8 s", at: metalToCG(0.515, 0.975, cw, ch), font: tickFont, color: tickDim, ctx: ctx)
         drawLabel("now →", at: metalToCG(0.930, 0.975, cw, ch), font: tickFont, color: tickDim, ctx: ctx)

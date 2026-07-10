@@ -8,7 +8,8 @@
 //   TL [0,0.5]×[0,0.5]   — 512-bin FFT spectrum, log-frequency, centroid-driven colour
 //   TR [0.5,1]×[0,0.5]   — 3-band deviation meters (att_rel signed bar + dev fill + beat tick)
 //   BL [0,0.5]×[0.5,1]   — Valence/arousal phase plot, 8-second fading trail
-//   BR [0.5,1]×[0.5,1]   — Scrolling line graphs: beat_phase01, bass_dev, bar_phase01
+//   BR [0.5,1]×[0.5,1]   — Scrolling line graphs: beat_phase01, bass_dev, bar_phase01,
+//                          tonal fifths-phase + consonance (TONAL.1b)
 //
 // DSP.3.3 additions:
 //   • Full-viewport beat flash: thin amber band every beat (beatPhase01 near 0).
@@ -61,6 +62,8 @@ constant float3 kGridColor    = float3(0.18);
 constant float3 kBeatPhaseClr  = float3(1.0,  0.784, 0.341);  // amber
 constant float3 kBassDevClr    = float3(1.0,  0.361, 0.361);  // coral
 constant float3 kBarPhaseClr   = float3(0.482, 0.361, 1.000); // violet
+constant float3 kFifthsClr     = float3(0.361, 1.0,   0.706); // TONAL.1b: teal (circle-of-fifths phase)
+constant float3 kConsonanceClr = float3(1.0,  0.831, 0.984); // TONAL.1b: pink (consonance)
 
 // DSP.3.3 flash colours
 constant float3 kBeatFlashClr     = float3(1.0,  0.784, 0.341);  // amber beat flash
@@ -88,6 +91,9 @@ constant int kOffSessionMode   = 2420;
 constant int kOffDownbeatTimes = 2421;
 constant int kDownbeatTimesCount = 8;
 constant int kOffDriftMs       = 2429;
+// TONAL.1b (D-178) — tonal trace rings (SpectralHistoryBuffer offsetFifths/Consonance).
+constant int kOffFifths        = 2430;
+constant int kOffConsonance    = 2910;
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
@@ -212,19 +218,23 @@ static inline float3 drawValenceArousal(
 // ── BR: Scrolling line graphs with beat + downbeat tick overlays ──────────────
 
 static inline float3 drawFeatureGraphs(float2 uv, constant float* history) {
-    const float kRowH = 1.0 / 3.0;
+    const float kRowH = 1.0 / 5.0;
     int    row;
     int    offset;
     float3 lineClr;
 
-    if (uv.y < kRowH) {
-        row = 0; offset = kOffBeatPhase; lineClr = kBeatPhaseClr;
+    if (uv.y < 1.0 * kRowH) {
+        row = 0; offset = kOffBeatPhase;  lineClr = kBeatPhaseClr;
     } else if (uv.y < 2.0 * kRowH) {
-        row = 1; offset = kOffBassDev;   lineClr = kBassDevClr;
+        row = 1; offset = kOffBassDev;    lineClr = kBassDevClr;
+    } else if (uv.y < 3.0 * kRowH) {
+        row = 2; offset = kOffBarPhase;   lineClr = kBarPhaseClr;
+    } else if (uv.y < 4.0 * kRowH) {
+        row = 3; offset = kOffFifths;     lineClr = kFifthsClr;      // TONAL.1b
     } else {
-        row = 2; offset = kOffBarPhase;  lineClr = kBarPhaseClr;
+        row = 4; offset = kOffConsonance; lineClr = kConsonanceClr;  // TONAL.1b
     }
-    float yInRow = fract(uv.y * 3.0);
+    float yInRow = fract(uv.y * 5.0);
 
     if (row > 0 && yInRow < 0.010) return float3(0.15);
 
@@ -239,6 +249,9 @@ static inline float3 drawFeatureGraphs(float2 uv, constant float* history) {
     int   slotP = (writeHead - 1 - prevAge + kHistLen) % kHistLen;
     float valC  = history[offset + slotC];
     float valP  = (prevAge >= samplesValid) ? valC : history[offset + slotP];
+    // TONAL.1b: the fifths phase is a wrapped sawtooth — don't draw the
+    // full-height bridging segment across the ±π wrap (it reads as a streak).
+    if (row == 3 && abs(valC - valP) > 0.5) valP = valC;
 
     const float kTopMarg = 0.08;
     const float kBotMarg = 0.08;
