@@ -122,6 +122,11 @@ public final class SignalHealthMonitor: @unchecked Sendable {
     public init(
         windowSeconds: TimeInterval = 5.0,
         deadTapConfirmSeconds: TimeInterval = 45.0,
+        // D-079 allowlist: `44_100` here is NOT a tap-rate hardcode (FA #52) — it is
+        // the reference set of known-good OUTPUT-DEVICE rates the mismatch detector
+        // compares the queried device rate against. The whole detector's job is to
+        // flag rates OUTSIDE this 44.1/48 kHz family, so the family must be named
+        // literally. Injectable, so callers/tests can override.
         expectedRates: Set<Int> = [44_100, 48_000],
         timeProvider: @escaping () -> CFAbsoluteTime = CFAbsoluteTimeGetCurrent,
         outputSampleRateProvider: @escaping () -> Double = SignalHealthMonitor.queryDefaultOutputSampleRate,
