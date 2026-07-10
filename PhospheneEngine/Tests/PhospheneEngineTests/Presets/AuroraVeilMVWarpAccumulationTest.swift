@@ -196,23 +196,15 @@ struct AuroraVeilMVWarpAccumulationTest {
               var composeTex = device.makeTexture(descriptor: texDesc)
         else { throw DiagError.textureFailed }
 
-        // Zero-init all three textures (one-shot clear pass).
-        try clearTextures([sceneTex, warpTex, composeTex], context: context)
+        // Zero-init all three textures (one-shot clear pass — shared spine).
+        try HarnessTemplateCore.clear([sceneTex, warpTex, composeTex], context)
 
-        // Shared buffers (zeroed — silence) reused across all frames.
-        let floatStride = MemoryLayout<Float>.stride
-        guard
-            let fft  = context.makeSharedBuffer(length: 512 * floatStride),
-            let wav  = context.makeSharedBuffer(length: 2048 * floatStride),
-            let stem = context.makeSharedBuffer(length: MemoryLayout<StemFeatures>.size),
-            let hist = context.makeSharedBuffer(length: 4096 * floatStride),
-            let avState = context.makeSharedBuffer(length: MemoryLayout<AuroraVeilStateGPUMirror>.stride)
+        // Silence audio buffers (fft/wav/stem/history) from the shared spine, reused
+        // across all frames. avState is Aurora Veil-specific and stays local.
+        let sb = try HarnessTemplateCore.makeSilenceBuffers(context)
+        let fft = sb.fft, wav = sb.waveform, stem = sb.stem, hist = sb.history
+        guard let avState = context.makeSharedBuffer(length: MemoryLayout<AuroraVeilStateGPUMirror>.stride)
         else { throw DiagError.bufferFailed }
-        _ = fft.contents().initializeMemory(as: UInt8.self, repeating: 0, count: 512 * floatStride)
-        _ = wav.contents().initializeMemory(as: UInt8.self, repeating: 0, count: 2048 * floatStride)
-        _ = stem.contents().initializeMemory(as: UInt8.self, repeating: 0,
-                                             count: MemoryLayout<StemFeatures>.size)
-        _ = hist.contents().initializeMemory(as: UInt8.self, repeating: 0, count: 4096 * floatStride)
         var avMirror = AuroraVeilStateGPUMirror()
         avState.contents().copyMemory(from: &avMirror,
                                       byteCount: MemoryLayout<AuroraVeilStateGPUMirror>.stride)
@@ -343,20 +335,6 @@ struct AuroraVeilMVWarpAccumulationTest {
     }
 
     // MARK: - Helpers
-
-    private func clearTextures(_ texs: [MTLTexture], context: MetalContext) throws {
-        guard let cmd = context.commandQueue.makeCommandBuffer() else { throw DiagError.cmdBufferFailed }
-        for tex in texs {
-            let desc = MTLRenderPassDescriptor()
-            desc.colorAttachments[0].texture = tex
-            desc.colorAttachments[0].loadAction = .clear
-            desc.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
-            desc.colorAttachments[0].storeAction = .store
-            if let enc = cmd.makeRenderCommandEncoder(descriptor: desc) { enc.endEncoding() }
-        }
-        cmd.commit()
-        cmd.waitUntilCompleted()
-    }
 
     /// Returns (skyStarCount, skyMaxLuma, frameMaxLuma) where:
     ///   - skyStarCount: pixels in uv.y ∈ [0.0, 0.20] with luma > 0.45
