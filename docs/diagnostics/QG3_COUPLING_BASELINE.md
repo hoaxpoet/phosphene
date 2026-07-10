@@ -1,6 +1,6 @@
 # QG.3 — Audio-Visual Coupling Baseline
 
-**Date:** 2026-07-10. **Increment:** QG.3 (metric, report-first) → **QG.3.1 (measurable for all 13 via the real multi-pass render).** **Producer:** `CouplingReportTests` (gated `PHOSPHENE_COUPLING=1`). **Decisions:** [D-182] (metric), [D-183] (measurement substrate + calibration). **This is a REPORT, not a gate** — the QG.3.2 gate flip is Matt's call, taken against this distribution.
+**Date:** 2026-07-10. **Increment:** QG.3 (metric) → **QG.3.1 (measurable for all 13)** → **QG.3.2 (warning-tier review flag, shipped).** **Producer:** `CouplingReportTests` (gated `PHOSPHENE_COUPLING=1`). **Decisions:** [D-182] (metric), [D-183] (measurement substrate + warning-tier calibration). **This is a REPORT with a warning-tier flag, NOT a cert gate** — a REVIEW flag informs; the M7 seat is the coupling authority.
 
 ## What was measured
 
@@ -40,15 +40,23 @@ The negative control (`love_rehab`-audio × `so_what`-frames) ranges **−0.02 �
   - **Nacre** (0.05, control −0.02): its music connection is a *downbeat camera push* (NACRE.4, D-171) — subtle whole-frame motion that barely moves the mean-abs frame delta. The metric under-reads camera-motion coupling. Nacre is CERTIFIED + M7-approved.
   - **Ferrofluid Ocean** (0.08, control +0.08 — at floor): rendered via the single-fragment path (its faithful render is ray_march + post_process + a baked height field we approximate). Under-measured render, not a dead route (its spike/aurora routes are CPU-computed StemFeatures the offline fixture can't populate — the documented QG.1.1 boundary, [D-180]).
 
-## Recommended QG.3.2 gate — ship as a WARNING tier, not a hard cert gate
+## QG.3.2 — SHIPPED as a WARNING tier (Matt's call, not a hard cert gate)
 
-The metric is now measurable, and the distribution is real. But **two certified, M7-approved presets (Nacre, Ferrofluid Ocean) sit at/below a meaningful floor** for legitimate proxy reasons. A hard cert gate at any floor that catches genuinely-dead coupling would false-red them — the exact "verdict on an uncalibrated proxy" failure QG.3 exists to avoid. Recommendation:
+The metric is measurable and the distribution is real, but **certified, M7-approved presets read weak for legitimate proxy reasons** — a hard cert gate would false-red them (the "verdict on an uncalibrated proxy" failure this work exists to avoid). QG.3.2 ships as a **review flag**, printed in the report, **surfaced in closeout evidence, never failing certification**.
 
-1. **QG.3.2 = a warning-tier report threshold, not a cert blocker.** Flag any preset whose best-fixture peak composite r is **< 0.15** AND fails to clear its own control by **≥ 0.10** as "coupling not measured as present — review," surfaced in the closeout evidence. It informs, it does not fail certification.
-2. **Validate the proxy against M7 before any hard gate.** The one thing that would justify a blocking gate is evidence the metric tracks *felt* coupling. Nacre (low r, M7-loved) and Skein (high r, M7-certified) are the calibration anchors: if Matt confirms the metric's ordering matches his felt ordering on a few presets, a hard gate becomes defensible. Until then, warning-tier only.
-3. **Per-preset floor, best-of-fixtures.** Judge each preset against its own control on its best fixture — never a global threshold on all fixtures (feedback autocorrelation + the `there_there` low-dynamics effect would both misfire).
+**Rule (`CouplingReportTests.isReview`, both conditions must hold):** a preset is flagged `REVIEW` when its best-fixture peak composite r is **< 0.15** AND fails to clear its own noise control by **≥ 0.10**. Both-must-fail means a feedback preset that clears its (high) control still passes below the absolute floor, and a preset above the floor always passes. Judged per-preset, on the best fixture (never a global threshold on all fixtures — feedback autocorrelation + `there_there`'s low dynamics would misfire). Standing unit coverage of the boundary: `reviewPredicateBoundaries` (runs without GPU).
 
-**No KNOWN_ISSUES filed.** No preset renders below its floor in a way that isn't explained by a proxy/render-fidelity limit. Nacre and Ferrofluid Ocean are watched under QG.3.2 calibration, not filed as defects (verified: both are certified + M7-approved; low r is a proxy artifact).
+**Verdict on the current baseline — 10 ok / 3 REVIEW (all 3 certified + M7-approved):**
+
+```
+ok     | Skein +0.69 · Dragon Bloom +0.47 · Filigree +0.39 · Lumen Mosaic +0.37 · Fata Morgana +0.32
+       | Murmuration +0.29 · Mitosis +0.27 · Floret +0.25 · Nimbus +0.23 · Cytokinesis +0.20
+REVIEW | Glaze +0.13 (control +0.04) · Ferrofluid Ocean +0.08 (+0.08) · Nacre +0.05 (−0.02)
+```
+
+The 3 REVIEW flags are informational: **Glaze** is a deliberately calm preset (low frame-delta by design), **Nacre** couples via a subtle downbeat camera push, **Ferrofluid Ocean** is single-fragment-approximated. All three are M7-certified — the flag says "coupling not measured as present," never "bad." **Next (optional): validate the proxy against Matt's felt ordering** (Nacre-low / Skein-high are the anchors); only with that evidence would a *blocking* gate be defensible.
+
+**No KNOWN_ISSUES filed.** No preset reads below its floor for a non-proxy reason (verified: the 3 flagged are all certified + M7-approved; low r is a proxy/render-fidelity artifact).
 
 ## Reproduce
 

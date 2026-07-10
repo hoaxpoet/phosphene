@@ -62,6 +62,17 @@ struct CouplingReportTests {
     static let controlEnergyFixture = "love_rehab"
     static let controlFrameFixture = "so_what"
 
+    // QG.3.2 WARNING-tier thresholds (Matt's call — a review flag, never a cert gate,
+    // D-183). A preset is flagged "review" when its best-fixture peak composite r fails
+    // BOTH: (1) an absolute floor, and (2) clearing its own per-preset noise control by a
+    // margin. Both must fail, so a preset that clears its (high) feedback control still
+    // passes even below the absolute floor, and vice versa. Deliberately conservative:
+    // low r is "coupling not measured as present," never "preset is bad" — the M7 seat
+    // is the authority, and two certified presets (Nacre, Ferrofluid Ocean) read weak for
+    // proxy/render-fidelity reasons. Do NOT convert this into a #expect assertion.
+    static let warnFloor: Float = 0.15
+    static let warnControlMargin: Float = 0.10
+
     @Test("Audio-visual coupling report — certified presets × canonical fixtures (QG.3)")
     func couplingReport() throws {
         guard ProcessInfo.processInfo.environment["PHOSPHENE_COUPLING"] == "1" else {
@@ -88,12 +99,15 @@ struct CouplingReportTests {
         print("lags 0–\(Int(Self.maxLagMs))ms · sliding \(Int(Self.windowSeconds))s windows · composite energy = mean(bass,mid,treble)")
         print("row: preset | fixture | comp_r@lag_ms | bass_r | mid_r | treb_r | win[min/med/max] | delta_mean")
 
+        var verdicts: [(name: String, bestR: Float, control: Float)] = []
+
         for preset in certified {
             if preset.descriptor.passes.contains(.meshShader) {
                 print("SKIP | \(preset.descriptor.name) | meshShader — not renderable via drawPrimitives")
                 continue
             }
             var perFixtureDelta: [String: [Float]] = [:]
+            var bestR = -Float.greatestFiniteMagnitude
 
             for name in Self.fixtureTracks {
                 guard let fx = fixtures[name] else { continue }
@@ -118,6 +132,7 @@ struct CouplingReportTests {
                 let station = Self.stationarity(delta: delta, energy: comp,
                                                 lag: c.lag, windowFrames: win)
                 let dMean = delta.isEmpty ? 0 : delta.reduce(0, +) / Float(delta.count)
+                bestR = max(bestR, c.r)
 
                 print("ROW | \(preset.descriptor.name) | \(name) | "
                       + "\(f2(c.r))@\(Int(fx.msFor(frames: c.lag)))ms | "
@@ -126,19 +141,69 @@ struct CouplingReportTests {
                       + "\(f4(dMean))")
             }
 
-            // Negative control: mismatched audio × frames.
+            // Negative control: mismatched audio × frames — the per-preset noise floor.
+            var control: Float = 0
             if let df = perFixtureDelta[Self.controlFrameFixture],
                let ef = fixtures[Self.controlEnergyFixture] {
                 let comp = Array(ef.composite.dropFirst())
                 let maxLag = ef.frames(forMs: Self.maxLagMs)
-                let c = Self.crossCorr(delta: df, energy: comp, maxLagFrames: maxLag)
+                control = Self.crossCorr(delta: df, energy: comp, maxLagFrames: maxLag).r
                 print("CONTROL | \(preset.descriptor.name) | "
                       + "\(Self.controlEnergyFixture)-audio×\(Self.controlFrameFixture)-frames | "
-                      + "comp_r=\(f2(c.r)) (noise floor)")
+                      + "comp_r=\(f2(control)) (noise floor)")
             }
+            verdicts.append((preset.descriptor.name, bestR == -Float.greatestFiniteMagnitude ? 0 : bestR, control))
         }
         print("=== END COUPLING REPORT ===\n")
+
+        Self.printVerdicts(verdicts)
     }
+
+    /// Standing coverage of the QG.3.2 warning-tier boundary (no GPU/env — runs in the
+    /// normal battery). Locks the "both conditions must fail" rule so the flag can't
+    /// silently become an absolute-floor-only gate that false-reds feedback presets.
+    @Test("QG.3.2 warning-tier predicate boundaries")
+    func reviewPredicateBoundaries() {
+        // Below floor AND within margin of its own (low) control → REVIEW.
+        #expect(Self.isReview(bestR: 0.05, control: -0.02))   // Nacre-like
+        #expect(Self.isReview(bestR: 0.08, control: 0.08))    // Ferrofluid-like, at floor
+        #expect(Self.isReview(bestR: 0.10, control: 0.05))
+        // Clears the absolute floor → ok, even with a high feedback control.
+        #expect(!Self.isReview(bestR: 0.20, control: 0.05))
+        #expect(!Self.isReview(bestR: 0.47, control: 0.13))   // Dragon Bloom
+        // Below the absolute floor BUT clears its own control by the margin → ok
+        // (the feedback-preset escape hatch — high autocorrelation floor).
+        #expect(!Self.isReview(bestR: 0.14, control: 0.02))
+    }
+
+    // MARK: - QG.3.2 warning-tier verdict (report-only, never a cert gate)
+
+    /// Print the per-preset warning-tier verdict. `REVIEW` = best-fixture peak composite r
+    /// is below the absolute floor AND fails to clear its own noise control by the margin
+    /// → "coupling not measured as present." This is a REVIEW FLAG surfaced for the reader,
+    /// NOT a certification failure (D-183): the M7 seat judges felt coupling, and a low r
+    /// can be a proxy artifact (subtle camera-motion coupling, approximated render).
+    static func printVerdicts(_ verdicts: [(name: String, bestR: Float, control: Float)]) {
+        let flagged = verdicts.filter { isReview(bestR: $0.bestR, control: $0.control) }
+        print("=== QG.3.2 COUPLING VERDICT (warning tier — review flag, NOT a cert gate) ===")
+        print("rule: REVIEW if best-fixture peak r < \(f2s(warnFloor)) AND < control + \(f2s(warnControlMargin))")
+        for v in verdicts.sorted(by: { $0.bestR > $1.bestR }) {
+            let review = isReview(bestR: v.bestR, control: v.control)
+            print("VERDICT | \(review ? "REVIEW " : "ok     ") | \(v.name) | "
+                  + "best_r=\(f2s(v.bestR)) control=\(f2s(v.control))"
+                  + (review ? " → coupling not measured as present" : ""))
+        }
+        print("VERDICT SUMMARY | \(flagged.count) flagged for review / \(verdicts.count) measured "
+              + "— review flags inform, they do NOT fail certification (M7 seat is the authority)")
+        print("=== END VERDICT ===\n")
+    }
+
+    /// The warning-tier predicate. Both conditions must hold to flag (see `warnFloor`).
+    static func isReview(bestR: Float, control: Float) -> Bool {
+        bestR < warnFloor && bestR < control + warnControlMargin
+    }
+
+    private static func f2s(_ x: Float) -> String { String(format: "%+.2f", x) }
 
     // MARK: - Fixture reconstruction
 
