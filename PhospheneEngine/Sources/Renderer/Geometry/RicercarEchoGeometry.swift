@@ -97,6 +97,7 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
     private var levFast: Float = 0          // fast band level (attack peak)
     private var levMed: Float = 0           // fast-reset baseline — onset = levFast − levMed (local transient)
     private var levFloor: Float = 0         // level floor (min-tracker) — sits low in staccato gaps, high in legato
+    private var flowAccum: Float = 0        // legato-flow emission accumulator (fills sustained notes)
     private var refractory: Float = 0       // s until the next mark may fire (spaces attacks)
     private var famActivity = SIMD4<Float>(repeating: 0)   // per-section presence (strings/brass/woodwinds/perc)
     private var time: Float = 0
@@ -263,15 +264,22 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
         if levFast < levFloor { levFloor = levFast } else { levFloor += Float(dt / (0.55 + dt)) * (levFast - levFloor) }
         let staccatoness = 1.0 - min(1, levFloor / max(0.05, levMed))
 
-        // Onset = a local rise RELATIVE to the current level (so a small attack inside a loud sustained
-        // passage still counts, where an absolute transient washes out under AGC flattening).
+        // SUSTAIN → LEGATO FLOW: while a note is sounding and sustained (level high, low staccatoness), keep
+        // emitting long flowing marks — so a legato note FLOWS the whole time it sounds, not just fires once at
+        // the attack (the "opening entry didn't register": its long sustained chord went silent after the hit).
+        flowAccum += levFast * (1 - staccatoness) * 14.0 * Float(dt)
+        while flowAccum >= 1 {
+            flowAccum -= 1
+            spawnSubject(strength: min(1, 0.4 + energyFast), sharp: 0.0)       // legato (long flowing line)
+        }
+
+        // ONSET → a STACCATO/PIZZ clip on each sharp, DETACHED attack (the level jumped from a gap).
         let onset = (levFast - levMed) / max(0.08, levMed)
-        if refractory <= 0 && onset > 0.045 && levFast > 0.045 {
+        if refractory <= 0 && onset > 0.06 && levFast > 0.045 && staccatoness > 0.45 {
             let devs = max(0, feat.bassDev) + max(0, feat.midDev) + max(0, feat.trebDev)
             let treble = max(0, feat.trebDev) / max(0.05, devs)
-            let sharp = min(1, staccatoness * 0.9 + treble * 0.35)     // sustained gaps ⇒ staccato; smooth ⇒ legato
-            spawnSubject(strength: min(1, 0.4 + energyFast), sharp: sharp)
-            refractory = 0.05                                           // ≤ ~20 marks/s — one per note attack
+            spawnSubject(strength: min(1, 0.5 + energyFast), sharp: 0.55 + treble * 0.4)   // dash or pizz dot
+            refractory = 0.05
         }
 
         // Fire scheduled echoes whose time has come.
