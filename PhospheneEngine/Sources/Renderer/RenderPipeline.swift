@@ -149,7 +149,12 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     /// angle drives the palette-phase offset; consonance gates the whole coupling toward
     /// the neutral rest state (atonal → the faithful time rotation). Replaces the NACRE.3
     /// centroid-deviation proxy. MainActor-only (the mv_warp draw path), no lock.
-    var nacreFifthsVec: SIMD2<Float> = .zero
+    /// (TONAL.3 round 2) `nacrePaletteDrift`: the palette-phase drift accumulator — advances
+    /// at the faithful ~14.4 s rate at silence/atonal and nearly stops when tonal, so harmony
+    /// SETS the hue position (holds on a vamp) instead of being masked by the clock; a
+    /// continuous accumulator so the rate change never snaps the palette. (Folded onto the
+    /// `nacreFifthsVec` line to stay under the type_body_length cap.)
+    var nacreFifthsVec: SIMD2<Float> = .zero; var nacrePaletteDrift: Float = 0
     /// Nacre (NACRE.3): `nacreSeedEMA` is the SLOW (~0.5 s) total-energy envelope driving the
     /// WARP's core SEED, kept near-steady so the fed-back seed never flares into smears.
     /// `nacreSpinEMA`: smoothed stem-fullness (avg of the four stem energies, ~0.5 s) → the
