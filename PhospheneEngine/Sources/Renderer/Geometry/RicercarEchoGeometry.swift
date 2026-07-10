@@ -97,7 +97,6 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
     private var levFast: Float = 0          // fast band level (attack peak)
     private var levMed: Float = 0           // fast-reset baseline — onset = levFast − levMed (local transient)
     private var levFloor: Float = 0         // level floor (min-tracker) — sits low in staccato gaps, high in legato
-    private var flowAccum: Float = 0        // legato-flow emission accumulator (fills sustained notes)
     private var refractory: Float = 0       // s until the next mark may fire (spaces attacks)
     private var famActivity = SIMD4<Float>(repeating: 0)   // per-section presence (strings/brass/woodwinds/perc)
     private var time: Float = 0
@@ -264,9 +263,10 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
         if levFast < levFloor { levFloor = levFast } else { levFloor += Float(dt / (0.55 + dt)) * (levFast - levFloor) }
         let staccatoness = 1.0 - min(1, levFloor / max(0.05, levMed))
 
-        // ONSET (primary, TIGHT sync) — a mark on EACH note attack. Its articulation: staccatoness high (the
-        // level jumped from a gap → detached) ⇒ a short clip; low (sustained context) ⇒ a long flowing line.
-        // One mark per note keeps the opening blasts popping exactly on the hits (not a smeared stream).
+        // ONSET-ONLY — a mark ONLY on a note attack, nothing on a timer or sustain-rate (Matt: the pure
+        // onset version's first 5 s were "perfect"; any sustain-fill puts marks where there are no notes).
+        // One mark per attack. Its articulation from staccatoness: detached ⇒ short clip, sustained ⇒ long
+        // flowing line — so a sustained note registers via ONE long mark drawn from its attack, not a stream.
         let onset = (levFast - levMed) / max(0.08, levMed)
         if refractory <= 0 && onset > 0.05 && levFast > 0.045 {
             let devs = max(0, feat.bassDev) + max(0, feat.midDev) + max(0, feat.trebDev)
@@ -274,11 +274,6 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
             spawnSubject(strength: min(1, 0.45 + energyFast), sharp: min(1, staccatoness * 0.9 + treble * 0.25))
             refractory = 0.05
         }
-
-        // SUSTAIN → a LIGHT legato fill so a HELD note still flows a little through its sustain (registers),
-        // without smearing the attack-sync. Rate is low and only when genuinely sustained (low staccatoness).
-        flowAccum += levFast * (1 - staccatoness) * 4.0 * Float(dt)
-        while flowAccum >= 1 { flowAccum -= 1; spawnSubject(strength: min(1, 0.4 + energyFast), sharp: 0.0) }
 
         // Fire scheduled echoes whose time has come.
         var idx = 0
