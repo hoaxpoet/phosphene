@@ -4,37 +4,40 @@
 // audio ENERGY envelope? A preset whose visual delta is uncorrelated with energy
 // is dead-coupled — the motion is not driven by the music. This suite MEASURES
 // that (cross-correlation of visual delta vs. energy) and PRINTS a table. It does
-// NOT gate: verdicts on this uncalibrated proxy are forbidden until the baseline
-// distribution across certified presets is known (QG.3.1). Low coupling here means
+// NOT gate: verdicts on this uncalibrated proxy are forbidden. Low coupling here means
 // "coupling not measured as present," never "preset is bad" — the M7 seat judges
-// feel (manual-validation rule stands).
+// feel (manual-validation rule stands). The gate flip (QG.3.2) is Matt's call, taken
+// against the QG.3.1 distribution (docs/diagnostics/QG3_COUPLING_BASELINE.md).
 //
 // Method (per certified, non-mesh preset × canonical fixture):
 //   1. Reconstruct a per-frame FeatureVector + StemFeatures from the checked-in
 //      route_coverage fixture (real preview clip through the production separation
 //      + analysis chain — FA #27, nothing hand-authored).
-//   2. Render each frame headlessly at 64×64 via the PresetRegressionTests harness
-//      (same single-fragment path + zeroed aux state; see LIMITATIONS below).
-//   3. visual_delta[i] = mean |luma(frame i) − luma(frame i−1)| over the 64×64
-//      reduced-resolution frame (0..1). Write coupling/<preset>_<fixture>_visual_delta.csv.
+//   2. Render each frame headlessly through the preset's REAL path (QG.3.1): the 10
+//      multi-pass / feedback / follower presets via the shared `MultiPassRenderHarness`
+//      (feedback persistence — the same seam the flash-safety gate drives), the 3
+//      single-pass presets (Ferrofluid Ocean, Murmuration, Nimbus) via one fragment
+//      + the Nimbus CPU follower. This replaced the QG.3 single-fragment/zeroed-state
+//      harness that rendered 11/13 presets static.
+//   3. visual_delta[i] = mean |luma(frame i) − luma(frame i−1)| over a downsampled
+//      luma field (0..1). Write coupling/<preset>_<fixture>_visual_delta.csv.
 //   4. Cross-correlate visual_delta vs. composite energy (mean of bass/mid/treble)
 //      and each band, at lags 0–500 ms. Report peak Pearson r + lag, and a
 //      stationarity note (r over sliding 10 s windows: min/median/max).
 //   5. Negative control: fixture A's energy vs. fixture B's rendered frames — its
-//      r bounds the noise floor (real audio mismatched to real frames — FA #27).
+//      r bounds the PER-PRESET noise floor (real audio mismatched to real frames —
+//      FA #27). Feedback presets have higher floors (frame autocorrelation), so the
+//      floor is per-preset, not global.
 //
-// LIMITATIONS (why this is REPORT-only): the offline harness renders ONE fragment
-// with zeroed aux state (slot-6 CPU accumulators, feedback history texture, mv_warp
-// marks buffer). Presets whose music response lives in that state (Nimbus, the
-// mv_warp painters, the feedback/particle presets) render near-static offline and
-// sit at the noise floor BY CONSTRUCTION — not because they are dead-coupled. The
-// baseline doc (QG3_COUPLING_BASELINE) disambiguates by preset architecture before
-// any KNOWN_ISSUES entry. Faithful measurement is limited to presets whose primary
-// fragment reads FeatureVector/StemFeatures directly (ray-march presets).
+// PROXY-VALIDITY CAVEAT (why this stays a report): the metric correlates visual
+// *delta* (motion magnitude) with energy *level*. A preset that couples via subtle
+// camera motion (Nacre's downbeat push) or whose faithful render needs passes we
+// approximate can legitimately read low. Low r ⇒ "not measured as present," never a
+// defect. Disambiguation + calibration live in the baseline doc.
 //
-// Gated behind PHOSPHENE_COUPLING=1 — the sweep renders ~50k frames. The normal
-// battery skips fast (green); the baseline run sets the env. FidelityRubricReport-
-// Tests is the diagnostic-report pattern this follows (no content assertions).
+// Gated behind PHOSPHENE_COUPLING=1 — the sweep renders the full real multi-pass
+// stack (~130 s). The normal battery skips fast (green); the baseline run sets the
+// env. FidelityRubricReportTests is the diagnostic-report pattern this follows.
 
 import Testing
 import Foundation
@@ -48,6 +51,7 @@ import Accelerate
 // swiftlint:disable identifier_name
 
 @Suite("Coupling Report (QG.3)")
+@MainActor
 struct CouplingReportTests {
 
     static let fixtureTracks = ["love_rehab", "so_what", "there_there"]
@@ -61,8 +65,8 @@ struct CouplingReportTests {
     @Test("Audio-visual coupling report — certified presets × canonical fixtures (QG.3)")
     func couplingReport() throws {
         guard ProcessInfo.processInfo.environment["PHOSPHENE_COUPLING"] == "1" else {
-            print("CouplingReportTests: gated — set PHOSPHENE_COUPLING=1 to run the render sweep "
-                  + "(~50k headless frames). See docs/diagnostics/QG3_COUPLING_BASELINE.md for the baseline.")
+            print("CouplingReportTests: gated — set PHOSPHENE_COUPLING=1 to run the real multi-pass "
+                  + "render sweep (~130 s). See docs/diagnostics/QG3_COUPLING_BASELINE.md for the baseline.")
             return
         }
 
@@ -277,8 +281,33 @@ struct CouplingReportTests {
 
     // MARK: - Rendering + visual delta
 
+    /// Per-frame visual delta for a preset over a fixture. Dispatches to the FAITHFUL
+    /// render path: the 10 multi-pass / feedback / follower presets go through the shared
+    /// `MultiPassRenderHarness` (real feedback chain, QG.3.1); the 3 single-pass presets
+    /// (Ferrofluid Ocean, Murmuration, Nimbus) read their response in one fragment (+ the
+    /// Nimbus CPU follower) and go through `singleFragmentFields`. Both reduce each frame to
+    /// a downsampled luma field; delta = mean |field(i) − field(i−1)| (0..1).
     static func visualDeltas(preset: PresetLoader.LoadedPreset,
                              fixture fx: Fixture, ctx: MetalContext) throws -> [Float] {
+        let fields: [[Float]]
+        if MultiPassRenderHarness.multiPassPresets.contains(preset.descriptor.name) {
+            let harness = MultiPassRenderHarness()   // 320×180, the flash-gate render size
+            fields = try harness.render(preset: preset.descriptor.name,
+                                        features: fx.features, stems: fx.stems) {
+                downsampledLuma($0, srcW: 320, srcH: 180, cols: 32)
+            }
+        } else {
+            fields = try singleFragmentFields(preset: preset, fx: fx, ctx: ctx)
+        }
+        return deltas(fields)
+    }
+
+    /// Single-fragment render (Ferrofluid Ocean, Murmuration, Nimbus). Mirrors
+    /// `PhotosensitivityCertificationTests.renderLuminanceSequence`: binds fft/wav/stem/hist
+    /// (+ scene for rayMarch), and for Nimbus ticks the real `NimbusState` CPU follower into
+    /// slot 6 so its response isn't zeroed. Returns one downsampled luma field per frame.
+    static func singleFragmentFields(preset: PresetLoader.LoadedPreset,
+                                     fx: Fixture, ctx: MetalContext) throws -> [[Float]] {
         let size = renderSize
         let texDesc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: ctx.pixelFormat, width: size, height: size, mipmapped: false)
@@ -287,18 +316,18 @@ struct CouplingReportTests {
         guard let texture = ctx.device.makeTexture(descriptor: texDesc) else {
             throw CouplingError.textureAllocationFailed
         }
-
-        // Aux buffers allocated once, reused across frames.
         let floatStride = MemoryLayout<Float>.stride
         guard
             let fft = ctx.makeSharedBuffer(length: 512 * floatStride),
             let wav = ctx.makeSharedBuffer(length: 2048 * floatStride),
             let stemBuf = ctx.makeSharedBuffer(length: MemoryLayout<StemFeatures>.stride),
-            let hist = ctx.makeSharedBuffer(length: 4096 * floatStride)
+            let hist = ctx.makeSharedBuffer(length: 4096 * floatStride),
+            let slot = ctx.makeSharedBuffer(length: 1024)
         else { throw CouplingError.bufferAllocationFailed }
         _ = fft.contents().initializeMemory(as: UInt8.self, repeating: 0, count: 512 * floatStride)
         _ = wav.contents().initializeMemory(as: UInt8.self, repeating: 0, count: 2048 * floatStride)
         _ = hist.contents().initializeMemory(as: UInt8.self, repeating: 0, count: 4096 * floatStride)
+        _ = slot.contents().initializeMemory(as: UInt8.self, repeating: 0, count: 1024)
 
         var scene: MTLBuffer?
         if preset.descriptor.passes.contains(.rayMarch),
@@ -307,25 +336,13 @@ struct CouplingReportTests {
             buf.contents().copyMemory(from: &su, byteCount: MemoryLayout<SceneUniforms>.stride)
             scene = buf
         }
-        // Slot-6 / slot-8 state buffers: bind zeroed so the pipeline never reads
-        // undefined (matches PresetRegressionTests). Real state can't be reconstructed
-        // offline — the documented LIMITATION.
-        var aux6: MTLBuffer?
-        if preset.descriptor.name == "Nimbus" {
-            aux6 = ctx.makeSharedBuffer(length: MemoryLayout<NimbusStateGPU>.stride)
-            _ = aux6?.contents().initializeMemory(as: UInt8.self, repeating: 0,
-                                                  count: MemoryLayout<NimbusStateGPU>.stride)
-        }
-        var aux8: MTLBuffer?
-        if preset.descriptor.name == "Lumen Mosaic" {
-            aux8 = ctx.makeSharedBuffer(length: MemoryLayout<LumenPatternState>.stride)
-            _ = aux8?.contents().initializeMemory(as: UInt8.self, repeating: 0,
-                                                  count: MemoryLayout<LumenPatternState>.stride)
-        }
+        // Nimbus: tick the real CPU follower each frame and bind its live state at slot 6
+        // (else the follower-driven body is static — the QG.3 zeroed-slot limitation).
+        let nimbusState: NimbusState? =
+            preset.descriptor.name == "Nimbus" ? NimbusState(device: ctx.device) : nil
 
-        var deltas: [Float] = []
-        deltas.reserveCapacity(fx.features.count)
-        var prevLuma: [Float]?
+        var fields: [[Float]] = []
+        fields.reserveCapacity(fx.features.count)
         let stemStride = MemoryLayout<StemFeatures>.stride
 
         for i in 0..<fx.features.count {
@@ -349,8 +366,13 @@ struct CouplingReportTests {
             enc.setFragmentBuffer(stemBuf, offset: 0, index: 3)
             if let scene { enc.setFragmentBuffer(scene, offset: 0, index: 4) }
             enc.setFragmentBuffer(hist, offset: 0, index: 5)
-            if let aux6 { enc.setFragmentBuffer(aux6, offset: 0, index: 6) }
-            if let aux8 { enc.setFragmentBuffer(aux8, offset: 0, index: 8) }
+            if let ns = nimbusState {
+                ns.tick(deltaTime: fv.deltaTime, features: fv, stems: sf)
+                enc.setFragmentBuffer(ns.stateBuffer, offset: 0, index: 6)
+            } else {
+                enc.setFragmentBuffer(slot, offset: 0, index: 6)
+            }
+            enc.setFragmentBuffer(slot, offset: 0, index: 7)
             enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
             enc.endEncoding()
             cmd.commit()
@@ -360,23 +382,49 @@ struct CouplingReportTests {
             var pixels = [UInt8](repeating: 0, count: size * size * 4)
             texture.getBytes(&pixels, bytesPerRow: size * 4,
                              from: MTLRegionMake2D(0, 0, size, size), mipmapLevel: 0)
-            let luma = lumaField(pixels)
-            if let prev = prevLuma {
-                var acc: Float = 0
-                for p in 0..<luma.count { acc += abs(luma[p] - prev[p]) }
-                deltas.append(acc / Float(luma.count) / 255)   // normalize to 0..1
-            }
-            prevLuma = luma
+            fields.append(downsampledLuma(pixels, srcW: size, srcH: size, cols: 32))
         }
-        return deltas
+        return fields
     }
 
-    /// Per-pixel luma (BGRA: 0.114·B + 0.587·G + 0.299·R), 0..255.
-    static func lumaField(_ pixels: [UInt8]) -> [Float] {
-        var out = [Float](repeating: 0, count: pixels.count / 4)
-        for p in 0..<out.count {
-            let idx = p * 4
-            out[p] = 0.114 * Float(pixels[idx]) + 0.587 * Float(pixels[idx + 1]) + 0.299 * Float(pixels[idx + 2])
+    /// Downsample a BGRA frame to a `cols × rows` luma grid (rows from aspect), 0..255.
+    /// BGRA: luma = 0.114·B + 0.587·G + 0.299·R. Reduced resolution denoises the delta.
+    static func downsampledLuma(_ bgra: [UInt8], srcW: Int, srcH: Int, cols: Int) -> [Float] {
+        let rows = max(1, Int((Double(cols) * Double(srcH) / Double(srcW)).rounded()))
+        var grid = [Float](repeating: 0, count: cols * rows)
+        for row in 0..<rows {
+            let y0 = row * srcH / rows, y1 = (row + 1) * srcH / rows
+            for col in 0..<cols {
+                let x0 = col * srcW / cols, x1 = (col + 1) * srcW / cols
+                var sum: Float = 0, count = 0
+                var y = y0
+                while y < y1 {
+                    var x = x0
+                    while x < x1 {
+                        let idx = (y * srcW + x) * 4
+                        sum += 0.114 * Float(bgra[idx]) + 0.587 * Float(bgra[idx + 1]) + 0.299 * Float(bgra[idx + 2])
+                        count += 1; x += 1
+                    }
+                    y += 1
+                }
+                grid[row * cols + col] = count > 0 ? sum / Float(count) : 0
+            }
+        }
+        return grid
+    }
+
+    /// Per-frame visual delta series from consecutive luma fields: mean |Δ| / 255 (0..1).
+    static func deltas(_ fields: [[Float]]) -> [Float] {
+        guard fields.count > 1 else { return [] }
+        var out: [Float] = []
+        out.reserveCapacity(fields.count - 1)
+        for i in 1..<fields.count {
+            let a = fields[i], b = fields[i - 1]
+            let n = min(a.count, b.count)
+            guard n > 0 else { out.append(0); continue }
+            var acc: Float = 0
+            for p in 0..<n { acc += abs(a[p] - b[p]) }
+            out.append(acc / Float(n) / 255)
         }
         return out
     }
