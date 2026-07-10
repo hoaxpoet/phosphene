@@ -89,6 +89,18 @@ extension VisualizerEngine {
     /// dispatches to the main actor for @Published property updates.
     func makeSignalStateCallback() -> (AudioSignalState) -> Void {
         return { [weak self] state in
+            guard let self else { return }
+            // ASH.1: feed the health monitor the tap signal state. Dead-tap
+            // detection only applies to process-tap modes — local-file silence
+            // is real musical silence, not a broken tap.
+            var tapMode = false
+            if #available(macOS 14.2, *), let router = self.router as? AudioInputRouter {
+                switch router.activeMode {
+                case .systemAudio, .application: tapMode = true
+                default: tapMode = false
+                }
+            }
+            self.signalHealthMonitor.updateContext(signalState: state, tapModeActive: tapMode)
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 self.audioSignalState = state
