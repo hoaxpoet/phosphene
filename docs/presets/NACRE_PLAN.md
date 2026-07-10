@@ -250,3 +250,16 @@ claims removed), and `stem_affinity` is **empty** — Nacre is **stem-agnostic**
 matches it on mood/energy/section, not a fictional per-stem routing; the scorer reads only affinity *keys*,
 so an empty dict scores neutral 0.5). §1's musical-role is left verbatim as original *design intent* —
 §10–12 are the as-built reconciliation, and the plan is not retconned.
+
+## 13. TONAL.3 — hue ← REAL harmony (D-178), ⏳ pending live M7 (2026-07-10)
+
+The NACRE.3 "hue ← harmony" was honestly the **spectral-centroid deviation** — a brightness/timbre proxy, not harmony (§11; the sidecar said so after NACRE.5). TONAL.1 shipped the real signal: the **Tonal Interval Vector** fifths phase (`tonal_phase_fifths`, D-178). TONAL.3 swaps Nacre's hue channel to it.
+
+**Musical role (updated):** *when the song modulates to a related key, the palette drifts to a related colour on the circle of fifths; on a vamp it holds; the same song transposed lands on shifted-but-related colours* — the palette travels with the harmony, not the energy.
+
+**What landed (`RenderPipeline+Nacre.swift` + `Nacre.metal`):**
+- **Hue** — `uni.hueShift` now maps the fifths phase to the full ~14.4 s `nacrePalette` cycle (`2π/0.437`; the 12 keys span the wheel, fifth-adjacent keys → adjacent colours). The phase is circular-EMA'd as a **unit vector** (`nacreFifthsVec`, ~0.8 s) so modulations glide, wrap-safe across ±π (a scalar EMA sweeps the long way). Consonance-gated → silence / percussion / noise falls back to the faithful time rotation (D-019). Never strobes (the anti-reference) — it is a slow harmonic signal.
+- **Saturation** — `nu.tonal.x`, consonance-gated: atonal MUSIC desaturates toward the neutral rest state (gentle 0.38 vs the faithful 0.20; mud-safe), but **energy-aware** so SILENCE keeps the faithful colourful warmup (the gate would otherwise wash out the D-019 state — a caught regression).
+- **Tension → rim dispersion: DEFERRED to round 2.** It under-develops on 30 s preview clips (love_rehab fixture tension is flat [0, 0.0003]) so the QG.1 route-coverage gate can't exercise it — a fixture-breadth limit, not a dead route. Keeps FA #67 clean with two routes. `nu.tonal.y` reserved.
+
+**Evidence:** `NACRE_FIFTHS`-injected diag frames show the palette shift **gold-green → teal-green** across a key change (shifted-but-related, not a jump); D-181 verdict table PASS on all mandatory traits + anti-refs (esp. no hue-strobing); flash re-measured **0.50 flashes/s SAFE**; `RouteCoverageTests` green (`hue_from_harmony`→`tonalPhaseFifths`, `saturation_from_consonance`→`tonalConsonance` both fire on all 3 fixtures); sidecar `description` + `audio_routes` updated (NACRE.5 honesty). Saturation's isolated visual effect is confounded by feedback chaos in a still — an M7 watch-item. **Pending Matt's live M7** (2 rounds max, PHYS escalation; if the real signal doesn't read better than the proxy, revert the preset + keep the infra).
