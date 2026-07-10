@@ -50,7 +50,7 @@ struct NacreUniforms {
     float  time;         // features.time — palette rotation, grain scroll, radial-pulse phase
     float  trebleGrain;  // max(0, trebleDev) — gates the warp grain (faithful treb_att route)
     float  coreEnergy;   // STEADY total energy — gates the warp's core SEED (faithful modwavealphabyvolume)
-    float  hueShift;     // TONAL.3: circle-of-fifths phase → palette-phase offset (seconds, ±7.2 = ±½ cycle, consonance-gated)
+    float  hueShift;     // TONAL.3 R2: the FULL palette phase (seconds) — harmony position (consonance-gated) + demoted clock drift
     float2 texel;        // (1/feedbackW, 1/feedbackH) — comp luminance-sobel offsets (texsize.zw)
     float  barPush;      // NACRE.4: downbeat envelope → display-stage camera push (connection as visible motion)
     float  spin;         // NACRE.3: energy → continuous warp rotation (rad/frame; turning ← music)
@@ -280,10 +280,11 @@ fragment float4 nacre_warp_fragment(
     // glow (it flared + smeared when it lived here, in the fed-back warp — NACRE.3).
     float  coreGate = 0.22 + 0.75 * clamp(nu.coreEnergy, 0.0, 1.0);
     float  core     = exp(-r * r * kNacreCoreTight) * kNacreCoreBase * coreGate;
-    // Palette phase nudged by the harmony (NACRE.3): the seed colour drifts ±~10% of the
-    // cycle with the music's spectral colour, layered on the slow time-rotation. The seed
-    // carries the palette into the feedback, so the whole field's hue follows the harmony.
-    c += core * nacrePalette(nu.time + nu.hueShift);
+    // Palette phase is now the FULL harmony-set phase (TONAL.3 round 2): `nu.hueShift` carries
+    // the key's position on the wheel (holds on a vamp) plus a demoted clock drift, computed
+    // CPU-side. The seed carries the palette into the feedback, so the whole field's hue is
+    // positioned by the harmony. (nu.time still drives the grain scroll + radial pulse.)
+    c += core * nacrePalette(nu.hueShift);
 
     // Slight desaturate toward luma (source warp final step). TONAL.3: the amount is
     // consonance-gated (nu.tonal.x) — atonal / percussive passages desaturate toward the

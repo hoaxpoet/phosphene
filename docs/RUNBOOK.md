@@ -322,7 +322,7 @@ This procedure was established after session 2026-04-17T21-05-47Z, where earlier
 
 ### Signal health monitor
 
-`SignalHealthMonitor` (ASH.1 / D-182) turns the triage above into running code: it classifies the input chain continuously from the raw pre-AGC tap and surfaces the result in the debug overlay `health:` line and in `session.log` as `SIGNAL_HEALTH: peak=<dBFS> band=<b> deadTap=<bool> rate=<hz>` (logged on state CHANGE only, not per window). Three detectors, each mapping to a failure mode + remediation above:
+`SignalHealthMonitor` (ASH.1 / D-183) turns the triage above into running code: it classifies the input chain continuously from the raw pre-AGC tap and surfaces the result in the debug overlay `health:` line and in `session.log` as `SIGNAL_HEALTH: peak=<dBFS> band=<b> deadTap=<bool> rate=<hz>` (logged on state CHANGE only, not per window). Three detectors, each mapping to a failure mode + remediation above:
 
 | Detector | Overlay / log | Failure mode | Remediation |
 |---|---|---|---|

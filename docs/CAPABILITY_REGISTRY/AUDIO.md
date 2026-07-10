@@ -596,7 +596,7 @@ Continuous tap-quality assessment. `public final class InputLevelMonitor: @unche
 
 **Finding: no dedicated tests** (filed as CA-Audio-FU-5 above).
 
-#### SignalHealthMonitor.swift — `production-active` (ASH.1 / D-182, added 2026-07-10)
+#### SignalHealthMonitor.swift — `production-active` (ASH.1 / D-183, added 2026-07-10)
 
 Input-chain health classifier. `public final class SignalHealthMonitor: @unchecked Sendable`. Consumes the raw pre-AGC tap; rolling 5 s peak window + tap signal state → `SignalHealth` published on change. **Observes only — never steers tap recovery** (that is D-165's `AudioInputRouter`; this classifies). Sibling of `InputLevelMonitor` (that grades quality green/yellow/red; this adds the two failure-mode *flags*).
 
