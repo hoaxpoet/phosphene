@@ -82,6 +82,7 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
         var rot: Float = 0
         var colorIndex = 0
         var strength: Float = 1
+        var markKind = 0   // 0 = legato STROKE (flowing line), 1 = staccato DAB (short tick), 2 = pizz DOT (pluck)
     }
     private var gestures: [Gesture]
     private var nextSlot = 0
@@ -94,6 +95,7 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
     private var energyEnv: Float = 0        // smoothed energy (density / stretto driver)
     private var energyFast: Float = 0       // fast energy for onset edges
     private var refractory: Float = 0       // s until next subject allowed
+    private var lastOnset: Float = -1       // time of the previous onset (→ onset rate = staccato cue)
     private var time: Float = 0
     private var rng: UInt64 = 0x2545F4914F6CDD1D
 
@@ -235,8 +237,17 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
 
         // Onset = a fast rise clearly above the slow envelope → a SUBJECT enters (gated by a refractory).
         if refractory <= 0 && energyFast - energyEnv > 0.10 && energyFast > 0.18 {
-            spawnSubject(strength: min(1, 0.4 + energyFast))
-            refractory = 0.28   // ~≥ a few gestures/sec cap; stretto still comes from the scheduled echoes
+            // ARTICULATION sharpness (0 legato … 1 pizz), read ONLY at the onset (so it can't fire in silence):
+            //  • a sharper/bigger energy jump = more percussive attack;
+            //  • more treble share = a brighter, more transient attack (pizz/staccato are transient-rich);
+            //  • a short gap since the last onset = a rapid run (staccato passage).
+            let total = max(0.05, max(0, feat.bassDev) + max(0, feat.midDev) + max(0, feat.trebDev))
+            let treble = max(0, feat.trebDev) / total
+            let gap = lastOnset < 0 ? 1 : min(1, time - lastOnset)   // 1 = isolated, →0 = rapid run
+            let sharp = min(1, (energyFast - energyEnv) * 2.2 + treble * 0.6 + (1 - gap) * 0.5)
+            lastOnset = time
+            spawnSubject(strength: min(1, 0.4 + energyFast), sharp: sharp)
+            refractory = 0.12   // low → staccato runs fire rapid marks (a held note needs a fresh rise to re-trigger)
         }
 
         // Fire scheduled echoes whose time has come.
@@ -253,30 +264,33 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
         }
     }
 
-    /// A subject enters, then schedules its answers. Answer count + tightness scale with energy (stretto).
-    private func spawnSubject(strength: Float) {
+    /// A subject enters, its MARK FORM chosen by articulation, then schedules its answers (same form).
+    private func spawnSubject(strength: Float, sharp: Float) {
         var sub = Gesture()
         sub.origin = SIMD2(0.16 + rand() * 0.14, 0.30 + rand() * 0.40)
-        sub.scale = 1.0; sub.flipY = 1; sub.rot = (rand() - 0.5) * 0.3
+        sub.flipY = 1; sub.rot = (rand() - 0.5) * 0.3
         sub.colorIndex = Int(rand() * 4) & 3
         sub.strength = strength
-        sub.drawDuration = 0.5
+        // Articulation → the shape of the mark (the thing you SEE differ): flowing stroke ↔ sharp dab ↔ pluck dot.
+        if sharp > 0.62 { sub.markKind = 2; sub.scale = 0.28; sub.drawDuration = 0.13 }       // pizz — a pluck dot
+        else if sharp > 0.38 { sub.markKind = 1; sub.scale = 0.5; sub.drawDuration = 0.20 }   // staccato — a short dab
+        else { sub.markKind = 0; sub.scale = 1.0; sub.drawDuration = 0.52 }                   // legato — flowing stroke
         launch(sub)
 
         let answers = 2 + Int(energyEnv * 4.0)               // more voices pile on when louder (stretto)
         let gap = 0.42 - 0.18 * min(1, energyEnv)            // and they answer faster
         for k in 1...answers {
-            var ans = sub
-            // Fugue grammar, cycling: answer-higher / invert / augment / diminish.
+            var ans = sub                                    // the answer keeps the subject's MARK FORM
+            // Fugue grammar, cycling: answer / invert / augment / diminish (scale-changes only for strokes).
             switch k % 4 {
-            case 1: ans.rot += 0.15                                        // answer (restate, slight tilt)
-            case 2: ans.flipY = -sub.flipY                                 // inversion
-            case 3: ans.scale = sub.scale * 1.45; ans.drawDuration = 0.72  // augmentation (bigger, slower)
-            default: ans.scale = sub.scale * 0.68; ans.drawDuration = 0.32 // diminution (smaller, quicker)
+            case 1: ans.rot += 0.15                                                            // answer (slight tilt)
+            case 2: ans.flipY = -sub.flipY                                                     // inversion
+            case 3: if sub.markKind == 0 { ans.scale = sub.scale * 1.4; ans.drawDuration = 0.72 }  // augmentation
+            default: if sub.markKind == 0 { ans.scale = sub.scale * 0.7; ans.drawDuration = 0.34 } // diminution
             }
             ans.origin = sub.origin + SIMD2(0.12, 0.10) * Float(k)        // march up-and-right (answer higher)
             ans.origin.x = min(0.9, ans.origin.x); ans.origin.y = min(0.92, ans.origin.y)
-            ans.colorIndex = (sub.colorIndex + k) & 3                      // next voice's colour
+            ans.colorIndex = (sub.colorIndex + k) & 3   // next-voice colour (placeholder; real instrument hue = live)
             ans.strength = sub.strength * (1.0 - 0.06 * Float(k))
             pending.append(Pending(atTime: time + gap * Float(k), seed: ans, index: k))
         }
@@ -305,12 +319,21 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
             for ss in 0..<sub {
                 let frac = sub > 1 ? Float(ss) / Float(sub - 1) : 1
                 let ph = ges.prevPhase + (ges.phase - ges.prevPhase) * frac
-                var loc = Self.subject(ph)
-                loc.y *= ges.flipY
-                let world = ges.origin + SIMD2(loc.x * cs - loc.y * sn, loc.x * sn + loc.y * cs) * ges.scale
-                let env = min(1, ph * 6) * min(1, (1 - ph) * 6)   // soft attack/release along the stroke
+                let world: SIMD2<Float>
+                let sz: Float
+                if ges.markKind == 2 {                        // PIZZ DOT — a pluck at one spot, no tracing
+                    world = ges.origin
+                    sz = 17
+                } else {                                       // STROKE / DAB — trace the curve
+                    var loc = Self.subject(ph)
+                    loc.y *= ges.flipY
+                    world = ges.origin + SIMD2(loc.x * cs - loc.y * sn, loc.x * sn + loc.y * cs) * ges.scale
+                    sz = ges.markKind == 1 ? 10 : 14 * ges.scale   // dab = short thick tick; stroke = bold line
+                }
+                // Soft attack/release along the draw; a dot/dab pops sharper (its whole life is short anyway).
+                let env = min(1, ph * 6) * min(1, (1 - ph) * 6)
                 ptr[base + ss] = EchoPen(
-                    posSize: SIMD4(world.x, world.y, 14.0 * ges.scale, ges.strength * (0.6 + 0.4 * env)),
+                    posSize: SIMD4(world.x, world.y, sz, ges.strength * (0.6 + 0.4 * env)),
                     color: SIMD4(hue.x, hue.y, hue.z, 0))
             }
         }
