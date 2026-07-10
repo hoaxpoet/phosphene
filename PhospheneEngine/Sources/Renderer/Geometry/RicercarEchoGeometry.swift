@@ -93,8 +93,10 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
     private var pending: [Pending] = []
 
     // Music envelopes.
-    private var energyFast: Float = 0       // smoothed band LEVEL (music presence → strength/brightness)
-    private var emitAccum: Float = 0        // mark-emission accumulator (rate ∝ level + attacks)
+    private var energyFast: Float = 0       // slow band LEVEL (music presence → strength/brightness)
+    private var levFast: Float = 0          // fast band level (attack peak)
+    private var levMed: Float = 0           // fast-reset baseline — onset = levFast − levMed (local transient)
+    private var refractory: Float = 0       // s until the next mark may fire (spaces attacks)
     private var famActivity = SIMD4<Float>(repeating: 0)   // per-section presence (strings/brass/woodwinds/perc)
     private var time: Float = 0
     private var rng: UInt64 = 0x2545F4914F6CDD1D
@@ -172,6 +174,9 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
     // MARK: Test hooks
     public var currentEnergyEnv: Float { energyFast }
     public func activeGestureCount() -> Int { gestures.reduce(0) { $0 + ($1.active ? 1 : 0) } }
+    /// Marks spawned so far, and the `time` (s) each one fired — the sync/density diagnostic (no render needed).
+    public private(set) var totalSpawns = 0
+    public private(set) var spawnTimes: [Float] = []
 
     private func rand() -> Float {
         rng = rng &* 6364136223846793005 &+ 1442695040888963407
@@ -240,24 +245,25 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
             stem.woodwindsActivityDev,
             stem.percussionActivityDev)
 
-        // LEVEL = how much music is sounding NOW, from the AGC band LEVELS (bass/mid/treble). These STAY UP
-        // through sustained passages — unlike the deviation primitives, which fade as the running average
-        // catches up (that fade is why the old onset-above-average detector went silent after the opening →
-        // "music plays but the drawing doesn't"). devSum = the deviations, which still SPIKE on attacks.
-        let level = 1.0 - expf(-(max(0, feat.bass) + max(0, feat.mid) + max(0, feat.treble)) / 0.9)
-        let devSum = max(0, feat.bassDev) + max(0, feat.midDev) + max(0, feat.trebDev)
-        energyFast += Float(dt / (0.05 + dt)) * (level - energyFast)
+        // ONSET = a NOTE ATTACK, detected throughout the piece. The band LEVEL (bass/mid/treble; stays up while
+        // music plays) rising above a FAST baseline (levMed, τ0.055 — resets between notes) → each attack is a
+        // fresh local transient in the sparse opening AND the sustained sections. (The old detectors used a slow
+        // baseline / the deviation primitives, both of which flatten during sustained music → the desync.)
+        let level = max(0, feat.bass) + max(0, feat.mid) + max(0, feat.treble)
+        levFast += Float(dt / (0.012 + dt)) * (level - levFast)
+        levMed += Float(dt / (0.040 + dt)) * (level - levMed)
+        energyFast += Float(dt / (0.06 + dt)) * (level - energyFast)   // slow level → strength/brightness
+        refractory = max(0, refractory - Float(dt))
 
-        // EMISSION: a mark RATE proportional to the level (baseline presence — the drawing stays active while
-        // music plays) plus a boost from the attacks (devSum) — so sustained passages keep drawing and hits pop.
-        emitAccum += (level * 8.0 + devSum * 20.0) * Float(dt)
-        while emitAccum >= 1 {
-            emitAccum -= 1
-            // Articulation sharpness (0 legato … 1 pizz) of THIS moment, from the attack deviations + treble.
-            let total = max(0.05, devSum)
-            let treble = max(0, feat.trebDev) / total
-            let sharp = min(1, devSum * 1.3 + treble * 0.6)
-            spawnSubject(strength: min(1, 0.35 + level), sharp: sharp)
+        // Onset = a local rise RELATIVE to the current level (so a small attack inside a loud sustained
+        // passage still counts, where an absolute transient washes out under AGC flattening).
+        let onset = (levFast - levMed) / max(0.08, levMed)
+        if refractory <= 0 && onset > 0.045 && levFast > 0.045 {
+            let devSum = max(0, feat.bassDev) + max(0, feat.midDev) + max(0, feat.trebDev)
+            let treble = max(0, feat.trebDev) / max(0.05, devSum)
+            let sharp = min(1, onset * 2.2 + treble * 0.55)             // sharper attack ⇒ more staccato/pizz
+            spawnSubject(strength: min(1, 0.4 + energyFast), sharp: sharp)
+            refractory = 0.05                                           // ≤ ~20 marks/s — one per note attack
         }
 
         // Fire scheduled echoes whose time has come.
@@ -309,6 +315,7 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
         var ges = seed; ges.active = true; ges.phase = 0; ges.prevPhase = 0
         gestures[nextSlot] = ges
         nextSlot = (nextSlot + 1) % configuration.maxGestures
+        totalSpawns += 1; spawnTimes.append(time)
     }
 
     /// Trace each active gesture's transformed curve from prevPhase→phase as `subSteps` glow points → the pen

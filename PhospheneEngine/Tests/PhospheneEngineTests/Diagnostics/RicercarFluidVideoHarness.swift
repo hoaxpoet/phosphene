@@ -225,6 +225,51 @@ struct RicercarFluidVideoHarness {
         #expect(captured > 0)
     }
 
+    /// FAST sync/density diagnostic (RICERCAR_ECHO_DIAG=1) — drives the echo geometry over the real MIR stream
+    /// with NO rendering (no PNG/ffmpeg), and reports marks/second per window + how well mark-density tracks the
+    /// audio energy. Lets the onset detector be tuned in seconds instead of 2-minute video renders.
+    @Test("Fugue-echo sync/density diagnostic (fast, no render)")
+    func test_echoSyncDiagnostic() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard env["RICERCAR_ECHO_DIAG"] == "1" else {
+            print("RicercarFluidVideoHarness: RICERCAR_ECHO_DIAG not set — skipping"); return
+        }
+        guard MTLCreateSystemDefaultDevice() != nil else { return }
+        let audioPath = env["RICERCAR_AUDIO"] ?? Self.defaultFixture()
+        let seconds = Double(env["RICERCAR_SECONDS"] ?? "60") ?? 60
+        guard FileManager.default.fileExists(atPath: audioPath) else {
+            print("RicercarFluidVideoHarness: audio not found — skipping"); return
+        }
+        let features = try mirFeatureStream(decodeMono(audioPath, sampleRate: 48_000, seconds: seconds), sampleRate: 48_000)
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let geo = try RicercarEchoGeometry(device: ctx.device, library: lib.library,
+                                           configuration: RicercarEchoConfiguration(width: 320, height: 180),
+                                           pixelFormat: nil)
+        var energyPerSec: [Double] = Array(repeating: 0, count: Int(seconds) + 1)
+        for (i, fv) in features.enumerated() {
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { throw E.setup }
+            geo.update(features: fv, stemFeatures: StemFeatures.zero, commandBuffer: cmd)
+            cmd.commit(); cmd.waitUntilCompleted()
+            let sec = Int(Double(i) / Double(Self.simFPS))
+            if sec < energyPerSec.count {
+                energyPerSec[sec] += Double(max(0, fv.bass) + max(0, fv.mid) + max(0, fv.treble))
+            }
+        }
+        // marks per second
+        var marksPerSec = Array(repeating: 0, count: Int(seconds) + 1)
+        for t in geo.spawnTimes { let sec = Int(t); if sec < marksPerSec.count { marksPerSec[sec] += 1 } }
+        let secs = marksPerSec.count
+        let mAvg = Double(geo.totalSpawns) / seconds
+        let emptySecs = marksPerSec.prefix(Int(seconds)).filter { $0 == 0 }.count
+        // correlation of marks/sec vs energy/sec (density-sync proxy)
+        let r = pearson(energyPerSec, marksPerSec.map { Double($0) })
+        print("[echo_diag] \(geo.totalSpawns) marks over \(Int(seconds))s = \(String(format: "%.1f", mAvg))/s; " +
+              "empty seconds: \(emptySecs)/\(Int(seconds)); density↔energy r=\(String(format: "%+.2f", r))")
+        print("[echo_diag] marks/sec: " + marksPerSec.prefix(secs).map(String.init).joined(separator: " "))
+        #expect(geo.totalSpawns > 0)
+    }
+
     /// Mux the source audio onto a silent rendered MP4 (first `seconds`). Returns false on any ffmpeg failure.
     private func muxAudio(video: URL, audio: String, seconds: Double, out: URL) -> Bool {
         try? FileManager.default.removeItem(at: out)
