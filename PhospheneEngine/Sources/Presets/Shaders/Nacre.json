@@ -2,7 +2,7 @@
   "name": "Nacre",
   "family": "hypnotic",
   "duration": 45,
-  "description": "Translucent refractive mother-of-pearl cell-field — a faithful port of the Milkdrop preset `$$$ Royal - Mashup (431)`'s jello-mirror character (drifting overlapping lens-cells, chromatic-fringed rims, pulsing central core, slow palette rotation) on Phosphene's mv_warp with HDR float feedback. Audio-coupled to overall energy and structure, not specific stems: the molten field swirls faster as the music fills out (turning ← average stem-energy envelope), surges on the downbeat (a display-stage camera push ← barPhase01), and rotates its palette with harmony (hue ← spectral-centroid deviation); base motion routes from the continuous bands (zoom ← mid, sway ← bass, grain ← treble). See docs/presets/NACRE_PLAN.md.",
+  "description": "Translucent refractive mother-of-pearl cell-field — a faithful port of the Milkdrop preset `$$$ Royal - Mashup (431)`'s jello-mirror character (drifting overlapping lens-cells, chromatic-fringed rims, pulsing central core, slow palette rotation) on Phosphene's mv_warp with HDR float feedback. Its palette TRAVELS WITH THE SONG'S HARMONY: the hue is positioned on the circle of fifths (hue ← tonal_phase_fifths, the Tonal Interval Vector), so related keys land on related colours, the palette holds on a vamp and drifts on a modulation, and the same song transposed lands on shifted-but-related colours; low consonance (percussion / noise) desaturates toward a neutral rest, and silence falls back to the faithful slow time rotation. Motion is energy/structure-coupled: the molten field swirls faster as the music fills out (turning ← average stem-energy envelope), surges on the downbeat (display-stage camera push ← barPhase01); base motion routes from the continuous bands (zoom ← mid, sway ← bass, grain ← treble). See docs/presets/NACRE_PLAN.md.",
   "author": "Matt",
   "passes": ["direct", "mv_warp"],
   "fragment_function": "nacre_fragment",
@@ -27,7 +27,8 @@
     { "route": "energy_spin", "primitive": "vocalsEnergy", "kind": "continuous" },
     { "route": "energy_spin", "primitive": "otherEnergy", "kind": "continuous" },
     { "route": "downbeat_camera_push", "primitive": "barPhase01", "kind": "accent" },
-    { "route": "hue_from_harmony", "primitive": "spectralCentroid", "kind": "continuous" },
+    { "route": "hue_from_harmony", "primitive": "tonalPhaseFifths", "kind": "continuous" },
+    { "route": "saturation_from_consonance", "primitive": "tonalConsonance", "kind": "continuous" },
     { "route": "zoom_breath", "primitive": "midAttRel", "kind": "continuous" },
     { "route": "bass_onset_kick", "primitive": "bassAttRel", "kind": "accent" }
   ],
