@@ -621,7 +621,8 @@ Placement convention: subtle status toast, bottom-right of `PlaybackView` — **
 | Three tap reinstalls failed | "Couldn't re-hear the audio. Try quitting and re-opening Phosphene." | User action |
 | MPSGraph allocation failure mid-session | "Analyzer hiccup — using backup mode." (reactive without live stems) | Next track |
 | Sample rate mismatch (96 kHz) | "Audio is at 96 kHz. For best results set Audio MIDI Setup to 48 kHz." | Session restart |
-| Wrong normalization (Spotify Normalize Volume on) | "Audio levels are low. Check Spotify's 'Normalize Volume' setting — it should be off." | User action |
+| Wrong normalization / low level (`SignalHealthMonitor` `band=low`, ASH.2) | "Audio levels are low. Check Spotify's 'Normalize Volume' setting — it should be off." (Spotify source; generic "Check your music app's volume normalization settings" otherwise) | Auto (10 s); **once per session** |
+| Dead tap (`SignalHealthMonitor` `deadTap`, ASH.2) | *No toast* — surfaced by the more-prominent silent-tap **card** (`AudioStallOverlayView`, the total-loss-of-audio card above, D-165) which fires earlier (~10 s) with the re-grant fix ladder | Card auto-clears on audio return |
 | Frame budget exceeded, governor activated | (no user copy by default — only shown if "Show performance warnings" setting is on) | — |
 | Display disconnected mid-session | "Output display disconnected. Moved to main display." (§7.9) | 5 s |
 | Drawable-size mismatch (recorder) | (no user copy — logged to `session.log`) | — |
