@@ -247,10 +247,12 @@ struct RicercarFluidVideoHarness {
                                            configuration: RicercarEchoConfiguration(width: 320, height: 180),
                                            pixelFormat: nil)
         var energyPerSec: [Double] = Array(repeating: 0, count: Int(seconds) + 1)
+        var levelTrace: [Float] = []
         for (i, fv) in features.enumerated() {
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { throw E.setup }
             geo.update(features: fv, stemFeatures: StemFeatures.zero, commandBuffer: cmd)
             cmd.commit(); cmd.waitUntilCompleted()
+            if levelTrace.count < 240 { levelTrace.append(max(0, fv.bass) + max(0, fv.mid) + max(0, fv.treble)) }
             let sec = Int(Double(i) / Double(Self.simFPS))
             if sec < energyPerSec.count {
                 energyPerSec[sec] += Double(max(0, fv.bass) + max(0, fv.mid) + max(0, fv.treble))
@@ -268,6 +270,10 @@ struct RicercarFluidVideoHarness {
         print("[echo_diag] \(geo.totalSpawns) marks over \(Int(seconds))s = \(String(format: "%.1f", mAvg))/s; " +
               "empty seconds: \(emptySecs)/\(Int(seconds)); density↔energy r=\(String(format: "%+.2f", r))")
         print("[echo_diag] articulation split — legato:\(kc[0]) staccato:\(kc[1]) pizz:\(kc[2])")
+        // Opening diagnosis: the level every 0.1 s for the first 4 s, and the first mark times.
+        let lvl01 = stride(from: 0, to: min(levelTrace.count, 240), by: 6).map { String(format: "%.2f", levelTrace[$0]) }
+        print("[echo_diag] level @0.1s (first 4s): " + lvl01.joined(separator: " "))
+        print("[echo_diag] first mark times: " + geo.spawnTimes.prefix(10).map { String(format: "%.2f", $0) }.joined(separator: " "))
         print("[echo_diag] marks/sec: " + marksPerSec.prefix(secs).map(String.init).joined(separator: " "))
         #expect(geo.totalSpawns > 0)
     }
