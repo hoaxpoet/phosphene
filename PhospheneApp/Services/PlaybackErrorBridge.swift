@@ -60,6 +60,23 @@ final class PlaybackErrorBridge {
 
     private var silenceTask: Task<Void, Never>?
 
+    // MARK: - Signal-health toast state (ASH.2)
+
+    /// Reads whether the active session source is Spotify — picks the Spotify
+    /// "Normalize Volume" remediation copy over the generic one. nil → generic.
+    private let isSpotifySourceProvider: (@MainActor () -> Bool)?
+
+    /// One-per-session latch: the low-level toast fires at most once, on the first
+    /// sustained `band=low` window, and never re-fires (DECISION-NEEDED opt 1 —
+    /// a single unobtrusive nudge, never repeated). Dead-tap is intentionally NOT
+    /// surfaced here: the `AudioStallOverlayView` card already covers it earlier
+    /// and more prominently (Matt's call, ASH.2).
+    private var audioLevelsLowShown = false
+
+    /// Seconds the low-level nudge stays up before auto-dismiss — long enough to
+    /// read the remediation, short enough to stay unobtrusive.
+    static let audioLevelsLowToastDuration: TimeInterval = 10
+
     // MARK: - Silent-tap detector state
 
     /// Reads the monotonic tap-callback frame count (Mode-B freshness signal).
@@ -109,7 +126,10 @@ final class PlaybackErrorBridge {
                 .map { _ in () }
                 .eraseToAnyPublisher(),
         stallDwellTicks: Int = PlaybackErrorBridge.defaultStallDwellTicks,
-        onStallChanged: (@MainActor (Bool) -> Void)? = nil
+        onStallChanged: (@MainActor (Bool) -> Void)? = nil,
+        signalHealthPublisher: AnyPublisher<SignalHealth, Never> =
+            Empty().eraseToAnyPublisher(),
+        isSpotifySourceProvider: (@MainActor () -> Bool)? = nil
     ) {
         self.toastManager = toastManager
         self.tracker = tracker
@@ -117,6 +137,7 @@ final class PlaybackErrorBridge {
         self.hasEverDetectedSignalProvider = hasEverDetectedSignalProvider
         self.onStallChanged = onStallChanged
         self.stallDwellTicks = stallDwellTicks
+        self.isSpotifySourceProvider = isSpotifySourceProvider
 
         audioSignalStatePublisher
             .receive(on: DispatchQueue.main)
@@ -140,6 +161,29 @@ final class PlaybackErrorBridge {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] in self?.evaluateStall() }
             .store(in: &cancellables)
+
+        signalHealthPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] health in self?.handle(health: health) }
+            .store(in: &cancellables)
+    }
+
+    // MARK: - Signal-health toast (ASH.2)
+
+    /// Surface a one-per-session low-level nudge on the first sustained `band=low`
+    /// window. The monitor only publishes after a full 5 s window closes and only
+    /// on change, so a single `.low` reading already means one sustained window.
+    private func handle(health: SignalHealth) {
+        guard health.peakBand == .low, !audioLevelsLowShown else { return }
+        audioLevelsLowShown = true
+        let isSpotify = isSpotifySourceProvider?() ?? false
+        toastManager.enqueue(PhospheneToast(
+            severity: .warning,
+            copy: LocalizedCopy.string(for: .audioLevelsLow(isSpotifySource: isSpotify)),
+            duration: Self.audioLevelsLowToastDuration,
+            source: .signalState,
+            conditionID: UserFacingError.audioLevelsLow(isSpotifySource: isSpotify).conditionID))
+        logger.info("PlaybackErrorBridge: band=low — audio-levels-low nudge shown (spotify=\(isSpotify))")
     }
 
     // MARK: - Private

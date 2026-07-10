@@ -591,6 +591,18 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Latest classified signal health, surfaced in the debug overlay (ASH.1).
     @Published var signalHealth = SignalHealth()
 
+    /// True when the active session source is Spotify — selects the Spotify
+    /// "Normalize Volume" remediation copy for the ASH.2 low-level nudge.
+    @MainActor var isSpotifySource: Bool {
+        if case .playlist(let source)? = sessionManager.currentSource { return source.isSpotify }
+        return false
+    }
+
+    /// Monotonic tap-callback frame count — the stall detector's Mode-B freshness
+    /// signal (InputLevelMonitor). Accessor keeps the `PlaybackErrorBridge` wiring
+    /// a one-liner.
+    var currentTapFrameCount: Int { inputLevelMonitor.currentSnapshot().frameCount }
+
     /// Task that hides the preset name after a delay.
     var hideNameTask: Task<Void, Never>?
 

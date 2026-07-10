@@ -261,11 +261,11 @@ struct PlaybackView: View {
             toastManager: toastManager,
             sessionStatePublisher: sessionStatePublisher,
             isPausedPublisher: engine.$isLocalFilePaused.eraseToAnyPublisher(),
-            frameCountProvider: { [weak engine = self.engine] in
-                engine?.inputLevelMonitor.currentSnapshot().frameCount ?? 0
-            },
+            frameCountProvider: { [weak engine = self.engine] in engine?.currentTapFrameCount ?? 0 },
             hasEverDetectedSignalProvider: { [weak engine = self.engine] in engine?.hasEverDetectedAudio ?? false },
-            onStallChanged: { active in stallBinding.wrappedValue = active }
+            onStallChanged: { active in stallBinding.wrappedValue = active },
+            signalHealthPublisher: engine.$signalHealth.eraseToAnyPublisher(),   // ASH.2 band=low nudge
+            isSpotifySourceProvider: { [weak engine = self.engine] in engine?.isSpotifySource ?? false }
         )
         playbackErrorBridge = errorBridge
 
