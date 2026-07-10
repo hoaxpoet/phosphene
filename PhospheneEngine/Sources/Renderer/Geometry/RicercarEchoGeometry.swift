@@ -248,7 +248,8 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
         energyEnv += Float(dt / (0.35 + dt)) * (raw - energyEnv)
 
         // Onset = a fast rise clearly above the slow envelope → a SUBJECT enters (gated by a refractory).
-        if refractory <= 0 && energyFast - energyEnv > 0.10 && energyFast > 0.18 {
+        // Lower thresholds → MANY more of the tiny sparks (Matt: "only ~5 s of signal to look at").
+        if refractory <= 0 && energyFast - energyEnv > 0.055 && energyFast > 0.11 {
             // ARTICULATION sharpness (0 legato … 1 pizz) of THIS note, read ONLY at the onset (never in silence).
             // Per-NOTE cues (not "how busy the passage is" — that conflates fast-legato with staccato):
             //  • a sharper/bigger energy jump = a more percussive attack;
