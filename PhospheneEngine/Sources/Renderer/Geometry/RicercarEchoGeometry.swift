@@ -83,6 +83,7 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
         var colorIndex = 0
         var strength: Float = 1
         var markKind = 0   // 0 = legato STROKE (flowing line), 1 = staccato DAB (short tick), 2 = pizz DOT (pluck)
+        var variant = 0    // which subject curve shape (arch / S / hook) — variety in the drawing
     }
     private var gestures: [Gesture]
     private var nextSlot = 0
@@ -179,10 +180,12 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
     }
 
     // MARK: The subject curve (a recognisable leaning flourish, local space centred on origin)
-    private static func subject(_ tt: Float) -> SIMD2<Float> {
-        let x = (tt - 0.5) * 0.34
-        let y = (0.20 * sinf(tt * .pi * 1.15) - 0.06 * tt)   // arch that leans + a slight tail-drop
-        return SIMD2(x, y)
+    private static func subject(_ tt: Float, _ variant: Int) -> SIMD2<Float> {
+        switch variant {
+        case 1:  return SIMD2((tt - 0.5) * 0.34, 0.15 * sinf(tt * .pi * 2.0))              // an S-curve
+        case 2:  return SIMD2((tt - 0.5) * 0.30 + 0.05 * sinf(tt * .pi), 0.22 * (tt - 0.5)) // a rising hook
+        default: return SIMD2((tt - 0.5) * 0.34, 0.20 * sinf(tt * .pi * 1.15) - 0.06 * tt)  // a leaning arch
+        }
     }
 
     // MARK: - ParticleGeometry
@@ -241,7 +244,7 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
 
         // Energy: soft-saturated band-dev sum. Fast copy for onset edges, slow env for density/stretto.
         let raw = 1.0 - expf(-(max(0, feat.bassDev) + max(0, feat.midDev) + max(0, feat.trebDev)) / 0.5)
-        energyFast += Float(dt / (0.04 + dt)) * (raw - energyFast)
+        energyFast += Float(dt / (0.022 + dt)) * (raw - energyFast)   // tighter → mark pops closer to the note (sync)
         energyEnv += Float(dt / (0.35 + dt)) * (raw - energyEnv)
 
         // Onset = a fast rise clearly above the slow envelope → a SUBJECT enters (gated by a refractory).
@@ -276,6 +279,7 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
         var sub = Gesture()
         sub.origin = SIMD2(0.10 + rand() * 0.80, 0.16 + rand() * 0.68)   // spread across the whole field
         sub.flipY = rand() > 0.5 ? 1 : -1; sub.rot = (rand() - 0.5) * 0.6
+        sub.variant = Int(rand() * 3) % 3
         // COLOUR = a section that's actually playing, picked WEIGHTED by each section's activity — so when
         // two sections sound together you get a MIX of their colours (the counterpoint shows), not one hue.
         // Flat capture (rock / warmup) → fall back to a rotating hue so it's never colourless.
@@ -326,18 +330,21 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
                 let ph = ges.prevPhase + (ges.phase - ges.prevPhase) * frac
                 let world: SIMD2<Float>
                 let sz: Float
+                // A brush TAPER along the stroke (thin at the ends, full in the middle) so it reads as a
+                // drawn/bowed mark, not a uniform line. Dots don't taper.
+                let taper = 0.28 + 0.72 * sinf(ph * .pi)
                 if ges.markKind == 2 {                        // PIZZ DOT — a tiny pluck at one spot
                     world = ges.origin
                     sz = 5
                 } else if ges.markKind == 1 {                 // STACCATO DASH — a tiny straight bowed tick
                     let along = (ph - 0.5) * 0.055            // a short line along the rotation axis
                     world = ges.origin + SIMD2(cs, sn) * along
-                    sz = 4
-                } else {                                       // LEGATO STREAK — a small traced curve
-                    var loc = Self.subject(ph)
+                    sz = 6 * taper
+                } else {                                       // LEGATO STREAK — a small tapered traced curve
+                    var loc = Self.subject(ph, ges.variant)
                     loc.y *= ges.flipY
                     world = ges.origin + SIMD2(loc.x * cs - loc.y * sn, loc.x * sn + loc.y * cs) * ges.scale
-                    sz = 6
+                    sz = 8 * taper
                 }
                 // Soft attack/release along the draw; a dot/dab pops sharper (its whole life is short anyway).
                 let env = min(1, ph * 6) * min(1, (1 - ph) * 6)
