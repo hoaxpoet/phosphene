@@ -93,9 +93,8 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
     private var pending: [Pending] = []
 
     // Music envelopes.
-    private var energyEnv: Float = 0        // smoothed energy (density / stretto driver)
-    private var energyFast: Float = 0       // fast energy for onset edges
-    private var refractory: Float = 0       // s until next subject allowed
+    private var energyFast: Float = 0       // smoothed band LEVEL (music presence → strength/brightness)
+    private var emitAccum: Float = 0        // mark-emission accumulator (rate ∝ level + attacks)
     private var famActivity = SIMD4<Float>(repeating: 0)   // per-section presence (strings/brass/woodwinds/perc)
     private var time: Float = 0
     private var rng: UInt64 = 0x2545F4914F6CDD1D
@@ -171,7 +170,7 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
     }
 
     // MARK: Test hooks
-    public var currentEnergyEnv: Float { energyEnv }
+    public var currentEnergyEnv: Float { energyFast }
     public func activeGestureCount() -> Int { gestures.reduce(0) { $0 + ($1.active ? 1 : 0) } }
 
     private func rand() -> Float {
@@ -231,7 +230,6 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
     private func advance(features feat: FeatureVector, stems stem: StemFeatures) {
         var dt = feat.deltaTime; if !(dt > 0) { dt = 1.0 / 60.0 }; dt = min(dt, 1.0 / 30.0)
         time += dt
-        refractory = max(0, refractory - dt)
 
         // Which instrument SECTION is most active NOW → the spark's COLOUR (the honest voice). Use the
         // per-family DEVIATION, not the absolute level (families have different natural ranges — FA #31), so
@@ -242,23 +240,24 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
             stem.woodwindsActivityDev,
             stem.percussionActivityDev)
 
-        // Energy: soft-saturated band-dev sum. Fast copy for onset edges, slow env for density/stretto.
-        let raw = 1.0 - expf(-(max(0, feat.bassDev) + max(0, feat.midDev) + max(0, feat.trebDev)) / 0.5)
-        energyFast += Float(dt / (0.022 + dt)) * (raw - energyFast)   // tighter → mark pops closer to the note (sync)
-        energyEnv += Float(dt / (0.35 + dt)) * (raw - energyEnv)
+        // LEVEL = how much music is sounding NOW, from the AGC band LEVELS (bass/mid/treble). These STAY UP
+        // through sustained passages — unlike the deviation primitives, which fade as the running average
+        // catches up (that fade is why the old onset-above-average detector went silent after the opening →
+        // "music plays but the drawing doesn't"). devSum = the deviations, which still SPIKE on attacks.
+        let level = 1.0 - expf(-(max(0, feat.bass) + max(0, feat.mid) + max(0, feat.treble)) / 0.9)
+        let devSum = max(0, feat.bassDev) + max(0, feat.midDev) + max(0, feat.trebDev)
+        energyFast += Float(dt / (0.05 + dt)) * (level - energyFast)
 
-        // Onset = a fast rise clearly above the slow envelope → a SUBJECT enters (gated by a refractory).
-        // Lower thresholds → MANY more of the tiny sparks (Matt: "only ~5 s of signal to look at").
-        if refractory <= 0 && energyFast - energyEnv > 0.055 && energyFast > 0.11 {
-            // ARTICULATION sharpness (0 legato … 1 pizz) of THIS note, read ONLY at the onset (never in silence).
-            // Per-NOTE cues (not "how busy the passage is" — that conflates fast-legato with staccato):
-            //  • a sharper/bigger energy jump = a more percussive attack;
-            //  • more treble share = a brighter, more transient attack (pizz/staccato are transient-rich).
-            let total = max(0.05, max(0, feat.bassDev) + max(0, feat.midDev) + max(0, feat.trebDev))
+        // EMISSION: a mark RATE proportional to the level (baseline presence — the drawing stays active while
+        // music plays) plus a boost from the attacks (devSum) — so sustained passages keep drawing and hits pop.
+        emitAccum += (level * 8.0 + devSum * 20.0) * Float(dt)
+        while emitAccum >= 1 {
+            emitAccum -= 1
+            // Articulation sharpness (0 legato … 1 pizz) of THIS moment, from the attack deviations + treble.
+            let total = max(0.05, devSum)
             let treble = max(0, feat.trebDev) / total
-            let sharp = min(1, (energyFast - energyEnv) * 1.7 + treble * 0.75)
-            spawnSubject(strength: min(1, 0.4 + energyFast), sharp: sharp)
-            refractory = 0.06   // low → MANY tiny sparks (Matt: "the tiny sparse thing is what I want more of")
+            let sharp = min(1, devSum * 1.3 + treble * 0.6)
+            spawnSubject(strength: min(1, 0.35 + level), sharp: sharp)
         }
 
         // Fire scheduled echoes whose time has come.
