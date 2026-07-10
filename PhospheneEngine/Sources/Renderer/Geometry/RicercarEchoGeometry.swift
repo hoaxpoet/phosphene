@@ -95,6 +95,7 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
     private var energyEnv: Float = 0        // smoothed energy (density / stretto driver)
     private var energyFast: Float = 0       // fast energy for onset edges
     private var refractory: Float = 0       // s until next subject allowed
+    private var famActivity = SIMD4<Float>(repeating: 0)   // per-section presence (strings/brass/woodwinds/perc)
     private var time: Float = 0
     private var rng: UInt64 = 0x2545F4914F6CDD1D
 
@@ -187,7 +188,7 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
     // MARK: - ParticleGeometry
 
     public func update(features: FeatureVector, stemFeatures: StemFeatures, commandBuffer: MTLCommandBuffer) {
-        advance(features: features)
+        advance(features: features, stems: stemFeatures)
         writePens()
 
         guard let decayPSO, let depositPSO else { return }
@@ -224,10 +225,19 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
 
     // MARK: - Music → gestures
 
-    private func advance(features feat: FeatureVector) {
+    private func advance(features feat: FeatureVector, stems stem: StemFeatures) {
         var dt = feat.deltaTime; if !(dt > 0) { dt = 1.0 / 60.0 }; dt = min(dt, 1.0 / 30.0)
         time += dt
         refractory = max(0, refractory - dt)
+
+        // Which instrument SECTION is most active NOW → the spark's COLOUR (the honest voice). Use the
+        // per-family DEVIATION, not the absolute level (families have different natural ranges — FA #31), so
+        // the section that's surging relative to ITS norm wins. Flat (rock / warmup) → fallback in spawnSubject.
+        famActivity = SIMD4(
+            stem.stringsActivityDev,
+            stem.brassActivityDev,
+            stem.woodwindsActivityDev,
+            stem.percussionActivityDev)
 
         // Energy: soft-saturated band-dev sum. Fast copy for onset edges, slow env for density/stretto.
         let raw = 1.0 - expf(-(max(0, feat.bassDev) + max(0, feat.midDev) + max(0, feat.trebDev)) / 0.5)
@@ -266,7 +276,18 @@ public final class RicercarEchoGeometry: ParticleGeometry, @unchecked Sendable {
         var sub = Gesture()
         sub.origin = SIMD2(0.10 + rand() * 0.80, 0.16 + rand() * 0.68)   // spread across the whole field
         sub.flipY = rand() > 0.5 ? 1 : -1; sub.rot = (rand() - 0.5) * 0.6
-        sub.colorIndex = Int(rand() * 4) & 3
+        // COLOUR = a section that's actually playing, picked WEIGHTED by each section's activity — so when
+        // two sections sound together you get a MIX of their colours (the counterpoint shows), not one hue.
+        // Flat capture (rock / warmup) → fall back to a rotating hue so it's never colourless.
+        let act = SIMD4(max(0, famActivity.x), max(0, famActivity.y), max(0, famActivity.z), max(0, famActivity.w))
+        let total = act.x + act.y + act.z + act.w
+        if total > 0.04 {
+            var pick = rand() * total; var idx = 3
+            for fi in 0..<4 { if pick < act[fi] { idx = fi; break }; pick -= act[fi] }
+            sub.colorIndex = idx
+        } else {
+            sub.colorIndex = Int(rand() * 4) & 3
+        }
         sub.strength = strength
         // Articulation → the shape of the TINY mark: flowing streak ↔ short dash ↔ pluck dot. All small +
         // short-lived (pop-and-fade sparks), so each is a tight, transient response to a note — not a floater.
