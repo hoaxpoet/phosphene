@@ -38,13 +38,21 @@ struct NacreUniforms {
     var randPreset: SIMD4<Float> = .init(0.62, 0.74, 0.30, 0.55)
     var slowRoamSin: SIMD4<Float> = .init(repeating: 0.5)
     var roamCos: SIMD4<Float> = .init(repeating: 0.5)
+    // TONAL.3 (D-178): x = palette desaturate amount (consonance-gated toward the atonal
+    // rest state). y,z,w spare (y reserved for the deferred tension→dispersion route).
+    var tonal: SIMD4<Float> = .init(0.20, 1.0, 0, 0)
 }
 
-// NACRE.3 hue ← harmony tuning. The centroid deviation runs ~±0.03 (session 22-42-45Z),
-// so a gain of 40 maps it to ~±1.2 palette-seconds; the bound caps it at ±1.5 s ≈ ±10 % of
-// the ~14 s palette cycle — a subtle colour drift, not a hue meter. Both are feel knobs.
-private let kNacreHueGain: Float = 40.0
-private let kNacreHueBound: Float = 1.5
+// TONAL.3 (D-178) hue ← real harmony. The circle-of-fifths phase maps to the full
+// ~14.4 s `nacrePalette` cycle (2π/0.437), so the 12 keys span the colour wheel evenly
+// (~1.2 s ≈ 30° per key) and fifth-adjacent keys land on adjacent colours — related keys
+// → related colours, the whole point. Consonance gates the coupling to the neutral rest
+// state (atonal / percussive passages desaturate). The tonal_tension → rim-dispersion
+// secondary is DEFERRED to round 2 (it under-develops on 30 s preview fixtures, so the
+// QG.1 route-coverage gate can't exercise it — a fixture-breadth limit, not a dead route).
+private let kNacrePalettePeriod: Float = 14.4
+private let kNacreDesatTonal: Float = 0.20     // the faithful (431) desaturate (shader kNacreDesat)
+private let kNacreDesatAtonal: Float = 0.38    // atonal → gentle desaturate toward rest (mud-safe; Matt tunes in M7)
 // Turning ← energy. `spin` is radians/frame of continuous warp rotation. At ~60 fps the
 // peak envelope (~0.55 − floor 0.18 = 0.37) × gain 0.012 ≈ 0.0044 rad/frame ≈ 15°/s (a full
 // turn ~24 s); the quietest passages sit near-still. Both are feel knobs (Matt tunes live).
@@ -99,23 +107,33 @@ extension RenderPipeline {
         // the whole field on the downbeat (display-stage, no smear). Static on beatless tracks.
         uni.barPush = pow(max(0, 1 - features.barPhase01), 2.5)
 
-        // ── Hue ← harmony (NACRE.3) ──────────────────────────────────────────────
-        // Nudge the palette PHASE (a subtle drift on top of the slow time-rotation, NOT a
-        // hue meter) by the music's spectral colour. Track-robust + calm by construction:
-        //   · drive from the centroid's DEVIATION from a slow section-norm (not its absolute
-        //     value — which is track-dependent), so it responds to harmonic/timbral SHIFTS;
-        //   · gate by energy so silence holds the base palette (no hue jump at track gaps);
-        //   · heavily smoothed + bounded → responds to the slow harmonic drift, not every
-        //     note (Matt: half/quarter-time is fine). v1 uses the whole-mix centroid as the
-        //     harmony proxy (chroma isn't available); can narrow to the `other` stem later.
-        let gate = max(0, min(1, (total - 0.03) / 0.09))              // 0 at silence → 1 with music
-        if total > 0.05 {                                            // track the norm only on signal
-            nacreCentroidNorm += (features.spectralCentroid - nacreCentroidNorm) * 0.003   // ~5 s
-        }
-        let dev = (features.spectralCentroid - nacreCentroidNorm) * gate
-        let hueTarget = max(-kNacreHueBound, min(kNacreHueBound, dev * kNacreHueGain))
-        nacreHueEMA += (hueTarget - nacreHueEMA) * 0.04              // ~0.4 s calm output smoothing
-        uni.hueShift = nacreHueEMA
+        // ── Hue ← REAL harmony (TONAL.3, D-178) ──────────────────────────────────
+        // Replaces the NACRE.3 centroid-deviation PROXY with the true Tonal Interval Vector
+        // fifths phase. The palette now TRAVELS WITH THE HARMONY: related keys → related
+        // colours (the circle of fifths, not the chromatic circle), holding on a vamp,
+        // drifting on a modulation, and the same song transposed lands on shifted-but-related
+        // colours. Hue never strobes (the Nacre anti-reference) — the fifths phase is a slow
+        // harmonic signal, not per-beat energy.
+        //   · Consonance gates the whole tonal coupling toward the neutral rest state, so
+        //     silence / percussion / noise falls back to the faithful time rotation (D-019).
+        //   · The fifths phase is circular-EMA'd as a unit vector (a circular mean, ~0.8 s)
+        //     so modulations GLIDE — wrap-safe, unlike a scalar EMA across ±π.
+        let tonalGate = max(0, min(1, (features.tonalConsonance - 0.05) / 0.03))  // analyzer atonal floor
+        let fifthsVec = SIMD2<Float>(cos(features.tonalPhaseFifths), sin(features.tonalPhaseFifths))
+        nacreFifthsVec += (fifthsVec - nacreFifthsVec) * 0.025                    // ~0.8 s circular smoothing
+        let smoothedFifths = atan2(nacreFifthsVec.y, nacreFifthsVec.x)
+        uni.hueShift = (smoothedFifths / (2 * .pi)) * kNacrePalettePeriod * tonalGate
+
+        // ── Saturation ← consonance (TONAL.3) ── atonal MUSIC desaturates toward the rest
+        // state; SILENCE keeps the faithful palette (D-019 warmup must stay colourful — the
+        // gate would otherwise wash out the certified silence look). Desaturate only when
+        // there is energy AND consonance is low (percussion / noise dominated).
+        let hasEnergy = max(0, min(1, (total - 0.03) / 0.05))       // 0 silence → 1 music
+        let satFaithful = max(tonalGate, 1 - hasEnergy)             // 1 = faithful 0.20, 0 = desaturate
+        uni.tonal.x = kNacreDesatAtonal + (kNacreDesatTonal - kNacreDesatAtonal) * satFaithful
+        // (tonal_tension → rim dispersion is DEFERRED — it under-develops on a 30 s preview
+        //  clip so the route-coverage fixtures can't exercise it; a round-2 lever. `tonal.y`
+        //  stays at its 1.0 default.)
 
         let size = mvWarpDrawableSize
         let wPx = max(Float(size.width), 1), hPx = max(Float(size.height), 1)
