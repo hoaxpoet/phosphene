@@ -264,8 +264,10 @@ struct RicercarFluidVideoHarness {
         let emptySecs = marksPerSec.prefix(Int(seconds)).filter { $0 == 0 }.count
         // correlation of marks/sec vs energy/sec (density-sync proxy)
         let r = pearson(energyPerSec, marksPerSec.map { Double($0) })
+        let kc = geo.spawnKindCounts
         print("[echo_diag] \(geo.totalSpawns) marks over \(Int(seconds))s = \(String(format: "%.1f", mAvg))/s; " +
               "empty seconds: \(emptySecs)/\(Int(seconds)); density↔energy r=\(String(format: "%+.2f", r))")
+        print("[echo_diag] articulation split — legato:\(kc[0]) staccato:\(kc[1]) pizz:\(kc[2])")
         print("[echo_diag] marks/sec: " + marksPerSec.prefix(secs).map(String.init).joined(separator: " "))
         #expect(geo.totalSpawns > 0)
     }
