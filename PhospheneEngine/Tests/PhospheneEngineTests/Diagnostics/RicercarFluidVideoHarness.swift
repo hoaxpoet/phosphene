@@ -199,8 +199,27 @@ struct RicercarFluidVideoHarness {
         let stem = URL(fileURLWithPath: audioPath).deletingPathExtension().lastPathComponent
         let mp4 = dir.appendingPathComponent("ricercar_echo_\(stem).mp4")
         try encodeMP4(frameDir: frameDir, fps: Self.videoFPS, out: mp4)
-        print("[ricercar_echo] MP4 → \(mp4.path)")
+        print("[ricercar_echo] MP4 (silent) → \(mp4.path)")
+        // Also mux the source audio so the visuals can be judged WITH the music (Matt: "tough to judge
+        // without the music"). Best-effort — a silent MP4 already exists if this fails.
+        let withMusic = dir.appendingPathComponent("ricercar_echo_\(stem)_with_music.mp4")
+        if muxAudio(video: mp4, audio: audioPath, seconds: seconds, out: withMusic) {
+            print("[ricercar_echo] MP4 (with music) → \(withMusic.path)")
+        }
         #expect(captured > 0)
+    }
+
+    /// Mux the source audio onto a silent rendered MP4 (first `seconds`). Returns false on any ffmpeg failure.
+    private func muxAudio(video: URL, audio: String, seconds: Double, out: URL) -> Bool {
+        try? FileManager.default.removeItem(at: out)
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+        proc.arguments = ["ffmpeg", "-loglevel", "error", "-i", video.path, "-i", audio,
+                          "-map", "0:v", "-map", "1:a", "-t", String(seconds),
+                          "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest", out.path]
+        proc.standardError = Pipe()
+        do { try proc.run(); proc.waitUntilExit() } catch { return false }
+        return proc.terminationStatus == 0
     }
 
     /// Repo-relative fixture resolved from this file's path (…/PhospheneEngine/Tests/PhospheneEngineTests/
