@@ -82,3 +82,6 @@ tools/mitosis_sketch/
 # Mitosis gen-2 sketch renders (the shader Gen2Cell.metal IS committed; only frames are not)
 tools/mitosis_gen2_sketch/frames/
 tools/data/panns_reference/
+
+# QG.3 coupling report per-frame CSVs (regenerable diagnostic artifacts)
+coupling/
