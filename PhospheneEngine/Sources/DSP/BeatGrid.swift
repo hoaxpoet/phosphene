@@ -182,14 +182,22 @@ extension BeatGrid {
     /// After thinning, downbeats are re-snapped to the surviving beats within ±40 ms.
     /// Downbeats that fall on removed (odd-indexed) beats beyond the snap window are
     /// discarded; `beatsPerBar` is recalculated from the corrected downbeat set.
+    /// The one halving-correction threshold, shared by this offline path and
+    /// BOTH live tempo estimators in `BeatDetector+Tempo` (PUB.2, ultra-review:
+    /// the live sites hardcoded 160 while claiming to match this — a true
+    /// ~158–174 BPM track got halved to ~85 on the live path only, producing a
+    /// half-rate visual pulse in reactive mode). Rationale for 175: BUG-009
+    /// note above.
+    public static let halvingThresholdBPM: Double = 175
+
     public func halvingOctaveCorrected() -> BeatGrid {
-        guard bpm > 175, beats.count >= 2 else { return self }
+        guard bpm > Self.halvingThresholdBPM, beats.count >= 2 else { return self }
 
         var correctedBeats = beats
         var correctedBPM = bpm
 
-        // Halve repeatedly until BPM ≤ 175 (handles pathological triple-time, etc.).
-        while correctedBPM > 175, correctedBeats.count >= 2 {
+        // Halve repeatedly until BPM ≤ the threshold (handles pathological triple-time, etc.).
+        while correctedBPM > Self.halvingThresholdBPM, correctedBeats.count >= 2 {
             correctedBPM /= 2
             correctedBeats = stride(from: 0, to: correctedBeats.count, by: 2)
                 .map { correctedBeats[$0] }
