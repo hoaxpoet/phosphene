@@ -93,8 +93,13 @@ public final class PreviewResolver: PreviewResolving, @unchecked Sendable {
         }
 
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            logger.info("Non-200 response for '\(track.title)', caching nil")
-            stateLock.withLock { cache[track] = .some(nil) }
+            // PUB.2 (ultra-review): do NOT cache nil on a non-200 — 429/5xx are
+            // transient, and a poisoned cache entry made the D-061(d)
+            // network-recovery retry permanently unable to succeed for the
+            // track. Only a definitive 200-with-no-result means "no preview"
+            // (cached below); transient failures return nil uncached, matching
+            // the thrown-error path above.
+            logger.info("Non-200 response for '\(track.title)' — returning nil uncached (transient)")
             return nil
         }
 
