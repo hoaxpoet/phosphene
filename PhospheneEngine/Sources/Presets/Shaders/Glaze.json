@@ -4,6 +4,12 @@
   "duration": 45,
   "description": "Glossy 'wet jelly' contour-gel — a faithful port of the Milkdrop preset `Flexi + stahlregen - jelly showoff parade`: nested concentric contour-ring striations under a thick 3-level blur-pyramid emboss 'wet gel' sheen, a saturated neon palette that slowly rotates, on an accreting feedback field. A 3-mass damped spring-mass 'jelly' — anchored by bass↔other stem opposition (lateral) and overall fullness (lift) — drags a radial swirl-poke across the field (the catalog's physics-of-the-beat body); per-stem accents give drums a poke 'punch' and vocals a gentle glow, with a display-only HDR glossy bloom on the bright highlights. The connection lands on a discrete downbeat camera push: on the cached-grid downbeat the whole field lunges toward the viewer then settles. See docs/presets/GLAZE_PLAN.md.",
   "author": "Matt",
+  "inspired_by": {
+    "milkdrop_filename": "Flexi + stahlregen - jelly showoff parade",
+    "original_artist": "Flexi, stahlregen",
+    "source_form": "butterchurn-presets built-in (pre-converted; no .milk file on disk, sha256 unavailable)",
+    "pack": "projectM-visualizer/presets-cream-of-the-crop"
+  },
   "passes": ["direct", "mv_warp"],
   "fragment_function": "glaze_fragment",
   "vertex_function": "fullscreen_vertex",

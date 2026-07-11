@@ -87,15 +87,11 @@ retraining or fine-tuning.
 
 ---
 
-## Milkdrop preset attribution
+## Milkdrop-inspired preset attribution
 
-**Status:** **Placeholder — no Milkdrop-derived content shipped yet.**
-This section is created per D-111 (Phase MD license posture). Content
-lands when the first Milkdrop port commits in Increment MD.5.
-
-**Used in:** `PhospheneEngine/Sources/Presets/Shaders/Milkdrop/`
-(Milkdrop-derived presets across the Classic Port / Evolved / Hybrid
-tiers — see `docs/MILKDROP_STRATEGY.md`).
+**Status:** **Active — populated per D-111 (as amended by the D-113
+inspired-by reframe).** Five shipped presets are Milkdrop-inspired
+works; each declares its source in an `inspired_by` sidecar block.
 
 **Source pack:**
 [`projectM-visualizer/presets-cream-of-the-crop`](https://github.com/projectM-visualizer/presets-cream-of-the-crop)
@@ -103,6 +99,10 @@ tiers — see `docs/MILKDROP_STRATEGY.md`).
 and adopted as the default preset pack for projectM releases since
 2022. Original pack release:
 [https://www.patreon.com/posts/pack-nestdrop-91682111](https://www.patreon.com/posts/pack-nestdrop-91682111).
+The ports were authored against the pre-converted **butterchurn
+built-ins** ([`jberg/butterchurn`](https://github.com/jberg/butterchurn)
+/ `butterchurn-presets`, MIT-licensed WebGL Milkdrop port) rendered as
+live oracles — see `tools/milkdrop-render/`.
 
 **License posture:** Per the pack's `LICENSE.md`, Milkdrop presets
 were "in almost all cases, not released under any specific license";
@@ -112,39 +112,38 @@ release and ubiquitous reuse across projectM-derived applications.
 The pack supports a takedown path: preset authors can contact the
 projectM team to have their preset removed from future releases.
 Phosphene commits to honoring takedown requests routed via that path.
+No `.milk` file is redistributed in this repository (D-111 scope
+condition; Dragon Bloom's reference copy was removed at PUB.1 — its
+SHA-256 is retained in the sidecar as provenance).
 
-**Per-preset attribution (placeholder schema — populated by MD.5):**
-
-For each Milkdrop-derived preset shipped in Phosphene, the JSON
-sidecar declares its source in a `milkdrop_source` block:
+**Per-preset attribution (`inspired_by` sidecar block, D-111 as amended):**
 
 ```json
-"milkdrop_source": {
-  "filename": "<original .milk filename>",
-  "author": "<author from filename pattern, best-effort>",
-  "theme": "<cream-of-crop theme directory>",
-  "sha256": "<SHA256 of source .milk file>",
+"inspired_by": {
+  "milkdrop_filename": "<original preset name>",
+  "original_artist": "<author from filename pattern, best-effort>",
+  "sha256": "<SHA-256 of the source .milk, when one was on disk>",
+  "source_form": "<noted when the source was a butterchurn built-in, not a .milk>",
   "pack": "projectM-visualizer/presets-cream-of-the-crop"
 }
 ```
 
-This file enumerates the shipped presets once MD.5 lands. Until then,
-the table below is intentionally empty.
+| Phosphene preset (`.metal` / `.json`) | Source preset | Original author (best-effort) |
+|---|---|---|
+| `Nacre` | `$$$ Royal - Mashup (431)` | $$$ Royal mashup series (multiple component authors) |
+| `Glaze` | `Flexi + stahlregen - jelly showoff parade` | Flexi, stahlregen |
+| `Floret` | `suksma - Rovastar - Sunflower Passion (Enlightment Mix)_Phat_edit + flexi und martin shaders - circumflex in character classes in regular expression` | suksma, Rovastar, Flexi, Martin |
+| `DragonBloom` | `$$$ Royal - Mashup (220)` | $$$ Royal mashup series (multiple component authors) |
+| `FataMorgana` | `martin [shadow harlequins shape code] - fata morgana` | Martin |
 
-| Phosphene preset (`.metal` / `.json` filename) | Source `.milk` filename | Original author | Pack theme |
-|---|---|---|---|
-| _(populated by MD.5)_ | | | |
-
-**Modifications:** Milkdrop presets shipped in Phosphene are *not*
-runtime-interpreted `.milk` files. They are transpiled offline (per
-D-110 / D-043; see `docs/MILKDROP_STRATEGY.md` and the MD.2 / MD.3 /
-MD.4 increments in `docs/ENGINEERING_PLAN.md`) into Metal `.metal`
-shader source + JSON sidecars. Each Phosphene-side preset typically
-adds Phosphene's deviation primitives (D-026), stem-driven routing
-(D-104), and other MV-3 capabilities (D-028) on top of the source
-preset's visual identity. Evolved (MD.6) and Hybrid (MD.7) tier
-presets diverge further from the source per the per-tier capability
-contract in D-104.
+**Modifications:** These are **inspired-by works, not ports of record**
+(D-113): each is authored from scratch on Phosphene's primitives
+(`mv_warp` + custom Metal shaders), reproduces the source's visual
+character against a live butterchurn oracle, and then adds Phosphene's
+music coupling — deviation primitives (D-026), stem-driven routing,
+beat-grid/downbeat events, and (Nacre) the Tonal Interval Vector
+palette. No Milkdrop runtime, `.milk` parser, or transpiled shader
+text ships in Phosphene.
 
 ---
 
