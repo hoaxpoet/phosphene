@@ -1,22 +1,21 @@
 # tools/data
 
-Aggregate calibration artifacts for the corpus tools. Only **aggregate**
-statistics are committed here; per-track corpus manifests are private and
-stay local.
+Corpus and calibration artifacts for the corpus tools (`CorpusCensusRunner`,
+`TonalDumper`, `tools/census_report.py`).
 
+- `corpus_manifest.csv.gz` — full per-track manifest of the analysis corpus
+  (27,639 tracks; produced by `tools/corpus_manifest.py scan`).
+- `corpus_pilot_1000.csv` — deterministic seed-42 stratified 1,000-track
+  pilot sample (produced by `tools/corpus_manifest.py pilot`).
 - `mood_scaler.json` — MoodClassifier input-feature means/scales from the
-  CENSUS pilot run (aggregate only; see `docs/diagnostics/CENSUS_PILOT_REPORT.md`).
+  CENSUS pilot run (see `docs/diagnostics/CENSUS_PILOT_REPORT.md`).
 
-## Regenerating the private manifests (maintainer-local)
+The audio the manifests describe lives on the maintainer's corpus volume
+(`/Volumes/Extreme SSD`), not in the repo — the manifests are metadata only.
 
-`corpus_manifest.csv.gz` and `corpus_pilot_1000.csv` were removed from the
-repo at PUB.1 (they itemized a private music library). The tools that consume
-them (`CorpusCensusRunner`, `TonalDumper`, `tools/census_report.py`) still
-work — regenerate locally with the corpus volume mounted:
+To regenerate:
 
 ```bash
 python3 tools/corpus_manifest.py scan --root "/Volumes/Extreme SSD" --out /tmp/corpus_manifest.csv
 python3 tools/corpus_manifest.py pilot --manifest /tmp/corpus_manifest.csv --out tools/data/corpus_pilot_1000.csv
 ```
-
-Both output paths are gitignored; do not re-commit them.
