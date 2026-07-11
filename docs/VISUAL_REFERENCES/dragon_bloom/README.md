@@ -9,7 +9,12 @@ forms radiating from a center, with rich flowing feedback texture. Calm-but-aliv
 bloom breathes and the feathers stream with the music. See `01_target.png` (faithful
 butterchurn still, real-music-driven) and `target_animated.gif` (motion).
 
-## Source mechanic (`source.milk`)
+## Source mechanic (decoded from the source `.milk`)
+
+*(The raw `.milk` copy was removed at PUB.1 — D-111 scope condition: no `.milk`
+redistribution. Provenance: `$$$ Royal - Mashup (220)`, SHA-256
+`510366e48739f3dcd14371badb0649aa3ddf6ec68b061577709c1f2f4a043091`; the decoded
+facts below are the load-bearing record.)*
 - `nWaveMode=7` waveform, `fWaveScale=1.286`, `wave_r/g/b=0.65`
 - Feedback: `fDecay=0.95`, `fVideoEchoAlpha=0.5`, `zoom=0.9995`, `warp=0.01`, `rot=0`
 - **`nMotionVectorsX/Y = 12/9`** — the motion-vector flow field that creates the feathering
