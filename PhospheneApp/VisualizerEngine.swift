@@ -1002,8 +1002,13 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                     // can never land on the new session's chrome.
                     self.streamingArtworkPublisher?.update(for: nil)
                     self.currentTrackArtworkData = nil
+                    self.clearSessionScopedSurfaces()
                 }
                 if newState == .preparing {
+                    // PUB.2 (BUG-024 class): LF sessions enter at .preparing
+                    // WITHOUT a .connecting emit, so the session-boundary
+                    // clear must fire here too (idempotent after .connecting).
+                    self.clearSessionScopedSurfaces()
                     // LF.5.fix.3-C: each new session entry clears the
                     // duplicate-emission guard so the next `.ready` for a
                     // genuinely new URL proceeds normally. Within a session,
@@ -1087,6 +1092,30 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         BUG012Probe.recordVisualizerEngineInit()
     }
     // swiftlint:enable cyclomatic_complexity function_body_length
+
+    /// PUB.2 (BUG-024 class, ultra-review app-layer findings) — the one
+    /// session-boundary clear for every session-scoped surface, called on
+    /// `.connecting` (streaming entry) AND `.preparing` (LF entry — LF
+    /// sessions never emit `.connecting`). Clears the chrome siblings in the
+    /// same MainActor tick (title + index + profile + resolved identity, so
+    /// no consumer observes a half-updated surface against the artwork clear)
+    /// and the per-session orchestrator plan (a stale `livePlan` from the
+    /// prior session could otherwise drive old segments or block the
+    /// reactive fallback; `preFetchedProfile` from a streaming session
+    /// otherwise suppresses live key/BPM for a following LF session).
+    /// Idempotent — the double fire on .connecting → .preparing is harmless.
+    private func clearSessionScopedSurfaces() {
+        currentTrack = nil
+        currentTrackIndex = nil
+        preFetchedProfile = nil
+        lastResolvedTrackIdentity = nil
+        orchestratorLock.withLock {
+            livePlan = nil
+            liveTrackPlanIndex = nil
+        }
+        livePlannedSession = nil
+        reactiveSessionStart = nil
+    }
 
     /// BUG-012 instrumentation — record VisualizerEngine teardown. If a crash
     /// fires during teardown, the deinit log line lands in `session.log`
