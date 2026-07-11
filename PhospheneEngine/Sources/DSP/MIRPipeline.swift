@@ -93,9 +93,25 @@ public final class MIRPipeline: @unchecked Sendable {
     var lastRecordTime: Double = 0
     /// Whether recording mode is active.
     public var isRecording: Bool { recordingHandle != nil }
+    /// Lock guarding the recording track-metadata pair below: written from the
+    /// app layer's track-change callback thread, read on the analysis queue by
+    /// the recording path (BUG-069 — unguarded String reassign vs read is a
+    /// memory-safety race, not just staleness).
+    private let trackMetadataLock = NSLock()
+    private var _currentTrackName: String = ""
+    private var _currentArtistName: String = ""
+
     /// Current track info for recording. Set by the app layer.
-    public var currentTrackName: String = ""
-    public var currentArtistName: String = ""
+    /// Guarded by `trackMetadataLock` (BUG-069).
+    public var currentTrackName: String {
+        get { trackMetadataLock.withLock { _currentTrackName } }
+        set { trackMetadataLock.withLock { _currentTrackName = newValue } }
+    }
+    /// Guarded by `trackMetadataLock` (BUG-069).
+    public var currentArtistName: String {
+        get { trackMetadataLock.withLock { _currentArtistName } }
+        set { trackMetadataLock.withLock { _currentArtistName = newValue } }
+    }
 
     // MARK: - CSP.3 — FFO cold-start fix toggle
 

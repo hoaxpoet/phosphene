@@ -432,11 +432,6 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Nil in test/headless contexts where no scheduler is wired. Increment 6.3.
     var mlDispatchScheduler: MLDispatchScheduler?
 
-    /// Wall-clock timestamp of when the current stem dispatch was first requested.
-    /// Set at the start of the pending window; cleared when the dispatch fires.
-    /// Nil when no dispatch is pending (timer has not yet fired, or last dispatch completed).
-    var pendingDispatchStartTime: TimeInterval?
-
     /// Beat This! analyzer used for live tap audio analysis. Allocated lazily on first
     /// use in `runLiveBeatAnalysisIfNeeded()` — weight loading is heavy.
     var liveBeatGridAnalyzer: DefaultBeatGridAnalyzer?
@@ -445,22 +440,64 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// path. Eager-init alongside the LF beat-grid analyzer; nil → empty series.
     var liveFamilyAnalyzer: InstrumentFamilyAnalyzer?
 
+    // MARK: - Cross-thread per-track analysis state (BUG-069)
+    //
+    // These four fields cross MainActor (track-change resets in
+    // `resetStemPipeline`) ↔ the serial analysis queue (~94 Hz reads /
+    // increments) ↔ stem-dispatch completion closures. They follow the
+    // `tapSampleRate` lock-accessor pattern above: all access goes through the
+    // computed properties, guarded by `analysisStateLock`. The Array is the
+    // load-bearing case — an unguarded reassign concurrent with a read is
+    // memory-unsafe (CoW storage can deallocate mid-read); the scalars were
+    // stale-read races. Compound updates (`+= 1`, check-then-set) remain two
+    // lock acquisitions: benign here because each field has a single writing
+    // queue for increments and only track-change resets cross it — worst case
+    // is one extra beat-analysis attempt or one repeated recalibration guard
+    // read, never memory unsafety.
+    private let analysisStateLock = NSLock()
+
+    /// Wall-clock timestamp of when the current stem dispatch was first requested.
+    /// Set at the start of the pending window; cleared when the dispatch fires.
+    /// Nil when no dispatch is pending (timer has not yet fired, or last dispatch completed).
+    /// Guarded by `analysisStateLock` (BUG-069).
+    var pendingDispatchStartTime: TimeInterval? {
+        get { analysisStateLock.withLock { _pendingDispatchStartTime } }
+        set { analysisStateLock.withLock { _pendingDispatchStartTime = newValue } }
+    }
+    private var _pendingDispatchStartTime: TimeInterval?
+
     /// IFC.4 (D-177) — the active track's preview-derived instrument-family
     /// activity series (Layer 5a). Installed at track change from the cache;
     /// sampled by playback position each analysis frame. Empty → family fields
     /// clear to zero. Cleared on every track-change path (anti-leak, §What NOT To Do).
-    var currentFamilySeries: [InstrumentFamilyActivity] = []
+    /// Guarded by `analysisStateLock` (BUG-069): reassigned on MainActor while
+    /// read at ~94 Hz on the analysis queue.
+    var currentFamilySeries: [InstrumentFamilyActivity] {
+        get { analysisStateLock.withLock { _currentFamilySeries } }
+        set { analysisStateLock.withLock { _currentFamilySeries = newValue } }
+    }
+    private var _currentFamilySeries: [InstrumentFamilyActivity] = []
 
     /// Number of live Beat This! analysis attempts made for the current track.
     /// Reset to 0 on `resetStemPipeline(for:)`. Allows one retry at 20 s if the
     /// first attempt at 10 s returns an empty grid (e.g. quiet intros, complex
     /// meters like Money 7/4 that Beat This! misses in a short window).
-    var liveBeatAnalysisAttempts: Int = 0
+    /// Guarded by `analysisStateLock` (BUG-069).
+    var liveBeatAnalysisAttempts: Int {
+        get { analysisStateLock.withLock { _liveBeatAnalysisAttempts } }
+        set { analysisStateLock.withLock { _liveBeatAnalysisAttempts = newValue } }
+    }
+    private var _liveBeatAnalysisAttempts: Int = 0
 
     /// Whether the BUG-007.9 hybrid runtime recalibration has fired for the
     /// current track. One-shot: set true after a successful recalibration
     /// (or a deliberate skip). Reset to false in `resetStemPipeline(for:)`.
-    var runtimeRecalibrationDone: Bool = false
+    /// Guarded by `analysisStateLock` (BUG-069).
+    var runtimeRecalibrationDone: Bool {
+        get { analysisStateLock.withLock { _runtimeRecalibrationDone } }
+        set { analysisStateLock.withLock { _runtimeRecalibrationDone = newValue } }
+    }
+    private var _runtimeRecalibrationDone: Bool = false
 
     // MARK: - Stem Per-Frame Analysis State
     //
