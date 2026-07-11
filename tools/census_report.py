@@ -80,10 +80,11 @@ def section_coverage(native, dual, failures):
     with_grid = [r for r in ok if fnum(r["grid_bpm"]) is not None]
     beatless = [r for r in ok if fnum(r["grid_bpm"]) is None]
     lines = ["## 1. Coverage", "",
-             f"- Native track rows: **{len(native)}** ({len(ok)} ok, {len(errored)} row-level error)",
-             f"- Dual-rate rows: **{len(dual)}** (≈{len(dual)//2} tracks × 2 rates)",
-             f"- Full-mix grid resolved: **{len(with_grid)}** · beatless / empty-grid (left blank, not fabricated): **{len(beatless)}**",
-             f"- Decode failures (census_failures.log): **{failures}**", ""]
+             f"- Native track rows: **{len(native)}** ({len(ok)} ok, {len(errored)} row-level error)"]
+    if dual:  # single-rate full run has no dual rows
+        lines.append(f"- Dual-rate rows: **{len(dual)}** (≈{len(dual)//2} tracks × 2 rates)")
+    lines += [f"- Full-mix grid resolved: **{len(with_grid)}** · beatless / empty-grid (left blank, not fabricated): **{len(beatless)}**",
+              f"- Decode failures (census_failures.log): **{failures}**", ""]
     return lines, ok, with_grid
 
 
@@ -203,7 +204,7 @@ def section_per_genre(both, manifest):
         by_genre.setdefault(g, []).append(r)
     lines = ["## 5. Per-genre 3-way BPM error census", "",
              "Median octave-folded grid-vs-drums disagreement + median |mir−grid|/max relative delta, "
-             "by genre_bucket (joined from the pilot manifest). The swing/rubato shelves (jazz, classical) "
+             "by genre_bucket (joined from the manifest). The swing/rubato shelves (jazz, classical) "
              "are D-154's named blind spot.", "",
              "```",
              f"{'genre':>16}  {'n':>4}  {'med_folded':>10}  {'p90_folded':>10}  {'irreg%':>6}  {'med|mir-grid|':>13}"]
@@ -264,6 +265,69 @@ def section_dual_rate(dual, native):
     return lines
 
 
+def section_swing(both, manifest):
+    """CENSUS.4 Light swing/rubato read: jazz + classical strata vs the rest of the
+    library, on the census columns already produced. Quantifies how much of each
+    genre the D-154 0.10 gate (+ bar_confidence<0.2) locks out of beat-locked presets.
+    Measures only — a real per-beat swing ratio is the Deep follow-up (not run here)."""
+    def bucket(r):
+        m = manifest.get(r["relpath"])
+        return (m["genre_bucket"] if m else "") or "unknown"
+    groups = {"jazz": [], "classical": [], "rest": []}
+    for r in both:
+        g = bucket(r)
+        groups[g if g in ("jazz", "classical") else "rest"].append(r)
+
+    lines = ["## Swing / rubato — jazz + classical strata vs the rest", "",
+             "D-154's named blind spot, at corpus scale. Per stratum: octave-folded "
+             "grid-vs-drums disagreement + bar-confidence, and the share the `0.10` gate "
+             "(folded > 0.10 OR bar_confidence < 0.2) excludes from beat-locked presets. "
+             "This reads the *existing* census columns — it is a proxy for swing, not a "
+             "per-beat swing-ratio measurement (that is the Deep follow-up, not run here).", "",
+             "```",
+             f"{'stratum':>10}  {'n':>5}  {'med_fold':>8}  {'p90_fold':>8}  "
+             f"{'med_barconf':>11}  {'>0.10 gate':>10}  {'excluded%':>9}"]
+    stats = {}
+    for name in ("jazz", "classical", "rest"):
+        rs = groups[name]
+        fd = sorted(fnum(r["folded_disagreement"]) for r in rs
+                    if fnum(r["folded_disagreement"]) is not None)
+        bc = sorted(fnum(r["bar_confidence"]) for r in rs
+                    if fnum(r["bar_confidence"]) is not None)
+        if not fd:
+            continue
+        med = st.median(fd)
+        p90 = fd[int(0.90 * (len(fd) - 1))]
+        mbc = st.median(bc) if bc else float("nan")
+        above = sum(1 for v in fd if v > D154_THRESHOLD)
+        excluded = sum(1 for r in rs if r["beat_irregular"] == "true")
+        stats[name] = {"n": len(rs), "above_pct": 100 * above / len(fd),
+                       "excl_pct": 100 * excluded / len(rs)}
+        lines.append(f"{name:>10}  {len(rs):>5}  {med:>8.4f}  {p90:>8.4f}  "
+                     f"{mbc:>11.3f}  {100*above/len(fd):>9.1f}%  {100*excluded/len(rs):>8.1f}%")
+    lines += ["```", ""]
+    if "jazz" in stats and "classical" in stats and "rest" in stats:
+        lines += [
+            f"- **Plain-language read.** Of the swung/rubato strata, the D-154 gate currently "
+            f"locks **{stats['jazz']['excl_pct']:.0f}% of jazz** and "
+            f"**{stats['classical']['excl_pct']:.0f}% of classical** out of beat-locked "
+            f"visuals, vs **{stats['rest']['excl_pct']:.0f}%** for the rest of the library — "
+            f"jazz {stats['jazz']['excl_pct']/max(stats['rest']['excl_pct'],1e-9):.1f}× and "
+            f"classical {stats['classical']['excl_pct']/max(stats['rest']['excl_pct'],1e-9):.1f}× "
+            f"the baseline exclusion rate.",
+            "- **Is Deep worth its own increment?** The gate does concentrate on exactly the "
+            "strata that swing/rubato lives in, so the exclusion is real, not noise. But this "
+            "proxy cannot tell *swing* (a stable, danceable shuffle a beat-locked preset could "
+            "ride) apart from *rubato/irregularity* (genuinely un-griddable) — both inflate "
+            "folded-disagreement identically. Distinguishing them needs the Deep per-beat "
+            "inter-onset-interval measurement (a runner change + a second full pass). "
+            "**Recommendation:** worth a Deep follow-up increment *only if* the product wants "
+            "beat-locked presets to reach swung jazz; if swung/rubato material stays on "
+            "continuous-energy presets, the current gate is already doing the right thing and "
+            "Deep is not worth the second overnight run.", ""]
+    return lines
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--results", required=True)
@@ -272,6 +336,8 @@ def main():
     p.add_argument("--out", required=True)
     p.add_argument("--failures", default=None)
     p.add_argument("--date", default="", help="Report date (passed in; script has no clock).")
+    p.add_argument("--title", default="CENSUS.3 — Pilot census distribution report",
+                   help="H1 title (pilot vs full-corpus run).")
     args = p.parse_args()
 
     native, dual = load_results(args.results)
@@ -284,7 +350,7 @@ def main():
         except OSError:
             failures = 0
 
-    out = [f"# CENSUS.3 — Pilot census distribution report",
+    out = [f"# {args.title}",
            "",
            f"**Date:** {args.date or 'TBD'} · **Source:** `{args.results}` · "
            f"**Manifest:** `{args.manifest}` · generated by `tools/census_report.py`.",
@@ -298,7 +364,9 @@ def main():
     out += section_mood(ok, scaler)
     out += section_key(ok)
     out += section_per_genre(both, manifest)
-    out += section_dual_rate(dual, native)
+    out += section_swing(both, manifest)
+    if dual:  # single-rate full run has no dual-rate rows; skip the section entirely
+        out += section_dual_rate(dual, native)
 
     with open(args.out, "w") as f:
         f.write("\n".join(out) + "\n")
