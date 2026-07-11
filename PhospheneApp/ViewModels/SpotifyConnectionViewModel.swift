@@ -106,6 +106,26 @@ final class SpotifyConnectionViewModel: ObservableObject {
         }
     }
 
+    /// Called when the user taps "Try Again" from the `.error` state.
+    ///
+    /// PUB.2 (ultra-review app-layer finding): the error CTA previously called
+    /// `connect(startSession:)`, whose `.preview`-state guard made it a silent
+    /// no-op from `.error` — a dead retry button. Retry re-attempts with the
+    /// stored parse result (which failure paths do not clear); with nothing
+    /// stored it falls back to `.empty` so the user re-pastes.
+    func retry(startSession: @escaping @Sendable ([TrackIdentity], PlaylistSource) async -> Void) {
+        guard case .error = state else { return }
+        guard !parsedPlaylistID.isEmpty else {
+            state = .empty
+            return
+        }
+        connectTask?.cancel()
+        let id = parsedPlaylistID
+        connectTask = Task { [weak self] in
+            await self?.runConnect(playlistID: id, startSession: startSession)
+        }
+    }
+
     /// Called when the user taps "Log in with Spotify" from the `.requiresLogin` state.
     func login(startSession: @escaping @Sendable ([TrackIdentity], PlaylistSource) async -> Void) {
         guard let loginAction else {
