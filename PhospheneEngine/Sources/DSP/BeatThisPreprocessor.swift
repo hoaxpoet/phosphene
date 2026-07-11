@@ -172,8 +172,13 @@ public final class BeatThisPreprocessor: @unchecked Sendable {
             : resample(samples, from: inputSampleRate, to: Double(Self.sampleRate))
 
         let nSamples = signal.count
-        guard nSamples >= 2 else {
-            logger.warning("BeatThisPreprocessor: signal too short (\(nSamples) samples)")
+        // PUB.2 (ultra-review): the reflect-pad below reads signal[padSize]
+        // (left) and signal[nSamples - padSize - 1] (right), so any input
+        // shorter than padSize + 1 samples (≈ 23 ms at 22.05 kHz) read out of
+        // bounds under the old `>= 2` guard. Too short to beat-track anyway —
+        // reject like the empty case.
+        guard nSamples >= Self.padSize + 1 else {
+            logger.warning("BeatThisPreprocessor: signal too short (\(nSamples) samples, need ≥ \(Self.padSize + 1))")
             return ([], 0)
         }
 

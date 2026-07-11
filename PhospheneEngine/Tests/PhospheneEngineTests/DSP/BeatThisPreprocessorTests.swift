@@ -40,6 +40,25 @@ struct BeatThisPreprocessorTests {
         #expect(data.count == T * BeatThisPreprocessor.nMels)
     }
 
+    // MARK: - 2b. Short-input guard (PUB.2, ultra-review)
+
+    @Test("short inputs below padSize+1 are rejected, not reflect-padded out of bounds")
+    func test_shortInput_rejectedNotOOB() {
+        let pp = BeatThisPreprocessor()
+        // The reflect-pad reads signal[padSize] and signal[n - padSize - 1]:
+        // every length in [2, padSize] read out of bounds under the old >= 2
+        // guard. All must now return the empty rejection.
+        for count in [2, 100, BeatThisPreprocessor.padSize] {
+            let (data, frames) = pp.process(samples: [Float](repeating: 0.5, count: count))
+            #expect(data.isEmpty && frames == 0, "count=\(count) must be rejected")
+        }
+        // The exact minimum length processes cleanly.
+        let minimum = BeatThisPreprocessor.padSize + 1
+        let (data, frames) = pp.process(samples: [Float](repeating: 0.5, count: minimum))
+        #expect(frames == minimum / 441 + 1)
+        #expect(data.count == frames * BeatThisPreprocessor.nMels)
+    }
+
     // MARK: - 3. DC signal
 
     @Test("dcSignal: constant 1.0 → all mel bins == 0.0")
