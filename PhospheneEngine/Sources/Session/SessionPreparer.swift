@@ -275,7 +275,10 @@ public final class SessionPreparer: ObservableObject {
         } onCancel: {
             task.cancel()
         }
-        preparationTask = nil
+        // LF.5.fix.3-B (extended at PUB.2): deliberately NO exit-nil — an
+        // out-of-order return would drop a newer task's reference (e.g. a
+        // resumeFailedNetworkTracks() loop started meanwhile would become
+        // uncancellable). Explicit cancelPreparation() is the canonical clear.
         return result
     }
 
@@ -703,7 +706,7 @@ extension SessionPreparer {
         } onCancel: {
             task.cancel()
         }
-        preparationTask = nil
+        // PUB.2: no exit-nil (LF.5.fix.3-B pattern) — see prepare(tracks:).
     }
 }
 

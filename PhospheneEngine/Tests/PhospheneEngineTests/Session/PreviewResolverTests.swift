@@ -226,4 +226,49 @@ struct PreviewResolverTests {
         #expect(first == second)
         #expect(second == third)
     }
+
+    // PUB.2 regression (ultra-review): a transient non-200 (429/5xx) must NOT
+    // poison the cache — the old `cache[track] = .some(nil)` made the
+    // D-061(d) network-recovery retry permanently unable to succeed.
+    @Test func transientNon200_isNotCached_retryCanSucceed() async throws {
+        let resolver = makeResolver()
+        var fetchCount = 0
+
+        resolver.networkFetcher = { req in
+            fetchCount += 1
+            if fetchCount == 1 {
+                // swiftlint:disable:next force_unwrapping
+                let rateLimited = HTTPURLResponse(
+                    url: req.url ?? URL(fileURLWithPath: "/"),
+                    statusCode: 429, httpVersion: nil, headerFields: nil)!
+                return (Data(), rateLimited)
+            }
+            return (itunesResponse(), ok200())
+        }
+
+        let track = makeTrack()
+        let first = try await resolver.resolvePreviewURL(for: track)
+        #expect(first == nil, "429 resolves nil for this attempt")
+
+        let second = try await resolver.resolvePreviewURL(for: track)
+        #expect(fetchCount == 2, "retry must re-query, not hit a poisoned cache entry")
+        #expect(second != nil, "retry after a transient failure must be able to succeed")
+    }
+
+    // A definitive 200-with-empty-results IS cached (that genuinely means
+    // "no preview exists") — unchanged behaviour, pinned here.
+    @Test func definitiveNoPreview_staysCached() async throws {
+        let resolver = makeResolver()
+        var fetchCount = 0
+
+        resolver.networkFetcher = { _ in
+            fetchCount += 1
+            return (emptyItunesResponse(), ok200())
+        }
+
+        let track = makeTrack()
+        _ = try await resolver.resolvePreviewURL(for: track)
+        _ = try await resolver.resolvePreviewURL(for: track)
+        #expect(fetchCount == 1, "definitive no-preview is cached; no re-query")
+    }
 }
