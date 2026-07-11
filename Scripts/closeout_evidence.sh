@@ -280,6 +280,24 @@ HARNESS_WALL=$((SECONDS - t0))
 render_test_step "Step 6: Paradigm harness templates" "$HARNESS_CMD_STR" "$HARNESS_LOG" "$HARNESS_EXIT" "$HARNESS_WALL"
 emit ""
 
+# --- Step 7: Coupling report (QG.3 — attached to preset closeouts, NEVER asserted) ---
+# The audio-visual coupling baseline is a REPORT with a WARNING-tier review flag, not a
+# cert gate (D-185/D-186): surfaced for preset increments and read alongside the M7 seat,
+# never a pass/fail. A REVIEW flag means "coupling not measured as present," not "bad".
+# The real multi-pass sweep is expensive (PHOSPHENE_COUPLING=1, ~130 s), so this step
+# points at the standing baseline + the VERDICT regeneration command; it never runs the
+# sweep and never affects this evidence block's verdict.
+emit "--- Step 7: Coupling report (QG.3, report-only + QG.3.2 warning tier) ---"
+COUPLING_BASELINE="docs/diagnostics/QG3_COUPLING_BASELINE.md"
+if [ -f "$COUPLING_BASELINE" ]; then
+  emit "Baseline  : ${COUPLING_BASELINE} (report-only, D-185/D-186 — warning tier, never a cert gate)"
+  emit "Verdict   : PHOSPHENE_COUPLING=1 swift test --package-path PhospheneEngine --filter CouplingReportTests"
+  emit "            (prints the per-preset VERDICT block: ok / REVIEW; informs, does not fail cert)"
+else
+  emit "Baseline  : ${COUPLING_BASELINE} not found"
+fi
+emit ""
+
 # --- Footer -----------------------------------------------------------------------
 emit "--- Footer ---"
 emit "Exit codes: engine=${ENGINE_EXIT} app=${APP_EXIT} swiftlint=${LINT_EXIT} docgates=${DOC_EXIT}"
