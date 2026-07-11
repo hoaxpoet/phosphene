@@ -16,7 +16,7 @@ Identical create steps ⇒ the divergence is **timing / state**, not code. The r
 ## What's already ruled out — do NOT re-chase these
 
 - **Output routing** — silent on BOTH the Apogee Duet 3 and built-in Mac-mini speakers.
-- **Signing** — proper `Apple Development` cert (`matt.deming@gmail.com`, Team `2LBTN9PB4Z`), not ad-hoc.
+- **Signing** — proper `Apple Development` cert (Team `2LBTN9PB4Z`), not ad-hoc.
 - **Screen Recording permission** — granted, toggled off/on + relaunched; `NSScreenCaptureUsageDescription` present in Info.plist.
 - **Audio actually playing** — audible through the system output.
 - **Engine / render path** — local-file playback animates normally (file-direct, bypasses the tap).

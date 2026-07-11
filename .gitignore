@@ -82,3 +82,7 @@ tools/mitosis_sketch/
 # Mitosis gen-2 sketch renders (the shader Gen2Cell.metal IS committed; only frames are not)
 tools/mitosis_gen2_sketch/frames/
 tools/data/panns_reference/
+
+# Private per-track corpus manifests — removed at PUB.1, regenerate locally (tools/data/README.md)
+tools/data/corpus_manifest.csv.gz
+tools/data/corpus_pilot_1000.csv
