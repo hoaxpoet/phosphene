@@ -222,8 +222,15 @@ public final class ChromaExtractor: @unchecked Sendable {
     /// Extract chroma vector and estimate key from FFT magnitudes.
     ///
     /// - Parameter magnitudes: FFT magnitude array (should have `binCount` elements).
+    /// - Parameter deltaTime: seconds since the previous frame. PUB.2
+    ///   (ultra-review, BUG-066 unit-mismatch class): the key-stabilization
+    ///   clock and accumulated-chroma decay previously hardcoded 60 fps, so
+    ///   the "8 seconds of agreement" window and the chroma half-life were
+    ///   really frame counts — ~1.6× fast on the live path (~94 Hz) and
+    ///   2–3× slow on the offline paths (~21.5–43 Hz). Defaults to 1/60
+    ///   (identical to prior behaviour) for callers without frame timing.
     /// - Returns: 12-bin chroma vector, estimated key, and confidence.
-    public func process(magnitudes: [Float]) -> Result {
+    public func process(magnitudes: [Float], deltaTime: Float = 1.0 / 60.0) -> Result {
         lock.lock()
         defer { lock.unlock() }
 
@@ -262,7 +269,11 @@ public final class ChromaExtractor: @unchecked Sendable {
         // Additive chroma accumulation: decay old values, add new frame.
         // Every note contributes to the running total. The aggregate over
         // many seconds reveals the key's scale, not individual notes.
-        let decay = Self.chromaDecayRate
+        // PUB.2: chromaDecayRate is calibrated per-60fps-frame; convert to an
+        // FPS-independent form so the accumulation half-life is wall-clock
+        // identical on the live (~94 Hz) and offline (~21.5–43 Hz) paths.
+        // At exactly 60 fps this is byte-identical to the old per-frame decay.
+        let decay = pow(Self.chromaDecayRate, deltaTime * 60.0)
         for idx in 0..<12 {
             accumulatedChroma[idx] = accumulatedChroma[idx] * decay + chroma[idx]
         }
@@ -274,7 +285,9 @@ public final class ChromaExtractor: @unchecked Sendable {
         // Key hysteresis: the slow EMA (alpha=0.02) provides anti-jitter.
         // The hysteresis only prevents false transitions during brief timbral changes.
         // Key modulations within a song ARE detected because the EMA shifts over ~10s.
-        let frameDelta: Float = 1.0 / 60.0
+        // PUB.2: real frame time, not a hardcoded 60 fps assumption — the
+        // 8-second acceptance window below is now wall-clock on every path.
+        let frameDelta: Float = deltaTime
         if estimatedKeyName == candidateKey {
             candidateKeyDuration += frameDelta
             candidateKeyCorrelation = keyEst.confidence

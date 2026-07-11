@@ -210,7 +210,7 @@ public final class MIRPipeline: @unchecked Sendable {
         // Run all four analyzers.
         let spectral = spectralAnalyzer.process(magnitudes: magnitudes)
         let energy = bandEnergyProcessor.process(magnitudes: magnitudes, fps: fps)
-        let chroma = chromaExtractor.process(magnitudes: magnitudes)
+        let chroma = chromaExtractor.process(magnitudes: magnitudes, deltaTime: deltaTime)
         // TONAL (D-178): TIV over the chroma vector — a consumer of the fold
         // ChromaExtractor already ran, no new FFT.
         let tonal = tonalAnalyzer.process(chroma: chroma.chroma, deltaTime: deltaTime)
