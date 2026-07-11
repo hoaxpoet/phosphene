@@ -42,12 +42,26 @@ public struct SessionPreparationResult: Sendable {
     /// Tracks that could not be analyzed (no preview or separation failure).
     public let failedTracks: [TrackIdentity]
 
+    /// All walked tracks in **input order** — successes as their prepared
+    /// identities, failures as their input/placeholder identities. This is
+    /// the array a `SessionPlan` must be built from: on the LF path the plan
+    /// index pairs positionally with the playback URL queue, so
+    /// `cachedTracks + failedTracks` reorders the plan after any mid-queue
+    /// failure and mispairs audio with identity/beat grid (BUG-068).
+    public let orderedTracks: [TrackIdentity]
+
     /// The populated cache ready for the Orchestrator and VisualizerEngine.
     public let cache: StemCache
 
-    public init(cachedTracks: [TrackIdentity], failedTracks: [TrackIdentity], cache: StemCache) {
+    public init(
+        cachedTracks: [TrackIdentity],
+        failedTracks: [TrackIdentity],
+        orderedTracks: [TrackIdentity],
+        cache: StemCache
+    ) {
         self.cachedTracks = cachedTracks
         self.failedTracks = failedTracks
+        self.orderedTracks = orderedTracks
         self.cache = cache
     }
 }
@@ -325,6 +339,7 @@ public final class SessionPreparer: ObservableObject {
     ) async -> SessionPreparationResult {
         var cachedTracks: [TrackIdentity] = []
         var failedTracks: [TrackIdentity] = []
+        var orderedTracks: [TrackIdentity] = []   // input order, success or fail (BUG-068)
 
         for (index, pair) in zip(urls, placeholders).enumerated() {
             if Task.isCancelled { break }
@@ -340,10 +355,12 @@ public final class SessionPreparer: ObservableObject {
                 cache.store(result.cached, for: result.identity)
                 trackStatuses[placeholder] = .ready
                 cachedTracks.append(result.identity)
+                orderedTracks.append(result.identity)
                 sourceLabel = result.source.label
             } else {
                 trackStatuses[placeholder] = .partial(reason: "Stems unavailable")
                 failedTracks.append(placeholder)
+                orderedTracks.append(placeholder)
                 sourceLabel = "noCache"
             }
 
@@ -362,6 +379,7 @@ public final class SessionPreparer: ObservableObject {
         return SessionPreparationResult(
             cachedTracks: cachedTracks,
             failedTracks: failedTracks,
+            orderedTracks: orderedTracks,
             cache: cache
         )
     }
@@ -398,6 +416,7 @@ public final class SessionPreparer: ObservableObject {
 
         var cachedTracks: [TrackIdentity] = []
         var failedTracks: [TrackIdentity] = []
+        var orderedTracks: [TrackIdentity] = []   // input order, success or fail (BUG-068)
 
         // PREPPERF.2 ①: prefetch the network half (resolve + download) up to a
         // bounded window AHEAD of the serial analysis cursor, so a track's ~2 s
@@ -431,6 +450,7 @@ public final class SessionPreparer: ObservableObject {
                 fetchTasks[index] = nil
                 trackStatuses[track] = .ready
                 cachedTracks.append(track)
+                orderedTracks.append(track)
                 progress = (cachedTracks.count + failedTracks.count, tracks.count)
                 logger.info("Cache hit: \(track.title) — skipping re-analysis")
                 launchFetch(index + Self.prefetchWindow)
@@ -461,9 +481,11 @@ public final class SessionPreparer: ObservableObject {
                 cache.store(data, for: track)
                 trackStatuses[track] = .ready
                 cachedTracks.append(track)
+                orderedTracks.append(track)
                 logger.info("Cached: \(track.title) by \(track.artist)")
             } catch {
                 if recordPreparationFailure(error, track: track, failedTracks: &failedTracks) { break }
+                orderedTracks.append(track)   // non-cancel failure keeps its slot (BUG-068)
             }
 
             progress = (cachedTracks.count + failedTracks.count, tracks.count)
@@ -475,6 +497,7 @@ public final class SessionPreparer: ObservableObject {
         return SessionPreparationResult(
             cachedTracks: cachedTracks,
             failedTracks: failedTracks,
+            orderedTracks: orderedTracks,
             cache: cache
         )
     }
