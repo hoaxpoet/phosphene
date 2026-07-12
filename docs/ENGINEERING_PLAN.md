@@ -57,11 +57,15 @@ Converts three prose closeout obligations into standing gates so the "green-whil
 
 Turns the RUNBOOK's manual signal-chain triage catalog into running code — continuous self-classification of the input chain instead of post-hoc human reading of `raw_tap.wav`. **ASH.1** (D-183) ✅ — `SignalHealthMonitor` classifies input-chain health (peak band / dead tap / output-device sample-rate mismatch) from the raw pre-AGC tap, published to `session.log` (`SIGNAL_HEALTH:` on state change) + the debug overlay; observes only, never steers tap recovery (D-165 *acts*; D-183 *classifies*). **ASH.2** (planned) — user-facing surfacing + the degraded-audio certify/record product policy (carries the queued DECISION-NEEDED block). Increment detail in §Recently Completed.
 
-## Phase PUB — Repo publication readiness 🔨 (PUB.1–.5 ✅ 2026-07-11/12; queued: review Phase 2 contributor-UX incl. hot-reload wiring [Matt confirmed 2026-07-12], R2 PresetRuntime registry, R3 VisualizerEngine decomposition, tap-lifecycle instrumentation-first session, iTunes limiter, D-056 decision)
+## Phase PUB — Repo publication readiness 🔨 (PUB.1–.6 ✅ 2026-07-11/12 — every ultra-review Phase-0/1/3/4 item fixed or deliberately-open with tracker rationale; queued: review Phase 2 contributor-UX incl. hot-reload wiring [Matt confirmed 2026-07-12], R2 PresetRuntime registry, R3 VisualizerEngine decomposition)
 
 Prepares the repo for opening to external preset contributors (Matt's go, 2026-07-11, off the full-codebase ultra review). **PUB.1** ✅ — the Phase-0 publish blockers: MIT `LICENSE`; root `README.md` + preset-focused `CONTRIBUTING.md`; D-111 Milkdrop attribution fulfilled (`inspired_by` blocks on all five Milkdrop-inspired sidecars + populated `CREDITS.md` table + `source.milk` removed per the no-redistribution scope condition); privacy sweep (memory/ snapshot, compiled audio_tap blob, personal-email redaction, portable hook root, `*.gif` LFS rule) — **corpus manifests deliberately retained per Matt**; `Scripts/fetch_weights.sh` + `Weights/SHA256SUMS` (Release-asset delivery, cutover staged); DOC.6 rotation run (fresh-clone doc gate green); `docs/PUBLISHING.md` maintainer cutover runbook (weights release, optional history rewrite, repo settings, the D-113 notification-protocol trigger needing Matt's pick). Remaining phases of the review remediation (code defects → contributor experience → doc reconciliation → refactoring) are queued as PUB.2+ / per the review artifact. Increment detail in §Recently Completed.
 
 ## Recently Completed
+
+### Increment PUB.6 — Deferred Phase-1 closed ✅ (2026-07-12)
+
+**BUG-070** filed + fixed (failed-reinstall untruthful state: `_isCapturing` now cleared in the catch, monitor kept as diagnostic beacon; engine detectors were sample-starved and recovery was guard-blocked; live device-swap validation pending). The lifecycle-interleave residual stays deliberately open in the entry (BUG-063 doctrine: serialize only on a reproduced artifact). **ITunesRateLimiter** shared window (resolver + previously-unthrottled app fetcher) + MetadataPreFetcher in-flight coalescing (+regressions). **D-056** unreachable `.partial` qualification deleted; the test that synthesized the impossible state flipped to pin the real contract. Full battery at closeout.
 
 ### Increment PUB.5 — Ultra-review Phase-1 remainder ✅ (2026-07-12)
 
