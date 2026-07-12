@@ -57,11 +57,15 @@ Converts three prose closeout obligations into standing gates so the "green-whil
 
 Turns the RUNBOOK's manual signal-chain triage catalog into running code — continuous self-classification of the input chain instead of post-hoc human reading of `raw_tap.wav`. **ASH.1** (D-183) ✅ — `SignalHealthMonitor` classifies input-chain health (peak band / dead tap / output-device sample-rate mismatch) from the raw pre-AGC tap, published to `session.log` (`SIGNAL_HEALTH:` on state change) + the debug overlay; observes only, never steers tap recovery (D-165 *acts*; D-183 *classifies*). **ASH.2** (planned) — user-facing surfacing + the degraded-audio certify/record product policy (carries the queued DECISION-NEEDED block). Increment detail in §Recently Completed.
 
-## Phase PUB — Repo publication readiness 🔨 (PUB.1 ✅ + PUB.2 ✅ 2026-07-11; remediation Phases 2–4 queued)
+## Phase PUB — Repo publication readiness 🔨 (PUB.1 ✅ + PUB.2 ✅ + PUB.3 ✅ 2026-07-11; review Phase 2 contributor-UX + Phase 4 refactors queued)
 
 Prepares the repo for opening to external preset contributors (Matt's go, 2026-07-11, off the full-codebase ultra review). **PUB.1** ✅ — the Phase-0 publish blockers: MIT `LICENSE`; root `README.md` + preset-focused `CONTRIBUTING.md`; D-111 Milkdrop attribution fulfilled (`inspired_by` blocks on all five Milkdrop-inspired sidecars + populated `CREDITS.md` table + `source.milk` removed per the no-redistribution scope condition); privacy sweep (memory/ snapshot, compiled audio_tap blob, personal-email redaction, portable hook root, `*.gif` LFS rule) — **corpus manifests deliberately retained per Matt**; `Scripts/fetch_weights.sh` + `Weights/SHA256SUMS` (Release-asset delivery, cutover staged); DOC.6 rotation run (fresh-clone doc gate green); `docs/PUBLISHING.md` maintainer cutover runbook (weights release, optional history rewrite, repo settings, the D-113 notification-protocol trigger needing Matt's pick). Remaining phases of the review remediation (code defects → contributor experience → doc reconciliation → refactoring) are queued as PUB.2+ / per the review artifact. Increment detail in §Recently Completed.
 
 ## Recently Completed
+
+### Increment PUB.3 — Ultra-review Phase 3: documentation reconciliation ✅ (2026-07-11)
+
+Docs-only. KNOWN_ISSUES pruning pass (24 resolved entries out of §Open, 17 to history; Open Index = the real 11-item list; §Known Limitations created for BUG-001/005/013); verified closes BUG-026/043/025/014 + the four AUDIT-2026-06-09 P2 bullets (each code-spot-checked); BUG-041 annotated as candidate close-as-stale **pending Matt's one-line confirm**; cross-doc staleness batch (BEAT_SYNC links, SHADER_CRAFT dual-harness claim, check_user_strings header, MV-1 doc formula, fused cancel() doc, D-170 ghost comment, registry 156→157, archived EP paths); FidelityRubric `expectedAutomatedGate` backfilled to all 27 sidecars + completeness assertion. Done-when: ✅ DocIntegrity 12/12, rubric 29/29, lint 0; full battery at closeout.
 
 ### Increment PUB.2 — Ultra-review Phase 1: code defects ✅ (2026-07-11)
 
