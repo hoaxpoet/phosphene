@@ -107,6 +107,11 @@ public enum UserFacingError: Sendable, Hashable {
     /// Detected persistently low audio levels. `isSpotifySource` triggers Normalize-Volume copy.
     case audioLevelsLow(isSpotifySource: Bool)
 
+    /// A local file failed to start playback (moved, unreadable, undecodable).
+    /// `fileName` is the last path component for the toast copy. (PUB.5 —
+    /// previously log-only: the user was stranded on a silent PlaybackView.)
+    case localFilePlaybackFailed(fileName: String)
+
     /// Frame budget exceeded and governor activated — log-only by default.
     case frameBudgetExceeded
 

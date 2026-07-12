@@ -231,6 +231,13 @@ extension VisualizerEngine: LocalFilePreparing {
             } catch {
                 let msg = error.localizedDescription
                 lfLogger.error("[LF.4] LF playback router start failed: \(msg, privacy: .public)")
+                // PUB.5 (ultra-review): surface it — the user was previously
+                // stranded on a silent PlaybackView with a log-only error.
+                // Toast (§9.4) + end the session so they land on EndedView
+                // with the re-pick CTAs instead of a dead visualizer.
+                userFacingErrorSubject.send(
+                    .localFilePlaybackFailed(fileName: url.lastPathComponent))
+                sessionManager.endSession()
                 return
             }
         }
@@ -354,14 +361,26 @@ extension VisualizerEngine: LocalFilePreparing {
                 isLocalFilePaused = false                                   // restart implies playing
                 sessionRecorder?.log("WIRING: advanceLocalFileQueue EXIT ok=true")
             } catch {
-                let msg = error.localizedDescription
-                lfLogger.error("[LF.5] audio router restart failed: \(msg, privacy: .public)")
-                sessionRecorder?.log(
-                    "WIRING: advanceLocalFileQueue EXIT ok=false error='\(msg)'"
-                )
-                // Stop advancing — user can re-pick from Recents or pick a new file.
+                handleAdvanceStartFailure(error, url: nextURL, index: nextIdx, direction: direction)
             }
         }
+    }
+
+    /// PUB.5 (ultra-review): a mid-queue file failed to start. The chrome for
+    /// `index` was already published, so commit the index (chrome-consistent),
+    /// toast the failure (§9.4, 4 s auto-dismiss), and try the NEXT entry in
+    /// the same direction — terminating at queue end (`endSession`) or the
+    /// first playable file. Each broken file gets its own named toast.
+    @MainActor
+    private func handleAdvanceStartFailure(
+        _ error: Error, url: URL, index: Int, direction: LocalFileQueueDirection
+    ) {
+        let msg = error.localizedDescription
+        lfLogger.error("[LF.5] audio router restart failed: \(msg, privacy: .public)")
+        sessionRecorder?.log("WIRING: advanceLocalFileQueue EXIT ok=false error='\(msg)'")
+        userFacingErrorSubject.send(.localFilePlaybackFailed(fileName: url.lastPathComponent))
+        currentTrackIndex = index
+        advanceLocalFileQueue(direction: direction)
     }
 
     // MARK: - LF.5.fix transport controls (D-LF5-3)
