@@ -4,6 +4,7 @@
 
 import Foundation
 import Audio
+import Session
 import Shared
 import os.log
 
@@ -26,6 +27,13 @@ final class ITunesSearchFetcher: MetadataFetching, @unchecked Sendable {
     }
 
     func fetch(title: String, artist: String) async -> PartialTrackProfile? {
+        // PUB.6 (ultra-review): acquire from the process-wide iTunes window.
+        // This fetcher previously had NO throttle, so pre-fetch traffic
+        // stacked on PreviewResolver's and could exceed the API's 20 req/min
+        // (429s that the resolver treats as transient). One shared window
+        // (ITunesRateLimiter.shared) now covers all itunes.apple.com callers.
+        await ITunesRateLimiter.shared.acquire()
+
         let query = "\(title) \(artist)"
             .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let urlString = "https://itunes.apple.com/search?term=\(query)&entity=song&limit=5"

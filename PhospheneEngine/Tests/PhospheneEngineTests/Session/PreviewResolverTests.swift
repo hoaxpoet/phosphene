@@ -18,7 +18,10 @@ private final class AtomicCounter: @unchecked Sendable {
 // MARK: - Helpers
 
 private func makeResolver() -> PreviewResolver {
-    PreviewResolver()
+    // PUB.6: a PRIVATE limiter per test — the production default is the
+    // process-wide ITunesRateLimiter.shared, which parallel test suites would
+    // contend on (and rateLimiting_respectsLimit mutates the window config).
+    PreviewResolver(rateLimiter: ITunesRateLimiter())
 }
 
 private func makeTrack(
