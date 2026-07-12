@@ -265,8 +265,8 @@ struct PlaybackView: View {
             hasEverDetectedSignalProvider: { [weak engine = self.engine] in engine?.hasEverDetectedAudio ?? false },
             onStallChanged: { active in stallBinding.wrappedValue = active },
             signalHealthPublisher: engine.$signalHealth.eraseToAnyPublisher(),   // ASH.2 band=low nudge
-            isSpotifySourceProvider: { [weak engine = self.engine] in engine?.isSpotifySource ?? false }
-        )
+            isSpotifySourceProvider: { [weak engine = self.engine] in engine?.isSpotifySource ?? false },
+            oneShotErrorPublisher: engine.userFacingErrorSubject.eraseToAnyPublisher())  // PUB.5 LF failures
         playbackErrorBridge = errorBridge
 
         // Build registry — closures capture weak refs to avoid retain cycles

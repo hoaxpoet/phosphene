@@ -83,6 +83,14 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Current track metadata from Now Playing.
     @Published var currentTrack: TrackMetadata?
 
+    /// One-shot user-facing error events from engine paths that have no other
+    /// UI surface (PUB.5 — first consumer: local-file playback start failures,
+    /// which previously died in os.log while the user sat on a silent
+    /// PlaybackView). `PlaybackView` injects this into `PlaybackErrorBridge`,
+    /// which resolves copy + severity and enqueues the §9.4 toast. Send on
+    /// the MainActor.
+    let userFacingErrorSubject = PassthroughSubject<UserFacingError, Never>()
+
     /// Raw album-artwork bytes for the live track (PNG / JPEG, depending on
     /// container). LF.6: populated alongside `currentTrack` for local-file
     /// sessions from the LF.5 persistent cache's `artwork.bin` sibling.

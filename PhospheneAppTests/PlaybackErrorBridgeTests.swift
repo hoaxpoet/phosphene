@@ -335,3 +335,48 @@ struct PlaybackStallDetectorTests {
         #expect(fix.bridge.audioStallActive == false)
     }
 }
+
+// MARK: - One-shot error channel (PUB.5)
+
+@Suite("PlaybackErrorBridge — one-shot errors")
+@MainActor
+struct PlaybackErrorBridgeOneShotTests {
+
+    private struct OneShotFixture {
+        let oneShot: PassthroughSubject<UserFacingError, Never>
+        let toastManager: ToastManager
+        let bridge: PlaybackErrorBridge
+    }
+
+    private func makeSUT() -> OneShotFixture {
+        let oneShot = PassthroughSubject<UserFacingError, Never>()
+        let tm = ToastManager()
+        let bridge = PlaybackErrorBridge(
+            audioSignalStatePublisher: Just(AudioSignalState.active).eraseToAnyPublisher(),
+            toastManager: tm,
+            oneShotErrorPublisher: oneShot.eraseToAnyPublisher()
+        )
+        return OneShotFixture(oneShot: oneShot, toastManager: tm, bridge: bridge)
+    }
+
+    @Test("localFilePlaybackFailed publishes a warning toast with the filename in copy")
+    func test_localFileFailure_toasts() async {
+        let fix = makeSUT()
+        fix.oneShot.send(.localFilePlaybackFailed(fileName: "gone.m4a"))
+        await Task.yield()
+        #expect(fix.toastManager.visibleToasts.count == 1)
+        let toast = fix.toastManager.visibleToasts.first
+        #expect(toast?.severity == .warning)
+        #expect(toast?.copy.contains("gone.m4a") == true,
+                "toast copy must name the broken file")
+        #expect(toast?.duration == 4, "one-shot events auto-dismiss (not condition-bound)")
+    }
+
+    @Test("non-toast-mode errors are dropped, not mis-surfaced")
+    func test_nonToastMode_dropped() async {
+        let fix = makeSUT()
+        fix.oneShot.send(.networkOffline)   // presentationMode == .fullScreen
+        await Task.yield()
+        #expect(fix.toastManager.visibleToasts.isEmpty)
+    }
+}
