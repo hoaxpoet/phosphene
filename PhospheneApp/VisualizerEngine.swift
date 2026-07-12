@@ -836,7 +836,20 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             fatalError("Metal initialization failed — Apple Silicon with Metal 3.1+ required")
         }
 
-        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat)
+        // PUB.7 (Matt's confirmed Decision 4): hot-reload is LIVE. The loader
+        // watches the user preset directory — drop a `.metal` (+ optional
+        // `.json` sidecar) there and every save recompiles + swaps it in
+        // without relaunching; a broken save keeps the last-good compile and
+        // toasts (wired below, post-init). Directory created on first launch.
+        let userPresetsDir = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("Phosphene/Presets", isDirectory: true)
+        if let userPresetsDir {
+            try? FileManager.default.createDirectory(
+                at: userPresetsDir, withIntermediateDirectories: true)
+        }
+        let loader = PresetLoader(
+            device: ctx.device, pixelFormat: ctx.pixelFormat, watchDirectory: userPresetsDir)
 
         guard let pipe = try? RenderPipeline(
             context: ctx,
@@ -962,6 +975,12 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             guard let self, let current = self.presetLoader.currentPreset else { return }
             self.applyPreset(current)
             self.showPresetName(current.descriptor.name)
+        }
+
+        // PUB.7: a broken hot-reload save toasts (§9.4) instead of dying in
+        // os.log — the last-good compile keeps rendering either way.
+        loader.onPresetLoadFailed = { [weak self] presetName, _ in
+            self?.userFacingErrorSubject.send(.presetCompileFailed(presetName: presetName))
         }
 
         if #available(macOS 14.2, *) {

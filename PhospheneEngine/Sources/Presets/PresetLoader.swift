@@ -33,6 +33,16 @@ public final class PresetLoader: @unchecked Sendable {
     /// Fires on the main queue when presets are reloaded (hot-reload).
     public var onPresetsReloaded: (() -> Void)?
 
+    /// Fires on the main queue when a preset in the watch directory fails to
+    /// load (shader compile error, PUB.7). Parameters: preset base name, and a
+    /// short reason. The full compiler diagnostics are in os.log
+    /// (subsystem com.phosphene, category PresetLoader) — the callback exists
+    /// so the app can point a contributor there instead of failing silently.
+    /// Assigned by the app AFTER init, so bundle-load failures at startup
+    /// (gated separately by PresetLoaderCompileFailureTest) never fire it;
+    /// hot-reload saves do.
+    public var onPresetLoadFailed: ((String, String) -> Void)?
+
     // MARK: - Types
 
     /// Compiled pipeline states for the mv_warp pass (MV-2, D-027).
@@ -271,6 +281,12 @@ public final class PresetLoader: @unchecked Sendable {
 
             // Compile the shader.
             guard let pipelines = compileShader(at: metalFile, descriptor: descriptor) else {
+                // PUB.7: surface the failure (hot-reload dev loop) — the
+                // last-good compile of this preset stays active.
+                if let onPresetLoadFailed {
+                    let name = baseName
+                    DispatchQueue.main.async { onPresetLoadFailed(name, "shader compile failed") }
+                }
                 continue
             }
 
