@@ -444,6 +444,26 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// diagnostic; certification requires a non-empty manifest (Task 4 gate).
     public let audioRoutes: [AudioRoute]
 
+    /// Feedback-buffer pixel format for mv_warp presets (PUB.4, ultra-review).
+    ///
+    /// Sidecar key `feedback_pixel_format`, values `"bgra8Unorm"` /
+    /// `"rgba16Float"`. `nil` (the default) = the drawable format — the
+    /// correct choice for faithful no-decay warps, where the 8-bit per-frame
+    /// clamp is load-bearing (Dragon Bloom, D-137). Decay-bounded presets may
+    /// opt into HDR float feedback (`rgba16Float`: Nacre/Floret/Glaze) or
+    /// linear non-sRGB 8-bit (`bgra8Unorm`: Fata Morgana, D-139) without
+    /// engine edits — previously these were hardcoded display-name string
+    /// matches in `PresetLoader.feedbackFormat`, so a rename silently changed
+    /// the pixel format. Unknown values warn and fall back to `nil`.
+    public let feedbackPixelFormat: FeedbackPixelFormat?
+
+    /// The two supported feedback-buffer overrides. Raw values are the sidecar
+    /// strings (spelled like the `MTLPixelFormat` cases they map to).
+    public enum FeedbackPixelFormat: String, Sendable, Codable, Equatable {
+        case bgra8Unorm
+        case rgba16Float
+    }
+
     // MARK: - V.6 Certification Metadata
 
     /// V.6 certification flag. Set to `true` only after Matt has performed a visual
@@ -562,6 +582,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case complexityCost = "complexity_cost"
         case stemAffinity = "stem_affinity"
         case audioRoutes = "audio_routes"
+        case feedbackPixelFormat = "feedback_pixel_format"
         case certified
         case rubricProfile = "rubric_profile"
         case rubricHints = "rubric_hints"
@@ -657,6 +678,21 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
             [String: String].self, forKey: .stemAffinity) ?? [:]
         audioRoutes = try container.decodeIfPresent(
             [AudioRoute].self, forKey: .audioRoutes) ?? []
+
+        // PUB.4: feedback-format override — unknown strings warn + fall back
+        // to nil (drawable format), matching the rubric_profile pattern.
+        if let rawFormat = try container.decodeIfPresent(String.self, forKey: .feedbackPixelFormat) {
+            if let parsed = FeedbackPixelFormat(rawValue: rawFormat) {
+                feedbackPixelFormat = parsed
+            } else {
+                let presetName = name
+                Logging.renderer.warning(
+                    "PresetDescriptor '\(presetName)': unknown feedback_pixel_format '\(rawFormat)' — using drawable format")
+                feedbackPixelFormat = nil
+            }
+        } else {
+            feedbackPixelFormat = nil
+        }
 
         // MARK: V.6 Certification Fields
         certified = try container.decodeIfPresent(Bool.self, forKey: .certified) ?? false

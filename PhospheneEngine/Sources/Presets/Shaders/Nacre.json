@@ -15,6 +15,7 @@
   "vertex_function": "fullscreen_vertex",
   "beat_source": "composite",
   "decay": 0.900,
+  "feedback_pixel_format": "rgba16Float",
   "stem_affinity": {},
   "visual_density": 0.50,
   "motion_intensity": 0.45,
