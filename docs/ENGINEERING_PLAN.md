@@ -57,11 +57,15 @@ Converts three prose closeout obligations into standing gates so the "green-whil
 
 Turns the RUNBOOK's manual signal-chain triage catalog into running code — continuous self-classification of the input chain instead of post-hoc human reading of `raw_tap.wav`. **ASH.1** (D-183) ✅ — `SignalHealthMonitor` classifies input-chain health (peak band / dead tap / output-device sample-rate mismatch) from the raw pre-AGC tap, published to `session.log` (`SIGNAL_HEALTH:` on state change) + the debug overlay; observes only, never steers tap recovery (D-165 *acts*; D-183 *classifies*). **ASH.2** (planned) — user-facing surfacing + the degraded-audio certify/record product policy (carries the queued DECISION-NEEDED block). Increment detail in §Recently Completed.
 
-## Phase PUB — Repo publication readiness 🔨 (PUB.1–.7 ✅ 2026-07-11/12 — ALL ultra-review phases complete except the R2/R3 refactors; queued: R2 PresetRuntime registry, R3 VisualizerEngine decomposition; maintainer steps in docs/PUBLISHING.md)
+## Phase PUB — Repo publication readiness 🔨 (PUB.1–.8 ✅ 2026-07-11/12 — ultra-review fully executed except R3; queued: R3 VisualizerEngine decomposition [= CLEAN Phase 8]; maintainer steps in docs/PUBLISHING.md)
 
 Prepares the repo for opening to external preset contributors (Matt's go, 2026-07-11, off the full-codebase ultra review). **PUB.1** ✅ — the Phase-0 publish blockers: MIT `LICENSE`; root `README.md` + preset-focused `CONTRIBUTING.md`; D-111 Milkdrop attribution fulfilled (`inspired_by` blocks on all five Milkdrop-inspired sidecars + populated `CREDITS.md` table + `source.milk` removed per the no-redistribution scope condition); privacy sweep (memory/ snapshot, compiled audio_tap blob, personal-email redaction, portable hook root, `*.gif` LFS rule) — **corpus manifests deliberately retained per Matt**; `Scripts/fetch_weights.sh` + `Weights/SHA256SUMS` (Release-asset delivery, cutover staged); DOC.6 rotation run (fresh-clone doc gate green); `docs/PUBLISHING.md` maintainer cutover runbook (weights release, optional history rewrite, repo settings, the D-113 notification-protocol trigger needing Matt's pick). Remaining phases of the review remediation (code defects → contributor experience → doc reconciliation → refactoring) are queued as PUB.2+ / per the review artifact. Increment detail in §Recently Completed.
 
 ## Recently Completed
+
+### Increment PUB.8 — R2: stateful-runtime dispatch point ✅ (2026-07-12)
+
+Seven name-keyed apply blocks → one tail switch + six verbatim bind methods (D-097 shape); dead mv_warp Arachne copy deleted (staged-only preset); Lumen binds independent of rayMarch-arm success; engine-side `StatefulRuntimeRegistry` + rename-gate test; FFO + Nacre/Floret/Glaze documented non-candidates; Nimbus `render_scale`-sidecar follow-up noted. Output-preserving (goldens/flash/photosensitivity/dispatch green). Remaining: R3 only.
 
 ### Increment PUB.7 — Ultra-review Phase 2: contributor experience ✅ (2026-07-12)
 
