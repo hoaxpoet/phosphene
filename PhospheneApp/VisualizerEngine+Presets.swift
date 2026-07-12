@@ -106,6 +106,18 @@ extension VisualizerEngine {
     /// All subsystems are reset before the new preset is applied, so stale state from
     /// a previous preset cannot leak through.
     func applyPreset(_ preset: PresetLoader.LoadedPreset) {
+        // PUB.5 threading contract (ultra-review C7 resolution): applyPreset
+        // runs ONLY on the main thread — the same thread MTKView's display
+        // link drives `draw(in:)`/`renderFrame` on (default MTKView config,
+        // `MetalView.swift`). Because this function is synchronous and
+        // renderFrame is synchronous, a frame can never observe a mid-apply
+        // torn state on today's code; the empty-passes guard (BUG-061) covers
+        // any internal runloop yield. Every off-main caller (the orchestrator
+        // sites) hops via DispatchQueue.main.async first. This precondition
+        // makes the contract enforced rather than implied — a future off-main
+        // caller trips it in Debug instead of reintroducing the BUG-060/061
+        // torn-snapshot class.
+        dispatchPrecondition(condition: .onQueue(.main))
         let desc = preset.descriptor
 
         // Reset frame-budget governor to .full on each preset change — new presets have
