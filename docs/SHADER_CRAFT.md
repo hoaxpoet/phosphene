@@ -2459,7 +2459,7 @@ Every preset ships a `<PresetName>.json` sidecar alongside its `.metal` file. Th
 | Field | Default | Notes |
 |-------|---------|-------|
 | `name` | required | Display name |
-| `family` | required | Aesthetic family: `fluid`, `geometric`, `abstract`, `fractal`, `instrument`, etc. |
+| `family` | optional | Aesthetic family — a STRICT `PresetCategory` enum (PUB.7 correction: this row previously listed values like `abstract` that don't exist; an unknown value throws the whole sidecar decode → the preset degrades to defaults with an os.log error). Valid: `waveform`, `fractal`, `geometric`, `particles`, `hypnotic`, `supernova`, `reaction`, `drawing`, `dancer`, `sparkle`, `volumetric`, `painterly`, `transition` (D-123; see PresetCategory.swift for the current list). Omit for diagnostics. |
 | `duration` | 30 | Preferred scene duration (seconds). Orchestrator can override. |
 | `passes` | `["direct"]` | Required render passes. Backward-compatible: falls back to `synthesizePasses(from:)` reading legacy booleans. |
 | `beat_source` | `"bass"` | Which onset drives beat uniform: `bass`, `mid`, `treble`, `composite` |
