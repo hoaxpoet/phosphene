@@ -352,8 +352,9 @@ public final class MIRPipeline: @unchecked Sendable {
 
     /// Assemble a FeatureVector from analyzer results.
     ///
-    /// MV-1: deviation primitives (bassRel, bassDev, etc.) are derived here
-    /// from the AGC-normalized energy fields. Formula: xRel = (x - 0.5) * 2.0,
+    /// MV-1 as amended by D-146 (BUG-027): deviation primitives (bassRel,
+    /// bassDev, etc.) are derived from each band's own running-average pivot
+    /// (per-band EMA), NOT the retired fixed-0.5 pivot. Formula sketch:
     /// xDev = max(0, xRel). These are stable across mix-density changes because
     /// the AGC numerator and denominator track together (D-026).
     ///

@@ -563,10 +563,6 @@ public final class SessionManager: ObservableObject {
         logger.info("SessionManager: playback started")
     }
 
-    /// Cancel the current operation and return to `.idle`.
-    ///
-    /// Safe to call from any state. During `.preparing`, cancels the in-flight
-    /// preparation pass (current track may finish its MPSGraph predict — ≤ 142 ms).
     /// Resume preparation for tracks that previously failed due to network errors.
     ///
     /// Pass-through to `SessionPreparer.resumeFailedNetworkTracks()`. Safe to call

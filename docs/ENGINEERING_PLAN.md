@@ -336,7 +336,7 @@ Fixed the wash-out Matt M7'd — a base accumulation creep to white over MINUTES
 
 These are ordered by dependency. Each has done-when criteria and verification commands.
 
-> **Capability Audit (Phase CA, 2026-05-20).** The originally-planned `docs/CAPABILITY_GAP_AUDIT.md` single-deliverable was superseded 2026-05-20 by the multi-increment **Phase CA** audit, which produces one per-subsystem registry under [`docs/CAPABILITY_REGISTRY/`](CAPABILITY_REGISTRY/). CA.1 (DSP/MIR) landed 2026-05-20 at [`docs/CAPABILITY_REGISTRY/DSP_MIR.md`](CAPABILITY_REGISTRY/DSP_MIR.md); CA.2+ pending. Preliminary 2026-05-12 inventory data (shader-utility-consumer matrix, distinct from CA's per-subsystem audits) lives at [`docs/diagnostics/capability-audit-pre-2026-05-12.md`](diagnostics/capability-audit-pre-2026-05-12.md) and continues to feed shader-cleanup increments.
+> **Capability Audit (Phase CA, 2026-05-20).** The originally-planned `docs/CAPABILITY_GAP_AUDIT.md` (now at `archive/CAPABILITY_GAP_AUDIT.md`) single-deliverable was superseded 2026-05-20 by the multi-increment **Phase CA** audit, which produces one per-subsystem registry under [`docs/CAPABILITY_REGISTRY/`](CAPABILITY_REGISTRY/). CA.1 (DSP/MIR) landed 2026-05-20 at [`docs/CAPABILITY_REGISTRY/DSP_MIR.md`](CAPABILITY_REGISTRY/DSP_MIR.md); CA.2+ pending. Preliminary 2026-05-12 inventory data (shader-utility-consumer matrix, distinct from CA's per-subsystem audits) lives at [`docs/diagnostics/capability-audit-pre-2026-05-12.md`](diagnostics/capability-audit-pre-2026-05-12.md) and continues to feed shader-cleanup increments.
 
 **Current priority ordering — Phase CLEAN (2026-06-13 full-system audit).** The authoritative queue is the **CLEAN** backlog in [`docs/diagnostics/CODE_AUDIT_2026-06-13.md`](diagnostics/CODE_AUDIT_2026-06-13.md) (Phases 0–8). June-30 commit: CLEAN Phases 0 → 1 → 2 → 5 + elevated gaps G1/G2/G7/G8/G9; Phases 3–4 stretch; 6 / bulk-7 / 8 after June. Approved scope detail: §Recently Completed → "Phase CLEAN".
 
@@ -927,7 +927,7 @@ SwiftLint `file_length` special-cased for `.metal` files (raise to 1000 or path-
 - Discrepancies between doc and code are resolved in favor of the empirically-correct version. ✅
 
 **Completed:** 2026-04-26. D-063. Deliverables:
-- `docs/V4_AUDIT.md` — 37-recipe cross-reference, 12 drift items resolved (all doc-fixes), 3 missing materials shipped.
+- `docs/V4_AUDIT.md` (now at `archive/V4_AUDIT.md`) — 37-recipe cross-reference, 12 drift items resolved (all doc-fixes), 3 missing materials shipped.
 - `docs/V4_PERF_RESULTS.json` — initial estimates; replace with measured values via `PERF_TESTS=1 swift test --filter UtilityPerformanceTests`.
 - `Sources/UtilityCostTableUpdater/` — CLI to regenerate §9.4 table from JSON.
 - `Materials/Organic.metal` +`mat_velvet`, `Materials/Exotic.metal` +`mat_sand_glints`, `Materials/Dielectrics.metal` +`mat_concrete`.
