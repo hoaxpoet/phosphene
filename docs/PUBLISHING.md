@@ -1,5 +1,11 @@
 # Publishing runbook — opening the repo to preset contributors
 
+**Decisions CONFIRMED by Matt, 2026-07-12:** (1) the history rewrite RUNS
+before first publish (§2 below is no longer optional); (2) weights ship as a
+Release asset, LFS keeps reference media only (§1); (3) `prompts/` ships with
+its framing README (done at PUB.1); (4) preset hot-reload gets wired with
+compile errors surfaced on the toast surface (queued — review Phase 2).
+
 The PUB.1 increment (2026-07-11) made the tree publication-ready. This
 runbook is the remaining, **maintainer-executed** cutover: everything here
 either needs GitHub-side actions (releases, settings) or is destructive to
@@ -60,7 +66,7 @@ Commit as `[PUB.2] Infra: weights LFS→Release cutover`. Note: historical LFS
 objects still exist server-side; GitHub only charges bandwidth when they are
 pulled, and fresh clones no longer pull them.
 
-## 2. History rewrite — OPTIONAL, decide at publish time
+## 2. History rewrite — CONFIRMED (Matt 2026-07-12): run once, before first publish
 
 **Scope honesty (updated 2026-07-11):** when this was recommended, the main
 payload was excising the corpus manifests; those now stay. What a rewrite
@@ -76,10 +82,10 @@ still buys:
 | Author identities (`braesidebandit@Matthews-Mac-mini.local`, `matt@plaitandpattern.com`) | mailmap normalization |
 
 Matt declined a size-only rewrite in June 2026 (not worth breaking clones
-for ~35 MiB). The calculus now: **pre-publication is the one moment a
-rewrite is free** (no external clones exist), and the payload is ~105 MiB
-plus the privacy items. If declined, nothing above is harmful — it is all
-either dead weight or low-harm — and this section simply never runs.
+for ~35 MiB); with publication the calculus changed — **pre-publication is
+the one moment a rewrite is free** (no external clones exist) — and Matt
+confirmed on 2026-07-12: run it once before first publish. The corpus
+manifests stay OUT of the excision scope (his 2026-07-11 direction).
 
 ```bash
 # Fresh mirror — NEVER run filter-repo on the working clone:
