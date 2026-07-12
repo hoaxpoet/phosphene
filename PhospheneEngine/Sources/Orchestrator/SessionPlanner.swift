@@ -18,25 +18,9 @@ import os.log
 
 private let logger = Logging.session
 
-// MARK: - SessionPlanning
-
-/// Protocol for playlist planning implementations.
-///
-/// Conforming types must be `Sendable` and deterministic: the same
-/// `(tracks, catalog, deviceTier, includeUncertifiedPresets)` must always produce byte-identical output.
-public protocol SessionPlanning: Sendable {
-    /// Synchronously build a `PlannedSession` for the given playlist.
-    func plan(
-        tracks: [(TrackIdentity, TrackProfile)],
-        catalog: [PresetDescriptor],
-        deviceTier: DeviceTier,
-        includeUncertifiedPresets: Bool
-    ) throws -> PlannedSession
-}
-
 // MARK: - SessionPlanningError
 
-/// Errors thrown by `SessionPlanning` implementations.
+/// Errors thrown by session planning.
 public enum SessionPlanningError: Error, Sendable, Equatable {
     /// The track list was empty.
     case emptyPlaylist
@@ -48,7 +32,10 @@ public enum SessionPlanningError: Error, Sendable, Equatable {
 
 // MARK: - DefaultSessionPlanner
 
-/// Concrete `SessionPlanning` implementation.
+/// The session planner (PUB.4: its single-conformer ceremony protocol
+/// `SessionPlanning` was deleted — wire this concrete type directly).
+/// Deterministic: the same `(tracks, catalog, deviceTier,
+/// includeUncertifiedPresets)` always produces byte-identical output.
 ///
 /// Selects presets via `DefaultPresetScorer`, schedules transitions via
 /// `DefaultTransitionPolicy`. See D-032 for the full design rationale.
@@ -59,7 +46,7 @@ public enum SessionPlanningError: Error, Sendable, Equatable {
 /// 3. No alternative: cheapest preset regardless of identity — `.budgetExceeded` too.
 ///
 /// Plans are always producible given a non-empty catalog.
-public struct DefaultSessionPlanner: SessionPlanning {
+public struct DefaultSessionPlanner: Sendable {
 
     // MARK: - Dependencies
 

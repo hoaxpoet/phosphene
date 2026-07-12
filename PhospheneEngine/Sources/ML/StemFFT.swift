@@ -36,35 +36,6 @@ import os.log
 
 private let logger = Logger(subsystem: "com.phosphene.ml", category: "StemFFT")
 
-// MARK: - Protocol
-
-/// Abstraction over the STFT/iSTFT engine used by `StemSeparator`.
-///
-/// Concrete implementation: ``StemFFTEngine``.
-/// Tests can inject a stub by conforming to this protocol.
-public protocol StemFFTEngineProtocol: AnyObject {
-    /// When true, bypass the GPU path and use the CPU vDSP fallback.
-    /// Used by cross-validation tests to compare implementations.
-    var forceCPUFallback: Bool { get set }
-
-    /// Compute the Short-Time Fourier Transform of a mono signal with
-    /// center padding, matching PyTorch's `torch.stft(center=True)`.
-    ///
-    /// - Parameter mono: Mono float32 samples.
-    /// - Returns: Magnitude and phase arrays, each of length `nBins * nbFrames`.
-    func forward(mono: [Float]) -> (magnitude: [Float], phase: [Float])
-
-    /// Reconstruct a time-domain signal from magnitude and phase spectrograms.
-    ///
-    /// - Parameters:
-    ///   - magnitude: Magnitude spectrogram (`nBins * nbFrames`).
-    ///   - phase: Phase spectrogram (`nBins * nbFrames`).
-    ///   - nbFrames: Number of STFT frames.
-    ///   - originalLength: If provided, strip center padding to this length.
-    /// - Returns: Reconstructed mono waveform.
-    func inverse(magnitude: [Float], phase: [Float], nbFrames: Int, originalLength: Int?) -> [Float]
-}
-
 // MARK: - StemFFTError
 
 public enum StemFFTError: Error, Sendable {
@@ -76,12 +47,14 @@ public enum StemFFTError: Error, Sendable {
 
 // MARK: - StemFFTEngine
 
-/// GPU-accelerated STFT/iSTFT engine backed by MPSGraph.
+/// GPU-accelerated STFT/iSTFT engine backed by MPSGraph (PUB.4: its
+/// single-conformer ceremony protocol `StemFFTEngineProtocol` was deleted —
+/// no test double ever existed; cross-validation uses `forceCPUFallback`).
 ///
 /// Thread-safe via an internal lock — concurrent `forward`/`inverse` calls
 /// are serialized but do not crash. For throughput-critical workloads,
 /// prefer one engine per worker thread.
-public final class StemFFTEngine: StemFFTEngineProtocol, @unchecked Sendable {
+public final class StemFFTEngine: @unchecked Sendable {
 
     // MARK: - STFT Parameters
 
