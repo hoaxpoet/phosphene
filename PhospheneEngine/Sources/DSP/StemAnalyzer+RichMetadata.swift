@@ -105,6 +105,14 @@ extension StemAnalyzer {
 
     /// Compute FFT magnitudes from a mono waveform.
     /// Uses the last `fftSize` samples. Returns 512 magnitude bins.
+    ///
+    /// PUB.4 scale note: this DELIBERATELY differs from `FFTMagnitudeKernel`
+    /// — `sqrt(power/fftSize)` = |FFT|/32, i.e. **16× the kernel's**
+    /// `|FFT|·2/fftSize`. The per-stem AGC/EMA seeds downstream were
+    /// calibrated at THIS scale, so "aligning" it to the kernel is not a
+    /// drop-in fix (the BUG-066 class ran the other way: the offline MIX path
+    /// wrongly used this scale). Any port needs a stem-feature regression
+    /// pass across the deviation primitives.
     func computeMagnitudes(from waveform: [Float]) -> [Float] {
         let sampleCount = waveform.count
         guard sampleCount > 0 else {

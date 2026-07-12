@@ -95,6 +95,10 @@ let package = Package(
             dependencies: ["Shared", "Audio", "Renderer"],
             path: "Sources/Diagnostics"
         ),
+        // Executable targets below are retained diagnostics — each is
+        // decision-backed and referenced by docs/RUNBOOK.md or a Scripts/
+        // wrapper; see docs/AUDIT_KEEPLIST.md before re-flagging any as dead
+        // (the 2026-06-14 audit false-positived several). (PUB.4)
         .executableTarget(
             name: "SoakRunner",
             dependencies: [
