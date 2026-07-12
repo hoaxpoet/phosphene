@@ -41,13 +41,22 @@ motion is valid only on the cached `BeatGrid`. The full hierarchy is in
 
 ## The development loop (no accounts required)
 
-1. Drop in your `.metal` + `.json`. Build; broken shaders are logged and
-   skipped, never crash the app.
-2. **Contact sheets:** `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter PresetVisualReviewTests`
+1. **Hot-reload (fastest):** drop your `.metal` + `.json` into
+   `~/Library/Application Support/Phosphene/Presets/` (created on first
+   launch) while the app runs — every save recompiles and swaps the preset
+   in live. A broken save shows a toast and keeps the previous version
+   running (full compiler diagnostics in the log:
+   `log stream --predicate 'subsystem == "com.phosphene.presets"'`).
+   Note: a `certified: true` flag in a hot-reload sidecar is honored locally
+   without the repo's flash/rubric gates — leave it `false` while developing
+   and use *Show uncertified presets* (below).
+2. In-repo: place the pair in `PhospheneEngine/Sources/Presets/Shaders/` and
+   build; broken shaders are logged and skipped, never crash the app.
+3. **Contact sheets:** `RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter PresetVisualReviewTests`
    renders your preset against recorded real-music feature streams.
-3. **Reference comparison:** `Scripts/compare_render.sh <preset>` diffs
+4. **Reference comparison:** `Scripts/compare_render.sh <preset>` diffs
    against your reference imagery.
-4. **Live:** run the app, Settings → Visuals → *Show uncertified presets*,
+5. **Live:** run the app, Settings → Visuals → *Show uncertified presets*,
    then File → Open Local File (⌘O). No streaming account, no Screen
    Recording permission.
 
