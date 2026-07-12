@@ -15,6 +15,7 @@
   "vertex_function": "fullscreen_vertex",
   "beat_source": "composite",
   "decay": 1.0,
+  "feedback_pixel_format": "bgra8Unorm",
   "stem_affinity": {
     "bass": "shape_bass",
     "drums": "shape_mid",
