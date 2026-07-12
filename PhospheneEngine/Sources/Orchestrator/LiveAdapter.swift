@@ -19,7 +19,7 @@ private let logger = Logging.orchestrator
 
 // MARK: - AdaptationEvent
 
-/// A logged event produced when `LiveAdapting.adapt` makes (or declines) an adaptation.
+/// A logged event produced when `DefaultLiveAdapter.adapt` makes (or declines) an adaptation.
 public struct AdaptationEvent: Sendable, Hashable, Codable {
 
     // MARK: Kind
@@ -54,7 +54,7 @@ public struct AdaptationEvent: Sendable, Hashable, Codable {
 
 // MARK: - LiveAdaptation
 
-/// The result of a single `LiveAdapting.adapt` call.
+/// The result of a single `DefaultLiveAdapter.adapt` call.
 ///
 /// At most one of `updatedTransition` and `presetOverride` will be non-nil
 /// per call — boundary reschedule takes priority when both conditions are met.
@@ -95,39 +95,11 @@ public struct LiveAdaptation: Sendable {
     }
 }
 
-// MARK: - LiveAdapting
-
-/// Protocol for live adaptation implementations.
-///
-/// Conforming types must be `Sendable` and must not access mutable external
-/// state — all state must arrive via the function arguments.
-public protocol LiveAdapting: Sendable {
-
-    // swiftlint:disable function_parameter_count
-    /// Evaluate live MIR data against the current plan and return any adaptation.
-    ///
-    /// - Parameters:
-    ///   - plan: The pre-planned session (from `DefaultSessionPlanner`).
-    ///   - currentTrackIndex: 0-based index into `plan.tracks`.
-    ///   - elapsedTrackTime: Seconds since the current track started playing.
-    ///   - liveBoundary: Latest structural prediction from the live MIR pipeline.
-    ///   - liveMood: Current valence/arousal from the live mood classifier.
-    ///   - catalog: Full preset catalog for alternative scoring.
-    /// - Returns: A `LiveAdaptation` value — `noAdaptation` when nothing fires.
-    func adapt(
-        plan: PlannedSession,
-        currentTrackIndex: Int,
-        elapsedTrackTime: TimeInterval,
-        liveBoundary: StructuralPrediction,
-        liveMood: EmotionalState,
-        catalog: [PresetDescriptor]
-    ) -> LiveAdaptation
-    // swiftlint:enable function_parameter_count
-}
-
 // MARK: - DefaultLiveAdapter
 
-/// Concrete `LiveAdapting` implementation.
+/// The live adapter (PUB.4: its single-conformer ceremony protocol
+/// `LiveAdapting` was deleted — wire this concrete type directly). `adapt`
+/// must not access mutable external state — all state arrives via arguments.
 ///
 /// **Priority:** boundary reschedule (structural) → mood-driven preset override.
 ///
@@ -147,7 +119,7 @@ public protocol LiveAdapting: Sendable {
 /// `.moodDivergenceDetected` event is returned for logging — no plan change.
 ///
 /// See D-035 for design rationale.
-public final class DefaultLiveAdapter: LiveAdapting, @unchecked Sendable {
+public final class DefaultLiveAdapter: @unchecked Sendable {
     // MARK: - Tuning constants
 
     /// Minimum `StructuralPrediction.confidence` required to consider rescheduling.

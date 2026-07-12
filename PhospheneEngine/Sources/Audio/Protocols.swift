@@ -59,29 +59,6 @@ public protocol AudioCapturing: AnyObject, Sendable {
     func stopCapture()
 }
 
-// MARK: - AudioBuffering
-
-/// Abstraction over audio ring buffer for GPU consumption.
-///
-/// Concrete implementation: `AudioBuffer`.
-public protocol AudioBuffering: AnyObject, Sendable {
-    /// Write interleaved float32 PCM from a raw pointer into the ring buffer.
-    @discardableResult
-    func write(from pointer: UnsafePointer<Float>, count: Int) -> Int
-
-    /// Copy the most recent N interleaved samples from the ring buffer.
-    func latestSamples(count: Int) -> [Float]
-
-    /// Most recent RMS level (linear, 0–1 range).
-    var currentRMS: Float { get }
-
-    /// The underlying MTLBuffer for binding to a Metal encoder.
-    var metalBuffer: MTLBuffer { get }
-
-    /// Reset the buffer to empty state.
-    func reset()
-}
-
 // MARK: - FFTProcessing
 
 /// Abstraction over FFT analysis.

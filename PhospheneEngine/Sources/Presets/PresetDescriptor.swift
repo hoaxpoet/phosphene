@@ -687,7 +687,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
             } else {
                 let presetName = name
                 Logging.renderer.warning(
-                    "PresetDescriptor '\(presetName)': unknown feedback_pixel_format '\(rawFormat)' — using drawable format")
+                    "PresetDescriptor '\(presetName)': unknown feedback_pixel_format '\(rawFormat)' — using drawable")
                 feedbackPixelFormat = nil
             }
         } else {
