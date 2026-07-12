@@ -139,9 +139,9 @@ struct ContentView: View {
         PlaybackView(
             sessionManager: engine.sessionManager,
             audioSignalStatePublisher: engine.$audioSignalState.eraseToAnyPublisher(),
-            currentTrackPublisher: engine.$currentTrack.eraseToAnyPublisher(),
-            currentTrackArtworkDataPublisher: engine.$currentTrackArtworkData.eraseToAnyPublisher(),
-            currentTrackIndexPublisher: engine.$currentTrackIndex.eraseToAnyPublisher(),
+            currentTrackPublisher: engine.nowPlaying.$currentTrack.eraseToAnyPublisher(),
+            currentTrackArtworkDataPublisher: engine.nowPlaying.$currentTrackArtworkData.eraseToAnyPublisher(),
+            currentTrackIndexPublisher: engine.nowPlaying.$currentTrackIndex.eraseToAnyPublisher(),
             currentPresetNamePublisher: engine.$currentPresetName.eraseToAnyPublisher(),
             livePlanPublisher: engine.$livePlannedSession.eraseToAnyPublisher(),
             reduceMotionPublisher: accessibilityState.$reduceMotion.eraseToAnyPublisher(),
