@@ -942,7 +942,16 @@ struct FeatureVector          // 48 floats = 192 bytes (SIMD-aligned), @frozen. 
                               // Floats 32–34: smoothed deviation: bassAttRel, midAttRel, trebAttRel
                               // Floats 35–36: MV-3b beat phase (D-028): beatPhase01, beatsUntilNext
                               // Floats 37–38: barPhase01, beatsPerBar (0 / 4 in reactive mode)
-                              // Floats 39–48: padding (_pad3..._pad12)
+                              // Float  39   : trackElapsedS (CSP.3 — FFO cold-start crossfade clock)
+                              // Floats 40–43: FBS pulse (D-153): pulsePhase01, pulseAmp01,
+                              //   pulseBeatIndex, pulseRegionalBlend01
+                              // Floats 44–48: TONAL TIV (D-178): tonalPhaseFifths, tonalPhaseThirds,
+                              //   tonalConsonance, tonalTension, harmonicFlux
+                              // ⚠ NO free floats remain (PUB.7 correction — this section previously
+                              //   marked 39–48 as padding while they were live, shipped fields; a
+                              //   contributor "reclaiming a pad" would have collided with them.
+                              //   Growing FeatureVector means a size/stride change on BOTH sides of
+                              //   the GPU contract).
                               // Structural prediction fields live in StructuralPrediction, NOT here.
                               // Camera/light uniforms live in SceneUniforms, NOT here.
 struct FeedbackParams         // 32 bytes (8 floats), @frozen: decay, baseZoom, baseRot, beatZoom, beatRot,
@@ -954,7 +963,13 @@ struct StemFeatures           // 256 bytes (64 floats), @frozen. GPU buffer(3). 
                               //   Floats 25–40: MV-3a rich metadata (4 per stem): onsetRate, centroid, attackRatio, energySlope.
                               //   Floats 41–42: MV-3c vocalsPitchHz, vocalsPitchConfidence.
                               //   Float  43   : D-127 drumsEnergyDevSmoothed (150 ms τ EMA, aurora curtain).
-                              //   Floats 44–64: padding.
+                              //   Float  44   : cachedBassProportion (CSP.3 FFO cold-start pivot).
+                              //   Float  45   : auroraPalettePhase; Float 46: totalEnergySmoothed;
+                              //   Float  47   : auroraOrbitAzimuth (BUG-047 integrate-don't-multiply).
+                              //   Floats 48–55: IFC.4 (D-177) instrument-family capture, 2 per family
+                              //     (strings/brass/woodwinds/percussion): *Activity, *ActivityDev.
+                              //   Floats 56–64: padding — the ONLY free floats (PUB.7 correction:
+                              //     44–55 were previously marked padding while live).
 struct AudioFrame             // 24 bytes, @frozen. PCM block metadata: timestamp/sampleRate/sampleCount/channelCount/bufferOffset.
 struct FFTResult              // 16 bytes, @frozen. binCount/binResolution/dominantFrequency/dominantMagnitude.
 struct StemData               // 4× AudioFrame = 96 bytes. Bundle of per-stem PCM block metadata.
