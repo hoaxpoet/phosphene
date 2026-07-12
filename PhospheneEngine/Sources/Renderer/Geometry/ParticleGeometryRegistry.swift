@@ -34,3 +34,23 @@ public enum ParticleGeometryRegistry {
         "Ricercar"
     ]
 }
+
+// MARK: - StatefulRuntimeRegistry (R2 / PUB.8)
+
+/// Preset names with a CPU-side apply-time runtime bound by the app layer's
+/// `bindStatefulPresetRuntime(for:)` switch (VisualizerEngine+Presets) — the
+/// slot-6/7/8 state buffers + per-frame tick presets. The set lives engine-side
+/// (like `ParticleGeometryRegistry`) so `StatefulRuntimeRegistryTests` can gate
+/// the rename hazard: a preset renamed in its sidecar without updating the
+/// binder switch would silently lose its runtime (black/static state buffers).
+/// Keep this set and the app-side switch in sync — one row each.
+public enum StatefulRuntimeRegistry {
+    public static let knownPresetNames: Set<String> = [
+        "Arachne",
+        "Gossamer",
+        "Skein",
+        "Aurora Veil",
+        "Nimbus",
+        "Lumen Mosaic"
+    ]
+}
