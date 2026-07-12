@@ -87,7 +87,10 @@ struct FidelityRubricReportTests {
 
 // MARK: - Suite 2: Automated Gate Assertions
 
-/// Expected meetsAutomatedGate values for all 13 production presets.
+/// Expected meetsAutomatedGate values for EVERY production sidecar (27 as of
+/// PUB.3 — completeness now enforced by `expectedAutomatedGate_coversEverySidecar`;
+/// the doc-comment previously said "all 13" while the dict silently covered
+/// 18 of 27).
 ///
 /// Updated 2026-05-01 after V.7.5 §10.1.9: Arachne now drops to false because the
 /// spider's `mat_chitin` call site was removed (§10.1.9 / D-071), leaving only
@@ -132,10 +135,44 @@ private let expectedAutomatedGate: [String: Bool] = [
     "Spectral Cartograph":  true,    // lightweight; L1+L2+L3 all pass
     "Volumetric Lithograph": false,  // full; M3 fails — mat_* cookbook not yet called
     "Waveform":             false,   // lightweight; L2 fails — no deviation primitives in source
+    // PUB.3 backfill — the 9 presets the dict silently omitted, locked at
+    // their measured values (each certified preset's load-bearing gate is
+    // Matt's M7; false here = the MSL-source heuristic can't see CPU-side
+    // coupling, the Skein/Lumen/Filigree precedent):
+    "Dragon Bloom":         true,    // in-shader routes visible to the heuristic
+    "Fata Morgana":         true,    // in-shader routes visible to the heuristic
+    "Floret":               false,   // coupling partly CPU-side; certified via M7 (FLORET.4)
+    "Glaze":                false,   // stem-swap coupling CPU-side; M7'd (GLAZE.3+)
+    "Lumen Mosaic":         false,   // slot-8 pattern engine is CPU-side (the original precedent)
+    "Nacre":                true,    // lightweight; L1/L2/L3 pass in-shader (band routes visible
+                                     // to the heuristic even though TIV palette is CPU-fed)
+    "Nimbus":               false,   // direct-fragment; heuristic sees no deviation primitives
+    "Ricercar":             false,   // FL.13 flow-field coupling CPU-side; not yet certified
+    "Staged Sandbox":       false,   // diagnostic sandbox; not a certification candidate
 ]
 
 @Suite("Fidelity Rubric — Automated Gate")
 struct FidelityRubricGateTests {
+
+    /// PUB.3 (ultra-review): the regression dict above silently covered 18 of
+    /// 27 sidecars — a preset absent from the dict had no gate-value lock at
+    /// all. This completeness check fails (with the actual value to paste)
+    /// whenever a sidecar exists without a dict entry, so the lock can't
+    /// silently under-cover again.
+    @Test func expectedAutomatedGate_coversEverySidecar() async {
+        let store = PresetCertificationStore()
+        let results = await store.results()
+        guard !results.isEmpty else {
+            Issue.record("No rubric results — Shaders bundle not found. Skipping completeness assertion.")
+            return
+        }
+        let missing = results.keys.filter { expectedAutomatedGate[$0] == nil }.sorted()
+        for id in missing {
+            let actual = results[id].map { String($0.meetsAutomatedGate) } ?? "?"
+            Issue.record("\(id): no expectedAutomatedGate entry — add one (current meetsAutomatedGate=\(actual))")
+        }
+        #expect(missing.isEmpty)
+    }
 
     @Test func automatedGate_allPresetsMatchExpected() async {
         let store = PresetCertificationStore()
