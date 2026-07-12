@@ -80,8 +80,19 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Mirrors `SettingsStore.showUncertifiedPresets`; pushed via `applyShowUncertifiedPresets(_:)`.
     var showUncertifiedPresets: Bool = false
 
-    /// Current track metadata from Now Playing.
-    @Published var currentTrack: TrackMetadata?
+    /// R3.1 (PUB.9): the now-playing chrome surface — single owner of
+    /// currentTrack / currentTrackArtworkData / currentTrackIndex /
+    /// preFetchedProfile with paired publishes and the one session-boundary
+    /// clear (structurally closes the BUG-024 class for these fields).
+    /// Views bind `nowPlaying.$x`; engine code mutates via its methods.
+    /// `objectWillChange` is bridged into the engine's in init phase 3 so
+    /// existing whole-engine observers keep re-rendering.
+    let nowPlaying = NowPlayingSurface()
+
+    /// Read-only forwarders — the historical names, kept so the ~20 read
+    /// sites across the engine extensions stay unchanged (writes go through
+    /// `nowPlaying`'s mutators; the compiler rejects assignment here).
+    var currentTrack: TrackMetadata? { nowPlaying.currentTrack }
 
     /// One-shot user-facing error events from engine paths that have no other
     /// UI surface (PUB.5 — first consumer: local-file playback start failures,
@@ -98,11 +109,8 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Spotify Web API + iTunes Search artwork-URL fetch.
     ///
     /// **Invariant:** updated in the same MainActor tick as `currentTrack`
-    /// — title-first then artwork-second — so chrome consumers binding to
-    /// both don't briefly render the previous track's artwork against the
-    /// new track's title (or vice versa). See `handleLocalFileReady()` /
-    /// `advanceLocalFileQueue(direction:)` for the LF write sites.
-    @Published var currentTrackArtworkData: Data?
+    /// — title-first then artwork-second (see `NowPlayingSurface`).
+    var currentTrackArtworkData: Data? { nowPlaying.currentTrackArtworkData }
 
     /// Most-recently-resolved canonical `TrackIdentity` for the live track.
     /// Set by the track-change handler in `VisualizerEngine+Capture.swift`
@@ -127,10 +135,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// `currentPreset(at:)` / `currentTrackIndexInPlan()`. QR.4 / D-091 — replaces
     /// the lowercased title+artist string match in `PlaybackChromeViewModel`,
     /// which silently failed on covers/remasters.
-    @Published var currentTrackIndex: Int?
+    var currentTrackIndex: Int? { nowPlaying.currentTrackIndex }
 
     /// Pre-fetched profile from external APIs.
-    @Published var preFetchedProfile: PreFetchedTrackProfile?
+    var preFetchedProfile: PreFetchedTrackProfile? { nowPlaying.preFetchedProfile }
 
     /// Live mood classification from MoodClassifier (updated per frame).
     @Published var currentMood: EmotionalState = .neutral
@@ -713,6 +721,11 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     @Published var livePlannedSession: PlannedSession?
 
     /// Retains the Combine subscription that triggers `buildPlan()` on `.ready`.
+    /// R3.1: forwards NowPlayingSurface.objectWillChange into the engine's,
+    /// so existing whole-engine observers (@EnvironmentObject views reading
+    /// the read-only forwarders) keep re-rendering on chrome changes.
+    var nowPlayingBridgeCancellable: AnyCancellable?
+
     var stateCancellable: AnyCancellable?
 
     /// Retains the subscription that calls `extendPlan()` as readiness level advances.
@@ -1002,7 +1015,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             fetcher: streamingArtworkFetcher,
             diskCache: streamingArtworkDiskCache,
             publish: { [weak self] data in
-                self?.currentTrackArtworkData = data
+                self?.nowPlaying.setArtwork(data)
             }
         )
 
@@ -1012,6 +1025,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         // the session to `.playing` directly. For streaming sessions, `buildPlan()`
         // produces the planned-session structure.
         // Also reset currentSessionPlanSeed on .connecting so each session gets a fresh seed.
+        // R3.1: bridge the chrome child's change signal into the engine's.
+        nowPlayingBridgeCancellable = nowPlaying.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+
         let mgr = sessionManager
         stateCancellable = mgr.$state
             .sink { [weak self] newState in
@@ -1028,7 +1045,6 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                     // fetch from the prior session so a slow CDN response
                     // can never land on the new session's chrome.
                     self.streamingArtworkPublisher?.update(for: nil)
-                    self.currentTrackArtworkData = nil
                     self.clearSessionScopedSurfaces()
                 }
                 if newState == .preparing {
@@ -1132,9 +1148,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// otherwise suppresses live key/BPM for a following LF session).
     /// Idempotent — the double fire on .connecting → .preparing is harmless.
     private func clearSessionScopedSurfaces() {
-        currentTrack = nil
-        currentTrackIndex = nil
-        preFetchedProfile = nil
+        nowPlaying.clear()   // R3.1: track + artwork + index + profile, one tick
         lastResolvedTrackIdentity = nil
         orchestratorLock.withLock {
             livePlan = nil
