@@ -12,8 +12,14 @@ extension SessionManager {
     /// Compute the progressive readiness level from the current track statuses.
     ///
     /// Rules (D-056):
-    /// - `.partial` tracks count toward the consecutive prefix only when their cached
-    ///   `TrackProfile` has a non-nil BPM **and** at least one genre tag.
+    /// - `.partial` tracks NEVER count toward the consecutive prefix (PUB.6,
+    ///   ultra-review). D-056 intended them to qualify when their cached
+    ///   `TrackProfile` carried BPM + genre, but no code path has ever stored a
+    ///   cache entry for a `.partial` track (stems fail → nothing is stored),
+    ///   so the qualification was unreachable dead code. Making the D-056 rule
+    ///   real would mean storing a metadata-only entry on the analysisError
+    ///   path — a readiness-semantics change to take up deliberately, not a
+    ///   side effect of a doc fix.
     /// - A `.failed` track (or any in-flight track) in the prefix breaks the run.
     /// - `fullyPrepared` requires every track to be in a terminal state
     ///   (`.ready`, `.partial`, or `.failed`) with at least one usable track.
@@ -52,21 +58,10 @@ extension SessionManager {
 
             // Prefix: consecutive qualifying tracks from position 1.
             if !prefixBroken {
+                // Only `.ready` qualifies. (The D-056 `.partial`-with-profile
+                // arm was deleted at PUB.6 — unreachable; see the doc comment.)
                 let countsForPrefix: Bool
-                switch status {
-                case .ready:
-                    countsForPrefix = true
-                case .partial:
-                    if let profile = cache.trackProfile(for: track),
-                       profile.bpm != nil,
-                       !profile.genreTags.isEmpty {
-                        countsForPrefix = true
-                    } else {
-                        countsForPrefix = false
-                    }
-                default:
-                    countsForPrefix = false
-                }
+                if case .ready = status { countsForPrefix = true } else { countsForPrefix = false }
                 if countsForPrefix { prefixCount += 1 } else { prefixBroken = true }
             }
         }
