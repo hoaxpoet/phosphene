@@ -28,6 +28,11 @@ public final class MetadataPreFetcher: @unchecked Sendable {
     // MARK: - Cache
 
     private var cache: OrderedDictionary<String, PreFetchedTrackProfile> = [:]
+    /// PUB.6 (ultra-review): concurrent same-key callers coalesce onto one
+    /// in-flight fetch instead of each firing the full fetcher fan-out —
+    /// duplicate track-change callbacks were burning iTunes rate-limit slots.
+    /// Guarded by `lock`.
+    private var inFlight: [String: Task<PreFetchedTrackProfile?, Never>] = [:]
     private let lock = NSLock()
 
     // MARK: - Init
@@ -74,6 +79,27 @@ public final class MetadataPreFetcher: @unchecked Sendable {
 
         guard let title = track.title, let artist = track.artist else { return nil }
 
+        // PUB.6: coalesce concurrent same-key callers onto one in-flight task.
+        let (task, isOwner): (Task<PreFetchedTrackProfile?, Never>, Bool) = lock.withLock {
+            if let existing = inFlight[key] { return (existing, false) }
+            let fresh = Task { [weak self] in
+                await self?.performFetch(key: key, title: title, artist: artist)
+            }
+            inFlight[key] = fresh
+            return (fresh, true)
+        }
+        let result = await task.value
+        if isOwner {
+            lock.withLock { _ = inFlight.removeValue(forKey: key) }
+        }
+        return result
+    }
+
+    /// The actual fetch fan-out + cache insert (extracted at PUB.6 so
+    /// `prefetch` can coalesce concurrent callers onto one task).
+    private func performFetch(
+        key: String, title: String, artist: String
+    ) async -> PreFetchedTrackProfile? {
         // Fire all fetchers in parallel with per-fetcher timeouts.
         let partials = await withTaskGroup(of: PartialTrackProfile?.self) { group in
             for fetcher in fetchers {
