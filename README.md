@@ -95,13 +95,16 @@ hardware required.
 | [docs/ENGINEERING_PLAN.md](docs/ENGINEERING_PLAN.md) | Roadmap and increment history |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Numbered engineering decisions (D-###) |
 | [docs/CREDITS.md](docs/CREDITS.md) | ML weights + Milkdrop-inspired preset attribution |
+| [docs/GLOSSARY.md](docs/GLOSSARY.md) | The internal shorthand decoded (D-###, M7, increment IDs, …) |
+| [docs/presets/YOUR_FIRST_PRESET.md](docs/presets/YOUR_FIRST_PRESET.md) | A complete working preset pair in ~60 lines (gate-verified to compile) |
 
 This project is developed by Matt (product/design) with Claude Code doing the
 implementation; the docs and `prompts/` directories reflect that working
-process. Internal shorthand you'll meet in the docs: `D-###` = a numbered
-decision in DECISIONS.md; `[XX.n]` = an increment ID in ENGINEERING_PLAN.md;
-"M7" = the maintainer's live visual review, the load-bearing quality gate for
-presets.
+process. Internal shorthand you'll meet in the docs is decoded in
+[docs/GLOSSARY.md](docs/GLOSSARY.md) — the load-bearing three: `D-###` = a
+numbered decision in DECISIONS.md; `[XX.n]` = an increment ID in
+ENGINEERING_PLAN.md; "M7" = the maintainer's live visual review, the
+load-bearing quality gate for presets.
 
 ## License
 

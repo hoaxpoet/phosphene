@@ -20,6 +20,12 @@ preset (`Waveform`, `Plasma`) for the minimal shape and at `Skein` or `Nacre`
 for the full-featured shape. Stateful presets (particle systems, CPU-side
 simulation) additionally register a runtime — see how `Murmuration` does it.
 
+New to the docs' shorthand (M7, D-###, increment IDs)? One page:
+[docs/GLOSSARY.md](docs/GLOSSARY.md). Want pixels moving in five minutes?
+[docs/presets/YOUR_FIRST_PRESET.md](docs/presets/YOUR_FIRST_PRESET.md) — a
+complete working pair, gate-verified to compile. Landing it in-repo? Every
+file you'll touch: [docs/presets/NEW_PRESET_CHECKLIST.md](docs/presets/NEW_PRESET_CHECKLIST.md).
+
 ## Before you write a shader
 
 Read these two, in this order:
