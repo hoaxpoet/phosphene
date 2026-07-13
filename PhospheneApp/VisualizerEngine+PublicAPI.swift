@@ -44,7 +44,7 @@ extension VisualizerEngine {
         }
         var permitted = CGPreflightScreenCaptureAccess()
         if !permitted { permitted = CGRequestScreenCaptureAccess() }
-        hasScreenCapturePermission = permitted
+        captureState.setScreenCapturePermission(permitted)
         if permitted {
             startAudioCapture()
             startStemPipeline()
@@ -64,7 +64,7 @@ extension VisualizerEngine {
             while !hasScreenCapturePermission {
                 try? await Task.sleep(for: .seconds(2))
                 if CGPreflightScreenCaptureAccess() {
-                    hasScreenCapturePermission = true
+                    captureState.setScreenCapturePermission(true)
                     apiLogger.info("Screen capture permission granted")
                     startAudioCapture()
                     startStemPipeline()

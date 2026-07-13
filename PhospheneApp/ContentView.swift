@@ -138,7 +138,7 @@ struct ContentView: View {
     private var playbackView: some View {
         PlaybackView(
             sessionManager: engine.sessionManager,
-            audioSignalStatePublisher: engine.$audioSignalState.eraseToAnyPublisher(),
+            audioSignalStatePublisher: engine.captureState.$audioSignalState.eraseToAnyPublisher(),
             currentTrackPublisher: engine.nowPlaying.$currentTrack.eraseToAnyPublisher(),
             currentTrackArtworkDataPublisher: engine.nowPlaying.$currentTrackArtworkData.eraseToAnyPublisher(),
             currentTrackIndexPublisher: engine.nowPlaying.$currentTrackIndex.eraseToAnyPublisher(),
@@ -160,7 +160,7 @@ struct ContentView: View {
         ReadyView(
             sessionSource: engine.sessionManager.sessionSource,
             sessionManager: engine.sessionManager,
-            audioSignalStatePublisher: engine.$audioSignalState.eraseToAnyPublisher(),
+            audioSignalStatePublisher: engine.captureState.$audioSignalState.eraseToAnyPublisher(),
             planPublisher: engine.$livePlannedSession.eraseToAnyPublisher(),
             onBeginPlayback: { engine.sessionManager.beginPlayback() },
             onRegenerate: { @MainActor lockedTracks, lockedPresets in
