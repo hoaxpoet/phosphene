@@ -15,8 +15,8 @@
 #
 # Allowlisted files (developer-only surfaces, never displayed to end users):
 #   - DebugOverlayView.swift          (gated on showDebug; D-key toggle)
-#   - DashboardOverlayView*.swift     (gated on showDebug; D-key toggle)
-#   - Dashboard*View.swift            (developer dashboard cards, same gate)
+# (PUB.3: header previously also claimed Dashboard*View allowlisting that the
+#  code below never had — the current green run proves it isn't needed.)
 #
 # Any other occurrence is a regression. Run from repo root.
 #

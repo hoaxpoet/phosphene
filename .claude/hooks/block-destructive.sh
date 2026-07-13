@@ -39,7 +39,10 @@
 
 set -euo pipefail
 
-PROJECT_ROOT="/Users/braesidebandit/Documents/Projects/phosphene"
+# Derived, not hardcoded — the hook must resolve on any contributor's checkout
+# (hooks run with cwd = the project dir; inside a worktree rev-parse still
+# yields that worktree's root, which is the right .build to allowlist).
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
 payload="$(cat)"
 cmd="$(printf '%s' "$payload" | jq -r '.tool_input.command // ""' 2>/dev/null || true)"

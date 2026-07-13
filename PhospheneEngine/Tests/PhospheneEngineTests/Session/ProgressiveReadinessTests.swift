@@ -185,9 +185,15 @@ struct ProgressiveReadinessTests {
         #expect(result == .preparing)
     }
 
-    @Test func partial_withBPMAndGenre_countsForPrefix() {
+    // PUB.6 (ultra-review): this test previously SYNTHESIZED a cache profile
+    // for a .partial track — a state no production path ever produces (stems
+    // fail → nothing is stored) — and thereby locked D-056's unreachable
+    // qualification as if it were live. The rule was deleted; .partial now
+    // NEVER counts for the prefix, cache profile or not. If D-056's intent is
+    // ever made real (metadata-only cache entries on the analysisError path),
+    // resurrect the old expectation alongside that change.
+    @Test func partial_withProfile_stillBlocksPrefix() {
         let tracks = (0..<5).map { makeTrack("T\($0)") }
-        // index 1 is .partial with metadata → counts for prefix.
         let cache = cacheWithProfile(for: tracks[1], bpm: 120.0, genreTags: ["electronic"])
         let statuses: [TrackIdentity: TrackPreparationStatus] = [
             tracks[0]: .ready,
@@ -196,12 +202,12 @@ struct ProgressiveReadinessTests {
             tracks[3]: .queued,
             tracks[4]: .queued,
         ]
-        // prefix = 3 ≥ threshold; readyCount = 3 (ready+partial); 3/5 = 60% ≥ 50%.
-        // allTerminal = false (tracks[3,4] are queued).
+        // Prefix breaks at index 1 (1 < threshold) even with a synthetic
+        // cached profile → still .preparing.
         let result = SessionManager.computeReadiness(
             statuses: statuses, trackList: tracks, cache: cache
         )
-        #expect(result == .partiallyPlanned)
+        #expect(result == .preparing)
     }
 
     @Test func partial_withoutMetadata_blocks_prefix() {

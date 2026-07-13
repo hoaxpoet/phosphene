@@ -425,3 +425,48 @@ private func makeTempPresetDirectory(shaders: [(name: String, metalSource: Strin
 
     return tempDir
 }
+
+// MARK: - Feedback pixel-format override (PUB.4, ultra-review)
+//
+// The sidecar `feedback_pixel_format` field is authoritative for the mv_warp
+// feedback-buffer format; the pre-PUB.4 display-name matches survive only as
+// a deprecated fallback. These tests pin the contract so a preset rename (or
+// a lost sidecar field) fails loudly instead of silently rendering Nacre's
+// float pipeline into an 8-bit buffer (the BUG-061 crash class).
+
+@Test func feedbackFormat_shippedOverrides_decodeAndResolve() throws {
+    guard let device = MTLCreateSystemDefaultDevice() else {
+        throw PresetTestError.noMetalDevice
+    }
+    let loader = PresetLoader(device: device, pixelFormat: .bgra8Unorm_srgb)
+    let expected: [String: (PresetDescriptor.FeedbackPixelFormat, MTLPixelFormat)] = [
+        "Fata Morgana": (.bgra8Unorm, .bgra8Unorm),
+        "Nacre":        (.rgba16Float, .rgba16Float),
+        "Floret":       (.rgba16Float, .rgba16Float),
+        "Glaze":        (.rgba16Float, .rgba16Float),
+    ]
+    for (name, (field, format)) in expected {
+        guard let preset = loader.presets.first(where: { $0.descriptor.name == name }) else {
+            Issue.record("\(name): not found among built-in presets")
+            continue
+        }
+        #expect(preset.descriptor.feedbackPixelFormat == field,
+                "\(name): sidecar must declare feedback_pixel_format=\(field.rawValue)")
+        #expect(loader.feedbackFormat(preset.descriptor) == format)
+    }
+    // Every other shipped sidecar stays on the drawable default — proves the
+    // deprecated name fallback is unused in-tree (deletable once out-of-tree
+    // copies migrate).
+    for preset in loader.presets where expected[preset.descriptor.name] == nil {
+        #expect(preset.descriptor.feedbackPixelFormat == nil,
+                "\(preset.descriptor.name): unexpected feedback_pixel_format override")
+        #expect(loader.feedbackFormat(preset.descriptor) == .bgra8Unorm_srgb)
+    }
+}
+
+@Test func feedbackFormat_unknownSidecarValue_fallsBackToDrawable() throws {
+    let json = #"{ "name": "BadFormat", "feedback_pixel_format": "rgba32Float" }"#
+    let descriptor = try JSONDecoder().decode(PresetDescriptor.self, from: Data(json.utf8))
+    #expect(descriptor.feedbackPixelFormat == nil,
+            "unknown feedback_pixel_format must warn and fall back to nil")
+}

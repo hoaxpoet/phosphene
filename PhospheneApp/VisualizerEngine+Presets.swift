@@ -106,6 +106,18 @@ extension VisualizerEngine {
     /// All subsystems are reset before the new preset is applied, so stale state from
     /// a previous preset cannot leak through.
     func applyPreset(_ preset: PresetLoader.LoadedPreset) {
+        // PUB.5 threading contract (ultra-review C7 resolution): applyPreset
+        // runs ONLY on the main thread — the same thread MTKView's display
+        // link drives `draw(in:)`/`renderFrame` on (default MTKView config,
+        // `MetalView.swift`). Because this function is synchronous and
+        // renderFrame is synchronous, a frame can never observe a mid-apply
+        // torn state on today's code; the empty-passes guard (BUG-061) covers
+        // any internal runloop yield. Every off-main caller (the orchestrator
+        // sites) hops via DispatchQueue.main.async first. This precondition
+        // makes the contract enforced rather than implied — a future off-main
+        // caller trips it in Debug instead of reintroducing the BUG-060/061
+        // torn-snapshot class.
+        dispatchPrecondition(condition: .onQueue(.main))
         let desc = preset.descriptor
 
         // Reset frame-budget governor to .full on each preset change — new presets have
@@ -228,65 +240,6 @@ extension VisualizerEngine {
                     rmPipeline.lastDollyFrameTime = nil
 
                     currentRayMarchPipeline = rmPipeline
-
-                    // Lumen Mosaic: allocate the 4-light pattern engine and
-                    // wire its 336-byte slot-8 buffer + per-frame tick. The
-                    // tick reads (FeatureVector, StemFeatures), advances mood
-                    // smoothing + drift Lissajous + beat-locked dance, and
-                    // flushes the result for the next G-buffer + lighting
-                    // pass to read at fragment slot 8. (LM.2 / D-LM-buffer-slot-8.)
-                    if desc.name == "Lumen Mosaic" {
-                        if let engine = LumenPatternEngine(device: context.device) {
-                            lumenPatternEngine = engine
-                            pipeline.setDirectPresetFragmentBuffer3(engine.patternBuffer)
-                            // BUG-064 light warmup: pass the render path's live-vs-cached
-                            // stem signal so the lights drive from continuous-energy during
-                            // the ~10 s warmup instead of freezing on the cached snapshot.
-                            let renderPipe = pipeline
-                            pipeline.setMeshPresetTick { [weak engine, weak renderPipe] features, stems in
-                                engine?.tick(
-                                    features: features,
-                                    stems: stems,
-                                    stemsLive: renderPipe?.stemFeaturesAreLive() ?? false)
-                            }
-                            // BUG-016 fix (2026-05-26): load the per-song
-                            // palette immediately on preset activation. Before
-                            // this call existed, the palette payload stayed at
-                            // its zero-initialised default (every entry
-                            // (0,0,0)) until the next track change fired
-                            // `resetStemPipeline → refreshLumenPaletteForTrack`.
-                            // Cells rendered black; the cell-boundary frost
-                            // halo mixed toward float3(1.0) — visible result
-                            // was a black-and-white Voronoi grid with no
-                            // perceptible motion (per-beat palette-index walk
-                            // had nothing to walk through). The fix calls the
-                            // same helper `resetStemPipeline` does, gated on
-                            // the most-recently-resolved `TrackIdentity`
-                            // persisted by the track-change handler in
-                            // `VisualizerEngine+Capture.swift`.
-                            if let identity = lastResolvedTrackIdentity {
-                                refreshLumenPaletteForTrack(
-                                    identity: identity,
-                                    lumenEngine: engine
-                                )
-                            }
-                        } else {
-                            logger.error(
-                                "LumenPatternEngine: failed to allocate slot-8 buffer for preset '\(desc.name)'"
-                            )
-                            // BUG-016 / CA-Presets-FU-4 instrumentation: persist the
-                            // failure to session.log so the next reproduction is
-                            // greppable from the on-disk artifact. The logger.error
-                            // line above writes only to the unified log (category
-                            // "VisualizerEngine"); the SessionRecorder writer below
-                            // lands the same event in ~/Documents/phosphene_sessions/
-                            // <ts>/session.log. Engine-side parallel log at
-                            // LumenPatternEngine.swift:586 (category "session").
-                            sessionRecorder?.log(
-                                "LumenPatternEngine: failed to allocate slot-8 buffer for preset '\(desc.name)'"
-                            )
-                        }
-                    }
 
                     // Ferrofluid Ocean (V.9 Session 4.5c): the §5.8 stage-rig
                     // wiring was removed; direct audio→sky-aurora routing
@@ -516,79 +469,6 @@ extension VisualizerEngine {
                     additive: warpPipelines.shapeAdditiveState,
                     normal: warpPipelines.shapeNormalState)
 
-                // Arachne-specific: allocate web pool + spider buffer and wire tick + fragment buffers.
-                if desc.name == "Arachne" {
-                    if let state = ArachneState(device: context.device) {
-                        arachneState = state
-                        pipeline.setDirectPresetFragmentBuffer(state.webBuffer)    // buffer(6)
-                        pipeline.setDirectPresetFragmentBuffer2(state.spiderBuffer) // buffer(7)
-                        pipeline.setMeshPresetTick { [weak state] features, stems in
-                            state?.tick(features: features, stems: stems)
-                        }
-                    } else {
-                        logger.error("ArachneState: failed to allocate web pool for preset '\(desc.name)'")
-                    }
-                }
-
-                // Gossamer-specific: allocate wave pool and wire tick + fragment buffer.
-                if desc.name == "Gossamer" {
-                    if let state = GossamerState(device: context.device) {
-                        gossamerState = state
-                        pipeline.setDirectPresetFragmentBuffer(state.waveBuffer)
-                        pipeline.setMeshPresetTick { [weak state] features, stems in
-                            state?.tick(deltaTime: features.deltaTime,
-                                        features: features,
-                                        stems: stems)
-                        }
-                    } else {
-                        logger.error("GossamerState: failed to allocate wave pool for preset '\(desc.name)'")
-                    }
-                }
-
-                // Skein-specific (Skein.ENGINE.1.2): allocate the painter state + onset-burst
-                // ring and wire the per-frame tick + the gated slot-6 marks-on-top overlay
-                // buffer. The buffer reaches `skein_geometry_fragment` via the strands-on-top
-                // slot-6 binding (RenderPipeline+MVWarpScene). The per-track seed is installed
-                // on track change (resetSkeinSeed); construct with the current track's seed so
-                // the painting is deterministic from frame 1.
-                // (RICERCAR-RW's family-mode Skein reuse was removed at FL.10 — the Fantasia rebuild
-                // replaced the marks paradigm with the particle flow-field; Ricercar declares no mv_warp
-                // pass, so this branch is Skein-only again. SkeinState.colorFromFamily stays as an engine
-                // feature.)
-                if desc.name == "Skein" {
-                    if let state = SkeinState(device: context.device, seed: currentSkeinSeed()) {
-                        skeinState = state
-                        pipeline.setDirectPresetFragmentBuffer(state.skeinBuffer)   // buffer(6)
-                        // Skein.5.3b: the palette's GROUND travels with the track. setupMVWarp
-                        // already cleared the canvas to the JSON cream before this state existed
-                        // — push the per-track ground override and re-wipe so the first track's
-                        // canvas opens on ITS palette's ground (light or dark).
-                        let ground = state.groundLinear
-                        pipeline.setMVWarpCanvasGround(SIMD4<Double>(
-                            Double(ground.x), Double(ground.y), Double(ground.z), 1.0))
-                        pipeline.clearMVWarpCanvasToGround()
-                        // Skein.ENGINE.2: the per-frame wetness-channel decay (pauses at silence)
-                        // is pushed to the warp/hold pass from the tick hook. Capture the pipeline
-                        // WEAKLY (via a local) so the @Sendable closure holds no retain cycle —
-                        // self keeps the pipeline alive; the weak ref just tracks the object.
-                        let renderPipeline = pipeline
-                        pipeline.setMeshPresetTick { [weak state, weak renderPipeline] features, stems in
-                            guard let state else { return }
-                            // Skein.ENGINE.3 (D-151): read the live structural-section signal from
-                            // the gated bridge and pass it into the tick (CPU-only; STORED for
-                            // Skein.5's structural bias — no visual effect yet, byte-identical today).
-                            state.tick(deltaTime: features.deltaTime,
-                                       features: features,
-                                       stems: stems,
-                                       structure: renderPipeline?.latestStructuralPrediction ?? .none)
-                            // skein_warp_fragment reads this at fragment buffer 1 (decays ALPHA only).
-                            renderPipeline?.setMVWarpWetnessDecay(state.wetnessDecay)
-                        }
-                    } else {
-                        logger.error("SkeinState: failed to allocate painter state for preset '\(desc.name)'")
-                    }
-                }
-
                 // Nacre (NACRE.2b): no per-preset CPU state. The render branch
                 // (RenderPipeline+Nacre) computes NacreUniforms inline each frame (time +
                 // drawable size + trebleDev — stateless, like Fata Morgana) and binds them
@@ -617,92 +497,16 @@ extension VisualizerEngine {
                 }
                 pipeline.setStagedRuntime(stageSpecs, drawableSize: pipeline.mvWarpDrawableSize)
 
-                // V.7.7B: per-preset state for staged Arachne. Mirrors the mv_warp
-                // branch above — allocate the ArachneState pool, bind webBuffer at
-                // fragment slot 6 + spiderBuffer at slot 7 (per CLAUDE.md GPU
-                // Contract), and wire the per-frame tick so web stages advance and
-                // mood data lands in webs[0].row4. Without this the staged WORLD +
-                // COMPOSITE fragments read zeros from slots 6/7 and the WORLD
-                // palette collapses to the silence anchor.
-                if desc.name == "Arachne" {
-                    if let state = ArachneState(device: context.device) {
-                        arachneState = state
-                        // V.7.7C.2 (D-095): reset the foreground BuildState +
-                        // per-segment spider cooldown at segment-start. The
-                        // canonical entry point per V.7.7C.2 §5.2 SUB-ITEM 2.
-                        state.reset()
-                        pipeline.setDirectPresetFragmentBuffer(state.webBuffer)    // buffer(6)
-                        pipeline.setDirectPresetFragmentBuffer2(state.spiderBuffer) // buffer(7)
-                        pipeline.setMeshPresetTick { [weak state] features, stems in
-                            state?.tick(features: features, stems: stems)
-                        }
-                    } else {
-                        logger.error("ArachneState: failed to allocate web pool for staged preset '\(desc.name)'")
-                    }
-                }
-
             case .direct:
                 break // No subsystem setup required; direct rendering is the default fallback.
             }
         }
 
-        // Aurora Veil-specific (AV.2.2b): allocate kink accumulator +
-        // pitch-smoother state and wire it at slot 6 + per-frame tick.
-        // This block sits OUTSIDE the `for pass` switch above because
-        // AV.2.2 dropped mv_warp from Aurora Veil's passes (`passes: []`),
-        // and a nested-in-`.mvWarp` setup block never fires when the
-        // passes array is empty. AV.2.2a's drawDirect slot-6 binding fix
-        // was necessary but not sufficient — the buffer was never being
-        // created, so even the corrected drawDirect skipped it (nil
-        // setter). Live session 2026-05-18T23-07-33Z still crashed.
-        //
-        // The setMeshPresetTick closure is invoked from RenderPipeline+Draw
-        // line ~120 once per frame regardless of dispatch path, so it
-        // works correctly for both mv_warp and direct presets.
-        if desc.name == "Aurora Veil" {
-            if let state = AuroraVeilState(device: context.device) {
-                auroraVeilState = state
-                state.reset()
-                pipeline.setDirectPresetFragmentBuffer(state.stateBuffer)
-                pipeline.setMeshPresetTick { [weak state] features, stems in
-                    state?.tick(deltaTime: features.deltaTime,
-                                features: features,
-                                stems: stems)
-                }
-            } else {
-                logger.error("AuroraVeilState: failed to allocate state for preset '\(desc.name)'")
-            }
-        }
-
-        // Nimbus-specific (NB.4): allocate the Energy bloom follower + gas
-        // flow-phase state and wire it at slot 6 + per-frame tick. Same
-        // direct-preset (`passes: []`) slot-6 pattern as Aurora Veil — the
-        // setMeshPresetTick closure runs once per frame on the direct path
-        // (RenderPipeline+Draw), advancing the fast-attack/slow-release bloom
-        // and the flow accumulator before the scene draw reads buffer(6).
-        // reset() zeroes the follower so the body settles into each new
-        // track/segment rather than carrying the prior bloom across the cut
-        // (DESIGN §1.5).
-        if desc.name == "Nimbus" {
-            if let state = NimbusState(device: context.device) {
-                nimbusState = state
-                state.reset()
-                pipeline.setDirectPresetFragmentBuffer(state.stateBuffer)
-                pipeline.setMeshPresetTick { [weak state] features, stems in
-                    state?.tick(deltaTime: features.deltaTime,
-                                features: features,
-                                stems: stems)
-                }
-                // NB.8: render the volumetric march at half resolution + upscale.
-                // The body swells to fill the frame at full energy, where a
-                // full-res march exceeds the 7 ms Tier-2 ceiling; 0.5× is ~4×
-                // cheaper and the soft gas tolerates the upscale. Reset to 1.0
-                // for every other preset at the top of applyPreset.
-                pipeline.setDirectRenderScale(0.5)
-            } else {
-                logger.error("NimbusState: failed to allocate state for preset '\(desc.name)'")
-            }
-        }
+        // R2 (PUB.8): bind the preset's CPU-side runtime state, if it has one —
+        // the single dispatch point replacing the name-keyed blocks that were
+        // scattered through the paradigm arms above. See the method's order
+        // contract.
+        bindStatefulPresetRuntime(for: desc)
 
         // Text overlay: allocate and wire when the preset declares text_overlay: true.
         if desc.textOverlay {
@@ -746,6 +550,242 @@ extension VisualizerEngine {
         currentSegmentStartTime = Date().timeIntervalSinceReferenceDate
     }
     // swiftlint:enable cyclomatic_complexity function_body_length
+
+    // MARK: - Stateful preset runtimes (R2 / PUB.8)
+
+    /// The ONE dispatch point for presets that allocate CPU-side state at
+    /// apply time (the D-097 `resolveParticleGeometry` shape: one switch, one
+    /// row per preset). Before PUB.8 these lived as name-keyed `if` blocks
+    /// scattered through applyPreset's paradigm arms — adding a stateful
+    /// preset meant finding the right arm; now it's one case + one bind
+    /// method below.
+    ///
+    /// ORDER CONTRACT: called at the TAIL of applyPreset, after every
+    /// paradigm arm has configured the pipeline (Skein's canvas-ground push
+    /// requires `setupMVWarp` to have run). Slot binds (buffers 6/7/8) are
+    /// sticky setters read at draw, and the `setMeshPresetTick` closure runs
+    /// once per frame regardless of dispatch path (the Aurora Veil/Nimbus
+    /// precedent), so tail placement is paradigm-agnostic.
+    ///
+    /// NOT here (documented non-candidates): Ferrofluid Ocean (its particle
+    /// scaffolding + one-shot height-field bake is entangled with the
+    /// rayMarch arm); Nacre/Floret/Glaze (stateless — their draw-branch
+    /// routing rides `MVWarpPipelineBundle` flags and the sidecar
+    /// `feedback_pixel_format`).
+    /// Keep the switch below in sync with `StatefulRuntimeRegistry.
+    /// knownPresetNames` (Renderer) — `StatefulRuntimeRegistryTests` gates the
+    /// sidecar-rename hazard against that set.
+    private func bindStatefulPresetRuntime(for desc: PresetDescriptor) {
+        switch desc.name {
+        case "Arachne":     bindArachneRuntime(desc)
+        case "Gossamer":    bindGossamerRuntime(desc)
+        case "Skein":       bindSkeinRuntime(desc)
+        case "Aurora Veil": bindAuroraVeilRuntime(desc)
+        case "Nimbus":      bindNimbusRuntime(desc)
+        case "Lumen Mosaic": bindLumenMosaicRuntime(desc)
+        default: break
+        }
+    }
+
+    private func bindArachneRuntime(_ desc: PresetDescriptor) {
+        // V.7.7B: per-preset state for staged Arachne. Mirrors the mv_warp
+        // branch above — allocate the ArachneState pool, bind webBuffer at
+        // fragment slot 6 + spiderBuffer at slot 7 (per CLAUDE.md GPU
+        // Contract), and wire the per-frame tick so web stages advance and
+        // mood data lands in webs[0].row4. Without this the staged WORLD +
+        // COMPOSITE fragments read zeros from slots 6/7 and the WORLD
+        // palette collapses to the silence anchor.
+        if let state = ArachneState(device: context.device) {
+            arachneState = state
+            // V.7.7C.2 (D-095): reset the foreground BuildState +
+            // per-segment spider cooldown at segment-start. The
+            // canonical entry point per V.7.7C.2 §5.2 SUB-ITEM 2.
+            state.reset()
+            pipeline.setDirectPresetFragmentBuffer(state.webBuffer)    // buffer(6)
+            pipeline.setDirectPresetFragmentBuffer2(state.spiderBuffer) // buffer(7)
+            pipeline.setMeshPresetTick { [weak state] features, stems in
+                state?.tick(features: features, stems: stems)
+            }
+        } else {
+            logger.error("ArachneState: failed to allocate web pool for staged preset '\(desc.name)'")
+        }
+    }
+
+    private func bindGossamerRuntime(_ desc: PresetDescriptor) {
+        // Gossamer-specific: allocate wave pool and wire tick + fragment buffer.
+        if let state = GossamerState(device: context.device) {
+            gossamerState = state
+            pipeline.setDirectPresetFragmentBuffer(state.waveBuffer)
+            pipeline.setMeshPresetTick { [weak state] features, stems in
+                state?.tick(deltaTime: features.deltaTime,
+                            features: features,
+                            stems: stems)
+            }
+        } else {
+            logger.error("GossamerState: failed to allocate wave pool for preset '\(desc.name)'")
+        }
+    }
+
+    private func bindSkeinRuntime(_ desc: PresetDescriptor) {
+        // Skein-specific (Skein.ENGINE.1.2): allocate the painter state + onset-burst
+        // ring and wire the per-frame tick + the gated slot-6 marks-on-top overlay
+        // buffer. The buffer reaches `skein_geometry_fragment` via the strands-on-top
+        // slot-6 binding (RenderPipeline+MVWarpScene). The per-track seed is installed
+        // on track change (resetSkeinSeed); construct with the current track's seed so
+        // the painting is deterministic from frame 1.
+        // (RICERCAR-RW's family-mode Skein reuse was removed at FL.10 — the Fantasia rebuild
+        // replaced the marks paradigm with the particle flow-field; Ricercar declares no mv_warp
+        // pass, so this branch is Skein-only again. SkeinState.colorFromFamily stays as an engine
+        // feature.)
+        if let state = SkeinState(device: context.device, seed: currentSkeinSeed()) {
+            skeinState = state
+            pipeline.setDirectPresetFragmentBuffer(state.skeinBuffer)   // buffer(6)
+            // Skein.5.3b: the palette's GROUND travels with the track. setupMVWarp
+            // already cleared the canvas to the JSON cream before this state existed
+            // — push the per-track ground override and re-wipe so the first track's
+            // canvas opens on ITS palette's ground (light or dark).
+            let ground = state.groundLinear
+            pipeline.setMVWarpCanvasGround(SIMD4<Double>(
+                Double(ground.x), Double(ground.y), Double(ground.z), 1.0))
+            pipeline.clearMVWarpCanvasToGround()
+            // Skein.ENGINE.2: the per-frame wetness-channel decay (pauses at silence)
+            // is pushed to the warp/hold pass from the tick hook. Capture the pipeline
+            // WEAKLY (via a local) so the @Sendable closure holds no retain cycle —
+            // self keeps the pipeline alive; the weak ref just tracks the object.
+            let renderPipeline = pipeline
+            pipeline.setMeshPresetTick { [weak state, weak renderPipeline] features, stems in
+                guard let state else { return }
+                // Skein.ENGINE.3 (D-151): read the live structural-section signal from
+                // the gated bridge and pass it into the tick (CPU-only; STORED for
+                // Skein.5's structural bias — no visual effect yet, byte-identical today).
+                state.tick(deltaTime: features.deltaTime,
+                           features: features,
+                           stems: stems,
+                           structure: renderPipeline?.latestStructuralPrediction ?? .none)
+                // skein_warp_fragment reads this at fragment buffer 1 (decays ALPHA only).
+                renderPipeline?.setMVWarpWetnessDecay(state.wetnessDecay)
+            }
+        } else {
+            logger.error("SkeinState: failed to allocate painter state for preset '\(desc.name)'")
+        }
+    }
+
+    private func bindAuroraVeilRuntime(_ desc: PresetDescriptor) {
+        // Aurora Veil-specific (AV.2.2b): allocate kink accumulator +
+        // pitch-smoother state and wire it at slot 6 + per-frame tick.
+        // This block sits OUTSIDE the `for pass` switch above because
+        // AV.2.2 dropped mv_warp from Aurora Veil's passes (`passes: []`),
+        // and a nested-in-`.mvWarp` setup block never fires when the
+        // passes array is empty. AV.2.2a's drawDirect slot-6 binding fix
+        // was necessary but not sufficient — the buffer was never being
+        // created, so even the corrected drawDirect skipped it (nil
+        // setter). Live session 2026-05-18T23-07-33Z still crashed.
+        //
+        // The setMeshPresetTick closure is invoked from RenderPipeline+Draw
+        // line ~120 once per frame regardless of dispatch path, so it
+        // works correctly for both mv_warp and direct presets.
+        if let state = AuroraVeilState(device: context.device) {
+            auroraVeilState = state
+            state.reset()
+            pipeline.setDirectPresetFragmentBuffer(state.stateBuffer)
+            pipeline.setMeshPresetTick { [weak state] features, stems in
+                state?.tick(deltaTime: features.deltaTime,
+                            features: features,
+                            stems: stems)
+            }
+        } else {
+            logger.error("AuroraVeilState: failed to allocate state for preset '\(desc.name)'")
+        }
+    }
+
+    private func bindNimbusRuntime(_ desc: PresetDescriptor) {
+        // Nimbus-specific (NB.4): allocate the Energy bloom follower + gas
+        // flow-phase state and wire it at slot 6 + per-frame tick. Same
+        // direct-preset (`passes: []`) slot-6 pattern as Aurora Veil — the
+        // setMeshPresetTick closure runs once per frame on the direct path
+        // (RenderPipeline+Draw), advancing the fast-attack/slow-release bloom
+        // and the flow accumulator before the scene draw reads buffer(6).
+        // reset() zeroes the follower so the body settles into each new
+        // track/segment rather than carrying the prior bloom across the cut
+        // (DESIGN §1.5).
+        if let state = NimbusState(device: context.device) {
+            nimbusState = state
+            state.reset()
+            pipeline.setDirectPresetFragmentBuffer(state.stateBuffer)
+            pipeline.setMeshPresetTick { [weak state] features, stems in
+                state?.tick(deltaTime: features.deltaTime,
+                            features: features,
+                            stems: stems)
+            }
+            // NB.8: render the volumetric march at half resolution + upscale.
+            // The body swells to fill the frame at full energy, where a
+            // full-res march exceeds the 7 ms Tier-2 ceiling; 0.5× is ~4×
+            // cheaper and the soft gas tolerates the upscale. Reset to 1.0
+            // for every other preset at the top of applyPreset.
+            pipeline.setDirectRenderScale(0.5)
+        } else {
+            logger.error("NimbusState: failed to allocate state for preset '\(desc.name)'")
+        }
+    }
+
+    private func bindLumenMosaicRuntime(_ desc: PresetDescriptor) {
+        // Lumen Mosaic: allocate the 4-light pattern engine and
+        // wire its 336-byte slot-8 buffer + per-frame tick. The
+        // tick reads (FeatureVector, StemFeatures), advances mood
+        // smoothing + drift Lissajous + beat-locked dance, and
+        // flushes the result for the next G-buffer + lighting
+        // pass to read at fragment slot 8. (LM.2 / D-LM-buffer-slot-8.)
+        if let engine = LumenPatternEngine(device: context.device) {
+            lumenPatternEngine = engine
+            pipeline.setDirectPresetFragmentBuffer3(engine.patternBuffer)
+            // BUG-064 light warmup: pass the render path's live-vs-cached
+            // stem signal so the lights drive from continuous-energy during
+            // the ~10 s warmup instead of freezing on the cached snapshot.
+            let renderPipe = pipeline
+            pipeline.setMeshPresetTick { [weak engine, weak renderPipe] features, stems in
+                engine?.tick(
+                    features: features,
+                    stems: stems,
+                    stemsLive: renderPipe?.stemFeaturesAreLive() ?? false)
+            }
+            // BUG-016 fix (2026-05-26): load the per-song
+            // palette immediately on preset activation. Before
+            // this call existed, the palette payload stayed at
+            // its zero-initialised default (every entry
+            // (0,0,0)) until the next track change fired
+            // `resetStemPipeline → refreshLumenPaletteForTrack`.
+            // Cells rendered black; the cell-boundary frost
+            // halo mixed toward float3(1.0) — visible result
+            // was a black-and-white Voronoi grid with no
+            // perceptible motion (per-beat palette-index walk
+            // had nothing to walk through). The fix calls the
+            // same helper `resetStemPipeline` does, gated on
+            // the most-recently-resolved `TrackIdentity`
+            // persisted by the track-change handler in
+            // `VisualizerEngine+Capture.swift`.
+            if let identity = lastResolvedTrackIdentity {
+                refreshLumenPaletteForTrack(
+                    identity: identity,
+                    lumenEngine: engine
+                )
+            }
+        } else {
+            logger.error(
+                "LumenPatternEngine: failed to allocate slot-8 buffer for preset '\(desc.name)'"
+            )
+            // BUG-016 / CA-Presets-FU-4 instrumentation: persist the
+            // failure to session.log so the next reproduction is
+            // greppable from the on-disk artifact. The logger.error
+            // line above writes only to the unified log (category
+            // "VisualizerEngine"); the SessionRecorder writer below
+            // lands the same event in ~/Documents/phosphene_sessions/
+            // <ts>/session.log. Engine-side parallel log at
+            // LumenPatternEngine.swift:586 (category "session").
+            sessionRecorder?.log(
+                "LumenPatternEngine: failed to allocate slot-8 buffer for preset '\(desc.name)'"
+            )
+        }
+    }
 
     // MARK: - Scene Uniforms Construction
 

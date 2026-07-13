@@ -33,6 +33,10 @@
 		D10009 /* PhotosensitivityAcknowledgementStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20009; };
 		D10010 /* PermissionOnboardingViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20010; };
 		A10031 /* VisualizerEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20031; };
+		K10090 /* NowPlayingSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20090; };
+		K10091 /* NowPlayingSurfaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20091; };
+		K10092 /* CaptureStateSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20092; };
+		K10093 /* CaptureStateSurfaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20093; };
 		A10032 /* VisualizerEngine+Audio.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20032; };
 		A10033 /* VisualizerEngine+Stems.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20033; };
 		A10034 /* VisualizerEngine+Presets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20034; };
@@ -172,7 +176,6 @@
 		K10016 /* PresetCategoryBlocklistPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20016; };
 		K10020 /* PresetScoringContextProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20020; };
 		K10022 /* SessionRecorderRetentionPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20022; };
-		K10023 /* OnboardingReset.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20023; };
 		K10040 /* SettingsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20040; };
 		K10041 /* SettingsMigratorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20041; };
 		K10042 /* SettingsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20042; };
@@ -180,7 +183,6 @@
 		K10044 /* SettingsStoreCertifiedToggleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20044; };
 		K10050 /* PresetScoringContextProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20050; };
 		K10051 /* SessionRecorderRetentionPolicyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20051; };
-		K10052 /* OnboardingResetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20052; };
 		M10004 /* DisplayChangeCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20004; };
 		M10006 /* NetworkRecoveryCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = M20006; };
 		L10001 /* AccessibilityState.swift in Sources */ = {isa = PBXBuildFile; fileRef = L20001; };
@@ -209,6 +211,10 @@
 		A20021 /* DebugOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebugOverlayView.swift; sourceTree = "<group>"; };
 		A20022 /* ITunesSearchFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ITunesSearchFetcher.swift; sourceTree = "<group>"; };
 		A20031 /* VisualizerEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualizerEngine.swift; sourceTree = "<group>"; };
+		K20090 /* NowPlayingSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingSurface.swift; sourceTree = "<group>"; };
+		K20091 /* NowPlayingSurfaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingSurfaceTests.swift; sourceTree = "<group>"; };
+		K20092 /* CaptureStateSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureStateSurface.swift; sourceTree = "<group>"; };
+		K20093 /* CaptureStateSurfaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureStateSurfaceTests.swift; sourceTree = "<group>"; };
 		A20032 /* VisualizerEngine+Audio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+Audio.swift"; sourceTree = "<group>"; };
 		A20033 /* VisualizerEngine+Stems.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+Stems.swift"; sourceTree = "<group>"; };
 		A20034 /* VisualizerEngine+Presets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+Presets.swift"; sourceTree = "<group>"; };
@@ -368,7 +374,6 @@
 		K20016 /* PresetCategoryBlocklistPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetCategoryBlocklistPicker.swift; sourceTree = "<group>"; };
 		K20020 /* PresetScoringContextProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetScoringContextProvider.swift; sourceTree = "<group>"; };
 		K20022 /* SessionRecorderRetentionPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecorderRetentionPolicy.swift; sourceTree = "<group>"; };
-		K20023 /* OnboardingReset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingReset.swift; sourceTree = "<group>"; };
 		K20040 /* SettingsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStoreTests.swift; sourceTree = "<group>"; };
 		K20041 /* SettingsMigratorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsMigratorTests.swift; sourceTree = "<group>"; };
 		K20042 /* SettingsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsViewModelTests.swift; sourceTree = "<group>"; };
@@ -376,7 +381,6 @@
 		K20044 /* SettingsStoreCertifiedToggleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStoreCertifiedToggleTests.swift; sourceTree = "<group>"; };
 		K20050 /* PresetScoringContextProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresetScoringContextProviderTests.swift; sourceTree = "<group>"; };
 		K20051 /* SessionRecorderRetentionPolicyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecorderRetentionPolicyTests.swift; sourceTree = "<group>"; };
-		K20052 /* OnboardingResetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingResetTests.swift; sourceTree = "<group>"; };
 		M20004 /* DisplayChangeCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplayChangeCoordinatorTests.swift; sourceTree = "<group>"; };
 		M20006 /* NetworkRecoveryCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkRecoveryCoordinatorTests.swift; sourceTree = "<group>"; };
 		L20001 /* AccessibilityState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccessibilityState.swift; sourceTree = "<group>"; };
@@ -450,6 +454,8 @@
 				A20001 /* PhospheneApp.swift */,
 				A20002 /* ContentView.swift */,
 				A20031 /* VisualizerEngine.swift */,
+				K20090 /* NowPlayingSurface.swift */,
+				K20092 /* CaptureStateSurface.swift */,
 				A20032 /* VisualizerEngine+Audio.swift */,
 				A20033 /* VisualizerEngine+Stems.swift */,
 				A20034 /* VisualizerEngine+Presets.swift */,
@@ -572,7 +578,6 @@
 				K20003 /* SettingsMigrator.swift */,
 				K20020 /* PresetScoringContextProvider.swift */,
 				K20022 /* SessionRecorderRetentionPolicy.swift */,
-				K20023 /* OnboardingReset.swift */,
 				L20001 /* AccessibilityState.swift */,
 				L20002 /* AccessibilityLabels.swift */,
 				M20001 /* DisplayChangeCoordinator.swift */,
@@ -714,6 +719,8 @@
 				I20010 /* ReachabilityMonitorTests.swift */,
 				J20003 /* PlaybackErrorConditionTrackerTests.swift */,
 				J20004 /* PlaybackErrorBridgeTests.swift */,
+				K20091 /* NowPlayingSurfaceTests.swift */,
+				K20093 /* CaptureStateSurfaceTests.swift */,
 				J200A2 /* PlaybackHealthToastTests.swift */,
 				J20005 /* ToastManagerConditionTests.swift */,
 				K20040 /* SettingsStoreTests.swift */,
@@ -723,7 +730,6 @@
 				K20044 /* SettingsStoreCertifiedToggleTests.swift */,
 				K20050 /* PresetScoringContextProviderTests.swift */,
 				K20051 /* SessionRecorderRetentionPolicyTests.swift */,
-				K20052 /* OnboardingResetTests.swift */,
 				M20004 /* DisplayChangeCoordinatorTests.swift */,
 				M20006 /* NetworkRecoveryCoordinatorTests.swift */,
 				L20040 /* AccessibilityStateTests.swift */,
@@ -855,6 +861,8 @@
 				A10001 /* PhospheneApp.swift in Sources */,
 				A10002 /* ContentView.swift in Sources */,
 				A10031 /* VisualizerEngine.swift in Sources */,
+				K10090 /* NowPlayingSurface.swift in Sources */,
+				K10092 /* CaptureStateSurface.swift in Sources */,
 				A10032 /* VisualizerEngine+Audio.swift in Sources */,
 				A10033 /* VisualizerEngine+Stems.swift in Sources */,
 				A10034 /* VisualizerEngine+Presets.swift in Sources */,
@@ -960,7 +968,6 @@
 				K10016 /* PresetCategoryBlocklistPicker.swift in Sources */,
 				K10020 /* PresetScoringContextProvider.swift in Sources */,
 				K10022 /* SessionRecorderRetentionPolicy.swift in Sources */,
-				K10023 /* OnboardingReset.swift in Sources */,
 				L10001 /* AccessibilityState.swift in Sources */,
 				L10002 /* AccessibilityLabels.swift in Sources */,
 				L10010 /* QualityGradeIndicator.swift in Sources */,
@@ -1008,6 +1015,8 @@
 				I10010 /* ReachabilityMonitorTests.swift in Sources */,
 				J10003 /* PlaybackErrorConditionTrackerTests.swift in Sources */,
 				J10004 /* PlaybackErrorBridgeTests.swift in Sources */,
+				K10091 /* NowPlayingSurfaceTests.swift in Sources */,
+				K10093 /* CaptureStateSurfaceTests.swift in Sources */,
 				J100A2 /* PlaybackHealthToastTests.swift in Sources */,
 				J10005 /* ToastManagerConditionTests.swift in Sources */,
 				K10040 /* SettingsStoreTests.swift in Sources */,
@@ -1017,7 +1026,6 @@
 				K10044 /* SettingsStoreCertifiedToggleTests.swift in Sources */,
 				K10050 /* PresetScoringContextProviderTests.swift in Sources */,
 				K10051 /* SessionRecorderRetentionPolicyTests.swift in Sources */,
-				K10052 /* OnboardingResetTests.swift in Sources */,
 				M10004 /* DisplayChangeCoordinatorTests.swift in Sources */,
 				M10006 /* NetworkRecoveryCoordinatorTests.swift in Sources */,
 				L10040 /* AccessibilityStateTests.swift in Sources */,

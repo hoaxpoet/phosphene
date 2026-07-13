@@ -82,6 +82,10 @@ enum LocalizedCopy {
         case .audioLevelsLow(let isSpotify):
             return loc(isSpotify ? "error.playback.audio_levels_low_spotify"
                                  : "error.playback.audio_levels_low_generic")
+        case .localFilePlaybackFailed(let fileName):
+            return String(format: loc("error.playback.local_file_failed"), fileName)
+        case .presetCompileFailed(let presetName):
+            return String(format: loc("error.playback.preset_compile_failed"), presetName)
         case .frameBudgetExceeded:
             return ""  // log only unless settings flag is on
         case .displayDisconnectedMidSession:

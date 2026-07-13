@@ -2,6 +2,7 @@ PhospheneEngine/Sources/ML/Weights/*.bin filter=lfs diff=lfs merge=lfs -text
 PhospheneEngine/Sources/ML/Weights/**/*.bin filter=lfs diff=lfs merge=lfs -text
 docs/VISUAL_REFERENCES/**/*.jpg filter=lfs diff=lfs merge=lfs -text
 docs/VISUAL_REFERENCES/**/*.png filter=lfs diff=lfs merge=lfs -text
+docs/VISUAL_REFERENCES/**/*.gif filter=lfs diff=lfs merge=lfs -text
 docs/diagnostics/*.png filter=lfs diff=lfs merge=lfs -text
 docs/diagnostics/**/*.png filter=lfs diff=lfs merge=lfs -text
 docs/diagnostics/*.jpg filter=lfs diff=lfs merge=lfs -text

@@ -366,9 +366,31 @@ public final class SystemAudioCapture: AudioCapturing, @unchecked Sendable {
             logger.info("Tap reinstalled after device change (tap \(newTapID))")
             armInstallProbeAndLog(kind: "reinstall via device-change")  // BUG-057
         } catch {
-            // The create steps already tore down + stopped the monitor on failure.
+            // PUB.6 (ultra-review): the previous comment here claimed "the
+            // create steps already tore down + stopped the monitor on failure"
+            // — FALSE on both counts: the create steps only throw, and nothing
+            // stopped the monitor or cleared `_isCapturing`. The end state was
+            // a lie (capturing=true, zero callbacks) that (a) starved every
+            // engine-side health detector — SignalHealthMonitor.evaluate only
+            // runs when samples arrive, so deadTap never confirms — and
+            // (b) blocked the router's `.silent`-recovery restart at
+            // startCapture's alreadyCapturing guard. Only the app-layer
+            // poll-based stall card (Mode B) ever surfaced it.
+            //
+            // Now: tell the truth. Resources are already torn down (above);
+            // clear `_isCapturing` so a recovery restart (stopCapture +
+            // startCapture, the router's ladder) can proceed instead of
+            // hitting the alreadyCapturing guard. The device monitor
+            // DELIBERATELY keeps running as a diagnostic beacon: a later fire
+            // lands in performReinstall's not-capturing SKIP branch, which
+            // breadcrumbs to session.log. Recovery remains the app-layer
+            // card → user action (D-165 fallback), or any path that restarts
+            // capture.
+            stateLock.withLock { _isCapturing = false }
             logger.error("Tap reinstall failed after device change: \(String(describing: error))")
-            onCaptureDiagnostic?("reinstall via device-change FAILED: \(String(describing: error))")
+            onCaptureDiagnostic?(
+                "reinstall via device-change FAILED: \(String(describing: error)) — "
+                + "capture marked stopped (was left marked capturing pre-PUB.6); monitor still running")
         }
     }
 

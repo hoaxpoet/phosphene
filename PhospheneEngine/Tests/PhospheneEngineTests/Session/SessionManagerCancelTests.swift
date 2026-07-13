@@ -142,15 +142,14 @@ struct SessionManagerCancelTests {
         let manager = makeManager(separator: sep)
 
         await manager.startSession(source: .appleMusicCurrentPlaylist)
-        // startSession returns early while .preparing; wait for natural completion.
-        // 30 s deadline (was 10 s) absorbs parallel-execution contention under
-        // the now-1460-test suite — CLEAN.1.2's real-GPU StemSeparatorConcurrencyTests
-        // saturates CPU/GPU enough to intermittently starve this MainActor-bound
-        // prep past 10 s (CLAUDE.md U.11 precedent: 2-3× headroom over worst-observed).
-        let deadline = Date().addingTimeInterval(30)
-        while manager.state == .preparing && Date() < deadline {
-            try? await Task.sleep(nanoseconds: 10_000_000)
-        }
+        // startSession returns early while .preparing. PUB.4: await the stored
+        // prep task instead of polling a wall-clock deadline — the deadline was
+        // widened once (10 s → 30 s) and STILL starved under the full parallel
+        // battery (72 s observed at the PUB.3 closeout; 3/3 green isolated =
+        // starvation, not a hang). `sessionPreparationTask` is internally
+        // readable for exactly this deterministic wait (TESTFLAKE.1): a
+        // captured handle resolves at `.ready`; nil means `.ready` already set.
+        if let task = manager.sessionPreparationTask { await task.value }
         #expect(manager.state == .ready)
 
         manager.cancel()

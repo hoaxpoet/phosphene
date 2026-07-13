@@ -304,8 +304,10 @@ public final class SessionManager: ObservableObject {
             self.statusCancellable = nil
             self.sessionPreparationTask = nil
 
-            // Update currentPlan with the authoritative final list.
-            let allTracks = result.cachedTracks + result.failedTracks
+            // Update currentPlan with the authoritative final list, in
+            // playlist order (BUG-068: cached+failed concatenation reordered
+            // the plan after any mid-list failure).
+            let allTracks = result.orderedTracks
             self.currentPlan = SessionPlan(tracks: allTracks)
 
             // Recompute from final statuses.
@@ -466,11 +468,13 @@ public final class SessionManager: ObservableObject {
             return
         }
 
-        // Combine the prepared `local:sha256:` identities with any failed
-        // placeholders (LF.1 fallthrough rows) into a single plan. Order
-        // matches the original URL queue because the preparer walks in order.
-        let allTracks = result.cachedTracks + result.failedTracks
-        _completeLocalFilesReady(tracks: allTracks)
+        // The plan MUST be in URL-queue order: plan index N pairs positionally
+        // with playback queue entry N, so identity/beat grid/chrome follow the
+        // audio. `orderedTracks` interleaves prepared `local:sha256:`
+        // identities and failed placeholders in walk order — the old
+        // `cachedTracks + failedTracks` concatenation reordered the plan
+        // after any mid-queue failure and mispaired every later track (BUG-068).
+        _completeLocalFilesReady(tracks: result.orderedTracks)
     }
 
     /// Same-origin re-entry guard. Returns `true` when the in-flight session
@@ -559,10 +563,6 @@ public final class SessionManager: ObservableObject {
         logger.info("SessionManager: playback started")
     }
 
-    /// Cancel the current operation and return to `.idle`.
-    ///
-    /// Safe to call from any state. During `.preparing`, cancels the in-flight
-    /// preparation pass (current track may finish its MPSGraph predict — ≤ 142 ms).
     /// Resume preparation for tracks that previously failed due to network errors.
     ///
     /// Pass-through to `SessionPreparer.resumeFailedNetworkTracks()`. Safe to call

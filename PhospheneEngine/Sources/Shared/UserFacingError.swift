@@ -107,6 +107,16 @@ public enum UserFacingError: Sendable, Hashable {
     /// Detected persistently low audio levels. `isSpotifySource` triggers Normalize-Volume copy.
     case audioLevelsLow(isSpotifySource: Bool)
 
+    /// A watched preset failed to compile on hot-reload (PUB.7). `presetName`
+    /// is the .metal base name; full diagnostics land in os.log. The last-good
+    /// compile keeps rendering.
+    case presetCompileFailed(presetName: String)
+
+    /// A local file failed to start playback (moved, unreadable, undecodable).
+    /// `fileName` is the last path component for the toast copy. (PUB.5 —
+    /// previously log-only: the user was stranded on a silent PlaybackView.)
+    case localFilePlaybackFailed(fileName: String)
+
     /// Frame budget exceeded and governor activated — log-only by default.
     case frameBudgetExceeded
 

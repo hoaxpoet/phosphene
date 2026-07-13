@@ -145,6 +145,25 @@ struct MetadataPreFetcherTests {
         #expect(fetcher.fetchCallCount == 1)
     }
 
+    // PUB.6 regression (ultra-review): CONCURRENT same-key callers must
+    // coalesce onto one in-flight fetch — duplicate track-change callbacks
+    // previously each fired the full fetcher fan-out, burning iTunes
+    // rate-limit slots.
+    @Test func fetch_concurrentSameKey_coalescesToOneFetch() async {
+        let fetcher = MockMetadataFetcher(sourceName: "S", stubbedResult: PartialTrackProfile(bpm: 140))
+        fetcher.fetchDelay = .milliseconds(100)   // hold the fetch open so callers overlap
+        let prefetcher = MetadataPreFetcher(fetchers: [fetcher])
+        let track = makeTrack()
+
+        async let a = prefetcher.prefetch(for: track)
+        async let b = prefetcher.prefetch(for: track)
+        async let c = prefetcher.prefetch(for: track)
+        let results = await [a, b, c]
+
+        #expect(fetcher.fetchCallCount == 1, "concurrent same-key callers must share one fetch")
+        #expect(results.allSatisfy { $0?.bpm == 140 })
+    }
+
     @Test func preFetchedProfile_bpmPresent_whenSourceResponds() async {
         let fetcher = MockMetadataFetcher(
             sourceName: "Spotify",

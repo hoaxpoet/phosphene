@@ -42,13 +42,60 @@ public struct SessionPreparationResult: Sendable {
     /// Tracks that could not be analyzed (no preview or separation failure).
     public let failedTracks: [TrackIdentity]
 
+    /// All walked tracks in **input order** — successes as their prepared
+    /// identities, failures as their input/placeholder identities. This is
+    /// the array a `SessionPlan` must be built from: on the LF path the plan
+    /// index pairs positionally with the playback URL queue, so
+    /// `cachedTracks + failedTracks` reorders the plan after any mid-queue
+    /// failure and mispairs audio with identity/beat grid (BUG-068).
+    public let orderedTracks: [TrackIdentity]
+
     /// The populated cache ready for the Orchestrator and VisualizerEngine.
     public let cache: StemCache
 
-    public init(cachedTracks: [TrackIdentity], failedTracks: [TrackIdentity], cache: StemCache) {
+    public init(
+        cachedTracks: [TrackIdentity],
+        failedTracks: [TrackIdentity],
+        orderedTracks: [TrackIdentity],
+        cache: StemCache
+    ) {
         self.cachedTracks = cachedTracks
         self.failedTracks = failedTracks
+        self.orderedTracks = orderedTracks
         self.cache = cache
+    }
+}
+
+// MARK: - PrepOutcomes
+
+/// Accumulates per-track preparation outcomes while preserving input order
+/// (BUG-068): every walked track lands in `ordered` exactly once — successes
+/// as their prepared identities, failures as their input/placeholder
+/// identities — so plans built from it stay index-aligned with the queue.
+struct PrepOutcomes {
+    private(set) var cached: [TrackIdentity] = []
+    private(set) var failed: [TrackIdentity] = []
+    private(set) var ordered: [TrackIdentity] = []
+
+    var walkedCount: Int { ordered.count }
+
+    mutating func success(_ track: TrackIdentity) {
+        cached.append(track)
+        ordered.append(track)
+    }
+
+    mutating func failure(_ track: TrackIdentity) {
+        failed.append(track)
+        ordered.append(track)
+    }
+
+    func result(cache: StemCache) -> SessionPreparationResult {
+        SessionPreparationResult(
+            cachedTracks: cached,
+            failedTracks: failed,
+            orderedTracks: ordered,
+            cache: cache
+        )
     }
 }
 
@@ -228,7 +275,10 @@ public final class SessionPreparer: ObservableObject {
         } onCancel: {
             task.cancel()
         }
-        preparationTask = nil
+        // LF.5.fix.3-B (extended at PUB.2): deliberately NO exit-nil — an
+        // out-of-order return would drop a newer task's reference (e.g. a
+        // resumeFailedNetworkTracks() loop started meanwhile would become
+        // uncancellable). Explicit cancelPreparation() is the canonical clear.
         return result
     }
 
@@ -323,8 +373,7 @@ public final class SessionPreparer: ObservableObject {
         placeholders: [TrackIdentity],
         delegate: (any LocalFilePreparing)?
     ) async -> SessionPreparationResult {
-        var cachedTracks: [TrackIdentity] = []
-        var failedTracks: [TrackIdentity] = []
+        var outcomes = PrepOutcomes()
 
         for (index, pair) in zip(urls, placeholders).enumerated() {
             if Task.isCancelled { break }
@@ -339,31 +388,26 @@ public final class SessionPreparer: ObservableObject {
                 trackStatuses[placeholder] = .analyzing(stage: .caching)
                 cache.store(result.cached, for: result.identity)
                 trackStatuses[placeholder] = .ready
-                cachedTracks.append(result.identity)
+                outcomes.success(result.identity)
                 sourceLabel = result.source.label
             } else {
                 trackStatuses[placeholder] = .partial(reason: "Stems unavailable")
-                failedTracks.append(placeholder)
+                outcomes.failure(placeholder)
                 sourceLabel = "noCache"
             }
 
-            let done = cachedTracks.count + failedTracks.count
-            progress = (done, urls.count)
+            progress = (outcomes.walkedCount, urls.count)
             let perFileMsg = "WIRING: SessionPreparer.prepareLocalFile #\(index + 1) " +
                 "of \(urls.count) file='\(url.lastPathComponent)' source=\(sourceLabel)"
             sessionRecorder?.log(perFileMsg)
         }
 
         let doneMsg = "WIRING: SessionPreparer.prepareLocalFiles DONE " +
-            "cached=\(cachedTracks.count) failed=\(failedTracks.count) total=\(urls.count)"
+            "cached=\(outcomes.cached.count) failed=\(outcomes.failed.count) total=\(urls.count)"
         sessionRecorder?.log(doneMsg)
         logger.info("\(doneMsg, privacy: .public)")
 
-        return SessionPreparationResult(
-            cachedTracks: cachedTracks,
-            failedTracks: failedTracks,
-            cache: cache
-        )
+        return outcomes.result(cache: cache)
     }
 
     // MARK: - PreparationProgressPublishing
@@ -396,8 +440,7 @@ public final class SessionPreparer: ObservableObject {
         defer { ConcurrencyAuditProbe.exitRunPreparation() }
         launchModelWarmUpIfNeeded()
 
-        var cachedTracks: [TrackIdentity] = []
-        var failedTracks: [TrackIdentity] = []
+        var outcomes = PrepOutcomes()
 
         // PREPPERF.2 ①: prefetch the network half (resolve + download) up to a
         // bounded window AHEAD of the serial analysis cursor, so a track's ~2 s
@@ -430,8 +473,8 @@ public final class SessionPreparer: ObservableObject {
                 fetchTasks[index]?.cancel()
                 fetchTasks[index] = nil
                 trackStatuses[track] = .ready
-                cachedTracks.append(track)
-                progress = (cachedTracks.count + failedTracks.count, tracks.count)
+                outcomes.success(track)
+                progress = (outcomes.walkedCount, tracks.count)
                 logger.info("Cache hit: \(track.title) — skipping re-analysis")
                 launchFetch(index + Self.prefetchWindow)
                 continue
@@ -460,23 +503,19 @@ public final class SessionPreparer: ObservableObject {
                 trackStatuses[track] = .analyzing(stage: .caching)
                 cache.store(data, for: track)
                 trackStatuses[track] = .ready
-                cachedTracks.append(track)
+                outcomes.success(track)
                 logger.info("Cached: \(track.title) by \(track.artist)")
             } catch {
-                if recordPreparationFailure(error, track: track, failedTracks: &failedTracks) { break }
+                if recordPreparationFailure(error, track: track, outcomes: &outcomes) { break }
             }
 
-            progress = (cachedTracks.count + failedTracks.count, tracks.count)
+            progress = (outcomes.walkedCount, tracks.count)
         }
 
-        logger.info("Preparation complete: \(cachedTracks.count)/\(tracks.count) cached, \(failedTracks.count) failed")
-        logWiringDoneSummary(cachedTracks: cachedTracks, failedTracks: failedTracks)
+        logger.info("Preparation complete: \(outcomes.cached.count)/\(tracks.count) cached, \(outcomes.failed.count) failed")
+        logWiringDoneSummary(cachedTracks: outcomes.cached, failedTracks: outcomes.failed)
 
-        return SessionPreparationResult(
-            cachedTracks: cachedTracks,
-            failedTracks: failedTracks,
-            cache: cache
-        )
+        return outcomes.result(cache: cache)
     }
 
     /// Map a fetch/analysis error to the track's terminal status + bookkeeping.
@@ -486,32 +525,29 @@ public final class SessionPreparer: ObservableObject {
     private func recordPreparationFailure(
         _ error: Error,
         track: TrackIdentity,
-        failedTracks: inout [TrackIdentity]
+        outcomes: inout PrepOutcomes
     ) -> Bool {
         switch error {
         case is CancellationError:
             logger.info("Preparation cancelled")
             return true
         case SessionPreparationError.noPreviewURL(let title):
-            failedTracks.append(track)
             trackStatuses[track] = .failed(reason: "Preview not available")
             networkFailedTracks.insert(track)
             logger.info("No preview for '\(title)'")
         case SessionPreparationError.downloadFailed(let title):
-            failedTracks.append(track)
             trackStatuses[track] = .failed(reason: "Download failed")
             networkFailedTracks.insert(track)
             logger.info("Download failed for '\(title)'")
         case SessionPreparationError.analysisError(let detail):
             // Download succeeded; stems failed — playable in reactive mode.
-            failedTracks.append(track)
             trackStatuses[track] = .partial(reason: "Stems unavailable")
             logger.info("Analysis failed for '\(track.title)': \(detail)")
         default:
-            failedTracks.append(track)
             trackStatuses[track] = .failed(reason: "Unexpected error")
             logger.info("Failed to prepare '\(track.title)': \(error)")
         }
+        outcomes.failure(track)
         return false
     }
 
@@ -670,7 +706,7 @@ extension SessionPreparer {
         } onCancel: {
             task.cancel()
         }
-        preparationTask = nil
+        // PUB.2: no exit-nil (LF.5.fix.3-B pattern) — see prepare(tracks:).
     }
 }
 

@@ -156,6 +156,11 @@ public struct GridOnsetCalibrator {
 
     /// Compute FFT magnitudes for a single 1024-sample window starting at
     /// `start` in `samples`. Mirrors `FFTProcessor.process` minus the GPU buffer.
+    ///
+    /// PUB.4 note: this is a formula-IDENTICAL hand-copy of
+    /// `FFTMagnitudeKernel` (`|FFT|·2/fftSize`) outside its divergence guard —
+    /// a mechanical port candidate. If the magnitude formula ever changes in
+    /// the kernel, change it here too (or do the port).
     private func computeMagnitudes(
         samples: [Float],
         start: Int,

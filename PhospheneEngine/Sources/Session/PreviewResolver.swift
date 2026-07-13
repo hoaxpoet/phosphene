@@ -41,24 +41,40 @@ public final class PreviewResolver: PreviewResolving, @unchecked Sendable {
 
     // MARK: - Rate-limit Configuration
 
+    /// The sliding-window limiter this resolver acquires from. Production uses
+    /// `ITunesRateLimiter.shared` so the resolver and the app's metadata
+    /// fetcher share ONE 20/min window (PUB.6, ultra-review — previously each
+    /// client ran its own, and the fetcher had none). Tests inject a private
+    /// instance for isolation.
+    private let rateLimiter: ITunesRateLimiter
+
     /// Maximum requests allowed within `rateLimitWindow`. Defaults to 20 (iTunes limit).
-    public var rateLimitPerWindow: Int = 20
+    /// Forwards to the limiter (kept for API/test compatibility).
+    public var rateLimitPerWindow: Int {
+        get { rateLimiter.maxRequestsPerWindow }
+        set { rateLimiter.maxRequestsPerWindow = newValue }
+    }
 
     /// Duration of the sliding rate-limit window in seconds. Defaults to 60.
-    public var rateLimitWindow: TimeInterval = 60.0
+    /// Forwards to the limiter (kept for API/test compatibility).
+    public var rateLimitWindow: TimeInterval {
+        get { rateLimiter.window }
+        set { rateLimiter.window = newValue }
+    }
 
     // MARK: - State
 
     private let stateLock = NSLock()
     // nil outer = not cached; inner = .some(url) or .some(nil)
     private var cache: [TrackIdentity: URL?] = [:]
-    private var requestTimestamps: [Date] = []
 
     private static let baseURL = "https://itunes.apple.com/search"
 
     // MARK: - Init
 
-    public init() {}
+    public init(rateLimiter: ITunesRateLimiter = .shared) {
+        self.rateLimiter = rateLimiter
+    }
 
     // MARK: - PreviewResolving
 
@@ -76,7 +92,7 @@ public final class PreviewResolver: PreviewResolving, @unchecked Sendable {
         }
 
         // Enforce rate limit before sending a request.
-        await throttle()
+        await rateLimiter.acquire()
 
         guard let request = buildRequest(for: track) else {
             logger.error("Could not build iTunes search request for '\(track.title)'")
@@ -93,8 +109,13 @@ public final class PreviewResolver: PreviewResolving, @unchecked Sendable {
         }
 
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-            logger.info("Non-200 response for '\(track.title)', caching nil")
-            stateLock.withLock { cache[track] = .some(nil) }
+            // PUB.2 (ultra-review): do NOT cache nil on a non-200 — 429/5xx are
+            // transient, and a poisoned cache entry made the D-061(d)
+            // network-recovery retry permanently unable to succeed for the
+            // track. Only a definitive 200-with-no-result means "no preview"
+            // (cached below); transient failures return nil uncached, matching
+            // the thrown-error path above.
+            logger.info("Non-200 response for '\(track.title)' — returning nil uncached (transient)")
             return nil
         }
 
@@ -118,28 +139,6 @@ public final class PreviewResolver: PreviewResolving, @unchecked Sendable {
     ///  - `.some(.some(url))` — cached preview URL
     private func lockedCachedURL(for track: TrackIdentity) -> URL?? {
         stateLock.withLock { cache[track] }
-    }
-
-    /// Suspends the caller if the rate-limit window is full, then records the timestamp.
-    private func throttle() async {
-        while true {
-            let waitTime: TimeInterval = stateLock.withLock {
-                let now = Date()
-                let windowStart = now.addingTimeInterval(-rateLimitWindow)
-                requestTimestamps.removeAll { $0 <= windowStart }
-
-                if requestTimestamps.count >= rateLimitPerWindow,
-                   let oldest = requestTimestamps.first {
-                    let waitUntil = oldest.addingTimeInterval(rateLimitWindow)
-                    return max(0.001, waitUntil.timeIntervalSince(now))
-                }
-                requestTimestamps.append(now)
-                return 0
-            }
-
-            guard waitTime > 0 else { return }
-            try? await Task.sleep(nanoseconds: UInt64(waitTime * 1_000_000_000))
-        }
     }
 
     private func buildRequest(for track: TrackIdentity) -> URLRequest? {

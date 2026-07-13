@@ -103,7 +103,7 @@ extension VisualizerEngine {
             self.signalHealthMonitor.updateContext(signalState: state, tapModeActive: tapMode)
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
-                self.audioSignalState = state
+                self.captureState.setSignalState(state)
                 self.sessionRecorder?.log("audio signal → \(state)")
                 switch state {
                 case .silent:
@@ -223,29 +223,21 @@ extension VisualizerEngine {
             let identity = self.canonicalTrackIdentity(matching: partialIdentity) ?? partialIdentity
 
             Task { @MainActor in
-                self.currentTrack = event.current
-                // LF.6.fix.1 (BUG-024): streaming sessions don't carry
-                // embedded artwork at LF.6; publish nil first so any prior
-                // LF session's bytes never leak into the new streaming
-                // track's chrome. Pair with `currentTrack` in the same
-                // MainActor block per the `currentTrackArtworkData`
-                // invariant (title-first then artwork-second so consumers
-                // see one tick). LF.6.streaming-S5 then kicks off an
-                // async fetch — the resolved bytes land on a later tick;
-                // chrome's existing opacity-animate-in covers the gap.
-                self.currentTrackArtworkData = nil
+                // R3.1 (PUB.9): ONE paired publish — title + plan index
+                // (QR.4 / D-091) together, with artwork cleared in the same
+                // tick so a prior LF session's bytes never dress the new
+                // streaming title (LF.6.fix.1 / BUG-024); the LF.6.streaming
+                // async fetch then lands the real bytes on a later tick.
+                // The stale pre-fetched profile drops with it — the new
+                // track's kickoffPreFetch repopulates.
+                self.nowPlaying.publishTrack(
+                    event.current, index: resolvedPlanIndex, artwork: .some(nil))
                 self.streamingArtworkPublisher?.update(for: identity)
-                self.preFetchedProfile = nil
+                self.nowPlaying.setProfile(nil)
                 let displayTitle = event.current.title ?? "?"
                 let displayArtist = event.current.artist ?? "?"
                 captureLogger.info("Track: \(displayTitle) — \(displayArtist)")
                 self.sessionRecorder?.log("track → \(displayTitle) — \(displayArtist)")
-                // QR.4 / D-091: publish the live track's plan index so view models
-                // can bind directly instead of doing fragile lowercased title+artist
-                // string matches. nil when the track is not part of the plan
-                // (covers, remasters, encoding-different versions) or when no plan
-                // exists.
-                self.currentTrackIndex = resolvedPlanIndex
             }
             mir.reset()
             self.pipeline.resetAccumulatedAudioTime()
@@ -273,7 +265,7 @@ extension VisualizerEngine {
         Task {
             let profile = await fetcher.prefetch(for: track)
             await MainActor.run {
-                self.preFetchedProfile = profile
+                self.nowPlaying.setProfile(profile)
                 if let bpm = profile?.bpm {
                     self.estimatedTempo = bpm
                     captureLogger.info("Using pre-fetched BPM: \(bpm)")

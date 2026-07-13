@@ -231,12 +231,19 @@ extension VisualizerEngine: LocalFilePreparing {
             } catch {
                 let msg = error.localizedDescription
                 lfLogger.error("[LF.4] LF playback router start failed: \(msg, privacy: .public)")
+                // PUB.5 (ultra-review): surface it — the user was previously
+                // stranded on a silent PlaybackView with a log-only error.
+                // Toast (§9.4) + end the session so they land on EndedView
+                // with the re-pick CTAs instead of a dead visualizer.
+                userFacingErrorSubject.send(
+                    .localFilePlaybackFailed(fileName: url.lastPathComponent))
+                sessionManager.endSession()
                 return
             }
         }
 
         startStemPipeline()
-        currentTrackIndex = 0                               // LF.5: published for chrome + orchestrator
+        nowPlaying.setTrackIndex(0)                         // LF.5: published for chrome + orchestrator
         isLocalFilePaused = false                           // LF.5.fix D-LF5-3: fresh session starts playing
 
         sessionManager.beginPlayback()
@@ -283,7 +290,7 @@ extension VisualizerEngine: LocalFilePreparing {
         guard nextIdx >= 0, nextIdx < urls.count, nextIdx < tracks.count else {
             if direction == .forward {
                 lfLogger.info("[LF.5] queue exhausted — transitioning to .ended")
-                currentTrackIndex = nil
+                nowPlaying.setTrackIndex(nil)
                 sessionManager.endSession()
             } else {
                 lfLogger.info("[LF.5] queue at start — prev is no-op")
@@ -350,18 +357,30 @@ extension VisualizerEngine: LocalFilePreparing {
                 sessionRecorder?.log("WIRING: advanceLocalFileQueue audioRouter.start BEGIN")
                 try audioRouter.start(mode: .localFilePlayback(nextURL))
                 sessionRecorder?.log("WIRING: advanceLocalFileQueue audioRouter.start COMPLETE")
-                currentTrackIndex = nextIdx
+                nowPlaying.setTrackIndex(nextIdx)
                 isLocalFilePaused = false                                   // restart implies playing
                 sessionRecorder?.log("WIRING: advanceLocalFileQueue EXIT ok=true")
             } catch {
-                let msg = error.localizedDescription
-                lfLogger.error("[LF.5] audio router restart failed: \(msg, privacy: .public)")
-                sessionRecorder?.log(
-                    "WIRING: advanceLocalFileQueue EXIT ok=false error='\(msg)'"
-                )
-                // Stop advancing — user can re-pick from Recents or pick a new file.
+                handleAdvanceStartFailure(error, url: nextURL, index: nextIdx, direction: direction)
             }
         }
+    }
+
+    /// PUB.5 (ultra-review): a mid-queue file failed to start. The chrome for
+    /// `index` was already published, so commit the index (chrome-consistent),
+    /// toast the failure (§9.4, 4 s auto-dismiss), and try the NEXT entry in
+    /// the same direction — terminating at queue end (`endSession`) or the
+    /// first playable file. Each broken file gets its own named toast.
+    @MainActor
+    private func handleAdvanceStartFailure(
+        _ error: Error, url: URL, index: Int, direction: LocalFileQueueDirection
+    ) {
+        let msg = error.localizedDescription
+        lfLogger.error("[LF.5] audio router restart failed: \(msg, privacy: .public)")
+        sessionRecorder?.log("WIRING: advanceLocalFileQueue EXIT ok=false error='\(msg)'")
+        userFacingErrorSubject.send(.localFilePlaybackFailed(fileName: url.lastPathComponent))
+        nowPlaying.setTrackIndex(index)
+        advanceLocalFileQueue(direction: direction)
     }
 
     // MARK: - LF.5.fix transport controls (D-LF5-3)
@@ -444,19 +463,22 @@ extension VisualizerEngine: LocalFilePreparing {
     /// artwork flash documented on `currentTrackArtworkData`).
     @MainActor
     private func publishLocalFileTrackSurface(identity: TrackIdentity) {
-        // Title-first.
-        currentTrack = TrackMetadata(
-            title: identity.title,
-            artist: identity.artist,
-            album: identity.album,
-            duration: identity.duration,
-            source: .unknown
+        // R3.1: one paired publish — title + artwork in a single tick (the
+        // index is caller-managed on the LF paths, so it is passed through
+        // unchanged). The artwork is a synchronous disk read on the LF
+        // persistent cache — ~5–20 ms warm, bounded once per track change;
+        // failures surface as nil → the chrome's fallback glyph.
+        nowPlaying.publishTrack(
+            TrackMetadata(
+                title: identity.title,
+                artist: identity.artist,
+                album: identity.album,
+                duration: identity.duration,
+                source: .unknown
+            ),
+            index: nowPlaying.currentTrackIndex,
+            artwork: lfPersistentArtworkData(for: identity)
         )
-        // Artwork-second. Synchronous disk read on the LF persistent cache —
-        // ~5–20 ms on warm OS file cache (post-LF.5 prep), bounded once per
-        // track change. Failures (no cache, missing entry, art-free track)
-        // surface as nil, which the chrome renders as the fallback glyph.
-        currentTrackArtworkData = lfPersistentArtworkData(for: identity)
     }
 
     /// Look up the LF.5-cached artwork bytes for a synthetic `local:sha256:`

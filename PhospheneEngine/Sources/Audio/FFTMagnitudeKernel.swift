@@ -5,8 +5,17 @@
 // they silently drifted (offline ran 16× hot for months, saturating the mood classifier's
 // flux input). This kernel is that formula — plus the vDSP FFT-setup lifecycle and the
 // per-call scratch — factored out once so the two paths, plus the CorpusCensusRunner
-// mirror, physically cannot diverge again. Change the magnitude formula here or nowhere;
-// the divergence-guard test (FFTRegressionTests) fails if a second copy reappears.
+// mirror, cannot diverge again. Change the magnitude formula here first; the
+// divergence-guard test (FFTRegressionTests) covers the live/offline pair.
+//
+// PUB.4 honesty note (ultra-review): two hand-copies of the formula survive
+// OUTSIDE this kernel's coverage, each annotated at its site:
+//   - GridOnsetCalibrator.computeMagnitudes — formula-IDENTICAL duplicate
+//     (|FFT|·2/fftSize); a mechanical port candidate, not a drift risk today.
+//   - StemAnalyzer+RichMetadata.computeMagnitudes — DELIBERATELY different
+//     scale (sqrt(power/fftSize) = |FFT|/32, i.e. 16× this kernel): per-stem
+//     AGC seeds were calibrated at that scale. Porting it requires a
+//     stem-feature regression pass, not a drop-in swap.
 
 import Accelerate
 import Foundation
