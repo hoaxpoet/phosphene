@@ -49,7 +49,10 @@ final class PreparationErrorViewModel: ObservableObject {
     private var totalTrackCount: Int = 0
 
     // Timing
-    private var preparationStartDate = Date()
+    /// Internal (not private) so tests can rewind it to exercise the
+    /// elapsed-time rules deterministically (PUB.5 — the Rule 5/Rule 4
+    /// ordering regression) instead of sleeping 90–120 s.
+    var preparationStartDate = Date()
     private var firstTrackReadyDate: Date?
     private var hasRateLimitSignal = false
 
@@ -145,16 +148,22 @@ final class PreparationErrorViewModel: ObservableObject {
             return
         }
 
-        // Rule 4: First track slow (>90s without any ready track).
+        // Rule 5 BEFORE Rule 4 (PUB.5, ultra-review): both share the
+        // `firstTrackReadyDate == nil` condition, so with the slow-banner
+        // checked first the spec'd 2-minute escape was unreachable dead code —
+        // any elapsed > 120 also satisfied > 90 and returned early. The more
+        // severe timeout must win.
+        // Rule 5: Total timeout (>120s without progressive-ready) — the
+        // UX_SPEC escape hatch offering reactive mode.
         let elapsed = Date().timeIntervalSince(preparationStartDate)
-        if firstTrackReadyDate == nil, elapsed > 90 {
-            presentationState = .banner(.preparationSlowOnFirstTrack(elapsedSeconds: Int(elapsed)))
+        if firstTrackReadyDate == nil, elapsed > 120 {
+            presentationState = .banner(.preparationTotalTimeout)
             return
         }
 
-        // Rule 5: Total timeout (>120s without progressive-ready).
-        if firstTrackReadyDate == nil, elapsed > 120 {
-            presentationState = .banner(.preparationTotalTimeout)
+        // Rule 4: First track slow (>90s without any ready track).
+        if firstTrackReadyDate == nil, elapsed > 90 {
+            presentationState = .banner(.preparationSlowOnFirstTrack(elapsedSeconds: Int(elapsed)))
             return
         }
 

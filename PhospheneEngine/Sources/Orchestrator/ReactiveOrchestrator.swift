@@ -38,7 +38,7 @@ public enum ReactiveAccumulationState: String, Sendable, Hashable, Codable {
 
 // MARK: - ReactiveDecision
 
-/// A suggestion returned by `ReactiveOrchestrating.evaluate()` for a single call.
+/// A suggestion returned by `DefaultReactiveOrchestrator.evaluate()` for a single call.
 public struct ReactiveDecision: Sendable {
     /// Preset to switch to, or nil when the orchestrator recommends holding the current preset.
     public let suggestedPreset: PresetDescriptor?
@@ -66,51 +66,12 @@ public struct ReactiveDecision: Sendable {
     }
 }
 
-// MARK: - ReactiveOrchestrating
-
-/// Protocol for reactive orchestrator implementations.
-///
-/// Conforming types must be `Sendable`. `evaluate()` must be a pure function:
-/// no `Date.now()`, no randomness, no external mutable state reads.
-public protocol ReactiveOrchestrating: Sendable {
-
-    // swiftlint:disable function_parameter_count
-    /// Evaluate live MIR data and suggest a preset switch if warranted.
-    ///
-    /// - Parameters:
-    ///   - liveMood: Current `EmotionalState` from the live mood classifier.
-    ///   - liveBoundary: Latest `StructuralPrediction` from the live MIR pipeline.
-    ///   - elapsedSessionTime: Seconds since the reactive session began (wall-clock).
-    ///   - currentPreset: Currently displayed preset, or nil if none has been set.
-    ///   - catalog: Full preset catalog to score against.
-    ///   - deviceTier: Apple Silicon generation for complexity-cost exclusion gating.
-    ///   - includeUncertifiedPresets: When `true`, uncertified presets are eligible for
-    ///     selection. Mirrors `SettingsStore.showUncertifiedPresets`. Default `false`.
-    ///   - liveStemFeatures: Live `StemFeatures` snapshot from the real-time stem analyzer.
-    ///     Pass `nil` until the analyzer has converged (~10 s). When non-nil, stem deviation
-    ///     fields are used for scoring, making stem-affinity-bearing presets eligible
-    ///     for selection in reactive mode (QR.2/D-080).
-    ///   - currentTrackBeatIrregular: Beat-regularity of the live track from the
-    ///     cached grids (FBS/D-154). `true` ⇒ presets declaring
-    ///     `requires_regular_beat` are hard-excluded; `nil` = unknown (permissive).
-    /// - Returns: A `ReactiveDecision` — `suggestedPreset` is nil when holding.
-    func evaluate(
-        liveMood: EmotionalState,
-        liveBoundary: StructuralPrediction,
-        elapsedSessionTime: TimeInterval,
-        currentPreset: PresetDescriptor?,
-        catalog: [PresetDescriptor],
-        deviceTier: DeviceTier,
-        includeUncertifiedPresets: Bool,
-        liveStemFeatures: StemFeatures?,
-        currentTrackBeatIrregular: Bool?
-    ) -> ReactiveDecision
-    // swiftlint:enable function_parameter_count
-}
-
 // MARK: - DefaultReactiveOrchestrator
 
-/// Concrete `ReactiveOrchestrating` implementation.
+/// The reactive orchestrator (PUB.4: its single-conformer ceremony protocol
+/// `ReactiveOrchestrating` was deleted — wire this concrete type directly).
+/// `evaluate()` is a pure function: no `Date.now()`, no randomness, no
+/// external mutable state reads.
 ///
 /// **Accumulation gating:** the first 15 s (`.listening`) always hold.
 /// Confidence ramps 0 → 0.3 during 0–15 s and 0.3 → 1.0 during 15–30 s;
@@ -125,7 +86,7 @@ public protocol ReactiveOrchestrating: Sendable {
 /// regardless of score gap, since there is nothing to compare against.
 ///
 /// See D-036 for design rationale.
-public struct DefaultReactiveOrchestrator: ReactiveOrchestrating {
+public struct DefaultReactiveOrchestrator: Sendable {
 
     // MARK: - Tuning constants
 
@@ -158,9 +119,28 @@ public struct DefaultReactiveOrchestrator: ReactiveOrchestrating {
         self.scorer = scorer
     }
 
-    // MARK: - ReactiveOrchestrating
+    // MARK: - Evaluate
 
     // swiftlint:disable function_parameter_count
+    /// Evaluate live MIR data and suggest a preset switch if warranted.
+    ///
+    /// - Parameters:
+    ///   - liveMood: Current `EmotionalState` from the live mood classifier.
+    ///   - liveBoundary: Latest `StructuralPrediction` from the live MIR pipeline.
+    ///   - elapsedSessionTime: Seconds since the reactive session began (wall-clock).
+    ///   - currentPreset: Currently displayed preset, or nil if none has been set.
+    ///   - catalog: Full preset catalog to score against.
+    ///   - deviceTier: Apple Silicon generation for complexity-cost exclusion gating.
+    ///   - includeUncertifiedPresets: When `true`, uncertified presets are eligible for
+    ///     selection. Mirrors `SettingsStore.showUncertifiedPresets`. Default `false`.
+    ///   - liveStemFeatures: Live `StemFeatures` snapshot from the real-time stem analyzer.
+    ///     Pass `nil` until the analyzer has converged (~10 s). When non-nil, stem deviation
+    ///     fields are used for scoring, making stem-affinity-bearing presets eligible
+    ///     for selection in reactive mode (QR.2/D-080).
+    ///   - currentTrackBeatIrregular: Beat-regularity of the live track from the
+    ///     cached grids (FBS/D-154). `true` ⇒ presets declaring
+    ///     `requires_regular_beat` are hard-excluded; `nil` = unknown (permissive).
+    /// - Returns: A `ReactiveDecision` — `suggestedPreset` is nil when holding.
     public func evaluate(
         liveMood: EmotionalState,
         liveBoundary: StructuralPrediction,

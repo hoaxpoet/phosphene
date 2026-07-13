@@ -80,8 +80,35 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Mirrors `SettingsStore.showUncertifiedPresets`; pushed via `applyShowUncertifiedPresets(_:)`.
     var showUncertifiedPresets: Bool = false
 
-    /// Current track metadata from Now Playing.
-    @Published var currentTrack: TrackMetadata?
+    /// R3.1 (PUB.9): the now-playing chrome surface — single owner of
+    /// currentTrack / currentTrackArtworkData / currentTrackIndex /
+    /// preFetchedProfile with paired publishes and the one session-boundary
+    /// clear (structurally closes the BUG-024 class for these fields).
+    /// Views bind `nowPlaying.$x`; engine code mutates via its methods.
+    /// `objectWillChange` is bridged into the engine's in init phase 3 so
+    /// existing whole-engine observers keep re-rendering.
+    let nowPlaying = NowPlayingSurface()
+
+    /// R3.2 (PUB.10): the capture/signal-chain surface — single owner of
+    /// audioSignalState / signalHealth / hasScreenCapturePermission with
+    /// semantic mutators (`isCapturing` stays engine-side, see the child's
+    /// file header). Views bind `captureState.$x`; engine code mutates via
+    /// its methods. Bridged into the engine's `objectWillChange` alongside
+    /// `nowPlaying` in init phase 3.
+    let captureState = CaptureStateSurface()
+
+    /// Read-only forwarders — the historical names, kept so the ~20 read
+    /// sites across the engine extensions stay unchanged (writes go through
+    /// `nowPlaying`'s mutators; the compiler rejects assignment here).
+    var currentTrack: TrackMetadata? { nowPlaying.currentTrack }
+
+    /// One-shot user-facing error events from engine paths that have no other
+    /// UI surface (PUB.5 — first consumer: local-file playback start failures,
+    /// which previously died in os.log while the user sat on a silent
+    /// PlaybackView). `PlaybackView` injects this into `PlaybackErrorBridge`,
+    /// which resolves copy + severity and enqueues the §9.4 toast. Send on
+    /// the MainActor.
+    let userFacingErrorSubject = PassthroughSubject<UserFacingError, Never>()
 
     /// Raw album-artwork bytes for the live track (PNG / JPEG, depending on
     /// container). LF.6: populated alongside `currentTrack` for local-file
@@ -90,11 +117,8 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Spotify Web API + iTunes Search artwork-URL fetch.
     ///
     /// **Invariant:** updated in the same MainActor tick as `currentTrack`
-    /// — title-first then artwork-second — so chrome consumers binding to
-    /// both don't briefly render the previous track's artwork against the
-    /// new track's title (or vice versa). See `handleLocalFileReady()` /
-    /// `advanceLocalFileQueue(direction:)` for the LF write sites.
-    @Published var currentTrackArtworkData: Data?
+    /// — title-first then artwork-second (see `NowPlayingSurface`).
+    var currentTrackArtworkData: Data? { nowPlaying.currentTrackArtworkData }
 
     /// Most-recently-resolved canonical `TrackIdentity` for the live track.
     /// Set by the track-change handler in `VisualizerEngine+Capture.swift`
@@ -119,10 +143,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// `currentPreset(at:)` / `currentTrackIndexInPlan()`. QR.4 / D-091 — replaces
     /// the lowercased title+artist string match in `PlaybackChromeViewModel`,
     /// which silently failed on covers/remasters.
-    @Published var currentTrackIndex: Int?
+    var currentTrackIndex: Int? { nowPlaying.currentTrackIndex }
 
     /// Pre-fetched profile from external APIs.
-    @Published var preFetchedProfile: PreFetchedTrackProfile?
+    var preFetchedProfile: PreFetchedTrackProfile? { nowPlaying.preFetchedProfile }
 
     /// Live mood classification from MoodClassifier (updated per frame).
     @Published var currentMood: EmotionalState = .neutral
@@ -140,10 +164,12 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     @Published var isCapturing = false
 
     /// Whether screen capture permission has been granted.
-    @Published var hasScreenCapturePermission = false
+    /// R3.2: read-only forwarder; mutate via `captureState`.
+    var hasScreenCapturePermission: Bool { captureState.hasScreenCapturePermission }
 
     /// Current audio signal state — `.silent` indicates DRM-triggered tap silencing.
-    @Published var audioSignalState: AudioSignalState = .active
+    /// R3.2: read-only forwarder; mutate via `captureState`.
+    var audioSignalState: AudioSignalState { captureState.audioSignalState }
 
     /// When true, the ray march G-buffer debug visualization is active.
     /// gbuf2 is copied directly to the drawable — bypassing lighting/SSGI/ACES —
@@ -432,11 +458,6 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Nil in test/headless contexts where no scheduler is wired. Increment 6.3.
     var mlDispatchScheduler: MLDispatchScheduler?
 
-    /// Wall-clock timestamp of when the current stem dispatch was first requested.
-    /// Set at the start of the pending window; cleared when the dispatch fires.
-    /// Nil when no dispatch is pending (timer has not yet fired, or last dispatch completed).
-    var pendingDispatchStartTime: TimeInterval?
-
     /// Beat This! analyzer used for live tap audio analysis. Allocated lazily on first
     /// use in `runLiveBeatAnalysisIfNeeded()` — weight loading is heavy.
     var liveBeatGridAnalyzer: DefaultBeatGridAnalyzer?
@@ -445,22 +466,64 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// path. Eager-init alongside the LF beat-grid analyzer; nil → empty series.
     var liveFamilyAnalyzer: InstrumentFamilyAnalyzer?
 
+    // MARK: - Cross-thread per-track analysis state (BUG-069)
+    //
+    // These four fields cross MainActor (track-change resets in
+    // `resetStemPipeline`) ↔ the serial analysis queue (~94 Hz reads /
+    // increments) ↔ stem-dispatch completion closures. They follow the
+    // `tapSampleRate` lock-accessor pattern above: all access goes through the
+    // computed properties, guarded by `analysisStateLock`. The Array is the
+    // load-bearing case — an unguarded reassign concurrent with a read is
+    // memory-unsafe (CoW storage can deallocate mid-read); the scalars were
+    // stale-read races. Compound updates (`+= 1`, check-then-set) remain two
+    // lock acquisitions: benign here because each field has a single writing
+    // queue for increments and only track-change resets cross it — worst case
+    // is one extra beat-analysis attempt or one repeated recalibration guard
+    // read, never memory unsafety.
+    private let analysisStateLock = NSLock()
+
+    /// Wall-clock timestamp of when the current stem dispatch was first requested.
+    /// Set at the start of the pending window; cleared when the dispatch fires.
+    /// Nil when no dispatch is pending (timer has not yet fired, or last dispatch completed).
+    /// Guarded by `analysisStateLock` (BUG-069).
+    var pendingDispatchStartTime: TimeInterval? {
+        get { analysisStateLock.withLock { _pendingDispatchStartTime } }
+        set { analysisStateLock.withLock { _pendingDispatchStartTime = newValue } }
+    }
+    private var _pendingDispatchStartTime: TimeInterval?
+
     /// IFC.4 (D-177) — the active track's preview-derived instrument-family
     /// activity series (Layer 5a). Installed at track change from the cache;
     /// sampled by playback position each analysis frame. Empty → family fields
     /// clear to zero. Cleared on every track-change path (anti-leak, §What NOT To Do).
-    var currentFamilySeries: [InstrumentFamilyActivity] = []
+    /// Guarded by `analysisStateLock` (BUG-069): reassigned on MainActor while
+    /// read at ~94 Hz on the analysis queue.
+    var currentFamilySeries: [InstrumentFamilyActivity] {
+        get { analysisStateLock.withLock { _currentFamilySeries } }
+        set { analysisStateLock.withLock { _currentFamilySeries = newValue } }
+    }
+    private var _currentFamilySeries: [InstrumentFamilyActivity] = []
 
     /// Number of live Beat This! analysis attempts made for the current track.
     /// Reset to 0 on `resetStemPipeline(for:)`. Allows one retry at 20 s if the
     /// first attempt at 10 s returns an empty grid (e.g. quiet intros, complex
     /// meters like Money 7/4 that Beat This! misses in a short window).
-    var liveBeatAnalysisAttempts: Int = 0
+    /// Guarded by `analysisStateLock` (BUG-069).
+    var liveBeatAnalysisAttempts: Int {
+        get { analysisStateLock.withLock { _liveBeatAnalysisAttempts } }
+        set { analysisStateLock.withLock { _liveBeatAnalysisAttempts = newValue } }
+    }
+    private var _liveBeatAnalysisAttempts: Int = 0
 
     /// Whether the BUG-007.9 hybrid runtime recalibration has fired for the
     /// current track. One-shot: set true after a successful recalibration
     /// (or a deliberate skip). Reset to false in `resetStemPipeline(for:)`.
-    var runtimeRecalibrationDone: Bool = false
+    /// Guarded by `analysisStateLock` (BUG-069).
+    var runtimeRecalibrationDone: Bool {
+        get { analysisStateLock.withLock { _runtimeRecalibrationDone } }
+        set { analysisStateLock.withLock { _runtimeRecalibrationDone = newValue } }
+    }
+    private var _runtimeRecalibrationDone: Bool = false
 
     // MARK: - Stem Per-Frame Analysis State
     //
@@ -589,7 +652,8 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     let signalHealthMonitor = SignalHealthMonitor()
 
     /// Latest classified signal health, surfaced in the debug overlay (ASH.1).
-    @Published var signalHealth = SignalHealth()
+    /// R3.2: read-only forwarder; mutate via `captureState`.
+    var signalHealth: SignalHealth { captureState.signalHealth }
 
     /// True when the active session source is Spotify — selects the Spotify
     /// "Normalize Volume" remediation copy for the ASH.2 low-level nudge.
@@ -668,6 +732,12 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     @Published var livePlannedSession: PlannedSession?
 
     /// Retains the Combine subscription that triggers `buildPlan()` on `.ready`.
+    /// R3.1/R3.2: forwards the child surfaces' objectWillChange (NowPlaying +
+    /// CaptureState, one merged subscription) into the engine's, so existing
+    /// whole-engine observers (@EnvironmentObject views reading the read-only
+    /// forwarders) keep re-rendering on child changes.
+    var nowPlayingBridgeCancellable: AnyCancellable?
+
     var stateCancellable: AnyCancellable?
 
     /// Retains the subscription that calls `extendPlan()` as readiness level advances.
@@ -791,7 +861,20 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             fatalError("Metal initialization failed — Apple Silicon with Metal 3.1+ required")
         }
 
-        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat)
+        // PUB.7 (Matt's confirmed Decision 4): hot-reload is LIVE. The loader
+        // watches the user preset directory — drop a `.metal` (+ optional
+        // `.json` sidecar) there and every save recompiles + swaps it in
+        // without relaunching; a broken save keeps the last-good compile and
+        // toasts (wired below, post-init). Directory created on first launch.
+        let userPresetsDir = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("Phosphene/Presets", isDirectory: true)
+        if let userPresetsDir {
+            try? FileManager.default.createDirectory(
+                at: userPresetsDir, withIntermediateDirectories: true)
+        }
+        let loader = PresetLoader(
+            device: ctx.device, pixelFormat: ctx.pixelFormat, watchDirectory: userPresetsDir)
 
         guard let pipe = try? RenderPipeline(
             context: ctx,
@@ -919,6 +1002,12 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             self.showPresetName(current.descriptor.name)
         }
 
+        // PUB.7: a broken hot-reload save toasts (§9.4) instead of dying in
+        // os.log — the last-good compile keeps rendering either way.
+        loader.onPresetLoadFailed = { [weak self] presetName, _ in
+            self?.userFacingErrorSubject.send(.presetCompileFailed(presetName: presetName))
+        }
+
         if #available(macOS 14.2, *) {
             self.router = setupAudioRouting(audioBuffer: buf, fftProcessor: fft)
         }
@@ -938,7 +1027,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
             fetcher: streamingArtworkFetcher,
             diskCache: streamingArtworkDiskCache,
             publish: { [weak self] data in
-                self?.currentTrackArtworkData = data
+                self?.nowPlaying.setArtwork(data)
             }
         )
 
@@ -948,6 +1037,11 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         // the session to `.playing` directly. For streaming sessions, `buildPlan()`
         // produces the planned-session structure.
         // Also reset currentSessionPlanSeed on .connecting so each session gets a fresh seed.
+        // R3.1/R3.2: bridge the child surfaces' change signals into the engine's.
+        nowPlayingBridgeCancellable = nowPlaying.objectWillChange
+            .merge(with: captureState.objectWillChange)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+
         let mgr = sessionManager
         stateCancellable = mgr.$state
             .sink { [weak self] newState in
@@ -964,9 +1058,13 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
                     // fetch from the prior session so a slow CDN response
                     // can never land on the new session's chrome.
                     self.streamingArtworkPublisher?.update(for: nil)
-                    self.currentTrackArtworkData = nil
+                    self.clearSessionScopedSurfaces()
                 }
                 if newState == .preparing {
+                    // PUB.2 (BUG-024 class): LF sessions enter at .preparing
+                    // WITHOUT a .connecting emit, so the session-boundary
+                    // clear must fire here too (idempotent after .connecting).
+                    self.clearSessionScopedSurfaces()
                     // LF.5.fix.3-C: each new session entry clears the
                     // duplicate-emission guard so the next `.ready` for a
                     // genuinely new URL proceeds normally. Within a session,
@@ -1050,6 +1148,28 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         BUG012Probe.recordVisualizerEngineInit()
     }
     // swiftlint:enable cyclomatic_complexity function_body_length
+
+    /// PUB.2 (BUG-024 class, ultra-review app-layer findings) — the one
+    /// session-boundary clear for every session-scoped surface, called on
+    /// `.connecting` (streaming entry) AND `.preparing` (LF entry — LF
+    /// sessions never emit `.connecting`). Clears the chrome siblings in the
+    /// same MainActor tick (title + index + profile + resolved identity, so
+    /// no consumer observes a half-updated surface against the artwork clear)
+    /// and the per-session orchestrator plan (a stale `livePlan` from the
+    /// prior session could otherwise drive old segments or block the
+    /// reactive fallback; `preFetchedProfile` from a streaming session
+    /// otherwise suppresses live key/BPM for a following LF session).
+    /// Idempotent — the double fire on .connecting → .preparing is harmless.
+    private func clearSessionScopedSurfaces() {
+        nowPlaying.clear()   // R3.1: track + artwork + index + profile, one tick
+        lastResolvedTrackIdentity = nil
+        orchestratorLock.withLock {
+            livePlan = nil
+            liveTrackPlanIndex = nil
+        }
+        livePlannedSession = nil
+        reactiveSessionStart = nil
+    }
 
     /// BUG-012 instrumentation — record VisualizerEngine teardown. If a crash
     /// fires during teardown, the deinit log line lands in `session.log`

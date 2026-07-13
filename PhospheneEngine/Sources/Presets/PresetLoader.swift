@@ -33,6 +33,16 @@ public final class PresetLoader: @unchecked Sendable {
     /// Fires on the main queue when presets are reloaded (hot-reload).
     public var onPresetsReloaded: (() -> Void)?
 
+    /// Fires on the main queue when a preset in the watch directory fails to
+    /// load (shader compile error, PUB.7). Parameters: preset base name, and a
+    /// short reason. The full compiler diagnostics are in os.log
+    /// (subsystem com.phosphene, category PresetLoader) — the callback exists
+    /// so the app can point a contributor there instead of failing silently.
+    /// Assigned by the app AFTER init, so bundle-load failures at startup
+    /// (gated separately by PresetLoaderCompileFailureTest) never fire it;
+    /// hot-reload saves do.
+    public var onPresetLoadFailed: ((String, String) -> Void)?
+
     // MARK: - Types
 
     /// Compiled pipeline states for the mv_warp pass (MV-2, D-027).
@@ -271,6 +281,12 @@ public final class PresetLoader: @unchecked Sendable {
 
             // Compile the shader.
             guard let pipelines = compileShader(at: metalFile, descriptor: descriptor) else {
+                // PUB.7: surface the failure (hot-reload dev loop) — the
+                // last-good compile of this preset stays active.
+                if let onPresetLoadFailed {
+                    let name = baseName
+                    DispatchQueue.main.async { onPresetLoadFailed(name, "shader compile failed") }
+                }
                 continue
             }
 
@@ -736,26 +752,31 @@ public final class PresetLoader: @unchecked Sendable {
     /// pale near-white (verified). (Earlier this returned rgba16f for DB — that was
     /// wrong; reverted once the no-decay loop was matched to the source.)
     func feedbackFormat(_ descriptor: PresetDescriptor) -> MTLPixelFormat {
-        // Fata Morgana (D-139): butterchurn's feedback is LINEAR 8-bit (gl.RGBA /
-        // UNSIGNED_BYTE), not sRGB. Phosphene's drawable is `.bgra8Unorm_srgb`, so
-        // using it for the feedback accumulated the decay + additive blobs in sRGB
-        // space — a divergence from the source. Use the non-sRGB `.bgra8Unorm` for the
-        // feedback textures (the blit still targets the sRGB drawable for display).
-        if descriptor.name == "Fata Morgana" { return .bgra8Unorm }
-        // Nacre (NACRE.2): HDR float feedback so the iridescent rims + luminous core
-        // accumulate unclamped (real bloom; no banding in the slow palette rotation).
-        // Safe here — unlike Dragon Bloom's no-decay loop (which over-accumulated to
-        // pale white on a float buffer, per above), Nacre uses DECAY feedback
-        // (kNacreDecay 0.94), which bounds the accumulation.
-        if descriptor.name == "Nacre" { return .rgba16Float }
-        // Floret (FLORET.2a): HDR float feedback — same register as Nacre (decay-bounded),
-        // headroom for the FLORET.3 iridescence uplift. The custom warp clamps [0,1] today.
-        if descriptor.name == "Floret" { return .rgba16Float }
-        // Glaze (GLAZE.2a): HDR float feedback (headroom for the greenlit uplift B glossy
-        // bloom). Safe — Glaze uses DECAY feedback (kGlazeDecay 0.94) which bounds the
-        // accumulation (the base clamps to [0,1]; uplift B re-unclamps with a bloom).
-        if descriptor.name == "Glaze" { return .rgba16Float }
-        return pixelFormat
+        // PUB.4 (ultra-review): the sidecar `feedback_pixel_format` field is
+        // authoritative — a contributor opts into HDR/linear feedback without
+        // engine edits, and a preset rename can no longer silently change the
+        // pixel format. Rationale per preset lives at the sidecar/design doc:
+        //   - Fata Morgana `bgra8Unorm` (D-139): butterchurn feedback is LINEAR
+        //     8-bit; accumulating in the sRGB drawable format diverged from source.
+        //   - Nacre/Floret/Glaze `rgba16Float`: HDR bloom headroom — safe only
+        //     because their DECAY feedback bounds accumulation. A faithful
+        //     no-decay warp (Dragon Bloom, D-137) must stay on the default:
+        //     the 8-bit per-frame clamp is load-bearing (float over-accumulates
+        //     to pale near-white, verified).
+        if let override = descriptor.feedbackPixelFormat {
+            switch override {
+            case .bgra8Unorm:  return .bgra8Unorm
+            case .rgba16Float: return .rgba16Float
+            }
+        }
+        // DEPRECATED fallback (delete once no shipped sidecar relies on it):
+        // the pre-PUB.4 display-name matches, kept so an out-of-tree preset
+        // copy without the new field renders as before.
+        switch descriptor.name {
+        case "Fata Morgana":             return .bgra8Unorm
+        case "Nacre", "Floret", "Glaze": return .rgba16Float
+        default:                         return pixelFormat
+        }
     }
 
     private func makeWarpPipelines(

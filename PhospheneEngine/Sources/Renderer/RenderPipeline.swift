@@ -387,7 +387,11 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     }
 
     /// Cached offscreen target for the half-res direct path; (re)allocated lazily
-    /// in `drawDirect` when the scale or drawable size changes. Render-thread only.
+    /// in `drawDirect` when the scale or drawable size changes. Main-thread only —
+    /// `drawDirect` (via `draw(in:)`) and `setDirectRenderScale`'s eager pre-alloc
+    /// (via `applyPreset`, main-enforced) both run there, so no lock is needed;
+    /// the earlier "Render-thread only" wording implied a separate thread that
+    /// does not exist (PUB.5, ultra-review C7).
     var halfResTexture: MTLTexture?
     var halfResTextureSize: (width: Int, height: Int) = (0, 0)
 
@@ -625,9 +629,13 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     }
 
     /// Whether `draw(in:)` renders this frame, or skips it as a transient preset-SWAP
-    /// state. `applyPreset` (main thread) clears `activePasses` to `[]` before republishing
-    /// the new preset's passes at the very end, while `draw(in:)` runs concurrently on
-    /// MTKView's display-link thread. A frame that lands in that window must NOT render:
+    /// state. `applyPreset` (main thread, synchronous — enforced by its
+    /// `dispatchPrecondition` since PUB.5) clears `activePasses` to `[]` before
+    /// republishing the new preset's passes at the very end. `draw(in:)` runs on the
+    /// SAME main thread (default MTKView display-link config — the earlier
+    /// "display-link thread" wording here was wrong), so a frame interleaves with an
+    /// apply only across runloop yields / async dispatch boundaries, never mid-function.
+    /// A frame that lands in such a window must NOT render:
     /// `renderFrame` would fall through to `drawDirect` with the new preset's
     /// already-published direct pipeline, sending it to the 8-bit drawable — a benign stray
     /// frame for an 8-bit preset (the rare BUG-060 glitch), a hard format-mismatch GPU

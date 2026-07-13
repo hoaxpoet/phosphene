@@ -187,8 +187,10 @@ extension BeatDetector {
         var bpm = Float(60.0 / meanIOI)
         // Halving-only octave correction. Sub-80 doubling was deleted in QR.1
         // (D-079) — Pyramid Song genuinely runs at ~68 BPM and any track in
-        // [40, 80) BPM is preserved. This matches BeatGrid.halvingOctaveCorrected.
-        if bpm > 160 { bpm /= 2 }
+        // [40, 80) BPM is preserved. Threshold shared with
+        // BeatGrid.halvingOctaveCorrected (PUB.2 — was a hardcoded 160 that
+        // silently diverged from the offline 175, halving fast-rock tracks).
+        if bpm > Float(BeatGrid.halvingThresholdBPM) { bpm /= 2 }
         return bpm
     }
 
@@ -260,10 +262,11 @@ extension BeatDetector {
             fps: fps
         )
 
-        // Halving-only octave correction (matches computeRobustBPM and
-        // BeatGrid.halvingOctaveCorrected). Sub-80 doubling deleted in QR.1
-        // (D-079) so genuinely slow tracks (Pyramid Song ~68 BPM) survive.
-        if bpm > 160 { bpm /= 2 }
+        // Halving-only octave correction (shares BeatGrid.halvingThresholdBPM
+        // with computeRobustBPM and halvingOctaveCorrected — PUB.2). Sub-80
+        // doubling deleted in QR.1 (D-079) so genuinely slow tracks
+        // (Pyramid Song ~68 BPM) survive.
+        if bpm > Float(BeatGrid.halvingThresholdBPM) { bpm /= 2 }
 
         // Confidence = best / mean / 3, clamped (formula unchanged; mean now
         // comes from the single sweep above instead of a second identical loop).

@@ -10,6 +10,7 @@
 //   7. Offline takes priority over an in-progress download.
 
 import Combine
+import Foundation
 import Session
 import Shared
 import Testing
@@ -79,6 +80,32 @@ struct PreparationErrorViewModelTests {
         await Task.yield()
         // All tracks still queued — no download started, so no offline error.
         #expect(bundle.sut.presentationState == .normal)
+    }
+
+    // PUB.5 regression (ultra-review): Rule 5 (the 120 s total-timeout escape
+    // offering reactive mode) was unreachable dead code — Rule 4 (>90 s slow
+    // banner) shares the same firstTrackReadyDate == nil condition and
+    // returned first for every elapsed > 120. The severe timeout must win.
+    @Test("elapsed >120s without a ready track → totalTimeout banner, not the slow banner")
+    func test_totalTimeout_winsOverSlowBanner() async {
+        let track = makeTrack("Track 1")
+        let bundle = makeSUT(statuses: [track: .queued], totalTrackCount: 1)
+        bundle.sut.preparationStartDate = Date().addingTimeInterval(-125)
+        bundle.subject.send([track: .downloading(progress: 0.1)])
+        await Task.yield()
+        #expect(bundle.sut.presentationState == .banner(.preparationTotalTimeout))
+    }
+
+    @Test("elapsed 90–120s without a ready track → the slow banner still fires")
+    func test_slowBanner_between90And120() async {
+        let track = makeTrack("Track 1")
+        let bundle = makeSUT(statuses: [track: .queued], totalTrackCount: 1)
+        bundle.sut.preparationStartDate = Date().addingTimeInterval(-95)
+        bundle.subject.send([track: .downloading(progress: 0.1)])
+        await Task.yield()
+        if case .banner(.preparationSlowOnFirstTrack) = bundle.sut.presentationState { } else {
+            Issue.record("Expected slow-first-track banner, got \(bundle.sut.presentationState)")
+        }
     }
 
     @Test("coming back online clears fullScreen networkOffline")
