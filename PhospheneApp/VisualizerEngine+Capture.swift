@@ -103,7 +103,7 @@ extension VisualizerEngine {
             self.signalHealthMonitor.updateContext(signalState: state, tapModeActive: tapMode)
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
-                self.audioSignalState = state
+                self.captureState.setSignalState(state)
                 self.sessionRecorder?.log("audio signal → \(state)")
                 switch state {
                 case .silent:

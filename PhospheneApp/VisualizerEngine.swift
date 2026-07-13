@@ -89,6 +89,14 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// existing whole-engine observers keep re-rendering.
     let nowPlaying = NowPlayingSurface()
 
+    /// R3.2 (PUB.10): the capture/signal-chain surface — single owner of
+    /// audioSignalState / signalHealth / hasScreenCapturePermission with
+    /// semantic mutators (`isCapturing` stays engine-side, see the child's
+    /// file header). Views bind `captureState.$x`; engine code mutates via
+    /// its methods. Bridged into the engine's `objectWillChange` alongside
+    /// `nowPlaying` in init phase 3.
+    let captureState = CaptureStateSurface()
+
     /// Read-only forwarders — the historical names, kept so the ~20 read
     /// sites across the engine extensions stay unchanged (writes go through
     /// `nowPlaying`'s mutators; the compiler rejects assignment here).
@@ -156,10 +164,12 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     @Published var isCapturing = false
 
     /// Whether screen capture permission has been granted.
-    @Published var hasScreenCapturePermission = false
+    /// R3.2: read-only forwarder; mutate via `captureState`.
+    var hasScreenCapturePermission: Bool { captureState.hasScreenCapturePermission }
 
     /// Current audio signal state — `.silent` indicates DRM-triggered tap silencing.
-    @Published var audioSignalState: AudioSignalState = .active
+    /// R3.2: read-only forwarder; mutate via `captureState`.
+    var audioSignalState: AudioSignalState { captureState.audioSignalState }
 
     /// When true, the ray march G-buffer debug visualization is active.
     /// gbuf2 is copied directly to the drawable — bypassing lighting/SSGI/ACES —
@@ -642,7 +652,8 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     let signalHealthMonitor = SignalHealthMonitor()
 
     /// Latest classified signal health, surfaced in the debug overlay (ASH.1).
-    @Published var signalHealth = SignalHealth()
+    /// R3.2: read-only forwarder; mutate via `captureState`.
+    var signalHealth: SignalHealth { captureState.signalHealth }
 
     /// True when the active session source is Spotify — selects the Spotify
     /// "Normalize Volume" remediation copy for the ASH.2 low-level nudge.
@@ -721,9 +732,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     @Published var livePlannedSession: PlannedSession?
 
     /// Retains the Combine subscription that triggers `buildPlan()` on `.ready`.
-    /// R3.1: forwards NowPlayingSurface.objectWillChange into the engine's,
-    /// so existing whole-engine observers (@EnvironmentObject views reading
-    /// the read-only forwarders) keep re-rendering on chrome changes.
+    /// R3.1/R3.2: forwards the child surfaces' objectWillChange (NowPlaying +
+    /// CaptureState, one merged subscription) into the engine's, so existing
+    /// whole-engine observers (@EnvironmentObject views reading the read-only
+    /// forwarders) keep re-rendering on child changes.
     var nowPlayingBridgeCancellable: AnyCancellable?
 
     var stateCancellable: AnyCancellable?
@@ -1025,8 +1037,9 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         // the session to `.playing` directly. For streaming sessions, `buildPlan()`
         // produces the planned-session structure.
         // Also reset currentSessionPlanSeed on .connecting so each session gets a fresh seed.
-        // R3.1: bridge the chrome child's change signal into the engine's.
+        // R3.1/R3.2: bridge the child surfaces' change signals into the engine's.
         nowPlayingBridgeCancellable = nowPlaying.objectWillChange
+            .merge(with: captureState.objectWillChange)
             .sink { [weak self] _ in self?.objectWillChange.send() }
 
         let mgr = sessionManager

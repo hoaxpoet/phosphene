@@ -37,7 +37,7 @@ final class FirstAudioDetector: ObservableObject {
     ///
     /// - Parameters:
     ///   - audioSignalStatePublisher: Publishes the current `AudioSignalState`.
-    ///     Typically `engine.$audioSignalState.eraseToAnyPublisher()`.
+    ///     Typically `engine.captureState.$audioSignalState.eraseToAnyPublisher()`.
     ///   - delayProvider: Injectable sleep; defaults to `RealDelay` (use
     ///     `InstantDelay` in tests to avoid 250 ms wall-clock waits).
     init(
