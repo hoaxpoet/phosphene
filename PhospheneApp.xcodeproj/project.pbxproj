@@ -35,6 +35,8 @@
 		A10031 /* VisualizerEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20031; };
 		K10090 /* NowPlayingSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20090; };
 		K10091 /* NowPlayingSurfaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20091; };
+		K10092 /* CaptureStateSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20092; };
+		K10093 /* CaptureStateSurfaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = K20093; };
 		A10032 /* VisualizerEngine+Audio.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20032; };
 		A10033 /* VisualizerEngine+Stems.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20033; };
 		A10034 /* VisualizerEngine+Presets.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20034; };
@@ -211,6 +213,8 @@
 		A20031 /* VisualizerEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VisualizerEngine.swift; sourceTree = "<group>"; };
 		K20090 /* NowPlayingSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingSurface.swift; sourceTree = "<group>"; };
 		K20091 /* NowPlayingSurfaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingSurfaceTests.swift; sourceTree = "<group>"; };
+		K20092 /* CaptureStateSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureStateSurface.swift; sourceTree = "<group>"; };
+		K20093 /* CaptureStateSurfaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureStateSurfaceTests.swift; sourceTree = "<group>"; };
 		A20032 /* VisualizerEngine+Audio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+Audio.swift"; sourceTree = "<group>"; };
 		A20033 /* VisualizerEngine+Stems.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+Stems.swift"; sourceTree = "<group>"; };
 		A20034 /* VisualizerEngine+Presets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "VisualizerEngine+Presets.swift"; sourceTree = "<group>"; };
@@ -451,6 +455,7 @@
 				A20002 /* ContentView.swift */,
 				A20031 /* VisualizerEngine.swift */,
 				K20090 /* NowPlayingSurface.swift */,
+				K20092 /* CaptureStateSurface.swift */,
 				A20032 /* VisualizerEngine+Audio.swift */,
 				A20033 /* VisualizerEngine+Stems.swift */,
 				A20034 /* VisualizerEngine+Presets.swift */,
@@ -715,6 +720,7 @@
 				J20003 /* PlaybackErrorConditionTrackerTests.swift */,
 				J20004 /* PlaybackErrorBridgeTests.swift */,
 				K20091 /* NowPlayingSurfaceTests.swift */,
+				K20093 /* CaptureStateSurfaceTests.swift */,
 				J200A2 /* PlaybackHealthToastTests.swift */,
 				J20005 /* ToastManagerConditionTests.swift */,
 				K20040 /* SettingsStoreTests.swift */,
@@ -856,6 +862,7 @@
 				A10002 /* ContentView.swift in Sources */,
 				A10031 /* VisualizerEngine.swift in Sources */,
 				K10090 /* NowPlayingSurface.swift in Sources */,
+				K10092 /* CaptureStateSurface.swift in Sources */,
 				A10032 /* VisualizerEngine+Audio.swift in Sources */,
 				A10033 /* VisualizerEngine+Stems.swift in Sources */,
 				A10034 /* VisualizerEngine+Presets.swift in Sources */,
@@ -1009,6 +1016,7 @@
 				J10003 /* PlaybackErrorConditionTrackerTests.swift in Sources */,
 				J10004 /* PlaybackErrorBridgeTests.swift in Sources */,
 				K10091 /* NowPlayingSurfaceTests.swift in Sources */,
+				K10093 /* CaptureStateSurfaceTests.swift in Sources */,
 				J100A2 /* PlaybackHealthToastTests.swift in Sources */,
 				J10005 /* ToastManagerConditionTests.swift in Sources */,
 				K10040 /* SettingsStoreTests.swift in Sources */,
