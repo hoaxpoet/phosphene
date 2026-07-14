@@ -199,9 +199,36 @@ None. Emission-only. Sky colour provides the ambient floor. The aurora is the li
 
 **Three-part concept bar (cleared).** (1) *Iconic subject at fidelity* — the AV.4 spike renders discrete curtains with negative space that read as aurora; feasibility demonstrated, not asserted. (2) *Clear musical role* — the sentence above (mid→dance, bass→brightness, drums→kink, vocals→hue, downbeat→stars). (3) *Infrastructure-feasible* — `curl_noise` + `fbm8` exist; one extra `fbm8` + one `curl_noise` per column, within the Tier-1 4.0 ms budget (perspective drape is the only part with a perf question — scope-gated in the AV.5 prompt DECISION).
 
+### 5.11 Streak-field reauthor (amended 2026-07-14 — AV.6, D-186)
+
+**Why (what AV.5 got wrong).** AV.5's §5.10 footprint model was built on a rendering core that never produced real fine filaments. The `aurora_tri_noise_2d` "volumetric march" was a bug'd port of nimitz: it sampled the noise at `(screen-x FIXED per fragment-column, altitude)` — a *vertical slice* through low-frequency noise — so it returned a smooth **wash**, not filaments. Every apparent "streak" in AV.5 was the **footprint band mask**, not the aurora texture. When AV.5 then replaced the hard footprint with a soft `fbm` field, the result read as **blobby fog** — "amorphous blobs with volume and shadow" (Matt, 2026-07-14, on the AV.5 real-audio GIF). The nimitz march works because it marches a view ray *at an angle* through a 3-D volume (`triNoise2d(bpos.zx)`), so the ray **crosses many filaments** as it rises; the AV.5 port collapsed that traversal (FA #73 — ported the shape, not the traversal).
+
+**The target (Matt's real-time footage, 2026-07-14 — the motion reference).** Aurora is a **mass of fine, translucent, vertical streaks**: many thin rays hanging like a curtain, **brightest at the lower edge** (near white-green), fading up through blue to a magenta crown, **stars visible between and through them**, per-streak brightness variation. **Flat and emissive** — no bright-core-to-dark-edge gradient (that reads as 3-D volume/shadow, the AV.5 fog failure). The curtain occupies **part** of the frame against dominant dark sky. **Streaky is correct** — Matt confirmed he liked the streaky earlier iterations; the failure was that the streaks were never *real fine translucent filaments*.
+
+**The fix — a real fine-streak field.** Generate genuine high-frequency vertical streaks — either the correctly-ported angled view-ray march, or (simpler, more controllable) a direct 2-D streak field: noise at `(x·HIGH_freq + curl/warp, y·LOW_freq + time)` so streaks are vertically coherent, many, and fine. Multiply by a soft **curtain envelope** (intense lower edge, soft top), a large-scale **concentration** field (negative space + curtain form), and the **altitude palette** (§5.10 green→violet→magenta, naturalistic); composite **translucent additive** so stars punch through. The AV.5 palette, audio routes + manifest, half-bar star blink, and perspective drape are **preserved**; only the aurora-generation core is rebuilt.
+
+**Musical-role sentence.** *When the music's harmonic body swells, the streak curtain brightens and its shimmer quickens and the bright regions sweep faster along the curtain; when it thins, the streaks settle to a slow shimmer and gentle drift — the curtain dances with the continuous energy envelope, while a bass transient flares the whole curtain, a rare drum accent kinks a fold through it, and each half-bar downbeat blinks the stars.*
+
+**Temporal contract (streak motion, multi-timescale — matching the footage's real-time motion).**
+- *Sub-second* → streak **shimmer/flicker** (fine per-streak brightness modulation; fast, low-amplitude).
+- *Continuous (mid activity)* → **sideways travel** of bright regions along the curtain + shimmer rate. Primary driver.
+- *Tens of seconds* → the whole curtain **drifts/undulates and re-forms** (curl-advected substrate).
+- *Bass transients* → whole-curtain brightness flare (breathing).
+- *Rare drum accents* → a fold/kink shudders through the curtain (rare-event gated, 1–2 s decay).
+- *Vocals pitch* → palette band shift along altitude.
+- *Half-bar downbeat (cached grid)* → staggered star blink (`f.bar_phase01`, `stemMix`-gated).
+- *Silence* → gentle shimmer + slow drift at base amplitude, non-black (D-037), no blink.
+
+**Three-part concept bar.** (1) *Iconic subject at fidelity* — the **real-time footage is the fidelity target** (fine translucent streaks); the target is proven real, and the direct-streak-field / correctly-ported-march techniques are established graphics (nimitz §1.1, Theunissen abs-of-difference §1.4). Implementation feasibility is the **AV.6 first-streak-render go/no-go** (task 2), grounded in the footage — not a pre-spiked claim. (2) *Clear musical role* — the sentence above. (3) *Infrastructure-feasible* — `curl_noise` + `fbm`/tri-noise exist; a 2-D streak field is **cheaper** than the 50-step march, within the Tier-1 4.0 ms budget.
+
+**Scope (Matt 2026-07-14): curtain of streaks only.** The horizontal **arc** and overhead radiating **corona** forms in the footage are out of scope for AV.6 (later increments if wanted); the corona's converging rays risk the festival-spotlight anti-reference (`09` / FM #14).
+
 ## 6. Anti-references and failure modes
 
 - **Full-field wash (the shipped AV.2/AV.3 look).** `F(x,y)` bright everywhere → a frame-filling veil with no discrete curtains and no negative space. THE reason for the AV.5 reauthor. The footprint must carve negative space.
+- **Blobby fog / "volume and shadow" (the AV.5 soft-veil dead-end).** A soft `fbm` concentration field with smooth bright-core-to-dark-edge falloff reads as 3-D shaded smoke, not aurora (FM #8 pillow-fog). Aurora is FLAT emissive fine filaments — no shading gradient. Fixed by the AV.6 streak-field (§5.11).
+- **Smooth wash from a collapsed march (the AV.5 core bug).** Sampling the noise at `(fixed-x, altitude)` traces a vertical slice → a smooth gradient with no fine streaks. Real filaments require an angled traversal that crosses many streaks, or a direct high-frequency streak field (§5.11).
+- **Solid opaque streaks.** Hard-masked, high-opacity streaks read as a painted "cartoon fill" (Matt's first AV.5 critique). Streaks must be translucent — stars and sky visible between and through them.
 - **Geometric spotlight beams.** Clean Gaussian vertical bands (the failed AV.4-early attempt) read as the festival-spotlight anti-reference `09` — stage lights, not aurora. Curtains must carry the organic ray texture, not clean falloffs.
 - **"Festival visual."** Beat-flashing aurora that pulses to every kick. Beat is accent-only (rare-event drum kink + half-bar star blink); mid-driven curl motion is the continuous primary. NOTE (AV.5): saturated multi-colour is now the *desired* palette — "not festival" is judged on structure/motion, not saturation.
 - **"Free-running sin oscillation."** Never `sin(time)` for primary motion (FA #33). Motion is curl-advected substrate, audio-scaled.
