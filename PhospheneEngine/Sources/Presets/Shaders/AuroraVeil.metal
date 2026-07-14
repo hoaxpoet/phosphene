@@ -114,6 +114,50 @@ constant float kAuroraDriftSpeedGain = 0.04;
 // the design budget — Tier 1 still well under 4.0 ms per §7.
 constant float kAuroraGain       = 2.4;
 
+// ── AV.3 (2026-07-14, Matt) — authentic aurora MOTION (the "dance") ──────────
+//
+// Matt M7: the AV.2.h aurora reads as the RIGHT look but too STATIC — it only
+// has the nimitz field's slow whole-field rotation. Real aurora dances via
+// (grounded in aurora-motion research 2026-07-14, Alaska GI / NOAA SWPC):
+//   • traveling waves ALONG the arc — "like a hand run along a curtain," the
+//     wave sweeps sideways;  • the sheet FOLDS/undulates;  • RAYS flicker;
+//   • the whole curtain PULSATES in brightness.
+// We add a traveling-ripple warp to the noise sample: a horizontal ray
+// displacement that varies with altitude and travels over time (the curtain
+// waves like fabric), plus a small altitude fold that travels along x. It is a
+// TRAVELLING SUBSTRATE WAVE (same category as the allowed `mm2(time*0.10)`
+// rotation — coherent field motion, not decorative free sin(time)), and its
+// amplitude is audio-gated (motionAmp) so it surges with the music and settles
+// (to a gentle base) when the music thins. NOT mv_warp (no persistence smear,
+// AV.2.2 lesson stands).
+constant float kAuroraWaveAmp    = 0.055;  // curtain ripple: horizontal ray sway (UV)
+constant float kAuroraWaveFreqY  = 3.2;    // ripples per unit altitude (vertical wavelength)
+constant float kAuroraWaveFreqX  = 2.4;    // fold wavelength along the arc
+constant float kAuroraWaveSpeed  = 0.85;   // wave travel speed along the curtain
+constant float kAuroraFoldAmp    = 0.22;   // altitude-fold amplitude (sheet undulation)
+constant float kAuroraMotionBase = 0.35;   // motion amplitude at silence (gently alive)
+constant float kAuroraMotionGain = 0.65;   // additional amplitude from mid activity
+// CURTAIN-BAND undulation — the dominant visible dance. The internal noise
+// warp averages out over the 50-step integration, so the BAND itself must
+// undulate: a traveling vertical wave of x lifts/folds the whole curtain
+// across the sky. This is what actually reads as "dancing" frame-to-frame.
+constant float kAuroraBandWaveAmp = 0.10;  // vertical undulation of the band (UV)
+constant float kAuroraBandFreq    = 4.5;   // undulations across screen width
+
+// ── AV.4 SPIKE (2026-07-14) — Lawlor footprint F(x) + Wittens curl motion ────
+// The reauthor's core: aurora emission = H(z) × F(x,y) (Lawlor). The old code
+// collapsed F(x,y) to FULL-FIELD noise (bright everywhere → the wash). Here
+// F(x) is a real FOOTPRINT — bright only along a few meandering bands, dark
+// between (negative space) — multiplied into the nimitz H(z)×texture so the
+// authentic look is kept while discrete curtains emerge. The footprint is
+// advected by curl_noise (Wittens vortical plasma motion, audio-scaled) so the
+// curtains DANCE with real curling flow, not sine-panning. Feasibility spike:
+// prove this reads as draping dancing curtains before the full reauthor.
+constant float kFootprintFreq    = 2.5;    // low freq → a few wide curtains
+constant float kFootprintCurlAmp = 0.30;   // curl advection strength (the dance)
+constant float kFootprintLo      = -0.05;  // below → dark negative space (fbm8 is ~[-1,1])
+constant float kFootprintHi      = 0.22;   // above → full curtain brightness
+
 // ── Multi-column geometry (AV.2) ─────────────────────────────────────────────
 //
 // Three implicit drift columns at off-thirds horizontal positions per
@@ -188,6 +232,11 @@ constant float kBrightnessGateHi  = 0.55;
 // shudder on rare drum emphasis" design intent (§5.6 + research §3.2).
 constant float kKinkAmp         = 0.0015;
 constant float kKinkSpatialFreq = 12.0;
+
+// AV.3 — half-bar star blink (Matt's explicit request). Reverses AV.2.h's
+// route-7 removal. See the blink block in the fragment for the mechanism.
+constant float kStarBlinkAmp    = 0.70;   // additive per-star brightness index
+constant float kStarBlinkDecay  = 6.0;    // blink attack sharpness (higher = snappier)
 
 // Routes 4 (drift speed), 6 (valence palette), 7 (star twinkle), 8 (synth
 // flash) REMOVED in AV.2.h — see header docstring for rationale.
@@ -305,6 +354,7 @@ static inline float3 raymarch_column(
     float driftSpeed,
     float foldScale,
     float paletteOffset,
+    float motionAmp,
     float time
 ) {
     float topness     = 1.0 - smoothstep(0.05, 0.55, uv_y);
@@ -315,6 +365,20 @@ static inline float3 raymarch_column(
     // perturb the phase within the gradient.
     float baseOffset  = 2.0 * topness + paletteOffset;
 
+    // AV.4 SPIKE — Lawlor footprint F(x). The auroral oval is bright only along
+    // a few meandering bands; between them is dark sky (negative space). A
+    // low-frequency field of the horizontal anchor, ADVECTED by curl-noise
+    // (Wittens vortical motion, audio-scaled) so the curtains curl and drift
+    // like real plasma. `smoothstep` carves it: below kFootprintLo → 0 (gap),
+    // above kFootprintHi → 1 (curtain). Multiplied into the returned emission,
+    // so the nimitz H(z)×texture (the look) is preserved — the footprint only
+    // decides WHERE the aurora hangs. This is the structural fix vs the wash.
+    float2 curlAdv  = curl_noise(float3(columnUVx * 1.6, time * 0.12, 0.0)).xy
+                    * (kFootprintCurlAmp * motionAmp);
+    float  fpNoise  = fbm8(float3(columnUVx * kFootprintFreq + curlAdv.x,
+                                  curlAdv.y, time * 0.05));
+    float  footprint = smoothstep(kFootprintLo, kFootprintHi, fpNoise);
+
     float4 avgCol = float4(0.0);
     float3 col    = float3(0.0);
     for (int i = 0; i < kAuroraSteps; i++) {
@@ -322,13 +386,27 @@ static inline float3 raymarch_column(
         // is sharpest), coarser at high altitudes (diffuse red crown).
         float pt = 0.8 + pow(float(i), 1.4) * 0.002;
 
-        // 2D triangular domain-warped noise. Sample plane: (column horizontal
-        // anchor × foldScale, altitude × foldScale). Fold scale multiplies
-        // BOTH dimensions so denser folds compress vertically AND
-        // horizontally — `mid_att_rel` thickens the entire texture, not just
-        // its horizontal frequency.
+        // AV.3 — authentic aurora MOTION (the "dance"). Traveling curtain wave:
+        // the horizontal ray position sways by an amount that varies with
+        // altitude and TRAVELS over time → the vertical rays ripple like fabric
+        // and the wave sweeps along the curtain ("a hand run along the
+        // curtain"). A second, slower term folds the altitude along the arc so
+        // the sheet undulates. Two summed sines (not one) → organic, not
+        // metronomic. Amplitude = motionAmp (audio-gated; gentle base at
+        // silence). This is coherent SUBSTRATE motion, audio-scaled — the same
+        // category as the field's `mm2(time*0.10)` rotation, not decorative
+        // free sin(time) (FA #33).
+        float ripple = sin(pt * kAuroraWaveFreqY - time * kAuroraWaveSpeed + columnUVx * 1.7) * 0.6
+                     + sin(pt * kAuroraWaveFreqY * 1.9 - time * kAuroraWaveSpeed * 1.4) * 0.4;
+        float xWarp  = kAuroraWaveAmp * motionAmp * ripple;
+        float ptFold = pt + kAuroraFoldAmp * motionAmp
+                     * sin(columnUVx * kAuroraWaveFreqX - time * kAuroraWaveSpeed * 0.55);
+
+        // 2D triangular domain-warped noise. Sample plane: (warped column
+        // anchor × foldScale, folded altitude × foldScale). Fold scale
+        // multiplies BOTH dimensions.
         float rzt = aurora_tri_noise_2d(
-            float2(columnUVx * foldScale, pt * foldScale),
+            float2((columnUVx + xWarp) * foldScale, ptFold * foldScale),
             driftSpeed, time);
 
         // Per-march-step IQ-cosine palette (the Lawlor H(z) curve). Both
@@ -354,7 +432,7 @@ static inline float3 raymarch_column(
              * exp2(-float(i) * 0.065 - 2.5)
              * smoothstep(0.0, 5.0, float(i));
     }
-    return col * kAuroraGain;
+    return col * kAuroraGain * footprint;
 }
 
 // ── Fragment ──────────────────────────────────────────────────────────────────
@@ -421,6 +499,15 @@ fragment float4 aurora_fragment(
     float driftSpeed = kAuroraDriftSpeedBase;
     float foldScale  = 1.0;
 
+    // AV.3 — MOTION amplitude (the dance). Continuous mid-band activity drives
+    // how vigorously the curtains ripple/fold: gentle base at silence, surging
+    // when the music's harmonic body is busy. `mid_att_rel` is the free FV
+    // primitive (bass=brightness, vocals=hue, drums=kink) and is Layer-1
+    // continuous energy — zero delay, live from frame 1, no stem warmup (there
+    // is no `mid` stem; mid is a frequency band). One primitive per axis.
+    float midActivity = saturate(0.5 + 0.5 * f.mid_att_rel);
+    float motionAmp   = kAuroraMotionBase + kAuroraMotionGain * midActivity;
+
     // Route 5 — curtain kink (fragment-space lateral UV jitter on the column
     // noise sample). Path B per prompts/AV.2-prompt.md §AV-kink: CPU-side
     // AuroraVeilState rare-event-gates and decays kinkAccumulator each frame
@@ -459,17 +546,21 @@ fragment float4 aurora_fragment(
     float starHit   = step(0.997, starField);
     float starShade = hash_f01_2(uv * 800.0 + float2(11.7, 5.3));
 
-    // Route 7 — star twinkle. Per-star phase derived from the secondary hash
-    // so each star has a different phase; modulation gated by
-    // `vocals_pitch_confidence > 0.5` (no twinkle pre-stems / at silence /
-    // when YIN is unsure). The 0.30 amplitude is a *modulation index*, not a
-    // brightness scale — the twinkle adds ±30 % brightness around the base
-    // starShade value.
-    // Route 7 — star twinkle REMOVED in AV.2.h. Stars now render at their
-    // hash-determined static brightness; one less beat-coupled signal in
-    // the visual field. Matches the references' "still photograph" star
-    // character.
-    sky += float3(0.85, 0.92, 1.0) * starHit * (0.40 + 0.60 * starShade);
+    // AV.3 — half-bar star blink (Matt M7: "stars blink with some connection
+    // to the beat — every half bar"). Layer-4 accent on the CACHED grid.
+    // `f.bar_phase01`: 0 at downbeat → 1 at next downbeat, so half-bar ticks
+    // sit at phase 0.0 and 0.5 and `fract(bar_phase01 * 2)` is 0 at each.
+    // Per-star staggered phase (starShade offset) → stars brighten around the
+    // tick on their own offsets, never a unison flash, so global luminance
+    // stays steady (D-157, flash-safe; the blink is purely ADDITIVE — stars
+    // never dim below base). Amplitude fades in with stemMix so the cold-start
+    // window (bar_phase01 is drift-corrected → phase may be wrong) doesn't fire
+    // loud off-beat blinks at track start.
+    float halfBarPhase = fract(f.bar_phase01 * 2.0);
+    float starTick     = fract(halfBarPhase + starShade);
+    float starBlink    = exp(-starTick * kStarBlinkDecay);
+    float blinkGain    = 1.0 + kStarBlinkAmp * starBlink * stemMix;
+    sky += float3(0.85, 0.92, 1.0) * starHit * (0.40 + 0.60 * starShade) * blinkGain;
 
     // ── Layer 2: Multi-column volumetric aurora raymarch ─────────────────────
     // Per design §5.5: three implicit drift columns at off-thirds horizontal
@@ -486,6 +577,17 @@ fragment float4 aurora_fragment(
     // event in time, not three independent kinks.
     float kinkPhase = sin(uv.y * kKinkSpatialFreq);
 
+    // AV.3 — CURTAIN-BAND undulation (the visible dance). A traveling vertical
+    // wave of x displaces the whole curtain band up/down and folds it across
+    // the sky ("a hand run along the curtain" — aurora-motion research). Two
+    // summed sines → organic, not metronomic; amplitude audio-gated. `auroraY`
+    // replaces `uv.y` for the band envelope + palette stratification so the
+    // whole sheet ripples, not just its internal texture.
+    float bandWave = kAuroraBandWaveAmp * motionAmp * (
+          sin(uv.x * kAuroraBandFreq       - time * kAuroraWaveSpeed)             * 0.6
+        + sin(uv.x * kAuroraBandFreq * 2.1 - time * kAuroraWaveSpeed * 1.5 + 1.3) * 0.4);
+    float auroraY = uv.y + bandWave;
+
     for (int c = 0; c < kAuroraColumns; c++) {
         float colOffset = kAuroraColumnOffsets[c];
         float colDepth  = kAuroraColumnDepths[c];
@@ -500,8 +602,8 @@ fragment float4 aurora_fragment(
         // ~1 s accumulator → painterly smear. See `kAuroraColumnOffsets`
         // comment block above.
         float3 colContribution = raymarch_column(
-            columnUVx, uv.y,
-            driftSpeed, foldScale, paletteOffset, time);
+            columnUVx, auroraY,
+            driftSpeed, foldScale, paletteOffset, motionAmp, time);
 
         auroraColor = max(auroraColor, colContribution * colDepth);
     }
@@ -521,8 +623,9 @@ fragment float4 aurora_fragment(
     // §5.5), sharper cutoff toward the horizon (defined lower edge — sharp
     // bottom per §5.5). Refs 01 / 03 / 04 all show this profile. Unchanged
     // from AV.1 — multi-column doesn't widen the vertical envelope.
-    float auroraEnv = smoothstep(0.02, 0.40, uv.y)
-                    * (1.0 - smoothstep(0.74, 0.84, uv.y));
+    // Envelope uses the undulated `auroraY` so the whole band ripples/folds.
+    float auroraEnv = smoothstep(0.02, 0.40, auroraY)
+                    * (1.0 - smoothstep(0.74, 0.84, auroraY));
     auroraColor *= auroraEnv;
 
     // ── Composite: additive emission over dark sky ──────────────────────────
