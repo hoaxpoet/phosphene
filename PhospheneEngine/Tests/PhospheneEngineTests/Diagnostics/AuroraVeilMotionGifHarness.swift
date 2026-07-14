@@ -21,6 +21,7 @@ import UniformTypeIdentifiers
 @testable import Renderer
 @testable import Presets
 @testable import Shared
+@testable import PresetSessionReplay
 
 @Suite("Aurora Veil motion — dance GIF (env-gated)")
 struct AuroraVeilMotionGifHarness {
@@ -126,6 +127,134 @@ struct AuroraVeilMotionGifHarness {
         }
         #expect(CGImageDestinationFinalize(gif), "GIF encode failed")
         print("[aurora_gif] wrote \(gifURL.path) (\(frameCount) frames @ \(Self.fps) fps)")
+    }
+
+    // MARK: - Real-audio variant (AV.5 task 6)
+
+    /// Drives the preset with a REAL fixture track's recorded MIR data
+    /// (features.csv + stems.csv — the same production-pipeline output the QG.1
+    /// RouteCoverage gate replays), not the synthetic envelope above. Each frame
+    /// feeds the real per-frame FeatureVector + StemFeatures through
+    /// AuroraVeilState.tick (so the CPU-derived kink + smoothed pitch match the
+    /// real signal) and renders, proving the curtains respond to actual music.
+    ///
+    ///   AURORA_REAL_GIF=1 swift test --package-path PhospheneEngine --filter AuroraVeilMotionGifHarness
+    /// Output: /tmp/aurora_motion/aurora_real_love_rehab.gif
+    @Test("Render Aurora Veil on a REAL fixture track → animated GIF")
+    func renderRealAudioGif() throws {
+        guard ProcessInfo.processInfo.environment["AURORA_REAL_GIF"] == "1" else {
+            print("AuroraVeilMotionGifHarness(real): AURORA_REAL_GIF not set — skipping"); return
+        }
+        guard MTLCreateSystemDefaultDevice() != nil else {
+            print("AuroraVeilMotionGifHarness(real): no Metal device — skipping"); return
+        }
+        guard let base = Bundle.module.url(forResource: "route_coverage", withExtension: nil) else {
+            print("AuroraVeilMotionGifHarness(real): route_coverage fixtures not bundled — skipping"); return
+        }
+        let track = "love_rehab"   // vocals + drums + bass present → exercises every route
+        let cols = try SessionColumnSeries.load(directory: base.appendingPathComponent(track))
+
+        // Pull the exact column each route consumes (features first, then stems).
+        func col(_ n: String) -> [Float?] { cols.floatSeries(n) ?? [] }
+        let timeS = col("time"),        dtS  = col("deltaTime")
+        let midAR = col("mid_att_rel"), bDev = col("bassDev")
+        let barPm = col("barPhase01_permille")
+        let dEn = col("drumsEnergy"),   bEn = col("bassEnergy")
+        let vEn = col("vocalsEnergy"),  oEn = col("otherEnergy")
+        let bEd = col("bassEnergyDev"), dEd = col("drumsEnergyDev")
+        let vPit = col("vocalsPitchHz"), vCf = col("vocalsPitchConfidence")
+
+        // A contiguous window past the intro so there is musical energy to see.
+        let total = cols.frameCount
+        let start = total / 4
+        let count = min(160, total - start)
+        guard count > 8 else { print("AuroraVeilMotionGifHarness(real): fixture too short — skipping"); return }
+
+        let ctx = try MetalContext()
+        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat, loadBuiltIn: true)
+        guard let preset = loader.presets.first(where: { $0.descriptor.name == "Aurora Veil" }) else {
+            print("AuroraVeilMotionGifHarness(real): Aurora Veil not found — skipping"); return
+        }
+        guard let avState = AuroraVeilState(device: ctx.device) else { throw E.setup }
+
+        let dir = URL(fileURLWithPath: "/tmp/aurora_motion")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        let floatStride = MemoryLayout<Float>.stride
+        guard
+            let fftBuf = ctx.makeSharedBuffer(length: 512 * floatStride),
+            let wavBuf = ctx.makeSharedBuffer(length: 2048 * floatStride),
+            let stemBuf = ctx.makeSharedBuffer(length: MemoryLayout<StemFeatures>.size),
+            let histBuf = ctx.makeSharedBuffer(length: 4096 * floatStride)
+        else { throw E.setup }
+
+        let td = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: ctx.pixelFormat, width: Self.W, height: Self.H, mipmapped: false)
+        td.usage = [.renderTarget, .shaderRead]; td.storageMode = .shared
+        guard let tex = ctx.device.makeTexture(descriptor: td) else { throw E.setup }
+
+        let gifURL = dir.appendingPathComponent("aurora_real_\(track).gif")
+        guard let gif = CGImageDestinationCreateWithURL(
+            gifURL as CFURL, UTType.gif.identifier as CFString, count, nil) else { throw E.setup }
+        CGImageDestinationSetProperties(gif, [kCGImagePropertyGIFDictionary as String:
+            [kCGImagePropertyGIFLoopCount as String: 0]] as CFDictionary)
+        let frameProps = [kCGImagePropertyGIFDictionary as String:
+            [kCGImagePropertyGIFDelayTime as String: 1.0 / Double(Self.fps)]] as CFDictionary
+
+        // Bounds-safe cell read: missing column → empty array → default.
+        func v(_ arr: [Float?], _ i: Int, _ fallback: Float = 0) -> Float {
+            i < arr.count ? (arr[i] ?? fallback) : fallback
+        }
+
+        for k in 0..<count {
+            let i = start + k
+            let dt = v(dtS, i, Float(1.0 / 30.0))
+            var fv = FeatureVector(time: v(timeS, i, Float(i) * dt), deltaTime: dt)
+            fv.midAttRel = v(midAR, i)
+            fv.bassDev = v(bDev, i)
+            fv.barPhase01 = v(barPm, i) / 1000.0
+
+            var stems = StemFeatures.zero
+            stems.drumsEnergy = v(dEn, i)
+            stems.bassEnergy  = v(bEn, i)
+            stems.vocalsEnergy = v(vEn, i)
+            stems.otherEnergy = v(oEn, i)
+            stems.bassEnergyDev = v(bEd, i)
+            stems.drumsEnergyDev = v(dEd, i)
+            stems.vocalsPitchHz = v(vPit, i)
+            stems.vocalsPitchConfidence = v(vCf, i)
+            stemBuf.contents().copyMemory(from: &stems, byteCount: MemoryLayout<StemFeatures>.size)
+
+            avState.tick(deltaTime: dt, features: fv, stems: stems)
+
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { throw E.render }
+            let rpd = MTLRenderPassDescriptor()
+            rpd.colorAttachments[0].texture = tex
+            rpd.colorAttachments[0].loadAction = .clear
+            rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+            rpd.colorAttachments[0].storeAction = .store
+            guard let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) else { throw E.render }
+            enc.setRenderPipelineState(preset.pipelineState)
+            enc.setFragmentBytes(&fv, length: MemoryLayout<FeatureVector>.size, index: 0)
+            enc.setFragmentBuffer(fftBuf, offset: 0, index: 1)
+            enc.setFragmentBuffer(wavBuf, offset: 0, index: 2)
+            enc.setFragmentBuffer(stemBuf, offset: 0, index: 3)
+            enc.setFragmentBuffer(histBuf, offset: 0, index: 5)
+            enc.setFragmentBuffer(avState.stateBuffer, offset: 0, index: 6)
+            enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            enc.endEncoding()
+            cmd.commit(); cmd.waitUntilCompleted()
+            guard cmd.status == .completed else { throw E.render }
+
+            var px = [UInt8](repeating: 0, count: Self.W * Self.H * 4)
+            tex.getBytes(&px, bytesPerRow: Self.W * 4,
+                         from: MTLRegionMake2D(0, 0, Self.W, Self.H), mipmapLevel: 0)
+            guard let img = Self.cgImage(bgra: px, w: Self.W, h: Self.H) else { throw E.render }
+            CGImageDestinationAddImage(gif, img, frameProps)
+            if k % 8 == 0 { Self.writePNG(img, to: dir.appendingPathComponent(String(format: "real_%04d.png", k))) }
+        }
+        #expect(CGImageDestinationFinalize(gif), "real-audio GIF encode failed")
+        print("[aurora_gif] wrote \(gifURL.path) (\(count) frames from \(track), start=\(start)/\(total))")
     }
 
     // BGRA bytes → CGImage (RGBA).
