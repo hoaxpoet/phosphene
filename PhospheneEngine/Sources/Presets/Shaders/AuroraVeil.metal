@@ -177,6 +177,11 @@ constant float kFootprintHi        = 0.15;  // above → full curtain brightness
 // altitude + curl-advected, so curtains curve and drift while staying coherent.
 constant float kFootprintShearAmp  = 0.55;  // horizontal lean over the curtain's height (visible curve)
 constant float kFootprintShearFreq = 2.3;   // vertical wavelength of the lean/fold
+// Perspective drape (AV.5 task 3) — gentle x-convergence toward the horizon so
+// curtains recede into depth. Close to 1.0 = subtle (a hard convergence would
+// pinch to a point → FM #14 stage beams).
+constant float kDrapeHorizon       = 0.20;  // uv_y of the receding horizon (aurora-band top)
+constant float kDrapeConverge      = 0.78;  // x-scale at the horizon (0.78 = 22% convergence)
 
 // ── Multi-column geometry (AV.2) ─────────────────────────────────────────────
 //
@@ -659,12 +664,24 @@ fragment float4 aurora_fragment(
         + sin(uv.x * kAuroraBandFreq * 2.1 - time * kAuroraWaveSpeed * 1.5 + 1.3) * 0.4);
     float auroraY = uv.y + bandWave;
 
+    // AV.5 task 3 — perspective DRAPE (cheap coordinate warp, not a volumetric
+    // march — no added per-step cost, so the Tier-1 budget is unaffected). As
+    // the curtains recede toward the horizon (top of the aurora band) they
+    // converge and foreshorten, so the sheet reads as draping into depth rather
+    // than standing as a flat 2D wall. GENTLE convergence toward a broad upper
+    // region (kDrapeConverge close to 1) — never toward a point, which would read
+    // as converging stage beams (anti-reference `09`, FM #14).
+    float drapeDepth = smoothstep(0.72, kDrapeHorizon, auroraY);  // 0 near → 1 far
+    float drapeScale = mix(1.0, kDrapeConverge, drapeDepth);
+    float uvxP = 0.5 + (uv.x - 0.5) * drapeScale;
+
     for (int c = 0; c < kAuroraColumns; c++) {
         float colOffset = kAuroraColumnOffsets[c];
         float colDepth  = kAuroraColumnDepths[c];
 
-        // Per-column horizontal anchor with the audio-coupled lateral kink.
-        float columnUVx = uv.x + colOffset + kinkAmp * kinkPhase;
+        // Per-column horizontal anchor (perspective-warped) with the
+        // audio-coupled lateral kink.
+        float columnUVx = uvxP + colOffset + kinkAmp * kinkPhase;
 
         // AV.2.1: all columns share the same substrate-rotation rate; depth
         // distinction is from `colOffset` (horizontal screen position) +
@@ -684,7 +701,7 @@ fragment float4 aurora_fragment(
     // band-undulated `auroraY` so the footprint drapes with the sheet. Shared
     // across all columns → real gaps (the per-column form let the MAX refill
     // them). THE structural fix vs the full-field wash.
-    auroraColor *= aurora_footprint(uv.x, auroraY, motionAmp, time);
+    auroraColor *= aurora_footprint(uvxP, auroraY, motionAmp, time);
 
     // Route 2 — brightness breathing. Apply AFTER the MAX so brightness
     // modulation is global (the whole aurora pulses, not per-column).
