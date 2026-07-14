@@ -77,6 +77,12 @@ constant float kStretchDn  = 0.11;   // vertical stretch down (short)
 constant float kDriftAmp   = 0.11;   // how far a center wanders
 constant float kDriftSpd   = 0.20;   // wander speed
 constant float kPulseSpd   = 0.60;   // brightness-fluctuation speed
+// Center DISTORTION — as a center is pulled/stretched, its stretch LEANS and
+// CURLS (per-center, time-varying), so it billows like mist and writhes (the
+// dance). A straight stretch reads as falling water; a distorted one as aurora.
+constant float kShearAmp   = 0.055;  // how hard the stretch curls sideways
+constant float kDistFreq   = 5.0;    // vertical wavelength of the curl
+constant float kDistSpd    = 0.30;   // how fast the curl writhes (the dance rate)
 constant float kAspect      = 1.777; // 16:9 (ray x-scale; app renders 16:9)
 // Camera: origin below/in-front, ray fans up into the sky. `kHorizon` is the
 // uv.y where the ray grazes the horizon (rd.y=0) — the aurora fades below it, so
@@ -88,7 +94,7 @@ constant float kHorizon     = 0.74;
 // ── Motion (the dance) ───────────────────────────────────────────────────────
 constant float kAuroraMotionBase = 0.35;   // motion amplitude at silence (gently alive)
 constant float kAuroraMotionGain = 0.65;   // additional amplitude from mid activity
-constant float kCurlAmp          = 0.30;   // curl advection of the sample coord (Wittens dance)
+constant float kCurlAmp          = 0.55;   // curl advection of the sample coord (billowing, not straight)
 constant float kSubstrateSpd     = 0.06;   // per-octave noise rotation rate (nimitz spd)
 
 // ── Audio routing constants (design §5.7, preserved) ─────────────────────────
@@ -183,24 +189,35 @@ static inline float aurora_march_density(float3 ro, float3 rd, float2 sampleAdv,
 // colour×intensity; the march density carves it into fine filaments.
 static inline float3 aurora_centers(float2 uv, float motionAmp, float bassPulse, float time) {
     float3 sum = float3(0.0);
-    float fragAlt = saturate((0.74 - uv.y) / 0.46);   // 0 low/green → 1 high/magenta
     for (int i = 0; i < kNumCenters; i++) {
         float fi = float(i);
         float h1 = hash_f01_2(float2(fi, 1.3));
         float h2 = hash_f01_2(float2(fi, 2.7));
         float h3 = hash_f01_2(float2(fi, 5.9));
         float h4 = hash_f01_2(float2(fi, 7.1));
-        float2 base  = float2(0.06 + h1 * 0.88, 0.30 + h2 * 0.40);
+        float2 base  = float2(0.06 + h1 * 0.88, 0.32 + h2 * 0.36);
         float2 orbit = float2(sin(time * kDriftSpd * (0.6 + h3) + fi * 2.0),
                               cos(time * kDriftSpd * (0.5 + h4) + fi * 1.3));
         float2 c = base + orbit * kDriftAmp * (0.4 + 0.6 * motionAmp);
-        float dx = uv.x - c.x;
-        float dy = uv.y - c.y;                          // dy<0 → above center (stretch up)
-        float wy = (dy < 0.0) ? kStretchUp : kStretchDn;
-        float glow = exp(-dx * dx / (kCoreW * kCoreW)) * exp(-dy * dy / (wy * wy));
+
+        float2 local = uv - c;
+        // DISTORTION — the stretch leans + curls as it rises (per-center phase,
+        // writhing over time), so the center billows like mist and dances instead
+        // of falling straight like water. Amplitude grows with the music.
+        float lean = kShearAmp * sin(local.y * kDistFreq + time * kDistSpd * (2.0 + 4.0 * h3) + fi * 1.7)
+                   + kShearAmp * 0.5 * sin(local.y * kDistFreq * 2.3 - time * kDistSpd * 5.0 + fi);
+        local.x -= lean * (0.5 + 0.8 * motionAmp);
+
+        float wy = (local.y < 0.0) ? kStretchUp : kStretchDn;
+        float glow = exp(-local.x * local.x / (kCoreW * kCoreW))
+                   * exp(-local.y * local.y / (wy * wy));
         float pulse = (0.40 + 0.60 * (0.5 + 0.5 * sin(time * kPulseSpd * (0.6 + h3) + fi * 3.7)))
                     * (0.85 + 0.6 * bassPulse);
-        float3 ccol = aurora_palette(saturate(fragAlt + (h4 - 0.5) * 0.30));
+
+        // Colour along THIS center's own stretch — green at the core, magenta only
+        // toward the top of its stretch. Per-center + ragged → no horizontal band.
+        float along = saturate(-local.y / kStretchUp);      // 0 core → 1 top of stretch
+        float3 ccol = aurora_palette(saturate(along * along * 1.15 + (h4 - 0.5) * 0.16));
         sum += ccol * glow * pulse;
     }
     return sum;
