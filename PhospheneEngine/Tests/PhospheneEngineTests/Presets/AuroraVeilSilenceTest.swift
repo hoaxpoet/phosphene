@@ -81,18 +81,19 @@ struct AuroraVeilSilenceTest {
             return
         }
 
-        // Find the column (uv.x) with the highest aggregate luma in the aurora
-        // band (uv.y ∈ [0.30, 0.70]). Sample 256 columns at three altitudes,
-        // pick the one with the brightest mid-altitude sample.
-        let brightCol = findBrightestColumnInAuroraBand(pixels: pixels)
-
-        // Sample at three uv.y values within the aurora envelope (which
-        // ramps in at uv.y=0.05..0.40 and cuts off at uv.y=0.74..0.84).
+        // AV.5: sample the brightest LIT column at each altitude separately —
+        // draped curtains curve, so a single column isn't lit across the whole
+        // envelope. This still tests the Lawlor H(z) contract (lit low band =
+        // green, lit high band = magenta) — the palette is a function of
+        // altitude, not column, so the actually-lit pixel at each height is the
+        // correct probe. (Old single-straight-column sampling assumed vertical
+        // bars, which the reauthor deliberately replaced with draped curtains.)
         // uv.y=0.25 → upper aurora band (screenAlt high → magenta-shifted)
-        // uv.y=0.50 → mid aurora band
         // uv.y=0.65 → lower aurora band (screenAlt low → green-dominant)
-        let upperColor = samplePixel(pixels: pixels, ux: brightCol, uy: 0.25)
-        let lowerColor = samplePixel(pixels: pixels, ux: brightCol, uy: 0.65)
+        let upperCol = findBrightestColumnInAuroraBand(pixels: pixels, atUV: 0.25)
+        let lowerCol = findBrightestColumnInAuroraBand(pixels: pixels, atUV: 0.65)
+        let upperColor = samplePixel(pixels: pixels, ux: upperCol, uy: 0.25)
+        let lowerColor = samplePixel(pixels: pixels, ux: lowerCol, uy: 0.65)
 
         // Lower aurora band must read green-dominant (G > R and G > B). Use a
         // small slack to avoid floating-point flakiness at the edge.
@@ -310,11 +311,17 @@ struct AuroraVeilSilenceTest {
         return profile
     }
 
-    /// Returns the uv.x in [0, 1] of the column with the brightest aurora-mid
-    /// sample (uv.y = 0.50). Robust against having the brightness max in a
-    /// stars-only region of the sky.
-    private func findBrightestColumnInAuroraBand(pixels: [UInt8]) -> Float {
-        let midY = Int(0.50 * Double(Self.renderHeight))
+    /// Returns the uv.x in [0, 1] of the column with the brightest aurora
+    /// sample at altitude `uy` (default mid-band 0.50). Robust against having
+    /// the brightness max in a stars-only region of the sky.
+    ///
+    /// AV.5: takes an altitude argument because the reauthored curtains DRAPE
+    /// (curl-advected footprint + altitude shear), so a curtain lit at mid-band
+    /// curves away from that column lower/higher up. To verify the Lawlor
+    /// stratification (green low / magenta high) the test must sample the
+    /// actually-lit pixel at EACH altitude, not one straight column.
+    private func findBrightestColumnInAuroraBand(pixels: [UInt8], atUV uy: Float = 0.50) -> Float {
+        let midY = Int(Double(uy) * Double(Self.renderHeight))
         var bestX = 0
         var bestLuma: Float = -1
         for x in 0..<Self.renderWidth {

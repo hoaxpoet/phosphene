@@ -112,7 +112,11 @@ constant float kAuroraDriftSpeedGain = 0.04;
 // aurora's green-palette contribution dominates the sky's blue cast at the
 // test sample points (uv.y=0.25 and 0.65 in the brightest column). Within
 // the design budget — Tier 1 still well under 4.0 ms per §7.
-constant float kAuroraGain       = 2.4;
+// AV.5: raised 2.4 → 3.3 to compensate for the footprint's average dimming (the
+// cluster×bands mask multiplies emission down); cluster cores now read bright
+// against the negative space, and the bass-brightness route regains its
+// observable mean-luma span (AuroraVeilContinuousDominanceTest).
+constant float kAuroraGain       = 3.3;
 
 // ── AV.3 (2026-07-14, Matt) — authentic aurora MOTION (the "dance") ──────────
 //
@@ -153,10 +157,26 @@ constant float kAuroraBandFreq    = 4.5;   // undulations across screen width
 // advected by curl_noise (Wittens vortical plasma motion, audio-scaled) so the
 // curtains DANCE with real curling flow, not sine-panning. Feasibility spike:
 // prove this reads as draping dancing curtains before the full reauthor.
-constant float kFootprintFreq    = 2.5;    // low freq → a few wide curtains
-constant float kFootprintCurlAmp = 0.30;   // curl advection strength (the dance)
-constant float kFootprintLo      = -0.05;  // below → dark negative space (fbm8 is ~[-1,1])
-constant float kFootprintHi      = 0.22;   // above → full curtain brightness
+// Two-scale footprint (AV.5): a low-freq CLUSTER envelope carves big dark-sky
+// regions (aurora concentrates in a few areas, refs 05/06); a mid-freq BAND
+// pattern defines individual draped curtains WITHIN the clusters. Curtains
+// appear only where cluster AND band agree → a few grouped curtains, dominant
+// negative space, not an even picket of rays.
+constant float kClusterFreq        = 1.1;   // large-scale: 2-3 bright regions across the frame
+constant float kClusterLo          = -0.06; // below → dark-sky region (big negative space)
+constant float kClusterHi          = 0.12;  // above → inside a cluster (saturates → bright cores)
+constant float kFootprintFreq      = 2.5;   // band freq WITHIN a cluster → distinct curtains
+constant float kFootprintCurlAmp   = 0.35;  // curl advection strength (the dance)
+constant float kFootprintContrast  = 2.1;   // widen fbm8 dynamic range so gaps go truly dark
+constant float kFootprintLo        = -0.05; // below → dark gap between curtains
+constant float kFootprintHi        = 0.15;  // above → full curtain brightness
+// Smooth ALTITUDE SHEAR — the curtain leans and curves as it rises so it drapes
+// instead of standing as a dead-straight bar. Analytic (NOT noise: vertical
+// noise here chops the coherent rays into horizontal clumps, FM #3/#8). The
+// footprint noise stays 1D-in-x (coherent vertical rays); only x is sheared by
+// altitude + curl-advected, so curtains curve and drift while staying coherent.
+constant float kFootprintShearAmp  = 0.55;  // horizontal lean over the curtain's height (visible curve)
+constant float kFootprintShearFreq = 2.3;   // vertical wavelength of the lean/fold
 
 // ── Multi-column geometry (AV.2) ─────────────────────────────────────────────
 //
@@ -215,9 +235,13 @@ constant float kVocalsPitchAmp = 0.8;
 // 0.55) so brightness clearly pulses on bass events and settles to base
 // between them.
 constant float kBrightnessBase    = 0.85;
-constant float kBrightnessAmp     = 0.30;
-constant float kBrightnessGateLo  = 0.30;
-constant float kBrightnessGateHi  = 0.55;
+// AV.5: amp 0.30 → 0.42 and gate lowered (0.30/0.55 → 0.18/0.50) so the
+// bass-breathing route is visible against the sparser footprint band (most of
+// the band is now negative space; the route needs more range + an earlier onset
+// to clear the dominance-test's observable-span floor and to read on real music).
+constant float kBrightnessAmp     = 0.48;
+constant float kBrightnessGateLo  = 0.18;
+constant float kBrightnessGateHi  = 0.50;
 
 // Route 3 — fold density: REMOVED (AV.2.h). Was an every-frame modulator
 // of the noise spatial frequency, which morphed the entire noise field
@@ -365,19 +389,13 @@ static inline float3 raymarch_column(
     // perturb the phase within the gradient.
     float baseOffset  = 2.0 * topness + paletteOffset;
 
-    // AV.4 SPIKE — Lawlor footprint F(x). The auroral oval is bright only along
-    // a few meandering bands; between them is dark sky (negative space). A
-    // low-frequency field of the horizontal anchor, ADVECTED by curl-noise
-    // (Wittens vortical motion, audio-scaled) so the curtains curl and drift
-    // like real plasma. `smoothstep` carves it: below kFootprintLo → 0 (gap),
-    // above kFootprintHi → 1 (curtain). Multiplied into the returned emission,
-    // so the nimitz H(z)×texture (the look) is preserved — the footprint only
-    // decides WHERE the aurora hangs. This is the structural fix vs the wash.
-    float2 curlAdv  = curl_noise(float3(columnUVx * 1.6, time * 0.12, 0.0)).xy
-                    * (kFootprintCurlAmp * motionAmp);
-    float  fpNoise  = fbm8(float3(columnUVx * kFootprintFreq + curlAdv.x,
-                                  curlAdv.y, time * 0.05));
-    float  footprint = smoothstep(kFootprintLo, kFootprintHi, fpNoise);
+    // NOTE (AV.5): the Lawlor footprint F(x) is applied ONCE in screen space in
+    // the fragment (aurora_footprint), AFTER the multi-column MAX — not per
+    // column. Applying it per column let the 3-column MAX fill the gaps the
+    // footprint carves (three shifted footprints OR'd ≈ full coverage). A single
+    // screen-space mask gives all columns the same negative space, and costs one
+    // fbm8+curl per fragment instead of three. The columns now only supply
+    // horizontal parallax + depth dimming WITHIN the lit regions.
 
     float4 avgCol = float4(0.0);
     float3 col    = float3(0.0);
@@ -432,7 +450,43 @@ static inline float3 raymarch_column(
              * exp2(-float(i) * 0.065 - 2.5)
              * smoothstep(0.0, 5.0, float(i));
     }
-    return col * kAuroraGain * footprint;
+    return col * kAuroraGain;
+}
+
+// ── Lawlor footprint F(x) — screen-space curtain mask (AV.5) ─────────────────
+//
+// The auroral oval is bright only along a few meandering curtain bands; between
+// them is dark sky (negative space). This is the structural fix vs the wash: the
+// old model's F(x,y) was full-field (bright everywhere). Applied ONCE in screen
+// space (over the whole aurora, after the column MAX) so the negative space is
+// shared across columns.
+//
+// Kept 1D-in-x so the vertical rays stay coherent top-to-bottom (2D-noise here
+// chops them into horizontal fog, FM #3/#8). The DRAPE comes from a smooth
+// altitude shear that leans/curves x as the curtain rises; curl-noise advection
+// (Wittens vortical flow, audio-scaled by motionAmp) drifts and curls the whole
+// silhouette — the dance. Contrast-widened before the threshold so gaps go truly
+// dark (real negative space), never a dim ramp wash. Colour is untouched — the
+// footprint only decides WHERE the aurora hangs (research §1.2: no altitude in
+// the palette noise; H(z) stays indexed by world-y in the march).
+static inline float aurora_footprint(float uv_x, float uv_y, float motionAmp, float time) {
+    float2 curlAdv = curl_noise(float3(uv_x * 1.6, time * 0.12, 0.0)).xy
+                   * (kFootprintCurlAmp * motionAmp);
+
+    // Large-scale cluster envelope — a few broad bright regions, big dark sky
+    // between (drifts slowly). Low freq, 4 octaves (doesn't need hero detail).
+    float cluster = smoothstep(kClusterLo, kClusterHi,
+                       fbm4(float3(uv_x * kClusterFreq + curlAdv.x * 0.5, 7.1, time * 0.03)));
+
+    // Individual curtain bands within a cluster, sheared by altitude so each
+    // curtain leans/curves as it rises (drape). curlAdv adds vortical drift.
+    float shear   = kFootprintShearAmp
+                  * sin(uv_y * kFootprintShearFreq + curlAdv.y * 4.0 + uv_x * 2.0);
+    float fpx     = uv_x * kFootprintFreq + curlAdv.x + shear;
+    float bands   = smoothstep(kFootprintLo, kFootprintHi,
+                       fbm8(float3(fpx, 11.3, time * 0.05)) * kFootprintContrast);
+
+    return cluster * bands;
 }
 
 // ── Fragment ──────────────────────────────────────────────────────────────────
@@ -607,6 +661,13 @@ fragment float4 aurora_fragment(
 
         auroraColor = max(auroraColor, colContribution * colDepth);
     }
+
+    // Lawlor footprint F(x) — applied ONCE here (screen space), carving the
+    // negative space between a few draped, curl-advected curtains. Uses the
+    // band-undulated `auroraY` so the footprint drapes with the sheet. Shared
+    // across all columns → real gaps (the per-column form let the MAX refill
+    // them). THE structural fix vs the full-field wash.
+    auroraColor *= aurora_footprint(uv.x, auroraY, motionAmp, time);
 
     // Route 2 — brightness breathing. Apply AFTER the MAX so brightness
     // modulation is global (the whole aurora pulses, not per-column).
