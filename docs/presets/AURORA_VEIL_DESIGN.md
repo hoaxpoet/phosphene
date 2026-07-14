@@ -1,5 +1,7 @@
 # Aurora Veil — Design
 
+> **Amendment 2026-07-14: footprint reauthor (AV.5, D-185).** The shipped model renders the *right look, wrong expression* — a full-field wash, not discrete dancing curtains. The reauthor makes the Lawlor footprint `F(x,y)` a real footprint (bright bands + negative space) advected by curl-noise, keeping the nimitz texture; dramatic multi-colour palette (resets the anti-neon contract); half-bar star blink. See **§5.10** (architecture, musical-role sentence, temporal contract, concept bar) and §6 (updated anti-references). Session prompt: `prompts/AV.5-prompt.md`. Feasibility proven by the AV.4 spike (`memory: project_aurora_veil_reauthor`).
+
 > **Amendment 2026-05-18: rendering architecture pivot.** Pre-implementation desk research surfaced three convergent authoritative prior-art references (nimitz "Auroras" / Lawlor & Genetti 2011 / Wittens NeverSeenTheSky) and a 15-mode failure-mode taxonomy. The original §5 specified a 2D pixel-shader "ribbon with horizontal proximity test against a `warped_fbm` centre-line + vertical fbm rays" — structurally distinct from every photographically-credible procedural aurora in the wild, and exposed to at least four named failure modes (#3, #9, #13, missing multi-timescale motion). §5 has been rewritten around the **volumetric-raymarch recipe**: per-pixel raymarch up a vertical column, triangular domain-warped noise (`triNoise2d`-style) sampled at each step, running-average vertical smear, per-march-step IQ-cosine palette cycling for Lawlor-Genetti height-curve stratification, mv_warp for substrate temporal compounding. Original §5 preserved verbatim in §5-LEGACY at end-of-doc for the iteration history. Research dossier: `docs/presets/AURORA_VEIL_RESEARCH_2026-05-18.md` (READ FIRST — load-bearing for the architectural rationale and the 9-question authenticity rubric used at AV.3 cert).
 
 A direct-fragment + `mv_warp` preset rendering an aurora curtain over a faintly-starred night sky. Lowest-barrier authoring example in Phosphene's catalog: no SDF, no PBR, no mesh shader. Demonstrates the canonical Milkdrop pattern (direct fragment + per-vertex feedback warp) which currently has no consumer in the catalog.
@@ -175,13 +177,37 @@ At `totalStemEnergy = 0` and zero deviation: aurora renders at base brightness (
 
 None. Emission-only. Sky colour provides the ambient floor. The aurora is the light source for compositional purposes; no Cook-Torrance dispatch, no IBL ambient, no shadow casting.
 
+### 5.10 Footprint reauthor (amended 2026-07-14 — AV.5, D-185)
+
+**Why.** The AV.2/AV.3 implementation is the *right look* but the *wrong expression*. It collapsed the Lawlor footprint `F(x, y)` to **full-field** `triNoise2d` — bright *everywhere* — so the aurora fills the frame as a flat "veil in stacked colours." No footprint means no discrete curtains and no negative space, and no amount of undulation/drift tuning can turn a full-field wash into curtains (verified across AV.3 motion tweaks + a geometric-ribbon attempt that read as the `09` festival-spotlight anti-reference). Aurora Veil was paused for exactly this; Matt confirmed the reauthor 2026-07-14. Feasibility proven by the AV.4 spike (see `memory: project_aurora_veil_reauthor`).
+
+**The fix — a real footprint.** Keep the factorization `emission = H(z) × F(x, y)`, but make `F(x)` a **footprint**: bright only along a few meandering curtain bands, dark between (negative space). Concretely (spike-validated): `footprint = smoothstep(≈-0.05, ≈0.22, fbm8(columnUVx·freq + curlAdv, …))` — `fbm8` is ~[-1, 1], so the threshold sits near zero for ~40–60 % coverage. The footprint **multiplies** the existing nimitz `H(z) × texture`, so the authentic ray texture (the look Matt liked) is *preserved* — the footprint only decides *where* the aurora hangs. This is the whole reauthor: the H(z) palette, the running-average smear, the ray texture all stay; `F` changes from full-field to footprint.
+
+**Motion — the dance (Wittens).** The footprint is advected by `curl_noise` (vortical plasma flow, research §1.3), amplitude scaled by mid activity — so curtains curl, fold and drift with the music, gently at silence. This replaces the failed AV.3 sine-undulation (the internal noise warp averages out over the 50-step integration; the *footprint* has to move, not the internal sample). Multi-timescale: slow substrate drift + curtain fold over seconds + ray flicker. **NOT** free `sin(time)` (FA #33); **NOT** raw beats (Audio Data Hierarchy); **NOT** mv_warp (smears — `AuroraVeilMVWarpAccumulationTest`).
+
+**Palette — dramatic multi-colour (Matt's choice 2026-07-14).** Green base → violet → magenta/pink crown by altitude (`H(z)`, indexed by march-step/world-y — never fold altitude into the noise, research §1.2). This resets the former anti-neon green-only contract: "still aurora, not festival" is now anchored on *structure* — biological ray striation, translucency, negative space, curl motion — **not** on desaturation. See §6.
+
+**Musical-role sentence.** *When the music's harmonic body swells, the aurora curtains curl and sweep wider across the sky and brighten; when it thins, they settle to a slow drift — the curtains dance with the continuous energy envelope, while a rare drum accent sends a fold shuddering along a curtain and each half-bar downbeat flickers the stars.*
+
+**Temporal contract (what changes over time).**
+- *Continuous (mid activity)* → curl-advection amplitude/speed: curtains dance more vigorously when busy, drift when calm. Primary driver.
+- *Bass transients* → whole-aurora brightness pulse (breathing).
+- *Rare drum accents* → a curtain kink/fold shudder (rare-event gated, 1–2 s decay — not per-beat).
+- *Vocals pitch* → palette band shift along altitude.
+- *Half-bar downbeat (cached grid)* → staggered star blink (`f.bar_phase01`, `stemMix`-gated).
+- *Silence* → gentle curl drift at base amplitude, non-black (D-037), no blink.
+
+**Three-part concept bar (cleared).** (1) *Iconic subject at fidelity* — the AV.4 spike renders discrete curtains with negative space that read as aurora; feasibility demonstrated, not asserted. (2) *Clear musical role* — the sentence above (mid→dance, bass→brightness, drums→kink, vocals→hue, downbeat→stars). (3) *Infrastructure-feasible* — `curl_noise` + `fbm8` exist; one extra `fbm8` + one `curl_noise` per column, within the Tier-1 4.0 ms budget (perspective drape is the only part with a perf question — scope-gated in the AV.5 prompt DECISION).
+
 ## 6. Anti-references and failure modes
 
-- **"Neon ribbon shader."** Saturated pink/cyan with no green base, no stratification. Demoscene aurora.
-- **"Festival visual."** Beat-flashing aurora that pulses to every kick. Beat must be accent-only.
-- **"Single solid ribbon."** Without 2-3 layered ribbons with parallax, the depth of real aurora is lost.
-- **"Free-running sin oscillation."** Per CLAUDE.md rule from Arachne tuning: never use `sin(time)` for primary motion. All oscillation must be audio-anchored or mv_warp-driven.
+- **Full-field wash (the shipped AV.2/AV.3 look).** `F(x,y)` bright everywhere → a frame-filling veil with no discrete curtains and no negative space. THE reason for the AV.5 reauthor. The footprint must carve negative space.
+- **Geometric spotlight beams.** Clean Gaussian vertical bands (the failed AV.4-early attempt) read as the festival-spotlight anti-reference `09` — stage lights, not aurora. Curtains must carry the organic ray texture, not clean falloffs.
+- **"Festival visual."** Beat-flashing aurora that pulses to every kick. Beat is accent-only (rare-event drum kink + half-bar star blink); mid-driven curl motion is the continuous primary. NOTE (AV.5): saturated multi-colour is now the *desired* palette — "not festival" is judged on structure/motion, not saturation.
+- **"Free-running sin oscillation."** Never `sin(time)` for primary motion (FA #33). Motion is curl-advected substrate, audio-scaled.
+- **Altitude in the noise call.** `fbm(float3(x,y,z))` → monotonic top-to-bottom gradient, not stratified bands (research §1.2). Altitude lives only in the palette.
 - **"Procedural night sky."** A noise-based sky pattern is wrong — real aurora night sky is mostly black with sparse stars.
+- **mv_warp.** Smears this preset to mush (AV.2.2). Do not re-add.
 
 ## 7. Performance budget
 
