@@ -116,7 +116,7 @@ constant float kAuroraDriftSpeedGain = 0.04;
 // cluster×bands mask multiplies emission down); cluster cores now read bright
 // against the negative space, and the bass-brightness route regains its
 // observable mean-luma span (AuroraVeilContinuousDominanceTest).
-constant float kAuroraGain       = 3.3;
+constant float kAuroraGain       = 3.8;
 
 // ── AV.3 (2026-07-14, Matt) — authentic aurora MOTION (the "dance") ──────────
 //
