@@ -1,11 +1,20 @@
-// AuroraVeil.metal — Direct-fragment aurora preset (volumetric ray-march core).
+// AuroraVeil.metal — Direct-fragment aurora preset (dancing-centers + volumetric
+// filament texture).
 //
-// **AV.6 (2026-07-14, Matt) — volumetric-march core rebuild.** Aurora is a
-// VOLUME of glowing gas seen at an angle, not a flat field of stripes. This core
-// marches a camera ray `ro + rd·t` UP THROUGH a 3-D noise volume so it crosses
-// many filaments at many depths as it rises — that traversal is where the depth,
-// fine-filament density, perspective convergence and soft bloom come from. This
-// is the nimitz "Auroras" recipe ported CORRECTLY.
+// **AV.6 (2026-07-14, Matt) — dancing-centers core.** Matt's essence of aurora
+// behaviour: the aurora is many discrete bright CENTERS, each STRETCHED vertically
+// (mostly UP — the light is pulled upward into rays), each MOVING around, its
+// brightness FLUCTUATING, in DIFFERENT COLOURS — all dancing rhythmically to the
+// music while the stars keep time. So the render is two layers:
+//   • CENTERS (`aurora_centers`) — the composition, colour, motion, brightness:
+//     overlapping wide soft cores that drift (audio-scaled), pulse (own phase +
+//     bass flare), coloured by altitude (green base → magenta crown) with per-
+//     centre hue offsets. The bright moving cores are the "dance".
+//   • MARCH TEXTURE (`aurora_march_density`) — a scalar filament density from a
+//     nimitz volumetric ray-march (angled ray `ro+rd·t` UP through a 3-D noise
+//     volume so it crosses many filaments at many depths → real depth + fine
+//     rays). It carves the smooth centre field into fine filaments.
+// aurora = centers × marchDensity. This is the nimitz recipe ported CORRECTLY
 //
 // Why the two prior cores failed:
 //   • AV.5 "wash": the same march, but MIS-PORTED — it marched straight down a
@@ -49,19 +58,25 @@
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 constant int   kAuroraSteps = 50;    // volumetric march steps (nimitz)
-constant float kAuroraGain  = 12.0;  // final emission gain
-constant float kNoiseScale  = 1.5;   // sample-plane scale (higher = finer filaments)
-constant float kSaturate    = 1.5;   // post-march saturation (the running-avg smear greys the hue)
+constant float kAuroraGain  = 13.0;  // final emission gain
+constant float kNoiseScale  = 2.2;   // sample-plane scale (higher = finer filaments)
 constant float kSmear       = 0.62;  // running-average persistence (higher = more coherent rays)
 constant float kContrast    = 1.22;  // hue-preserving contrast (crisps rays, kills inter-ray haze)
 
-// Large-scale concentration (Lawlor F(x)) — the march gives H(z)×texture (depth +
-// filaments); this footprint carves the dark-sky negative space and a concentrated
-// bright region so the curtain occupies PART of the frame (refs 10/12), not a
-// uniform sky-filling green field. Screen-x based → vertical curtains stay coherent.
-constant float kClusterFreq = 1.7;   // a few bright regions across the width
-constant float kClusterLo   = -0.16; // below → dark-sky negative space
-constant float kClusterHi   =  0.26; // above → inside a bright region
+// Dancing CENTERS (Matt's essence, 2026-07-14) — the aurora is many discrete
+// bright centers, each STRETCHED vertically (mostly UP, pulling the light into
+// rays), each MOVING around, brightness FLUCTUATING, in DIFFERENT COLOURS, all
+// dancing rhythmically to the music. The centers ARE the composition / colour /
+// motion / brightness; the march texture carves them into fine filaments.
+constant int   kNumCenters = 14;     // how many bright centers in the sky
+constant float kCoreW      = 0.13;   // horizontal core width — WIDE so centers overlap into a
+                                     // continuous curtain with moving bright regions (the march
+                                     // carves the fine rays; narrow cores read as discrete blobs)
+constant float kStretchUp  = 0.30;   // vertical stretch UP (light pulled upward; fades so tops go faint)
+constant float kStretchDn  = 0.11;   // vertical stretch down (short)
+constant float kDriftAmp   = 0.11;   // how far a center wanders
+constant float kDriftSpd   = 0.20;   // wander speed
+constant float kPulseSpd   = 0.60;   // brightness-fluctuation speed
 constant float kAspect      = 1.777; // 16:9 (ray x-scale; app renders 16:9)
 // Camera: origin below/in-front, ray fans up into the sky. `kHorizon` is the
 // uv.y where the ray grazes the horizon (rd.y=0) — the aurora fades below it, so
@@ -80,9 +95,7 @@ constant float kSubstrateSpd     = 0.06;   // per-octave noise rotation rate (ni
 constant float kStemWarmupLow  = 0.02;
 constant float kStemWarmupHigh = 0.06;
 constant float kVocalsPitchAmp = 0.8;      // vocals pitch → hue-tint magnitude
-constant float kBrightnessBase   = 0.85;
-constant float kBrightnessAmp    = 0.55;
-constant float kBrightnessGateLo = 0.18;
+constant float kBrightnessGateLo = 0.18;   // bass-pulse gate (flares the centers)
 constant float kBrightnessGateHi = 0.50;
 constant float kKinkAmp          = 0.09;   // drum-kink lateral shudder on the sample coord
 constant float kStarBlinkAmp     = 0.70;
@@ -132,37 +145,65 @@ static inline float aurora_tri_noise_2d(float2 p, float spd, float time) {
     return clamp(1.0 / pow(rz * 29.0, 1.3), 0.0, 0.55);
 }
 
-// Per-march-step palette (Lawlor H(z) smuggled into the loop): green base at low
-// step (low altitude) → cyan/blue → magenta crown at high step. Pure function of
-// march step (= altitude), never of x (research §1.2: no horizontal rainbow).
-// nimitz's IQ-cosine anchor; naturalistic green-dominant with a magenta crown.
-static inline float3 aurora_step_palette(int i) {
-    return sin(1.0 - float3(2.15, -0.5, 1.2) + float(i) * 0.043) * 0.5 + 0.5;
+// Green-dominant altitude palette (Lawlor H(z)): green body → blue-violet mid →
+// magenta crown. Pure function of the altitude index `a`∈[0,1] (0 low/green, 1
+// high/magenta). Bright cyan-white cores come from the luminance boost, not here.
+static inline float3 aurora_palette(float a) {
+    const float3 green   = float3(0.12, 1.00, 0.46);
+    const float3 blue    = float3(0.28, 0.42, 0.95);
+    const float3 magenta = float3(0.95, 0.38, 0.74);
+    float3 c = mix(green, blue,    smoothstep(0.62, 0.90, a));
+    return     mix(c,     magenta, smoothstep(0.90, 1.00, a));
 }
 
-// Volumetric aurora march. Marches an angled camera ray UP through the 3-D noise
-// volume (the traversal that makes it a volume, not a slice): each step lands at
-// a higher altitude and a different (x,z), so the ray crosses many filaments. The
-// running-average smear coalesces samples into vertical ribbons; the exp-decay
-// accumulator weights the bright low-altitude base most. `col *= clamp(rd.y…)`
-// fades the aurora toward/below the horizon.
-static inline float3 aurora_march(float3 ro, float3 rd, float2 sampleAdv, float time) {
-    float4 avgCol = float4(0.0);
-    float3 col    = float3(0.0);
+// Volumetric march — SCALAR filament-density texture (depth + fine rays). Marches
+// an angled camera ray UP through the 3-D noise volume so it crosses many
+// filaments at many depths (the traversal that makes it a volume, not a slice —
+// the AV.5 wash marched one fixed column). Running-average smear → coherent
+// vertical ribbons; exp-decay weights the bright low-altitude base; the rd.y
+// clamp fades toward the horizon. Colour is supplied by the CENTERS, not here.
+static inline float aurora_march_density(float3 ro, float3 rd, float2 sampleAdv, float time) {
+    float avg = 0.0, d = 0.0;
     for (int i = 0; i < kAuroraSteps; i++) {
-        // Polynomial step — dense (sharp detail) low, coarser (diffuse crown) high.
         float pt = (0.8 + pow(float(i), 1.4) * 0.002 - ro.y) / (rd.y * 2.0 + 0.4);
         float3 bpos = ro + pt * rd;
-        // Sample the (z,x) plane at this altitude + curl/drum advection (the dance).
         float rzt = aurora_tri_noise_2d(bpos.zx * kNoiseScale + sampleAdv, kSubstrateSpd, time);
-        float3 c2 = aurora_step_palette(i) * rzt;
-        // Running-average vertical smear — turns samples into coherent ribbons
-        // (§1.1 line 6). Higher persistence = straighter, more parallel rays.
-        avgCol = mix(avgCol, float4(c2, rzt), 1.0 - kSmear);
-        col += avgCol.rgb * exp2(-float(i) * 0.065 - 2.5) * smoothstep(0.0, 5.0, float(i));
+        avg = mix(avg, rzt, 1.0 - kSmear);
+        d  += avg * exp2(-float(i) * 0.065 - 2.5) * smoothstep(0.0, 5.0, float(i));
     }
-    col *= clamp(rd.y * 15.0 + 0.4, 0.0, 1.0);
-    return col;
+    return d * clamp(rd.y * 15.0 + 0.4, 0.0, 1.0);
+}
+
+// Dancing CENTERS (Matt's essence, 2026-07-14). Sums many bright centers, each a
+// core STRETCHED vertically (long UP, short down, thin across — the light pulled
+// upward into a ray), each MOVING on its own slow orbit (audio-scaled → dances
+// harder with the music), brightness FLUCTUATING on its own phase (+bass flare),
+// coloured by fragment altitude (stratification: green base → magenta crown) with
+// a per-center hue offset so the centers differ in colour. Returns the summed
+// colour×intensity; the march density carves it into fine filaments.
+static inline float3 aurora_centers(float2 uv, float motionAmp, float bassPulse, float time) {
+    float3 sum = float3(0.0);
+    float fragAlt = saturate((0.74 - uv.y) / 0.46);   // 0 low/green → 1 high/magenta
+    for (int i = 0; i < kNumCenters; i++) {
+        float fi = float(i);
+        float h1 = hash_f01_2(float2(fi, 1.3));
+        float h2 = hash_f01_2(float2(fi, 2.7));
+        float h3 = hash_f01_2(float2(fi, 5.9));
+        float h4 = hash_f01_2(float2(fi, 7.1));
+        float2 base  = float2(0.06 + h1 * 0.88, 0.30 + h2 * 0.40);
+        float2 orbit = float2(sin(time * kDriftSpd * (0.6 + h3) + fi * 2.0),
+                              cos(time * kDriftSpd * (0.5 + h4) + fi * 1.3));
+        float2 c = base + orbit * kDriftAmp * (0.4 + 0.6 * motionAmp);
+        float dx = uv.x - c.x;
+        float dy = uv.y - c.y;                          // dy<0 → above center (stretch up)
+        float wy = (dy < 0.0) ? kStretchUp : kStretchDn;
+        float glow = exp(-dx * dx / (kCoreW * kCoreW)) * exp(-dy * dy / (wy * wy));
+        float pulse = (0.40 + 0.60 * (0.5 + 0.5 * sin(time * kPulseSpd * (0.6 + h3) + fi * 3.7)))
+                    * (0.85 + 0.6 * bassPulse);
+        float3 ccol = aurora_palette(saturate(fragAlt + (h4 - 0.5) * 0.30));
+        sum += ccol * glow * pulse;
+    }
+    return sum;
 }
 
 // ── Fragment ──────────────────────────────────────────────────────────────────
@@ -234,54 +275,35 @@ fragment float4 aurora_fragment(
     float2 kink = float2(av.kinkAccumulator * kKinkAmp, 0.0);
     float2 sampleAdv = curlAdv + kink;
 
-    float3 aurora = aurora_march(ro, rd, sampleAdv, time);
+    // Filament-density texture (depth + fine rays) — the march (scalar, uncoloured).
+    float density = aurora_march_density(ro, rd, sampleAdv, time);
 
-    // Restore saturation — the running-average smear averages green→cyan→blue
-    // across march steps toward grey; push back toward the dominant hue so the
-    // green body reads vivid (the footage is saturated green, not grey-teal).
-    float aurLum = dot(aurora, float3(0.299, 0.587, 0.114));
-    aurora = max(mix(float3(aurLum), aurora, kSaturate), 0.0);
+    // Route 2 — bass-transient pulse (also flares the dancing centers' brightness).
+    float bassPulse = smoothstep(kBrightnessGateLo, kBrightnessGateHi, bassDev);
 
-    // Large-scale concentration footprint F(x) — carves dark-sky negative space +
-    // a concentrated bright region (drifts slowly). Screen-x based so the vertical
-    // curtains stay coherent; curl-advected x so the silhouette dances.
-    float cx = fbm4(float3(uv.x * kClusterFreq + curlAdv.x * 0.5 + time * 0.02, 5.0, 0.0));
-    float conc = smoothstep(kClusterLo, kClusterHi, cx);
-    aurora *= conc;
+    // Dancing CENTERS provide colour / composition / motion / brightness; the march
+    // density carves them into fine filaments. This is the aurora's essence: bright
+    // centers pulled upward into rays, moving + pulsing + coloured, dancing.
+    float3 centers = aurora_centers(uv, motionAmp, bassPulse, time);
+    float3 aurora  = centers * density;
 
-    // Hue-preserving contrast — drops the dim inter-ray haze toward black and
-    // lets the bright rays pop, so the curtain reads as crisp filaments over clean
-    // dark sky rather than a smoky wash. Gamma on luminance, hue held constant.
+    // Hue-preserving contrast — crisp rays over clean dark sky (kills inter-ray haze).
     float lumC = max(max(aurora.r, aurora.g), aurora.b);
     aurora *= (lumC > 1e-4) ? pow(lumC, kContrast) / lumC : 0.0;
 
-    // Clean top — the sky above the curtain fades to dark (the footage has a
-    // defined upper edge, not haze to the frame top). Keeps the crown band.
+    // Clean top edge — sky above the curtain fades to dark (keeps the crown band).
     aurora *= smoothstep(0.04, 0.16, uv.y);
 
-    // White-hot cores — the densest regions bleach toward glowing green-white
-    // (the footage's signature bright core), green-leaning so it stays green-
-    // dominant (low R keeps the lower band off the magenta side, L2 gate).
+    // White-hot cores — the densest centers bleach toward glowing green-white (the
+    // footage's signature bright core), green-leaning (low R+B keeps the lower band
+    // green-dominant, L2 gate).
     float coreLum = dot(aurora, float3(0.299, 0.587, 0.114));
-    aurora = mix(aurora, float3(0.55, 1.0, 0.78) * coreLum * 1.4,
-                 smoothstep(0.30, 0.85, coreLum) * 0.6);
+    aurora = mix(aurora, float3(0.60, 1.0, 0.82) * coreLum * 1.4,
+                 smoothstep(0.35, 0.95, coreLum) * 0.6);
 
-    // Crown tint — the high sky (low uv.y) leans magenta/pink (the Lawlor H(z)
-    // crown, ref 07), so the altitude stratification reads even though the march's
-    // exp-decay weights the bright green base most (research §1.2 permits uv.y
-    // indexing as the H(z) fallback). A dim magenta crown over the bright green
-    // body = the naturalistic stratification.
-    float crown = smoothstep(0.52, 0.06, uv.y);          // 1 at the top of the sky
-    aurora = mix(aurora, aurora * float3(2.2, 0.72, 1.6) * 1.25, crown * 0.85);
-
-    // Route 1 — vocals pitch → subtle green↔cool-teal hue tint (reads on the
-    // green-dominant palette where an altitude nudge would not).
+    // Route 1 — vocals pitch → subtle green↔cool-teal hue tint.
     float3 pitchTint = float3(1.0 - paletteOffset * 0.45, 1.0, 1.0 + paletteOffset * 0.75);
     aurora *= pitchTint;
-
-    // Route 2 — brightness breathing (global bass-transient pulse).
-    float bassPulse = smoothstep(kBrightnessGateLo, kBrightnessGateHi, bassDev);
-    aurora *= (kBrightnessBase + kBrightnessAmp * bassPulse);
 
     aurora *= kAuroraGain;
 
