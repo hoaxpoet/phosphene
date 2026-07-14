@@ -112,11 +112,11 @@ constant float kAuroraDriftSpeedGain = 0.04;
 // aurora's green-palette contribution dominates the sky's blue cast at the
 // test sample points (uv.y=0.25 and 0.65 in the brightest column). Within
 // the design budget — Tier 1 still well under 4.0 ms per §7.
-// AV.5: lowered to 2.6 for a TRANSLUCENT veil (Matt: not a solid fill). The soft
-// concentration field keeps the emission moderate so it reads as a glow you see
-// through — stars/sky visible even in the denser regions — rather than an opaque
-// painted ribbon.
-constant float kAuroraGain       = 2.6;
+// AV.5: raised 2.4 → 3.3 to compensate for the footprint's average dimming (the
+// cluster×bands mask multiplies emission down); cluster cores now read bright
+// against the negative space, and the bass-brightness route regains its
+// observable mean-luma span (AuroraVeilContinuousDominanceTest).
+constant float kAuroraGain       = 3.8;
 
 // ── AV.3 (2026-07-14, Matt) — authentic aurora MOTION (the "dance") ──────────
 //
@@ -157,22 +157,24 @@ constant float kAuroraBandFreq    = 4.5;   // undulations across screen width
 // advected by curl_noise (Wittens vortical plasma motion, audio-scaled) so the
 // curtains DANCE with real curling flow, not sine-panning. Feasibility spike:
 // prove this reads as draping dancing curtains before the full reauthor.
-// Two-scale SOFT VEIL density (AV.5, Matt 2026-07-14: "it is a veil, translucent
-// — the light grows more and less concentrated, with the look of clouds"). NOT a
-// hard-carved 0/1 mask (that read as a solid cartoon fill). A low-freq CLUSTER
-// field sets where the veil thickens vs thins (big negative space where it goes
-// to nothing); a finer BAND field adds vertical concentration streaks. The two
-// sum into a SOFT concentration in [0,1] — cloud-like, edges stay translucent,
-// never a painted ribbon edge.
-constant float kClusterFreq        = 1.1;   // large-scale concentration (where the veil is thick)
-constant float kFootprintFreq      = 2.5;   // finer vertical concentration streaks (ray tendency)
+// Two-scale footprint (AV.5): a low-freq CLUSTER envelope carves big dark-sky
+// regions (aurora concentrates in a few areas, refs 05/06); a mid-freq BAND
+// pattern defines individual draped curtains WITHIN the clusters. Curtains
+// appear only where cluster AND band agree → a few grouped curtains, dominant
+// negative space, not an even picket of rays.
+constant float kClusterFreq        = 1.1;   // large-scale: 2-3 bright regions across the frame
+constant float kClusterLo          = -0.06; // below → dark-sky region (big negative space)
+constant float kClusterHi          = 0.12;  // above → inside a cluster (saturates → bright cores)
+constant float kFootprintFreq      = 2.5;   // band freq WITHIN a cluster → distinct curtains
 constant float kFootprintCurlAmp   = 0.35;  // curl advection strength (the dance)
-constant float kVeilClusterW       = 0.62;  // weight of the large-scale concentration
-constant float kVeilBandW          = 0.55;  // weight of the finer streaks
-constant float kVeilBias           = -0.18; // negative → the veil thins to nothing over big regions
-// Smooth ALTITUDE SHEAR — the veil's concentration leans/curves as it rises so it
-// drapes rather than standing as straight streaks. Analytic (NOT noise: vertical
-// noise here chops the coherent streaks into horizontal clumps, FM #3).
+constant float kFootprintContrast  = 2.1;   // widen fbm8 dynamic range so gaps go truly dark
+constant float kFootprintLo        = -0.05; // below → dark gap between curtains
+constant float kFootprintHi        = 0.15;  // above → full curtain brightness
+// Smooth ALTITUDE SHEAR — the curtain leans and curves as it rises so it drapes
+// instead of standing as a dead-straight bar. Analytic (NOT noise: vertical
+// noise here chops the coherent rays into horizontal clumps, FM #3/#8). The
+// footprint noise stays 1D-in-x (coherent vertical rays); only x is sheared by
+// altitude + curl-advected, so curtains curve and drift while staying coherent.
 constant float kFootprintShearAmp  = 0.55;  // horizontal lean over the curtain's height (visible curve)
 constant float kFootprintShearFreq = 2.3;   // vertical wavelength of the lean/fold
 // Perspective drape (AV.5 task 3) — gentle x-convergence toward the horizon so
@@ -473,34 +475,40 @@ static inline float3 raymarch_column(
     return col * kAuroraGain;
 }
 
-// ── Veil concentration F(x,y) — soft translucent density (AV.5) ──────────────
+// ── Lawlor footprint F(x) — screen-space curtain mask (AV.5) ─────────────────
 //
-// Aurora is a TRANSLUCENT VEIL, not a solid fill: "the light grows more and less
-// concentrated, with the look of clouds" (Matt 2026-07-14). So this returns a
-// SOFT concentration in [0,1] — where it's high the veil is denser (brighter),
-// where it thins it fades to nothing (negative space), all with soft cloud edges.
-// NOT a hard smoothstep mask (that carved solid painted ribbons = cartoon).
-// Applied ONCE in screen space, after the column MAX, so the concentration is
-// shared across columns. Colour is untouched (research §1.2: H(z) stays indexed
-// by world-y in the march); this only sets HOW MUCH light is where.
+// The auroral oval is bright only along a few meandering curtain bands; between
+// them is dark sky (negative space). This is the structural fix vs the wash: the
+// old model's F(x,y) was full-field (bright everywhere). Applied ONCE in screen
+// space (over the whole aurora, after the column MAX) so the negative space is
+// shared across columns.
+//
+// Kept 1D-in-x so the vertical rays stay coherent top-to-bottom (2D-noise here
+// chops them into horizontal fog, FM #3/#8). The DRAPE comes from a smooth
+// altitude shear that leans/curves x as the curtain rises; curl-noise advection
+// (Wittens vortical flow, audio-scaled by motionAmp) drifts and curls the whole
+// silhouette — the dance. Contrast-widened before the threshold so gaps go truly
+// dark (real negative space), never a dim ramp wash. Colour is untouched — the
+// footprint only decides WHERE the aurora hangs (research §1.2: no altitude in
+// the palette noise; H(z) stays indexed by world-y in the march).
 static inline float aurora_footprint(float uv_x, float uv_y, float motionAmp, float time) {
     float2 curlAdv = curl_noise(float3(uv_x * 1.6, time * 0.12, 0.0)).xy
                    * (kFootprintCurlAmp * motionAmp);
 
-    // Large-scale drifting concentration — where the veil thickens vs thins.
-    float cluster = fbm4(float3(uv_x * kClusterFreq + curlAdv.x * 0.5, 7.1, time * 0.03));
+    // Large-scale cluster envelope — a few broad bright regions, big dark sky
+    // between (drifts slowly). Low freq, 4 octaves (doesn't need hero detail).
+    float cluster = smoothstep(kClusterLo, kClusterHi,
+                       fbm4(float3(uv_x * kClusterFreq + curlAdv.x * 0.5, 7.1, time * 0.03)));
 
-    // Finer vertical concentration streaks (the ray tendency), sheared by
-    // altitude so the veil drapes/leans; curl-advected (Wittens) so it dances.
-    float shear = kFootprintShearAmp
-                * sin(uv_y * kFootprintShearFreq + curlAdv.y * 4.0 + uv_x * 2.0);
-    float bands = fbm8(float3(uv_x * kFootprintFreq + curlAdv.x + shear, 11.3, time * 0.05));
+    // Individual curtain bands within a cluster, sheared by altitude so each
+    // curtain leans/curves as it rises (drape). curlAdv adds vortical drift.
+    float shear   = kFootprintShearAmp
+                  * sin(uv_y * kFootprintShearFreq + curlAdv.y * 4.0 + uv_x * 2.0);
+    float fpx     = uv_x * kFootprintFreq + curlAdv.x + shear;
+    float bands   = smoothstep(kFootprintLo, kFootprintHi,
+                       fbm8(float3(fpx, 11.3, time * 0.05)) * kFootprintContrast);
 
-    // Soft sum → concentration. Bias thins big regions to nothing (negative
-    // space) without a hard cut; the smoothstep S-curve keeps faint edges
-    // translucent and lets concentration build gradually like cloud.
-    float density = saturate(cluster * kVeilClusterW + bands * kVeilBandW + kVeilBias + 0.5);
-    return density * density * (3.0 - 2.0 * density);
+    return cluster * bands;
 }
 
 // ── Fragment ──────────────────────────────────────────────────────────────────
