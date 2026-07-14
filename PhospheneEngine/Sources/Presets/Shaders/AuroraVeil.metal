@@ -359,9 +359,27 @@ static inline float aurora_tri_noise_2d(float2 p, float spd, float time) {
     return clamp(1.0 / pow(rz * 29.0, 1.3), 0.0, 0.55);
 }
 
+// ── Dramatic H(z) palette (AV.5) ─────────────────────────────────────────────
+//
+// Green base → violet → magenta/pink crown by ALTITUDE (Lawlor H(z); ref 07,
+// Matt's 2026-07-14 dramatic multi-colour choice). `a` ∈ [0,1] is the altitude
+// index (0 = low/green body, 1 = high/magenta crown) — colour is a pure function
+// of altitude, never of x or of the noise sample (research §1.2: no horizontal
+// rainbow, no altitude folded into the noise). Explicit anchor mix rather than an
+// IQ-sine so the three named bands are directly steerable against the reference.
+// Saturated pink/green is the TARGET now (contract reset) — "not festival" is
+// carried by structure (rays, negative space, drape), not desaturation.
+static inline float3 aurora_palette(float a) {
+    const float3 green   = float3(0.10, 1.00, 0.42);  // O 557.7 nm body
+    const float3 violet  = float3(0.55, 0.25, 1.00);  // N2+ transition band
+    const float3 magenta = float3(1.00, 0.24, 0.66);  // high-altitude red/pink crown
+    float3 lo = mix(green,  violet,  smoothstep(0.00, 0.45, a));
+    return  mix(lo,     magenta, smoothstep(0.35, 0.78, a));
+}
+
 // Per-column raymarch helper. Walks the polynomial-stepped altitude column
 // rooted at `columnUVx` (the audio-kinked, column-offset horizontal anchor)
-// and accumulates the exp-decay-weighted running-average IQ-palette × noise
+// and accumulates the exp-decay-weighted running-average palette × noise
 // product. Returns the column's emission contribution before depth-scale
 // dimming.
 //
@@ -427,16 +445,15 @@ static inline float3 raymarch_column(
             float2((columnUVx + xWarp) * foldScale, ptFold * foldScale),
             driftSpeed, time);
 
-        // Per-march-step IQ-cosine palette (the Lawlor H(z) curve). Both
-        // `phaseRate` and `baseOffset` are static-or-slowly-varying functions
-        // of screen-y + audio (no high-frequency time dependence), so this is
-        // not a Failed Approach #33 violation. The palette is still cycling
-        // per-i (running-average smear has variation to smear) — the cycling
-        // is just throttled toward the lower aurora edge so the integration's
-        // exp-decay weight peak stays in the green region.
-        float3 col2 = (sin(1.0 - float3(2.15, -0.5, 1.2)
-                           + float(i) * phaseRate
-                           + baseOffset) * 0.5 + 0.5) * rzt;
+        // Dramatic H(z) palette by altitude (AV.5). Altitude index `a` combines
+        // the screen-y stratification term (baseOffset = 2·topness + vocals
+        // paletteOffset) with the march step (higher i = higher in the column),
+        // normalised into [0,1]. Colour is a pure function of altitude — the
+        // green body sits low, magenta crown high. `a` still drifts per-i so the
+        // running-average smear has variation to blend. Not a FA #33 violation:
+        // `a` has no high-frequency time term.
+        float a = clamp((baseOffset + float(i) * phaseRate) * 0.34, 0.0, 1.0);
+        float3 col2 = aurora_palette(a) * rzt;
 
         // Running-average vertical smear (research §1.1 line 6 — load-bearing).
         // Without this, adjacent altitudes don't blur and the column reads as
@@ -685,7 +702,10 @@ fragment float4 aurora_fragment(
     // bottom per §5.5). Refs 01 / 03 / 04 all show this profile. Unchanged
     // from AV.1 — multi-column doesn't widen the vertical envelope.
     // Envelope uses the undulated `auroraY` so the whole band ripples/folds.
-    float auroraEnv = smoothstep(0.02, 0.40, auroraY)
+    // AV.5: top ramp 0.40 → 0.30 so the magenta/violet crown sits in the bright
+    // region (ref 07) rather than the faded top; still a soft top (dissolves
+    // above uv_y 0.30 going up, FM #13), just higher.
+    float auroraEnv = smoothstep(0.02, 0.30, auroraY)
                     * (1.0 - smoothstep(0.74, 0.84, auroraY));
     auroraColor *= auroraEnv;
 
