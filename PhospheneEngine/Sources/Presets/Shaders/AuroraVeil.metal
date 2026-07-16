@@ -52,8 +52,8 @@ constant int   kAuroraSteps = 48;    // vertical shells marched per column
 constant float kShellDH     = 0.018; // altitude per shell
 constant float kBaseShell   = 1.0;   // starting shell (near the emission floor)
 constant float kAuroraGain  = 9.0;   // emission gain
-constant float kToneFloor   = 0.0;   // tone map off (WIP)
-constant float kToneScale   = 1.0;   // tone map off (WIP)
+constant float kToneFloor   = 0.0028; // subtract murk to black (just above measured linear dlum avg 0.0022)
+constant float kToneScale   = 78.0;   // stretch survivors: 0.9/(peak0.0144−floor0.0028)
 
 // Footprint F(uv) — the 2-D curtain map extruded upward. Ridged domain-warped
 // triangle noise (folded curtains), curl-advected + animated (drapery + dance).
@@ -86,7 +86,9 @@ constant float kStemWarmupHigh = 0.06;
 constant float kVocalsPitchAmp = 0.8;      // vocals pitch → hue-tint magnitude
 constant float kBrightnessGateLo = 0.18;   // bass-pulse gate (flares the aurora)
 constant float kBrightnessGateHi = 0.50;
-constant float kKinkAmp          = 0.04;   // drum-kink lateral shudder on the footprint
+constant float kKinkAmp          = 0.007;  // drum-kink lateral shudder (bounded fold, D-157)
+constant float kKinkBandCenter   = 0.55;   // screen-y center of the localized fold
+constant float kKinkBandWidth    = 0.045;  // fold half-width (bounds the beat footprint)
 constant float kStarBlinkAmp     = 0.70;
 constant float kStarBlinkDecay   = 6.0;
 
@@ -236,9 +238,11 @@ fragment float4 aurora_fragment(
     float3 upv   = float3(0.0, cp,  -spi);
     float3 rd = normalize(fwd + sp.x * kFov * right + sp.y * kFov * upv);
 
-    // Route 5 — drum kink: a lateral shudder on the footprint (decays on the CPU
-    // accumulator's 1–2 s timescale).
-    float2 kink = float2(av.kinkAccumulator * kKinkAmp, 0.0);
+    // Route 5 — drum kink: a lateral fold shudder, localized to a screen-y band so
+    // the beat footprint stays bounded (D-157) — a fold travels through the curtain
+    // rather than sliding the whole thing (which would swamp the continuous routes).
+    float kinkWin = exp(-pow((uv.y - kKinkBandCenter) / kKinkBandWidth, 2.0));
+    float2 kink = float2(av.kinkAccumulator * kKinkAmp * kinkWin, 0.0);
 
     float3 aurora = aurora_march(rd, kink, motionAmp, time) * kAuroraGain;
 
@@ -261,8 +265,10 @@ fragment float4 aurora_fragment(
     float3 pitchTint = float3(1.0 - paletteOffset * 0.45, 1.0, 1.0 + paletteOffset * 0.75);
     aurora *= pitchTint;
 
-    // Route 2 — brightness breathing (bass transients flare the whole curtain).
-    aurora *= (0.85 + 0.5 * bassPulse);
+    // Route 2 — brightness breathing (bass transients flare the whole curtain). Wide
+    // swing with headroom below so the continuous route carries real amplitude (must
+    // dominate the beat-kink accent by ≥10×, §5.7).
+    aurora *= (0.62 + 0.9 * bassPulse);
 
     // ── Composite: additive emission over dark sky (stars punch through, FM #5).
     float3 finalColor = min(sky + aurora, float3(0.97));

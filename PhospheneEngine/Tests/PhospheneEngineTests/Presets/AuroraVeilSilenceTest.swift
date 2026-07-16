@@ -15,10 +15,11 @@
 //      screen-altitude phase offset are producing the green-base / magenta-
 //      crown gradient — research §1.2 H(z) curve.
 //
-//   3. Form complexity ≥ 2 at silence. The top 20 % (sky) has non-zero luma
-//      gradient (stars + sky gradient); the middle 60 % (aurora band) has a
-//      local luma max; the bottom 20 % is darker than the middle. Three
-//      distinct visual structures present — the L1 rubric gate.
+//   3. Form complexity ≥ 2 at silence. The sky band carries a luma gradient
+//      (stars + sky), and the aurora body shows bright converging rays
+//      coexisting with dominant dark negative space (AV.6 D-186: the
+//      convergence core's structure is horizontal rays over black, not a
+//      vertical brightness band — see §5.11). The L1 rubric gate.
 //
 // This is the AV.1 "Done When" silence test from `prompts/AV.1-prompt.md`.
 // AV.2 + AV.3 add separate tests (continuous-dominance, pitch-hue).
@@ -128,22 +129,22 @@ struct AuroraVeilSilenceTest {
 
     // MARK: - Assertion 3: Form complexity ≥ 2
 
-    @Test("Aurora Veil at silence has 3 distinct vertical regions (sky / aurora / dark base)")
+    @Test("Aurora Veil at silence has structured form: bright rays over dominant dark negative space")
     func test_silence_formComplexity() throws {
         guard let pixels = try renderSilenceFrame() else {
             print("AuroraVeilSilenceTest: skipping — no Metal device or preset missing")
             return
         }
 
-        // Per-row mean luma.
-        let rowLuma = computeRowLumaProfile(pixels: pixels)
+        let w = Self.renderWidth
+        let h = Self.renderHeight
 
-        // Sky band: uv.y ∈ [0.00, 0.20]. Must have non-zero luma gradient (sky
-        // gradient + occasional star samples). Coarse check: max-min over rows
-        // in the band > a small threshold.
-        let skyBand = rowLuma.prefix(Int(0.20 * Double(Self.renderHeight)))
-        let skyMin = skyBand.min() ?? 0
-        let skyMax = skyBand.max() ?? 0
+        // Assertion 1 — sky band (top 20 %) shows vertical luma variation (sky
+        // gradient + sparse stars), proving that layer contributes.
+        let rowLuma = computeRowLumaProfile(pixels: pixels)
+        let skyBand = rowLuma.prefix(Int(0.20 * Double(h)))
+        let skyMin  = skyBand.min() ?? 0
+        let skyMax  = skyBand.max() ?? 0
         #expect(
             skyMax - skyMin > 0.5,
             """
@@ -153,36 +154,55 @@ struct AuroraVeilSilenceTest {
             """
         )
 
-        // Aurora band: uv.y ∈ [0.30, 0.70]. Must have a strict local maximum
-        // versus the sky and the bottom — i.e., mean luma in this band exceeds
-        // mean luma in both surrounding bands.
-        let auroraStart  = Int(0.30 * Double(Self.renderHeight))
-        let auroraEnd    = Int(0.70 * Double(Self.renderHeight))
-        let auroraMean   = rowLuma[auroraStart..<auroraEnd].reduce(0, +) / Float(auroraEnd - auroraStart)
+        // AV.6 (D-186): the convergence core's structure is HORIZONTAL — bright
+        // converging rays separated by dark gaps, converging to the zenith — not a
+        // vertical brightness band with a "defined lower edge" (the retired
+        // flat-band envelope model the old assertion encoded). So form complexity
+        // is verified as bright rays COEXISTING with dominant dark negative space
+        // (AURORA_VEIL_DESIGN §5.11). This catches the two real regressions: a
+        // full-field wash (no dark gaps) and a dim/black aurora (no bright rays).
+        let bandStart = Int(0.30 * Double(h))
+        let bandEnd   = Int(0.75 * Double(h))
+        var bandPeak: Float = 0
+        for y in bandStart..<bandEnd {
+            for x in 0..<w {
+                let idx = (y * w + x) * 4
+                let luma = 0.299 * Float(pixels[idx + 2])
+                         + 0.587 * Float(pixels[idx + 1])
+                         + 0.114 * Float(pixels[idx + 0])
+                bandPeak = max(bandPeak, luma)
+            }
+        }
 
-        // Bottom band: uv.y ∈ [0.85, 1.00]. Must be darker than the aurora
-        // band (auroraEnv cutoff at uv.y > 0.84 → near-zero aurora here, only
-        // the sky gradient remains).
-        let bottomStart  = Int(0.85 * Double(Self.renderHeight))
-        let bottomBand   = rowLuma[bottomStart..<Self.renderHeight]
-        let bottomMean   = bottomBand.reduce(0, +) / Float(Self.renderHeight - bottomStart)
+        var darkCount = 0
+        let total = w * h
+        for i in 0..<total {
+            let luma = 0.299 * Float(pixels[i * 4 + 2])
+                     + 0.587 * Float(pixels[i * 4 + 1])
+                     + 0.114 * Float(pixels[i * 4 + 0])
+            if luma < 30 { darkCount += 1 }
+        }
+        let darkFraction = Float(darkCount) / Float(total)
+        print("AuroraVeilSilence formComplexity: bandPeak=\(bandPeak) darkFraction=\(darkFraction)")
 
+        // Assertion 2 — bright rays present in the aurora body (not a dim wash).
         #expect(
-            auroraMean > bottomMean + 1.0,
+            bandPeak > 60,
             """
-            Aurora band (uv.y∈[0.30,0.70], mean=\(auroraMean)) is not \
-            brighter than bottom band (uv.y∈[0.85,1.00], mean=\(bottomMean)). \
-            The aurora envelope is not producing a defined lower edge.
+            Aurora body (uv.y∈[0.30,0.75]) peak luma \(bandPeak) too dim — no \
+            distinct bright rays. Exposure/tone-map regressed toward a dim wash.
             """
         )
 
-        let skyMean = skyBand.reduce(0, +) / Float(skyBand.count)
+        // Assertion 3 — dominant dark negative space: a large fraction of the
+        // frame is near-black (dark sky between and around the converging rays).
+        // Distinguishes a discrete curtain from a full-field wash.
         #expect(
-            auroraMean > skyMean + 0.5,
+            darkFraction > 0.30,
             """
-            Aurora band (mean=\(auroraMean)) is not brighter than sky band \
-            (mean=\(skyMean)). The aurora column is not contributing visible \
-            luma above the sky baseline.
+            Negative space not dominant — only \(darkFraction) of the frame is \
+            near-black (< 30/255). The curtain reads as a full-field wash rather \
+            than discrete rays over dark sky.
             """
         )
     }
