@@ -48,13 +48,13 @@ The F-map spike (`kAuroraDebug == 2`, committed at `2b6c1286`) rendered the foot
 
 2. **Rebuild F as a band — SPIKE FIRST, wire second (go/no-go gate).** Author a new `aurora_footprint` whose concentration is a **localized band**: a meandering curve in the xz plane (curl-advected for drift/dance) × an **across-band profile** (bright core, soft edges), × **striations across the band's width** (fine ridged detail that will extrude into ray cross-sections) — per §5.12. Keep raw amplitude near its ceiling (fix finding 3). **Render F alone via the spike and confirm it reads as an arc with across-width striations against dark negative space — do NOT wire it through the march until the F-map looks right.** **Done-when:** the `kAuroraDebug = 2` map shows a discrete band with striations (attach the frame); F peak ≈ its ceiling, not ~5%.
 
-3. **Wire F through the march + recalibrate exposure.** Turn debug to `1` (grayscale density), then `0`. Re-measure `dlum` on `f0060` (**invert sRGB** — see §5.11 gotcha; the harness writes sRGB PNGs), set `kToneFloor ≈ measured avg`, `kToneScale ≈ 0.9/(peak−floor)`. **Done-when:** color render shows a single coherent curtain of ascending rays over dominant dark sky; grayscale shows bright rays on true black (YMIN≈16 limited-range); no pebbly texture.
+3. **Wire F through the march + recalibrate exposure.** Turn debug to `1` (grayscale density), then `0`. Re-measure `dlum` on `f0060` (**invert sRGB** — see §5.11 gotcha; the harness writes sRGB PNGs), set `kToneFloor ≈ measured avg`, `kToneScale ≈ 0.9/(peak−floor)`. **Cap the exposure so no channel clips to white** — `PresetAcceptanceTests` "does not clip to white" asserts **max channel < 250**; the AV.6 core failed it at 252 (the crown/bright-ray wash). Keep the scale (and any core-bleach) below that ceiling. **Done-when:** color render shows a single coherent curtain of ascending rays over dominant dark sky; grayscale shows bright rays on true black (YMIN≈16 limited-range); no pebbly texture; `PresetAcceptanceTests` max-channel < 250 (was 252).
 
 4. **Author the palette from the footage** (Matt approved, Q2). Sample RGB from `ref_240` at base / mid / crown, fit `H(z)`; replace nimitz's cosine (its midtone `(0.47,0.76,0.89)` is a desaturated cyan-white — *his* look, not the footage's). **Done-when:** crown reads violet, base saturated green, matched against `ref_240` in a vstack.
 
 5. **Camera framing — overhead curtain** (Matt approved, Q1). Return `kLookPitch` toward the locked ~1.02 (zenith just above the frame) and confirm the band, now at distance, still separates colour by elevation *without* the wide horizon window. **Done-when:** framing matches `ref_240` (overhead curtain, dark horizon low); stratification gate green.
 
-6. **Gates.** Full green set + lint + app build (see §7). **Done-when:** all pass; silence form (bandPeak, darkFraction) and continuous-dominance ratio still within their thresholds.
+6. **Gates.** Full green set + lint + app build (see §7). **Done-when:** all pass; silence form (bandPeak, darkFraction) and continuous-dominance ratio still within their thresholds; `PresetAcceptanceTests` (incl. "does not clip to white", max channel < 250) green.
 
 7. **HARD STOP — goldens.** `PresetRegressionTests` dHash goldens will differ. **Do not regenerate.** Produce the M7 review frames + motion GIF and **stop and report** for Matt's live-M7 sign-off before any golden regen.
 
@@ -73,8 +73,10 @@ The F-map spike (`kAuroraDebug == 2`, committed at `2b6c1286`) rendered the foot
 ```
 swiftlint lint --strict --config .swiftlint.yml
 xcodebuild -project PhospheneApp.xcodeproj -scheme PhospheneApp -destination 'platform=macOS' build 2>&1 | tail -3
-swift test --package-path PhospheneEngine --filter "AuroraVeilSilence|AuroraVeilContinuousDominance|AuroraVeilPitchHue|RouteCoverage|FidelityRubric|presetLoaderBuiltInPresetsHaveValidPipelines" 2>&1
+swift test --package-path PhospheneEngine --filter "AuroraVeilSilence|AuroraVeilContinuousDominance|AuroraVeilPitchHue|RouteCoverage|FidelityRubric|PresetAcceptance|presetLoaderBuiltInPresetsHaveValidPipelines" 2>&1
 ```
+
+Note: `PresetAcceptanceTests` ("does not clip to white", max channel < 250) is **added to the gate filter** — the AV.6 core failed it at 252 and the prior AV gate set missed it. `PresetRegressionTests` dHash stays out (goldens are the M7-gated hard stop, task 7).
 
 Visual feedback loop:
 ```
