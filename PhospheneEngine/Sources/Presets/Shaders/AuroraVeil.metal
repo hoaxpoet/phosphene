@@ -91,20 +91,22 @@ constant float kFoldAmp        = 0.35; // curl-fold strength (drapery + dance)
 // point (zenith), giving dark sky to the sides (negative space) and rays that
 // converge upward. All widths/offsets below are in RADIANS of sector angle.
 constant float kBandCenterAngle = 1.62; // sector center (rad); ~π/2 = straight up, biased
-constant float kBandHalfWidth  = 0.30; // angular half-width of the curtain sector
-constant float kBandMeanderAmp = 0.12; // sector-center sway amplitude (the arc's dance)
+constant float kBandHalfWidth  = 0.40; // angular half-width of the curtain sector (fuller)
+constant float kBandMeanderAmp = 0.17; // sector-center sway amplitude (the arc's dance)
 constant float kBandMeanderFrq = 1.15; // sway frequency (over radius → the arc curves)
-constant float kBandDrift      = 0.05; // slow curl drift of the sector center
+constant float kBandDrift      = 0.09; // slow curl drift of the sector center (the dance)
 // Filaments live in the CONVERGENCE frame (angle/radius about the uv-origin, which
 // is the zenith/vanishing point — see aurora_footprint). Angle is the tangential
 // coordinate (across the curtain → many rays); radius is radial (along each ray).
-constant float kStriationFreq  = 11.0; // ANGULAR filament density (rays across the curtain)
-constant float kRayWidth       = 0.13; // thin-ray half-width (fract units; smaller = finer rays)
-constant float kCrownFadeR     = 0.40; // radial fade toward the convergence (dim faint crown)
-constant float kStriationAdv   = 0.15; // fraction of curl adv applied to filaments only
-constant float kBandFloor      = 0.14; // dim curtain body between filaments; ridges lift to
-                                       // 1.0 as the rays (contrast pops the rays — overall
-                                       // brightness is carried by gain/exposure, not the floor)
+constant float kStriationFreq  = 15.0; // ANGULAR filament density (rays across the curtain)
+constant float kRayWidth       = 0.15; // thin-ray half-width (fract units; smaller = finer rays)
+constant float kCrownFadeR     = 0.34; // radial fade toward the convergence (dim faint crown)
+constant float kStriationAdv   = 0.38; // curl sway of the rays (the dance — rays wave/curl)
+constant float kTravelSpeed    = 0.55; // sideways travel of bright regions along the curtain
+constant float kBandFloor      = 0.13; // dim curtain body between filaments; ridges lift to
+                                       // 1.0 as the rays. Low → crisp rays with dark gaps
+                                       // (fullness comes from ray COUNT + sector width, not
+                                       // a bright body glow, which reads as fog).
 
 // Emission height profile D(h): sharp lower onset, long tail up (Lawlor D(h)).
 constant float kDepOnset = 0.05;     // sharp lower emission edge — the curtain's bright
@@ -154,7 +156,7 @@ struct AuroraVeilStateGPU {
 // into a ray fanning from the zenith; irregular spacing + per-ray brightness keep them
 // organic (not clean spotlight beams, FM #14). Coherent in radius (only a slow
 // meander), so a ray holds together down its length instead of averaging to fog.
-static inline float aurora_rays(float ang, float rad, float time) {
+static inline float aurora_rays(float ang, float rad, float time, float motionAmp) {
     float a = ang * kStriationFreq;
     a += 0.6 * sin(a * 0.37 + 1.3) + 0.35 * sin(a * 0.81 - 0.7);  // irregular ray spacing
     a += 0.04 * kStriationFreq * sin(rad * 5.0 + time * 0.2);      // slow radial meander
@@ -162,8 +164,12 @@ static inline float aurora_rays(float ang, float rad, float time) {
     float ridge = smoothstep(kRayWidth, 0.0, tri);  // thin bright ridge per ray
     float idx   = floor(a);                         // per-ray index → brightness + shimmer
     float bright = 0.45 + 0.55 * hash_f01_2(float2(idx, 3.7));
-    bright *= 0.75 + 0.25 * sin(time * (0.8 + 0.5 * hash_f01_2(float2(idx, 9.1))) + idx);
-    return ridge * bright;
+    // The dance: per-ray shimmer + a bright band travelling sideways across the
+    // curtain, both quickening/deepening with musical activity (motionAmp).
+    float rate = 1.0 + 2.2 * motionAmp;
+    bright *= 0.70 + 0.30 * sin(time * rate * (0.8 + 0.5 * hash_f01_2(float2(idx, 9.1))) + idx);
+    bright *= 0.60 + 0.40 * sin(a * 0.22 - time * kTravelSpeed * rate);
+    return ridge * saturate(bright);
 }
 
 // Footprint F(uv) — the flux map, expressed in the CONVERGENCE frame. The march
@@ -193,7 +199,7 @@ static inline float aurora_footprint(float2 uv, float motionAmp, float time) {
     // whole-AV.6 defect). Curl-advect the angle a little so they shimmer/travel.
     float advA = curl_noise(float3(uv * kFoldScale, time * 0.12)).x
                * (kFoldAmp * (0.5 + motionAmp) * kStriationAdv);
-    float rays = aurora_rays(ang + advA, rad, time);   // [0,~1] thin bright rays
+    float rays = aurora_rays(ang + advA, rad, time, motionAmp);   // [0,~1] thin bright rays
     float texture = mix(kBandFloor, 1.0, rays);
 
     // Crown fade — dim toward the convergence point (small rad). Kills the atan2
