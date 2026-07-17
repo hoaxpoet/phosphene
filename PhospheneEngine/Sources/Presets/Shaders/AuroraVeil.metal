@@ -52,8 +52,8 @@ constant int   kAuroraSteps = 48;    // vertical shells marched per column
 constant float kShellDH     = 0.018; // altitude per shell
 constant float kBaseShell   = 1.0;   // starting shell (near the emission floor)
 constant float kAuroraGain  = 9.0;   // emission gain
-constant float kToneFloor   = 0.0044; // subtract murk to black (just above measured linear dlum avg 0.0035)
-constant float kToneScale   = 43.0;   // stretch survivors: 0.9/(peak0.0252−floor0.0044)
+constant float kToneFloor   = 0.005;  // subtract murk to black (just above measured linear dlum avg 0.0039)
+constant float kToneScale   = 37.0;   // stretch survivors: 0.9/(peak0.0296−floor0.005)
 
 // Footprint F(uv) — the 2-D curtain map extruded upward. Ridged domain-warped
 // triangle noise (folded curtains), curl-advected + animated (drapery + dance).
@@ -153,22 +153,19 @@ static inline float aurora_deposition(float h) {
     return smoothstep(0.0, kDepOnset, h) * exp(-h * kDepDecay);
 }
 
-// Colour by HEIGHT (Lawlor H(z)): green body → blue mid → magenta crown. Pure
-// function of world altitude along the ray (not a screen line) → no colour band.
+// Colour by ALTITUDE (Lawlor H(z)) — the nimitz per-march-step IQ-cosine palette,
+// ported verbatim (research §1.1 load-bearing element (c), §1.2). Green base →
+// pale cyan → magenta crown: t=0 → (0.04, 1.00, 0.40), t=0.5 → (0.46, 0.77, 0.88),
+// t=1 → (0.91, 0.27, 0.97).
 //
-// Thresholds are mapped onto the range the march ACTUALLY traverses:
-// h ∈ [kBaseShell·kShellDH, (kBaseShell+kAuroraSteps-1)·kShellDH] ≈ [0.018, 0.864].
-// (AV.6 fix: the AV.5 thresholds put magenta at h > 0.98 — above the marched
-// ceiling — so the crown was unreachable and the curtain read all-green.)
-static inline float3 aurora_height_palette(float h) {
-    const float3 green   = float3(0.11, 1.00, 0.46);
-    const float3 blue    = float3(0.30, 0.48, 1.00);
-    const float3 magenta = float3(0.95, 0.40, 0.74);
-    // Transitions sit in the UPPER third of the marched range: each pixel sums its
-    // whole column, so an early green→blue crossover desaturates the entire curtain
-    // (the green body must stay dominant, L2 gate). Violet is the crown only.
-    float3 c = mix(green, blue,    smoothstep(0.42, 0.70, h));
-    return     mix(c,     magenta, smoothstep(0.70, 0.86, h));
+// `t` is the MARCH-STEP FRACTION (i / steps-1), not an absolute world height. That
+// is the point: the ramp always spans the full range the column traverses, so it
+// cannot fall out of register with the marched altitudes. The AV.5 palette keyed
+// smoothstep thresholds off absolute h and put magenta at h > 0.98 — above the
+// marched ceiling of ~0.864 — so the crown was unreachable and the curtain could
+// only ever read green (AV.6, Matt M7: "the aurora is more than green").
+static inline float3 aurora_height_palette(float t) {
+    return sin(1.0 - float3(2.15, -0.5, 1.2) + t * 2.107) * 0.5 + 0.5;
 }
 
 // Footprint-extrusion column march (Wittens operator). Marches a VERTICAL column
@@ -191,7 +188,8 @@ static inline float3 aurora_march(float3 rd, float2 kink, float motionAmp, float
         // weights the bright low base most; without it the column blows out. Rate
         // softened (0.055 → 0.035) so the upper shells still carry visible blue /
         // magenta instead of being drowned by the green base.
-        col += aurora_height_palette(h) * acc * exp2(-float(i) * 0.035 - 2.0);
+        col += aurora_height_palette(float(i) / float(kAuroraSteps - 1))
+             * acc * exp2(-float(i) * 0.035 - 2.0);
         uv += stepUV;
     }
     return col * smoothstep(0.03, 0.14, rd.y);     // soft horizon fade
