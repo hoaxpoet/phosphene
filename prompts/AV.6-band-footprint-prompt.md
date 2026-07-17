@@ -2,7 +2,9 @@
 
 **Type:** preset. **Branch:** `claude/aurora-veil-streak-core-4bad40` (pushed; start at `2b6c1286`).
 
-**Objective.** After this session the footprint `F(x,z)` reads as a **coherent auroral band** (an arc/curve across the ground plane) with **striations across its width**, not the isotropic mottle it is today — verified by the F-map spike *before* it is wired through the march. Downstream, the curtain occupies **part** of the frame against dominant dark sky, colour separates by elevation (green base → violet crown), and the pebbly ray texture is gone — because all three are downstream of F. Gates stay green; the exposure/tone-map is re-derived from measurement, not carried over.
+**Objective.** After this session the footprint `F(x,z)` reads as a **coherent auroral band** (an arc/curve across the ground plane) with **striations across its width**, not the isotropic mottle it is today — verified by the F-map spike *before* it is wired through the march. Downstream: an **overhead curtain** (Matt, Q1) hanging from just above the frame — green base above a dark horizon, rays ascending to a violet crown, `ref_240` — occupying **part** of the frame against dominant dark sky, colour separating by elevation, pebbly ray texture gone. Gates stay green; the exposure/tone-map is re-derived from measurement, not carried over.
+
+**Decisions locked (Matt, 2026-07-17):** Q1 = **overhead curtain** (return camera toward the locked ~1.02 pitch; the band, being at distance, separates colour by elevation without needing the wide horizon window). Q2 = **author the palette from `ref_240`** (base/mid/crown RGB), replacing nimitz's pale-cyan cosine midtone.
 
 ---
 
@@ -38,7 +40,7 @@ The F-map spike (`kAuroraDebug == 2`, committed at `2b6c1286`) rendered the foot
 - `swift test --package-path PhospheneEngine --filter "AuroraVeilSilence|AuroraVeilContinuousDominance|AuroraVeilPitchHue|RouteCoverage|FidelityRubric"` → green (37/37 in the last session's run set).
 - `swiftlint lint --strict --config .swiftlint.yml` → 0 violations.
 - The F-map spike renders: set `kAuroraDebug = 2.0`, `AURORA_GIF=1 swift test … --filter AuroraVeilMotionGifHarness`, and confirm `/tmp/aurora_motion/f0060.png` shows the red/green footprint map (reproduce the "islands, no band" baseline before changing anything).
-- **§5.12 band spec exists in the design doc** (Matt-authored). If absent → stop, this is a DECISION-NEEDED, do not author design strategy mid-session.
+- **§5.12 band spec exists in the design doc** (Matt-authored — the one remaining prerequisite; framing/palette are already decided, see §10). If absent → stop; do not author design strategy mid-session.
 
 ## 4. Numbered tasks (each has a done-when)
 
@@ -48,9 +50,9 @@ The F-map spike (`kAuroraDebug == 2`, committed at `2b6c1286`) rendered the foot
 
 3. **Wire F through the march + recalibrate exposure.** Turn debug to `1` (grayscale density), then `0`. Re-measure `dlum` on `f0060` (**invert sRGB** — see §5.11 gotcha; the harness writes sRGB PNGs), set `kToneFloor ≈ measured avg`, `kToneScale ≈ 0.9/(peak−floor)`. **Done-when:** color render shows a single coherent curtain of ascending rays over dominant dark sky; grayscale shows bright rays on true black (YMIN≈16 limited-range); no pebbly texture.
 
-4. **Author the palette from the footage** (if Matt approves in DECISION-NEEDED). Sample RGB from `ref_240` at base / mid / crown, fit `H(z)`; replace nimitz's cosine (its midtone `(0.47,0.76,0.89)` is a desaturated cyan-white — *his* look, not the footage's). **Done-when:** crown reads violet, base saturated green, matched against `ref_240` in a vstack.
+4. **Author the palette from the footage** (Matt approved, Q2). Sample RGB from `ref_240` at base / mid / crown, fit `H(z)`; replace nimitz's cosine (its midtone `(0.47,0.76,0.89)` is a desaturated cyan-white — *his* look, not the footage's). **Done-when:** crown reads violet, base saturated green, matched against `ref_240` in a vstack.
 
-5. **Camera framing** per DECISION-NEEDED. If overhead curtain is chosen, return `kLookPitch` toward the locked ~1.02 and confirm the band (now at distance) still separates colour by elevation without the wide window. **Done-when:** framing matches the chosen target; stratification gate green.
+5. **Camera framing — overhead curtain** (Matt approved, Q1). Return `kLookPitch` toward the locked ~1.02 (zenith just above the frame) and confirm the band, now at distance, still separates colour by elevation *without* the wide horizon window. **Done-when:** framing matches `ref_240` (overhead curtain, dark horizon low); stratification gate green.
 
 6. **Gates.** Full green set + lint + app build (see §7). **Done-when:** all pass; silence form (bandPeak, darkFraction) and continuous-dominance ratio still within their thresholds.
 
@@ -93,15 +95,10 @@ Invoke `closeout`; produce the 8-part report. In a worktree the full `Scripts/cl
 
 ---
 
-## 10. DECISION-NEEDED (Matt, before task 2)
+## 10. DECISION-NEEDED — RESOLVED (Matt, 2026-07-17)
 
-**Q1 — What should the curtain's framing and colour be?** The spike showed colour-separation and `ref_240`'s composition had been pulling in opposite directions *only because* F was an isotropic field; a band decouples them, so the camera is free again.
+**Q1 — framing/colour → A, overhead curtain.** A nearby curtain hanging from just above the frame, green base above a dark horizon, rays ascending to a violet crown (`ref_240`). Returns to the locked "zenith just above the frame" framing. The band decouples colour-separation from the camera window, so this no longer costs the colour read.
 
-- **A — Overhead curtain (recommended).** A nearby curtain hanging from just above the frame, green base above a dark horizon, rays ascending to a violet crown — `ref_240`. Returns to the originally locked "zenith just above the frame" framing. What you'd see: one bright curtain occupying part of the sky, dominant dark negative space.
-- **B — Wide horizon arc.** The band sits farther off toward the horizon; more of the sky is dark, the curtain is a distant ribbon. What you'd see: a smaller, more distant aurora with more sky around it.
+**Q2 — palette source → yes, author from the footage.** Fit `H(z)` from `ref_240` RGB (base/mid/crown), replacing nimitz's pale-cyan cosine midtone. The video is the fidelity target.
 
-*Recommendation: A.* *Default if no reply: A.*
-
-**Q2 — Palette source?** Author `H(z)` by sampling actual RGB from `ref_240` (base/mid/crown), replacing nimitz's cosine (pale cyan midtone). *Recommendation: yes, author from the footage — it is the fidelity target. Default: yes.*
-
-**Both are product-level (what the aurora looks like). Q1 also gates the §5.12 band spec you author before this session runs.**
+**Still open — Matt's seat, before the session runs:** author **§5.12** (the band-footprint spec) in `AURORA_VEIL_DESIGN.md` and commit it. Per the authoring invariant, Claude Code does not write the design strategy mid-session; task 2 hard-stops if §5.12 is absent. The band's musical-role sentence + temporal contract carry over from §5.11 (curl-advected drift = the dance; ascending rays; bass flare; rare drum-kink fold; half-bar star blink) — §5.12 needs the *structure* spec: band curve, across-width profile, striation source, amplitude target (near the 0.55 ceiling, not ~0.03).
