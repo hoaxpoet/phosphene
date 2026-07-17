@@ -47,7 +47,9 @@
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-constant float kAuroraDebug = 0.0;   // debug off
+constant float kAuroraDebug = 0.0;   // 0 = ship · 1 = grayscale density · 2 = F(x,z) map
+constant float kFpSpikeSpan = 1.4;   // spike: footprint-plane span shown across screen
+                                     // (the march samples uv = rd.xz·t, |uv| ≲ 0.62)
 constant int   kAuroraSteps = 48;    // samples marched along each view ray
 // nimitz step distribution (research §1.1(4)): t_raw = base + i^1.4·grow — dense
 // near the curtain base, coarse toward the diffuse crown. Spans 0.8 → ~1.24.
@@ -257,6 +259,21 @@ fragment float4 aurora_fragment(
     float paletteOffset = (pitchNorm - 0.5) * kVocalsPitchAmp;
     float midActivity = saturate(0.5 + 0.5 * f.mid_att_rel);
     float motionAmp   = kAuroraMotionBase + kAuroraMotionGain * midActivity;
+
+    // ── SPIKE (kAuroraDebug == 2): render the footprint F(x,z) alone, as a flat 2-D
+    // map over the ground plane — no march, no camera. Question under test: does F
+    // read as a DISCRETE BAND (auroral oval, Lawlor's flux map) or as an isotropic
+    // field dense everywhere? Green = F, red = the concentration term alone.
+    if (kAuroraDebug > 1.5) {
+        float2 fpUV = (uv - 0.5) * kFpSpikeSpan;
+        float  fp   = aurora_footprint(fpUV, motionAmp, time);
+        float2 adv  = curl_noise(float3(fpUV * kFoldScale, time * 0.12)).xy
+                    * (kFoldAmp * (0.5 + motionAmp));
+        float  conc = smoothstep(kFpLo, kFpHi,
+                          fbm4(float3(fpUV * kConcFreq + adv * 0.5, 3.0)));
+        // F is boosted 15x: raw triNoise sits ~0.03 against its 0.55 clamp ceiling.
+        return float4(saturate(conc) * 0.35, saturate(fp * 15.0), 0.0, 1.0);
+    }
     float bassPulse   = smoothstep(kBrightnessGateLo, kBrightnessGateHi, bassDev);
 
     // ── Layer 1: Sky gradient + sparse pinpoint stars ────────────────────────
