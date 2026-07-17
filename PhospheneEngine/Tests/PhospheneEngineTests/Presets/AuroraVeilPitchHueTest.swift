@@ -53,6 +53,21 @@ struct AuroraVeilPitchHueTest {
         // is designed to span.
         let steps = 8
         let sweep: [Float] = (0..<steps).map { Float($0) / Float(steps - 1) }
+
+        // Pick the sample column ONCE from a reference render (mid pitch) and
+        // reuse it for every step, so the sweep measures hue-vs-pitch at a FIXED
+        // location. Re-finding the brightest column per step (the old form)
+        // conflates a position shift — e.g. the AV.5 perspective drape moving
+        // which curtain is brightest — with the hue change under test. The
+        // footprint is pitch-independent, so a column lit at the reference pitch
+        // is lit at every pitch; only its colour migrates.
+        guard let refPixels = try renderFrame(pitchNorm: 0.5,
+                                              pitchConfidence: 1.0) else {
+            print("AuroraVeilPitchHue: skipping — no Metal device")
+            return
+        }
+        let sampleCol = findBrightestColumn(pixels: refPixels)
+
         var hueScalars: [Float] = []
         for pitchNorm in sweep {
             guard let pixels = try renderFrame(pitchNorm: pitchNorm,
@@ -60,18 +75,13 @@ struct AuroraVeilPitchHueTest {
                 print("AuroraVeilPitchHue: skipping — no Metal device")
                 return
             }
-            // Find the brightest column at the aurora mid altitude (uv.y=0.5)
-            // so the hue sample lives where the IQ palette is fully
-            // expressed (away from the envelope's edges).
-            let brightCol = findBrightestColumn(pixels: pixels)
-
             // Average the hue scalar across three altitudes inside the
             // aurora band (the prompt's §5.7 sampling at uv.y=0.4/0.5/0.6).
             // Averaging smooths the per-pixel noise so step-to-step deltas
             // reflect palette migration rather than sampling jitter.
             var sum: Float = 0
             for uy in [Float(0.40), 0.50, 0.60] {
-                sum += hueScalar(pixels: pixels, ux: brightCol, uy: uy)
+                sum += hueScalar(pixels: pixels, ux: sampleCol, uy: uy)
             }
             hueScalars.append(sum / 3.0)
         }
