@@ -70,15 +70,25 @@ constant float kAuroraGain  = 9.0;   // emission gain
 constant float kToneFloor   = 0.0012; // subtract murk to black (just above measured linear dlum avg 0.00095)
 constant float kToneScale   = 68.0;   // stretch survivors: 0.9/(peak0.0144−floor0.0012)
 
-// Footprint F(uv) — the 2-D curtain map extruded upward. Ridged domain-warped
-// triangle noise (folded curtains), curl-advected + animated (drapery + dance).
-constant float kFootprintFreq = 5.5; // curtain density across the sky
-constant float kFoldScale     = 2.5; // curl-fold spatial scale
+// Footprint F(uv) — the 2-D ground-plane flux map (Lawlor F(x,z)), rebuilt as a
+// localized BAND (the auroral arc), not isotropic noise. The F-map spike proved
+// the old tri-noise×fbm concentration was scattered mottle islands → streaks
+// strewn across the sky, pebbly rays, and amplitude ~0.03/0.55. The band gives a
+// coherent curtain over dark negative space, striations that extrude into rays,
+// and full amplitude.
+constant float kFoldScale     = 2.5;  // curl-fold spatial scale
 constant float kFoldAmp        = 0.35; // curl-fold strength (drapery + dance)
 constant float kSubstrateSpd   = 0.06; // per-octave noise rotation
-constant float kConcFreq       = 1.9; // large-scale concentration frequency (curtain placement)
-constant float kFpLo           =  0.05; // concentration threshold: below → dark sky (fbm4 is ~[-1,1])
-constant float kFpHi           =  0.40; // above → inside a curtain region
+// Band shape:
+constant float kBandHalfWidth  = 0.16; // across-band soft half-width (curtain depth)
+constant float kBandMeanderAmp = 0.10; // centerline meander amplitude (the arc's sway)
+constant float kBandMeanderFrq = 1.15; // centerline meander frequency
+constant float kBandDrift      = 0.04; // slow centerline drift (dance; ≪ half-width)
+constant float kStriationFreq  = 8.5;  // along-band filament density (the rays)
+constant float kStriationAniso = 0.22; // across-band coherence (rays hold together)
+constant float kStriationAdv   = 0.15; // fraction of curl adv applied to filaments only
+constant float kBandFloor      = 0.40; // lit curtain body between filaments (band supplies
+                                       // brightness; ridges lift to 1.0 as the rays)
 
 // Emission height profile D(h): sharp lower onset, long tail up (Lawlor D(h)).
 constant float kDepOnset = 0.05;     // sharp lower emission edge — the curtain's bright
@@ -155,18 +165,34 @@ static inline float aurora_tri_noise_2d(float2 p, float spd, float time) {
     return clamp(1.0 / pow(rz * 29.0, 1.3), 0.0, 0.55);
 }
 
-// Footprint F(uv) — the 2-D ground-plane curtain map. Ridged folded triangle noise
-// (the curtains), curl-advected + animated so the folds drape and the whole thing
-// dances (audio-scaled). The negative space is the dark between the ridges.
+// Footprint F(uv) — the 2-D ground-plane flux map as a BAND (the auroral arc).
+// A meandering centerline carves a soft-edged strip (bright core → dark sky
+// outside = real negative space); anisotropic striations inside it (fine along the
+// band, coherent across) are the filaments that extrude into rays. Curl-advected
+// so the arc sways and folds (the dance). Amplitude runs to the tri-noise ceiling.
 static inline float aurora_footprint(float2 uv, float motionAmp, float time) {
+    // Band membership on GENTLY-drifted coords. The arc sways slowly (the dance);
+    // it must NOT be scattered — a displacement larger than the band half-width
+    // dissolves the band into all-over mottle (learned: the full curl adv ±0.5 ≫
+    // half-width 0.2 erased the strip). Drift is a small fraction of the width.
+    float drift  = kBandDrift * curl_noise(float3(uv * 0.8, time * 0.08)).x;
+    float center = kBandMeanderAmp * sin(uv.x * kBandMeanderFrq + time * 0.05)
+                 + kBandMeanderAmp * 0.45 * sin(uv.x * kBandMeanderFrq * 2.3 - time * 0.04)
+                 + drift;
+    float d    = uv.y - center;
+    float band = exp(-(d * d) / (kBandHalfWidth * kBandHalfWidth));
+
+    // Striations MODULATE the band (they don't supply its brightness — the nimitz
+    // ridged noise is sparse, ~0.03 avg). Advected only modestly so filaments
+    // shimmer without scattering the band. Anisotropic: fine along the band (many
+    // rays), stretched across (coherent). Body = kBandFloor, ridges lift to 1.0.
     float2 adv = curl_noise(float3(uv * kFoldScale, time * 0.12)).xy
-               * (kFoldAmp * (0.5 + motionAmp));
-    float raw = aurora_tri_noise_2d(uv * kFootprintFreq + adv, kSubstrateSpd, time);
-    // Large-scale concentration carves the negative space (where the curtains are
-    // vs dark sky); the raw triNoise supplies the fine filament texture within.
-    float conc = smoothstep(kFpLo, kFpHi,
-                     fbm4(float3(uv * kConcFreq + adv * 0.5, 3.0)));
-    return raw * conc;
+               * (kFoldAmp * (0.5 + motionAmp) * kStriationAdv);
+    float2 sp = float2((uv.x + adv.x) * kStriationFreq, d / kStriationAniso);
+    float filament = aurora_tri_noise_2d(sp, kSubstrateSpd, time) / 0.55; // [0,1] ridges
+    float texture  = mix(kBandFloor, 1.0, filament);
+
+    return band * texture;
 }
 
 // Height-deposition D(h) — sharp onset at the emission floor (crisp lower edge),
@@ -260,19 +286,14 @@ fragment float4 aurora_fragment(
     float midActivity = saturate(0.5 + 0.5 * f.mid_att_rel);
     float motionAmp   = kAuroraMotionBase + kAuroraMotionGain * midActivity;
 
-    // ── SPIKE (kAuroraDebug == 2): render the footprint F(x,z) alone, as a flat 2-D
-    // map over the ground plane — no march, no camera. Question under test: does F
-    // read as a DISCRETE BAND (auroral oval, Lawlor's flux map) or as an isotropic
-    // field dense everywhere? Green = F, red = the concentration term alone.
+    // ── SPIKE (kAuroraDebug == 2): render the footprint F(x,z) alone as a flat 2-D
+    // map over the ground plane — no march, no camera. Go/no-go for the band
+    // rebuild: does F read as a coherent arc with striations over dark negative
+    // space? Grayscale = F directly (now full-amplitude, no boost needed).
     if (kAuroraDebug > 1.5) {
         float2 fpUV = (uv - 0.5) * kFpSpikeSpan;
         float  fp   = aurora_footprint(fpUV, motionAmp, time);
-        float2 adv  = curl_noise(float3(fpUV * kFoldScale, time * 0.12)).xy
-                    * (kFoldAmp * (0.5 + motionAmp));
-        float  conc = smoothstep(kFpLo, kFpHi,
-                          fbm4(float3(fpUV * kConcFreq + adv * 0.5, 3.0)));
-        // F is boosted 15x: raw triNoise sits ~0.03 against its 0.55 clamp ceiling.
-        return float4(saturate(conc) * 0.35, saturate(fp * 15.0), 0.0, 1.0);
+        return float4(saturate(fp), saturate(fp), saturate(fp), 1.0);
     }
     float bassPulse   = smoothstep(kBrightnessGateLo, kBrightnessGateHi, bassDev);
 
