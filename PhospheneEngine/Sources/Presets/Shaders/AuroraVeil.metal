@@ -66,9 +66,9 @@ constant float kCrownH      = 0.286; // altitude of the magenta crown (H(z) ceil
                                      // = the altitude the steepest in-frame ray reaches
 constant float kCrownCurve  = 1.5;   // H(z) index curve: >1 holds green across most of
                                      // the altitude range, violet only at the tips
-constant float kAuroraGain  = 9.0;   // emission gain
-constant float kToneFloor   = 0.0012; // subtract murk to black (just above measured linear dlum avg 0.00095)
-constant float kToneScale   = 68.0;   // stretch survivors: 0.9/(peak0.0144−floor0.0012)
+constant float kAuroraGain  = 1.7;   // emission gain (band peak dlum 0.54 → ~0.9)
+constant float kToneFloor   = 0.0;    // tone map off (band recalibration)
+constant float kToneScale   = 1.0;
 
 // Footprint F(uv) — the 2-D ground-plane flux map (Lawlor F(x,z)), rebuilt as a
 // localized BAND (the auroral arc), not isotropic noise. The F-map spike proved
