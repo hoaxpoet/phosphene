@@ -129,7 +129,8 @@ constant float kFov       = 1.15;    // vertical field-of-view scale
 
 // ── Motion (the dance) ───────────────────────────────────────────────────────
 constant float kAuroraMotionBase = 0.35;   // motion amplitude at silence
-constant float kAuroraMotionGain = 0.65;   // additional from mid activity
+constant float kAuroraMotionGain = 0.65;   // additional from `other`-stem activity
+constant float kOtherDanceScale  = 1.6;    // other_energy_dev → dance-activity gain
 
 // ── Audio routing constants (design §5.7, preserved) ─────────────────────────
 constant float kStemWarmupLow  = 0.02;
@@ -303,8 +304,14 @@ fragment float4 aurora_fragment(
     float pitchConfident = step(0.5, stems.vocals_pitch_confidence);
     float pitchNorm = mix(0.5, av.smoothedPitchNorm, pitchConfident);
     float paletteOffset = (pitchNorm - 0.5) * kVocalsPitchAmp;
-    float midActivity = saturate(0.5 + 0.5 * f.mid_att_rel);
-    float motionAmp   = kAuroraMotionBase + kAuroraMotionGain * midActivity;
+    // Dance vigor — driven by the synth/pad body (the `other` stem), Aurora Veil's
+    // song-defining anchor. On real music `other_energy_dev` swings hard (~0.04→0.64)
+    // where the whole-mix mid band is nearly static (±0.006) — routing the dance off
+    // mid gave almost no reactivity. Pre-warmup (no stems) fall back to the mid proxy.
+    float otherActivity = saturate(stems.other_energy_dev * kOtherDanceScale);
+    float midProxy      = saturate(0.5 + 0.5 * f.mid_att_rel);
+    float danceActivity = mix(midProxy, otherActivity, stemMix);
+    float motionAmp     = kAuroraMotionBase + kAuroraMotionGain * danceActivity;
 
     // ── SPIKE (kAuroraDebug == 2): render the footprint F(x,z) alone as a flat 2-D
     // map over the ground plane — no march, no camera. Go/no-go for the band

@@ -15,7 +15,7 @@
     "bass": "brightness_breath"
   },
   "audio_routes": [
-    { "route": "motion_amp",        "primitive": "midAttRel",      "kind": "continuous" },
+    { "route": "motion_amp",        "primitive": "otherEnergyDev", "kind": "continuous" },
     { "route": "brightness_breath", "primitive": "bassDev",        "kind": "continuous" },
     { "route": "curtain_kink",      "primitive": "drumsEnergyDev", "kind": "accent" },
     { "route": "ribbon_hue",        "primitive": "vocalsPitchHz",  "kind": "continuous" },
