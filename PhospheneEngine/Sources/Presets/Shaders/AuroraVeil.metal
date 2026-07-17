@@ -91,7 +91,7 @@ constant float kFoldAmp        = 0.35; // curl-fold strength (drapery + dance)
 // point (zenith), giving dark sky to the sides (negative space) and rays that
 // converge upward. All widths/offsets below are in RADIANS of sector angle.
 constant float kBandCenterAngle = 1.62; // sector center (rad); ~π/2 = straight up, biased
-constant float kBandHalfWidth  = 0.37; // angular half-width of the curtain sector (fuller)
+constant float kBandHalfWidth  = 0.40; // angular half-width of the curtain sector (fuller)
 constant float kBandMeanderAmp = 0.17; // sector-center sway amplitude (the arc's dance)
 constant float kBandMeanderFrq = 1.15; // sway frequency (over radius → the arc curves)
 constant float kBandDrift      = 0.09; // slow curl drift of the sector center (the dance)
@@ -101,8 +101,8 @@ constant float kBandDrift      = 0.09; // slow curl drift of the sector center (
 constant float kStriationFreq  = 15.0; // ANGULAR filament density (rays across the curtain)
 constant float kRayWidth       = 0.15; // thin-ray half-width (fract units; smaller = finer rays)
 constant float kCrownFadeR     = 0.34; // radial fade toward the convergence (dim faint crown)
-constant float kStriationAdv   = 0.47; // curl sway of the rays (the dance — rays wave/curl)
-constant float kTravelSpeed    = 0.95; // sideways travel of bright regions along the curtain
+constant float kStriationAdv   = 0.38; // curl sway of the rays (the dance — rays wave/curl)
+constant float kTravelSpeed    = 0.55; // sideways travel of bright regions along the curtain
 constant float kBandFloor      = 0.13; // dim curtain body between filaments; ridges lift to
                                        // 1.0 as the rays. Low → crisp rays with dark gaps
                                        // (fullness comes from ray COUNT + sector width, not
@@ -166,9 +166,9 @@ static inline float aurora_rays(float ang, float rad, float time, float motionAm
     float bright = 0.45 + 0.55 * hash_f01_2(float2(idx, 3.7));
     // The dance: per-ray shimmer + a bright band travelling sideways across the
     // curtain, both quickening/deepening with musical activity (motionAmp).
-    float rate = 1.0 + 2.6 * motionAmp;
-    bright *= 0.68 + 0.32 * sin(time * rate * (0.8 + 0.5 * hash_f01_2(float2(idx, 9.1))) + idx);
-    bright *= 0.50 + 0.50 * sin(a * 0.22 - time * kTravelSpeed * rate);   // deep travelling bands
+    float rate = 1.0 + 2.2 * motionAmp;
+    bright *= 0.70 + 0.30 * sin(time * rate * (0.8 + 0.5 * hash_f01_2(float2(idx, 9.1))) + idx);
+    bright *= 0.60 + 0.40 * sin(a * 0.22 - time * kTravelSpeed * rate);
     return ridge * saturate(bright);
 }
 
@@ -186,11 +186,10 @@ static inline float aurora_footprint(float2 uv, float motionAmp, float time) {
     // Sector membership. The center sways slowly (the arc's dance) — over radius so
     // the curtain curves, and in time; a gentle curl drift too. Kept well within the
     // half-width so the sector holds together rather than scattering.
-    float driftRate = 0.10 + 0.30 * motionAmp;   // the arc sways faster when the music is busy
-    float drift = kBandDrift * curl_noise(float3(uv * 0.8, time * driftRate)).x;
+    float drift = kBandDrift * curl_noise(float3(uv * 0.8, time * 0.08)).x;
     float centerAng = kBandCenterAngle
-                    + kBandMeanderAmp * sin(rad * kBandMeanderFrq + time * (0.10 + 0.30 * motionAmp))
-                    + kBandMeanderAmp * 0.45 * sin(rad * kBandMeanderFrq * 2.3 - time * (0.08 + 0.24 * motionAmp))
+                    + kBandMeanderAmp * sin(rad * kBandMeanderFrq + time * 0.05)
+                    + kBandMeanderAmp * 0.45 * sin(rad * kBandMeanderFrq * 2.3 - time * 0.04)
                     + drift;
     float dA   = (ang - centerAng) / kBandHalfWidth;
     float band = exp(-dA * dA);
@@ -198,7 +197,7 @@ static inline float aurora_footprint(float2 uv, float motionAmp, float time) {
     // Rays: thin bright filaments in ANGLE (many across the curtain), coherent in
     // radius so they extrude down each view ray instead of de-cohering into fog (the
     // whole-AV.6 defect). Curl-advect the angle a little so they shimmer/travel.
-    float advA = curl_noise(float3(uv * kFoldScale, time * (0.18 + 0.40 * motionAmp))).x
+    float advA = curl_noise(float3(uv * kFoldScale, time * 0.12)).x
                * (kFoldAmp * (0.5 + motionAmp) * kStriationAdv);
     float rays = aurora_rays(ang + advA, rad, time, motionAmp);   // [0,~1] thin bright rays
     float texture = mix(kBandFloor, 1.0, rays);
