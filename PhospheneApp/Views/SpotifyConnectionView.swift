@@ -230,7 +230,7 @@ struct SpotifyConnectionView: View {
                 }
             }
             Button(String(localized: "connector.spotify.try_again_button")) {
-                viewModel.connect(startSession: onConnect)
+                viewModel.retry(startSession: onConnect)
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)

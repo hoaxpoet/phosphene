@@ -473,6 +473,42 @@ struct SessionManagerLocalFileTests {
         #expect(manager.currentPlan?.tracks.count == 3)
     }
 
+    /// BUG-068 regression: a mid-queue preparation failure must NOT reorder
+    /// the plan. Plan index N pairs positionally with playback URL N — the old
+    /// `cachedTracks + failedTracks` concatenation produced [A, C, B] for a
+    /// failing middle file, mispairing every later track's audio with another
+    /// track's identity/beat grid/chrome.
+    @Test func startLocalFiles_midQueueFailure_preservesURLQueueOrder() async throws {
+        let manager = try makeLFManager()
+        let urls = threeURLs
+
+        // Stub prepares files 1 and 3; file 2 (so_what.m4a) fails (nil result).
+        var results: [String: LocalFilePrepResult] = [:]
+        for (index, url) in urls.enumerated() where index != 1 {
+            let hash = String(format: "%064x", index + 1)
+            results[url.lastPathComponent] = makeStubPrepResult(url: url, hash: hash)
+        }
+        let stub = MultiStubLocalFilePreparer(results: results)
+        manager.localFilePreparer = stub
+
+        await manager.startLocalFiles(at: urls, origin: .localFiles(urls))
+
+        #expect(manager.state == .ready)
+        let plan = try #require(manager.currentPlan)
+        #expect(plan.tracks.count == 3)
+
+        // Order: every plan slot carries the identity for ITS OWN url.
+        // (Stub identities and failure placeholders both title by filename.)
+        #expect(plan.tracks.map(\.title) == urls.map(\.lastPathComponent),
+                "Plan order must match the URL queue after a mid-queue failure")
+
+        // Slot 1 is the failed placeholder (local:<path>), slots 0/2 the
+        // prepared local:sha256: identities.
+        #expect(plan.tracks[0].spotifyID?.hasPrefix("local:sha256:") == true)
+        #expect(plan.tracks[1].spotifyID == "local:" + urls[1].path)
+        #expect(plan.tracks[2].spotifyID?.hasPrefix("local:sha256:") == true)
+    }
+
     @Test func startLocalFiles_storesEveryCachedEntry() async throws {
         let manager = try makeLFManager()
         let urls = threeURLs

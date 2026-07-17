@@ -1065,7 +1065,7 @@ Each light's color is `palette(audio_time * 0.05 + per_light_phase_offset + pitc
 
 **Intensity envelope:**
 
-Each light's intensity is `base_intensity * (0.4 + 0.6 * drums_energy_dev_smoothed)` where `drums_energy_dev_smoothed` is the deviation primitive smoothed with 150ms τ to prevent jitter on per-frame onset variation. The 0.4 floor preserves visible beam presence at silence (per D-019); the 0.6 swing on top responds to drum energy continuously. Never edge-trigger on `drums_beat` for intensity — that produces club-strobe behavior, which is anti per the Ferrofluid Ocean anti-references list. **Enforced, not just advisory (CLEAN.7.6 / D-164):** `PhotosensitivityCertificationTests` renders each certified preset over a worst-case beat train and measures the rendered full-frame luminance against the Harding / WCAG 2.3.1 limit (≤ 3 flashes/s), **failing certification** on violation. A preset over threshold is a P1 safety finding to bring to Matt, not a number to tune away. (The gate currently validly covers presets that read music response from the `FeatureVector` in-shader — FFO + Murmuration; follower-state / multi-pass / feedback presets await the A-next real-`RenderPipeline` harness.)
+Each light's intensity is `base_intensity * (0.4 + 0.6 * drums_energy_dev_smoothed)` where `drums_energy_dev_smoothed` is the deviation primitive smoothed with 150ms τ to prevent jitter on per-frame onset variation. The 0.4 floor preserves visible beam presence at silence (per D-019); the 0.6 swing on top responds to drum energy continuously. Never edge-trigger on `drums_beat` for intensity — that produces club-strobe behavior, which is anti per the Ferrofluid Ocean anti-references list. **Enforced, not just advisory (CLEAN.7.6 / D-164):** `PhotosensitivityCertificationTests` renders each certified preset over a worst-case beat train and measures the rendered full-frame luminance against the Harding / WCAG 2.3.1 limit (≤ 3 flashes/s), **failing certification** on violation. A preset over threshold is a P1 safety finding to bring to Matt, not a number to tune away. (Enforcement is a dual harness since CLEAN.7.6c: the single-pass FeatureVector gate covers in-shader-reactive presets, and `MultiPassFlashHarnessTests` runs a headless real-`RenderPipeline` multi-pass render for follower-state / multi-pass / feedback presets — with a fail-loud static-render guard so a NEW certified preset that renders static there must join the harness rather than silently pass. Updated at PUB.3; this parenthetical previously said the multi-pass harness was still pending.)
 
 **Silence state:**
 
@@ -2459,7 +2459,7 @@ Every preset ships a `<PresetName>.json` sidecar alongside its `.metal` file. Th
 | Field | Default | Notes |
 |-------|---------|-------|
 | `name` | required | Display name |
-| `family` | required | Aesthetic family: `fluid`, `geometric`, `abstract`, `fractal`, `instrument`, etc. |
+| `family` | optional | Aesthetic family — a STRICT `PresetCategory` enum (PUB.7 correction: this row previously listed values like `abstract` that don't exist; an unknown value throws the whole sidecar decode → the preset degrades to defaults with an os.log error). Valid: `waveform`, `fractal`, `geometric`, `particles`, `hypnotic`, `supernova`, `reaction`, `drawing`, `dancer`, `sparkle`, `volumetric`, `painterly`, `transition` (D-123; see PresetCategory.swift for the current list). Omit for diagnostics. |
 | `duration` | 30 | Preferred scene duration (seconds). Orchestrator can override. |
 | `passes` | `["direct"]` | Required render passes. Backward-compatible: falls back to `synthesizePasses(from:)` reading legacy booleans. |
 | `beat_source` | `"bass"` | Which onset drives beat uniform: `bass`, `mid`, `treble`, `composite` |
@@ -2482,6 +2482,28 @@ Every preset ships a `<PresetName>.json` sidecar alongside its `.metal` file. Th
 | `rubric_profile` | `"full"` | Which rubric ladder to apply. `"full"` = 7 mandatory + 4 expected + 4 preferred. `"lightweight"` = 4 items for stylized 2D / diagnostic presets (Plasma, Waveform, Nebula, SpectralCartograph). Unknown strings fall back to `"full"` with a warning. (Increment V.6) |
 | `rubric_hints` | `{}` | Author-asserted flags for rubric items the analyzer cannot auto-detect. `"hero_specular": true` satisfies P1; `"dust_motes": true` satisfies P3. Missing keys default to `false`. (Increment V.6) |
 | `audio_routes` | `[]` | The preset's audio-routing manifest — see §17.1. Required non-empty for certification (QG.1). |
+| `feedback_pixel_format` | drawable | mv_warp feedback-buffer format: `"rgba16Float"` (HDR bloom headroom — safe ONLY for decay-bounded feedback: Nacre/Floret/Glaze) or `"bgra8Unorm"` (linear non-sRGB 8-bit — Fata Morgana, D-139). Omit for faithful no-decay warps: the 8-bit clamp is load-bearing (Dragon Bloom, D-137 — float over-accumulates to pale white). Unknown values warn + fall back to the drawable. (PUB.4) |
+| `inspired_by` | optional | Milkdrop provenance block (D-111 as amended by D-113): `milkdrop_filename`, `original_artist`, `sha256` (of the source `.milk` when one was on disk) or `source_form` (when the source was a butterchurn built-in), `pack`. Required on every Milkdrop-inspired preset, paired with a row in `docs/CREDITS.md`. Documentation-only — the engine does not decode it. (PUB.1) |
+
+**Engine / advanced keys (PUB.7 — completing the schema; every key `PresetDescriptor` decodes).** The table above is the contributor-facing core. These are decoded too — an mv_warp preset REQUIRES the first two:
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `fragment_function` | `<snake_name>_fragment` | Fragment entry point. Every mv_warp preset sets it; `<prefix>_warp_fragment` / `<prefix>_comp_fragment` / `<prefix>_blur_fragment` in the same library override the shared mv_warp defaults (D-139). |
+| `vertex_function` | `fullscreen_vertex` | Vertex entry point (mv_warp presets typically keep the default). |
+| `description` / `author` | optional | Display metadata. NACRE.5: the description must describe SHIPPED behaviour, not aspiration. |
+| `shader_file` | sibling `.metal` | RICERCAR-RW: a sidecar with NO sibling `.metal` may reuse another preset's shader by naming it here (Ricercar reuses Skein's). |
+| `natural_cycle_seconds` | none | Caps the scorer's `maxDuration` for presets whose visual cycle (e.g. Arachne's 60 s build) outranks the formula (V.7.6.2 §5). |
+| `wait_for_completion_event` | `false` | Preset signals its own completion → `nextPreset()` (definite-end-state presets; Arachne canonical). |
+| `requires_regular_beat` | `false` | Hard-excluded from planning on beat-irregular tracks (D-154). |
+| `is_diagnostic` | `false` | Excluded from planner selection entirely (D-074); dev/diagnostic presets only. |
+| `text_overlay` | `false` | Binds `texture(12)` text overlay (SpectralCartograph-class diagnostics). |
+| `stages` | none | Staged-composition pass list (V.ENGINE.1) — per-stage fragment + `samples` wiring; see the staged paradigm section. |
+| `marks` | none | mv_warp scene-geometry overlay block (draw params + chromatic + comp + beat pump); Dragon Bloom-class strand overlays. |
+| `scene_camera` / `scene_lights` / `scene_fog` / `scene_fog_near` / `scene_far_plane` | ray-march defaults | Ray-march scene setup — see §GPU Contract Details in ARCHITECTURE. |
+| `additive_blend` | `false` | Mesh-shader additive blending. |
+| `ferrofluid` | none | FFO thin-film params (preset-specific block). |
+| `use_feedback` / `use_mesh_shader` / `use_particles` / `use_post_process` / `use_ray_march` | legacy | Decode-only booleans consumed by `synthesizePasses(from:)` for pre-`passes` sidecars — never write these in a new preset; declare `passes`. |
 
 ### 17.1 `audio_routes` — the audio-routing manifest (QG.1)
 

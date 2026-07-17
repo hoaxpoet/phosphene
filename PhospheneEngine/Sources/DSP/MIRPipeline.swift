@@ -93,9 +93,25 @@ public final class MIRPipeline: @unchecked Sendable {
     var lastRecordTime: Double = 0
     /// Whether recording mode is active.
     public var isRecording: Bool { recordingHandle != nil }
+    /// Lock guarding the recording track-metadata pair below: written from the
+    /// app layer's track-change callback thread, read on the analysis queue by
+    /// the recording path (BUG-069 — unguarded String reassign vs read is a
+    /// memory-safety race, not just staleness).
+    private let trackMetadataLock = NSLock()
+    private var _currentTrackName: String = ""
+    private var _currentArtistName: String = ""
+
     /// Current track info for recording. Set by the app layer.
-    public var currentTrackName: String = ""
-    public var currentArtistName: String = ""
+    /// Guarded by `trackMetadataLock` (BUG-069).
+    public var currentTrackName: String {
+        get { trackMetadataLock.withLock { _currentTrackName } }
+        set { trackMetadataLock.withLock { _currentTrackName = newValue } }
+    }
+    /// Guarded by `trackMetadataLock` (BUG-069).
+    public var currentArtistName: String {
+        get { trackMetadataLock.withLock { _currentArtistName } }
+        set { trackMetadataLock.withLock { _currentArtistName = newValue } }
+    }
 
     // MARK: - CSP.3 — FFO cold-start fix toggle
 
@@ -194,7 +210,7 @@ public final class MIRPipeline: @unchecked Sendable {
         // Run all four analyzers.
         let spectral = spectralAnalyzer.process(magnitudes: magnitudes)
         let energy = bandEnergyProcessor.process(magnitudes: magnitudes, fps: fps)
-        let chroma = chromaExtractor.process(magnitudes: magnitudes)
+        let chroma = chromaExtractor.process(magnitudes: magnitudes, deltaTime: deltaTime)
         // TONAL (D-178): TIV over the chroma vector — a consumer of the fold
         // ChromaExtractor already ran, no new FFT.
         let tonal = tonalAnalyzer.process(chroma: chroma.chroma, deltaTime: deltaTime)
@@ -336,8 +352,9 @@ public final class MIRPipeline: @unchecked Sendable {
 
     /// Assemble a FeatureVector from analyzer results.
     ///
-    /// MV-1: deviation primitives (bassRel, bassDev, etc.) are derived here
-    /// from the AGC-normalized energy fields. Formula: xRel = (x - 0.5) * 2.0,
+    /// MV-1 as amended by D-146 (BUG-027): deviation primitives (bassRel,
+    /// bassDev, etc.) are derived from each band's own running-average pivot
+    /// (per-band EMA), NOT the retired fixed-0.5 pivot. Formula sketch:
     /// xDev = max(0, xRel). These are stable across mix-density changes because
     /// the AGC numerator and denominator track together (D-026).
     ///

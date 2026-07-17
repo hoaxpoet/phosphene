@@ -293,11 +293,13 @@ extension SessionPreparer {
         let sectionCount = frameCount > 0
             ? Int(mir.latestStructuralPrediction.sectionIndex) + 1
             : 0
-        // SECDET.3b (C.4): the live StructuralAnalyzer keeps its count role
-        // (sectionIndex → estimatedSectionCount) but its *boundary* role is retired —
-        // section-boundary times now come from the batch McFee detector (SectionDetector,
-        // analyzePreview Step 8), built on the cached BeatGrid. (`boundaryTimestamps` /
-        // `boundaryNoveltyScores` remain on StructuralAnalyzer for diagnostics, unread.)
+        // SECDET.3b (C.4), updated at D-170: the live StructuralAnalyzer keeps
+        // its count role (sectionIndex → estimatedSectionCount) ONLY. Boundary
+        // detection was REMOVED at D-170 (SectionDetector deleted; below the
+        // perceptual bar + streaming has no full-track audio — do not
+        // reintroduce); the planner segments with equal slices.
+        // (`boundaryTimestamps` / `boundaryNoveltyScores` remain on
+        // StructuralAnalyzer for diagnostics, unread.)
 
         return MIRAnalysisResult(
             bpm: mir.stableBPM,

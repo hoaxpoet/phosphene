@@ -133,6 +133,53 @@ struct SpotifyConnectionViewModelTests {
         #expect(SpotifyConnectionView.accessibilityID == "phosphene.view.spotify.connection")
     }
 
+    // PUB.2 regression (ultra-review): the error-state "Try Again" CTA called
+    // connect(), whose .preview guard made it a silent no-op from .error —
+    // zero new connector calls. retry() must actually re-attempt.
+    @Test("retry from .error re-attempts the connection with the stored playlist ID")
+    func retryFromErrorReattempts() async throws {
+        let connector = MockSpotifyConnector(
+            result: .failure(PlaylistConnectorError.rateLimited(retryAfterSeconds: 1.0))
+        )
+        let vm = makeVM(connector: connector)
+        vm.text = "https://open.spotify.com/playlist/abc"
+        try await Task.sleep(for: .milliseconds(1500))
+        vm.connect(startSession: { _, _ in })
+        try await Task.sleep(for: .milliseconds(500))
+        guard case .error = vm.state else {
+            Issue.record("Setup failed: expected .error, got \(vm.state)")
+            return
+        }
+        let callsAfterConnect = connector.callCount
+        #expect(callsAfterConnect == 4)   // initial + 3 backoff retries
+
+        vm.retry(startSession: { _, _ in })
+        try await Task.sleep(for: .milliseconds(500))
+
+        // The old code path made ZERO further calls (dead button). retry()
+        // runs a full fresh attempt (another initial + 3 backoff retries).
+        #expect(connector.callCount == callsAfterConnect + 4,
+                "retry must re-invoke the connector from .error")
+        if case .error = vm.state { } else {
+            Issue.record("Expected .error after failed retry, got \(vm.state)")
+        }
+    }
+
+    @Test("retry outside .error is a no-op")
+    func retryOutsideErrorIsNoOp() async throws {
+        let connector = MockSpotifyConnector(result: .success([]))
+        let vm = makeVM(connector: connector)
+        vm.text = "https://open.spotify.com/playlist/abc"
+        try await Task.sleep(for: .milliseconds(1500))
+        guard case .preview = vm.state else {
+            Issue.record("Setup failed: expected .preview, got \(vm.state)")
+            return
+        }
+        vm.retry(startSession: { _, _ in })
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(connector.callCount == 0, "retry must not fire outside .error")
+    }
+
     // MARK: - Helpers
 
     private func makeVM(connector: MockSpotifyConnector) -> SpotifyConnectionViewModel {

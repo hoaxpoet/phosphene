@@ -85,7 +85,8 @@ extension UserFacingError {
             return .bottomRightToast   // rendered as ListeningBadgeView; bridge also uses this
         case .silenceExtended, .tapReinstallAllFailed, .mpsGraphAllocationFailure,
              .sampleRateMismatch, .audioLevelsLow, .displayDisconnectedMidSession,
-             .negativeNudgeTwice, .rePlanSucceeded:
+             .negativeNudgeTwice, .rePlanSucceeded, .localFilePlaybackFailed,
+             .presetCompileFailed:
             return .bottomRightToast
         case .tapReinstallAttempt, .frameBudgetExceeded, .drawableSizeMismatch:
             return .logOnly
@@ -98,7 +99,8 @@ extension UserFacingError {
         case .networkOffline, .allTracksFailedToPrepare, .tapReinstallAllFailed:
             return .fatal
         case .screenCapturePermissionDenied, .appleScriptPermissionDenied,
-             .spotifyUnreachable, .sampleRateMismatch, .audioLevelsLow:
+             .spotifyUnreachable, .sampleRateMismatch, .audioLevelsLow,
+             .localFilePlaybackFailed, .presetCompileFailed:
             return .warning
         case .mpsGraphAllocationFailure, .stemSeparationFailed, .previewNotFound:
             return .degradation

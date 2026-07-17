@@ -4,11 +4,18 @@
   "duration": 45,
   "description": "Translucent refractive mother-of-pearl cell-field — a faithful port of the Milkdrop preset `$$$ Royal - Mashup (431)`'s jello-mirror character (drifting overlapping lens-cells, chromatic-fringed rims, pulsing central core, slow palette rotation) on Phosphene's mv_warp with HDR float feedback. Its palette TRAVELS WITH THE SONG'S HARMONY: the hue is positioned on the circle of fifths (hue ← tonal_phase_fifths, the Tonal Interval Vector), so related keys land on related colours, the palette holds on a vamp and drifts on a modulation, and the same song transposed lands on shifted-but-related colours; low consonance (percussion / noise) desaturates toward a neutral rest, and silence falls back to the faithful slow time rotation. Motion is energy/structure-coupled: the molten field swirls faster as the music fills out (turning ← average stem-energy envelope), surges on the downbeat (display-stage camera push ← barPhase01); base motion routes from the continuous bands (zoom ← mid, sway ← bass, grain ← treble). See docs/presets/NACRE_PLAN.md.",
   "author": "Matt",
+  "inspired_by": {
+    "milkdrop_filename": "$$$ Royal - Mashup (431)",
+    "original_artist": "$$$ Royal mashup series (component presets by multiple Milkdrop authors)",
+    "source_form": "butterchurn-presets built-in (pre-converted; no .milk file on disk, sha256 unavailable)",
+    "pack": "projectM-visualizer/presets-cream-of-the-crop"
+  },
   "passes": ["direct", "mv_warp"],
   "fragment_function": "nacre_fragment",
   "vertex_function": "fullscreen_vertex",
   "beat_source": "composite",
   "decay": 0.900,
+  "feedback_pixel_format": "rgba16Float",
   "stem_affinity": {},
   "visual_density": 0.50,
   "motion_intensity": 0.45,

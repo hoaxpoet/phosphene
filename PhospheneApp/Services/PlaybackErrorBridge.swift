@@ -129,7 +129,9 @@ final class PlaybackErrorBridge {
         onStallChanged: (@MainActor (Bool) -> Void)? = nil,
         signalHealthPublisher: AnyPublisher<SignalHealth, Never> =
             Empty().eraseToAnyPublisher(),
-        isSpotifySourceProvider: (@MainActor () -> Bool)? = nil
+        isSpotifySourceProvider: (@MainActor () -> Bool)? = nil,
+        oneShotErrorPublisher: AnyPublisher<UserFacingError, Never> =
+            Empty().eraseToAnyPublisher()
     ) {
         self.toastManager = toastManager
         self.tracker = tracker
@@ -166,6 +168,34 @@ final class PlaybackErrorBridge {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] health in self?.handle(health: health) }
             .store(in: &cancellables)
+
+        // PUB.5: one-shot engine error events with no dedicated surface —
+        // resolve copy/severity from the taxonomy and toast per §9.4. Same
+        // conditionID replaces rather than stacks (a run of broken local
+        // files shows one toast).
+        oneShotErrorPublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] error in self?.handleOneShot(error: error) }
+            .store(in: &cancellables)
+    }
+
+    /// Toast a one-shot `UserFacingError` event (PUB.5). Only toast-mode
+    /// errors are expected on this channel; anything else is logged and
+    /// dropped rather than mis-surfaced. Non-condition-bound events get the
+    /// factory's 4 s auto-dismiss.
+    private func handleOneShot(error: UserFacingError) {
+        guard error.presentationMode == .bottomRightToast else {
+            logger.warning("PlaybackErrorBridge: one-shot error is not toast-mode — dropped")
+            return
+        }
+        let toastSeverity: PhospheneToast.Severity
+        switch error.severity {
+        case .info:                 toastSeverity = .info
+        case .warning:              toastSeverity = .warning
+        case .degradation, .fatal:  toastSeverity = .degradation
+        }
+        toastManager.enqueue(toast(for: error, severity: toastSeverity, source: .signalState))
+        logger.info("PlaybackErrorBridge: one-shot toast shown")
     }
 
     // MARK: - Signal-health toast (ASH.2)

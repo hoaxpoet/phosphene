@@ -51,7 +51,7 @@ extension VisualizerEngine {
                 "SIGNAL_HEALTH: peak=\(String(format: "%.1f", health.peakDBFS))dBFS "
                 + "band=\(health.peakBand.rawValue) deadTap=\(health.deadTap) "
                 + "rate=\(Int(health.outputSampleRateHz))")
-            Task { @MainActor [weak self] in self?.signalHealth = health }
+            Task { @MainActor [weak self] in self?.captureState.setSignalHealth(health) }
         }
 
         // Round 26 (2026-05-15): `preFetcher` is now constructed early in

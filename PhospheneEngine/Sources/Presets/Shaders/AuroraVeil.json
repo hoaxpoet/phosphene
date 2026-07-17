@@ -2,7 +2,7 @@
   "name": "Aurora Veil",
   "family": "hypnotic",
   "duration": 60,
-  "description": "Three drifting aurora curtains at off-thirds depth — green base, magenta crown. Three-channel audio coupling: vocal melody migrates the ribbon's hue, bass transients pulse brightness, rare drum events produce a 1–2 s lateral shudder. Slow drift from the noise field's own rotation",
+  "description": "Discrete diaphanous aurora curtains that drape and dance across a dark, star-punched sky with real negative space — a green base rising through violet to a magenta crown. Continuous mid activity drives how vigorously the curtains curl and sweep; bass transients breathe brightness; a rare drum accent shudders a fold along a curtain; vocal pitch migrates the hue bands; each half-bar downbeat blinks the stars.",
   "author": "Matt",
   "passes": [],
   "fragment_function": "aurora_fragment",
@@ -14,6 +14,13 @@
     "drums": "curtain_kink",
     "bass": "brightness_breath"
   },
+  "audio_routes": [
+    { "route": "motion_amp",        "primitive": "midAttRel",      "kind": "continuous" },
+    { "route": "brightness_breath", "primitive": "bassDev",        "kind": "continuous" },
+    { "route": "curtain_kink",      "primitive": "drumsEnergyDev", "kind": "accent" },
+    { "route": "ribbon_hue",        "primitive": "vocalsPitchHz",  "kind": "continuous" },
+    { "route": "star_blink",        "primitive": "barPhase01",     "kind": "continuous" }
+  ],
   "visual_density": 0.40,
   "motion_intensity": 0.35,
   "color_temperature_range": [0.15, 0.55],
