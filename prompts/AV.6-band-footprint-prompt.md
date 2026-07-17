@@ -47,7 +47,7 @@ The F-map spike (`kAuroraDebug == 2`, committed at `2b6c1286`) rendered the foot
 
 1. This prompt, fully.
 2. `PhospheneEngine/Sources/Presets/Shaders/AuroraVeil.metal` at HEAD — the footprint (`aurora_footprint`), the distance march (`aurora_march`), and the F-map spike branch (`kAuroraDebug == 2`).
-3. `docs/presets/AURORA_VEIL_DESIGN.md` §5.11 (streak-field architecture + the AV.6 exposure/palette/instrumentation notes) and **§5.12 if Matt has authored the band spec** (see DECISION-NEEDED — this must exist before task 2).
+3. `docs/presets/AURORA_VEIL_DESIGN.md` §5.11 (streak-field architecture + the AV.6 exposure/palette/instrumentation notes). No §5.12 to wait on — the reference video is the spec (correction 2026-07-17; see §3/§5).
 4. `docs/presets/AURORA_VEIL_RESEARCH_2026-05-18.md` §1.1–1.2 (nimitz recipe + Lawlor `H(z)×F(x,y)`) and **§1.3** (band/oval flux structure).
 5. Reference: `/tmp/aurora_ref/ref_240.png` (overhead curtain target), `/tmp/av_seq/` (4 fps sequence, t≈238 s — the *ascending* motion), corona `/tmp/aurora_ref/ref_030.png`. Re-extract if gone: `ffmpeg -i /tmp/av_ref.mov -vf fps=1,scale=640:-1 /tmp/aurora_ref/ref_%03d.png` and `ffmpeg -ss 238 -i /tmp/av_ref.mov -vf fps=4,scale=480:-1 -frames:v 8 /tmp/av_seq/s_%02d.png`.
 
