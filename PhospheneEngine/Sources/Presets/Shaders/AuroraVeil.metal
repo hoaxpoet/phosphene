@@ -48,12 +48,25 @@
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 constant float kAuroraDebug = 0.0;   // debug off
-constant int   kAuroraSteps = 48;    // vertical shells marched per column
-constant float kShellDH     = 0.018; // altitude per shell
-constant float kBaseShell   = 1.0;   // starting shell (near the emission floor)
+constant int   kAuroraSteps = 48;    // samples marched along each view ray
+// nimitz step distribution (research §1.1(4)): t_raw = base + i^1.4·grow — dense
+// near the curtain base, coarse toward the diffuse crown. Spans 0.8 → ~1.24.
+constant float kMarchBase   = 0.8;   // march start distance
+constant float kMarchGrow   = 0.002; // polynomial step growth
+constant float kMarchFalloff = 2.0;  // distance-scaling denominator: t = tRaw/(rd.y·2+F).
+                                     // nimitz uses F=0.4, tuned for his near-horizon
+                                     // camera. With our up-tilt that SATURATES the
+                                     // altitude map (h≈0.25 at rd.y=0.2 vs 0.40 at 0.86)
+                                     // — the whole frame collapses to one altitude and
+                                     // green gets squeezed to a strip. F=2.0 spreads
+                                     // h across ~0.02…0.29 over the elevation window.
+constant float kCrownH      = 0.286; // altitude of the magenta crown (H(z) ceiling);
+                                     // = the altitude the steepest in-frame ray reaches
+constant float kCrownCurve  = 1.5;   // H(z) index curve: >1 holds green across most of
+                                     // the altitude range, violet only at the tips
 constant float kAuroraGain  = 9.0;   // emission gain
-constant float kToneFloor   = 0.005;  // subtract murk to black (just above measured linear dlum avg 0.0039)
-constant float kToneScale   = 37.0;   // stretch survivors: 0.9/(peak0.0296−floor0.005)
+constant float kToneFloor   = 0.0012; // subtract murk to black (just above measured linear dlum avg 0.00095)
+constant float kToneScale   = 68.0;   // stretch survivors: 0.9/(peak0.0144−floor0.0012)
 
 // Footprint F(uv) — the 2-D curtain map extruded upward. Ridged domain-warped
 // triangle noise (folded curtains), curl-advected + animated (drapery + dance).
@@ -66,15 +79,22 @@ constant float kFpLo           =  0.05; // concentration threshold: below → da
 constant float kFpHi           =  0.40; // above → inside a curtain region
 
 // Emission height profile D(h): sharp lower onset, long tail up (Lawlor D(h)).
-constant float kDepOnset = 0.10;     // sharp lower emission edge (green base)
-constant float kDepDecay = 0.85;     // long fade up (soft enough that the blue/
-                                     // magenta crown survives the base's dominance)
+constant float kDepOnset = 0.05;     // sharp lower emission edge — the curtain's bright
+                                     // green BASE. Sits above the horizon so the rays
+                                     // read as ASCENDING from a visible base, with dark
+                                     // sky below it (ref video, Matt 2026-07-16).
+constant float kDepDecay = 3.0;      // fade upward along the ascending rays
 
 // Camera — looks UP so the world-vertical field axis projects to the magnetic
 // zenith high on/above the frame; the stepUV=rd.xz/rd.y column march then makes
 // the rays converge there (the corona/curtain perspective, not a flat band).
 constant float kAspect    = 1.777;   // 16:9
-constant float kLookPitch = 1.02;    // camera up-tilt (radians ~58°) → zenith just above frame
+// Up-tilt chosen so the BOTTOM of the frame sits on the horizon: tan(pitch) =
+// 0.5·kFov → the frame spans ~0°…60° elevation. The wide elevation window is what
+// lets the distance march separate colour by height (a narrow 28°…88° window put
+// rd.y in 0.55…1.0 — too small a spread to tell green from magenta). The magnetic
+// zenith / vanishing point now sits just ABOVE the frame, matching ref_240.
+constant float kLookPitch = 0.52;    // camera up-tilt (radians ~30°)
 constant float kFov       = 1.15;    // vertical field-of-view scale
 
 // ── Motion (the dance) ───────────────────────────────────────────────────────
@@ -168,31 +188,47 @@ static inline float3 aurora_height_palette(float t) {
     return sin(1.0 - float3(2.15, -0.5, 1.2) + t * 2.107) * 0.5 + 0.5;
 }
 
-// Footprint-extrusion column march (Wittens operator). Marches a VERTICAL column
-// through the emission volume: at each altitude shell it samples the footprint at
-// uv += rd.xz/rd.y·dH — the convergence operator that makes looking-up rays tight
-// and vertical (converging to the zenith) and horizon rays smear. Emission =
-// footprint × deposition; running-average smear coalesces shells into rays.
+// Emission march along the view ray, parameterized by DISTANCE (nimitz traversal),
+// not by a fixed altitude range:  pos = rd·t  →  uv = rd.xz·t,  h = rd.y·t.
+//
+// The line through footprint space is identical to the altitude-parameterized form
+// (uv = (rd.xz/rd.y)·h), so the perspective convergence is preserved — rays still
+// fan down from the magnetic zenith. What changes is the altitude each ray REACHES:
+// it now scales with rd.y, so low-elevation rays stay in the green emission base
+// while steep rays climb into the magenta crown. That elevation→colour coupling is
+// impossible under a fixed h range (every pixel integrated the identical altitude
+// span, so colour could not vary with elevation — AV.6, Matt M7).
+//
+// It also bounds the footprint sweep: at the horizon rd.y→0 sent dirUV=rd.xz/rd.y→∞
+// and the column aliased across unbounded uv.
+//
+// The 1/(rd.y·2+0.4) distance scaling is nimitz's, adopted verbatim (research
+// §1.1(4)) and it is load-bearing twice over:
+//   • Shallow rays march FARTHER, so they still reach the emission layer (which
+//     starts at h≈kDepOnset) at distance — without it they never get there within a
+//     fixed march and the aurora tears off the horizon into a ragged fringe.
+//   • It makes each ray sample a NARROW altitude band whose height tracks rd.y
+//     (h = rd.y·t_raw/(rd.y·2+0.4) → ~0.08 at the horizon, ~0.50 at frame top). A
+//     narrow band per ray is what gives a clean elevation→colour read: green base
+//     low, magenta crown high, instead of every pixel blending the whole H(z) range.
 static inline float3 aurora_march(float3 rd, float2 kink, float motionAmp, float time) {
-    if (rd.y < 0.03) return float3(0.0);          // at/below horizon: no aurora
-    float2 dirUV  = rd.xz / rd.y;                  // horizontal move per unit height
-    float2 stepUV = dirUV * kShellDH;
-    float2 uv     = dirUV * (kBaseShell * kShellDH) + kink;
+    if (rd.y < 0.01) return float3(0.0);           // at/below horizon: no aurora
     float3 col = float3(0.0);
     float  acc = 0.0;
     for (int i = 0; i < kAuroraSteps; i++) {
-        float h = (kBaseShell + float(i)) * kShellDH;
-        float d = aurora_footprint(uv, motionAmp, time) * aurora_deposition(h);
-        acc = mix(acc, d, 0.5);                    // running vertical smear → rays
-        // exp-decay accumulation weight (nimitz) — bounds the 48-shell sum and
-        // weights the bright low base most; without it the column blows out. Rate
-        // softened (0.055 → 0.035) so the upper shells still carry visible blue /
-        // magenta instead of being drowned by the green base.
-        col += aurora_height_palette(float(i) / float(kAuroraSteps - 1))
-             * acc * exp2(-float(i) * 0.035 - 2.0);
-        uv += stepUV;
+        float  tRaw = kMarchBase + pow(float(i), 1.4) * kMarchGrow;
+        float  t    = tRaw / (rd.y * 2.0 + kMarchFalloff);
+        float2 uv   = rd.xz * t + kink;
+        float  h    = rd.y * t;                    // altitude reached ∝ elevation
+        float  d    = aurora_footprint(uv, motionAmp, time) * aurora_deposition(h);
+        acc = mix(acc, d, 0.5);                    // running smear → coherent rays
+        // Palette by ALTITUDE (Lawlor H(z)) — under distance marching the step index
+        // no longer maps to a height, so H(z) must key off h itself.
+        // exp-decay accumulation weight + ramp-in (nimitz §1.1(7)) bounds the sum.
+        col += aurora_height_palette(pow(saturate(h / kCrownH), kCrownCurve))
+             * acc * exp2(-float(i) * 0.065 - 2.5) * smoothstep(0.0, 5.0, float(i));
     }
-    return col * smoothstep(0.03, 0.14, rd.y);     // soft horizon fade
+    return col * clamp(rd.y * 15.0 + 0.4, 0.0, 1.0);  // nimitz horizon fade
 }
 
 // ── Fragment ──────────────────────────────────────────────────────────────────
@@ -267,8 +303,13 @@ fragment float4 aurora_fragment(
     // green-white (the footage's bright core), green-leaning (low R+B keeps the
     // green body green-dominant, L2 gate).
     float coreLum = dot(aurora, float3(0.299, 0.587, 0.114));
+    // Gated on GREEN-DOMINANCE: the bleach target is a fixed green-white, so applied
+    // to the violet crown it dragged the hue to grey (AV.6, Matt 2026-07-16 — "rays
+    // should be ascending", crown washing out). Only the green base bleaches now;
+    // where r/b exceed g (the crown) the mix weight falls to zero and violet survives.
+    float greenDom = saturate((aurora.g - max(aurora.r, aurora.b)) * 2.0);
     aurora = mix(aurora, float3(0.62, 1.0, 0.85) * coreLum * 1.35,
-                 smoothstep(0.4, 1.05, coreLum) * 0.55);
+                 smoothstep(0.4, 1.05, coreLum) * 0.55 * greenDom);
 
     // Route 1 — vocals pitch → subtle green↔cool-teal hue tint.
     float3 pitchTint = float3(1.0 - paletteOffset * 0.45, 1.0, 1.0 + paletteOffset * 0.75);
