@@ -189,11 +189,11 @@ static inline float aurora_rays(float ang, float rad, float time, float motionAm
 // octaves; calling it twice per step × 48 steps (~4.6k octaves/pixel) was choking the
 // GPU (M2 Pro choppiness). Per-ray-constant advection is also more coherent — the ray
 // sways as a whole instead of wiggling along its length.
-static inline float aurora_footprint(float2 uv, float motionAmp, float time,
+// `ang` and `rad` are passed in (not derived from a per-step uv): atan2(rd.z,rd.x)
+// is t-invariant and rad = t·|rd.xz|, so the caller computes the atan2/sqrt ONCE per
+// ray instead of 48× per march step (perf — full-res affordability).
+static inline float aurora_footprint(float ang, float rad, float motionAmp, float time,
                                      float driftW, float advW) {
-    float ang = atan2(uv.y, uv.x);
-    float rad = length(uv);
-
     // Sector membership. The center sways slowly (the arc's dance) — over radius so
     // the curtain curves, and in time; a gentle curl drift too. Kept well within the
     // half-width so the sector holds together rather than scattering.
@@ -282,12 +282,18 @@ static inline float3 aurora_march(float3 rd, float2 kink, float motionAmp, float
     float2 uvRep = rd.xz * kAdvSampleT + kink;
     float driftW = fbm4(float3(uvRep * 0.8, time * 0.08));
     float advW   = fbm4(float3(uvRep * kFoldScale, time * 0.12));
+    // Hoisted per-ray: atan2(rd.z,rd.x) is t-invariant; rad = radK·t. The drum kink
+    // (a lateral uv.x fold) becomes a small per-ray angular offset so it survives the
+    // hoist while staying wired (RouteCoverage) and bounded (D-157 / dominance gate).
+    float radK    = length(rd.xz);
+    float baseAng = atan2(rd.z, rd.x);
+    float ang     = baseAng - kink.x * sin(baseAng) / max(radK * kAdvSampleT, 0.08);
     for (int i = 0; i < kAuroraSteps; i++) {
         float  tRaw = kMarchBase + pow(float(i), 1.4) * kMarchGrow;
         float  t    = tRaw / (rd.y * 2.0 + kMarchFalloff);
-        float2 uv   = rd.xz * t + kink;
+        float  rad  = radK * t;
         float  h    = rd.y * t;                    // altitude reached ∝ elevation
-        float  d    = aurora_footprint(uv, motionAmp, time, driftW, advW) * aurora_deposition(h);
+        float  d    = aurora_footprint(ang, rad, motionAmp, time, driftW, advW) * aurora_deposition(h);
         acc = mix(acc, d, 0.5);                    // running smear → coherent rays
         // Palette by ALTITUDE (Lawlor H(z)) + the screen-elevation tilt above.
         // exp-decay accumulation weight + ramp-in (nimitz §1.1(7)) bounds the sum.
@@ -339,7 +345,8 @@ fragment float4 aurora_fragment(
         float2 fpUV = (uv - 0.5) * kFpSpikeSpan;
         float  dW   = fbm4(float3(fpUV * 0.8, time * 0.08));
         float  aW   = fbm4(float3(fpUV * kFoldScale, time * 0.12));
-        float  fp   = aurora_footprint(fpUV, motionAmp, time, dW, aW);
+        float  fp   = aurora_footprint(atan2(fpUV.y, fpUV.x), length(fpUV),
+                                       motionAmp, time, dW, aW);
         return float4(saturate(fp), saturate(fp), saturate(fp), 1.0);
     }
     float bassPulse   = smoothstep(kBrightnessGateLo, kBrightnessGateHi, bassDev);

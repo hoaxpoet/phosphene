@@ -693,13 +693,14 @@ extension VisualizerEngine {
                             features: features,
                             stems: stems)
             }
-            // AV.6: render the 48-step convergence march at half resolution + upscale,
-            // same as Nimbus (bindNimbusRuntime). A full-res per-pixel ray-march is
-            // 4–7× too expensive on a high-DPI display (Matt: choppy on an M2 Pro
-            // driving a Retina/4K panel) and blew the Tier-1 budget. Aurora Veil is a
-            // soft emissive field (rays + glow) that tolerates the bilinear upscale.
-            // Reset to 1.0 for every other preset at the top of applyPreset.
-            pipeline.setDirectRenderScale(0.5)
+            // AV.6: render the 48-step convergence march below native resolution +
+            // upscale — a full-res per-pixel ray-march is 4–7× too expensive on a
+            // high-DPI panel (Matt: choppy on an M2 Pro / 4K). 0.5× fixed the perf but
+            // undersampled the THIN rays + 1px stars ("doesn't look like the aurora").
+            // 0.66× (1.7× more pixels) restores the ray/star detail; the per-ray
+            // atan2/length hoist in AuroraVeil.metal buys back the cost. Reset to 1.0
+            // for every other preset at the top of applyPreset.
+            pipeline.setDirectRenderScale(0.66)
         } else {
             logger.error("AuroraVeilState: failed to allocate state for preset '\(desc.name)'")
         }
