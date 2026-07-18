@@ -23,19 +23,18 @@
 //      (green body at the bright descending base → blue → magenta crown at the
 //      converging top), never by a flat screen line — so there is no colour band.
 //
-// **AV.6 band-through-march (2026-07-17) — the RAY GENERATOR.** Through the march,
-// every noise-as-footprint approach (nimitz tri-noise incl.) fogged: the march sweeps
-// the footprint RADIALLY (uv = rd.xz·t), so any detail high-frequency in the radial
-// direction de-coheres and the running-average smears it to a wash. The insight:
-// angle = atan2(uv.y, uv.x) = atan2(rd.z, rd.x) is INDEPENDENT of t — constant along
-// each view ray, and constant-angle lines fan from the vanishing point. So the ray
-// field (aurora_rays) puts the filament ridges in ANGLE (many thin rays across the
-// curtain), coherent in RADIUS (they extrude down each ray instead of fogging). The
-// curtain is a soft angular SECTOR about the convergence (dark sky to the sides =
-// negative space); D(h) supplies the base-bright vertical fade; a crown fade dims the
-// convergence. Colour is elevation-tilted (§5.11 gap fix) so it tracks SCREEN height:
-// green base low → violet crown high. The nimitz tri-noise chain is RETIRED (it was
-// the fog); the explicit streak field is the §5.11-sanctioned direct alternative.
+// **AV.6 ORGANIC ray generator (2026-07-18, Matt).** Earlier AV.6 cores failed as
+// either FOG (isotropic noise-as-footprint), clean SPOTLIGHT BEAMS (geometric ridges),
+// or HAZE (over-soft). The working recipe is ORGANIC anisotropic noise in the
+// convergence frame — `aurora_rays`: fine multi-octave striation FINE across the
+// curtain (angle) but COHERENT along each ray (low radial freq) → soft vertical
+// filaments (ref 11), plus a large-scale CONCENTRATION field (irregular glowing masses
+// / dim gaps) so it clumps like real aurora, on a soft luminous body. angle/radius are
+// about the convergence point (atan2(rd.z,rd.x) is t-invariant → rays fan from the
+// vanishing point). A soft angular SECTOR gives negative space; D(h) the base-bright
+// fade; a crown fade the faint crown. Colour is elevation-tilted (§5.11) so it tracks
+// SCREEN height: green base → violet crown. Bright green concentrations bleach toward
+// cyan-white cores. (Not clean ridges, not isotropic tri-noise — those are the failures.)
 //
 // Preserved from AV.5: audio routes + `audio_routes` manifest (vocals→hue tint,
 // bass→brightness, drums→kink, mid→motion), half-bar star blink, `AuroraVeilState`
@@ -58,11 +57,11 @@
 constant float kAuroraDebug = 0.0;   // 0 = ship · 1 = grayscale density · 2 = F(x,z) map
 constant float kFpSpikeSpan = 1.4;   // spike: footprint-plane span shown across screen
                                      // (the march samples uv = rd.xz·t, |uv| ≲ 0.62)
-constant int   kAuroraSteps = 48;    // samples marched along each view ray
+constant int   kAuroraSteps = 20;    // samples marched along each view ray
 // nimitz step distribution (research §1.1(4)): t_raw = base + i^1.4·grow — dense
 // near the curtain base, coarse toward the diffuse crown. Spans 0.8 → ~1.24.
 constant float kMarchBase   = 0.8;   // march start distance
-constant float kMarchGrow   = 0.002; // polynomial step growth
+constant float kMarchGrow   = 0.0071; // polynomial step growth
 constant float kMarchFalloff = 2.0;  // distance-scaling denominator: t = tRaw/(rd.y·2+F).
                                      // nimitz uses F=0.4, tuned for his near-horizon
                                      // camera. With our up-tilt that SATURATES the
@@ -75,7 +74,7 @@ constant float kCrownH      = 0.286; // altitude of the magenta crown (H(z) ceil
 constant float kElevTilt    = 0.55;  // screen-elevation → crown-colour bias (§5.11 gap fix)
 constant float kCrownCurve  = 1.6;   // H(z) index curve: >1 holds green across most of
                                      // the altitude range, violet only at the tips
-constant float kAuroraGain  = 1.35;  // emission gain (steady peak stays under the sRGB clip)
+constant float kAuroraGain  = 1.95;  // emission gain (steady peak stays under the sRGB clip)
 constant float kToneFloor   = 0.0;    // tone map off (band recalibration)
 constant float kToneScale   = 1.0;
 
@@ -92,22 +91,22 @@ constant float kAdvSampleT     = 0.30; // representative march-t for the once-pe
 // point (zenith), giving dark sky to the sides (negative space) and rays that
 // converge upward. All widths/offsets below are in RADIANS of sector angle.
 constant float kBandCenterAngle = 1.62; // sector center (rad); ~π/2 = straight up, biased
-constant float kBandHalfWidth  = 0.40; // angular half-width of the curtain sector (fuller)
+constant float kBandHalfWidth  = 0.34; // angular half-width of the curtain sector (fuller)
 constant float kBandMeanderAmp = 0.17; // sector-center sway amplitude (the arc's dance)
 constant float kBandMeanderFrq = 1.15; // sway frequency (over radius → the arc curves)
 constant float kBandDrift      = 0.09; // slow curl drift of the sector center (the dance)
 // Filaments live in the CONVERGENCE frame (angle/radius about the uv-origin, which
 // is the zenith/vanishing point — see aurora_footprint). Angle is the tangential
 // coordinate (across the curtain → many rays); radius is radial (along each ray).
-constant float kStriationFreq  = 15.0; // ANGULAR filament density (rays across the curtain)
-constant float kRayWidth       = 0.15; // thin-ray half-width (fract units; smaller = finer rays)
+constant float kAngFreq        = 19.0; // fine striation freq ACROSS the curtain (angle)
+constant float kRadFreq        = 3.0;  // striation freq ALONG each ray (low → coherent, wispy)
+constant float kConcAngFreq    = 3.0;  // large-scale concentration across (bright masses/gaps)
+constant float kConcRadFreq    = 1.8;  // concentration along the rays (bright patches at heights)
+constant float kStreakPow      = 2.1;  // sharpen striation → soft cores, not uniform brightness
 constant float kCrownFadeR     = 0.34; // radial fade toward the convergence (dim faint crown)
 constant float kStriationAdv   = 0.80; // fbm4 sway of the rays (the dance — rays wave/curl)
-constant float kTravelSpeed    = 0.55; // sideways travel of bright regions along the curtain
-constant float kBandFloor      = 0.13; // dim curtain body between filaments; ridges lift to
-                                       // 1.0 as the rays. Low → crisp rays with dark gaps
-                                       // (fullness comes from ray COUNT + sector width, not
-                                       // a bright body glow, which reads as fog).
+constant float kBandFloor      = 0.24; // soft luminous body inside a concentration (glow, not
+                                       // lines on black); dark between concentrations = negative space
 
 // Emission height profile D(h): sharp lower onset, long tail up (Lawlor D(h)).
 constant float kDepOnset = 0.05;     // sharp lower emission edge — the curtain's bright
@@ -159,22 +158,23 @@ struct AuroraVeilStateGPU {
 // organic (not clean spotlight beams, FM #14). Coherent in radius (only a slow
 // meander), so a ray holds together down its length instead of averaging to fog.
 static inline float aurora_rays(float ang, float rad, float time, float motionAmp) {
-    float a = ang * kStriationFreq;
-    a += 0.6 * sin(a * 0.37 + 1.3) + 0.35 * sin(a * 0.81 - 0.7);  // irregular ray spacing
-    // Along-ray curve — each ray bends over its length, adjacent rays out of phase
-    // (ang term) so they curve organically, not as straight parallel beams (FM #14).
-    a += 0.09 * kStriationFreq * sin(rad * 4.0 + time * 0.2 + ang * 3.0)
-       + 0.05 * kStriationFreq * sin(rad * 7.3 - time * 0.15 + ang * 5.0);
-    float tri   = abs(fract(a) - 0.5);              // 0 at a ray's center, 0.5 between rays
-    float ridge = smoothstep(kRayWidth, 0.0, tri);  // thin bright ridge per ray
-    float idx   = floor(a);                         // per-ray index → brightness + shimmer
-    float bright = 0.45 + 0.55 * hash_f01_2(float2(idx, 3.7));
-    // The dance: per-ray shimmer + a bright band travelling sideways across the
-    // curtain, both quickening/deepening with musical activity (motionAmp).
-    float rate = 1.0 + 2.2 * motionAmp;
-    bright *= 0.70 + 0.30 * sin(time * rate * (0.8 + 0.5 * hash_f01_2(float2(idx, 9.1))) + idx);
-    bright *= 0.60 + 0.40 * sin(a * 0.22 - time * kTravelSpeed * rate);
-    return ridge * saturate(bright);
+    float rate = 1.0 + 1.2 * motionAmp;
+    // Fine STRIATION — anisotropic multi-octave noise: fine ACROSS the curtain (angle),
+    // coherent ALONG each ray (low radial freq) with some along-ray variation = the
+    // wispiness of real filaments. Reads as soft vertical streaks (ref 11), not clean
+    // beams (geometric ridges) nor fog (isotropic noise). Drift = shimmer/travel.
+    float3 sp = float3(ang * kAngFreq, rad * kRadFreq - time * 0.10 * rate, time * 0.05);
+    float s1  = fbm4(sp);
+    float s2  = fbm4(float3(ang * kAngFreq * 2.3, rad * kRadFreq * 1.6 + 7.0, time * 0.07 * rate));
+    float striation = saturate(0.5 + 0.55 * (s1 * 0.70 + s2 * 0.30));   // [0,1]
+    // Large-scale CONCENTRATION — irregular glowing masses / dim gaps (aurora is not
+    // evenly bright; it clumps). Low-freq, so the bright patches are big and organic.
+    float c    = fbm4(float3(ang * kConcAngFreq, rad * kConcRadFreq - time * 0.04, 3.1));
+    float conc = 0.35 + 0.65 * smoothstep(-0.35, 0.55, c);                           // [0,1] masses + gaps
+    // Compose: a concentrated mass glows softly (kBandFloor) with sharpened striation
+    // cores on top; gaps between masses fade to dark (negative space).
+    float body = kBandFloor + (1.0 - kBandFloor) * pow(striation, kStreakPow);
+    return saturate(conc * body);
 }
 
 // Footprint F(uv) — the flux map, expressed in the CONVERGENCE frame. The march
@@ -189,11 +189,11 @@ static inline float aurora_rays(float ang, float rad, float time, float motionAm
 // octaves; calling it twice per step × 48 steps (~4.6k octaves/pixel) was choking the
 // GPU (M2 Pro choppiness). Per-ray-constant advection is also more coherent — the ray
 // sways as a whole instead of wiggling along its length.
-// `ang` and `rad` are passed in (not derived from a per-step uv): atan2(rd.z,rd.x)
-// is t-invariant and rad = t·|rd.xz|, so the caller computes the atan2/sqrt ONCE per
-// ray instead of 48× per march step (perf — full-res affordability).
-static inline float aurora_footprint(float ang, float rad, float motionAmp, float time,
+static inline float aurora_footprint(float2 uv, float motionAmp, float time,
                                      float driftW, float advW) {
+    float ang = atan2(uv.y, uv.x);
+    float rad = length(uv);
+
     // Sector membership. The center sways slowly (the arc's dance) — over radius so
     // the curtain curves, and in time; a gentle curl drift too. Kept well within the
     // half-width so the sector holds together rather than scattering.
@@ -205,12 +205,11 @@ static inline float aurora_footprint(float ang, float rad, float motionAmp, floa
     float dA   = (ang - centerAng) / kBandHalfWidth;
     float band = exp(-dA * dA);
 
-    // Rays: thin bright filaments in ANGLE (many across the curtain), coherent in
-    // radius so they extrude down each view ray instead of de-cohering into fog (the
-    // whole-AV.6 defect). Curl-advect the angle a little so they shimmer/travel.
+    // Organic striation field (soft luminous body + concentration masses, [0,1] — it
+    // already includes the body floor, so use it directly). Curl-advect the angle so
+    // the whole curtain sways/curls (the dance).
     float advA = advW * (kFoldAmp * (0.5 + motionAmp) * kStriationAdv);
-    float rays = aurora_rays(ang + advA, rad, time, motionAmp);   // [0,~1] thin bright rays
-    float texture = mix(kBandFloor, 1.0, rays);
+    float texture = aurora_rays(ang + advA, rad, time, motionAmp);
 
     // Crown fade — dim toward the convergence point (small rad). Kills the atan2
     // singularity's bright alias blob AND matches the reference, where the rays fade
@@ -282,18 +281,12 @@ static inline float3 aurora_march(float3 rd, float2 kink, float motionAmp, float
     float2 uvRep = rd.xz * kAdvSampleT + kink;
     float driftW = fbm4(float3(uvRep * 0.8, time * 0.08));
     float advW   = fbm4(float3(uvRep * kFoldScale, time * 0.12));
-    // Hoisted per-ray: atan2(rd.z,rd.x) is t-invariant; rad = radK·t. The drum kink
-    // (a lateral uv.x fold) becomes a small per-ray angular offset so it survives the
-    // hoist while staying wired (RouteCoverage) and bounded (D-157 / dominance gate).
-    float radK    = length(rd.xz);
-    float baseAng = atan2(rd.z, rd.x);
-    float ang     = baseAng - kink.x * sin(baseAng) / max(radK * kAdvSampleT, 0.08);
     for (int i = 0; i < kAuroraSteps; i++) {
         float  tRaw = kMarchBase + pow(float(i), 1.4) * kMarchGrow;
         float  t    = tRaw / (rd.y * 2.0 + kMarchFalloff);
-        float  rad  = radK * t;
+        float2 uv   = rd.xz * t + kink;
         float  h    = rd.y * t;                    // altitude reached ∝ elevation
-        float  d    = aurora_footprint(ang, rad, motionAmp, time, driftW, advW) * aurora_deposition(h);
+        float  d    = aurora_footprint(uv, motionAmp, time, driftW, advW) * aurora_deposition(h);
         acc = mix(acc, d, 0.5);                    // running smear → coherent rays
         // Palette by ALTITUDE (Lawlor H(z)) + the screen-elevation tilt above.
         // exp-decay accumulation weight + ramp-in (nimitz §1.1(7)) bounds the sum.
@@ -345,8 +338,7 @@ fragment float4 aurora_fragment(
         float2 fpUV = (uv - 0.5) * kFpSpikeSpan;
         float  dW   = fbm4(float3(fpUV * 0.8, time * 0.08));
         float  aW   = fbm4(float3(fpUV * kFoldScale, time * 0.12));
-        float  fp   = aurora_footprint(atan2(fpUV.y, fpUV.x), length(fpUV),
-                                       motionAmp, time, dW, aW);
+        float  fp   = aurora_footprint(fpUV, motionAmp, time, dW, aW);
         return float4(saturate(fp), saturate(fp), saturate(fp), 1.0);
     }
     float bassPulse   = smoothstep(kBrightnessGateLo, kBrightnessGateHi, bassDev);
@@ -397,8 +389,8 @@ fragment float4 aurora_fragment(
     // Green-dominance gated so the violet crown keeps its hue (never dragged to grey).
     float coreLum = dot(aurora, float3(0.299, 0.587, 0.114));
     float greenDom = saturate((aurora.g - max(aurora.r, aurora.b)) * 2.0);
-    aurora = mix(aurora, float3(0.55, 1.0, 0.72) * coreLum,
-                 smoothstep(0.5, 1.05, coreLum) * 0.30 * greenDom);
+    aurora = mix(aurora, float3(0.62, 1.0, 0.80) * coreLum * 1.12,
+                 smoothstep(0.40, 0.95, coreLum) * 0.55 * greenDom);
 
     // Route 1 — vocals pitch → subtle green↔cool-teal hue tint.
     float3 pitchTint = float3(1.0 - paletteOffset * 0.45, 1.0, 1.0 + paletteOffset * 0.75);
