@@ -87,6 +87,7 @@ constant float kToneScale   = 1.0;
 // and full amplitude.
 constant float kFoldScale     = 2.5;  // curl-fold spatial scale
 constant float kFoldAmp        = 0.35; // curl-fold strength (drapery + dance)
+constant float kAdvSampleT     = 0.30; // representative march-t for the once-per-ray warp
 // Band shape — the curtain occupies a soft ANGULAR SECTOR about the convergence
 // point (zenith), giving dark sky to the sides (negative space) and rays that
 // converge upward. All widths/offsets below are in RADIANS of sector angle.
@@ -101,7 +102,7 @@ constant float kBandDrift      = 0.09; // slow curl drift of the sector center (
 constant float kStriationFreq  = 15.0; // ANGULAR filament density (rays across the curtain)
 constant float kRayWidth       = 0.15; // thin-ray half-width (fract units; smaller = finer rays)
 constant float kCrownFadeR     = 0.34; // radial fade toward the convergence (dim faint crown)
-constant float kStriationAdv   = 0.38; // curl sway of the rays (the dance — rays wave/curl)
+constant float kStriationAdv   = 0.80; // fbm4 sway of the rays (the dance — rays wave/curl)
 constant float kTravelSpeed    = 0.55; // sideways travel of bright regions along the curtain
 constant float kBandFloor      = 0.13; // dim curtain body between filaments; ridges lift to
                                        // 1.0 as the rays. Low → crisp rays with dark gaps
@@ -160,7 +161,10 @@ struct AuroraVeilStateGPU {
 static inline float aurora_rays(float ang, float rad, float time, float motionAmp) {
     float a = ang * kStriationFreq;
     a += 0.6 * sin(a * 0.37 + 1.3) + 0.35 * sin(a * 0.81 - 0.7);  // irregular ray spacing
-    a += 0.04 * kStriationFreq * sin(rad * 5.0 + time * 0.2);      // slow radial meander
+    // Along-ray curve — each ray bends over its length, adjacent rays out of phase
+    // (ang term) so they curve organically, not as straight parallel beams (FM #14).
+    a += 0.09 * kStriationFreq * sin(rad * 4.0 + time * 0.2 + ang * 3.0)
+       + 0.05 * kStriationFreq * sin(rad * 7.3 - time * 0.15 + ang * 5.0);
     float tri   = abs(fract(a) - 0.5);              // 0 at a ray's center, 0.5 between rays
     float ridge = smoothstep(kRayWidth, 0.0, tri);  // thin bright ridge per ray
     float idx   = floor(a);                         // per-ray index → brightness + shimmer
@@ -180,14 +184,20 @@ static inline float aurora_rays(float ang, float rad, float time, float motionAm
 // about that point (→ dark sky to the sides = negative space, rays converging up);
 // the ray field carves thin bright filaments across it; the vertical base-bright
 // fade is supplied downstream by the height-deposition D(h), not here.
-static inline float aurora_footprint(float2 uv, float motionAmp, float time) {
+// `driftW`/`advW` are the two curl-advection warp scalars (curl_noise .x), computed
+// ONCE per ray by the caller — NOT per march step. curl_noise is 6·fbm8 = 48 noise
+// octaves; calling it twice per step × 48 steps (~4.6k octaves/pixel) was choking the
+// GPU (M2 Pro choppiness). Per-ray-constant advection is also more coherent — the ray
+// sways as a whole instead of wiggling along its length.
+static inline float aurora_footprint(float2 uv, float motionAmp, float time,
+                                     float driftW, float advW) {
     float ang = atan2(uv.y, uv.x);
     float rad = length(uv);
 
     // Sector membership. The center sways slowly (the arc's dance) — over radius so
     // the curtain curves, and in time; a gentle curl drift too. Kept well within the
     // half-width so the sector holds together rather than scattering.
-    float drift = kBandDrift * curl_noise(float3(uv * 0.8, time * 0.08)).x;
+    float drift = kBandDrift * driftW;
     float centerAng = kBandCenterAngle
                     + kBandMeanderAmp * sin(rad * kBandMeanderFrq + time * 0.05)
                     + kBandMeanderAmp * 0.45 * sin(rad * kBandMeanderFrq * 2.3 - time * 0.04)
@@ -198,8 +208,7 @@ static inline float aurora_footprint(float2 uv, float motionAmp, float time) {
     // Rays: thin bright filaments in ANGLE (many across the curtain), coherent in
     // radius so they extrude down each view ray instead of de-cohering into fog (the
     // whole-AV.6 defect). Curl-advect the angle a little so they shimmer/travel.
-    float advA = curl_noise(float3(uv * kFoldScale, time * 0.12)).x
-               * (kFoldAmp * (0.5 + motionAmp) * kStriationAdv);
+    float advA = advW * (kFoldAmp * (0.5 + motionAmp) * kStriationAdv);
     float rays = aurora_rays(ang + advA, rad, time, motionAmp);   // [0,~1] thin bright rays
     float texture = mix(kBandFloor, 1.0, rays);
 
@@ -264,12 +273,21 @@ static inline float3 aurora_march(float3 rd, float2 kink, float motionAmp, float
     // pixels (rd.y constant per ray → the upper screen), so colour tracks SCREEN
     // height: green base low, violet crown high. Low bands get ~0 tilt (stay green).
     float elevTilt = smoothstep(0.40, 0.85, rd.y) * kElevTilt;
+    // Advection warps — computed ONCE per ray (see aurora_footprint), with fbm4 (a
+    // smooth [-1,1] scalar, ~[cheap]) instead of curl_noise (6·fbm8 = 48 octaves,
+    // ×50-amplified detail). The old per-STEP curl only looked smooth because the
+    // running-average smeared it; sampled once it marbled the rays. fbm4 is smooth at
+    // a single sample AND ~576× cheaper (the M2 Pro choppiness). Each pixel/ray gets
+    // its own warp (cross-curtain variation), constant along the ray (coherent).
+    float2 uvRep = rd.xz * kAdvSampleT + kink;
+    float driftW = fbm4(float3(uvRep * 0.8, time * 0.08));
+    float advW   = fbm4(float3(uvRep * kFoldScale, time * 0.12));
     for (int i = 0; i < kAuroraSteps; i++) {
         float  tRaw = kMarchBase + pow(float(i), 1.4) * kMarchGrow;
         float  t    = tRaw / (rd.y * 2.0 + kMarchFalloff);
         float2 uv   = rd.xz * t + kink;
         float  h    = rd.y * t;                    // altitude reached ∝ elevation
-        float  d    = aurora_footprint(uv, motionAmp, time) * aurora_deposition(h);
+        float  d    = aurora_footprint(uv, motionAmp, time, driftW, advW) * aurora_deposition(h);
         acc = mix(acc, d, 0.5);                    // running smear → coherent rays
         // Palette by ALTITUDE (Lawlor H(z)) + the screen-elevation tilt above.
         // exp-decay accumulation weight + ramp-in (nimitz §1.1(7)) bounds the sum.
@@ -319,7 +337,9 @@ fragment float4 aurora_fragment(
     // space? Grayscale = F directly (now full-amplitude, no boost needed).
     if (kAuroraDebug > 1.5) {
         float2 fpUV = (uv - 0.5) * kFpSpikeSpan;
-        float  fp   = aurora_footprint(fpUV, motionAmp, time);
+        float  dW   = fbm4(float3(fpUV * 0.8, time * 0.08));
+        float  aW   = fbm4(float3(fpUV * kFoldScale, time * 0.12));
+        float  fp   = aurora_footprint(fpUV, motionAmp, time, dW, aW);
         return float4(saturate(fp), saturate(fp), saturate(fp), 1.0);
     }
     float bassPulse   = smoothstep(kBrightnessGateLo, kBrightnessGateHi, bassDev);
