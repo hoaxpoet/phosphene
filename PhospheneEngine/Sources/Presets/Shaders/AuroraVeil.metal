@@ -74,7 +74,7 @@ constant float kCrownH      = 0.286; // altitude of the magenta crown (H(z) ceil
 constant float kElevTilt    = 0.55;  // screen-elevation → crown-colour bias (§5.11 gap fix)
 constant float kCrownCurve  = 1.6;   // H(z) index curve: >1 holds green across most of
                                      // the altitude range, violet only at the tips
-constant float kAuroraGain  = 1.95;  // emission gain (steady peak stays under the sRGB clip)
+constant float kAuroraGain  = 1.65;  // emission gain (steady peak stays under the sRGB clip)
 constant float kToneFloor   = 0.0;    // tone map off (band recalibration)
 constant float kToneScale   = 1.0;
 
@@ -98,11 +98,20 @@ constant float kBandDrift      = 0.09; // slow curl drift of the sector center (
 // Filaments live in the CONVERGENCE frame (angle/radius about the uv-origin, which
 // is the zenith/vanishing point — see aurora_footprint). Angle is the tangential
 // coordinate (across the curtain → many rays); radius is radial (along each ray).
-constant float kAngFreq        = 19.0; // fine striation freq ACROSS the curtain (angle)
-constant float kRadFreq        = 3.0;  // striation freq ALONG each ray (low → coherent, wispy)
-constant float kConcAngFreq    = 3.0;  // large-scale concentration across (bright masses/gaps)
-constant float kConcRadFreq    = 1.8;  // concentration along the rays (bright patches at heights)
-constant float kStreakPow      = 2.1;  // sharpen striation → soft cores, not uniform brightness
+// Screen-space aurora TEXTURE (aurora_intensity) about the vanishing point.
+constant float kFilVpY         = -0.55; // vanishing point Y in screen uv (above the frame)
+// Localized bright MASSES (distinct glowing concentrations, like the references):
+constant float kMassAngFreq    = 3.2;  // few, large masses across the curtain
+constant float kMassRadFreq    = 1.5;  // mass variation up the curtain
+constant float kMassThresh     = 0.02; // higher → smaller/rarer, more distinct masses
+constant float kMassBoost      = 1.7;  // how bright the masses pop above the dim body
+constant float kBodyFloor      = 0.14; // dim aurora body outside the masses
+constant float kBodyFil        = 0.36; // filament texture amplitude on the dim body
+// Fine turbulent FILAMENTS:
+constant float kFilAngFreq     = 40.0; // MANY fine filaments across the curtain
+constant float kFilRadFreq     = 2.2;  // along-filament variation (low → coherent streaks)
+constant float kFilWarp        = 1.6;  // domain-warp strength (turbulent/broken, not clean lines)
+constant float kFilPow         = 2.3;  // ridge sharpen (thin bright filaments)
 constant float kCrownFadeR     = 0.34; // radial fade toward the convergence (dim faint crown)
 constant float kStriationAdv   = 0.80; // fbm4 sway of the rays (the dance — rays wave/curl)
 constant float kBandFloor      = 0.24; // soft luminous body inside a concentration (glow, not
@@ -157,24 +166,51 @@ struct AuroraVeilStateGPU {
 // into a ray fanning from the zenith; irregular spacing + per-ray brightness keep them
 // organic (not clean spotlight beams, FM #14). Coherent in radius (only a slow
 // meander), so a ray holds together down its length instead of averaging to fog.
+// The MARCH produces the smooth COLOURED FORM only — a large-scale concentration
+// (irregular glowing masses / dim gaps) that the running-average smear coalesces into
+// the soft curtain body. The FINE FILAMENT TEXTURE is applied separately in screen
+// space (aurora_filaments, in the fragment) because the march's smear washes any fine
+// detail into smooth "vertical lines" (Matt 2026-07-19) — decoupling form (marched)
+// from texture (unsmeared screen-space) keeps the fine detail crisp at native res.
+// The MARCH produces only the smooth COLOURED FORM — sector shape, base-bright fade
+// D(h), green→violet colour-by-height. All TEXTURE (localized bright masses + fine
+// filaments) is applied in screen space (aurora_intensity) so it is not smeared into
+// vertical gradients by the march (Matt 2026-07-19: masses read as a uniform field
+// when marched). aurora_rays is a constant here — the form carries no texture.
 static inline float aurora_rays(float ang, float rad, float time, float motionAmp) {
-    float rate = 1.0 + 1.2 * motionAmp;
-    // Fine STRIATION — anisotropic multi-octave noise: fine ACROSS the curtain (angle),
-    // coherent ALONG each ray (low radial freq) with some along-ray variation = the
-    // wispiness of real filaments. Reads as soft vertical streaks (ref 11), not clean
-    // beams (geometric ridges) nor fog (isotropic noise). Drift = shimmer/travel.
-    float3 sp = float3(ang * kAngFreq, rad * kRadFreq - time * 0.10 * rate, time * 0.05);
-    float s1  = fbm4(sp);
-    float s2  = fbm4(float3(ang * kAngFreq * 2.3, rad * kRadFreq * 1.6 + 7.0, time * 0.07 * rate));
-    float striation = saturate(0.5 + 0.55 * (s1 * 0.70 + s2 * 0.30));   // [0,1]
-    // Large-scale CONCENTRATION — irregular glowing masses / dim gaps (aurora is not
-    // evenly bright; it clumps). Low-freq, so the bright patches are big and organic.
-    float c    = fbm4(float3(ang * kConcAngFreq, rad * kConcRadFreq - time * 0.04, 3.1));
-    float conc = 0.35 + 0.65 * smoothstep(-0.35, 0.55, c);                           // [0,1] masses + gaps
-    // Compose: a concentrated mass glows softly (kBandFloor) with sharpened striation
-    // cores on top; gaps between masses fade to dark (negative space).
-    float body = kBandFloor + (1.0 - kBandFloor) * pow(striation, kStreakPow);
-    return saturate(conc * body);
+    return 1.0;
+}
+
+// Screen-space aurora TEXTURE, about the vanishing point above the frame:
+//   • MASSES — localized, high-contrast glowing blobs (irregular bright concentrations
+//     like the references), drifting + brightening with the music (the dance).
+//   • FILAMENTS — fine turbulent domain-warped ridges (the wispy fine structure).
+// Returns a brightness MULTIPLIER for the marched curtain: dim textured body
+// everywhere, distinct bright masses (with bright filament cores) on top.
+static inline float aurora_intensity(float2 uv, float time, float motionAmp) {
+    float2 rel = uv - float2(0.5, kFilVpY);
+    float  theta = atan2(rel.x, rel.y);        // 0 = toward the VP; constant-θ = a ray
+    float  r     = length(rel);
+
+    // Localized bright masses — low-freq, high-contrast, drifting.
+    float mt  = time * (0.035 + 0.12 * motionAmp);
+    float m1  = fbm4(float3(theta * kMassAngFreq,       r * kMassRadFreq - mt,       2.0));
+    float m2  = fbm4(float3(theta * kMassAngFreq * 2.0 + 4.0, r * kMassRadFreq * 1.6 - mt * 1.4, 6.0));
+    float mass = smoothstep(kMassThresh, kMassThresh + 0.45, m1 * 0.65 + m2 * 0.35);
+
+    // Fine turbulent filaments — domain-warped ridges.
+    float2 q = float2(theta * kFilAngFreq, r * kFilRadFreq - time * 0.03);
+    float2 w = float2(fbm4(float3(q * 0.55, time * 0.04)),
+                      fbm4(float3(q * 0.55 + 21.0, time * 0.05)));
+    q += w * kFilWarp;
+    float n1 = fbm4(float3(q, time * 0.02));
+    float n2 = fbm4(float3(q * 3.1 + 9.0, time * 0.035));
+    float fil = pow(saturate(1.0 - abs(n1 * 0.66 + n2 * 0.34)), kFilPow);
+
+    // Dim textured body + boosted localized masses whose cores carry the bright filaments.
+    float body   = kBodyFloor + kBodyFil * fil;
+    float bright = mass * kMassBoost * (0.35 + 0.65 * fil);
+    return body + bright;
 }
 
 // Footprint F(uv) — the flux map, expressed in the CONVERGENCE frame. The march
@@ -374,6 +410,9 @@ fragment float4 aurora_fragment(
     float2 kink = float2(av.kinkAccumulator * kKinkAmp * kinkWin, 0.0);
 
     float3 aurora = aurora_march(rd, kink, motionAmp, time) * kAuroraGain;
+    // Screen-space aurora texture — localized bright masses + fine filaments (unsmeared
+    // → distinct + crisp at native res). The march above supplied only the colour form.
+    aurora *= aurora_intensity(uv, time, motionAmp);
 
     // Tone map — the density sits on a dim non-zero floor (the murk) with sparse
     // brighter rays. Subtract the floor to true black (real negative space) then
