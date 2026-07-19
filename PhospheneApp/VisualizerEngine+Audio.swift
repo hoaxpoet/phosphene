@@ -533,7 +533,7 @@ extension VisualizerEngine {
         mir: MIRPipeline
     ) {
         // Inject mood into the renderer's FeatureVector so audio-reactive
-        // shaders (e.g. Glass Brutalist's light-colour shift on valence,
+        // shaders (e.g. Kinetic Sculpture's light-colour shift on valence,
         // fog density on arousal) actually receive these values. Without
         // this, the renderer reads valence=0/arousal=0 every frame and
         // mood-driven modulations are dead.

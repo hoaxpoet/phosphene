@@ -11,7 +11,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-014 | Proposed | Orchestrator as explicit scoring/policy system |
 | D-019 | Accepted | Stem-routing warmup fallback pattern for compute presets |
 | D-018 | Accepted | SessionManager degrades to ready on any preparation failure |
-| D-020 | Accepted | Architecture-stays-solid for ray-march scene presets (Option A) |
+| D-020 | Accepted | Architecture-stays-solid for ray-march scene presets (Option A) — subject preset Glass Brutalist retired, see D-185 |
 | D-022 | Accepted | IBL ambient tinted by `lightColor` so mood shifts are visible |
 | D-026 | Accepted | Preset shaders drive from audio deviation, not absolute energy |
 | D-027 | Accepted | Per-vertex feedback warp (mv_warp) as opt-in render pass |
@@ -98,6 +98,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-182 | Accepted | Per-paradigm multi-frame harness templates (QG.4) — every rendering paradigm gets a named, env-gated (`HARNESS_TEMPLATES=1`) reference harness driving the same dispatch path the live app uses, built on a shared `HarnessTemplateCore` spine, so PRESET_SESSION_CHECKLIST's "write the multi-frame harness FIRST" is a copy-adapt not a from-scratch build: `mv_warp`→`AuroraVeilMVWarpAccumulationTest` (re-based on the core), `staged`→`StagedPathHarnessTemplate` (Arachne), `ray_march`→`RayMarchPathHarnessTemplate` (Lumen Mosaic), `feedback`→`FeedbackPathHarnessTemplate` (Membrane). Each captures a final-frame dHash golden + a paradigm liveness metric; each A/B-validated (a mis-bound slot / skipped pass reddens it). Env-gated, not in the default parallel run — wired into `closeout_evidence.sh`. §Rationale below. |
 | D-183 | Accepted | Signal health monitor (ASH.1) — `SignalHealthMonitor` classifies input-chain health continuously from the raw pre-AGC tap into `SignalHealth` {peakBand (healthy ≥ −12 / low −15…−12 / critical dBFS), deadTap (`.silent` past a 45 s confirm, gated to process-tap modes), sampleRateMismatch (default-output outside 44.1/48 kHz)}, published to session.log + debug overlay on change. **Observes only — never steers tap recovery** (D-165 acts; D-183 classifies). Realtime-safe ingest; classification/emit off-thread. Turns the RUNBOOK triage catalog into running code. ASH.1 = engine + debug surfacing; user-facing surfacing + degraded-audio certify/record policy are ASH.2. |
 | D-184 | Accepted | Signal-health surfacing + post-session chain analyzer (ASH.2). (1) **One user-facing toast**: a once-per-session `band=low` nudge (reuses `audioLevelsLow` — Spotify "Normalize Volume" copy, generic otherwise). `deadTap` is NOT toasted — the existing `AudioStallOverlayView` card already covers it earlier (~10 s) and more prominently (Matt's call); `sampleRateMismatch` stays overlay/log-only. (2) **`ChainAnalyzer`** (Shared) grades every finished session dir → `chain_health.json` + a `CHAIN_HEALTH: verdict=<clean\|degraded\|broken> reasons=[…]` line, run in-process at `SessionRecorder.finish()` and out-of-process via `Scripts/analyze_session_chain.sh` (retroactive grading). Verdict driven by raw_tap peak + SIGNAL_HEALTH/DRM/dead-tap log scans. (3) **Empirical finding**: the Love Rehab sub-bass onset count is **AGC-invariant** (attenuation, dynamic compression, hard limiting, −50 dB all hold ~11/5 s) — it is REPORTED, never gated. Normalization is caught by the PEAK check, not onsets. **Does not gatekeep playback** — surfaces and continues. |
+| D-185 | Accepted | Glass Brutalist preset retired (GBRETIRE.1, 2026-07-19). Ray-march "brutalist corridor" concept fails the viability gate: D-020 deliberately makes the concrete audio-static, so the hero subject can never be an instrument; also 2006-tier fidelity. All preset code/tests/docs/visual-refs deleted; production count 27 → 26. See D-185 section for full rationale. |
 
 ---
 
@@ -159,7 +160,7 @@ If `PlaylistConnector.connect()` throws, `SessionManager` transitions to `ready`
 
 ## D-020: Architecture-stays-solid for ray-march scene presets (Glass Brutalist Option A)
 
-**Status:** Accepted
+**Status:** Accepted — but its subject preset (Glass Brutalist) was **retired GBRETIRE.1 / D-185** (2026-07-19). The rule itself still governs any *future* architectural ray-march preset; the D-020 permanence constraint is precisely what made Glass Brutalist non-viable (an audio-static scene can never make an instrument the hero subject). See D-185.
 
 For ray-march scenes that depict identifiable architecture (corridors, rooms, structures with implied permanence), audio reactivity must NOT deform the architecture itself. Walls, pillars, beams, floors, and ceilings stay static. Music drives only the *light* in the scene (intensity, colour), the *atmosphere* (fog density), the *camera* (constant-speed dolly), and at most a single secondary deformation that reads as spatial rather than structural (Glass Brutalist's glass-fin position, which widens/narrows the open path between fins).
 
@@ -1052,7 +1053,7 @@ The reframe is operative on three axes:
 **Current state vs threshold (2026-05-12):**
 
 - **Certified (1):** Lumen Mosaic (cert flipped at LM.7, 2026-05-12).
-- **Production-but-not-all-certified (~14):** Arachne, Aurora Veil (pending Phase AV), Fractal Tree, Gossamer, Glass Brutalist, Kinetic Sculpture, Murmuration, Nebula, Plasma, Spectral Cartograph (diagnostic — excluded from auto-selection per D-074), Stalker, Starburst, Volumetric Lithograph, Waveform. Each is one M7 + cert review away from the bundle.
+- **Production-but-not-all-certified (~13):** Arachne, Aurora Veil (pending Phase AV), Fractal Tree, Gossamer, Kinetic Sculpture, Murmuration, Nebula, Plasma, Spectral Cartograph (diagnostic — excluded from auto-selection per D-074), Stalker, Starburst, Volumetric Lithograph, Waveform. Each is one M7 + cert review away from the bundle. (Glass Brutalist retired GBRETIRE.1 / D-185 — its D-020 permanence constraint blocked the instrument-as-hero role.)
 - **Gap to 20:** 6+ presets, source TBD per D-115.
 
 **Carry-forward.** Drives the work-prioritization shape over the next several months: Phase G-uplift (cert reviews on the ~14 production-but-not-certified members) + Phase AV / Phase CC + the first inspired-by uplift batch (initial seed list per D-112 amendment). Post-release cadence decision lives in a future release-planning prompt; D-114 covers only the bundle threshold, not the rhythm after.
@@ -2423,3 +2424,27 @@ unsolved), arXiv 1912.10211 (PANNs).
 - **Does not gatekeep.** Playback, preparation, and session start never block on health state. No system or source-app setting is auto-changed. No Settings pane for thresholds — constants with doc comments.
 
 **References.** [D-183] (the classifier this surfaces), [D-165] (the silent-tap card that owns dead-tap remediation), [D-026] (AGC deviation primitives — why onsets are level-invariant), `Scripts/analyze_session_chain.sh`, `docs/RUNBOOK.md` §"Recording the quality reel" (verdict=clean requirement) + §"Post-session chain analyzer", `docs/PRESET_SESSION_CHECKLIST.md` (M7/reel evidence rule), `docs/ARCHITECTURE.md §Module Map` (`ChainAnalyzer.swift`).
+
+---
+
+## D-185: Glass Brutalist preset retired (GBRETIRE.1, 2026-07-19)
+
+**Status:** Accepted (Matt's call, 2026-07-19).
+
+**Decision.** Glass Brutalist is retired in its entirety. All preset code (`GlassBrutalist.metal`, `GlassBrutalist.json`), its dedicated tests (`GlassBrutalistTests`, `RayMarchSDFDiagnosticTests` — CPU SDF evaluation of the Glass Brutalist corridor — and the `GlassBrutalistValidationTests` JSON-validation suite inside `RayMarchDiagnosticTests`), and its visual reference set (`docs/VISUAL_REFERENCES/glass_brutalist/`) are deleted. Recover from git history if a future architectural ray-march preset revives the concept. `PresetLoaderCompileFailureTest.expectedProductionPresetCount` drops **27 → 26**.
+
+**Context — why the concept is non-viable, not just under-developed.** Glass Brutalist was the original ray-march scene preset (its Option-A design is the subject of D-020). Two structural problems make it fail the preset viability bar rather than a tuning target:
+
+1. **D-020 permanence forecloses the musical role.** D-020 (architecture-stays-solid) was adopted precisely because three iterations of bass-driven beam/pillar/fin deformation all read as "broken or rubber." The rule leaves music driving only light, fog, camera, and a single subtle glass-fin slide — the concrete itself is *deliberately audio-static*. That makes an instrument (or any musical subject) structurally incapable of being the hero of the scene: the hero is a static building, and the audio reactivity is confined to ambient lighting garnish. Phosphene's preset bar (iconic visual subject with a *load-bearing* musical role) cannot be met by a scene whose defining subject is contractually forbidden from responding to the music.
+2. **2006-tier fidelity.** The board-form-concrete-corridor look reads as a mid-2000s demoscene interior, below the current visual quality floor; a rebuild (V.12 scope) was considered and abandoned.
+
+**What survives.** D-020 stays Accepted — the architecture-stays-solid *rule* still governs any future architectural ray-march preset; it is annotated with a pointer to this retirement. The shared ray-march infrastructure (`RayMarchPipeline`, the deferred PBR path, `RayMarch.metal` / `IBL.metal` / `PresetDescriptor+SceneUniforms`, the generic `SceneUniformsConstructionTests` in `RayMarchDiagnosticTests`) is untouched — Kinetic Sculpture and Volumetric Lithograph still use it. The `.ssgi` pass declaration stays on the GPU contract though no production preset currently declares it (Glass Brutalist was the only one). `SceneUniforms.cameraForward.w` remains a preset-specific free lane (D-020's mechanism); it is simply unused now that its one consumer is gone.
+
+**What was rejected.**
+
+- **Keep it as a "reusable ray-march reference."** The shared ray-march path is the reusable asset and it survives independently; the Glass Brutalist implementation adds nothing the path doesn't already carry (siblings-not-subclasses, D-097). Keeping deleted-concept code as "infrastructure" is a named anti-pattern.
+- **Rebuild the fidelity (V.12) and keep the concept.** Even at higher fidelity the D-020 constraint keeps the musical role hollow. Fidelity was the smaller of the two problems.
+
+**Rule.** Glass Brutalist is gone. A future architectural ray-march preset starts from a new spec that either (a) solves the instrument-as-hero problem within D-020, or (b) proposes a deliberate D-020 exception with Matt's sign-off — not from undoing this deletion.
+
+**Carry-forward.** GBRETIRE.1 executed under this decision. `docs/ENGINEERING_PLAN.md` roster survey + Recently-Completed updated; `docs/CAPABILITY_REGISTRY/PRESETS.md`, `docs/ENGINE/RENDER_CAPABILITY_REGISTRY.md`, `docs/ARCHITECTURE.md` Module Map, and `docs/RELEASE_NOTES_DEV.md` all drop Glass Brutalist. GoldenSessionTests fixtures regenerated deterministically (Waveform, the sole `waveform`-family preset, inherits the mellow-jazz slots GB used to win — the same sole-family clustering already documented for Membrane; not a planning regression).

@@ -862,7 +862,7 @@ final class SessionRecorderTests: XCTestCase {
     func test_log_writesTimestampedEntriesToSessionLog() throws {
         let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
         recorder.log("track → Test Track")
-        recorder.log("preset → Glass Brutalist")
+        recorder.log("preset → Kinetic Sculpture")
         recorder.log("audio signal → active")
         recorder.finish()
 
@@ -871,7 +871,7 @@ final class SessionRecorderTests: XCTestCase {
             encoding: .utf8)
         XCTAssertTrue(log.contains("track → Test Track"),
                       "log must contain track entry, got: \(log)")
-        XCTAssertTrue(log.contains("preset → Glass Brutalist"),
+        XCTAssertTrue(log.contains("preset → Kinetic Sculpture"),
                       "log must contain preset entry")
         XCTAssertTrue(log.contains("audio signal → active"),
                       "log must contain signal entry")

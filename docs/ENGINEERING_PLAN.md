@@ -63,6 +63,10 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment GBRETIRE.1 — Glass Brutalist retired ✅ (2026-07-19)
+
+Executes the 2026-07-19 concept-viability-gate decision (Milestone D roster survey; D-185). Glass Brutalist — the original ray-march scene preset and the subject of D-020 — is removed in its entirety: `GlassBrutalist.metal` / `GlassBrutalist.json`, its dedicated tests (`GlassBrutalistTests`, the GB-only `RayMarchSDFDiagnosticTests`, and the `GlassBrutalistValidationTests` JSON suite inside `RayMarchDiagnosticTests`), and `docs/VISUAL_REFERENCES/glass_brutalist/`. **Why retired, not tuned:** D-020 makes the concrete deliberately audio-static, so the hero subject can never be an instrument — the musical role is structurally hollow (Gate 1 fail); plus 2006-tier fidelity (Gate 2 fail; V.12 rebuild scoped + abandoned). Wiring: `expectedProductionPresetCount` 27 → 26; `FidelityRubricTests.expectedAutomatedGate` GB entry removed; `PresetRegressionTests` / `PresetVisualReviewTests` / `MaxDurationFrameworkTests` GB rows removed; app `cameraDollySpeed` GB case dropped (default 0). **GoldenSessionTests fixtures regenerated deterministically** — with GB gone, Waveform (the sole `waveform`-family preset) inherits GB's mellow-jazz slots (Session B now Waveform×5, Session C reslots), the same sole-family clustering already documented for Membrane in Session A; not a planning regression. Shared ray-march path (Kinetic Sculpture, Volumetric Lithograph, `RayMarch.metal` / `IBL.metal`, generic `SceneUniformsConstructionTests`) untouched; the `.ssgi` pass + `cameraForward.w` free lane stay on the GPU contract though no production preset now uses them. D-020 stays Accepted (rule governs future architectural ray-march presets) with a retirement pointer. Docs synced: DECISIONS D-185 + D-020 annotation, ARCHITECTURE Module Map + camera notes, CAPABILITY_REGISTRY/PRESETS, ENGINE/RENDER_CAPABILITY_REGISTRY, RELEASE_NOTES_DEV. Recover from git history if a future architectural ray-march concept revives it.
+
 ### Increment PUB.10 — R3.2: CaptureStateSurface decomposition slice ✅ (2026-07-12)
 
 Second R3 slice, same recipe as R3.1: `audioSignalState` + `signalHealth` (ASH.1) + `hasScreenCapturePermission` move to a `CaptureStateSurface` child (`private(set)` + semantic mutators + main-thread precondition); engine keeps read-only forwarders; the R3.1 bridge becomes one merged objectWillChange subscription; 4 writer sites converted with their exact thread-hop shape preserved; injection sites (`ContentView` ×2, `PlaybackView` ×2, FirstAudioDetector doc) → `captureState.$…`. **Task-1 call: `isCapturing` stays engine-side** — its writers are the CSV feature-capture toggle (diagnostics), no view/publisher consumes it; a later diagnostics slice can take it. 3 contract tests. Remaining slices: R3.3 analysis surface, R3.4 LF transport, R3.5 orchestrator bridge (cross-thread-delicate, own session).
@@ -1271,11 +1275,13 @@ Out of scope for V.8.1: drops (V.8.2), refraction (V.8.2), chromatic dispersion 
 
 ---
 
-### Increment V.12 — Glass Brutalist v2 + Kinetic Sculpture v2
+### Increment V.12 — ~~Glass Brutalist v2~~ + Kinetic Sculpture v2
 
-**Scope:** Fidelity uplift for the remaining ray-march presets not covered in V.7–V.11. Glass Brutalist: board-form concrete lineage (plank impressions, tie-rod holes, weathering — Salk/Scarpa direction, not Ando smooth); detail normals on concrete; POM on walls; pattern-glass material for fins per `SHADER_CRAFT.md §4.5b` (voronoi cellular, NOT fbm-frost); volumetric light shafts through windows. Wet-concrete variant explicitly out of scope — `mat_wet_stone` reserved for other presets. References curated in `docs/VISUAL_REFERENCES/glass_brutalist/` (8 images, 7 trait slots + 1 anti). Kinetic Sculpture: brushed aluminum material per `§4.2`; polished chrome with anisotropic streaks; dust motes in ambient space.
+**Glass Brutalist half — CANCELLED (GBRETIRE.1 / D-185, 2026-07-19).** The concept-viability gate (2026-07-19 roster survey) failed Glass Brutalist on both Gate 1 (D-020 makes the concrete audio-static → no instrument-as-hero role) and Gate 2 (2006-tier); this V.12 rebuild was scoped then abandoned, and the preset was retired. Its curated `docs/VISUAL_REFERENCES/glass_brutalist/` set was deleted with the preset.
 
-**Done when:** both presets pass fidelity rubric 10/15 with all mandatory; `certified: true` on both.
+**Remaining scope (Kinetic Sculpture only — gated behind a thin-strand feasibility spike per the roster survey):** brushed aluminum material per `SHADER_CRAFT.md §4.2`; polished chrome with anisotropic streaks; dust motes in ambient space. A thin-strand ray-march feasibility spike gates any KS rebuild (strands render well → rebuild; else retire KS too).
+
+**Done when:** Kinetic Sculpture passes fidelity rubric 10/15 with all mandatory; `certified: true`.
 
 **Verify:** same as V.7.
 
@@ -2249,7 +2255,7 @@ QR.5's load-bearing invariant ("no behavior change, no golden-hash drift") forbi
 
 **Consumers to migrate** (verified during QR.5 audit; re-verify on session start in case of drift):
 
-- [GlassBrutalist.metal:205–206](PhospheneEngine/Sources/Presets/Shaders/GlassBrutalist.metal) — 2× `perlin2D` calls (`finGrain`, `macroVar`).
+- ~~GlassBrutalist.metal — 2× `perlin2D` calls~~ (moot: Glass Brutalist retired GBRETIRE.1 / D-185; the file is gone, so it drops out of any migration scope below).
 - [VolumetricLithograph.metal:382](PhospheneEngine/Sources/Presets/Shaders/VolumetricLithograph.metal) — `fbm3D(noiseP, VL_FBM_OCTAVES)`. Plus 2 more sites in the volumetric march loop (`fbm3D(p * 0.5, 4)`, `fbm3D((p + lightDir * 0.3) * 0.5, 3)`).
 - [KineticSculpture.metal:59–61, 74–76](PhospheneEngine/Sources/Presets/Shaders/KineticSculpture.metal) — 6× `sdRoundBox` calls.
 
@@ -2267,11 +2273,11 @@ QR.5's load-bearing invariant ("no behavior change, no golden-hash drift") forbi
 **Recommendation (start-of-increment):** A3 + B1. Reason: gradient vs value noise are genuinely different primitives and shipping both is fine; the V.1+V.2 form is the right default for new presets but the legacy form is the right tool for existing consumers that depend on [0, 1] output. `sdRoundBox` on the other hand IS strictly a convention mismatch — migrating costs nothing visually and removes a keeper.
 
 **Files to touch (Strategy A1, worst case):**
-- Migrate: `GlassBrutalist.metal`, `VolumetricLithograph.metal` (3 sites), possibly other consumers found at session start.
+- Migrate: `VolumetricLithograph.metal` (3 sites), possibly other consumers found at session start (GlassBrutalist retired GBRETIRE.1 / D-185 — no longer a consumer).
 - Migrate: `KineticSculpture.metal` (6 sites, Strategy B).
 - Delete from `ShaderUtilities.metal`: `perlin2D` / `perlin3D` / `fbm2D` / `fbm3D` / `sdRoundBox` (5 functions, ~80 LOC).
 - Update test source in `ShaderUtilityTests.swift` (preamble assertions for the deleted names).
-- Regen `PresetRegressionTests` golden hashes for Glass Brutalist + Volumetric Lithograph + Kinetic Sculpture.
+- Regen `PresetRegressionTests` golden hashes for Volumetric Lithograph + Kinetic Sculpture (Glass Brutalist retired GBRETIRE.1 / D-185).
 - M7 fidelity review for VolumetricLithograph.
 
 **Files to touch (Strategy A3 + B1, recommended):**
@@ -2285,7 +2291,7 @@ QR.5's load-bearing invariant ("no behavior change, no golden-hash drift") forbi
 - Full engine suite green.
 - `PresetRegressionTests` regenerated (3 presets × 3 fixtures = 9 hashes minimum).
 - `ShaderUtilityTests` updated for deleted names.
-- Manual eyeball: GlassBrutalist glass-fin grain, VolumetricLithograph chamber walls + light shafts, KineticSculpture frosted glass.
+- Manual eyeball: VolumetricLithograph chamber walls + light shafts, KineticSculpture frosted glass (GlassBrutalist retired GBRETIRE.1 / D-185).
 - M7 review for VolumetricLithograph (preset is cited in CLAUDE.md as the MV-2 reference).
 
 **Tests (Strategy A3 + B1):**
@@ -2936,6 +2942,22 @@ These milestones map to product-level outcomes, not implementation phases.
 
 **Milestone C — Device-Aware Show Quality.** ✅ **MET (2026-04-25).** The same playlist produces an excellent show on M1 and a richer one on M4 without jank. *Requires: ~~Phase 6 complete~~ ✅.*
 
-**Milestone D — Library Depth.** ⏳ **IN PROGRESS — 1 / 22+ certified (2026-05-12).** The preset catalog is large enough, varied enough, and well-tagged enough for Phosphene to feel like a product rather than a tech demo. *Requires: Phase 5 complete, Phase V complete (12 fidelity-uplifted presets), Phase AV + Phase CC complete (Aurora Veil + Crystalline Cavern shipped certified), Phase G-uplift complete (Gossamer + remaining catalog members M7-certified or explicitly retired), Phase MD through MD.5 minimum (10 Milkdrop presets), 22+ certified presets total.* **First certified preset: Lumen Mosaic** (Phase LM closed 2026-05-12; BUG-004 resolved). Next cert candidates per current sequencing: Arachne V.7.10, Aurora Veil (Phase AV), Phase G-uplift members.
+**Milestone D — Library Depth.** ⏳ **IN PROGRESS — 13 / 26 production presets certified (roster survey 2026-07-19; Glass Brutalist retired GBRETIRE.1 / D-185, 27 → 26).** The preset catalog is large enough, varied enough, and well-tagged enough for Phosphene to feel like a product rather than a tech demo. *Requires: Phase 5 complete, Phase V complete (12 fidelity-uplifted presets), Phase AV + Phase CC complete (Aurora Veil + Crystalline Cavern shipped certified), Phase G-uplift complete (Gossamer + remaining catalog members M7-certified or explicitly retired), Phase MD through MD.5 minimum (10 Milkdrop presets), 22+ certified presets total.* **First certified preset: Lumen Mosaic** (Phase LM closed 2026-05-12; BUG-004 resolved).
+
+**Roster survey (2026-07-19) — the 26 production presets (`FidelityRubricTests.certifiedPresets` = ground truth; was 27 before Glass Brutalist's retirement, GBRETIRE.1 / D-185):**
+- **Certified (13):** Lumen Mosaic, Ferrofluid Ocean, Dragon Bloom, Fata Morgana, Murmuration, Nimbus, Skein, Nacre, Floret, Glaze, Filigree, Mitosis, Cytokinesis (Mitosis gen-2).
+- **In-flight aesthetic dev (2):** **Aurora Veil** (cooking; AV.4/AV.6 footprint reauthor) and **Ricercar** (churning — FL.10 got one live pass, FL.11→14 reverted, now on the RICERCAR-ECHO handwriting-marks reboot, unmerged). Both fit the one-lucky-frame-then-churn pattern.
+- **Diagnostic / sandbox — not aesthetic ship targets (2):** Staged Sandbox (multipass diagnostic, `StagedCompositionTests`), Spectral Cartograph (empty family, tonal-trace consumer).
+- **Legacy scaffolds below the current cream-of-crop bar — Phase G-uplift *uplift-or-retire* candidates per D-102/FA #58 (9):** Arachne (ambitious 3D web, 52 commits, most-developed), the ray-march pair Kinetic Sculpture / Volumetric Lithograph (Glass Brutalist was the third — retired GBRETIRE.1 / D-185), then the thin early scaffolds Plasma / Nebula / Waveform / Fractal Tree / Gossamer / Membrane. Each last moved only under a global sweep (BUG-034 / D-120 revert / D-123), not preset-specific aesthetic work.
+
+**Finding:** there is **no near-certified preset waiting for a light uplift** — every uncertified one is either actively churning (AV, Ricercar), a diagnostic/sandbox, or a pre-bar scaffold that needs a concept-viability gate (SHADER_CRAFT §2.0) and would more likely retire than tune (D-102/FA #58). "Next preset to develop" is therefore a Phase G-uplift viability gate, a full rebuild, or a brand-new concept — not an uplift of existing in-flight work. Phase G-uplift is "Planned, behind LM / Arachne / AV / CC" (§Phase G-uplift).
+
+**Concept-viability gate run (2026-07-19) — Arachne + the ray-march trio** (SHADER_CRAFT §2.0; Gate 1 musical role / Gate 2 fidelity-deliverable / Gate 3 infra):
+- **Volumetric Lithograph** — Gate 1 ✓ (per-stem role: peaks snap on drum kicks, depth swells with vocals, dolly-speed with bass), Gate 3 ✓, Gate 2 RISK (terrain geometry is 2006-lumpy `fbm3D`; documented "V.11" ridged_mf+curl_noise rework ≈ 3 sessions is the path; open look-call: sidecar's "no atmospheric haze" vs V.11's "haze is the biggest win"). Cleanest concept, rebuild-grade.
+- **Kinetic Sculpture** — Gate 3 ✓, Gate 1 marginal (bass→mercury-melt, but weak legibility on an infinite identical grid; twist runs off a clock), Gate 2 RISK (iconic Lippold radiating-strand form is thin tensioned lines ray-march renders poorly + the current boxy grid doesn't attempt it). Load-bearing unknown = thin-strand SDF feasibility.
+- **Arachne** — Gate 3 only; Gate 1 borderline-fail (bass-shake + spider-trigger are overlays, primary web coupling diffuse), Gate 2 hard-fail (the refractive-dewdrop hero was removed because it masked the web at canvas scale; 5 prior builds missed the bar; photographic-macro is a flagged un-deliverable class).
+- **Glass Brutalist** — Gate 3 only; Gate 1 fail on the defining constraint (D-020: concrete is deliberately audio-static "permanent mass" → the hero subject cannot be an instrument), Gate 2 fail (2006-tier; V.12 rebuild scoped + abandoned). **→ RETIRED GBRETIRE.1 / D-185 (2026-07-19).**
+
+**Matt's decisions (2026-07-19):** **retire Glass Brutalist** (✅ executed GBRETIRE.1 / D-185); **keep Arachne parked** (most-developed scaffold — not retired despite the gate lean); **next develop = Kinetic Sculpture, spike first** — a thin-strand ray-march feasibility spike gates any rebuild (strands render well → rebuild; else retire KS too). Volumetric Lithograph viable but not chosen this round. Teed-up increments: (a) Glass Brutalist retirement — **✅ executed GBRETIRE.1 / D-185** (catalog count 27 → 26, `expectedAutomatedGate` entry removed, Module Map row dropped, app dolly-speed case unwired, golden fixtures regenerated, full closeout battery); (b) the KS thin-strand feasibility spike — **✅ run 2026-07-19, verdict GREEN (viable-with-AA).** A standalone tracer replicating the exact production march loop (maxSteps=128, hit `d<0.001·t`, min-step 0.002) on a Lippold "Flight" bicone of 80 `sd_capsule` strands: the feared thin-SDF march-cost blowup **did not occur** (max 45–53/128 steps, 0% budget exhaustion; form renders cleanly down to ~0.65px — the relative hit-epsilon implicitly fattens sub-pixel features + the min-step floor prevents stalls). The one defect (foreshortened-strand shimmer <2px) is fully rescued by an **emissive glow core** (additive coverage ∝ ray-strand min-distance), which also reads as the tensioned-wire aesthetic. → **Kinetic Sculpture rebuild is viable** (replace the boxy `ks_rep` 3-axis grid with emissive-cored radiating capsules from hub points; matte/metal members ≥~2px via distance-fatten + existing bloom). Caveat: shimmer inferred from static frames — confirm via a rotating-camera pass through the full pipeline early in the rebuild. Spike is throwaway (not committed). **Next: Matt's go on the KS rebuild.**
 
 **Milestone E — Visual Identity.** Phosphene's preset catalog has a recognizable aesthetic ceiling that reads as 2026-quality — comparable to indie-game-released visuals, not 2006-era ShaderToy. *Requires: Phase V complete, Phase V.7–V.11 uplifts all Matt-approved, Phase CC certified (the flagship demonstration piece), accessibility pass (U.9).*

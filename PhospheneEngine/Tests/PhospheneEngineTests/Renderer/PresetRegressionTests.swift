@@ -156,7 +156,6 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // V.9 Session 1 — regen at Session 5 cert review (D-124 redirect: full preset
     // rewrite, glass-dish baseline replaced; golden hashes are stale by design).
     // "Ferrofluid Ocean": (steady: 0x56AB1C4A28B32727, beatHeavy: 0x5CB393AAAFA84840, quiet: 0xA64C51A62FD35356),
-    "Glass Brutalist": (steady: 0x336954B4B4544D33, beatHeavy: 0x336954B4B4544D33, quiet: 0x336954B4B4544D33),
     "Gossamer": (steady: 0x5756A72F070F0F0D, beatHeavy: 0x5756A72F070F0F0D, quiet: 0x5756872D0F0F0F0D),
     // QR.1 (D-079): sminK now mixes continuous bass (Layer 1) + bass_dev
     // accent. steady/quiet hashes regenerated to original V.7 values within

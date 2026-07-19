@@ -73,7 +73,10 @@ struct PresetLoaderCompileFailureTest {
     /// lineage, family `painterly`, `RicercarFlowGeometry` conformer; the marks/Skein + fluid-dye
     /// paradigms were rejected. Uncertified — FL.10 look + M7 pending). See docs/presets/RICERCAR_DESIGN.md
     /// §FANTASIA REBUILD.
-    static let expectedProductionPresetCount = 27
+    /// 27 → 26 at GBRETIRE.1 (Glass Brutalist retired — ray-march "brutalist corridor"
+    /// concept fails the viability gate: D-020 makes the concrete deliberately audio-static
+    /// so the hero subject can never be an instrument. See docs/DECISIONS.md D-185.)
+    static let expectedProductionPresetCount = 26
 
     @Test("PresetLoader.presets.count matches expectedProductionPresetCount — catches Failed Approach #44 silent drops")
     func test_presetLoaderProductionCount() {
