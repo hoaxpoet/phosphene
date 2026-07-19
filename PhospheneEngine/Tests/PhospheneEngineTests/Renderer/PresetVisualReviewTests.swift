@@ -188,10 +188,9 @@ struct PresetVisualReviewTests {
                       // BUG-034: remaining ray-march presets, so before/after step-budget
                       // pairs cover the full affected set. Ferrofluid Ocean renders its
                       // legacy SDF path here (no mesh encoder / height texture in this
-                      // harness); Glass Brutalist renders without SSGI/bloom per the
-                      // renderDeferredRayMarchFrame caveats — both halves of an A/B pair
-                      // use the identical harness, so deltas isolate the uniform change.
-                      "Ferrofluid Ocean", "Glass Brutalist", "Kinetic Sculpture"])
+                      // harness); both halves of an A/B pair use the identical harness,
+                      // so deltas isolate the uniform change.
+                      "Ferrofluid Ocean", "Kinetic Sculpture"])
     func renderPresetVisualReview(_ presetName: String) throws {
         guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else {
             print("[PresetVisualReview] RENDER_VISUAL not set, skipping \(presetName)")
@@ -773,7 +772,8 @@ struct PresetVisualReviewTests {
     /// - **Noise textures bound at slots 4–8** via the caller's TextureManager
     ///   (production: `RenderPipeline+RayMarch` passes `textureManager`).
     /// - **IBL bound** (production always binds `iblManager` on this path).
-    /// - **SSGI enabled when the preset declares `.ssgi`** (Glass Brutalist).
+    /// - **SSGI enabled when the preset declares `.ssgi`** (no production preset
+    ///   currently declares it after Glass Brutalist's retirement, D-185).
     /// - **PostProcessChain constructed when the preset declares `.postProcess`**
     ///   (production: `passesIncludePostProcess ? ppChain : nil`).
     /// - **Ferrofluid Ocean: 4096² height field baked and bound at texture 10**

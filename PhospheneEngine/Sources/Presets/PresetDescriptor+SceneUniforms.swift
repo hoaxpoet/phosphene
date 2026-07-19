@@ -10,7 +10,7 @@
 //   - `nearPlane` (sceneParamsA.z) and `farPlane` (sceneParamsA.w) are set from the
 //     descriptor and never changed again. A farPlane of 0 causes the G-buffer ray march
 //     loop to exit immediately, rendering all-sky — this is the regression caught by
-//     GlassBrutalistTests.test_gbuffer_allSkyWhenFarPlaneIsZero.
+//     RayMarchDiagnosticTests.test_nearAndFarPlanesAreNonZero.
 
 import Foundation
 import Shared
@@ -91,7 +91,7 @@ extension PresetDescriptor {
         //
         // sceneFogNear (default 20.0) was previously the hard-coded value in
         // `SceneUniforms()` — preserving it as the descriptor default keeps
-        // existing presets (Glass Brutalist, Kinetic Sculpture) byte-identical.
+        // existing presets (Kinetic Sculpture) byte-identical.
         // Close-framed presets (Ferrofluid Ocean) set `scene_fog_near: 0` in
         // JSON so the fog band starts at the camera and covers the visible
         // surface. See V.9 Session 2 carry-forward note.

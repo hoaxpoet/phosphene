@@ -108,7 +108,6 @@ private let expectedAutomatedGate: [String: Bool] = [
                                      // (Skein/Lumen precedent). Certified via Matt's M7 sign-off as a
                                      // loose energy-accompaniment (PHYS.5; not beat-synced by design).
     "Fractal Tree":         false,   // full; M3 fails
-    "Glass Brutalist":      false,   // full; M3 fails
     "Gossamer":             false,   // full; M3 fails
     "Kinetic Sculpture":    false,   // full; M3 fails
     "Membrane":             false,   // full; M3 fails

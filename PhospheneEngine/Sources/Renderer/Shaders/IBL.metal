@@ -30,7 +30,7 @@ using namespace metal;
 /// Procedural environment radiance for a given world-space direction.
 ///
 /// Configured as a warm concrete-corridor interior — appropriate for enclosed
-/// architectural presets (GlassBrutalist).  The blue-sky gradient that was here
+/// architectural presets.  The blue-sky gradient that was here
 /// previously caused all surfaces to appear sky-blue regardless of geometry.
 ///
 /// Three zones by elevation:
@@ -40,8 +40,8 @@ using namespace metal;
 ///
 /// NOTE: This is a global function shared by all ray march presets.  When an
 /// outdoor preset is added, per-preset IBL support should be introduced so each
-/// preset can declare its own environment type.  For now GlassBrutalist is the
-/// only ray march preset, so the interior environment is correct.
+/// preset can declare its own environment type.  The interior environment suits
+/// the enclosed architectural ray-march presets (e.g. Kinetic Sculpture).
 static inline float3 ibl_proc_env(float3 dir) {
     float up = dir.y;
 

@@ -14,7 +14,10 @@
 //
 //   Failure mode C — Light intensity corrupted in JSON (300 instead of 3):
 //     Full HDR over-exposure overwhelms bloom and produces a blown-out white frame.
-//     Caught by: GlassBrutalistValidation.test_lightIntensityIsReasonable.
+//     Caught by: test_lightIntensityPassesThroughUnchanged.
+//
+// (The per-preset GlassBrutalist JSON validation suite that once lived here was
+//  removed with the Glass Brutalist preset — see docs/DECISIONS.md D-185.)
 //
 // All tests call PresetDescriptor.makeSceneUniforms() — the function extracted from
 // VisualizerEngine+Presets.swift in Increment 3.5.3. No Metal, no GPU, no MTLDevice.
@@ -162,76 +165,5 @@ final class SceneUniformsConstructionTests: XCTestCase {
         let u = d.makeSceneUniforms()
         XCTAssertEqual(u.lightPositionAndIntensity.w, 3.0, accuracy: 0.001,
             "Light intensity must be 3.0. Got \(u.lightPositionAndIntensity.w).")
-    }
-}
-
-// MARK: - Glass Brutalist JSON Validation Tests
-
-/// These tests load the live GlassBrutalist.json via PresetLoader — no inlined values.
-/// A corrupted JSON (wrong intensity, camera outside corridor, etc.) fails immediately.
-final class GlassBrutalistValidationTests: XCTestCase {
-
-    private var desc: PresetDescriptor!
-
-    override func setUpWithError() throws {
-        let device = try XCTUnwrap(MTLCreateSystemDefaultDevice(),
-            "Metal device required for PresetLoader")
-        let loader = PresetLoader(device: device, pixelFormat: .bgra8Unorm)
-        let preset = try XCTUnwrap(
-            loader.presets.first(where: { $0.descriptor.name == "Glass Brutalist" }),
-            "Glass Brutalist preset not found in PresetLoader. "
-            + "Verify GlassBrutalist.json exists in Sources/Presets/Shaders/.")
-        desc = preset.descriptor
-    }
-
-    /// Intensity 300 (corrupted from 3.0) floods every reflective glass surface with 100×
-    /// the intended energy, blowing out bloom and producing a solid white frame.
-    func test_lightIntensityIsReasonable() throws {
-        let light = try XCTUnwrap(desc.sceneLights.first, "Glass Brutalist must have at least one light")
-        XCTAssertLessThanOrEqual(light.intensity, 10.0,
-            "Light intensity \(light.intensity) is unreasonably high — expected ≤ 10. "
-            + "Previous bug: intensity was set to 300 during a fix attempt, causing bloom blowout.")
-    }
-
-    /// If FOV is stored in radians in the JSON (e.g. 1.1345 instead of 65), and
-    /// makeSceneUniforms converts it a second time, the effective FOV is ~0.02 rad (~1°).
-    func test_cameraFovIsInDegrees() throws {
-        let cam = try XCTUnwrap(desc.sceneCamera, "Glass Brutalist must declare scene_camera")
-        XCTAssertGreaterThanOrEqual(cam.fov, 30.0,
-            "Camera fov \(cam.fov) < 30 — value appears to be in radians, not degrees.")
-        XCTAssertLessThanOrEqual(cam.fov, 120.0,
-            "Camera fov \(cam.fov) > 120 — value is out of the reasonable degree range.")
-    }
-
-    /// The corridor's concrete walls are at X = ±2.5. A camera outside this range
-    /// starts inside solid geometry; every ray exits the solid immediately → all miss.
-    func test_cameraIsInsideCorridorBoundsX() throws {
-        let cam = try XCTUnwrap(desc.sceneCamera, "Glass Brutalist must declare scene_camera")
-        XCTAssertLessThan(abs(cam.position.x), 2.5,
-            "Camera X=\(cam.position.x) is outside corridor walls at X=±2.5. "
-            + "Rays starting inside solid geometry miss everything.")
-    }
-
-    /// The floor is at Y = −1 and the ceiling at Y = 5.2.
-    func test_cameraIsInsideCorridorBoundsY() throws {
-        let cam = try XCTUnwrap(desc.sceneCamera, "Glass Brutalist must declare scene_camera")
-        XCTAssertGreaterThan(cam.position.y, -1.0,
-            "Camera Y=\(cam.position.y) is below the floor at Y=−1.")
-        XCTAssertLessThan(cam.position.y, 5.2,
-            "Camera Y=\(cam.position.y) is above the ceiling at Y=5.2.")
-    }
-
-    func test_passesIncludeRayMarch() throws {
-        XCTAssertTrue(desc.passes.contains(.rayMarch),
-            "Glass Brutalist must declare ray_march in its passes array.")
-    }
-
-    /// Confirm the full pipeline path: makeSceneUniforms must produce a non-zero far plane
-    /// for the live JSON. This is the exact regression caught in Increment 3.5.3.
-    func test_makeSceneUniforms_farPlaneIsNonZero() throws {
-        let uniforms = desc.makeSceneUniforms()
-        XCTAssertGreaterThan(uniforms.sceneParamsA.w, 1.0,
-            "farPlane from live GlassBrutalist.json is \(uniforms.sceneParamsA.w). "
-            + "Must be > 1. Zero far plane = all-sky G-buffer.")
     }
 }
