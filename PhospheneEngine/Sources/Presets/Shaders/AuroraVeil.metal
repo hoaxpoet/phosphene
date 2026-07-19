@@ -100,6 +100,11 @@ constant float kBandDrift      = 0.09; // slow curl drift of the sector center (
 // coordinate (across the curtain → many rays); radius is radial (along each ray).
 // Screen-space aurora TEXTURE (aurora_intensity) about the vanishing point.
 constant float kFilVpY         = -0.55; // vanishing point Y in screen uv (above the frame)
+// Motion — LATERAL curtain sway (the ref-video motion), NOT a vertical scroll:
+constant float kSwayAmp        = 0.16; // how far the curtain ripples side-to-side (radians)
+constant float kSwayFreq       = 2.4;  // wave crests up the curtain (along r)
+constant float kSwaySpeed      = 0.35; // how fast the ripple travels up the curtain
+constant float kMassMorph      = 0.03; // slow mass shape-morph (persist, don't pop)
 // Localized bright MASSES (distinct glowing concentrations, like the references):
 constant float kMassAngFreq    = 3.2;  // few, large masses across the curtain
 constant float kMassRadFreq    = 1.5;  // mass variation up the curtain
@@ -191,20 +196,34 @@ static inline float aurora_intensity(float2 uv, float time, float motionAmp) {
     float2 rel = uv - float2(0.5, kFilVpY);
     float  theta = atan2(rel.x, rel.y);        // 0 = toward the VP; constant-θ = a ray
     float  r     = length(rel);
+    float  act   = 0.4 + 0.6 * motionAmp;      // musical activity → how much it dances
 
-    // Localized bright masses — low-freq, high-contrast, drifting.
-    float mt  = time * (0.035 + 0.12 * motionAmp);
-    float m1  = fbm4(float3(theta * kMassAngFreq,       r * kMassRadFreq - mt,       2.0));
-    float m2  = fbm4(float3(theta * kMassAngFreq * 2.0 + 4.0, r * kMassRadFreq * 1.6 - mt * 1.4, 6.0));
+    // LATERAL SWAY — the whole curtain ripples SIDE TO SIDE, a wave travelling UP the
+    // curtain (along r). This is how real aurora moves (ref video 2026-07-19): the
+    // pattern undulates laterally and the bright masses TRANSLATE with it — there is NO
+    // vertical scroll ("moving down") and masses do not appear/disappear. Two wave
+    // scales + a θ term make it irregular, not a uniform slide. Amplitude rises with
+    // the music. The sway shifts θ, so masses AND filaments move together, coherently.
+    float sway = kSwayAmp * act *
+                 (fbm4(float3(r * kSwayFreq + time * kSwaySpeed * act, theta * 1.4, 0.0)) * 0.7
+                + fbm4(float3(r * kSwayFreq * 2.1 - time * kSwaySpeed * act * 0.7, theta * 2.3, 4.0)) * 0.3);
+    float th = theta + sway;
+
+    // Localized bright MASSES — sampled at the swayed angle so they translate with the
+    // ripple; a SLOW shape morph (3rd-dim time), NO radial scroll → they persist and
+    // move from place to place rather than flashing in and out.
+    float m1  = fbm4(float3(th * kMassAngFreq,             r * kMassRadFreq,       time * kMassMorph));
+    float m2  = fbm4(float3(th * kMassAngFreq * 2.0 + 4.0, r * kMassRadFreq * 1.6, time * kMassMorph * 1.3 + 6.0));
     float mass = smoothstep(kMassThresh, kMassThresh + 0.45, m1 * 0.65 + m2 * 0.35);
 
-    // Fine turbulent filaments — domain-warped ridges.
-    float2 q = float2(theta * kFilAngFreq, r * kFilRadFreq - time * 0.03);
-    float2 w = float2(fbm4(float3(q * 0.55, time * 0.04)),
-                      fbm4(float3(q * 0.55 + 21.0, time * 0.05)));
+    // Fine turbulent FILAMENTS — domain-warped ridges at the swayed angle (they sway
+    // with the curtain); only a gentle in-place shimmer, no scroll.
+    float2 q = float2(th * kFilAngFreq, r * kFilRadFreq);
+    float2 w = float2(fbm4(float3(q * 0.55, time * 0.025)),
+                      fbm4(float3(q * 0.55 + 21.0, time * 0.03)));
     q += w * kFilWarp;
-    float n1 = fbm4(float3(q, time * 0.02));
-    float n2 = fbm4(float3(q * 3.1 + 9.0, time * 0.035));
+    float n1 = fbm4(float3(q, time * 0.012));
+    float n2 = fbm4(float3(q * 3.1 + 9.0, time * 0.02));
     float fil = pow(saturate(1.0 - abs(n1 * 0.66 + n2 * 0.34)), kFilPow);
 
     // Dim textured body + boosted localized masses whose cores carry the bright filaments.
