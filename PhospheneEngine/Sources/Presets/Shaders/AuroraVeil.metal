@@ -74,7 +74,7 @@ constant float kCrownH      = 0.286; // altitude of the magenta crown (H(z) ceil
 constant float kElevTilt    = 0.55;  // screen-elevation → crown-colour bias (§5.11 gap fix)
 constant float kCrownCurve  = 1.6;   // H(z) index curve: >1 holds green across most of
                                      // the altitude range, violet only at the tips
-constant float kAuroraGain  = 1.65;  // emission gain (steady peak stays under the sRGB clip)
+constant float kAuroraGain  = 1.45;  // emission gain (steady peak stays under the sRGB clip)
 constant float kToneFloor   = 0.0;    // tone map off (band recalibration)
 constant float kToneScale   = 1.0;
 
@@ -104,7 +104,7 @@ constant float kFilVpY         = -0.55; // vanishing point Y in screen uv (above
 constant float kMassAngFreq    = 3.2;  // few, large masses across the curtain
 constant float kMassRadFreq    = 1.5;  // mass variation up the curtain
 constant float kMassThresh     = 0.02; // higher → smaller/rarer, more distinct masses
-constant float kMassBoost      = 1.7;  // how bright the masses pop above the dim body
+constant float kMassBoost      = 1.05;  // how bright the masses pop above the dim body
 constant float kBodyFloor      = 0.14; // dim aurora body outside the masses
 constant float kBodyFil        = 0.36; // filament texture amplitude on the dim body
 // Fine turbulent FILAMENTS:
@@ -428,17 +428,17 @@ fragment float4 aurora_fragment(
     // Green-dominance gated so the violet crown keeps its hue (never dragged to grey).
     float coreLum = dot(aurora, float3(0.299, 0.587, 0.114));
     float greenDom = saturate((aurora.g - max(aurora.r, aurora.b)) * 2.0);
-    aurora = mix(aurora, float3(0.62, 1.0, 0.80) * coreLum * 1.12,
-                 smoothstep(0.40, 0.95, coreLum) * 0.55 * greenDom);
+    aurora = mix(aurora, float3(0.60, 1.0, 0.78) * coreLum,
+                 smoothstep(0.45, 1.05, coreLum) * 0.30 * greenDom);
 
     // Route 1 — vocals pitch → subtle green↔cool-teal hue tint.
     float3 pitchTint = float3(1.0 - paletteOffset * 0.45, 1.0, 1.0 + paletteOffset * 0.75);
     aurora *= pitchTint;
 
-    // Route 2 — brightness breathing (bass transients flare the whole curtain). Wide
-    // swing with headroom below so the continuous route carries real amplitude (must
-    // dominate the beat-kink accent by ≥10×, §5.7).
-    aurora *= (0.62 + 0.9 * bassPulse);
+    // Route 2 — brightness breathing (bass transients gently lift the curtain). Kept
+    // GENTLE (small swing) so it breathes, not FLASHES on every kick (Matt 2026-07-19);
+    // still dominates the beat-kink accent by ≥10× (§5.7).
+    aurora *= (0.82 + 0.26 * bassPulse);
 
     // ── Composite: additive emission over dark sky (stars punch through, FM #5).
     // Clamp in LINEAR at 0.94 — the render target is bgra8Unorm_srgb, so a linear
