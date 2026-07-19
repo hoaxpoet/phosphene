@@ -101,8 +101,8 @@ constant float kBandDrift      = 0.09; // slow curl drift of the sector center (
 // Screen-space aurora TEXTURE (aurora_intensity) about the vanishing point.
 constant float kFilVpY         = -0.55; // vanishing point Y in screen uv (above the frame)
 // Motion — LATERAL curtain sway (the ref-video motion), NOT a vertical scroll:
-constant float kSwayAmp        = 0.16; // how far the curtain ripples side-to-side (radians)
-constant float kSwayFreq       = 2.4;  // wave crests up the curtain (along r)
+constant float kSwayAmp        = 0.13; // how far the curtain ripples side-to-side (radians)
+constant float kSwayFreq       = 1.05;  // wave crests up the curtain (along r)
 constant float kSwaySpeed      = 0.35; // how fast the ripple travels up the curtain
 constant float kMassMorph      = 0.03; // slow mass shape-morph (persist, don't pop)
 // Localized bright MASSES (distinct glowing concentrations, like the references):
