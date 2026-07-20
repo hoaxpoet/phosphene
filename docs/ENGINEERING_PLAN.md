@@ -2916,6 +2916,15 @@ Three live rejections (R.2 flowing-field "slick wallpaper"; IFC.6 marks "lag + b
 
 ---
 
+## Phase PG — Psychedelic Geometry (Phosphene-native abstract-geometry preset set)
+
+Five original abstract-geometry presets (design docs in `docs/presets/psychedelic_geometry/`), each proving a distinct music-response strategy. Phosphene-native (no `inspired_by`; D-119 brand-identity native minority). Sequenced lowest-fidelity-risk first (PG_0 §6): Truchet Loom opens the phase because it is pure crisp 2D op-art with strong published prior art and cleanly proves the **complexity-mapping** routing idea.
+
+### PG.4.1 — Truchet Loom scaffold + density-mapping subdivision ✅ code-complete, pending Matt's live M7 (2026-07-20, D-186)
+Reviewable v1 of Truchet Loom: a `direct`-pass multiscale curved-Truchet op-art weave (family `geometric`) whose continuous subdivision level tracks a **smoothed `spectral_flux`** — busy music shatters the weave into nested sub-tiles, sparse music merges it into large sweeping arcs; slow drift ← `arousal` speed on an `f.time` baseline; coarse non-black weave at silence (D-037). Ported (FA #73) from IQ's two-quarter-arc Truchet SDF + Carlson's ½-scale recursion (Shadertoy `4t3BW4`); subdivision crossfades per-parent-cell so it animates without popping (depth cap 3, Restrained default). Smoothing = a single reserved-slot EMA float (`flux_smoothed`, idx 3390) in `SpectralHistoryBuffer` — no new binding. `certified: false`. Preset count 27 → 28. Golden 3-tuple registered; density hero + drift + smoothing covered by `TruchetLoomDensityTests` (live direct-pass multi-frame). Done-when cert: **Matt's live M7** (felt musical connection, not self-certifiable). Next: **PG.4.2** — per-beat tile flips (cached grid, bounded subset) + per-path hue teams (`spectral_centroid`) + optional `bass_dev` glow. **PG.4.3** — deeper nesting + chromatic/grain/AA polish.
+
+---
+
 These milestones map to product-level outcomes, not implementation phases.
 
 **Milestone A — Trustworthy Playback Session.** ✅ **MET (2026-04-25).** A user can connect a playlist, obtain a usable prepared session, and complete a full listening session without instability. *Requires: ~~2.5.4~~ ✅, ~~Phase U increments U.1–U.7~~ ✅, ~~progressive readiness basics (6.1)~~ ✅.*

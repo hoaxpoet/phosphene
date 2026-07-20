@@ -73,7 +73,11 @@ struct PresetLoaderCompileFailureTest {
     /// lineage, family `painterly`, `RicercarFlowGeometry` conformer; the marks/Skein + fluid-dye
     /// paradigms were rejected. Uncertified — FL.10 look + M7 pending). See docs/presets/RICERCAR_DESIGN.md
     /// §FANTASIA REBUILD.
-    static let expectedProductionPresetCount = 27
+    /// 27 → 28 at PG.4.1 (Truchet Loom — multiscale curved-Truchet op-art weave whose
+    /// subdivision depth tracks smoothed spectral_flux; direct pass, family `geometric`.
+    /// Not certified — reviewable v1, cert after Matt's live M7; D-186). See
+    /// docs/presets/psychedelic_geometry/PG_4_TRUCHET_LOOM.md.
+    static let expectedProductionPresetCount = 28
 
     @Test("PresetLoader.presets.count matches expectedProductionPresetCount — catches Failed Approach #44 silent drops")
     func test_presetLoaderProductionCount() {
