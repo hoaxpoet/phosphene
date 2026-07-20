@@ -261,7 +261,7 @@ public final class RayMarchPipeline: @unchecked Sendable {
     public var baseScene: BaseSceneSnapshot = BaseSceneSnapshot()
 
     /// Forward dolly speed in world-units per second of wall-clock time.
-    /// `0` disables dolly (Kinetic Sculpture / Test Sphere stay static).
+    /// `0` disables dolly (e.g. Test Sphere stays static).
     /// Set by `applyPreset` from a preset-specific rule.
     ///
     /// Per-frame actual speed = `cameraDollySpeed × (0.5 + bassContribution)`

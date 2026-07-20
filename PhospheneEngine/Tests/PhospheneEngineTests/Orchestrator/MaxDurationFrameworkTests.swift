@@ -29,7 +29,6 @@ private let referenceTable: [ReferenceRow] = [
     ReferenceRow(presetName: "Ferrofluid Ocean",       expectedSeconds: 55),
     ReferenceRow(presetName: "Fractal Tree",           expectedSeconds: 55),
     ReferenceRow(presetName: "Gossamer",               expectedSeconds: 102),
-    ReferenceRow(presetName: "Kinetic Sculpture",      expectedSeconds: 49),
     ReferenceRow(presetName: "Membrane",               expectedSeconds: 49),
     ReferenceRow(presetName: "Murmuration",            expectedSeconds: 67),
     ReferenceRow(presetName: "Nebula",                 expectedSeconds: 96),

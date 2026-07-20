@@ -1,7 +1,7 @@
 // IBLEnvironmentTests — RMENV.2 gallery-environment bake.
 //
 // Proves the `envType` selector actually changes the baked IBL cubemap (a bug
-// that left envType inert would make Kinetic Sculpture's gallery opt-in a no-op
+// that left envType inert would make a preset's gallery opt-in a no-op
 // while still looking plausible). The complementary guarantee — envType 0 is
 // byte-identical to pre-RMENV — is covered by PresetRegressionTests staying green
 // on every ray-march preset.

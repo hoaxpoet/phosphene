@@ -165,11 +165,6 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // BUG-034 (2026-06-12, M7-lite approved): regen at the live 128-step budget.
     // Pre-fix fixtures marched 32 steps (ambient packed into the D-057 slot);
     // the lattice now resolves deeper into the scene. 10-13 bit drift.
-    // KSRB.1 (2026-07-20): geometry rebuilt from the retired periodic rod grid to
-    // three interpenetrating Lippold radiating-strand fans. Deliberate regen. The
-    // chrome material is intentionally under-served at this baseline (single light +
-    // uniform IBL); Phase RMENV fixes that and KSRB.2 regenerates these again.
-    "Kinetic Sculpture": (steady: 0x0C1C0E0E0C0C08, beatHeavy: 0x2C0E1E1E0C0C08, quiet: 0x0C1E262E1C0C08),
     // LM.4.5 (full-spectrum palette card model): the regression harness
     // leaves slot 8 bound to the zero placeholder buffer, so every cell
     // picks card slot `(cellHash + 0) % 48` and the per-track seed hash

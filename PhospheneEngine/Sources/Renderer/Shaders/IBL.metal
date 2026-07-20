@@ -41,7 +41,7 @@ using namespace metal;
 /// NOTE: This is a global function shared by all ray march presets.  When an
 /// outdoor preset is added, per-preset IBL support should be introduced so each
 /// preset can declare its own environment type.  The interior environment suits
-/// the enclosed architectural ray-march presets (e.g. Kinetic Sculpture).
+/// the enclosed architectural ray-march presets.
 static inline float3 ibl_proc_env(float3 dir) {
     float up = dir.y;
 
@@ -69,7 +69,7 @@ static inline float3 ibl_proc_env(float3 dir) {
 
 /// High-contrast gallery interior (RMENV.2, envType 1). Where `ibl_proc_env` is a
 /// smooth low-contrast gradient — fine for diffuse ambient but a mirror reflecting
-/// it reads as flat "putty" (the Kinetic Sculpture README §4.1 anti-reference) —
+/// it reads as flat "putty" (the classic chrome-on-flat-gradient anti-reference) —
 /// this environment gives a near-mirror something worth reflecting: **bright HDR
 /// skylight strips** overhead against dark ceiling gaps, faint pilaster banding on
 /// mid walls, and a **dark polished floor** with a soft near-horizon glow. The
