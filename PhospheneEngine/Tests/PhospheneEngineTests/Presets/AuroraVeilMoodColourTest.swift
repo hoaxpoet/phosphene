@@ -1,29 +1,23 @@
-// AuroraVeilPitchHueTest — AV.2 vocal-pitch palette migration gate.
+// AuroraVeilPitchHueTest — AV.7 mood-colour migration gate.
 //
-// Validates the §5.7 route 1 contract: as `vocalsPitchNorm` (the smoothed
-// log2-normalised vocal pitch) sweeps low → high, the rendered ribbon's
-// hue migrates *continuously* across the IQ palette. The failure mode this
-// gate catches is "stepwise / quantized" hue migration — when adjacent
-// pitch values produce visibly discontinuous palette jumps (which would
-// look like the palette stuttering between songs' vocal lines rather than
-// flowing with the melody).
+// Validates the AV.7 colour route: as `f.valence` (the track's mood) sweeps
+// dark → bright, the rendered curtain's hue migrates *continuously* across the
+// IQ palette — warming toward pink at higher mood, cooling to deep green when
+// the music darkens. The failure mode this gate catches is "stepwise /
+// quantised" migration, where adjacent valence values produce visibly
+// discontinuous palette jumps (the palette stuttering rather than flowing with
+// the song).
 //
-// The test bypasses the CPU `AuroraVeilState` smoother and binds
-// `smoothedPitchNorm` directly at slot 6 — this isolates the shader's
-// pitch → hue mapping from the CPU smoothing logic. (The state class's
-// own correctness is implicit in the field's continuous value range
-// produced by its 5-frame moving average; a stepwise output would mean
-// the SHADER itself is quantising, e.g. via an int cast or fract+floor.)
+// History: this file previously gated the AV.2.h vocal-pitch → hue route
+// (`smoothedPitchNorm` bound at slot 6). That route was deleted in the AV.7
+// reauthor along with the rest of the three-channel set; the gate was
+// re-pointed at the mood route that replaced it rather than dropped, so the
+// "continuous, not quantised" contract survives the rewrite.
 //
-// `vocals_pitch_confidence` is held at 1.0 across the sweep so the
-// shader's confidence gate doesn't degrade the test to its 0.5 fallback
-// midway through.
-//
-// Hue scalar: `atan2(R - G, B - G)`. Monotonic in the IQ-palette phase
-// shift produced by `(pitchNorm - 0.5) × 1.6` on `baseOffset`, because
-// the per-channel `sin()` differences (R, G, B with phases -1.15, +1.5,
-// -0.2 relative to baseOffset) preserve quadrant ordering as baseOffset
-// monotonically shifts.
+// Hue scalar: `atan2(R - G, B - G)`. Monotonic in the IQ-palette phase shift
+// produced by `paletteWarm = valence × 0.5`, because the per-channel `sin()`
+// differences (R, G, B at phases -1.15, +1.5, -0.2 relative to the offset)
+// preserve quadrant ordering as the offset shifts monotonically.
 
 import Testing
 import Metal
@@ -38,26 +32,28 @@ private struct AuroraVeilStateGPUMirror {
     var padB: Float = 0
 }
 
-@Suite("AuroraVeil pitch hue")
-struct AuroraVeilPitchHueTest {
+@Suite("AuroraVeil mood colour")
+struct AuroraVeilMoodColourTest {
 
     private static let renderWidth  = 128
     private static let renderHeight = 64
 
     // MARK: - Pitch sweep → monotonic + smooth hue migration
 
-    @Test("vocals_pitch sweep produces continuous + monotonic hue migration")
-    func test_pitchSweep_continuousHueMigration() throws {
-        // 8-step sweep on `smoothedPitchNorm` in [0, 1] — covers the
-        // E2-to-~C7 musical range the §5.7 / research §3.3 normalisation
-        // is designed to span.
+    @Test("valence sweep produces continuous mood-colour migration")
+    func test_valenceSweep_continuousHueMigration() throws {
+        // AV.7 (2026-07-19): the hue route is now mood (`f.valence`), not vocal
+        // pitch — the vocal-pitch route was removed with the rest of the AV.2.h
+        // three-channel set. valence spans roughly [-0.75, +0.77] on real music
+        // (measured, Cherub Rock); the shader maps it to a whole-palette phase
+        // shift of ±0.5 rad, warming the curtain toward pink at higher mood and
+        // cooling it to deep green when the music darkens.
         let steps = 8
-        let sweep: [Float] = (0..<steps).map { Float($0) / Float(steps - 1) }
+        let sweep: [Float] = (0..<steps).map { -1.0 + 2.0 * Float($0) / Float(steps - 1) }
         var hueScalars: [Float] = []
-        for pitchNorm in sweep {
-            guard let pixels = try renderFrame(pitchNorm: pitchNorm,
-                                               pitchConfidence: 1.0) else {
-                print("AuroraVeilPitchHue: skipping — no Metal device")
+        for valence in sweep {
+            guard let pixels = try renderFrame(valence: valence) else {
+                print("AuroraVeilMoodColour: skipping — no Metal device")
                 return
             }
             // Find the brightest column at the aurora mid altitude (uv.y=0.5)
@@ -77,19 +73,19 @@ struct AuroraVeilPitchHueTest {
         }
 
         let sweepStr = zip(sweep, hueScalars)
-            .map { "pitchNorm=\(String(format: "%.2f", $0.0)) → hue=\(String(format: "%.3f", $0.1))" }
+            .map { "valence=\(String(format: "%.2f", $0.0)) → hue=\(String(format: "%.3f", $0.1))" }
             .joined(separator: ", ")
 
-        // Monotonic across the sweep — tolerance for small fp noise.
-        // The hue scalar should monotonically INCREASE as pitchNorm rises
-        // (palette migrates green-base → magenta-mixed; B-G rises faster
-        // than R-G, so atan2 rotates CCW into the 2nd-quadrant direction).
+        // Monotonic across the sweep — tolerance for small fp noise. The hue
+        // scalar should move consistently in one direction as valence rises,
+        // because paletteWarm is a single additive phase offset applied to the
+        // whole IQ palette.
         for i in 1..<hueScalars.count {
             let delta = hueScalars[i] - hueScalars[i - 1]
             #expect(
                 delta >= -0.05,
                 """
-                Pitch hue sweep is not monotonic at step \(i): \
+                Valence hue sweep is not monotonic at step \(i): \
                 \(hueScalars[i - 1]) → \(hueScalars[i]) (Δ=\(delta)). \
                 Sweep: \(sweepStr).
                 """
@@ -102,9 +98,9 @@ struct AuroraVeilPitchHueTest {
         #expect(
             totalRange >= 0.1,
             """
-            Pitch hue sweep total range \(totalRange) is too small. \
-            Either the route is unwired or the shader is reading a \
-            constant smoothedPitchNorm. Sweep: \(sweepStr).
+            Valence hue sweep total range \(totalRange) is too small. \
+            Either the mood-colour route is unwired or the shader is reading a \
+            constant valence. Sweep: \(sweepStr).
             """
         )
 
@@ -126,7 +122,7 @@ struct AuroraVeilPitchHueTest {
                 Step \(i) hue delta \(stepDelta) exceeds 45 % of total \
                 sweep range (\(stepThreshold)). Hue migration is \
                 stepwise / quantised rather than continuous — the \
-                §5.7 vocal-pitch route is broken. Sweep: \(sweepStr).
+                mood-colour route is broken. Sweep: \(sweepStr).
                 """
             )
         }
@@ -134,7 +130,7 @@ struct AuroraVeilPitchHueTest {
 
     // MARK: - Render harness (mirrors AuroraVeilContinuousDominanceTest)
 
-    private func renderFrame(pitchNorm: Float, pitchConfidence: Float) throws -> [UInt8]? {
+    private func renderFrame(valence: Float) throws -> [UInt8]? {
         guard let preset = _acceptanceFixture.presets.first(where: {
             $0.descriptor.name == "Aurora Veil"
         }) else {
@@ -166,12 +162,11 @@ struct AuroraVeilPitchHueTest {
         _ = hist.contents().initializeMemory(as: UInt8.self, repeating: 0, count: 4096 * floatStride)
 
         var stems = StemFeatures.zero
-        stems.vocalsPitchConfidence = pitchConfidence
+        stems.vocalsPitchConfidence = 0
         // Also set vocalsPitchHz to a representative value — the shader
         // doesn't read it directly in AV.2 (consumes the CPU-smoothed
         // value via slot 6), but keeping the stem layer self-consistent
         // helps if a future fix reroutes the read.
-        stems.vocalsPitchHz = 80.0 * pow(2.0, pitchNorm * 4.0)
         stem.contents().copyMemory(from: &stems,
                                    byteCount: MemoryLayout<StemFeatures>.size)
 
@@ -180,11 +175,14 @@ struct AuroraVeilPitchHueTest {
         // attributable solely to the pitch route.
         features.bassAttRel = 0
         features.midAttRel = 0
-        features.valence = 0
+        features.valence = valence
+        features.arousal = 0.5
+        features.barPhase01 = 0.5
+        features.pulseAmp01 = 0
 
         var avMirror = AuroraVeilStateGPUMirror(
             kinkAccumulator: 0,
-            smoothedPitchNorm: pitchNorm
+            smoothedPitchNorm: 0.5
         )
         avState.contents().copyMemory(from: &avMirror,
                                       byteCount: MemoryLayout<AuroraVeilStateGPUMirror>.stride)

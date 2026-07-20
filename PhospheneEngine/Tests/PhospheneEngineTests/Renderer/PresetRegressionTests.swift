@@ -140,19 +140,19 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // PresetVisualReviewTests where the harness binds a fully-built
     // Arachne state with a real polygon.
     "Arachne": (steady: 0x0000000000000000, beatHeavy: 0x0000004000000000, quiet: 0x0000000000000000),
-    // AV.2 (2026-05-18): Aurora Veil now wires seven audio routes per §5.7,
-    // but the regression fixtures don't set `bass_att_rel` / `mid_att_rel`
-    // / `valence` / stems, so routes 2/3/4/6/7 fire at their neutral
-    // values and the harness's zeroed slot-6 buffer leaves the
-    // smoothedPitchNorm gated to the 0.5 baseline (route 1 inactive) and
-    // the kinkAccumulator at 0 (route 5 inactive). The shader's pixel
-    // output therefore diverges from AV.1 ONLY by the 3-column max-merge
-    // raymarch structure (and the per-column non-parallel substrate drift
-    // velocities, which only matter when `f.time` differs across fixtures
-    // — i.e. between the three fixtures, not between AV.1 and AV.2 at the
-    // same fixture). At 64×64 dHash with 9×8 cell quantisation the AV.1 →
-    // AV.2 visual delta is Hamming-distance ~1-4 bits per fixture.
-    "Aurora Veil": (steady: 0x109B0A1B5E1B1B9A, beatHeavy: 0x109F0E1F1E1D1F9E, quiet: 0x109F0E1F561D1F9E),
+    // AV.7 (2026-07-19): goldens regenerated for the nimitz-faithful reauthor.
+    // The whole frame changed by design — the preset was rebuilt as a faithful
+    // port of nimitz's "Auroras" (real 3D ray march, his bg/stars/palette),
+    // then re-framed to a static UPWARD view with no horizon, ground or
+    // reflection, and re-routed onto beat-stars / arousal-breathe /
+    // valence-colour. Hamming distance from the AV.2 goldens was 32-38 bits,
+    // i.e. a different image, not drift. The regression fixtures leave
+    // arousal/valence at their neutral values and pulse_amp01 at 0, so the
+    // breathe sits at its clamp floor and the star beat-twinkle is gated off —
+    // these hashes fingerprint the substrate + composition, not the routing
+    // (which has its own gates in AuroraVeilContinuousDominanceTest and
+    // AuroraVeilMoodColourTest).
+    "Aurora Veil": (steady: 0x5B3B33333363E3ED, beatHeavy: 0x79393333113171F8, quiet: 0x5B3333232363E3EF),
     // V.9 Session 1 — regen at Session 5 cert review (D-124 redirect: full preset
     // rewrite, glass-dish baseline replaced; golden hashes are stale by design).
     // "Ferrofluid Ocean": (steady: 0x56AB1C4A28B32727, beatHeavy: 0x5CB393AAAFA84840, quiet: 0xA64C51A62FD35356),
