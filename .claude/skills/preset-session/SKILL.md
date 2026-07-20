@@ -35,6 +35,7 @@ Before adding audio reactivity to a visual layer, table out (visual layer × aud
 - **FA #31 — Absolute thresholds on AGC-normalized energy** (e.g. `smoothstep(0.22, 0.32, f.bass)`): AGC's running-average denominator moves with mix density; the same kick reads different values across tracks. Drive from deviation — `f.bassRel`, `f.bassDev` (D-026). Full diagnosis: `docs/MILKDROP_ARCHITECTURE.md`.
 - **Silence must never render black** (D-037): every preset renders a non-black silence state.
 - **One rendering paradigm per preset** (D-029). **3D for physical metaphors; environments rendered, not implied.**
+- **Build to Matt's actual words + the locked reference — never your own metaphor (KSRETIRE.1 / D-187).** Kinetic Sculpture was retired after the seat repeatedly re-described Matt's direction ("a sculpture that *responds to music*," "psychedelic / iridescent," "a *psychedelic geometry* preset," "*not* a reproduction of existing kinetic sculptures") as an invented concept — "wire sculpture," "ethereal filaments," "tinker toy" — and built to *that*. Matt's callout: "who said anything about filaments?" The **musical role IS the concept**; a named visual reference is loose inspiration, not a fidelity target — "reproduce reference X faithfully" is the wrong objective when the ask is "a thing that responds to music." (Ties to the concept-viability Gate 2: if fidelity to an imagined form is flagged RISK, do not let it creep back in as the objective.) The instant you notice framing or vocabulary Matt never used, stop and re-anchor to his exact words.
 - Reference/porting discipline (FA #64/#65/#73) lives in the `shader-authoring` skill — invoke it before writing shader code.
 
 ## Escalation thresholds — stop and bring the gap to Matt when
@@ -43,4 +44,5 @@ Before adding audio reactivity to a visual layer, table out (visual layer × aud
 - a concept pitch fails the three-part bar;
 - you catch yourself producing structure as a substitute for an answer;
 - a "reusable infrastructure" argument is forming in defense of deleted-concept code;
+- you catch yourself renaming Matt's stated direction into your own concept or metaphor (the KS "filaments" failure, D-187) — re-anchor to his exact words before building further;
 - the one-sentence "what I now believe about why this preset is failing" hasn't changed between M7 rounds.
