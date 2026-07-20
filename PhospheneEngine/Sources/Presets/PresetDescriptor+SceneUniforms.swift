@@ -95,6 +95,9 @@ extension PresetDescriptor {
             }
         }
         uniforms.lightingParams.x = Float(min(max(sceneLights.count, 1), 4))
+        // RMENV.3: lane .y carries the environment type into the shader so the
+        // miss/background path can render a matching backdrop (0 = sky, unchanged).
+        uniforms.lightingParams.y = Float(environmentType)
 
         // Fog: convert density → far distance. Dense fog (0.05) → 20 units; light (0.015) → ~67.
         //
