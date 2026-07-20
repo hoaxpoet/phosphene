@@ -70,7 +70,8 @@ struct KineticSculptureMotionGifHarness {
         pipeline.sceneUniforms = sceneUniforms
         pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
 
-        let iblManager = try IBLManager(context: ctx, shaderLibrary: shaderLibrary)
+        let iblManager = try IBLManager(context: ctx, shaderLibrary: shaderLibrary,
+                                        envType: preset.descriptor.environmentType)
         let ppChain: PostProcessChain?
         if preset.descriptor.passes.contains(.postProcess) {
             let chain = try PostProcessChain(context: ctx, shaderLibrary: shaderLibrary)

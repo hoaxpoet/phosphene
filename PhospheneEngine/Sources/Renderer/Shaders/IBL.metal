@@ -67,6 +67,47 @@ static inline float3 ibl_proc_env(float3 dir) {
     }
 }
 
+/// High-contrast gallery interior (RMENV.2, envType 1). Where `ibl_proc_env` is a
+/// smooth low-contrast gradient — fine for diffuse ambient but a mirror reflecting
+/// it reads as flat "putty" (the Kinetic Sculpture README §4.1 anti-reference) —
+/// this environment gives a near-mirror something worth reflecting: **bright HDR
+/// skylight strips** overhead against dark ceiling gaps, faint pilaster banding on
+/// mid walls, and a **dark polished floor** with a soft near-horizon glow. The
+/// azimuthal structure (via the reflected direction) means a rotating chrome
+/// surface sweeps highlights across itself rather than sitting uniformly grey.
+static inline float3 ibl_gallery_env(float3 dir) {
+    float up = dir.y;
+    float az = atan2(dir.z, dir.x);              // -pi..pi around the horizon
+
+    if (up > 0.35f) {
+        // Ceiling with a run of bright cool skylight strips (HDR > 1 so chrome
+        // catches genuine highlights), dark ceiling between the strips.
+        float t     = smoothstep(0.35f, 1.0f, up);
+        float strip = smoothstep(0.55f, 0.95f, cos(az * 6.0f));   // 6 skylights
+        float3 ceilDark = float3(0.09f, 0.10f, 0.13f);
+        float3 skylight = float3(2.6f, 2.7f, 3.0f);               // cool, bright
+        return mix(ceilDark, skylight, t * strip);
+    } else if (up > -0.05f) {
+        // Mid walls: neutral, faint vertical pilaster banding for structure.
+        float t   = smoothstep(-0.05f, 0.35f, up);
+        float pil = 0.86f + 0.14f * smoothstep(0.6f, 0.92f, cos(az * 8.0f));
+        return mix(float3(0.15f, 0.15f, 0.17f), float3(0.42f, 0.42f, 0.47f), t) * pil;
+    } else {
+        // Dark polished floor with a soft reflected-skylight glow near the horizon.
+        float t = smoothstep(-1.0f, -0.05f, up);
+        float3 floorDark        = float3(0.025f, 0.025f, 0.035f);
+        float3 floorNearHorizon = float3(0.17f, 0.18f, 0.22f);
+        return mix(floorDark, floorNearHorizon, t);
+    }
+}
+
+/// Environment dispatch (RMENV.2). envType 0 = the default interior (unchanged, so
+/// the baked cubemap is byte-identical for every preset that doesn't opt in);
+/// envType 1 = the high-contrast gallery. Add cases here for future environments.
+static inline float3 ibl_env(float3 dir, uint envType) {
+    return (envType == 1u) ? ibl_gallery_env(dir) : ibl_proc_env(dir);
+}
+
 // MARK: - Cubemap UV ↔ Direction
 
 /// Convert a cubemap face index (0–5) and UV in [0,1] to a normalised world direction.
@@ -155,6 +196,7 @@ static inline float ibl_geo_smith(float3 N, float3 V, float3 L, float roughness)
 kernel void ibl_gen_irradiance(
     texturecube<float, access::write> irr     [[texture(0)]],
     constant uint&                    faceSize [[buffer(0)]],
+    constant uint&                    envType  [[buffer(1)]],
     uint3                             gid      [[thread_position_in_grid]])
 {
     if (gid.x >= faceSize || gid.y >= faceSize || gid.z >= 6u) { return; }
@@ -182,7 +224,7 @@ kernel void ibl_gen_irradiance(
         float3 L = normalize(tan * (sinTheta * cos(phi))
                            + bit * (sinTheta * sin(phi))
                            + N   *  cosTheta);
-        irradiance += ibl_proc_env(L);
+        irradiance += ibl_env(L, envType);
     }
     // Monte Carlo estimate: divide by sample count (cosine PDF already folded in).
     irradiance /= float(SAMPLES);
@@ -206,6 +248,7 @@ kernel void ibl_gen_prefiltered_env(
     constant float&                   roughness  [[buffer(0)]],
     constant uint&                    faceSize   [[buffer(1)]],
     constant uint&                    mipLevel   [[buffer(2)]],
+    constant uint&                    envType    [[buffer(3)]],
     uint3                             gid        [[thread_position_in_grid]])
 {
     if (gid.x >= faceSize || gid.y >= faceSize || gid.z >= 6u) { return; }
@@ -228,7 +271,7 @@ kernel void ibl_gen_prefiltered_env(
 
         float NdotL = max(dot(N, L), 0.0);
         if (NdotL > 0.0) {
-            prefColor   += ibl_proc_env(L) * NdotL;
+            prefColor   += ibl_env(L, envType) * NdotL;
             totalWeight += NdotL;
         }
     }
