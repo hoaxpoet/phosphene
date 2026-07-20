@@ -162,6 +162,7 @@ The renderer manages the Metal pipeline: device, command queue, triple-buffered 
 - **Fog far plane** = `baseFogFar × (calmFactor or franticFactor)` — calm arousal expands the visible horizon, frantic arousal closes it in.
 - **Camera dolly** = `baseCameraZ + features.time × cameraDollySpeed` — constant-speed wall-clock advance, per-preset speed (Volumetric Lithograph 1.8 u/s; others 0). Decoupled from `accumulatedAudioTime` so motion feels like travel, not energy-tied.
 - **`SceneUniforms.cameraForward.w`** is a preset-specific scalar lane for SDF deformation that needs to be visible to both `sceneSDF` and `sceneMaterial`. The preamble passes `FeatureVector` and `SceneUniforms` to `sceneMaterial` so material classification stays consistent with deformed geometry. (Its one consumer, Glass Brutalist's glass-fin X-position, was retired GBRETIRE.1 / D-185; the lane stays on the contract for future ray-march presets.)
+- **Multi-light (RMENV.1).** `SceneUniforms` grew from 128 → 240 bytes: `light1/2/3PositionAndIntensity` + `light1/2/3Color` + `lightingParams` (`.x` = active light count 1…4) are **appended after `sceneParamsB`** so the primary light (`lightPositionAndIntensity`/`lightColor`) and every earlier field keep their byte offset. The struct is defined in FOUR places that must stay in lockstep — `Common.metal`, `AudioFeatures+SceneUniforms.swift`, and both preamble mirrors (`PresetLoader+Preamble.swift`, `+WarpPreamble.swift`); a layout edit touches all four in one commit. The deferred lighting loop (`RayMarch.metal`) sums Cook-Torrance over `lightingParams.x` lights and shadows only light 0 (the key); at count 1 it is byte-identical to the pre-RMENV path, so a preset that declares one light is unchanged.
 
 Baselines for these modulations are captured in `RayMarchPipeline.BaseSceneSnapshot` at preset apply time so per-frame modulation is additive on the preset's intent, not destructive.
 
@@ -173,7 +174,7 @@ Baselines for these modulations are captured in `RayMarchPipeline.BaseSceneSnaps
 | 1 | FFT magnitudes (512 Float32) | All fragment encoders |
 | 2 | Waveform (2048 Float32) | All fragment encoders |
 | 3 | `StemFeatures` (256 bytes) | All fragment encoders |
-| 4 | `SceneUniforms` (128 bytes) | Ray march G-buffer, lighting, SSGI **only** |
+| 4 | `SceneUniforms` (240 bytes) | Ray march G-buffer, lighting, SSGI **only** |
 | 5 | `SpectralHistory` (4096 Float32, 16 KB) | Direct-pass fragment encoders; see D-030 |
 | 6–7 | Future use | — |
 
