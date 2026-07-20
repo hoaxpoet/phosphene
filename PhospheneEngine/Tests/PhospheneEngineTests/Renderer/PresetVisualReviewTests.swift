@@ -185,6 +185,13 @@ struct PresetVisualReviewTests {
     // that produces raw G-buffer output instead of the deferred lit result.
     @Test("Render preset to PNGs + contact sheet (RENDER_VISUAL=1)",
           arguments: ["Arachne", "Aurora Veil", "Gossamer", "Volumetric Lithograph", "Lumen Mosaic", "Nimbus",
+                      // PG.4.1: Truchet Loom (direct). The standard silence/mid/beat
+                      // fixtures leave spectral_flux + SpectralHistory zeroed → this
+                      // sheet shows the COARSE silence weave (non-black, crisp,
+                      // continuous paths, slow drift across f.time). The density HERO
+                      // (flux → subdivision sweep) is driven + captured separately by
+                      // TruchetLoomDensityTests, which populates SpectralHistory.
+                      "Truchet Loom",
                       // BUG-034: remaining ray-march presets, so before/after step-budget
                       // pairs cover the full affected set. Ferrofluid Ocean renders its
                       // legacy SDF path here (no mesh encoder / height texture in this

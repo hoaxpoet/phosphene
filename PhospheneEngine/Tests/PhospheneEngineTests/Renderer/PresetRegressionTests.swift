@@ -231,6 +231,13 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     "Skein": (steady: 0x8080808080808080, beatHeavy: 0x8080808080808080, quiet: 0x8080808080808080),
     "Spectral Cartograph": (steady: 0x00180C0C0C0C0000, beatHeavy: 0x00180C0C0C0C6080, quiet: 0x00180C0C0C0C0000),
     "Staged Sandbox": (steady: 0x000022160A162A00, beatHeavy: 0x000022160A162A00, quiet: 0x000022160A162A00),
+    // PG.4.1 (D-186): Truchet Loom golden. The regression harness binds a zeroed
+    // SpectralHistory → the smoothed-flux EMA (slot 3390) reads 0 → subdivision
+    // level = base → the deterministic COARSE large-arc weave. The three fixtures
+    // differ only in `f.time` (drift phase), so each yields a distinct hash. The
+    // density HERO (flux → subdivision) is unreachable from this zeroed-history
+    // harness; it is covered by TruchetLoomDensityTests (live append→bind→render).
+    "Truchet Loom": (steady: 0x62ED6DA4643BCD5B, beatHeavy: 0x449B5A55D947BB89, quiet: 0x52A4356E249D64D2),
     // BUG-034 (2026-06-12, M7-lite approved): regen at the live 128-step budget.
     // Terrain now reaches the true horizon (the old "sky holes" at distance
     // were rays exhausting the 32-step budget mid-terrain). 13 bit drift.

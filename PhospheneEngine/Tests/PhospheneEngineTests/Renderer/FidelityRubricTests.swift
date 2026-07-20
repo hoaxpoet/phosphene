@@ -133,6 +133,13 @@ private let expectedAutomatedGate: [String: Bool] = [
                                      // Matt's M7 per SHADER_CRAFT §12.1; routing coverage is
                                      // SkeinCanvasHoldTest's real-stem gates. Skein.6 / D-159.
     "Spectral Cartograph":  true,    // lightweight; L1+L2+L3 all pass
+    "Truchet Loom":         false,   // lightweight; L2 fails by the MSL-source heuristic — the
+                                     // density hero is a SMOOTHED spectral_flux read from
+                                     // SpectralHistory slot 5 (not a `*_dev`/`*_rel` token the
+                                     // source scan recognises) + `f.arousal` mood; both are valid
+                                     // continuous drivers (RouteCoverageTests green) but invisible to
+                                     // the deviation-primitive heuristic (Nebula/Plasma precedent).
+                                     // Load-bearing gate is Matt's M7 (PG.4.1, uncertified v1).
     "Volumetric Lithograph": false,  // full; M3 fails — mat_* cookbook not yet called
     "Waveform":             false,   // lightweight; L2 fails — no deviation primitives in source
     // PUB.3 backfill — the 9 presets the dict silently omitted, locked at

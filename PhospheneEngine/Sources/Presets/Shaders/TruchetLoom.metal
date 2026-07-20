@@ -52,7 +52,11 @@ constant int    kTL_maxDepth    = 3;     // recursion cap (Restrained default)
 constant float  kTL_lineW       = 0.062; // arc half-width in cell space
 constant float  kTL_openJitter  = 0.9;   // per-parent reveal-threshold spread
 constant float  kTL_levelBase   = 0.40;  // level at silence (coarse weave)
-constant float  kTL_fluxGain    = 6.0;   // soft-saturation gain on smoothed flux
+// spectral_flux is running-max normalized to [0,1] upstream (MIRPipeline.normalizeFlux);
+// its ~0.35 s EMA typically sits ~0.1–0.5 sustained (spiking higher on drops). gain 2.5
+// spreads that band across ~1 (quiet) → ~2.5 (busy) → 3 (peak) — the Restrained curve
+// (DECISION-NEEDED §9). First-pass; calibrate against real-session flux p50/p95 at M7.
+constant float  kTL_fluxGain    = 2.5;   // soft-saturation gain on smoothed flux
 
 // Azulejo-derived duotone-plus-accent (PG_4 §A6; ref 04_palette_op_art_tile.jpg).
 // Deep cobalt GROUND (a deep colour, not black — pale-tone ≤ 30 %, FA #45), a bright
@@ -93,7 +97,10 @@ static inline float2 tl_weave(float2 t, float level) {
         float2 f  = fract(p) - 0.5;
         float  h  = hash_f01_2(id + 0.5);        // per-cell orientation
         float  d  = tl_arc(f, h);
-        float  aa = fwidth(d) + 1e-4;            // crisp anti-aliased edge
+        // AA width = the fragment's footprint in cell space. Derived from the
+        // CONTINUOUS scaled coord `p` (not from `d`, whose screen-space derivative
+        // spikes at every fract() wrap → blocky smear). p = t·s is seam-free.
+        float  aa = length(fwidth(p)) + 1e-4;
         float  cov = smoothstep(kTL_lineW + aa, kTL_lineW - aa, d);
 
         // Openness of this level, keyed to the PARENT cell so a coarse tile's four
