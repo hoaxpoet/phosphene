@@ -1218,25 +1218,47 @@ fragment float4 raymarch_lighting_fragment(
         ), 1.0);
     }
 
-    // ── Lighting ───────────────────────────────────────────────────
-    float3 V         = normalize(scene.cameraOriginAndFov.xyz - worldPos);
-    float3 lightPos  = scene.lightPositionAndIntensity.xyz;
-    float  intensity = scene.lightPositionAndIntensity.w;
-    float3 lColor    = scene.lightColor.xyz;
+    // ── Lighting (RMENV.1 — up to 4 lights) ────────────────────────
+    // Key / rim / fill / accent. Only the primary (light 0, the key) casts a
+    // screen-space shadow: the standard studio convention, and it keeps the
+    // shadow-march cost flat regardless of light count. At lightCount == 1 this
+    // loop is byte-identical to the pre-RMENV single-light path (`0 + x == x`),
+    // so every existing ray-march preset's golden is unchanged.
+    float3 V = normalize(scene.cameraOriginAndFov.xyz - worldPos);
 
-    float3 L         = lightPos - worldPos;
-    float  lightDist = length(L);
-    L                = normalize(L);
+    float4 lightPI[4]  = { scene.lightPositionAndIntensity,
+                           scene.light1PositionAndIntensity,
+                           scene.light2PositionAndIntensity,
+                           scene.light3PositionAndIntensity };
+    float4 lightCol[4] = { scene.lightColor,
+                           scene.light1Color,
+                           scene.light2Color,
+                           scene.light3Color };
+    int lightCount = clamp(int(scene.lightingParams.x + 0.5), 1, 4);
 
-    // Inverse-square attenuation: prevents infinitely-repeating geometry (glass panels,
-    // tiled corridors) from accumulating extreme HDR values. The `+ 1.0` prevents a
-    // singularity when the surface is at the light position.
-    float  attenuation = 1.0 / (1.0 + lightDist * lightDist);
-    float3 directLit   = rm_brdf(N, V, L, albedo, roughness, metallic) * lColor * intensity * attenuation;
+    float3 directLit = float3(0.0);
+    for (int li = 0; li < lightCount; ++li) {
+        float3 lightPos  = lightPI[li].xyz;
+        float  intensity = lightPI[li].w;
+        float3 lColor    = lightCol[li].xyz;
 
-    // ── Screen-space soft shadow ───────────────────────────────────
-    float shadow = rm_screenSpaceShadow(uv, worldPos, L, lightDist, gbuf0, samp, scene);
-    directLit *= shadow;
+        float3 L         = lightPos - worldPos;
+        float  lightDist = length(L);
+        L                = normalize(L);
+
+        // Inverse-square attenuation: prevents infinitely-repeating geometry
+        // (glass panels, tiled corridors) from accumulating extreme HDR values.
+        // The `+ 1.0` prevents a singularity when the surface is at the light.
+        float  attenuation = 1.0 / (1.0 + lightDist * lightDist);
+        float3 contrib     = rm_brdf(N, V, L, albedo, roughness, metallic)
+                           * lColor * intensity * attenuation;
+
+        if (li == 0) {
+            float shadow = rm_screenSpaceShadow(uv, worldPos, L, lightDist, gbuf0, samp, scene);
+            contrib *= shadow;
+        }
+        directLit += contrib;
+    }
 
     // ── IBL ambient (D-022 mood-tinted) + fog ──────────────────────
     // Shared with matID == 3 via rm_finishLightingPass. Future matID

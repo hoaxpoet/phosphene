@@ -74,12 +74,27 @@ extension PresetDescriptor {
             uniforms.cameraUp           = SIMD4(up.x, up.y, up.z, 0)
         }
 
-        // Primary light (only the first entry is used — single-light SceneUniforms).
+        // Lighting (RMENV.1). The primary light stays in its original slot so a
+        // single-light preset is byte-identical to the pre-RMENV path; lights 1–3
+        // and lightingParams populate only when the sidecar declares more (capped
+        // at 4, the deferred-lighting loop bound). Extra sidecar lights beyond 4
+        // are ignored (documented, not silently reinterpreted).
         if let light = sceneLights.first {
             uniforms.lightPositionAndIntensity = SIMD4(
                 light.position.x, light.position.y, light.position.z, light.intensity)
             uniforms.lightColor = SIMD4(light.color.x, light.color.y, light.color.z, 0)
         }
+        let extraLights = sceneLights.dropFirst().prefix(3)
+        for (offset, light) in extraLights.enumerated() {
+            let pos = SIMD4<Float>(light.position.x, light.position.y, light.position.z, light.intensity)
+            let col = SIMD4<Float>(light.color.x, light.color.y, light.color.z, 0)
+            switch offset {
+            case 0: uniforms.light1PositionAndIntensity = pos; uniforms.light1Color = col
+            case 1: uniforms.light2PositionAndIntensity = pos; uniforms.light2Color = col
+            default: uniforms.light3PositionAndIntensity = pos; uniforms.light3Color = col
+            }
+        }
+        uniforms.lightingParams.x = Float(min(max(sceneLights.count, 1), 4))
 
         // Fog: convert density → far distance. Dense fog (0.05) → 20 units; light (0.015) → ~67.
         //
