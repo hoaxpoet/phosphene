@@ -1061,6 +1061,14 @@ fragment float4 raymarch_lighting_fragment(
     // returns fogFar = 1_000_000.  Any realistic fogFar is < 500.
     if (depthNorm >= 0.999) {
         float3 rd = rm_rayDir(uv, scene);
+        // RMENV.3: a preset with an environment (lightingParams.y != 0) renders that
+        // environment as the backdrop, so the visible background matches what the
+        // surfaces reflect (a chrome sculpture sits IN the gallery it mirrors). env 0
+        // keeps the original sky path exactly → byte-identical for every other preset.
+        uint bgEnv = uint(scene.lightingParams.y + 0.5);
+        if (bgEnv != 0u) {
+            return float4(ibl_env(rd, bgEnv), 1.0);
+        }
         bool fogDisabled = scene.sceneParamsB.y > 1.0e5;
         float3 sky = rm_skyColor(rd);
         return float4(fogDisabled ? sky * scene.lightColor.rgb : sky, 1.0);
