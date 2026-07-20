@@ -1,6 +1,6 @@
 # Visual References — Kinetic Sculpture
 
-**Family:** abstract
+**Family:** geometric _(was `abstract`; that case was deleted at **D-123** as a catch-all — it named Kinetic Sculpture explicitly — and is no longer a valid `PresetCategory`. Setting it would throw the sidecar decode and silently drop the preset from the catalog, FA #44. Corrected KSRB.1.)_
 **Render pipeline:** ray_march + post_process
 **Rubric:** full (gated by V.6 certification)
 **Last curated:** 2026-04-30 by Matt
