@@ -363,7 +363,7 @@
 // D-019 stem-routing fallback: stems are not in scope here, so all
 // stem-driven parameters fall back to FeatureVector — equivalent to
 // the smoothstep(0.02, 0.06, totalStemEnergy) warmup mix at zero
-// stem energy.  See KineticSculpture.metal for the same constraint.
+// stem energy (the shared D-019 ray-march constraint).
 //
 // Linocut materials (3 strata):
 //   Valley   : palette-tinted ultra-dark   (albedo ≈ palette × 0.08)

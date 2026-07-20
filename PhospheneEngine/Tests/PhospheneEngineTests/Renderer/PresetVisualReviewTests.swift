@@ -190,7 +190,7 @@ struct PresetVisualReviewTests {
                       // legacy SDF path here (no mesh encoder / height texture in this
                       // harness); both halves of an A/B pair use the identical harness,
                       // so deltas isolate the uniform change.
-                      "Ferrofluid Ocean", "Kinetic Sculpture"])
+                      "Ferrofluid Ocean"])
     func renderPresetVisualReview(_ presetName: String) throws {
         guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else {
             print("[PresetVisualReview] RENDER_VISUAL not set, skipping \(presetName)")

@@ -1,5 +1,7 @@
 # Render Environment Scoping — Phase RMENV
 
+> **Update (KSRETIRE.1 / D-187, 2026-07-20):** Kinetic Sculpture — the first consumer this scope is written around — was retired after the chrome-in-a-gallery look read as a "tinker toy" and a psychedelic pivot drifted off-concept. **Phase RMENV shipped and is retained** (multi-light, gallery IBL, per-preset background — all opt-in, byte-identical), but now has **no production consumer**; it awaits a future ray-march preset. The KS-as-consumer narrative below is preserved for historical context.
+
 **Status:** scoping, 2026-07-20. Matt chose the engine investment (option (b)) over shipping Kinetic Sculpture as luminous glowing-wire (option (a)), after KSRB.1 rendered proof that a polished-chrome-in-a-gallery look is above what the shared ray-march path currently delivers.
 
 **Why:** three shared-renderer limits block metals from reading as metal and block a dark gallery ground — each confirmed by rendered evidence during KSRB.1/.2, not theory:

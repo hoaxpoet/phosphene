@@ -109,7 +109,7 @@ extension PresetDescriptor {
         //
         // sceneFogNear (default 20.0) was previously the hard-coded value in
         // `SceneUniforms()` — preserving it as the descriptor default keeps
-        // existing presets (Kinetic Sculpture) byte-identical.
+        // enclosed ray-march presets byte-identical.
         // Close-framed presets (Ferrofluid Ocean) set `scene_fog_near: 0` in
         // JSON so the fog band starts at the camera and covers the visible
         // surface. See V.9 Session 2 carry-forward note.

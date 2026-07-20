@@ -109,7 +109,6 @@ private let expectedAutomatedGate: [String: Bool] = [
                                      // loose energy-accompaniment (PHYS.5; not beat-synced by design).
     "Fractal Tree":         false,   // full; M3 fails
     "Gossamer":             false,   // full; M3 fails
-    "Kinetic Sculpture":    false,   // full; M3 fails
     "Membrane":             false,   // full; M3 fails
     "Cytokinesis":          false,   // lightweight; coupling (energyEnv→pace / centroidEnv→palette /
                                      // hit→glow) is computed CPU-side in MitosisGen2Geometry and reaches

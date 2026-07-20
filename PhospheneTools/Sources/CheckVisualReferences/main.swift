@@ -119,7 +119,7 @@ private func discoverPresets(in shadersDir: URL, errors: inout [String]) -> [Str
 // MARK: - CamelCase → snake_case
 
 /// Converts CamelCase preset names to the snake_case folder names used in VISUAL_REFERENCES/.
-/// Examples: "VolumetricLithograph" → "volumetric_lithograph", "KineticSculpture" → "kinetic_sculpture"
+/// Examples: "VolumetricLithograph" → "volumetric_lithograph", "LumenMosaic" → "lumen_mosaic"
 private func camelToSnake(_ input: String) -> String {
     // Insert underscore before each uppercase letter that follows a lowercase letter.
     let result = input.replacingOccurrences(

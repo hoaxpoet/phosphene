@@ -65,9 +65,10 @@ struct GoldenSessionTests {
         // Plasma (moodScore=0.85) beats VL (no stem bonus) at track 0. Subsequent
         // track-firsts driven by family-repeat penalty cascade.
         // D-123 (2026-05-13) — Ferrofluid Ocean moved abstract → geometric and now
-        // family-clusters with Kinetic Sculpture / Volumetric Lithograph / Lumen
-        // Mosaic (Glass Brutalist retired GBRETIRE.1 / D-185); the previous sequence
-        // had FO winning a slot that's now under more family-repeat pressure.
+        // family-clusters with Volumetric Lithograph / Lumen Mosaic (Glass Brutalist
+        // retired GBRETIRE.1 / D-185; Kinetic Sculpture retired KSRETIRE.1 / D-187);
+        // the previous sequence had FO winning a slot that's now under more
+        // family-repeat pressure.
         // Membrane is the only `reaction` preset in the catalog, so once selected it
         // has no family-repeat competitor and gets picked across remaining slots.
         // This reveals a real catalog clustering symptom (4 of 12 aesthetic presets
@@ -201,13 +202,19 @@ struct GoldenSessionTests {
         // GBRETIRE.1 (2026-07-19): Glass Brutalist retired (D-185). GB previously won
         // the two low-arousal slots (tracks 1 + 4). With GB gone the greedy planner
         // reslots deterministically: Waveform takes the low-energy tracks (sparse
-        // density fit), Kinetic Sculpture wins the mid-energy track 2, and Ferrofluid
-        // Ocean returns at track 5. Six tracks, five distinct presets — the family-
-        // variety guard (≥3 families) still holds.
+        // density fit) and Ferrofluid Ocean returns at track 5.
+        // KSRETIRE.1 (2026-07-20): Kinetic Sculpture retired (D-187). KS had held the
+        // mid-energy geometric slot at track 2 (Rock-2, BPM=115, val=0.50, arous=0.40);
+        // with KS gone that slot cleanly falls to Membrane, the next-best fit for that
+        // mood (the only `reaction` preset, so no family-repeat competitor). Every other
+        // slot is byte-identical to the pre-retirement sequence — a single runner-up
+        // substitution, not a planning regression. Six tracks, four distinct presets
+        // across four families (hypnotic / waveform / reaction / geometric) — the
+        // ≥3-family variety guard still holds.
         #expect(session.tracks.map { $0.preset.id } == [
             "Plasma",
             "Waveform",
-            "Kinetic Sculpture",
+            "Membrane",
             "Plasma",
             "Waveform",
             "Ferrofluid Ocean",
@@ -353,8 +360,9 @@ private func makePreset(
 
 // MARK: — Catalog Fixture
 
-/// All 14 production presets mirrored verbatim from their JSON sidecars
-/// (was 15 before Glass Brutalist's retirement — GBRETIRE.1 / D-185).
+/// All 13 production presets mirrored verbatim from their JSON sidecars
+/// (was 15 before Glass Brutalist's retirement GBRETIRE.1 / D-185, then 14
+/// before Kinetic Sculpture's retirement KSRETIRE.1 / D-187).
 /// Only scoring-relevant fields are populated; rendering fields use decoder defaults.
 /// Note: Murmuration.json (renamed from Starburst.json in MM.0) declares name "Murmuration".
 ///
@@ -390,12 +398,6 @@ private func makeRealCatalog() -> [PresetDescriptor] {
             colorTempRange: SIMD2(0.2, 0.7), fatigueRisk: .low,
             sectionSuitability: [.buildup, .peak],
             complexityCost: ComplexityCost(tier1: 2.5, tier2: 1.4)),
-        makePreset(
-            name: "Kinetic Sculpture", family: .geometric,
-            motionIntensity: 0.7, visualDensity: 0.6,
-            colorTempRange: SIMD2(0.3, 0.65), fatigueRisk: .medium,
-            sectionSuitability: [.buildup, .peak, .bridge],
-            complexityCost: ComplexityCost(tier1: 4.1, tier2: 2.2)),
         makePreset(
             name: "Volumetric Lithograph", family: .geometric,
             motionIntensity: 0.6, visualDensity: 0.7,

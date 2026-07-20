@@ -1046,7 +1046,7 @@ fragment float4 raymarch_lighting_fragment(
     // Miss / sky pixel: depth == 1.0.
     //
     // Apply scene.lightColor.rgb tint only when fog is DISABLED.
-    // Presets with fog (Kinetic Sculpture) already
+    // Presets with fog already
     // receive the same tint via the fog-colour path below
     // (fogColor = rm_skyColor(rayDir) * scene.lightColor.rgb), so
     // applying it here too collapses the cool-sky/warm-light contrast
