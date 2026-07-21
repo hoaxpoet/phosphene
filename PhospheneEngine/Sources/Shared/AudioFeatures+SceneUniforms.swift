@@ -86,6 +86,23 @@ public struct SceneUniforms: Sendable {
     /// w = SSGI sample-radius override (0 = shader default). See the slot map above.
     public var sceneParamsB: SIMD4<Float>
 
+    // MARK: Additional lights (RMENV.1 — 112 bytes)
+
+    /// Lights 1–3, appended after the scene params so the primary light and every
+    /// earlier field keep their byte offset. A single-light preset leaves these
+    /// zero and `lightingParams.x == 1`, and the deferred lighting loop is
+    /// byte-identical to the pre-RMENV single-light path. xyz = world position,
+    /// w = intensity (0 = unused).
+    public var light1PositionAndIntensity: SIMD4<Float>
+    /// xyz = linear-RGB colour of light 1; w = 0.
+    public var light1Color: SIMD4<Float>
+    public var light2PositionAndIntensity: SIMD4<Float>
+    public var light2Color: SIMD4<Float>
+    public var light3PositionAndIntensity: SIMD4<Float>
+    public var light3Color: SIMD4<Float>
+    /// x = active light count (1…4); y, z, w reserved.
+    public var lightingParams: SIMD4<Float>
+
     // MARK: Convenience Accessors
 
     /// World-space camera position.
@@ -169,5 +186,14 @@ public struct SceneUniforms: Sendable {
         // B.z = D-057 step multiplier at the full-quality default (1.0 = 128 steps)
         // so any uniforms constructed for tests march the live budget by default.
         self.sceneParamsB = SIMD4(fogNear, fogFar, 1.0, 0)
+        // RMENV.1: default to the single primary light — lights 1–3 off, count 1.
+        // makeSceneUniforms() overrides these for presets declaring multiple lights.
+        self.light1PositionAndIntensity = SIMD4(0, 0, 0, 0)
+        self.light1Color = SIMD4(0, 0, 0, 0)
+        self.light2PositionAndIntensity = SIMD4(0, 0, 0, 0)
+        self.light2Color = SIMD4(0, 0, 0, 0)
+        self.light3PositionAndIntensity = SIMD4(0, 0, 0, 0)
+        self.light3Color = SIMD4(0, 0, 0, 0)
+        self.lightingParams = SIMD4(1, 0, 0, 0)
     }
 }

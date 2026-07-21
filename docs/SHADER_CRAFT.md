@@ -2446,6 +2446,7 @@ Every preset ships a `<PresetName>.json` sidecar alongside its `.metal` file. Th
   "passes": ["ray_march", "ssgi", "post_process"],
   "scene_camera": { "position": [0, 2, -3], "target": [0, 2, 4], "fov": 65 },
   "scene_lights": [{ "position": [0, 4.5, 2], "color": [1, 0.95, 0.9], "intensity": 3.0 }],
+  "environment": "gallery",
   "scene_fog": 0.015,
   "stem_affinity": {
     "drums": "pillar_squeeze",
@@ -2500,7 +2501,8 @@ Every preset ships a `<PresetName>.json` sidecar alongside its `.metal` file. Th
 | `text_overlay` | `false` | Binds `texture(12)` text overlay (SpectralCartograph-class diagnostics). |
 | `stages` | none | Staged-composition pass list (V.ENGINE.1) — per-stage fragment + `samples` wiring; see the staged paradigm section. |
 | `marks` | none | mv_warp scene-geometry overlay block (draw params + chromatic + comp + beat pump); Dragon Bloom-class strand overlays. |
-| `scene_camera` / `scene_lights` / `scene_fog` / `scene_fog_near` / `scene_far_plane` | ray-march defaults | Ray-march scene setup — see §GPU Contract Details in ARCHITECTURE. |
+| `scene_camera` / `scene_lights` / `scene_fog` / `scene_fog_near` / `scene_far_plane` | ray-march defaults | Ray-march scene setup — see §GPU Contract Details in ARCHITECTURE. `scene_lights` takes up to 4 lights (RMENV.1 multi-light; key/rim/fill/accent). |
+| `environment` | optional (`nil` → default interior) | Ray-march IBL environment surfaces reflect + take ambient from (RMENV.2). `"gallery"` = a high-contrast gallery interior (bright skylight strips, dark floor) that makes polished metals read as metal; omit/`"default"` = the low-contrast interior. Opt-in — omitting it is byte-identical to pre-RMENV. |
 | `additive_blend` | `false` | Mesh-shader additive blending. |
 | `ferrofluid` | none | FFO thin-film params (preset-specific block). |
 | `use_feedback` / `use_mesh_shader` / `use_particles` / `use_post_process` / `use_ray_march` | legacy | Decode-only booleans consumed by `synthesizePasses(from:)` for pre-`passes` sidecars — never write these in a new preset; declare `passes`. |

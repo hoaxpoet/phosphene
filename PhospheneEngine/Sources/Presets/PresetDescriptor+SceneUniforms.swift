@@ -10,7 +10,7 @@
 //   - `nearPlane` (sceneParamsA.z) and `farPlane` (sceneParamsA.w) are set from the
 //     descriptor and never changed again. A farPlane of 0 causes the G-buffer ray march
 //     loop to exit immediately, rendering all-sky — this is the regression caught by
-//     GlassBrutalistTests.test_gbuffer_allSkyWhenFarPlaneIsZero.
+//     RayMarchDiagnosticTests.test_nearAndFarPlanesAreNonZero.
 
 import Foundation
 import Shared
@@ -74,12 +74,30 @@ extension PresetDescriptor {
             uniforms.cameraUp           = SIMD4(up.x, up.y, up.z, 0)
         }
 
-        // Primary light (only the first entry is used — single-light SceneUniforms).
+        // Lighting (RMENV.1). The primary light stays in its original slot so a
+        // single-light preset is byte-identical to the pre-RMENV path; lights 1–3
+        // and lightingParams populate only when the sidecar declares more (capped
+        // at 4, the deferred-lighting loop bound). Extra sidecar lights beyond 4
+        // are ignored (documented, not silently reinterpreted).
         if let light = sceneLights.first {
             uniforms.lightPositionAndIntensity = SIMD4(
                 light.position.x, light.position.y, light.position.z, light.intensity)
             uniforms.lightColor = SIMD4(light.color.x, light.color.y, light.color.z, 0)
         }
+        let extraLights = sceneLights.dropFirst().prefix(3)
+        for (offset, light) in extraLights.enumerated() {
+            let pos = SIMD4<Float>(light.position.x, light.position.y, light.position.z, light.intensity)
+            let col = SIMD4<Float>(light.color.x, light.color.y, light.color.z, 0)
+            switch offset {
+            case 0: uniforms.light1PositionAndIntensity = pos; uniforms.light1Color = col
+            case 1: uniforms.light2PositionAndIntensity = pos; uniforms.light2Color = col
+            default: uniforms.light3PositionAndIntensity = pos; uniforms.light3Color = col
+            }
+        }
+        uniforms.lightingParams.x = Float(min(max(sceneLights.count, 1), 4))
+        // RMENV.3: lane .y carries the environment type into the shader so the
+        // miss/background path can render a matching backdrop (0 = sky, unchanged).
+        uniforms.lightingParams.y = Float(environmentType)
 
         // Fog: convert density → far distance. Dense fog (0.05) → 20 units; light (0.015) → ~67.
         //
@@ -91,7 +109,7 @@ extension PresetDescriptor {
         //
         // sceneFogNear (default 20.0) was previously the hard-coded value in
         // `SceneUniforms()` — preserving it as the descriptor default keeps
-        // existing presets (Glass Brutalist, Kinetic Sculpture) byte-identical.
+        // enclosed ray-march presets byte-identical.
         // Close-framed presets (Ferrofluid Ocean) set `scene_fog_near: 0` in
         // JSON so the fog band starts at the camera and covers the visible
         // surface. See V.9 Session 2 carry-forward note.

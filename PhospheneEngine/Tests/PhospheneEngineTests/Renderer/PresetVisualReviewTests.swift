@@ -188,10 +188,9 @@ struct PresetVisualReviewTests {
                       // BUG-034: remaining ray-march presets, so before/after step-budget
                       // pairs cover the full affected set. Ferrofluid Ocean renders its
                       // legacy SDF path here (no mesh encoder / height texture in this
-                      // harness); Glass Brutalist renders without SSGI/bloom per the
-                      // renderDeferredRayMarchFrame caveats — both halves of an A/B pair
-                      // use the identical harness, so deltas isolate the uniform change.
-                      "Ferrofluid Ocean", "Glass Brutalist", "Kinetic Sculpture"])
+                      // harness); both halves of an A/B pair use the identical harness,
+                      // so deltas isolate the uniform change.
+                      "Ferrofluid Ocean"])
     func renderPresetVisualReview(_ presetName: String) throws {
         guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else {
             print("[PresetVisualReview] RENDER_VISUAL not set, skipping \(presetName)")
@@ -773,7 +772,8 @@ struct PresetVisualReviewTests {
     /// - **Noise textures bound at slots 4–8** via the caller's TextureManager
     ///   (production: `RenderPipeline+RayMarch` passes `textureManager`).
     /// - **IBL bound** (production always binds `iblManager` on this path).
-    /// - **SSGI enabled when the preset declares `.ssgi`** (Glass Brutalist).
+    /// - **SSGI enabled when the preset declares `.ssgi`** (no production preset
+    ///   currently declares it after Glass Brutalist's retirement, D-186).
     /// - **PostProcessChain constructed when the preset declares `.postProcess`**
     ///   (production: `passesIncludePostProcess ? ppChain : nil`).
     /// - **Ferrofluid Ocean: 4096² height field baked and bound at texture 10**
@@ -823,8 +823,10 @@ struct PresetVisualReviewTests {
         }
         pipeline.sceneUniforms = sceneUniforms
 
-        // Production-parity bindings (see doc comment).
-        let iblManager = try IBLManager(context: context, shaderLibrary: shaderLibrary)
+        // Production-parity bindings (see doc comment). RMENV.2: bake the IBL for
+        // the preset's declared environment (default 0 / gallery 1).
+        let iblManager = try IBLManager(context: context, shaderLibrary: shaderLibrary,
+                                        envType: preset.descriptor.environmentType)
         pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
 
         let ppChain: PostProcessChain?

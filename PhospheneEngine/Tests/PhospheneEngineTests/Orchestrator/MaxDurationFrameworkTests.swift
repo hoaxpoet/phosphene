@@ -28,9 +28,7 @@ private let referenceTable: [ReferenceRow] = [
     // per D-124 redirect — 90 + (-50)(0.05) + (-30)(1) + (-15)(0.15) = 55.25.
     ReferenceRow(presetName: "Ferrofluid Ocean",       expectedSeconds: 55),
     ReferenceRow(presetName: "Fractal Tree",           expectedSeconds: 55),
-    ReferenceRow(presetName: "Glass Brutalist",        expectedSeconds: 67),
     ReferenceRow(presetName: "Gossamer",               expectedSeconds: 102),
-    ReferenceRow(presetName: "Kinetic Sculpture",      expectedSeconds: 49),
     ReferenceRow(presetName: "Membrane",               expectedSeconds: 49),
     ReferenceRow(presetName: "Murmuration",            expectedSeconds: 67),
     ReferenceRow(presetName: "Nebula",                 expectedSeconds: 96),
