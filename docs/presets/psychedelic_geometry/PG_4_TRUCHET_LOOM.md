@@ -36,7 +36,7 @@ The "smaller shapes making larger shapes" is the *mechanism itself*: a tile subd
 3. **Micro (the subdivision — the nesting).** Cells above the current density threshold **subdivide into 2×2 sub-cells**, each with its own Truchet arc carrying the same motif at half scale. One or two more levels where the density is high. The self-similarity across levels is the psychedelic payload.
 4. **Breakup.** Anti-aliased path edges, a soft glow along paths, subtle grain, and **per-path hue** so the weave reads as coloured ribbons, not a monochrome maze. Keep the op-art punch (high contrast) without pure black/white flatness (FA #45; pale-tone ≤ 30 %).
 
-**Mechanic (author's guide — port, don't derive; FA #73):** classic Truchet — `hash` per cell → arc orientation → distance to the two quarter-arcs → path coverage. **Multiscale** — a per-cell continuous "subdivision level" (driven by audio density + a per-cell hash offset); cells whose level exceeds a threshold recurse into 2×2, and the *fractional* part of the level crossfades a tile smoothly between "one big arc" and "four small arcs" so subdivision animates rather than pops. Port IQ's / Carlson's multiscale Truchet approach. The `proc_weave` utility in the Texture tree and `hash_f01_*` are starting points, but the multiscale recursion is authored.
+**Mechanic (author's guide — port, don't derive; FA #73):** classic Truchet — `hash` per cell → arc orientation → distance to the two quarter-arcs → path coverage. **Multiscale** — a per-cell continuous "subdivision level" (driven by audio density + a per-cell hash offset); cells whose level exceeds a threshold recurse into 2×2, and the *fractional* part of the level crossfades a tile smoothly between "one big arc" and "four small arcs" so subdivision animates rather than pops. Port IQ's / Carlson's multiscale Truchet approach. `hash_f01_*` (in `Utilities/Noise/Hash.metal`) is the per-cell hash starting point; **there is no existing Truchet/weave utility** — the multiscale recursion is authored from the ported reference.
 
 ## A3. Motion & 30-second temporal contract
 
@@ -73,12 +73,14 @@ Bold op-art duotone-plus-accent (deep jewel base + a bright ribbon colour + a hi
 
 Populate `docs/VISUAL_REFERENCES/truchet_loom/` and write its `README.md`. Shopping list:
 
+> **Status (2026-07-20):** references are curated + committed (PG.0, commit `695fc3a8`) — see the folder `README.md` for the placed set and per-image trait notes. The anti is **prose-only in the README (no committed image)**, per Matt (no anti supplied). The list below is retained as the original sourcing intent / provenance.
+
 - `01_macro_labyrinth_floor.jpg` — **real photo** of a cathedral labyrinth floor (Chartres-style) or a Celtic/Islamic interlace panel (the continuous-path weave read).
 - `02_meso_woven_textile.jpg` — **real photo** of a woven basket / textile / brocade (tiles connecting into paths; the ribbon character).
 - `03_micro_moire_mesh.jpg` — **real photo** of overlaid mesh screens / sheer fabric showing moiré (emergent large structure from small repeats — the nesting intuition).
 - `04_palette_op_art_tile.jpg` — **real photo** of a bold geometric floor mosaic / azulejo tilework for the high-contrast duotone palette.
 - **Porting references (read before coding, FA #73):** Inigo Quilez "Truchet tiles" + his multiscale Truchet Shadertoy; Christopher Carlson's *"Multi-scale Truchet Patterns"*; cite the specific Shadertoy ID in the shader header.
-- `05_anti_flat_checker_AIGEN.jpg` (`_AIGEN` only here) — the failure mode: a static single-scale black-and-white Truchet checker with no subdivision, no colour, no motion; also anti: a high-contrast flickering strobe (seizure risk) and any feedback-style smear (this preset is crisp).
+- **Anti (prose-only — no committed image):** the failure mode is a static single-scale black-and-white Truchet checker with no subdivision, no colour, no motion; also anti: a high-contrast flickering strobe (seizure risk) and any feedback-style smear (this preset is crisp).
 
 ## A8. Performance & tier
 
@@ -124,25 +126,26 @@ Pure 2D `direct` fragment; very cheap. Bounded subdivision recursion (cap depth 
 1. `PG_4_TRUCHET_LOOM.md` (this doc — Part A is the design of record; §A2 mechanic + §A7 porting refs are mandatory).
 2. `docs/VISUAL_REFERENCES/truchet_loom/README.md` and every image; the cited Truchet porting references.
 3. `docs/ARCHITECTURE.md §GPU Contract Details` — the **direct-pass** fragment binding (`buffer(0)=FeatureVector`, `(5)=SpectralHistory`) and the SpectralHistory layout (for smoothing).
-4. `docs/SHADER_CRAFT.md §3` (noise for the grain octave floor), `§8` (procedural texturing — `proc_weave` and friends), `§14` (esp. §14.1 signal liveness).
+4. `docs/SHADER_CRAFT.md §3` (noise for the grain octave floor), `§8` (procedural texturing — the `Utilities/Texture/` tree: `Procedural.metal`, `Voronoi.metal`), `§14` (esp. §14.1 signal liveness).
 5. `PhospheneEngine/Sources/Presets/Shaders/Plasma.metal` and `Nebula.metal` — reference `direct`-pass fragment presets (binding + structure).
-6. The Texture utility tree entries `proc_weave` / `hash_f01_*` (starting points for the Truchet arcs) and `SpectralHistoryBuffer` usage (for the smoothed flux read, if you use the trail instead of a slot-6 EMA).
+6. `PhospheneEngine/Sources/Presets/Shaders/Utilities/Noise/Hash.metal` (`hash_f01`, `hash_f01_2`, `hash_f01_3`, and the `*_2x`/`*_3x` variants) — the per-cell hash for arc orientation. **There is no existing Truchet/weave utility; the multiscale recursion is authored** from the ported reference. For the smoothed flux read, use a slot-6 EMA state buffer or the `SpectralHistory` trail (`Tests/.../Shared/SpectralHistoryBufferTests.swift` shows its usage) — pick one and document the choice in the header.
 
 ## 3. Pre-flight invariants (a failed check stops the session)
 - `git status` clean on `main`; `swift test --package-path PhospheneEngine` green.
-- `docs/VISUAL_REFERENCES/truchet_loom/` populated per `§A7` + `README.md` written. **If not, curate first (Matt-owned) or stop.**
-- `docs/ENGINEERING_PLAN.md` has a Phase PG / PG.4.1 row.
-- Confirm the production preset count for `PresetLoaderCompileFailureTest` to bump by exactly 1.
+- **ML weights smudged:** `bash Scripts/check_lfs_smudged.sh` prints OK (git-lfs installed; weights are real bytes, not pointer stubs). If it FAILs, `git lfs pull` and re-check — a pointer-stub build passes tests falsely.
+- **Design + references already committed** (PG.0, commit `695fc3a8` — verify present): this doc and `docs/VISUAL_REFERENCES/truchet_loom/` (4 images + `README.md`). If either is missing, stop.
+- `docs/ENGINEERING_PLAN.md` exists. **There is no Phase PG section yet** — task 1 creates the Phase PG heading + the PG.4.1 row (do not assume one is present).
+- Read the current `expectedProductionPresetCount` in `PresetLoaderCompileFailureTest.swift`; confirm it bumps by exactly 1.
 
 ## 4. Tasks (each has a done-when)
-1. **Plan + scaffold.** Add the PG.4.1 row to `ENGINEERING_PLAN.md`. Create `Shaders/TruchetLoom.metal` + `TruchetLoom.json` (sidecar per `§A10`) + register + bump `expectedProductionPresetCount`. **Done-when:** app + engine build; `PresetLoaderCompileFailureTest` passes at the new count; preset loads.
-2. **Single-scale Truchet (scene fragment).** Implement the base weave: per-cell `hash` → arc orientation → quarter-arc distance → path coverage, connecting into continuous paths; duotone palette. **Done-when:** a `RENDER_VISUAL=1` contact sheet shows a crisp continuous-path Truchet weave, non-black.
-3. **Multiscale subdivision (the nesting).** Add the per-cell continuous subdivision level: cells above threshold recurse into 2×2 sub-tiles carrying the same arc; crossfade tiles by the fractional level so subdivision animates smoothly (no pop). Cap recursion depth (~3). Level is a uniform for now (constant). **Done-when:** sweeping the level constant across a contact-sheet series shows tiles smoothly splitting into nested sub-tiles and merging back; the self-similarity reads.
-4. **Density = music busyness (hero).** Drive the subdivision level from a **smoothed** `f.spectral_flux` (slot-6 EMA or the `SpectralHistory` flux/bass_dev trail — pick one and document it). **Done-when:** a multi-frame test driving the live direct-pass path across a low-flux vs high-flux fixture shows the weave visibly coarsening vs shattering into nested tiles; the level is smoothed (assert no per-frame flicker — bounded frame-to-frame level delta).
+1. **Plan + scaffold.** Add a **Phase PG** section + a PG.4.1 row to `ENGINEERING_PLAN.md` (none exists yet). Create `Shaders/TruchetLoom.metal` + `TruchetLoom.json` (sidecar per `§A10`) + register + bump `expectedProductionPresetCount` by 1. **Done-when:** app + engine build; `PresetLoaderCompileFailureTest` passes at the new count; preset loads.
+2. **Single-scale Truchet (scene fragment).** Implement the base weave: per-cell `hash` (from `hash_f01*`) → arc orientation → quarter-arc distance → path coverage, connecting into continuous paths; duotone palette. **Done-when:** a `RENDER_VISUAL=1` contact sheet shows a crisp continuous-path Truchet weave, non-black.
+3. **Multiscale subdivision (the nesting).** Add the per-cell continuous subdivision level: cells above threshold recurse into 2×2 sub-tiles carrying the same arc; crossfade tiles by the fractional level so subdivision animates smoothly (no pop). Cap recursion depth (~3). Author from the ported IQ/Carlson reference (FA #73). Level is a uniform for now (constant). **Done-when:** sweeping the level constant across a contact-sheet series shows tiles smoothly splitting into nested sub-tiles and merging back; the self-similarity reads.
+4. **Density = music busyness (hero).** Drive the subdivision level from a **smoothed** `f.spectral_flux` (slot-6 EMA or the `SpectralHistory` flux trail — pick one and document it). **Done-when:** a multi-frame test driving the live direct-pass path across a low-flux vs high-flux fixture shows the weave visibly coarsening vs shattering into nested tiles; the level is smoothed (assert no per-frame flicker — bounded frame-to-frame level delta).
 5. **Global drift.** Scroll/rotate the tile field slowly from `arousal` + `accumulated_audio_time`. **Done-when:** the multi-frame test shows continuous gentle flow even at constant density.
 6. **Silence state.** Verify `§A5`: coarse large-arc weave, slow drift, non-black, no flips. **Done-when:** the silence contact sheet is non-black and shows big simple ribbons drifting.
 7. **Audio routing review.** Deviation/flux primitives only; one primitive per layer; liveness note in the shader header (why `spectral_flux` is the right, alive hero). **Done-when:** `grep` finds no absolute-threshold pattern on raw `f.bass`/`f.mid`; routing matches the PG.4.1 subset of `§A4` (density + drift only — flips/hue-teams/glow are PG.4.2).
-8. **Performance.** `PresetPerformanceTests` on silence/steady/beat-heavy; record p50/p95/p99; confirm the recursion cap keeps cost flat. **Done-when:** p95 ≤ Tier-2 budget; recorded.
+8. **Performance.** Run the render-loop performance harness (`PhospheneEngine/Tests/PhospheneEngineTests/Performance/RenderLoopPerformanceTests.swift`) on silence/steady/beat-heavy; record p50/p95/p99; confirm the recursion cap keeps cost flat. **Done-when:** p95 ≤ Tier-2 budget; recorded.
 9. **Golden hash — STOP AND REPORT.** Register the golden 3-tuple; do NOT touch other goldens. Produce the M7 contact sheet. **Done-when:** new golden passes; then **stop and report** with the contact sheet.
 10. **Closeout.** Invoke `closeout`; 8-part report with the verbatim evidence block, the direct-pass dispatch-path statement, the density-mapping firing evidence (low-vs-high-flux subdivision delta), and perf numbers.
 
@@ -156,22 +159,24 @@ Pure 2D `direct` fragment; very cheap. Bounded subdivision recursion (cap depth 
 
 ## 6. Verification commands
 ```
+bash Scripts/check_lfs_smudged.sh
 swiftlint lint --strict --config .swiftlint.yml
 xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build 2>&1
 swift test --package-path PhospheneEngine 2>&1
 swift test --package-path PhospheneEngine --filter "PresetLoaderCompileFailureTest|TruchetLoom|PresetRegressionTests"
 RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter PresetVisualReview 2>&1
+swift test --package-path PhospheneEngine --filter RenderLoopPerformance 2>&1
 ```
 
 ## 7. Commit message templates (small commits; local `main`; push only on Matt's "yes, push")
 - `[PG.4.1] Presets: scaffold Truchet Loom (direct) + JSON sidecar + registration`
-- `[PG.4.1] Truchet Loom: single-scale Truchet weave fragment (ref <shadertoy>)`
+- `[PG.4.1] Truchet Loom: single-scale Truchet weave fragment (ref <shadertoy-id>)`
 - `[PG.4.1] Truchet Loom: multiscale subdivision recursion + smooth level crossfade`
 - `[PG.4.1] Truchet Loom: spectral_flux density hero (smoothed) + arousal drift`
-- `[PG.4.1] Truchet Loom: silence state + golden hash + perf + ENGINEERING_PLAN row`
+- `[PG.4.1] Truchet Loom: silence state + golden hash + perf + ENGINEERING_PLAN Phase PG row`
 
 ## 8. Closeout format
-Invoke `closeout`; 8-part report with the verbatim `Scripts/closeout_evidence.sh` block as §2. Increment-specific additions: (a) the direct-pass dispatch path the multi-frame tests exercised; (b) density-mapping evidence — subdivision-level delta between a low-flux and high-flux fixture + the smoothing/no-flicker metric; (c) perf p50/p95/p99; (d) the M7 contact-sheet path; (e) ENGINEERING_PLAN PG.4.1 status.
+Invoke `closeout`; 8-part report with the verbatim `Scripts/closeout_evidence.sh` block as §2. Increment-specific additions: (a) the direct-pass dispatch path the multi-frame tests exercised; (b) density-mapping evidence — subdivision-level delta between a low-flux and high-flux fixture + the smoothing/no-flicker metric; (c) perf p50/p95/p99 from `RenderLoopPerformanceTests`; (d) the M7 contact-sheet path; (e) ENGINEERING_PLAN PG.4.1 status.
 
 ## 9. DECISION-NEEDED (surface to Matt at review, product-level)
 - **How dense does "busy" get?** *Options:* **Restrained** (max 2 subdivision levels — reads as a clean weave that thickens) vs **Deep** (3–4 levels — dense filigree at peaks, more "psychedelic," busier). *Recommendation:* Restrained for v1 (legible), open Deep in PG.4.3 if peaks feel underwhelming. *Default if silent:* Restrained (cap 3).
