@@ -66,6 +66,8 @@ constant float  kTL_fluxGain    = 2.5;   // soft-saturation gain on smoothed flu
 constant float  kTL_flipFrac    = 0.22;  // PG.4.2 — fraction of tiles that re-route per beat
 constant float  kTL_glowGain    = 0.28;  // PG.4.2 — bounded bass-onset ribbon glow
 constant float  kTL_hueTeams    = 5.0;   // PG.4.2 — quantised hue-team count
+constant float  kTL_hueWarp     = 0.85;  // PG.4.3 — organic warp of the hue-team block edges
+constant float  kTL_grain       = 0.028; // PG.4.3 — subtle paper grain (§A2 breakup)
 
 // Azulejo-derived deep GROUND (PG_4 §A6; ref 04_palette_op_art_tile.jpg). Deep cobalt,
 // not black — pale-tone ≤ 30 %, FA #45. Ribbon colour is a per-region HUE TEAM (PG.4.2,
@@ -91,6 +93,19 @@ static inline float tl_arc(float2 f, float h) {
 static inline float tl_arcCov(float2 f, float h, float aa) {
     float d = tl_arc(f, h);
     return smoothstep(kTL_lineW + aa, kTL_lineW - aa, d);
+}
+
+/// Cheap smooth (C1) single-octave value noise, centred at 0 (PG.4.3). Four hash
+/// lattice lookups + a smoothstep bilerp — ~8× cheaper than an fBM, plenty to make
+/// the hue-team block edges wander organically without the perlin3d cost.
+static inline float tl_vnoise(float2 p) {
+    float2 i = floor(p), fp = fract(p);
+    float2 u = fp * fp * (3.0 - 2.0 * fp);
+    float a = hash_f01_2(i);
+    float b = hash_f01_2(i + float2(1.0, 0.0));
+    float c = hash_f01_2(i + float2(0.0, 1.0));
+    float d = hash_f01_2(i + float2(1.0, 1.0));
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y) - 0.5;
 }
 
 // MARK: - Multiscale weave
@@ -186,7 +201,12 @@ fragment float4 preset_fragment(VertexOut in [[stage_in]],
     // Coarse spatial blocks (½ the base tile frequency) share a hue so colour reads
     // as ribbons along paths, not per-cell rainbow noise. spectral_centroid slowly
     // phases the whole set; finer sub-tiles brighten so nesting still reads.
-    float2 hueBlock = floor(p * kTL_baseTiles * 0.5);
+    // PG.4.3: the block lookup is domain-warped by a low-freq fbm so team boundaries
+    // WANDER organically instead of snapping to a hard square grid.
+    float2 hueUV    = p * kTL_baseTiles * 0.5;
+    float2 hueWarp  = float2(tl_vnoise(hueUV * 0.6),
+                             tl_vnoise(hueUV * 0.6 + 3.7)) * kTL_hueWarp;
+    float2 hueBlock = floor(hueUV + hueWarp);
     float  teamSeed = hash_f01_2(hueBlock + 61.0);
     float  team     = floor(teamSeed * kTL_hueTeams) / kTL_hueTeams;
     float  hue      = fract(team + f.spectral_centroid * 0.30 + 0.55);
@@ -203,5 +223,11 @@ fragment float4 preset_fragment(VertexOut in [[stage_in]],
                * smoothstep(0.28, 0.9, depthShade) * coverage;
     color += ribbon * glow;
 
-    return float4(min(color, float3(1.0)), 1.0);
+    // ── PG.4.3 breakup: subtle static paper grain (§A2 breakup scale). Screen-
+    // anchored (a print texture on the poster, not on the pattern), very low
+    // amplitude so the op-art stays crisp. Zeroed nowhere special — deterministic.
+    float grain = hash_f01_2(in.uv * 1600.0 + 0.5) - 0.5;
+    color += grain * kTL_grain;
+
+    return float4(clamp(color, 0.0, 1.0), 1.0);
 }
