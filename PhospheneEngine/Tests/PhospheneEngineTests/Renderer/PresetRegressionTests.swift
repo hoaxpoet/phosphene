@@ -237,7 +237,12 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // differ only in `f.time` (drift phase), so each yields a distinct hash. The
     // density HERO (flux → subdivision) is unreachable from this zeroed-history
     // harness; it is covered by TruchetLoomDensityTests (live append→bind→render).
-    "Truchet Loom": (steady: 0x62ED6DA4643BCD5B, beatHeavy: 0x449B5A55D947BB89, quiet: 0x52A4356E249D64D2),
+    // PG.4.2 (D-187): regenerated — per-path HUE TEAMS now colour the ribbons
+    // (spectral_centroid = 0 here → base team hues), shifting the luma pattern.
+    // Geometry is byte-identical to PG.4.1 (flips are gated off: pulse_amp01 = 0),
+    // and glow is ~0 (bass_dev·high-depth, but level = base → low depth). Beat
+    // flips / hue-shift / glow are exercised live by TruchetLoomRhythmColourTests.
+    "Truchet Loom": (steady: 0x62EC6CEC6C3BCC5B, beatHeavy: 0x44BB5A55D94FBB89, quiet: 0x52AC356E649D6CDA),
     // BUG-034 (2026-06-12, M7-lite approved): regen at the live 128-step budget.
     // Terrain now reaches the true horizon (the old "sky holes" at distance
     // were rays exhausting the 32-step budget mid-terrain). 13 bit drift.
