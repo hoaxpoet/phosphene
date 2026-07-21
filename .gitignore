@@ -85,3 +85,16 @@ tools/data/panns_reference/
 
 # QG.3 coupling report per-frame CSVs (regenerable diagnostic artifacts)
 coupling/
+
+# Dev-only reference/diagnostic IMAGES — kept local, out of git (was LFS, purged
+# to stop storage billing; no build target uses them). Text records (READMEs,
+# diagnoses, contracts, source_*.txt/json) in these dirs STAY in git — only the
+# raster images are ignored. Reinstate one with `git add -f` if ever needed.
+docs/VISUAL_REFERENCES/**/*.jpg
+docs/VISUAL_REFERENCES/**/*.jpeg
+docs/VISUAL_REFERENCES/**/*.png
+docs/VISUAL_REFERENCES/**/*.gif
+docs/diagnostics/**/*.jpg
+docs/diagnostics/**/*.jpeg
+docs/diagnostics/**/*.png
+docs/diagnostics/**/*.gif

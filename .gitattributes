@@ -1,12 +1,8 @@
 PhospheneEngine/Sources/ML/Weights/*.bin filter=lfs diff=lfs merge=lfs -text
 PhospheneEngine/Sources/ML/Weights/**/*.bin filter=lfs diff=lfs merge=lfs -text
-docs/VISUAL_REFERENCES/**/*.jpg filter=lfs diff=lfs merge=lfs -text
-docs/VISUAL_REFERENCES/**/*.png filter=lfs diff=lfs merge=lfs -text
-docs/VISUAL_REFERENCES/**/*.gif filter=lfs diff=lfs merge=lfs -text
-docs/diagnostics/*.png filter=lfs diff=lfs merge=lfs -text
-docs/diagnostics/**/*.png filter=lfs diff=lfs merge=lfs -text
-docs/diagnostics/*.jpg filter=lfs diff=lfs merge=lfs -text
-docs/diagnostics/**/*.jpg filter=lfs diff=lfs merge=lfs -text
+# docs/VISUAL_REFERENCES + docs/diagnostics images are gitignored (dev-only
+# reference material, no build target uses them) — purged from LFS history to
+# stop storage billing. Do not re-add LFS rules here; keep them out of git.
 
 # Append-only narrative log (DOC.8 git-safeguard). When two parallel sessions
 # each prepend a release-notes entry they touch the same top-of-file region and
