@@ -2941,6 +2941,21 @@ Three live rejections (R.2 flowing-field "slick wallpaper"; IFC.6 marks "lag + b
 
 ---
 
+## Phase PG — Psychedelic Geometry (Phosphene-native abstract-geometry preset set)
+
+Five original abstract-geometry presets (design docs in `docs/presets/psychedelic_geometry/`), each proving a distinct music-response strategy. Phosphene-native (no `inspired_by`; D-119 brand-identity native minority). Sequenced lowest-fidelity-risk first (PG_0 §6): Truchet Loom opens the phase because it is pure crisp 2D op-art with strong published prior art and cleanly proves the **complexity-mapping** routing idea.
+
+### PG.4.1 — Truchet Loom scaffold + density-mapping subdivision ✅ code-complete, pending Matt's live M7 (2026-07-20, D-189)
+Reviewable v1 of Truchet Loom: a `direct`-pass multiscale curved-Truchet op-art weave (family `geometric`) whose continuous subdivision level tracks a **smoothed `spectral_flux`** — busy music shatters the weave into nested sub-tiles, sparse music merges it into large sweeping arcs; slow drift ← `arousal` speed on an `f.time` baseline; coarse non-black weave at silence (D-037). Ported (FA #73) from IQ's two-quarter-arc Truchet SDF + Carlson's ½-scale recursion (Shadertoy `4t3BW4`); subdivision crossfades per-parent-cell so it animates without popping (depth cap 3, Restrained default). Smoothing = a single reserved-slot EMA float (`flux_smoothed`, idx 3390) in `SpectralHistoryBuffer` — no new binding. `certified: false`. Preset count 25 → 26. Golden 3-tuple registered; density hero + drift + smoothing covered by `TruchetLoomDensityTests` (live direct-pass multi-frame). Done-when cert: **Matt's live M7** (felt musical connection, not self-certifiable).
+
+### PG.4.2 — Truchet Loom rhythm + colour ✅ code-complete, pending Matt's live M7 (2026-07-20, D-190)
+Adds the §A3/§A4 rhythm + colour layers (one primitive per layer, FA #67): **per-beat tile flips** (bounded ~22 % subset re-route their arc on the cached-grid beat, seeded by a new `beat_index` counter — SpectralHistory slot 3391 — so the subset evolves; crossfaded over `beat_phase01`, gated by `pulse_amp01` at cold-start; orientation-swap keeps luminance steady, measured swing 0.0055, D-157); **per-path hue teams** ← `spectral_centroid` (coarse-region quantised hues → coloured ribbons); **bounded path glow** ← `bass_dev` (subtle, drop-able). `beat_index` follows the D-189 reserved-slot pattern (no new binding). Golden regenerated (hue-team luma shift; geometry byte-identical). Automated gate now 3/4. Covered by `TruchetLoomRhythmColourTests` (flips fire + gate + evolve + luminance steady + hue shift + glow).
+
+### PG.4.3 — Truchet Loom breakup polish (scoped) ✅ code-complete, pending Matt's live M7 (2026-07-21, D-191)
+Scoped to the §A2 "breakup" craft layer (the felt/density parts of the design-doc PG.4.3 are held for M7): **organic hue-team boundaries** — the hue block-lookup is domain-warped by a cheap single-octave value noise (`tl_vnoise`) so team borders wander instead of snapping to a hard square grid (fixes the PG.4.2 cosmetic defect); **subtle static paper grain** (±0.014). Perf lesson: an `fbm4` warp blew p99 to 8.87 ms → replaced with a 4-tap value noise (~8× cheaper), p95 back to ~2.2 ms. Golden regenerated (procedural, deterministic). **Held for post-M7** (surfaced to Matt): deeper nesting toward cap 4 (Matt chose Restrained at PG.4.1) + curl-warp organic flow (felt-motion change). Next: those two, once the live M7 says whether the peaks/motion want them.
+
+---
+
 These milestones map to product-level outcomes, not implementation phases.
 
 **Milestone A — Trustworthy Playback Session.** ✅ **MET (2026-04-25).** A user can connect a playlist, obtain a usable prepared session, and complete a full listening session without instability. *Requires: ~~2.5.4~~ ✅, ~~Phase U increments U.1–U.7~~ ✅, ~~progressive readiness basics (6.1)~~ ✅.*

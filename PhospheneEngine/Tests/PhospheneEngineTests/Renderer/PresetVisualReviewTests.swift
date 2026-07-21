@@ -190,7 +190,14 @@ struct PresetVisualReviewTests {
                       // legacy SDF path here (no mesh encoder / height texture in this
                       // harness); both halves of an A/B pair use the identical harness,
                       // so deltas isolate the uniform change.
-                      "Ferrofluid Ocean"])
+                      "Ferrofluid Ocean",
+                      // PG.4.1: Truchet Loom (direct). The standard silence/mid/beat
+                      // fixtures leave spectral_flux + SpectralHistory zeroed → this
+                      // sheet shows the COARSE silence weave (non-black, crisp,
+                      // continuous paths, slow drift across f.time). The density HERO
+                      // (flux → subdivision sweep) is driven + captured separately by
+                      // TruchetLoomDensityTests, which populates SpectralHistory.
+                      "Truchet Loom"])
     func renderPresetVisualReview(_ presetName: String) throws {
         guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else {
             print("[PresetVisualReview] RENDER_VISUAL not set, skipping \(presetName)")

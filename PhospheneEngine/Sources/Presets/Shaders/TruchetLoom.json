@@ -1,0 +1,26 @@
+{
+  "name": "Truchet Loom",
+  "family": "geometric",
+  "concept_tags": ["geometric", "hypnotic"],
+  "motion_paradigm": "direct_time_modulation",
+  "duration": 30,
+  "description": "A woven op-art labyrinth of curved Truchet tiles that subdivides into nested sub-tiles when the music gets busy and merges into large sweeping arcs when it thins — musical complexity as geometric complexity",
+  "author": "Matt",
+  "passes": ["direct"],
+  "certified": false,
+  "rubric_profile": "lightweight",
+  "complexity_cost": { "tier1": 0.35, "tier2": 0.15 },
+  "visual_density": 0.7,
+  "motion_intensity": 0.6,
+  "color_temperature_range": [0.15, 0.9],
+  "fatigue_risk": "medium",
+  "transition_affordances": ["crossfade", "cut"],
+  "section_suitability": ["ambient", "buildup", "peak", "bridge", "comedown"],
+  "audio_routes": [
+    { "route": "subdivision_density", "primitive": "spectralFlux",     "kind": "continuous" },
+    { "route": "weave_drift_speed",   "primitive": "arousal",          "kind": "continuous" },
+    { "route": "beat_tile_reroute",   "primitive": "beatPhase01",      "kind": "continuous" },
+    { "route": "path_hue_teams",      "primitive": "spectralCentroid", "kind": "continuous" },
+    { "route": "path_glow",           "primitive": "bassDev",          "kind": "accent" }
+  ]
+}
