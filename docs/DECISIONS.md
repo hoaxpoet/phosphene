@@ -102,6 +102,9 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-186 | Accepted | Glass Brutalist preset retired (GBRETIRE.1, 2026-07-19). Ray-march "brutalist corridor" concept fails the viability gate: D-020 deliberately makes the concrete audio-static, so the hero subject can never be an instrument; also 2006-tier fidelity. All preset code/tests/docs/visual-refs deleted; production count 27 → 26. See D-186 section for full rationale. |
 | D-187 | Accepted | Phase RMENV — ray-march render environment as an opt-in, byte-identical shared capability: multi-light deferred lighting (up to 4; `SceneUniforms` 128→240 B), selectable IBL environment (`ibl_env`, default/gallery), and per-preset background (miss path renders the environment). Each capability is inert (byte-identical goldens) unless a preset opts in via `scene_lights`/`environment`. Fixes the "chrome reads as putty" limit that parked Kinetic Sculpture. **Intended first consumer Kinetic Sculpture was retired before opting in (KSRETIRE.1 / D-188); the capability is retained for a future consumer.** See D-187 section. |
 | D-188 | Accepted | Kinetic Sculpture preset retired (KSRETIRE.1, 2026-07-20). After multiple redesigns (chrome-in-a-gallery read as a "tinker toy"; a psychedelic-iridescent pivot drifted into a different concept) the preset never found the right direction; Matt stopped it. A fresh psychedelic-geometry preset will be authored separately. **Phase RMENV (D-187) engine work is retained** for a future consumer. All KS preset code/tests/docs/visual-refs deleted; production count 26 → 25 (certified 14 — unchanged by this retirement; Aurora Veil certified at AV.7 / D-185). See D-188 section. |
+| D-189 | Accepted | Truchet Loom added (PG.4.1) — a `direct`-pass multiscale curved-Truchet op-art weave (family `geometric`), the first Phase PG psychedelic-geometry preset. **Density-mapping hero**: a smoothed `spectral_flux` sets a continuous global subdivision level, so busy passages shatter the weave into nested sub-tiles and sparse passages merge them into large sweeping arcs. Ported (not derived, FA #73) from IQ's two-quarter-arc Truchet SDF + Carlson's ½-scale recursion (Shadertoy 4t3BW4). Smoothing lands via a new single-float `flux_smoothed` EMA slot (idx 3390) in `SpectralHistoryBuffer` (reused reserved region; read directly, no new binding). Drift ← `arousal` speed on an `f.time` baseline (alive at silence, D-037). `certified:false` — reviewable v1. Preset count 25 → 26. (Landed on `main` after rmenv's PR #21; originally authored as D-186 on a stale base, renumbered to D-189 at integration.) See D-189 section. |
+| D-190 | Accepted | Truchet Loom rhythm + colour (PG.4.2) — three routes on distinct primitives/layers (FA #67). **Per-beat tile flips**: a bounded ~22 % hash-selected subset re-route their arc each beat, seeded by a new monotonic `beat_index` counter (SpectralHistory slot 3391, incremented on each `beat_phase01` wrap) so the re-routing EVOLVES; crossfaded over `beat_phase01`; gated by `pulse_amp01` (silent at cold-start). Orientation-swap keeps ink steady → measured beat luminance swing 0.0055 (D-157, not a strobe). **Per-path hue teams** ← `spectral_centroid` (coarse-region quantised hues → coloured ribbons). **Bounded path glow** ← `bass_dev` (drop-able). `beat_index` follows the D-189 reserved-slot pattern (no new binding). Golden regenerated. Automated gate now 3/4 (in-source `bass_dev` makes L2 pass). Preset count unchanged (26). See D-190 section. |
+| D-191 | Accepted | Truchet Loom breakup polish (PG.4.3, scoped) — the §A2 "breakup" layer: (1) hue-team block edges **domain-warped** by a cheap single-octave value noise (`tl_vnoise`) so boundaries WANDER organically instead of a hard square grid; (2) subtle static paper grain. **Perf lesson:** the first cut used `fbm4` (perlin3d ×2/pixel) → p99 8.87 ms (over budget) — replaced with a 4-tap value noise (~8× cheaper), p95 ≈ 2.2 ms. **HELD for post-M7** (surfaced to Matt): deeper nesting toward cap 4 (Matt chose Restrained/cap 3 at PG.4.1) + curl-warp organic flow. Golden regenerated. `certified:false`. See D-191 section. |
 
 ---
 
@@ -2517,3 +2520,69 @@ unsolved), arXiv 1912.10211 (PANNs).
 **Wiring removed.** `expectedProductionPresetCount` 26 → 25; `FidelityRubricTests.expectedAutomatedGate` KS entry removed (KS absent from `certifiedPresets`, unchanged); `PresetRegressionTests` KS golden + KSRB.1 comment removed; `PresetVisualReviewTests` KS argument removed; `MaxDurationFrameworkTests` KS row removed; `GoldenSessionTests` KS `makePreset` dropped and the one affected golden regenerated (Session C track 2 falls KS → Membrane, the runner-up mid-energy fit — every other slot byte-identical, a single-slot runner-up substitution, not a planning regression); `SessionRecorderTests` log literal repointed off KS. Shared-path comments that had named only Kinetic Sculpture (`RayMarch.metal`, `IBL.metal` `ibl_proc_env`, `PresetDescriptor+SceneUniforms.swift`, app `VisualizerEngine+Audio.swift`) generalized.
 
 **Carry-forward.** KSRETIRE.1 executed under this decision. `docs/ENGINEERING_PLAN.md` (KSRB.1 + RMENV entries annotated, Milestone D roster 26 → 25, KSRETIRE.1 Recently-Completed), `docs/CAPABILITY_REGISTRY/PRESETS.md`, `docs/ENGINE/RENDER_CAPABILITY_REGISTRY.md` (RMENV rows note KS retired, capability awaits a consumer), `docs/ARCHITECTURE.md` Module Map, and `docs/RELEASE_NOTES_DEV.md` all updated. D-187 annotated with a retention note pointing here.
+
+---
+
+## D-189: Truchet Loom — multiscale curved-Truchet density-mapping weave (PG.4.1, 2026-07-20)
+
+**Status.** Accepted. Reviewable v1 (`certified: false`); per-beat tile flips + per-path hue teams are PG.4.2, deeper nesting/polish PG.4.3 (`PG_4_TRUCHET_LOOM.md §A9`).
+
+**Context.** First build of Phase PG (psychedelic geometry). Chosen as the phase opener for lowest fidelity risk: pure crisp 2D op-art with strong published prior art, and it proves the phase's distinctive **complexity-mapping** routing strategy (musical busyness → geometric density) that none of the other four PG presets use.
+
+**Decision.**
+
+1. **Port, don't derive (FA #73).** Arc SDF is IQ's canonical two-quarter-arc Truchet tile (per-cell hash → one of two orientations → distance to nearer of two corner-centred r=0.5 circles; pieces join edge-to-edge into continuous winding paths). Multiscale recursion follows Carlson's "Multi-Scale Truchet Patterns" ½-scale rule (successive tiles halved, smaller drawn on top). Cross-referenced to IQ's multiscale Truchet (Shadertoy `4t3BW4`); its source was Cloudflare-blocked from offline retrieval, so the recursion is **authored from the published rule + IQ's arc recipe**, not copied line-for-line — the borrowed load-bearing components are the arc math and the ½-scale hierarchy.
+
+2. **Density hero = smoothed `spectral_flux` (D-026-safe).** A continuous global subdivision `level` is a soft-saturation of a smoothed flux — a monotonic map of a continuous variable, **never an absolute threshold on an AGC-normalized energy band** (FA #31). Busy → level rises → the weave shatters into nested sub-tiles; sparse → level falls → tiles merge into large arcs. Subdivision **crossfades** (per-parent-cell smoothstep of `level − L`, per-parent hash jitter) so it animates rather than pops, and spreads across the field like a wave. Recursion capped at depth 3 (Restrained default, DECISION-NEEDED §9).
+
+3. **Smoothing lands in `SpectralHistoryBuffer`, not a new binding.** SpectralHistory has no flux ring; rather than add a slot-6 EMA state buffer (per-preset app-layer wiring, a new binding) the smoother is a **single CPU-side EMA float** (`flux_smoothed`, idx 3390, FPS-independent τ≈0.35 s) written in `append()` into the buffer's reserved region. buffer(5) is already bound unconditionally on the direct pass, so the shader reads it with zero new plumbing. The regression/visual harnesses bind a zeroed history → level = base → deterministic coarse weave.
+
+4. **Drift = `arousal` speed on an `f.time` baseline.** One audio primitive on the drift layer (arousal); `f.time` is the non-reactive wall-clock baseline (advances at silence, so the loom always drifts — D-037), not a second driver (FA #67). Silence (flux ≈ 0) → coarse large-arc weave over a deep-cobalt ground (non-black).
+
+**Empirical findings worth keeping.**
+
+- **★ When the target primitive has no existing history ring, extend the already-bound history buffer's reserved region before adding a new per-preset binding.** A single reserved EMA float in buffer(5) delivered "smoothed, no flicker" with a ~6-line engine change and no app-layer wiring — vs a NimbusState/AuroraVeilState-style slot-6 class + apply-branch plumbing + harness parity work.
+- **★ `spectral_flux` is an unusually well-matched hero** — it *literally measures* the thing being mapped (broadband busyness) and is a recordable continuous route (`RouteCoverageTests` green on both declared routes).
+
+**References.** [D-026] (deviation primitives, no absolute thresholds), [D-029] (one paradigm — crisp `direct`, no feedback), [D-037] (silence non-black), [D-067] (lightweight rubric), [D-180] (audio-route manifest), FA #31 / FA #67 / FA #73, `docs/presets/psychedelic_geometry/PG_4_TRUCHET_LOOM.md` (design of record), IQ "Truchet tiles" (iquilezles.org/articles/truchet) + Shadertoy `4t3BW4`, C. Carlson "Multi-Scale Truchet Patterns" (christophercarlson.com).
+
+---
+
+## D-190: Truchet Loom rhythm + colour — per-beat flips, hue teams, glow (PG.4.2, 2026-07-20)
+
+**Status.** Accepted. Builds on D-189 (PG.4.1). `certified: false`; PG.4.3 (deeper nesting, chromatic/grain/AA polish, possible curl-warp) remains.
+
+**Context.** PG.4.1 shipped the density hero (smoothed `spectral_flux` → subdivision) + drift. PG.4.2 adds the §A3/§A4 rhythm + colour layers so the weave is a fuller readout of the arrangement: the beat re-routes the paths, brightness/harmony colour the ribbons.
+
+**Decision.** Three routes, each on a distinct primitive/timescale (FA #67):
+
+1. **Per-beat tile flips (rhythm).** On the cached-grid beat, a bounded ~22 % hash-selected subset of tiles re-route their Truchet arc. To make the subset EVOLVE beat to beat (not oscillate the same tiles), a new **`beat_index`** monotonic counter is added to `SpectralHistoryBuffer` (slot 3391), incremented CPU-side on each `beat_phase01` sawtooth wrap — same reserved-slot pattern as the D-189 flux EMA (no new binding). The flip crossfades over `beat_phase01` so it animates rather than pops, and is gated by `pulse_amp01` so cold-start/silence (where grid phase may be wrong) show the static weave. An orientation swap preserves per-cell ink, so global luminance stays steady — **measured beat luminance swing 0.0055** (D-157: bounded footprint + steady luminance, not a strobe).
+2. **Per-path hue teams (colour).** Coarse spatial blocks (½ the base-tile frequency) get a **quantised** hue team; hues stay coherent along paths → coloured ribbons, not per-cell rainbow noise. `spectral_centroid` slowly phases the whole set. The deep-cobalt ground is fixed for op-art contrast.
+3. **Bounded path glow (accent).** `bass_dev` drives a subtle additive glow weighted toward the freshly-subdivided (high-depth) ribbons. Explicitly drop-able if it competes at M7.
+
+**Empirical findings worth keeping.**
+- **★ The reserved-slot counter pattern generalises.** A monotonic per-beat index that a stateless direct fragment needs (to seed evolving per-beat state) is another single reserved float in `SpectralHistoryBuffer` — CPU detects the `beat_phase01` wrap, the shader reads one float. No slot-6 binding, no app wiring. (D-189 established this for a smoothed EMA; D-190 for an event counter.)
+- **★ "Flip = orientation swap" is what makes per-beat motion D-157-safe.** Swapping a Truchet arc's orientation moves the ink without changing its area, so a bounded flipping subset barely moves global luminance (0.0055 swing measured) — the re-route reads as rhythm, never as a strobe. This is the general recipe for beat-locked motion on a coverage-based preset.
+- Automated rubric gate rose to **3/4** (L1/L2/L3) once the in-source `bass_dev` read made the L2 deviation-primitive heuristic pass; the smoothed-flux hero remains invisible to that source scan (it lives in buffer 5). L4 (Matt's M7) is the load-bearing cert gate.
+
+**References.** D-189 (PG.4.1 base + reserved-slot pattern), [D-026], [D-028] (`beat_phase01`), [D-037], [D-154]/[D-157] (beat-locked motion constraints), [D-180] (route manifest), FA #67 (one primitive per layer), `docs/presets/psychedelic_geometry/PG_4_TRUCHET_LOOM.md` §A3/§A4/§A9.
+
+---
+
+## D-191: Truchet Loom breakup polish — organic hue boundaries + grain (PG.4.3, scoped; 2026-07-21)
+
+**Status.** Accepted. `certified: false`. A deliberately **scoped** PG.4.3: the §A2 "breakup" craft layer only, with the felt/density changes held for Matt's live M7.
+
+**Context.** PG.4.3's design-doc scope (deeper nesting, finer motif variety, curl-warp, chromatic/grain/AA) is largely M7-gated: "deeper nesting" was explicitly conditional on "if peaks feel underwhelming at M7," and Matt chose **Restrained (cap 3)** at the PG.4.1 review; a curl-warp changes how the motion *feels*. Doing those before the preset's first live review risks polishing the wrong things (the mechanical-iteration failure mode). So PG.4.3 was scoped to the low-regret breakup work that improves the preset without pre-empting a decision Matt already made.
+
+**Decision.**
+1. **Organic hue-team boundaries.** The PG.4.2 hue teams snapped to a hard `floor()` square grid (a cosmetic defect flagged in the PG.4.2 closeout). The block-lookup coordinate is now domain-warped by a cheap single-octave value noise (`tl_vnoise` — 4 hash taps + smoothstep bilerp, centred) so team borders wander organically while regions stay coherent ("teams," not per-cell rainbow).
+2. **Subtle paper grain.** A screen-anchored static grain (±0.014) on the final colour — the §A2 breakup scale — for a faint print texture that keeps the op-art crisp.
+
+**Held for post-M7 (surfaced to Matt).** Deeper nesting toward cap 4 (reverses the Restrained pick); curl-warp organic flow (a felt-motion change). Both wait on the live review.
+
+**Empirical findings worth keeping.**
+- **★ Don't reach for fBM to warp a boundary.** The first cut used `fbm4` (4-octave `perlin3d`, ×2 per pixel) and blew p99 to 8.87 ms — over the 8 ms budget, on a preset whose whole premise is "very cheap 2D." A 4-tap single-octave value noise gives the same organic-boundary read at ~8× less cost (p95 2.2 ms). For a *soft displacement of a low-frequency field*, single-octave value noise is the right tool; fBM is for detail-rich surfaces (SHADER_CRAFT §3), not cheap domain warps. (FA #64-adjacent: measure perf on any per-pixel noise addition to a direct preset.)
+
+**References.** D-189/D-190 (PG.4.1/4.2), [D-037], `docs/SHADER_CRAFT.md` §3 (noise) / §9 (perf budgets), `docs/presets/psychedelic_geometry/PG_4_TRUCHET_LOOM.md` §A2 (breakup scale) / §A9.
+
