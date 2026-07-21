@@ -15,22 +15,22 @@ import simd
 
 final class SceneUniformsTests: XCTestCase {
 
-    // MARK: - Test 1: Size is 128 bytes (8 × float4)
+    // MARK: - Test 1: Size is 240 bytes (RMENV multi-light, D-187)
 
     func test_sceneUniforms_size_is128Bytes() {
         XCTAssertEqual(
-            MemoryLayout<SceneUniforms>.size, 128,
-            "SceneUniforms must be 128 bytes (8 × SIMD4<Float>), "
-            + "got \(MemoryLayout<SceneUniforms>.size)"
+            MemoryLayout<SceneUniforms>.size, 240,
+            "SceneUniforms must be 240 bytes (RMENV multi-light: light1/2/3 + "
+            + "lightingParams appended, D-187), got \(MemoryLayout<SceneUniforms>.size)"
         )
     }
 
-    // MARK: - Test 2: Stride is 128 bytes (16-byte aligned for GPU upload)
+    // MARK: - Test 2: Stride is 240 bytes (16-byte aligned for GPU upload)
 
     func test_sceneUniforms_stride_is128Bytes() {
         XCTAssertEqual(
-            MemoryLayout<SceneUniforms>.stride, 128,
-            "SceneUniforms stride must be 128 bytes, "
+            MemoryLayout<SceneUniforms>.stride, 240,
+            "SceneUniforms stride must be 240 bytes (RMENV, D-187), "
             + "got \(MemoryLayout<SceneUniforms>.stride)"
         )
         XCTAssertEqual(
