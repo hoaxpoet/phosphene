@@ -315,9 +315,19 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     public let sceneCamera: SceneCamera?
 
     /// Light sources for ray march presets. The first entry maps to the primary
-    /// `SceneUniforms` light; additional lights are ignored until the lighting pass
-    /// supports multiple lights. Empty uses `SceneUniforms` defaults.
+    /// `SceneUniforms` lights. Up to 4 are used (RMENV.1 multi-light — key/rim/
+    /// fill/accent); a 5th+ is ignored. Empty uses `SceneUniforms` defaults.
     public let sceneLights: [SceneLight]
+
+    /// Ray-march IBL environment the surfaces reflect + take ambient from (RMENV.2).
+    /// `nil`/absent or "default" = the low-contrast interior (`ibl_proc_env`);
+    /// "gallery" = the high-contrast gallery interior (`ibl_gallery_env`) that makes
+    /// polished metals read as metal rather than flat putty. Opt-in — a preset that
+    /// omits this renders byte-identically to pre-RMENV.
+    public let environment: String?
+
+    /// The bake `envType` for `environment` (see `ibl_env`): 0 default, 1 gallery.
+    public var environmentType: Int { environment == "gallery" ? 1 : 0 }
 
     /// Ferrofluid Ocean-specific material detail parameters (V.9 Session 4 / D-124).
     ///
@@ -566,6 +576,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case meshAdditiveBlend = "additive_blend"
         case sceneCamera = "scene_camera"
         case sceneLights = "scene_lights"
+        case environment
         case ferrofluid
         case sceneFog = "scene_fog"
         case sceneFogNear = "scene_fog_near"
@@ -625,6 +636,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         meshAdditiveBlend = try container.decodeIfPresent(Bool.self, forKey: .meshAdditiveBlend) ?? false
         sceneCamera      = try container.decodeIfPresent(SceneCamera.self, forKey: .sceneCamera)
         sceneLights      = try container.decodeIfPresent([SceneLight].self, forKey: .sceneLights) ?? []
+        environment      = try container.decodeIfPresent(String.self, forKey: .environment)
         ferrofluid       = try container.decodeIfPresent(FerrofluidParams.self, forKey: .ferrofluid)
         sceneFog         = try container.decodeIfPresent(Float.self, forKey: .sceneFog) ?? 0
         sceneFogNear     = try container.decodeIfPresent(Float.self, forKey: .sceneFogNear) ?? 20.0

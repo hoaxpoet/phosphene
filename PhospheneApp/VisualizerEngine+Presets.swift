@@ -227,7 +227,6 @@ extension VisualizerEngine {
                     // modulates the pace.
                     rmPipeline.cameraDollySpeed = {
                         switch desc.name {
-                        case "Glass Brutalist":       return 2.5
                         case "Volumetric Lithograph": return 1.8
                         default:                      return 0
                         }

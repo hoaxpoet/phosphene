@@ -196,6 +196,16 @@ struct SceneUniforms {
     float4 lightColor;
     float4 sceneParamsA;
     float4 sceneParamsB;
+    // RMENV.1 — additional lights, appended so existing field offsets never move.
+    // A preset that declares one light leaves these zero and lightingParams.x = 1,
+    // and the deferred lighting loop is byte-identical to the pre-RMENV path.
+    float4 light1PositionAndIntensity; // xyz = pos, w = intensity (0 = unused)
+    float4 light1Color;                // xyz = linear RGB, w = 0
+    float4 light2PositionAndIntensity;
+    float4 light2Color;
+    float4 light3PositionAndIntensity;
+    float4 light3Color;
+    float4 lightingParams;             // x = lightCount (1..4); yzw reserved
 };
 
 // MARK: - Color Utilities
