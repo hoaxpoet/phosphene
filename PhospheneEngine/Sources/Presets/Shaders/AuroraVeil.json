@@ -2,18 +2,21 @@
   "name": "Aurora Veil",
   "family": "hypnotic",
   "duration": 60,
-  "description": "Three drifting aurora curtains at off-thirds depth — green base, magenta crown. Three-channel audio coupling: vocal melody migrates the ribbon's hue, bass transients pulse brightness, rare drum events produce a 1–2 s lateral shudder. Slow drift from the noise field's own rotation",
-  "author": "Matt",
+  "description": "Looking up into a volumetric procedural aurora — green curtains overhead warming toward magenta near the horizon, over a starfield. Stars keep the beat on the downbeat; the veil breathes with the music's intensity and its colour warms with the mood. Ported from nimitz's 'Auroras'.",
+  "author": "nimitz (ported)",
   "passes": [],
   "fragment_function": "aurora_fragment",
   "vertex_function": "fullscreen_vertex",
   "beat_source": "composite",
   "decay": 0.945,
-  "stem_affinity": {
-    "vocals": "ribbon_hue",
-    "drums": "curtain_kink",
-    "bass": "brightness_breath"
-  },
+  "stem_affinity": {},
+  "audio_routes": [
+    { "route": "star_beat_twinkle", "primitive": "barPhase01", "kind": "accent" },
+    { "route": "star_beat_twinkle", "primitive": "pulseAmp01", "kind": "continuous" },
+    { "route": "veil_breathe", "primitive": "arousal", "kind": "continuous" },
+    { "route": "veil_breathe", "primitive": "bassAttRel", "kind": "continuous" },
+    { "route": "mood_colour", "primitive": "valence", "kind": "continuous" }
+  ],
   "visual_density": 0.40,
   "motion_intensity": 0.35,
   "color_temperature_range": [0.15, 0.55],
@@ -21,6 +24,6 @@
   "transition_affordances": ["crossfade", "morph"],
   "section_suitability": ["ambient", "comedown", "bridge"],
   "complexity_cost": { "tier1": 4.0, "tier2": 1.7 },
-  "certified": false,
+  "certified": true,
   "rubric_profile": "lightweight"
 }

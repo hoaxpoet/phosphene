@@ -74,7 +74,7 @@ struct AuroraVeilSilenceTest {
 
     // MARK: - Assertion 2: Vertical Lawlor stratification
 
-    @Test("Aurora Veil at silence shows green-base / magenta-crown stratification")
+    @Test("Aurora Veil at silence is green-over-red with altitude colour stratification")
     func test_silence_isVerticallyStratified() throws {
         guard let pixels = try renderSilenceFrame() else {
             print("AuroraVeilSilenceTest: skipping — no Metal device or preset missing")
@@ -82,52 +82,57 @@ struct AuroraVeilSilenceTest {
         }
 
         // Find the column (uv.x) with the highest aggregate luma in the aurora
-        // band (uv.y ∈ [0.30, 0.70]). Sample 256 columns at three altitudes,
-        // pick the one with the brightest mid-altitude sample.
+        // band (uv.y ∈ [0.30, 0.70]).
         let brightCol = findBrightestColumnInAuroraBand(pixels: pixels)
 
-        // Sample at three uv.y values within the aurora envelope (which
-        // ramps in at uv.y=0.05..0.40 and cuts off at uv.y=0.74..0.84).
-        // uv.y=0.25 → upper aurora band (screenAlt high → magenta-shifted)
-        // uv.y=0.50 → mid aurora band
-        // uv.y=0.65 → lower aurora band (screenAlt low → green-dominant)
-        let upperColor = samplePixel(pixels: pixels, ux: brightCol, uy: 0.25)
-        let lowerColor = samplePixel(pixels: pixels, ux: brightCol, uy: 0.65)
+        // AV.7 (2026-07-19): the camera now looks UP into the sky — no horizon,
+        // no ground, no reflection. The old "green low on screen / magenta high
+        // on screen" mapping therefore no longer applies: near-horizontal rays
+        // (large uv.y) travel further and reach the high-altitude magenta band,
+        // while overhead rays sample the green base. Screen position is not the
+        // invariant; the Lawlor H(z) signature is. Two things must still hold:
+        //
+        //   (a) the aurora emission reads green-over-RED everywhere it appears.
+        //       Blue is deliberately excluded from this check — the night-sky
+        //       gradient contributes blue at every pixel, so G-vs-B is a test of
+        //       the sky, not of the aurora.
+        //   (b) the magenta content varies measurably with altitude, i.e. the
+        //       per-march-step palette really is stratifying rather than
+        //       rendering one flat hue.
+        let altitudes: [Float] = [0.15, 0.30, 0.45, 0.60, 0.75, 0.90]
+        var magentaRatios: [Float] = []
 
-        // Lower aurora band must read green-dominant (G > R and G > B). Use a
-        // small slack to avoid floating-point flakiness at the edge.
-        let lowerGreenDominant = lowerColor.g > lowerColor.r + 0.5 / 255.0
-                              && lowerColor.g > lowerColor.b + 0.5 / 255.0
-        #expect(
-            lowerGreenDominant,
-            """
-            Lower aurora band (uv.y=0.65) is not green-dominant: \
-            RGB=(\(lowerColor.r), \(lowerColor.g), \(lowerColor.b)). \
-            Likely cause: per-march-step palette phase offsets are off, or \
-            the screen-altitude phase offset is mis-signed.
-            """
-        )
+        for uy in altitudes {
+            let c = samplePixel(pixels: pixels, ux: brightCol, uy: uy)
+            #expect(
+                c.g > c.r + 1.0,
+                """
+                Aurora is not green-over-red at uv.y=\(uy): \
+                RGB=(\(c.r), \(c.g), \(c.b)). The green base of the Lawlor \
+                H(z) palette is not manifesting — likely cause: the palette \
+                phase offset (paletteWarm) has pushed the whole field off green.
+                """
+            )
+            magentaRatios.append((c.r + c.b) / max(c.g, 1.0))
+        }
 
-        // Upper aurora band must carry more magenta content (R + B) than the
-        // lower band. Use combined R+B comparison to be robust to overall
-        // brightness differences between the two altitudes.
-        let upperMagentaContent = upperColor.r + upperColor.b
-        let lowerMagentaContent = lowerColor.r + lowerColor.b
+        // Stratification: the magenta-to-green ratio must vary across altitude.
+        // A flat field (no H(z) cycling) would give a near-zero spread.
+        let spread = (magentaRatios.max() ?? 0) - (magentaRatios.min() ?? 0)
         #expect(
-            upperMagentaContent > lowerMagentaContent + 1.0 / 255.0,
+            spread > 0.15,
             """
-            Upper aurora band (uv.y=0.25) does not carry more magenta than \
-            lower (uv.y=0.65): upper R+B=\(upperMagentaContent), \
-            lower R+B=\(lowerMagentaContent). Lawlor H(z) stratification is \
-            not manifesting on screen — likely cause: screen-altitude phase \
-            offset is too small or zero.
+            Magenta/green ratio is nearly constant across altitude \
+            (spread=\(spread), ratios=\(magentaRatios)). Lawlor H(z) \
+            stratification is not manifesting — likely cause: the per-march-step \
+            palette increment is too small or zero.
             """
         )
     }
 
     // MARK: - Assertion 3: Form complexity ≥ 2
 
-    @Test("Aurora Veil at silence has 3 distinct vertical regions (sky / aurora / dark base)")
+    @Test("Aurora Veil at silence shows layered structure (sky gradient + stars + aurora)")
     func test_silence_formComplexity() throws {
         guard let pixels = try renderSilenceFrame() else {
             print("AuroraVeilSilenceTest: skipping — no Metal device or preset missing")
@@ -152,28 +157,31 @@ struct AuroraVeilSilenceTest {
             """
         )
 
-        // Aurora band: uv.y ∈ [0.30, 0.70]. Must have a strict local maximum
-        // versus the sky and the bottom — i.e., mean luma in this band exceeds
-        // mean luma in both surrounding bands.
-        let auroraStart  = Int(0.30 * Double(Self.renderHeight))
-        let auroraEnd    = Int(0.70 * Double(Self.renderHeight))
-        let auroraMean   = rowLuma[auroraStart..<auroraEnd].reduce(0, +) / Float(auroraEnd - auroraStart)
-
-        // Bottom band: uv.y ∈ [0.85, 1.00]. Must be darker than the aurora
-        // band (auroraEnv cutoff at uv.y > 0.84 → near-zero aurora here, only
-        // the sky gradient remains).
-        let bottomStart  = Int(0.85 * Double(Self.renderHeight))
-        let bottomBand   = rowLuma[bottomStart..<Self.renderHeight]
-        let bottomMean   = bottomBand.reduce(0, +) / Float(Self.renderHeight - bottomStart)
+        // AV.7 (2026-07-19): the upward view is sky end-to-end — there is no
+        // dark ground band left to compare the aurora against, so the old
+        // "aurora band brighter than bottom band" check no longer describes the
+        // design. Form complexity now shows as a meaningful luma spread across
+        // the frame: bright curtains standing out against darker open sky. A
+        // flat wash (the failure this gate exists to catch) would collapse it.
+        let overallMin = rowLuma.min() ?? 0
+        let overallMax = rowLuma.max() ?? 0
 
         #expect(
-            auroraMean > bottomMean + 1.0,
+            overallMax - overallMin > 5.0,
             """
-            Aurora band (uv.y∈[0.30,0.70], mean=\(auroraMean)) is not \
-            brighter than bottom band (uv.y∈[0.85,1.00], mean=\(bottomMean)). \
-            The aurora envelope is not producing a defined lower edge.
+            Frame shows no vertical luma structure \
+            (max=\(overallMax), min=\(overallMin), spread=\(overallMax - overallMin)). \
+            The aurora has collapsed into a flat wash with no discernible \
+            curtains against open sky.
             """
         )
+
+        // The aurora band must still out-glow the open sky above it. Retained
+        // from the pre-AV.7 gate — this comparison is unaffected by the loss of
+        // the ground band.
+        let auroraStart = Int(0.30 * Double(Self.renderHeight))
+        let auroraEnd   = Int(0.70 * Double(Self.renderHeight))
+        let auroraMean  = rowLuma[auroraStart..<auroraEnd].reduce(0, +) / Float(auroraEnd - auroraStart)
 
         let skyMean = skyBand.reduce(0, +) / Float(skyBand.count)
         #expect(
