@@ -6,6 +6,17 @@ Release asset, LFS keeps reference media only (§1); (3) `prompts/` ships with
 its framing README (done at PUB.1); (4) preset hot-reload gets wired with
 compile errors surfaced on the toast surface (queued — review Phase 2).
 
+**AMENDED 2026-07-21 (LFS.1, Matt's override of decision 2's "keeps reference
+media"):** the `docs/VISUAL_REFERENCES` + `docs/diagnostics` raster images are
+now **gitignored, local-only** — removed from the LFS `.gitattributes` rules
+and `git rm --cached` (go-forward config landed at LFS.1). Reference images are
+no longer in the repo; contributors won't get them on clone. Text records in
+those dirs stay tracked. This shrinks §2's rewrite scope (the jpg/png go via
+`Scripts/reclaim-lfs-visual-refs.sh`'s image-only purge, not just the GIFs) and
+removes the §3 "reference media stays as ~90 MB LFS" line — reference media is
+no longer LFS at all. Weights (§1) are unchanged: still the big lever, still a
+Release-asset cutover.
+
 The PUB.1 increment (2026-07-11) made the tree publication-ready. This
 runbook is the remaining, **maintainer-executed** cutover: everything here
 either needs GitHub-side actions (releases, settings) or is destructive to
