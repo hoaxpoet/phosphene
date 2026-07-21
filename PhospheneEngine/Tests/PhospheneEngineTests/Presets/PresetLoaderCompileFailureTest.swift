@@ -79,12 +79,12 @@ struct PresetLoaderCompileFailureTest {
     /// 26 → 25 at KSRETIRE.1 (Kinetic Sculpture retired — after multiple redesigns the
     /// preset never found the right direction; a fresh psychedelic-geometry preset will be
     /// authored separately. Phase RMENV engine work is retained. See docs/DECISIONS.md D-188.)
-    /// 25 → 26 at PG.4.1 (Truchet Loom — multiscale curved-Truchet op-art weave whose
-    /// subdivision depth tracks smoothed spectral_flux; direct pass, family `geometric`.
-    /// The first Phase PG psychedelic-geometry preset. Not certified — reviewable v1, cert
-    /// after Matt's live M7; D-189/190/191 for PG.4.1/4.2/4.3.) See
-    /// docs/presets/psychedelic_geometry/PG_4_TRUCHET_LOOM.md.
-    static let expectedProductionPresetCount = 26
+    /// 25 → 26 at PG.4.1 (Truchet Loom added; D-189/190/191) → 26 → 25 at TLRETIRE.1
+    /// (Truchet Loom RETIRED — Matt M7 2026-07-21: the square Truchet lattice + discrete
+    /// per-beat flips read as a visible grid that jitters, matched none of the curated
+    /// flowing-scallop references, and never delivered "psychedelic geometry"; concept
+    /// scrapped, not the tunable kind. See docs/DECISIONS.md D-194.)
+    static let expectedProductionPresetCount = 25
 
     @Test("PresetLoader.presets.count matches expectedProductionPresetCount — catches Failed Approach #44 silent drops")
     func test_presetLoaderProductionCount() {

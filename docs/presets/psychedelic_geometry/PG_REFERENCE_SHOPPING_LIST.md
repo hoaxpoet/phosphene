@@ -62,7 +62,7 @@ Everything Matt needs to source to unblock the five session prompts. Each sessio
 
 ---
 
-## PG.4 — Truchet Loom → `docs/VISUAL_REFERENCES/truchet_loom/` (rubric: lightweight)
+## PG.4 — Truchet Loom ❌ RETIRED (TLRETIRE.1 / D-194) — reference set deleted; the mechanic never matched these refs (that mismatch is why it failed M7)
 
 **IMAGES TO SOURCE:**
 
