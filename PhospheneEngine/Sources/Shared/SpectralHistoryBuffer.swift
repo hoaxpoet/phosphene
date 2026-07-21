@@ -36,7 +36,8 @@ private let logger = Logger(subsystem: "com.phosphene", category: "SpectralHisto
 /// [2430..2909] tonal_fifths       (0..1, circle-of-fifths phase normalized (θ+π)/2π; TONAL.1b)
 /// [2910..3389] tonal_consonance   (0..1, consonance scaled to its pilot p99 0.32; TONAL.1b)
 /// [3390]       flux_smoothed      (PG.4 Truchet Loom — CPU EMA of spectral_flux, τ≈0.35 s)
-/// [3391..4095] reserved           (zeroed; future consumers)
+/// [3391]       beat_index         (PG.4.2 — monotonic cached-grid beat counter, Float)
+/// [3392..4095] reserved           (zeroed; future consumers)
 /// ```
 public final class SpectralHistoryBuffer: @unchecked Sendable {
 
@@ -91,6 +92,13 @@ public final class SpectralHistoryBuffer: @unchecked Sendable {
     /// EMA time-constant for `flux_smoothed` (seconds). ~0.35 s reads as a
     /// medium-timescale "musical breathing", not a per-frame jitter.
     public static let fluxSmoothingTau: Float = 0.35
+    /// PG.4.2 (Truchet Loom): a monotonic cached-grid beat counter, incremented
+    /// on each `beat_phase01` sawtooth wrap (0→1 reset). Stored as Float so a
+    /// direct-pass preset can seed a fresh per-beat state (e.g. which tiles flip
+    /// their arc) that EVOLVES beat to beat, not just oscillates. 0 with no grid
+    /// (phase pinned at 0 never wraps); presets gate the visible effect on
+    /// `pulse_amp01` so cold-start / silence show no beat motion.
+    public static let offsetBeatIndex: Int = 3391
 
     // MARK: - State
 
@@ -101,6 +109,9 @@ public final class SpectralHistoryBuffer: @unchecked Sendable {
     private var samplesValid: Int = 0
     /// Running EMA of `spectral_flux` (PG.4). Render-thread only, single writer.
     private var fluxEMA: Float = 0
+    /// Monotonic beat counter + last phase, for the `beat_index` wrap detector (PG.4.2).
+    private var beatIndex: Float = 0
+    private var prevBeatPhase: Float = 0
     /// Separate lock for the beat-grid section so analysis-queue writes don't
     /// race with render-thread ring-buffer writes (different memory slots).
     private let beatGridLock = NSLock()
@@ -145,6 +156,14 @@ public final class SpectralHistoryBuffer: @unchecked Sendable {
         let alpha = 1 - exp(-dt / Self.fluxSmoothingTau)
         fluxEMA += (features.spectralFlux - fluxEMA) * alpha
         ptr[Self.offsetFluxSmoothed] = fluxEMA
+
+        // PG.4.2: increment beat_index on each beat_phase01 sawtooth wrap. A wrap
+        // is a large downward jump (…→~1 resets to ~0). Pinned-at-0 phase (no
+        // grid) never wraps, so the counter stays 0.
+        let phase = features.beatPhase01
+        if prevBeatPhase - phase > 0.5 { beatIndex += 1 }
+        prevBeatPhase = phase
+        ptr[Self.offsetBeatIndex] = beatIndex
 
         writeHead = (writeHead + 1) % Self.historyLength
         samplesValid = min(samplesValid + 1, Self.historyLength)
@@ -216,6 +235,8 @@ public final class SpectralHistoryBuffer: @unchecked Sendable {
         writeHead = 0
         samplesValid = 0
         fluxEMA = 0
+        beatIndex = 0
+        prevBeatPhase = 0
         // Initialize beat and downbeat time slots to infinity (sentinel = no tick).
         let ptr = gpuBuffer.contents().assumingMemoryBound(to: Float.self)
         for i in 0..<Self.beatTimesCount {

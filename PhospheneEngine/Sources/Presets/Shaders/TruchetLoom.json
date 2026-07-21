@@ -17,7 +17,10 @@
   "transition_affordances": ["crossfade", "cut"],
   "section_suitability": ["ambient", "buildup", "peak", "bridge", "comedown"],
   "audio_routes": [
-    { "route": "subdivision_density", "primitive": "spectralFlux", "kind": "continuous" },
-    { "route": "weave_drift_speed",   "primitive": "arousal",      "kind": "continuous" }
+    { "route": "subdivision_density", "primitive": "spectralFlux",     "kind": "continuous" },
+    { "route": "weave_drift_speed",   "primitive": "arousal",          "kind": "continuous" },
+    { "route": "beat_tile_reroute",   "primitive": "beatPhase01",      "kind": "continuous" },
+    { "route": "path_hue_teams",      "primitive": "spectralCentroid", "kind": "continuous" },
+    { "route": "path_glow",           "primitive": "bassDev",          "kind": "accent" }
   ]
 }

@@ -27,23 +27,29 @@
 // (the self-similar "nesting" read) instead of the whole canvas flipping at once.
 // Recursion depth is capped at 3 (Restrained default, DECISION-NEEDED PG.4.1 §9).
 //
-// AUDIO ROUTING (PG.4.1 subset of PG_4 §A4 — density + drift only; per-beat flips,
-// per-path hue teams, and the glow accent are PG.4.2):
+// AUDIO ROUTING (full PG_4 §A4 — one primitive per layer, FA #67):
 //   - Subdivision density (HERO) ← SMOOTHED spectral_flux. Read as a single CPU-side
-//     EMA float from SpectralHistory buffer(5) slot `offsetFluxSmoothed` (index 3390);
-//     see SpectralHistoryBuffer.append(). spectral_flux is the one primitive that
-//     LITERALLY measures the thing we map (broadband busyness) and is reliably alive
-//     across genres (PG_0 §3). It is a continuous variable soft-saturated into a
-//     level, NEVER an absolute threshold on an AGC-normalized energy band (FA #31 /
-//     D-026): the smoothing removes frame-to-frame flicker, the soft-saturation is
-//     scale-robust so no hard cut-point is baked in.
-//   - Global drift (flow) ← f.arousal sets the scroll/rotate SPEED; f.time is the
-//     non-reactive wall-clock BASELINE (advances at silence, so the loom always
-//     drifts — D-037). One audio primitive on this layer (arousal); f.time is not a
-//     second audio driver (FA #67).
+//     EMA float from SpectralHistory buffer(5) slot 3390 (SpectralHistoryBuffer.append).
+//     spectral_flux LITERALLY measures the thing we map (broadband busyness) and is
+//     reliably alive across genres (PG_0 §3). Continuous variable soft-saturated into a
+//     level, NEVER an absolute threshold on an AGC-normalized energy band (FA #31/D-026).
+//   - Global drift (flow) ← f.arousal SPEED on an f.time wall-clock BASELINE (advances
+//     at silence, D-037; f.time is not a second audio driver, FA #67).
+//   - Per-beat tile flips (RHYTHM, PG.4.2) ← f.beat_phase01 (cached grid) + the
+//     SpectralHistory beat_index counter (slot 3391). A bounded hash-selected SUBSET
+//     (~22%) of tiles re-route their arc each beat; the target seed advances with
+//     beat_index so the re-routing EVOLVES, and it crossfades over beat_phase01 so it
+//     animates (not a pop). D-157: bounded footprint + orientation-swap keeps global
+//     luminance steady (same ink coverage). Gated by f.pulse_amp01 → zero at
+//     cold-start/silence (the cold-start phase contract; wrong-phase beats stay silent).
+//   - Per-path hue teams (COLOUR, PG.4.2) ← f.spectral_centroid. Coarse spatial regions
+//     get a quantised hue TEAM (coherent along paths → coloured ribbons, not per-cell
+//     rainbow noise); centroid slowly phases the whole set. Colour, not motion.
+//   - Path glow accent (PG.4.2, optional/subtle) ← f.bass_dev. A bounded additive glow
+//     on the freshly-subdivided (high-depth) ribbons on bass onsets; drop if it competes.
 //
 // SILENCE (D-037): smoothed flux ≈ 0 → level ≈ base → coarse large-arc weave, no
-// subdivision, drifting slowly on f.time. Non-black (deep-cobalt ground, not #000).
+// subdivision, no flips (pulse_amp01 = 0), drifting slowly on f.time. Non-black.
 
 // MARK: - Constants
 
@@ -57,14 +63,14 @@ constant float  kTL_levelBase   = 0.40;  // level at silence (coarse weave)
 // spreads that band across ~1 (quiet) → ~2.5 (busy) → 3 (peak) — the Restrained curve
 // (DECISION-NEEDED §9). First-pass; calibrate against real-session flux p50/p95 at M7.
 constant float  kTL_fluxGain    = 2.5;   // soft-saturation gain on smoothed flux
+constant float  kTL_flipFrac    = 0.22;  // PG.4.2 — fraction of tiles that re-route per beat
+constant float  kTL_glowGain    = 0.28;  // PG.4.2 — bounded bass-onset ribbon glow
+constant float  kTL_hueTeams    = 5.0;   // PG.4.2 — quantised hue-team count
 
-// Azulejo-derived duotone-plus-accent (PG_4 §A6; ref 04_palette_op_art_tile.jpg).
-// Deep cobalt GROUND (a deep colour, not black — pale-tone ≤ 30 %, FA #45), a bright
-// cyan-white RIBBON, and a warm-gold ACCENT the finer sub-tiles shift toward so the
-// nesting reads as depth rather than a flat monochrome maze.
+// Azulejo-derived deep GROUND (PG_4 §A6; ref 04_palette_op_art_tile.jpg). Deep cobalt,
+// not black — pale-tone ≤ 30 %, FA #45. Ribbon colour is a per-region HUE TEAM (PG.4.2,
+// hsv), phased by spectral_centroid; the ground stays fixed for op-art contrast.
 constant float3 kTL_ground = float3(0.020, 0.045, 0.140);
-constant float3 kTL_ribbon = float3(0.760, 0.910, 0.980);
-constant float3 kTL_accent = float3(0.980, 0.780, 0.240);
 
 // MARK: - Truchet arc SDF (IQ canonical)
 
@@ -80,32 +86,52 @@ static inline float tl_arc(float2 f, float h) {
     return d;
 }
 
+/// Anti-aliased arc coverage for one cell orientation. `aa` is the fragment's
+/// cell-space footprint (orientation-independent, computed once by the caller).
+static inline float tl_arcCov(float2 f, float h, float aa) {
+    float d = tl_arc(f, h);
+    return smoothstep(kTL_lineW + aa, kTL_lineW - aa, d);
+}
+
 // MARK: - Multiscale weave
 
 /// Coverage (0 = ground, 1 = ribbon core) + a depth shade (0 coarse → 1 finest)
 /// for the woven field at continuous subdivision `level`, sampled at tiling
-/// coordinate `t` (units: ~short-axis halves). Coarse-to-fine accumulation with
-/// per-parent-cell reveal so subdivision crossfades smoothly (no pop) and finer
-/// tiles are drawn on top of coarser ones (Carlson's rule).
-static inline float2 tl_weave(float2 t, float level) {
+/// coordinate `t`. Coarse-to-fine accumulation with per-parent-cell reveal so
+/// subdivision crossfades smoothly (Carlson's rule).
+///
+/// PG.4.2 per-beat flips: a bounded hash-selected subset of tiles re-route their
+/// arc each beat. `beatIdx` (monotonic cached-grid beat counter) advances the
+/// target orientation seed so the re-routing evolves; the crossfade runs over
+/// `beatPhase` (0→1 within the beat) so it animates; `flipGate` (pulse_amp01) is
+/// 0 at cold-start/silence → the static PG.4.1 weave. An orientation swap keeps
+/// per-cell ink coverage steady (D-157 luminance stability).
+static inline float2 tl_weave(float2 t, float level,
+                              float beatIdx, float beatPhase, float flipGate) {
     float coverage   = 0.0;
     float depthShade = 0.0;
+    float flipMix = smoothstep(0.05, 0.55, beatPhase);   // re-route early, then hold
     for (int L = 0; L <= kTL_maxDepth; L++) {
         float  s  = kTL_baseTiles * exp2(float(L));
         float2 p  = t * s;
         float2 id = floor(p);
         float2 f  = fract(p) - 0.5;
-        float  h  = hash_f01_2(id + 0.5);        // per-cell orientation
-        float  d  = tl_arc(f, h);
-        // AA width = the fragment's footprint in cell space. Derived from the
-        // CONTINUOUS scaled coord `p` (not from `d`, whose screen-space derivative
-        // spikes at every fract() wrap → blocky smear). p = t·s is seam-free.
+        // AA width from the CONTINUOUS scaled coord `p` (not the wrapping arc
+        // distance, whose derivative spikes at fract() seams → blocky smear).
         float  aa = length(fwidth(p)) + 1e-4;
-        float  cov = smoothstep(kTL_lineW + aa, kTL_lineW - aa, d);
 
-        // Openness of this level, keyed to the PARENT cell so a coarse tile's four
-        // children reveal together as its big arc fades (the "one big arc → four
-        // small arcs" morph). Level 0 is always fully present (the base weave).
+        // Static orientation (the PG.4.1 weave, exactly, at flipGate 0).
+        float covStatic = tl_arcCov(f, hash_f01_2(id + 0.5), aa);
+        // Per-beat re-route: participating subset crossfades prev-beat → this-beat
+        // orientation. Integer beat offsets shift the hash lattice → distinct
+        // orientation per cell per beat.
+        float participate = step(hash_f01_2(id + float2(101.0, 53.0)), kTL_flipFrac);
+        float hPrev = hash_f01_2(id + float2((beatIdx - 1.0) * 37.0 + 3.0, (beatIdx - 1.0) * 17.0 + 1.0));
+        float hCurr = hash_f01_2(id + float2(beatIdx * 37.0 + 3.0, beatIdx * 17.0 + 1.0));
+        float covFlip = mix(tl_arcCov(f, hPrev, aa), tl_arcCov(f, hCurr, aa), flipMix);
+        float cov = mix(covStatic, covFlip, participate * flipGate);
+
+        // Openness — parent-keyed so a coarse tile's four children reveal together.
         float open;
         if (L == 0) {
             open = 1.0;
@@ -149,17 +175,33 @@ fragment float4 preset_fragment(VertexOut in [[stage_in]],
     float density = 1.0 - exp(-max(0.0, smoothedFlux) * kTL_fluxGain);
     float level = kTL_levelBase + (float(kTL_maxDepth) - kTL_levelBase) * density;
 
-    // ── Weave → palette ─────────────────────────────────────────────────────────
-    float2 w = tl_weave(p, level);
+    // ── PG.4.2 rhythm: per-beat flips (cached grid + beat_index) ────────────────
+    float beatIdx  = spectralHistory[3391];              // monotonic beat counter
+    float flipGate = clamp(f.pulse_amp01, 0.0, 1.0);     // 0 at cold-start/silence
+    float2 w = tl_weave(p, level, beatIdx, f.beat_phase01, flipGate);
     float coverage   = w.x;
     float depthShade = w.y;
 
-    // Finer sub-tiles lean toward the warm accent so the nesting reads as depth.
-    float3 ribbon = mix(kTL_ribbon, kTL_accent, depthShade * 0.85);
-    float3 color  = mix(kTL_ground, ribbon, coverage);
+    // ── PG.4.2 colour: per-path hue teams (coarse region → quantised hue) ───────
+    // Coarse spatial blocks (½ the base tile frequency) share a hue so colour reads
+    // as ribbons along paths, not per-cell rainbow noise. spectral_centroid slowly
+    // phases the whole set; finer sub-tiles brighten so nesting still reads.
+    float2 hueBlock = floor(p * kTL_baseTiles * 0.5);
+    float  teamSeed = hash_f01_2(hueBlock + 61.0);
+    float  team     = floor(teamSeed * kTL_hueTeams) / kTL_hueTeams;
+    float  hue      = fract(team + f.spectral_centroid * 0.30 + 0.55);
+    float3 ribbon   = hsv2rgb(float3(hue, 0.52 - depthShade * 0.12, 0.86 + depthShade * 0.14));
 
+    float3 color = mix(kTL_ground, ribbon, coverage);
     // Soft ribbon core highlight (op-art punch without pure-white flatness).
-    color += kTL_ribbon * smoothstep(0.55, 1.0, coverage) * 0.12;
+    color += ribbon * smoothstep(0.55, 1.0, coverage) * 0.12;
+
+    // ── PG.4.2 accent: bounded bass-onset glow on the subdivided ribbons ────────
+    // Weighted toward the finer (higher-depth) tiles — the "newest subdivided
+    // cluster" — but broad enough to read. Bounded (drop if it competes at M7).
+    float glow = kTL_glowGain * clamp(f.bass_dev, 0.0, 1.5)
+               * smoothstep(0.28, 0.9, depthShade) * coverage;
+    color += ribbon * glow;
 
     return float4(min(color, float3(1.0)), 1.0);
 }
