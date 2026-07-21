@@ -63,7 +63,7 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
-### Increment LFS.1 — reference/diagnostic images out of git (LFS cost) ✅ (2026-07-21)
+### Increment LFS.1 — reference/diagnostic images out of git (LFS cost) ✅ (2026-07-21, D-195)
 Go-forward config to stop LFS charges from dev-only reference media, at Matt's direction off a $1.48 GitHub LFS receipt. Removed the `docs/VISUAL_REFERENCES/**/*.{jpg,png,gif}` + `docs/diagnostics/**/*.{png,jpg}` LFS rules from `.gitattributes`; added image-only ignore globs to `.gitignore` (raster images only — the READMEs, diagnoses, rendering-architecture contracts, palette HTML, and `source_*.txt/json` in those dirs STAY tracked); `git rm --cached` the 189 already-tracked images (kept on disk). **Reverses the PUB.2 2026-07-12 decision to keep reference media in LFS** — Matt's informed override (AskUserQuestion, 2026-07-21): reference images become local-only, contributors won't get them on clone. `docs/PUBLISHING.md` §2/§3 reconciled to match. Note: the weights (~167 MB, the LFS bulk) are untouched — their cost lever is the already-staged PUB.2 §1 Release-asset cutover. Storage reclaim of the historical image blobs needs the maintainer-run `Scripts/reclaim-lfs-visual-refs.sh` (mirror clone → `filter-repo --path-regex` image-only purge → force-push) + a GitHub GC request; that's the destructive follow-up, deferred to Matt. **Done-when:** ✅ config committed; docs reconciled. History purge + weights cutover remain maintainer-executed.
 ### Increment KSRETIRE.1 — Kinetic Sculpture retired ✅ (2026-07-20)
 

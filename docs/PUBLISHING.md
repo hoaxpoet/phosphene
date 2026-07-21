@@ -6,8 +6,8 @@ Release asset, LFS keeps reference media only (§1); (3) `prompts/` ships with
 its framing README (done at PUB.1); (4) preset hot-reload gets wired with
 compile errors surfaced on the toast surface (queued — review Phase 2).
 
-**AMENDED 2026-07-21 (LFS.1, Matt's override of decision 2's "keeps reference
-media"):** the `docs/VISUAL_REFERENCES` + `docs/diagnostics` raster images are
+**AMENDED 2026-07-21 (LFS.1 / D-195, Matt's override of decision 2's "keeps
+reference media"):** the `docs/VISUAL_REFERENCES` + `docs/diagnostics` raster images are
 now **gitignored, local-only** — removed from the LFS `.gitattributes` rules
 and `git rm --cached` (go-forward config landed at LFS.1). Reference images are
 no longer in the repo; contributors won't get them on clone. Text records in
