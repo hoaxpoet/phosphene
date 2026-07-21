@@ -75,10 +75,10 @@ struct PresetLoaderCompileFailureTest {
     /// §FANTASIA REBUILD.
     /// 27 → 26 at GBRETIRE.1 (Glass Brutalist retired — ray-march "brutalist corridor"
     /// concept fails the viability gate: D-020 makes the concrete deliberately audio-static
-    /// so the hero subject can never be an instrument. See docs/DECISIONS.md D-185.)
+    /// so the hero subject can never be an instrument. See docs/DECISIONS.md D-186.)
     /// 26 → 25 at KSRETIRE.1 (Kinetic Sculpture retired — after multiple redesigns the
     /// preset never found the right direction; a fresh psychedelic-geometry preset will be
-    /// authored separately. Phase RMENV engine work is retained. See docs/DECISIONS.md D-187.)
+    /// authored separately. Phase RMENV engine work is retained. See docs/DECISIONS.md D-188.)
     static let expectedProductionPresetCount = 25
 
     @Test("PresetLoader.presets.count matches expectedProductionPresetCount — catches Failed Approach #44 silent drops")

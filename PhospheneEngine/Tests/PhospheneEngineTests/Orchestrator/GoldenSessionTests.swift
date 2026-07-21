@@ -66,7 +66,7 @@ struct GoldenSessionTests {
         // track-firsts driven by family-repeat penalty cascade.
         // D-123 (2026-05-13) — Ferrofluid Ocean moved abstract → geometric and now
         // family-clusters with Volumetric Lithograph / Lumen Mosaic (Glass Brutalist
-        // retired GBRETIRE.1 / D-185; Kinetic Sculpture retired KSRETIRE.1 / D-187);
+        // retired GBRETIRE.1 / D-186; Kinetic Sculpture retired KSRETIRE.1 / D-188);
         // the previous sequence had FO winning a slot that's now under more
         // family-repeat pressure.
         // Membrane is the only `reaction` preset in the catalog, so once selected it
@@ -116,7 +116,7 @@ struct GoldenSessionTests {
 
     // MARK: — Session B: Mellow Jazz (5 × 180 s, BPM=85, val=0.3, arous=−0.3)
 
-    // Scoring trace — GBRETIRE.1 (2026-07-19): Glass Brutalist retired (D-185).
+    // Scoring trace — GBRETIRE.1 (2026-07-19): Glass Brutalist retired (D-186).
     // targetTemp=0.62, targetDensity=0.38, targetMotion=0.3125:
     //   Pre-retirement GB (moodScore=0.975, tempCenter 0.65 ≈ 0.62, density 0.4 ≈ 0.38)
     //   dominated this mellow-jazz session. With GB gone, Waveform is the next-best
@@ -185,7 +185,7 @@ struct GoldenSessionTests {
     // "LumenMosaic-eligible" below regression-locks LM winning at least one slot in
     // an ambient-mood-favouring fixture.
     //
-    // QR.2 prior-state baseline (preserved for reference; predates GBRETIRE.1 / D-185
+    // QR.2 prior-state baseline (preserved for reference; predates GBRETIRE.1 / D-186
     // when Glass Brutalist still existed):
     //   Track 0 (BPM=130, val=0.70, arous=0.80): Plasma 0.803 wins.
     //   Track 1 (BPM=80,  val=0.20, arous=-0.40): GB 0.975 wins (very close tempCenter).
@@ -199,11 +199,11 @@ struct GoldenSessionTests {
     func sessionC_presetSequence() throws {
         let session = try planner.plan(
             tracks: makeSessionC(), catalog: makeRealCatalog(), deviceTier: .tier2)
-        // GBRETIRE.1 (2026-07-19): Glass Brutalist retired (D-185). GB previously won
+        // GBRETIRE.1 (2026-07-19): Glass Brutalist retired (D-186). GB previously won
         // the two low-arousal slots (tracks 1 + 4). With GB gone the greedy planner
         // reslots deterministically: Waveform takes the low-energy tracks (sparse
         // density fit) and Ferrofluid Ocean returns at track 5.
-        // KSRETIRE.1 (2026-07-20): Kinetic Sculpture retired (D-187). KS had held the
+        // KSRETIRE.1 (2026-07-20): Kinetic Sculpture retired (D-188). KS had held the
         // mid-energy geometric slot at track 2 (Rock-2, BPM=115, val=0.50, arous=0.40);
         // with KS gone that slot cleanly falls to Membrane, the next-best fit for that
         // mood (the only `reaction` preset, so no family-repeat competitor). Every other
@@ -251,7 +251,7 @@ struct GoldenSessionTests {
     //   Arachne   : moodScore=0.985  motion=0.7375 → total ≈ 0.818
     //                (tempCenter 0.5 → 1.00; density 0.65 → 0.97; motion 0.50 → 0.7375)
     //   Plasma    : moodScore=0.910  motion=0.7375 → total ≈ 0.796
-    //   (Glass Brutalist, moodScore≈0.815, ranked below LM here — retired GBRETIRE.1 / D-185.)
+    //   (Glass Brutalist, moodScore≈0.815, ranked below LM here — retired GBRETIRE.1 / D-186.)
     //
     // → Track 0, Segment 0: Lumen Mosaic wins.
     //
@@ -361,8 +361,8 @@ private func makePreset(
 // MARK: — Catalog Fixture
 
 /// All 13 production presets mirrored verbatim from their JSON sidecars
-/// (was 15 before Glass Brutalist's retirement GBRETIRE.1 / D-185, then 14
-/// before Kinetic Sculpture's retirement KSRETIRE.1 / D-187).
+/// (was 15 before Glass Brutalist's retirement GBRETIRE.1 / D-186, then 14
+/// before Kinetic Sculpture's retirement KSRETIRE.1 / D-188).
 /// Only scoring-relevant fields are populated; rendering fields use decoder defaults.
 /// Note: Murmuration.json (renamed from Starburst.json in MM.0) declares name "Murmuration".
 ///

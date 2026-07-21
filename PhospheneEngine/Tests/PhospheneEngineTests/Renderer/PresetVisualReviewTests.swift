@@ -773,7 +773,7 @@ struct PresetVisualReviewTests {
     ///   (production: `RenderPipeline+RayMarch` passes `textureManager`).
     /// - **IBL bound** (production always binds `iblManager` on this path).
     /// - **SSGI enabled when the preset declares `.ssgi`** (no production preset
-    ///   currently declares it after Glass Brutalist's retirement, D-185).
+    ///   currently declares it after Glass Brutalist's retirement, D-186).
     /// - **PostProcessChain constructed when the preset declares `.postProcess`**
     ///   (production: `passesIncludePostProcess ? ppChain : nil`).
     /// - **Ferrofluid Ocean: 4096² height field baked and bound at texture 10**
