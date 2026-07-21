@@ -17,7 +17,7 @@
 //     Caught by: test_lightIntensityPassesThroughUnchanged.
 //
 // (The per-preset GlassBrutalist JSON validation suite that once lived here was
-//  removed with the Glass Brutalist preset — see docs/DECISIONS.md D-185.)
+//  removed with the Glass Brutalist preset — see docs/DECISIONS.md D-186.)
 //
 // All tests call PresetDescriptor.makeSceneUniforms() — the function extracted from
 // VisualizerEngine+Presets.swift in Increment 3.5.3. No Metal, no GPU, no MTLDevice.
