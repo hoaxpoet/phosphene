@@ -97,6 +97,48 @@ struct CymaticSandSketchRenderTests {
         #expect(frac < 0.5, "should not be a white wash (got \(frac))")
     }
 
+    // MARK: - Performance (full update+render GPU time at 1080p; CR_PERF=1)
+
+    @Test("Performance: p50/p95/p99 GPU time at 1080p (CR_PERF=1)")
+    func performance() throws {
+        // Env-gated out of the default/parallel run — GPU-time under 16-way contention is
+        // meaningless. Run solo: CR_PERF=1 swift test --filter 'Cymatic Sand.*Performance'.
+        guard ProcessInfo.processInfo.environment["CR_PERF"] == "1" else {
+            print("[sand perf] CR_PERF not set — skipping (run solo)"); return
+        }
+        guard let ctx = try? MetalContext() else { return }
+        let geo = try makeGeo(ctx)
+        let w = 1920, h = 1080
+        let td = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: ctx.pixelFormat, width: w, height: h, mipmapped: false)
+        td.usage = [.renderTarget, .shaderRead]; td.storageMode = .shared
+        guard let tex = ctx.device.makeTexture(descriptor: td) else { throw E.render }
+
+        // Warm up: settle the sand + warm the GPU on a busy beat-heavy state.
+        for i in 0..<150 { let (f, s) = features(frame: i, total: 300)
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
+            geo.update(features: f, stemFeatures: s, commandBuffer: cmd); cmd.commit(); cmd.waitUntilCompleted() }
+
+        var samples: [Double] = []
+        for i in 150..<210 {
+            let (f, s) = features(frame: i, total: 300)
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
+            geo.update(features: f, stemFeatures: s, commandBuffer: cmd)
+            let rpd = MTLRenderPassDescriptor()
+            rpd.colorAttachments[0].texture = tex
+            rpd.colorAttachments[0].loadAction = .clear
+            rpd.colorAttachments[0].storeAction = .store
+            guard let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) else { continue }
+            geo.render(encoder: enc, features: f); enc.endEncoding()
+            cmd.commit(); cmd.waitUntilCompleted()
+            samples.append((cmd.gpuEndTime - cmd.gpuStartTime) * 1000.0)
+        }
+        samples.sort()
+        func pct(_ p: Double) -> Double { samples[min(samples.count - 1, Int(p * Double(samples.count)))] }
+        print(String(format: "[sand perf] 1080p GPU ms — p50=%.3f p95=%.3f p99=%.3f (n=%d, grid 720² · 400K grains)",
+                     pct(0.5), pct(0.95), pct(0.99), samples.count))
+        #expect(pct(0.95) < 8.0, "1080p p95 GPU time \(pct(0.95)) ms exceeds the Tier-2 budget")
+    }
+
     // MARK: - RENDER_VISUAL: motion sequence
 
     @Test("Render sand motion sequence (RENDER_VISUAL=1)")
