@@ -61,20 +61,22 @@ constant int2 kLadder[11] = {
 // MARK: - Camera / plate framing (strong oblique tilt — ref 01/02 are flat, we tilt)
 
 constant float kPI          = 3.14159265358979;
-constant float kElevDeg     = 52.0;   // camera elevation above the plate plane (< 90° top-down → strong oblique)
-constant float kCamDist     = 2.75;   // camera distance from plate centre (plate fills more of the frame)
-constant float kFovY        = 0.86;   // vertical FOV (radians, tan-half applied below)
-constant float kPlateHalf   = 1.00;   // plate spans [-kPlateHalf, +kPlateHalf] in world XZ
+constant float kElevDeg     = 48.0;   // camera elevation above the plate plane (< 90° top-down → strong oblique)
+constant float kCamDist     = 1.85;   // camera distance from plate centre (CR.1.1: closer → plate fills the 16:9 canvas)
+constant float kFovY        = 0.96;   // vertical FOV (radians, tan-half applied below)
+constant float kPlateHalf   = 1.18;   // plate spans [-kPlateHalf, +kPlateHalf] in world XZ (CR.1.1: larger so it fills width)
 
 // MARK: - Look tunables (CR.1 maquette; Matt's M7 sets finals)
 
 constant float kLineWidthPx = 2.3;    // nodal ridge screen width (isotropic-AA via fwidth, §18.3)
 constant float kHeightSigma = 0.30;   // width of the smooth relief bump around a nodal line (field units)
 constant float kHeightScale = 2.4;    // relief steepness for the derived normal (§18.9)
-constant float kEmissiveGain = 2.6;   // jewel ridge emissive at full excitation (HDR — crests bloom)
+constant float kEmissiveGain = 1.5;   // CR.1.1: jewel ridge emissive sits NEAR the bloom threshold so colour
+                                      // survives ACES (only the brightest crests bloom white — the M7 "reads
+                                      // white" fix; was 2.6 → whole ridge over threshold → washed to white)
 constant float kEmissiveFloor = 0.30; // dim emissive at silence (non-black fundamental, D-037)
-constant float kGGXRough    = 0.44;   // key-highlight roughness — broad sheen on the relief, not tight glint-dots
-constant float kGGXGain     = 2.2;    // key highlight strength (the dimensional "lit" cue)
+constant float kGGXRough    = 0.46;   // key-highlight roughness — broad sheen on the relief, not tight glint-dots
+constant float kGGXGain     = 1.5;    // CR.1.1: softer key (was 2.2) — the white highlight was washing the jewel hue
 
 // Deep-black plate + faint background floor (never pure black, D-037).
 constant float3 kPlateBody  = float3(0.006, 0.007, 0.012);
@@ -220,7 +222,7 @@ fragment float4 cymatic_resonance_fragment(
     // ── Lighting: one warm key + GGX highlight on the relief (the depth cue) ────
     float3 viewDir  = -rd;
     float3 lightDir = normalize(float3(-0.45, 0.72, 0.30));
-    float3 keyColor = float3(1.0, 0.96, 0.90);
+    float3 keyColor = float3(1.0, 0.82, 0.52);   // CR.1.1: warm-gold key (was near-white) — a white key washed the jewel hue
     float spec = cr_ggx(normal, viewDir, lightDir, kGGXRough) * kGGXGain;
 
     // ── Jewel emissive: fixed spatial iridescence (hue routing is CR.3) ─────────
@@ -228,13 +230,14 @@ fragment float4 cymatic_resonance_fragment(
     // iridescent (sapphire → magenta → gold), not a flat white line drawing.
     float r  = length(plate);
     float slope = clamp(dhdx * 0.5 + dhdy * 0.5 + 0.5, 0.0, 1.0);
-    float hue = fract(0.60 + 0.22 * r + 0.10 * slope);
-    float3 jewel = cr_hsv2rgb(float3(hue, 0.82, 1.0));
-    // Blend the three named anchors in too so the palette stays in the sapphire/
-    // magenta/gold jewel family rather than sweeping the full rainbow.
+    // CR.1.1: sweep the FULL jewel range across the plate radius — sapphire (0.58) →
+    // magenta (0.85) → gold (wraps to ~0.08) — with a slope wobble for iridescence.
+    // Higher saturation + less white-anchor blend so it reads jewel, not white.
+    float hue = fract(0.58 + 0.50 * r + 0.12 * slope);
+    float3 jewel = cr_hsv2rgb(float3(hue, 0.88, 1.0));
     float3 anchor = mix(mix(kJewelA, kJewelB, clamp(r * 1.3, 0.0, 1.0)),
                         kJewelC, clamp(slope, 0.0, 1.0));
-    jewel = normalize(mix(jewel, anchor, 0.5) + 1e-4);
+    jewel = normalize(mix(jewel, anchor, 0.35) + 1e-4);
 
     // Excitation gate (D-019): dim at silence (floor), full when the plate rings.
     float excite = mix(kEmissiveFloor, kEmissiveGain, clamp(st.warmup, 0.0, 1.0));

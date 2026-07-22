@@ -74,14 +74,24 @@ struct CymaticResonanceVisualTests {
         energy: Float,
         convergeFrames: Int,
         width: Int,
-        height: Int
+        height: Int,
+        baselineCentroid: Float? = nil,
+        baselineFrames: Int = 0
     ) throws -> (pixels: [UInt8], gpuMs: Double) {
         guard let state = CymaticResonanceState(device: context.device) else {
             throw CRTestError.stateAllocationFailed
         }
         let stm = stems(energy: energy)
-        // Converge the EMAs at bassDev 0 (steady brightness) …
         var t: Float = 0
+        // CR.1.1: the ladder is driven by centroid DEVIATION from a track baseline —
+        // establish that baseline first, then `centroid` reads as a deviation from it.
+        if let base = baselineCentroid {
+            for _ in 0..<baselineFrames {
+                t += 1.0 / 60.0
+                state.tick(deltaTime: 1.0 / 60.0, features: features(centroid: base, bassDev: 0, time: t, width: width, height: height), stems: stm)
+            }
+        }
+        // Converge the EMAs at bassDev 0 (steady brightness) …
         for _ in 0..<convergeFrames {
             t += 1.0 / 60.0
             state.tick(deltaTime: 1.0 / 60.0, features: features(centroid: centroid, bassDev: 0, time: t, width: width, height: height), stems: stm)
@@ -189,7 +199,7 @@ struct CymaticResonanceVisualTests {
 
     // MARK: - Embodiment: bright → fine, dim → simple, drop → snap-to-simple
 
-    @Test("Embodiment: brightness climbs the mode ladder; a bass drop snaps to simple")
+    @Test("Embodiment: brightness ABOVE the track baseline climbs the ladder; a bass drop snaps to simple")
     func embodiment() throws {
         guard let ctx = try? MetalContext() else { return }   // no Metal device (CI) → skip
         guard let preset = cymaticPreset() else {
@@ -198,31 +208,67 @@ struct CymaticResonanceVisualTests {
         let chain = try PostProcessChain(context: ctx, shaderLibrary: ShaderLibrary(context: ctx))
         let w = Self.renderW, h = Self.renderH
 
-        // Warmup held equal (energy present) so the ONLY variable is the figure.
-        let dim   = try renderConverged(preset: preset, context: ctx, chain: chain,
-                                        centroid: 0.15, bassDev: 0, energy: 0.5, convergeFrames: 200, width: w, height: h)
-        let bright = try renderConverged(preset: preset, context: ctx, chain: chain,
-                                         centroid: 0.88, bassDev: 0, energy: 0.5, convergeFrames: 200, width: w, height: h)
+        // CR.1.1: the ladder is DEVIATION-driven. Establish a track baseline at a
+        // realistic centroid (0.11), then a centroid ABOVE it reads finer, BELOW it
+        // simpler. Warmup held equal (energy present) so the only variable is the figure.
+        let base: Float = 0.11
+        let simpler = try renderConverged(preset: preset, context: ctx, chain: chain,
+                                          centroid: 0.085, bassDev: 0, energy: 0.5, convergeFrames: 60, width: w, height: h,
+                                          baselineCentroid: base, baselineFrames: 1500)
+        let finer = try renderConverged(preset: preset, context: ctx, chain: chain,
+                                        centroid: 0.17, bassDev: 0, energy: 0.5, convergeFrames: 60, width: w, height: h,
+                                        baselineCentroid: base, baselineFrames: 1500)
         let drop  = try renderConverged(preset: preset, context: ctx, chain: chain,
-                                        centroid: 0.88, bassDev: 0.95, energy: 0.5, convergeFrames: 200, width: w, height: h)
+                                        centroid: 0.17, bassDev: 0.95, energy: 0.5, convergeFrames: 60, width: w, height: h,
+                                        baselineCentroid: base, baselineFrames: 1500)
 
-        let dimLit = litFraction(dim.pixels)
-        let brightLit = litFraction(bright.pixels)
+        let simplerLit = litFraction(simpler.pixels)
+        let finerLit = litFraction(finer.pixels)
         let dropLit = litFraction(drop.pixels)
-        print("[CR embodiment] litFraction dim=\(dimLit) bright=\(brightLit) drop=\(dropLit)")
-        print("[CR embodiment] meanAbsDiff dim↔bright=\(meanAbsDiff(dim.pixels, bright.pixels)) bright↔drop=\(meanAbsDiff(bright.pixels, drop.pixels))")
+        print("[CR embodiment] litFraction simpler=\(simplerLit) finer=\(finerLit) drop=\(dropLit)")
+        print("[CR embodiment] meanAbsDiff simpler↔finer=\(meanAbsDiff(simpler.pixels, finer.pixels)) finer↔drop=\(meanAbsDiff(finer.pixels, drop.pixels))")
 
-        // Bright is a FINER figure → strictly more ridge coverage than dim.
-        #expect(brightLit > dimLit,
-                "bright figure should have more ridge coverage than dim (bright=\(brightLit), dim=\(dimLit))")
-        // The change is GEOMETRIC, not a colour shift: dim and bright differ structurally.
-        #expect(meanAbsDiff(dim.pixels, bright.pixels) > 3.0,
-                "dim and bright figures should differ structurally, not just in colour")
-        // A bass drop snaps the ladder DOWN → simpler than the bright figure it came from.
-        #expect(dropLit < brightLit,
-                "a bass drop should snap to a simpler figure (drop=\(dropLit), bright=\(brightLit))")
-        #expect(meanAbsDiff(bright.pixels, drop.pixels) > 3.0,
+        // Brighter-than-baseline is a FINER figure → strictly more ridge coverage.
+        #expect(finerLit > simplerLit,
+                "above-baseline brightness should give a finer figure (finer=\(finerLit), simpler=\(simplerLit))")
+        // The change is GEOMETRIC, not a colour shift.
+        #expect(meanAbsDiff(simpler.pixels, finer.pixels) > 3.0,
+                "the two figures should differ structurally, not just in colour")
+        // A bass drop snaps the ladder DOWN → simpler than the finer figure it came from.
+        #expect(dropLit < finerLit,
+                "a bass drop should snap to a simpler figure (drop=\(dropLit), finer=\(finerLit))")
+        #expect(meanAbsDiff(finer.pixels, drop.pixels) > 3.0,
                 "the snap should be a visible restructure, not a colour shift")
+    }
+
+    // MARK: - Regression lock: the ladder must traverse on a REAL narrow centroid band
+
+    @Test("Ladder traverses a visible range on the real 0.09–0.17 centroid band (D-197)")
+    func ladderTraversalOnNarrowBand() throws {
+        guard let ctx = try? MetalContext() else { return }
+        guard let state = CymaticResonanceState(device: ctx.device) else {
+            throw CRTestError.stateAllocationFailed
+        }
+        // This is the exact failure the M7 exposed: on "Hummer" the healthy-portion
+        // spectral_centroid spanned only ~0.085–0.162 and the OLD `centroid × 10`
+        // mapping moved the ladder < 1 of 11 rungs → "held its pattern". The BLEND
+        // (D-197) must turn that same narrow band into visible ladder travel.
+        let stm = stems(energy: 0.5)
+        var t: Float = 0
+        // Establish the track baseline at the band's centre.
+        for _ in 0..<1500 { t += 1.0 / 60.0
+            state.tick(deltaTime: 1.0 / 60.0, features: features(centroid: 0.12, bassDev: 0, time: t, width: 8, height: 8), stems: stm) }
+        // Oscillate within the real band [0.09, 0.17] (period ~4 s) and record the ladder.
+        var minL = Float.greatestFiniteMagnitude, maxL = -Float.greatestFiniteMagnitude
+        for i in 0..<1200 { t += 1.0 / 60.0
+            let c = 0.13 + 0.04 * sin(Float(i) * 2.0 * Float.pi / 240.0)
+            state.tick(deltaTime: 1.0 / 60.0, features: features(centroid: c, bassDev: 0, time: t, width: 8, height: 8), stems: stm)
+            minL = min(minL, state.ladderPos); maxL = max(maxL, state.ladderPos)
+        }
+        let travel = maxL - minL
+        print("[CR traversal] ladderPos range on the real narrow band = \(travel) of \(CymaticResonanceState.ladderCount - 1) rungs (min=\(minL) max=\(maxL))")
+        #expect(travel > 3.0,
+                "a real narrow centroid band must move the ladder > 3 rungs (got \(travel)); pre-D-197 this was < 1 = 'held its pattern'")
     }
 
     // MARK: - Silence (D-037): non-black but calm
