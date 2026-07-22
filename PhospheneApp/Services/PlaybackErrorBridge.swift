@@ -73,6 +73,14 @@ final class PlaybackErrorBridge {
     /// and more prominently (Matt's call, ASH.2).
     private var audioLevelsLowShown = false
 
+    /// D-197 follow-up ("degraded only after loud"): latched true on the first
+    /// `band=healthy` window. The low-levels nudge fires only after this — a
+    /// low/critical window before the chain has ever been loud is a quiet song
+    /// intro / capture warmup, not a degraded chain (the Cymatic Resonance M7:
+    /// "Hummer"'s −24 dBFS intro). A never-loud chain is a dead-tap / silence
+    /// case, covered more prominently by the stall card + silence-extended path.
+    private var hasSeenHealthyChain = false
+
     /// Seconds the low-level nudge stays up before auto-dismiss — long enough to
     /// read the remediation, short enough to stay unobtrusive.
     static let audioLevelsLowToastDuration: TimeInterval = 10
@@ -212,7 +220,12 @@ final class PlaybackErrorBridge {
     /// the tap peaked at −24 dBFS = critical during the quiet intro, no toast fired).
     /// Both degraded bands now nudge; the copy ("audio levels low") covers both.
     private func handle(health: SignalHealth) {
-        guard health.peakBand == .low || health.peakBand == .critical,
+        // "Degraded only after loud" (D-197 follow-up): the chain must have been
+        // observed healthy at least once before a low/critical window reads as
+        // degradation — otherwise a quiet intro nudges falsely.
+        if health.peakBand == .healthy { hasSeenHealthyChain = true; return }
+        guard hasSeenHealthyChain,
+              health.peakBand == .low || health.peakBand == .critical,
               !audioLevelsLowShown else { return }
         audioLevelsLowShown = true
         let isSpotify = isSpotifySourceProvider?() ?? false

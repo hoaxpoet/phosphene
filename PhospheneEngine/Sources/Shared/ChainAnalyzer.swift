@@ -116,7 +116,7 @@ public enum ChainAnalyzer {
             broken = true
             reasons.append("dead_tap")
         }
-        if log.bandLowOrCritical { reasons.append("signal_health_band_low") }
+        if log.bandLowAfterHealthy { reasons.append("signal_health_band_low") }
         if log.drmSilenceLines > 0 { reasons.append("drm_silence(\(log.drmSilenceLines))") }
         if log.tapReinstalls > 0 { reasons.append("tap_reinstalls(\(log.tapReinstalls))") }
 
@@ -257,7 +257,14 @@ public enum ChainAnalyzer {
     /// One pass over session.log, extracting every chain-health signal.
     struct LogScan {
         var deadTap = false
-        var bandLowOrCritical = false
+        /// D-197 follow-up — "degraded only after loud": a `band=low`/`band=critical`
+        /// window counts as degradation ONLY if it occurs AFTER a `band=healthy`
+        /// window (the chain was loud, then dropped). Low/critical windows that
+        /// precede the first healthy window are a quiet song intro / capture warmup,
+        /// not a degraded chain, and no longer flag the verdict. SIGNAL_HEALTH lines
+        /// are chronological in session.log. (A never-loud chain is a dead-tap /
+        /// silence case, covered by `deadTap` + the silence-extended path.)
+        var bandLowAfterHealthy = false
         var drmSilenceLines = 0
         var tapReinstalls = 0
         var lastSampleRateHz: Int?
@@ -265,6 +272,7 @@ public enum ChainAnalyzer {
 
         init(logURL: URL) {
             guard let text = try? String(contentsOf: logURL, encoding: .utf8) else { return }
+            var sawHealthy = false
             for raw in text.split(whereSeparator: \.isNewline) {
                 let line = String(raw)
                 let lower = line.lowercased()
@@ -273,8 +281,9 @@ public enum ChainAnalyzer {
                 }
                 if line.contains("SIGNAL_HEALTH:") {
                     if line.contains("deadTap=true") { deadTap = true }
-                    if line.contains("band=low") || line.contains("band=critical") {
-                        bandLowOrCritical = true
+                    if line.contains("band=healthy") { sawHealthy = true }
+                    if sawHealthy, line.contains("band=low") || line.contains("band=critical") {
+                        bandLowAfterHealthy = true
                     }
                     if let range = line.range(of: "rate="),
                        let rate = Int(line[range.upperBound...]

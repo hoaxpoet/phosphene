@@ -10,6 +10,10 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-07-22-164935] ASH — "degraded only after loud" gate (D-197 follow-up, Matt-approved)
+
+Follow-up to CR.1.1's ASH work: a quiet song intro (e.g. "Hummer" at −24 dBFS) no longer reads as a degraded chain on either surface. Both now require the chain to have been observed `band=healthy` (loud) at least once before a `band=low`/`band=critical` window counts as degradation. Live nudge: `PlaybackErrorBridge.hasSeenHealthyChain` latch. Post-session verdict: `ChainAnalyzer.LogScan.bandLowAfterHealthy` (a low/critical SIGNAL_HEALTH line AFTER the first healthy one — lines are chronological) replaces the old "any low/critical line" check. A never-loud chain (genuinely dead/silent from the start) is unaffected — it's covered by the dead-tap card + silence-extended path, not this nudge. Tests: `test_lowBeforeHealthy_doesNotNudge` (app), `quietIntroDoesNotFlagBandLow` (engine); the existing band-low tests now include a leading healthy window. D-197.
+
 ### [dev-2026-07-22-163822] CR.1 + CR.1.1 — Cymatic Resonance preset added, then first-M7 defect fixes (D-196 / D-197)
 
 **CR.1 (D-196)** added Cymatic Resonance — a resonant square-plate Chladni nodal figure selected live by spectral centroid (mode-complexity ladder), `bassDev` snap-to-simple, derived-normal relief + GGX + jewel emissive on deep black through ACES + bloom. **First `direct`+`post_process` preset**: slot-6 per-preset state now reaches `PostProcessChain.runScenePass` (byte-identical for all existing presets — that path had no prior consumer). Count 25→26, `certified:false`. Maquette-stage concept-gate correction #5: the plus basis forces an anti-diagonal nodal line for opposite-parity (m,n), so the ladder is the same-parity `(m,m+2)` family `(1,3)…(11,13)` (diagonal-free).
