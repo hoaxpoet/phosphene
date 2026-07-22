@@ -29,6 +29,13 @@ private typealias PresetHashes = (steady: UInt64, beatHeavy: UInt64, quiet: UInt
 /// Inline golden dHash values for each preset × 3 fixtures.
 /// Update when a shader edit intentionally changes visual output — never silently.
 private let goldenPresetHashes: [String: PresetHashes] = [
+    // CR.1 Cymatic Resonance (direct + post_process): rendered through the real
+    // PostProcessChain (renderPostProcessFrame) with a ZEROED slot-6 state — the
+    // deterministic silence fundamental figure (ladderPos 0 = mode (1,3), warmup 0).
+    // CR reads its mode-ladder position from the slot-6 state, not the FeatureVector,
+    // so all three fixtures converge to one hash (the Nimbus/Aurora pattern). This
+    // locks the maquette silence render; it will regenerate at CR.2 (materials).
+    "Cymatic Resonance": (steady: 0x0F0F2F2B0F170F0F, beatHeavy: 0x0F0F2F2B0F170F0F, quiet: 0x0F0F2F2B0F170F0F),
     // V.7.7B Arachne: staged COMPOSITE fragment now ports the V.7.5 v5 web
     // walk + spider + mist + dust motes. The regression renders the COMPOSITE
     // stage in isolation with `worldTex` unbound (texture sampler returns 0),
@@ -358,6 +365,17 @@ struct PresetRegressionTests {
         features: inout FeatureVector,
         context: MetalContext
     ) throws -> [UInt8] {
+        // Direct + post_process presets (Cymatic Resonance) compile their primary
+        // `pipelineState` for `.rgba16Float` (the HDR scene texture), which cannot
+        // blit into the `.bgra8Unorm_srgb` target the direct path below uses. Render
+        // them through the real PostProcessChain instead — the same path the live app
+        // and the CR dedicated tests use. Slot-6 state is bound ZEROED (the silence
+        // fundamental), so like Nimbus/Aurora all three fixtures converge to one hash.
+        let passes = preset.descriptor.passes
+        if passes.contains(.postProcess) && !passes.contains(.rayMarch) {
+            return try renderPostProcessFrame(preset: preset, features: &features, context: context)
+        }
+
         let size = renderSize
         let texDesc = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: context.pixelFormat, width: size, height: size, mipmapped: false)
@@ -419,6 +437,57 @@ struct PresetRegressionTests {
         var pixels = [UInt8](repeating: 0, count: size * size * 4)
         texture.getBytes(&pixels, bytesPerRow: size * 4,
                          from: MTLRegionMake2D(0, 0, size, size), mipmapLevel: 0)
+        return pixels
+    }
+
+    /// Render a direct + post_process preset (Cymatic Resonance) through the real
+    /// `PostProcessChain` at `renderSize`. Slot-6 state is a zeroed buffer (the
+    /// deterministic silence fundamental), so the golden hash is reproducible.
+    private func renderPostProcessFrame(
+        preset: PresetLoader.LoadedPreset,
+        features: inout FeatureVector,
+        context: MetalContext
+    ) throws -> [UInt8] {
+        let size = renderSize
+        let chain = try PostProcessChain(context: context, shaderLibrary: ShaderLibrary(context: context))
+        chain.allocateTextures(width: size, height: size)
+
+        let floatStride = MemoryLayout<Float>.stride
+        guard
+            let fft = context.makeSharedBuffer(length: 512 * floatStride),
+            let wav = context.makeSharedBuffer(length: 2048 * floatStride),
+            let state = context.makeSharedBuffer(length: 16)   // zeroed CymaticStateGPU (silence fundamental)
+        else { throw RegressionTestError.bufferAllocationFailed }
+        _ = fft.contents().initializeMemory(as: UInt8.self, repeating: 0, count: 512 * floatStride)
+        _ = state.contents().initializeMemory(as: UInt8.self, repeating: 0, count: 16)
+
+        let outDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: context.pixelFormat, width: size, height: size, mipmapped: false)
+        outDesc.usage = [.renderTarget, .shaderRead]
+        outDesc.storageMode = .shared
+        guard let outTex = context.device.makeTexture(descriptor: outDesc) else {
+            throw RegressionTestError.textureAllocationFailed
+        }
+        guard let cmdBuf = context.commandQueue.makeCommandBuffer() else {
+            throw RegressionTestError.commandBufferFailed
+        }
+        chain.render(
+            scenePipelineState: preset.pipelineState,
+            features: &features,
+            fftBuffer: fft,
+            waveformBuffer: wav,
+            stemFeatures: StemFeatures.zero,
+            outputTexture: outTex,
+            commandBuffer: cmdBuf,
+            noiseTextures: nil,
+            presetFragmentBuffer: state
+        )
+        cmdBuf.commit()
+        cmdBuf.waitUntilCompleted()
+        guard cmdBuf.status == .completed else { throw RegressionTestError.renderFailed }
+        var pixels = [UInt8](repeating: 0, count: size * size * 4)
+        outTex.getBytes(&pixels, bytesPerRow: size * 4,
+                        from: MTLRegionMake2D(0, 0, size, size), mipmapLevel: 0)
         return pixels
     }
 
