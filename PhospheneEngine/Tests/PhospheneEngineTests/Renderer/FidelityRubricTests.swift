@@ -101,6 +101,12 @@ struct FidelityRubricReportTests {
 private let expectedAutomatedGate: [String: Bool] = [
     "Arachne":              false,   // full; V.7.5 §10.1.9 — M3 fails (chitin removed from spider)
     "Aurora Veil":          true,    // lightweight; AV.2 wired seven audio routes — L1/L2/L3 all pass
+    "Cymatic Resonance":    false,   // lightweight; coupling (centroid→ladder / bassDev→snap / warmup)
+                                     // is computed CPU-side in CymaticResonanceState and reaches the
+                                     // fragment via the slot-6 buffer — the shader reads only aspect_ratio
+                                     // + time from the FeatureVector, so the MSL heuristic sees no
+                                     // deviation primitives (Nimbus/Skein/Lumen precedent). certified:false
+                                     // (CR.1 maquette; cert at CR.3 after Matt's M7).
     "Ferrofluid Ocean":     false,   // full; M3 fails
     "Filigree":             false,   // lightweight; coupling (energyEnv/hitEnv from stems.*EnergyDev)
                                      // is computed CPU-side in PhysarumGeometry and reaches the kernel
