@@ -106,6 +106,7 @@ public final class CymaticSandGeometry: ParticleGeometry, @unchecked Sendable {
     private var cosT: Float = 0
     private var hueOffset: Float = 0
     private var modeWanderPhase: Float = 0   // CR.2.1 beat/energy-driven mode variety
+    private var prevBeatEnv: Float = 0       // CR.2.2 beat-edge detect for the mode kick
     private var ladderFinal: Float = 0
     private var frameCounter: UInt32 = 0
 
@@ -114,10 +115,14 @@ public final class CymaticSandGeometry: ParticleGeometry, @unchecked Sendable {
     // 0.08–0.17 band loud or quiet), so beats + energy drive a continuous wander
     // AROUND the centroid baseline — the figure keeps stepping through varied modes
     // when the music is busy. Two incommensurate sines so it never obviously repeats.
-    private static let wanderAmp: Float = 3.6         // ± rungs of wander around the baseline
+    private static let wanderAmp: Float = 4.4         // ± rungs of wander (CR.2.2: 3.6→4.4, more variety)
     private static let wanderBaseDrift: Float = 0.16  // slow floor so it never locks
     private static let wanderEnergyDrift: Float = 0.9 // loud → faster wander
     private static let wanderBeatDrift: Float = 1.3   // beaty → faster wander
+    /// CR.2.2 (M7 "more variety; connection feels loose") — each beat STEPS the mode
+    /// wander forward, so the figure visibly changes ON the beat (variety tied to the
+    /// music, tighter connection) rather than only drifting autonomously.
+    private static let wanderBeatKick: Float = 0.5
 
     // Ladder / mapping constants (mirror CymaticResonanceState / D-197).
     private static let ladderCount = 11
@@ -248,7 +253,7 @@ public final class CymaticSandGeometry: ParticleGeometry, @unchecked Sendable {
         energyEnv = 0; beatEnv = 0
         centroidEMA = 0; slowCentroid = 0; ladderSmooth = 0; energyForGate = 0
         sinT = 0; cosT = 0; hueOffset = 0
-        modeWanderPhase = 0; ladderFinal = 0
+        modeWanderPhase = 0; prevBeatEnv = 0; ladderFinal = 0
     }
 
     // MARK: - Music envelopes
@@ -286,11 +291,16 @@ public final class CymaticSandGeometry: ParticleGeometry, @unchecked Sendable {
         // CR.2.1 mode wander — beats + energy keep the figure moving through varied
         // modes even when the centroid (and so ladderSmooth) is stable. Gated by the
         // silence gate so silence rests on the fundamental.
+        // Beat kick — a beat rising edge steps the mode forward (variety tied to the beat).
+        if beatEnv > 0.5 && prevBeatEnv <= 0.5 { modeWanderPhase += Self.wanderBeatKick }
+        prevBeatEnv = beatEnv
         let driftRate = Self.wanderBaseDrift + Self.wanderEnergyDrift * energyEnv
                       + Self.wanderBeatDrift * beatEnv
         modeWanderPhase += dt * driftRate
-        let wander = Self.wanderAmp * (0.6 * sin(modeWanderPhase)
-                                       + 0.4 * sin(modeWanderPhase * 1.7 + 1.3)) * silenceGate
+        // Three incommensurate sines → visits more modes without an obvious cycle.
+        let wander = Self.wanderAmp * (0.5 * sin(modeWanderPhase)
+                                       + 0.3 * sin(modeWanderPhase * 1.7 + 1.3)
+                                       + 0.2 * sin(modeWanderPhase * 2.6 + 0.4)) * silenceGate
         ladderFinal = min(max(ladderSmooth + wander, 0), Float(Self.ladderCount - 1))
 
         // Harmony → hue (circular smoothing).
