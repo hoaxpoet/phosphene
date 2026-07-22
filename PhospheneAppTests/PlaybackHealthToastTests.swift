@@ -4,6 +4,12 @@
 // covers it earlier and more prominently (Matt's call, ASH.2). This suite locks
 // down only the low-level toast: it fires once, never repeats, ignores healthy
 // bands, and picks the Spotify vs generic remediation copy.
+//
+// D-197 "degraded only after loud": the nudge fires only after the chain has been
+// observed `band=healthy` (loud) at least once — a quiet intro that starts low no
+// longer false-flags. So every toast-expecting test here first sends a healthy
+// window, then degrades. (Before-loud suppression itself is covered by
+// PlaybackErrorBridgeTests.test_lowBeforeHealthy_doesNotNudge.)
 
 import Audio
 import Combine
@@ -36,10 +42,12 @@ struct PlaybackHealthToastTests {
     }
 
     private func low() -> SignalHealth { SignalHealth(peakBand: .low, peakDBFS: -13) }
+    private func healthy() -> SignalHealth { SignalHealth(peakBand: .healthy, peakDBFS: -6) }
 
-    @Test("band=low fires exactly one warning toast tagged audio.levels.low")
+    @Test("band=low after a healthy window fires exactly one warning toast tagged audio.levels.low")
     func test_bandLow_firesOneToast() async {
         let fix = makeSUT()
+        fix.health.send(healthy())   // D-197: chain must have been loud first
         fix.health.send(low())
         await Task.yield(); await Task.yield()
         #expect(fix.toastManager.visibleToasts.count == 1)
@@ -50,6 +58,7 @@ struct PlaybackHealthToastTests {
     @Test("a second band=low does not re-toast (one per session per cause)")
     func test_bandLow_twice_onlyOne() async {
         let fix = makeSUT()
+        fix.health.send(healthy())
         fix.health.send(low())
         await Task.yield(); await Task.yield()
         // Dismiss it, then re-degrade — the latch must still suppress a re-toast.
@@ -71,12 +80,12 @@ struct PlaybackHealthToastTests {
     @Test("Spotify source picks the Normalize-Volume copy; otherwise generic")
     func test_spotifyCopy() async {
         let spotify = makeSUT(spotify: true)
-        spotify.health.send(low()); await Task.yield(); await Task.yield()
+        spotify.health.send(healthy()); spotify.health.send(low()); await Task.yield(); await Task.yield()
         #expect(spotify.toastManager.visibleToasts.first?.copy
             == LocalizedCopy.string(for: .audioLevelsLow(isSpotifySource: true)))
 
         let generic = makeSUT(spotify: false)
-        generic.health.send(low()); await Task.yield(); await Task.yield()
+        generic.health.send(healthy()); generic.health.send(low()); await Task.yield(); await Task.yield()
         #expect(generic.toastManager.visibleToasts.first?.copy
             == LocalizedCopy.string(for: .audioLevelsLow(isSpotifySource: false)))
     }
