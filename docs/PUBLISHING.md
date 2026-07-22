@@ -38,7 +38,17 @@ clones (history rewrite) and therefore runs only with Matt at the wheel.
 - DOC.6 rotation run; fresh-clone test suite green (modulo the documented
   licensed-fixture and perf-suite caveats in README).
 
-## 1. Weights cutover: LFS → Release asset (Decision 2)
+## 1. Weights cutover: LFS → Release asset (Decision 2) — ✅ DONE (PUB.2, 2026-07-21)
+
+**Executed 2026-07-21 (local commits, not yet pushed):** `ml-weights-v1`
+Release is live (Matt published it); the fetch path was verified end-to-end
+from a simulated fresh checkout against the live Release before untracking;
+weights are `git rm --cached` + gitignored (`SHA256SUMS` still tracked); the
+two `*.bin` LFS rules are gone from `.gitattributes`; CI swaps the LFS
+weights pull for `Scripts/fetch_weights.sh` (cache keyed on `SHA256SUMS`) and
+the obsolete `check_lfs_smudged.sh` step is removed. The procedure below is
+retained as the reference record. Note the archive contains 482 files (479
+`.bin` + 3 `manifest.json`); `SHA256SUMS` covers all of them.
 
 Do this first — it is the big clone-cost lever (~167 MB × every clone) and
 needs no history rewrite.
