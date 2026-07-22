@@ -201,10 +201,19 @@ final class PlaybackErrorBridge {
     // MARK: - Signal-health toast (ASH.2)
 
     /// Surface a one-per-session low-level nudge on the first sustained `band=low`
-    /// window. The monitor only publishes after a full 5 s window closes and only
-    /// on change, so a single `.low` reading already means one sustained window.
+    /// OR `band=critical` window. The monitor only publishes after a full 5 s window
+    /// closes and only on change, so a single reading already means one sustained
+    /// window.
+    ///
+    /// CR.1.1 (D-197): `.critical` (< −15 dBFS) is a WORSE state than `.low`
+    /// (−15…−12) but was previously NOT wired here — a session that went straight
+    /// `.critical → .healthy` (skipping the `.low` window) produced no live warning
+    /// at all, so a degraded-chain M7 ran unflagged (the Cymatic Resonance M7 2026-07-22:
+    /// the tap peaked at −24 dBFS = critical during the quiet intro, no toast fired).
+    /// Both degraded bands now nudge; the copy ("audio levels low") covers both.
     private func handle(health: SignalHealth) {
-        guard health.peakBand == .low, !audioLevelsLowShown else { return }
+        guard health.peakBand == .low || health.peakBand == .critical,
+              !audioLevelsLowShown else { return }
         audioLevelsLowShown = true
         let isSpotify = isSpotifySourceProvider?() ?? false
         toastManager.enqueue(PhospheneToast(
@@ -213,7 +222,7 @@ final class PlaybackErrorBridge {
             duration: Self.audioLevelsLowToastDuration,
             source: .signalState,
             conditionID: UserFacingError.audioLevelsLow(isSpotifySource: isSpotify).conditionID))
-        logger.info("PlaybackErrorBridge: band=low — audio-levels-low nudge shown (spotify=\(isSpotify))")
+        logger.info("PlaybackErrorBridge: band=\(health.peakBand.rawValue) — audio-levels-low nudge shown (spotify=\(isSpotify))")
     }
 
     // MARK: - Private
