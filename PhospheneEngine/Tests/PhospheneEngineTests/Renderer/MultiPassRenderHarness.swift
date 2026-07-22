@@ -40,7 +40,7 @@ struct MultiPassRenderHarness {
     /// harness; see PhotosensitivityCertificationTests / CouplingReportTests.)
     static let multiPassPresets = [
         "Lumen Mosaic", "Dragon Bloom", "Fata Morgana", "Skein", "Nacre",
-        "Floret", "Glaze", "Filigree", "Mitosis", "Cytokinesis"
+        "Floret", "Glaze", "Filigree", "Mitosis", "Cytokinesis", "Cymatic Resonance"
     ]
 
     /// Render `presetName` over `features`/`stems` (row-aligned), returning `reduce(bgra)`
@@ -55,6 +55,7 @@ struct MultiPassRenderHarness {
     ) throws -> [T] {
         switch presetName {
         case "Filigree":     return try renderFiligree(features, stems, settle: settle, reduce)
+        case "Cymatic Resonance": return try renderCymaticSand(features, stems, settle: settle, reduce)
         case "Mitosis":      return try renderMitosis(features, stems, reduce)
         case "Cytokinesis":  return try renderCytokinesis(features, stems, reduce)
         case "Lumen Mosaic": return try renderLumenMosaic(features, stems, reduce)
@@ -92,6 +93,41 @@ struct MultiPassRenderHarness {
             let rpd = clearRPD(tex)
             guard let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) else { continue }
             geo.render(encoder: enc, features: drive[i])
+            enc.endEncoding()
+            try commit(cmd, tex, into: &pixels)
+            out.append(reduce(pixels))
+        }
+        return out
+    }
+
+    // MARK: - Render: particle (Cymatic Resonance — vibrating-sand Chladni sim)
+
+    private func renderCymaticSand<T>(_ drive: [FeatureVector], _ stems: [StemFeatures],
+                                      settle: Int, _ reduce: (_ bgra: [UInt8]) -> T) throws -> [T] {
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let geo = try CymaticSandGeometry(device: ctx.device, library: lib.library,
+                                          configuration: CymaticSandConfiguration(), pixelFormat: ctx.pixelFormat)
+        // The display cover-fit divides by aspectRatio — set it to the output aspect so
+        // the sand fills the frame (an unset 0 would crop everything to black = static).
+        let aspect = Float(width) / Float(height)
+        func withAspect(_ i: Int) -> FeatureVector { var f = drive[i]; f.aspectRatio = aspect; return f }
+        let tex = try makeOutputTexture(ctx)
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        for i in 0..<settle {   // settle so the sand forms the figure before we measure
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
+            geo.update(features: withAspect(i % drive.count), stemFeatures: stems[i % stems.count], commandBuffer: cmd)
+            cmd.commit(); cmd.waitUntilCompleted()
+        }
+        var out: [T] = []
+        out.reserveCapacity(drive.count)
+        for i in 0..<drive.count {
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
+            let f = withAspect(i)
+            geo.update(features: f, stemFeatures: stems[i], commandBuffer: cmd)
+            let rpd = clearRPD(tex)
+            guard let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) else { continue }
+            geo.render(encoder: enc, features: f)
             enc.endEncoding()
             try commit(cmd, tex, into: &pixels)
             out.append(reduce(pixels))
