@@ -53,6 +53,9 @@ extension RenderPipeline {
         chain.ensureAllocated(width: Int(size.width), height: Int(size.height))
 
         let noiseTextures = textureManagerLock.withLock { textureManager }
+        // Slot-6 per-preset state for direct+post_process presets (Cymatic Resonance's
+        // mode-ladder EMA). nil for stateless post_process presets.
+        let presetBuf = directPresetFragmentBufferLock.withLock { directPresetFragmentBuffer }
         chain.render(
             scenePipelineState: activePipeline,
             features: &features,
@@ -61,7 +64,8 @@ extension RenderPipeline {
             stemFeatures: stemFeatures,
             outputTexture: drawable.texture,
             commandBuffer: commandBuffer,
-            noiseTextures: noiseTextures
+            noiseTextures: noiseTextures,
+            presetFragmentBuffer: presetBuf
         )
 
         commandBuffer.present(drawable)
