@@ -285,6 +285,13 @@ struct PresetAcceptanceTests {
         // formComplexity 1). Coverage: MitosisGen2GeometryTests (growth-arc/packing/flash +
         // renderLook through the production geometry dispatch).
         guard preset.descriptor.name != "Cytokinesis" else { return }
+        // Cymatic Resonance (CR.2/D-199): same as Filigree — the readable content is the
+        // `CymaticSandGeometry` vibrating-sand figure (feedback+particles); the standalone
+        // `cymatic_ground_fragment` is the intentionally flat deep-black plate the sand draws
+        // over, so this fragment-only harness sees only it → formComplexity 1. Coverage:
+        // CymaticSandSketchRenderTests (multi-frame sand render + non-degenerate metric) and
+        // the MultiPassFlashHarness (real geometry dispatch).
+        guard preset.descriptor.name != "Cymatic Resonance" else { return }
         let ctx = try MetalContext()
         var fixture = steadyFixture
         let pixels = try renderFrame(preset: preset, features: &fixture, context: ctx)
