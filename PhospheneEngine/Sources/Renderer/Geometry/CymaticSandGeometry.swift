@@ -33,6 +33,7 @@ struct SandConfig {
     var depositF: Float
     var energyEnv: Float
     var hueOffset: Float
+    var aspect: Float   // drawable w/h for the display cover-fit
 }
 
 // MARK: - SandGrain (mirror of MSL `SandGrain`, 16 bytes)
@@ -242,6 +243,7 @@ public final class CymaticSandGeometry: ParticleGeometry, @unchecked Sendable {
     public func render(encoder: MTLRenderCommandEncoder, features: FeatureVector) {
         guard let state = renderPipeline else { return }
         var cfg = makeConfig()
+        cfg.aspect = max(features.aspectRatio, 0.01)   // display cover-fit (CR.2.4)
         encoder.setRenderPipelineState(state)
         encoder.setFragmentBytes(&cfg, length: MemoryLayout<SandConfig>.stride, index: 0)
         encoder.setFragmentTexture(density[cur], index: 0)
@@ -325,7 +327,8 @@ public final class CymaticSandGeometry: ParticleGeometry, @unchecked Sendable {
             decay: configuration.decay,
             depositF: configuration.depositF,
             energyEnv: max(0, min(1.2, energyEnv)),
-            hueOffset: hueOffset)
+            hueOffset: hueOffset,
+            aspect: 1.0)   // square by default; render() overrides with the live frame aspect
     }
 
     // MARK: - Helpers

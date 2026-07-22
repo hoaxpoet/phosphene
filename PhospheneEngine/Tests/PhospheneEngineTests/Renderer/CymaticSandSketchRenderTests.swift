@@ -17,8 +17,8 @@ import Foundation
 @Suite("Cymatic Sand (CR.2 sketch)")
 struct CymaticSandSketchRenderTests {
 
-    static let W = 900
-    static let H = 900
+    static let W = 1280   // 16:9 so the sketch matches the live frame (exercises the cover-fit)
+    static let H = 720
     static let outputRoot = "/tmp/phosphene_visual"
 
     // Synthetic musical arc: 120 BPM beats (bass_dev spikes), energy pulsing on the
@@ -36,7 +36,7 @@ struct CymaticSandSketchRenderTests {
         f.mid = 0.35
         f.bassDev = onBeat ? 1.4 : 0.05
         f.tonalPhaseFifths = Float.pi * sin(t * 0.35)   // slow harmonic sweep
-        f.aspectRatio = 1.0
+        f.aspectRatio = Float(Self.W) / Float(Self.H)   // 16:9 → exercises the display cover-fit
         var s = StemFeatures.zero
         s.drumsEnergy = 0.35; s.bassEnergy = 0.4; s.otherEnergy = 0.3; s.vocalsEnergy = 0.2
         s.drumsEnergyDev = onBeat ? 1.2 : 0.0
