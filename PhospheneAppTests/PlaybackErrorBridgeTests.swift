@@ -47,6 +47,24 @@ struct PlaybackErrorBridgeTests {
 
     // MARK: - Tests
 
+    @Test("signal-health nudge fires on .critical, not only .low (D-197)")
+    func test_criticalBand_firesAudioLevelsLowNudge() async {
+        let health = CurrentValueSubject<SignalHealth, Never>(SignalHealth())
+        let tm = ToastManager()
+        let bridge = PlaybackErrorBridge(
+            audioSignalStatePublisher: CurrentValueSubject<AudioSignalState, Never>(.active).eraseToAnyPublisher(),
+            toastManager: tm,
+            signalHealthPublisher: health.eraseToAnyPublisher())
+        _ = bridge   // retain — subscriptions live with the bridge
+        // A sustained .critical window (< −15 dBFS) is WORSE than .low but previously
+        // fired no nudge (the Cymatic Resonance M7 ran on a critical intro, unflagged).
+        health.send(SignalHealth(peakBand: .critical, peakDBFS: -24))
+        try? await Task.sleep(for: .milliseconds(50))
+        let cid = UserFacingError.audioLevelsLow(isSpotifySource: false).conditionID
+        #expect(tm.visibleToasts.contains { $0.conditionID == cid },
+                "a sustained .critical window must raise the audio-levels-low nudge (D-197)")
+    }
+
     @Test("no toast before threshold")
     func test_noToastBeforeThreshold() async {
         let fix = makeSUT()
