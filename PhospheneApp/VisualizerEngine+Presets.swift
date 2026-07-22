@@ -77,6 +77,9 @@ extension VisualizerEngine {
         // so the body blooms back UP into the new track rather than popping (DESIGN §1.5).
         // No-op when Nimbus is not the active preset (state is nil).
         nimbusState?.reset()
+        // CR.1: settle the plate to the fundamental figure at track change (no-op
+        // when Cymatic Resonance is not active — state is nil).
+        cymaticResonanceState?.reset()
         // Skein.3 (§1.5): a new track paints its OWN canvas (the held painting is the previous
         // track's visual fingerprint). Wipe the canvas back to the ground and re-seed the painter
         // from the new track's identity (same track → same painting, §5.7). No-op when Skein
@@ -136,6 +139,7 @@ extension VisualizerEngine {
         gossamerState = nil
         auroraVeilState = nil
         nimbusState = nil
+        cymaticResonanceState = nil
         skeinState = nil
         lumenPatternEngine = nil
         ferrofluidParticles = nil
@@ -582,7 +586,29 @@ extension VisualizerEngine {
         case "Aurora Veil": bindAuroraVeilRuntime(desc)
         case "Nimbus":      bindNimbusRuntime(desc)
         case "Lumen Mosaic": bindLumenMosaicRuntime(desc)
+        case "Cymatic Resonance": bindCymaticResonanceRuntime(desc)
         default: break
+        }
+    }
+
+    private func bindCymaticResonanceRuntime(_ desc: PresetDescriptor) {
+        // Cymatic Resonance (CR.1): allocate the mode-ladder EMA + bass-drop snap
+        // state, bind it at slot 6, and wire the per-frame tick. Same direct slot-6
+        // pattern as Nimbus/Aurora Veil — but this preset's fragment runs inside the
+        // post_process scene pass (passes: ["direct","post_process"]), so slot 6
+        // reaches it via RenderPipeline+PostProcess (which reads the same
+        // directPresetFragmentBuffer). The setMeshPresetTick closure runs once per
+        // frame regardless of dispatch path. reset() settles the plate to the
+        // fundamental at track change (resetPerTrackPresetState).
+        if let state = CymaticResonanceState(device: context.device) {
+            cymaticResonanceState = state
+            state.reset()
+            pipeline.setDirectPresetFragmentBuffer(state.stateBuffer)
+            pipeline.setMeshPresetTick { [weak state] features, stems in
+                state?.tick(deltaTime: features.deltaTime, features: features, stems: stems)
+            }
+        } else {
+            logger.error("CymaticResonanceState: failed to allocate state for preset '\(desc.name)'")
         }
     }
 

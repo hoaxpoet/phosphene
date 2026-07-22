@@ -1,0 +1,26 @@
+{
+  "name": "Cymatic Resonance",
+  "family": "geometric",
+  "concept_tags": ["geometric", "resonant", "hypnotic"],
+  "motion_paradigm": "direct_time_modulation",
+  "duration": 30,
+  "description": "A resonant plate whose Chladni nodal figure is selected live by the music's brightness — as the track brightens the figure blooms into finer, more complex 4-fold-symmetric patterns; a bass drop snaps it back to a big simple figure. The figure you see is the pitch of the sound made solid. Plus-basis square-plate eigenmode superposition rendered as a strong-oblique-tilt displaced relief, jewel-emissive nodal ridges on a deep-black plate, lit via a height-gradient-derived normal + GGX, through ACES + bloom. CR.1 clay maquette — materials / micro-grain / secondary audio at CR.2–CR.3.",
+  "author": "Matt",
+  "passes": ["direct", "post_process"],
+  "fragment_function": "cymatic_resonance_fragment",
+  "vertex_function": "fullscreen_vertex",
+  "beat_source": "bass",
+  "visual_density": 0.6,
+  "motion_intensity": 0.5,
+  "color_temperature_range": [0.2, 0.9],
+  "fatigue_risk": "medium",
+  "transition_affordances": ["crossfade", "cut"],
+  "section_suitability": ["ambient", "buildup", "peak", "bridge", "comedown"],
+  "complexity_cost": { "tier1": 2.5, "tier2": 1.5 },
+  "audio_routes": [
+    { "route": "mode_ladder", "primitive": "spectralCentroid", "kind": "continuous" },
+    { "route": "snap_to_simple", "primitive": "bassDev", "kind": "accent" }
+  ],
+  "certified": false,
+  "rubric_profile": "lightweight"
+}

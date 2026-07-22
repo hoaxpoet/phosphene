@@ -51,6 +51,7 @@ public enum StatefulRuntimeRegistry {
         "Skein",
         "Aurora Veil",
         "Nimbus",
-        "Lumen Mosaic"
+        "Lumen Mosaic",
+        "Cymatic Resonance"
     ]
 }
