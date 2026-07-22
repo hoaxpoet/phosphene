@@ -1,4 +1,5 @@
 // PlaybackErrorBridgeTests — Tests for PlaybackErrorBridge (U.7 Part C).
+// swiftlint:disable file_length
 //
 // Tests:
 //   1. No toast before threshold.
@@ -47,22 +48,50 @@ struct PlaybackErrorBridgeTests {
 
     // MARK: - Tests
 
-    @Test("signal-health nudge fires on .critical, not only .low (D-197)")
-    func test_criticalBand_firesAudioLevelsLowNudge() async {
+    private struct HealthSUT {
+        let health: CurrentValueSubject<SignalHealth, Never>
+        let tm: ToastManager
+        let bridge: PlaybackErrorBridge   // retained so the subscription lives
+    }
+
+    private func makeHealthSUT() -> HealthSUT {
         let health = CurrentValueSubject<SignalHealth, Never>(SignalHealth())
         let tm = ToastManager()
+        let active = CurrentValueSubject<AudioSignalState, Never>(.active)
         let bridge = PlaybackErrorBridge(
-            audioSignalStatePublisher: CurrentValueSubject<AudioSignalState, Never>(.active).eraseToAnyPublisher(),
+            audioSignalStatePublisher: active.eraseToAnyPublisher(),
             toastManager: tm,
             signalHealthPublisher: health.eraseToAnyPublisher())
-        _ = bridge   // retain — subscriptions live with the bridge
-        // A sustained .critical window (< −15 dBFS) is WORSE than .low but previously
-        // fired no nudge (the Cymatic Resonance M7 ran on a critical intro, unflagged).
-        health.send(SignalHealth(peakBand: .critical, peakDBFS: -24))
-        try? await Task.sleep(for: .milliseconds(50))
+        return HealthSUT(health: health, tm: tm, bridge: bridge)
+    }
+
+    private func hasAudioLevelsLowToast(_ tm: ToastManager) -> Bool {
         let cid = UserFacingError.audioLevelsLow(isSpotifySource: false).conditionID
-        #expect(tm.visibleToasts.contains { $0.conditionID == cid },
-                "a sustained .critical window must raise the audio-levels-low nudge (D-197)")
+        return tm.visibleToasts.contains { $0.conditionID == cid }
+    }
+
+    @Test("signal-health nudge fires on .critical after a healthy window (D-197)")
+    func test_criticalBand_firesAudioLevelsLowNudge() async {
+        let sut = makeHealthSUT()
+        _ = sut.bridge   // retain — subscriptions live with the bridge
+        // Chain is loud first (healthy), then drops to .critical — a real degradation.
+        sut.health.send(SignalHealth(peakBand: .healthy, peakDBFS: -4))
+        sut.health.send(SignalHealth(peakBand: .critical, peakDBFS: -24))
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(hasAudioLevelsLowToast(sut.tm),
+                "a .critical window after the chain was loud must nudge (D-197 — .critical was unwired)")
+    }
+
+    @Test("no nudge on a quiet intro: low/critical before the chain is ever loud (D-197 follow-up)")
+    func test_lowBeforeHealthy_doesNotNudge() async {
+        let sut = makeHealthSUT()
+        _ = sut.bridge
+        // A quiet song intro (critical → low) BEFORE any healthy window: not degradation.
+        sut.health.send(SignalHealth(peakBand: .critical, peakDBFS: -24))
+        sut.health.send(SignalHealth(peakBand: .low, peakDBFS: -13))
+        try? await Task.sleep(for: .milliseconds(50))
+        #expect(!hasAudioLevelsLowToast(sut.tm),
+                "degraded-only-after-loud: a low/critical window before the chain is ever loud must not nudge")
     }
 
     @Test("no toast before threshold")

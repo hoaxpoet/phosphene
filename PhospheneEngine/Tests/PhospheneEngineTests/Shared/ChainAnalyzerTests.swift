@@ -52,11 +52,14 @@ struct ChainAnalyzerTests {
         #expect(health.loveRehabMedianOnsetsPer5s == ChainAnalyzer.loveRehabReferenceOnsets)
     }
 
-    @Test("band=low + DRM-silence log lines grade degraded with those reasons")
+    @Test("band=low AFTER a healthy window + DRM-silence grade degraded with those reasons")
     func degradedFromLog() throws {
         let dir = try makeDir("degraded")
         defer { try? FileManager.default.removeItem(at: dir) }
+        // D-197: the chain was loud (healthy) first, THEN dropped to band=low — a
+        // real degradation, so `signal_health_band_low` flags.
         try write("""
+            [t] SIGNAL_HEALTH: peak=-4.0dBFS band=healthy deadTap=false rate=48000
             [t] SIGNAL_HEALTH: peak=-13.5dBFS band=low deadTap=false rate=48000
             [t] DRM silence detected on the tap
             """, to: dir, "session.log")
@@ -65,6 +68,23 @@ struct ChainAnalyzerTests {
         #expect(health.reasons.contains("signal_health_band_low"))
         #expect(health.reasons.contains { $0.hasPrefix("drm_silence") })
         #expect(health.outputSampleRateHz == 48_000)
+    }
+
+    @Test("A quiet intro (band=critical/low BEFORE any healthy) does NOT flag band_low (D-197)")
+    func quietIntroDoesNotFlagBandLow() throws {
+        let dir = try makeDir("quiet_intro")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        // The Cymatic Resonance M7 shape: a quiet song intro reads critical/low, then
+        // the song kicks in (healthy) and stays. Degraded-only-after-loud → clean.
+        try write("""
+            [t] SIGNAL_HEALTH: peak=-24.0dBFS band=critical deadTap=false rate=44100
+            [t] SIGNAL_HEALTH: peak=-13.0dBFS band=low deadTap=false rate=44100
+            [t] SIGNAL_HEALTH: peak=-2.0dBFS band=healthy deadTap=false rate=44100
+            """, to: dir, "session.log")
+        let health = ChainAnalyzer.analyze(sessionDir: dir)
+        #expect(!health.reasons.contains("signal_health_band_low"),
+                "a low/critical window before the chain was ever loud must not flag degraded")
+        #expect(health.verdict == .clean)
     }
 
     @Test("A confirmed dead tap grades broken")
