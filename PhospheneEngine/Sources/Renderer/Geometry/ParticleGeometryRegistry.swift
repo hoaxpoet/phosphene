@@ -31,7 +31,8 @@ public enum ParticleGeometryRegistry {
         "Filigree",
         "Mitosis",
         "Cytokinesis",
-        "Ricercar"
+        "Ricercar",
+        "Cymatic Resonance"
     ]
 }
 
@@ -51,7 +52,6 @@ public enum StatefulRuntimeRegistry {
         "Skein",
         "Aurora Veil",
         "Nimbus",
-        "Lumen Mosaic",
-        "Cymatic Resonance"
+        "Lumen Mosaic"
     ]
 }
