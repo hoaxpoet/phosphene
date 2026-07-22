@@ -1,5 +1,6 @@
-PhospheneEngine/Sources/ML/Weights/*.bin filter=lfs diff=lfs merge=lfs -text
-PhospheneEngine/Sources/ML/Weights/**/*.bin filter=lfs diff=lfs merge=lfs -text
+# ML weights ship as the ml-weights-v1 GitHub Release asset, fetched by
+# Scripts/fetch_weights.sh (PUB.2 cutover) — no longer in git/LFS. Only
+# SHA256SUMS is tracked (see .gitignore). Do not re-add *.bin LFS rules here.
 # docs/VISUAL_REFERENCES + docs/diagnostics images are gitignored (dev-only
 # reference material, no build target uses them) — purged from LFS history to
 # stop storage billing. Do not re-add LFS rules here; keep them out of git.

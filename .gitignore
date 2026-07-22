@@ -98,3 +98,9 @@ docs/diagnostics/**/*.jpg
 docs/diagnostics/**/*.jpeg
 docs/diagnostics/**/*.png
 docs/diagnostics/**/*.gif
+
+# ML weights ship as the ml-weights-v1 Release asset (PUB.2 cutover), fetched
+# by Scripts/fetch_weights.sh — out of git. Only the SHA256SUMS manifest is
+# tracked; it drives fetch + verification.
+PhospheneEngine/Sources/ML/Weights/*
+!PhospheneEngine/Sources/ML/Weights/SHA256SUMS
