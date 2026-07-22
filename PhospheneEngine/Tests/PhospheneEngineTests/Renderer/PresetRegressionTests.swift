@@ -35,9 +35,10 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // CR reads its mode-ladder position from the slot-6 state, not the FeatureVector,
     // so all three fixtures converge to one hash (the Nimbus/Aurora pattern). This
     // locks the maquette silence render; it will regenerate at CR.2 (materials).
-    // Regenerated at CR.1.1 (D-197): palette (jewel sweep), framing (fill canvas),
-    // emissive/GGX recalibration changed the silence-fundamental render.
-    "Cymatic Resonance": (steady: 0x69E9A9696B23170F, beatHeavy: 0x69E9A9696B23170F, quiet: 0x69E9A9696B23170F),
+    // Regenerated at CR.1.2 (D-198): top-down camera (fills the frame), varied ladder,
+    // harmonic-phase hue — all change the silence-fundamental render. (CR.1.1 was
+    // 0x69E9A9696B23170F.)
+    "Cymatic Resonance": (steady: 0xAAAACCE8E8EEAAAA, beatHeavy: 0xAAAACCE8E8EEAAAA, quiet: 0xAAAACCE8E8EEAAAA),
     // V.7.7B Arachne: staged COMPOSITE fragment now ports the V.7.5 v5 web
     // walk + spider + mist + dust motes. The regression renders the COMPOSITE
     // stage in isolation with `worldTex` unbound (texture sampler returns 0),

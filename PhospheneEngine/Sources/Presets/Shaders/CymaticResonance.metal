@@ -38,7 +38,7 @@ struct CymaticStateGPU {
     float ladderPos;   // continuous ladder position [0, kLadderCount-1]
     float warmup;      // excitation / brightness gate [0,1] (D-019; 0 in silence)
     float snap;        // bass-drop snap envelope [0,1] (diagnostic + subtle kick)
-    float pad0;
+    float hueOffset;   // CR.1.2 global hue shift [0,1] from smoothed harmonic phase
 };
 
 // MARK: - Mode ladder (fixed low→high complexity; m < n, plus basis)
@@ -52,19 +52,24 @@ struct CymaticStateGPU {
 // carried the very "spurious diagonal" the concept gate switched plus↔minus to kill.
 // Same-parity pairs are 4-fold symmetric AND diagonal-free on BOTH diagonals. The
 // (m,m+2) family climbs complexity monotonically, coarse (1,3) → fine (11,13).
+// CR.1.2 (M7: "not moving through more than 3 different patterns, a bit boring"):
+// a VARIED same-parity ladder — alternating m=n concentric grids with m<n cross-hatch
+// so adjacent rungs read as DISTINCT figures, not the same grid at rising density.
+// Still all same-parity (diagonal-free, correction #5), roughly rising in complexity.
 constant int kLadderCount = 11;
 constant int2 kLadder[11] = {
-    int2(1, 3), int2(2, 4), int2(3, 5), int2(4, 6), int2(5, 7), int2(6, 8),
-    int2(7, 9), int2(8, 10), int2(9, 11), int2(10, 12), int2(11, 13)
+    int2(1, 3), int2(2, 2), int2(2, 4), int2(3, 3), int2(3, 5), int2(4, 4),
+    int2(2, 6), int2(4, 6), int2(5, 5), int2(3, 7), int2(5, 7)
 };
 
 // MARK: - Camera / plate framing (strong oblique tilt — ref 01/02 are flat, we tilt)
 
 constant float kPI          = 3.14159265358979;
-constant float kElevDeg     = 48.0;   // camera elevation above the plate plane (< 90° top-down → strong oblique)
-constant float kCamDist     = 1.85;   // camera distance from plate centre (CR.1.1: closer → plate fills the 16:9 canvas)
-constant float kFovY        = 0.96;   // vertical FOV (radians, tan-half applied below)
-constant float kPlateHalf   = 1.18;   // plate spans [-kPlateHalf, +kPlateHalf] in world XZ (CR.1.1: larger so it fills width)
+// CR.1.2 (M7: "camera directly above the plate would be better; the angled top shows
+// background"): TOP-DOWN orthographic view, cover-fit — the square plate fills the 16:9
+// frame edge-to-edge with NO receding background. `kTopZoom` = plate half-extent mapped
+// to the frame half-width (1.0 = full plate width fills the frame width).
+constant float kTopZoom     = 1.0;
 
 // MARK: - Look tunables (CR.1 maquette; Matt's M7 sets finals)
 
@@ -168,32 +173,19 @@ fragment float4 cymatic_resonance_fragment(
     constant FeatureVector& features [[buffer(0)]],
     constant CymaticStateGPU& st     [[buffer(6)]])
 {
-    float aspect = max(features.aspect_ratio, 1e-4);
+    float aspect = max(features.aspect_ratio, 1e-4);   // w/h
 
-    // ── View ray (fixed oblique camera looking down at the plate on y = 0) ──────
+    // ── Top-down orthographic cover-fit (CR.1.2) ────────────────────────────────
+    // The square plate fills the 16:9 frame edge-to-edge: the full frame WIDTH maps
+    // to the plate width; the height is scaled by `aspect` (square pixels) so the
+    // frame shows the full-width, centre-height band of the plate — no background.
     float2 uv  = in.uv;
     float2 ndc = uv * 2.0 - 1.0;
     ndc.y = -ndc.y;                 // uv.y = 0 is top of screen → +screen-up
-    ndc.x *= aspect;
+    float2 plate = float2(ndc.x, ndc.y / aspect) * kTopZoom;
 
-    float elev = kElevDeg * (kPI / 180.0);
-    float3 ro  = float3(0.0, sin(elev) * kCamDist, cos(elev) * kCamDist);
-    float3 fwd = normalize(float3(0.0) - ro);
-    float3 right = normalize(cross(fwd, float3(0.0, 1.0, 0.0)));
-    float3 up    = cross(right, fwd);
-    float tanY = tan(kFovY * 0.5);
-    float3 rd  = normalize(fwd + ndc.x * tanY * right + ndc.y * tanY * up);
-
-    // Faint non-black background floor (D-037): a dim radial glow, dark corners.
-    float bgFall = exp(-dot(ndc, ndc) * 1.6);
-    float3 bg = kBgFloor * (0.4 + 0.6 * bgFall);
-
-    // Ray misses the plate plane (points up / parallel) → background.
-    if (rd.y > -1e-3) { return float4(bg, 1.0); }
-
-    float t = -ro.y / rd.y;
-    float3 hit = ro + rd * t;
-    float2 plate = hit.xz / kPlateHalf;            // world XZ → [-1,1] over the plate
+    // Faint non-black background floor (D-037) — only reached if kTopZoom > 1.
+    float3 bg = kBgFloor * (0.4 + 0.6 * exp(-dot(ndc, ndc) * 1.6));
     if (any(abs(plate) > 1.0)) { return float4(bg, 1.0); }
 
     float2 p = plate * 0.5 + 0.5;                  // → [0,1]² plate coords (ξ,η)
@@ -220,7 +212,7 @@ fragment float4 cymatic_resonance_fragment(
     float3 normal = normalize(float3(-dhdx * kHeightScale, 1.0, -dhdy * kHeightScale));
 
     // ── Lighting: one warm key + GGX highlight on the relief (the depth cue) ────
-    float3 viewDir  = -rd;
+    float3 viewDir  = float3(0.0, 1.0, 0.0);   // top-down (CR.1.2)
     float3 lightDir = normalize(float3(-0.45, 0.72, 0.30));
     float3 keyColor = float3(1.0, 0.82, 0.52);   // CR.1.1: warm-gold key (was near-white) — a white key washed the jewel hue
     float spec = cr_ggx(normal, viewDir, lightDir, kGGXRough) * kGGXGain;
@@ -232,8 +224,10 @@ fragment float4 cymatic_resonance_fragment(
     float slope = clamp(dhdx * 0.5 + dhdy * 0.5 + 0.5, 0.0, 1.0);
     // CR.1.1: sweep the FULL jewel range across the plate radius — sapphire (0.58) →
     // magenta (0.85) → gold (wraps to ~0.08) — with a slope wobble for iridescence.
-    // Higher saturation + less white-anchor blend so it reads jewel, not white.
-    float hue = fract(0.58 + 0.50 * r + 0.12 * slope);
+    // CR.1.2: + a MUSIC-driven global offset `st.hueOffset` (smoothed harmonic phase,
+    // D-178) so the whole jewel palette rotates with the chord progression — "the
+    // sand colour changes with the music" (M7). Higher saturation, less white anchor.
+    float hue = fract(0.58 + 0.50 * r + 0.12 * slope + st.hueOffset);
     float3 jewel = cr_hsv2rgb(float3(hue, 0.88, 1.0));
     float3 anchor = mix(mix(kJewelA, kJewelB, clamp(r * 1.3, 0.0, 1.0)),
                         kJewelC, clamp(slope, 0.0, 1.0));
