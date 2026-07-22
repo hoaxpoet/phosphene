@@ -84,7 +84,12 @@ struct PresetLoaderCompileFailureTest {
     /// per-beat flips read as a visible grid that jitters, matched none of the curated
     /// flowing-scallop references, and never delivered "psychedelic geometry"; concept
     /// scrapped, not the tunable kind. See docs/DECISIONS.md D-194.)
-    static let expectedProductionPresetCount = 25
+    /// 25 → 26 at CR.1 (Cymatic Resonance added — resonant-plate Chladni nodal
+    /// figure, family `geometric`, direct + post_process, slot-6 mode-ladder state;
+    /// plus-basis eigenmode superposition selected live by spectral centroid. Not
+    /// certified — CR.1 clay maquette; materials/micro/secondary-audio/cert at
+    /// CR.2–CR.3. See docs/presets/psychedelic_geometry/PG_CR_CYMATIC_RESONANCE.md.)
+    static let expectedProductionPresetCount = 26
 
     @Test("PresetLoader.presets.count matches expectedProductionPresetCount — catches Failed Approach #44 silent drops")
     func test_presetLoaderProductionCount() {

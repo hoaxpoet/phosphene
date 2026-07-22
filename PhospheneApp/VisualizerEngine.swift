@@ -211,6 +211,14 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// `applyPreset` (NB.4 — same direct-preset slot-6 pattern as Aurora Veil).
     var nimbusState: NimbusState?
 
+    /// Cymatic Resonance mode-ladder EMA + bass-drop snap state — allocated when
+    /// the Cymatic Resonance preset is active, nil otherwise. Tick closure and
+    /// stateBuffer are wired via `setMeshPresetTick` / `setDirectPresetFragmentBuffer`
+    /// in `applyPreset` (CR.1 — same direct slot-6 pattern; reaches the fragment
+    /// through the post_process scene pass, RenderPipeline+PostProcess). Reset on
+    /// track change so the plate settles into the new track.
+    var cymaticResonanceState: CymaticResonanceState?
+
     /// Skein painter integrators + onset-burst ring + per-track seed — allocated
     /// when the Skein preset is active, nil otherwise. Tick closure and
     /// skeinBuffer are wired via `setMeshPresetTick` / `setDirectPresetFragmentBuffer`
