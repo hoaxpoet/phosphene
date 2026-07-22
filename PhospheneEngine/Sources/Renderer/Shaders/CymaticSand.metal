@@ -41,6 +41,7 @@ struct SandConfig {
     float depositF;       // deposit weight
     float energyEnv;      // 0..~1.2 smoothed energy — vibration + glow
     float hueOffset;      // 0..1 harmonic-phase hue rotation
+    float aspect;         // drawable w/h — display cover-fit (1.0 = square, no crop)
 };
 
 // MARK: - SandGrain (16 bytes; float2 pos + float age + pad)
@@ -188,13 +189,19 @@ static inline float3 sand_hsv2rgb(float3 c) {
 fragment float4 sand_density_fragment(VertexOut in [[stage_in]],
                                       constant SandConfig& cfg [[buffer(0)]],
                                       texture2d<float, access::sample> density [[texture(0)]]) {
-    float v = density.sample(sandSampler, in.uv).r;
+    // Cover-fit the SQUARE sand plate into the (16:9) frame — fill the width, crop the
+    // top/bottom band — so the figure is undistorted, not stretched (CR.2.4 aspect fix).
+    // aspect ≥ 1 (landscape): show a centred 1/aspect vertical band of the square.
+    float a = max(cfg.aspect, 1e-3);
+    float2 uv = float2(in.uv.x, 0.5 + (in.uv.y - 0.5) / a);
+    if (any(uv < 0.0) || any(uv > 1.0)) { return float4(0.006, 0.007, 0.012, 1.0); }
+    float v = density.sample(sandSampler, uv).r;
     // Steeper curve so only concentrated sand (the nodal lines) reads bright and the
     // thin scatter between stays dark → crisp Chladni lines, not a filled wash.
     float tone = pow(clamp(v * 0.6, 0.0, 1.0), 1.3);
 
     // Jewel sand: hue sweeps sapphire→magenta→gold with radius + the harmonic offset.
-    float2 c = in.uv - 0.5;
+    float2 c = uv - 0.5;   // plate-centred (cover-fit coords)
     float r = length(c);
     float hue = fract(0.58 + 0.42 * r + cfg.hueOffset);
     float3 jewel = sand_hsv2rgb(float3(hue, 0.85, 1.0));
