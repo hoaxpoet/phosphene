@@ -122,10 +122,11 @@ kernel void sand_grains(device SandGrain*     grains [[buffer(0)]],
     float amp = abs(phi);                // 0 at nodes … ~2 at antinodes
 
     // Vibration-driven random walk (Zhou 2017): step ∝ amplitude × drive, random
-    // direction. CR.2.1 (M7: "expected more motion of the sand grains in louder
-    // passages") — real energy tops out ~0.45 on music, so amplify it super-linearly
-    // so loud passages visibly shake harder. `minWalk` keeps grains from freezing.
-    float drive = 0.15 + 3.2 * cfg.energyEnv + cfg.beatBurst;   // real energy tops ~0.45 → high gain so loud pops
+    // direction. CR.2.3 (M7: "bass reaction is laggy") — the drive is now TRANSIENT-
+    // dominant: the near-zero-latency beat burst (fast bass_dev envelope) is weighted
+    // heavily so a bass hit throws the sand IMMEDIATELY, riding on a lighter smoothed-
+    // energy baseline. `minWalk` keeps grains from freezing.
+    float drive = 0.15 + 1.6 * cfg.energyEnv + 4.0 * cfg.beatBurst;
     float vib = cfg.vibAmp * amp * drive + cfg.minWalk;
     float ang = sand_hash(gid * 2654435761u + cfg.frame * 40503u) * 6.2831853;
     float2 rdir = float2(cos(ang), sin(ang));

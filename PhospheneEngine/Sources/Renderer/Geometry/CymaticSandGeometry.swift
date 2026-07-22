@@ -62,10 +62,10 @@ public struct CymaticSandConfiguration: Sendable {
         height: Int = 720,
         grainCount: Int = 400_000,
         vibAmp: Float = 2.9,
-        gradientDrift: Float = 2.2,
+        gradientDrift: Float = 3.1,   // CR.2.3: faster settle → a hit reads as a crisp pulse, not a smear
         minWalk: Float = 0.10,
-        decay: Float = 0.40,
-        depositF: Float = 0.42
+        decay: Float = 0.22,          // CR.2.3: less density persistence → sharper response
+        depositF: Float = 0.55        // compensate the faster decay so lines stay bright
     ) {
         self.width = width
         self.height = height
@@ -269,7 +269,7 @@ public final class CymaticSandGeometry: ParticleGeometry, @unchecked Sendable {
         let stemEnergy = (stems.drumsEnergy + stems.bassEnergy + stems.otherEnergy) / 3 + 0.4 * stems.vocalsEnergy
         let fullEnergy = (features.bass + features.mid) * 0.5
         let rawEnergy = fullEnergy + (stemEnergy - fullEnergy) * blend
-        energyEnv += Float(dt / (0.25 + dt)) * (rawEnergy - energyEnv)
+        energyEnv += Float(dt / (0.18 + dt)) * (rawEnergy - energyEnv)   // CR.2.3: faster (was 0.25)
         energyForGate += Float(dt / (0.20 + dt)) * (stemTotal - energyForGate)
 
         // Beat burst — fast transient of bass_dev (+ drums stem dev), grains jump.
@@ -319,7 +319,7 @@ public final class CymaticSandGeometry: ParticleGeometry, @unchecked Sendable {
             frame: frameCounter,
             ladderPos: ladderFinal,
             vibAmp: configuration.vibAmp,
-            beatBurst: min(beatEnv, 1.5),
+            beatBurst: min(beatEnv, 2.4),   // CR.2.3: strong bass hits (bassDev up to ~3.9) throw harder
             gradientDrift: configuration.gradientDrift,
             minWalk: configuration.minWalk,
             decay: configuration.decay,
