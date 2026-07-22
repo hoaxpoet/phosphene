@@ -19,7 +19,8 @@
   "complexity_cost": { "tier1": 2.5, "tier2": 1.5 },
   "audio_routes": [
     { "route": "mode_ladder", "primitive": "spectralCentroid", "kind": "continuous" },
-    { "route": "snap_to_simple", "primitive": "bassDev", "kind": "accent" }
+    { "route": "snap_to_simple", "primitive": "bassDev", "kind": "accent" },
+    { "route": "palette_hue", "primitive": "tonalPhaseFifths", "kind": "continuous" }
   ],
   "certified": false,
   "rubric_profile": "lightweight"

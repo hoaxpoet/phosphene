@@ -37,10 +37,12 @@ struct CymaticStateGPU {
     /// release; folded into `ladderPos` already (kept for diagnostics + a subtle
     /// shader brightness kick on the restructure).
     var snap: Float
-    /// Reserved (16-byte stride).
-    var pad0: Float
+    /// CR.1.2 global hue offset in [0,1] from the smoothed harmonic phase
+    /// (`tonal_phase_fifths`, D-178) — the whole jewel palette rotates with the
+    /// chord progression ("the sand colour changes with the music").
+    var hueOffset: Float
 
-    static let zero = CymaticStateGPU(ladderPos: 0, warmup: 0, snap: 0, pad0: 0)
+    static let zero = CymaticStateGPU(ladderPos: 0, warmup: 0, snap: 0, hueOffset: 0)
 }
 
 // MARK: - CymaticResonanceState
@@ -77,9 +79,12 @@ public final class CymaticResonanceState: @unchecked Sendable {
     /// enough (~track scale) that SECTION-level brightness swings survive as deviation
     /// rather than being chased out by the baseline.
     private static let baselineTau: Float = 12.0
-    /// Deviation gain: a ±0.04 centroid swing around baseline → ±0.32 ladder-norm →
-    /// ~6 of 11 rungs of visible travel.
-    private static let centroidDevGain: Float = 8.0
+    /// Deviation gain: a ±0.04 centroid swing around baseline → ±0.48 ladder-norm →
+    /// most of the 11 rungs (CR.1.2: 8→12, "not moving through more than 3 patterns").
+    private static let centroidDevGain: Float = 12.0
+    /// Harmonic-phase hue smoothing — the colour evolves with the chord progression,
+    /// not per-frame (CR.1.2).
+    private static let hueTau: Float = 1.5
     /// Absolute centroid operating band mapped to [0,1] (the real music range, wider
     /// than observed for headroom) — the cross-track "brighter ⇒ finer" tilt.
     private static let absLo: Float = 0.05
@@ -96,9 +101,10 @@ public final class CymaticResonanceState: @unchecked Sendable {
     /// climbs back up the ladder over ~0.6 s).
     private static let snapAttackTau: Float = 0.03
     private static let snapReleaseTau: Float = 0.55
-    /// How hard a full snap yanks the ladder toward the simple fundamental (0 = no
-    /// yank, 1 = all the way to mode (1,2)).
-    private static let snapDepth: Float = 0.90
+    /// How hard a full snap yanks the ladder toward the simple end (0 = no yank,
+    /// 1 = all the way to mode (1,3)). CR.1.2: 0.90→0.65 — at top-down the very
+    /// lowest modes read near-empty, so the snap lands on a present simple figure.
+    private static let snapDepth: Float = 0.65
 
     /// Below this smoothed total-stem-energy the ladder target collapses to the
     /// fundamental (A5 — silence holds (1,2) regardless of a stale centroid).
@@ -115,6 +121,7 @@ public final class CymaticResonanceState: @unchecked Sendable {
     public private(set) var ladderPos: Float = 0
     public private(set) var warmup: Float = 0
     public private(set) var snap: Float = 0
+    public private(set) var hueOffset: Float = 0
 
     // MARK: - Private state
 
@@ -122,6 +129,8 @@ public final class CymaticResonanceState: @unchecked Sendable {
     private var slowCentroid: Float = 0   // track-level brightness baseline (CR.1.1 adaptive)
     private var ladderSmooth: Float = 0   // pure centroid-driven ladder (snap is a separate overlay)
     private var energyEMA: Float = 0
+    private var sinT: Float = 0           // smoothed sin/cos of tonal_phase_fifths (CR.1.2 hue)
+    private var cosT: Float = 0
     private let lock = NSLock()
 
     // MARK: - Init
@@ -153,7 +162,8 @@ public final class CymaticResonanceState: @unchecked Sendable {
     public func reset() {
         lock.withLock {
             centroidEMA = 0; slowCentroid = 0; ladderSmooth = 0; energyEMA = 0
-            ladderPos = 0; warmup = 0; snap = 0
+            sinT = 0; cosT = 0
+            ladderPos = 0; warmup = 0; snap = 0; hueOffset = 0
         }
         writeToGPU()
     }
@@ -197,6 +207,16 @@ public final class CymaticResonanceState: @unchecked Sendable {
 
         // Derived ladder position: pull toward the fundamental (0) by the snap.
         ladderPos = mixf(ladderSmooth, 0.0, clamp(snap * Self.snapDepth, 0, 1))
+
+        // Colour motion (CR.1.2, brought forward from CR.3) — a global hue offset from
+        // the harmonic phase `tonal_phase_fifths` (D-178: "hue, not brightness"). It is
+        // a CIRCULAR quantity (±π sawtooth), so smooth sin/cos and recombine — never the
+        // raw wrapped value. Hue is also circular, so the ±π→[0,1] map wraps seamlessly.
+        let tonalPhase = features.tonalPhaseFifths
+        let hueCoeff = coeff(dt, Self.hueTau)
+        sinT += (sin(tonalPhase) - sinT) * hueCoeff
+        cosT += (cos(tonalPhase) - cosT) * hueCoeff
+        hueOffset = atan2(sinT, cosT) / (2 * .pi) + 0.5
     }
 
     // MARK: - Math helpers
@@ -215,7 +235,7 @@ public final class CymaticResonanceState: @unchecked Sendable {
     // MARK: - GPU write
 
     private func writeToGPU() {
-        var packed = CymaticStateGPU(ladderPos: ladderPos, warmup: warmup, snap: snap, pad0: 0)
+        var packed = CymaticStateGPU(ladderPos: ladderPos, warmup: warmup, snap: snap, hueOffset: hueOffset)
         stateBuffer.contents().copyMemory(from: &packed, byteCount: MemoryLayout<CymaticStateGPU>.stride)
     }
 }
