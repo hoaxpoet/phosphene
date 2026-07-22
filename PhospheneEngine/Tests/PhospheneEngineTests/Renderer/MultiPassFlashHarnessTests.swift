@@ -89,6 +89,14 @@ struct MultiPassFlashHarnessTests {
         assertFlashSafe(name: "Cytokinesis", luma: try flashLuma("Cytokinesis", frames: 1500))
     }
 
+    @Test("Cymatic Resonance is flash-safe (vibrating-sand Chladni, real headless render)")
+    func cymaticResonanceIsFlashSafe() throws {
+        // Settle the sand into a figure (150 frames), then measure the steady beat response.
+        // Total sand is conserved (grains move, never appear/disappear) → global luminance
+        // is expected steady even on the worst-case beat train; this MEASURES that (CR.2 / D-199).
+        assertFlashSafe(name: "Cymatic Resonance", luma: try flashLuma("Cymatic Resonance", settle: 150))
+    }
+
     // MARK: - Flash-specific drive + reducer
 
     /// Render `name` through the shared harness on the synthetic worst-case beat+stem train,
