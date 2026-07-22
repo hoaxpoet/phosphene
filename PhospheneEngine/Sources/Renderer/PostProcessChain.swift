@@ -1,4 +1,5 @@
 // PostProcessChain — HDR post-process pipeline for Increment 3.4.
+// swiftlint:disable file_length
 //
 // Owns three intermediate textures and four compiled pipeline states that
 // implement a bloom + ACES tone-mapping chain:
@@ -194,6 +195,11 @@ public final class PostProcessChain: @unchecked Sendable {
     ///   - commandBuffer: All render passes are encoded into this buffer.
     ///   - noiseTextures: Optional TextureManager — binds noise textures at slots 4–8
     ///     in the scene pass so preset shaders can sample them.  Defaults to `nil`.
+    ///   - presetFragmentBuffer: Optional per-preset slot-6 state buffer (the direct
+    ///     `directPresetFragmentBuffer`), bound at fragment index 6 of the scene pass.
+    ///     `direct` + `post_process` presets that carry CPU-side state (Cymatic
+    ///     Resonance is the first) need this; every ray-march post_process consumer
+    ///     bypasses `runScenePass` via `runBloomAndComposite`, so it defaults `nil`.
     public func render(
         scenePipelineState: MTLRenderPipelineState,
         features: inout FeatureVector,
@@ -202,7 +208,8 @@ public final class PostProcessChain: @unchecked Sendable {
         stemFeatures: StemFeatures,
         outputTexture: MTLTexture,
         commandBuffer: MTLCommandBuffer,
-        noiseTextures: TextureManager? = nil
+        noiseTextures: TextureManager? = nil,
+        presetFragmentBuffer: MTLBuffer? = nil
     ) {
         guard sceneTexture != nil, bloomTexA != nil, bloomTexB != nil else {
             logger.error("PostProcessChain.render called before textures allocated — skipping")
@@ -216,7 +223,8 @@ public final class PostProcessChain: @unchecked Sendable {
             fftBuffer: fftBuffer,
             waveformBuffer: waveformBuffer,
             stemFeatures: stemFeatures,
-            noiseTextures: noiseTextures
+            noiseTextures: noiseTextures,
+            presetFragmentBuffer: presetFragmentBuffer
         )
         if bloomEnabled {
             runBrightPass(commandBuffer: commandBuffer)
@@ -281,7 +289,8 @@ public final class PostProcessChain: @unchecked Sendable {
         fftBuffer: MTLBuffer,
         waveformBuffer: MTLBuffer,
         stemFeatures: StemFeatures,
-        noiseTextures: TextureManager? = nil
+        noiseTextures: TextureManager? = nil,
+        presetFragmentBuffer: MTLBuffer? = nil
     ) {
         guard let scene = sceneTexture else { return }
 
@@ -298,6 +307,11 @@ public final class PostProcessChain: @unchecked Sendable {
         encoder.setFragmentBuffer(waveformBuffer, offset: 0, index: 2)
         var stems = stemFeatures
         encoder.setFragmentBytes(&stems, length: MemoryLayout<StemFeatures>.stride, index: 3)
+        // Per-preset slot-6 state for direct+post_process presets (Cymatic Resonance).
+        // ponytail: only slot 6 is threaded — no direct+post_process preset needs 7/8 yet.
+        if let presetBuf = presetFragmentBuffer {
+            encoder.setFragmentBuffer(presetBuf, offset: 0, index: 6)
+        }
         noiseTextures?.bindTextures(to: encoder)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
