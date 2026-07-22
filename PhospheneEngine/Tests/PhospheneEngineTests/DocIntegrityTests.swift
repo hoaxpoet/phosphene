@@ -217,7 +217,7 @@ struct DocIntegrityTests {
     static func epEntryNeedsRotation(header: String, bodyLines: Int, cutoff: String) -> Bool {
         guard header.contains("✅") || header.contains("⏳") else { return false }
         guard let dated = lastISODateString(in: header), dated < cutoff else { return false }
-        return bodyLines > 3
+        return bodyLines > 0   // mirrors rotate_docs.sh (`bodylines > 0`); >3 under-reported 1–3-line bodies the script rotates
     }
 
     /// Lines of the section starting at the exact `header` line, up to (exclusive) the
@@ -275,6 +275,8 @@ struct DocIntegrityTests {
         #expect(!Self.epEntryNeedsRotation(header: "### Foo (2026-05-01)", bodyLines: 10, cutoff: cutoff))
         // old + ✅ but already header-only (no body) → not flagged
         #expect(!Self.epEntryNeedsRotation(header: "### Foo ✅ (2026-05-01)", bodyLines: 0, cutoff: cutoff))
+        // old + ✅ + a SINGLE body line → flagged (mirrors rotate_docs `bodylines > 0`; the >3 under-report bug)
+        #expect(Self.epEntryNeedsRotation(header: "### Foo ✅ (2026-05-01)", bodyLines: 1, cutoff: cutoff))
     }
 
     @Test("KNOWN_ISSUES §Resolved (recent) stays within its 50 KB budget (DOC.6)")
