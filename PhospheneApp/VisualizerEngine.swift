@@ -211,14 +211,6 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// `applyPreset` (NB.4 — same direct-preset slot-6 pattern as Aurora Veil).
     var nimbusState: NimbusState?
 
-    /// Cymatic Resonance mode-ladder EMA + bass-drop snap state — allocated when
-    /// the Cymatic Resonance preset is active, nil otherwise. Tick closure and
-    /// stateBuffer are wired via `setMeshPresetTick` / `setDirectPresetFragmentBuffer`
-    /// in `applyPreset` (CR.1 — same direct slot-6 pattern; reaches the fragment
-    /// through the post_process scene pass, RenderPipeline+PostProcess). Reset on
-    /// track change so the plate settles into the new track.
-    var cymaticResonanceState: CymaticResonanceState?
-
     /// Skein painter integrators + onset-burst ring + per-track seed — allocated
     /// when the Skein preset is active, nil otherwise. Tick closure and
     /// skeinBuffer are wired via `setMeshPresetTick` / `setDirectPresetFragmentBuffer`
@@ -288,6 +280,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Reaction–diffusion cell colony for the Mitosis preset — attached via
     /// `ParticleGeometry` (D-097, MITOSIS.1). Built eagerly like Filigree.
     var mitosisGeometry: (any ParticleGeometry)?
+
+    /// Vibrating-sand Chladni simulation for the Cymatic Resonance preset —
+    /// attached via `ParticleGeometry` (D-097, CR.2 rebuild). Built eagerly.
+    var cymaticSandGeometry: (any ParticleGeometry)?
 
     /// Detailed fluorescence-microscopy cell division for the Cytokinesis preset
     /// (Mitosis gen-2) — explicit per-cell `ParticleGeometry` (D-097, MITOSIS-G2.1).
@@ -934,6 +930,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         self.mitosisGeometry = Self.makeMitosisGeometry(context: ctx, library: lib)
         self.cytokinesisGeometry = Self.makeCytokinesisGeometry(context: ctx, library: lib)
         self.ricercarGeometry = Self.makeRicercarGeometry(context: ctx, library: lib)
+        self.cymaticSandGeometry = Self.makeCymaticSandGeometry(context: ctx, library: lib)
         self.moodClassifier = classifier
         self.stemAnalyzer = analyzer
         self.stemSeparator = sep
@@ -1303,8 +1300,28 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         case "Mitosis":     return mitosisGeometry
         case "Cytokinesis": return cytokinesisGeometry
         case "Ricercar":    return ricercarGeometry
+        case "Cymatic Resonance": return cymaticSandGeometry
         default:            return nil
         }
+    }
+
+    /// Build the vibrating-sand Chladni simulation for the Cymatic Resonance preset
+    /// (`CymaticSandGeometry` + `CymaticSand.metal`, CR.2 rebuild). Returns
+    /// `any ParticleGeometry` (D-097, siblings not subclasses).
+    private static func makeCymaticSandGeometry(
+        context: MetalContext,
+        library: Renderer.ShaderLibrary
+    ) -> (any ParticleGeometry)? {
+        guard let sand = try? CymaticSandGeometry(
+            device: context.device,
+            library: library.library,
+            configuration: CymaticSandConfiguration(),
+            pixelFormat: context.pixelFormat
+        ) else {
+            return nil
+        }
+        logger.info("Cymatic Resonance created: vibrating-sand sim (\(CymaticSandConfiguration().grainCount) grains)")
+        return sand
     }
 
     /// Load the mood classifier.

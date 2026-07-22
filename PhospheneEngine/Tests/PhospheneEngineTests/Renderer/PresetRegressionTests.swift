@@ -32,13 +32,11 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // CR.1 Cymatic Resonance (direct + post_process): rendered through the real
     // PostProcessChain (renderPostProcessFrame) with a ZEROED slot-6 state — the
     // deterministic silence fundamental figure (ladderPos 0 = mode (1,3), warmup 0).
-    // CR reads its mode-ladder position from the slot-6 state, not the FeatureVector,
-    // so all three fixtures converge to one hash (the Nimbus/Aurora pattern). This
-    // locks the maquette silence render; it will regenerate at CR.2 (materials).
-    // Regenerated at CR.1.2 (D-198): top-down camera (fills the frame), varied ladder,
-    // harmonic-phase hue — all change the silence-fundamental render. (CR.1.1 was
-    // 0x69E9A9696B23170F.)
-    "Cymatic Resonance": (steady: 0xAAAACCE8E8EEAAAA, beatHeavy: 0xAAAACCE8E8EEAAAA, quiet: 0xAAAACCE8E8EEAAAA),
+    // CR.2 rebuild (D-199): Cymatic Resonance is now a `feedback+particles` preset;
+    // like Filigree/Mitosis its `pipelineState` is a black ground fragment (the sand
+    // is a particle sim drawn on top), so — same as those particle presets — it has
+    // NO golden entry here and skips this dHash gate. Its look/motion is gated by
+    // CymaticSandSketchRenderTests instead.
     // V.7.7B Arachne: staged COMPOSITE fragment now ports the V.7.5 v5 web
     // walk + spider + mist + dust motes. The regression renders the COMPOSITE
     // stage in isolation with `worldTex` unbound (texture sampler returns 0),
