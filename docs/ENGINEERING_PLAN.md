@@ -73,7 +73,9 @@ Session 1 of the VL psychedelic terrain-flight rebuild (`docs/presets/VOLUMETRIC
 
 **Finding for the rebuild (not fixed here):** frame-0 → frame-59 drift is **0 bits at silence** — VL is fully frozen when audio stops, because `accumulatedAudioTime` is energy-gated (`RenderPipeline.swift:514`; the same near-stationary property FD.1 relies on). The design doc §4 asks for a "calm, slow-breathing" silence state and the reference README claims the morph "never freezes" — neither holds today. Belongs to arc step 5 (silence + cert polish).
 
-**Blocked, not started:** arc steps 0 and 2–5. Step 0 (SDF.1 hg_sdf vendoring) and §7 psychedelic reference re-curation are open DECISION-NEEDED items; §7 is a hard pre-flight gate on any shader tuning.
+**Scope correction (mid-session).** "Session 1" in `VOLUMETRIC_LITHOGRAPH_REBUILD_PROMPTS.md` meant **SDF.1 — vendor hg_sdf**, not the harness; the prompt file was written after the design-doc draft this session started from. What landed here is the prompts' **Session 2 task 1**, delivered early. Both open decisions were then resolved by Matt, one reversing the prompt: **(1) SDF.1 is VOID** — port `pModPolar` / `pModMirror2` / `pReflect` verbatim from canonical `hg_sdf.glsl` (~50 lines) into VL's own shader tree instead of vendoring ~40 operators for three call sites; the fold math folds into Session 2 task 2 and the RENDERER capability flip waits for a second consumer. **(2) Reference re-curation** = Claude proposes candidates, Matt approves — still a hard pre-flight gate on any shader tuning. **(3) Camera placement** deferred (the doc's default). Both files carry the correction; the Session-1 prompt is banner-voided.
+
+**Next:** the §7 reference curation, then Session 2 from task 2.
 
 ### Increment FD.2 — Fractal Descent look pass (jewel palette + materials + flash fix) 🔨 (2026-07-23)
 
