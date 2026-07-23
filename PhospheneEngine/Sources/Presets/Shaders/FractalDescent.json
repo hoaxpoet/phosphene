@@ -17,9 +17,11 @@
   "fatigue_risk": "medium",
   "transition_affordances": ["crossfade", "morph"],
   "section_suitability": ["buildup", "peak", "bridge", "comedown"],
-  "complexity_cost": { "tier1": 12.0, "tier2": 8.0 },
-  "stem_affinity": {},
-  "audio_routes": [],
+  "complexity_cost": { "tier1": 12.0, "tier2": 6.0 },
+  "stem_affinity": { "bass": "fold_breakthrough" },
+  "audio_routes": [
+    { "route": "fold_breakthrough", "primitive": "bassAttRel", "kind": "continuous" }
+  ],
   "certified": false,
   "rubric_profile": "full"
 }

@@ -110,18 +110,56 @@ struct FractalDescentBudgetProbeTests {
         // so frame 0 and a hypothetical frame 1.0 are the same structure.
         let phases: [Float] = [0.0, 0.33, 0.66]
         for (i, phase) in phases.enumerated() {
-            let px = try renderSingle(presetNamed: Self.subjectName, audioPhase: phase / 0.12)
+            let px = try renderSingle(presetNamed: Self.subjectName, descentPhase: phase / 0.12)
             let url = dir.appendingPathComponent(String(format: "descent_%02d_phase%.2f.png", i, phase))
             try writePNG(bgra: px, width: Self.width, height: Self.height, to: url)
             print("[FDBudget] wrote \(url.path)")
         }
     }
 
-    /// Renders one frame at an explicit descent phase and returns BGRA bytes.
-    /// `sceneParamsA.x` (accumulated audio time) is normally written by
-    /// RenderPipeline+RayMarch, which this probe bypasses — so it is set here
-    /// directly, which is also why the timing runs above all sit at phase 0.
-    private func renderSingle(presetNamed name: String, audioPhase: Float) throws -> [UInt8] {
+    /// Motion sequence exercising BOTH heroes over one descent, dumped as a frame
+    /// run for motion_gate.sh + eyeball review (the Truchet lesson: still sheets
+    /// hide temporal defects). Energy envelope drives descent SPEED (the per-frame
+    /// accumulatedAudioTime increment scales with a synthetic quiet→build→drop→tail
+    /// energy curve); a bass swell at the drop drives the fold-open. Verifies the
+    /// fall accelerates with energy, near-stops in the quiet, and the fold opens on
+    /// the bass — as a real position/structure delta across frames, not a still.
+    @Test("descent motion sequence (FD_BUDGET=1, FD_MOTION=1)")
+    func test_descentMotionSequence() throws {
+        guard ProcessInfo.processInfo.environment["FD_BUDGET"] == "1",
+              ProcessInfo.processInfo.environment["FD_MOTION"] == "1" else {
+            print("[FDBudget] FD_MOTION not set — skipping motion sequence")
+            return
+        }
+        let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["FD_RENDER_DIR"]
+                      ?? NSTemporaryDirectory().appending("fd_motion"))
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        let frames = 90
+        var phase: Float = 0            // monotonic descent phase (∫ energy dt)
+        for i in 0..<frames {
+            let u = Float(i) / Float(frames - 1)          // 0..1 over the sequence
+            // Synthetic energy: quiet intro → build → drop → sustained tail.
+            let energy: Float = u < 0.25 ? 0.05
+                : u < 0.5 ? (0.05 + (u - 0.25) / 0.25 * 0.85)
+                : 0.9
+            phase += energy * 0.05                        // faster when loud (HERO #1)
+            // Bass swell centred on the drop (u≈0.5) → fold opens (HERO #2).
+            let swell: Float = max(0, 1.0 - abs(u - 0.5) / 0.12) * 2.4
+            let px = try renderSingle(presetNamed: Self.subjectName, descentPhase: phase, foldSwell: swell)
+            let url = dir.appendingPathComponent(String(format: "fd_%03d.png", i))
+            try writePNG(bgra: px, width: Self.width, height: Self.height, to: url)
+        }
+        print("[FDBudget] wrote \(frames) motion frames to \(dir.path)")
+    }
+
+    /// Renders one frame at an explicit descent phase + fold swell, returns BGRA.
+    /// `sceneParamsA.x` (accumulated audio time, the descent driver) and
+    /// `bassAttRel` (the fold driver) are normally written by the live path, which
+    /// this probe bypasses — so both are set here directly.
+    private func renderSingle(presetNamed name: String,
+                              descentPhase: Float,
+                              foldSwell: Float = 0) throws -> [UInt8] {
         let ctx = try MetalContext()
         let lib = try ShaderLibrary(context: ctx)
         let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat, loadBuiltIn: true)
@@ -132,7 +170,7 @@ struct FractalDescentBudgetProbeTests {
         let pipeline = try RayMarchPipeline(context: ctx, shaderLibrary: lib)
         pipeline.allocateTextures(width: Self.width, height: Self.height)
         var scene = preset.descriptor.makeSceneUniforms()
-        scene.sceneParamsA.x = audioPhase
+        scene.sceneParamsA.x = descentPhase      // HERO #1: descent driver (energy-time)
         scene.sceneParamsA.y = Float(Self.width) / Float(Self.height)
         pipeline.sceneUniforms = scene
         pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
@@ -149,6 +187,7 @@ struct FractalDescentBudgetProbeTests {
         let outTex = try HarnessTemplateCore.makeCaptureTexture(ctx, width: Self.width, height: Self.height)
 
         var features = HarnessTemplateCore.silenceFeature(frame: 0)
+        features.bassAttRel = foldSwell          // HERO #2: fold-open driver
         guard let cmd = ctx.commandQueue.makeCommandBuffer() else { throw HarnessError.commandBufferFailed }
         pipeline.render(
             gbufferPipelineState: gbufferState,
