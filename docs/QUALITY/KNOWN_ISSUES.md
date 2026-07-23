@@ -45,7 +45,9 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 **Verification criteria.** Automated: golden + route-coverage + perf ≤ 7 ms. Manual (required): Matt live M7 on a loud track — direction reads as falling IN, and a judgement on whether residual shimmer is acceptable or blocks cert.
 
-**Decision needed (Matt):** whether to fund an anti-aliasing capability (wire MetalFX Temporal — a scale-zoom *can* supply motion vectors — or supersample within budget), accept a softer/lower-detail look, or stop the preset.
+**RESOLVED — identity trait (2026-07-23, Matt's call):** the "flying between and through, not falling into" miss is closed by **abandoning the fall and adopting a FLY-THROUGH concept**. A scale traversal converges on a fixed target, so it reads as approaching a place, not dropping through a world — three live tests said so, and the cited reference (Horsthuis) flies through these structures rather than dropping down them. The mechanic is unchanged; the concept moved to match what the geometry is good at. Shipped with it: `scene_backdrop: "dark"` (FLY.1) so the preset is **enclosed** — miss rays render a near-black void instead of the IBL backdrop, decoupled from `environment` so the gallery env still supplies ambient. Also fixed this round: a `fract()` hue discontinuity feeding the cosine palette, which put a rainbow contour seam on every edge and **aliased by construction** (no temporal AA can resolve a hard seam) — a large part of the reported "glitchy".
+
+**Still open:** residual moiré on grazing high-detail surfaces. **Decision needed (Matt):** whether to fund further anti-aliasing capability (wire MetalFX Temporal — a scale-zoom *can* supply motion vectors — or supersample within budget), accept a softer/lower-detail look, or stop the preset.
 
 ---
 

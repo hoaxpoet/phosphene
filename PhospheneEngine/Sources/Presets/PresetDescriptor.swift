@@ -329,6 +329,17 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// The bake `envType` for `environment` (see `ibl_env`): 0 default, 1 gallery.
     public var environmentType: Int { environment == "gallery" ? 1 : 0 }
 
+    /// What miss/sky rays render as (FLY.1). `nil`/"environment" = the RMENV.3
+    /// default (the IBL environment, so a reflective surface sits IN the world it
+    /// mirrors). `"dark"` = a near-black enclosed void: for an INTERIOR preset the
+    /// gaps should read as deeper darkness receding, never as an exit to a sky.
+    /// Decoupled from `environment` on purpose — a preset can take bright ambient
+    /// from the gallery env while still being visually enclosed.
+    public let sceneBackdrop: String?
+
+    /// Backdrop mode passed to the shader: 0 = environment/sky, 1 = dark void.
+    public var backdropMode: Int { sceneBackdrop == "dark" ? 1 : 0 }
+
     /// Temporal upscaler/anti-aliaser for the ray-march path (MFX.1).
     /// `nil`/absent = none (byte-identical to pre-MFX). `"metalfx_temporal"` =
     /// MetalFX Temporal, wired at 1:1 as anti-aliasing. A preset that opts in
@@ -601,6 +612,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case environment
         case upscale
         case renderScale = "render_scale"
+        case sceneBackdrop = "scene_backdrop"
         case ferrofluid
         case sceneFog = "scene_fog"
         case sceneFogNear = "scene_fog_near"
@@ -663,6 +675,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         environment      = try container.decodeIfPresent(String.self, forKey: .environment)
         upscale          = try container.decodeIfPresent(String.self, forKey: .upscale)
         renderScale      = try container.decodeIfPresent(Float.self, forKey: .renderScale)
+        sceneBackdrop    = try container.decodeIfPresent(String.self, forKey: .sceneBackdrop)
         ferrofluid       = try container.decodeIfPresent(FerrofluidParams.self, forKey: .ferrofluid)
         sceneFog         = try container.decodeIfPresent(Float.self, forKey: .sceneFog) ?? 0
         sceneFogNear     = try container.decodeIfPresent(Float.self, forKey: .sceneFogNear) ?? 20.0

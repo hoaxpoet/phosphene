@@ -1065,6 +1065,14 @@ fragment float4 raymarch_lighting_fragment(
         // environment as the backdrop, so the visible background matches what the
         // surfaces reflect (a chrome sculpture sits IN the gallery it mirrors). env 0
         // keeps the original sky path exactly → byte-identical for every other preset.
+        // FLY.1: an ENCLOSED preset renders miss rays as a near-black void rather
+        // than a backdrop, so openings read as darkness receding instead of an exit
+        // to a sky. Kept faintly light-tinted (not pure black) so the gaps still sit
+        // in the same world rather than punching a flat hole. Independent of the IBL
+        // environment, which keeps feeding ambient + reflections.
+        if (scene.lightingParams.w >= 0.5) {
+            return float4(scene.lightColor.rgb * 0.015, 1.0);
+        }
         uint bgEnv = uint(scene.lightingParams.y + 0.5);
         if (bgEnv != 0u) {
             return float4(ibl_env(rd, bgEnv), 1.0);

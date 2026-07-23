@@ -1,10 +1,24 @@
 // FractalDescent.metal — FD.1 maquette: Mandelbox distance estimator + a
 // self-similar descent, rendered through the shared ray_march G-buffer path.
 //
-// CONCEPT (docs/presets/psychedelic_geometry/PG_FD_FRACTAL_DESCENT.md §A0/§A3):
-// an endless cinematic fall INTO a Mandelbox cathedral-world — recursive
-// chambers opening into deeper chambers. The identity trait is the sensation of
-// an unending fall into an infinite, self-elaborating fractal world.
+// CONCEPT — REFRAMED TO A FLY-THROUGH (Matt, 2026-07-23, after the 3rd live M7).
+// An endless cinematic FLIGHT THROUGH an enclosed Mandelbox cathedral-world:
+// travelling between and past towering recursive architecture, corridors opening
+// into further corridors. The identity trait is the sensation of unending
+// TRAVEL through an infinite, self-elaborating fractal interior.
+//
+// The original concept was a FALL *into* the fractal. Three live tests said the
+// mechanic does not deliver that: a scale descent converges on a fixed target, so
+// it reads as approaching a place, not dropping through a world. Matt's call was
+// to stop fighting the geometry and adopt what it is genuinely good at — which is
+// also what the cited reference (Horsthuis) actually does: he flies through these
+// structures, he does not drop down them. The mechanic is unchanged; the target
+// moved to match it.
+//
+// ENCLOSED (Matt's pick): `scene_backdrop: "dark"` renders miss rays as a
+// near-black void, so openings read as darkness receding rather than an exit to a
+// sky. The gallery IBL env still supplies ambient + reflections — backdrop and
+// environment are deliberately decoupled.
 //
 // REFERENCES (docs/VISUAL_REFERENCES/mandelbox_cathedral/, inherited by the
 // FD supersession of PG.3):

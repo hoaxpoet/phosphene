@@ -8,7 +8,7 @@
   ],
   "motion_paradigm": "camera_flight",
   "duration": 30,
-  "description": "An endless cinematic fall INTO a Mandelbox cathedral-world \u2014 recursive chambers opening into deeper chambers. The Rrrola/Fragmentarium Mandelbox distance estimator (ported, FA #73) with a self-similar scale descent toward a detailed boundary point; the music's energy drives how fast you fall and a bass swell opens the fold into a larger chamber. Jewel stained-glass palette with three materials (shaded jewelled stone, thin-film iridescent fold rims, emissive deep-recess votives). MetalFX Temporal anti-aliasing (MFX.1) resolves the fractal's sub-pixel detail, which aliases badly without it (BUG-071).",
+  "description": "An endless cinematic flight THROUGH an enclosed Mandelbox cathedral-world \u2014 travelling between and past towering recursive architecture, corridors opening into further corridors. The Rrrola/Fragmentarium Mandelbox distance estimator (ported, FA #73) driven by a self-similar scale traversal toward a detailed boundary point; the music's energy drives how fast you travel and a bass swell opens the fold into a larger space. Enclosed \u2014 no sky. Jewel stained-glass palette with three materials (shaded jewelled stone, thin-film iridescent fold rims, emissive deep-recess votives), resolved by MetalFX Temporal AA (MFX.1).",
   "author": "Matt",
   "passes": [
     "ray_march",
@@ -56,6 +56,7 @@
     }
   ],
   "environment": "gallery",
+  "scene_backdrop": "dark",
   "upscale": "metalfx_temporal",
   "render_scale": 0.65,
   "scene_fog": 0.05,

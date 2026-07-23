@@ -98,6 +98,9 @@ extension PresetDescriptor {
         // RMENV.3: lane .y carries the environment type into the shader so the
         // miss/background path can render a matching backdrop (0 = sky, unchanged).
         uniforms.lightingParams.y = Float(environmentType)
+        // FLY.1: lane .w selects the backdrop for miss rays (0 = env/sky, 1 = dark
+        // enclosed void). Default 0 → byte-identical for every existing preset.
+        uniforms.lightingParams.w = Float(backdropMode)
 
         // Fog: convert density → far distance. Dense fog (0.05) → 20 units; light (0.015) → ~67.
         //
