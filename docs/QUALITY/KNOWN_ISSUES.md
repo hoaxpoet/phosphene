@@ -7,6 +7,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
 | BUG-071 | P1 | preset.fidelity / sdf-geometry | **Fractal Descent live M7 FAILED (session `2026-07-23T19-27-48Z`, Cherub Rock):** "deeply glitchy, camera moves OUT not IN." Root causes (confirmed from artifacts + repro renders): (1) **descent direction inverted** — `q=(p+c)*zoom` with zoom increasing collapses features toward a vanishing point (recede); confirmed by a phase-0.08 vs 0.90 sweep (features shrink as phase grows) and by `features.csv` (accAudioTime 0→8.15 → phase 0→0.98 monotonic = one-way recede, never wrapped); (2) **severe shimmer/aliasing** — full-res Mandelbox fine detail + the high-frequency iridescent thin-film rims alias under motion (no AA; MetalFX unwired; the §A8 motion-coherence cap was never added; the whole-frame motion-gate spike metric doesn't catch high-freq shimmer); (3) **descent too slow** — 0.12 rate gave <1 octave in 78 s. Fix: invert to `q=(p+c)/zoom` (fall in), tame/detune the thin-film + distance-fade fine detail, raise the rate. |
+| BUG-072 | P2 | infra / test-gate | **`xcodebuild … test` cannot launch the app test runner** — "Failed to install or launch the test runner… The LaunchServices launcher has returned an error." Build and `build-for-testing` both SUCCEED; only the runner launch fails. **Machine-wide** (primary checkout *and* worktree, at VL.1 and at HEAD~1), so the mandated app-test regression gate is silently unavailable for every increment until fixed. `lsregister -f -R -trusted` on the `.xctest` and a rebuilt bundle did not clear it. First seen 2026-07-23, `sdk macosx26.5`. Engine SPM suite, SwiftLint, and doc gates are unaffected |
 | BUG-070 | P2 | audio.capture / resource-management | **Fix landed 2026-07-12 (PUB.6), pending live validation** — a FAILED device-change tap reinstall left `_isCapturing=true` with zero callbacks: engine health detectors starved (SignalHealthMonitor.evaluate is sample-driven → deadTap never confirms) and the router's recovery restart blocked at the alreadyCapturing guard; only the app-layer poll-based stall card surfaced it. Fix: the catch now clears `_isCapturing` (recovery unblocked) and keeps the monitor as a diagnostic beacon; the false "create steps stopped the monitor" comment corrected. Residual OPEN half: the 3-queue lifecycle interleave (device-change reinstall vs silence-recovery vs user stop) stays unserialized — static-only evidence; restructuring the G1-validated (12/12) path without a reproduced artifact is the BUG-063 pattern. Existing breadcrumbs (per-step diagnostics + install generation) are the instrumentation; serialize only if a live session shows an interleave |
 | BUG-065 | P3 | dsp.beat | **Live BeatGrid phase drifts off the audible beat over a track** — the cached grid has the right BPM but `LiveBeatDriftTracker` *bounds* the live drift without *tightening* it: drift grows ~11 ms (track start) → **50–70 ms (mid/late-track)**, and **28 % of frames exceed the ~60 ms perceptual window** (evidence: session `2026-06-29T12-43-51Z`, Cherub Rock 171.3 BPM 4/4 — drift-by-10s-window 11/37/49/54/69/66/55/48 ms; lock_state=2 only 67 %-within-60 ms). **Caps how frame-locked beat-driven presets can feel** — the live example is Glaze's GLAZE.7 downbeat push (reads connected but not *tight*; tightest early, loosens as the track plays). NOT a functional break (phase is approximately right). **Suggested improvement (Matt 2026-06-29):** live re-lock / cached-BPM-error correction so drift holds < ~30 ms across the track. The cold-start *automated phase* premise was retired (CLAUDE.md §Cold-Start), but this is **mid-track drift convergence** — a different surface (the tracker should tighten, not just bound). Logged for a dedicated beat-sync session |
 | AUDIT-2026-06-09 | P2/P3 | audit backlog | Full-codebase audit findings not individually filed |
@@ -24,6 +25,39 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 ---
 
 ## Open
+
+---
+
+### BUG-072 — app test runner cannot launch (`xcodebuild test` gate unavailable) (2026-07-23)
+
+**P2 · infra / test-gate · OPEN.**
+
+**Expected:** `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test` runs the app-target suite — the regression gate CLAUDE.md mandates before any merge.
+**Actual:** exit 65 with
+
+```
+Testing failed:
+	Could not launch “PhospheneAppTests”
+	PhospheneApp encountered an error (Failed to install or launch the test runner. (Underlying
+	Error: Could not launch “PhospheneAppTests”. The LaunchServices launcher has returned an
+	error. Please check the system logs for the underlying cause of the error.))
+```
+
+**Scope (measured at VL.1, 2026-07-23).** Not code-caused and not worktree-specific:
+
+| Where | `build` | `build-for-testing` | `test` |
+|---|---|---|---|
+| worktree @ VL.1 | ✅ | ✅ | ❌ launch |
+| worktree @ HEAD~1 | — | — | ❌ launch |
+| primary checkout | — | — | ❌ launch |
+
+Nothing runs — the failure is at runner launch, before any test code executes.
+
+**Tried, did not clear it:** `lsregister -f -R -trusted` on `PhospheneAppTests.xctest`; deleting the `.xctest` bundle and rebuilding via `build-for-testing`.
+
+**Impact.** `Scripts/closeout_evidence.sh` Step 2 reports `app=65` for every increment, so **`EVIDENCE: FAILURES PRESENT` is no longer a meaningful signal for the app target** — a real app-test regression would look identical to this. Engine SPM suite, SwiftLint, and doc gates are unaffected and remain trustworthy.
+
+**Next step.** Environment/toolchain, not Phosphene code (`sdk macosx26.5` — worth checking whether an Xcode or macOS update landed on the Mac mini around 2026-07-23). Needs Matt at the machine: system logs for the LaunchServices error, and a codesign/TCC check on the test runner.
 
 ---
 
