@@ -120,6 +120,19 @@ static inline float fd_descentZoom(float phase) {
     return pow(fabs(FD_SCALE), fract(phase));
 }
 
+/// Off-axis viewing offset, applied in camera space BEFORE the zoom so it scales
+/// with the zoom and the self-similar octave wrap stays seamless: sampling
+/// `(p + c) * zoom` at the wrap boundary still maps the structure onto itself
+/// (a world-space `p*zoom + c` would break the wrap — the offset must ride the
+/// scale). A pure on-axis descent rams the Mandelbox's central sphere dead-centre;
+/// this views it off to the side, down a corridor, so the fall reads as spiralling
+/// past structure rather than into a disc.
+constant float3 FD_DESCENT_OFFSET = float3(0.30f, 0.16f, 0.0f);
+
+static inline float3 fd_descentSample(float3 p, float zoom) {
+    return (p + FD_DESCENT_OFFSET) * zoom;
+}
+
 // MARK: - Audio → descent + fold (HERO routing)
 
 /// HERO #1 — descent speed follows the music's ENERGY. `accumulatedAudioTime`
@@ -152,14 +165,32 @@ float sceneSDF(float3 p,
     (void)stems;
     (void)ferrofluidHeight;   // slot-10; Ferrofluid Ocean only.
 
-    float zoom = fd_descentZoom(fd_descentPhase(s));   // HERO #1 (energy → speed)
+    float phase = fd_descentPhase(s);
+    float zoom  = fd_descentZoom(phase);               // HERO #1 (energy → speed)
+    float3 q    = fd_descentSample(p, zoom);           // off-axis, wrap-preserving
     // A bounding-sphere early-out was tried here and REMOVED: measured at
     // iteration caps 8 and 10 across enclosed and open compositions it changed
     // nothing (8.19 vs 8.01 ms p95), because the cost is not missed rays creeping
     // to the far plane — it is grazing rays crawling near the surface, which an
     // open composition has more of. Do not re-add it without a measurement.
     float4 trap;
-    return fd_mandelboxDE(p * zoom, fd_foldLimit(f), trap) / zoom;   // HERO #2 (bass → fold)
+    return fd_mandelboxDE(q, fd_foldLimit(f), trap) / zoom;   // HERO #2 (bass → fold)
+}
+
+// MARK: - Jewel palette (FD.2 look pass)
+
+/// Backlit-stained-glass jewel range (ref 06_palette_stained_glass_light.jpg:
+/// cobalt / teal / emerald / amber / crimson against black). IQ cosine palette —
+/// the biggest look lever over the FD.1 monochrome-gold maquette. Deliberately
+/// LESS than a full hue cycle (freq 0.85, not 1.0) so neighbouring folds read as
+/// related cathedral jewels rather than a garish full-rainbow wash; driven by the
+/// orbit trap so colour tracks depth into the structure, like leadlight cells.
+static inline float3 fd_jewel(float t) {
+    return palette(t,
+                   float3(0.42f, 0.40f, 0.48f),   // midtone
+                   float3(0.42f, 0.42f, 0.45f),   // amplitude (saturated, not white)
+                   float3(0.85f, 0.85f, 0.85f),   // < one hue cycle → cohesive range
+                   float3(0.55f, 0.30f, 0.10f));  // phase → cobalt→teal→amber→crimson
 }
 
 // MARK: - Scene Material
@@ -176,7 +207,6 @@ void sceneMaterial(float3 p,
                    constant LumenPatternState& lumen) {
     (void)matID;
     (void)stems;
-    (void)outMatID;   // FD.1 ships ONE maquette material (matID 0 dielectric).
     (void)lumen;      // slot-8; Lumen Mosaic only.
 
     // The orbit trap is recomputed here because sceneSDF and sceneMaterial are
@@ -184,15 +214,54 @@ void sceneMaterial(float3 p,
     // them (VolumetricLithograph duplicates its kickPulse for the same reason).
     // Descent phase + fold limit MUST match sceneSDF exactly or the colour
     // detaches from the geometry.
-    float zoom = fd_descentZoom(fd_descentPhase(s));
+    float phase = fd_descentPhase(s);
+    float zoom  = fd_descentZoom(phase);
+    float3 q    = fd_descentSample(p, zoom);
     float4 trap;
-    fd_mandelboxDE(p * zoom, fd_foldLimit(f), trap);
+    fd_mandelboxDE(q, fd_foldLimit(f), trap);
 
-    // Colour follows the geometry: the trap's per-axis closest approach varies
-    // with which fold the surface belongs to, so the palette tracks structure
-    // (ref 06_palette_stained_glass_light.jpg jewel tones).
-    float t = clamp(trap.w * 1.6f, 0.0f, 1.0f);
-    albedo    = mix(float3(0.10f, 0.16f, 0.42f), float3(0.85f, 0.62f, 0.20f), t);
-    roughness = mix(0.25f, 0.65f, clamp(trap.x, 0.0f, 1.0f));
-    metallic  = 0.30f;
+    // Jewel hue follows depth into the structure (trap.w = closest approach to the
+    // origin sphere), the same driver that varied cleanly in FD.1 — plus a small
+    // per-fold offset so adjacent cells differ without the whole frame going one
+    // colour (the v1 over-saturation failure).
+    float hue    = fract(trap.w * 1.3f + trap.y * 0.6f);
+    float3 jewel = fd_jewel(hue);
+
+    // ── Three materials via matID, dispatched by orbit-trap REGION (§A2 detail
+    //    cascade / ≥3 materials). The SHADED jewelled stone (matID 0) is dominant
+    //    so the 3D form/AO/depth from FD.1 is preserved; thin-film iridescence
+    //    rides the fold ridges; only the DEEPEST recesses self-illuminate (a glow
+    //    accent, not a flood — v1 flooded emission and read flat). ──
+    float cavity = 1.0f - smoothstep(0.0f, 0.045f, trap.w);  // deepest tiny pockets only
+    float ridge  = 1.0f - smoothstep(0.0f, 0.03f, trap.y);   // 1 = right on a fold plane
+
+    if (cavity > 0.85f) {
+        // matID 1 — emission-dominated: the deep recesses glow like backlit glass
+        // out of the dark (feeds the bloom bright-pass). Threshold kept TIGHT so a
+        // large smooth face (e.g. the central sphere) can never go fully emissive
+        // and flash the frame bright (D-157 flash safety).
+        outMatID  = 1;
+        // Vary the emissive hue across cavities (deep-cavity trap.w clusters near
+        // one colour → uniform-blue polka-dots) so the recesses read as DIFFERENT
+        // coloured votives — the stained-glass mix, not one blue repeated.
+        float3 glow = fd_jewel(fract(trap.z * 3.1f + trap.x * 2.0f + 0.4f));
+        albedo    = glow * (0.42f + 0.24f * cavity);         // capped: no white blowout
+        roughness = 0.5f;
+        metallic  = 0.0f;
+    } else if (ridge > 0.6f) {
+        // matID 3 — metallic thin-film: iridescent shimmer on the fold edges
+        // (§A2 "thin-film on fold edges" — the psychedelic signature).
+        outMatID  = 3;
+        albedo    = mix(float3(0.02f), jewel * 0.30f, 0.5f); // dark metal base under the film
+        roughness = 0.40f;                                   // rougher → no grazing-angle white blowout
+        metallic  = 0.85f;
+    } else {
+        // matID 0 — polished jewelled stone (chrome/marble ref 04/08): the
+        // DOMINANT, shaded material that carries depth. Saturated, brighter than
+        // FD.1's near-black, but still lit by Cook-Torrance so form reads.
+        outMatID  = 0;
+        albedo    = jewel * 0.70f;
+        roughness = mix(0.22f, 0.60f, clamp(trap.x * 2.0f, 0.0f, 1.0f));
+        metallic  = 0.42f;
+    }
 }
