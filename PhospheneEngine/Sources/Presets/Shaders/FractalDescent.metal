@@ -187,8 +187,8 @@ float sceneSDF(float3 p,
 /// orbit trap so colour tracks depth into the structure, like leadlight cells.
 static inline float3 fd_jewel(float t) {
     return palette(t,
-                   float3(0.42f, 0.40f, 0.48f),   // midtone
-                   float3(0.42f, 0.42f, 0.45f),   // amplitude (saturated, not white)
+                   float3(0.50f, 0.47f, 0.55f),   // midtone (brighter)
+                   float3(0.55f, 0.55f, 0.55f),   // amplitude (deeper saturation)
                    float3(0.85f, 0.85f, 0.85f),   // < one hue cycle → cohesive range
                    float3(0.55f, 0.30f, 0.10f));  // phase → cobalt→teal→amber→crimson
 }
@@ -245,7 +245,7 @@ void sceneMaterial(float3 p,
         // one colour → uniform-blue polka-dots) so the recesses read as DIFFERENT
         // coloured votives — the stained-glass mix, not one blue repeated.
         float3 glow = fd_jewel(fract(trap.z * 3.1f + trap.x * 2.0f + 0.4f));
-        albedo    = glow * (0.42f + 0.24f * cavity);         // capped: no white blowout
+        albedo    = glow * (0.62f + 0.35f * cavity);         // brighter votives (tiny pockets → flash-safe)
         roughness = 0.5f;
         metallic  = 0.0f;
     } else if (ridge > 0.6f) {
@@ -260,8 +260,8 @@ void sceneMaterial(float3 p,
         // DOMINANT, shaded material that carries depth. Saturated, brighter than
         // FD.1's near-black, but still lit by Cook-Torrance so form reads.
         outMatID  = 0;
-        albedo    = jewel * 0.70f;
-        roughness = mix(0.22f, 0.60f, clamp(trap.x * 2.0f, 0.0f, 1.0f));
+        albedo    = jewel * 0.95f;                            // brighter, more saturated stone
+        roughness = mix(0.22f, 0.55f, clamp(trap.x * 2.0f, 0.0f, 1.0f));
         metallic  = 0.42f;
     }
 }
