@@ -487,25 +487,35 @@ extension PresetLoader {
 
             float3 hitPos = camPos + rayDir * t;
 
-            // ── Central-differences normal ───────────────────────────────────
+            // ── Tetrahedral normal (RMPERF.1) ────────────────────────────────
+            // 4 SDF taps instead of the 6 a central difference needs, at the
+            // four vertices of a tetrahedron (IQ's standard trick). For a
+            // well-behaved DE the result is visually indistinguishable from the
+            // 6-tap gradient; it removes 2 sceneSDF evaluations per hit pixel,
+            // which for an expensive DE (Fractal Descent's Mandelbox) is the
+            // dominant per-pixel cost, not the march itself.
             const float eps = 0.001;
-            float3 normal = normalize(float3(
-                sceneSDF(hitPos + float3(eps, 0, 0), features, scene, stems, ferrofluidHeight)
-              - sceneSDF(hitPos - float3(eps, 0, 0), features, scene, stems, ferrofluidHeight),
-                sceneSDF(hitPos + float3(0, eps, 0), features, scene, stems, ferrofluidHeight)
-              - sceneSDF(hitPos - float3(0, eps, 0), features, scene, stems, ferrofluidHeight),
-                sceneSDF(hitPos + float3(0, 0, eps), features, scene, stems, ferrofluidHeight)
-              - sceneSDF(hitPos - float3(0, 0, eps), features, scene, stems, ferrofluidHeight)
-            ));
+            const float2 kTetra = float2(1.0, -1.0);
+            float3 normal = normalize(
+                kTetra.xyy * sceneSDF(hitPos + kTetra.xyy * eps, features, scene, stems, ferrofluidHeight)
+              + kTetra.yyx * sceneSDF(hitPos + kTetra.yyx * eps, features, scene, stems, ferrofluidHeight)
+              + kTetra.yxy * sceneSDF(hitPos + kTetra.yxy * eps, features, scene, stems, ferrofluidHeight)
+              + kTetra.xxx * sceneSDF(hitPos + kTetra.xxx * eps, features, scene, stems, ferrofluidHeight)
+            );
 
-            // ── Ambient occlusion (5-sample cone) ───────────────────────────
+            // ── Ambient occlusion (3-sample cone; RMPERF.1, was 5) ───────────
+            // Step + weight rescaled to keep the SAME cone reach (~0.75) and the
+            // same max occlusion (1.0) as the 5-sample version, so the AO look is
+            // preserved while dropping 2 sceneSDF evaluations per hit pixel.
+            //   5 samples: step 0.15, reach 0.75, weight 0.20 (5 × 0.20 = 1.0)
+            //   3 samples: step 0.25, reach 0.75, weight 0.3333 (3 × 0.3333 ≈ 1.0)
             float ao     = 1.0;
-            float aoStep = 0.15;
-            for (int k = 1; k <= 5; k++) {
+            float aoStep = 0.25;
+            for (int k = 1; k <= 3; k++) {
                 float aoT   = float(k) * aoStep;
                 float3 aoPos = hitPos + normal * aoT;
                 float aoD   = sceneSDF(aoPos, features, scene, stems, ferrofluidHeight);
-                ao -= max(0.0, (aoT - aoD) / aoT) * 0.2;
+                ao -= max(0.0, (aoT - aoD) / aoT) * 0.3333;
             }
             ao = clamp(ao, 0.0, 1.0);
 
