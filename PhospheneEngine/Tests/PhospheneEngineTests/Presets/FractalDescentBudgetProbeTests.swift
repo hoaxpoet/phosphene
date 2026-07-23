@@ -106,9 +106,11 @@ struct FractalDescentBudgetProbeTests {
         let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["FD_RENDER_DIR"]
                       ?? NSTemporaryDirectory().appending("fd_frames"))
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        // 0.0 / 0.33 / 0.66 of one self-similar octave — the wrap point is 1.0,
-        // so frame 0 and a hypothetical frame 1.0 are the same structure.
-        let phases: [Float] = [0.0, 0.33, 0.66]
+        // Descent phases across one octave. FD_PHASES overrides (comma-separated)
+        // to sweep direction/coverage, e.g. FD_PHASES="0.05,0.35,0.65,0.95".
+        let phases: [Float] = ProcessInfo.processInfo.environment["FD_PHASES"]
+            .map { $0.split(separator: ",").compactMap { Float($0) } }
+            .flatMap { $0.isEmpty ? nil : $0 } ?? [0.0, 0.33, 0.66]
         for (i, phase) in phases.enumerated() {
             let px = try renderSingle(presetNamed: Self.subjectName, descentPhase: phase / 0.12)
             let url = dir.appendingPathComponent(String(format: "descent_%02d_phase%.2f.png", i, phase))

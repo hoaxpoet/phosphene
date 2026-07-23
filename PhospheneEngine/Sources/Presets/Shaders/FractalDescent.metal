@@ -66,6 +66,13 @@ constant int   FD_ITERS    = 8;
 constant float FD_FOLD_BASE  = 1.0f;
 constant float FD_FOLD_RANGE = 0.18f;   // sweep-validated Lipschitz-safe interval
 
+// Motion-coherence detail fade (§A8 / BUG-071). World-space distances from the
+// camera between which the high-frequency material response rolls off, so far
+// sub-pixel fractal detail stops aliasing into shimmer under the fall. Tuned
+// against the camera at z=-2.9 with the fractal spanning roughly 1–6 units out.
+constant float FD_DETAIL_NEAR = 2.2f;
+constant float FD_DETAIL_FAR  = 6.5f;
+
 // Rrrola's precomputed constants (Fragmentarium `init()`): folding the
 // /MinRad2 into the scale vector is what makes the sphere fold a single
 // clamp(max(...)) with no branch.
@@ -109,28 +116,39 @@ static inline float fd_mandelboxDE(float3 pos, float foldLimit, thread float4& o
 /// necessarily exits it — there is no infinite corridor to fall down. What the
 /// object does have is self-similarity under scaling by |Scale|: the structure
 /// at zoom z and at zoom z*|Scale| are the same structure. So driving
-/// zoom = |Scale|^fract(phase) sweeps one full octave of the fractal and then
-/// wraps *onto itself* — a genuinely seamless, unending fall INTO the world,
-/// with no pop at the wrap and no possibility of flying out into empty space.
+/// zoom = |Scale|^fract(phase) sweeps one full octave of the fractal.
 ///
-/// Uniform scaling is exact for a distance estimator (DE(p*z)/z is still a valid
-/// DE), so this costs no Lipschitz safety — unlike domain repetition, which
-/// would break the DE across the fold and punch holes in the geometry.
+/// DIRECTION (BUG-071): to fall INTO the world, features must GROW/rush past as
+/// the phase advances. That means sampling `(p + c) / zoom` (magnify a shrinking
+/// neighbourhood) with zoom increasing — NOT `(p + c) * zoom`, which collapses
+/// every feature toward a vanishing point (a recede; the live M7 "camera moving
+/// out"). The DE distance is then DE(q) * zoom (dp = zoom·dq).
 static inline float fd_descentZoom(float phase) {
     return pow(fabs(FD_SCALE), fract(phase));
 }
 
-/// Off-axis viewing offset, applied in camera space BEFORE the zoom so it scales
-/// with the zoom and the self-similar octave wrap stays seamless: sampling
-/// `(p + c) * zoom` at the wrap boundary still maps the structure onto itself
-/// (a world-space `p*zoom + c` would break the wrap — the offset must ride the
-/// scale). A pure on-axis descent rams the Mandelbox's central sphere dead-centre;
-/// this views it off to the side, down a corridor, so the fall reads as spiralling
-/// past structure rather than into a disc.
+/// Off-axis viewing offset, applied in camera space so it rides the scale (the
+/// self-similar octave wrap stays seamless). A pure on-axis descent rams the
+/// Mandelbox's central sphere dead-centre; this views it off to the side, down a
+/// corridor, so the fall reads as travelling past structure rather than into a disc.
 constant float3 FD_DESCENT_OFFSET = float3(0.30f, 0.16f, 0.0f);
 
+/// Point in FRACTAL space the descent falls toward (BUG-071, second finding).
+///
+/// A scale descent converges on whatever point stays fixed as zoom grows. The
+/// naive `(p+c)/zoom` converges on the fractal's ORIGIN — which for a Mandelbox
+/// is the smooth box/sphere core with no detail at small scales, so the fall runs
+/// out of structure and presses against a featureless wall. A true endless fall
+/// must target a point on the fractal's BOUNDARY, where folded detail persists at
+/// every scale (the same reason a Mandelbrot zoom targets a boundary point, never
+/// the middle of the cardioid).
+constant float3 FD_ZOOM_TARGET = float3(0.92f, 0.64f, 0.42f);
+
+/// Fall-IN sample map (BUG-071): the neighbourhood around FD_ZOOM_TARGET shrinks
+/// as zoom grows, so that boundary detail magnifies and rushes past.
+/// `fd_mandelboxDE(q,…) * zoom` restores the p-space distance.
 static inline float3 fd_descentSample(float3 p, float zoom) {
-    return (p + FD_DESCENT_OFFSET) * zoom;
+    return FD_ZOOM_TARGET + (p + FD_DESCENT_OFFSET) / zoom;
 }
 
 // MARK: - Audio → descent + fold (HERO routing)
@@ -142,7 +160,11 @@ static inline float3 fd_descentSample(float3 p, float zoom) {
 /// with zero CPU state. This IS the arousal→velocity hero, driven off the more
 /// literal energy envelope rather than the mood axis.
 static inline float fd_descentPhase(constant SceneUniforms& s) {
-    return s.sceneParamsA.x * 0.12f;
+    // Rate (BUG-071): 0.12 gave <1 octave in a 78 s session — the fall was barely
+    // perceptible. accumulatedAudioTime advances ~0.1/s on a loud track, so 0.45
+    // ≈ one self-similar octave per ~22 s: a felt descent without the per-frame
+    // structure jump that drives aliasing.
+    return s.sceneParamsA.x * 0.45f;
 }
 
 /// HERO #2 — the fold opens on a bass swell. `bass_att_rel` is the D-026
@@ -174,7 +196,7 @@ float sceneSDF(float3 p,
     // to the far plane — it is grazing rays crawling near the surface, which an
     // open composition has more of. Do not re-add it without a measurement.
     float4 trap;
-    return fd_mandelboxDE(q, fd_foldLimit(f), trap) / zoom;   // HERO #2 (bass → fold)
+    return fd_mandelboxDE(q, fd_foldLimit(f), trap) * zoom;   // HERO #2 (bass → fold)
 }
 
 // MARK: - Jewel palette (FD.2 look pass)
@@ -227,6 +249,18 @@ void sceneMaterial(float3 p,
     float hue    = fract(trap.w * 1.3f + trap.y * 0.6f);
     float3 jewel = fd_jewel(hue);
 
+    // ── Motion-coherence detail fade (§A8; BUG-071) ──────────────────────────
+    // A Mandelbox has unbounded fine detail. Beyond ~a pixel of footprint it
+    // cannot be resolved, so at distance it ALIASES into shimmer under the fall
+    // (the live "deeply glitchy / pixelated"). There is no temporal AA here
+    // (MetalFX is unwired), so the mitigation is to stop *producing* detail the
+    // frame cannot hold: with distance, roll the high-frequency material response
+    // off toward a smooth, rougher, less-metallic surface. `detail` = 1 near,
+    // → 0 far. Cheap (one length + smoothstep), and it is what keeps the descent
+    // legible instead of boiling.
+    float viewDist = length(p - s.cameraOriginAndFov.xyz);
+    float detail   = 1.0f - smoothstep(FD_DETAIL_NEAR, FD_DETAIL_FAR, viewDist);
+
     // ── Three materials via matID, dispatched by orbit-trap REGION (§A2 detail
     //    cascade / ≥3 materials). The SHADED jewelled stone (matID 0) is dominant
     //    so the 3D form/AO/depth from FD.1 is preserved; thin-film iridescence
@@ -248,20 +282,32 @@ void sceneMaterial(float3 p,
         albedo    = glow * (0.62f + 0.35f * cavity);         // brighter votives (tiny pockets → flash-safe)
         roughness = 0.5f;
         metallic  = 0.0f;
-    } else if (ridge > 0.6f) {
+    } else if (ridge > 0.75f && detail > 0.55f) {
         // matID 3 — metallic thin-film: iridescent shimmer on the fold edges
         // (§A2 "thin-film on fold edges" — the psychedelic signature).
+        // BUG-071: the view-dependent iridescence is the single worst aliasing
+        // source under the fall (rainbow rims on every sub-pixel edge). Confined
+        // to NEAR ridges only (`detail > 0.55`) and a tighter ridge band, so it
+        // reads as a highlight on close structure instead of frame-wide rainbow
+        // noise; roughened further to widen the highlight lobe.
         outMatID  = 3;
         albedo    = mix(float3(0.02f), jewel * 0.30f, 0.5f); // dark metal base under the film
-        roughness = 0.40f;                                   // rougher → no grazing-angle white blowout
-        metallic  = 0.85f;
+        roughness = 0.52f;                                   // wider lobe → less sparkle aliasing
+        metallic  = 0.75f;
     } else {
         // matID 0 — polished jewelled stone (chrome/marble ref 04/08): the
         // DOMINANT, shaded material that carries depth. Saturated, brighter than
         // FD.1's near-black, but still lit by Cook-Torrance so form reads.
+        // BUG-071: roll roughness up and metallic down with distance — sharp
+        // specular on sub-pixel far detail is what boils under motion.
         outMatID  = 0;
         albedo    = jewel * 0.95f;                            // brighter, more saturated stone
         roughness = mix(0.22f, 0.55f, clamp(trap.x * 2.0f, 0.0f, 1.0f));
-        metallic  = 0.42f;
+        // Partial roll-off only: pushing far surfaces to fully rough + non-metallic
+        // killed the shimmer but washed them to a pale grey crust under the key +
+        // fill. Keep enough specular character to stay jewelled, enough roll-off to
+        // stop the sub-pixel sparkle.
+        roughness = mix(0.62f, roughness, detail);
+        metallic  = 0.42f * mix(0.55f, 1.0f, detail);
     }
 }
