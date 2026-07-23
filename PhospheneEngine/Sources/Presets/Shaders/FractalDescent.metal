@@ -22,11 +22,21 @@
 // are reproduced verbatim; only the syntax is MSL and the orbit trap is
 // unconditional (Fragmentarium gates it on ColorIterations).
 //
-// AUDIO (FD.1 scope): NONE YET. This maquette is deliberately audio-inert so the
-// task-3 performance gate measures the geometry cost alone. The §A4 hero routing
-// (f.arousal -> descent velocity, f.bass_att_rel -> fold open) lands only after
-// the gate passes, and see the FD.1 report re: the f.arousal / f.bass collision
-// with the preset-agnostic modulator in RenderPipeline+RayMarch.swift.
+// AUDIO (FD.1, both heroes wired):
+//   HERO #1 — descent SPEED follows the music's ENERGY, via accumulatedAudioTime
+//     (sceneParamsA.x, the engine's running sum of energy x dt): fast when loud,
+//     a near-stationary drift in silence (§A5), monotonic, zero CPU state. It is
+//     the animation time base, not a declared audio_route (VolumetricLithograph
+//     precedent — the QG.1 fixtures don't carry it; QG.1.1 boundary).
+//   HERO #2 — fold-open on the bass swell, via f.bass_att_rel (D-026 deviation
+//     primitive, soft-saturated) widening the box-fold LIMIT so the chamber
+//     unfolds into a bigger one. Only the box-fold clamp bound moves — no scale
+//     constant recompute, no per-pixel pow.
+// The camera is STATIC (cameraDollySpeed defaults 0), so the descent is purely the
+// in-shader scale-zoom; no collision with the preset-agnostic camera dolly.
+// FD.2 = look pass (materials, thin-film, god-rays, fog, jewel palette); FD.3 =
+// secondary audio + structural-boundary tuning + cert. Palette here is a single
+// maquette material (monochrome-ish orbit-trap gold) — the jewel HDR is FD.2.
 
 #include <metal_stdlib>
 using namespace metal;
@@ -40,9 +50,21 @@ using namespace metal;
 constant float FD_SCALE    = 2.7f;
 constant float FD_MIN_RAD2 = 0.25f;
 
-// Iteration cap. NOT animated, ever — the fold morph is the continuous scale
+// Iteration cap. NOT animated, ever — the fold morph is the continuous fold-limit
 // parameter (an integer count change pops the whole structure in one frame).
-constant int   FD_ITERS    = 10;
+// Locked at 8 (RMPERF.1 budget): the FD.1 contact sheets showed cap 8 is visually
+// near-identical to cap 10 (full recursive architecture) while cap 6 collapses the
+// self-elaboration; cap 8 + the RMPERF.1 preamble fits Tier-2 with headroom.
+constant int   FD_ITERS    = 8;
+
+// Fold-open (HERO #2): the bass swell widens the box-fold limit, opening the
+// current chamber into a larger one — the "breakthrough" on the drop. Kept in a
+// narrow band around the canonical 1.0 so the distance estimate stays valid (no
+// holes); driven by f.bass_att_rel in sceneSDF. Only the box-fold clamp bound
+// moves — the sphere fold, scale, and all precomputed scale constants are
+// untouched, so this costs one extra clamp bound per iteration, no per-pixel pow.
+constant float FD_FOLD_BASE  = 1.0f;
+constant float FD_FOLD_RANGE = 0.18f;   // sweep-validated Lipschitz-safe interval
 
 // Rrrola's precomputed constants (Fragmentarium `init()`): folding the
 // /MinRad2 into the scale vector is what makes the sphere fold a single
@@ -63,13 +85,13 @@ constant int   FD_ITERS    = 10;
 /// per-axis closest approach across the iteration, which is what makes the
 /// colour follow the geometry rather than sit on it as a flat ramp (§A2
 /// "the single biggest look lever").
-static inline float fd_mandelboxDE(float3 pos, thread float4& orbitTrap) {
+static inline float fd_mandelboxDE(float3 pos, float foldLimit, thread float4& orbitTrap) {
     float4 p  = float4(pos, 1.0f);
     float4 p0 = p;
     orbitTrap = float4(1e10f);
 
     for (int i = 0; i < FD_ITERS; i++) {
-        p.xyz = clamp(p.xyz, -1.0f, 1.0f) * 2.0f - p.xyz;          // box fold
+        p.xyz = clamp(p.xyz, -foldLimit, foldLimit) * 2.0f - p.xyz; // box fold (HERO #2)
         float r2 = dot(p.xyz, p.xyz);
         orbitTrap = min(orbitTrap, fabs(float4(p.xyz, r2)));
         p *= clamp(max(FD_MIN_RAD2 / r2, FD_MIN_RAD2), 0.0f, 1.0f); // sphere fold
@@ -98,6 +120,28 @@ static inline float fd_descentZoom(float phase) {
     return pow(fabs(FD_SCALE), fract(phase));
 }
 
+// MARK: - Audio → descent + fold (HERO routing)
+
+/// HERO #1 — descent speed follows the music's ENERGY. `accumulatedAudioTime`
+/// (sceneParamsA.x) is the engine's running sum of energy × dt: it advances fast
+/// when loud and crawls when quiet, so the fall speeds up on peaks and slows to a
+/// near-stationary drift in silence (§A5) — for free, monotonic (never reverses),
+/// with zero CPU state. This IS the arousal→velocity hero, driven off the more
+/// literal energy envelope rather than the mood axis.
+static inline float fd_descentPhase(constant SceneUniforms& s) {
+    return s.sceneParamsA.x * 0.12f;
+}
+
+/// HERO #2 — the fold opens on a bass swell. `bass_att_rel` is the D-026
+/// deviation primitive (never an absolute threshold on the AGC value, FA #31);
+/// it spikes to ~3× on real music, so soft-saturate it into [0,1] and widen the
+/// box-fold limit within the Lipschitz-safe band. A larger limit unfolds the
+/// current chamber into a bigger one — the "breakthrough" on the drop.
+static inline float fd_foldLimit(constant FeatureVector& f) {
+    float swell = 1.0f - exp(-max(0.0f, f.bass_att_rel) * 1.6f);   // soft-saturate → [0,1)
+    return FD_FOLD_BASE + FD_FOLD_RANGE * swell;
+}
+
 // MARK: - Scene SDF
 
 float sceneSDF(float3 p,
@@ -105,19 +149,17 @@ float sceneSDF(float3 p,
                constant SceneUniforms& s,
                constant StemFeatures& stems,
                texture2d<float> ferrofluidHeight) {
-    (void)f;
     (void)stems;
     (void)ferrofluidHeight;   // slot-10; Ferrofluid Ocean only.
 
-    // sceneParamsA.x is the engine's accumulated audio time.
-    float zoom = fd_descentZoom(s.sceneParamsA.x * 0.12f);
+    float zoom = fd_descentZoom(fd_descentPhase(s));   // HERO #1 (energy → speed)
     // A bounding-sphere early-out was tried here and REMOVED: measured at
     // iteration caps 8 and 10 across enclosed and open compositions it changed
     // nothing (8.19 vs 8.01 ms p95), because the cost is not missed rays creeping
     // to the far plane — it is grazing rays crawling near the surface, which an
     // open composition has more of. Do not re-add it without a measurement.
     float4 trap;
-    return fd_mandelboxDE(p * zoom, trap) / zoom;
+    return fd_mandelboxDE(p * zoom, fd_foldLimit(f), trap) / zoom;   // HERO #2 (bass → fold)
 }
 
 // MARK: - Scene Material
@@ -133,7 +175,6 @@ void sceneMaterial(float3 p,
                    thread int& outMatID,
                    constant LumenPatternState& lumen) {
     (void)matID;
-    (void)f;
     (void)stems;
     (void)outMatID;   // FD.1 ships ONE maquette material (matID 0 dielectric).
     (void)lumen;      // slot-8; Lumen Mosaic only.
@@ -141,9 +182,11 @@ void sceneMaterial(float3 p,
     // The orbit trap is recomputed here because sceneSDF and sceneMaterial are
     // separate entry points off the shared preamble with no channel between
     // them (VolumetricLithograph duplicates its kickPulse for the same reason).
-    float zoom = fd_descentZoom(s.sceneParamsA.x * 0.12f);
+    // Descent phase + fold limit MUST match sceneSDF exactly or the colour
+    // detaches from the geometry.
+    float zoom = fd_descentZoom(fd_descentPhase(s));
     float4 trap;
-    fd_mandelboxDE(p * zoom, trap);
+    fd_mandelboxDE(p * zoom, fd_foldLimit(f), trap);
 
     // Colour follows the geometry: the trap's per-axis closest approach varies
     // with which fold the surface belongs to, so the palette tracks structure
