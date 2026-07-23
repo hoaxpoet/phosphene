@@ -178,9 +178,19 @@ the macro warp lands.
 
 ## Open decisions (DECISION-NEEDED)
 
-1. **SDF.1 revival.** ✅ **APPROVED (Matt, 2026-07-23).** Vendor hg_sdf (MIT) with **VL as the proof
-   consumer**; Session 1 prompt drafted (`VOLUMETRIC_LITHOGRAPH_REBUILD_PROMPTS.md`).
-2. **Reference curation (§7).** ⏳ **OPEN — Matt-owned, the live pre-flight blocker** for the rebuild
-   session. The psychedelic reference set must replace the naturalistic one before implementation.
+1. **SDF.1 revival.** ~~✅ APPROVED (Matt, 2026-07-23) — vendor hg_sdf (MIT) with VL as the proof
+   consumer; Session 1 prompt drafted (`VOLUMETRIC_LITHOGRAPH_REBUILD_PROMPTS.md`).~~
+   ⚠️ **SUPERSEDED later the same day (Matt, VL.1): port only what VL uses.** `pModPolar`,
+   `pModMirror2`, `pReflect` ported **verbatim from canonical `hg_sdf.glsl`** (MIT, copyright
+   header retained) straight into VL's shader tree — ~50 lines. FA #73 is satisfied (the fold math
+   is *ported*, not derived); vendoring ~40 operators for a preset that calls three of them is not.
+   `HG_SDF_VENDORING_SPEC.md` stays on the shelf, but §3's gotchas (**floored `hg_mod`**, `atan2`,
+   `thread&` for `inout`, symbol collisions with the existing preamble trees) are mandatory reading
+   for the three ported functions. The RENDERER capability flip waits for a second consumer.
+   **Consequence: the Session-1 / SDF.1 prompt is void; the fold math folds into Session 2's task 2.**
+2. **Reference curation (§7).** ✅ **RESOLVED (Matt, 2026-07-23): Claude proposes, Matt approves.**
+   Claude sources candidates (kaleidoscopic / IFS stills, liquid-light psychedelia, folding-world
+   flight frames) and presents them annotated; Matt accepts / rejects / replaces before the README
+   is written. **Still a hard pre-flight gate** — no shader tuning until the approved set exists.
 3. **Camera placement.** ✅ **Deferred (Matt, 2026-07-23)** — v1 = camera speed + downbeat lurch;
    music-driven placement/banking is a later engine increment.
