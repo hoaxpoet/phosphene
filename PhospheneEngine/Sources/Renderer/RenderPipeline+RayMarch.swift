@@ -111,6 +111,11 @@ extension RenderPipeline {
         rayMarchState.ensureAllocated(width: width, height: height)
 
         // Update per-frame uniforms: accumulated audio time, aspect ratio, and step-count multiplier.
+        // MFX.1: lightingParams.z carries the PREVIOUS frame's accumulated audio
+        // time so a preset can derive where its geometry was last frame
+        // (`scenePrevPosition` → MetalFX motion vectors). Written before the new
+        // value lands in sceneParamsA.x.
+        rayMarchState.sceneUniforms.lightingParams.z = rayMarchState.sceneUniforms.sceneParamsA.x
         rayMarchState.sceneUniforms.sceneParamsA.x = features.accumulatedAudioTime
         // CLEAN.4.3: guard the divisor (height), not width — a zero-height drawable
         // divided to +inf/NaN aspect. Identical for any height > 0.

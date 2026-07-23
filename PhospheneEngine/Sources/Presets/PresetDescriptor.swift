@@ -329,6 +329,28 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// The bake `envType` for `environment` (see `ibl_env`): 0 default, 1 gallery.
     public var environmentType: Int { environment == "gallery" ? 1 : 0 }
 
+    /// Temporal upscaler/anti-aliaser for the ray-march path (MFX.1).
+    /// `nil`/absent = none (byte-identical to pre-MFX). `"metalfx_temporal"` =
+    /// MetalFX Temporal, wired at 1:1 as anti-aliasing. A preset that opts in
+    /// MUST define `scenePrevPosition` in its `.metal` (see
+    /// `PresetLoader.rayMarchMotionPreamble`) or it will fail to link.
+    public let upscale: String?
+
+    /// True when this preset asks for MetalFX Temporal.
+    public var usesMetalFXTemporal: Bool { upscale == "metalfx_temporal" }
+
+    /// Fraction of display resolution the ray-march chain renders at when an
+    /// upscaler is active (MFX.1). Ignored without `upscale`. Clamped to [0.4, 1].
+    /// The march is the expensive part and scales with area, so 0.65 ≈ 42 % of the
+    /// DE cost — that saving is what pays for the scaler.
+    public let renderScale: Float?
+
+    /// Effective render scale: 1.0 unless an upscaler is active.
+    public var effectiveRenderScale: Float {
+        guard usesMetalFXTemporal, let scale = renderScale else { return 1.0 }
+        return min(max(scale, 0.4), 1.0)
+    }
+
     /// Ferrofluid Ocean-specific material detail parameters (V.9 Session 4 / D-124).
     ///
     /// Optional block under the `"ferrofluid"` JSON key. When present, declares
@@ -577,6 +599,8 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case sceneCamera = "scene_camera"
         case sceneLights = "scene_lights"
         case environment
+        case upscale
+        case renderScale = "render_scale"
         case ferrofluid
         case sceneFog = "scene_fog"
         case sceneFogNear = "scene_fog_near"
@@ -637,6 +661,8 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         sceneCamera      = try container.decodeIfPresent(SceneCamera.self, forKey: .sceneCamera)
         sceneLights      = try container.decodeIfPresent([SceneLight].self, forKey: .sceneLights) ?? []
         environment      = try container.decodeIfPresent(String.self, forKey: .environment)
+        upscale          = try container.decodeIfPresent(String.self, forKey: .upscale)
+        renderScale      = try container.decodeIfPresent(Float.self, forKey: .renderScale)
         ferrofluid       = try container.decodeIfPresent(FerrofluidParams.self, forKey: .ferrofluid)
         sceneFog         = try container.decodeIfPresent(Float.self, forKey: .sceneFog) ?? 0
         sceneFogNear     = try container.decodeIfPresent(Float.self, forKey: .sceneFogNear) ?? 20.0

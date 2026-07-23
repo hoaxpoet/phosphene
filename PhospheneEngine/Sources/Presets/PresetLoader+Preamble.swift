@@ -544,4 +544,93 @@ extension PresetLoader {
 
         """
     }()
+
+    /// MFX.1 — motion-vector + depth pass, appended ONLY for presets that opt into
+    /// MetalFX Temporal (`"upscale": "metalfx_temporal"`).
+    ///
+    /// MetalFX needs to know, for each pixel, where that surface was in the
+    /// previous frame. A preset that animates its SDF must therefore supply
+    ///
+    ///     float3 scenePrevPosition(float3 worldPos, FeatureVector&, SceneUniforms&, StemFeatures&)
+    ///
+    /// returning the world position the same surface point occupied last frame.
+    /// For an analytically-animated scene this is a closed form (Fractal Descent's
+    /// scale descent inverts exactly), so the vectors are EXACT rather than
+    /// estimated — which is what makes temporal accumulation safe here.
+    ///
+    /// This section is opt-in because a preset that does not define
+    /// `scenePrevPosition` would fail to link.
+    static let rayMarchMotionPreamble: String = {
+        """
+        // ── MFX.1 motion-vector pass ─────────────────────────────────────────
+        struct MotionOutput {
+            float4 motion [[color(0)]];   // .rg16Float — (prev - curr) in UV units
+            float4 depth  [[color(1)]];   // .r32Float  — normalized 0 (near) → 1 (far)
+        };
+
+        float3 scenePrevPosition(float3 worldPos,
+                                 constant FeatureVector& f,
+                                 constant SceneUniforms& s,
+                                 constant StemFeatures& stems);
+
+        fragment MotionOutput raymarch_motion_fragment(
+            VertexOut               in       [[stage_in]],
+            constant FeatureVector& features [[buffer(0)]],
+            constant StemFeatures&  stems    [[buffer(3)]],
+            constant SceneUniforms& scene    [[buffer(4)]],
+            texture2d<float>        gbuf0    [[texture(0)]]
+        ) {
+            constexpr sampler samp(mag_filter::nearest, min_filter::nearest, address::clamp_to_edge);
+
+            MotionOutput out;
+            float2 uv = in.uv;
+
+            float depthNorm = gbuf0.sample(samp, uv).r;
+            out.depth = float4(depthNorm, 0.0, 0.0, 0.0);
+
+            // Sky / miss: no surface to track. Zero motion keeps MetalFX from
+            // dragging history across the background.
+            if (depthNorm >= 0.999) {
+                out.motion = float4(0.0);
+                return out;
+            }
+
+            // Reconstruct this pixel's world position (same basis the G-buffer
+            // marched with, jitter included, so the two stay consistent).
+            float aspectRatio = scene.sceneParamsA.y;
+            float farPlane    = scene.sceneParamsA.w;
+            float yFov        = tan(scene.cameraOriginAndFov.w * 0.5);
+            float xFov        = yFov * aspectRatio;
+
+            float3 camPos = scene.cameraOriginAndFov.xyz;
+            float3 camFwd = scene.cameraForward.xyz;
+            float3 camRt  = scene.cameraRight.xyz;
+            float3 camUp  = scene.cameraUp.xyz;
+
+            float2 ndc    = uv * 2.0 - 1.0;
+            float3 rayDir = normalize(camFwd + ndc.x * xFov * camRt - ndc.y * yFov * camUp);
+            float3 worldPos = camPos + rayDir * (depthNorm * farPlane);
+
+            // Where was this surface last frame?
+            float3 prevPos = scenePrevPosition(worldPos, features, scene, stems);
+
+            // Project it back to screen UV.
+            float3 toPrev = prevPos - camPos;
+            float  prevZ  = dot(toPrev, camFwd);
+            if (prevZ <= 0.0001) {          // behind the camera — untrackable
+                out.motion = float4(0.0);
+                return out;
+            }
+            float  pu = dot(toPrev, camRt) / (prevZ * xFov);
+            float  pv = dot(toPrev, camUp) / (prevZ * yFov);
+            float2 prevUV = float2(pu * 0.5 + 0.5, 0.5 - pv * 0.5);
+
+            // MetalFX convention: adding motion to the current position yields the
+            // previous position.
+            out.motion = float4(prevUV - uv, 0.0, 0.0);
+            return out;
+        }
+
+        """
+    }()
 }
