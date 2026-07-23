@@ -73,6 +73,13 @@ constant float FD_FOLD_RANGE = 0.18f;   // sweep-validated Lipschitz-safe interv
 constant float FD_DETAIL_NEAR = 2.2f;
 constant float FD_DETAIL_FAR  = 6.5f;
 
+// Descent rate: phase per unit accumulatedAudioTime (BUG-071). 0.12 gave <1
+// octave in a 78 s session — the fall was barely perceptible. accumulatedAudioTime
+// advances ~0.1/s on a loud track, so 0.45 ≈ one self-similar octave per ~22 s.
+// Shared by fd_descentPhase and scenePrevPosition — they MUST agree or the motion
+// vectors point at the wrong place and MetalFX smears.
+constant float FD_DESCENT_RATE = 0.45f;
+
 // Rrrola's precomputed constants (Fragmentarium `init()`): folding the
 // /MinRad2 into the scale vector is what makes the sphere fold a single
 // clamp(max(...)) with no branch.
@@ -160,11 +167,7 @@ static inline float3 fd_descentSample(float3 p, float zoom) {
 /// with zero CPU state. This IS the arousal→velocity hero, driven off the more
 /// literal energy envelope rather than the mood axis.
 static inline float fd_descentPhase(constant SceneUniforms& s) {
-    // Rate (BUG-071): 0.12 gave <1 octave in a 78 s session — the fall was barely
-    // perceptible. accumulatedAudioTime advances ~0.1/s on a loud track, so 0.45
-    // ≈ one self-similar octave per ~22 s: a felt descent without the per-frame
-    // structure jump that drives aliasing.
-    return s.sceneParamsA.x * 0.45f;
+    return s.sceneParamsA.x * FD_DESCENT_RATE;
 }
 
 /// HERO #2 — the fold opens on a bass swell. `bass_att_rel` is the D-026
@@ -197,6 +200,34 @@ float sceneSDF(float3 p,
     // open composition has more of. Do not re-add it without a measurement.
     float4 trap;
     return fd_mandelboxDE(q, fd_foldLimit(f), trap) * zoom;   // HERO #2 (bass → fold)
+}
+
+// MARK: - MetalFX motion vectors (MFX.1)
+
+/// Where the surface point at `worldPos` was one frame ago.
+///
+/// This is what makes temporal AA safe for this preset: the descent is an
+/// analytic similarity transform, so the previous-frame position is a CLOSED
+/// FORM rather than an estimate. A fractal feature sits at a fixed point `q` in
+/// fractal space; the sample map is `q = T + (p + c)/zoom`, so inverting for the
+/// previous frame's zoom gives
+///
+///     p_prev = (p + c) · (zoom_prev / zoom) − c
+///
+/// Only the zoom differs between frames (the camera is static and the fold morph
+/// is a slow continuous deformation MetalFX's rejection handles), so the ratio is
+/// the entire motion. `lightingParams.z` carries the previous frame's
+/// accumulated audio time — see RenderPipeline+RayMarch.
+float3 scenePrevPosition(float3 worldPos,
+                         constant FeatureVector& f,
+                         constant SceneUniforms& s,
+                         constant StemFeatures& stems) {
+    (void)f;
+    (void)stems;
+    float zoomNow  = fd_descentZoom(fd_descentPhase(s));
+    float zoomPrev = fd_descentZoom(s.lightingParams.z * FD_DESCENT_RATE);
+    float ratio    = (zoomNow > 1e-6f) ? (zoomPrev / zoomNow) : 1.0f;
+    return (worldPos + FD_DESCENT_OFFSET) * ratio - FD_DESCENT_OFFSET;
 }
 
 // MARK: - Jewel palette (FD.2 look pass)

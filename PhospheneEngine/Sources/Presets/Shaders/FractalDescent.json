@@ -1,30 +1,95 @@
 {
   "name": "Fractal Descent",
   "family": "geometric",
-  "concept_tags": ["fractal", "cavern", "hypnotic"],
+  "concept_tags": [
+    "fractal",
+    "cavern",
+    "hypnotic"
+  ],
   "motion_paradigm": "camera_flight",
   "duration": 30,
-  "description": "An endless cinematic fall into a Mandelbox cathedral-world — recursive chambers opening into deeper chambers. FD.1 maquette: the ported Rrrola/Fragmentarium Mandelbox distance estimator plus a self-similar scale descent that wraps seamlessly onto itself, with orbit-trap colour and one maquette material. Audio routing, materials, god-rays and fog are FD.2-FD.3; this increment exists to measure the geometry against the Tier-2 budget.",
+  "description": "An endless cinematic fall INTO a Mandelbox cathedral-world \u2014 recursive chambers opening into deeper chambers. The Rrrola/Fragmentarium Mandelbox distance estimator (ported, FA #73) with a self-similar scale descent toward a detailed boundary point; the music's energy drives how fast you fall and a bass swell opens the fold into a larger chamber. Jewel stained-glass palette with three materials (shaded jewelled stone, thin-film iridescent fold rims, emissive deep-recess votives). MetalFX Temporal anti-aliasing (MFX.1) resolves the fractal's sub-pixel detail, which aliases badly without it (BUG-071).",
   "author": "Matt",
-  "passes": ["ray_march", "post_process"],
-  "scene_camera": { "position": [0.0, 0.0, -2.9], "target": [0.0, 0.0, 0.0], "fov": 48 },
+  "passes": [
+    "ray_march",
+    "post_process"
+  ],
+  "scene_camera": {
+    "position": [
+      0.0,
+      0.0,
+      -2.9
+    ],
+    "target": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "fov": 48
+  },
   "scene_lights": [
-    { "position": [3.0, 5.0, -1.0], "color": [1.0, 0.9, 0.75], "intensity": 7.0 },
-    { "position": [-4.0, -2.0, -3.0], "color": [0.55, 0.7, 1.0], "intensity": 3.4 }
+    {
+      "position": [
+        3.0,
+        5.0,
+        -1.0
+      ],
+      "color": [
+        1.0,
+        0.9,
+        0.75
+      ],
+      "intensity": 7.0
+    },
+    {
+      "position": [
+        -4.0,
+        -2.0,
+        -3.0
+      ],
+      "color": [
+        0.55,
+        0.7,
+        1.0
+      ],
+      "intensity": 3.4
+    }
   ],
   "environment": "gallery",
+  "upscale": "metalfx_temporal",
+  "render_scale": 0.65,
   "scene_fog": 0.05,
   "scene_far_plane": 10.0,
   "visual_density": 0.85,
   "motion_intensity": 0.8,
-  "color_temperature_range": [0.2, 0.8],
+  "color_temperature_range": [
+    0.2,
+    0.8
+  ],
   "fatigue_risk": "medium",
-  "transition_affordances": ["crossfade", "morph"],
-  "section_suitability": ["buildup", "peak", "bridge", "comedown"],
-  "complexity_cost": { "tier1": 12.0, "tier2": 6.0 },
-  "stem_affinity": { "bass": "fold_breakthrough" },
+  "transition_affordances": [
+    "crossfade",
+    "morph"
+  ],
+  "section_suitability": [
+    "buildup",
+    "peak",
+    "bridge",
+    "comedown"
+  ],
+  "complexity_cost": {
+    "tier1": 12.0,
+    "tier2": 7.0
+  },
+  "stem_affinity": {
+    "bass": "fold_breakthrough"
+  },
   "audio_routes": [
-    { "route": "fold_breakthrough", "primitive": "bassAttRel", "kind": "continuous" }
+    {
+      "route": "fold_breakthrough",
+      "primitive": "bassAttRel",
+      "kind": "continuous"
+    }
   ],
   "certified": false,
   "rubric_profile": "full"

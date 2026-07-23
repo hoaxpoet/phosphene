@@ -112,7 +112,7 @@ struct FractalDescentBudgetProbeTests {
             .map { $0.split(separator: ",").compactMap { Float($0) } }
             .flatMap { $0.isEmpty ? nil : $0 } ?? [0.0, 0.33, 0.66]
         for (i, phase) in phases.enumerated() {
-            let px = try renderSingle(presetNamed: Self.subjectName, descentPhase: phase / 0.12)
+            let px = try renderSingle(presetNamed: Self.subjectName, descentPhase: phase / 0.45)
             let url = dir.appendingPathComponent(String(format: "descent_%02d_phase%.2f.png", i, phase))
             try writePNG(bgra: px, width: Self.width, height: Self.height, to: url)
             print("[FDBudget] wrote \(url.path)")
@@ -137,18 +137,89 @@ struct FractalDescentBudgetProbeTests {
                       ?? NSTemporaryDirectory().appending("fd_motion"))
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
+        // MFX.1: the pipeline is built ONCE and every frame renders through it, so
+        // MetalFX accumulates temporal history exactly as production does. Building
+        // a fresh pipeline per frame (as renderSingle does) resets that history and
+        // would silently measure TAA-off.
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat, loadBuiltIn: true)
+        guard let preset = loader.presets.first(where: { $0.descriptor.name == Self.subjectName }),
+              let gbufferState = preset.rayMarchPipelineState else {
+            throw HarnessError.presetNotFound(Self.subjectName)
+        }
+        let pipeline = try RayMarchPipeline(context: ctx, shaderLibrary: lib)
+        // FD_NO_TAA=1 renders the identical motion path with the temporal resolve
+        // OFF — the A/B that shows whether MetalFX actually removes the shimmer.
+        let taaOff = ProcessInfo.processInfo.environment["FD_NO_TAA"] == "1"
+        // MFX.1 production parity: the MetalFX flags decide the render size and the
+        // working-set allocation, so they MUST be set before allocateTextures.
+        pipeline.metalFXEnabled = preset.descriptor.usesMetalFXTemporal && !taaOff
+        pipeline.metalFXRenderScale = preset.descriptor.effectiveRenderScale
+        pipeline.motionPipelineState = preset.motionPipelineState
+        pipeline.allocateTextures(width: Self.width, height: Self.height)
+        pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
+        print("[FDBudget] MetalFX ready = \(pipeline.metalFXReady) (enabled=\(pipeline.metalFXEnabled), motionPipeline=\(preset.motionPipelineState != nil))")
+
+        let ibl = try IBLManager(context: ctx, shaderLibrary: lib)
+        let noise = try? TextureManager(context: ctx, shaderLibrary: lib)
+        var postChain: PostProcessChain?
+        if preset.descriptor.passes.contains(.postProcess) {
+            let chain = try PostProcessChain(context: ctx, shaderLibrary: lib)
+            chain.allocateTextures(width: Self.width, height: Self.height)
+            postChain = chain
+        }
+        let buffers = try HarnessTemplateCore.makeSilenceBuffers(ctx)
+        let outTex = try HarnessTemplateCore.makeCaptureTexture(ctx, width: Self.width, height: Self.height)
+
         let frames = 90
         var phase: Float = 0            // monotonic descent phase (∫ energy dt)
+        var prevPhase: Float = 0
         for i in 0..<frames {
             let u = Float(i) / Float(frames - 1)          // 0..1 over the sequence
             // Synthetic energy: quiet intro → build → drop → sustained tail.
             let energy: Float = u < 0.25 ? 0.05
                 : u < 0.5 ? (0.05 + (u - 0.25) / 0.25 * 0.85)
                 : 0.9
-            phase += energy * 0.05                        // faster when loud (HERO #1)
+            prevPhase = phase
+            // REAL playback rate: accumulatedAudioTime advances ~0.1/s on a loud
+            // track, so at 60 fps phase moves ~0.00075/frame. An earlier version of
+            // this harness used 0.05/frame — ~60× too fast — which made every frame
+            // a disocclusion and understated what temporal accumulation can do.
+            phase += energy * 0.0017                      // faster when loud (HERO #1)
             // Bass swell centred on the drop (u≈0.5) → fold opens (HERO #2).
             let swell: Float = max(0, 1.0 - abs(u - 0.5) / 0.12) * 2.4
-            let px = try renderSingle(presetNamed: Self.subjectName, descentPhase: phase, foldSwell: swell)
+
+            var scene = preset.descriptor.makeSceneUniforms()
+            scene.sceneParamsA.x = phase / 0.45           // accumulatedAudioTime
+            scene.sceneParamsA.y = Float(Self.width) / Float(Self.height)
+            scene.lightingParams.z = prevPhase / 0.45     // MFX.1 previous-frame time
+            pipeline.sceneUniforms = scene
+
+            var features = HarnessTemplateCore.silenceFeature(frame: i)
+            features.bassAttRel = swell
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else {
+                throw HarnessError.commandBufferFailed
+            }
+            pipeline.render(
+                gbufferPipelineState: gbufferState,
+                features: &features,
+                fftBuffer: buffers.fft, waveformBuffer: buffers.waveform,
+                stemFeatures: .zero,
+                outputTexture: outTex,
+                commandBuffer: cmd,
+                noiseTextures: noise,
+                iblManager: ibl,
+                postProcessChain: postChain)
+            cmd.commit()
+            cmd.waitUntilCompleted()
+            guard cmd.status == .completed else { throw HarnessError.renderFailed }
+
+            if i == 5 {
+                print("[FDBudget] frame5: resolveDidRun=\(pipeline.metalFXResolveDidRun) "
+                      + "mfxMs=\(pipeline.lastMetalFXPassMs) jitter=\(pipeline.currentJitter)")
+            }
+            let px = HarnessTemplateCore.readBGRA(outTex, width: Self.width, height: Self.height)
             let url = dir.appendingPathComponent(String(format: "fd_%03d.png", i))
             try writePNG(bgra: px, width: Self.width, height: Self.height, to: url)
         }
@@ -170,12 +241,19 @@ struct FractalDescentBudgetProbeTests {
             throw HarnessError.presetNotFound(name)
         }
         let pipeline = try RayMarchPipeline(context: ctx, shaderLibrary: lib)
+        // MFX.1 production parity: the MetalFX flags decide the render size and the
+        // working-set allocation, so they MUST be set before allocateTextures.
+        pipeline.metalFXEnabled = preset.descriptor.usesMetalFXTemporal
+        pipeline.metalFXRenderScale = preset.descriptor.effectiveRenderScale
+        pipeline.motionPipelineState = preset.motionPipelineState
         pipeline.allocateTextures(width: Self.width, height: Self.height)
         var scene = preset.descriptor.makeSceneUniforms()
         scene.sceneParamsA.x = descentPhase      // HERO #1: descent driver (energy-time)
         scene.sceneParamsA.y = Float(Self.width) / Float(Self.height)
         pipeline.sceneUniforms = scene
         pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
+        // MFX.1: exercise the real MetalFX path when the preset opts in, so the
+        // probe measures/renders what production does.
 
         let ibl = try IBLManager(context: ctx, shaderLibrary: lib)
         let noise = try? TextureManager(context: ctx, shaderLibrary: lib)
@@ -249,6 +327,11 @@ struct FractalDescentBudgetProbeTests {
         // Live pipeline, production parity (BUG-034): the same seam the renderer
         // drives, at the live 128-step budget (sceneParamsB.z default 1.0).
         let pipeline = try RayMarchPipeline(context: ctx, shaderLibrary: lib)
+        // MFX.1 production parity: the MetalFX flags decide the render size and the
+        // working-set allocation, so they MUST be set before allocateTextures.
+        pipeline.metalFXEnabled = preset.descriptor.usesMetalFXTemporal
+        pipeline.metalFXRenderScale = preset.descriptor.effectiveRenderScale
+        pipeline.motionPipelineState = preset.motionPipelineState
         pipeline.allocateTextures(width: Self.width, height: Self.height)
         var scene = preset.descriptor.makeSceneUniforms()
         scene.sceneParamsA.y = Float(Self.width) / Float(Self.height)
@@ -260,6 +343,8 @@ struct FractalDescentBudgetProbeTests {
         }
         pipeline.sceneUniforms = scene
         pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
+        // MFX.1: exercise the real MetalFX path when the preset opts in, so the
+        // probe measures/renders what production does.
 
         let ibl = try IBLManager(context: ctx, shaderLibrary: lib)
         let noise = try? TextureManager(context: ctx, shaderLibrary: lib)
