@@ -277,7 +277,14 @@ void sceneMaterial(float3 p,
     // origin sphere), the same driver that varied cleanly in FD.1 — plus a small
     // per-fold offset so adjacent cells differ without the whole frame going one
     // colour (the v1 over-saturation failure).
-    float hue    = fract(trap.w * 1.3f + trap.y * 0.6f);
+    // NO fract() here (BUG-071 round 2 — the visible "glitchy" rainbow fringing).
+    // `palette()` is a cosine, already periodic AND continuous in t. Pre-wrapping
+    // with fract() introduced a hard hue discontinuity at every integer crossing
+    // (the cycle frequency is 0.85, so the wrap does NOT line up), which on dense
+    // fractal detail put a rainbow contour seam on every surface and edge — and a
+    // discontinuity is infinite-frequency, so it aliased and shimmered by
+    // construction. Feeding t straight in is smooth everywhere.
+    float hue    = trap.w * 1.3f + trap.y * 0.6f;
     float3 jewel = fd_jewel(hue);
 
     // ── Motion-coherence detail fade (§A8; BUG-071) ──────────────────────────
@@ -309,7 +316,7 @@ void sceneMaterial(float3 p,
         // Vary the emissive hue across cavities (deep-cavity trap.w clusters near
         // one colour → uniform-blue polka-dots) so the recesses read as DIFFERENT
         // coloured votives — the stained-glass mix, not one blue repeated.
-        float3 glow = fd_jewel(fract(trap.z * 3.1f + trap.x * 2.0f + 0.4f));
+        float3 glow = fd_jewel(trap.z * 3.1f + trap.x * 2.0f + 0.4f);   // no fract — see above
         albedo    = glow * (0.62f + 0.35f * cavity);         // brighter votives (tiny pockets → flash-safe)
         roughness = 0.5f;
         metallic  = 0.0f;
