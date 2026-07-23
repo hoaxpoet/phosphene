@@ -1,5 +1,12 @@
 # Visual References — Volumetric Lithograph
 
+> ⚠️ **OFF-DIRECTION as of 2026-07-23 (VL.1). Do not build to this set.** Matt reset VL to a
+> *psychedelic terrain flight* — see `docs/presets/VOLUMETRIC_LITHOGRAPH_DESIGN.md`. Everything
+> below describes the superseded naturalistic / linocut direction (drainage relief, Hokusai,
+> aerial perspective) and is now itself an **anti-reference**. A psychedelic set (§7 of the
+> design doc) is a **hard pre-flight gate** — no shader tuning until it exists with an annotated
+> README. Kept verbatim for the tuning history until then.
+
 **Family:** fluid
 **Render pipeline:** `ray_march + post_process` *(mv_warp reverted per D-029 — VL's motion source is the forward camera dolly through audio-swept SDF terrain; stacking mv_warp on top fights it)*
 **Rubric:** full (gated by V.6 certification)
