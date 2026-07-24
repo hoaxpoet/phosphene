@@ -152,16 +152,6 @@ struct SessionReplayHarness {
         pipeline.motionPipelineState = preset.motionPipelineState
         pipeline.allocateTextures(width: width, height: height)
         pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
-        // PARITY GAP (found at VL-PSY.3): `cameraDollySpeed` defaults to 0 and is
-        // set by the APP (`VisualizerEngine+Presets.applyPreset`), which the engine
-        // test target cannot import — so this harness renders every dollying preset
-        // with a STATIC camera. Harmless for Fractal Fly-By (dolly 0); fatal for
-        // Volumetric Lithograph, whose identity IS the forward flight. Overridable
-        // until the speed moves into the sidecar so app and harness share one
-        // source (filed as a follow-up).
-        if let raw = ProcessInfo.processInfo.environment["REPLAY_DOLLY"], let v = Float(raw) {
-            pipeline.cameraDollySpeed = v
-        }
         let uniforms = preset.descriptor.makeSceneUniforms()
         pipeline.sceneUniforms = uniforms
         // `baseScene` is what applyAudioModulation modulates AROUND. Seeded here
@@ -176,7 +166,13 @@ struct SessionReplayHarness {
         snap.fogFar = uniforms.sceneParamsB.y
         snap.fov = uniforms.cameraOriginAndFov.w
         pipeline.baseScene = snap
+        // Seed the dolly from the sidecar exactly as applyPreset does, so a
+        // dollying preset (Volumetric Lithograph) replays with its real forward
+        // flight instead of a static camera (BUG-074 replay-harness parity gap).
+        pipeline.cameraDollySpeed = preset.descriptor.sceneDollySpeed
         pipeline.fovFramingRange = presetName == "Fractal Fly-By" ? 0.38 : 0
+        pipeline.corridorSteerEnabled = presetName == "Fractal Fly-By"
+        pipeline.resetCorridorSteer()
 
         let ibl = try IBLManager(context: ctx, shaderLibrary: lib)
         let noise = try? TextureManager(context: ctx, shaderLibrary: lib)

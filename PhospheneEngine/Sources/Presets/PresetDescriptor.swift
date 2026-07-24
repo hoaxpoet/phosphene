@@ -398,6 +398,15 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
     /// or open scenes; decrease for tight interior scenes to recover march step budget.
     public let sceneFarPlane: Float
 
+    /// Forward camera dolly speed in world-units per second (`scene_dolly_speed`).
+    /// Seeds `RayMarchPipeline.cameraDollySpeed`; `0` (the default) is camera-static,
+    /// so every preset that omits the key is byte-identical. The per-frame speed is
+    /// bass-modulated (`× (0.5 + bassContribution)`) in `applyAudioModulation`.
+    /// Lives in the sidecar (not app code) so the engine-side SessionReplayHarness —
+    /// which cannot import the app target — renders dollying presets with the real
+    /// flight (BUG-074 replay-harness parity gap). Volumetric Lithograph = 5.0.
+    public let sceneDollySpeed: Float
+
     // MARK: - Shader Function Names
 
     /// Fragment function name in the .metal file. Defaults to "preset_fragment".
@@ -617,6 +626,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         case sceneFog = "scene_fog"
         case sceneFogNear = "scene_fog_near"
         case sceneFarPlane = "scene_far_plane"
+        case sceneDollySpeed = "scene_dolly_speed"
         case fragmentFunction = "fragment_function"
         case vertexFunction = "vertex_function"
         case shaderFileName = "shader_file"
@@ -680,6 +690,7 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
         sceneFog         = try container.decodeIfPresent(Float.self, forKey: .sceneFog) ?? 0
         sceneFogNear     = try container.decodeIfPresent(Float.self, forKey: .sceneFogNear) ?? 20.0
         sceneFarPlane    = try container.decodeIfPresent(Float.self, forKey: .sceneFarPlane) ?? 30.0
+        sceneDollySpeed  = try container.decodeIfPresent(Float.self, forKey: .sceneDollySpeed) ?? 0
         fragmentFunction = try container.decodeIfPresent(String.self, forKey: .fragmentFunction) ?? "preset_fragment"
         vertexFunction   = try container.decodeIfPresent(String.self, forKey: .vertexFunction) ?? "fullscreen_vertex"
         shaderFileName   = try container.decodeIfPresent(String.self, forKey: .shaderFileName) ?? ""

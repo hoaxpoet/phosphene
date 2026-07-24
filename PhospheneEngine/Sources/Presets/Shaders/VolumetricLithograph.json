@@ -41,6 +41,8 @@
   "scene_fog": 0.0,
   "_comment_scene_fog": "0 disables fog (was actually MAXIMUM fog in pre-v3 due to PresetDescriptor+SceneUniforms fallback bug; fixed alongside v3)",
   "scene_far_plane": 80.0,
+  "scene_dolly_speed": 5.0,
+  "_comment_scene_dolly_speed": "VL's identity is the forward flight. 5.0 u/s (× the ~0.78 measured bass factor ≈ 3.9 u/s) crosses a 20-unit fold cell every ~5 s. Moved out of the app-side switch (VL-PSY.4) so the engine-side SessionReplayHarness renders the flight — BUG-074 replay-harness parity gap.",
   "stem_affinity": {
     "bass": "terrain_height_adaptive+palette_warm",
     "vocals": "terrain_height_adaptive+palette_teal+peak_polish",

@@ -103,6 +103,13 @@ public struct SceneUniforms: Sendable {
     /// x = active light count (1…4); y, z, w reserved.
     public var lightingParams: SIMD4<Float>
 
+    /// FLY.12 — preset-defined steering, appended after `lightingParams` so every
+    /// earlier field keeps its byte offset (RMENV precedent). Fractal Fly-By's
+    /// corridor-follower writes the camera-space lateral travel offset here
+    /// (xy = right/up nudge toward open space, zw spare). Zero for every other
+    /// preset, so their render is byte-identical.
+    public var presetSteer: SIMD4<Float>
+
     // MARK: Convenience Accessors
 
     /// World-space camera position.
@@ -195,5 +202,6 @@ public struct SceneUniforms: Sendable {
         self.light3PositionAndIntensity = SIMD4(0, 0, 0, 0)
         self.light3Color = SIMD4(0, 0, 0, 0)
         self.lightingParams = SIMD4(1, 0, 0, 0)
+        self.presetSteer = SIMD4(0, 0, 0, 0)
     }
 }
