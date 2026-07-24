@@ -4,18 +4,37 @@
   "duration": 35,
   "description": "Psychedelic linocut terrain — forward-dollying flight over an infinite audio-reactive landscape. v9.4 routing: continuous terrain depth driven by stems.vocals_energy (AGC stem) only; peak lift fires on drum-stem kicks + snap/snare transients via drums_beat and drums_attack_ratio (MIR-invariant); camera dolly scales with features.bass continuously. Palette hue tracks energy-weighted stem composition; peak polish reads onset density. CSP.4 audit (2026-05-28) confirmed structurally clean of the FFO antipatterns BUG-019 fixed. No atmospheric fog (printmaking has no aerial perspective).",
   "author": "Matt",
-  "passes": ["ray_march", "post_process"],
+  "passes": [
+    "ray_march",
+    "post_process"
+  ],
   "beat_source": "bass",
   "beat_sensitivity": 1.0,
   "scene_camera": {
-    "position": [0.0, 7.2, -8.5],
-    "target": [0.0, 0.0, 7.0],
-    "fov": 55
+    "position": [
+      0.0,
+      11.0,
+      -7.0
+    ],
+    "target": [
+      0.0,
+      -1.0,
+      5.0
+    ],
+    "fov": 52
   },
   "scene_lights": [
     {
-      "position": [-14.0, 3.5, -6.0],
-      "color": [1.0, 0.94, 0.84],
+      "position": [
+        -14.0,
+        3.5,
+        -6.0
+      ],
+      "color": [
+        1.0,
+        0.94,
+        0.84
+      ],
       "intensity": 4.5
     }
   ],
@@ -30,11 +49,29 @@
   },
   "visual_density": 0.7,
   "motion_intensity": 0.6,
-  "color_temperature_range": [0.2, 0.95],
+  "color_temperature_range": [
+    0.2,
+    0.95
+  ],
   "fatigue_risk": "low",
-  "transition_affordances": ["crossfade", "cut"],
-  "section_suitability": ["buildup", "peak", "bridge"],
-  "complexity_cost": { "tier1": 3.8, "tier2": 2.0 },
+  "transition_affordances": [
+    "crossfade",
+    "cut"
+  ],
+  "section_suitability": [
+    "buildup",
+    "peak",
+    "bridge"
+  ],
+  "complexity_cost": {
+    "tier1": 30.0,
+    "tier2": 22.0
+  },
   "certified": false,
-  "rubric_hints": { "hero_specular": true, "dust_motes": false }
+  "rubric_hints": {
+    "hero_specular": true,
+    "dust_motes": false
+  },
+  "_comment_scene_camera": "VL-PSY.1: from [0,7.2,-8.5]->[0,0,7] fov 55 (the superseded naturalistic pose, which put a pale sky band across the top). Round 2 went to y=14 looking steeply down, which killed the sky but framed only ONE fold cell — no repetition visible. Round 3 backs off to y=10 / fov 52: several cells in frame so the symmetry can read, sky still out.",
+  "_comment_complexity_cost": "VL-PSY.2: measured, not declared-by-hope. p95 @1920x1080 on M2 Pro = 21.9 ms (v9.4 baseline on the same probe = 14.7 ms). The previous 2.0 was never true for this preset — VL is the most expensive thing in the catalog and the scheduler should know it. Instrument: VLBudgetProbeTests."
 }

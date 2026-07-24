@@ -376,8 +376,18 @@
 // ── Constants ─────────────────────────────────────────────────────────────
 
 constant float VL_TERRAIN_BASE_Y   = 0.0f;   // resting terrain height (world Y)
-constant float VL_NOISE_FREQUENCY  = 0.12f;  // larger features than v1 (0.18)
-constant float VL_NOISE_TIME_SCALE = 0.015f; // v3.2: 0.06 → 0.015 so high-octave
+constant float VL_NOISE_FREQUENCY  = 0.22f;  // VL-PSY.1: was 0.12 (naturalistic "larger
+                                              // landmasses"), then 0.30 at round 3. Fold
+                                              // legibility is a detail-per-WEDGE property:
+                                              // this keeps each wedge dense now that the
+                                              // cell is large again.
+constant float VL_NOISE_TIME_SCALE = 0.15f;  // VL-PSY.2: was 0.015, tuned in v3.2 for the
+                                              // SUPERSEDED naturalistic direction, where a slow
+                                              // boil was the point ("~1 cycle per 20 s"). Against
+                                              // the measured accumulatedAudioTime rate of ~0.1
+                                              // units/s that made the terrain phase advance
+                                              // 0.0014/s — visually frozen. A psychedelic field
+                                              // should evolve; 10x brings it to ~0.015/s.
                                               // noise shimmer slows to ~1 cycle
                                               // per 20s wallclock; beat-aligned
                                               // motion stops competing with
@@ -392,20 +402,75 @@ constant float VL_DISP_AUDIO_AMP   = 1.3f;   // v8.1: 2.2 → 1.3; back down clo
 constant float VL_BEAT_PEAK_LIFT   = 0.9f;   // v8.2: 0.5 → 0.9.  v9: unchanged magnitude,
                                               //       but the source is now drums-stem-only
                                               //       (see kickPulse in sceneSDF).
-constant float VL_VOCAL_DEPTH_BOOST = 0.7f;  // v9: NEW — vocals_energy contribution to the
-                                              //       continuous-depth amp.  Matt's observation
-                                              //       on bad guy: "darker valleys moving deeper
-                                              //       with Billie's voice is the BEST sync."
-                                              //       Data confirmed vocals carries the song's
-                                              //       dynamic envelope (avg 0.37, highest
-                                              //       variance 0.023).  This routes vocals
-                                              //       stem energy into the amp driver so the
-                                              //       effect is intentional and explicit, not
-                                              //       an accident of stem-summed intensity.
-constant int   VL_FBM_OCTAVES      = 5;
+// VL-PSY.1: terrain amplitude is now FIXED. The swell that used to modulate it
+// drives fold depth instead (see sceneSDF). Sits mid-way through v9.4's old
+// swing (0.5 silent → 3.1 dense) so the substrate keeps its relief while the
+// folding, not the depth, carries the music.
+constant float VL_DISP_AUDIO_AMP_FIXED = 0.9f;
+
+// VL_VOCAL_DEPTH_BOOST retired at VL-PSY.1 — the vocal swell it scaled now
+// drives fold depth, not terrain depth.
+
+constant int   VL_FBM_OCTAVES      = 4;   // VL-PSY.1: was 5. The dominant remaining per-step
+                                          // cost — this fBM runs on EVERY sceneSDF eval. The
+                                          // fold now supplies some of the high-frequency
+                                          // structure the extra octaves used to.
+                                          // 3 was tried and REVERTED: it dropped below
+                                          // SHADER_CRAFT's >=4-octave floor and the render
+                                          // went soft and airbrushed — a quality regression
+                                          // traded for ~1 ms. 4 is the floor, and it holds.
 
 // SDF Lipschitz scaling: heightfield is not Euclidean on slopes.
-constant float VL_SDF_STEP_SCALE   = 0.6f;
+constant float VL_SDF_STEP_SCALE   = 0.55f;  // VL-PSY.1: 0.6 -> 0.35 -> 0.55. Step scale is a
+                                              // DIRECT cost multiplier (smaller = more march
+                                              // steps), so 0.35 was buying safety at ~1.6x the
+                                              // frame time. Re-reasoned rather than re-guessed:
+                                              // pModPolar and pModMirror2 are ISOMETRIES —
+                                              // rotation and reflection preserve distance and
+                                              // add NO Lipschitz cost. Only the warp does, and
+                                              // its gradient is now ~4.0 x 0.045 ~= 0.18. 0.55
+                                              // holds the budget with speckle-free margin
+                                              // (verified by render, not by argument).
+
+// ── VL-PSY.1: geometry-space kaleidoscopic folds ──────────────────────────
+//
+// The rebuild's identity (docs/presets/VOLUMETRIC_LITHOGRAPH_DESIGN.md §1):
+// an endless forward flight through a landscape whose GEOMETRY folds and
+// kaleidoscopes with the music — not hills that rise and fall.
+//
+// The fold is applied to the domain BEFORE the heightfield eval, so it warps
+// the world, not the image. Screen-space feedback (mv_warp) is banned here
+// (D-029): its UV accumulator fights the moving camera and smears.
+//
+// Why a mirrored TILING and not one origin-centred kaleidoscope: the camera
+// flies forward forever. A single fold centred at the world origin would sit
+// still while the camera flew away from it. `pModMirror2` tiles the plane with
+// mirrored cells — adjacent cells meet seamlessly, so the field is infinite and
+// the flight stays load-bearing. `pModPolar` then makes each cell a mandala.
+//
+constant float VL_FOLD_CELL   = 20.0f;  // world units per mirrored cell.
+                                        // Round 3 took this to 9 to make symmetry legible
+                                        // (a 26-unit cell held ~3 noise blobs — nothing to
+                                        // mirror). It worked, and produced WALLPAPER: a
+                                        // regular grid of near-identical mounds to the
+                                        // horizon (Matt: "less tiles, more landscape").
+                                        // Round 4 backs the cell out to 20 — few enough
+                                        // cells in frame to read as terrain — and keeps
+                                        // wedge density via VL_NOISE_FREQUENCY instead.
+                                        // Cell size sets HOW MANY tiles; noise frequency
+                                        // sets whether each one is legible. They are
+                                        // separate knobs; round 3 conflated them.
+constant float VL_WARP_SCALE  = 0.045f; // world-space frequency of the organic warp
+constant float VL_WARP_AMOUNT = 4.0f;   // world units of displacement at full warp.
+                                        // Round 4 first tried 5.5 and covered the whole
+                                        // frame in high-frequency speckle — the FA #64
+                                        // dot-pattern class: a domain warp adds its own
+                                        // gradient to the SDF's Lipschitz constant, the
+                                        // marcher overshoots, and the surface breaks up.
+                                        // 2.0 + a tighter step scale restores the budget.
+constant float VL_SYM_BASE    = 3.0f;   // resting order at silence — calm, low-order (D-037)
+constant float VL_SYM_SWELL   = 5.0f;   // order opened by the vocal/energy swell
+constant float VL_SYM_SNAP    = 2.0f;   // order added by the downbeat gesture
 
 // Linocut edge windows — v3.2 narrowed peak coverage from ~35% (v3/v3.1
 // had lo=0.50, right at the fbm mean, so half the terrain was "peaks")
@@ -416,13 +481,140 @@ constant float VL_PEAK_HI          = 0.60f;  // valley → peak transition end
 constant float VL_RIDGE_INNER      = 0.555f; // ridgeline lower edge
 constant float VL_RIDGE_OUTER      = 0.565f; // ridgeline upper edge
 
+// ── hg_sdf domain operators (ported verbatim) ─────────────────────────────
+//
+// hg_sdf — Metal port of the two operators VL calls. Original (c) Mercury,
+// MIT option (dual MIT / CC-BY-NC-4.0; MIT taken — Phosphene is MIT).
+// Source: https://mercury.sexy/hg_sdf/hg_sdf.glsl
+//
+// SCOPE (design doc §Open-decisions #1, Matt 2026-07-23): only the operators
+// VL actually calls are ported, not the whole library. FA #73 is satisfied by
+// porting these VERBATIM rather than deriving them; vendoring ~40 operators
+// for two call sites is not. The RENDERER "SDF authoring" capability flip
+// waits for a second consumer. `pReflect` is in the spec's list but VL has no
+// call site for it — the mirrored tiling below does that job — so it is not
+// ported. Add it when something needs it.
+//
+// MSL adaptations per HG_SDF_VENDORING_SPEC.md §3:
+//   • `inout` → `thread T&`                                    (gotcha #2)
+//   • floored `hg_mod`, NOT `fmod` — fmod truncates toward zero, which breaks
+//     every domain-repeat op on negative coordinates. The camera flies through
+//     negative Z, so this is not theoretical.                  (gotcha #3)
+//   • `atan(y, x)` → `atan2(y, x)`                             (gotcha #4)
+//   • `hg_`-prefixed helpers — the preamble concatenates several utility trees
+//     and a bare `mod`/`sgn` would collide. Verified clear by grep at VL.1.
+//                                                              (gotcha #8)
+
+#define VL_HG_PI 3.14159265359f
+
+/// GLSL-floored modulo. MSL's `fmod` truncates — wrong for negatives.
+static inline float  hg_mod(float x, float y)  { return x - y * floor(x / y); }
+static inline float2 hg_mod(float2 x, float2 y) { return x - y * floor(x / y); }
+
+/// Radial repeat — the kaleidoscope. Returns the cell index.
+static inline float pModPolar(thread float2& p, float repetitions) {
+    float angle = 2.0f * VL_HG_PI / repetitions;
+    float a = atan2(p.y, p.x) + angle * 0.5f;
+    float r = length(p);
+    float c = floor(a / angle);
+    a = hg_mod(a, angle) - angle * 0.5f;
+    p = float2(cos(a), sin(a)) * r;
+    if (abs(c) >= (repetitions * 0.5f)) { c = abs(c); }
+    return c;
+}
+
+/// Mirrored domain repeat on both axes. Adjacent cells are reflections, so the
+/// tiling is seamless — no visible cell seam for the camera to fly across.
+static inline float2 pModMirror2(thread float2& p, float2 size) {
+    float2 halfsize = size * 0.5f;
+    float2 c = floor((p + halfsize) / size);
+    p = hg_mod(p + halfsize, size) - halfsize;
+    p *= hg_mod(c, float2(2.0f)) * 2.0f - float2(1.0f);
+    return c;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────
 
+/// Fold the world XZ plane into the kaleidoscopic field.
+///
+/// The fold is ALWAYS applied; the swell drives SYMMETRY ORDER, not a blend.
+///
+/// The first cut lerped `mix(xz, folded, amount)` between the raw and folded
+/// coordinates. That looked reasonable in the constants and wrong in the render
+/// (VL-PSY.1 first contact sheet): lerping two coordinate SYSTEMS breaks the
+/// derivative at every cell edge, so the frame filled with straight diagonal
+/// seams and flat wedges — read as cracked glass panels, not a kaleidoscope.
+/// Driving order instead is continuous, deletes a parameter, and gives §4's
+/// "calm, slow-breathing LOW-ORDER symmetric field" at silence for free.
+///
+/// Order matters: mirror-tile FIRST (infinite seamless field), then polar-fold
+/// within the cell (each cell becomes a mandala). Reversing it would produce
+/// one kaleidoscope at the world origin that the camera flies away from.
+static inline float2 vl_foldDomain(float2 xz, float symOrder) {
+    float2 q = xz;
+    pModMirror2(q, float2(VL_FOLD_CELL));
+    pModPolar(q, symOrder);
+
+    // Mirror within the wedge — pReflect about the wedge bisector, degenerate
+    // case (plane through the origin, no offset). THIS IS NOT OPTIONAL.
+    //
+    // `pModPolar` repeats by ROTATION: wedge N+1 is wedge N turned by one step,
+    // so the two do not agree along their shared edge. For an SDF of a compact
+    // object centred at the origin that is invisible — hg_sdf's usual use — but
+    // VL samples a NOISE HEIGHTFIELD across the whole wedge, so the mismatch at
+    // every seam becomes a height discontinuity: a vertical cliff. That is
+    // exactly the "hard-edged flat facets / torn paper" the pre-M7 motion-gate
+    // sequence review flagged, and no amount of warp or palette work removes it,
+    // because it is a topological property of a rotational repeat.
+    //
+    // Taking `abs` of the bisector-perpendicular axis makes each wedge
+    // symmetric about its own bisector, so adjacent wedges meet as mirror
+    // images and the field is C0-continuous across every seam. It is also what
+    // a physical kaleidoscope actually does — it is a tube of MIRRORS, which is
+    // why `01_macro_kaleidoscope_symmetry.jpg` has mirror symmetry through each
+    // petal axis rather than pure rotation.
+    //
+    // (VL-PSY.1's first pass said pReflect was "not ported — no call site".
+    // That was wrong: this is the call site, and skipping it caused the defect.)
+    q.y = abs(q.y);
+
+    // Organic domain warp (Quilez, via Utilities/Noise/DomainWarp.metal) —
+    // design doc §5's second primitive, which round 3 skipped.
+    //
+    // Sampled in WORLD space, not fold space: that is the whole point. The
+    // mirror tiling makes every cell identical BY CONSTRUCTION, which is what
+    // produced the wallpaper. A warp keyed to world position varies smoothly
+    // across the plane, so each cell is displaced differently while its own
+    // internal symmetry survives — "less tiles, more landscape" without
+    // giving up the kaleidoscope read. It also supplies the meso layer the
+    // reference set asks for (`02_meso_domain_warp_flow.jpg`).
+    // COST — the VL-PSY.1 performance defect, and the reason this is `fbm3D(_, 2)`
+    // and not `warped_fbm`. `warped_fbm` is 7 x fbm8 = ~56 Perlin evaluations, and
+    // DomainWarp.metal's own header says in as many words: "Use per-hit or
+    // per-vertex only." Two calls of it sat HERE — inside sceneSDF, which the
+    // marcher evaluates ~128 times per ray plus 4 normal taps and 3 AO taps. That
+    // is ~112 x ~135 = ~15,000 Perlin evaluations PER PIXEL, and it measured
+    // 1120 ms/frame against a 5 ms budget (Matt's live session 2026-07-24, 1.0 fps
+    // while Staged Sandbox held 59.9 fps in the same window).
+    //
+    // The warp's job here is a LOW-frequency displacement that breaks the mirror
+    // tiling's identical cells. It never needed octave detail: two octaves carry
+    // the shape, at 4 Perlin evaluations total instead of 112.
+    float3 wp = float3(xz.x, 0.0f, xz.y) * VL_WARP_SCALE;
+    float2 warp = float2(fbm3D(wp, 2) - 0.5f,
+                         fbm3D(wp + float3(31.7f, 0.0f, 17.3f), 2) - 0.5f);
+    return q + warp * VL_WARP_AMOUNT;
+}
+
 /// 3D fBm sample [0,1] at world XZ, swept by audio phase along Y noise axis.
-static inline float vl_terrainNoise(float3 worldP, float audioPhase) {
-    float3 noiseP = float3(worldP.x * VL_NOISE_FREQUENCY,
+/// XZ is folded first (VL-PSY.1) so the noise is evaluated in kaleidoscope
+/// space — the geometry folds, not the image.
+static inline float vl_terrainNoise(float3 worldP, float audioPhase,
+                                     float symOrder) {
+    float2 folded = vl_foldDomain(worldP.xz, symOrder);
+    float3 noiseP = float3(folded.x * VL_NOISE_FREQUENCY,
                            audioPhase * VL_NOISE_TIME_SCALE,
-                           worldP.z * VL_NOISE_FREQUENCY);
+                           folded.y * VL_NOISE_FREQUENCY);
     return fbm3D(noiseP, VL_FBM_OCTAVES);
 }
 
@@ -435,13 +627,64 @@ static inline float vl_terrainNoise(float3 worldP, float audioPhase) {
 /// the peak-lift source to kick-character onsets only.  Bass-stem-derived
 /// motion now contributes to `audioAmp` (depth), not to peak lift.
 static inline float vl_heightAt(float3 worldP, float audioPhase,
-                                 float audioAmp, float kickPulse) {
-    float n    = vl_terrainNoise(worldP, audioPhase);
+                                 float audioAmp, float kickPulse,
+                                 float symOrder) {
+    float n    = vl_terrainNoise(worldP, audioPhase, symOrder);
     float amp  = VL_DISP_SILENT_AMP + audioAmp * VL_DISP_AUDIO_AMP;
     float base = (n - 0.5f) * 2.0f * amp;
     float nAbove = max(0.0f, n - 0.5f) * 2.0f;
     float peakLift = nAbove * kickPulse * VL_BEAT_PEAK_LIFT;
     return VL_TERRAIN_BASE_Y + base + peakLift;
+}
+
+/// Fold driver, shared by `sceneSDF` and `sceneMaterial`. Returns the radial
+/// symmetry order.
+///
+/// These are separate fragment-path entry points with no shared locals, so
+/// this is recomputed in both — the same duplication the file already carries
+/// for `kickPulse`. They MUST agree: if the material folded differently from
+/// the geometry, the strata would not line up with the surface.
+///
+/// Routing (design doc §4, one primitive per layer — FA #67):
+///   • macro fold depth  ← the broad vocal/energy swell. NOT bass. The
+///     documented v9.1 failure was bass overloading the landmasses until
+///     distinct percussion produced no visible delta; bass drives camera
+///     speed only, in RenderPipeline+RayMarch.swift.
+///   • symmetry snap + a fold-depth kick ← the downbeat. One coordinated
+///     gesture ("the beat = lurch-and-fold"), blessed explicitly by §4's
+///     coupling note — not two unrelated layers sharing a primitive.
+static inline float vl_foldParams(constant FeatureVector& f,
+                                   constant StemFeatures& stems) {
+    float totalStemEnergy = stems.vocals_energy + stems.drums_energy
+                          + stems.bass_energy   + stems.other_energy;
+    float stemMix = smoothstep(0.02f, 0.06f, totalStemEnergy);
+    float swellFromStems = clamp(stems.vocals_energy - 0.1f, 0.0f, 1.2f);
+    float swellFromFV    = clamp(f.mid_att_rel, 0.0f, 1.2f);
+    float swell          = mix(swellFromFV, swellFromStems, stemMix);
+
+    // Downbeat envelope PORTED from FerrofluidOcean's beat pulse (D-153 →
+    // D-158) rather than re-derived. Three things that pattern already solved,
+    // each of which VL would otherwise rediscover the hard way:
+    //   1. `pulse_phase01` rides the CACHED grid, not live onsets (±80 ms
+    //      jitter) — Layer-4 constraint from the audio hierarchy.
+    //   2. `pulse_amp01` gates to 0 at silence AND before the track's first
+    //      note. That also sidesteps the cold-start wrong-phase accent problem
+    //      (retired premise — do not iterate) and the `bar_phase01` trap: it
+    //      reads "0 in reactive mode", and a stuck 0 through a naive
+    //      `1 - smoothstep(0, w, phase)` would read as a PERMANENT downbeat,
+    //      pinning the fold wide open forever.
+    //   3. Attack 0.20 of the cycle, not 0.08. FFO's 0.08 attack spanned 1–2
+    //      frames at per-beat rate and read as flashing in live review; 0.20 is
+    //      ≈100 ms at 120 BPM — still a punch, never a frame-strobe (D-157).
+    float ph     = clamp(f.pulse_phase01, 0.0f, 1.0f);
+    float amp    = clamp(f.pulse_amp01, 0.0f, 1.0f);
+    float attack = smoothstep(0.0f, 0.20f, ph);
+    float decay  = 1.0f - smoothstep(0.20f, 0.85f, ph);
+    float snap   = attack * decay * amp;
+
+    // Swell opens the symmetry: calm low-order mirror → dense mandala. The
+    // downbeat snaps it one notch tighter on top (bounded, D-157).
+    return VL_SYM_BASE + swell * VL_SYM_SWELL + snap * VL_SYM_SNAP;
 }
 
 /// Inigo Quilez cosine-palette tint for the given phase.  Cyan → magenta →
@@ -450,7 +693,15 @@ static inline float3 vl_palette(float t) {
     return palette(t,
                    float3(0.50f, 0.50f, 0.50f),   // base midtone
                    float3(0.50f, 0.50f, 0.50f),   // amplitude
-                   float3(1.00f, 1.00f, 1.00f),   // 1 cycle per t-unit
+                   float3(1.00f, 1.00f, 1.00f),   // MATCHED rates. Round 4 briefly staggered
+                                                  // these (1.0/0.85/0.72) to widen the sweep;
+                                                  // it desaturated the whole preset to rust
+                                                  // and olive — unequal rates make the RGB
+                                                  // channels beat against each other, and the
+                                                  // mixtures land on muddy tertiaries. IQ's
+                                                  // rainbow needs matched frequencies; the
+                                                  // (0, 0.33, 0.67) PHASE triad is what
+                                                  // spreads the hue.
                    float3(0.00f, 0.33f, 0.67f));  // RGB phase shift
 }
 
@@ -508,30 +759,22 @@ float sceneSDF(float3 p,
     float kickRaw   = max(stems.drums_beat, drumsTransient);
     float kickPulse = smoothstep(0.20f, 0.70f, kickRaw);
 
-    // D-019 warmup: FeatureVector fallback until stems produce first chunk.
-    float totalStemEnergy = stems.vocals_energy + stems.drums_energy
-                          + stems.bass_energy   + stems.other_energy;
-    float stemMix = smoothstep(0.02f, 0.06f, totalStemEnergy);
-
-    // v9.3: audioAmp = vocalSwell ONLY.  No FV bass terms.  No intensity
-    // term.  Continuous terrain depth responds exclusively to vocals.
-    // During bass-only sections the vocals stem is silent (or near-
-    // silent for whispered intros) and audioAmp floors at 0 — terrain
-    // sits at VL_DISP_SILENT_AMP resting depth, no audio-driven motion.
+    // VL-PSY.1: the vocal/energy swell was REROUTED from terrain depth to
+    // FOLD depth (`vl_foldParams`). This is the rebuild's central move, not a
+    // tuning change: v9.4's swell→depth route is what made VL read as "a
+    // topographic map that adds and removes depth" (Matt, 2026-07-23). The
+    // design doc §1 replaces it — the ground is a structure you move THROUGH
+    // that folds, not hills that rise and fall. Terrain amplitude is now a
+    // fixed baseline; the swell deforms the world's symmetry instead.
     //
-    // FV fallback during stem warmup uses f.mid_att_rel as a vocals
-    // proxy (most vocal fundamentals + harmonics sit in the mid band).
-    // Pre-stem bass contributions removed — otherwise the first 10
-    // seconds of a track with active bass would still drive landmass
-    // depth before the vocals stem came online.
-    float vocalSwellFromStems = clamp(stems.vocals_energy - 0.1f, 0.0f, 1.2f);
-    float vocalSwellFromFV    = clamp(f.mid_att_rel, 0.0f, 1.2f);
-    float vocalSwell          = mix(vocalSwellFromFV, vocalSwellFromStems, stemMix);
+    // `VL_VOCAL_DEPTH_BOOST` is consequently unused and retired below.
+    float audioAmp = VL_DISP_AUDIO_AMP_FIXED;
 
-    float audioAmp = vocalSwell * VL_VOCAL_DEPTH_BOOST;
+    float symOrder = vl_foldParams(f, stems);
 
-    // v9: peak lift is kick-only (no bass sustain).
-    float h = vl_heightAt(p, audioPhase, audioAmp, kickPulse);
+    // v9: peak lift is kick-only (no bass sustain). Retained — drums are a
+    // distinct primitive on a distinct layer, so this is not the FA #67 trap.
+    float h = vl_heightAt(p, audioPhase, audioAmp, kickPulse, symOrder);
     return (p.y - h) * VL_SDF_STEP_SCALE;
 }
 
@@ -554,7 +797,10 @@ void sceneMaterial(float3 p,
     // by Lumen Mosaic. Non-Lumen presets ignore it.
     (void)lumen;
     float audioPhase = s.sceneParamsA.x;
-    float n          = vl_terrainNoise(p, audioPhase); // [0,1]
+    // VL-PSY.1: fold identically to sceneSDF, or the strata would not line up
+    // with the surface the geometry actually produced.
+    float symOrderM  = vl_foldParams(f, stems);
+    float n          = vl_terrainNoise(p, audioPhase, symOrderM); // [0,1]
 
     // v9.4: accent = drum-stem-only kickPulse.  The prior accent path
     // used `f.beat_composite` (6-band full-mix onset composite), which
@@ -635,14 +881,40 @@ void sceneMaterial(float3 p,
                             + wOther  * 0.75f) / wTotal;
     float stemHueFromFV    = 0.5f + f.mid_att_rel * 0.5f;
     float stemHue          = mix(stemHueFromFV, stemHueFromStems, accentStemMix);
-    float palettePhase = n * 0.9f
+    // ── VL-PSY.1 round 4: hue organised by ANGLE + RADIUS, not by height ──
+    //
+    // Matt's round-3 verdict: "not very psychedelic." Diagnosis — hue was
+    // driven by `n`, the terrain height, and the terrain is deliberately
+    // BIMODAL (the linocut peak/valley split inherited from the superseded
+    // direction). Height-driven hue over bimodal terrain can only ever produce
+    // TWO colours: yellow mounds on a purple ground. That is a two-tone map,
+    // not a psychedelic field, however saturated the two tones are.
+    //
+    // The reference set answers this directly. `04_palette_radial_colour_delaunay.jpg`
+    // is colour segmented around a disc by angle and radius — the README calls
+    // it "structurally what an IQ cosine palette does when driven through a
+    // pModPolar fold." So drive the palette from the fold's own local polar
+    // coordinates: hue sweeps around and out from each mandala centre, giving
+    // the continuous travelling hue `03` is the hero for. Height keeps a small
+    // term so strata still read; it is no longer the primary hue axis.
+    float2 foldLocal = vl_foldDomain(p.xz, symOrderM);
+    float  foldRad   = length(foldLocal);
+    float  foldAng   = atan2(foldLocal.y, foldLocal.x) / (2.0f * VL_HG_PI);
+    float palettePhase = foldAng * 1.0f          // hue sweeps AROUND the mandala
+                       + foldRad * 0.055f        // and banded OUT from its centre
+                       + n * 0.25f               // strata still tint (was 0.9 = the two-tone)
                        + audioPhase * 0.08f
                        + stemHue * 0.6f
                        + f.valence * 0.25f;
     float3 peakHue   = vl_palette(palettePhase);
     // Valley brightness × 0.15 (v3 had × 0.08 which the valence-tinted
     // IBL ambient drowned out — valleys read as uniform dark brown).
-    float3 valleyHue = vl_palette(palettePhase + 0.5f) * 0.15f;
+    // VL-PSY.1: 0.15 -> 0.42. At 0.15 the valleys were a near-black ground that
+    // read as "sea" under the peaks — the map look. Lifting them lets the hue
+    // sweep stay visible across the WHOLE frame, which is what `03` teaches
+    // (hue travels; it does not sit in isolated bright islands). Still clearly
+    // darker than the peaks, so the strata contrast survives.
+    float3 valleyHue = vl_palette(palettePhase + 0.35f) * 0.42f;
 
     // Accent flare: peaks push into HDR (bloom in post_process amplifies);
     // ACES at composite (RayMarch.metal:352–355) handles the over-bright

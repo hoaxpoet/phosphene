@@ -218,7 +218,13 @@ extension VisualizerEngine {
                                             uniforms.lightColor.y,
                                             uniforms.lightColor.z)
                     snap.fogFar = uniforms.sceneParamsB.y
+                    snap.fov = uniforms.cameraOriginAndFov.w
                     rmPipeline.baseScene = snap
+
+                    // FLY.11 — FOV-based framing (radians added at full drive).
+                    // Fractal Fly-By only; every other preset stays at 0 and is
+                    // byte-identical.
+                    rmPipeline.fovFramingRange = desc.name == "Fractal Fly-By" ? 0.38 : 0
 
                     // Per-preset base dolly speed (world units per second).  Set
                     // to 0 for camera-static presets.  `drawWithRayMarch`
@@ -229,7 +235,14 @@ extension VisualizerEngine {
                     // modulates the pace.
                     rmPipeline.cameraDollySpeed = {
                         switch desc.name {
-                        case "Volumetric Lithograph": return 1.8
+                        // VL-PSY.2: 1.8 -> 5.0. Matt's live read was "moving much
+                        // too slow to be entertaining". At 1.8 base x the measured
+                        // bass factor (~0.78 on Cherub Rock) the camera made 1.4
+                        // units/s across 20-unit fold cells — ~14 s to traverse one
+                        // kaleidoscope. The FLIGHT is VL's identity; at that pace it
+                        // reads as hovering. 5.0 gives ~3.9 units/s = a cell every
+                        // ~5 s, which is a flight.
+                        case "Volumetric Lithograph": return 5.0
                         default:                      return 0
                         }
                     }()

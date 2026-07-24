@@ -320,6 +320,9 @@ public final class RayMarchPipeline: @unchecked Sendable {
         public var lightIntensity: Float = 1.0
         public var lightColor: SIMD3<Float> = SIMD3(1, 1, 1)
         public var fogFar: Float = 30.0
+        /// FLY.11 — the sidecar's field of view (radians), so FOV-based framing
+        /// modulates around the preset's intent instead of clobbering it.
+        public var fov: Float = 1.0
         public init() {}
     }
 
@@ -434,6 +437,24 @@ public final class RayMarchPipeline: @unchecked Sendable {
     // The sub-pixel jitter applied to THIS frame's rays, in pixels. The G-buffer
     // bakes it into the camera basis and the scaler is told the same value.
     var currentJitter: SIMD2<Float> = .zero
+
+    /// The UNJITTERED camera forward, captured before the first jitter of a run.
+    /// applyJitter must always derive from this, never from the live (already
+    /// jittered) value — see the BUG-071 round-3 note in applyJitter.
+    var jitterBaseForward: SIMD4<Float>?
+
+    /// FLY.9 — EMA of `bass_att_rel`, the smoothed "musical event" driver.
+    var smoothedFoldDrive: Float = 0
+
+    /// FLY.10 — smoothed framing drive: 0 = tight/claustrophobic, 1 = vast.
+    var smoothedFraming: Float = 0
+
+    /// FLY.11 — how many radians of FOV the framing drive may add. 0 disables
+    /// (every non-opting preset is byte-identical). Framing is applied to the
+    /// LENS, never to world scale: scaling the world around a fixed camera
+    /// sweeps geometry THROUGH the viewer, which is what made the fly-through
+    /// look like it was pushing through walls.
+    public var fovFramingRange: Float = 0
 
     /// Allocate (or reallocate) G-buffer and lit scene textures for the given size.
     ///
@@ -583,6 +604,18 @@ public final class RayMarchPipeline: @unchecked Sendable {
         // CACurrentMediaTime() so the BUG-019 attribution can drill below
         // `renderframe_cpu_ms`. Sub-microsecond per snapshot; same MainActor
         // thread as the caller (no synchronization needed).
+        // FLY.5 — publish the ACTUAL vertical radians-per-rendered-pixel into the
+        // free `cameraRight.w` padding lane, so a preset's LOD / anti-alias cutoff
+        // knows how big a pixel really is at THIS window size. Fractal Fly-By
+        // previously hardcoded this from 1080p, so at any other size it kept
+        // detail finer than the pixels and aliased — which is why my 1920×1080
+        // renders looked far cleaner than the ~1067×750 window (BUG-071).
+        // Computed HERE, inside render(), so the offline harness and production
+        // cannot diverge on it.
+        let renderH = max(gbuffer0?.height ?? 1, 1)
+        sceneUniforms.cameraRight.w =
+            2.0 * tan(sceneUniforms.cameraOriginAndFov.w * 0.5) / Float(renderH)
+
         // MFX.1: choose + bake this frame's sub-pixel jitter BEFORE the G-buffer
         // marches, so every downstream reconstruction uses the same basis.
         applyJitter(width: gbuffer0?.width ?? 0, height: gbuffer0?.height ?? 0)
