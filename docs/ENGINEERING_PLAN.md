@@ -63,6 +63,24 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment VL-PSY.2 — Volumetric Lithograph performance fix (BUG-073) ✅ (2026-07-24)
+
+**Done-when:** VL renders at a frame rate Matt can watch, with a measured instrument proving it. Met.
+
+Matt's live report on the VL-PSY.1 build: ~8 s of black on preset switch, then "very choppy and moving much too slow" — but "the LOOK is good." Session `2026-07-24T14-47-41Z` (chain verdict `clean`) put **VL at 1.0 fps / 986 ms per frame** while **Staged Sandbox held 59.9 fps in the same window**, through the same real-time stem separation — so the fault was VL's, not the machine's or the stem pipeline's, and the black screen and the choppiness were one fault, not two.
+
+**Root cause: `warped_fbm` in the SDF hot path.** It is 7 × fbm8 ≈ 56 Perlin evaluations, and `Utilities/Noise/DomainWarp.metal`'s own header says *"Use per-hit or per-vertex only."* VL-PSY.1 called it **twice** inside `vl_foldDomain` — reached from `sceneSDF`, which the marcher evaluates ~128 times per ray plus 4 normal and 3 AO taps. ≈15,000 Perlin evaluations per pixel. ★ The lesson worth keeping: **the documentation that would have prevented this was in the file being called** — a cost note in a utility header is an API contract, not a comment.
+
+**Instrument first (`VLBudgetProbeTests`, copy-adapted from the FLY probe, same Lumen Mosaic control):** VL 1120 ms p95 vs control 0.44 ms. It reproduced Matt's live 986 ms almost exactly, which is what made it trustworthy for the fix loop.
+
+**Fix → 9.4 ms p95** (v9.4 baseline on the same probe: 7.6 ms). Warp → 2-octave `fbm3D`, 4 evals not 112 (its job is a low-frequency displacement breaking the mirror tiling's identical cells; it never needed octave detail). `VL_SDF_STEP_SCALE` 0.35 → 0.55 — re-reasoned, not re-guessed: `pModPolar`/`pModMirror2` are **isometries** and add no Lipschitz cost, so only the now-smaller warp gradient needed headroom. Octaves 5 → 4; **3 was tried and reverted** (below SHADER_CRAFT's ≥4 floor the render went soft and airbrushed — a quality regression for ~1 ms). Far-plane 80 → 52 was tried and reverted: it bought nothing, because the marcher already terminates on hit.
+
+**Recorded, not papered over.** VL is still the catalog's most expensive preset — 21.9 ms p95 @1080p (~46 fps) — and **v9.4 was already 14.7 ms there**. VL has never met the ~5 ms SHADER_CRAFT budget or its own declared `complexity_cost.tier2` of 2.0. The sidecar now carries measured values (22.0 / 30.0) so the Orchestrator schedules against reality, and the probe gates at **12 ms as a regression guard** rather than an aspiration that would fail on day one.
+
+**Second, separate cause of "too slow."** `VL_NOISE_TIME_SCALE` was 0.015, tuned in v3.2 for the *superseded naturalistic* direction where a slow boil was the point; against the measured `accumulatedAudioTime` rate (~0.1 units/s) the terrain phase advanced 0.0014/s — visually frozen. Raised 10× to 0.15. Camera dolly 1.8 → 5.0 u/s: at 1.8 the flight crossed a 20-unit fold cell every ~14 s, which reads as hovering, and the flight is VL's identity. Motion gate after both changes: **0 spikes, 0 frozen**. A production-parity bug in the motion harness itself was fixed in passing — it hardcoded the old dolly speed, so it had been gating a flight speed the app never rendered (the FLY.5 lesson, repeated).
+
+**Still open for VL:** tasks 3–5 of the rebuild arc (beat-sync lurch, silence state — VL still freezes at silence — and cert polish). Pending Matt's next live look.
+
 ### Increment VL.1 — Volumetric Lithograph rebuild: design doc adopted + multi-frame ray-march harness ✅ (2026-07-23)
 
 Session 1 of the VL psychedelic terrain-flight rebuild (`docs/presets/VOLUMETRIC_LITHOGRAPH_DESIGN.md`, adopted this increment — supersedes the naturalistic §10.5 / V.11 direction and the never-delivered "psychedelic linocut" label; Matt's reset 2026-07-23). Arc **step 1 only** — the harness before any shader work, per PRESET_SESSION_CHECKLIST Part 2 obligation 1. VL has never had one.

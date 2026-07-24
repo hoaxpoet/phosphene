@@ -64,13 +64,14 @@
     "bridge"
   ],
   "complexity_cost": {
-    "tier1": 3.8,
-    "tier2": 2.0
+    "tier1": 30.0,
+    "tier2": 22.0
   },
   "certified": false,
   "rubric_hints": {
     "hero_specular": true,
     "dust_motes": false
   },
-  "_comment_scene_camera": "VL-PSY.1: from [0,7.2,-8.5]->[0,0,7] fov 55 (the superseded naturalistic pose, which put a pale sky band across the top). Round 2 went to y=14 looking steeply down, which killed the sky but framed only ONE fold cell — no repetition visible. Round 3 backs off to y=10 / fov 52: several cells in frame so the symmetry can read, sky still out."
+  "_comment_scene_camera": "VL-PSY.1: from [0,7.2,-8.5]->[0,0,7] fov 55 (the superseded naturalistic pose, which put a pale sky band across the top). Round 2 went to y=14 looking steeply down, which killed the sky but framed only ONE fold cell — no repetition visible. Round 3 backs off to y=10 / fov 52: several cells in frame so the symmetry can read, sky still out.",
+  "_comment_complexity_cost": "VL-PSY.2: measured, not declared-by-hope. p95 @1920x1080 on M2 Pro = 21.9 ms (v9.4 baseline on the same probe = 14.7 ms). The previous 2.0 was never true for this preset — VL is the most expensive thing in the catalog and the scheduler should know it. Instrument: VLBudgetProbeTests."
 }
