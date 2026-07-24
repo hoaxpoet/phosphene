@@ -99,6 +99,13 @@ constant float FFB_TRAVEL_RATE = 0.45f;
 // LOD cutoff (see ffb_invFootprint).
 constant float FFB_RADIANS_PER_PIXEL = 0.00127f;
 
+// Thin-film iridescent fold rims. DISABLED at BUG-071 round 5: the effect is
+// view-dependent colour, i.e. high-frequency chroma BY CONSTRUCTION, on exactly
+// the thin ridge geometry that already aliases worst. It is a "strongly
+// preferred", not mandatory, trait — correctness first. Re-enable only after
+// verifying a phase-0 frame stays speckle-free.
+constant bool FFB_THINFILM_ENABLED = false;
+
 // Rrrola's precomputed constants (Fragmentarium `init()`): folding the
 // /MinRad2 into the scale vector is what makes the sphere fold a single
 // clamp(max(...)) with no branch.
@@ -287,8 +294,15 @@ float3 scenePrevPosition(float3 worldPos,
 /// orbit trap so colour tracks depth into the structure, like leadlight cells.
 static inline float3 ffb_jewel(float t) {
     return palette(t,
-                   float3(0.50f, 0.47f, 0.55f),   // midtone (brighter)
-                   float3(0.55f, 0.55f, 0.55f),   // amplitude (deeper saturation)
+                   // BUG-071 round 5: the floor MUST stay above zero. This was
+                   // 0.50 ± 0.55, i.e. a range of [-0.05, 1.05] — a large part of
+                   // the palette clamped to BLACK. With a fast hue that was hidden
+                   // (every region averaged bright+dark); once the hue slowed to
+                   // track structure, whole regions landed on the dark phase and
+                   // went dead black — the "super dark" live report. 0.58 ± 0.30
+                   // spans [0.28, 0.88]: saturated, never black.
+                   float3(0.58f, 0.55f, 0.62f),   // midtone — floor stays lit
+                   float3(0.30f, 0.30f, 0.30f),   // amplitude — saturation without black
                    float3(0.85f, 0.85f, 0.85f),   // < one hue cycle → cohesive range
                    float3(0.55f, 0.30f, 0.10f));  // phase → cobalt→teal→amber→crimson
 }
@@ -372,11 +386,14 @@ void sceneMaterial(float3 p,
         // Vary the emissive hue across cavities (deep-cavity trap.w clusters near
         // one colour → uniform-blue polka-dots) so the recesses read as DIFFERENT
         // coloured votives — the stained-glass mix, not one blue repeated.
-        float3 glow = ffb_jewel(trap.z * 3.1f + trap.x * 2.0f + 0.4f);   // no fract — see above
+        // Slowed to match the surface hue (BUG-071 round 5). This site was left
+        // at 3.1/2.0 — FASTER than the 1.3 that caused the speckle — so the deep
+        // recesses kept rainbow-speckling after round 4 fixed only the surface.
+        float3 glow = ffb_jewel(trap.z * 0.35f + trap.x * 0.20f + 0.4f);
         albedo    = glow * (0.62f + 0.35f * cavity);         // brighter votives (tiny pockets → flash-safe)
         roughness = 0.5f;
         metallic  = 0.0f;
-    } else if (ridge > 0.75f && detail > 0.55f) {
+    } else if (FFB_THINFILM_ENABLED && ridge > 0.75f && detail > 0.55f) {
         // matID 3 — metallic thin-film: iridescent shimmer on the fold edges
         // (§A2 "thin-film on fold edges" — the psychedelic signature).
         // BUG-071: the view-dependent iridescence is the single worst aliasing
