@@ -63,6 +63,24 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment VL-PSY.3 — Volumetric Lithograph motion rewrite: rotate the tube (BUG-074) ✅ (2026-07-24)
+
+**Done-when:** the fold responds to music without convulsing, verified on Matt's real session, at a rotation speed he picked. Met.
+
+Matt's M7 on VL-PSY.2: "the music response is TERRIBLE, creating a convulsing mess… I REALLY dislike the motion." **Root cause was a category error.** VL-PSY.1/.2 drove the kaleidoscope's *symmetry ORDER* from audio — swell 3→9, a +2 snap every downbeat (2.67×/s at 171 BPM, reconstructed from the session `features.csv`). Order is (1) integer-valued — non-integer orders leave the last wedge unclosed, so continuous drive sweeps through malformed geometry — and (2) a global remap of every world point, so animating it convulses the whole frame. ★ **The lesson: `pModPolar`'s repetition count is a structural constant, not an animation channel; the audio-drivable axis of a kaleidoscope is ROTATION (an isometry), which is what a physical one actually varies.**
+
+Two audio-hierarchy faults compounded it: the downbeat fired **per-beat not per-bar** (the D-154 Ferrofluid lesson — VL-PSY.1 copied FFO's envelope and left the lesson), and the continuous driver `mid_att_rel` measured **0.009** on real music while the dev fold-sweep fixture drove it 0→1 — the hierarchy inversion the audio-data rule forbids, and the reason it reached M7.
+
+**Fix:** order FIXED at 6; ported hg_sdf `pR`; rotate the domain before the polar fold. Angle = `base·time + swell·accumulatedAudioTime + kick·downbeatTwist` — energy sets rotation *speed* off an already-integrated signal (a noisy swell can't produce a jittery angle), idle term keeps it alive at silence (fixes the VL.1 frozen-at-silence finding), twist gated to beat 0 of the bar.
+
+**Verified on the REAL session** via `SessionReplayHarness` (FLY.6, built for the "offline looks nicer than live" class — which VL-PSY.1/.2 should have used and didn't): motion gate 0 spikes / 0 frozen / max 1.32× median. Rotation speed chosen by Matt from a 3-speed real-audio GIF comparison (0.55). ★ **Process lesson: a synthetic fixture that drives a signal the real feature never reaches is worse than no test — it manufactures confidence. Replay real sessions for anything audio-coupled.**
+
+**Fidelity** (Matt: "visual quality is lower" — a real BUG-073 regression): warp 2→3 octaves; full restore was 13.5 ms over the 12 ms gate, so partial at 11.4 ms p95, stated as partial. Sidecar cost → measured 18/24.
+
+**Follow-up (chip filed):** `SessionReplayHarness` renders dollying presets with a static camera — `cameraDollySpeed` lives in the app target the engine tests can't import. `REPLAY_DOLLY` override as a stopgap; real fix is dolly speed → sidecar.
+
+**Still open on VL:** rebuild tasks 3–5 in their original sense are now largely met (beat-sync, silence state), so what remains is **cert** — a full-length M7 hold + the rubric/route gates. Pending Matt's next live look at this build.
+
 ### Increment TESTFLAKE.2 — BUG-032 generation-guard test: deterministic orphan wait ✅ (2026-07-24)
 
 `endThenRestart_staleOrphanDoesNotMutateNewSession` failed on **every** full `swift test` run (3/3) while passing 3/3 in isolation in 2.7 s — the exact slip-class signature TESTFLAKE.1 addressed elsewhere, in the one suite that sweep missed. The test asserted the orphan's *timing* (two 10 s `waitUntil` wall-clock polls plus a 2.5 s "wait past 3 × 600 ms of prep" sleep); under parallel-suite load the whole test stretched to 73–89 s, the polls starved, and session B's plan was still unread when the assertions fired (`tracks.count → 3` vs 2).
