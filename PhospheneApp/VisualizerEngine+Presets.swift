@@ -225,6 +225,8 @@ extension VisualizerEngine {
                     // Fractal Fly-By only; every other preset stays at 0 and is
                     // byte-identical.
                     rmPipeline.fovFramingRange = desc.name == "Fractal Fly-By" ? 0.38 : 0
+                    rmPipeline.corridorSteerEnabled = desc.name == "Fractal Fly-By"
+                    rmPipeline.resetCorridorSteer()
 
                     // Per-preset base dolly speed (world units per second), from the
                     // sidecar (`scene_dolly_speed`, default 0 = camera-static).
