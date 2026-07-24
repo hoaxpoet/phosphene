@@ -446,6 +446,12 @@ public final class RayMarchPipeline: @unchecked Sendable {
     /// FLY.9 — EMA of `bass_att_rel`, the smoothed "musical event" driver.
     var smoothedFoldDrive: Float = 0
 
+    // FLY.12 corridor-follow state.
+    public var corridorSteerEnabled = false
+    var corridorScratch: [UInt16] = []
+    var steerX: Float = 0
+    var steerY: Float = 0
+
     /// FLY.10 — smoothed framing drive: 0 = tight/claustrophobic, 1 = vast.
     var smoothedFraming: Float = 0
 
@@ -604,6 +610,12 @@ public final class RayMarchPipeline: @unchecked Sendable {
         // CACurrentMediaTime() so the BUG-019 attribution can drill below
         // `renderframe_cpu_ms`. Sub-microsecond per snapshot; same MainActor
         // thread as the caller (no synchronization needed).
+        // FLY.12 — steer the travel toward open space from LAST frame's depth,
+        // before the new G-buffer pass consumes the offset. No GPU stall (the
+        // previous command buffer is done); one-frame latency, invisible at the
+        // slow smoothing.
+        steerCorridor()
+
         // FLY.5 — publish the ACTUAL vertical radians-per-rendered-pixel into the
         // free `cameraRight.w` padding lane, so a preset's LOD / anti-alias cutoff
         // knows how big a pixel really is at THIS window size. Fractal Fly-By

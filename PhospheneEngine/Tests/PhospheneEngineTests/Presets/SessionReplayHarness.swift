@@ -177,6 +177,8 @@ struct SessionReplayHarness {
         snap.fov = uniforms.cameraOriginAndFov.w
         pipeline.baseScene = snap
         pipeline.fovFramingRange = presetName == "Fractal Fly-By" ? 0.38 : 0
+        pipeline.corridorSteerEnabled = presetName == "Fractal Fly-By"
+        pipeline.resetCorridorSteer()
 
         let ibl = try IBLManager(context: ctx, shaderLibrary: lib)
         let noise = try? TextureManager(context: ctx, shaderLibrary: lib)
