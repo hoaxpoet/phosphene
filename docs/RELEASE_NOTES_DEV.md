@@ -10,6 +10,16 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-07-24-164940] TESTFLAKE.2 — BUG-032 generation-guard test made deterministic
+
+`SessionLifecycleGenerationTests.endThenRestart_staleOrphanDoesNotMutateNewSession` failed on **every** full `swift test --package-path PhospheneEngine` run (3/3) while passing 3/3 in isolation in 2.7 s — a test that fails every run trains us to skim red output, which is how a real regression gets waved through. Same slip-class shape TESTFLAKE.1 fixed across the rest of the suite; this suite was missed.
+
+The guard was verified correct before the test was touched, per the standing caveat that a load-only failure can be a real race. `streamingSessionGen`, the post-`await` staleness check, and every `currentPlan`/state write are all `@MainActor`-isolated with **no suspension point between check and act**, so check-then-act is atomic under any amount of concurrency. Nothing in `Sources/` changed.
+
+The test, not the code, held the wrong assumption: two 10 s `waitUntil` wall-clock polls plus a 2.5 s "sleep past 3 × 600 ms of session A's prep" gap. Under parallel load the case stretched to 73–89 s, the polls starved, and the assertions read session A's stale 3-track plan (`tracks.count → 3` vs 2) before session B's had been installed. Per the deterministic-over-budget-widening rule (CLEAN.7.9 → TESTFLAKE.1), the timing assumption is **removed, not widened**: `startSession` already returns with state and plan installed synchronously, so the polls were never needed (both tests now simply `await` it), and the 2.5 s sleep is replaced by awaiting session A's *actual* orphaned prep task, captured before `endSession()` drops the handle. The assertion is now the behaviour the guard promises — *whenever* the orphan fires, its completion is rejected — rather than *when* it fires. `SessionReadyWait` gained an `awaitPrepTask(_:)` overload for a captured handle, keeping TESTFLAKE.1's 120 s hang-cap race so a slip-class flake is never converted into a hang-class one.
+
+Isolated runtime 2.7 s → **0.042 s**; green in 4 consecutive full-suite runs (previously 0/3). Test-only, no production delta.
+
 ### [dev-2026-07-24-152242] VL-PSY.2 — Volumetric Lithograph performance fix (BUG-073)
 
 Matt's live session `2026-07-24T14-47-41Z`: VL took ~8 s of black to appear, then ran "very choppy and moving much too slow." The look was fine — the cost was not. Session `features.csv` put VL at **1.0 fps (986 ms/frame)** while Staged Sandbox held **59.9 fps in the same window**, through the same real-time stem separation: VL's own fault, not the machine.
