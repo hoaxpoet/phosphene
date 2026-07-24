@@ -492,7 +492,7 @@ extension PresetLoader {
             // four vertices of a tetrahedron (IQ's standard trick). For a
             // well-behaved DE the result is visually indistinguishable from the
             // 6-tap gradient; it removes 2 sceneSDF evaluations per hit pixel,
-            // which for an expensive DE (Fractal Descent's Mandelbox) is the
+            // which for an expensive DE (Fractal Fly-By's Mandelbox) is the
             // dominant per-pixel cost, not the march itself.
             const float eps = 0.001;
             const float2 kTetra = float2(1.0, -1.0);
@@ -554,7 +554,7 @@ extension PresetLoader {
     ///     float3 scenePrevPosition(float3 worldPos, FeatureVector&, SceneUniforms&, StemFeatures&)
     ///
     /// returning the world position the same surface point occupied last frame.
-    /// For an analytically-animated scene this is a closed form (Fractal Descent's
+    /// For an analytically-animated scene this is a closed form (Fractal Fly-By's
     /// scale descent inverts exactly), so the vectors are EXACT rather than
     /// estimated — which is what makes temporal accumulation safe here.
     ///

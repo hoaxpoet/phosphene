@@ -1,6 +1,6 @@
-# Visual References — Mandelbox cathedral fly-through (working name: Fractal Descent)
+# Visual References — Mandelbox cathedral fly-through (working name: Fractal Fly-By)
 
-**Preset:** working name "Fractal Descent" — **the name now understates it: this is a FLY-THROUGH, not a descent; rename at sign-off.** Supersedes the shelved PG.3 Mandelbox Cathedral (static-camera concept, retired at the design stage). Same Mandelbox, same cathedral reference set — the camera **travels through** it instead of holding still.
+**Preset:** working name "Fractal Fly-By" — **the name now understates it: this is a FLY-THROUGH, not a descent; rename at sign-off.** Supersedes the shelved PG.3 Mandelbox Cathedral (static-camera concept, retired at the design stage). Same Mandelbox, same cathedral reference set — the camera **travels through** it instead of holding still.
 **Family:** geometric (fractal)
 **Render pipeline:** ray_march (**camera_flight** — continuous forward travel) + post_process · **enclosed** (`scene_backdrop: "dark"`, no sky) · MetalFX Temporal AA
 **Rubric:** full
@@ -8,7 +8,7 @@
 
 ## Target (read first)
 
-A vast **3D fractal cathedral you FLY THROUGH** — a Mandelbox distance estimator building endless architecture from self-similar copies of itself. **REFRAMED 2026-07-23 (Matt, after the 3rd live M7): this is a FLY-THROUGH, not a fall.** The **identity trait:** the sensation of unending TRAVEL through an infinite, self-elaborating fractal interior — you are always moving forward past architecture, and the biggest musical moments open the space out. The original "fall into" framing was abandoned because a scale traversal converges on a fixed target, so it reads as approaching a place rather than dropping through a world; three live tests said so. This is also what the cited reference (Horsthuis) actually does — he flies through these structures. **Enclosed:** no sky; openings read as darkness receding. The traversal is a *scale* traversal, not a translation (a Mandelbox is bounded, so a straight dolly would exit it): `zoom = |Scale|^fract(phase)` sweeps one self-similar octave and wraps onto itself, which is what makes the travel endless. **Port the published DE (Syntopia / Knighty / IQ Rrrola form) — do not derive (FA #73).** The FD design of record was the FD session prompt (Part A — not committed as a doc); the nearest committed sibling is the superseded static-camera `docs/presets/psychedelic_geometry/PG_3_MANDELBOX_CATHEDRAL.md`. Authoritative FD build history: `git log` (grep `FD.1`/`FD.2`/`RMPERF.1`) + `ENGINEERING_PLAN.md`; the shipped behaviour is documented in `docs/ARCHITECTURE.md` (Module Map → `FractalDescent.metal`).
+A vast **3D fractal cathedral you FLY THROUGH** — a Mandelbox distance estimator building endless architecture from self-similar copies of itself. **REFRAMED 2026-07-23 (Matt, after the 3rd live M7): this is a FLY-THROUGH, not a fall.** The **identity trait:** the sensation of unending TRAVEL through an infinite, self-elaborating fractal interior — you are always moving forward past architecture, and the biggest musical moments open the space out. The original "fall into" framing was abandoned because a scale traversal converges on a fixed target, so it reads as approaching a place rather than dropping through a world; three live tests said so. This is also what the cited reference (Horsthuis) actually does — he flies through these structures. **Enclosed:** no sky; openings read as darkness receding. The traversal is a *scale* traversal, not a translation (a Mandelbox is bounded, so a straight dolly would exit it): `zoom = |Scale|^fract(phase)` sweeps one self-similar octave and wraps onto itself, which is what makes the travel endless. **Port the published DE (Syntopia / Knighty / IQ Rrrola form) — do not derive (FA #73).** The FD design of record was the FD session prompt (Part A — not committed as a doc); the nearest committed sibling is the superseded static-camera `docs/presets/psychedelic_geometry/PG_3_MANDELBOX_CATHEDRAL.md`. Authoritative FD build history: `git log` (grep `FD.1`/`FD.2`/`RMPERF.1`) + `ENGINEERING_PLAN.md`; the shipped behaviour is documented in `docs/ARCHITECTURE.md` (Module Map → `FractalFlyBy.metal`).
 
 ## Reference images
 
@@ -34,15 +34,29 @@ A vast **3D fractal cathedral you FLY THROUGH** — a Mandelbox distance estimat
 - [ ] **Motion coherence (camera_flight):** the octave wrap must not pop, and thin filaments must not shimmer/boil under travel. **`motion_gate.sh` does NOT catch shimmer** — its whole-frame metric passed 0 spikes while the live render shimmered (BUG-071). Judge shimmer on a native-resolution crop, or live.
 - [ ] **Hero:** `01_macro_fan_vault.jpg` (+ `04`/`08` for material).
 
+## Expected traits
+
+- [ ] **Enclosed interior** — no sky, no exit; openings read as darkness receding (`scene_backdrop: "dark"`).
+- [ ] **Legible architecture at every scale** — macro silhouette, meso fold ledges, micro sub-chambers. Never over-iterated mush.
+- [ ] **Forward travel that never stalls** — the frame is always moving past structure; silence slows it to a drift, it does not freeze.
+- [ ] **Jewel palette** — saturated cobalt / teal / amber / crimson against deep black (ref `06`), not monochrome and not a full-rainbow wash.
+
+## Strongly preferred traits
+
+- [ ] **Thin-film iridescence on fold ridges** — the psychedelic signature, confined to NEAR edges (it is the worst aliasing source at distance).
+- [ ] **Emissive votives in the deepest recesses** — varied hue, reading as backlit glass; kept to small pockets so no large face can flash (D-157).
+- [ ] **Aerial depth** — palette-matched fog into the corridors (FA #39: never grey).
+- [ ] God-rays down the openings (deferred; needs a screen-space post pass).
+
 ## Anti-references
 
 Flat 2D fractal (no 3D depth/lighting); over-iterated mush with no readable architecture; grey fog (FA #39 — fog matches palette); a recurring full-frame bright flash (D-157 — e.g. the traversal ramming the central sphere so its face fills the frame; the off-axis pre-zoom offset dodges this); **a visible sky or exit** — this preset is enclosed, openings must read as darkness receding; **hue discontinuities** — feeding a wrapped value (`fract`) into the cosine palette put a rainbow contour seam on every edge and aliased by construction (BUG-071).
 **NOTE (2026-07-23):** the earlier "moving/dolly camera is forbidden" anti-reference is RETIRED — it belonged to the shelved static-camera PG.3 concept. The camera **flight IS the concept**. What's forbidden is a *world-space translation* through the bounded object (it exits); the travel is a scale-zoom.
 
-## Audio routing (cite D-026 / D-019)
+## Audio routing notes (cite D-026 / D-019)
 
 Travel speed ← `accumulatedAudioTime` (energy-integrated time — the animation time base, so it is NOT a declared audio_route; it reads constant on the offline QG.1 fixtures — QG.1.1 boundary); fold-open ← `f.bass_att_rel` (soft-saturated, widens the box-fold limit within a Lipschitz-safe band). Camera is static in world space (`cameraDollySpeed` 0) — the travel is entirely the in-shader scale-zoom, so no collision with the preset-agnostic camera dolly (FA #67). Secondary routes land at FD.3.
 
 ## Provenance
 
-Curated by: Matt. Sources: real photography (fan vault, stone vault, amethyst geode, chrome facet, stained glass, forest god-rays, marble slabs — all confirmed real photos, 2026-07-20). All compressed to ≤500 KB in-session. Alternate geode held in `docs/VISUAL_REFERENCES/_pg_spares/mandelbox_cathedral/`.
+Curated by: Matt. Sources: real photography (fan vault, stone vault, amethyst geode, chrome facet, stained glass, forest god-rays, marble slabs — all confirmed real photos, 2026-07-20). All compressed to ≤500 KB in-session. Alternate geode held in `docs/VISUAL_REFERENCES/_pg_spares/fractal_fly_by/`.

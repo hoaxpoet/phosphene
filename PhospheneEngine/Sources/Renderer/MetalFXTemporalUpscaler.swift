@@ -2,7 +2,7 @@
 //
 // WHY (BUG-071): a ray-marched fractal has unbounded sub-pixel detail. Sampled
 // once per pixel per frame it aliases into shimmer/moiré under any camera motion
-// — the defect that failed Fractal Descent's first live M7. The fix is temporal
+// — the defect that failed Fractal Fly-By's first live M7. The fix is temporal
 // accumulation: jitter the camera by a sub-pixel offset each frame and let
 // MetalFX reproject + blend the previous frames, so the detail resolves instead
 // of boiling.
@@ -11,7 +11,7 @@
 // needs per-pixel motion vectors. A procedural *volume* has no surface to track,
 // which is why NB.8 rejected it and shipped a bilinear half-res upscale instead.
 // A ray-marched SDF does have a surface, and for an analytically-animated scene
-// (Fractal Descent's scale descent) the previous-frame position of a hit point is
+// (Fractal Fly-By's scale descent) the previous-frame position of a hit point is
 // a CLOSED FORM — so motion vectors are exact, not estimated. Presets opt in and
 // supply `scenePrevPosition` (see PresetLoader+Preamble).
 //

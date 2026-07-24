@@ -1,5 +1,5 @@
-// FractalDescent.metal — FD.1 maquette: Mandelbox distance estimator + a
-// self-similar descent, rendered through the shared ray_march G-buffer path.
+// FractalFlyBy.metal — FD.1 maquette: Mandelbox distance estimator + a
+// self-similar scale traversal, rendered through the shared ray_march G-buffer path.
 //
 // CONCEPT — REFRAMED TO A FLY-THROUGH (Matt, 2026-07-23, after the 3rd live M7).
 // An endless cinematic FLIGHT THROUGH an enclosed Mandelbox cathedral-world:
@@ -8,7 +8,7 @@
 // TRAVEL through an infinite, self-elaborating fractal interior.
 //
 // The original concept was a FALL *into* the fractal. Three live tests said the
-// mechanic does not deliver that: a scale descent converges on a fixed target, so
+// mechanic does not deliver that: a scale traversal converges on a fixed target, so
 // it reads as approaching a place, not dropping through a world. Matt's call was
 // to stop fighting the geometry and adopt what it is genuinely good at — which is
 // also what the cited reference (Horsthuis) actually does: he flies through these
@@ -20,7 +20,7 @@
 // sky. The gallery IBL env still supplies ambient + reflections — backdrop and
 // environment are deliberately decoupled.
 //
-// REFERENCES (docs/VISUAL_REFERENCES/mandelbox_cathedral/, inherited by the
+// REFERENCES (docs/VISUAL_REFERENCES/fractal_fly_by/, inherited by the
 // FD supersession of PG.3):
 //   01_macro_fan_vault.jpg  (HERO) — cathedral-scale chambers/ribs, the macro read
 //   02_meso_muqarnas.jpg           — nested self-similar cells (meso, 2nd iteration)
@@ -37,7 +37,7 @@
 // unconditional (Fragmentarium gates it on ColorIterations).
 //
 // AUDIO (FD.1, both heroes wired):
-//   HERO #1 — descent SPEED follows the music's ENERGY, via accumulatedAudioTime
+//   HERO #1 — TRAVEL SPEED follows the music's ENERGY, via accumulatedAudioTime
 //     (sceneParamsA.x, the engine's running sum of energy x dt): fast when loud,
 //     a near-stationary drift in silence (§A5), monotonic, zero CPU state. It is
 //     the animation time base, not a declared audio_route (VolumetricLithograph
@@ -46,7 +46,7 @@
 //     primitive, soft-saturated) widening the box-fold LIMIT so the chamber
 //     unfolds into a bigger one. Only the box-fold clamp bound moves — no scale
 //     constant recompute, no per-pixel pow.
-// The camera is STATIC (cameraDollySpeed defaults 0), so the descent is purely the
+// The camera is STATIC (cameraDollySpeed defaults 0), so the travel is purely the
 // in-shader scale-zoom; no collision with the preset-agnostic camera dolly.
 // FD.2 = look pass (materials, thin-film, god-rays, fog, jewel palette); FD.3 =
 // secondary audio + structural-boundary tuning + cert. Palette here is a single
@@ -59,17 +59,17 @@ using namespace metal;
 
 // Scale 2.7 sits in the "navigable architecture" band (2.0-3.0); Scale 3.0 is
 // the perfect-Menger degenerate case and reads as rigid boxes, Scale < 2 closes
-// the interior corridors the descent needs. MinRad2 0.25 is the Fragmentarium
+// the interior corridors the fly-through needs. MinRad2 0.25 is the Fragmentarium
 // default across essentially every published Mandelbox preset.
-constant float FD_SCALE    = 2.7f;
-constant float FD_MIN_RAD2 = 0.25f;
+constant float FFB_SCALE    = 2.7f;
+constant float FFB_MIN_RAD2 = 0.25f;
 
 // Iteration cap. NOT animated, ever — the fold morph is the continuous fold-limit
 // parameter (an integer count change pops the whole structure in one frame).
 // Locked at 8 (RMPERF.1 budget): the FD.1 contact sheets showed cap 8 is visually
 // near-identical to cap 10 (full recursive architecture) while cap 6 collapses the
 // self-elaboration; cap 8 + the RMPERF.1 preamble fits Tier-2 with headroom.
-constant int   FD_ITERS    = 8;
+constant int   FFB_ITERS    = 8;
 
 // Fold-open (HERO #2): the bass swell widens the box-fold limit, opening the
 // current chamber into a larger one — the "breakthrough" on the drop. Kept in a
@@ -77,22 +77,22 @@ constant int   FD_ITERS    = 8;
 // holes); driven by f.bass_att_rel in sceneSDF. Only the box-fold clamp bound
 // moves — the sphere fold, scale, and all precomputed scale constants are
 // untouched, so this costs one extra clamp bound per iteration, no per-pixel pow.
-constant float FD_FOLD_BASE  = 1.0f;
-constant float FD_FOLD_RANGE = 0.18f;   // sweep-validated Lipschitz-safe interval
+constant float FFB_FOLD_BASE  = 1.0f;
+constant float FFB_FOLD_RANGE = 0.18f;   // sweep-validated Lipschitz-safe interval
 
 // Motion-coherence detail fade (§A8 / BUG-071). World-space distances from the
 // camera between which the high-frequency material response rolls off, so far
-// sub-pixel fractal detail stops aliasing into shimmer under the fall. Tuned
+// sub-pixel fractal detail stops aliasing into shimmer under travel. Tuned
 // against the camera at z=-2.9 with the fractal spanning roughly 1–6 units out.
-constant float FD_DETAIL_NEAR = 2.2f;
-constant float FD_DETAIL_FAR  = 6.5f;
+constant float FFB_DETAIL_NEAR = 2.2f;
+constant float FFB_DETAIL_FAR  = 6.5f;
 
-// Descent rate: phase per unit accumulatedAudioTime (BUG-071). 0.12 gave <1
-// octave in a 78 s session — the fall was barely perceptible. accumulatedAudioTime
+// Travel rate: phase per unit accumulatedAudioTime (BUG-071). 0.12 gave <1
+// octave in a 78 s session — the motion was barely perceptible. accumulatedAudioTime
 // advances ~0.1/s on a loud track, so 0.45 ≈ one self-similar octave per ~22 s.
-// Shared by fd_descentPhase and scenePrevPosition — they MUST agree or the motion
+// Shared by ffb_travelPhase and scenePrevPosition — they MUST agree or the motion
 // vectors point at the wrong place and MetalFX smears.
-constant float FD_DESCENT_RATE = 0.45f;
+constant float FFB_TRAVEL_RATE = 0.45f;
 
 // Rrrola's precomputed constants (Fragmentarium `init()`): folding the
 // /MinRad2 into the scale vector is what makes the sphere fold a single
@@ -103,9 +103,9 @@ constant float FD_DESCENT_RATE = 0.45f;
 // pow() calls do not qualify (the shader silently fails to compile and the
 // preset is dropped — Failed Approach #44). As locals over literal inputs the
 // compiler folds them anyway, so there is no per-invocation cost.
-#define FD_SCALE_VEC      (float4(FD_SCALE, FD_SCALE, FD_SCALE, fabs(FD_SCALE)) / FD_MIN_RAD2)
-#define FD_ABS_SCALE_M1   (fabs(FD_SCALE - 1.0f))
-#define FD_ABS_SCALE_POW  (pow(fabs(FD_SCALE), float(1 - FD_ITERS)))
+#define FFB_SCALE_VEC      (float4(FFB_SCALE, FFB_SCALE, FFB_SCALE, fabs(FFB_SCALE)) / FFB_MIN_RAD2)
+#define FFB_ABS_SCALE_M1   (fabs(FFB_SCALE - 1.0f))
+#define FFB_ABS_SCALE_POW  (pow(fabs(FFB_SCALE), float(1 - FFB_ITERS)))
 
 // MARK: - Distance estimator (ported — see header)
 
@@ -113,25 +113,25 @@ constant float FD_DESCENT_RATE = 0.45f;
 /// per-axis closest approach across the iteration, which is what makes the
 /// colour follow the geometry rather than sit on it as a flat ramp (§A2
 /// "the single biggest look lever").
-static inline float fd_mandelboxDE(float3 pos, float foldLimit, thread float4& orbitTrap) {
+static inline float ffb_mandelboxDE(float3 pos, float foldLimit, thread float4& orbitTrap) {
     float4 p  = float4(pos, 1.0f);
     float4 p0 = p;
     orbitTrap = float4(1e10f);
 
-    for (int i = 0; i < FD_ITERS; i++) {
+    for (int i = 0; i < FFB_ITERS; i++) {
         p.xyz = clamp(p.xyz, -foldLimit, foldLimit) * 2.0f - p.xyz; // box fold (HERO #2)
         float r2 = dot(p.xyz, p.xyz);
         orbitTrap = min(orbitTrap, fabs(float4(p.xyz, r2)));
-        p *= clamp(max(FD_MIN_RAD2 / r2, FD_MIN_RAD2), 0.0f, 1.0f); // sphere fold
-        p  = p * FD_SCALE_VEC + p0;
+        p *= clamp(max(FFB_MIN_RAD2 / r2, FFB_MIN_RAD2), 0.0f, 1.0f); // sphere fold
+        p  = p * FFB_SCALE_VEC + p0;
         if (r2 > 1000.0f) { break; }
     }
-    return (length(p.xyz) - FD_ABS_SCALE_M1) / p.w - FD_ABS_SCALE_POW;
+    return (length(p.xyz) - FFB_ABS_SCALE_M1) / p.w - FFB_ABS_SCALE_POW;
 }
 
-// MARK: - Descent
+// MARK: - Travel
 
-/// The descent is a *scale* descent, not a translation.
+/// The travel is a *scale* traversal, not a translation.
 ///
 /// A Mandelbox is a bounded object, so translating a camera downward through it
 /// necessarily exits it — there is no infinite corridor to fall down. What the
@@ -139,49 +139,49 @@ static inline float fd_mandelboxDE(float3 pos, float foldLimit, thread float4& o
 /// at zoom z and at zoom z*|Scale| are the same structure. So driving
 /// zoom = |Scale|^fract(phase) sweeps one full octave of the fractal.
 ///
-/// DIRECTION (BUG-071): to fall INTO the world, features must GROW/rush past as
+/// DIRECTION (BUG-071): to travel INTO the world, features must GROW/rush past as
 /// the phase advances. That means sampling `(p + c) / zoom` (magnify a shrinking
 /// neighbourhood) with zoom increasing — NOT `(p + c) * zoom`, which collapses
 /// every feature toward a vanishing point (a recede; the live M7 "camera moving
 /// out"). The DE distance is then DE(q) * zoom (dp = zoom·dq).
-static inline float fd_descentZoom(float phase) {
-    return pow(fabs(FD_SCALE), fract(phase));
+static inline float ffb_travelZoom(float phase) {
+    return pow(fabs(FFB_SCALE), fract(phase));
 }
 
 /// Off-axis viewing offset, applied in camera space so it rides the scale (the
-/// self-similar octave wrap stays seamless). A pure on-axis descent rams the
+/// self-similar octave wrap stays seamless). A pure on-axis traversal rams the
 /// Mandelbox's central sphere dead-centre; this views it off to the side, down a
-/// corridor, so the fall reads as travelling past structure rather than into a disc.
-constant float3 FD_DESCENT_OFFSET = float3(0.30f, 0.16f, 0.0f);
+/// corridor, so it reads as travelling past structure rather than into a disc.
+constant float3 FFB_TRAVEL_OFFSET = float3(0.30f, 0.16f, 0.0f);
 
-/// Point in FRACTAL space the descent falls toward (BUG-071, second finding).
+/// Point in FRACTAL space the traversal moves toward (BUG-071, second finding).
 ///
-/// A scale descent converges on whatever point stays fixed as zoom grows. The
+/// A scale traversal converges on whatever point stays fixed as zoom grows. The
 /// naive `(p+c)/zoom` converges on the fractal's ORIGIN — which for a Mandelbox
-/// is the smooth box/sphere core with no detail at small scales, so the fall runs
+/// is the smooth box/sphere core with no detail at small scales, so the travel runs
 /// out of structure and presses against a featureless wall. A true endless fall
 /// must target a point on the fractal's BOUNDARY, where folded detail persists at
 /// every scale (the same reason a Mandelbrot zoom targets a boundary point, never
 /// the middle of the cardioid).
-constant float3 FD_ZOOM_TARGET = float3(0.92f, 0.64f, 0.42f);
+constant float3 FFB_ZOOM_TARGET = float3(0.92f, 0.64f, 0.42f);
 
-/// Fall-IN sample map (BUG-071): the neighbourhood around FD_ZOOM_TARGET shrinks
+/// Forward-travel sample map (BUG-071): the neighbourhood around FFB_ZOOM_TARGET shrinks
 /// as zoom grows, so that boundary detail magnifies and rushes past.
-/// `fd_mandelboxDE(q,…) * zoom` restores the p-space distance.
-static inline float3 fd_descentSample(float3 p, float zoom) {
-    return FD_ZOOM_TARGET + (p + FD_DESCENT_OFFSET) / zoom;
+/// `ffb_mandelboxDE(q,…) * zoom` restores the p-space distance.
+static inline float3 ffb_travelSample(float3 p, float zoom) {
+    return FFB_ZOOM_TARGET + (p + FFB_TRAVEL_OFFSET) / zoom;
 }
 
-// MARK: - Audio → descent + fold (HERO routing)
+// MARK: - Audio → travel + fold (HERO routing)
 
-/// HERO #1 — descent speed follows the music's ENERGY. `accumulatedAudioTime`
+/// HERO #1 — travel speed follows the music's ENERGY. `accumulatedAudioTime`
 /// (sceneParamsA.x) is the engine's running sum of energy × dt: it advances fast
-/// when loud and crawls when quiet, so the fall speeds up on peaks and slows to a
+/// when loud and crawls when quiet, so the flight speeds up on peaks and slows to a
 /// near-stationary drift in silence (§A5) — for free, monotonic (never reverses),
 /// with zero CPU state. This IS the arousal→velocity hero, driven off the more
 /// literal energy envelope rather than the mood axis.
-static inline float fd_descentPhase(constant SceneUniforms& s) {
-    return s.sceneParamsA.x * FD_DESCENT_RATE;
+static inline float ffb_travelPhase(constant SceneUniforms& s) {
+    return s.sceneParamsA.x * FFB_TRAVEL_RATE;
 }
 
 /// HERO #2 — the fold opens on a bass swell. `bass_att_rel` is the D-026
@@ -189,9 +189,9 @@ static inline float fd_descentPhase(constant SceneUniforms& s) {
 /// it spikes to ~3× on real music, so soft-saturate it into [0,1] and widen the
 /// box-fold limit within the Lipschitz-safe band. A larger limit unfolds the
 /// current chamber into a bigger one — the "breakthrough" on the drop.
-static inline float fd_foldLimit(constant FeatureVector& f) {
+static inline float ffb_foldLimit(constant FeatureVector& f) {
     float swell = 1.0f - exp(-max(0.0f, f.bass_att_rel) * 1.6f);   // soft-saturate → [0,1)
-    return FD_FOLD_BASE + FD_FOLD_RANGE * swell;
+    return FFB_FOLD_BASE + FFB_FOLD_RANGE * swell;
 }
 
 // MARK: - Scene SDF
@@ -204,23 +204,23 @@ float sceneSDF(float3 p,
     (void)stems;
     (void)ferrofluidHeight;   // slot-10; Ferrofluid Ocean only.
 
-    float phase = fd_descentPhase(s);
-    float zoom  = fd_descentZoom(phase);               // HERO #1 (energy → speed)
-    float3 q    = fd_descentSample(p, zoom);           // off-axis, wrap-preserving
+    float phase = ffb_travelPhase(s);
+    float zoom  = ffb_travelZoom(phase);               // HERO #1 (energy → speed)
+    float3 q    = ffb_travelSample(p, zoom);           // off-axis, wrap-preserving
     // A bounding-sphere early-out was tried here and REMOVED: measured at
     // iteration caps 8 and 10 across enclosed and open compositions it changed
     // nothing (8.19 vs 8.01 ms p95), because the cost is not missed rays creeping
     // to the far plane — it is grazing rays crawling near the surface, which an
     // open composition has more of. Do not re-add it without a measurement.
     float4 trap;
-    return fd_mandelboxDE(q, fd_foldLimit(f), trap) * zoom;   // HERO #2 (bass → fold)
+    return ffb_mandelboxDE(q, ffb_foldLimit(f), trap) * zoom;   // HERO #2 (bass → fold)
 }
 
 // MARK: - MetalFX motion vectors (MFX.1)
 
 /// Where the surface point at `worldPos` was one frame ago.
 ///
-/// This is what makes temporal AA safe for this preset: the descent is an
+/// This is what makes temporal AA safe for this preset: the traversal is an
 /// analytic similarity transform, so the previous-frame position is a CLOSED
 /// FORM rather than an estimate. A fractal feature sits at a fixed point `q` in
 /// fractal space; the sample map is `q = T + (p + c)/zoom`, so inverting for the
@@ -238,10 +238,10 @@ float3 scenePrevPosition(float3 worldPos,
                          constant StemFeatures& stems) {
     (void)f;
     (void)stems;
-    float zoomNow  = fd_descentZoom(fd_descentPhase(s));
-    float zoomPrev = fd_descentZoom(s.lightingParams.z * FD_DESCENT_RATE);
+    float zoomNow  = ffb_travelZoom(ffb_travelPhase(s));
+    float zoomPrev = ffb_travelZoom(s.lightingParams.z * FFB_TRAVEL_RATE);
     float ratio    = (zoomNow > 1e-6f) ? (zoomPrev / zoomNow) : 1.0f;
-    return (worldPos + FD_DESCENT_OFFSET) * ratio - FD_DESCENT_OFFSET;
+    return (worldPos + FFB_TRAVEL_OFFSET) * ratio - FFB_TRAVEL_OFFSET;
 }
 
 // MARK: - Jewel palette (FD.2 look pass)
@@ -252,7 +252,7 @@ float3 scenePrevPosition(float3 worldPos,
 /// LESS than a full hue cycle (freq 0.85, not 1.0) so neighbouring folds read as
 /// related cathedral jewels rather than a garish full-rainbow wash; driven by the
 /// orbit trap so colour tracks depth into the structure, like leadlight cells.
-static inline float3 fd_jewel(float t) {
+static inline float3 ffb_jewel(float t) {
     return palette(t,
                    float3(0.50f, 0.47f, 0.55f),   // midtone (brighter)
                    float3(0.55f, 0.55f, 0.55f),   // amplitude (deeper saturation)
@@ -279,13 +279,13 @@ void sceneMaterial(float3 p,
     // The orbit trap is recomputed here because sceneSDF and sceneMaterial are
     // separate entry points off the shared preamble with no channel between
     // them (VolumetricLithograph duplicates its kickPulse for the same reason).
-    // Descent phase + fold limit MUST match sceneSDF exactly or the colour
+    // Travel phase + fold limit MUST match sceneSDF exactly or the colour
     // detaches from the geometry.
-    float phase = fd_descentPhase(s);
-    float zoom  = fd_descentZoom(phase);
-    float3 q    = fd_descentSample(p, zoom);
+    float phase = ffb_travelPhase(s);
+    float zoom  = ffb_travelZoom(phase);
+    float3 q    = ffb_travelSample(p, zoom);
     float4 trap;
-    fd_mandelboxDE(q, fd_foldLimit(f), trap);
+    ffb_mandelboxDE(q, ffb_foldLimit(f), trap);
 
     // Jewel hue follows depth into the structure (trap.w = closest approach to the
     // origin sphere), the same driver that varied cleanly in FD.1 — plus a small
@@ -299,19 +299,19 @@ void sceneMaterial(float3 p,
     // discontinuity is infinite-frequency, so it aliased and shimmered by
     // construction. Feeding t straight in is smooth everywhere.
     float hue    = trap.w * 1.3f + trap.y * 0.6f;
-    float3 jewel = fd_jewel(hue);
+    float3 jewel = ffb_jewel(hue);
 
     // ── Motion-coherence detail fade (§A8; BUG-071) ──────────────────────────
     // A Mandelbox has unbounded fine detail. Beyond ~a pixel of footprint it
-    // cannot be resolved, so at distance it ALIASES into shimmer under the fall
+    // cannot be resolved, so at distance it ALIASES into shimmer under travel
     // (the live "deeply glitchy / pixelated"). There is no temporal AA here
     // (MetalFX is unwired), so the mitigation is to stop *producing* detail the
     // frame cannot hold: with distance, roll the high-frequency material response
     // off toward a smooth, rougher, less-metallic surface. `detail` = 1 near,
-    // → 0 far. Cheap (one length + smoothstep), and it is what keeps the descent
+    // → 0 far. Cheap (one length + smoothstep), and it is what keeps the flight
     // legible instead of boiling.
     float viewDist = length(p - s.cameraOriginAndFov.xyz);
-    float detail   = 1.0f - smoothstep(FD_DETAIL_NEAR, FD_DETAIL_FAR, viewDist);
+    float detail   = 1.0f - smoothstep(FFB_DETAIL_NEAR, FFB_DETAIL_FAR, viewDist);
 
     // ── Three materials via matID, dispatched by orbit-trap REGION (§A2 detail
     //    cascade / ≥3 materials). The SHADED jewelled stone (matID 0) is dominant
@@ -330,7 +330,7 @@ void sceneMaterial(float3 p,
         // Vary the emissive hue across cavities (deep-cavity trap.w clusters near
         // one colour → uniform-blue polka-dots) so the recesses read as DIFFERENT
         // coloured votives — the stained-glass mix, not one blue repeated.
-        float3 glow = fd_jewel(trap.z * 3.1f + trap.x * 2.0f + 0.4f);   // no fract — see above
+        float3 glow = ffb_jewel(trap.z * 3.1f + trap.x * 2.0f + 0.4f);   // no fract — see above
         albedo    = glow * (0.62f + 0.35f * cavity);         // brighter votives (tiny pockets → flash-safe)
         roughness = 0.5f;
         metallic  = 0.0f;
@@ -338,7 +338,7 @@ void sceneMaterial(float3 p,
         // matID 3 — metallic thin-film: iridescent shimmer on the fold edges
         // (§A2 "thin-film on fold edges" — the psychedelic signature).
         // BUG-071: the view-dependent iridescence is the single worst aliasing
-        // source under the fall (rainbow rims on every sub-pixel edge). Confined
+        // source under travel (rainbow rims on every sub-pixel edge). Confined
         // to NEAR ridges only (`detail > 0.55`) and a tighter ridge band, so it
         // reads as a highlight on close structure instead of frame-wide rainbow
         // noise; roughened further to widen the highlight lobe.

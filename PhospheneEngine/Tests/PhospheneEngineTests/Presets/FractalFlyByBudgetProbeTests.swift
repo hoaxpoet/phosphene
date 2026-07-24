@@ -1,6 +1,6 @@
-// FractalDescentBudgetProbeTests — FD.1 task-3 performance gate.
+// FractalFlyByBudgetProbeTests — FD.1 task-3 performance gate.
 //
-// Measures Fractal Descent's per-preset GPU cost at 1920×1080 through the LIVE
+// Measures Fractal Fly-By's per-preset GPU cost at 1920×1080 through the LIVE
 // ray-march dispatch path (RayMarchPipeline.render: G-buffer → lighting →
 // composite → post-process), adapted from RayMarchPathHarnessTemplate (QG.4,
 // D-182 — copy-adapt the paradigm template, do not reinvent) with the
@@ -9,18 +9,18 @@
 // WHY THIS RUNS BEFORE ANY BEAUTY WORK: the Mandelbox distance estimator is
 // evaluated up to 139× per hit pixel by the shared preamble — 128 march steps
 // + 6 for the central-differences normal + 5 for the AO cone — and each
-// evaluation runs FD_ITERS fold iterations. That product is the whole budget
+// evaluation runs FFB_ITERS fold iterations. That product is the whole budget
 // risk, and it is knowable now, before materials/god-rays/fog exist.
 //
 // GATE (PG_FD_FRACTAL_DESCENT.md §A8): Tier-2 p95 ≤ 7 ms at 1080p. Over budget
 // ⇒ STOP AND REPORT; the concept is re-scoped or cut, not tuned toward budget
 // across increments.
 //
-// Env-gated `FD_BUDGET=1` so it stays out of the default `swift test` run.
+// Env-gated `FFB_BUDGET=1` so it stays out of the default `swift test` run.
 //
 // Invocation:
-//   FD_BUDGET=1 swift test --package-path PhospheneEngine \
-//       --filter FractalDescentBudgetProbe
+//   FFB_BUDGET=1 swift test --package-path PhospheneEngine \
+//       --filter FractalFlyByBudgetProbe
 
 import Testing
 import Foundation
@@ -32,17 +32,17 @@ import UniformTypeIdentifiers
 @testable import Presets
 @testable import Shared
 
-// MARK: - FractalDescentBudgetProbeTests
+// MARK: - FractalFlyByBudgetProbeTests
 
-@Suite("FractalDescentBudgetProbe")
+@Suite("FractalFlyByBudgetProbe")
 @MainActor
-struct FractalDescentBudgetProbeTests {
+struct FractalFlyByBudgetProbeTests {
 
     private static let width = 1920
     private static let height = 1080
     private static let warmupFrames = 10
     private static let measuredFrames = 60
-    private static let subjectName = "Fractal Descent"
+    private static let subjectName = "Fractal Fly-By"
     private static let tier2CeilingMs = 7.0
 
     /// Known-good ray-march control. Lumen Mosaic is CERTIFIED with a declared
@@ -52,10 +52,10 @@ struct FractalDescentBudgetProbeTests {
     private static let controlName = "Lumen Mosaic"
     private static let controlDeclaredTier2Ms = 3.7
 
-    @Test("ray-march control: Lumen Mosaic through the same probe (FD_BUDGET=1)")
+    @Test("ray-march control: Lumen Mosaic through the same probe (FFB_BUDGET=1)")
     func test_controlBudgetProbe() throws {
-        guard ProcessInfo.processInfo.environment["FD_BUDGET"] == "1" else {
-            print("[FDBudget] FD_BUDGET not set — skipping")
+        guard ProcessInfo.processInfo.environment["FFB_BUDGET"] == "1" else {
+            print("[FDBudget] FFB_BUDGET not set — skipping")
             return
         }
         let stats = try measure(presetNamed: Self.controlName)
@@ -66,10 +66,10 @@ struct FractalDescentBudgetProbeTests {
             stats.p50, stats.p95, stats.p95 / Self.controlDeclaredTier2Ms))
     }
 
-    @Test("Fractal Descent per-preset GPU cost @ 1920×1080 (FD_BUDGET=1)")
+    @Test("Fractal Fly-By per-preset GPU cost @ 1920×1080 (FFB_BUDGET=1)")
     func test_fractalDescentBudgetProbe() throws {
-        guard ProcessInfo.processInfo.environment["FD_BUDGET"] == "1" else {
-            print("[FDBudget] FD_BUDGET not set — skipping")
+        guard ProcessInfo.processInfo.environment["FFB_BUDGET"] == "1" else {
+            print("[FDBudget] FFB_BUDGET not set — skipping")
             return
         }
         let stats = try measure(presetNamed: Self.subjectName)
@@ -95,20 +95,20 @@ struct FractalDescentBudgetProbeTests {
     /// Dumps three frames spanning one full descent octave, so the iteration-cap
     /// decision (§9 DECISION-NEEDED 3: "reduce ambition vs cut the preset") can be
     /// made against what it actually looks like rather than against a number.
-    /// Run once per FD_ITERS value; the PNGs are the comparison.
-    @Test("descent contact sheet (FD_BUDGET=1, FD_RENDER=1)")
+    /// Run once per FFB_ITERS value; the PNGs are the comparison.
+    @Test("descent contact sheet (FFB_BUDGET=1, FFB_RENDER=1)")
     func test_descentContactSheet() throws {
-        guard ProcessInfo.processInfo.environment["FD_BUDGET"] == "1",
-              ProcessInfo.processInfo.environment["FD_RENDER"] == "1" else {
-            print("[FDBudget] FD_RENDER not set — skipping contact sheet")
+        guard ProcessInfo.processInfo.environment["FFB_BUDGET"] == "1",
+              ProcessInfo.processInfo.environment["FFB_RENDER"] == "1" else {
+            print("[FDBudget] FFB_RENDER not set — skipping contact sheet")
             return
         }
-        let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["FD_RENDER_DIR"]
-                      ?? NSTemporaryDirectory().appending("fd_frames"))
+        let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["FFB_RENDER_DIR"]
+                      ?? NSTemporaryDirectory().appending("ffb_frames"))
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        // Descent phases across one octave. FD_PHASES overrides (comma-separated)
-        // to sweep direction/coverage, e.g. FD_PHASES="0.05,0.35,0.65,0.95".
-        let phases: [Float] = ProcessInfo.processInfo.environment["FD_PHASES"]
+        // Descent phases across one octave. FFB_PHASES overrides (comma-separated)
+        // to sweep direction/coverage, e.g. FFB_PHASES="0.05,0.35,0.65,0.95".
+        let phases: [Float] = ProcessInfo.processInfo.environment["FFB_PHASES"]
             .map { $0.split(separator: ",").compactMap { Float($0) } }
             .flatMap { $0.isEmpty ? nil : $0 } ?? [0.0, 0.33, 0.66]
         for (i, phase) in phases.enumerated() {
@@ -126,15 +126,15 @@ struct FractalDescentBudgetProbeTests {
     /// energy curve); a bass swell at the drop drives the fold-open. Verifies the
     /// fall accelerates with energy, near-stops in the quiet, and the fold opens on
     /// the bass — as a real position/structure delta across frames, not a still.
-    @Test("descent motion sequence (FD_BUDGET=1, FD_MOTION=1)")
+    @Test("descent motion sequence (FFB_BUDGET=1, FFB_MOTION=1)")
     func test_descentMotionSequence() throws {
-        guard ProcessInfo.processInfo.environment["FD_BUDGET"] == "1",
-              ProcessInfo.processInfo.environment["FD_MOTION"] == "1" else {
-            print("[FDBudget] FD_MOTION not set — skipping motion sequence")
+        guard ProcessInfo.processInfo.environment["FFB_BUDGET"] == "1",
+              ProcessInfo.processInfo.environment["FFB_MOTION"] == "1" else {
+            print("[FDBudget] FFB_MOTION not set — skipping motion sequence")
             return
         }
-        let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["FD_RENDER_DIR"]
-                      ?? NSTemporaryDirectory().appending("fd_motion"))
+        let dir = URL(fileURLWithPath: ProcessInfo.processInfo.environment["FFB_RENDER_DIR"]
+                      ?? NSTemporaryDirectory().appending("ffb_motion"))
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
         // MFX.1: the pipeline is built ONCE and every frame renders through it, so
@@ -149,9 +149,9 @@ struct FractalDescentBudgetProbeTests {
             throw HarnessError.presetNotFound(Self.subjectName)
         }
         let pipeline = try RayMarchPipeline(context: ctx, shaderLibrary: lib)
-        // FD_NO_TAA=1 renders the identical motion path with the temporal resolve
+        // FFB_NO_TAA=1 renders the identical motion path with the temporal resolve
         // OFF — the A/B that shows whether MetalFX actually removes the shimmer.
-        let taaOff = ProcessInfo.processInfo.environment["FD_NO_TAA"] == "1"
+        let taaOff = ProcessInfo.processInfo.environment["FFB_NO_TAA"] == "1"
         // MFX.1 production parity: the MetalFX flags decide the render size and the
         // working-set allocation, so they MUST be set before allocateTextures.
         pipeline.metalFXEnabled = preset.descriptor.usesMetalFXTemporal && !taaOff
@@ -220,7 +220,7 @@ struct FractalDescentBudgetProbeTests {
                       + "mfxMs=\(pipeline.lastMetalFXPassMs) jitter=\(pipeline.currentJitter)")
             }
             let px = HarnessTemplateCore.readBGRA(outTex, width: Self.width, height: Self.height)
-            let url = dir.appendingPathComponent(String(format: "fd_%03d.png", i))
+            let url = dir.appendingPathComponent(String(format: "ffb_%03d.png", i))
             try writePNG(bgra: px, width: Self.width, height: Self.height, to: url)
         }
         print("[FDBudget] wrote \(frames) motion frames to \(dir.path)")
@@ -337,7 +337,7 @@ struct FractalDescentBudgetProbeTests {
         scene.sceneParamsA.y = Float(Self.width) / Float(Self.height)
         // sceneParamsB.z is the live FrameBudgetManager step multiplier (D-057):
         // 1.0 = 128 march steps, 0.5 = 64 (what §A8 assumed), floor 0.25 = 32.
-        if let mult = ProcessInfo.processInfo.environment["FD_STEP_MULT"].flatMap(Float.init) {
+        if let mult = ProcessInfo.processInfo.environment["FFB_STEP_MULT"].flatMap(Float.init) {
             scene.sceneParamsB.z = mult
             print(String(format: "[FDBudget] step multiplier %.2f → %d march steps", mult, Int(128.0 * mult)))
         }
