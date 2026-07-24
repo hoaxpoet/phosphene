@@ -73,6 +73,14 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 **Done-when: ✅** full `swift test --package-path PhospheneEngine` run **3×**, the target test green in all three (previously 0/3); isolated runtime 2.7 s → **0.042 s**; 1689 tests / 233 suites, only the pre-declared `MemoryReporter` intermittent known issue and an unrelated DOC.6 red carried in from VL-PSY.2 (BUG-073's §Open Index row not removed when it moved to §Resolved) — fixed here as its own one-line commit so the merge gate is green. `swiftlint --strict` 0 violations. Recorded per the CLEAN.7.9–7.14 flake precedent: KNOWN_ISSUES §Pre-existing Flakes "Resolved 2026-07-24 (TESTFLAKE.2)" + `RELEASE_NOTES_DEV [dev-2026-07-24-164940]`.
 
+### Increment VL-PSY.4 — Camera dolly speed moves to the sidecar (BUG-074 replay-harness parity) ✅ (2026-07-24)
+
+Per-preset camera dolly speed lived in app code (`VisualizerEngine+Presets.applyPreset`, a `switch desc.name` returning 5.0 for Volumetric Lithograph and 0 otherwise). The engine-side `SessionReplayHarness` (engine test target — cannot import the app) never saw that value, so it replayed VL — whose whole identity is a forward flight — with a **static camera**. That is the BUG-074 replay-harness camera-parity gap.
+
+**Fix.** New sidecar field `scene_dolly_speed` on `PresetDescriptor` (`Float`, default `0` = camera-static). `VolumetricLithograph.json` sets `5.0` (the value VL-PSY.2 shipped in the app switch). Both consumers now read one source of truth: `VisualizerEngine+Presets.applyPreset` seeds `rmPipeline.cameraDollySpeed = desc.sceneDollySpeed` (the `switch desc.name` block is deleted), and `SessionReplayHarness` seeds `pipeline.cameraDollySpeed = preset.descriptor.sceneDollySpeed`. `RayMarchPipeline+MetalFX.applyAudioModulation` is the sole reader — unchanged. There was **no `REPLAY_DOLLY` env stopgap in this tree** (it lived on the sibling VL-PSY.3 branch, unmerged) so nothing to remove; the `PresetSessionReplay` executable renders from recorded video, not re-render, so it has no parity gap.
+
+**Done-when: ✅** Engine + app both build clean. `PresetRegressionTests` byte-identical (27 presets × 3 energy states — the new `let` never touches a render: goldens render from `makeSceneUniforms()`, never call `applyAudioModulation`, and even in the live path the dolly integrator is 0 on frame 1). `PresetAcceptanceTests` 27/27. `swiftlint --strict` 0 violations. VL replayed through session `2026-07-24T22-01-51Z` (60 frames, no env var) shows the landscape flowing toward the camera — the flight renders in the engine harness. Byte-identical live behaviour: VL already dollied at 5.0 in the app; only the *source* of the value moved.
+
 ### Increment VL-PSY.2 — Volumetric Lithograph performance fix (BUG-073) ✅ (2026-07-24)
 
 **Done-when:** VL renders at a frame rate Matt can watch, with a measured instrument proving it. Met.
