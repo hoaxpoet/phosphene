@@ -98,8 +98,8 @@ explicitly is how that stops being invisible.
   has reverted to the direction Matt rejected on 2026-07-23 ("a topographic map that adds and
   removes depth"). `scene_fog` stays 0; no aerial perspective, no `ridged_mf` drainage, no cloud
   shadows.
-- **Fractal Descent / Mandelbox Cathedral.** ⚠️ The nearest in-catalog trap, and stronger than any
-  abstract anti-reference because it *ships*. FD is a fractal **solid** the camera falls into. VL
+- **Fractal Fly-By (formerly Fractal Descent) / Mandelbox Cathedral.** ⚠️ The nearest in-catalog trap, and stronger than any
+  abstract anti-reference because it *ships*. It is a fractal **solid** the camera travels through. VL
   is a **landscape** the camera flies over. If VL's ground stops reading as ground, it has become
   "Mandelbox Cathedral with a moving camera" — the collapse the design doc §1 names by name.
 - **Flat neon screensaver strobe.** Saturation without structure. `02` sits near this line —
