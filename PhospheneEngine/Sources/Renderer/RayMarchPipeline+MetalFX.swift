@@ -6,6 +6,13 @@
 // See MetalFXTemporalUpscaler for why temporal AA is needed and what it costs.
 
 import Foundation
+import QuartzCore
+
+/// Smoothstep on Float (no simd overload for scalars in this context).
+private func smoothstepF(_ e0: Float, _ e1: Float, _ x: Float) -> Float {
+    let tt = min(max((x - e0) / max(e1 - e0, 1e-6), 0), 1)
+    return tt * tt * (3 - 2 * tt)
+}
 import Metal
 import simd
 import Shared
@@ -30,20 +37,35 @@ extension RayMarchPipeline {
             currentJitter = .zero
             return
         }
-        let j = mfx.currentJitter()
-        currentJitter = j
+        // BUG-071 round 3 (the "nearly unwatchable" regression): this MUST derive
+        // from the unjittered forward. The first version read the LIVE
+        // `sceneUniforms.cameraForward`, added jitter, and wrote it back — and
+        // nothing resets `cameraForward.xyz` per frame (applyAudioModulation only
+        // touches `.w`), so every frame jittered the ALREADY-jittered vector. Two
+        // consequences: the camera direction random-walked (~4.5°/min), and —
+        // far worse — the offset MetalFX was told to undo (`currentJitter`, the
+        // per-frame Halton value) no longer matched the camera's ACTUAL cumulative
+        // offset, so the temporal resolve reprojected against a mis-aligned history
+        // and smeared. Capturing the base once and always offsetting from it keeps
+        // the reported jitter and the real jitter identical, which is the whole
+        // precondition for temporal accumulation.
+        let base = jitterBaseForward ?? sceneUniforms.cameraForward
+        if jitterBaseForward == nil { jitterBaseForward = base }
+
+        let jit = mfx.currentJitter()
+        currentJitter = jit
         let yFov = tan(sceneUniforms.cameraOriginAndFov.w * 0.5)
         let xFov = yFov * sceneUniforms.sceneParamsA.y
         // Jitter is in pixels; convert to the NDC span of one pixel (NDC is 2 wide).
-        let ndcX = (j.x * 2.0 / Float(width)) * xFov
-        let ndcY = (j.y * 2.0 / Float(height)) * yFov
-        let fwd = sceneUniforms.cameraForward
-        let rt  = sceneUniforms.cameraRight
-        let up  = sceneUniforms.cameraUp
-        let jittered = SIMD3(fwd.x, fwd.y, fwd.z)
-            + ndcX * SIMD3(rt.x, rt.y, rt.z)
-            - ndcY * SIMD3(up.x, up.y, up.z)
-        sceneUniforms.cameraForward = SIMD4(jittered, fwd.w)
+        let ndcX = (jit.x * 2.0 / Float(width)) * xFov
+        let ndcY = (jit.y * 2.0 / Float(height)) * yFov
+        let rgt = sceneUniforms.cameraRight
+        let upv = sceneUniforms.cameraUp
+        let jittered = SIMD3(base.x, base.y, base.z)
+            + ndcX * SIMD3(rgt.x, rgt.y, rgt.z)
+            - ndcY * SIMD3(upv.x, upv.y, upv.z)
+        // Preserve .w — it carries per-preset payload (Ferrofluid's finCX).
+        sceneUniforms.cameraForward = SIMD4(jittered, sceneUniforms.cameraForward.w)
     }
 
     /// MFX.1 — motion-vector + depth pass. Reads gbuffer0 (normalized depth),
@@ -86,5 +108,117 @@ extension RayMarchPipeline {
         encoder.setFragmentTexture(gbuf0, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
+    }
+
+    /// Option-A preset-agnostic audio modulation.
+    ///
+    /// FLY.6: lives on RayMarchPipeline (moved off RenderPipeline) so the offline
+    /// replay harness calls the SAME code production does. It previously sat in
+    /// RenderPipeline, which the harness bypasses entirely — so every offline
+    /// frame was rendered WITHOUT the per-frame fog / light-intensity / valence
+    /// tint that production applies, and offline images looked cleaner and
+    /// differently lit than the live app (BUG-071 round 6). Parity by
+    /// construction beats parity by discipline.
+    ///
+    /// Original doc follows.
+    /// Option-A preset-agnostic audio modulation: drives light, fog, camera dolly,
+    /// and fin position from the feature vector, additive on top of the preset's
+    /// JSON baseline (`baseScene`). Geometry stays static — music moves the camera
+    /// and lights the space (D-020).
+    func applyAudioModulation(features: FeatureVector) {
+        let base = baseScene
+        let now = CACurrentMediaTime()
+        let dt: Float = lastDollyFrameTime.map { Float(max(0, now - $0)) } ?? 0
+        lastDollyFrameTime = now
+        let bassContribution = max(0, min(1.1, features.bass * 1.1))
+        let instantaneousSpeed = cameraDollySpeed * (0.5 + bassContribution)
+        cameraDollyOffset += dt * instantaneousSpeed
+        let dollyZ = base.cameraPosition.z + cameraDollyOffset
+        sceneUniforms.cameraOriginAndFov.x = base.cameraPosition.x
+        sceneUniforms.cameraOriginAndFov.y = base.cameraPosition.y
+        sceneUniforms.cameraOriginAndFov.z = dollyZ
+        // PERF.3 (BUG-019 fix) — light-intensity restructured per CLAUDE.md Failed
+        // Approach #4 (beat is accent, never primary). Previous formula
+        // `0.4 + beatPulse * 2.6` had the beat term 6.5× the baseline; every beat
+        // fired a single-frame 2.1× brightness multiplier swing of the whole scene,
+        // visible as 3 Hz flicker on FFO (verified by ffmpeg signalstats on
+        // session 2026-05-27T22-49-42Z video.mp4: 76 brightness-oscillation events
+        // across 200 s of playback, matching beat firing rate). The restructured
+        // formula puts continuous bass as the primary driver (per the Audio Data
+        // Hierarchy rule) and keeps the beat as a small accent. Worst-case range
+        // [1.0, 1.55]; single-frame beat-fire swing ±0.15 (vs ±2.1 before).
+        let bassPrimary = max(0, min(1.0, features.bass))
+        let beatPulse = max(features.beatBass, max(features.beatMid, features.beatComposite))
+        let beatAccent = max(0, min(1.0, beatPulse))
+        let intensityMulTarget = 1.0 + bassPrimary * 0.4 + beatAccent * 0.15
+        // BUG-038 (continuation of BUG-019, FBS pre-step) — temporally smooth the
+        // light multiplier so it cannot step frame-to-frame. The beat-onset signals
+        // fire on ~97 % of frames on real sessions (a near-constant jitter, NOT clean
+        // beats) and `f.bass` is noisy; together they flickered the whole scene's
+        // brightness 7–9 perceptible steps/sec (the BUG-019 residual). An EMA
+        // (τ ≈ 0.12 s) drops that to ~0 (verified on 4 sessions: streaming Love
+        // Rehab / So What / Lotus Flower + clean-signal Cherub) while preserving the
+        // slower musical brightness swell. Preset-agnostic + mean-preserving → no
+        // certified-preset regression. The PERF.3 formula (continuous bass primary,
+        // beat as a small accent) is unchanged; it is only low-passed now.
+        smoothedLightIntensityMul = RayMarchPipeline.smoothLightIntensity(
+            previous: smoothedLightIntensityMul,
+            target: intensityMulTarget,
+            dt: dt)
+        sceneUniforms.lightPositionAndIntensity.w =
+            base.lightIntensity * smoothedLightIntensityMul
+        // FLY.9 — smoothed fold/"event" driver, published in the free cameraUp.w
+        // lane. `bass_att_rel` is a spiky deviation primitive: fed raw to a
+        // GEOMETRY parameter it snapped the whole structure frame-to-frame (11
+        // visible snaps in the first 10 s of Matt's session — his "camera jumps
+        // around"). An EMA over a swell-length window turns it into the sustained
+        // build a musical "arrival" actually needs.
+        let foldTarget = max(0, min(1.5, features.bassAttRel))
+        let foldTau: Float = 0.45                       // ~0.45 s swell window
+        let foldAlpha = dt > 0 ? min(1, dt / foldTau) : 1
+        smoothedFoldDrive += (foldTarget - smoothedFoldDrive) * foldAlpha
+        sceneUniforms.cameraUp.w = smoothedFoldDrive
+
+        let valence = max(-1, min(1, features.valence))
+        let warm = max(0, valence)
+        let cool = max(0, -valence)
+        let tint = SIMD3<Float>(
+            1.0 + warm * 0.40 - cool * 0.25,
+            1.0 + warm * 0.15 - cool * 0.10,
+            1.0 + cool * 0.40 - warm * 0.30
+        )
+        // FLY.10 — FRAMING driver (how vast the world feels), published in the
+        // free lightColor.w lane. MUST be written AFTER lightColor above, which
+        // zeroes .w. Driven by AROUSAL, deliberately a different primitive from
+        // the fold's bass_att_rel (FA #67: one primitive per layer) — arousal is
+        // the slow mood envelope, which is the right timescale for framing: you
+        // do not want the composition twitching per beat.
+        //
+        // Calibrated to REAL data, not to the nominal [-1,1]: measured over Matt's
+        // session arousal spans -0.08 .. +0.68 and a strong passage swings ~0 -> +0.5, so
+        // mapping 0.02..0.58 is what uses the FULL swing (the round-9 lesson — a driver
+        // calibrated to a range it never reaches produces an invisible effect).
+        let framingRaw = smoothstepF(0.02, 0.58, features.arousal)
+        // FLY.11: 1.6 -> 3.2. A fast lens change re-projects every pixel, which
+        // reads as zoom PUMPING; framing should breathe over musical phrases.
+        let framingTau: Float = 3.2
+        let framingAlpha = dt > 0 ? min(1, dt / framingTau) : 1
+        smoothedFraming += (framingRaw - smoothedFraming) * framingAlpha
+        sceneUniforms.lightColor = SIMD4(base.lightColor * tint, smoothedFraming)
+
+        // FLY.11 — apply framing to the LENS. A wide FOV takes in a whole vast
+        // space; a narrow one compresses into a tight corridor — and changing it
+        // moves NO geometry, so nothing sweeps through the camera.
+        if fovFramingRange != 0 {
+            sceneUniforms.cameraOriginAndFov.w = base.fov + fovFramingRange * smoothedFraming
+        }
+        let arousal = max(-1, min(1, features.arousal))
+        let fogScale: Float = arousal >= 0
+            ? (1.0 - arousal * 0.7)
+            : (1.0 + (-arousal) * 1.0)
+        sceneUniforms.sceneParamsB.y = base.fogFar * fogScale
+        let bassDrive = max(0, min(1, features.subBass + features.lowBass))
+        let finCX: Float = 1.20 - (1.20 - 0.85) * bassDrive
+        sceneUniforms.cameraForward.w = finCX
     }
 }

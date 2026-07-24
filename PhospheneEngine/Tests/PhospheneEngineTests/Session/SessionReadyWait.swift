@@ -29,6 +29,14 @@ import Testing
 @MainActor
 func awaitSessionReady(_ manager: SessionManager, hangCapSeconds: Double = 120) async {
     guard let task = manager.sessionPreparationTask else { return }
+    await awaitPrepTask(task, hangCapSeconds: hangCapSeconds)
+}
+
+/// Await a *captured* preparation task handle under the same hang-cap.
+///
+/// Needed when the manager has already dropped its handle — e.g. a task orphaned by
+/// `endSession()`, whose completion the generation guard must reject (TESTFLAKE.2).
+func awaitPrepTask(_ task: Task<Void, Never>, hangCapSeconds: Double = 120) async {
     let timedOut = await withTaskGroup(of: Bool.self) { group in
         group.addTask { await task.value; return false }
         group.addTask {

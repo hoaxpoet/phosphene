@@ -166,7 +166,7 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // "Ferrofluid Ocean": (steady: 0x56AB1C4A28B32727, beatHeavy: 0x5CB393AAAFA84840, quiet: 0xA64C51A62FD35356),
     // FD.2 look pass: reads the descent phase (sceneParamsA.x, 0 in the regression
     // harness) + bass_att_rel, so all three fixtures converge to one hash.
-    "Fractal Fly-By": (steady: 0x3179DC4D4979A9F5, beatHeavy: 0x3179DC4D4979A9F5, quiet: 0x3179DC4D4979A9F5),
+    "Fractal Fly-By": (steady: 0xD7DAB2B2B2B2A397, beatHeavy: 0xD7DAB2B2B2B2A397, quiet: 0xD7DAB2B2B2B2A397),
     "Gossamer": (steady: 0x5756A72F070F0F0D, beatHeavy: 0x5756A72F070F0F0D, quiet: 0x5756872D0F0F0F0D),
     // QR.1 (D-079): sminK now mixes continuous bass (Layer 1) + bass_dev
     // accent. steady/quiet hashes regenerated to original V.7 values within
@@ -243,7 +243,16 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // BUG-034 (2026-06-12, M7-lite approved): regen at the live 128-step budget.
     // Terrain now reaches the true horizon (the old "sky holes" at distance
     // were rays exhausting the 32-step budget mid-terrain). 13 bit drift.
-    "Volumetric Lithograph": (steady: 0x8C63D435F2ADAB00, beatHeavy: 0x8C63D435F2ADAB00, quiet: 0x8C63D435F2ADAB00),
+    // VL-PSY.2 (2026-07-24): re-regenerated after the performance fix (warp cost,
+    // octaves, step scale, morph rate). VL-PSY.1 note follows —
+    // hg_sdf kaleidoscopic folds + world-space domain warp + fold-polar palette + a
+    // retargeted camera. 35-bit shift from the v9.4 goldens, entirely expected.
+    // NOTE the three fixtures still hash IDENTICALLY: none of them sets midAttRel and
+    // all carry stems.zero, so VL's fold routes read their resting state in all three
+    // (the same blind spot that made the round-3 contact sheet show three identical
+    // columns). This gate therefore guards VL's STRUCTURE, not its audio coupling —
+    // coupling is covered by renderVolumetricLithographFoldSweep + the motion gate.
+    "Volumetric Lithograph": (steady: 0xB3568513A399A671, beatHeavy: 0xB3568513A399A671, quiet: 0xB3568513A399A671),
     "Waveform": (steady: 0x000F0F0000000000, beatHeavy: 0x000F0F0000000000, quiet: 0x000F0F0000000000),
 ]
 

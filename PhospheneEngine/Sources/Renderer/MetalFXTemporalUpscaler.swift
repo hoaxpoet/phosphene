@@ -52,6 +52,12 @@ public final class MetalFXTemporalUpscaler {
     /// Set when history must be discarded (first frame, preset switch, resize).
     private var needsReset = true
 
+    /// MFX diagnostics: how many encodes ran, and how many discarded history.
+    /// A healthy run resets ONCE; resetting every frame means no accumulation.
+    public private(set) var encodeCount = 0
+    public private(set) var resetCount = 0
+    public private(set) var scalerCreateCount = 0
+
     public init(device: MTLDevice) {
         self.device = device
     }
@@ -130,6 +136,7 @@ public final class MetalFXTemporalUpscaler {
         scalerOutWidth = outWidth
         scalerOutHeight = outHeight
         needsReset = true
+        scalerCreateCount += 1
         logger.info("MTLFXTemporalScaler created \(width)×\(height) → \(outWidth)×\(outHeight)")
         return made
     }
@@ -173,6 +180,8 @@ public final class MetalFXTemporalUpscaler {
         scaler.jitterOffsetX = -inputs.jitter.x
         scaler.jitterOffsetY = -inputs.jitter.y
         scaler.reset = needsReset
+        if needsReset { resetCount += 1 }
+        encodeCount += 1
         needsReset = false
 
         scaler.encode(commandBuffer: commandBuffer)
