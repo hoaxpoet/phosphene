@@ -25,6 +25,7 @@
 import Testing
 import Foundation
 import Metal
+import simd
 import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
@@ -172,8 +173,12 @@ struct FractalFlyByBudgetProbeTests {
         let buffers = try HarnessTemplateCore.makeSilenceBuffers(ctx)
         let outTex = try HarnessTemplateCore.makeCaptureTexture(ctx, width: Self.width, height: Self.height)
 
+        var seedScene = preset.descriptor.makeSceneUniforms()
+        seedScene.sceneParamsA.y = Float(Self.width) / Float(Self.height)
+        pipeline.sceneUniforms = seedScene
+
         let frames = 90
-        var phase: Float = 0            // monotonic descent phase (∫ energy dt)
+        var phase: Float = 0            // monotonic travel phase (∫ energy dt)
         var prevPhase: Float = 0
         for i in 0..<frames {
             let u = Float(i) / Float(frames - 1)          // 0..1 over the sequence
@@ -190,11 +195,15 @@ struct FractalFlyByBudgetProbeTests {
             // Bass swell centred on the drop (u≈0.5) → fold opens (HERO #2).
             let swell: Float = max(0, 1.0 - abs(u - 0.5) / 0.12) * 2.4
 
-            var scene = preset.descriptor.makeSceneUniforms()
-            scene.sceneParamsA.x = phase / 0.45           // accumulatedAudioTime
-            scene.sceneParamsA.y = Float(Self.width) / Float(Self.height)
-            scene.lightingParams.z = prevPhase / 0.45     // MFX.1 previous-frame time
-            pipeline.sceneUniforms = scene
+            // PRODUCTION PARITY (BUG-071 round 3): update ONLY the per-frame audio
+            // fields, exactly like RenderPipeline+RayMarch does. An earlier version
+            // reassigned the whole struct from the descriptor each frame, which
+            // silently reset the camera basis — and that masked a cumulative
+            // camera-jitter drift that was live-only. Never re-seed the full
+            // uniforms per frame here (FA #66 test/prod parity).
+            pipeline.sceneUniforms.sceneParamsA.x = phase / 0.45      // accumulatedAudioTime
+            pipeline.sceneUniforms.sceneParamsA.y = Float(Self.width) / Float(Self.height)
+            pipeline.sceneUniforms.lightingParams.z = prevPhase / 0.45 // MFX.1 prev-frame time
 
             var features = HarnessTemplateCore.silenceFeature(frame: i)
             features.bassAttRel = swell
@@ -224,6 +233,47 @@ struct FractalFlyByBudgetProbeTests {
             try writePNG(bgra: px, width: Self.width, height: Self.height, to: url)
         }
         print("[FDBudget] wrote \(frames) motion frames to \(dir.path)")
+    }
+
+    /// BUG-071 round 3 regression: the camera basis must NOT accumulate jitter.
+    ///
+    /// `applyJitter` offsets `cameraForward` by a sub-pixel amount each frame for
+    /// MetalFX. Nothing resets `cameraForward.xyz` per frame, so an implementation
+    /// that reads the LIVE value and writes it back random-walks the camera AND
+    /// desynchronises the reported jitter from the real one — which smears the
+    /// temporal resolve. Asserts the forward vector stays within a sub-pixel cone
+    /// of where it started after 600 frames (~10 s).
+    @Test("camera basis does not accumulate jitter drift (FFB_BUDGET=1)")
+    func test_jitterDoesNotAccumulate() throws {
+        guard ProcessInfo.processInfo.environment["FFB_BUDGET"] == "1" else { return }
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat, loadBuiltIn: true)
+        guard let preset = loader.presets.first(where: { $0.descriptor.name == Self.subjectName }) else {
+            throw HarnessError.presetNotFound(Self.subjectName)
+        }
+        let pipeline = try RayMarchPipeline(context: ctx, shaderLibrary: lib)
+        pipeline.metalFXEnabled = preset.descriptor.usesMetalFXTemporal
+        pipeline.metalFXRenderScale = preset.descriptor.effectiveRenderScale
+        pipeline.motionPipelineState = preset.motionPipelineState
+        pipeline.allocateTextures(width: Self.width, height: Self.height)
+
+        var scene = preset.descriptor.makeSceneUniforms()
+        scene.sceneParamsA.y = Float(Self.width) / Float(Self.height)
+        pipeline.sceneUniforms = scene
+        let original = simd_normalize(SIMD3(scene.cameraForward.x, scene.cameraForward.y, scene.cameraForward.z))
+
+        for _ in 0..<600 {
+            pipeline.applyJitter(width: Self.width, height: Self.height)
+            pipeline.metalFX?.advanceFrame()
+        }
+        let fwd = pipeline.sceneUniforms.cameraForward
+        let drift = simd_length(simd_normalize(SIMD3(fwd.x, fwd.y, fwd.z)) - original)
+        print(String(format: "[FFBBudget] camera-forward drift after 600 frames: %.6f", drift))
+        #expect(drift < 0.002, """
+            Camera forward drifted \(drift) after 600 frames — jitter is accumulating. \
+            applyJitter must offset from the stored UNJITTERED basis, never the live value.
+            """)
     }
 
     /// Renders one frame at an explicit descent phase + fold swell, returns BGRA.

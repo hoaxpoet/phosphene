@@ -435,6 +435,11 @@ public final class RayMarchPipeline: @unchecked Sendable {
     // bakes it into the camera basis and the scaler is told the same value.
     var currentJitter: SIMD2<Float> = .zero
 
+    /// The UNJITTERED camera forward, captured before the first jitter of a run.
+    /// applyJitter must always derive from this, never from the live (already
+    /// jittered) value — see the BUG-071 round-3 note in applyJitter.
+    var jitterBaseForward: SIMD4<Float>?
+
     /// Allocate (or reallocate) G-buffer and lit scene textures for the given size.
     ///
     /// - Parameters:

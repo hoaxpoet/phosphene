@@ -30,20 +30,35 @@ extension RayMarchPipeline {
             currentJitter = .zero
             return
         }
-        let j = mfx.currentJitter()
-        currentJitter = j
+        // BUG-071 round 3 (the "nearly unwatchable" regression): this MUST derive
+        // from the unjittered forward. The first version read the LIVE
+        // `sceneUniforms.cameraForward`, added jitter, and wrote it back — and
+        // nothing resets `cameraForward.xyz` per frame (applyAudioModulation only
+        // touches `.w`), so every frame jittered the ALREADY-jittered vector. Two
+        // consequences: the camera direction random-walked (~4.5°/min), and —
+        // far worse — the offset MetalFX was told to undo (`currentJitter`, the
+        // per-frame Halton value) no longer matched the camera's ACTUAL cumulative
+        // offset, so the temporal resolve reprojected against a mis-aligned history
+        // and smeared. Capturing the base once and always offsetting from it keeps
+        // the reported jitter and the real jitter identical, which is the whole
+        // precondition for temporal accumulation.
+        let base = jitterBaseForward ?? sceneUniforms.cameraForward
+        if jitterBaseForward == nil { jitterBaseForward = base }
+
+        let jit = mfx.currentJitter()
+        currentJitter = jit
         let yFov = tan(sceneUniforms.cameraOriginAndFov.w * 0.5)
         let xFov = yFov * sceneUniforms.sceneParamsA.y
         // Jitter is in pixels; convert to the NDC span of one pixel (NDC is 2 wide).
-        let ndcX = (j.x * 2.0 / Float(width)) * xFov
-        let ndcY = (j.y * 2.0 / Float(height)) * yFov
-        let fwd = sceneUniforms.cameraForward
-        let rt  = sceneUniforms.cameraRight
-        let up  = sceneUniforms.cameraUp
-        let jittered = SIMD3(fwd.x, fwd.y, fwd.z)
-            + ndcX * SIMD3(rt.x, rt.y, rt.z)
-            - ndcY * SIMD3(up.x, up.y, up.z)
-        sceneUniforms.cameraForward = SIMD4(jittered, fwd.w)
+        let ndcX = (jit.x * 2.0 / Float(width)) * xFov
+        let ndcY = (jit.y * 2.0 / Float(height)) * yFov
+        let rgt = sceneUniforms.cameraRight
+        let upv = sceneUniforms.cameraUp
+        let jittered = SIMD3(base.x, base.y, base.z)
+            + ndcX * SIMD3(rgt.x, rgt.y, rgt.z)
+            - ndcY * SIMD3(upv.x, upv.y, upv.z)
+        // Preserve .w — it carries per-preset payload (Ferrofluid's finCX).
+        sceneUniforms.cameraForward = SIMD4(jittered, sceneUniforms.cameraForward.w)
     }
 
     /// MFX.1 — motion-vector + depth pass. Reads gbuffer0 (normalized depth),
