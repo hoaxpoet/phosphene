@@ -29,7 +29,9 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ### BUG-071 — Fractal Fly-By: descent direction inverted + severe motion aliasing (2026-07-23)
 
-**P1 · preset.fidelity / sdf-geometry · FIXES LANDED (direction, zoom target, anti-aliasing), live re-test pending.**
+**P1 · preset.fidelity / sdf-geometry / render-state · FIXES LANDED (direction, zoom target, anti-aliasing, jitter accumulation), live re-test pending.**
+
+**ROUND 3 REGRESSION (2026-07-24, live session `2026-07-24T13-17-57Z`, "VERY glitchy, nearly unwatchable" — WORSE than before).** Cause: **MFX.1's camera jitter accumulated.** `applyJitter` read the LIVE `sceneUniforms.cameraForward`, added the sub-pixel offset, and wrote it back — and nothing resets `cameraForward.xyz` per frame (`applyAudioModulation` only writes `.w`). So each frame jittered the already-jittered vector. Two effects: the camera direction random-walked (~4.5°/min, measured), and — the damaging one — the offset reported to MetalFX (`currentJitter`, the per-frame Halton value) no longer matched the camera's ACTUAL cumulative offset, so the temporal resolve reprojected against a mis-aligned history and **smeared**. Temporal AA with a wrong jitter is worse than none. Fixed by capturing the unjittered basis once and always offsetting from it. **Why the harness missed it:** the probe reassigned `sceneUniforms` from the descriptor every frame, silently resetting the drift — a test/production divergence (FA #66). The harness now updates only the per-frame audio fields, matching `RenderPipeline+RayMarch`, and `test_jitterDoesNotAccumulate` locks it (validated by reintroducing the bug: drift 0.00037 → 0.0089, test fails).
 
 **Expected:** a continuous fall INTO an ever-elaborating fractal cathedral; stable under motion.
 **Actual (Matt live M7, session `2026-07-23T19-27-48Z`, Cherub Rock):** "Deeply glitchy. The camera is moving out / away vs. in… at the beginning the music response was chaotic and the preset looked super broken. As the camera moved backward the visuals started to stabilize… the surface looked pixelated but running."
