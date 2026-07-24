@@ -63,6 +63,18 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment VL-PSY.4 — Volumetric Lithograph: ratchet rotation + retire the second beat layer (BUG-075) ✅ (2026-07-24)
+
+**Done-when:** the downbeat motion reads as a coherent single accent, verified on Matt's real session. Met (pending his live confirmation of the felt character via the handed-over GIF).
+
+Matt M7: "dialing on a rotary telephone, combined with pulsing on the beat." Two causes from the session `features.csv`: (1) the VL-PSY.3 downbeat *twist* was a transient displacement (`attack*decay`, 0→1→0) so the fold angle advanced then RETRACTED — 2.7 % of frames spun backward; (2) the v9 drum-hit peak-lift was still live, a second beat layer at a different rate (FA #67). ★ **The lesson, third time on this preset: an accent on a monotonic quantity (angle) must itself be monotonic — add-and-hold, never add-and-return; and audit for a pre-existing accent before adding a new one.** Fix: monotonic eased ratchet off the cached grid (not amp-gated — that would collapse the accumulated angle backward in a quiet bar, the retraction latent until a Spotify playlist hits a rest), drum-hit peak-lift retired. The `accumulatedAudioTime` terrain morph Matt liked is kept.
+
+Verified on the real session via `SessionReplayHarness` (the harness VL-PSY.2/.3 should have used): 0 % backward, motion gate 0 spikes / 0 frozen, max 1.68× median. **Goldens byte-identical** — the synthetic regression fixtures set no beat position or drum stems, so they cannot see this class; real-session replay is the only gate that catches it. Perf 10.7 ms, unchanged. Residual: a one-time ~24 rad/s snap at BeatGrid install, logged.
+
+**Separate, UNRESOLVED — app crash.** Session crashed ~3.7 min into playback (Hummer). fps held 59.9 to the final recorded frame, so it was a hard fault, not a slowdown/leak-into-stall. No PhospheneApp crash report reachable (TCC; newest DiagnosticReports is Jul 19). Weak duration correlation (this was the longest session by far; the real-time tap stem separation writes unbounded, 142 MB/42 dumps here). **Needs Matt's `.ips` to diagnose — do not guess a cause.**
+
+**Still open on VL:** cert (full-length M7 hold + rubric/route gates), and the crash.
+
 ### Increment VL-PSY.3 — Volumetric Lithograph motion rewrite: rotate the tube (BUG-074) ✅ (2026-07-24)
 
 **Done-when:** the fold responds to music without convulsing, verified on Matt's real session, at a rotation speed he picked. Met.
