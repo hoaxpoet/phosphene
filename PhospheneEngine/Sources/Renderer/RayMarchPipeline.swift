@@ -440,6 +440,12 @@ public final class RayMarchPipeline: @unchecked Sendable {
     /// jittered) value — see the BUG-071 round-3 note in applyJitter.
     var jitterBaseForward: SIMD4<Float>?
 
+    /// FLY.9 — EMA of `bass_att_rel`, the smoothed "musical event" driver.
+    var smoothedFoldDrive: Float = 0
+
+    /// FLY.10 — smoothed framing drive: 0 = tight/claustrophobic, 1 = vast.
+    var smoothedFraming: Float = 0
+
     /// Allocate (or reallocate) G-buffer and lit scene textures for the given size.
     ///
     /// - Parameters:
