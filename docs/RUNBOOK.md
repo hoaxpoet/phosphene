@@ -68,6 +68,14 @@ swiftlint lint --strict --config .swiftlint.yml
 
 **The app scheme's test action runs only `PhospheneAppTests` (BUG-048).** From U.1 until 2026-06-11 it also ran the engine test bundle, which fails under xcodebuild's test-runner context on environment, not code: ffmpeg subprocess spawning and repo-relative file reads are denied ("Operation not permitted"), audio-device tests die instantly, and only ~440 of the engine suite's 1439 tests even load. The engine suite's canonical runner is `swift test --package-path PhospheneEngine`, where all of those pass. `SchemeTestActionRegressionTests` (engine suite) fails loudly if the engine bundle is re-added to the scheme's test action.
 
+**Quit PhospheneApp before running the app test suite (BUG-072).** The test *host* is `PhospheneApp.app` itself, and `Info.plist` sets `LSMultipleInstancesProhibited` (U.11, for OAuth callback routing) — so while any `com.phosphene.app` process is running, LaunchServices refuses the host launch and the whole run fails at exit 65 with "Could not launch “PhospheneAppTests”", zero tests executed. It survives every build-side remedy (clean, `lsregister`, bundle delete, a different worktree or DerivedData path) because the blocker is a *running process*, not a build product. Fix:
+
+```bash
+osascript -e 'tell application "PhospheneApp" to quit'; pkill -x PhospheneApp
+```
+
+`Scripts/closeout_evidence.sh` annotates the evidence block when it sees this signature, so it is never mistaken for a real app-test regression.
+
 **Do NOT pass `SWIFT_TREAT_WARNINGS_AS_ERRORS=YES` on the command line.** It propagates to SPM dependencies and conflicts with `-suppress-warnings`. The flag is enforced per-target via `PhospheneApp/Phosphene.xcconfig`.
 
 ### Fast local tier — `Scripts/test_fast.sh` (CLEAN.7.2a)

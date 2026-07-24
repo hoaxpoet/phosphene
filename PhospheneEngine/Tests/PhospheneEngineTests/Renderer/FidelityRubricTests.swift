@@ -145,7 +145,7 @@ private let expectedAutomatedGate: [String: Bool] = [
     // coupling, the Skein/Lumen/Filigree precedent):
     "Dragon Bloom":         true,    // in-shader routes visible to the heuristic
     "Fata Morgana":         true,    // in-shader routes visible to the heuristic
-    "Fractal Descent":      false,   // FD.1 maquette is deliberately audio-inert (the task-3
+    "Fractal Fly-By":      false,   // FD.1 maquette is deliberately audio-inert (the task-3
                                      // perf gate measures geometry alone); no routes yet
     "Floret":               false,   // coupling partly CPU-side; certified via M7 (FLORET.4)
     "Glaze":                false,   // stem-swap coupling CPU-side; M7'd (GLAZE.3+)

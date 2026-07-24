@@ -6,8 +6,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
-| BUG-071 | P1 | preset.fidelity / sdf-geometry | **Fractal Descent live M7 FAILED (session `2026-07-23T19-27-48Z`, Cherub Rock):** "deeply glitchy, camera moves OUT not IN." Root causes (confirmed from artifacts + repro renders): (1) **descent direction inverted** — `q=(p+c)*zoom` with zoom increasing collapses features toward a vanishing point (recede); confirmed by a phase-0.08 vs 0.90 sweep (features shrink as phase grows) and by `features.csv` (accAudioTime 0→8.15 → phase 0→0.98 monotonic = one-way recede, never wrapped); (2) **severe shimmer/aliasing** — full-res Mandelbox fine detail + the high-frequency iridescent thin-film rims alias under motion (no AA; MetalFX unwired; the §A8 motion-coherence cap was never added; the whole-frame motion-gate spike metric doesn't catch high-freq shimmer); (3) **descent too slow** — 0.12 rate gave <1 octave in 78 s. Fix: invert to `q=(p+c)/zoom` (fall in), tame/detune the thin-film + distance-fade fine detail, raise the rate. |
-| BUG-072 | P2 | infra / test-gate | **`xcodebuild … test` cannot launch the app test runner** — "Failed to install or launch the test runner… The LaunchServices launcher has returned an error." Build and `build-for-testing` both SUCCEED; only the runner launch fails. **Machine-wide** (primary checkout *and* worktree, at VL.1 and at HEAD~1), so the mandated app-test regression gate is silently unavailable for every increment until fixed. `lsregister -f -R -trusted` on the `.xctest` and a rebuilt bundle did not clear it. First seen 2026-07-23, `sdk macosx26.5`. Engine SPM suite, SwiftLint, and doc gates are unaffected |
+| BUG-071 | P1 | preset.fidelity / sdf-geometry | **Fractal Fly-By live M7 FAILED (session `2026-07-23T19-27-48Z`, Cherub Rock):** "deeply glitchy, camera moves OUT not IN." Root causes (confirmed from artifacts + repro renders): (1) **descent direction inverted** — `q=(p+c)*zoom` with zoom increasing collapses features toward a vanishing point (recede); confirmed by a phase-0.08 vs 0.90 sweep (features shrink as phase grows) and by `features.csv` (accAudioTime 0→8.15 → phase 0→0.98 monotonic = one-way recede, never wrapped); (2) **severe shimmer/aliasing** — full-res Mandelbox fine detail + the high-frequency iridescent thin-film rims alias under motion (no AA; MetalFX unwired; the §A8 motion-coherence cap was never added; the whole-frame motion-gate spike metric doesn't catch high-freq shimmer); (3) **descent too slow** — 0.12 rate gave <1 octave in 78 s. Fix: invert to `q=(p+c)/zoom` (fall in), tame/detune the thin-film + distance-fade fine detail, raise the rate. |
 | BUG-070 | P2 | audio.capture / resource-management | **Fix landed 2026-07-12 (PUB.6), pending live validation** — a FAILED device-change tap reinstall left `_isCapturing=true` with zero callbacks: engine health detectors starved (SignalHealthMonitor.evaluate is sample-driven → deadTap never confirms) and the router's recovery restart blocked at the alreadyCapturing guard; only the app-layer poll-based stall card surfaced it. Fix: the catch now clears `_isCapturing` (recovery unblocked) and keeps the monitor as a diagnostic beacon; the false "create steps stopped the monitor" comment corrected. Residual OPEN half: the 3-queue lifecycle interleave (device-change reinstall vs silence-recovery vs user stop) stays unserialized — static-only evidence; restructuring the G1-validated (12/12) path without a reproduced artifact is the BUG-063 pattern. Existing breadcrumbs (per-step diagnostics + install generation) are the instrumentation; serialize only if a live session shows an interleave |
 | BUG-065 | P3 | dsp.beat | **Live BeatGrid phase drifts off the audible beat over a track** — the cached grid has the right BPM but `LiveBeatDriftTracker` *bounds* the live drift without *tightening* it: drift grows ~11 ms (track start) → **50–70 ms (mid/late-track)**, and **28 % of frames exceed the ~60 ms perceptual window** (evidence: session `2026-06-29T12-43-51Z`, Cherub Rock 171.3 BPM 4/4 — drift-by-10s-window 11/37/49/54/69/66/55/48 ms; lock_state=2 only 67 %-within-60 ms). **Caps how frame-locked beat-driven presets can feel** — the live example is Glaze's GLAZE.7 downbeat push (reads connected but not *tight*; tightest early, loosens as the track plays). NOT a functional break (phase is approximately right). **Suggested improvement (Matt 2026-06-29):** live re-lock / cached-BPM-error correction so drift holds < ~30 ms across the track. The cold-start *automated phase* premise was retired (CLAUDE.md §Cold-Start), but this is **mid-track drift convergence** — a different surface (the tracker should tighten, not just bound). Logged for a dedicated beat-sync session |
 | AUDIT-2026-06-09 | P2/P3 | audit backlog | Full-codebase audit findings not individually filed |
@@ -28,58 +27,33 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
-### BUG-072 — app test runner cannot launch (`xcodebuild test` gate unavailable) (2026-07-23)
+### BUG-071 — Fractal Fly-By: descent direction inverted + severe motion aliasing (2026-07-23)
 
-**P2 · infra / test-gate · OPEN.**
+**P1 · preset.fidelity / sdf-geometry / render-state · FIXES LANDED (direction, zoom target, anti-aliasing, jitter accumulation), live re-test pending.**
 
-**Expected:** `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test` runs the app-target suite — the regression gate CLAUDE.md mandates before any merge.
-**Actual:** exit 65 with
+**ROUND 5 (2026-07-24) — round 4 made it WORSE; two follow-on causes.** Matt: "super dark, very garbled at the beginning. less watchable now than before." (a) **The darkness was caused BY the round-4 hue fix.** `ffb_jewel` was `0.50 ± 0.55`, a range of [-0.05, 1.05] — a large part of the palette clamps to BLACK. A fast hue hid that (every region averaged bright+dark); once the hue slowed to track structure, whole regions landed on the dark phase and went dead black. Floor raised to `0.58 ± 0.30` → [0.28, 0.88], never black. (b) **Round 4 fixed only ONE of two hue sites** — the emissive votives were still `trap.z*3.1 + trap.x*2.0`, FASTER than the 1.3 that caused the original speckle, so the recesses kept rainbow-speckling. Slowed to match. (c) Thin-film iridescence DISABLED: view-dependent colour is high-frequency chroma by construction, on exactly the thin ridge geometry that aliases worst; it is a "strongly preferred", not mandatory, trait. Measured at phase 0: mean luma 23.9 → 35.1, dead-black 8.5 % → 2.6 %, chroma noise 2.52 → 1.34. Perf 5.62 ms.
 
-```
-Testing failed:
-	Could not launch “PhospheneAppTests”
-	PhospheneApp encountered an error (Failed to install or launch the test runner. (Underlying
-	Error: Could not launch “PhospheneAppTests”. The LaunchServices launcher has returned an
-	error. Please check the system logs for the underlying cause of the error.))
-```
+**ROUND 4 — THE FIRST DOMINANT CAUSE (2026-07-24, found by LOOKING at frame 0).** Matt: "a complete garbled mess at the beginning of playback." Rendering the opening frame and viewing it showed rainbow speckle on every edge — **colour-space aliasing**, not geometric. The hue driver was `trap.w * 1.3 + trap.y * 0.6`: orbit-trap values swing wildly between ADJACENT pixels on a fractal, so the cosine palette cycled several times within a few pixels and neighbouring pixels landed on unrelated hues. That is real signal, so **no temporal AA can ever resolve it** — which is why MFX.1 barely helped. Slowing to `0.30 / 0.15` makes colour track STRUCTURE instead of per-pixel; the speckle disappears and surfaces read as coherent jewelled stone. **Why the start of playback is worst:** playback begins at `phase = 0` where `zoom = 1.0` — the widest, most detail-crammed point of the octave (measured spatial-detail density 4.44 at frame 0 vs 2.79 mid-cycle), so the opening frame is the worst-case aliasing frame of the whole cycle. **Diagnostic that isolated it:** freezing the scene (`FFB_STATIC=1`, zero motion — the easiest possible case for TAA) showed TAA-on ≈ TAA-off (1.865 vs 2.028 frame-delta), proving MetalFX was not the lever. Also added a fractal LOD cutoff (stop iterating the DE once a fold is finer than the pixel footprint) — correct and kept, but a minor contributor next to the palette.
 
-**Scope (measured at VL.1, 2026-07-23).** Not code-caused and not worktree-specific:
-
-| Where | `build` | `build-for-testing` | `test` |
-|---|---|---|---|
-| worktree @ VL.1 | ✅ | ✅ | ❌ launch |
-| worktree @ HEAD~1 | — | — | ❌ launch |
-| primary checkout | — | — | ❌ launch |
-
-Nothing runs — the failure is at runner launch, before any test code executes.
-
-**Tried, did not clear it:** `lsregister -f -R -trusted` on `PhospheneAppTests.xctest`; deleting the `.xctest` bundle and rebuilding via `build-for-testing`.
-
-**Impact.** `Scripts/closeout_evidence.sh` Step 2 reports `app=65` for every increment, so **`EVIDENCE: FAILURES PRESENT` is no longer a meaningful signal for the app target** — a real app-test regression would look identical to this. Engine SPM suite, SwiftLint, and doc gates are unaffected and remain trustworthy.
-
-**Next step.** Environment/toolchain, not Phosphene code (`sdk macosx26.5` — worth checking whether an Xcode or macOS update landed on the Mac mini around 2026-07-23). Needs Matt at the machine: system logs for the LaunchServices error, and a codesign/TCC check on the test runner.
-
----
-
-### BUG-071 — Fractal Descent: descent direction inverted + severe motion aliasing (2026-07-23)
-
-**P1 · preset.fidelity / sdf-geometry · PARTIALLY FIXED, live re-test pending.**
+**ROUND 3 REGRESSION (2026-07-24, live session `2026-07-24T13-17-57Z`, "VERY glitchy, nearly unwatchable" — WORSE than before).** Cause: **MFX.1's camera jitter accumulated.** `applyJitter` read the LIVE `sceneUniforms.cameraForward`, added the sub-pixel offset, and wrote it back — and nothing resets `cameraForward.xyz` per frame (`applyAudioModulation` only writes `.w`). So each frame jittered the already-jittered vector. Two effects: the camera direction random-walked (~4.5°/min, measured), and — the damaging one — the offset reported to MetalFX (`currentJitter`, the per-frame Halton value) no longer matched the camera's ACTUAL cumulative offset, so the temporal resolve reprojected against a mis-aligned history and **smeared**. Temporal AA with a wrong jitter is worse than none. Fixed by capturing the unjittered basis once and always offsetting from it. **Why the harness missed it:** the probe reassigned `sceneUniforms` from the descriptor every frame, silently resetting the drift — a test/production divergence (FA #66). The harness now updates only the per-frame audio fields, matching `RenderPipeline+RayMarch`, and `test_jitterDoesNotAccumulate` locks it (validated by reintroducing the bug: drift 0.00037 → 0.0089, test fails).
 
 **Expected:** a continuous fall INTO an ever-elaborating fractal cathedral; stable under motion.
 **Actual (Matt live M7, session `2026-07-23T19-27-48Z`, Cherub Rock):** "Deeply glitchy. The camera is moving out / away vs. in… at the beginning the music response was chaotic and the preset looked super broken. As the camera moved backward the visuals started to stabilize… the surface looked pixelated but running."
 
-**Artifacts.** `features.csv`: `accumulatedAudioTime` 0 → 8.15 over ~78 s ⇒ descent phase (×0.12) reached only **0.98** — one-way, never wrapped, barely moved. `bassAttRel` mean −0.18 / max 0.33 (fold driver small and safe — not implicated). Repro renders: a phase 0.08 vs 0.90 sweep (`FD_PHASES` env on `test_descentContactSheet`) shows features **shrinking** as phase advances.
+**Artifacts.** `features.csv`: `accumulatedAudioTime` 0 → 8.15 over ~78 s ⇒ descent phase (×0.12) reached only **0.98** — one-way, never wrapped, barely moved. `bassAttRel` mean −0.18 / max 0.33 (fold driver small and safe — not implicated). Repro renders: a phase 0.08 vs 0.90 sweep (`FFB_PHASES` env on `test_descentContactSheet`) shows features **shrinking** as phase advances.
 
 **Root causes.**
 1. **Direction inverted** (`sdf-geometry`). `q = (p + c) * zoom` with zoom increasing maps every feature to `p = q₀/zoom − c`, collapsing them toward a vanishing point ⇒ a recede. **Fixed:** `q = (p + c) / zoom`, distance `DE(q) * zoom`. Verified by the same sweep now showing features grow.
-2. **The scale descent targeted the fractal's ORIGIN — which is smooth.** A Mandelbox core has no detail at small scales, so falling inward runs out of structure and presses against a featureless wall (the inverted direction accidentally masked this: zooming *out* revealed more folds). **Partially fixed:** `FD_ZOOM_TARGET` moved to a boundary point where folded detail persists at every scale (same reason a Mandelbrot zoom targets the boundary, never the cardioid middle). Composition improved from "smooth wall" to "canyon between ornate walls."
-3. **Severe motion aliasing / moiré — NOT SOLVED.** Full-res Mandelbox detail plus view-dependent thin-film iridescence alias badly under the fall. Mitigations applied (distance detail roll-off, thin-film confined to near ridges + roughened) reduce but do not eliminate it. **This is an infrastructure gap:** §A8 assumed MetalFX Temporal upscale for exactly this anti-aliasing and it is **not wired in this engine** (flagged at FD.1 pre-flight, proceeded anyway). Without temporal AA or supersampling a ray-marched fractal at this detail density will shimmer. Note the whole-frame `motion_gate.sh` spike metric does **not** catch high-frequency shimmer — it passed 0 spikes while the live render shimmered.
+2. **The scale descent targeted the fractal's ORIGIN — which is smooth.** A Mandelbox core has no detail at small scales, so falling inward runs out of structure and presses against a featureless wall (the inverted direction accidentally masked this: zooming *out* revealed more folds). **Partially fixed:** `FFB_ZOOM_TARGET` moved to a boundary point where folded detail persists at every scale (same reason a Mandelbrot zoom targets the boundary, never the cardioid middle). Composition improved from "smooth wall" to "canyon between ornate walls."
+3. **Severe motion aliasing / moiré — ADDRESSED at MFX.1 (2026-07-23), live re-test pending.** MetalFX Temporal is now wired as an opt-in ray-march capability (`upscale: "metalfx_temporal"` + `render_scale`). Presets supply `scenePrevPosition`; for FD's analytic scale descent the previous-frame position is a closed form, so motion vectors are EXACT. Measured A/B on the identical motion path: **24.6 % less temporal high-frequency energy, and FASTER — p50 5.2 ms vs 6.6 ms full-res** (rendering at 0.65 and reconstructing saves more than the scaler costs). **Cost contract learned:** the scaler runs ~8.5 ms at 1080p if used 1:1, which alone blows the budget — it only pays for itself when it upscales. Residual shimmer remains (24.6 % is a real but partial reduction); whether it is now acceptable is Matt's live call. Original text follows — Full-res Mandelbox detail plus view-dependent thin-film iridescence alias badly under the fall. Mitigations applied (distance detail roll-off, thin-film confined to near ridges + roughened) reduce but do not eliminate it. **This is an infrastructure gap:** §A8 assumed MetalFX Temporal upscale for exactly this anti-aliasing and it is **not wired in this engine** (flagged at FD.1 pre-flight, proceeded anyway). Without temporal AA or supersampling a ray-marched fractal at this detail density will shimmer. Note the whole-frame `motion_gate.sh` spike metric does **not** catch high-frequency shimmer — it passed 0 spikes while the live render shimmered.
 
 **Also open:** the descent rate was far too slow (0.12 → 0.45); the canyon framing shows a bright grey sky-gap where rays miss the bounded object.
 
 **Verification criteria.** Automated: golden + route-coverage + perf ≤ 7 ms. Manual (required): Matt live M7 on a loud track — direction reads as falling IN, and a judgement on whether residual shimmer is acceptable or blocks cert.
 
-**Decision needed (Matt):** whether to fund an anti-aliasing capability (wire MetalFX Temporal — a scale-zoom *can* supply motion vectors — or supersample within budget), accept a softer/lower-detail look, or stop the preset.
+**RESOLVED — identity trait (2026-07-23, Matt's call):** the "flying between and through, not falling into" miss is closed by **abandoning the fall and adopting a FLY-THROUGH concept**. A scale traversal converges on a fixed target, so it reads as approaching a place, not dropping through a world — three live tests said so, and the cited reference (Horsthuis) flies through these structures rather than dropping down them. The mechanic is unchanged; the concept moved to match what the geometry is good at. Shipped with it: `scene_backdrop: "dark"` (FLY.1) so the preset is **enclosed** — miss rays render a near-black void instead of the IBL backdrop, decoupled from `environment` so the gallery env still supplies ambient. Also fixed this round: a `fract()` hue discontinuity feeding the cosine palette, which put a rainbow contour seam on every edge and **aliased by construction** (no temporal AA can resolve a hard seam) — a large part of the reported "glitchy".
+
+**Still open:** residual moiré on grazing high-detail surfaces. **Decision needed (Matt):** whether to fund further anti-aliasing capability (wire MetalFX Temporal — a scale-zoom *can* supply motion vectors — or supersample within budget), accept a softer/lower-detail look, or stop the preset.
 
 ---
 
@@ -565,6 +539,29 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 ## Resolved (recent)
 
 *(PUB.3 pruning pass, 2026-07-11: 24 resolved entries moved here from §Open; BUG-013/001/005 reclassified to §Known Limitations. rotate_docs.sh files these to KNOWN_ISSUES_HISTORY.md after 14 days.)*
+
+---
+
+### BUG-072 — app test runner cannot launch while PhospheneApp is running (2026-07-23)
+
+**P1 · build.infrastructure · ✅ RESOLVED 2026-07-23 (BUG072.1).** Not a machine fault and not an Xcode/macOS regression — **a running instance of the app under test blocks the XCTest host launch.**
+
+**Root cause.** `PhospheneApp/Info.plist` sets `LSMultipleInstancesProhibited = true` (added at `[U.11] Spotify: fix OAuth callback single-instance` — the `phosphene://` URL-scheme callback must route to the one running instance). `xcodebuild test` launches the test *host*, which is `PhospheneApp.app` itself, via `IDELaunchServicesLauncher`. When any `com.phosphene.app` process is already running — even one launched from a different DerivedData path — LaunchServices refuses the second instance and the launcher fails with the generic `IDELaunchErrorDomain Code=20` / "The LaunchServices launcher has returned an error". `build` and `build-for-testing` succeed because neither launches anything.
+
+**Why it looked machine-wide.** The stray instance is a *user-session* app, not a build artifact, so it survived across checkouts, worktrees, DerivedData hashes, `lsregister -f -R -trusted`, and bundle delete+rebuild — every remedy aimed at the build products, none at the running process. Unified log for 2026-07-23 shows `PhospheneApp` PID 35320 launched 15:47:07 and last active 18:19:18; **every** `xcodebuild test` inside that window failed at runner launch (16:22:18, 16:27:52, 16:29:58, 16:30:40, 16:31:06, and the 16:47/16:53 runs — `xcresulttool` reports `failedTests: 1, passedTests: 0` for 16:47). Runs after that process exited pass.
+
+**Reproduction (A/B/A, 2026-07-23 20:38–20:44, sdk macosx26.5, Xcode 26.6 / 17F113, macOS 26.5.1 / 25F80).** No app running → `** TEST SUCCEEDED **`, 403 tests in 70 suites, exit 0 — three consecutive runs (primary checkout sandboxed, primary unsandboxed, worktree). `open …/Debug/PhospheneApp.app` (PID 80729) → same command, same checkout, `** TEST FAILED **`, exit 65, verbatim "Could not launch “PhospheneAppTests”", zero tests. Quit the app → `** TEST SUCCEEDED **`, exit 0.
+
+**Remediation (no app-side code change).** Quit PhospheneApp before running the app test suite:
+
+```bash
+osascript -e 'tell application "PhospheneApp" to quit'; pkill -x PhospheneApp
+```
+
+`LSMultipleInstancesProhibited` is deliberately kept — removing it would break OAuth callback routing (U.11) and would let a test-host instance and a live session contend for the system-audio tap. The repo-side fix is diagnostic, not behavioural: `Scripts/closeout_evidence.sh` Step 2 now detects this exact signature (non-zero exit + "Could not launch “PhospheneAppTests”") and annotates the evidence block — **"BUG-072 — not a test regression. PhospheneApp is running; quit it and re-run."** when a `PhospheneApp` process is live, and **"Runner launch failed with no PhospheneApp running — unlike BUG-072. Investigate."** when it is not. This re-arms the merge gate: a stray app instance can no longer masquerade as a genuine app-test regression, and a launch failure with *no* app running is explicitly flagged as a different, unexplained defect.
+
+**Suspected failure class:** `environment-interaction` (a product Info.plist policy colliding with the test harness's launch mechanism).
+**Verification criteria (written before the fix):** (1) the A/B/A above — launching the app flips a passing suite to exit 65 and quitting it flips back; (2) both annotation branches emit the correct line, exercised against a synthetic log with and without a live `PhospheneApp`; (3) `bash -n Scripts/closeout_evidence.sh` clean. All three met.
 
 ---
 

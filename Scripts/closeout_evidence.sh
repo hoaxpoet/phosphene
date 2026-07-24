@@ -199,6 +199,18 @@ t0=$SECONDS
 APP_EXIT="$(run_step "$APP_LOG" xcodebuild -scheme PhospheneApp -destination platform=macOS test)"
 APP_WALL=$((SECONDS - t0))
 render_test_step "Step 2: App tests (PhospheneApp xcodebuild)" "$APP_CMD_STR" "$APP_LOG" "$APP_EXIT" "$APP_WALL"
+# BUG-072: Info.plist sets LSMultipleInstancesProhibited (U.11, needed for OAuth
+# callback routing), so LaunchServices refuses to launch the XCTest host while a
+# PhospheneApp instance is running — exit 65, zero tests, "Could not launch". Name
+# it so a stray app is never mistaken for a test regression.
+if [ "$APP_EXIT" != "0" ] && grep -q 'Could not launch .PhospheneAppTests' "$APP_LOG" 2> /dev/null; then
+  if pgrep -x PhospheneApp > /dev/null 2>&1; then
+    emit "> **BUG-072 — not a test regression.** PhospheneApp is running; quit it and re-run."
+  else
+    emit "> **Runner launch failed with no PhospheneApp running** — unlike BUG-072. Investigate."
+  fi
+  emit ""
+fi
 APP_PARSE_OK=$STEP_PARSE_OK
 APP_FAILS=$STEP_FAILURES_PRESENT
 

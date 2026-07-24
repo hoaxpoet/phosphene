@@ -341,8 +341,10 @@ extension RayMarchPipeline {
 extension RayMarchPipeline {
 
     /// Pass 5 (fallback, no PostProcessChain): ACES composite litTexture → outputTexture.
-    func runCompositePass(commandBuffer: MTLCommandBuffer, outputTexture: MTLTexture) {
-        guard let lit = litTexture else { return }
+    func runCompositePass(commandBuffer: MTLCommandBuffer,
+                          outputTexture: MTLTexture,
+                          overrideSource: MTLTexture? = nil) {
+        guard let lit = overrideSource ?? litTexture else { return }
 
         let desc = MTLRenderPassDescriptor()
         desc.colorAttachments[0].texture     = outputTexture
