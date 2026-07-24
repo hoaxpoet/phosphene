@@ -536,6 +536,29 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 
 ---
 
+### BUG-072 — app test runner cannot launch while PhospheneApp is running (2026-07-23)
+
+**P1 · build.infrastructure · ✅ RESOLVED 2026-07-23 (BUG072.1).** Not a machine fault and not an Xcode/macOS regression — **a running instance of the app under test blocks the XCTest host launch.**
+
+**Root cause.** `PhospheneApp/Info.plist` sets `LSMultipleInstancesProhibited = true` (added at `[U.11] Spotify: fix OAuth callback single-instance` — the `phosphene://` URL-scheme callback must route to the one running instance). `xcodebuild test` launches the test *host*, which is `PhospheneApp.app` itself, via `IDELaunchServicesLauncher`. When any `com.phosphene.app` process is already running — even one launched from a different DerivedData path — LaunchServices refuses the second instance and the launcher fails with the generic `IDELaunchErrorDomain Code=20` / "The LaunchServices launcher has returned an error". `build` and `build-for-testing` succeed because neither launches anything.
+
+**Why it looked machine-wide.** The stray instance is a *user-session* app, not a build artifact, so it survived across checkouts, worktrees, DerivedData hashes, `lsregister -f -R -trusted`, and bundle delete+rebuild — every remedy aimed at the build products, none at the running process. Unified log for 2026-07-23 shows `PhospheneApp` PID 35320 launched 15:47:07 and last active 18:19:18; **every** `xcodebuild test` inside that window failed at runner launch (16:22:18, 16:27:52, 16:29:58, 16:30:40, 16:31:06, and the 16:47/16:53 runs — `xcresulttool` reports `failedTests: 1, passedTests: 0` for 16:47). Runs after that process exited pass.
+
+**Reproduction (A/B/A, 2026-07-23 20:38–20:44, sdk macosx26.5, Xcode 26.6 / 17F113, macOS 26.5.1 / 25F80).** No app running → `** TEST SUCCEEDED **`, 403 tests in 70 suites, exit 0 — three consecutive runs (primary checkout sandboxed, primary unsandboxed, worktree). `open …/Debug/PhospheneApp.app` (PID 80729) → same command, same checkout, `** TEST FAILED **`, exit 65, verbatim "Could not launch “PhospheneAppTests”", zero tests. Quit the app → `** TEST SUCCEEDED **`, exit 0.
+
+**Remediation (no app-side code change).** Quit PhospheneApp before running the app test suite:
+
+```bash
+osascript -e 'tell application "PhospheneApp" to quit'; pkill -x PhospheneApp
+```
+
+`LSMultipleInstancesProhibited` is deliberately kept — removing it would break OAuth callback routing (U.11) and would let a test-host instance and a live session contend for the system-audio tap. The repo-side fix is diagnostic, not behavioural: `Scripts/closeout_evidence.sh` Step 2 now detects this exact signature (non-zero exit + "Could not launch “PhospheneAppTests”") and annotates the evidence block — **"BUG-072 — not a test regression. PhospheneApp is running; quit it and re-run."** when a `PhospheneApp` process is live, and **"Runner launch failed with no PhospheneApp running — unlike BUG-072. Investigate."** when it is not. This re-arms the merge gate: a stray app instance can no longer masquerade as a genuine app-test regression, and a launch failure with *no* app running is explicitly flagged as a different, unexplained defect.
+
+**Suspected failure class:** `environment-interaction` (a product Info.plist policy colliding with the test harness's launch mechanism).
+**Verification criteria (written before the fix):** (1) the A/B/A above — launching the app flips a passing suite to exit 65 and quitting it flips back; (2) both annotation branches emit the correct line, exercised against a synthetic log with and without a live `PhospheneApp`; (3) `bash -n Scripts/closeout_evidence.sh` clean. All three met.
+
+---
+
 ### BUG-068 — LF multi-file plan order diverges from the URL queue after a mid-queue preparation failure (2026-07-11)
 
 **P1 · local-file / pipeline-wiring · ✅ RESOLVED 2026-07-11 (PUB.2, `22ded35` + `1ae6900`).** Fix: `SessionPreparationResult.orderedTracks` built by the `PrepOutcomes` accumulator (walk-order interleave of prepared identities and failure placeholders); both plan-assembly sites consume it. All three verification criteria met: regression `startLocalFiles_midQueueFailure_preservesURLQueueOrder` + no-failure control (existing ordering test), 53 session tests green, streaming site shares the ordered source. Found by the 2026-07-11 pre-publication ultra review; adversarially verified against the code. Diagnose+fix collapsed into one increment per Matt's Phase-1 go (the root cause is statically provable — no instrumentation step needed).
