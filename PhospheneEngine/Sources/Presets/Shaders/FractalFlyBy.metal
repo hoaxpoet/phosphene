@@ -164,7 +164,10 @@ static inline float ffb_mandelboxDE(float3 pos, float foldLimit, float invFootpr
 /// nothing more.
 static inline float ffb_invFootprint(float3 p, constant SceneUniforms& s, float zoom) {
     float dist = max(length(p - s.cameraOriginAndFov.xyz), 1e-4f);
-    float footprintP = dist * FFB_RADIANS_PER_PIXEL;
+    // cameraRight.w = real radians per rendered pixel (FLY.5). Falls back to the
+    // 1080p constant only if the engine hasn't published it.
+    float radPerPx = (s.cameraRight.w > 1e-7f) ? s.cameraRight.w : FFB_RADIANS_PER_PIXEL;
+    float footprintP = dist * radPerPx;
     float footprintQ = max(footprintP / max(zoom, 1e-4f), 1e-6f);
     return 1.0f / footprintQ;
 }
