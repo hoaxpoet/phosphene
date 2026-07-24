@@ -166,6 +166,10 @@ struct SessionReplayHarness {
         snap.fogFar = uniforms.sceneParamsB.y
         snap.fov = uniforms.cameraOriginAndFov.w
         pipeline.baseScene = snap
+        // Seed the dolly from the sidecar exactly as applyPreset does, so a
+        // dollying preset (Volumetric Lithograph) replays with its real forward
+        // flight instead of a static camera (BUG-074 replay-harness parity gap).
+        pipeline.cameraDollySpeed = preset.descriptor.sceneDollySpeed
         pipeline.fovFramingRange = presetName == "Fractal Fly-By" ? 0.38 : 0
 
         let ibl = try IBLManager(context: ctx, shaderLibrary: lib)
