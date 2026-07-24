@@ -546,6 +546,25 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 
 ---
 
+### BUG-075 — Volumetric Lithograph motion: rotary-dial spring-back + dual beat layer (2026-07-24)
+
+**P1 · preset.fidelity / audio-coupling · ✅ RESOLVED 2026-07-24 (VL-PSY.4).**
+
+**Actual (Matt live, session `2026-07-24T22-22-10Z`, Hummer):** "The motion is WEIRD… looks kinda like dialing on a rotary telephone, combined with pulsing on the beat." (He also liked the terrain-over-time morph, and the app crashed after ~3.7 min — see the crash note below, tracked separately.)
+
+**Two causes, both confirmed from the session `features.csv`.**
+
+1. **Rotary dial = the downbeat twist retracted.** VL-PSY.3's downbeat term was a transient envelope (`attack*decay` → rose 0→1→0 each bar), so the fold angle went forward then *returned to baseline* — forward-then-spring-back. Reconstructed angular velocity swung **−8.5 to +22.5 rad/s** with **2.7 % of frames spinning backward**. An accent on a rotation must be a monotonic ratchet (advance and hold), not a displacement that returns.
+2. **"Pulsing" = a second, older beat layer left running.** The v9 drum-hit peak-lift (`kickPulse` → terrain height + palette flare + ridge strobe) was still live, firing on drum hits alongside the per-bar rotation twist — two beat-driven layers at different rates, the FA #67 "fighting itself" failure. Matt saw both at once ("dial COMBINED WITH pulsing").
+
+**Fix (VL-PSY.4).** (1) Rotation downbeat is now a **monotonic eased ratchet**: `VL_ROT_KICK · (barsCompleted + stepEase)` off the cached grid's continuous beat position — advances one notch over each bar's first beat and holds, continuous across the bar boundary, can never decrease (reconstructed on the real session: **0 % backward**, angle monotonic). Deliberately **not** gated by `pulse_amp01` — multiplying an accumulated angle by a gate that falls in a quiet section would collapse it backward, the same retraction latent until a track has a quiet bar (a Spotify playlist will). (2) The v9 drum-hit peak-lift is **retired** — `kickPulse` and `accentFB` held at 0 — so the downbeat drives exactly one thing. The `accumulatedAudioTime` terrain morph Matt liked is untouched.
+
+**Verified on the real session** via `SessionReplayHarness` (rows 900–1080, past grid-lock): motion gate **0 spikes, 0 frozen, max 1.68× median**. Goldens byte-identical (the synthetic regression fixtures set no beat position or drum stems, so they cannot see this class of change — real-session replay is the only gate that can, which is why VL-PSY.2/.3 slipped). Perf 10.7 ms p95, unchanged.
+
+**Known residual:** a one-time ~24 rad/s velocity spike at the BeatGrid install (~12 s in, beat index snaps 3→7 = a 1-bar ratchet in one frame). It is a single startup event, not recurring; guarding it needs per-frame state the shader lacks. Logged, not fixed — re-evaluate if it reads as a visible snap in a live session.
+
+---
+
 ### BUG-074 — Volumetric Lithograph M7 "a convulsing mess"; music-driven symmetry order (2026-07-24)
 
 **P1 · preset.fidelity / audio-coupling · ✅ RESOLVED 2026-07-24 (VL-PSY.3).**
