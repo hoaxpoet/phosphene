@@ -221,10 +221,30 @@ static inline float ffb_invFootprint(float3 p, constant SceneUniforms& s, float 
 /// Multiplying the whole range by a base factor keeps the octave — and so the
 /// seamless self-similar wrap — while viewing from permanently closer in, where
 /// features are large and few. The wide end simply stops existing.
-constant float FFB_ZOOM_BASE = 2.0f;
+/// FRAMING (FLY.10) — the music moves how vast the world feels.
+///
+/// This is the axis that was missing. Travel speed, structure and direction were
+/// all music-driven; framing was a hardcoded constant, so every moment of every
+/// track was composed identically — the "monotonous tunnel". Now the arousal
+/// envelope glides the base magnification between two very different worlds:
+///   TIGHT — pressed into a narrow corridor, walls close and rushing past
+///   VAST  — pulled right back, a whole cathedral-scale space in frame
+/// It GLIDES, never cuts: a cut would read as a scene change (wrong for one
+/// continuous journey) and would blow MetalFX's history every transition.
+///
+/// This is also the concept's one unkept promise — "the drop = arrival somewhere
+/// vast" — finally expressed as something you can actually see.
+constant float FFB_ZOOM_TIGHT = 3.40f;   // quiet: claustrophobic
+constant float FFB_ZOOM_VAST  = 1.15f;   // peak: cathedral-scale
 
-static inline float ffb_travelZoom(float phase) {
-    return FFB_ZOOM_BASE * pow(fabs(FFB_SCALE), fract(phase));
+static inline float ffb_zoomBase(constant SceneUniforms& s) {
+    // lightColor.w = smoothed framing drive (0 tight → 1 vast).
+    float framing = clamp(s.lightColor.w, 0.0f, 1.0f);
+    return mix(FFB_ZOOM_TIGHT, FFB_ZOOM_VAST, framing);
+}
+
+static inline float ffb_travelZoom(float phase, constant SceneUniforms& s) {
+    return ffb_zoomBase(s) * pow(fabs(FFB_SCALE), fract(phase));
 }
 
 /// Off-axis viewing offset, applied in camera space so it rides the scale (the
@@ -307,7 +327,7 @@ float sceneSDF(float3 p,
     (void)ferrofluidHeight;   // slot-10; Ferrofluid Ocean only.
 
     float phase = ffb_travelPhase(s);
-    float zoom  = ffb_travelZoom(phase);               // HERO #1 (energy → speed)
+    float zoom  = ffb_travelZoom(phase, s);               // HERO #1 (energy → speed)
     float3 q    = ffb_travelSample(p, zoom, phase);           // off-axis, wrap-preserving
     // A bounding-sphere early-out was tried here and REMOVED: measured at
     // iteration caps 8 and 10 across enclosed and open compositions it changed
@@ -341,8 +361,8 @@ float3 scenePrevPosition(float3 worldPos,
                          constant StemFeatures& stems) {
     (void)f;
     (void)stems;
-    float zoomNow  = ffb_travelZoom(ffb_travelPhase(s));
-    float zoomPrev = ffb_travelZoom(s.lightingParams.z * FFB_TRAVEL_RATE);
+    float zoomNow  = ffb_travelZoom(ffb_travelPhase(s), s);
+    float zoomPrev = ffb_travelZoom(s.lightingParams.z * FFB_TRAVEL_RATE, s);
     float ratio    = (zoomNow > 1e-6f) ? (zoomPrev / zoomNow) : 1.0f;
     return (worldPos + FFB_TRAVEL_OFFSET) * ratio - FFB_TRAVEL_OFFSET;
 }
@@ -392,7 +412,7 @@ void sceneMaterial(float3 p,
     // Travel phase + fold limit MUST match sceneSDF exactly or the colour
     // detaches from the geometry.
     float phase = ffb_travelPhase(s);
-    float zoom  = ffb_travelZoom(phase);
+    float zoom  = ffb_travelZoom(phase, s);
     float3 q    = ffb_travelSample(p, zoom, phase);
     float4 trap;
     float trapLevel;
