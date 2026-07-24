@@ -243,7 +243,15 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // BUG-034 (2026-06-12, M7-lite approved): regen at the live 128-step budget.
     // Terrain now reaches the true horizon (the old "sky holes" at distance
     // were rays exhausting the 32-step budget mid-terrain). 13 bit drift.
-    "Volumetric Lithograph": (steady: 0x8C63D435F2ADAB00, beatHeavy: 0x8C63D435F2ADAB00, quiet: 0x8C63D435F2ADAB00),
+    // VL-PSY.1 (2026-07-24): regenerated for the psychedelic terrain-flight rebuild —
+    // hg_sdf kaleidoscopic folds + world-space domain warp + fold-polar palette + a
+    // retargeted camera. 35-bit shift from the v9.4 goldens, entirely expected.
+    // NOTE the three fixtures still hash IDENTICALLY: none of them sets midAttRel and
+    // all carry stems.zero, so VL's fold routes read their resting state in all three
+    // (the same blind spot that made the round-3 contact sheet show three identical
+    // columns). This gate therefore guards VL's STRUCTURE, not its audio coupling —
+    // coupling is covered by renderVolumetricLithographFoldSweep + the motion gate.
+    "Volumetric Lithograph": (steady: 0xA7D6A90E95C9A671, beatHeavy: 0xA7D6A90E95C9A671, quiet: 0xA7D6A90E95C9A671),
     "Waveform": (steady: 0x000F0F0000000000, beatHeavy: 0x000F0F0000000000, quiet: 0x000F0F0000000000),
 ]
 
