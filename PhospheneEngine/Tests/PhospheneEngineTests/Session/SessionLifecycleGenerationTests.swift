@@ -133,17 +133,6 @@ private func makeGenManager(
     return SessionManager(connector: connector, preparer: preparer)
 }
 
-@MainActor
-private func waitUntil(
-    timeoutSeconds: Double = 10,
-    _ predicate: () -> Bool
-) async {
-    let deadline = Date().addingTimeInterval(timeoutSeconds)
-    while !predicate() && Date() < deadline {
-        try? await Task.sleep(nanoseconds: 10_000_000)
-    }
-}
-
 // MARK: - #1 + #3: generation guard + source ordering (swift-testing)
 
 @Suite("SessionManager streaming-generation guard (CLEAN.1.3 / BUG-032)")
@@ -171,24 +160,31 @@ struct SessionLifecycleGenerationTests {
             separator: try GenSeparator(device: device)
         )
 
-        // Session A: start and let it reach .preparing (prep in flight on A1).
-        let taskA = Task { @MainActor in await manager.startSession(source: .appleMusicCurrentPlaylist) }
-        await waitUntil { manager.state == .preparing }
+        // Session A. `startSession` returns with state/plan already installed
+        // (`_beginPreparation` sets both synchronously before returning), so no
+        // wall-clock poll is needed to observe `.preparing` — TESTFLAKE.2.
+        await manager.startSession(source: .appleMusicCurrentPlaylist)
         #expect(manager.state == .preparing)
         #expect(manager.currentPlan?.tracks.count == 3, "session A plan has 3 tracks")
+
+        // Capture A's prep handle before endSession() drops it: this is the orphan
+        // whose completion the generation guard must reject. Non-nil is guaranteed —
+        // no suspension point separates the store from this read on the MainActor.
+        let orphan = try #require(manager.sessionPreparationTask, "session A prep in flight")
 
         // End A mid-preparation, then immediately start B with a different playlist.
         manager.endSession()
         #expect(manager.state == .ended)
-        await taskA.value
 
-        let taskB = Task { @MainActor in await manager.startSession(source: .appleMusicPlaylistURL("B")) }
-        await waitUntil { manager.currentPlan?.tracks.count == 2 }
+        await manager.startSession(source: .appleMusicPlaylistURL("B"))
+        let prepB = try #require(manager.sessionPreparationTask, "session B prep in flight")
         #expect(manager.currentPlan?.tracks.count == 2, "session B plan installed (2 tracks)")
 
-        // Wait well past session A's full slow-prep duration (3 × 600 ms): a
-        // pre-fix orphan would fire here and overwrite the plan back to A's 3.
-        try? await Task.sleep(nanoseconds: 2_500_000_000)
+        // Deterministic: await the orphan's ACTUAL completion rather than sleeping
+        // past its assumed duration (3 × 600 ms), which starves under parallel-suite
+        // load. Whenever it fires, the guard must reject it — a pre-fix orphan
+        // overwrites the plan back to A's 3 tracks right here.
+        await awaitPrepTask(orphan)
 
         let titles = Set((manager.currentPlan?.tracks ?? []).map(\.title))
         #expect(manager.currentPlan?.tracks.count == 2, "orphaned A prep must not overwrite B's plan")
@@ -196,7 +192,7 @@ struct SessionLifecycleGenerationTests {
         #expect(manager.state != .idle, "stale orphan must not have cancelled/reset the new session")
 
         manager.endSession()
-        await taskB.value
+        await awaitPrepTask(prepB)
     }
 
     /// #3: a startSession rejected by the state guard (session already active —
@@ -215,9 +211,9 @@ struct SessionLifecycleGenerationTests {
             separator: try GenSeparator(device: device)
         )
 
-        let task = Task { @MainActor in await manager.startSession(source: .appleMusicCurrentPlaylist) }
-        await waitUntil { manager.state == .preparing }
+        await manager.startSession(source: .appleMusicCurrentPlaylist)
         #expect(manager.state == .preparing)
+        let prep = try #require(manager.sessionPreparationTask, "prep in flight")
 
         let sourceBefore = manager.currentSource
 
@@ -228,7 +224,7 @@ struct SessionLifecycleGenerationTests {
         #expect(manager.currentSource == sourceBefore, "rejected startSession must not rewrite currentSource")
 
         manager.endSession()
-        await task.value
+        await awaitPrepTask(prep)
     }
 }
 
