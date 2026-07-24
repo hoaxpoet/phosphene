@@ -381,7 +381,13 @@ constant float VL_NOISE_FREQUENCY  = 0.22f;  // VL-PSY.1: was 0.12 (naturalistic
                                               // legibility is a detail-per-WEDGE property:
                                               // this keeps each wedge dense now that the
                                               // cell is large again.
-constant float VL_NOISE_TIME_SCALE = 0.015f; // v3.2: 0.06 → 0.015 so high-octave
+constant float VL_NOISE_TIME_SCALE = 0.15f;  // VL-PSY.2: was 0.015, tuned in v3.2 for the
+                                              // SUPERSEDED naturalistic direction, where a slow
+                                              // boil was the point ("~1 cycle per 20 s"). Against
+                                              // the measured accumulatedAudioTime rate of ~0.1
+                                              // units/s that made the terrain phase advance
+                                              // 0.0014/s — visually frozen. A psychedelic field
+                                              // should evolve; 10x brings it to ~0.015/s.
                                               // noise shimmer slows to ~1 cycle
                                               // per 20s wallclock; beat-aligned
                                               // motion stops competing with
@@ -405,12 +411,26 @@ constant float VL_DISP_AUDIO_AMP_FIXED = 0.9f;
 // VL_VOCAL_DEPTH_BOOST retired at VL-PSY.1 — the vocal swell it scaled now
 // drives fold depth, not terrain depth.
 
-constant int   VL_FBM_OCTAVES      = 5;
+constant int   VL_FBM_OCTAVES      = 4;   // VL-PSY.1: was 5. The dominant remaining per-step
+                                          // cost — this fBM runs on EVERY sceneSDF eval. The
+                                          // fold now supplies some of the high-frequency
+                                          // structure the extra octaves used to.
+                                          // 3 was tried and REVERTED: it dropped below
+                                          // SHADER_CRAFT's >=4-octave floor and the render
+                                          // went soft and airbrushed — a quality regression
+                                          // traded for ~1 ms. 4 is the floor, and it holds.
 
 // SDF Lipschitz scaling: heightfield is not Euclidean on slopes.
-constant float VL_SDF_STEP_SCALE   = 0.35f;  // VL-PSY.1: was 0.6. The fold + warp both add
-                                              // gradient the plain heightfield never had;
-                                              // 0.6 overshot and speckled (see VL_WARP_AMOUNT).
+constant float VL_SDF_STEP_SCALE   = 0.55f;  // VL-PSY.1: 0.6 -> 0.35 -> 0.55. Step scale is a
+                                              // DIRECT cost multiplier (smaller = more march
+                                              // steps), so 0.35 was buying safety at ~1.6x the
+                                              // frame time. Re-reasoned rather than re-guessed:
+                                              // pModPolar and pModMirror2 are ISOMETRIES —
+                                              // rotation and reflection preserve distance and
+                                              // add NO Lipschitz cost. Only the warp does, and
+                                              // its gradient is now ~4.0 x 0.045 ~= 0.18. 0.55
+                                              // holds the budget with speckle-free margin
+                                              // (verified by render, not by argument).
 
 // ── VL-PSY.1: geometry-space kaleidoscopic folds ──────────────────────────
 //
@@ -441,7 +461,7 @@ constant float VL_FOLD_CELL   = 20.0f;  // world units per mirrored cell.
                                         // sets whether each one is legible. They are
                                         // separate knobs; round 3 conflated them.
 constant float VL_WARP_SCALE  = 0.045f; // world-space frequency of the organic warp
-constant float VL_WARP_AMOUNT = 2.0f;   // world units of displacement at full warp.
+constant float VL_WARP_AMOUNT = 4.0f;   // world units of displacement at full warp.
                                         // Round 4 first tried 5.5 and covered the whole
                                         // frame in high-frequency speckle — the FA #64
                                         // dot-pattern class: a domain warp adds its own
@@ -568,9 +588,21 @@ static inline float2 vl_foldDomain(float2 xz, float symOrder) {
     // internal symmetry survives — "less tiles, more landscape" without
     // giving up the kaleidoscope read. It also supplies the meso layer the
     // reference set asks for (`02_meso_domain_warp_flow.jpg`).
+    // COST — the VL-PSY.1 performance defect, and the reason this is `fbm3D(_, 2)`
+    // and not `warped_fbm`. `warped_fbm` is 7 x fbm8 = ~56 Perlin evaluations, and
+    // DomainWarp.metal's own header says in as many words: "Use per-hit or
+    // per-vertex only." Two calls of it sat HERE — inside sceneSDF, which the
+    // marcher evaluates ~128 times per ray plus 4 normal taps and 3 AO taps. That
+    // is ~112 x ~135 = ~15,000 Perlin evaluations PER PIXEL, and it measured
+    // 1120 ms/frame against a 5 ms budget (Matt's live session 2026-07-24, 1.0 fps
+    // while Staged Sandbox held 59.9 fps in the same window).
+    //
+    // The warp's job here is a LOW-frequency displacement that breaks the mirror
+    // tiling's identical cells. It never needed octave detail: two octaves carry
+    // the shape, at 4 Perlin evaluations total instead of 112.
     float3 wp = float3(xz.x, 0.0f, xz.y) * VL_WARP_SCALE;
-    float2 warp = float2(warped_fbm(wp),
-                         warped_fbm(wp + float3(31.7f, 0.0f, 17.3f)));
+    float2 warp = float2(fbm3D(wp, 2) - 0.5f,
+                         fbm3D(wp + float3(31.7f, 0.0f, 17.3f), 2) - 0.5f);
     return q + warp * VL_WARP_AMOUNT;
 }
 

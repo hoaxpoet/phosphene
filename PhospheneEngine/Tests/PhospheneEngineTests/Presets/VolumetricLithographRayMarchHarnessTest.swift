@@ -36,7 +36,7 @@ struct VolumetricLithographRayMarchHarnessTest {
 
     /// Golden dHash of the composite on the last silence frame. 0 ⇒ bootstrap.
     /// Hardware-specific (D-039): Apple Silicon, macOS 14+.
-    private static let goldenCompositeHash: UInt64 = 0xF1F069391C3C1D13
+    private static let goldenCompositeHash: UInt64 = 0xF8A090781D383C13
 
     @Test("VL ray-march dispatch (G-buffer → lighting → composite → post) non-degenerate + golden")
     func rayMarchPath_nonDegenerate() throws {

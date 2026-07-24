@@ -6,6 +6,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
+| BUG-073 | P1 | preset.performance / renderer | **Volumetric Lithograph rendered at 1.0 fps (986 ms/frame) after VL-PSY.1** — ✅ **RESOLVED 2026-07-24 (VL-PSY.2).** `warped_fbm` (7 x fbm8 = ~56 Perlin evals; its own header says "use per-hit or per-vertex only") was called twice inside `vl_foldDomain`, which `sceneSDF` reaches — so it ran ~128 march steps + 4 normal + 3 AO taps per pixel = ~15,000 Perlin evals/pixel. Measured 1120 ms p95 on `VLBudgetProbeTests` vs a 0.44 ms Lumen control. Fixed by a 2-octave `fbm3D` warp (4 evals), step scale 0.35 -> 0.55, octaves 5 -> 4: **9.4 ms p95** (v9.4 baseline on the same probe: 7.6 ms) |
 | BUG-071 | P1 | preset.fidelity / sdf-geometry | **Fractal Fly-By live M7 FAILED (session `2026-07-23T19-27-48Z`, Cherub Rock):** "deeply glitchy, camera moves OUT not IN." Root causes (confirmed from artifacts + repro renders): (1) **descent direction inverted** — `q=(p+c)*zoom` with zoom increasing collapses features toward a vanishing point (recede); confirmed by a phase-0.08 vs 0.90 sweep (features shrink as phase grows) and by `features.csv` (accAudioTime 0→8.15 → phase 0→0.98 monotonic = one-way recede, never wrapped); (2) **severe shimmer/aliasing** — full-res Mandelbox fine detail + the high-frequency iridescent thin-film rims alias under motion (no AA; MetalFX unwired; the §A8 motion-coherence cap was never added; the whole-frame motion-gate spike metric doesn't catch high-freq shimmer); (3) **descent too slow** — 0.12 rate gave <1 octave in 78 s. Fix: invert to `q=(p+c)/zoom` (fall in), tame/detune the thin-film + distance-fade fine detail, raise the rate. |
 | BUG-070 | P2 | audio.capture / resource-management | **Fix landed 2026-07-12 (PUB.6), pending live validation** — a FAILED device-change tap reinstall left `_isCapturing=true` with zero callbacks: engine health detectors starved (SignalHealthMonitor.evaluate is sample-driven → deadTap never confirms) and the router's recovery restart blocked at the alreadyCapturing guard; only the app-layer poll-based stall card surfaced it. Fix: the catch now clears `_isCapturing` (recovery unblocked) and keeps the monitor as a diagnostic beacon; the false "create steps stopped the monitor" comment corrected. Residual OPEN half: the 3-queue lifecycle interleave (device-change reinstall vs silence-recovery vs user stop) stays unserialized — static-only evidence; restructuring the G1-validated (12/12) path without a reproduced artifact is the BUG-063 pattern. Existing breadcrumbs (per-step diagnostics + install generation) are the instrumentation; serialize only if a live session shows an interleave |
 | BUG-065 | P3 | dsp.beat | **Live BeatGrid phase drifts off the audible beat over a track** — the cached grid has the right BPM but `LiveBeatDriftTracker` *bounds* the live drift without *tightening* it: drift grows ~11 ms (track start) → **50–70 ms (mid/late-track)**, and **28 % of frames exceed the ~60 ms perceptual window** (evidence: session `2026-06-29T12-43-51Z`, Cherub Rock 171.3 BPM 4/4 — drift-by-10s-window 11/37/49/54/69/66/55/48 ms; lock_state=2 only 67 %-within-60 ms). **Caps how frame-locked beat-driven presets can feel** — the live example is Glaze's GLAZE.7 downbeat push (reads connected but not *tight*; tightest early, loosens as the track plays). NOT a functional break (phase is approximately right). **Suggested improvement (Matt 2026-06-29):** live re-lock / cached-BPM-error correction so drift holds < ~30 ms across the track. The cold-start *automated phase* premise was retired (CLAUDE.md §Cold-Start), but this is **mid-track drift convergence** — a different surface (the tracker should tighten, not just bound). Logged for a dedicated beat-sync session |
@@ -543,6 +544,40 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 *(PUB.3 pruning pass, 2026-07-11: 24 resolved entries moved here from §Open; BUG-013/001/005 reclassified to §Known Limitations. rotate_docs.sh files these to KNOWN_ISSUES_HISTORY.md after 14 days.)*
 
 ---
+
+### BUG-073 — Volumetric Lithograph at 1.0 fps after the VL-PSY.1 rebuild (2026-07-24)
+
+**P1 · preset.performance / renderer · ✅ RESOLVED 2026-07-24 (VL-PSY.2).**
+
+**Expected:** VL renders at the catalog's usual ray-march cost (v9.4 measured 7.6 ms p95 at Matt's window size).
+**Actual (Matt live, session `2026-07-24T14-47-41Z`, Cherub Rock):** "the screen is black, waiting for the preset to display… roughly 8 seconds… very choppy and moving much too slow."
+
+**Evidence.** Session `features.csv`, per-preset median `deltaTime` (chain verdict `clean`, so this measures the right thing):
+
+| Preset | Frames | Median dt | FPS |
+|---|---|---|---|
+| Waveform | 35 | 16.8 ms | 59.5 |
+| Staged Sandbox | 140 | 16.7 ms | 59.9 |
+| **Volumetric Lithograph** | 46 | **986.6 ms** | **1.0** |
+
+Staged Sandbox held 59.9 fps **in the same window**, through the same real-time stem separation — so this was VL, not the machine and not GPU contention. The "8 seconds of black" and the choppiness are the same fault: at ~1 fps the first frames simply take that long to appear.
+
+**Root cause.** `warped_fbm` is two-level domain warping — **7 × fbm8 ≈ 56 Perlin evaluations per call** — and `Utilities/Noise/DomainWarp.metal`'s own header states: *"Use per-hit or per-vertex only."* VL-PSY.1 called it **twice** inside `vl_foldDomain`, which is reached from `vl_terrainNoise` → `vl_heightAt` → **`sceneSDF`**. `sceneSDF` is evaluated on every march step (~128) plus 4 tetrahedral-normal taps and 3 AO taps — so ~112 × ~135 ≈ **15,000 Perlin evaluations per pixel**. The documentation that would have prevented this was in the file being called.
+
+**Measured (`VLBudgetProbeTests`, M2 Pro, p95):**
+
+| | 1067×750 (Matt's window) | 1920×1080 |
+|---|---|---|
+| v9.4 baseline | 7.6 ms | 14.7 ms |
+| VL-PSY.1 (defect) | **1120.1 ms** | — |
+| VL-PSY.2 (fixed) | **9.4 ms** | 21.9 ms |
+| Lumen Mosaic control | 0.44 ms | 0.92 ms |
+
+**Fix.** (a) warp → `fbm3D(_, 2)` per component, 4 Perlin evals instead of 112 — the warp's job is a low-frequency displacement to break the mirror tiling's identical cells and never needed octave detail; (b) `VL_SDF_STEP_SCALE` 0.35 → 0.55 — step scale is a direct cost multiplier, and `pModPolar`/`pModMirror2` are **isometries** that add no Lipschitz cost, so only the (now much smaller) warp gradient needed headroom; (c) `VL_FBM_OCTAVES` 5 → 4. Octaves 3 was tried and reverted — below SHADER_CRAFT's ≥4 floor the render went soft and airbrushed, a quality regression for ~1 ms.
+
+**Not fixed, recorded honestly.** VL remains the most expensive preset in the catalog: 21.9 ms p95 at 1080p (≈46 fps) against a 60 fps target. **v9.4 was already 14.7 ms there** — VL has never met the ~5 ms SHADER_CRAFT budget or its own declared `complexity_cost.tier2` of 2.0. The sidecar now carries the measured numbers (22.0 / 30.0) so the Orchestrator schedules against reality, and `VLBudgetProbeTests` gates at 12 ms as a **regression** guard rather than an aspiration that would fail on day one.
+
+**Also fixed (same report, separate cause).** "Moving much too slow" was not purely the frame rate: `VL_NOISE_TIME_SCALE` was 0.015, tuned in v3.2 for the *superseded naturalistic* direction where a slow boil was the point. Against the measured `accumulatedAudioTime` rate (~0.1 units/s) the terrain phase advanced 0.0014/s — visually frozen. Raised 10× to 0.15. Camera dolly 1.8 → 5.0 u/s: at 1.8 the flight crossed a 20-unit fold cell every ~14 s, which reads as hovering, and the flight is VL's identity.
 
 ### BUG-072 — app test runner cannot launch while PhospheneApp is running (2026-07-23)
 

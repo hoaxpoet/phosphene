@@ -539,7 +539,10 @@ struct PresetVisualReviewTests {
 
         let frameCount = 120                 // 2 s at 60 fps
         let dt: Float = 1.0 / 60.0
-        let dollySpeed: Float = 1.8          // VisualizerEngine+Presets.swift base
+        // MUST track VisualizerEngine+Presets.swift's per-preset base speed —
+        // a stale copy here makes the motion gate measure a flight speed the app
+        // never renders (the FLY.5 harness/production-parity lesson).
+        let dollySpeed: Float = 5.0
         let beatPeriod: Float = 0.5          // 120 BPM
         var dollyOffset: Float = 0
         var audioTime: Float = 0
