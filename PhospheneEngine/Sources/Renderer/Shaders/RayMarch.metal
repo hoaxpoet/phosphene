@@ -1075,7 +1075,7 @@ fragment float4 raymarch_lighting_fragment(
             // frame rather than depth receding away (BUG-071 round 8, corridor
             // framing). A dim light-tinted floor keeps it enclosed while letting it
             // sit in the same world as the lit geometry.
-            return float4(scene.lightColor.rgb * 0.055, 1.0);
+            return float4(scene.lightColor.rgb * 0.022, 1.0);
         }
         uint bgEnv = uint(scene.lightingParams.y + 0.5);
         if (bgEnv != 0u) {

@@ -161,6 +161,18 @@ extension RayMarchPipeline {
             dt: dt)
         sceneUniforms.lightPositionAndIntensity.w =
             base.lightIntensity * smoothedLightIntensityMul
+        // FLY.9 — smoothed fold/"event" driver, published in the free cameraUp.w
+        // lane. `bass_att_rel` is a spiky deviation primitive: fed raw to a
+        // GEOMETRY parameter it snapped the whole structure frame-to-frame (11
+        // visible snaps in the first 10 s of Matt's session — his "camera jumps
+        // around"). An EMA over a swell-length window turns it into the sustained
+        // build a musical "arrival" actually needs.
+        let foldTarget = max(0, min(1.5, features.bassAttRel))
+        let foldTau: Float = 0.45                       // ~0.45 s swell window
+        let foldAlpha = dt > 0 ? min(1, dt / foldTau) : 1
+        smoothedFoldDrive += (foldTarget - smoothedFoldDrive) * foldAlpha
+        sceneUniforms.cameraUp.w = smoothedFoldDrive
+
         let valence = max(-1, min(1, features.valence))
         let warm = max(0, valence)
         let cool = max(0, -valence)
