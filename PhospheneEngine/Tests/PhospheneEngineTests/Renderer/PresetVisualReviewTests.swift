@@ -426,6 +426,76 @@ struct PresetVisualReviewTests {
     // and zero per-track seed so the only inter-cell variable is the
     // palette payload — the layout reads as a side-by-side compare.
 
+    // MARK: - Volumetric Lithograph fold sweep (VL-PSY.1)
+    //
+    // The shared silence/mid/beat fixtures CANNOT exercise VL's fold routes:
+    // none of them sets `midAttRel` and all carry `stems.zero`, so VL's swell
+    // driver (stems.vocals_energy, falling back to f.mid_att_rel while stems are
+    // cold) reads 0 in every column, and `pulse_amp01` 0 means the downbeat snap
+    // never fires. The VL-PSY.1 round-3 contact sheet showed three IDENTICAL
+    // columns for exactly that reason — it was rendering the resting state three
+    // times and telling us nothing about the coupling.
+    //
+    // This sweep drives the two fold routes directly:
+    //   swell  0 → 1     (calm low-order mirror → dense mandala)
+    //   pulse  the downbeat envelope at its peak (phase 0.20 = attack end)
+    //
+    // Reader-facing only, like the rest of this suite — no assertions on pixels
+    // (D-064: the reader is the judge). It exists so a fold-direction decision
+    // is made against frames that show the fold actually moving.
+
+    @Test("Render Volumetric Lithograph fold sweep (RENDER_VISUAL=1)")
+    func renderVolumetricLithographFoldSweep() throws {
+        guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else {
+            print("[PresetVisualReview] RENDER_VISUAL not set, skipping VL fold sweep")
+            return
+        }
+
+        let ctx = try MetalContext()
+        guard let preset = _acceptanceFixture.presets.first(where: {
+            $0.descriptor.name == "Volumetric Lithograph"
+        }) else {
+            print("[PresetVisualReview] Volumetric Lithograph not found, skipping fold sweep")
+            return
+        }
+
+        let outputDir = try makeOutputDirectory()
+        print("[PresetVisualReview] VL fold-sweep output dir: \(outputDir.path)")
+
+        let noiseTextureManager = try? TextureManager(
+            context: ctx, shaderLibrary: try ShaderLibrary(context: ctx))
+
+        // (label, swell, pulsePhase, pulseAmp)
+        let steps: [(String, Float, Float, Float)] = [
+            ("swell00",       0.00, 0.0,  0.0),
+            ("swell025",      0.25, 0.0,  0.0),
+            ("swell050",      0.50, 0.0,  0.0),
+            ("swell075",      0.75, 0.0,  0.0),
+            ("swell100",      1.00, 0.0,  0.0),
+            ("swell050_snap", 0.50, 0.20, 1.0)   // downbeat at envelope peak
+        ]
+
+        for (label, swell, pulsePhase, pulseAmp) in steps {
+            var fv = FeatureVector(bass: 0.5, mid: 0.5, treble: 0.5,
+                                   time: 3.0, deltaTime: 1.0 / 60.0)
+            // VL's swell reads f.mid_att_rel while stems are cold — this is the
+            // real production fallback path, not a synthetic back door.
+            fv.midAttRel = swell
+            fv.pulsePhase01 = pulsePhase
+            fv.pulseAmp01 = pulseAmp
+
+            let pixels = try renderFrame(preset: preset, context: ctx,
+                                         arachneState: nil,
+                                         noiseTextureManager: noiseTextureManager,
+                                         features: &fv)
+            let url = outputDir.appendingPathComponent("Volumetric_Lithograph_\(label).png")
+            try writePNG(bgraPixels: pixels,
+                         width: Self.renderWidth, height: Self.renderHeight,
+                         to: url)
+            print("[PresetVisualReview] wrote \(url.lastPathComponent)")
+        }
+    }
+
     @Test("Render Lumen Mosaic palette library contact sheet (RENDER_VISUAL=1)")
     func renderLumenMosaicPaletteContactSheet() throws {
         guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else {

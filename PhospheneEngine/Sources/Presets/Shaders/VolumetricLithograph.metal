@@ -376,12 +376,11 @@
 // ── Constants ─────────────────────────────────────────────────────────────
 
 constant float VL_TERRAIN_BASE_Y   = 0.0f;   // resting terrain height (world Y)
-constant float VL_NOISE_FREQUENCY  = 0.30f;  // VL-PSY.1 round 3: was 0.12 (naturalistic
-                                              // "larger landmasses"). Raised so a folded
-                                              // wedge carries repeatable detail — see
-                                              // VL_FOLD_CELL. Fold legibility is a
-                                              // detail-per-wedge property, not a fold-
-                                              // strength property.
+constant float VL_NOISE_FREQUENCY  = 0.22f;  // VL-PSY.1: was 0.12 (naturalistic "larger
+                                              // landmasses"), then 0.30 at round 3. Fold
+                                              // legibility is a detail-per-WEDGE property:
+                                              // this keeps each wedge dense now that the
+                                              // cell is large again.
 constant float VL_NOISE_TIME_SCALE = 0.015f; // v3.2: 0.06 → 0.015 so high-octave
                                               // noise shimmer slows to ~1 cycle
                                               // per 20s wallclock; beat-aligned
@@ -409,7 +408,9 @@ constant float VL_DISP_AUDIO_AMP_FIXED = 0.9f;
 constant int   VL_FBM_OCTAVES      = 5;
 
 // SDF Lipschitz scaling: heightfield is not Euclidean on slopes.
-constant float VL_SDF_STEP_SCALE   = 0.6f;
+constant float VL_SDF_STEP_SCALE   = 0.35f;  // VL-PSY.1: was 0.6. The fold + warp both add
+                                              // gradient the plain heightfield never had;
+                                              // 0.6 overshot and speckled (see VL_WARP_AMOUNT).
 
 // ── VL-PSY.1: geometry-space kaleidoscopic folds ──────────────────────────
 //
@@ -427,12 +428,26 @@ constant float VL_SDF_STEP_SCALE   = 0.6f;
 // mirrored cells — adjacent cells meet seamlessly, so the field is infinite and
 // the flight stays load-bearing. `pModPolar` then makes each cell a mandala.
 //
-constant float VL_FOLD_CELL   = 9.0f;   // world units per mirrored cell.
-                                        // VL-PSY.1 round 3: was 26. At 26 with
-                                        // VL_NOISE_FREQUENCY 0.12 (features ~8 units)
-                                        // each cell held ~3 blobs — the wedge had almost
-                                        // nothing to mirror, so no symmetry was legible.
-                                        // A kaleidoscope reads when the wedge is DENSE.
+constant float VL_FOLD_CELL   = 20.0f;  // world units per mirrored cell.
+                                        // Round 3 took this to 9 to make symmetry legible
+                                        // (a 26-unit cell held ~3 noise blobs — nothing to
+                                        // mirror). It worked, and produced WALLPAPER: a
+                                        // regular grid of near-identical mounds to the
+                                        // horizon (Matt: "less tiles, more landscape").
+                                        // Round 4 backs the cell out to 20 — few enough
+                                        // cells in frame to read as terrain — and keeps
+                                        // wedge density via VL_NOISE_FREQUENCY instead.
+                                        // Cell size sets HOW MANY tiles; noise frequency
+                                        // sets whether each one is legible. They are
+                                        // separate knobs; round 3 conflated them.
+constant float VL_WARP_SCALE  = 0.045f; // world-space frequency of the organic warp
+constant float VL_WARP_AMOUNT = 2.0f;   // world units of displacement at full warp.
+                                        // Round 4 first tried 5.5 and covered the whole
+                                        // frame in high-frequency speckle — the FA #64
+                                        // dot-pattern class: a domain warp adds its own
+                                        // gradient to the SDF's Lipschitz constant, the
+                                        // marcher overshoots, and the surface breaks up.
+                                        // 2.0 + a tighter step scale restores the budget.
 constant float VL_SYM_BASE    = 3.0f;   // resting order at silence — calm, low-order (D-037)
 constant float VL_SYM_SWELL   = 5.0f;   // order opened by the vocal/energy swell
 constant float VL_SYM_SNAP    = 2.0f;   // order added by the downbeat gesture
@@ -519,7 +534,21 @@ static inline float2 vl_foldDomain(float2 xz, float symOrder) {
     float2 q = xz;
     pModMirror2(q, float2(VL_FOLD_CELL));
     pModPolar(q, symOrder);
-    return q;
+
+    // Organic domain warp (Quilez, via Utilities/Noise/DomainWarp.metal) —
+    // design doc §5's second primitive, which round 3 skipped.
+    //
+    // Sampled in WORLD space, not fold space: that is the whole point. The
+    // mirror tiling makes every cell identical BY CONSTRUCTION, which is what
+    // produced the wallpaper. A warp keyed to world position varies smoothly
+    // across the plane, so each cell is displaced differently while its own
+    // internal symmetry survives — "less tiles, more landscape" without
+    // giving up the kaleidoscope read. It also supplies the meso layer the
+    // reference set asks for (`02_meso_domain_warp_flow.jpg`).
+    float3 wp = float3(xz.x, 0.0f, xz.y) * VL_WARP_SCALE;
+    float2 warp = float2(warped_fbm(wp),
+                         warped_fbm(wp + float3(31.7f, 0.0f, 17.3f)));
+    return q + warp * VL_WARP_AMOUNT;
 }
 
 /// 3D fBm sample [0,1] at world XZ, swept by audio phase along Y noise axis.
@@ -609,7 +638,15 @@ static inline float3 vl_palette(float t) {
     return palette(t,
                    float3(0.50f, 0.50f, 0.50f),   // base midtone
                    float3(0.50f, 0.50f, 0.50f),   // amplitude
-                   float3(1.00f, 1.00f, 1.00f),   // 1 cycle per t-unit
+                   float3(1.00f, 1.00f, 1.00f),   // MATCHED rates. Round 4 briefly staggered
+                                                  // these (1.0/0.85/0.72) to widen the sweep;
+                                                  // it desaturated the whole preset to rust
+                                                  // and olive — unequal rates make the RGB
+                                                  // channels beat against each other, and the
+                                                  // mixtures land on muddy tertiaries. IQ's
+                                                  // rainbow needs matched frequencies; the
+                                                  // (0, 0.33, 0.67) PHASE triad is what
+                                                  // spreads the hue.
                    float3(0.00f, 0.33f, 0.67f));  // RGB phase shift
 }
 
@@ -789,14 +826,40 @@ void sceneMaterial(float3 p,
                             + wOther  * 0.75f) / wTotal;
     float stemHueFromFV    = 0.5f + f.mid_att_rel * 0.5f;
     float stemHue          = mix(stemHueFromFV, stemHueFromStems, accentStemMix);
-    float palettePhase = n * 0.9f
+    // ── VL-PSY.1 round 4: hue organised by ANGLE + RADIUS, not by height ──
+    //
+    // Matt's round-3 verdict: "not very psychedelic." Diagnosis — hue was
+    // driven by `n`, the terrain height, and the terrain is deliberately
+    // BIMODAL (the linocut peak/valley split inherited from the superseded
+    // direction). Height-driven hue over bimodal terrain can only ever produce
+    // TWO colours: yellow mounds on a purple ground. That is a two-tone map,
+    // not a psychedelic field, however saturated the two tones are.
+    //
+    // The reference set answers this directly. `04_palette_radial_colour_delaunay.jpg`
+    // is colour segmented around a disc by angle and radius — the README calls
+    // it "structurally what an IQ cosine palette does when driven through a
+    // pModPolar fold." So drive the palette from the fold's own local polar
+    // coordinates: hue sweeps around and out from each mandala centre, giving
+    // the continuous travelling hue `03` is the hero for. Height keeps a small
+    // term so strata still read; it is no longer the primary hue axis.
+    float2 foldLocal = vl_foldDomain(p.xz, symOrderM);
+    float  foldRad   = length(foldLocal);
+    float  foldAng   = atan2(foldLocal.y, foldLocal.x) / (2.0f * VL_HG_PI);
+    float palettePhase = foldAng * 1.0f          // hue sweeps AROUND the mandala
+                       + foldRad * 0.055f        // and banded OUT from its centre
+                       + n * 0.25f               // strata still tint (was 0.9 = the two-tone)
                        + audioPhase * 0.08f
                        + stemHue * 0.6f
                        + f.valence * 0.25f;
     float3 peakHue   = vl_palette(palettePhase);
     // Valley brightness × 0.15 (v3 had × 0.08 which the valence-tinted
     // IBL ambient drowned out — valleys read as uniform dark brown).
-    float3 valleyHue = vl_palette(palettePhase + 0.5f) * 0.15f;
+    // VL-PSY.1: 0.15 -> 0.42. At 0.15 the valleys were a near-black ground that
+    // read as "sea" under the peaks — the map look. Lifting them lets the hue
+    // sweep stay visible across the WHOLE frame, which is what `03` teaches
+    // (hue travels; it does not sit in isolated bright islands). Still clearly
+    // darker than the peaks, so the strata contrast survives.
+    float3 valleyHue = vl_palette(palettePhase + 0.35f) * 0.42f;
 
     // Accent flare: peaks push into HDR (bloom in post_process amplifies);
     // ACES at composite (RayMarch.metal:352–355) handles the over-bright
