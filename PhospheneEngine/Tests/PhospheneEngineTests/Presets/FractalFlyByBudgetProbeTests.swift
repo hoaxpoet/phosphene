@@ -39,8 +39,12 @@ import UniformTypeIdentifiers
 @MainActor
 struct FractalFlyByBudgetProbeTests {
 
-    private static let width = 1920
-    private static let height = 1080
+    // FLY.5: default to the size Matt actually watches (windowed ~1067×750), not
+    // 1080p. Rendering at higher resolution than production made every offline
+    // check look cleaner than the live app — the divergence that hid four rounds
+    // of aliasing. FFB_W / FFB_H override (perf gate still measured at 1920×1080).
+    private static let width  = Int(ProcessInfo.processInfo.environment["FFB_W"] ?? "") ?? 1067
+    private static let height = Int(ProcessInfo.processInfo.environment["FFB_H"] ?? "") ?? 750
     private static let warmupFrames = 10
     private static let measuredFrames = 60
     private static let subjectName = "Fractal Fly-By"
@@ -175,6 +179,12 @@ struct FractalFlyByBudgetProbeTests {
 
         var seedScene = preset.descriptor.makeSceneUniforms()
         seedScene.sceneParamsA.y = Float(Self.width) / Float(Self.height)
+        // FFB_STEPMULT: reproduce the FrameBudgetManager cutting march steps at
+        // runtime (D-057; 1.0 = 128 steps, 0.25 = 32). Production varies this;
+        // the harness previously always ran full-quality — another divergence.
+        if let m = ProcessInfo.processInfo.environment["FFB_STEPMULT"].flatMap(Float.init) {
+            seedScene.sceneParamsB.z = m
+        }
         pipeline.sceneUniforms = seedScene
 
         let frames = 90
