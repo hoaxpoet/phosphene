@@ -63,7 +63,7 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
-### Increment VL-PSY.4 — Volumetric Lithograph: ratchet rotation + retire the second beat layer (BUG-075) ✅ (2026-07-24)
+### Increment VL-PSY.5 — Volumetric Lithograph: ratchet rotation + retire the second beat layer (BUG-075) ✅ (2026-07-24)
 
 **Done-when:** the downbeat motion reads as a coherent single accent, verified on Matt's real session. Met (pending his live confirmation of the felt character via the handed-over GIF).
 

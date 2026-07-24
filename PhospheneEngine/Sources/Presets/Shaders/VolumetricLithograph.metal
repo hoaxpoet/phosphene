@@ -793,7 +793,7 @@ float sceneSDF(float3 p,
     // RenderPipeline+RayMarch.swift).  Non-drum-only tracks (e.g. Slint
     // bass-guitar-driven) will land with silent landmass pulses — we'll
     // add an adaptive per-track routing in the Orchestrator phase.
-    // VL-PSY.4 (BUG-075): the v9 drum-hit peak-lift is RETIRED. It pulsed the
+    // VL-PSY.5 (BUG-075): the v9 drum-hit peak-lift is RETIRED. It pulsed the
     // terrain HEIGHT (here) plus palette brightness + ridge strobe (below) on
     // every drum hit — a SECOND beat layer running alongside the fold-rotation
     // downbeat accent, at a different rate. Matt saw both at once ("rotary dial
@@ -859,7 +859,7 @@ void sceneMaterial(float3 p,
     // via attack-ratio), and bass-only sections leave the landmass
     // material stable.
     //
-    // VL-PSY.4 (BUG-075): drum-hit accent RETIRED here too. `accentFB` drove
+    // VL-PSY.5 (BUG-075): drum-hit accent RETIRED here too. `accentFB` drove
     // beatShift (peak-coverage), accentBoost (palette brightness) and ridgeStrobe
     // — the palette/geometry half of the second beat layer sceneSDF's peak-lift
     // was the terrain half of. Both gone; the downbeat is the rotation ratchet
