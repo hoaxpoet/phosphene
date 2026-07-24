@@ -7,6 +7,12 @@
 
 import Foundation
 import QuartzCore
+
+/// Smoothstep on Float (no simd overload for scalars in this context).
+private func smoothstepF(_ e0: Float, _ e1: Float, _ x: Float) -> Float {
+    let tt = min(max((x - e0) / max(e1 - e0, 1e-6), 0), 1)
+    return tt * tt * (3 - 2 * tt)
+}
 import Metal
 import simd
 import Shared
@@ -181,7 +187,22 @@ extension RayMarchPipeline {
             1.0 + warm * 0.15 - cool * 0.10,
             1.0 + cool * 0.40 - warm * 0.30
         )
-        sceneUniforms.lightColor = SIMD4(base.lightColor * tint, 0)
+        // FLY.10 — FRAMING driver (how vast the world feels), published in the
+        // free lightColor.w lane. MUST be written AFTER lightColor above, which
+        // zeroes .w. Driven by AROUSAL, deliberately a different primitive from
+        // the fold's bass_att_rel (FA #67: one primitive per layer) — arousal is
+        // the slow mood envelope, which is the right timescale for framing: you
+        // do not want the composition twitching per beat.
+        //
+        // Calibrated to REAL data, not to the nominal [-1,1]: measured over Matt's
+        // session arousal spans -0.08 .. +0.68 and a strong passage swings ~0 -> +0.5, so
+        // mapping 0.02..0.58 is what uses the FULL swing (the round-9 lesson — a driver
+        // calibrated to a range it never reaches produces an invisible effect).
+        let framingRaw = smoothstepF(0.02, 0.58, features.arousal)
+        let framingTau: Float = 1.6          // slow: framing should breathe, not twitch
+        let framingAlpha = dt > 0 ? min(1, dt / framingTau) : 1
+        smoothedFraming += (framingRaw - smoothedFraming) * framingAlpha
+        sceneUniforms.lightColor = SIMD4(base.lightColor * tint, smoothedFraming)
         let arousal = max(-1, min(1, features.arousal))
         let fogScale: Float = arousal >= 0
             ? (1.0 - arousal * 0.7)

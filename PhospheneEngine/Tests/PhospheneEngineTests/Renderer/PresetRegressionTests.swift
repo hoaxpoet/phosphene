@@ -166,7 +166,7 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // "Ferrofluid Ocean": (steady: 0x56AB1C4A28B32727, beatHeavy: 0x5CB393AAAFA84840, quiet: 0xA64C51A62FD35356),
     // FD.2 look pass: reads the descent phase (sceneParamsA.x, 0 in the regression
     // harness) + bass_att_rel, so all three fixtures converge to one hash.
-    "Fractal Fly-By": (steady: 0xD7DAB2B2B2B2A397, beatHeavy: 0xD7DAB2B2B2B2A397, quiet: 0xD7DAB2B2B2B2A397),
+    "Fractal Fly-By": (steady: 0x6AD292D2D2945252, beatHeavy: 0x6AD292D2D2945252, quiet: 0x6AD292D2D2945252),
     "Gossamer": (steady: 0x5756A72F070F0F0D, beatHeavy: 0x5756A72F070F0F0D, quiet: 0x5756872D0F0F0F0D),
     // QR.1 (D-079): sminK now mixes continuous bass (Layer 1) + bass_dev
     // accent. steady/quiet hashes regenerated to original V.7 values within
