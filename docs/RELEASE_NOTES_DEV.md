@@ -10,6 +10,10 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-07-24-221819] VL-PSY.4 — Camera dolly speed moves to the preset sidecar (BUG-074 follow-up)
+
+Closes the replay-harness camera-parity gap VL-PSY.3 filed. Per-preset forward dolly speed lived in app code (`VisualizerEngine+Presets.applyPreset`, a `switch desc.name`), which the engine-side `SessionReplayHarness` can't import — so it replayed every dollying preset with a static camera (silently wrong for Volumetric Lithograph, whose identity is the flight). New sidecar field `scene_dolly_speed` on `PresetDescriptor` (default 0 = camera-static); `VolumetricLithograph.json` sets 5.0. `applyPreset` and `SessionReplayHarness` now both seed `cameraDollySpeed` from the descriptor — one source of truth; the app-side switch and VL-PSY.3's `REPLAY_DOLLY` env stopgap are both deleted (the stopgap arrived when main merged into this branch and was removed here). Byte-identical live behaviour (VL already dollied at 5.0) and goldens (the dolly integrator is 0 on frame 1; goldens never call `applyAudioModulation`). Confirmed: VL replays with its forward flight, no env var (session `2026-07-24T22-01-51Z`, 60 frames — terrain flows toward the camera).
+
 ### [dev-2026-07-24-214802] VL-PSY.3 — Volumetric Lithograph motion rewrite: rotate the tube (BUG-074)
 
 Matt's M7 on the VL-PSY.2 build: "the music response is TERRIBLE, creating a convulsing mess… I REALLY dislike the motion." Root cause was a category error, not a tuning miss: VL-PSY.1/.2 drove the kaleidoscope's *symmetry order* from audio — the vocal swell moved it 3→9 and every downbeat snapped it (2.67×/s at 171 BPM). Order is integer-valued (non-integer orders leave the last wedge unclosed) and remaps every point in the world, so the geometry convulsed and swept through malformed folds between frames. Compounded by two audio-hierarchy faults: the downbeat fired per-beat not per-bar (the D-154 Ferrofluid lesson, whose envelope VL-PSY.1 copied while dropping the lesson), and the continuous driver `mid_att_rel` measured 0.009 on real music while the dev fixture drove it 0→1 — so the beat became the only motion.

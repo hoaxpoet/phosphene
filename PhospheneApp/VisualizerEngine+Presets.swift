@@ -228,26 +228,15 @@ extension VisualizerEngine {
                     rmPipeline.corridorSteerEnabled = desc.name == "Fractal Fly-By"
                     rmPipeline.resetCorridorSteer()
 
-                    // Per-preset base dolly speed (world units per second).  Set
-                    // to 0 for camera-static presets.  `drawWithRayMarch`
-                    // multiplies this per-frame by a bass-modulated factor
-                    // (0.5 + bassContribution), so the actual speed varies
-                    // ~0.5×-1.6× the base depending on audio.  Camera still
-                    // always moves (autonomous baseline) — bass just
-                    // modulates the pace.
-                    rmPipeline.cameraDollySpeed = {
-                        switch desc.name {
-                        // VL-PSY.2: 1.8 -> 5.0. Matt's live read was "moving much
-                        // too slow to be entertaining". At 1.8 base x the measured
-                        // bass factor (~0.78 on Cherub Rock) the camera made 1.4
-                        // units/s across 20-unit fold cells — ~14 s to traverse one
-                        // kaleidoscope. The FLIGHT is VL's identity; at that pace it
-                        // reads as hovering. 5.0 gives ~3.9 units/s = a cell every
-                        // ~5 s, which is a flight.
-                        case "Volumetric Lithograph": return 5.0
-                        default:                      return 0
-                        }
-                    }()
+                    // Per-preset base dolly speed (world units per second), from the
+                    // sidecar (`scene_dolly_speed`, default 0 = camera-static).
+                    // `drawWithRayMarch` multiplies this per-frame by a bass-modulated
+                    // factor (0.5 + bassContribution), so the actual speed varies
+                    // ~0.5×-1.6× the base depending on audio. Camera still always
+                    // moves (autonomous baseline) — bass just modulates the pace.
+                    // Moved off the app-side `switch desc.name` (VL-PSY.4) so the
+                    // engine-side SessionReplayHarness sees the same value — BUG-074.
+                    rmPipeline.cameraDollySpeed = desc.sceneDollySpeed
 
                     // Reset the dolly integrator state on preset (re)apply so
                     // re-entering a ray-march preset doesn't jump forward by
