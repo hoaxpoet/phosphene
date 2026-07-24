@@ -199,10 +199,19 @@ extension RayMarchPipeline {
         // mapping 0.02..0.58 is what uses the FULL swing (the round-9 lesson — a driver
         // calibrated to a range it never reaches produces an invisible effect).
         let framingRaw = smoothstepF(0.02, 0.58, features.arousal)
-        let framingTau: Float = 1.6          // slow: framing should breathe, not twitch
+        // FLY.11: 1.6 -> 3.2. A fast lens change re-projects every pixel, which
+        // reads as zoom PUMPING; framing should breathe over musical phrases.
+        let framingTau: Float = 3.2
         let framingAlpha = dt > 0 ? min(1, dt / framingTau) : 1
         smoothedFraming += (framingRaw - smoothedFraming) * framingAlpha
         sceneUniforms.lightColor = SIMD4(base.lightColor * tint, smoothedFraming)
+
+        // FLY.11 — apply framing to the LENS. A wide FOV takes in a whole vast
+        // space; a narrow one compresses into a tight corridor — and changing it
+        // moves NO geometry, so nothing sweeps through the camera.
+        if fovFramingRange != 0 {
+            sceneUniforms.cameraOriginAndFov.w = base.fov + fovFramingRange * smoothedFraming
+        }
         let arousal = max(-1, min(1, features.arousal))
         let fogScale: Float = arousal >= 0
             ? (1.0 - arousal * 0.7)

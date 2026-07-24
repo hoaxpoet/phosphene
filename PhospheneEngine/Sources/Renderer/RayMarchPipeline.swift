@@ -320,6 +320,9 @@ public final class RayMarchPipeline: @unchecked Sendable {
         public var lightIntensity: Float = 1.0
         public var lightColor: SIMD3<Float> = SIMD3(1, 1, 1)
         public var fogFar: Float = 30.0
+        /// FLY.11 — the sidecar's field of view (radians), so FOV-based framing
+        /// modulates around the preset's intent instead of clobbering it.
+        public var fov: Float = 1.0
         public init() {}
     }
 
@@ -445,6 +448,13 @@ public final class RayMarchPipeline: @unchecked Sendable {
 
     /// FLY.10 — smoothed framing drive: 0 = tight/claustrophobic, 1 = vast.
     var smoothedFraming: Float = 0
+
+    /// FLY.11 — how many radians of FOV the framing drive may add. 0 disables
+    /// (every non-opting preset is byte-identical). Framing is applied to the
+    /// LENS, never to world scale: scaling the world around a fixed camera
+    /// sweeps geometry THROUGH the viewer, which is what made the fly-through
+    /// look like it was pushing through walls.
+    public var fovFramingRange: Float = 0
 
     /// Allocate (or reallocate) G-buffer and lit scene textures for the given size.
     ///

@@ -234,13 +234,20 @@ static inline float ffb_invFootprint(float3 p, constant SceneUniforms& s, float 
 ///
 /// This is also the concept's one unkept promise — "the drop = arrival somewhere
 /// vast" — finally expressed as something you can actually see.
-constant float FFB_ZOOM_TIGHT = 3.40f;   // quiet: claustrophobic
-constant float FFB_ZOOM_VAST  = 1.15f;   // peak: cathedral-scale
+/// FLY.11: framing moved to the LENS (FOV), so this is a CONSTANT again.
+///
+/// FLY.10 drove this from the music, which was wrong in a way that only shows in
+/// motion: `q = TARGET + rotate((p + offset)/zoom)`, so changing zoom rescales
+/// the sampled region about a fixed point — the whole world expands or contracts
+/// THROUGH the camera. Matt: "the camera is pushing through walls and moving in
+/// all sorts of confusing ways." Three simultaneous world transforms (travel
+/// zoom, framing zoom, rotation) compounded into incoherent motion.
+/// Framing belongs on the lens; world scale stays reserved for TRAVEL alone.
+constant float FFB_ZOOM_BASE = 2.0f;
 
 static inline float ffb_zoomBase(constant SceneUniforms& s) {
-    // lightColor.w = smoothed framing drive (0 tight → 1 vast).
-    float framing = clamp(s.lightColor.w, 0.0f, 1.0f);
-    return mix(FFB_ZOOM_TIGHT, FFB_ZOOM_VAST, framing);
+    (void)s;
+    return FFB_ZOOM_BASE;
 }
 
 static inline float ffb_travelZoom(float phase, constant SceneUniforms& s) {
@@ -277,10 +284,10 @@ constant float3 FFB_ZOOM_TARGET = float3(0.92f, 0.64f, 0.42f);
 /// the distance estimate stays exactly valid (unlike domain repetition), and it
 /// costs two sin/cos per sample.
 static inline float3 ffb_travelRotate(float3 q, float phase) {
-    float a = phase * 0.55f;
+    float a = phase * 0.22f;   // FLY.11: slowed — rotation also sweeps geometry past the camera
     float ca = cos(a), sa = sin(a);
     float3 r = float3(q.x * ca - q.z * sa, q.y, q.x * sa + q.z * ca);   // yaw
-    float b = phase * 0.31f;                                            // slower pitch
+    float b = phase * 0.11f;                                            // slower pitch
     float cb = cos(b), sb = sin(b);
     return float3(r.x, r.y * cb - r.z * sb, r.y * sb + r.z * cb);
 }
