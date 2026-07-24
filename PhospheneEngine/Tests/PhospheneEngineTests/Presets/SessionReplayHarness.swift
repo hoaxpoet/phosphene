@@ -174,7 +174,9 @@ struct SessionReplayHarness {
         snap.lightIntensity = uniforms.lightPositionAndIntensity.w
         snap.lightColor = SIMD3(uniforms.lightColor.x, uniforms.lightColor.y, uniforms.lightColor.z)
         snap.fogFar = uniforms.sceneParamsB.y
+        snap.fov = uniforms.cameraOriginAndFov.w
         pipeline.baseScene = snap
+        pipeline.fovFramingRange = presetName == "Fractal Fly-By" ? 0.38 : 0
 
         let ibl = try IBLManager(context: ctx, shaderLibrary: lib)
         let noise = try? TextureManager(context: ctx, shaderLibrary: lib)

@@ -81,6 +81,16 @@ Two audio-hierarchy faults compounded it: the downbeat fired **per-beat not per-
 
 **Still open on VL:** rebuild tasks 3–5 in their original sense are now largely met (beat-sync, silence state), so what remains is **cert** — a full-length M7 hold + the rubric/route gates. Pending Matt's next live look at this build.
 
+### Increment TESTFLAKE.2 — BUG-032 generation-guard test: deterministic orphan wait ✅ (2026-07-24)
+
+`endThenRestart_staleOrphanDoesNotMutateNewSession` failed on **every** full `swift test` run (3/3) while passing 3/3 in isolation in 2.7 s — the exact slip-class signature TESTFLAKE.1 addressed elsewhere, in the one suite that sweep missed. The test asserted the orphan's *timing* (two 10 s `waitUntil` wall-clock polls plus a 2.5 s "wait past 3 × 600 ms of prep" sleep); under parallel-suite load the whole test stretched to 73–89 s, the polls starved, and session B's plan was still unread when the assertions fired (`tracks.count → 3` vs 2).
+
+**Guard verified correct first, per the caveat.** `streamingSessionGen`, the post-`await` staleness check (`SessionManager.swift:290`) and every plan/state write (303–337) are all `@MainActor`-isolated with **no suspension point between check and act** — the guard is atomic under concurrent load. This is a test timing assumption, not a race; nothing in `Sources/` changed.
+
+**Fix — assert behaviour, not timing.** `startSession` already returns with `state`/`currentPlan` installed synchronously by `_beginPreparation`, so both polls were unnecessary: the tests now `await` it directly. The 2.5 s sleep is replaced by awaiting session A's *actual* prep-task handle, captured before `endSession()` drops it (`sessionPreparationTask` was made `private(set)`-internal by TESTFLAKE.1 for exactly this). The assertion is now "whenever the orphan fires, the generation guard rejects it" rather than "the orphan fires inside 2.5 s". `SessionReadyWait` grew an `awaitPrepTask(_:)` overload taking a captured handle (same 120 s hang-cap race — a slip must not become a hang); the file-local `waitUntil` helper is deleted. Sibling `rejectedStartSession_leavesPublishedSourceUntouched` got the same treatment.
+
+**Done-when: ✅** full `swift test --package-path PhospheneEngine` run **3×**, the target test green in all three (previously 0/3); isolated runtime 2.7 s → **0.042 s**; 1689 tests / 233 suites, only the pre-declared `MemoryReporter` intermittent known issue and an unrelated DOC.6 red carried in from VL-PSY.2 (BUG-073's §Open Index row not removed when it moved to §Resolved) — fixed here as its own one-line commit so the merge gate is green. `swiftlint --strict` 0 violations. Recorded per the CLEAN.7.9–7.14 flake precedent: KNOWN_ISSUES §Pre-existing Flakes "Resolved 2026-07-24 (TESTFLAKE.2)" + `RELEASE_NOTES_DEV [dev-2026-07-24-164940]`.
+
 ### Increment VL-PSY.2 — Volumetric Lithograph performance fix (BUG-073) ✅ (2026-07-24)
 
 **Done-when:** VL renders at a frame rate Matt can watch, with a measured instrument proving it. Met.
