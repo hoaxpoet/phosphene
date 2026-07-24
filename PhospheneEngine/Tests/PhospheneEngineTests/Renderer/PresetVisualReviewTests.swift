@@ -496,6 +496,149 @@ struct PresetVisualReviewTests {
         }
     }
 
+    // MARK: - Volumetric Lithograph motion sequence (VL-PSY.1, pre-M7 gate)
+    //
+    // PRESET_SESSION_CHECKLIST Part 1 step 7: stills cannot show temporal
+    // defects, and this preset has three candidate sources of them —
+    //   • the forward dolly (the identity; a flight that stutters is fatal),
+    //   • the per-downbeat symmetry SNAP (an integer-ish order change is
+    //     exactly the shape that pops), and
+    //   • the swell continuously reopening the fold under a moving camera.
+    // Truchet Loom passed still review and jittered like a bug in live M7
+    // (D-194). This dump is what `Scripts/motion_gate.sh` consumes.
+    //
+    // It reproduces the production motion the still harness omits:
+    //   • camera dolly — `RenderPipeline+RayMarch.swift:261` integrates
+    //     `cameraDollySpeed × (0.5 + bass)` into cameraOriginAndFov.z. The
+    //     still harness leaves the camera parked, so it has never once
+    //     rendered VL's actual identity.
+    //   • terrain/camera phase — sceneParamsA.x = accumulatedAudioTime,
+    //     rewritten per frame (same seam the VL.1 harness mirrors).
+    //   • a swell arc plus a downbeat pulse cycling at a musical rate.
+
+    @Test("Render Volumetric Lithograph motion sequence (RENDER_VISUAL=1)")
+    func renderVolumetricLithographMotionSequence() throws {
+        guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else {
+            print("[PresetVisualReview] RENDER_VISUAL not set, skipping VL motion sequence")
+            return
+        }
+
+        let ctx = try MetalContext()
+        guard let preset = _acceptanceFixture.presets.first(where: {
+            $0.descriptor.name == "Volumetric Lithograph"
+        }) else {
+            print("[PresetVisualReview] Volumetric Lithograph not found, skipping motion sequence")
+            return
+        }
+
+        let outputDir = try makeOutputDirectory()
+        print("[PresetVisualReview] VL motion-sequence output dir: \(outputDir.path)")
+
+        let shaderLibrary = try ShaderLibrary(context: ctx)
+        let noiseTextureManager = try? TextureManager(context: ctx, shaderLibrary: shaderLibrary)
+
+        let frameCount = 120                 // 2 s at 60 fps
+        let dt: Float = 1.0 / 60.0
+        let dollySpeed: Float = 1.8          // VisualizerEngine+Presets.swift base
+        let beatPeriod: Float = 0.5          // 120 BPM
+        var dollyOffset: Float = 0
+        var audioTime: Float = 0
+
+        for i in 0..<frameCount {
+            let t = Float(i) * dt
+            // Swell arc: quiet → build → peak → relax across the 2 s window.
+            let swell = 0.5 - 0.5 * cos(t / 2.0 * 2.0 * Float.pi)
+            let bass: Float = 0.35 + 0.35 * swell
+
+            var fv = FeatureVector(bass: bass, mid: 0.5, treble: 0.5,
+                                   time: t, deltaTime: dt)
+            fv.midAttRel = swell
+            fv.pulsePhase01 = (t / beatPeriod).truncatingRemainder(dividingBy: 1.0)
+            fv.pulseAmp01 = 1.0
+
+            audioTime += max(0, bass) * dt
+            dollyOffset += dt * dollySpeed * (0.5 + bass)
+            fv.accumulatedAudioTime = audioTime
+
+            let pixels = try renderVLSequenceFrame(preset: preset, context: ctx,
+                                                   shaderLibrary: shaderLibrary,
+                                                   noiseTextureManager: noiseTextureManager,
+                                                   dollyOffset: dollyOffset,
+                                                   features: &fv)
+            let url = outputDir.appendingPathComponent(
+                String(format: "volumetric_lithograph_seq_%04d.png", i))
+            try writePNG(bgraPixels: pixels,
+                         width: Self.renderWidth, height: Self.renderHeight, to: url)
+        }
+        print("[PresetVisualReview] wrote \(frameCount) frames (volumetric_lithograph_seq_*.png)")
+    }
+
+    /// Deferred ray-march frame with the production camera dolly + audio-time
+    /// phase applied. Mirrors `RenderPipeline+RayMarch.swift` lines 114 / 261-266.
+    private func renderVLSequenceFrame(
+        preset: PresetLoader.LoadedPreset,
+        context: MetalContext,
+        shaderLibrary: ShaderLibrary,
+        noiseTextureManager: TextureManager?,
+        dollyOffset: Float,
+        features: inout FeatureVector
+    ) throws -> [UInt8] {
+        let width = Self.renderWidth, height = Self.renderHeight
+        guard let gbufferState = preset.rayMarchPipelineState else {
+            throw VisualReviewError.preconditionFailed("VL missing rayMarchPipelineState")
+        }
+        let pipeline = try RayMarchPipeline(context: context, shaderLibrary: shaderLibrary)
+        pipeline.allocateTextures(width: width, height: height)
+
+        var scene = preset.descriptor.makeSceneUniforms()
+        scene.sceneParamsA.x = features.accumulatedAudioTime
+        scene.sceneParamsA.y = Float(width) / Float(height)
+        scene.cameraOriginAndFov.z += dollyOffset          // the forward flight
+        pipeline.sceneUniforms = scene
+        pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
+
+        let ibl = try IBLManager(context: context, shaderLibrary: shaderLibrary,
+                                 envType: preset.descriptor.environmentType)
+        let postChain: PostProcessChain?
+        if preset.descriptor.passes.contains(.postProcess) {
+            let chain = try PostProcessChain(context: context, shaderLibrary: shaderLibrary)
+            chain.allocateTextures(width: width, height: height)
+            postChain = chain
+        } else { postChain = nil }
+
+        let floatStride = MemoryLayout<Float>.stride
+        guard
+            let fftBuf = context.makeSharedBuffer(length: 512 * floatStride),
+            let wavBuf = context.makeSharedBuffer(length: 2048 * floatStride),
+            let outTex = context.makeSharedTexture(width: width, height: height,
+                                                   pixelFormat: nil,
+                                                   usage: [.renderTarget, .shaderRead])
+        else { throw VisualReviewError.bufferAllocationFailed }
+        _ = fftBuf.contents().initializeMemory(as: UInt8.self, repeating: 0,
+                                               count: 512 * floatStride)
+        _ = wavBuf.contents().initializeMemory(as: UInt8.self, repeating: 0,
+                                               count: 2048 * floatStride)
+
+        guard let cmd = context.commandQueue.makeCommandBuffer() else {
+            throw VisualReviewError.commandBufferFailed
+        }
+        pipeline.render(gbufferPipelineState: gbufferState,
+                        features: &features,
+                        fftBuffer: fftBuf, waveformBuffer: wavBuf,
+                        stemFeatures: .zero,
+                        outputTexture: outTex,
+                        commandBuffer: cmd,
+                        noiseTextures: noiseTextureManager,
+                        iblManager: ibl,
+                        postProcessChain: postChain)
+        cmd.commit()
+        cmd.waitUntilCompleted()
+        var px = [UInt8](repeating: 0, count: width * height * 4)
+        outTex.getBytes(&px, bytesPerRow: width * 4,
+                        from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
+        return px
+    }
+
     @Test("Render Lumen Mosaic palette library contact sheet (RENDER_VISUAL=1)")
     func renderLumenMosaicPaletteContactSheet() throws {
         guard ProcessInfo.processInfo.environment["RENDER_VISUAL"] == "1" else {
