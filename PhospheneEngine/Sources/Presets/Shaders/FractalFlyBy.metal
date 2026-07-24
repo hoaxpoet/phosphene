@@ -260,6 +260,17 @@ static inline float ffb_travelZoom(float phase, constant SceneUniforms& s) {
 /// corridor, so it reads as travelling past structure rather than into a disc.
 constant float3 FFB_TRAVEL_OFFSET = float3(0.30f, 0.16f, 0.0f);
 
+/// FLY.12 — the CPU corridor-follower (RayMarchPipeline+Corridor) drifts the
+/// lateral travel offset toward open space, published in `presetSteer.xy` as a
+/// nudge along the camera right/up axes. Adding it here is what makes the fly-
+/// through actively seek channels instead of magnifying into whatever wall
+/// happens to be ahead.
+static inline float3 ffb_travelOffset(constant SceneUniforms& s) {
+    return FFB_TRAVEL_OFFSET
+         + s.presetSteer.x * s.cameraRight.xyz
+         + s.presetSteer.y * s.cameraUp.xyz;
+}
+
 /// Point in FRACTAL space the traversal moves toward (BUG-071, second finding).
 ///
 /// A scale traversal converges on whatever point stays fixed as zoom grows. The
@@ -284,16 +295,16 @@ constant float3 FFB_ZOOM_TARGET = float3(0.92f, 0.64f, 0.42f);
 /// the distance estimate stays exactly valid (unlike domain repetition), and it
 /// costs two sin/cos per sample.
 static inline float3 ffb_travelRotate(float3 q, float phase) {
-    float a = phase * 0.22f;   // FLY.11: slowed — rotation also sweeps geometry past the camera
+    float a = phase * 0.10f;   // FLY.12: calmer still — rotation also sweeps geometry past the camera
     float ca = cos(a), sa = sin(a);
     float3 r = float3(q.x * ca - q.z * sa, q.y, q.x * sa + q.z * ca);   // yaw
-    float b = phase * 0.11f;                                            // slower pitch
+    float b = phase * 0.05f;                                            // slower pitch
     float cb = cos(b), sb = sin(b);
     return float3(r.x, r.y * cb - r.z * sb, r.y * sb + r.z * cb);
 }
 
-static inline float3 ffb_travelSample(float3 p, float zoom, float phase) {
-    return FFB_ZOOM_TARGET + ffb_travelRotate((p + FFB_TRAVEL_OFFSET) / zoom, phase);
+static inline float3 ffb_travelSample(float3 p, float zoom, float phase, constant SceneUniforms& s) {
+    return FFB_ZOOM_TARGET + ffb_travelRotate((p + ffb_travelOffset(s)) / zoom, phase);
 }
 
 // MARK: - Audio → travel + fold (HERO routing)
@@ -335,7 +346,7 @@ float sceneSDF(float3 p,
 
     float phase = ffb_travelPhase(s);
     float zoom  = ffb_travelZoom(phase, s);               // HERO #1 (energy → speed)
-    float3 q    = ffb_travelSample(p, zoom, phase);           // off-axis, wrap-preserving
+    float3 q    = ffb_travelSample(p, zoom, phase, s);           // off-axis, wrap-preserving
     // A bounding-sphere early-out was tried here and REMOVED: measured at
     // iteration caps 8 and 10 across enclosed and open compositions it changed
     // nothing (8.19 vs 8.01 ms p95), because the cost is not missed rays creeping
@@ -371,7 +382,8 @@ float3 scenePrevPosition(float3 worldPos,
     float zoomNow  = ffb_travelZoom(ffb_travelPhase(s), s);
     float zoomPrev = ffb_travelZoom(s.lightingParams.z * FFB_TRAVEL_RATE, s);
     float ratio    = (zoomNow > 1e-6f) ? (zoomPrev / zoomNow) : 1.0f;
-    return (worldPos + FFB_TRAVEL_OFFSET) * ratio - FFB_TRAVEL_OFFSET;
+    float3 off = ffb_travelOffset(s);
+    return (worldPos + off) * ratio - off;
 }
 
 // MARK: - Jewel palette (FD.2 look pass)
@@ -420,7 +432,7 @@ void sceneMaterial(float3 p,
     // detaches from the geometry.
     float phase = ffb_travelPhase(s);
     float zoom  = ffb_travelZoom(phase, s);
-    float3 q    = ffb_travelSample(p, zoom, phase);
+    float3 q    = ffb_travelSample(p, zoom, phase, s);
     float4 trap;
     float trapLevel;
     ffb_mandelboxDE(q, ffb_foldLimit(f, s), ffb_invFootprint(p, s, zoom), trap, trapLevel);
