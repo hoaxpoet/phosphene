@@ -1071,7 +1071,11 @@ fragment float4 raymarch_lighting_fragment(
         // in the same world rather than punching a flat hole. Independent of the IBL
         // environment, which keeps feeding ambient + reflections.
         if (scene.lightingParams.w >= 0.5) {
-            return float4(scene.lightColor.rgb * 0.015, 1.0);
+            // Not pure black: at 0.015 the void read as a flat HOLE punched in the
+            // frame rather than depth receding away (BUG-071 round 8, corridor
+            // framing). A dim light-tinted floor keeps it enclosed while letting it
+            // sit in the same world as the lit geometry.
+            return float4(scene.lightColor.rgb * 0.055, 1.0);
         }
         uint bgEnv = uint(scene.lightingParams.y + 0.5);
         if (bgEnv != 0u) {
