@@ -94,6 +94,11 @@ constant float FFB_DETAIL_FAR  = 6.5f;
 // vectors point at the wrong place and MetalFX smears.
 constant float FFB_TRAVEL_RATE = 0.45f;
 
+// Vertical radians per rendered pixel: 2·tan(fov/2) / renderHeight, with
+// fov 48° and renderHeight = 1080 × render_scale 0.65 ≈ 702. Sets the fractal
+// LOD cutoff (see ffb_invFootprint).
+constant float FFB_RADIANS_PER_PIXEL = 0.00127f;
+
 // Rrrola's precomputed constants (Fragmentarium `init()`): folding the
 // /MinRad2 into the scale vector is what makes the sphere fold a single
 // clamp(max(...)) with no branch.
@@ -113,12 +118,24 @@ constant float FFB_TRAVEL_RATE = 0.45f;
 /// per-axis closest approach across the iteration, which is what makes the
 /// colour follow the geometry rather than sit on it as a flat ramp (§A2
 /// "the single biggest look lever").
-static inline float ffb_mandelboxDE(float3 pos, float foldLimit, thread float4& orbitTrap) {
+/// `invFootprint` = 1 / (world-space size of one pixel at this sample), in the
+/// DE's own space. The Rrrola derivative `p.w` is how much the fold has
+/// magnified space by iteration i, so a feature created at iteration i has size
+/// ~1/p.w. Once that drops below a pixel the iteration is producing detail the
+/// frame CANNOT resolve — it only aliases. Stopping there is standard fractal
+/// LOD (the cone-trace/mip idea applied to a distance estimator): full detail up
+/// close, progressively fewer folds with distance, and — critically — a bounded
+/// on-screen detail density instead of one that explodes at the wide end of the
+/// zoom cycle (BUG-071 round 4: playback STARTS at zoom=1, the most
+/// detail-crammed point, which is why the opening frames were a garbled mess).
+static inline float ffb_mandelboxDE(float3 pos, float foldLimit, float invFootprint,
+                                    thread float4& orbitTrap) {
     float4 p  = float4(pos, 1.0f);
     float4 p0 = p;
     orbitTrap = float4(1e10f);
 
     for (int i = 0; i < FFB_ITERS; i++) {
+        if (p.w > invFootprint) { break; }   // finer than a pixel — stop (LOD)
         p.xyz = clamp(p.xyz, -foldLimit, foldLimit) * 2.0f - p.xyz; // box fold (HERO #2)
         float r2 = dot(p.xyz, p.xyz);
         orbitTrap = min(orbitTrap, fabs(float4(p.xyz, r2)));
@@ -127,6 +144,22 @@ static inline float ffb_mandelboxDE(float3 pos, float foldLimit, thread float4& 
         if (r2 > 1000.0f) { break; }
     }
     return (length(p.xyz) - FFB_ABS_SCALE_M1) / p.w - FFB_ABS_SCALE_POW;
+}
+
+/// World-space size of one pixel at `p`, expressed in the DE's space.
+///
+/// footprint_p = distance-from-camera × radians-per-pixel; the DE samples
+/// q = (p + c)/zoom, so a p-space length maps to q-space by dividing by zoom.
+/// The per-pixel angle uses the preset's fov and its RENDER height (display
+/// height × render_scale) — a constant here rather than a new uniform lane
+/// (lightingParams is full); it only sets the LOD threshold, so a modest
+/// mismatch on a differently-sized display shifts the cutoff slightly and
+/// nothing more.
+static inline float ffb_invFootprint(float3 p, constant SceneUniforms& s, float zoom) {
+    float dist = max(length(p - s.cameraOriginAndFov.xyz), 1e-4f);
+    float footprintP = dist * FFB_RADIANS_PER_PIXEL;
+    float footprintQ = max(footprintP / max(zoom, 1e-4f), 1e-6f);
+    return 1.0f / footprintQ;
 }
 
 // MARK: - Travel
@@ -213,7 +246,7 @@ float sceneSDF(float3 p,
     // to the far plane — it is grazing rays crawling near the surface, which an
     // open composition has more of. Do not re-add it without a measurement.
     float4 trap;
-    return ffb_mandelboxDE(q, ffb_foldLimit(f), trap) * zoom;   // HERO #2 (bass → fold)
+    return ffb_mandelboxDE(q, ffb_foldLimit(f), ffb_invFootprint(p, s, zoom), trap) * zoom;   // HERO #2 (bass → fold)
 }
 
 // MARK: - MetalFX motion vectors (MFX.1)
@@ -285,7 +318,7 @@ void sceneMaterial(float3 p,
     float zoom  = ffb_travelZoom(phase);
     float3 q    = ffb_travelSample(p, zoom);
     float4 trap;
-    ffb_mandelboxDE(q, ffb_foldLimit(f), trap);
+    ffb_mandelboxDE(q, ffb_foldLimit(f), ffb_invFootprint(p, s, zoom), trap);
 
     // Jewel hue follows depth into the structure (trap.w = closest approach to the
     // origin sphere), the same driver that varied cleanly in FD.1 — plus a small
@@ -298,7 +331,16 @@ void sceneMaterial(float3 p,
     // fractal detail put a rainbow contour seam on every surface and edge — and a
     // discontinuity is infinite-frequency, so it aliased and shimmered by
     // construction. Feeding t straight in is smooth everywhere.
-    float hue    = trap.w * 1.3f + trap.y * 0.6f;
+    // HUE FREQUENCY IS AN ALIASING PARAMETER (BUG-071 round 4 — the dominant
+    // cause of the live "complete garbled mess"). Orbit-trap values swing wildly
+    // between ADJACENT pixels on a fractal, so a fast hue mapping cycles the
+    // palette several times within a few pixels: neighbouring pixels land on
+    // unrelated hues and the frame fills with rainbow speckle that no temporal AA
+    // can resolve (it is real signal, not noise). 1.3/0.6 shipped that; 0.30/0.15
+    // keeps colour varying with STRUCTURE rather than per-pixel, which is what
+    // makes surfaces read as coherent jewelled stone. Raising these re-introduces
+    // the speckle — verify on a phase-0 frame (the worst case) before changing.
+    float hue    = trap.w * 0.30f + trap.y * 0.15f;
     float3 jewel = ffb_jewel(hue);
 
     // ── Motion-coherence detail fade (§A8; BUG-071) ──────────────────────────
