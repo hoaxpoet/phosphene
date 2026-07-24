@@ -535,6 +535,29 @@ static inline float2 vl_foldDomain(float2 xz, float symOrder) {
     pModMirror2(q, float2(VL_FOLD_CELL));
     pModPolar(q, symOrder);
 
+    // Mirror within the wedge — pReflect about the wedge bisector, degenerate
+    // case (plane through the origin, no offset). THIS IS NOT OPTIONAL.
+    //
+    // `pModPolar` repeats by ROTATION: wedge N+1 is wedge N turned by one step,
+    // so the two do not agree along their shared edge. For an SDF of a compact
+    // object centred at the origin that is invisible — hg_sdf's usual use — but
+    // VL samples a NOISE HEIGHTFIELD across the whole wedge, so the mismatch at
+    // every seam becomes a height discontinuity: a vertical cliff. That is
+    // exactly the "hard-edged flat facets / torn paper" the pre-M7 motion-gate
+    // sequence review flagged, and no amount of warp or palette work removes it,
+    // because it is a topological property of a rotational repeat.
+    //
+    // Taking `abs` of the bisector-perpendicular axis makes each wedge
+    // symmetric about its own bisector, so adjacent wedges meet as mirror
+    // images and the field is C0-continuous across every seam. It is also what
+    // a physical kaleidoscope actually does — it is a tube of MIRRORS, which is
+    // why `01_macro_kaleidoscope_symmetry.jpg` has mirror symmetry through each
+    // petal axis rather than pure rotation.
+    //
+    // (VL-PSY.1's first pass said pReflect was "not ported — no call site".
+    // That was wrong: this is the call site, and skipping it caused the defect.)
+    q.y = abs(q.y);
+
     // Organic domain warp (Quilez, via Utilities/Noise/DomainWarp.metal) —
     // design doc §5's second primitive, which round 3 skipped.
     //
