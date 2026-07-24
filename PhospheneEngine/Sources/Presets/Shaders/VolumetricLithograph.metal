@@ -468,9 +468,16 @@ constant float VL_WARP_AMOUNT = 4.0f;   // world units of displacement at full w
                                         // gradient to the SDF's Lipschitz constant, the
                                         // marcher overshoots, and the surface breaks up.
                                         // 2.0 + a tighter step scale restores the budget.
-constant float VL_SYM_BASE    = 3.0f;   // resting order at silence — calm, low-order (D-037)
-constant float VL_SYM_SWELL   = 5.0f;   // order opened by the vocal/energy swell
-constant float VL_SYM_SNAP    = 2.0f;   // order added by the downbeat gesture
+constant float VL_SYM_ORDER   = 6.0f;   // FIXED, integer. The mirrors of the tube.
+                                        // VL-PSY.2 animated this 3->9 with the vocal swell and
+                                        // snapped it +2 every beat (2.67x/s at 171 BPM). Order
+                                        // is integer-valued and remaps EVERY point in the world,
+                                        // so that read as "a convulsing mess" at M7 and swept
+                                        // through unclosed-wedge geometry in between (BUG-074).
+                                        // 6 divides the circle cleanly and reads as a mandala.
+constant float VL_ROT_BASE    = 0.05f;  // rad/s of idle kaleidoscope turn (alive at silence, D-037)
+constant float VL_ROT_SWELL   = 0.55f;  // rad/s added by the vocal/energy swell
+constant float VL_ROT_KICK    = 0.42f;  // radians of bounded twist on the DOWNBEAT
 
 // Linocut edge windows — v3.2 narrowed peak coverage from ~35% (v3/v3.1
 // had lo=0.50, right at the fbm mean, so half the terrain was "peaks")
@@ -511,6 +518,20 @@ constant float VL_RIDGE_OUTER      = 0.565f; // ridgeline upper edge
 static inline float  hg_mod(float x, float y)  { return x - y * floor(x / y); }
 static inline float2 hg_mod(float2 x, float2 y) { return x - y * floor(x / y); }
 
+/// 2D rotation. hg_sdf `pR`, ported verbatim.
+///
+/// THE operator this preset needed and did not have. A physical kaleidoscope is
+/// a fixed tube of mirrors that you TURN — the symmetry never changes, the
+/// pattern transforms endlessly. Rotation is an isometry: preserves distance,
+/// adds no Lipschitz cost, cannot open a seam, and every intermediate state is a
+/// valid kaleidoscope. Contrast the symmetry ORDER, which VL-PSY.2 animated:
+/// integer-valued (order 3.47 leaves the last wedge unclosed) and a global remap
+/// of every point in the world. That is why the M7 read as "a convulsing mess"
+/// — BUG-074.
+static inline void pR(thread float2& p, float a) {
+    p = cos(a) * p + sin(a) * float2(p.y, -p.x);
+}
+
 /// Radial repeat — the kaleidoscope. Returns the cell index.
 static inline float pModPolar(thread float2& p, float repetitions) {
     float angle = 2.0f * VL_HG_PI / repetitions;
@@ -550,10 +571,15 @@ static inline float2 pModMirror2(thread float2& p, float2 size) {
 /// Order matters: mirror-tile FIRST (infinite seamless field), then polar-fold
 /// within the cell (each cell becomes a mandala). Reversing it would produce
 /// one kaleidoscope at the world origin that the camera flies away from.
-static inline float2 vl_foldDomain(float2 xz, float symOrder) {
+static inline float2 vl_foldDomain(float2 xz, float foldRot) {
     float2 q = xz;
     pModMirror2(q, float2(VL_FOLD_CELL));
-    pModPolar(q, symOrder);
+    // Turn the tube, then fold. Rotating BEFORE the polar fold spins which part
+    // of the noise field lands in each wedge, so the mandala's pattern turns in
+    // place — the thing a real kaleidoscope does — while the symmetry order, and
+    // therefore the world's structure, never changes.
+    pR(q, foldRot);
+    pModPolar(q, VL_SYM_ORDER);
 
     // Mirror within the wedge — pReflect about the wedge bisector, degenerate
     // case (plane through the origin, no offset). THIS IS NOT OPTIONAL.
@@ -601,8 +627,13 @@ static inline float2 vl_foldDomain(float2 xz, float symOrder) {
     // tiling's identical cells. It never needed octave detail: two octaves carry
     // the shape, at 4 Perlin evaluations total instead of 112.
     float3 wp = float3(xz.x, 0.0f, xz.y) * VL_WARP_SCALE;
-    float2 warp = float2(fbm3D(wp, 2) - 0.5f,
-                         fbm3D(wp + float3(31.7f, 0.0f, 17.3f), 2) - 0.5f);
+    // VL-PSY.3 fidelity restore (Matt: "visual quality is lower"). 2 octaves ->
+    // 3: richer, flowing warp instead of a crude two-lobe wobble, at 8 Perlin
+    // evals instead of 4 (4 octaves was tried: 12.1 ms, just over the gate) — still nowhere near warped_fbm's 112, which is what
+    // made VL 1120 ms/frame. Measured, not assumed: see the probe numbers in
+    // the closeout.
+    float2 warp = float2(fbm3D(wp, 3) - 0.5f,
+                         fbm3D(wp + float3(31.7f, 0.0f, 17.3f), 3) - 0.5f);
     return q + warp * VL_WARP_AMOUNT;
 }
 
@@ -610,8 +641,8 @@ static inline float2 vl_foldDomain(float2 xz, float symOrder) {
 /// XZ is folded first (VL-PSY.1) so the noise is evaluated in kaleidoscope
 /// space — the geometry folds, not the image.
 static inline float vl_terrainNoise(float3 worldP, float audioPhase,
-                                     float symOrder) {
-    float2 folded = vl_foldDomain(worldP.xz, symOrder);
+                                     float foldRot) {
+    float2 folded = vl_foldDomain(worldP.xz, foldRot);
     float3 noiseP = float3(folded.x * VL_NOISE_FREQUENCY,
                            audioPhase * VL_NOISE_TIME_SCALE,
                            folded.y * VL_NOISE_FREQUENCY);
@@ -628,8 +659,8 @@ static inline float vl_terrainNoise(float3 worldP, float audioPhase,
 /// motion now contributes to `audioAmp` (depth), not to peak lift.
 static inline float vl_heightAt(float3 worldP, float audioPhase,
                                  float audioAmp, float kickPulse,
-                                 float symOrder) {
-    float n    = vl_terrainNoise(worldP, audioPhase, symOrder);
+                                 float foldRot) {
+    float n    = vl_terrainNoise(worldP, audioPhase, foldRot);
     float amp  = VL_DISP_SILENT_AMP + audioAmp * VL_DISP_AUDIO_AMP;
     float base = (n - 0.5f) * 2.0f * amp;
     float nAbove = max(0.0f, n - 0.5f) * 2.0f;
@@ -637,55 +668,47 @@ static inline float vl_heightAt(float3 worldP, float audioPhase,
     return VL_TERRAIN_BASE_Y + base + peakLift;
 }
 
-/// Fold driver, shared by `sceneSDF` and `sceneMaterial`. Returns the radial
-/// symmetry order.
+/// Kaleidoscope rotation angle, shared by `sceneSDF` and `sceneMaterial`.
 ///
-/// These are separate fragment-path entry points with no shared locals, so
-/// this is recomputed in both — the same duplication the file already carries
-/// for `kickPulse`. They MUST agree: if the material folded differently from
-/// the geometry, the strata would not line up with the surface.
+/// Returns an ANGLE, not a symmetry order — see `pR` and `VL_SYM_ORDER` for why
+/// that distinction is the whole of BUG-074.
 ///
-/// Routing (design doc §4, one primitive per layer — FA #67):
-///   • macro fold depth  ← the broad vocal/energy swell. NOT bass. The
-///     documented v9.1 failure was bass overloading the landmasses until
-///     distinct percussion produced no visible delta; bass drives camera
-///     speed only, in RenderPipeline+RayMarch.swift.
-///   • symmetry snap + a fold-depth kick ← the downbeat. One coordinated
-///     gesture ("the beat = lurch-and-fold"), blessed explicitly by §4's
-///     coupling note — not two unrelated layers sharing a primitive.
-static inline float vl_foldParams(constant FeatureVector& f,
-                                   constant StemFeatures& stems) {
-    float totalStemEnergy = stems.vocals_energy + stems.drums_energy
-                          + stems.bass_energy   + stems.other_energy;
-    float stemMix = smoothstep(0.02f, 0.06f, totalStemEnergy);
-    float swellFromStems = clamp(stems.vocals_energy - 0.1f, 0.0f, 1.2f);
-    float swellFromFV    = clamp(f.mid_att_rel, 0.0f, 1.2f);
-    float swell          = mix(swellFromFV, swellFromStems, stemMix);
+/// Both terms are MONOTONIC ACCUMULATORS, which is what makes this smooth by
+/// construction rather than by tuning:
+///   • `f.time`        — wall clock. A slow idle turn, so the world is alive at
+///                       silence (D-037) without any audio at all.
+///   • `audioPhase`    — `accumulatedAudioTime` = the integral of energy over
+///                       time. Adding it to an ANGLE means energy sets the
+///                       rotation SPEED: the mandalas turn faster as the song
+///                       opens up and coast when it drops away. The integration
+///                       is free and already done on the CPU, so a noisy
+///                       per-frame swell can never produce a jittery angle —
+///                       the failure mode that convulsed VL-PSY.2.
+///
+/// The downbeat adds a bounded twist ON THE BAR. VL-PSY.2 fired every beat —
+/// 2.67x/second on a 171 BPM track — which is precisely what D-154 warned about
+/// on Ferrofluid ("a per-beat punch reads as a robotic metronome ignoring the
+/// music"); that increment copied FFO's envelope and left its lesson behind.
+static inline float vl_foldRotation(constant FeatureVector& f,
+                                     constant SceneUniforms& s) {
+    float audioPhase = s.sceneParamsA.x;
 
-    // Downbeat envelope PORTED from FerrofluidOcean's beat pulse (D-153 →
-    // D-158) rather than re-derived. Three things that pattern already solved,
-    // each of which VL would otherwise rediscover the hard way:
-    //   1. `pulse_phase01` rides the CACHED grid, not live onsets (±80 ms
-    //      jitter) — Layer-4 constraint from the audio hierarchy.
-    //   2. `pulse_amp01` gates to 0 at silence AND before the track's first
-    //      note. That also sidesteps the cold-start wrong-phase accent problem
-    //      (retired premise — do not iterate) and the `bar_phase01` trap: it
-    //      reads "0 in reactive mode", and a stuck 0 through a naive
-    //      `1 - smoothstep(0, w, phase)` would read as a PERMANENT downbeat,
-    //      pinning the fold wide open forever.
-    //   3. Attack 0.20 of the cycle, not 0.08. FFO's 0.08 attack spanned 1–2
-    //      frames at per-beat rate and read as flashing in live review; 0.20 is
-    //      ≈100 ms at 120 BPM — still a punch, never a frame-strobe (D-157).
+    // Downbeat gate: fire on beat 0 of each bar only.
+    float beatIdx  = floor(f.pulse_beat_index + 0.5f);
+    float perBar   = max(1.0f, f.beats_per_bar);
+    float onDownbeat = (hg_mod(beatIdx, perBar) < 0.5f) ? 1.0f : 0.0f;
+
     float ph     = clamp(f.pulse_phase01, 0.0f, 1.0f);
     float amp    = clamp(f.pulse_amp01, 0.0f, 1.0f);
-    float attack = smoothstep(0.0f, 0.20f, ph);
+    float attack = smoothstep(0.0f, 0.20f, ph);        // 0.20, not 0.08 (D-157 frame-strobe)
     float decay  = 1.0f - smoothstep(0.20f, 0.85f, ph);
-    float snap   = attack * decay * amp;
+    float twist  = attack * decay * amp * onDownbeat;
 
-    // Swell opens the symmetry: calm low-order mirror → dense mandala. The
-    // downbeat snaps it one notch tighter on top (bounded, D-157).
-    return VL_SYM_BASE + swell * VL_SYM_SWELL + snap * VL_SYM_SNAP;
+    return VL_ROT_BASE * f.time
+         + VL_ROT_SWELL * audioPhase
+         + VL_ROT_KICK * twist;
 }
+
 
 /// Inigo Quilez cosine-palette tint for the given phase.  Cyan → magenta →
 /// yellow rotation via the standard (0, 1/3, 2/3) phase-shift triad.
@@ -760,7 +783,7 @@ float sceneSDF(float3 p,
     float kickPulse = smoothstep(0.20f, 0.70f, kickRaw);
 
     // VL-PSY.1: the vocal/energy swell was REROUTED from terrain depth to
-    // FOLD depth (`vl_foldParams`). This is the rebuild's central move, not a
+    // FOLD rotation (`vl_foldRotation`). This is the rebuild's central move, not a
     // tuning change: v9.4's swell→depth route is what made VL read as "a
     // topographic map that adds and removes depth" (Matt, 2026-07-23). The
     // design doc §1 replaces it — the ground is a structure you move THROUGH
@@ -770,11 +793,11 @@ float sceneSDF(float3 p,
     // `VL_VOCAL_DEPTH_BOOST` is consequently unused and retired below.
     float audioAmp = VL_DISP_AUDIO_AMP_FIXED;
 
-    float symOrder = vl_foldParams(f, stems);
+    float foldRot = vl_foldRotation(f, s);
 
     // v9: peak lift is kick-only (no bass sustain). Retained — drums are a
     // distinct primitive on a distinct layer, so this is not the FA #67 trap.
-    float h = vl_heightAt(p, audioPhase, audioAmp, kickPulse, symOrder);
+    float h = vl_heightAt(p, audioPhase, audioAmp, kickPulse, foldRot);
     return (p.y - h) * VL_SDF_STEP_SCALE;
 }
 
@@ -799,8 +822,8 @@ void sceneMaterial(float3 p,
     float audioPhase = s.sceneParamsA.x;
     // VL-PSY.1: fold identically to sceneSDF, or the strata would not line up
     // with the surface the geometry actually produced.
-    float symOrderM  = vl_foldParams(f, stems);
-    float n          = vl_terrainNoise(p, audioPhase, symOrderM); // [0,1]
+    float foldRotM   = vl_foldRotation(f, s);
+    float n          = vl_terrainNoise(p, audioPhase, foldRotM); // [0,1]
 
     // v9.4: accent = drum-stem-only kickPulse.  The prior accent path
     // used `f.beat_composite` (6-band full-mix onset composite), which
@@ -897,7 +920,7 @@ void sceneMaterial(float3 p,
     // coordinates: hue sweeps around and out from each mandala centre, giving
     // the continuous travelling hue `03` is the hero for. Height keeps a small
     // term so strata still read; it is no longer the primary hue axis.
-    float2 foldLocal = vl_foldDomain(p.xz, symOrderM);
+    float2 foldLocal = vl_foldDomain(p.xz, foldRotM);
     float  foldRad   = length(foldLocal);
     float  foldAng   = atan2(foldLocal.y, foldLocal.x) / (2.0f * VL_HG_PI);
     float palettePhase = foldAng * 1.0f          // hue sweeps AROUND the mandala

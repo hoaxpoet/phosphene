@@ -546,6 +546,38 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 
 ---
 
+### BUG-074 — Volumetric Lithograph M7 "a convulsing mess"; music-driven symmetry order (2026-07-24)
+
+**P1 · preset.fidelity / audio-coupling · ✅ RESOLVED 2026-07-24 (VL-PSY.3).**
+
+**Expected:** a psychedelic terrain flight whose geometry folds *with* the music.
+**Actual (Matt live, session `2026-07-24T16-24-58Z`, Cherub Rock, chain `clean`, 59.9 fps):** "visual quality is lower and the music response is TERRIBLE, creating a convulsing mess. I dislike the look, but I REALLY dislike the motion."
+
+**Root cause — a category error, not a tuning error.** VL-PSY.1/.2 drove the kaleidoscope's **symmetry order** (`pModPolar`'s repetition count) from audio: the vocal/energy swell moved it and every downbeat snapped it. Reconstructed from the session `features.csv`:
+
+- swell-driven order swung **3.01 → 9.00** once stems were live — six orders;
+- single-frame jumps up to **4.8 orders**; 9.6 % of frames changed >0.1 order;
+- the beat snap fired **2.67 ×/second** at 171 BPM.
+
+Two structural faults compounded it. (1) **Order is integer-valued.** `angle = 2π/order` only tiles the circle cleanly at whole numbers; at order 3.47 the last wedge does not close. Driving it continuously swept *through malformed geometry* every frame. (2) **Order is the least bounded parameter in the shader** — it re-maps every point in the world, so animating it convulses the whole frame rather than moving a feature.
+
+Two supporting faults from the audio hierarchy. **Per-beat, not per-bar:** the downbeat used `pulse_phase01` directly (every beat) — exactly the D-154 Ferrofluid lesson ("a per-beat punch reads as a robotic metronome"), whose envelope VL-PSY.1 copied while leaving the lesson. **Hierarchy inversion:** the continuous driver `f.mid_att_rel` measured **0.009** on this track, while the dev fold-sweep fixture drove it 0→1 — so the beat accent became the only motion, the failure the audio-data-hierarchy rule exists to prevent. The synthetic fixture is *why this reached M7*; the `SessionReplayHarness` (FLY.6, built for this exact class) would have caught it, and was not used.
+
+**Fix — turn the tube, don't rebuild it.** A physical kaleidoscope is a *fixed* set of mirrors that you rotate. So:
+
+- **Symmetry order FIXED at 6** (whole number, never animated) — the stage.
+- Ported hg_sdf **`pR`** (2D rotation) and rotate the domain before the polar fold. Rotation is an **isometry**: preserves distance, adds no Lipschitz cost, cannot open a seam, and every intermediate state is a valid kaleidoscope — smooth by construction, not by tuning.
+- Rotation angle = `VL_ROT_BASE·time + VL_ROT_SWELL·accumulatedAudioTime + VL_ROT_KICK·downbeatTwist`. The swell term feeds an **angle** off an already-integrated energy signal, so a noisy per-frame swell mathematically cannot produce a jittery angle. Idle term keeps it turning at silence (D-037) — which incidentally fixes the VL.1 "frozen at silence" finding.
+- Downbeat twist gated to **beat 0 of each bar** (`pulse_beat_index mod beats_per_bar`), attack 0.20 (D-157).
+
+**Verified on the real session** via `SessionReplayHarness` (real `features.csv` through the live render seam, real viewport, real dolly): motion gate **0 spikes, 0 frozen, max 1.32× median** — against the VL-PSY.2 signal that swung six orders with 4.8-order single-frame jumps. Rotation speed chosen by Matt from a 3-speed real-audio GIF comparison (0.55 rad/s).
+
+**Fidelity (Matt: "visual quality is lower")** — a real regression from the BUG-073 perf fix. Warp restored 2 → 3 octaves; full restore (4-octave warp + 5 terrain octaves) measured 13.5 ms, over the 12 ms gate, so partially restored at **11.4 ms p95**. Stated as partial, not claimed as whole.
+
+**Follow-up filed (not fixed here): replay-harness camera-parity gap.** `cameraDollySpeed` defaults to 0 and is set by the app target (`VisualizerEngine+Presets`), which the engine test target cannot import — so `SessionReplayHarness` renders every dollying preset with a **static camera**. Harmless for Fractal Fly-By (dolly 0), silently wrong for VL (the flight is its identity). Worked around with a `REPLAY_DOLLY` env override; the real fix is to move dolly speed into the sidecar so app and harness share one source.
+
+---
+
 ### BUG-073 — Volumetric Lithograph at 1.0 fps after the VL-PSY.1 rebuild (2026-07-24)
 
 **P1 · preset.performance / renderer · ✅ RESOLVED 2026-07-24 (VL-PSY.2).**

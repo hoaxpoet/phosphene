@@ -10,6 +10,15 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-07-24-214802] VL-PSY.3 — Volumetric Lithograph motion rewrite: rotate the tube (BUG-074)
+
+Matt's M7 on the VL-PSY.2 build: "the music response is TERRIBLE, creating a convulsing mess… I REALLY dislike the motion." Root cause was a category error, not a tuning miss: VL-PSY.1/.2 drove the kaleidoscope's *symmetry order* from audio — the vocal swell moved it 3→9 and every downbeat snapped it (2.67×/s at 171 BPM). Order is integer-valued (non-integer orders leave the last wedge unclosed) and remaps every point in the world, so the geometry convulsed and swept through malformed folds between frames. Compounded by two audio-hierarchy faults: the downbeat fired per-beat not per-bar (the D-154 Ferrofluid lesson, whose envelope VL-PSY.1 copied while dropping the lesson), and the continuous driver `mid_att_rel` measured 0.009 on real music while the dev fixture drove it 0→1 — so the beat became the only motion.
+
+Fix: a real kaleidoscope is a *fixed* tube of mirrors you rotate. Symmetry order is now FIXED at 6; ported hg_sdf `pR` and rotate the domain before the polar fold. Rotation is an isometry — no Lipschitz cost, no seam, every intermediate a valid kaleidoscope, so it's smooth by construction. The angle accumulates `VL_ROT_BASE·time + VL_ROT_SWELL·accumulatedAudioTime + VL_ROT_KICK·downbeatTwist`: energy sets rotation SPEED off an already-integrated signal (a noisy swell can't make a jittery angle), the idle term keeps it turning at silence (which also fixes the VL.1 frozen-at-silence finding), and the twist is gated to beat 0 of the bar.
+
+Verified on Matt's REAL session via `SessionReplayHarness` (FLY.6 — the harness built for exactly this "offline looks nicer than live" class, which VL-PSY.1/.2 should have used): motion gate 0 spikes / 0 frozen / max 1.32× median, vs a signal that swung six orders with 4.8-order single-frame jumps. Rotation speed picked by Matt from a 3-speed real-audio GIF comparison (0.55 rad/s).
+
+Fidelity ("visual quality is lower" — a real regression from the BUG-073 perf fix): warp restored 2→3 octaves; full restore measured 13.5 ms over the 12 ms gate, so partial at 11.4 ms p95. Stated as partial, not claimed as whole. Sidecar cost updated to measured values (18/24). Follow-up filed: `SessionReplayHarness` renders dollying presets with a static camera because `cameraDollySpeed` lives in the app target it can't import — worked around with a `REPLAY_DOLLY` override, real fix is moving dolly speed into the sidecar.
 ### [dev-2026-07-24-164940] TESTFLAKE.2 — BUG-032 generation-guard test made deterministic
 
 `SessionLifecycleGenerationTests.endThenRestart_staleOrphanDoesNotMutateNewSession` failed on **every** full `swift test --package-path PhospheneEngine` run (3/3) while passing 3/3 in isolation in 2.7 s — a test that fails every run trains us to skim red output, which is how a real regression gets waved through. Same slip-class shape TESTFLAKE.1 fixed across the rest of the suite; this suite was missed.
