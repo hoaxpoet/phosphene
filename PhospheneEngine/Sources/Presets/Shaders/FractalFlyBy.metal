@@ -136,15 +136,26 @@ constant bool FFB_THINFILM_ENABLED = false;
 /// zoom cycle (BUG-071 round 4: playback STARTS at zoom=1, the most
 /// detail-crammed point, which is why the opening frames were a garbled mess).
 static inline float ffb_mandelboxDE(float3 pos, float foldLimit, float invFootprint,
-                                    thread float4& orbitTrap) {
+                                    thread float4& orbitTrap, thread float& trapLevel) {
     float4 p  = float4(pos, 1.0f);
     float4 p0 = p;
     orbitTrap = float4(1e10f);
+    trapLevel = 0.0f;          // recursion level of the closest approach
 
     for (int i = 0; i < FFB_ITERS; i++) {
         if (p.w > invFootprint) { break; }   // finer than a pixel — stop (LOD)
         p.xyz = clamp(p.xyz, -foldLimit, foldLimit) * 2.0f - p.xyz; // box fold (HERO #2)
         float r2 = dot(p.xyz, p.xyz);
+        // Record the LEVEL at which the orbit came closest. This is the surface's
+        // recursion depth — piecewise-constant over large patches of structure, so
+        // it drives bold colour BLOCKING (whole folds sharing a hue) instead of the
+        // per-pixel hue thrash that made the trap-driven palette speckle.
+        // INTEGER level, deliberately. A fractional blend was tried to soften the
+        // block boundaries and made things worse: `r2` varies per pixel, so the
+        // fractional part reinstated exactly the per-pixel hue variation the
+        // blocking exists to remove. The boundaries between colour blocks are real
+        // structural edges (fold generations), not noise.
+        if (r2 < orbitTrap.w) { trapLevel = float(i); }
         orbitTrap = min(orbitTrap, fabs(float4(p.xyz, r2)));
         p *= clamp(max(FFB_MIN_RAD2 / r2, FFB_MIN_RAD2), 0.0f, 1.0f); // sphere fold
         p  = p * FFB_SCALE_VEC + p0;
@@ -256,7 +267,8 @@ float sceneSDF(float3 p,
     // to the far plane — it is grazing rays crawling near the surface, which an
     // open composition has more of. Do not re-add it without a measurement.
     float4 trap;
-    return ffb_mandelboxDE(q, ffb_foldLimit(f), ffb_invFootprint(p, s, zoom), trap) * zoom;   // HERO #2 (bass → fold)
+    float lvl;
+    return ffb_mandelboxDE(q, ffb_foldLimit(f), ffb_invFootprint(p, s, zoom), trap, lvl) * zoom;   // HERO #2 (bass → fold)
 }
 
 // MARK: - MetalFX motion vectors (MFX.1)
@@ -304,10 +316,10 @@ static inline float3 ffb_jewel(float t) {
                    // track structure, whole regions landed on the dark phase and
                    // went dead black — the "super dark" live report. 0.58 ± 0.30
                    // spans [0.28, 0.88]: saturated, never black.
-                   float3(0.58f, 0.55f, 0.62f),   // midtone — floor stays lit
-                   float3(0.30f, 0.30f, 0.30f),   // amplitude — saturation without black
+                   float3(0.52f, 0.50f, 0.56f),   // midtone — floor stays lit
+                   float3(0.46f, 0.46f, 0.46f),   // amplitude — saturation without black
                    float3(0.85f, 0.85f, 0.85f),   // < one hue cycle → cohesive range
-                   float3(0.55f, 0.30f, 0.10f));  // phase → cobalt→teal→amber→crimson
+                   float3(0.00f, 0.33f, 0.67f));  // phase → cobalt→teal→amber→crimson
 }
 
 // MARK: - Scene Material
@@ -335,7 +347,8 @@ void sceneMaterial(float3 p,
     float zoom  = ffb_travelZoom(phase);
     float3 q    = ffb_travelSample(p, zoom);
     float4 trap;
-    ffb_mandelboxDE(q, ffb_foldLimit(f), ffb_invFootprint(p, s, zoom), trap);
+    float trapLevel;
+    ffb_mandelboxDE(q, ffb_foldLimit(f), ffb_invFootprint(p, s, zoom), trap, trapLevel);
 
     // Jewel hue follows depth into the structure (trap.w = closest approach to the
     // origin sphere), the same driver that varied cleanly in FD.1 — plus a small
@@ -348,16 +361,33 @@ void sceneMaterial(float3 p,
     // fractal detail put a rainbow contour seam on every surface and edge — and a
     // discontinuity is infinite-frequency, so it aliased and shimmered by
     // construction. Feeding t straight in is smooth everywhere.
-    // HUE FREQUENCY IS AN ALIASING PARAMETER (BUG-071 round 4 — the dominant
-    // cause of the live "complete garbled mess"). Orbit-trap values swing wildly
-    // between ADJACENT pixels on a fractal, so a fast hue mapping cycles the
-    // palette several times within a few pixels: neighbouring pixels land on
-    // unrelated hues and the frame fills with rainbow speckle that no temporal AA
-    // can resolve (it is real signal, not noise). 1.3/0.6 shipped that; 0.30/0.15
-    // keeps colour varying with STRUCTURE rather than per-pixel, which is what
-    // makes surfaces read as coherent jewelled stone. Raising these re-introduces
-    // the speckle — verify on a phase-0 frame (the worst case) before changing.
-    float hue    = trap.w * 0.30f + trap.y * 0.15f;
+    // HUE DRIVER — smooth-and-wide, not fast-and-narrow (BUG-071 round 7).
+    //
+    // Two failures bracket this. Driving hue FAST off the orbit trap cycles the
+    // palette several times within a few pixels: neighbouring pixels get
+    // unrelated hues and the frame fills with rainbow speckle no AA can fix.
+    // Driving it SLOW off the trap fixes the speckle but confines the whole
+    // frame to a narrow arc of the wheel — every surface an adjacent hue, which
+    // is exactly the muddy, un-psychedelic look Matt reported.
+    //
+    // The resolution: get the WIDE hue span from quantities that vary smoothly
+    // and at LARGE scale, so distant parts of the frame land on genuinely
+    // different (even complementary) hues while neighbouring pixels stay close.
+    //   * viewDist  — a depth gradient: near and far read as different colours,
+    //                 which also gives the depth cue the flat mud was missing.
+    //   * phase     — the travel phase, identical for every pixel, so the whole
+    //                 world cycles slowly through the wheel as you fly.
+    //   * trap      — a small structural term so folds still tint apart.
+    // RECURSION LEVEL is the primary hue driver. Depth was tried and failed: on a
+    // wall-facing view every pixel sits at nearly the same distance, so the frame
+    // collapsed to one hue (the magenta-monochrome round). Level varies with
+    // STRUCTURE — each fold generation gets its own hue — so the frame carries
+    // several distinct, widely-separated colours at once (the complementary
+    // contrast that reads as psychedelic) while neighbouring pixels on the same
+    // fold stay the same colour (no speckle).
+    float hue = trapLevel * 0.155f          // fold generation → bold colour blocks
+              + phase * 0.42f               // slow global cycling as you travel
+              + trap.w * 0.08f;             // gentle within-fold variation
     float3 jewel = ffb_jewel(hue);
 
     // ── Motion-coherence detail fade (§A8; BUG-071) ──────────────────────────
@@ -415,7 +445,7 @@ void sceneMaterial(float3 p,
         // BUG-071: roll roughness up and metallic down with distance — sharp
         // specular on sub-pixel far detail is what boils under motion.
         outMatID  = 0;
-        albedo    = jewel * 0.95f;                            // brighter, more saturated stone
+        albedo    = jewel * 1.15f;                            // brighter, more saturated stone
         roughness = mix(0.22f, 0.55f, clamp(trap.x * 2.0f, 0.0f, 1.0f));
         // Partial roll-off only: pushing far surfaces to fully rough + non-metallic
         // killed the shimmer but washed them to a pale grey crust under the key +
