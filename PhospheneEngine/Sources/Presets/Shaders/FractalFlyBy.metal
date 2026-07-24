@@ -78,7 +78,16 @@ constant int   FFB_ITERS    = 8;
 // moves — the sphere fold, scale, and all precomputed scale constants are
 // untouched, so this costs one extra clamp bound per iteration, no per-pixel pow.
 constant float FFB_FOLD_BASE  = 1.0f;
-constant float FFB_FOLD_RANGE = 0.18f;   // sweep-validated Lipschitz-safe interval
+constant float FFB_FOLD_RANGE = 0.30f;   // sweep-validated Lipschitz-safe interval
+
+/// Saturation constant for the fold driver, CALIBRATED TO REAL DATA (FLY.9).
+/// Measured on Matt's sessions, the smoothed bass_att_rel lives in roughly
+/// [0, 0.35] — but the old `1 - exp(-x * 1.6)` needs x ~2 to approach 1, so the
+/// fold only ever traversed 5 % of its range: foldLimit sat between 1.000 and
+/// 1.010 where 1.000-1.180 was available. HERO #2, the "the space opens out on
+/// the drop" event, was therefore invisible — the single biggest reason the
+/// preset read as a snooze. 7.0 maps a 0.35 swell to ~0.91 of the range.
+constant float FFB_FOLD_SATURATE = 7.0f;
 
 // Motion-coherence detail fade (§A8 / BUG-071). World-space distances from the
 // camera between which the high-frequency material response rolls off, so far
@@ -136,15 +145,26 @@ constant bool FFB_THINFILM_ENABLED = false;
 /// zoom cycle (BUG-071 round 4: playback STARTS at zoom=1, the most
 /// detail-crammed point, which is why the opening frames were a garbled mess).
 static inline float ffb_mandelboxDE(float3 pos, float foldLimit, float invFootprint,
-                                    thread float4& orbitTrap) {
+                                    thread float4& orbitTrap, thread float& trapLevel) {
     float4 p  = float4(pos, 1.0f);
     float4 p0 = p;
     orbitTrap = float4(1e10f);
+    trapLevel = 0.0f;          // recursion level of the closest approach
 
     for (int i = 0; i < FFB_ITERS; i++) {
         if (p.w > invFootprint) { break; }   // finer than a pixel — stop (LOD)
         p.xyz = clamp(p.xyz, -foldLimit, foldLimit) * 2.0f - p.xyz; // box fold (HERO #2)
         float r2 = dot(p.xyz, p.xyz);
+        // Record the LEVEL at which the orbit came closest. This is the surface's
+        // recursion depth — piecewise-constant over large patches of structure, so
+        // it drives bold colour BLOCKING (whole folds sharing a hue) instead of the
+        // per-pixel hue thrash that made the trap-driven palette speckle.
+        // INTEGER level, deliberately. A fractional blend was tried to soften the
+        // block boundaries and made things worse: `r2` varies per pixel, so the
+        // fractional part reinstated exactly the per-pixel hue variation the
+        // blocking exists to remove. The boundaries between colour blocks are real
+        // structural edges (fold generations), not noise.
+        if (r2 < orbitTrap.w) { trapLevel = float(i); }
         orbitTrap = min(orbitTrap, fabs(float4(p.xyz, r2)));
         p *= clamp(max(FFB_MIN_RAD2 / r2, FFB_MIN_RAD2), 0.0f, 1.0f); // sphere fold
         p  = p * FFB_SCALE_VEC + p0;
@@ -187,8 +207,44 @@ static inline float ffb_invFootprint(float3 p, constant SceneUniforms& s, float 
 /// neighbourhood) with zoom increasing — NOT `(p + c) * zoom`, which collapses
 /// every feature toward a vanishing point (a recede; the live M7 "camera moving
 /// out"). The DE distance is then DE(q) * zoom (dp = zoom·dq).
-static inline float ffb_travelZoom(float phase) {
-    return pow(fabs(FFB_SCALE), fract(phase));
+/// Base magnification the cycle sits at (BUG-071 round 8 — the "first 8-10
+/// seconds are garbled" report).
+///
+/// The octave sweep `|Scale|^fract(phase)` spans zoom 1 → 2.7. At the LOW end the
+/// camera sees a wide swathe of the fractal, so the frame fills with tiny
+/// repeated features — the worst aliasing of the whole cycle. And playback PARKS
+/// there: travel speed is tied to energy, so a quiet intro leaves the phase near
+/// 0 for ~10 s (measured on Matt's session: phase 0.001 → 0.099 over 11 s).
+/// Every track with a soft opening therefore spends its first ten seconds on the
+/// ugliest frame the preset can produce.
+///
+/// Multiplying the whole range by a base factor keeps the octave — and so the
+/// seamless self-similar wrap — while viewing from permanently closer in, where
+/// features are large and few. The wide end simply stops existing.
+/// FRAMING (FLY.10) — the music moves how vast the world feels.
+///
+/// This is the axis that was missing. Travel speed, structure and direction were
+/// all music-driven; framing was a hardcoded constant, so every moment of every
+/// track was composed identically — the "monotonous tunnel". Now the arousal
+/// envelope glides the base magnification between two very different worlds:
+///   TIGHT — pressed into a narrow corridor, walls close and rushing past
+///   VAST  — pulled right back, a whole cathedral-scale space in frame
+/// It GLIDES, never cuts: a cut would read as a scene change (wrong for one
+/// continuous journey) and would blow MetalFX's history every transition.
+///
+/// This is also the concept's one unkept promise — "the drop = arrival somewhere
+/// vast" — finally expressed as something you can actually see.
+constant float FFB_ZOOM_TIGHT = 3.40f;   // quiet: claustrophobic
+constant float FFB_ZOOM_VAST  = 1.15f;   // peak: cathedral-scale
+
+static inline float ffb_zoomBase(constant SceneUniforms& s) {
+    // lightColor.w = smoothed framing drive (0 tight → 1 vast).
+    float framing = clamp(s.lightColor.w, 0.0f, 1.0f);
+    return mix(FFB_ZOOM_TIGHT, FFB_ZOOM_VAST, framing);
+}
+
+static inline float ffb_travelZoom(float phase, constant SceneUniforms& s) {
+    return ffb_zoomBase(s) * pow(fabs(FFB_SCALE), fract(phase));
 }
 
 /// Off-axis viewing offset, applied in camera space so it rides the scale (the
@@ -211,8 +267,26 @@ constant float3 FFB_ZOOM_TARGET = float3(0.92f, 0.64f, 0.42f);
 /// Forward-travel sample map (BUG-071): the neighbourhood around FFB_ZOOM_TARGET shrinks
 /// as zoom grows, so that boundary detail magnifies and rushes past.
 /// `ffb_mandelboxDE(q,…) * zoom` restores the p-space distance.
-static inline float3 ffb_travelSample(float3 p, float zoom) {
-    return FFB_ZOOM_TARGET + (p + FFB_TRAVEL_OFFSET) / zoom;
+/// Slow rotation of the sampled space (FLY.9 — the "monotonous tunnel" fix).
+///
+/// A pure scale traversal re-enters structurally similar corridors forever: the
+/// octave wrap is seamless precisely BECAUSE the destination looks like the
+/// origin, which is exactly what makes it monotonous to watch. Rotating the
+/// sample space as we travel continuously swings new architecture into frame, so
+/// the journey stops repeating. A rotation is rigid — it preserves distances — so
+/// the distance estimate stays exactly valid (unlike domain repetition), and it
+/// costs two sin/cos per sample.
+static inline float3 ffb_travelRotate(float3 q, float phase) {
+    float a = phase * 0.55f;
+    float ca = cos(a), sa = sin(a);
+    float3 r = float3(q.x * ca - q.z * sa, q.y, q.x * sa + q.z * ca);   // yaw
+    float b = phase * 0.31f;                                            // slower pitch
+    float cb = cos(b), sb = sin(b);
+    return float3(r.x, r.y * cb - r.z * sb, r.y * sb + r.z * cb);
+}
+
+static inline float3 ffb_travelSample(float3 p, float zoom, float phase) {
+    return FFB_ZOOM_TARGET + ffb_travelRotate((p + FFB_TRAVEL_OFFSET) / zoom, phase);
 }
 
 // MARK: - Audio → travel + fold (HERO routing)
@@ -232,8 +306,13 @@ static inline float ffb_travelPhase(constant SceneUniforms& s) {
 /// it spikes to ~3× on real music, so soft-saturate it into [0,1] and widen the
 /// box-fold limit within the Lipschitz-safe band. A larger limit unfolds the
 /// current chamber into a bigger one — the "breakthrough" on the drop.
-static inline float ffb_foldLimit(constant FeatureVector& f) {
-    float swell = 1.0f - exp(-max(0.0f, f.bass_att_rel) * 1.6f);   // soft-saturate → [0,1)
+static inline float ffb_foldLimit(constant FeatureVector& f, constant SceneUniforms& s) {
+    // Prefer the CPU-SMOOTHED driver (cameraUp.w, FLY.9). Raw bass_att_rel is a
+    // spiky deviation primitive and snapped the geometry frame-to-frame; the EMA
+    // turns it into the sustained swell an "arrival" needs. Falls back to the raw
+    // value if the engine hasn't published one.
+    float drive = (s.cameraUp.w > 0.0f) ? s.cameraUp.w : max(0.0f, f.bass_att_rel);
+    float swell = 1.0f - exp(-drive * FFB_FOLD_SATURATE);
     return FFB_FOLD_BASE + FFB_FOLD_RANGE * swell;
 }
 
@@ -248,15 +327,16 @@ float sceneSDF(float3 p,
     (void)ferrofluidHeight;   // slot-10; Ferrofluid Ocean only.
 
     float phase = ffb_travelPhase(s);
-    float zoom  = ffb_travelZoom(phase);               // HERO #1 (energy → speed)
-    float3 q    = ffb_travelSample(p, zoom);           // off-axis, wrap-preserving
+    float zoom  = ffb_travelZoom(phase, s);               // HERO #1 (energy → speed)
+    float3 q    = ffb_travelSample(p, zoom, phase);           // off-axis, wrap-preserving
     // A bounding-sphere early-out was tried here and REMOVED: measured at
     // iteration caps 8 and 10 across enclosed and open compositions it changed
     // nothing (8.19 vs 8.01 ms p95), because the cost is not missed rays creeping
     // to the far plane — it is grazing rays crawling near the surface, which an
     // open composition has more of. Do not re-add it without a measurement.
     float4 trap;
-    return ffb_mandelboxDE(q, ffb_foldLimit(f), ffb_invFootprint(p, s, zoom), trap) * zoom;   // HERO #2 (bass → fold)
+    float lvl;
+    return ffb_mandelboxDE(q, ffb_foldLimit(f, s), ffb_invFootprint(p, s, zoom), trap, lvl) * zoom;   // HERO #2 (bass → fold)
 }
 
 // MARK: - MetalFX motion vectors (MFX.1)
@@ -281,8 +361,8 @@ float3 scenePrevPosition(float3 worldPos,
                          constant StemFeatures& stems) {
     (void)f;
     (void)stems;
-    float zoomNow  = ffb_travelZoom(ffb_travelPhase(s));
-    float zoomPrev = ffb_travelZoom(s.lightingParams.z * FFB_TRAVEL_RATE);
+    float zoomNow  = ffb_travelZoom(ffb_travelPhase(s), s);
+    float zoomPrev = ffb_travelZoom(s.lightingParams.z * FFB_TRAVEL_RATE, s);
     float ratio    = (zoomNow > 1e-6f) ? (zoomPrev / zoomNow) : 1.0f;
     return (worldPos + FFB_TRAVEL_OFFSET) * ratio - FFB_TRAVEL_OFFSET;
 }
@@ -304,10 +384,10 @@ static inline float3 ffb_jewel(float t) {
                    // track structure, whole regions landed on the dark phase and
                    // went dead black — the "super dark" live report. 0.58 ± 0.30
                    // spans [0.28, 0.88]: saturated, never black.
-                   float3(0.58f, 0.55f, 0.62f),   // midtone — floor stays lit
-                   float3(0.30f, 0.30f, 0.30f),   // amplitude — saturation without black
+                   float3(0.52f, 0.50f, 0.56f),   // midtone — floor stays lit
+                   float3(0.46f, 0.46f, 0.46f),   // amplitude — saturation without black
                    float3(0.85f, 0.85f, 0.85f),   // < one hue cycle → cohesive range
-                   float3(0.55f, 0.30f, 0.10f));  // phase → cobalt→teal→amber→crimson
+                   float3(0.00f, 0.33f, 0.67f));  // phase → cobalt→teal→amber→crimson
 }
 
 // MARK: - Scene Material
@@ -332,10 +412,11 @@ void sceneMaterial(float3 p,
     // Travel phase + fold limit MUST match sceneSDF exactly or the colour
     // detaches from the geometry.
     float phase = ffb_travelPhase(s);
-    float zoom  = ffb_travelZoom(phase);
-    float3 q    = ffb_travelSample(p, zoom);
+    float zoom  = ffb_travelZoom(phase, s);
+    float3 q    = ffb_travelSample(p, zoom, phase);
     float4 trap;
-    ffb_mandelboxDE(q, ffb_foldLimit(f), ffb_invFootprint(p, s, zoom), trap);
+    float trapLevel;
+    ffb_mandelboxDE(q, ffb_foldLimit(f, s), ffb_invFootprint(p, s, zoom), trap, trapLevel);
 
     // Jewel hue follows depth into the structure (trap.w = closest approach to the
     // origin sphere), the same driver that varied cleanly in FD.1 — plus a small
@@ -348,16 +429,33 @@ void sceneMaterial(float3 p,
     // fractal detail put a rainbow contour seam on every surface and edge — and a
     // discontinuity is infinite-frequency, so it aliased and shimmered by
     // construction. Feeding t straight in is smooth everywhere.
-    // HUE FREQUENCY IS AN ALIASING PARAMETER (BUG-071 round 4 — the dominant
-    // cause of the live "complete garbled mess"). Orbit-trap values swing wildly
-    // between ADJACENT pixels on a fractal, so a fast hue mapping cycles the
-    // palette several times within a few pixels: neighbouring pixels land on
-    // unrelated hues and the frame fills with rainbow speckle that no temporal AA
-    // can resolve (it is real signal, not noise). 1.3/0.6 shipped that; 0.30/0.15
-    // keeps colour varying with STRUCTURE rather than per-pixel, which is what
-    // makes surfaces read as coherent jewelled stone. Raising these re-introduces
-    // the speckle — verify on a phase-0 frame (the worst case) before changing.
-    float hue    = trap.w * 0.30f + trap.y * 0.15f;
+    // HUE DRIVER — smooth-and-wide, not fast-and-narrow (BUG-071 round 7).
+    //
+    // Two failures bracket this. Driving hue FAST off the orbit trap cycles the
+    // palette several times within a few pixels: neighbouring pixels get
+    // unrelated hues and the frame fills with rainbow speckle no AA can fix.
+    // Driving it SLOW off the trap fixes the speckle but confines the whole
+    // frame to a narrow arc of the wheel — every surface an adjacent hue, which
+    // is exactly the muddy, un-psychedelic look Matt reported.
+    //
+    // The resolution: get the WIDE hue span from quantities that vary smoothly
+    // and at LARGE scale, so distant parts of the frame land on genuinely
+    // different (even complementary) hues while neighbouring pixels stay close.
+    //   * viewDist  — a depth gradient: near and far read as different colours,
+    //                 which also gives the depth cue the flat mud was missing.
+    //   * phase     — the travel phase, identical for every pixel, so the whole
+    //                 world cycles slowly through the wheel as you fly.
+    //   * trap      — a small structural term so folds still tint apart.
+    // RECURSION LEVEL is the primary hue driver. Depth was tried and failed: on a
+    // wall-facing view every pixel sits at nearly the same distance, so the frame
+    // collapsed to one hue (the magenta-monochrome round). Level varies with
+    // STRUCTURE — each fold generation gets its own hue — so the frame carries
+    // several distinct, widely-separated colours at once (the complementary
+    // contrast that reads as psychedelic) while neighbouring pixels on the same
+    // fold stay the same colour (no speckle).
+    float hue = trapLevel * 0.155f          // fold generation → bold colour blocks
+              + phase * 0.42f               // slow global cycling as you travel
+              + trap.w * 0.08f;             // gentle within-fold variation
     float3 jewel = ffb_jewel(hue);
 
     // ── Motion-coherence detail fade (§A8; BUG-071) ──────────────────────────
@@ -415,7 +513,7 @@ void sceneMaterial(float3 p,
         // BUG-071: roll roughness up and metallic down with distance — sharp
         // specular on sub-pixel far detail is what boils under motion.
         outMatID  = 0;
-        albedo    = jewel * 0.95f;                            // brighter, more saturated stone
+        albedo    = jewel * 1.15f;                            // brighter, more saturated stone
         roughness = mix(0.22f, 0.55f, clamp(trap.x * 2.0f, 0.0f, 1.0f));
         // Partial roll-off only: pushing far surfaces to fully rough + non-metallic
         // killed the shimmer but washed them to a pale grey crust under the key +
