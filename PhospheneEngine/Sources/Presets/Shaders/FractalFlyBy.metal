@@ -198,8 +198,24 @@ static inline float ffb_invFootprint(float3 p, constant SceneUniforms& s, float 
 /// neighbourhood) with zoom increasing — NOT `(p + c) * zoom`, which collapses
 /// every feature toward a vanishing point (a recede; the live M7 "camera moving
 /// out"). The DE distance is then DE(q) * zoom (dp = zoom·dq).
+/// Base magnification the cycle sits at (BUG-071 round 8 — the "first 8-10
+/// seconds are garbled" report).
+///
+/// The octave sweep `|Scale|^fract(phase)` spans zoom 1 → 2.7. At the LOW end the
+/// camera sees a wide swathe of the fractal, so the frame fills with tiny
+/// repeated features — the worst aliasing of the whole cycle. And playback PARKS
+/// there: travel speed is tied to energy, so a quiet intro leaves the phase near
+/// 0 for ~10 s (measured on Matt's session: phase 0.001 → 0.099 over 11 s).
+/// Every track with a soft opening therefore spends its first ten seconds on the
+/// ugliest frame the preset can produce.
+///
+/// Multiplying the whole range by a base factor keeps the octave — and so the
+/// seamless self-similar wrap — while viewing from permanently closer in, where
+/// features are large and few. The wide end simply stops existing.
+constant float FFB_ZOOM_BASE = 2.0f;
+
 static inline float ffb_travelZoom(float phase) {
-    return pow(fabs(FFB_SCALE), fract(phase));
+    return FFB_ZOOM_BASE * pow(fabs(FFB_SCALE), fract(phase));
 }
 
 /// Off-axis viewing offset, applied in camera space so it rides the scale (the
