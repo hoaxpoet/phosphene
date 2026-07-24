@@ -588,6 +588,18 @@ public final class RayMarchPipeline: @unchecked Sendable {
         // CACurrentMediaTime() so the BUG-019 attribution can drill below
         // `renderframe_cpu_ms`. Sub-microsecond per snapshot; same MainActor
         // thread as the caller (no synchronization needed).
+        // FLY.5 — publish the ACTUAL vertical radians-per-rendered-pixel into the
+        // free `cameraRight.w` padding lane, so a preset's LOD / anti-alias cutoff
+        // knows how big a pixel really is at THIS window size. Fractal Fly-By
+        // previously hardcoded this from 1080p, so at any other size it kept
+        // detail finer than the pixels and aliased — which is why my 1920×1080
+        // renders looked far cleaner than the ~1067×750 window (BUG-071).
+        // Computed HERE, inside render(), so the offline harness and production
+        // cannot diverge on it.
+        let renderH = max(gbuffer0?.height ?? 1, 1)
+        sceneUniforms.cameraRight.w =
+            2.0 * tan(sceneUniforms.cameraOriginAndFov.w * 0.5) / Float(renderH)
+
         // MFX.1: choose + bake this frame's sub-pixel jitter BEFORE the G-buffer
         // marches, so every downstream reconstruction uses the same basis.
         applyJitter(width: gbuffer0?.width ?? 0, height: gbuffer0?.height ?? 0)
