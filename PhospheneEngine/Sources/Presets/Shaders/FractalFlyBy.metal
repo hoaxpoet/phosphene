@@ -78,7 +78,16 @@ constant int   FFB_ITERS    = 8;
 // moves — the sphere fold, scale, and all precomputed scale constants are
 // untouched, so this costs one extra clamp bound per iteration, no per-pixel pow.
 constant float FFB_FOLD_BASE  = 1.0f;
-constant float FFB_FOLD_RANGE = 0.18f;   // sweep-validated Lipschitz-safe interval
+constant float FFB_FOLD_RANGE = 0.30f;   // sweep-validated Lipschitz-safe interval
+
+/// Saturation constant for the fold driver, CALIBRATED TO REAL DATA (FLY.9).
+/// Measured on Matt's sessions, the smoothed bass_att_rel lives in roughly
+/// [0, 0.35] — but the old `1 - exp(-x * 1.6)` needs x ~2 to approach 1, so the
+/// fold only ever traversed 5 % of its range: foldLimit sat between 1.000 and
+/// 1.010 where 1.000-1.180 was available. HERO #2, the "the space opens out on
+/// the drop" event, was therefore invisible — the single biggest reason the
+/// preset read as a snooze. 7.0 maps a 0.35 swell to ~0.91 of the range.
+constant float FFB_FOLD_SATURATE = 7.0f;
 
 // Motion-coherence detail fade (§A8 / BUG-071). World-space distances from the
 // camera between which the high-frequency material response rolls off, so far
@@ -238,8 +247,26 @@ constant float3 FFB_ZOOM_TARGET = float3(0.92f, 0.64f, 0.42f);
 /// Forward-travel sample map (BUG-071): the neighbourhood around FFB_ZOOM_TARGET shrinks
 /// as zoom grows, so that boundary detail magnifies and rushes past.
 /// `ffb_mandelboxDE(q,…) * zoom` restores the p-space distance.
-static inline float3 ffb_travelSample(float3 p, float zoom) {
-    return FFB_ZOOM_TARGET + (p + FFB_TRAVEL_OFFSET) / zoom;
+/// Slow rotation of the sampled space (FLY.9 — the "monotonous tunnel" fix).
+///
+/// A pure scale traversal re-enters structurally similar corridors forever: the
+/// octave wrap is seamless precisely BECAUSE the destination looks like the
+/// origin, which is exactly what makes it monotonous to watch. Rotating the
+/// sample space as we travel continuously swings new architecture into frame, so
+/// the journey stops repeating. A rotation is rigid — it preserves distances — so
+/// the distance estimate stays exactly valid (unlike domain repetition), and it
+/// costs two sin/cos per sample.
+static inline float3 ffb_travelRotate(float3 q, float phase) {
+    float a = phase * 0.55f;
+    float ca = cos(a), sa = sin(a);
+    float3 r = float3(q.x * ca - q.z * sa, q.y, q.x * sa + q.z * ca);   // yaw
+    float b = phase * 0.31f;                                            // slower pitch
+    float cb = cos(b), sb = sin(b);
+    return float3(r.x, r.y * cb - r.z * sb, r.y * sb + r.z * cb);
+}
+
+static inline float3 ffb_travelSample(float3 p, float zoom, float phase) {
+    return FFB_ZOOM_TARGET + ffb_travelRotate((p + FFB_TRAVEL_OFFSET) / zoom, phase);
 }
 
 // MARK: - Audio → travel + fold (HERO routing)
@@ -259,8 +286,13 @@ static inline float ffb_travelPhase(constant SceneUniforms& s) {
 /// it spikes to ~3× on real music, so soft-saturate it into [0,1] and widen the
 /// box-fold limit within the Lipschitz-safe band. A larger limit unfolds the
 /// current chamber into a bigger one — the "breakthrough" on the drop.
-static inline float ffb_foldLimit(constant FeatureVector& f) {
-    float swell = 1.0f - exp(-max(0.0f, f.bass_att_rel) * 1.6f);   // soft-saturate → [0,1)
+static inline float ffb_foldLimit(constant FeatureVector& f, constant SceneUniforms& s) {
+    // Prefer the CPU-SMOOTHED driver (cameraUp.w, FLY.9). Raw bass_att_rel is a
+    // spiky deviation primitive and snapped the geometry frame-to-frame; the EMA
+    // turns it into the sustained swell an "arrival" needs. Falls back to the raw
+    // value if the engine hasn't published one.
+    float drive = (s.cameraUp.w > 0.0f) ? s.cameraUp.w : max(0.0f, f.bass_att_rel);
+    float swell = 1.0f - exp(-drive * FFB_FOLD_SATURATE);
     return FFB_FOLD_BASE + FFB_FOLD_RANGE * swell;
 }
 
@@ -276,7 +308,7 @@ float sceneSDF(float3 p,
 
     float phase = ffb_travelPhase(s);
     float zoom  = ffb_travelZoom(phase);               // HERO #1 (energy → speed)
-    float3 q    = ffb_travelSample(p, zoom);           // off-axis, wrap-preserving
+    float3 q    = ffb_travelSample(p, zoom, phase);           // off-axis, wrap-preserving
     // A bounding-sphere early-out was tried here and REMOVED: measured at
     // iteration caps 8 and 10 across enclosed and open compositions it changed
     // nothing (8.19 vs 8.01 ms p95), because the cost is not missed rays creeping
@@ -284,7 +316,7 @@ float sceneSDF(float3 p,
     // open composition has more of. Do not re-add it without a measurement.
     float4 trap;
     float lvl;
-    return ffb_mandelboxDE(q, ffb_foldLimit(f), ffb_invFootprint(p, s, zoom), trap, lvl) * zoom;   // HERO #2 (bass → fold)
+    return ffb_mandelboxDE(q, ffb_foldLimit(f, s), ffb_invFootprint(p, s, zoom), trap, lvl) * zoom;   // HERO #2 (bass → fold)
 }
 
 // MARK: - MetalFX motion vectors (MFX.1)
@@ -361,10 +393,10 @@ void sceneMaterial(float3 p,
     // detaches from the geometry.
     float phase = ffb_travelPhase(s);
     float zoom  = ffb_travelZoom(phase);
-    float3 q    = ffb_travelSample(p, zoom);
+    float3 q    = ffb_travelSample(p, zoom, phase);
     float4 trap;
     float trapLevel;
-    ffb_mandelboxDE(q, ffb_foldLimit(f), ffb_invFootprint(p, s, zoom), trap, trapLevel);
+    ffb_mandelboxDE(q, ffb_foldLimit(f, s), ffb_invFootprint(p, s, zoom), trap, trapLevel);
 
     // Jewel hue follows depth into the structure (trap.w = closest approach to the
     // origin sphere), the same driver that varied cleanly in FD.1 — plus a small
