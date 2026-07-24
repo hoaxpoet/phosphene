@@ -6,7 +6,6 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
-| BUG-073 | P1 | preset.performance / renderer | **Volumetric Lithograph rendered at 1.0 fps (986 ms/frame) after VL-PSY.1** — ✅ **RESOLVED 2026-07-24 (VL-PSY.2).** `warped_fbm` (7 x fbm8 = ~56 Perlin evals; its own header says "use per-hit or per-vertex only") was called twice inside `vl_foldDomain`, which `sceneSDF` reaches — so it ran ~128 march steps + 4 normal + 3 AO taps per pixel = ~15,000 Perlin evals/pixel. Measured 1120 ms p95 on `VLBudgetProbeTests` vs a 0.44 ms Lumen control. Fixed by a 2-octave `fbm3D` warp (4 evals), step scale 0.35 -> 0.55, octaves 5 -> 4: **9.4 ms p95** (v9.4 baseline on the same probe: 7.6 ms) |
 | BUG-071 | P1 | preset.fidelity / sdf-geometry | **Fractal Fly-By live M7 FAILED (session `2026-07-23T19-27-48Z`, Cherub Rock):** "deeply glitchy, camera moves OUT not IN." Root causes (confirmed from artifacts + repro renders): (1) **descent direction inverted** — `q=(p+c)*zoom` with zoom increasing collapses features toward a vanishing point (recede); confirmed by a phase-0.08 vs 0.90 sweep (features shrink as phase grows) and by `features.csv` (accAudioTime 0→8.15 → phase 0→0.98 monotonic = one-way recede, never wrapped); (2) **severe shimmer/aliasing** — full-res Mandelbox fine detail + the high-frequency iridescent thin-film rims alias under motion (no AA; MetalFX unwired; the §A8 motion-coherence cap was never added; the whole-frame motion-gate spike metric doesn't catch high-freq shimmer); (3) **descent too slow** — 0.12 rate gave <1 octave in 78 s. Fix: invert to `q=(p+c)/zoom` (fall in), tame/detune the thin-film + distance-fade fine detail, raise the rate. |
 | BUG-070 | P2 | audio.capture / resource-management | **Fix landed 2026-07-12 (PUB.6), pending live validation** — a FAILED device-change tap reinstall left `_isCapturing=true` with zero callbacks: engine health detectors starved (SignalHealthMonitor.evaluate is sample-driven → deadTap never confirms) and the router's recovery restart blocked at the alreadyCapturing guard; only the app-layer poll-based stall card surfaced it. Fix: the catch now clears `_isCapturing` (recovery unblocked) and keeps the monitor as a diagnostic beacon; the false "create steps stopped the monitor" comment corrected. Residual OPEN half: the 3-queue lifecycle interleave (device-change reinstall vs silence-recovery vs user stop) stays unserialized — static-only evidence; restructuring the G1-validated (12/12) path without a reproduced artifact is the BUG-063 pattern. Existing breadcrumbs (per-step diagnostics + install generation) are the instrumentation; serialize only if a live session shows an interleave |
 | BUG-065 | P3 | dsp.beat | **Live BeatGrid phase drifts off the audible beat over a track** — the cached grid has the right BPM but `LiveBeatDriftTracker` *bounds* the live drift without *tightening* it: drift grows ~11 ms (track start) → **50–70 ms (mid/late-track)**, and **28 % of frames exceed the ~60 ms perceptual window** (evidence: session `2026-06-29T12-43-51Z`, Cherub Rock 171.3 BPM 4/4 — drift-by-10s-window 11/37/49/54/69/66/55/48 ms; lock_state=2 only 67 %-within-60 ms). **Caps how frame-locked beat-driven presets can feel** — the live example is Glaze's GLAZE.7 downbeat push (reads connected but not *tight*; tightest early, loosens as the track plays). NOT a functional break (phase is approximately right). **Suggested improvement (Matt 2026-06-29):** live re-lock / cached-BPM-error correction so drift holds < ~30 ms across the track. The cold-start *automated phase* premise was retired (CLAUDE.md §Cold-Start), but this is **mid-track drift convergence** — a different surface (the tracker should tighten, not just bound). Logged for a dedicated beat-sync session |
@@ -542,6 +541,38 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 ## Resolved (recent)
 
 *(PUB.3 pruning pass, 2026-07-11: 24 resolved entries moved here from §Open; BUG-013/001/005 reclassified to §Known Limitations. rotate_docs.sh files these to KNOWN_ISSUES_HISTORY.md after 14 days.)*
+
+---
+
+### BUG-074 — Volumetric Lithograph M7 "a convulsing mess"; music-driven symmetry order (2026-07-24)
+
+**P1 · preset.fidelity / audio-coupling · ✅ RESOLVED 2026-07-24 (VL-PSY.3).**
+
+**Expected:** a psychedelic terrain flight whose geometry folds *with* the music.
+**Actual (Matt live, session `2026-07-24T16-24-58Z`, Cherub Rock, chain `clean`, 59.9 fps):** "visual quality is lower and the music response is TERRIBLE, creating a convulsing mess. I dislike the look, but I REALLY dislike the motion."
+
+**Root cause — a category error, not a tuning error.** VL-PSY.1/.2 drove the kaleidoscope's **symmetry order** (`pModPolar`'s repetition count) from audio: the vocal/energy swell moved it and every downbeat snapped it. Reconstructed from the session `features.csv`:
+
+- swell-driven order swung **3.01 → 9.00** once stems were live — six orders;
+- single-frame jumps up to **4.8 orders**; 9.6 % of frames changed >0.1 order;
+- the beat snap fired **2.67 ×/second** at 171 BPM.
+
+Two structural faults compounded it. (1) **Order is integer-valued.** `angle = 2π/order` only tiles the circle cleanly at whole numbers; at order 3.47 the last wedge does not close. Driving it continuously swept *through malformed geometry* every frame. (2) **Order is the least bounded parameter in the shader** — it re-maps every point in the world, so animating it convulses the whole frame rather than moving a feature.
+
+Two supporting faults from the audio hierarchy. **Per-beat, not per-bar:** the downbeat used `pulse_phase01` directly (every beat) — exactly the D-154 Ferrofluid lesson ("a per-beat punch reads as a robotic metronome"), whose envelope VL-PSY.1 copied while leaving the lesson. **Hierarchy inversion:** the continuous driver `f.mid_att_rel` measured **0.009** on this track, while the dev fold-sweep fixture drove it 0→1 — so the beat accent became the only motion, the failure the audio-data-hierarchy rule exists to prevent. The synthetic fixture is *why this reached M7*; the `SessionReplayHarness` (FLY.6, built for this exact class) would have caught it, and was not used.
+
+**Fix — turn the tube, don't rebuild it.** A physical kaleidoscope is a *fixed* set of mirrors that you rotate. So:
+
+- **Symmetry order FIXED at 6** (whole number, never animated) — the stage.
+- Ported hg_sdf **`pR`** (2D rotation) and rotate the domain before the polar fold. Rotation is an **isometry**: preserves distance, adds no Lipschitz cost, cannot open a seam, and every intermediate state is a valid kaleidoscope — smooth by construction, not by tuning.
+- Rotation angle = `VL_ROT_BASE·time + VL_ROT_SWELL·accumulatedAudioTime + VL_ROT_KICK·downbeatTwist`. The swell term feeds an **angle** off an already-integrated energy signal, so a noisy per-frame swell mathematically cannot produce a jittery angle. Idle term keeps it turning at silence (D-037) — which incidentally fixes the VL.1 "frozen at silence" finding.
+- Downbeat twist gated to **beat 0 of each bar** (`pulse_beat_index mod beats_per_bar`), attack 0.20 (D-157).
+
+**Verified on the real session** via `SessionReplayHarness` (real `features.csv` through the live render seam, real viewport, real dolly): motion gate **0 spikes, 0 frozen, max 1.32× median** — against the VL-PSY.2 signal that swung six orders with 4.8-order single-frame jumps. Rotation speed chosen by Matt from a 3-speed real-audio GIF comparison (0.55 rad/s).
+
+**Fidelity (Matt: "visual quality is lower")** — a real regression from the BUG-073 perf fix. Warp restored 2 → 3 octaves; full restore (4-octave warp + 5 terrain octaves) measured 13.5 ms, over the 12 ms gate, so partially restored at **11.4 ms p95**. Stated as partial, not claimed as whole.
+
+**Follow-up filed (not fixed here): replay-harness camera-parity gap.** `cameraDollySpeed` defaults to 0 and is set by the app target (`VisualizerEngine+Presets`), which the engine test target cannot import — so `SessionReplayHarness` renders every dollying preset with a **static camera**. Harmless for Fractal Fly-By (dolly 0), silently wrong for VL (the flight is its identity). Worked around with a `REPLAY_DOLLY` env override; the real fix is to move dolly speed into the sidecar so app and harness share one source.
 
 ---
 
