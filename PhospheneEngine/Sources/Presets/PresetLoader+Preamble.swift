@@ -319,7 +319,6 @@ extension PresetLoader {
             float4 light3PositionAndIntensity;
             float4 light3Color;
             float4 lightingParams;            // x = lightCount (1..4); yzw reserved
-            float4 presetSteer;               // FLY.12 preset steering (FFB corridor-follow); 0 elsewhere
         };
         #endif
 
