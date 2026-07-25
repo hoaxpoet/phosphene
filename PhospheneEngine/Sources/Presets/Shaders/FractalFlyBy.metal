@@ -101,7 +101,7 @@ constant float FFB_DETAIL_FAR  = 6.5f;
 // advances ~0.1/s on a loud track, so 0.45 ≈ one self-similar octave per ~22 s.
 // Shared by ffb_travelPhase and scenePrevPosition — they MUST agree or the motion
 // vectors point at the wrong place and MetalFX smears.
-constant float FFB_TRAVEL_RATE = 0.45f;
+constant float FFB_TRAVEL_RATE = 0.30f;
 
 // Vertical radians per rendered pixel: 2·tan(fov/2) / renderHeight, with
 // fov 48° and renderHeight = 1080 × render_scale 0.65 ≈ 702. Sets the fractal
@@ -245,9 +245,15 @@ static inline float ffb_invFootprint(float3 p, constant SceneUniforms& s, float 
 /// Framing belongs on the lens; world scale stays reserved for TRAVEL alone.
 constant float FFB_ZOOM_BASE = 2.0f;
 
+constant float FFB_ZOOM_OPEN = 1.05f;   // FLY.13: coarser scale the governor pulls back to when dense
+
 static inline float ffb_zoomBase(constant SceneUniforms& s) {
-    (void)s;
-    return FFB_ZOOM_BASE;
+    // presetSteer.z = scene density (0 open → 1 wall-to-wall), from the CPU
+    // governor. Ease the base toward the coarse/open end so a dense pocket pulls
+    // the viewpoint BACK until channels reappear, instead of magnifying deeper
+    // into mush. (FLY.13 — the real "navigate the gaps" fix; steering alone can
+    // only centre in a channel that exists.)
+    return mix(FFB_ZOOM_BASE, FFB_ZOOM_OPEN, clamp(s.presetSteer.z, 0.0f, 1.0f));
 }
 
 static inline float ffb_travelZoom(float phase, constant SceneUniforms& s) {
