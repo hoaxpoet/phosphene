@@ -98,10 +98,11 @@ explicitly is how that stops being invisible.
   has reverted to the direction Matt rejected on 2026-07-23 ("a topographic map that adds and
   removes depth"). `scene_fog` stays 0; no aerial perspective, no `ridged_mf` drainage, no cloud
   shadows.
-- **Fractal Fly-By (formerly Fractal Descent) / Mandelbox Cathedral.** ⚠️ The nearest in-catalog trap, and stronger than any
-  abstract anti-reference because it *ships*. It is a fractal **solid** the camera travels through. VL
+- **Mandelbox Cathedral / the retired Fractal Fly-By (D-201).** ⚠️ The nearest conceptual trap. It was a fractal
+  **solid** the camera travelled through — and it was retired precisely because a fast fly-through of dense
+  self-similar detail cannot render coherently in the real-time budget (the image boils frame-to-frame). VL
   is a **landscape** the camera flies over. If VL's ground stops reading as ground, it has become
-  "Mandelbox Cathedral with a moving camera" — the collapse the design doc §1 names by name.
+  "Mandelbox Cathedral with a moving camera" — the collapse the design doc §1 names by name, and the failure mode that killed Fly-By.
 - **Flat neon screensaver strobe.** Saturation without structure. `02` sits near this line —
   take its *flow*, not its flatness. Luminance must stay steady per beat (D-157).
 - **Muddy over-blended smear.** The failure mode of stacking too many warps: everything folds into
