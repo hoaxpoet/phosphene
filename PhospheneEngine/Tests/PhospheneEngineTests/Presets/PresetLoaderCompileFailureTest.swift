@@ -89,7 +89,9 @@ struct PresetLoaderCompileFailureTest {
     /// plus-basis eigenmode superposition selected live by spectral centroid. Not
     /// certified — CR.1 clay maquette; materials/micro/secondary-audio/cert at
     /// CR.2–CR.3. See docs/presets/psychedelic_geometry/PG_CR_CYMATIC_RESONANCE.md.)
-    static let expectedProductionPresetCount = 27
+    /// 27 → 26 at FLY.14 (Fractal Fly-By RETIRED — instrument-proven motion-coherence
+    /// ceiling; the fast scale-zoom Mandelbox fly-through boils frame-to-frame. See D-201.)
+    static let expectedProductionPresetCount = 26
 
     @Test("PresetLoader.presets.count matches expectedProductionPresetCount — catches Failed Approach #44 silent drops")
     func test_presetLoaderProductionCount() {
