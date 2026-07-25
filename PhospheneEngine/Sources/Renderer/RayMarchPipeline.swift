@@ -451,6 +451,7 @@ public final class RayMarchPipeline: @unchecked Sendable {
     var corridorScratch: [UInt16] = []
     var steerX: Float = 0
     var steerY: Float = 0
+    var smoothedDensity: Float = 0
 
     /// FLY.10 — smoothed framing drive: 0 = tight/claustrophobic, 1 = vast.
     var smoothedFraming: Float = 0
