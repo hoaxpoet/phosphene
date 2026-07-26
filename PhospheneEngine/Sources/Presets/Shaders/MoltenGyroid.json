@@ -1,0 +1,97 @@
+{
+  "name": "Molten Gyroid",
+  "family": "geometric",
+  "concept_tags": [
+    "molten",
+    "gyroid",
+    "lava"
+  ],
+  "motion_paradigm": "camera_flight",
+  "duration": 30,
+  "description": "LOOK-SPIKE (concept gate) for the molten gyroid concept — a raymarched gyroid-shell labyrinth skinned as molten lava (glowing magma cracks, cooled basalt crust), flown through by rigid forward translation. Ported (FA #73) from diatribes' \"Molten Shapes\". Coherent-by-construction motion built to exercise MetalFX Temporal AA (MFX.1) + the RMPERF.1 per-hit optimisation. NOT certified.",
+  "author": "Matt",
+  "passes": [
+    "ray_march",
+    "post_process"
+  ],
+  "scene_camera": {
+    "position": [
+      0.0,
+      0.0,
+      -2.9
+    ],
+    "target": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "fov": 55
+  },
+  "scene_lights": [
+    {
+      "position": [
+        0.8,
+        1.0,
+        -2.4
+      ],
+      "color": [
+        1.0,
+        0.86,
+        0.66
+      ],
+      "intensity": 5.0
+    },
+    {
+      "position": [
+        -1.1,
+        -0.6,
+        -2.2
+      ],
+      "color": [
+        0.7,
+        0.4,
+        0.3
+      ],
+      "intensity": 2.0
+    }
+  ],
+  "environment": "gallery",
+  "scene_backdrop": "dark",
+  "upscale": "metalfx_temporal",
+  "render_scale": 0.65,
+  "scene_fog": 0.04,
+  "scene_far_plane": 14.0,
+  "visual_density": 0.8,
+  "motion_intensity": 0.7,
+  "color_temperature_range": [
+    0.6,
+    1.0
+  ],
+  "fatigue_risk": "medium",
+  "transition_affordances": [
+    "crossfade",
+    "morph"
+  ],
+  "section_suitability": [
+    "buildup",
+    "peak",
+    "bridge",
+    "comedown"
+  ],
+  "complexity_cost": {
+    "tier1": 10.0,
+    "tier2": 6.0
+  },
+  "stem_affinity": {
+    "bass": "magma_glow"
+  },
+  "audio_routes": [
+    {
+      "route": "magma_glow",
+      "primitive": "bass",
+      "kind": "continuous"
+    }
+  ],
+  "certified": false,
+  "rubric_profile": "full"
+}
