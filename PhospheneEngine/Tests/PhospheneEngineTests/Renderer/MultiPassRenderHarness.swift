@@ -40,7 +40,8 @@ struct MultiPassRenderHarness {
     /// harness; see PhotosensitivityCertificationTests / CouplingReportTests.)
     static let multiPassPresets = [
         "Lumen Mosaic", "Dragon Bloom", "Fata Morgana", "Skein", "Nacre",
-        "Floret", "Glaze", "Filigree", "Mitosis", "Cytokinesis", "Cymatic Resonance"
+        "Floret", "Glaze", "Filigree", "Mitosis", "Cytokinesis", "Cymatic Resonance",
+        "Volumetric Lithograph"
     ]
 
     /// Render `presetName` over `features`/`stems` (row-aligned), returning `reduce(bgra)`
@@ -59,6 +60,7 @@ struct MultiPassRenderHarness {
         case "Mitosis":      return try renderMitosis(features, stems, reduce)
         case "Cytokinesis":  return try renderCytokinesis(features, stems, reduce)
         case "Lumen Mosaic": return try renderLumenMosaic(features, stems, reduce)
+        case "Volumetric Lithograph": return try renderVolumetricLithograph(features, stems, reduce)
         case "Fata Morgana": return try renderBespokeMVWarp("Fata Morgana", features, stems, reduce)
         case "Nacre":        return try renderBespokeMVWarp("Nacre", features, stems, reduce)
         case "Floret":       return try renderBespokeMVWarp("Floret", features, stems, reduce)
@@ -237,6 +239,70 @@ struct MultiPassRenderHarness {
                 iblManager: ibl,
                 postProcessChain: postChain,
                 presetFragmentBuffer3: engine.patternBuffer)
+            try commit(cmd, outTex, into: &pixels)
+        }
+    }
+
+    // MARK: - Render: ray-march, no follower (Volumetric Lithograph)
+
+    // VL is the Lumen ray_march path minus the 4-light follower, plus the two
+    // drives VL's world rides that a static-scene render would omit: the per-frame
+    // `sceneParamsA.x = accumulatedAudioTime` (fold rotation + terrain phase) and
+    // the sidecar camera dolly. Without them the flash measure would be on a
+    // frozen frame — a vacuous "safe" the assertion explicitly rejects.
+    private func renderVolumetricLithograph<T>(_ drive: [FeatureVector], _ stems: [StemFeatures],
+                                               _ reduce: (_ bgra: [UInt8]) -> T) throws -> [T] {
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        guard let preset = _acceptanceFixture.presets.first(where: { $0.descriptor.name == "Volumetric Lithograph" }) else {
+            throw HarnessError.presetNotFound("Volumetric Lithograph")
+        }
+        guard let gbufferState = preset.rayMarchPipelineState else {
+            throw HarnessError.setupFailed("Volumetric Lithograph rayMarchPipelineState missing")
+        }
+        let pipeline = try RayMarchPipeline(context: ctx, shaderLibrary: lib)
+        pipeline.allocateTextures(width: width, height: height)
+        var scene = preset.descriptor.makeSceneUniforms()
+        scene.sceneParamsA.y = Float(width) / Float(height)
+        pipeline.sceneUniforms = scene
+        pipeline.ssgiEnabled = preset.descriptor.passes.contains(.ssgi)
+        pipeline.cameraDollySpeed = preset.descriptor.sceneDollySpeed   // the forward flight
+
+        let ibl = try IBLManager(context: ctx, shaderLibrary: lib)
+        let noise = try? TextureManager(context: ctx, shaderLibrary: lib)
+        let postChain: PostProcessChain?
+        if preset.descriptor.passes.contains(.postProcess) {
+            let chain = try PostProcessChain(context: ctx, shaderLibrary: lib)
+            chain.allocateTextures(width: width, height: height)
+            postChain = chain
+        } else {
+            postChain = nil
+        }
+        let floatStride = MemoryLayout<Float>.stride
+        guard let fft = ctx.makeSharedBuffer(length: 512 * floatStride),
+              let wav = ctx.makeSharedBuffer(length: 2048 * floatStride) else {
+            throw HarnessError.setupFailed("audio buffers")
+        }
+        let outTex = try makeOutputTexture(ctx)
+        var audioTime: Float = 0
+        return try renderLoop(drive, ctx, outTex, reduce) { i, pixels in
+            var fv = drive[i]
+            let stem = stems[i]
+            // Advance the energy-gated animation clock exactly as RenderPipeline does.
+            audioTime += max(0, fv.bass) * (1.0 / 60.0)
+            fv.accumulatedAudioTime = audioTime
+            pipeline.sceneUniforms.sceneParamsA.x = audioTime
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { throw HarnessError.renderFailed }
+            pipeline.render(
+                gbufferPipelineState: gbufferState,
+                features: &fv,
+                fftBuffer: fft, waveformBuffer: wav,
+                stemFeatures: stem,
+                outputTexture: outTex,
+                commandBuffer: cmd,
+                noiseTextures: noise,
+                iblManager: ibl,
+                postProcessChain: postChain)
             try commit(cmd, outTex, into: &pixels)
         }
     }
