@@ -3001,3 +3001,30 @@ These milestones map to product-level outcomes, not implementation phases.
 **Matt's decisions (2026-07-19):** **retire Glass Brutalist** (✅ executed GBRETIRE.1 / D-186); **keep Arachne parked** (most-developed scaffold — not retired despite the gate lean); **next develop = Kinetic Sculpture, spike first** — a thin-strand ray-march feasibility spike gates any rebuild (strands render well → rebuild; else retire KS too). Volumetric Lithograph viable but not chosen this round. Teed-up increments: (a) Glass Brutalist retirement — **✅ executed GBRETIRE.1 / D-186** (catalog count 27 → 26, `expectedAutomatedGate` entry removed, Module Map row dropped, app dolly-speed case unwired, golden fixtures regenerated, full closeout battery); (b) the KS thin-strand feasibility spike — **✅ run 2026-07-19, verdict GREEN (viable-with-AA).** A standalone tracer replicating the exact production march loop (maxSteps=128, hit `d<0.001·t`, min-step 0.002) on a Lippold "Flight" bicone of 80 `sd_capsule` strands: the feared thin-SDF march-cost blowup **did not occur** (max 45–53/128 steps, 0% budget exhaustion; form renders cleanly down to ~0.65px — the relative hit-epsilon implicitly fattens sub-pixel features + the min-step floor prevents stalls). The one defect (foreshortened-strand shimmer <2px) is fully rescued by an **emissive glow core** (additive coverage ∝ ray-strand min-distance), which also reads as the tensioned-wire aesthetic. → **Kinetic Sculpture rebuild is viable** (replace the boxy `ks_rep` 3-axis grid with emissive-cored radiating capsules from hub points; matte/metal members ≥~2px via distance-fatten + existing bloom). Caveat: shimmer inferred from static frames — confirm via a rotating-camera pass through the full pipeline early in the rebuild. Spike is throwaway (not committed). **Next: Matt's go on the KS rebuild.**
 
 **Milestone E — Visual Identity.** Phosphene's preset catalog has a recognizable aesthetic ceiling that reads as 2026-quality — comparable to indie-game-released visuals, not 2006-era ShaderToy. *Requires: Phase V complete, Phase V.7–V.11 uplifts all Matt-approved, Phase CC certified (the flagship demonstration piece), accessibility pass (U.9).*
+
+---
+
+## Beat-Sync Program (ratified D-202, Matt GO 2026-07-26)
+
+Multi-phase program for beat-match/music-sync across the five hard categories. Full spec, per-category benchmark suites/targets, and per-increment detail: [`docs/BEAT_SYNC_PROGRAM_PLAN.md`](BEAT_SYNC_PROGRAM_PLAN.md). Phase stubs below; each phase's first session expands its own spec from plan §4. Phase SK (skills) is in flight as SK.1.
+
+### Phase GT — Ground truth + benchmark harness
+Fixture manifest, tap-capture CLI + reference-tool cross-check, BeatBench scoring harness + baseline capture across all five suites. 3–4 sessions + ~40 min Matt taps. spec: BEAT_SYNC_PROGRAM_PLAN.md §4. GT.3 done-when includes filling the `beatbench` skill's TO FILL block (CLI invocations) and ratifying/revising targets against the baseline (D-B).
+
+### Phase DBN — Sequence decoding replaces peak-picking
+Bar-pointer-model decoder over Beat This! activations (odd meters, tempo-state), env-flagged A/B vs peak-pick, piecewise-tempo BeatGrid v2. 5–7 sessions. spec: BEAT_SYNC_PROGRAM_PLAN.md §4.
+
+### Phase FT — Full-track analysis for local files
+Beat This! sliding-window tiling over the full track + local-file integration; the category-3 proving ground. 2–3 sessions, depends on DBN.4. spec: BEAT_SYNC_PROGRAM_PLAN.md §4.
+
+### Phase RLG — Rolling live grid for streaming (research-gated)
+RLG.0 offline reproducibility study with a numeric GO bar (D-C), then RollingBeatTracker engine component on GO only. 2–3 + 4–6 sessions. spec: BEAT_SYNC_PROGRAM_PLAN.md §4.
+
+### Phase TRK — Live tracker tightens, not bounds
+PLL/Kalman phase-period controller (replay-first), drums-stem onset evidence upgrade, BUG-065 closure. 3–4 sessions, independent of DBN. spec: BEAT_SYNC_PROGRAM_PLAN.md §4.
+
+### Phase CNF — Confidence and graded degradation
+Confidence fusion + FeatureVector plumbing (D-D), D-154 binary gate → graded scaling, rubato validation (category 5). 3–4 sessions, after DBN + RLG.0/TRK signals exist. spec: BEAT_SYNC_PROGRAM_PLAN.md §4.
+
+### Phase MDL — Model headroom, measured (optional)
+Beat This! final0 offline A/B on all suites; adopt only if deltas justify weight/prep cost (D-E). 1–2 sessions, any time after GT.3. spec: BEAT_SYNC_PROGRAM_PLAN.md §4.
