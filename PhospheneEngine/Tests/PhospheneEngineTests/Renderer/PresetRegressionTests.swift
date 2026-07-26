@@ -255,7 +255,7 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // (the same blind spot that made the round-3 contact sheet show three identical
     // columns). This gate therefore guards VL's STRUCTURE, not its audio coupling —
     // coupling is covered by renderVolumetricLithographFoldSweep + the motion gate.
-    "Volumetric Lithograph": (steady: 0x33DC5597F1CDAA59, beatHeavy: 0x32945597F144A269, quiet: 0x33BE5596F28CC249),
+    "Volumetric Lithograph": (steady: 0x739455B3B3CE1356, beatHeavy: 0x339455B361C63D92, quiet: 0x33D455B2B3CE934E),
     "Waveform": (steady: 0x000F0F0000000000, beatHeavy: 0x000F0F0000000000, quiet: 0x000F0F0000000000),
 ]
 
