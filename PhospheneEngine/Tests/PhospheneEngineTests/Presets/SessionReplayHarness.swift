@@ -1,7 +1,8 @@
 // SessionReplayHarness — FLY.6: render a preset from a REAL recorded session.
 //
-// WHY THIS EXISTS (BUG-071 round 6). Across five rounds of Fractal Fly-By
-// review, Matt twice said "what you are seeing looks a lot nicer than what I
+// WHY THIS EXISTS (BUG-071 round 6). Across several rounds of Fractal Fly-By
+// review (that preset since retired, D-201), Matt twice said "what you are
+// seeing looks a lot nicer than what I
 // was seeing." That was the actual defect: the offline checks did not reproduce
 // the production renderer, so every look conclusion was drawn from a cleaner
 // image than the live one. The divergences were not subtle —
@@ -22,7 +23,7 @@
 //
 // Env-gated. Invocation:
 //   REPLAY_SESSION=/path/to/session_dir \
-//   REPLAY_PRESET="Fractal Fly-By" \
+//   REPLAY_PRESET="Volumetric Lithograph" \
 //   REPLAY_OUT=/tmp/replay \
 //   REPLAY_W=1067 REPLAY_H=750 \
 //   REPLAY_FROM=0 REPLAY_COUNT=90 \
@@ -112,7 +113,10 @@ struct SessionReplayHarness {
             return
         }
         let sessionDir = URL(fileURLWithPath: sessionPath)
-        let presetName = env["REPLAY_PRESET"] ?? "Fractal Fly-By"
+        guard let presetName = env["REPLAY_PRESET"] else {
+            print("[replay] REPLAY_PRESET not set — skipping")
+            return
+        }
         let outDir = URL(fileURLWithPath: env["REPLAY_OUT"] ?? NSTemporaryDirectory().appending("replay"))
         // Default to the windowed size Matt actually watches, NOT 1080p.
         let width  = Int(env["REPLAY_W"] ?? "") ?? 1067
@@ -170,9 +174,6 @@ struct SessionReplayHarness {
         // dollying preset (Volumetric Lithograph) replays with its real forward
         // flight instead of a static camera (BUG-074 replay-harness parity gap).
         pipeline.cameraDollySpeed = preset.descriptor.sceneDollySpeed
-        pipeline.fovFramingRange = presetName == "Fractal Fly-By" ? 0.38 : 0
-        pipeline.corridorSteerEnabled = presetName == "Fractal Fly-By"
-        pipeline.resetCorridorSteer()
 
         let ibl = try IBLManager(context: ctx, shaderLibrary: lib)
         let noise = try? TextureManager(context: ctx, shaderLibrary: lib)
