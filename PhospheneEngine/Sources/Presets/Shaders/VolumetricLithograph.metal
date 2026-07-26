@@ -461,7 +461,13 @@ constant float VL_FOLD_CELL   = 20.0f;  // world units per mirrored cell.
                                         // sets whether each one is legible. They are
                                         // separate knobs; round 3 conflated them.
 constant float VL_WARP_SCALE  = 0.045f; // world-space frequency of the organic warp
-constant float VL_WARP_AMOUNT = 4.0f;   // world units of displacement at full warp.
+constant float VL_WARP_AMOUNT = 5.5f;   // VL-PSY.6: 4.0 -> 5.5. Stronger world-space warp
+                                        // makes each cell more distinct — a second lever
+                                        // on the spatial repetition, into the perf headroom.
+constant float VL_MACRO_DRIFT = 1.15f;  // VL-PSY.6: how far the per-cell seed drifts the
+                                        // noise slice. Bigger = successive mandalas differ
+                                        // more (the repetition fix). Symmetry-safe: it rides
+                                        // the phase axis, orthogonal to the folded x/z.
                                         // Round 4 first tried 5.5 and covered the whole
                                         // frame in high-frequency speckle — the FA #64
                                         // dot-pattern class: a domain warp adds its own
@@ -571,9 +577,20 @@ static inline float2 pModMirror2(thread float2& p, float2 size) {
 /// Order matters: mirror-tile FIRST (infinite seamless field), then polar-fold
 /// within the cell (each cell becomes a mandala). Reversing it would produce
 /// one kaleidoscope at the world origin that the camera flies away from.
-static inline float2 vl_foldDomain(float2 xz, float foldRot) {
+static inline float2 vl_foldDomain(float2 xz, float foldRot, thread float& cellSeed) {
     float2 q = xz;
-    pModMirror2(q, float2(VL_FOLD_CELL));
+    // pModMirror2 returns the CELL INDEX. VL-PSY.6: every cell maps to the same
+    // fundamental domain, so without this each cell renders an identical mandala
+    // — the spatial repetition Matt flagged after the Spotify listen ("on the
+    // repetitive side"). Hashing the cell index to a per-cell seed lets each
+    // cell sample a different SLICE of the 3D noise (added to the phase axis in
+    // vl_terrainNoise, which is orthogonal to the x/z fold symmetry — so the
+    // kaleidoscope symmetry WITHIN each cell is untouched, only the pattern
+    // between cells changes). A smooth linear combination (not a hash) so
+    // adjacent cells differ a little and distant cells differ more: the world
+    // evolves as you fly, rather than jumping randomly cell-to-cell.
+    float2 cellIdx = pModMirror2(q, float2(VL_FOLD_CELL));
+    cellSeed = dot(cellIdx, float2(1.7f, 2.3f));
     // Turn the tube, then fold. Rotating BEFORE the polar fold spins which part
     // of the noise field lands in each wedge, so the mandala's pattern turns in
     // place — the thing a real kaleidoscope does — while the symmetry order, and
@@ -642,9 +659,16 @@ static inline float2 vl_foldDomain(float2 xz, float foldRot) {
 /// space — the geometry folds, not the image.
 static inline float vl_terrainNoise(float3 worldP, float audioPhase,
                                      float foldRot) {
-    float2 folded = vl_foldDomain(worldP.xz, foldRot);
+    float cellSeed = 0.0f;
+    float2 folded = vl_foldDomain(worldP.xz, foldRot, cellSeed);
+    // The per-cell seed rides the noise's THIRD axis alongside the audio-time
+    // phase. Both are orthogonal to the folded x/z, so neither disturbs the
+    // in-cell symmetry: audioPhase drifts the slice over TIME (the terrain
+    // variety Matt liked), cellSeed drifts it over SPACE (VL-PSY.6, the
+    // repetition fix). VL_MACRO_DRIFT sets how fast the world changes per cell.
     float3 noiseP = float3(folded.x * VL_NOISE_FREQUENCY,
-                           audioPhase * VL_NOISE_TIME_SCALE,
+                           audioPhase * VL_NOISE_TIME_SCALE
+                             + cellSeed * VL_MACRO_DRIFT,
                            folded.y * VL_NOISE_FREQUENCY);
     return fbm3D(noiseP, VL_FBM_OCTAVES);
 }
@@ -939,11 +963,15 @@ void sceneMaterial(float3 p,
     // coordinates: hue sweeps around and out from each mandala centre, giving
     // the continuous travelling hue `03` is the hero for. Height keeps a small
     // term so strata still read; it is no longer the primary hue axis.
-    float2 foldLocal = vl_foldDomain(p.xz, foldRotM);
+    float paletteCellSeed = 0.0f;
+    float2 foldLocal = vl_foldDomain(p.xz, foldRotM, paletteCellSeed);
     float  foldRad   = length(foldLocal);
     float  foldAng   = atan2(foldLocal.y, foldLocal.x) / (2.0f * VL_HG_PI);
     float palettePhase = foldAng * 1.0f          // hue sweeps AROUND the mandala
                        + foldRad * 0.055f        // and banded OUT from its centre
+                       + paletteCellSeed * 0.05f // VL-PSY.6: per-cell hue drift so
+                                                 // successive mandalas differ in colour
+                                                 // too, not just in relief
                        + n * 0.25f               // strata still tint (was 0.9 = the two-tone)
                        + audioPhase * 0.08f
                        + stemHue * 0.6f
