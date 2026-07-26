@@ -18,6 +18,10 @@ Every increment ends the same way. Skipping a step turns a finished increment in
 7. **Known risks and follow-ups** — bounded list: what could break, what was deferred, next recommended increment.
 8. **Git status** — branch, commit hash(es), clean/dirty, files staged outside the increment's scope.
 
+## Domain evidence — beat-sync (dsp.beat)
+
+Closeouts for `dsp.beat` increments include the **BeatBench before/after table across all five suites** (per the `beatbench` skill), or an explicit **"no behavioral change to beat sync"** statement. This is a done-when, not optional — a beat-sync closeout without one or the other is incomplete.
+
 ## Mandatory doc updates
 
 **`docs/ENGINEERING_PLAN.md`** — update whenever an increment is completed, split, renamed, deferred, or discovered to require prerequisite work. Each increment ID maps to a row stating done-when and whether it's done. If the plan and the code disagree, that is a bug in the plan.

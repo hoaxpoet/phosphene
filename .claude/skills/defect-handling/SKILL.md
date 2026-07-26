@@ -18,6 +18,8 @@ Do not modify code until these are documented:
 5. **Suspected failure class** — one from the taxonomy (`algorithm`, `concurrency`, `api-contract`, `calibration`, `pipeline-wiring`, `resource-management`, `sample-rate`, `precision`, `test-isolation`, `sdf-geometry`, `render-state`, `regression`, `documentation-drift`).
 6. **Verification criteria** — written BEFORE the fix. Minimum: one automated gate + one manual check for anything affecting musical feel or visual fidelity.
 
+**Beat-sync (`dsp.beat`):** BeatBench is the evidence substrate for the evidence-before-implementation step — attach before/after BeatBench numbers (per the `beatbench` skill), not ad-hoc measurements. Load the `beat-sync-session` skill for the constraint set before proposing a fix.
+
 ## Multi-increment process for P0/P1
 
 Separate increments, each with its own commit and stop, unless trivial (<5 lines, root cause obvious from existing artifacts, no architectural risk — collapsing requires Matt's explicit approval, stated in the commit message and KNOWN_ISSUES):
