@@ -250,33 +250,12 @@ Aurora Veil had churned AV.2 → AV.6 without certifying, because each round add
 **Known follow-up.** `AuroraVeilState.swift` (kink accumulator + pitch smoother) and its three driver test suites are now dead — the shader ignores buffer(6). Left in place deliberately to bound this increment; they are green and have zero functional effect. `AuroraVeilRoutes.swift` still describes the deleted three-channel set.
 
 ### Increment PUB.10 — R3.2: CaptureStateSurface decomposition slice ✅ (2026-07-12)
-
-Second R3 slice, same recipe as R3.1: `audioSignalState` + `signalHealth` (ASH.1) + `hasScreenCapturePermission` move to a `CaptureStateSurface` child (`private(set)` + semantic mutators + main-thread precondition); engine keeps read-only forwarders; the R3.1 bridge becomes one merged objectWillChange subscription; 4 writer sites converted with their exact thread-hop shape preserved; injection sites (`ContentView` ×2, `PlaybackView` ×2, FirstAudioDetector doc) → `captureState.$…`. **Task-1 call: `isCapturing` stays engine-side** — its writers are the CSV feature-capture toggle (diagnostics), no view/publisher consumes it; a later diagnostics slice can take it. 3 contract tests. Remaining slices: R3.3 analysis surface, R3.4 LF transport, R3.5 orchestrator bridge (cross-thread-delicate, own session).
-
 ### Increment PUB.9 — R3.1: NowPlayingSurface decomposition slice ✅ (2026-07-12)
-
-First R3 slice (entry backfilled at PUB.10 — the PUB.9 session's EP edit didn't land, its detail is in the [dev-2026-07-12-223804] release note): the four now-playing chrome fields → `NowPlayingSurface` child with paired `publishTrack` + THE session-boundary `clear()`, structurally closing the BUG-024 class for these fields; 13 writer sites compiler-found and converted; 2 contract tests; recipe recorded for R3.2–.5.
-
 ### Increment PUB.8 — R2: stateful-runtime dispatch point ✅ (2026-07-12)
-
-Seven name-keyed apply blocks → one tail switch + six verbatim bind methods (D-097 shape); dead mv_warp Arachne copy deleted (staged-only preset); Lumen binds independent of rayMarch-arm success; engine-side `StatefulRuntimeRegistry` + rename-gate test; FFO + Nacre/Floret/Glaze documented non-candidates; Nimbus `render_scale`-sidecar follow-up noted. Output-preserving (goldens/flash/photosensitivity/dispatch green). Remaining: R3 only.
-
 ### Increment PUB.7 — Ultra-review Phase 2: contributor experience ✅ (2026-07-12)
-
-Hot-reload wired live (user preset dir + compile-error toasts via the one-shot channel — Decision 4); §Key Types padding-vs-live corrected field-verified (FeatureVector has NO free floats); SHADER_CRAFT §17 completed to every decoded key + the family-enum correction; RUNBOOK cert procedure matches practice; GLOSSARY + NEW_PRESET_CHECKLIST + YOUR_FIRST_PRESET (with `DocsExampleCompileTests` — the walkthrough pair compiles through the real loader every run; caught 2 real doc bugs on first arm). Perf-baseline documented (README) rather than env-gated — keeps the closeout battery's perf coverage default-on. **Manual (pending):** Matt's hot-reload UX walk — drop a pair into Application Support, save good + broken edits, confirm live swap + toast.
-
 ### Increment PUB.6 — Deferred Phase-1 closed ✅ (2026-07-12)
-
-**BUG-070** filed + fixed (failed-reinstall untruthful state: `_isCapturing` now cleared in the catch, monitor kept as diagnostic beacon; engine detectors were sample-starved and recovery was guard-blocked; live device-swap validation pending). The lifecycle-interleave residual stays deliberately open in the entry (BUG-063 doctrine: serialize only on a reproduced artifact). **ITunesRateLimiter** shared window (resolver + previously-unthrottled app fetcher) + MetadataPreFetcher in-flight coalescing (+regressions). **D-056** unreachable `.partial` qualification deleted; the test that synthesized the impossible state flipped to pin the real contract. Full battery at closeout.
-
 ### Increment PUB.5 — Ultra-review Phase-1 remainder ✅ (2026-07-12)
-
-**C7 renderFrame race dissolved with enforcement** (verified threading model: everything preset-related is main-thread; contradictory comments fixed; `dispatchPrecondition` at applyPreset makes the contract compiler-era-proof; halfResTexture needs no lock). **LF failures surfaced**: `localFilePlaybackFailed` + one-shot engine→bridge error channel → §9.4 toast; start-failure ends to EndedView, mid-queue advances past the broken file (UX_SPEC row, strings, 2 bridge regressions). **Preparation total-timeout escape un-deadened** (Rule 5 before Rule 4 + 2 deterministic regressions; `preparationStartDate` opened internal for tests). **Deliberately deferred**: tap-lifecycle serialization + dead-man switch (BUG-063-pattern risk on static-only evidence against the G1-validated path → dedicated instrumentation-first session); iTunes shared rate limiter; D-056 branch decision. Manual note: the LF failure toast + skip behaviour is code-complete pending Matt's UX walk (stage a moved/renamed file mid-queue).
-
 ### Increment PUB.4 — Ultra-review Phase 4: refactoring, R1 + R4 ✅ (2026-07-12)
-
-**R1** `feedback_pixel_format` sidecar key replaces the display-name pixel-format matches in `PresetLoader.feedbackFormat` (4 shipped overrides declared; name matches = deprecated fallback; goldens + flash harness prove output-preserving; 2 new regressions + unknown-value fallback test; SHADER_CRAFT §17 row). **R4** 5 ceremony protocols deleted (single conformer, never a type, no double — API docs grafted onto concretes); dead `OnboardingReset` deleted (+8 pbxproj refs); FFTMagnitudeKernel claim honesty + both hand-copies annotated (StemAnalyzer's 16× scale is DELIBERATE — port needs a stem-feature regression pass); Package.swift → AUDIT_KEEPLIST pointer; `cancel_fromReady` deterministic (awaits `sessionPreparationTask.value`; starvation-not-hang confirmed; 5/5). **Scoped + queued, each its own session:** **R2** PresetRuntime registry — generalize the proven D-097 shape (`init?(device:)` / `bind(to:)` / `resetPerTrack(seed:)` + optional descriptors, one name→factory table) to collapse the 3 name-keyed app-layer sites per stateful preset; **R3** VisualizerEngine decomposition (CLEAN Phase 8) — child ObservableObjects along session-mode seams (LF state / streaming-tap state / orchestrator bridge), structurally eliminating the BUG-024 class that PUB.2 patched point-wise. Done-when: ✅ builds green, lint 0, goldens byte-stable, full battery at closeout.
-
 ### Increment PUB.3 — Ultra-review Phase 3: documentation reconciliation ✅ (2026-07-11)
 ### Increment PUB.2 — Ultra-review Phase 1: code defects ✅ (2026-07-11)
 ### Increment PUB.1 — Publication Phase 0: publish blockers ✅ (2026-07-11)
