@@ -119,6 +119,13 @@ let package = Package(
             path: "Sources/TempoDumpRunner"
         ),
         .executableTarget(
+            name: "TapCapture",
+            dependencies: [
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            path: "Sources/TapCapture"
+        ),
+        .executableTarget(
             name: "BeatThisActivationDumper",
             dependencies: [
                 "DSP",
