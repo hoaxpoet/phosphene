@@ -1,0 +1,120 @@
+{
+  "_doc": "BeatBench fixture manifest (GT.1). Audio lives at BEATBENCH_FIXTURES_DIR, not in the repo. Regenerate with tools/beatbench_manifest.py. sha256 pins exact bytes; a re-encode changes it.",
+  "fixtures_env": "BEATBENCH_FIXTURES_DIR",
+  "tracks": [
+    {
+      "id": "billie_jean",
+      "title": "Billie Jean",
+      "artist": "Michael Jackson",
+      "suite": 1,
+      "source": "local",
+      "filename": "billie_jean.mp3",
+      "sha256": "09a838e5b19b9e6acf6b24790b8af9eac9e1c613c1b5325285c6c57021c080fb",
+      "duration_s": 295.34
+    },
+    {
+      "id": "around_the_world",
+      "title": "Around the World",
+      "artist": "Daft Punk (Alive 2007)",
+      "suite": 1,
+      "source": "local",
+      "filename": "around_the_world.mp3",
+      "sha256": "381e389fd0fa5bc771eaed83a1c625f42883789295d2f37756104ee45e0ecd41",
+      "duration_s": 342.67
+    },
+    {
+      "id": "stayin_alive",
+      "title": "Stayin' Alive",
+      "artist": "Bee Gees",
+      "suite": 1,
+      "source": "local",
+      "filename": "stayin_alive.mp3",
+      "sha256": "a6b3e0fbdb70cd2df13efe9f49d6e364a0429ccfe73994bc98b16714893cb9cf",
+      "duration_s": 285.34
+    },
+    {
+      "id": "superstition",
+      "title": "Superstition",
+      "artist": "Stevie Wonder",
+      "suite": 1,
+      "source": "local",
+      "filename": "superstition.flac",
+      "sha256": "03f02b09f9365118ade2b2ad77bee5ea14f085f98667f9a814e75bba8ce1d83c",
+      "duration_s": 266.37
+    },
+    {
+      "id": "take_five",
+      "title": "Take Five",
+      "artist": "The Dave Brubeck Quartet",
+      "suite": 2,
+      "source": "local",
+      "filename": "take_five.mp3",
+      "sha256": "893e851fb2036d8d02f695ac8317df271ee6c353fe4135ac78589cdddd19b860",
+      "duration_s": 327.31
+    },
+    {
+      "id": "solsbury_hill",
+      "title": "Solsbury Hill",
+      "artist": "Peter Gabriel",
+      "suite": 2,
+      "source": "tap",
+      "status": "pending"
+    },
+    {
+      "id": "bohemian_rhapsody",
+      "title": "Bohemian Rhapsody",
+      "artist": "Queen",
+      "suite": 3,
+      "source": "tap",
+      "status": "pending"
+    },
+    {
+      "id": "giorgio_by_moroder",
+      "title": "Giorgio by Moroder",
+      "artist": "Daft Punk",
+      "suite": 3,
+      "source": "local",
+      "filename": "giorgio_by_moroder.mp3",
+      "sha256": "a5e33d7776106ed169e6d0ab91f10ab37858ce29e42602899a5ff39865298112",
+      "duration_s": 542.62
+    },
+    {
+      "id": "dance_yrself_clean",
+      "title": "Dance Yrself Clean",
+      "artist": "LCD Soundsystem",
+      "suite": 3,
+      "source": "local",
+      "filename": "dance_yrself_clean.mp3",
+      "sha256": "0e1dc8f765bf204b3e47cb5d60a335d8e20c0df15f371ddf8ed8b609d82312b7",
+      "duration_s": 538.15
+    },
+    {
+      "id": "bleed",
+      "title": "Bleed",
+      "artist": "Meshuggah",
+      "suite": 4,
+      "source": "tap",
+      "status": "pending"
+    },
+    {
+      "id": "girl_from_ipanema",
+      "title": "The Girl from Ipanema",
+      "artist": "Getz/Gilberto",
+      "suite": 5,
+      "source": "local",
+      "filename": "girl_from_ipanema.mp3",
+      "sha256": "df4d9cff4414e3aa1b431308b0b9c10ded4fe3c60927aa43712689b31cecdf98",
+      "duration_s": 319.74
+    },
+    {
+      "id": "clair_de_lune",
+      "title": "Clair de Lune",
+      "artist": "Debussy (Weissenberg)",
+      "suite": 5,
+      "source": "local",
+      "filename": "clair_de_lune.mp3",
+      "sha256": "56edb640673fc5b96490e7da80055eafbe0b4ff47b81f3839cb0fec06bc53038",
+      "duration_s": 297.48
+    }
+  ]
+}
