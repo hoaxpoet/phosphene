@@ -36,14 +36,13 @@ struct TapPass: Codable {
 
 // MARK: - Calibration
 
-struct CalibrationResult: Codable {
+/// One calibration round: a single metronome pass.
+struct CalibrationRound: Codable {
     let calibratedAt: String
     let bpm: Double
     let clickCount: Int
     let tapCount: Int
-    /// Median tap-minus-click offset. Subtract from raw taps.
     let medianOffsetMs: Double
-    /// Median absolute deviation — spread of the tapping, a quality signal.
     let madMs: Double
     let offsetsMs: [Double]
 
@@ -55,6 +54,51 @@ struct CalibrationResult: Codable {
         case medianOffsetMs = "median_offset_ms"
         case madMs = "mad_ms"
         case offsetsMs = "offsets_ms"
+    }
+}
+
+/// Pooled calibration across rounds.
+///
+/// Measured 2026-07-27: two rounds by the same tapper, minutes apart, differed by
+/// 29.5 ms (−41.6 vs −12.1) while each was internally tight (MAD 12.1 / 10.1). The
+/// between-round spread is therefore several times the within-round spread, so a
+/// single round understates the uncertainty and would bias every corrected tap by
+/// its own drift. `medianOffsetMs` pools all rounds' offsets;
+/// `betweenRoundSpreadMs` reports the disagreement so it can be judged rather than
+/// hidden.
+struct CalibrationResult: Codable {
+    let calibratedAt: String
+    let roundCount: Int
+    /// Pooled median tap-minus-click offset. Subtract from raw taps.
+    let medianOffsetMs: Double
+    /// Pooled median absolute deviation.
+    let madMs: Double
+    /// Max − min of the per-round medians. Large values mean unstable calibration.
+    let betweenRoundSpreadMs: Double
+    let rounds: [CalibrationRound]
+
+    enum CodingKeys: String, CodingKey {
+        case calibratedAt = "calibrated_at"
+        case roundCount = "round_count"
+        case medianOffsetMs = "median_offset_ms"
+        case madMs = "mad_ms"
+        case betweenRoundSpreadMs = "between_round_spread_ms"
+        case rounds
+    }
+
+    /// Rebuild the pooled summary from a round list.
+    static func pooled(rounds: [CalibrationRound]) -> CalibrationResult {
+        let allOffsets = rounds.flatMap(\.offsetsMs)
+        let roundMedians = rounds.map(\.medianOffsetMs)
+        let spread = (roundMedians.max() ?? 0) - (roundMedians.min() ?? 0)
+        return CalibrationResult(
+            calibratedAt: rounds.last?.calibratedAt ?? "",
+            roundCount: rounds.count,
+            medianOffsetMs: TapStats.median(allOffsets),
+            madMs: TapStats.medianAbsoluteDeviation(allOffsets),
+            betweenRoundSpreadMs: spread,
+            rounds: rounds
+        )
     }
 }
 
