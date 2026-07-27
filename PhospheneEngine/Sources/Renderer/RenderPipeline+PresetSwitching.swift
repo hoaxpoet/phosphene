@@ -1,3 +1,7 @@
+// Per-frame compute step for a ray-march preset whose slot-10 height field is
+// simulated rather than baked (see `setRayMarchPreRenderCompute`).
+public typealias RayMarchPreRenderCompute = @Sendable (MTLCommandBuffer, FeatureVector) -> Void
+
 import Metal
 import Shared
 import os.log
@@ -312,6 +316,14 @@ extension RenderPipeline {
     /// (V.9 Session 4.5b Phase 1). Thread-safe — can be called from any queue.
     public func setRayMarchPresetHeightTexture(_ texture: MTLTexture?) {
         rayMarchPresetHeightTextureLock.withLock { rayMarchPresetHeightTexture = texture }
+    }
+
+    /// Attach a per-frame compute step for the active ray-march preset — for presets
+    /// whose slot-10 height field is SIMULATED rather than baked. Encoded at the top
+    /// of `drawWithRayMarch`, on the same command buffer as the render that consumes
+    /// it. Pass nil to detach. Thread-safe. First consumer: `FaradaySimulation`.
+    public func setRayMarchPreRenderCompute(_ compute: RayMarchPreRenderCompute?) {
+        rayMarchLock.withLock { rayMarchPipeline?.preRenderCompute = compute }
     }
 
     /// Attach the mesh G-buffer encode closure (V.9 Session 4.5c Phase 1

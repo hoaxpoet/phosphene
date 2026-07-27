@@ -63,6 +63,27 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment FDY.1 — Faraday: a Swift–Hohenberg sea wired into the engine (D-203) 🔨 (2026-07-27)
+
+An iridescent liquid sea the music physically drives, built to exercise MFX.1 + RMPERF.1. A
+Swift–Hohenberg simulation of parametrically-driven surface waves runs on the GPU every frame and is
+ray-marched as a liquid heightfield with MetalFX temporal AA. Loudness crossing the Faraday
+threshold is a real supercritical bifurcation (glassy below, cells erupting above); timbre selects
+the cell wavelength; the dish's plate modes gate the drive so cells organise into large-scale
+figures. Colour is thin-film interference off the wave itself — the standing wave IS the film
+thickness. Sibling to Cymatic Resonance: sound causes the image.
+
+- **Engine:** new `setRayMarchPreRenderCompute` per-frame hook (Ferrofluid bakes its slot-10 field
+  once; a live PDE must step on the render's own command buffer). State on `RayMarchPipeline`.
+- **No SceneUniforms lanes added** — phase derives from `accumulatedAudioTime`, so the 240-byte
+  D-187 contract is untouched (FLY.12's byte regression not repeated).
+- **`SessionReplayHarness` steps simulated slot-10 fields** — without it it renders a FLAT
+  placeholder (the FLY.6 divergence; the first production render hit exactly this).
+- Removes the abandoned Molten Gyroid look-spike. Roster 26 → 27. Gates: lint 0, engine + app build,
+  43 gate tests green incl. the byte contract. **`certified:false` — pending Matt's live M7.**
+- **Honest residuals:** cell walls ring where fringes outrun the pixel (`sceneMaterial` gets no
+  slope); backdrop is a dark strip because the engine offers only `env` (grey studio) or `dark`.
+
 ### Increment VL.CERT — Volumetric Lithograph certified ✅ (2026-07-26)
 
 **Done-when:** all cert gates measured green and Matt's M7 signs off. Met.
