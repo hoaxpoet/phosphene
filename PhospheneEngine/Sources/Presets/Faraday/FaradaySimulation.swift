@@ -72,8 +72,21 @@ public final class FaradaySimulation: @unchecked Sendable {
     /// `mid` p95 is ~0.09, so bass carries the range. The offset puts the Faraday
     /// THRESHOLD inside the music's real dynamics — quiet passages fall below it and
     /// the surface goes glassy, loud ones erupt into cells.
-    static let driveOffset: Float = -0.13
-    static let driveGain: Float = 1.25
+    /// MEASURED against session 2026-07-27T16-08-42Z: at offset −0.13 the drive sat
+    /// ABOVE threshold in **99 %** of frames, so the Faraday bifurcation — the entire
+    /// identity of the preset — never fired and the sea was permanently erupted. Matt:
+    /// "not really understanding what makes this a Faraday preset." At −0.32/1.6 the
+    /// track spends ~35 % of its time glassy, so crossing the threshold is a real,
+    /// visible event rather than a state it never leaves.
+    static let driveOffset: Float = -0.32
+    static let driveGain: Float = 1.6
+
+    /// Transient punch. `bass_dev` is the D-026 deviation primitive; on real music it
+    /// sits at 0 most of the time and spikes (p99 ≈ 0.47, max 2.55), so it is
+    /// soft-saturated against p99 rather than 1.0. This is what makes a hit visibly
+    /// erupt the surface instead of only the slow loudness envelope moving it.
+    static let accentGain: Float = 0.55
+    static let accentSaturate: Float = 2.6
 
     // MARK: - State
 
@@ -152,7 +165,11 @@ public final class FaradaySimulation: @unchecked Sendable {
     public func step(commandBuffer: MTLCommandBuffer, features: FeatureVector) {
         // Loudness -> drive. Bass carries the dynamic range on real music.
         let loud = min(max(features.bass * 0.85 + features.mid * 0.55, 0), 1.6)
-        let drive = Self.driveOffset + loud * Self.driveGain
+        // Transient accent on a DISTINCT primitive from the loudness envelope (FA #67):
+        // the envelope decides whether the sea is above threshold at all; the deviation
+        // spike punches it harder for a moment.
+        let accent = 1 - exp(-max(features.bassDev, 0) * Self.accentSaturate)
+        let drive = Self.driveOffset + loud * Self.driveGain + accent * Self.accentGain
 
         // Timbre -> wavelength. `spectral_centroid` occupies roughly 0.085-0.18 on
         // real music, so map THAT band rather than 0-1 (FA #31).
