@@ -8,7 +8,7 @@
   ],
   "motion_paradigm": "field_evolution",
   "duration": 40,
-  "description": "An iridescent liquid sea that the music physically drives. A Swift-Hohenberg simulation of parametrically-driven surface waves (Faraday waves) runs on the GPU each frame and is ray-marched as a liquid heightfield: loudness crossing the Faraday THRESHOLD is a real supercritical bifurcation, so the sea is glassy and still below it and erupts into cells above it, and timbre selects the cell size. Colour is thin-film interference off the wave itself, not a palette \u2014 the standing wave IS the film thickness, so the hues ripple and swap as the pattern moves. Sibling to Cymatic Resonance: sound causes the image. Ported physics (FA #73): Swift & Hohenberg 1977, Chen & Vinals 1997.",
+  "description": "An iridescent liquid sea that the music physically drives. A Swift-Hohenberg simulation of parametrically-driven surface waves (Faraday waves) runs on the GPU each frame and is ray-marched as a liquid heightfield seen from ABOVE, the way a Faraday experiment is actually observed: loudness crossing the Faraday THRESHOLD is a real supercritical bifurcation, so the sea is glassy and still below it and erupts into cells above it, and timbre selects the cell size. Colour is thin-film interference off the wave itself, not a palette \u2014 the standing wave IS the film thickness, so the hues ripple and swap as the pattern moves. Sibling to Cymatic Resonance: sound causes the image. Ported physics (FA #73): Swift & Hohenberg 1977, Chen & Vinals 1997.",
   "author": "Matt",
   "passes": [
     "ray_march",
@@ -17,15 +17,15 @@
   "scene_camera": {
     "position": [
       0.0,
-      0.5,
-      -1.0
+      1.35,
+      -0.55
     ],
     "target": [
       0.0,
-      -0.38,
-      1.9
+      0.0,
+      0.15
     ],
-    "fov": 64
+    "fov": 52
   },
   "scene_lights": [
     {
@@ -58,7 +58,7 @@
   "environment": "gallery",
   "upscale": "metalfx_temporal",
   "render_scale": 0.65,
-  "scene_fog": 0.05,
+  "scene_fog": 0.0,
   "scene_fog_near": 3.0,
   "scene_far_plane": 16.0,
   "visual_density": 0.85,
@@ -82,7 +82,9 @@
     "tier1": 9.0,
     "tier2": 5.5
   },
-  "stem_affinity": {},
+  "stem_affinity": {
+    "bass": "eruption_punch"
+  },
   "audio_routes": [
     {
       "route": "faraday_threshold",
@@ -98,6 +100,16 @@
       "route": "cell_wavelength",
       "primitive": "spectralCentroid",
       "kind": "continuous"
+    },
+    {
+      "route": "subharmonic_inversion",
+      "primitive": "barPhase01",
+      "kind": "accent"
+    },
+    {
+      "route": "eruption_punch",
+      "primitive": "bassDev",
+      "kind": "accent"
     }
   ],
   "certified": false,
