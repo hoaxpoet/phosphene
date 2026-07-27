@@ -20,15 +20,27 @@ port the model correctly" (already covered by the DSP.2 S8 layer-match tests), n
 "is the beat right". Ground truth has to come from outside that loop: human taps
 plus a *different* algorithm family.
 
-## Setup
+## Setup — two venvs, deliberately
+
+madmom's compiled Cython extensions are pinned to numpy 1.x, and installing librosa
+pulls numpy 2.x, which silently breaks them. Keeping the two backends in separate
+venvs is what makes both work at once.
 
 ```bash
+# librosa
 /opt/homebrew/bin/python3.12 -m venv tools/beatbench/.venv
 tools/beatbench/.venv/bin/pip install librosa soundfile
+
+# madmom — order and flags both matter (see "madmom install" below)
+/opt/homebrew/bin/python3.12 -m venv tools/beatbench/.venv-madmom
+tools/beatbench/.venv-madmom/bin/pip install --upgrade pip "setuptools<81" wheel
+tools/beatbench/.venv-madmom/bin/pip install "numpy<2" cython
+tools/beatbench/.venv-madmom/bin/pip install --no-build-isolation --no-cache-dir \
+    --no-binary madmom "git+https://github.com/CPJKU/madmom"
 ```
 
 Python 3.12 specifically — system Python is 3.14, which fewer MIR packages support.
-The venv is gitignored; the annotations it produces are committed.
+Both venvs are gitignored; the annotations they produce are committed.
 
 ## Running
 
@@ -46,32 +58,30 @@ Output: `PhospheneEngine/Tests/Fixtures/beatbench/reference/<track>.<backend>.js
 
 | Backend | State | Notes |
 |---|---|---|
-| librosa | **working** | Onset-envelope DP beat tracking. Genuinely independent of Beat This!, but weak where it matters most: no downbeats at all, and a near-constant-tempo assumption that suits suite 1 and misreads suites 2/3. |
-| madmom | **not working on this machine** | RNN + DBN; the backend we actually want (different algorithm family, handles odd meters via `beats_per_bar`, produces downbeats). |
+| madmom `0.17.dev0` | **working** (own venv) | RNN + DBN. The authoritative backend: a different algorithm family from Beat This!, produces downbeats, and decodes odd meters via `beats_per_bar=[3,4,5,7]`. Slow — roughly real-time, two networks per track — so run it detached. |
+| librosa `0.11` | **working** (own venv) | Onset-envelope DP beat tracking. Fast, but no downbeats and a near-constant-tempo assumption: reliable on suite 1, misleading on suites 2/3. Treat as the weaker second opinion. |
 
-### madmom — what was tried, and what is left
+### madmom install — the four causes, in order
 
-madmom 0.16.1 (2018) is the last release and predates numpy 2. Two install attempts
-were made on Python 3.12, then stopped per the program's two-strikes rule (plan §7):
+madmom predates numpy 2 and fights modern packaging. Each failure had a distinct
+cause; the flags in the setup block above are exactly what each one demanded:
 
-1. `pip install --no-build-isolation madmom` after `numpy<2` + Cython — compiled
-   (rc=0) but failed at import: `ModuleNotFoundError: pkg_resources` (setuptools ≥81
-   removed it). Fixed by pinning `setuptools<81`, which exposed the next failure.
-2. Force-reinstalled `numpy==1.26.4` and rebuilt madmom — still
-   `ImportError: numpy.core.multiarray failed to import`, i.e. the Cython extensions
-   were not actually rebuilt against the pinned numpy. Installing librosa then pulled
-   numpy back to 2.x, so the extensions are ABI-mismatched either way.
+1. `ModuleNotFoundError: pkg_resources` — setuptools ≥ 81 removed it → pin `setuptools<81`.
+2. `numpy.core.multiarray failed to import` — extensions built against the wrong
+   numpy → pin `numpy<2` **before** installing madmom, with `--no-build-isolation`.
+3. `numpy.dtype size changed, Expected 96 … got 88` — 96 bytes is numpy 2's dtype, so
+   pip had reused a **cached wheel** built during an earlier attempt → `--no-cache-dir`.
+4. `BackendUnavailable: Cannot import 'mesonpy'` — `--no-binary :all:` forced *numpy*
+   to build from source too → scope it: `--no-binary madmom`.
 
-Untried options, in the order worth attempting when someone returns to this:
+Keep madmom in its own venv. Installing librosa beside it upgrades numpy to 2.x and
+re-breaks the compiled extensions with failure (2).
 
-- madmom from GitHub master (`pip install git+https://github.com/CPJKU/madmom`), which
-  carries numpy-2 fixes not in the 2018 PyPI release;
-- a dedicated venv pinned to `numpy<2` with **no** librosa in it, so nothing upgrades
-  numpy underneath the compiled extensions;
-- Python 3.10/3.11, closer to what madmom was built against.
+### Running madmom
 
-**Consequence while madmom is missing:** the reference cross-check is weakest exactly
-where the suites are hardest — odd meters (2), tempo changes (3), and downbeats
-everywhere. Matt's taps remain the primary ground truth and are unaffected; the
-cross-check simply flags fewer tap errors on those tracks, so more of them land in
-the "arbitrate by ear" pile rather than being auto-confirmed.
+Real-time-ish, so detach it and poll:
+
+```bash
+nohup tools/beatbench/.venv-madmom/bin/python tools/beatbench/reference_annotate.py \
+    --backend madmom > ~/phosphene_beatbench_fixtures/madmom_run.log 2>&1 &
+```
