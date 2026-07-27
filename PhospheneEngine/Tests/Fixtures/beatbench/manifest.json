@@ -58,7 +58,21 @@
       "artist": "Peter Gabriel",
       "suite": 2,
       "source": "tap",
-      "status": "pending"
+      "filename": "solsbury_hill.wav",
+      "source_session": "2026-07-27T12-58-56Z",
+      "sha256": "78af7c1d3b46e5d2cca4e6b01aec9fdde3f6aa0bace02325ad02eebdb24f278f",
+      "duration_s": 262.06
+    },
+    {
+      "id": "yyz",
+      "title": "YYZ",
+      "artist": "Rush",
+      "suite": 2,
+      "source": "tap",
+      "filename": "yyz.wav",
+      "source_session": "2026-07-27T12-58-56Z",
+      "sha256": "104236b2ba3619194181dd4b3cc277f40298ae986a16e61218038e1d60d02c69",
+      "duration_s": 266.41
     },
     {
       "id": "bohemian_rhapsody",
@@ -66,7 +80,10 @@
       "artist": "Queen",
       "suite": 3,
       "source": "tap",
-      "status": "pending"
+      "filename": "bohemian_rhapsody.wav",
+      "source_session": "2026-07-27T12-58-56Z",
+      "sha256": "d99362ae441bc3d82e2698d90c8d33ec1dceb8293ba80cb92a1f8f0f81fb9248",
+      "duration_s": 355.67
     },
     {
       "id": "giorgio_by_moroder",
@@ -94,7 +111,10 @@
       "artist": "Meshuggah",
       "suite": 4,
       "source": "tap",
-      "status": "pending"
+      "filename": "bleed.wav",
+      "source_session": "2026-07-27T12-58-56Z",
+      "sha256": "b0ea0b21cd918c4542864a7cc63dcae9a999d81a71140272d9930d9feedbf117",
+      "duration_s": 442.45
     },
     {
       "id": "girl_from_ipanema",
