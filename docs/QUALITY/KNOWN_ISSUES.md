@@ -550,6 +550,25 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 
 ---
 
+### BUG-075 — Volumetric Lithograph motion: rotary-dial spring-back + dual beat layer (2026-07-24)
+
+**P1 · preset.fidelity / audio-coupling · ✅ RESOLVED 2026-07-24 (VL-PSY.5).**
+
+**Actual (Matt live, session `2026-07-24T22-22-10Z`, Hummer):** "The motion is WEIRD… looks kinda like dialing on a rotary telephone, combined with pulsing on the beat." (He also liked the terrain-over-time morph, and the app crashed after ~3.7 min — see the crash note below, tracked separately.)
+
+**Two causes, both confirmed from the session `features.csv`.**
+
+1. **Rotary dial = the downbeat twist retracted.** VL-PSY.3's downbeat term was a transient envelope (`attack*decay` → rose 0→1→0 each bar), so the fold angle went forward then *returned to baseline* — forward-then-spring-back. Reconstructed angular velocity swung **−8.5 to +22.5 rad/s** with **2.7 % of frames spinning backward**. An accent on a rotation must be a monotonic ratchet (advance and hold), not a displacement that returns.
+2. **"Pulsing" = a second, older beat layer left running.** The v9 drum-hit peak-lift (`kickPulse` → terrain height + palette flare + ridge strobe) was still live, firing on drum hits alongside the per-bar rotation twist — two beat-driven layers at different rates, the FA #67 "fighting itself" failure. Matt saw both at once ("dial COMBINED WITH pulsing").
+
+**Fix (VL-PSY.5).** (1) Rotation downbeat is now a **monotonic eased ratchet**: `VL_ROT_KICK · (barsCompleted + stepEase)` off the cached grid's continuous beat position — advances one notch over each bar's first beat and holds, continuous across the bar boundary, can never decrease (reconstructed on the real session: **0 % backward**, angle monotonic). Deliberately **not** gated by `pulse_amp01` — multiplying an accumulated angle by a gate that falls in a quiet section would collapse it backward, the same retraction latent until a track has a quiet bar (a Spotify playlist will). (2) The v9 drum-hit peak-lift is **retired** — `kickPulse` and `accentFB` held at 0 — so the downbeat drives exactly one thing. The `accumulatedAudioTime` terrain morph Matt liked is untouched.
+
+**Verified on the real session** via `SessionReplayHarness` (rows 900–1080, past grid-lock): motion gate **0 spikes, 0 frozen, max 1.68× median**. Goldens byte-identical (the synthetic regression fixtures set no beat position or drum stems, so they cannot see this class of change — real-session replay is the only gate that can, which is why VL-PSY.2/.3 slipped). Perf 10.7 ms p95, unchanged.
+
+**Known residual:** a one-time ~24 rad/s velocity spike at the BeatGrid install (~12 s in, beat index snaps 3→7 = a 1-bar ratchet in one frame). It is a single startup event, not recurring; guarding it needs per-frame state the shader lacks. Logged, not fixed — re-evaluate if it reads as a visible snap in a live session.
+
+---
+
 ### BUG-074 — Volumetric Lithograph M7 "a convulsing mess"; music-driven symmetry order (2026-07-24)
 
 **P1 · preset.fidelity / audio-coupling · ✅ RESOLVED 2026-07-24 (VL-PSY.3).**
@@ -578,7 +597,7 @@ Two supporting faults from the audio hierarchy. **Per-beat, not per-bar:** the d
 
 **Fidelity (Matt: "visual quality is lower")** — a real regression from the BUG-073 perf fix. Warp restored 2 → 3 octaves; full restore (4-octave warp + 5 terrain octaves) measured 13.5 ms, over the 12 ms gate, so partially restored at **11.4 ms p95**. Stated as partial, not claimed as whole.
 
-**Follow-up filed (not fixed here): replay-harness camera-parity gap.** `cameraDollySpeed` defaults to 0 and is set by the app target (`VisualizerEngine+Presets`), which the engine test target cannot import — so `SessionReplayHarness` renders every dollying preset with a **static camera**. Harmless for Fractal Fly-By (dolly 0), silently wrong for VL (the flight is its identity). Worked around with a `REPLAY_DOLLY` env override; the real fix is to move dolly speed into the sidecar so app and harness share one source.
+**Follow-up ✅ RESOLVED (VL-PSY.4, 2026-07-24): replay-harness camera-parity gap.** `cameraDollySpeed` defaulted to 0 and was set by the app target (`VisualizerEngine+Presets`), which the engine test target cannot import — so `SessionReplayHarness` rendered every dollying preset with a **static camera**. Harmless for Fractal Fly-By (dolly 0), silently wrong for VL (the flight is its identity). **Fixed** by moving dolly speed into the sidecar: `PresetDescriptor.sceneDollySpeed` (`scene_dolly_speed`, default 0), set to 5.0 in `VolumetricLithograph.json`. `applyPreset` and `SessionReplayHarness` both seed `cameraDollySpeed = descriptor.sceneDollySpeed` — one source of truth; the app-side `switch desc.name` and the `REPLAY_DOLLY` env stopgap are both deleted. Confirmed: VL replays with its forward flight, no env var (session `2026-07-24T22-01-51Z`, 60 frames — terrain flows toward the camera).
 
 ---
 
@@ -636,34 +655,6 @@ osascript -e 'tell application "PhospheneApp" to quit'; pkill -x PhospheneApp
 
 **Suspected failure class:** `environment-interaction` (a product Info.plist policy colliding with the test harness's launch mechanism).
 **Verification criteria (written before the fix):** (1) the A/B/A above — launching the app flips a passing suite to exit 65 and quitting it flips back; (2) both annotation branches emit the correct line, exercised against a synthetic log with and without a live `PhospheneApp`; (3) `bash -n Scripts/closeout_evidence.sh` clean. All three met.
-
----
-
-### BUG-068 — LF multi-file plan order diverges from the URL queue after a mid-queue preparation failure (2026-07-11)
-
-**P1 · local-file / pipeline-wiring · ✅ RESOLVED 2026-07-11 (PUB.2, `22ded35` + `1ae6900`).** Fix: `SessionPreparationResult.orderedTracks` built by the `PrepOutcomes` accumulator (walk-order interleave of prepared identities and failure placeholders); both plan-assembly sites consume it. All three verification criteria met: regression `startLocalFiles_midQueueFailure_preservesURLQueueOrder` + no-failure control (existing ordering test), 53 session tests green, streaming site shares the ordered source. Found by the 2026-07-11 pre-publication ultra review; adversarially verified against the code. Diagnose+fix collapsed into one increment per Matt's Phase-1 go (the root cause is statically provable — no instrumentation step needed).
-
-**Expected:** with a multi-file queue `[A, B, C]` where B fails preparation, `SessionPlan.tracks[i]` corresponds to `urls[i]` for every i — track 2's slot carries B's placeholder identity, so B's audio plays against B's (partial) identity and C's audio against C's identity/beat grid.
-**Actual:** `SessionPreparer._runLocalFilePreparation` appends successes and failures to two separate arrays; `SessionManager.startLocalFiles` (`SessionManager.swift:472`) builds the plan as `cachedTracks + failedTracks` → plan `[A, C, B]` against playback order `[A, B, C]`. From the failure onward every track index pairs the wrong audio with identity, cached beat grid, stems, and chrome. The code comment "Order matches the original URL queue because the preparer walks in order" is false for any mid-queue failure. The streaming path (`SessionManager.swift:308`) has the same concatenation; consequence there is bounded (track matching is identity-based; only the planner's playlist-order arc degrades).
-**Reproduction:** unit-level — 3-URL queue, delegate fails url[1] (see verification criteria). Live — any LF multi-file session where a non-final file has no preparable stems.
-**Session artifacts:** none required — the defect is statically provable from the two cited sites; `WIRING: SessionPreparer.prepareLocalFile #n` log lines confirm walk order in any historical multi-file session.
-**Suspected failure class:** `api-contract` (result type discards the input ordering the consumer depends on).
-**Verification criteria (written before the fix):** (1) new regression test: 3-file queue with the middle file failing → plan order `[A, B(placeholder), C]`, and a control with no failure → order unchanged; (2) existing LF/session suites green; (3) streaming plan assembly uses the same order-preserving source. Manual: not required for the ordering fix itself (no musical-feel/visual change); any normal multi-file LF session doubles as a no-regression walk.
-
-
----
-
-### BUG-069 — VisualizerEngine cross-thread analysis fields unguarded (`currentFamilySeries` Array race) (2026-07-11)
-
-**P1 · app.engine / concurrency · ✅ RESOLVED 2026-07-11 (PUB.2, `3d89692`).** Fix: `analysisStateLock` accessors for the four VisualizerEngine fields (compound updates documented benign); `trackMetadataLock` for the MIRPipeline pair. Criteria met: all five fields lock-routed with guards documented, full engine+app suites green, TSan MIRPipeline spot-run clean. Found by the 2026-07-11 pre-publication ultra review; adversarially verified. Diagnose+fix collapsed into one increment per Matt's Phase-1 go (statically provable data race).
-
-**Expected:** every field crossing MainActor ↔ `analysisQueue` is lock-guarded (the `tapSampleRate` pattern, `VisualizerEngine.swift:395–420`) or confined to one queue.
-**Actual:** `currentFamilySeries: [InstrumentFamilyActivity]` (`VisualizerEngine.swift:452`) is reassigned on MainActor in `resetStemPipeline` (`+Stems.swift:482,517` — every track change) while `processAnalysisFrame` samples it at ~94 Hz on the serial analysis queue (`+Audio.swift:234`). A Swift Array reassignment concurrent with a read is memory-unsafe (CoW storage can be deallocated mid-read), not merely stale — a rare-crash class. Sibling unguarded crossings in the same class: `liveBeatAnalysisAttempts`, `runtimeRecalibrationDone` (MainActor reset in `resetStemPipeline` vs analysisQueue read/increment in `runLiveBeatAnalysisIfNeeded` / recalibration), `pendingDispatchStartTime` (stemQueue completion vs analysis-path reads). Related engine-side twin: `MIRPipeline.currentTrackName`/`currentArtistName` (`MIRPipeline.swift:97–98`) written from the app metadata callback, read on the analysis queue on the recording path — unguarded String race, same class.
-**Reproduction:** timing-dependent; provable statically. TSan on a track-change-heavy session is the runtime discriminator (`Scripts/tsan_stress.sh`).
-**Session artifacts:** none — no crash on record attributable yet (the point is to fix it before contributors' machines find it).
-**Suspected failure class:** `concurrency`.
-**Verification criteria (written before the fix):** (1) all five fields route through a lock (accessor pattern) or are queue-confined, with the guard documented on each; (2) full engine + app suites green; (3) TSan spot-run of the stem/analysis suites shows no new races on these fields. Manual: none (no behavioural change intended); benign bounded lost-update on `liveBeatAnalysisAttempts` reset-vs-increment is documented at the accessor.
-
 
 ---
 
