@@ -41,8 +41,15 @@ constant float FDY_CAP_FREQ = 88.0f;
 constant float FDY_CAP_AMP = 0.17f;
 /// Thin-film thickness mapping (fringe orders across the wave).
 constant float FDY_FILM_BASE = 2.5f;
-constant float FDY_FILM_SCALE = 0.95f;
-constant float FDY_FILM_DRIFT = 3.10f;
+// MEASURED (session 2026-07-27T16-31-01Z): at scale 0.95 / drift 3.10 roughly
+// three-quarters of the colour came from the STATIC world-space drift, so the frame
+// barely moved (luminance swing 7 %, median frame delta 1.1/255) — which is exactly
+// why the sync was invisible and the preset read as boring. The concept's premise is
+// that the WAVE is the film thickness, so the wave must dominate: the colour bands
+// now ripple and invert WITH the standing wave, which makes the subharmonic legible
+// as a rhythmic colour pulse rather than a geometric subtlety nobody can see.
+constant float FDY_FILM_SCALE = 1.50f;
+constant float FDY_FILM_DRIFT = 0.85f;
 
 constexpr sampler fdySampler(coord::normalized, address::repeat, filter::linear);
 
