@@ -38,6 +38,7 @@ Package.resolved
 *.metallib
 *.air
 tools/.venv/
+tools/beatbench/.venv/
 tools/__pycache__/
 tools/data/DEAM/
 tools/data/deam_features_cache.npz

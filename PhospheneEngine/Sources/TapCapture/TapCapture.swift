@@ -61,6 +61,9 @@ struct TapCaptureCommand: ParsableCommand {
     @Flag(name: .long, help: "Overwrite an existing capture for this track+pass.")
     var force: Bool = false
 
+    @Flag(name: .long, help: "Discard prior calibration rounds instead of pooling with them.")
+    var resetCalibration: Bool = false
+
     @Option(name: .long, help: "Fixtures dir (default: $BEATBENCH_FIXTURES_DIR).")
     var fixturesDir: String?
 
@@ -154,6 +157,30 @@ struct TapCaptureCommand: ParsableCommand {
         check("MAD == 0 on identical offsets", TapStats.medianAbsoluteDeviation(offsets) < 1e-9)
         check("MAD > 0 on a genuinely spread set", TapStats.medianAbsoluteDeviation([60, 80, 100, 120]) > 0)
 
+        // 6. Pooling across rounds — modelled on the two real 2026-07-27 rounds,
+        //    which disagreed by 29.5 ms. The pooled median must sit between them and
+        //    the spread must report the disagreement rather than bury it.
+        func round(_ at: String, _ offsets: [Double]) -> CalibrationRound {
+            CalibrationRound(
+                calibratedAt: at,
+                bpm: 100,
+                clickCount: offsets.count,
+                tapCount: offsets.count,
+                medianOffsetMs: TapStats.median(offsets),
+                madMs: TapStats.medianAbsoluteDeviation(offsets),
+                offsetsMs: offsets
+            )
+        }
+        let pooled = CalibrationResult.pooled(rounds: [
+            round("r1", [-40, -42, -44, -41, -43]),
+            round("r2", [-10, -12, -14, -11, -13]),
+        ])
+        check("pooled counts both rounds", pooled.roundCount == 2)
+        check("spread reports the round disagreement", abs(pooled.betweenRoundSpreadMs - 30.0) < 0.001)
+        check("pooled median lies between the rounds", pooled.medianOffsetMs > -42 && pooled.medianOffsetMs < -12)
+        let single = CalibrationResult.pooled(rounds: [round("r1", [-40, -42, -41])])
+        check("single round has zero spread", abs(single.betweenRoundSpreadMs) < 1e-9)
+
         guard failures.isEmpty else {
             print("\n\(failures.count) check(s) FAILED")
             throw ExitCode(1)
@@ -168,7 +195,8 @@ struct TapCaptureCommand: ParsableCommand {
         if let cal = calibration {
             let offset = String(format: "%.1f", cal.medianOffsetMs)
             let mad = String(format: "%.1f", cal.madMs)
-            print("  calibration: \(offset) ms (MAD \(mad) ms, \(cal.tapCount) taps)")
+            let spread = String(format: "%.1f", cal.betweenRoundSpreadMs)
+            print("  calibration: \(offset) ms (MAD \(mad) ms) over \(cal.roundCount) round(s), spread \(spread) ms")
         } else {
             print("  calibration: NONE — run --calibrate first")
         }
@@ -197,7 +225,7 @@ struct TapCaptureCommand: ParsableCommand {
             throw ExitCode(1)
         }
 
-        let result = CalibrationResult(
+        let round = CalibrationRound(
             calibratedAt: TapArtifactWriter.timestamp(),
             bpm: calibrateBpm,
             clickCount: clicks.count,
@@ -206,13 +234,30 @@ struct TapCaptureCommand: ParsableCommand {
             madMs: TapStats.medianAbsoluteDeviation(offsets),
             offsetsMs: offsets
         )
+        // Append rather than overwrite: rounds pool into a more stable constant, and
+        // their disagreement is itself the uncertainty signal.
+        let existing = resetCalibration ? [] : (loadCalibration()?.rounds ?? [])
+        let result = CalibrationResult.pooled(rounds: existing + [round])
         try TapArtifactWriter.write(result, to: calibrationURL)
-        let offset = String(format: "%.1f", result.medianOffsetMs)
-        let mad = String(format: "%.1f", result.madMs)
-        print("\ncalibration: median offset \(offset) ms (MAD \(mad) ms over \(offsets.count) taps)")
+
+        let roundOffset = String(format: "%.1f", round.medianOffsetMs)
+        let roundMad = String(format: "%.1f", round.madMs)
+        print("\nround \(result.roundCount): median \(roundOffset) ms (MAD \(roundMad) ms, \(offsets.count) taps)")
+        let pooled = String(format: "%.1f", result.medianOffsetMs)
+        let spread = String(format: "%.1f", result.betweenRoundSpreadMs)
+        print("pooled over \(result.roundCount) round(s): \(pooled) ms  (between-round spread \(spread) ms)")
         print("→ \(calibrationURL.path)")
-        if result.madMs > 40 {
-            print("NOTE: MAD > 40 ms — tapping was loose; consider re-running --calibrate.")
+
+        if round.madMs > 40 {
+            print("NOTE: this round's MAD > 40 ms — tapping was loose; run --calibrate again.")
+        }
+        if result.roundCount < 2 {
+            print("NOTE: run --calibrate at least twice — one round cannot reveal drift.")
+        } else if result.betweenRoundSpreadMs > 25 {
+            print("""
+            NOTE: rounds disagree by \(spread) ms — that bias would land on every tap. \
+            Run another round; the pooled median stabilises as rounds accumulate.
+            """)
         }
     }
 
