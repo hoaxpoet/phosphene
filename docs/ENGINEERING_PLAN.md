@@ -3000,6 +3000,8 @@ Multi-phase program for beat-match/music-sync across the five hard categories. F
 ### Phase GT — Ground truth + benchmark harness
 Fixture manifest, tap-capture CLI + reference-tool cross-check, BeatBench scoring harness + baseline capture across all five suites. 3–4 sessions + ~40 min Matt taps. spec: BEAT_SYNC_PROGRAM_PLAN.md §4. GT.3 done-when includes filling the `beatbench` skill's TO FILL block (CLI invocations) and ratifying/revising targets against the baseline (D-B).
 
+- **GT.1 — fixture acquisition + manifest 🔨 (2026-07-27; 9/12 done).** 12 suite tracks scoped; 9 sourced from the corpus (hybrid decision — full-length audio lives at `BEATBENCH_FIXTURES_DIR`=`~/phosphene_beatbench_fixtures`, outside the repo). Committed: `tools/beatbench_find_fixtures.py` (corpus locator), `Scripts/beatbench_copy_fixtures.sh` (copies the 9), `tools/beatbench_manifest.py` (generator), `Tests/Fixtures/beatbench/manifest.json` (9 local sha256+duration, 3 tap-pending), `BeatBenchFixturePresenceGate` (manifest-well-formed always-on + env-gated hash check: passes on Matt's machine, CI-safe, fails loud on missing/re-encoded — QR.3). **Remainder:** Solsbury Hill / Bohemian Rhapsody / Bleed backfill from a recorded live-session `raw_tap.wav` (segment per-track; also seeds the live-replay path). Done-when (met for the 9): manifest committed, gate green on Matt's machine.
+
 ### Phase DBN — Sequence decoding replaces peak-picking
 Bar-pointer-model decoder over Beat This! activations (odd meters, tempo-state), env-flagged A/B vs peak-pick, piecewise-tempo BeatGrid v2. 5–7 sessions. spec: BEAT_SYNC_PROGRAM_PLAN.md §4.
 
