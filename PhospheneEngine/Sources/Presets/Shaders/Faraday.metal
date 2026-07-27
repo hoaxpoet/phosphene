@@ -54,6 +54,7 @@ constexpr sampler fdySampler(coord::normalized, address::repeat, filter::linear)
 /// wholesale it takes the cells with it — the detail must be band-limited PER
 /// FEATURE, each against its own wavelength.
 static inline float fdy_height(float2 wxz,
+                               constant FeatureVector& f,
                                constant SceneUniforms& s,
                                texture2d<float> field,
                                float detail) {
@@ -61,10 +62,23 @@ static inline float fdy_height(float2 wxz,
     float u = field.sample(fdySampler, uv).r;
     u = tanh(u * FDY_SHARPEN) * 1.15f;
 
-    // The Faraday signature: the surface responds at HALF the drive frequency, so
-    // the standing wave breathes and crests trade places with troughs. Paced off the
-    // energy clock, so it is the music's time base (D-037: alive at silence).
-    float subPhase = s.sceneParamsA.x * 6.0f;
+    // THE FARADAY SUBHARMONIC — the preset's beat sync, and its actual signature.
+    //
+    // A parametrically-driven surface responds at HALF the drive frequency: crests
+    // and troughs trade places every other drive cycle. That inversion IS what you
+    // observe in a Faraday experiment. Musically it means the sea should invert every
+    // other BEAT — so it is beat-locked by construction rather than by a mapping.
+    //
+    // `bar_phase01` runs 0→1 across a 4-beat bar (the CACHED grid, not live onsets —
+    // Layer 4), so 4π·bar_phase01 completes one full cycle every TWO beats. Exactly
+    // the subharmonic. Previously this ran off `accumulatedAudioTime` at ~0.1 Hz — a
+    // ten-second breath with no relationship to the music, which is why Matt read it
+    // as "not synced even remotely": there was no beat route in the preset at all.
+    //
+    // Cold start: `bar_phase01` is 0 until the grid installs, so cos(0) = 1 and the
+    // sea simply holds its extension without breathing — nothing fires at the wrong
+    // phase (the cold-start contract), and there is no jump when the grid arrives.
+    float subPhase = 4.0f * 3.14159265f * f.bar_phase01;
     float eta = u * cos(subPhase);
 
     // Capillary ripple in WORLD coordinates. Tile-local coordinates jump 1 -> 0 at
@@ -85,14 +99,13 @@ float sceneSDF(float3 p,
                constant SceneUniforms& s,
                constant StemFeatures& stems,
                texture2d<float> ferrofluidHeight) {
-    (void)f;
     (void)stems;
     // Detail is faded by view distance: a distant pixel covers many ripples, so
     // keeping them produces sparkle rather than detail. Cells are ~10x coarser and
     // survive much further, which is why they are faded separately.
     float dist = length(p - s.cameraOriginAndFov.xyz);
     float detail = 1.0f / (1.0f + dist * dist * 0.12f);
-    float h = fdy_height(p.xz, s, ferrofluidHeight, detail);
+    float h = fdy_height(p.xz, f, s, ferrofluidHeight, detail);
     return (p.y - h) * FDY_STEP_SCALE;
 }
 
