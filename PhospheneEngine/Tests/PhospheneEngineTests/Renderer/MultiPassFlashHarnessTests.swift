@@ -62,6 +62,15 @@ struct MultiPassFlashHarnessTests {
         assertFlashSafe(name: "Nacre", luma: try flashLuma("Nacre"))
     }
 
+    @Test("Volumetric Lithograph is flash-safe (ray_march kaleidoscope, steady-luminance rotation, real headless render)")
+    func volumetricLithographIsFlashSafe() throws {
+        // VL-PSY.5 removed the per-beat palette flare / ridge strobe; the downbeat
+        // now drives a monotonic ROTATION ratchet (geometry, not luminance), so the
+        // frame's global brightness should hold steady under the worst-case beat
+        // train. Measured, not assumed — this is the cert gate proving it.
+        assertFlashSafe(name: "Volumetric Lithograph", luma: try flashLuma("Volumetric Lithograph"))
+    }
+
     @Test("Floret is flash-safe (mv_warp feedback, bass-kick ripple + swirl + downbeat push, real headless render)")
     func floretIsFlashSafe() throws {
         assertFlashSafe(name: "Floret", luma: try flashLuma("Floret"))
