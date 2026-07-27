@@ -58,6 +58,14 @@ struct SessionReplayHarness {
         var accumulatedAudioTime: Float = 0
         var bassAttRel: Float = 0
         var beatPhase01: Float = 0
+        // Grid + deviation fields. Any route the harness does not carry is silently
+        // fed ZERO, and the resulting render tests nothing — the FLY.6 divergence in
+        // its purest form (Faraday's subharmonic beat-lock and its transient accent
+        // both read as "not working" until these were mapped).
+        var barPhase01: Float = 0
+        var bassDev: Float = 0
+        var pulseAmp01: Float = 0
+        var drumsBeat: Float = 0
     }
 
     private static func loadRows(_ csv: URL) throws -> [Row] {
@@ -87,6 +95,10 @@ struct SessionReplayHarness {
             r.valence = get(f, "valence");         r.arousal = get(f, "arousal")
             r.accumulatedAudioTime = get(f, "accumulatedAudioTime")
             r.bassAttRel = get(f, "bassAttRel");   r.beatPhase01 = get(f, "beatPhase01")
+            // the session logs bar phase in PERMILLE
+            r.barPhase01 = get(f, "barPhase01_permille") / 1000.0
+            r.bassDev = get(f, "bassDev")
+            r.pulseAmp01 = get(f, "pulseAmp01")
             out.append(r)
         }
         return out
@@ -101,6 +113,7 @@ struct SessionReplayHarness {
         f.spectralCentroid = r.spectralCentroid; f.spectralFlux = r.spectralFlux
         f.valence = r.valence; f.arousal = r.arousal
         f.bassAttRel = r.bassAttRel; f.beatPhase01 = r.beatPhase01
+        f.barPhase01 = r.barPhase01; f.bassDev = r.bassDev; f.pulseAmp01 = r.pulseAmp01
         f.aspectRatio = aspect
         return f
     }
