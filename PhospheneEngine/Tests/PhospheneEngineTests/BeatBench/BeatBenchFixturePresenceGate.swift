@@ -43,19 +43,17 @@ struct BeatBenchFixturePresenceGate {
         return try JSONDecoder().decode(Manifest.self, from: data)
     }
 
-    @Test("BeatBench manifest is present and well-formed (12 tracks across suites 1–5)")
+    @Test("BeatBench manifest is present and well-formed (13 tracks across suites 1–5)")
     func manifestWellFormed() throws {
         let manifest = try Self.loadManifest()
         #expect(
-            manifest.tracks.count == 12,
-            "expected 12 BeatBench suite tracks, got \(manifest.tracks.count) at \(Self.manifestURL().path)"
+            manifest.tracks.count == 13,
+            "expected 13 BeatBench suite tracks, got \(manifest.tracks.count) at \(Self.manifestURL().path)"
         )
         for track in manifest.tracks {
             #expect((1...5).contains(track.suite), "\(track.id): suite \(track.suite) out of range 1…5")
             #expect(track.source == "local" || track.source == "tap", "\(track.id): bad source '\(track.source)'")
-            if track.source == "local" {
-                #expect(track.filename != nil, "\(track.id): local track missing filename")
-            }
+            #expect(track.filename != nil, "\(track.id): missing filename")
         }
         #expect(
             Set(manifest.tracks.map(\.suite)) == Set(1...5),
@@ -63,15 +61,15 @@ struct BeatBenchFixturePresenceGate {
         )
     }
 
-    @Test("BeatBench local fixtures present + hash-matched when BEATBENCH_FIXTURES_DIR is set")
-    func localFixturesPresentAndHashed() throws {
+    @Test("BeatBench fixtures present + hash-matched when BEATBENCH_FIXTURES_DIR is set")
+    func fixturesPresentAndHashed() throws {
         guard let dir = ProcessInfo.processInfo.environment["BEATBENCH_FIXTURES_DIR"], !dir.isEmpty else {
             print("BeatBench: BEATBENCH_FIXTURES_DIR unset — local-only presence gate inactive (see the beatbench skill).")
             return
         }
         let base = URL(fileURLWithPath: (dir as NSString).expandingTildeInPath, isDirectory: true)
         let manifest = try Self.loadManifest()
-        for track in manifest.tracks where track.source == "local" {
+        for track in manifest.tracks {
             guard let filename = track.filename else { continue }
             let url = base.appendingPathComponent(filename)
             #expect(

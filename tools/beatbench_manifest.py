@@ -27,18 +27,22 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(REPO, "PhospheneEngine", "Tests", "Fixtures", "beatbench", "manifest.json")
 
-# id, title, artist, suite, source(local|tap), filename(None for tap-pending)
+# tap-derived fixtures were segmented from this recorded session's raw_tap.wav.
+SOURCE_SESSION = "2026-07-27T12-58-56Z"
+
+# id, title, artist, suite, source(local=corpus rip | tap=segmented from session), filename
 TRACKS = [
     ("billie_jean",        "Billie Jean",          "Michael Jackson",         1, "local", "billie_jean.mp3"),
     ("around_the_world",   "Around the World",     "Daft Punk (Alive 2007)",  1, "local", "around_the_world.mp3"),
     ("stayin_alive",       "Stayin' Alive",        "Bee Gees",                1, "local", "stayin_alive.mp3"),
     ("superstition",       "Superstition",         "Stevie Wonder",           1, "local", "superstition.flac"),
     ("take_five",          "Take Five",            "The Dave Brubeck Quartet",2, "local", "take_five.mp3"),
-    ("solsbury_hill",      "Solsbury Hill",        "Peter Gabriel",           2, "tap",   None),
-    ("bohemian_rhapsody",  "Bohemian Rhapsody",    "Queen",                   3, "tap",   None),
+    ("solsbury_hill",      "Solsbury Hill",        "Peter Gabriel",           2, "tap",   "solsbury_hill.wav"),
+    ("yyz",                "YYZ",                  "Rush",                    2, "tap",   "yyz.wav"),
+    ("bohemian_rhapsody",  "Bohemian Rhapsody",    "Queen",                   3, "tap",   "bohemian_rhapsody.wav"),
     ("giorgio_by_moroder", "Giorgio by Moroder",   "Daft Punk",               3, "local", "giorgio_by_moroder.mp3"),
     ("dance_yrself_clean", "Dance Yrself Clean",   "LCD Soundsystem",         3, "local", "dance_yrself_clean.mp3"),
-    ("bleed",              "Bleed",                "Meshuggah",               4, "tap",   None),
+    ("bleed",              "Bleed",                "Meshuggah",               4, "tap",   "bleed.wav"),
     ("girl_from_ipanema",  "The Girl from Ipanema","Getz/Gilberto",           5, "local", "girl_from_ipanema.mp3"),
     ("clair_de_lune",      "Clair de Lune",        "Debussy (Weissenberg)",   5, "local", "clair_de_lune.mp3"),
 ]
@@ -62,23 +66,22 @@ def main():
     fixtures = (sys.argv[1] if len(sys.argv) > 1
                 else os.environ.get("BEATBENCH_FIXTURES_DIR")
                 or os.path.expanduser("~/phosphene_beatbench_fixtures"))
-    entries, present, pending = [], 0, 0
+    entries, present, missing = [], 0, 0
     for tid, title, artist, suite, source, filename in TRACKS:
-        e = {"id": tid, "title": title, "artist": artist, "suite": suite, "source": source}
-        if source == "local":
-            e["filename"] = filename
-            path = os.path.join(fixtures, filename)
-            if os.path.isfile(path):
-                e["sha256"] = sha256(path)
-                e["duration_s"] = duration_s(path)
-                present += 1
-            else:
-                e["sha256"] = None
-                e["duration_s"] = None
-                print(f"  local file absent: {filename}", file=sys.stderr)
+        e = {"id": tid, "title": title, "artist": artist, "suite": suite,
+             "source": source, "filename": filename}
+        if source == "tap":
+            e["source_session"] = SOURCE_SESSION
+        path = os.path.join(fixtures, filename)
+        if os.path.isfile(path):
+            e["sha256"] = sha256(path)
+            e["duration_s"] = duration_s(path)
+            present += 1
         else:
-            e["status"] = "pending"  # tap-backfill from a recorded session (GT.2)
-            pending += 1
+            e["sha256"] = None
+            e["duration_s"] = None
+            missing += 1
+            print(f"  fixture absent: {filename}", file=sys.stderr)
         entries.append(e)
 
     manifest = {
@@ -92,7 +95,7 @@ def main():
     with open(OUT, "w") as fh:
         json.dump(manifest, fh, indent=2, ensure_ascii=False)
         fh.write("\n")
-    print(f"wrote {OUT}: {present} local hashed, {pending} tap-pending, {len(entries)} total")
+    print(f"wrote {OUT}: {present} hashed, {missing} missing, {len(entries)} total")
 
 
 if __name__ == "__main__":
