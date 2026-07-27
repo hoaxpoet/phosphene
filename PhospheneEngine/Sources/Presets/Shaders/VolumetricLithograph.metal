@@ -461,7 +461,13 @@ constant float VL_FOLD_CELL   = 20.0f;  // world units per mirrored cell.
                                         // sets whether each one is legible. They are
                                         // separate knobs; round 3 conflated them.
 constant float VL_WARP_SCALE  = 0.045f; // world-space frequency of the organic warp
-constant float VL_WARP_AMOUNT = 4.0f;   // world units of displacement at full warp.
+constant float VL_WARP_AMOUNT = 5.5f;   // VL-PSY.6: 4.0 -> 5.5. Stronger world-space warp
+                                        // makes each cell more distinct — a second lever
+                                        // on the spatial repetition, into the perf headroom.
+constant float VL_MACRO_DRIFT = 1.15f;  // VL-PSY.6: how far the per-cell seed drifts the
+                                        // noise slice. Bigger = successive mandalas differ
+                                        // more (the repetition fix). Symmetry-safe: it rides
+                                        // the phase axis, orthogonal to the folded x/z.
                                         // Round 4 first tried 5.5 and covered the whole
                                         // frame in high-frequency speckle — the FA #64
                                         // dot-pattern class: a domain warp adds its own
@@ -571,9 +577,20 @@ static inline float2 pModMirror2(thread float2& p, float2 size) {
 /// Order matters: mirror-tile FIRST (infinite seamless field), then polar-fold
 /// within the cell (each cell becomes a mandala). Reversing it would produce
 /// one kaleidoscope at the world origin that the camera flies away from.
-static inline float2 vl_foldDomain(float2 xz, float foldRot) {
+static inline float2 vl_foldDomain(float2 xz, float foldRot, thread float& cellSeed) {
     float2 q = xz;
-    pModMirror2(q, float2(VL_FOLD_CELL));
+    // pModMirror2 returns the CELL INDEX. VL-PSY.6: every cell maps to the same
+    // fundamental domain, so without this each cell renders an identical mandala
+    // — the spatial repetition Matt flagged after the Spotify listen ("on the
+    // repetitive side"). Hashing the cell index to a per-cell seed lets each
+    // cell sample a different SLICE of the 3D noise (added to the phase axis in
+    // vl_terrainNoise, which is orthogonal to the x/z fold symmetry — so the
+    // kaleidoscope symmetry WITHIN each cell is untouched, only the pattern
+    // between cells changes). A smooth linear combination (not a hash) so
+    // adjacent cells differ a little and distant cells differ more: the world
+    // evolves as you fly, rather than jumping randomly cell-to-cell.
+    float2 cellIdx = pModMirror2(q, float2(VL_FOLD_CELL));
+    cellSeed = dot(cellIdx, float2(1.7f, 2.3f));
     // Turn the tube, then fold. Rotating BEFORE the polar fold spins which part
     // of the noise field lands in each wedge, so the mandala's pattern turns in
     // place — the thing a real kaleidoscope does — while the symmetry order, and
@@ -642,9 +659,16 @@ static inline float2 vl_foldDomain(float2 xz, float foldRot) {
 /// space — the geometry folds, not the image.
 static inline float vl_terrainNoise(float3 worldP, float audioPhase,
                                      float foldRot) {
-    float2 folded = vl_foldDomain(worldP.xz, foldRot);
+    float cellSeed = 0.0f;
+    float2 folded = vl_foldDomain(worldP.xz, foldRot, cellSeed);
+    // The per-cell seed rides the noise's THIRD axis alongside the audio-time
+    // phase. Both are orthogonal to the folded x/z, so neither disturbs the
+    // in-cell symmetry: audioPhase drifts the slice over TIME (the terrain
+    // variety Matt liked), cellSeed drifts it over SPACE (VL-PSY.6, the
+    // repetition fix). VL_MACRO_DRIFT sets how fast the world changes per cell.
     float3 noiseP = float3(folded.x * VL_NOISE_FREQUENCY,
-                           audioPhase * VL_NOISE_TIME_SCALE,
+                           audioPhase * VL_NOISE_TIME_SCALE
+                             + cellSeed * VL_MACRO_DRIFT,
                            folded.y * VL_NOISE_FREQUENCY);
     return fbm3D(noiseP, VL_FBM_OCTAVES);
 }
@@ -685,28 +709,45 @@ static inline float vl_heightAt(float3 worldP, float audioPhase,
 ///                       per-frame swell can never produce a jittery angle —
 ///                       the failure mode that convulsed VL-PSY.2.
 ///
-/// The downbeat adds a bounded twist ON THE BAR. VL-PSY.2 fired every beat —
-/// 2.67x/second on a 171 BPM track — which is precisely what D-154 warned about
-/// on Ferrofluid ("a per-beat punch reads as a robotic metronome ignoring the
-/// music"); that increment copied FFO's envelope and left its lesson behind.
+/// The downbeat RATCHETS the rotation forward on the bar — advance and hold,
+/// never retract.
+///
+/// VL-PSY.3 made this a transient TWIST: `attack*decay` rose 0→1→0 each downbeat,
+/// so the angle went forward then came BACK to the baseline. Against the slow
+/// base rotation that reads as forward-then-spring-back — Matt's "dialing on a
+/// rotary telephone" (BUG-075). Reconstructed from the session, angular velocity
+/// swung −8.5 to +22.5 rad/s and 2.7 % of frames spun backward.
+///
+/// The fix is a ratchet, and it is monotonic BY CONSTRUCTION like the other two
+/// terms. `barsCompleted` is a step per bar off the cached grid; `stepEase`
+/// smooths each step in over the bar's first beat. The two are arranged so the
+/// value is CONTINUOUS across the bar boundary (just before: barsCompleted N−1,
+/// stepEase→1 ⇒ K·N; just after: barsCompleted N, stepEase 0 ⇒ K·N) — no jump,
+/// and it can never decrease. So the kaleidoscope clicks forward a notch each
+/// bar and holds, the ratchet-wheel motion a real one has, not a nervous tic.
 static inline float vl_foldRotation(constant FeatureVector& f,
                                      constant SceneUniforms& s) {
     float audioPhase = s.sceneParamsA.x;
 
-    // Downbeat gate: fire on beat 0 of each bar only.
-    float beatIdx  = floor(f.pulse_beat_index + 0.5f);
-    float perBar   = max(1.0f, f.beats_per_bar);
-    float onDownbeat = (hg_mod(beatIdx, perBar) < 0.5f) ? 1.0f : 0.0f;
-
-    float ph     = clamp(f.pulse_phase01, 0.0f, 1.0f);
-    float amp    = clamp(f.pulse_amp01, 0.0f, 1.0f);
-    float attack = smoothstep(0.0f, 0.20f, ph);        // 0.20, not 0.08 (D-157 frame-strobe)
-    float decay  = 1.0f - smoothstep(0.20f, 0.85f, ph);
-    float twist  = attack * decay * amp * onDownbeat;
+    // Continuous beat position off the cached grid (monotonic).
+    float beatPos = f.pulse_beat_index + clamp(f.pulse_phase01, 0.0f, 1.0f);
+    float perBar  = max(1.0f, f.beats_per_bar);
+    float bars    = beatPos / perBar;
+    float barsCompleted = floor(bars);
+    float intoBar = beatPos - barsCompleted * perBar;    // 0 … perBar
+    // Ease the notch in over the bar's FIRST beat, then hold for the rest.
+    float stepEase = smoothstep(0.0f, 1.0f, clamp(intoBar, 0.0f, 1.0f));
+    // NOT gated by pulse_amp01. Multiplying an ACCUMULATED angle by a gate that
+    // falls in a quiet section would collapse the whole ratchet backward — the
+    // retraction this fix exists to kill, latent until a track has a quiet bar
+    // (a Spotify playlist will have many). The cached grid ticks through rests,
+    // so ratcheting through a musical rest is correct; the base idle turn already
+    // covers true pre-start silence.
+    float ratchet  = barsCompleted + stepEase;
 
     return VL_ROT_BASE * f.time
          + VL_ROT_SWELL * audioPhase
-         + VL_ROT_KICK * twist;
+         + VL_ROT_KICK * ratchet;
 }
 
 
@@ -776,11 +817,16 @@ float sceneSDF(float3 p,
     // RenderPipeline+RayMarch.swift).  Non-drum-only tracks (e.g. Slint
     // bass-guitar-driven) will land with silent landmass pulses — we'll
     // add an adaptive per-track routing in the Orchestrator phase.
-    float drumsActive    = smoothstep(0.08f, 0.22f, stems.drums_energy);
-    float drumsTransient = smoothstep(1.3f, 2.0f, stems.drums_attack_ratio)
-                         * drumsActive;
-    float kickRaw   = max(stems.drums_beat, drumsTransient);
-    float kickPulse = smoothstep(0.20f, 0.70f, kickRaw);
+    // VL-PSY.5 (BUG-075): the v9 drum-hit peak-lift is RETIRED. It pulsed the
+    // terrain HEIGHT (here) plus palette brightness + ridge strobe (below) on
+    // every drum hit — a SECOND beat layer running alongside the fold-rotation
+    // downbeat accent, at a different rate. Matt saw both at once ("rotary dial
+    // COMBINED WITH pulsing on the beat"); two beat-driven layers fighting is
+    // the FA #67 failure. The downbeat now drives ONE thing — the rotation
+    // ratchet in `vl_foldRotation`. `kickPulse` is held at 0 so the terrain
+    // stays a stable stage; delete the drum-stem read entirely rather than
+    // leave a dead computation.
+    float kickPulse = 0.0f;
 
     // VL-PSY.1: the vocal/energy swell was REROUTED from terrain depth to
     // FOLD rotation (`vl_foldRotation`). This is the rebuild's central move, not a
@@ -837,21 +883,18 @@ void sceneMaterial(float3 p,
     // via attack-ratio), and bass-only sections leave the landmass
     // material stable.
     //
-    // kickPulse is recomputed here (duplicate of sceneSDF) because
-    // sceneSDF and sceneMaterial are separate entry points called from
-    // different fragment-path contexts and don't share locals.
-    float drumsActive    = smoothstep(0.08f, 0.22f, stems.drums_energy);
-    float drumsTransient = smoothstep(1.3f, 2.0f, stems.drums_attack_ratio)
-                         * drumsActive;
-    float kickRaw   = max(stems.drums_beat, drumsTransient);
-    float kickPulse = smoothstep(0.20f, 0.70f, kickRaw);
+    // VL-PSY.5 (BUG-075): drum-hit accent RETIRED here too. `accentFB` drove
+    // beatShift (peak-coverage), accentBoost (palette brightness) and ridgeStrobe
+    // — the palette/geometry half of the second beat layer sceneSDF's peak-lift
+    // was the terrain half of. Both gone; the downbeat is the rotation ratchet
+    // alone. accentFB held at 0 so the material logic below degrades cleanly to
+    // its unaccented base values.
+    float accentFB = 0.0f;
 
     // accentStemMix retained for the peak-polish FV/stem crossfade below.
     float totalAccentStem = stems.vocals_energy + stems.drums_energy
                           + stems.bass_energy   + stems.other_energy;
     float accentStemMix = smoothstep(0.02f, 0.06f, totalAccentStem);
-
-    float accentFB = kickPulse;
 
     // v6.1: peak polish from onset density (drums-dominant, matching
     // the intensity driver's weighting).  Polishes when the groove is
@@ -920,11 +963,15 @@ void sceneMaterial(float3 p,
     // coordinates: hue sweeps around and out from each mandala centre, giving
     // the continuous travelling hue `03` is the hero for. Height keeps a small
     // term so strata still read; it is no longer the primary hue axis.
-    float2 foldLocal = vl_foldDomain(p.xz, foldRotM);
+    float paletteCellSeed = 0.0f;
+    float2 foldLocal = vl_foldDomain(p.xz, foldRotM, paletteCellSeed);
     float  foldRad   = length(foldLocal);
     float  foldAng   = atan2(foldLocal.y, foldLocal.x) / (2.0f * VL_HG_PI);
     float palettePhase = foldAng * 1.0f          // hue sweeps AROUND the mandala
                        + foldRad * 0.055f        // and banded OUT from its centre
+                       + paletteCellSeed * 0.05f // VL-PSY.6: per-cell hue drift so
+                                                 // successive mandalas differ in colour
+                                                 // too, not just in relief
                        + n * 0.25f               // strata still tint (was 0.9 = the two-tone)
                        + audioPhase * 0.08f
                        + stemHue * 0.6f

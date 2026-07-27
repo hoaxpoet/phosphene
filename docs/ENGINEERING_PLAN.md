@@ -63,6 +63,25 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment VL.CERT — Volumetric Lithograph certified ✅ (2026-07-26)
+
+**Done-when:** all cert gates measured green and Matt's M7 signs off. Met.
+
+Matt (session 2026-07-26T20-06-59Z, chain clean): "Session looks good. Proceed with certification if all checks out." Gates, each RUN not assumed:
+- **RouteCoverage (QG.1):** 6 declared routes — `bass`→camera dolly speed, per-stem energies→palette hue (×4), `pulsePhase01`→fold downbeat ratchet — all fire on the canonical fixtures, 0 red. The identity coupling (fold rotation SPEED + terrain morph, both `accumulatedAudioTime`) is the animation time base, constant on offline fixtures → documented as the QG.1.1 boundary, not declared (the FD/VL precedent).
+- **Rubric:** `certifiedPresetsDeclareAudioRoutes` green (non-empty manifest); `automatedGate_uncertifiedPresetsAreUncertified` green (VL now correctly certified). ★ **Honest caveat: the automated rubric PROXY scores VL 3/15** — NOT a hard gate (suite passes), because the proxy is known-unreliable and VL's coupling lives where it can't see it (accumulatedAudioTime + fold rotation). Cert rests on M7 + route coverage + flash, exactly as Floret/Cytokinesis were certified.
+- **Flash (D-157 / GAP-9):** added VL to `MultiPassRenderHarness` (ray_march, no follower — Lumen's path minus the 4-light engine, plus VL's per-frame accumulatedAudioTime + sidecar dolly). MEASURED 0.00 flashes/s, 0 transitions, luma 0.18–0.24 (non-static, Δ0.057) under the worst-case beat train — flash-safe because VL-PSY.5 put the downbeat on geometry not luminance.
+
+`certified:false→true`, `rubric_profile:full`, VL added to `FidelityRubricTests.certifiedPresets`. VL is the catalog's **first certified terrain-flight / kaleidoscope preset** — the culmination of the VL-PSY.1→.6 rebuild (concept reset → kaleidoscopic folds → perf fix → ratchet motion → per-cell variety).
+
+### Increment VL-PSY.6 — Volumetric Lithograph: per-cell variety (spatial repetition) ✅ (2026-07-25)
+
+**Done-when:** the spatial repetition Matt flagged after the full-length listen is broken without disturbing the kaleidoscope symmetry, confirmed by him on a before/after. Met.
+
+Positive Spotify-length M7 ("aligns with the music pretty well, good variation of the terrain") with one residual: "on the repetitive side." Pre-agreed at VL-PSY.5 that if it survived a full-length listen it was the real spatial tiling, not a short-clip artifact — it did. Cause: `pModMirror2` maps every cell to one fundamental domain, so each renders an identical mandala. Fix: the mirror cell index seeds a per-cell offset on the noise's THIRD axis (orthogonal to the folded x/z), so each cell samples a different slice — relief and colour differ between cells, symmetry within a cell is untouched. ★ **The reusable idea: the phase/third axis of a folded noise field is a free "which-variant" channel — audioPhase drifts it over time, the cell index drifts it over space, and neither touches the fold symmetry.** Warp 4→5.5 into the headroom as a second lever. Matt confirmed before/after. Motion gate clean, symmetry intact, perf 10.8 ms. Goldens regenerated.
+
+**Still open on VL:** cert (full-length M7 hold + rubric/route gates), and the crash (unreproduced since the 3.7-min session; needs an .ips if it recurs).
+
 ### Increment FLY.14 — Fractal Fly-By RETIRED (BUG-071 closed wontfix; D-201) ✅ (2026-07-25)
 
 Matt's call after the FLY.13 live M7 ("deranged movement, very jittery, still passes through walls most of the time"). Retired after 14 rounds across two reframings (fall-in → fly-through).
@@ -72,6 +91,18 @@ Matt's call after the FLY.13 live M7 ("deranged movement, very jittery, still pa
 **Removed:** `FractalFlyBy.metal` + `.json` (preset gone from the scan-discovered roster), `RayMarchPipeline+Corridor.swift` (FLY.12/13 corridor steering — FFB was its only consumer; D-097 no-dead-concept-kernel), `FractalFlyByBudgetProbeTests.swift`, the `presetSteer` SceneUniforms lane (restores the 240-byte D-187 contract — SceneUniformsTests had been RED since FLY.12, a byte-contract regression that merged because the gate runs never included it; now green), `docs/VISUAL_REFERENCES/fractal_fly_by/`, and the FFB rows in the ARCHITECTURE module map + golden/rubric tables. **Kept dormant (reusable, agreed with Matt):** the MetalFX temporal-AA capability (MFX.1) and the RMPERF.1 preamble optimization — general ray-march engine work, no longer FFB-specific.
 
 **Process lesson (durable):** measure motion coherence *before* touching a single tuning constant. A preset that cannot move coherently must be killed in a day, not a fortnight — the peripheral metrics that agree with the work are the trap.
+
+### Increment VL-PSY.5 — Volumetric Lithograph: ratchet rotation + retire the second beat layer (BUG-075) ✅ (2026-07-24)
+
+**Done-when:** the downbeat motion reads as a coherent single accent, verified on Matt's real session. Met (pending his live confirmation of the felt character via the handed-over GIF).
+
+Matt M7: "dialing on a rotary telephone, combined with pulsing on the beat." Two causes from the session `features.csv`: (1) the VL-PSY.3 downbeat *twist* was a transient displacement (`attack*decay`, 0→1→0) so the fold angle advanced then RETRACTED — 2.7 % of frames spun backward; (2) the v9 drum-hit peak-lift was still live, a second beat layer at a different rate (FA #67). ★ **The lesson, third time on this preset: an accent on a monotonic quantity (angle) must itself be monotonic — add-and-hold, never add-and-return; and audit for a pre-existing accent before adding a new one.** Fix: monotonic eased ratchet off the cached grid (not amp-gated — that would collapse the accumulated angle backward in a quiet bar, the retraction latent until a Spotify playlist hits a rest), drum-hit peak-lift retired. The `accumulatedAudioTime` terrain morph Matt liked is kept.
+
+Verified on the real session via `SessionReplayHarness` (the harness VL-PSY.2/.3 should have used): 0 % backward, motion gate 0 spikes / 0 frozen, max 1.68× median. **Goldens byte-identical** — the synthetic regression fixtures set no beat position or drum stems, so they cannot see this class; real-session replay is the only gate that catches it. Perf 10.7 ms, unchanged. Residual: a one-time ~24 rad/s snap at BeatGrid install, logged.
+
+**Separate, UNRESOLVED — app crash.** Session crashed ~3.7 min into playback (Hummer). fps held 59.9 to the final recorded frame, so it was a hard fault, not a slowdown/leak-into-stall. No PhospheneApp crash report reachable (TCC; newest DiagnosticReports is Jul 19). Weak duration correlation (this was the longest session by far; the real-time tap stem separation writes unbounded, 142 MB/42 dumps here). **Needs Matt's `.ips` to diagnose — do not guess a cause.**
+
+**Still open on VL:** cert (full-length M7 hold + rubric/route gates), and the crash.
 
 ### Increment VL-PSY.3 — Volumetric Lithograph motion rewrite: rotate the tube (BUG-074) ✅ (2026-07-24)
 
@@ -87,7 +118,7 @@ Two audio-hierarchy faults compounded it: the downbeat fired **per-beat not per-
 
 **Fidelity** (Matt: "visual quality is lower" — a real BUG-073 regression): warp 2→3 octaves; full restore was 13.5 ms over the 12 ms gate, so partial at 11.4 ms p95, stated as partial. Sidecar cost → measured 18/24.
 
-**Follow-up (chip filed):** `SessionReplayHarness` renders dollying presets with a static camera — `cameraDollySpeed` lives in the app target the engine tests can't import. `REPLAY_DOLLY` override as a stopgap; real fix is dolly speed → sidecar.
+**Follow-up ✅ done in VL-PSY.4:** `SessionReplayHarness` rendered dollying presets with a static camera — `cameraDollySpeed` lived in the app target the engine tests can't import. `REPLAY_DOLLY` override was the stopgap; VL-PSY.4 moved dolly speed into the sidecar (`scene_dolly_speed`) and deleted the stopgap.
 
 **Still open on VL:** rebuild tasks 3–5 in their original sense are now largely met (beat-sync, silence state), so what remains is **cert** — a full-length M7 hold + the rubric/route gates. Pending Matt's next live look at this build.
 
@@ -100,6 +131,14 @@ Two audio-hierarchy faults compounded it: the downbeat fired **per-beat not per-
 **Fix — assert behaviour, not timing.** `startSession` already returns with `state`/`currentPlan` installed synchronously by `_beginPreparation`, so both polls were unnecessary: the tests now `await` it directly. The 2.5 s sleep is replaced by awaiting session A's *actual* prep-task handle, captured before `endSession()` drops it (`sessionPreparationTask` was made `private(set)`-internal by TESTFLAKE.1 for exactly this). The assertion is now "whenever the orphan fires, the generation guard rejects it" rather than "the orphan fires inside 2.5 s". `SessionReadyWait` grew an `awaitPrepTask(_:)` overload taking a captured handle (same 120 s hang-cap race — a slip must not become a hang); the file-local `waitUntil` helper is deleted. Sibling `rejectedStartSession_leavesPublishedSourceUntouched` got the same treatment.
 
 **Done-when: ✅** full `swift test --package-path PhospheneEngine` run **3×**, the target test green in all three (previously 0/3); isolated runtime 2.7 s → **0.042 s**; 1689 tests / 233 suites, only the pre-declared `MemoryReporter` intermittent known issue and an unrelated DOC.6 red carried in from VL-PSY.2 (BUG-073's §Open Index row not removed when it moved to §Resolved) — fixed here as its own one-line commit so the merge gate is green. `swiftlint --strict` 0 violations. Recorded per the CLEAN.7.9–7.14 flake precedent: KNOWN_ISSUES §Pre-existing Flakes "Resolved 2026-07-24 (TESTFLAKE.2)" + `RELEASE_NOTES_DEV [dev-2026-07-24-164940]`.
+
+### Increment VL-PSY.4 — Camera dolly speed moves to the sidecar (BUG-074 replay-harness parity) ✅ (2026-07-24)
+
+Per-preset camera dolly speed lived in app code (`VisualizerEngine+Presets.applyPreset`, a `switch desc.name` returning 5.0 for Volumetric Lithograph and 0 otherwise). The engine-side `SessionReplayHarness` (engine test target — cannot import the app) never saw that value, so it replayed VL — whose whole identity is a forward flight — with a **static camera**. That is the BUG-074 replay-harness camera-parity gap.
+
+**Fix.** New sidecar field `scene_dolly_speed` on `PresetDescriptor` (`Float`, default `0` = camera-static). `VolumetricLithograph.json` sets `5.0` (the value VL-PSY.2 shipped in the app switch). Both consumers now read one source of truth: `VisualizerEngine+Presets.applyPreset` seeds `rmPipeline.cameraDollySpeed = desc.sceneDollySpeed` (the `switch desc.name` block is deleted), and `SessionReplayHarness` seeds `pipeline.cameraDollySpeed = preset.descriptor.sceneDollySpeed`. `RayMarchPipeline+MetalFX.applyAudioModulation` is the sole reader — unchanged. VL-PSY.3's `REPLAY_DOLLY` env stopgap in `SessionReplayHarness` is **deleted** (the sidecar seed supersedes it) — reconciled when main (carrying VL-PSY.3) was merged into this branch. The `PresetSessionReplay` executable renders from recorded video, not re-render, so it has no parity gap.
+
+**Done-when: ✅** Engine + app both build clean. `PresetRegressionTests` byte-identical (27 presets × 3 energy states — the new `let` never touches a render: goldens render from `makeSceneUniforms()`, never call `applyAudioModulation`, and even in the live path the dolly integrator is 0 on frame 1). `PresetAcceptanceTests` 27/27. `swiftlint --strict` 0 violations. VL replayed through session `2026-07-24T22-01-51Z` (60 frames, no env var) shows the landscape flowing toward the camera — the flight renders in the engine harness. Byte-identical live behaviour: VL already dollied at 5.0 in the app; only the *source* of the value moved.
 
 ### Increment VL-PSY.2 — Volumetric Lithograph performance fix (BUG-073) ✅ (2026-07-24)
 
@@ -211,45 +250,15 @@ Aurora Veil had churned AV.2 → AV.6 without certifying, because each round add
 **Known follow-up.** `AuroraVeilState.swift` (kink accumulator + pitch smoother) and its three driver test suites are now dead — the shader ignores buffer(6). Left in place deliberately to bound this increment; they are green and have zero functional effect. `AuroraVeilRoutes.swift` still describes the deleted three-channel set.
 
 ### Increment PUB.10 — R3.2: CaptureStateSurface decomposition slice ✅ (2026-07-12)
-
-Second R3 slice, same recipe as R3.1: `audioSignalState` + `signalHealth` (ASH.1) + `hasScreenCapturePermission` move to a `CaptureStateSurface` child (`private(set)` + semantic mutators + main-thread precondition); engine keeps read-only forwarders; the R3.1 bridge becomes one merged objectWillChange subscription; 4 writer sites converted with their exact thread-hop shape preserved; injection sites (`ContentView` ×2, `PlaybackView` ×2, FirstAudioDetector doc) → `captureState.$…`. **Task-1 call: `isCapturing` stays engine-side** — its writers are the CSV feature-capture toggle (diagnostics), no view/publisher consumes it; a later diagnostics slice can take it. 3 contract tests. Remaining slices: R3.3 analysis surface, R3.4 LF transport, R3.5 orchestrator bridge (cross-thread-delicate, own session).
-
 ### Increment PUB.9 — R3.1: NowPlayingSurface decomposition slice ✅ (2026-07-12)
-
-First R3 slice (entry backfilled at PUB.10 — the PUB.9 session's EP edit didn't land, its detail is in the [dev-2026-07-12-223804] release note): the four now-playing chrome fields → `NowPlayingSurface` child with paired `publishTrack` + THE session-boundary `clear()`, structurally closing the BUG-024 class for these fields; 13 writer sites compiler-found and converted; 2 contract tests; recipe recorded for R3.2–.5.
-
 ### Increment PUB.8 — R2: stateful-runtime dispatch point ✅ (2026-07-12)
-
-Seven name-keyed apply blocks → one tail switch + six verbatim bind methods (D-097 shape); dead mv_warp Arachne copy deleted (staged-only preset); Lumen binds independent of rayMarch-arm success; engine-side `StatefulRuntimeRegistry` + rename-gate test; FFO + Nacre/Floret/Glaze documented non-candidates; Nimbus `render_scale`-sidecar follow-up noted. Output-preserving (goldens/flash/photosensitivity/dispatch green). Remaining: R3 only.
-
 ### Increment PUB.7 — Ultra-review Phase 2: contributor experience ✅ (2026-07-12)
-
-Hot-reload wired live (user preset dir + compile-error toasts via the one-shot channel — Decision 4); §Key Types padding-vs-live corrected field-verified (FeatureVector has NO free floats); SHADER_CRAFT §17 completed to every decoded key + the family-enum correction; RUNBOOK cert procedure matches practice; GLOSSARY + NEW_PRESET_CHECKLIST + YOUR_FIRST_PRESET (with `DocsExampleCompileTests` — the walkthrough pair compiles through the real loader every run; caught 2 real doc bugs on first arm). Perf-baseline documented (README) rather than env-gated — keeps the closeout battery's perf coverage default-on. **Manual (pending):** Matt's hot-reload UX walk — drop a pair into Application Support, save good + broken edits, confirm live swap + toast.
-
 ### Increment PUB.6 — Deferred Phase-1 closed ✅ (2026-07-12)
-
-**BUG-070** filed + fixed (failed-reinstall untruthful state: `_isCapturing` now cleared in the catch, monitor kept as diagnostic beacon; engine detectors were sample-starved and recovery was guard-blocked; live device-swap validation pending). The lifecycle-interleave residual stays deliberately open in the entry (BUG-063 doctrine: serialize only on a reproduced artifact). **ITunesRateLimiter** shared window (resolver + previously-unthrottled app fetcher) + MetadataPreFetcher in-flight coalescing (+regressions). **D-056** unreachable `.partial` qualification deleted; the test that synthesized the impossible state flipped to pin the real contract. Full battery at closeout.
-
 ### Increment PUB.5 — Ultra-review Phase-1 remainder ✅ (2026-07-12)
-
-**C7 renderFrame race dissolved with enforcement** (verified threading model: everything preset-related is main-thread; contradictory comments fixed; `dispatchPrecondition` at applyPreset makes the contract compiler-era-proof; halfResTexture needs no lock). **LF failures surfaced**: `localFilePlaybackFailed` + one-shot engine→bridge error channel → §9.4 toast; start-failure ends to EndedView, mid-queue advances past the broken file (UX_SPEC row, strings, 2 bridge regressions). **Preparation total-timeout escape un-deadened** (Rule 5 before Rule 4 + 2 deterministic regressions; `preparationStartDate` opened internal for tests). **Deliberately deferred**: tap-lifecycle serialization + dead-man switch (BUG-063-pattern risk on static-only evidence against the G1-validated path → dedicated instrumentation-first session); iTunes shared rate limiter; D-056 branch decision. Manual note: the LF failure toast + skip behaviour is code-complete pending Matt's UX walk (stage a moved/renamed file mid-queue).
-
 ### Increment PUB.4 — Ultra-review Phase 4: refactoring, R1 + R4 ✅ (2026-07-12)
-
-**R1** `feedback_pixel_format` sidecar key replaces the display-name pixel-format matches in `PresetLoader.feedbackFormat` (4 shipped overrides declared; name matches = deprecated fallback; goldens + flash harness prove output-preserving; 2 new regressions + unknown-value fallback test; SHADER_CRAFT §17 row). **R4** 5 ceremony protocols deleted (single conformer, never a type, no double — API docs grafted onto concretes); dead `OnboardingReset` deleted (+8 pbxproj refs); FFTMagnitudeKernel claim honesty + both hand-copies annotated (StemAnalyzer's 16× scale is DELIBERATE — port needs a stem-feature regression pass); Package.swift → AUDIT_KEEPLIST pointer; `cancel_fromReady` deterministic (awaits `sessionPreparationTask.value`; starvation-not-hang confirmed; 5/5). **Scoped + queued, each its own session:** **R2** PresetRuntime registry — generalize the proven D-097 shape (`init?(device:)` / `bind(to:)` / `resetPerTrack(seed:)` + optional descriptors, one name→factory table) to collapse the 3 name-keyed app-layer sites per stateful preset; **R3** VisualizerEngine decomposition (CLEAN Phase 8) — child ObservableObjects along session-mode seams (LF state / streaming-tap state / orchestrator bridge), structurally eliminating the BUG-024 class that PUB.2 patched point-wise. Done-when: ✅ builds green, lint 0, goldens byte-stable, full battery at closeout.
-
 ### Increment PUB.3 — Ultra-review Phase 3: documentation reconciliation ✅ (2026-07-11)
-
-Docs-only. KNOWN_ISSUES pruning pass (24 resolved entries out of §Open, 17 to history; Open Index = the real 11-item list; §Known Limitations created for BUG-001/005/013); verified closes BUG-026/043/025/014 + the four AUDIT-2026-06-09 P2 bullets (each code-spot-checked); BUG-041 annotated as candidate close-as-stale **pending Matt's one-line confirm**; cross-doc staleness batch (BEAT_SYNC links, SHADER_CRAFT dual-harness claim, check_user_strings header, MV-1 doc formula, fused cancel() doc, D-170 ghost comment, registry 156→157, archived EP paths); FidelityRubric `expectedAutomatedGate` backfilled to all 27 sidecars + completeness assertion. Done-when: ✅ DocIntegrity 12/12, rubric 29/29, lint 0; full battery at closeout.
-
 ### Increment PUB.2 — Ultra-review Phase 1: code defects ✅ (2026-07-11)
-
-Both review P1s fixed same-day with evidence-first KNOWN_ISSUES filings (BUG-068 plan-order divergence → `orderedTracks`/`PrepOutcomes`; BUG-069 cross-thread field races → `analysisStateLock` + `trackMetadataLock`), plus the app-layer session-boundary clear (BUG-024 class, fires on `.connecting` AND `.preparing`), the dead Spotify retry CTA, PreviewResolver transient-nil poisoning, the `preparationTask` exit-nil race, live/offline tempo-threshold parity (160→175 shared constant), the BeatThis reflect-pad OOB guard, and wall-clock ChromaExtractor key stabilization. Each fix carries a regression test; suites + TSan spot-run green (closeout evidence in the session report). **Queued (next session):** tap-lifecycle serialization + dead-man switch (live-validation-bound), renderFrame atomic preset snapshot, LF router-failure §9 surfacing, iTunes shared rate limiter, D-056 unreachable-branch decision. Then review Phases 2 (contributor experience) / 3 (doc reconciliation) / 4 (refactoring).
-
 ### Increment PUB.1 — Publication Phase 0: publish blockers ✅ (2026-07-11)
-
-The Phase-0 slice of the pre-publication ultra review (12-dimension multi-agent audit, adversarially verified P0/P1s; full report in the session artifact). Shipped, one commit per component: **(1)** DOC.6 rotation — 6 stale EP entries to history; the date-relative DocIntegrity gate was red on main and would have failed every fresh clone's first test run. **(2)** MIT `LICENSE` — repo was legally all-rights-reserved while three docs claimed MIT. **(3)** Privacy sweep — `memory/` (stale agent-memory snapshot), `archive/.../audio_tap` compiled Mach-O, the one `matt.deming@gmail.com` occurrence (BUG-057 kickoff doc), `block-destructive.sh` `PROJECT_ROOT` now `git rev-parse` (was hardcoded to Matt's home path — functionally broken on any other machine), `VISUAL_REFERENCES/**/*.gif` LFS rule. **Corpus manifests (`tools/data/*.csv*`) were removed then RESTORED same-session on Matt's direction** ("purpose not yet realized") — they are deliberate content; excluded from any history-rewrite scope. **(4)** D-111 attribution — the CREDITS placeholder claimed "no Milkdrop-derived content shipped" while FIVE presets shipped as Milkdrop-inspired works (Nacre, Glaze, Floret, DragonBloom, FataMorgana — the review found 3; the sweep found all 5): each sidecar now carries the D-111-as-amended `inspired_by` block (SHADER_CRAFT §17 row added), the CREDITS table is populated, and `dragon_bloom/source.milk` is deleted per the D-111 scope condition (SHA-256 retained as provenance in the sidecar + reference README). **(5)** `README.md` + `CONTRIBUTING.md` — the public front door: prerequisites incl. the git-lfs and rebuild-TCC traps, build/test + fresh-clone caveats, the no-account preset dev loop, gates, certification lifecycle, Milkdrop rules, jargon key. **(6)** Weights delivery (Decision 2) — `Scripts/fetch_weights.sh` (idempotent, checksum-verified, URL-overridable) + committed 482-file `SHA256SUMS`; LFS keeps working until the `docs/PUBLISHING.md` cutover. **(7)** `prompts/README.md` framing (Decision 3 — ship the process record). **(8)** `docs/PUBLISHING.md` — the maintainer-executed cutover runbook: weights Release upload + untrack procedure, the now-OPTIONAL history rewrite (scope re-tabled after the corpus reversal: ~105 MiB dead blobs + low-harm privacy residue; Matt declined a size-only rewrite in June — decide at publish), repo settings, and the **D-113 flag: publication IS the trigger that reopens the retired Milkdrop author-notification protocol — needs Matt's pick + a DECISIONS.md entry**. Done-when: ✅ all eight components committed; DocIntegrity 12/12; sidecar decode tests 24/24 green; fetch_weights verified on happy/corrupt/restore paths; closeout evidence in the session report.
-
 ### Increment ASH.2 — Signal-health surfacing + post-session chain analyzer ✅ M7 SIGNED OFF (2026-07-10, D-184)
 ### Increment QG.3.2 — Coupling warning-tier review flag ✅ (2026-07-10, D-193)
 ### Increment QG.3.1 — Coupling measurable for all 13 (shared multi-pass render) ✅ (2026-07-10, D-193)
@@ -2981,3 +2990,32 @@ These milestones map to product-level outcomes, not implementation phases.
 **Matt's decisions (2026-07-19):** **retire Glass Brutalist** (✅ executed GBRETIRE.1 / D-186); **keep Arachne parked** (most-developed scaffold — not retired despite the gate lean); **next develop = Kinetic Sculpture, spike first** — a thin-strand ray-march feasibility spike gates any rebuild (strands render well → rebuild; else retire KS too). Volumetric Lithograph viable but not chosen this round. Teed-up increments: (a) Glass Brutalist retirement — **✅ executed GBRETIRE.1 / D-186** (catalog count 27 → 26, `expectedAutomatedGate` entry removed, Module Map row dropped, app dolly-speed case unwired, golden fixtures regenerated, full closeout battery); (b) the KS thin-strand feasibility spike — **✅ run 2026-07-19, verdict GREEN (viable-with-AA).** A standalone tracer replicating the exact production march loop (maxSteps=128, hit `d<0.001·t`, min-step 0.002) on a Lippold "Flight" bicone of 80 `sd_capsule` strands: the feared thin-SDF march-cost blowup **did not occur** (max 45–53/128 steps, 0% budget exhaustion; form renders cleanly down to ~0.65px — the relative hit-epsilon implicitly fattens sub-pixel features + the min-step floor prevents stalls). The one defect (foreshortened-strand shimmer <2px) is fully rescued by an **emissive glow core** (additive coverage ∝ ray-strand min-distance), which also reads as the tensioned-wire aesthetic. → **Kinetic Sculpture rebuild is viable** (replace the boxy `ks_rep` 3-axis grid with emissive-cored radiating capsules from hub points; matte/metal members ≥~2px via distance-fatten + existing bloom). Caveat: shimmer inferred from static frames — confirm via a rotating-camera pass through the full pipeline early in the rebuild. Spike is throwaway (not committed). **Next: Matt's go on the KS rebuild.**
 
 **Milestone E — Visual Identity.** Phosphene's preset catalog has a recognizable aesthetic ceiling that reads as 2026-quality — comparable to indie-game-released visuals, not 2006-era ShaderToy. *Requires: Phase V complete, Phase V.7–V.11 uplifts all Matt-approved, Phase CC certified (the flagship demonstration piece), accessibility pass (U.9).*
+
+---
+
+## Beat-Sync Program (ratified D-202, Matt GO 2026-07-26)
+
+Multi-phase program for beat-match/music-sync across the five hard categories. Full spec, per-category benchmark suites/targets, and per-increment detail: [`docs/BEAT_SYNC_PROGRAM_PLAN.md`](BEAT_SYNC_PROGRAM_PLAN.md). Phase stubs below; each phase's first session expands its own spec from plan §4. Phase SK (skills) is in flight as SK.1.
+
+### Phase GT — Ground truth + benchmark harness
+Fixture manifest, tap-capture CLI + reference-tool cross-check, BeatBench scoring harness + baseline capture across all five suites. 3–4 sessions + ~40 min Matt taps. spec: BEAT_SYNC_PROGRAM_PLAN.md §4. GT.3 done-when includes filling the `beatbench` skill's TO FILL block (CLI invocations) and ratifying/revising targets against the baseline (D-B).
+
+- **GT.1 — fixture acquisition + manifest ✅ (2026-07-27; 13 tracks).** Suite tracks sourced hybrid — full-length audio lives at `BEATBENCH_FIXTURES_DIR`=`~/phosphene_beatbench_fixtures` (outside the repo): 9 pristine corpus rips + 4 segmented from a recorded live session's `raw_tap.wav` (Solsbury Hill / Bohemian Rhapsody / Bleed + YYZ, a 10/8 bonus). Committed: `tools/beatbench_find_fixtures.py` (corpus locator), `Scripts/beatbench_copy_fixtures.sh` (copies the 9), `tools/beatbench_manifest.py` (generator, records tap provenance), `Tests/Fixtures/beatbench/manifest.json` (13 tracks, all sha256+duration, suites 1–5), `BeatBenchFixturePresenceGate` (manifest-well-formed always-on + env-gated hash check: passes on Matt's machine, CI-safe, fails loud on missing/re-encoded — QR.3), and `docs/diagnostics/BEATBENCH_SESSION_2026-07-27.md` (session review + per-track tap-window map, which also seeds the GT.3 live-replay path). Done-when met: manifest committed (13/13 hashed), gate green on Matt's machine + CI-safe.
+
+### Phase DBN — Sequence decoding replaces peak-picking
+Bar-pointer-model decoder over Beat This! activations (odd meters, tempo-state), env-flagged A/B vs peak-pick, piecewise-tempo BeatGrid v2. 5–7 sessions. spec: BEAT_SYNC_PROGRAM_PLAN.md §4.
+
+### Phase FT — Full-track analysis for local files
+Beat This! sliding-window tiling over the full track + local-file integration; the category-3 proving ground. 2–3 sessions, depends on DBN.4. spec: BEAT_SYNC_PROGRAM_PLAN.md §4.
+
+### Phase RLG — Rolling live grid for streaming (research-gated)
+RLG.0 offline reproducibility study with a numeric GO bar (D-C), then RollingBeatTracker engine component on GO only. 2–3 + 4–6 sessions. spec: BEAT_SYNC_PROGRAM_PLAN.md §4.
+
+### Phase TRK — Live tracker tightens, not bounds
+PLL/Kalman phase-period controller (replay-first), drums-stem onset evidence upgrade, BUG-065 closure. 3–4 sessions, independent of DBN. spec: BEAT_SYNC_PROGRAM_PLAN.md §4.
+
+### Phase CNF — Confidence and graded degradation
+Confidence fusion + FeatureVector plumbing (D-D), D-154 binary gate → graded scaling, rubato validation (category 5). 3–4 sessions, after DBN + RLG.0/TRK signals exist. spec: BEAT_SYNC_PROGRAM_PLAN.md §4.
+
+### Phase MDL — Model headroom, measured (optional)
+Beat This! final0 offline A/B on all suites; adopt only if deltas justify weight/prep cost (D-E). 1–2 sessions, any time after GT.3. spec: BEAT_SYNC_PROGRAM_PLAN.md §4.

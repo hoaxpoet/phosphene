@@ -2502,6 +2502,7 @@ Every preset ships a `<PresetName>.json` sidecar alongside its `.metal` file. Th
 | `stages` | none | Staged-composition pass list (V.ENGINE.1) — per-stage fragment + `samples` wiring; see the staged paradigm section. |
 | `marks` | none | mv_warp scene-geometry overlay block (draw params + chromatic + comp + beat pump); Dragon Bloom-class strand overlays. |
 | `scene_camera` / `scene_lights` / `scene_fog` / `scene_fog_near` / `scene_far_plane` | ray-march defaults | Ray-march scene setup — see §GPU Contract Details in ARCHITECTURE. `scene_lights` takes up to 4 lights (RMENV.1 multi-light; key/rim/fill/accent). |
+| `scene_dolly_speed` | `0` (camera-static) | Forward camera dolly speed (world-units/s) seeding `RayMarchPipeline.cameraDollySpeed`; per-frame speed is bass-modulated `× (0.5 + bass)`. Sidecar-owned (not app code) so the engine-side replay harness renders the flight — BUG-074. Volumetric Lithograph = 5.0. |
 | `environment` | optional (`nil` → default interior) | Ray-march IBL environment surfaces reflect + take ambient from (RMENV.2). `"gallery"` = a high-contrast gallery interior (bright skylight strips, dark floor) that makes polished metals read as metal; omit/`"default"` = the low-contrast interior. Opt-in — omitting it is byte-identical to pre-RMENV. |
 | `additive_blend` | `false` | Mesh-shader additive blending. |
 | `ferrofluid` | none | FFO thin-film params (preset-specific block). |
