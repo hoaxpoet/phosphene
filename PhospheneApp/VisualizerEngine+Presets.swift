@@ -150,6 +150,8 @@ extension VisualizerEngine {
         pipeline.setDirectPresetFragmentBuffer3(nil)
         pipeline.setDirectRenderScale(1.0)   // NB.8: full-res unless a preset opts into half-res below
         pipeline.setRayMarchPresetHeightTexture(nil)
+        pipeline.setRayMarchPreRenderCompute(nil)
+        faradaySimulation = nil
         pipeline.setMeshGBufferEncoder(nil)
         pipeline.setPostProcessChain(nil)
         pipeline.setRayMarchPipeline(nil)
@@ -220,6 +222,20 @@ extension VisualizerEngine {
                     snap.fogFar = uniforms.sceneParamsB.y
                     snap.fov = uniforms.cameraOriginAndFov.w
                     rmPipeline.baseScene = snap
+
+                    // Faraday's slot-10 height field is a LIVE simulation, not a
+                    // baked one: the Swift-Hohenberg pattern is the music's
+                    // behaviour, so it steps every frame on the render's own command
+                    // buffer (see RenderPipeline.setRayMarchPreRenderCompute).
+                    if desc.name == "Faraday",
+                       let sim = FaradaySimulation(device: context.device,
+                                                   library: shaderLibrary.library) {
+                        faradaySimulation = sim
+                        pipeline.setRayMarchPresetHeightTexture(sim.heightTexture)
+                        pipeline.setRayMarchPreRenderCompute { commandBuffer, features in
+                            sim.step(commandBuffer: commandBuffer, features: features)
+                        }
+                    }
 
                     // Per-preset base dolly speed (world units per second).  Set
                     // to 0 for camera-static presets.  `drawWithRayMarch`
