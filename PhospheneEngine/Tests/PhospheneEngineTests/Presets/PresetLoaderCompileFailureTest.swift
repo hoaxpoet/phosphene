@@ -91,7 +91,10 @@ struct PresetLoaderCompileFailureTest {
     /// CR.2–CR.3. See docs/presets/psychedelic_geometry/PG_CR_CYMATIC_RESONANCE.md.)
     /// 27 → 26 at FLY.14 (Fractal Fly-By RETIRED — instrument-proven motion-coherence
     /// ceiling; the fast scale-zoom Mandelbox fly-through boils frame-to-frame. See D-201.)
-    static let expectedProductionPresetCount = 26
+    /// 26 → 27 at FDY.1 (Faraday added — a Swift-Hohenberg simulation of parametrically
+    /// driven surface waves, ray-marched as an iridescent liquid heightfield with
+    /// MetalFX temporal AA. `certified:false`, pending live M7.)
+    static let expectedProductionPresetCount = 27
 
     @Test("PresetLoader.presets.count matches expectedProductionPresetCount — catches Failed Approach #44 silent drops")
     func test_presetLoaderProductionCount() {
