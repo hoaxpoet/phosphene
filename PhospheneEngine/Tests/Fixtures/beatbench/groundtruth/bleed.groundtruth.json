@@ -6,7 +6,7 @@
       "precision": 0.85,
       "recall": 0.447,
       "ref_beats_full_track": 839,
-      "ref_bpm_in_span": 115.0,
+      "ref_bpm_in_span": 114.8,
       "ref_downbeats_full_track": 0,
       "verdict": "METRICAL",
       "why": "reference is half the tapped pulse (\u00d70.51)"
@@ -17,11 +17,17 @@
       "precision": 0.834,
       "recall": 0.438,
       "ref_beats_full_track": 884,
-      "ref_bpm_in_span": 115.01,
+      "ref_bpm_in_span": 115.38,
       "ref_downbeats_full_track": 123,
       "verdict": "METRICAL",
       "why": "reference is half the tapped pulse (\u00d70.51)"
     }
+  },
+  "beats_quality": {
+    "cov": 0.051,
+    "doubles": 0,
+    "gaps": 8,
+    "verdict": "usable"
   },
   "beats_s": [
     2.434007645842219,
@@ -381,6 +387,12 @@
     99.40522097918002,
     99.79379127083958
   ],
+  "downbeats_quality": {
+    "cov": 0.018,
+    "doubles": 0,
+    "gaps": 0,
+    "verdict": "usable"
+  },
   "downbeats_s": [
     1.1218723125013712,
     2.1895413124977567,
@@ -461,11 +473,12 @@
   ],
   "extended_by": null,
   "meter_from_taps": 4,
+  "meter_note": "ratio 3.93",
   "phosphene_grid_bpm": 174.6,
   "source": "taps",
   "status": "metrical_review",
   "suite": 4,
-  "tap_bpm": 224.95,
+  "tap_bpm": 226.72,
   "tap_count": 356,
   "tap_downbeat_count": 76,
   "tapped_span_s": [

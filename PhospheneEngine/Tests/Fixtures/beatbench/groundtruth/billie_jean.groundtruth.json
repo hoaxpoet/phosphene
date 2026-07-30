@@ -6,7 +6,7 @@
       "precision": 1.0,
       "recall": 1.0,
       "ref_beats_full_track": 557,
-      "ref_bpm_in_span": 116.98,
+      "ref_bpm_in_span": 117.45,
       "ref_downbeats_full_track": 0,
       "verdict": "AGREE",
       "why": "F=1.00 within \u00b170 ms"
@@ -17,11 +17,17 @@
       "precision": 0.959,
       "recall": 0.959,
       "ref_beats_full_track": 576,
-      "ref_bpm_in_span": 116.98,
+      "ref_bpm_in_span": 117.65,
       "ref_downbeats_full_track": 143,
       "verdict": "AGREE",
       "why": "F=0.96 within \u00b170 ms"
     }
+  },
+  "beats_quality": {
+    "cov": 0.03,
+    "doubles": 0,
+    "gaps": 0,
+    "verdict": "usable"
   },
   "beats_s": [
     1.4048072562358276,
@@ -582,6 +588,12 @@
     285.6867120181406,
     286.1975510204082
   ],
+  "downbeats_quality": {
+    "cov": 0.008,
+    "doubles": 0,
+    "gaps": 0,
+    "verdict": "usable"
+  },
   "downbeats_s": [
     1.6273023541536604,
     3.458751562498226,
@@ -620,11 +632,12 @@
   ],
   "extended_by": "librosa",
   "meter_from_taps": 4,
+  "meter_note": "ratio 4.02",
   "phosphene_grid_bpm": 117.0,
   "source": "taps validated, extended by librosa",
   "status": "confirmed",
   "suite": 1,
-  "tap_bpm": 117.0,
+  "tap_bpm": 117.44,
   "tap_count": 172,
   "tap_downbeat_count": 34,
   "tapped_span_s": [
