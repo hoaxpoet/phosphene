@@ -145,8 +145,6 @@ private let expectedAutomatedGate: [String: Bool] = [
     // coupling, the Skein/Lumen/Filigree precedent):
     "Dragon Bloom":         true,    // in-shader routes visible to the heuristic
     "Fata Morgana":         true,    // in-shader routes visible to the heuristic
-    "Faraday":              false,   // the music drives the CPU-side Swift-Hohenberg
-                                     // simulation, not in-shader routes the heuristic can see
     "Floret":               false,   // coupling partly CPU-side; certified via M7 (FLORET.4)
     "Glaze":                false,   // stem-swap coupling CPU-side; M7'd (GLAZE.3+)
     "Lumen Mosaic":         false,   // slot-8 pattern engine is CPU-side (the original precedent)

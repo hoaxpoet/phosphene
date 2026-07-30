@@ -150,11 +150,6 @@ extension RenderPipeline {
         let presetBuf3 = directPresetFragmentBuffer3Lock.withLock { directPresetFragmentBuffer3 }
         let presetHeightTex = rayMarchPresetHeightTextureLock.withLock { rayMarchPresetHeightTexture }
 
-        // Presets whose slot-10 field is SIMULATED step it here, on this same command
-        // buffer, before the G-buffer pass reads it — so the frame renders the field
-        // this frame produced. (Baked-height presets attach nothing.)
-        rayMarchState.preRenderCompute?(commandBuffer, features)
-
         let frameDt = features.deltaTime > 0 ? features.deltaTime : 1.0 / 60.0
 
         // V.9 Session 4.5c / D-127 — aurora-reflection drum-energy smoother.

@@ -234,11 +234,6 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// add per-frame SPH-lite motion + audio forces.
     var ferrofluidParticles: FerrofluidParticles?
 
-    /// Live Swift-Hohenberg simulation driving the Faraday preset's slot-10 height
-    /// field. Allocated when Faraday becomes active; stepped every frame via
-    /// `RenderPipeline.setRayMarchPreRenderCompute`.
-    var faradaySimulation: FaradaySimulation?
-
     /// Tessellated quad mesh + G-buffer pipeline for the V.9 Session 4.5c
     /// Phase 1 Step B mesh-displacement path. Allocated alongside
     /// `ferrofluidParticles` when Ferrofluid Ocean is the active preset;

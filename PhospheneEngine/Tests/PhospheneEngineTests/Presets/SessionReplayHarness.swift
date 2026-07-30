@@ -239,14 +239,6 @@ struct SessionReplayHarness {
         // flight instead of a static camera (BUG-074 replay-harness parity gap).
         pipeline.cameraDollySpeed = preset.descriptor.sceneDollySpeed
 
-        // Production parity: presets whose slot-10 height field is SIMULATED are
-        // stepped by `RenderPipeline.setRayMarchPreRenderCompute` in the app. The
-        // harness bypasses RenderPipeline, so it must step them itself — otherwise
-        // slot 10 stays the zero placeholder and the surface renders FLAT (the FLY.6
-        // divergence: judging the look from an image production never produces).
-        let faraday = presetName == "Faraday"
-            ? FaradaySimulation(device: ctx.device, library: lib.library)
-            : nil
 
         let ibl = try IBLManager(context: ctx, shaderLibrary: lib)
         let noise = try? TextureManager(context: ctx, shaderLibrary: lib)
@@ -275,7 +267,6 @@ struct SessionReplayHarness {
             prevAudioTime = row.accumulatedAudioTime
 
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
-            faraday?.step(commandBuffer: cmd, features: features)
             pipeline.render(
                 gbufferPipelineState: gbufferState,
                 features: &features,
@@ -286,7 +277,7 @@ struct SessionReplayHarness {
                 noiseTextures: noise,
                 iblManager: ibl,
                 postProcessChain: postChain,
-                presetHeightTexture: faraday?.heightTexture)
+)
             cmd.commit()
             cmd.waitUntilCompleted()
             if cmd.status != .completed {
