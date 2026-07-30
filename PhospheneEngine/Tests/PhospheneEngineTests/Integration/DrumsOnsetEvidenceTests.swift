@@ -23,7 +23,12 @@
 // Overrides for replaying a recorded session instead of the bundled fixture:
 //   PHOSPHENE_TRK2_AUDIO       audio file (default Fixtures/tempo/love_rehab.m4a)
 //   PHOSPHENE_TRK2_BEATS       JSON `{"beats":[…]}` (default: analyze the audio)
-//   PHOSPHENE_TRK2_GRID_OFFSET seconds to add to audio time to reach grid time
+//   PHOSPHENE_TRK2_GRID_OFFSET seconds added to the GRID's beat times to bring them
+//                              into the audio's time base (e.g. a session's raw_tap.wav
+//                              starts N s after track zero → pass −N)
+//   PHOSPHENE_TRK2_SECONDS     analyse only the first N seconds
+//   PHOSPHENE_TRK2_DUMP_DRUMS  write the separated drums stem (raw f32le mono 44.1 kHz)
+//                              for cross-checking against a session's own stem dumps
 
 import Testing
 import Foundation
