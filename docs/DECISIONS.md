@@ -111,6 +111,8 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-200 | Accepted | Kleinian Froth RETIRED (KFRETIRE.1) — abandoned after live M7 (Matt, 2026-07-22): "complete garbage… I hate everything I see," "the entire LOOK is a failure," "the look describes BUBBLES. Where are the bubbles within bubbles?" Built KF.1 as a `ray_march` clay maquette (ported IQ Apollonian DE + sustained-bass packing morph), FF'd to main for one live test, reset back off — **never permanently landed** (count stays 26). **Two failures.** (1) *Behaviour invisible — calibration:* the hero mapped `f.bass_att`→packing tuned against synthetic [0,1] fixtures, but real `bass_att` on the test track maxed ~0.33 (p50 0.10 / p99 0.30), so packing only crept s≈1.05–1.13 (a relaxed-pole sliver) — the froth never inflated (memory: "tune vs p99, never vs 1.0" — violated; the synthetic 0/0.45/0.9 fixtures made a dead morph look dramatic). (2) *Wrong geometry + infra gap:* IQ's Apollonian renders the fractal LIMIT SET (a knobby bulb/horn gasket), NOT round nested translucent bubbles; real "bubbles within bubbles" needs a sphere-PACKING SDF (discrete spheres) **and** multi-hit transparency (see-through), which the single-hit deferred G-buffer pipeline cannot do — a Gate-2/Gate-3 miss that should have blocked the concept (the transparency risk was even flagged in the design's Gate-3 and built anyway — surfacing a risk ≠ respecting it). **★ Deep root cause:** the build was validated against the prompt's MECHANISM ("port IQ Apollonian") + green gates, never against the curated soap-foam reference sitting in the folder — homework graded with the wrong answer key. Third PG-slate preset to die at M7 (after Kinetic Sculpture D-188, Truchet Loom D-194) on the SAME reference-vs-mechanism miss. Code recoverable on branch `claude/kleinian-froth-design-04598d`. §Rationale below. |
 | D-201 | Accepted | Fractal Fly-By RETIRED (FLY.14, BUG-071 closed wontfix) — abandoned after 14 rounds across two reframings (fall-in → fly-through) and the FLY.13 live M7 (Matt: "deranged movement, very jittery, still passes through walls most of the time"). **Instrument-proven ceiling, not a tuning gap:** the whole-frame temporal-coherence metric (built round 14, not round 1 — the process failure) shows the image changes ~13 % every frame uniformly, and frames two apart are *more* different than adjacent (ratio 1.12) — geometry genuinely teleports, not an aliasing artifact AA could fix. A fast scale-zoom through a self-similar Mandelbox reveals entirely new fold structure each frame, so nothing persists for the eye or MetalFX to track (it boils). Coherence needs ~3–4× slower travel (the "monotonous tunnel, BORING" Matt already rejected) and still shimmers; Horsthuis-class results come from offline accumulation we cannot afford at 7 ms/60 fps. Removed the preset + the FLY.12/13 corridor steering (`RayMarchPipeline+Corridor.swift`, FFB was its only consumer — D-097) + the `presetSteer` SceneUniforms lane (restoring the 240-byte D-187 contract; SceneUniformsTests had been RED since FLY.12, a byte-regression that merged because gate runs excluded it). KEPT dormant: MFX.1 temporal AA + RMPERF.1 (general ray-march engine work). **★ Process lesson:** measure motion coherence BEFORE tuning — the peripheral metrics (lateral jerk, mush %) that agreed with the work were the trap; a preset that can't move coherently dies in a day, not a fortnight. §Rationale below. |
 | D-202 | Accepted | Beat-sync program RATIFIED (SK.1, Matt GO 2026-07-26). Beat-match/music-sync across the five hard categories (baseline 4/4, odd meters, mid-song tempo changes, dense transients, ambiguous/rubato) is elevated to its own multi-phase program (realizes the D-145 direction); [`docs/BEAT_SYNC_PROGRAM_PLAN.md`](BEAT_SYNC_PROGRAM_PLAN.md) is its authoritative spec. Four ratified inputs: (1) benchmark ground truth = human taps + reference-tool cross-check (madmom/Beat This! as offline annotation tools only, nothing ships); (2) the rolling live grid (RLG) is research-gated (RLG.0 offline study with a pre-agreed numeric GO bar) before any engine code; (3) local-file and streaming paths proceed in parallel — FT lands categories 2/3 for local files even if RLG returns NO-GO; (4) skills-first — SK.1 authors four new skills + three edits before any measurement or engine work. Phases GT/DBN/FT/RLG/TRK/CNF/MDL stubbed in ENGINEERING_PLAN.md. Standing constraints unchanged (D-004 hierarchy; Cold-Start Phase Contract + FA #69; FA #68; D-075). Downstream product decisions D-B…D-F arrive per phase (plan §5). §Rationale below. |
+| D-203 | Accepted | Faraday added (FDY.1) — an iridescent liquid sea the music physically drives; roster 26 → 27, `certified:false`. A **Swift–Hohenberg simulation of parametrically-driven surface waves** (ported, FA #73: Swift & Hohenberg 1977 / Chen & Viñals 1997) runs on the GPU every frame and is ray-marched as a liquid heightfield. **Sound CAUSES the image** (the Cymatic Resonance register, not a palette on a pretty surface): loudness crossing the Faraday threshold is a real supercritical bifurcation — glassy and still below it, cells erupting above — timbre selects the cell wavelength, and the dish's own plate modes gate the drive so fine cells organise into large-scale FIGURES rather than uniform wallpaper. **Colour is optics:** thin-film interference off the wave itself, since the standing wave IS the film thickness. **First consumer of MFX.1 + RMPERF.1 by design** — interference fringes plus sub-cell capillary ripple are the finest detail there is, so a still frame must throw detail away that temporal AA accumulates instead. **Engine:** new per-frame hook `setRayMarchPreRenderCompute` (Ferrofluid, the other slot-10 consumer, BAKES its height field once; a live PDE must step on the render's own command buffer). State lives on `RayMarchPipeline` — `RenderPipeline`'s body is at its 300-line lint ceiling. **NO SceneUniforms lanes added** — time/phase derive from `accumulatedAudioTime`, so the 240-byte D-187 contract is untouched (the FLY.12 byte-regression is not repeated). `SessionReplayHarness` now steps simulated slot-10 fields too, or it renders a FLAT placeholder and every look judgement comes from an image production never produces (the FLY.6 divergence). Also removes the abandoned Molten Gyroid look-spike. §Rationale below. |
+| D-204 | Accepted | Faraday RETIRED (FDYRETIRE.1) after three live M7s — roster 27 → 26. **The mechanisms were measurably correct and the IMAGE still failed.** Round 3 verified, on rendered frames: beat legibility r = +0.748 (quarter-cycle decoy −0.659, so phase-specific), structure swinging 5.2× as cells collapse and re-form on the grid, motion 4.89/255 at coherence ratio 2.04. Matt's read was nevertheless "looks cheap and does not sync with the music." **★ The lesson is not that the routing was wrong — it is that a top-down field of slowly-breathing cells is intrinsically low-energy, and no amount of correct coupling makes a low-energy image exciting.** Round 2 had already shown the shape of it: the music drove the geometry correctly while the screen moved 1.11/255 per frame with a 7 % luminance swing. Removed: the preset + sidecar, `FaradaySimulation.swift`, `FaradaySim.metal`, the app wiring, and — per D-097 — `setRayMarchPreRenderCompute`, whose only consumer this was (deleted-concept code does not earn preservation as infrastructure awaiting the right consumer; it is ~20 lines, recoverable from git if a future simulated-field preset needs it). **KEPT — genuinely load-bearing and independent of the concept:** the HARNESS.1 repairs (stems.csv now loaded per frame, pulse fields mapped, and `ReplayHarnessRouteCoverageTests` mechanizing the silent-zero class). Those exist because Faraday's failure exposed that every replayable preset was being measured against silence. §Rationale below. |
 | D-198 | Accepted | Cymatic Resonance CR.1.2 — second-M7 fixes (Matt M7 2026-07-22 "Cherub Rock", clean chain). **(1) Framing:** the oblique tilt left a receding-background triangle at the top; switched to a **top-down orthographic cover-fit** — the square plate fills the 16:9 frame edge-to-edge, no background (Matt: "camera directly above would be better"). **(2) "Only 3 patterns, boring":** widened the ladder traversal (centroid-dev gain 8→12) AND replaced the uniform `(m,m+2)` ladder with a **varied same-parity** set (alternating `m=n` concentric grids with `m<n` cross-hatch) so adjacent rungs are visibly distinct figures. **(3) "Colour doesn't change":** brought CR.3's hue routing forward — a global jewel-palette hue offset driven by the **smoothed harmonic phase** (`tonal_phase_fifths`, D-178; range 6.25 on the track — fully alive), circular-smoothed via sin/cos. Snap depth 0.9→0.65 (top-down, lowest modes read empty). Golden regenerated. Pending Matt's next live M7. §Rationale below. |
 | D-197 | Accepted | Cymatic Resonance CR.1.1 — live-M7 defect fixes (Matt M7 2026-07-22, "Hummer"). **(1) Hero "held its pattern":** real `spectral_centroid` occupies ~0.08–0.18 on music (verified on the session's healthy portion: p5 0.085 / p95 0.162), so the old `centroid × (N-1)` mapping moved the ladder < 1 of 11 rungs (the Nimbus/BUG-027 AGC-calibration trap). Fixed with a **BLEND** (Matt's call): mostly a per-track centroid DEVIATION (guarantees visible travel on any track) + a gentle absolute tilt (brighter ⇒ finer). Regression-locked: the real narrow band now traverses 3.75 rungs (was < 1). **(2) Palette read white:** emissive 2.6 → 1.5 (ridges sit near the bloom threshold so colour survives ACES), white key → warm-gold, hue sweep widened to sapphire→magenta→gold. **(3) White space:** plate zoomed (camDist 2.75→1.85, plateHalf 1.0→1.18, elev 52→48) to fill the 16:9 canvas. **(4) ASH `.critical` nudge gap (folded in):** `PlaybackErrorBridge` fired the low-levels nudge only on `peakBand == .low`; `.critical` (worse) fired nothing, so the degraded-chain M7 ran unflagged — now both bands nudge. Golden regenerated. Pending a clean-chain live re-M7. §Rationale below. |
 | D-196 | Accepted | Cymatic Resonance CR.1 maquette landed (count 25 → 26; `certified:false`). First `direct`+`post_process` preset — a resonant-plate Chladni nodal figure selected live by spectral centroid (mode-complexity ladder), `bassDev` snap-to-simple, derived-normal relief + GGX + jewel emissive on deep black, strong oblique tilt, through ACES + bloom. **Engine:** slot-6 per-preset state now reaches the `direct`+`post_process` scene pass (`PostProcessChain.runScenePass` threads `presetFragmentBuffer` at fragment index 6 — zero-risk, that path had no production consumer before CR). **★ Concept-gate correction #5 (found at the maquette):** the plus basis forces an anti-diagonal nodal line for OPPOSITE-parity (m,n), so the design's adjacent-pair ladder carried the forbidden diagonal (incl. the fundamental); fixed by the SAME-parity `(m,m+2)` family `(1,3)…(11,13)`. Perf 1080p full-chain p95 ≈ 1–2.6 ms. Pending Matt's live M7. §Rationale below. |
@@ -2795,3 +2797,106 @@ unsolved), arXiv 1912.10211 (PANNs).
 **Downstream product decisions** arrive per phase (plan §5): D-B (finalize per-suite targets, after GT.3 baseline), D-C (RLG GO/NO-GO + the bar, after RLG.0), D-F (grid_bpm semantics under piecewise grids, DBN.4), D-D (FeatureVector budget route for confidence floats, CNF.1), D-E (adopt Beat This! final0, MDL.1).
 
 **References.** D-145 (beat-sync elevated to its own project), D-004 (continuous energy primary; canonical in DECISIONS_HISTORY.md + CLAUDE.md §Audio Data Hierarchy), FA #68 / FA #69 (HISTORICAL_DEAD_ENDS.md §Cold-start beat-phase derivation + BEAT_SYNC.md), D-075 / D-079 / BUG-009 (tempo/octave rules), D-153 → D-158 (beat-locked motion on the cached grid is valid), the four SK.1 skills (`.claude/skills/`).
+
+
+---
+
+## D-203: Faraday — a Swift–Hohenberg sea wired into the engine (FDY.1, 2026-07-27)
+
+**Decision.** Add Faraday: an iridescent liquid sea whose pattern is produced by a real
+pattern-forming PDE driven by the music. Roster 26 → 27, `certified:false` pending Matt's live M7.
+
+**Why this concept.** Matt's brief: a preset that behaves like another member of the band, making
+the most of Apple Silicon — and *psychedelic, not black*. The concepts that die here are the ones
+where a look is chosen first and music is bolted on after; the ones that land (Cymatic Resonance,
+Mitosis) are the ones where **sound causes the image**. Faraday is the liquid sibling of the
+Chladni plate: the same physical premise, continuous rather than granular, and it can break.
+
+**The physics** (ported, FA #73 — Swift & Hohenberg 1977; Chen & Viñals 1997 for Faraday):
+
+    du/dt = r*u - (lap + k0^2)^2 u + g*u^2 - u^3
+
+- `r` — drive above threshold. **The Faraday threshold is a real supercritical bifurcation**, so a
+  drop genuinely switches the sea on rather than fading it in. Calibrated against REAL band ranges
+  (bass p50 ≈ 0.27 / p95 ≈ 0.67), not an assumed 0–1 (FA #31 / the CR.1.1 lesson).
+- `k0` — selected wavenumber; timbre sets cell size. Smoothed hard, because a lattice needs TIME at
+  a fixed wavelength to anneal — re-selecting it every frame leaves a defect-ridden mush.
+- Plate modes gate the drive, so cells organise into large-scale figures, not wallpaper.
+
+**Numerics — each caught by measuring, not by guessing.** The 3×3 Laplacian eigenvalue SATURATES at
+−1.6 (it is only ≈ −0.3k² for small k), so growth is far slower than a naive −k² reading suggests —
+early frames read as "grain" because the pattern was still growing. `dt` is bounded by the stiffest
+term, the cubic (dt·3u² < 2); too large and the grid-scale checkerboard wins, which is instability,
+not physics. **Volume conservation is REQUIRED**: the quadratic term pumps the spatially uniform
+k=0 mode, essentially undamped at small k0, and left alone it wins — the field collapses to a flat
+elevated state (measured: amplitude 0.32 → 0.004). A real dish cannot change its mean level.
+
+**Colour is optics, not a palette.** Thin-film interference: the standing wave IS the film
+thickness, so hues ripple and swap as the pattern moves.
+
+**Engine work.** New per-frame hook `setRayMarchPreRenderCompute`. Ferrofluid Ocean — the only other
+slot-10 consumer — BAKES its height field once at preset apply, so no per-frame path existed; a live
+PDE must step on the render's own command buffer so the frame renders the field that frame produced.
+State lives on `RayMarchPipeline` (stored properties cannot live in an extension, and
+`RenderPipeline`'s body sits at the 300-line `type_body_length` ceiling).
+
+**Two traps deliberately not repeated.** (1) **No SceneUniforms lanes were added** — time and phase
+derive from `accumulatedAudioTime`, leaving the 240-byte D-187 contract untouched; FLY.12 grew the
+struct to 256 and shipped a red byte-contract test. (2) **`SessionReplayHarness` steps simulated
+slot-10 fields.** Without it the harness renders the zero placeholder and the surface is FLAT — the
+FLY.6 divergence, where look conclusions come from an image production never produces. The first
+production render did exactly this, and was caught because the harness was checked against
+production rather than trusted.
+
+**Known rough edges at land (honest).** Cell walls ring where interference packs too many fringes
+into a few pixels — `sceneMaterial` receives no slope information (it has no access to texture(10)),
+so the band-limit has only view distance to work with. The backdrop is a flat dark strip because the
+engine offers only `env` (a grey studio) or `dark`; neither is a psychedelic sky, so the camera is
+framed to fill the frame with sea. Both are M7-gated, not shipped as resolved.
+
+**References.** D-199 (Cymatic Resonance — the sound-causes-the-image sibling), D-187 (SceneUniforms
+240-byte contract), D-201 (Fractal Fly-By retirement — the motion-coherence lesson that shaped the
+measurement discipline here), MFX.1 / RMPERF.1 (the capabilities this preset is built to exercise),
+FA #73 (port, don't derive), FA #31 (calibrate against real signal ranges).
+
+
+---
+
+## D-204: Faraday retired — correct coupling, low-energy image (FDYRETIRE.1, 2026-07-27)
+
+**Decision.** Retire Faraday after three live M7s. Matt's call.
+
+**What makes this different from the other retirements.** Kinetic Sculpture, Truchet Loom and
+Kleinian Froth died on a reference-vs-mechanism miss. Fractal Fly-By died on a proven physical
+ceiling (motion incoherence). Faraday died with **everything measurably working**:
+
+| Round | What was wrong | Measured |
+|---|---|---|
+| 1 | no beat route at all; threshold never fired | per-frame drive change median 0.0000; 99 % of frames above threshold |
+| 2 | geometry moved, image did not | geometry vs subharmonic r = +0.69, but screen delta 1.11/255, luminance swing 7 % |
+| 3 | mechanisms all correct | beat legibility r = +0.748 (decoy −0.659), structure swing 5.2×, motion 4.89/255 @ ratio 2.04 |
+
+Round 3 shipped a genuinely beat-locked, threshold-crossing, coherent preset — and it still read
+as cheap and unsynced. **A correct mapping cannot rescue an intrinsically low-energy image.** A
+top-down dish of slowly-breathing cells has a low ceiling on visual energy no matter how
+faithfully the music drives it; that is a concept property, not a tuning parameter.
+
+**Process note worth keeping.** Two of the three rounds were spent measuring the wrong thing.
+Round 1's fix was verified against the *mechanism* (does the field track the grid?) rather than
+the *image* (does the screen move?), and the mechanism metric was green while the picture was
+static. Gate on rendered frames — see the durable rule in
+`feedback_motion_coherence_before_tuning`.
+
+**Removed.** `Faraday.metal` + sidecar; `FaradaySimulation.swift`; `FaradaySim.metal`; app
+wiring; and `setRayMarchPreRenderCompute` — the per-frame compute hook whose only consumer this
+was. Per D-097 that hook is deleted rather than kept as reusable infrastructure; it is small and
+recoverable from git if a future simulated-field preset needs it.
+
+**Kept.** Everything from HARNESS.1: `stems.csv` loaded per frame, pulse fields mapped, and
+`ReplayHarnessRouteCoverageTests`. Those are not Faraday work — they are repairs to a
+measurement instrument that had been silently feeding zeros to every replayable preset, and they
+outlive the preset that exposed them.
+
+**References.** D-203 (Faraday's addition), D-201 (Fractal Fly-By retirement — a ceiling proven
+by instrument), D-097 (siblings not subclasses — no dead-concept code kept as infrastructure),
+HARNESS.1 (the audit this preset triggered).

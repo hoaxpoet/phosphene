@@ -199,6 +199,53 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     private var grid: BeatGrid = .empty
     private var medianPeriod: Double = 0.5  // 120 BPM default
     private var drift: Double = 0
+
+    // MARK: - TRK.1 — period-tracking controller (BUG-065)
+
+    /// Rate of change of drift, in seconds per second of playback. This is the
+    /// PERIOD-error correction, and it is the whole point of TRK.1.
+    ///
+    /// The legacy path is a first-order EMA on the phase error, i.e. a
+    /// proportional-only controller. Control theory is unambiguous about what that
+    /// can do: zero steady-state error against a STEP, but *constant* steady-state
+    /// error against a RAMP. Measured on session `2026-07-30T15-39-21Z`, the drift
+    /// IS a ramp — linear fit −1.493 ms/s at R² = 0.844, implying the cached grid
+    /// period is off by 0.149 % (0.12 BPM at 80.45). A proportional controller can
+    /// only ever bound that; it can never null it. That is precisely BUG-065's
+    /// "bounds drift without tightening it".
+    ///
+    /// Adding this integral-of-error term makes the loop type-2, which tracks a ramp
+    /// with zero steady-state error — the cached grid's period error is learned and
+    /// cancelled instead of endlessly chased.
+    private var driftRate: Double = 0
+
+    /// Playback time of the last onset that updated `driftRate`, for the elapsed
+    /// term in the rate update. −1 until the first matched onset.
+    private var lastRateUpdateTime: Double = -1
+
+    /// Phase gain. Deliberately below the legacy `onsetAlpha` (0.4): with a period
+    /// term doing the steady-state work, the phase term only has to absorb jitter,
+    /// and a softer gain is less reactive to a single bad match.
+    private static let pllPhaseGain: Double = 0.25
+
+    /// Period gain. Small — the period error is a slowly-varying property of the
+    /// track, so learning it slowly is both sufficient and robust.
+    private static let pllPeriodGain: Double = 0.12
+
+    /// Hard bound on the learned rate: 0.5 % clock error. Real cached-grid error is
+    /// ~0.15 %; anything beyond this bound is a mis-match, not a clock, and must not
+    /// be integrated into a runaway.
+    private static let pllMaxDriftRate: Double = 0.005
+
+    /// Minimum elapsed time between rate updates. Two onsets in quick succession
+    /// would otherwise divide by a near-zero interval and spike the rate.
+    private static let pllMinRateInterval: Double = 0.15
+
+    /// TRK.1 ships behind an env flag with a one-increment A/B path (beat-sync
+    /// program house rule). `PHOSPHENE_BEAT_PLL=1` enables the period-tracking
+    /// controller; unset preserves the legacy EMA byte-for-byte.
+    static let pllEnabled: Bool =
+        ProcessInfo.processInfo.environment["PHOSPHENE_BEAT_PLL"] == "1"
     private var matchedOnsets: Int = 0
     /// Diagnostic counter — preserved for `LiveBeatDriftTraceEntry` reporting.
     /// Lock decisions no longer use this; see `firstNonTightMatchTime` (BUG-007.5).
@@ -481,6 +528,110 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
     /// `playbackTime` is `Double` (D-079, QR.1) so long-session callers
     /// (`MIRPipeline.elapsedSeconds`) keep their full precision through the
     /// onset-matching and lock-state path.
+    /// Match this frame's sub-bass onset against the cached grid and update the
+    /// drift estimate (legacy EMA, or the TRK.1 period controller when enabled).
+    private func processOnsetLocked(pt: Double) {
+            lastOnsetTime = pt
+        let prevDrift = drift
+        if let nearest = grid.nearestBeat(
+            to: pt + drift, within: Self.driftSearchWindow
+        ) {
+            let instantDrift = nearest - pt
+            if Self.pllEnabled {
+                applyPeriodControllerLocked(instantDrift: instantDrift, at: pt)
+            } else {
+                drift = (1 - Self.onsetAlpha) * drift + Self.onsetAlpha * instantDrift
+            }
+
+            // BUG-007.5 part 2 — variance-adaptive tight gate. After a few
+            // onsets, the gate widens to ±2σ of recent deviations so noisy
+            // tracks (HUMBLE half-time, MC verse) hold lock without trip-
+            // ping the time gate. Acquisition path uses the floor (30 ms)
+            // until ≥ `driftDeviationMinSamples` deviations have accumulated.
+            let signedDeviation = instantDrift - drift
+            pushDriftDeviationLocked(signedDeviation)
+            let acquired = matchedOnsets >= Self.lockThreshold
+            let window = acquired ? effectiveTightWindowLocked() : Self.strictMatchWindow
+            let isTight = abs(signedDeviation) < window
+            if isTight {
+                matchedOnsets = min(matchedOnsets + 1, Int.max - 1)
+                consecutiveMisses = 0
+                firstNonTightMatchTime = nil   // BUG-007.5: reset time gate on tight match
+                // BUG-007.4b: accumulate per-slot kick-density on tight matches only.
+                // Use the *raw* `beatsSinceDownbeat` (before `_barPhaseOffset` rotation)
+                // so we measure where the actual onsets land in Beat This!'s coordinate
+                // system. Auto-rotate then maps the dominant raw slot to the displayed "1".
+                if let timing = grid.localTiming(at: nearest) {
+                    let bpb = max(grid.beatsPerBar, 1)
+                    let rawSlot = ((timing.beatsSinceDownbeat % bpb) + bpb) % bpb
+                    if rawSlot < slotOnsetCounts.count {
+                        slotOnsetCounts[rawSlot] += 1
+                    }
+                    // BUG-007.4c: capture the very first tight onset's slot
+                    // as the kick-on-1+3 tiebreaker. Most tracks start with
+                    // a clear downbeat (or the first kick we see is on the
+                    // song's "1" of the bar after the intro).
+                    if firstTightOnsetRawSlot == nil {
+                        firstTightOnsetRawSlot = rawSlot
+                    }
+                }
+                maybeAutoRotateBarPhaseLocked()
+            } else {
+                consecutiveMisses += 1
+                if firstNonTightMatchTime == nil { firstNonTightMatchTime = pt }
+            }
+            // swiftlint:disable:next line_length
+            emitDiagnosticTrace(onset: pt, nearest: nearest, instantDrift: instantDrift, prevDrift: prevDrift, isTight: isTight)
+        } else {
+            consecutiveMisses += 1
+            if firstNonTightMatchTime == nil { firstNonTightMatchTime = pt }
+            emitDiagnosticTrace(onset: pt, nearest: nil, instantDrift: nil, prevDrift: prevDrift, isTight: false)
+        }
+    }
+
+    /// Per-frame drift advance: TRK.1 period integration, then the quiet-input decay.
+    ///
+    /// Integrating `driftRate` every frame is what actually cancels the ramp — between
+    /// onsets the estimate keeps pace with the clock error instead of falling further
+    /// behind it. Silence is not evidence about the clock, so the learned rate bleeds
+    /// off on the same time constant as the drift itself; otherwise a long quiet gap
+    /// would let a stale rate walk the estimate away unchecked.
+    private func advanceDriftPerFrameLocked(pt: Double, dt: Double, medianPeriod: Double) {
+        if Self.pllEnabled {
+            drift += driftRate * dt
+        }
+        guard lastOnsetTime >= 0 && (pt - lastOnsetTime) > 2.0 * medianPeriod else { return }
+        let decayAlpha = dt / (Self.decayTau + dt)
+        drift *= (1 - decayAlpha)
+        if Self.pllEnabled {
+            driftRate *= (1 - decayAlpha)
+        }
+    }
+
+    /// TRK.1 type-2 (PI) update — the BUG-065 fix, behind `PHOSPHENE_BEAT_PLL`.
+    ///
+    /// `error` is how far the current estimate sits from this onset's evidence. The
+    /// PHASE term corrects it now; the PERIOD term learns the systematic clock/BPM
+    /// error so the ramp stops re-accumulating between onsets. A proportional-only
+    /// loop (the legacy EMA) cannot null a ramp — that is the defect.
+    private func applyPeriodControllerLocked(instantDrift: Double, at pt: Double) {
+        let error = instantDrift - drift
+        drift += Self.pllPhaseGain * error
+
+        // Gain scheduled by match confidence (plan §TRK.1): only a confident match
+        // may steer the PERIOD. Low confidence coasts on the learned rate rather
+        // than chasing evidence it does not trust — the FBS "hold steady" lesson.
+        let confident = matchedOnsets >= Self.lockThreshold
+        let elapsed = lastRateUpdateTime >= 0 ? pt - lastRateUpdateTime : 0
+        if confident && elapsed >= Self.pllMinRateInterval {
+            driftRate += Self.pllPeriodGain * error / elapsed
+            driftRate = min(max(driftRate, -Self.pllMaxDriftRate), Self.pllMaxDriftRate)
+        }
+        if elapsed >= Self.pllMinRateInterval || lastRateUpdateTime < 0 {
+            lastRateUpdateTime = pt
+        }
+    }
+
     public func update(
         subBassOnset: Bool,
         playbackTime: Double,
@@ -502,67 +653,9 @@ public final class LiveBeatDriftTracker: @unchecked Sendable {
         let pt = playbackTime
         let dt = Double(max(deltaTime, 0.001))
 
-        if subBassOnset {
-            lastOnsetTime = pt
-            let prevDrift = drift
-            if let nearest = grid.nearestBeat(
-                to: pt + drift, within: Self.driftSearchWindow
-            ) {
-                let instantDrift = nearest - pt
-                drift = (1 - Self.onsetAlpha) * drift + Self.onsetAlpha * instantDrift
+        if subBassOnset { processOnsetLocked(pt: pt) }
 
-                // BUG-007.5 part 2 — variance-adaptive tight gate. After a few
-                // onsets, the gate widens to ±2σ of recent deviations so noisy
-                // tracks (HUMBLE half-time, MC verse) hold lock without trip-
-                // ping the time gate. Acquisition path uses the floor (30 ms)
-                // until ≥ `driftDeviationMinSamples` deviations have accumulated.
-                let signedDeviation = instantDrift - drift
-                pushDriftDeviationLocked(signedDeviation)
-                let acquired = matchedOnsets >= Self.lockThreshold
-                let window = acquired ? effectiveTightWindowLocked() : Self.strictMatchWindow
-                let isTight = abs(signedDeviation) < window
-                if isTight {
-                    matchedOnsets = min(matchedOnsets + 1, Int.max - 1)
-                    consecutiveMisses = 0
-                    firstNonTightMatchTime = nil   // BUG-007.5: reset time gate on tight match
-                    // BUG-007.4b: accumulate per-slot kick-density on tight matches only.
-                    // Use the *raw* `beatsSinceDownbeat` (before `_barPhaseOffset` rotation)
-                    // so we measure where the actual onsets land in Beat This!'s coordinate
-                    // system. Auto-rotate then maps the dominant raw slot to the displayed "1".
-                    if let timing = grid.localTiming(at: nearest) {
-                        let bpb = max(grid.beatsPerBar, 1)
-                        let rawSlot = ((timing.beatsSinceDownbeat % bpb) + bpb) % bpb
-                        if rawSlot < slotOnsetCounts.count {
-                            slotOnsetCounts[rawSlot] += 1
-                        }
-                        // BUG-007.4c: capture the very first tight onset's slot
-                        // as the kick-on-1+3 tiebreaker. Most tracks start with
-                        // a clear downbeat (or the first kick we see is on the
-                        // song's "1" of the bar after the intro).
-                        if firstTightOnsetRawSlot == nil {
-                            firstTightOnsetRawSlot = rawSlot
-                        }
-                    }
-                    maybeAutoRotateBarPhaseLocked()
-                } else {
-                    consecutiveMisses += 1
-                    if firstNonTightMatchTime == nil { firstNonTightMatchTime = pt }
-                }
-                // swiftlint:disable:next line_length
-                emitDiagnosticTrace(onset: pt, nearest: nearest, instantDrift: instantDrift, prevDrift: prevDrift, isTight: isTight)
-            } else {
-                consecutiveMisses += 1
-                if firstNonTightMatchTime == nil { firstNonTightMatchTime = pt }
-                emitDiagnosticTrace(onset: pt, nearest: nil, instantDrift: nil, prevDrift: prevDrift, isTight: false)
-            }
-        }
-
-        // No-onset decay toward 0 when the input has gone quiet for longer
-        // than two median beat periods. Per-frame EMA with τ = 1 s.
-        if lastOnsetTime >= 0 && (pt - lastOnsetTime) > 2.0 * medianPeriod {
-            let decayAlpha = dt / (Self.decayTau + dt)
-            drift *= (1 - decayAlpha)
-        }
+        advanceDriftPerFrameLocked(pt: pt, dt: dt, medianPeriod: medianPeriod)
 
         let lockState = computeLockStateLocked(at: pt)
         // BUG-007.6 + existing visualPhaseOffsetMs: shift display time by
