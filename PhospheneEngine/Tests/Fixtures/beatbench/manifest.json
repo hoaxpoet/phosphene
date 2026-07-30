@@ -53,6 +53,39 @@
       "duration_s": 327.31
     },
     {
+      "id": "money",
+      "title": "Money",
+      "artist": "Pink Floyd",
+      "suite": 2,
+      "source": "tap",
+      "filename": "money.wav",
+      "source_session": "2026-07-27T12-58-56Z",
+      "sha256": "7036bc0722b0a9b183a64d418ce484edc070e509763faa142c4f21aa24fa4bc3",
+      "duration_s": 380.33
+    },
+    {
+      "id": "pyramid_song",
+      "title": "Pyramid Song",
+      "artist": "Radiohead",
+      "suite": 2,
+      "source": "tap",
+      "filename": "pyramid_song.wav",
+      "source_session": "2026-07-27T12-58-56Z",
+      "sha256": "3acc5a2291a3dac2e65b2ebdea03ca397f24bf3a012dedc1cd1b248ab031f31b",
+      "duration_s": 287.83
+    },
+    {
+      "id": "so_what",
+      "title": "So What",
+      "artist": "Miles Davis",
+      "suite": 2,
+      "source": "local",
+      "filename": "so_what.m4a",
+      "preview_clip": true,
+      "sha256": "9af89c281548a1733b73b6f4d33e9db72b5618ddea0b9070d4c8e09c6328dc07",
+      "duration_s": 30.02
+    },
+    {
       "id": "solsbury_hill",
       "title": "Solsbury Hill",
       "artist": "Peter Gabriel",
@@ -115,6 +148,17 @@
       "source_session": "2026-07-27T12-58-56Z",
       "sha256": "b0ea0b21cd918c4542864a7cc63dcae9a999d81a71140272d9930d9feedbf117",
       "duration_s": 442.45
+    },
+    {
+      "id": "there_there",
+      "title": "There There",
+      "artist": "Radiohead",
+      "suite": 4,
+      "source": "local",
+      "filename": "there_there.m4a",
+      "preview_clip": true,
+      "sha256": "eb4144d90429a67c9689b7436289503287b281a5016b9bf0dd11e3a36e4b014a",
+      "duration_s": 29.93
     },
     {
       "id": "girl_from_ipanema",

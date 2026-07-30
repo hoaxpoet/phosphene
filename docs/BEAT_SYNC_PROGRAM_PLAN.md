@@ -106,7 +106,7 @@ TRK.2 OUTCOME (2026-07-30) — PREMISE FALSIFIED, increment stopped at its evide
 
 TRK.3 — Live validation + M7. BUG-065 closure gate: < 30 ms held across full tracks on suites 1 and 4. BUG-028's "behind the beat" feel re-reviewed. BLOCKED: TRK.1 failed replay validation (strike 1) and TRK.2's evidence upgrade is falsified, so there is nothing to validate live.
 
-PHASE TRK — PARKED (D-205, Matt 2026-07-30: "park the tracker, go DBN next session"). Both levers — controller topology (TRK.1) and evidence source (TRK.2) — were measured against the same frozen single-BPM grid and neither closes BUG-065. The evidence layer has no headroom left: only ~15–25 % of detected onsets from ANY band or stem land within ±50 ms of a beat, so a tracker fed an onset flag cannot be tuned into tightness. BUG-065 stays open and bounded; PHOSPHENE_BEAT_PLL stays default-off. The next beat-sync session opens phase DBN. Do not reopen TRK without a changed premise about the GRID, not the tracker.
+PHASE TRK — PARKED (D-206, Matt 2026-07-30: "park the tracker, go DBN next session"). Both levers — controller topology (TRK.1) and evidence source (TRK.2) — were measured against the same frozen single-BPM grid and neither closes BUG-065. The evidence layer has no headroom left: only ~15–25 % of detected onsets from ANY band or stem land within ±50 ms of a beat, so a tracker fed an onset flag cannot be tuned into tightness. BUG-065 stays open and bounded; PHOSPHENE_BEAT_PLL stays default-off. The next beat-sync session opens phase DBN. Do not reopen TRK without a changed premise about the GRID, not the tracker.
 
 Phase CNF — Confidence and graded degradation (3–4 sessions, after DBN + RLG.0/TRK signals exist)
 

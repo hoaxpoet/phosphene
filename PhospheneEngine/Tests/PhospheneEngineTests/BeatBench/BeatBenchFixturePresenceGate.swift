@@ -6,7 +6,7 @@
 //
 // Two tests, deliberately split (QR.3 — never a silent skip):
 //   • manifestWellFormed  — ALWAYS runs (CI included): the committed manifest parses
-//     and has the 12 tracks across suites 1–5. This is the artifact that never skips.
+//     and has all 17 tracks across suites 1–5. This is the artifact that never skips.
 //   • localFixturesPresent — ENV-GATED (local-only per GT.3): when BEATBENCH_FIXTURES_DIR
 //     is set, every local fixture must be present with the exact committed sha256; a
 //     missing or re-encoded file fails loud. Inactive (with a printed note) when the env
@@ -43,12 +43,12 @@ struct BeatBenchFixturePresenceGate {
         return try JSONDecoder().decode(Manifest.self, from: data)
     }
 
-    @Test("BeatBench manifest is present and well-formed (13 tracks across suites 1–5)")
+    @Test("BeatBench manifest is present and well-formed (17 tracks across suites 1–5)")
     func manifestWellFormed() throws {
         let manifest = try Self.loadManifest()
         #expect(
-            manifest.tracks.count == 13,
-            "expected 13 BeatBench suite tracks, got \(manifest.tracks.count) at \(Self.manifestURL().path)"
+            manifest.tracks.count == 17,
+            "expected 17 BeatBench suite tracks, got \(manifest.tracks.count) at \(Self.manifestURL().path)"
         )
         for track in manifest.tracks {
             #expect((1...5).contains(track.suite), "\(track.id): suite \(track.suite) out of range 1…5")

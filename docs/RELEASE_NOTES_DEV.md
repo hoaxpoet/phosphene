@@ -10,9 +10,9 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
-### [dev-2026-07-30-164919] D-205 — phase TRK parked, DBN is the next beat-sync lever
+### [dev-2026-07-30-164919] D-206 — phase TRK parked, DBN is the next beat-sync lever
 
-Matt's call on the TRK.2 finding: "park the tracker, go DBN next session." Two levers — controller topology (TRK.1) and evidence source (TRK.2) — have now been measured against the same frozen single-BPM grid and neither closes BUG-065, and the TRK.2 measurement shows why further tracker work is dead-end: only ~15–25 % of detected onsets, from **any** band or stem, land within ±50 ms of a beat, so a tracker fed an onset flag cannot be tuned into tightness whatever its controller. BUG-065 stays **open and bounded**; `PHOSPHENE_BEAT_PLL` stays default-off; TRK.3 has no content. The plan's category-4 leverage entry "TRK.2" is withdrawn — category 4 now rests on DBN + MDL. Next beat-sync session opens phase DBN (bar-pointer-model decoding over Beat This! activations). **Do not reopen TRK without a changed premise about the *grid*, not the tracker.** D-205.
+Matt's call on the TRK.2 finding: "park the tracker, go DBN next session." Two levers — controller topology (TRK.1) and evidence source (TRK.2) — have now been measured against the same frozen single-BPM grid and neither closes BUG-065, and the TRK.2 measurement shows why further tracker work is dead-end: only ~15–25 % of detected onsets, from **any** band or stem, land within ±50 ms of a beat, so a tracker fed an onset flag cannot be tuned into tightness whatever its controller. BUG-065 stays **open and bounded**; `PHOSPHENE_BEAT_PLL` stays default-off; TRK.3 has no content. The plan's category-4 leverage entry "TRK.2" is withdrawn — category 4 now rests on DBN + MDL. Next beat-sync session opens phase DBN (bar-pointer-model decoding over Beat This! activations). **Do not reopen TRK without a changed premise about the *grid*, not the tracker.** D-206.
 
 ### [dev-2026-07-30-163241] TRK.2 — drums-stem onset evidence measured and falsified (BUG-065)
 
