@@ -367,7 +367,28 @@ suite is reported even when the target suite improves.
 
 ---
 
-## 9. DECISION-NEEDED
+## 9. Decisions — RESOLVED (Matt, 2026-07-30, recorded as D-207)
+
+**Both answered: "decline when unsure, keep {3,4,5,7}".** The binding consequences for DBN.2:
+
+1. **`dbnMeterHypotheses` = {3, 4, 5, 7}** — fixed, not a tunable to be widened casually. Adding a
+   hypothesis is now a product decision, not an implementation one.
+2. **The decoder must be able to decline.** Its output is not "a meter" but "a meter *or* no
+   confident bar". That makes the meter-margin confidence of §6.1 **load-bearing rather than
+   diagnostic**, and it puts a new field on the output contract (§6): a bar-confidence flag that
+   consumers can gate on. `beatsPerBar` alone can no longer express the result.
+3. **DBN.2 must therefore ship the decline path and its threshold**, not defer them. The threshold
+   itself is a tunable (`dbnMeterMarginThreshold`, default TBD at DBN.2 once the margin's
+   distribution across the 9 ground-truthed tracks is measured — set it from data, not taste).
+4. **DBN.3's A/B gains a metric:** how often "unsure" fires, per track. A decoder that declines on
+   everything is not a win, and meter-correct-count alone would not catch that. Report
+   decline-rate alongside meter accuracy and downbeat F.
+5. **Preset-side fallback is explicitly out of scope** (option 3 was not chosen). Presets that lose
+   the bar accent keep their beat-level motion and nothing substitutes for it. If that reads as too
+   plain on odd-meter material, the graded version belongs to CNF.2, which already owns
+   binary-gate → graded-scaling.
+
+Original framing, retained for the record:
 
 ### D-1 — When the decoder is unsure of the bar, should the visuals guess or decline?
 
@@ -391,8 +412,7 @@ currently wrong on 7 of 9 measured tracks — so a wrong bar-1 is already firing
 because a wrong bar-1 degrades visuals users see, and the program's stated position for category 5
 that "success = declining honestly".
 
-**Default if unanswered:** DBN.2 implements the confidence output so either policy is a one-line
-change; the choice is re-raised at DBN.3 with A/B numbers showing how often "unsure" fires.
+**→ CHOSEN (Matt, 2026-07-30): decline when unsure.**
 
 ### D-2 — Should {6, 9, 12} be in the meter hypothesis set?
 
@@ -409,7 +429,7 @@ relabelled 12/8, and each hypothesis multiplies decode cost.
 compound meter. This is close to an engineering call; it is surfaced only because "12/8 instead of
 4/4" changes where the visual accent lands, which is user-visible.
 
-**Default if unanswered:** {3, 4, 5, 7}.
+**→ CHOSEN (Matt, 2026-07-30): keep {3, 4, 5, 7}.**
 
 ---
 
