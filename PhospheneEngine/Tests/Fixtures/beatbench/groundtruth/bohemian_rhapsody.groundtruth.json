@@ -272,6 +272,7 @@
     "gaps": 0,
     "verdict": "usable"
   },
+  "downbeats_rejected": null,
   "downbeats_s": [
     1.1691107291655571,
     4.107924895836921,

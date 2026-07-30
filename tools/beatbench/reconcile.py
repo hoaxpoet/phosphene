@@ -164,14 +164,24 @@ def reconcile_track(track_id, suite):
     span = (taps[0], taps[-1])
     tap_bpm = fitted_bpm(taps)
 
+    # A pass Matt has rejected is kept on disk as evidence but must never reach ground
+    # truth — an annotation the annotator does not stand behind is not ground truth.
     down_path = os.path.join(TAPS, f"{track_id}.downbeats.json")
-    tap_downs = load(down_path)["taps_s"] if os.path.exists(down_path) else []
+    tap_downs, downs_rejected = [], None
+    if os.path.exists(down_path):
+        down_doc = load(down_path)
+        if down_doc.get("rejected"):
+            downs_rejected = down_doc.get("reject_reason", "rejected")
+        else:
+            tap_downs = down_doc["taps_s"]
     down_ioi = median_ioi(tap_downs)
     beat_ioi = median_ioi(taps)
     meter, meter_note = derive_meter(down_ioi, beat_ioi)
     beats_quality = tap_quality(taps)
     downs_quality = tap_quality(tap_downs)
-    if downs_quality["verdict"].startswith("IRREGULAR"):
+    if downs_rejected:
+        meter, meter_note = None, f"downbeat pass REJECTED — {downs_rejected}"
+    elif downs_quality["verdict"].startswith("IRREGULAR"):
         meter, meter_note = None, "downbeat pass too irregular to derive a meter"
 
     backends = {}
@@ -219,6 +229,7 @@ def reconcile_track(track_id, suite):
         "meter_note": meter_note,
         "beats_quality": beats_quality,
         "downbeats_quality": downs_quality,
+        "downbeats_rejected": downs_rejected,
         "phosphene_grid_bpm": PHOSPHENE_GRID.get(track_id),
         "backends": backends,
         "extended_by": extended_by,
