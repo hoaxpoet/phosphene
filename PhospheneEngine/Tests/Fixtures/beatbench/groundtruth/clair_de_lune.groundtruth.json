@@ -18,7 +18,7 @@
       "recall": 0.134,
       "ref_beats_full_track": 350,
       "ref_bpm_in_span": 65.93,
-      "ref_downbeats_full_track": 47,
+      "ref_downbeats_full_track": 28,
       "verdict": "DISAGREE",
       "why": "F=0.11, tempo ratio \u00d71.32"
     }

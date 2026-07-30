@@ -18,7 +18,7 @@
       "recall": 0.938,
       "ref_beats_full_track": 819,
       "ref_bpm_in_span": 122.45,
-      "ref_downbeats_full_track": 116,
+      "ref_downbeats_full_track": 68,
       "verdict": "METRICAL",
       "why": "reference is double the tapped pulse (\u00d72.01)"
     }
