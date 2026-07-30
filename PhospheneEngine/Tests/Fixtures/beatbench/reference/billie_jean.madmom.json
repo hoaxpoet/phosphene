@@ -727,14 +727,17 @@
     290.27,
     292.33
   ],
-  "elapsed_s": 44.4,
+  "elapsed_s": 53.8,
   "independent_of_phosphene": true,
   "meta": {
     "beats_per_bar_candidates": [
       3,
       4,
       5,
-      7
+      6,
+      7,
+      9,
+      12
     ],
     "meter_estimate": 4
   },

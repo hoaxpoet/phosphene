@@ -868,14 +868,17 @@
     312.32,
     314.18
   ],
-  "elapsed_s": 48.2,
+  "elapsed_s": 55.3,
   "independent_of_phosphene": true,
   "meta": {
     "beats_per_bar_candidates": [
       3,
       4,
       5,
-      7
+      6,
+      7,
+      9,
+      12
     ],
     "meter_estimate": 4
   },
