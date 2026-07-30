@@ -187,6 +187,7 @@ struct SessionReplayHarness {
         let rows = try Self.loadRows(sessionDir.appendingPathComponent("features.csv"))
         // REPLAY_ZERO_STEMS=1 reproduces the pre-HARNESS.1 behaviour (stems fed as
         // silence) so the A/B shows exactly what the broken instrument was hiding.
+
         let zeroStems = env["REPLAY_ZERO_STEMS"] == "1"
         let stemRows = zeroStems ? [] : Self.loadStems(sessionDir.appendingPathComponent("stems.csv"))
         if stemRows.isEmpty {
@@ -215,6 +216,17 @@ struct SessionReplayHarness {
             Issue.record("preset '\(presetName)' not found or not ray-march")
             return
         }
+
+        // SLOT-8 STATE. Some presets keep their entire coupling in a per-preset CPU
+        // state buffer rather than in FeatureVector routes — Lumen Mosaic's per-cell
+        // pattern lives in LumenPatternState at fragment slot 8, driven by
+        // LumenPatternEngine (D-LM-buffer-slot-8). Without it the preset renders a
+        // STATIC default: re-validation measured 0.00 stem sensitivity AND 0.00
+        // frame-to-frame motion, i.e. the harness was rendering a dead image. This is a
+        // distinct gap class from an unmapped feature field.
+        let lumenEngine = presetName == "Lumen Mosaic"
+            ? LumenPatternEngine(device: ctx.device)
+            : nil
 
         // Production wiring, in production order.
         let pipeline = try RayMarchPipeline(context: ctx, shaderLibrary: lib)
@@ -269,18 +281,26 @@ struct SessionReplayHarness {
             pipeline.applyAudioModulation(features: features)
             prevAudioTime = row.accumulatedAudioTime
 
+            let stemsThisFrame = stemRows.isEmpty
+                ? StemFeatures.zero
+                : stemRows[min(start + i, stemRows.count - 1)]
+
+            // Tick per-preset CPU state before the render reads it, matching the app's
+            // `setMeshPresetTick` ordering.
+            lumenEngine?.tick(features: features, stems: stemsThisFrame, stemsLive: true)
+
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
             pipeline.render(
                 gbufferPipelineState: gbufferState,
                 features: &features,
                 fftBuffer: buffers.fft, waveformBuffer: buffers.waveform,
-                stemFeatures: stemRows.isEmpty ? .zero : stemRows[min(start + i, stemRows.count - 1)],
+                stemFeatures: stemsThisFrame,
                 outputTexture: outTex,
                 commandBuffer: cmd,
                 noiseTextures: noise,
                 iblManager: ibl,
                 postProcessChain: postChain,
-)
+                presetFragmentBuffer3: lumenEngine?.patternBuffer)
             cmd.commit()
             cmd.waitUntilCompleted()
             if cmd.status != .completed {
