@@ -18,6 +18,21 @@
 //      all ray-march presets replayed against silence — including Volumetric
 //      Lithograph, which is CERTIFIED on per-stem coupling.
 //
+// RE-VALIDATION (2026-07-27, after the fix). Rendering each replayable preset twice —
+// real stems vs the old silence — quantifies what the broken instrument was hiding:
+//
+//   Volumetric Lithograph   image differs by 11.86/255 (its own frame-to-frame motion is
+//                           4.93) — the stem coupling is LIVE and DOMINANT, and every
+//                           past replay judgement was made on an image missing it.
+//   Ferrofluid Ocean        17.88/255 — LIVE.
+//   Lumen Mosaic            0.00 — and its own motion is also 0.00. NOT a dead route: the
+//                           harness never supplies `presetFragmentBuffer3` (slot 8), where
+//                           Lumen's entire per-cell state lives (LumenPatternEngine,
+//                           D-LM-buffer-slot-8), so it renders a static default. A FOURTH
+//                           gap class — a missing per-preset CPU STATE BUFFER rather than a
+//                           missing feature field, and one this suite cannot see because
+//                           slot-8 state is not a declared route primitive.
+//
 // So: assert that every primitive any replayable preset DECLARES in its sidecar is a
 // primitive the harness actually carries. A new route on an uncarried primitive fails
 // here instead of silently producing a dead render months later.

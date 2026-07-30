@@ -185,7 +185,10 @@ struct SessionReplayHarness {
         let count  = Int(env["REPLAY_COUNT"] ?? "") ?? 90
 
         let rows = try Self.loadRows(sessionDir.appendingPathComponent("features.csv"))
-        let stemRows = Self.loadStems(sessionDir.appendingPathComponent("stems.csv"))
+        // REPLAY_ZERO_STEMS=1 reproduces the pre-HARNESS.1 behaviour (stems fed as
+        // silence) so the A/B shows exactly what the broken instrument was hiding.
+        let zeroStems = env["REPLAY_ZERO_STEMS"] == "1"
+        let stemRows = zeroStems ? [] : Self.loadStems(sessionDir.appendingPathComponent("stems.csv"))
         if stemRows.isEmpty {
             print("[replay] WARNING: no stems.csv rows — stem-driven routes will replay against SILENCE")
         }
