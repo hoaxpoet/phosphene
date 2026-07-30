@@ -58,7 +58,7 @@ Share of all onsets within ±50 ms of a grid beat, bias-corrected. Higher is bet
 
 | capture | full-mix sub_bass (today) | drums-stem sub_bass | Δ | best drums band |
 |---|---|---|---|---|
-| `love_rehab.m4a` (118 BPM, four-on-the-floor) | **42.2 %** | 16.9 % | **−25.3** | low_mid 28.0 % (still −14.2) |
+| `love_rehab.m4a` (118 BPM; its histogram shows a single sharp on-beat peak — kick already locked to the grid) | **42.2 %** | 16.9 % | **−25.3** | low_mid 28.0 % (still −14.2) |
 | `raw_tap.wav`, session `2026-07-30T15-39-21Z` (Hummer, 80.4 BPM — the BUG-065 capture) | 14.4 % | 11.0 % | −3.4 | low_mid 14.9 % (+0.5) |
 | `bleed.wav` first 120 s (115 BPM — **the category-4 case TRK.2 was built on**) | 22.3 % | 22.4 % | +0.1 | high 24.8 % (+2.5) |
 | `billie_jean.mp3` first 120 s (117 BPM, unambiguous backbeat) | 24.5 % | **25.5 %** | +1.0 | sub_bass 25.5 % (+1.0) |
@@ -80,9 +80,10 @@ Swapping the evidence source would not have fixed the TRK.1 controller.
 ### 3.1 The larger finding
 
 The ceiling matters more than the comparison. **On every capture and every band, only ~15–25 % of
-detected onsets land within ±50 ms of a beat** (love_rehab's full-mix 42 % is the outlier, and it
-is a four-on-the-floor dance track where the kick *is* the beat). The beat-cycle histograms show
-onsets piling up on the beat *and* on the off-beat and 16ths, on both sources.
+detected onsets land within ±50 ms of a beat** (love_rehab's full-mix 42 % is the outlier — its
+histogram is the only one with a single sharp on-beat peak, i.e. a kick already locked to the
+grid). Everywhere else the beat-cycle histograms show onsets piling up on the beat *and* on the
+off-beat and 16ths, on both sources.
 
 FA #68 says sub-bass onsets are events, not beats. This measurement generalises it: **the spectral
 onset-detector family is weak beat evidence regardless of which band or which stem it runs on.**
