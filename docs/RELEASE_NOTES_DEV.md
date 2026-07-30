@@ -10,6 +10,18 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-07-30-230451] DBN.2 — decoder built and unit-tested; odd meters still collapse to 4
+
+`BeatActivationDecoder` implements the DBN.1 spec: bar-pointer state space (Krebs et al. ISMIR 2015 Eq. 1–8, CC BY 4.0), tempo transitions restricted to beat positions (Eq. 9–10), observation model (Böck et al. ISMIR 2014 Eq. 3) extended to Beat This!'s two streams. Clean-room from the papers, no madmom code (D-077). Offline-path only; **not wired into `BeatGridResolver`** — that is DBN.3. 14-case unit suite green.
+
+**D-207 ships rather than defers.** The result is "a meter **or** no confident bar": `beatsPerBar` is `Optional`, declining withholds downbeats but keeps beats, and the meter-margin is the gate.
+
+**Two tunables moved off their spec defaults, both from measurement, not taste.** `downbeatWeight` 1.0 → **5.0**: at the spec's initial 1.0 the decoder picks the *wrong* meter on the degenerate-downbeat fixture — Böck Eq. 3's beat/non-beat terms swamp the downbeat evidence and the margin is 0.0012, i.e. the meters are indistinguishable. `meterMarginThreshold` 0 → **0.10**, set from the margin distribution across all 9 ground-truthed tracks as D-207 requires — **but the correct and wrong distributions overlap** (correct min 0.1439, wrong max 0.2677), so the margin is necessary-but-not-sufficient and 0.10 is a tradeoff, not a decision boundary.
+
+**Performance:** 17,067 → **1,350 ms** for a 30 s window (debug) via precomputed observation classes, per-frame terms computed once rather than per state-frame, a flattened transition table and unsafe buffers in the forward recursion. The plan's **50 ms is a release figure and stays UNVERIFIED** — `swift test -c release` does not build in this package (BUG-079, filed) — so the gate asserts a regression ceiling and documents that, rather than dividing the debug number by an invented constant.
+
+**⚠️ The honest real-audio result, ahead of DBN.3's gate: the decoder collapses every odd meter to 4.** On the 6 truth-bearing tracks it is correct on 3 (billie_jean, bohemian_rhapsody, bleed — all 4/4) against the incumbent's 2, but money (7), solsbury_hill (7) and take_five (5) all decode as 4. The improvement over baseline comes mostly from *declining*: confidently-wrong falls from 7 tracks to 2. **The category-2 case the phase exists for is not solved**, and DBN.3 should not be treated as a formality.
+
 ### [dev-2026-07-30-220117] DBN.1 — bar-pointer decoder spec, premise tested not assumed
 
 Phase DBN opens. `docs/design/DBN_DECODER_SPEC.md` specifies a bar-pointer decoder over Beat This! activations — state space (Krebs et al. 2015 Eq. 1–8, CC BY 4.0), transition model (Eq. 9–10), observation model (Böck et al. 2014 Eq. 3), output contract, DBN.2 verification plan — with every constant cited to an equation or marked a Phosphene tunable with default, range and rationale. **No decoder code written**; DBN.1 is spec-only by design (the D-077 countermeasure).

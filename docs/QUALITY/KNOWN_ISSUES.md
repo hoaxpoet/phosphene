@@ -22,6 +22,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 | BUG-036 | P2 | audio.capture / performance | Heap allocations on the real-time audio thread (three sites) |
 | BUG-041 | P2 | dsp.stem / preset.fidelity | FFO aurora flashes at track start (stem-deviation cold-start overswing) |
 | BUG-028 | P2 | dsp.beat | Beat-grid live phase imperfect on ~half of tracks |
+| BUG-079 | P3 | build / test-isolation | **`swift test -c release` does not build** — `ArachneState.forceActivateForTest` is `#if DEBUG`-gated in source but its three test-target call sites are not, so the test module fails to compile in release. Pre-existing; found at DBN.2. **Consequence: every release-only performance budget is unverifiable**, including BEAT_SYNC_PROGRAM_PLAN §DBN.2's "< 50 ms for a 30 s activation window" — DBN.2 could only measure debug and its budget test asserts a regression ceiling instead, with the real budget documented as unverified. Fix: guard the call sites, or promote the helper to test-support SPI |
 | BUG-078 | P2 | audio.playback / concurrency | **Engine test process traps in `AVAudioPlayerNode` teardown** — `EXC_BREAKPOINT` with libdispatch's "dispatch_sync called on queue already owned by current thread". The `scheduleFile` completion block's release deallocs an `AVAudioNode` on the node's own `CommandQueue`, and `dealloc` → `Stop()` → `dispatch_sync` re-enters that queue. Pre-existing (identical signature in 2026-07-26 crash reports), intermittent, needs full-suite parallelism; passes in isolation. Found at DBN.1, **not caused by it**. P2 not P1 only because it has been seen taking down the test process, not the app — the code path is shipped local-file playback. Leading hypothesis is the strong `self` from `guard let self` in `LocalFilePlaybackProvider.scheduleFileLoop` being released on the completion queue; unproven, next step is a `deinit` breakpoint. BUG-059's off-queue hop does NOT cover this |
 | BUG-077 | P3 | dsp.beat / api-contract | **`BeatGridResolver.snapToBeats` diverges from the Beat This! reference post-processor** — the reference moves *every* downbeat prediction to the closest beat unconditionally; we discard any candidate beyond `snapFrames = 2` (40 ms). Found at DBN.1 while auditing the resolver against the paper. **Currently harmless and NOT the cause of the low downbeat F** — measured, 100 % of candidates survive the gate (median distance 0.0 ms), so nothing is being discarded today (the real cause is a near-degenerate downbeat *stream*, see `docs/design/DBN_DECODER_SPEC.md` §2.1). Filed because it is a genuine spec-fidelity divergence of the D-077 class that will bite the moment downbeat timing loosens — e.g. on a track whose downbeat peaks sit a frame or two off the beat. Fix is one comparison; do it in DBN.3 when the resolver is being touched anyway, not as a standalone change |
 
@@ -77,6 +78,31 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 **Fix (landed, PUB.6):** catch clears `_isCapturing` (unblocks stopCapture+startCapture recovery), monitor deliberately left running as a diagnostic beacon (later fires land in the SKIP branch and breadcrumb), comment corrected.
 **Verification criteria:** automated — engine builds; audio suites green (a real failed reinstall cannot be staged headless: Core Audio create-step failures need a live device transition). Manual (pending): a live device-swap session confirming normal reinstalls still work (the G1 12/12 behaviour), and — if a reinstall failure can be provoked — the stall card appears AND a subsequent session restart recovers cleanly.
 **Residual (documented, deliberately open):** the 3-queue lifecycle interleave (device-change reinstall vs silence-recovery reinstall vs user stop) is real but static-only evidence; the per-step breadcrumbs + install-generation probes are the instrumentation. Serialize ONLY on a reproduced interleave artifact — restructuring the G1-live-validated path on theory is the BUG-063 class.
+
+---
+
+### BUG-079 — `swift test -c release` does not build, so release-only performance budgets are unverifiable (2026-07-30)
+
+**P3 · build / test-isolation.** Found at DBN.2 when trying to measure a release-only budget; **pre-existing**, unrelated to that increment.
+
+**Expected:** `swift test -c release --package-path PhospheneEngine` builds and runs.
+
+**Actual:** the test target fails to compile in release:
+
+```
+error: value of type 'ArachneState' has no member 'forceActivateForTest'
+  — SoakTestHarnessTests.swift:294, ArachneSpiderRenderTests.swift:143, :189
+```
+
+**Cause.** `ArachneState.forceActivateForTest(at:)` is declared inside `#if DEBUG` (`PhospheneEngine/Sources/Presets/Arachnid/ArachneState+Spider.swift:344-372`), but its three call sites in the test target are not guarded, so they are unresolved in a release build. Debug builds are unaffected, which is why this has gone unnoticed.
+
+**Why it matters beyond tidiness.** It makes **release-only performance budgets unverifiable**. BEAT_SYNC_PROGRAM_PLAN §DBN.2 specifies "< 50 ms for a 30 s activation window on M1" for `BeatActivationDecoder`; that is a release figure, and DBN.2 could only measure debug (1366 ms after optimisation, down from 17,067 ms naive). `DSPPerformanceTests.test_beatActivationDecoder_30sWindow_performance` therefore asserts a *regression* ceiling and documents the real budget as unverified, rather than dividing the debug number by an invented constant. **Any plan gate phrased as a release timing is currently unenforceable.**
+
+**Suspected failure class:** `test-isolation` (a DEBUG-only API reachable from unguarded test code).
+
+**Fix shape:** wrap the three call sites in `#if DEBUG`, or drop the `#if DEBUG` around `forceActivateForTest` and mark it as test-support SPI. The first is smaller; the second is what the rest of the codebase does for `*ForTest` helpers, so check the convention before choosing.
+
+**Verification criteria.** `swift test -c release --package-path PhospheneEngine` builds and the suite passes; the DBN.2 budget test is then re-pointed at the real 50 ms release figure and either passes or forces the design change the spec calls for.
 
 ---
 
