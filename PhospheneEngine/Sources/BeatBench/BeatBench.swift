@@ -55,6 +55,12 @@ struct BeatBenchCommand: ParsableCommand {
     @Option(name: .long, help: "Fixtures dir (default: $BEATBENCH_FIXTURES_DIR).")
     var fixturesDir: String?
 
+    @Option(name: .long, help: "Analyse one audio file and print its grid — no scoring.")
+    var audio: String?
+
+    @Option(name: .long, help: "With --audio: analyse only the first N seconds (0 = whole file).")
+    var seconds: Double = 0
+
     // MARK: - Paths
 
     private var beatbenchDir: URL {
@@ -76,6 +82,7 @@ struct BeatBenchCommand: ParsableCommand {
 
     func run() throws {
         if selfTest { return try runSelfTest() }
+        if let audio { return try runSingleFile(path: audio) }
         switch mode {
         case "offline-grid": try runOfflineGrid()
         case "session-replay":
@@ -157,6 +164,28 @@ struct BeatBenchCommand: ParsableCommand {
             throw ExitCode(1)
         }
         print("\nall checks passed")
+    }
+
+    /// One-off grid inspection. Exists because a grid can differ between a 30 s preview
+    /// clip and the full track — the program's central premise (plan §2) — and that
+    /// difference has to be measurable directly, not inferred from a session log.
+    private func runSingleFile(path: String) throws {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            throw ValidationError("no Metal device")
+        }
+        let url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+        var (samples, rate) = try AudioDecode.monoFloat32(url: url)
+        if seconds > 0 {
+            let limit = min(samples.count, Int(seconds * rate))
+            samples = Array(samples[0..<limit])
+        }
+        let analyzer = try DefaultBeatGridAnalyzer(device: device)
+        let grid = analyzer.analyzeBeatGrid(samples: samples, sampleRate: rate)
+        let span = String(format: "%.1f", Double(samples.count) / rate)
+        let bpm = String(format: "%.2f", grid.bpm)
+        print("\(url.lastPathComponent)  analysed \(span)s  →  bpm \(bpm)  "
+              + "beatsPerBar \(grid.beatsPerBar)  beats \(grid.beats.count)  "
+              + "barConfidence \(String(format: "%.2f", grid.barConfidence))")
     }
 
     // MARK: - Offline grid
