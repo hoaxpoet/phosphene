@@ -11,7 +11,7 @@
 # Resumable: TapCapture skips a track+pass that is already captured, so re-running
 # picks up where you stopped. Ctrl-C between tracks is safe.
 #
-# Usage: Scripts/beatbench_tap_session.sh [hard|control|all]
+# Usage: Scripts/beatbench_tap_session.sh [hard|odd|control|all]
 #
 # ponytail: a list + a loop. Per-track limits live in the table, not in flags you
 # have to remember.
@@ -35,6 +35,12 @@ CONTROL=(
   "billie_jean       90  70   steady 4/4 — a control on the tapping itself"
   "superstition      90  70   steady 4/4 control"
 )
+ODD=(
+  "money           100  80   7/4 — grid 123 vs drums 164 (57% disagreement)"
+  "pyramid_song    100  80   grouped 16/8 — grid 70 vs drums 164"
+  "yyz             100  80   10/8 — Rush; no reference has been human-checked"
+  "solsbury_hill   100  80   7/4 — tools agree with the grid; your ear is the tiebreak"
+)
 REST=(
   "around_the_world  90  70   "
   "stayin_alive      90  70   "
@@ -47,9 +53,10 @@ REST=(
 
 case "$GROUP" in
   hard)    SET=("${HARD[@]}") ;;
+  odd)     SET=("${ODD[@]}") ;;
   control) SET=("${CONTROL[@]}") ;;
-  all)     SET=("${HARD[@]}" "${CONTROL[@]}" "${REST[@]}") ;;
-  *) echo "usage: $0 [hard|control|all]" >&2; exit 1 ;;
+  all)     SET=("${HARD[@]}" "${ODD[@]}" "${CONTROL[@]}" "${REST[@]}") ;;
+  *) echo "usage: $0 [hard|odd|control|all]" >&2; exit 1 ;;
 esac
 
 echo "BeatBench tapping — group '$GROUP' (${#SET[@]} tracks, 2 passes each)"
