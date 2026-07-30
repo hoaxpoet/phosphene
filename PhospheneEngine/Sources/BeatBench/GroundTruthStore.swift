@@ -175,3 +175,96 @@ enum BaselineReport {
         return lines.joined(separator: "\n") + "\n"
     }
 }
+
+// MARK: - Provenance + grid reference
+
+extension GroundTruthStore {
+    /// Track ids whose fixture was segmented from a recorded session (`source: tap`).
+    /// Only these can be scored against ground truth on the live path — for a corpus
+    /// rip, the streamed master is a different recording and the timelines do not
+    /// correspond.
+    static func tapProvenance(dir: URL) throws -> Set<String> {
+        struct Manifest: Decodable {
+            struct Track: Decodable {
+                let id: String
+                let source: String
+            }
+            let tracks: [Track]
+        }
+        let url = dir.appendingPathComponent("manifest.json")
+        let manifest = try JSONDecoder().decode(Manifest.self, from: Data(contentsOf: url))
+        return Set(manifest.tracks.filter { $0.source == "tap" }.map(\.id))
+    }
+}
+
+/// Phosphene's prep grid BPM per track, from the 2026-07-27 session prep log. Used only
+/// to fingerprint which track a session segment is — never as ground truth.
+enum PhospheneGrid {
+    static let values: [String: Double] = [
+        "billie_jean": 117.0, "around_the_world": 121.3, "stayin_alive": 103.7,
+        "superstition": 100.3, "take_five": 166.4, "solsbury_hill": 102.5,
+        "yyz": 141.1, "bohemian_rhapsody": 71.0, "giorgio_by_moroder": 113.2,
+        "dance_yrself_clean": 98.0, "bleed": 174.6, "girl_from_ipanema": 128.4,
+        "clair_de_lune": 79.6, "money": 123.2, "pyramid_song": 70.0,
+    ]
+    static func bpm(for trackID: String) -> Double? { values[trackID] }
+}
+
+// MARK: - Live report
+
+enum LiveReport {
+    static func render(scored: [LiveScores], sessionName: String) -> String {
+        var lines = [
+            "# BeatBench live-path replay — \(sessionName)",
+            "",
+            "Two classes of number, kept apart deliberately:",
+            "",
+            "- **drift p50/p90/p99, lock %, time-to-lock, confident-wrong** come from the",
+            "  tracker's own `drift_ms` residual. Available for every track, and directly",
+            "  comparable to BUG-065's evidence — but self-reported: a grid locked",
+            "  confidently to the wrong pulse still reports small drift.",
+            "- **F / AMLt** compare recovered live beats against GT.2 ground truth, and are",
+            "  only computed where the fixture was segmented from this same session. For a",
+            "  corpus rip the streamed master is a different recording, so scoring it would",
+            "  produce confident nonsense.",
+            "",
+            "| track | suite | dur | drift p50 | p90 | p99 | lock % | time-to-lock | confident-wrong | F | AMLt |",
+            "|---|---|---|---|---|---|---|---|---|---|---|",
+        ]
+        for row in scored {
+            let name = row.trackID ?? "(unidentified)"
+            let suite = row.suite.map(String.init) ?? "—"
+            let lock = String(format: "%.0f%%", row.lockPercent)
+            let ttl = row.timeToLockS.map { String(format: "%.1fs", $0) } ?? "never"
+            let cwr = String(format: "%.1f%%", row.confidentWrongRate)
+            let fScore = row.groundTruthScores.map { String(format: "%.2f", $0.fMeasure) } ?? "—"
+            let amlt = row.groundTruthScores.map { String(format: "%.2f", $0.amlt) } ?? "—"
+            let cells = [
+                name, suite, String(format: "%.0fs", row.durationS),
+                String(format: "%.0f", row.driftP50),
+                String(format: "%.0f", row.driftP90),
+                String(format: "%.0f", row.driftP99),
+                lock, ttl, cwr, fScore, amlt,
+            ]
+            lines.append("| " + cells.joined(separator: " | ") + " |")
+        }
+        lines.append("")
+        lines.append("Drift figures are |drift_ms|. The program's live suite-1 target is p90 < 30 ms.")
+        lines.append("")
+        lines.append("## Drift by 30 s window (the BUG-065 curve)")
+        lines.append("")
+        lines.append("A single percentile hides drift that grows across a track, which is exactly")
+        lines.append("what BUG-065 describes. Each cell is p90 |drift_ms| in that window.")
+        lines.append("")
+        for row in scored where !row.driftByWindow.isEmpty {
+            let name = row.trackID ?? "(unidentified)"
+            let curve = row.driftByWindow.map { String(format: "%.0f", $0.p90) }.joined(separator: " → ")
+            lines.append("- **\(name)**: \(curve)")
+        }
+        lines.append("")
+        for row in scored where row.groundTruthScores == nil {
+            lines.append("- `\(row.trackID ?? "(unidentified)")` — \(row.groundTruthNote)")
+        }
+        return lines.joined(separator: "\n") + "\n"
+    }
+}

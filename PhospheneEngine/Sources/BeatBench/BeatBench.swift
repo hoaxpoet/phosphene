@@ -61,6 +61,9 @@ struct BeatBenchCommand: ParsableCommand {
     @Option(name: .long, help: "With --audio: analyse only the first N seconds (0 = whole file).")
     var seconds: Double = 0
 
+    @Option(name: .long, help: "Recorded session directory (required for --mode session-replay).")
+    var session: String?
+
     // MARK: - Paths
 
     private var beatbenchDir: URL {
@@ -85,8 +88,7 @@ struct BeatBenchCommand: ParsableCommand {
         if let audio { return try runSingleFile(path: audio) }
         switch mode {
         case "offline-grid": try runOfflineGrid()
-        case "session-replay":
-            throw ValidationError("session-replay mode is not implemented yet (GT.3 follow-up)")
+        case "session-replay": try runSessionReplay()
         default:
             throw ValidationError("--mode must be 'offline-grid' or 'session-replay'")
         }
@@ -245,6 +247,70 @@ struct BeatBenchCommand: ParsableCommand {
             )
             try BaselineReport.document(rows: rows).write(to: url, atomically: true, encoding: .utf8)
             print("→ \(report)")
+        }
+    }
+
+    // MARK: - Session replay
+
+    private func runSessionReplay() throws {
+        guard let session else {
+            throw ValidationError("--mode session-replay requires --session <dir>")
+        }
+        let dir = URL(fileURLWithPath: (session as NSString).expandingTildeInPath)
+        let segments = try SessionLoader.load(sessionDir: dir)
+        guard !segments.isEmpty else { throw ValidationError("no track segments in features.csv") }
+
+        let truths = try GroundTruthStore.load(dir: beatbenchDir, filter: trackFilter())
+        let provenance = try GroundTruthStore.tapProvenance(dir: beatbenchDir)
+        // Fingerprint against EVERY track the session could contain, not only the
+        // ground-truthed ones — otherwise a segment of an un-truthed track is assigned
+        // to whichever truthed BPM happens to be nearest, which mislabelled 7 of 16
+        // segments on the first run.
+        var truthByID: [String: GroundTruth] = [:]
+        for truth in truths { truthByID[truth.trackID] = truth }
+
+        var scored: [LiveScores] = []
+        for segment in segments where segment.duration > 30 {
+            // Identify the track by its grid-BPM fingerprint.
+            let candidates = PhospheneGrid.values
+            let match = candidates.min {
+                abs($0.value - segment.medianGridBPM) < abs($1.value - segment.medianGridBPM)
+            }
+            var trackID: String?
+            var suite: Int?
+            var truthBeats: [Double]?
+            var note = "unidentified segment — grid BPM matched no known track"
+            if let match, abs(match.value - segment.medianGridBPM) < 2.0 {
+                trackID = match.key
+                let truth = truthByID[match.key]
+                suite = truth?.suite
+                if truth == nil {
+                    note = "no ground truth — track not tapped at GT.2"
+                } else if provenance.contains(match.key) {
+                    truthBeats = truth?.beats
+                    note = "ground truth applies (fixture segmented from this session)"
+                } else {
+                    note = "drift only — fixture is a different master than what was streamed"
+                }
+            }
+            scored.append(SessionReplayScorer.score(
+                segment: segment,
+                trackID: trackID,
+                suite: suite,
+                groundTruth: truthBeats,
+                groundTruthNote: note
+            ))
+        }
+
+        let text = LiveReport.render(scored: scored, sessionName: dir.lastPathComponent)
+        print(text)
+        if !report.isEmpty {
+            let url = URL(fileURLWithPath: report)
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true
+            )
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            print("\n→ \(report)")
         }
     }
 
