@@ -446,14 +446,6 @@ public final class RayMarchPipeline: @unchecked Sendable {
     /// FLY.9 — EMA of `bass_att_rel`, the smoothed "musical event" driver.
     var smoothedFoldDrive: Float = 0
 
-    /// Per-frame compute step for presets whose slot-10 height field is SIMULATED
-    /// rather than baked. Encoded at the top of `drawWithRayMarch`, before the
-    /// G-buffer pass, on the same command buffer as the render that consumes it —
-    /// so the frame renders the field this frame produced. Ferrofluid Ocean (the
-    /// other slot-10 consumer) bakes once at preset apply and attaches nothing;
-    /// Faraday's field is a live PDE, so it steps every frame.
-    public var preRenderCompute: RayMarchPreRenderCompute?
-
     /// FLY.10 — smoothed framing drive: 0 = tight/claustrophobic, 1 = vast.
     var smoothedFraming: Float = 0
 
