@@ -433,6 +433,21 @@ compound meter. This is close to an engineering call; it is surfaced only becaus
 
 ---
 
+## 9.5 DBN.2 outcome — what implementation changed about this spec
+
+Recorded here so DBN.3 does not re-derive it.
+
+| spec said | DBN.2 measured | resolution |
+|---|---|---|
+| `dbnDownbeatWeight` default 1.0 | at 1.0 the decoder picks the **wrong** meter on the degenerate fixture; margin 0.0012 (indistinguishable) | **5.0**; correct from 2.0 up, margin grows monotonically |
+| `dbnMeterMarginThreshold` "set from data" | correct-margin min 0.1439 vs wrong-margin max 0.2677 — **the distributions overlap** | **0.10**, a tradeoff not a boundary; margin is necessary but not sufficient |
+| §8 budget "< 50 ms, assert in DSPPerformanceTests" | `swift test -c release` does not build (BUG-079), so the release figure is unmeasurable | regression ceiling on the debug figure (1,350 ms), budget documented as unverified |
+| §3.1 "the naive joint state space does not fit a 50 ms budget" | correct, but the first *tempo-conditioned* implementation still took 17 s — the cost was per-state-frame recomputation, not state count | precompute observation classes and per-frame terms; 12.6× faster |
+
+**The finding DBN.3 has to plan around:** on real activations the decoder **collapses every odd meter to 4**. Correct on 3 of 6 truth-bearing tracks (all 4/4) against the incumbent's 2, but money (7), solsbury_hill (7) and take_five (5) all decode as 4. Most of the gain is from *declining*, not from reading odd meters — confidently-wrong drops from 7 tracks to 2. §2 argued the premise holds because the DBN's one measured benefit is repairing non-periodic downbeat output; that mechanism demonstrably works on the synthetic fixture but does not yet recover odd meters on real audio, and **why** is the open question DBN.3 inherits. Candidates not yet separated: the tempo hint being wrong for money (incumbent 116.19 vs truth 60.97, roughly 2×, so the ±10 % band excludes the true tempo entirely); the ±10 % band being too narrow generally; or the two-stream observation model of §5.1 under-weighting bar-line evidence relative to beat evidence at every weight that keeps clean 4/4 safe.
+
+---
+
 ## 10. Sources
 
 - Krebs, Böck & Widmer. *An Efficient State-Space Model for Joint Tempo and Meter Tracking.*
