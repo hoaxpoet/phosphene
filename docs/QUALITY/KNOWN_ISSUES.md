@@ -149,6 +149,23 @@ P3 categories indexed in the audit doc: ~25 latent bugs (incl. OAuth refresh dou
 
 ---
 
+**GT.3 addendum (2026-07-30) — the ramp is systemic, and one track is 14× worse.** BeatBench session-replay over the 15-track `beat-match-test-session` fits `drift_ms` against time for every track. Each is a linear **ramp**, confirming the TRK root cause (a period error a proportional-only controller can bound but never null) across the whole catalog rather than one capture:
+
+| track | period error | R² | unlocks at | confident-wrong |
+|---|---|---|---|---|
+| **YYZ** | **+2.070 %** | **0.99** | 47 s | **90.8 %** |
+| Dance Yrself Clean | −0.149 % | 0.79 | 58 s | 81.4 % |
+| Bohemian Rhapsody | +0.126 % | 0.93 | 0 s | 76.9 % |
+| Money | −0.081 % | 0.93 | 122 s | 64.1 % |
+| Stayin' Alive | +0.083 % | 0.89 | 48 s | 84.0 % |
+| (10 others) | < 0.07 % | — | — | 0–53 % |
+
+**YYZ is the extreme case and it is real, not an artifact** (R² 0.99 over 15,898 frames): a 2.07 % period error accumulates to **4.8 seconds — about 11 beats — by the end of a 266 s track**, while `lock_state == 2` for 92 % of frames. The engine reports "locked" while eleven beats out of phase. Note Dance Yrself Clean's −0.149 % matches the period error TRK measured exactly.
+
+**Two things this reframes.** (1) *Time-to-lock was the wrong metric.* Drift on these tracks starts **inside** the ±70 ms window (YYZ 52.7 ms, Dance Yrself 29.0 ms) and walks out, so "time to lock" reads 0 s and looks healthy; the informative number is **time-to-unlock**, and **13 of 15 tracks leave the window and never return** — only Solsbury Hill and Giorgio stay in. (2) *The suite-1 live target is far off.* Billie Jean's p90 is **102 ms** against a target of < 30 ms.
+
+Evidence: [`BEATBENCH_LIVE_BASELINE_2026-07-30.md`](../diagnostics/BEATBENCH_LIVE_BASELINE_2026-07-30.md). Reproduce: `BeatBench --mode session-replay --session <dir>`.
+
 ### BUG-060 — One-off app hang: the render loop died on a `preset → Gossamer` switch; force-quit required; not reproduced (2026-06-18)
 
 **Severity:** P3 (a full app hang requiring force-quit is P1-*impact*, but it was seen once and did not reproduce — Gossamer ran 3× clean the next session; filed as **monitored**, like BUG-058, pending a recurrence with a captured stack).

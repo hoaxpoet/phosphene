@@ -270,7 +270,7 @@ struct BeatBenchCommand: ParsableCommand {
         for truth in truths { truthByID[truth.trackID] = truth }
 
         var scored: [LiveScores] = []
-        for segment in segments where segment.duration > 30 {
+        for segment in segments where segment.duration > 30 && segment.isRealPlayback {
             // Identify the track by its grid-BPM fingerprint.
             let candidates = PhospheneGrid.values
             let match = candidates.min {

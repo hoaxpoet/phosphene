@@ -228,14 +228,14 @@ enum LiveReport {
             "  corpus rip the streamed master is a different recording, so scoring it would",
             "  produce confident nonsense.",
             "",
-            "| track | suite | dur | drift p50 | p90 | p99 | lock % | time-to-lock | confident-wrong | F | AMLt |",
+            "| track | suite | dur | drift p50 | p90 | p99 | lock % | unlocks at | confident-wrong | F | AMLt |",
             "|---|---|---|---|---|---|---|---|---|---|---|",
         ]
         for row in scored {
             let name = row.trackID ?? "(unidentified)"
             let suite = row.suite.map(String.init) ?? "—"
             let lock = String(format: "%.0f%%", row.lockPercent)
-            let ttl = row.timeToLockS.map { String(format: "%.1fs", $0) } ?? "never"
+            let ttl = row.timeToUnlockS.map { String(format: "%.0fs", $0) } ?? "stays in"
             let cwr = String(format: "%.1f%%", row.confidentWrongRate)
             let fScore = row.groundTruthScores.map { String(format: "%.2f", $0.fMeasure) } ?? "—"
             let amlt = row.groundTruthScores.map { String(format: "%.2f", $0.amlt) } ?? "—"

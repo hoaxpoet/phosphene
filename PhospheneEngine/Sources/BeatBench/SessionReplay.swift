@@ -25,6 +25,7 @@ import ArgumentParser
 // MARK: - Session rows
 
 struct SessionFrame {
+    let wallclock: Double
     let trackElapsed: Double
     let beatPhase01: Double
     let driftMs: Double
@@ -37,6 +38,20 @@ struct TrackSegment {
     var start: Double { frames.first?.trackElapsed ?? 0 }
     var end: Double { frames.last?.trackElapsed ?? 0 }
     var duration: Double { end - start }
+
+    /// Real elapsed wall time. A genuine play advances track position at ~1× this;
+    /// a seek advances track position far faster (the 2026-07-27 session opens with
+    /// 237 s of track position covered in 8.4 s of wall time — a scrub, not a play).
+    var wallDuration: Double {
+        (frames.last?.wallclock ?? 0) - (frames.first?.wallclock ?? 0)
+    }
+
+    /// True when track position advanced at roughly real-time speed.
+    var isRealPlayback: Bool {
+        guard wallDuration > 5 else { return false }
+        let rate = duration / wallDuration
+        return rate > 0.5 && rate < 1.5
+    }
 
     /// Median grid BPM — the fingerprint used to identify which track this is.
     var medianGridBPM: Double {
@@ -76,6 +91,7 @@ struct LiveScores {
     let driftByWindow: [(startS: Double, p90: Double)]
     let lockPercent: Double
     let timeToLockS: Double?
+    let timeToUnlockS: Double?
     let confidentWrongRate: Double
 
     // Ground-truth anchored (tap-derived tracks only)
@@ -106,6 +122,24 @@ enum SessionReplayScorer {
             if abs(frame.driftMs) <= perceptualWindowMs {
                 if runStart == nil { runStart = frame.trackElapsed }
                 if let start = runStart, frame.trackElapsed - start >= 3.0 {
+                    return start - segment.start
+                }
+            } else {
+                runStart = nil
+            }
+        }
+        return nil
+    }
+
+    /// First moment drift leaves the window and STAYS out. On a ramping track this is
+    /// the number that matters: drift starts inside the window (so time-to-lock reads
+    /// 0 s) and then walks out and never returns.
+    static func firstSustainedUnlock(segment: TrackSegment) -> Double? {
+        var runStart: Double?
+        for frame in segment.frames {
+            if abs(frame.driftMs) > perceptualWindowMs {
+                if runStart == nil { runStart = frame.trackElapsed }
+                if let start = runStart, frame.trackElapsed - start >= 5.0 {
                     return start - segment.start
                 }
             } else {
@@ -156,6 +190,7 @@ enum SessionReplayScorer {
             : Double(confidentWrong.count) / Double(locked.count) * 100
 
         let timeToLock = firstSustainedLock(segment: segment)
+        let timeToUnlock = firstSustainedUnlock(segment: segment)
         let byWindow = driftCurve(segment: segment)
 
         // Score only over the span where BOTH exist. Ground truth often covers ~100 s of
@@ -189,6 +224,7 @@ enum SessionReplayScorer {
             driftByWindow: byWindow,
             lockPercent: lockPercent,
             timeToLockS: timeToLock,
+            timeToUnlockS: timeToUnlock,
             confidentWrongRate: confidentWrongRate,
             groundTruthScores: truthScores,
             groundTruthNote: groundTruthNote
@@ -233,6 +269,7 @@ enum SessionLoader {
                 current = []
             }
             current.append(SessionFrame(
+                wallclock: value(fields, "wallclock_s"),
                 trackElapsed: elapsed,
                 beatPhase01: value(fields, "beatPhase01"),
                 driftMs: value(fields, "drift_ms"),
