@@ -43,10 +43,12 @@ BEATBENCH = os.path.join(REPO, "PhospheneEngine", "Tests", "Fixtures", "beatbenc
 MANIFEST = os.path.join(BEATBENCH, "manifest.json")
 OUT_DIR = os.path.join(BEATBENCH, "reference")
 
-# Meters the suites actually contain (4/4, Take Five 5/4, Money + Solsbury 7/4,
-# Pyramid Song grouped, YYZ 10/8 → tracked as 5). Feeding the real candidate set
-# is what lets the DBN find odd meters instead of forcing everything to 4.
-BEATS_PER_BAR = [3, 4, 5, 7]
+# The plan's meter hypothesis set (BEAT_SYNC_PROGRAM_PLAN.md §DBN.1): {3,4,5,6,7,9,12}.
+# Feeding the real candidate set is what lets the DBN find odd meters instead of
+# forcing everything to 4 — and a candidate NOT in this list cannot be reported, so an
+# under-specified list manufactures false confidence (an earlier [3,4,5,7] run made
+# Pyramid Song read as a firm 7 simply because 8/12 were not offered).
+BEATS_PER_BAR = [3, 4, 5, 6, 7, 9, 12]
 
 
 # MARK: - backends

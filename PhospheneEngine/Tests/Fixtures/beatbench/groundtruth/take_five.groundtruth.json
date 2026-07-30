@@ -975,6 +975,7 @@
     "gaps": 0,
     "verdict": "usable with dropouts"
   },
+  "downbeats_rejected": null,
   "downbeats_s": [
     0.13,
     1.92,
