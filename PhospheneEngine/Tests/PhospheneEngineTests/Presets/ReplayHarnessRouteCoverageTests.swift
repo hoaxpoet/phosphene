@@ -25,13 +25,26 @@
 //                           4.93) — the stem coupling is LIVE and DOMINANT, and every
 //                           past replay judgement was made on an image missing it.
 //   Ferrofluid Ocean        17.88/255 — LIVE.
-//   Lumen Mosaic            0.00 — and its own motion is also 0.00. NOT a dead route: the
-//                           harness never supplies `presetFragmentBuffer3` (slot 8), where
-//                           Lumen's entire per-cell state lives (LumenPatternEngine,
-//                           D-LM-buffer-slot-8), so it renders a static default. A FOURTH
-//                           gap class — a missing per-preset CPU STATE BUFFER rather than a
-//                           missing feature field, and one this suite cannot see because
-//                           slot-8 state is not a declared route primitive.
+//   Lumen Mosaic            stem sensitivity 0 at FULL resolution (max pixel delta 0),
+//                           though it does animate on its own (max 10/255 across ~9 % of
+//                           pixels) from a non-stem driver.
+//
+// ⚠ CORRECTION: an earlier pass reported Lumen as "0.00 — dead static". That was a
+// MEASUREMENT ARTIFACT, not a finding — the comparison downscaled to 160x90 and took a
+// median, averaging a real max-10/255 change over ~9 % of pixels down to zero. The
+// instrument built to catch silent zeros produced one of its own. Compare at full
+// resolution, and always report max / percent-changed alongside any mean.
+//
+// The FOURTH gap class is real regardless: Lumen's per-cell state lives in slot 8
+// (LumenPatternEngine, D-LM-buffer-slot-8) and the harness never supplied it. Nothing
+// about that appears in the sidecar's declared routes, so the route-coverage test below
+// cannot see it — hence the second test in this suite.
+//
+// OPEN, and deliberately not asserted either way: with slot 8 now driven, it changes
+// Lumen's output by exactly zero, and so do the stems. That is consistent EITHER with
+// dead coupling in production OR with the harness still lacking setup the app performs at
+// preset activation (Lumen's per-track palette load). Verify against a live capture before
+// concluding — do not infer a production defect from harness evidence alone.
 //
 // So: assert that every primitive any replayable preset DECLARES in its sidecar is a
 // primitive the harness actually carries. A new route on an uncarried primitive fails
@@ -68,6 +81,49 @@ struct ReplayHarnessRouteCoverageTests {
         "drumsAttackRatio", "bassAttackRatio", "vocalsAttackRatio", "otherAttackRatio",
         "vocalsPitchHz", "vocalsPitchConfidence"
     ]
+
+    /// Presets whose slot-8 state the harness actually drives. A preset that reads
+    /// `lumen.<field>` needs its `LumenPatternState` produced by a CPU engine every frame;
+    /// with nothing driving it the shader reads a placeholder and the preset replays frozen
+    /// at a default. This is a different gap class from an unmapped feature field — nothing
+    /// about it appears in the sidecar's routes, so `test_harnessCarriesEveryReplayableRoute`
+    /// is blind to it.
+    static let harnessDrivenStatePresets: Set<String> = ["Lumen Mosaic"]
+
+    @Test("every replayable preset that reads slot-8 state has that state driven")
+    func test_harnessDrivesSlot8StateWhereNeeded() throws {
+        let shadersURL = try #require(PresetLoader.bundledShadersURL,
+            "Shaders resource not found via PresetLoader.bundledShadersURL")
+        let metalFiles = try FileManager.default.contentsOfDirectory(
+            at: shadersURL, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]
+        ).filter { $0.pathExtension == "metal" }
+
+        var undriven: [String] = []
+        for metalURL in metalFiles {
+            let source = try String(contentsOf: metalURL, encoding: .utf8)
+            guard source.contains("sceneMaterial") else { continue }
+            // Presets that ignore slot 8 write `(void)lumen;`. Reading a field off `lumen`
+            // without that opt-out means the preset depends on CPU-driven state.
+            let readsState = source.range(of: "lumen\\.[a-zA-Z]",
+                                          options: .regularExpression) != nil
+            guard readsState, !source.contains("(void)lumen;") else { continue }
+            let jsonURL = metalURL.deletingPathExtension().appendingPathExtension("json")
+            guard let data = try? Data(contentsOf: jsonURL),
+                  let descriptor = try? JSONDecoder().decode(PresetDescriptor.self, from: data),
+                  descriptor.passes.contains(.rayMarch) else { continue }
+            if !Self.harnessDrivenStatePresets.contains(descriptor.name) {
+                undriven.append(descriptor.name)
+            }
+        }
+
+        #expect(undriven.isEmpty, """
+            These replayable presets read per-preset slot-8 state that SessionReplayHarness \
+            does not drive, so they replay frozen at a placeholder default and any look or \
+            coupling conclusion drawn from those frames is invalid: \(undriven.sorted()). \
+            Drive the preset's CPU state engine in the harness AND list it in \
+            `harnessDrivenStatePresets`.
+            """)
+    }
 
     @Test("every route a replayable preset declares is carried by SessionReplayHarness")
     func test_harnessCarriesEveryReplayableRoute() throws {
