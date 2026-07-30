@@ -22,6 +22,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 | BUG-036 | P2 | audio.capture / performance | Heap allocations on the real-time audio thread (three sites) |
 | BUG-041 | P2 | dsp.stem / preset.fidelity | FFO aurora flashes at track start (stem-deviation cold-start overswing) |
 | BUG-028 | P2 | dsp.beat | Beat-grid live phase imperfect on ~half of tracks |
+| BUG-078 | P2 | audio.playback / concurrency | **Engine test process traps in `AVAudioPlayerNode` teardown** — `EXC_BREAKPOINT` with libdispatch's "dispatch_sync called on queue already owned by current thread". The `scheduleFile` completion block's release deallocs an `AVAudioNode` on the node's own `CommandQueue`, and `dealloc` → `Stop()` → `dispatch_sync` re-enters that queue. Pre-existing (identical signature in 2026-07-26 crash reports), intermittent, needs full-suite parallelism; passes in isolation. Found at DBN.1, **not caused by it**. P2 not P1 only because it has been seen taking down the test process, not the app — the code path is shipped local-file playback. Leading hypothesis is the strong `self` from `guard let self` in `LocalFilePlaybackProvider.scheduleFileLoop` being released on the completion queue; unproven, next step is a `deinit` breakpoint. BUG-059's off-queue hop does NOT cover this |
 | BUG-077 | P3 | dsp.beat / api-contract | **`BeatGridResolver.snapToBeats` diverges from the Beat This! reference post-processor** — the reference moves *every* downbeat prediction to the closest beat unconditionally; we discard any candidate beyond `snapFrames = 2` (40 ms). Found at DBN.1 while auditing the resolver against the paper. **Currently harmless and NOT the cause of the low downbeat F** — measured, 100 % of candidates survive the gate (median distance 0.0 ms), so nothing is being discarded today (the real cause is a near-degenerate downbeat *stream*, see `docs/design/DBN_DECODER_SPEC.md` §2.1). Filed because it is a genuine spec-fidelity divergence of the D-077 class that will bite the moment downbeat timing loosens — e.g. on a track whose downbeat peaks sit a frame or two off the beat. Fix is one comparison; do it in DBN.3 when the resolver is being touched anyway, not as a standalone change |
 
 
@@ -76,6 +77,39 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 **Fix (landed, PUB.6):** catch clears `_isCapturing` (unblocks stopCapture+startCapture recovery), monitor deliberately left running as a diagnostic beacon (later fires land in the SKIP branch and breadcrumb), comment corrected.
 **Verification criteria:** automated — engine builds; audio suites green (a real failed reinstall cannot be staged headless: Core Audio create-step failures need a live device transition). Manual (pending): a live device-swap session confirming normal reinstalls still work (the G1 12/12 behaviour), and — if a reinstall failure can be provoked — the stall card appears AND a subsequent session restart recovers cleanly.
 **Residual (documented, deliberately open):** the 3-queue lifecycle interleave (device-change reinstall vs silence-recovery reinstall vs user stop) is real but static-only evidence; the per-step breadcrumbs + install-generation probes are the instrumentation. Serialize ONLY on a reproduced interleave artifact — restructuring the G1-live-validated path on theory is the BUG-063 class.
+
+---
+
+### BUG-078 — Engine test process traps in `AVAudioPlayerNode` teardown: `dispatch_sync` on an already-owned queue (2026-07-30)
+
+**P2 · audio.playback / concurrency.** Found at DBN.1 while running the closeout evidence; **pre-existing, not introduced by that increment**. P2 rather than P1 because it has only been observed taking down the *test* process — but the code path is shipped local-file playback, so the app-facing impact would be a hard crash.
+
+**Expected:** `swift test --package-path PhospheneEngine` completes.
+
+**Actual:** the test process dies with `EXC_BREAKPOINT` / SIGTRAP part-way through the suite, with no failing assertion. libdispatch's own diagnostic names the fault:
+
+> `BUG IN CLIENT OF LIBDISPATCH: dispatch_sync called on queue already owned by current thread`
+
+**Reproduction.** Full engine suite; dies while `concurrentDoubleStart_serializesWithoutDeadlock()` (suite "Session lifecycle churn (REVIEW.2)") is the in-flight test. Reproduced **twice on 2026-07-30** at `0d3d57d2` and `4bf6703d`, and the identical signature appears in two crash reports from **2026-07-26**, so it long predates this session. **Passes in isolation** (`--filter concurrentDoubleStart_serializesWithoutDeadlock`, 1.16 s) — it needs full-suite parallelism, which makes it timing-dependent and intermittent. The suite was green at `5b019f2f` hours earlier; adding one default-skipped test file appears to have perturbed scheduling enough to make it reproduce, which is a symptom of how narrow the window is, not a cause.
+
+**Artifacts.** `~/Library/Logs/DiagnosticReports/swiftpm-testing-helper-2026-07-30-171311.ips` (+ `-171004`, and `-2026-07-26-152850` / `-152102`). Faulting thread is named `CommandQueue`:
+
+```
+AVAudioPlayerNodeImpl::CommandQueue::PerformWork
+  → FileCommand::Perform → ~FileCommand → ~AVAEBlock → _Block_release
+  → -[AVAudioNode dealloc] → ~AVAudioPlayerNodeImpl
+  → AVAudioNodeImplBase::Stop() → dispatch_sync   ← same queue it is running on
+```
+
+**Suspected failure class:** `concurrency` (object deallocated on a queue whose teardown re-enters that queue synchronously).
+
+**Leading hypothesis — stated as a hypothesis, not a conclusion.** Releasing the `scheduleFile` completion block on the player node's own `CommandQueue` drops the last strong reference to an `AVAudioNode`, so `dealloc` runs *on that queue* and its `Stop()` synchronously re-enters it. In `LocalFilePlaybackProvider.scheduleFileLoop` (`:355-378`) every capture is already `[weak self, weak player, weak file]`, so the block itself does not retain the node — but `guard let self` inside the handler materialises a **strong** provider reference for the body's duration, and that reference is released when the block returns, still on the command queue. If it was the last one, the provider's `deinit` releases `playerNode` there. That is consistent with the stack but **not yet proven** — the next diagnostic step is a `deinit` breakpoint (or an `os_signpost`) on the provider and on the node to confirm which object's release triggers the dealloc, before any fix is designed.
+
+**Note on BUG-059.** That fix hopped *off* the completion queue before re-scheduling, which addressed the lock-reentrancy deadlock. It does not cover this: the async hop returns immediately, but the strong `self` created by `guard let self` is still released on the completion queue afterwards. Same queue, different mechanism — do not assume BUG-059's fix covers it.
+
+**Verification criteria (written before any fix).** Automated: the full engine suite completes 5 consecutive times with no `.ips` generated. Regression: a targeted test that drops the provider's last reference while a `scheduleFile` completion is in flight and asserts no trap. Manual: local-file playback end-to-end — start, seek, track-change, and quit-while-playing — since this is the shipped path.
+
+**Out of scope for DBN.1** (which is a docs/spec increment). Filed and reported, not fixed.
 
 ---
 
