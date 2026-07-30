@@ -47,21 +47,70 @@ PHOSPHENE_GRID = {
     "superstition": 100.3, "take_five": 166.4, "solsbury_hill": 102.5, "yyz": 141.1,
     "bohemian_rhapsody": 71.0, "giorgio_by_moroder": 113.2, "dance_yrself_clean": 98.0,
     "bleed": 174.6, "girl_from_ipanema": 128.4, "clair_de_lune": 79.6,
+    "money": 123.2, "pyramid_song": 70.0,
+    # so_what / there_there were not in the 2026-07-27 session — no grid value yet.
 }
 
 
+def median_ioi(times):
+    """Median inter-onset interval — the robust period estimate.
+
+    Deliberately NOT least-squares: a least-squares fit assumes a constant tempo AND
+    no missing taps, so one dropped tap shifts every later index and inflates the
+    residuals enormously. Measured on the real GT.2 captures, that made steady
+    tapping (IOI CoV 0.02–0.06) look "loose". The median IOI is unaffected by a
+    handful of gaps or doubles and by genuine tempo drift.
+    """
+    if len(times) < 3:
+        return 0.0
+    iois = sorted(b - a for a, b in zip(times, times[1:]))
+    n = len(iois)
+    return iois[n // 2] if n % 2 else (iois[n // 2 - 1] + iois[n // 2]) / 2
+
+
 def fitted_bpm(times):
-    """Least-squares tempo. Robust to the median-vs-mean skew a naive IOI median has."""
-    n = len(times)
-    if n < 3:
-        return 0.0
-    xs = range(n)
-    mx, my = sum(xs) / n, sum(times) / n
-    denom = sum((x - mx) ** 2 for x in xs)
-    if denom == 0:
-        return 0.0
-    period = sum((x - mx) * (y - my) for x, y in zip(xs, times)) / denom
+    period = median_ioi(times)
     return 60.0 / period if period > 0 else 0.0
+
+
+def tap_quality(times):
+    """Steadiness + dropout counts. A pass with many gaps/doubles is not ground truth."""
+    if len(times) < 6:
+        return {"cov": None, "gaps": 0, "doubles": 0, "verdict": "too few taps"}
+    iois = [b - a for a, b in zip(times, times[1:])]
+    med = median_ioi(times)
+    devs = sorted(abs(i - med) for i in iois)
+    mad = devs[len(devs) // 2]
+    cov = mad / med if med else 0
+    gaps = sum(1 for i in iois if i > 1.55 * med)
+    doubles = sum(1 for i in iois if i < 0.55 * med)
+    if cov < 0.12 and (gaps + doubles) <= len(iois) * 0.05:
+        verdict = "usable"
+    elif cov >= 0.25:
+        verdict = "IRREGULAR — do not use"
+    else:
+        verdict = "usable with dropouts"
+    return {"cov": round(cov, 3), "gaps": gaps, "doubles": doubles, "verdict": verdict}
+
+
+def derive_meter(down_ioi, beat_ioi):
+    """Beats per bar from the downbeat/beat interval ratio.
+
+    Never silently rounds: a ratio near a HALF-integer means the beat pass was tapped
+    at half the bar's pulse (Money in 7/4 tapped in half-notes gives 3.5, which naive
+    rounding turns into a confident, wrong "4"). A ratio near neither is reported as
+    unresolved rather than guessed.
+    """
+    if not down_ioi or not beat_ioi:
+        return None, "no downbeat pass"
+    ratio = down_ioi / beat_ioi
+    if abs(ratio - round(ratio)) < 0.15 and round(ratio) >= 2:
+        return int(round(ratio)), f"ratio {ratio:.2f}"
+    doubled = ratio * 2
+    if abs(doubled - round(doubled)) < 0.15 and round(doubled) >= 2:
+        return int(round(doubled)), (f"ratio {ratio:.2f} — beats tapped at HALF the bar "
+                                     f"pulse, so the bar is {int(round(doubled))}")
+    return None, f"ratio {ratio:.2f} — no clean meter; unresolved"
 
 
 def f_measure(reference, estimate, tol=TOLERANCE_S):
@@ -117,7 +166,13 @@ def reconcile_track(track_id, suite):
 
     down_path = os.path.join(TAPS, f"{track_id}.downbeats.json")
     tap_downs = load(down_path)["taps_s"] if os.path.exists(down_path) else []
-    meter = round(tap_bpm / fitted_bpm(tap_downs)) if len(tap_downs) >= 3 else None
+    down_ioi = median_ioi(tap_downs)
+    beat_ioi = median_ioi(taps)
+    meter, meter_note = derive_meter(down_ioi, beat_ioi)
+    beats_quality = tap_quality(taps)
+    downs_quality = tap_quality(tap_downs)
+    if downs_quality["verdict"].startswith("IRREGULAR"):
+        meter, meter_note = None, "downbeat pass too irregular to derive a meter"
 
     backends = {}
     for ref_path in sorted(glob.glob(os.path.join(REF, f"{track_id}.*.json"))):
@@ -161,6 +216,9 @@ def reconcile_track(track_id, suite):
         "tap_count": len(taps), "tap_bpm": round(tap_bpm, 2),
         "tap_downbeat_count": len(tap_downs),
         "meter_from_taps": meter,
+        "meter_note": meter_note,
+        "beats_quality": beats_quality,
+        "downbeats_quality": downs_quality,
         "phosphene_grid_bpm": PHOSPHENE_GRID.get(track_id),
         "backends": backends,
         "extended_by": extended_by,

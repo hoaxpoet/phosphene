@@ -6,10 +6,10 @@
       "precision": 0.119,
       "recall": 0.072,
       "ref_beats_full_track": 130,
-      "ref_bpm_in_span": 132.31,
+      "ref_bpm_in_span": 136.0,
       "ref_downbeats_full_track": 0,
       "verdict": "DISAGREE",
-      "why": "F=0.09, tempo ratio \u00d72.67"
+      "why": "F=0.09, tempo ratio \u00d72.73"
     },
     "madmom": {
       "f_measure": 0.115,
@@ -17,11 +17,17 @@
       "precision": 0.1,
       "recall": 0.134,
       "ref_beats_full_track": 350,
-      "ref_bpm_in_span": 67.68,
+      "ref_bpm_in_span": 65.93,
       "ref_downbeats_full_track": 47,
       "verdict": "DISAGREE",
-      "why": "F=0.11, tempo ratio \u00d71.37"
+      "why": "F=0.11, tempo ratio \u00d71.32"
     }
+  },
+  "beats_quality": {
+    "cov": 0.063,
+    "doubles": 0,
+    "gaps": 0,
+    "verdict": "usable"
   },
   "beats_s": [
     2.8832061041714114,
@@ -122,6 +128,12 @@
     118.01990968751052,
     119.20479689584609
   ],
+  "downbeats_quality": {
+    "cov": 0.054,
+    "doubles": 0,
+    "gaps": 0,
+    "verdict": "usable"
+  },
   "downbeats_s": [
     0.3159553541729183,
     3.3383221875075906,
@@ -143,12 +155,13 @@
     89.16494268750394
   ],
   "extended_by": null,
-  "meter_from_taps": 4,
+  "meter_from_taps": null,
+  "meter_note": "ratio 4.42 \u2014 no clean meter; unresolved",
   "phosphene_grid_bpm": 79.6,
   "source": "taps",
   "status": "needs_arbitration",
   "suite": 5,
-  "tap_bpm": 49.47,
+  "tap_bpm": 49.91,
   "tap_count": 97,
   "tap_downbeat_count": 18,
   "tapped_span_s": [
