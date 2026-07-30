@@ -65,7 +65,9 @@ struct SessionReplayHarness {
         var barPhase01: Float = 0
         var bassDev: Float = 0
         var pulseAmp01: Float = 0
-        var drumsBeat: Float = 0
+        var pulsePhase01: Float = 0
+        var pulseBeatIndex: Float = 0
+        var pulseRegionalBlend01: Float = 0
     }
 
     private static func loadRows(_ csv: URL) throws -> [Row] {
@@ -98,7 +100,10 @@ struct SessionReplayHarness {
             // the session logs bar phase in PERMILLE
             r.barPhase01 = get(f, "barPhase01_permille") / 1000.0
             r.bassDev = get(f, "bassDev")
-            r.pulseAmp01 = get(f, "pulseAmp01")
+            r.pulseAmp01 = get(f, "pulse_amp01")
+            r.pulsePhase01 = get(f, "pulse_phase01")
+            r.pulseBeatIndex = get(f, "pulse_beat_index")
+            r.pulseRegionalBlend01 = get(f, "pulse_regional_blend01")
             out.append(r)
         }
         return out
@@ -114,8 +119,50 @@ struct SessionReplayHarness {
         f.valence = r.valence; f.arousal = r.arousal
         f.bassAttRel = r.bassAttRel; f.beatPhase01 = r.beatPhase01
         f.barPhase01 = r.barPhase01; f.bassDev = r.bassDev; f.pulseAmp01 = r.pulseAmp01
+        f.pulsePhase01 = r.pulsePhase01
+        f.pulseBeatIndex = r.pulseBeatIndex
+        f.pulseRegionalBlend01 = r.pulseRegionalBlend01
         f.aspectRatio = aspect
         return f
+    }
+
+    /// Load the session's per-frame stem features. The harness previously passed
+    /// `StemFeatures.zero`, so every stem-driven route in every ray-march preset was
+    /// replayed against SILENCE — the routes could not move, and any look or coupling
+    /// conclusion drawn from those frames was about an image production never makes.
+    /// `stems.csv` column names match the `StemFeatures` property names exactly.
+    private static func loadStems(_ csv: URL) -> [StemFeatures] {
+        guard let text = try? String(contentsOf: csv, encoding: .utf8) else { return [] }
+        let lines = text.split(whereSeparator: { $0 == "\n" || $0 == "\r" })
+        guard let header = lines.first else { return [] }
+        var index: [String: Int] = [:]
+        for (i, c) in header.split(separator: ",").map(String.init).enumerated() { index[c] = i }
+        var out: [StemFeatures] = []
+        for line in lines.dropFirst() {
+            let f = line.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+            guard f.count > 4 else { continue }
+            func g(_ n: String) -> Float {
+                guard let i = index[n], i < f.count else { return 0 }
+                return Float(f[i]) ?? 0
+            }
+            var s = StemFeatures.zero
+            s.drumsEnergy = g("drumsEnergy");   s.bassEnergy = g("bassEnergy")
+            s.vocalsEnergy = g("vocalsEnergy"); s.otherEnergy = g("otherEnergy")
+            s.drumsBeat = g("drumsBeat");       s.bassBeat = g("bassBeat")
+            s.vocalsBeat = g("vocalsBeat");     s.otherBeat = g("otherBeat")
+            s.drumsEnergyRel = g("drumsEnergyRel");   s.drumsEnergyDev = g("drumsEnergyDev")
+            s.bassEnergyRel = g("bassEnergyRel");     s.bassEnergyDev = g("bassEnergyDev")
+            s.vocalsEnergyRel = g("vocalsEnergyRel"); s.vocalsEnergyDev = g("vocalsEnergyDev")
+            s.otherEnergyRel = g("otherEnergyRel");   s.otherEnergyDev = g("otherEnergyDev")
+            s.drumsOnsetRate = g("drumsOnsetRate");   s.drumsAttackRatio = g("drumsAttackRatio")
+            s.bassOnsetRate = g("bassOnsetRate");     s.bassAttackRatio = g("bassAttackRatio")
+            s.vocalsOnsetRate = g("vocalsOnsetRate"); s.vocalsAttackRatio = g("vocalsAttackRatio")
+            s.otherOnsetRate = g("otherOnsetRate");   s.otherAttackRatio = g("otherAttackRatio")
+            s.vocalsPitchHz = g("vocalsPitchHz")
+            s.vocalsPitchConfidence = g("vocalsPitchConfidence")
+            out.append(s)
+        }
+        return out
     }
 
     @Test("replay a recorded session through the real render path (REPLAY_SESSION=…)")
@@ -138,6 +185,10 @@ struct SessionReplayHarness {
         let count  = Int(env["REPLAY_COUNT"] ?? "") ?? 90
 
         let rows = try Self.loadRows(sessionDir.appendingPathComponent("features.csv"))
+        let stemRows = Self.loadStems(sessionDir.appendingPathComponent("stems.csv"))
+        if stemRows.isEmpty {
+            print("[replay] WARNING: no stems.csv rows — stem-driven routes will replay against SILENCE")
+        }
         guard !rows.isEmpty else {
             Issue.record("no rows parsed from \(sessionPath)/features.csv")
             return
@@ -229,7 +280,7 @@ struct SessionReplayHarness {
                 gbufferPipelineState: gbufferState,
                 features: &features,
                 fftBuffer: buffers.fft, waveformBuffer: buffers.waveform,
-                stemFeatures: .zero,
+                stemFeatures: stemRows.isEmpty ? .zero : stemRows[min(start + i, stemRows.count - 1)],
                 outputTexture: outTex,
                 commandBuffer: cmd,
                 noiseTextures: noise,
