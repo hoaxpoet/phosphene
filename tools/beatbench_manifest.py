@@ -27,8 +27,15 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(REPO, "PhospheneEngine", "Tests", "Fixtures", "beatbench", "manifest.json")
 
-# tap-derived fixtures were segmented from this recorded session's raw_tap.wav.
+# Tap-derived fixtures were segmented from this recorded session's raw_tap.wav.
+# Canonical id is the recorder's timestamp; the directory was later renamed locally
+# to ~/Documents/phosphene_sessions/beat-match-test-session.
 SOURCE_SESSION = "2026-07-27T12-58-56Z"
+
+# 30 s preview clips rather than full tracks — usable for F-measure, but they cannot
+# support full-track metrics (drift-over-time, tempo change). GT.3 must not read a
+# missing late-track number as a pass.
+PREVIEW_CLIPS = {"so_what", "there_there"}
 
 # id, title, artist, suite, source(local=corpus rip | tap=segmented from session), filename
 TRACKS = [
@@ -37,12 +44,16 @@ TRACKS = [
     ("stayin_alive",       "Stayin' Alive",        "Bee Gees",                1, "local", "stayin_alive.mp3"),
     ("superstition",       "Superstition",         "Stevie Wonder",           1, "local", "superstition.flac"),
     ("take_five",          "Take Five",            "The Dave Brubeck Quartet",2, "local", "take_five.mp3"),
+    ("money",              "Money",                "Pink Floyd",              2, "tap",   "money.wav"),
+    ("pyramid_song",       "Pyramid Song",         "Radiohead",               2, "tap",   "pyramid_song.wav"),
+    ("so_what",            "So What",              "Miles Davis",             2, "local", "so_what.m4a"),
     ("solsbury_hill",      "Solsbury Hill",        "Peter Gabriel",           2, "tap",   "solsbury_hill.wav"),
     ("yyz",                "YYZ",                  "Rush",                    2, "tap",   "yyz.wav"),
     ("bohemian_rhapsody",  "Bohemian Rhapsody",    "Queen",                   3, "tap",   "bohemian_rhapsody.wav"),
     ("giorgio_by_moroder", "Giorgio by Moroder",   "Daft Punk",               3, "local", "giorgio_by_moroder.mp3"),
     ("dance_yrself_clean", "Dance Yrself Clean",   "LCD Soundsystem",         3, "local", "dance_yrself_clean.mp3"),
     ("bleed",              "Bleed",                "Meshuggah",               4, "tap",   "bleed.wav"),
+    ("there_there",        "There There",          "Radiohead",               4, "local", "there_there.m4a"),
     ("girl_from_ipanema",  "The Girl from Ipanema","Getz/Gilberto",           5, "local", "girl_from_ipanema.mp3"),
     ("clair_de_lune",      "Clair de Lune",        "Debussy (Weissenberg)",   5, "local", "clair_de_lune.mp3"),
 ]
@@ -72,6 +83,8 @@ def main():
              "source": source, "filename": filename}
         if source == "tap":
             e["source_session"] = SOURCE_SESSION
+        if tid in PREVIEW_CLIPS:
+            e["preview_clip"] = True
         path = os.path.join(fixtures, filename)
         if os.path.isfile(path):
             e["sha256"] = sha256(path)

@@ -8,6 +8,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 |---|---|---|---|
 | BUG-071 | P1 · CLOSED wontfix (RETIRED, D-201, 2026-07-25) | preset.fidelity / sdf-geometry | **RESOLVED BY RETIREMENT — Fractal Fly-By deleted after 14 rounds (FLY.14). Instrument-proven ceiling:** whole-frame temporal coherence shows ~13 %/frame boiling, geometry teleports (diff-2/diff-1 = 1.12) — the fast scale-zoom through a self-similar Mandelbox reveals new fold structure every frame, incoherent by construction, not fixable by AA or steering in the 7 ms budget. See D-201. Original defect below (historical). **Fractal Fly-By live M7 FAILED (session `2026-07-23T19-27-48Z`, Cherub Rock):** "deeply glitchy, camera moves OUT not IN." Root causes (confirmed from artifacts + repro renders): (1) **descent direction inverted** — `q=(p+c)*zoom` with zoom increasing collapses features toward a vanishing point (recede); confirmed by a phase-0.08 vs 0.90 sweep (features shrink as phase grows) and by `features.csv` (accAudioTime 0→8.15 → phase 0→0.98 monotonic = one-way recede, never wrapped); (2) **severe shimmer/aliasing** — full-res Mandelbox fine detail + the high-frequency iridescent thin-film rims alias under motion (no AA; MetalFX unwired; the §A8 motion-coherence cap was never added; the whole-frame motion-gate spike metric doesn't catch high-freq shimmer); (3) **descent too slow** — 0.12 rate gave <1 octave in 78 s. Fix: invert to `q=(p+c)/zoom` (fall in), tame/detune the thin-film + distance-fade fine detail, raise the rate. |
 | BUG-070 | P2 | audio.capture / resource-management | **Fix landed 2026-07-12 (PUB.6), pending live validation** — a FAILED device-change tap reinstall left `_isCapturing=true` with zero callbacks: engine health detectors starved (SignalHealthMonitor.evaluate is sample-driven → deadTap never confirms) and the router's recovery restart blocked at the alreadyCapturing guard; only the app-layer poll-based stall card surfaced it. Fix: the catch now clears `_isCapturing` (recovery unblocked) and keeps the monitor as a diagnostic beacon; the false "create steps stopped the monitor" comment corrected. Residual OPEN half: the 3-queue lifecycle interleave (device-change reinstall vs silence-recovery vs user stop) stays unserialized — static-only evidence; restructuring the G1-validated (12/12) path without a reproduced artifact is the BUG-063 pattern. Existing breadcrumbs (per-step diagnostics + install generation) are the instrumentation; serialize only if a live session shows an interleave |
+| BUG-076 | P2 | dsp.beat | **Preview BeatGrid locks to a non-metrical tempo on Bleed (Meshuggah) — 3:2 against the true pulse.** Triangulated by four independent sources on the same audio: Matt's taps 224.95 BPM, madmom 115.0, librosa 115.0, and the session's own drums-stem grid 115.1 — the human and the algorithms are a clean 2:1 (one pulse, two metrical levels, both musically valid). Phosphene's full-mix grid reads **174.6**, which is **1.52× the reference level (≈3:2)** and therefore not a valid metrical level of a 4/4 track at all — it is not a half/double octave error that the existing halving rule (BUG-009/D-079) could catch. Evidence: `docs/diagnostics/BEATBENCH_GT2_RECONCILIATION.md` + `Tests/Fixtures/beatbench/groundtruth/bleed.groundtruth.json` (GT.2). The category-4 target case; expected to be fixed by the DBN sequence decoder (Phase DBN), with GT.3's baseline as the before-number |
 | BUG-065 | P3 | dsp.beat | **Live BeatGrid phase drifts off the audible beat over a track** — the cached grid has the right BPM but `LiveBeatDriftTracker` *bounds* the live drift without *tightening* it: drift grows ~11 ms (track start) → **50–70 ms (mid/late-track)**, and **28 % of frames exceed the ~60 ms perceptual window** (evidence: session `2026-06-29T12-43-51Z`, Cherub Rock 171.3 BPM 4/4 — drift-by-10s-window 11/37/49/54/69/66/55/48 ms; lock_state=2 only 67 %-within-60 ms). **Caps how frame-locked beat-driven presets can feel** — the live example is Glaze's GLAZE.7 downbeat push (reads connected but not *tight*; tightest early, loosens as the track plays). NOT a functional break (phase is approximately right). **Suggested improvement (Matt 2026-06-29):** live re-lock / cached-BPM-error correction so drift holds < ~30 ms across the track. The cold-start *automated phase* premise was retired (CLAUDE.md §Cold-Start), but this is **mid-track drift convergence** — a different surface (the tracker should tighten, not just bound). Logged for a dedicated beat-sync session |
 | AUDIT-2026-06-09 | P2/P3 | audit backlog | Full-codebase audit findings not individually filed |
 | BUG-060 | P3 | renderer / app.hang | One-off app hang (force-quit required): render loop died one frame after a `preset → Gossamer` switch (`22-10-50Z`); NOT reproduced (Gossamer ran 3× clean in `13-57-23Z`); no stack captured. Monitored |
@@ -74,6 +75,35 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 **Residual (documented, deliberately open):** the 3-queue lifecycle interleave (device-change reinstall vs silence-recovery reinstall vs user stop) is real but static-only evidence; the per-step breadcrumbs + install-generation probes are the instrumentation. Serialize ONLY on a reproduced interleave artifact — restructuring the G1-live-validated path on theory is the BUG-063 class.
 
 ---
+
+### BUG-076 — Preview BeatGrid locks to a non-metrical tempo on Bleed (3:2 against the true pulse) (2026-07-27)
+
+**Domain tag:** dsp.beat (grid tempo/meter). **Severity:** P2 — one track in the benchmark catalog, but it is the defining case for beat-sync category 4 (dense transients / polyrhythm) and it caps what any beat-driven preset can do on fast metal.
+
+**Expected:** the prep-time `BeatGrid` locks to a musically valid metrical level of the track — the quarter-note pulse, or an octave of it (half/double). Any level a listener could count is acceptable; a level nobody could count is not.
+
+**Actual:** the full-mix grid reports **174.6 BPM**. Four independent sources on the same audio disagree with it and agree with each other:
+
+| source | BPM | independent of Phosphene? |
+|---|---|---|
+| Matt's taps (GT.2, 356 taps / 97 s) | 224.95 | yes — human |
+| madmom RNN+DBN | 115.0 | yes — different algorithm family |
+| librosa onset-DP | 115.0 | yes — different algorithm family |
+| drums-stem grid (session `2026-07-27T12-58-56Z`) | 115.1 | partly — same model, different input |
+| **full-mix grid (the defect)** | **174.6** | — |
+
+224.95 / 115.0 = **1.956 ≈ 2:1** — the human tapped eighths against the references' quarters, which is one pulse seen at two levels and correct on both counts. 174.6 / 115.0 = **1.518 ≈ 3:2**. A 3:2 relationship is *not* an octave of the true pulse, so this is outside the class of error the halving-only octave correction (BUG-009 / D-079) is designed to catch — the grid is not counting fast or slow, it is counting something that is not there.
+
+**Reproduction:** fixture `bleed.wav` in `BEATBENCH_FIXTURES_DIR` (segmented from the session raw tap; sha256 in `Tests/Fixtures/beatbench/manifest.json`). The 174.6 value is in the session prep log (`WIRING: SessionPreparer.beatGrid track='Bleed' bpm=174.6 beats=92`); the 3-way disagreement was already logged at prep time as `grid-drums=34.1%` and was not acted on.
+
+**Suspected failure class:** `algorithm` — `BeatGridResolver`'s peak-pick + median-IOI inference over Beat This! activations. Palm-muted 16th-note density gives the activation function strong energy at several subdivisions; picking a dominant period without a sequence model can settle between levels. This is precisely the premise the program replaces (plan §2).
+
+**Verification criteria (written before any fix):**
+1. Automated: BeatBench on suite 4 — the grid tempo must land within 5 % of a valid metrical level of the ground truth (115.0 or 224.95), i.e. the 3:2 lock must disappear. Baseline number captured at GT.3.
+2. No regression: suite 1 stays green (this is the DBN.3 hard gate).
+3. Manual: Matt confirms beat-driven motion reads on-pulse on Bleed, since a grid can be numerically valid and still feel wrong.
+
+**Do not fix in isolation.** Deliberately not patched at GT.2: the fix is the DBN sequence decoder (Phase DBN), and a targeted heuristic for one track would be exactly the peak-pick patching the program exists to retire. Filed now so the decoder has a concrete, pre-measured failing case rather than a general aspiration.
 
 ### BUG-065 — Live BeatGrid phase drifts off the audible beat over a track (mid-track drift convergence) (2026-06-29)
 
