@@ -30,7 +30,7 @@ Every invocation's flags were read this session directly from each tool's `@main
 | **PresetSessionReplay** | How did a preset's audio→visual routes fire on a recorded session, and does it score against the cert rubric? | `swift run --package-path PhospheneEngine PresetSessionReplay --session <dir> --preset <name> [--output <dir>] [--references-dir <dir>]` |
 | **BeatThisActivationDumper** | What are Beat This!'s per-frame activations on this audio, for cross-validation against the PyTorch reference? | `swift run --package-path PhospheneEngine BeatThisActivationDumper --audio <path> --out <activations.json> [--raw-dir <dir>]` |
 | **QualityReelAnalyzer** | How beat-reactive is a rendered quality reel — do visual events land on the beat grid? | `swift run --package-path PhospheneEngine QualityReelAnalyzer --reel <video> --out <report.md> --frames-dir <dir> [--audio <path>] [--max-beats N] [--audio-only]` |
-| **BeatBench** | What are the BeatBench metrics for a grid vs tapped ground truth? (see `beatbench`) | TO FILL (GT.3) — harness does not exist yet; do not invent an invocation |
+| **BeatBench** | How does a beat grid score against the tapped ground truth? (metrics + targets: `beatbench`) | `swift run --package-path PhospheneEngine BeatBench --mode offline-grid [--tracks <ids>] [--report <path>]`; `--audio <file> [--seconds N]` inspects one file's grid; `--self-test` validates the metrics. **session-replay mode is not built yet** — live-path metrics have no baseline. |
 
 ## 3. Replay-before-live (rule, not advice)
 

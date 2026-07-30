@@ -13,7 +13,7 @@ this session.
 
 ## 1. Why this increment exists, and why it is next
 
-Phase TRK is **parked** (D-205, Matt 2026-07-30: "park the tracker, go DBN next session"). Two
+Phase TRK is **parked** (D-206, Matt 2026-07-30: "park the tracker, go DBN next session"). Two
 levers were measured against the same frozen single-BPM grid and neither closed BUG-065:
 
 - **TRK.1** proved the drift is a *ramp* (−1.493 ms/s at R² 0.844 ⇒ a 0.149 % cached-grid period
@@ -65,7 +65,7 @@ DECISION-NEEDED items at closeout (task 7).
 4. `PhospheneEngine/Sources/DSP/BeatGrid.swift` — the output type the decoder must produce today
    (DBN.4 generalises it later; DBN.1 specs against the current shape and *notes* what DBN.4 needs)
 5. `docs/DECISIONS.md` — **D-077** (license precedent: Beat This! MIT portable, madmom CC-NC
-   weights never ship, TempoCNN rejected as AGPL) and **D-205** (why TRK is parked)
+   weights never ship, TempoCNN rejected as AGPL) and **D-206** (why TRK is parked)
 6. `docs/CAPABILITY_REGISTRY/BEAT_SYNC.md` — current capability state
 7. `PhospheneEngine/Sources/BeatThisActivationDumper/Dumper.swift` — how to get real activations to
    reason against
@@ -77,7 +77,7 @@ DECISION-NEEDED items at closeout (task 7).
 - `git log --oneline -1` on `main` is `ba8e6cb3` or later; working tree clean.
 - `swiftlint lint --strict --config .swiftlint.yml` → **0 violations**.
 - `swift test --package-path PhospheneEngine` → green.
-- `docs/DECISIONS.md` contains **D-205** (phase TRK parked). If it does not, the branch is stale —
+- `docs/DECISIONS.md` contains **D-206** (phase TRK parked). If it does not, the branch is stale —
   stop.
 - BeatBench fixtures present at `~/phosphene_beatbench_fixtures` (13 files).
 - **`PHOSPHENE_BEAT_PLL` is still default-off and `BeatGridResolver` is unmodified.** If either has
@@ -155,7 +155,7 @@ DECISION-NEEDED items at closeout (task 7).
   than writing a plausible-looking restatement (`reference-port` §2; the D-077 cautionary case).
 - **Do not touch cold-start phase.** Everything here is steady-state offline decoding (Cold-Start
   Phase Contract, FA #69).
-- **Do not reopen phase TRK** or re-propose an onset-evidence change (D-205).
+- **Do not reopen phase TRK** or re-propose an onset-evidence change (D-206).
 - **Do not promote beats to primary motion** (D-004) — this improves an accent-layer signal.
 - **Do not claim a category is solved.** DBN.1 produces a spec; no category is won without a
   BeatBench number, and BeatBench does not exist yet (see §10).
