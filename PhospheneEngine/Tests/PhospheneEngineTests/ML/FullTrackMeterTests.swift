@@ -33,6 +33,15 @@ struct FullTrackMeterTests {
         ("pyramid_song", nil), ("yyz", nil), ("clair_de_lune", nil)
     ]
 
+    /// FT.3 task 1 — tracks with NO ground truth, which therefore played no part in
+    /// designing the bar-line probe. Dumped only when `PHOSPHENE_BEATS_DUMP` is set, so
+    /// FT.1's own table stays exactly the nine it was measured on.
+    static let unseen: [(name: String, meter: Int?)] = [
+        ("so_what", nil), ("around_the_world", nil), ("stayin_alive", nil),
+        ("superstition", nil), ("there_there", nil), ("girl_from_ipanema", nil),
+        ("giorgio_by_moroder", nil), ("dance_yrself_clean", nil)
+    ]
+
     @Test("FT.1: 30 s window vs full-track tiling — does meter improve?")
     func test_fullTrackMeter() throws {
         guard ProcessInfo.processInfo.environment["PHOSPHENE_FT1_FULLTRACK"] == "1" else {
@@ -57,7 +66,8 @@ struct FullTrackMeterTests {
         var improved: [String] = []
         var regressed: [String] = []
 
-        for entry in Self.catalogue {
+        let dumpDir = ProcessInfo.processInfo.environment["PHOSPHENE_BEATS_DUMP"]
+        for entry in Self.catalogue + (dumpDir == nil ? [] : Self.unseen) {
             guard let url = Self.locate(entry.name, in: dir) else {
                 print("  \(entry.name): fixture missing"); continue
             }
@@ -106,7 +116,7 @@ struct FullTrackMeterTests {
             // BARPROBE: dump the engine's full-track beat times so the bar-line probe
             // can work from REAL beats (the good axis, F 0.97) rather than ground-truth
             // taps, which are sparse and on money/solsbury_hill are half-time.
-            if let dumpDir = ProcessInfo.processInfo.environment["PHOSPHENE_BEATS_DUMP"] {
+            if let dumpDir {
                 let beats = BeatGridResolver.resolve(
                     beatProbs: fullAct.beats, downbeatProbs: fullAct.downbeats, frameRate: 50.0
                 ).beats
