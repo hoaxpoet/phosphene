@@ -5,7 +5,7 @@
 **Inspiration source:** `martin - witchcraft reloaded`, from the Milkdrop / Butterchurn cream-of-crop corpus. **The source file is not committed** (D-116 bullet 4); provenance is the SHA-256 in the `inspired_by` sidecar block, landed at WL.2.
 **References:** [`docs/VISUAL_REFERENCES/witchlight/`](../VISUAL_REFERENCES/witchlight/README.md) — read that README before any WL.2 work (`PRESET_SESSION_CHECKLIST.md` Part 1 step 1).
 **Decision:** D-209.
-**Status:** §§1–2 written and committed at WL.1. **§§3–7 are gated on Matt signing off the §2 driver table** (the WL.1 task-3 checkpoint). No `.metal`, no sidecar, no engine code exists.
+**Status:** §§1–7 written at WL.1; §2's driver table signed off by Matt 2026-07-31, which released §§3–7. No `.metal`, no sidecar and no engine code exists — WL.1 is design only.
 
 ---
 
@@ -157,26 +157,259 @@ These change the design and are the reason §§3–7 are gated on this table rat
 
 **The harmonic drivers measure alive on four real captures of different character, so the D-121 divergence axis in §1.3 is founded and the fallback scope (palette-and-sky) is not triggered.** The axis carries two qualifications that §3 must design against rather than tune around: the ~10× cross-track rate spread on the hero driver (§2.3 item 3), and the absence of a usable offline chord-change primitive (§2.3 item 2).
 
-**Checkpoint (WL.1 task 3): §§3–7 are not written until Matt has signed off this table.**
+**Checkpoint (WL.1 task 3): signed off by Matt, 2026-07-31 — §§3–7 released.**
 
 ---
 
 ## 3. Motion model and temporal contract
 
-*Gated on §2.4 sign-off. Not written at WL.1.*
+§2.4 signed off by Matt, 2026-07-31. This section is written against the measured table, not against nominal ranges.
+
+### 3.0 Musical role — final
+
+> **Witchlight's pen tip turns with the track's harmony — every chord change bends the stroke, every downbeat sets a bead — so the ribbon hanging in the dark is a drawing of the last thirty seconds of the song.**
+
+Specific musical feature: the harmonic position on the circle of fifths and its rate of change (`tonal_phase_fifths`, D-178), plus the bar downbeat (`bar_phase01` wrap). Specific visual behaviour the listener pairs with it: the stroke *turns* where the harmony turns, and a single bead brightens and swells on each downbeat, so the ribbon carries a visible rhythm of set points along a harmonically-shaped curve.
+
+### 3.1 What sets the pen tip each frame, and why it produces a figure rather than a scribble
+
+**The stroke is drawn in a plane. The plane tumbles slowly in 3-D.** This is the first and most important structural decision, and it is made for legibility. A planar curve seen near-face-on reads as *a drawing*; a space curve reads as *a tangle*. Reference `01` is planar; anti-reference `10` is what happens when the path leaves the plane and doubles back through itself. Separating "what the music drew" (in-plane) from "how we are looking at it" (out-of-plane) also keeps the two from fighting: the tumble can never turn a legible figure into an illegible one, only into a foreshortened one.
+
+Three mechanisms, in order.
+
+**(a) Heading — the harmonic steer, via a circular EMA.** `tonal_phase_fifths` is a ±π circular quantity and is far too noisy raw (median per-frame step 0.31–1.04 rad, §2.1). It is smoothed by the CR.1.2 / D-198 mechanism, which is already shipped and M7-validated in Phosphene: EMA the `sin` and `cos` separately at τ = 1.5 s and recombine with `atan2` — **never** EMA the raw sawtooth. Call the result φ̄.
+
+**(b) Advance — bounded-curvature kinematics.** This is the rate-governance mechanism §2.3 item 3 demands, and it is the reason the same code cannot draw `01` on one track and `10` on the next.
+
+The pen does **not** move to a position derived from φ̄. It advances at a **governed speed** along a **heading θ**, and the harmony controls only how fast θ *turns*:
+
+```
+θ̇  = clamp( k · φ̄̇ , ±ω_max )            // harmony turns the pen
+ẋ  = v · (cos θ, sin θ)                   // speed is not harmonic
+```
+
+This is a Dubins-style bounded-curvature path (Dubins 1957): with a fixed speed `v` and a clamped turn rate `ω_max`, every arc the pen draws has radius ≥ `v / ω_max`. **Set `ω_max` so the minimum turning radius is ≥ 8 % of frame height.** A curve that can never turn tighter than that cannot become a ball of yarn — the failure in `10` is precisely a sequence of sub-pixel-radius reversals.
+
+The measured payoff: §2.3's ~10× cross-track spread lives entirely in `φ̄̇`, which now controls *curvature only*, and curvature is clamped. On So What (0.91 rad/s p95) the pen draws long lazy arcs; on Rehab (11.4 rad/s p95) it draws tight but still-legible loops at the clamp. Both are figures. Neither is a tangle. **WL.2 must report the measured fraction of frames spent at the clamp on each of the four §2 captures** — if Rehab sits at the clamp >80 % of the time the figure degenerates to a circle, and `k` needs lowering rather than `ω_max` raising.
+
+`v` is modulated only gently, and by a slow non-harmonic primitive: `v = v₀ · (1 + 0.25 · arousal_n)`, where `arousal_n` is `arousal` normalised against its measured per-capture range (0.44–1.57, §2.1). ±25 % is deliberately narrow — speed is what turns `01` into `10`, so it is the last thing that should be given a wide dynamic range.
+
+**(c) Relaxation — age-weighted neighbour averaging.** The one mechanism taken structurally from the source (trait #2, §1.2). Each frame, every stored bead is pulled a little toward the midpoint of its two neighbours — discrete Laplacian curve smoothing, the same family as Taubin's λ|μ mesh smoothing. It is what turns a jittery polyline into a calligraphic stroke, and it is the difference between `04`/`05` and a scratchy line.
+
+**Our variant, and why:** the relaxation weight decays with bead age — full weight for beads younger than ~1 s, falling to zero by ~4 s. Beyond 4 s the record is **frozen**.
+
+The source relaxes the whole buffer forever, which is part of why its figure slowly slumps into a blob. Freezing the old part is not just prettier: it is required by the concept. *"A drawing of where the song has been"* is false if the drawing keeps rewriting itself. Age-weighted relaxation gives us the calligraphic quality on the live end of the stroke and an honest record on the old end.
+
+### 3.2 Temporal contract
+
+Reference images are still frames; this is the behaviour over time (`PRESET_SESSION_CHECKLIST.md` Part 2).
+
+| Event | What happens | Driver | Notes |
+|---|---|---|---|
+| **Every frame** | Pen advances one step at speed `v`; heading turns by the clamped rate. Age-weighted relaxation pass over the buffer. | `tonal_phase_fifths` (heading), `arousal` (speed) | |
+| **Bead emission** | One bead every ~30 ms (≈34 Hz), at a **fixed time rate, not a fixed arc length**. | — | Deliberate: a real burning trail deposits at a constant rate, so *spacing* encodes hand speed. Fast pen → sparse beads; slow pen → dense. This is what buys mandatory trait #4 (`05`, `02`) for free. |
+| **On a beat** | **Nothing.** | — | Deliberate omission. A per-beat impulse on the pen would fight the harmonic steer and re-import exactly the metronome quality that makes the source's figure meaningless. Layer-4 beat coupling enters at the bar only. |
+| **On a downbeat (bar)** | The bead emitted at that instant is **set**: ~2.2× radius, ~1.6× alpha, held permanently (it does not decay back). The ribbon therefore carries a visible chain of larger beads marking the bars. | `bar_phase01` wrap (`prev > 0.85 && now < 0.15`) | Measured a clean sawtooth on all four captures (§2.1); wrap-detection precedent is `LumenPatternEngine.updateBandCounters`. D-157-safe: one bead is a negligible fraction of frame area, and global luminance does not move. |
+| **On a chord change** | **The stroke turns** — this is not a separate effect. A chord change is *what makes φ̄ move*, so the turn is the rendering of it. In addition, when the smoothed angular velocity sustains a sign reversal or a magnitude spike over ≥ 0.25 s (the same "turn" definition used in the §2 measurement — 2–129 turns/min across the captures), the bead at the apex takes a **hue step** rather than the usual hue drift, so a turn reads as a colour boundary in the ribbon. | `tonal_phase_fifths` (derivative) | `harmonic_flux` is **not** used: §2.3 item 2 measured it at 0.2 % nonzero on love_rehab. We do not detect chord changes; we render the phase motion they cause. |
+| **On a section boundary** | The trail's age window contracts ~30 % over ~0.4 s, then relaxes back over ~4 s — the drawing is partly wiped and restarted. | `section_index` change | **Declared risk:** `section_index` is alive on the live capture (8 distinct sections, confidence 1.0) but flat on so_what and love_rehab; only `there_there` (0→1) carries a boundary offline. The `structural` route floor is "≥ 1 event on a fixture that contains a section boundary", so it can green — on exactly one fixture. WL.2 declares it and does **not** tune the floor if it reds (QG.1 / D-179). |
+| **Over 30 s** | The trail's age window **is** the 30-second contract: the visible figure at any instant is exactly the last 30 s of harmonic motion. A listener who looks away and back sees a different figure; a listener who replays the track sees the same one. | — | This is the D-121 divergence made directly observable, and the M7 test for it. |
+
+### 3.3 How the trail ages
+
+- **Length: 30 s.** At ~34 Hz emission that is ~1024 beads — the same order as the source's buffer and a comfortable sprite count.
+- **Brightness falloff: `α(a) = (1 − a/T)^1.6`**, `a` = age, `T` = 30 s. Superlinear, so the newest third of the stroke carries most of the light (matching `02`, where the decay is visibly not linear), and it reaches exactly 0 at `T` so the tail never pops out of existence. Mandatory trait #2 requires this to be **monotonic** — the head is the brightest point on the stroke at every frame, without exception.
+- **Size falloff: `r(a) = r₀ · (1 − 0.65 · a/T)`.** Beads shrink but do not vanish before they fade, so the ribbon tapers rather than dotting out.
+- **The oldest visible bead is where the harmony was 30 seconds ago.** That is the sentence a listener should be able to be told and then verify by looking.
+
+### 3.4 Colour
+
+**A bead's hue is the smoothed harmonic phase φ̄ at the moment it was laid down, mapped around the hue circle, and then frozen.** Both quantities are circular, so the map wraps seamlessly with no seam. This is D-178's "hue on the circle of fifths — relationships, never labels; hue, never brightness."
+
+What the ribbon's colour history therefore tells the listener: **where the song's harmony has been over the last thirty seconds, and how far it travelled.** A track that sits in one key lays down a ribbon in one hue family with slow drift; a track that moves through a progression lays down visible colour bands with boundaries at the turns; a modulation shows up as the whole recent end of the ribbon shifting into a new family while the old end keeps the previous one. The source's ribbon is banded too — and its bands mean nothing (`00`, anti-read).
+
+**Saturation and value are constants.** Not an oversight: FA #67 (one primitive per visual layer), and D-178's "hue never brightness". `tonal_consonance` measured alive (§2.1) and is the obvious candidate for a saturation route if the ribbon reads monotonous in M7 — it is logged as a WL.3 candidate, not taken now.
+
+**FA #67 — the one shared primitive, argued rather than hand-waved.** The heading layer and the colour layer both read `tonal_phase_fifths`. This is a deliberate exception, and it is safe for two reasons: the heading layer consumes the **derivative** (φ̄̇ → turn rate) while the colour layer consumes the **value** (φ̄ → hue); and the colour layer is **frozen at emission** and never updates thereafter, so there is no second live channel to fight the first. The failure FA #67 describes — the same information overdriven through two live channels — does not arise. Every other layer takes a distinct primitive:
+
+| Visual layer | Primitive | Timescale |
+|---|---|---|
+| Pen heading (the figure) | `tonalPhaseFifths` (circular EMA → clamped turn rate) | 1–30 s |
+| Bead hue (frozen record) | `tonalPhaseFifths` at emission — see the argument above | instantaneous, then frozen |
+| Pen advance speed | `arousal` | 10–60 s |
+| Bead promotion | `barPhase01` wrap | per bar |
+| Head flare | `bassDev` | per event |
+| Star-field parallax depth | `spectralCentroid` (mapped against the **measured** 0.04–0.21 band, §2.2) | 1–10 s |
+| Nebular bloom hue | `valence` | 30 s+ |
+| Trail-window contraction | `sectionIndex` | per section |
+
+All deviation or relative semantics; no absolute threshold on an AGC-normalized value anywhere (D-026 / FA #31).
+
+### 3.5 The head flare
+
+**Fires on** a significant `bass_dev` excursion — measured p95 0.12–0.31 and max 0.30–3.92 across the captures (§2.1), so the trigger is written against the per-capture p95, never a fixed value on an AGC-normalized band (this is exactly the fault in source trait #9, §1.2).
+
+**Bounded by** the numeric budget in §5, which is designed up front rather than tuned down later. Form: a small radial spark burst at the pen head with a hot core and a cooler halo (`03` for the real-world scale, `08`/`09` for the two-part radial profile), coloured by the head bead's hue. **Not** a six-spoke lens flare — the spokes are what let the source's flare cover the frame.
+
+### 3.6 Silence (D-037)
+
+At `totalStemEnergy == 0` the star field, the violet bloom and the full existing ribbon all persist; the pen continues to advance at `v₀` with `θ̇ = 0`, laying a slow straight stroke. The frame is never black, and silence reads as *the pen still moving, with nothing to say* — which is the honest visual for it.
+
+---
 
 ## 4. Three-part concept bar
 
-*Gated on §2.4 sign-off. Not written at WL.1.*
+Answered explicitly, with evidence, per `PRESET_SESSION_CHECKLIST.md` Part 2.
+
+**1. Iconic visual subject deliverable at fidelity — PASS, with evidence.**
+The subject is a beaded luminous stroke on a dark ground with a procedural star field. Evidence it is deliverable: (a) the inspiration source delivers exactly this register today and Matt's own render (`00`) is the proof — the gap between `00` and a Phosphene-quality version is a shading and composition problem, not a feasibility one; (b) Phosphene ships four certified presets built on the same shape — a CPU-side simulation feeding sprite/line geometry over a dark composite ground: **Filigree** (physarum trail), **Mitosis** / **Cytokinesis** (reaction–diffusion colonies), **Cymatic Resonance** (vibrating sand). None of them required a new render paradigm. Matt has flagged no fidelity gap on any of the four. This is **not** a representational-3D concept, so the standing "3D for physical metaphors, environments rendered not implied" bar (D-029) does not bite.
+
+**2. Clear musical role — PASS, and it is the reason this concept exists.**
+The sentence is §3.0 and it names a specific musical feature (harmonic position on the circle of fifths and its rate of change; the bar downbeat) and a specific visual behaviour (the stroke turns where the harmony turns; a bead is set on each downbeat). It is falsifiable by a listener in two moves: replay the same track — the figure should be the same; play a different track — it should be a different *kind* of figure. The source fails both. The gate that killed Drift Motes (D-102) and Glass Brutalist (D-186) is the one this concept is strongest on.
+*Residual risk, stated:* the role is legible only if the figure is legible. That is §3.1(b)/(c) and it is the level-3 risk in §6.
+
+**3. Infrastructure-feasible — PASS, no new infrastructure.**
+`particles` + `feedback` are existing paradigms with a named harness template (`FeedbackPathHarnessTemplate`, QG.4 / D-182) and four shipped siblings. CPU-side state goes through the existing `ParticleGeometry` / `ParticleGeometryRegistry` path (D-097). **No new render pass, no new fragment-buffer slot, no GPU-contract change** — the head-flare uniforms ride the existing per-preset fragment buffer at slot 6. `SceneUniforms` is untouched. See §7.
+
+---
 
 ## 5. Flash-safety budget
 
-*Gated on §2.4 sign-off. Not written at WL.1.* Anti-reference `12` is the failure this section exists to prevent; the pattern to extend is `MultiPassFlashHarnessTests` + `PhotosensitivityCertificationTests.multiPassMeasured`.
+Designed up front, not tuned down later. Anti-reference `12` is what this section exists to prevent: in Matt's render roughly a fifth of sampled frames show the source's head flare saturating most of the frame to white, erasing the subject. That is a fidelity failure before it is a safety one, and Phosphene's gates would reject it.
+
+**Standard.** WCAG 2.3.1 general flash, as implemented in `Renderer/FlashAnalyzer.swift`: a flash is a pair of opposing full-frame-mean relative-luminance changes of ≥ 0.10 where the darker state is < 0.80; content is unsafe above 3 flashes in any 1-second window. The gate harness drives a worst-case beat train at `FlashHarnessSupport.accentHz` = 4.5 Hz, 60 fps, 3 s.
+
+**Budget.** Every number below is a WL.2 requirement, measured and reported in its closeout.
+
+| Budget | Value | Rationale |
+|---|---|---|
+| Peak full-frame mean relative luminance | **≤ 0.35** at any frame | The deep-space ground sits at ~0.02–0.05, so 0.35 is already a large event. Keeps every transition's darker state far below the 0.80 WCAG ceiling. The source reaches ~1.0 (`12`). |
+| Max full-frame mean luminance Δ per frame | **≤ 0.06** | Below the 0.10 swing threshold, so **no transition ever qualifies as a flash** — the budget targets 0.00 flashes/s by construction rather than by staying under 3. Comparable shipped figures: Mitosis measured maxΔ/frame 0.0116, Cytokinesis 0.0263. |
+| Flare spatial extent, ≥ 50 % of peak intensity | **≤ 3 % of frame area** | `03` is what a real burning head looks like: the hot core is roughly the diameter of the trail. |
+| Flare spatial extent, ≥ 10 % of peak intensity | **≤ 12 % of frame area** | WCAG's area rule is ~25 % of a 10° field; 12 % keeps us inside it before the luminance ceiling is even considered. The source exceeds 50 % (`12`). |
+| Minimum re-fire interval | **≥ 900 ms** (hard refractory) | ≈ 1.1 flares/s maximum. The source re-fires on every qualifying hit — at the harness's 4.5 Hz worst case that is 4.5/s. The flare is not a beat accent; it is an occasional event on a significant `bass_dev` excursion. |
+| Rise envelope | **≥ 60 ms** | No instantaneous step. An instantaneous full-amplitude step is what makes a transition qualify in the first place. |
+| Fall envelope | **≥ 200 ms** | Asymmetric fast-attack / slow-decay, matching a real spark. |
+| **Target measured** | **0.00 flashes/s** | Under `FlashHarnessSupport.worstCaseBeatTrain(4.5 Hz, 60 fps, 3 s)`. |
+
+**D-157 steady-luminance, separately.** Global luminance must not pump on the per-bar bead promotion either. A single promoted bead is a negligible fraction of frame area; WL.2 asserts it rather than assuming it, using the same `maxΔ/frame` reduction.
+
+**Mechanism WL.2 extends.** Witchlight is a `particles` preset whose response is geometry-driven, so the single-pass FeatureVector gate renders it static and cannot validly measure it — the same situation as Filigree, Mitosis, Cytokinesis and Cymatic Resonance. WL.2 therefore:
+
+1. adds a `@Test("Witchlight is flash-safe (harmonic stroke + bounded head flare, real headless render)")` render function to `MultiPassFlashHarnessTests`, copy-adapted from the Cymatic Resonance / Filigree entries;
+2. adds `"Witchlight"` to `PhotosensitivityCertificationTests.multiPassMeasured` **in the same commit** — the static-render guard in that suite fails loud if a newly-certified preset renders static there without joining the multi-pass harness, and that guard is the mechanism, not friction.
+
+---
 
 ## 6. Grounding audit
 
-*Gated on §2.4 sign-off. Not written at WL.1.* Known already: the harmonic-state-driven pen path is a level-3 mechanism (design-doc assertion only), and the *combination* of that path with a relaxed beaded-ribbon renderer has no published precedent either — the Aurora Veil failure mode (a pairing no demo used) applies and gets its own row.
+Per `PRESET_SESSION_CHECKLIST.md` Part 2: level 1 = working code reference in a comparable visual context; level 2 = paper or derivation with implementable math; level 3 = design-doc assertion only. The **combination** gets its own row — the Aurora Veil failure was a pairing no published demo used.
+
+| Mechanism | Level | Grounding |
+|---|---|---|
+| Beaded ribbon from a CPU point ring buffer drawn as alpha-graded sprites + a thin line | **1** | The inspiration source does exactly this and Matt's render (`00`) is the working proof. In-tree: `Filigree` (PhysarumGeometry), `Murmuration`, `Mitosis`, `CymaticResonance` all ship CPU-sim→sprite geometry through `ParticleGeometry`. |
+| Circular EMA on a ±π phase (EMA sin/cos → `atan2`) | **1** | Shipped and M7-validated in Phosphene at CR.1.2 / D-198, driving Cymatic Resonance's hue off this exact primitive. |
+| Hue on the circle of fifths | **1** | D-178 + the CR.1.2 shipped route. |
+| Procedural parallax star layers + soft nebular bloom in a composite fragment | **1** | The source; and standard demoscene practice. In-tree analogue: `Murmuration`'s `murmuration_sky_fragment`. |
+| Age-weighted neighbour-averaging relaxation on a polyline | **2** | Discrete Laplacian curve smoothing — same family as Taubin's λ\|μ non-shrinking mesh smoothing (SIGGRAPH 1995). The *unweighted* form is demonstrated by the source; **the age weighting is our derivation**, so the combination of smoothing-plus-freezing is level 2, not level 1. |
+| Bounded-curvature advance (fixed speed, clamped turn rate) | **2** | Dubins (1957) on bounded-curvature paths; the fixed-speed / clamped-turn-rate kinematic model is standard in robotics and vehicle path generation. There is no *visual* demo of it steering a light-painting stroke, so it does not reach level 1. |
+| Bounded, refractory head flare with rise/fall envelope | **2** | Derived from the WCAG 2.3.1 / Harding numbers and `FlashAnalyzer`'s implementation (§5), not from a visual reference. |
+| **Harmonic state → pen path geometry** | **3** | **No empirical grounding for driving a light-painting stroke's geometry from harmonic state.** No published demo, no paper, no shipped preset does it. Supporting evidence is only indirect: §2 measures the driver alive on four real captures, and CR.1.2 demonstrates it is usable for *hue*. Using it for *geometry* is new. |
+| **THE COMBINATION: harmonic-driven bounded-curvature path + age-weighted relaxation + beaded 30 s trail** | **3** | **No empirical grounding for the combination.** Each piece is individually defensible; nothing demonstrates that together they produce a *legible* figure rather than an elegant tangle. This is structurally the Aurora Veil failure shape (a working recipe layered with a mechanism no demo paired it with). |
+
+**Two level-3 ratings surfaced for Matt to accept or descope** — restated in the closeout as required:
+
+- *No empirical grounding for driving a light-painting stroke's geometry from harmonic state.*
+- *No empirical grounding for the combination of a harmonic-driven bounded-curvature path with age-weighted relaxation and a beaded 30-second trail.*
+
+**Mitigation, and it is a scheduling requirement on WL.2, not a hope.** WL.2's **first** deliverable — before any shading, palette or fidelity work — is a motion-gated look-spike: render a contiguous frame sequence driven by the §2 captures and run `Scripts/motion_gate.sh`, then read the sampled frames as a sequence and write the motion verdict (`PRESET_SESSION_CHECKLIST.md` Part 1 step 7; D-181 / D-194). The question it answers is the level-3 question and only that: **does the figure read as a drawing?** If it reads as a tangle on any of the four captures, that is discovered in hours, and the response is to re-scope — not to spend four M7 rounds tuning `ω_max`. The Fractal Fly-By retirement (D-201, 14 rounds) and the Truchet Loom retirement (D-194) are both what this gate exists to prevent.
+
+---
 
 ## 7. Architecture and registration plan
 
-*Gated on §2.4 sign-off. Not written at WL.1.* Enumerates every item in [`NEW_PRESET_CHECKLIST.md`](NEW_PRESET_CHECKLIST.md) as listed-or-not-applicable, so WL.2 discovers no registration point late.
+### 7.1 Paradigm and pass list
+
+**Paradigm: `particles` + `feedback`** — `"passes": ["feedback", "particles"]`. One rendering paradigm (D-029).
+
+- The **`feedback` ground pass** draws the composite backdrop via `fragment_function: "witchlight_sky_fragment"`: three parallax star layers, the soft violet nebular bloom, the star-suppression term behind the ribbon, and the head flare. This is exactly the role `filigree_ground_fragment` and `murmuration_sky_fragment` play.
+- The **`particles` pass** draws the bead sprites and the connecting line from CPU-supplied geometry.
+
+**Decay is set low (the sky is redrawn every frame) rather than being the trail mechanism.** This is a deliberate divergence from Filigree, where the physarum trail *is* the accumulator: Witchlight's trail lives in the CPU ring buffer so that it is an exact record of where the pen has been. An accumulator trail would smear the beads and destroy mandatory trait #1. WL.2 measures the decay value that keeps the ground clean and records it.
+
+**No `mv_warp`** — see §1.2. A warp would smear the beads. If WL.2 finds itself reaching for one, the trail design in §3.3 is wrong.
+
+### 7.2 Closest structural template
+
+**Filigree** (`PhospheneEngine/Sources/Presets/Shaders/Filigree.metal` + `Filigree.json`, `PhysarumGeometry`). Why: same `["feedback", "particles"]` pass list; same shape of CPU-side agent simulation feeding `ParticleGeometry`; same "luminous trail on a dark composite ground" register; same `rubric_profile: "lightweight"`; and it is certified and in `multiPassMeasured`, so its flash-harness entry is the one to copy-adapt. Copy its wiring, not its physics.
+
+Secondary reference: **Cymatic Resonance** (`CymaticSandGeometry`) for the most recently-built example of the registration path end to end, and **Murmuration** for `murmuration_sky_fragment` as a composite-backdrop model.
+
+### 7.3 CPU-side state
+
+`WitchlightStroke` (new file, `PhospheneEngine/Sources/Renderer/Geometry/`), a `final class ... @unchecked Sendable` conforming to `ParticleGeometry`:
+
+- ring buffer of ~1024 beads, each carrying position (3), colour (3), radius (1), age (1), and a promoted flag;
+- pen state: heading θ, smoothed phase φ̄ (as separate `sin`/`cos` accumulators — never the raw sawtooth), plane orientation, previous `barPhase01` for wrap detection, previous `sectionIndex`;
+- per-frame `tick(features:stems:)` does: advance φ̄, clamp θ̇, step the pen, emit-or-not, run the age-weighted relaxation pass, expire the tail;
+- `reset()` on preset-apply **and on track change** — the `LumenPatternEngine.resetBeatTrackingState` precedent is load-bearing here for the same reason: a stale φ̄ or `prevBarPhase` at a track boundary produces a wrong-coloured or spuriously-promoted first bead.
+
+**No new fragment-buffer slot.** Head-flare uniforms (head position, head colour, flare intensity) ride the existing per-preset fragment buffer at **slot 6** via `setDirectPresetFragmentBuffer`. Slots 7 and 8 are untouched, `SceneUniforms` is untouched, and no GPU-contract change is taken (WL.1 constraint). If WL.2 discovers it needs one, that is a DECISION-NEEDED for Matt, not a call WL.2 takes.
+
+### 7.4 Registration checklist
+
+Every item in [`NEW_PRESET_CHECKLIST.md`](NEW_PRESET_CHECKLIST.md), listed or marked not-applicable with a reason. WL.2 executes this; nothing here is discovered late.
+
+**§1 Develop** — hot-reload from `~/Library/Application Support/Phosphene/Presets/` during authoring, or in-repo from the start (`Sources/Presets/Shaders/` is auto-discovered; no pbxproj edit).
+
+**§2 Land in-repo**
+- [ ] `PhospheneEngine/Sources/Presets/Shaders/Witchlight.metal`
+- [ ] `PhospheneEngine/Sources/Presets/Shaders/Witchlight.json` — `certified: false` initially; `family: "particles"`; `passes: ["feedback","particles"]`; `fragment_function: "witchlight_sky_fragment"`; `rubric_profile: "lightweight"`; `duration: 45`; non-empty `audio_routes` (see below); **`inspired_by` block** per the D-111 amendment schema — `milkdrop_filename`, `original_artist`, `source_form`, `pack`, **plus the source file's SHA-256**. The source file itself is never committed (D-116 bullet 4).
+- [x] `docs/VISUAL_REFERENCES/witchlight/` — **done at WL.1**, 13 images + README, zero `CheckVisualReferences` warnings.
+- [ ] A row in `docs/CREDITS.md` §"Milkdrop-inspired preset attribution", plus the CC BY / CC BY-SA attribution rows for the reference images (`docs/VISUAL_REFERENCES/witchlight/README.md` §Provenance).
+
+**§3 Automated gates (no new files — they discover you)**
+- [ ] `RouteCoverageTests` green on the declared manifest. Proposed manifest, one entry per §3.4 layer:
+
+  | route | primitive | kind |
+  |---|---|---|
+  | `pen_heading` | `tonalPhaseFifths` | `continuous` |
+  | `bead_hue` | `tonalPhaseFifths` | `continuous` |
+  | `pen_speed` | `arousal` | `continuous` |
+  | `bead_promotion` | `barPhase01` | `accent` |
+  | `head_flare` | `bassDev` | `accent` |
+  | `star_parallax` | `spectralCentroid` | `continuous` |
+  | `nebula_hue` | `valence` | `continuous` |
+  | `trail_contraction` | `sectionIndex` | `structural` |
+
+  **`trail_contraction` is the at-risk route** (§3.2): only `there_there` carries a section boundary offline. If it reds, file it as a route defect in `KNOWN_ISSUES.md` — **never tune the floor** (QG.1 / D-179).
+- [ ] `FidelityRubricTests.expectedAutomatedGate` — add the `Witchlight` row at its measured value. The completeness assertion (`expectedAutomatedGate_coversEverySidecar`) fails the PR with the value to paste until it is there.
+- [ ] `PresetLoaderCompileFailureTest` + full engine suite green; `swiftlint lint --strict` (`.metal` exempt from `file_length`).
+- [ ] `PresetRegressionTests` dHash golden — generate and commit.
+- [ ] `PresetAcceptanceTests` — picks the preset up from the sidecar automatically; verify it does.
+- [ ] `MSLNamingTests` — MSL symbol naming.
+
+**§4 Certification (maintainer-gated)**
+- [ ] Matt's live M7 on real music — the load-bearing gate. **Plus the D-121 side-by-side**: render Witchlight and the source on a shared track and place them side by side; Matt writes the one-paragraph divergence rationale naming the axis. Mandatory for Milkdrop-inspired presets; a preset that cannot articulate the divergence does not certify, and the remediation is rewrite, not tune.
+- [ ] `certified: true` in the sidecar.
+- [ ] `FidelityRubricTests.certifiedPresets` membership (currently 16 entries).
+- [ ] `PhotosensitivityCertificationTests.multiPassMeasured` + a render function in `MultiPassFlashHarnessTests` — §5, same commit.
+- [ ] `OrchestratorCertifiedFilterTests` green — the preset enters planning.
+- [ ] `FidelityRubricTests.certifiedPresetsDeclareAudioRoutes` — non-empty manifest, all green.
+
+**§5 Stateful presets** — applies.
+- [ ] `WitchlightStroke` in `ParticleGeometryRegistry`.
+- [ ] `VisualizerEngine.resolveParticleGeometry` case + the factory call in `VisualizerEngine.init` + `VisualizerEngine+Presets.applyPreset` state allocation (the three name-keyed sites; collapsing them into the registry is queued work R2 — until then copy Filigree's wiring).
+- [ ] `StatefulRuntimeRegistryTests` green.
+
+**§6 Docs**
+- [ ] `docs/ARCHITECTURE.md` §Module Map — one behavioural line per new Swift file **and** the new `.metal` (the D-168 gate fails the suite until then).
+- [x] `docs/presets/WITCHLIGHT_DESIGN.md` — this document; WL.2 appends its authoring history.
+- [ ] `docs/ENGINE/RENDER_CAPABILITY_REGISTRY.md` + `docs/ENGINEERING_PLAN.md` — mandatory closeout updates.
+- [ ] `docs/RELEASE_NOTES_DEV.md` entry.
+
+**Not applicable, with reasons**
+- **Max-duration table** — no such registration point exists; `duration` is a plain sidecar field (45 s, matching every particles sibling) with no separate table to update.
+- **Settings toggle** — the single Milkdrop-inspired toggle already exists (`settings.visuals.milkdrop.label`, D-106 amendment: *one* toggle for the whole inspired-by set, not per preset). It is currently behind a "Coming in a future update" string; **no new control**, and per the UX unmechanized-control rule WL.2 does not wire or re-label it.
+- **`PresetVisualReviewTests` per-preset reference table** — the per-preset `*ReferenceRelPaths` tables exist only for Arachne and Nimbus; Witchlight uses the generic path, so there is no table row to add. A committed `target_animated.gif` for the motion regression check is added at certification, following the certified siblings.
+- **New render pass / fragment-buffer slot / `SceneUniforms` change** — none taken (§7.3).
+- **pbxproj registration** — not needed; `Sources/Presets/Shaders/` is a bundled SPM resource, auto-discovered at build. (The pbxproj sibling trap applies to *deletions*, not additions here.)

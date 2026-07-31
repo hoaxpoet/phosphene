@@ -1,7 +1,7 @@
 # Visual References — Witchlight
 
 **Family:** `abstract` (provisional — settled in WL.2 against `docs/DECISIONS.md` D-123)
-**Render pipeline:** provisional — CPU-side stroke buffer + `direct_fragment` sprite/line draw + `post_process`. Settled in `docs/presets/WITCHLIGHT_DESIGN.md` §7; **no pass or GPU-contract change is taken in WL.1.**
+**Render pipeline:** `feedback + particles` — a CPU-side stroke ring buffer (`WitchlightStroke`, `ParticleGeometry`) drawn as beaded sprites plus a thin line, over a composite `witchlight_sky_fragment` ground (parallax stars, violet bloom, star suppression, head flare). Closest structural template is **Filigree**. See `docs/presets/WITCHLIGHT_DESIGN.md` §7; **no new render pass, fragment-buffer slot or GPU-contract change.**
 **Rubric:** lightweight — a single luminous stroke on a near-black ground; the §12 3D-surface / material-count matrix does not apply. The load-bearing gates are Matt's live M7 and the flash budget (`WITCHLIGHT_DESIGN.md` §5).
 **Last curated:** 2026-07-31 (WL.1). Eleven license-verified positives/anti-references from Wikimedia Commons + two frames of Matt's own render of the inspiration source (see *Provenance*).
 
@@ -57,7 +57,7 @@ Witchlight is not certified until every one of these holds. Cited by filename pe
 
 ## Audio routing notes
 
-Provisional — the measured driver table is `WITCHLIGHT_DESIGN.md` §2 and the routing design is §3, **neither of which is committed until Matt signs off the §2 table** (WL.1 task 3 checkpoint). What the measurements already rule in and out:
+The measured driver table is `WITCHLIGHT_DESIGN.md` §2 (signed off by Matt 2026-07-31); the routing design and the layer/primitive table are §3.4, and the proposed `audio_routes` manifest is §7.4. What the measurements ruled in and out:
 
 - **Ruled out as a hero driver:** `pulse_amp01` (pinned at 1.000 across 318 383 frames of live capture — no dynamic range); `vocalsPitchHz` / `vocalsPitchConfidence` (nonzero on 4.5 % of live frames; garnish only, per the prompt's standing rule).
 - **The `spectral_centroid` trap (BUG-027 / CR.1.1, now measured a third time):** real-music range is ≈ 0.04–0.21, not 0–1. Any mapping must be written against the measured p5/p95 band, never `centroid × N`.
