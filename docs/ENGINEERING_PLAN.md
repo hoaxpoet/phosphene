@@ -1445,7 +1445,7 @@ An MD.6 uplift, split design-then-author so the concept clears its gates before 
 
 ---
 
-### Increment WL.2 — Witchlight: authoring 📋 **PLANNED**
+### Increment WL.2 — Witchlight: authoring ✅ **LANDED 2026-07-31** (code-complete; `certified: false`, pending Matt's live M7 + the D-121 side-by-side)
 
 **Scope:** Author the preset against `WITCHLIGHT_DESIGN.md` §§3–7. Paradigm `["feedback", "particles"]`; structural template **Filigree**; CPU-side `WitchlightStroke` via `ParticleGeometry` / `ParticleGeometryRegistry` (D-097). **No new render pass, fragment-buffer slot or GPU-contract change** — if one is needed, that is a DECISION-NEEDED for Matt.
 
@@ -1458,6 +1458,10 @@ An MD.6 uplift, split design-then-author so the concept clears its gates before 
 - Matt's live M7 **plus** the D-121 side-by-side against the source, with Matt's divergence rationale in the closeout.
 
 **Verify:** `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build`; `swift test --package-path PhospheneEngine`; `swiftlint lint --strict`.
+
+**Outcome.** Everything above shipped and is green. Flash budget MEASURED and inside every §5 ceiling (0.00 flashes/s; peak mean luma 0.0237 / 0.35; max Δ/frame 0.0009 / 0.06; flare extent 0.006 % and 0.126 % against the 3 % / 12 % caps). All eight routes carry per-route firing evidence; `trail_contraction` greens on `there_there` only, as declared, floor untouched. Phase travel reproduces the §2.3 table (2.09 / 1.80 / 15.10 circles per 30 s vs 2.1 / 1.7 / 15.4).
+
+**OPEN — the §6 motion gate's verdict is a DECISION for Matt.** The stroke reads as a stroke; it does not read as a multi-lobe *figure*. Cause is mechanism-level, not tuning: `θ̇ = k·φ̄̇` integrates to `θ ≈ k·φ̄`, the measured phase reverses at high frequency around a concentrated mean (heading monotonicity 0.01–0.12), so net direction barely moves. `k` is the only shape lever and raising it 1.1 → 2.6 → 5.0 changes the figure not at all — saturating the clamp makes it *more* straight. §6's prescribed response is re-scope, not tuning rounds. Options are in the WL.2 closeout; **do not open a tuning increment against this without Matt's call.**
 
 ---
 

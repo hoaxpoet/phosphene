@@ -10,6 +10,28 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-07-31-214500] WL.2 — Witchlight: authored, gated, and one mechanism-level finding for Matt
+
+`Witchlight` exists as a production preset — `.metal` × 2 + sidecar + `WitchlightStroke`/`WitchlightPath`, registered at every point in `NEW_PRESET_CHECKLIST.md`, all gates green, `certified: false` awaiting Matt's live M7.
+
+**The headline is a finding, not a feature.** The design's own §6 flagged two level-3 grounding ratings and scheduled a motion gate to answer one question before any shading work: *does the figure read as a drawing?* Answer, measured on all three fixtures: **the stroke reads as a stroke, but not as a figure.** It is a smooth beaded luminous trail with monotonic falloff, visible hue banding, bar-marker beads and a clear head — the `01`/`02` register. What it does not do is form a multi-lobe legible gesture; it draws one long gentle arc.
+
+The cause is mechanism-level, and it was isolated rather than guessed. Under §3.1(b)'s kinematics the heading is (up to the clamp) just the smoothed harmonic phase: `θ̇ = k·φ̄̇` integrates to `θ ≈ k·φ̄`. The measured phase reverses at high frequency around a concentrated mean (heading monotonicity **0.01–0.12** on all three fixtures — i.e. the pen turns left and right in near-equal amounts), so the *net* direction barely moves and the pen travels nearly straight. `k` is the design's only shape lever, and **raising it 1.1 → 2.6 → 5.0 changes the figure not at all** — past k ≈ 1 the clamp saturates and the heading becomes a slew-rate-limited version of a zero-mean dither, which makes it *more* straight, not less. §6's prescribed response to this gate failing is to re-scope, explicitly not to spend M7 rounds tuning `ω_max`. **This is Matt's call and the closeout carries the options.**
+
+**What the measurement did prove.** Phase travel reproduces the design's §2.3 table almost exactly — **2.09 / 1.80 / 15.10 circles per 30 s** against the doc's 2.1 / 1.7 / 15.4 — so the pen is demonstrably being steered by the same smoothed quantity the design was written against. That check earned its keep: it caught a stray second EMA on the phase *rate* that was cancelling the reversals and cutting travel to 0.85 / 1.09 / 3.95.
+
+**Three defects the harness caught that eyes would not have.** A per-frame `relaxLambda` of 0.30 — ~100 Laplacian passes across the mutable window — collapsed a 2-circle heading sweep into a visually straight stroke (Laplacian shrinkage; now a per-second rate, which also removed an fps dependence). Beads sized in world units went **sub-pixel exactly as the auto-fit framed the growing trail** — the buffer accumulating while the screen footprint shrank, which is precisely the split a CPU-only assertion cannot see. And a unit error in the star falloff (multiplying a cell-space distance by the cell count) rendered the star field completely empty at every density.
+
+**Flash safety, measured against every §5 ceiling:** 0.00 flashes/s; peak full-frame mean luminance **0.0237** (ceiling 0.35); max Δ/frame **0.0009** (ceiling 0.06 — Mitosis 0.0116, Cytokinesis 0.0263); flare extent **0.006 %** of frame at ≥50 % peak (cap 3 %) and **0.126 %** at ≥10 % peak (cap 12 %); 30 flares in 30 s under a 4.5 Hz asking train, the 900 ms refractory holding at its ≈1.1/s ceiling. The static-render guard fired twice and was fixed at the harness, never weakened: the shared worst-case train leaves the whole TONAL block at zero, so Witchlight's hero driver was dead in it.
+
+**All eight declared routes carry per-route firing evidence** from the three real fixtures. `trail_contraction` (`sectionIndex`) greens on `there_there` only — exactly the at-risk status the design declared, on the ≥1-fixture structural floor, floor untouched.
+
+**Two divergences from the design doc**, both surfaced rather than silently reconciled: the star suppression and head flare are drawn in the particles pass instead of `witchlight_sky_fragment` (§7.1's placement would have needed a shared-render-path change WL.2's constraints rule out — same visual, no GPU-contract change), and Witchlight joins `StatefulRuntimeRegistry` with no slot-6 buffer purely to get `StructuralPrediction` into a `ParticleGeometry`.
+
+**Also found, not actioned:** `Spectral Cartograph`'s committed golden is 2 bits from a fresh measurement. Verified pre-existing by re-measuring with Witchlight fully removed from the tree; inside the ≤8-bit tolerance, not regenerated.
+
+---
+
 ### [dev-2026-07-31-161121] WL.1 — Witchlight: reference set, measured drivers, and a design that is gated on them
 
 Docs-only increment opening an MD.6 Milkdrop-inspired uplift. Inspiration source `martin - witchcraft reloaded`; the source file is not committed (D-116 bullet 4). Decision: **D-209**.
