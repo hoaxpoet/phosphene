@@ -98,12 +98,14 @@ enum BeatThisWeightError: Error, Sendable {
 
 extension BeatThisModel {
 
-    // Load all Beat This! small0 weights from the bundle.
+    // Load Beat This! weights. `directory` nil loads the vendored small0 set from the
+    // bundle; a directory loads an external set (MDL.1 uses this for final0, which is
+    // deliberately not vendored — 81 MB does not enter the bundle before D-E decides).
     // swiftlint:disable:next function_body_length
-    static func loadWeights() throws -> BeatThisWeights {
-        let manifest = try loadBeatThisManifest()
+    static func loadWeights(from directory: URL? = nil) throws -> BeatThisWeights {
+        let manifest = try loadBeatThisManifest(directory: directory)
         func ten(_ key: String) throws -> [Float] {
-            try loadBeatThisTensor(key: key, manifest: manifest)
+            try loadBeatThisTensor(key: key, manifest: manifest, directory: directory)
         }
         func fuseBN(_ pfx: String) throws -> BeatThisFusedBN {
             try fuseBeatThisBN(
@@ -240,12 +242,19 @@ func rearrangeConvOIHW_to_HWIO(
 
 // MARK: - I/O
 
-private func loadBeatThisManifest() throws -> BeatThisManifest {
-    guard let url = Bundle.module.url(
-        forResource: "manifest",
-        withExtension: "json",
-        subdirectory: "Weights/beat_this"
-    ) else {
+private func loadBeatThisManifest(directory: URL?) throws -> BeatThisManifest {
+    let resolved: URL?
+    if let directory {
+        let candidate = directory.appendingPathComponent("manifest.json")
+        resolved = FileManager.default.fileExists(atPath: candidate.path) ? candidate : nil
+    } else {
+        resolved = Bundle.module.url(
+            forResource: "manifest",
+            withExtension: "json",
+            subdirectory: "Weights/beat_this"
+        )
+    }
+    guard let url = resolved else {
         throw BeatThisWeightError.manifestNotFound
     }
     let data = try Data(contentsOf: url)
@@ -256,15 +265,24 @@ private func loadBeatThisManifest() throws -> BeatThisManifest {
     }
 }
 
-private func loadBeatThisTensor(key: String, manifest: BeatThisManifest) throws -> [Float] {
+private func loadBeatThisTensor(
+    key: String, manifest: BeatThisManifest, directory: URL?
+) throws -> [Float] {
     guard let entry = manifest.tensors[key] else {
         throw BeatThisWeightError.tensorNotFound(key)
     }
-    guard let url = Bundle.module.url(
-        forResource: entry.file,
-        withExtension: nil,
-        subdirectory: "Weights/beat_this"
-    ) else {
+    let resolved: URL?
+    if let directory {
+        let candidate = directory.appendingPathComponent(entry.file)
+        resolved = FileManager.default.fileExists(atPath: candidate.path) ? candidate : nil
+    } else {
+        resolved = Bundle.module.url(
+            forResource: entry.file,
+            withExtension: nil,
+            subdirectory: "Weights/beat_this"
+        )
+    }
+    guard let url = resolved else {
         throw BeatThisWeightError.tensorFileMissing(entry.file)
     }
     let raw = try Data(contentsOf: url)
