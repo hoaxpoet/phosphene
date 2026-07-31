@@ -52,6 +52,13 @@ ALLOWLIST_FILES=(
   # (FA #52). The detector exists to flag rates outside the 44.1/48 kHz family,
   # so the family is named literally. See the comment at the `expectedRates` init default.
   "PhospheneEngine/Sources/Audio/SignalHealthMonitor.swift"
+  # GT.2 TapCapture: ClickTrack.render synthesises a metronome WAV for the
+  # tap-latency calibration round — procedurally generated audio in an offline
+  # ground-truth CLI, the same category as SoakTestHarness+AudioGen. It is not a
+  # tap-rate consumer: nothing here reads the live capture rate, and the rendered
+  # file's rate only has to be a valid AVAudioFormat rate. See the comment at the
+  # `sampleRate` binding.
+  "PhospheneEngine/Sources/TapCapture/TapRecorder.swift"
 )
 
 # Build a `grep -v` pattern from the allowlist. Escape the `+` since it has

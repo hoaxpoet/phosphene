@@ -117,6 +117,10 @@ enum ClickTrack {
     /// Renders a mono click track to a temp WAV. Clicks are a short decaying 1 kHz
     /// burst — a sharp transient so the tap target is unambiguous.
     static func render(bpm: Double, seconds: Double) throws -> (url: URL, clicks: [Double]) {
+        // D-079 / FA #52 allowlisted: a procedurally generated metronome for the
+        // tap-latency calibration round, not a consumer of the live tap rate. Any
+        // valid AVAudioFormat rate works; 44.1 kHz is chosen so the rendered file
+        // matches the fixture corpus. See Scripts/check_sample_rate_literals.sh.
         let sampleRate = 44_100.0
         guard let format = AVAudioFormat(
             standardFormatWithSampleRate: sampleRate, channels: 1
