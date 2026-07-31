@@ -71,7 +71,8 @@ struct PhotosensitivityCertificationTests {
         "Filigree",       // particles (PhysarumGeometry trail — geometry-driven, black backdrop) — PHYS.5
         "Mitosis",        // particles (MitosisGeometry RD field — geometry-driven, dark backdrop) — MITOSIS.2c
         "Cytokinesis",    // particles (MitosisGen2Geometry explicit cells — geometry-driven, dark backdrop) — MITOSIS-G2.3
-        "Cymatic Resonance",  // particles (CymaticSandGeometry vibrating-sand — geometry-driven, black backdrop) — CR.2/D-199
+        "Cymatic Resonance",  // particles (CymaticSandGeometry vibrating-sand — geometry-driven, black backdrop) — CR.2/D-199,
+        "Witchlight"       // feedback + particles; the CPU bead ring + bounded head flare
     ]
 
     // MARK: - Gate

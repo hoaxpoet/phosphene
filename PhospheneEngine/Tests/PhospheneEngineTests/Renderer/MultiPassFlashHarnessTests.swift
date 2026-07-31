@@ -106,13 +106,43 @@ struct MultiPassFlashHarnessTests {
         assertFlashSafe(name: "Cymatic Resonance", luma: try flashLuma("Cymatic Resonance", settle: 150))
     }
 
+    @Test("Witchlight is flash-safe (harmonic stroke + bounded head flare, real headless render)")
+    func witchlightIsFlashSafe() throws {
+        // The head flare is the risk this measurement exists for: the inspiration source
+        // saturates most of the frame white on mid-band hits (anti-reference `12`), roughly a
+        // fifth of its sampled frames. WITCHLIGHT_DESIGN §5 answers that with a CPU-side
+        // budget — a hard 900 ms refractory, a fixed small extent, a >= 60 ms rise and a
+        // bounded ceiling — designed up front rather than tuned down after. This gate is what
+        // turns that budget from an intention into a number.
+        //
+        // Measured across the FULL 30 s trail cycle rather than a settled 3 s window. Witchlight
+        // is a small bright subject on a large dark field, so its full-frame mean barely moves
+        // in any 3 s slice — the geometry that makes it flash-safe is the same geometry that
+        // makes it look static to a mean-luma responsiveness proxy. The honest window is the
+        // one its subject actually occupies: the trail's own accumulation ramp from empty to
+        // full, with the head flare firing throughout. Same reason Mitosis and Cytokinesis run
+        // 1 500 frames — the harness tiles the 3 s train for slow-cycle particle presets.
+        //
+        // `harmonicMotion` is required on top: the shared train leaves tonal_phase_fifths at
+        // zero, and Witchlight's pen is steered by nothing else.
+        assertFlashSafe(name: "Witchlight",
+                        luma: try flashLuma("Witchlight", frames: 1800, harmonicMotion: true))
+    }
+
     // MARK: - Flash-specific drive + reducer
 
     /// Render `name` through the shared harness on the synthetic worst-case beat+stem train,
     /// reduced to per-frame WCAG relative luminance (the flash signal). `frames` (when set)
     /// tiles the 3 s train to a longer window for the slow-cycle particle presets.
-    private func flashLuma(_ name: String, settle: Int = 0, frames: Int? = nil) throws -> [Double] {
-        let beat = FlashHarnessSupport.worstCaseBeatTrain()
+    private func flashLuma(
+        _ name: String, settle: Int = 0, frames: Int? = nil, harmonicMotion: Bool = false
+    ) throws -> [Double] {
+        // `harmonicMotion` layers the TONAL block onto the shared train — see
+        // `FlashHarnessSupport.withHarmonicMotion`. Only for presets steered by it; the
+        // shared train stays byte-identical for everyone else.
+        let beat = harmonicMotion
+            ? FlashHarnessSupport.withHarmonicMotion(FlashHarnessSupport.worstCaseBeatTrain())
+            : FlashHarnessSupport.worstCaseBeatTrain()
         let stem = FlashHarnessSupport.worstCaseStemTrain()
         let f = frames.map { tile(beat, $0) } ?? beat
         let s = frames.map { tile(stem, $0) } ?? stem

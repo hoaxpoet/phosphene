@@ -90,6 +90,36 @@ enum FlashHarnessSupport {
         return out
     }
 
+    // MARK: - Harmonic-motion overlay
+
+    /// Layer maximal harmonic motion onto an existing drive.
+    ///
+    /// `worstCaseBeatTrain` leaves the whole TONAL block (D-178) at zero — it was built for
+    /// the beat-accent / deviation flash class, where the tonal fields play no part. For a
+    /// preset whose entire response is STEERED by `tonalPhaseFifths` that makes the shared
+    /// train a static drive, and the multi-pass gate's static-render guard correctly rejects
+    /// the resulting measurement as invalid rather than calling it safe.
+    ///
+    /// Rather than change the shared train under the twelve presets already measured against
+    /// it, this decorator adds the missing block for the presets that need it. `radPerSecond`
+    /// defaults to 3.2 rad/s — the fastest smoothed harmonic motion in the measured corpus
+    /// (love_rehab, 15.4 circles per 30 s, WITCHLIGHT_DESIGN §2.3), i.e. the worst case for a
+    /// harmonically-steered visual.
+    static func withHarmonicMotion(_ drive: [FeatureVector], radPerSecond: Float = 3.2) -> [FeatureVector] {
+        drive.enumerated().map { index, frame in
+            var out = frame
+            let t = Float(index) / Float(fps)
+            var phase = t * radPerSecond
+            phase = phase.truncatingRemainder(dividingBy: 2 * .pi)
+            out.tonalPhaseFifths = phase > .pi ? phase - 2 * .pi : phase
+            out.tonalPhaseThirds = out.tonalPhaseFifths
+            out.tonalConsonance = 0.12
+            out.tonalTension = 0.08
+            out.harmonicFlux = 0.06
+            return out
+        }
+    }
+
     // MARK: - Worst-case stem train (StemFeatures)
 
     /// The stem-side analogue of `worstCaseBeatTrain`, row-aligned with it. The
