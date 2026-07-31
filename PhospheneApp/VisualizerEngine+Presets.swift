@@ -79,6 +79,10 @@ extension VisualizerEngine {
         nimbusState?.reset()
         // CR.2: settle the sand into the new track (no-op unless the geometry exists).
         (cymaticSandGeometry as? CymaticSandGeometry)?.reset()
+        // WL.2 (§7.3): a stale smoothed harmonic phase or `previousBarPhase` across a track
+        // boundary lays down a wrong-coloured or spuriously-promoted first bead, and the held
+        // trail would be the PREVIOUS track's drawing — which the whole concept says it is not.
+        (witchlightGeometry as? WitchlightStroke)?.path.reset()
         // Skein.3 (§1.5): a new track paints its OWN canvas (the held painting is the previous
         // track's visual fingerprint). Wipe the canvas back to the ground and re-seed the painter
         // from the new track's identity (same track → same painting, §5.7). No-op when Skein
@@ -590,10 +594,32 @@ extension VisualizerEngine {
         case "Aurora Veil": bindAuroraVeilRuntime(desc)
         case "Nimbus":      bindNimbusRuntime(desc)
         case "Lumen Mosaic": bindLumenMosaicRuntime(desc)
+        case "Witchlight":  bindWitchlightRuntime(desc)
         // Cymatic Resonance (CR.2) is a `feedback+particles` preset — its runtime is
         // the CymaticSandGeometry, wired via the `.particles` pass through
         // resolveParticleGeometry, not a slot-6 state binding.
         default: break
+        }
+    }
+
+    private func bindWitchlightRuntime(_ desc: PresetDescriptor) {
+        // Witchlight-specific (WL.2): NO slot-6 state buffer — the ribbon's uniforms travel
+        // inside `WitchlightStroke` to its own pipelines, so nothing is bound here. The tick
+        // exists for exactly one reason: `StructuralPrediction` is CPU-only and never reaches
+        // the `ParticleGeometry.update(features:stemFeatures:commandBuffer:)` signature, so the
+        // declared `trail_contraction` route has no other way in. Same gated bridge Skein reads
+        // (Skein.ENGINE.3 / D-151).
+        //
+        // Ordering note: `setMeshPresetTick` fires AFTER `particles?.update(...)` in
+        // RenderPipeline+Draw, so the section index lands one frame before it is consumed. A
+        // frame of latency on a per-SECTION event is not observable.
+        guard let stroke = witchlightGeometry as? WitchlightStroke else {
+            logger.error("WitchlightStroke geometry missing for preset '\(desc.name)' — trail contraction inert")
+            return
+        }
+        let renderPipeline = pipeline
+        pipeline.setMeshPresetTick { [weak stroke, weak renderPipeline] _, _ in
+            stroke?.path.ingestStructure(renderPipeline?.latestStructuralPrediction ?? .none)
         }
     }
 
