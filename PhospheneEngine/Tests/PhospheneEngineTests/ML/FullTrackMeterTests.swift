@@ -103,6 +103,29 @@ struct FullTrackMeterTests {
                          mark(fullDec.beatsPerBar) as NSString,
                          frames, windows))
 
+            // BARPROBE: dump the engine's full-track beat times so the bar-line probe
+            // can work from REAL beats (the good axis, F 0.97) rather than ground-truth
+            // taps, which are sparse and on money/solsbury_hill are half-time.
+            if let dumpDir = ProcessInfo.processInfo.environment["PHOSPHENE_BEATS_DUMP"] {
+                let beats = BeatGridResolver.resolve(
+                    beatProbs: fullAct.beats, downbeatProbs: fullAct.downbeats, frameRate: 50.0
+                ).beats
+                let payload: [String: Any] = [
+                    "track": entry.name,
+                    "truth_meter": entry.meter as Any,
+                    "frames": frames,
+                    "beats": beats
+                ]
+                let url = URL(fileURLWithPath: dumpDir)
+                    .appendingPathComponent("\(entry.name).beats.json")
+                try? FileManager.default.createDirectory(
+                    at: URL(fileURLWithPath: dumpDir), withIntermediateDirectories: true
+                )
+                if let data = try? JSONSerialization.data(withJSONObject: payload) {
+                    try? data.write(to: url)
+                }
+            }
+
             if let truth = entry.meter {
                 let wasRight = shortGrid.beatsPerBar == truth || shortDec.beatsPerBar == truth
                 let nowRight = fullGrid.beatsPerBar == truth || fullDec.beatsPerBar == truth
