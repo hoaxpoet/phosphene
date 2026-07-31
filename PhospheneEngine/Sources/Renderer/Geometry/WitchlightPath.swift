@@ -64,6 +64,17 @@ public final class WitchlightPath {
     /// Smoothed harmonic phase φ̄, radians. Also the hue source (§3.4).
     public var smoothedPhase: Float { atan2(phaseSin, phaseCos) }
 
+    // Tonal "home" — a long-τ circular mean of φ̄, for `.curvatureDeviation`.
+    private var homeSin: Float = 0
+    private var homeCos: Float = 1
+    /// Wrapped excursion of φ̄ from the track's tonal home, radians (±π).
+    public var phaseFromHome: Float {
+        var delta = smoothedPhase - atan2(homeSin, homeCos)
+        while delta > .pi { delta -= 2 * .pi }
+        while delta < -.pi { delta += 2 * .pi }
+        return delta
+    }
+
     // Turn detection.
     private var turnSign: Float = 0
     private var turnCandidateSign: Float = 0
@@ -161,6 +172,7 @@ public final class WitchlightPath {
         beads.removeAll(keepingCapacity: true)
         heading = 0; penX = 0; penY = 0; emitAccumulator = 0
         phaseSin = 0; phaseCos = 1; previousPhase = 0; phaseRate = 0
+        homeSin = 0; homeCos = 1
         turnSign = 0; turnCandidateSign = 0; turnCandidateAge = 0
         turnCandidateBeadIndex = nil; hueTurnOffset = 0; turnCount = 0
         arousalSlow = 0; arousalSpread = 0.15
@@ -220,6 +232,9 @@ public final class WitchlightPath {
         let raw = features.tonalPhaseFifths
         phaseSin += (sin(raw) - phaseSin) * alpha
         phaseCos += (cos(raw) - phaseCos) * alpha
+        let homeAlpha = dt / (tuning.homeTau + dt)
+        homeSin += (sin(raw) - homeSin) * homeAlpha
+        homeCos += (cos(raw) - homeCos) * homeAlpha
         let phi = atan2(phaseSin, phaseCos)
         // Wrapped difference — the phase is circular, so a −π→+π step is a small move.
         var delta = phi - previousPhase
@@ -249,7 +264,18 @@ public final class WitchlightPath {
         // ω_max derived from the speed so the ≥ 8 %-of-frame-height turning-radius bound
         // holds exactly at every speed, rather than only at the nominal one.
         let omegaMax = speed / max(tuning.minTurnRadius, 1e-4)
-        let desired = silent ? 0 : tuning.steerGain * phaseRate
+
+        // WL.3 SPIKE — three candidate steer models, selected by `tuning.steerMode`.
+        // See WitchlightTuning.SteerMode for what each one maps to what.
+        let desired: Float
+        switch tuning.steerMode {
+        case .turnRate:
+            desired = silent ? 0 : tuning.steerGain * phaseRate
+        case .curvature:
+            desired = silent ? 0 : tuning.curvatureGain * smoothedPhase
+        case .curvatureDeviation:
+            desired = silent ? 0 : tuning.curvatureGain * phaseFromHome
+        }
         let turnRate = max(-omegaMax, min(omegaMax, desired))
         if !silent && abs(desired) >= omegaMax { clampedFrameCount += 1 }
 

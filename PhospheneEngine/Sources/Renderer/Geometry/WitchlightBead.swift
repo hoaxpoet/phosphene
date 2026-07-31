@@ -45,9 +45,46 @@ public struct WitchlightTuning: Sendable {
     /// Minimum turning radius, world units. 0.16 = 8 % of frame height (§3.1(b)).
     public var minTurnRadius: Float = 0.16
 
+    /// WL.3 SPIKE — which geometric property the harmonic phase drives.
+    ///
+    /// WL.2 measured the shipped `.turnRate` model producing an ARC, not a figure, on all
+    /// three fixtures, and proved it gain-proof (k = 1.1 / 2.6 / 5.0 render identically).
+    /// The diagnosis: `θ̇ = k·φ̄̇` integrates to `θ ≈ k·φ̄`, so a BOUNDED, mean-reverting
+    /// circular phase is being fed into an UNBOUNDED geometric property (heading). Heading
+    /// then hovers near a constant and the pen goes straight. Any fix has to stop doing that.
+    public enum SteerMode: Sendable {
+        /// WL.2 shipped model — harmony sets the RATE of turning (WITCHLIGHT_DESIGN §3.1(b)).
+        case turnRate
+        /// Harmony sets the CURVATURE directly: `θ̇ = clamp(c · φ̄, ±ω_max)`. Now a bounded
+        /// driver maps to a bounded property. Sitting on one chord draws a circular arc of a
+        /// radius that chord chose; a chord change switches to a different radius, so the
+        /// figure is a chain of arcs — lobes — and the shape of each lobe encodes the harmony
+        /// that drew it. The Dubins clamp still holds the ball-of-yarn floor.
+        case curvature
+        /// Harmony sets the curvature as a DEVIATION from the track's own tonal home:
+        /// `θ̇ = clamp(c · wrap(φ̄ − home), ±ω_max)`, where `home` is a long-τ circular mean
+        /// of φ̄. Sitting in the home key draws a straight run; leaving it bends the stroke;
+        /// coming back straightens it again. This is the only one of the three whose driver
+        /// is not near-constant within a track — φ̄ has HIGH travel but near-zero net
+        /// (circular R 0.24–0.78), so its excursions carry the information and its absolute
+        /// value carries almost none. Deviation semantics (D-026) applied to a circular
+        /// quantity, which is what the other two modes were missing.
+        case curvatureDeviation
+    }
+    public var steerMode: SteerMode = .turnRate
+
     /// `k` in `θ̇ = clamp(k · φ̄̇, ±ω_max)`. Measured against the four §2 captures — see
     /// the clamp-fraction instrumentation below, which WL.2's closeout reports.
     public var steerGain: Float = 1.10
+
+    /// `c` in `θ̇ = clamp(c · φ̄, ±ω_max)` for `.curvature`. φ̄ spans ±π, so c ≈ ω_max/π
+    /// puts the clamp at the extremes of the circle of fifths and leaves the interior free.
+    public var curvatureGain: Float = 0.20
+
+    /// Time constant of the circular running mean that defines "home" for
+    /// `.curvatureDeviation`, seconds. Long enough to read as the track's tonal centre
+    /// rather than as the current chord.
+    public var homeTau: Float = 12.0
 
     /// Circular-EMA time constant on the harmonic phase, seconds (CR.1.2 settled on 1.5 s).
     public var phaseTau: Float = 1.5

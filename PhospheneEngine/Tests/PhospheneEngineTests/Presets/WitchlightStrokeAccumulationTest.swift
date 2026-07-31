@@ -66,8 +66,19 @@ struct WitchlightStrokeAccumulationTest {
         let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat, loadBuiltIn: true)
         let preset = try #require(loader.presets.first { $0.descriptor.name == "Witchlight" },
                                   "Witchlight did not load through the real PresetLoader")
-        let stroke = try WitchlightStroke(device: ctx.device, library: lib.library,
-                                          pixelFormat: ctx.pixelFormat)
+        // WL.3 spike: WITCHLIGHT_MODE=curvature swaps the steer model (default = shipped).
+        var tuning = WitchlightTuning()
+        switch ProcessInfo.processInfo.environment["WITCHLIGHT_MODE"] {
+        case "curvature": tuning.steerMode = .curvature
+        case "deviation": tuning.steerMode = .curvatureDeviation
+        default: break
+        }
+        if let gain = Float(ProcessInfo.processInfo.environment["WITCHLIGHT_C"] ?? "") {
+            tuning.curvatureGain = gain
+        }
+        let stroke = try WitchlightStroke(
+            device: ctx.device, library: lib.library,
+            configuration: WitchlightConfiguration(tuning: tuning), pixelFormat: ctx.pixelFormat)
 
         let composite = try Self.makeTexture(ctx)
         let skyOnly = try Self.makeTexture(ctx)
