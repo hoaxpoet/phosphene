@@ -10,6 +10,28 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-07-31-161121] WL.1 — Witchlight: reference set, measured drivers, and a design that is gated on them
+
+Docs-only increment opening an MD.6 Milkdrop-inspired uplift. Inspiration source `martin - witchcraft reloaded`; the source file is not committed (D-116 bullet 4). Decision: **D-209**.
+
+**The concept.** Same visual register as the source — a beaded luminous ribbon hanging in deep space, sparse parallax stars, a soft violet bloom, a bright point at the head — with the one thing the source lacks: the stroke means something. The pen tip turns with the track's harmony, so the figure is a drawing of the last thirty seconds of the song, and each bead's hue records where the harmony was when it was laid down. That is the D-121 divergence axis (dominant motion model, consequentially palette character), Matt's call 2026-07-31, and it is trivially demonstrable side by side: the source's figure is the same species of scribble on any track and a *different* scribble on a repeat play; Witchlight's is the reverse.
+
+**The increment's most reusable output is the measurement, not the design.** Task 3 was a hard stop — establish from real captures what each candidate driver actually does, and if the harmonic drivers were not alive, re-scope rather than design against a dead signal. Four captures: the three committed route-coverage fixtures plus an 88-minute live streaming session (318 383 frames). `tonal_phase_fifths` measured alive on all four, so the documented palette-and-sky fallback was not triggered. Three findings outlive Witchlight:
+
+- **`pulse_amp01` is dead** — pinned at 1.000 from p5 to max across all 318 383 live frames. It is a constant, not a driver.
+- **`harmonic_flux`, `tonal_tension` and `section_index` are alive live but near-flat on 2 of 3 offline fixtures** (`harmonic_flux`: p50 0.058 live, 0.2 % nonzero on `love_rehab`). The QG.1.1 offline/live gap, surfacing on a new family of primitives. Design consequence: Witchlight cannot use a flux primitive as a chord-change detector. Whether the gap is a fixture-generation artifact or a real capability gap is **open**.
+- **`spectral_centroid` reads 0.04–0.21 on real music** — third sighting after BUG-027 and CR.1.1 / D-197.
+
+**And one that shaped the design.** The smoothed harmonic phase's angular rate varies **~10× across tracks** (0.91 vs 11.4 rad/s p95 at τ = 1.5 s). Handed to a pen tip unchanged, the identical code draws the hero reference (a legible written figure) on one track and the anti-reference (an unreadable tangle) on the next — the same sparkler, the only difference being how fast the hand moved. The answer is a **bounded-curvature advance**: fixed governed speed, clamped turn rate, minimum turning radius ≥ 8 % of frame height. The harmony controls curvature only, and curvature cannot exceed the legibility bound. A mechanism, not a tuning constant.
+
+**Flash budget designed up front**, against an anti-reference taken from the source itself: its head flare saturates most of the frame to white on mid-band hits and re-fires on every one. Witchlight targets **0.00 flashes/s by construction** — max Δluma/frame ≤ 0.06 sits below the 0.10 WCAG swing threshold, so no transition qualifies as a flash at all — plus a ≥ 900 ms hard refractory, a ≤ 3 % / ≤ 12 % spatial extent cap, and a ≥ 60 ms / ≥ 200 ms envelope.
+
+**Two level-3 grounding ratings are open and Matt has them:** no empirical grounding for driving a light-painting stroke's *geometry* from harmonic state, and none for the *combination* of that path with age-weighted relaxation and a beaded 30-second trail — structurally the Aurora Veil failure shape. The mitigation is scheduled rather than hoped: WL.2's **first** deliverable is a motion-gated look-spike answering "does the figure read as a drawing?" before any shading work. Fractal Fly-By burned 14 rounds not doing that.
+
+**Also landed:** `docs/VISUAL_REFERENCES/witchlight/` — 13 images across long-exposure light painting, calligraphic brushwork, deep-sky astrophotography and plasma-arc photography, eleven license-verified from Commons, with an 8-item mandatory-traits checklist and a 6-item anti-reference list. Zero `CheckVisualReferences` warnings.
+
+**Environment finding, not a defect:** the branch point looked red — 41 engine tests failing on ML weight loading — because this worktree's Git-LFS objects had never been materialized (`.bin` files were 129-byte pointers). `git lfs checkout` plus `Scripts/link_fixtures.sh` restored 1711/1711 green. Same class as the known worktree-fixture gap, one layer deeper; worth folding into `link_fixtures.sh`.
+
 ### [dev-2026-07-31-143943] D-208 — D-E resolved: final0 not adopted; beat-sync's evidence levers are exhausted
 
 Matt, 2026-07-31: "don't adopt final0." small0 remains the shipped grid model. Resolves D-E against the MDL.1 data — no meter improvement (2/6 both), a 4 % and inconsistent move in the degeneracy metric, a regression on `bleed`, at ~10× the weights and ~1.3× inference.

@@ -1426,6 +1426,41 @@ Under the inspired-by reframe, source `.milk` files become reference material th
 
 ---
 
+### Increment WL.1 — Witchlight: reference curation + design doc ✅ **LANDED 2026-07-31**
+
+An MD.6 uplift, split design-then-author so the concept clears its gates before any shader exists. Inspiration source: `martin - witchcraft reloaded` (source file not committed — D-116 bullet 4).
+
+**Scope:** Curate `docs/VISUAL_REFERENCES/witchlight/`; establish the audio-driver ground truth by measurement; write `docs/presets/WITCHLIGHT_DESIGN.md` (concept, drivers, motion model + temporal contract, three-part bar, flash budget, grounding audit, registration plan). **Docs only** — no `.metal`, no sidecar, no engine code.
+
+**Landed:**
+- `docs/VISUAL_REFERENCES/witchlight/` — 13 images across four registers (long-exposure light painting, calligraphic single-stroke brushwork, deep-sky astrophotography, electrical arc / plasma filament) + the source render as register anchor and path anti-reference. Eleven license-verified Commons positives; 8 mandatory traits, 6 anti-references; zero `CheckVisualReferences` warnings.
+- `docs/presets/WITCHLIGHT_DESIGN.md` §§1–7.
+- D-209 — concept, D-121 divergence axis (dominant motion model + palette character; Matt 2026-07-31), and the flash budget.
+
+**The measurement is the increment's most reusable output** (`WITCHLIGHT_DESIGN.md` §2, four real captures incl. an 88-minute live streaming session). Findings that outlive Witchlight: `pulse_amp01` is **dead** (pinned at 1.000 p5→max across 318 383 live frames); `harmonic_flux` / `tonal_tension` / `section_index` are alive live but near-flat on 2 of 3 offline route-coverage fixtures; `spectral_centroid` reads 0.04–0.21 (BUG-027 / CR.1.1, third sighting); `vocalsPitchConfidence` is nonzero on 4.5 % of live frames.
+
+**Carry-forward into WL.2:** two level-3 grounding ratings are open (§6) and Matt has them. WL.2's **first** deliverable is a motion-gated look-spike answering "does the figure read as a drawing?" before any shading work — not a tuning round (D-181 / D-194 / D-195; the D-201 Fractal Fly-By lesson).
+
+**Verify:** `swift test --package-path PhospheneEngine --filter DocIntegrityTests`; `swift run --package-path PhospheneTools CheckVisualReferences`.
+
+---
+
+### Increment WL.2 — Witchlight: authoring 📋 **PLANNED**
+
+**Scope:** Author the preset against `WITCHLIGHT_DESIGN.md` §§3–7. Paradigm `["feedback", "particles"]`; structural template **Filigree**; CPU-side `WitchlightStroke` via `ParticleGeometry` / `ParticleGeometryRegistry` (D-097). **No new render pass, fragment-buffer slot or GPU-contract change** — if one is needed, that is a DECISION-NEEDED for Matt.
+
+**Done when:**
+- Motion-gated look-spike **first**, on the §2 captures, with the motion verdict written before any shading work.
+- `Witchlight.metal` + `Witchlight.json` (incl. `inspired_by` with the source SHA-256, and the §7.4 `audio_routes` manifest).
+- `RouteCoverageTests` green — or the `sectionIndex` `trail_contraction` route filed as a route defect in `KNOWN_ISSUES.md`. **Never tune the floor** (QG.1 / D-179).
+- Flash budget met and measured (§5): 0.00 flashes/s, peak full-frame mean luma ≤ 0.35, max Δluma/frame ≤ 0.06. `MultiPassFlashHarnessTests` render function + `PhotosensitivityCertificationTests.multiPassMeasured` membership in one commit.
+- The full §7.4 registration checklist executed.
+- Matt's live M7 **plus** the D-121 side-by-side against the source, with Matt's divergence rationale in the closeout.
+
+**Verify:** `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' build`; `swift test --package-path PhospheneEngine`; `swiftlint lint --strict`.
+
+---
+
 ### Increment MD.7 — Ray-march-composing inspired-by uplifts (formerly Hybrid tier)
 
 **Scope (revised per `MILKDROP_STRATEGY.md` §12 / D-103 amendment / D-107):** Inspired-by uplifts that compose `mv_warp` + `ray_march` against a static camera (D-029). **Not a tier** — these are `milkdrop_inspired` presets that happen to use the ray-march backdrop primitive; authoring choice, not classification. The MD.7.0 spike (single-preset proof of the `mv_warp` + `ray_march` composition) lands as one such uplift; subsequent ray-march-composing uplifts batch into the MD.6 work stream. The architectural composition has only Volumetric Lithograph as prior production proof (and VL's `mv_warp` plays against a ray-march scene that is not itself feedback-warped), so the spike is still a high-value increment under inspired-by.
