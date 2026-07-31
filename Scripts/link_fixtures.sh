@@ -32,7 +32,16 @@ if [ "$repo_root" = "$primary" ]; then
   exit 0
 fi
 
-fixtures_rel="PhospheneEngine/Tests/Fixtures"
+# Gitignored-but-needed paths that a fresh worktree would otherwise lack.
+#   Fixtures  — engine tests read them; ~21 tests fail environmentally without.
+#   Reference/diagnostic IMAGES — gitignored since the LFS cutover, and the
+#     preset-session workflow is "read the README and LOOK at the images", so a
+#     worktree without them silently degrades preset work rather than failing.
+linked_rel=(
+  "PhospheneEngine/Tests/Fixtures"
+  "docs/VISUAL_REFERENCES"
+  "docs/diagnostics"
+)
 linked=0
 
 # `git ls-files --others --ignored --exclude-standard` lists exactly the
@@ -48,6 +57,10 @@ while IFS= read -r rel; do
   ln -s "$src" "$dst"
   echo "linked $rel"
   linked=$((linked + 1))
-done < <(cd "$primary" && git ls-files --others --ignored --exclude-standard -- "$fixtures_rel")
+# Filter to things worth linking: everything under Tests/Fixtures, but only
+# raster images under the docs dirs — those trees also collect OS junk
+# (.DS_Store) that would otherwise be symlinked into every worktree.
+done < <(cd "$primary" && git ls-files --others --ignored --exclude-standard -- "${linked_rel[@]}" \
+         | grep -E '^PhospheneEngine/Tests/Fixtures/|\.(jpg|jpeg|png|gif)$')
 
 echo "link_fixtures: $linked fixture(s) linked into $(basename "$repo_root") from $(basename "$primary")."

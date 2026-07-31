@@ -10,6 +10,29 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-07-31-214125] LFS.2 / PUB.2 — the LFS-billing fix, split in two because half of it was backwards
+
+Matt was being billed for GitHub LFS storage. A branch existed to fix it (`claude/lfs-charges-gitignore-ecd130`) and bundled two changes; **one was sound and one did the opposite of what it intended.** Split, landed the good half, redid the other.
+
+**Sound and landed as-is — the weights cutover (PUB.2).** The ~167 MB of ML weights now ship as the `ml-weights-v1` GitHub Release asset, fetched and verified by `Scripts/fetch_weights.sh`. CI swaps `git lfs pull` for the fetch script and re-keys its cache on `SHA256SUMS`; `Scripts/check_lfs_smudged.sh` is removed because it guarded a smudge that can no longer happen and would have passed vacuously. Precondition verified before landing, since getting it wrong breaks every clone: the release exists (2026-07-22) and the fetch script is idempotent.
+
+**Backwards, and redone — the image half (D-211).** It added `.gitignore` rules for `docs/VISUAL_REFERENCES` + `docs/diagnostics` images and dropped their LFS filter, but **never ran `git rm --cached`**. `.gitignore` does not affect already-tracked paths, so the files stayed tracked and — with the filter gone — became full blobs:
+
+| | Image bytes in the git object database |
+|---|---|
+| `main` (LFS pointers) | 25.7 KB |
+| that branch (real blobs) | **100.6 MB** |
+
+Zero files left the index. Merging it would have written ~100 MB permanently into history while leaving the LFS objects, and the bill, exactly where they were. The redone version untracks all 203 images for real.
+
+**The lesson generalises:** for a "stop tracking this" change the load-bearing step is `git rm --cached` — the `.gitignore` edit only governs what happens *next*. Verify by counting what actually left the index, not by reading the ignore file.
+
+**Stated plainly: this stops new LFS objects, it does not reclaim the old ones.** GitHub does not GC unreferenced LFS objects, so storage keeps billing until the history is rewritten *and* a Support request purges the orphans. `Scripts/reclaim-lfs-visual-refs.sh` does the rewrite (dry-run by default) and documents the Support step. **Neither is run** — that is its own decision with its own blast radius.
+
+**Worktree consequence handled up front rather than discovered later.** Gitignored files do not reach new worktrees or fresh clones, and preset work is *read the README and look at the images* — so a worktree without them degrades silently instead of failing, which is worse. `Scripts/link_fixtures.sh` now symlinks the images alongside the test fixtures it already handled. Same trap the gitignored tempo fixtures already sprang; same fix.
+
+Also noted: the superseded branch carries a **D-195 that collides with main's D-195** (motion review gate). It is not merged and should not be.
+
 ### [dev-2026-07-31-161121] WL.1 — Witchlight: reference set, measured drivers, and a design that is gated on them
 
 Docs-only increment opening an MD.6 Milkdrop-inspired uplift. Inspiration source `martin - witchcraft reloaded`; the source file is not committed (D-116 bullet 4). Decision: **D-209**.
