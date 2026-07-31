@@ -204,7 +204,16 @@ block as §2. Increment-specific additions:
 
 ---
 
-## 10. DECISION-NEEDED
+## 10. DECISION — ANSWERED (D-210, Matt 2026-07-31: "decline the bar, keep the beat")
+
+**Resolved before the session starts.** On a track detected as wrong-level, presets get **no bar
+position** and fall back to their energy-driven behaviour; the beat layer is untouched. This
+extends D-207's "a meter *or* no confident bar" contract with a second decline reason. Ratified
+as **D-210** — read it before task 4, because it sets what the detector is *for*: a detector that
+declines correctly is a win even if it never corrects anything, so task 4's `undetermined` and
+`atWrongLevel` paths matter more than any correction factor. **Correction is explicitly not
+chosen** and returns as an option only if task 5's confusion matrix shows a near-zero
+confident-wrong rate. The original question and its options are kept below as the rationale.
 
 **Question:** when Phosphene's beat grid is running at double or half the speed a listener
 would tap, what should the visuals do?
@@ -234,6 +243,4 @@ and losing a downbeat push on two tracks is a far smaller cost than a confidentl
 a track we mis-corrected. Correcting the level only becomes worth arguing for once task 5's
 confusion matrix shows the confident-wrong rate is near zero.
 
-**Default if unanswered:** run tasks 1–3 and stop before the detector, exactly as FT.3 did —
-the measurement is what makes this decision answerable, and it either justifies the detector
-or saves it.
+**Chosen (Matt, 2026-07-31): decline the bar, keep the beat → D-210.**
