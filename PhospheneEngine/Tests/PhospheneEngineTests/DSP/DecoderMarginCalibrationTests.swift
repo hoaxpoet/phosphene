@@ -113,6 +113,70 @@ struct DecoderMarginCalibrationTests {
         """)
     }
 
+    /// Why does money decode as 4 when its bar is 7?
+    ///
+    /// The tempo hint is NOT the cause — money's ground truth records `tap_bpm 60.97` but
+    /// both reference backends put the real pulse at ~122 BPM and label the taps
+    /// "double the tapped pulse (×2.01)", with `meter_note` "beats tapped at HALF the bar
+    /// pulse, so the bar is 7". The incumbent hint (~116–123) therefore already sits on
+    /// the true pulse and the ±10 % band contains it.
+    ///
+    /// The remaining suspect is the two-stream observation model (spec §5.1). When the
+    /// downbeat stream is dense — DBN.1 measured a confident downbeat on 90 % of money's
+    /// beats — a small meter labels a larger *fraction* of beats as downbeats, so it
+    /// collects more `log(d)` reward and eats less `log(1−d)` penalty. If that is the
+    /// mechanism, the preference for small meters should grow with `downbeatWeight`, and
+    /// the meters should converge as it goes to zero.
+    @Test("DBN.2: is money's meter collapse driven by downbeatWeight, not the tempo hint?")
+    func test_moneyMeterCollapse() throws {
+        guard ProcessInfo.processInfo.environment["PHOSPHENE_DBN2_CALIBRATE"] == "1" else { return }
+        guard let device = MTLCreateSystemDefaultDevice() else { Issue.record("no Metal"); return }
+        let dir = ProcessInfo.processInfo.environment["BEATBENCH_FIXTURES_DIR"]
+            ?? (NSHomeDirectory() as NSString).appendingPathComponent("phosphene_beatbench_fixtures")
+        guard let url = Self.locate("money", in: dir) else { Issue.record("no fixture"); return }
+
+        let samples = try Self.decodeMono22050(url: url)
+        let (spect, frames) = BeatThisPreprocessor().process(samples: samples, inputSampleRate: 22050.0)
+        let model = try BeatThisModel(device: device)
+        let (beatProbs, downbeatProbs) = try model.predict(spectrogram: spect, frameCount: frames)
+        let incumbent = BeatGridResolver.resolve(
+            beatProbs: beatProbs, downbeatProbs: downbeatProbs, frameRate: 50.0
+        )
+        print("""
+
+        ===== money: meter collapse diagnosis =====
+        truth: bar = 7 beats of the ~122 BPM pulse (taps are half-time at 60.97).
+        incumbent grid BPM \(String(format: "%.2f", incumbent.bpm)) — already on the true pulse.
+        """)
+
+        print("\n  -- downbeatWeight sweep (tempo hint = incumbent) --")
+        for weight in [0.0, 0.5, 1.0, 2.0, 5.0, 10.0] {
+            var tunables = BeatActivationDecoder.Tunables()
+            tunables.downbeatWeight = weight
+            tunables.meterMarginThreshold = 0        // report the raw winner
+            let r = BeatActivationDecoder(tunables: tunables).decode(
+                beatProbs: beatProbs, downbeatProbs: downbeatProbs,
+                frameRate: 50.0, tempoHintBPM: incumbent.bpm
+            )
+            let ll = r.perMeterLogLikelihood.sorted { $0.key < $1.key }
+                .map { "\($0.key):\(String(format: "%.0f", $0.value))" }.joined(separator: " ")
+            print(String(format: "   w=%5.1f  winner=%@   %@",
+                         weight, String(describing: r.beatsPerBar) as NSString, ll as NSString))
+        }
+
+        // If the hint were the problem, forcing the half-time pulse would help. It should not.
+        print("\n  -- tempo hint forced to the half-time tap pulse (60.97) --")
+        var tunables = BeatActivationDecoder.Tunables()
+        tunables.meterMarginThreshold = 0
+        let halfTime = BeatActivationDecoder(tunables: tunables).decode(
+            beatProbs: beatProbs, downbeatProbs: downbeatProbs, frameRate: 50.0, tempoHintBPM: 60.97
+        )
+        let hll = halfTime.perMeterLogLikelihood.sorted { $0.key < $1.key }
+            .map { "\($0.key):\(String(format: "%.0f", $0.value))" }.joined(separator: " ")
+        print("   winner=\(String(describing: halfTime.beatsPerBar))   \(hll)")
+        print("\n===========================================\n")
+    }
+
     // MARK: - Helpers
 
     private static func locate(_ name: String, in dir: String) -> URL? {
