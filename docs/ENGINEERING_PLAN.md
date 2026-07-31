@@ -1437,7 +1437,7 @@ An MD.6 uplift, split design-then-author so the concept clears its gates before 
 - `docs/presets/WITCHLIGHT_DESIGN.md` §§1–7.
 - D-209 — concept, D-121 divergence axis (dominant motion model + palette character; Matt 2026-07-31), and the flash budget.
 
-**The measurement is the increment's most reusable output** (`WITCHLIGHT_DESIGN.md` §2, four real captures incl. an 88-minute live streaming session). Findings that outlive Witchlight: `pulse_amp01` is **dead** (pinned at 1.000 p5→max across 318 383 live frames); `harmonic_flux` / `tonal_tension` / `section_index` are alive live but near-flat on 2 of 3 offline route-coverage fixtures; `spectral_centroid` reads 0.04–0.21 (BUG-027 / CR.1.1, third sighting); `vocalsPitchConfidence` is nonzero on 4.5 % of live frames.
+**The measurement is the increment's most reusable output** (`WITCHLIGHT_DESIGN.md` §2, four real captures incl. an 88-minute live streaming session). Findings that outlive Witchlight: `pulse_amp01` is a **silence gate, not a driver** (1.000 on 98.7 % of live frames — working as documented; `pulse_phase01` is the driver and is alive); `harmonic_flux` / `tonal_tension` / `section_index` are alive live but near-flat on 2 of 3 offline route-coverage fixtures; `spectral_centroid` reads 0.04–0.21 (BUG-027 / CR.1.1, third sighting); `vocalsPitchConfidence` is nonzero on 4.5 % of live frames.
 
 **Carry-forward into WL.2:** two level-3 grounding ratings are open (§6) and Matt has them. WL.2's **first** deliverable is a motion-gated look-spike answering "does the figure read as a drawing?" before any shading work — not a tuning round (D-181 / D-194 / D-195; the D-201 Fractal Fly-By lesson).
 

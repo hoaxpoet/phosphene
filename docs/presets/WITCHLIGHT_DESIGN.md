@@ -103,8 +103,9 @@ The first three are the committed `RouteCoverageTests` fixture set — real musi
 | | tt | −0.107 | −0.072 | −0.022 | 0.054 | 0.092 | range 0.20 |
 | | lr | −0.068 | −0.035 | 0.001 | 0.090 | 0.175 | range 0.24 |
 | | live | −0.553 | −0.162 | −0.003 | 0.143 | 1.262 | range 1.82 |
-| `pulse_amp01` (f) | so / tt / lr | 0.000 | 0.998 | 1.000 | 1.000 | 1.000 | |
-| | live | 0.000 | **1.000** | **1.000** | **1.000** | 1.000 | **pinned across 318 383 frames — DEAD** |
+| `pulse_amp01` (f) | so / tt / lr | 0.000 | 0.998 | 1.000 | 1.000 | 1.000 | below 0.999 on 5.3 % of frames (so) |
+| | live | 0.000 | **1.000** | **1.000** | **1.000** | 1.000 | below 0.999 on **1.3 %** of 318 383 frames — **a silence gate, not an envelope; see §2.3 item 1** |
+| `pulse_phase01` (f) | so / live | 0.000 | — | 0.497 / 0.576 | — | 1.000 | full 0–1 sawtooth, alive — this is the steady-pulse *driver* |
 | `bar_phase01` (f, per-mille) | so / tt / lr / live | 0 | ~35 | ~465 | ~943 | 999 | clean sawtooth; circular R = 0.025–0.055 |
 | `beat_phase01` (f) | so / tt / lr | 0.000 | ~0.038 | ~0.493 | ~0.948 | ~0.999 | clean sawtooth; R = 0.009–0.014 |
 | | live | 0.000 | 0.060 | 0.577 | 1.000 | 1.000 | R = 0.133 |
@@ -136,7 +137,7 @@ The first three are the committed `RouteCoverageTests` fixture set — real musi
 
 These change the design and are the reason §§3–7 are gated on this table rather than written alongside it.
 
-1. **`pulse_amp01` is dead.** Pinned at 1.000 from p5 to max across all four captures, including 318 383 live frames. It has no dynamic range and cannot drive anything. Struck from the candidate list.
+1. **`pulse_amp01` is not a driver — it is a silence gate, and it is working correctly.** It sits at 1.000 from p5 to max across all four captures and is below 0.999 on only 1.3 % of the 318 383 live frames. That is not a defect: `docs/ENGINE/RENDER_CAPABILITY_REGISTRY.md` §7 documents it as gating silence (0 before the first note and across > 0.5 s of sustained silence), which is exactly the measured behaviour. The correction is to the *candidate list*, not to the engine — an always-on gate has no dynamic range to drive a visual layer with, so it is struck as a Witchlight driver. The actual steady-pulse driver is **`pulse_phase01`**, which measures a full 0–1 sawtooth and is alive; it is not used here only because Witchlight takes no per-beat motion by design (§3.2).
 
 2. **`harmonic_flux` and `tonal_tension` are alive live but near-dead on 2 of 3 offline fixtures.** On the live capture `harmonic_flux` has p50 0.058 / p95 0.081 and is essentially always nonzero; on love_rehab it is nonzero on 0.2 % of frames with a maximum of 0.0009. The natural design for "each chord change turns the stroke" wants `harmonic_flux` as an explicit chord-change detector — **and that is not available**, at least not from the offline fixture path, which is exactly the path `RouteCoverageTests` replays (cf. QG.1.1: offline fixtures cannot reach CPU-derived `StemFeatures`). A chord change therefore has to be read out of the *motion of the smoothed fifths phase itself*, not out of a flux primitive. Whether the offline/live gap is a fixture-generation artifact or a real capability gap is an open question WL.2 must not paper over.
 

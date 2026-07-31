@@ -59,7 +59,7 @@ Witchlight is not certified until every one of these holds. Cited by filename pe
 
 The measured driver table is `WITCHLIGHT_DESIGN.md` §2 (signed off by Matt 2026-07-31); the routing design and the layer/primitive table are §3.4, and the proposed `audio_routes` manifest is §7.4. What the measurements ruled in and out:
 
-- **Ruled out as a hero driver:** `pulse_amp01` (pinned at 1.000 across 318 383 frames of live capture — no dynamic range); `vocalsPitchHz` / `vocalsPitchConfidence` (nonzero on 4.5 % of live frames; garnish only, per the prompt's standing rule).
+- **Ruled out as a hero driver:** `pulse_amp01` — a silence gate working exactly as designed, sitting at 1.000 on 98.7 % of live frames, so it has no dynamic range to drive a layer with (`pulse_phase01` is the actual steady-pulse driver and measures alive); `vocalsPitchHz` / `vocalsPitchConfidence` — nonzero on 4.5 % of live frames, garnish only.
 - **The `spectral_centroid` trap (BUG-027 / CR.1.1, now measured a third time):** real-music range is ≈ 0.04–0.21, not 0–1. Any mapping must be written against the measured p5/p95 band, never `centroid × N`.
 - **Deviation semantics only** (D-026). No absolute threshold on an AGC-normalized value anywhere (FA #31).
 - **One primitive per visual layer** (FA #67). The pen path, the bead colour, the head flare and the background parallax are four layers and must not share a primitive.

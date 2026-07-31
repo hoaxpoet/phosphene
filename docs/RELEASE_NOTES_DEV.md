@@ -18,7 +18,7 @@ Docs-only increment opening an MD.6 Milkdrop-inspired uplift. Inspiration source
 
 **The increment's most reusable output is the measurement, not the design.** Task 3 was a hard stop — establish from real captures what each candidate driver actually does, and if the harmonic drivers were not alive, re-scope rather than design against a dead signal. Four captures: the three committed route-coverage fixtures plus an 88-minute live streaming session (318 383 frames). `tonal_phase_fifths` measured alive on all four, so the documented palette-and-sky fallback was not triggered. Three findings outlive Witchlight:
 
-- **`pulse_amp01` is dead** — pinned at 1.000 from p5 to max across all 318 383 live frames. It is a constant, not a driver.
+- **`pulse_amp01` is a silence gate, not a driver — and it is working correctly.** It sits at 1.000 on 98.7 % of the 318 383 live frames, which is exactly what the capability registry says it should do (0 before the first note, 0 across sustained silence). No defect; the correction is that an always-on gate has no dynamic range, so citing it as a *driver* cites a constant. `pulse_phase01` is the steady-pulse driver and measures a full 0–1 sawtooth.
 - **`harmonic_flux`, `tonal_tension` and `section_index` are alive live but near-flat on 2 of 3 offline fixtures** (`harmonic_flux`: p50 0.058 live, 0.2 % nonzero on `love_rehab`). The QG.1.1 offline/live gap, surfacing on a new family of primitives. Design consequence: Witchlight cannot use a flux primitive as a chord-change detector. Whether the gap is a fixture-generation artifact or a real capability gap is **open**.
 - **`spectral_centroid` reads 0.04–0.21 on real music** — third sighting after BUG-027 and CR.1.1 / D-197.
 
