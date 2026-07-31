@@ -10,6 +10,16 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-07-31-143943] D-208 — D-E resolved: final0 not adopted; beat-sync's evidence levers are exhausted
+
+Matt, 2026-07-31: "don't adopt final0." small0 remains the shipped grid model. Resolves D-E against the MDL.1 data — no meter improvement (2/6 both), a 4 % and inconsistent move in the degeneracy metric, a regression on `bleed`, at ~10× the weights and ~1.3× inference.
+
+**The program-level consequence is bigger than the checkpoint choice.** Three increments have now established the same finding by independent routes: **TRK.2** falsified onsets as a source of beat evidence (only ~15–25 % of onsets from *any* band or stem land within ±50 ms of a beat, D-206); **DBN.2** removed the observation-model bias and found odd meters still won by hairline margins, with a confidence signal that cannot separate right from wrong; **MDL.1** scaled the model 10× and got no cleaner downbeat stream. **The downbeat evidence is thin, and it is not thin because of how we read it.**
+
+So categories 2 and 4 need a **changed premise**, not another pass at these levers — and **DBN.3 should not open as specified**, because A/B-ing the decoder against the incumbent would measure its known-wrong odd meters and non-separating margin rather than the decoder itself. Unexplored candidates: a different model family, a different training target, or sourcing bar position from something other than a downbeat activation stream. Phases GT / FT / RLG / CNF are unaffected — FT in particular still lands category-3 wins for local files independently of this.
+
+Code retention stated explicitly per D-097 rather than assumed: `BeatThisModel.Variant`, the external `weightsDirectory` seam and `Final0ABTests` are kept as the reproduction of a committed measurement (~40 lines, env-gated, verified behaviour-preserving for small0), **with a named deletion trigger** — retire them if MDL is retired or if they are still consumer-less at the next pruning pass.
+
 ### [dev-2026-07-31-134559] MDL.1 — final0 A/B: no gain, and the evidence ceiling is not capacity
 
 **Recommendation: DO NOT ADOPT.** D-E is Matt's call; the data is committed at `docs/diagnostics/MDL1_FINAL0_AB_2026-07-31.md`.
