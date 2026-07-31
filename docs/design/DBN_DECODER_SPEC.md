@@ -448,6 +448,84 @@ Recorded here so DBN.3 does not re-derive it.
 
 ---
 
+## 9.6 The odd-meter collapse is a flaw in §5.1, not the tempo hint (DBN.2 follow-up)
+
+Investigated on money at Matt's direction. **The tempo hint is exonerated; §5.1's two-stream
+observation model has a structural bias toward small meters.**
+
+### The hint is not the cause
+
+money's ground truth records `tap_bpm 60.97`, which made the incumbent's ~116–123 look like a
+2× error. It is not. Both reference backends independently put the real pulse at **~122 BPM** and
+label the taps `METRICAL — "reference is double the tapped pulse (×2.01)"`, and the file's own
+`meter_note` says *"beats tapped at HALF the bar pulse, so the bar is 7"*. The incumbent hint is
+already on the true pulse and the ±10 % band contains it.
+
+Forcing the hint to the half-time pulse (60.97) makes things **worse**, not better — the decode
+returns meter 3 with 7 ranked last. The hint is not the lever.
+
+### The actual mechanism, with a closed form
+
+§5.1 applies `w · log(1 − d)` at **every non-downbeat beat position**. Meter `B` labels `(B−1)/B`
+of its beats as non-downbeat, so the expected penalty per beat is
+
+```
+w · log(1 − d) · (B − 1)/B          — monotonically increasing in B
+```
+
+Larger meters are penalised **purely for being larger**, independently of whether they are correct.
+The predicted log-likelihood gap between two meters over `N` beats is
+
+```
+Δ = N · w · (−log(1 − d)) · [ (B₁−1)/B₁ − (B₂−1)/B₂ ]
+```
+
+Measured on money (Δ of meter 7 relative to meter 3, full decode window):
+
+| `downbeatWeight` | 1 | 2 | 5 | 10 |
+|---|---|---|---|---|
+| Δ (nats) | 18 | 36 | 89 | 180 |
+| Δ / w | 18.0 | 18.0 | 17.8 | 18.0 |
+
+Exactly linear in `w`. Substituting DBN.1's independently-measured mean downbeat peak
+probability for money (**d = 0.805**), N = 58 beats and `(6/7 − 2/3) = 0.1905`, the closed form
+predicts **18.1 nats per unit weight** against a measured **18.0**. At `w = 0` all four meters sit
+within 9 nats, as they must when the meter is unobserved.
+
+### Why no single weight can work
+
+The two requirements are in direct opposition:
+
+* **`w` must be high** or the downbeat evidence does not register at all — below 2.0 the decoder
+  picks the wrong meter even on the clean synthetic fixture (§9.5).
+* **`w` must be low** or the `(B−1)/B` bias swamps the evidence and every track collapses to the
+  smallest viable meter.
+
+That is why 5.0 passes the synthetic cases and still collapses every real odd meter to 4. **It is
+not a tuning problem and further sweeping is wasted effort.**
+
+### Root cause and fix direction
+
+`P(a_k | φ_k)` in Böck Eq. 3 is a *normalised* distribution over the beat/non-beat partition of a
+single stream. The §5.1 extension multiplies in a second, **unnormalised** downbeat term whose
+accumulated mass over a bar depends on `B`. Comparing meters by total path log-likelihood then
+compares differently-normalised models, which is not a valid model selection.
+
+Candidate fixes for DBN.3, none yet tried:
+
+1. **Normalise the downbeat term per bar** rather than per beat, so its expectation is independent
+   of `B`.
+2. **Make the downbeat evidence asymmetric** — reward `log(d)` at the bar line, but do not penalise
+   `log(1 − d)` at every other beat position. Removes the `(B−1)/B` term entirely.
+3. **Subtract the analytic bias** `N · w · log(1 − d) · (B−1)/B` per hypothesis before comparing.
+   Exact for constant `d`, approximate otherwise; the cheapest to test, and the closed form above
+   is already validated well enough to try it.
+
+Option 2 is the most principled — the model should say "a bar line is here", not "a bar line is
+*not* here" once per beat — and it is the one to attempt first.
+
+---
+
 ## 10. Sources
 
 - Krebs, Böck & Widmer. *An Efficient State-Space Model for Joint Tempo and Meter Tracking.*
