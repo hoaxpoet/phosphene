@@ -93,3 +93,16 @@ coupling/
 # tracked; it is what fetch + verification read.
 PhospheneEngine/Sources/ML/Weights/*
 !PhospheneEngine/Sources/ML/Weights/SHA256SUMS
+
+# Dev-only reference/diagnostic IMAGES — kept local, out of git. No build target
+# reads them; they exist for a human (and Claude) to look at during preset work.
+# Text records in these dirs — READMEs, diagnoses, contracts, source_*.txt/json —
+# STAY in git. Only the rasters are ignored. Reinstate one with `git add -f`.
+docs/VISUAL_REFERENCES/**/*.jpg
+docs/VISUAL_REFERENCES/**/*.jpeg
+docs/VISUAL_REFERENCES/**/*.png
+docs/VISUAL_REFERENCES/**/*.gif
+docs/diagnostics/**/*.jpg
+docs/diagnostics/**/*.jpeg
+docs/diagnostics/**/*.png
+docs/diagnostics/**/*.gif
