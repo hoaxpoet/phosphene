@@ -118,6 +118,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-207 | Accepted | **Decoder declines when the bar is unclear; meter set fixed at {3,4,5,7}** (DBN.1, Matt 2026-07-30: "decline when unsure, keep {3,4,5,7}"). Two product calls on the bar-pointer decoder. (1) When the decoder cannot tell what the bar is, the visuals **decline** rather than guess — bar position drives Nacre's and Glaze's downbeat pushes (D-171, D-173) and the GT.3 baseline has `beatsPerBar` wrong on 7 of 9 tracks, so a wrong bar-1 is already firing on an arbitrary beat; the plainer reading beats the wrong one, consistent with D-205's hard-gate call and category 5's "success = declining honestly". (2) `dbnMeterHypotheses` = {3,4,5,7}, **fixed** — covers every ground-truth meter plus waltz; {6,9,12} are ambiguous with {3,4} at another metrical level and risk a 4/4 track relabelled 12/8. **Consequences:** the decoder's output becomes "a meter OR no confident bar" (a bar-confidence flag joins the output contract — `beatsPerBar` alone cannot express it); the meter-margin confidence becomes load-bearing rather than diagnostic; DBN.2 ships the decline path with a threshold set from the margin's measured distribution, not taste; DBN.3's A/B gains a **decline-rate** metric so declining on everything cannot read as a win. **Explicitly NOT chosen:** per-preset fallback gestures — presets that lose the bar accent keep beat-level motion, and the graded version belongs to CNF.2 (D-154 evolution), not phase DBN. §Rationale below. |
 | D-208 | Accepted | **D-E resolved — `final0` NOT adopted** (MDL.1, Matt 2026-07-31: "don't adopt final0"). small0 remains the shipped grid model. Measured on 9 ground-truthed tracks through the real MPSGraph path: meter correct **2/6 for both** variants (final0 gains bohemian_rhapsody, loses bleed — a trade), mean downbeat:beat ratio 0.494 → 0.475 (4 %, and inconsistent), at ~10× the weights (8.4 → 81 MB) and ~1.3× steady-state inference; **`bleed`, the suite-4 case the plan expected final0 to fix, REGRESSES** (BPM doubles 115.00 → 259.43, meter 4 ✓ → 2 ✗). **The corollary is the load-bearing part: the evidence ceiling DBN.2 hit is NOT a capacity problem.** With TRK.2 (onsets falsified) and DBN.2 (unbiased decoder still hairline), the program has now established three independent ways that the downbeat evidence is thin and not thin because of how it is read — so **DBN.3 should not open as specified**, since A/B-ing a decoder with known-wrong odd meters and a non-separating confidence signal would measure the deficiency rather than the decoder. **AMENDED same day:** the original "needs a changed premise" was overstated — every measurement behind it came from a 30 s window (money's meter was decided from 51 beats of a 380 s track), so **FT.1 must lift the `tMax` clamp and re-test before any model-family question is opened**. Retention stated per D-097: `Variant` + `weightsDirectory` + `Final0ABTests` kept as the reproduction of a committed measurement, with an explicit deletion trigger. §Rationale below. |
 | D-209 | Accepted | **Witchlight — Milkdrop-inspired uplift concept, D-121 divergence axis, and flash budget** (WL.1, Matt 2026-07-31). Inspiration source `martin - witchcraft reloaded`. **Divergence axis: dominant motion model, and consequentially palette character** — the pen tip's path is a function of the track's harmonic and spectral motion (chord changes turn the stroke; the figure hanging in the dark is a drawing of the last thirty seconds), and each bead's hue records where the harmony was when it was laid down. Same register as the source (beaded luminous line, dark sky, violet bloom, bright head); different motion, and the difference is trivially demonstrable side by side. **Founded on measurement, not on the feature's name:** `tonal_phase_fifths` measured alive on four real captures (three route-coverage fixtures + an 88-minute live session), so the documented palette-and-sky fallback was not triggered. Three measurement findings outlive the preset — `pulse_amp01` is a **silence gate, not a driver** — at 1.000 on 98.7 % of 318 383 live frames, exactly as the capability registry documents; `pulse_phase01` is the steady-pulse driver and is alive; `harmonic_flux` / `tonal_tension` / `section_index` are alive live but near-flat on 2 of 3 offline fixtures; `spectral_centroid` reads 0.04–0.21 (BUG-027 / CR.1.1, third sighting). **Flash budget, designed up front against the source's frame-filling whiteout:** 0.00 flashes/s target, peak full-frame mean luma ≤ 0.35, max Δluma/frame ≤ 0.06, flare ≥50 %-peak area ≤ 3 %, ≥10 %-peak area ≤ 12 %, ≥ 900 ms hard refractory, ≥ 60 ms rise / ≥ 200 ms fall. **Two level-3 grounding ratings accepted, not hidden.** §Rationale below. |
+| D-210 | Accepted | **Wrong metrical level → decline the bar, keep the beat** (FT.3.1 §10, Matt 2026-07-31: "decline the bar, keep the beat"). When Phosphene's grid runs at double or half the pulse a listener would tap, presets get **no bar position** and fall back to their energy-driven behaviour; the beat layer is untouched. Resolves a tension inside D-205, which gates beat *feel* on AMLt on the explicit grounds that a half/double grid "still reads as locked", while making bar position a **hard** gate because Nacre's and Glaze's downbeat pushes consume it (D-171, D-173). **FT.3 measured those two as incompatible:** the two ground-truthed tracks with a large AMLt−CMLt gap — money (CMLt 0.00 / AMLt 0.88; grid 116.19 BPM vs truth 60.97) and bleed (0.03 / 0.84; grid 115.00 vs truth 226.72) — are **exactly** the two where bar-line phase failed with the meter correct (0 % and 16 %), while all three zero-gap tracks got phase right. A grid at the wrong level still feels locked and makes the bar line unrecoverable. **Explicitly NOT chosen: correcting the level.** money wants halving at 116 BPM and bleed wants doubling at 115 — same tempo, opposite corrections — so no global BPM threshold separates them, and moving `BeatGrid.halvingThresholdBPM` (175, halving-only since QR.1) re-opens BUG-009 on fast rock. Correction returns as an option only if FT.3.1 task 5 shows a near-zero confident-wrong rate. Extends D-207's "a meter **or** no confident bar" contract to a second decline reason. Evidence: `docs/diagnostics/FT3_BARLINE_TASKS_1_3_2026-07-31.md`, `docs/diagnostics/BEATBENCH_BASELINE_2026-07-30.md`. §Rationale below. |
 | D-198 | Accepted | Cymatic Resonance CR.1.2 — second-M7 fixes (Matt M7 2026-07-22 "Cherub Rock", clean chain). **(1) Framing:** the oblique tilt left a receding-background triangle at the top; switched to a **top-down orthographic cover-fit** — the square plate fills the 16:9 frame edge-to-edge, no background (Matt: "camera directly above would be better"). **(2) "Only 3 patterns, boring":** widened the ladder traversal (centroid-dev gain 8→12) AND replaced the uniform `(m,m+2)` ladder with a **varied same-parity** set (alternating `m=n` concentric grids with `m<n` cross-hatch) so adjacent rungs are visibly distinct figures. **(3) "Colour doesn't change":** brought CR.3's hue routing forward — a global jewel-palette hue offset driven by the **smoothed harmonic phase** (`tonal_phase_fifths`, D-178; range 6.25 on the track — fully alive), circular-smoothed via sin/cos. Snap depth 0.9→0.65 (top-down, lowest modes read empty). Golden regenerated. Pending Matt's next live M7. §Rationale below. |
 | D-197 | Accepted | Cymatic Resonance CR.1.1 — live-M7 defect fixes (Matt M7 2026-07-22, "Hummer"). **(1) Hero "held its pattern":** real `spectral_centroid` occupies ~0.08–0.18 on music (verified on the session's healthy portion: p5 0.085 / p95 0.162), so the old `centroid × (N-1)` mapping moved the ladder < 1 of 11 rungs (the Nimbus/BUG-027 AGC-calibration trap). Fixed with a **BLEND** (Matt's call): mostly a per-track centroid DEVIATION (guarantees visible travel on any track) + a gentle absolute tilt (brighter ⇒ finer). Regression-locked: the real narrow band now traverses 3.75 rungs (was < 1). **(2) Palette read white:** emissive 2.6 → 1.5 (ridges sit near the bloom threshold so colour survives ACES), white key → warm-gold, hue sweep widened to sapphire→magenta→gold. **(3) White space:** plate zoomed (camDist 2.75→1.85, plateHalf 1.0→1.18, elev 52→48) to fill the 16:9 canvas. **(4) ASH `.critical` nudge gap (folded in):** `PlaybackErrorBridge` fired the low-levels nudge only on `peakBand == .low`; `.critical` (worse) fired nothing, so the degraded-chain M7 ran unflagged — now both bands nudge. Golden regenerated. Pending a clean-chain live re-M7. §Rationale below. |
 | D-196 | Accepted | Cymatic Resonance CR.1 maquette landed (count 25 → 26; `certified:false`). First `direct`+`post_process` preset — a resonant-plate Chladni nodal figure selected live by spectral centroid (mode-complexity ladder), `bassDev` snap-to-simple, derived-normal relief + GGX + jewel emissive on deep black, strong oblique tilt, through ACES + bloom. **Engine:** slot-6 per-preset state now reaches the `direct`+`post_process` scene pass (`PostProcessChain.runScenePass` threads `presetFragmentBuffer` at fragment index 6 — zero-risk, that path had no production consumer before CR). **★ Concept-gate correction #5 (found at the maquette):** the plus basis forces an anti-diagonal nodal line for OPPOSITE-parity (m,n), so the design's adjacent-pair ladder carried the forbidden diagonal (incl. the fundamental); fixed by the SAME-parity `(m,m+2)` family `(1,3)…(11,13)`. Perf 1080p full-chain p95 ≈ 1–2.6 ms. Pending Matt's live M7. §Rationale below. |
@@ -3185,3 +3186,74 @@ The flare is additionally driven from `bass_dev` against the measured per-captur
 - Finding 2 above (the offline/live gap on the harmonic + section primitives) is a standing question for the fixture-generation path, larger than this preset.
 
 **References.** D-121 (visual-divergence rule), D-116 (substantial-similarity discipline), D-113 (inspired-by reframe), D-111 (`inspired_by` schema), D-178 (TIV / harmonic state), D-198 + D-197 (CR.1.2 / CR.1.1 — the circular-EMA precedent and the `spectral_centroid` trap), D-026 / FA #31 (deviation primitives), FA #67 (one primitive per layer), D-157 (steady global luminance), D-179 (route-coverage manifest), D-181 / D-194 / D-195 (still sheet, Truchet miss, motion gate), D-201 (Fractal Fly-By), D-097 (`ParticleGeometry` registry), D-037 (silence is never black), `SHADER_CRAFT.md §12.6`, `docs/presets/WITCHLIGHT_DESIGN.md`, `docs/VISUAL_REFERENCES/witchlight/README.md`.
+
+---
+
+## D-210: Wrong metrical level — decline the bar, keep the beat (FT.3.1, Matt 2026-07-31)
+
+**Decision.** When Phosphene's beat grid is running at double or half the pulse a listener would
+tap, presets receive **no bar position** and fall back to their energy-driven behaviour. The beat
+layer is untouched — the pulse still feels locked. Matt, 2026-07-31: "decline the bar, keep the
+beat."
+
+**What forced the question.** D-205 made two product calls that FT.3 has now measured as being in
+tension. It gates beat *feel* on AMLt rather than strict F, on the explicit grounds that a grid at
+half or double the tapped pulse "still reads as locked" and only a grid on no real pulse breaks the
+feel. It simultaneously makes meter/downbeat a **hard** gate, because Nacre's and Glaze's downbeat
+camera pushes (D-171, D-173) are those presets' connection layer and a wrong bar-1 degrades shipped
+visuals.
+
+Both are right on their own terms. They cannot both be satisfied on the same track:
+
+| track | grid BPM | truth BPM | CMLt | AMLt | gap | FT.3 bar-line phase |
+|---|---|---|---|---|---|---|
+| billie_jean | 116.88 | 117.44 | 0.97 | 0.97 | 0.00 | 100 % ✓ |
+| take_five | 169.24 | 167.07 | 1.00 | 1.00 | 0.00 | 85 % ✓ |
+| solsbury_hill | 102.68 | 102.44 | 1.00 | 1.00 | 0.00 | 14 % (ground truth suspect) |
+| **money** | **116.19** | **60.97** | **0.00** | **0.88** | **0.88** | **0 %** |
+| **bleed** | **115.00** | **226.72** | **0.03** | **0.84** | **0.81** | **16 %** |
+
+The two tracks with a large AMLt−CMLt gap are **exactly** the two where the bar-line phase failed
+with the meter correct; every zero-gap track got the phase right. A grid at the wrong metrical
+level feels locked *and* makes the bar line unrecoverable, because a global beat index no longer
+names the bar.
+
+**Why declining rather than correcting.** Look at what the two failures would need:
+
+- **money** grid 116.19 BPM wants **halving** to ~58.
+- **bleed** grid 115.00 BPM wants **doubling** to ~230.
+
+Same tempo, opposite corrections. **No global BPM threshold can separate them**, and lowering
+`BeatGrid.halvingThresholdBPM` (175, halving-only since QR.1) re-opens BUG-009 — fast rock at
+158–174 halved to a half-rate visual pulse. Any correction must come from audio content, blind, and
+its confident-wrong rate is unmeasured. Declining cannot be worse than today, where the accent
+already fires on an arbitrary beat; a wrong correction fires it on an arbitrary beat *confidently*,
+for the whole track.
+
+**Consequences.**
+
+- Extends D-207's output contract — "a meter **or** no confident bar" — with a **second decline
+  reason**: not "the meter is unclear" but "the meter may be right and the bar line is still not
+  locatable". Consumers gate on the same bar-confidence flag; no new surface.
+- On an affected track, Nacre's and Glaze's downbeat pushes simply do not fire. Those presets keep
+  beat-level motion and nothing replaces it — the same position D-207 took, and for the same
+  reason. A graded fallback remains CNF.2's territory (D-154 evolution), not this decision's.
+- **Correction is not ruled out permanently.** It returns as a live option if FT.3.1 task 5's
+  confusion matrix shows a near-zero confident-wrong rate on the synthetic wrong-level set. Until
+  then it is a hypothesis, not a plan.
+- FT.3.1's detector is what makes this decision actionable — without a blind wrong-level signal
+  there is nothing to gate on. This decision sets that increment's target, not the reverse: a
+  detector that declines correctly is a win even if it never corrects anything.
+
+**Explicitly not decided here.** Whether the level is detectable blind at all. FT.3.1 task 3 has a
+hard stop for the case where nothing separates the synthetic 2× and ½× cases; if that is the
+result, this decision still stands and simply has no trigger, which is the status quo stated
+honestly rather than a regression.
+
+**References.** D-205 (AMLt gating + meter as a hard gate — the tension this resolves), D-207 (the
+decline contract this extends), D-208 + FT.1 amendment (why the activation stream is out), D-171 /
+D-173 (the presets that consume bar position), D-154 → CNF.2 (graded degradation), D-004 (beats are
+accents, not the primary driver), BUG-009 / QR.1 (halving-only octave correction),
+`docs/diagnostics/FT3_BARLINE_TASKS_1_3_2026-07-31.md`,
+`docs/diagnostics/BEATBENCH_BASELINE_2026-07-30.md`,
+`docs/prompts/FT31_GRID_METRICAL_LEVEL.md` §10.
