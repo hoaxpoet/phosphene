@@ -32,7 +32,8 @@ public enum ParticleGeometryRegistry {
         "Mitosis",
         "Cytokinesis",
         "Ricercar",
-        "Cymatic Resonance"
+        "Cymatic Resonance",
+        "Witchlight"
     ]
 }
 
@@ -52,6 +53,11 @@ public enum StatefulRuntimeRegistry {
         "Skein",
         "Aurora Veil",
         "Nimbus",
-        "Lumen Mosaic"
+        "Lumen Mosaic",
+        // Witchlight is a `particles` preset whose geometry needs ONE thing the
+        // `ParticleGeometry.update` signature cannot carry: the CPU-only
+        // `StructuralPrediction`. It binds a tick (no slot-6 buffer) purely to feed
+        // `WitchlightStroke.path.ingestStructure` — the Skein.ENGINE.3 / D-151 bridge.
+        "Witchlight"
     ]
 }

@@ -289,6 +289,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// (Mitosis gen-2) — explicit per-cell `ParticleGeometry` (D-097, MITOSIS-G2.1).
     var cytokinesisGeometry: (any ParticleGeometry)?
 
+    /// Harmonic light-painting stroke for the Witchlight preset — a CPU-side bead ring
+    /// buffer drawn as beaded sprites + a thread (D-097, WL.2). Built eagerly like Filigree.
+    var witchlightGeometry: (any ParticleGeometry)?
+
     /// Fluid dye simulation + glow ribbons for the Ricercar preset (Fantasia rebuild)
     /// — Stam stable-fluids `ParticleGeometry` (D-097, RICERCAR-FL.5).
     var ricercarGeometry: (any ParticleGeometry)?
@@ -931,6 +935,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         self.cytokinesisGeometry = Self.makeCytokinesisGeometry(context: ctx, library: lib)
         self.ricercarGeometry = Self.makeRicercarGeometry(context: ctx, library: lib)
         self.cymaticSandGeometry = Self.makeCymaticSandGeometry(context: ctx, library: lib)
+        self.witchlightGeometry = Self.makeWitchlightGeometry(context: ctx, library: lib)
         self.moodClassifier = classifier
         self.stemAnalyzer = analyzer
         self.stemSeparator = sep
@@ -1301,8 +1306,28 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         case "Cytokinesis": return cytokinesisGeometry
         case "Ricercar":    return ricercarGeometry
         case "Cymatic Resonance": return cymaticSandGeometry
+        case "Witchlight":  return witchlightGeometry
         default:            return nil
         }
+    }
+
+    /// Build the harmonic light-painting stroke for the Witchlight preset
+    /// (`WitchlightStroke` + `Renderer/Shaders/Witchlight.metal`, WL.2). Returns
+    /// `any ParticleGeometry` (D-097, siblings not subclasses).
+    private static func makeWitchlightGeometry(
+        context: MetalContext,
+        library: Renderer.ShaderLibrary
+    ) -> (any ParticleGeometry)? {
+        guard let stroke = try? WitchlightStroke(
+            device: context.device,
+            library: library.library,
+            configuration: WitchlightConfiguration(),
+            pixelFormat: context.pixelFormat
+        ) else {
+            return nil
+        }
+        logger.info("Witchlight created: \(WitchlightConfiguration().beadCapacity)-bead harmonic stroke")
+        return stroke
     }
 
     /// Build the vibrating-sand Chladni simulation for the Cymatic Resonance preset

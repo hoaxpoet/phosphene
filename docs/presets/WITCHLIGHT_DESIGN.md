@@ -164,6 +164,17 @@ These change the design and are the reason §§3–7 are gated on this table rat
 
 ## 3. Motion model and temporal contract
 
+> **Amended 2026-07-31 (WL.2/WL.3 integration).** §3.1(a)/(b) as first written steered from the *absolute* smoothed harmonic phase. Two parallel sessions independently falsified that against the §2 captures and independently adopted the same replacement — a circular **deviation** steer:
+>
+> ```
+> home = circEMA(tonal_phase_fifths, τ ≈ 8 s)      // the track's tonal home
+> δ    = wrap(φ̄ − home)                             // the excursion that carries the information
+> θ̇    = clamp(g · δ, ±ω_max)                       // g normalised per track against |δ|
+> ```
+>
+> Sitting in the home key draws a straight run; leaving it bends the stroke; returning straightens it. **The concept, the divergence axis and the musical-role sentence are unchanged** — only how the primitive is read. Full rationale, both routes to it, and the metric caution: D-209 amendment + `docs/diagnostics/WL2A_PEN_KINEMATICS_2026-07-31.md` + `docs/diagnostics/WL2A_HEADING_AB_2026-07-31.md`.
+
+
 §2.4 signed off by Matt, 2026-07-31. This section is written against the measured table, not against nominal ranges.
 
 ### 3.0 Musical role — final
