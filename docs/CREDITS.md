@@ -135,6 +135,22 @@ SHA-256 is retained in the sidecar as provenance).
 | `Floret` | `suksma - Rovastar - Sunflower Passion (Enlightment Mix)_Phat_edit + flexi und martin shaders - circumflex in character classes in regular expression` | suksma, Rovastar, Flexi, Martin |
 | `DragonBloom` | `$$$ Royal - Mashup (220)` | $$$ Royal mashup series (multiple component authors) |
 | `FataMorgana` | `martin [shadow harlequins shape code] - fata morgana` | Martin |
+| `Witchlight` | `martin - witchcraft reloaded` | Martin |
+
+**Reference-image attribution (`docs/VISUAL_REFERENCES/`).** The Witchlight
+reference set (WL.1) is eleven license-verified images from Wikimedia
+Commons; the full per-file provenance table is in
+[`docs/VISUAL_REFERENCES/witchlight/README.md`](VISUAL_REFERENCES/witchlight/README.md)
+§Provenance. Two carry attribution obligations that are restated here:
+
+| File | Author | License |
+|---|---|---|
+| `09_lighting_filament_halo_falloff.jpg` (*Centre d'une lampe à plasma 1*) | Yebaco | **CC BY-SA 4.0** — share-alike; unmodified apart from re-encode/downscale |
+| `01` / `10` (*051111-014 CPS*, *051111-063 CPS*) | Chris Sampson | CC BY 2.0 |
+| `03_micro_spark_head_burst.jpg` | jansku136 | CC BY 3.0 |
+| `06_atmosphere_violet_nebula_ground.jpg` | Brainandforce | CC BY 4.0 |
+| `07_palette_star_density_true_black.jpg` | Andy Weeks | CC BY 2.0 |
+| `11_anti_uniform_glow_tube.jpg` | Jurii | CC BY 3.0 |
 
 **Modifications:** These are **inspired-by works, not ports of record**
 (D-113): each is authored from scratch on Phosphene's primitives

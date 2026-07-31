@@ -236,6 +236,15 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // determinism, soak) is SkeinCanvasHoldTest.
     "Skein": (steady: 0x8080808080808080, beatHeavy: 0x8080808080808080, quiet: 0x8080808080808080),
     "Spectral Cartograph": (steady: 0x00180C0C0C0C0000, beatHeavy: 0x00180C0C0C0C6080, quiet: 0x00180C0C0C0C0000),
+    // WL.2 Witchlight (feedback + particles): unlike the other particle presets its
+    // `pipelineState` is NOT a black ground — `witchlight_sky_fragment` is a real procedural
+    // backdrop (three parallax star layers + the violet bloom), so the hash has content and
+    // is worth pinning. It captures the BACKDROP only: the ribbon is CPU geometry drawn by
+    // WitchlightStroke, which this single-frame harness does not attach. That is the right
+    // division — the ribbon's temporal behaviour is gated by
+    // WitchlightStrokeAccumulationTest, which a dHash could never see.
+    // The three fixtures differ, which is the star-parallax + bloom-hue routes responding.
+    "Witchlight": (steady: 0x0B191335373D5C35, beatHeavy: 0x0B191335373D1C35, quiet: 0x0B391335373D5C35),
     "Staged Sandbox": (steady: 0x000022160A162A00, beatHeavy: 0x000022160A162A00, quiet: 0x000022160A162A00),
     // BUG-034 (2026-06-12, M7-lite approved): regen at the live 128-step budget.
     // Terrain now reaches the true horizon (the old "sky holes" at distance

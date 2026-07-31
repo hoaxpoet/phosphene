@@ -138,6 +138,16 @@ private let expectedAutomatedGate: [String: Bool] = [
                                      // SkeinCanvasHoldTest's real-stem gates. Skein.6 / D-159.
     "Spectral Cartograph":  true,    // lightweight; L1+L2+L3 all pass
     "Volumetric Lithograph": false,  // full; M3 fails — mat_* cookbook not yet called
+    "Witchlight":           false,   // lightweight; L1 pass (silence renders the star field + bloom
+                                     // + residual trail), L3 pass (0.6 ms tier2 vs a 16.6 ms budget),
+                                     // L2 fails BY CONSTRUCTION — every Witchlight deviation primitive
+                                     // (tonalPhaseFifths via the circular EMA, arousal against its own
+                                     // running spread, bassDev against a running per-track reference)
+                                     // is consumed CPU-side in WitchlightPath and reaches the GPU as a
+                                     // frozen bead colour or a bounded scalar, so the MSL-source
+                                     // heuristic cannot see it. The Filigree / Mitosis / Cytokinesis /
+                                     // Cymatic Resonance / Skein / Lumen precedent exactly. L4 is
+                                     // manual and awaits Matt's M7. WL.2, certified: false.
     "Waveform":             false,   // lightweight; L2 fails — no deviation primitives in source
     // PUB.3 backfill — the 9 presets the dict silently omitted, locked at
     // their measured values (each certified preset's load-bearing gate is

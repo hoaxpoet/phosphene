@@ -1,0 +1,347 @@
+// WitchlightPath — the pen, the trail, and the music that steers them.
+//
+// Pure CPU model, no Metal: `WitchlightStroke` owns the buffers and pipelines and calls
+// `advance` once per frame; this file owns everything that decides WHERE the pen goes and
+// WHAT COLOUR it lays down. Split out so the path generator is unit-testable against
+// synthetic driver inputs without a GPU (`WitchlightPathTests`).
+//
+// The three mechanisms, in the order `advance` runs them (WITCHLIGHT_DESIGN §3.1):
+//
+//   (a) HEADING — the harmonic steer. `tonalPhaseFifths` is a ±π circular quantity with a
+//       measured median per-frame step of 0.31–1.04 rad, far too noisy to steer a pen raw.
+//       It is smoothed by the CR.1.2 / D-198 mechanism already shipped in Phosphene: EMA
+//       the sin and cos separately and recombine with `atan2`. NEVER EMA the raw sawtooth.
+//
+//   (b) ADVANCE — bounded-curvature kinematics (Dubins 1957). The pen does not move TO a
+//       harmonic position; it advances at a governed speed along a heading, and harmony
+//       controls only how fast that heading turns. With fixed speed v and turn rate
+//       clamped to ±v/R_min, every arc has radius ≥ R_min — so the pen cannot draw
+//       anti-reference `10` (a ball of yarn IS a sequence of sub-pixel-radius reversals).
+//       This is the rate governance WITCHLIGHT_DESIGN §2.3 item 3 requires as a mechanism:
+//       the measured ~10× cross-track spread in the harmonic rate lives entirely in the
+//       CURVATURE term, and curvature is clamped.
+//
+//   (c) RELAXATION — age-weighted neighbour averaging (discrete Laplacian curve smoothing,
+//       the Taubin λ|μ family). Full weight on beads younger than ~1 s, zero by ~4 s, and
+//       FROZEN beyond. The source relaxes its whole buffer forever, which is why its figure
+//       slumps; freezing the old part is what makes "a drawing of where the song has been"
+//       true rather than decorative.
+//
+// Deviation semantics throughout (D-026 / FA #31): every driver is read against a
+// per-track running reference, never against an absolute level on an AGC-normalized value.
+
+import Foundation
+import Shared
+
+// MARK: - WitchlightPath
+
+/// The pen, the ring buffer, and the music envelopes that drive them.
+///
+/// Not thread-safe by itself; `WitchlightStroke` owns the only instance and touches it
+/// from the render loop only.
+/// Setter access note: the members the `+Events` extension mutates are `internal(set)`
+/// rather than `private(set)` — Swift's file-scoped `private` cannot span the two files the
+/// lint budget requires. The public read-only surface is unchanged.
+public final class WitchlightPath {
+
+    public private(set) var tuning: WitchlightTuning
+
+    /// The trail, oldest first. Rebuilt in emission order every frame so the line strip
+    /// has no wrap seam — 1024 × 32 B is a trivial per-frame cost.
+    public internal(set) var beads: [WitchlightBead] = []
+
+    // Pen state.
+    public private(set) var heading: Float = 0
+    var penX: Float = 0
+    var penY: Float = 0
+    var emitAccumulator: Float = 0
+
+    // Harmonic state — sin/cos accumulators, NEVER the raw ±π sawtooth.
+    private var phaseSin: Float = 0
+    private var phaseCos: Float = 1
+    private var previousPhase: Float = 0
+    private var phaseRate: Float = 0
+    /// Smoothed harmonic phase φ̄, radians. Also the hue source (§3.4).
+    public var smoothedPhase: Float { atan2(phaseSin, phaseCos) }
+
+    // Tonal "home" — a long-τ circular mean of φ̄, for `.curvatureDeviation`.
+    /// Running estimate of |deviation from tonal home|, for the per-track gain.
+    private var deviationScale: Float = 0.3
+
+    private var homeSin: Float = 0
+    private var homeCos: Float = 1
+    /// Wrapped excursion of φ̄ from the track's tonal home, radians (±π).
+    public var phaseFromHome: Float {
+        var delta = smoothedPhase - atan2(homeSin, homeCos)
+        while delta > .pi { delta -= 2 * .pi }
+        while delta < -.pi { delta += 2 * .pi }
+        return delta
+    }
+
+    // Turn detection.
+    private var turnSign: Float = 0
+    private var turnCandidateSign: Float = 0
+    private var turnCandidateAge: Float = 0
+    private var turnCandidateBeadIndex: Int?
+    var hueTurnOffset: Float = 0
+    /// Confirmed turns since `reset()` — the §3.2 chord-change event count.
+    public internal(set) var turnCount: Int = 0
+
+    // Arousal running reference (deviation semantics — no absolute level on `arousal`).
+    private var arousalSlow: Float = 0
+    private var arousalSpread: Float = 0.15
+
+    // Head flare.
+    var bassDevSlow: Float = 0
+    var flareRefractoryRemaining: Float = 0
+    var flareGoal: Float = 0
+    var flareHold: Float = 0
+    /// Current flare amplitude, 0…`flareCeiling`. Bounded by the §5 budget.
+    public internal(set) var flareIntensity: Float = 0
+    /// Flare firings since `reset()`.
+    public internal(set) var flareCount: Int = 0
+
+    // Bar promotion.
+    var previousBarPhase: Float = 0
+    var promoteNextBead = false
+    /// Downbeat beads set since `reset()`.
+    public internal(set) var promotionCount: Int = 0
+
+    // Section contraction.
+    private var previousSectionIndex: UInt32?
+    var contractGoal: Float = 0
+    var contractHold: Float = 0
+    var contraction: Float = 0
+    /// Section boundaries ingested since `reset()`.
+    public internal(set) var sectionEventCount: Int = 0
+
+    // View framing (a VIEW property, not a path property — see `advance`).
+    public internal(set) var centroidX: Float = 0
+    public internal(set) var centroidY: Float = 0
+    public internal(set) var viewScale: Float = 1
+    var rmsRadius: Float = 0.4
+
+    // Plane tumble.
+    private var tumbleClock: Float = 0
+    public var tumbleYaw: Float { 0.055 * tumbleClock }
+    public var tumblePitch: Float { 0.45 * sin(0.041 * tumbleClock) }
+    public var tumbleRoll: Float { 0.19 * sin(0.027 * tumbleClock + 1.1) }
+
+    /// Current visible age window after section contraction.
+    public internal(set) var trailWindow: Float = 30
+
+    // Instrumentation — WITCHLIGHT_DESIGN §3.1(b) requires WL.2 to REPORT the fraction of
+    // frames spent at the turn-rate clamp on each of the four §2 captures. If a capture
+    // sits at the clamp > 80 % of the time the figure degenerates to a circle and
+    // `steerGain` comes down; `minTurnRadius` does not go up.
+    public private(set) var frameCount: Int = 0
+    public private(set) var clampedFrameCount: Int = 0
+    /// ∫|φ̄̇| dt — how far the smoothed harmonic phase travelled, radians. The design's
+    /// §2.3 measurement quotes this as "circles over 30 s" (2.1 / 1.7 / 15.4 on the
+    /// fixtures); reproducing it here is what proves the steer is reading the real driver.
+    public private(set) var phaseTravel: Float = 0
+    /// ∫|θ̇| dt — how far the PEN's heading actually turned, radians. `phaseTravel × k`
+    /// before clamping; the gap between them is what the clamp removed.
+    public private(set) var headingTravel: Float = 0
+    /// Net signed heading change. `|headingNet| / headingTravel` near 1 means the pen turned
+    /// one way the whole time — the "degenerates to a circle" state design §3.1(b) warns
+    /// about when the clamp saturates. Near 0 means it reversed, which is a figure.
+    public private(set) var headingNet: Float = 0
+    public var headingMonotonicity: Float {
+        headingTravel > 1e-4 ? abs(headingNet) / headingTravel : 0
+    }
+    public var clampedFraction: Float {
+        frameCount > 0 ? Float(clampedFrameCount) / Float(frameCount) : 0
+    }
+
+    public init(tuning: WitchlightTuning = WitchlightTuning()) {
+        self.tuning = tuning
+        self.trailWindow = tuning.trailSeconds
+        beads.reserveCapacity(capacity)
+    }
+
+    /// Ring capacity: `trailSeconds × emissionHz`, rounded up to the next power of two.
+    var capacity: Int { 1024 }
+
+    // MARK: - Lifecycle
+
+    /// Clear the pen, the trail and every envelope.
+    ///
+    /// Called on preset-apply AND on track change. The `LumenPatternEngine`
+    /// `resetBeatTrackingState` precedent is load-bearing for the same reason: a stale φ̄
+    /// or `previousBarPhase` across a track boundary lays down a wrong-coloured or
+    /// spuriously-promoted first bead.
+    public func reset() {
+        beads.removeAll(keepingCapacity: true)
+        heading = 0; penX = 0; penY = 0; emitAccumulator = 0
+        phaseSin = 0; phaseCos = 1; previousPhase = 0; phaseRate = 0
+        homeSin = 0; homeCos = 1
+        turnSign = 0; turnCandidateSign = 0; turnCandidateAge = 0
+        turnCandidateBeadIndex = nil; hueTurnOffset = 0; turnCount = 0
+        arousalSlow = 0; arousalSpread = 0.15
+        bassDevSlow = 0; flareRefractoryRemaining = 0
+        flareGoal = 0; flareHold = 0; flareIntensity = 0; flareCount = 0
+        previousBarPhase = 0; promoteNextBead = false; promotionCount = 0
+        previousSectionIndex = nil; contractGoal = 0; contractHold = 0; contraction = 0
+        sectionEventCount = 0
+        centroidX = 0; centroidY = 0; viewScale = 1; rmsRadius = 0.4
+        tumbleClock = 0
+        trailWindow = tuning.trailSeconds
+        frameCount = 0; clampedFrameCount = 0; phaseTravel = 0; headingTravel = 0; headingNet = 0
+        deviationScale = 0.3
+    }
+
+    /// Ingest the live structural-section prediction.
+    ///
+    /// Delivered by the app layer through the `RenderPipeline.latestStructuralPrediction`
+    /// bridge (the Skein.ENGINE.3 / D-151 precedent) because `StructuralPrediction` is
+    /// CPU-only and does not reach the `ParticleGeometry.update` signature.
+    public func ingestStructure(_ structure: StructuralPrediction) {
+        defer { previousSectionIndex = structure.sectionIndex }
+        guard let previous = previousSectionIndex, previous != structure.sectionIndex else { return }
+        contractGoal = 1
+        contractHold = 0.4
+        sectionEventCount += 1
+    }
+
+    // MARK: - Per-frame advance
+
+    /// Advance one frame: steer, move, emit, age, relax, reframe.
+    public func advance(deltaTime: Float, features: FeatureVector, stems: StemFeatures) {
+        let dt = min(max(deltaTime > 0 ? deltaTime : 1.0 / 60.0, 1.0 / 240.0), 1.0 / 30.0)
+        frameCount += 1
+        tumbleClock += dt
+
+        let stemTotal = stems.drumsEnergy + stems.bassEnergy + stems.otherEnergy + stems.vocalsEnergy
+        let mixEnergy = features.bass + features.mid + features.treble
+        // D-037: at true silence the pen keeps advancing with zero turn rate, laying a
+        // slow straight stroke — "the pen still moving, with nothing to say".
+        let silent = stemTotal <= 0 && mixEnergy <= 0
+
+        advanceHarmonicPhase(dt: dt, features: features)
+        let speed = advancePen(dt: dt, features: features, silent: silent)
+        advanceTurnDetection(dt: dt, silent: silent)
+        advanceFlare(dt: dt, features: features)
+        advanceContraction(dt: dt)
+        emit(dt: dt, features: features, speed: speed)
+        ageAndExpire(dt: dt)
+        relax(dt: dt)
+        reframe(dt: dt)
+    }
+
+    // MARK: - (a) Harmonic steer
+
+    private func advanceHarmonicPhase(dt: Float, features: FeatureVector) {
+        let alpha = dt / (tuning.phaseTau + dt)
+        let raw = features.tonalPhaseFifths
+        phaseSin += (sin(raw) - phaseSin) * alpha
+        phaseCos += (cos(raw) - phaseCos) * alpha
+        let homeAlpha = dt / (tuning.homeTau + dt)
+        homeSin += (sin(raw) - homeSin) * homeAlpha
+        homeCos += (cos(raw) - homeCos) * homeAlpha
+        let phi = atan2(phaseSin, phaseCos)
+        // Wrapped difference — the phase is circular, so a −π→+π step is a small move.
+        var delta = phi - previousPhase
+        while delta > .pi { delta -= 2 * .pi }
+        while delta < -.pi { delta += 2 * .pi }
+        previousPhase = phi
+        // NO second smoothing stage. φ̄ is ALREADY the CR.1.2-smoothed phase, and an extra
+        // EMA on its signed rate cancels the reversals that carry the harmonic motion:
+        // measured, it cut the phase travel from the design §2.3 figures (2.1 / 1.7 / 15.4
+        // circles per 30 s) to 0.85 / 1.09 / 3.95, and the pen drew a straight line. The
+        // derivative of an EMA-smoothed circular phase needs no further filtering.
+        phaseRate = delta / dt
+    }
+
+    // MARK: - (b) Bounded-curvature advance
+
+    /// Returns the speed used this frame (world units/second).
+    private func advancePen(dt: Float, features: FeatureVector, silent: Bool) -> Float {
+        // Arousal against its own running spread — the per-track normalization the
+        // measured 0.44–1.57 cross-capture range demands (§2.1).
+        let slowAlpha = dt / (20.0 + dt)
+        arousalSlow += (features.arousal - arousalSlow) * slowAlpha
+        arousalSpread += (abs(features.arousal - arousalSlow) - arousalSpread) * slowAlpha
+        let arousalNorm = max(-1, min(1, (features.arousal - arousalSlow) / (2 * max(arousalSpread, 0.05))))
+
+        let speed = tuning.baseSpeed * (1 + tuning.speedModDepth * arousalNorm)
+        // ω_max derived from the speed so the ≥ 8 %-of-frame-height turning-radius bound
+        // holds exactly at every speed, rather than only at the nominal one.
+        let omegaMax = speed / max(tuning.minTurnRadius, 1e-4)
+
+        // WL.3 SPIKE — three candidate steer models, selected by `tuning.steerMode`.
+        // See WitchlightTuning.SteerMode for what each one maps to what.
+        let desired: Float
+        switch tuning.steerMode {
+        case .turnRate:
+            desired = silent ? 0 : tuning.steerGain * phaseRate
+        case .curvature:
+            desired = silent ? 0 : tuning.curvatureGain * smoothedPhase
+        case .curvatureDeviation:
+            // Per-track gain: scale the deviation against a running estimate of its own
+            // magnitude so a track that barely leaves its tonal home still draws a figure.
+            // See `WitchlightTuning.normaliseDeviationGain`.
+            let deviation = phaseFromHome
+            if tuning.normaliseDeviationGain {
+                let alpha = dt / (4.0 + dt)
+                deviationScale += (max(abs(deviation), 0.05) - deviationScale) * alpha
+                let gain = 0.85 * omegaMax / max(0.05, deviationScale)
+                desired = silent ? 0 : gain * deviation
+            } else {
+                desired = silent ? 0 : tuning.curvatureGain * deviation
+            }
+        }
+        let turnRate = max(-omegaMax, min(omegaMax, desired))
+        if !silent && abs(desired) >= omegaMax { clampedFrameCount += 1 }
+
+        phaseTravel += abs(phaseRate) * dt
+        headingTravel += abs(turnRate) * dt
+        headingNet += turnRate * dt
+        heading += turnRate * dt
+        penX += speed * dt * cos(heading)
+        penY += speed * dt * sin(heading)
+        return speed
+    }
+
+    // MARK: - Turn detection (the chord-change colour boundary)
+
+    private func advanceTurnDetection(dt: Float, silent: Bool) {
+        guard !silent else { turnCandidateAge = 0; return }
+        let sign: Float = phaseRate > 0.02 ? 1 : (phaseRate < -0.02 ? -1 : 0)
+        guard sign != 0 else { turnCandidateAge = 0; return }
+        if sign != turnSign {
+            if sign == turnCandidateSign {
+                turnCandidateAge += dt
+                if turnCandidateAge >= tuning.turnConfirmSeconds {
+                    confirmTurn(newSign: sign)
+                }
+            } else {
+                turnCandidateSign = sign
+                turnCandidateAge = 0
+                // Remember the apex so the hue step lands where the stroke actually
+                // turned, not where the reversal was confirmed 0.25 s later.
+                turnCandidateBeadIndex = beads.count
+            }
+        } else {
+            turnCandidateAge = 0
+        }
+    }
+
+    private func confirmTurn(newSign: Float) {
+        turnSign = newSign
+        turnCandidateAge = 0
+        turnCount += 1
+        hueTurnOffset += tuning.turnHueStep
+        // Retro-apply the step to the beads laid since the apex (≤ ~9 beads) so the
+        // boundary in the ribbon coincides with the corner in the figure.
+        if let apex = turnCandidateBeadIndex, apex < beads.count {
+            for index in apex..<beads.count {
+                let rgb = Self.hsvToRGB(hue: hueForPhase(smoothedPhase), saturation: 0.80, value: 1.0)
+                beads[index].colR = rgb.x
+                beads[index].colG = rgb.y
+                beads[index].colB = rgb.z
+            }
+        }
+        turnCandidateBeadIndex = nil
+    }
+}
