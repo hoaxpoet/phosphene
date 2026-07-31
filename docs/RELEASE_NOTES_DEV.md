@@ -35,6 +35,8 @@ The cause is mechanism-level, and it was isolated rather than guessed. Under §3
 
 Matt was being billed for GitHub LFS storage. A branch existed to fix it (`claude/lfs-charges-gitignore-ecd130`) and bundled two changes; **one was sound and one did the opposite of what it intended.** Split, landed the good half, redid the other.
 
+**Operator note, learned the hard way when this branch merged it:** pulling the cutover **deletes your local weight files** — they were tracked, the merge removes them, and 479 `.bin` files vanish from disk. Every ML test then fails with `graphBuildFailed`. The fix is one command, and it is the whole point of the design: **`Scripts/fetch_weights.sh`** re-downloads and verifies all 482 files. The same happens to reference images, except nothing fails — they just quietly aren't there (which is why `link_fixtures.sh` now symlinks them).
+
 **Sound and landed as-is — the weights cutover (PUB.2).** The ~167 MB of ML weights now ship as the `ml-weights-v1` GitHub Release asset, fetched and verified by `Scripts/fetch_weights.sh`. CI swaps `git lfs pull` for the fetch script and re-keys its cache on `SHA256SUMS`; `Scripts/check_lfs_smudged.sh` is removed because it guarded a smudge that can no longer happen and would have passed vacuously. Precondition verified before landing, since getting it wrong breaks every clone: the release exists (2026-07-22) and the fetch script is idempotent.
 
 **Backwards, and redone — the image half (D-211).** It added `.gitignore` rules for `docs/VISUAL_REFERENCES` + `docs/diagnostics` images and dropped their LFS filter, but **never ran `git rm --cached`**. `.gitignore` does not affect already-tracked paths, so the files stayed tracked and — with the filter gone — became full blobs:
