@@ -1,5 +1,8 @@
-PhospheneEngine/Sources/ML/Weights/*.bin filter=lfs diff=lfs merge=lfs -text
-PhospheneEngine/Sources/ML/Weights/**/*.bin filter=lfs diff=lfs merge=lfs -text
+# ML weights ship as the ml-weights-v1 GitHub Release asset, fetched by
+# Scripts/fetch_weights.sh (PUB.2 cutover) — no longer in git or LFS. Only the
+# SHA256SUMS manifest is tracked; it drives fetch + verification. Do NOT re-add
+# *.bin LFS rules here: LFS storage and bandwidth are billed, and a full-LFS CI
+# checkout blew the 10 GB/mo quota 5.5x in three days (CLEAN.5.8).
 docs/VISUAL_REFERENCES/**/*.jpg filter=lfs diff=lfs merge=lfs -text
 docs/VISUAL_REFERENCES/**/*.png filter=lfs diff=lfs merge=lfs -text
 docs/VISUAL_REFERENCES/**/*.gif filter=lfs diff=lfs merge=lfs -text
