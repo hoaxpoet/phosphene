@@ -3086,6 +3086,32 @@ exhausted and the model-family question becomes real. If they improve, DBN.3 com
 unchanged. **No model-family question should be opened before FT.1 reports.** The measured
 findings above stand exactly as recorded; only the inference drawn from them is narrowed.
 
+**AMENDMENT RESOLVED (2026-07-31, FT.1 ran the same day) — the confound is controlled for and
+D-208's original conclusion STANDS.** Full-track tiled activations (13–25 windows per track,
+13k–22k frames vs 1500) improved **nothing**:
+
+| track | truth | 30 s resolver / decoder | full-track resolver / decoder |
+|---|---|---|---|
+| billie_jean | 4 | 4 ✓ / 4 ✓ | 4 ✓ / 4 ✓ |
+| money | 7 | 1 ✗ / declined | 2 ✗ / 4 ✗ |
+| solsbury_hill | 7 | 1 ✗ / declined | 1 ✗ / declined |
+| take_five | 5 | 2 ✗ / 4 ✗ | 2 ✗ / declined |
+| bohemian_rhapsody | 4 | 2 ✗ / **4 ✓** | 3 ✗ / declined |
+| bleed | 4 | 4 ✓ / 4 ✓ | 2 ✗ / 4 ✓ |
+
+**Improved: none. Regressed: bohemian_rhapsody.** Giving the model 13–25× more context does not
+recover a single odd meter, so **the 30 s window was not the confound and the evidence really is
+thin**. The amendment was the right call procedurally — the confound was untested and testing it
+was cheap — but its implied hope was wrong, and the original inference is now *better* supported
+than when first written. **The model-family question is open.**
+
+*Unproven observation worth recording, not acted on:* the full-track resolver's meter moves around
+a lot and `bleed` regresses on it. Averaging overlapping windows is a low-pass on the activation
+timeline, and a downbeat stream whose problem is already weak discrimination may be made worse by
+smoothing. A tapered (centre-weighted) overlap is the obvious alternative to plain averaging. Not
+attempted — the two-strikes rule applies, and this would be a third observation-model-shaped
+iteration inside one line of work.
+
 **Code retention — a deliberate keep, with a deletion trigger.** D-097 says deleted-concept code
 does not earn preservation as "reusable infrastructure", so the keep is stated rather than
 assumed. Retained: `BeatThisModel.Variant`, the external `weightsDirectory` seam, and
