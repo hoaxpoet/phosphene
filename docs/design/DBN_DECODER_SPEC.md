@@ -526,6 +526,55 @@ Option 2 is the most principled — the model should say "a bar line is here", n
 
 ---
 
+## 9.7 §5.1 fixed — the bias is gone, and the evidence turns out to be thin
+
+Implemented at Matt's direction after §9.6. Three versions, each diagnosed from a measured
+mechanism rather than swept.
+
+| version | downbeat evidence | raw meter correct | margin usable? |
+|---|---|---|---|
+| A — as specified in §5.1 | `w·log(d)` at the bar line, `w·log(1−d)` at every other beat | 3/6 | yes (correct min 0.144) |
+| B — centred log-odds, whole beat window | `w·(L−L̄)` across beat 0's window | 3/6 | yes (correct min 0.199) |
+| **C — centred log-odds, bar position only** | `w·(L−L̄)` at the bar position | **4/6** | **no — fully overlapping** |
+
+`L = log(d/(1−d))`, `L̄` its mean over frames with `beatProb > 0.5`.
+
+**Why centring.** A constant downbeat stream must score every meter identically — only
+*variation* in `d` may discriminate. A raises `w·log(1−d)` on `(B−1)/B` of beats, so larger
+meters pay more for being larger (§9.6, 18 nats per unit weight). Naively deleting that term
+inverts the bias, because `w·log(d)` at the bar line is negative and fewer bar lines is then
+cheaper. Centring on `L̄` makes constant `d` contribute exactly zero at any `B`.
+
+**Why bar position only.** B still lost. The beat window is ~2 frames wide and its second frame
+is a non-beat frame where the downbeat activation has already collapsed (`d ≈ 0.02`, so
+`L − L̄ ≈ −5.7`). Charging that to every bar line reintroduced a count bias — this time favouring
+*large* meters. Measured: on the degenerate fixture meter 4 placed **11/11** bar lines correctly
+and still lost to meter 7's **1/6** by 78 nats, against 74 predicted by exactly this effect. C
+samples the bar-line term at the bar position only; meter 4 then places 12/12 and wins.
+
+**What the fix bought, and what it exposed.**
+
+* **First odd meter ever recovered:** solsbury_hill's raw winner is now **7** (−3871, beating 4's
+  −3885). Raw accuracy 3/6 → 4/6.
+* **But the margins collapsed.** Correct now spans 0.0097–0.5534 and wrong spans 0.0155–0.1085 —
+  a *wrong* answer (money) outscores a *right* one (solsbury_hill). With the model bias removed,
+  what is left is the evidence itself, and it is thin: the decoder is right by a hairline when it
+  is right at all.
+
+That is the honest state. **The remaining gap is evidence quality, not model bias** — consistent
+with DBN.1's finding that the downbeat stream is near-degenerate on exactly these tracks. money
+and take_five still decode as 4 and no threshold rescues them.
+
+**Stopping here per the two-strikes rule.** Three observation-model iterations in one increment,
+each an improvement with a measured mechanism, ending in a model with no known bias. Continuing
+would be tuning against thin evidence, which is the pattern the rule exists to stop. DBN.3
+inherits two questions that need a changed premise rather than another sweep: whether a better
+confidence signal than the raw margin exists, and whether the downbeat stream can be improved at
+source (MDL's `final0` A/B is the obvious candidate — the plan already expects it to help
+suites 2 and 4).
+
+---
+
 ## 10. Sources
 
 - Krebs, Böck & Widmer. *An Efficient State-Space Model for Joint Tempo and Meter Tracking.*

@@ -221,7 +221,7 @@ struct BeatActivationDecoderTests {
         guard ProcessInfo.processInfo.environment["PHOSPHENE_DBN2_SWEEP"] == "1" else { return }
         let (b, d) = Self.synth(bpm: 120, meter: 4, seconds: 24,
                                 downbeatOnEveryBeat: true, offBeatDownbeatLevel: 0.80)
-        for weight in [1.0, 2.0, 3.0, 5.0, 8.0, 12.0, 20.0] {
+        for weight in [0.0, 0.5, 1.0, 2.0, 5.0, 10.0] {
             let r = Self.decoder(downbeatWeight: weight).decode(
                 beatProbs: b, downbeatProbs: d, frameRate: Self.frameRate, tempoHintBPM: 120
             )
@@ -229,6 +229,27 @@ struct BeatActivationDecoderTests {
                 .map { "\($0.key):\(String(format: "%.1f", $0.value))" }.joined(separator: " ")
             print(String(format: "  w=%5.1f  meter=%@  margin=%.5f   %@",
                          weight, String(describing: r.beatsPerBar), r.meterMargin, ll))
+        }
+    }
+
+    @Test("DBN.2 diag: where does each meter place its bar lines on the degenerate fixture?")
+    func test_degenerateBarLinePlacement() {
+        guard ProcessInfo.processInfo.environment["PHOSPHENE_DBN2_SWEEP"] == "1" else { return }
+        let (b, d) = Self.synth(bpm: 120, meter: 4, seconds: 24,
+                                downbeatOnEveryBeat: true, offBeatDownbeatLevel: 0.80)
+        // True bar lines are every 4th beat at 120 BPM => every 2.0 s starting at 0.
+        for meter in [4, 7] {
+            var t = BeatActivationDecoder.Tunables()
+            t.meterHypotheses = [meter]
+            t.meterMarginThreshold = 0
+            let r = BeatActivationDecoder(tunables: t).decode(
+                beatProbs: b, downbeatProbs: d, frameRate: Self.frameRate, tempoHintBPM: 120
+            )
+            let db = r.downbeats.prefix(8).map { String(format: "%.2f", $0) }.joined(separator: " ")
+            // How many decoded downbeats land on a TRUE bar line (multiple of 2.0 s)?
+            let onTrue = r.downbeats.filter { abs(($0 / 2.0).rounded() * 2.0 - $0) < 0.06 }.count
+            print("  meter \(meter): beats=\(r.beats.count) downbeats=\(r.downbeats.count) "
+                  + "onTrueBarLine=\(onTrue)/\(r.downbeats.count)  first: \(db)")
         }
     }
 
