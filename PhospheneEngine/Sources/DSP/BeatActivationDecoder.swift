@@ -82,31 +82,32 @@ public struct BeatActivationDecoder: Sendable {
         /// Per-frame log-likelihood margin below which the decoder declines to name a
         /// meter (D-207: "decline when unsure").
         ///
-        /// **Set from data, per D-207.** `DecoderMarginCalibrationTests` measured the
-        /// margin on all 9 ground-truthed tracks with the incumbent BPM as the hint:
+        /// **Set from data, per D-207**, and re-derived after the §9.6 observation-model
+        /// fix changed the margin scale. `DecoderMarginCalibrationTests` on all 9
+        /// ground-truthed tracks, raw winner before thresholding:
         ///
         /// | outcome | n | min | median | max |
         /// |---|---|---|---|---|
-        /// | meter correct | 3 | 0.1439 | 0.1461 | 0.9150 |
-        /// | meter wrong | 3 | 0.0110 | 0.0173 | 0.2677 |
-        /// | no stable truth meter | 3 | 0.0068 | 0.0575 | 0.1208 |
+        /// | meter correct | 4 | 0.0097 | 0.1005 | 0.5534 |
+        /// | meter wrong | 2 | 0.0155 | — | 0.1085 |
+        /// | no stable truth meter | 3 | 0.0007 | 0.0011 | 0.0812 |
         ///
-        /// **The correct and wrong distributions OVERLAP** — correct bottoms out at
-        /// 0.1439 while wrong reaches 0.2677 (take_five). No threshold separates them, so
-        /// the margin is a **necessary but not sufficient** discriminator and this value
-        /// is a tradeoff, not a decision boundary.
+        /// **The distributions now overlap completely** — solsbury_hill is *correct* at
+        /// 0.0097 while money is *wrong* at 0.0155, so a wrong answer outscores a right
+        /// one. Removing the model bias raised raw accuracy to 4/6 but compressed the
+        /// margins: the evidence is weak even when the decoder is right. **The margin is
+        /// therefore not a sufficient decline signal on its own** — recorded here rather
+        /// than papered over, because D-207's policy depends on it.
         ///
-        /// 0.10 is chosen to lose nothing correct while declining as much as possible:
-        /// it keeps all 3 real correct answers (0.1439+) and a clean synthetic 4/4
-        /// (0.1158), and declines money (0.0110), solsbury_hill (0.0173), pyramid_song
-        /// (0.0068) and yyz (0.0575). take_five (wrong, 0.2677) and clair_de_lune
-        /// (no stable meter, 0.1208) still survive — those are the residual, and they are
-        /// why DBN.3 must report decline-rate alongside meter accuracy.
+        /// 0.05 is the best available operating point: it names billie_jean (0.553 ✓),
+        /// bleed (0.120 ✓) and bohemian_rhapsody (0.081 ✓), declines money, solsbury_hill,
+        /// pyramid_song and clair_de_lune, and still wrongly names take_five (0.109) and
+        /// yyz (0.081). 3 correct named, 1 wrong named.
         ///
-        /// **n = 3 per class.** An operating point from nine tracks, not a calibrated
-        /// statistic. Re-derive at DBN.3 against the full A/B and widen the ground-truth
-        /// catalogue before trusting it further.
-        public var meterMarginThreshold: Double = 0.10
+        /// **n ≤ 4 per class.** An operating point from nine tracks. DBN.3 must re-derive
+        /// it against the full A/B and should treat "find a better confidence signal than
+        /// the raw margin" as in scope.
+        public var meterMarginThreshold: Double = 0.05
 
         public init() {}
     }

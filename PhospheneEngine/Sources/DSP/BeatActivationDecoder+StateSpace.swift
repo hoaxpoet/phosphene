@@ -100,7 +100,18 @@ extension BeatActivationDecoder {
                         if diff < sinceBeat { sinceBeat = diff; currentBeat = beat }
                     }
                     guard sinceBeat < window else { continue }
-                    classes[offsets[tempo] + position] = currentBeat == 0 ? .downbeat : .beat
+                    // The bar-line term is sampled AT the bar position only, never across
+                    // the rest of the beat window. The window exists for the *beat*
+                    // stream's beat/non-beat partition (Böck Eq. 3); a window frame one
+                    // step past the onset is a non-beat frame where the downbeat
+                    // activation has already collapsed (d ≈ 0.02 ⇒ L − L̄ ≈ −5.7). Charging
+                    // that to every bar line made the penalty scale with the NUMBER of bar
+                    // lines, which reintroduced a count bias — this time favouring large
+                    // meters. Measured on the degenerate fixture: meter 4 placed 11/11 bar
+                    // lines correctly and still lost to meter 7's 1/6 by 78 nats, against
+                    // 74 predicted by exactly this effect.
+                    let isBarLine = currentBeat == 0 && sinceBeat == 0
+                    classes[offsets[tempo] + position] = isBarLine ? .downbeat : .beat
                 }
             }
             self.observationClasses = classes
@@ -248,21 +259,57 @@ extension BeatActivationDecoder {
         }
 
         /// Three logs per frame instead of three per state per frame.
+        ///
+        /// **Downbeat evidence is a CENTRED log-odds applied only at the bar line** — see
+        /// spec §9.6. The original §5.1 form put `w·log(1 − d)` on every *non*-downbeat
+        /// beat position, and meter `B` labels `(B−1)/B` of beats that way, so larger
+        /// meters were penalised purely for being larger: measured Δ(7 vs 3) on money grew
+        /// exactly linearly at 18 nats per unit weight, matching the closed form to 0.6 %.
+        ///
+        /// Two naive repairs both fail. Dropping the non-downbeat term entirely leaves
+        /// `w·log(d)` at the bar line, which is negative, so *fewer* bar lines is cheaper
+        /// and the bias simply inverts toward large meters. Renormalising Böck Eq. 3 over
+        /// the bar makes it worse still, because the `1/(Bλ − 1)` denominator grows with B.
+        ///
+        /// The property actually needed is that a **constant** downbeat stream must score
+        /// every meter identically — only *variation* in `d` should discriminate. So the
+        /// bar line is scored by how far its log-odds exceeds the typical beat's:
+        /// `w · (L_k − L̄)` where `L_k = log(d / (1 − d))` and `L̄` is the mean of `L` over
+        /// beat-like frames. Constant `d` ⇒ every term is zero ⇒ zero bias at any `B`;
+        /// varying `d` ⇒ a meter that lands bar lines on the high-`d` beats scores
+        /// positive. `L̄` is computed over frames with `beatProb > 0.5`, which is
+        /// meter-independent, so no circularity is introduced.
         func frameTerms(beatProbs: [Float], downbeatProbs: [Float], frames: Int) -> [FrameTerms] {
             var out = [FrameTerms](repeating: FrameTerms(downbeat: 0, beat: 0, nonBeat: 0),
                                    count: frames)
             let denominator = max(lambda - 1, 1)
+
+            // Reference population: "among the beats, is this one a bar line?"
+            var logOdds = [Double](repeating: 0, count: frames)
+            var referenceSum = 0.0
+            var referenceCount = 0
+            for k in 0..<frames {
+                let downbeatProb = Self.clamp(Double(downbeatProbs[k]))
+                let odds = Foundation.log(downbeatProb) - Foundation.log(1 - downbeatProb)
+                logOdds[k] = odds
+                if beatProbs[k] > 0.5 { referenceSum += odds; referenceCount += 1 }
+            }
+            // Fall back to the whole track when no frame looks like a beat.
+            if referenceCount == 0 {
+                referenceSum = logOdds.reduce(0, +)
+                referenceCount = max(frames, 1)
+            }
+            let referenceLogOdds = referenceSum / Double(referenceCount)
+
             for k in 0..<frames {
                 let beatProb = Self.clamp(Double(beatProbs[k]))
-                let downbeatProb = Self.clamp(Double(downbeatProbs[k]))
                 let logBeat = Foundation.log(beatProb)
                 let logNotBeat = Foundation.log((1 - beatProb) / denominator)
-                let logDown = Foundation.log(downbeatProb)
-                let logNotDown = Foundation.log(1 - downbeatProb)
+                let barLine = downbeatWeight * (logOdds[k] - referenceLogOdds)
                 out[k] = FrameTerms(
-                    downbeat: logBeat + downbeatWeight * logDown,
-                    beat: logBeat + downbeatWeight * logNotDown,
-                    nonBeat: logNotBeat + downbeatWeight * logNotDown
+                    downbeat: logBeat + barLine,
+                    beat: logBeat,
+                    nonBeat: logNotBeat
                 )
             }
             return out
