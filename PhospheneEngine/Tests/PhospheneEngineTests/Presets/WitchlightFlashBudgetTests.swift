@@ -15,6 +15,15 @@
 // The ceilings are enforced in `WitchlightPath` / `Witchlight.metal` — a CPU-side refractory
 // and amplitude ceiling, and a fixed flare extent in the vertex shader that does not grow
 // with intensity. This file only measures; a number outside budget is a shader fix.
+//
+// ENV-GATED (`WITCHLIGHT_FLASH_BUDGET=1`), like the other heavy GPU harnesses in this repo
+// (`MultiPassFlashHarnessTests` is the manual-closeout suite; `FeedbackPathHarnessTemplate`
+// and `AuroraVeilMVWarpAccumulationTest` are both env-gated). 3 000 serialised GPU frames is
+// ~50 s, and adding that to the default parallel battery measurably destabilised the
+// timing-sensitive SessionManager concurrency suites — which is a contention problem to
+// avoid causing, not a budget of theirs to widen. Run it at closeout:
+//
+//   WITCHLIGHT_FLASH_BUDGET=1 swift test --package-path PhospheneEngine --filter WitchlightFlashBudget
 
 import Testing
 import Foundation
@@ -39,8 +48,14 @@ struct WitchlightFlashBudgetTests {
     private static let extentAtHalfPeakCeiling = 0.03      // 3 % of frame area
     private static let extentAtTenthPeakCeiling = 0.12     // 12 % of frame area
 
+    /// Closeout-suite gate — see the env note at the top of the file.
+    private static var isEnabled: Bool {
+        ProcessInfo.processInfo.environment["WITCHLIGHT_FLASH_BUDGET"] == "1"
+    }
+
     @Test("the composite never exceeds the §5 peak luminance or per-frame swing")
     func luminanceCeilingsHold() throws {
+        guard Self.isEnabled else { print("[witchlight-§5] WITCHLIGHT_FLASH_BUDGET not set, skipping"); return }
         let rig = try Rig()
         // The worst case for BOTH ceilings at once: a bass-dev impulse train firing the flare
         // as often as its refractory permits, over the fastest harmonic motion in the measured
@@ -71,6 +86,7 @@ struct WitchlightFlashBudgetTests {
 
     @Test("the head flare stays inside its §5 spatial extent caps")
     func flareExtentCapsHold() throws {
+        guard Self.isEnabled else { print("[witchlight-§5] WITCHLIGHT_FLASH_BUDGET not set, skipping"); return }
         let rig = try Rig()
         // Find the brightest frame — by construction that is a flare peak, since the flare is
         // the only thing on the field that is not a thin line or a pinpoint.
