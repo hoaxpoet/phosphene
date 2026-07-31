@@ -10,6 +10,18 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-07-31-134559] MDL.1 — final0 A/B: no gain, and the evidence ceiling is not capacity
+
+**Recommendation: DO NOT ADOPT.** D-E is Matt's call; the data is committed at `docs/diagnostics/MDL1_FINAL0_AB_2026-07-31.md`.
+
+Ran because DBN.2 ended with a specific finding — with an unbiased decoder the remaining gap is **evidence quality, not model bias** — and `final0` is the only lever in the program that changes the evidence rather than how it is read. Everything needed was already on the machine: the checkpoint from DSP.2 (81 MB, no download) and a converter that already accepted `--variant final0`.
+
+The architecture delta is exactly one hyperparameter (`transformer_dim` 128 → 512, driving embed dim, head count and FFN width; `n_layers` / `stem_dim` / `spect_dim` identical), so it ships as `BeatThisModel.Variant` rather than a second model, with an external `weightsDirectory` seam — **81 MB does not enter the bundle before D-E decides**. Run through the real MPSGraph path, not the PyTorch reference, because D-E asks about prep latency and only the shipping path can measure it.
+
+**Result: meter correct 2/6 for both variants** (final0 gains bohemian_rhapsody, loses bleed — a trade). Mean downbeat:beat ratio 0.494 → 0.475, a 4 % move that is not even consistent (money 0.90 → 0.59 improves; solsbury_hill 0.69 → 0.87 and take_five 0.41 → 0.58 get worse), at ~10× the weights and ~1.3× steady-state inference. **`bleed` — the suite-4 case the plan expected final0 to fix — regresses**, its BPM doubling 115.00 → 259.43 and its meter going 4 ✓ → 2 ✗.
+
+**Corollary that matters more than the decision: the evidence ceiling DBN.2 hit is not a capacity problem.** Scaling the same model family does not produce a cleaner downbeat stream, so categories 2 and 4 need a changed premise rather than a bigger checkpoint. Caveat recorded rather than buried: there is no final0 layer-match fixture, so that port is unverified — build one before adopting against this recommendation. The variant refactor itself is proven behaviour-preserving for small0 (all 26 `BeatThis*` tests pass, including the layer-match suite that caught four bugs at DSP.2 S8).
+
 ### [dev-2026-07-30-230451] DBN.2 — decoder built and unit-tested; odd meters still collapse to 4
 
 `BeatActivationDecoder` implements the DBN.1 spec: bar-pointer state space (Krebs et al. ISMIR 2015 Eq. 1–8, CC BY 4.0), tempo transitions restricted to beat positions (Eq. 9–10), observation model (Böck et al. ISMIR 2014 Eq. 3) extended to Beat This!'s two streams. Clean-room from the papers, no madmom code (D-077). Offline-path only; **not wired into `BeatGridResolver`** — that is DBN.3. 14-case unit suite green.
