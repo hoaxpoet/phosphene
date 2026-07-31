@@ -44,6 +44,30 @@ struct WitchlightPathTests {
         }
     }
 
+    /// Drive that lets a tonal home establish, then YANKS the phase to the far side of
+    /// the circle and holds it there.
+    ///
+    /// `drive(phaseRate:)` no longer produces an extreme steering demand under
+    /// `.curvatureDeviation`: that model reads the excursion from the track's tonal home,
+    /// and a steadily-rotating phase is chased by the home, so the excursion settles small.
+    /// Testing the Dubins bound needs a driver that actually maxes the excursion out.
+    private static func driveHeldOffHome(_ path: WitchlightPath, settle: Float, hold: Float) {
+        let settleFrames = Int(settle / dt), holdFrames = Int(hold / dt)
+        func step(_ index: Int, _ phase: Float) {
+            var f = FeatureVector()
+            f.deltaTime = dt
+            f.time = Float(index) * dt
+            f.bass = 0.3; f.mid = 0.3; f.treble = 0.2       // not silent
+            f.tonalPhaseFifths = phase
+            var stems = StemFeatures()
+            stems.drumsEnergy = 0.3; stems.bassEnergy = 0.3
+            stems.otherEnergy = 0.2; stems.vocalsEnergy = 0.1
+            path.advance(deltaTime: dt, features: f, stems: stems)
+        }
+        for i in 0..<settleFrames { step(i, 0) }                       // home settles at 0
+        for i in 0..<holdFrames { step(settleFrames + i, .pi * 0.98) } // ~antipodal excursion
+    }
+
     private static func wrap(_ a: Float) -> Float {
         var x = a
         while x > .pi { x -= 2 * .pi }
@@ -109,17 +133,43 @@ struct WitchlightPathTests {
     @Test("the turn rate is clamped so no arc is tighter than the minimum radius (Dubins bound)")
     func turnRateIsClampedToTheMinimumRadius() {
         let path = WitchlightPath()
-        // A harmonic rate ~40× the clamp: without the bound this is anti-reference `10`.
-        Self.drive(path, seconds: 20, phaseRate: 25.0)
+        // An excursion held near-antipodal to the tonal home: the largest steering demand
+        // `.curvatureDeviation` can be given. Without the bound this is anti-reference `10`.
+        Self.driveHeldOffHome(path, settle: 12, hold: 0)
+        // Snapshot AFTER the home has settled, then measure only the first 2 s of the
+        // excursion. The window has to be short against the home's own τ (≈ 8 s): a
+        // deviation cannot be *held*, because `home` chases it — that transience is the
+        // model, not a limitation of it, and a long window just measures the decay.
+        let travelBeforeExcursion = path.headingTravel
+        Self.driveHeldOffHome(path, settle: 0, hold: 2)
+        let excursionTravel = path.headingTravel - travelBeforeExcursion
         let tuning = WitchlightTuning()
         // ω_max = v / R_min; v varies ±25 % with arousal, so allow the upper speed bound.
         let maxOmega = tuning.baseSpeed * (1 + tuning.speedModDepth) / tuning.minTurnRadius
-        let ceiling = maxOmega * 20.0 * 1.05           // 20 s of travel, 5 % slack
-        #expect(path.headingTravel <= ceiling, """
-            the pen turned \(path.headingTravel) rad in 20 s, above the \(ceiling) rad the \
-            bounded-curvature clamp permits — the ball-of-yarn guard is not holding.
+        let ceiling = maxOmega * 2.0 * 1.05            // 2 s of excursion, 5 % slack
+        #expect(excursionTravel <= ceiling, """
+            the pen turned \(excursionTravel) rad in the 2 s excursion, above the \(ceiling) rad \
+            the bounded-curvature clamp permits — the ball-of-yarn guard is not holding.
             """)
-        #expect(path.clampedFraction > 0.5, "the clamp did not engage on a driver far above ω_max")
+        // The clamp is deliberately NOT asserted to engage. Under `.curvatureDeviation` it is
+        // inert BY CONSTRUCTION: `curvatureGain × π ≈ ω_max`, so the driver's own ±π bound
+        // maps exactly onto the permitted curvature and the demand never exceeds it. The
+        // ball-of-yarn floor is held by the gain calibration, not by saturation. (Demanding
+        // frequent clamping was the superseded `.turnRate` model's signature — it saturated
+        // on 30–78 % of frames across the §2 captures. That was the pathology, not the
+        // requirement; see the D-209 amendment.)
+        //
+        // NO lower bound is asserted, deliberately. The obvious companion assertion — "an
+        // extreme excursion should drive the pen NEAR ω_max, proving `curvatureGain` is still
+        // calibrated" — has no defensible threshold, because two smoothing stages stand
+        // between the raw phase and the steer: φ̄ is a τ ≈ 1.5 s EMA, so it never reaches ±π
+        // quickly, and `home` (τ ≈ 8 s) starts chasing immediately. The peak deviation a real
+        // driver can produce is therefore well under π and depends on both constants. Picking
+        // a number here would mean tuning a threshold until it passed, which is worse than
+        // leaving the property untested and saying so. Establishing the real peak-excursion
+        // distribution across the §2 captures is the measurement that would earn this
+        // assertion; until then the Dubins bound above is what this test guarantees.
+        _ = tuning.curvatureGain
     }
 
     // MARK: - Relaxation
@@ -254,10 +304,22 @@ struct WitchlightPathTests {
         let drive = try WitchlightFixtureDrive.load(track)
         let path = WitchlightPath()
         WitchlightFixtureDrive.run(path, over: drive)
-        #expect(path.headingMonotonicity < 0.6, """
-            \(track): heading monotonicity \(path.headingMonotonicity) at a clamp fraction of \
-            \(path.clampedFraction) — the pen is turning one way and the figure is a spiral, \
-            which is the degenerate state §3.1(b) says to lower `steerGain` for.
+        // The assertion is the CONJUNCTION this test's own comment names, not monotonicity
+        // alone. Under `.curvatureDeviation` a high-monotonicity figure is expected and
+        // wanted: sitting in the tonal home draws a straight run and leaving it bends one
+        // way, which is the "clean shepherd's crook" the WL.3 spike reported as its success
+        // case. Monotonicity alone would fail that shape. What is degenerate is turning one
+        // way *while saturated* — a minimum-radius circle — so both have to hold at once.
+        let saturated = path.clampedFraction > 0.5
+        let spiralling = path.headingMonotonicity > 0.9
+        #expect(!(saturated && spiralling), """
+            \(track): heading monotonicity \(path.headingMonotonicity) AT a clamp fraction of \
+            \(path.clampedFraction) — the pen is pinned at the turn-rate bound and turning one \
+            way, so the figure has degenerated to a minimum-radius circle. §3.1(b): lower the \
+            steer gain; do NOT raise ω_max, which hides it.
             """)
+        // And the pen must still be drawing something: a figure needs real heading travel.
+        #expect(path.headingTravel > 1.0,
+                "\(track): the pen barely turned (\(path.headingTravel) rad) — no figure at all")
     }
 }

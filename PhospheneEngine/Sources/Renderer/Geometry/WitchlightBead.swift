@@ -71,7 +71,25 @@ public struct WitchlightTuning: Sendable {
         /// quantity, which is what the other two modes were missing.
         case curvatureDeviation
     }
-    public var steerMode: SteerMode = .turnRate
+    /// **ADOPTED (WL.2/WL.3 integration, 2026-07-31).** Two sessions reached
+    /// `.curvatureDeviation` independently — this one via a three-model spike, the
+    /// parallel WL.2-a branch via a falsification probe — and by the same reasoning:
+    /// D-026 deviation semantics applied to a circular quantity. Evidence:
+    /// `docs/diagnostics/WL2A_PEN_KINEMATICS_2026-07-31.md` and
+    /// `docs/diagnostics/WL2A_HEADING_AB_2026-07-31.md`. `.turnRate` and `.curvature`
+    /// are kept runnable so the falsification stays reproducible, not as live options.
+    public var steerMode: SteerMode = .curvatureDeviation
+
+    /// Normalise the deviation gain against the track's own excursion scale.
+    ///
+    /// A FIXED `curvatureGain` assumes every track's excursions from tonal home have a
+    /// similar magnitude, and they do not: circular R runs 0.24–0.78 across the §2
+    /// captures, so `love_rehab` (R = 0.241, home genuinely ill-defined) produces much
+    /// smaller normalised excursions and its figure stayed an arc under a fixed gain —
+    /// the open question the WL.3 spike named. Normalising against a running estimate of
+    /// |deviation| is the same construction that dissolved the ~10× cross-track rate
+    /// spread in §2.3, and it is what D-026 means by reading a driver relatively.
+    public var normaliseDeviationGain: Bool = false
 
     /// `k` in `θ̇ = clamp(k · φ̄̇, ±ω_max)`. Measured against the four §2 captures — see
     /// the clamp-fraction instrumentation below, which WL.2's closeout reports.

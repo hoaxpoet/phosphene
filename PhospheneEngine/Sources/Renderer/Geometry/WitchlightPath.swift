@@ -65,6 +65,9 @@ public final class WitchlightPath {
     public var smoothedPhase: Float { atan2(phaseSin, phaseCos) }
 
     // Tonal "home" — a long-τ circular mean of φ̄, for `.curvatureDeviation`.
+    /// Running estimate of |deviation from tonal home|, for the per-track gain.
+    private var deviationScale: Float = 0.3
+
     private var homeSin: Float = 0
     private var homeCos: Float = 1
     /// Wrapped excursion of φ̄ from the track's tonal home, radians (±π).
@@ -185,6 +188,7 @@ public final class WitchlightPath {
         tumbleClock = 0
         trailWindow = tuning.trailSeconds
         frameCount = 0; clampedFrameCount = 0; phaseTravel = 0; headingTravel = 0; headingNet = 0
+        deviationScale = 0.3
     }
 
     /// Ingest the live structural-section prediction.
@@ -274,7 +278,18 @@ public final class WitchlightPath {
         case .curvature:
             desired = silent ? 0 : tuning.curvatureGain * smoothedPhase
         case .curvatureDeviation:
-            desired = silent ? 0 : tuning.curvatureGain * phaseFromHome
+            // Per-track gain: scale the deviation against a running estimate of its own
+            // magnitude so a track that barely leaves its tonal home still draws a figure.
+            // See `WitchlightTuning.normaliseDeviationGain`.
+            let deviation = phaseFromHome
+            if tuning.normaliseDeviationGain {
+                let alpha = dt / (4.0 + dt)
+                deviationScale += (max(abs(deviation), 0.05) - deviationScale) * alpha
+                let gain = 0.85 * omegaMax / max(0.05, deviationScale)
+                desired = silent ? 0 : gain * deviation
+            } else {
+                desired = silent ? 0 : tuning.curvatureGain * deviation
+            }
         }
         let turnRate = max(-omegaMax, min(omegaMax, desired))
         if !silent && abs(desired) >= omegaMax { clampedFrameCount += 1 }
