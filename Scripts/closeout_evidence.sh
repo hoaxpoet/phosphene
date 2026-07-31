@@ -261,6 +261,41 @@ render_test_step "Step 4: Doc gates (DocIntegrityTests)" "$DOC_CMD_STR" "$DOC_LO
 DOC_PARSE_OK=$STEP_PARSE_OK
 DOC_FAILS=$STEP_FAILURES_PRESENT
 
+# --- Step 4b: Repo lint scripts (parity with the CI fast-gate) ----------------------
+# The CI fast-gate runs these two and this block did not, so a red gate could read as
+# ALL GREEN locally — which it did for six consecutive pushes (2026-07-30/31: the D-079
+# sample-rate lint failed on TapRecorder.swift while every closeout said green). A
+# closeout gate weaker than CI is the false-green class this script exists to kill, so
+# any script CI gates on runs here too.
+LINT_SCRIPTS=(
+  "Scripts/check_user_strings.sh"
+  "Scripts/check_sample_rate_literals.sh"
+)
+SCRIPTS_FAILS=0
+emit "--- Step 4b: Repo lint scripts (CI fast-gate parity) ---"
+for script in "${LINT_SCRIPTS[@]}"; do
+  if [ ! -x "$script" ]; then
+    emit "STEP FAILED TO RUN: $script missing or not executable"
+    SCRIPTS_FAILS=1
+    continue
+  fi
+  SCRIPT_LOG="$TMP_DIR/$(basename "$script").log"
+  t0=$SECONDS
+  SCRIPT_EXIT="$(run_step "$SCRIPT_LOG" bash "$script")"
+  SCRIPT_WALL=$((SECONDS - t0))
+  emit "Command   : $script"
+  emit "Exit code : $SCRIPT_EXIT"
+  emit "Wall time : ${SCRIPT_WALL} s"
+  if [ "$SCRIPT_EXIT" != "0" ]; then
+    SCRIPTS_FAILS=1
+    emit "Output (last ${RAW_TAIL_LINES} lines):"
+    tail -n "$RAW_TAIL_LINES" "$SCRIPT_LOG" | sed 's/^/  /' >> "$BLOCK"
+  else
+    emit "Result    : pass"
+  fi
+done
+emit ""
+
 # --- Step 5: Comparison sheet (QG.2 — canonical §3 artifact for preset increments) ---
 # If a RENDER_VISUAL=1 session produced a compare_render.sh sheet, surface its path
 # so preset closeouts cite the side-by-side sheet, not a bare contact sheet. Absence
@@ -311,8 +346,9 @@ emit ""
 
 # --- Footer -----------------------------------------------------------------------
 emit "--- Footer ---"
-emit "Exit codes: engine=${ENGINE_EXIT} app=${APP_EXIT} swiftlint=${LINT_EXIT} docgates=${DOC_EXIT}"
+emit "Exit codes: engine=${ENGINE_EXIT} app=${APP_EXIT} swiftlint=${LINT_EXIT} docgates=${DOC_EXIT} lintscripts=${SCRIPTS_FAILS}"
 if [ "$ENGINE_EXIT" = "0" ] && [ "$APP_EXIT" = "0" ] && [ "$LINT_EXIT" = "0" ] && [ "$DOC_EXIT" = "0" ] \
+  && [ "$SCRIPTS_FAILS" = "0" ] \
   && [ "$ENGINE_PARSE_OK" = "1" ] && [ "$APP_PARSE_OK" = "1" ] && [ "$LINT_PARSE_OK" = "1" ] && [ "$DOC_PARSE_OK" = "1" ] \
   && [ "$ENGINE_FAILS" = "0" ] && [ "$APP_FAILS" = "0" ] && [ "$LINT_FAILS" = "0" ] && [ "$DOC_FAILS" = "0" ]; then
   emit "EVIDENCE: ALL GREEN"
