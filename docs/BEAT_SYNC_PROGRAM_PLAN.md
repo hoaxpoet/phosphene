@@ -106,6 +106,8 @@ TRK.2 OUTCOME (2026-07-30) — PREMISE FALSIFIED, increment stopped at its evide
 
 TRK.3 — Live validation + M7. BUG-065 closure gate: < 30 ms held across full tracks on suites 1 and 4. BUG-028's "behind the beat" feel re-reviewed. BLOCKED: TRK.1 failed replay validation (strike 1) and TRK.2's evidence upgrade is falsified, so there is nothing to validate live.
 
+PROGRAM STATUS 2026-07-31 — THE EVIDENCE LEVERS ARE EXHAUSTED. Three increments have now established the same finding independently: TRK.2 falsified onsets as a source of beat evidence (only ~15-25 % of onsets from ANY band or stem land within ±50 ms of a beat); DBN.2 removed the observation-model bias and found odd meters still won by hairline margins with a confidence signal that cannot separate right from wrong; MDL.1 ran a 10x larger checkpoint of the same family and got no cleaner downbeat stream, with the suite-4 track regressing (D-208). The downbeat evidence is thin, and it is not thin because of how it is read. CONSEQUENCE: categories 2 and 4 need a CHANGED PREMISE, not another pass at these levers. DBN.3 should NOT open as specified — A/B-ing the decoder against the incumbent would measure its known-wrong odd meters and non-separating margin rather than the decoder. Unexplored candidates: a different model family, a different training target, or sourcing bar position from something other than a downbeat activation stream. Phases GT/FT/RLG/CNF are unaffected; FT in particular still lands category-3 wins for local files independently of this.
+
 PHASE TRK — PARKED (D-206, Matt 2026-07-30: "park the tracker, go DBN next session"). Both levers — controller topology (TRK.1) and evidence source (TRK.2) — were measured against the same frozen single-BPM grid and neither closes BUG-065. The evidence layer has no headroom left: only ~15–25 % of detected onsets from ANY band or stem land within ±50 ms of a beat, so a tracker fed an onset flag cannot be tuned into tightness. BUG-065 stays open and bounded; PHOSPHENE_BEAT_PLL stays default-off. The next beat-sync session opens phase DBN. Do not reopen TRK without a changed premise about the GRID, not the tracker.
 
 Phase CNF — Confidence and graded degradation (3–4 sessions, after DBN + RLG.0/TRK signals exist)
@@ -127,7 +129,7 @@ D-B	Finalize per-suite numeric targets	After GT.3 baseline	Adjust to "meaningful
 D-C	RLG GO/NO-GO + the GO bar itself	After RLG.0	Bar as written in RLG.0
 D-F	grid_bpm semantics under piecewise grids	DBN.4	Instantaneous-at-playhead (visuals should follow the current tempo)
 D-D	FeatureVector budget route for confidence floats	CNF.1 audit	Whichever avoids a GPU contract change if a pad exists; else extend deliberately
-D-E	Adopt final0 offline	MDL.1	Data-dependent
+D-E	Adopt final0 offline	MDL.1	RESOLVED as D-208 (2026-07-31): NOT adopted. 2/6 meter correct for both variants, degeneracy ratio 0.494 -> 0.475, bleed regresses, at 10x weights. Corollary: the evidence ceiling is not a capacity problem.
 6. New Claude Code skills (authored in SK.1)
 
 Four new skills + three edits. Rationale: every increment above will be run as a fresh Claude Code session from a session prompt; the skills are what keep 25+ sessions from re-deriving (or violating) the project's hard-won constraints. Specs below are the authoring contract for SK.1.
