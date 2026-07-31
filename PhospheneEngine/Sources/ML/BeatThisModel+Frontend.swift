@@ -20,6 +20,7 @@ extension BeatThisModel {
     // Build frontend: [tMax, 128] spectrogram → [tMax, 128] embeddings.
     // swiftlint:disable:next function_parameter_count
     static func buildFrontend(
+        variant: Variant,
         graph: MPSGraph,
         input: MPSGraphTensor,
         weights: BeatThisWeights,
@@ -28,6 +29,7 @@ extension BeatThisModel {
         name: String,
         intermediates: inout [String: MPSGraphTensor]
     ) -> MPSGraphTensor {
+        let embedDim = variant.embedDim
         var x = buildStemConv(
             graph: graph,
             input: input,

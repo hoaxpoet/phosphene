@@ -53,6 +53,30 @@ public final class BeatThisModel: @unchecked Sendable {
 
     // MARK: - Architecture Constants (small0)
 
+    // MARK: - Variant (MDL.1)
+
+    /// Beat This! checkpoint variant. small0 and final0 differ in **exactly one**
+    /// hyperparameter — `transformer_dim` 128 → 512 — which drives embed dim, head
+    /// count (head_dim stays 32) and FFN width. Layer count, stem dim and mel bins are
+    /// identical, so this is a parameterisation rather than a second architecture.
+    ///
+    /// Vendored weights ship for small0 only. final0 is loaded from an external
+    /// directory for the MDL.1 A/B — 81 MB is not added to the bundle before D-E
+    /// decides whether the deltas justify it.
+    public struct Variant: Sendable, Equatable {
+        public let name: String
+        public let embedDim: Int
+        public let numHeads: Int
+        public let ffnDim: Int
+
+        public static let small0 = Variant(name: "small0", embedDim: 128, numHeads: 4, ffnDim: 512)
+        public static let final0 = Variant(name: "final0", embedDim: 512, numHeads: 16, ffnDim: 2048)
+    }
+
+    /// This instance's variant. Dimensions below are read from it; the `static`
+    /// constants remain as small0's values for source compatibility.
+    public let variant: Variant
+
     public static let embedDim = 128
     public static let numHeads = 4
     public static let headDim = 32
@@ -85,16 +109,28 @@ public final class BeatThisModel: @unchecked Sendable {
     ///
     /// - Parameter device: Metal device for graph execution.
     /// - Throws: `BeatThisModelError` if graph construction fails.
-    public init(device: MTLDevice) throws {
+    public convenience init(device: MTLDevice) throws {
+        try self.init(device: device, variant: .small0, weightsDirectory: nil)
+    }
+
+    /// Designated initializer.
+    ///
+    /// - Parameters:
+    ///   - variant: checkpoint variant; defaults to the vendored `small0`.
+    ///   - weightsDirectory: directory holding `manifest.json` + `.bin` files. `nil`
+    ///     loads the bundled small0 weights. Required for `final0`, whose weights are
+    ///     deliberately not vendored (MDL.1 / D-E).
+    public init(device: MTLDevice, variant: Variant, weightsDirectory: URL?) throws {
         self.device = device
+        self.variant = variant
         guard let queue = device.makeCommandQueue() else {
             throw BeatThisModelError.deviceError("Failed to create command queue")
         }
         self.commandQueue = queue
         let loadedWeights: BeatThisWeights
         do {
-            loadedWeights = try Self.loadWeights()
-            self.graphBundle = try Self.buildGraph(weights: loadedWeights)
+            loadedWeights = try Self.loadWeights(from: weightsDirectory)
+            self.graphBundle = try Self.buildGraph(weights: loadedWeights, variant: variant)
         } catch let err as BeatThisModelError {
             throw err
         } catch {
@@ -113,7 +149,10 @@ public final class BeatThisModel: @unchecked Sendable {
             throw BeatThisModelError.deviceError("Failed to allocate input buffer")
         }
         self.inputBuffer = buf
-        logger.info("BeatThisModel ready: small0, \(Self.numBlocks) blocks, tMax=\(Self.tMax)")
+        let dim = variant.embedDim
+        logger.info(
+            "BeatThisModel ready: \(variant.name), \(Self.numBlocks) blocks, dim=\(dim), tMax=\(Self.tMax)"
+        )
     }
 
     // MARK: - Public API
@@ -229,7 +268,7 @@ public final class BeatThisModel: @unchecked Sendable {
         return CorePrediction(
             beats: Array(beatFull.prefix(clampedCount)),
             downbeats: Array(downbeatFull.prefix(clampedCount)),
-            frontendShape: [clampedCount, Self.embedDim]
+            frontendShape: [clampedCount, variant.embedDim]
         )
     }
 

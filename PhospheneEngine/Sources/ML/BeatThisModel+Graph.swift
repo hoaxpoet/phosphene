@@ -17,7 +17,8 @@ extension BeatThisModel {
     // MARK: - Build
 
     // swiftlint:disable:next function_body_length
-    static func buildGraph(weights: BeatThisWeights) throws -> BeatThisGraphBundle {
+    static func buildGraph(weights: BeatThisWeights, variant: Variant) throws -> BeatThisGraphBundle {
+        let embedDim = variant.embedDim
         let graph = MPSGraph()
 
         let inputShape: [NSNumber] = [NSNumber(value: tMax), NSNumber(value: inputMels)]
@@ -32,6 +33,7 @@ extension BeatThisModel {
         var intermediates: [String: MPSGraphTensor] = [:]
 
         var x = buildFrontend(
+            variant: variant,
             graph: graph,
             input: input,
             weights: weights,
@@ -44,6 +46,7 @@ extension BeatThisModel {
 
         for idx in 0..<numBlocks {
             x = buildTransformerBlock(
+                variant: variant,
                 graph: graph,
                 input: x,
                 cosTable: cosTable,
@@ -145,6 +148,7 @@ extension BeatThisModel {
 
     // swiftlint:disable:next function_parameter_count
     private static func buildTransformerBlock(
+        variant: Variant,
         graph: MPSGraph,
         input: MPSGraphTensor,
         cosTable: MPSGraphTensor,
@@ -153,6 +157,7 @@ extension BeatThisModel {
         name: String
     ) -> MPSGraphTensor {
         let attnOut = buildAttention(
+            variant: variant,
             graph: graph,
             input: input,
             cosTable: cosTable,
@@ -164,6 +169,7 @@ extension BeatThisModel {
         return graph.addition(
             res1,
             buildFFN(
+                variant: variant,
                 graph: graph,
                 input: res1,
                 blkWeights: blkWeights.ffn,
@@ -177,6 +183,7 @@ extension BeatThisModel {
 
     // swiftlint:disable:next function_body_length function_parameter_count
     private static func buildAttention(
+        variant: Variant,
         graph: MPSGraph,
         input: MPSGraphTensor,
         cosTable: MPSGraphTensor,
@@ -184,6 +191,8 @@ extension BeatThisModel {
         blkWeights: BeatThisAttnWeights,
         name: String
     ) -> MPSGraphTensor {
+        let embedDim = variant.embedDim
+        let numHeads = variant.numHeads
         let inner = numHeads * headDim
         let qkvDim = 3 * inner
 
@@ -378,11 +387,14 @@ extension BeatThisModel {
     // MARK: - Transformer FFN
 
     private static func buildFFN(
+        variant: Variant,
         graph: MPSGraph,
         input: MPSGraphTensor,
         blkWeights: BeatThisFFNWeights,
         name: String
     ) -> MPSGraphTensor {
+        let embedDim = variant.embedDim
+        let ffnDim = variant.ffnDim
         let gamma = makeConst(
             graph,
             blkWeights.normGamma,
