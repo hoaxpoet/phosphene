@@ -484,6 +484,10 @@ Every Phosphene launch creates `~/Documents/phosphene_sessions/<ISO-timestamp>/`
 
 **Quitting cleanly matters.** `AVAssetWriter.finishWriting` is called from an `NSApplication.willTerminateNotification` observer in `VisualizerEngine.init`. Force-quitting the app (Activity Monitor, kill -9) skips this and leaves `video.mp4` without its `moov` atom — unplayable. Use ⌘Q.
 
+## Reclaiming Git-LFS storage
+
+**Do not improvise this.** [`docs/RUNBOOK_LFS_RECLAIM.md`](RUNBOOK_LFS_RECLAIM.md) is the procedure: what it does and does not fix (rewriting history does NOT reduce the bill — a GitHub Support request does), the branch-protection failure mode that half-applies the push and leaves the repo split-brain, the pre-flight ref capture that makes recovery possible, and the 2026-07-31 incident record. Highest blast radius of any operation in the repo: every clone, worktree, PR and branch.
+
 ## Operational Rules
 
 - Never block the render loop on network or ML work.

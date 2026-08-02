@@ -29,6 +29,18 @@ clones (history rewrite) and therefore runs only with Matt at the wheel.
 
 ## 1. Weights cutover: LFS → Release asset (Decision 2)
 
+**Status: DONE** (PUB.2, landed 2026-07-31). Weights ship as the `ml-weights-v1`
+Release asset and are gitignored; only `SHA256SUMS` is tracked. `Scripts/fetch_weights.sh`
+fetches and verifies. Reference/diagnostic images are untracked too (D-211, LFS.2).
+
+**Both are "stop the bleeding" changes — they prevent NEW LFS objects and do
+nothing about the ~766 already in history.** Reclaiming those needs a history
+rewrite plus a GitHub Support purge: [`docs/RUNBOOK_LFS_RECLAIM.md`](RUNBOOK_LFS_RECLAIM.md).
+Read it before touching `Scripts/reclaim-lfs-visual-refs.sh` — running `--execute`
+with branch protection on leaves the repo split-brain (it has happened once).
+
+The original procedure is kept below as the record of how the cutover was done.
+
 Do this first — it is the big clone-cost lever (~167 MB × every clone) and
 needs no history rewrite.
 
