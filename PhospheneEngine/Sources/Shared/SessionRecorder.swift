@@ -73,7 +73,7 @@ public final class SessionRecorder: @unchecked Sendable {
     let queue = DispatchQueue(label: "com.phosphene.recorder", qos: .utility)
 
     // Optional because the session directory and its files are created LAZILY, on the first
-    // actual write — see `materializeIfNeeded()` (BUG-081).
+    // actual write — see `materializeIfNeeded()` (BUG-083).
     private var featuresHandle: FileHandle?
     private var stemsHandle: FileHandle?
     private var logHandle: FileHandle?
@@ -278,10 +278,10 @@ public final class SessionRecorder: @unchecked Sendable {
             ?? (ProcessInfo.processInfo.environment["PHOSPHENE_RECORD_VIDEO"] == "1")
 
         // NOTHING is written here — see `materializeIfNeeded()`. Constructing a recorder is
-        // free and leaves no trace on disk (BUG-081).
+        // free and leaves no trace on disk (BUG-083).
     }
 
-    // MARK: Lazy materialization (BUG-081)
+    // MARK: Lazy materialization (BUG-083)
 
     /// Create the session directory, CSV headers and startup banner — once, on the first
     /// actual write. Serial `queue` only. Returns `false` if the session cannot be written.
@@ -445,7 +445,7 @@ public final class SessionRecorder: @unchecked Sendable {
             guard !self.didFinish else { return }
             self.didFinish = true
             // Never recorded anything → no directory, nothing to close, and no chain to
-            // grade. Materializing here would recreate exactly the empty folder BUG-081
+            // grade. Materializing here would recreate exactly the empty folder BUG-083
             // exists to prevent.
             guard self.materialized, !self.materializeFailed else { return }
             if let writer = self.videoWriter, writer.status == .writing {

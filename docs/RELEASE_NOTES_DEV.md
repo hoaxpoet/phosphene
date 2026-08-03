@@ -10,11 +10,11 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
-### [dev-2026-08-03-212502] BUG-082 / BUG-081 — test runs were deleting real session captures
+### [dev-2026-08-03-212502] BUG-082 / BUG-083 — test runs were deleting real session captures
 
 Started as "six of seven sessions today recorded zero rows — that looks like the silent-tap class." It was not. The empty folders were **empty by construction**, four of the six were **my own test runs**, and chasing them turned up two defects that together were quietly destroying diagnostic captures.
 
-**BUG-081 — a session folder was written on every `VisualizerEngine` construction.** `SessionRecorder()` is built unconditionally, and its `init` created the directory, both CSV headers and the startup banner *before any session existed*. So every app-target test run and every app launch closed without recording left a folder in the user's `~/Documents/`. Proven by experiment rather than inference: count folders, run `xcodebuild -scheme PhospheneApp test`, count again — a header-only session appeared and an older one was evicted.
+**BUG-083 — a session folder was written on every `VisualizerEngine` construction.** `SessionRecorder()` is built unconditionally, and its `init` created the directory, both CSV headers and the startup banner *before any session existed*. So every app-target test run and every app launch closed without recording left a folder in the user's `~/Documents/`. Proven by experiment rather than inference: count folders, run `xcodebuild -scheme PhospheneApp test`, count again — a header-only session appeared and an older one was evicted.
 
 `init` now computes paths only; directory creation, headers, banner and the disk pre-flight moved to `materializeIfNeeded()`, called from the first actual write. Every disk-touching path is guarded — frame rows, logging, the raw-tap WAV, the stem dump, the video writer — and `finish()` early-outs when nothing was written, so it cannot conjure the very folder the fix prevents.
 

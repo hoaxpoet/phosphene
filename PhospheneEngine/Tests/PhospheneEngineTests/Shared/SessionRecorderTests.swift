@@ -56,7 +56,7 @@ final class SessionRecorderTests: XCTestCase {
 
     // MARK: - First write creates the session dir with expected files
 
-    /// Was `test_init_createsSessionDirectoryWithCSVsAndLog`. BUG-081 deliberately moved
+    /// Was `test_init_createsSessionDirectoryWithCSVsAndLog`. BUG-083 deliberately moved
     /// directory creation from `init` to the first write, so the assertion that used to hold
     /// at init now holds after one write instead. The *contract* being protected is
     /// unchanged — a recorded session has a directory with both CSVs and a log — and the
@@ -158,7 +158,7 @@ final class SessionRecorderTests: XCTestCase {
 
     func test_featuresHeader_includesFrameTimingColumns() throws {
         let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
-        recorder.log("materialize")   // BUG-081: the CSVs exist from the first write, not init
+        recorder.log("materialize")   // BUG-083: the CSVs exist from the first write, not init
         recorder.finish()
 
         let csv = try String(
@@ -975,7 +975,7 @@ final class SessionRecorderTests: XCTestCase {
         return samples
     }
 
-    // MARK: - BUG-081: the session directory is created lazily, on first write
+    // MARK: - BUG-083: the session directory is created lazily, on first write
 
     /// Constructing a recorder must leave NOTHING on disk. This used to create the folder,
     /// both CSV headers and the banner from `init`, so every `VisualizerEngine` construction
