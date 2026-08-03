@@ -2,13 +2,25 @@
 //
 // A recursive binary tree with 63 branches across 6 depth levels (0–5).
 // Each of 63 mesh-shader threads computes one branch's geometry using an
-// iterative ancestry traversal (no MSL recursion).  Audio drives:
+// iterative ancestry traversal (no MSL recursion).
 //
-//   bass_att      → trunk length + branch count visible (growing tree effect)
-//   mid_att       → branch spread angle (wider canopy = denser mid energy)
-//   spectral_centroid → leaf hue shift (dark greens → golden-green)
-//   beat_bass     → flash brightness on beat pulse
-//   treb_att      → leaf tip shimmer intensity
+// AUDIO ROUTING — rebuilt at FTR.2 (D-212). Five visual layers, five distinct
+// primitives (FA #67), every coefficient sized against its primitive's measured
+// p05→p95 span on real captures rather than a notional 0→1:
+//
+//   bass_dev           → canopy reach: branch count + trunk length + thickness,
+//                        as ONE coupled gesture through a single derived scalar
+//   spectral_flux      → branch spread angle (20°–34°)
+//   tonal_phase_fifths → leaf hue along the amber→green arc (no wall clock)
+//   arousal            → global brightness envelope (the section-scale arc)
+//   beat_bass          → beat accent, knee-gated so it fires rather than glows
+//
+// The routing this replaced had three layers on `bass_att`, two coefficients
+// sized against nothing, and a `fract(t * 0.006)` wall clock out-driving the
+// music 18.6 : 1 in the hue line. Measurements: FTR.2 closeout + D-212.
+//
+// NOT here, deliberately: per-branch activation is FTR.3, and `StemFeatures` is
+// unreachable from the object/mesh stages until FTR.4 binds buffer(3) there.
 //
 // Geometry: each branch is a screen-aligned quad (4 vertices, 2 triangles).
 //   Total: 63 × 4 = 252 vertices ≤ 256, 63 × 2 = 126 primitives ≤ 512.
@@ -28,10 +40,6 @@ struct FractalPayload {
     /// BRANCH SPREAD, radians — how wide the canopy opens. Derived from
     /// `spectral_flux` in the object shader.
     float spread;
-    float treb_att;
-    float beat_bass;
-    float spectral_centroid;
-    float time;
     float aspect_ratio;
     uint  branch_count;   // 7–60: how many branches to render this frame
 };
@@ -105,14 +113,13 @@ void fractal_tree_object_shader(
         float flux   = saturate((f.spectral_flux - 0.10f) / 0.85f);
         float spread = 0.35f + flux * 0.24f;   // 20° … 34°
 
-        payload->reach             = reach;
-        payload->spread            = spread;
-        payload->branch_count      = min(count, 63u);
-        payload->treb_att          = f.treb_att;
-        payload->beat_bass         = f.beat_bass;
-        payload->spectral_centroid = f.spectral_centroid;
-        payload->time              = f.time;
-        payload->aspect_ratio      = max(f.aspect_ratio, 0.1f);
+        // Only the three geometry terms travel in the payload. The fragment stage reads
+        // its own primitives straight from `f` at buffer(0), so forwarding them here
+        // would just be a second, staler copy.
+        payload->reach        = reach;
+        payload->spread       = spread;
+        payload->branch_count = min(count, 63u);
+        payload->aspect_ratio = max(f.aspect_ratio, 0.1f);
     }
 }
 

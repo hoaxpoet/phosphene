@@ -2,7 +2,7 @@
   "name": "Fractal Tree",
   "family": "fractal",
   "duration": 30,
-  "description": "Recursive binary tree - low-fidelity graphic branch-fan. Branch count and trunk length grow with bass, canopy spreads with mid, leaf tips shift colour with spectral centroid. Reactivity rebuild in progress (FTR.2, D-212).",
+  "description": "Recursive binary tree - low-fidelity graphic branch-fan. The whole tree reaches on bass transients (branch count, trunk length and thickness move together as one gesture), the canopy opens as the spectrum changes, leaf colour follows the harmony along an amber-to-green arc, brightness carries the section-scale arc, and beats land as accents on the tips.",
   "author": "Matt",
   "passes": [
     "mesh_shader"
@@ -35,32 +35,27 @@
   "rubric_profile": "lightweight",
   "audio_routes": [
     {
-      "route": "branch_count",
-      "primitive": "bassAtt",
+      "route": "canopy_reach",
+      "primitive": "bassDev",
       "kind": "continuous"
     },
     {
-      "route": "trunk_length",
-      "primitive": "bassAtt",
-      "kind": "continuous"
-    },
-    {
-      "route": "canopy_spread",
-      "primitive": "midAtt",
-      "kind": "continuous"
-    },
-    {
-      "route": "tip_shimmer",
-      "primitive": "trebleAtt",
+      "route": "branch_spread",
+      "primitive": "spectralFlux",
       "kind": "continuous"
     },
     {
       "route": "leaf_hue",
-      "primitive": "spectralCentroid",
+      "primitive": "tonalPhaseFifths",
       "kind": "continuous"
     },
     {
-      "route": "beat_flash",
+      "route": "brightness_envelope",
+      "primitive": "arousal",
+      "kind": "continuous"
+    },
+    {
+      "route": "beat_accent",
       "primitive": "beatBass",
       "kind": "accent"
     }

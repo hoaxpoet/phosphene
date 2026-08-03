@@ -7,7 +7,7 @@
 
 > **Read this before the checklist trips you up.** The painterly reference set that used to live here — 14 images of bark, translucent foliage, golden-hour light and autumn palettes — **moved to `../goldengrove/`** when the V.10 uplift was cancelled at D-212. It described a preset Fractal Tree is deliberately not becoming. Do not go looking for it here and do not port it back.
 >
-> **There is currently no curated image set for this preset.** `PRESET_SESSION_CHECKLIST.md` Part 1 §1 says: curate one as part of the session, or escalate to Matt before authoring. **Curating a low-fi / graphic reference set is an explicit prerequisite of FTR.2** — see "What a reference set here would need to show" below.
+> **There is currently no curated image set for this preset, and FTR.2 was built without one.** `PRESET_SESSION_CHECKLIST.md` Part 1 §1 offers two routes — curate first, or escalate to Matt. It was escalated and **Matt resolved it on 2026-08-03: build without reference images, live review at M7 (FTR.5).** The stylization contract and the five anti-references below were the visual authority for the FTR.2 routing rebuild; the look verdict is deferred to that live review. Do not add image files here under version control — LFS.2 untracked them deliberately to stop the Git-LFS bill.
 
 ## Reference images
 
@@ -29,10 +29,12 @@ The register is **flat, graphic, diagrammatic** — closer to a botanical plate,
 
 What DOES matter for this preset (substitute for the full rubric):
 
-- [ ] **Color modulation:** leaf/tip hue tracks harmonic movement (`tonal_phase_fifths`), not a wall clock. The current `fract(t * 0.006)` term out-drives the audio term **18.6 : 1** and is removed at FTR.2.
-- [ ] **Audio coverage:** six visual layers, six *distinct* primitives (FA #67). The shipped preset runs three layers off `bass_att` alone — the defect FTR.2 fixes.
-- [ ] **Readability at silence:** a sparse, still, non-black tree — trunk plus the first two generations, legible and clearly alive (D-037). Never an empty frame.
-- [ ] **Readability at peak energy:** full 63-branch canopy that still reads as a *tree*, not a solid mass. Branch count must not flat-top: the shipped preset saturates at 63 for 5.1 % of frames.
+- [x] **Color modulation:** leaf/tip hue tracks harmonic movement (`tonal_phase_fifths`), not a wall clock. ✅ FTR.2 — the `fract(t * 0.006)` term is gone; hue now swings 41.9°–87.4° on harmony alone.
+- [x] **Audio coverage:** each visual layer on its own *distinct* primitive (FA #67). ✅ FTR.2 — five layers, five primitives, replacing three-layers-on-`bass_att`.
+- [x] **Readability at silence:** a sparse, still, non-black tree — trunk plus the first two generations, legible and clearly alive (D-037). ✅ FTR.2 — `bass_dev` is 0 at silence → the 7-branch rest tree; mean luma 0.0046, gated in `FractalTreeMeshRenderTest`.
+- [x] **Readability at peak energy:** a full canopy that still reads as a *tree*, not a solid mass. Branch count must not flat-top. ✅ FTR.2 — the soft knee `bd/(bd+0.12)` is asymptotic, so the 63 ceiling is unreachable by construction; measured max 48. Was pinned at 63 on 1.24 % of frames.
+
+*(Every box above is an automated or measured check. The one thing no box can carry is whether it LOOKS right — that is L4, and it is Matt's live M7 call at FTR.5.)*
 
 ## Anti-references
 
@@ -46,28 +48,21 @@ What this preset must NOT look like:
 
 ## Audio routing notes
 
-**Shipped routing (as of D-212) is the defect, recorded here so the FTR.2 diff is legible.** Measured on session `2026-08-03T15-05-43Z` (*Hummer*, 2114 frames after warmup):
+**Shipped routing — MEASURED, as rebuilt at FTR.2.** Five visual layers, five distinct primitives (FA #67). Swing figures are p05→p95 on four sources: session `2026-08-03T20-05-13Z` (*Hummer*, 7260 frames after warmup, chain verdict `clean`) plus the three `route_coverage` fixtures.
 
-| Layer | Primitive | Measured swing | Verdict |
+| Layer | Primitive | Measured swing (Hummer / love_rehab / so_what / there_there) | Was |
 |---|---|---|---|
-| branch count | `bass_att` | 21 → 63 | alive |
-| trunk length | `bass_att` | 0.434 → 0.558 | alive — same primitive |
-| thickness | `bass_att` | 11.7 % | alive — same primitive |
-| canopy spread | `mid_att` | **0.42°** of a promised 7° | dead |
-| tip shimmer | `treb_att` | **+0.002** of a promised +0.12 | dead |
-| leaf hue | `spectral_centroid` | **4.1°** vs a 76° clock term | dead |
-| beat flash | `beat_bass` | non-zero 90.4 % of frames | reads as glow, not accent |
+| canopy reach — branch count + trunk length + thickness, one coupled gesture | `bass_dev` | footprint +48 %; branch count 7→48, never pinned; blooms 1.91/s | three layers on `bass_att`; pinned at 63 for 1.24 % of frames |
+| branch spread | `spectral_flux` | **8.97° / 10.77° / 8.23° / 7.72°** | `mid_att`, 0.42° of a promised 7° — dead |
+| leaf hue | `tonal_phase_fifths` | **85.2° / 87.4° / 51.6° / 41.9°** of hue | `spectral_centroid`, 4.1° against a 76° wall clock — dead |
+| global brightness | `arousal` | **+54.0 % / +14.2 % / +28.1 % / +22.8 %** | *did not exist* — the preset had no section-scale route |
+| beat accent | `beat_bass` | live on 15.7–18.2 % of frames, firing 1.88–2.32/s at full amplitude | live on 99.2–100 % — read as a glow, not an accent |
 
-**Target routing (FTR.2 — one primitive per layer):**
+**Removed at FTR.2:** tip shimmer ← `treb_att`, which delivered +0.002 of a promised +0.12. Not re-homed — that visual layer belongs to FTR.3's per-branch activation, and a dead route is deleted rather than left declared as a false manifest.
 
-- Per-branch activation (HERO) ← `beat_phase01` + `pulse_beat_index` hash-selected bounded subset — per-beat
-- Canopy reach / branch length ← `bass_dev` — continuous
-- Branch spread angle ← `spectral_flux` — continuous
-- Leaf / tip hue ← `tonal_phase_fifths` — slow harmonic
-- Global brightness envelope ← `arousal` — section-level
-- Percussive accent ← `stems.drums_energy_dev` — per-onset *(needs the mesh-path stem binding, FTR.4)*
+**Still to come:** per-branch activation (HERO) ← `beat_phase01` + `pulse_beat_index`, hash-selected bounded subset — FTR.3. Percussive accent ← `stems.drums_energy_dev` — FTR.4, which needs the object/mesh-stage stem binding (the *fragment* stage is already bound at buffer(3) by `drawWithMeshShader`; only the object/mesh half is missing).
 
-**Coefficient rule:** size every coefficient against the primitive's measured p05→p95 span on a real capture, never against a notional 0→1. That is the discipline that would have caught all three dead routes above.
+**Coefficient rule:** size every coefficient against the primitive's measured p05→p95 span on a real capture, never against a notional 0→1. Applied throughout the table above — and it changed a primitive choice: D-212 named `bass_dev` for canopy reach without measuring it, and the measurement (zero on 66–89 % of frames) is what made the soft-knee `bd/(bd+0.12)` mapping necessary rather than a linear gain.
 
 ## Provenance
 
