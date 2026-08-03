@@ -37,7 +37,31 @@ public struct WitchlightTuning: Sendable {
 
     /// Beads per second, at a fixed TIME rate rather than a fixed arc length — so bead
     /// spacing encodes pen speed (`05`, `02`: density varies along the stroke).
-    public var emissionHz: Float = 34
+    /// SOLVED at WL.2-e, not chosen. Beads must be spaced further apart than they are
+    /// wide or they merge into a smear, which is what shipped: at 34 Hz and
+    /// `baseRadius` 0.011 the spacing was 0.0029 world units against a 0.022 diameter —
+    /// a ratio of 0.13, i.e. each bead overlapped the next seven times over. The trait
+    /// that most identifies the source (`01`, `02`: a thread with discrete sparks ON it)
+    /// was therefore absent entirely.
+    ///
+    /// The fix is FEWER beads, not smaller ones: at 34 Hz the spacing is 0.15 % of frame
+    /// height, so any radius that keeps a bead visible also guarantees overlap.
+    ///
+    /// Re-derived at WL.2-f against the SOURCE's ribbon rather than against an abstract
+    /// "looks beaded" ratio. The source's beads read ~1-1.5 % of frame height and nearly
+    /// touch (spacing/diameter ~1.2), ~100-150 along the visible length. With
+    /// `baseRadius` 0.011 (1.1 % of frame height — the source's size, and the value
+    /// originally shipped) that solves to
+    ///     emissionHz = speed / (1.2 x 2 x 0.011) = 3.79 Hz  ->  114 beads / 30 s trail.
+    ///
+    /// Note what this corrects: `baseRadius` was never the defect. WL.2-e shrank it to
+    /// 0.008 chasing a ratio of 2.0, which traded a smear for a hairline — the ribbon lost
+    /// its presence. Only the emission rate was ever wrong, and the 30 s trail was never
+    /// the blocker it appeared to be.
+    ///
+    /// Emission stays a fixed TIME rate (§3.2), so spacing still encodes pen speed; the
+    /// thin line pass keeps the thread continuous between beads.
+    public var emissionHz: Float = 3.79
 
     /// Base pen speed in world units/second. World units: the frame is 2.0 tall.
     public var baseSpeed: Float = 0.10
@@ -97,7 +121,20 @@ public struct WitchlightTuning: Sendable {
 
     /// `c` in `θ̇ = clamp(c · φ̄, ±ω_max)` for `.curvature`. φ̄ spans ±π, so c ≈ ω_max/π
     /// puts the clamp at the extremes of the circle of fifths and leaves the interior free.
-    public var curvatureGain: Float = 0.20
+    /// SOLVED from measurement at QG.5, not chosen. The response is linear in this gain
+    /// while the clamp is idle (measured saturation at 0.20 was 0.0-0.2%), so:
+    /// 0.20 produced 0.35-0.55 turns/trail across the fixtures, and 2.20 turns on the
+    /// WEAKEST fixture — the middle of the 1.9-2.8 band the WL.2-a probe's legible figures
+    /// occupied — needs 0.20 x 2.2 / 0.350 = 1.26.
+    ///
+    /// At 1.26 the Dubins clamp saturates above |deviation| = 0.50 rad, which the measured
+    /// p95 of 0.47-2.47 crosses regularly. That is the bounded-curvature guard finally
+    /// DOING something: at 0.20 it engaged on 0.0-0.2% of frames, i.e. the ball-of-yarn
+    /// floor was never actually holding anything back, because nothing was turning.
+    ///
+    /// `ResponseBandTests` (QG.5) holds this honest. If it goes red, fix the gain — do not
+    /// widen the band.
+    public var curvatureGain: Float = 1.26
 
     /// Time constant of the circular running mean that defines "home" for
     /// `.curvatureDeviation`, seconds. Long enough to read as the track's tonal centre

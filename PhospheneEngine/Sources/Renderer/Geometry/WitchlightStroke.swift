@@ -60,7 +60,8 @@ public struct WitchlightConfiguration: Sendable {
 
     public init(
         beadCapacity: Int = 1024,
-        baseRadius: Float = 0.011,
+        baseRadius: Float = 0.011,   // 1.1% of frame height — the source's bead size (WL.2-f)
+
         lineAlpha: Float = 0.34,
         tuning: WitchlightTuning = WitchlightTuning()
     ) {

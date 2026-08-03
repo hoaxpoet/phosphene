@@ -42,7 +42,7 @@ import Shared
 /// Setter access note: the members the `+Events` extension mutates are `internal(set)`
 /// rather than `private(set)` — Swift's file-scoped `private` cannot span the two files the
 /// lint budget requires. The public read-only surface is unchanged.
-public final class WitchlightPath {
+public final class WitchlightPath: AudioResponseMetrics {
 
     public private(set) var tuning: WitchlightTuning
 
@@ -135,6 +135,9 @@ public final class WitchlightPath {
     // sits at the clamp > 80 % of the time the figure degenerates to a circle and
     // `steerGain` comes down; `minTurnRadius` does not go up.
     public private(set) var frameCount: Int = 0
+
+    /// Wall-clock seconds of drive consumed, for per-unit response metrics (QG.5).
+    public private(set) var elapsedSeconds: Double = 0
     public private(set) var clampedFrameCount: Int = 0
     /// ∫|φ̄̇| dt — how far the smoothed harmonic phase travelled, radians. The design's
     /// §2.3 measurement quotes this as "circles over 30 s" (2.1 / 1.7 / 15.4 on the
@@ -150,6 +153,27 @@ public final class WitchlightPath {
     public var headingMonotonicity: Float {
         headingTravel > 1e-4 ? abs(headingNet) / headingTravel : 0
     }
+    // MARK: - AudioResponseMetrics (QG.5)
+
+    /// Turns of pen heading per trail window — the quantity that decides whether the
+    /// stroke reads as a figure or as an arc.
+    ///
+    /// Normalised per trail window rather than reported as a raw total, because fixtures
+    /// differ in length and a raw total would make the band depend on fixture duration
+    /// instead of on the preset. Measured from the WL.2-a probe renders: legible figures
+    /// landed at 1.9–2.8 turns; the shipped fixed gain produces 0.20–0.73 and draws an
+    /// arc on every fixture.
+    public func responseMetric(_ name: String) -> Double? {
+        switch name {
+        case "headingTurnsPerTrail":
+            guard elapsedSeconds > 0.01 else { return nil }
+            let perSecond = Double(headingTravel) / elapsedSeconds
+            return perSecond * Double(tuning.trailSeconds) / (2 * .pi)
+        default:
+            return nil
+        }
+    }
+
     public var clampedFraction: Float {
         frameCount > 0 ? Float(clampedFrameCount) / Float(frameCount) : 0
     }
@@ -188,6 +212,7 @@ public final class WitchlightPath {
         tumbleClock = 0
         trailWindow = tuning.trailSeconds
         frameCount = 0; clampedFrameCount = 0; phaseTravel = 0; headingTravel = 0; headingNet = 0
+        elapsedSeconds = 0
         deviationScale = 0.3
     }
 
@@ -210,6 +235,7 @@ public final class WitchlightPath {
     public func advance(deltaTime: Float, features: FeatureVector, stems: StemFeatures) {
         let dt = min(max(deltaTime > 0 ? deltaTime : 1.0 / 60.0, 1.0 / 240.0), 1.0 / 30.0)
         frameCount += 1
+        elapsedSeconds += Double(dt)
         tumbleClock += dt
 
         let stemTotal = stems.drumsEnergy + stems.bassEnergy + stems.otherEnergy + stems.vocalsEnergy

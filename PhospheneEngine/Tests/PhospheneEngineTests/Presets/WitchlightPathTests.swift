@@ -100,8 +100,18 @@ struct WitchlightPathTests {
     @Test("a stationary harmony draws a straight stroke — the pen advances, nothing turns it")
     func stationaryHarmonyDrawsStraightLine() {
         let path = WitchlightPath()
-        Self.drive(path, seconds: 10, phaseRate: 0)
-        #expect(path.beads.count > 300, "no beads emitted")
+        let seconds: Float = 10
+        Self.drive(path, seconds: seconds, phaseRate: 0)
+        // Expressed against the tuning, not a literal. The old `> 300` encoded the shipped
+        // 34 Hz emission rate; WL.2-e solved that to 3.1 Hz (beads at 34 Hz sat 0.15 % of
+        // frame height apart and merged into a smear), and a hard-coded count made a
+        // deliberate geometry change look like a regression.
+        let expected = Int(seconds * WitchlightTuning().emissionHz)
+        #expect(path.beads.count >= expected * 3 / 4,
+                """
+                emitted \(path.beads.count) beads in \(seconds) s, expected about \(expected) \
+                at \(WitchlightTuning().emissionHz) Hz — the pen stopped emitting
+                """)
         // Heading never changed, so every bead is collinear with the pen's initial direction.
         #expect(path.headingTravel < 0.02,
                 "a constant harmonic input turned the pen \(path.headingTravel) rad — it should not turn at all")
@@ -254,7 +264,12 @@ struct WitchlightPathTests {
             f.tonalPhaseFifths = Self.wrap(Float(i) * Self.dt * 8.0)   // a live driver…
             path.advance(deltaTime: Self.dt, features: f, stems: StemFeatures())  // …but no energy
         }
-        #expect(path.beads.count > 300, "the pen stopped emitting at silence — the trail would freeze")
+        let expectedAtSilence = Int(600 * Self.dt * WitchlightTuning().emissionHz)
+        #expect(path.beads.count >= expectedAtSilence * 3 / 4,
+                """
+                emitted \(path.beads.count) beads at silence, expected about \
+                \(expectedAtSilence) — the pen stopped emitting and the trail would freeze
+                """)
         #expect(path.headingTravel < 0.02,
                 "the pen turned at silence (\(path.headingTravel) rad); §3.6 says θ̇ = 0 with nothing to say")
     }

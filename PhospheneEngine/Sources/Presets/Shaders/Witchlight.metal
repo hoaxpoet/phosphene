@@ -56,8 +56,15 @@ static inline float3 witchlight_star_layer(float2 uv, float cells, float2 drift,
     float2 d = local - jitter;
     float r = length(d);
     // Sub-pixel-to-2px core with a very tight halo. `sizeScale` keeps far layers smaller.
-    float core = exp(-r * r * 260.0 / (sizeScale * sizeScale));
-    float glow = exp(-r * r * 34.0 / (sizeScale * sizeScale)) * 0.22;
+    // Falloff constants SOLVED, not chosen (WL.2-e). Lit-pixel share scales with the
+    // area each star paints, which goes as 1/falloff, so taking the measured 17.15 % down
+    // to the source render's 4.0 % means multiplying both constants by ~4.3. The near
+    // layer was the dominant term: at `sizeScale` 1.85 the old glow reached 1/e at ~0.49 %
+    // of frame width — a ~9 px halo on every one of 1300 stars, which is the milky wash
+    // Matt's M7 rejected. `07` is legitimately DENSE; what it is not is fat — its stars are
+    // sub-pixel to ~2 px, and that is what lets a dense field still read black.
+    float core = exp(-r * r * 1120.0 / (sizeScale * sizeScale));
+    float glow = exp(-r * r * 146.0 / (sizeScale * sizeScale)) * 0.22;
 
     // Stars are not white: hash a small blue↔amber temperature spread (`07`).
     float temperature = hash_f01_2(cell + 91.7);
@@ -138,7 +145,15 @@ fragment float4 witchlight_sky_fragment(
     // barely-there vignette so the corners fall away from the subject.
     float2 c = float2((uv.x - 0.5) * aspect, uv.y - 0.5);
     float vignette = 1.0 - 0.30 * smoothstep(0.35, 1.05, length(c));
-    float3 ground = float3(0.008, 0.008, 0.016);
+    // UNITS BUG, found at WL.2-e by isolating the terms: neither the stars nor the bloom
+    // accounted for the washed-out frame — there was a ~22-byte floor under both, and it
+    // was this constant. 0.008 is dark in LINEAR space, but the drawable is sRGB, so it
+    // encodes to byte ~22 (and 0.016 to ~34): a visibly lifted grey-blue, which is exactly
+    // what reference `07` says the field must NOT be. The comment above claimed
+    // "true near-black" while the code shipped grey. Values below are chosen so the
+    // ENCODED bytes land near-black (~7/7/13), which is the space the eye and the
+    // measurement both work in.
+    float3 ground = float3(0.0020, 0.0020, 0.0040);
 
     float3 rgb = (ground + bloom + stars) * vignette;
     return float4(rgb, 1.0);

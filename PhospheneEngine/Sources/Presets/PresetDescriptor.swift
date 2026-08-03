@@ -479,16 +479,48 @@ public struct PresetDescriptor: Sendable, Codable, Identifiable {
             /// contains a section boundary.
             case structural
         }
+        /// Measured band the VISUAL response must land in on the canonical fixtures (QG.5).
+        ///
+        /// `kind` gates the INPUT — that the primitive varies. This gates the OUTPUT — that
+        /// the visual quantity it drives actually moves a useful amount. Those are different
+        /// assertions, and only the first was ever checked, which is why "the gain is too
+        /// low" kept recurring with a green route: BUG-027 / CR.1.1 (`centroid × N` moved
+        /// < 1 rung of 11), AGC2 (`midDev` structurally ~0 under a fixed pivot), FA #73
+        /// (deviation primitives spike ~3×, so a gain tuned against 1.0 under-drives), and
+        /// Witchlight (heading turned 0.20 of the needed 1.5+ per trail).
+        ///
+        /// `min` is the floor a legible response needs. `max` is optional and omitted
+        /// unless an over-driven failure has actually been MEASURED — inventing a ceiling
+        /// is the same guess this gate exists to eliminate.
+        public struct Response: Sendable, Codable, Equatable {
+            /// Metric name the preset's runtime answers to via `AudioResponseMetrics`.
+            public let metric: String
+            /// Floor, in the metric's own units. Below this the route is present but inert.
+            public let min: Double
+            /// Optional ceiling. Omit unless the over-driven failure is measured.
+            public let max: Double?
+
+            public init(metric: String, min: Double, max: Double? = nil) {
+                self.metric = metric
+                self.min = min
+                self.max = max
+            }
+        }
+
         /// Short snake_case name of the visual behaviour (e.g. "downbeat_camera_push").
         public let route: String
         /// The FeatureVector/StemFeatures field the behaviour reads (Swift camelCase name).
         public let primitive: String
         public let kind: Kind
+        /// Optional measured response band (QG.5). Absent = not yet gated, exactly as
+        /// `audio_routes` itself rolled out at QG.1.
+        public let response: Response?
 
-        public init(route: String, primitive: String, kind: Kind) {
+        public init(route: String, primitive: String, kind: Kind, response: Response? = nil) {
             self.route = route
             self.primitive = primitive
             self.kind = kind
+            self.response = response
         }
     }
 
