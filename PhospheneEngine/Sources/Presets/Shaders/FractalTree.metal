@@ -38,7 +38,7 @@ struct FractalPayload {
 void fractal_tree_object_shader(
     object_data FractalPayload* payload [[payload]],
     mesh_grid_properties          mgp,
-    constant FeatureVector&       features [[buffer(0)]],
+    constant FeatureVector&       f [[buffer(0)]],
     uint tid [[thread_index_in_threadgroup]])
 {
     // Always dispatch exactly one mesh threadgroup (all 63 branches in one meshlet).
@@ -48,18 +48,18 @@ void fractal_tree_object_shader(
         // Branch count: 3 at silence → 63 at peak bass.
         // A minimum of 3 (trunk + two level-1 branches) keeps the tree recognisable
         // even before the audio warms up.
-        float bass  = saturate(features.bass_att * 1.5f);
+        float bass  = saturate(f.bass_att * 1.5f);
         uint  count = 3 + (uint)(bass * 60.0f);   // 3 – 63
         count = min(count, 63u);
 
         payload->branch_count      = count;
-        payload->bass_att          = features.bass_att;
-        payload->mid_att           = features.mid_att;
-        payload->treb_att          = features.treb_att;
-        payload->beat_bass         = features.beat_bass;
-        payload->spectral_centroid = features.spectral_centroid;
-        payload->time              = features.time;
-        payload->aspect_ratio      = max(features.aspect_ratio, 0.1f);
+        payload->bass_att          = f.bass_att;
+        payload->mid_att           = f.mid_att;
+        payload->treb_att          = f.treb_att;
+        payload->beat_bass         = f.beat_bass;
+        payload->spectral_centroid = f.spectral_centroid;
+        payload->time              = f.time;
+        payload->aspect_ratio      = max(f.aspect_ratio, 0.1f);
     }
 }
 
@@ -201,8 +201,8 @@ void fractal_tree_mesh_shader(
 /// Leaf tips: hue-shifted by spectral centroid + slow time rotation.
 /// Beat pulse: brightness flash across the whole tree, strongest at tips.
 fragment float4 fractal_tree_fragment(
-    MeshVertex              in       [[stage_in]],
-    constant FeatureVector& features [[buffer(0)]])
+    MeshVertex              in [[stage_in]],
+    constant FeatureVector& f  [[buffer(0)]])
 {
     // Per-vertex data packed into MeshVertex.normal and .uv.
     float depth_norm   = in.normal.x;    // 0 = trunk, 1 = deepest leaf level
@@ -210,11 +210,11 @@ fragment float4 fractal_tree_fragment(
     float along_branch = in.uv.x;        // 0 = branch base, 1 = branch tip
     float across_width = in.uv.y;        // 0 and 1 = edges, 0.5 = centre
 
-    float t        = features.time;
-    float beat     = features.beat_bass;
-    float centroid = features.spectral_centroid;
-    float mid_att  = features.mid_att;
-    float treb_att = features.treb_att;
+    float t        = f.time;
+    float beat     = f.beat_bass;
+    float centroid = f.spectral_centroid;
+    float mid_att  = f.mid_att;
+    float treb_att = f.treb_att;
 
     // ── Hue ─────────────────────────────────────────────────────────────
     // Bark: warm brown (hue ≈ 0.065).
