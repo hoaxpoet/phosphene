@@ -10,6 +10,32 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-03-233415] RECON.1–.4 — the production audit, and the drift it found
+
+A full audit of the production environment (defects, plan state, pipeline health, dead code, repo hygiene), then the cleanup it justified. Read-only inventory first; no changes until Matt picked from the findings.
+
+**The headline is not a code defect.** The codebase is in good shape — zero P0/P1 defects, retired presets cleanly removed, CI green and branch-protected. What had rotted is the **record**: `ENGINEERING_PLAN.md` carried 22 stale or missing entries and `KNOWN_ISSUES.md` 12 contradictions. Both are load-bearing — the plan is authoritative for intent, the tracker for open defects — so a session planning from them was planning against a world that no longer existed. Concretely: §Immediate Next Increments still presented the 2026-05-06 QR→DSP→V→MD→SB ordering; Phase ASH's header said "planned" 240 lines above its own M7 sign-off; and the open-defect index listed two bugs that were already stamped resolved *in the same table row*.
+
+**The two entries that moved in opposite directions are the ones worth remembering.**
+
+*BUG-041 closed.* Matt's call, on a PUB.3 flag that had been waiting since 2026-07-11 for a one-line confirm. Recorded explicitly as a **close-on-absence, not a close-on-proof** — the gates have been green since June and the flash hasn't recurred across many sessions, but no dedicated M7 was run against a worst-case hard-onset track start. The reopen path is left intact and the fixtures retained. Its inline `dev = 35` aside was promoted to **BUG-081** first, so closing the parent couldn't quietly bury a real finding: a StemAnalyzer deviation reaching 35 where the primitive's measured ceiling is ~3.4, suspected divide-by-near-zero against a not-yet-converged per-track EMA. No product impact today only because the FBS.S3.2 soft knee caps it — the input is wrong, the output is defended.
+
+*BUG-060 reopened.* Asked whether the force-quit hang had recurred since mid-July, Matt said it had. That **falsifies "likely resolved by NACRE.2b"**, which was one clean session from closing. The value is that it narrows rather than widens: BUG-061's preset-apply race is fixed on its own evidence, so whatever hangs the render loop is *not* that race. The "confirm by non-recurrence" plan is retired — it has now returned a negative — and replaced with a capture step that works **outside Xcode** (`sample PhospheneApp 10 -file …`), since a hang leaves no crash log and the recurrence wasn't hit under the debugger. This is the same instrument that diagnosed the BUG-059 deadlock class.
+
+**Hygiene.** 47 GB of stale Xcode DerivedData pruned (52 GB → 4.9 GB; 58 → 6 `PhospheneApp-*` dirs), **explicitly preserving the canonical primary-project build** so the Screen-Recording grant doesn't churn — the hash was re-derived from `xcodebuild -showBuildSettings` rather than trusted from memory, and confirmed unchanged. LaunchServices reseeded per the known prune+reseed remedy. Deleted three unreferenced `fbs/` CSVs and `tools/data/corpus_manifest.csv` (verified byte-identical to the `.csv.gz` every consumer actually reads).
+
+**What the audit got wrong, and how.** The dead-asset sweep initially flagged `docs/VISUAL_REFERENCES/_pg_spares` as orphaned on a zero-code-references signal. It is not — three curated reference READMEs cite it as Matt's alternate set. Reference images inherently have no code consumer, so the metric was simply wrong for that class of file, and the same reasoning spared `tunes_club.csv` (a script opens it by relative path). This is exactly the failure `AUDIT_KEEPLIST.md` exists to prevent — and that register turned out to be missing 3 of its own 14 executable targets, now added.
+
+**Operational fixes.** Four stale facts in docs people follow to do work: the RUNBOOK's CI line said `macos-14` when CI runs `macos-26` (a live trap — macos-14's SDK red-builds 18 Metal-Sendable errors, so "restoring" it from the doc breaks the gate); §Worktree setup documented only the older, narrower `bootstrap_fixtures.sh`, now leading with `link_fixtures.sh` and documenting both ceilings that made BUG-080 a misdiagnosis (the 3-of-8 fetch limit, and bootstrap's "directory non-empty" guard that exits 0 on a partial tree). The Physarum agent-network capability was merged into the renderer registry from a root-level staging file — overdue since Filigree certified on 2026-06-28.
+
+**D-213** records Matt's call to delete the zero-consumer **RMENV.2/.3** (gallery environment) and **MFX.1** (temporal upscaler) capabilities. The audit measured their consumer count as zero *and structurally so*: no preset sets `"environment"`, and KSRB.2 — the production wiring that would let one opt in — was never built. Applies the D-203 precedent (the light rig was decommissioned the day its consumer stopped). RMENV.1 multi-light is explicitly retained; it has three live consumers. **Decided, not executed** — it touches the four-way `SceneUniforms` mirror and needs its own increment.
+
+**Deliberately left for Matt:** the 5 superseded + 3 stranded unmerged remote branches, and the BUG-080 "third instance" decision. **Queued follow-ups:** fixture-restore consolidation behind one shared manifest, CI Option B (the hand-maintained ~130-test allow-list currently leaves new suites invisible to CI), wiring `check_drums_beat_intensity.sh` into CI, and BUG-079 (release-config test build, which blocks every release-only perf budget).
+
+**A process note, since this is the second time.** The D-161 ratchet says a rule violated twice gets mechanized. Plan-vs-tree drift has now well exceeded that. The cheap mechanization is one more `DocIntegrityTests` invariant: every increment ID appearing in `git log` since the last rotation must appear in `ENGINEERING_PLAN.md`. That single check would have caught 8 of the 22 drift items automatically, including all five phases that shipped without a row.
+
+---
+
 ### [dev-2026-08-03-200455] BUG-080 — the propagation chain had no source of truth, and nothing checked
 
 `Scripts/link_fixtures.sh` copies gitignored-but-needed files from the primary checkout into each new worktree. Two independent breaks meant a correctly-prepared worktree — and `main` itself — failed the engine suite. Diagnosed, widened P3 → P2, fixed and validated in one increment (Matt approved the collapse in chat).
