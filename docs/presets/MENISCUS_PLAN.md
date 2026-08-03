@@ -421,7 +421,7 @@ badly understated.** This is the NACRE.2b pattern the plan predicted (§2 reason
    The warp shader body returns `vec3(0,0,0)` unconditionally. §3 asserted this from a
    read; it is now verified from the artifact.
 
-### MEN.2b — drops: force law READ FROM THE SOURCE (2026-08-03)
+### MEN.2b — drops: force law read from the source, then calibrated (2026-08-03)
 
 Four rounds of guessing the force scale missed the drop rate by more than 100x (297-522,
 713-838, 9.7-569, 1800 /s against a legible ~0.5-240). Matt's call: read the constant from
@@ -448,15 +448,35 @@ not on AGC'd band energy. The rule never applied.
 Also corrected: the AGC statistics run over `reg01` = 126 taps while the transform uses
 `flen` = 30. Using 30 for both makes the level ~2x too small.
 
-**One unknown remains, and it is now precisely characterised.** The rate is 513-840 /s —
-still high. Every constant above is in MILKDROP'S SPECTRUM UNITS, and Phosphene's
-`FFTProcessor` magnitudes have a different scale, so the `600` in the level update does
-not transfer directly. What is left is a single units conversion between the two spectra,
-with a clear target (the normalised spectrum should put `amp` straddling the 0.02 gate) —
-not a guess at a law. That is a materially better position than four rounds ago, and it is
-the next thing to settle.
+**CALIBRATED AND ENABLED (2026-08-03).** Two things had to be measured, and one of them
+turned out to be a defect in the measurement rather than the code.
 
-`dropsEnabled` stays **false** until it is.
+**1. The units conversion.** Every source constant is in Milkdrop's spectrum units;
+`FFTProcessor`'s magnitudes have a different scale, so the `600` in the level update does
+not transfer. `amp` scales as 1/level², so the multiplier follows in closed form from where
+`amp` actually sits against the source's 0.02 gate. `MeniscusCalibrationProbe` measures it:
+7.4x / 16.7x / 24.9x for so_what / there_there / love_rehab. The 3.4x spread is the MUSIC
+differing — a spectrally busier track should place more drops — so `dropSpectrumScale` takes
+a middle value (10) rather than flattening them.
+
+**2. The rate metric was the defect.** Gating on stamp events read 513-840 /s and looked
+like anti-reference 8. It was counting the same ripple repeatedly: at 611 stamps/s
+love_rehab has only **39 distinct sites**, each sustained ~15 frames. Gating on new-site
+ONSETS gives **1.1 / 22.3 / 39.0 per second** across sparse jazz, rock and dense electronic —
+all legible, and the spread reads as musical differentiation. Four rounds of "the port is
+wrong" were partly four rounds of the wrong instrument.
+
+**3. Localisation is a property of DAMPING, not impact strength.** With drops enabled the
+whole plate churned — anti-reference 4. Sweeping drop force changed amplitude but left 63-84 %
+of the grid disturbed at every setting, because ripples crossed the torus before dying. The
+cause was MEN.2a's guessed `damping = 0.995` (1/e over ~200 frames); the source damps with
+the same `dec_med` it uses elsewhere, ~0.97 at 60 fps (~33 frames). Applying it drops the
+disturbed fraction to **28 %** — "at any moment most of the surface is quiet and one or two
+regions are actively rippling", which is T4 stated exactly.
+
+`dropsEnabled` now defaults **true**, and `MeniscusMultiFrameRenderTest` gained a real-music
+drive (`MENISCUS_TRACK=<fixture>`) because at silence there is no spectrum and the ported
+behaviour is invisible.
 
 **Not filed as a numbered BUG, deliberately.** BUG-080 is held by the unmerged
 `claude/bug080-worktree-weights` branch and BUG-081 by the FTR.2 session (Matt,

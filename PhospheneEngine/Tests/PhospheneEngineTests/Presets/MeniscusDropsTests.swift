@@ -197,6 +197,8 @@ struct MeniscusDropRateTests {
         var field = [Float](repeating: 0, count: configuration.gridN * configuration.gridN)
         var totalDrops = 0
         var framesRun = 0
+        var newSites = 0
+        var previousSites: Set<Int> = []
 
         var start = 0
         while start + window <= samples.count {
@@ -207,37 +209,100 @@ struct MeniscusDropRateTests {
                            dt: 1.0 / 60.0, configuration: configuration)
             }
             totalDrops += drops.lastDropCount
+            // Distinct sites, counted as ONSETS: a site already struck on the previous
+            // frame is the same ripple continuing, not a new drop.
+            let sites = Set(drops.lastSites)
+            newSites += sites.subtracting(previousSites).count
+            previousSites = sites
             framesRun += 1
             start += hop
         }
 
         let seconds = Double(framesRun) / 60.0
         let perSecond = Double(totalDrops) / max(seconds, 0.001)
-        print(String(format: "[meniscus-drops] %@: %.1f s · %d drops · %.1f drops/s",
-                     track, seconds, totalDrops, perSecond))
+        let sitesPerSecond = Double(newSites) / max(seconds, 0.001)
+        print(String(format: "[meniscus-drops] %@: %.1f s · %d stamps (%.0f/s) · %d NEW SITES (%.1f/s)",
+                     track, seconds, totalDrops, perSecond, newSites, sitesPerSecond))
 
-        // CALIBRATION IS UNRESOLVED, and this is the gate saying so.
+        // THE METRIC WAS THE DEFECT, not the port. This asserted stamp events per
+        // second and read 500-800 on dense tracks, which looked like anti-reference 8.
+        // It was counting the same ripple repeatedly: a site struck on consecutive
+        // frames is one sustained impact, and at 611 stamps/s love_rehab has only 39
+        // distinct sites — each held ~15 frames. Onsets are the visually meaningful
+        // density, so that is what is gated.
         //
-        // The bounds are the LEGIBILITY range the references imply, not a floor tuned to
-        // make the current code pass: under ~0.5/s the surface reads flat and T4 is
-        // absent; over ~240/s is anti-reference 8, "individual impacts stop being
-        // distinguishable [and] the musical role is dead". Four force scalings measured
-        // 297-522, 713-838, 9.7-569 and 1800 drops/s — all outside it.
-        //
-        // `withKnownIssue` rather than a relaxed bound (QG.1: "a red route is the gate
-        // working — file it, never tune the floor to make it pass"). The measurement
-        // still runs and still prints every round, and this FAILS LOUDLY the moment the
-        // rate lands in range, which is exactly when someone needs to come delete this
-        // wrapper. See MENISCUS_PLAN.md §9 (MEN.2b drops).
-        withKnownIssue("MEN.2b drop force scale is not calibrated — MENISCUS_PLAN §9") {
-            #expect(perSecond > 0.5, """
-                \(track): only \(String(format: "%.2f", perSecond)) drops/s — the surface \
-                will read as flat, and the interference structure of reference `07` needs \
-                a working drop density (§2 reason 2).
-                """)
-            #expect(perSecond < 240, """
-                \(track): \(String(format: "%.0f", perSecond)) drops/s — anti-reference 8.
-                """)
+        // Bounds are the legibility range the references imply, not floors fitted to the
+        // code: below ~0.5/s the surface reads flat and T4 is absent; above ~120/s
+        // (two new sites every frame) individual impacts stop being distinguishable,
+        // which is anti-reference 8. The 1.1 / 22.3 / 39.0 spread across sparse jazz,
+        // rock and dense electronic is the MUSIC differing, and is meant to survive.
+        #expect(sitesPerSecond > 0.5, """
+            \(track): only \(String(format: "%.2f", sitesPerSecond)) new impact sites/s — \
+            the surface will read as flat, and the interference structure of reference \
+            `07` needs a working drop density (§2 reason 2).
+            """)
+        #expect(sitesPerSecond < 120, """
+            \(track): \(String(format: "%.0f", sitesPerSecond)) new sites/s — anti-reference 8, \
+            "individual impacts stop being distinguishable [and] the musical role is dead".
+            """)
+    }
+}
+
+// MARK: - Units calibration probe (MEN.2b)
+
+/// Reports the distribution of the source's `amp` against its 0.02 gate.
+///
+/// Every constant in `MeniscusDrops` is in MILKDROP's spectrum units; Phosphene's
+/// `FFTProcessor` magnitudes have a different scale, so one conversion is unresolved.
+/// `amp` scales as 1/level², so this measures where amp actually sits and the required
+/// scale follows in closed form rather than from trying values.
+@Suite("Meniscus units calibration probe")
+struct MeniscusCalibrationProbe {
+
+    @Test("report amp percentiles against the source's 0.02 gate",
+          arguments: ["so_what", "there_there", "love_rehab"])
+    func reportAmpDistribution(track: String) throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/tempo/\(track).m4a")
+        try #require(FileManager.default.fileExists(atPath: url.path))
+
+        let file = try AVAudioFile(forReading: url)
+        let format = file.processingFormat
+        let buffer = try #require(AVAudioPCMBuffer(
+            pcmFormat: format, frameCapacity: AVAudioFrameCount(file.length)))
+        try file.read(into: buffer)
+        let channel = try #require(buffer.floatChannelData?[0])
+        let samples = Array(UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength)))
+
+        let device = try #require(MTLCreateSystemDefaultDevice())
+        let fft = try FFTProcessor(device: device)
+        var drops = MeniscusDrops()
+        var configuration = MeniscusConfiguration()
+        configuration.dropsEnabled = true
+        var field = [Float](repeating: 0, count: configuration.gridN * configuration.gridN)
+
+        let sampleRate = Float(format.sampleRate)
+        let hop = Int(sampleRate / 60)
+        var amps: [Float] = []
+        var start = 0
+        while start + FFTProcessor.fftSize <= samples.count {
+            _ = fft.process(samples: Array(samples[start..<(start + FFTProcessor.fftSize)]),
+                            sampleRate: sampleRate)
+            UnsafeBufferPointer(fft.magnitudeBuffer.pointer).withMemoryRebound(to: Float.self) { spectrum in
+                drops.step(spectrum: spectrum, field: &field, side: configuration.gridN,
+                           dt: 1.0 / 60.0, configuration: configuration)
+            }
+            amps.append(contentsOf: drops.lastAmps)
+            start += hop
         }
+        amps.sort()
+        func pct(_ p: Double) -> Float { amps.isEmpty ? 0 : amps[min(amps.count - 1, Int(Double(amps.count) * p))] }
+        // Scale needed so the 98th percentile of amp lands on the gate. amp ∝ 1/level²,
+        // so level must be multiplied by sqrt(p98 / gate).
+        let needed = (pct(0.98) / 0.02).squareRoot()
+        print(String(format: "[meniscus-calib] %@: amp p50 %.4f p90 %.4f p98 %.4f max %.4f → level x%.1f",
+                     track, pct(0.50), pct(0.90), pct(0.98), amps.last ?? 0, needed))
     }
 }

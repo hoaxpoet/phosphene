@@ -45,6 +45,13 @@ struct MeniscusDrops {
     private(set) var lastDropCount = 0
     /// Diagnostic: summed force stamped on the most recent step.
     private(set) var lastDropForce: Float = 0
+    /// Diagnostic: this step's per-bin `amp` values, for calibrating the spectrum-units
+    /// conversion against the source's 0.02 gate.
+    private(set) var lastAmps: [Float] = []
+    /// Diagnostic: the distinct grid cells struck this step. Consecutive frames stamping
+    /// a slowly-moving position are ONE sustained ripple, not many drops, so this — not
+    /// the stamp count — is the visually meaningful density.
+    private(set) var lastSites: [Int] = []
 
     // MARK: - Per frame
 
@@ -66,6 +73,8 @@ struct MeniscusDrops {
     ) {
         lastDropCount = 0
         lastDropForce = 0
+        lastAmps.removeAll(keepingCapacity: true)
+        lastSites.removeAll(keepingCapacity: true)
         guard side > 4, spectrum.count >= 64 else { return }
 
         let fps = max(1 / max(dt, 1e-5), 1)
@@ -97,7 +106,8 @@ struct MeniscusDrops {
         }
         sum /= Float(reg01Count)
         let reg01 = Float(reg01Count)
-        level = level * decMed + 600 * (1 - decMed) * energy.squareRoot() / reg01
+        level = level * decMed
+            + 600 * configuration.dropSpectrumScale * (1 - decMed) * energy.squareRoot() / reg01
         let stride = max(spectrum.count / taps, 1)
         guard level > 1e-6 else { return }
 
@@ -126,6 +136,7 @@ struct MeniscusDrops {
             // proportional to |c|, and the gate is a hard threshold on the NORMALISED
             // transform output (not on AGC'd band energy, so FA #31 does not apply).
             let amp = 3 * (cx * cx + cy * cy)
+            lastAmps.append(amp)
             guard amp > configuration.dropGate else { continue }
             let force = (60 / fps) * amp.squareRoot() * configuration.dropForce
 
@@ -139,6 +150,8 @@ struct MeniscusDrops {
                     field[row * side + col] -= force * weight
                 }
             }
+            lastSites.append(Self.wrap((cy + 0.5) * Float(side), side) * side
+                             + Self.wrap((cx + 0.5) * Float(side), side))
             lastDropForce += force
             if force > configuration.dropVisibleForce { lastDropCount += 1 }
         }

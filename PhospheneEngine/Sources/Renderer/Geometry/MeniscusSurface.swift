@@ -16,10 +16,12 @@
 // carries no boustrophedon logic. The rounded turnaround caps at the margins
 // (reference `07`, trait T1) fall out of the ordering; they are not drawn specially.
 //
-// MEN.2b PORTED the source's camera, its hue rotation and its volume brightness gate
-// (see `MeniscusCamera`). Drop placement is NOT yet ported — the cepstral mechanism
-// needs the FFT spectrum, which `ParticleGeometry.update` does not carry; the surface
-// still runs on the MEN.2a placeholder swell until that bridge exists.
+// MEN.2b PORTED the source's camera, hue rotation and volume brightness gate
+// (`MeniscusCamera`), its cepstral drop placement (`MeniscusDrops`), and its damping.
+// The damping is worth singling out: it is the source's frame-rate-normalised `dec_med`
+// (~0.97 at 60 fps), not the 0.995 MEN.2a guessed, and that 6x difference is what makes
+// the surface read as a CALM field with one or two active ripple systems (T4) instead of
+// agitated everywhere — localisation is a property of damping, not of impact strength.
 //
 // See `docs/presets/MENISCUS_PLAN.md` §3 (decode) and §9 (corrections from the oracle).
 
@@ -161,7 +163,7 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
                 dt: dt,
                 configuration: configuration)
         }
-        stepWave()
+        stepWave(dt: dt)
         serializeSerpentinePath()
 
         lastStepMilliseconds = Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000
@@ -206,10 +208,18 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
     /// Laplacian `∇²h ≈ Σn − 4h` and `c² = ½` collapses to
     /// `h(t+1) = 2·mean(neighbours) − h(t−1)`; the damping factor is what makes it
     /// water rather than a lossless membrane.
-    private func stepWave() {
+    private func stepWave(dt: Float) {
         let side = configuration.gridN
         guard side > 2 else { return }
-        let damping = configuration.damping
+        // DAMPING IS THE SOURCE'S `dec_med` = 1 - 0.06*30/fps, frame-rate normalised —
+        // read from the source, not guessed. MEN.2a used 0.995, which decays to 1/e over
+        // ~200 frames (3.3 s); dec_med is ~0.97 at 60 fps, ~33 frames (0.55 s). That 6x
+        // difference is why the field stayed agitated EVERYWHERE regardless of drop
+        // force: ripples crossed the whole torus before dying. Localisation — T4, "at any
+        // moment most of the surface is quiet and one or two regions are actively
+        // rippling" — is a property of the DAMPING, not of the impact strength.
+        let fps = max(1 / max(dt, 1e-5), 1)
+        let damping = configuration.damping * (1 - 1.8 / fps)
 
         current.withUnsafeBufferPointer { curBuf in
             previous.withUnsafeMutableBufferPointer { prevBuf in

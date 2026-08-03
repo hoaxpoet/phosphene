@@ -47,7 +47,8 @@ public struct MeniscusConfiguration: Sendable {
     /// Grid resolution per side. The source's figure is 45; raising it smooths the
     /// surface but closes the raster gaps (`MENISCUS_PLAN.md` §7 R4).
     public var gridN: Int
-    /// Wave-propagation damping per step. < 1 so energy bleeds away.
+    /// Multiplier on the source's own frame-rate-normalised damping (`dec_med`). 1.0 is
+    /// the source's value; the step applies `damping * (1 - 1.8/fps)`.
     public var damping: Float
     /// Vertical exaggeration applied to the height field at projection time.
     public var heightScale: Float
@@ -98,15 +99,7 @@ public struct MeniscusConfiguration: Sendable {
     public var camDistSwing: Float
     /// Period of the distance oscillation, seconds.
     public var dollyPeriod: Float
-    /// Drops are PORTED BUT NOT CALIBRATED, and are off until they are.
-    ///
-    /// The placement mechanism is verified (`MeniscusDropsTests`): harmonic spacing
-    /// decides position, a structureless spectrum places nothing, impacts are narrow.
-    /// What is NOT settled is the force scale. Three attempts measured 297-522, then
-    /// 713-838, then 9.7-569 (track-dependent), then 1800 drops/second against a target
-    /// of a few — every one of them a guess at a constant §3 does not record. Guessing a
-    /// fourth time is the FA #73 failure mode, so the switch stays off and the
-    /// calibration is an open question rather than a silently-wrong default.
+    /// Drops on/off.
     public var dropsEnabled: Bool
     /// Drop constants, READ FROM THE SOURCE (Matt's call, 2026-08-03) rather than
     /// guessed — four rounds of guessing missed the rate by more than 100x.
@@ -117,6 +110,19 @@ public struct MeniscusConfiguration: Sendable {
     /// spectrum itself first, which is precisely what my four attempts were missing.
     /// `dropForce` is the source's unit scale; the frame-rate term (60/fps) lives in the
     /// step.
+    /// UNITS CONVERSION between Milkdrop's spectrum scale and Phosphene's
+    /// `FFTProcessor` magnitudes. Every other drop constant is the source's own value;
+    /// this one has no counterpart there, because the source never had to cross between
+    /// two different spectra.
+    ///
+    /// CALIBRATED, NOT CHOSEN. `amp` scales as 1/level², so the multiplier follows in
+    /// closed form from where `amp` actually sits relative to the source's 0.02 gate.
+    /// Measured on the three committed fixtures (`MeniscusCalibrationProbe`), the
+    /// multiplier that puts each track's 98th-percentile amp on the gate is 7.4x
+    /// (so_what), 16.7x (there_there) and 24.9x (love_rehab). The 3.4x spread is the
+    /// MUSIC differing and is meant to survive — a busier track should place more drops
+    /// — so this takes the median rather than flattening them.
+    public var dropSpectrumScale: Float
     public var dropGate: Float
     public var dropForce: Float
     /// Force above which an impact counts as a VISIBLE drop. Diagnostic only —
@@ -129,7 +135,7 @@ public struct MeniscusConfiguration: Sendable {
 
     public init(
         gridN: Int = 45,
-        damping: Float = 0.995,
+        damping: Float = 1.0,
         heightScale: Float = 0.32,
         spread: Float = 0.033,
         spreadMode: Int = 0,
@@ -142,7 +148,8 @@ public struct MeniscusConfiguration: Sendable {
         camDistSwing: Float = 1.35,
         dollyPeriod: Float = 19.0,
         spreadTracksDistance: Bool = true,
-        dropsEnabled: Bool = false,
+        dropsEnabled: Bool = true,
+        dropSpectrumScale: Float = 10.0,
         dropGate: Float = 0.02,
         dropForce: Float = 1.0,
         dropVisibleForce: Float = 0.05
@@ -162,6 +169,7 @@ public struct MeniscusConfiguration: Sendable {
         self.dollyPeriod = dollyPeriod
         self.spreadTracksDistance = spreadTracksDistance
         self.dropsEnabled = dropsEnabled
+        self.dropSpectrumScale = dropSpectrumScale
         self.dropGate = dropGate
         self.dropForce = dropForce
         self.dropVisibleForce = dropVisibleForce
