@@ -46,13 +46,22 @@ public struct WitchlightTuning: Sendable {
     ///
     /// The fix is FEWER beads, not smaller ones: at 34 Hz the spacing is 0.15 % of frame
     /// height, so any radius that keeps a bead visible also guarantees overlap.
-    /// `spacing / diameter = speed / (emissionHz x 2 x baseRadius)`; a ratio of ~2 reads
-    /// as beaded, and at `baseRadius` 0.008 that solves to 3.1 Hz — 93 beads across the
-    /// 30 s trail, against the ~100-150 discrete beads visible on the source render.
+    ///
+    /// Re-derived at WL.2-f against the SOURCE's ribbon rather than against an abstract
+    /// "looks beaded" ratio. The source's beads read ~1-1.5 % of frame height and nearly
+    /// touch (spacing/diameter ~1.2), ~100-150 along the visible length. With
+    /// `baseRadius` 0.011 (1.1 % of frame height — the source's size, and the value
+    /// originally shipped) that solves to
+    ///     emissionHz = speed / (1.2 x 2 x 0.011) = 3.79 Hz  ->  114 beads / 30 s trail.
+    ///
+    /// Note what this corrects: `baseRadius` was never the defect. WL.2-e shrank it to
+    /// 0.008 chasing a ratio of 2.0, which traded a smear for a hairline — the ribbon lost
+    /// its presence. Only the emission rate was ever wrong, and the 30 s trail was never
+    /// the blocker it appeared to be.
     ///
     /// Emission stays a fixed TIME rate (§3.2), so spacing still encodes pen speed; the
     /// thin line pass keeps the thread continuous between beads.
-    public var emissionHz: Float = 3.1
+    public var emissionHz: Float = 3.79
 
     /// Base pen speed in world units/second. World units: the frame is 2.0 tall.
     public var baseSpeed: Float = 0.10
