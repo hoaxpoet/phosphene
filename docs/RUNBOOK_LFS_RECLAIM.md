@@ -31,16 +31,21 @@ Do **not** run this twice. Every rewrite orphans every clone, so batching is not
 | Target | Objects | In `IMG_REGEX` today? |
 |---|---|---|
 | `docs/VISUAL_REFERENCES/**` + `docs/diagnostics/**` rasters | 287 | yes |
-| `PhospheneEngine/Sources/ML/Weights/**/*.bin` | **479** | **no — decide before running** |
+| `PhospheneEngine/Sources/ML/Weights/**/*.bin` | **468** | **yes — scope decided 2026-08-02** |
 | `docs/quality_reel.mp4` | 1 | no (still legitimately LFS) |
+| `PhospheneEngine/Sources/ML/Models/**/*.mlpackage` blobs | 11 | no — live, must survive |
 
-The weights are the larger object count and almost certainly the larger share of the bill. They are already out of the working tree (PUB.2) and ship as the `ml-weights-v1` Release asset, so **nothing depends on them remaining in history.** Including them means editing `IMG_REGEX` in `Scripts/reclaim-lfs-visual-refs.sh` to something like:
+Counts are unique LFS objects referenced by history (`git lfs ls-files --all`), measured 2026-08-02. Earlier drafts said 479 weights; that is the file count on disk, which dedupes to 468 objects. 767 total today, 755 of them targeted.
+
+The weights are the larger object count and almost certainly the larger share of the bill. They are already out of the working tree (PUB.2) and ship as the `ml-weights-v1` Release asset, so **nothing depends on them remaining in history.** This is now applied — `IMG_REGEX` in `Scripts/reclaim-lfs-visual-refs.sh` reads:
 
 ```
 '(docs/(VISUAL_REFERENCES|diagnostics)/.*\.(jpg|jpeg|png|gif)|PhospheneEngine/Sources/ML/Weights/.*\.bin)$'
 ```
 
-Verify the new regex against a dry run and confirm `SHA256SUMS` survives — it is the manifest `fetch_weights.sh` verifies against, and losing it breaks every clone's ability to fetch weights.
+Verify the new regex against a dry run and confirm `SHA256SUMS` survives — it is the manifest `fetch_weights.sh` verifies against, and losing it breaks every clone's ability to fetch weights. The script now asserts this directly, and aborts if either canary is missing.
+
+Dry run on this scope (2026-08-02): 287 images + 468 weights removed, 0 of either remaining, both canaries intact, 12 LFS objects left (the 11 live `.mlpackage` blobs + `quality_reel.mp4`), repo 1.4 GB → 82 MB.
 
 ---
 

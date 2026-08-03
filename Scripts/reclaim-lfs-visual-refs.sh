@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Purge docs/VISUAL_REFERENCES + docs/diagnostics images from LFS history.
+# Purge docs/VISUAL_REFERENCES + docs/diagnostics images AND the retired
+# ML/Weights/*.bin (Release-asset delivery since PUB.2) from LFS history.
 # Runs against a FRESH MIRROR CLONE — your working checkout is never touched.
 # Does NOT push unless you pass --execute. Review the dry-run first.
 #
@@ -13,9 +14,13 @@ set -euo pipefail
 
 REMOTE="https://github.com/hoaxpoet/phosphene.git"
 WORK="${TMPDIR:-/tmp}/phosphene-lfs-purge"
-# Purge ONLY raster images under these dirs. Text records (READMEs, diagnoses,
-# rendering contracts, source_*.txt/json) live here too and MUST survive.
-IMG_REGEX='docs/(VISUAL_REFERENCES|diagnostics)/.*\.(jpg|jpeg|png|gif)$'
+# Purge ONLY raster images under these dirs, plus the retired ML weights.
+# Text records (READMEs, diagnoses, rendering contracts, source_*.txt/json) live
+# under docs/ too and MUST survive. So must Weights/SHA256SUMS — no extension,
+# so `.bin$` misses it; fetch_weights.sh verifies against it. Note the weights
+# arm is scoped to ML/Weights/, NOT ML/Models/ — the live *.mlpackage CoreML
+# blobs (incl. their own weight.bin) are still referenced and must stay.
+IMG_REGEX='(docs/(VISUAL_REFERENCES|diagnostics)/.*\.(jpg|jpeg|png|gif)|PhospheneEngine/Sources/ML/Weights/.*\.bin)$'
 EXECUTE=0
 [[ "${1:-}" == "--execute" ]] && EXECUTE=1
 
@@ -24,8 +29,9 @@ rm -rf "$WORK"
 git clone --mirror "$REMOTE" "$WORK"
 cd "$WORK"
 
-echo "== LFS images BEFORE (unique objects referenced by history) =="
-git lfs ls-files --all | grep -E 'VISUAL_REFERENCES|diagnostics' | wc -l | xargs echo "  image files to remove:"
+echo "== LFS objects BEFORE (unique objects referenced by history) =="
+git lfs ls-files --all | grep -cE 'VISUAL_REFERENCES|diagnostics' | xargs echo "  image files to remove:"
+git lfs ls-files --all | grep -cE 'ML/Weights/.*\.bin$' | xargs echo "  weight files to remove:"
 
 echo "== Rewriting history: dropping matching images from every commit =="
 # --invert-paths + --path-regex removes ONLY files matching IMG_REGEX; every
@@ -44,11 +50,23 @@ if git log --all --name-only --pretty=format: -- 'docs/VISUAL_REFERENCES' 'docs/
 else
   echo "  OK: 0 image blobs remain"
 fi
-echo "== Sanity: a known text record SURVIVED the rewrite =="
+echo "== Verify: no weight blobs remain in ANY history =="
+if git log --all --name-only --pretty=format: -- 'PhospheneEngine/Sources/ML/Weights' \
+     | grep -E '\.bin$' | grep -q .; then
+  echo "  !! weights still present — aborting"; exit 1
+else
+  echo "  OK: 0 weight blobs remain"
+fi
+echo "== Sanity: known records SURVIVED the rewrite =="
 git cat-file -e HEAD:docs/diagnostics/CODE_AUDIT_2026-06-13.md \
   && echo "  OK: CODE_AUDIT_2026-06-13.md still in tree" \
   || { echo "  !! text record lost — aborting"; exit 1; }
-echo "== Remaining LFS files (should be weights only) =="
+# SHA256SUMS is the manifest fetch_weights.sh verifies against — losing it
+# breaks every fresh clone's ability to fetch the Release-asset weights.
+git cat-file -e HEAD:PhospheneEngine/Sources/ML/Weights/SHA256SUMS \
+  && echo "  OK: Weights/SHA256SUMS still in tree" \
+  || { echo "  !! SHA256SUMS lost — aborting"; exit 1; }
+echo "== Remaining LFS files (expect only the live *.mlpackage blobs + quality_reel.mp4) =="
 git lfs ls-files --all | sed -E 's#([^/]+/[^/]+)/.*#\1#' | sort | uniq -c
 
 if [[ $EXECUTE -eq 0 ]]; then
