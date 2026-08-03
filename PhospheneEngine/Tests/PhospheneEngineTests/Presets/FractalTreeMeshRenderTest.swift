@@ -87,9 +87,9 @@ struct FractalTreeMeshRenderTest {
         // Evidence, always printed — this is the measured-swing surface FTR.2 reports
         // against, standing in for the QG.5 response band Fractal Tree cannot reach.
         for (label, pixels) in frames {
-            print(String(format: "[fractal-tree] %-10s mean-luma %.5f  ink %.4f",
+            print(String(format: "[fractal-tree] %-10s mean-luma %.5f  ink %.4f  width %.4f",
                          (label as NSString).utf8String!, Self.meanLuma(pixels),
-                         Self.inkFraction(pixels)))
+                         Self.inkFraction(pixels), Self.canopyWidth(pixels)))
         }
         if let outputDirectory {
             Self.writeContactSheet(frames, to: outputDirectory)
@@ -271,6 +271,21 @@ struct FractalTreeMeshRenderTest {
                       + 0.299 * Double(bgra[i + 2])) / 255.0
         }
         return total / Double(bgra.count / 4)
+    }
+
+    /// Width of the tree's bounding box, as a fraction of the frame. The direct visual
+    /// quantity the branch-spread route drives — ink fraction conflates it with size.
+    private static func canopyWidth(_ bgra: [UInt8]) -> Double {
+        var minX = width, maxX = -1
+        for y in 0..<height {
+            for x in 0..<width {
+                let i = (y * width + x) * 4
+                guard Int(bgra[i]) + Int(bgra[i + 1]) + Int(bgra[i + 2]) > 24 else { continue }
+                if x < minX { minX = x }
+                if x > maxX { maxX = x }
+            }
+        }
+        return maxX < minX ? 0 : Double(maxX - minX + 1) / Double(width)
     }
 
     /// Fraction of pixels the tree actually covers — the silhouette's screen footprint.

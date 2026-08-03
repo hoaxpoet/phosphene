@@ -25,7 +25,9 @@ struct FractalPayload {
     /// coupled gesture rather than three layers racing on one primitive (the FA #67
     /// collision D-212 measured). Derived from `bass_dev` once, in the object shader.
     float reach;
-    float mid_att;
+    /// BRANCH SPREAD, radians — how wide the canopy opens. Derived from
+    /// `spectral_flux` in the object shader.
+    float spread;
     float treb_att;
     float beat_bass;
     float spectral_centroid;
@@ -84,9 +86,28 @@ void fractal_tree_object_shader(
         // is unreachable by construction, so a chorus cannot sit pinned at maximum.
         uint count = 7u + (uint)(reach * 56.0f);
 
+        // ── BRANCH SPREAD ← spectral_flux ────────────────────────────────────────
+        //
+        // Replaces `mid_att`, which delivered 0.42° of a promised 7° (D-212). The
+        // cause was a coefficient written as if the band swings 0→1: `mid_att` means
+        // 0.056 post-AGC on this material and spans 0.007 on love_rehab.
+        //
+        // `spectral_flux` is the only broadband primitive measured with a comparable
+        // span on every source — p05→p95 of 0.555 (Hummer), 0.666, 0.539, 0.477. It
+        // is also the right MUSICAL choice: flux rises when the spectrum CHANGES, so
+        // the canopy opens on chord and texture changes rather than on loudness, which
+        // the canopy-reach route already carries.
+        //
+        // Sized against the measured p05 floor, not against 0: flux never approaches
+        // zero on real music (p05 0.070–0.378), so mapping [0.10, 0.95] onto the full
+        // spread range uses the range the music actually occupies. 20°→34° is double
+        // the shipped 22°→29° nominal, and ~33× the swing actually delivered.
+        float flux   = saturate((f.spectral_flux - 0.10f) / 0.85f);
+        float spread = 0.35f + flux * 0.24f;   // 20° … 34°
+
         payload->reach             = reach;
+        payload->spread            = spread;
         payload->branch_count      = min(count, 63u);
-        payload->mid_att           = f.mid_att;
         payload->treb_att          = f.treb_att;
         payload->beat_bass         = f.beat_bass;
         payload->spectral_centroid = f.spectral_centroid;
@@ -147,7 +168,7 @@ void fractal_tree_mesh_shader(
     // trunk 0.36–0.62 (shipped 0.40–0.62 but on a near-constant primitive), thickness
     // 0.038–0.058, a 53 % swing against the shipped 11.7 %.
     float base_len = 0.36f + payload.reach * 0.26f;
-    float ang_base = 0.38f + payload.mid_att  * 0.12f;  // 22°–29° branch spread
+    float ang_base = payload.spread;                    // 20°–34°, from spectral_flux
 
     float2 pos     = float2(0.0f, -0.90f);  // tree root (bottom-centre, clip space)
     float2 dir     = float2(0.0f,  1.0f);   // initial direction: straight up
