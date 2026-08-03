@@ -328,8 +328,21 @@ fragment float4 fractal_tree_fragment(
     float val_base = mix(0.22f, 0.60f, depth_norm);
     float val      = val_base * (0.72f + arousal * 0.46f);
 
-    // Beat flash: short-lived brightness spike, amplified at leaf tips.
-    val += beat * (0.25f + 0.25f * depth_norm);
+    // ── Beat accent ← beat_bass ──────────────────────────────────────────
+    //
+    // Resized to read as an ACCENT rather than a glow. `beat_bass` is non-zero on
+    // 90.4 % of frames (D-212), so the shipped `beat * (0.25 + 0.25 * depth)` was a
+    // near-permanent brightness lift — the preset looked flashed almost always, which
+    // is the same thing as never looking flashed.
+    //
+    // THE FIX IS A KNEE, NOT A SMALLER GAIN. Lowering the gain would dim the accent
+    // without making it an accent; the problem is the persistent floor, not the size of
+    // the peak. Cutting the bottom 45 % removes the floor entirely, and what remains
+    // drives a PUNCHIER spike than shipped (0.30 + 0.30·depth against 0.25 + 0.25·depth).
+    // Measured beat_bass is p50 0.090–0.097 and p95 1.000 on all four sources, so the
+    // knee sits far above the resting level and well below the peaks.
+    float accent = saturate((beat - 0.45f) * 1.82f);
+    val += accent * (0.30f + 0.30f * depth_norm);
     val  = saturate(val);
 
     float3 color = hsv2rgb(float3(fract(hue), sat, val));
