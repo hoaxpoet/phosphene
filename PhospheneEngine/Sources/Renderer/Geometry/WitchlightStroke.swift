@@ -27,7 +27,7 @@ struct WLConfig {
     var beadCount: UInt32 = 0
     var frame: UInt32 = 0
     var trailSeconds: Float = 30
-    var baseRadius: Float = 0.011
+    var baseRadius: Float = 0.008
     var aspect: Float = 16.0 / 9.0
     var tumbleYaw: Float = 0
     var tumblePitch: Float = 0
@@ -60,7 +60,8 @@ public struct WitchlightConfiguration: Sendable {
 
     public init(
         beadCapacity: Int = 1024,
-        baseRadius: Float = 0.011,
+        baseRadius: Float = 0.008,   // WL.2-e: paired with emissionHz 3.1 for spacing/diameter ~2
+
         lineAlpha: Float = 0.34,
         tuning: WitchlightTuning = WitchlightTuning()
     ) {

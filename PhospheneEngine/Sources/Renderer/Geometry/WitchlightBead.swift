@@ -37,7 +37,22 @@ public struct WitchlightTuning: Sendable {
 
     /// Beads per second, at a fixed TIME rate rather than a fixed arc length — so bead
     /// spacing encodes pen speed (`05`, `02`: density varies along the stroke).
-    public var emissionHz: Float = 34
+    /// SOLVED at WL.2-e, not chosen. Beads must be spaced further apart than they are
+    /// wide or they merge into a smear, which is what shipped: at 34 Hz and
+    /// `baseRadius` 0.011 the spacing was 0.0029 world units against a 0.022 diameter —
+    /// a ratio of 0.13, i.e. each bead overlapped the next seven times over. The trait
+    /// that most identifies the source (`01`, `02`: a thread with discrete sparks ON it)
+    /// was therefore absent entirely.
+    ///
+    /// The fix is FEWER beads, not smaller ones: at 34 Hz the spacing is 0.15 % of frame
+    /// height, so any radius that keeps a bead visible also guarantees overlap.
+    /// `spacing / diameter = speed / (emissionHz x 2 x baseRadius)`; a ratio of ~2 reads
+    /// as beaded, and at `baseRadius` 0.008 that solves to 3.1 Hz — 93 beads across the
+    /// 30 s trail, against the ~100-150 discrete beads visible on the source render.
+    ///
+    /// Emission stays a fixed TIME rate (§3.2), so spacing still encodes pen speed; the
+    /// thin line pass keeps the thread continuous between beads.
+    public var emissionHz: Float = 3.1
 
     /// Base pen speed in world units/second. World units: the frame is 2.0 tall.
     public var baseSpeed: Float = 0.10
