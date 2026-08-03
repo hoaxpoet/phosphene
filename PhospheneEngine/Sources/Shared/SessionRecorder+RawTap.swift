@@ -48,6 +48,9 @@ extension SessionRecorder {
         if rawTapDone || didFinish { return }
 
         if rawTapHandle == nil {
+            // `createFile` does not create intermediate directories, so the session has to
+            // exist before the WAV can be opened (BUG-081 made the directory lazy).
+            guard materializeIfNeeded() else { return }
             rawTapSampleRate = sampleRate
             rawTapChannels = channelCount
             rawTapMaxSamples = Int(rawTapDurationSeconds * Double(sampleRate) * Double(channelCount))

@@ -13,6 +13,9 @@ extension SessionRecorder {
         queue.async { [weak self] in
             guard let self = self else { return }
             guard stemWaveforms.count >= 4 else { return }
+            // Without this the `withIntermediateDirectories` call below would conjure the
+            // session directory with no CSV headers and no banner (BUG-081).
+            guard self.materializeIfNeeded() else { return }
             let names = ["drums", "bass", "vocals", "other"]
             let idx = self.stemDumpIndex
             self.stemDumpIndex += 1

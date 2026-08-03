@@ -194,6 +194,7 @@ extension SessionRecorder {
 
     private func setupVideoWriter(width: Int, height: Int) -> Bool {
         do {
+            guard materializeIfNeeded() else { return false }
             let writer = try AVAssetWriter(outputURL: currentVideoURL, fileType: .mp4)
             // BUG-022 — write a fragmented MP4 so the file remains playable
             // even if the process exits without calling `finishWriting`
