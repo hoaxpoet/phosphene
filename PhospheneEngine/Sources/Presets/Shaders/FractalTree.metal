@@ -20,14 +20,18 @@
 
 /// Audio data passed from the object shader to the mesh shader via [[payload]].
 struct FractalPayload {
-    float bass_att;
+    /// CANOPY REACH — the single derived scalar for "how big is the tree", 0…1.
+    /// Branch count, trunk length and thickness all read THIS, so they move as one
+    /// coupled gesture rather than three layers racing on one primitive (the FA #67
+    /// collision D-212 measured). Derived from `bass_dev` once, in the object shader.
+    float reach;
     float mid_att;
     float treb_att;
     float beat_bass;
     float spectral_centroid;
     float time;
     float aspect_ratio;
-    uint  branch_count;   // 3–63: how many branches to render this frame
+    uint  branch_count;   // 7–60: how many branches to render this frame
 };
 
 // MARK: - Object Shader
@@ -45,15 +49,43 @@ void fractal_tree_object_shader(
     mgp.set_threadgroups_per_grid(uint3(1, 1, 1));
 
     if (tid == 0) {
-        // Branch count: 3 at silence → 63 at peak bass.
-        // A minimum of 3 (trunk + two level-1 branches) keeps the tree recognisable
-        // even before the audio warms up.
-        float bass  = saturate(f.bass_att * 1.5f);
-        uint  count = 3 + (uint)(bass * 60.0f);   // 3 – 63
-        count = min(count, 63u);
+        // ── CANOPY REACH ← bass_dev (D-026 deviation primitive) ──────────────────
+        //
+        // MEASURED, not assumed. `bass_dev = max(0, bassRel)` where `bassRel` is the
+        // band's deviation from its own running EMA — so it is an UPWARD-transient
+        // signal, zero on 66–89 % of frames because most frames are not transients.
+        // Its p05→p95 span across the four measured sources (Hummer 2026-08-03T20-05-13Z
+        // plus the three route_coverage fixtures):
+        //
+        //     Hummer 0 → 0.153   love_rehab 0 → 0.255
+        //     so_what 0 → 0.575  there_there 0 → 0.104     (p99 reaches 1.06; max 2.59)
+        //
+        // Every other bass primitive was measured and rejected: `bass_att` (shipped)
+        // has std 0.013 on love_rehab and 0.017 on there_there — nearly constant, which
+        // is why the shipped tree does not move; `bass_att_rel` is smoother but spans
+        // only ±0.05 on the same two tracks. `bass_dev` is the ONLY bass primitive with
+        // real dynamic range on all four sources.
+        //
+        // SOFT-KNEE, not a linear gain. `bd / (bd + k)` is asymptotic: it never reaches
+        // 1, so the canopy can never flat-top (the shipped preset pinned at 63 branches),
+        // and the ~3× spikes FA #73 warns about compress instead of clipping. k = 0.12
+        // is sized against the measured p95 BAND [0.104, 0.575] rather than any single
+        // track, so each source uses a useful slice of the range:
+        //
+        //     bd 0.10 → 0.46    bd 0.15 → 0.56 (Hummer p95)    bd 0.26 → 0.68
+        //     bd 0.58 → 0.83 (so_what p95)     bd 1.06 → 0.90  bd 2.59 → 0.96
+        //
+        // At silence bass_dev is 0 → reach 0 → the sparse 7-branch tree the reference
+        // README asks for ("trunk plus the first two generations"), never black (D-037).
+        float bd    = max(f.bass_dev, 0.0f);
+        float reach = bd / (bd + 0.12f);
 
-        payload->branch_count      = count;
-        payload->bass_att          = f.bass_att;
+        // One gesture, three coupled terms. 7 at rest → 60 at the asymptote; the ceiling
+        // is unreachable by construction, so a chorus cannot sit pinned at maximum.
+        uint count = 7u + (uint)(reach * 56.0f);
+
+        payload->reach             = reach;
+        payload->branch_count      = min(count, 63u);
         payload->mid_att           = f.mid_att;
         payload->treb_att          = f.treb_att;
         payload->beat_bass         = f.beat_bass;
@@ -108,13 +140,19 @@ void fractal_tree_mesh_shader(
     }
 
     // Audio-driven tree parameters.
-    float base_len = 0.40f + payload.bass_att * 0.22f;  // 0.40–0.62 trunk length
+    //
+    // Trunk length and thickness read the SAME `reach` scalar the branch count does —
+    // "how big is the tree" is one gesture expressed through three coupled geometry
+    // terms, not three routes competing. Spans widened against the measured drive:
+    // trunk 0.36–0.62 (shipped 0.40–0.62 but on a near-constant primitive), thickness
+    // 0.038–0.058, a 53 % swing against the shipped 11.7 %.
+    float base_len = 0.36f + payload.reach * 0.26f;
     float ang_base = 0.38f + payload.mid_att  * 0.12f;  // 22°–29° branch spread
 
     float2 pos     = float2(0.0f, -0.90f);  // tree root (bottom-centre, clip space)
     float2 dir     = float2(0.0f,  1.0f);   // initial direction: straight up
     float  seg_len = base_len;
-    float  thick   = 0.044f + payload.bass_att * 0.010f;
+    float  thick   = 0.038f + payload.reach * 0.020f;
 
     // Replay ancestors from root toward this branch.
     for (int k = leaf_depth - 1; k >= 0; k--) {

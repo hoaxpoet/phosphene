@@ -121,6 +121,55 @@ struct FractalTreeMeshRenderTest {
             """)
     }
 
+    // MARK: - Motion
+
+    /// Percentile stills cannot judge a transient-driven route: ranking frames by energy
+    /// hides how often the gesture actually fires, so a tree that blooms on every beat
+    /// reads identically to one that blooms twice a track. This walks CONTIGUOUS frames
+    /// and reports the per-frame trajectory (`docs/PRESET_SESSION_CHECKLIST.md` Part 1 §7).
+    @Test("the canopy gesture fires repeatedly across contiguous real-music frames")
+    func canopyFiresOverTime() throws {
+        let base = try #require(
+            Bundle.module.url(forResource: "route_coverage", withExtension: nil))
+        let series = try SessionColumnSeries.load(
+            directory: base.appendingPathComponent(Self.driveTrack))
+        guard let time = series.floatSeries("time"),
+              let bassDev = series.floatSeries("bassDev") else {
+            throw FractalTreeHarnessError.setupFailed("time/bassDev columns absent")
+        }
+
+        // The shader's own arithmetic, mirrored — this is what the geometry sees.
+        let rows = (0..<min(time.count, bassDev.count)).filter { (time[$0] ?? 0) >= 10.0 }
+        let reach = rows.map { row -> Double in
+            let bd = Double(max(bassDev[row] ?? 0, 0))
+            return bd / (bd + 0.12)
+        }
+        let counts = reach.map { 7 + Int($0 * 56.0) }
+
+        let rest = counts.filter { $0 <= 9 }.count
+        let peaks = zip(counts, counts.dropFirst()).filter { $0 < 20 && $1 >= 20 }.count
+        let seconds = Double((time[rows.last!] ?? 0) - (time[rows.first!] ?? 0))
+        let sorted = counts.sorted()
+        print("""
+            [fractal-tree/motion] \(counts.count) frames over \
+            \(String(format: "%.1f", seconds)) s — branch count \
+            min \(sorted.first ?? 0) p50 \(sorted[sorted.count / 2]) max \(sorted.last ?? 0); \
+            at rest \(String(format: "%.1f", 100 * Double(rest) / Double(counts.count)))%; \
+            \(peaks) blooms = \(String(format: "%.2f", Double(peaks) / max(seconds, 1)))/s
+            """)
+
+        #expect(sorted.last! < 63, """
+            the canopy still flat-tops at the 63-branch ceiling — the soft knee is \
+            supposed to make the maximum unreachable by construction.
+            """)
+        // A transient route must fire often enough to read as rhythm rather than as an
+        // occasional event. Below ~0.3/s the tree looks static between rare blooms.
+        #expect(Double(peaks) / max(seconds, 1) > 0.3, """
+            the canopy blooms only \(peaks) times in \(String(format: "%.1f", seconds)) s — \
+            too rare to read as musical response. The tree would look static.
+            """)
+    }
+
     // MARK: - Drive
 
     private struct Drive {
