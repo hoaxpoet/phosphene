@@ -54,23 +54,30 @@ final class SessionRecorderTests: XCTestCase {
         try? FileManager.default.removeItem(at: tempDir)
     }
 
-    // MARK: - Init creates session dir with expected files
+    // MARK: - First write creates the session dir with expected files
 
-    func test_init_createsSessionDirectoryWithCSVsAndLog() throws {
+    /// Was `test_init_createsSessionDirectoryWithCSVsAndLog`. BUG-083 deliberately moved
+    /// directory creation from `init` to the first write, so the assertion that used to hold
+    /// at init now holds after one write instead. The *contract* being protected is
+    /// unchanged — a recorded session has a directory with both CSVs and a log — and the
+    /// "creates nothing at init" half is asserted by
+    /// `test_construction_writesNothingToDisk` below.
+    func test_firstWrite_createsSessionDirectoryWithCSVsAndLog() throws {
         let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
-        recorder.finish()  // flush any init-time log writes
+        recorder.log("materialize")
+        recorder.finish()
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: recorder.sessionDir.path),
                       "Session dir must exist")
         XCTAssertTrue(FileManager.default.fileExists(
             atPath: recorder.sessionDir.appendingPathComponent("features.csv").path),
-            "features.csv must be created at init")
+            "features.csv must be created on first write")
         XCTAssertTrue(FileManager.default.fileExists(
             atPath: recorder.sessionDir.appendingPathComponent("stems.csv").path),
-            "stems.csv must be created at init")
+            "stems.csv must be created on first write")
         XCTAssertTrue(FileManager.default.fileExists(
             atPath: recorder.sessionDir.appendingPathComponent("session.log").path),
-            "session.log must be created at init")
+            "session.log must be created on first write")
     }
 
     // MARK: - Features CSV round-trips known FeatureVectors exactly
@@ -151,6 +158,7 @@ final class SessionRecorderTests: XCTestCase {
 
     func test_featuresHeader_includesFrameTimingColumns() throws {
         let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
+        recorder.log("materialize")   // BUG-083: the CSVs exist from the first write, not init
         recorder.finish()
 
         let csv = try String(
@@ -965,5 +973,64 @@ final class SessionRecorderTests: XCTestCase {
             }
         }
         return samples
+    }
+
+    // MARK: - BUG-083: the session directory is created lazily, on first write
+
+    /// Constructing a recorder must leave NOTHING on disk. This used to create the folder,
+    /// both CSV headers and the banner from `init`, so every `VisualizerEngine` construction
+    /// — including every app-target test run — deposited an empty session in the user's
+    /// ~/Documents, and those folders then consumed retention slots (BUG-082) and evicted
+    /// real captures.
+    func test_construction_writesNothingToDisk() throws {
+        let before = try Set(FileManager.default.contentsOfDirectory(atPath: tempDir.path))
+
+        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
+
+        let after = try Set(FileManager.default.contentsOfDirectory(atPath: tempDir.path))
+        XCTAssertEqual(before, after, "constructing a SessionRecorder created files on disk")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: recorder.sessionDir.path),
+                       "session directory \(recorder.sessionDir.lastPathComponent) was created eagerly")
+    }
+
+    /// ...and a recorder that never records must still leave nothing behind after finish().
+    func test_finishWithoutWriting_leavesNoDirectory() throws {
+        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
+        recorder.finish()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: recorder.sessionDir.path),
+                       "finish() on an unused recorder materialized an empty session")
+    }
+
+    /// The first real write creates the directory with headers and banner intact — the
+    /// artifacts must be byte-identical to what eager creation produced.
+    func test_firstLogWrite_materializesDirectoryWithHeadersAndBanner() throws {
+        let recorder = try XCTUnwrap(SessionRecorder(baseDir: tempDir))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: recorder.sessionDir.path))
+
+        recorder.log("first line")
+        recorder.finish()
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: recorder.sessionDir.path),
+                      "first write did not materialize the session directory")
+
+        let log = try String(contentsOf: recorder.sessionDir.appendingPathComponent("session.log"),
+                             encoding: .utf8)
+        let lines = log.split(separator: "\n")
+        XCTAssertTrue(lines.first?.contains("SessionRecorder started schema=1") ?? false,
+                      "banner is not the first line of session.log — got: \(lines.first ?? "")")
+        XCTAssertTrue(log.contains("host macOS="), "banner host line missing")
+        XCTAssertTrue(log.contains("video recording:"), "banner video line missing")
+        XCTAssertTrue(log.contains("first line"), "the triggering log line was dropped")
+
+        // CSV headers are present and non-empty, exactly as before.
+        let features = try String(contentsOf: recorder.sessionDir.appendingPathComponent("features.csv"),
+                                  encoding: .utf8)
+        XCTAssertTrue(features.hasPrefix("frame,wallclock_s,time,deltaTime,bass"),
+                      "features.csv header missing after lazy materialization")
+        let stems = try String(contentsOf: recorder.sessionDir.appendingPathComponent("stems.csv"),
+                               encoding: .utf8)
+        XCTAssertTrue(stems.hasPrefix("frame,wallclock_s,drumsEnergy"),
+                      "stems.csv header missing after lazy materialization")
     }
 }

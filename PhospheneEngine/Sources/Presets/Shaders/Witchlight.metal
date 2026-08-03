@@ -84,10 +84,18 @@ static inline float3 witchlight_bloom(float2 uv, float aspect, float t, float hu
     d.y *= 1.35;                                            // slightly ovoid, not a disc
 
     float r = length(d);
-    // Tight enough that the lobe occupies roughly a third of the frame and the corners are
-    // genuinely black (`07`: the ground between stars is NOT lifted grey). A broad lobe
-    // washes the whole field violet and the star layers disappear into it.
-    float body = exp(-r * r * 26.0);
+    // Tight enough that the lobe reads as a compact violet BALL offset from the subject and
+    // the rest of the frame is genuinely black (`07`: the ground between stars is NOT lifted
+    // grey). A broad lobe washes the whole field violet and the star layers disappear.
+    //
+    // WL.2-h — this constant is the single largest term in the frame's quiet-state
+    // brightness. Isolating the passes measured the bloom contributing 4.75 of the 7.43 %
+    // lit share, against the source's whole-frame 1.04 % when it is between events. The
+    // 26.0 lobe covered roughly a third of the frame; the source's is a small ball nearer a
+    // sixth of the frame WIDTH. Cutting extent rather than intensity is deliberate: it buys
+    // the darkness back without desaturating the lobe, so the bloom still reads as the
+    // violet emission `06` calls for instead of fading to a grey smudge.
+    float body = exp(-r * r * 70.0);
     // Low-frequency structure only: the fbm is sampled at a large scale so the lobe stays
     // one soft mass rather than becoming cloud detail.
     float structure = fbm8(float3(d * 1.5, t * 0.008), 0.62) * 0.5 + 0.5;
@@ -105,7 +113,7 @@ static inline float3 witchlight_bloom(float2 uv, float aspect, float t, float hu
     hue.r *= 1.0 + 0.22 * hueShift;
     hue.b *= 1.0 - 0.10 * hueShift;
 
-    return hue * lobe * 0.30;
+    return hue * lobe * 0.24;
 }
 
 // MARK: - Ground
@@ -135,7 +143,15 @@ fragment float4 witchlight_sky_fragment(
         + witchlight_star_layer(uvA,  64.0, float2(t * rate * 1.20, t * rate * 0.42), 1.85) * 1.00;
     // `07` is DENSE but still reads mostly black — the field is a scatter of pinpoints,
     // not a lit texture. Overshooting here also drives the §12.7 pale-tone share up.
-    stars *= 0.95;
+    //
+    // WL.2-h lowers the LEVEL, not the count. The quiet frame had to come down to the
+    // source's (measured 1.04 % lit between events against our 7.43 %), and dimming pushes
+    // the faint majority of the field under the eye's threshold while every star is still
+    // there — so the three parallax depth layers mandatory trait #5 requires survive intact,
+    // and the field still reads dense when the ribbon lights it. Thinning the count instead
+    // would have bought the same number and broken the trait, which is the WL.2-e lesson
+    // ("reduce star SIZE/brightness before reducing count") applied a second time.
+    stars *= 0.30;
 
     // Bloom hue from valence (measured range 1.91 live; ±1 is the working span).
     float hueShift = clamp(features.valence, -1.0, 1.0);
