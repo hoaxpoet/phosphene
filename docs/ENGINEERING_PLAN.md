@@ -1483,6 +1483,41 @@ An MD.6 uplift, split design-then-author so the concept clears its gates before 
 
 ---
 
+### Increment WL.2-h — Witchlight: let the frame breathe ✅ **LANDED 2026-08-03**
+
+**Why:** Matt's M7 on the WL.2-g build: *"looks better, but does not resemble the original preset in look and motion."* Second consecutive M7 in the same verdict class, which per CLAUDE.md's escalation threshold means stop shading and re-diagnose.
+
+**The gap nobody had closed — the source's MOTION had never been observed.** The source ships as a `.gif` alongside the `.png`, in the same directory. WL.1's curation, WL.2's design and all three fix increments were built from two STILLS. Watching it (60 frames, ~4.2 s) inverted a load-bearing conclusion:
+
+| | source | Witchlight (WL.2-g) |
+|---|---|---|
+| lit-pixel share, quiet | 1.04 % | 7.36 % |
+| lit-pixel share, peak | 34.41 % | 9.39 % |
+| **dynamic range** | **33×** | **1.3×** |
+
+**The source breathes; we sat at a constant glow.** It goes near-black between events and detonates into a frame-filling six-spoke star, continuously — and in the source the ribbon is a small supporting scribble while the *flare is the subject*. No amount of ribbon shading reaches that, which is why WL.2-g moved the number and not the verdict.
+
+Two curation errors produced it, both recorded in `docs/VISUAL_REFERENCES/witchlight/README.md` as a correction block:
+1. **`12` was filed as an anti-reference** ("roughly a fifth of sampled frames" — read as a fault rate). In motion it is the source's **signature**, not a defect.
+2. **`00` was treated as the resting state.** At 4.0 % lit it is a mid-activity frame; the source's quiet frames measure 1.04 %. This set our floor ~7× too high and flattened the range from the bottom as well as the top.
+
+**Matt's call (2026-08-03), presented as two independent levers:** take the **darkness** (lower the floor — no photosensitivity implication, since darker cannot create a flash hazard); **do NOT take the detonation** (raising the ceiling collides with §5/WCAG and is a safety decision). Stroke shape stays **parked** as the existing WL.2 open decision.
+
+**What changed.** Pass isolation measured the floor's composition first rather than guessing — bloom 4.75 of the 7.43 % lit share, stars 2.51. So:
+- **Bloom extent** `exp(-r²·26)` → `exp(-r²·70)` and level 0.30 → 0.24. Cutting *extent* not intensity keeps the lobe saturated — it reads as the source's compact violet ball rather than fading to a grey smudge.
+- **Star level** 0.95 → 0.30. Level, not count: every star is still there, so the three parallax depth layers mandatory trait #5 requires survive (the WL.2-e "SIZE/brightness before count" lesson, applied again).
+- **Bead halo reach** `WL_HALO_EXTENT` 2.6 → 3.2. Dropping the field took ribbon share 0.707 % → 0.541 % *with the beads unchanged* — the backdrop had been propping the number up with additive light. Raising per-bead level to compensate moved it only to 0.561 % (§13 #51 again: level is asymptotic), so the fix was reach. The ribbon now carries its own luminance over a near-black ground the way the source's does.
+
+**Measured outcome.** Quiet frame: mean **13.39 → 9.42** (source quiet 7.64), lit **7.43 % → 2.66 %** (source quiet 1.04 %). Ribbon share **0.648 %**, peak 255 — both still over their WL.2-g floors. Gate ceilings **ratcheted 22.0/10.0 → 12.0/4.5**, now set against the source's *quiet* frame rather than `00`, so the floor cannot drift back up without failing.
+
+**Done when:** ✅ quiet-state floor down to the source's register · ✅ ribbon gate still green over the darker ground · ✅ gate ratcheted so it holds · ✅ flash budget unmoved or improved · ✅ full suites green.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter "Witchlight|ResponseBand"`; motion-sequence render + `Scripts/motion_gate.sh`.
+
+**Not taken, on Matt's instruction:** the flare detonation (§5 stands) and the stroke shape (still the WL.2 open decision). Certification still needs a live M7 on this build plus the D-121 side-by-side.
+
+---
+
 ### Increment MD.7 — Ray-march-composing inspired-by uplifts (formerly Hybrid tier)
 
 **Scope (revised per `MILKDROP_STRATEGY.md` §12 / D-103 amendment / D-107):** Inspired-by uplifts that compose `mv_warp` + `ray_march` against a static camera (D-029). **Not a tier** — these are `milkdrop_inspired` presets that happen to use the ray-march backdrop primitive; authoring choice, not classification. The MD.7.0 spike (single-preset proof of the `mv_warp` + `ray_march` composition) lands as one such uplift; subsequent ray-march-composing uplifts batch into the MD.6 work stream. The architectural composition has only Volumetric Lithograph as prior production proof (and VL's `mv_warp` plays against a ray-march scene that is not itself feedback-warped), so the spike is still a high-value increment under inspired-by.

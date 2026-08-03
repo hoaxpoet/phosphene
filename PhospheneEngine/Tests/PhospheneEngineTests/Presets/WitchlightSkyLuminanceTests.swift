@@ -51,11 +51,21 @@ struct WitchlightSkyLuminanceTests {
     private static let sourceMeanLuma = 10.6
     private static let sourceLitShare = 4.0     // % of pixels above 40/255
 
-    /// Bands: within ~2× of the source on the mean, and no more than ~2.5× its lit share.
-    /// Wide on purpose — the shipped value was 3× and 4.4× out, which is the class of
-    /// regression worth failing on.
-    private static let maxMeanLuma = 22.0
-    private static let maxLitShare = 10.0
+    /// Ratcheted at WL.2-h, and the reason is a correction to what `00` was taken to mean.
+    ///
+    /// `00` is one frame of a preset with enormous dynamic range. Measured across the
+    /// source's own animation (60 frames, ~4.2 s), its lit share swings **1.04 % → 34.41 %**
+    /// — near-black between events, then a frame-filling burst. `00` at 4.0 % is a
+    /// mid-activity frame, so treating it as the resting state set our floor ~7× too high:
+    /// the field never got out of the way and the whole preset sat at a constant glow
+    /// (measured 1.3× range against the source's 33×), which is the "does not resemble the
+    /// original in look and motion" half of Matt's second M7.
+    ///
+    /// These ceilings are therefore set against the source's QUIET frame (mean 7.64,
+    /// lit 1.04 %), not against `00`, with headroom over the achieved 9.42 / 2.66 %. The
+    /// old 22.0 / 10.0 were wide enough to let the floor drift back up without failing.
+    private static let maxMeanLuma = 12.0
+    private static let maxLitShare = 4.5
 
     @Test("The deep-space backdrop reads black, not milky (WL.2-e)")
     func backdropReadsAsDeepSpace() throws {
@@ -99,8 +109,10 @@ struct WitchlightSkyLuminanceTests {
 
         #expect(mean <= Self.maxMeanLuma, """
             backdrop mean luma \(String(format: "%.2f", mean)) exceeds \(Self.maxMeanLuma) — \
-            the field is washing out. The source render measures \(Self.sourceMeanLuma). This is \
-            the M7 defect: a milky star field instead of deep space with a ribbon in it. \
+            the field is washing out. The source measures \(Self.sourceMeanLuma) on `00` and 7.64 \
+            on its QUIET frames, which is what this ceiling is set against. This is the M7 defect: \
+            a milky star field instead of deep space with a ribbon in it, and a floor this high is \
+            also what flattens the preset's dynamic range (WL.2-h). \
             Reduce star SIZE/brightness before reducing count — `07` is legitimately dense.
             """)
         #expect(litShare <= Self.maxLitShare, """

@@ -112,7 +112,7 @@ static inline float2 wl_corner(uint vid) {
 /// beads' halos closes the gaps in the tail, which is what stopped the ribbon reading as a
 /// dotted thread — raising the emissive level could never do that, because the gaps had no
 /// geometry in them to light.
-constant float WL_HALO_EXTENT = 2.6;
+constant float WL_HALO_EXTENT = 3.2;
 
 /// Age → brightness. `(1 - a/T)^1.6`: superlinear, so the newest third of the stroke
 /// carries most of the light (`02` — the decay is visibly not linear) and it reaches
@@ -211,7 +211,13 @@ fragment float4 witchlight_bead_fragment(WLBeadOut in [[stage_in]]) {
     // the per-bead sparkle is carried by the core, whose area is too small to stack into
     // a tube. The falloff curve is untouched throughout — still exactly `(1-t)^1.6`,
     // still monotonic (mandatory trait #2); the tail gains presence from reach, not level.
-    float3 rgb = cool * halo * 1.45 + hot * core * 2.0;
+    // WL.2-h raised these from 1.45/2.0. Not a re-tune: WL.2-g's numbers were measured over
+    // a backdrop that was contributing additive light under the ribbon, and dropping the
+    // quiet field to the source's darkness took ribbon share 0.707 % → 0.541 % without the
+    // beads changing at all. The ribbon now has to carry its own luminance the way the
+    // source's does over ITS near-black ground, which is the honest version of the same
+    // target rather than a borrowed one.
+    float3 rgb = cool * halo * 1.45 + hot * core * 2.4;
     return float4(rgb * in.alpha, 1.0);
 }
 
