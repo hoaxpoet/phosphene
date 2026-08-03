@@ -95,6 +95,18 @@ public struct MeniscusConfiguration: Sendable {
     /// IIR coefficient for the lagged smoothed height the slope term differences
     /// against. 1.0 degenerates to a plain forward difference.
     public var slopeLag: Float
+    /// Camera heading at rest, radians.
+    ///
+    /// This interacts with the screen-X spread and is NOT a free choice: the spread
+    /// thickens a row perpendicular to itself by `spread · |sin θ|` where θ is the
+    /// row's screen angle. Near 0 the rows run across the frame, the spread runs
+    /// ALONG them, and the raster gaps survive — the "crisp in Y, soft in X"
+    /// asymmetry the reference README calls load-bearing. Near 45° the same spread
+    /// fattens every row perpendicular and the raster closes.
+    public var initialYaw: Float
+    /// Autonomous heading drift, radians/second. MEN.2b replaces this with the
+    /// source's own camera behaviour.
+    public var yawDriftRate: Float
 
     public init(
         gridN: Int = 45,
@@ -103,7 +115,9 @@ public struct MeniscusConfiguration: Sendable {
         spread: Float = 0.070,
         spreadMode: Int = 0,
         swellAmplitude: Float = 0.42,
-        slopeLag: Float = 0.35
+        slopeLag: Float = 0.35,
+        initialYaw: Float = 0.62,
+        yawDriftRate: Float = 0.055
     ) {
         self.gridN = gridN
         self.damping = damping
@@ -112,6 +126,8 @@ public struct MeniscusConfiguration: Sendable {
         self.spreadMode = spreadMode
         self.swellAmplitude = swellAmplitude
         self.slopeLag = slopeLag
+        self.initialYaw = initialYaw
+        self.yawDriftRate = yawDriftRate
     }
 }
 
@@ -135,7 +151,7 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
 
     // Camera + clock.
     private var elapsed: Float = 0
-    private var yaw: Float = 0.62
+    private var yaw: Float
 
     /// Wall-clock milliseconds the most recent `update` spent in the wave step +
     /// serialization. Read by `MeniscusMultiFrameRenderTest` for the task-1c
@@ -153,6 +169,7 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
         pixelFormat: MTLPixelFormat? = nil
     ) throws {
         self.configuration = configuration
+        self.yaw = configuration.initialYaw
         let cells = configuration.gridN * configuration.gridN
         self.current = [Float](repeating: 0, count: cells)
         self.previous = [Float](repeating: 0, count: cells)
@@ -207,7 +224,7 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
         elapsed += dt
         // Slow autonomous drift so the low-oblique view is never a fixed diagram.
         // MEN.2b replaces this with the source's own camera behaviour.
-        yaw += dt * 0.055
+        yaw += dt * configuration.yawDriftRate
 
         stepWave()
         serializeSerpentinePath()
@@ -229,7 +246,7 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
     public func reset() {
         for i in current.indices { current[i] = 0; previous[i] = 0 }
         elapsed = 0
-        yaw = 0.62
+        yaw = configuration.initialYaw
     }
 
     // MARK: - Wave step
