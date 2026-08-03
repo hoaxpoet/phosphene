@@ -10,6 +10,21 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-02-164808] LFS.3 — reclaim runbook, written from an incident rather than from theory
+
+`Scripts/reclaim-lfs-visual-refs.sh --execute` was run on 2026-07-31 with branch protection active. It **half-applied**: `main` and all 27 `refs/pull/*` were rejected by GitHub, while 18 branches and 3 tags were force-updated to a disjoint rewrite. Branches read 1,945-2,099 commits "ahead" of `main` and could not merge. Fully recovered — 21 refs restored, 21/21 verified, ancestry back to 2-14 ahead — but only because the pre-rewrite commits happened to still be in a local object store. **No ref capture had been taken beforehand.** That was luck.
+
+[`docs/RUNBOOK_LFS_RECLAIM.md`](RUNBOOK_LFS_RECLAIM.md) is the procedure so the next attempt does not rely on luck. What it makes unmissable:
+
+- **Rewriting history does not reduce the bill.** GitHub does not GC unreferenced LFS objects; a Support request does. Do the rewrite and stop, and you have paid the whole cost for none of the benefit.
+- **The half-apply is the DEFAULT outcome** with branch protection on, not an edge case — and the half-applied state is strictly worse than either end state (bill unchanged AND branches broken). If you cannot finish, do not start.
+- **Capture every ref SHA before pushing.** That file is the undo, and building the restore refspec from it is a one-liner.
+- **Decide scope once.** The 479 weight objects are not in the current regex and are likely the larger share of the bill; batching them in is the difference between one disruption and two.
+- **Verify coherence, not just SHAs.** Matching SHAs can still leave a broken graph — the real check is that branches share ancestry with `main` again.
+- The dry run reporting "94% smaller, verified clean" is **not** a green light. It says the rewrite is correct; it says nothing about whether the push will apply.
+
+Cross-referenced from `RUNBOOK.md` and `PUBLISHING.md` §1, which now also records that the weights cutover and image untracking are both DONE and are "stop the bleeding" changes only.
+
 ### [dev-2026-07-31-214500] WL.2 — Witchlight: authored, gated, and one mechanism-level finding for Matt
 
 `Witchlight` exists as a production preset — `.metal` × 2 + sidecar + `WitchlightStroke`/`WitchlightPath`, registered at every point in `NEW_PRESET_CHECKLIST.md`, all gates green, `certified: false` awaiting Matt's live M7.
