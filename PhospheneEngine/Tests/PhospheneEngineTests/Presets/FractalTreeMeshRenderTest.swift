@@ -87,9 +87,10 @@ struct FractalTreeMeshRenderTest {
         // Evidence, always printed — this is the measured-swing surface FTR.2 reports
         // against, standing in for the QG.5 response band Fractal Tree cannot reach.
         for (label, pixels) in frames {
-            print(String(format: "[fractal-tree] %-10s mean-luma %.5f  ink %.4f  width %.4f",
+            print(String(format: "[fractal-tree] %-10s luma %.5f  ink %.4f  width %.4f  hue %.1f°",
                          (label as NSString).utf8String!, Self.meanLuma(pixels),
-                         Self.inkFraction(pixels), Self.canopyWidth(pixels)))
+                         Self.inkFraction(pixels), Self.canopyWidth(pixels),
+                         Self.meanHue(pixels)))
         }
         if let outputDirectory {
             Self.writeContactSheet(frames, to: outputDirectory)
@@ -204,6 +205,19 @@ struct FractalTreeMeshRenderTest {
             let row = ranked[min(Int(Double(ranked.count - 1) * p), ranked.count - 1)]
             out.append(Drive(label: label, features: Self.features(series, row: row)))
         }
+
+        // Two frames ranked by HARMONY instead of energy. Without these the sheet cannot
+        // show the hue route at all: sampling by bass holds the harmonic phase roughly
+        // constant, so the leaf colour looks static when it is in fact tracking a
+        // primitive this axis does not vary. One route, one sampling axis.
+        if let tonal = series.floatSeries("tonal_phase_fifths") {
+            let byTonal = warm.filter { $0 < tonal.count }
+                .sorted { (tonal[$0] ?? 0) < (tonal[$1] ?? 0) }
+            if let low = byTonal.first, let high = byTonal.last {
+                out.append(Drive(label: "harm-lo", features: Self.features(series, row: low)))
+                out.append(Drive(label: "harm-hi", features: Self.features(series, row: high)))
+            }
+        }
         return out
     }
 
@@ -271,6 +285,30 @@ struct FractalTreeMeshRenderTest {
                       + 0.299 * Double(bgra[i + 2])) / 255.0
         }
         return total / Double(bgra.count / 4)
+    }
+
+    /// Circular mean hue over lit pixels, in degrees. Hue is an ANGLE — a linear mean
+    /// puts the average of 350° and 10° at 180°, the opposite colour — so this sums unit
+    /// vectors and takes the argument (the FBS hue-angle lesson).
+    private static func meanHue(_ bgra: [UInt8]) -> Double {
+        var sumX = 0.0, sumY = 0.0
+        for i in stride(from: 0, to: bgra.count, by: 4) {
+            let b = Double(bgra[i]) / 255, g = Double(bgra[i + 1]) / 255
+            let r = Double(bgra[i + 2]) / 255
+            let maxC = max(r, g, b), minC = min(r, g, b)
+            guard maxC > 0.05, maxC - minC > 0.02 else { continue }
+            let d = maxC - minC
+            var h: Double
+            if maxC == r { h = (g - b) / d } else if maxC == g { h = 2 + (b - r) / d }
+            else { h = 4 + (r - g) / d }
+            h *= 60
+            if h < 0 { h += 360 }
+            sumX += cos(h * .pi / 180)
+            sumY += sin(h * .pi / 180)
+        }
+        guard sumX != 0 || sumY != 0 else { return 0 }
+        let a = atan2(sumY, sumX) * 180 / .pi
+        return a < 0 ? a + 360 : a
     }
 
     /// Width of the tree's bounding box, as a fraction of the frame. The direct visual

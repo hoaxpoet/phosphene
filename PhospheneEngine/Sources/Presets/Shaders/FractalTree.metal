@@ -269,20 +269,39 @@ fragment float4 fractal_tree_fragment(
     float along_branch = in.uv.x;        // 0 = branch base, 1 = branch tip
     float across_width = in.uv.y;        // 0 and 1 = edges, 0.5 = centre
 
-    float t        = f.time;
     float beat     = f.beat_bass;
-    float centroid = f.spectral_centroid;
     float mid_att  = f.mid_att;
     float treb_att = f.treb_att;
 
-    // ── Hue ─────────────────────────────────────────────────────────────
-    // Bark: warm brown (hue ≈ 0.065).
-    // Leaves: green → golden-green driven by spectral centroid + slow drift.
-    //   centroid 0 (bass-heavy) → deep green (0.30)
-    //   centroid 1 (treble-heavy) → warm yellow-green (0.18)
-    float hue_bark = 0.065f;
-    float hue_leaf = 0.30f - centroid * 0.12f + fract(t * 0.006f);
-    float hue      = mix(hue_bark, hue_leaf, depth_norm);
+    // ── Hue ← tonal_phase_fifths ─────────────────────────────────────────
+    //
+    // THE WALL CLOCK IS GONE. The shipped line was
+    //   `0.30 - centroid * 0.12 + fract(t * 0.006)`
+    // in which the audio term moved 4.1° of hue while the clock term swept 76° —
+    // the clock out-drove the music 18.6 : 1, so the preset was a colour-cycling
+    // wallpaper with a faint audio tint (README anti-reference #4). `spectral_centroid`
+    // could not have rescued it either: it spans only 0.043–0.131 post-AGC.
+    //
+    // `tonal_phase_fifths` is the harmonic position on the circle of fifths (D-178),
+    // measured span 2.61–5.31 rad of a ±π range. Hue and phase are BOTH circular, so
+    // phase → hue is wrap-correct by construction: the ±π seam maps to the seam in
+    // `fract()`, and no wrap produces a discontinuity the eye reads as a glitch.
+    //
+    // Mapped onto 0.28 of the hue circle, NOT the whole of it. A full mapping would run
+    // the canopy through cyan, blue and magenta, which is not a tree — the register here
+    // is the amber → gold → green arc (0.10 … 0.38), a widened version of the shipped
+    // intent (0.18 yellow-green … 0.30 deep green). The harmony traverses the whole arc;
+    // it never leaves it.
+    float hue_bark  = 0.065f;
+    float tonal01   = fract(f.tonal_phase_fifths * (1.0f / (2.0f * M_PI_F)) + 0.5f);
+    float hue_leaf  = 0.10f + tonal01 * 0.28f;
+    // Weighted by depth^0.55, not depth. A linear blend gives full leaf colour only at
+    // depth 5, and the depth-5 tier exists on just 21.4 % of frames (measured, and the
+    // figure D-212 put at 76.4 % — the recount is in the FTR.2 closeout). Under a linear
+    // blend the harmonic route is alive in the data and invisible on screen four frames
+    // in five. The exponent pushes leaf colour down into the mid-depth branches that are
+    // actually present, so the route reads whenever there is a canopy at all.
+    float hue       = mix(hue_bark, hue_leaf, pow(depth_norm, 0.55f));
 
     // ── Saturation ───────────────────────────────────────────────────────
     float sat = mix(0.55f, 0.88f, depth_norm);
