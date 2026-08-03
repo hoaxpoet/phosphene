@@ -53,17 +53,23 @@ struct MeniscusMultiFrameRenderTest {
     private static let captureStride =
         Int(ProcessInfo.processInfo.environment["MENISCUS_STRIDE"] ?? "") ?? 15
 
-    /// Mean |Δheight| across the path between consecutive captured frames, below which
-    /// the surface is judged frozen.
+    /// Mean |Δheight| across the path PER SIMULATION FRAME, below which the surface is
+    /// judged frozen.
     ///
-    /// THIS IS MEASURED ON THE SURFACE STATE, NOT ON PIXELS, and that is the whole
-    /// point. The first version of this gate differenced composite frames and PASSED
-    /// its own negative control (`MENISCUS_SWELL=0`, a dead flat field, scored 1.56
-    /// against a 0.35 floor) because the camera drifts every frame — so a completely
-    /// frozen surface still moved pixels. A pixel metric under a moving camera cannot
-    /// tell a live surface from a dead one, which is precisely the "frozen ribbon"
-    /// class this harness exists to catch.
-    private static let motionFloor: Double = 0.002
+    /// MEASURED ON THE SURFACE STATE, NOT ON PIXELS. The first version of this gate
+    /// differenced composite frames and PASSED its own negative control
+    /// (`MENISCUS_SWELL=0`, a dead flat field, scored 1.56 against a 0.35 floor)
+    /// because the camera drifts every frame — so a frozen surface still moved pixels.
+    /// A pixel metric under a moving camera cannot tell a live surface from a dead one,
+    /// which is precisely the "frozen ribbon" class this harness exists to catch.
+    ///
+    /// PER FRAME, NOT PER CAPTURE. The second version divided nothing by the capture
+    /// stride, so the measured value scaled with `MENISCUS_STRIDE` — it passed at the
+    /// default 15, passed wider at 50, and FAILED at stride 1 on an identical preset.
+    /// A gate whose verdict depends on a diagnostic knob is not a gate. The rate is
+    /// stride-invariant; the floor sits an order of magnitude under the measured
+    /// ~3.4e-4 and far above the exact 0 a frozen field produces.
+    private static let motionFloor: Double = 0.00008
 
     // MARK: - The gate
 
@@ -158,7 +164,10 @@ struct MeniscusMultiFrameRenderTest {
             footprints.append(Self.footprint(pixels, Self.read(backdropOnly)))
             if !previousPixels.isEmpty {
                 pixelDeltas.append(Self.meanAbsoluteDelta(pixels, previousPixels))
-                heightDeltas.append(Self.meanAbsoluteHeightDelta(heights, previousHeights))
+                // Normalised to a PER-SIMULATION-FRAME rate so the gate reads the same
+                // at any capture stride.
+                heightDeltas.append(
+                    Self.meanAbsoluteHeightDelta(heights, previousHeights) / Double(Self.captureStride))
             }
             previousPixels = pixels
             previousHeights = heights
@@ -186,8 +195,8 @@ struct MeniscusMultiFrameRenderTest {
         #expect(!heightDeltas.isEmpty, "no inter-frame deltas were captured")
         let meanHeightDelta = heightDeltas.reduce(0, +) / Double(max(heightDeltas.count, 1))
         #expect(meanHeightDelta > Self.motionFloor, """
-            the surface is frozen: mean |Δheight| across the path \
-            \(String(format: "%.5f", meanHeightDelta)) is under the \(Self.motionFloor) floor. \
+            the surface is frozen: mean |Δheight| per frame \
+            \(String(format: "%.6f", meanHeightDelta)) is under the \(Self.motionFloor) floor. \
             Either the wave step is not advancing, or the serialization is not reaching the \
             point buffer, or the placeholder swell is too slow to read as alive \
             (`MENISCUS_PLAN.md` §7 R6 — the recovery is MORE SPATIAL VARIATION at the same \
@@ -307,7 +316,7 @@ struct MeniscusMultiFrameRenderTest {
             format: "[meniscus] luma %.4f–%.4f · surface footprint %d–%d px",
             lumas.min() ?? 0, lumas.max() ?? 0, footprints.min() ?? 0, footprints.max() ?? 0))
         print(String(
-            format: "[meniscus-motion] surface |Δheight| mean %.5f (GATED) · composite Δpx mean %.3f "
+            format: "[meniscus-motion] surface |Δheight|/frame %.6f (GATED) · composite Δpx mean %.3f "
                   + "(evidence only — includes camera drift)",
             mean(heightDeltas), mean(pixelDeltas)))
         // MEN.2a task 1c evidence: the CPU wave step + serialization cost, which is the
