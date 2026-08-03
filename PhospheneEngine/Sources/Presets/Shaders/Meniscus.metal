@@ -32,7 +32,7 @@ using namespace metal;
 // first thing MEN.2b should delete.
 constant float kMeniscusPitch = 0.30;
 constant float kMeniscusFocal = 1.0;
-constant float kMeniscusCamHeight = 0.90;
+constant float kMeniscusCamHeight = 0.72;
 /// How far the ground plane sits below the floating plate. This gap IS trait T5 —
 /// "the gap between them is what gives the composition its depth".
 constant float kMeniscusGroundDrop = 2.6;

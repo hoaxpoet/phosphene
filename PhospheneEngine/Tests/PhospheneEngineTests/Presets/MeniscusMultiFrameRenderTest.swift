@@ -100,11 +100,11 @@ struct MeniscusMultiFrameRenderTest {
             configuration.spread = spread
         }
         if let yaw = Float(ProcessInfo.processInfo.environment["MENISCUS_YAW"] ?? "") {
-            configuration.initialYaw = yaw
-            configuration.yawDriftRate = 0
+            configuration.yawCentre = yaw
+            configuration.yawSwing = 0
         }
-        if let scale = Float(ProcessInfo.processInfo.environment["MENISCUS_HEIGHT"] ?? "") {
-            configuration.heightScale = scale
+        if let gain = Float(ProcessInfo.processInfo.environment["MENISCUS_SLOPE_GAIN"] ?? "") {
+            configuration.slopeGain = gain
         }
         let surface = try MeniscusSurface(
             device: ctx.device, library: lib.library,

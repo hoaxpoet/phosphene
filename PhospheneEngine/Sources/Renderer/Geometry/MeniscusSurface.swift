@@ -5,22 +5,18 @@
 // serialize the grid into ONE serpentine path → draw each path segment as a
 // sideways-spread quad.
 //
-// WHY CPU, NOT COMPUTE (MEN.2a task 1c). The wave step is trivially parallel, but
-// it is also trivially small: the source's grid is 45×45 ≈ 2 000 cells and
-// `MENISCUS_PLAN.md` §7 R4 says raising the resolution CLOSES the raster gaps that
-// make the preset legible — so the grid can never grow to where a compute dispatch
-// pays for itself. Measured cost is printed by `MeniscusMultiFrameRenderTest`.
-// The decisive argument is MEN.2b: drop placement is CPU-derived (the source's
-// spectrum transform; later the stems), so a CPU height field lets a drop be a
-// single `+=` with no upload path or pending-drop uniform plumbing. Precedent:
-// `MitosisGen2Geometry` (CPU) vs `CymaticSandGeometry` (compute).
+// WHY CPU, NOT COMPUTE (MEN.2a task 1c). The wave step is trivially parallel but also
+// trivially small: `MENISCUS_PLAN.md` §7 R4 says raising the resolution CLOSES the
+// raster gaps that make the preset legible, so the grid can never grow to where a
+// dispatch pays for itself. The decisive argument is MEN.2b — drop placement is
+// CPU-derived, so a CPU height field keeps a drop a single `+=` with no upload path.
+// Precedent: `MitosisGen2Geometry` (CPU) vs `CymaticSandGeometry` (compute).
 //
-// SERPENTINE LIVES ON THE CPU. The serialization loop emits points in traversal
-// order (alternate rows reversed), so the vertex shader indexes the buffer
-// linearly and carries no boustrophedon logic at all. The rounded turnaround caps
-// at the margins (reference `07`, trait T1) are the joins between the end of one
-// row and the start of the next — they fall out of the ordering, they are not
-// drawn specially.
+// SERPENTINE LIVES ON THE CPU. The serialization loop emits points in traversal order
+// (alternate rows reversed), so the vertex shader indexes the buffer linearly and
+// carries no boustrophedon logic. The rounded turnaround caps at the margins
+// (reference `07`, trait T1) are the joins between one row's end and the next row's
+// start — they fall out of the ordering, they are not drawn specially.
 //
 // NO AUDIO AT MEN.2a. `update` ignores `features` apart from `deltaTime`. The
 // source's own drop placement lands at MEN.2b; the Phosphene stem routing at MEN.3.
@@ -44,7 +40,7 @@ public struct MeniscusPoint: Sendable {
     public var slope: Float
 }
 
-// MARK: - MeniscusConfig (mirror of MSL `MeniscusConfig`, 48 bytes: 3×uint + 9×float)
+// MARK: - MeniscusConfig (mirror of MSL `MeniscusConfig`, 56 bytes: 3×uint + 11×float)
 
 struct MeniscusConfig {
     var gridN: UInt32
@@ -57,6 +53,7 @@ struct MeniscusConfig {
     var camHeight: Float
     var focal: Float
     var heightScale: Float
+    var slopeGain: Float
     var aspect: Float
     var brightness: Float
     var lightDir: Float         // screen-space angle of the key light (radians)
@@ -77,17 +74,10 @@ public struct MeniscusConfiguration: Sendable {
     /// the §9 soft/crisp axis: 0.035 reads diagrammatic, 0.070 reads as light lying on
     /// water. It costs nothing either way — see `spreadMode`.
     public var spread: Float
-    /// 0 = spread along screen-space X (what the source does), 1 = along the
-    /// segment's screen-space normal.
-    ///
-    /// MEN.2a task 1a, ANSWERED FROM RENDERS: screen-space X. At an identical spread
-    /// the tangent-normal ribbon closes the raster — every row thickens perpendicular
-    /// to itself, and since the rows run roughly across the frame, perpendicular is
-    /// the vertical axis that must stay open (anti-reference 5) — and the margin
-    /// turnarounds serrate instead of reading as caps. Screen-X widening scales with
-    /// |sin θ| between the row and the X axis, so a near-horizontal row barely
-    /// thickens vertically and the gaps survive. That is the geometric reason the
-    /// source chose this axis.
+    /// 0 = spread along screen-space X (what the source does), 1 = along the segment's
+    /// screen-space normal. MEN.2a task 1a answered this from renders — screen-space X;
+    /// the tangent-normal ribbon closes the raster. Full reasoning at the `THE SPREAD`
+    /// note in `MeniscusSurface.metal`, and see `yawCentre`, which it constrains.
     public var spreadMode: Int
     /// Amplitude of the MEN.2a placeholder standing swell (task 6). Set to 0 and
     /// the surface is whatever the sim is doing on its own.
@@ -95,18 +85,33 @@ public struct MeniscusConfiguration: Sendable {
     /// IIR coefficient for the lagged smoothed height the slope term differences
     /// against. 1.0 degenerates to a plain forward difference.
     public var slopeLag: Float
-    /// Camera heading at rest, radians.
+    /// Contrast of the slope→brightness term (trait T3).
     ///
-    /// This interacts with the screen-X spread and is NOT a free choice: the spread
-    /// thickens a row perpendicular to itself by `spread · |sin θ|` where θ is the
-    /// row's screen angle. Near 0 the rows run across the frame, the spread runs
-    /// ALONG them, and the raster gaps survive — the "crisp in Y, soft in X"
-    /// asymmetry the reference README calls load-bearing. Near 45° the same spread
-    /// fattens every row perpendicular and the raster closes.
-    public var initialYaw: Float
-    /// Autonomous heading drift, radians/second. MEN.2b replaces this with the
-    /// source's own camera behaviour.
-    public var yawDriftRate: Float
+    /// Tied to `swellAmplitude`: a calmer field has proportionally smaller slopes, so
+    /// holding the gain fixed while calming the surface trades all-over agitation for
+    /// a flat grey sheet — "a soft, evenly-lit version of this looks like fabric, not
+    /// water". The two move together. MEN.2b must revisit this once drop impacts
+    /// exist: an impact SHOULD saturate to white, so the gain wants to be set from the
+    /// calm baseline and allowed to clip on transients, not fitted to the peak.
+    public var slopeGain: Float
+    /// Centre of the camera heading's oscillation, radians.
+    ///
+    /// The heading is NOT a free parameter: the screen-X spread thickens a row
+    /// perpendicular to itself by `spread · |sin θ|` where θ is the row's screen
+    /// angle. Near 0 the rows run across the frame, the spread runs ALONG them, and
+    /// the raster gaps survive — the "crisp in Y, soft in X" asymmetry the reference
+    /// README calls load-bearing. At the 0.62 rad this shipped with at first, |sin θ|
+    /// was 0.58 and the raster closed into ribbons. A small non-zero centre keeps the
+    /// rows off exact pixel-row alignment.
+    public var yawCentre: Float
+    /// Half-range of the heading oscillation, radians. BOUNDED on purpose: a free
+    /// drift walks back into the raster-closing regime within seconds, so the fix has
+    /// to bound the angle rather than just re-centre it. `sin(0.16) ≈ 0.16`, so the
+    /// worst-case perpendicular fattening stays under a fifth of the spread.
+    public var yawSwing: Float
+    /// Period of the heading oscillation, seconds. MEN.2b replaces the whole camera
+    /// with the source's own behaviour.
+    public var yawPeriod: Float
 
     public init(
         gridN: Int = 45,
@@ -114,10 +119,12 @@ public struct MeniscusConfiguration: Sendable {
         heightScale: Float = 0.32,
         spread: Float = 0.070,
         spreadMode: Int = 0,
-        swellAmplitude: Float = 0.42,
+        swellAmplitude: Float = 0.10,
         slopeLag: Float = 0.35,
-        initialYaw: Float = 0.62,
-        yawDriftRate: Float = 0.055
+        slopeGain: Float = 34.0,
+        yawCentre: Float = 0.06,
+        yawSwing: Float = 0.16,
+        yawPeriod: Float = 44.0
     ) {
         self.gridN = gridN
         self.damping = damping
@@ -126,8 +133,10 @@ public struct MeniscusConfiguration: Sendable {
         self.spreadMode = spreadMode
         self.swellAmplitude = swellAmplitude
         self.slopeLag = slopeLag
-        self.initialYaw = initialYaw
-        self.yawDriftRate = yawDriftRate
+        self.slopeGain = slopeGain
+        self.yawCentre = yawCentre
+        self.yawSwing = yawSwing
+        self.yawPeriod = yawPeriod
     }
 }
 
@@ -151,7 +160,6 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
 
     // Camera + clock.
     private var elapsed: Float = 0
-    private var yaw: Float
 
     /// Wall-clock milliseconds the most recent `update` spent in the wave step +
     /// serialization. Read by `MeniscusMultiFrameRenderTest` for the task-1c
@@ -169,7 +177,6 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
         pixelFormat: MTLPixelFormat? = nil
     ) throws {
         self.configuration = configuration
-        self.yaw = configuration.initialYaw
         let cells = configuration.gridN * configuration.gridN
         self.current = [Float](repeating: 0, count: cells)
         self.previous = [Float](repeating: 0, count: cells)
@@ -222,9 +229,6 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
         if !(dt > 0) { dt = 1.0 / 60.0 }
         dt = min(dt, 1.0 / 30.0)
         elapsed += dt
-        // Slow autonomous drift so the low-oblique view is never a fixed diagram.
-        // MEN.2b replaces this with the source's own camera behaviour.
-        yaw += dt * configuration.yawDriftRate
 
         stepWave()
         serializeSerpentinePath()
@@ -246,7 +250,6 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
     public func reset() {
         for i in current.indices { current[i] = 0; previous[i] = 0 }
         elapsed = 0
-        yaw = configuration.initialYaw
     }
 
     // MARK: - Wave step
@@ -345,13 +348,21 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
 
     // MARK: - Helpers
 
+    /// Heading as a BOUNDED oscillation rather than a free drift. A free drift walks
+    /// back into the raster-closing angle within seconds, so the heading has to be
+    /// bounded, not merely re-centred (see `yawSwing`).
+    private var currentYaw: Float {
+        let omega = 2 * Float.pi / max(configuration.yawPeriod, 0.001)
+        return configuration.yawCentre + configuration.yawSwing * sin(elapsed * omega)
+    }
+
     private func makeConfig(aspect: Float) -> MeniscusConfig {
         MeniscusConfig(
             gridN: UInt32(configuration.gridN),
             pointCount: UInt32(pointCount),
             spreadMode: UInt32(configuration.spreadMode),
             spread: configuration.spread,
-            yaw: yaw,
+            yaw: currentYaw,
             // Low oblique (trait T2) — never top-down, never edge-on. Held fixed at
             // MEN.2a; the source's angle integration arrives at MEN.2b.
             //
@@ -362,10 +373,17 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
             // the horizon about a fifth of the way down the frame and leaves the dark
             // void between horizon and plate that carries trait T5.
             pitch: 0.30,
-            camDist: 1.90,
-            camHeight: 0.90,
+            // FRAMING. References `01` and `02` fill the frame — the plate's near
+            // corner runs off the edge. At the MEN.2a values (1.90 / 0.90) the plate
+            // sat small and centred with dead frame all round it. Closer and lower
+            // pushes the near edge past the bottom and the near corners past the
+            // sides, while the far edge still lands below the horizon so the dark void
+            // that carries trait T5 survives.
+            camDist: 1.45,
+            camHeight: 0.72,
             focal: 1.0,
             heightScale: configuration.heightScale,
+            slopeGain: configuration.slopeGain,
             aspect: aspect,
             brightness: 1.0,
             lightDir: 0.6)

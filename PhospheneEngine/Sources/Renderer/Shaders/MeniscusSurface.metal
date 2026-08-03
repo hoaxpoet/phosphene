@@ -24,7 +24,7 @@ struct MeniscusPoint {
     float slope;
 };
 
-/// Mirror of Swift `MeniscusConfig` (48 B).
+/// Mirror of Swift `MeniscusConfig` (56 B).
 struct MeniscusConfig {
     uint  gridN;
     uint  pointCount;
@@ -36,6 +36,7 @@ struct MeniscusConfig {
     float camHeight;
     float focal;
     float heightScale;
+    float slopeGain;
     float aspect;
     float brightness;
     float lightDir;
@@ -169,7 +170,7 @@ vertex MeniscusLineVertexOut meniscus_line_vertex(
     // while the trough a sample away goes to black; that hard contrast is what makes a
     // field of lines read as a liquid surface (reference `07`). The transition is
     // deliberately sharp: a soft, evenly-lit version looks like fabric, not water.
-    float lit = saturate(0.5 + p.slope * 9.0);
+    float lit = saturate(0.5 + p.slope * cfg.slopeGain);
     float spec = smoothstep(0.55, 0.95, lit);
     float shade = mix(0.06, 0.72, lit) + spec * 0.85;
 
