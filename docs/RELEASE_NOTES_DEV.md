@@ -10,6 +10,22 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-03-212502] BUG-080 / BUG-081 — test runs were deleting real session captures
+
+Started as "six of seven sessions today recorded zero rows — that looks like the silent-tap class." It was not. The empty folders were **empty by construction**, four of the six were **my own test runs**, and chasing them turned up two defects that together were quietly destroying diagnostic captures.
+
+**BUG-081 — a session folder was written on every `VisualizerEngine` construction.** `SessionRecorder()` is built unconditionally, and its `init` created the directory, both CSV headers and the startup banner *before any session existed*. So every app-target test run and every app launch closed without recording left a folder in the user's `~/Documents/`. Proven by experiment rather than inference: count folders, run `xcodebuild -scheme PhospheneApp test`, count again — a header-only session appeared and an older one was evicted.
+
+`init` now computes paths only; directory creation, headers, banner and the disk pre-flight moved to `materializeIfNeeded()`, called from the first actual write. Every disk-touching path is guarded — frame rows, logging, the raw-tap WAV, the stem dump, the video writer — and `finish()` early-outs when nothing was written, so it cannot conjure the very folder the fix prevents.
+
+**BUG-080 — retention kept 6, not 10.** `sessionFolders` enumerated *every* directory under `phosphene_sessions/` and sorted by name descending on the stated assumption that they are all ISO timestamps. In ASCII letters outrank digits, so the four permanent fixture folders (`fixturegen-*`, `beat-match-test-session`) held slots 1–4 of "newest first" **forever** — consuming retention *and* immune to pruning, because they were always inside the kept prefix. The fix filters to names that parse as a session timestamp, so a non-session directory is neither counted nor deleted.
+
+**Why they mattered together.** Test runs manufactured folders that consumed a window already shortened to six, so a handful of runs was enough to evict everything real. This is not hypothetical — it destroyed `2026-08-03T15-05-43Z` *while it was the input* for Witchlight motion-sequence renders, and I initially misread its disappearance as Matt having cleaned up.
+
+**Two things worth carrying forward.** The BUG-080 regression test was confirmed **red before the fix** (6 surviving sessions against the expected 10) — a retention test that passes pre-fix would have been worthless. And making `dateFromFolderName` load-bearing exposed a latent trap in it: an unconditional `index(startIndex, offsetBy: 10)` that crashes on any shorter name, harmless while only the age-based arms called it and a launch crash the moment every directory is parsed. Rewritten as a strict format match.
+
+---
+
 ### [dev-2026-08-02-164808] LFS.3 — reclaim runbook, written from an incident rather than from theory
 
 `Scripts/reclaim-lfs-visual-refs.sh --execute` was run on 2026-07-31 with branch protection active. It **half-applied**: `main` and all 27 `refs/pull/*` were rejected by GitHub, while 18 branches and 3 tags were force-updated to a disjoint rewrite. Branches read 1,945-2,099 commits "ahead" of `main` and could not merge. Fully recovered — 21 refs restored, 21/21 verified, ancestry back to 2-14 ahead — but only because the pre-rewrite commits happened to still be in a local object store. **No ref capture had been taken beforehand.** That was luck.
