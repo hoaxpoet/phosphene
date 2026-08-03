@@ -6,6 +6,8 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
+| BUG-080 | P2 | app.diagnostics / algorithm | **Session retention silently keeps 6, not 10 — permanent fixture folders occupy 4 of the 10 slots and are themselves immortal.** `SessionRecorderRetentionPolicy.sessionFolders` returns EVERY directory under `~/Documents/phosphene_sessions/` and sorts by NAME descending, assuming all of them are ISO timestamps. Letters sort above digits, so `fixturegen-there_there`, `fixturegen-so_what`, `fixturegen-love_rehab` and `beat-match-test-session` take slots 1–4 of "newest first" forever; `dropFirst(10)` then deletes real captures from position 11 on. Verified on the live directory (11 entries, the 4 named ones ranked 1–4). **Consequence: real diagnostic captures are deleted well before the user's setting says**, and it destroyed a session mid-analysis on 2026-08-03 (`2026-08-03T15-05-43Z`, in use for Witchlight renders). Compounds with BUG-081. Fix: filter to folders whose name parses as an ISO timestamp (`dateFromFolderName` already exists and is used by the `oneDay`/`oneWeek` arms — the `lastN` arms just don't consult it) |
+| BUG-081 | P2 | app.diagnostics / test-isolation | **Every `VisualizerEngine` construction writes a session folder into the user's `~/Documents/`, including every app-target test run.** `SessionRecorder()` is constructed unconditionally at `VisualizerEngine.swift:942` and its init creates the directory, both CSV headers and the startup banner — before any session exists. Proven experimentally: `xcodebuild -scheme PhospheneApp test` produced `2026-08-03T21-07-43Z` (header-only, 0 data rows) and evicted an older folder. Four of the six "empty sessions" on 2026-08-03 were test runs, matching their `xcodebuild` timestamps to within 3 s. **Two consequences:** tests write to the user's Documents directory (test-isolation violation), and the junk folders consume retention slots, so a run of tests — or simply launching the app repeatedly without recording — silently evicts real captures (BUG-080 makes this 4 slots worse). Fix: create the session directory lazily on first row write, or gate it behind an explicit `startRecording()` the session lifecycle calls |
 | BUG-071 | P1 · CLOSED wontfix (RETIRED, D-201, 2026-07-25) | preset.fidelity / sdf-geometry | **RESOLVED BY RETIREMENT — Fractal Fly-By deleted after 14 rounds (FLY.14). Instrument-proven ceiling:** whole-frame temporal coherence shows ~13 %/frame boiling, geometry teleports (diff-2/diff-1 = 1.12) — the fast scale-zoom through a self-similar Mandelbox reveals new fold structure every frame, incoherent by construction, not fixable by AA or steering in the 7 ms budget. See D-201. Original defect below (historical). **Fractal Fly-By live M7 FAILED (session `2026-07-23T19-27-48Z`, Cherub Rock):** "deeply glitchy, camera moves OUT not IN." Root causes (confirmed from artifacts + repro renders): (1) **descent direction inverted** — `q=(p+c)*zoom` with zoom increasing collapses features toward a vanishing point (recede); confirmed by a phase-0.08 vs 0.90 sweep (features shrink as phase grows) and by `features.csv` (accAudioTime 0→8.15 → phase 0→0.98 monotonic = one-way recede, never wrapped); (2) **severe shimmer/aliasing** — full-res Mandelbox fine detail + the high-frequency iridescent thin-film rims alias under motion (no AA; MetalFX unwired; the §A8 motion-coherence cap was never added; the whole-frame motion-gate spike metric doesn't catch high-freq shimmer); (3) **descent too slow** — 0.12 rate gave <1 octave in 78 s. Fix: invert to `q=(p+c)/zoom` (fall in), tame/detune the thin-film + distance-fade fine detail, raise the rate. |
 | BUG-070 | P2 | audio.capture / resource-management | **Fix landed 2026-07-12 (PUB.6), pending live validation** — a FAILED device-change tap reinstall left `_isCapturing=true` with zero callbacks: engine health detectors starved (SignalHealthMonitor.evaluate is sample-driven → deadTap never confirms) and the router's recovery restart blocked at the alreadyCapturing guard; only the app-layer poll-based stall card surfaced it. Fix: the catch now clears `_isCapturing` (recovery unblocked) and keeps the monitor as a diagnostic beacon; the false "create steps stopped the monitor" comment corrected. Residual OPEN half: the 3-queue lifecycle interleave (device-change reinstall vs silence-recovery vs user stop) stays unserialized — static-only evidence; restructuring the G1-validated (12/12) path without a reproduced artifact is the BUG-063 pattern. Existing breadcrumbs (per-step diagnostics + install generation) are the instrumentation; serialize only if a live session shows an interleave |
 | BUG-076 | P2 | dsp.beat | **Prep grid is window-position unstable on Bleed (Meshuggah) — a third of 30 s windows give a wrong tempo, and Spotify's preview lands on one.** CORRECTED 2026-07-30 after direct measurement (the original filing inferred a universal 3:2 mis-lock from a single session-log value; that was wrong). Measured across nine 30 s windows of the full track: six read ~115 BPM (correct — matches madmom 115.0, librosa 115.0, drums-stem 115.1), but three read 121.1 / 166.1 / 242.7 — a **2.11× spread**, including non-metrical values. `beatsPerBar` swings 2/3/4 on a 4/4 track and `barConfidence` sits at 0.14–0.64. **Control:** Billie Jean over the same windows is 116.9–117.3 with beatsPerBar 4 and barConfidence 1.00 throughout — so this is dense-transient-specific, not universal, and the existing confidence signal already flags it. The session's 174.6 was the preview excerpt landing in the unstable region. Evidence: `docs/diagnostics/BEATBENCH_BASELINE_2026-07-30.md`; reproduce with `BeatBench --audio <clip> --seconds 30`. Category-4 target for Phase DBN (a sequence decoder over the full activation timeline should not be excerpt-dependent); Phase FT removes the 30 s premise for local files |
@@ -30,6 +32,62 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 ---
 
 ## Open
+
+---
+
+### BUG-080 — Session retention keeps 6, not 10: fixture folders occupy the slots permanently (2026-08-03)
+
+**P2 · app.diagnostics / algorithm.**
+
+**Expected.** With the default `lastN10` retention, the ten most recent *session recordings* survive; older ones are pruned.
+
+**Actual.** Six survive. `SessionRecorderRetentionPolicy.sessionFolders` enumerates every directory under `~/Documents/phosphene_sessions/` and sorts `$0.name > $1.name` on the stated assumption that "ISO timestamps sort lexicographically" — but the directory also holds permanent non-session folders, and in ASCII letters sort above digits. Verified against the live directory:
+
+```
+ 1 fixturegen-there_there        <- not a session
+ 2 fixturegen-so_what            <- not a session
+ 3 fixturegen-love_rehab         <- not a session
+ 4 beat-match-test-session       <- not a session
+ 5 2026-08-03T21-07-43Z          <- newest real folder is only rank 5
+...
+11 2026-08-03T19-49-56Z          <- deleted next
+```
+
+`lastN10` does `Array(folders.dropFirst(10))`, so the four fixture folders permanently consume four retention slots **and can never be pruned themselves** (they are always in the kept prefix). Effective session retention is `10 - <number of named folders>` = 6 today, and it shrinks further as fixture folders are added.
+
+**Reproduction.** `ls -d ~/Documents/phosphene_sessions/*/ | sort -r` — any folder not named `YYYY-MM-DDTHH-MM-SSZ` appears above every real session.
+
+**Impact.** Real captures are deleted well before the user's setting says. Observed live on 2026-08-03: session `2026-08-03T15-05-43Z` was evicted **while it was being used** as the input for Witchlight motion-sequence renders, forcing a re-render against a different capture. Compounds with BUG-081, which manufactures folders that consume the same slots.
+
+**Failure class.** `algorithm` — an ordering assumption ("every directory here is a timestamp") that the directory's actual contents violate.
+
+**Fix (not implemented).** Filter `sessionFolders` to entries whose name parses as an ISO timestamp. `dateFromFolderName` already exists in the same file and the `oneDay`/`oneWeek` arms already rely on it; only the `lastN` arms skip the check. One-line filter plus a regression test that plants a named folder among timestamped ones and asserts it is neither counted nor deleted.
+
+**Verification criteria (written before the fix).** (1) Automated: a `SessionRecorderRetentionPolicyTests` case with 4 named folders + 12 timestamped ones under `lastN10` deletes exactly the 2 oldest *timestamped* folders and leaves all named folders untouched. (2) Manual: with 10+ real sessions on disk, launch the app and confirm the count of timestamped folders afterwards is 10, not 6.
+
+---
+
+### BUG-081 — A session folder is written on every engine construction, including test runs (2026-08-03)
+
+**P2 · app.diagnostics / test-isolation / resource-management.**
+
+**Expected.** A folder appears under `~/Documents/phosphene_sessions/` when a session is *recorded*. Running the test suite writes nothing to the user's Documents directory.
+
+**Actual.** `VisualizerEngine.swift:942` constructs `SessionRecorder()` unconditionally, and `SessionRecorder.init` creates the directory, writes both CSV headers and the three-line startup banner immediately. Any `VisualizerEngine` construction therefore leaves a folder behind whether or not a session ever starts — including every `xcodebuild -scheme PhospheneApp test` run, and every app launch the user closes without recording.
+
+**Reproduction (performed).** Count folders, run `xcodebuild -scheme PhospheneApp -destination 'platform=macOS' test`, count again: `2026-08-03T21-07-43Z` appears with a header-only `features.csv` (1 line, 0 data rows) and a `session.log` containing only the banner — no `WIRING:`, no `preset →`, no `SIGNAL_HEALTH`. Four of the six empty folders present on 2026-08-03 match `xcodebuild` app-test completion times to within 3 s (19-49-56Z, 20-01-18Z, 20-12-53Z, 21-00-25Z).
+
+**Impact.** Two, and the second is the damaging one:
+1. Test-isolation violation — the test suite writes into the user's `~/Documents/`.
+2. The junk folders **consume retention slots**, so running the test suite (or launching the app a few times without recording) silently evicts real captures. With BUG-080 also in play the usable window is 6, so ~6 test runs are enough to destroy every real session on disk. This is what made a real capture disappear mid-analysis on 2026-08-03.
+
+**Diagnostic confusion it caused.** These folders are indistinguishable at a glance from a session where audio capture failed, and were initially misread as six failed M7 attempts (a silent-tap symptom, BUG-055/BUG-057 class). They are not — they are empty by construction.
+
+**Failure class.** `resource-management` (eager side-effecting allocation in an initializer) with a `test-isolation` consequence.
+
+**Fix (not implemented).** Create the directory lazily on the first row write, or behind an explicit `startRecording()` that the session lifecycle calls — so an engine that never records leaves nothing behind. Either way the recorder stops side-effecting from `init`.
+
+**Verification criteria (written before the fix).** (1) Automated: constructing a `SessionRecorder` (or a `VisualizerEngine`) and never writing a row creates no directory; writing one row creates it with headers intact. (2) Manual: note the folder count, run the full app test suite, confirm the count is unchanged.
 
 ---
 
