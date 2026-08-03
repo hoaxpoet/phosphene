@@ -6,6 +6,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
+| BUG-080 | P3 | build / test-isolation | **A fresh git worktree fails ~8 engine tests because `Scripts/link_fixtures.sh` does not link the ML weights.** PUB.2 moved the weights out of git (gitignored, shipped as the `ml-weights-v1` Release asset), but `link_fixtures.sh` — the script whose whole job is "gitignored-but-needed paths a fresh worktree would otherwise lack" — still covers only `PhospheneEngine/Tests/Fixtures` + raster images under `docs/VISUAL_REFERENCES` / `docs/diagnostics`. `PhospheneEngine/Sources/ML/Weights` is absent from `linked_rel`, **and** the trailing grep filter admits only `Tests/Fixtures/` paths or `\.(jpg\|jpeg\|png\|gif)$`, so a `.bin` could not pass even if the directory were added. Measured in the FTR.1 worktree: Weights held **4 / 1 / 1** entries (root / `beat_this` / `panns_mobilenetv1`) against the primary's **176 / 162 / 147** — 479 gitignored files missing. Result: `StemModelTests` (6), `StemSeparationPerformanceTests` (2), `WeightChecksumTests` `test_completeness_{stem,beatThis,panns}` reporting `onDisk → []`, `PANNsMobileNetV1Tests` `.tensorFileMissing("spectrogram_extractor_stft_conv_real_weight.bin")`, and the loveRehab 118-BPM port test. **Cost is misdiagnosis, not breakage:** the run reads as a regression in the increment under test, and `closeout_evidence.sh` correctly stamps `EVIDENCE: FAILURES PRESENT`, so a closeout cannot honestly proceed until someone works out the cause. Exactly the trap D-211 fixed for the reference images — same script, same reasoning, one directory short. Fix is ~2 lines (add the path to `linked_rel`; widen the filter). Found at FTR.1 (2026-08-03), **not caused by it** — FTR.1 changed no runtime Swift. Worked around by hand-symlinking all 479 files into the FTR.1 worktree |
 | BUG-071 | P1 · CLOSED wontfix (RETIRED, D-201, 2026-07-25) | preset.fidelity / sdf-geometry | **RESOLVED BY RETIREMENT — Fractal Fly-By deleted after 14 rounds (FLY.14). Instrument-proven ceiling:** whole-frame temporal coherence shows ~13 %/frame boiling, geometry teleports (diff-2/diff-1 = 1.12) — the fast scale-zoom through a self-similar Mandelbox reveals new fold structure every frame, incoherent by construction, not fixable by AA or steering in the 7 ms budget. See D-201. Original defect below (historical). **Fractal Fly-By live M7 FAILED (session `2026-07-23T19-27-48Z`, Cherub Rock):** "deeply glitchy, camera moves OUT not IN." Root causes (confirmed from artifacts + repro renders): (1) **descent direction inverted** — `q=(p+c)*zoom` with zoom increasing collapses features toward a vanishing point (recede); confirmed by a phase-0.08 vs 0.90 sweep (features shrink as phase grows) and by `features.csv` (accAudioTime 0→8.15 → phase 0→0.98 monotonic = one-way recede, never wrapped); (2) **severe shimmer/aliasing** — full-res Mandelbox fine detail + the high-frequency iridescent thin-film rims alias under motion (no AA; MetalFX unwired; the §A8 motion-coherence cap was never added; the whole-frame motion-gate spike metric doesn't catch high-freq shimmer); (3) **descent too slow** — 0.12 rate gave <1 octave in 78 s. Fix: invert to `q=(p+c)/zoom` (fall in), tame/detune the thin-film + distance-fade fine detail, raise the rate. |
 | BUG-070 | P2 | audio.capture / resource-management | **Fix landed 2026-07-12 (PUB.6), pending live validation** — a FAILED device-change tap reinstall left `_isCapturing=true` with zero callbacks: engine health detectors starved (SignalHealthMonitor.evaluate is sample-driven → deadTap never confirms) and the router's recovery restart blocked at the alreadyCapturing guard; only the app-layer poll-based stall card surfaced it. Fix: the catch now clears `_isCapturing` (recovery unblocked) and keeps the monitor as a diagnostic beacon; the false "create steps stopped the monitor" comment corrected. Residual OPEN half: the 3-queue lifecycle interleave (device-change reinstall vs silence-recovery vs user stop) stays unserialized — static-only evidence; restructuring the G1-validated (12/12) path without a reproduced artifact is the BUG-063 pattern. Existing breadcrumbs (per-step diagnostics + install generation) are the instrumentation; serialize only if a live session shows an interleave |
 | BUG-076 | P2 | dsp.beat | **Prep grid is window-position unstable on Bleed (Meshuggah) — a third of 30 s windows give a wrong tempo, and Spotify's preview lands on one.** CORRECTED 2026-07-30 after direct measurement (the original filing inferred a universal 3:2 mis-lock from a single session-log value; that was wrong). Measured across nine 30 s windows of the full track: six read ~115 BPM (correct — matches madmom 115.0, librosa 115.0, drums-stem 115.1), but three read 121.1 / 166.1 / 242.7 — a **2.11× spread**, including non-metrical values. `beatsPerBar` swings 2/3/4 on a 4/4 track and `barConfidence` sits at 0.14–0.64. **Control:** Billie Jean over the same windows is 116.9–117.3 with beatsPerBar 4 and barConfidence 1.00 throughout — so this is dense-transient-specific, not universal, and the existing confidence signal already flags it. The session's 174.6 was the preview excerpt landing in the unstable region. Evidence: `docs/diagnostics/BEATBENCH_BASELINE_2026-07-30.md`; reproduce with `BeatBench --audio <clip> --seconds 30`. Category-4 target for Phase DBN (a sequence decoder over the full activation timeline should not be excerpt-dependent); Phase FT removes the 30 s premise for local files |
@@ -32,6 +33,72 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 ## Open
 
 ---
+
+### BUG-080 — A fresh worktree fails ~8 engine tests: `link_fixtures.sh` does not link the ML weights (2026-08-03)
+
+**P3 · build / test-isolation · OPEN.** Found at FTR.1; not caused by it.
+
+**Expected.** `swift test --package-path PhospheneEngine` in a worktree created by `git worktree add` + `Scripts/link_fixtures.sh` passes exactly as it does in the primary checkout.
+
+**Actual.** Exit code 1 — `Executed 225 tests, with 7 tests skipped and 8 failures (8 unexpected)`. Every failure is ML weight loading:
+
+- `StemModelTests` — 6 tests (`test_init_loadsWeights_noThrow`, `test_predict_*`, `test_allBuffers_storageModeShared`, `test_threadSafety_concurrentPredicts_noCrash`)
+- `StemSeparationPerformanceTests` — 2 tests
+- `WeightChecksumTests` — `test_completeness_stem` / `_beatThis` / `_panns`, each `Expectation failed: (onDisk → []) == (manifestFiles → [...])`
+- `PANNsMobileNetV1Tests.test_weightsLoad_noThrow` — `.tensorFileMissing("spectrogram_extractor_stft_conv_real_weight.bin")`
+- `"loveRehab: port produces upstream-faithful 118 BPM"` — needs the Beat This! weights
+
+App tests (403), SwiftLint (484 files), DocIntegrityTests (12), harness templates (3), and both repo lint scripts all pass in the same run. The failure set is exactly "everything that reads a weight file."
+
+**Reproduction.**
+
+```
+git worktree add .claude/worktrees/<name> -b <branch> main
+cd .claude/worktrees/<name>
+Scripts/link_fixtures.sh
+swift test --package-path PhospheneEngine
+```
+
+**Root cause.** PUB.2 moved the ML weights out of git — gitignored, shipped as the `ml-weights-v1` Release asset. `Scripts/link_fixtures.sh` exists to bridge precisely that gap ("Gitignored-but-needed paths that a fresh worktree would otherwise lack"), but its `linked_rel` array covers only:
+
+```
+PhospheneEngine/Tests/Fixtures
+docs/VISUAL_REFERENCES
+docs/diagnostics
+```
+
+`PhospheneEngine/Sources/ML/Weights` is absent. Two-part failure — the trailing filter would also reject the files:
+
+```
+| grep -E '^PhospheneEngine/Tests/Fixtures/|\.(jpg|jpeg|png|gif)$'
+```
+
+A `.bin` matches neither alternative, so adding the directory alone is insufficient.
+
+**Evidence.**
+
+| Weights directory | Primary checkout | FTR.1 worktree (before workaround) |
+|---|---|---|
+| `Sources/ML/Weights/` | 176 | 4 |
+| `Sources/ML/Weights/beat_this/` | 162 | 1 |
+| `Sources/ML/Weights/panns_mobilenetv1/` | 147 | 1 |
+
+`git ls-files --others --ignored --exclude-standard -- PhospheneEngine/Sources/ML/Weights` returns **479** files in the primary — the exact set that never reaches a worktree. Two `closeout_evidence.sh` runs at `2026-08-03T13:54:40-0500` and `T14:06:29-0500` (commit `935d77d3`) bracket the diagnosis: the second was after `link_fixtures.sh` ran, and failed identically — which is what proved the script does not cover this path.
+
+**Failure class.** `test-isolation` — an environment gap that makes an unrelated change look like a regression. Adjacent to `documentation-drift`: `link_fixtures.sh`'s own header claims to cover the gitignored set, and no longer does.
+
+**Impact.** No product impact; no shipped code path touched. The cost is **misdiagnosis**. A fresh-worktree run reads as a regression in whatever increment is under test, and `closeout_evidence.sh` honestly stamps `EVIDENCE: FAILURES PRESENT`, so a closeout stalls until someone traces it. With one worktree per session now the standing convention (D-212 process note), every new session pays this tax.
+
+**Proposed fix (~2 lines, NOT implemented here).** Add `PhospheneEngine/Sources/ML/Weights` to `linked_rel` and widen the grep filter to admit it. Per the Defect Handling Protocol, diagnosis and fix are separate increments unless Matt explicitly approves collapsing them; this entry is the diagnosis increment. Matt asked for the entry only.
+
+**Verification criteria (written before the fix).**
+
+1. *Automated:* in a worktree created fresh and linked with the patched script, `swift test --package-path PhospheneEngine` exits 0, and `WeightChecksumTests.test_completeness_{stem,beatThis,panns}` pass.
+2. *Automated:* `git ls-files --others --ignored --exclude-standard -- PhospheneEngine/Sources/ML/Weights | wc -l` in the primary equals the count of links created in the worktree (479 at time of filing).
+3. *Manual:* `Scripts/closeout_evidence.sh` in that worktree footers `engine=0` and does not print `EVIDENCE: FAILURES PRESENT`.
+
+**Related.** D-211 (the images half of this same gap, and the worktree-propagation reasoning), PUB.2 (weights → Release asset), D-212 process note (one worktree per session), BUG-079 (the other build-level gate that cannot currently run).
+
 
 ### BUG-071 — Fractal Fly-By: descent direction inverted + severe motion aliasing (2026-07-23)
 
