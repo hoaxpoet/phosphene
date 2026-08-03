@@ -980,7 +980,7 @@ final class SessionRecorderTests: XCTestCase {
     /// Constructing a recorder must leave NOTHING on disk. This used to create the folder,
     /// both CSV headers and the banner from `init`, so every `VisualizerEngine` construction
     /// — including every app-target test run — deposited an empty session in the user's
-    /// ~/Documents, and those folders then consumed retention slots (BUG-080) and evicted
+    /// ~/Documents, and those folders then consumed retention slots (BUG-082) and evicted
     /// real captures.
     func test_construction_writesNothingToDisk() throws {
         let before = try Set(FileManager.default.contentsOfDirectory(atPath: tempDir.path))

@@ -66,7 +66,7 @@ enum SessionRecorderRetentionPolicy {
 
     /// Session folders only — directories whose name parses as a session timestamp.
     ///
-    /// The name check is load-bearing, not defensive (BUG-080). `phosphene_sessions/` also
+    /// The name check is load-bearing, not defensive (BUG-082). `phosphene_sessions/` also
     /// holds permanent non-session directories — `fixturegen-love_rehab`, `fixturegen-so_what`,
     /// `fixturegen-there_there`, `beat-match-test-session` — and the sort below is
     /// lexicographic, where letters rank above digits. Unfiltered, those four sorted ABOVE
@@ -148,7 +148,7 @@ enum SessionRecorderRetentionPolicy {
     /// A strict whole-string format match, replacing a character-substitution routine that
     /// unconditionally did `index(startIndex, offsetBy: 10)` — which traps on any name
     /// shorter than ten characters. That was reachable only from the `oneDay`/`oneWeek` arms
-    /// before; BUG-080's fix calls this on EVERY directory, so a folder named `old/` next to
+    /// before; BUG-082's fix calls this on EVERY directory, so a folder named `old/` next to
     /// the sessions would have crashed app launch. The formatter is built per call rather
     /// than cached in a `static` because `DateFormatter` is not `Sendable`; this runs once
     /// per folder at launch over a handful of folders.

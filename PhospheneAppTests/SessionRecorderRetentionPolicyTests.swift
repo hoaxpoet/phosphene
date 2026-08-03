@@ -148,7 +148,7 @@ struct SessionRecorderRetentionPolicyTests {
         #expect(!FileManager.default.fileExists(atPath: missing.path))
     }
 
-    // MARK: - BUG-080: non-session folders must not occupy retention slots
+    // MARK: - BUG-082: non-session folders must not occupy retention slots
 
     /// The real directory holds four permanent non-session folders. Before the fix they
     /// sorted ABOVE every timestamped session (letters rank above digits in a descending
@@ -182,7 +182,7 @@ struct SessionRecorderRetentionPolicyTests {
         let survivingSessions = remaining.filter { $0.hasPrefix("2026-") }
         #expect(survivingSessions.count == 10, """
             \(survivingSessions.count) sessions survived, expected 10. Non-session folders are \
-            being counted against the retention limit again (BUG-080) — `sessionFolders` must \
+            being counted against the retention limit again (BUG-082) — `sessionFolders` must \
             filter to names that parse as a session timestamp.
             """)
 
@@ -215,7 +215,7 @@ struct SessionRecorderRetentionPolicyTests {
 
     /// The pre-fix name parser did `index(startIndex, offsetBy: 10)` unconditionally, which
     /// traps on any shorter name. Harmless while only the age-based arms called it; the
-    /// BUG-080 fix calls it on every directory, so a stray short-named folder would have
+    /// BUG-082 fix calls it on every directory, so a stray short-named folder would have
     /// crashed app launch.
     @Test func shortAndOddFolderNamesDoNotTrap() throws {
         let dir = try makeTempDir()

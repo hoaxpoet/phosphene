@@ -10,7 +10,7 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
-### [dev-2026-08-03-212502] BUG-080 / BUG-081 — test runs were deleting real session captures
+### [dev-2026-08-03-212502] BUG-082 / BUG-081 — test runs were deleting real session captures
 
 Started as "six of seven sessions today recorded zero rows — that looks like the silent-tap class." It was not. The empty folders were **empty by construction**, four of the six were **my own test runs**, and chasing them turned up two defects that together were quietly destroying diagnostic captures.
 
@@ -18,13 +18,28 @@ Started as "six of seven sessions today recorded zero rows — that looks like t
 
 `init` now computes paths only; directory creation, headers, banner and the disk pre-flight moved to `materializeIfNeeded()`, called from the first actual write. Every disk-touching path is guarded — frame rows, logging, the raw-tap WAV, the stem dump, the video writer — and `finish()` early-outs when nothing was written, so it cannot conjure the very folder the fix prevents.
 
-**BUG-080 — retention kept 6, not 10.** `sessionFolders` enumerated *every* directory under `phosphene_sessions/` and sorted by name descending on the stated assumption that they are all ISO timestamps. In ASCII letters outrank digits, so the four permanent fixture folders (`fixturegen-*`, `beat-match-test-session`) held slots 1–4 of "newest first" **forever** — consuming retention *and* immune to pruning, because they were always inside the kept prefix. The fix filters to names that parse as a session timestamp, so a non-session directory is neither counted nor deleted.
+**BUG-082 — retention kept 6, not 10.** `sessionFolders` enumerated *every* directory under `phosphene_sessions/` and sorted by name descending on the stated assumption that they are all ISO timestamps. In ASCII letters outrank digits, so the four permanent fixture folders (`fixturegen-*`, `beat-match-test-session`) held slots 1–4 of "newest first" **forever** — consuming retention *and* immune to pruning, because they were always inside the kept prefix. The fix filters to names that parse as a session timestamp, so a non-session directory is neither counted nor deleted.
 
 **Why they mattered together.** Test runs manufactured folders that consumed a window already shortened to six, so a handful of runs was enough to evict everything real. This is not hypothetical — it destroyed `2026-08-03T15-05-43Z` *while it was the input* for Witchlight motion-sequence renders, and I initially misread its disappearance as Matt having cleaned up.
 
-**Two things worth carrying forward.** The BUG-080 regression test was confirmed **red before the fix** (6 surviving sessions against the expected 10) — a retention test that passes pre-fix would have been worthless. And making `dateFromFolderName` load-bearing exposed a latent trap in it: an unconditional `index(startIndex, offsetBy: 10)` that crashes on any shorter name, harmless while only the age-based arms called it and a launch crash the moment every directory is parsed. Rewritten as a strict format match.
+**Two things worth carrying forward.** The BUG-082 regression test was confirmed **red before the fix** (6 surviving sessions against the expected 10) — a retention test that passes pre-fix would have been worthless. And making `dateFromFolderName` load-bearing exposed a latent trap in it: an unconditional `index(startIndex, offsetBy: 10)` that crashes on any shorter name, harmless while only the age-based arms called it and a launch crash the moment every directory is parsed. Rewritten as a strict format match.
 
 ---
+### [dev-2026-08-03-200455] BUG-080 — the propagation chain had no source of truth, and nothing checked
+
+`Scripts/link_fixtures.sh` copies gitignored-but-needed files from the primary checkout into each new worktree. Two independent breaks meant a correctly-prepared worktree — and `main` itself — failed the engine suite. Diagnosed, widened P3 → P2, fixed and validated in one increment (Matt approved the collapse in chat).
+
+**Gap A: a stale allowlist.** PUB.2 moved the 479 ML weight files out of git; `linked_rel` was never updated, and the trailing `grep -E` filter admitted only `Tests/Fixtures/` paths or image extensions, so a `.bin` would have been rejected even if the directory had been added. Weights held 4/1/1 entries in a fresh worktree against the primary's 176/162/147.
+
+**Gap B is the one worth remembering: the primary checkout was never verified to be a complete source, and it wasn't.** Three licensed `.m4a` tempo clips existed only inside an unrelated worktree — so no worktree could ever obtain them, and the primary failed the same gate. A script that links *from* the primary cannot supply what the primary lacks. It reported `linked N fixture(s)` while propagating a hole. `BeatThisFixturePresenceGate` (QR.3) is the only reason this surfaced instead of silently disabling the BeatThis regression surface — that gate paid for itself.
+
+**The fix** replaces the allowlist with a `<path>|<required>|<regex>` manifest and adds the missing invariant: `required=yes` plus an empty source tree is a hard error with a path-and-instructions message, not a silent skip; per-path match regexes let `.bin` through where it structurally could not before; missing-on-disk files warn and set a non-zero exit instead of continuing in silence; and a new `--verify` mode checks source completeness without linking anything, runnable from the primary as a standalone CI-ready gate.
+
+**A third instance surfaced from `--verify` on its first run.** `docs/VISUAL_REFERENCES` and `docs/diagnostics` report **0 gitignored files in the primary**. The reference images D-211 extended this script to propagate are gone everywhere — so the "silently degrades preset work rather than failing" outcome D-211 warned about has been the standing condition, not a worktree-only risk, and `docs/VISUAL_REFERENCES/<preset>/` holds READMEs describing images nobody can see. Left `required=no` (promoting it would fail every run today) but it now warns on every invocation. **Needs a decision, and blocks FTR.2's reference curation.**
+
+**Validation:** full engine suite green in the FTR.1 worktree — XCTest `225 tests, 7 skipped, 0 failures (0 unexpected)`, swift-testing `1732 tests in 246 suites passed`. The `LocalFilePlaybackProvider` concurrency failures were cascade and clear once the fixtures exist. Honest caveat recorded in `KNOWN_ISSUES.md`: that worktree ran the *pre-fix* script against a hand-repaired environment, so criterion 1 is met in substance but not literally — the patched script's own first fresh preparation is still owed.
+
+**The generalisable lesson:** a propagation mechanism with no manifest, no provenance and no completeness check is not a mechanism, it is a coincidence that happened to hold. The primary was authoritative only because it was the clone that happened to receive the files.
 
 ### [dev-2026-08-02-164808] LFS.3 — reclaim runbook, written from an incident rather than from theory
 

@@ -291,7 +291,7 @@ public final class SessionRecorder: @unchecked Sendable {
     /// ever recorded — including every app-target test run, and every app launch closed
     /// without recording. Those empty folders were indistinguishable at a glance from a
     /// session whose audio capture had failed, and worse, they consumed retention slots
-    /// (see BUG-080), so a handful of test runs silently deleted real captures.
+    /// (see BUG-082), so a handful of test runs silently deleted real captures.
     ///
     /// Deferring to the first write makes the directory's existence mean what a reader
     /// assumes it means: something was actually recorded.
