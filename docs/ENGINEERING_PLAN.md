@@ -1308,15 +1308,35 @@ Out of scope for V.8.1: drops (V.8.2), refraction (V.8.2), chromatic dispersion 
 ---
 
 ### Increment V.9 — Ferrofluid Ocean v2 (redirect) ✅ (certified 2026-05-18)
-### Increment V.10 — Fractal Tree v2
+### Increment V.10 — ~~Fractal Tree v2 (painterly uplift)~~ — CANCELLED (FTR.1 / D-212, 2026-08-03)
 
-**Scope:** Apply to Fractal Tree per `SHADER_CRAFT.md §10.4`. Bark material with POM + triplanar + lichen patches; procedural leaf clusters at branch tips with leaf material (SSS back-lit); wind animation via curl-noise; seasonal palette synced with valence; golden-hour lighting with long shadows.
+**Cancelled.** Matt's direction: *"I like the low-fidelity look, but if it stays this way, it will need to react to the music more accurately and more strongly."* Fractal Tree stays flat and graphic; the painterly target (bark POM, translucent foliage, wind, golden-hour lighting, seasonal palette) moves to **Goldengrove**, which was scoped for exactly that register. The 14 curated reference images transfer with it — see `docs/VISUAL_REFERENCES/fractal_tree/README.md` and `docs/presets/GOLDENGROVE_PLAN.md`. `SHADER_CRAFT.md §10.4` is superseded.
 
-**Done when:** same rubric gates; `certified: true`. Performance profile shows POM + foliage within Tier 2 budget (likely requires MetalFX Temporal upscaling at sub-1080p internal render).
+**Replaced by Phase FT** below. The preset's remaining work is reactivity and certification, not fidelity.
 
-**Verify:** same as V.7.
+---
 
-**Estimated sessions:** 4 (bark + POM / foliage / wind animation / seasonal + audio).
+### Phase FTR — Fractal Tree reactivity + certification (D-212)
+
+**Why.** Measured on session `2026-08-03T15-05-43Z` (*Hummer*, 2114 frames after warmup): of five declared audio routes, three are dead on real music (canopy spread 0.42° of swing; tip shimmer +0.002 brightness; leaf hue 4.1° against a 76° wall-clock term in the same line), and the three live layers all read the same primitive — `bass_att`, which rises +0.024 on a 100 ms transient where raw `bass` rises +0.141. Full evidence: `docs/presets/FRACTAL_TREE_REACTIVITY_REVIEW.md`, D-212.
+
+**FTR.1 — Docs + classification.** ✅ (2026-08-03) D-212; `rubric_profile: lightweight`; `audio_routes` manifest declaring the current honest routing; V.10 cancelled; reference set re-pointed; `GOLDENGROVE_CONCEPT.md` sibling note corrected.
+
+**FTR.2 — Routing rebuild.** Replace all five routes per the D-212 table: canopy reach ← `bass_dev`; branch spread ← `spectral_flux`; leaf hue ← `tonal_phase_fifths` (removing the `fract(t * 0.006)` clock term); global brightness ← `arousal`. One primitive per layer (FA #67). Every coefficient sized against the primitive's **measured p05→p95 span**, not a notional 0→1. Rename the shader's `features` parameter to `f` so the M4/L2 substring heuristic can see the deviation fields. Attach QG.5 `response` floors to the manifest.
+
+**Done when:** L2 passes; each route's measured visual swing is documented against its primitive's measured span; `RENDER_VISUAL=1` contact sheet produced **before** the first tuning commit (`PRESET_SESSION_CHECKLIST.md` Part 1 §6).
+
+**FTR.3 — Per-branch activation (hero route).** Option A per D-212: per beat, hash-select a bounded subset of branches from `pulse_beat_index`; each fires an attack/decay envelope over `beat_phase01`. Bounded spatial footprint with steady global luminance (D-157). Replaces the global `branch_count` truncation.
+
+**Done when:** multi-frame harness exercising the **real mesh dispatch path** (object → mesh → fragment via `MeshGenerator.draw`), not `preset.pipelineState` alone — `PRESET_SESSION_CHECKLIST.md` Part 2. Per-beat firing evidence from `features.csv`.
+
+**FTR.4 — Stem binding + percussive accent (OPTIONAL).** Bind `StemFeatures` at buffer(3) on the mesh path in `MeshGenerator.draw()`, then route the percussive accent from `stems.drums_energy_dev`. Droppable if FTR.3 already reads the way Matt wants. Touches shared renderer code — every mesh preset inherits the binding.
+
+**FTR.5 — M7 + certification.** Live review on *Hummer* plus **at least one mid-rich track** (*Hummer* is bass-dominant: the friendliest case for the old design and the harshest for `mid`/`treble`). Closeout cites per-route firing evidence from `features.csv` / `stems.csv` per the checklist's evidence rule. On positive M7: `certified: true`, add `"Fractal Tree"` to `FidelityRubricTests.certifiedPresets`.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter "FidelityRubric|AudioRouteSchema|RouteCoverage"`; SwiftLint clean; p95 frame time within the Tier 2 budget.
+
+**Estimated sessions:** 4 (FTR.2 / FTR.3 / optional FTR.4 / FTR.5 cert).
 
 ---
 

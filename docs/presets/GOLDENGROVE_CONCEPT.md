@@ -27,7 +27,7 @@ So: not "a tree that twitches with the beat." A tree that lives a whole small li
 
 ## How it's different from the Fractal Tree we're keeping
 
-The existing **Fractal Tree** is a flat, graphic, almost-diagram branch-fan — black lines on a bright field — that flicks bigger and smaller with the bass. Playful and abstract; we're keeping it exactly as-is.
+The existing **Fractal Tree** is a flat, graphic, almost-diagram branch-fan that flicks bigger and smaller with the bass. Playful and abstract; **we're keeping that look** — but not the preset as-is. Matt's 2026-08-03 direction (D-212): the low-fidelity register stays, while the audio reactivity gets rebuilt and the preset goes for certification on the *lightweight* rubric (Phase FTR). So the two trees diverge on fidelity, not on effort — Fractal Tree is an actively maintained sibling, not a frozen one. The V.10 painterly uplift that was once queued against it is cancelled, and its 14 curated reference images transferred to `docs/VISUAL_REFERENCES/goldengrove/`.
 
 **Goldengrove** is the opposite register: dimensional, painterly, golden-hour, *almost photographic but soft* — a tree you could half-believe is real, that builds an emotional arc across a whole song instead of reacting frame-to-frame. Same subject, completely different feeling — which is why it's a new preset, not a replacement.
 
