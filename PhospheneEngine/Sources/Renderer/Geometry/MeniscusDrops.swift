@@ -36,12 +36,8 @@ struct MeniscusDrops {
     /// drop, so this also sets the maximum drops considered per frame.
     static let binCount = 30
 
-    /// Per-bin smoothed magnitude, so a drop's force reflects a sustained harmonic
-    /// rather than one frame's noise.
-    private var smoothed = [Float](repeating: 0, count: binCount)
-    /// Running mean of the per-bin magnitude — the deviation reference. The source
-    /// thresholds against an absolute level; on AGC-normalised input that is FA #31, so
-    /// placement fires on a bin rising ABOVE ITS OWN mean instead (D-026).
+    /// The source's smoothed AGC level (`amp_`) — a temporally lagged energy scale.
+    private var level: Float = 0
     /// Per-bin (real, imag) from this frame's transform — the placement coordinates.
     private var components = [SIMD2<Float>](repeating: .zero, count: binCount)
 
@@ -72,91 +68,90 @@ struct MeniscusDrops {
         lastDropForce = 0
         guard side > 4, spectrum.count >= 64 else { return }
 
-        // The source runs its transform over the low half of the spectrum, where
-        // harmonic structure actually lives; the top octaves are mostly noise floor and
-        // would only jitter the placement.
-        let usable = min(spectrum.count / 2, 256)
-        let alpha = 1 - exp(-dt / 0.06)          // per-bin attack/decay
+        let fps = max(1 / max(dt, 1e-5), 1)
+        // Source constants, read from the preset file (Matt, 2026-08-03) rather than
+        // guessed. Four rounds of guessing missed the rate by 100x+; every value below
+        // is now sourced.
+        //   dec_f   = pow(0.8, 30/fps)   — decay on the accumulated components
+        //   dec_med = 1 - 0.06*30/fps    — decay on the AGC level
+        let decF = pow(0.8, 30 / fps)
+        let decMed = 1 - 1.8 / fps
 
-        // Two passes: the first fills `smoothed`, the second stamps — the across-bin
-        // normaliser needs every bin's magnitude before any of them can be scored.
-        for bin in 0..<Self.binCount {
-            let omega = 2 * Float.pi * Float(bin + 1) / Float(usable)
-            var real: Float = 0, imag: Float = 0
-            for index in 0..<usable {
-                let phase = omega * Float(index)
-                real += spectrum[index] * cos(phase)
-                imag += spectrum[index] * sin(phase)
-            }
-            let norm = 1 / Float(usable)
-            real *= norm; imag *= norm
-            components[bin] = SIMD2<Float>(real, imag)
-            smoothed[bin] += ((real * real + imag * imag).squareRoot() - smoothed[bin]) * alpha
+        // 1. AGC THE SPECTRUM. The step my port was missing entirely, and the reason raw
+        //    magnitude came out track-loudness dependent while a per-frame across-bin
+        //    normaliser came out scale-free. The source subtracts the spectrum's mean and
+        //    divides by a TEMPORALLY SMOOTHED energy level — loudness-independent without
+        //    being scale-free, because the level lags rather than tracking each frame.
+        // The AGC statistics run over `reg01` taps — 126 for a 45x45 grid — while the
+        // transform below uses only `flen` = 30. Using 30 for both makes the level about
+        // 2x too small and the normalised spectrum correspondingly too large.
+        let taps = Self.binCount
+        let reg01Count = max(Int(Float(side * side) / 16), taps)
+        let agcStride = max(spectrum.count / reg01Count, 1)
+        var sum: Float = 0
+        var energy: Float = 0.01                    // the source's 0.01 seed
+        for tap in 0..<reg01Count {
+            let magnitude = spectrum[min(tap * agcStride, spectrum.count - 1)]
+            sum += magnitude
+            energy += magnitude * magnitude
         }
-        var frameMean: Float = 0
-        for value in smoothed { frameMean += value }
-        frameMean /= Float(Self.binCount)
-        // ABSOLUTE LEVEL GATE, separate from the across-bin normaliser.
-        //
-        // Dividing by `frameMean` alone is unsound when there is nothing to divide: a
-        // structureless spectrum makes every DFT bin ~0, so every ratio comes out ~1 and
-        // the field gets stamped at full force everywhere — silence rendering as a storm.
-        // The flat-spectrum test caught exactly that. Level scales the whole drive by how
-        // much transform energy actually exists, so no signal means no drops, while the
-        // relative structure between bins still decides placement when there IS signal.
-        let level = min(1, frameMean / configuration.dropLevelReference)
+        sum /= Float(reg01Count)
+        let reg01 = Float(reg01Count)
+        level = level * decMed + 600 * (1 - decMed) * energy.squareRoot() / reg01
+        let stride = max(spectrum.count / taps, 1)
+        guard level > 1e-6 else { return }
 
-        for bin in 0..<Self.binCount {
-            let real = components[bin].x, imag = components[bin].y
-            // Real and imaginary parts become a position; the magnitude becomes
-            // force. This is the whole trick, and why the placement is inaudible
-            // but not arbitrary — it responds to harmonic SPACING.
+        // 2. DFT OVER THE NORMALISED SPECTRUM, accumulated with decay. The accumulation
+        //    is why a sustained harmonic keeps feeding one position instead of flickering.
+        for bin in 0..<taps {
+            var real: Float = 0
+            var imag: Float = 0
+            for tap in 0..<taps {
+                let raw = spectrum[min(tap * stride, spectrum.count - 1)]
+                let normalised = (raw - sum) / level
+                let phase = 2 * Float.pi * Float(tap) / Float(taps) * Float(bin)
+                real += cos(phase) * normalised
+                imag += sin(phase) * normalised
+            }
+            components[bin] = SIMD2<Float>(components[bin].x * decF + real,
+                                           components[bin].y * decF + imag)
+        }
 
-            // FORCE IS THE BIN'S MAGNITUDE. Two earlier attempts got this wrong by more
-            // than 100x, both for the same reason: I introduced a per-bin DEVIATION
-            // (magnitude relative to that bin's own running mean) to satisfy D-026, then
-            // tuned around the result.
-            //
-            // D-026 / FA #31 forbids absolute THRESHOLDS on AGC-normalised energy. A
-            // force proportional to magnitude is not a threshold, so the rule never
-            // applied here — and the ratio actively broke the port: dividing by a small
-            // per-bin mean makes a QUIET bin produce a huge value, so every bin fired
-            // every frame (297-522/s, then 713-838/s). §3 says plainly that the bin's
-            // magnitude sets the impact force. Taking it literally is both faithful and
-            // simpler, and it restores the distribution the wave sim was tuned against —
-            // which is the entire reason §2 reason 2 says to port this at all.
-            // …normalised ACROSS BINS within the frame, not per-bin over time.
-            //
-            // Raw magnitudes scale with how loud the track is: measured 9.7 drops/s on
-            // quiet jazz against 569/s on loud electronic, from identical code. Dividing
-            // by the frame's own mean bin magnitude removes that while PRESERVING the
-            // relative structure between bins — which is the harmonic spacing the whole
-            // placement keys on. The earlier per-bin-over-time ratio destroyed exactly
-            // that structure, which is why it fired everything.
-            let drive = (smoothed[bin] / max(frameMean, 1e-6)) * level
-            guard drive > 1e-4 else { continue }
+        // 3. STAMP. Only the FIRST HALF of the bins, from index 1 — the source loops
+        //    `flen/2` starting at 1, so 15 drops per frame at most, not 30.
+        for bin in 1..<(taps / 2) {
+            let cx = components[bin].x
+            let cy = components[bin].y
+            // amp = 3 * |c|^2, gated at 0.02, force ∝ sqrt(amp) — so force is
+            // proportional to |c|, and the gate is a hard threshold on the NORMALISED
+            // transform output (not on AGC'd band energy, so FA #31 does not apply).
+            let amp = 3 * (cx * cx + cy * cy)
+            guard amp > configuration.dropGate else { continue }
+            let force = (60 / fps) * amp.squareRoot() * configuration.dropForce
 
-            // Real/imag → grid cell. They are signed and roughly balanced, so mapping
-            // through a tanh-like squash keeps drops off the margins without clipping a
-            // whole family of harmonics onto the edge.
-            let unitX = 0.5 + 0.5 * tanhApprox(real * configuration.dropSpread)
-            let unitY = 0.5 + 0.5 * tanhApprox(imag * configuration.dropSpread)
-            let col = min(side - 1, max(0, Int(unitX * Float(side))))
-            let row = min(side - 1, max(0, Int(unitY * Float(side))))
-
-            let force = min(drive * configuration.dropForce, configuration.dropForceCeiling)
-            stamp(&field, side: side, col: col, row: row, force: force)
+            // Position by plain modulo wrap — not the tanh squash I invented.
+            for dy in -1...1 {
+                for dx in -1...1 {
+                    let col = Self.wrap((cx + 0.5) * Float(side) + Float(dx), side)
+                    let row = Self.wrap((cy + 0.5) * Float(side) + Float(dy), side)
+                    // Stencil weight 1/(1 + dx^2 + dy^2): centre 1, edge 1/2, corner 1/3.
+                    let weight = 1 / Float(1 + dx * dx + dy * dy)
+                    field[row * side + col] -= force * weight
+                }
+            }
             lastDropForce += force
-            // Counted only when the impact is big enough to SEE. Diagnostic, not a
-            // behavioural gate: every bin above still contributes its force. This is the
-            // number the rate assertion reads, because "drops per second" only means
-            // anything for impacts a viewer can distinguish.
             if force > configuration.dropVisibleForce { lastDropCount += 1 }
         }
     }
 
+    private static func wrap(_ value: Float, _ side: Int) -> Int {
+        let wrapped = Int(value.rounded(.down)) % side
+        return wrapped < 0 ? wrapped + side : wrapped
+    }
+
     mutating func reset() {
-        for i in smoothed.indices { smoothed[i] = 0; components[i] = .zero }
+        for i in components.indices { components[i] = .zero }
+        level = 0
         lastDropCount = 0
         lastDropForce = 0
     }

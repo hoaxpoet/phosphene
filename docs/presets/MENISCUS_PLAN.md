@@ -421,49 +421,48 @@ badly understated.** This is the NACRE.2b pattern the plan predicted (§2 reason
    The warp shader body returns `vec3(0,0,0)` unconditionally. §3 asserted this from a
    read; it is now verified from the artifact.
 
-### MEN.2b — drops: mechanism ported, force scale NOT calibrated (2026-08-03)
+### MEN.2b — drops: force law READ FROM THE SOURCE (2026-08-03)
 
-The placement mechanism is ported and verified (`MeniscusDropsTests`): harmonic spacing
-decides position, a structureless spectrum places nothing, impacts are narrow 3×3
-punctuation, force is bounded. The **force scale** is not settled, and without it the
-surface cannot show T4, so `dropsEnabled` defaults **false**.
+Four rounds of guessing the force scale missed the drop rate by more than 100x (297-522,
+713-838, 9.7-569, 1800 /s against a legible ~0.5-240). Matt's call: read the constant from
+the source file. Doing so replaced guesses with the actual law, and corrected **five**
+things at once — the earlier attempts were not near-misses on a scale factor, they were
+the wrong construction:
 
-Measured on real music (`MeniscusDropRateTests` — three committed tempo fixtures through
-the production `FFTProcessor`) against a legibility range of roughly 0.5–240 drops/s:
+| | my guesses | the source |
+|---|---|---|
+| spectrum conditioning | none, or a normaliser I invented | **AGC: subtract the spectrum mean, divide by a TEMPORALLY SMOOTHED energy level** |
+| transform output | used instantaneously | **accumulated per bin with `dec_f = 0.8^(30/fps)`** |
+| bins stamped | all 30 | **`flen/2` = 15, starting at index 1** |
+| force law | `magnitude x gain` | **`amp = 3(cx²+cy²)`, gated `above(amp, 0.02)`, force ∝ `sqrt(amp)`** |
+| stencil weights | 1.0 / 0.8 / 0.5 | **`1/(1+dx²+dy²)`** — 1, 1/2, 1/3 |
+| position | a tanh squash I invented | **plain modulo wrap** |
 
-| force model | measured |
-|---|---|
-| deviation vs per-bin running mean, gated | 297–522 /s |
-| same, squared drive | 713–838 /s |
-| raw magnitude, no normaliser | 9.7 /s (quiet jazz) – 569 /s (loud electronic) |
-| magnitude normalised across bins per frame | 1800 /s — every bin, every frame |
+The AGC is the headline: it is why the source is loudness-independent WITHOUT being
+scale-free, and its absence is what made raw magnitude track-dependent (9.7 /s on quiet
+jazz, 569 /s on loud electronic) while my per-frame across-bin normaliser went scale-free
+and fired everything. It also resolves the FA #31 question cleanly — the source AGCs the
+SPECTRUM ITSELF, so its `above(amp, 0.02)` is a threshold on normalised transform output,
+not on AGC'd band energy. The rule never applied.
 
-Four scalings, none in range. Each was a guess at a constant §3 does not record — it says
-only that "the bin's magnitude sets the impact force". A fifth guess is the FA #73 failure
-mode, so the port is parked rather than tuned again. The third row is the informative one:
-raw magnitude is **track-loudness dependent**, which is why a normaliser is needed; but
-normalising across bins makes the drive scale-free, so every bin clears any fixed force.
-The missing input is the source's force constant relative to its wave amplitude.
+Also corrected: the AGC statistics run over `reg01` = 126 taps while the transform uses
+`flen` = 30. Using 30 for both makes the level ~2x too small.
 
-**Next step is evidence, not another guess.** Either measure ripple-onset rate directly off
-the oracle frames (`Scripts/render_meniscus_oracle.sh`) and match it, or read the force
-constant from the source file the sidecar SHA already pins.
+**One unknown remains, and it is now precisely characterised.** The rate is 513-840 /s —
+still high. Every constant above is in MILKDROP'S SPECTRUM UNITS, and Phosphene's
+`FFTProcessor` magnitudes have a different scale, so the `600` in the level update does
+not transfer directly. What is left is a single units conversion between the two spectra,
+with a clear target (the normalised spectrum should put `amp` straddling the 0.02 gate) —
+not a guess at a law. That is a materially better position than four rounds ago, and it is
+the next thing to settle.
 
-`MeniscusDropRateTests` keeps running and printing, wrapped in `withKnownIssue` — never a
-relaxed bound (QG.1: a red gate is the gate working; file it, never tune the floor). It
-fails loudly the moment the rate lands in range.
+`dropsEnabled` stays **false** until it is.
 
-One real defect was found and fixed on the way: the across-bin normaliser divided by a mean
-that is itself ~0 for a structureless spectrum, so every ratio came out ~1 and the field was
-stamped at full force everywhere — silence rendering as a storm. An absolute level gate
-(`dropLevelReference`) closes it; the flat-spectrum test locks it.
-
-**Not filed as a numbered BUG yet, deliberately.** BUG-080 is held by the unmerged
+**Not filed as a numbered BUG, deliberately.** BUG-080 is held by the unmerged
 `claude/bug080-worktree-weights` branch and BUG-081 by the FTR.2 session (Matt,
-2026-08-03) — both unmerged, so neither number is visible in this tree and
-`DocIntegrityTests` rejects the hole either way. With two sessions consuming numbers
-concurrently, picking one here just risks a third collision. Claim a number at merge time,
-when the tree shows the real next-free; this section is the record until then.
+2026-08-03) — neither is visible in this tree, so `DocIntegrityTests` rejects the hole
+either way, and with two sessions consuming numbers concurrently a third collision is
+likely. Claim a number at merge time; this section is the record until then.
 
 **What this means for the increment series.** The MEN.2a stub reproduces the raster and
 the slope shading and essentially nothing else: it has a fixed hue where the source

@@ -108,25 +108,20 @@ public struct MeniscusConfiguration: Sendable {
     /// fourth time is the FA #73 failure mode, so the switch stays off and the
     /// calibration is an open question rather than a silently-wrong default.
     public var dropsEnabled: Bool
-    /// Drop tunables (MEN.2b — see `MeniscusDrops`).
+    /// Drop constants, READ FROM THE SOURCE (Matt's call, 2026-08-03) rather than
+    /// guessed — four rounds of guessing missed the rate by more than 100x.
     ///
-    /// `dropThreshold` is a DEVIATION multiple of a bin's own running mean, never an
-    /// absolute level on AGC-normalised input (D-026 / FA #31). `dropForceCeiling`
-    /// bounds a single impact so a loud transient cannot punch the field into a spike
-    /// the wave step then rings on for seconds.
-    public var dropThreshold: Float
+    /// `dropGate` is the source's `above(amp, 0.02)`, a hard threshold on the amplitude
+    /// of the AGC-NORMALISED, decay-accumulated transform output. FA #31 forbids absolute
+    /// thresholds on AGC-normalised BAND ENERGY; this is neither — the source AGCs the
+    /// spectrum itself first, which is precisely what my four attempts were missing.
+    /// `dropForce` is the source's unit scale; the frame-rate term (60/fps) lives in the
+    /// step.
+    public var dropGate: Float
     public var dropForce: Float
-    public var dropForceCeiling: Float
-    /// Squash factor mapping the transform's real/imag parts onto the grid. Larger
-    /// pushes drops toward the margins; smaller clusters them centrally.
-    public var dropSpread: Float
     /// Force above which an impact counts as a VISIBLE drop. Diagnostic only —
     /// it gates the reported rate, never the physics.
     public var dropVisibleForce: Float
-    /// Transform energy at which the drop drive reaches full scale. Below it the
-    /// drive falls off proportionally, so a structureless or silent spectrum places
-    /// nothing rather than stamping every bin at full force.
-    public var dropLevelReference: Float
     /// Scale the sideways spread with camera proximity, as the source's comp stage
     /// does. This is what makes a free-tumbling camera compatible with an open raster:
     /// when the plate is far and the rows crowd together, the spread shrinks with it.
@@ -148,12 +143,9 @@ public struct MeniscusConfiguration: Sendable {
         dollyPeriod: Float = 19.0,
         spreadTracksDistance: Bool = true,
         dropsEnabled: Bool = false,
-        dropThreshold: Float = 0.35,
-        dropForce: Float = 9.0,
-        dropForceCeiling: Float = 0.55,
-        dropSpread: Float = 2.6,
-        dropVisibleForce: Float = 0.05,
-        dropLevelReference: Float = 0.004
+        dropGate: Float = 0.02,
+        dropForce: Float = 1.0,
+        dropVisibleForce: Float = 0.05
     ) {
         self.gridN = gridN
         self.damping = damping
@@ -170,11 +162,8 @@ public struct MeniscusConfiguration: Sendable {
         self.dollyPeriod = dollyPeriod
         self.spreadTracksDistance = spreadTracksDistance
         self.dropsEnabled = dropsEnabled
-        self.dropThreshold = dropThreshold
+        self.dropGate = dropGate
         self.dropForce = dropForce
-        self.dropForceCeiling = dropForceCeiling
-        self.dropSpread = dropSpread
         self.dropVisibleForce = dropVisibleForce
-        self.dropLevelReference = dropLevelReference
     }
 }

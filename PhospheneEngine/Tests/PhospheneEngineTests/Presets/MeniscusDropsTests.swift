@@ -27,7 +27,13 @@ struct MeniscusDropsTests {
     /// Run `steps` frames against a fixed spectrum and return the field plus the drop
     /// count on the final frame. Several frames are needed because the per-bin running
     /// mean has to settle before a deviation can register.
-    private static func run(spectrum: [Float], steps: Int = 90,
+    /// `steps` defaults LOW on purpose. The source accumulates the transform's real and
+    /// imaginary parts with a per-frame decay, so holding one spectrum constant for
+    /// dozens of frames drives them to a saturation value real music never reaches — the
+    /// positions then wrap through the grid modulo and every spectrum collides at the
+    /// same cells. These tests state properties of the placement, so they run it for a
+    /// realistic handful of frames rather than to saturation.
+    private static func run(spectrum: [Float], steps: Int = 8,
                             configuration: MeniscusConfiguration = .init())
     -> (field: [Float], drops: Int, force: Float) {
         var drops = MeniscusDrops()
@@ -118,22 +124,25 @@ struct MeniscusDropsTests {
             """)
     }
 
-    @Test("force is bounded — one transient cannot punch the field")
-    func forceIsBounded() {
-        var configuration = MeniscusConfiguration()
-        configuration.dropForceCeiling = 0.4
-        let result = Self.run(spectrum: Self.comb(spacing: 8, amplitude: 40),
-                              configuration: configuration)
-        guard result.drops > 0 else { return }
-        let deepest = result.field.map { abs($0) }.max() ?? 0
-        // Ceiling × the stencil's centre weight (1.0), with headroom for repeated hits
-        // landing on the same cell across frames.
-        #expect(deepest < 0.4 * Float(result.drops) + 0.1, """
-            a single cell reached \(deepest) against a \(configuration.dropForceCeiling) \
-            per-impact ceiling — the clamp is not holding, and an unbounded impulse makes \
-            the wave step ring for seconds.
+    @Test("force is loudness-INVARIANT — the AGC bounds it, not a clamp")
+    func forceIsLoudnessInvariant() {
+        // My port had an invented `dropForceCeiling`. The source has no clamp: it AGCs
+        // the spectrum first (subtract the mean, divide by a smoothed energy level), so
+        // a track 40x louder produces the same transform output and the same force.
+        // That is a stronger guarantee than a clamp, and it is the property that makes
+        // the placement work across quiet jazz and loud electronic alike — the failure
+        // that raw magnitude showed at 9.7 vs 569 drops/s.
+        let quiet = Self.run(spectrum: Self.comb(spacing: 8, amplitude: 0.05))
+        let loud = Self.run(spectrum: Self.comb(spacing: 8, amplitude: 2.0))
+        // 40x the input amplitude must not scale the stamped force with it.
+        let ratio = Double(loud.force) / Double(max(quiet.force, 1e-6))
+        #expect(ratio < 4.0, """
+            force scaled \(String(format: "%.1f", ratio))x for a 40x louder spectrum. The \
+            AGC normalisation is not holding, and drop density will follow how loud the \
+            track is rather than what is in it.
             """)
     }
+
 }
 
 // MARK: - Real-music drop rate (MEN.2b)
