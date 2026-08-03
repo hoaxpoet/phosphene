@@ -90,8 +90,9 @@ retraining or fine-tuning.
 ## Milkdrop-inspired preset attribution
 
 **Status:** **Active — populated per D-111 (as amended by the D-113
-inspired-by reframe).** Five shipped presets are Milkdrop-inspired
-works; each declares its source in an `inspired_by` sidecar block.
+inspired-by reframe).** Seven presets are Milkdrop-inspired works; each
+declares its source in an `inspired_by` sidecar block. (`Meniscus` is the
+newest and is not yet certified — MEN.2a.)
 
 **Source pack:**
 [`projectM-visualizer/presets-cream-of-the-crop`](https://github.com/projectM-visualizer/presets-cream-of-the-crop)
@@ -136,6 +137,7 @@ SHA-256 is retained in the sidecar as provenance).
 | `DragonBloom` | `$$$ Royal - Mashup (220)` | $$$ Royal mashup series (multiple component authors) |
 | `FataMorgana` | `martin [shadow harlequins shape code] - fata morgana` | Martin |
 | `Witchlight` | `martin - witchcraft reloaded` | Martin |
+| `Meniscus` | `Martin - QBikal - Surface Turbulence IIb` (butterchurn JSON conversion — no original `.milk` on disk) | Martin, QBikal |
 
 **Reference-image attribution (`docs/VISUAL_REFERENCES/`).** The Witchlight
 reference set (WL.1) is eleven license-verified images from Wikimedia
