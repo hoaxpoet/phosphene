@@ -34,7 +34,17 @@ that is a product decision — raise it with Matt, do not infer it.
 
 **Standalone tools (`executableTarget`s — zero production importers by design):**
 - `active-tool`: CheckVisualReferences (visual-ref lint gate), PresetSessionReplay (mandatory per
-  PRESET_SESSION_CHECKLIST), SoakRunner (run_soak_test.sh), TempoDumpRunner (dump_tempo_baselines.sh).
+  PRESET_SESSION_CHECKLIST), SoakRunner (run_soak_test.sh), TempoDumpRunner (dump_tempo_baselines.sh),
+  **BeatBench** (the beat-sync benchmark — D-202 program measurement surface, driven by the
+  `beatbench` skill and `Scripts/beatbench_*`), **TapCapture** (raw-tap capture for offline
+  signal-health work), **ChainHealthAnalyzer** (ASH.2 / D-184, driven by
+  `Scripts/analyze_session_chain.sh`, which exits non-zero unless the verdict is clean).
+
+  *(The three bolded targets were added at RECON.4, 2026-08-03. They ship in `Package.swift` but
+  had never been registered here — so this register, whose whole job is to stop a future audit
+  cutting live tools on a no-references signal, was itself missing 3 of 14 targets. Separately:
+  `ChainHealthAnalyzer/main.swift` is the one engine target with no `// STATUS:` marker, which the
+  convention below requires — add it when that file is next touched.)*
 - `retained-diagnostic`: ColdStartVerifier (cold-start phase-correction *runtime* reverted 2026-05-25;
   tool kept per "keep the tools", BEAT_SYNC.md §Cold-Start), BeatThisActivationDumper,
   QualityReelAnalyzer, UtilityCostTableUpdater, InstrumentFamilyDumper (IFC.5 per-family

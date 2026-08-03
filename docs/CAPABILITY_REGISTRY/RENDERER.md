@@ -169,6 +169,26 @@ This is **wrong in two ways**: (1) the buffer order is inverted (the canonical c
 
 ---
 
+## Capability: compute agent-network (Physarum / agent-deposit) — **Supported**
+
+*Added at RECON.4, 2026-08-03. This row was overdue: Filigree introduced the substrate when it certified on 2026-06-28, and CLAUDE.md makes a registry update mandatory when preset-architecture capabilities change — but the text sat unmerged in a root-level `PHYSARUM_CAPABILITY_CLOSEOUT.md` staging file instead of landing here. The staging file is deleted in the same commit; this is now the canonical record.*
+
+**Files.** `Renderer/Geometry/PhysarumGeometry.swift` (a `ParticleGeometry` sibling per D-097, registered in `ParticleGeometryRegistry`) + `Renderer/Shaders/Physarum.metal` — kernels `physarum_reset → physarum_agents → physarum_diffuse`, a per-frame compute encoder with buffer barriers, ping-pong `r16Float` trail textures and an atomic per-cell deposit.
+
+**First consumer.** **Filigree** (certified 2026-06-28), `passes: ["feedback","particles"]`.
+
+**Performance.** ~262k agents at **0.66 ms/frame @ 1080p**; ~1M agents at ~0.55 ms. Large headroom against the 60 fps budget.
+
+**Coupling verdict (accepted by Matt 2026-06-27).** The substrate carries a **loose continuous-energy accompaniment, not tight event-sync.** This is a property of the medium: agent trails integrate over many frames, so the visible state lags any single event by design.
+
+**Preset implications.**
+- **Now cheap to build:** additional *continuous-energy* agent-network presets on the shared substrate — new colour and parameter regimes, 36-Points-style variety — without new render-graph primitives.
+- **Still blocked:** *tight beat-synced or structural-event-synced* agent presets, for two independent reasons. (1) The coupling verdict above — the substrate is the wrong medium for event-sync regardless of grid quality. (2) **BUG-065**, live BeatGrid phase drift. Do not scope event-sync on this substrate until both change.
+
+*Status note (RECON.4, 2026-08-03):* the original draft of this row cited BUG-065 as "50–70 ms mid-track, 28 % of frames outside the window". That understates it — the 2026-07-30 Lumen Mosaic session measured **50 % of frames outside** the ~60 ms window with drift growing to ~119 ms, and **Phase TRK is now parked (D-206)** with both of its levers measured dead. BUG-065 is expected to close only as a side effect of Phase DBN, so treat reason (2) as long-lived rather than imminent.
+
+**Authoring note.** `PhysarumGeometry.swift`'s header still describes itself as a "throwaway SKETCH… NOT a preset" from its spike origin. That header is stale — the file has a real, certified consumer. Left as-is here rather than edited blind; correct it whenever the file is next touched.
+
 ## Per-file capability index
 
 Consolidated. Every CA.7a-scope file's headline behaviour, principal public/internal surface, and verdict. Specific public/internal item-by-item enumeration was performed during Pass 1 (see audit summary + sub-agent reports); listing every method per file inflates this doc without added value. Where a file has a load-bearing public capability beyond the headline, it's called out.
