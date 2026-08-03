@@ -270,8 +270,6 @@ fragment float4 fractal_tree_fragment(
     float across_width = in.uv.y;        // 0 and 1 = edges, 0.5 = centre
 
     float beat     = f.beat_bass;
-    float mid_att  = f.mid_att;
-    float treb_att = f.treb_att;
 
     // ── Hue ← tonal_phase_fifths ─────────────────────────────────────────
     //
@@ -306,12 +304,29 @@ fragment float4 fractal_tree_fragment(
     // ── Saturation ───────────────────────────────────────────────────────
     float sat = mix(0.55f, 0.88f, depth_norm);
 
-    // ── Brightness ───────────────────────────────────────────────────────
-    // Base value rises from trunk to tip, boosted by mid energy.
+    // ── Brightness envelope ← arousal ────────────────────────────────────
+    //
+    // A NEW LAYER. The preset had no section-scale route at all: every visible term
+    // moved on a per-frame or per-transient timescale, so a quiet verse and a loud
+    // chorus rendered at the same brightness. `arousal` is the mood classifier's slow
+    // energy estimate and is correctly slow — it rises monotonically by quarter on
+    // every source measured (Hummer 0.354 → 0.508, love_rehab 0.497 → 0.602,
+    // so_what 0.130 → 0.296, there_there 0.415 → 0.621).
+    //
+    // SIZED AGAINST THE WARM RANGE, NOT p05→p95. The raw p05 is 0.033 on Hummer, but
+    // that is cold-start residue: the first 60 frames read exactly 0.000 and the mood
+    // classifier is still converging well past the 10 s warmup cut. Sizing against the
+    // full 0.511 span would leave the tree dim for the opening minute of every track.
+    // The mapping instead centres on the measured mid-track band [0.13, 0.62].
+    //
+    // Removed from this line: `mid_att * 0.18` (mid_att spans 0.007 on love_rehab —
+    // there was nothing to multiply) and `treb_att * 0.12 * is_leaf`, the tip-shimmer
+    // route, which delivered +0.002 of a promised +0.12 (D-212). Shimmer is not
+    // re-homed here: the visual layer it occupied belongs to FTR.3's per-branch
+    // activation, and a dead route is removed rather than left declared.
+    float arousal  = saturate((f.arousal - 0.13f) / 0.49f);
     float val_base = mix(0.22f, 0.60f, depth_norm);
-    float val      = val_base
-                   + mid_att  * 0.18f
-                   + treb_att * 0.12f * is_leaf;   // tip shimmer on treble
+    float val      = val_base * (0.72f + arousal * 0.46f);
 
     // Beat flash: short-lived brightness spike, amplified at leaf tips.
     val += beat * (0.25f + 0.25f * depth_norm);
