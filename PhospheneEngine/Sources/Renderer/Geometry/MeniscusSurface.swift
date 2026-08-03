@@ -1,144 +1,33 @@
-// MeniscusSurface — the serpentine projected line-strip water surface (MEN.2a).
+// MeniscusSurface — the serpentine projected line-strip water surface.
 //
 // A `ParticleGeometry` sibling (D-097) for Meniscus. Owns the height field, the
-// two-buffer wave step, and the line pipeline. Per frame: step the sim →
-// serialize the grid into ONE serpentine path → draw each path segment as a
-// sideways-spread quad.
+// two-buffer wave step, and the line + backdrop pipelines. Per frame: advance the
+// camera (`MeniscusCamera`) → step the sim → serialize the grid into ONE serpentine
+// path → draw the backdrop, then each path segment as a sideways-spread quad.
 //
 // WHY CPU, NOT COMPUTE (MEN.2a task 1c). The wave step is trivially parallel but also
-// trivially small: `MENISCUS_PLAN.md` §7 R4 says raising the resolution CLOSES the
-// raster gaps that make the preset legible, so the grid can never grow to where a
-// dispatch pays for itself. The decisive argument is MEN.2b — drop placement is
-// CPU-derived, so a CPU height field keeps a drop a single `+=` with no upload path.
+// trivially small: §7 R4 says raising the resolution CLOSES the raster gaps that make
+// the preset legible, so the grid can never grow to where a dispatch pays for itself —
+// and drop placement is CPU-derived, so a drop stays a single `+=` with no upload path.
 // Precedent: `MitosisGen2Geometry` (CPU) vs `CymaticSandGeometry` (compute).
 //
 // SERPENTINE LIVES ON THE CPU. The serialization loop emits points in traversal order
 // (alternate rows reversed), so the vertex shader indexes the buffer linearly and
 // carries no boustrophedon logic. The rounded turnaround caps at the margins
-// (reference `07`, trait T1) are the joins between one row's end and the next row's
-// start — they fall out of the ordering, they are not drawn specially.
+// (reference `07`, trait T1) fall out of the ordering; they are not drawn specially.
 //
-// NO AUDIO AT MEN.2a. `update` ignores `features` apart from `deltaTime`. The
-// source's own drop placement lands at MEN.2b; the Phosphene stem routing at MEN.3.
+// MEN.2b PORTED the source's camera, its hue rotation and its volume brightness gate
+// (see `MeniscusCamera`). Drop placement is NOT yet ported — the cepstral mechanism
+// needs the FFT spectrum, which `ParticleGeometry.update` does not carry; the surface
+// still runs on the MEN.2a placeholder swell until that bridge exists.
 //
-// See `docs/presets/MENISCUS_PLAN.md` and `Renderer/Shaders/MeniscusSurface.metal`.
+// See `docs/presets/MENISCUS_PLAN.md` §3 (decode) and §9 (corrections from the oracle).
 
 import Metal
 import Shared
 import os.log
 
 private let meniscusLogger = Logger(subsystem: "com.phosphene.renderer", category: "Meniscus")
-
-// MARK: - MeniscusPoint (mirror of MSL `MeniscusPoint`, 8 bytes)
-
-/// One sample on the serpentine path: its display height and the slope term the
-/// shading reads. Grid coordinates are NOT stored — the vertex shader recovers
-/// them from the path index, which keeps the buffer at 8 B/point.
-@frozen
-public struct MeniscusPoint: Sendable {
-    public var height: Float
-    public var slope: Float
-}
-
-// MARK: - MeniscusConfig (mirror of MSL `MeniscusConfig`, 56 bytes: 3×uint + 11×float)
-
-struct MeniscusConfig {
-    var gridN: UInt32
-    var pointCount: UInt32
-    var spreadMode: UInt32      // 0 = screen-space X (source), 1 = line normal
-    var spread: Float           // half-width of the sideways spread, NDC-x units
-    var yaw: Float
-    var pitch: Float
-    var camDist: Float
-    var camHeight: Float
-    var focal: Float
-    var heightScale: Float
-    var slopeGain: Float
-    var aspect: Float
-    var brightness: Float
-    var lightDir: Float         // screen-space angle of the key light (radians)
-}
-
-// MARK: - Configuration
-
-public struct MeniscusConfiguration: Sendable {
-
-    /// Grid resolution per side. The source's figure is 45; raising it smooths the
-    /// surface but closes the raster gaps (`MENISCUS_PLAN.md` §7 R4).
-    public var gridN: Int
-    /// Wave-propagation damping per step. < 1 so energy bleeds away.
-    public var damping: Float
-    /// Vertical exaggeration applied to the height field at projection time.
-    public var heightScale: Float
-    /// Half-width of the sideways glow spread, in NDC-x units. This single number IS
-    /// the §9 soft/crisp axis: 0.035 reads diagrammatic, 0.070 reads as light lying on
-    /// water. It costs nothing either way — see `spreadMode`.
-    public var spread: Float
-    /// 0 = spread along screen-space X (what the source does), 1 = along the segment's
-    /// screen-space normal. MEN.2a task 1a answered this from renders — screen-space X;
-    /// the tangent-normal ribbon closes the raster. Full reasoning at the `THE SPREAD`
-    /// note in `MeniscusSurface.metal`, and see `yawCentre`, which it constrains.
-    public var spreadMode: Int
-    /// Amplitude of the MEN.2a placeholder standing swell (task 6). Set to 0 and
-    /// the surface is whatever the sim is doing on its own.
-    public var swellAmplitude: Float
-    /// IIR coefficient for the lagged smoothed height the slope term differences
-    /// against. 1.0 degenerates to a plain forward difference.
-    public var slopeLag: Float
-    /// Contrast of the slope→brightness term (trait T3).
-    ///
-    /// Tied to `swellAmplitude`: a calmer field has proportionally smaller slopes, so
-    /// holding the gain fixed while calming the surface trades all-over agitation for
-    /// a flat grey sheet — "a soft, evenly-lit version of this looks like fabric, not
-    /// water". The two move together. MEN.2b must revisit this once drop impacts
-    /// exist: an impact SHOULD saturate to white, so the gain wants to be set from the
-    /// calm baseline and allowed to clip on transients, not fitted to the peak.
-    public var slopeGain: Float
-    /// Centre of the camera heading's oscillation, radians.
-    ///
-    /// The heading is NOT a free parameter: the screen-X spread thickens a row
-    /// perpendicular to itself by `spread · |sin θ|` where θ is the row's screen
-    /// angle. Near 0 the rows run across the frame, the spread runs ALONG them, and
-    /// the raster gaps survive — the "crisp in Y, soft in X" asymmetry the reference
-    /// README calls load-bearing. At the 0.62 rad this shipped with at first, |sin θ|
-    /// was 0.58 and the raster closed into ribbons. A small non-zero centre keeps the
-    /// rows off exact pixel-row alignment.
-    public var yawCentre: Float
-    /// Half-range of the heading oscillation, radians. BOUNDED on purpose: a free
-    /// drift walks back into the raster-closing regime within seconds, so the fix has
-    /// to bound the angle rather than just re-centre it. `sin(0.16) ≈ 0.16`, so the
-    /// worst-case perpendicular fattening stays under a fifth of the spread.
-    public var yawSwing: Float
-    /// Period of the heading oscillation, seconds. MEN.2b replaces the whole camera
-    /// with the source's own behaviour.
-    public var yawPeriod: Float
-
-    public init(
-        gridN: Int = 45,
-        damping: Float = 0.995,
-        heightScale: Float = 0.32,
-        spread: Float = 0.070,
-        spreadMode: Int = 0,
-        swellAmplitude: Float = 0.10,
-        slopeLag: Float = 0.35,
-        slopeGain: Float = 34.0,
-        yawCentre: Float = 0.06,
-        yawSwing: Float = 0.16,
-        yawPeriod: Float = 44.0
-    ) {
-        self.gridN = gridN
-        self.damping = damping
-        self.heightScale = heightScale
-        self.spread = spread
-        self.spreadMode = spreadMode
-        self.swellAmplitude = swellAmplitude
-        self.slopeLag = slopeLag
-        self.slopeGain = slopeGain
-        self.yawCentre = yawCentre
-        self.yawSwing = yawSwing
-        self.yawPeriod = yawPeriod
-    }
-}
 
 // MARK: - MeniscusSurface
 
@@ -150,16 +39,24 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
     /// precedent).
     public var activeParticleFraction: Float = 1.0
 
+    /// Draw the backdrop but SKIP the line surface. Diagnostic only, for the harness's
+    /// footprint metric: since MEN.2b the backdrop is drawn from here rather than from
+    /// the preset fragment, so "render without the geometry" no longer isolates the
+    /// surface — it removes the whole scene. This restores a meaningful reference frame.
+    public var backdropOnlyForDiagnostics = false
+
     /// Serpentine-ordered path samples, consumed directly by the vertex shader.
     public let pointBuffer: MTLBuffer
     private let linePipeline: MTLRenderPipelineState?
+    private let backdropPipeline: MTLRenderPipelineState?
 
     // Height field — two buffers, ping-ponged by the wave step.
     private var current: [Float]
     private var previous: [Float]
 
-    // Camera + clock.
+    // Clock, and the ported camera (MeniscusCamera.swift).
     private var elapsed: Float = 0
+    private var camera = MeniscusCamera()
 
     /// Wall-clock milliseconds the most recent `update` spent in the wave step +
     /// serialization. Read by `MeniscusMultiFrameRenderTest` for the task-1c
@@ -213,8 +110,21 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
             attachment?.sourceAlphaBlendFactor = .one
             attachment?.destinationAlphaBlendFactor = .one
             self.linePipeline = try device.makeRenderPipelineState(descriptor: desc)
+
+            // Backdrop: opaque, no blending — it replaces the preset fragment's output
+            // wholesale, because it is the layer that has to see the live camera.
+            guard let bvfn = library.makeFunction(name: "meniscus_backdrop_vertex"),
+                  let bffn = library.makeFunction(name: "meniscus_backdrop_fragment") else {
+                throw MeniscusError.functionNotFound("meniscus_backdrop_vertex/_fragment")
+            }
+            let bdesc = MTLRenderPipelineDescriptor()
+            bdesc.vertexFunction = bvfn
+            bdesc.fragmentFunction = bffn
+            bdesc.colorAttachments[0]?.pixelFormat = pixelFormat
+            self.backdropPipeline = try device.makeRenderPipelineState(descriptor: bdesc)
         } else {
             self.linePipeline = nil
+            self.backdropPipeline = nil
         }
         meniscusLogger.info(
             "Meniscus surface: \(configuration.gridN)×\(configuration.gridN) grid, \(cells) path samples")
@@ -230,6 +140,7 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
         dt = min(dt, 1.0 / 30.0)
         elapsed += dt
 
+        camera.advance(features: features, dt: dt, configuration: configuration)
         stepWave()
         serializeSerpentinePath()
 
@@ -239,6 +150,18 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
     public func render(encoder: MTLRenderCommandEncoder, features: FeatureVector) {
         guard let state = linePipeline, segmentCount > 0 else { return }
         var cfg = makeConfig(aspect: max(features.aspectRatio, 0.01))
+
+        // Backdrop FIRST, over whatever the preset fragment drew. It lives here rather
+        // than in the preset fragment because it needs the LIVE camera: the particle
+        // path binds no per-preset buffer, so MEN.2a mirrored the camera constants by
+        // hand — survivable with a fixed camera, and immediately wrong once it tumbles.
+        if let backdrop = backdropPipeline {
+            encoder.setRenderPipelineState(backdrop)
+            encoder.setFragmentBytes(&cfg, length: MemoryLayout<MeniscusConfig>.stride, index: 0)
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        }
+
+        guard !backdropOnlyForDiagnostics else { return }
         encoder.setRenderPipelineState(state)
         encoder.setVertexBuffer(pointBuffer, offset: 0, index: 0)
         encoder.setVertexBytes(&cfg, length: MemoryLayout<MeniscusConfig>.stride, index: 1)
@@ -250,6 +173,7 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
     public func reset() {
         for i in current.indices { current[i] = 0; previous[i] = 0 }
         elapsed = 0
+        camera.reset()
     }
 
     // MARK: - Wave step
@@ -348,45 +272,35 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
 
     // MARK: - Helpers
 
-    /// Heading as a BOUNDED oscillation rather than a free drift. A free drift walks
-    /// back into the raster-closing angle within seconds, so the heading has to be
-    /// bounded, not merely re-centred (see `yawSwing`).
-    private var currentYaw: Float {
-        let omega = 2 * Float.pi / max(configuration.yawPeriod, 0.001)
-        return configuration.yawCentre + configuration.yawSwing * sin(elapsed * omega)
-    }
-
     private func makeConfig(aspect: Float) -> MeniscusConfig {
-        MeniscusConfig(
+        let dist = camera.distance(configuration: configuration)
+        // THE SPREAD TRACKS DISTANCE, as the source's comp stage does — its dilation
+        // radius scales with camera proximity. This is the coupling that makes a
+        // free-tumbling camera compatible with an open raster: when the plate is far
+        // and the rows crowd together, the spread shrinks with them instead of welding
+        // them into a sheet. MEN.2a lacked it and had to bound the heading instead.
+        let spread = configuration.spreadTracksDistance
+            ? configuration.spread * (configuration.camDistCentre / max(dist, 0.4))
+            : configuration.spread
+        return MeniscusConfig(
             gridN: UInt32(configuration.gridN),
             pointCount: UInt32(pointCount),
             spreadMode: UInt32(configuration.spreadMode),
-            spread: configuration.spread,
-            yaw: currentYaw,
-            // Low oblique (trait T2) — never top-down, never edge-on. Held fixed at
-            // MEN.2a; the source's angle integration arrives at MEN.2b.
-            //
-            // The pitch must stay UNDER the vertical half-FOV `atan(0.5 / focal)`, or
-            // the horizon leaves the frame and the ground plane can never be seen —
-            // which is exactly what the MEN.2a first render did (0.38 rad against a
-            // 0.32 rad half-FOV). At focal 1.0 the half-FOV is 0.46 rad, so 0.30 puts
-            // the horizon about a fifth of the way down the frame and leaves the dark
-            // void between horizon and plate that carries trait T5.
-            pitch: 0.30,
-            // FRAMING. References `01` and `02` fill the frame — the plate's near
-            // corner runs off the edge. At the MEN.2a values (1.90 / 0.90) the plate
-            // sat small and centred with dead frame all round it. Closer and lower
-            // pushes the near edge past the bottom and the near corners past the
-            // sides, while the far edge still lands below the horizon so the dark void
-            // that carries trait T5 survives.
-            camDist: 1.45,
+            spread: spread,
+            angleX: camera.angles.x,
+            angleY: camera.angles.y,
+            angleZ: camera.angles.z,
+            camDist: dist,
+            // The camera rides above the plate; the tumble carries the attitude, so
+            // this only has to lift the eye off the water plane.
             camHeight: 0.72,
             focal: 1.0,
             heightScale: configuration.heightScale,
             slopeGain: configuration.slopeGain,
             aspect: aspect,
-            brightness: 1.0,
-            lightDir: 0.6)
+            brightness: camera.brightness,
+            // Hue and brightness are camera-derived — see MeniscusCamera.
+            hue: camera.hueTurns)
     }
 }
 

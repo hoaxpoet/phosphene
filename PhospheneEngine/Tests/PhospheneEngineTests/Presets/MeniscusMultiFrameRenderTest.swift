@@ -105,9 +105,15 @@ struct MeniscusMultiFrameRenderTest {
         if let spread = Float(ProcessInfo.processInfo.environment["MENISCUS_SPREAD"] ?? "") {
             configuration.spread = spread
         }
-        if let yaw = Float(ProcessInfo.processInfo.environment["MENISCUS_YAW"] ?? "") {
-            configuration.yawCentre = yaw
-            configuration.yawSwing = 0
+        // MEN.2b: freeze the camera for a still comparison. `MENISCUS_STILL=1` stops the
+        // tumble and the distance oscillation so a frame can be diffed without the
+        // camera moving underneath it.
+        if ProcessInfo.processInfo.environment["MENISCUS_STILL"] == "1" {
+            configuration.tumbleRate = 0
+            configuration.camDistSwing = 0
+        }
+        if let dist = Float(ProcessInfo.processInfo.environment["MENISCUS_DIST"] ?? "") {
+            configuration.camDistCentre = dist
         }
         if let gain = Float(ProcessInfo.processInfo.environment["MENISCUS_SLOPE_GAIN"] ?? "") {
             configuration.slopeGain = gain
@@ -150,8 +156,13 @@ struct MeniscusMultiFrameRenderTest {
             Self.encode(cmd, into: target, preset: preset, audio: audio,
                         features: features, surface: surface)
             if sampled {
+                // Same geometry, backdrop only — since MEN.2b the backdrop is drawn by
+                // the geometry, so passing `nil` here would remove the entire scene and
+                // the metric would stop isolating the line surface.
+                surface.backdropOnlyForDiagnostics = true
                 Self.encode(cmd, into: backdropOnly, preset: preset, audio: audio,
-                            features: features, surface: nil)
+                            features: features, surface: surface)
+                surface.backdropOnlyForDiagnostics = false
             }
             cmd.commit()
             cmd.waitUntilCompleted()
