@@ -57,11 +57,19 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
     // Clock, and the ported camera (MeniscusCamera.swift).
     private var elapsed: Float = 0
     private var camera = MeniscusCamera()
+    private var drops = MeniscusDrops()
+    /// The live FFT magnitudes — the SAME `.storageModeShared` UMA buffer the
+    /// fragment stages bind at slot 1, read here on the CPU. nil ⇒ no drops.
+    private let spectrum: UMABuffer<Float>?
 
     /// Wall-clock milliseconds the most recent `update` spent in the wave step +
     /// serialization. Read by `MeniscusMultiFrameRenderTest` for the task-1c
     /// frame-budget evidence.
     public private(set) var lastStepMilliseconds: Double = 0
+
+    /// Diagnostics: drops stamped on the most recent update, and their summed force.
+    public var lastDropCount: Int { drops.lastDropCount }
+    public var lastDropForce: Float { drops.lastDropForce }
 
     public var pointCount: Int { configuration.gridN * configuration.gridN }
     /// Segments joining consecutive path samples. Each becomes one spread quad.
@@ -71,9 +79,11 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
         device: MTLDevice,
         library: MTLLibrary,
         configuration: MeniscusConfiguration = .init(),
-        pixelFormat: MTLPixelFormat? = nil
+        pixelFormat: MTLPixelFormat? = nil,
+        spectrum: UMABuffer<Float>? = nil
     ) throws {
         self.configuration = configuration
+        self.spectrum = spectrum
         let cells = configuration.gridN * configuration.gridN
         self.current = [Float](repeating: 0, count: cells)
         self.previous = [Float](repeating: 0, count: cells)
@@ -141,6 +151,16 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
         elapsed += dt
 
         camera.advance(features: features, dt: dt, configuration: configuration)
+        // Drops BEFORE the wave step, so an impact stamped this frame propagates on the
+        // very next one rather than sitting still for a frame.
+        if configuration.dropsEnabled, let spectrum {
+            drops.step(
+                spectrum: UnsafeBufferPointer(spectrum.pointer),
+                field: &current,
+                side: configuration.gridN,
+                dt: dt,
+                configuration: configuration)
+        }
         stepWave()
         serializeSerpentinePath()
 
@@ -174,6 +194,7 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
         for i in current.indices { current[i] = 0; previous[i] = 0 }
         elapsed = 0
         camera.reset()
+        drops.reset()
     }
 
     // MARK: - Wave step

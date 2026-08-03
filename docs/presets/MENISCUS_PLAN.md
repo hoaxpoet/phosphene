@@ -421,6 +421,50 @@ badly understated.** This is the NACRE.2b pattern the plan predicted (§2 reason
    The warp shader body returns `vec3(0,0,0)` unconditionally. §3 asserted this from a
    read; it is now verified from the artifact.
 
+### MEN.2b — drops: mechanism ported, force scale NOT calibrated (2026-08-03)
+
+The placement mechanism is ported and verified (`MeniscusDropsTests`): harmonic spacing
+decides position, a structureless spectrum places nothing, impacts are narrow 3×3
+punctuation, force is bounded. The **force scale** is not settled, and without it the
+surface cannot show T4, so `dropsEnabled` defaults **false**.
+
+Measured on real music (`MeniscusDropRateTests` — three committed tempo fixtures through
+the production `FFTProcessor`) against a legibility range of roughly 0.5–240 drops/s:
+
+| force model | measured |
+|---|---|
+| deviation vs per-bin running mean, gated | 297–522 /s |
+| same, squared drive | 713–838 /s |
+| raw magnitude, no normaliser | 9.7 /s (quiet jazz) – 569 /s (loud electronic) |
+| magnitude normalised across bins per frame | 1800 /s — every bin, every frame |
+
+Four scalings, none in range. Each was a guess at a constant §3 does not record — it says
+only that "the bin's magnitude sets the impact force". A fifth guess is the FA #73 failure
+mode, so the port is parked rather than tuned again. The third row is the informative one:
+raw magnitude is **track-loudness dependent**, which is why a normaliser is needed; but
+normalising across bins makes the drive scale-free, so every bin clears any fixed force.
+The missing input is the source's force constant relative to its wave amplitude.
+
+**Next step is evidence, not another guess.** Either measure ripple-onset rate directly off
+the oracle frames (`Scripts/render_meniscus_oracle.sh`) and match it, or read the force
+constant from the source file the sidecar SHA already pins.
+
+`MeniscusDropRateTests` keeps running and printing, wrapped in `withKnownIssue` — never a
+relaxed bound (QG.1: a red gate is the gate working; file it, never tune the floor). It
+fails loudly the moment the rate lands in range.
+
+One real defect was found and fixed on the way: the across-bin normaliser divided by a mean
+that is itself ~0 for a structureless spectrum, so every ratio came out ~1 and the field was
+stamped at full force everywhere — silence rendering as a storm. An absolute level gate
+(`dropLevelReference`) closes it; the flat-spectrum test locks it.
+
+**Not filed as a numbered BUG yet, deliberately.** BUG-080 is held by the unmerged
+`claude/bug080-worktree-weights` branch and BUG-081 by the FTR.2 session (Matt,
+2026-08-03) — both unmerged, so neither number is visible in this tree and
+`DocIntegrityTests` rejects the hole either way. With two sessions consuming numbers
+concurrently, picking one here just risks a third collision. Claim a number at merge time,
+when the tree shows the real next-free; this section is the record until then.
+
 **What this means for the increment series.** The MEN.2a stub reproduces the raster and
 the slope shading and essentially nothing else: it has a fixed hue where the source
 rotates, a bounded heading where the source tumbles, a frame-filling plate where the
