@@ -31,7 +31,8 @@
   "complexity_cost": { "tier1": 1.1, "tier2": 0.6 },
   "rubric_profile": "lightweight",
   "audio_routes": [
-    { "route": "pen_heading",       "primitive": "tonalPhaseFifths", "kind": "continuous" },
+    { "route": "pen_heading",       "primitive": "tonalPhaseFifths", "kind": "continuous",
+      "response": { "metric": "headingTurnsPerTrail", "min": 1.2 } },
     { "route": "bead_hue",          "primitive": "tonalPhaseFifths", "kind": "continuous" },
     { "route": "pen_speed",         "primitive": "arousal",          "kind": "continuous" },
     { "route": "bead_promotion",    "primitive": "barPhase01",       "kind": "accent" },

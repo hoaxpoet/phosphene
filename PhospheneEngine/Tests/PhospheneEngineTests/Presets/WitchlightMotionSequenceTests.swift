@@ -52,8 +52,20 @@ struct WitchlightMotionSequenceTests {
         let root = URL(fileURLWithPath: Self.outputRoot).appendingPathComponent(stamp)
         let harness = MultiPassRenderHarness(width: width, height: height)
 
-        for track in WitchlightFixtureDrive.tracks {
-            let drive = try WitchlightFixtureDrive.load(track, aspect: Float(width) / Float(height))
+        // WITCHLIGHT_SESSION=<dir> reproduces one recorded live session instead of the
+        // committed fixtures. An M7 complaint is about a specific thing the reviewer saw;
+        // rendering that exact drive is how you look at it rather than theorise about it.
+        let sessionOverride = ProcessInfo.processInfo.environment["WITCHLIGHT_SESSION"]
+        let sources: [(name: String, dir: URL?)] = sessionOverride.map {
+            let url = URL(fileURLWithPath: $0)
+            return [(url.lastPathComponent, url)]
+        } ?? WitchlightFixtureDrive.tracks.map { ($0, nil) }
+
+        for (track, dir) in sources {
+            let drive = try dir.map {
+                try WitchlightFixtureDrive.load(sessionDirectory: $0, name: track,
+                                                aspect: Float(width) / Float(height))
+            } ?? WitchlightFixtureDrive.load(track, aspect: Float(width) / Float(height))
             guard drive.features.count > 60 else {
                 print("[witchlight] \(track): only \(drive.features.count) frames — skipped")
                 continue

@@ -40,11 +40,25 @@ enum WitchlightFixtureDrive {
         let sectionIndex: [UInt32]
     }
 
+    /// Load a drive from an arbitrary recorded session directory.
+    ///
+    /// The committed fixtures are the reproducible default, but an M7 complaint is about
+    /// one specific live session, and reproducing it is the only way to look at what the
+    /// reviewer actually saw. `SessionColumnSeries` reads any session dir, so this is the
+    /// same code path with a different root.
+    static func load(sessionDirectory: URL, name: String, aspect: Float = 16.0 / 9.0) throws -> Drive {
+        try load(series: SessionColumnSeries.load(directory: sessionDirectory), name: name, aspect: aspect)
+    }
+
     static func load(_ track: String, aspect: Float = 16.0 / 9.0) throws -> Drive {
         let base = try #require(
             Bundle.module.url(forResource: "route_coverage", withExtension: nil),
             "route_coverage fixtures not bundled — check Package.swift resources")
-        let series = try SessionColumnSeries.load(directory: base.appendingPathComponent(track))
+        return try load(series: SessionColumnSeries.load(directory: base.appendingPathComponent(track)),
+                        name: track, aspect: aspect)
+    }
+
+    private static func load(series: SessionColumnSeries, name track: String, aspect: Float) throws -> Drive {
         let count = series.frameCount
 
         func column(_ name: String) -> [Float] {

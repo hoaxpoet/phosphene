@@ -97,7 +97,20 @@ public struct WitchlightTuning: Sendable {
 
     /// `c` in `θ̇ = clamp(c · φ̄, ±ω_max)` for `.curvature`. φ̄ spans ±π, so c ≈ ω_max/π
     /// puts the clamp at the extremes of the circle of fifths and leaves the interior free.
-    public var curvatureGain: Float = 0.20
+    /// SOLVED from measurement at QG.5, not chosen. The response is linear in this gain
+    /// while the clamp is idle (measured saturation at 0.20 was 0.0-0.2%), so:
+    /// 0.20 produced 0.35-0.55 turns/trail across the fixtures, and 2.20 turns on the
+    /// WEAKEST fixture — the middle of the 1.9-2.8 band the WL.2-a probe's legible figures
+    /// occupied — needs 0.20 x 2.2 / 0.350 = 1.26.
+    ///
+    /// At 1.26 the Dubins clamp saturates above |deviation| = 0.50 rad, which the measured
+    /// p95 of 0.47-2.47 crosses regularly. That is the bounded-curvature guard finally
+    /// DOING something: at 0.20 it engaged on 0.0-0.2% of frames, i.e. the ball-of-yarn
+    /// floor was never actually holding anything back, because nothing was turning.
+    ///
+    /// `ResponseBandTests` (QG.5) holds this honest. If it goes red, fix the gain — do not
+    /// widen the band.
+    public var curvatureGain: Float = 1.26
 
     /// Time constant of the circular running mean that defines "home" for
     /// `.curvatureDeviation`, seconds. Long enough to read as the track's tonal centre
