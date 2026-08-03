@@ -1,6 +1,6 @@
 # Runbook — reclaiming Git-LFS storage
 
-**Status:** not yet performed. The attempt on 2026-07-31 half-applied and was reverted; that incident is §7 and is the reason this document exists.
+**Status:** **performed successfully on 2026-08-03** — full record in §9. The earlier attempt on 2026-07-31 half-applied and was reverted; that incident is §8. Keep both: §8 is what going wrong looks like, §9 is what going right looks like, and the whole difference between them is §3 and §4.
 **Blast radius:** every clone, every worktree, every open PR, every branch. This is the highest-risk operation in the repo.
 **Time:** ~30 min of commands, plus a GitHub Support turnaround measured in days.
 **Decision owner:** Matt. Nothing here is routine maintenance.
@@ -20,7 +20,7 @@ Phosphene is billed for Git-LFS **storage** (and historically bandwidth — CLEA
 >
 > GitHub does not garbage-collect unreferenced LFS objects. After the force-push, every old object still occupies billed storage. The rewrite makes them *unreferenced*; a **GitHub Support request** is what makes them *gone*. If you do the rewrite and stop, you have paid the entire cost of the operation and received none of the benefit.
 
-**Measured payoff** (dry run, 2026-07-31): repo `1.4 GB → 84 MB`, 287 image LFS objects → 0, with all text records intact. That is a real 94 % reduction — but it is a *repo size* number, not a billing number.
+**Measured payoff** (actual, 2026-08-03): repo `1.4 GB → 82 MB`, 755 LFS objects orphaned, all text records intact. That is a real 94 % reduction — but it is a *repo size* number, not a billing number, and the two move independently. Full record in §9.
 
 ---
 
@@ -59,6 +59,17 @@ Nothing below is optional. Item 4 is the one that saved the 2026-07-31 incident.
    ```
    Land, push, or explicitly abandon each. *(At the 2026-07-31 attempt this was `ft3-barline-accents-tasks-bf7b8d` — 4 commits of that day's work — and `ricercar-echo-look-prompt-bd7993` — 26 commits, unpushed.)*
 
+   **That command is not sufficient on its own, and it nearly cost the ft3 work a second time on 2026-08-03.** It filters for branches with *no* upstream, but a branch whose remote was deleted keeps its now-dangling upstream config — so it looks pushed and the filter skips it. `ft3-barline-accents-tasks-bf7b8d` was cleared on that basis, and its 4 commits existed nowhere but one local clone that was about to be deleted for the re-clone. Check for dangling upstreams as well:
+   ```bash
+   git for-each-ref --format='%(refname:short) %(upstream:short)' refs/heads | while read b u; do
+     [ -n "$u" ] && ! git rev-parse --verify -q "$u" >/dev/null && echo "DANGLING UPSTREAM: $b (was $u)"
+   done
+   ```
+   Anything listed is local-only regardless of what its config says. Rescue it as patches *before* the rewrite — do not simply push it, because pushing old history re-references the very LFS objects you are trying to orphan:
+   ```bash
+   git format-patch <merge-base>..<branch> -o ~/phosphene-<branch>-rescue
+   ```
+
 2. **No open PRs you intend to merge.** PR head refs are rewritten; `refs/pull/*` are not (GitHub refuses). Merge or close first.
 
 3. **Tooling present.** `git-filter-repo` on PATH, and free space in `TMPDIR` of at least 2× the current `.git`.
@@ -90,7 +101,15 @@ The push reports a non-zero exit, but the successful refs **stay pushed**. The r
 
 Two ways forward:
 
-- **(a) Lift protection for the operation.** Repo → Settings → Branches → the `main` rule → disable *"Do not allow force pushes"* (or delete the rule). Run the push. **Re-enable immediately after** — the protection is what saved this repo once already.
+- **(a) Lift protection for the operation.** Repo → Settings → Branches → the `main` rule → tick *"Allow force pushes"* (bottom section, *Rules applied to everyone including administrators*). Run the push. **Re-enable immediately after** — the protection is what saved this repo once already.
+
+  **Also untick *"Require status checks to pass before merging"*.** That rule blocks direct pushes to `main`, not merges only, and the rewritten `main` is a commit that has never run CI. `enforce_admins` is `false` here so an admin *may* slip past it, but "may" is the wrong word for a one-shot operation whose failure mode is a partial push. Two boxes out, two boxes back.
+
+  Record the exact prior state first, because the web UI will not restore it for you:
+  ```bash
+  gh api repos/hoaxpoet/phosphene/branches/main/protection > ~/phosphene-branch-protection-before.json
+  ```
+  On 2026-08-03 the restore was done from memory and **silently dropped the required `fast-gate` check** — *"Require status checks"* went back on with an empty check list, which gates nothing. Verify with the same command afterwards and diff it, rather than trusting the checkboxes to look right.
 - **(b) Leave protection on and accept `main` is not rewritten.** Pointless: `main` still references every old object, so nothing becomes orphaned and the Support request has nothing to purge.
 
 There is no third option where you get the benefit without touching protection.
@@ -145,10 +164,17 @@ git ls-remote origin refs/heads/main
    Scripts/fetch_weights.sh      # weights are a Release asset, not in git
    Scripts/link_fixtures.sh      # fixtures + reference images into worktrees
    ```
-3. **Open the GitHub Support request.** This is the step that ends the billing:
-   > Repository `hoaxpoet/phosphene`. We have rewritten history to remove unused Git-LFS objects. Please garbage-collect unreferenced LFS objects for this repository.
+3. **Open the GitHub Support request.** This is the step that ends the billing. It is not in repo or account settings — it is a separate portal at **<https://support.github.com/request>**. The path is not guessable, so it is written out here:
 
-   Storage does not drop until they action it. The alternative — delete and recreate the repo — loses issues, PRs and stars, and is not recommended.
+   *Remove data from a repository I own or control* → *Remove other data* → product **Repositories** (**not** *Billing and payments* — that desk handles invoices and refunds and cannot run a GC; the billing drop is the consequence, not the ask) → **Remove LFS objects**, which exists as a literal radio option on the final form.
+
+   Give the repository as `hoaxpoet/phosphene`, not a bare name. The form asks **"Are you able to delete and recreate the repository?"** — answer **No**, and it is true rather than tactical: deleting destroys the `ml-weights-v1` Release asset that `Scripts/fetch_weights.sh` pulls on every fresh clone, along with the PR and issue history. Answering Yes routes you to the self-service article.
+
+   > Repository `hoaxpoet/phosphene`. We have rewritten history to remove unused Git-LFS objects. Please garbage-collect unreferenced LFS objects for this repository.
+   >
+   > To be clear, this is a garbage-collection request for objects already made unreferenced by our own history rewrite — not a request to remove sensitive or leaked data, and not a request to delete or recreate the repository.
+
+   That second paragraph matters: without it the ticket reads as a secret-leak report and comes back as an article about rotating credentials. Storage does not drop until they action it.
 4. **Confirm the drop** in Settings → Billing → Git LFS Data before calling it done.
 
 ---
@@ -206,3 +232,34 @@ Recovered fully: all 21 refs restored, 21/21 verified, branch ancestry back to 2
 
 - The dry run reported "94 % smaller, verified clean" and read as a green light. It is not one. The dry run says the *rewrite* is correct; it says nothing about whether the *push* will apply cleanly. §4 is the missing half.
 - The half-applied state was strictly worse than either end state: the bill was unchanged **and** the branches were broken. If you cannot complete §4 and §6, do not start §5.
+
+---
+
+## 9. Completion record — 2026-08-03
+
+Ran clean. `main` moved, every ref applied, ancestry coherent.
+
+**Scope:** images **and** weights in one rewrite (§2 decision), 755 of 767 LFS objects.
+
+| | Before | After |
+|---|---|---|
+| Repo `.git` | 1.4 GB | 82 MB |
+| Image objects (`docs/`) | 287 | 0 |
+| Weight objects (`ML/Weights/*.bin`) | 468 | 0 |
+| Live objects retained | — | 12 (11 `.mlpackage` blobs + `quality_reel.mp4`) |
+
+**The push.** 22 branches + 3 tags force-updated; `main` `2f566e4e` → `57f1e888`. The 28 `refs/pull/*` were rejected as always, so the non-zero exit is expected and is *not* the §4 failure — read the `main` line, not the exit code.
+
+**Verification, in the order that matters.** All 25 heads and tags on origin matched the rewritten mirror exactly. Then ancestry: every branch 1–44 commits ahead of the new `main`, no four-digit numbers. Ancestry is the real check — matching SHAs can still sit on a broken graph.
+
+**What §3 and §4 caught that §8 did not:** both blocking PRs landed or closed first; the `ricercar-echo-look-prompt-bd7993` work was pushed rather than gambled; the ref capture was taken *and* every SHA in it verified present locally, so the undo was real rather than the lucky object-store survival of 2026-07-31.
+
+**Three things this run learned the hard way:**
+
+- The §3.1 local-only check misses a branch with a **dangling upstream**. See §3.1 — this nearly destroyed the same 4 ft3 commits for the second time in three days, and they were rescued as patches with minutes to spare.
+- **Required status checks block direct pushes**, not just merges, and the restore afterwards silently dropped `fast-gate`. See §4.
+- A **time-based doc gate** can fail CI on a tree nobody touched: `Scripts/rotate_docs.sh` reads local time while CI reads UTC, so on a boundary day it reports "nothing to move" while `fast-gate` fails. `PHOSPHENE_TODAY=YYYY-MM-DD` forces it. Budget for an unrelated CI failure mid-operation.
+
+**Not reclaimed, deliberately:** a 67.9 MB `StemSeparator.mlpackage/.../weight.bin` from the abandoned CoreML dependency still sits in history under `ML/Models/`. It was never an LFS object, so it costs clone size but nothing on the LFS bill. Removing it would mean a second rewrite, and §2 exists to say: not worth the disruption.
+
+**Still open at time of writing:** the Support request was submitted 2026-08-03. **The storage number had not yet dropped.** Until it does, this operation has cost a full disruption and saved nothing — that is §1's point, and it stays true right up until Support actions the GC.
