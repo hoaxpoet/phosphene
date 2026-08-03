@@ -34,6 +34,40 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 ---
 
+### BUG-081 — App beachballs during session preparation; no crash report produced (2026-08-03)
+
+**P2 · unclassified · OPEN — evidence only, root cause NOT established.** Reported by Matt from session `2026-08-03T22-54-06Z`; had to force-quit.
+
+**Expected.** The app stays responsive throughout playlist preparation.
+
+**Actual.** The UI froze/beachballed ~78 s into the session and required force-quit. Because it was force-quit rather than crashed, **no `.ips` exists** — the user and system DiagnosticReports directories contain no PhospheneApp report at all, and `session.log` ends mid-normal-operation at `22:55:24` with no fatal, assertion, or error line.
+
+**What the artifacts DO establish — the renderer was healthy to the last frame.** From `features.csv` (3756 frames, ending t=82.1 s), by sixth of the session:
+
+| segment | frame_cpu_ms | frame_gpu_ms | deltaTime |
+|---|---|---|---|
+| 1/6 | 11.51 | 2.91 | 47.8 ms (startup) |
+| 4/6 | 1.53 | 0.15 | 16.7 ms |
+| 6/6 | 6.84 | 0.18 | 16.7 ms |
+
+Steady 60 fps, Fractal Tree costing **0.18 ms GPU against its 0.7 ms Tier 2 budget**, no degradation trend. Background load was rising but modest (`stem_analyzer_ms` 0 → 3.4, `mir_pipeline_ms` 0.84 → 2.09); `session.log` shows stem separation 10 in progress.
+
+**Ruled out.** FTR.2's mesh shader overflowing the primitive limit via a bad `branch_count` — the hypothesis was tested and **falsified**: no non-finite values in the capture, and derived `branch_count` never exceeds 59 against the 63 ceiling. (A grep appearing to show `nan` was matching "co**nan**ce" in `tonal_consonance`.)
+
+**Not yet established.** Everything else. A frozen UI with a healthy render loop points away from the preset and toward the main thread or the preparation pipeline, but that is an inference, not evidence — do not act on it (BUG-061 rule).
+
+**Next evidence needed — the one thing that would settle it.** A `sample` of the process while it is hung, which captures the blocked main-thread stack:
+
+```
+sample PhospheneApp 10 -file ~/Desktop/phosphene-hang.txt
+```
+
+Run it *during* the beachball, before force-quitting. Without a blocked stack there is no way to distinguish a deadlock from a GPU stall from a preparation-pipeline wedge.
+
+**Note.** Signal health was `critical` (−24 dBFS) for the session's first ~50 s before reaching green; unlikely to be related but recorded because the session is otherwise the only artifact.
+
+---
+
 ### BUG-080 — Gitignored-asset propagation is broken at two points: fresh worktrees (and `main`) fail the engine suite (2026-08-03)
 
 **P2 · build / test-isolation · RESOLVED 2026-08-03 — fix `2b36c34d`.** Filed P3, **widened to P2** the same day when the second gap surfaced. Found at FTR.1; not caused by it.
