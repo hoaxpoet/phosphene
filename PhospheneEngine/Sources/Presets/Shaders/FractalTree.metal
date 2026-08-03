@@ -2,13 +2,25 @@
 //
 // A recursive binary tree with 63 branches across 6 depth levels (0–5).
 // Each of 63 mesh-shader threads computes one branch's geometry using an
-// iterative ancestry traversal (no MSL recursion).  Audio drives:
+// iterative ancestry traversal (no MSL recursion).
 //
-//   bass_att      → trunk length + branch count visible (growing tree effect)
-//   mid_att       → branch spread angle (wider canopy = denser mid energy)
-//   spectral_centroid → leaf hue shift (dark greens → golden-green)
-//   beat_bass     → flash brightness on beat pulse
-//   treb_att      → leaf tip shimmer intensity
+// AUDIO ROUTING — rebuilt at FTR.2 (D-212). Five visual layers, five distinct
+// primitives (FA #67), every coefficient sized against its primitive's measured
+// p05→p95 span on real captures rather than a notional 0→1:
+//
+//   bass_dev           → canopy reach: branch count + trunk length + thickness,
+//                        as ONE coupled gesture through a single derived scalar
+//   spectral_flux      → branch spread angle (20°–34°)
+//   tonal_phase_fifths → leaf hue along the amber→green arc (no wall clock)
+//   arousal            → global brightness envelope (the section-scale arc)
+//   beat_bass          → beat accent, knee-gated so it fires rather than glows
+//
+// The routing this replaced had three layers on `bass_att`, two coefficients
+// sized against nothing, and a `fract(t * 0.006)` wall clock out-driving the
+// music 18.6 : 1 in the hue line. Measurements: FTR.2 closeout + D-212.
+//
+// NOT here, deliberately: per-branch activation is FTR.3, and `StemFeatures` is
+// unreachable from the object/mesh stages until FTR.4 binds buffer(3) there.
 //
 // Geometry: each branch is a screen-aligned quad (4 vertices, 2 triangles).
 //   Total: 63 × 4 = 252 vertices ≤ 256, 63 × 2 = 126 primitives ≤ 512.
@@ -20,14 +32,16 @@
 
 /// Audio data passed from the object shader to the mesh shader via [[payload]].
 struct FractalPayload {
-    float bass_att;
-    float mid_att;
-    float treb_att;
-    float beat_bass;
-    float spectral_centroid;
-    float time;
+    /// CANOPY REACH — the single derived scalar for "how big is the tree", 0…1.
+    /// Branch count, trunk length and thickness all read THIS, so they move as one
+    /// coupled gesture rather than three layers racing on one primitive (the FA #67
+    /// collision D-212 measured). Derived from `bass_dev` once, in the object shader.
+    float reach;
+    /// BRANCH SPREAD, radians — how wide the canopy opens. Derived from
+    /// `spectral_flux` in the object shader.
+    float spread;
     float aspect_ratio;
-    uint  branch_count;   // 3–63: how many branches to render this frame
+    uint  branch_count;   // 7–60: how many branches to render this frame
 };
 
 // MARK: - Object Shader
@@ -38,28 +52,74 @@ struct FractalPayload {
 void fractal_tree_object_shader(
     object_data FractalPayload* payload [[payload]],
     mesh_grid_properties          mgp,
-    constant FeatureVector&       features [[buffer(0)]],
+    constant FeatureVector&       f [[buffer(0)]],
     uint tid [[thread_index_in_threadgroup]])
 {
     // Always dispatch exactly one mesh threadgroup (all 63 branches in one meshlet).
     mgp.set_threadgroups_per_grid(uint3(1, 1, 1));
 
     if (tid == 0) {
-        // Branch count: 3 at silence → 63 at peak bass.
-        // A minimum of 3 (trunk + two level-1 branches) keeps the tree recognisable
-        // even before the audio warms up.
-        float bass  = saturate(features.bass_att * 1.5f);
-        uint  count = 3 + (uint)(bass * 60.0f);   // 3 – 63
-        count = min(count, 63u);
+        // ── CANOPY REACH ← bass_dev (D-026 deviation primitive) ──────────────────
+        //
+        // MEASURED, not assumed. `bass_dev = max(0, bassRel)` where `bassRel` is the
+        // band's deviation from its own running EMA — so it is an UPWARD-transient
+        // signal, zero on 66–89 % of frames because most frames are not transients.
+        // Its p05→p95 span across the four measured sources (Hummer 2026-08-03T20-05-13Z
+        // plus the three route_coverage fixtures):
+        //
+        //     Hummer 0 → 0.153   love_rehab 0 → 0.255
+        //     so_what 0 → 0.575  there_there 0 → 0.104     (p99 reaches 1.06; max 2.59)
+        //
+        // Every other bass primitive was measured and rejected: `bass_att` (shipped)
+        // has std 0.013 on love_rehab and 0.017 on there_there — nearly constant, which
+        // is why the shipped tree does not move; `bass_att_rel` is smoother but spans
+        // only ±0.05 on the same two tracks. `bass_dev` is the ONLY bass primitive with
+        // real dynamic range on all four sources.
+        //
+        // SOFT-KNEE, not a linear gain. `bd / (bd + k)` is asymptotic: it never reaches
+        // 1, so the canopy can never flat-top (the shipped preset pinned at 63 branches),
+        // and the ~3× spikes FA #73 warns about compress instead of clipping. k = 0.12
+        // is sized against the measured p95 BAND [0.104, 0.575] rather than any single
+        // track, so each source uses a useful slice of the range:
+        //
+        //     bd 0.10 → 0.46    bd 0.15 → 0.56 (Hummer p95)    bd 0.26 → 0.68
+        //     bd 0.58 → 0.83 (so_what p95)     bd 1.06 → 0.90  bd 2.59 → 0.96
+        //
+        // At silence bass_dev is 0 → reach 0 → the sparse 7-branch tree the reference
+        // README asks for ("trunk plus the first two generations"), never black (D-037).
+        float bd    = max(f.bass_dev, 0.0f);
+        float reach = bd / (bd + 0.12f);
 
-        payload->branch_count      = count;
-        payload->bass_att          = features.bass_att;
-        payload->mid_att           = features.mid_att;
-        payload->treb_att          = features.treb_att;
-        payload->beat_bass         = features.beat_bass;
-        payload->spectral_centroid = features.spectral_centroid;
-        payload->time              = features.time;
-        payload->aspect_ratio      = max(features.aspect_ratio, 0.1f);
+        // One gesture, three coupled terms. 7 at rest → 60 at the asymptote; the ceiling
+        // is unreachable by construction, so a chorus cannot sit pinned at maximum.
+        uint count = 7u + (uint)(reach * 56.0f);
+
+        // ── BRANCH SPREAD ← spectral_flux ────────────────────────────────────────
+        //
+        // Replaces `mid_att`, which delivered 0.42° of a promised 7° (D-212). The
+        // cause was a coefficient written as if the band swings 0→1: `mid_att` means
+        // 0.056 post-AGC on this material and spans 0.007 on love_rehab.
+        //
+        // `spectral_flux` is the only broadband primitive measured with a comparable
+        // span on every source — p05→p95 of 0.555 (Hummer), 0.666, 0.539, 0.477. It
+        // is also the right MUSICAL choice: flux rises when the spectrum CHANGES, so
+        // the canopy opens on chord and texture changes rather than on loudness, which
+        // the canopy-reach route already carries.
+        //
+        // Sized against the measured p05 floor, not against 0: flux never approaches
+        // zero on real music (p05 0.070–0.378), so mapping [0.10, 0.95] onto the full
+        // spread range uses the range the music actually occupies. 20°→34° is double
+        // the shipped 22°→29° nominal, and ~33× the swing actually delivered.
+        float flux   = saturate((f.spectral_flux - 0.10f) / 0.85f);
+        float spread = 0.35f + flux * 0.24f;   // 20° … 34°
+
+        // Only the three geometry terms travel in the payload. The fragment stage reads
+        // its own primitives straight from `f` at buffer(0), so forwarding them here
+        // would just be a second, staler copy.
+        payload->reach        = reach;
+        payload->spread       = spread;
+        payload->branch_count = min(count, 63u);
+        payload->aspect_ratio = max(f.aspect_ratio, 0.1f);
     }
 }
 
@@ -108,13 +168,19 @@ void fractal_tree_mesh_shader(
     }
 
     // Audio-driven tree parameters.
-    float base_len = 0.40f + payload.bass_att * 0.22f;  // 0.40–0.62 trunk length
-    float ang_base = 0.38f + payload.mid_att  * 0.12f;  // 22°–29° branch spread
+    //
+    // Trunk length and thickness read the SAME `reach` scalar the branch count does —
+    // "how big is the tree" is one gesture expressed through three coupled geometry
+    // terms, not three routes competing. Spans widened against the measured drive:
+    // trunk 0.36–0.62 (shipped 0.40–0.62 but on a near-constant primitive), thickness
+    // 0.038–0.058, a 53 % swing against the shipped 11.7 %.
+    float base_len = 0.36f + payload.reach * 0.26f;
+    float ang_base = payload.spread;                    // 20°–34°, from spectral_flux
 
     float2 pos     = float2(0.0f, -0.90f);  // tree root (bottom-centre, clip space)
     float2 dir     = float2(0.0f,  1.0f);   // initial direction: straight up
     float  seg_len = base_len;
-    float  thick   = 0.044f + payload.bass_att * 0.010f;
+    float  thick   = 0.038f + payload.reach * 0.020f;
 
     // Replay ancestors from root toward this branch.
     for (int k = leaf_depth - 1; k >= 0; k--) {
@@ -201,8 +267,8 @@ void fractal_tree_mesh_shader(
 /// Leaf tips: hue-shifted by spectral centroid + slow time rotation.
 /// Beat pulse: brightness flash across the whole tree, strongest at tips.
 fragment float4 fractal_tree_fragment(
-    MeshVertex              in       [[stage_in]],
-    constant FeatureVector& features [[buffer(0)]])
+    MeshVertex              in [[stage_in]],
+    constant FeatureVector& f  [[buffer(0)]])
 {
     // Per-vertex data packed into MeshVertex.normal and .uv.
     float depth_norm   = in.normal.x;    // 0 = trunk, 1 = deepest leaf level
@@ -210,33 +276,80 @@ fragment float4 fractal_tree_fragment(
     float along_branch = in.uv.x;        // 0 = branch base, 1 = branch tip
     float across_width = in.uv.y;        // 0 and 1 = edges, 0.5 = centre
 
-    float t        = features.time;
-    float beat     = features.beat_bass;
-    float centroid = features.spectral_centroid;
-    float mid_att  = features.mid_att;
-    float treb_att = features.treb_att;
+    float beat     = f.beat_bass;
 
-    // ── Hue ─────────────────────────────────────────────────────────────
-    // Bark: warm brown (hue ≈ 0.065).
-    // Leaves: green → golden-green driven by spectral centroid + slow drift.
-    //   centroid 0 (bass-heavy) → deep green (0.30)
-    //   centroid 1 (treble-heavy) → warm yellow-green (0.18)
-    float hue_bark = 0.065f;
-    float hue_leaf = 0.30f - centroid * 0.12f + fract(t * 0.006f);
-    float hue      = mix(hue_bark, hue_leaf, depth_norm);
+    // ── Hue ← tonal_phase_fifths ─────────────────────────────────────────
+    //
+    // THE WALL CLOCK IS GONE. The shipped line was
+    //   `0.30 - centroid * 0.12 + fract(t * 0.006)`
+    // in which the audio term moved 4.1° of hue while the clock term swept 76° —
+    // the clock out-drove the music 18.6 : 1, so the preset was a colour-cycling
+    // wallpaper with a faint audio tint (README anti-reference #4). `spectral_centroid`
+    // could not have rescued it either: it spans only 0.043–0.131 post-AGC.
+    //
+    // `tonal_phase_fifths` is the harmonic position on the circle of fifths (D-178),
+    // measured span 2.61–5.31 rad of a ±π range. Hue and phase are BOTH circular, so
+    // phase → hue is wrap-correct by construction: the ±π seam maps to the seam in
+    // `fract()`, and no wrap produces a discontinuity the eye reads as a glitch.
+    //
+    // Mapped onto 0.28 of the hue circle, NOT the whole of it. A full mapping would run
+    // the canopy through cyan, blue and magenta, which is not a tree — the register here
+    // is the amber → gold → green arc (0.10 … 0.38), a widened version of the shipped
+    // intent (0.18 yellow-green … 0.30 deep green). The harmony traverses the whole arc;
+    // it never leaves it.
+    float hue_bark  = 0.065f;
+    float tonal01   = fract(f.tonal_phase_fifths * (1.0f / (2.0f * M_PI_F)) + 0.5f);
+    float hue_leaf  = 0.10f + tonal01 * 0.28f;
+    // Weighted by depth^0.55, not depth. A linear blend gives full leaf colour only at
+    // depth 5, and the depth-5 tier exists on just 21.4 % of frames (measured, and the
+    // figure D-212 put at 76.4 % — the recount is in the FTR.2 closeout). Under a linear
+    // blend the harmonic route is alive in the data and invisible on screen four frames
+    // in five. The exponent pushes leaf colour down into the mid-depth branches that are
+    // actually present, so the route reads whenever there is a canopy at all.
+    float hue       = mix(hue_bark, hue_leaf, pow(depth_norm, 0.55f));
 
     // ── Saturation ───────────────────────────────────────────────────────
     float sat = mix(0.55f, 0.88f, depth_norm);
 
-    // ── Brightness ───────────────────────────────────────────────────────
-    // Base value rises from trunk to tip, boosted by mid energy.
+    // ── Brightness envelope ← arousal ────────────────────────────────────
+    //
+    // A NEW LAYER. The preset had no section-scale route at all: every visible term
+    // moved on a per-frame or per-transient timescale, so a quiet verse and a loud
+    // chorus rendered at the same brightness. `arousal` is the mood classifier's slow
+    // energy estimate and is correctly slow — it rises monotonically by quarter on
+    // every source measured (Hummer 0.354 → 0.508, love_rehab 0.497 → 0.602,
+    // so_what 0.130 → 0.296, there_there 0.415 → 0.621).
+    //
+    // SIZED AGAINST THE WARM RANGE, NOT p05→p95. The raw p05 is 0.033 on Hummer, but
+    // that is cold-start residue: the first 60 frames read exactly 0.000 and the mood
+    // classifier is still converging well past the 10 s warmup cut. Sizing against the
+    // full 0.511 span would leave the tree dim for the opening minute of every track.
+    // The mapping instead centres on the measured mid-track band [0.13, 0.62].
+    //
+    // Removed from this line: `mid_att * 0.18` (mid_att spans 0.007 on love_rehab —
+    // there was nothing to multiply) and `treb_att * 0.12 * is_leaf`, the tip-shimmer
+    // route, which delivered +0.002 of a promised +0.12 (D-212). Shimmer is not
+    // re-homed here: the visual layer it occupied belongs to FTR.3's per-branch
+    // activation, and a dead route is removed rather than left declared.
+    float arousal  = saturate((f.arousal - 0.13f) / 0.49f);
     float val_base = mix(0.22f, 0.60f, depth_norm);
-    float val      = val_base
-                   + mid_att  * 0.18f
-                   + treb_att * 0.12f * is_leaf;   // tip shimmer on treble
+    float val      = val_base * (0.72f + arousal * 0.46f);
 
-    // Beat flash: short-lived brightness spike, amplified at leaf tips.
-    val += beat * (0.25f + 0.25f * depth_norm);
+    // ── Beat accent ← beat_bass ──────────────────────────────────────────
+    //
+    // Resized to read as an ACCENT rather than a glow. `beat_bass` is non-zero on
+    // 90.4 % of frames (D-212), so the shipped `beat * (0.25 + 0.25 * depth)` was a
+    // near-permanent brightness lift — the preset looked flashed almost always, which
+    // is the same thing as never looking flashed.
+    //
+    // THE FIX IS A KNEE, NOT A SMALLER GAIN. Lowering the gain would dim the accent
+    // without making it an accent; the problem is the persistent floor, not the size of
+    // the peak. Cutting the bottom 45 % removes the floor entirely, and what remains
+    // drives a PUNCHIER spike than shipped (0.30 + 0.30·depth against 0.25 + 0.25·depth).
+    // Measured beat_bass is p50 0.090–0.097 and p95 1.000 on all four sources, so the
+    // knee sits far above the resting level and well below the peaks.
+    float accent = saturate((beat - 0.45f) * 1.82f);
+    val += accent * (0.30f + 0.30f * depth_norm);
     val  = saturate(val);
 
     float3 color = hsv2rgb(float3(fract(hue), sat, val));

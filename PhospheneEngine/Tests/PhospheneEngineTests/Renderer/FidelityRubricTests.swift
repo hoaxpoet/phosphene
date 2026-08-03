@@ -113,7 +113,16 @@ private let expectedAutomatedGate: [String: Bool] = [
                                      // via PhysConfig, so the MSL-source heuristic can't see it
                                      // (Skein/Lumen precedent). Certified via Matt's M7 sign-off as a
                                      // loose energy-accompaniment (PHYS.5; not beat-synced by design).
-    "Fractal Tree":         false,   // full; M3 fails
+    "Fractal Tree":         true,    // lightweight (D-212 — reclassified from `full`, whose M3
+                                     // >=3-materials gate is unreachable for a flat-HSV mesh preset
+                                     // with no lighting and no G-buffer). L2 went green at FTR.2:
+                                     // the routing rebuild put `f.bass_dev` in source and gave each
+                                     // of the five visual layers its own primitive, replacing the
+                                     // three-layers-on-`bass_att` collision. 2/4 → 3/4. Still
+                                     // uncertified: L4 frame match is Matt's manual M7 call at
+                                     // FTR.5, and no reference image set exists to pre-check it
+                                     // against (LFS.2 untracked the painterly set; Matt's call
+                                     // 2026-08-03 was to build without one and review live).
     "Gossamer":             false,   // full; M3 fails
     "Membrane":             false,   // full; M3 fails
     "Cytokinesis":          false,   // lightweight; coupling (energyEnv→pace / centroidEnv→palette /
@@ -163,6 +172,12 @@ private let expectedAutomatedGate: [String: Bool] = [
     "Nimbus":               false,   // direct-fragment; heuristic sees no deviation primitives
     "Ricercar":             false,   // FL.13 flow-field coupling CPU-side; not yet certified
     "Staged Sandbox":       false,   // diagnostic sandbox; not a certification candidate
+    "Meniscus":             false,   // MEN.2a stub, measured 4/15. The heuristic reads the
+                                     // preset's MSL, and Meniscus's subject is not in it —
+                                     // the surface is `MeniscusSurface` geometry drawn from a
+                                     // CPU wave field (the Skein / Lumen / Filigree precedent).
+                                     // It also has NO audio coupling at all until MEN.2b/MEN.3,
+                                     // so L2 cannot pass yet by design. certified: false.
 ]
 
 @Suite("Fidelity Rubric — Automated Gate")

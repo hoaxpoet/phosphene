@@ -25,9 +25,11 @@ uplifting a preset cite these images by filename per `SHADER_CRAFT.md §2.3`.
 
 1. **arachne, gossamer** — V.7 / V.8 are the first uplift sessions; their
    references unblock that work.
-2. **ferrofluid_ocean, fractal_tree** — V.9 / V.10 are marked "full rebuild"
-   in the engineering plan; their references are the input contract for
-   authoring those sessions.
+2. **ferrofluid_ocean** — V.9 is marked "full rebuild" in the engineering
+   plan; its references are the input contract for authoring those sessions.
+   (**fractal_tree** was here for V.10; that uplift is cancelled and its set
+   moved to **goldengrove** — D-212. Fractal Tree now needs a *low-fi /
+   graphic* set curated from scratch, an FTR.2 prerequisite.)
 3. **volumetric_lithograph** — V.11 is the most-iterated preset; references
    here directly resolve the "lumpy vs mountainous" judgment calls that prior
    sessions had to skip.
@@ -56,7 +58,8 @@ docs/VISUAL_REFERENCES/
     README_LIGHTWEIGHT.md         ← lightweight template (copy for stylized/diagnostic presets)
   arachne/                        ← full rubric
   ferrofluid_ocean/               ← full rubric
-  fractal_tree/                   ← full rubric
+  fractal_tree/                   ← lightweight (stylized graphic branch-fan, D-212)
+  goldengrove/                    ← full rubric (set transferred from fractal_tree, D-212)
   glass_brutalist/                ← full rubric
   gossamer/                       ← full rubric
   kinetic_sculpture/              ← full rubric

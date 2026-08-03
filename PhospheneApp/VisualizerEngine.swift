@@ -297,6 +297,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// — Stam stable-fluids `ParticleGeometry` (D-097, RICERCAR-FL.5).
     var ricercarGeometry: (any ParticleGeometry)?
 
+    /// Serpentine projected line-strip water surface for the Meniscus preset — a
+    /// CPU wave field serialized into one continuous path (D-097, MEN.2a).
+    var meniscusGeometry: (any ParticleGeometry)?
+
     /// Shader library for creating post-process chains on preset switch.
     let shaderLibrary: Renderer.ShaderLibrary
 
@@ -936,6 +940,7 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         self.ricercarGeometry = Self.makeRicercarGeometry(context: ctx, library: lib)
         self.cymaticSandGeometry = Self.makeCymaticSandGeometry(context: ctx, library: lib)
         self.witchlightGeometry = Self.makeWitchlightGeometry(context: ctx, library: lib)
+        self.meniscusGeometry = Self.makeMeniscusGeometry(context: ctx, library: lib)
         self.moodClassifier = classifier
         self.stemAnalyzer = analyzer
         self.stemSeparator = sep
@@ -1307,8 +1312,29 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         case "Ricercar":    return ricercarGeometry
         case "Cymatic Resonance": return cymaticSandGeometry
         case "Witchlight":  return witchlightGeometry
+        case "Meniscus":    return meniscusGeometry
         default:            return nil
         }
+    }
+
+    /// Build the serpentine line-strip water surface for the Meniscus preset
+    /// (`MeniscusSurface` + `Renderer/Shaders/MeniscusSurface.metal`, MEN.2a).
+    /// Returns `any ParticleGeometry` (D-097, siblings not subclasses).
+    private static func makeMeniscusGeometry(
+        context: MetalContext,
+        library: Renderer.ShaderLibrary
+    ) -> (any ParticleGeometry)? {
+        guard let surface = try? MeniscusSurface(
+            device: context.device,
+            library: library.library,
+            configuration: MeniscusConfiguration(),
+            pixelFormat: context.pixelFormat
+        ) else {
+            return nil
+        }
+        let grid = MeniscusConfiguration().gridN
+        logger.info("Meniscus created: \(grid)×\(grid) serpentine wave surface")
+        return surface
     }
 
     /// Build the harmonic light-painting stroke for the Witchlight preset

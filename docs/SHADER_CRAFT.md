@@ -1820,13 +1820,17 @@ Dark silhouette `(0.04, 0.03, 0.02)` with thin warm-amber rim catching backlit `
 
 **Sessions estimated:** 5 (Gerstner + spike field formulation / material + thin-film / stage-rig lighting recipe / audio routing / cert review).
 
-### 10.4 Fractal Tree (V.10)
+### 10.4 ~~Fractal Tree (V.10)~~ — SUPERSEDED (FTR.1 / D-212, 2026-08-03)
+
+> **This plan is cancelled and applies to no shipping preset.** Matt's direction (D-212): Fractal Tree **keeps its low-fidelity graphic look**; its remaining work is audio reactivity and certification, not fidelity. The painterly target below moved to **Goldengrove** (`docs/presets/GOLDENGROVE_PLAN.md`), which was scoped for that register, and the 14 curated reference images transferred with it to `docs/VISUAL_REFERENCES/goldengrove/`.
+>
+> Retained here because the §4.7 bark / §4.8 leaf / §5.6 golden-hour recipe mapping below is sound and Goldengrove builds on it — read it as *Goldengrove's* recipe list, not as work queued against Fractal Tree. For Fractal Tree's actual plan see `ENGINEERING_PLAN.md` Phase FTR and `docs/presets/FRACTAL_TREE_REACTIVITY_REVIEW.md`.
 
 **Current state:** mesh-shader procedural L-system geometry. Bare branches, no bark, no foliage, no wind.
 
-**Target:** painterly tree in seasonal palette, bark with real displacement, translucent leaves, wind-driven motion.
+**Target (now Goldengrove's):** painterly tree in seasonal palette, bark with real displacement, translucent leaves, wind-driven motion.
 
-**Uplift plan:**
+**Uplift plan (now Goldengrove's):**
 
 1. **Macro:** L-system tree generation stays. Increase branching depth by 1 level on Tier 2 for visual density.
 2. **Meso:** bark displacement via POM per §8.3 using a generated heightmap (procedural from `ridged_mf`). Branch thickness varies per segment via `fbm8` rather than strict L-system prescription.

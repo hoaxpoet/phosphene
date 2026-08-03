@@ -1,136 +1,80 @@
-# Fractal Tree — Visual References
+# Visual References — Fractal Tree
 
-**Purpose:** Reference images for the `Fractal Tree` preset uplift per `SHADER_CRAFT.md §10.4` (Increment V.10). Cited by filename in Claude Code session prompts per `SHADER_CRAFT.md §2.3`.
+**Family:** fractal
+**Render pipeline:** `["mesh_shader"]` — object → mesh → fragment via `MeshGenerator.draw`; flat HSV, no lighting, no G-buffer
+**Rubric:** lightweight — stylized 2D graphic (exempt from full detail-cascade + material-count requirements)
+**Last curated:** 2026-08-03 by Matt (FTR.1 / D-212)
 
-**Target read:** Painterly tree, seasonal palette (default autumn), bark with POM displacement + lichen patches, translucent leaves with back-lit SSS, golden-hour lighting, wind-driven motion via `curl_noise`.
+> **Read this before the checklist trips you up.** The painterly reference set that used to live here — 14 images of bark, translucent foliage, golden-hour light and autumn palettes — **moved to `../goldengrove/`** when the V.10 uplift was cancelled at D-212. It described a preset Fractal Tree is deliberately not becoming. Do not go looking for it here and do not port it back.
+>
+> **There is currently no curated image set for this preset, and FTR.2 was built without one.** `PRESET_SESSION_CHECKLIST.md` Part 1 §1 offers two routes — curate first, or escalate to Matt. It was escalated and **Matt resolved it on 2026-08-03: build without reference images, live review at M7 (FTR.5).** The stylization contract and the five anti-references below were the visual authority for the FTR.2 routing rebuild; the look verdict is deferred to that live review. Do not add image files here under version control — LFS.2 untracked them deliberately to stop the Git-LFS bill.
 
-**Status:** v1.0 — all reference slots populated. Ready for V.10 session prompts.
+## Reference images
 
----
+| File | Annotation (what to learn from this image) |
+|---|---|
+| *(none yet)* | Curation pending — FTR.2 prerequisite. |
 
-## Image inventory
+### What a reference set here would need to show
 
-### `01_macro_silhouette.jpg` — overall crown form
-*Source: `kidney-tree_orig.jpg`*
+The register is **flat, graphic, diagrammatic** — closer to a botanical plate, a Milkdrop line-figure, or a plotter drawing than to a photograph of a tree. Slots worth filling, in priority order:
 
-Asymmetric crown with dense terminal branching — fine branches at the perimeter blur into a cloud-mass that anchors the leaf-cluster billboard positions. Asymmetric lean breaks Y-symmetry that would read as procedural (Failed Approach #44).
+1. **Graphic branch-fan silhouette** — a recursive tree read as *line and shape*, not as surface. The whole subject in one flat value range.
+2. **Asymmetric L-system parameter card** — branching angle and proportional reduction, same role as the old `02_macro_branching_params.jpg`. This one trait survives the redirect: **branching angle ∈ [15°, 25°], proportional reduction ∈ [0.62, 0.68]** matched the crown form we want and the current shader sits at 22° / 0.62.
+3. **Flat-colour palette anchor** — a limited palette that stays legible when branches overlap at 60 % alpha.
+4. **Anti-reference: bilateral symmetry** — the retired `14_anti_reference.png` (`symmetric-fractal-tree.png`) is still exactly right for this preset. Perfect mirror symmetry, uniform thickness, identical sub-trees. Triggers Failed Approach #44.
+5. **Anti-reference: accidental realism** — anything with rendered bark, volumetric light, or foliage mass. That is Goldengrove's job; here it is a failure.
 
-**Mandatory:** ≥4 generations visible at perimeter; trunk-to-canopy 1:2 vertical; asymmetric crown bias, no mirror symmetry. **Decorative:** specific lean direction.
+## Stylization contract
 
-### `02_macro_branching_params.jpg` — L-system parameter card
-*Source: `Fractal-Tree-06.jpg`*
+What DOES matter for this preset (substitute for the full rubric):
 
-Six-panel parameter sweep: branching angle 15° / 25°, proportional reduction 60% / 65% / 70%. The 25° / 65% panel matches `01_macro_silhouette.jpg`.
+- [x] **Color modulation:** leaf/tip hue tracks harmonic movement (`tonal_phase_fifths`), not a wall clock. ✅ FTR.2 — the `fract(t * 0.006)` term is gone; hue now swings 41.9°–87.4° on harmony alone.
+- [x] **Audio coverage:** each visual layer on its own *distinct* primitive (FA #67). ✅ FTR.2 — five layers, five primitives, replacing three-layers-on-`bass_att`.
+- [x] **Readability at silence:** a sparse, still, non-black tree — trunk plus the first two generations, legible and clearly alive (D-037). ✅ FTR.2 — `bass_dev` is 0 at silence → the 7-branch rest tree; mean luma 0.0046, gated in `FractalTreeMeshRenderTest`.
+- [x] **Readability at peak energy:** a full canopy that still reads as a *tree*, not a solid mass. Branch count must not flat-top. ✅ FTR.2 — the soft knee `bd/(bd+0.12)` is asymptotic, so the 63 ceiling is unreachable by construction; measured max 48. Was pinned at 63 on 1.24 % of frames.
 
-**Mandatory:** branching angle ∈ [15°, 25°]; proportional reduction ∈ [0.62, 0.68]. **Decorative:** white background.
+*(Every box above is an automated or measured check. The one thing no box can carry is whether it LOOKS right — that is L4, and it is Matt's live M7 call at FTR.5.)*
 
-### `03_meso_foliage_cluster.jpg` — leaf-cluster shape language
-*Source: `lesley-davidson-M8s6ScHN0HA-unsplash.jpg`*
+## Anti-references
 
-Pinnate fronds on black demonstrating the silhouette template for billboarded leaf clusters at branch tips.
+What this preset must NOT look like:
 
-**Mandatory:** pinnate (feather-like) cluster outline; directional rachis; visible specular on leaf surface. **Decorative:** species.
+- **Perfect bilateral symmetry** — mirror-image sub-trees at every recursion (FA #44). Break with per-branch hash jitter.
+- **Uniform branch thickness** at a given depth — vary per-branch.
+- **A rendered/painterly tree** — bark texture, leaf mass, volumetric light. That register belongs to Goldengrove; producing it here is the failure, not the goal.
+- **A colour-cycling wallpaper** — hue drifting on a timer while the music does something else.
+- **A tree that flat-tops** — visibly pinned at maximum branch count through a whole chorus.
 
-### `04_meso_bark_surface.jpg` — bark POM target
-*Source: `loren-king-1oz4QKRWPk0-unsplash.jpg`*
+## Audio routing notes
 
-Deep-furrowed bark with vertical fiber ridges and a side band of yellow crustose lichen. The canonical reference for the §4.7 bark recipe.
+**Shipped routing — MEASURED, as rebuilt at FTR.2.** Five visual layers, five distinct primitives (FA #67). Swing figures are p05→p95 on four sources: session `2026-08-03T20-05-13Z` (*Hummer*, 7260 frames after warmup, chain verdict `clean`) plus the three `route_coverage` fixtures.
 
-**Mandatory:** vertical fiber ridges with cross-hatched intermediate cracks; warm reddish-brown core under grey weathered ridges (`base = float3(0.18, 0.11, 0.07)`); flat crustose lichen distribution (Worley + smoothstep mask). **Decorative:** species.
+| Layer | Primitive | Measured swing (Hummer / love_rehab / so_what / there_there) | Was |
+|---|---|---|---|
+| canopy reach — branch count + trunk length + thickness, one coupled gesture | `bass_dev` | footprint +48 %; branch count 7→48, never pinned; blooms 1.91/s | three layers on `bass_att`; pinned at 63 for 1.24 % of frames |
+| branch spread | `spectral_flux` | **8.97° / 10.77° / 8.23° / 7.72°** | `mid_att`, 0.42° of a promised 7° — dead |
+| leaf hue | `tonal_phase_fifths` | **85.2° / 87.4° / 51.6° / 41.9°** of hue | `spectral_centroid`, 4.1° against a 76° wall clock — dead |
+| global brightness | `arousal` | **+54.0 % / +14.2 % / +28.1 % / +22.8 %** | *did not exist* — the preset had no section-scale route |
+| beat accent | `beat_bass` | live on 15.7–18.2 % of frames, firing 1.88–2.32/s at full amplitude | live on 99.2–100 % — read as a glow, not an accent |
 
-**Anti-traits:** foliose lichens (3D-protruding); smooth bark; heavy moss coverage.
+**Removed at FTR.2:** tip shimmer ← `treb_att`, which delivered +0.002 of a promised +0.12. Not re-homed — that visual layer belongs to FTR.3's per-branch activation, and a dead route is deleted rather than left declared as a false manifest.
 
-### `05_micro_leaf_venation.jpg` — leaf vein detail
-*Source: `vivaan-trivedii-dq7jErOBJbo-unsplash.jpg`*
+**Still to come:** per-branch activation (HERO) ← `beat_phase01` + `pulse_beat_index`, hash-selected bounded subset — FTR.3. Percussive accent ← `stems.drums_energy_dev` — FTR.4, which needs the object/mesh-stage stem binding (the *fragment* stage is already bound at buffer(3) by `drawWithMeshShader`; only the object/mesh half is missing).
 
-Hierarchical leaf venation (midrib → secondary → tertiary reticulated network). Calibrates the `vein_mask = smoothstep(0.45, 0.55, fbm8(wp * 12.0))` frequency.
+**Coefficient rule:** size every coefficient against the primitive's measured p05→p95 span on a real capture, never against a notional 0→1. Applied throughout the table above — and it changed a primitive choice: D-212 named `bass_dev` for canopy reach without measuring it, and the measurement (zero on 66–89 % of frames) is what made the soft-knee `bd/(bd+0.12)` mapping necessary rather than a linear gain.
 
-**Mandatory:** ≥3 vein orders visible; vein color one tone lighter than lamina (`vein = float3(0.20, 0.35, 0.12)` vs `base = float3(0.12, 0.25, 0.08)`). **Decorative:** central midrib (recipe approximates texture, not structure).
+## Provenance
 
-### `06_specular_backlit_leaf.jpg` — leaf SSS target
-*Source: `aris-rovas-vzyRn00d7fw-unsplash.jpg`*
-
-Leaf with strong directional light: lit zone shows warm yellow-green transmission glow with darker vein silhouettes against luminous lamina; unlit zone shows reflected-light comparison in-frame. The §4.8 SSS reference.
-
-**Mandatory:** warm yellow-green transmission tint (`sss_tint = float3(0.6, 0.8, 0.2)`); vein lines visible *through* translucent lamina; sharp lit-edge falloff (`pow(VdotL, 3.0)` shape). **Decorative:** leaf shape.
-
-### `07_micro_lichen_crustose.jpg` — crustose lichen morphology
-*Source: `Lecanora-pulicaris-large.jpg`*
-
-Dense field of *Lecanora*-type crustose lichen on bark — the morphology the §4.7 lichen recipe approximates. Foliose *Parmelia* rosette on left edge serves as in-frame negative contrast.
-
-**Mandatory:** flat thallus fused to bark, no lift; irregular non-gridded distribution (matches `worley3d(wp * 0.6)`); fine-scale apothecia within patches (sub-pixel at preset render distance). **Decorative:** apothecia color (single-tone lichen in current recipe; v2 could add two-tone via second Worley sample).
-
-**Anti-traits:** the lifted lobed *Parmelia* on the left edge — what the recipe must NOT produce.
-
-### `08_micro_bark_grain.jpg` — bark detail-normal scale
-*Source: `natalia-blauth-taLff7nYoFA-unsplash.jpg`*
-
-Heavy shaggy fissures, dark crevice shadows against tan ridges, no lichen. Drives the `triplanar_detail_normal(wp * 30, 0.04)` call in §4.7 — at preset render distance, this grain becomes the sub-pixel breakup that prevents POM bark from reading flat-with-cracks.
-
-**Mandatory:** vertically-aligned fine fissures at high spatial frequency; dark crevice shadow contrast against ridge highlights. **Decorative:** species; crevice depth (POM handles the macro depth; this layer is normal-scale only).
-
-### `09_lighting_golden_hour.jpg` — §5.6 lighting target
-*Source: `shana-van-roosbroek-DVrfQj9Z32w-unsplash.jpg`*
-
-Strong directional warm key from upper-frame, visible bokeh dust motes, back-lit subject with rim glow on upper edges, deep shadow falloff into foreground. The plant subject is incidental — the *lighting* is the slot.
-
-**Mandatory:** warm key light, low angle (sun within 30° of horizon implied by shadow direction); rim/SSS glow on backlit edges; visible airborne particles (dust motes) — the §10.4 atmosphere layer wants these; cool ambient fill in shadow regions. **Decorative:** subject; specific aperture / bokeh character.
-
-### `10_atmosphere_ground_fog.jpg` — atmosphere layer target
-*Source: `getty-images-vbog-4jRjA4-unsplash.jpg`*
-
-Single tree in field with dense mist below ~1.5m, clear air above, soft warm sky gradient. The fog gradient (densest at ground, fading by canopy line) matches the exponential-distance × altitude fog the §10.4 atmosphere should produce.
-
-**Mandatory:** altitude-banded fog (dense low, clear high); soft warm sky gradient; tree silhouette emerges cleanly above fog line. **Decorative:** the specific tree species and silhouette.
-
-### `11_palette_autumn.jpg` — default seasonal palette anchor
-*Source: `martin-sanchez-EY0rawxI55o-unsplash.jpg`*
-
-Aerial autumn forest showing the full hue distribution: deep green holdouts → yellow-green → orange → red. The IQ-cosine palette for the `autumn` variant should produce this distribution at varying saturation.
-
-**Mandatory:** orange-red dominant, not yellow; per-tree color variation, not uniform palette; some green holdouts mixed in (real autumn is never 100% turned). **Decorative:** specific hue ratios — tune per per-tree LCG seed.
-
-### `11b_palette_autumn_swatch.jpg` — supporting per-leaf color card
-*Source: `jenna-anderson-UylXHkdG42s-unsplash.jpg`*
-
-Hand-arranged green → yellow → orange → red leaf swatches. Most useful for tuning per-leaf color variation within a single tree's foliage clusters — the *intra-tree* palette spread, vs `11`'s *inter-tree* spread.
-
-**Mandatory:** smooth hue transitions between adjacent leaves; saturation variation per-leaf, not uniform. **Decorative:** species; arrangement.
-
-### `12_palette_winter.jpg` — winter variant palette
-*Source: `ales-krivec-9WXJFrlAG24-unsplash.jpg`*
-
-Pink-violet dawn gradient sky over hoar-frost-coated forest. Closer to the §10.4 brief ("hoar frost preferred over snow") than snow-load alternatives.
-
-**Mandatory:** frost as the dominant surface, not snow weight; cool palette with warm sky accent; thicker aerial perspective than other variants. **Decorative:** species; sky gradient direction.
-
-**Anti-traits:** snow-loaded conifers — winter variant operates on bare deciduous branches, not snow accumulation geometry.
-
-### `13_painterly_target.jpg` — non-photoreal aesthetic anchor (placeholder)
-*Source: `adele-cave-q0L-5a9FaEE-unsplash.jpg`*
-
-Intentional camera motion blur producing soft color blocking and vertical compositional rhythm. Stands in for plein-air / late-Impressionist painterly target. Tells the implementation: soft-edged color masses, not crisp PBR realism.
-
-**Mandatory:** soft edges throughout; vertical compositional rhythm matching tree trunks; color blocked rather than detail-rendered. **Decorative:** specific palette (this image is pink/green; the painterly *technique* is the takeaway, not the colors).
-
-**Note:** Placeholder. A true plein-air or late-Impressionist tree painting (Pissarro, Cézanne, contemporary plein-air work) would be a stronger anchor — replace when sourced.
-
-### `14_anti_reference.png` — what NOT to produce
-*Source: `symmetric-fractal-tree.png`*
-
-Perfect bilateral symmetry, uniform branch thickness, identical sub-branches at every recursion. Triggers Failed Approach #44.
-
-**Avoidance traits:** mirror symmetry (break via per-branch hash jitter); uniform branch thickness (vary via `fbm8(branch_id)`); identical sub-trees at same depth (vary splay, length, twist per recursion seed).
-
----
+Curated by: Matt
+Image sources: *(none yet — curation pending at FTR.2)*
+Painterly predecessor set: `../goldengrove/README.md` (transferred intact at D-212)
 
 ## Cross-references
 
-- `SHADER_CRAFT.md §10.4` — uplift plan
-- `SHADER_CRAFT.md §4.7` — bark material recipe
-- `SHADER_CRAFT.md §4.8` — translucent leaf material recipe
-- `SHADER_CRAFT.md §5.6` — golden-hour lighting recipe
-- `SHADER_CRAFT.md §8.3` — POM (parallax occlusion mapping)
-- `SHADER_CRAFT.md §13` Failed Approach #44 — per-instance variation rule
-- `ENGINEERING_PLAN.md` Increment V.10 — gating criteria
+- `docs/presets/FRACTAL_TREE_REACTIVITY_REVIEW.md` — the measured review behind this redirect
+- `DECISIONS.md` D-212 — keep the low-fi look; V.10 cancelled; reference set transferred
+- `ENGINEERING_PLAN.md` Phase FTR — the reactivity + certification arc
+- `SHADER_CRAFT.md §14` — primitive liveness rule (the rule these dead routes broke)
+- `SHADER_CRAFT.md §13` Failed Approach #44 — per-instance variation
+- ~~`SHADER_CRAFT.md §10.4`~~ — superseded (painterly uplift plan; cancelled at D-212)
