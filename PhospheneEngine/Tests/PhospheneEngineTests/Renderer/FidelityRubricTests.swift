@@ -113,7 +113,12 @@ private let expectedAutomatedGate: [String: Bool] = [
                                      // via PhysConfig, so the MSL-source heuristic can't see it
                                      // (Skein/Lumen precedent). Certified via Matt's M7 sign-off as a
                                      // loose energy-accompaniment (PHYS.5; not beat-synced by design).
-    "Fractal Tree":         false,   // full; M3 fails
+    "Fractal Tree":         false,   // lightweight (D-212 — reclassified from `full`, whose M3
+                                     // >=3-materials gate is unreachable for a flat-HSV mesh preset
+                                     // with no lighting and no G-buffer). L2 fails — no deviation
+                                     // primitives in source (Nebula/Plasma/Waveform precedent); the
+                                     // preset drives three visual layers off `bass_att` alone.
+                                     // FTR.2 rebuilds the routing and should flip L2 green.
     "Gossamer":             false,   // full; M3 fails
     "Membrane":             false,   // full; M3 fails
     "Cytokinesis":          false,   // lightweight; coupling (energyEnv→pace / centroidEnv→palette /

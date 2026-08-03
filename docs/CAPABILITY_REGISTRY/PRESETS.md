@@ -315,7 +315,7 @@ None of the engine-library kernels read past the original 32 / 16 float window t
 | Arachne | ✓ | `["staged"]` → `compileStagedShader` ✓ | drums/bass/other/vocals (4) |
 | Aurora Veil | ✓ | `[]` → `compileStandardShader` (intentional per AV.2.2; see §Headline 10) | vocals/drums/bass (3) |
 | Ferrofluid Ocean | ✓ | `["ray_march", "post_process"]` → `compileRayMarchShader` ✓ | (no stem_affinity; uses scene_camera + ferrofluid block) |
-| Fractal Tree | ✓ | `["mesh_shader"]` → `compileMeshShader` ✓ | (no stem_affinity) |
+| Fractal Tree | ✓ | `["mesh_shader"]` → `compileMeshShader` ✓ | (no stem_affinity — **cannot have one**: `StemFeatures` is never bound on the mesh path, see the mesh row in `docs/ENGINE/RENDER_CAPABILITY_REGISTRY.md`. D-212 / FTR.4.) `rubric_profile: lightweight` (D-212); `audio_routes` declared FTR.1 |
 | Gossamer | ✓ | `["mv_warp"]` → `compileMVWarpShader` ✓ | drums/bass/other/vocals (4) |
 | Lumen Mosaic | ✓ | `["ray_march", "post_process"]` → `compileRayMarchShader` ✓ | drums/bass/vocals/other (4) |
 | Membrane | ✓ | `["feedback"]` → `compileStandardShader` (with feedback pipeline) ✓ | (no stem_affinity) |

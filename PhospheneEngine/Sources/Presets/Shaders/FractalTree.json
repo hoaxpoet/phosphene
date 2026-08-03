@@ -2,9 +2,11 @@
   "name": "Fractal Tree",
   "family": "fractal",
   "duration": 30,
-  "description": "Recursive binary tree — trunk grows with bass, canopy spreads with mid, leaf tips shift colour with spectral centroid",
+  "description": "Recursive binary tree - low-fidelity graphic branch-fan. Branch count and trunk length grow with bass, canopy spreads with mid, leaf tips shift colour with spectral centroid. Reactivity rebuild in progress (FTR.2, D-212).",
   "author": "Matt",
-  "passes": ["mesh_shader"],
+  "passes": [
+    "mesh_shader"
+  ],
   "beat_source": "bass",
   "fragment_function": "fractal_tree_fragment",
   "vertex_function": "fractal_tree_fallback_vertex",
@@ -12,10 +14,55 @@
   "mesh_thread_count": 64,
   "visual_density": 0.65,
   "motion_intensity": 0.55,
-  "color_temperature_range": [0.2, 0.75],
+  "color_temperature_range": [
+    0.2,
+    0.75
+  ],
   "fatigue_risk": "medium",
-  "transition_affordances": ["crossfade"],
-  "section_suitability": ["ambient", "buildup", "bridge"],
-  "complexity_cost": { "tier1": 1.2, "tier2": 0.7 },
-  "certified": false
+  "transition_affordances": [
+    "crossfade"
+  ],
+  "section_suitability": [
+    "ambient",
+    "buildup",
+    "bridge"
+  ],
+  "complexity_cost": {
+    "tier1": 1.2,
+    "tier2": 0.7
+  },
+  "certified": false,
+  "rubric_profile": "lightweight",
+  "audio_routes": [
+    {
+      "route": "branch_count",
+      "primitive": "bassAtt",
+      "kind": "continuous"
+    },
+    {
+      "route": "trunk_length",
+      "primitive": "bassAtt",
+      "kind": "continuous"
+    },
+    {
+      "route": "canopy_spread",
+      "primitive": "midAtt",
+      "kind": "continuous"
+    },
+    {
+      "route": "tip_shimmer",
+      "primitive": "trebleAtt",
+      "kind": "continuous"
+    },
+    {
+      "route": "leaf_hue",
+      "primitive": "spectralCentroid",
+      "kind": "continuous"
+    },
+    {
+      "route": "beat_flash",
+      "primitive": "beatBass",
+      "kind": "accent"
+    }
+  ]
 }
