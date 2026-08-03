@@ -101,6 +101,19 @@ static inline float2 wl_corner(uint vid) {
     return float2((vid & 1) ? 1.0 : -1.0, (vid & 2) ? 1.0 : -1.0);
 }
 
+/// How far past the bead the halo reaches, in bead radii (bead sprites only).
+///
+/// `08` is explicit that the halo is *wider* than the core, not just dimmer than it — and
+/// while core and halo shared one quad the halo could not be wider than the bead by
+/// construction, so every bead rendered as a hard-edged dot. WL.2-g expands the QUAD by
+/// this factor and rescales the core's radial term by the same factor in the fragment, so
+/// the core keeps **exactly** the bead size WL.2-f settled. The bead did not get bigger;
+/// its glow got the reach the reference shows. This is why the overlap between adjacent
+/// beads' halos closes the gaps in the tail, which is what stopped the ribbon reading as a
+/// dotted thread — raising the emissive level could never do that, because the gaps had no
+/// geometry in them to light.
+constant float WL_HALO_EXTENT = 2.6;
+
 /// Age → brightness. `(1 - a/T)^1.6`: superlinear, so the newest third of the stroke
 /// carries most of the light (`02` — the decay is visibly not linear) and it reaches
 /// exactly 0 at T so the tail never pops out of existence. Monotonic by construction,
@@ -144,7 +157,7 @@ vertex WLBeadOut witchlight_bead_vertex(
     alpha  *= mix(1.0, 1.6, b.promoted);
 
     float2 corner = wl_corner(vid);
-    float2 halfExtent = wl_screen_extent(radius * proj.z, cfg);
+    float2 halfExtent = wl_screen_extent(radius * WL_HALO_EXTENT * proj.z, cfg);
 
     WLBeadOut out;
     out.position = float4(proj.xy + corner * halfExtent, 0.0, 1.0);
@@ -160,12 +173,45 @@ fragment float4 witchlight_bead_fragment(WLBeadOut in [[stage_in]]) {
     // Two-part profile (`08`, `09`): a tight near-white core sitting inside a wider,
     // cooler, hue-carrying halo. A single colour at two intensities fails trait #3, so
     // the core is deliberately desaturated toward white while the halo keeps the hue.
-    float core = exp(-r2 * 15.0);
-    float halo = exp(-r2 * 2.7);
-    // The core lifts toward white but does NOT reach it: a fully white core erases the
-    // frozen hue, and the hue IS the information (mandatory trait #7).
-    float3 hot = mix(in.color, float3(1.0), 0.58);
-    float3 rgb = in.color * halo * 1.05 + hot * core * 0.75;
+    //
+    // WL.2-g — why the halo is a LIFTED colour rather than the raw hue. Bead hue is laid
+    // down at S 0.80 / V 1.0 (§3.4), so its Rec.601 luma runs 0.29 (violet/blue) to 0.67
+    // (yellow-green). Multiplying that by a halo profile leaves the violet half of the hue
+    // circle permanently below the luminance the source's ribbon actually carries — the
+    // measured 9× shortfall in the M7 frame was almost entirely this: only the pinpoint
+    // core ever crossed, so the ribbon read as hard dots on a thread instead of `08`'s
+    // glowing arc. The halo is therefore mixed toward a cool blue-white before it is
+    // scaled, which buys luminance at every hue while keeping the hue legible — `08`'s
+    // halo is *cooler* than its core, not merely dimmer, so the lift is the reference
+    // behaviour rather than a brightness workaround.
+    // Core radius is rescaled back out of the widened quad so it stays pinned to the bead
+    // size, independent of WL_HALO_EXTENT.
+    float rc2 = r2 * (WL_HALO_EXTENT * WL_HALO_EXTENT);
+    float core = exp(-rc2 * 9.0);
+    // Windowed to zero at the quad edge. Without it a halo bright enough to read leaves a
+    // hard disc boundary where `discard_fragment` cuts it.
+    float halo = exp(-r2 * 2.8) * smoothstep(1.0, 0.75, r2);
+    // 0.34, not more. A cooler halo is closer to `08` in the abstract, but at 0.44 the
+    // stroke measurably lost its hue (the head washed to neutral white) for no gain in
+    // ribbon share — and hue IS the information here (trait #7), so the lift stops at the
+    // point where it buys luminance and stops before it starts costing colour.
+    float3 cool = mix(in.color, float3(0.58, 0.66, 1.0), 0.34);
+    // The core reaches near-white and saturates (`08`: a real arc core is white). Trait #7
+    // is not lost by this: the hue lives in the halo, which is the far larger area — a
+    // white core inside a violet halo still reads violet, and it is the only way the peak
+    // reaches the source's 255 rather than topping out at the hue's brightest channel.
+    float3 hot = mix(in.color, float3(1.0), 0.90);
+    // The split matters more than the total, and level alone is close to useless here:
+    // near-doubling it moved ribbon share only 0.405 % → 0.421 %, because `wl_age_alpha`
+    // scales the whole sprite, so extra level saturates the head while the faded tail
+    // stays under threshold either way. Worse, beads emit at ~34 Hz and blending is
+    // ADDITIVE, so a halo bright enough to read on its own sums with its neighbours into
+    // the uniform white tube of anti-`11` (measured: a 2.5/1.6 split did exactly that).
+    // The halo is therefore set to read as a glow only where several beads overlap, and
+    // the per-bead sparkle is carried by the core, whose area is too small to stack into
+    // a tube. The falloff curve is untouched throughout — still exactly `(1-t)^1.6`,
+    // still monotonic (mandatory trait #2); the tail gains presence from reach, not level.
+    float3 rgb = cool * halo * 1.45 + hot * core * 2.0;
     return float4(rgb * in.alpha, 1.0);
 }
 
@@ -194,7 +240,11 @@ vertex WLLineOut witchlight_line_vertex(
 fragment float4 witchlight_line_fragment(WLLineOut in [[stage_in]]) {
     // The thread the beads sit on: hue-carrying but dimmer than the beads, so the
     // stroke reads as beads-on-a-thread rather than as a uniform glow tube (anti-`11`).
-    return float4(mix(in.color, float3(1.0), 0.25) * in.alpha, 1.0);
+    // WL.2-g lifts it — `01`/`02` are a line *that glows* with sparks on it, and at the
+    // pre-WL.2-g level the thread was invisible between beads, which is what made the
+    // ribbon read as a row of dots. It stays well under the bead level, so the
+    // beads-on-a-thread reading (and the distance from `11`) is preserved.
+    return float4(mix(in.color, float3(1.0), 0.45) * in.alpha * 2.1, 1.0);
 }
 
 // MARK: - Star suppression (pass 1)
