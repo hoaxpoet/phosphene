@@ -35,14 +35,35 @@ struct FractalPayload {
     /// CANOPY REACH — the single derived scalar for "how big is the tree", 0…1.
     /// Branch count, trunk length and thickness all read THIS, so they move as one
     /// coupled gesture rather than three layers racing on one primitive (the FA #67
-    /// collision D-212 measured). Derived from `bass_dev` once, in the object shader.
+    /// collision D-212 measured).
     float reach;
-    /// BRANCH SPREAD, radians — how wide the canopy opens. Derived from
-    /// `spectral_flux` in the object shader.
+    /// BRANCH SPREAD, radians — how wide the canopy opens. From `spectral_flux`.
     float spread;
+    /// Beat position, 0 at the last beat rising to 1 at the next — the envelope
+    /// clock for per-branch activation.
+    float beat_phase;
+    /// 0 before the first note and across sustained silence, 1 while music plays.
+    /// Gates the taps so cold-start cannot fire them wrong-phase.
+    float pulse_amp;
+    /// Which beat we are on. Re-seeds the hash each beat so a DIFFERENT handful of
+    /// branches taps every time.
+    uint  beat_seed;
     float aspect_ratio;
-    uint  branch_count;   // 7–60: how many branches to render this frame
+    uint  branch_count;   // 15–61: how many branches to render this frame
 };
+
+// MARK: - Hash
+
+/// Integer avalanche hash (lowbias32). Used to pick which branches tap on a given
+/// beat. Stateless and reproducible: the same (branch, beat) pair always agrees,
+/// which is what lets a stateless shader hold a per-branch envelope at all.
+static inline uint fractal_hash(uint x)
+{
+    x ^= x >> 16; x *= 0x7feb352du;
+    x ^= x >> 15; x *= 0x846ca68bu;
+    x ^= x >> 16;
+    return x;
+}
 
 // MARK: - Object Shader
 
@@ -59,40 +80,63 @@ void fractal_tree_object_shader(
     mgp.set_threadgroups_per_grid(uint3(1, 1, 1));
 
     if (tid == 0) {
-        // ── CANOPY REACH ← bass_dev (D-026 deviation primitive) ──────────────────
+        // ── CANOPY REACH ← bass_rel (D-026 deviation primitive) ──────────────────
         //
-        // MEASURED, not assumed. `bass_dev = max(0, bassRel)` where `bassRel` is the
-        // band's deviation from its own running EMA — so it is an UPWARD-transient
-        // signal, zero on 66–89 % of frames because most frames are not transients.
-        // Its p05→p95 span across the four measured sources (Hummer 2026-08-03T20-05-13Z
-        // plus the three route_coverage fixtures):
+        // THE CANOPY IS A CANVAS, NOT THE RHYTHM. FTR.2 drove this from `bass_dev` and
+        // it broke the preset — Matt, live: *"either too excited or completely inert …
+        // the movement is haphazard; fingers are not really visible."* Measured on his
+        // session 2026-08-03T22-54-06Z, that is exactly what the numbers say:
         //
-        //     Hummer 0 → 0.153   love_rehab 0 → 0.255
-        //     so_what 0 → 0.575  there_there 0 → 0.104     (p99 reaches 1.06; max 2.59)
+        //                        changes on   avg jump   sits at minimum
+        //     bass_att (before)   11.7 %       1.9         1.6 %
+        //     bass_dev (FTR.2)     4.2 %      21.5        82.0 %
         //
-        // Every other bass primitive was measured and rejected: `bass_att` (shipped)
-        // has std 0.013 on love_rehab and 0.017 on there_there — nearly constant, which
-        // is why the shipped tree does not move; `bass_att_rel` is smoother but spans
-        // only ±0.05 on the same two tracks. `bass_dev` is the ONLY bass primitive with
-        // real dynamic range on all four sources.
+        // `bass_dev = max(0, bassRel)` is an upward-TRANSIENT signal — zero on 66–89 %
+        // of frames — so the tree sat at its 7-branch floor four frames in five and then
+        // slammed 21 branches at once. The effect Matt values ("fingers tapping to the
+        // beat") was branches appearing ONE OR TWO AT A TIME at the truncation edge; a
+        // transient driver cannot produce it, by construction.
         //
-        // SOFT-KNEE, not a linear gain. `bd / (bd + k)` is asymptotic: it never reaches
-        // 1, so the canopy can never flat-top (the shipped preset pinned at 63 branches),
-        // and the ~3× spikes FA #73 warns about compress instead of clipping. k = 0.12
-        // is sized against the measured p95 BAND [0.104, 0.575] rather than any single
-        // track, so each source uses a useful slice of the range:
+        // `bass_rel` is the same D-026 family WITHOUT the `max(0, …)` clamp, so it is
+        // continuous and centred on the band's own running EMA. Through a logistic it
+        // holds the canopy mid-range and drifting on all four sources, never collapsing
+        // to the floor (measured floor time: 0.4–4.4 %, against bass_dev's 66–82 %).
         //
-        //     bd 0.10 → 0.46    bd 0.15 → 0.56 (Hummer p95)    bd 0.26 → 0.68
-        //     bd 0.58 → 0.83 (so_what p95)     bd 1.06 → 0.90  bd 2.59 → 0.96
-        //
-        // At silence bass_dev is 0 → reach 0 → the sparse 7-branch tree the reference
-        // README asks for ("trunk plus the first two generations"), never black (D-037).
-        float bd    = max(f.bass_dev, 0.0f);
-        float reach = bd / (bd + 0.12f);
+        // The count now only has to keep a believable tree on screen. The RHYTHM is
+        // carried by per-branch activation below — which is the deliberate version of
+        // the effect FTR.2 deleted, and the reason this route can afford to be calm.
+        float reach = 1.0f / (1.0f + exp(-f.bass_rel * 3.0f));
 
-        // One gesture, three coupled terms. 7 at rest → 60 at the asymptote; the ceiling
-        // is unreachable by construction, so a chorus cannot sit pinned at maximum.
-        uint count = 7u + (uint)(reach * 56.0f);
+        // SILENCE GATE. `bass_rel` is a deviation from the band's OWN running average,
+        // so at silence both collapse to 0 and the logistic sits at exactly 0.5 — a
+        // half-grown tree standing in a silent room. `pulse_amp01` is 0 before the first
+        // note and across sustained silence, so scaling by it returns the sparse
+        // 7-branch figure the reference README asks for ("trunk plus the first two
+        // generations"), still non-black (D-037). This is a GATE, not a route: it
+        // carries no musical information, it only answers "is anything playing".
+        float amp = saturate(f.pulse_amp01);
+
+        // 7 at silence → 14/22/41 at the measured p05/p50/p95 of Hummer → 63 only if
+        // bass_rel reaches ~2, which is past p99. The taps need branches to land on,
+        // so the canopy stays present rather than collapsing between transients.
+        uint count = 7u + (uint)(reach * 56.0f * amp);
+
+        // ── PER-BRANCH ACTIVATION (HERO) ← beat_phase01 + pulse_beat_index ────────
+        //
+        // Option A per D-212: each beat, hash-select a bounded subset of branches and
+        // run an attack/decay envelope on each. Stateless — the hash of (branch, beat)
+        // is reproducible, which is what lets a shader with no frame-to-frame memory
+        // hold a per-branch envelope at all.
+        //
+        // `pulse_*` is a 4-beat cycle (D-153), so the beat index within the pulse is
+        // `pulse_phase01 × 4`; combining gives a counter that advances once per beat
+        // and re-seeds the selection so a DIFFERENT handful taps each time.
+        //
+        // Cold-start: `pulse_amp01` is 0 before the first note and across sustained
+        // silence. Gating on it is how this preset implements its own suppression —
+        // the Cold-Start Phase Contract is explicit that presets needing it do it
+        // themselves, and that automated phase derivation is retired, not to be retried.
+        uint beat_seed = (uint)(f.pulse_beat_index * 4.0f + f.pulse_phase01 * 4.0f);
 
         // ── BRANCH SPREAD ← spectral_flux ────────────────────────────────────────
         //
@@ -113,9 +157,12 @@ void fractal_tree_object_shader(
         float flux   = saturate((f.spectral_flux - 0.10f) / 0.85f);
         float spread = 0.35f + flux * 0.24f;   // 20° … 34°
 
-        // Only the three geometry terms travel in the payload. The fragment stage reads
-        // its own primitives straight from `f` at buffer(0), so forwarding them here
-        // would just be a second, staler copy.
+        // Only geometry terms travel in the payload. The fragment stage reads its own
+        // primitives straight from `f` at buffer(0), so forwarding them here would just
+        // be a second, staler copy.
+        payload->beat_phase   = saturate(f.beat_phase01);
+        payload->pulse_amp    = saturate(f.pulse_amp01);
+        payload->beat_seed    = beat_seed;
         payload->reach        = reach;
         payload->spread       = spread;
         payload->branch_count = min(count, 63u);
@@ -167,13 +214,22 @@ void fractal_tree_mesh_shader(
         }
     }
 
-    // Audio-driven tree parameters.
+    // ── THIS BRANCH'S TAP ─────────────────────────────────────────────────────────
     //
-    // Trunk length and thickness read the SAME `reach` scalar the branch count does —
-    // "how big is the tree" is one gesture expressed through three coupled geometry
-    // terms, not three routes competing. Spans widened against the measured drive:
-    // trunk 0.36–0.62 (shipped 0.40–0.62 but on a near-constant primitive), thickness
-    // 0.038–0.058, a 53 % swing against the shipped 11.7 %.
+    // Hash-select: ~32 % of branches fire on any given beat. Bounded footprint by
+    // design (D-157) — the whole canopy never lights at once, which is what keeps
+    // global luminance steady while individual branches move. Re-seeded per beat, so
+    // the pattern is different every time and reads as fingers rather than a pulse.
+    uint  h      = fractal_hash(bid * 1973u + payload.beat_seed * 9277u);
+    float pick   = float(h & 1023u) * (1.0f / 1023.0f);
+    float chosen = step(pick, 0.32f);
+
+    // Attack/decay over the beat. Fast in (7 % of the beat), slower out (to 80 %) —
+    // a tap, not a throb. Multiplying by pulse_amp gates the whole thing at cold start.
+    float p   = payload.beat_phase;
+    float env = smoothstep(0.0f, 0.07f, p) * (1.0f - smoothstep(0.07f, 0.80f, p));
+    float tap = chosen * env * payload.pulse_amp;
+
     float base_len = 0.36f + payload.reach * 0.26f;
     float ang_base = payload.spread;                    // 20°–34°, from spectral_flux
 
@@ -198,12 +254,17 @@ void fractal_tree_mesh_shader(
         dir = normalize(new_dir);
     }
 
-    float2 branch_start = pos;
-    float2 branch_end   = pos + dir * seg_len;
-
-    // Depth metadata for the fragment shader.
+    // THE TAP, in geometry. The branch flicks outward along its own direction — this
+    // is the motion, and it is deliberately per-branch: neighbouring branches sit
+    // still while this one moves, which is what makes it read as fingers rather than
+    // as the whole tree breathing. Scaled by depth so the trunk barely stirs and the
+    // fine tips travel most, exactly as a hand taps from the fingertips.
     float depth_norm = float(leaf_depth) / 5.0f;    // 0 = trunk … 1 = deepest leaf
     float is_leaf    = float(leaf_depth == 5 ? 1 : 0);
+    seg_len *= 1.0f + tap * (0.10f + 0.34f * depth_norm);
+
+    float2 branch_start = pos;
+    float2 branch_end   = pos + dir * seg_len;
 
     // ------------------------------------------------------------------
     // Perpendicular vector for branch width.
@@ -225,8 +286,10 @@ void fractal_tree_mesh_shader(
     // ------------------------------------------------------------------
     uint base_vert = bid * 4u;
 
+    // normal.y carries this branch's tap to the fragment stage — the only free channel
+    // in MeshVertex, and the reason activation can be per-branch at all.
     MeshVertex v;
-    v.normal = float3(depth_norm, 0.0f, is_leaf);
+    v.normal = float3(depth_norm, tap, is_leaf);
 
     v.uv       = float2(0.0f, 0.0f);
     v.position = float4(branch_start + perp_clip, 0.0f, 1.0f);
@@ -272,11 +335,10 @@ fragment float4 fractal_tree_fragment(
 {
     // Per-vertex data packed into MeshVertex.normal and .uv.
     float depth_norm   = in.normal.x;    // 0 = trunk, 1 = deepest leaf level
+    float tap          = in.normal.y;    // this branch's beat activation, 0…1
     float is_leaf      = in.normal.z;    // 1 if depth == 5, else 0
     float along_branch = in.uv.x;        // 0 = branch base, 1 = branch tip
     float across_width = in.uv.y;        // 0 and 1 = edges, 0.5 = centre
-
-    float beat     = f.beat_bass;
 
     // ── Hue ← tonal_phase_fifths ─────────────────────────────────────────
     //
@@ -335,21 +397,22 @@ fragment float4 fractal_tree_fragment(
     float val_base = mix(0.22f, 0.60f, depth_norm);
     float val      = val_base * (0.72f + arousal * 0.46f);
 
-    // ── Beat accent ← beat_bass ──────────────────────────────────────────
+    // ── Per-branch tap (HERO) ────────────────────────────────────────────
     //
-    // Resized to read as an ACCENT rather than a glow. `beat_bass` is non-zero on
-    // 90.4 % of frames (D-212), so the shipped `beat * (0.25 + 0.25 * depth)` was a
-    // near-permanent brightness lift — the preset looked flashed almost always, which
-    // is the same thing as never looking flashed.
+    // Replaces the global `beat_bass` flash entirely. Two reasons, and the second is
+    // the important one:
     //
-    // THE FIX IS A KNEE, NOT A SMALLER GAIN. Lowering the gain would dim the accent
-    // without making it an accent; the problem is the persistent floor, not the size of
-    // the peak. Cutting the bottom 45 % removes the floor entirely, and what remains
-    // drives a PUNCHIER spike than shipped (0.30 + 0.30·depth against 0.25 + 0.25·depth).
-    // Measured beat_bass is p50 0.090–0.097 and p95 1.000 on all four sources, so the
-    // knee sits far above the resting level and well below the peaks.
-    float accent = saturate((beat - 0.45f) * 1.82f);
-    val += accent * (0.30f + 0.30f * depth_norm);
+    // 1. FA #67 — a global flash and per-branch activation are the same primitive at
+    //    the same timescale driving two visual layers. One of them had to go.
+    // 2. D-157 — a global flash lifts EVERY pixel, so the whole frame pulses and no
+    //    individual branch reads. Lighting ~32 % of branches instead keeps global
+    //    luminance steady while the eye tracks individual tips. That is the difference
+    //    between "the tree flashes" and "fingers are tapping", which is the exact
+    //    distinction Matt drew when FTR.2's version failed live.
+    //
+    // Brightest at the tips, where the geometric flick is also largest, so the two
+    // halves of the tap reinforce rather than fight.
+    val += tap * (0.16f + 0.42f * depth_norm);
     val  = saturate(val);
 
     float3 color = hsv2rgb(float3(fract(hue), sat, val));
