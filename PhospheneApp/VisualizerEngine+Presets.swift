@@ -83,6 +83,10 @@ extension VisualizerEngine {
         // boundary lays down a wrong-coloured or spuriously-promoted first bead, and the held
         // trail would be the PREVIOUS track's drawing — which the whole concept says it is not.
         (witchlightGeometry as? WitchlightStroke)?.path.reset()
+        // MEN.2a (`MENISCUS_PLAN.md` §4, track-change row): the surface settles back to
+        // its resting state and the camera returns to the resting attitude, so a new
+        // track does not inherit the previous one's live ripples.
+        (meniscusGeometry as? MeniscusSurface)?.reset()
         // Skein.3 (§1.5): a new track paints its OWN canvas (the held painting is the previous
         // track's visual fingerprint). Wipe the canvas back to the ground and re-seed the painter
         // from the new track's identity (same track → same painting, §5.7). No-op when Skein

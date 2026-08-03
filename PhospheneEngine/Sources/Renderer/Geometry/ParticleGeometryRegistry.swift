@@ -33,7 +33,8 @@ public enum ParticleGeometryRegistry {
         "Cytokinesis",
         "Ricercar",
         "Cymatic Resonance",
-        "Witchlight"
+        "Witchlight",
+        "Meniscus"
     ]
 }
 

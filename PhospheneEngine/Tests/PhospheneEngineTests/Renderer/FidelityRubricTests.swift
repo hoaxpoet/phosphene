@@ -163,6 +163,12 @@ private let expectedAutomatedGate: [String: Bool] = [
     "Nimbus":               false,   // direct-fragment; heuristic sees no deviation primitives
     "Ricercar":             false,   // FL.13 flow-field coupling CPU-side; not yet certified
     "Staged Sandbox":       false,   // diagnostic sandbox; not a certification candidate
+    "Meniscus":             false,   // MEN.2a stub, measured 4/15. The heuristic reads the
+                                     // preset's MSL, and Meniscus's subject is not in it —
+                                     // the surface is `MeniscusSurface` geometry drawn from a
+                                     // CPU wave field (the Skein / Lumen / Filigree precedent).
+                                     // It also has NO audio coupling at all until MEN.2b/MEN.3,
+                                     // so L2 cannot pass yet by design. certified: false.
 ]
 
 @Suite("Fidelity Rubric — Automated Gate")
