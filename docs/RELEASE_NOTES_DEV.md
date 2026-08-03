@@ -10,6 +10,22 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-03-200455] BUG-080 — the propagation chain had no source of truth, and nothing checked
+
+`Scripts/link_fixtures.sh` copies gitignored-but-needed files from the primary checkout into each new worktree. Two independent breaks meant a correctly-prepared worktree — and `main` itself — failed the engine suite. Diagnosed, widened P3 → P2, fixed and validated in one increment (Matt approved the collapse in chat).
+
+**Gap A: a stale allowlist.** PUB.2 moved the 479 ML weight files out of git; `linked_rel` was never updated, and the trailing `grep -E` filter admitted only `Tests/Fixtures/` paths or image extensions, so a `.bin` would have been rejected even if the directory had been added. Weights held 4/1/1 entries in a fresh worktree against the primary's 176/162/147.
+
+**Gap B is the one worth remembering: the primary checkout was never verified to be a complete source, and it wasn't.** Three licensed `.m4a` tempo clips existed only inside an unrelated worktree — so no worktree could ever obtain them, and the primary failed the same gate. A script that links *from* the primary cannot supply what the primary lacks. It reported `linked N fixture(s)` while propagating a hole. `BeatThisFixturePresenceGate` (QR.3) is the only reason this surfaced instead of silently disabling the BeatThis regression surface — that gate paid for itself.
+
+**The fix** replaces the allowlist with a `<path>|<required>|<regex>` manifest and adds the missing invariant: `required=yes` plus an empty source tree is a hard error with a path-and-instructions message, not a silent skip; per-path match regexes let `.bin` through where it structurally could not before; missing-on-disk files warn and set a non-zero exit instead of continuing in silence; and a new `--verify` mode checks source completeness without linking anything, runnable from the primary as a standalone CI-ready gate.
+
+**A third instance surfaced from `--verify` on its first run.** `docs/VISUAL_REFERENCES` and `docs/diagnostics` report **0 gitignored files in the primary**. The reference images D-211 extended this script to propagate are gone everywhere — so the "silently degrades preset work rather than failing" outcome D-211 warned about has been the standing condition, not a worktree-only risk, and `docs/VISUAL_REFERENCES/<preset>/` holds READMEs describing images nobody can see. Left `required=no` (promoting it would fail every run today) but it now warns on every invocation. **Needs a decision, and blocks FTR.2's reference curation.**
+
+**Validation:** full engine suite green in the FTR.1 worktree — XCTest `225 tests, 7 skipped, 0 failures (0 unexpected)`, swift-testing `1732 tests in 246 suites passed`. The `LocalFilePlaybackProvider` concurrency failures were cascade and clear once the fixtures exist. Honest caveat recorded in `KNOWN_ISSUES.md`: that worktree ran the *pre-fix* script against a hand-repaired environment, so criterion 1 is met in substance but not literally — the patched script's own first fresh preparation is still owed.
+
+**The generalisable lesson:** a propagation mechanism with no manifest, no provenance and no completeness check is not a mechanism, it is a coincidence that happened to hold. The primary was authoritative only because it was the clone that happened to receive the files.
+
 ### [dev-2026-08-02-164808] LFS.3 — reclaim runbook, written from an incident rather than from theory
 
 `Scripts/reclaim-lfs-visual-refs.sh --execute` was run on 2026-07-31 with branch protection active. It **half-applied**: `main` and all 27 `refs/pull/*` were rejected by GitHub, while 18 branches and 3 tags were force-updated to a disjoint rewrite. Branches read 1,945-2,099 commits "ahead" of `main` and could not merge. Fully recovered — 21 refs restored, 21/21 verified, ancestry back to 2-14 ahead — but only because the pre-rewrite commits happened to still be in a local object store. **No ref capture had been taken beforehand.** That was luck.

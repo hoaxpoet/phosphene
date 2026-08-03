@@ -6,6 +6,7 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
+| BUG-080 | P2 · **RESOLVED 2026-08-03 (`2b36c34d`)** | build / test-isolation | **A fresh worktree — and `main` itself — fails the engine suite because the gitignored-asset propagation chain is broken at two independent points.** `Scripts/link_fixtures.sh` copies gitignored-but-needed paths from the primary checkout into a new worktree. **Gap A: it does not cover the ML weights.** PUB.2 moved them out of git (`ml-weights-v1` Release asset), but `linked_rel` lists only `Tests/Fixtures` + the two docs image trees, **and** the trailing filter admits only `Tests/Fixtures/` paths or `\.(jpg\|jpeg\|png\|gif)$` — a `.bin` cannot pass even if the directory were added. 479 files never arrive; Weights held **4 / 1 / 1** entries against the primary's **176 / 162 / 147**. **Gap B, the deeper one: the primary checkout is not a complete source.** `PhospheneEngine/Tests/Fixtures/tempo/` (three licensed `.m4a` preview clips, gitignored at `.gitignore:63`) was **absent from the primary entirely** — the files existed only inside the `men-2a-kickoff-250b81` worktree. A script that links *from* the primary cannot supply what the primary lacks, so no worktree could ever obtain them and the primary would fail the same gate. Measured decay across three `closeout_evidence.sh` runs at commit `935d77d3`: **81 → 21 → (pending)** failing lines, each drop from restoring a file, never from changing code. `BeatThisFixturePresenceGate` (QR.3) caught Gap B loudly and correctly — that gate is working as designed. **Cost is misdiagnosis:** a fresh-worktree run reads as a regression in whatever increment is under test. Found at FTR.1 (2026-08-03), **not caused by it** — FTR.1 changed no runtime Swift. Worked around by hand: 479 weight symlinks, plus the three clips restored to the primary and linked onward **FIX (2026-08-03):** `link_fixtures.sh` rewritten around a `<path>\|<required>\|<regex>` manifest — weights added, filter widened (Gap A); a `required` flag makes an empty source tree a **hard error** and a new `--verify` mode checks source completeness without linking (Gap B); missing-on-disk files now warn instead of skipping silently. **A third instance surfaced during the fix — and it is NOT the same kind of finding.** `docs/VISUAL_REFERENCES` and `docs/diagnostics` hold 0 gitignored files in the primary. The reference images were **deliberately untracked at LFS.2/PUB.2** to stop the Git-LFS bill, and the LFS.3 rewrite then stripped them from reachable history; their absence *from git* is correct and intended. The defect is that `link_fixtures.sh` and the preset-session checklist were never updated to match — D-211's design assumes the images live on disk gitignored and propagate by symlink, and nothing re-established the on-disk copies or moved that job to a human. Kept `required=no` (making it fatal would fail every run today) but it now warns loudly. See follow-up below. **VALIDATED 2026-08-03:** full engine suite green in the FTR.1 worktree — XCTest `225 tests, 7 skipped, 0 failures`; swift-testing `1732 tests in 246 suites passed`. Fix `2b36c34d` |
 | BUG-071 | P1 · CLOSED wontfix (RETIRED, D-201, 2026-07-25) | preset.fidelity / sdf-geometry | **RESOLVED BY RETIREMENT — Fractal Fly-By deleted after 14 rounds (FLY.14). Instrument-proven ceiling:** whole-frame temporal coherence shows ~13 %/frame boiling, geometry teleports (diff-2/diff-1 = 1.12) — the fast scale-zoom through a self-similar Mandelbox reveals new fold structure every frame, incoherent by construction, not fixable by AA or steering in the 7 ms budget. See D-201. Original defect below (historical). **Fractal Fly-By live M7 FAILED (session `2026-07-23T19-27-48Z`, Cherub Rock):** "deeply glitchy, camera moves OUT not IN." Root causes (confirmed from artifacts + repro renders): (1) **descent direction inverted** — `q=(p+c)*zoom` with zoom increasing collapses features toward a vanishing point (recede); confirmed by a phase-0.08 vs 0.90 sweep (features shrink as phase grows) and by `features.csv` (accAudioTime 0→8.15 → phase 0→0.98 monotonic = one-way recede, never wrapped); (2) **severe shimmer/aliasing** — full-res Mandelbox fine detail + the high-frequency iridescent thin-film rims alias under motion (no AA; MetalFX unwired; the §A8 motion-coherence cap was never added; the whole-frame motion-gate spike metric doesn't catch high-freq shimmer); (3) **descent too slow** — 0.12 rate gave <1 octave in 78 s. Fix: invert to `q=(p+c)/zoom` (fall in), tame/detune the thin-film + distance-fade fine detail, raise the rate. |
 | BUG-070 | P2 | audio.capture / resource-management | **Fix landed 2026-07-12 (PUB.6), pending live validation** — a FAILED device-change tap reinstall left `_isCapturing=true` with zero callbacks: engine health detectors starved (SignalHealthMonitor.evaluate is sample-driven → deadTap never confirms) and the router's recovery restart blocked at the alreadyCapturing guard; only the app-layer poll-based stall card surfaced it. Fix: the catch now clears `_isCapturing` (recovery unblocked) and keeps the monitor as a diagnostic beacon; the false "create steps stopped the monitor" comment corrected. Residual OPEN half: the 3-queue lifecycle interleave (device-change reinstall vs silence-recovery vs user stop) stays unserialized — static-only evidence; restructuring the G1-validated (12/12) path without a reproduced artifact is the BUG-063 pattern. Existing breadcrumbs (per-step diagnostics + install generation) are the instrumentation; serialize only if a live session shows an interleave |
 | BUG-076 | P2 | dsp.beat | **Prep grid is window-position unstable on Bleed (Meshuggah) — a third of 30 s windows give a wrong tempo, and Spotify's preview lands on one.** CORRECTED 2026-07-30 after direct measurement (the original filing inferred a universal 3:2 mis-lock from a single session-log value; that was wrong). Measured across nine 30 s windows of the full track: six read ~115 BPM (correct — matches madmom 115.0, librosa 115.0, drums-stem 115.1), but three read 121.1 / 166.1 / 242.7 — a **2.11× spread**, including non-metrical values. `beatsPerBar` swings 2/3/4 on a 4/4 track and `barConfidence` sits at 0.14–0.64. **Control:** Billie Jean over the same windows is 116.9–117.3 with beatsPerBar 4 and barConfidence 1.00 throughout — so this is dense-transient-specific, not universal, and the existing confidence signal already flags it. The session's 174.6 was the preview excerpt landing in the unstable region. Evidence: `docs/diagnostics/BEATBENCH_BASELINE_2026-07-30.md`; reproduce with `BeatBench --audio <clip> --seconds 30`. Category-4 target for Phase DBN (a sequence decoder over the full activation timeline should not be excerpt-dependent); Phase FT removes the 30 s premise for local files |
@@ -32,6 +33,166 @@ Open and recently-resolved defects. Filed using `BUG_REPORT_TEMPLATE.md`. See `D
 ## Open
 
 ---
+
+### BUG-080 — Gitignored-asset propagation is broken at two points: fresh worktrees (and `main`) fail the engine suite (2026-08-03)
+
+**P2 · build / test-isolation · RESOLVED 2026-08-03 — fix `2b36c34d`.** Filed P3, **widened to P2** the same day when the second gap surfaced. Found at FTR.1; not caused by it.
+
+*Severity note:* P2 per `DEFECT_TAXONOMY.md` — "works for typical inputs but degrades noticeably for specific conditions." The verification harness passes in the one blessed checkout and fails everywhere else, including a fresh clone. No product impact; downgrade to P3 if the every-new-session tax is judged cosmetic.
+
+**Expected.** `swift test --package-path PhospheneEngine` passes in any checkout prepared per the documented flow — `git worktree add` followed by `Scripts/link_fixtures.sh`.
+
+**Actual.** Exit code 1. Two independent causes, discovered in sequence.
+
+### Gap A — `link_fixtures.sh` does not cover the ML weights
+
+PUB.2 moved the weights out of git (gitignored; shipped as the `ml-weights-v1` Release asset). `link_fixtures.sh` exists to bridge exactly that class of gap — its own header says *"Gitignored-but-needed paths that a fresh worktree would otherwise lack"* — but `linked_rel` covers only:
+
+```
+PhospheneEngine/Tests/Fixtures
+docs/VISUAL_REFERENCES
+docs/diagnostics
+```
+
+`PhospheneEngine/Sources/ML/Weights` is absent. The failure has two halves: the trailing filter would also reject the files.
+
+```
+| grep -E '^PhospheneEngine/Tests/Fixtures/|\.(jpg|jpeg|png|gif)$'
+```
+
+A `.bin` matches neither alternative, so adding the directory alone is insufficient.
+
+| Weights directory | Primary | FTR.1 worktree (before workaround) |
+|---|---|---|
+| `Sources/ML/Weights/` | 176 | 4 |
+| `.../beat_this/` | 162 | 1 |
+| `.../panns_mobilenetv1/` | 147 | 1 |
+
+479 gitignored files never arrive. Failures: `StemModelTests` (6), `StemSeparationPerformanceTests` (2), `WeightChecksumTests.test_completeness_{stem,beatThis,panns}` each reporting `onDisk → []`, `PANNsMobileNetV1Tests` `.tensorFileMissing("spectrogram_extractor_stft_conv_real_weight.bin")`, and the loveRehab 118-BPM port test.
+
+### Gap B — the primary checkout is not a complete source
+
+`PhospheneEngine/Tests/Fixtures/tempo/` — three licensed `.m4a` preview clips, gitignored at `.gitignore:63` ("Local audio fixtures for DSP.1 tempo capture (preview clips are licensed)") — **was absent from the primary checkout entirely**. The files existed only inside `.claude/worktrees/men-2a-kickoff-250b81/`, as real 1 MB files, presumably restored there by whichever session needed them.
+
+`link_fixtures.sh` links *from* the primary. It cannot supply what the primary lacks. So:
+
+- no worktree could ever obtain these fixtures, no matter how correctly prepared;
+- the primary checkout itself fails the same gate;
+- the script reports success (`linked N fixture(s)`) while propagating a hole.
+
+`BeatThisFixturePresenceGate` fired loudly with a path-and-instructions message — **that gate is working exactly as QR.3 designed it**, and it is the only reason this surfaced rather than silently disabling the BeatThis regression surface.
+
+Failures: `BeatThisFixturePresenceGate`, `BeatThisLayerMatch`, `LiveDriftValidation`, `BeatGridAccuracyDiagnostic — BUG-008`, `PreviewAudio content-hash + identity migration`. Several `LocalFilePlaybackProvider` concurrency tests (`routerChurn_…`, `deinitWhilePlaying_…`, `concurrentDoubleStart_…`) also failed at `0.001 s` immediately after tests that hung ~54 s on the missing audio — suspected cascade, not independent, but unconfirmed; BUG-078 is a real intermittent in that same area, so any that survive a green fixture run deserve their own look.
+
+### Root cause, stated generally
+
+`link_fixtures.sh` treats the primary checkout as an authoritative, complete source of gitignored material, and **nothing verifies that assumption**. The primary is simply whichever clone happened to receive the files. There is no manifest of required-but-gitignored paths, no provenance, and no check that the source has them before linking. Gap A is a stale allowlist; Gap B is the missing invariant underneath it.
+
+**Reproduction.**
+
+```
+git worktree add .claude/worktrees/<name> -b <branch> main
+cd .claude/worktrees/<name>
+Scripts/link_fixtures.sh
+swift test --package-path PhospheneEngine
+```
+
+**Evidence.** Three `Scripts/closeout_evidence.sh` runs, all at commit `935d77d3`, tree clean:
+
+| Run | Failing lines | State |
+|---|---|---|
+| `2026-08-03T13:54:40-0500` | 81 | before any workaround |
+| `2026-08-03T14:06:29-0500` | 81 | after `link_fixtures.sh` — **identical**, which is what proved the script does not cover Gap A |
+| `2026-08-03T14:15:24-0500` | 21 | after 479 weight symlinks — XCTest half reports `0 failures`; remainder is Gap B |
+
+Every reduction came from restoring a file. No code changed across any of the three runs.
+
+**Failure class.** `test-isolation`, with a `documentation-drift` component: `link_fixtures.sh`'s header claims to cover the gitignored set and no longer does.
+
+**Impact.** No shipped code path affected. The cost is **misdiagnosis** — a fresh-worktree run reads as a regression in whatever increment is under test, and `closeout_evidence.sh` honestly stamps `EVIDENCE: FAILURES PRESENT`, so a closeout stalls until someone traces it. With one worktree per session now the standing convention (D-212 process note), every new session pays this tax.
+
+**Proposed fix (NOT implemented here — this is the diagnosis increment).**
+
+1. Add `PhospheneEngine/Sources/ML/Weights` to `linked_rel` and widen the grep filter to admit it. (~2 lines; closes Gap A.)
+2. **Verify the source before linking.** Check the primary actually holds each required gitignored tree and fail loudly if not, mirroring `BeatThisFixturePresenceGate`'s philosophy — a script that silently propagates a hole is the same failure class the gate was written to kill. (Closes Gap B.)
+3. Consider a single manifest of required-but-gitignored paths, consumed by both `link_fixtures.sh` and the presence gates, so the two cannot drift apart again.
+
+Per the Defect Handling Protocol, diagnosis and fix are separate increments unless Matt explicitly approves collapsing them. **Matt approved collapsing them for this defect (2026-08-03, in chat), so the diagnosis, the fix (`2b36c34d`) and the validation below all sit in one increment.**
+
+**Verification criteria (written before the fix).**
+
+1. *Automated:* in a worktree created fresh and prepared with the patched script, `swift test --package-path PhospheneEngine` exits 0, with `WeightChecksumTests.test_completeness_{stem,beatThis,panns}` and the whole `BeatThisFixturePresenceGate` suite green.
+2. *Automated:* for every path in `linked_rel`, the count of gitignored files in the primary equals the count of links created in the worktree (479 weights + 3 tempo clips at time of filing).
+3. *Automated:* with a required tree deliberately removed from the primary, `link_fixtures.sh` **fails** rather than reporting success — the Gap B regression test.
+4. *Manual:* `Scripts/closeout_evidence.sh` in that worktree footers `engine=0` and does not print `EVIDENCE: FAILURES PRESENT`.
+
+**Workaround applied (2026-08-03, not a fix).** 479 weight files symlinked into the FTR.1 worktree with absolute targets into the primary; the three tempo clips copied from the `men-2a-kickoff-250b81` worktree into the primary (restoring the canonical source) and symlinked onward. Both trees now report 72 fixture entries.
+
+**FIX LANDED (2026-08-03, same day, pending validation).** `Scripts/link_fixtures.sh` rewritten around a declarative manifest:
+
+```
+<path>|<required>|<match-regex>
+  PhospheneEngine/Tests/Fixtures      | yes | .
+  PhospheneEngine/Sources/ML/Weights  | yes | .
+  docs/VISUAL_REFERENCES              | no  | \.(jpg|jpeg|png|gif)$
+  docs/diagnostics                    | no  | \.(jpg|jpeg|png|gif)$
+```
+
+- **Gap A closed** — weights are in the manifest, and the match filter is per-path rather than one global grep, so `.bin` passes where it structurally could not before.
+- **Gap B closed** — `required=yes` makes an empty source tree a **hard error with a path-and-instructions message**, not a silent skip. The script can no longer report success while propagating a hole.
+- **New `--verify` mode** — checks the primary is a complete source and exits non-zero if not, linking nothing. Runnable from the primary itself, so it works as a standalone gate (CI-ready).
+- **Missing-on-disk files warn and set a non-zero exit** instead of `continue`-ing in silence (the old line 54).
+
+Verified by hand on the primary at time of writing:
+
+| Check | Result |
+|---|---|
+| `--verify` on a complete primary | exit 0; reports 3 fixture + 479 weight files |
+| **Gap B regression:** required tree hidden, then `--verify` | exit 1, loud error naming the path |
+| link mode run from the primary | exit 0, correct no-op |
+| `bash -n` syntax check | clean |
+
+**RESOLVED 2026-08-03 — fix commit `2b36c34d`.**
+
+Closing gate: `swift test --package-path PhospheneEngine` run in `.claude/worktrees/ftr1` at commit `935d77d3`, tree clean.
+
+```
+Executed 225 tests, with 7 tests skipped and 0 failures (0 unexpected) in 69.842 seconds
+✔ Test run with 1732 tests in 246 suites passed after 211.083 seconds.
+```
+
+Both halves green — the first fully green engine run on this material. Every failure named in Gap A and Gap B now passes: `WeightChecksumTests.test_completeness_{stem,beatThis,panns}`, `PANNsMobileNetV1Tests`, `StemModelTests`, the whole `BeatThisFixturePresenceGate` suite, `BeatThisLayerMatch`, `LiveDriftValidation`, `BeatGridAccuracyDiagnostic`, and the loveRehab 118-BPM port test.
+
+**The `LocalFilePlaybackProvider` concurrency failures were cascade, as suspected.** `routerChurn_…`, `deinitWhilePlaying_…` and `concurrentDoubleStart_…` all pass once the audio fixtures exist. Nothing is owed to BUG-078 from this filing — it remains open on its own evidence.
+
+**The three perf tests also passed cold**, closing the FTR.1 closeout's §2 caveat. `PostProcessChainTests.test_fullChain_under2ms_at1080p`, `RayMarchPipelineTests.test_fullPipeline_under8ms_at1080p` and `StemSeparationPerformanceTests.test_separate_1SecondAudio_performance` failed at `14:27:48` and passed at `14:15:24` on the identical commit with no code change; they pass here too. Confirmed flake — the timing-sensitivity class `DEFECT_TAXONOMY.md` already names P2 — not a regression.
+
+**Verification criteria, scored honestly against what was actually run.**
+
+| # | Criterion (written before the fix) | Result |
+|---|---|---|
+| 1 | Fresh worktree prepared with the patched script → suite exits 0 | **Green, with a caveat.** The suite is green, but that worktree ran the *pre-fix* script against an environment repaired by hand — its output still prints the old `link_fixtures: 0 fixture(s) linked` message. What is proven is that a complete environment makes the suite pass, i.e. the diagnosis was right and nothing else was wrong. What is **not** yet proven is that the patched script is what produces that completeness. |
+| 2 | Per-path link count in the worktree equals the gitignored count in the primary | Met by hand (479 weights, 3 clips, 72 fixture entries in both trees); not re-measured through the patched script. |
+| 3 | Required tree removed from the primary → script **fails** rather than reporting success | **Fully met.** Exercised during the fix: exit 1 with a loud error naming the path. This is the Gap B invariant and it holds. |
+| 4 | `closeout_evidence.sh` footers `engine=0`, no `EVIDENCE: FAILURES PRESENT` | Met by the equivalent direct `swift test` run above. |
+
+**Closing on the caveat.** Criteria 1 and 2 close for real at the first worktree created from `main` *after* `2b36c34d` merges — the first genuinely fresh preparation by the patched script. That is a five-minute check, not new work: `git worktree add`, `Scripts/link_fixtures.sh`, compare counts. **Append the result here when it happens**; until then this entry is resolved on a strong-but-indirect validation, and says so.
+
+**Still open, tracked separately.** The **third instance** — `docs/VISUAL_REFERENCES` and `docs/diagnostics` empty in the primary — is not fixed by `2b36c34d`; the script now only warns about it. It is **not a regression to be undone**: the images were untracked on purpose at LFS.2 to stop the LFS bill and must stay out of history. What is owed is a decision about the *on-disk* half — re-curate locally (billing-neutral, `.gitignore:101-108` still excludes them) or retire the image-linking half and make the READMEs the authority. See the corrected THIRD INSTANCE note above.
+
+
+**THIRD INSTANCE, found by the fix's own `--verify` (2026-08-03) — and it is a different kind of finding from Gaps A and B.** `docs/VISUAL_REFERENCES` and `docs/diagnostics` report **0 gitignored files in the primary**.
+
+**CORRECTED 2026-08-03 (Matt).** The first draft of this note read as though the images had gone missing. They did not. **They were deliberately untracked at LFS.2 / PUB.2 to stop the Git-LFS bill** — the "stop the bleeding" change recorded in `PUBLISHING.md` §1 and `RUNBOOK.md` — and the LFS.3 history rewrite then removed them from reachable history. Verified here: **zero image blobs across all 2,348 reachable commits**, and `git lfs` is no longer installed on this machine. So their absence *from git* is correct, intended, and must stay that way.
+
+**What is actually defective is the half of the system nobody updated to match.** D-211 extended `link_fixtures.sh` to propagate these images precisely *because* they are gitignored — the design is: images live on disk, never in history, and travel worktree-to-worktree by symlink. LFS.2 removed them from git and nothing re-established the on-disk copies or reassigned that job to a human. `.gitignore:101-108` still excludes every `.jpg/.jpeg/.png/.gif` under both trees, so **local on-disk copies are billing-neutral** — the machinery is correct and costs nothing; the larder is simply empty. The consequence D-211 named, *"silently degrades preset work rather than failing,"* has therefore been the standing condition everywhere rather than a worktree-only risk, and `docs/VISUAL_REFERENCES/<preset>/` holds READMEs describing images nobody can see.
+
+**Restore path.** Not recoverable from the repo — re-curation from the sources each README cites is the only route back. Left `required=no` because promoting it would fail every run today, but it now warns loudly on every invocation.
+
+**Open decision (narrower than first stated).** Either keep the `required=no` warning and re-curate locally when a preset session needs images, or drop both trees from the manifest entirely and rewrite the preset-session checklist's "look at the images" step to point at the READMEs as the authority. Not urgent, and **not** a reason to put images back under version control. Bears on FTR.2's reference curation, which per D-212 wants a low-fidelity set rather than the painterly one that left with Goldengrove.
+
+
+**Related.** D-211 (the images half of this same gap, and the worktree-propagation reasoning), PUB.2 (weights → Release asset), QR.3 (`BeatThisFixturePresenceGate` — the gate that caught Gap B), D-212 process note (one worktree per session), BUG-078 (the concurrency intermittent the cascade failures may mask), BUG-079 (the other build-level gate that cannot currently run).
 
 ### BUG-071 — Fractal Fly-By: descent direction inverted + severe motion aliasing (2026-07-23)
 
