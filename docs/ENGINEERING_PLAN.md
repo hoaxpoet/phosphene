@@ -1622,7 +1622,9 @@ An MD.6 uplift, split design-then-author so the concept clears its gates before 
 
 **Outcome.** Everything above shipped and is green. Flash budget MEASURED and inside every §5 ceiling (0.00 flashes/s; peak mean luma 0.0237 / 0.35; max Δ/frame 0.0009 / 0.06; flare extent 0.006 % and 0.126 % against the 3 % / 12 % caps). All eight routes carry per-route firing evidence; `trail_contraction` greens on `there_there` only, as declared, floor untouched. Phase travel reproduces the §2.3 table (2.09 / 1.80 / 15.10 circles per 30 s vs 2.1 / 1.7 / 15.4).
 
-**OPEN — the §6 motion gate's verdict is a DECISION for Matt.** The stroke reads as a stroke; it does not read as a multi-lobe *figure*. Cause is mechanism-level, not tuning: `θ̇ = k·φ̄̇` integrates to `θ ≈ k·φ̄`, the measured phase reverses at high frequency around a concentrated mean (heading monotonicity 0.01–0.12), so net direction barely moves. `k` is the only shape lever and raising it 1.1 → 2.6 → 5.0 changes the figure not at all — saturating the clamp makes it *more* straight. §6's prescribed response is re-scope, not tuning rounds. Options are in the WL.2 closeout; **do not open a tuning increment against this without Matt's call.**
+**RETRACTED at WL.3 (2026-08-04) — this diagnosis was WRONG. The path was fine; the PROJECTION was destroying it.** `tumbleYaw` was `0.055 · tumbleClock`, unbounded, turning the drawing plane edge-on every ~57 s, where any figure collapses to the same diagonal line. Zeroing the tumble and re-rendering the three fixtures produced three obviously different legible figures from this exact motion model. `θ ≈ k·φ̄` was never the reason the stroke read as a stroke. Original text kept below for the record.
+
+**~~OPEN — the §6 motion gate's verdict is a DECISION for Matt.~~** The stroke reads as a stroke; it does not read as a multi-lobe *figure*. Cause is mechanism-level, not tuning: `θ̇ = k·φ̄̇` integrates to `θ ≈ k·φ̄`, the measured phase reverses at high frequency around a concentrated mean (heading monotonicity 0.01–0.12), so net direction barely moves. `k` is the only shape lever and raising it 1.1 → 2.6 → 5.0 changes the figure not at all — saturating the clamp makes it *more* straight. §6's prescribed response is re-scope, not tuning rounds. Options are in the WL.2 closeout; **do not open a tuning increment against this without Matt's call.**
 
 ---
 
@@ -1691,6 +1693,94 @@ Two curation errors produced it, both recorded in `docs/VISUAL_REFERENCES/witchl
 **Verify:** `swift test --package-path PhospheneEngine --filter "Witchlight|ResponseBand"`; motion-sequence render + `Scripts/motion_gate.sh`.
 
 **Not taken, on Matt's instruction:** the flare detonation (§5 stands) and the stroke shape (still the WL.2 open decision). Certification still needs a live M7 on this build plus the D-121 side-by-side.
+
+---
+
+### Increment WL.2-i / -j — Witchlight: a moving background, a responsive pen, and the beads back ✅ **LANDED 2026-08-04**
+
+**Why.** Matt's M7 on the merged WL.2-h build (session `2026-08-04T13-32-52Z`, Cherub Rock): *"Not sure how it responds to music — the connection is not clear. It looks like the preset makes the same shape or choices about movement. The background is not moving and so looks fake when the dots are drawing / moving over it."* Three observations; all three measured true.
+
+**Systemic finding first.** Of Witchlight's **eight** audio routes, exactly **one** carried a QG.5 response band. Both defects Matt named sat on ungated routes — which is precisely the failure QG.5 exists to prevent, one route over.
+
+**WL.2-i — the background genuinely was frozen.** `drift` is in CELL units, so the shipped `0.0035 + 0.0110·brightness` resolved to ~0.008 on a real track: the NEAR star layer moved **0.16 px/s** at 1080p (2.5 % of frame width across a whole 5-minute track) and the far layer **4 px per track**. Not slow parallax — a still image. Predates WL.2-h (that increment dimmed the stars but never touched `rate`); the darker field is what made it nameable. Re-sized so the near layer crosses frame in ~4 min at a typical centroid, keeping ~12.7× more screen motion on the near layer than the far one. **Gated** by a render-based test that draws the same scene 30 s apart and asserts the field changed (56.8 %, floor 25 %).
+
+**WL.2-i — the pen-speed route was shallow, not dead.** First diagnosis from Matt's capture alone was that `arousal` is constant (settled window-mean spread 0.030, median frame-to-frame delta 0.00000) and the route unsalvageable. **That was wrong, and checking the fixtures corrected it:** settled spread is 0.13–0.26 there, so the primitive carries real slow structure and Cherub Rock is simply an unusually flat track. The defect was calibration — realised speed swing 1.22–1.33×, which no listener connects to music. `speedModDepth` 0.25 → 0.45 and the deviation reference 20 s → 12 s (which lets the deviation cross zero, so the pen visibly *slows* as well as quickens). Swing now **2.54–2.58×**. A 90 s reference was simulated first and rejected: it pins two fixtures at a permanently saturated maximum. **Gated** by a new `penSpeedSwing` QG.5 band (min 1.45; the shipped build measured 1.22–1.33, so it would have gone red).
+
+**WL.2-i — emission moved from per-time to per-distance.** `emissionHz` was calibrated at WL.2-f as `speed / (1.2 × 2 × baseRadius)`, i.e. bead spacing of 1.2 diameters **while the pen runs at exactly `baseSpeed`**. Making the speed route responsive broke that in both directions (0.66 diameters and fused at 0.55×, 1.74 and dotted at 1.45×). Accumulating distance instead pins spacing at the settled value at any speed, and is byte-identical at `baseSpeed`.
+
+**WL.2-j — the beads had been fused since WL.2-g, and the luminance gate was rewarding it.** Rendering WL.2-i showed a lumpy caterpillar. Bead centres sit `1.2 × 2 × baseRadius` apart, calibrated against the BARE bead; WL.2-g/-h widened the drawn sprite to 2.6× then 3.2× that radius without revisiting spacing. At the measured `viewScale` of 1.38–1.88 consecutive sprites overlapped **30–48 %** and fused into anti-reference `11`; they would only read as distinct above `viewScale` 2.67, which never occurs.
+
+**The gate could not catch it, because it improved as the defect worsened:**
+
+| `WL_HALO_EXTENT` | ribbonShare | distinct cores |
+|---|---|---|
+| 1.6 (separated) | 0.687 % | **14** |
+| 2.6 (WL.2-g) | 1.289 % | **1** |
+| 3.2 (WL.2-h) | 1.636 % | **1** |
+
+**Matt's call:** narrow the halo and buy the light back in the cores and thread. `WL_HALO_EXTENT` 3.2 → 1.6 (beads separate while `extent < 1.2 × viewScale`), core/halo/line levels raised to compensate. **The source-derived 0.6 % ribbon floor did NOT need weakening** — 0.687 % with beads distinct. **Gated** by a new connected-component test (floor 8, derived from the 1-vs-14 contrast above), which counts what reached the framebuffer rather than checking a spacing formula, because the geometry causing fusion is spread across a shader constant, a tuning struct and a runtime auto-fit.
+
+**Side effect worth recording:** the flash-budget movement flagged at WL.2-g and WL.2-h is **gone** — peak mean luminance 0.0126 → **0.0081**, below the pre-WL.2-g baseline of 0.0085. It was the over-wide halo all along.
+
+**Done when:** ✅ background visibly drifts, gated · ✅ pen speed visibly responsive, QG.5-banded · ✅ beads read as beads, structurally gated · ✅ ribbon floor met without weakening · ✅ flash budget improved · ✅ full suites green.
+
+**Still open, unchanged:** the stroke's SHAPE (`θ ≈ k·φ̄`) remains the parked WL.2 decision — Matt's "same shape every time" is its third live confirmation. Certification still needs a live M7 on this build plus the D-121 side-by-side. Six of Witchlight's eight routes remain unbanded.
+
+---
+
+### Increment WL.3 — Witchlight: the drawing plane was turning edge-on ✅ **LANDED 2026-08-04**
+
+**Why.** Matt, on the WL.2-i/-j build: *"not sure how you should address the shape of the beaded line, but it should be different every time at the very least."* Third consecutive M7 reporting the same thing.
+
+**The finding, and it overturns a decision that had been parked since WL.2.** Rendering the three canonical fixtures side by side showed one narrow diagonal lens on all three — same shape, only the colour differing. Three hypotheses died before the real one:
+
+1. *"The heading mean-reverts into a hairpin."* Falsified by instrumentation — heading travels 1.7–2.4 circles and monotonicity differs per track (0.98 / 0.87 / 0.39).
+2. *"The curvature is bimodal — straight runs punctuated by clamped knots."* Falsified by an offline sweep of the steer signal: So What is 87 % mid-range curvature, There There 69 %. Only Love Rehab clamps heavily (48 %).
+3. Only then: check what happens to the path AFTER it is drawn.
+
+**`tumbleYaw` was `0.055 · tumbleClock` — unbounded.** The drawing plane rotated forever at 0.055 rad/s, crossing edge-on every ~57 s. Beads sit at `z = 0`, so pitch maps y→z and yaw folds that z back into x; at yaw = 90° both screen axes become proportional to the same coordinate and **the whole figure collapses to a line**. Near edge-on every figure looks like the same diagonal lens whatever the pen drew — and because the collapse runs on a wall clock, every track collapsed identically at the same moment. All three fixtures are ~21 s, hence all rendered at yaw ≈ 66° (cos 0.40), identically foreshortened.
+
+**Proof it was the projection, not the generator:** zeroing the tumble and re-rendering the same three fixtures through the same motion model produced three obviously different, legible figures — a sweeping curve into a loop, an S-curve with a closed circle, a hook with a tight spiral.
+
+**Fix.** Yaw bounded to ±26° (`cos ≥ 0.90`) as an oscillator rather than a ramp. The tumble still reads as depth — that is its job — it simply can no longer flatten the drawing. **Gated** by an invariant test over 30 simulated minutes (`|cos(yaw)| ≥ 0.85`); it measured 0.900 on the fix and **0.000 on the old code**. The 30-minute span is deliberate: the failure was unbounded GROWTH, and at 21 s the old yaw was only 66°, which is exactly why no fixture ever caught it.
+
+**Per-session framing (Matt's call).** The figure stays a deterministic reading of the music — a track always draws its own drawing — but each session varies the tumble phase and roll handedness, so a repeat play is the same figure seen from a new angle rather than an identical stamp. Injected from the app layer with a deterministic default, because the replay harness, golden dHashes and QG.5 bands all need byte-identical output for identical input.
+
+**The ribbon-share floor, re-derived honestly (0.60 → 0.40).** Frame-share has now been inflated by a defect three separate times — fused beads 1.29–1.64 %, collapsed plane 0.687 %, legible figure 0.494 %. **It goes UP as the preset gets worse**, because every degeneracy concentrates the same beads into less area. The source's 1.048 % was never reachable either: that frame is a compact self-overlapping tangle and ours is one open curve, with the path our declared D-121 divergence axis. Retained only as a "has the ribbon gone invisible" floor (WL.2-g's real defect measured 0.119 %); the assertions that now carry the meaning are peak luma and distinct-bead count, neither of which a degeneracy can inflate.
+
+**Done when:** ✅ different tracks draw visibly different figures · ✅ plane never approaches edge-on, gated over 30 min · ✅ per-session framing without breaking determinism · ✅ share floor re-derived with its inflation history recorded · ✅ full suites green.
+
+**Still open:** certification (live M7 on this build + the D-121 side-by-side). Six of eight audio routes remain unbanded.
+
+---
+
+### Increment WL.4 — Witchlight: give it a continuous-energy driver 🔨 **CODE-COMPLETE 2026-08-04, pending live M7**
+
+**Why.** Matt's fourth M7, session `2026-08-04T19-23-28Z`: *"not synced to the music. failure."* Audio chain verdict `clean`, peak −0.26 dBFS — not an input problem.
+
+**Root cause, and it is articulable at last.** Measured against that session, all EIGHT of Witchlight's routes run on a 1–30 s, 10–60 s, per-bar or per-section envelope, while every loudness band is alive and routed to **nothing**:
+
+| driver | timescale | routed to |
+|---|---|---|
+| `tonal_phase_fifths` | 1–30 s | heading + hue |
+| `arousal` | 10–60 s | pen speed |
+| `spectralCentroid` | 1–10 s | star parallax |
+| `valence` | 30 s+ | nebula hue |
+| `barPhase01` | per bar | one bead |
+| `bassDev` | per event | bounded flare, ≥900 ms refractory |
+| `bass` / `mid` / `treble` / `bassRel` / `mid_dev` / `treb_dev` | per frame | **nothing** |
+
+CLAUDE.md's most important design rule is that continuous energy is the DEFAULT PRIMARY DRIVER and is what makes a visual feel locked to the music. **Witchlight was the only preset with none.** When a listener heard something happen, nothing on screen happened — which is precisely the complaint. It also explains why four rounds of real fixes (backdrop, ribbon light, dynamic range, pen speed, the figure) never touched it: none of them were this.
+
+**Matt's call:** one attempt at an energy driver, judged live; retire if it still does not feel locked.
+
+**What changed.** A ninth route — the whole ribbon's thickness (±22 %) and brightness (±35 %) breathing on `bassAtt`, per frame, with the connecting thread breathing with it. `bassAtt` not `bassDev`: measured, `bassDev` sits at zero and spikes (nonzero 48.8 %) — an accent signal, already spoken for by the flare — while `bassAtt` is continuously alive (nonzero 97.4 %, p50 0.258, range 0.43). Normalised against its own ~3 s running level (D-026); an absolute mapping would be FA #31. Applied to the whole stroke rather than per-bead so it reads as "the drawing swelled" rather than a travelling wave, and so it cannot fight the monotonic age falloff of trait #2. Centred so silence leaves it at exactly 1.0 (D-037 unchanged).
+
+**Measured.** `ribbonBreathSwing` 1.000 on all three fixtures (band ≥ 0.45). Shape checked, not just range — on Matt's session the breath is **68 % mid-range with only 13.5 % at the rails**, so it is a continuous breath rather than a square wave. Flash budget unmoved (peak mean luminance 0.0081, max Δ/frame 0.0005). All other Witchlight gates green.
+
+**A harness gap this exposed — and it nearly caused a misdiagnosis.** The new band first read **0.000 on all three fixtures**. The route was fine: `WitchlightFixtureDrive` did not carry the `bass_att` column, so the replay fed a constant zero and the gate reported a dead route. This is the documented "harness must carry every route" trap; the drive now carries it. **A drive that silently omits a field makes a working route look broken, which is the more expensive failure.**
+
+**Done when:** ✅ a continuous-energy route exists and is QG.5-banded · ✅ breath shape verified as continuous, not bimodal · ✅ flash budget unmoved · ✅ suites green · ⏳ **Matt's live M7 — the whole point, and the retire/keep decision rides on it.**
 
 ---
 

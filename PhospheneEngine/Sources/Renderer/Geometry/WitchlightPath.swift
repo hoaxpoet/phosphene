@@ -60,7 +60,7 @@ public final class WitchlightPath: AudioResponseMetrics {
     private var phaseSin: Float = 0
     private var phaseCos: Float = 1
     private var previousPhase: Float = 0
-    private var phaseRate: Float = 0
+    var phaseRate: Float = 0
     /// Smoothed harmonic phase φ̄, radians. Also the hue source (§3.4).
     public var smoothedPhase: Float { atan2(phaseSin, phaseCos) }
 
@@ -79,10 +79,10 @@ public final class WitchlightPath: AudioResponseMetrics {
     }
 
     // Turn detection.
-    private var turnSign: Float = 0
-    private var turnCandidateSign: Float = 0
-    private var turnCandidateAge: Float = 0
-    private var turnCandidateBeadIndex: Int?
+    var turnSign: Float = 0
+    var turnCandidateSign: Float = 0
+    var turnCandidateAge: Float = 0
+    var turnCandidateBeadIndex: Int?
     var hueTurnOffset: Float = 0
     /// Confirmed turns since `reset()` — the §3.2 chord-change event count.
     public internal(set) var turnCount: Int = 0
@@ -122,11 +122,23 @@ public final class WitchlightPath: AudioResponseMetrics {
     var rmsRadius: Float = 0.4
 
     // Plane tumble.
-    private var tumbleClock: Float = 0
-    public var tumbleYaw: Float { 0.055 * tumbleClock }
-    public var tumblePitch: Float { 0.45 * sin(0.041 * tumbleClock) }
-    public var tumbleRoll: Float { 0.19 * sin(0.027 * tumbleClock + 1.1) }
-
+    // `internal`, not `private`: the tumble lives in WitchlightPath+Tumble.swift, and a
+    // Swift extension in a second file cannot reach file-private state (same reason as
+    // the +Events members).
+    var tumbleClock: Float = 0
+    /// Per-session framing: a phase offset on the tumble oscillators and a roll handedness.
+    /// The FIGURE stays a deterministic reading of the music — the same track always draws the
+    /// same drawing — but each session views it from a different angle and chirality, so a
+    /// repeat play reads as the same figure seen anew rather than an identical stamp. Matt's
+    /// call over "same figure exactly" and "different every play" (2026-08-04).
+    ///
+    /// Injected rather than randomised INSIDE the path, and defaulting to zero, because the
+    /// replay harness, the golden dHashes and the QG.5 bands all require byte-identical output
+    /// for identical input. A `Math.random()` here would make every gate in the suite
+    /// non-deterministic to buy a visual property no gate is measuring. The app layer sets it
+    /// once per session; every test therefore renders the canonical framing.
+    var sessionPhase: Float = 0
+    var tumbleHandedness: Float = 1
     /// Current visible age window after section contraction.
     public internal(set) var trailWindow: Float = 30
 
@@ -146,6 +158,19 @@ public final class WitchlightPath: AudioResponseMetrics {
     /// ∫|θ̇| dt — how far the PEN's heading actually turned, radians. `phaseTravel × k`
     /// before clamping; the gap between them is what the clamp removed.
     public private(set) var headingTravel: Float = 0
+    /// WL.4 — the per-frame energy breath, 0…1 centred 0.5. Lives here rather than in
+    /// `WitchlightStroke` so every audio→state mapping is in one place and the QG.5 metrics
+    /// seam (which is on this type) can gate it.
+    public internal(set) var energyBreath: Float = 0.5
+    var breathSlow: Float = 0
+    var breathSpread: Float = 0.08
+    /// Extremes seen this run — the `ribbonBreathSwing` evidence.
+    var breathMin: Float = .greatestFiniteMagnitude
+    var breathMax: Float = 0
+    /// Slowest and fastest pen speed seen this run — the QG.5 `penSpeedSwing` evidence.
+    /// `internal`, not `private`, so the metric can live in `WitchlightPath+Metrics.swift`.
+    var speedMin: Float = .greatestFiniteMagnitude
+    var speedMax: Float = 0
     /// Net signed heading change. `|headingNet| / headingTravel` near 1 means the pen turned
     /// one way the whole time — the "degenerates to a circle" state design §3.1(b) warns
     /// about when the clamp saturates. Near 0 means it reversed, which is a figure.
@@ -153,27 +178,6 @@ public final class WitchlightPath: AudioResponseMetrics {
     public var headingMonotonicity: Float {
         headingTravel > 1e-4 ? abs(headingNet) / headingTravel : 0
     }
-    // MARK: - AudioResponseMetrics (QG.5)
-
-    /// Turns of pen heading per trail window — the quantity that decides whether the
-    /// stroke reads as a figure or as an arc.
-    ///
-    /// Normalised per trail window rather than reported as a raw total, because fixtures
-    /// differ in length and a raw total would make the band depend on fixture duration
-    /// instead of on the preset. Measured from the WL.2-a probe renders: legible figures
-    /// landed at 1.9–2.8 turns; the shipped fixed gain produces 0.20–0.73 and draws an
-    /// arc on every fixture.
-    public func responseMetric(_ name: String) -> Double? {
-        switch name {
-        case "headingTurnsPerTrail":
-            guard elapsedSeconds > 0.01 else { return nil }
-            let perSecond = Double(headingTravel) / elapsedSeconds
-            return perSecond * Double(tuning.trailSeconds) / (2 * .pi)
-        default:
-            return nil
-        }
-    }
-
     public var clampedFraction: Float {
         frameCount > 0 ? Float(clampedFrameCount) / Float(frameCount) : 0
     }
@@ -195,6 +199,15 @@ public final class WitchlightPath: AudioResponseMetrics {
     /// `resetBeatTrackingState` precedent is load-bearing for the same reason: a stale φ̄
     /// or `previousBarPhase` across a track boundary lays down a wrong-coloured or
     /// spuriously-promoted first bead.
+    /// Set the per-session framing. `fraction` is any value in 0…1 — the app passes one
+    /// value per session, tests leave it at the default so output stays deterministic.
+    /// Call BEFORE `reset()`, or after: it is independent of the path state.
+    public func setSessionFraming(_ fraction: Float) {
+        let frac = fraction - fraction.rounded(.down)
+        sessionPhase = frac * 2 * .pi
+        tumbleHandedness = frac < 0.5 ? 1 : -1
+    }
+
     public func reset() {
         beads.removeAll(keepingCapacity: true)
         heading = 0; penX = 0; penY = 0; emitAccumulator = 0
@@ -203,6 +216,9 @@ public final class WitchlightPath: AudioResponseMetrics {
         turnSign = 0; turnCandidateSign = 0; turnCandidateAge = 0
         turnCandidateBeadIndex = nil; hueTurnOffset = 0; turnCount = 0
         arousalSlow = 0; arousalSpread = 0.15
+        breathSlow = 0; breathSpread = 0.08
+        energyBreath = 0.5
+        breathMin = .greatestFiniteMagnitude; breathMax = 0
         bassDevSlow = 0; flareRefractoryRemaining = 0
         flareGoal = 0; flareHold = 0; flareIntensity = 0; flareCount = 0
         previousBarPhase = 0; promoteNextBead = false; promotionCount = 0
@@ -212,6 +228,7 @@ public final class WitchlightPath: AudioResponseMetrics {
         tumbleClock = 0
         trailWindow = tuning.trailSeconds
         frameCount = 0; clampedFrameCount = 0; phaseTravel = 0; headingTravel = 0; headingNet = 0
+        speedMin = .greatestFiniteMagnitude; speedMax = 0
         elapsedSeconds = 0
         deviationScale = 0.3
     }
@@ -245,6 +262,7 @@ public final class WitchlightPath: AudioResponseMetrics {
         let silent = stemTotal <= 0 && mixEnergy <= 0
 
         advanceHarmonicPhase(dt: dt, features: features)
+        updateEnergyBreath(features: features, silentNow: silent)
         let speed = advancePen(dt: dt, features: features, silent: silent)
         advanceTurnDetection(dt: dt, silent: silent)
         advanceFlare(dt: dt, features: features)
@@ -285,12 +303,25 @@ public final class WitchlightPath: AudioResponseMetrics {
     private func advancePen(dt: Float, features: FeatureVector, silent: Bool) -> Float {
         // Arousal against its own running spread — the per-track normalization the
         // measured 0.44–1.57 cross-capture range demands (§2.1).
-        let slowAlpha = dt / (20.0 + dt)
+        //
+        // WL.2-i — 20 s → 12 s. Matt's M7: "it looks like the preset makes the same choices
+        // about movement." Measured on his capture, the pen's speed varied by 13 % over the
+        // whole track, and every sample sat ABOVE the base speed (norm +0.13…+0.64): the pen
+        // never slowed down, it only ran fast and slightly faster. A 12 s reference lets the
+        // deviation cross zero (norm −0.05…+0.55), so the stroke visibly slows as well as
+        // quickens — which is what makes the coupling readable rather than merely present.
+        //
+        // Deliberately NOT slower. A 90 s reference was simulated first, on the theory that a
+        // 20 s window chases the 10–60 s structure it should be measuring against; it makes
+        // things worse, pinning two of the three fixtures at a permanently saturated +1 (0 %
+        // swing) because the reference never catches up from the warm-up ramp.
+        let slowAlpha = dt / (12.0 + dt)
         arousalSlow += (features.arousal - arousalSlow) * slowAlpha
         arousalSpread += (abs(features.arousal - arousalSlow) - arousalSpread) * slowAlpha
         let arousalNorm = max(-1, min(1, (features.arousal - arousalSlow) / (2 * max(arousalSpread, 0.05))))
 
         let speed = tuning.baseSpeed * (1 + tuning.speedModDepth * arousalNorm)
+        if !silent { speedMin = min(speedMin, speed); speedMax = max(speedMax, speed) }
         // ω_max derived from the speed so the ≥ 8 %-of-frame-height turning-radius bound
         // holds exactly at every speed, rather than only at the nominal one.
         let omegaMax = speed / max(tuning.minTurnRadius, 1e-4)
@@ -331,29 +362,7 @@ public final class WitchlightPath: AudioResponseMetrics {
 
     // MARK: - Turn detection (the chord-change colour boundary)
 
-    private func advanceTurnDetection(dt: Float, silent: Bool) {
-        guard !silent else { turnCandidateAge = 0; return }
-        let sign: Float = phaseRate > 0.02 ? 1 : (phaseRate < -0.02 ? -1 : 0)
-        guard sign != 0 else { turnCandidateAge = 0; return }
-        if sign != turnSign {
-            if sign == turnCandidateSign {
-                turnCandidateAge += dt
-                if turnCandidateAge >= tuning.turnConfirmSeconds {
-                    confirmTurn(newSign: sign)
-                }
-            } else {
-                turnCandidateSign = sign
-                turnCandidateAge = 0
-                // Remember the apex so the hue step lands where the stroke actually
-                // turned, not where the reversal was confirmed 0.25 s later.
-                turnCandidateBeadIndex = beads.count
-            }
-        } else {
-            turnCandidateAge = 0
-        }
-    }
-
-    private func confirmTurn(newSign: Float) {
+    func confirmTurn(newSign: Float) {
         turnSign = newSign
         turnCandidateAge = 0
         turnCount += 1

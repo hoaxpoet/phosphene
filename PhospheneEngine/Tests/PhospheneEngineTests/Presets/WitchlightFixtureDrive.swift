@@ -73,6 +73,12 @@ enum WitchlightFixtureDrive {
         let centroid = column("spectralCentroid"), flux = column("spectralFlux")
         let valence = column("valence"), arousal = column("arousal")
         let bassRel = column("bassRel"), bassDev = column("bassDev")
+        // WL.4 — `bass_att` drives the ribbon breath. Added when the new QG.5 band read
+        // 0.000 on all three fixtures: the route was fine, the DRIVE did not carry the
+        // column, so the replay fed a constant zero and the gate reported a dead route.
+        // A drive that silently omits a field makes a working route look broken, which is
+        // the more expensive failure — check the mapping before diagnosing the preset.
+        let bassAtt = column("bass_att")
         let barPermille = column("barPhase01_permille")
         let beatPhase = column("beatPhase01")
         let fifths = column("tonal_phase_fifths"), thirds = column("tonal_phase_thirds")
@@ -90,6 +96,7 @@ enum WitchlightFixtureDrive {
             f.spectralCentroid = centroid[i]; f.spectralFlux = flux[i]
             f.valence = valence[i]; f.arousal = arousal[i]
             f.bassRel = bassRel[i]; f.bassDev = bassDev[i]
+            f.bassAtt = bassAtt[i]
             f.barPhase01 = barPermille[i] * 0.001
             f.beatPhase01 = beatPhase[i]
             f.tonalPhaseFifths = fifths[i]; f.tonalPhaseThirds = thirds[i]
