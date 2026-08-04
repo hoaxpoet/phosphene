@@ -378,7 +378,217 @@ Not binding on implementation; recorded so the metadata decisions are visible up
 
 ## §9. Session log
 
-*(Appended by Claude Code at each increment closeout. Empty at authoring.)*
+*(Appended by Claude Code at each increment closeout.)*
+
+### MEN.2b — oracle stood up, and four corrections to §3 (2026-08-03)
+
+Per the `reference-port` skill, the cross-check was built **before** any port code. The
+source was rendered through the existing butterchurn harness
+(`tools/milkdrop-render/render-gif.js`) driven by the **same audio Matt was listening to**
+— 12 s extracted from `raw_tap.wav` of session `2026-08-03T20-05-13Z`, Smashing Pumpkins,
+"Hummer". Reproduce with `Scripts/render_meniscus_oracle.sh`. Nothing from the source is
+committed (D-116 bullet 4); the render output lives at `~/mdrender/men2b/`.
+
+**§3 was decoded by reading the source without running it, and four things are wrong or
+badly understated.** This is the NACRE.2b pattern the plan predicted (§2 reason 3).
+
+1. **The palette is a BEHAVIOUR, not a choice — and it is the source's most dominant
+   visual property.** §6 files palette as "an open authoring decision (MEN.3)" and the
+   reference README says "Do NOT trust: the palette. Near-monochrome white-on-teal is the
+   source's choice." Both are wrong. Measured off the oracle, the sky hue sweeps
+   **continuously and monotonically at roughly 40°/second**: 303° magenta → 294° → 282°
+   → 269° → 254° → 233° → 208° → 176° teal across ~3.2 s, at a steady saturation of
+   0.6–0.8. The teal of the curated stills is one instant of a continuous rotation. §3
+   already said the sky is "tinted from the camera's Euler angles" — what it missed is
+   that the angles integrate continuously, so the tint *never settles*, and a still frame
+   cannot show it. **There is no fixed palette to choose at MEN.3.** Confirmed
+   mechanically: the comp shader contains only one `sin` and takes its colour from `q1`–`q6`
+   computed in the frame equations, i.e. the hue arrives pre-computed from the camera state.
+
+2. **The surface is FLAT with one localized ripple system, essentially always.** §4's
+   temporal contract implies drops are punctuation on a calm field; the oracle shows the
+   calm field is the *default state* and the concentrated central ripple is the subject in
+   every frame after cold start. T4 is not one trait among six — it is the preset.
+
+3. **The camera tumbles far harder than "three Euler angles integrating from velocities"
+   conveys.** Within 4 s the plate goes edge-on → steeply tilted → near face-on, rotates
+   through most of a turn, and the distance oscillation swings it from a small floating
+   rhombus to filling the frame and back. The plate is a *floating object of varying size*
+   for most of the cycle, not a frame-filling plate — reference `01`/`02` are the wide end
+   of a large excursion, not the resting register.
+
+4. **`decay = 0.5` and the echo base values are inert, confirmed at the shader level.**
+   The warp shader body returns `vec3(0,0,0)` unconditionally. §3 asserted this from a
+   read; it is now verified from the artifact.
+
+### MEN.3b — sync and intensity, both measured before and after (2026-08-04)
+
+Matt's live read of MEN.3: camera and rotation good, drops look good, but "not in sync
+with the music" and "nothing tied to the intensity of the music, so the drops look the
+same regardless of whether the music is quiet / loud". Both were measurable on his session
+and both were real.
+
+| | before | after |
+|---|---|---|
+| percussion drop → nearest grid beat (median) | 200 ms | **0 ms** |
+| within the ~60 ms perceptual window | 8–10 % | **97–98 %** |
+| surface amplitude vs loudness (Spearman) | r = +0.004 | **r = +0.999** |
+
+**Sync — the audio hierarchy's central rule, and Meniscus was on the wrong side of it.**
+Drops fired on threshold crossings of a smoothed per-stem deviation: a live onset detector.
+CLAUDE.md is explicit that "visuals driven primarily by raw live beat detections feel out
+of sync" and that beat-locked motion is valid only on the **cached BeatGrid**
+(D-153→D-158). Drums and bass now take their TIMING from the grid while the stem still
+supplies WHETHER and HOW HARD — a beat with no drums on it places nothing. Vocals and
+`other` stay onset-driven deliberately: §5 gives them "sustained" and "texture" characters
+a grid would make robotic. Falls back to onset-driven if no grid beat arrives for 2 s, so
+reactive mode degrades rather than going silent. Bounded 3×3 footprint, no global luminance
+change — D-157 satisfied.
+
+**Intensity — deviation primitives cannot carry it, by construction.** A deviation says how
+far a stem sits above its OWN running mean, so a quiet snare and a loud one produce nearly
+the same value. That is exactly what makes them AGC-safe (D-026 / FA #31) and exactly why
+they are dynamics-blind. The fix is not to abandon them but to add §5's SEPARATE loudness
+row, which was specified from the start and never implemented.
+
+**It also had to go on the right layer.** Scaling per-drop force barely moved the needle
+(r=0.13) because per-hit deviation variance swamps it. §5's actual wording is "wave
+amplitude / surface liveliness — the whole sheet is calmer in quiet passages and choppier
+in loud ones", so the envelope now scales the SURFACE amplitude. Silence floor raised to
+0.35 after the first value (0.22) scaled the swell to 7.7e-5/frame against the harness's
+8e-5 frozen floor — technically alive, perceptually stalling, against §4's "the sheet
+breathes … never black".
+
+**Three measurement errors of mine, worth recording because they nearly hid a working
+fix.** (1) A quartile-ratio intensity gate partly measures the TRACK — there_there is
+consistently loud and has little dynamic range — so correlation replaced it. (2) I switched
+to Spearman on a hypothesis that the intensity clamp was depressing Pearson; Spearman came
+back LOWER, falsifying it, and I should have stopped hunting for a statistic that passed.
+(3) The actual fault: the harness sampled intensity only every 15th frame while applying a
+per-frame smoothing constant, turning a 0.35 s envelope into an effective 5 s one. Sampling
+every frame took r from 0.51 to 0.999. The route had been correct throughout.
+
+### MEN.3 — the divergence: stem-region placement (2026-08-04)
+
+Matt's live viewing of the faithful base: "not moving with the music in a clearly
+understandable manner — it looks random and is too much." That is not a defect in the
+port. §3 says of the source's mechanism "no listener can perceive the mapping", so a
+faithful port of an inaudible placement reads as random BY CONSTRUCTION. MEN.2b's job was
+to establish the distribution the wave sim needs and to prove that point with evidence
+rather than argument; both are done, and this is the replacement §5 declared up front.
+
+**The claim is now measured, not asserted.** `MeniscusStemDropsTests` drives the committed
+real-music fixtures and holds three properties:
+
+| | so_what | there_there | love_rehab |
+|---|---|---|---|
+| all four regions fire | yes | yes | yes |
+| mean row v — vocals / bass / drums | — | 0.19 / 0.47 / 0.81 | 0.19 / 0.49 / 0.82 |
+| impacts per second | 4.7 | 4.2 | 7.5 |
+
+The ordering is §5's layout exactly (vocals far, bass centre, drums near), and the density
+sits inside the range MEN.2b measured — which is precisely what §2 reason 2 said the
+faithful base was for: making that a NUMBER before changing what decides the drops.
+
+**A harness defect surfaced first, and it is the more transferable finding.** Vocals and
+`other` measured ZERO impacts across all three tracks. The routes were fine;
+`WitchlightFixtureDrive` mapped only `drumsEnergyDev` and `bassEnergyDev` and silently
+zeroed the rest, so any preset reading the other two stems would look dead. The fixtures
+have carried those columns all along. The drive now maps all four deviations plus the four
+per-stem beat pulses — a fix that benefits every future stem-driven preset, not just this
+one. Checking the drive's mapping before diagnosing the preset is the rule that caught it.
+
+**Blur was a units error, not taste.** Matt: "a blurry object". The spread was an absolute
+NDC value, which says nothing about whether neighbouring rows merge — at the resting camera
+the rows sit ~0.014 NDC apart while the spread was 0.033, more than twice the gap, so every
+line bled into both neighbours. It is now a FRACTION OF PROJECTED ROW SPACING, which is
+scale-free across camera distance and grid resolution and therefore also survives the §6
+resolution decision that is still open.
+
+**Two metrics had to be corrected, both mine.** The `disturbed %` figure thresholds against
+the field's own peak, so a uniformly LOW field reads as 79 % disturbed while being calmer
+in absolute terms (rms 0.105 -> 0.056) — read absolute rms alongside it. And the harness's
+footprint floor was a fraction of frame area, which silently encoded how THICK the lines
+are; narrowing the spread tripped it at 1562 px on a good render. It is now an absolute
+presence floor, because presence is the question it asks.
+
+**STILL OPEN — the camera.** Matt: "I'm also not understanding the camera moving in and
+out — is the camera motion tied to musical signal too?" **The dolly is not**: it is a free
+19 s sine, ported faithfully from the source, and nothing about it responds to audio. The
+tumble IS beat-driven but re-aims only ~45x/minute with each axis every ~5.4 s, so it drifts
+more than it articulates. §5's own routing table already specifies the fix (dolly -> mood
+`arousal`, re-aim -> cached `BeatGrid` bar phase), and FA #67 now REQUIRES it: with drops on
+per-stem onsets, the camera sharing an event-timescale primitive puts two visual layers on
+one primitive. Not changed here — it is a product call about what the camera should mean.
+
+### MEN.2b — drops: force law read from the source, then calibrated (2026-08-03)
+
+Four rounds of guessing the force scale missed the drop rate by more than 100x (297-522,
+713-838, 9.7-569, 1800 /s against a legible ~0.5-240). Matt's call: read the constant from
+the source file. Doing so replaced guesses with the actual law, and corrected **five**
+things at once — the earlier attempts were not near-misses on a scale factor, they were
+the wrong construction:
+
+| | my guesses | the source |
+|---|---|---|
+| spectrum conditioning | none, or a normaliser I invented | **AGC: subtract the spectrum mean, divide by a TEMPORALLY SMOOTHED energy level** |
+| transform output | used instantaneously | **accumulated per bin with `dec_f = 0.8^(30/fps)`** |
+| bins stamped | all 30 | **`flen/2` = 15, starting at index 1** |
+| force law | `magnitude x gain` | **`amp = 3(cx²+cy²)`, gated `above(amp, 0.02)`, force ∝ `sqrt(amp)`** |
+| stencil weights | 1.0 / 0.8 / 0.5 | **`1/(1+dx²+dy²)`** — 1, 1/2, 1/3 |
+| position | a tanh squash I invented | **plain modulo wrap** |
+
+The AGC is the headline: it is why the source is loudness-independent WITHOUT being
+scale-free, and its absence is what made raw magnitude track-dependent (9.7 /s on quiet
+jazz, 569 /s on loud electronic) while my per-frame across-bin normaliser went scale-free
+and fired everything. It also resolves the FA #31 question cleanly — the source AGCs the
+SPECTRUM ITSELF, so its `above(amp, 0.02)` is a threshold on normalised transform output,
+not on AGC'd band energy. The rule never applied.
+
+Also corrected: the AGC statistics run over `reg01` = 126 taps while the transform uses
+`flen` = 30. Using 30 for both makes the level ~2x too small.
+
+**CALIBRATED AND ENABLED (2026-08-03).** Two things had to be measured, and one of them
+turned out to be a defect in the measurement rather than the code.
+
+**1. The units conversion.** Every source constant is in Milkdrop's spectrum units;
+`FFTProcessor`'s magnitudes have a different scale, so the `600` in the level update does
+not transfer. `amp` scales as 1/level², so the multiplier follows in closed form from where
+`amp` actually sits against the source's 0.02 gate. `MeniscusCalibrationProbe` measures it:
+7.4x / 16.7x / 24.9x for so_what / there_there / love_rehab. The 3.4x spread is the MUSIC
+differing — a spectrally busier track should place more drops — so `dropSpectrumScale` takes
+a middle value (10) rather than flattening them.
+
+**2. The rate metric was the defect.** Gating on stamp events read 513-840 /s and looked
+like anti-reference 8. It was counting the same ripple repeatedly: at 611 stamps/s
+love_rehab has only **39 distinct sites**, each sustained ~15 frames. Gating on new-site
+ONSETS gives **1.1 / 22.3 / 39.0 per second** across sparse jazz, rock and dense electronic —
+all legible, and the spread reads as musical differentiation. Four rounds of "the port is
+wrong" were partly four rounds of the wrong instrument.
+
+**3. Localisation is a property of DAMPING, not impact strength.** With drops enabled the
+whole plate churned — anti-reference 4. Sweeping drop force changed amplitude but left 63-84 %
+of the grid disturbed at every setting, because ripples crossed the torus before dying. The
+cause was MEN.2a's guessed `damping = 0.995` (1/e over ~200 frames); the source damps with
+the same `dec_med` it uses elsewhere, ~0.97 at 60 fps (~33 frames). Applying it drops the
+disturbed fraction to **28 %** — "at any moment most of the surface is quiet and one or two
+regions are actively rippling", which is T4 stated exactly.
+
+`dropsEnabled` now defaults **true**, and `MeniscusMultiFrameRenderTest` gained a real-music
+drive (`MENISCUS_TRACK=<fixture>`) because at silence there is no spectrum and the ported
+behaviour is invisible.
+
+**Not filed as a numbered BUG, deliberately.** BUG-080 is held by the unmerged
+`claude/bug080-worktree-weights` branch and BUG-081 by the FTR.2 session (Matt,
+2026-08-03) — neither is visible in this tree, so `DocIntegrityTests` rejects the hole
+either way, and with two sessions consuming numbers concurrently a third collision is
+likely. Claim a number at merge time; this section is the record until then.
+
+**What this means for the increment series.** The MEN.2a stub reproduces the raster and
+the slope shading and essentially nothing else: it has a fixed hue where the source
+rotates, a bounded heading where the source tumbles, a frame-filling plate where the
+source floats one, and a uniformly agitated surface where the source is flat with a
+localized disturbance. The gap is not tuning distance.
 
 ---
 

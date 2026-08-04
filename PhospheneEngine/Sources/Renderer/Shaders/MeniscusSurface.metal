@@ -24,14 +24,15 @@ struct MeniscusPoint {
     float slope;
 };
 
-/// Mirror of Swift `MeniscusConfig` (56 B).
+/// Mirror of Swift `MeniscusConfig` (60 B).
 struct MeniscusConfig {
     uint  gridN;
     uint  pointCount;
     uint  spreadMode;      // 0 = screen-space X (source), 1 = segment normal
     float spread;
-    float yaw;
-    float pitch;
+    float angleX;          // the three Euler angles the source integrates
+    float angleY;
+    float angleZ;
     float camDist;
     float camHeight;
     float focal;
@@ -39,7 +40,7 @@ struct MeniscusConfig {
     float slopeGain;
     float aspect;
     float brightness;
-    float lightDir;
+    float hue;             // sky/glare hue, derived from the Euler angles
 };
 
 struct MeniscusLineVertexOut {
@@ -86,22 +87,29 @@ static float4 meniscus_project(float2 uv, float height, constant MeniscusConfig&
     // Grid → world. The plate spans [-1, 1] in x and z; y is the water height.
     float3 p = float3(uv.x * 2.0 - 1.0, height * cfg.heightScale, uv.y * 2.0 - 1.0);
 
-    // Yaw about Y.
-    float cy = cos(cfg.yaw), sy = sin(cfg.yaw);
+    // THREE Euler angles, applied Z → Y → X, matching the source's hand-rolled 3x3.
+    // MEN.2a used a single yaw plus a fixed pitch; the oracle shows the plate rotating
+    // through most of a turn on all three axes within a few seconds, which is most of
+    // what makes the source read as a floating object rather than a staged diagram.
+    float cz = cos(cfg.angleZ), sz = sin(cfg.angleZ);
+    p = float3(p.x * cz - p.y * sz, p.x * sz + p.y * cz, p.z);
+
+    float cy = cos(cfg.angleY), sy = sin(cfg.angleY);
     p = float3(p.x * cy + p.z * sy, p.y, -p.x * sy + p.z * cy);
 
-    // Into camera-relative space: the camera is up and back.
+    float cx = cos(cfg.angleX), sx = sin(cfg.angleX);
+    p = float3(p.x, p.y * cx - p.z * sx, p.y * sx + p.z * cx);
+
+    // Into camera-relative space: the camera is up and back. `camDist` rides the slow
+    // distance oscillation, which is what sweeps the plate between a small floating
+    // rhombus and a frame-filling sheet.
     p.y -= cfg.camHeight;
     p.z += cfg.camDist;
 
-    // Pitch about X, looking down.
-    float cp = cos(cfg.pitch), sp = sin(cfg.pitch);
-    float3 view = float3(p.x, p.y * cp + p.z * sp, -p.y * sp + p.z * cp);
-
-    float depth = view.z;
+    float depth = p.z;
     float safeDepth = max(depth, 0.05);
-    float2 ndc = float2(view.x * cfg.focal / safeDepth / max(cfg.aspect, 0.01),
-                        view.y * cfg.focal / safeDepth);
+    float2 ndc = float2(p.x * cfg.focal / safeDepth / max(cfg.aspect, 0.01),
+                        p.y * cfg.focal / safeDepth);
     return float4(ndc, depth, depth > 0.05 ? 1.0 : 0.0);
 }
 
@@ -198,5 +206,125 @@ fragment float4 meniscus_line_fragment(MeniscusLineVertexOut in [[stage_in]]) {
     // as a solid bar — the raster must stay open all the way to the vanishing band.
     float depth = mix(1.0, 0.45, in.depthFade);
     float3 rgb = in.color * profile * depth;
+    return float4(rgb, 1.0);
+}
+
+// MARK: - Backdrop (MEN.2b)
+//
+// The ground plane and sky wash moved HERE from `Presets/Shaders/Meniscus.metal` at
+// MEN.2b. They have to see the live camera, and the preset fragment cannot: the
+// particle path binds FeatureVector but no per-preset buffer, so the MEN.2a version
+// mirrored the camera constants by hand and could only work with a fixed camera. Now
+// that the camera tumbles and dollies, a mirrored copy would desynchronise within a
+// frame. Drawing the backdrop from the geometry — which owns the camera — closes that
+// seam with no engine change and no new GPU-contract surface.
+//
+// Self-contained noise: the engine library gets no utility preamble, so no `fbm8` here.
+
+static float meniscus_hash(float2 p) {
+    return fract(sin(dot(p, float2(127.1, 311.7))) * 43758.5453123);
+}
+
+/// Value noise with a smooth interpolant — cheap, and the source's ground is a noise
+/// texture lookup rather than anything more elaborate.
+static float meniscus_vnoise(float2 p) {
+    float2 i = floor(p), f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = meniscus_hash(i);
+    float b = meniscus_hash(i + float2(1.0, 0.0));
+    float c = meniscus_hash(i + float2(0.0, 1.0));
+    float d = meniscus_hash(i + float2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+/// Four octaves, output centred on ~0.5 (NOT [-1,1] — the MEN.2a ground was broken by
+/// exactly that confusion against the utility `fbm*`, which IS zero-centred).
+static float meniscus_fbm(float2 p) {
+    float sum = 0.0, amp = 0.5, norm = 0.0;
+    for (int i = 0; i < 4; ++i) {
+        sum += amp * meniscus_vnoise(p);
+        norm += amp;
+        amp *= 0.5;
+        p *= 2.03;
+    }
+    return sum / norm;
+}
+
+/// Hue → RGB for a fully-saturated cool wash. The source carries its sky colour as
+/// pre-computed channel values out of the frame equations; reproducing the BEHAVIOUR
+/// (a continuously rotating tint) matters, not the arithmetic that got it there.
+static float3 meniscus_hue_rgb(float hue) {
+    float3 k = fract(float3(hue) + float3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0;
+    return clamp(abs(k) - 1.0, 0.0, 1.0);
+}
+
+struct MeniscusBackdropOut {
+    float4 position [[position]];
+    float2 ndc;
+};
+
+vertex MeniscusBackdropOut meniscus_backdrop_vertex(uint vid [[vertex_id]]) {
+    float2 uv = float2((vid << 1) & 2, vid & 2);
+    MeniscusBackdropOut o;
+    o.position = float4(uv * 2.0 - 1.0, 0.0, 1.0);
+    o.ndc = uv * 2.0 - 1.0;
+    return o;
+}
+
+fragment float4 meniscus_backdrop_fragment(
+    MeniscusBackdropOut in [[stage_in]],
+    constant MeniscusConfig& cfg [[buffer(0)]]
+) {
+    float aspect = max(cfg.aspect, 0.01);
+    float2 ndc = in.ndc;
+
+    // The horizon tilts with the camera's roll, which is what keeps the backdrop
+    // welded to the plate as it tumbles (the source ties its horizon to the same
+    // angles). MEN.2a had a fixed horizontal horizon because it had a fixed camera.
+    float cr = cos(cfg.angleZ), sr = sin(cfg.angleZ);
+    float2 rotated = float2(ndc.x * aspect * cr - ndc.y * sr, ndc.x * aspect * sr + ndc.y * cr);
+
+    // Height above the horizon line, in screen units. `angleX` (pitch) slides the
+    // horizon up and down the frame exactly as it does for the projected plate.
+    float horizon = rotated.y + cfg.angleX * 0.85;
+
+    // ONE cool key light, as a smooth radial falloff from a position that travels with
+    // the camera's heading. Radial, never an angular dot product — that produced a
+    // hard-edged wedge at MEN.2a.
+    float2 lightPos = float2(0.55 * cos(cfg.angleY * 0.5), 0.42);
+    float key = exp(-length(rotated - lightPos) * 1.9);
+
+    // The rotating tint (§9 correction 1).
+    float3 tint = meniscus_hue_rgb(fract(cfg.hue));
+    float3 keyColour = mix(float3(0.18, 0.42, 0.48), tint, 0.72);
+
+    float3 rgb;
+    if (horizon < 0.0) {
+        // Ground: a grainy dark plane far below, projected so the grain compresses
+        // toward the horizon. Scales set from the projected geometry — MEN.2a aliased
+        // by sampling world-unit coordinates that diverge at the horizon.
+        float dist = min(0.55 / max(-horizon, 0.004), 90.0);
+        float2 plane = float2(rotated.x * dist, dist) * 0.55;
+        float detail = saturate(1.0 - dist / 26.0);
+        float tone = 0.55 * meniscus_fbm(plane * 0.30)
+                   + 0.30 * meniscus_fbm(plane * 1.10) * detail
+                   + 0.15 * meniscus_fbm(plane * 3.40) * detail * detail;
+        tone = saturate((tone - 0.5) * 2.6 + 0.5);
+        float level = mix(0.006, 0.032, tone) * (0.55 + 1.9 * key);
+        rgb = float3(level * 0.86, level * 0.95, level);
+    } else {
+        float up = saturate(horizon * 2.2);
+        // Measured off the oracle: the sky peaks around value 0.5 at its brightest
+        // and spends most of its time at 0.08-0.16. The first port ran ~3x hot and
+        // washed the whole frame, which buried the raster it is meant to sit behind.
+        rgb = keyColour * key * (1.0 - up * 0.55) * 0.46;
+        rgb += keyColour * pow(key, 3.4) * 0.22;      // the lateral glare term
+    }
+
+    // Global brightness gate driven by volume, as the source does.
+    rgb *= cfg.brightness;
+    // Never fully black (D-037) — the source renders black at silence
+    // (anti-reference `06`); this floor is the minimum that rule requires.
+    rgb = max(rgb, float3(0.004, 0.005, 0.007));
     return float4(rgb, 1.0);
 }

@@ -16,6 +16,30 @@
 #   git restore .           (same shape)
 #   rm -rf <absolute path>  outside the build-cache allowlist
 #
+# Denied — plumbing / low-level equivalents (added 2026-08-03):
+#   git update-ref -d               deletes a ref directly; the exact bypass for `branch -D`
+#   git push --delete / :refspec    deletes a REMOTE branch (was entirely unguarded)
+#   git reflog expire --expire=now  destroys the recovery net the rules above rely on
+#   git gc --prune=now / --prune=all        same
+#   git stash drop / clear          discards stashed work, with no reflog path back
+#   git worktree remove --force     discards uncommitted work inside a worktree
+#   git checkout -f / switch --discard-changes   flag-form of the blocked `checkout .`
+#
+# Why these were added: on 2026-08-03 `git branch -D` was refused here, and the
+# same deletion then went through as `git update-ref -d refs/heads/<branch>` —
+# approved by the user, but it showed the guard only covered the porcelain
+# spelling. The same audit deleted eight remote branches via `git push --delete`
+# without the hook seeing any of them. The rule of thumb when extending this
+# file: block by EFFECT, not by command name. If a new incantation destroys
+# commits, refs, or uncommitted work, it belongs here regardless of which
+# porcelain/plumbing layer it lives in.
+#
+# The reflog entries are load-bearing, not merely tidy: two of the reasons below
+# say "recoverable only via reflog", so anything that expires or prunes the
+# reflog silently downgrades every other rule in this file from recoverable to
+# permanent. That is why `reflog expire` and `gc --prune` are here despite being
+# maintenance commands rather than obviously destructive ones.
+#
 # rm -rf allowlist (absolute paths only):
 #   /tmp[...]
 #   <project>/.build[...]
@@ -27,6 +51,11 @@
 #
 # Best-effort: a determined agent can sidestep via `bash -c "..."` or `eval`.
 # This hook catches the common-case accidental destructive call, not malice.
+#
+# Escape hatch (added 2026-08-04):
+#   ALLOW_DESTRUCTIVE=1 <command>   runs without these checks.
+#   Use it ONLY for a command the user has just approved in chat. See the
+#   block comment above the check itself for the full norm.
 #
 # Known limitations:
 #   - HEREDOC bodies (`<<EOF ... EOF`) are NOT stripped, so a commit message
@@ -55,6 +84,32 @@ cmd="$(printf '%s' "$payload" | jq -r '.tool_input.command // ""' 2>/dev/null ||
 scan="$cmd"
 scan="$(printf '%s' "$scan" | sed -E "s/'[^']*'//g")"
 scan="$(printf '%s' "$scan" | sed -E 's/"[^"]*"//g')"
+
+# --- escape hatch -----------------------------------------------------------
+# `ALLOW_DESTRUCTIVE=1 <cmd>` runs without these checks. It exists because the
+# hook had no approval channel: it tells the agent to "ask the user for explicit
+# approval", but once granted there was no way to run the approved command, so
+# the agent reached for a different spelling instead (git update-ref -d for a
+# refused branch -D; gh api DELETE for a refused push --delete). Both were
+# approved and disclosed, but routing around the guard is a worse habit than
+# passing through it — and it hid the action from this file's own audit trail.
+#
+# THE MARKER IS AN ASSERTION, NOT A CONVENIENCE: it means "the user approved
+# THIS command, in chat, just now." Never add it pre-emptively, never keep it
+# from a previous command, and never use it to clear a block the user has not
+# seen. If that norm is followed, the hook still does its whole job — it stops
+# the accidental call, forces a human decision, and now the approved command
+# runs as itself and stays greppable in the transcript.
+#
+# It must appear as a real env-assignment prefix at a command boundary (start of
+# the command, or after && || ; |), so a bare mention cannot arm it. It is read
+# from the QUOTE-STRIPPED text, so `echo "ALLOW_DESTRUCTIVE=1"` does not count.
+# Per-invocation by construction: shell state does not persist between tool
+# calls, so this cannot leak into a later command the way `export` would.
+if printf '%s' "$scan" | grep -qE '(^|[;&|][[:space:]]*)ALLOW_DESTRUCTIVE=1[[:space:]]'; then
+    echo "[block-destructive] BYPASSED via ALLOW_DESTRUCTIVE=1 — asserted user-approved: $cmd" >&2
+    exit 0
+fi
 
 block() {
     {
@@ -97,6 +152,49 @@ fi
 # git restore .
 if printf '%s' "$scan" | grep -qE 'git[[:space:]]+([^|;&]*[[:space:]])?restore\b([^|;&]*)[[:space:]]\.([[:space:]]|$|;|\||&)'; then
     block 'git restore .' 'discards every uncommitted change in the worktree'
+fi
+
+# --- git plumbing / low-level equivalents -----------------------------------
+# Same effects as the porcelain rules above, different spellings. See the header
+# note: block by effect, not by command name.
+
+# git update-ref -d / --delete  — the direct bypass for `git branch -D`.
+# Only the delete form is blocked; `update-ref <ref> <sha>` is left alone since
+# it is how a ref gets RESTORED, which is the remedy we want to stay available.
+if printf '%s' "$scan" | grep -qE 'git[[:space:]]+([^|;&]*[[:space:]])?update-ref\b([^|;&]*)(--delete\b|[[:space:]]-d([[:space:]]|$))'; then
+    block 'git update-ref -d' 'deletes a ref directly — same effect as git branch -D'
+fi
+
+# git push --delete <branch>  /  git push origin :branch
+# Deletes a REMOTE branch. The colon form matches only a refspec that STARTS
+# with ':' (the delete shape) — `git push origin local:remote` is untouched.
+if printf '%s' "$scan" | grep -qE 'git[[:space:]]+([^|;&]*[[:space:]])?push\b([^|;&]*)(--delete\b|[[:space:]]-d([[:space:]]|$)|[[:space:]]:[^[:space:]|;&]+)'; then
+    block 'git push --delete' 'deletes a remote branch; recovery depends on the remote'"'"'s own GC window'
+fi
+
+# git reflog expire --expire=now / --expire-unreachable=now
+if printf '%s' "$scan" | grep -qE 'git[[:space:]]+([^|;&]*[[:space:]])?reflog[[:space:]]+([^|;&]*[[:space:]])?expire\b'; then
+    block 'git reflog expire' 'destroys the reflog — the recovery path every other rule in this hook depends on'
+fi
+
+# git gc --prune=now / --prune=all  (plain `git gc` is fine and stays allowed)
+if printf '%s' "$scan" | grep -qE 'git[[:space:]]+([^|;&]*[[:space:]])?gc\b([^|;&]*)--prune=(now|all)\b'; then
+    block 'git gc --prune=now' 'drops unreachable objects immediately, making reflog-recoverable commits permanently unrecoverable'
+fi
+
+# git stash drop / git stash clear
+if printf '%s' "$scan" | grep -qE 'git[[:space:]]+([^|;&]*[[:space:]])?stash[[:space:]]+([^|;&]*[[:space:]])?(drop|clear)\b'; then
+    block 'git stash drop/clear' 'discards stashed work; stashes are not covered by the branch reflog'
+fi
+
+# git worktree remove --force  (plain `worktree remove` already refuses on dirty)
+if printf '%s' "$scan" | grep -qE 'git[[:space:]]+([^|;&]*[[:space:]])?worktree[[:space:]]+remove\b([^|;&]*)(--force\b|[[:space:]]-f([[:space:]]|$))'; then
+    block 'git worktree remove --force' 'discards uncommitted work inside the worktree — the unforced form refuses for exactly that reason'
+fi
+
+# git checkout -f / git switch -f / --discard-changes — flag-form of `checkout .`
+if printf '%s' "$scan" | grep -qE 'git[[:space:]]+([^|;&]*[[:space:]])?(checkout|switch)\b([^|;&]*)(--force\b|--discard-changes\b|[[:space:]]-f([[:space:]]|$))'; then
+    block 'git checkout -f' 'discards every uncommitted change in the worktree'
 fi
 
 # --- rm -rf with absolute paths --------------------------------------------

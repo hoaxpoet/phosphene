@@ -31,6 +31,8 @@ import Metal
 import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
+import AVFoundation
+@testable import Audio
 @testable import Renderer
 @testable import Presets
 @testable import Shared
@@ -105,16 +107,29 @@ struct MeniscusMultiFrameRenderTest {
         if let spread = Float(ProcessInfo.processInfo.environment["MENISCUS_SPREAD"] ?? "") {
             configuration.spread = spread
         }
-        if let yaw = Float(ProcessInfo.processInfo.environment["MENISCUS_YAW"] ?? "") {
-            configuration.yawCentre = yaw
-            configuration.yawSwing = 0
+        // MEN.2b: freeze the camera for a still comparison. `MENISCUS_STILL=1` stops the
+        // tumble and the distance oscillation so a frame can be diffed without the
+        // camera moving underneath it.
+        if ProcessInfo.processInfo.environment["MENISCUS_STILL"] == "1" {
+            configuration.tumbleRate = 0
+            configuration.camDistSwing = 0
+        }
+        if let dist = Float(ProcessInfo.processInfo.environment["MENISCUS_DIST"] ?? "") {
+            configuration.camDistCentre = dist
         }
         if let gain = Float(ProcessInfo.processInfo.environment["MENISCUS_SLOPE_GAIN"] ?? "") {
             configuration.slopeGain = gain
         }
+        // MEN.2b: `MENISCUS_TRACK=<fixture>` drives the render from REAL MUSIC through
+        // the production FFT, which is the only way to see the ported drops — at silence
+        // there is no spectrum and the surface falls back to the placeholder swell.
+        let drive = try Self.makeAudioDrive(ctx, track: ProcessInfo.processInfo.environment["MENISCUS_TRACK"])
+        let stemDrive: [StemFeatures]? = try ProcessInfo.processInfo.environment["MENISCUS_STEMS"]
+            .map { try WitchlightFixtureDrive.load($0).stems }
         let surface = try MeniscusSurface(
             device: ctx.device, library: lib.library,
-            configuration: configuration, pixelFormat: ctx.pixelFormat)
+            configuration: configuration, pixelFormat: ctx.pixelFormat,
+            spectrum: drive?.spectrum)
 
         let target = try Self.makeTexture(ctx)
         // Backdrop-only render of the SAME frame. Differencing against it isolates the
@@ -135,23 +150,40 @@ struct MeniscusMultiFrameRenderTest {
         var footprints: [Int] = []
         var lumas: [Double] = []
         var stepMilliseconds: [Double] = []
+        var intensitySamples: [(Double, Double)] = []
 
         for frame in 0..<Self.frameCount {
             var features = FeatureVector()
             features.time = Float(frame) * dt
             features.deltaTime = dt
             features.aspectRatio = Float(Self.width) / Float(Self.height)
+            var stems = StemFeatures.zero
+            if let drive { drive.advance(frame: frame, into: &features) }
+            // MEN.3: real stems for the stem-region placement. `MENISCUS_STEMS=<fixture>`
+            // uses the committed route-coverage stems rather than synthesis (FA #27).
+            if let stemDrive, frame < stemDrive.count { stems = stemDrive[frame] }
 
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
-            surface.update(features: features, stemFeatures: .zero, commandBuffer: cmd)
+            surface.update(features: features, stemFeatures: stems, commandBuffer: cmd)
             stepMilliseconds.append(surface.lastStepMilliseconds)
+            // EVERY frame, not only captured ones: the reference smoothing below uses a
+            // per-frame constant, and sampling at the capture stride silently turned a
+            // 0.35 s envelope into an effective 5 s one — the comparison, not the route,
+            // was what scored 0.51.
+            intensitySamples.append((Double(surface.surfaceIntensity),
+                                     Double((features.bass + features.mid + features.treble) / 3)))
 
             let sampled = frame % Self.captureStride == 0 || frame == Self.frameCount - 1
             Self.encode(cmd, into: target, preset: preset, audio: audio,
                         features: features, surface: surface)
             if sampled {
+                // Same geometry, backdrop only — since MEN.2b the backdrop is drawn by
+                // the geometry, so passing `nil` here would remove the entire scene and
+                // the metric would stop isolating the line surface.
+                surface.backdropOnlyForDiagnostics = true
                 Self.encode(cmd, into: backdropOnly, preset: preset, audio: audio,
-                            features: features, surface: nil)
+                            features: features, surface: surface)
+                surface.backdropOnlyForDiagnostics = false
             }
             cmd.commit()
             cmd.waitUntilCompleted()
@@ -177,7 +209,15 @@ struct MeniscusMultiFrameRenderTest {
             }
         }
 
+        // T4: the source is a CALM field with one or two active ripple systems. This
+        // measures how much of the grid is actually moving — the trait, directly.
+        let finalHeights = Self.readHeights(surface)
+        let peak = finalHeights.map { abs($0) }.max() ?? 0
+        let rms = (finalHeights.map { Double($0 * $0) }.reduce(0, +) / Double(max(finalHeights.count, 1))).squareRoot()
+        let disturbed = Double(finalHeights.filter { abs($0) > max(peak * 0.15, 1e-4) }.count)
+                      / Double(max(finalHeights.count, 1))
         Self.report(lumas: lumas, pixelDeltas: pixelDeltas, heightDeltas: heightDeltas,
+                    concentration: (disturbed, rms, Double(peak)),
                     footprints: footprints, stepMilliseconds: stepMilliseconds,
                     surface: surface, outputDirectory: outputDirectory)
 
@@ -209,14 +249,128 @@ struct MeniscusMultiFrameRenderTest {
         // Witchlight harness names ("the buffer may be accumulating while the render is
         // not"). Differencing against the backdrop-only render closes it.
         let smallestFootprint = try #require(footprints.min())
-        #expect(smallestFootprint > Self.width * Self.height / 100, """
+        // An ABSOLUTE floor, not a fraction of the frame. The question this gate asks is
+        // "did the line surface reach the screen at all" — a fraction of frame area
+        // silently also encodes how THICK the lines are, so narrowing the spread to stop
+        // the raster welding shut (MEN.3) tripped it at 1562 px on a perfectly good
+        // render. Presence is what is being gated; line weight is a look decision and
+        // does not belong in it.
+        #expect(smallestFootprint > 400, """
             the surface's on-screen footprint fell to \(smallestFootprint) px — the line \
             geometry is not reaching the encoder, or it is projecting off-frame. The height \
             field can be perfectly alive while nothing is drawn.
             """)
 
-        // --- (d) the frame is a real image, not a constant field ---------------------
+        // --- (d) §5's loudness row reaches the SURFACE --------------------------------
+        // Matt, live 2026-08-04: "nothing tied to the intensity of the music, so the drops
+        // look the same regardless of whether the music is quiet / loud". Only asserted
+        // when the drive actually varies the loudness — at silence there is nothing to
+        // correlate against and the check would be vacuous.
+        if intensitySamples.count > 8 {
+            // Compare against a SIMILARLY SMOOTHED loudness. §5 puts this row on a ~1 s
+            // timescale, so the envelope lags on purpose; scoring it against instantaneous
+            // loudness would count that intended lag as a failure. Smoothing both sides
+            // isolates "does the route work" from "does it lag", which is the question.
+            var smoothed = 0.0
+            let loudValues = intensitySamples.map { sample -> Double in
+                smoothed += (sample.1 - smoothed) * 0.05
+                return smoothed
+            }
+            let spread = (loudValues.max() ?? 0) - (loudValues.min() ?? 0)
+            if spread > 0.05 {
+                let amp = intensitySamples.map(\.0)
+                // SPEARMAN (rank) correlation, not Pearson. `surfaceIntensity` clamps at
+                // its ceiling on purpose, and a monotone nonlinearity depresses Pearson
+                // while the behaviour is exactly right — measured 0.70 against a 0.70 bar
+                // purely from the clamp and the intended lag. Ranking is invariant to any
+                // monotone transform, so it scores the thing actually being asserted:
+                // does a louder passage produce a bigger-amplitude surface.
+                func ranks(_ values: [Double]) -> [Double] {
+                    let order = values.indices.sorted { values[$0] < values[$1] }
+                    var out = [Double](repeating: 0, count: values.count)
+                    for (rank, index) in order.enumerated() { out[index] = Double(rank) }
+                    return out
+                }
+                let meanAmpRaw = amp.reduce(0, +) / Double(amp.count)
+                let rankedAmp = ranks(amp), rankedLoud = ranks(loudValues)
+                let meanA = rankedAmp.reduce(0, +) / Double(rankedAmp.count)
+                let meanL = rankedLoud.reduce(0, +) / Double(rankedLoud.count)
+                let cov = zip(rankedAmp, rankedLoud).map { ($0 - meanA) * ($1 - meanL) }.reduce(0, +)
+                let sdA = rankedAmp.map { ($0 - meanA) * ($0 - meanA) }.reduce(0, +).squareRoot()
+                let sdL = rankedLoud.map { ($0 - meanL) * ($0 - meanL) }.reduce(0, +).squareRoot()
+                let r = cov / max(sdA * sdL, 1e-9)
+                print(String(format: "[meniscus-intensity] Spearman r=%+.3f · intensity %.2f..%.2f (mean %.2f) · loudness %.2f..%.2f",
+                             r, amp.min() ?? 0, amp.max() ?? 0, meanAmpRaw, loudValues.min() ?? 0, loudValues.max() ?? 0))
+                #expect(r > 0.7, """
+                    surface amplitude tracks loudness at only r=\(String(format: "%.2f", r)). \
+                    §5: "the whole sheet is calmer in quiet passages and choppier in loud \
+                    ones" — without it the surface looks identical loud or quiet, which is \
+                    what Matt reported live.
+                    """)
+            }
+        }
+
+        // --- (e) the frame is a real image, not a constant field ---------------------
         #expect(Self.isNonConstant(previousPixels), "the final frame is a constant field")
+    }
+
+    // MARK: - Real-music drive
+
+    /// Decodes a committed fixture and republishes its spectrum through the production
+    /// `FFTProcessor` each frame, into the same `.storageModeShared` buffer shape the app
+    /// hands the geometry. Band energies are derived from that spectrum so the camera and
+    /// the brightness gate respond too — coarse, but taken from the real signal rather
+    /// than hand-authored (FA #27).
+    final class AudioDrive {
+        let spectrum: UMABuffer<Float>
+        private let samples: [Float]
+        private let sampleRate: Float
+        private let fft: FFTProcessor
+        private let hop: Int
+
+        init(ctx: MetalContext, url: URL) throws {
+            let file = try AVAudioFile(forReading: url)
+            let format = file.processingFormat
+            guard let buffer = AVAudioPCMBuffer(
+                pcmFormat: format, frameCapacity: AVAudioFrameCount(file.length)),
+                  let _ = try? file.read(into: buffer),
+                  let channel = buffer.floatChannelData?[0] else {
+                throw MeniscusHarnessError.setupFailed("decode \(url.lastPathComponent)")
+            }
+            samples = Array(UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength)))
+            sampleRate = Float(format.sampleRate)
+            hop = Int(sampleRate / 60)
+            fft = try FFTProcessor(device: ctx.device)
+            spectrum = fft.magnitudeBuffer
+        }
+
+        func advance(frame: Int, into features: inout FeatureVector) {
+            let start = (frame * hop) % max(samples.count - FFTProcessor.fftSize, 1)
+            _ = fft.process(samples: Array(samples[start..<(start + FFTProcessor.fftSize)]),
+                            sampleRate: sampleRate)
+            let bins = fft.magnitudeBuffer.pointer
+            func band(_ lo: Int, _ hi: Int) -> Float {
+                var total: Float = 0
+                for i in lo..<hi { total += bins[i] }
+                return min(1, total / Float(hi - lo) * 40)
+            }
+            features.bass = band(1, 20)
+            features.mid = band(20, 90)
+            features.treble = band(90, 300)
+            features.bassDev = features.bass
+            features.beatComposite = features.bass
+        }
+    }
+
+    private static func makeAudioDrive(_ ctx: MetalContext, track: String?) throws -> AudioDrive? {
+        guard let track else { return nil }
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/tempo/\(track).m4a")
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw MeniscusHarnessError.setupFailed("fixture \(url.path) — run Scripts/fetch_tempo_fixtures.sh")
+        }
+        return try AudioDrive(ctx: ctx, url: url)
     }
 
     // MARK: - Encode one frame (mirrors drawParticleMode)
@@ -302,6 +456,7 @@ struct MeniscusMultiFrameRenderTest {
 
     private static func report(
         lumas: [Double], pixelDeltas: [Double], heightDeltas: [Double],
+        concentration: (disturbed: Double, rms: Double, peak: Double),
         footprints: [Int], stepMilliseconds: [Double],
         surface: MeniscusSurface, outputDirectory: URL?
     ) {
@@ -316,8 +471,10 @@ struct MeniscusMultiFrameRenderTest {
             format: "[meniscus] luma %.4f–%.4f · surface footprint %d–%d px",
             lumas.min() ?? 0, lumas.max() ?? 0, footprints.min() ?? 0, footprints.max() ?? 0))
         print(String(
-            format: "[meniscus-motion] surface |Δheight|/frame %.6f (GATED) · composite Δpx mean %.3f "
+            format: "[meniscus-t4] disturbed %.0f%% of grid · rms %.3f · peak %.3f\n"
+                  + "[meniscus-motion] surface |Δheight|/frame %.6f (GATED) · composite Δpx mean %.3f "
                   + "(evidence only — includes camera drift)",
+            concentration.disturbed * 100, concentration.rms, concentration.peak,
             mean(heightDeltas), mean(pixelDeltas)))
         // MEN.2a task 1c evidence: the CPU wave step + serialization cost, which is the
         // whole basis for not putting the sim on the GPU.

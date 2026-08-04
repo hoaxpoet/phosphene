@@ -34,7 +34,17 @@ that is a product decision — raise it with Matt, do not infer it.
 
 **Standalone tools (`executableTarget`s — zero production importers by design):**
 - `active-tool`: CheckVisualReferences (visual-ref lint gate), PresetSessionReplay (mandatory per
-  PRESET_SESSION_CHECKLIST), SoakRunner (run_soak_test.sh), TempoDumpRunner (dump_tempo_baselines.sh).
+  PRESET_SESSION_CHECKLIST), SoakRunner (run_soak_test.sh), TempoDumpRunner (dump_tempo_baselines.sh),
+  **BeatBench** (the beat-sync benchmark — D-202 program measurement surface, driven by the
+  `beatbench` skill and `Scripts/beatbench_*`), **TapCapture** (raw-tap capture for offline
+  signal-health work), **ChainHealthAnalyzer** (ASH.2 / D-184, driven by
+  `Scripts/analyze_session_chain.sh`, which exits non-zero unless the verdict is clean).
+
+  *(The three bolded targets were added at RECON.4, 2026-08-03. They ship in `Package.swift` but
+  had never been registered here — so this register, whose whole job is to stop a future audit
+  cutting live tools on a no-references signal, was itself missing 3 of 14 targets. Separately:
+  `ChainHealthAnalyzer/main.swift` is the one engine target with no `// STATUS:` marker, which the
+  convention below requires — add it when that file is next touched.)*
 - `retained-diagnostic`: ColdStartVerifier (cold-start phase-correction *runtime* reverted 2026-05-25;
   tool kept per "keep the tools", BEAT_SYNC.md §Cold-Start), BeatThisActivationDumper,
   QualityReelAnalyzer, UtilityCostTableUpdater, InstrumentFamilyDumper (IFC.5 per-family
@@ -77,5 +87,25 @@ search — that signal is what produced this doc's false positives):
 1. Is it an `executableTarget`? → it is a tool; check its `// STATUS:` marker. Not dead.
 2. Is it a preset? → check `certified` in its `.json` sidecar + `git log`. Certified = keep.
 3. Does a doc say it was "already removed"? → verify on disk; docs drift.
-4. Still think it is dead? → it is on the "genuinely dead" list above, or raise it with Matt. Do not
+4. **Is it a test fixture?** → **a source grep CANNOT prove a fixture unused.** `Package.swift`
+   declares five fixture directories as *directory-level* `.copy(...)` resources —
+   `Regression/Fixtures`, `Fixtures/beat_this_reference`, `Fixtures/fbs`,
+   `Fixtures/panns_reference`, `Fixtures/route_coverage` — so every file inside is bundled
+   wholesale and resolved at **runtime** by `Bundle.module.url(forResource:)`. Tests routinely
+   build that name by interpolation, e.g.
+   `AuroraTrackStartWarmupTests:23` → `"drumsdev_\(name)_2026-06-10T14-55-32Z"`. The literal
+   filename appears **nowhere** in source, so `grep drumsdev_so_what` returns zero references
+   for a fixture that four tests depend on. **The only valid check is running the suite.**
+   *(Learned the hard way at RECON.1, 2026-08-03: three `fbs/` CSVs were deleted on a
+   zero-references signal and took out all four `AuroraTrackStartWarmupTests` — the BUG-041
+   regression guards. Restored at RECON.6.)*
+5. **Is it a reference image or curated design material?** → it has no code consumer *by
+   construction*, so "no references" is meaningless. Check the reference READMEs — e.g.
+   `docs/VISUAL_REFERENCES/_pg_spares/` is Matt's alternate set, cited by three of them.
+6. Still think it is dead? → it is on the "genuinely dead" list above, or raise it with Matt. Do not
    cut off inference alone.
+
+**The pattern behind 4 and 5:** "no references found" is only evidence for code that is
+*referenced by name in source*. For anything resolved at runtime, bundled by directory, or
+consumed by a human, the signal is not just weak — it is systematically absent, and it will
+read as a confident zero.

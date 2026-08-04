@@ -170,6 +170,179 @@ struct FractalTreeMeshRenderTest {
         print("[fractal-tree] beat strip: \(outputDirectory.path)/beat_strip.png")
     }
 
+    /// Render a CONTIGUOUS frame sequence driven by a REAL session capture, so the
+    /// preset can be watched in motion on the audio Matt actually reviewed.
+    ///
+    /// WHY THIS EXISTS. Eight rounds of this preset shipped on numbers and 7-frame still
+    /// sheets. "Too much movement" and "the colour is flashing" are TEMPORAL properties
+    /// that a still sheet cannot show by construction — the same gap that let Truchet
+    /// Loom pass still-review and jitter in live M7 (D-194). Measuring a driver's
+    /// turns/s is not the same as seeing what it does to the frame.
+    ///
+    ///   FT_SESSION=~/Documents/phosphene_sessions/<id> \
+    ///   RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter sessionSequence
+    ///
+    /// Writes numbered PNGs plus strips of consecutive frames. Reader is the eyes (D-064).
+    @Test("session sequence: contiguous frames from a real capture (FT_SESSION=<dir>)")
+    func sessionSequence() throws {
+        guard let dir = ProcessInfo.processInfo.environment["FT_SESSION"],
+              let outputDirectory = try Self.makeOutputDirectory() else { return }
+        let csv = URL(fileURLWithPath: (dir as NSString).expandingTildeInPath)
+            .appendingPathComponent("features.csv")
+        let rows = try Self.loadSessionRows(csv)
+        guard !rows.isEmpty else {
+            throw FractalTreeHarnessError.setupFailed("no usable rows in \(csv.path)")
+        }
+
+        let ctx = try MetalContext()
+        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat,
+                                  loadBuiltIn: true)
+        let preset = try #require(loader.presets.first { $0.descriptor.name == "Fractal Tree" })
+        let generator = MeshGenerator(
+            device: ctx.device, pipelineState: preset.pipelineState,
+            configuration: .init(maxVerticesPerMeshlet: 252, maxPrimitivesPerMeshlet: 126,
+                                 meshThreadCount: preset.descriptor.meshThreadCount))
+        let target = try Self.makeTexture(ctx)
+
+        // SPAN THE WHOLE CAPTURE BY DEFAULT. The first version of this harness used a
+        // fixed stride of 3, which at 96 frames covered 288 source rows — under five
+        // seconds of a 29-second capture. It rendered a tree that never changed, and I
+        // read that as "the preset is static" when it was the sampling window. An
+        // instrument that silently shows you a sliver is worse than no instrument.
+        // FT_STRIDE forces a fixed stride when a close-up of fast motion is wanted.
+        let maxFrames = Int(ProcessInfo.processInfo.environment["FT_FRAMES"] ?? "") ?? 96
+        let stride = Int(ProcessInfo.processInfo.environment["FT_STRIDE"] ?? "")
+            ?? Swift.max(1, rows.count / maxFrames)
+        print(String(format: "[fractal-tree/sequence] %d rows spanning %.1f s, stride %d",
+                     rows.count, (rows.last?["time"] ?? 0) - (rows.first?["time"] ?? 0), stride))
+        var fifths = FifthsSmoother()
+        var flickerFifths = FifthsSmoother()
+        var strip: [(label: String, pixels: [UInt8])] = []
+        var hues: [Double] = []
+        var inks: [Double] = []
+
+        for (index, row) in rows.enumerated() where index % stride == 0 {
+            if strip.count >= maxFrames { break }
+            var fv = Self.featuresFromSession(row, fifths: &fifths)
+            fv.aspectRatio = Float(Self.width) / Float(Self.height)
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
+            Self.encode(cmd, into: target, generator: generator, features: fv)
+            cmd.commit()
+            cmd.waitUntilCompleted()
+            let pixels = Self.read(target)
+            strip.append(("f\(index)", pixels))
+            hues.append(Self.meanHue(pixels))
+            inks.append(Self.inkFraction(pixels))
+        }
+
+        // FLICKER IS MEASURED ON ADJACENT FRAMES, ALWAYS — never on the sampled strip.
+        //
+        // The strip is deliberately spread across the whole capture so growth is visible,
+        // which means consecutive strip frames can be a third of a second apart. A hue
+        // step measured across THAT is not flicker, it is just the palette moving; the
+        // first version of this reported 62.9° at stride 3 and 157.4° at stride 18 for
+        // the identical build. A metric whose verdict depends on a diagnostic knob is
+        // not a metric (the Meniscus stride lesson). So flicker gets its own stride-1
+        // window, rendered separately.
+        var adjacentHues: [Double] = []
+        for row in rows.prefix(90) {
+            var fv = Self.featuresFromSession(row, fifths: &flickerFifths)
+            fv.aspectRatio = Float(Self.width) / Float(Self.height)
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
+            Self.encode(cmd, into: target, generator: generator, features: fv)
+            cmd.commit()
+            cmd.waitUntilCompleted()
+            adjacentHues.append(Self.meanHue(Self.read(target)))
+        }
+        let hueJumps = zip(adjacentHues, adjacentHues.dropFirst()).map { a, b -> Double in
+            let d = abs(b - a); return min(d, 360 - d)
+        }
+        let inkSpan = (inks.max() ?? 0) - (inks.min() ?? 0)
+        print("""
+            [fractal-tree/sequence] \(strip.count) frames — FLICKER (adjacent frames) \
+            hue step median \(String(format: "%.2f", Self.median(hueJumps)))° max \
+            \(String(format: "%.1f", hueJumps.max() ?? 0))°; GROWTH across the capture: \
+            ink \(String(format: "%.4f", inks.min() ?? 0)) → \
+            \(String(format: "%.4f", inks.max() ?? 0)) (span \
+            \(String(format: "%.4f", inkSpan)))
+            """)
+        for chunk in Swift.stride(from: 0, to: strip.count, by: 8) {
+            let slice = Array(strip[chunk..<Swift.min(chunk + 8, strip.count)])
+            Self.writeContactSheet(slice, to: outputDirectory,
+                                   name: String(format: "seq_%03d.png", chunk))
+        }
+        print("[fractal-tree] sequence strips: \(outputDirectory.path)")
+    }
+
+    /// Parse a recorded `features.csv` into rows keyed by column name, dropping the
+    /// malformed startup lines a live capture can contain.
+    private static func loadSessionRows(_ url: URL) throws -> [[String: Double]] {
+        let text = try String(contentsOf: url, encoding: .utf8)
+        var lines = text.split(separator: "\n", omittingEmptySubsequences: true)
+        guard !lines.isEmpty else { return [] }
+        let header = lines.removeFirst().split(separator: ",", omittingEmptySubsequences: false)
+            .map(String.init)
+        var out: [[String: Double]] = []
+        for line in lines {
+            let parts = line.split(separator: ",", omittingEmptySubsequences: false)
+            guard parts.count == header.count else { continue }
+            var row: [String: Double] = [:]
+            for (key, value) in zip(header, parts) { row[key] = Double(value) }
+            guard let time = row["time"], time >= 15 else { continue }
+            out.append(row)
+        }
+        return out
+    }
+
+    /// Same field set as the fixture drive — kept together so a new route is added to
+    /// both in one edit, which is the trap that has bitten three times already.
+    /// Vector-domain EMA mirroring `TonalAnalyzer.smoothPhaseFifths`. A recorded capture
+    /// holds the RAW phase, so replaying it straight would still show the pre-fix flashing
+    /// no matter what the engine now does. Kept in lockstep with the analyzer's alpha.
+    private struct FifthsSmoother {
+        private var re: Float = 0
+        private var im: Float = 0
+        private var seeded = false
+        mutating func callAsFunction(_ raw: Float) -> Float {
+            let alpha: Float = 0.065
+            let (rawRe, rawIm) = (cos(raw), sin(raw))
+            if !seeded {
+                re = rawRe; im = rawIm; seeded = true
+            } else {
+                re = alpha * rawRe + (1 - alpha) * re
+                im = alpha * rawIm + (1 - alpha) * im
+            }
+            return atan2(im, re)
+        }
+    }
+
+    private static func featuresFromSession(_ row: [String: Double],
+                                            fifths: inout FifthsSmoother) -> FeatureVector {
+        var f = baseFeatures()
+        func value(_ column: String) -> Float { Float(row[column] ?? 0) }
+        f.bass = value("bass"); f.mid = value("mid"); f.treble = value("treble")
+        f.bassAtt = value("bass_att"); f.midAtt = value("mid_att"); f.trebleAtt = value("treble_att")
+        f.spectralCentroid = value("spectralCentroid"); f.spectralFlux = value("spectralFlux")
+        f.beatBass = value("beatBass"); f.beatMid = value("beatMid")
+        f.bassDev = value("bassDev"); f.bassRel = value("bassRel"); f.midRel = value("mid_rel")
+        f.tonalPhaseFifths = value("tonal_phase_fifths")
+        f.tonalPhaseFifths = fifths(value("tonal_phase_fifths"))
+        f.arousal = value("arousal")
+        f.beatPhase01 = value("beatPhase01"); f.pulsePhase01 = value("pulse_phase01")
+        f.pulseAmp01 = value("pulse_amp01"); f.pulseBeatIndex = value("pulse_beat_index")
+        f.barPhase01 = value("barPhase01_permille") / 1000; f.beatsPerBar = value("beatsPerBar")
+        f.spectralDensity = value("spectral_density")
+        f.spectralDensitySlow = value("spectral_density_slow")
+        f.time = value("time")
+        return f
+    }
+
+    private static func median(_ values: [Double]) -> Double {
+        guard !values.isEmpty else { return 0 }
+        let s = values.sorted()
+        return s[s.count / 2]
+    }
+
     // MARK: - Motion
 
     /// The gate that would have caught the FTR.2 regression before Matt saw it.
@@ -183,72 +356,119 @@ struct FractalTreeMeshRenderTest {
     ///
     /// The reference character is the pre-FTR.2 preset Matt described as fingers tapping:
     /// changes on ~12 % of frames, average jump ~2 branches, almost never at the floor.
-    @Test("the canopy drifts in small steps and the taps fire per beat")
-    func motionCharacterIsFingersNotSlams() throws {
+    @Test("the tree grows with energy and the fine tips follow the melodic line")
+    func motionCharacterIsGrowthPlusMelody() throws {
         let base = try #require(
             Bundle.module.url(forResource: "route_coverage", withExtension: nil))
         let series = try SessionColumnSeries.load(
             directory: base.appendingPathComponent(Self.driveTrack))
         guard let time = series.floatSeries("time"),
-              let bassRel = series.floatSeries("bassRel"),
-              let beatPhase = series.floatSeries("beatPhase01") else {
-            throw FractalTreeHarnessError.setupFailed("time/bassRel/beatPhase01 absent")
+              let arousal = series.floatSeries("arousal"),
+              let beatMid = series.floatSeries("beatMid") else {
+            throw FractalTreeHarnessError.setupFailed("time/arousal/beatMid absent")
         }
 
-        // The shader's own arithmetic, mirrored — this is what the geometry sees.
-        let rows = (0..<min(time.count, bassRel.count)).filter { (time[$0] ?? 0) >= 10.0 }
-        let counts = rows.map { row -> Int in
-            let reach = 1.0 / (1.0 + exp(-Double(bassRel[row] ?? 0) * 3.0))
-            return min(7 + Int(reach * 56.0), 63)
+        // The shader's own arithmetic, mirrored. `amp` is 1: the fixtures are music
+        // throughout, and the silence gate is covered by the D-037 render assertion.
+        let rows = (0..<min(time.count, arousal.count)).filter { (time[$0] ?? 0) >= 10.0 }
+        let melody = rows.map { Double(beatMid[$0] ?? 0) / (Double(beatMid[$0] ?? 0) + 2.2) }
+        let growthEnv = rows.map { min(max((Double(arousal[$0] ?? 0) - 0.10) / 0.58, 0), 1) }
+        let structure = rows.map { row -> Int in
+            let reach = min(max((Double(arousal[row] ?? 0) - 0.10) / 0.58, 0), 1)
+            return Int(4.0 + reach * 18.0)
         }
+        let tips = zip(melody, growthEnv).map { m, g -> Int in
+            let t = min(max(g / 0.35, 0), 1)
+            return Int(m * 26.0 * (t * t * (3 - 2 * t)))
+        }
+        let counts = zip(structure, tips).map { min(7 + $0 + $1, 63) }
         let seconds = Double((time[rows.last!] ?? 0) - (time[rows.first!] ?? 0))
 
         let steps = zip(counts, counts.dropFirst()).map { abs($1 - $0) }
         let moved = steps.filter { $0 > 0 }
         let changeRate = 100 * Double(moved.count) / Double(steps.count)
         let meanJump = moved.isEmpty ? 0 : Double(moved.reduce(0, +)) / Double(moved.count)
-        let atFloor = 100 * Double(counts.filter { $0 <= 9 }.count) / Double(counts.count)
 
-        // Taps fire once per beat — count beat-phase wraps.
-        let phases = rows.compactMap { beatPhase[$0] }
-        let beats = zip(phases, phases.dropFirst()).filter { $1 < $0 - 0.5 }.count
+        // How LINE-LIKE the melodic driver is: a melody changes direction several times
+        // a second. A signal that only ramps is an envelope, not a tune.
+        let deltas = zip(melody, melody.dropFirst()).map { $1 - $0 }.filter { $0 != 0 }
+        let flips = zip(deltas, deltas.dropFirst()).filter { $0 * $1 < 0 }.count
+        let flipRate = Double(flips) / max(seconds, 1)
 
+        let tipSpread = (tips.max() ?? 0) - (tips.min() ?? 0)
+        let sorted = counts.sorted()
         print("""
             [fractal-tree/motion] \(counts.count) frames over \
-            \(String(format: "%.1f", seconds)) s — canopy changes on \
-            \(String(format: "%.1f", changeRate))% of frames, mean jump \
-            \(String(format: "%.1f", meanJump)), at floor \
-            \(String(format: "%.1f", atFloor))%; taps fire on \(beats) beats = \
-            \(String(format: "%.2f", Double(beats) / max(seconds, 1)))/s
+            \(String(format: "%.1f", seconds)) s — count p05 \(sorted[sorted.count / 20]) \
+            p50 \(sorted[sorted.count / 2]) p95 \(sorted[sorted.count * 19 / 20]); \
+            changes on \(String(format: "%.1f", changeRate))% of frames, mean jump \
+            \(String(format: "%.1f", meanJump)); melodic tips span \(tipSpread) branches, \
+            line turns \(String(format: "%.2f", flipRate))/s
             """)
 
-        // (a) NOT INERT. FTR.2 sat at the floor 82% of the time.
-        #expect(atFloor < 25, """
-            the canopy sits at its floor \(String(format: "%.1f", atFloor))% of the time — \
-            this is the FTR.2 "completely inert" failure. A transient driver like \
-            bass_dev does exactly this; the canopy needs a CONTINUOUS one.
+        // (a) NOT INERT and (b) NOT SLAMMING — the two failures Matt named in FTR.2
+        // ("either too excited or completely inert").
+        #expect(changeRate > 20, """
+            the canopy changes on only \(String(format: "%.1f", changeRate))% of frames — \
+            too static to read as growing with the music.
             """)
-
-        // (b) NOT SLAMMING. FTR.2 averaged a 21.5-branch jump; the preset Matt liked
-        // averaged 1.9. Above ~8 the silhouette teleports instead of growing.
         #expect(meanJump < 8, """
             the canopy moves \(String(format: "%.1f", meanJump)) branches per change — \
-            this is the FTR.2 "too excited" failure. Individual branches must appear a \
-            few at a time for the motion to read as fingers rather than as a jump cut.
+            branches must appear a few at a time, not teleport.
             """)
 
-        // (c) ACTUALLY MOVING. A perfectly smooth driver that never changes the integer
-        // count would pass (a) and (b) trivially.
-        #expect(changeRate > 5, """
-            the canopy changes on only \(String(format: "%.1f", changeRate))% of frames — \
-            too static to read as alive.
+        // (c) THE MELODY IS A REAL LAYER. If the tips barely span anything, the melodic
+        // route exists in the manifest and not on screen.
+        // (c2) THE DEEPEST TIER MUST CROSS IN AND OUT. This is the mechanism itself:
+        // d5 starts at count 31, and the original preset straddled that line so the
+        // smallest branches were always appearing and disappearing. A version that
+        // parks above it measures well and shows nothing — the first attempt at this
+        // route sat at d5 94 % and had no flicker at all.
+        let d5 = counts.map { $0 > 31 }
+        let crossings = zip(d5, d5.dropFirst()).filter { $0 != $1 }.count
+        let crossRate = Double(crossings) / max(seconds, 1)
+        let d5Share = 100 * Double(d5.filter { $0 }.count) / Double(d5.count)
+        print(String(format: "[fractal-tree/tips] depth-5 present %.0f%% of frames, crossing in/out %.2f times/s",
+                     d5Share, crossRate))
+        #expect(d5Share > 5 && d5Share < 75, """
+            depth-5 is present on \(String(format: "%.0f", d5Share))% of frames — either \
+            parked (nothing left to flicker) or absent (Matt: "I never see beyond three \
+            levels"). The tier has to be IN PLAY for the tips to read as following.
+            """)
+        #expect(crossRate > 0.5, """
+            the deepest tier crosses in/out only \(String(format: "%.2f", crossRate))/s — \
+            too rare to read as the fine branches tracking the tune.
             """)
 
-        // (d) THE HERO FIRES. Per-branch taps are driven by beat phase, so if the beat
-        // grid never advances there is no rhythm regardless of how the canopy behaves.
-        #expect(Double(beats) / max(seconds, 1) > 0.5, """
-            only \(beats) beats in \(String(format: "%.1f", seconds)) s — the per-branch \
-            taps have no clock to fire on.
+        #expect(tipSpread >= 5, """
+            the melodic tip layer spans only \(tipSpread) branches — too small a share of \
+            the canopy for "the tiny branches are following the melody" to be visible.
+            """)
+
+        // (d0) THE GROWTH LAYER MUST NOT BOUNCE. Matt: "the growth is jerky - the trunk
+        // is constantly moving up and down with the beat, killing any concept that the
+        // tree is growing." bass_rel wobbled 5.88 times/s with a median step of 17% of
+        // its range; arousal manages 0.52/s and 0.1%. Trunk length reads this directly,
+        // so a fast driver here is visible as bouncing.
+        let growth = rows.map { min(max((Double(arousal[$0] ?? 0) - 0.10) / 0.58, 0), 1) }
+        let gd = zip(growth, growth.dropFirst()).map { $1 - $0 }.filter { $0 != 0 }
+        let gTurns = Double(zip(gd, gd.dropFirst()).filter { $0 * $1 < 0 }.count) / max(seconds, 1)
+        print(String(format: "[fractal-tree/growth] trunk driver turns %.2f/s", gTurns))
+        #expect(gTurns < 2.0, """
+            the growth driver changes direction \(String(format: "%.2f", gTurns))/s — fast
+            enough that the trunk will visibly bounce, which is the exact failure Matt
+            named ("the trunk is constantly moving up and down with the beat"). Growth
+            must come from a section-scale signal.
+            """)
+
+        // (d) IT FOLLOWS A LINE, NOT AN ENVELOPE. This is the assertion that rules out
+        // the harmonic axis I measured and rejected: tonal_phase_thirds jumps a median
+        // 18.6% of the circle per update, so it cannot be followed. A melodic contour
+        // turns several times a second.
+        #expect(flipRate > 2.0, """
+            the melodic driver changes direction only \(String(format: "%.2f", flipRate))/s — \
+            that is an envelope, not a line. Branches keyed to it will read as swelling \
+            together rather than following a tune.
             """)
     }
 
@@ -336,6 +556,15 @@ struct FractalTreeMeshRenderTest {
         f.pulsePhase01 = value("pulse_phase01")
         f.pulseAmp01 = value("pulse_amp01")
         f.pulseBeatIndex = value("pulse_beat_index")
+        // The bar clock the taps actually fire on. Recorded in permille.
+        f.barPhase01 = value("barPhase01_permille") / 1000
+        f.beatsPerBar = value("beatsPerBar")
+        // DYN.1. The route_coverage fixtures predate the field, so these read 0 here and
+        // the density lift contributes nothing in the harness — the growth still measures
+        // via arousal. Once the fixtures are re-captured these become live and the lift
+        // is exercised; until then this is a KNOWN blind spot, stated rather than implied.
+        f.spectralDensity = value("spectral_density")
+        f.spectralDensitySlow = value("spectral_density_slow")
         // Context the shader reads directly.
         f.bass = value("bass")
         f.mid = value("mid")

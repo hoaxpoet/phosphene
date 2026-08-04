@@ -59,7 +59,11 @@ public enum AudioRoutePrimitives {
             out[name] = RoutePrimitiveColumn(.features, name)
         }
         // Deviation family for mid/treb (QG.1 appended, snake in CSV).
-        out["midRel"]    = RoutePrimitiveColumn(.features, "mid_rel")
+        out["midRel"] = RoutePrimitiveColumn(.features, "mid_rel")
+        // DYN.1 — spectral density (pre-normalisation). Routable so a preset declaring
+        // it is covered by the QG.1 gate like any other primitive.
+        out["spectralDensity"] = RoutePrimitiveColumn(.features, "spectral_density")
+        out["spectralDensitySlow"] = RoutePrimitiveColumn(.features, "spectral_density_slow")
         out["midDev"]    = RoutePrimitiveColumn(.features, "mid_dev")
         out["trebRel"]   = RoutePrimitiveColumn(.features, "treb_rel")
         out["trebDev"]   = RoutePrimitiveColumn(.features, "treb_dev")

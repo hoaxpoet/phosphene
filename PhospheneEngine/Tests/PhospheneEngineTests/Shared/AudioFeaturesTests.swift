@@ -123,15 +123,15 @@ import Metal
 }
 
 @Test func test_featureVector_simdSize_matchesGPUExpectation() {
-    // FeatureVector: 48 floats = 192 bytes (MV-1: added 9 deviation fields + 14 pad).
+    // FeatureVector: 52 floats = 208 bytes. DYN.1 added spectral_density/_slow (floats 49-50) taking it to 200, which is NOT 16-byte aligned; floats 51-52 are padding that restores the GPU-constant alignment every preset depends on at buffer(0).
     // Stride must be 16-byte aligned for GPU uniforms.
-    #expect(MemoryLayout<FeatureVector>.size == 192,
-            "FeatureVector must be 192 bytes (48 × 4), got \(MemoryLayout<FeatureVector>.size)")
+    #expect(MemoryLayout<FeatureVector>.size == 208,
+            "FeatureVector must be 208 bytes (52 × 4), got \(MemoryLayout<FeatureVector>.size)")
     #expect(MemoryLayout<FeatureVector>.stride % 16 == 0,
             "FeatureVector stride must be 16-byte aligned for GPU, got stride \(MemoryLayout<FeatureVector>.stride)")
 
-    // Verify the matching MSL struct size expectation (48 floats × 4 bytes, MV-1).
-    let expectedMSLSize = 48 * MemoryLayout<Float>.size
+    // Verify the matching MSL struct size expectation (52 floats × 4 bytes).
+    let expectedMSLSize = 52 * MemoryLayout<Float>.size
     #expect(MemoryLayout<FeatureVector>.size == expectedMSLSize,
             "Swift FeatureVector size (\(MemoryLayout<FeatureVector>.size)) must match MSL size (\(expectedMSLSize))")
 }

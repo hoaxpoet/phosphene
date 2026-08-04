@@ -201,11 +201,14 @@ public struct FeatureVector: Sendable {
     /// after the handoff. FFO mixes `mix(1.0, mask, blend)` into the punch.
     public var pulseRegionalBlend01: Float
 
-    // --- TONAL (D-178, floats 44–48, reclaimed _pad8…_pad12): TonalAnalyzer's
-    // Tonal Interval Vector — fifths=hue, consonance gates saturation, tension=
-    // distance-from-home (resets/track), flux=chord-change accent. Scoping doc. ---
+    // --- TONAL (D-178, floats 44–48): TonalAnalyzer's Tonal Interval Vector —
+    // fifths=hue, consonance gates saturation, tension=distance-from-home,
+    // flux=chord-change accent. Full rationale: `Common.metal`. ---
     public var tonalPhaseFifths, tonalPhaseThirds: Float
     public var tonalConsonance, tonalTension, harmonicFlux: Float
+    /// DYN.1 (49–50): pre-normalisation HF energy fraction + τ≈8 s companion, survives
+    /// the AGC. 51–52 PAD to 16-byte alignment — reclaim before growing. `Common.metal`.
+    public var spectralDensity, spectralDensitySlow, _pad51, _pad52: Float // swiftlint:disable:this identifier_name
 
     public init(
         bass: Float = 0, mid: Float = 0, treble: Float = 0,
@@ -239,18 +242,15 @@ public struct FeatureVector: Sendable {
         self.bassAttRel = 0; self.midAttRel = 0; self.trebAttRel = 0
         // MV-3b beat phase — computed by BeatPredictor / LiveBeatDriftTracker each frame.
         self.beatPhase01 = 0; self.beatsUntilNext = 0
-        // Bar phase — from LiveBeatDriftTracker when a BeatGrid is installed.
         self.barPhase01 = 0; self.beatsPerBar = 4
-        // CSP.3 — populated by MIRPipeline.buildFeatureVector each frame from
-        // `elapsedSeconds`. 0 at track start; rises monotonically. When the
-        // ffoColdStartFixEnabled toggle is off, MIRPipeline writes 100.0
-        // instead so the shader-side crossfade collapses to the warm path.
+        // CSP.3 — set per frame by MIRPipeline from `elapsedSeconds`; 100.0 when the
+        // ffoColdStartFixEnabled toggle is off. Detail: `Common.metal`.
         self.trackElapsedS = 0
-        // FBS pulse (BeatPulseClock via MIRPipeline) + padding.
         self.pulsePhase01 = 0; self.pulseAmp01 = 0; self.pulseBeatIndex = 0
         self.pulseRegionalBlend01 = 0
         self.tonalPhaseFifths = 0; self.tonalPhaseThirds = 0; self.tonalConsonance = 0
         self.tonalTension = 0; self.harmonicFlux = 0   // TONAL (D-178), set by TonalAnalyzer
+        self.spectralDensity = 0; self.spectralDensitySlow = 0; self._pad51 = 0; self._pad52 = 0
     }
 
     /// All-zero feature vector.
