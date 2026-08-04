@@ -20,8 +20,8 @@ import Shared
 
 // MARK: - MeniscusCamera
 
-/// Three Euler angles integrating from re-randomised velocities, plus a free distance
-/// oscillation. Deterministic: a given track renders identically twice.
+/// Three Euler angles integrating from velocities re-randomised on the BAR LINE, plus an
+/// arousal-driven dolly (§5's routing table). Deterministic: a track renders the same twice.
 struct MeniscusCamera {
 
     /// The three Euler angles the projection consumes.
@@ -31,11 +31,18 @@ struct MeniscusCamera {
 
     private var angularVelocity = SIMD3<Float>(0.10, 0.14, 0.05)
     private var smoothedVelocity = SIMD3<Float>(0.10, 0.14, 0.05)
-    private var dollyPhase: Float = 0
+    /// Mood arousal, smoothed onto §5's ~20–40 s timescale.
+    private var arousalEnvelope: Float = 0
+    /// Previous bar phase, for downbeat detection.
+    private var previousBarPhase: Float = 0
+    private var sinceDownbeat: Float = 99
     private var beatEnvelope: Float = 0
     private var previousBeatEnvelope: Float = 0
     private var refractory: Float = 0
-    private var beatIndex = 0
+    /// Counts RE-AIM EVENTS, not beats — the three axis cadences (%4, %4, %6) are
+    /// meant to index successive re-aims, so mixing beat and downbeat increments
+    /// would desynchronise them from the events they gate.
+    private var reaimIndex = 0
     private var rng: UInt64 = 0x9E37_79B9_7F4A_7C15
 
     /// The hue arc the oracle actually traverses — measured 176° teal → 305° magenta,
@@ -55,18 +62,29 @@ struct MeniscusCamera {
         var beatFired = false
         if beatEnvelope > 0.55 && previousBeatEnvelope <= 0.55 && refractory <= 0 {
             beatFired = true
-            beatIndex &+= 1
             refractory = 0.20
         }
         previousBeatEnvelope = beatEnvelope
 
-        // Three axes, three cadences — the source re-randomises on beat indices
-        // satisfying (i % 4 == 0), (i % 4 == 2) and (i % 6 == 2). Independent periods
-        // mean the axes drift in and out of phase rather than locking into a spin.
-        if beatFired {
-            if beatIndex % 4 == 0 { angularVelocity.x = nextVelocity(configuration.tumbleRate) }
-            if beatIndex % 4 == 2 { angularVelocity.y = nextVelocity(configuration.tumbleRate) }
-            if beatIndex % 6 == 2 { angularVelocity.z = nextVelocity(configuration.tumbleRate) }
+        // RE-AIM ON THE BAR LINE, not the beat — §5's table, and FA #67 now REQUIRES it.
+        // Once drops fire on per-stem onsets, a camera re-aiming on its own beat detector
+        // puts two visual layers on one primitive at one timescale, which is the failure
+        // the rule exists to catch (Ferrofluid rounds 56–65). Bar phase is a different
+        // timescale AND comes from the cached grid, so it is also steadier than the live
+        // detector it replaces. D-157: bounded angular step, luminance unaffected.
+        let barPhase = features.barPhase01
+        let downbeat = previousBarPhase > 0.75 && barPhase < 0.25
+        previousBarPhase = barPhase
+        sinceDownbeat = downbeat ? 0 : sinceDownbeat + dt
+        // No grid ⇒ barPhase01 is pinned at 0 and never wraps; fall back to the live
+        // detector rather than freezing the camera.
+        let barsLive = sinceDownbeat < 8.0
+        let reaim = barsLive ? downbeat : beatFired
+        if reaim {
+            reaimIndex &+= 1
+            if reaimIndex % 4 == 0 { angularVelocity.x = nextVelocity(configuration.tumbleRate) }
+            if reaimIndex % 4 == 2 { angularVelocity.y = nextVelocity(configuration.tumbleRate) }
+            if reaimIndex % 6 == 2 { angularVelocity.z = nextVelocity(configuration.tumbleRate) }
         }
 
         // Loud music → less smoothing → snappier re-aim.
@@ -76,18 +94,35 @@ struct MeniscusCamera {
         smoothedVelocity += (angularVelocity - smoothedVelocity) * (1 - exp(-dt / tau))
         angles += smoothedVelocity * dt
 
-        // Distance oscillation — a free slow sine, independent of the tumble.
-        dollyPhase += dt * (2 * .pi / max(configuration.dollyPeriod, 0.001))
+        // DOLLY FROM MOOD AROUSAL — §5's table, replacing the source's free sine.
+        //
+        // The sine was ported faithfully at MEN.2b and Matt's live read was that the
+        // in/out reads as unmotivated, which it is: nothing about it responded to audio.
+        // §5 is explicit that this must NOT be a slower smoothing of loudness — that
+        // would be two visual layers on one primitive (FA #67), and the surface amplitude
+        // already carries loudness. Arousal is a genuinely independent wide-window signal,
+        // and AV.7 / D-185 found mood envelopes are the right driver where deviation
+        // primitives measure too spiky.
+        arousalEnvelope += (max(0, min(features.arousal, 1)) - arousalEnvelope)
+            * (1 - exp(-dt / max(configuration.dollyTau, 0.1)))
     }
 
     mutating func reset() { self = MeniscusCamera() }
 
     // MARK: - Derived
 
-    /// Camera distance this frame: the resting register swept by the slow sine.
+    /// Camera distance this frame.
+    /// Low arousal → close → the OPEN RASTER hero register; high arousal → back → the
+    /// dense sheet excursion. The direction matters at cold start: §5 notes arousal is
+    /// EMA-attenuated there, so starting from 0 puts the dolly at the hero distance and
+    /// it moves outward, never the reverse.
     func distance(configuration: MeniscusConfiguration) -> Float {
-        configuration.camDistCentre + configuration.camDistSwing * sin(dollyPhase)
+        configuration.camDistCentre
+            + configuration.camDistSwing * (2 * arousalEnvelope - 1)
     }
+
+    /// Diagnostic: the smoothed arousal the dolly is riding.
+    var dollyArousal: Float { arousalEnvelope }
 
     /// Sky/glare hue, in turns, derived from the camera attitude.
     ///
