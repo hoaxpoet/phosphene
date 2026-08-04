@@ -1447,7 +1447,9 @@ An MD.6 uplift, split design-then-author so the concept clears its gates before 
 
 **Outcome.** Everything above shipped and is green. Flash budget MEASURED and inside every §5 ceiling (0.00 flashes/s; peak mean luma 0.0237 / 0.35; max Δ/frame 0.0009 / 0.06; flare extent 0.006 % and 0.126 % against the 3 % / 12 % caps). All eight routes carry per-route firing evidence; `trail_contraction` greens on `there_there` only, as declared, floor untouched. Phase travel reproduces the §2.3 table (2.09 / 1.80 / 15.10 circles per 30 s vs 2.1 / 1.7 / 15.4).
 
-**OPEN — the §6 motion gate's verdict is a DECISION for Matt.** The stroke reads as a stroke; it does not read as a multi-lobe *figure*. Cause is mechanism-level, not tuning: `θ̇ = k·φ̄̇` integrates to `θ ≈ k·φ̄`, the measured phase reverses at high frequency around a concentrated mean (heading monotonicity 0.01–0.12), so net direction barely moves. `k` is the only shape lever and raising it 1.1 → 2.6 → 5.0 changes the figure not at all — saturating the clamp makes it *more* straight. §6's prescribed response is re-scope, not tuning rounds. Options are in the WL.2 closeout; **do not open a tuning increment against this without Matt's call.**
+**RETRACTED at WL.3 (2026-08-04) — this diagnosis was WRONG. The path was fine; the PROJECTION was destroying it.** `tumbleYaw` was `0.055 · tumbleClock`, unbounded, turning the drawing plane edge-on every ~57 s, where any figure collapses to the same diagonal line. Zeroing the tumble and re-rendering the three fixtures produced three obviously different legible figures from this exact motion model. `θ ≈ k·φ̄` was never the reason the stroke read as a stroke. Original text kept below for the record.
+
+**~~OPEN — the §6 motion gate's verdict is a DECISION for Matt.~~** The stroke reads as a stroke; it does not read as a multi-lobe *figure*. Cause is mechanism-level, not tuning: `θ̇ = k·φ̄̇` integrates to `θ ≈ k·φ̄`, the measured phase reverses at high frequency around a concentrated mean (heading monotonicity 0.01–0.12), so net direction barely moves. `k` is the only shape lever and raising it 1.1 → 2.6 → 5.0 changes the figure not at all — saturating the clamp makes it *more* straight. §6's prescribed response is re-scope, not tuning rounds. Options are in the WL.2 closeout; **do not open a tuning increment against this without Matt's call.**
 
 ---
 
@@ -1548,6 +1550,32 @@ Two curation errors produced it, both recorded in `docs/VISUAL_REFERENCES/witchl
 **Done when:** ✅ background visibly drifts, gated · ✅ pen speed visibly responsive, QG.5-banded · ✅ beads read as beads, structurally gated · ✅ ribbon floor met without weakening · ✅ flash budget improved · ✅ full suites green.
 
 **Still open, unchanged:** the stroke's SHAPE (`θ ≈ k·φ̄`) remains the parked WL.2 decision — Matt's "same shape every time" is its third live confirmation. Certification still needs a live M7 on this build plus the D-121 side-by-side. Six of Witchlight's eight routes remain unbanded.
+
+---
+
+### Increment WL.3 — Witchlight: the drawing plane was turning edge-on ✅ **LANDED 2026-08-04**
+
+**Why.** Matt, on the WL.2-i/-j build: *"not sure how you should address the shape of the beaded line, but it should be different every time at the very least."* Third consecutive M7 reporting the same thing.
+
+**The finding, and it overturns a decision that had been parked since WL.2.** Rendering the three canonical fixtures side by side showed one narrow diagonal lens on all three — same shape, only the colour differing. Three hypotheses died before the real one:
+
+1. *"The heading mean-reverts into a hairpin."* Falsified by instrumentation — heading travels 1.7–2.4 circles and monotonicity differs per track (0.98 / 0.87 / 0.39).
+2. *"The curvature is bimodal — straight runs punctuated by clamped knots."* Falsified by an offline sweep of the steer signal: So What is 87 % mid-range curvature, There There 69 %. Only Love Rehab clamps heavily (48 %).
+3. Only then: check what happens to the path AFTER it is drawn.
+
+**`tumbleYaw` was `0.055 · tumbleClock` — unbounded.** The drawing plane rotated forever at 0.055 rad/s, crossing edge-on every ~57 s. Beads sit at `z = 0`, so pitch maps y→z and yaw folds that z back into x; at yaw = 90° both screen axes become proportional to the same coordinate and **the whole figure collapses to a line**. Near edge-on every figure looks like the same diagonal lens whatever the pen drew — and because the collapse runs on a wall clock, every track collapsed identically at the same moment. All three fixtures are ~21 s, hence all rendered at yaw ≈ 66° (cos 0.40), identically foreshortened.
+
+**Proof it was the projection, not the generator:** zeroing the tumble and re-rendering the same three fixtures through the same motion model produced three obviously different, legible figures — a sweeping curve into a loop, an S-curve with a closed circle, a hook with a tight spiral.
+
+**Fix.** Yaw bounded to ±26° (`cos ≥ 0.90`) as an oscillator rather than a ramp. The tumble still reads as depth — that is its job — it simply can no longer flatten the drawing. **Gated** by an invariant test over 30 simulated minutes (`|cos(yaw)| ≥ 0.85`); it measured 0.900 on the fix and **0.000 on the old code**. The 30-minute span is deliberate: the failure was unbounded GROWTH, and at 21 s the old yaw was only 66°, which is exactly why no fixture ever caught it.
+
+**Per-session framing (Matt's call).** The figure stays a deterministic reading of the music — a track always draws its own drawing — but each session varies the tumble phase and roll handedness, so a repeat play is the same figure seen from a new angle rather than an identical stamp. Injected from the app layer with a deterministic default, because the replay harness, golden dHashes and QG.5 bands all need byte-identical output for identical input.
+
+**The ribbon-share floor, re-derived honestly (0.60 → 0.40).** Frame-share has now been inflated by a defect three separate times — fused beads 1.29–1.64 %, collapsed plane 0.687 %, legible figure 0.494 %. **It goes UP as the preset gets worse**, because every degeneracy concentrates the same beads into less area. The source's 1.048 % was never reachable either: that frame is a compact self-overlapping tangle and ours is one open curve, with the path our declared D-121 divergence axis. Retained only as a "has the ribbon gone invisible" floor (WL.2-g's real defect measured 0.119 %); the assertions that now carry the meaning are peak luma and distinct-bead count, neither of which a degeneracy can inflate.
+
+**Done when:** ✅ different tracks draw visibly different figures · ✅ plane never approaches edge-on, gated over 30 min · ✅ per-session framing without breaking determinism · ✅ share floor re-derived with its inflation history recorded · ✅ full suites green.
+
+**Still open:** certification (live M7 on this build + the D-121 side-by-side). Six of eight audio routes remain unbanded.
 
 ---
 
