@@ -386,6 +386,12 @@ struct FractalTreeMeshRenderTest {
         // The bar clock the taps actually fire on. Recorded in permille.
         f.barPhase01 = value("barPhase01_permille") / 1000
         f.beatsPerBar = value("beatsPerBar")
+        // DYN.1. The route_coverage fixtures predate the field, so these read 0 here and
+        // the density lift contributes nothing in the harness — the growth still measures
+        // via arousal. Once the fixtures are re-captured these become live and the lift
+        // is exercised; until then this is a KNOWN blind spot, stated rather than implied.
+        f.spectralDensity = value("spectral_density")
+        f.spectralDensitySlow = value("spectral_density_slow")
         // Context the shader reads directly.
         f.bass = value("bass")
         f.mid = value("mid")

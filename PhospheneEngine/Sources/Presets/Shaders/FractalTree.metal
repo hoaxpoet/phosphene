@@ -120,7 +120,30 @@ void fractal_tree_object_shader(
         // feature (spectral flatness or crest factor) in the FeatureVector — an engine
         // increment, not a coefficient. Until then the tree is LARGE through the solo
         // rather than blooming AT it.
-        float reach = saturate((f.arousal - 0.10f) * (1.0f / 0.58f));
+        // GROWTH = the section envelope (arousal) LIFTED BY SPECTRAL DENSITY (DYN.1).
+        //
+        // arousal alone was measured and is not enough. It correlates +0.874 with true
+        // level and is the only slow signal available (0.52 turns/s — it is why the trunk
+        // stopped bouncing), but it SATURATES: on Matt's 2026-08-04T14-58-10Z capture it
+        // ramps 0 → 0.64 by ~54 s and is then flat for the remaining two minutes. Every
+        // later lift — the distorted guitar, the chorus — produced nothing. His words:
+        // *"when the distorted guitar enters the mix, the volume increases, but the tree
+        // does not grow … same for the chorus."*
+        //
+        // `spectral_density` is the DYN.1 field, and it moves exactly where arousal is
+        // flat: 0.084–0.10 through the verse, 0.14–0.22 from ~75 s. Comparing it against
+        // its own slow companion gives "denser than this track's normal", so the lift is
+        // relative to the material rather than an absolute threshold on a normalised
+        // value (FA #31 — and note density is a pre-normalisation RATIO, so a threshold
+        // on the RATIO of the two is legitimate where one on a band would not be).
+        //
+        // Kept as a LIFT rather than a replacement: arousal carries the slow arc that
+        // fixed the jerky trunk, and density carries the section steps arousal cannot
+        // see. Sized so a fully dense passage adds about a third of the range.
+        float section = saturate((f.arousal - 0.10f) * (1.0f / 0.58f));
+        float density = f.spectral_density / max(f.spectral_density_slow, 1e-4f);
+        float lift    = saturate((density - 1.0f) * 1.6f);
+        float reach   = saturate(section * 0.72f + lift * 0.34f);
 
         // SILENCE GATE. `pulse_amp01` is 0 before the first note and across sustained
         // silence, returning the sparse 7-branch figure the reference README asks for
@@ -238,22 +261,40 @@ void fractal_tree_mesh_shader(
 
     // ── THIS BRANCH FOLLOWING THE MELODY ──────────────────────────────────────────
     //
-    // Every branch gets its own THRESHOLD on the melodic line rather than its own
-    // envelope on a clock. As `mid_high` rises, branches with a low threshold extend
-    // first and high-threshold ones follow; as it falls they retract in reverse. The
-    // canopy therefore sweeps in and out as a moving front instead of pulsing in
-    // lockstep — which is what makes individual small branches look like they are
-    // tracking a line rather than obeying a metronome.
+    // Matt called the tips "better overall and probably satisfactory" and asked for
+    // further improvement if any was available. Measured first: there is no materially
+    // better DRIVER in the feature set — beatTreble (+0.200), beatComposite (+0.199)
+    // and spectralCentroid (+0.190) all sit within noise of beat_mid (+0.179), and
+    // swapping on a +0.02 difference is a change nobody could see. So this pass changes
+    // the EXPRESSION of the same signal, in three ways:
     //
-    // Stateless and reproducible: a branch's threshold is a pure hash of its index, so
-    // the same branch always responds at the same point on the line and the pattern is
-    // stable rather than random frame to frame. That stability is the difference
-    // between "following" and the "haphazard" Matt rejected.
+    // 1. TRAVELLING WAVE. Each branch reads the line at its own point in the ROLL-OFF,
+    //    not just its own threshold, so activation sweeps outward through the canopy
+    //    instead of a whole tier answering at once. A melodic line moves across an
+    //    instrument; it does not strike it as a block.
+    // 2. ASYMMETRIC DECAY. The tap rises fast and falls slow, so tips RING rather than
+    //    snap back. Same firing rate, less flicker — which is the specific risk of a
+    //    driver that turns 6.9 times a second.
+    // 3. DEPTH HIERARCHY. The outermost tier responds further and faster than the tier
+    //    below it, so the canopy has an internal order rather than one uniform gesture.
     //
-    // Thresholds are packed into the lower 0.85 of the range so the top of a melodic
-    // swell recruits essentially the whole canopy.
-    float slot = float(fractal_hash(bid * 2654435761u) & 1023u) * (1.0f / 1023.0f);
-    float tap  = smoothstep(slot * 0.85f, slot * 0.85f + 0.25f, payload.melody);
+    // Stateless throughout: a branch's phase and threshold are pure hashes of its index,
+    // so the pattern is stable frame to frame. That stability is the difference between
+    // "following" and the "haphazard" Matt rejected at FTR.2.
+    float depth_hint = float(leaf_depth) / 5.0f;
+    uint  h    = fractal_hash(bid * 2654435761u);
+    float slot = float(h & 1023u) * (1.0f / 1023.0f);
+    float lag  = float((h >> 10) & 255u) * (1.0f / 255.0f);
+
+    // The wave: deeper branches are read later along the line's rise, so the front
+    // travels from the inner canopy outward rather than lighting everything together.
+    float travel = payload.melody - lag * 0.18f * depth_hint;
+
+    // Asymmetric response. The rise is a sharp threshold crossing; the fall trails it,
+    // so a branch that has fired stays lit through a short dip in the line.
+    float rise = smoothstep(slot * 0.85f, slot * 0.85f + 0.12f, travel);
+    float fall = smoothstep(slot * 0.85f - 0.30f, slot * 0.85f + 0.10f, travel);
+    float tap  = max(rise, fall * 0.62f);
 
     float base_len = 0.36f + payload.reach * 0.26f;
     float ang_base = payload.spread;                    // 20°–34°, from spectral_flux
@@ -286,7 +327,7 @@ void fractal_tree_mesh_shader(
     // whole tree lurching, not as fine detail tracking a line.
     float depth_norm = float(leaf_depth) / 5.0f;    // 0 = trunk … 1 = deepest leaf
     float is_leaf    = float(leaf_depth == 5 ? 1 : 0);
-    seg_len *= 1.0f + tap * (0.02f + 0.40f * depth_norm * depth_norm);
+    seg_len *= 1.0f + tap * (0.02f + 0.46f * depth_norm * depth_norm * depth_norm);
 
     float2 branch_start = pos;
     float2 branch_end   = pos + dir * seg_len;
@@ -361,7 +402,6 @@ fragment float4 fractal_tree_fragment(
     // Per-vertex data packed into MeshVertex.normal and .uv.
     float depth_norm   = in.normal.x;    // 0 = trunk, 1 = deepest leaf level
     float tap          = in.normal.y;    // this branch's beat activation, 0…1
-    float is_leaf      = in.normal.z;    // 1 if depth == 5, else 0
     float along_branch = in.uv.x;        // 0 = branch base, 1 = branch tip
     float across_width = in.uv.y;        // 0 and 1 = edges, 0.5 = centre
 

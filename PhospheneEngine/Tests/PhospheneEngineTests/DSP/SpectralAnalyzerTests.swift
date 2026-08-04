@@ -108,3 +108,76 @@ import Foundation
     #expect(result1.rolloff == result2.rolloff, "Rolloff should be deterministic")
     #expect(result1.flux == result2.flux, "Flux should be deterministic")
 }
+
+// MARK: - Spectral Density (DYN.1)
+
+// The field exists because NOTHING else in the pipeline can express "the mix got
+// bigger" on a limited master. Measured on session 2026-08-04T14-58-10Z (Cherub
+// Rock): RMS is flat at −14 dBFS from 24 s to the end of the track, while the
+// energy fraction above 1.5 kHz runs 0.084–0.10 through the verse and rises to
+// 0.14–0.22 once the distorted guitar enters. Distortion adds harmonics, not
+// amplitude. These tests pin the definition that makes that measurable.
+
+@Test func density_silence_isZero() {
+    let analyzer = SpectralAnalyzer()
+    let result = analyzer.process(magnitudes: [Float](repeating: 0, count: 512))
+    #expect(result.density == 0, "density of silence must be 0, not a divide artefact")
+}
+
+@Test func density_lowFrequencyOnly_isNearZero() {
+    let analyzer = SpectralAnalyzer()
+    // Bin 5 ≈ 234 Hz — bass register, far below the 1.5 kHz split.
+    let magnitudes = AudioFixtures.syntheticMagnitudes(peaks: [(bin: 5, magnitude: 1.0)])
+    let result = analyzer.process(magnitudes: magnitudes)
+    #expect(result.density < 0.01, "a bass-only spectrum must read as low density")
+}
+
+@Test func density_highFrequencyOnly_isNearOne() {
+    let analyzer = SpectralAnalyzer()
+    // Bin 200 ≈ 9.4 kHz — well above the split.
+    let magnitudes = AudioFixtures.syntheticMagnitudes(peaks: [(bin: 200, magnitude: 1.0)])
+    let result = analyzer.process(magnitudes: magnitudes)
+    #expect(result.density > 0.99, "a treble-only spectrum must read as high density")
+}
+
+/// THE ONE THAT MATTERS: density must be SCALE-INVARIANT.
+///
+/// This is the whole reason the field is computed in `SpectralAnalyzer` from raw
+/// magnitudes rather than downstream. Every other band field is flattened by the
+/// total-energy AGC and `BandDeviationTracker`'s per-band EMA — measured, the band
+/// RATIOS are flattened too (`treble/(bass+mid+treble)` correlates −0.229 with real
+/// HF content, moving OPPOSITE to it). A ratio taken before any of that cancels a
+/// scalar gain exactly, which is what lets this survive.
+@Test func density_isInvariantToOverallGain() {
+    let quiet = SpectralAnalyzer()
+    let loud = SpectralAnalyzer()
+    let shape: [(bin: Int, magnitude: Float)] = [(bin: 5, magnitude: 1.0), (bin: 200, magnitude: 0.5)]
+    let quietResult = quiet.process(magnitudes: AudioFixtures.syntheticMagnitudes(peaks: shape))
+    let loudResult = loud.process(
+        magnitudes: AudioFixtures.syntheticMagnitudes(
+            peaks: shape.map { (bin: $0.bin, magnitude: $0.magnitude * 40) }))
+    #expect(abs(quietResult.density - loudResult.density) < 1e-5, """
+        density changed by \(abs(quietResult.density - loudResult.density)) under a pure \
+        40× gain. It must not: a scalar gain has to cancel in the ratio, or the field is \
+        just another level measure and cannot do the job it was added for.
+        """)
+}
+
+/// Density must RISE when harmonics are added at constant low-end — the distorted
+/// guitar case, stated as a test rather than as a hope.
+@Test func density_risesWhenHarmonicsAreAdded() {
+    let clean = SpectralAnalyzer()
+    let dirty = SpectralAnalyzer()
+    let fundamental: [(bin: Int, magnitude: Float)] = [(bin: 8, magnitude: 1.0)]
+    let cleanResult = clean.process(magnitudes: AudioFixtures.syntheticMagnitudes(peaks: fundamental))
+    // Same fundamental, plus a harmonic series above the split — distortion.
+    let withHarmonics = fundamental + (4...12).map { (bin: $0 * 40, magnitude: Float(0.25)) }
+    let dirtyResult = dirty.process(
+        magnitudes: AudioFixtures.syntheticMagnitudes(peaks: withHarmonics))
+    #expect(dirtyResult.density > cleanResult.density + 0.2, """
+        adding a harmonic series above 1.5 kHz moved density only \
+        \(dirtyResult.density - cleanResult.density). This is the exact signal the field \
+        exists to carry (Matt: "when the distorted guitar enters the mix, the volume \
+        increases, but the tree does not grow").
+        """)
+}
