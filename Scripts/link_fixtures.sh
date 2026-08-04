@@ -62,9 +62,11 @@ primary="$(git worktree list --porcelain | awk '/^worktree /{print $2; exit}')"
 #                 junk (.DS_Store) that would otherwise be symlinked into every
 #                 worktree, so they are restricted to rasters.
 #
-# Keep this list in sync with the Swift presence gates
-# (BeatThisFixturePresenceGate). A single shared manifest consumed by both is
-# the remaining BUG-080 follow-up; until then, changes here need a look there.
+# This list says WHAT TO LINK (whole trees). What must EXIST for a green run is
+# a different, finer question, and it now has one answer for everybody:
+# Scripts/fixtures.manifest, read below and by FixtureManifestPresenceGate.
+# That closes the remaining BUG-080 follow-up — the two sides are no longer
+# hand-synced, and "non-empty" is no longer mistaken for "complete" (RECON.13).
 # ---------------------------------------------------------------------------
 manifest=(
   "PhospheneEngine/Tests/Fixtures|yes|."
@@ -72,6 +74,10 @@ manifest=(
   "docs/VISUAL_REFERENCES|no|\.(jpg|jpeg|png|gif)$"
   "docs/diagnostics|no|\.(jpg|jpeg|png|gif)$"
 )
+
+# The required-FILES manifest (RECON.13). Absent file => the primary is not a
+# complete source, regardless of how many other files the directory holds.
+required_manifest="$repo_root/Scripts/fixtures.manifest"
 
 # `git ls-files --others --ignored --exclude-standard` lists exactly the
 # gitignored (untracked-and-ignored) files under a path — the set that never
@@ -105,8 +111,30 @@ for entry in "${manifest[@]}"; do
   fi
 done
 
+# --- Required-FILE check (RECON.13) — the "non-empty != complete" gap --------
+# The directory scan above proves a tree has SOMETHING in it. This proves it has
+# the specific files a default `swift test` needs. A tempo tree holding 1 of 3
+# clips passes the former and fails the latter, which is the whole point.
+if [ -f "$required_manifest" ]; then
+  while IFS= read -r rel; do
+    rel="${rel%%#*}"                                  # strip comments
+    rel="$(printf '%s' "$rel" | tr -d '[:space:]')"   # strip whitespace
+    [ -n "$rel" ] || continue
+    if [ ! -e "$primary/$rel" ]; then
+      echo "link_fixtures: ERROR — required file missing from the primary checkout:" >&2
+      echo "                 $rel" >&2
+      incomplete=1
+    elif [ "$mode" = "--verify" ]; then
+      printf 'link_fixtures: %-40s %5s\n' "$rel" "ok"
+    fi
+  done < "$required_manifest"
+else
+  echo "link_fixtures: WARNING — $required_manifest not found; required-file check skipped." >&2
+fi
+
 if [ "$incomplete" -ne 0 ]; then
-  echo "link_fixtures: FAILED — the primary checkout is not a complete source (BUG-080 Gap B)." >&2
+  echo "link_fixtures: FAILED — the primary checkout is not a complete source (BUG-080)." >&2
+  echo "                 Restore the file(s) above: Scripts/fetch_tempo_fixtures.sh" >&2
   exit 1
 fi
 
