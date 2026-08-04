@@ -191,16 +191,37 @@ struct FractalTreeMeshRenderTest {
             directory: base.appendingPathComponent(Self.driveTrack))
         guard let time = series.floatSeries("time"),
               let bassRel = series.floatSeries("bassRel"),
-              let beatPhase = series.floatSeries("beatPhase01") else {
-            throw FractalTreeHarnessError.setupFailed("time/bassRel/beatPhase01 absent")
+              // The BAR clock. `pulse_phase01` is documented as a 4-beat cycle but
+              // measures identically to `beat_phase01` on every recorded source, so
+              // the bar rate has to come from here (recorded in permille).
+              let beatPhase = series.floatSeries("barPhase01_permille") else {
+            throw FractalTreeHarnessError.setupFailed("time/bassRel/barPhase01 absent")
         }
 
         // The shader's own arithmetic, mirrored — this is what the geometry sees.
+        // `amp` is 1 here: the fixtures are music throughout, and the silence gate is
+        // covered by the D-037 assertion in the render test.
         let rows = (0..<min(time.count, bassRel.count)).filter { (time[$0] ?? 0) >= 10.0 }
         let counts = rows.map { row -> Int in
             let reach = 1.0 / (1.0 + exp(-Double(bassRel[row] ?? 0) * 3.0))
-            return min(7 + Int(reach * 56.0), 63)
+            return min(7 + Int(10.0 + reach * 50.0), 63)
         }
+
+        // (e) DEPTH TIERS. Matt: "I never see beyond three levels of branches." A tier
+        // exists only above a threshold count — d4 > 15, d5 > 31 — and because leaf hue
+        // is keyed to depth, losing tiers also costs colour. FTR.3 reached d5 on 23% of
+        // frames against the old preset's 38%; this asserts the deep tier is routinely
+        // on screen rather than occasional.
+        let deepest5 = 100 * Double(counts.filter { $0 > 31 }.count) / Double(counts.count)
+        let deepest4 = 100 * Double(counts.filter { $0 > 15 }.count) / Double(counts.count)
+        print(String(format: "[fractal-tree/tiers] depth-5 on %.1f%% of frames, depth-4+ on %.1f%%",
+                     deepest5, deepest4))
+        #expect(deepest4 > 90, """
+            the canopy reaches depth 4 on only \(String(format: "%.1f", deepest4))% of \
+            frames — the tree spends its time as a stub, which is both the "never see \
+            beyond three levels" complaint and, because hue is keyed to depth, half the \
+            "not colourful enough" one.
+            """)
         let seconds = Double((time[rows.last!] ?? 0) - (time[rows.first!] ?? 0))
 
         let steps = zip(counts, counts.dropFirst()).map { abs($1 - $0) }
@@ -210,7 +231,7 @@ struct FractalTreeMeshRenderTest {
         let atFloor = 100 * Double(counts.filter { $0 <= 9 }.count) / Double(counts.count)
 
         // Taps fire once per beat — count beat-phase wraps.
-        let phases = rows.compactMap { beatPhase[$0] }
+        let phases = rows.compactMap { beatPhase[$0] }.map { $0 / 1000 }   // permille → 0…1
         let beats = zip(phases, phases.dropFirst()).filter { $1 < $0 - 0.5 }.count
 
         print("""
@@ -244,11 +265,17 @@ struct FractalTreeMeshRenderTest {
             too static to read as alive.
             """)
 
-        // (d) THE HERO FIRES. Per-branch taps are driven by beat phase, so if the beat
-        // grid never advances there is no rhythm regardless of how the canopy behaves.
-        #expect(Double(beats) / max(seconds, 1) > 0.5, """
-            only \(beats) beats in \(String(format: "%.1f", seconds)) s — the per-branch \
+        // (d) THE HERO FIRES, ON THE BAR. Matt cut the rate to once per bar because
+        // per-beat was "much too active with drums". Both bounds matter: no clock at all
+        // means no rhythm, and drifting back toward the beat rate re-breaks it.
+        let rate = Double(beats) / max(seconds, 1)
+        #expect(rate > 0.15, """
+            only \(beats) bars in \(String(format: "%.1f", seconds)) s — the per-branch \
             taps have no clock to fire on.
+            """)
+        #expect(rate < 1.0, """
+            taps fire \(String(format: "%.2f", rate))/s — back at beat rate rather than \
+            bar rate, which is the "much too active with drums" failure.
             """)
     }
 
@@ -336,6 +363,9 @@ struct FractalTreeMeshRenderTest {
         f.pulsePhase01 = value("pulse_phase01")
         f.pulseAmp01 = value("pulse_amp01")
         f.pulseBeatIndex = value("pulse_beat_index")
+        // The bar clock the taps actually fire on. Recorded in permille.
+        f.barPhase01 = value("barPhase01_permille") / 1000
+        f.beatsPerBar = value("beatsPerBar")
         // Context the shader reads directly.
         f.bass = value("bass")
         f.mid = value("mid")
