@@ -102,7 +102,15 @@ enum WitchlightFixtureDrive {
         // StemFeatures — the warmup blend and the silence gate read the four energies.
         let drumsEnergy = column("drumsEnergy"), bassEnergy = column("bassEnergy")
         let vocalsEnergy = column("vocalsEnergy"), otherEnergy = column("otherEnergy")
+        // ALL FOUR deviation primitives + the per-stem beat pulses, not just the two
+        // Witchlight happened to read. A drive that silently zeroes a column makes any
+        // preset reading it look like a dead route — MEN.3's vocals and `other` regions
+        // measured 0 impacts across three tracks until this line grew, and the defect was
+        // here, not in the placement. The fixtures have carried these columns all along.
         let drumsDev = column("drumsEnergyDev"), bassDevStem = column("bassEnergyDev")
+        let vocalsDev = column("vocalsEnergyDev"), otherDev = column("otherEnergyDev")
+        let drumsBeat = column("drumsBeat"), bassBeat = column("bassBeat")
+        let vocalsBeat = column("vocalsBeat"), otherBeat = column("otherBeat")
         var stems: [StemFeatures] = []
         stems.reserveCapacity(count)
         for i in 0..<count {
@@ -110,6 +118,9 @@ enum WitchlightFixtureDrive {
             s.drumsEnergy = drumsEnergy[i]; s.bassEnergy = bassEnergy[i]
             s.vocalsEnergy = vocalsEnergy[i]; s.otherEnergy = otherEnergy[i]
             s.drumsEnergyDev = drumsDev[i]; s.bassEnergyDev = bassDevStem[i]
+            s.vocalsEnergyDev = vocalsDev[i]; s.otherEnergyDev = otherDev[i]
+            s.drumsBeat = drumsBeat[i]; s.bassBeat = bassBeat[i]
+            s.vocalsBeat = vocalsBeat[i]; s.otherBeat = otherBeat[i]
             stems.append(s)
         }
 

@@ -421,6 +421,59 @@ badly understated.** This is the NACRE.2b pattern the plan predicted (§2 reason
    The warp shader body returns `vec3(0,0,0)` unconditionally. §3 asserted this from a
    read; it is now verified from the artifact.
 
+### MEN.3 — the divergence: stem-region placement (2026-08-04)
+
+Matt's live viewing of the faithful base: "not moving with the music in a clearly
+understandable manner — it looks random and is too much." That is not a defect in the
+port. §3 says of the source's mechanism "no listener can perceive the mapping", so a
+faithful port of an inaudible placement reads as random BY CONSTRUCTION. MEN.2b's job was
+to establish the distribution the wave sim needs and to prove that point with evidence
+rather than argument; both are done, and this is the replacement §5 declared up front.
+
+**The claim is now measured, not asserted.** `MeniscusStemDropsTests` drives the committed
+real-music fixtures and holds three properties:
+
+| | so_what | there_there | love_rehab |
+|---|---|---|---|
+| all four regions fire | yes | yes | yes |
+| mean row v — vocals / bass / drums | — | 0.19 / 0.47 / 0.81 | 0.19 / 0.49 / 0.82 |
+| impacts per second | 4.7 | 4.2 | 7.5 |
+
+The ordering is §5's layout exactly (vocals far, bass centre, drums near), and the density
+sits inside the range MEN.2b measured — which is precisely what §2 reason 2 said the
+faithful base was for: making that a NUMBER before changing what decides the drops.
+
+**A harness defect surfaced first, and it is the more transferable finding.** Vocals and
+`other` measured ZERO impacts across all three tracks. The routes were fine;
+`WitchlightFixtureDrive` mapped only `drumsEnergyDev` and `bassEnergyDev` and silently
+zeroed the rest, so any preset reading the other two stems would look dead. The fixtures
+have carried those columns all along. The drive now maps all four deviations plus the four
+per-stem beat pulses — a fix that benefits every future stem-driven preset, not just this
+one. Checking the drive's mapping before diagnosing the preset is the rule that caught it.
+
+**Blur was a units error, not taste.** Matt: "a blurry object". The spread was an absolute
+NDC value, which says nothing about whether neighbouring rows merge — at the resting camera
+the rows sit ~0.014 NDC apart while the spread was 0.033, more than twice the gap, so every
+line bled into both neighbours. It is now a FRACTION OF PROJECTED ROW SPACING, which is
+scale-free across camera distance and grid resolution and therefore also survives the §6
+resolution decision that is still open.
+
+**Two metrics had to be corrected, both mine.** The `disturbed %` figure thresholds against
+the field's own peak, so a uniformly LOW field reads as 79 % disturbed while being calmer
+in absolute terms (rms 0.105 -> 0.056) — read absolute rms alongside it. And the harness's
+footprint floor was a fraction of frame area, which silently encoded how THICK the lines
+are; narrowing the spread tripped it at 1562 px on a good render. It is now an absolute
+presence floor, because presence is the question it asks.
+
+**STILL OPEN — the camera.** Matt: "I'm also not understanding the camera moving in and
+out — is the camera motion tied to musical signal too?" **The dolly is not**: it is a free
+19 s sine, ported faithfully from the source, and nothing about it responds to audio. The
+tumble IS beat-driven but re-aims only ~45x/minute with each axis every ~5.4 s, so it drifts
+more than it articulates. §5's own routing table already specifies the fix (dolly -> mood
+`arousal`, re-aim -> cached `BeatGrid` bar phase), and FA #67 now REQUIRES it: with drops on
+per-stem onsets, the camera sharing an event-timescale primitive puts two visual layers on
+one primitive. Not changed here — it is a product call about what the camera should mean.
+
 ### MEN.2b — drops: force law read from the source, then calibrated (2026-08-03)
 
 Four rounds of guessing the force scale missed the drop rate by more than 100x (297-522,

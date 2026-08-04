@@ -8,9 +8,9 @@
 // Six visual layers, six distinct primitives (FA #67), every coefficient sized
 // against its primitive's measured p05→p95 span on a real capture:
 //
-//   bass_rel           → GROWTH: the tree's structure, count + trunk + thickness
-//                        as one coupled gesture
-//   mid_rel            → THE MELODY: how many fine tips exist, and how far each
+//   arousal            → GROWTH: structure + trunk + thickness + brightness, one
+//                        slow section-scale gesture (0.52 turns/s — no bounce)
+//   beat_mid           → THE MELODY: how many fine tips exist, and how far each
 //                        individual one reaches. The hero route.
 //   spectral_flux      → branch spread angle (20°–34°)
 //   tonal_phase_fifths → hue, with a per-depth offset so every branch level
@@ -86,113 +86,71 @@ void fractal_tree_object_shader(
     mgp.set_threadgroups_per_grid(uint3(1, 1, 1));
 
     if (tid == 0) {
-        // ── CANOPY REACH ← bass_rel (D-026 deviation primitive) ──────────────────
+        // ── GROWTH ← arousal ─────────────────────────────────────────────────────
         //
-        // THE CANOPY IS A CANVAS, NOT THE RHYTHM. FTR.2 drove this from `bass_dev` and
-        // it broke the preset — Matt, live: *"either too excited or completely inert …
-        // the movement is haphazard; fingers are not really visible."* Measured on his
-        // session 2026-08-03T22-54-06Z, that is exactly what the numbers say:
+        // Matt, live on 2026-08-04T14-14-12Z (Cherub Rock, chain clean): *"the growth is
+        // jerky — the trunk is constantly moving up and down with the beat, killing any
+        // concept that the tree is growing … it mostly looks like growing and shrinking.
+        // When the song gets noisier … I expect the tree to grow outward, but it barely
+        // moves."*
         //
-        //                        changes on   avg jump   sits at minimum
-        //     bass_att (before)   11.7 %       1.9         1.6 %
-        //     bass_dev (FTR.2)     4.2 %      21.5        82.0 %
+        // TWO MEASURED CAUSES, both structural rather than cosmetic.
         //
-        // `bass_dev = max(0, bassRel)` is an upward-TRANSIENT signal — zero on 66–89 %
-        // of frames — so the tree sat at its 7-branch floor four frames in five and then
-        // slammed 21 branches at once. The effect Matt values ("fingers tapping to the
-        // beat") was branches appearing ONE OR TWO AT A TIME at the truncation edge; a
-        // transient driver cannot produce it, by construction.
+        // 1. `bass_rel` is a deviation from the band's OWN running average, so it
+        //    oscillates around zero BY CONSTRUCTION. It can express "louder than a second
+        //    ago" and never "this section is bigger". Measured on that session it wobbles
+        //    5.88 times a second with a median step of 17 % of its whole range — that is
+        //    the bouncing trunk, exactly. Worse, against measured noisiness it correlates
+        //    **−0.199**: the tree was shrinking as the song grew.
         //
-        // `bass_rel` is the same D-026 family WITHOUT the `max(0, …)` clamp, so it is
-        // continuous and centred on the band's own running EMA. Through a logistic it
-        // holds the canopy mid-range and drifting on all four sources, never collapsing
-        // to the floor (measured floor time: 0.4–4.4 %, against bass_dev's 66–82 %).
+        // 2. `arousal` is the only slow signal available: 0.52 turns/s, median step 0.1 %
+        //    of its range. `spectral_flux` (5.61 turns/s) and `spectral_centroid` (4.38)
+        //    would bounce almost as badly as `bass_rel` did.
         //
-        // The count now only has to keep a believable tree on screen. The RHYTHM is
-        // carried by per-branch activation below — which is the deliberate version of
-        // the effect FTR.2 deleted, and the reason this route can afford to be calm.
-        float reach = 1.0f / (1.0f + exp(-f.bass_rel * 3.0f));
+        // Sized against the operating band ACROSS TRACKS, not one: [0.10, 0.68] puts
+        // so_what (a calm Miles Davis take, arousal p50 0.241) at a small tree and Cherub
+        // Rock's body (0.52 → 0.64) at a large one, which is the musically right ordering
+        // rather than an artefact of tuning to a single capture.
+        //
+        // KNOWN CEILING, recorded honestly: the guitar solo does NOT distinguish itself
+        // in this feature set. Measured noisiness rises 88 % from verse to solo; every
+        // primitive the shader can read compresses that to 17–24 %, and from mid-song to
+        // solo `arousal` moves 0.6 % and `spectral_centroid` 1 %. The AGC normalises away
+        // the section dynamics being asked for. Closing that needs a non-AGC noisiness
+        // feature (spectral flatness or crest factor) in the FeatureVector — an engine
+        // increment, not a coefficient. Until then the tree is LARGE through the solo
+        // rather than blooming AT it.
+        float reach = saturate((f.arousal - 0.10f) * (1.0f / 0.58f));
 
-        // SILENCE GATE. `bass_rel` is a deviation from the band's OWN running average,
-        // so at silence both collapse to 0 and the logistic sits at exactly 0.5 — a
-        // half-grown tree standing in a silent room. `pulse_amp01` is 0 before the first
-        // note and across sustained silence, so scaling by it returns the sparse
-        // 7-branch figure the reference README asks for ("trunk plus the first two
-        // generations"), still non-black (D-037). This is a GATE, not a route: it
-        // carries no musical information, it only answers "is anything playing".
+        // SILENCE GATE. `pulse_amp01` is 0 before the first note and across sustained
+        // silence, returning the sparse 7-branch figure the reference README asks for
+        // ("trunk plus the first two generations"), still non-black (D-037). A GATE, not
+        // a route: it carries no musical information, only "is anything playing".
         float amp = saturate(f.pulse_amp01);
 
-        // DEPTH TIERS ARE THE POINT, so the live range is sized against them rather than
-        // against branch count as a number. A tier appears only above a threshold count:
-        // d3 > 7, d4 > 15, d5 > 31. FTR.3 mapped 7 + reach·56 and Matt lost the deep
-        // tiers — measured on session 2026-08-03T23-16-22Z, d5 showed on 23 % of frames
-        // against the old preset's 38 %, and he said so directly: *"I never see beyond
-        // three levels of branches."*
+        // ── MELODIC TIPS ← beat_mid (Matt's pick, 2026-08-04) ─────────────────────
         //
-        // Because leaf hue is keyed to DEPTH (below), losing tiers also loses colour —
-        // half his "less colourful" complaint is really this regression, not the palette.
-        //
-        // ── GROWTH (energy) + MELODIC TIPS (mid_high) ────────────────────────────
-        //
-        // Matt, 2026-08-04: *"it previously looked like the tree was growing with the
-        // music and the tiny branches were following the melody … you have told me this
-        // was an illusion, not how it was programmed, but this is what I am looking for
-        // the preset to do."*
-        //
-        // So build the illusion on purpose. The original effect came from ONE mechanism:
-        // a global count truncating a breadth-first branch list, so the highest indices —
-        // which are exactly the smallest, deepest branches — appeared and disappeared at
-        // the edge in sequence. Nothing about it was per-branch or melodic; it just read
-        // that way. The count is therefore split in two, keeping the mechanism and giving
-        // each half the driver its perceived behaviour implies:
-        //
-        //   BASE  ← bass_rel, the growth. Slow, continuous, the tree's structure.
-        //   TIPS  ← mid_high, the melody. Fast, wiggly, only the outermost branches.
-        //
-        // WHY A MID-BAND DEVIATION AND NOT A PITCH SIGNAL. The obvious choice was a
-        // harmonic axis, measured and rejected: `tonal_phase_thirds` jumps a median
-        // 18.6 % of the circle per update and only 28 % of its steps are smooth glides,
-        // so branches keyed to it flicker at random — the "haphazard" failure again.
-        // The mid band glides and changes direction 5–17 times a second across the four
-        // measured sources, which is the rate a melodic line actually moves. It is also
-        // the band a melody or vocal occupies, so it rises and falls WITH the tune even
-        // though it carries no pitch.
-        //
-        // `mid_rel`, NOT `mid_high`. The first attempt mapped `(mid_high - 0.005)/0.042`
-        // — an absolute threshold on an AGC-normalised value, which is FA #31 verbatim,
-        // and the gate caught it. Measured raw spans vary TWENTY-FOLD across tracks
-        // (midHigh p05→p95: 0.0040 on love_rehab, 0.0765 on so_what), so any fixed
-        // mapping is inert on one track and saturated on another — exactly the failure
-        // FA #31 describes. `mid_rel` is the D-026 deviation form: signed, continuous,
-        // centred on the band's own running average, so a logistic self-centres per
-        // track the same way canopy reach does with `bass_rel`.
-        //
-        // k = 60 sized against the measured half-spans (~0.03 typical): it puts p05→p95
-        // at 0.28→0.95 on Cherub Rock, 0.30→0.71 on love_rehab, 0.24→0.93 on
-        // there_there, and soft-saturates so_what's 9× wider swing instead of clipping.
-        float melody = 1.0f / (1.0f + exp(-f.mid_rel * 60.0f));
+        // The previous driver, `mid_rel`, measured **+0.038** against the music moment to
+        // moment — statistically nothing, and Matt's *"the tips are not in sync with the
+        // music"* is that number. `beat_mid` is the strongest sync signal in the vector
+        // at **+0.237**, roughly 6× better, and it is the beat in the MELODIC register
+        // rather than the kick, so the tips move with guitars and vocals instead of the
+        // bass line. It turns 6.9 times a second, which is why it belongs on the fine
+        // tips and emphatically not on the trunk.
+        // SOFT KNEE, sized on Matt's own capture. Raw `beat_mid` swings 0→1 spikily
+        // (p50 0.33, p95 1.00), and driving the tips from it directly slammed 12.1
+        // branches per change on Cherub Rock — close to the 21.5 of the FTR.2 build he
+        // called *"too excited"*. The knee compresses the spikes without flattening the
+        // signal: measured 5.1 branches per change on Cherub and 2.0 on the fixtures,
+        // with the deepest tier still crossing in and out 6–8 times a second.
+        float melody = f.beat_mid / (f.beat_mid + 1.8f);
 
-        // SIZED TO STRADDLE THE d5 BOUNDARY, which is where the effect actually lives.
-        // A tier appears only above a threshold count, and d5 — the smallest branches —
-        // starts at 31. The original preset Matt liked sat at p50 23 with d5 present on
-        // just 8 % of frames, so the deepest tier was CONSTANTLY crossing in and out;
-        // that crossing is what he read as the tiny branches following the tune.
-        //
-        // A first pass at this put p50 at 39 and d5 at 94 %, and measured beautifully
-        // while destroying the effect: with the tips always present there is nothing
-        // left to appear or disappear. These coefficients put p50 at 23–30 and d5 at
-        // 21–36 % across the four sources — the tier is in play, not parked.
+        // Depth tiers are the mechanism: a tier appears only above a threshold count
+        // (d3 > 7, d4 > 15, d5 > 31), so the smallest branches enter and leave as the
+        // count crosses 31. Growth sets where the canopy sits; the tips cross the line.
         uint  base   = (uint)((4.0f + reach * 18.0f) * amp);
-        uint  tips   = (uint)(melody * 20.0f * amp);
+        uint  tips   = (uint)(melody * 26.0f * amp);
         uint  count  = min(7u + base + tips, 63u);
-
-        // THE BEAT-LOCKED TAPS ARE GONE. FTR.3 hash-selected a subset of branches per
-        // bar and ran an attack/decay envelope on each. Matt rejected it twice — first
-        // *"much too active with drums"*, then, once slowed to the bar, it simply was not
-        // what he was describing. He never asked for a beat response; he asked for growth
-        // and for the fine branches to follow the melody. A per-beat mechanism cannot
-        // deliver either, so it is removed rather than re-tuned (D-212's rule: a route
-        // that is not the effect gets deleted, not turned down).
 
         // ── BRANCH SPREAD ← spectral_flux ────────────────────────────────────────
         //
