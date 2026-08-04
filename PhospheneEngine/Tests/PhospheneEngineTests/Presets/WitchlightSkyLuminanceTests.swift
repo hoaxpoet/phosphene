@@ -136,11 +136,32 @@ struct WitchlightSkyLuminanceTests {
     private static let sourceRibbonShare = 1.048   // %
     private static let sourcePeakLuma = 255.0
 
-    /// Floors, not equalities. `≥ 0.6 %` is most of the way to the source without demanding
-    /// a pixel-for-pixel copy — the register is "a luminous ribbon" (D-121), not the source
-    /// frame. `≥ 250` is the bead core reaching near-white, which is what `08` shows a real
-    /// arc core doing.
-    private static let minRibbonShare = 0.6
+    /// Floors, not equalities — and the share floor is now the WEAKEST of the three
+    /// assertions in this file, deliberately.
+    ///
+    /// **Re-derived at WL.3 (Matt: "re-derive it honestly"), 0.60 → 0.40.** Frame-share has
+    /// been inflated by a DEFECT three separate times:
+    ///
+    /// | state | share | what was actually wrong |
+    /// |---|---|---|
+    /// | WL.2-g/-h fused beads | 1.29–1.64 % | overlapping sprites light more pixels |
+    /// | pre-WL.3 collapsed plane | 0.687 % | the figure was squashed onto a line |
+    /// | WL.3, legible figure | 0.494 % | nothing |
+    ///
+    /// The number goes UP as the preset gets worse, because every degeneracy concentrates the
+    /// same beads into less area. It cannot be raised back by "fixing" anything — a spread,
+    /// unfused, un-collapsed drawing simply lights fewer pixels than a lump.
+    ///
+    /// The source's 1.048 % was never reachable either: that frame is a compact SELF-
+    /// OVERLAPPING tangle, while ours is one open curve, and D-121 makes the path our
+    /// declared divergence axis. Holding a single-stroke figure to a tangle's pixel share was
+    /// a category error from the start.
+    ///
+    /// So 0.40 is kept only as a "the ribbon has not gone invisible" floor — WL.2-g's real
+    /// defect measured 0.119 %, so this still catches it 3.4× over. The assertions that
+    /// actually carry meaning now are `minPeakLuma` (are the cores bright) and
+    /// `minDistinctBeads` (are there beads at all), neither of which a degeneracy can inflate.
+    private static let minRibbonShare = 0.40
     private static let minPeakLuma = 250.0
 
     @Test("The ribbon carries light — bright cores, real halos (WL.2-g)")

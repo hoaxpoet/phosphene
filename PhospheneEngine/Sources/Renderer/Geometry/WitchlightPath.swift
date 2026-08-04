@@ -122,11 +122,23 @@ public final class WitchlightPath: AudioResponseMetrics {
     var rmsRadius: Float = 0.4
 
     // Plane tumble.
-    private var tumbleClock: Float = 0
-    public var tumbleYaw: Float { 0.055 * tumbleClock }
-    public var tumblePitch: Float { 0.45 * sin(0.041 * tumbleClock) }
-    public var tumbleRoll: Float { 0.19 * sin(0.027 * tumbleClock + 1.1) }
-
+    // `internal`, not `private`: the tumble lives in WitchlightPath+Tumble.swift, and a
+    // Swift extension in a second file cannot reach file-private state (same reason as
+    // the +Events members).
+    var tumbleClock: Float = 0
+    /// Per-session framing: a phase offset on the tumble oscillators and a roll handedness.
+    /// The FIGURE stays a deterministic reading of the music — the same track always draws the
+    /// same drawing — but each session views it from a different angle and chirality, so a
+    /// repeat play reads as the same figure seen anew rather than an identical stamp. Matt's
+    /// call over "same figure exactly" and "different every play" (2026-08-04).
+    ///
+    /// Injected rather than randomised INSIDE the path, and defaulting to zero, because the
+    /// replay harness, the golden dHashes and the QG.5 bands all require byte-identical output
+    /// for identical input. A `Math.random()` here would make every gate in the suite
+    /// non-deterministic to buy a visual property no gate is measuring. The app layer sets it
+    /// once per session; every test therefore renders the canonical framing.
+    var sessionPhase: Float = 0
+    var tumbleHandedness: Float = 1
     /// Current visible age window after section contraction.
     public internal(set) var trailWindow: Float = 30
 
@@ -178,6 +190,15 @@ public final class WitchlightPath: AudioResponseMetrics {
     /// `resetBeatTrackingState` precedent is load-bearing for the same reason: a stale φ̄
     /// or `previousBarPhase` across a track boundary lays down a wrong-coloured or
     /// spuriously-promoted first bead.
+    /// Set the per-session framing. `fraction` is any value in 0…1 — the app passes one
+    /// value per session, tests leave it at the default so output stays deterministic.
+    /// Call BEFORE `reset()`, or after: it is independent of the path state.
+    public func setSessionFraming(_ fraction: Float) {
+        let frac = fraction - fraction.rounded(.down)
+        sessionPhase = frac * 2 * .pi
+        tumbleHandedness = frac < 0.5 ? 1 : -1
+    }
+
     public func reset() {
         beads.removeAll(keepingCapacity: true)
         heading = 0; penX = 0; penY = 0; emitAccumulator = 0
