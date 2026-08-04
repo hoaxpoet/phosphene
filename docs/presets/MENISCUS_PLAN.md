@@ -421,6 +421,97 @@ badly understated.** This is the NACRE.2b pattern the plan predicted (§2 reason
    The warp shader body returns `vec3(0,0,0)` unconditionally. §3 asserted this from a
    read; it is now verified from the artifact.
 
+### MEN.3e — the surface never rested, so there was nothing to read as a beat (2026-08-04)
+
+Matt, fifth round: **"the activity needs to be synced to music, that is the core trouble."**
+
+MEN.3d had put the audio in charge of the amplitude (share 1 % → 72 %) and MEN.3c had the
+visible peak 19 ms from the beat. Both true, and the preset still did not read as synced.
+The missing measurement was not WHEN the drops land but **whether anything changes between
+them.** `MeniscusPulseTests` folds surface slope energy onto 12 bins of `beatPhase01` and
+reports peak-to-trough over mean:
+
+```
+love_rehab   peak 93.7  trough 82.0   MODULATION DEPTH 13 %
+there_there  peak 86.9  trough 74.9   MODULATION DEPTH 15 %
+```
+
+A 13 % swing is not a pulse. **Ripple lifetime (~550 ms at the source's damping) exceeded
+the beat period (350 ms at 171 BPM)**, so every ripple was still ringing when the next two
+arrived. The surface was permanently, uniformly agitated: correct onsets, correct
+amplitude, no rhythm. **Rhythm needs REST as much as it needs onsets**, and nothing in the
+timing or amplitude work could supply it.
+
+`damping` is the lever. Swept on `there_there`:
+
+```
+1.00 -> 15 %   0.97 -> 22 %   0.93 -> 29 %   0.88 -> 48 %   0.82 -> 76 %
+```
+
+Shipped **0.88** (48 % / 54 %). This is a deliberate divergence from the source, and the
+reason is structural rather than taste: the source's damping suits a continuous cepstral
+drop stream where sustained agitation IS the look, while ours is beat-locked punctuation
+that has to resolve between hits.
+
+**The trade this buys, which is Matt's to accept or reject.** Shorter ripples interfere
+less, and interference is what §1 asks for — "the ripples … interfere with one another …
+drawn as a wake" — and what gives reference `07` its chevron structure. Grid coverage per
+frame fell 55 % → 21 %. The preset reads more rhythmic and less like a wake.
+
+**One more instrumentation failure, and the worst kind.** The damping change silently took
+peak surface displacement **0.18 → 0.008** — a nearly flat plate — while every gate stayed
+green, because `MeniscusAudioShareTests` held a HARDCODED COPY of the old damping and was
+measuring physics the preset no longer ran. Force and damping are coupled (a faster decay
+eats the energy each drop deposits) and must be swept together. Re-swept at 0.88:
+25 → 24 %, 150 → 76 %, 400 → 90 %. Force is now **100**, restoring peak 0.186 at 66 %
+share. The sync gate's rise time is likewise no longer a constant — it is measured from the
+configuration, so the same drift cannot recur. The rise moved 583 ms → 133 ms, which
+happens to make Matt's chosen 120 ms lead nearly exact (median error 19 ms → 6 ms).
+
+**The rule this leaves behind: a harness that duplicates a production constant will
+eventually measure a version of the system that no longer exists, and it will do it
+silently and while passing.** Derive from the configuration or share the code path.
+
+### MEN.3d — the music was causing 1 % of what was on screen (2026-08-04)
+
+Matt, fourth round on the same complaint: "no different from before … the entire preset
+feels unmatched to the music, like it's just a movie playing with background music."
+
+That last sentence is the finding, and it is literal. Measured
+(`MeniscusAudioShareTests`): **audio-driven surface amplitude 0.0001 against 0.0540 from
+autonomous motion — the music caused ~0 % of the surface.** The MEN.2a placeholder swell
+was 540x everything the audio path did.
+
+**So four rounds of drop-TIMING work were on the wrong axis entirely.** The drops were
+firing in the right regions (vocals 0.19 / bass 0.48 / drums 0.81), at the right density
+(4–7 impacts/s), and after MEN.3c with their visible peak 19 ms from the beat at 97–100 %
+inside the perceptual window. All of it correct, all of it inaudible under a placeholder.
+Every one of those measurements was true and none of them measured the thing that was
+wrong, because I never asked what share of the motion the audio owned.
+
+**Two causes, both mine.**
+
+1. **The placeholder swell was never removed.** The MEN.2a prompt said "a placeholder to
+   satisfy D-037 … keep it cheap and keep it removable" — I carried it through MEN.2b and
+   MEN.3 unchanged, at full amplitude, during music. It now fades out as loudness rises, so
+   it does what §4 actually specifies (the silence row) and nothing more. Share 1 % → still
+   1 %, because of cause 2.
+2. **Drop force was ~100x too low to BE the surface.** Swept against audio share:
+   1 → 1 %, 8 → 35 %, 25 → 72 %, 60 → 88 %. Set to 25, which puts peak displacement at
+   0.18 — the same magnitude the swell used to occupy, so the surface moves about as much
+   as before but the MUSIC is now what moves it.
+
+**The open question, and it is Matt's.** At force 25 the plate is visibly busier than the
+calm register of MEN.3b, which is close to his ROUND-ONE complaint ("too much activity").
+Connection and calm trade directly here: more audio share means more surface motion. The
+lever is one number and the measured curve is above. Rendering before deciding, rather than
+choosing for him, is the point — the last four rounds show how expensive a wrong guess is.
+
+**Process note worth keeping.** Every round I measured something real, and for four rounds
+running the thing I measured was not the thing that was broken. The check that would have
+caught it on day one — "what fraction of the motion does the audio cause?" — is trivial,
+and is now a standing gate.
+
 ### MEN.3c — the lag was the medium, not the timing (2026-08-04)
 
 Matt after MEN.3b: still "a lag and it's significant enough where the music does not read
