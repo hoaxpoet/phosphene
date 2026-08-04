@@ -116,10 +116,20 @@ void fractal_tree_object_shader(
         // carries no musical information, it only answers "is anything playing".
         float amp = saturate(f.pulse_amp01);
 
-        // 7 at silence → 14/22/41 at the measured p05/p50/p95 of Hummer → 63 only if
-        // bass_rel reaches ~2, which is past p99. The taps need branches to land on,
-        // so the canopy stays present rather than collapsing between transients.
-        uint count = 7u + (uint)(reach * 56.0f * amp);
+        // DEPTH TIERS ARE THE POINT, so the live range is sized against them rather than
+        // against branch count as a number. A tier appears only above a threshold count:
+        // d3 > 7, d4 > 15, d5 > 31. FTR.3 mapped 7 + reach·56 and Matt lost the deep
+        // tiers — measured on session 2026-08-03T23-16-22Z, d5 showed on 23 % of frames
+        // against the old preset's 38 %, and he said so directly: *"I never see beyond
+        // three levels of branches."*
+        //
+        // Because leaf hue is keyed to DEPTH (below), losing tiers also loses colour —
+        // half his "less colourful" complaint is really this regression, not the palette.
+        //
+        // 7 at silence (D-037 sparse figure) → 17 … 60 while music plays, so d4 is the
+        // resting state and d5 arrives on any real bass lift. Never reaches the 63
+        // ceiling, so the canopy still cannot flat-top.
+        uint count = 7u + (uint)((10.0f + reach * 50.0f) * amp);
 
         // ── PER-BRANCH ACTIVATION (HERO) ← beat_phase01 + pulse_beat_index ────────
         //
@@ -128,15 +138,30 @@ void fractal_tree_object_shader(
         // is reproducible, which is what lets a shader with no frame-to-frame memory
         // hold a per-branch envelope at all.
         //
-        // `pulse_*` is a 4-beat cycle (D-153), so the beat index within the pulse is
-        // `pulse_phase01 × 4`; combining gives a counter that advances once per beat
-        // and re-seeds the selection so a DIFFERENT handful taps each time.
+        // ON THE BAR, NOT THE BEAT (Matt's call, 2026-08-03). Firing every beat was
+        // *"much too active with drums"* — roughly 2 taps/second, which reads as
+        // constant motion rather than punctuation.
+        //
+        // MEASURE THE CLOCK, DO NOT TRUST ITS DOCSTRING. `pulse_phase01` is documented
+        // as a 4-beat cycle (D-153), and on the recorded data it is not: it wraps at
+        // exactly the beat rate, identically to `beat_phase01` (love_rehab 1.96/s at
+        // 118.1 BPM; Matt's 2026-08-03T23-16-22Z session 1.15/s at 80.45 BPM), and
+        // `pulse_beat_index` increments once per BEAT, not once per pulse. Routing the
+        // taps through it changed nothing — the gate caught that, which is the whole
+        // point of asserting a rate rather than an existence.
+        //
+        // `bar_phase01` is the real bar clock: 0.45/s on love_rehab and 0.30/s on Matt's
+        // session, both matching BPM/4/60 exactly. The bar index for re-seeding comes
+        // from the per-beat counter divided by the meter.
+        //
+        // This also matches the standing guidance to put events on the BAR rather than
+        // the beat on a substrate that is already moving.
         //
         // Cold-start: `pulse_amp01` is 0 before the first note and across sustained
         // silence. Gating on it is how this preset implements its own suppression —
         // the Cold-Start Phase Contract is explicit that presets needing it do it
         // themselves, and that automated phase derivation is retired, not to be retried.
-        uint beat_seed = (uint)(f.pulse_beat_index * 4.0f + f.pulse_phase01 * 4.0f);
+        uint beat_seed = (uint)(f.pulse_beat_index / max(f.beats_per_bar, 1.0f));
 
         // ── BRANCH SPREAD ← spectral_flux ────────────────────────────────────────
         //
@@ -160,7 +185,7 @@ void fractal_tree_object_shader(
         // Only geometry terms travel in the payload. The fragment stage reads its own
         // primitives straight from `f` at buffer(0), so forwarding them here would just
         // be a second, staler copy.
-        payload->beat_phase   = saturate(f.beat_phase01);
+        payload->beat_phase   = saturate(f.bar_phase01);
         payload->pulse_amp    = saturate(f.pulse_amp01);
         payload->beat_seed    = beat_seed;
         payload->reach        = reach;
@@ -224,10 +249,13 @@ void fractal_tree_mesh_shader(
     float pick   = float(h & 1023u) * (1.0f / 1023.0f);
     float chosen = step(pick, 0.32f);
 
-    // Attack/decay over the beat. Fast in (7 % of the beat), slower out (to 80 %) —
-    // a tap, not a throb. Multiplying by pulse_amp gates the whole thing at cold start.
+    // Attack/decay across the BAR. The window is deliberately short in bar-relative
+    // terms — in to 2 %, out by 22 % — so the tap lasts about one beat of absolute time
+    // and the remaining three beats are still. Stretching the envelope across the whole
+    // bar would turn a tap into a slow swell, which is the opposite of the ask.
+    // Multiplying by pulse_amp gates the whole thing at cold start.
     float p   = payload.beat_phase;
-    float env = smoothstep(0.0f, 0.07f, p) * (1.0f - smoothstep(0.07f, 0.80f, p));
+    float env = smoothstep(0.0f, 0.02f, p) * (1.0f - smoothstep(0.02f, 0.22f, p));
     float tap = chosen * env * payload.pulse_amp;
 
     float base_len = 0.36f + payload.reach * 0.26f;
@@ -354,24 +382,37 @@ fragment float4 fractal_tree_fragment(
     // phase → hue is wrap-correct by construction: the ±π seam maps to the seam in
     // `fract()`, and no wrap produces a discontinuity the eye reads as a glitch.
     //
-    // Mapped onto 0.28 of the hue circle, NOT the whole of it. A full mapping would run
-    // the canopy through cyan, blue and magenta, which is not a tree — the register here
-    // is the amber → gold → green arc (0.10 … 0.38), a widened version of the shipped
-    // intent (0.18 yellow-green … 0.30 deep green). The harmony traverses the whole arc;
-    // it never leaves it.
+    // EACH BRANCH LEVEL GETS ITS OWN HUE (Matt's call, 2026-08-03). FTR.2 mapped the
+    // harmony onto a 0.28 amber→green arc because I judged that a tree "should" look
+    // tree-coloured. That was my aesthetic standing in for his, and he rejected it:
+    // *"they are all variations on tree colors … I liked the more psychedelic colouring
+    // of the previous version."*
+    //
+    // What he liked swept 147°→293° — green through cyan, blue, violet — and it came
+    // from the `fract(t)` wall clock D-212 correctly flagged for out-driving the music
+    // 18.6 : 1. The diagnosis was right and the fix threw out the colour with it. This
+    // recovers the range WITHOUT the clock: a 0.55 arc from the harmony, plus a 0.10
+    // offset per depth level. Measured across the six tiers that puts colour in all
+    // 12 hue families, against 4 for FTR.2 — and because the offset is keyed to depth,
+    // the levels become legible AS colour, which is the other half of what he asked for
+    // (*"I was able to see … the different levels of branches more easily"*).
+    //
+    // Harmony still moves the whole palette together, so the tree recolours with the
+    // song rather than on a timer. The relationship between levels is fixed; where the
+    // whole set sits is the music's to decide.
     float hue_bark  = 0.065f;
     float tonal01   = fract(f.tonal_phase_fifths * (1.0f / (2.0f * M_PI_F)) + 0.5f);
-    float hue_leaf  = 0.10f + tonal01 * 0.28f;
-    // Weighted by depth^0.55, not depth. A linear blend gives full leaf colour only at
-    // depth 5, and the depth-5 tier exists on just 21.4 % of frames (measured, and the
-    // figure D-212 put at 76.4 % — the recount is in the FTR.2 closeout). Under a linear
-    // blend the harmonic route is alive in the data and invisible on screen four frames
-    // in five. The exponent pushes leaf colour down into the mid-depth branches that are
-    // actually present, so the route reads whenever there is a canopy at all.
-    float hue       = mix(hue_bark, hue_leaf, pow(depth_norm, 0.55f));
+    float level     = depth_norm * 5.0f;                     // 0 = trunk … 5 = leaf tier
+    float hue_leaf  = fract(0.02f + tonal01 * 0.55f + level * 0.10f);
+    // The trunk stays bark; everything from the second tier up takes the full palette,
+    // so the tree still reads as a tree rather than a rainbow stick.
+    float hue       = mix(hue_bark, hue_leaf, smoothstep(0.0f, 0.35f, depth_norm));
 
     // ── Saturation ───────────────────────────────────────────────────────
-    float sat = mix(0.55f, 0.88f, depth_norm);
+    // Pushed up with the palette. A per-level hue spread only reads as distinct levels
+    // if the levels are actually saturated — at 0.55 the inner tiers wash toward each
+    // other and the spread is wasted. Trunk stays muted so it still reads as bark.
+    float sat = mix(0.42f, 0.96f, depth_norm);
 
     // ── Brightness envelope ← arousal ────────────────────────────────────
     //
