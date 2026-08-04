@@ -23,6 +23,7 @@ for the same reason. BUG-081 and BUG-060 are the same hang class; they are cross
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
+| BUG-085 | P1 | renderer / app.hang | **App hangs hard in `CAMetalLayer.nextDrawable` ~3.6 min into a session; window unresponsive, force-quit required — STACK CAPTURED.** `sample` against the still-frozen process: **100 % of 4250 samples on one stack at 0.0 % CPU** — `RenderPipeline.draw(in:)` → `renderFrame` → `drawWithFeedback` → `drawParticleMode` → `MTKView.currentRenderPassDescriptor` → `currentDrawable` → `CAMetalLayer nextDrawable` → `semaphore_timedwait_trap`. Not a spin and not a GPU hang: every other thread is idle, none holds a command buffer or waits on completion. The main thread blocks acquiring a drawable and never returns to the run loop, which is why the window is dead rather than merely static. Drawable-pool exhaustion — drawables acquired whose command buffers never complete. Session `2026-08-04T17-49-50Z` (Witchlight, Hummer), 12,911 frames ≈ 3.6 min, frame timings **steady to the last frame** (cpu p50 20.80 ms, gpu 10.62 ms) then an abrupt stop — pool exhaustion, not a slow stall. **Very likely the same defect as BUG-060 (one-off hang, no stack) and the unreproduced "~3.7 min crash" open against Volumetric Lithograph certification** — both filed for want of exactly this artifact, and neither is Witchlight-specific. Evidence: `docs/diagnostics/BUG085_NEXTDRAWABLE_HANG_2026-08-04.md`. Ruled out already: `drawParticleMode` always presents its drawable, and the inflight semaphore is not the blocker (the hang is past it) |
 | BUG-081 | P2 | app.hang | **App beachballed ~78 s into session `2026-08-03T22-54-06Z` and needed a force-quit; no `.ips` exists** (force-quit produces none) and `session.log` ends mid-normal-operation with no fatal. **Evidence-only — no root cause asserted.** What the capture DOES establish: the renderer was healthy to the last frame — steady 60 fps, Fractal Tree at **0.18 ms GPU against a 0.7 ms budget**, no degradation trend across 3756 frames; background ML load rising but modest (`stem_analyzer_ms` 0 → 3.4). **Ruled out by test:** FTR.2's shader overflowing the mesh primitive limit via a bad `branch_count` — no non-finite values in the capture and `branch_count` never exceeds 59 against the 63 ceiling. A frozen UI with a live render loop points away from the preset, but that is inference and BUG-061's rule forbids acting on it. **Same class as BUG-060** (force-quit hang, render loop died, no stack captured, never reproduced) — two instances now, both blocked on the same missing artifact. **Next evidence:** `sample PhospheneApp 10 -file ~/Desktop/phosphene-hang.txt` run DURING the beachball, before force-quitting |
 | BUG-084 | P3 | dsp.stem | **`StemAnalyzer` deviation reaches 35 where the primitive's real ceiling is ~3.4** — suspected divide-by-near-zero against a not-yet-converged per-track EMA baseline (the stem-side twin of the BUG-027 / AGC2.4.1 cold-start family). No product impact today: FFO's aurora is defended by the FBS.S3.2 soft knee (35 → 1.64), which is what let BUG-041 close. Filed 2026-08-03 (RECON.2) so it survives that closure — the *input* is wrong even though the output is defended. Unreproduced; fixtures retained |
 | BUG-070 | P2 | audio.capture / resource-management | **Fix landed 2026-07-12 (PUB.6), pending live validation** — a FAILED device-change tap reinstall left `_isCapturing=true` with zero callbacks: engine health detectors starved (SignalHealthMonitor.evaluate is sample-driven → deadTap never confirms) and the router's recovery restart blocked at the alreadyCapturing guard; only the app-layer poll-based stall card surfaced it. Fix: the catch now clears `_isCapturing` (recovery unblocked) and keeps the monitor as a diagnostic beacon; the false "create steps stopped the monitor" comment corrected. Residual OPEN half: the 3-queue lifecycle interleave (device-change reinstall vs silence-recovery vs user stop) stays unserialized — static-only evidence; restructuring the G1-validated (12/12) path without a reproduced artifact is the BUG-063 pattern. Existing breadcrumbs (per-step diagnostics + install generation) are the instrumentation; serialize only if a live session shows an interleave |
@@ -50,7 +51,39 @@ for the same reason. BUG-081 and BUG-060 are the same hang class; they are cross
 
 ---
 
+### BUG-085 — Main thread hangs in `CAMetalLayer.nextDrawable` ~3.6 min into a session (2026-08-04)
 
+**P1 · renderer / app.hang / resource-management.**
+
+**Expected.** The app renders continuously for the length of a session; the window stays responsive.
+
+**Actual.** ~3.6 minutes in, the app freezes hard — no rendering, no UI response, force-quit required. Matt has now hit this repeatedly ("froze again").
+
+**Evidence — a stack, at last.** Matt left the frozen app running instead of force-quitting, so `sample 42392 5` captured it live. **100 % of 4250 samples on a single stack, 0.0 % CPU:**
+
+```
+RenderPipeline.draw(in:) → renderFrame → drawWithFeedback → drawParticleMode
+  → MTKView.currentRenderPassDescriptor → MTKView.currentDrawable
+  → CAMetalLayer nextDrawable → CAMetalLayerPrivateNextDrawableLocked
+  → _dispatch_semaphore_wait_slow → semaphore_timedwait_trap
+```
+
+Every other thread is idle — audio, caulk, CVDisplayLink all in normal waits. **No thread holds a Metal command buffer, waits on `waitUntilCompleted`, or blocks on a mutex.** So this is not a GPU hang and not a cross-thread deadlock: the drawable pool is exhausted and nothing is returning drawables to it. Because the main thread never returns to the run loop, the window is dead rather than merely frozen mid-frame.
+
+**Reproduction.** Not deterministic yet. Observed on session `2026-08-04T17-49-50Z` (Witchlight, "Hummer"), 12,911 frames ≈ 3.6 min. Frame timings were **steady right up to the final frame** — `frame_cpu_ms` p50 20.80, `frame_gpu_ms` p50 10.62 across the last 50 — with no upward drift. An abrupt stop after healthy frames is the signature of pool exhaustion (leak N drawables, run fine until the pool empties, then block forever), not of a progressive stall.
+
+**Probably not a new defect, and probably not Witchlight's.** The ~3.6 min timing matches the **unreproduced "~3.7 min crash"** logged against Volumetric Lithograph certification, and BUG-060 is a one-off hang filed with "no stack captured". All three are plausibly one bug. Nothing in the stack is preset-specific below `drawParticleMode`, which every `particles` preset shares.
+
+**Already ruled out.**
+- `drawParticleMode` leaking directly — it acquires and unconditionally `present`s on every path.
+- The inflight semaphore — the hang is *past* `context.inflightSemaphore.wait()`, so a slot was available.
+- A GPU hang or a stuck completion handler — no thread is waiting on either.
+
+**Failure class.** `resource-management` (a finite pool acquired without a guaranteed release path).
+
+**Suspected direction, NOT yet confirmed.** Something acquires a drawable outside the committed command buffer's lifetime, or retains `drawable.texture` past presentation. The session-recording hook in `draw(in:)` reads `view.currentDrawable` a second time and hands `drawable.texture` to a consumer, which is the shape of thing that would do it — but that is a hypothesis, and three hypotheses have already died on this preset today. It gets confirmed against an artifact before any fix.
+
+**Verification criteria (written before the fix).** (1) An instrumented build counts drawables acquired vs command buffers completed per frame and asserts they balance over a long run. (2) A soak: render a `particles` preset for ≥ 10 minutes without the main thread blocking in `nextDrawable`. (3) Manual: Matt runs a full track without a freeze.
 
 ---
 
