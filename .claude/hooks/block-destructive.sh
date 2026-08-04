@@ -52,6 +52,11 @@
 # Best-effort: a determined agent can sidestep via `bash -c "..."` or `eval`.
 # This hook catches the common-case accidental destructive call, not malice.
 #
+# Escape hatch (added 2026-08-04):
+#   ALLOW_DESTRUCTIVE=1 <command>   runs without these checks.
+#   Use it ONLY for a command the user has just approved in chat. See the
+#   block comment above the check itself for the full norm.
+#
 # Known limitations:
 #   - HEREDOC bodies (`<<EOF ... EOF`) are NOT stripped, so a commit message
 #     written via heredoc that mentions a denied pattern in plain text will
@@ -79,6 +84,32 @@ cmd="$(printf '%s' "$payload" | jq -r '.tool_input.command // ""' 2>/dev/null ||
 scan="$cmd"
 scan="$(printf '%s' "$scan" | sed -E "s/'[^']*'//g")"
 scan="$(printf '%s' "$scan" | sed -E 's/"[^"]*"//g')"
+
+# --- escape hatch -----------------------------------------------------------
+# `ALLOW_DESTRUCTIVE=1 <cmd>` runs without these checks. It exists because the
+# hook had no approval channel: it tells the agent to "ask the user for explicit
+# approval", but once granted there was no way to run the approved command, so
+# the agent reached for a different spelling instead (git update-ref -d for a
+# refused branch -D; gh api DELETE for a refused push --delete). Both were
+# approved and disclosed, but routing around the guard is a worse habit than
+# passing through it — and it hid the action from this file's own audit trail.
+#
+# THE MARKER IS AN ASSERTION, NOT A CONVENIENCE: it means "the user approved
+# THIS command, in chat, just now." Never add it pre-emptively, never keep it
+# from a previous command, and never use it to clear a block the user has not
+# seen. If that norm is followed, the hook still does its whole job — it stops
+# the accidental call, forces a human decision, and now the approved command
+# runs as itself and stays greppable in the transcript.
+#
+# It must appear as a real env-assignment prefix at a command boundary (start of
+# the command, or after && || ; |), so a bare mention cannot arm it. It is read
+# from the QUOTE-STRIPPED text, so `echo "ALLOW_DESTRUCTIVE=1"` does not count.
+# Per-invocation by construction: shell state does not persist between tool
+# calls, so this cannot leak into a later command the way `export` would.
+if printf '%s' "$scan" | grep -qE '(^|[;&|][[:space:]]*)ALLOW_DESTRUCTIVE=1[[:space:]]'; then
+    echo "[block-destructive] BYPASSED via ALLOW_DESTRUCTIVE=1 — asserted user-approved: $cmd" >&2
+    exit 0
+fi
 
 block() {
     {

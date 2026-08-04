@@ -72,6 +72,24 @@ check allow 'rm -rf /tmp/scratch'
 check allow 'rm -rf .build'
 check allow 'echo "do not run git push --delete here"'   # quoted mention
 
+echo "== escape hatch: ALLOW_DESTRUCTIVE=1 must ALLOW =="
+check allow 'ALLOW_DESTRUCTIVE=1 git push origin --delete claude/foo'
+check allow 'ALLOW_DESTRUCTIVE=1 git branch -D claude/foo'
+check allow 'ALLOW_DESTRUCTIVE=1 git reset --hard origin/main'
+check allow 'ALLOW_DESTRUCTIVE=1 rm -rf /Users/someone/thing'
+check allow 'cd /tmp && ALLOW_DESTRUCTIVE=1 git branch -D foo'    # after && boundary
+check allow 'git status; ALLOW_DESTRUCTIVE=1 git stash drop'      # after ; boundary
+
+echo "== escape hatch must NOT be armable by a mention =="
+# These matter more than the ALLOW cases above: if any of them passes, the hook
+# can be disarmed by text that merely names the marker.
+check block 'echo "ALLOW_DESTRUCTIVE=1" && git branch -D claude/foo'    # double-quoted -> stripped
+check block "echo 'ALLOW_DESTRUCTIVE=1' && git push origin --delete x"  # single-quoted -> stripped
+check block 'git commit -m ALLOW_DESTRUCTIVE=1-note && git branch -D x' # not a bare token
+check block 'ALLOW_DESTRUCTIVE=0 git branch -D claude/foo'              # wrong value
+check block 'MY_ALLOW_DESTRUCTIVE=1 git branch -D claude/foo'           # not at a boundary
+check block 'git log --grep ALLOW_DESTRUCTIVE=1 && git clean -fd'       # mid-command mention
+
 echo
 echo "pass=$pass fail=$fail"
 [ "$fail" -eq 0 ]
