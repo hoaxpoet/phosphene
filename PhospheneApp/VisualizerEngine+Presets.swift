@@ -82,7 +82,16 @@ extension VisualizerEngine {
         // WL.2 (§7.3): a stale smoothed harmonic phase or `previousBarPhase` across a track
         // boundary lays down a wrong-coloured or spuriously-promoted first bead, and the held
         // trail would be the PREVIOUS track's drawing — which the whole concept says it is not.
-        (witchlightGeometry as? WitchlightStroke)?.path.reset()
+        if let witchlightPath = (witchlightGeometry as? WitchlightStroke)?.path {
+            witchlightPath.reset()
+            // WL.3 — per-session framing (Matt, 2026-08-04). The figure itself stays a
+            // deterministic reading of the music, so a track always draws its own drawing;
+            // this only varies the angle and chirality it is VIEWED from, so a repeat play
+            // reads as the same figure seen anew rather than an identical stamp. Randomised
+            // HERE, in the app, rather than inside the path: the replay harness, golden
+            // dHashes and QG.5 bands all need byte-identical output for identical input.
+            witchlightPath.setSessionFraming(Float.random(in: 0..<1))
+        }
         // MEN.2a (`MENISCUS_PLAN.md` §4, track-change row): the surface settles back to
         // its resting state and the camera returns to the resting attitude, so a new
         // track does not inherit the previous one's live ripples.

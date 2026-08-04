@@ -135,7 +135,23 @@ fragment float4 witchlight_sky_fragment(
     // Three depth layers. Depth separation is what makes the field read as space rather
     // than as wallpaper; brightness opens the separation up (busier tracks travel faster
     // through the field) without ever stopping it.
-    float rate = 0.0035 + 0.0110 * brightness;
+    // WL.2-i — the field was effectively FROZEN, and it took Matt's M7 to name it ("the
+    // background is not moving and so looks fake when the dots are drawing over it").
+    //
+    // `drift` is in CELL units and one cell is 1/`cells` of the frame, so the old
+    // 0.0035 + 0.0110·b resolved to ~0.008 on a real track — the NEAR layer travelled
+    // 0.0004 frame-widths/s (~0.16 px/s at 1080p, ~2.5 % of the frame across a whole
+    // 5-minute track) and the far layer 0.013 px/s, i.e. 4 px per track. That is not slow
+    // parallax, it is a still image, and a still field behind a moving stroke reads as
+    // pasted-on rather than as depth.
+    //
+    // Sized so the NEAR layer crosses the frame in ~4 minutes at a typical centroid
+    // (Matt's call: "a slow drift you notice if you look", not a sense of travelling).
+    // Because drift is in cells, this is a constant fraction of the frame per second at
+    // every resolution. The three layers keep their existing 0.28/0.62/1.20 multipliers,
+    // which combined with their differing `cells` give ~12.7× more screen motion on the
+    // near layer than the far one — that RATIO is what reads as depth.
+    float rate = 0.16 + 0.50 * brightness;
     float2 uvA = float2((uv.x - 0.5) * aspect + 0.5, uv.y);
     float3 stars =
           witchlight_star_layer(uvA, 190.0, float2(t * rate * 0.28, t * rate * 0.10), 1.00) * 0.55

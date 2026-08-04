@@ -337,4 +337,57 @@ struct WitchlightPathTests {
         #expect(path.headingTravel > 1.0,
                 "\(track): the pen barely turned (\(path.headingTravel) rad) — no figure at all")
     }
+
+    // MARK: - WL.3: the drawing plane never turns edge-on
+
+    /// The single defect behind three consecutive M7s reporting "it makes the same shape
+    /// every time" — and it was in the PROJECTION, not the motion model.
+    ///
+    /// `tumbleYaw` was `0.055 * tumbleClock`: unbounded, rotating the drawing plane forever
+    /// and crossing edge-on every ~57 s. Beads sit at `z = 0`, so pitch maps y→z and yaw folds
+    /// that z back into x; at yaw = 90° both screen axes become proportional to the same
+    /// coordinate and the whole figure collapses to a line. Near edge-on every figure looks
+    /// like the same diagonal lens whatever the pen drew, and because the collapse runs on a
+    /// wall clock it happened identically on every track at the same moment.
+    ///
+    /// Proof it was the projection and not the path: zeroing the tumble and re-rendering the
+    /// three fixtures produced three obviously different legible figures from the SAME motion
+    /// model. The WL.2 open decision blaming `θ ≈ k·φ̄` was wrong.
+    ///
+    /// Asserted over 30 simulated minutes because the failure was UNBOUNDED GROWTH — a short
+    /// window would have passed against the broken version too (at 21 s the old yaw was only
+    /// 66°, which is why the fixtures never caught it).
+    @Test("The drawing plane never approaches edge-on (WL.3)")
+    func tumbleNeverCollapsesTheFigure() {
+        let path = WitchlightPath()
+        var features = FeatureVector()
+        features.deltaTime = 1.0 / 60
+        var worstCos: Float = 1
+        var worstAt: Float = 0
+
+        // 30 minutes at 60 fps, stepped coarsely — the bound is on a slow oscillator.
+        for step in 0..<(30 * 60 * 6) {
+            features.time = Float(step) / 6
+            path.advance(deltaTime: 1.0 / 6, features: features, stems: StemFeatures())
+            let c = abs(cos(path.tumbleYaw))
+            if c < worstCos { worstCos = c; worstAt = features.time }
+        }
+
+        print(String(format: "[tumble] worst |cos(yaw)| = %.3f at t = %.0f s (floor %.2f)",
+                     worstCos, worstAt, Self.minCosYaw))
+
+        #expect(worstCos >= Self.minCosYaw, """
+            |cos(tumbleYaw)| fell to \(String(format: "%.3f", worstCos)) at t = \
+            \(String(format: "%.0f", worstAt)) s — the drawing plane is turning edge-on and the \
+            figure collapses to a line there. Every track then renders as the same diagonal \
+            lens regardless of what the pen drew, which is exactly the defect three M7s \
+            reported. Keep the yaw BOUNDED (an oscillator, not a ramp); do not fix this by \
+            slowing the ramp down, which only delays the collapse.
+            """)
+    }
+
+    /// 26° of yaw leaves `cos ≥ 0.90`; the floor is set a little below so the bound can be
+    /// re-tuned for feel without the gate becoming a tripwire on taste. The value that matters
+    /// is that it is a BOUND at all — the old term grew without limit.
+    private static let minCosYaw: Float = 0.85
 }

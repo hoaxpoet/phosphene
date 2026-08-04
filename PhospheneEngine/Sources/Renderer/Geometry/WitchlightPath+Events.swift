@@ -56,11 +56,28 @@ extension WitchlightPath {
         if previousBarPhase > 0.85 && bar < 0.15 { promoteNextBead = true }
         previousBarPhase = bar
 
-        emitAccumulator += dt
-        let interval = 1.0 / max(tuning.emissionHz, 1)
+        // WL.2-i — emit per DISTANCE travelled, not per unit time.
+        //
+        // `emissionHz` was calibrated at WL.2-f as `speed / (1.2 × 2 × baseRadius)`, i.e. to
+        // put beads 1.2 diameters apart — but only while the pen runs at exactly `baseSpeed`.
+        // Spacing is `speed / emissionHz`, so a time-based emitter silently ties the ribbon's
+        // whole texture to the speed never changing. The moment WL.2-i made the speed route
+        // visibly responsive (Matt: "the same choices about movement"), that assumption broke
+        // in both directions: at 0.55× the beads closed to 0.66 diameters and fused into the
+        // uniform tube of anti-reference `11`, and at 1.45× they opened to 1.74 and dotted.
+        // Rendering it made this obvious — a short fat caterpillar of overlapping blobs.
+        //
+        // Accumulating distance instead pins the spacing at the value WL.2-f settled,
+        // whatever the pen is doing. This is not a new look: at `baseSpeed` the two emitters
+        // are identical by construction (`speed·dt / (baseSpeed/emissionHz)` reduces to
+        // `dt·emissionHz`), so the approved texture is preserved and only its dependence on
+        // speed is removed. It is also the more physical model — a burning tip sheds sparks
+        // along its PATH, not along the clock.
+        let spacing = tuning.baseSpeed / max(tuning.emissionHz, 1)
+        emitAccumulator += speed * dt
         var emitted = 0
-        while emitAccumulator >= interval && emitted < 8 {
-            emitAccumulator -= interval
+        while emitAccumulator >= spacing && emitted < 8 {
+            emitAccumulator -= spacing
             emitted += 1
             appendBead()
         }
@@ -173,6 +190,31 @@ extension WitchlightPath {
         case 3:  return SIMD3(down, falling, value)
         case 4:  return SIMD3(rising, down, value)
         default: return SIMD3(value, down, falling)
+        }
+    }
+
+    // MARK: - Turn detection (moved from WitchlightPath.swift at WL.4 for the 400-line lint;
+    // a confirmed direction change is a discrete EVENT, so this file is its natural home)
+
+    func advanceTurnDetection(dt: Float, silent: Bool) {
+        guard !silent else { turnCandidateAge = 0; return }
+        let sign: Float = phaseRate > 0.02 ? 1 : (phaseRate < -0.02 ? -1 : 0)
+        guard sign != 0 else { turnCandidateAge = 0; return }
+        if sign != turnSign {
+            if sign == turnCandidateSign {
+                turnCandidateAge += dt
+                if turnCandidateAge >= tuning.turnConfirmSeconds {
+                    confirmTurn(newSign: sign)
+                }
+            } else {
+                turnCandidateSign = sign
+                turnCandidateAge = 0
+                // Remember the apex so the hue step lands where the stroke actually
+                // turned, not where the reversal was confirmed 0.25 s later.
+                turnCandidateBeadIndex = beads.count
+            }
+        } else {
+            turnCandidateAge = 0
         }
     }
 }

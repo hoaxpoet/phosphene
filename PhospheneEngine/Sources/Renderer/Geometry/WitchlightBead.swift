@@ -160,7 +160,21 @@ public struct WitchlightTuning: Sendable {
 
     /// Speed modulation depth from arousal. Deliberately narrow — speed is what turns
     /// `01` into `10`, so it gets the least dynamic range of any driver.
-    public var speedModDepth: Float = 0.25
+    /// WL.2-i: 0.25 → 0.45. Matt's M7 — "the preset makes the same choices about movement."
+    ///
+    /// The route was never dead: `arousal` carries real slow structure (settled window-mean
+    /// spread 0.13–0.26 across the fixtures). It was calibrated so shallow that the realised
+    /// speed swing was 1.22–1.33×, which no listener connects to the music. At 0.45 the
+    /// fixtures swing **2.54–2.58×** — the pen visibly quickens and slackens.
+    ///
+    /// Stopped at 0.45 rather than pushed further, and the reason is a real constraint, not
+    /// caution. Pen speed changes the PATH, the path changes how much the trail overlaps
+    /// itself, and the ribbon's lit-pixel share moves with it **non-monotonically** —
+    /// measured 0.99 / 1.46 / 0.91 / 0.55 % at depth 0.25 / 0.40 / 0.55 / 0.70. Past ~0.5 the
+    /// trail spreads far enough to fall through the WL.2-g luminance floor, and a 1.7× pen is
+    /// also the speed at which reference `10` (the unreadable tangle) becomes the risk. 0.45
+    /// clears both gates with headroom instead of squeaking past either.
+    public var speedModDepth: Float = 0.45
 
     /// Head-flare refractory, seconds (§5: ≥ 900 ms, ≈ 1.1 flares/s ceiling).
     public var flareRefractory: Float = 0.90

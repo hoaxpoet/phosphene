@@ -253,6 +253,23 @@ What the ribbon's colour history therefore tells the listener: **where the song'
 | Star-field parallax depth | `spectralCentroid` (mapped against the **measured** 0.04–0.21 band, §2.2) | 1–10 s |
 | Nebular bloom hue | `valence` | 30 s+ |
 | Trail-window contraction | `sectionIndex` | per section |
+| **Ribbon breath (thickness + brightness)** | **`bassAtt`** | **per frame** |
+
+**WL.4 — why a ninth route, and why it is the important one.** Every route above runs on a
+1–30 s, 10–60 s, per-bar or per-section envelope. Matt's fourth M7 was *"not synced to the
+music. failure."*, and measuring that session against this table showed why: `bass`, `mid`,
+`treble`, `bassRel`, `mid_dev` and `treb_dev` were all alive and all routed to **nothing**.
+CLAUDE.md's most important design rule is that continuous energy is the DEFAULT PRIMARY
+DRIVER and is what makes a visual feel locked to the music — and Witchlight was the one
+preset with none of it. When a listener heard something happen, nothing on screen happened.
+That is the designed behaviour of the table above, not a defect in its implementation.
+
+`bassAtt` rather than `bassDev`: measured on that session `bassDev` sits at zero and spikes
+(p50 0.000, nonzero 48.8 %) — an ACCENT signal, and already spoken for by the head flare —
+while `bassAtt` is continuously alive (nonzero 97.4 %, p50 0.258, range 0.43). The difference
+between a thing that fires and a thing that breathes. Distinct primitive on a distinct layer,
+so FA #67 holds. Normalised against its own ~3 s running level (D-026), because the absolute
+value is AGC-dependent and an absolute mapping would be FA #31 under another name.
 
 All deviation or relative semantics; no absolute threshold on an AGC-normalized value anywhere (D-026 / FA #31).
 

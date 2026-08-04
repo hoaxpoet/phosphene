@@ -43,6 +43,9 @@ struct WLConfig {
     var headB: Float = 1
     var flareIntensity: Float = 0
     var lineAlpha: Float = 0.34
+    /// WL.4 — the per-frame energy breath, 0…1, centred ~0.5 at the track's own typical
+    /// level. The ONLY continuous-energy coupling in the preset; see `energyBreath` below.
+    var energyBreath: Float = 0.5
 }
 
 // MARK: - Configuration
@@ -95,6 +98,7 @@ public final class WitchlightStroke: ParticleGeometry, @unchecked Sendable {
 
     private var config: WLConfig
     private var frameCounter: UInt32 = 0
+
     private var uploadedBeadCount = 0
 
     public init(
@@ -239,6 +243,7 @@ public final class WitchlightStroke: ParticleGeometry, @unchecked Sendable {
         config.trailSeconds = path.trailWindow
         config.baseRadius = configuration.baseRadius
         config.lineAlpha = configuration.lineAlpha
+        config.energyBreath = path.energyBreath
         config.aspect = features.aspectRatio > 0.05 ? features.aspectRatio : 16.0 / 9.0
         config.tumbleYaw = path.tumbleYaw
         config.tumblePitch = path.tumblePitch
