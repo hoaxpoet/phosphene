@@ -88,7 +88,7 @@ It is **not the gate** — it's the local mirror of the CI fast gate (below). Th
 
 Two gates, deliberately split (Matt, 2026-06-15). Know which one enforces what:
 
-**CI fast gate — `.github/workflows/ci.yml`, automatic on push-to-`main` + every PR** (`runs-on: macos-14`). Required-green on `main`. Runs only what's reliable on a headless GitHub runner:
+**CI fast gate — `.github/workflows/ci.yml`, automatic on push-to-`main` + every PR** (`runs-on: macos-26`). Required-green on `main`. *(This said `macos-14` until RECON.4, 2026-08-03 — a live-trap error, since the whole CLEAN.5.4a rationale is that macos-14's Xcode 16.2 SDK red-builds 18 Metal-Sendable errors. Anyone "restoring" macos-14 from this doc would break the gate.)* Runs only what's reliable on a headless GitHub runner:
 
 - **Build** — `xcodebuild build` (app, `CODE_SIGNING_ALLOWED=NO`) + `swift build` (engine). Catches the #1 regression class — compile breaks — with no GPU.
 - **SwiftLint** `--strict`.
@@ -111,13 +111,27 @@ CI green ≠ closeout green. CI is the fast push/PR signal; the closeout block i
 If `swift test --package-path PhospheneEngine` reports 4 `BeatThis*` / `LiveDriftValidation` / `BeatGridAccuracyDiagnostic` failures with messages like *"love_rehab.m4a missing at .../Tests/Fixtures/tempo/love_rehab.m4a"*, the fixtures are missing. Either:
 
 ```bash
-# One command (CLEAN.5.2): byte-identical copy from the primary checkout
-# (so the sha256 exact-bytes test passes), falling back to the iTunes re-fetch.
-# Idempotent — no-op if the fixtures are already present.
-Scripts/bootstrap_fixtures.sh
+# The one to run (BUG-080, 2026-08-03): symlinks every gitignored tree a
+# worktree needs — tempo fixtures AND the ~479 ML weight .bin files — from
+# the primary checkout, driven by a <path>|<required>|<regex> manifest.
+# Idempotent. Hard-errors if a required source tree is empty.
+Scripts/link_fixtures.sh
+
+# Check the SOURCE is complete without linking anything:
+Scripts/link_fixtures.sh --verify
 ```
 
-Under the hood that prefers a `cp` from your main checkout and falls back to `Scripts/fetch_tempo_fixtures.sh` (public iTunes Search CDN — covers love_rehab/so_what/there_there). Either can still be run directly.
+**Use `link_fixtures.sh`, not `bootstrap_fixtures.sh`.** *(Corrected at RECON.4, 2026-08-03 — this section documented only `bootstrap_fixtures.sh`, which is the narrower and older of the two.)* The distinction matters and cost a full misdiagnosis at BUG-080:
+
+| | `link_fixtures.sh` | `bootstrap_fixtures.sh` |
+|---|---|---|
+| Covers | tempo fixtures **+ ML weights** (+ the two docs image trees) | tempo fixtures only |
+| Missing source | **hard error** on a required tree | falls through to network fetch |
+| Mechanism | symlink from the primary | `cp -R`, then fetch |
+
+**Two ceilings to know about.** (1) `fetch_tempo_fixtures.sh` — the network fallback — retrieves **three** tracks (love_rehab, so_what, there_there) while the suite needs **at least eight** (pyramid_song is called out as a load-bearing gate in `BeatGridResolverTests`, plus yyz, clair_de_lune, money, if_i_were_with_her_now). `bootstrap_fixtures.sh`'s no-op guard is "directory non-empty", so a partial tree **short-circuits to exit 0** and looks fine while still failing tests. (2) `link_fixtures.sh` symlinks rather than copies, so a worktree breaks if the primary moves, and `--verify` checks non-emptiness rather than completeness. Consolidating these behind one shared manifest is a queued RECON follow-up.
+
+`Scripts/fetch_tempo_fixtures.sh` (public iTunes Search CDN) can still be run directly when you have no primary checkout to link from — just expect the 3-of-8 ceiling above.
 
 The `BeatThisFixturePresenceGate` suite is intentionally designed to fail loudly when the fixture tree is empty — silent skips have masked the DSP.2 S8 four-bug regression surface in the past (see CLAUDE.md *§What NOT To Do* on silent fixture skips).
 
