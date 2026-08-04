@@ -94,7 +94,7 @@ struct SpotifyConnectionView: View {
         case .waitingForCallback:
             waitingForCallbackBody
         case .authFailure:
-            validationMessage(String(localized: "connector.spotify.auth_failure"))
+            validationMessage(viewModel.authFailureMessage)
         case .error(let msg):
             errorBody(message: msg)
         }

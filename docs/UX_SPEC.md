@@ -595,6 +595,7 @@ This is the canonical mapping from internal error states to user-facing language
 | Spotify private playlist (HTTP 403) | "That playlist is private. Phosphene needs a public Spotify playlist." | "Paste a different link" | — |
 | Spotify playlist not found (HTTP 404) | "Couldn't find that playlist. The link may be wrong or the playlist may have been deleted." | "Paste again" | — |
 | Spotify auth failure (missing/bad credentials) | "Phosphene couldn't reach Spotify right now. Check your network or try Apple Music." | "Try again" | "Use Apple Music" |
+| Spotify Client ID absent from the build (**DEBUG builds only** — developer-setup failure, not an end-user one; Release falls back to the generic auth-failure row above) | "No Spotify Client ID in this build. Create PhospheneApp/Phosphene.local.xcconfig containing “SPOTIFY_CLIENT_ID = <your client id>”, then build again." | (developer action) | — |
 | Empty playlist | "That playlist doesn't have any tracks yet." | "Pick a different playlist" | — |
 
 ### 9.3 Preparation errors (state: `.preparing`)

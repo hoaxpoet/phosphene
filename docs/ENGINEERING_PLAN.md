@@ -63,6 +63,13 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment SPOT.1 — Spotify `.authFailure` names the missing Client ID ✅ (2026-08-04)
+
+A full debugging round on 2026-08-04 was spent on a missing (gitignored) `PhospheneApp/Phosphene.local.xcconfig`: `SpotifyOAuthTokenProvider.resolveClientID()` found an empty `SpotifyClientID` and threw `.spotifyAuthFailure` immediately, and the connector rendered the same generic string it shows for user-denied authorization and login timeout — three causes, three different fixes, one message.
+
+- **Copy.** `SpotifyConnectionViewModel.authFailureMessage` reads `Bundle.main.infoDictionary["SpotifyClientID"]` and, when it is empty or absent, returns new copy naming the file to create and telling the developer to rebuild. **Gated `#if DEBUG`**: this is a developer-setup failure, and an end user can neither create an xcconfig nor be told about one (UX_SPEC §9.5 #4, no jargon), so shipped builds keep the generic string. No new state case — `.authFailure` still covers all causes, only the copy branches. New row in UX_SPEC §9.2; test `authFailureCopyDistinguishesMissingClientID` covers the static seam.
+- **Runbook.** Setup step 5 said to point the Debug/Release xcconfig at `Phosphene.local` in Xcode. That is stale and was the misleading half of the round: `project.pbxproj` already sets `baseConfigurationReference` to `Phosphene.xcconfig`, which ends with `#include? "Phosphene.local.xcconfig"` — creating the file is sufficient. Replaced with "build", plus a note that the file is gitignored and therefore does not survive `git clean -fdx`, a fresh clone, or a new worktree, which is how it went missing.
+
 ### Increment RECON.1–.3 — Production audit: hygiene + doc reconciliation ✅ (2026-08-03)
 
 A full production-environment audit (defects, plan state, pipeline health, dead code, repo
