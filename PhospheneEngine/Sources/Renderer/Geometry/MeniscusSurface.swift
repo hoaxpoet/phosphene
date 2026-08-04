@@ -70,6 +70,13 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
     /// frame-budget evidence.
     public private(set) var lastStepMilliseconds: Double = 0
 
+    /// §5's loudness → wave-amplitude coupling, on its own ~1 s timescale. Floored so
+    /// quiet passages still ripple faintly rather than flattening (D-037 in spirit).
+    public var surfaceIntensity: Float {
+        let floor = configuration.stemIntensityFloor
+        return floor + (1 - floor) * min(camera.volumeEnvelope / 0.45, 2.0)
+    }
+
     /// Diagnostics: drops stamped on the most recent update, and their summed force.
     public var lastDropCount: Int { drops.lastDropCount }
     public var lastDropForce: Float { drops.lastDropForce }
@@ -164,8 +171,8 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
             // MEN.3 — the divergence axis. Each instrument owns a region of the surface.
             stemDrops.step(
                 stems: stemFeatures,
+                features: features,
                 field: &current,
-                side: configuration.gridN,
                 dt: dt,
                 configuration: configuration)
         } else if configuration.dropsEnabled, let spectrum {
@@ -177,7 +184,7 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
                 configuration: configuration)
         }
         stepWave(dt: dt)
-        serializeSerpentinePath()
+        serializeSerpentinePath(intensity: surfaceIntensity)
 
         lastStepMilliseconds = Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000
     }
@@ -270,7 +277,7 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
     /// taken ALONG THE PATH — the source's own construction (`MENISCUS_PLAN.md`
     /// §3), and the reason crests read near-white while the trough two samples away
     /// reads near-black (trait T3, reference `07`).
-    private func serializeSerpentinePath() {
+    private func serializeSerpentinePath(intensity: Float) {
         let side = configuration.gridN
         guard side > 0 else { return }
         let lag = configuration.slopeLag
@@ -307,7 +314,12 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
                     + 0.55 * sin((colFrac * 5.3 - rowFrac * 4.1) + clock * 0.19)
                     + 0.30 * cos((colFrac * 9.7 + rowFrac * 8.3) - clock * 0.27))
 
-                let height = current[rowBase + col] + swellTerm
+                // §5's loudness row applied where it belongs: to WAVE AMPLITUDE, so the
+                // whole sheet is calmer in quiet passages and choppier in loud ones.
+                // Scaling only per-drop force (the first attempt) barely moved the needle
+                // — per-hit deviation variance swamps it, r=0.13. The sheet's amplitude is
+                // a global, visible property and it is what §5 actually names.
+                let height = (current[rowBase + col] + swellTerm) * intensity
                 smoothed += (height - smoothed) * lag
                 ptr[index] = MeniscusPoint(height: height, slope: height - smoothed)
                 index += 1
