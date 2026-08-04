@@ -206,9 +206,9 @@ public struct FeatureVector: Sendable {
     // flux=chord-change accent. Full rationale: `Common.metal`. ---
     public var tonalPhaseFifths, tonalPhaseThirds: Float
     public var tonalConsonance, tonalTension, harmonicFlux: Float
-    /// DYN.1 (floats 49–50): pre-normalisation HF energy fraction + τ≈8 s companion.
-    /// Survives the AGC that flattens every other band field. Rationale: `Common.metal`.
-    public var spectralDensity, spectralDensitySlow: Float
+    /// DYN.1 (49–50): pre-normalisation HF energy fraction + τ≈8 s companion, survives
+    /// the AGC. 51–52 PAD to 16-byte alignment — reclaim before growing. `Common.metal`.
+    public var spectralDensity, spectralDensitySlow, _pad51, _pad52: Float // swiftlint:disable:this identifier_name
 
     public init(
         bass: Float = 0, mid: Float = 0, treble: Float = 0,
@@ -250,7 +250,7 @@ public struct FeatureVector: Sendable {
         self.pulseRegionalBlend01 = 0
         self.tonalPhaseFifths = 0; self.tonalPhaseThirds = 0; self.tonalConsonance = 0
         self.tonalTension = 0; self.harmonicFlux = 0   // TONAL (D-178), set by TonalAnalyzer
-        self.spectralDensity = 0; self.spectralDensitySlow = 0   // DYN.1, MIRPipeline
+        self.spectralDensity = 0; self.spectralDensitySlow = 0; self._pad51 = 0; self._pad52 = 0
     }
 
     /// All-zero feature vector.

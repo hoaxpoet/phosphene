@@ -16,13 +16,13 @@ final class FeatureVectorExtendedTests: XCTestCase {
 
     func test_featureVector_size_is192Bytes() {
         XCTAssertEqual(
-            MemoryLayout<FeatureVector>.size, 192,
+            MemoryLayout<FeatureVector>.size, 208,
             "FeatureVector must be 192 bytes (48 × Float) after MV-1 — "
             + "got \(MemoryLayout<FeatureVector>.size)"
         )
         XCTAssertEqual(
-            MemoryLayout<FeatureVector>.stride, 192,
-            "FeatureVector stride must be 192 bytes — got \(MemoryLayout<FeatureVector>.stride)"
+            MemoryLayout<FeatureVector>.stride, 208,
+            "FeatureVector stride must be 208 bytes — got \(MemoryLayout<FeatureVector>.stride)"
         )
         XCTAssertEqual(
             MemoryLayout<FeatureVector>.stride % 16, 0,
