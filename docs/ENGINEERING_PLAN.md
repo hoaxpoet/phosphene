@@ -1319,7 +1319,48 @@ Original scope, Option A per D-212: per beat, hash-select a bounded subset of br
 
 **Done when:** multi-frame harness exercising the **real mesh dispatch path** (object → mesh → fragment via `MeshGenerator.draw`), not `preset.pipelineState` alone — `PRESET_SESSION_CHECKLIST.md` Part 2. Per-beat firing evidence from `features.csv`.
 
-**FTR.4 — Stem binding + percussive accent (OPTIONAL).** Bind `StemFeatures` at buffer(3) on the mesh path in `MeshGenerator.draw()`, then route the percussive accent from `stems.drums_energy_dev`. Droppable if FTR.3 already reads the way Matt wants. Touches shared renderer code — every mesh preset inherits the binding.
+**FTR.4 — Stem binding + percussive accent (OPTIONAL).** Bind `StemFeatures` at buffer(3) on the mesh path in `MeshGenerator.draw()`, then route the percussive accent from `stems.drums_energy_dev`. Droppable if FTR.3 already reads the way Matt wants. Touches shared renderer code — every mesh preset inherits the binding. **Scope corrected FTR.3d:** the FRAGMENT stage is already bound by `RenderPipeline.drawWithMeshShader`; only the object/mesh stages are missing, halving this. **Superseded in practice by MEL.1**, which needs the same binding and more.
+
+---
+
+## Phase DYN — Absolute dynamics in the FeatureVector
+
+**Why (measured, FTR.3d/3e).** Five preset rounds failed to make Fractal Tree "capture dynamics" because the number does not exist. On Matt's session `2026-08-04T14-45-33Z` (Cherub Rock) the audio steps **+23 dB** at 27–29 s when the band enters. `arousal` correlates **+0.874** with true level — it is the *only* readable feature that does — but it is a mood-classifier output with a ~10 s smoothing: the step renders as a ramp that does not settle until ~40 s. Every band, deviation and stem field is AGC- or EMA-normalised and cannot express "this section is louder"; several are *negatively* correlated with real level (`otherEnergyDev` −0.419, `bassRel` −0.199).
+
+**DYN.1 — Fast pre-AGC level on `FeatureVector`.** Add a short-window (~150–300 ms) RMS/peak level, in dBFS or a 0–1 normalised-to-a-fixed-reference form, computed **before** the total-energy AGC and the per-band EMA, plus a slow companion (~5 s) so presets can read *level* and *level-relative-to-recent* without each rolling their own.
+
+*Do not reuse `InputLevelMonitor`* — it exists and computes `peakDBFS`/`rmsDBFS`, but with a ~21 s time constant over a 30 s window. It is a signal-health diagnostic, deliberately slow, and is not on the per-frame path. Reusing it would reproduce exactly the lag DYN.1 exists to remove.
+
+**Cost.** Touches the GPU contract: `FeatureVector` in `Common.metal` + `AudioFeatures+Analyzed.swift` must stay byte-identical, and every preset inherits the new floats. Only one `_pad` slot remains, so this grows the struct — append at the end, and check the `PresetRegressionTests` dHash goldens are unchanged (they should be: additive fields no existing preset reads).
+
+**Done when:** the new field tracks the 27–29 s step on Matt's capture within ~1 s rather than ~13 s; `SessionRecorder` records it so the claim is checkable from a session; `PresetRegressionTests` goldens unchanged; a route-coverage entry exists.
+
+**Risk.** Low-to-moderate. The DSP is a windowed RMS — trivial. The risk is the GPU-contract edit, which is mechanical but shared. **Flash-safety note:** a preset driving brightness from absolute level could produce a large luminance step at a section boundary; the photosensitivity certification tests must be run, not assumed.
+
+**Estimated sessions:** 1.
+
+---
+
+## Phase MEL — A melody signal the geometry stage can read
+
+**Why (measured, FTR.3e).** Matt: *"the tips … do not align with the melody of the song."* No melody signal reaches the object shader, and the nearest candidates are dead or wrong:
+
+- `vocalsPitchHz` / `vocalsPitchConfidence` exist in `StemFeatures` (MSL floats 41–42, D-028) and are **0.0 % non-zero across every row** of Matt's session. The route has never worked — this is the same field the checklist cites as having sat dead for ~5 months while closeouts claimed it worked. **Verify before building on it.**
+- `PitchTracker` exists and returns `(hz, confidence)`, but is **not wired into `MIRPipeline` at all**; it is reached only via `StemAnalyzer`.
+- The melodic instrument in this material is the **`other`** stem (guitar), which has no pitch field at all — only energy.
+- `otherEnergy` is alive (1536 distinct values) but normalised: it correlates **−0.191** with true level, peaking during the intro build and *dropping* when the band enters.
+
+**MEL.1 — Melodic salience, reachable from object/mesh.** Two halves, both required; either alone leaves the route dead.
+1. *Reach* — bind `StemFeatures` on the object and mesh stages in `MeshGenerator.draw()` (the FTR.4 work; fragment is already bound).
+2. *Signal* — a melodic-salience scalar that actually moves with the tune. Candidate order: (a) fix and validate the existing vocal-pitch path and extend it to the `other` stem; (b) a pitch-salience/chroma-peak measure over the melodic stem; (c) failing both, a mid-register onset-and-contour measure. **Pick by measurement against a capture, not by preference** — the FTR.3 rounds burned four attempts choosing drivers on plausibility.
+
+**Done when:** the chosen scalar scores materially better than `beat_mid`'s **+0.237** moment-to-moment on a real capture, and is reachable from the object shader; `PitchTracker`'s wiring status is resolved either way (wired, or deleted as dead code).
+
+**Risk.** Higher than DYN.1 and the ordering matters: this is a *new DSP capability*, not plumbing. If (a) and (b) both fail to beat +0.237, say so and stop rather than shipping a route that is alive in the manifest and invisible on screen.
+
+**Estimated sessions:** 1 for reach + validation of the existing path; 1–2 more if new DSP is needed.
+
+**Sequencing.** DYN.1 first — it is cheap, well-understood, and fixes the complaint Matt has raised in three consecutive reviews. MEL.1 second, and only after a live confirmation that dynamics alone did not resolve the "melody" feedback: it is plausible that a tree which grows correctly with the music reads as melodic without any melody signal, since that is exactly how the original illusion worked.
 
 **FTR.5 — M7 + certification.** Live review on *Hummer* plus **at least one mid-rich track** (*Hummer* is bass-dominant: the friendliest case for the old design and the harshest for `mid`/`treble`). Closeout cites per-route firing evidence from `features.csv` / `stems.csv` per the checklist's evidence rule. On positive M7: `certified: true`, add `"Fractal Tree"` to `FidelityRubricTests.certifiedPresets`.
 
