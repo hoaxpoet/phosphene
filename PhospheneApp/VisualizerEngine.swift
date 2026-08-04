@@ -940,7 +940,8 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         self.ricercarGeometry = Self.makeRicercarGeometry(context: ctx, library: lib)
         self.cymaticSandGeometry = Self.makeCymaticSandGeometry(context: ctx, library: lib)
         self.witchlightGeometry = Self.makeWitchlightGeometry(context: ctx, library: lib)
-        self.meniscusGeometry = Self.makeMeniscusGeometry(context: ctx, library: lib)
+        self.meniscusGeometry = Self.makeMeniscusGeometry(
+            context: ctx, library: lib, spectrum: fft.magnitudeBuffer)
         self.moodClassifier = classifier
         self.stemAnalyzer = analyzer
         self.stemSeparator = sep
@@ -1322,13 +1323,18 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// Returns `any ParticleGeometry` (D-097, siblings not subclasses).
     private static func makeMeniscusGeometry(
         context: MetalContext,
-        library: Renderer.ShaderLibrary
+        library: Renderer.ShaderLibrary,
+        spectrum: UMABuffer<Float>
     ) -> (any ParticleGeometry)? {
+        // The SAME `.storageModeShared` FFT buffer the fragment stages bind at slot 1 —
+        // handed to the geometry so the ported drop placement can read the spectrum on
+        // the CPU. No copy, no protocol change (MEN.2b, `MeniscusDrops`).
         guard let surface = try? MeniscusSurface(
             device: context.device,
             library: library.library,
             configuration: MeniscusConfiguration(),
-            pixelFormat: context.pixelFormat
+            pixelFormat: context.pixelFormat,
+            spectrum: spectrum
         ) else {
             return nil
         }
