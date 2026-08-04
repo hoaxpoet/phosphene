@@ -59,6 +59,24 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         /// Slow EMA of `density` (τ ≈ 8 s). Lets a consumer read "denser than this
         /// track's normal" rather than an absolute, without rolling its own state.
         public var smoothedDensity: Float
+        /// DYN.1b — SECTION SURGE, 0…1. Rises fast when the mix arrives, and HOLDS.
+        ///
+        /// The field for "the tree shoots up when the distorted guitar enters" — which
+        /// Matt defines concretely as the trunk elongating and the next level of branches
+        /// appearing. Both are STEPS that persist, and nothing else here can express one:
+        /// every other field is instantaneous or averaged, so a preset can only scale it.
+        /// An asymmetric follower turns an arrival into something a visual can sit on.
+        ///
+        /// Driven by pre-AGC LEVEL, not spectral shape. Measured on `2026-08-04T19-20-32Z`
+        /// at the guitar entry, a level surge separates the pre-guitar passage from the
+        /// arrival **20.4×** (0.048 → 0.981) while turning only 0.58 times a second. Shape
+        /// cannot: the clean intro is BRIGHTER (HF 0.22) than the pre-guitar passage
+        /// (HF 0.03), so it confuses a bright quiet intro with a loud arrival.
+        ///
+        /// The reasoning that earlier ruled level out was wrong in a specific way: the
+        /// BODY of a limited master is flat, so level looked useless — but the intro→body
+        /// transition is 26 dB. Limiting flattens the body, not the arrival.
+        public var surge: Float
     }
 
     // MARK: - Configuration
@@ -80,7 +98,7 @@ public final class SpectralAnalyzer: @unchecked Sendable {
     /// Split point for `Result.density`. 1.5 kHz sits above the fundamental range of
     /// most rhythm-section content and below the harmonics distortion adds, which is
     /// what makes the fraction move when a guitar dirties up at constant level.
-    private static let densitySplitHz: Float = 1500
+    static let densitySplitHz: Float = 1500
 
     // MARK: - Pre-allocated Buffers
 
@@ -146,6 +164,8 @@ public final class SpectralAnalyzer: @unchecked Sendable {
 
     /// EMA-smoothed spectral density, both legs (DYN.1).
     private var fastDensity: Float = 0
+    private var smoothedLevelDB: Float = -120
+    private var surge: Float = 0
     private var smoothedDensity: Float = 0
     /// False until the first non-silent frame seeds both density legs.
     private var densitySeeded = false
@@ -220,7 +240,8 @@ public final class SpectralAnalyzer: @unchecked Sendable {
                 smoothedRolloff: 0,
                 smoothedFlux: 0,
                 density: 0,
-                smoothedDensity: 0
+                smoothedDensity: 0,
+                surge: 0
             )
         }
 
@@ -244,6 +265,18 @@ public final class SpectralAnalyzer: @unchecked Sendable {
             smoothedDensity = rawDensity
             densitySeeded = true
         }
+        // PRE-AGC LEVEL by Parseval: total spectral energy is proportional to signal
+        // power, and these magnitudes are the raw FFT — upstream of every normaliser.
+        var spectralEnergy: Float = 0
+        for i in 0..<count { spectralEnergy += magnitudes[i] * magnitudes[i] }
+        let levelDB = 10 * log10f(max(spectralEnergy, 1e-20))
+        smoothedLevelDB = Self.levelAlpha * levelDB + (1 - Self.levelAlpha) * smoothedLevelDB
+        let surgeTarget = Self.smoothstepf(Self.surgeLowDB, Self.surgeHighDB, smoothedLevelDB)
+        // Asymmetric: arrive fast, leave slowly. A symmetric follower falls back between
+        // phrases and reads as the pumping this field exists to avoid.
+        let surgeAlpha = surgeTarget > surge ? Self.surgeAttack : Self.surgeRelease
+        surge = surgeAlpha * surgeTarget + (1 - surgeAlpha) * surge
+
         fastDensity = Self.densityFastAlpha * rawDensity + (1 - Self.densityFastAlpha) * fastDensity
         smoothedDensity = Self.densityAlpha * rawDensity + (1 - Self.densityAlpha) * smoothedDensity
 
@@ -265,25 +298,9 @@ public final class SpectralAnalyzer: @unchecked Sendable {
             smoothedRolloff: smoothedRolloff,
             smoothedFlux: smoothedFlux,
             density: fastDensity,
-            smoothedDensity: smoothedDensity
+            smoothedDensity: smoothedDensity,
+            surge: surge
         )
-    }
-
-    /// Fraction of spectral energy above `densitySplitHz`, from RAW magnitudes.
-    ///
-    /// Energy is magnitude squared; the ratio is scale-invariant, so any gain applied
-    /// upstream cancels. Returns 0 for silence rather than a division artefact.
-    private func computeDensity(magnitudes: [Float], count: Int) -> Float {
-        guard binResolution > 0 else { return 0 }
-        let splitBin = min(Int(Self.densitySplitHz / binResolution), count)
-        var low: Float = 0
-        var high: Float = 0
-        for i in 0..<count {
-            let energy = magnitudes[i] * magnitudes[i]
-            if i < splitBin { low += energy } else { high += energy }
-        }
-        let total = low + high
-        return total > 1e-10 ? high / total : 0
     }
 
     /// Reset internal state (previous frame buffer).
@@ -301,6 +318,8 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         fastDensity = 0
         smoothedDensity = 0
         densitySeeded = false
+        smoothedLevelDB = -120
+        surge = 0
     }
 
     // MARK: - Centroid

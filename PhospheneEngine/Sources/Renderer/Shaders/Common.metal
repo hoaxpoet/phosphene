@@ -77,10 +77,16 @@ struct FeatureVector {
     // `spectral_density_slow` is a τ≈8 s companion: compare the two to get "denser
     // than this track's normal" without needing per-preset state.
     float spectral_density, spectral_density_slow;
+    // DYN.1b (float 51): SECTION SURGE, 0…1 — rises fast when the mix arrives and HOLDS.
+    // Use it for a step the visual can sit on: a trunk that elongates, a new tier of
+    // branches appearing. Every other field here is instantaneous or averaged, so a
+    // preset can only SCALE it; an arrival is a step that persists, and scaling a
+    // proportional signal cannot produce one. Driven by pre-AGC level, not shape —
+    // a bright quiet intro must not read as a loud arrival.
     // Floats 51–52 — PADDING, mirroring Swift. 50 floats is 200 bytes and a GPU constant
     // buffer must be 16-byte aligned; without these the Swift and MSL views of buffer(0)
     // disagree and every field past the mismatch reads garbage.
-    float _pad51, _pad52;
+    float spectral_surge, _pad52;   // 51 reclaimed by DYN.1b
 };
 
 // MARK: - FeedbackParams

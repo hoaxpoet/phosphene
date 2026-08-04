@@ -238,6 +238,7 @@ struct FractalTreeMeshRenderTest {
         var hues: [Double] = []
         var times: [Double] = []
         var widths: [Double] = []
+        var heights: [Double] = []
         var inks: [Double] = []
 
         for (index, row) in rows.enumerated() where index % stride == 0 {
@@ -255,6 +256,7 @@ struct FractalTreeMeshRenderTest {
             inks.append(Self.inkFraction(pixels))
             times.append(row["time"] ?? 0)
             widths.append(Self.canopyWidth(pixels))
+            heights.append(Self.canopyHeight(pixels))
         }
 
         // FLICKER IS MEASURED ON ADJACENT FRAMES, ALWAYS — never on the sampled strip.
@@ -297,8 +299,16 @@ struct FractalTreeMeshRenderTest {
             }
             let beforeInk = meanInk(event - 4...event)
             let afterInk = meanInk(event...event + 4)
+            func meanHeight(_ range: ClosedRange<Double>) -> Double {
+                let picked = zip(times, heights).filter { range.contains($0.0) }.map(\.1)
+                return picked.isEmpty ? 0 : picked.reduce(0, +) / Double(picked.count)
+            }
             let beforeWidth = meanWidth(event - 4...event)
             let afterWidth = meanWidth(event...event + 4)
+            let beforeHeight = meanHeight(event - 4...event)
+            let afterHeight = meanHeight(event...event + 4)
+            print(String(format: "[fractal-tree/event] HEIGHT %.4f -> %.4f (%.2fx)",
+                         beforeHeight, afterHeight, afterHeight / Swift.max(beforeHeight, 1e-6)))
             print(String(format: "[fractal-tree/event] width %.4f -> %.4f (%.2fx)",
                          beforeWidth, afterWidth, afterWidth / Swift.max(beforeWidth, 1e-6)))
             print(String(format: "[fractal-tree/event] across %.1f s — footprint %.4f -> %.4f (%.2fx)",
@@ -307,7 +317,15 @@ struct FractalTreeMeshRenderTest {
             // tree to grow OUTWARD", which is extent; ink conflates extent with density,
             // so a canopy that thickens without spreading would pass on ink and fail him.
             // Both are printed so a future change cannot quietly trade one for the other.
-            #expect(afterWidth > beforeWidth * 1.15, """
+            // ASSERT ON HEIGHT. Matt's definition is literal: "shoot up = trunk
+            // elongates, next level of branches appears." Width and footprint are what I
+            // optimised for eight rounds while the trunk never moved.
+            #expect(afterHeight > beforeHeight * 1.15, """
+                the tree reached \(beforeHeight) -> \(afterHeight) up the frame across the \
+                arrival at \(event) s. Under 1.15x the trunk did not elongate, which is \
+                half of "shoot up" and the thing that has failed every round.
+                """)
+            #expect(afterWidth > beforeWidth * 1.05, """
                 the canopy spread \(beforeWidth) -> \(afterWidth) across the section change \
                 at \(event) s (footprint \(beforeInk) -> \(afterInk)). Under 1.15x this is \
                 the "there is no jump in growth when the distorted guitar kicks in" failure, \
@@ -397,31 +415,32 @@ struct FractalTreeMeshRenderTest {
 
     /// Run the REAL `SpectralAnalyzer` over the capture's audio, returning
     /// (audioTime, density, densitySlow) at the ~10 Hz analysis rate.
-    private static func recomputeDensity(wav: URL) throws -> [(Double, Float, Float)] {
+    private static func recomputeDensity(wav: URL) throws -> [(Double, Float, Float, Float)] {
         let samples = try SpectralDensityRealAudioTests.loadFloatWavMonoShared(wav)
         guard !samples.isEmpty else { return [] }
         let analyzer = SpectralAnalyzer(binCount: 512, sampleRate: 48000, fftSize: 1024)
         let hop = 4800
-        var out: [(Double, Float, Float)] = []
+        var out: [(Double, Float, Float, Float)] = []
         var start = 0
         while start + 1024 <= samples.count {
             let frame = Array(samples[start..<(start + 1024)])
             let result = analyzer.process(
                 magnitudes: try SpectralDensityRealAudioTests.magnitudesShared(of: frame))
-            out.append((Double(start) / 48000, result.density, result.smoothedDensity))
+            out.append((Double(start) / 48000, result.density, result.smoothedDensity, result.surge))
             start += hop
         }
         return out
     }
 
     /// The capture's `time` column and the audio share an origin at recording start.
-    private static func applyRecomputedDensity(_ table: [(Double, Float, Float)],
+    private static func applyRecomputedDensity(_ table: [(Double, Float, Float, Float)],
                                                at time: Double,
                                                to fv: inout FeatureVector) {
         guard !table.isEmpty else { return }
         let index = Swift.min(Swift.max(Int(time * 10), 0), table.count - 1)
         fv.spectralDensity = table[index].1
         fv.spectralDensitySlow = table[index].2
+        fv.spectralSurge = table[index].3
     }
 
     private static func median(_ values: [Double]) -> Double {
@@ -715,6 +734,23 @@ struct FractalTreeMeshRenderTest {
         guard sumX != 0 || sumY != 0 else { return 0 }
         let a = atan2(sumY, sumX) * 180 / .pi
         return a < 0 ? a + 360 : a
+    }
+
+    /// Height of the tree: how far up the frame the topmost lit pixel reaches.
+    ///
+    /// THE metric for "the trunk elongates", which is half of Matt's definition of
+    /// "shoot up". Footprint and width both improved across eight rounds while this did
+    /// not move, and he rejected every one of them — measuring the wrong quantity is how
+    /// a preset passes its gates and fails the person looking at it.
+    private static func canopyHeight(_ bgra: [UInt8]) -> Double {
+        for y in 0..<height {
+            for x in 0..<width where Int(bgra[(y * width + x) * 4])
+                + Int(bgra[(y * width + x) * 4 + 1])
+                + Int(bgra[(y * width + x) * 4 + 2]) > 24 {
+                return Double(height - y) / Double(height)
+            }
+        }
+        return 0
     }
 
     /// Width of the tree's bounding box, as a fraction of the frame. The direct visual

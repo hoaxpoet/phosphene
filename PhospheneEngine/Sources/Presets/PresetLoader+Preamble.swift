@@ -88,6 +88,12 @@ extension PresetLoader {
             // Compare against `spectral_density_slow` (τ≈8 s) for "denser than this
             // track's normal" without per-preset state.
             float spectral_density, spectral_density_slow;
+            // DYN.1b (float 51): SECTION SURGE, 0…1 — rises fast on an arrival and HOLDS.
+            // Use it for a step the visual can sit on: a trunk that elongates, a new tier
+            // of branches appearing. Every other field here is instantaneous or averaged,
+            // so a preset can only SCALE it, and scaling cannot produce a step. Driven by
+            // pre-AGC LEVEL, not shape — a bright quiet intro must not read as an arrival.
+            float spectral_surge, _pad52;
         };
 
         struct VertexOut {

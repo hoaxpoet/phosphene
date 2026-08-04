@@ -63,6 +63,7 @@ struct SpectralDensityRealAudioTests {
                                         fftSize: Self.fftSize)
         let hop = Int(Self.sampleRate) / 10          // ~10 Hz, the MIR analysis rate
         var series: [(time: Double, density: Float, rawHF: Float)] = []
+        var levels: [(Double, Float, Float)] = []
 
         var frameStart = 0
         while frameStart + Self.fftSize <= samples.count {
@@ -72,6 +73,10 @@ struct SpectralDensityRealAudioTests {
             series.append((Double(frameStart) / Double(Self.sampleRate),
                            result.density,
                            Self.timeDomainHFFraction(frame)))
+            var spectralEnergy: Float = 0
+            for value in magnitudes { spectralEnergy += value * value }
+            levels.append((Double(frameStart) / Double(Self.sampleRate),
+                           10 * log10f(max(spectralEnergy, 1e-20)), result.surge))
             frameStart += hop
         }
         #expect(series.count > 50, "capture too short to judge (\(series.count) frames)")
@@ -91,6 +96,10 @@ struct SpectralDensityRealAudioTests {
         let hfBefore = mean(before) { series[$0].rawHF }
         let hfAfter = mean(after) { series[$0].rawHF }
 
+        print("  t    levelDB  surge   (DYN.1b calibration)")
+        for entry in levels where Int(entry.0 * 10) % 20 == 0 {
+            print(String(format: "  %5.1f  %7.2f  %.3f", entry.0, entry.1, entry.2))
+        }
         print("  t     density   time-domain HF")
         for entry in series where Int(entry.time * 2) % 2 == 0 && entry.time.truncatingRemainder(dividingBy: 1) < 0.11 {
             print(String(format: "  %5.1f  %7.4f   %7.4f", entry.time, entry.density, entry.rawHF))
