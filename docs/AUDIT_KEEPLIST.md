@@ -109,3 +109,20 @@ search — that signal is what produced this doc's false positives):
 *referenced by name in source*. For anything resolved at runtime, bundled by directory, or
 consumed by a human, the signal is not just weak — it is systematically absent, and it will
 read as a confident zero.
+
+**The mirror-image error: references found, wrongly attributed.** A grep tells you a string
+appears somewhere; it never tells you what *depends* on it. RECON's audit grepped fixture
+names across the test tree, found `pyramid_song`, `yyz`, `money` and others, and concluded
+the required-fixture set was "at least eight" with the fetch script covering only three —
+which went into the RUNBOOK. Opening the consumers showed the required set was exactly the
+three already present: the other names belonged to **BeatBench** (fixtures living outside
+the repo, env-gated, own sha256 gate), to **env-gated diagnostic harnesses**, or to
+**synthetic stub paths** in unit tests (`/private/var/tmp/money.m4a` against a test double).
+Three unrelated systems, one grep, one wrong conclusion — and it was written into a doc
+people follow before anyone opened a single hit.
+
+So the rule runs both directions: **a count is not evidence.** Zero hits does not prove
+unused; N hits does not prove required. Open the consumer and find out what it does with
+the file — and if the claim is about what a build or test *needs*, the run is the arbiter.
+Both errors above (deleting live fixtures on a zero, inventing missing ones on an N) came
+from the same audit in the same week, and both were caught by running the suite.
