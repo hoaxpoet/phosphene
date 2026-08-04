@@ -278,6 +278,19 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
     /// §3), and the reason crests read near-white while the trough two samples away
     /// reads near-black (trait T3, reference `07`).
     private func serializeSerpentinePath(intensity: Float) {
+        // THE SWELL IS THE SILENCE STATE, NOT A CONSTANT BED.
+        //
+        // MEN.2a introduced it as "a placeholder to satisfy D-037 … keep it cheap and keep
+        // it removable", and it was never removed when real drops arrived. Measured:
+        // autonomous swell amplitude 0.0540 against 0.0001 from the entire audio path —
+        // the placeholder is 540x everything the music does, so the music contributed
+        // ~0 % of what was on screen. That is exactly Matt's "a movie playing with
+        // background music", and it is why four rounds of drop-TIMING work changed nothing
+        // a viewer could see: the drops were correct and inaudible under it.
+        //
+        // It now fades out as the music comes up, so it does what §4 actually specifies —
+        // "silence / cold start: a slow standing swell … never black" — and nothing more.
+        let swellGate = max(0, 1 - camera.volumeEnvelope * configuration.swellFadeRate)
         let side = configuration.gridN
         guard side > 0 else { return }
         let lag = configuration.slopeLag
@@ -309,7 +322,7 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
                 // so the shading has something to resolve. Temporal rates stay slow:
                 // §7 R6's recovery for a swell that reads frozen is MORE SPATIAL
                 // VARIATION, never a faster swell.
-                let swellTerm = swell * (
+                let swellTerm = swell * swellGate * (
                     sin(colFrac * 2.1 + clock * 0.31) * cos(rowFrac * 1.6 - clock * 0.23)
                     + 0.55 * sin((colFrac * 5.3 - rowFrac * 4.1) + clock * 0.19)
                     + 0.30 * cos((colFrac * 9.7 + rowFrac * 8.3) - clock * 0.27))

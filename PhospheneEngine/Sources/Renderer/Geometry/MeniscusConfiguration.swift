@@ -70,7 +70,10 @@ public struct MeniscusConfiguration: Sendable {
     /// the tangent-normal ribbon closes the raster. Full reasoning at the `THE SPREAD`
     /// note in `MeniscusSurface.metal`, and see `yawCentre`, which it constrains.
     public var spreadMode: Int
-    /// Amplitude of the MEN.2a placeholder standing swell (task 6). Set to 0 and
+    /// How fast the silence swell fades out as loudness rises. The swell exists to carry
+    /// §4's silence row; once the music is playing the DROPS are meant to be the surface.
+    public var swellFadeRate: Float
+    /// Amplitude of the silence-state standing swell. Set to 0 and
     /// the surface is whatever the sim is doing on its own.
     public var swellAmplitude: Float
     /// IIR coefficient for the lagged smoothed height the slope term differences
@@ -118,6 +121,13 @@ public struct MeniscusConfiguration: Sendable {
     public var stemDropThreshold: Float
     public var stemDropRefractory: Float
     /// Global scale on the per-region forces in `MeniscusStemDrops.regions`.
+    ///
+    /// CALIBRATED AGAINST AUDIO SHARE, not chosen. At 1.0 the drops moved the surface
+    /// 0.0002 against 0.0203 from autonomous motion — the music caused ~1 % of what was on
+    /// screen, which is why four rounds of drop-TIMING work changed nothing visible. Swept
+    /// against `MeniscusAudioShareTests`: 1 -> 1 %, 8 -> 35 %, 25 -> 72 %, 60 -> 88 %. 25
+    /// puts peak displacement at 0.18, the same magnitude the placeholder swell used to
+    /// occupy, so the surface moves as much as before but the MUSIC is now what moves it.
     public var stemDropForce: Float
     /// Take drums/bass TIMING from the cached BeatGrid instead of live threshold
     /// crossings (the audio hierarchy's rule; D-153→D-158). Falls back to onset-driven
@@ -182,6 +192,7 @@ public struct MeniscusConfiguration: Sendable {
         spread: Float = 0.45,
         spreadMode: Int = 0,
         swellAmplitude: Float = 0.10,
+        swellFadeRate: Float = 6.0,
         slopeLag: Float = 0.35,
         slopeGain: Float = 34.0,
         tumbleRate: Float = 0.55,
@@ -194,7 +205,7 @@ public struct MeniscusConfiguration: Sendable {
         stemPlacement: Bool = true,
         stemDropThreshold: Float = 0.30,
         stemDropRefractory: Float = 0.09,
-        stemDropForce: Float = 1.0,
+        stemDropForce: Float = 25.0,
         stemGridSync: Bool = true,
         stemPresenceThreshold: Float = 0.12,
         stemLeadTime: Float = 0.120,
@@ -210,6 +221,7 @@ public struct MeniscusConfiguration: Sendable {
         self.spread = spread
         self.spreadMode = spreadMode
         self.swellAmplitude = swellAmplitude
+        self.swellFadeRate = swellFadeRate
         self.slopeLag = slopeLag
         self.slopeGain = slopeGain
         self.tumbleRate = tumbleRate

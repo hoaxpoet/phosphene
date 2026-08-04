@@ -430,3 +430,132 @@ struct MeniscusRippleRiseTests {
         #expect(!slopeEnergy.isEmpty)
     }
 }
+
+// MARK: - How much of what you see is the MUSIC? (MEN.3d diagnostic)
+
+/// Matt, 2026-08-04, fourth round: "the entire preset feels unmatched to the music, like
+/// it's just a movie playing with background music."
+///
+/// That is not a timing complaint, and four rounds of timing work have not touched it. The
+/// question it actually asks is: **what fraction of the motion on screen is caused by the
+/// audio at all**, as against the camera tumble, the dolly and the placeholder swell, which
+/// run on their own clocks. If the autonomous motion dominates, no amount of sync accuracy
+/// can make the preset read as connected — which is precisely what "a movie with background
+/// music" describes.
+@Suite("Meniscus — audio-driven vs autonomous motion")
+struct MeniscusAudioShareTests {
+
+    @Test("report the share of surface motion that the audio causes")
+    func reportAudioShare() throws {
+        let fixture = try WitchlightFixtureDrive.load("there_there")
+        var configuration = MeniscusConfiguration()
+        if let f = Float(ProcessInfo.processInfo.environment["MENISCUS_DROPFORCE"] ?? "") {
+            configuration.stemDropForce = f
+        }
+        let cells = configuration.gridN * configuration.gridN
+
+        /// Run the surface's CPU side and return per-frame mean |Δheight| of the
+        /// serialized display field.
+        func run(audio: Bool) -> [Double] {
+            var drops = MeniscusStemDrops()
+            var field = [Float](repeating: 0, count: cells)
+            var previousField = field
+            var deltas: [Double] = []
+            var elapsed: Float = 0
+            var loudEnv: Float = 0
+            let damping: Float = 1 - 1.8 / 60
+            for index in 0..<min(fixture.stems.count, 1800) {
+                var dt = fixture.features[index].deltaTime
+                if !(dt > 0) { dt = 1.0 / 60.0 }
+                dt = min(dt, 1.0 / 30.0)
+                elapsed += dt
+                let f = fixture.features[index]
+                let instant = min(max((f.bass + f.mid + f.treble) / 3, 0), 1.4)
+                loudEnv += (instant - loudEnv) * (1 - exp(-dt / 0.35))
+                if audio {
+                    drops.step(stems: fixture.stems[index], features: fixture.features[index],
+                               field: &field, dt: dt, configuration: configuration)
+                }
+                // the same wave step
+                var next = previousField
+                for row in 0..<configuration.gridN {
+                    let up = ((row + configuration.gridN - 1) % configuration.gridN) * configuration.gridN
+                    let down = ((row + 1) % configuration.gridN) * configuration.gridN
+                    let here = row * configuration.gridN
+                    for col in 0..<configuration.gridN {
+                        let left = (col + configuration.gridN - 1) % configuration.gridN
+                        let right = (col + 1) % configuration.gridN
+                        let mean = (field[here + left] + field[here + right]
+                                    + field[up + col] + field[down + col]) * 0.25
+                        next[here + col] = (2 * mean - next[here + col]) * damping
+                    }
+                }
+                previousField = field
+                field = next
+                // display height = sim + the autonomous swell
+                var total = 0.0
+                for row in 0..<configuration.gridN {
+                    let rowFrac = Float(row) / Float(configuration.gridN - 1)
+                    for col in 0..<configuration.gridN {
+                        let colFrac = Float(col) / Float(configuration.gridN - 1)
+                        let gate = max(0, 1 - loudEnv * configuration.swellFadeRate)
+                        let swell = configuration.swellAmplitude * gate * (
+                            sin(colFrac * 2.1 + elapsed * 0.31) * cos(rowFrac * 1.6 - elapsed * 0.23)
+                            + 0.55 * sin((colFrac * 5.3 - rowFrac * 4.1) + elapsed * 0.19)
+                            + 0.30 * cos((colFrac * 9.7 + rowFrac * 8.3) - elapsed * 0.27))
+                        total += Double(abs(field[row * configuration.gridN + col] + swell))
+                    }
+                }
+                deltas.append(total / Double(cells))
+            }
+            return deltas
+        }
+
+        let withAudio = run(audio: true)
+        let withoutAudio = run(audio: false)
+        let meanWith = withAudio.reduce(0, +) / Double(withAudio.count)
+        let meanWithout = withoutAudio.reduce(0, +) / Double(withoutAudio.count)
+        let share = (meanWith - meanWithout) / max(meanWith, 1e-9)
+        print(String(format: "[meniscus-share] surface amplitude: audio-driven %.4f · autonomous %.4f",
+                     meanWith - meanWithout, meanWithout))
+        print(String(format: "[meniscus-share] AUDIO'S SHARE OF THE SURFACE: %.0f %%", share * 100))
+        // Watch T4 while force rises: impacts must stay localised, not churn the plate.
+        var drops2 = MeniscusStemDrops()
+        var field2 = [Float](repeating: 0, count: cells)
+        var prev2 = field2
+        let damp: Float = 1 - 1.8 / 60
+        for index in 0..<min(fixture.stems.count, 1800) {
+            var dt = fixture.features[index].deltaTime
+            if !(dt > 0) { dt = 1.0 / 60.0 }
+            dt = min(dt, 1.0 / 30.0)
+            drops2.step(stems: fixture.stems[index], features: fixture.features[index],
+                        field: &field2, dt: dt, configuration: configuration)
+            var next = prev2
+            for row in 0..<configuration.gridN {
+                let up = ((row + configuration.gridN - 1) % configuration.gridN) * configuration.gridN
+                let down = ((row + 1) % configuration.gridN) * configuration.gridN
+                let here = row * configuration.gridN
+                for col in 0..<configuration.gridN {
+                    let left = (col + configuration.gridN - 1) % configuration.gridN
+                    let right = (col + 1) % configuration.gridN
+                    let mean = (field2[here + left] + field2[here + right]
+                                + field2[up + col] + field2[down + col]) * 0.25
+                    next[here + col] = (2 * mean - next[here + col]) * damp
+                }
+            }
+            prev2 = field2; field2 = next
+        }
+        let peak2 = field2.map { abs($0) }.max() ?? 0
+        let disturbed = Double(field2.filter { abs($0) > max(peak2 * 0.15, 1e-5) }.count) / Double(cells)
+        print(String(format: "[meniscus-share] force %.1f -> T4 disturbed %.0f %% · peak %.3f",
+                     configuration.stemDropForce, disturbed * 100, peak2))
+        // The music must actually be most of what moves. Below ~50 % the preset reads as
+        // autonomous animation with a soundtrack, which is what Matt saw.
+        #expect(share > 0.5, """
+            audio drives only \(Int(share * 100)) % of the surface motion — the rest is the
+            camera, the dolly and the silence swell running on their own clocks. No timing
+            accuracy can make a preset read as connected when the music causes a minority of
+            what moves.
+            """)
+    }
+}

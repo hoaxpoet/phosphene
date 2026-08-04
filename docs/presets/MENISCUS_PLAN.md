@@ -421,6 +421,46 @@ badly understated.** This is the NACRE.2b pattern the plan predicted (§2 reason
    The warp shader body returns `vec3(0,0,0)` unconditionally. §3 asserted this from a
    read; it is now verified from the artifact.
 
+### MEN.3d — the music was causing 1 % of what was on screen (2026-08-04)
+
+Matt, fourth round on the same complaint: "no different from before … the entire preset
+feels unmatched to the music, like it's just a movie playing with background music."
+
+That last sentence is the finding, and it is literal. Measured
+(`MeniscusAudioShareTests`): **audio-driven surface amplitude 0.0001 against 0.0540 from
+autonomous motion — the music caused ~0 % of the surface.** The MEN.2a placeholder swell
+was 540x everything the audio path did.
+
+**So four rounds of drop-TIMING work were on the wrong axis entirely.** The drops were
+firing in the right regions (vocals 0.19 / bass 0.48 / drums 0.81), at the right density
+(4–7 impacts/s), and after MEN.3c with their visible peak 19 ms from the beat at 97–100 %
+inside the perceptual window. All of it correct, all of it inaudible under a placeholder.
+Every one of those measurements was true and none of them measured the thing that was
+wrong, because I never asked what share of the motion the audio owned.
+
+**Two causes, both mine.**
+
+1. **The placeholder swell was never removed.** The MEN.2a prompt said "a placeholder to
+   satisfy D-037 … keep it cheap and keep it removable" — I carried it through MEN.2b and
+   MEN.3 unchanged, at full amplitude, during music. It now fades out as loudness rises, so
+   it does what §4 actually specifies (the silence row) and nothing more. Share 1 % → still
+   1 %, because of cause 2.
+2. **Drop force was ~100x too low to BE the surface.** Swept against audio share:
+   1 → 1 %, 8 → 35 %, 25 → 72 %, 60 → 88 %. Set to 25, which puts peak displacement at
+   0.18 — the same magnitude the swell used to occupy, so the surface moves about as much
+   as before but the MUSIC is now what moves it.
+
+**The open question, and it is Matt's.** At force 25 the plate is visibly busier than the
+calm register of MEN.3b, which is close to his ROUND-ONE complaint ("too much activity").
+Connection and calm trade directly here: more audio share means more surface motion. The
+lever is one number and the measured curve is above. Rendering before deciding, rather than
+choosing for him, is the point — the last four rounds show how expensive a wrong guess is.
+
+**Process note worth keeping.** Every round I measured something real, and for four rounds
+running the thing I measured was not the thing that was broken. The check that would have
+caught it on day one — "what fraction of the motion does the audio cause?" — is trivial,
+and is now a standing gate.
+
 ### MEN.3c — the lag was the medium, not the timing (2026-08-04)
 
 Matt after MEN.3b: still "a lag and it's significant enough where the music does not read
