@@ -94,6 +94,17 @@ struct MeniscusMultiFrameRenderTest {
         if let grid = Int(ProcessInfo.processInfo.environment["MENISCUS_GRID"] ?? "") {
             configuration.gridN = grid
         }
+        // MEN.3e: force must be swept against the REAL surface. `MeniscusAudioShareTests`
+        // keeps a private wave loop, and its absolute displacement does not agree with
+        // what `MeniscusSurface` actually produces (0.186 there vs 0.032 here at the same
+        // force) — it is a valid RATIO instrument for audio-vs-autonomous share and an
+        // invalid one for calibrating amplitude. This knob makes the honest sweep possible.
+        if let force = Float(ProcessInfo.processInfo.environment["MENISCUS_DROPFORCE"] ?? "") {
+            configuration.stemDropForce = force
+        }
+        if let damping = Float(ProcessInfo.processInfo.environment["MENISCUS_DAMPING"] ?? "") {
+            configuration.damping = damping
+        }
         // NEGATIVE CONTROL. `MENISCUS_SWELL=0` removes the only thing moving the
         // surface at MEN.2a, so the run SHOULD trip the motion floor. That is how this
         // gate is shown to be wired to something real rather than passing vacuously —

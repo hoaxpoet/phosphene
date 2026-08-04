@@ -39,7 +39,7 @@ final class SessionRecorderTests: XCTestCase {
     /// mid_rel,mid_dev,treb_rel,treb_dev,mid_att_rel,treb_att_rel,beats_until_next`) so
     /// route-coverage replay reaches every FeatureVector primitive presets consume,
     /// shifting every pre-existing from-end offset by another 10.
-    private let qg1Tail = 10
+    private let qg1Tail = 12
 
     /// One past the last column these positional offsets were written against
     /// (`beats_until_next`, the end of the QG.1 tail) — anchored BY NAME, not by
@@ -256,7 +256,21 @@ final class SessionRecorderTests: XCTestCase {
         let qg1Block = ["bass_att", "mid_att", "treble_att", "mid_rel", "mid_dev",
                         "treb_rel", "treb_dev", "mid_att_rel", "treb_att_rel", "beats_until_next"]
         XCTAssertEqual(qg1Block.count, qg1Tail,
-                       "qg1Tail must equal the number of QG.1 columns it stands for")
+                       """
+                       qg1Tail must equal the number of QG.1 columns it stands for (\(qg1Block.count)), \
+                       and it is currently \(qg1Tail).
+
+                       If you just raised it to absorb a newly appended features.csv column: don't — \
+                       that is the pre-RECON.14 ritual and it is now a DOUBLE correction. These offsets \
+                       no longer count from `cells.count`; they count from `featuresTailEnd`, which \
+                       locates `beats_until_next` BY NAME, so columns appended after it are already \
+                       excluded. Adding them again here shifts every lookup the wrong way and the \
+                       round-trip assertions will compare wrong-but-plausible fields — which reads as a \
+                       recorder bug and is not one.
+
+                       An appended column needs NO change in this file. Revert qg1Tail to \
+                       \(qg1Block.count) and re-run.
+                       """)
         if let idx {
             let start = idx + 1 - qg1Block.count
             XCTAssertGreaterThanOrEqual(start, 0, "QG.1 block runs off the front of the header")
