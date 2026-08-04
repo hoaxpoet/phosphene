@@ -1327,15 +1327,18 @@ Original scope, Option A per D-212: per beat, hash-select a bounded subset of br
 
 **Why (measured, FTR.3d/3e).** Five preset rounds failed to make Fractal Tree "capture dynamics" because the number does not exist. On Matt's session `2026-08-04T14-45-33Z` (Cherub Rock) the audio steps **+23 dB** at 27–29 s when the band enters. `arousal` correlates **+0.874** with true level — it is the *only* readable feature that does — but it is a mood-classifier output with a ~10 s smoothing: the step renders as a ramp that does not settle until ~40 s. Every band, deviation and stem field is AGC- or EMA-normalised and cannot express "this section is louder"; several are *negatively* correlated with real level (`otherEnergyDev` −0.419, `bassRel` −0.199).
 
-**DYN.1 — Fast pre-AGC level on `FeatureVector`.** Add a short-window (~150–300 ms) RMS/peak level, in dBFS or a 0–1 normalised-to-a-fixed-reference form, computed **before** the total-energy AGC and the per-band EMA, plus a slow companion (~5 s) so presets can read *level* and *level-relative-to-recent* without each rolling their own.
+**DYN.1 — Pre-normalisation spectral density on `FeatureVector`.**
 
-*Do not reuse `InputLevelMonitor`* — it exists and computes `peakDBFS`/`rmsDBFS`, but with a ~21 s time constant over a 30 s window. It is a signal-health diagnostic, deliberately slow, and is not on the per-frame path. Reusing it would reproduce exactly the lag DYN.1 exists to remove.
+**SCOPE CORRECTED 2026-08-04 after measuring session `2026-08-04T14-58-10Z`. The original design — a fast pre-AGC RMS — would NOT have worked, and shipping it would have burned an engine increment on the wrong quantity.** Matt: *"when the distorted guitar enters the mix, the volume increases, but the tree does not grow … same for the chorus."* Measured on that capture:
 
-**Cost.** Touches the GPU contract: `FeatureVector` in `Common.metal` + `AudioFeatures+Analyzed.swift` must stay byte-identical, and every preset inherits the new floats. Only one `_pad` slot remains, so this grows the struct — append at the end, and check the `PresetRegressionTests` dHash goldens are unchanged (they should be: additive fields no existing preset reads).
+- **RMS is flat at −14 dB from 24 s to the end of the track.** The master is limited; there is no level change to detect. A pre-AGC RMS field would have been correct, cheap, and useless.
+- What actually changes is **spectral density**: HF energy fraction runs 0.084–0.10 through the verse and rises to 0.14–0.22 from ~75 s. Distorted guitar adds harmonics, not amplitude. That +90 % rise is what Matt hears as "the volume increases".
+- **Band ratios do not survive the pipeline either.** `treble/(bass+mid+treble)` and `(midHigh+highMid+high)/all` correlate **−0.229** with measured HF content — they move *opposite* to it, because `BandDeviationTracker` normalises each band against its OWN running average, so the ratio between bands is flattened as well as the levels. This was worth testing: had ratios survived, no engine change would have been needed at all.
+- Nothing readable tracks it. Best existing candidate is `spectralCentroid` at **+0.375**, itself normalised.
 
-**Done when:** the new field tracks the 27–29 s step on Matt's capture within ~1 s rather than ~13 s; `SessionRecorder` records it so the claim is checkable from a session; `PresetRegressionTests` goldens unchanged; a route-coverage entry exists.
+**What to add:** a pre-normalisation **spectral-balance / HF-energy-fraction** scalar, taken inside `SpectralAnalyzer` before `MIRPipeline`'s total-energy AGC and before `BandDeviationTracker`'s per-band EMA — plus a slow companion so a preset can read "denser than this track's normal" rather than an absolute. Pre-AGC RMS is worth carrying alongside at near-zero extra cost (it is the right signal on material that *is* dynamic — this master simply is not), but it must not be the primary.
 
-**Risk.** Low-to-moderate. The DSP is a windowed RMS — trivial. The risk is the GPU-contract edit, which is mechanical but shared. **Flash-safety note:** a preset driving brightness from absolute level could produce a large luminance step at a section boundary; the photosensitivity certification tests must be run, not assumed.
+**Validation is defined up front:** the new field must rise materially at ~75 s on this capture, where measured HF rises +90 % and every current feature is flat. If it does not, it is the wrong quantity and the increment stops rather than shipping.
 
 **Estimated sessions:** 1.
 
