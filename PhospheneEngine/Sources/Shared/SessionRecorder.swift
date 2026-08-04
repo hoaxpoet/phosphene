@@ -72,9 +72,16 @@ public final class SessionRecorder: @unchecked Sendable {
 
     let queue = DispatchQueue(label: "com.phosphene.recorder", qos: .utility)
 
-    private let featuresHandle: FileHandle
-    private let stemsHandle: FileHandle
-    private let logHandle: FileHandle
+    // Optional because the session directory and its files are created LAZILY, on the first
+    // actual write — see `materializeIfNeeded()` (BUG-083).
+    private var featuresHandle: FileHandle?
+    private var stemsHandle: FileHandle?
+    private var logHandle: FileHandle?
+
+    /// Whether the on-disk session has been created yet. Serial `queue` only.
+    private var materialized = false
+    /// Set when materialization was attempted and failed, so it is not retried per frame.
+    private var materializeFailed = false
 
     private struct CSVHandles {
         var features: FileHandle
@@ -260,13 +267,6 @@ public final class SessionRecorder: @unchecked Sendable {
         let stamp = formatter.string(from: Date()).replacingOccurrences(of: ":", with: "-")
         let dir = root.appendingPathComponent(stamp, isDirectory: true)
 
-        do {
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        } catch {
-            logger.error("SessionRecorder could not create \(dir.path): \(error.localizedDescription)")
-            return nil
-        }
-
         self.sessionDir     = dir
         self.videoURL       = dir.appendingPathComponent("video.mp4")
         self.featuresCSVURL = dir.appendingPathComponent("features.csv")
@@ -274,20 +274,58 @@ public final class SessionRecorder: @unchecked Sendable {
         self.logURL         = dir.appendingPathComponent("session.log")
         self.rawTapURL      = dir.appendingPathComponent("raw_tap.wav")
 
-        guard let handles = Self.makeFileHandles(
-            featuresCSVURL: dir.appendingPathComponent("features.csv"),
-            stemsCSVURL: dir.appendingPathComponent("stems.csv"),
-            logURL: dir.appendingPathComponent("session.log")
-        ) else { return nil }
-        self.featuresHandle = handles.features
-        self.stemsHandle    = handles.stems
-        self.logHandle      = handles.log
         self.videoEnabled   = videoEnabled
             ?? (ProcessInfo.processInfo.environment["PHOSPHENE_RECORD_VIDEO"] == "1")
 
-        logger.info("SessionRecorder started: \(dir.path, privacy: .public)")
-        writeStartupBanner(dir: dir)
-        Self.warnIfLowDiskSpace(at: dir)   // CLEAN.3.8: pre-flight capacity check
+        // NOTHING is written here — see `materializeIfNeeded()`. Constructing a recorder is
+        // free and leaves no trace on disk (BUG-083).
+    }
+
+    // MARK: Lazy materialization (BUG-083)
+
+    /// Create the session directory, CSV headers and startup banner — once, on the first
+    /// actual write. Serial `queue` only. Returns `false` if the session cannot be written.
+    ///
+    /// This used to happen in `init`, which meant every `VisualizerEngine` construction left
+    /// a folder in the user's `~/Documents/phosphene_sessions/` whether or not a session was
+    /// ever recorded — including every app-target test run, and every app launch closed
+    /// without recording. Those empty folders were indistinguishable at a glance from a
+    /// session whose audio capture had failed, and worse, they consumed retention slots
+    /// (see BUG-082), so a handful of test runs silently deleted real captures.
+    ///
+    /// Deferring to the first write makes the directory's existence mean what a reader
+    /// assumes it means: something was actually recorded.
+    func materializeIfNeeded() -> Bool {
+        if materialized { return !materializeFailed }
+        materialized = true
+
+        do {
+            try FileManager.default.createDirectory(at: sessionDir, withIntermediateDirectories: true)
+        } catch {
+            let path = self.sessionDir.path
+            logger.error("SessionRecorder could not create \(path, privacy: .public): \(error.localizedDescription)")
+            materializeFailed = true
+            recordingHalted = true
+            return false
+        }
+
+        guard let handles = Self.makeFileHandles(
+            featuresCSVURL: featuresCSVURL,
+            stemsCSVURL: stemsCSVURL,
+            logURL: logURL
+        ) else {
+            materializeFailed = true
+            recordingHalted = true
+            return false
+        }
+        featuresHandle = handles.features
+        stemsHandle    = handles.stems
+        logHandle      = handles.log
+
+        logger.info("SessionRecorder started: \(self.sessionDir.path, privacy: .public)")
+        writeStartupBanner(dir: sessionDir)
+        Self.warnIfLowDiskSpace(at: sessionDir)   // CLEAN.3.8: pre-flight capacity check
+        return true
     }
 
     deinit {
@@ -366,9 +404,12 @@ public final class SessionRecorder: @unchecked Sendable {
                                               rayMarchPass: passTiming,
                                               structure: self.latestStructuralPrediction)
             // swiftlint:enable multiline_arguments
-            self.safeWrite(fRow.data(using: .utf8) ?? Data(), to: self.featuresHandle)
+            guard self.materializeIfNeeded(),
+                  let featuresHandle = self.featuresHandle,
+                  let stemsHandle = self.stemsHandle else { return }
+            self.safeWrite(fRow.data(using: .utf8) ?? Data(), to: featuresHandle)
             let sRow = SessionRecorder.csvRow(stems: stems, frame: idx, wallclock: now)
-            self.safeWrite(sRow.data(using: .utf8) ?? Data(), to: self.stemsHandle)
+            self.safeWrite(sRow.data(using: .utf8) ?? Data(), to: stemsHandle)
             guard !throttled, let tex = self.captureTexture else { return }
             self.lastVideoFrameTime = now
             self.appendVideoFrame(from: tex, wallclock: now)
@@ -379,7 +420,8 @@ public final class SessionRecorder: @unchecked Sendable {
     func writeLogLine(_ message: String) {
         let stamp = ISO8601DateFormatter().string(from: Date())
         let line = "[\(stamp)] \(message)\n"
-        self.safeWrite(line.data(using: .utf8) ?? Data(), to: self.logHandle)
+        guard materializeIfNeeded(), let logHandle = self.logHandle else { return }
+        self.safeWrite(line.data(using: .utf8) ?? Data(), to: logHandle)
     }
 
     // MARK: - Public API: Logging
@@ -390,7 +432,8 @@ public final class SessionRecorder: @unchecked Sendable {
         let line = "[\(stamp)] \(message)\n"
         queue.async { [weak self] in
             guard let self = self, !self.didFinish else { return }
-            self.safeWrite(line.data(using: .utf8) ?? Data(), to: self.logHandle)
+            guard self.materializeIfNeeded(), let logHandle = self.logHandle else { return }
+            self.safeWrite(line.data(using: .utf8) ?? Data(), to: logHandle)
         }
     }
 
@@ -401,14 +444,18 @@ public final class SessionRecorder: @unchecked Sendable {
         queue.sync {
             guard !self.didFinish else { return }
             self.didFinish = true
+            // Never recorded anything → no directory, nothing to close, and no chain to
+            // grade. Materializing here would recreate exactly the empty folder BUG-083
+            // exists to prevent.
+            guard self.materialized, !self.materializeFailed else { return }
             if let writer = self.videoWriter, writer.status == .writing {
                 self.videoInput?.markAsFinished()
                 let sema = DispatchSemaphore(value: 0)
                 writer.finishWriting { sema.signal() }
                 _ = sema.wait(timeout: .now() + 5)
             }
-            try? self.featuresHandle.close()
-            try? self.stemsHandle.close()
+            try? self.featuresHandle?.close()
+            try? self.stemsHandle?.close()
             self.rawTapDone = true
             if self.rawTapHeaderWritten {
                 self.finalizeRawTapHeader()
@@ -424,8 +471,8 @@ public final class SessionRecorder: @unchecked Sendable {
             let videoSummary = self.finalizeVideoInvariant()
             let msg = "SessionRecorder finished (\(self.frameIndex) frames, "
                     + "\(self.stemDumpIndex) stem dumps; \(videoSummary))\n"
-            try? self.logHandle.write(contentsOf: Data(msg.utf8))
-            try? self.logHandle.close()
+            try? self.logHandle?.write(contentsOf: Data(msg.utf8))
+            try? self.logHandle?.close()
 
             // ASH.2 — grade the audio chain that produced this session and leave a
             // machine-written verdict in the dir (chain_health.json + a
@@ -465,11 +512,14 @@ public final class SessionRecorder: @unchecked Sendable {
         let proc = ProcessInfo.processInfo
         let osVersion = proc.operatingSystemVersionString
         let device = MTLCreateSystemDefaultDevice()?.name ?? "unknown"
-        log("SessionRecorder started schema=1 dir=\(dir.path)")
-        log("host macOS=\(osVersion) gpu=\(device) hostname=\(proc.hostName)")
+        // `writeLogLine`, not `log`: this runs inside `materializeIfNeeded()` on the serial
+        // queue, and `log` would enqueue the banner BEHIND the row that triggered
+        // materialization.
+        writeLogLine("SessionRecorder started schema=1 dir=\(dir.path)")
+        writeLogLine("host macOS=\(osVersion) gpu=\(device) hostname=\(proc.hostName)")
         let videoState = videoEnabled
             ? "ENABLED"
             : "OFF — CSV/log/stems only (BUG-050; set PHOSPHENE_RECORD_VIDEO=1 to capture video.mp4)"
-        log("video recording: \(videoState)")
+        writeLogLine("video recording: \(videoState)")
     }
 }

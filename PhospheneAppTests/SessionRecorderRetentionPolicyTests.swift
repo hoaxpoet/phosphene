@@ -147,4 +147,90 @@ struct SessionRecorderRetentionPolicyTests {
 
         #expect(!FileManager.default.fileExists(atPath: missing.path))
     }
+
+    // MARK: - BUG-082: non-session folders must not occupy retention slots
+
+    /// The real directory holds four permanent non-session folders. Before the fix they
+    /// sorted ABOVE every timestamped session (letters rank above digits in a descending
+    /// lexicographic sort), so they consumed four of `lastN10`'s ten slots and could never be
+    /// pruned themselves — retention was silently `lastN6` and real captures were deleted
+    /// while still in use.
+    private static let realWorldNonSessionFolders = [
+        "fixturegen-love_rehab",
+        "fixturegen-so_what",
+        "fixturegen-there_there",
+        "beat-match-test-session",
+    ]
+
+    @Test func lastN10_nonSessionFoldersNeitherCountedNorDeleted() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // 12 real sessions, newest first, plus the four permanent fixture folders.
+        let sessions = (1...12).map { "2026-04-\(String(format: "%02d", $0))T12-00-00Z" }
+        try createSessions(in: dir, names: sessions + Self.realWorldNonSessionFolders)
+
+        SessionRecorderRetentionPolicy.apply(
+            policy: .lastN10, sessionsDir: dir, wallClock: futureWallClock
+        )
+
+        let remaining = try names(in: dir)
+
+        // Exactly the two OLDEST sessions go — not four of them to make room for fixtures.
+        #expect(!remaining.contains("2026-04-01T12-00-00Z"))
+        #expect(!remaining.contains("2026-04-02T12-00-00Z"))
+        let survivingSessions = remaining.filter { $0.hasPrefix("2026-") }
+        #expect(survivingSessions.count == 10, """
+            \(survivingSessions.count) sessions survived, expected 10. Non-session folders are \
+            being counted against the retention limit again (BUG-082) — `sessionFolders` must \
+            filter to names that parse as a session timestamp.
+            """)
+
+        // And the fixture folders are untouched: not sessions, so not this policy's business.
+        for name in Self.realWorldNonSessionFolders {
+            #expect(remaining.contains(name), "retention deleted non-session folder \(name)")
+        }
+    }
+
+    @Test func oneWeek_doesNotDeleteNonSessionFolders() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        try createSessions(in: dir, names: ["2026-04-01T12-00-00Z"] + Self.realWorldNonSessionFolders)
+
+        // `now` far in the future so the lone real session is unambiguously expired.
+        SessionRecorderRetentionPolicy.apply(
+            policy: .oneWeek,
+            sessionsDir: dir,
+            now: parseISO("2026-06-01T12:00:00Z"),
+            wallClock: futureWallClock
+        )
+
+        let remaining = try names(in: dir)
+        #expect(!remaining.contains("2026-04-01T12-00-00Z"), "expired session should be pruned")
+        for name in Self.realWorldNonSessionFolders {
+            #expect(remaining.contains(name), "age-based retention deleted non-session folder \(name)")
+        }
+    }
+
+    /// The pre-fix name parser did `index(startIndex, offsetBy: 10)` unconditionally, which
+    /// traps on any shorter name. Harmless while only the age-based arms called it; the
+    /// BUG-082 fix calls it on every directory, so a stray short-named folder would have
+    /// crashed app launch.
+    @Test func shortAndOddFolderNamesDoNotTrap() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        try createSessions(in: dir, names: ["old", "a", "", "tmp", "2026", "2026-04-01T12-00-00Z"]
+            .filter { !$0.isEmpty })
+
+        SessionRecorderRetentionPolicy.apply(
+            policy: .lastN10, sessionsDir: dir, wallClock: futureWallClock
+        )
+
+        let remaining = try names(in: dir)
+        for name in ["old", "a", "tmp", "2026"] {
+            #expect(remaining.contains(name), "non-session folder \(name) was deleted")
+        }
+    }
 }

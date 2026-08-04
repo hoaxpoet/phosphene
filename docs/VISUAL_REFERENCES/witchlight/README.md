@@ -11,6 +11,33 @@
 
 ## How to read this folder
 
+> **⚠ WL.2-h CORRECTION — read this before trusting anything below about the source.** Every
+> judgement in this folder about the *source preset* was made from two STILLS (`00`, `12`).
+> The source ships as a `.gif` as well, in the same directory, and it was never watched until
+> Matt's second M7 returned "does not resemble the original in look **and motion**."
+>
+> Watching it (60 frames, ~4.2 s) inverts one of the conclusions below. **`12` is not an
+> occasional defect of the source — it is the source's signature.** Measured across its own
+> animation, the source's lit-pixel share swings **1.04 % → 34.41 %, a 33× range**: it goes
+> near-black between events and then detonates into a frame-filling six-spoke star, over and
+> over. The `12` row's "roughly a fifth of the sampled source frames" was counted from stills
+> and reads as a fault rate; in motion it is the preset's defining behaviour, and the ribbon
+> is a small supporting scribble rather than the subject.
+>
+> `00` is likewise NOT the source's resting state — at 4.0 % lit it is a mid-activity frame.
+> The source's quiet frames measure mean 7.64 / 1.04 % lit. Treating `00` as the resting
+> state is what set Witchlight's floor ~7× too high and flattened its range to 1.3× (WL.2-h).
+>
+> **What this does NOT change:** `12` remains a valid anti-reference on *photosensitivity*
+> grounds, and §5's flash budget stands. Matt's WL.2-h call was to take the darkness (lower
+> the floor) and NOT the detonation (raise the ceiling). The correction is to the folder's
+> read of the source's *character*, not to the safety decision.
+>
+> **The mechanizable lesson:** when an inspiration source is a living preset, curate from its
+> MOTION, not from frames of it. A still cannot distinguish a preset's signature from its
+> worst moment.
+
+
 None of these is a pixel-target (D-064). Each is read **only for the trait its annotation names**. The register we are aiming at is *long-exposure light-painting photographed against a deep-space sky* — a Witchlight frame should belong in the same visual conversation as `01` (a legible figure written in the air with a burning point) lit against the ground of `07`, never in the same conversation as `10` (an unreadable tangle).
 
 **The single most important thing this folder encodes:** compare `01` against `10`. Both are the same physical apparatus — a sparkler moved through air during one long exposure. `01` reads as *intent* because the hand moved slowly and smoothly relative to the exposure; `10` reads as *noise* because it did not. Nothing about the rendering differs. **Legibility of a light-painted stroke is a property of the path's smoothness and speed, not of its shading.** That is the trait that makes or breaks this preset, and it is why §3 of the design doc has to name a relaxation/rate-governance mechanism explicitly rather than leaving smoothing as a tuning constant.
