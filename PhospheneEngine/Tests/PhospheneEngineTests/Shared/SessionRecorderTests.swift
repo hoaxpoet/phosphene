@@ -39,7 +39,16 @@ final class SessionRecorderTests: XCTestCase {
     /// mid_rel,mid_dev,treb_rel,treb_dev,mid_att_rel,treb_att_rel,beats_until_next`) so
     /// route-coverage replay reaches every FeatureVector primitive presets consume,
     /// shifting every pre-existing from-end offset by another 10.
-    private let qg1Tail = 12
+    /// **10, not 12 — and the 12 was my error.** After `[DYN.1]` appended two columns I bumped
+    /// this to 12, which was the right fix for the OLD scheme where offsets were measured from
+    /// the end of the row. `[RECON.14]` then re-anchored every offset to a NAMED column
+    /// (`featuresTailEnd`, found from `beats_until_next`), which makes appended columns
+    /// irrelevant by construction — and I passed the stale "bump it to 12" advice to that
+    /// session anyway. Under the anchored scheme the two `spectral_density*` columns sit AFTER
+    /// the anchor and are already excluded, so 12 double-counts them and trips
+    /// `test_featuresTailAnchor_isPresent`, which asserts this equals the real block size.
+    /// The block is `bass_att … beats_until_next` = 10.
+    private let qg1Tail = 10
 
     /// One past the last column these positional offsets were written against
     /// (`beats_until_next`, the end of the QG.1 tail) — anchored BY NAME, not by
