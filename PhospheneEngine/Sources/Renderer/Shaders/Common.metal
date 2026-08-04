@@ -77,6 +77,10 @@ struct FeatureVector {
     // `spectral_density_slow` is a τ≈8 s companion: compare the two to get "denser
     // than this track's normal" without needing per-preset state.
     float spectral_density, spectral_density_slow;
+    // Floats 51–52 — PADDING, mirroring Swift. 50 floats is 200 bytes and a GPU constant
+    // buffer must be 16-byte aligned; without these the Swift and MSL views of buffer(0)
+    // disagree and every field past the mismatch reads garbage.
+    float _pad51, _pad52;
 };
 
 // MARK: - FeedbackParams

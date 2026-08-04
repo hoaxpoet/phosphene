@@ -23,7 +23,7 @@ struct CommonLayoutTest {
     /// test is the canary that the buffer(2) / buffer(3) layout contract
     /// has drifted between Swift and MSL.
     @Test func featureVector_stemFeatures_layouts_locked() {
-        #expect(MemoryLayout<FeatureVector>.size == 192)
+        #expect(MemoryLayout<FeatureVector>.size == 208 /* 52 floats = 208 bytes. DYN.1 added spectral_density/_slow (floats 49-50) taking it to 200, which is NOT 16-byte aligned; floats 51-52 are padding that restores the GPU-constant alignment every preset depends on at buffer(0). */)
         #expect(MemoryLayout<StemFeatures>.size == 256)
     }
 }
