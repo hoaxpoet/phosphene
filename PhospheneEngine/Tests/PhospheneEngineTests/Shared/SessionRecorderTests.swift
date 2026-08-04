@@ -39,7 +39,7 @@ final class SessionRecorderTests: XCTestCase {
     /// mid_rel,mid_dev,treb_rel,treb_dev,mid_att_rel,treb_att_rel,beats_until_next`) so
     /// route-coverage replay reaches every FeatureVector primitive presets consume,
     /// shifting every pre-existing from-end offset by another 10.
-    private let qg1Tail = 12
+    private let qg1Tail = 10
 
     /// One past the last column these positional offsets were written against
     /// (`beats_until_next`, the end of the QG.1 tail) — anchored BY NAME, not by
