@@ -1034,3 +1034,4 @@ final class SessionRecorderTests: XCTestCase {
                       "stems.csv header missing after lazy materialization")
     }
 }
+

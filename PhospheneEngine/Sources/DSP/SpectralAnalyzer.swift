@@ -40,6 +40,25 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         public var smoothedRolloff: Float
         /// EMA-smoothed flux.
         public var smoothedFlux: Float
+        /// DYN.1 — fraction of spectral energy above `densitySplitHz`, 0…1, EMA-smoothed
+        /// to τ ≈ 6 s. Deliberately NOT the raw per-frame value, which turns 5.59 times a
+        /// second and reads on screen as jitter.
+        ///
+        /// The ONE quantity in the pipeline that survives normalisation, because it is
+        /// computed here from the raw magnitudes — before `MIRPipeline`'s total-energy
+        /// AGC and before `BandDeviationTracker`'s per-band EMA. A scalar gain anywhere
+        /// upstream scales every bin equally and cancels in the ratio.
+        ///
+        /// WHY THIS AND NOT A LEVEL. Measured on session `2026-08-04T14-58-10Z`
+        /// (Cherub Rock): RMS is flat at −14 dBFS from 24 s to the end of the track —
+        /// the master is limited, so there is no level change to detect. What moves when
+        /// the distorted guitar enters is spectral density: this fraction runs 0.084–0.10
+        /// through the verse and rises to 0.14–0.22 from ~75 s. Distortion adds harmonics,
+        /// not amplitude, and that is what a listener hears as "it got louder".
+        public var density: Float
+        /// Slow EMA of `density` (τ ≈ 8 s). Lets a consumer read "denser than this
+        /// track's normal" rather than an absolute, without rolling its own state.
+        public var smoothedDensity: Float
     }
 
     // MARK: - Configuration
@@ -57,6 +76,11 @@ public final class SpectralAnalyzer: @unchecked Sendable {
 
     /// Frequency resolution per bin (sampleRate / fftSize).
     public private(set) var binResolution: Float
+
+    /// Split point for `Result.density`. 1.5 kHz sits above the fundamental range of
+    /// most rhythm-section content and below the harmonics distortion adds, which is
+    /// what makes the fraction move when a guitar dirties up at constant level.
+    private static let densitySplitHz: Float = 1500
 
     // MARK: - Pre-allocated Buffers
 
@@ -86,6 +110,19 @@ public final class SpectralAnalyzer: @unchecked Sendable {
     /// EMA alpha for flux smoothing.
     private static let fluxAlpha: Float = 0.25
 
+    /// DYN.1 legs, at the ~10 Hz MIR rate. `density` is smoothed to τ ≈ 6 s and
+    /// `smoothedDensity` to τ ≈ 45 s, so the pair reads "this section against this
+    /// track's normal".
+    ///
+    /// THE PUBLISHED `density` IS SMOOTHED, NOT INSTANTANEOUS — measured, and it matters.
+    /// The raw per-frame fraction turns 5.59 times a second, the same order as the
+    /// `bass_rel` that made the trunk bounce in the first place; shipping it drove a
+    /// visible up-and-down that Matt rejected on sight ("the trunk of the tree is moving
+    /// up and down constantly"). Even at these widths the RATIO still turns ~1.1/s, which
+    /// is why the trunk must not read it at all — only the quantised branch count does.
+    private static let densityFastAlpha: Float = 0.017
+    private static let densityAlpha: Float = 0.0022
+
     /// EMA-smoothed centroid value.
     private var smoothedCentroid: Float = 0
 
@@ -94,6 +131,10 @@ public final class SpectralAnalyzer: @unchecked Sendable {
 
     /// EMA-smoothed flux value.
     private var smoothedFlux: Float = 0
+
+    /// EMA-smoothed spectral density, both legs (DYN.1).
+    private var fastDensity: Float = 0
+    private var smoothedDensity: Float = 0
 
     /// Thread safety.
     private let lock = NSLock()
@@ -163,18 +204,23 @@ public final class SpectralAnalyzer: @unchecked Sendable {
                 flux: 0,
                 smoothedCentroid: 0,
                 smoothedRolloff: 0,
-                smoothedFlux: 0
+                smoothedFlux: 0,
+                density: 0,
+                smoothedDensity: 0
             )
         }
 
         let centroid = computeCentroid(magnitudes: magnitudes, count: count)
         let rolloff = computeRolloff(magnitudes: magnitudes, count: count)
         let flux = computeFlux(magnitudes: magnitudes, count: count)
+        let rawDensity = computeDensity(magnitudes: magnitudes, count: count)
 
         // EMA smoothing.
         smoothedCentroid = Self.centroidAlpha * centroid + (1 - Self.centroidAlpha) * smoothedCentroid
         smoothedRolloff = Self.rolloffAlpha * rolloff + (1 - Self.rolloffAlpha) * smoothedRolloff
         smoothedFlux = Self.fluxAlpha * flux + (1 - Self.fluxAlpha) * smoothedFlux
+        fastDensity = Self.densityFastAlpha * rawDensity + (1 - Self.densityFastAlpha) * fastDensity
+        smoothedDensity = Self.densityAlpha * rawDensity + (1 - Self.densityAlpha) * smoothedDensity
 
         // Store current frame for next flux computation.
         magnitudes.withUnsafeBufferPointer { src in
@@ -192,8 +238,27 @@ public final class SpectralAnalyzer: @unchecked Sendable {
             flux: flux,
             smoothedCentroid: smoothedCentroid,
             smoothedRolloff: smoothedRolloff,
-            smoothedFlux: smoothedFlux
+            smoothedFlux: smoothedFlux,
+            density: fastDensity,
+            smoothedDensity: smoothedDensity
         )
+    }
+
+    /// Fraction of spectral energy above `densitySplitHz`, from RAW magnitudes.
+    ///
+    /// Energy is magnitude squared; the ratio is scale-invariant, so any gain applied
+    /// upstream cancels. Returns 0 for silence rather than a division artefact.
+    private func computeDensity(magnitudes: [Float], count: Int) -> Float {
+        guard binResolution > 0 else { return 0 }
+        let splitBin = min(Int(Self.densitySplitHz / binResolution), count)
+        var low: Float = 0
+        var high: Float = 0
+        for i in 0..<count {
+            let energy = magnitudes[i] * magnitudes[i]
+            if i < splitBin { low += energy } else { high += energy }
+        }
+        let total = low + high
+        return total > 1e-10 ? high / total : 0
     }
 
     /// Reset internal state (previous frame buffer).
@@ -208,6 +273,8 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         smoothedCentroid = 0
         smoothedRolloff = 0
         smoothedFlux = 0
+        fastDensity = 0
+        smoothedDensity = 0
     }
 
     // MARK: - Centroid

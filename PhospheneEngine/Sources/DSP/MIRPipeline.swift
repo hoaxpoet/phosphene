@@ -440,7 +440,7 @@ public final class MIRPipeline: @unchecked Sendable {
             liveBeatStable: liveDriftTracker.currentLockState == .locked
         )
         applyPulseFields(pulse, to: &fv)
-        applyTonalFields(ctx.tonal, to: &fv)   // TONAL (D-178), floats 44–48
+        applyAnalyzerFields(ctx, to: &fv)   // TONAL floats 44–48, DYN.1 floats 49–50
         return fv
     }
 
@@ -541,6 +541,23 @@ extension MIRPipeline {
         fv.pulseAmp01 = pulse.amp01
         fv.pulseBeatIndex = pulse.beatIndex
         fv.pulseRegionalBlend01 = pulse.regionalBlend01
+    }
+
+    /// Post-init analyzer fields: TONAL (44–48) and DYN.1 density (49–50). Grouped so
+    /// `buildFeatureVector` stays inside its length budget as fields accrete.
+    private func applyAnalyzerFields(_ ctx: ProcessContext, to fv: inout FeatureVector) {
+        applyTonalFields(ctx.tonal, to: &fv)
+        applyDensityFields(ctx.spectral, to: &fv)
+    }
+
+    /// DYN.1: write spectral density onto floats 49–50.
+    ///
+    /// Assigned straight through from `SpectralAnalyzer` with NO normalisation applied —
+    /// that is the entire point of the field. Anything that rescales it here would
+    /// reintroduce the flattening it exists to escape.
+    func applyDensityFields(_ spectral: SpectralAnalyzer.Result, to fv: inout FeatureVector) {
+        fv.spectralDensity = spectral.density
+        fv.spectralDensitySlow = spectral.smoothedDensity
     }
 
     /// TONAL (D-178): write the Tonal Interval Vector signals onto floats 44–48.

@@ -76,6 +76,18 @@ extension PresetLoader {
             // labels; hue, not brightness. See TONAL_ANALYSIS_SCOPING.md.
             float tonal_phase_fifths, tonal_phase_thirds;
             float tonal_consonance, tonal_tension, harmonic_flux;
+            // DYN.1 (floats 49–50): SPECTRAL DENSITY — fraction of spectral energy
+            // above 1.5 kHz, computed in SpectralAnalyzer from RAW magnitudes. The
+            // only field that survives normalisation: the total-energy AGC and the
+            // per-band EMA flatten both levels AND the ratios between bands, but a
+            // ratio taken before them cancels a scalar gain exactly.
+            //
+            // Use for "the mix got bigger". On a limited master that is NOT a level
+            // change — measured on 2026-08-04T14-58-10Z, RMS is flat at −14 dBFS for
+            // the whole song while this moves 0.084 (verse) → 0.22 (distorted guitar).
+            // Compare against `spectral_density_slow` (τ≈8 s) for "denser than this
+            // track's normal" without per-preset state.
+            float spectral_density, spectral_density_slow;
         };
 
         struct VertexOut {

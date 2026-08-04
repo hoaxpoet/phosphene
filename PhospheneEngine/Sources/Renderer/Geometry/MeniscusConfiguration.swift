@@ -117,6 +117,22 @@ public struct MeniscusConfiguration: Sendable {
     public var stemDropRefractory: Float
     /// Global scale on the per-region forces in `MeniscusStemDrops.regions`.
     public var stemDropForce: Float
+    /// Take drums/bass TIMING from the cached BeatGrid instead of live threshold
+    /// crossings (the audio hierarchy's rule; D-153→D-158). Falls back to onset-driven
+    /// automatically when no grid is installed.
+    public var stemGridSync: Bool
+    /// On a grid beat, how much presence a stem needs before it places a drop. LOWER
+    /// than `stemDropThreshold` because the grid already supplies the timing — this only
+    /// asks "is this instrument playing", so a beat with no drums on it stays silent.
+    public var stemPresenceThreshold: Float
+    /// Amplitude floor at silence.
+    ///
+    /// Not free to be small: §4's silence row is "a slow standing swell — the sheet
+    /// breathes … Never black", so silence must still visibly move. At 0.22 the swell was
+    /// scaled to 7.7e-5 per frame against the harness's 8e-5 frozen floor — the surface
+    /// was technically alive and perceptually stalling. 0.35 keeps it breathing while
+    /// still leaving a 3.5x span up to the loud ceiling.
+    public var stemIntensityFloor: Float
     /// Drop constants, READ FROM THE SOURCE (Matt's call, 2026-08-03) rather than
     /// guessed — four rounds of guessing missed the rate by more than 100x.
     ///
@@ -169,6 +185,9 @@ public struct MeniscusConfiguration: Sendable {
         stemDropThreshold: Float = 0.30,
         stemDropRefractory: Float = 0.09,
         stemDropForce: Float = 1.0,
+        stemGridSync: Bool = true,
+        stemPresenceThreshold: Float = 0.12,
+        stemIntensityFloor: Float = 0.35,
         dropSpectrumScale: Float = 10.0,
         dropGate: Float = 0.02,
         dropForce: Float = 1.0,
@@ -193,6 +212,9 @@ public struct MeniscusConfiguration: Sendable {
         self.stemDropThreshold = stemDropThreshold
         self.stemDropRefractory = stemDropRefractory
         self.stemDropForce = stemDropForce
+        self.stemGridSync = stemGridSync
+        self.stemPresenceThreshold = stemPresenceThreshold
+        self.stemIntensityFloor = stemIntensityFloor
         self.dropSpectrumScale = dropSpectrumScale
         self.dropGate = dropGate
         self.dropForce = dropForce
