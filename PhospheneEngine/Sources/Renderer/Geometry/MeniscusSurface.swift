@@ -60,6 +60,7 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
     private var elapsed: Float = 0
     private var camera = MeniscusCamera()
     private var drops = MeniscusDrops()
+    private var stemDrops = MeniscusStemDrops()
     /// The live FFT magnitudes — the SAME `.storageModeShared` UMA buffer the
     /// fragment stages bind at slot 1, read here on the CPU. nil ⇒ no drops.
     private let spectrum: UMABuffer<Float>?
@@ -72,6 +73,10 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
     /// Diagnostics: drops stamped on the most recent update, and their summed force.
     public var lastDropCount: Int { drops.lastDropCount }
     public var lastDropForce: Float { drops.lastDropForce }
+    /// MEN.3 diagnostics: impact sites, and the per-region breakdown
+    /// (drums / bass / vocals / other) the legibility test reads.
+    public var lastStemSites: [Int] { stemDrops.lastSites }
+    public var lastPerRegion: [Int] { stemDrops.lastPerRegion }
 
     public var pointCount: Int { configuration.gridN * configuration.gridN }
     /// Segments joining consecutive path samples. Each becomes one spread quad.
@@ -155,7 +160,15 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
         camera.advance(features: features, dt: dt, configuration: configuration)
         // Drops BEFORE the wave step, so an impact stamped this frame propagates on the
         // very next one rather than sitting still for a frame.
-        if configuration.dropsEnabled, let spectrum {
+        if configuration.dropsEnabled, configuration.stemPlacement {
+            // MEN.3 — the divergence axis. Each instrument owns a region of the surface.
+            stemDrops.step(
+                stems: stemFeatures,
+                field: &current,
+                side: configuration.gridN,
+                dt: dt,
+                configuration: configuration)
+        } else if configuration.dropsEnabled, let spectrum {
             drops.step(
                 spectrum: UnsafeBufferPointer(spectrum.pointer),
                 field: &current,
@@ -197,6 +210,7 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
         elapsed = 0
         camera.reset()
         drops.reset()
+        stemDrops.reset()
     }
 
     // MARK: - Wave step
@@ -305,13 +319,15 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
 
     private func makeConfig(aspect: Float) -> MeniscusConfig {
         let dist = camera.distance(configuration: configuration)
-        // THE SPREAD TRACKS DISTANCE, as the source's comp stage does — its dilation
-        // radius scales with camera proximity. This is the coupling that makes a
-        // free-tumbling camera compatible with an open raster: when the plate is far
-        // and the rows crowd together, the spread shrinks with them instead of welding
-        // them into a sheet. MEN.2a lacked it and had to bound the heading instead.
+        // SPREAD AS A FRACTION OF PROJECTED ROW SPACING. The plate spans ~2 world
+        // units, so it covers about `2 * focal / dist` in NDC, and one row is that over
+        // `gridN`. Deriving the spread from that makes it scale-free: it tracks camera
+        // distance (which is what the source's proximity-scaled dilation does) AND grid
+        // resolution, so neither a dolly nor the still-open §6 resolution decision can
+        // weld the raster shut.
+        let rowSpacing = (2 * 1.0 / max(dist, 0.4)) / Float(max(configuration.gridN, 1))
         let spread = configuration.spreadTracksDistance
-            ? configuration.spread * (configuration.camDistCentre / max(dist, 0.4))
+            ? configuration.spread * rowSpacing
             : configuration.spread
         return MeniscusConfig(
             gridN: UInt32(configuration.gridN),
