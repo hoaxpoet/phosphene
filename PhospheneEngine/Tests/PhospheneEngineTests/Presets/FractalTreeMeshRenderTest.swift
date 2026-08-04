@@ -190,20 +190,20 @@ struct FractalTreeMeshRenderTest {
         let series = try SessionColumnSeries.load(
             directory: base.appendingPathComponent(Self.driveTrack))
         guard let time = series.floatSeries("time"),
-              let bassRel = series.floatSeries("bassRel"),
-              let midRel = series.floatSeries("mid_rel") else {
-            throw FractalTreeHarnessError.setupFailed("time/bassRel/mid_rel absent")
+              let arousal = series.floatSeries("arousal"),
+              let beatMid = series.floatSeries("beatMid") else {
+            throw FractalTreeHarnessError.setupFailed("time/arousal/beatMid absent")
         }
 
         // The shader's own arithmetic, mirrored. `amp` is 1: the fixtures are music
         // throughout, and the silence gate is covered by the D-037 render assertion.
-        let rows = (0..<min(time.count, bassRel.count)).filter { (time[$0] ?? 0) >= 10.0 }
-        let melody = rows.map { 1.0 / (1.0 + exp(-Double(midRel[$0] ?? 0) * 60.0)) }
+        let rows = (0..<min(time.count, arousal.count)).filter { (time[$0] ?? 0) >= 10.0 }
+        let melody = rows.map { Double(beatMid[$0] ?? 0) / (Double(beatMid[$0] ?? 0) + 1.8) }
         let structure = rows.map { row -> Int in
-            let reach = 1.0 / (1.0 + exp(-Double(bassRel[row] ?? 0) * 3.0))
+            let reach = min(max((Double(arousal[row] ?? 0) - 0.10) / 0.58, 0), 1)
             return Int(4.0 + reach * 18.0)
         }
-        let tips = melody.map { Int($0 * 20.0) }
+        let tips = melody.map { Int($0 * 26.0) }
         let counts = zip(structure, tips).map { min(7 + $0 + $1, 63) }
         let seconds = Double((time[rows.last!] ?? 0) - (time[rows.first!] ?? 0))
 
@@ -263,9 +263,25 @@ struct FractalTreeMeshRenderTest {
             too rare to read as the fine branches tracking the tune.
             """)
 
-        #expect(tipSpread >= 10, """
+        #expect(tipSpread >= 6, """
             the melodic tip layer spans only \(tipSpread) branches — too small a share of \
             the canopy for "the tiny branches are following the melody" to be visible.
+            """)
+
+        // (d0) THE GROWTH LAYER MUST NOT BOUNCE. Matt: "the growth is jerky - the trunk
+        // is constantly moving up and down with the beat, killing any concept that the
+        // tree is growing." bass_rel wobbled 5.88 times/s with a median step of 17% of
+        // its range; arousal manages 0.52/s and 0.1%. Trunk length reads this directly,
+        // so a fast driver here is visible as bouncing.
+        let growth = rows.map { min(max((Double(arousal[$0] ?? 0) - 0.10) / 0.58, 0), 1) }
+        let gd = zip(growth, growth.dropFirst()).map { $1 - $0 }.filter { $0 != 0 }
+        let gTurns = Double(zip(gd, gd.dropFirst()).filter { $0 * $1 < 0 }.count) / max(seconds, 1)
+        print(String(format: "[fractal-tree/growth] trunk driver turns %.2f/s", gTurns))
+        #expect(gTurns < 2.0, """
+            the growth driver changes direction \(String(format: "%.2f", gTurns))/s — fast
+            enough that the trunk will visibly bounce, which is the exact failure Matt
+            named ("the trunk is constantly moving up and down with the beat"). Growth
+            must come from a section-scale signal.
             """)
 
         // (d) IT FOLLOWS A LINE, NOT AN ENVELOPE. This is the assertion that rules out

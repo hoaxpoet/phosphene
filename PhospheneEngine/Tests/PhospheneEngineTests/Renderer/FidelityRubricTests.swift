@@ -113,16 +113,24 @@ private let expectedAutomatedGate: [String: Bool] = [
                                      // via PhysConfig, so the MSL-source heuristic can't see it
                                      // (Skein/Lumen precedent). Certified via Matt's M7 sign-off as a
                                      // loose energy-accompaniment (PHYS.5; not beat-synced by design).
-    "Fractal Tree":         true,    // lightweight (D-212 — reclassified from `full`, whose M3
-                                     // >=3-materials gate is unreachable for a flat-HSV mesh preset
-                                     // with no lighting and no G-buffer). L2 went green at FTR.2:
-                                     // the routing rebuild put `f.bass_dev` in source and gave each
-                                     // of the five visual layers its own primitive, replacing the
-                                     // three-layers-on-`bass_att` collision. 2/4 → 3/4. Still
-                                     // uncertified: L4 frame match is Matt's manual M7 call at
-                                     // FTR.5, and no reference image set exists to pre-check it
-                                     // against (LFS.2 untracked the painterly set; Matt's call
-                                     // 2026-08-03 was to build without one and review live).
+    "Fractal Tree":         false,   // lightweight (D-212). L2 went GREEN at FTR.2 and RED
+                                     // again at FTR.3d — honestly, not by regression. The
+                                     // heuristic matches D-026 deviation field names in
+                                     // source (`bass_dev`, `mid_rel`, …). FTR.3d removed the
+                                     // last of them because MEASUREMENT said they were the
+                                     // wrong tools for this preset's jobs: `bass_rel`
+                                     // correlates −0.199 with the section-scale growth Matt
+                                     // asked for (it is a deviation from a running EMA, so it
+                                     // oscillates around zero by construction and cannot
+                                     // express "this section is bigger"), and `mid_rel` scored
+                                     // +0.038 against the music moment-to-moment. The drivers
+                                     // that DO work — `arousal`, `beat_mid` — are not
+                                     // AGC-normalised bands, so D-026's actual hazard (an
+                                     // absolute threshold on a moving AGC denominator) does
+                                     // not apply to them. NOT gamed: adding an unused
+                                     // `f.bass_dev` to satisfy the grep would be exactly the
+                                     // floor-tuning QG.1/D-179 forbids. This is a gate-FIT
+                                     // question for Matt, recorded rather than worked around.
     "Gossamer":             false,   // full; M3 fails
     "Membrane":             false,   // full; M3 fails
     "Cytokinesis":          false,   // lightweight; coupling (energyEnv→pace / centroidEnv→palette /
