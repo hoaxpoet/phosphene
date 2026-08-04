@@ -206,10 +206,13 @@ struct MeniscusSyncAndIntensityTests {
         // compare the VISIBLE event (impulse + the ripple's perceptual rise) rather than
         // the impulse, and state the rise from measurement.
         //
-        // `MeniscusRippleRiseTests`: 14 % of visible slope response after one frame, ~30 %
-        // at 67 ms, ~50 % at 167 ms. Call the perceptual onset ~120 ms — the same figure
-        // the lead compensates, so a correctly-led drop should land near zero here.
-        let perceptualRise = 0.120
+        // The rise is a PROPERTY OF THE MEDIUM, so take it from the medium rather than
+        // restating a number: `damping` sets how fast a ripple peaks, and the sweep that
+        // took damping to 0.88 moved the peak 583 ms -> 133 ms. A hardcoded rise would
+        // have kept scoring against the old physics — the exact failure that let the
+        // amplitude collapse to 0.008 behind green gates.
+        let perceptualRise = Double(MeniscusRippleRiseTests.measuredRiseSeconds(
+            configuration: MeniscusConfiguration()))
         let errors = percussion.map { drop -> Double in
             let visible = drop.time + perceptualRise
             return (result.beats.map { abs(visible - $0) }.min() ?? 9) * 1000
@@ -378,9 +381,30 @@ struct MeniscusCameraRoutingTests {
 @Suite("Meniscus ripple rise time")
 struct MeniscusRippleRiseTests {
 
+    /// Seconds from an impulse to its peak VISIBLE response, simulated in the medium the
+    /// given configuration describes. Shared with the sync gate so both read the same
+    /// physics — see the note there on why this must not be a constant.
+    static func measuredRiseSeconds(configuration: MeniscusConfiguration) -> Float {
+        Float(riseProfile(configuration: configuration).peakFrame + 1) / 60
+    }
+
     @Test("report frames from impulse to peak visible response")
     func measureRiseTime() {
         let configuration = MeniscusConfiguration()
+        let profile = Self.riseProfile(configuration: configuration)
+        let ms = Double(profile.peakFrame + 1) * 1000.0 / 60.0
+        print(String(format: "[meniscus-rise] peak slope response at frame %d (%.0f ms after the impulse)",
+                     profile.peakFrame + 1, ms))
+        for (i, e) in profile.slopeEnergy.prefix(14).enumerated() {
+            print(String(format: "    f%-2d %5.0f ms  %.3f", i + 1, Double(i + 1) * 1000 / 60,
+                         e / (profile.slopeEnergy.max() ?? 1)))
+        }
+        #expect(!profile.slopeEnergy.isEmpty)
+    }
+
+    private static func riseProfile(
+        configuration: MeniscusConfiguration
+    ) -> (peakFrame: Int, slopeEnergy: [Double]) {
         let side = configuration.gridN
         var field = [Float](repeating: 0, count: side * side)
         var previous = field
@@ -390,7 +414,7 @@ struct MeniscusRippleRiseTests {
         field[centre] -= region.force
 
         // The same wave step the surface runs.
-        let damping: Float = 1 - 1.8 / 60
+        let damping: Float = configuration.damping * (1 - 1.8 / 60)
         var slopeEnergy: [Double] = []
         for _ in 0..<40 {
             var next = previous
@@ -419,15 +443,7 @@ struct MeniscusRippleRiseTests {
             }
             slopeEnergy.append(energy)
         }
-        let peak = slopeEnergy.firstIndex(of: slopeEnergy.max() ?? 0) ?? 0
-        let ms = Double(peak + 1) * 1000.0 / 60.0
-        print(String(format: "[meniscus-rise] peak slope response at frame %d (%.0f ms after the impulse)",
-                     peak + 1, ms))
-        for (i, e) in slopeEnergy.prefix(14).enumerated() {
-            print(String(format: "    f%-2d %5.0f ms  %.3f", i + 1, Double(i + 1) * 1000 / 60,
-                         e / (slopeEnergy.max() ?? 1)))
-        }
-        #expect(!slopeEnergy.isEmpty)
+        return (slopeEnergy.firstIndex(of: slopeEnergy.max() ?? 0) ?? 0, slopeEnergy)
     }
 }
 
@@ -463,7 +479,10 @@ struct MeniscusAudioShareTests {
             var deltas: [Double] = []
             var elapsed: Float = 0
             var loudEnv: Float = 0
-            let damping: Float = 1 - 1.8 / 60
+            // The SHIPPED damping — a hardcoded copy here silently measured physics the
+            // preset no longer runs (it read peak 0.181 while the real surface was at
+            // 0.008). Harness and production must not diverge on this.
+            let damping: Float = configuration.damping * (1 - 1.8 / 60)
             for index in 0..<min(fixture.stems.count, 1800) {
                 var dt = fixture.features[index].deltaTime
                 if !(dt > 0) { dt = 1.0 / 60.0 }
@@ -523,7 +542,7 @@ struct MeniscusAudioShareTests {
         var drops2 = MeniscusStemDrops()
         var field2 = [Float](repeating: 0, count: cells)
         var prev2 = field2
-        let damp: Float = 1 - 1.8 / 60
+        let damp: Float = configuration.damping * (1 - 1.8 / 60)
         for index in 0..<min(fixture.stems.count, 1800) {
             var dt = fixture.features[index].deltaTime
             if !(dt > 0) { dt = 1.0 / 60.0 }
@@ -556,6 +575,99 @@ struct MeniscusAudioShareTests {
             camera, the dolly and the silence swell running on their own clocks. No timing
             accuracy can make a preset read as connected when the music causes a minority of
             what moves.
+            """)
+    }
+}
+
+// MARK: - Does the ACTIVITY pulse with the beat? (MEN.3e diagnostic)
+
+/// Matt, 2026-08-04: "the activity needs to be synced to music, that is the core trouble."
+///
+/// Every sync measurement so far asked WHEN AN IMPULSE FIRES. That is not what reads as
+/// synced. What reads as synced is the surface's ACTIVITY rising on the beat and falling
+/// between — rhythm needs rest as much as it needs onsets. A field that is always moving
+/// has no events in it, however well-timed the impulses were.
+///
+/// This measures modulation depth at the beat: surface energy sampled per frame, folded
+/// onto the beat period, peak-to-trough as a fraction of the mean.
+@Suite("Meniscus — does the activity pulse with the beat")
+struct MeniscusPulseTests {
+
+    @Test("surface activity rises on the beat and falls between",
+          arguments: ["there_there", "love_rehab"])
+    func activityPulsesWithTheBeat(track: String) throws {
+        let fixture = try WitchlightFixtureDrive.load(track)
+        var configuration = MeniscusConfiguration()
+        if let d = Float(ProcessInfo.processInfo.environment["MENISCUS_DAMPING"] ?? "") {
+            configuration.damping = d
+        }
+        let side = configuration.gridN
+        var drops = MeniscusStemDrops()
+        var field = [Float](repeating: 0, count: side * side)
+        var previousField = field
+
+        var energies: [Double] = []
+        var phases: [Double] = []
+        for index in 0..<min(fixture.stems.count, 2400) {
+            var dt = fixture.features[index].deltaTime
+            if !(dt > 0) { dt = 1.0 / 60.0 }
+            dt = min(dt, 1.0 / 30.0)
+            let f = fixture.features[index]
+            drops.step(stems: fixture.stems[index], features: f, field: &field,
+                       dt: dt, configuration: configuration)
+            let damping = configuration.damping * (1 - 1.8 / (1 / dt))
+            var next = previousField
+            for row in 0..<side {
+                let up = ((row + side - 1) % side) * side
+                let down = ((row + 1) % side) * side
+                let here = row * side
+                for col in 0..<side {
+                    let left = (col + side - 1) % side
+                    let right = (col + 1) % side
+                    let mean = (field[here + left] + field[here + right]
+                                + field[up + col] + field[down + col]) * 0.25
+                    next[here + col] = (2 * mean - next[here + col]) * damping
+                }
+            }
+            previousField = field
+            field = next
+            // Brightness comes from SLOPE — that is what the eye tracks.
+            var energy = 0.0
+            for row in 0..<side {
+                for col in 0..<side {
+                    let a = field[row * side + col]
+                    let b = field[row * side + (col + 1) % side]
+                    energy += Double(abs(a - b))
+                }
+            }
+            energies.append(energy)
+            phases.append(Double(f.beatPhase01))
+        }
+
+        // Fold onto the beat: 12 bins of beat phase.
+        var bins = [Double](repeating: 0, count: 12)
+        var counts = [Int](repeating: 0, count: 12)
+        for (energy, phase) in zip(energies, phases) {
+            let bin = min(11, max(0, Int(phase * 12)))
+            bins[bin] += energy
+            counts[bin] += 1
+        }
+        for i in bins.indices where counts[i] > 0 { bins[i] /= Double(counts[i]) }
+        let peak = bins.max() ?? 0, trough = bins.min() ?? 0
+        let mean = bins.reduce(0, +) / Double(bins.count)
+        let depth = (peak - trough) / max(mean, 1e-9)
+        print(String(format: "[meniscus-pulse] %@: beat-folded activity — peak %.3f trough %.3f · MODULATION DEPTH %.0f %%",
+                     track, peak, trough, depth * 100))
+        print("    " + bins.map { String(format: "%.2f", $0 / max(peak, 1e-9)) }.joined(separator: " "))
+
+        // A visual reads as rhythmic when activity visibly rises and falls across the beat.
+        // Below ~25 % the surface is effectively in continuous motion and no impulse timing
+        // can rescue it — which is what "the activity needs to be synced" names.
+        #expect(depth > 0.25, """
+            \(track): activity modulates only \(Int(depth * 100)) % across the beat — the \
+            surface never rests, so there are no events in it to read as synced. Impulse \
+            timing cannot fix this; the ripple lifetime has to be short enough that the \
+            field returns toward rest between beats.
             """)
     }
 }

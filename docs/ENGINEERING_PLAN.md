@@ -3165,6 +3165,18 @@ Built PG.4.1 (density-mapping subdivision), PG.4.2 (per-beat flips + hue teams +
 
 ---
 
+## Phase MEN — Meniscus (Milkdrop-inspired wave-surface preset, `hypnotic`)
+
+Plan + session log: [`docs/presets/MENISCUS_PLAN.md`](presets/MENISCUS_PLAN.md). `inspired_by` a decoded Milkdrop source (SHA-256 recorded in the sidecar; the `.milk` is never committed, D-116). A serpentine-serialized height field on a torus, drawn as a single continuous line with screen-X max-dilation, under a three-axis tumbling camera. `feedback` + `particles`, `certified: false`.
+
+- **MEN.2a ✅ spike + wired stub (2026-08-03)** — `MeniscusSurface` (`ParticleGeometry`), line + backdrop pipelines, no audio. Matt's live read rejected it as "nothing like the original": the camera was a bounded single-axis wobble standing in for the source's continuous three-axis tumble + distance oscillation, and the ground carried **zero texture** (`fbm` returns [-1,1], and a contrast stretch written for [0,1] drove it to a clipped flat plate — measured stdev 0.00, reported as "partial" twice before it was measured).
+- **MEN.2b ✅ faithful port (2026-08-04)** — camera (3 Euler angles, velocities re-randomised on the bar line, volume-scaled smoothing, hue constrained to the measured 176°→305° arc) and the cepstral drop placement ported as behaviour. Four blind guesses at the drop force scale were stopped by **Matt's "read the force constant from the source file"**, which showed five wrong things rather than a scale factor (FA #73). `MeniscusDrops` is retained as the oracle (`stemPlacement: false`).
+- **MEN.3 ✅ the divergence (2026-08-04, D-212 pending)** — cepstral placement replaced by **stem-region placement**: drums / bass / vocals / other each own a region of the sheet, so the surface's geography is the mix's geography. Drums+bass take timing from the cached `BeatGrid` (D-153→D-158), vocals+other stay onset-driven.
+- **MEN.3b/c/d/e ✅ five live rounds on one complaint — "not synced to the music."** Each round measured something real and none of them measured what was broken: **(3b)** the sync gate was circular (drop times and beat times both derived from `beatPhase01`, scoring the code against itself); **(3c)** the lag was the medium, not the timing — leads must be paid to the ripple's rise; **(3d)** the audio was causing **~1 %** of the surface motion (0.0001 vs 0.0540) because the MEN.2a placeholder swell was never removed and drop force was ~100× too low — *all correct timing work was invisible under a placeholder*; **(3e)** ripple lifetime (~550 ms) exceeded the beat period (350 ms), so beat-folded modulation depth was **13 %** — the surface never rested and had no events to read as rhythm. Damping 1.0 → 0.88 takes it to **48–54 %**. **★ The recurring failure is validating against a derived signal instead of the audio or the render; a harness that duplicates a production constant (the hardcoded damping here) will silently measure a system that no longer exists — while passing.**
+- **MEN.4 (planned)** — polish, flash safety, M7, certification.
+
+---
+
 These milestones map to product-level outcomes, not implementation phases.
 
 **Milestone A — Trustworthy Playback Session.** ✅ **MET (2026-04-25).** A user can connect a playlist, obtain a usable prepared session, and complete a full listening session without instability. *Requires: ~~2.5.4~~ ✅, ~~Phase U increments U.1–U.7~~ ✅, ~~progressive readiness basics (6.1)~~ ✅.*

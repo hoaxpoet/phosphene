@@ -49,6 +49,16 @@ public struct MeniscusConfiguration: Sendable {
     public var gridN: Int
     /// Multiplier on the source's own frame-rate-normalised damping (`dec_med`). 1.0 is
     /// the source's value; the step applies `damping * (1 - 1.8/fps)`.
+    ///
+    /// BELOW 1.0 ON PURPOSE — the deliberate divergence that makes the activity readable
+    /// as rhythm. At the source's value a ripple outlives its beat (1/e in ~550 ms against
+    /// a 350 ms beat at 171 BPM), so ripples always overlap and the field never returns
+    /// toward rest. Measured beat-folded modulation depth: 1.00 -> 15 %, 0.97 -> 22 %,
+    /// 0.93 -> 29 %, 0.88 -> 48 %, 0.82 -> 76 %. Matt, four rounds running: "the activity
+    /// needs to be synced to music, that is the core trouble" — and rhythm needs REST as
+    /// much as it needs onsets. The source's damping suits its own continuous cepstral
+    /// drop stream; ours is beat-locked punctuation and needs the field to fall between
+    /// beats. Cost: shorter ripples interfere less, which weakens §1's "wake" reading.
     public var damping: Float
     /// Vertical exaggeration applied to the height field at projection time.
     public var heightScale: Float
@@ -124,10 +134,30 @@ public struct MeniscusConfiguration: Sendable {
     ///
     /// CALIBRATED AGAINST AUDIO SHARE, not chosen. At 1.0 the drops moved the surface
     /// 0.0002 against 0.0203 from autonomous motion — the music caused ~1 % of what was on
-    /// screen, which is why four rounds of drop-TIMING work changed nothing visible. Swept
-    /// against `MeniscusAudioShareTests`: 1 -> 1 %, 8 -> 35 %, 25 -> 72 %, 60 -> 88 %. 25
-    /// puts peak displacement at 0.18, the same magnitude the placeholder swell used to
-    /// occupy, so the surface moves as much as before but the MUSIC is now what moves it.
+    /// screen, which is why four rounds of drop-TIMING work changed nothing visible.
+    ///
+    /// FORCE AND `damping` ARE COUPLED and must be re-swept together: a faster decay eats
+    /// the energy each drop deposits, so shortening the ripple silently flattens the
+    /// surface. Dropping damping to 0.88 flattened the plate by 8x at the old force of 25
+    /// while every derived gate still read green, because the harness held a hardcoded
+    /// copy of the old damping.
+    ///
+    /// SWEEP AGAINST THE REAL SURFACE, AT LENGTH, ON MORE THAN ONE TRACK. Each of those
+    /// three qualifiers cost a wrong answer:
+    ///
+    /// - `MeniscusAudioShareTests` keeps a private wave loop whose absolute displacement
+    ///   does NOT agree with production (peak 0.186 there against 0.032 from the real
+    ///   surface at the same force). It is a valid instrument for the audio-vs-autonomous
+    ///   RATIO and an invalid one for amplitude. Calibrating on it said force 100.
+    /// - A 300-frame (5 s) window landed on a quiet passage and said force 800. The
+    ///   scheme's equilibrium amplitude goes as force/(1 - effective damping), and it
+    ///   takes ~20 s to get there — at 1200 frames that same 800 is ~4x the reference.
+    /// - `there_there` alone said 110; `love_rehab` runs ~1.6x hotter for the same force.
+    ///
+    /// Honest calibration: 1200 frames (20 s, near equilibrium), both tracks, against the
+    /// damping-1.0/force-25 reference the preset had before the ripples were shortened
+    /// (rms 0.266 / 0.337). 85 brackets it — 0.78x on `there_there`, 1.27x on
+    /// `love_rehab`. Per-track spread that size is the tracks differing, not a mistuning.
     public var stemDropForce: Float
     /// Take drums/bass TIMING from the cached BeatGrid instead of live threshold
     /// crossings (the audio hierarchy's rule; D-153→D-158). Falls back to onset-driven
@@ -187,7 +217,7 @@ public struct MeniscusConfiguration: Sendable {
 
     public init(
         gridN: Int = 45,
-        damping: Float = 1.0,
+        damping: Float = 0.88,
         heightScale: Float = 0.32,
         spread: Float = 0.45,
         spreadMode: Int = 0,
@@ -205,7 +235,7 @@ public struct MeniscusConfiguration: Sendable {
         stemPlacement: Bool = true,
         stemDropThreshold: Float = 0.30,
         stemDropRefractory: Float = 0.09,
-        stemDropForce: Float = 25.0,
+        stemDropForce: Float = 85.0,
         stemGridSync: Bool = true,
         stemPresenceThreshold: Float = 0.12,
         stemLeadTime: Float = 0.120,
