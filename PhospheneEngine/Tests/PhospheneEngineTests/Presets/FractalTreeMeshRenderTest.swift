@@ -183,99 +183,99 @@ struct FractalTreeMeshRenderTest {
     ///
     /// The reference character is the pre-FTR.2 preset Matt described as fingers tapping:
     /// changes on ~12 % of frames, average jump ~2 branches, almost never at the floor.
-    @Test("the canopy drifts in small steps and the taps fire per beat")
-    func motionCharacterIsFingersNotSlams() throws {
+    @Test("the tree grows with energy and the fine tips follow the melodic line")
+    func motionCharacterIsGrowthPlusMelody() throws {
         let base = try #require(
             Bundle.module.url(forResource: "route_coverage", withExtension: nil))
         let series = try SessionColumnSeries.load(
             directory: base.appendingPathComponent(Self.driveTrack))
         guard let time = series.floatSeries("time"),
               let bassRel = series.floatSeries("bassRel"),
-              // The BAR clock. `pulse_phase01` is documented as a 4-beat cycle but
-              // measures identically to `beat_phase01` on every recorded source, so
-              // the bar rate has to come from here (recorded in permille).
-              let beatPhase = series.floatSeries("barPhase01_permille") else {
-            throw FractalTreeHarnessError.setupFailed("time/bassRel/barPhase01 absent")
+              let midRel = series.floatSeries("mid_rel") else {
+            throw FractalTreeHarnessError.setupFailed("time/bassRel/mid_rel absent")
         }
 
-        // The shader's own arithmetic, mirrored — this is what the geometry sees.
-        // `amp` is 1 here: the fixtures are music throughout, and the silence gate is
-        // covered by the D-037 assertion in the render test.
+        // The shader's own arithmetic, mirrored. `amp` is 1: the fixtures are music
+        // throughout, and the silence gate is covered by the D-037 render assertion.
         let rows = (0..<min(time.count, bassRel.count)).filter { (time[$0] ?? 0) >= 10.0 }
-        let counts = rows.map { row -> Int in
+        let melody = rows.map { 1.0 / (1.0 + exp(-Double(midRel[$0] ?? 0) * 60.0)) }
+        let structure = rows.map { row -> Int in
             let reach = 1.0 / (1.0 + exp(-Double(bassRel[row] ?? 0) * 3.0))
-            return min(7 + Int(10.0 + reach * 50.0), 63)
+            return Int(4.0 + reach * 18.0)
         }
-
-        // (e) DEPTH TIERS. Matt: "I never see beyond three levels of branches." A tier
-        // exists only above a threshold count — d4 > 15, d5 > 31 — and because leaf hue
-        // is keyed to depth, losing tiers also costs colour. FTR.3 reached d5 on 23% of
-        // frames against the old preset's 38%; this asserts the deep tier is routinely
-        // on screen rather than occasional.
-        let deepest5 = 100 * Double(counts.filter { $0 > 31 }.count) / Double(counts.count)
-        let deepest4 = 100 * Double(counts.filter { $0 > 15 }.count) / Double(counts.count)
-        print(String(format: "[fractal-tree/tiers] depth-5 on %.1f%% of frames, depth-4+ on %.1f%%",
-                     deepest5, deepest4))
-        #expect(deepest4 > 90, """
-            the canopy reaches depth 4 on only \(String(format: "%.1f", deepest4))% of \
-            frames — the tree spends its time as a stub, which is both the "never see \
-            beyond three levels" complaint and, because hue is keyed to depth, half the \
-            "not colourful enough" one.
-            """)
+        let tips = melody.map { Int($0 * 20.0) }
+        let counts = zip(structure, tips).map { min(7 + $0 + $1, 63) }
         let seconds = Double((time[rows.last!] ?? 0) - (time[rows.first!] ?? 0))
 
         let steps = zip(counts, counts.dropFirst()).map { abs($1 - $0) }
         let moved = steps.filter { $0 > 0 }
         let changeRate = 100 * Double(moved.count) / Double(steps.count)
         let meanJump = moved.isEmpty ? 0 : Double(moved.reduce(0, +)) / Double(moved.count)
-        let atFloor = 100 * Double(counts.filter { $0 <= 9 }.count) / Double(counts.count)
 
-        // Taps fire once per beat — count beat-phase wraps.
-        let phases = rows.compactMap { beatPhase[$0] }.map { $0 / 1000 }   // permille → 0…1
-        let beats = zip(phases, phases.dropFirst()).filter { $1 < $0 - 0.5 }.count
+        // How LINE-LIKE the melodic driver is: a melody changes direction several times
+        // a second. A signal that only ramps is an envelope, not a tune.
+        let deltas = zip(melody, melody.dropFirst()).map { $1 - $0 }.filter { $0 != 0 }
+        let flips = zip(deltas, deltas.dropFirst()).filter { $0 * $1 < 0 }.count
+        let flipRate = Double(flips) / max(seconds, 1)
 
+        let tipSpread = (tips.max() ?? 0) - (tips.min() ?? 0)
+        let sorted = counts.sorted()
         print("""
             [fractal-tree/motion] \(counts.count) frames over \
-            \(String(format: "%.1f", seconds)) s — canopy changes on \
-            \(String(format: "%.1f", changeRate))% of frames, mean jump \
-            \(String(format: "%.1f", meanJump)), at floor \
-            \(String(format: "%.1f", atFloor))%; taps fire on \(beats) beats = \
-            \(String(format: "%.2f", Double(beats) / max(seconds, 1)))/s
+            \(String(format: "%.1f", seconds)) s — count p05 \(sorted[sorted.count / 20]) \
+            p50 \(sorted[sorted.count / 2]) p95 \(sorted[sorted.count * 19 / 20]); \
+            changes on \(String(format: "%.1f", changeRate))% of frames, mean jump \
+            \(String(format: "%.1f", meanJump)); melodic tips span \(tipSpread) branches, \
+            line turns \(String(format: "%.2f", flipRate))/s
             """)
 
-        // (a) NOT INERT. FTR.2 sat at the floor 82% of the time.
-        #expect(atFloor < 25, """
-            the canopy sits at its floor \(String(format: "%.1f", atFloor))% of the time — \
-            this is the FTR.2 "completely inert" failure. A transient driver like \
-            bass_dev does exactly this; the canopy needs a CONTINUOUS one.
+        // (a) NOT INERT and (b) NOT SLAMMING — the two failures Matt named in FTR.2
+        // ("either too excited or completely inert").
+        #expect(changeRate > 20, """
+            the canopy changes on only \(String(format: "%.1f", changeRate))% of frames — \
+            too static to read as growing with the music.
             """)
-
-        // (b) NOT SLAMMING. FTR.2 averaged a 21.5-branch jump; the preset Matt liked
-        // averaged 1.9. Above ~8 the silhouette teleports instead of growing.
         #expect(meanJump < 8, """
             the canopy moves \(String(format: "%.1f", meanJump)) branches per change — \
-            this is the FTR.2 "too excited" failure. Individual branches must appear a \
-            few at a time for the motion to read as fingers rather than as a jump cut.
+            branches must appear a few at a time, not teleport.
             """)
 
-        // (c) ACTUALLY MOVING. A perfectly smooth driver that never changes the integer
-        // count would pass (a) and (b) trivially.
-        #expect(changeRate > 5, """
-            the canopy changes on only \(String(format: "%.1f", changeRate))% of frames — \
-            too static to read as alive.
+        // (c) THE MELODY IS A REAL LAYER. If the tips barely span anything, the melodic
+        // route exists in the manifest and not on screen.
+        // (c2) THE DEEPEST TIER MUST CROSS IN AND OUT. This is the mechanism itself:
+        // d5 starts at count 31, and the original preset straddled that line so the
+        // smallest branches were always appearing and disappearing. A version that
+        // parks above it measures well and shows nothing — the first attempt at this
+        // route sat at d5 94 % and had no flicker at all.
+        let d5 = counts.map { $0 > 31 }
+        let crossings = zip(d5, d5.dropFirst()).filter { $0 != $1 }.count
+        let crossRate = Double(crossings) / max(seconds, 1)
+        let d5Share = 100 * Double(d5.filter { $0 }.count) / Double(d5.count)
+        print(String(format: "[fractal-tree/tips] depth-5 present %.0f%% of frames, crossing in/out %.2f times/s",
+                     d5Share, crossRate))
+        #expect(d5Share > 5 && d5Share < 75, """
+            depth-5 is present on \(String(format: "%.0f", d5Share))% of frames — either \
+            parked (nothing left to flicker) or absent (Matt: "I never see beyond three \
+            levels"). The tier has to be IN PLAY for the tips to read as following.
+            """)
+        #expect(crossRate > 0.5, """
+            the deepest tier crosses in/out only \(String(format: "%.2f", crossRate))/s — \
+            too rare to read as the fine branches tracking the tune.
             """)
 
-        // (d) THE HERO FIRES, ON THE BAR. Matt cut the rate to once per bar because
-        // per-beat was "much too active with drums". Both bounds matter: no clock at all
-        // means no rhythm, and drifting back toward the beat rate re-breaks it.
-        let rate = Double(beats) / max(seconds, 1)
-        #expect(rate > 0.15, """
-            only \(beats) bars in \(String(format: "%.1f", seconds)) s — the per-branch \
-            taps have no clock to fire on.
+        #expect(tipSpread >= 10, """
+            the melodic tip layer spans only \(tipSpread) branches — too small a share of \
+            the canopy for "the tiny branches are following the melody" to be visible.
             """)
-        #expect(rate < 1.0, """
-            taps fire \(String(format: "%.2f", rate))/s — back at beat rate rather than \
-            bar rate, which is the "much too active with drums" failure.
+
+        // (d) IT FOLLOWS A LINE, NOT AN ENVELOPE. This is the assertion that rules out
+        // the harmonic axis I measured and rejected: tonal_phase_thirds jumps a median
+        // 18.6% of the circle per update, so it cannot be followed. A melodic contour
+        // turns several times a second.
+        #expect(flipRate > 2.0, """
+            the melodic driver changes direction only \(String(format: "%.2f", flipRate))/s — \
+            that is an envelope, not a line. Branches keyed to it will read as swelling \
+            together rather than following a tune.
             """)
     }
 
