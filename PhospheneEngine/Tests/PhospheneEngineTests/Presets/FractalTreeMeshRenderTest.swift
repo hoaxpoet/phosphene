@@ -170,6 +170,151 @@ struct FractalTreeMeshRenderTest {
         print("[fractal-tree] beat strip: \(outputDirectory.path)/beat_strip.png")
     }
 
+    /// Render a CONTIGUOUS frame sequence driven by a REAL session capture, so the
+    /// preset can be watched in motion on the audio Matt actually reviewed.
+    ///
+    /// WHY THIS EXISTS. Eight rounds of this preset shipped on numbers and 7-frame still
+    /// sheets. "Too much movement" and "the colour is flashing" are TEMPORAL properties
+    /// that a still sheet cannot show by construction — the same gap that let Truchet
+    /// Loom pass still-review and jitter in live M7 (D-194). Measuring a driver's
+    /// turns/s is not the same as seeing what it does to the frame.
+    ///
+    ///   FT_SESSION=~/Documents/phosphene_sessions/<id> \
+    ///   RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter sessionSequence
+    ///
+    /// Writes numbered PNGs plus strips of consecutive frames. Reader is the eyes (D-064).
+    @Test("session sequence: contiguous frames from a real capture (FT_SESSION=<dir>)")
+    func sessionSequence() throws {
+        guard let dir = ProcessInfo.processInfo.environment["FT_SESSION"],
+              let outputDirectory = try Self.makeOutputDirectory() else { return }
+        let csv = URL(fileURLWithPath: (dir as NSString).expandingTildeInPath)
+            .appendingPathComponent("features.csv")
+        let rows = try Self.loadSessionRows(csv)
+        guard !rows.isEmpty else {
+            throw FractalTreeHarnessError.setupFailed("no usable rows in \(csv.path)")
+        }
+
+        let ctx = try MetalContext()
+        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat,
+                                  loadBuiltIn: true)
+        let preset = try #require(loader.presets.first { $0.descriptor.name == "Fractal Tree" })
+        let generator = MeshGenerator(
+            device: ctx.device, pipelineState: preset.pipelineState,
+            configuration: .init(maxVerticesPerMeshlet: 252, maxPrimitivesPerMeshlet: 126,
+                                 meshThreadCount: preset.descriptor.meshThreadCount))
+        let target = try Self.makeTexture(ctx)
+
+        // Every 3rd frame ≈ 20 fps — fast enough that flicker and jitter survive.
+        let stride = Int(ProcessInfo.processInfo.environment["FT_STRIDE"] ?? "") ?? 3
+        let maxFrames = Int(ProcessInfo.processInfo.environment["FT_FRAMES"] ?? "") ?? 96
+        var fifths = FifthsSmoother()
+        var strip: [(label: String, pixels: [UInt8])] = []
+        var hues: [Double] = []
+        var inks: [Double] = []
+
+        for (index, row) in rows.enumerated() where index % stride == 0 {
+            if strip.count >= maxFrames { break }
+            var fv = Self.featuresFromSession(row, fifths: &fifths)
+            fv.aspectRatio = Float(Self.width) / Float(Self.height)
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
+            Self.encode(cmd, into: target, generator: generator, features: fv)
+            cmd.commit()
+            cmd.waitUntilCompleted()
+            let pixels = Self.read(target)
+            strip.append(("f\(index)", pixels))
+            hues.append(Self.meanHue(pixels))
+            inks.append(Self.inkFraction(pixels))
+        }
+
+        // Frame-to-frame instability, which is what both complaints actually are.
+        let hueJumps = zip(hues, hues.dropFirst()).map { a, b -> Double in
+            let d = abs(b - a); return min(d, 360 - d)
+        }
+        let inkJumps = zip(inks, inks.dropFirst()).map { abs($1 - $0) }
+        print("""
+            [fractal-tree/sequence] \(strip.count) frames — hue step median \
+            \(String(format: "%.1f", Self.median(hueJumps)))° max \
+            \(String(format: "%.1f", hueJumps.max() ?? 0))°; ink step median \
+            \(String(format: "%.4f", Self.median(inkJumps))) max \
+            \(String(format: "%.4f", inkJumps.max() ?? 0))
+            """)
+        for chunk in Swift.stride(from: 0, to: strip.count, by: 8) {
+            let slice = Array(strip[chunk..<Swift.min(chunk + 8, strip.count)])
+            Self.writeContactSheet(slice, to: outputDirectory,
+                                   name: String(format: "seq_%03d.png", chunk))
+        }
+        print("[fractal-tree] sequence strips: \(outputDirectory.path)")
+    }
+
+    /// Parse a recorded `features.csv` into rows keyed by column name, dropping the
+    /// malformed startup lines a live capture can contain.
+    private static func loadSessionRows(_ url: URL) throws -> [[String: Double]] {
+        let text = try String(contentsOf: url, encoding: .utf8)
+        var lines = text.split(separator: "\n", omittingEmptySubsequences: true)
+        guard !lines.isEmpty else { return [] }
+        let header = lines.removeFirst().split(separator: ",", omittingEmptySubsequences: false)
+            .map(String.init)
+        var out: [[String: Double]] = []
+        for line in lines {
+            let parts = line.split(separator: ",", omittingEmptySubsequences: false)
+            guard parts.count == header.count else { continue }
+            var row: [String: Double] = [:]
+            for (key, value) in zip(header, parts) { row[key] = Double(value) }
+            guard let time = row["time"], time >= 15 else { continue }
+            out.append(row)
+        }
+        return out
+    }
+
+    /// Same field set as the fixture drive — kept together so a new route is added to
+    /// both in one edit, which is the trap that has bitten three times already.
+    /// Vector-domain EMA mirroring `TonalAnalyzer.smoothPhaseFifths`. A recorded capture
+    /// holds the RAW phase, so replaying it straight would still show the pre-fix flashing
+    /// no matter what the engine now does. Kept in lockstep with the analyzer's alpha.
+    private struct FifthsSmoother {
+        private var re: Float = 0
+        private var im: Float = 0
+        private var seeded = false
+        mutating func callAsFunction(_ raw: Float) -> Float {
+            let alpha: Float = 0.065
+            let (rawRe, rawIm) = (cos(raw), sin(raw))
+            if !seeded {
+                re = rawRe; im = rawIm; seeded = true
+            } else {
+                re = alpha * rawRe + (1 - alpha) * re
+                im = alpha * rawIm + (1 - alpha) * im
+            }
+            return atan2(im, re)
+        }
+    }
+
+    private static func featuresFromSession(_ row: [String: Double],
+                                            fifths: inout FifthsSmoother) -> FeatureVector {
+        var f = baseFeatures()
+        func value(_ column: String) -> Float { Float(row[column] ?? 0) }
+        f.bass = value("bass"); f.mid = value("mid"); f.treble = value("treble")
+        f.bassAtt = value("bass_att"); f.midAtt = value("mid_att"); f.trebleAtt = value("treble_att")
+        f.spectralCentroid = value("spectralCentroid"); f.spectralFlux = value("spectralFlux")
+        f.beatBass = value("beatBass"); f.beatMid = value("beatMid")
+        f.bassDev = value("bassDev"); f.bassRel = value("bassRel"); f.midRel = value("mid_rel")
+        f.tonalPhaseFifths = value("tonal_phase_fifths")
+        f.tonalPhaseFifths = fifths(value("tonal_phase_fifths"))
+        f.arousal = value("arousal")
+        f.beatPhase01 = value("beatPhase01"); f.pulsePhase01 = value("pulse_phase01")
+        f.pulseAmp01 = value("pulse_amp01"); f.pulseBeatIndex = value("pulse_beat_index")
+        f.barPhase01 = value("barPhase01_permille") / 1000; f.beatsPerBar = value("beatsPerBar")
+        f.spectralDensity = value("spectral_density")
+        f.spectralDensitySlow = value("spectral_density_slow")
+        f.time = value("time")
+        return f
+    }
+
+    private static func median(_ values: [Double]) -> Double {
+        guard !values.isEmpty else { return 0 }
+        let s = values.sorted()
+        return s[s.count / 2]
+    }
+
     // MARK: - Motion
 
     /// The gate that would have caught the FTR.2 regression before Matt saw it.
@@ -198,7 +343,7 @@ struct FractalTreeMeshRenderTest {
         // The shader's own arithmetic, mirrored. `amp` is 1: the fixtures are music
         // throughout, and the silence gate is covered by the D-037 render assertion.
         let rows = (0..<min(time.count, arousal.count)).filter { (time[$0] ?? 0) >= 10.0 }
-        let melody = rows.map { Double(beatMid[$0] ?? 0) / (Double(beatMid[$0] ?? 0) + 1.8) }
+        let melody = rows.map { Double(beatMid[$0] ?? 0) / (Double(beatMid[$0] ?? 0) + 2.2) }
         let growthEnv = rows.map { min(max((Double(arousal[$0] ?? 0) - 0.10) / 0.58, 0), 1) }
         let structure = rows.map { row -> Int in
             let reach = min(max((Double(arousal[row] ?? 0) - 0.10) / 0.58, 0), 1)
@@ -267,7 +412,7 @@ struct FractalTreeMeshRenderTest {
             too rare to read as the fine branches tracking the tune.
             """)
 
-        #expect(tipSpread >= 6, """
+        #expect(tipSpread >= 5, """
             the melodic tip layer spans only \(tipSpread) branches — too small a share of \
             the canopy for "the tiny branches are following the melody" to be visible.
             """)

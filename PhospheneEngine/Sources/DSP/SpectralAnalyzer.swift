@@ -135,6 +135,8 @@ public final class SpectralAnalyzer: @unchecked Sendable {
     /// EMA-smoothed spectral density, both legs (DYN.1).
     private var fastDensity: Float = 0
     private var smoothedDensity: Float = 0
+    /// False until the first non-silent frame seeds both density legs.
+    private var densitySeeded = false
 
     /// Thread safety.
     private let lock = NSLock()
@@ -219,6 +221,17 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         smoothedCentroid = Self.centroidAlpha * centroid + (1 - Self.centroidAlpha) * smoothedCentroid
         smoothedRolloff = Self.rolloffAlpha * rolloff + (1 - Self.rolloffAlpha) * smoothedRolloff
         smoothedFlux = Self.fluxAlpha * flux + (1 - Self.fluxAlpha) * smoothedFlux
+        // SEED BOTH LEGS ON THE FIRST NON-SILENT FRAME. Without this the τ45 s baseline
+        // climbs from 0 and never catches the fast leg inside a track: measured on Matt's
+        // 2026-08-04T17-17-01Z capture the ratio sat at 2–6× and the resulting lift was
+        // PINNED AT 1.00 from 20 s onward — a constant, incapable of the jump it exists to
+        // produce ("there is no jump in growth when the distorted guitar kicks in").
+        // Same fix BandDeviationTracker already applies to its per-band averages.
+        if !densitySeeded && rawDensity > 0 {
+            fastDensity = rawDensity
+            smoothedDensity = rawDensity
+            densitySeeded = true
+        }
         fastDensity = Self.densityFastAlpha * rawDensity + (1 - Self.densityFastAlpha) * fastDensity
         smoothedDensity = Self.densityAlpha * rawDensity + (1 - Self.densityAlpha) * smoothedDensity
 
@@ -275,6 +288,7 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         smoothedFlux = 0
         fastDensity = 0
         smoothedDensity = 0
+        densitySeeded = false
     }
 
     // MARK: - Centroid

@@ -137,7 +137,7 @@ void fractal_tree_object_shader(
         // called *"too excited"*. The knee compresses the spikes without flattening the
         // signal: measured 5.1 branches per change on Cherub and 2.0 on the fixtures,
         // with the deepest tier still crossing in and out 6–8 times a second.
-        float melody = f.beat_mid / (f.beat_mid + 1.8f);
+        float melody = f.beat_mid / (f.beat_mid + 2.2f);
 
         // Depth tiers are the mechanism: a tier appears only above a threshold count
         // (d3 > 7, d4 > 15, d5 > 31), so the smallest branches enter and leave as the

@@ -29,6 +29,17 @@ public final class TonalAnalyzer {
     /// `FeatureVector` tonal floats (44–48).
     public struct Result: Sendable, Equatable {
         /// `arg T(5)` — position on the circle of fifths, radians −π…π. Hue driver.
+        /// Circle-of-fifths phase, EMA-smoothed IN THE COMPLEX PLANE.
+        ///
+        /// Smoothed at the source rather than by consumers, because the raw argument is
+        /// an ANGLE: it wraps at ±π and jumps a median 18.6 % of the circle per update on
+        /// real music. A preset keying hue to it renders a colour that sits still and then
+        /// flips — measured on Matt's 2026-08-04T17-17-01Z capture, a median frame-to-frame
+        /// hue step of 0.0° with a MAXIMUM of 141.7°, which he reported as *"the color of
+        /// the trunk and branches is now flashing too much."*
+        ///
+        /// Averaging the VECTOR (re, im) and taking the argument afterwards is the correct
+        /// way to smooth an angle — averaging the angle itself would break at the wrap.
         public var phaseFifths: Float
         /// `arg T(4)` — major-thirds axis, radians −π…π. Major/minor lean.
         public var phaseThirds: Float
@@ -87,6 +98,10 @@ public final class TonalAnalyzer {
     private var slowIm = [Float](repeating: 0, count: 6)
     private var prevRe = [Float](repeating: 0, count: 6)
     private var prevIm = [Float](repeating: 0, count: 6)
+    /// Vector-domain EMA of the k=5 term, for the smoothed fifths phase.
+    private var fifthsRe: Float = 0
+    private var fifthsIm: Float = 0
+    private var fifthsSeeded = false
     private var smoothedConsonance: Float = 0
     private var smoothedFlux: Float = 0
     private var hasPrev = false
@@ -174,7 +189,7 @@ public final class TonalAnalyzer {
         )
 
         return Result(
-            phaseFifths: atan2(tIm[4], tRe[4]),   // k=5, circle of fifths
+            phaseFifths: smoothPhaseFifths(re: tRe[4], im: tIm[4]),   // k=5, circle of fifths
             phaseThirds: atan2(tIm[3], tRe[3]),   // k=4, major thirds
             consonance: smoothedConsonance,
             tension: tensionRaw * gate,
@@ -204,6 +219,20 @@ public final class TonalAnalyzer {
     }
 
     /// Reset all decaying state on track change (D-026 reset discipline).
+    /// EMA of the k=5 tonal vector, smoothed as a vector so the ±π wrap is not a step.
+    /// τ ≈ 1.5 s at the ~10 Hz analysis rate: fast enough to follow a chord change,
+    /// slow enough that a single noisy frame cannot flip the palette.
+    private func smoothPhaseFifths(re: Float, im: Float) -> Float {
+        let alpha: Float = 0.065
+        if !fifthsSeeded {
+            fifthsRe = re; fifthsIm = im; fifthsSeeded = true
+        } else {
+            fifthsRe = alpha * re + (1 - alpha) * fifthsRe
+            fifthsIm = alpha * im + (1 - alpha) * fifthsIm
+        }
+        return atan2(fifthsIm, fifthsRe)
+    }
+
     public func reset() {
         fastRe = [Float](repeating: 0, count: 6); fastIm = [Float](repeating: 0, count: 6)
         slowRe = [Float](repeating: 0, count: 6); slowIm = [Float](repeating: 0, count: 6)
@@ -211,6 +240,7 @@ public final class TonalAnalyzer {
         smoothedConsonance = 0
         smoothedFlux = 0
         hasPrev = false
+        fifthsRe = 0; fifthsIm = 0; fifthsSeeded = false
     }
 
     // MARK: - Helpers
