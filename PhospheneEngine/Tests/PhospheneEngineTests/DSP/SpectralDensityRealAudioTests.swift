@@ -246,7 +246,12 @@ struct SpectralDensityRealAudioTests {
                     $0.loadUnaligned(as: UInt16.self).littleEndian
                 })
             } else if id == "data" {
-                dataRange = body..<min(body + size, data.count)
+                // A CRASHED session never finalises the header, so `size` reads 0 while
+                // the payload is intact — 28.8 MB of it in `2026-08-04T20-23-15Z`. Any
+                // reader that trusts the declared size sees an empty file, which is
+                // exactly backwards: a crashed session is when you most need the audio.
+                let declared = size > 0 ? body + size : data.count
+                dataRange = body..<min(declared, data.count)
                 break
             }
             offset = body + size + (size % 2)
