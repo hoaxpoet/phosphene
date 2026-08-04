@@ -204,10 +204,19 @@ struct FractalTreeMeshRenderTest {
                                  meshThreadCount: preset.descriptor.meshThreadCount))
         let target = try Self.makeTexture(ctx)
 
-        // Every 3rd frame ≈ 20 fps — fast enough that flicker and jitter survive.
-        let stride = Int(ProcessInfo.processInfo.environment["FT_STRIDE"] ?? "") ?? 3
+        // SPAN THE WHOLE CAPTURE BY DEFAULT. The first version of this harness used a
+        // fixed stride of 3, which at 96 frames covered 288 source rows — under five
+        // seconds of a 29-second capture. It rendered a tree that never changed, and I
+        // read that as "the preset is static" when it was the sampling window. An
+        // instrument that silently shows you a sliver is worse than no instrument.
+        // FT_STRIDE forces a fixed stride when a close-up of fast motion is wanted.
         let maxFrames = Int(ProcessInfo.processInfo.environment["FT_FRAMES"] ?? "") ?? 96
+        let stride = Int(ProcessInfo.processInfo.environment["FT_STRIDE"] ?? "")
+            ?? Swift.max(1, rows.count / maxFrames)
+        print(String(format: "[fractal-tree/sequence] %d rows spanning %.1f s, stride %d",
+                     rows.count, (rows.last?["time"] ?? 0) - (rows.first?["time"] ?? 0), stride))
         var fifths = FifthsSmoother()
+        var flickerFifths = FifthsSmoother()
         var strip: [(label: String, pixels: [UInt8])] = []
         var hues: [Double] = []
         var inks: [Double] = []
@@ -226,17 +235,36 @@ struct FractalTreeMeshRenderTest {
             inks.append(Self.inkFraction(pixels))
         }
 
-        // Frame-to-frame instability, which is what both complaints actually are.
-        let hueJumps = zip(hues, hues.dropFirst()).map { a, b -> Double in
+        // FLICKER IS MEASURED ON ADJACENT FRAMES, ALWAYS — never on the sampled strip.
+        //
+        // The strip is deliberately spread across the whole capture so growth is visible,
+        // which means consecutive strip frames can be a third of a second apart. A hue
+        // step measured across THAT is not flicker, it is just the palette moving; the
+        // first version of this reported 62.9° at stride 3 and 157.4° at stride 18 for
+        // the identical build. A metric whose verdict depends on a diagnostic knob is
+        // not a metric (the Meniscus stride lesson). So flicker gets its own stride-1
+        // window, rendered separately.
+        var adjacentHues: [Double] = []
+        for row in rows.prefix(90) {
+            var fv = Self.featuresFromSession(row, fifths: &flickerFifths)
+            fv.aspectRatio = Float(Self.width) / Float(Self.height)
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
+            Self.encode(cmd, into: target, generator: generator, features: fv)
+            cmd.commit()
+            cmd.waitUntilCompleted()
+            adjacentHues.append(Self.meanHue(Self.read(target)))
+        }
+        let hueJumps = zip(adjacentHues, adjacentHues.dropFirst()).map { a, b -> Double in
             let d = abs(b - a); return min(d, 360 - d)
         }
-        let inkJumps = zip(inks, inks.dropFirst()).map { abs($1 - $0) }
+        let inkSpan = (inks.max() ?? 0) - (inks.min() ?? 0)
         print("""
-            [fractal-tree/sequence] \(strip.count) frames — hue step median \
-            \(String(format: "%.1f", Self.median(hueJumps)))° max \
-            \(String(format: "%.1f", hueJumps.max() ?? 0))°; ink step median \
-            \(String(format: "%.4f", Self.median(inkJumps))) max \
-            \(String(format: "%.4f", inkJumps.max() ?? 0))
+            [fractal-tree/sequence] \(strip.count) frames — FLICKER (adjacent frames) \
+            hue step median \(String(format: "%.2f", Self.median(hueJumps)))° max \
+            \(String(format: "%.1f", hueJumps.max() ?? 0))°; GROWTH across the capture: \
+            ink \(String(format: "%.4f", inks.min() ?? 0)) → \
+            \(String(format: "%.4f", inks.max() ?? 0)) (span \
+            \(String(format: "%.4f", inkSpan)))
             """)
         for chunk in Swift.stride(from: 0, to: strip.count, by: 8) {
             let slice = Array(strip[chunk..<Swift.min(chunk + 8, strip.count)])
