@@ -82,7 +82,7 @@ shipped with no row at all and phase headers contradicting their own bodies ~240
   READMEs — a code-reference count made them look orphaned) and `tunes_club.csv`.
 - **RECON.2 — `KNOWN_ISSUES.md`.** See that file's §Open Index note. BUG-080 / BUG-071 /
   BUG-041 rotated out of §Open; **BUG-060 reopened** on Matt's report that the hang recurred;
-  BUG-081 filed so it survived BUG-041's closure. DocIntegrityTests 12/12 green.
+  BUG-084 filed so it survived BUG-041's closure. DocIntegrityTests 12/12 green.
 - **RECON.3 — this file.** Phase headers reconciled with their bodies (TONAL, ASH, QG, FBS,
   AGC3), §Immediate Next Increments rewritten from a 2026-05-06 ordering to actual current
   work, Milestone D recounted from the sidecars (16/26, was 14/25), AV.3.x marked superseded
