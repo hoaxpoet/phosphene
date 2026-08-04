@@ -525,6 +525,7 @@ PhospheneEngine/
   DSP/
     DSP.swift               → Module marker (imports only)
     SpectralAnalyzer        → Spectral centroid, rolloff, flux via vDSP
+    SpectralAnalyzer+Density → **DYN.1 / DYN.1b.** `spectral_density` (energy fraction above 1.5 kHz, from RAW magnitudes — upstream of the total-energy AGC and the per-band EMA, both of which flatten absolute level AND the ratios between bands) and `spectral_surge` (pre-AGC level through an asymmetric follower: attack ≈ 0.25 s, release τ ≈ 10 s). The surge exists because an arrival is a STEP that persists, and every other field in `FeatureVector` is instantaneous or averaged — a preset can only scale those, and scaling cannot produce a step. Calibration history, including three ways it was got wrong, in `docs/ENGINE/DYN1_CALIBRATION.md`
     BandEnergyProcessor     → 3-band + 6-band energy, AGC, FPS-independent smoothing
     BandDeviationTracker    → Holds per-band running averages and derives the FeatureVector deviation primitives (bassRel/bassDev/…) against them — the D-026 / MV-1 "drive from deviation, never absolute thresholds" surface.
     ChromaExtractor         → 12-bin chroma (≥500 Hz floor), Krumhansl-Schmuckler key estimation, bin-count normalized

@@ -129,9 +129,21 @@ Scripts/link_fixtures.sh --verify
 | Missing source | **hard error** on a required tree | falls through to network fetch |
 | Mechanism | symlink from the primary | `cp -R`, then fetch |
 
-**Two ceilings to know about.** (1) `fetch_tempo_fixtures.sh` — the network fallback — retrieves **three** tracks (love_rehab, so_what, there_there) while the suite needs **at least eight** (pyramid_song is called out as a load-bearing gate in `BeatGridResolverTests`, plus yyz, clair_de_lune, money, if_i_were_with_her_now). `bootstrap_fixtures.sh`'s no-op guard is "directory non-empty", so a partial tree **short-circuits to exit 0** and looks fine while still failing tests. (2) `link_fixtures.sh` symlinks rather than copies, so a worktree breaks if the primary moves, and `--verify` checks non-emptiness rather than completeness. Consolidating these behind one shared manifest is a queued RECON follow-up.
+**The required set is three files, and `fetch_tempo_fixtures.sh` covers all three** — `love_rehab.m4a`, `so_what.m4a`, `there_there.m4a`, the canonical list in `Scripts/fixtures.manifest`. *(Corrected at RECON.13, 2026-08-04. This paragraph previously claimed the fetch script retrieved "3 of at least 8" and named pyramid_song, yyz, clair_de_lune, money and if_i_were_with_her_now as missing. That was wrong — it conflated three separate fixture systems. See the note below, because the distinction is the useful part.)*
 
-`Scripts/fetch_tempo_fixtures.sh` (public iTunes Search CDN) can still be run directly when you have no primary checkout to link from — just expect the 3-of-8 ceiling above.
+**Three fixture systems, easily confused:**
+
+| System | Where it lives | Gated by | Runs by default |
+|---|---|---|---|
+| **tempo fixtures** (3 licensed clips) | `PhospheneEngine/Tests/Fixtures/tempo/`, gitignored | `FixtureManifestPresenceGate` | **yes** |
+| **BeatBench** (17 tracks) | *outside the repo* at `BEATBENCH_FIXTURES_DIR` | `BeatBenchFixturePresenceGate`, sha256-matched | no — env-gated |
+| **diagnostic harnesses** (e.g. `pyramid_song.m4a`) | `Fixtures/tempo/`, gitignored | none | no — env-gated suites |
+
+Only the first is needed for a green `swift test`. `pyramid_song.m4a` has exactly one consumer, `RicercarFluidVideoHarness` ("env-gated" in its own suite name); names like yyz / take_five / billie_jean are BeatBench tracks and were never expected in this directory.
+
+**The real ceiling — partial trees pass as complete.** Both `bootstrap_fixtures.sh` (`ls -A` non-empty → `exit 0`) and `link_fixtures.sh --verify` historically treated a **non-empty directory** as a complete one, so a tempo tree holding 1 of 3 clips satisfied both while still failing tests. RECON.13 replaced that with a file-level check against `Scripts/fixtures.manifest`, which is also the single source both the scripts and the Swift gate now read. Remaining known limitation: `link_fixtures.sh` symlinks rather than copies, so a worktree breaks if the primary moves or is deleted.
+
+`Scripts/fetch_tempo_fixtures.sh` (public iTunes Search CDN) can still be run directly when you have no primary checkout to link from — it retrieves the complete required set.
 
 The `BeatThisFixturePresenceGate` suite is intentionally designed to fail loudly when the fixture tree is empty — silent skips have masked the DSP.2 S8 four-bug regression surface in the past (see CLAUDE.md *§What NOT To Do* on silent fixture skips).
 

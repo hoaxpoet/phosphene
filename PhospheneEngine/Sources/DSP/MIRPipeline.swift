@@ -558,6 +558,7 @@ extension MIRPipeline {
     func applyDensityFields(_ spectral: SpectralAnalyzer.Result, to fv: inout FeatureVector) {
         fv.spectralDensity = spectral.density
         fv.spectralDensitySlow = spectral.smoothedDensity
+        fv.spectralSurge = spectral.surge
     }
 
     /// TONAL (D-178): write the Tonal Interval Vector signals onto floats 44–48.

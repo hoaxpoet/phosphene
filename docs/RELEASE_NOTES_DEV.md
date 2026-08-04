@@ -10,6 +10,28 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-04-185133] RECON.13 — BUG-080's last follow-up, and a correction to the audit that filed it
+
+`Scripts/fixtures.manifest` is now the single source of truth for which gitignored files a default `swift test` needs. Three consumers read it — `link_fixtures.sh --verify`, `bootstrap_fixtures.sh`'s no-op guard, and the Swift gate (renamed `FixtureManifestPresenceGate`) — where previously the shell side and the Swift side each kept their own idea of the required set, synced by hand.
+
+**The duplication was hiding a granularity mismatch, which is the more interesting half.** The shell asked *"is the directory non-empty"*; Swift asked *"does this specific file exist."* So a tempo tree holding **1 of 3** clips satisfied both shell checks and still failed the tests they exist to protect — the restore scripts would cheerfully report success on a tree that could not pass. Verified by removing one clip: `--verify` and `bootstrap_fixtures.sh` both previously exited 0, and now both fail naming the exact missing path. Confirmed the gate is not vacuous by adding a bogus manifest entry and watching it go red, then reverting.
+
+**The correction matters more than the fix.** The 2026-08-03 audit reported that `fetch_tempo_fixtures.sh` covered "3 of at least 8" required fixtures, naming `pyramid_song`, `yyz`, `clair_de_lune`, `money` and `if_i_were_with_her_now` as missing — and that claim was written into RUNBOOK §Worktree setup at RECON.4, where people follow it. **It was wrong.** The default-required set *is* those three clips and the fetch script retrieves all of them. The claim had conflated three separate fixture systems:
+
+| System | Where | Gated by | Default-on |
+|---|---|---|---|
+| tempo clips | `Tests/Fixtures/tempo/`, gitignored | `FixtureManifestPresenceGate` | **yes** |
+| BeatBench (17 tracks) | *outside the repo*, `BEATBENCH_FIXTURES_DIR` | own sha256 gate | no |
+| harness audio (`pyramid_song`) | `Tests/Fixtures/tempo/` | none | no — env-gated suite |
+
+`BeatGridResolverTests` — cited in the original claim as calling `pyramid_song` "the load-bearing gate" — never references it; its only consumer is `RicercarFluidVideoHarness`, which carries "env-gated" in its own suite name.
+
+Root cause of the bad claim: a name-frequency grep across the test tree, with hits attributed to the wrong system and never opened. **That is the same failure shape as RECON.1's fixture deletion earlier in the same audit** — a count treated as evidence. Two instances in two days from one habit, so the lesson is now in `AUDIT_KEEPLIST` and in this note rather than only in a memory: a grep tells you a string appears, never what depends on it. Open the consumer.
+
+The RUNBOOK now carries the three-system table in place of the wrong ceiling.
+
+---
+
 ### [dev-2026-08-03-233415] RECON.1–.4 — the production audit, and the drift it found
 
 A full audit of the production environment (defects, plan state, pipeline health, dead code, repo hygiene), then the cleanup it justified. Read-only inventory first; no changes until Matt picked from the findings.

@@ -64,6 +64,7 @@ public enum AudioRoutePrimitives {
         // it is covered by the QG.1 gate like any other primitive.
         out["spectralDensity"] = RoutePrimitiveColumn(.features, "spectral_density")
         out["spectralDensitySlow"] = RoutePrimitiveColumn(.features, "spectral_density_slow")
+        out["spectralSurge"] = RoutePrimitiveColumn(.features, "spectral_surge")
         out["midDev"]    = RoutePrimitiveColumn(.features, "mid_dev")
         out["trebRel"]   = RoutePrimitiveColumn(.features, "treb_rel")
         out["trebDev"]   = RoutePrimitiveColumn(.features, "treb_dev")

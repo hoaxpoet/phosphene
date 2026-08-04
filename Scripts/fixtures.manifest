@@ -1,0 +1,30 @@
+# fixtures.manifest — the gitignored files a default `swift test` requires.
+#
+# ONE source of truth, read by three consumers:
+#   Scripts/link_fixtures.sh        --verify completeness, and what to symlink
+#   Scripts/bootstrap_fixtures.sh   whether there is anything left to restore
+#   FixtureManifestPresenceGate     the test-side gate (Swift)
+#
+# Before RECON.13 the shell side checked "is the directory non-empty" while the
+# Swift side hardcoded one filename. Two granularities, hand-synced, and a tempo
+# tree holding 1 of 3 clips satisfied both while still failing tests. A file
+# list is the fix: non-empty is not complete.
+#
+# SCOPE — only what a default `swift test` needs. Deliberately excluded:
+#   • ML weights — already gated by SHA256SUMS + WeightChecksumTests, and 479
+#     entries do not belong in a hand-maintained list. Restored by
+#     Scripts/fetch_weights.sh; link_fixtures.sh still symlinks them.
+#   • BeatBench tracks — live OUTSIDE the repo at BEATBENCH_FIXTURES_DIR with
+#     their own sha256 gate, env-gated, not needed for a green run.
+#   • Diagnostic-harness audio (e.g. pyramid_song.m4a) — consumed only by
+#     env-gated suites, so absence must NOT fail a normal run. Add such a file
+#     here only if a default-on test starts depending on it.
+#
+# Format: one repo-relative path per line. `#` comments and blanks ignored.
+# These are licensed 30-second preview clips — gitignored, never committed.
+# Restore with Scripts/link_fixtures.sh (from a primary checkout) or
+# Scripts/fetch_tempo_fixtures.sh (public iTunes Search CDN).
+
+PhospheneEngine/Tests/Fixtures/tempo/love_rehab.m4a
+PhospheneEngine/Tests/Fixtures/tempo/so_what.m4a
+PhospheneEngine/Tests/Fixtures/tempo/there_there.m4a

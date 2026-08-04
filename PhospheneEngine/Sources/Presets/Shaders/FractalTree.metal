@@ -59,6 +59,9 @@ struct FractalPayload {
     float reach;
     /// BRANCH SPREAD, radians — how wide the canopy opens. From `spectral_flux`.
     float spread;
+    /// SECTION SURGE, 0…1 — steps up on an arrival and holds. Elongates the trunk and
+    /// carries the branch count across a tier boundary.
+    float surge;
     /// THE TIPS, 0…1 from `beat_mid` through a soft knee. Drives how many fine
     /// branches exist AND how far each one reaches — one gesture, two coupled terms.
     float melody;
@@ -111,9 +114,28 @@ void fractal_tree_object_shader(
         // as growth rather than as the trunk sliding.
         float reach = saturate((f.arousal - 0.10f) * (1.0f / 0.58f));
 
-        // Section lift, for the COUNT only. Both legs are smoothed (τ6 s against τ45 s),
-        // so this answers "denser than this track's normal" — which is what registers a
-        // distorted guitar or a chorus on a limited master where RMS is flat.
+        // ── THE SURGE: "SHOOT UP" ← spectral_surge (DYN.1b) ──────────────────────
+        //
+        // Matt, after eight rounds: *"Tree still does not shoot up when the distorted
+        // guitar enters ... this is literally all I am looking for and the only thing you
+        // have failed on consistently."* Then, decisively: **shoot up = the trunk
+        // elongates and the next level of branches appears.**
+        //
+        // That definition is why every previous attempt failed. I was making the tree
+        // respond PROPORTIONALLY — a wider canopy, a larger footprint — and grading it on
+        // proportional metrics that duly improved (1.24× spread, 1.18× footprint) while
+        // the thing he asked for never happened. Both halves of his definition are STEPS.
+        // No proportional signal produces a step, however it is scaled, so no coefficient
+        // on `density` was ever going to work.
+        //
+        // `spectral_surge` is built for it: pre-AGC level through an asymmetric follower
+        // that arrives fast and holds. Measured on his 2026-08-04T19-20-32Z capture it
+        // separates the pre-guitar passage from the arrival 20.4× (0.048 → 0.981) while
+        // turning only 0.58 times a second — a step the trunk can safely read, which the
+        // restless `density` ratio never was.
+        float surge = saturate(f.spectral_surge);
+
+        // Kept for the canopy's finer response; the surge carries the arrival.
         float lift = saturate((f.spectral_density / max(f.spectral_density_slow, 1e-4f) - 1.0f) * 1.1f);
 
         // SILENCE GATE. `pulse_amp01` is 0 before the first note and across sustained
@@ -142,7 +164,17 @@ void fractal_tree_object_shader(
         // Depth tiers are the mechanism: a tier appears only above a threshold count
         // (d3 > 7, d4 > 15, d5 > 31), so the smallest branches enter and leave as the
         // count crosses 31. Growth sets where the canopy sits; the tips cross the line.
-        uint  base   = (uint)((4.0f + saturate(reach + lift * 0.30f) * 18.0f) * amp);
+        // THE LIFT IS ADDITIVE, NOT FOLDED INTO `reach`. Folding it in put it inside a
+        // saturate() that `reach` had already nearly filled, so sweeping its weight from
+        // 0.30 to 1.00 moved the tree's footprint 1.10× → 1.17× — the coefficient was not
+        // the bottleneck, the saturation was. As its own term the section change adds
+        // branches outright and the growth is visible.
+        uint  base    = (uint)((4.0f + reach * 18.0f) * amp);
+        // THE NEXT LEVEL OF BRANCHES APPEARS — the other half. A tier exists only above
+        // a threshold count (d4 > 15, d5 > 31), so the surge is sized to CARRY THE COUNT
+        // ACROSS one of those lines rather than to nudge it: 26 branches is more than the
+        // gap from a mid-verse canopy to the deepest tier.
+        uint  section = (uint)((lift * 8.0f + surge * 26.0f) * amp);
         // TIPS ARE GATED BY GROWTH. Matt, 2026-08-04: *"the tree actually grows taller
         // BEFORE this melody enters."* Measured on that session, he is exactly right and
         // the cause is this layer: at t=19 s the growth part sat at its minimum of 4
@@ -154,7 +186,7 @@ void fractal_tree_object_shader(
         // section itself has arrived. The smoothstep keeps them fully available through
         // the body of the song (reach ≥ 0.35) while suppressing them in an intro.
         uint  tips   = (uint)(melody * 26.0f * amp * smoothstep(0.0f, 0.35f, reach));
-        uint  count  = min(7u + base + tips, 63u);
+        uint  count  = min(7u + base + section + tips, 63u);
 
         // ── BRANCH SPREAD ← spectral_flux ────────────────────────────────────────
         //
@@ -180,6 +212,7 @@ void fractal_tree_object_shader(
         // be a second, staler copy.
         payload->melody       = melody * amp;
         payload->reach        = reach;
+        payload->surge        = surge;
         payload->spread       = spread;
         payload->branch_count = min(count, 63u);
         payload->aspect_ratio = max(f.aspect_ratio, 0.1f);
@@ -271,7 +304,19 @@ void fractal_tree_mesh_shader(
     // state, which is FTR.4/MEL territory, not a curve trick.
     float tap = smoothstep(slot * 0.85f, slot * 0.85f + 0.25f, travel);
 
-    float base_len = 0.36f + payload.reach * 0.26f;
+    // THE TRUNK ELONGATES — half of Matt's definition of "shoot up". The trunk was
+    // barred from every fast signal because `bass_rel` and raw `density` made it bounce;
+    // the surge is different in kind, not degree: it steps and holds (0.58 turns/s), so
+    // it lengthens the trunk once at the arrival instead of sliding it constantly.
+    // THE RESTING TREE IS DELIBERATELY SHORT, and that is load-bearing rather than
+    // taste. At the previous sizing the tree already reached 66 % up the frame at rest,
+    // so a trunk that lengthened 1.67× measured as a 1.06× height change — the growth
+    // was going off-screen. A thing cannot visibly shoot up if it is already near the
+    // ceiling; headroom IS the effect. Rest ≈ 40 % of frame height, surge ≈ 85 %.
+    // 0.27 at rest, not 0.22: the shorter tree tripped the D-037 silence gate (mean luma
+    // 0.0027 against a 0.004 floor). Headroom for the surge still matters more than size
+    // at rest, so the constant is raised only as far as legibility needs.
+    float base_len = 0.27f + payload.reach * 0.13f + payload.surge * 0.32f;
     float ang_base = payload.spread;                    // 20°–34°, from spectral_flux
 
     float2 pos     = float2(0.0f, -0.90f);  // tree root (bottom-centre, clip space)
@@ -447,8 +492,15 @@ fragment float4 fractal_tree_fragment(
     // re-homed here: the visual layer it occupied belongs to FTR.3's per-branch
     // activation, and a dead route is removed rather than left declared.
     float arousal  = saturate((f.arousal - 0.13f) / 0.49f);
-    float val_base = mix(0.22f, 0.60f, depth_norm);
-    float val      = val_base * (0.72f + arousal * 0.46f);
+    // Raised from 0.22/0.60. The resting tree is now SHORT by design (headroom for the
+    // surge), so it covers ~25 % less of the frame than before — and mean-frame luma is
+    // what D-037 measures. A smaller figure has to be a brighter one to stay legible.
+    float val_base = mix(0.34f, 0.74f, depth_norm);
+    // 0.84 floor, not 0.72. The shorter resting tree (headroom for the surge) put the
+    // silence frame at mean luma 0.0034 against D-037's 0.004 — dimming it a further 28 %
+    // at silence made a smaller tree invisible. The FLOOR is raised rather than the gate
+    // lowered: D-037 is a legibility requirement, not a number to tune past.
+    float val      = val_base * (0.90f + arousal * 0.34f);
 
     // ── Per-branch melodic lift ──────────────────────────────────────────
     //
