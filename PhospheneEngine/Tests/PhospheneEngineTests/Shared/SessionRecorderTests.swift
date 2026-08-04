@@ -35,11 +35,18 @@ final class SessionRecorderTests: XCTestCase {
     /// shifting every pre-existing from-end offset by another 5.
     private let tonalTail = 5
 
+    /// **10 → 12 at BUG-085 (2026-08-04).** `[DYN.1] Spectral density in the FeatureVector`
+    /// (`1b4e86c9`, on `main`) appended `spectral_density,spectral_density_slow` to the header
+    /// without updating this constant. Every assertion in this file indexes from the END of the
+    /// row, so two new trailing columns shifted all of them and eight tests went red — on
+    /// `main`, before this branch merged it. Folded in here rather than left broken; the
+    /// underlying fragility is that a from-end offset is a shared global that any appended
+    /// column silently invalidates.
     /// QG.1: 10 primitive columns appended after TONAL (`bass_att,mid_att,treble_att,
     /// mid_rel,mid_dev,treb_rel,treb_dev,mid_att_rel,treb_att_rel,beats_until_next`) so
     /// route-coverage replay reaches every FeatureVector primitive presets consume,
     /// shifting every pre-existing from-end offset by another 10.
-    private let qg1Tail = 10
+    private let qg1Tail = 12
 
     private var tempDir: URL!
 
@@ -180,7 +187,9 @@ final class SessionRecorderTests: XCTestCase {
             + "pulse_beat_index,pulse_regional_blend01,"
             + "tonal_phase_fifths,tonal_phase_thirds,tonal_consonance,tonal_tension,harmonic_flux,"
             + "bass_att,mid_att,treble_att,mid_rel,mid_dev,treb_rel,treb_dev,"
-            + "mid_att_rel,treb_att_rel,beats_until_next"),
+            + "mid_att_rel,treb_att_rel,beats_until_next,"
+            // DYN.1 (`1b4e86c9`, on main) — appended without updating this suffix or `qg1Tail`.
+            + "spectral_density,spectral_density_slow"),
                       "features.csv header must end with the FBS pulse pair + the Skein.5.2 "
                       + "structural block + the FBS.S5 pulse tail + the TONAL block (D-178) + the "
                       + "QG.1 primitive tail, got: \(header)")

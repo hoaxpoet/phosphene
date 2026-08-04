@@ -83,7 +83,19 @@ Every other thread is idle — audio, caulk, CVDisplayLink all in normal waits. 
 
 **Suspected direction, NOT yet confirmed.** Something acquires a drawable outside the committed command buffer's lifetime, or retains `drawable.texture` past presentation. The session-recording hook in `draw(in:)` reads `view.currentDrawable` a second time and hands `drawable.texture` to a consumer, which is the shape of thing that would do it — but that is a hypothesis, and three hypotheses have already died on this preset today. It gets confirmed against an artifact before any fix.
 
-**Verification criteria (written before the fix).** (1) An instrumented build counts drawables acquired vs command buffers completed per frame and asserts they balance over a long run. (2) A soak: render a `particles` preset for ≥ 10 minutes without the main thread blocking in `nextDrawable`. (3) Manual: Matt runs a full track without a freeze.
+**Investigation so far (2026-08-04) — leading hypothesis, still UNPROVEN.**
+
+Ruled out by inspection after the stack: the capture hook does not retain the drawable (it blits into a separate texture inside the same command buffer, and with video recording off — as this session's log confirms — `ensureCaptureTexture` returns nil so it does nothing at all); the `willRenderActiveFrame` preset-swap skip still commits its command buffer, so skipped frames do not leak; and **display sleep is excluded** — `pmset -g log` shows `coreaudiod` held `PreventUserIdleDisplaySleep` for the full 33 minutes spanning the freeze.
+
+**What that leaves, and it is a real gap regardless of this hang:** the app has **no occlusion handling of any kind**. `MetalView.swift` sets `view.isPaused = false` and nothing anywhere observes `NSApplication.occlusionState`, `windowDidMiniaturize`, or window visibility. Rendering therefore continues into a layer that may not be composited — and a `CAMetalLayer` whose window is minimised or fully occluded stops recycling drawables, which makes `nextDrawable` block exactly as observed. It fits every measured fact: hard block, 0 % CPU, nothing else holding, healthy frames right up to the stop.
+
+**It is NOT yet confirmed, and must not be fixed on this basis alone** (the BUG-063/064 rule: no fix for an unreproduced hypothesis). Reproduction was attempted and could not be completed headlessly — the render loop only runs with an active session, and `osascript` lacks assistive access on this machine, so the window could not be driven from a script.
+
+**Reproduction to run (needs Matt, ~2 minutes).** Start a session, let it render, then minimise the Phosphene window (or fully cover it with another window) for ~30 s, restore it, and run `Scripts/capture_hang.sh`. If the main thread is in `nextDrawable`, the hypothesis is confirmed and the fix is to pause the view on occlusion. If it survives, the cause is elsewhere and this note should be struck.
+
+**`Scripts/capture_hang.sh` added** so the next freeze is captured in one command instead of improvised: stack, process state (0 % CPU distinguishes a block from a spin), window occlusion state, power-event log, and the session tail. **Run it BEFORE force-quitting** — a force-quit destroys the only evidence, which is why BUG-060 sat unactionable for months.
+
+**Verification criteria (written before the fix).** (1) An instrumented build counts drawables acquired vs command buffers completed per frame and asserts they balance over a long run. (2) A soak: render a `particles` preset for ≥ 10 minutes without the main thread blocking in `nextDrawable`. (3) Manual: Matt runs a full track, and separately minimises the window mid-session, without a freeze.
 
 ---
 
