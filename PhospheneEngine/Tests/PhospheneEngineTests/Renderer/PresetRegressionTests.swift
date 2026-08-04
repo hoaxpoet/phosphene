@@ -244,7 +244,12 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // division — the ribbon's temporal behaviour is gated by
     // WitchlightStrokeAccumulationTest, which a dHash could never see.
     // The three fixtures differ, which is the star-parallax + bloom-hue routes responding.
-    "Witchlight": (steady: 0x0B191335373D5C35, beatHeavy: 0x0B191335373D1C35, quiet: 0x0B391335373D5C35),
+    // WL.2-i/-j (2026-08-04): regenerated for three INTENTIONAL visual changes — the star
+    // field actually drifts now (it moved 0.16 px/s before), the pen speed is visibly
+    // responsive, and the bead halo narrowed 3.2 → 1.6 so the beads stop fusing into a
+    // glow tube. Old hashes differed by Hamming 15–24 against a threshold of 8, which is
+    // the gate correctly reporting that the frame changed.
+    "Witchlight": (steady: 0x1BCF33363539737F, beatHeavy: 0x699F4B37311115EA, quiet: 0x2BAD533D3E3E5155),
     "Staged Sandbox": (steady: 0x000022160A162A00, beatHeavy: 0x000022160A162A00, quiet: 0x000022160A162A00),
     // BUG-034 (2026-06-12, M7-lite approved): regen at the live 128-step budget.
     // Terrain now reaches the true horizon (the old "sky holes" at distance

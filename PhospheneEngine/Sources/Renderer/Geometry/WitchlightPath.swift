@@ -146,6 +146,10 @@ public final class WitchlightPath: AudioResponseMetrics {
     /// ∫|θ̇| dt — how far the PEN's heading actually turned, radians. `phaseTravel × k`
     /// before clamping; the gap between them is what the clamp removed.
     public private(set) var headingTravel: Float = 0
+    /// Slowest and fastest pen speed seen this run — the QG.5 `penSpeedSwing` evidence.
+    /// `internal`, not `private`, so the metric can live in `WitchlightPath+Metrics.swift`.
+    var speedMin: Float = .greatestFiniteMagnitude
+    var speedMax: Float = 0
     /// Net signed heading change. `|headingNet| / headingTravel` near 1 means the pen turned
     /// one way the whole time — the "degenerates to a circle" state design §3.1(b) warns
     /// about when the clamp saturates. Near 0 means it reversed, which is a figure.
@@ -153,27 +157,6 @@ public final class WitchlightPath: AudioResponseMetrics {
     public var headingMonotonicity: Float {
         headingTravel > 1e-4 ? abs(headingNet) / headingTravel : 0
     }
-    // MARK: - AudioResponseMetrics (QG.5)
-
-    /// Turns of pen heading per trail window — the quantity that decides whether the
-    /// stroke reads as a figure or as an arc.
-    ///
-    /// Normalised per trail window rather than reported as a raw total, because fixtures
-    /// differ in length and a raw total would make the band depend on fixture duration
-    /// instead of on the preset. Measured from the WL.2-a probe renders: legible figures
-    /// landed at 1.9–2.8 turns; the shipped fixed gain produces 0.20–0.73 and draws an
-    /// arc on every fixture.
-    public func responseMetric(_ name: String) -> Double? {
-        switch name {
-        case "headingTurnsPerTrail":
-            guard elapsedSeconds > 0.01 else { return nil }
-            let perSecond = Double(headingTravel) / elapsedSeconds
-            return perSecond * Double(tuning.trailSeconds) / (2 * .pi)
-        default:
-            return nil
-        }
-    }
-
     public var clampedFraction: Float {
         frameCount > 0 ? Float(clampedFrameCount) / Float(frameCount) : 0
     }
@@ -212,6 +195,7 @@ public final class WitchlightPath: AudioResponseMetrics {
         tumbleClock = 0
         trailWindow = tuning.trailSeconds
         frameCount = 0; clampedFrameCount = 0; phaseTravel = 0; headingTravel = 0; headingNet = 0
+        speedMin = .greatestFiniteMagnitude; speedMax = 0
         elapsedSeconds = 0
         deviationScale = 0.3
     }
@@ -285,12 +269,25 @@ public final class WitchlightPath: AudioResponseMetrics {
     private func advancePen(dt: Float, features: FeatureVector, silent: Bool) -> Float {
         // Arousal against its own running spread — the per-track normalization the
         // measured 0.44–1.57 cross-capture range demands (§2.1).
-        let slowAlpha = dt / (20.0 + dt)
+        //
+        // WL.2-i — 20 s → 12 s. Matt's M7: "it looks like the preset makes the same choices
+        // about movement." Measured on his capture, the pen's speed varied by 13 % over the
+        // whole track, and every sample sat ABOVE the base speed (norm +0.13…+0.64): the pen
+        // never slowed down, it only ran fast and slightly faster. A 12 s reference lets the
+        // deviation cross zero (norm −0.05…+0.55), so the stroke visibly slows as well as
+        // quickens — which is what makes the coupling readable rather than merely present.
+        //
+        // Deliberately NOT slower. A 90 s reference was simulated first, on the theory that a
+        // 20 s window chases the 10–60 s structure it should be measuring against; it makes
+        // things worse, pinning two of the three fixtures at a permanently saturated +1 (0 %
+        // swing) because the reference never catches up from the warm-up ramp.
+        let slowAlpha = dt / (12.0 + dt)
         arousalSlow += (features.arousal - arousalSlow) * slowAlpha
         arousalSpread += (abs(features.arousal - arousalSlow) - arousalSpread) * slowAlpha
         let arousalNorm = max(-1, min(1, (features.arousal - arousalSlow) / (2 * max(arousalSpread, 0.05))))
 
         let speed = tuning.baseSpeed * (1 + tuning.speedModDepth * arousalNorm)
+        if !silent { speedMin = min(speedMin, speed); speedMax = max(speedMax, speed) }
         // ω_max derived from the speed so the ≥ 8 %-of-frame-height turning-radius bound
         // holds exactly at every speed, rather than only at the nominal one.
         let omegaMax = speed / max(tuning.minTurnRadius, 1e-4)

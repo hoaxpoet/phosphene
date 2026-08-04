@@ -215,6 +215,181 @@ struct WitchlightSkyLuminanceTests {
             """)
     }
 
+    /// The settled ribbon drive, shared by the luminance and distinctness gates so the two
+    /// can never measure different scenes.
+    static func settledRibbonDrive() -> [FeatureVector] {
+        (0..<12).map { i -> FeatureVector in
+            var f = FeatureVector()
+            f.deltaTime = 1.0 / 60
+            f.time = Float(1800 + i) / 60
+            f.bass = 0.3; f.mid = 0.3; f.treble = 0.2
+            f.spectralCentroid = 0.12
+            f.valence = 0.2
+            f.arousal = 0.4
+            f.tonalPhaseFifths = Float(sin(Double(1800 + i) / 220.0) * .pi)
+            f.aspectRatio = 640.0 / 360.0
+            return f
+        }
+    }
+
+    static func settledRibbonStems() -> [StemFeatures] {
+        [StemFeatures](repeating: StemFeatures(), count: 12)
+    }
+
+    // MARK: - The beads read as beads (WL.2-j)
+
+    /// Counts separate bright cores in the stroke. This gate exists because the other one
+    /// could not catch the defect it was written for.
+    ///
+    /// `ribbonShare` counts LIT PIXELS, so when WL.2-g/-h widened the drawn sprite to 2.6×
+    /// then 3.2× the bead radius, consecutive sprites overlapped 30–48 % and fused into the
+    /// uniform glow tube of anti-reference `11` — and the share went UP, because overlapping
+    /// sprites light more pixels. The gate reported the regression as an improvement. A
+    /// measure that improves as the defect worsens is worse than no measure, so distinctness
+    /// is asserted separately and structurally.
+    ///
+    /// Connected components rather than a spacing formula on purpose: the geometry that
+    /// decides fusion (`WL_HALO_EXTENT`, `emissionHz`, `baseSpeed`, `viewScale`) is spread
+    /// across a shader constant, a tuning struct and a runtime auto-fit, and any of them can
+    /// reintroduce it. Counting what actually reached the framebuffer cannot be fooled by a
+    /// refactor of that arithmetic.
+    @Test("The stroke reads as beads on a thread, not a fused tube (WL.2-j)")
+    func beadsReadAsDistinct() throws {
+        let harness = MultiPassRenderHarness(width: 640, height: 360)
+        let frames: [[UInt8]] = try harness.render(
+            preset: "Witchlight", features: Self.settledRibbonDrive(), stems: Self.settledRibbonStems(),
+            settle: 1800) { $0 }
+        let last = try #require(frames.last)
+
+        let w = 640, h = 360
+        var core = [Bool](repeating: false, count: w * h)
+        for idx in 0..<(w * h) {
+            let i = idx * 4
+            let luma = 0.114 * Double(last[i]) + 0.587 * Double(last[i + 1]) + 0.299 * Double(last[i + 2])
+            core[idx] = luma > 200
+        }
+
+        // 4-connected components. Stars also exceed the threshold but are 1–4 px, so a
+        // minimum size of 8 px keeps them out without needing to know where they are.
+        var seen = [Bool](repeating: false, count: w * h)
+        var beadCount = 0
+        var stack = [Int]()
+        for start in 0..<(w * h) where core[start] && !seen[start] {
+            seen[start] = true
+            stack.removeAll(keepingCapacity: true)
+            stack.append(start)
+            var size = 0
+            while let p = stack.popLast() {
+                size += 1
+                let x = p % w, y = p / w
+                for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                    let nx = x + dx, ny = y + dy
+                    guard nx >= 0, nx < w, ny >= 0, ny < h else { continue }
+                    let q = ny * w + nx
+                    if core[q] && !seen[q] { seen[q] = true; stack.append(q) }
+                }
+            }
+            if size >= 8 { beadCount += 1 }
+        }
+
+        print("[beads] \(beadCount) distinct bright cores (floor \(Self.minDistinctBeads))")
+
+        #expect(beadCount >= Self.minDistinctBeads, """
+            only \(beadCount) distinct bright cores in the stroke — the beads have FUSED into \
+            a glow tube (anti-reference `11`). Bead centres sit 1.2 × 2 × baseRadius apart, so \
+            they read as separate only while the drawn sprite stays under 1.2 × viewScale bead \
+            radii; `viewScale` measures 1.38–1.88, so WL_HALO_EXTENT must stay near 1.6. \
+            Do NOT satisfy this by making the beads dimmer — distinctness here is geometric, \
+            and `ribbonShare` will happily rise while this falls (that pairing is exactly how \
+            the fusion shipped in the first place).
+            """)
+    }
+
+    /// Measured on this drive, and the contrast is the whole point:
+    ///
+    /// | `WL_HALO_EXTENT` | ribbonShare | distinct cores |
+    /// |---|---|---|
+    /// | 1.6 (separated) | 0.687 % | **14** |
+    /// | 2.6 (WL.2-g)    | 1.289 % | **1**  |
+    /// | 3.2 (WL.2-h)    | 1.636 % | **1**  |
+    ///
+    /// The two metrics move in OPPOSITE directions — `ribbonShare` more than doubles as the
+    /// stroke fuses into a single component. That is the recorded proof that a luminance
+    /// gate cannot police this, and why both assertions have to exist.
+    ///
+    /// 8 sits between the fused 1 and the separated 14: it catches a return to fusion with
+    /// margin while leaving the exact bead count free, since that legitimately moves with pen
+    /// speed and with how much of the trail is on screen.
+    private static let minDistinctBeads = 8
+
+    // MARK: - The backdrop moves (WL.2-i)
+
+    /// Matt's M7: *"the background is not moving and so looks fake when the dots are drawing
+    /// / moving over it."* He was right, and nothing measured it.
+    ///
+    /// `drift` is in CELL units and a cell is `1/cells` of the frame, so the shipped
+    /// `0.0035 + 0.0110·brightness` resolved to ~0.008 on a real track — the NEAR star layer
+    /// travelled ~0.16 px/s at 1080p (2.5 % of frame width across a whole 5-minute track) and
+    /// the far layer ~4 px per track. A still field behind a moving stroke reads as pasted-on.
+    ///
+    /// This renders the same scene at two times and asserts the field actually changed.
+    /// It deliberately measures CHANGED PIXELS rather than a drift constant, because the
+    /// visible quantity is "did the background move", and a future refactor of the layer
+    /// maths must not be able to satisfy the gate while rendering a static field.
+    @Test("The star field actually drifts — the backdrop is not a still image (WL.2-i)")
+    func backdropDrifts() throws {
+        let harness = MultiPassRenderHarness(width: 640, height: 360)
+
+        func frameAt(_ seconds: Float) -> FeatureVector {
+            var f = FeatureVector()
+            f.deltaTime = 1.0 / 60
+            f.time = seconds
+            f.bass = 0.3; f.mid = 0.3; f.treble = 0.2
+            f.spectralCentroid = 0.115      // the p50 of Matt's M7 capture
+            f.valence = 0.2
+            f.aspectRatio = 640.0 / 360.0
+            return f
+        }
+
+        // Two independent single-frame renders, 30 s of preset time apart. Rendered as
+        // one-frame drives so the ribbon is identical in both and only `time` differs —
+        // otherwise the stroke's own growth would satisfy the assertion on its own.
+        let stems = [StemFeatures](repeating: StemFeatures(), count: 1)
+        let early: [[UInt8]] = try harness.render(
+            preset: "Witchlight", features: [frameAt(0)], stems: stems, settle: 0) { $0 }
+        let later: [[UInt8]] = try harness.render(
+            preset: "Witchlight", features: [frameAt(30)], stems: stems, settle: 0) { $0 }
+        let a = try #require(early.last), b = try #require(later.last)
+
+        var changed = 0
+        var starPixels = 0
+        for i in stride(from: 0, to: a.count, by: 4) {
+            let la = 0.114 * Double(a[i]) + 0.587 * Double(a[i + 1]) + 0.299 * Double(a[i + 2])
+            let lb = 0.114 * Double(b[i]) + 0.587 * Double(b[i + 1]) + 0.299 * Double(b[i + 2])
+            guard la > 30 || lb > 30 else { continue }   // lit in at least one frame
+            starPixels += 1
+            if abs(la - lb) > 12 { changed += 1 }
+        }
+        let movedShare = 100.0 * Double(changed) / Double(max(starPixels, 1))
+
+        print(String(format: "[drift] %.1f%% of lit backdrop pixels changed over 30 s (floor %.0f%%)",
+                     movedShare, Self.minDriftedShare))
+
+        #expect(movedShare >= Self.minDriftedShare, """
+            only \(String(format: "%.1f", movedShare))% of lit backdrop pixels differ between \
+            t=0 s and t=30 s — the star field is effectively FROZEN. `drift` is in CELL units, \
+            so a rate that looks non-zero can still be sub-pixel: at the shipped 0.008 the near \
+            layer moved 0.16 px/s and the far layer 4 px per TRACK. A still background behind a \
+            moving stroke reads as pasted-on (Matt's M7, WL.2-i). Raise `rate`, do not raise the \
+            star brightness to compensate — that regresses the WL.2-h floor.
+            """)
+    }
+
+    /// Over 30 s the near layer should travel an appreciable fraction of the frame, so a large
+    /// share of the (sparse, small) star pixels land somewhere new. Set well below the measured
+    /// value: the point is to catch a frozen field, not to police the exact rate.
+    private static let minDriftedShare = 25.0
+
     /// `RENDER_VISUAL=1` escape hatch — the numbers say how much light, only the frame says
     /// whether it is in the right *places*.
     private func writePNG(bgra: [UInt8], width: Int, height: Int, to url: URL) throws {

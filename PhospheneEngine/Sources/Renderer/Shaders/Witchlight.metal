@@ -105,14 +105,23 @@ static inline float2 wl_corner(uint vid) {
 ///
 /// `08` is explicit that the halo is *wider* than the core, not just dimmer than it — and
 /// while core and halo shared one quad the halo could not be wider than the bead by
-/// construction, so every bead rendered as a hard-edged dot. WL.2-g expands the QUAD by
-/// this factor and rescales the core's radial term by the same factor in the fragment, so
-/// the core keeps **exactly** the bead size WL.2-f settled. The bead did not get bigger;
-/// its glow got the reach the reference shows. This is why the overlap between adjacent
-/// beads' halos closes the gaps in the tail, which is what stopped the ribbon reading as a
-/// dotted thread — raising the emissive level could never do that, because the gaps had no
-/// geometry in them to light.
-constant float WL_HALO_EXTENT = 3.2;
+/// construction, so every bead rendered as a hard-edged dot. Expanding the QUAD and
+/// rescaling the core's radial term by the same factor keeps the core pinned to exactly the
+/// bead size WL.2-f settled: the bead does not get bigger, its glow gets reach.
+///
+/// **WL.2-j — 3.2 → 1.6, because the reach had eaten the beads.** Bead centres sit
+/// `1.2 × 2 × baseRadius` apart (WL.2-f, calibrated against the BARE bead), and WL.2-g/-h
+/// widened the drawn sprite to 2.6× then 3.2× that radius without revisiting the spacing.
+/// At the measured `viewScale` of 1.38–1.88 consecutive sprites overlapped **30–48 %** and
+/// fused into the uniform glow tube of anti-reference `11`; they would only have read as
+/// distinct above `viewScale` 2.67, which never occurs. Matt's M7 saw it as a lumpy
+/// caterpillar.
+///
+/// Beads separate when `WL_HALO_EXTENT < 1.2 × viewScale`, so 1.6 clears the whole measured
+/// range (−3 % overlap at the tight end, −41 % at the loose one). The luminance this gives
+/// up is bought back in the CORE and the connecting thread, which is the honest trade: light
+/// per bead rather than light from beads merging into each other.
+constant float WL_HALO_EXTENT = 1.6;
 
 /// Age → brightness. `(1 - a/T)^1.6`: superlinear, so the newest third of the stroke
 /// carries most of the light (`02` — the decay is visibly not linear) and it reaches
@@ -217,7 +226,7 @@ fragment float4 witchlight_bead_fragment(WLBeadOut in [[stage_in]]) {
     // beads changing at all. The ribbon now has to carry its own luminance the way the
     // source's does over ITS near-black ground, which is the honest version of the same
     // target rather than a borrowed one.
-    float3 rgb = cool * halo * 1.45 + hot * core * 2.4;
+    float3 rgb = cool * halo * 2.4 + hot * core * 4.5;
     return float4(rgb * in.alpha, 1.0);
 }
 
@@ -250,7 +259,7 @@ fragment float4 witchlight_line_fragment(WLLineOut in [[stage_in]]) {
     // pre-WL.2-g level the thread was invisible between beads, which is what made the
     // ribbon read as a row of dots. It stays well under the bead level, so the
     // beads-on-a-thread reading (and the distance from `11`) is preserved.
-    return float4(mix(in.color, float3(1.0), 0.45) * in.alpha * 2.1, 1.0);
+    return float4(mix(in.color, float3(1.0), 0.45) * in.alpha * 3.5, 1.0);
 }
 
 // MARK: - Star suppression (pass 1)

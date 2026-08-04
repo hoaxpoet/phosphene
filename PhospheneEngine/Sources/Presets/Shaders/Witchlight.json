@@ -2,7 +2,7 @@
   "name": "Witchlight",
   "family": "particles",
   "duration": 45,
-  "description": "A beaded luminous stroke written in the air of deep space, and the stroke is a drawing of the track's harmony. A pen tip advances at a governed speed along a heading; the smoothed circle-of-fifths phase (tonalPhaseFifths, circular EMA at 1.5 s) controls only how fast that heading TURNS, clamped so no arc is tighter than 8 % of frame height — so the same code cannot draw a legible figure on one track and a tangle on the next. Each bead freezes the harmonic phase it was laid down at as its hue, so the ribbon's colour banding is the track's colour history; a confirmed turn steps the hue, so a chord change reads as a colour boundary. arousal modulates pen speed by 25 %, and because beads are emitted at a fixed TIME rate their spacing encodes how fast the hand was moving. Each bar downbeat (barPhase01 wrap) SETS one bead — bigger, brighter, permanent — so the ribbon carries a visible chain of bar markers. An age-weighted relaxation pass smooths the live end into a calligraphic stroke and freezes the record past ~4 s. The trail is exactly the last 30 s. A bounded, refractory head burst fires on a bassDev excursion measured against the track's own running level. Backdrop: three parallax star layers (depth rate from spectralCentroid, mapped against its measured 0.04-0.21 band) and one soft violet nebular bloom (hue from valence), with the ribbon visibly dimming the stars behind it. Milkdrop-inspired (D-113); diverges from its source on the dominant motion model, which in the source is a random walk re-seeded on beats.",
+  "description": "A beaded luminous stroke written in the air of deep space, and the stroke is a drawing of the track's harmony. A pen tip advances at a governed speed along a heading; the smoothed circle-of-fifths phase (tonalPhaseFifths, circular EMA at 1.5 s) controls only how fast that heading TURNS, clamped so no arc is tighter than 8 % of frame height — so the same code cannot draw a legible figure on one track and a tangle on the next. Each bead freezes the harmonic phase it was laid down at as its hue, so the ribbon's colour banding is the track's colour history; a confirmed turn steps the hue, so a chord change reads as a colour boundary. arousal modulates pen speed by 45 %, so the stroke visibly quickens and slackens with the track's energy. Beads are emitted per unit DISTANCE travelled, so their spacing stays constant at any speed — a time-based rate tied the ribbon's whole texture to the pen never changing speed, fusing the beads when it slowed and dotting them apart when it sped up. Each bar downbeat (barPhase01 wrap) SETS one bead — bigger, brighter, permanent — so the ribbon carries a visible chain of bar markers. An age-weighted relaxation pass smooths the live end into a calligraphic stroke and freezes the record past ~4 s. The trail is exactly the last 30 s. A bounded, refractory head burst fires on a bassDev excursion measured against the track's own running level. Backdrop: three parallax star layers that visibly drift, the near layer crossing frame in about four minutes and outpacing the far ones roughly 13:1 (depth rate from spectralCentroid, mapped against its measured 0.04-0.21 band) and one soft violet nebular bloom (hue from valence), with the ribbon visibly dimming the stars behind it. Milkdrop-inspired (D-113); diverges from its source on the dominant motion model, which in the source is a random walk re-seeded on beats.",
   "author": "Matt",
   "inspired_by": {
     "milkdrop_filename": "martin - witchcraft reloaded",
@@ -12,7 +12,10 @@
     "sha256_subject": "the butterchurn built-in JSON that was read as the source (~/mdrender/builtins/), not a .milk file",
     "pack": "projectM-visualizer/presets-cream-of-the-crop"
   },
-  "passes": ["feedback", "particles"],
+  "passes": [
+    "feedback",
+    "particles"
+  ],
   "fragment_function": "witchlight_sky_fragment",
   "vertex_function": "fullscreen_vertex",
   "beat_source": "bass",
@@ -20,26 +23,78 @@
   "beat_rot": 0.0,
   "base_zoom": 0.0,
   "base_rot": 0.0,
-  "decay": 0.10,
+  "decay": 0.1,
   "beat_sensitivity": 1.0,
   "visual_density": 0.35,
   "motion_intensity": 0.4,
-  "color_temperature_range": [0.15, 0.6],
+  "color_temperature_range": [
+    0.15,
+    0.6
+  ],
   "fatigue_risk": "low",
-  "transition_affordances": ["crossfade"],
-  "section_suitability": ["ambient", "bridge", "comedown", "buildup"],
-  "complexity_cost": { "tier1": 1.1, "tier2": 0.6 },
+  "transition_affordances": [
+    "crossfade"
+  ],
+  "section_suitability": [
+    "ambient",
+    "bridge",
+    "comedown",
+    "buildup"
+  ],
+  "complexity_cost": {
+    "tier1": 1.1,
+    "tier2": 0.6
+  },
   "rubric_profile": "lightweight",
   "audio_routes": [
-    { "route": "pen_heading",       "primitive": "tonalPhaseFifths", "kind": "continuous",
-      "response": { "metric": "headingTurnsPerTrail", "min": 1.2 } },
-    { "route": "bead_hue",          "primitive": "tonalPhaseFifths", "kind": "continuous" },
-    { "route": "pen_speed",         "primitive": "arousal",          "kind": "continuous" },
-    { "route": "bead_promotion",    "primitive": "barPhase01",       "kind": "accent" },
-    { "route": "head_flare",        "primitive": "bassDev",          "kind": "accent" },
-    { "route": "star_parallax",     "primitive": "spectralCentroid", "kind": "continuous" },
-    { "route": "nebula_hue",        "primitive": "valence",          "kind": "continuous" },
-    { "route": "trail_contraction", "primitive": "sectionIndex",     "kind": "structural" }
+    {
+      "route": "pen_heading",
+      "primitive": "tonalPhaseFifths",
+      "kind": "continuous",
+      "response": {
+        "metric": "headingTurnsPerTrail",
+        "min": 1.2
+      }
+    },
+    {
+      "route": "bead_hue",
+      "primitive": "tonalPhaseFifths",
+      "kind": "continuous"
+    },
+    {
+      "route": "pen_speed",
+      "primitive": "arousal",
+      "kind": "continuous",
+      "response": {
+        "metric": "penSpeedSwing",
+        "min": 1.45
+      }
+    },
+    {
+      "route": "bead_promotion",
+      "primitive": "barPhase01",
+      "kind": "accent"
+    },
+    {
+      "route": "head_flare",
+      "primitive": "bassDev",
+      "kind": "accent"
+    },
+    {
+      "route": "star_parallax",
+      "primitive": "spectralCentroid",
+      "kind": "continuous"
+    },
+    {
+      "route": "nebula_hue",
+      "primitive": "valence",
+      "kind": "continuous"
+    },
+    {
+      "route": "trail_contraction",
+      "primitive": "sectionIndex",
+      "kind": "structural"
+    }
   ],
   "certified": false
 }
