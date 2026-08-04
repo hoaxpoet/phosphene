@@ -159,6 +159,9 @@
 "connector.spotify.not_found"           = "Phosphene couldn’t find that playlist. It may be private or deleted.";
 "connector.spotify.private_playlist"    = "That playlist is private. Paste a link to a public playlist.";
 "connector.spotify.auth_failure"        = "Couldn’t connect to Spotify. Check your configuration and try again.";
+/* DEBUG-only developer-setup copy (see SpotifyConnectionViewModel.authFailureMessage).
+   Shipped builds show connector.spotify.auth_failure instead. */
+"connector.spotify.auth_failure.missing_client_id" = "No Spotify Client ID in this build. Create PhospheneApp/Phosphene.local.xcconfig containing “SPOTIFY_CLIENT_ID = <your client id>”, then build again.";
 "connector.spotify.login_required_headline" = "Log in to Spotify";
 "connector.spotify.login_required_body"     = "Phosphene needs your Spotify account to load this playlist. Your login is saved securely so you won’t need to do this again.";
 "connector.spotify.login_button"            = "Log in with Spotify";

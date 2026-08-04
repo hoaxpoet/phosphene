@@ -109,6 +109,15 @@ struct SpotifyConnectionViewModelTests {
         #expect(vm.state == .authFailure)
     }
 
+    @Test("authFailure copy names the xcconfig fix only when the Client ID is missing")
+    func authFailureCopyDistinguishesMissingClientID() {
+        let missing = String(localized: "connector.spotify.auth_failure.missing_client_id")
+        let generic = String(localized: "connector.spotify.auth_failure")
+        #expect(SpotifyConnectionViewModel.authFailureMessage(clientID: nil) == missing)
+        #expect(SpotifyConnectionViewModel.authFailureMessage(clientID: "") == missing)
+        #expect(SpotifyConnectionViewModel.authFailureMessage(clientID: "abc123") == generic)
+    }
+
     @Test("successful connect calls startSession with .spotifyPlaylistURL source")
     func successfulConnectCallsStartSession() async throws {
         let connector = MockSpotifyConnector(result: .success([]))

@@ -24,9 +24,11 @@ Phosphene uses Spotify's Authorization Code + PKCE flow (user-level OAuth). The 
    ```
    SPOTIFY_CLIENT_ID = your_client_id_here
    ```
-5. In Xcode: Project → Info → Configurations. For **Debug** and **Release**, set the xcconfig to `Phosphene.local`.
+5. Build. No Xcode configuration change is needed: both `Debug` and `Release` already point at `Phosphene.xcconfig` (`baseConfigurationReference`, `PhospheneApp.xcodeproj/project.pbxproj`), and that file ends with `#include? "Phosphene.local.xcconfig"` — creating the file is sufficient.
 
 The app reads `SpotifyClientID` at runtime via `Bundle.main.infoDictionary`. An empty or missing Client ID causes every Spotify connect attempt to throw `.spotifyAuthFailure` immediately.
+
+**`Phosphene.local.xcconfig` is gitignored, so it does not survive `git clean -fdx`, a fresh clone, or a new worktree.** Re-create it (step 4) whenever Spotify connect starts failing in a tree that used to work. In a DEBUG build the connector says so directly — "No Spotify Client ID in this build…" — rather than the generic auth-failure copy a shipped build shows.
 
 **User flow (end-user, one-time):**
 
@@ -388,10 +390,10 @@ Checks:
 
 ### Spotify connector failure modes
 
-**Missing Client ID** (`authFailure` state, "Couldn't connect to Spotify"):
+**Missing Client ID** (`authFailure` state; DEBUG builds say "No Spotify Client ID in this build…", Release shows the generic "Couldn't connect to Spotify"):
 - `SpotifyClientID` in Info.plist is empty.
-- Cause: `Phosphene.local.xcconfig` not created, or not wired into the xcconfig configuration.
-- Fix: follow §Spotify connector setup above. Build again after editing the xcconfig.
+- Cause: `PhospheneApp/Phosphene.local.xcconfig` was never created — or was lost, since it is gitignored and therefore absent after `git clean -fdx`, a fresh clone, or in a new worktree.
+- Fix: follow §Spotify connector setup above (creating the file is all that is needed). Build again after editing the xcconfig.
 
 **Redirect URI mismatch** (browser shows Spotify error page after login):
 - Cause: the redirect URI registered in Spotify's developer dashboard does not exactly match `phosphene://spotify-callback`.
