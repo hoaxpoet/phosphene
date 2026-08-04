@@ -149,7 +149,17 @@ void fractal_tree_object_shader(
         // (d3 > 7, d4 > 15, d5 > 31), so the smallest branches enter and leave as the
         // count crosses 31. Growth sets where the canopy sits; the tips cross the line.
         uint  base   = (uint)((4.0f + reach * 18.0f) * amp);
-        uint  tips   = (uint)(melody * 26.0f * amp);
+        // TIPS ARE GATED BY GROWTH. Matt, 2026-08-04: *"the tree actually grows taller
+        // BEFORE this melody enters."* Measured on that session, he is exactly right and
+        // the cause is this layer: at t=19 s the growth part sat at its minimum of 4
+        // while the tips added 5 branches, taking the tree from 11 to 16 — eight seconds
+        // before the band arrives at 27–29 s. The quiet intro still has beats, so
+        // `beat_mid` fires through it and the tips grew a tree the music had not earned.
+        //
+        // Gating on the growth envelope means the fine tips can only appear once the
+        // section itself has arrived. The smoothstep keeps them fully available through
+        // the body of the song (reach ≥ 0.35) while suppressing them in an intro.
+        uint  tips   = (uint)(melody * 26.0f * amp * smoothstep(0.0f, 0.35f, reach));
         uint  count  = min(7u + base + tips, 63u);
 
         // ── BRANCH SPREAD ← spectral_flux ────────────────────────────────────────

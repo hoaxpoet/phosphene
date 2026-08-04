@@ -199,11 +199,15 @@ struct FractalTreeMeshRenderTest {
         // throughout, and the silence gate is covered by the D-037 render assertion.
         let rows = (0..<min(time.count, arousal.count)).filter { (time[$0] ?? 0) >= 10.0 }
         let melody = rows.map { Double(beatMid[$0] ?? 0) / (Double(beatMid[$0] ?? 0) + 1.8) }
+        let growthEnv = rows.map { min(max((Double(arousal[$0] ?? 0) - 0.10) / 0.58, 0), 1) }
         let structure = rows.map { row -> Int in
             let reach = min(max((Double(arousal[row] ?? 0) - 0.10) / 0.58, 0), 1)
             return Int(4.0 + reach * 18.0)
         }
-        let tips = melody.map { Int($0 * 26.0) }
+        let tips = zip(melody, growthEnv).map { m, g -> Int in
+            let t = min(max(g / 0.35, 0), 1)
+            return Int(m * 26.0 * (t * t * (3 - 2 * t)))
+        }
         let counts = zip(structure, tips).map { min(7 + $0 + $1, 63) }
         let seconds = Double((time[rows.last!] ?? 0) - (time[rows.first!] ?? 0))
 
