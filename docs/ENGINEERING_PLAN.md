@@ -1328,7 +1328,15 @@ Out of scope for V.8.1: drops (V.8.2), refraction (V.8.2), chromatic dispersion 
 
 **Done when:** L2 passes; each route's measured visual swing is documented against its primitive's measured span; `RENDER_VISUAL=1` contact sheet produced **before** the first tuning commit (`PRESET_SESSION_CHECKLIST.md` Part 1 §6).
 
-**FTR.3 — Per-branch activation (hero route).** Option A per D-212: per beat, hash-select a bounded subset of branches from `pulse_beat_index`; each fires an attack/decay envelope over `beat_phase01`. Bounded spatial footprint with steady global luminance (D-157). Replaces the global `branch_count` truncation.
+**FTR.3 — Per-branch activation (hero route).** ✅ code-complete (2026-08-03), **pending live M7** — landed in two passes, each after a live rejection.
+
+*FTR.3:* per-branch hash-selected taps replaced the global canopy slam Matt rejected (*"too excited or completely inert … fingers are not really visible"*). The canopy became a canvas on `bass_rel`; the global `beat_bass` flash was removed as an FA #67 collision with the taps.
+
+*FTR.3b,* after a second rejection (*"never see beyond three levels … all variations on tree colors … much too active with drums"*): per-depth hue offsets reaching all 12 hue families against 4 — **my amber→green arc was my aesthetic standing in for Matt's**, and the psychedelic range he wanted had come from the `fract(t)` clock D-212 correctly removed; canopy depth restored to the old tier distribution (d5 37 % vs old 38 %); taps moved beat → bar (1.96/s → 0.45/s).
+
+**Two lessons worth keeping.** (1) `pulse_phase01` is documented as a 4-beat cycle (D-153) and measures identically to `beat_phase01` on every recorded source — `bar_phase01` is the real bar clock. A *rate* assertion caught it; an existence check would not have. (2) Depth tiers and palette are one complaint, not two: hue is keyed to depth, so losing tiers loses colour.
+
+Original scope, Option A per D-212: per beat, hash-select a bounded subset of branches from `pulse_beat_index`; each fires an attack/decay envelope over `beat_phase01`. Bounded spatial footprint with steady global luminance (D-157). Replaces the global `branch_count` truncation.
 
 **Done when:** multi-frame harness exercising the **real mesh dispatch path** (object → mesh → fragment via `MeshGenerator.draw`), not `preset.pipelineState` alone — `PRESET_SESSION_CHECKLIST.md` Part 2. Per-beat firing evidence from `features.csv`.
 
