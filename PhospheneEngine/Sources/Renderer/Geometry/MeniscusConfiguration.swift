@@ -52,13 +52,18 @@ public struct MeniscusConfiguration: Sendable {
     public var damping: Float
     /// Vertical exaggeration applied to the height field at projection time.
     public var heightScale: Float
-    /// Half-width of the sideways glow spread at the RESTING camera distance, in NDC-x
-    /// units, scaled per-frame by `spreadTracksDistance`.
+    /// Sideways glow half-width as a FRACTION OF THE PROJECTED ROW SPACING.
     ///
-    /// It is a fraction of the plate's on-screen size, not an absolute: MEN.2a's 0.070
-    /// was calibrated against a camera 1.45 out, and carrying that number to the
-    /// restored resting distance of 3.05 made the spread ~2x too wide for the rows and
-    /// welded the raster into a solid sheet. Rescaled by 1.45/3.05.
+    /// This is the blur Matt named on 2026-08-04, and it was a units error, not taste. It
+    /// used to be an absolute NDC value, which says nothing about whether neighbouring
+    /// rows merge: at the resting camera the plate spans ~0.65 NDC across 45 rows, so rows
+    /// sit ~0.014 apart while the spread was 0.033 — more than twice the gap, so every
+    /// line bled into both neighbours and the raster read as a grey sheet. The whole point
+    /// of the sideways-only spread (anti-reference 5) is that the gaps SURVIVE.
+    ///
+    /// Expressed against row spacing it is scale-free: below 0.5 the lines are separated
+    /// at any camera distance and any grid resolution, which also makes it robust to the
+    /// §6 grid-resolution decision that is still open.
     public var spread: Float
     /// 0 = spread along screen-space X (what the source does), 1 = along the segment's
     /// screen-space normal. MEN.2a task 1a answered this from renders — screen-space X;
@@ -101,6 +106,17 @@ public struct MeniscusConfiguration: Sendable {
     public var dollyPeriod: Float
     /// Drops on/off.
     public var dropsEnabled: Bool
+    /// MEN.3: place drops by STEM REGION (the D-121 divergence) rather than by the
+    /// source's cepstral transform. False restores the MEN.2b faithful base, which is
+    /// kept as the oracle to A/B against — §2's whole argument for building it.
+    public var stemPlacement: Bool
+    /// Deviation above a stem's own running mean at which it drops (D-026 / FA #31 — a
+    /// deviation, never an absolute level), and the minimum gap between two drops from
+    /// the same stem so a sustained note is one impact rather than a machine-gun.
+    public var stemDropThreshold: Float
+    public var stemDropRefractory: Float
+    /// Global scale on the per-region forces in `MeniscusStemDrops.regions`.
+    public var stemDropForce: Float
     /// Drop constants, READ FROM THE SOURCE (Matt's call, 2026-08-03) rather than
     /// guessed — four rounds of guessing missed the rate by more than 100x.
     ///
@@ -137,7 +153,7 @@ public struct MeniscusConfiguration: Sendable {
         gridN: Int = 45,
         damping: Float = 1.0,
         heightScale: Float = 0.32,
-        spread: Float = 0.033,
+        spread: Float = 0.45,
         spreadMode: Int = 0,
         swellAmplitude: Float = 0.10,
         slopeLag: Float = 0.35,
@@ -149,6 +165,10 @@ public struct MeniscusConfiguration: Sendable {
         dollyPeriod: Float = 19.0,
         spreadTracksDistance: Bool = true,
         dropsEnabled: Bool = true,
+        stemPlacement: Bool = true,
+        stemDropThreshold: Float = 0.30,
+        stemDropRefractory: Float = 0.09,
+        stemDropForce: Float = 1.0,
         dropSpectrumScale: Float = 10.0,
         dropGate: Float = 0.02,
         dropForce: Float = 1.0,
@@ -169,6 +189,10 @@ public struct MeniscusConfiguration: Sendable {
         self.dollyPeriod = dollyPeriod
         self.spreadTracksDistance = spreadTracksDistance
         self.dropsEnabled = dropsEnabled
+        self.stemPlacement = stemPlacement
+        self.stemDropThreshold = stemDropThreshold
+        self.stemDropRefractory = stemDropRefractory
+        self.stemDropForce = stemDropForce
         self.dropSpectrumScale = dropSpectrumScale
         self.dropGate = dropGate
         self.dropForce = dropForce

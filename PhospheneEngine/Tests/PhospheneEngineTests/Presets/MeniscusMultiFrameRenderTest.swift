@@ -124,6 +124,8 @@ struct MeniscusMultiFrameRenderTest {
         // the production FFT, which is the only way to see the ported drops — at silence
         // there is no spectrum and the surface falls back to the placeholder swell.
         let drive = try Self.makeAudioDrive(ctx, track: ProcessInfo.processInfo.environment["MENISCUS_TRACK"])
+        let stemDrive: [StemFeatures]? = try ProcessInfo.processInfo.environment["MENISCUS_STEMS"]
+            .map { try WitchlightFixtureDrive.load($0).stems }
         let surface = try MeniscusSurface(
             device: ctx.device, library: lib.library,
             configuration: configuration, pixelFormat: ctx.pixelFormat,
@@ -154,10 +156,14 @@ struct MeniscusMultiFrameRenderTest {
             features.time = Float(frame) * dt
             features.deltaTime = dt
             features.aspectRatio = Float(Self.width) / Float(Self.height)
+            var stems = StemFeatures.zero
             if let drive { drive.advance(frame: frame, into: &features) }
+            // MEN.3: real stems for the stem-region placement. `MENISCUS_STEMS=<fixture>`
+            // uses the committed route-coverage stems rather than synthesis (FA #27).
+            if let stemDrive, frame < stemDrive.count { stems = stemDrive[frame] }
 
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
-            surface.update(features: features, stemFeatures: .zero, commandBuffer: cmd)
+            surface.update(features: features, stemFeatures: stems, commandBuffer: cmd)
             stepMilliseconds.append(surface.lastStepMilliseconds)
 
             let sampled = frame % Self.captureStride == 0 || frame == Self.frameCount - 1
@@ -236,7 +242,13 @@ struct MeniscusMultiFrameRenderTest {
         // Witchlight harness names ("the buffer may be accumulating while the render is
         // not"). Differencing against the backdrop-only render closes it.
         let smallestFootprint = try #require(footprints.min())
-        #expect(smallestFootprint > Self.width * Self.height / 100, """
+        // An ABSOLUTE floor, not a fraction of the frame. The question this gate asks is
+        // "did the line surface reach the screen at all" — a fraction of frame area
+        // silently also encodes how THICK the lines are, so narrowing the spread to stop
+        // the raster welding shut (MEN.3) tripped it at 1562 px on a perfectly good
+        // render. Presence is what is being gated; line weight is a look decision and
+        // does not belong in it.
+        #expect(smallestFootprint > 400, """
             the surface's on-screen footprint fell to \(smallestFootprint) px — the line \
             geometry is not reaching the encoder, or it is projecting off-frame. The height \
             field can be perfectly alive while nothing is drawn.
