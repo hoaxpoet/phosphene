@@ -21,26 +21,51 @@
 // is: sub-pixel-to-2px points leave the field reading black no matter how many there are,
 // while fat ones wash it out. The assertions below are on luminance, which is what the
 // eye actually integrates, rather than on a star count.
+//
+// WL.2-g added the second half. The same M7 had a third defect, on the other side of the
+// same measurement: with the field fixed and the beads correctly sized, the ribbon still
+// carried almost no light. Same frame, same scale:
+//
+//     source render (`00`)   ribbon pixels (luma > 120) 1.048%   peak luma 255
+//     shipped Witchlight     ribbon pixels (luma > 120) 0.119%   peak luma 224
+//
+// Nine times too little light in the stroke — bright cores with real bloom halos in the
+// source against hard pinpoints on a thin thread in ours. Both halves live here because
+// they are one trade-off: brightening the ribbon must not brighten the field, and the
+// only way to hold that is to assert both against the source in the same suite.
 
+import CoreGraphics
 import Foundation
+import ImageIO
 import Testing
+import UniformTypeIdentifiers
 @testable import Presets
 @testable import Renderer
 @testable import Shared
 
 @MainActor
-@Suite("Witchlight backdrop luminance (WL.2-e)")
+@Suite("Witchlight frame statistics vs the source (WL.2-e / WL.2-g)")
 struct WitchlightSkyLuminanceTests {
 
     /// Measured from Matt's render of the inspiration source, 760×428.
     private static let sourceMeanLuma = 10.6
     private static let sourceLitShare = 4.0     // % of pixels above 40/255
 
-    /// Bands: within ~2× of the source on the mean, and no more than ~2.5× its lit share.
-    /// Wide on purpose — the shipped value was 3× and 4.4× out, which is the class of
-    /// regression worth failing on.
-    private static let maxMeanLuma = 22.0
-    private static let maxLitShare = 10.0
+    /// Ratcheted at WL.2-h, and the reason is a correction to what `00` was taken to mean.
+    ///
+    /// `00` is one frame of a preset with enormous dynamic range. Measured across the
+    /// source's own animation (60 frames, ~4.2 s), its lit share swings **1.04 % → 34.41 %**
+    /// — near-black between events, then a frame-filling burst. `00` at 4.0 % is a
+    /// mid-activity frame, so treating it as the resting state set our floor ~7× too high:
+    /// the field never got out of the way and the whole preset sat at a constant glow
+    /// (measured 1.3× range against the source's 33×), which is the "does not resemble the
+    /// original in look and motion" half of Matt's second M7.
+    ///
+    /// These ceilings are therefore set against the source's QUIET frame (mean 7.64,
+    /// lit 1.04 %), not against `00`, with headroom over the achieved 9.42 / 2.66 %. The
+    /// old 22.0 / 10.0 were wide enough to let the floor drift back up without failing.
+    private static let maxMeanLuma = 12.0
+    private static let maxLitShare = 4.5
 
     @Test("The deep-space backdrop reads black, not milky (WL.2-e)")
     func backdropReadsAsDeepSpace() throws {
@@ -84,8 +109,10 @@ struct WitchlightSkyLuminanceTests {
 
         #expect(mean <= Self.maxMeanLuma, """
             backdrop mean luma \(String(format: "%.2f", mean)) exceeds \(Self.maxMeanLuma) — \
-            the field is washing out. The source render measures \(Self.sourceMeanLuma). This is \
-            the M7 defect: a milky star field instead of deep space with a ribbon in it. \
+            the field is washing out. The source measures \(Self.sourceMeanLuma) on `00` and 7.64 \
+            on its QUIET frames, which is what this ceiling is set against. This is the M7 defect: \
+            a milky star field instead of deep space with a ribbon in it, and a floor this high is \
+            also what flattens the preset's dynamic range (WL.2-h). \
             Reduce star SIZE/brightness before reducing count — `07` is legitimately dense.
             """)
         #expect(litShare <= Self.maxLitShare, """
@@ -100,5 +127,112 @@ struct WitchlightSkyLuminanceTests {
             D-037: silence must never render black, and the register needs a visible star \
             field and violet bloom.
             """)
+    }
+
+    // MARK: - The ribbon (WL.2-g)
+
+    /// Measured from the same source render: share of pixels above 120/255, and the
+    /// brightest pixel in the frame.
+    private static let sourceRibbonShare = 1.048   // %
+    private static let sourcePeakLuma = 255.0
+
+    /// Floors, not equalities. `≥ 0.6 %` is most of the way to the source without demanding
+    /// a pixel-for-pixel copy — the register is "a luminous ribbon" (D-121), not the source
+    /// frame. `≥ 250` is the bead core reaching near-white, which is what `08` shows a real
+    /// arc core doing.
+    private static let minRibbonShare = 0.6
+    private static let minPeakLuma = 250.0
+
+    @Test("The ribbon carries light — bright cores, real halos (WL.2-g)")
+    func ribbonCarriesLight() throws {
+        let harness = MultiPassRenderHarness(width: 640, height: 360)
+
+        // A settled, turning drive. The heading has to move or the pen lays a straight line
+        // and the beads pile up along it — which measures overlap, not shading. `settle`
+        // advances the stroke without rendering, so a full 30 s trail is cheap.
+        func frame(_ i: Int) -> FeatureVector {
+            var f = FeatureVector()
+            f.deltaTime = 1.0 / 60
+            f.time = Float(i) / 60
+            f.bass = 0.3; f.mid = 0.3; f.treble = 0.2
+            f.spectralCentroid = 0.12
+            f.valence = 0.2
+            f.arousal = 0.4
+            // A slow harmonic circuit — the pen turns, so the ribbon is a curve with the
+            // bead spacing the source has rather than a collapsed straight stroke.
+            f.tonalPhaseFifths = Float(sin(Double(i) / 220.0) * .pi)
+            f.aspectRatio = 640.0 / 360.0
+            return f
+        }
+        let features = (0..<12).map { frame(1800 + $0) }
+        let stems = [StemFeatures](repeating: StemFeatures(), count: features.count)
+
+        let frames: [[UInt8]] = try harness.render(
+            preset: "Witchlight", features: features, stems: stems, settle: 1800) { $0 }
+        let last = try #require(frames.last, "no frame rendered")
+
+        var ribbon = 0
+        var peak = 0.0
+        let pixels = last.count / 4
+        var hist = [Int](repeating: 0, count: 8)   // >20 >40 >60 >90 >120 >160 >200 >240
+        let edges: [Double] = [20, 40, 60, 90, 120, 160, 200, 240]
+        for i in stride(from: 0, to: last.count, by: 4) {
+            let luma = 0.114 * Double(last[i]) + 0.587 * Double(last[i + 1]) + 0.299 * Double(last[i + 2])
+            if luma > 120 { ribbon += 1 }
+            for (k, e) in edges.enumerated() where luma > e { hist[k] += 1 }
+            peak = max(peak, luma)
+        }
+        let ribbonShare = 100.0 * Double(ribbon) / Double(pixels)
+        print("[hist] " + zip(edges, hist).map {
+            String(format: ">%.0f %.3f%%", $0, 100.0 * Double($1) / Double(pixels))
+        }.joined(separator: "  "))
+        if ProcessInfo.processInfo.environment["RENDER_VISUAL"] != nil {
+            let dir = URL(fileURLWithPath: "/tmp/phosphene_visual/witchlight_ribbon")
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let out = dir.appendingPathComponent("ribbon.png")
+            try writePNG(bgra: last, width: 640, height: 360, to: out)
+            print("[ribbon] frame → \(out.path)")
+        }
+
+        print(String(format: "[ribbon] share %.3f%% (source %.3f%%, floor %.2f%%) | peak %.1f (source %.0f, floor %.0f)",
+                     ribbonShare, Self.sourceRibbonShare, Self.minRibbonShare,
+                     peak, Self.sourcePeakLuma, Self.minPeakLuma))
+
+        #expect(ribbonShare >= Self.minRibbonShare, """
+            ribbon share \(String(format: "%.3f", ribbonShare))% is below \
+            \(Self.minRibbonShare)% — the source measures \(Self.sourceRibbonShare)%. The beads \
+            are carrying no light: hard pinpoints instead of bright cores with bloom halos \
+            (`08`). This is a SHADING fix — widen and brighten the halo term and lift the \
+            line, do NOT enlarge `baseRadius` or raise `emissionHz`, which are solved and \
+            were measured not to move this number.
+            """)
+        #expect(peak >= Self.minPeakLuma, """
+            peak luma \(String(format: "%.1f", peak)) is below \(Self.minPeakLuma) — the \
+            source reaches \(Self.sourcePeakLuma). A bead core has to resolve to near-white \
+            (`08`: hot near-white core inside a cooler, wider, hue-carrying halo). A core \
+            that only lifts the hue's brightest channel tops out below white; the hue lives \
+            in the halo, which is where trait #7 is carried.
+            """)
+    }
+
+    /// `RENDER_VISUAL=1` escape hatch — the numbers say how much light, only the frame says
+    /// whether it is in the right *places*.
+    private func writePNG(bgra: [UInt8], width: Int, height: Int, to url: URL) throws {
+        let cs = try #require(CGColorSpace(name: CGColorSpace.sRGB))
+        let bi = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue
+                              | CGBitmapInfo.byteOrder32Little.rawValue)
+        var copy = bgra
+        let cg = copy.withUnsafeMutableBytes { (ptr: UnsafeMutableRawBufferPointer) -> CGImage? in
+            guard let base = ptr.baseAddress,
+                  let c = CGContext(data: base, width: width, height: height, bitsPerComponent: 8,
+                                    bytesPerRow: width * 4, space: cs, bitmapInfo: bi.rawValue)
+            else { return nil }
+            return c.makeImage()
+        }
+        let img = try #require(cg)
+        let dest = try #require(CGImageDestinationCreateWithURL(
+            url as CFURL, UTType.png.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(dest, img, nil)
+        #expect(CGImageDestinationFinalize(dest))
     }
 }

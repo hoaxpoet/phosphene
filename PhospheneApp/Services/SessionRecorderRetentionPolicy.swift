@@ -64,6 +64,20 @@ enum SessionRecorderRetentionPolicy {
 
     // MARK: - Private helpers
 
+    /// Session folders only — directories whose name parses as a session timestamp.
+    ///
+    /// The name check is load-bearing, not defensive (BUG-082). `phosphene_sessions/` also
+    /// holds permanent non-session directories — `fixturegen-love_rehab`, `fixturegen-so_what`,
+    /// `fixturegen-there_there`, `beat-match-test-session` — and the sort below is
+    /// lexicographic, where letters rank above digits. Unfiltered, those four sorted ABOVE
+    /// every real session, so `lastN10` spent four of its ten slots on them (and could never
+    /// prune them, since they were always inside the kept prefix). Retention was silently
+    /// `lastN6`, and real captures were deleted while still in use.
+    ///
+    /// Filtering here rather than in each policy arm is deliberate: a directory that is not a
+    /// session is not this policy's business at all — it must neither be COUNTED against the
+    /// limit nor be a deletion candidate. The `oneDay`/`oneWeek` arms already consulted
+    /// `dateFromFolderName`; only the `lastN` arms did not, which is the whole defect.
     private static func sessionFolders(in dir: URL, fm: FileManager) -> [(url: URL, name: String)] {
         let contents = (try? fm.contentsOfDirectory(
             at: dir,
@@ -78,6 +92,7 @@ enum SessionRecorderRetentionPolicy {
                 return isDir.boolValue
             }
             .map { ($0, $0.lastPathComponent) }
+            .filter { dateFromFolderName($0.name) != nil }
             .sorted { $0.name > $1.name } // newest first (ISO timestamps sort lexicographically)
     }
 
@@ -127,18 +142,21 @@ enum SessionRecorderRetentionPolicy {
         }
     }
 
-    /// Parses the ISO-8601 timestamp from session folder names like "2026-04-24T21-05-47Z".
+    /// Parses the timestamp from a session folder name like `2026-04-24T21-05-47Z`, or `nil`
+    /// if the name is not a session folder at all.
+    ///
+    /// A strict whole-string format match, replacing a character-substitution routine that
+    /// unconditionally did `index(startIndex, offsetBy: 10)` — which traps on any name
+    /// shorter than ten characters. That was reachable only from the `oneDay`/`oneWeek` arms
+    /// before; BUG-082's fix calls this on EVERY directory, so a folder named `old/` next to
+    /// the sessions would have crashed app launch. The formatter is built per call rather
+    /// than cached in a `static` because `DateFormatter` is not `Sendable`; this runs once
+    /// per folder at launch over a handful of folders.
     private static func dateFromFolderName(_ name: String) -> Date? {
-        // Session folders use hyphens instead of colons in the time component.
-        let normalized = name
-            .replacingOccurrences(of: "T", with: "T")
-            .replacingOccurrences(of: "-", with: ":")
-        // Re-substitute the date separator
-        let fixed = normalized
-            .replacingCharacters(in: normalized.startIndex..<normalized.index(normalized.startIndex, offsetBy: 10),
-                                 with: String(name.prefix(10)))
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withColonSeparatorInTimeZone]
-        return formatter.date(from: fixed + (fixed.hasSuffix("Z") ? "" : "Z"))
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "yyyy-MM-dd'T'HH-mm-ss'Z'"
+        return formatter.date(from: name)
     }
 }

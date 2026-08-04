@@ -1550,6 +1550,74 @@ An MD.6 uplift, split design-then-author so the concept clears its gates before 
 
 ---
 
+### Increment WL.2-e..g — Witchlight: the three M7 fidelity defects ✅ **LANDED 2026-08-03**
+
+**Why:** Matt's 2026-08-03 live M7 returned "it looks nothing like the original preset it was supposed to be based on." Three defects were isolated by measuring our frame against his render of the source (`~/mdrender/gallery/martin - witchcraft reloaded.png`) rather than by discussion, and each was then gated on the source's own numbers so it cannot regress silently.
+
+| # | Defect | Source | Before | After | Gate |
+|---|---|---|---|---|---|
+| WL.2-e | backdrop washed to milky grey | mean luma 10.6 | 31.5 | 13.4 | `WitchlightSkyLuminanceTests` |
+| WL.2-f | heading turns per trail too few | — | 0.35–0.55 | 1.81–2.19 | `ResponseBandTests` (QG.5) |
+| WL.2-g | ribbon carried almost no light | 1.048 % / peak 255 | 0.119 % / 224 | see below | `WitchlightSkyLuminanceTests` |
+
+**WL.2-g — scope:** shading only (`Witchlight.metal` passes 2 and 3, plus the gate). No geometry, no audio routing, no design-doc revision. `baseRadius` / `emissionHz` / `curvatureGain` / `trailSeconds` / the backdrop were all explicitly out of scope and are untouched — three prior rounds of geometry nudging had already been measured not to move this number.
+
+**Root cause, measured rather than felt.** Three separate terms, none of which is "the beads are too dim":
+1. Bead hue is laid down at S 0.80 / V 1.0 (§3.4), so its Rec.601 luma runs 0.29 (violet) to 0.67 (yellow-green). The halo multiplied that raw hue, so on the cool half of the hue circle the halo **could not reach the source's luminance at any profile** — only the pinpoint core ever crossed, and the ribbon read as hard dots on a thread.
+2. Core and halo shared one quad, so the halo could not be wider than the bead — the exact structure `08` shows was unbuildable.
+3. The connecting thread was invisible between beads, so nothing filled the gaps.
+
+**The dead end, recorded because it was the obvious move.** Raising the emissive level — what "make the ribbon brighter" naturally means — moved ribbon share 0.405 % → 0.421 % for a near-doubling, because `wl_age_alpha` scales the whole sprite: level saturates the head into anti-`11`'s uniform white tube while the faded tail stays under threshold either way. **The lever was reach, not level** (`WL_HALO_EXTENT`, quad expanded 2.6× with the core's radial term rescaled back so the bead keeps exactly the size WL.2-f settled): 0.421 % → 0.777 % in one pass. Generalised into `SHADER_CRAFT.md §13` #51–#53.
+
+**Measured outcome.** Gate scene (640×360): ribbon share **0.347 % → 0.707 %** (floor 0.6, source 1.048), peak luma **253.6 → 255** (floor 250). Backdrop held — mean 13.21 → 13.39 (ceiling 22.0), lit 7.30 % → 7.43 % (ceiling 10.0). On the real 2026-08-03 capture, across the eight motion-gate samples: ribbon share **0.28–0.38 % → 0.52–1.12 %**, now bracketing the source's 1.039 %. The metric was validated by re-measuring the source render with it and reproducing the prompt's stated numbers exactly (mean 10.56 / lit 4.077 % / ribbon 1.039 % / peak 255).
+
+**Flash budget — moved, and inside §4's own forecast; flagged for Matt.** Peak full-frame mean luminance 0.0085 → 0.0134 (ceiling 0.35), max Δ/frame 0.0005 → 0.0009 (ceiling 0.06), 0.00 flashes/s unchanged. The increment brief listed "the flash budget moves at all" as a stop condition while its own headroom analysis budgeted ~0.010 of frame mean for a brighter ribbon; the measured +0.005 is half that, and both figures remain 26× and 67× under their ceilings. Recorded rather than waived — **Matt's call at cert whether that reading of the stop condition was intended.**
+
+**Known limitation, NOT introduced here — the head reads as a tube, not as beads.** Near the head, bead spacing is smaller than bead diameter, so the sprites merge into a continuous stroke instead of the discrete grains `02` shows there (`02` in fact has grains near the head merging further back — ours is inverted). This is present identically in the pre-WL.2-g baseline frames and is a **spacing** relationship between `emissionHz`, pen speed and `baseRadius` — all out of scope by construction, and per §7 a geometry constant is not the thing to reach for. Filed here as a finding for Matt, not fixed. At real-session scale the discrete beaded reading is clearly present over most of the trail.
+
+**Done when:** ✅ ribbon share ≥ 0.6 % · ✅ peak luma ≥ 250 · ✅ backdrop gate green · ✅ flash budget and `MultiPassFlashHarnessTests` green · ✅ full engine suite (1735 tests / 248 suites) + app target + `swiftlint --strict` green.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter "Witchlight|ResponseBand"`; `RENDER_VISUAL=1 WITCHLIGHT_SESSION=… swift test --filter WitchlightMotionSequence` then `Scripts/motion_gate.sh witchlight <root>/<track>`.
+
+**Still open for certification:** Matt's live M7 on this build, the D-121 side-by-side, `certified: true`, and `FidelityRubricTests.certifiedPresets` membership. Not part of this increment.
+
+---
+
+### Increment WL.2-h — Witchlight: let the frame breathe ✅ **LANDED 2026-08-03**
+
+**Why:** Matt's M7 on the WL.2-g build: *"looks better, but does not resemble the original preset in look and motion."* Second consecutive M7 in the same verdict class, which per CLAUDE.md's escalation threshold means stop shading and re-diagnose.
+
+**The gap nobody had closed — the source's MOTION had never been observed.** The source ships as a `.gif` alongside the `.png`, in the same directory. WL.1's curation, WL.2's design and all three fix increments were built from two STILLS. Watching it (60 frames, ~4.2 s) inverted a load-bearing conclusion:
+
+| | source | Witchlight (WL.2-g) |
+|---|---|---|
+| lit-pixel share, quiet | 1.04 % | 7.36 % |
+| lit-pixel share, peak | 34.41 % | 9.39 % |
+| **dynamic range** | **33×** | **1.3×** |
+
+**The source breathes; we sat at a constant glow.** It goes near-black between events and detonates into a frame-filling six-spoke star, continuously — and in the source the ribbon is a small supporting scribble while the *flare is the subject*. No amount of ribbon shading reaches that, which is why WL.2-g moved the number and not the verdict.
+
+Two curation errors produced it, both recorded in `docs/VISUAL_REFERENCES/witchlight/README.md` as a correction block:
+1. **`12` was filed as an anti-reference** ("roughly a fifth of sampled frames" — read as a fault rate). In motion it is the source's **signature**, not a defect.
+2. **`00` was treated as the resting state.** At 4.0 % lit it is a mid-activity frame; the source's quiet frames measure 1.04 %. This set our floor ~7× too high and flattened the range from the bottom as well as the top.
+
+**Matt's call (2026-08-03), presented as two independent levers:** take the **darkness** (lower the floor — no photosensitivity implication, since darker cannot create a flash hazard); **do NOT take the detonation** (raising the ceiling collides with §5/WCAG and is a safety decision). Stroke shape stays **parked** as the existing WL.2 open decision.
+
+**What changed.** Pass isolation measured the floor's composition first rather than guessing — bloom 4.75 of the 7.43 % lit share, stars 2.51. So:
+- **Bloom extent** `exp(-r²·26)` → `exp(-r²·70)` and level 0.30 → 0.24. Cutting *extent* not intensity keeps the lobe saturated — it reads as the source's compact violet ball rather than fading to a grey smudge.
+- **Star level** 0.95 → 0.30. Level, not count: every star is still there, so the three parallax depth layers mandatory trait #5 requires survive (the WL.2-e "SIZE/brightness before count" lesson, applied again).
+- **Bead halo reach** `WL_HALO_EXTENT` 2.6 → 3.2. Dropping the field took ribbon share 0.707 % → 0.541 % *with the beads unchanged* — the backdrop had been propping the number up with additive light. Raising per-bead level to compensate moved it only to 0.561 % (§13 #51 again: level is asymptotic), so the fix was reach. The ribbon now carries its own luminance over a near-black ground the way the source's does.
+
+**Measured outcome.** Quiet frame: mean **13.39 → 9.42** (source quiet 7.64), lit **7.43 % → 2.66 %** (source quiet 1.04 %). Ribbon share **0.648 %**, peak 255 — both still over their WL.2-g floors. Gate ceilings **ratcheted 22.0/10.0 → 12.0/4.5**, now set against the source's *quiet* frame rather than `00`, so the floor cannot drift back up without failing.
+
+**Done when:** ✅ quiet-state floor down to the source's register · ✅ ribbon gate still green over the darker ground · ✅ gate ratcheted so it holds · ✅ flash budget unmoved or improved · ✅ full suites green.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter "Witchlight|ResponseBand"`; motion-sequence render + `Scripts/motion_gate.sh`.
+
+**Not taken, on Matt's instruction:** the flare detonation (§5 stands) and the stroke shape (still the WL.2 open decision). Certification still needs a live M7 on this build plus the D-121 side-by-side.
+
+---
+
 ### Increment MD.7 — Ray-march-composing inspired-by uplifts (formerly Hybrid tier)
 
 **Scope (revised per `MILKDROP_STRATEGY.md` §12 / D-103 amendment / D-107):** Inspired-by uplifts that compose `mv_warp` + `ray_march` against a static camera (D-029). **Not a tier** — these are `milkdrop_inspired` presets that happen to use the ray-march backdrop primitive; authoring choice, not classification. The MD.7.0 spike (single-preset proof of the `mv_warp` + `ray_march` composition) lands as one such uplift; subsequent ray-march-composing uplifts batch into the MD.6 work stream. The architectural composition has only Volumetric Lithograph as prior production proof (and VL's `mv_warp` plays against a ray-march scene that is not itself feedback-warped), so the spike is still a high-value increment under inspired-by.

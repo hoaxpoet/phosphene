@@ -2,7 +2,7 @@
   "name": "Fractal Tree",
   "family": "fractal",
   "duration": 30,
-  "description": "Recursive binary tree - low-fidelity graphic branch-fan. The whole tree reaches on bass transients (branch count, trunk length and thickness move together as one gesture), the canopy opens as the spectrum changes, leaf colour follows the harmony along an amber-to-green arc, brightness carries the section-scale arc, and beats land as accents on the tips.",
+  "description": "Recursive binary tree - low-fidelity graphic branch-fan. On every beat a different handful of branches flicks outward and brightens, like fingers tapping; the canopy drifts with the bass underneath them, opens as the spectrum changes, takes its leaf colour from the harmony along an amber-to-green arc, and brightens across a section.",
   "author": "Matt",
   "passes": [
     "mesh_shader"
@@ -36,7 +36,12 @@
   "audio_routes": [
     {
       "route": "canopy_reach",
-      "primitive": "bassDev",
+      "primitive": "bassRel",
+      "kind": "continuous"
+    },
+    {
+      "route": "branch_activation",
+      "primitive": "beatPhase01",
       "kind": "continuous"
     },
     {
@@ -55,9 +60,9 @@
       "kind": "continuous"
     },
     {
-      "route": "beat_accent",
-      "primitive": "beatBass",
-      "kind": "accent"
+      "route": "silence_gate",
+      "primitive": "pulseAmp01",
+      "kind": "continuous"
     }
   ]
 }

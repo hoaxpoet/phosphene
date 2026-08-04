@@ -122,52 +122,133 @@ struct FractalTreeMeshRenderTest {
             """)
     }
 
-    // MARK: - Motion
+    /// Renders CONSECUTIVE frames spanning about two beats, so the taps can be seen as a
+    /// sequence rather than inferred. The hero route is a temporal effect — a contact
+    /// sheet of energy-ranked stills is structurally incapable of showing it, which is
+    /// how FTR.2 shipped a motion regression past every visual check it had.
+    @Test("beat strip: consecutive frames across two beats (RENDER_VISUAL=1)")
+    func beatStrip() throws {
+        guard let outputDirectory = try Self.makeOutputDirectory() else { return }
 
-    /// Percentile stills cannot judge a transient-driven route: ranking frames by energy
-    /// hides how often the gesture actually fires, so a tree that blooms on every beat
-    /// reads identically to one that blooms twice a track. This walks CONTIGUOUS frames
-    /// and reports the per-frame trajectory (`docs/PRESET_SESSION_CHECKLIST.md` Part 1 §7).
-    @Test("the canopy gesture fires repeatedly across contiguous real-music frames")
-    func canopyFiresOverTime() throws {
+        let ctx = try MetalContext()
+        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat,
+                                  loadBuiltIn: true)
+        let preset = try #require(loader.presets.first { $0.descriptor.name == "Fractal Tree" })
+        let generator = MeshGenerator(
+            device: ctx.device, pipelineState: preset.pipelineState,
+            configuration: .init(maxVerticesPerMeshlet: 252, maxPrimitivesPerMeshlet: 126,
+                                 meshThreadCount: preset.descriptor.meshThreadCount))
+
         let base = try #require(
             Bundle.module.url(forResource: "route_coverage", withExtension: nil))
         let series = try SessionColumnSeries.load(
             directory: base.appendingPathComponent(Self.driveTrack))
         guard let time = series.floatSeries("time"),
-              let bassDev = series.floatSeries("bassDev") else {
-            throw FractalTreeHarnessError.setupFailed("time/bassDev columns absent")
+              let phase = series.floatSeries("beatPhase01") else { return }
+
+        // Start just before a beat boundary so the strip opens on the attack.
+        let warm = (0..<min(time.count, phase.count)).filter { (time[$0] ?? 0) >= 10.0 }
+        guard let start = warm.first(where: { row in
+            guard let next = warm.first(where: { $0 == row + 1 }) else { return false }
+            return (phase[next] ?? 0) < (phase[row] ?? 0) - 0.5
+        }) else { return }
+
+        let target = try Self.makeTexture(ctx)
+        var frames: [(label: String, pixels: [UInt8])] = []
+        // Every 4th frame over ~2 beats at 60 fps.
+        for step in stride(from: 0, to: 72, by: 6) {
+            let row = min(start + step, warm.last ?? start)
+            var fv = Self.features(series, row: row)
+            fv.aspectRatio = Float(Self.width) / Float(Self.height)
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
+            Self.encode(cmd, into: target, generator: generator, features: fv)
+            cmd.commit()
+            cmd.waitUntilCompleted()
+            frames.append(("t\(step)", Self.read(target)))
+        }
+        Self.writeContactSheet(frames, to: outputDirectory, name: "beat_strip.png")
+        print("[fractal-tree] beat strip: \(outputDirectory.path)/beat_strip.png")
+    }
+
+    // MARK: - Motion
+
+    /// The gate that would have caught the FTR.2 regression before Matt saw it.
+    ///
+    /// FTR.2 shipped a canopy that sat at its floor 82 % of the time and then jumped 21
+    /// branches at once. Every still-based check passed, because a still cannot tell
+    /// "moves in small steps constantly" from "slams between two extremes". Matt's
+    /// verdict live was *"either too excited or completely inert … fingers are not
+    /// really visible."* So this measures the CHARACTER of the motion, not its presence:
+    /// how often the silhouette changes, and by how much when it does.
+    ///
+    /// The reference character is the pre-FTR.2 preset Matt described as fingers tapping:
+    /// changes on ~12 % of frames, average jump ~2 branches, almost never at the floor.
+    @Test("the canopy drifts in small steps and the taps fire per beat")
+    func motionCharacterIsFingersNotSlams() throws {
+        let base = try #require(
+            Bundle.module.url(forResource: "route_coverage", withExtension: nil))
+        let series = try SessionColumnSeries.load(
+            directory: base.appendingPathComponent(Self.driveTrack))
+        guard let time = series.floatSeries("time"),
+              let bassRel = series.floatSeries("bassRel"),
+              let beatPhase = series.floatSeries("beatPhase01") else {
+            throw FractalTreeHarnessError.setupFailed("time/bassRel/beatPhase01 absent")
         }
 
         // The shader's own arithmetic, mirrored — this is what the geometry sees.
-        let rows = (0..<min(time.count, bassDev.count)).filter { (time[$0] ?? 0) >= 10.0 }
-        let reach = rows.map { row -> Double in
-            let bd = Double(max(bassDev[row] ?? 0, 0))
-            return bd / (bd + 0.12)
+        let rows = (0..<min(time.count, bassRel.count)).filter { (time[$0] ?? 0) >= 10.0 }
+        let counts = rows.map { row -> Int in
+            let reach = 1.0 / (1.0 + exp(-Double(bassRel[row] ?? 0) * 3.0))
+            return min(7 + Int(reach * 56.0), 63)
         }
-        let counts = reach.map { 7 + Int($0 * 56.0) }
-
-        let rest = counts.filter { $0 <= 9 }.count
-        let peaks = zip(counts, counts.dropFirst()).filter { $0 < 20 && $1 >= 20 }.count
         let seconds = Double((time[rows.last!] ?? 0) - (time[rows.first!] ?? 0))
-        let sorted = counts.sorted()
+
+        let steps = zip(counts, counts.dropFirst()).map { abs($1 - $0) }
+        let moved = steps.filter { $0 > 0 }
+        let changeRate = 100 * Double(moved.count) / Double(steps.count)
+        let meanJump = moved.isEmpty ? 0 : Double(moved.reduce(0, +)) / Double(moved.count)
+        let atFloor = 100 * Double(counts.filter { $0 <= 9 }.count) / Double(counts.count)
+
+        // Taps fire once per beat — count beat-phase wraps.
+        let phases = rows.compactMap { beatPhase[$0] }
+        let beats = zip(phases, phases.dropFirst()).filter { $1 < $0 - 0.5 }.count
+
         print("""
             [fractal-tree/motion] \(counts.count) frames over \
-            \(String(format: "%.1f", seconds)) s — branch count \
-            min \(sorted.first ?? 0) p50 \(sorted[sorted.count / 2]) max \(sorted.last ?? 0); \
-            at rest \(String(format: "%.1f", 100 * Double(rest) / Double(counts.count)))%; \
-            \(peaks) blooms = \(String(format: "%.2f", Double(peaks) / max(seconds, 1)))/s
+            \(String(format: "%.1f", seconds)) s — canopy changes on \
+            \(String(format: "%.1f", changeRate))% of frames, mean jump \
+            \(String(format: "%.1f", meanJump)), at floor \
+            \(String(format: "%.1f", atFloor))%; taps fire on \(beats) beats = \
+            \(String(format: "%.2f", Double(beats) / max(seconds, 1)))/s
             """)
 
-        #expect(sorted.last! < 63, """
-            the canopy still flat-tops at the 63-branch ceiling — the soft knee is \
-            supposed to make the maximum unreachable by construction.
+        // (a) NOT INERT. FTR.2 sat at the floor 82% of the time.
+        #expect(atFloor < 25, """
+            the canopy sits at its floor \(String(format: "%.1f", atFloor))% of the time — \
+            this is the FTR.2 "completely inert" failure. A transient driver like \
+            bass_dev does exactly this; the canopy needs a CONTINUOUS one.
             """)
-        // A transient route must fire often enough to read as rhythm rather than as an
-        // occasional event. Below ~0.3/s the tree looks static between rare blooms.
-        #expect(Double(peaks) / max(seconds, 1) > 0.3, """
-            the canopy blooms only \(peaks) times in \(String(format: "%.1f", seconds)) s — \
-            too rare to read as musical response. The tree would look static.
+
+        // (b) NOT SLAMMING. FTR.2 averaged a 21.5-branch jump; the preset Matt liked
+        // averaged 1.9. Above ~8 the silhouette teleports instead of growing.
+        #expect(meanJump < 8, """
+            the canopy moves \(String(format: "%.1f", meanJump)) branches per change — \
+            this is the FTR.2 "too excited" failure. Individual branches must appear a \
+            few at a time for the motion to read as fingers rather than as a jump cut.
+            """)
+
+        // (c) ACTUALLY MOVING. A perfectly smooth driver that never changes the integer
+        // count would pass (a) and (b) trivially.
+        #expect(changeRate > 5, """
+            the canopy changes on only \(String(format: "%.1f", changeRate))% of frames — \
+            too static to read as alive.
+            """)
+
+        // (d) THE HERO FIRES. Per-branch taps are driven by beat phase, so if the beat
+        // grid never advances there is no rhythm regardless of how the canopy behaves.
+        #expect(Double(beats) / max(seconds, 1) > 0.5, """
+            only \(beats) beats in \(String(format: "%.1f", seconds)) s — the per-branch \
+            taps have no clock to fire on.
             """)
     }
 
@@ -246,6 +327,15 @@ struct FractalTreeMeshRenderTest {
         f.spectralFlux = value("spectralFlux")
         f.tonalPhaseFifths = value("tonal_phase_fifths")
         f.arousal = value("arousal")
+        // FTR.3 per-branch activation. Leaving these at zero silently pins the canopy
+        // to its 7-branch silence floor and fires no taps at all — the harness would
+        // then report the hero route as dead when it is only unmapped. This is the
+        // Faraday failure (a route measured at r = −0.019 that was really +0.868), and
+        // it is why the drive builder must be updated in the SAME commit as any new route.
+        f.beatPhase01 = value("beatPhase01")
+        f.pulsePhase01 = value("pulse_phase01")
+        f.pulseAmp01 = value("pulse_amp01")
+        f.pulseBeatIndex = value("pulse_beat_index")
         // Context the shader reads directly.
         f.bass = value("bass")
         f.mid = value("mid")
@@ -376,7 +466,8 @@ struct FractalTreeMeshRenderTest {
     /// One horizontal strip, drive frames left to right. The whole point is seeing the
     /// range in a single image — a folder of PNGs does not show a flat response.
     private static func writeContactSheet(_ frames: [(label: String, pixels: [UInt8])],
-                                          to directory: URL) {
+                                          to directory: URL,
+                                          name: String = "contact_sheet.png") {
         guard !frames.isEmpty else { return }
         let sheetWidth = width * frames.count
         var sheet = [UInt8](repeating: 0, count: sheetWidth * height * 4)
@@ -388,7 +479,7 @@ struct FractalTreeMeshRenderTest {
             }
         }
         writeImage(sheet, width: sheetWidth, height: height,
-                   to: directory.appendingPathComponent("contact_sheet.png"))
+                   to: directory.appendingPathComponent(name))
     }
 
     private static func writeImage(_ bgra: [UInt8], width w: Int, height h: Int, to url: URL) {
