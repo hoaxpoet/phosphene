@@ -92,12 +92,22 @@ struct MeniscusStemDrops {
     /// This row of the routing table was specified from the start and was simply never
     /// implemented, which is why Matt measured drops that looked identical loud or quiet.
     private var loudness: Float = 0
-    /// Previous grid beat phase, for wrap detection.
-    private var previousBeatPhase: Float = 0
-    /// Seconds since the last grid beat. Grid sync falls back to onset-driven when the
-    /// grid is absent or stalled — `barPhase01` cannot be tested directly for presence
-    /// because it is legitimately 0 at every downbeat.
+    // --- Predictive beat clock (MEN.3c) ---------------------------------------------
+    //
+    // `beatPhase01` arrives at 10 Hz — a STAIR-STEP held ~100 ms, not a per-frame ramp —
+    // so firing on its wrap edge both quantises the timing and MISSES BEATS: measured on
+    // Matt's session, 55 edges detected against 72 actual beats, a 24 % miss rate that
+    // reads as erratic. Running a local phase clock between updates fixes both.
+    private var localPhase: Float = 0
+    private var beatPeriod: Float = 0.5
+    private var previousBeatPhase: Float = -1
+    private var sinceGridUpdate: Float = 0
+    /// Guards one fire per beat.
+    private var firedThisBeat = false
     private var sinceGridBeat: Float = 99
+    /// Whether the cached grid is delivering updates; false ⇒ degrade to onset-driven
+    /// rather than freezing the percussion.
+    private var gridLive = false
 
     private var envelopes = [Float](repeating: 0, count: 4)
     private var previous = [Float](repeating: 0, count: 4)
@@ -109,6 +119,8 @@ struct MeniscusStemDrops {
     private(set) var lastPerRegion = [Int](repeating: 0, count: 4)
     /// Per-drop force this step, parallel to `lastSites` — the intensity gate reads it.
     private(set) var lastForces: [Float] = []
+    /// The loudness-derived intensity multiplier applied this step (§5's row).
+    private(set) var lastIntensity: Float = 0
 
     // MARK: - Per frame
 
@@ -145,17 +157,9 @@ struct MeniscusStemDrops {
         loudness += (instantLoudness - loudness) * (1 - exp(-dt / 0.9))
         let intensity = configuration.stemIntensityFloor
             + (1 - configuration.stemIntensityFloor) * min(loudness / 0.55, 1.8)
+        lastIntensity = intensity
 
-        // GRID BEAT, for the drums row. `beatPhase01` sawtooths 0→1 across each beat of
-        // the CACHED BeatGrid, so a wrap is a grid beat.
-        let beatPhase = features.beatPhase01
-        let gridBeat = previousBeatPhase > 0.75 && beatPhase < 0.25
-        previousBeatPhase = beatPhase
-        sinceGridBeat = gridBeat ? 0 : sinceGridBeat + dt
-        // A grid is "live" if a beat has arrived recently. 2 s covers anything down to
-        // 30 BPM, and a stalled or absent grid degrades to the onset path rather than
-        // silencing the drums entirely.
-        let gridLive = sinceGridBeat < 2.0
+        let gridBeat = advanceBeatClock(features: features, dt: dt, configuration: configuration)
 
         let drives: [Float] = [
             max(stems.drumsEnergyDev, stems.drumsBeat),
@@ -227,6 +231,64 @@ struct MeniscusStemDrops {
         }
     }
 
+    // MARK: - Predictive beat clock
+
+    /// Advance the local beat clock and report whether a percussion drop should fire now.
+    ///
+    /// Split out of `step` because it is a distinct concern: `step` decides WHICH stem
+    /// strikes WHERE, this decides WHEN.
+    private mutating func advanceBeatClock(
+        features: FeatureVector,
+        dt: Float,
+        configuration: MeniscusConfiguration
+    ) -> Bool {
+        // PREDICTIVE BEAT CLOCK. Fires `stemLeadTime` BEFORE the grid beat, because the
+        // ripple is an impulse into a wave field and has to GROW: measured, the visible
+        // slope response is only 14 % one frame after impact, ~30 % at 67 ms and ~50 % at
+        // 167 ms. So a perfectly-timed drop still reads late — the eye tracks the ring
+        // forming, not the impact. Leading by the ripple's perceptual onset puts the
+        // visible event on the beat. This is the one thing the CACHED grid buys that a
+        // live detector never could: it knows where the next beat WILL be.
+        let reportedPhase = features.beatPhase01
+        if reportedPhase != previousBeatPhase {
+            // A fresh 10 Hz sample: estimate the beat period from how far phase moved,
+            // then re-sync the local clock to it.
+            if previousBeatPhase >= 0, sinceGridUpdate > 1e-4 {
+                var advanced = reportedPhase - previousBeatPhase
+                if advanced < 0 { advanced += 1 }              // wrapped
+                if advanced > 0.02 && advanced < 0.9 {
+                    let measured = sinceGridUpdate / advanced
+                    if measured > 0.2 && measured < 2.0 {
+                        beatPeriod += (measured - beatPeriod) * 0.25
+                    }
+                }
+            }
+            if reportedPhase < localPhase - 0.5 || reportedPhase > localPhase + 0.5 {
+                firedThisBeat = false                          // resync crossed a beat
+            }
+            localPhase = reportedPhase
+            previousBeatPhase = reportedPhase
+            sinceGridUpdate = 0
+            sinceGridBeat = 0
+        } else {
+            sinceGridUpdate += dt
+            sinceGridBeat += dt
+        }
+        // Advance the local clock between updates so timing is frame-accurate.
+        localPhase += dt / max(beatPeriod, 0.05)
+        if localPhase >= 1 { localPhase -= 1; firedThisBeat = false }
+
+        // Fire when the NEXT beat is `stemLeadTime` away.
+        let leadPhase = 1 - min(configuration.stemLeadTime / max(beatPeriod, 0.05), 0.9)
+        let gridBeat = !firedThisBeat && localPhase >= leadPhase
+        if gridBeat { firedThisBeat = true }
+        // A grid is "live" if a beat has arrived recently. 2 s covers anything down to
+        // 30 BPM, and a stalled or absent grid degrades to the onset path rather than
+        // silencing the drums entirely.
+        gridLive = sinceGridBeat < 2.0
+        return gridBeat
+    }
+
     mutating func reset() {
         for i in envelopes.indices { envelopes[i] = 0; previous[i] = 0; refractory[i] = 0 }
         lastSites.removeAll()
@@ -234,7 +296,8 @@ struct MeniscusStemDrops {
         for i in lastPerRegion.indices { lastPerRegion[i] = 0 }
         rng = 0x2545_F491_4F6C_DD1D
         loudness = 0
-        previousBeatPhase = 0
+        localPhase = 0; beatPeriod = 0.5; previousBeatPhase = -1
+        sinceGridUpdate = 0; firedThisBeat = false
     }
 
     // MARK: - Impact

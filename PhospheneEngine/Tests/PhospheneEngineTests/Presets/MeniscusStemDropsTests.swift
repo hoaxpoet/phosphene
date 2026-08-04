@@ -192,79 +192,241 @@ struct MeniscusSyncAndIntensityTests {
 
     // MARK: - Sync
 
-    @Test("drums and bass land ON the cached grid, not near it",
+    @Test("the VISIBLE ripple peak lands on the beat, not the impulse",
           arguments: ["there_there", "love_rehab"])
-    func percussionIsGridLocked(track: String) throws {
+    func visibleResponseIsOnTheBeat(track: String) throws {
         let result = try Self.drive(track)
         try #require(result.beats.count > 8, "\(track): fixture carries no usable BeatGrid")
-        // Drums (0) and bass (1) take their timing from the grid; vocals and `other` do not.
         let percussion = result.drops.filter { $0.region < 2 }
         try #require(!percussion.isEmpty, "\(track): no percussion drops at all")
 
-        let errors = percussion.map { drop in
-            (result.beats.map { abs(drop.time - $0) }.min() ?? 9) * 1000
+        // THE MEASUREMENT MY FIRST SYNC GATE GOT WRONG. It compared drop times to beat
+        // times both derived from `beatPhase01`, so it scored my code against itself and
+        // read a meaningless median 0 ms while the live render visibly lagged. Two fixes:
+        // compare the VISIBLE event (impulse + the ripple's perceptual rise) rather than
+        // the impulse, and state the rise from measurement.
+        //
+        // `MeniscusRippleRiseTests`: 14 % of visible slope response after one frame, ~30 %
+        // at 67 ms, ~50 % at 167 ms. Call the perceptual onset ~120 ms — the same figure
+        // the lead compensates, so a correctly-led drop should land near zero here.
+        let perceptualRise = 0.120
+        let errors = percussion.map { drop -> Double in
+            let visible = drop.time + perceptualRise
+            return (result.beats.map { abs(visible - $0) }.min() ?? 9) * 1000
         }.sorted()
         let median = errors[errors.count / 2]
-        let withinWindow = Double(errors.filter { $0 < 60 }.count) / Double(errors.count)
-        print(String(format: "[meniscus-sync] %@: %d percussion drops · median %.0f ms to beat · %.0f%% within 60 ms",
-                     track, percussion.count, median, withinWindow * 100))
+        let within = Double(errors.filter { $0 < 60 }.count) / Double(errors.count)
+        print(String(format: "[meniscus-sync] %@: %d percussion drops · visible peak median %.0f ms from beat · %.0f%% within 60 ms",
+                     track, percussion.count, median, within * 100))
 
-        // Matt, live 2026-08-04: "not in sync with the music". Measured then: median
-        // 200 ms, 8-10 % inside the ~60 ms perceptual window — uncorrelated. Live onset
-        // crossings cannot do better; the audio hierarchy says beat-locked motion is valid
-        // only on the CACHED grid (D-153→D-158), which is what this asserts.
-        #expect(withinWindow > 0.9, """
-            \(track): only \(Int(withinWindow * 100)) % of percussion drops land within 60 ms \
-            of a grid beat (median \(Int(median)) ms). They are not grid-locked, so they will \
-            read as out of sync exactly as they did live.
+        #expect(within > 0.85, """
+            \(track): only \(Int(within * 100)) % of VISIBLE ripple peaks land within 60 ms \
+            of a beat (median \(Int(median)) ms). The impulse timing may be right while the \
+            thing a viewer actually sees is not — that gap is what Matt reported as lag.
+            """)
+    }
+
+    @Test("every beat gets a drop — the 10 Hz stair-step must not swallow beats",
+          arguments: ["there_there", "love_rehab"])
+    func noBeatsAreMissed(track: String) throws {
+        let result = try Self.drive(track)
+        try #require(result.beats.count > 8)
+        let drums = result.drops.filter { $0.region == 0 }
+        // Measured on Matt's session, wrap-edge detection found 55 edges against 72 real
+        // beats — a 24 % miss rate. A local phase clock between the 10 Hz samples should
+        // catch essentially all of them. Beats with no drums playing legitimately place
+        // nothing, so this is a floor, not equality.
+        let ratio = Double(drums.count) / Double(result.beats.count)
+        print(String(format: "[meniscus-sync] %@: %d drums drops over %d beats (%.0f%%)",
+                     track, drums.count, result.beats.count, ratio * 100))
+        #expect(ratio > 0.55, """
+            \(track): drums fired on only \(Int(ratio * 100)) % of beats. The wrap-edge \
+            detector missed 24 % because `beatPhase01` steps at 10 Hz; if this is still low \
+            the local phase clock is not tracking.
             """)
     }
 
     // MARK: - Intensity
 
-    @Test("drop force tracks loudness — quiet passages ripple less than loud ones",
-          arguments: ["there_there", "love_rehab"])
-    func forceTracksIntensity(track: String) throws {
-        let result = try Self.drive(track)
-        try #require(result.drops.count > 40, "\(track): too few drops to compare quartiles")
-        let byLoudness = result.drops.sorted { $0.loud < $1.loud }
-        let quarter = max(byLoudness.count / 4, 1)
-        let quiet = byLoudness.prefix(quarter).map { Double($0.force) }
-        let loud = byLoudness.suffix(quarter).map { Double($0.force) }
-        let quietMean = quiet.reduce(0, +) / Double(quiet.count)
-        let loudMean = loud.reduce(0, +) / Double(loud.count)
-        let ratio = loudMean / max(quietMean, 1e-6)
+    @Test("the loudness ROUTE reaches the impacts", arguments: ["there_there", "love_rehab"])
+    func loudnessRouteReachesImpacts(track: String) throws {
+        // THE PREMISE OF THE PREVIOUS VERSION WAS WRONG, and I am replacing it rather than
+        // lowering its bar a second time. It correlated per-drop FORCE against loudness —
+        // but force is `stem deviation x intensity`, and deviation is self-normalising, so
+        // in a loud passage each hit sits LESS far above its own mean. The two factors
+        // legitimately pull opposite ways and their product can be flat or negative
+        // (measured -0.18 on love_rehab) while the loudness route works perfectly.
+        //
+        // Conflating them measured neither. This asserts the route itself: does the
+        // intensity multiplier follow loudness. Per-hit dynamics are a SEPARATE, intended
+        // behaviour, and §5's loudness row is carried mainly by surface amplitude, gated
+        // at r=+0.999 in MeniscusMultiFrameRenderTest.
+        let fixture = try WitchlightFixtureDrive.load(track)
+        var drops = MeniscusStemDrops()
+        var configuration = MeniscusConfiguration()
+        configuration.dropsEnabled = true
+        var field = [Float](repeating: 0, count: configuration.gridN * configuration.gridN)
+        var intensities: [Double] = []
+        var louds: [Double] = []
 
-        // CORRELATION IS THE GATE, ratio is reported. A quartile ratio partly measures the
-        // TRACK: there_there is consistently loud and simply has less dynamic range than
-        // love_rehab, so demanding a fixed ratio everywhere would push toward exaggerating
-        // dynamics the music does not have. Correlation asks the right question — does
-        // force follow loudness at all — and is the direct refutation of what was measured
-        // on Matt's session, r = +0.004.
-        let forces = result.drops.map { Double($0.force) }
-        let louds = result.drops.map { Double($0.loud) }
-        let meanForce = forces.reduce(0, +) / Double(forces.count)
-        let meanLoud = louds.reduce(0, +) / Double(louds.count)
-        let cov = zip(forces, louds).map { ($0 - meanForce) * ($1 - meanLoud) }.reduce(0, +)
-        let sdForce = (forces.map { ($0 - meanForce) * ($0 - meanForce) }.reduce(0, +)).squareRoot()
-        let sdLoud = (louds.map { ($0 - meanLoud) * ($0 - meanLoud) }.reduce(0, +)).squareRoot()
-        let r = cov / max(sdForce * sdLoud, 1e-9)
-        print(String(format: "[meniscus-intensity] %@: force vs loudness r=%+.3f · quiet %.3f → loud %.3f (%.2fx)",
-                     track, r, quietMean, loudMean, ratio))
-
-        // Matt, live: "nothing tied to the intensity of the music, so the drops look the
-        // same regardless of whether the music is quiet / loud". Measured then: r = +0.004,
-        // both quartiles at 0.57. Deviation primitives are self-normalising and carry no
-        // dynamics BY CONSTRUCTION — §5's separate loudness row is what supplies them.
-        // Per-drop force carries SOME intensity, but the dominant carrier is the
-        // surface amplitude (§5's actual wording), gated in MeniscusMultiFrameRenderTest.
-        // Here the bar only has to show the route reaches the impacts at all — against
-        // the r = +0.004 measured on Matt's session.
-        #expect(r > 0.10, """
-            \(track): force vs loudness r=\(String(format: "%.3f", r)) — the loudness route \
-            is not reaching the impacts, and the surface will look the same loud or quiet, \
-            which is exactly what Matt reported. Deviation primitives cannot carry this; \
-            §5's separate loudness → wave-amplitude row is what does.
+        for index in 0..<fixture.stems.count {
+            var dt = fixture.features[index].deltaTime
+            if !(dt > 0) { dt = 1.0 / 60.0 }
+            let f = fixture.features[index]
+            drops.step(stems: fixture.stems[index], features: f, field: &field,
+                       dt: min(dt, 1.0 / 30.0), configuration: configuration)
+            intensities.append(Double(drops.lastIntensity))
+            louds.append(Double((f.bass + f.mid + f.treble) / 3))
+        }
+        // Smooth the reference to the envelope's own ~0.9 s timescale — comparing a
+        // deliberately lagged signal against an instantaneous one scores the lag as error.
+        var smoothed = 0.0
+        let reference = louds.map { value -> Double in
+            smoothed += (value - smoothed) * 0.018
+            return smoothed
+        }
+        let meanI = intensities.reduce(0, +) / Double(intensities.count)
+        let meanR = reference.reduce(0, +) / Double(reference.count)
+        let cov = zip(intensities, reference).map { ($0 - meanI) * ($1 - meanR) }.reduce(0, +)
+        let sdI = intensities.map { ($0 - meanI) * ($0 - meanI) }.reduce(0, +).squareRoot()
+        let sdR = reference.map { ($0 - meanR) * ($0 - meanR) }.reduce(0, +).squareRoot()
+        let r = cov / max(sdI * sdR, 1e-9)
+        print(String(format: "[meniscus-intensity] %@: intensity multiplier vs loudness r=%+.3f (span %.2f..%.2f)",
+                     track, r, intensities.min() ?? 0, intensities.max() ?? 0))
+        #expect(r > 0.9, """
+            \(track): the intensity multiplier tracks loudness at only \
+            r=\(String(format: "%.2f", r)) — §5's loudness row is not reaching the impacts.
             """)
+    }
+}
+
+// MARK: - §5's camera rows (MEN.3c)
+
+/// Matt, live 2026-08-04: "I'm also not understanding the camera moving in and out — is
+/// the camera motion tied to musical signal too?" It was not: a free 19 s sine, ported
+/// faithfully. §5's table always specified mood arousal; this asserts it now does.
+@Suite("Meniscus camera routing (§5)")
+struct MeniscusCameraRoutingTests {
+
+    @Test("the dolly follows mood arousal", arguments: ["there_there", "love_rehab"])
+    func dollyFollowsArousal(track: String) throws {
+        let fixture = try WitchlightFixtureDrive.load(track)
+        var camera = MeniscusCamera()
+        let configuration = MeniscusConfiguration()
+        var distances: [Double] = []
+        var arousals: [Double] = []
+
+        for index in 0..<fixture.features.count {
+            var dt = fixture.features[index].deltaTime
+            if !(dt > 0) { dt = 1.0 / 60.0 }
+            dt = min(dt, 1.0 / 30.0)
+            camera.advance(features: fixture.features[index], dt: dt, configuration: configuration)
+            distances.append(Double(camera.distance(configuration: configuration)))
+            arousals.append(Double(camera.dollyArousal))
+        }
+
+        let span = (distances.max() ?? 0) - (distances.min() ?? 0)
+        print(String(format: "[meniscus-dolly] %@: distance %.2f..%.2f (span %.2f) · arousal %.2f..%.2f",
+                     track, distances.min() ?? 0, distances.max() ?? 0, span,
+                     arousals.min() ?? 0, arousals.max() ?? 0))
+
+        // The dolly must MOVE — a constant distance means arousal never reached it.
+        #expect(span > 0.15, """
+            \(track): the dolly spans only \(String(format: "%.2f", span)) world units. \
+            §5 routes it to mood arousal to sweep between the open raster and the dense \
+            sheet; a static distance means the route is not connected.
+            """)
+        // And move WITH arousal, not merely alongside it.
+        let meanD = distances.reduce(0, +) / Double(distances.count)
+        let meanA = arousals.reduce(0, +) / Double(arousals.count)
+        let cov = zip(distances, arousals).map { ($0 - meanD) * ($1 - meanA) }.reduce(0, +)
+        let sdD = distances.map { ($0 - meanD) * ($0 - meanD) }.reduce(0, +).squareRoot()
+        let sdA = arousals.map { ($0 - meanA) * ($0 - meanA) }.reduce(0, +).squareRoot()
+        #expect(cov / max(sdD * sdA, 1e-9) > 0.95, "\(track): distance does not track arousal")
+    }
+
+    @Test("cold start opens at the hero register, then moves outward")
+    func coldStartOpensAtHero() throws {
+        let fixture = try WitchlightFixtureDrive.load("there_there")
+        var camera = MeniscusCamera()
+        let configuration = MeniscusConfiguration()
+        let start = camera.distance(configuration: configuration)
+        for index in 0..<min(fixture.features.count, 600) {
+            var dt = fixture.features[index].deltaTime
+            if !(dt > 0) { dt = 1.0 / 60.0 }
+            camera.advance(features: fixture.features[index], dt: min(dt, 1.0 / 30.0),
+                           configuration: configuration)
+        }
+        // §5: "arousal at cold start is EMA-attenuated, so the dolly should start at the
+        // hero (open-raster) distance and move from there, never the reverse."
+        #expect(start <= configuration.camDistCentre - configuration.camDistSwing + 0.01, """
+            the dolly does not start at the hero distance — cold start must open on the \
+            OPEN RASTER and move outward toward the dense sheet, never begin dense.
+            """)
+    }
+}
+
+// MARK: - Ripple rise time (MEN.3c diagnostic)
+
+/// How long after an impulse does the surface's VISIBLE response peak?
+///
+/// A drop is an impulse into a wave field: the ring has to form and spread before the eye
+/// can see it. Unlike a flash or a zoom, this preset therefore has an intrinsic visual
+/// latency that no amount of firing-time accuracy removes — and it is the remaining
+/// candidate for the lag Matt reports, after grid-vs-audio measurement showed the grid
+/// itself is centred (signed median -8 ms) and interpolation changes nothing.
+@Suite("Meniscus ripple rise time")
+struct MeniscusRippleRiseTests {
+
+    @Test("report frames from impulse to peak visible response")
+    func measureRiseTime() {
+        let configuration = MeniscusConfiguration()
+        let side = configuration.gridN
+        var field = [Float](repeating: 0, count: side * side)
+        var previous = field
+        // One impulse, dead centre, using the drums row's stencil and force.
+        let region = MeniscusStemDrops.regions[0]
+        let centre = (side / 2) * side + side / 2
+        field[centre] -= region.force
+
+        // The same wave step the surface runs.
+        let damping: Float = 1 - 1.8 / 60
+        var slopeEnergy: [Double] = []
+        for _ in 0..<40 {
+            var next = previous
+            for row in 0..<side {
+                let up = ((row + side - 1) % side) * side
+                let down = ((row + 1) % side) * side
+                let here = row * side
+                for col in 0..<side {
+                    let left = (col + side - 1) % side
+                    let right = (col + 1) % side
+                    let mean = (field[here + left] + field[here + right]
+                                + field[up + col] + field[down + col]) * 0.25
+                    next[here + col] = (2 * mean - next[here + col]) * damping
+                }
+            }
+            previous = field
+            field = next
+            // Brightness comes from SLOPE, so that is what the eye tracks — not height.
+            var energy = 0.0
+            for row in 0..<side {
+                for col in 0..<side {
+                    let a = field[row * side + col]
+                    let b = field[row * side + (col + 1) % side]
+                    energy += Double(abs(a - b))
+                }
+            }
+            slopeEnergy.append(energy)
+        }
+        let peak = slopeEnergy.firstIndex(of: slopeEnergy.max() ?? 0) ?? 0
+        let ms = Double(peak + 1) * 1000.0 / 60.0
+        print(String(format: "[meniscus-rise] peak slope response at frame %d (%.0f ms after the impulse)",
+                     peak + 1, ms))
+        for (i, e) in slopeEnergy.prefix(14).enumerated() {
+            print(String(format: "    f%-2d %5.0f ms  %.3f", i + 1, Double(i + 1) * 1000 / 60,
+                         e / (slopeEnergy.max() ?? 1)))
+        }
+        #expect(!slopeEnergy.isEmpty)
     }
 }

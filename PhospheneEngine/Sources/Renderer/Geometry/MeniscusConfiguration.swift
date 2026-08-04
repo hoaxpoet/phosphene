@@ -102,8 +102,10 @@ public struct MeniscusConfiguration: Sendable {
     /// the frame over a few seconds.
     public var camDistCentre: Float
     public var camDistSwing: Float
-    /// Period of the distance oscillation, seconds.
-    public var dollyPeriod: Float
+    /// Smoothing time constant on the arousal-driven dolly, seconds. §5 puts this row on
+    /// a ~20–40 s timescale — deliberately far slower than the loudness envelope that
+    /// drives surface amplitude, so the two read as separate behaviours (FA #67).
+    public var dollyTau: Float
     /// Drops on/off.
     public var dropsEnabled: Bool
     /// MEN.3: place drops by STEM REGION (the D-121 divergence) rather than by the
@@ -125,6 +127,14 @@ public struct MeniscusConfiguration: Sendable {
     /// than `stemDropThreshold` because the grid already supplies the timing — this only
     /// asks "is this instrument playing", so a beat with no drums on it stays silent.
     public var stemPresenceThreshold: Float
+    /// How far BEFORE the grid beat a percussion drop is stamped, seconds.
+    ///
+    /// Not a fudge factor — it compensates a measured property of the medium. The impulse
+    /// reaches only 14 % of its visible slope response after one frame, ~30 % at 67 ms and
+    /// ~50 % at 167 ms (`MeniscusRippleRiseTests`), so the eye sees the ring FORMING well
+    /// after the impact. Leading by the ripple's perceptual onset puts the visible event
+    /// on the beat. Matt's call, 2026-08-04: start at 120 ms and measure.
+    public var stemLeadTime: Float
     /// Amplitude floor at silence.
     ///
     /// Not free to be small: §4's silence row is "a slow standing swell — the sheet
@@ -178,7 +188,7 @@ public struct MeniscusConfiguration: Sendable {
         cameraTau: Float = 0.85,
         camDistCentre: Float = 3.05,
         camDistSwing: Float = 1.35,
-        dollyPeriod: Float = 19.0,
+        dollyTau: Float = 14.0,
         spreadTracksDistance: Bool = true,
         dropsEnabled: Bool = true,
         stemPlacement: Bool = true,
@@ -187,6 +197,7 @@ public struct MeniscusConfiguration: Sendable {
         stemDropForce: Float = 1.0,
         stemGridSync: Bool = true,
         stemPresenceThreshold: Float = 0.12,
+        stemLeadTime: Float = 0.120,
         stemIntensityFloor: Float = 0.35,
         dropSpectrumScale: Float = 10.0,
         dropGate: Float = 0.02,
@@ -205,7 +216,7 @@ public struct MeniscusConfiguration: Sendable {
         self.cameraTau = cameraTau
         self.camDistCentre = camDistCentre
         self.camDistSwing = camDistSwing
-        self.dollyPeriod = dollyPeriod
+        self.dollyTau = dollyTau
         self.spreadTracksDistance = spreadTracksDistance
         self.dropsEnabled = dropsEnabled
         self.stemPlacement = stemPlacement
@@ -214,6 +225,7 @@ public struct MeniscusConfiguration: Sendable {
         self.stemDropForce = stemDropForce
         self.stemGridSync = stemGridSync
         self.stemPresenceThreshold = stemPresenceThreshold
+        self.stemLeadTime = stemLeadTime
         self.stemIntensityFloor = stemIntensityFloor
         self.dropSpectrumScale = dropSpectrumScale
         self.dropGate = dropGate

@@ -421,6 +421,60 @@ badly understated.** This is the NACRE.2b pattern the plan predicted (§2 reason
    The warp shader body returns `vec3(0,0,0)` unconditionally. §3 asserted this from a
    read; it is now verified from the artifact.
 
+### MEN.3c — the lag was the medium, not the timing (2026-08-04)
+
+Matt after MEN.3b: still "a lag and it's significant enough where the music does not read
+as synced". I had two theories and **both were falsified by measurement before any code was
+written** — he asked for the measurement first, and it saved an increment spent on a fix
+worth zero milliseconds.
+
+**Theory 1 — the grid is late (BUG-065).** Measured against his own `raw_tap.wav`, aligned
+to the CSV by cross-correlating the audio envelope against recorded loudness (r=0.83): the
+grid's signed offset to audio onsets is **median −8 ms** — centred, not late. Drift across
+30 s is −23 → +38 ms, BUG-065's ramp visible but modest.
+
+**Theory 2 — the 10 Hz stair-step quantises firing.** `beatPhase01` really is a stair-step
+held ~100 ms (3.5 updates per beat at 171 BPM against a 60 fps renderer), so this looked
+decisive. It is not: firing on the wrap edge scores |median| 42 ms / 67 % within 60 ms, and
+perfect interpolation scores 45 ms / 64 %. **No improvement.**
+
+**The actual cause is the medium.** A drop is an impulse into a wave field and the ripple
+has to GROW: measured on the shipped sim (`MeniscusRippleRiseTests`), the visible slope
+response is **14 % after one frame, ~30 % at 67 ms, ~50 % at 167 ms, peaking at 583 ms**.
+The eye tracks the ring forming, not the impact, so a perfectly-timed drop still reads
+late. No preset that flashes or zooms has this problem; one that ripples does.
+
+**Fix: fire AHEAD of the beat** so the visible event lands on it. 120 ms (Matt's call).
+This is the one thing the cached grid buys that a live detector never could — it knows
+where the next beat *will* be.
+
+| | before | after |
+|---|---|---|
+| VISIBLE ripple peak vs beat (median) | ~140 ms late | **19 ms** |
+| within the 60 ms window | — | **97–100 %** |
+| beats that get a drum drop | 76 % | **100 %** |
+
+The coverage number is the stair-step's *real* damage: edge detection found 55 edges against
+72 beats, a 24 % miss that reads as erratic rather than late. A local phase clock running
+between the 10 Hz samples catches all of them.
+
+**My MEN.3b sync gate was circular** and I should have caught it. It derived "grid beat
+times" from `beatPhase01` wraps and then measured drops against those same wraps — my code
+scored against itself, reading median 0 ms while the render visibly lagged. It now compares
+the VISIBLE event (impulse + measured perceptual rise) against the grid.
+
+**A second test premise was wrong and is replaced, not relaxed.** Per-drop force vs loudness
+went NEGATIVE (−0.18) once percussion moved onto the grid. Force is `stem deviation ×
+intensity`, and deviation is self-normalising, so in a loud passage each hit sits *less* far
+above its own mean — the two factors legitimately oppose and their product says nothing. It
+now asserts the intensity multiplier itself (r=+0.98), with surface amplitude carrying §5's
+loudness row at r=+0.999.
+
+**Camera rows wired (§5).** Dolly ← mood arousal, spanning 1.70–2.98 world units and opening
+at the hero distance per §5's cold-start note. Re-aim ← bar line rather than the live beat
+detector, which FA #67 now requires: with drops on per-stem onsets, a camera re-aiming on
+beats would put two visual layers on one primitive at one timescale.
+
 ### MEN.3b — sync and intensity, both measured before and after (2026-08-04)
 
 Matt's live read of MEN.3: camera and rotation good, drops look good, but "not in sync
