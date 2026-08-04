@@ -31,11 +31,16 @@ sample "$PID" 5 -file "$OUT/sample.txt" >/dev/null 2>&1 && echo "  ✓ sample.tx
 #    different causes and the stack alone does not tell you which.
 ps -o pid,stat,etime,%cpu,%mem,wq,command -p "$PID" > "$OUT/ps.txt" 2>&1 && echo "  ✓ ps.txt"
 
-# 3. Is the window occluded/minimised? The leading BUG-085 hypothesis is that rendering
-#    continues into a layer that is not being composited, which makes nextDrawable block
-#    forever. Needs assistive access; records the failure if it is not granted.
-osascript -e 'tell application "System Events" to tell process "PhospheneApp" to get {value of attribute "AXMinimized" of window 1, value of attribute "AXHidden"}' \
-    > "$OUT/window_state.txt" 2>&1 && echo "  ✓ window_state.txt"
+# 3. Is the window composited? The leading BUG-085 hypothesis is that rendering continues
+#    into a layer that is NOT being composited, which makes nextDrawable block forever.
+#    Uses CGWindowList, not AppleScript: the first capture recorded only
+#    "osascript is not allowed assistive access" where the answer should have been, which
+#    made the one artifact the hypothesis needed the one artifact we did not get.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if command -v swift >/dev/null 2>&1; then
+    swift "$SCRIPT_DIR/support/window_state.swift" > "$OUT/window_state.txt" 2>&1 \
+        && echo "  ✓ window_state.txt"
+fi
 
 # 4. Did the display sleep or reconfigure? Rules the power path in or out.
 pmset -g log 2>/dev/null | grep -iE "display|sleep|wake" | tail -40 > "$OUT/power.txt" && echo "  ✓ power.txt"
