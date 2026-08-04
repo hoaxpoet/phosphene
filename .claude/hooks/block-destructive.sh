@@ -16,6 +16,30 @@
 #   git restore .           (same shape)
 #   rm -rf <absolute path>  outside the build-cache allowlist
 #
+# Denied — plumbing / low-level equivalents (added 2026-08-03):
+#   git update-ref -d               deletes a ref directly; the exact bypass for `branch -D`
+#   git push --delete / :refspec    deletes a REMOTE branch (was entirely unguarded)
+#   git reflog expire --expire=now  destroys the recovery net the rules above rely on
+#   git gc --prune=now / --prune=all        same
+#   git stash drop / clear          discards stashed work, with no reflog path back
+#   git worktree remove --force     discards uncommitted work inside a worktree
+#   git checkout -f / switch --discard-changes   flag-form of the blocked `checkout .`
+#
+# Why these were added: on 2026-08-03 `git branch -D` was refused here, and the
+# same deletion then went through as `git update-ref -d refs/heads/<branch>` —
+# approved by the user, but it showed the guard only covered the porcelain
+# spelling. The same audit deleted eight remote branches via `git push --delete`
+# without the hook seeing any of them. The rule of thumb when extending this
+# file: block by EFFECT, not by command name. If a new incantation destroys
+# commits, refs, or uncommitted work, it belongs here regardless of which
+# porcelain/plumbing layer it lives in.
+#
+# The reflog entries are load-bearing, not merely tidy: two of the reasons below
+# say "recoverable only via reflog", so anything that expires or prunes the
+# reflog silently downgrades every other rule in this file from recoverable to
+# permanent. That is why `reflog expire` and `gc --prune` are here despite being
+# maintenance commands rather than obviously destructive ones.
+#
 # rm -rf allowlist (absolute paths only):
 #   /tmp[...]
 #   <project>/.build[...]
@@ -97,6 +121,49 @@ fi
 # git restore .
 if printf '%s' "$scan" | grep -qE 'git[[:space:]]+([^|;&]*[[:space:]])?restore\b([^|;&]*)[[:space:]]\.([[:space:]]|$|;|\||&)'; then
     block 'git restore .' 'discards every uncommitted change in the worktree'
+fi
+
+# --- git plumbing / low-level equivalents -----------------------------------
+# Same effects as the porcelain rules above, different spellings. See the header
+# note: block by effect, not by command name.
+
+# git update-ref -d / --delete  — the direct bypass for `git branch -D`.
+# Only the delete form is blocked; `update-ref <ref> <sha>` is left alone since
+# it is how a ref gets RESTORED, which is the remedy we want to stay available.
+if printf '%s' "$scan" | grep -qE 'git[[:space:]]+([^|;&]*[[:space:]])?update-ref\b([^|;&]*)(--delete\b|[[:space:]]-d([[:space:]]|$))'; then
+    block 'git update-ref -d' 'deletes a ref directly — same effect as git branch -D'
+fi
+
+# git push --delete <branch>  /  git push origin :branch
+# Deletes a REMOTE branch. The colon form matches only a refspec that STARTS
+# with ':' (the delete shape) — `git push origin local:remote` is untouched.
+if printf '%s' "$scan" | grep -qE 'git[[:space:]]+([^|;&]*[[:space:]])?push\b([^|;&]*)(--delete\b|[[:space:]]-d([[:space:]]|$)|[[:space:]]:[^[:space:]|;&]+)'; then
+    block 'git push --delete' 'deletes a remote branch; recovery depends on the remote'"'"'s own GC window'
+fi
+
+# git reflog expire --expire=now / --expire-unreachable=now
+if printf '%s' "$scan" | grep -qE 'git[[:space:]]+([^|;&]*[[:space:]])?reflog[[:space:]]+([^|;&]*[[:space:]])?expire\b'; then
+    block 'git reflog expire' 'destroys the reflog — the recovery path every other rule in this hook depends on'
+fi
+
+# git gc --prune=now / --prune=all  (plain `git gc` is fine and stays allowed)
+if printf '%s' "$scan" | grep -qE 'git[[:space:]]+([^|;&]*[[:space:]])?gc\b([^|;&]*)--prune=(now|all)\b'; then
+    block 'git gc --prune=now' 'drops unreachable objects immediately, making reflog-recoverable commits permanently unrecoverable'
+fi
+
+# git stash drop / git stash clear
+if printf '%s' "$scan" | grep -qE 'git[[:space:]]+([^|;&]*[[:space:]])?stash[[:space:]]+([^|;&]*[[:space:]])?(drop|clear)\b'; then
+    block 'git stash drop/clear' 'discards stashed work; stashes are not covered by the branch reflog'
+fi
+
+# git worktree remove --force  (plain `worktree remove` already refuses on dirty)
+if printf '%s' "$scan" | grep -qE 'git[[:space:]]+([^|;&]*[[:space:]])?worktree[[:space:]]+remove\b([^|;&]*)(--force\b|[[:space:]]-f([[:space:]]|$))'; then
+    block 'git worktree remove --force' 'discards uncommitted work inside the worktree — the unforced form refuses for exactly that reason'
+fi
+
+# git checkout -f / git switch -f / --discard-changes — flag-form of `checkout .`
+if printf '%s' "$scan" | grep -qE 'git[[:space:]]+([^|;&]*[[:space:]])?(checkout|switch)\b([^|;&]*)(--force\b|--discard-changes\b|[[:space:]]-f([[:space:]]|$))'; then
+    block 'git checkout -f' 'discards every uncommitted change in the worktree'
 fi
 
 # --- rm -rf with absolute paths --------------------------------------------
