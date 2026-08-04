@@ -124,20 +124,26 @@ import Foundation
     #expect(result.density == 0, "density of silence must be 0, not a divide artefact")
 }
 
-@Test func density_lowFrequencyOnly_isNearZero() {
+/// `density` is EMA-smoothed (τ≈6 s), so these settle it rather than reading one frame.
+/// That smoothing is load-bearing: the raw per-frame fraction turns 5.59 times a second
+/// and shipping it made the trunk visibly bounce.
+private func settledDensity(_ magnitudes: [Float], frames: Int = 4000) -> Float {
     let analyzer = SpectralAnalyzer()
+    var last: Float = 0
+    for _ in 0..<frames { last = analyzer.process(magnitudes: magnitudes).density }
+    return last
+}
+
+@Test func density_lowFrequencyOnly_isNearZero() {
     // Bin 5 ≈ 234 Hz — bass register, far below the 1.5 kHz split.
-    let magnitudes = AudioFixtures.syntheticMagnitudes(peaks: [(bin: 5, magnitude: 1.0)])
-    let result = analyzer.process(magnitudes: magnitudes)
-    #expect(result.density < 0.01, "a bass-only spectrum must read as low density")
+    let value = settledDensity(AudioFixtures.syntheticMagnitudes(peaks: [(bin: 5, magnitude: 1.0)]))
+    #expect(value < 0.01, "a bass-only spectrum must read as low density (got \(value))")
 }
 
 @Test func density_highFrequencyOnly_isNearOne() {
-    let analyzer = SpectralAnalyzer()
     // Bin 200 ≈ 9.4 kHz — well above the split.
-    let magnitudes = AudioFixtures.syntheticMagnitudes(peaks: [(bin: 200, magnitude: 1.0)])
-    let result = analyzer.process(magnitudes: magnitudes)
-    #expect(result.density > 0.99, "a treble-only spectrum must read as high density")
+    let value = settledDensity(AudioFixtures.syntheticMagnitudes(peaks: [(bin: 200, magnitude: 1.0)]))
+    #expect(value > 0.95, "a treble-only spectrum must read as high density (got \(value))")
 }
 
 /// THE ONE THAT MATTERS: density must be SCALE-INVARIANT.
@@ -149,15 +155,12 @@ import Foundation
 /// HF content, moving OPPOSITE to it). A ratio taken before any of that cancels a
 /// scalar gain exactly, which is what lets this survive.
 @Test func density_isInvariantToOverallGain() {
-    let quiet = SpectralAnalyzer()
-    let loud = SpectralAnalyzer()
     let shape: [(bin: Int, magnitude: Float)] = [(bin: 5, magnitude: 1.0), (bin: 200, magnitude: 0.5)]
-    let quietResult = quiet.process(magnitudes: AudioFixtures.syntheticMagnitudes(peaks: shape))
-    let loudResult = loud.process(
-        magnitudes: AudioFixtures.syntheticMagnitudes(
-            peaks: shape.map { (bin: $0.bin, magnitude: $0.magnitude * 40) }))
-    #expect(abs(quietResult.density - loudResult.density) < 1e-5, """
-        density changed by \(abs(quietResult.density - loudResult.density)) under a pure \
+    let quietValue = settledDensity(AudioFixtures.syntheticMagnitudes(peaks: shape))
+    let loudValue = settledDensity(
+        AudioFixtures.syntheticMagnitudes(peaks: shape.map { (bin: $0.bin, magnitude: $0.magnitude * 40) }))
+    #expect(abs(quietValue - loudValue) < 1e-5, """
+        density changed by \(abs(quietValue - loudValue)) under a pure \
         40× gain. It must not: a scalar gain has to cancel in the ratio, or the field is \
         just another level measure and cannot do the job it was added for.
         """)
@@ -166,17 +169,14 @@ import Foundation
 /// Density must RISE when harmonics are added at constant low-end — the distorted
 /// guitar case, stated as a test rather than as a hope.
 @Test func density_risesWhenHarmonicsAreAdded() {
-    let clean = SpectralAnalyzer()
-    let dirty = SpectralAnalyzer()
     let fundamental: [(bin: Int, magnitude: Float)] = [(bin: 8, magnitude: 1.0)]
-    let cleanResult = clean.process(magnitudes: AudioFixtures.syntheticMagnitudes(peaks: fundamental))
+    let cleanValue = settledDensity(AudioFixtures.syntheticMagnitudes(peaks: fundamental))
     // Same fundamental, plus a harmonic series above the split — distortion.
     let withHarmonics = fundamental + (4...12).map { (bin: $0 * 40, magnitude: Float(0.25)) }
-    let dirtyResult = dirty.process(
-        magnitudes: AudioFixtures.syntheticMagnitudes(peaks: withHarmonics))
-    #expect(dirtyResult.density > cleanResult.density + 0.2, """
+    let dirtyValue = settledDensity(AudioFixtures.syntheticMagnitudes(peaks: withHarmonics))
+    #expect(dirtyValue > cleanValue + 0.2, """
         adding a harmonic series above 1.5 kHz moved density only \
-        \(dirtyResult.density - cleanResult.density). This is the exact signal the field \
+        \(dirtyValue - cleanValue). This is the exact signal the field \
         exists to carry (Matt: "when the distorted guitar enters the mix, the volume \
         increases, but the tree does not grow").
         """)

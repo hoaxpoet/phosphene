@@ -40,7 +40,9 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         public var smoothedRolloff: Float
         /// EMA-smoothed flux.
         public var smoothedFlux: Float
-        /// DYN.1 — fraction of spectral energy above `densitySplitHz`, 0…1.
+        /// DYN.1 — fraction of spectral energy above `densitySplitHz`, 0…1, EMA-smoothed
+        /// to τ ≈ 6 s. Deliberately NOT the raw per-frame value, which turns 5.59 times a
+        /// second and reads on screen as jitter.
         ///
         /// The ONE quantity in the pipeline that survives normalisation, because it is
         /// computed here from the raw magnitudes — before `MIRPipeline`'s total-energy
@@ -108,10 +110,18 @@ public final class SpectralAnalyzer: @unchecked Sendable {
     /// EMA alpha for flux smoothing.
     private static let fluxAlpha: Float = 0.25
 
-    /// DYN.1 slow companion, τ ≈ 8 s at the ~10 Hz MIR rate. Deliberately far slower
-    /// than the other smoothers: this one answers "what is normal for this track",
-    /// which only means anything over a section rather than a phrase.
-    private static let densityAlpha: Float = 0.0125
+    /// DYN.1 legs, at the ~10 Hz MIR rate. `density` is smoothed to τ ≈ 6 s and
+    /// `smoothedDensity` to τ ≈ 45 s, so the pair reads "this section against this
+    /// track's normal".
+    ///
+    /// THE PUBLISHED `density` IS SMOOTHED, NOT INSTANTANEOUS — measured, and it matters.
+    /// The raw per-frame fraction turns 5.59 times a second, the same order as the
+    /// `bass_rel` that made the trunk bounce in the first place; shipping it drove a
+    /// visible up-and-down that Matt rejected on sight ("the trunk of the tree is moving
+    /// up and down constantly"). Even at these widths the RATIO still turns ~1.1/s, which
+    /// is why the trunk must not read it at all — only the quantised branch count does.
+    private static let densityFastAlpha: Float = 0.017
+    private static let densityAlpha: Float = 0.0022
 
     /// EMA-smoothed centroid value.
     private var smoothedCentroid: Float = 0
@@ -122,7 +132,8 @@ public final class SpectralAnalyzer: @unchecked Sendable {
     /// EMA-smoothed flux value.
     private var smoothedFlux: Float = 0
 
-    /// EMA-smoothed spectral density (DYN.1).
+    /// EMA-smoothed spectral density, both legs (DYN.1).
+    private var fastDensity: Float = 0
     private var smoothedDensity: Float = 0
 
     /// Thread safety.
@@ -202,13 +213,14 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         let centroid = computeCentroid(magnitudes: magnitudes, count: count)
         let rolloff = computeRolloff(magnitudes: magnitudes, count: count)
         let flux = computeFlux(magnitudes: magnitudes, count: count)
-        let density = computeDensity(magnitudes: magnitudes, count: count)
+        let rawDensity = computeDensity(magnitudes: magnitudes, count: count)
 
         // EMA smoothing.
         smoothedCentroid = Self.centroidAlpha * centroid + (1 - Self.centroidAlpha) * smoothedCentroid
         smoothedRolloff = Self.rolloffAlpha * rolloff + (1 - Self.rolloffAlpha) * smoothedRolloff
         smoothedFlux = Self.fluxAlpha * flux + (1 - Self.fluxAlpha) * smoothedFlux
-        smoothedDensity = Self.densityAlpha * density + (1 - Self.densityAlpha) * smoothedDensity
+        fastDensity = Self.densityFastAlpha * rawDensity + (1 - Self.densityFastAlpha) * fastDensity
+        smoothedDensity = Self.densityAlpha * rawDensity + (1 - Self.densityAlpha) * smoothedDensity
 
         // Store current frame for next flux computation.
         magnitudes.withUnsafeBufferPointer { src in
@@ -227,7 +239,7 @@ public final class SpectralAnalyzer: @unchecked Sendable {
             smoothedCentroid: smoothedCentroid,
             smoothedRolloff: smoothedRolloff,
             smoothedFlux: smoothedFlux,
-            density: density,
+            density: fastDensity,
             smoothedDensity: smoothedDensity
         )
     }
@@ -261,6 +273,7 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         smoothedCentroid = 0
         smoothedRolloff = 0
         smoothedFlux = 0
+        fastDensity = 0
         smoothedDensity = 0
     }
 

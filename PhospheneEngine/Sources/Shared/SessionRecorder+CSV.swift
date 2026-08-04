@@ -242,14 +242,14 @@ extension SessionRecorder {
         // DYN.1 — spectral density. Recorded so the claim "this rises where every other
         // field is flat" is checkable from a session rather than asserted. Appended at
         // the END, same positional-parser invariant as every column above.
-        let densityCols = String(format: ",%.5f,%.5f", fv.spectralDensity, fv.spectralDensitySlow)
+        let densityCols = String(format: ",%.5f,%.5f\n", fv.spectralDensity, fv.spectralDensitySlow)
         // QG.1 — the remaining FeatureVector primitives presets consume that the
         // CSV never carried (attenuated bands + mid/treb deviation family +
         // beats_until_next). Without them, RouteCoverageTests cannot replay
         // routes like Murmuration's bass_att vigor or Nacre's mid_att_rel sway.
         // New columns at the END (positional parsers depend on the layout).
         let primitiveCols = String(
-            format: ",%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.4f\n",
+            format: ",%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.5f,%.4f",
             fv.bassAtt, fv.midAtt, fv.trebleAtt,
             fv.midRel, fv.midDev, fv.trebRel, fv.trebDev,
             fv.midAttRel, fv.trebAttRel, fv.beatsUntilNext)
