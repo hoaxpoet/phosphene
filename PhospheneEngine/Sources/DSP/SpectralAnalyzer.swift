@@ -110,17 +110,29 @@ public final class SpectralAnalyzer: @unchecked Sendable {
     /// EMA alpha for flux smoothing.
     private static let fluxAlpha: Float = 0.25
 
-    /// DYN.1 legs, at the ~10 Hz MIR rate. `density` is smoothed to τ ≈ 6 s and
-    /// `smoothedDensity` to τ ≈ 45 s, so the pair reads "this section against this
-    /// track's normal".
+    /// DYN.1 legs, at the ~10 Hz MIR rate: `density` at τ ≈ 0.8 s against
+    /// `smoothedDensity` at τ ≈ 45 s, so the pair reads "this moment against this track's
+    /// normal".
     ///
-    /// THE PUBLISHED `density` IS SMOOTHED, NOT INSTANTANEOUS — measured, and it matters.
-    /// The raw per-frame fraction turns 5.59 times a second, the same order as the
-    /// `bass_rel` that made the trunk bounce in the first place; shipping it drove a
-    /// visible up-and-down that Matt rejected on sight ("the trunk of the tree is moving
-    /// up and down constantly"). Even at these widths the RATIO still turns ~1.1/s, which
-    /// is why the trunk must not read it at all — only the quantised branch count does.
-    private static let densityFastAlpha: Float = 0.017
+    /// THE FAST LEG'S WIDTH IS THE WHOLE BALLGAME, and it was wrong twice in opposite
+    /// directions. Measured against a real capture (`2026-08-04T17-17-01Z`, distorted
+    /// guitar entering at ~20 s, where an independent time-domain measure shows a 3.22×
+    /// rise in high-frequency energy):
+    ///
+    ///     τ 6.0 s   1.15×   — swallows the event whole; the field looked broken
+    ///     τ 1.5 s   2.22×
+    ///     τ 0.8 s   2.98×   — 93 % of the reference, and the count turns only 0.41/s
+    ///     τ 0.45 s  3.36×   — no better on response, and 50 % more restless
+    ///
+    /// τ 6 s was chosen when the TRUNK read this field and was bouncing. The trunk no
+    /// longer reads it at all (FTR.3f confined density to the quantised branch count), so
+    /// the smoothing that was protecting the trunk was only destroying the signal. Widen
+    /// this only if something continuous starts reading density again — and the answer to
+    /// that is to stop it reading density, not to re-smooth the field.
+    ///
+    /// The raw per-frame fraction turns 5.59 times a second, which is why SOME smoothing
+    /// is still required; `density` is deliberately not instantaneous.
+    private static let densityFastAlpha: Float = 0.117
     private static let densityAlpha: Float = 0.0022
 
     /// EMA-smoothed centroid value.

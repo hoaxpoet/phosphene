@@ -31,6 +31,7 @@ import UniformTypeIdentifiers
 @testable import Renderer
 @testable import Presets
 @testable import PresetSessionReplay
+@testable import DSP
 @testable import Shared
 
 // MARK: - FractalTreeMeshRenderTest
@@ -185,11 +186,27 @@ struct FractalTreeMeshRenderTest {
     /// Writes numbered PNGs plus strips of consecutive frames. Reader is the eyes (D-064).
     @Test("session sequence: contiguous frames from a real capture (FT_SESSION=<dir>)")
     func sessionSequence() throws {
-        guard let dir = ProcessInfo.processInfo.environment["FT_SESSION"],
-              let outputDirectory = try Self.makeOutputDirectory() else { return }
+        // The MEASUREMENT runs whenever FT_SESSION is set; only PNG writing needs
+        // RENDER_VISUAL. Coupling the assertion to the image flag made this silently skip
+        // — a gate that quietly does not run is worse than no gate, and it is the second
+        // time this harness has hidden its own verdict (the other was the fixed stride).
+        guard let dir = ProcessInfo.processInfo.environment["FT_SESSION"] else { return }
+        let outputDirectory = try Self.makeOutputDirectory()
         let csv = URL(fileURLWithPath: (dir as NSString).expandingTildeInPath)
             .appendingPathComponent("features.csv")
         let rows = try Self.loadSessionRows(csv)
+
+        // RECOMPUTE engine-derived fields from the AUDIO rather than trusting the
+        // recorded columns. A capture holds whatever the build that recorded it produced,
+        // so replaying it straight validates the OLD engine — which is how the τ6 s
+        // density looked unchanged here after it had already been fixed. Density is
+        // recomputed through the real SpectralAnalyzer; everything else still comes from
+        // the CSV, which is correct for fields the engine has not changed.
+        let densityByTime = (try? Self.recomputeDensity(
+            wav: csv.deletingLastPathComponent().appendingPathComponent("raw_tap.wav"))) ?? []
+        if densityByTime.isEmpty {
+            print("[fractal-tree/sequence] no raw_tap.wav — using RECORDED density (may be stale)")
+        }
         guard !rows.isEmpty else {
             throw FractalTreeHarnessError.setupFailed("no usable rows in \(csv.path)")
         }
@@ -219,11 +236,14 @@ struct FractalTreeMeshRenderTest {
         var flickerFifths = FifthsSmoother()
         var strip: [(label: String, pixels: [UInt8])] = []
         var hues: [Double] = []
+        var times: [Double] = []
+        var widths: [Double] = []
         var inks: [Double] = []
 
         for (index, row) in rows.enumerated() where index % stride == 0 {
             if strip.count >= maxFrames { break }
             var fv = Self.featuresFromSession(row, fifths: &fifths)
+            Self.applyRecomputedDensity(densityByTime, at: row["time"] ?? 0, to: &fv)
             fv.aspectRatio = Float(Self.width) / Float(Self.height)
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
             Self.encode(cmd, into: target, generator: generator, features: fv)
@@ -233,6 +253,8 @@ struct FractalTreeMeshRenderTest {
             strip.append(("f\(index)", pixels))
             hues.append(Self.meanHue(pixels))
             inks.append(Self.inkFraction(pixels))
+            times.append(row["time"] ?? 0)
+            widths.append(Self.canopyWidth(pixels))
         }
 
         // FLICKER IS MEASURED ON ADJACENT FRAMES, ALWAYS — never on the sampled strip.
@@ -258,6 +280,40 @@ struct FractalTreeMeshRenderTest {
             let d = abs(b - a); return min(d, 360 - d)
         }
         let inkSpan = (inks.max() ?? 0) - (inks.min() ?? 0)
+
+        // THE EVENT. `FT_EVENT` names the audio-time of a section change; the tree's
+        // footprint must be materially larger after it. This assertion maps directly onto
+        // Matt's report — "there is no jump in growth when the distorted guitar kicks in" —
+        // rather than onto a driver's statistics, which is the gap that let eight rounds
+        // ship with green numbers and a preset that did not do the thing.
+        if let event = Double(ProcessInfo.processInfo.environment["FT_EVENT"] ?? "") {
+            func meanInk(_ range: ClosedRange<Double>) -> Double {
+                let picked = zip(times, inks).filter { range.contains($0.0) }.map(\.1)
+                return picked.isEmpty ? 0 : picked.reduce(0, +) / Double(picked.count)
+            }
+            func meanWidth(_ range: ClosedRange<Double>) -> Double {
+                let picked = zip(times, widths).filter { range.contains($0.0) }.map(\.1)
+                return picked.isEmpty ? 0 : picked.reduce(0, +) / Double(picked.count)
+            }
+            let beforeInk = meanInk(event - 4...event)
+            let afterInk = meanInk(event...event + 4)
+            let beforeWidth = meanWidth(event - 4...event)
+            let afterWidth = meanWidth(event...event + 4)
+            print(String(format: "[fractal-tree/event] width %.4f -> %.4f (%.2fx)",
+                         beforeWidth, afterWidth, afterWidth / Swift.max(beforeWidth, 1e-6)))
+            print(String(format: "[fractal-tree/event] across %.1f s — footprint %.4f -> %.4f (%.2fx)",
+                         event, beforeInk, afterInk, afterInk / Swift.max(beforeInk, 1e-6)))
+            // ASSERT ON WIDTH, report footprint alongside. Matt's words are "I expect the
+            // tree to grow OUTWARD", which is extent; ink conflates extent with density,
+            // so a canopy that thickens without spreading would pass on ink and fail him.
+            // Both are printed so a future change cannot quietly trade one for the other.
+            #expect(afterWidth > beforeWidth * 1.15, """
+                the canopy spread \(beforeWidth) -> \(afterWidth) across the section change \
+                at \(event) s (footprint \(beforeInk) -> \(afterInk)). Under 1.15x this is \
+                the "there is no jump in growth when the distorted guitar kicks in" failure, \
+                whatever the driver statistics say.
+                """)
+        }
         print("""
             [fractal-tree/sequence] \(strip.count) frames — FLICKER (adjacent frames) \
             hue step median \(String(format: "%.2f", Self.median(hueJumps)))° max \
@@ -266,12 +322,14 @@ struct FractalTreeMeshRenderTest {
             \(String(format: "%.4f", inks.max() ?? 0)) (span \
             \(String(format: "%.4f", inkSpan)))
             """)
-        for chunk in Swift.stride(from: 0, to: strip.count, by: 8) {
-            let slice = Array(strip[chunk..<Swift.min(chunk + 8, strip.count)])
-            Self.writeContactSheet(slice, to: outputDirectory,
-                                   name: String(format: "seq_%03d.png", chunk))
+        if let outputDirectory {
+            for chunk in Swift.stride(from: 0, to: strip.count, by: 8) {
+                let slice = Array(strip[chunk..<Swift.min(chunk + 8, strip.count)])
+                Self.writeContactSheet(slice, to: outputDirectory,
+                                       name: String(format: "seq_%03d.png", chunk))
+            }
+            print("[fractal-tree] sequence strips: \(outputDirectory.path)")
         }
-        print("[fractal-tree] sequence strips: \(outputDirectory.path)")
     }
 
     /// Parse a recorded `features.csv` into rows keyed by column name, dropping the
@@ -335,6 +393,35 @@ struct FractalTreeMeshRenderTest {
         f.spectralDensitySlow = value("spectral_density_slow")
         f.time = value("time")
         return f
+    }
+
+    /// Run the REAL `SpectralAnalyzer` over the capture's audio, returning
+    /// (audioTime, density, densitySlow) at the ~10 Hz analysis rate.
+    private static func recomputeDensity(wav: URL) throws -> [(Double, Float, Float)] {
+        let samples = try SpectralDensityRealAudioTests.loadFloatWavMonoShared(wav)
+        guard !samples.isEmpty else { return [] }
+        let analyzer = SpectralAnalyzer(binCount: 512, sampleRate: 48000, fftSize: 1024)
+        let hop = 4800
+        var out: [(Double, Float, Float)] = []
+        var start = 0
+        while start + 1024 <= samples.count {
+            let frame = Array(samples[start..<(start + 1024)])
+            let result = analyzer.process(
+                magnitudes: try SpectralDensityRealAudioTests.magnitudesShared(of: frame))
+            out.append((Double(start) / 48000, result.density, result.smoothedDensity))
+            start += hop
+        }
+        return out
+    }
+
+    /// The capture's `time` column and the audio share an origin at recording start.
+    private static func applyRecomputedDensity(_ table: [(Double, Float, Float)],
+                                               at time: Double,
+                                               to fv: inout FeatureVector) {
+        guard !table.isEmpty else { return }
+        let index = Swift.min(Swift.max(Int(time * 10), 0), table.count - 1)
+        fv.spectralDensity = table[index].1
+        fv.spectralDensitySlow = table[index].2
     }
 
     private static func median(_ values: [Double]) -> Double {

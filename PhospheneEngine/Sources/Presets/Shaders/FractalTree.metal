@@ -142,7 +142,13 @@ void fractal_tree_object_shader(
         // Depth tiers are the mechanism: a tier appears only above a threshold count
         // (d3 > 7, d4 > 15, d5 > 31), so the smallest branches enter and leave as the
         // count crosses 31. Growth sets where the canopy sits; the tips cross the line.
-        uint  base   = (uint)((4.0f + saturate(reach + lift * 0.30f) * 18.0f) * amp);
+        // THE LIFT IS ADDITIVE, NOT FOLDED INTO `reach`. Folding it in put it inside a
+        // saturate() that `reach` had already nearly filled, so sweeping its weight from
+        // 0.30 to 1.00 moved the tree's footprint 1.10× → 1.17× — the coefficient was not
+        // the bottleneck, the saturation was. As its own term the section change adds
+        // branches outright and the growth is visible.
+        uint  base    = (uint)((4.0f + reach * 18.0f) * amp);
+        uint  section = (uint)(lift * 20.0f * amp);
         // TIPS ARE GATED BY GROWTH. Matt, 2026-08-04: *"the tree actually grows taller
         // BEFORE this melody enters."* Measured on that session, he is exactly right and
         // the cause is this layer: at t=19 s the growth part sat at its minimum of 4
@@ -154,7 +160,7 @@ void fractal_tree_object_shader(
         // section itself has arrived. The smoothstep keeps them fully available through
         // the body of the song (reach ≥ 0.35) while suppressing them in an intro.
         uint  tips   = (uint)(melody * 26.0f * amp * smoothstep(0.0f, 0.35f, reach));
-        uint  count  = min(7u + base + tips, 63u);
+        uint  count  = min(7u + base + section + tips, 63u);
 
         // ── BRANCH SPREAD ← spectral_flux ────────────────────────────────────────
         //

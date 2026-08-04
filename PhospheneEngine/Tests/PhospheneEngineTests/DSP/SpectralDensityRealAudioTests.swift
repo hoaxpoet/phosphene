@@ -174,6 +174,8 @@ struct SpectralDensityRealAudioTests {
     }
 
     /// Real vDSP forward FFT with the live pipeline's geometry, Hann-windowed.
+    static func magnitudesShared(of frame: [Float]) throws -> [Float] { try magnitudes(of: frame) }
+
     private static func magnitudes(of frame: [Float]) throws -> [Float] {
         let log2n = vDSP_Length(log2(Float(fftSize)))
         guard let setup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2)) else {
@@ -214,6 +216,8 @@ struct SpectralDensityRealAudioTests {
     /// Minimal float32 WAV reader, downmixed to mono. Session captures are written as
     /// 32-bit float, which `AVAudioFile` will open but this keeps the test dependency-free
     /// and makes the channel handling explicit.
+    static func loadFloatWavMonoShared(_ url: URL) throws -> [Float] { try loadFloatWavMono(url) }
+
     private static func loadFloatWavMono(_ url: URL) throws -> [Float] {
         let data = try Data(contentsOf: url)
         guard data.count > 44 else { throw DensityHarnessError.setupFailed("wav too short") }
