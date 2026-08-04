@@ -192,4 +192,29 @@ extension WitchlightPath {
         default: return SIMD3(value, down, falling)
         }
     }
+
+    // MARK: - Turn detection (moved from WitchlightPath.swift at WL.4 for the 400-line lint;
+    // a confirmed direction change is a discrete EVENT, so this file is its natural home)
+
+    func advanceTurnDetection(dt: Float, silent: Bool) {
+        guard !silent else { turnCandidateAge = 0; return }
+        let sign: Float = phaseRate > 0.02 ? 1 : (phaseRate < -0.02 ? -1 : 0)
+        guard sign != 0 else { turnCandidateAge = 0; return }
+        if sign != turnSign {
+            if sign == turnCandidateSign {
+                turnCandidateAge += dt
+                if turnCandidateAge >= tuning.turnConfirmSeconds {
+                    confirmTurn(newSign: sign)
+                }
+            } else {
+                turnCandidateSign = sign
+                turnCandidateAge = 0
+                // Remember the apex so the hue step lands where the stroke actually
+                // turned, not where the reversal was confirmed 0.25 s later.
+                turnCandidateBeadIndex = beads.count
+            }
+        } else {
+            turnCandidateAge = 0
+        }
+    }
 }

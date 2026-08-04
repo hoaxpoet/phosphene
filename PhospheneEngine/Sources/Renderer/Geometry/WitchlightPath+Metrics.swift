@@ -37,6 +37,18 @@ extension WitchlightPath {
             // That is precisely the failure QG.5 was built for, one route over.
             guard speedMax > 0, speedMin < .greatestFiniteMagnitude, speedMin > 1e-6 else { return nil }
             return Double(speedMax / speedMin)
+        case "ribbonBreathSwing":
+            // Range of the per-frame energy breath, as a SPAN of the 0…1 signal rather than a
+            // ratio: it is centred on 0.5, so a ratio would explode near the centre and say
+            // nothing. 0 means the ribbon never breathed.
+            //
+            // This route exists because Matt's fourth M7 was "not synced to the music", and
+            // the measurement behind it was that Witchlight had NO per-frame energy coupling
+            // at all — every one of its eight routes ran on a 1–30 s or slower envelope while
+            // every loudness band sat alive and unrouted. The band exists so that can never
+            // silently become true again.
+            guard breathMax > 0, breathMin < .greatestFiniteMagnitude else { return nil }
+            return Double(breathMax - breathMin)
         default:
             return nil
         }

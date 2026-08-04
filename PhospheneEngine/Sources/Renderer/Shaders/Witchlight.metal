@@ -58,6 +58,7 @@ struct WLConfig {
     float headR, headG, headB;
     float flareIntensity;   // 0…1, already bounded by the §5 budget
     float lineAlpha;
+    float energyBreath;    // WL.4 — per-frame energy, 0…1 centred 0.5 (WitchlightStroke)
 };
 
 // MARK: - Shared projection
@@ -164,6 +165,20 @@ vertex WLBeadOut witchlight_bead_vertex(
     // ordinary bead — the ribbon carries a visible chain of bar markers (§3.2).
     radius *= mix(1.0, 2.2, b.promoted);
     alpha  *= mix(1.0, 1.6, b.promoted);
+    // WL.4 — the ribbon BREATHES with the music, every frame.
+    //
+    // Applied to the whole stroke rather than per-bead-age on purpose: a listener reads
+    // "the drawing swelled just then" far more easily than a travelling wave along a
+    // curve, and a per-bead phase would fight the age falloff that mandatory trait #2
+    // requires to stay monotonic. Thickness AND brightness together — either alone is
+    // easy to miss on a thin stroke against black.
+    //
+    // Bounded ±22 % / ±35 %: enough to read as breathing, not so much that a loud bar
+    // turns the ribbon into a different object. `energyBreath` is centred on 0.5, so
+    // silence leaves this at exactly 1.0 and D-037's non-black silence state is unchanged.
+    float breath = cfg.energyBreath * 2.0 - 1.0;          // -1…+1
+    radius *= 1.0 + 0.22 * breath;
+    alpha  *= 1.0 + 0.35 * breath;
 
     float2 corner = wl_corner(vid);
     float2 halfExtent = wl_screen_extent(radius * WL_HALO_EXTENT * proj.z, cfg);
@@ -248,7 +263,10 @@ vertex WLLineOut witchlight_line_vertex(
     WLLineOut out;
     out.position = float4(proj.xy, 0.0, 1.0);
     out.color = float3(b.cr, b.cg, b.cb);
-    out.alpha = wl_age_alpha(b.age, cfg.trailSeconds) * cfg.lineAlpha;
+    // Breathes with the beads (WL.4) — a static thread between pulsing beads reads as a
+    // wire the beads are sliding on, which is the opposite of the intended reading.
+    out.alpha = wl_age_alpha(b.age, cfg.trailSeconds) * cfg.lineAlpha
+              * (1.0 + 0.35 * (cfg.energyBreath * 2.0 - 1.0));
     return out;
 }
 

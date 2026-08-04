@@ -2,7 +2,7 @@
   "name": "Witchlight",
   "family": "particles",
   "duration": 45,
-  "description": "A beaded luminous stroke written in the air of deep space, and the stroke is a drawing of the track's harmony. A pen tip advances at a governed speed along a heading; the smoothed circle-of-fifths phase (tonalPhaseFifths, circular EMA at 1.5 s) controls only how fast that heading TURNS, clamped so no arc is tighter than 8 % of frame height — so the same code cannot draw a legible figure on one track and a tangle on the next. Each bead freezes the harmonic phase it was laid down at as its hue, so the ribbon's colour banding is the track's colour history; a confirmed turn steps the hue, so a chord change reads as a colour boundary. arousal modulates pen speed by 45 %, so the stroke visibly quickens and slackens with the track's energy. Beads are emitted per unit DISTANCE travelled, so their spacing stays constant at any speed — a time-based rate tied the ribbon's whole texture to the pen never changing speed, fusing the beads when it slowed and dotting them apart when it sped up. Each bar downbeat (barPhase01 wrap) SETS one bead — bigger, brighter, permanent — so the ribbon carries a visible chain of bar markers. An age-weighted relaxation pass smooths the live end into a calligraphic stroke and freezes the record past ~4 s. The trail is exactly the last 30 s. A bounded, refractory head burst fires on a bassDev excursion measured against the track's own running level. Backdrop: three parallax star layers that visibly drift, the near layer crossing frame in about four minutes and outpacing the far ones roughly 13:1 (depth rate from spectralCentroid, mapped against its measured 0.04-0.21 band) and one soft violet nebular bloom (hue from valence), with the ribbon visibly dimming the stars behind it. Milkdrop-inspired (D-113); diverges from its source on the dominant motion model, which in the source is a random walk re-seeded on beats.",
+  "description": "A beaded luminous stroke written in the air of deep space, and the stroke is a drawing of the track's harmony. A pen tip advances at a governed speed along a heading; the smoothed circle-of-fifths phase (tonalPhaseFifths, circular EMA at 1.5 s) controls only how fast that heading TURNS, clamped so no arc is tighter than 8 % of frame height — so the same code cannot draw a legible figure on one track and a tangle on the next. Each bead freezes the harmonic phase it was laid down at as its hue, so the ribbon's colour banding is the track's colour history; a confirmed turn steps the hue, so a chord change reads as a colour boundary. arousal modulates pen speed by 45 %, so the stroke visibly quickens and slackens with the track's energy. Beads are emitted per unit DISTANCE travelled, so their spacing stays constant at any speed — a time-based rate tied the ribbon's whole texture to the pen never changing speed, fusing the beads when it slowed and dotting them apart when it sped up. Each bar downbeat (barPhase01 wrap) SETS one bead — bigger, brighter, permanent — so the ribbon carries a visible chain of bar markers. An age-weighted relaxation pass smooths the live end into a calligraphic stroke and freezes the record past ~4 s. The trail is exactly the last 30 s. A bounded, refractory head burst fires on a bassDev excursion measured against the track's own running level. The whole ribbon breathes with the music every frame — thickness and brightness swelling on the attack-weighted bass, normalised against the track's own running level, which is the preset's one continuous-energy coupling and the thing that makes it read as locked to what you are hearing. Backdrop: three parallax star layers that visibly drift, the near layer crossing frame in about four minutes and outpacing the far ones roughly 13:1 (depth rate from spectralCentroid, mapped against its measured 0.04-0.21 band) and one soft violet nebular bloom (hue from valence), with the ribbon visibly dimming the stars behind it. Milkdrop-inspired (D-113); diverges from its source on the dominant motion model, which in the source is a random walk re-seeded on beats.",
   "author": "Matt",
   "inspired_by": {
     "milkdrop_filename": "martin - witchcraft reloaded",
@@ -94,6 +94,15 @@
       "route": "trail_contraction",
       "primitive": "sectionIndex",
       "kind": "structural"
+    },
+    {
+      "route": "ribbon_breath",
+      "primitive": "bassAtt",
+      "kind": "continuous",
+      "response": {
+        "metric": "ribbonBreathSwing",
+        "min": 0.45
+      }
     }
   ],
   "certified": false

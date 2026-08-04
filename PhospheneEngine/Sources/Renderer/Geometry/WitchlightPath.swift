@@ -60,7 +60,7 @@ public final class WitchlightPath: AudioResponseMetrics {
     private var phaseSin: Float = 0
     private var phaseCos: Float = 1
     private var previousPhase: Float = 0
-    private var phaseRate: Float = 0
+    var phaseRate: Float = 0
     /// Smoothed harmonic phase φ̄, radians. Also the hue source (§3.4).
     public var smoothedPhase: Float { atan2(phaseSin, phaseCos) }
 
@@ -79,10 +79,10 @@ public final class WitchlightPath: AudioResponseMetrics {
     }
 
     // Turn detection.
-    private var turnSign: Float = 0
-    private var turnCandidateSign: Float = 0
-    private var turnCandidateAge: Float = 0
-    private var turnCandidateBeadIndex: Int?
+    var turnSign: Float = 0
+    var turnCandidateSign: Float = 0
+    var turnCandidateAge: Float = 0
+    var turnCandidateBeadIndex: Int?
     var hueTurnOffset: Float = 0
     /// Confirmed turns since `reset()` — the §3.2 chord-change event count.
     public internal(set) var turnCount: Int = 0
@@ -158,6 +158,15 @@ public final class WitchlightPath: AudioResponseMetrics {
     /// ∫|θ̇| dt — how far the PEN's heading actually turned, radians. `phaseTravel × k`
     /// before clamping; the gap between them is what the clamp removed.
     public private(set) var headingTravel: Float = 0
+    /// WL.4 — the per-frame energy breath, 0…1 centred 0.5. Lives here rather than in
+    /// `WitchlightStroke` so every audio→state mapping is in one place and the QG.5 metrics
+    /// seam (which is on this type) can gate it.
+    public internal(set) var energyBreath: Float = 0.5
+    var breathSlow: Float = 0
+    var breathSpread: Float = 0.08
+    /// Extremes seen this run — the `ribbonBreathSwing` evidence.
+    var breathMin: Float = .greatestFiniteMagnitude
+    var breathMax: Float = 0
     /// Slowest and fastest pen speed seen this run — the QG.5 `penSpeedSwing` evidence.
     /// `internal`, not `private`, so the metric can live in `WitchlightPath+Metrics.swift`.
     var speedMin: Float = .greatestFiniteMagnitude
@@ -207,6 +216,9 @@ public final class WitchlightPath: AudioResponseMetrics {
         turnSign = 0; turnCandidateSign = 0; turnCandidateAge = 0
         turnCandidateBeadIndex = nil; hueTurnOffset = 0; turnCount = 0
         arousalSlow = 0; arousalSpread = 0.15
+        breathSlow = 0; breathSpread = 0.08
+        energyBreath = 0.5
+        breathMin = .greatestFiniteMagnitude; breathMax = 0
         bassDevSlow = 0; flareRefractoryRemaining = 0
         flareGoal = 0; flareHold = 0; flareIntensity = 0; flareCount = 0
         previousBarPhase = 0; promoteNextBead = false; promotionCount = 0
@@ -250,6 +262,7 @@ public final class WitchlightPath: AudioResponseMetrics {
         let silent = stemTotal <= 0 && mixEnergy <= 0
 
         advanceHarmonicPhase(dt: dt, features: features)
+        updateEnergyBreath(features: features, silentNow: silent)
         let speed = advancePen(dt: dt, features: features, silent: silent)
         advanceTurnDetection(dt: dt, silent: silent)
         advanceFlare(dt: dt, features: features)
@@ -349,29 +362,7 @@ public final class WitchlightPath: AudioResponseMetrics {
 
     // MARK: - Turn detection (the chord-change colour boundary)
 
-    private func advanceTurnDetection(dt: Float, silent: Bool) {
-        guard !silent else { turnCandidateAge = 0; return }
-        let sign: Float = phaseRate > 0.02 ? 1 : (phaseRate < -0.02 ? -1 : 0)
-        guard sign != 0 else { turnCandidateAge = 0; return }
-        if sign != turnSign {
-            if sign == turnCandidateSign {
-                turnCandidateAge += dt
-                if turnCandidateAge >= tuning.turnConfirmSeconds {
-                    confirmTurn(newSign: sign)
-                }
-            } else {
-                turnCandidateSign = sign
-                turnCandidateAge = 0
-                // Remember the apex so the hue step lands where the stroke actually
-                // turned, not where the reversal was confirmed 0.25 s later.
-                turnCandidateBeadIndex = beads.count
-            }
-        } else {
-            turnCandidateAge = 0
-        }
-    }
-
-    private func confirmTurn(newSign: Float) {
+    func confirmTurn(newSign: Float) {
         turnSign = newSign
         turnCandidateAge = 0
         turnCount += 1

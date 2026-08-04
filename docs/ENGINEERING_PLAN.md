@@ -1715,6 +1715,36 @@ Two curation errors produced it, both recorded in `docs/VISUAL_REFERENCES/witchl
 
 ---
 
+### Increment WL.4 — Witchlight: give it a continuous-energy driver 🔨 **CODE-COMPLETE 2026-08-04, pending live M7**
+
+**Why.** Matt's fourth M7, session `2026-08-04T19-23-28Z`: *"not synced to the music. failure."* Audio chain verdict `clean`, peak −0.26 dBFS — not an input problem.
+
+**Root cause, and it is articulable at last.** Measured against that session, all EIGHT of Witchlight's routes run on a 1–30 s, 10–60 s, per-bar or per-section envelope, while every loudness band is alive and routed to **nothing**:
+
+| driver | timescale | routed to |
+|---|---|---|
+| `tonal_phase_fifths` | 1–30 s | heading + hue |
+| `arousal` | 10–60 s | pen speed |
+| `spectralCentroid` | 1–10 s | star parallax |
+| `valence` | 30 s+ | nebula hue |
+| `barPhase01` | per bar | one bead |
+| `bassDev` | per event | bounded flare, ≥900 ms refractory |
+| `bass` / `mid` / `treble` / `bassRel` / `mid_dev` / `treb_dev` | per frame | **nothing** |
+
+CLAUDE.md's most important design rule is that continuous energy is the DEFAULT PRIMARY DRIVER and is what makes a visual feel locked to the music. **Witchlight was the only preset with none.** When a listener heard something happen, nothing on screen happened — which is precisely the complaint. It also explains why four rounds of real fixes (backdrop, ribbon light, dynamic range, pen speed, the figure) never touched it: none of them were this.
+
+**Matt's call:** one attempt at an energy driver, judged live; retire if it still does not feel locked.
+
+**What changed.** A ninth route — the whole ribbon's thickness (±22 %) and brightness (±35 %) breathing on `bassAtt`, per frame, with the connecting thread breathing with it. `bassAtt` not `bassDev`: measured, `bassDev` sits at zero and spikes (nonzero 48.8 %) — an accent signal, already spoken for by the flare — while `bassAtt` is continuously alive (nonzero 97.4 %, p50 0.258, range 0.43). Normalised against its own ~3 s running level (D-026); an absolute mapping would be FA #31. Applied to the whole stroke rather than per-bead so it reads as "the drawing swelled" rather than a travelling wave, and so it cannot fight the monotonic age falloff of trait #2. Centred so silence leaves it at exactly 1.0 (D-037 unchanged).
+
+**Measured.** `ribbonBreathSwing` 1.000 on all three fixtures (band ≥ 0.45). Shape checked, not just range — on Matt's session the breath is **68 % mid-range with only 13.5 % at the rails**, so it is a continuous breath rather than a square wave. Flash budget unmoved (peak mean luminance 0.0081, max Δ/frame 0.0005). All other Witchlight gates green.
+
+**A harness gap this exposed — and it nearly caused a misdiagnosis.** The new band first read **0.000 on all three fixtures**. The route was fine: `WitchlightFixtureDrive` did not carry the `bass_att` column, so the replay fed a constant zero and the gate reported a dead route. This is the documented "harness must carry every route" trap; the drive now carries it. **A drive that silently omits a field makes a working route look broken, which is the more expensive failure.**
+
+**Done when:** ✅ a continuous-energy route exists and is QG.5-banded · ✅ breath shape verified as continuous, not bimodal · ✅ flash budget unmoved · ✅ suites green · ⏳ **Matt's live M7 — the whole point, and the retire/keep decision rides on it.**
+
+---
+
 ### Increment MD.7 — Ray-march-composing inspired-by uplifts (formerly Hybrid tier)
 
 **Scope (revised per `MILKDROP_STRATEGY.md` §12 / D-103 amendment / D-107):** Inspired-by uplifts that compose `mv_warp` + `ray_march` against a static camera (D-029). **Not a tier** — these are `milkdrop_inspired` presets that happen to use the ray-march backdrop primitive; authoring choice, not classification. The MD.7.0 spike (single-preset proof of the `mv_warp` + `ray_march` composition) lands as one such uplift; subsequent ray-march-composing uplifts batch into the MD.6 work stream. The architectural composition has only Volumetric Lithograph as prior production proof (and VL's `mv_warp` plays against a ray-march scene that is not itself feedback-warped), so the spike is still a high-value increment under inspired-by.
