@@ -421,6 +421,53 @@ badly understated.** This is the NACRE.2b pattern the plan predicted (§2 reason
    The warp shader body returns `vec3(0,0,0)` unconditionally. §3 asserted this from a
    read; it is now verified from the artifact.
 
+### MEN.3b — sync and intensity, both measured before and after (2026-08-04)
+
+Matt's live read of MEN.3: camera and rotation good, drops look good, but "not in sync
+with the music" and "nothing tied to the intensity of the music, so the drops look the
+same regardless of whether the music is quiet / loud". Both were measurable on his session
+and both were real.
+
+| | before | after |
+|---|---|---|
+| percussion drop → nearest grid beat (median) | 200 ms | **0 ms** |
+| within the ~60 ms perceptual window | 8–10 % | **97–98 %** |
+| surface amplitude vs loudness (Spearman) | r = +0.004 | **r = +0.999** |
+
+**Sync — the audio hierarchy's central rule, and Meniscus was on the wrong side of it.**
+Drops fired on threshold crossings of a smoothed per-stem deviation: a live onset detector.
+CLAUDE.md is explicit that "visuals driven primarily by raw live beat detections feel out
+of sync" and that beat-locked motion is valid only on the **cached BeatGrid**
+(D-153→D-158). Drums and bass now take their TIMING from the grid while the stem still
+supplies WHETHER and HOW HARD — a beat with no drums on it places nothing. Vocals and
+`other` stay onset-driven deliberately: §5 gives them "sustained" and "texture" characters
+a grid would make robotic. Falls back to onset-driven if no grid beat arrives for 2 s, so
+reactive mode degrades rather than going silent. Bounded 3×3 footprint, no global luminance
+change — D-157 satisfied.
+
+**Intensity — deviation primitives cannot carry it, by construction.** A deviation says how
+far a stem sits above its OWN running mean, so a quiet snare and a loud one produce nearly
+the same value. That is exactly what makes them AGC-safe (D-026 / FA #31) and exactly why
+they are dynamics-blind. The fix is not to abandon them but to add §5's SEPARATE loudness
+row, which was specified from the start and never implemented.
+
+**It also had to go on the right layer.** Scaling per-drop force barely moved the needle
+(r=0.13) because per-hit deviation variance swamps it. §5's actual wording is "wave
+amplitude / surface liveliness — the whole sheet is calmer in quiet passages and choppier
+in loud ones", so the envelope now scales the SURFACE amplitude. Silence floor raised to
+0.35 after the first value (0.22) scaled the swell to 7.7e-5/frame against the harness's
+8e-5 frozen floor — technically alive, perceptually stalling, against §4's "the sheet
+breathes … never black".
+
+**Three measurement errors of mine, worth recording because they nearly hid a working
+fix.** (1) A quartile-ratio intensity gate partly measures the TRACK — there_there is
+consistently loud and has little dynamic range — so correlation replaced it. (2) I switched
+to Spearman on a hypothesis that the intensity clamp was depressing Pearson; Spearman came
+back LOWER, falsifying it, and I should have stopped hunting for a statistic that passed.
+(3) The actual fault: the harness sampled intensity only every 15th frame while applying a
+per-frame smoothing constant, turning a 0.35 s envelope into an effective 5 s one. Sampling
+every frame took r from 0.51 to 0.999. The route had been correct throughout.
+
 ### MEN.3 — the divergence: stem-region placement (2026-08-04)
 
 Matt's live viewing of the faithful base: "not moving with the music in a clearly

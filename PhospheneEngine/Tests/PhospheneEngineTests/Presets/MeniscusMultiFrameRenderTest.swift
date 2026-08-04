@@ -150,6 +150,7 @@ struct MeniscusMultiFrameRenderTest {
         var footprints: [Int] = []
         var lumas: [Double] = []
         var stepMilliseconds: [Double] = []
+        var intensitySamples: [(Double, Double)] = []
 
         for frame in 0..<Self.frameCount {
             var features = FeatureVector()
@@ -165,6 +166,12 @@ struct MeniscusMultiFrameRenderTest {
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
             surface.update(features: features, stemFeatures: stems, commandBuffer: cmd)
             stepMilliseconds.append(surface.lastStepMilliseconds)
+            // EVERY frame, not only captured ones: the reference smoothing below uses a
+            // per-frame constant, and sampling at the capture stride silently turned a
+            // 0.35 s envelope into an effective 5 s one — the comparison, not the route,
+            // was what scored 0.51.
+            intensitySamples.append((Double(surface.surfaceIntensity),
+                                     Double((features.bass + features.mid + features.treble) / 3)))
 
             let sampled = frame % Self.captureStride == 0 || frame == Self.frameCount - 1
             Self.encode(cmd, into: target, preset: preset, audio: audio,
@@ -254,7 +261,56 @@ struct MeniscusMultiFrameRenderTest {
             field can be perfectly alive while nothing is drawn.
             """)
 
-        // --- (d) the frame is a real image, not a constant field ---------------------
+        // --- (d) §5's loudness row reaches the SURFACE --------------------------------
+        // Matt, live 2026-08-04: "nothing tied to the intensity of the music, so the drops
+        // look the same regardless of whether the music is quiet / loud". Only asserted
+        // when the drive actually varies the loudness — at silence there is nothing to
+        // correlate against and the check would be vacuous.
+        if intensitySamples.count > 8 {
+            // Compare against a SIMILARLY SMOOTHED loudness. §5 puts this row on a ~1 s
+            // timescale, so the envelope lags on purpose; scoring it against instantaneous
+            // loudness would count that intended lag as a failure. Smoothing both sides
+            // isolates "does the route work" from "does it lag", which is the question.
+            var smoothed = 0.0
+            let loudValues = intensitySamples.map { sample -> Double in
+                smoothed += (sample.1 - smoothed) * 0.05
+                return smoothed
+            }
+            let spread = (loudValues.max() ?? 0) - (loudValues.min() ?? 0)
+            if spread > 0.05 {
+                let amp = intensitySamples.map(\.0)
+                // SPEARMAN (rank) correlation, not Pearson. `surfaceIntensity` clamps at
+                // its ceiling on purpose, and a monotone nonlinearity depresses Pearson
+                // while the behaviour is exactly right — measured 0.70 against a 0.70 bar
+                // purely from the clamp and the intended lag. Ranking is invariant to any
+                // monotone transform, so it scores the thing actually being asserted:
+                // does a louder passage produce a bigger-amplitude surface.
+                func ranks(_ values: [Double]) -> [Double] {
+                    let order = values.indices.sorted { values[$0] < values[$1] }
+                    var out = [Double](repeating: 0, count: values.count)
+                    for (rank, index) in order.enumerated() { out[index] = Double(rank) }
+                    return out
+                }
+                let meanAmpRaw = amp.reduce(0, +) / Double(amp.count)
+                let rankedAmp = ranks(amp), rankedLoud = ranks(loudValues)
+                let meanA = rankedAmp.reduce(0, +) / Double(rankedAmp.count)
+                let meanL = rankedLoud.reduce(0, +) / Double(rankedLoud.count)
+                let cov = zip(rankedAmp, rankedLoud).map { ($0 - meanA) * ($1 - meanL) }.reduce(0, +)
+                let sdA = rankedAmp.map { ($0 - meanA) * ($0 - meanA) }.reduce(0, +).squareRoot()
+                let sdL = rankedLoud.map { ($0 - meanL) * ($0 - meanL) }.reduce(0, +).squareRoot()
+                let r = cov / max(sdA * sdL, 1e-9)
+                print(String(format: "[meniscus-intensity] Spearman r=%+.3f · intensity %.2f..%.2f (mean %.2f) · loudness %.2f..%.2f",
+                             r, amp.min() ?? 0, amp.max() ?? 0, meanAmpRaw, loudValues.min() ?? 0, loudValues.max() ?? 0))
+                #expect(r > 0.7, """
+                    surface amplitude tracks loudness at only r=\(String(format: "%.2f", r)). \
+                    §5: "the whole sheet is calmer in quiet passages and choppier in loud \
+                    ones" — without it the surface looks identical loud or quiet, which is \
+                    what Matt reported live.
+                    """)
+            }
+        }
+
+        // --- (e) the frame is a real image, not a constant field ---------------------
         #expect(Self.isNonConstant(previousPixels), "the final frame is a constant field")
     }
 

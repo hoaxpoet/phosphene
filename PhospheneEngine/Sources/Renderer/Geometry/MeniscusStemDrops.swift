@@ -87,6 +87,18 @@ struct MeniscusStemDrops {
             force: 0.09)
     ]
 
+    /// Loudness envelope, ~1 s — §5's "overall loudness → wave amplitude / surface
+    /// liveliness. The whole sheet is calmer in quiet passages and choppier in loud ones."
+    /// This row of the routing table was specified from the start and was simply never
+    /// implemented, which is why Matt measured drops that looked identical loud or quiet.
+    private var loudness: Float = 0
+    /// Previous grid beat phase, for wrap detection.
+    private var previousBeatPhase: Float = 0
+    /// Seconds since the last grid beat. Grid sync falls back to onset-driven when the
+    /// grid is absent or stalled — `barPhase01` cannot be tested directly for presence
+    /// because it is legitimately 0 at every downbeat.
+    private var sinceGridBeat: Float = 99
+
     private var envelopes = [Float](repeating: 0, count: 4)
     private var previous = [Float](repeating: 0, count: 4)
     private var refractory = [Float](repeating: 0, count: 4)
@@ -95,18 +107,24 @@ struct MeniscusStemDrops {
     /// Diagnostics.
     private(set) var lastSites: [Int] = []
     private(set) var lastPerRegion = [Int](repeating: 0, count: 4)
+    /// Per-drop force this step, parallel to `lastSites` — the intensity gate reads it.
+    private(set) var lastForces: [Float] = []
 
     // MARK: - Per frame
 
     mutating func step(
         stems: StemFeatures,
+        features: FeatureVector,
         field: inout [Float],
-        side: Int,
         dt: Float,
         configuration: MeniscusConfiguration
     ) {
         lastSites.removeAll(keepingCapacity: true)
+        lastForces.removeAll(keepingCapacity: true)
         for i in lastPerRegion.indices { lastPerRegion[i] = 0 }
+        // `side` is `configuration.gridN` — taking it as a parameter too was a
+        // redundant sixth argument.
+        let side = configuration.gridN
         guard side > 4 else { return }
 
         // DEVIATION PRIMITIVES, never absolute energy (D-026 / FA #31). `drumsEnergyDev`
@@ -115,6 +133,30 @@ struct MeniscusStemDrops {
         //
         // Drums additionally take `drumsBeat`, the stem's own onset pulse — the
         // `drums_beat` class §5's FA #67 table names for the drums row specifically.
+        // INTENSITY (§5's loudness row). Deviation primitives are self-normalising BY
+        // CONSTRUCTION — a stem's deviation says how far it sits above its OWN running
+        // mean, so a quiet snare and a loud one produce nearly the same value. That is
+        // exactly what makes them AGC-safe, and exactly why they carry no dynamics.
+        // Measured on Matt's session: drop force vs loudness r = +0.004, quietest and
+        // loudest quartiles both at mean force 0.57. The fix is not to abandon deviation
+        // (which would reintroduce FA #31) but to add the SEPARATE loudness row the
+        // routing table already specifies, on its own ~1 s timescale.
+        let instantLoudness = min(max((features.bass + features.mid + features.treble) / 3, 0), 1.4)
+        loudness += (instantLoudness - loudness) * (1 - exp(-dt / 0.9))
+        let intensity = configuration.stemIntensityFloor
+            + (1 - configuration.stemIntensityFloor) * min(loudness / 0.55, 1.8)
+
+        // GRID BEAT, for the drums row. `beatPhase01` sawtooths 0→1 across each beat of
+        // the CACHED BeatGrid, so a wrap is a grid beat.
+        let beatPhase = features.beatPhase01
+        let gridBeat = previousBeatPhase > 0.75 && beatPhase < 0.25
+        previousBeatPhase = beatPhase
+        sinceGridBeat = gridBeat ? 0 : sinceGridBeat + dt
+        // A grid is "live" if a beat has arrived recently. 2 s covers anything down to
+        // 30 BPM, and a stalled or absent grid degrades to the onset path rather than
+        // silencing the drums entirely.
+        let gridLive = sinceGridBeat < 2.0
+
         let drives: [Float] = [
             max(stems.drumsEnergyDev, stems.drumsBeat),
             stems.bassEnergyDev,
@@ -129,9 +171,32 @@ struct MeniscusStemDrops {
             envelopes[index] += alpha * (drive - envelopes[index])
             refractory[index] = max(0, refractory[index] - dt)
 
-            let fired = envelopes[index] > configuration.stemDropThreshold
-                && previous[index] <= configuration.stemDropThreshold
-                && refractory[index] <= 0
+            // TIMING. Drums and bass take their timing from the CACHED GRID; vocals and
+            // `other` stay onset-driven.
+            //
+            // This is the audio hierarchy's central rule, and Meniscus was on the wrong
+            // side of it: "visuals driven primarily by raw live beat detections feel out
+            // of sync", because live onsets jitter and beat-locked motion is valid only
+            // on the cached grid (D-153→D-158). Measured on Matt's session, threshold
+            // crossings of a smoothed deviation landed a median 200 ms from the nearest
+            // beat with only 8-10 % inside the ~60 ms perceptual window — uncorrelated.
+            //
+            // The grid supplies WHEN; the stem still supplies WHETHER and HOW HARD, so a
+            // beat with no drums on it places nothing and a hard hit still lands harder.
+            // Bounded footprint (a 3×3 stencil) and no global luminance change, so this
+            // satisfies D-157.
+            //
+            // Vocals and `other` are deliberately NOT quantised — §5 gives them
+            // "sustained" and "texture" characters that a grid would make robotic.
+            let usesGrid = index < 2 && configuration.stemGridSync && gridLive
+            let fired: Bool
+            if usesGrid {
+                fired = gridBeat && envelopes[index] > configuration.stemPresenceThreshold
+            } else {
+                fired = envelopes[index] > configuration.stemDropThreshold
+                    && previous[index] <= configuration.stemDropThreshold
+                    && refractory[index] <= 0
+            }
             previous[index] = envelopes[index]
             guard fired else { continue }
             refractory[index] = configuration.stemDropRefractory
@@ -146,7 +211,10 @@ struct MeniscusStemDrops {
 
             // Force scales with HOW FAR above its own mean the stem is, so a hard snare
             // lands harder than a soft one — the dynamics survive the gate.
-            let force = min(envelopes[index], 3.0) * region.force * configuration.stemDropForce
+            // Force carries BOTH: how far the stem is above its own mean (dynamics
+            // within the passage) and the loudness envelope (dynamics across the track).
+            let force = min(envelopes[index], 3.0) * region.force
+                * configuration.stemDropForce * intensity
             stamp(
                 &field,
                 side: side,
@@ -154,6 +222,7 @@ struct MeniscusStemDrops {
                 radius: region.radius,
                 force: force)
             lastSites.append(row * side + col)
+            lastForces.append(force)
             lastPerRegion[index] += 1
         }
     }
@@ -161,8 +230,11 @@ struct MeniscusStemDrops {
     mutating func reset() {
         for i in envelopes.indices { envelopes[i] = 0; previous[i] = 0; refractory[i] = 0 }
         lastSites.removeAll()
+        lastForces.removeAll()
         for i in lastPerRegion.indices { lastPerRegion[i] = 0 }
         rng = 0x2545_F491_4F6C_DD1D
+        loudness = 0
+        previousBeatPhase = 0
     }
 
     // MARK: - Impact
