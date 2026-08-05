@@ -27,7 +27,9 @@ All tests must pass before any new code is merged (regression gate).
 
 Every increment — engine, preset, UX, docs, infrastructure — ends by invoking the **`closeout` skill** (`.claude/skills/closeout/`; auto-applies when you finish an increment or are about to commit/push). It is the canonical home of the 8-part closeout report, the mandatory `docs/ENGINEERING_PLAN.md` + `docs/ENGINE/RENDER_CAPABILITY_REGISTRY.md` updates, the durable-learnings-stay-in-docs rule, the `[<increment-id>] <component>: <description>` commit format (prefer small commits), and the stop-and-report triggers.
 
-**Do not push to the remote without Matt's explicit approval.** Local `main` commits stay local. `git push` requires "yes, push" in the chat — even when the work is clearly green and clearly Matt's request. Pushing remains a separate decision. (Safety-critical: stays always-loaded.)
+**Do not push to the remote without Matt's explicit approval.** Local `main` commits stay local. `git push` requires "yes, push" in the chat — even when the work is clearly green and clearly Matt's request. Pushing remains a separate decision.
+
+**Push to a BRANCH and open a PR. Never push directly to `main`.** Even with Matt's approval, and even when `main` is where the work belongs — the approval is to publish, not to bypass CI. `main` requires the `fast-gate` status check, so a direct push is the one route that skips it. On 2026-08-04 nine consecutive direct pushes each returned `Bypassed rule violations for refs/heads/main: Required status check "fast-gate" is expected`, and every one of them shipped unverified by CI. That line is a **stop signal, not an observation** — if it ever appears, say so immediately rather than at the end of the session. (Safety-critical: stays always-loaded.)
 
 ## Documentation Pruning & Token Budget
 
