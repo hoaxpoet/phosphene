@@ -151,14 +151,20 @@ fragment float4 witchlight_sky_fragment(
     // every resolution. The three layers keep their existing 0.28/0.62/1.20 multipliers,
     // which combined with their differing `cells` give ~12.7× more screen motion on the
     // near layer than the far one — that RATIO is what reads as depth.
-    // WL.5 — 0.16 + 0.50·b → 0.05 + 0.16·b. Matt's fifth M7: "the starry background is
-    // moving too much." WL.2-i fixed a field that was genuinely FROZEN (0.16 px/s, 4 px per
-    // track) and overshot in the other direction: at a typical centroid the near layer ran
-    // 7.4 px/s, crossing frame in ~4 min, which competes with the ribbon for attention in a
-    // preset whose whole subject is the ribbon. Now ~2.3 px/s, crossing in ~14 min — present
-    // if you look for it, invisible if you are watching the stroke, which is the brief.
-    // The 12.7:1 near-to-far ratio is unchanged, so the depth cue survives the slowdown.
-    float rate = 0.05 + 0.16 * brightness;
+    // WL.6 — the field drifts at a FIXED slow rate, decoupled from the music entirely.
+    //
+    // Matt: "the starry background is STILL moving too much, appears to be tied to the music,
+    // which is probably not the right call." Both halves are right. It was `0.05 + 0.16·b`
+    // (WL.5) and `0.16 + 0.50·b` before that, so a busy passage sped the whole field up —
+    // which puts a second, competing音楽-driven motion behind the one thing that is supposed
+    // to BE the music. The ribbon is the subject; the field is the room it hangs in, and a
+    // room that reacts to the music steals the reading.
+    //
+    // Now a constant ~0.9 px/s on the near layer at 1080p — a full frame crossing takes ~35
+    // minutes, i.e. longer than any track. Present as parallax if you watch for it, invisible
+    // as motion. `spectral_centroid` no longer touches it; the star_parallax route is retired
+    // from the sidecar rather than left declared-but-inert.
+    float rate = 0.02;
     float2 uvA = float2((uv.x - 0.5) * aspect + 0.5, uv.y);
     float3 stars =
           witchlight_star_layer(uvA, 190.0, float2(t * rate * 0.28, t * rate * 0.10), 1.00) * 0.55
