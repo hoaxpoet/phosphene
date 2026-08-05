@@ -180,10 +180,9 @@ private func audibleStems() -> StemFeatures {
         state.buildState.radialIndex = 5
         state.buildState.radialProgress = 0.4
 
-        // Force-active spider so spiderBlend > 0.01 every tick.
-        #if DEBUG
-        state.forceSpiderActive = true
-        #endif
+        // Force-active spider so spiderBlend > 0.01 every tick in every
+        // configuration, including the release test target.
+        state.forceActivateForTest(at: SIMD2<Float>(0.42, 0.40))
 
         let beforeIdx = state.buildState.radialIndex
         let beforeProgress = state.buildState.radialProgress

@@ -341,7 +341,6 @@ extension ArachneState {
 
     // MARK: - Test helpers
 
-    #if DEBUG
     /// Pin the spider to a deterministic state for fixture rendering tests.
     ///
     /// Sets blend=1, positions the body at the given UV coordinate, heading=0,
@@ -349,7 +348,7 @@ extension ArachneState {
     /// gait solver — tips are set directly so the output is frame-stable.
     ///
     /// - Parameter uvPosition: UV-space anchor point (e.g. `SIMD2(0.42, 0.40)`).
-    public func forceActivateForTest(at uvPosition: SIMD2<Float>) {
+    func forceActivateForTest(at uvPosition: SIMD2<Float>) {
         // Convert UV → clip space: clipX = uv.x * 2 − 1, clipY = 1 − uv.y * 2.
         let clipX = uvPosition.x * 2.0 - 1.0
         let clipY = 1.0 - uvPosition.y * 2.0
@@ -369,7 +368,6 @@ extension ArachneState {
         }
         writeSpiderToGPU()
     }
-    #endif
 
     // MARK: - Helpers used by both ArachneState.swift and this extension
 
