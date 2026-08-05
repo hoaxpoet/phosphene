@@ -53,12 +53,14 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
     private let backdropPipeline: MTLRenderPipelineState?
 
     // Height field — two buffers, ping-ponged by the wave step.
-    private var current: [Float]
-    private var previous: [Float]
+    internal var current: [Float]
+    internal var previous: [Float]
 
     // Clock, and the ported camera (MeniscusCamera.swift).
-    private var elapsed: Float = 0
-    private var camera = MeniscusCamera()
+    internal var elapsed: Float = 0
+    /// Continuous per-band envelopes driving the living swell (MEN.4c).
+    internal var bandSwell = SIMD3<Float>(0, 0, 0)
+    internal var camera = MeniscusCamera()
     private var drops = MeniscusDrops()
     private var stemDrops = MeniscusStemDrops()
     /// The live FFT magnitudes — the SAME `.storageModeShared` UMA buffer the
@@ -183,6 +185,12 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
                 dt: dt,
                 configuration: configuration)
         }
+        // THE CONTINUOUS DRIVER (MEN.4c) — INTO THE SIM, not onto the display.
+        let alpha = 1 - exp(-dt / 0.25)
+        bandSwell.x += (min(max(features.bass, 0), 1.5) - bandSwell.x) * alpha
+        bandSwell.y += (min(max(features.mid, 0), 1.5) * 3 - bandSwell.y) * alpha
+        bandSwell.z += (min(max(features.treble, 0), 1.5) * 8 - bandSwell.z) * alpha
+        driveContinuously(dt: dt)
         stepWave(dt: dt)
         serializeSerpentinePath(intensity: surfaceIntensity)
 
@@ -259,85 +267,23 @@ public final class MeniscusSurface: ParticleGeometry, @unchecked Sendable {
                         // `dst` (the PREVIOUS field) is overwritten in place with the
                         // NEW height: after the swap below it becomes `current` and the
                         // old `current` becomes `previous`. No third buffer.
-                        dst[here + col] = (2 * mean - dst[here + col]) * damping
+                        // SOFT CEILING (MEN.4c). The continuous drive adds a spatial
+                        // pattern every frame, which is RESONANT FORCING: energy piles up
+                        // at fixed antinodes without bound, and the render showed it as
+                        // long spears shooting off the sheet — the surface tearing, not
+                        // water. `tanh` leaves everything under the ceiling untouched and
+                        // only bends the extremes, so ripple shape is unchanged and only
+                        // the runaway is caught.
+                        let updated = (2 * mean - dst[here + col]) * damping
+                        let ceiling = configuration.heightCeiling
+                        dst[here + col] = ceiling > 0
+                            ? ceiling * tanh(updated / ceiling)
+                            : updated
                     }
                 }
             }
         }
         swap(&current, &previous)
-    }
-
-    // MARK: - Serialization
-
-    /// Walk the grid in serpentine row order and write the path samples the vertex
-    /// shader consumes: display height (sim + the MEN.2a placeholder swell) and the
-    /// slope term the shading reads.
-    ///
-    /// The slope is `h − s`, where `s` is a one-sample-lagged IIR of the height
-    /// taken ALONG THE PATH — the source's own construction (`MENISCUS_PLAN.md`
-    /// §3), and the reason crests read near-white while the trough two samples away
-    /// reads near-black (trait T3, reference `07`).
-    private func serializeSerpentinePath(intensity: Float) {
-        // THE SWELL IS THE SILENCE STATE, NOT A CONSTANT BED.
-        //
-        // MEN.2a introduced it as "a placeholder to satisfy D-037 … keep it cheap and keep
-        // it removable", and it was never removed when real drops arrived. Measured:
-        // autonomous swell amplitude 0.0540 against 0.0001 from the entire audio path —
-        // the placeholder is 540x everything the music does, so the music contributed
-        // ~0 % of what was on screen. That is exactly Matt's "a movie playing with
-        // background music", and it is why four rounds of drop-TIMING work changed nothing
-        // a viewer could see: the drops were correct and inaudible under it.
-        //
-        // It now fades out as the music comes up, so it does what §4 actually specifies —
-        // "silence / cold start: a slow standing swell … never black" — and nothing more.
-        let swellGate = max(0, 1 - camera.volumeEnvelope * configuration.swellFadeRate)
-        let side = configuration.gridN
-        guard side > 0 else { return }
-        let lag = configuration.slopeLag
-        let swell = configuration.swellAmplitude
-        let clock = elapsed
-        let span = Float(max(side - 1, 1))
-
-        let ptr = pointBuffer.contents().bindMemory(to: MeniscusPoint.self, capacity: pointCount)
-        var smoothed: Float = 0
-        var index = 0
-
-        for row in 0..<side {
-            let rowBase = row * side
-            let reversed = (row % 2) == 1
-            let rowFrac = Float(row) / span
-            for step in 0..<side {
-                let col = reversed ? (side - 1 - step) : step
-                let colFrac = Float(col) / span
-
-                // MEN.2a PLACEHOLDER ONLY (task 6) — a standing swell added at DISPLAY
-                // time, never into the sim state, so the wave field MEN.2b inherits is
-                // untouched and this is one expression to delete.
-                //
-                // THREE wavelengths, not one. A single long wave gives the plate a
-                // smooth tilt with near-constant slope everywhere, and a constant slope
-                // is a flat grey sheet under T3's shading — "a soft, evenly-lit version
-                // of this looks like fabric, not water" (reference README, `07`). The
-                // mid and short terms put crests and troughs a couple of samples apart
-                // so the shading has something to resolve. Temporal rates stay slow:
-                // §7 R6's recovery for a swell that reads frozen is MORE SPATIAL
-                // VARIATION, never a faster swell.
-                let swellTerm = swell * swellGate * (
-                    sin(colFrac * 2.1 + clock * 0.31) * cos(rowFrac * 1.6 - clock * 0.23)
-                    + 0.55 * sin((colFrac * 5.3 - rowFrac * 4.1) + clock * 0.19)
-                    + 0.30 * cos((colFrac * 9.7 + rowFrac * 8.3) - clock * 0.27))
-
-                // §5's loudness row applied where it belongs: to WAVE AMPLITUDE, so the
-                // whole sheet is calmer in quiet passages and choppier in loud ones.
-                // Scaling only per-drop force (the first attempt) barely moved the needle
-                // — per-hit deviation variance swamps it, r=0.13. The sheet's amplitude is
-                // a global, visible property and it is what §5 actually names.
-                let height = (current[rowBase + col] + swellTerm) * intensity
-                smoothed += (height - smoothed) * lag
-                ptr[index] = MeniscusPoint(height: height, slope: height - smoothed)
-                index += 1
-            }
-        }
     }
 
     // MARK: - Helpers

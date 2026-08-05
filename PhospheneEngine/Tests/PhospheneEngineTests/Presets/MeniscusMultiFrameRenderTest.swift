@@ -105,6 +105,11 @@ struct MeniscusMultiFrameRenderTest {
         if let damping = Float(ProcessInfo.processInfo.environment["MENISCUS_DAMPING"] ?? "") {
             configuration.damping = damping
         }
+        // MEN.4c: the continuous band drive is the preset's primary audio driver, so it
+        // has to be sweepable against the tether measurement rather than guessed.
+        if let drive = Float(ProcessInfo.processInfo.environment["MENISCUS_DRIVE"] ?? "") {
+            configuration.continuousDrive = drive
+        }
         // NEGATIVE CONTROL. `MENISCUS_SWELL=0` removes the only thing moving the
         // surface at MEN.2a, so the run SHOULD trip the motion floor. That is how this
         // gate is shown to be wired to something real rather than passing vacuously —
@@ -157,6 +162,9 @@ struct MeniscusMultiFrameRenderTest {
         var previousPixels: [UInt8] = []
         var previousHeights: [Float] = []
         var pixelDeltas: [Double] = []
+        var levels: [Double] = []
+        var heightRMS: [Double] = []
+        var sampledLevels: [Double] = []
         var heightDeltas: [Double] = []
         var footprints: [Int] = []
         var lumas: [Double] = []
@@ -170,6 +178,8 @@ struct MeniscusMultiFrameRenderTest {
             features.aspectRatio = Float(Self.width) / Float(Self.height)
             var stems = StemFeatures.zero
             if let drive { drive.advance(frame: frame, into: &features) }
+            // MEN.4c: the music level this frame, for the continuous-tether measurement.
+            levels.append(Double(max(0, (features.bass + features.mid + features.treble) / 3)))
             // MEN.3: real stems for the stem-region placement. `MENISCUS_STEMS=<fixture>`
             // uses the committed route-coverage stems rather than synthesis (FA #27).
             if let stemDrive, frame < stemDrive.count { stems = stemDrive[frame] }
@@ -205,6 +215,8 @@ struct MeniscusMultiFrameRenderTest {
             let heights = Self.readHeights(surface)
             lumas.append(Self.meanLuma(pixels))
             footprints.append(Self.footprint(pixels, Self.read(backdropOnly)))
+            heightRMS.append(Self.rms(heights))
+            sampledLevels.append(levels[frame])
             if !previousPixels.isEmpty {
                 pixelDeltas.append(Self.meanAbsoluteDelta(pixels, previousPixels))
                 // Normalised to a PER-SIMULATION-FRAME rate so the gate reads the same
@@ -245,6 +257,54 @@ struct MeniscusMultiFrameRenderTest {
         // --- (b) the SURFACE is not frozen (camera-independent) ----------------------
         #expect(!heightDeltas.isEmpty, "no inter-frame deltas were captured")
         let meanHeightDelta = heightDeltas.reduce(0, +) / Double(max(heightDeltas.count, 1))
+        // MEN.4c — THE TETHER. Matt, tenth round: "feels less tethered to the music,
+        // just fewer and more random drops." Cutting drop density made it WORSE, which is
+        // what ruled density out and pointed at the real cause: during music the surface
+        // had NO continuous audio-driven motion at all, only discrete drop events. That
+        // inverts CLAUDE.md's central rule — continuous energy is the DEFAULT PRIMARY
+        // DRIVER and beat events are the accent, not the whole signal.
+        //
+        // So this measures the property no other gate here does: does the SHEET ITSELF
+        // move with the music, moment to moment, independent of any beat? Reported when
+        // the run is at silence (no correlation is meaningful there) and asserted when a
+        // real track drives it.
+        if sampledLevels.count > 30, heightRMS.count == sampledLevels.count {
+            // COMPARE AGAINST THE LEVEL THE FIELD ACTUALLY SEES. A wave field integrates:
+            // it cannot track an instantaneous band reading, and the drive is fed from a
+            // ~0.25 s envelope in the first place. Correlating raw level against a medium
+            // with memory measures the medium's physics, not the routing — the same error
+            // as timing drops against the impulse instead of the visible ripple (MEN.3c).
+            var smoothedLevels: [Double] = []
+            var envelope = sampledLevels[0]
+            let step = 1.0 / 60.0
+            let a = 1 - exp(-step / 0.25)
+            for level in sampledLevels {
+                envelope += (level - envelope) * a
+                smoothedLevels.append(envelope)
+            }
+            let sampledLevels = smoothedLevels
+            let n = Double(heightRMS.count)
+            let mh = heightRMS.reduce(0, +) / n, ml = sampledLevels.reduce(0, +) / n
+            var cov = 0.0, vh = 0.0, vl = 0.0
+            for i in heightRMS.indices {
+                cov += (heightRMS[i] - mh) * (sampledLevels[i] - ml)
+                vh += (heightRMS[i] - mh) * (heightRMS[i] - mh)
+                vl += (sampledLevels[i] - ml) * (sampledLevels[i] - ml)
+            }
+            let r = (vh > 0 && vl > 0) ? cov / (vh * vl).squareRoot() : 0
+            print(String(format: "[meniscus-tether] surface RMS vs music level r=%+.3f over %d samples",
+                         r, heightRMS.count))
+            if vl > 1e-9 {
+                #expect(r > 0.30, """
+                    The sheet's own motion correlates only r=\(String(format: "%.3f", r)) \
+                    with the music level. The surface has to MOVE WITH the music \
+                    continuously — drops are the accent on top, not the whole signal. \
+                    This is the CLAUDE.md audio-hierarchy rule, and violating it is what \
+                    ten rounds of drop-timing work could not compensate for.
+                    """)
+            }
+        }
+
         #expect(meanHeightDelta > Self.motionFloor, """
             the surface is frozen: mean |Δheight| per frame \
             \(String(format: "%.6f", meanHeightDelta)) is under the \(Self.motionFloor) floor. \
@@ -421,6 +481,14 @@ struct MeniscusMultiFrameRenderTest {
 
     /// Mean absolute per-channel difference, in 0–255 units. Reported as evidence, not
     /// asserted on: it conflates surface motion with camera drift.
+    /// Root-mean-square height — how much the sheet is moving overall, right now.
+    private static func rms(_ values: [Float]) -> Double {
+        guard !values.isEmpty else { return 0 }
+        var total = 0.0
+        for v in values { total += Double(v) * Double(v) }
+        return (total / Double(values.count)).squareRoot()
+    }
+
     private static func meanAbsoluteDelta(_ a: [UInt8], _ b: [UInt8]) -> Double {
         guard a.count == b.count, !a.isEmpty else { return 0 }
         var total = 0.0

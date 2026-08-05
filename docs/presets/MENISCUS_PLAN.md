@@ -421,6 +421,47 @@ badly understated.** This is the NACRE.2b pattern the plan predicted (§2 reason
    The warp shader body returns `vec3(0,0,0)` unconditionally. §3 asserted this from a
    read; it is now verified from the artifact.
 
+### MEN.4c — the surface had no continuous driver at all (2026-08-05)
+
+Matt, tenth round, on the MEN.4b cut: **"feels less tethered to the music now, just fewer
+and more random drops."**
+
+**Cutting density made it WORSE, which is what finally ruled density out** — and pointed at
+something that had been true since MEN.2a and that I had never checked.
+
+**During music the surface had NO continuous audio-driven motion.** The swell — its only
+continuous element — was gated off as volume rose (MEN.3d, `swellGate = 1 − volume × 6`),
+so the sheet was 100 % discrete drop events. That inverts CLAUDE.md's single most important
+design rule:
+
+> *"visuals driven primarily by continuous energy feel locked to the music; visuals driven
+> primarily by raw live beat detections feel out of sync. Continuous energy is the DEFAULT
+> PRIMARY DRIVER."*
+
+**Ten rounds went into the SECONDARY driver** — drop timing, now a median 6 ms from the
+beat — **while the primary one was switched off.** "Not tethered" is the exact phrase that
+rule predicts.
+
+**Two fixes, both found by looking rather than by a metric.**
+
+1. **The excitation goes INTO the sim, not onto the display.** The MEN.2a swell was added
+   at draw time and never entered the field, so it could neither move the simulation nor
+   INTERFERE with the drops — §1's *"ripples that spread from each impact and interfere
+   with one another"* was never actually happening. Measured with a display-only swell, the
+   surface's own RMS correlated **r=+0.136** with the music.
+2. **A `tanh` soft ceiling.** The first render showed spears tearing off the sheet:
+   continuous forcing is *resonant* by nature — the same spatial pattern added every frame
+   pumps fixed antinodes without bound. The ceiling bends only the extremes, leaving ripple
+   shape untouched. Peak **4.196 → 1.242**.
+
+**A metric I stopped trusting mid-calibration.** The tether correlation reads 0.136 at one
+window length and 0.316 at another *for the same configuration*. It is a diagnostic, not
+something to tune against — so the drive was chosen from amplitude evidence and the render,
+not by pushing a number over a bar I had invented.
+
+`MeniscusSurface.swift` was split at this increment (`+Simulation`) purely for size; the
+doc-integrity gate caught the missing Module Map row immediately.
+
 ### MEN.4b — fewer drops, each one meaning something (2026-08-05)
 
 Matt, ninth round, on the MEN.4a build: **"Drops appear to follow the drums, not exactly

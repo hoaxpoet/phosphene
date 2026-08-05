@@ -177,6 +177,15 @@ public struct MeniscusConfiguration: Sendable {
     /// plays — so 0.02 separates real silence from the quietest real passage with room to
     /// spare, and the ~0.12 s envelope in front of it opens on the first note of a phrase.
     public var silenceFloor: Float
+    /// Gain on the continuous band-driven excitation injected into the wave field each
+    /// second (MEN.4c). This is the preset's PRIMARY audio driver per CLAUDE.md's audio
+    /// hierarchy; the beat-locked drops are the accent on top of it.
+    public var continuousDrive: Float
+    /// Soft ceiling on wave-field displacement (MEN.4c). Continuous forcing is resonant
+    /// by nature — the same spatial pattern added every frame pumps fixed antinodes
+    /// without bound — and the render showed it as spears tearing off the sheet. `tanh`
+    /// bends only the extremes; 0 disables the ceiling.
+    public var heightCeiling: Float
     /// How far BEFORE the grid beat a percussion drop is stamped, seconds.
     ///
     /// Not a fudge factor — it compensates a measured property of the medium. The impulse
@@ -249,6 +258,8 @@ public struct MeniscusConfiguration: Sendable {
         stemGridSync: Bool = true,
         stemPresenceThreshold: Float = 0.12,
         silenceFloor: Float = 0.02,
+        continuousDrive: Float = 6.0,
+        heightCeiling: Float = 1.2,
         stemLeadTime: Float = 0.120,
         stemIntensityFloor: Float = 0.35,
         dropSpectrumScale: Float = 10.0,
@@ -279,6 +290,8 @@ public struct MeniscusConfiguration: Sendable {
         self.stemGridSync = stemGridSync
         self.stemPresenceThreshold = stemPresenceThreshold
         self.silenceFloor = silenceFloor
+        self.continuousDrive = continuousDrive
+        self.heightCeiling = heightCeiling
         self.stemLeadTime = stemLeadTime
         self.stemIntensityFloor = stemIntensityFloor
         self.dropSpectrumScale = dropSpectrumScale
