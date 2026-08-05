@@ -112,6 +112,9 @@ struct MeniscusStemDrops {
     private var envelopes = [Float](repeating: 0, count: 4)
     private var previous = [Float](repeating: 0, count: 4)
     private var refractory = [Float](repeating: 0, count: 4)
+    /// Per-region stem presence on a ~2.5 s envelope — "is this instrument playing in
+    /// this passage", never "did it just hit" (MEN.3f).
+    private var presence = [Float](repeating: 0, count: 4)
     private var rng: UInt64 = 0x2545_F491_4F6C_DD1D
 
     /// Diagnostics.
@@ -161,12 +164,46 @@ struct MeniscusStemDrops {
 
         let gridBeat = advanceBeatClock(features: features, dt: dt, configuration: configuration)
 
+        // THE DRIVER IS REAL-TIME; THE STEMS ONLY SAY WHO IS PLAYING (MEN.3f).
+        //
+        // MEN.3 drove both timing and force from stem deviations, and that was the whole
+        // defect. Measured on Matt's session `2026-08-05T13-17-18Z`, every stem lags the
+        // music by ~5.2 s (drums +5.25 s r=0.550, bass +5.25, vocals +5.08, other +5.25;
+        // the same data at lag 0 correlates only r=0.363). The live stem path says so
+        // itself — `VisualizerEngine+Audio.swift`: "Features carry ~5-10s of latency …
+        // acceptable because musical sections persist longer than that". They are a
+        // SECTION-SCALE signal by construction and cannot carry event timing.
+        //
+        // So five rounds of ±100 ms work happened downstream of a 5,250 ms staleness, and
+        // offline fixtures hid it throughout by feeding stems in sync with the audio.
+        //
+        // Each signal now does what it is for: REAL-TIME per-band beat channels decide WHEN
+        // a drop lands and HOW HARD, on the same frame as the audio; STEMS decide only
+        // WHETHER a region is alive in this passage (`updatePresence`), which is exactly
+        // the section-scale question 5 s of lag does not harm. The price is that per-band
+        // channels separate the instruments less cleanly than the stems did.
+        //
+        // THE PER-BAND BEAT CHANNELS are the third driver tried here and the first with the
+        // range to work. The two that failed, both from measurement:
+        //
+        //   - `midDev`/`trebDev` are not carried by the recorded fixtures at all (only
+        //     `bassDev` is), so reading them fed constant zero and killed two regions.
+        //   - Deriving deviations from `bass`/`mid`/`treble` fails on the real values:
+        //     measured on `there_there`, mid p50 0.038 and treble p50 0.001 — the bands
+        //     are a track's quietest channels (the GLAZE.8 lesson), never reaching the
+        //     0.5 centre the deviation formula subtracts, so every region stayed dead.
+        //
+        // `beatBass`/`beatMid`/`beatTreble` are real-time, per-band and event-shaped, and
+        // they carry the range these need (p50 0.09-0.34, p90 0.77-1.00). They give each
+        // region its own instrument proxy on the SAME FRAME as the audio, which is the
+        // entire point of MEN.3f.
         let drives: [Float] = [
-            max(stems.drumsEnergyDev, stems.drumsBeat),
-            stems.bassEnergyDev,
-            stems.vocalsEnergyDev,
-            stems.otherEnergyDev
+            features.beatComposite,   // drums — the full-mix beat (grid supplies its timing)
+            features.beatBass,        // bass — low-frequency onsets
+            features.beatMid,         // vocals sit in the mids
+            features.beatTreble       // other — texture up top
         ]
+        let stemsPresent = updatePresence(stems: stems, dt: dt)
 
         for index in 0..<4 {
             let drive = max(0, drives[index])
@@ -193,11 +230,17 @@ struct MeniscusStemDrops {
             // Vocals and `other` are deliberately NOT quantised — §5 gives them
             // "sustained" and "texture" characters that a grid would make robotic.
             let usesGrid = index < 2 && configuration.stemGridSync && gridLive
+            // MEN.3f: the stem's only remaining job. A region whose instrument is not
+            // playing in this passage places nothing, however loud the band gets — that
+            // is what keeps the sheet's geography meaning something now that the events
+            // come from the full mix.
+            let alive = !stemsPresent || presence[index] > configuration.stemPresenceThreshold
             let fired: Bool
             if usesGrid {
-                fired = gridBeat && envelopes[index] > configuration.stemPresenceThreshold
+                fired = gridBeat && alive && envelopes[index] > configuration.stemDropThreshold
             } else {
-                fired = envelopes[index] > configuration.stemDropThreshold
+                fired = alive
+                    && envelopes[index] > configuration.stemDropThreshold
                     && previous[index] <= configuration.stemDropThreshold
                     && refractory[index] <= 0
             }
@@ -289,8 +332,32 @@ struct MeniscusStemDrops {
         return gridBeat
     }
 
+    /// Advance each region's stem-presence envelope and report whether separation is
+    /// running at all. Smoothed hard on purpose: this answers "is there a bass part in this
+    /// section", never "did it just hit", so the live path's ~5 s stem latency is harmless
+    /// here — that is the whole basis of the MEN.3f split.
+    ///
+    /// Returns false when no stem carries energy (warmup, a stem-less path, a fixture with
+    /// no stems). Callers must treat that as "every region alive": without it the gate
+    /// turns a missing OPTIONAL signal into a dead surface.
+    private mutating func updatePresence(stems: StemFeatures, dt: Float) -> Bool {
+        let energies: [Float] = [
+            max(stems.drumsEnergy, stems.drumsBeat),
+            stems.bassEnergy,
+            stems.vocalsEnergy,
+            stems.otherEnergy
+        ]
+        let alpha = 1 - exp(-dt / 2.5)
+        for index in 0..<4 {
+            presence[index] += (energies[index] - presence[index]) * alpha
+        }
+        return energies.contains { $0 > 0.001 }
+    }
+
     mutating func reset() {
-        for i in envelopes.indices { envelopes[i] = 0; previous[i] = 0; refractory[i] = 0 }
+        for i in envelopes.indices {
+            envelopes[i] = 0; previous[i] = 0; refractory[i] = 0; presence[i] = 0
+        }
         lastSites.removeAll()
         lastForces.removeAll()
         for i in lastPerRegion.indices { lastPerRegion[i] = 0 }

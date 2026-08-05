@@ -79,6 +79,16 @@ enum WitchlightFixtureDrive {
         // A drive that silently omits a field makes a working route look broken, which is
         // the more expensive failure — check the mapping before diagnosing the preset.
         let bassAtt = column("bass_att")
+        // MEN.3f — the same omission, found the same way. Meniscus moved its drop events
+        // onto the real-time mid/treble deviations and `beatComposite`, and every fixture
+        // immediately produced ZERO drops: the routes were correct, the drive fed constant
+        // zero. Third time this class of bug has cost a diagnosis (WL.4 above, the stem
+        // deviations before that) — when a route reads dead, check this file first.
+        let midRel = column("midRel"), midDev = column("midDev")
+        let trebRel = column("trebRel"), trebDev = column("trebDev")
+        let beatComposite = column("beatComposite")
+        let beatBass = column("beatBass"), beatMid = column("beatMid")
+        let beatTreble = column("beatTreble")
         let barPermille = column("barPhase01_permille")
         let beatPhase = column("beatPhase01")
         let fifths = column("tonal_phase_fifths"), thirds = column("tonal_phase_thirds")
@@ -96,6 +106,10 @@ enum WitchlightFixtureDrive {
             f.spectralCentroid = centroid[i]; f.spectralFlux = flux[i]
             f.valence = valence[i]; f.arousal = arousal[i]
             f.bassRel = bassRel[i]; f.bassDev = bassDev[i]
+            f.midRel = midRel[i]; f.midDev = midDev[i]
+            f.trebRel = trebRel[i]; f.trebDev = trebDev[i]
+            f.beatComposite = beatComposite[i]
+            f.beatBass = beatBass[i]; f.beatMid = beatMid[i]; f.beatTreble = beatTreble[i]
             f.bassAtt = bassAtt[i]
             f.barPhase01 = barPermille[i] * 0.001
             f.beatPhase01 = beatPhase[i]

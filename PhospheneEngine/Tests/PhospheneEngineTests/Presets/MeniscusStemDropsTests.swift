@@ -152,7 +152,12 @@ struct MeniscusSyncAndIntensityTests {
 
     /// Drive a fixture and return each drop's time, force, and the loudness at that moment,
     /// plus the grid beat times derived from `beatPhase01` wraps.
-    private static func drive(_ track: String, configuration: MeniscusConfiguration = .init())
+    /// `stemLagFrames` reproduces the LIVE path's stem staleness. Offline fixtures feed
+    /// stems in sync with the audio, which is exactly why MEN.3's defect survived every
+    /// gate: on Matt's session the stems lag ~5.2 s (≈315 frames at 60 fps). Any test
+    /// asserting that drops follow the music must be able to run with this non-zero.
+    static func drive(_ track: String, configuration: MeniscusConfiguration = .init(),
+                      stemLagFrames: Int = 0)
     throws -> (drops: [(time: Double, force: Float, loud: Float, region: Int)], beats: [Double]) {
         let fixture = try WitchlightFixtureDrive.load(track)
         var drops = MeniscusStemDrops()
@@ -173,7 +178,8 @@ struct MeniscusSyncAndIntensityTests {
 
             let before = drops.lastSites.count
             _ = before
-            drops.step(stems: fixture.stems[index], features: f, field: &field,
+            let stemIndex = max(0, index - stemLagFrames)
+            drops.step(stems: fixture.stems[stemIndex], features: f, field: &field,
                        dt: dt, configuration: configuration)
             let loud = (f.bass + f.mid + f.treble) / 3
             var cursor = 0
@@ -669,5 +675,135 @@ struct MeniscusPulseTests {
             timing cannot fix this; the ripple lifetime has to be short enough that the \
             field returns toward rest between beats.
             """)
+    }
+}
+
+// MARK: - The live path's stems are 5 seconds stale (MEN.3f regression gate)
+
+/// Matt, 2026-08-05: "Motion of the drops does not align with or follow the music."
+///
+/// Root cause, measured on session `2026-08-05T13-17-18Z` by cross-correlating each stem
+/// against the full-mix bass band from the same capture:
+///
+///     drums  +5.25 s (r=0.550)   bass +5.25 s (r=0.563)
+///     vocals +5.08 s (r=0.562)   other +5.25 s (r=0.583)
+///     same data at lag 0: r=0.363
+///
+/// `VisualizerEngine+Audio.swift` documents this as intended — stem features are a
+/// SECTION-SCALE signal ("acceptable because musical sections persist longer than that").
+/// MEN.3 used them for event timing anyway, and no offline gate could see it because
+/// fixtures feed stems in sync with the audio.
+///
+/// This suite runs the drop system with the stems delayed the way the live path delays
+/// them. Before MEN.3f it is the difference between a preset that reads as synced and one
+/// that does not; after MEN.3f the drop timing must be INDIFFERENT to the lag, because the
+/// events come from the real-time bands and the stems only gate presence.
+@Suite("Meniscus — drops survive the live path's stale stems")
+struct MeniscusStemLagTests {
+
+    /// 5.2 s at 60 fps — the measured live-path staleness.
+    static let liveLagFrames = 312
+
+    @Test("drop timing is unchanged when the stems arrive 5.2 s late",
+          arguments: ["there_there", "love_rehab"])
+    func timingIsIndifferentToStemLag(track: String) throws {
+        let fresh = try MeniscusSyncAndIntensityTests.drive(track)
+        let stale = try MeniscusSyncAndIntensityTests.drive(track, stemLagFrames: Self.liveLagFrames)
+
+        try #require(!fresh.drops.isEmpty, "\(track): no drops with fresh stems")
+        #expect(!stale.drops.isEmpty,
+                "\(track): stale stems silenced the preset — the presence gate is too tight")
+
+        // WHAT THIS MUST MEASURE, and what a first draft of it got wrong: percussion takes
+        // its timing from the GRID, so a percussion-only metric passes even if the drive is
+        // fully stale — it has no teeth. The two things the 5.2 s lag actually broke are
+        // (a) vocals/`other`, which are onset-driven and so fired 5 s late outright, and
+        // (b) every drop's FORCE, which came from a stale stem. Both are asserted below.
+        //
+        // Force vs the loudness at that instant: with a stale drive this correlation
+        // collapses, because the drop's size describes music from five seconds ago.
+        func forceVsLoudness(_ r: (drops: [(time: Double, force: Float, loud: Float, region: Int)],
+                                   beats: [Double])) -> Double {
+            let f = r.drops.map { Double($0.force) }, l = r.drops.map { Double($0.loud) }
+            guard f.count > 30 else { return 0 }
+            let n = Double(f.count)
+            let mf = f.reduce(0,+)/n, ml = l.reduce(0,+)/n
+            var cov = 0.0, vf = 0.0, vl = 0.0
+            for i in f.indices { cov += (f[i]-mf)*(l[i]-ml); vf += (f[i]-mf)*(f[i]-mf); vl += (l[i]-ml)*(l[i]-ml) }
+            return (vf > 0 && vl > 0) ? cov/(vf*vl).squareRoot() : 0
+        }
+        let freshR = forceVsLoudness(fresh), staleR = forceVsLoudness(stale)
+        print(String(format:
+            "[meniscus-stemlag] %@: force vs concurrent loudness — fresh r=%+.3f · 5.2 s late r=%+.3f",
+            track, freshR, staleR))
+        // The claim is INDIFFERENCE to the lag, not a particular correlation. Asserting an
+        // absolute r here would be inventing a bar: force is `drive x intensity`, drive is
+        // a self-normalising primitive, and the resulting correlation is genuinely weak
+        // even with perfect stems (the same wrong premise cost a rewrite at MEN.3b). What
+        // must hold is that staleness cannot move it, because nothing about the force now
+        // reads a stem.
+        #expect(abs(freshR - staleR) < 0.10, """
+            \(track): 5.2 s of stem staleness moved the force/loudness relationship from \
+            r=\(String(format: "%.3f", freshR)) to r=\(String(format: "%.3f", staleR)). \
+            Drop force must not depend on the stems at all — that dependence IS the defect.
+            """)
+
+        // Non-grid regions (vocals, `other`) fire on their own drive. Under stem lag they
+        // used to land ~5 s from anything audible; they must now stay event-current.
+        let staleNonGrid = stale.drops.filter { $0.region >= 2 }
+        #expect(!staleNonGrid.isEmpty,
+                "\(track): vocals/other never fired under stem lag — they went silent, not late")
+
+        // Percussion timing against the beat grid, measured both ways. Weaker than the two
+        // assertions above (the grid supplies this timing regardless) but it catches a
+        // regression that breaks the grid path itself.
+        func medianErrorMs(_ r: (drops: [(time: Double, force: Float, loud: Float, region: Int)],
+                                 beats: [Double])) -> Double {
+            let rise = Double(MeniscusRippleRiseTests.measuredRiseSeconds(
+                configuration: MeniscusConfiguration()))
+            let errs = r.drops.filter { $0.region < 2 }.map { drop -> Double in
+                (r.beats.map { abs(drop.time + rise - $0) }.min() ?? 9) * 1000
+            }.sorted()
+            return errs.isEmpty ? 999 : errs[errs.count / 2]
+        }
+
+        let freshErr = medianErrorMs(fresh)
+        let staleErr = medianErrorMs(stale)
+        print(String(format:
+            "[meniscus-stemlag] %@: median beat error — fresh stems %.0f ms · stems 5.2 s late %.0f ms",
+            track, freshErr, staleErr))
+
+        // The bar is the perceptual window, not equality: presence gating can legitimately
+        // drop a few events near a section edge, which shifts the median a little.
+        #expect(staleErr < 60, """
+            \(track): with live-realistic stem lag the drops land \(Int(staleErr)) ms from \
+            the beat — outside the perceptual window, which is the MEN.3 defect.
+            """)
+    }
+
+    @Test("a region whose instrument is silent places nothing")
+    func presenceGateSuppressesSilentRegions() throws {
+        var drops = MeniscusStemDrops()
+        var field = [Float](repeating: 0, count: 45 * 45)
+        let configuration = MeniscusConfiguration()
+
+        // Loud full-mix bands, but the stems say only drums are playing.
+        var features = FeatureVector()
+        features.bass = 1.0; features.mid = 1.0; features.treble = 1.0
+        features.bassDev = 0.9; features.midDev = 0.9; features.trebDev = 0.9
+        features.beatComposite = 0.9
+        var stems = StemFeatures()
+        stems.drumsEnergy = 0.8
+
+        var perRegion = [Int](repeating: 0, count: 4)
+        for _ in 0..<600 {
+            drops.step(stems: stems, features: features, field: &field,
+                       dt: 1.0 / 60.0, configuration: configuration)
+            for r in 0..<4 { perRegion[r] += drops.lastPerRegion[r] }
+        }
+        print("[meniscus-presence] drops per region with only drums present: \(perRegion)")
+        #expect(perRegion[0] > 0, "drums are present and the band is loud — expected drops")
+        #expect(perRegion[1] == 0 && perRegion[2] == 0 && perRegion[3] == 0,
+                "silent stems still placed drops — the presence gate is not holding")
     }
 }

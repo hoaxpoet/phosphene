@@ -421,6 +421,70 @@ badly understated.** This is the NACRE.2b pattern the plan predicted (§2 reason
    The warp shader body returns `vec3(0,0,0)` unconditionally. §3 asserted this from a
    read; it is now verified from the artifact.
 
+### MEN.3f — the drops were driven by a signal 5.2 seconds stale (2026-08-05)
+
+Matt, sixth round: **"Motion of the drops does not align with or follow the music."**
+
+Cross-correlating each stem against the full-mix bass band from his own capture
+(`2026-08-05T13-17-18Z`, Cherub Rock — a local file, so the grid is full-track and correct
+and cannot be the explanation):
+
+```
+drums  +5.25 s (r=0.550)    bass  +5.25 s (r=0.563)
+vocals +5.08 s (r=0.562)    other +5.25 s (r=0.583)
+the same data at lag 0:  r=0.363
+```
+
+**Every stem lags the music by about 5.2 seconds, and this is by design.**
+`VisualizerEngine+Audio.swift`: *"Features carry ~5-10s of latency (we're always analyzing
+audio that's already been heard), which is acceptable because musical sections persist
+longer than that."* Live stem features answer *what kind of passage is this*. They are a
+section-scale signal and cannot carry event timing.
+
+MEN.3 built the entire drop system on them. Live, that meant vocals and `other`
+(onset-driven, ~40 % of all drops) fired **five seconds after** the note that caused them,
+and every drop's force described music that had already gone past. **Five rounds of ±100 ms
+timing work all happened downstream of a 5,250 ms staleness.**
+
+Every offline gate passed throughout because fixtures feed stems in sync with the audio —
+the latency exists only on the live path. Same shape as MEN.3e's hardcoded damping, an
+order of magnitude more costly.
+
+**The rewiring.** Each signal now does what it is for. Real-time per-band beat channels
+decide WHEN a drop lands and HOW HARD (`beatComposite` → drums, `beatBass` → bass,
+`beatMid` → vocals, `beatTreble` → other). Stems decide only WHETHER a region is alive in
+this passage, on a 2.5 s envelope — the section-scale question 5 s of lag does not harm.
+A region whose instrument is silent places nothing, which is what keeps the sheet's
+geography meaning something now that the events come from the full mix.
+
+**Two drivers were tried and measured dead before the third worked**, both the same lesson —
+*check what the fixture actually carries*:
+- `midDev`/`trebDev` are not recorded in the route-coverage fixtures at all (only
+  `bassDev` is), so they fed constant zero and killed two regions outright.
+- Deriving deviations from `bass`/`mid`/`treble` fails on the real values — measured on
+  `there_there`, **mid p50 0.038, treble p50 0.001**. The bands never approach the 0.5
+  centre the deviation formula subtracts. GLAZE.8's finding restated: *bands are a track's
+  quietest channels.*
+- `beatBass`/`beatMid`/`beatTreble` carry the range (p50 0.09–0.34, p90 0.77–1.00).
+
+**The regression gate that would have caught this on day one.** `MeniscusStemLagTests`
+drives the drop system with the stems delayed 312 frames, the way the live path delays
+them, and asserts the timing is *indifferent* to it:
+
+```
+there_there   median beat error — fresh stems 6 ms · stems 5.2 s late 6 ms
+love_rehab    median beat error — fresh stems 6 ms · stems 5.2 s late 6 ms
+force/loudness correlation moves by ≤ 0.01 under the same lag
+```
+
+A first draft of that gate had no teeth — it measured percussion only, which takes its
+timing from the grid and would have passed with a fully stale drive. It now asserts the two
+things the lag actually broke: the non-grid regions, and drop force.
+
+**The rule worth keeping: before driving anything from a signal, check what timescale that
+signal is FOR.** The answer here was written in a comment directly above the function that
+produces it.
+
 ### MEN.3e — the surface never rested, so there was nothing to read as a beat (2026-08-04)
 
 Matt, fifth round: **"the activity needs to be synced to music, that is the core trouble."**
