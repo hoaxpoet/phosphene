@@ -116,9 +116,10 @@ public final class WitchlightPath: AudioResponseMetrics {
     public internal(set) var sectionEventCount: Int = 0
 
     // View framing (a VIEW property, not a path property — see `advance`).
-    public internal(set) var centroidX: Float = 0
-    public internal(set) var centroidY: Float = 0
+    public internal(set) var centroidX: Float = 0, centroidY: Float = 0
     public internal(set) var viewScale: Float = 1
+    /// Where the camera AIMS — head-biased, NOT `centroid` (which only fits the scale). `reframe` says why.
+    public internal(set) var cameraX: Float = 0, cameraY: Float = 0
     var rmsRadius: Float = 0.4
 
     // Plane tumble.
@@ -224,7 +225,7 @@ public final class WitchlightPath: AudioResponseMetrics {
         previousBarPhase = 0; promoteNextBead = false; promotionCount = 0
         previousSectionIndex = nil; contractGoal = 0; contractHold = 0; contraction = 0
         sectionEventCount = 0
-        centroidX = 0; centroidY = 0; viewScale = 1; rmsRadius = 0.4
+        centroidX = 0; centroidY = 0; viewScale = 1; rmsRadius = 0.4; cameraX = 0; cameraY = 0
         tumbleClock = 0
         trailWindow = tuning.trailSeconds
         frameCount = 0; clampedFrameCount = 0; phaseTravel = 0; headingTravel = 0; headingNet = 0

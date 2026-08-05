@@ -167,6 +167,16 @@ public struct MeniscusConfiguration: Sendable {
     /// than `stemDropThreshold` because the grid already supplies the timing — this only
     /// asks "is this instrument playing", so a beat with no drums on it stays silent.
     public var stemPresenceThreshold: Float
+    /// Band level below which NO drop is placed, however the grid is ticking (MEN.3h).
+    ///
+    /// Matt, eighth round: "drops are still falling at silence." Nothing in the firing
+    /// path read current loudness — the grid keeps time through a quiet passage, and the
+    /// only presence gate came from STEMS, which lag ~5.2 s and so cannot close on a
+    /// silence that just began. Measured on `2026-08-05T15-06-31Z` (Hummer): the band
+    /// level is exactly 0.0000 on >25 % of frames, with a p50 of 0.093 while the music
+    /// plays — so 0.02 separates real silence from the quietest real passage with room to
+    /// spare, and the ~0.12 s envelope in front of it opens on the first note of a phrase.
+    public var silenceFloor: Float
     /// How far BEFORE the grid beat a percussion drop is stamped, seconds.
     ///
     /// Not a fudge factor — it compensates a measured property of the medium. The impulse
@@ -238,6 +248,7 @@ public struct MeniscusConfiguration: Sendable {
         stemDropForce: Float = 85.0,
         stemGridSync: Bool = true,
         stemPresenceThreshold: Float = 0.12,
+        silenceFloor: Float = 0.02,
         stemLeadTime: Float = 0.120,
         stemIntensityFloor: Float = 0.35,
         dropSpectrumScale: Float = 10.0,
@@ -267,6 +278,7 @@ public struct MeniscusConfiguration: Sendable {
         self.stemDropForce = stemDropForce
         self.stemGridSync = stemGridSync
         self.stemPresenceThreshold = stemPresenceThreshold
+        self.silenceFloor = silenceFloor
         self.stemLeadTime = stemLeadTime
         self.stemIntensityFloor = stemIntensityFloor
         self.dropSpectrumScale = dropSpectrumScale

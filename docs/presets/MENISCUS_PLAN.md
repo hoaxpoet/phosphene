@@ -421,6 +421,212 @@ badly understated.** This is the NACRE.2b pattern the plan predicted (§2 reason
    The warp shader body returns `vec3(0,0,0)` unconditionally. §3 asserted this from a
    read; it is now verified from the artifact.
 
+### MEN.4a — the visual follows the music's ARC, not just its beat (2026-08-05)
+
+Matt, after eight rounds of beat-timing work: **"Music is more than just beat, remember."**
+
+**That is the diagnosis those rounds never reached.** Meniscus was rhythmically accurate
+and structurally deaf: the same drop density, the same placement pattern and the same
+character on every beat from the first bar to the last. **Perfect timing on an unchanging
+pattern is still a metronome**, and no amount of ±ms work can fix a visual that ignores the
+music's shape.
+
+Measured on `2026-08-05T15-06-31Z` (Hummer, 92 s), the music moves a great deal:
+
+```
+arousal     0.19 → 0.52 → 0.44 → 0.43 → 0.43 → 0.35 → 0.27     (3x swing)
+valence     0.31 → −0.35 → 0.27 → −0.14 → 0.71 → 0.72          (sign flips twice)
+stems       all four rise to a peak at 30–45 s, then fall away entirely
+brightness  0.16 → 0.13 → 0.10 → 0.10 → 0.02 → 0.00
+```
+
+Against all of that the preset varied **only overall amplitude and camera distance**.
+
+**The build.** How much of the pattern plays is now a function of the arrangement and the
+mood arc: a sparse intro gets the downbeat spine only; every beat joins once the
+arrangement fills; the backbeat answer arrives above half; the offbeat scatter is the top
+of the arc — the last thing to arrive and the first to go. **A build now FILLS IN rather
+than merely growing louder.**
+
+**The stems come back, for the job they can actually do.** MEN.3f proved they are useless
+for event timing (5.2 s stale) and MEN.3h removed them entirely. But "how full is the
+arrangement right now" is a *section-scale* question, and section scale is exactly the
+timescale a 5.2 s lag does not spoil. Using a signal at its own timescale rather than
+against it is the whole lesson of MEN.3f, applied in the other direction.
+
+```
+[meniscus-arc] there_there: drops/frame — sparsest third 0.0932 · fullest third 0.1352 (1.45x)
+[meniscus-arc] love_rehab:  drops/frame — sparsest third 0.0559 · fullest third 0.1329 (2.38x)
+```
+
+**A real bug the gates caught.** Appending the downbeat's bass region before the drums
+broke an unstated contract — `lastSites` is emitted in ascending region order and every
+diagnostic attributes sites by walking `lastPerRegion` alongside it, so every drop was
+silently mis-attributed. The region-ordering gate failed immediately (bass mean row 0.81
+where it should be 0.48). `firing.sort()` restores it, and the contract is now written down.
+
+### MEN.3h — nothing may strike the water at silence (2026-08-05)
+
+Matt, eighth round: **"drops are still falling at silence. drops do not match the beat or
+melody."**
+
+**He is right and it was structural, not a tuning miss. Nothing in MEN.3g's firing path
+consulted current loudness.** The grid keeps ticking through a quiet passage; the dynamics
+term carried a 0.5 floor so every grid event still landed; `intensity` floors at
+`stemIntensityFloor`; and the only presence gate read STEMS, which lag ~5.2 s and therefore
+cannot close on a silence that started less than five seconds ago. Measured on
+`2026-08-05T15-06-31Z` (Hummer — a slow build with a sparse intro): **the band level is
+exactly 0.0000 on more than 25 % of frames**, and drops rained through all of it.
+
+**And that is also most of "drops do not match the beat", because the grid was CORRECT
+here.** Verified two independent ways on this capture:
+
+```
+tempo   grid 80.45 BPM against 80.43 derived from the tap audio   (0.02 % error)
+phase   ColdStartVerifier re-diagnosis: +8 ms at 30 s, 45 s, 60 s — viable at every window
+```
+
+So the drops that landed on the beat were landing within 8 ms of it. What made the preset
+read as unrelated to the music was the *other* drops — a steady 80 BPM patter continuing
+through every silent passage, on a track where those passages are a quarter of the running
+time. Silence was drowning the signal.
+
+**The fix.** A fast band-level envelope (~0.12 s, no floor) gates all firing: it opens on
+the first note of a phrase and closes within a beat of the music stopping. The dynamics
+floor is gone, so quiet passages now produce genuinely small drops. D-037 is untouched —
+that rule governs what the SCREEN shows at silence (the backdrop still renders), not
+whether the water is being struck when nothing is playing.
+
+**The stem path is now gone entirely.** With region choice coming from the bar (MEN.3g) and
+gating from current loudness, no stem signal remains in the firing path — so the 5.2 s
+staleness cannot reach the surface by any route. `MeniscusStemDropsTests`' old
+stem-presence gate is retired in favour of `MeniscusSilenceGateTests`, which asserts the
+stronger property it could not: **loud, stale stems plus a ticking grid must still place
+nothing once the audio stops.**
+
+```
+[meniscus-silence] drops while playing: 37 · drops at silence: 0
+density 5.4–6.2 impacts/s · sync median 6 ms · modulation 44 % · audio share 60 %
+```
+
+**Not addressed, and it never was: melody.** No drop has ever tracked pitch or melodic
+contour, and this design does not claim to. If melodic response is wanted it is a new
+route, not a fix.
+
+### MEN.3g — every drop is grid-timed, and the per-instrument claim is retired (2026-08-05)
+
+Matt, seventh round: **"still doesn't read as synced with the music."**
+
+**The conclusion seven rounds were converging on, stated plainly: the only part of this
+preset that EVER measured as synced was the part taking its timing from the cached
+BeatGrid.** Grid-timed drops landed a median 6 ms from the beat in every round from MEN.3c
+onward. Every failure was a drop driven from a live audio signal, and each candidate died
+to a measurement rather than an opinion:
+
+| Signal | Current? | Per-instrument? | Usable for events? |
+|---|---|---|---|
+| Separated stems | ✗ **5.2 s stale** | ✓ | no (MEN.3f) |
+| `beatComposite` / `beatBass|Mid|Treble` | ✓ | ✓ | no — **saturated** |
+| Band deviations (D-026) | ✓ | partly | no — **too sparse** |
+
+- **Stems** lag 5.2 s (MEN.3f). Section-scale by design.
+- **The per-band beat pulses saturate.** On `2026-08-05T14-09-24Z`, `beatComposite` is
+  exactly 1.000 on **59 % of frames**, in runs up to 36 frames (600 ms). They are onset
+  pulses re-triggered faster than they decay, sampled at the 10 Hz MIR rate — the same
+  stair-step behind MEN.3c's lag. **Not a scaling bug**; they work as built. A drive pinned
+  high is a metronome, which is exactly what Matt watched.
+- **Band deviations** are correctly event-shaped but cannot carry the surface: ~40 % of
+  beats produced a drop against a 55 % bar, and audio's share of surface motion collapsed
+  to 17 % against a 50 % bar. Treble is effectively silent (mid p50 0.029, treble p50
+  0.004), so the `other` region got 1–3 drops per 30 s and drums/bass became one signal.
+
+**The build.** All timing comes from the grid. **The BAR supplies the spatial pattern** —
+drums mark every beat, the bass heave arrives on the downbeat, vocals answer on the
+backbeat, `other` scatters on the offbeat subdivisions — which is what keeps a fully
+quantised surface from reading as a metronome. Force still comes from live audio (bass
+deviation + the loudness envelope), so dynamics stay current even though timing does not
+derive from the moment. Stems keep only the presence gate.
+
+**What this gives up, and it is a real re-scope Matt approved.** §1's claim that "a listener
+can point at a ripple and say *that was the snare*" is **retired**. §7 R3 flagged that
+legibility as having no empirical grounding, and seven live viewings never produced it. The
+regions are now spatial variety keyed to bar position, not instrument identity.
+
+```
+density      5.2–6.0 impacts/s   (drums 57–66 · bass 14–16 · vocals 28–33 · other 55–64)
+sync         median 6 ms from the beat · 99–100 % within 60 ms
+modulation   44–50 %
+audio share  66 %
+stem lag     timing identical with stems fresh and 5.2 s stale
+```
+
+Best state on every measure so far. Whether it READS as synced is Matt's call — that is the
+one thing no gate here has ever been able to settle.
+
+### MEN.3f — the drops were driven by a signal 5.2 seconds stale (2026-08-05)
+
+Matt, sixth round: **"Motion of the drops does not align with or follow the music."**
+
+Cross-correlating each stem against the full-mix bass band from his own capture
+(`2026-08-05T13-17-18Z`, Cherub Rock — a local file, so the grid is full-track and correct
+and cannot be the explanation):
+
+```
+drums  +5.25 s (r=0.550)    bass  +5.25 s (r=0.563)
+vocals +5.08 s (r=0.562)    other +5.25 s (r=0.583)
+the same data at lag 0:  r=0.363
+```
+
+**Every stem lags the music by about 5.2 seconds, and this is by design.**
+`VisualizerEngine+Audio.swift`: *"Features carry ~5-10s of latency (we're always analyzing
+audio that's already been heard), which is acceptable because musical sections persist
+longer than that."* Live stem features answer *what kind of passage is this*. They are a
+section-scale signal and cannot carry event timing.
+
+MEN.3 built the entire drop system on them. Live, that meant vocals and `other`
+(onset-driven, ~40 % of all drops) fired **five seconds after** the note that caused them,
+and every drop's force described music that had already gone past. **Five rounds of ±100 ms
+timing work all happened downstream of a 5,250 ms staleness.**
+
+Every offline gate passed throughout because fixtures feed stems in sync with the audio —
+the latency exists only on the live path. Same shape as MEN.3e's hardcoded damping, an
+order of magnitude more costly.
+
+**The rewiring.** Each signal now does what it is for. Real-time per-band beat channels
+decide WHEN a drop lands and HOW HARD (`beatComposite` → drums, `beatBass` → bass,
+`beatMid` → vocals, `beatTreble` → other). Stems decide only WHETHER a region is alive in
+this passage, on a 2.5 s envelope — the section-scale question 5 s of lag does not harm.
+A region whose instrument is silent places nothing, which is what keeps the sheet's
+geography meaning something now that the events come from the full mix.
+
+**Two drivers were tried and measured dead before the third worked**, both the same lesson —
+*check what the fixture actually carries*:
+- `midDev`/`trebDev` are not recorded in the route-coverage fixtures at all (only
+  `bassDev` is), so they fed constant zero and killed two regions outright.
+- Deriving deviations from `bass`/`mid`/`treble` fails on the real values — measured on
+  `there_there`, **mid p50 0.038, treble p50 0.001**. The bands never approach the 0.5
+  centre the deviation formula subtracts. GLAZE.8's finding restated: *bands are a track's
+  quietest channels.*
+- `beatBass`/`beatMid`/`beatTreble` carry the range (p50 0.09–0.34, p90 0.77–1.00).
+
+**The regression gate that would have caught this on day one.** `MeniscusStemLagTests`
+drives the drop system with the stems delayed 312 frames, the way the live path delays
+them, and asserts the timing is *indifferent* to it:
+
+```
+there_there   median beat error — fresh stems 6 ms · stems 5.2 s late 6 ms
+love_rehab    median beat error — fresh stems 6 ms · stems 5.2 s late 6 ms
+force/loudness correlation moves by ≤ 0.01 under the same lag
+```
+
+A first draft of that gate had no teeth — it measured percussion only, which takes its
+timing from the grid and would have passed with a fully stale drive. It now asserts the two
+things the lag actually broke: the non-grid regions, and drop force.
+
+**The rule worth keeping: before driving anything from a signal, check what timescale that
+signal is FOR.** The answer here was written in a comment directly above the function that
+produces it.
+
 ### MEN.3e — the surface never rested, so there was nothing to read as a beat (2026-08-04)
 
 Matt, fifth round: **"the activity needs to be synced to music, that is the core trouble."**

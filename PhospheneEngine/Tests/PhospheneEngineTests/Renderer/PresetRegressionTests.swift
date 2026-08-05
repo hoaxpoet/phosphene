@@ -252,7 +252,16 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // WL.5 (2026-08-05): regenerated — the pen's advance is now gated on audio energy, so
     // the synthetic drives draw a different amount of stroke by design. The "quiet passage"
     // case moves most, which is the change working.
-    "Witchlight": (steady: 0x3B4B053537399A45, beatHeavy: 0x2B391735BF3EDD55, quiet: 0x1759053537391E45),
+    // WL.7 (2026-08-05): regenerated for WL.6's star-drift change, which landed on main
+    // WITHOUT regenerating these — main was red on all three Witchlight cases (Hamming
+    // 18 / 11 / 10) before this commit, verified by running the suite on a clean
+    // origin/main worktree. WL.6 made the star drift a fixed 0.02 (it was 0.05 + 0.16*b),
+    // and the star field IS what this hash captures, so the drift is the gate working.
+    // WL.7's own change is invisible here BY CONSTRUCTION and that is worth stating: the
+    // camera aim moved, but this harness renders the sky fragment only and never attaches
+    // WitchlightStroke, so the regenerated values below are byte-identical to the ones a
+    // pristine origin/main produces. Framing is gated by WitchlightHeadFramingTests.
+    "Witchlight": (steady: 0x1F590535373D5C15, beatHeavy: 0x1759053537391E45, quiet: 0x1B195535373D5C15),
     "Staged Sandbox": (steady: 0x000022160A162A00, beatHeavy: 0x000022160A162A00, quiet: 0x000022160A162A00),
     // BUG-034 (2026-06-12, M7-lite approved): regen at the live 128-step budget.
     // Terrain now reaches the true horizon (the old "sky holes" at distance

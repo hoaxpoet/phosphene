@@ -53,29 +53,19 @@
   },
   "audio_routes": [
     {
-      "route": "drums_impact_near_edge",
-      "primitive": "drumsEnergyDev",
+      "route": "drop_timing_from_grid",
+      "primitive": "beatPhase01",
       "kind": "accent"
     },
     {
-      "route": "drums_impact_near_edge",
-      "primitive": "drumsBeat",
+      "route": "drop_placement_from_bar",
+      "primitive": "barPhase01",
       "kind": "accent"
     },
     {
-      "route": "bass_impact_deep_centre",
-      "primitive": "bassEnergyDev",
-      "kind": "accent"
-    },
-    {
-      "route": "vocals_impact_far",
-      "primitive": "vocalsEnergyDev",
-      "kind": "accent"
-    },
-    {
-      "route": "other_impact_scatter",
-      "primitive": "otherEnergyDev",
-      "kind": "accent"
+      "route": "drop_force_dynamics",
+      "primitive": "bassDev",
+      "kind": "continuous"
     },
     {
       "route": "camera_reaim",

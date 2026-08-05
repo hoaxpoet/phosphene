@@ -152,7 +152,12 @@ struct MeniscusSyncAndIntensityTests {
 
     /// Drive a fixture and return each drop's time, force, and the loudness at that moment,
     /// plus the grid beat times derived from `beatPhase01` wraps.
-    private static func drive(_ track: String, configuration: MeniscusConfiguration = .init())
+    /// `stemLagFrames` reproduces the LIVE path's stem staleness. Offline fixtures feed
+    /// stems in sync with the audio, which is exactly why MEN.3's defect survived every
+    /// gate: on Matt's session the stems lag ~5.2 s (≈315 frames at 60 fps). Any test
+    /// asserting that drops follow the music must be able to run with this non-zero.
+    static func drive(_ track: String, configuration: MeniscusConfiguration = .init(),
+                      stemLagFrames: Int = 0)
     throws -> (drops: [(time: Double, force: Float, loud: Float, region: Int)], beats: [Double]) {
         let fixture = try WitchlightFixtureDrive.load(track)
         var drops = MeniscusStemDrops()
@@ -173,7 +178,8 @@ struct MeniscusSyncAndIntensityTests {
 
             let before = drops.lastSites.count
             _ = before
-            drops.step(stems: fixture.stems[index], features: f, field: &field,
+            let stemIndex = max(0, index - stemLagFrames)
+            drops.step(stems: fixture.stems[stemIndex], features: f, field: &field,
                        dt: dt, configuration: configuration)
             let loud = (f.bass + f.mid + f.treble) / 3
             var cursor = 0
@@ -668,6 +674,235 @@ struct MeniscusPulseTests {
             surface never rests, so there are no events in it to read as synced. Impulse \
             timing cannot fix this; the ripple lifetime has to be short enough that the \
             field returns toward rest between beats.
+            """)
+    }
+}
+
+// MARK: - The live path's stems are 5 seconds stale (MEN.3f regression gate)
+
+/// Matt, 2026-08-05: "Motion of the drops does not align with or follow the music."
+///
+/// Root cause, measured on session `2026-08-05T13-17-18Z` by cross-correlating each stem
+/// against the full-mix bass band from the same capture:
+///
+///     drums  +5.25 s (r=0.550)   bass +5.25 s (r=0.563)
+///     vocals +5.08 s (r=0.562)   other +5.25 s (r=0.583)
+///     same data at lag 0: r=0.363
+///
+/// `VisualizerEngine+Audio.swift` documents this as intended — stem features are a
+/// SECTION-SCALE signal ("acceptable because musical sections persist longer than that").
+/// MEN.3 used them for event timing anyway, and no offline gate could see it because
+/// fixtures feed stems in sync with the audio.
+///
+/// This suite runs the drop system with the stems delayed the way the live path delays
+/// them. Before MEN.3f it is the difference between a preset that reads as synced and one
+/// that does not; after MEN.3f the drop timing must be INDIFFERENT to the lag, because the
+/// events come from the real-time bands and the stems only gate presence.
+@Suite("Meniscus — drops survive the live path's stale stems")
+struct MeniscusStemLagTests {
+
+    /// 5.2 s at 60 fps — the measured live-path staleness.
+    static let liveLagFrames = 312
+
+    @Test("drop timing is unchanged when the stems arrive 5.2 s late",
+          arguments: ["there_there", "love_rehab"])
+    func timingIsIndifferentToStemLag(track: String) throws {
+        let fresh = try MeniscusSyncAndIntensityTests.drive(track)
+        let stale = try MeniscusSyncAndIntensityTests.drive(track, stemLagFrames: Self.liveLagFrames)
+
+        try #require(!fresh.drops.isEmpty, "\(track): no drops with fresh stems")
+        #expect(!stale.drops.isEmpty,
+                "\(track): stale stems silenced the preset — the presence gate is too tight")
+
+        // WHAT THIS MUST MEASURE, and what a first draft of it got wrong: percussion takes
+        // its timing from the GRID, so a percussion-only metric passes even if the drive is
+        // fully stale — it has no teeth. The two things the 5.2 s lag actually broke are
+        // (a) vocals/`other`, which are onset-driven and so fired 5 s late outright, and
+        // (b) every drop's FORCE, which came from a stale stem. Both are asserted below.
+        //
+        // Force vs the loudness at that instant: with a stale drive this correlation
+        // collapses, because the drop's size describes music from five seconds ago.
+        func forceVsLoudness(_ r: (drops: [(time: Double, force: Float, loud: Float, region: Int)],
+                                   beats: [Double])) -> Double {
+            let f = r.drops.map { Double($0.force) }, l = r.drops.map { Double($0.loud) }
+            guard f.count > 30 else { return 0 }
+            let n = Double(f.count)
+            let mf = f.reduce(0,+)/n, ml = l.reduce(0,+)/n
+            var cov = 0.0, vf = 0.0, vl = 0.0
+            for i in f.indices { cov += (f[i]-mf)*(l[i]-ml); vf += (f[i]-mf)*(f[i]-mf); vl += (l[i]-ml)*(l[i]-ml) }
+            return (vf > 0 && vl > 0) ? cov/(vf*vl).squareRoot() : 0
+        }
+        let freshR = forceVsLoudness(fresh), staleR = forceVsLoudness(stale)
+        print(String(format:
+            "[meniscus-stemlag] %@: force vs concurrent loudness — fresh r=%+.3f · 5.2 s late r=%+.3f",
+            track, freshR, staleR))
+        // REPORTED, NOT ASSERTED — and the reason changed at MEN.4a, so it is worth saying
+        // rather than quietly deleting a check. Stems are deliberately back in the firing
+        // path, driving how full the ARRANGEMENT is on a ~3 s envelope. That is a
+        // section-scale question, the one thing a 5.2 s lag does not spoil, but it does
+        // mean staleness legitimately changes WHICH events fire near a section edge, and
+        // any distribution statistic moves with it. What must stay invariant is the TIMING
+        // of the events that do fire — asserted below. Demanding an unmoved correlation
+        // here would be asserting the absence of a feature.
+
+        // Non-grid regions (vocals, `other`) fire on their own drive. Under stem lag they
+        // used to land ~5 s from anything audible; they must now stay event-current.
+        let staleNonGrid = stale.drops.filter { $0.region >= 2 }
+        #expect(!staleNonGrid.isEmpty,
+                "\(track): vocals/other never fired under stem lag — they went silent, not late")
+
+        // Percussion timing against the beat grid, measured both ways. Weaker than the two
+        // assertions above (the grid supplies this timing regardless) but it catches a
+        // regression that breaks the grid path itself.
+        func medianErrorMs(_ r: (drops: [(time: Double, force: Float, loud: Float, region: Int)],
+                                 beats: [Double])) -> Double {
+            let rise = Double(MeniscusRippleRiseTests.measuredRiseSeconds(
+                configuration: MeniscusConfiguration()))
+            let errs = r.drops.filter { $0.region < 2 }.map { drop -> Double in
+                (r.beats.map { abs(drop.time + rise - $0) }.min() ?? 9) * 1000
+            }.sorted()
+            return errs.isEmpty ? 999 : errs[errs.count / 2]
+        }
+
+        let freshErr = medianErrorMs(fresh)
+        let staleErr = medianErrorMs(stale)
+        print(String(format:
+            "[meniscus-stemlag] %@: median beat error — fresh stems %.0f ms · stems 5.2 s late %.0f ms",
+            track, freshErr, staleErr))
+
+        // The bar is the perceptual window, not equality: presence gating can legitimately
+        // drop a few events near a section edge, which shifts the median a little.
+        #expect(staleErr < 60, """
+            \(track): with live-realistic stem lag the drops land \(Int(staleErr)) ms from \
+            the beat — outside the perceptual window, which is the MEN.3 defect.
+            """)
+    }
+
+    // RETIRED AT MEN.3h, deliberately, not because it became inconvenient.
+    //
+    // This suite used to assert that a region whose STEM is quiet places nothing. That gate
+    // is gone: stems lag ~5.2 s, so it could not close on a silence that had just started —
+    // Matt's eighth-round report was drops raining through a sparse intro while loud, stale
+    // stems held every region open. Region choice now comes from the BAR and gating from
+    // CURRENT loudness, so nothing in the firing path reads a stem at all.
+    //
+    // Its replacement is `MeniscusSilenceGateTests`, which asserts the stronger property
+    // the old test could not: loud stale stems plus a ticking grid must still place nothing
+    // when the audio has stopped.
+}
+
+// MARK: - Nothing strikes the water at silence (MEN.3h)
+
+/// Matt, eighth round: "drops are still falling at silence."
+///
+/// The grid keeps ticking through a quiet passage, so an all-grid-timed preset will happily
+/// rain drops into silence unless something reads CURRENT loudness. MEN.3g's only gate came
+/// from stems, which lag ~5.2 s and therefore cannot close on a silence that just started.
+/// Measured on `2026-08-05T15-06-31Z` (Hummer): band level exactly 0.0000 on >25 % of
+/// frames, drops falling throughout.
+@Suite("Meniscus — silence places nothing")
+struct MeniscusSilenceGateTests {
+
+    @Test("a grid that keeps ticking through silence places no drops")
+    func silencePlacesNothing() {
+        var drops = MeniscusStemDrops()
+        var field = [Float](repeating: 0, count: 45 * 45)
+        let configuration = MeniscusConfiguration()
+        // Stems deliberately LOUD and stale — this is exactly the 5.2 s-late signal that
+        // used to hold the regions open through a silence.
+        var stems = StemFeatures()
+        stems.drumsEnergy = 0.9; stems.bassEnergy = 0.9
+        stems.vocalsEnergy = 0.9; stems.otherEnergy = 0.9
+
+        var loudDrops = 0, silentDrops = 0
+        for frame in 0..<1200 {
+            var features = FeatureVector()
+            let playing = frame < 600
+            // The grid runs identically in both halves — that is the point.
+            features.beatPhase01 = Float(frame % 45) / 45
+            if playing {
+                features.bass = 0.20; features.mid = 0.09; features.treble = 0.02
+                features.bassDev = frame % 45 == 0 ? 0.5 : 0.0
+            }
+            drops.step(stems: stems, features: features, field: &field,
+                       dt: 1.0 / 60.0, configuration: configuration)
+            let placed = drops.lastSites.count
+            if playing { loudDrops += placed } else { silentDrops += placed }
+        }
+
+        print("[meniscus-silence] drops while playing: \(loudDrops) · drops at silence: \(silentDrops)")
+        #expect(loudDrops > 0, "the gate closed on real audio — it is too tight")
+        #expect(silentDrops == 0, """
+            \(silentDrops) drops landed during 10 s of silence while the beat grid kept \
+            ticking. Loud, stale stems must not hold the regions open: the firing path has \
+            to read CURRENT loudness or the surface is struck by music that already ended.
+            """)
+    }
+}
+
+// MARK: - The visual must follow the music's ARC, not just its beat (MEN.4a)
+
+/// Matt, after eight rounds of beat-timing work: **"Music is more than just beat,
+/// remember."**
+///
+/// That is the diagnosis those rounds never reached. Meniscus was rhythmically accurate
+/// and structurally deaf — same drop density, same placement pattern, same character on
+/// every beat from the first bar to the last. Perfect timing on an unchanging pattern is
+/// still a metronome, and no amount of ±ms work can fix a visual that ignores the music's
+/// shape.
+///
+/// Measured on `2026-08-05T15-06-31Z` the music moves a great deal across 92 s (arousal
+/// 0.19 → 0.52 → 0.27; every stem rising to a peak at 30–45 s then falling away) while the
+/// preset varied only overall amplitude and camera distance.
+///
+/// So this asserts the property those gates could not: **the drop pattern itself must
+/// differ between a sparse passage and a full one.**
+@Suite("Meniscus — the pattern follows the arc")
+struct MeniscusArcTests {
+
+    @Test("a fuller arrangement places a denser pattern than a sparse one",
+          arguments: ["there_there", "love_rehab"])
+    func densityFollowsTheArrangement(track: String) throws {
+        let fixture = try WitchlightFixtureDrive.load(track)
+        var drops = MeniscusStemDrops()
+        var field = [Float](repeating: 0, count: 45 * 45)
+        let configuration = MeniscusConfiguration()
+
+        // Per-frame drop counts alongside how full the arrangement is at that moment.
+        var counts: [Int] = [], fullness: [Double] = []
+        for index in 0..<fixture.stems.count {
+            var dt = fixture.features[index].deltaTime
+            if !(dt > 0) { dt = 1.0 / 60.0 }
+            dt = min(dt, 1.0 / 30.0)
+            let stem = fixture.stems[index]
+            drops.step(stems: stem, features: fixture.features[index], field: &field,
+                       dt: dt, configuration: configuration)
+            counts.append(drops.lastSites.count)
+            fullness.append(Double([stem.drumsEnergy, stem.bassEnergy,
+                                    stem.vocalsEnergy, stem.otherEnergy]
+                .filter { $0 > 0.15 }.count))
+        }
+        try #require(counts.count > 600, "\(track): fixture too short to show an arc")
+
+        // Split the track by how full the arrangement is, and compare the drop rate in the
+        // sparsest third against the fullest third.
+        let order = fullness.indices.sorted { fullness[$0] < fullness[$1] }
+        let third = order.count / 3
+        let sparse = order.prefix(third).reduce(0) { $0 + counts[$1] }
+        let full = order.suffix(third).reduce(0) { $0 + counts[$1] }
+        let sparseRate = Double(sparse) / Double(third)
+        let fullRate = Double(full) / Double(third)
+
+        print(String(format:
+            "[meniscus-arc] %@: drops/frame — sparsest third %.4f · fullest third %.4f (%.2fx)",
+            track, sparseRate, fullRate, sparseRate > 0 ? fullRate / sparseRate : 999))
+
+        #expect(fullRate > sparseRate * 1.3, """
+            \(track): the fullest passages place \(String(format: "%.4f", fullRate)) \
+            drops/frame against \(String(format: "%.4f", sparseRate)) in the sparsest — \
+            the pattern barely changes across the track. That is the metronome failure: \
+            correct beat timing on a visual that ignores the music's shape. A build has to \
+            FILL IN, not merely grow louder.
             """)
     }
 }

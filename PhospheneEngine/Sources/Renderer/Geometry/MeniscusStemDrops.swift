@@ -102,8 +102,11 @@ struct MeniscusStemDrops {
     private var beatPeriod: Float = 0.5
     private var previousBeatPhase: Float = -1
     private var sinceGridUpdate: Float = 0
-    /// Guards one fire per beat.
+    /// Guards one fire per beat, and one per offbeat subdivision.
     private var firedThisBeat = false
+    private var firedThisHalf = false
+    /// Counts grid beats so the BAR can choose which regions answer (MEN.3g).
+    private var beatIndex = 0
     private var sinceGridBeat: Float = 99
     /// Whether the cached grid is delivering updates; false ⇒ degrade to onset-driven
     /// rather than freezing the percussion.
@@ -112,6 +115,12 @@ struct MeniscusStemDrops {
     private var envelopes = [Float](repeating: 0, count: 4)
     private var previous = [Float](repeating: 0, count: 4)
     private var refractory = [Float](repeating: 0, count: 4)
+    /// Fast band-level envelope the silence gate reads (MEN.3h). ~0.12 s, no floor.
+    private var audioGate: Float = 0
+    /// How full the arrangement is, 0-1, on a ~3 s envelope (MEN.4a).
+    private var arrangement: Float = 0
+    /// Mood arousal on a ~6 s envelope — the track's build and release (MEN.4a).
+    private var arcEnvelope: Float = 0
     private var rng: UInt64 = 0x2545_F491_4F6C_DD1D
 
     /// Diagnostics.
@@ -159,51 +168,91 @@ struct MeniscusStemDrops {
             + (1 - configuration.stemIntensityFloor) * min(loudness / 0.55, 1.8)
         lastIntensity = intensity
 
-        let gridBeat = advanceBeatClock(features: features, dt: dt, configuration: configuration)
+        let clock = advanceBeatClock(features: features, dt: dt, configuration: configuration)
+        if clock.beat { beatIndex &+= 1 }
 
-        let drives: [Float] = [
-            max(stems.drumsEnergyDev, stems.drumsBeat),
-            stems.bassEnergyDev,
-            stems.vocalsEnergyDev,
-            stems.otherEnergyDev
-        ]
+        // EVERY DROP IS GRID-TIMED (MEN.3g), Matt's call after seven live rounds.
+        //
+        // The only part of this preset that ever measured as synced was the part taking
+        // its timing from the cached BeatGrid — a median 6 ms from the beat in every round
+        // from MEN.3c on. Every failure was a drop driven from a live audio signal, and
+        // each candidate died to a measurement: separated stems lag 5.2 s; the per-band
+        // beat pulses saturate (beatComposite exactly 1.000 on 59 % of frames, in runs up
+        // to 600 ms); band deviations are event-shaped but far too sparse to carry the
+        // surface. Full evidence in `MENISCUS_PLAN.md` §9 MEN.3f/3g.
+        //
+        // So the grid supplies ALL timing and the BAR supplies the spatial pattern. §1's
+        // claim that "a listener can point at a ripple and say that was the snare" is
+        // retired — §7 R3 flagged that legibility as ungrounded and seven live viewings
+        // never produced it. Regions are spatial variety keyed to bar position now.
+        // THE SILENCE GATE (MEN.3h). Matt: "drops are still falling at silence."
+        //
+        // Structural, not a tuning miss: nothing in the firing path read CURRENT loudness.
+        // The grid keeps ticking through a quiet passage, the dynamics term had a floor so
+        // every event still landed, and the only presence gate read STEMS — 5.2 s stale, so
+        // it cannot close on a silence that just began. On `2026-08-05T15-06-31Z` the band
+        // level is exactly 0.0000 on >25 % of frames and drops rained through all of it.
+        // Fast envelope, no floor. D-037 governs what the SCREEN shows at silence (the
+        // backdrop still renders), not whether the water is struck when nothing plays.
+        let level = max(0, (features.bass + features.mid + features.treble) / 3)
+        audioGate += (level - audioGate) * (1 - exp(-dt / 0.12))
+        let audible = audioGate > configuration.silenceFloor
 
-        for index in 0..<4 {
-            let drive = max(0, drives[index])
-            // Fast attack, slower release — an impact is an event, not a level.
-            let alpha = drive > envelopes[index] ? dt / (0.008 + dt) : dt / (0.11 + dt)
-            envelopes[index] += alpha * (drive - envelopes[index])
-            refractory[index] = max(0, refractory[index] - dt)
+        // Dynamics with NO FLOOR — the floor was the bug. A quiet passage now produces
+        // genuinely small drops and silence produces none, which is the whole point of
+        // §5's loudness row.
+        let dynamics = min(audioGate / 0.09, 1.0) * (0.4 + min(max(features.bassDev, 0), 1.5))
 
-            // TIMING. Drums and bass take their timing from the CACHED GRID; vocals and
-            // `other` stay onset-driven.
-            //
-            // This is the audio hierarchy's central rule, and Meniscus was on the wrong
-            // side of it: "visuals driven primarily by raw live beat detections feel out
-            // of sync", because live onsets jitter and beat-locked motion is valid only
-            // on the cached grid (D-153→D-158). Measured on Matt's session, threshold
-            // crossings of a smoothed deviation landed a median 200 ms from the nearest
-            // beat with only 8-10 % inside the ~60 ms perceptual window — uncorrelated.
-            //
-            // The grid supplies WHEN; the stem still supplies WHETHER and HOW HARD, so a
-            // beat with no drums on it places nothing and a hard hit still lands harder.
-            // Bounded footprint (a 3×3 stencil) and no global luminance change, so this
-            // satisfies D-157.
-            //
-            // Vocals and `other` are deliberately NOT quantised — §5 gives them
-            // "sustained" and "texture" characters that a grid would make robotic.
-            let usesGrid = index < 2 && configuration.stemGridSync && gridLive
-            let fired: Bool
-            if usesGrid {
-                fired = gridBeat && envelopes[index] > configuration.stemPresenceThreshold
-            } else {
-                fired = envelopes[index] > configuration.stemDropThreshold
-                    && previous[index] <= configuration.stemDropThreshold
-                    && refractory[index] <= 0
-            }
-            previous[index] = envelopes[index]
-            guard fired else { continue }
-            refractory[index] = configuration.stemDropRefractory
+        // THE MUSICAL ARC (MEN.4a). Matt: "Music is more than just beat, remember."
+        //
+        // That is the diagnosis eight rounds of beat-timing work never reached. Meniscus
+        // was rhythmically accurate and structurally DEAF: the same drop density, the same
+        // placement pattern and the same character on every beat from the first bar to the
+        // last. Perfect timing on an unchanging pattern is still a metronome.
+        //
+        // Measured on `2026-08-05T15-06-31Z` (Hummer), the music moves a great deal across
+        // 92 s — arousal 0.19 -> 0.52 -> 0.27, valence swinging through zero twice, every
+        // stem rising to a peak at 30-45 s and then falling away — while the only things
+        // the preset varied were overall amplitude and camera distance.
+        //
+        // These drivers are all SECTION-SCALE, which is the point: it is exactly the
+        // timescale the stems are good at, so the ~5.2 s stem latency that made them
+        // useless for events (MEN.3f) is harmless here. The stems come back for the job
+        // they can actually do — telling us how full the arrangement is right now.
+        let bandCount = [stems.drumsEnergy, stems.bassEnergy,
+                         stems.vocalsEnergy, stems.otherEnergy].filter { $0 > 0.15 }.count
+        let fullness = Float(bandCount) / 4
+        arrangement += (fullness - arrangement) * (1 - exp(-dt / 3.0))
+        let lift = max(0, min(features.arousal, 1))
+        arcEnvelope += (lift - arcEnvelope) * (1 - exp(-dt / 6.0))
+        // How much of the pattern is playing right now. A sparse intro gets downbeats only;
+        // a full chorus gets every beat, the backbeat answer and the offbeat scatter. This
+        // is what makes a build FILL IN rather than merely grow louder.
+        let density = 0.35 * arcEnvelope + 0.65 * arrangement
+
+        // §5's characters, mapped onto the bar. Drums mark every beat; the bass heave
+        // arrives on the downbeat; vocals answer on the backbeat; `other` scatters on the
+        // offbeat subdivisions so the surface is never merely pulsing on the beat.
+        let beatInBar = ((beatIndex % 4) + 4) % 4
+        var firing: [Int] = []
+        if clock.beat {
+            // The downbeat always answers while anything is playing — it is the spine.
+            if beatInBar == 0 { firing.append(1) }
+            // Every beat, once the arrangement is past a bare intro.
+            if density > 0.25 { firing.append(0) }
+            // The backbeat answer arrives when the band fills out.
+            if (beatInBar == 1 || beatInBar == 3) && density > 0.5 { firing.append(2) }
+        }
+        // Offbeat scatter is the top of the arc — the last thing to arrive and the first
+        // to go, so a chorus is visibly busier than the verse that set it up.
+        if clock.halfBeat && density > 0.55 { firing.append(3) }
+        // ASCENDING REGION ORDER IS A CONTRACT, not a coincidence. `lastSites` is emitted
+        // in this order and every diagnostic attributes sites to regions by walking
+        // `lastPerRegion` alongside it. Appending the downbeat's bass before the drums
+        // silently mis-attributed every drop — the region-ordering gate caught it.
+        firing.sort()
+
+        for index in firing where audible {
 
             let region = Self.regions[index]
             // Jitter WITHIN the region (§7 R5) — the stem decides the territory, not the
@@ -217,7 +266,7 @@ struct MeniscusStemDrops {
             // lands harder than a soft one — the dynamics survive the gate.
             // Force carries BOTH: how far the stem is above its own mean (dynamics
             // within the passage) and the loudness envelope (dynamics across the track).
-            let force = min(envelopes[index], 3.0) * region.force
+            let force = dynamics * region.force
                 * configuration.stemDropForce * intensity
             stamp(
                 &field,
@@ -241,7 +290,7 @@ struct MeniscusStemDrops {
         features: FeatureVector,
         dt: Float,
         configuration: MeniscusConfiguration
-    ) -> Bool {
+    ) -> (beat: Bool, halfBeat: Bool) {
         // PREDICTIVE BEAT CLOCK. Fires `stemLeadTime` BEFORE the grid beat, because the
         // ripple is an impulse into a wave field and has to GROW: measured, the visible
         // slope response is only 14 % one frame after impact, ~30 % at 67 ms and ~50 % at
@@ -282,20 +331,32 @@ struct MeniscusStemDrops {
         let leadPhase = 1 - min(configuration.stemLeadTime / max(beatPeriod, 0.05), 0.9)
         let gridBeat = !firedThisBeat && localPhase >= leadPhase
         if gridBeat { firedThisBeat = true }
+        // The offbeat, led the same way. `other` rides these so the surface carries motion
+        // between the beats rather than pulsing strictly on them — the quantised-metronome
+        // risk that MEN.3g's all-grid timing would otherwise walk straight into.
+        let halfLead = max(leadPhase - 0.5, 0.02)
+        let gridHalf = !firedThisHalf && localPhase >= halfLead && localPhase < leadPhase
+        if gridHalf { firedThisHalf = true }
+        if localPhase < halfLead { firedThisHalf = false }
         // A grid is "live" if a beat has arrived recently. 2 s covers anything down to
         // 30 BPM, and a stalled or absent grid degrades to the onset path rather than
         // silencing the drums entirely.
         gridLive = sinceGridBeat < 2.0
-        return gridBeat
+        return (gridBeat, gridHalf)
     }
 
     mutating func reset() {
-        for i in envelopes.indices { envelopes[i] = 0; previous[i] = 0; refractory[i] = 0 }
+        for i in envelopes.indices {
+            envelopes[i] = 0; previous[i] = 0; refractory[i] = 0
+        }
         lastSites.removeAll()
         lastForces.removeAll()
         for i in lastPerRegion.indices { lastPerRegion[i] = 0 }
         rng = 0x2545_F491_4F6C_DD1D
         loudness = 0
+        audioGate = 0
+        arrangement = 0
+        arcEnvelope = 0
         localPhase = 0; beatPeriod = 0.5; previousBeatPhase = -1
         sinceGridUpdate = 0; firedThisBeat = false
     }

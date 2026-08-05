@@ -233,6 +233,16 @@ Reference images are still frames; this is the behaviour over time (`PRESET_SESS
 - **Size falloff: `r(a) = r₀ · (1 − 0.65 · a/T)`.** Beads shrink but do not vanish before they fade, so the ribbon tapers rather than dotting out.
 - **The oldest visible bead is where the harmony was 30 seconds ago.** That is the sentence a listener should be able to be told and then verify by looking.
 
+### 3.3.1 Framing — the camera aims at the head, the fit measures the trail (WL.7)
+
+§3.3 makes the head the brightest point at every frame, and §3.5's flare, WL.4's per-frame breath and WL.5's silence gate all read strongest there. **That makes head visibility a correctness property, not a nicety.** It was violated for six M7 rounds: with one point serving both the scale fit and the camera aim, the head measured **off frame on 33 / 35 / 45 % of frames** across the three fixtures (`WitchlightHeadFramingTests`, a CPU mirror of `wl_project`). The coupling was present, correct and gated, and two frames in five it was invisible — which is what "still not tied to the music" was describing.
+
+It follows from the mechanism. The pen advances continuously, so the head is the leading extreme of the trail, while the fit is an RMS radius covering ~0.6 of true extent; at `framedRadius` 0.62 the furthest bead lands at ≈ 1.03 half-frames.
+
+**The two jobs are now separate points.** `viewScale` is fitted about the trail's centroid exactly as before — unchanged bit-for-bit, so bead distinctness (the WL.2-j gate) cannot regress. The camera aims at a point 60 % of the way toward the head on a 1.2 s follow. Head-off-frame is then 0.0 % on all three fixtures, at the cost of the far tail leaving frame — the 30 s-old, frozen, dimmest end of the record, which is the correct thing to spend.
+
+Do **not** close a framing complaint by fitting more into frame: that shrinks the drawing below the legible-bead floor, and three WL.6 attempts died there (23 → 4 distinct cores).
+
 ### 3.4 Colour
 
 **A bead's hue is the smoothed harmonic phase φ̄ at the moment it was laid down, mapped around the hue circle, and then frozen.** Both quantities are circular, so the map wraps seamlessly with no seam. This is D-178's "hue on the circle of fifths — relationships, never labels; hue, never brightness."

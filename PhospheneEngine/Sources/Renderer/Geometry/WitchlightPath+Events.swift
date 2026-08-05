@@ -151,6 +151,39 @@ extension WitchlightPath {
     /// give a figure whose extent depends on how much the track's harmony moved, so a
     /// fixed camera would frame `01` on one track and a speck on the next. The figure is
     /// music-driven; the framing only keeps it legible and small-in-frame (trait #7).
+    ///
+    /// WL.7 — the SCALE and the CAMERA are computed from different points, and separating
+    /// them is the whole fix for "still not tied to the music".
+    ///
+    /// Measured (`WitchlightHeadFramingTests`, CPU mirror of `wl_project`): with one shared
+    /// centre, the burning head was **off frame on 33 / 35 / 45 % of frames** across the
+    /// three fixtures, and outside a 0.9 inset on 40–48 %. That is where every coupling
+    /// this preset has actually shows — the flare fires at the head, the newest beads are
+    /// the brightest, and the WL.4 breath and WL.5 energy gate both read strongest there.
+    /// Roughly two frames in five, the music was driving something the viewer could not
+    /// see. Matt's sixth M7 said exactly this ("the ribbon is moving faster than the camera
+    /// can catch up") and it was right.
+    ///
+    /// It happens by construction, not by mis-tuning: the pen advances continuously, so the
+    /// head sits at the LEADING EXTREME of the trail while the fit is an RMS radius (~0.6 of
+    /// true extent for a roughly linear stroke). With `framedRadius` 0.62 the furthest bead
+    /// lands at ≈ 1.03 of the half-frame — just outside — and the head is nearly always the
+    /// furthest bead.
+    ///
+    /// The three WL.6 attempts all tried to fix it by fitting MORE into frame (max-extent
+    /// fit, `framedRadius` up to 0.86), which shrinks the drawing, and the WL.2-j
+    /// distinctness gate correctly killed all three (23 → 4 distinct beads). This does the
+    /// opposite: `viewScale` is left EXACTLY as it was — the drawing's size in frame, and so
+    /// bead legibility, is unchanged bit-for-bit — and only the point the camera aims at
+    /// moves. The trail's true centroid still sets the scale; the camera sits 60 % of the
+    /// way toward the head on a 1.2 s follow.
+    ///
+    /// Swept over bias × follow on all three fixtures: 0.6 / 1.2 s is the first cell that
+    /// reaches 0.0 % head-off-frame on every one. What it costs is the far TAIL — 30 s-old
+    /// beads, frozen and dim — leaving frame: bead-frames off screen go 6.0 → 16.6 % on
+    /// `so_what`, and IMPROVE on the other two (5.2 → 0.7 %, 14.0 → 11.0 %). Trading the
+    /// oldest, dimmest end of the record for the burning tip is the right trade: the tail is
+    /// where the music has already been, the head is where it is now.
     func reframe(dt: Float) {
         guard !beads.isEmpty else { return }
         var sumX: Float = 0, sumY: Float = 0
@@ -170,6 +203,16 @@ extension WitchlightPath {
         let fitAlpha = dt / (4.0 + dt)
         rmsRadius += (targetRadius - rmsRadius) * fitAlpha
         viewScale = max(0.25, min(4.0, tuning.framedRadius / max(rmsRadius, 0.02)))
+
+        // The camera. Head-biased so the burning tip stays in frame, on a follow short
+        // enough to keep up with a pen that quickens 2.5× (WL.2-i) — at 3 s it cannot,
+        // which is the lag Matt saw.
+        guard let head = beads.last else { return }
+        let camAlpha = dt / (1.2 + dt)
+        let aimX = centroidX * (1 - 0.6) + head.posX * 0.6
+        let aimY = centroidY * (1 - 0.6) + head.posY * 0.6
+        cameraX += (aimX - cameraX) * camAlpha
+        cameraY += (aimY - cameraY) * camAlpha
     }
 
     // MARK: - Colour helper

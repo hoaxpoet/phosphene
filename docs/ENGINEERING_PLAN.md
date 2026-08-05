@@ -1957,6 +1957,32 @@ Reverted to keep `main` coherent — a half-tuned framing change that degrades b
 
 ---
 
+### Increment WL.7 — Witchlight: the coupling was real, and off screen 🔨 **CODE-COMPLETE 2026-08-05, pending live M7**
+
+**Why.** Matt, after six M7 rounds: *"You have not addressed 'still not tied to the music,' which is the most important thing."* Four consecutive increments added or deepened coupling and none of them moved his verdict. WL.6 recorded a third complaint alongside it — *"the ribbon is moving faster than the camera can catch up, leaving the front of the ribbon out of frame for much of the run"* — and left it open.
+
+**They are the same complaint, and the second one explains the first.**
+
+**Measured first, built second** (`WitchlightHeadFramingTests`, a CPU mirror of `wl_project`; no GPU, the question is a coordinate question). Across the three committed fixtures the burning head — the newest bead — was **off frame on 33 % / 35 % / 45 % of frames**, and outside a 0.9 inset on 40–48 %. Worst reach 1.52–1.77 half-frames.
+
+That is where every route this preset has actually shows: the flare fires at the head, the newest beads are the brightest, and both the WL.4 breath and the WL.5 silence gate read strongest there. **Roughly two frames in five, the music was driving something the viewer could not see.** Adding a ninth route would have been invisible for the same reason the previous eight were.
+
+**Why it happened by construction, not by mis-tuning.** `reframe` fitted `viewScale` to the trail's **RMS** radius, which under-covers extremes — ~0.6 of true extent for a roughly linear stroke. With `framedRadius` 0.62 the furthest bead lands at ≈ 1.03 of the half-frame. The pen advances continuously, so the head is almost always that furthest bead, and the 3 s centroid follow could not keep up with a pen that WL.2-i made swing 2.5×.
+
+**What changed — one thing.** The **scale fit and the camera aim are now separate points**. `viewScale` is still fitted about the trail's true centroid and is **unchanged bit-for-bit**; a new `cameraX/cameraY` aims 60 % of the way toward the head on a 1.2 s follow, and that is what the shader receives.
+
+This is the opposite of the three WL.6 framing attempts, which all tried to fit MORE into frame (max-extent fit, `framedRadius` up to 0.86) and were correctly killed by the WL.2-j distinctness gate (23 → 4 distinct beads) because fitting more shrinks the drawing. Leaving `viewScale` alone means bead legibility cannot regress: **20 distinct cores, floor 8.**
+
+**Measured after.** Head off frame **0.0 % on all three fixtures**; worst reach 0.78–0.96, i.e. inside the frame at all times. Bead-frames off screen **6.0 → 16.6 %** on `so_what` and **improve** on the other two (5.2 → 0.7 %, 14.0 → 11.0 %) — the far tail is what leaves, 30 s-old beads that are frozen and dim. Ribbon share 0.489 → **0.426 %** (floor 0.40), peak luma 255 (floor 250), flash budget unmoved. Trading the oldest end of the record for the burning tip is the right trade: the tail is where the music has been, the head is where it is now.
+
+**Gated.** `WitchlightHeadFramingTests` asserts head-off-frame ≤ 2 % per fixture, with the pre-WL.7 numbers in the failure message and an explicit instruction not to fix it by fitting more into frame. This class of defect — a coupling that is present, correct, gated, and *not on screen* — had no gate at all across six M7 rounds.
+
+**Done when:** ✅ head-off-frame measured before changing anything · ✅ scale fit and camera aim separated · ✅ `viewScale` provably unchanged · ✅ distinctness and flash gates green · ✅ new gate holds the framing · ⏳ **Matt's live M7 — certification rides on "feels connected".**
+
+**Verify:** `swift test --package-path PhospheneEngine --filter Witchlight`
+
+---
+
 ### Increment MD.7 — Ray-march-composing inspired-by uplifts (formerly Hybrid tier)
 
 **Scope (revised per `MILKDROP_STRATEGY.md` §12 / D-103 amendment / D-107):** Inspired-by uplifts that compose `mv_warp` + `ray_march` against a static camera (D-029). **Not a tier** — these are `milkdrop_inspired` presets that happen to use the ray-march backdrop primitive; authoring choice, not classification. The MD.7.0 spike (single-preset proof of the `mv_warp` + `ray_march` composition) lands as one such uplift; subsequent ray-march-composing uplifts batch into the MD.6 work stream. The architectural composition has only Volumetric Lithograph as prior production proof (and VL's `mv_warp` plays against a ray-march scene that is not itself feedback-warped), so the spike is still a high-value increment under inspired-by.
