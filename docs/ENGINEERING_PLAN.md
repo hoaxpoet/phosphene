@@ -1791,6 +1791,37 @@ CLAUDE.md's most important design rule is that continuous energy is the DEFAULT 
 
 ---
 
+### Increment WL.6 — Witchlight: star field decoupled; CAMERA FRAMING IS THE OPEN ITEM 🔨 (2026-08-05)
+
+**Matt's sixth M7** (session `2026-08-05T15-33-46Z`, ~128 s), on the first build that actually contained WL.5:
+
+1. *"The starry background is STILL moving too much, appears to be tied to the music, which is probably not the right call."*
+2. *"The ribbon is STILL not tied to the music."*
+3. *"The ribbon is also moving faster than the camera can catch up, leaving the front of the ribbon out of frame for much of the run."*
+
+**LANDED — (1).** Star drift is now a fixed `rate = 0.02` (~0.9 px/s on the near layer at 1080p; a frame crossing takes ~35 min, longer than any track), **decoupled from audio entirely**. It was `0.05 + 0.16·b`, so a busy passage sped the field up — a second, competing music-driven motion behind the thing that is supposed to BE the music. The `star_parallax` route is **retired from the sidecar** rather than left declared-but-inert. Matt's "probably not the right call" was right: the room should not react.
+
+**OPEN, AND IT IS PROBABLY THE CAUSE OF (2) — the camera cannot keep up.** `reframe` has two compounding faults:
+
+- it targets the **centroid of all beads**, which lags the pen by construction (half the trail is up to 30 s old), on top of a **3 s follow constant**;
+- it fits `viewScale` to the **RMS radius**, which under-covers the extremes — for a roughly linear stroke RMS sits near 0.6 of true extent, so with `framedRadius` 0.62 the furthest bead sits at ≈ **1.03 of the half-frame, i.e. just outside the edge**.
+
+**Why this likely explains "still not tied to the music":** the head is where the flare fires, where the newest beads are brightest, and where the WL.4 breath and WL.5 energy gate are most visible. If it spends much of the run outside the frame, every coupling in the preset is happening where nobody can see it. **Test that hypothesis before adding any more coupling.**
+
+**Three attempts were made and REVERTED — do not simply repeat them:**
+
+| attempt | result |
+|---|---|
+| head-weighted target (0.6 head / 0.4 centroid), follow 3 s → 1.2 s, fit max extent × 1.12 | ribbon share 0.49 % → **0.277 %**, distinct cores 23 → **4** |
+| + `framedRadius` 0.62 → 0.86 to compensate | share **0.344 %**, still far below floor |
+| + fit/centre on the newest 40 % of beads only | share **0.355 %**, cores still short |
+
+**The tension, stated precisely:** fitting the whole 30 s trail into frame necessarily makes the drawing small, and small beads stop reading as beads (the WL.2-j distinctness gate is the thing that catches it, correctly). Framing the head properly and keeping the beads legible are in direct conflict *while the visible trail is 30 s long*. Plausible next moves, none tried: shorten the visible trail (`trailSeconds` is a concept constant — Matt's call), scale bead size with `viewScale` (explicitly rejected at WL.2-f for a good reason — re-read it first), or let the tail clip while framing only a recent window with a **larger** `framedRadius` than 0.86.
+
+Reverted to keep `main` coherent — a half-tuned framing change that degrades bead legibility is worse than the known lag.
+
+---
+
 ### Increment WL.5 — Witchlight: the pen only draws when there is music 🔨 **CODE-COMPLETE 2026-08-05, pending live M7**
 
 **Why.** Matt's fifth M7, session `2026-08-05T13-06-38Z`: *"The starry background is moving too much. The witchlight pattern is still moving when the preset is idle, indicating that there is no real beat sync / connection to the music. The pattern / shape is fine, but it needs to feel connected to the music, otherwise it is not a Phosphene preset I will certify."*
