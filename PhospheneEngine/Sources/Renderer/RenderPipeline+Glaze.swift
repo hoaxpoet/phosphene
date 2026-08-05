@@ -169,14 +169,16 @@ extension RenderPipeline {
         stemFeatures: StemFeatures,
         warpState: MVWarpState
     ) {
-        guard let drawable = view.currentDrawable else { return }
+        guard let drawable = instrumentedDrawable(
+            from: view, commandBuffer: commandBuffer, site: "glaze.drawable"
+        ) else { return }
         renderGlaze(
             commandBuffer: commandBuffer,
             features: features,
             stemFeatures: stemFeatures,
             warpState: warpState,
             target: drawable.texture)
-        commandBuffer.present(drawable)
+        instrumentedPresent(drawable, on: commandBuffer)
     }
 
     /// Glaze feedback loop rendered into `target`: warp → display comp (→ target) → swap.

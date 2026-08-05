@@ -113,14 +113,16 @@ extension RenderPipeline {
         stemFeatures: StemFeatures,
         warpState: MVWarpState
     ) {
-        guard let drawable = view.currentDrawable else { return }
+        guard let drawable = instrumentedDrawable(
+            from: view, commandBuffer: commandBuffer, site: "floret.drawable"
+        ) else { return }
         renderFloret(
             commandBuffer: commandBuffer,
             features: features,
             stemFeatures: stemFeatures,
             warpState: warpState,
             target: drawable.texture)
-        commandBuffer.present(drawable)
+        instrumentedPresent(drawable, on: commandBuffer)
     }
 
     /// Floret feedback loop rendered into `target`: warp → signature comp (→ target) → swap.

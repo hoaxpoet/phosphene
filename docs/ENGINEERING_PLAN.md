@@ -63,6 +63,33 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment HANG.2 — BUG-085 instrumented soak ✅ non-reproduction control (2026-08-05)
+
+HANG.1's lifecycle probe ran through two visible Witchlight/local-file controls: one full
+6 min 50 s track (24,866 frames) and one 10 min 36 s soak through two track transitions
+(35,297 frames at the final snapshot). Both passed the original ~3.6-minute / 12,911-frame
+failure point. The final durable heartbeat balanced 34,811 unique acquisitions with 34,811
+presentations, with zero failures, unpresented acquisitions, stalls, or imbalances; memory
+remained stable. This refutes a deterministic per-frame drawable leak and a fixed ~3.6-minute
+exhaustion time. **BUG-085 remains OPEN and intermittent: no freeze means no owner was
+identified and no fix is justified.** Evidence:
+`docs/diagnostics/BUG085_HANG2_SOAK_2026-08-05.md`. Next live freeze: leave the process
+running and execute `Scripts/capture_hang.sh` before force-quit.
+
+### Increment HANG.1 — BUG-085 drawable lifecycle instrumentation ✅ (2026-08-05)
+
+The captured BUG-085 stack proves the main thread blocks inside `CAMetalLayer.nextDrawable`,
+but not which drawable escaped recycling. HANG.1 adds observation only: every drawable-facing
+render path now records request begin/end, unique drawable identity, scheduled presentation,
+command-buffer commit/completion/failure, and unpresented acquisitions in a lock-protected
+`DrawableLifecycleProbe`. An independent watchdog persists a balanced snapshot every 600
+completed frames and writes a `DRAWABLE_LIFECYCLE STALL` line with the exact pending call site
+after 500 ms, so evidence survives even though the render/main thread is blocked. The state
+machine is unit-tested; the app build is green. **No hang fix or new root-cause claim.
+HANG.2 subsequently completed the planned soak as a clean non-reproduction; see the HANG.2
+entry above. BUG-085 remains open, and the next live freeze must be captured with
+`Scripts/capture_hang.sh` before force-quit.**
+
 ### Increment SPOT.1 — Spotify `.authFailure` names the missing Client ID ✅ (2026-08-04)
 
 A full debugging round on 2026-08-04 was spent on a missing (gitignored) `PhospheneApp/Phosphene.local.xcconfig`: `SpotifyOAuthTokenProvider.resolveClientID()` found an empty `SpotifyClientID` and threw `.spotifyAuthFailure` immediately, and the connector rendered the same generic string it shows for user-denied authorization and login timeout — three causes, three different fixes, one message.
@@ -1824,6 +1851,32 @@ CLAUDE.md's most important design rule is that continuous energy is the DEFAULT 
 **A harness gap this exposed — and it nearly caused a misdiagnosis.** The new band first read **0.000 on all three fixtures**. The route was fine: `WitchlightFixtureDrive` did not carry the `bass_att` column, so the replay fed a constant zero and the gate reported a dead route. This is the documented "harness must carry every route" trap; the drive now carries it. **A drive that silently omits a field makes a working route look broken, which is the more expensive failure.**
 
 **Done when:** ✅ a continuous-energy route exists and is QG.5-banded · ✅ breath shape verified as continuous, not bimodal · ✅ flash budget unmoved · ✅ suites green · ⏳ **Matt's live M7 — the whole point, and the retire/keep decision rides on it.**
+
+---
+
+### Increment WL.5 — Witchlight: the pen only draws when there is music 🔨 **CODE-COMPLETE 2026-08-05, pending live M7**
+
+**Why.** Matt's fifth M7, session `2026-08-05T13-06-38Z`: *"The starry background is moving too much. The witchlight pattern is still moving when the preset is idle, indicating that there is no real beat sync / connection to the music. The pattern / shape is fine, but it needs to feel connected to the music, otherwise it is not a Phosphene preset I will certify."*
+
+**The shape is settled** — WL.3's tumble fix holds and he confirmed it. This increment is only about connection.
+
+**Root cause, in two layers, and the second is why four increments of coupling work never landed.**
+
+1. **The pen's advance was unconditional.** `speed = baseSpeed · (1 + depth · arousalNorm)` — modulated by the music but never stopped by it. §3.6 specified this deliberately: *"the pen continues to advance at `v₀` … silence reads as the pen still moving, with nothing to say — which is the honest visual for it."* A viewer reads a stroke that advances identically with and without music as a stroke that is not listening, and no coupling elsewhere can outvote that, because the drawing IS the subject.
+2. **`silent` was unreachable, so every silence behaviour was dead code.** It was `stemTotal <= 0 && mixEnergy <= 0`. Measured on his session: across a **5.5 s stretch where every mix band read exactly 0.000000**, the stem energies read drums 0.52, bass 0.57, vocals 1.07, other 0.67 — the separator runs on a lagging buffer and HOLDS its last values when audio stops, so `stemTotal <= 0` is essentially never true. Silence is now decided by the live mix alone; stems still drive what they should, they just no longer get a vote on whether the room is quiet.
+
+**What changed.** Pen advance gated on `0.25 + 1.5 · energyBreath`, **centred so typical energy means normal speed** — using the raw 0…1 breath halved every speed and cut the 30 s trail from 96 beads to 71, which changes how much it draws rather than when. The plane's tumble is gated too: with the pen stopped it was the only thing still moving, and a drawing that keeps rotating itself is still not listening. Stars and bloom continue — they are the room, not the subject — so D-037's non-black frame is unaffected.
+
+**Star drift reduced**, per the other half of his verdict: `0.16 + 0.50·b` → `0.05 + 0.16·b`. WL.2-i fixed a genuinely frozen field (0.16 px/s, 4 px per track) and overshot to 7.4 px/s, crossing frame in ~4 min and competing with the ribbon. Now ~2.3 px/s, crossing in ~14 min. The 12.7:1 near-to-far ratio is unchanged.
+
+**Measured.** Unit: pen moves **0.00000 world units over 10 s of silence** (was **1.00 units and 38 new beads** — a third of a trail drawn from nothing). Render, across the 5.4 s silent stretch of his own session: ribbon share now **falls 0.275 % → 0.204 %** (ageing) where it previously **grew 0.277 % → 0.379 %**. All other gates green; flash budget unmoved.
+
+**Two gates, and a third that this nearly broke.**
+- `penHoldsStillInSilence` — asserts pen POSITION, not a speed variable, since a refactor could zero `speed` and still advance by another route. Verified red on the old code.
+- The old `silence keeps the pen moving` test **asserted the rejected behaviour** and was rewritten, not deleted: silence must still render the drawing (D-037) and must no longer grow it.
+- **The WL.3 tumble gate went vacuous** — gating `tumbleClock` on energy meant its silent drive left the clock at 0 and it reported `|cos| = 1.000 at t = 0 s`, measuring nothing. Fixed by feeding it real energy. Same failure class as a metric that improves as the defect worsens: a gate a later change can silently turn into a no-op.
+
+**Done when:** ✅ the pen stops in silence, gated · ✅ `silent` actually reachable · ✅ tumble holds too · ✅ star drift reduced · ✅ all suites green · ⏳ **Matt's live M7 — certification rides on "feels connected".**
 
 ---
 
