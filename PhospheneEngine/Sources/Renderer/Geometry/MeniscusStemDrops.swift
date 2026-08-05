@@ -117,6 +117,10 @@ struct MeniscusStemDrops {
     private var refractory = [Float](repeating: 0, count: 4)
     /// Fast band-level envelope the silence gate reads (MEN.3h). ~0.12 s, no floor.
     private var audioGate: Float = 0
+    /// How full the arrangement is, 0-1, on a ~3 s envelope (MEN.4a).
+    private var arrangement: Float = 0
+    /// Mood arousal on a ~6 s envelope — the track's build and release (MEN.4a).
+    private var arcEnvelope: Float = 0
     private var rng: UInt64 = 0x2545_F491_4F6C_DD1D
 
     /// Diagnostics.
@@ -167,56 +171,29 @@ struct MeniscusStemDrops {
         let clock = advanceBeatClock(features: features, dt: dt, configuration: configuration)
         if clock.beat { beatIndex &+= 1 }
 
-        // EVERY DROP IS GRID-TIMED (MEN.3g). Matt's call after seven live rounds.
+        // EVERY DROP IS GRID-TIMED (MEN.3g), Matt's call after seven live rounds.
         //
-        // The evidence is unambiguous once assembled: the only part of this preset that
-        // EVER measured as synced was the part taking its timing from the cached BeatGrid.
-        // Grid-timed drops landed a median 6 ms from the beat in every single round. Every
-        // failure was a drop driven from a live audio signal, and each candidate died to a
-        // measurement:
+        // The only part of this preset that ever measured as synced was the part taking
+        // its timing from the cached BeatGrid — a median 6 ms from the beat in every round
+        // from MEN.3c on. Every failure was a drop driven from a live audio signal, and
+        // each candidate died to a measurement: separated stems lag 5.2 s; the per-band
+        // beat pulses saturate (beatComposite exactly 1.000 on 59 % of frames, in runs up
+        // to 600 ms); band deviations are event-shaped but far too sparse to carry the
+        // surface. Full evidence in `MENISCUS_PLAN.md` §9 MEN.3f/3g.
         //
-        //   - SEPARATED STEMS lag the music by ~5.2 s (session `2026-08-05T13-17-18Z`:
-        //     drums +5.25 s, bass +5.25, vocals +5.08, other +5.25; r=0.363 at lag 0).
-        //     `VisualizerEngine+Audio.swift` documents this as intended — they answer
-        //     "what kind of passage is this", a section-scale question.
-        //   - THE PER-BAND BEAT PULSES saturate. On `2026-08-05T14-09-24Z`, beatComposite
-        //     is exactly 1.000 on 59 % of frames, in runs up to 36 frames (600 ms): they
-        //     are onset pulses re-triggered faster than they decay, sampled at the 10 Hz
-        //     MIR rate. A drive that is pinned high is a metronome, not music.
-        //   - BAND DEVIATIONS are correctly event-shaped but far too sparse to carry the
-        //     surface: ~40 % of beats produced a drop against a 55 % bar, and the audio's
-        //     share of surface motion collapsed to 17 % against a 50 % bar. Treble is
-        //     effectively silent (mid p50 0.029, treble p50 0.004).
+        // So the grid supplies ALL timing and the BAR supplies the spatial pattern. §1's
+        // claim that "a listener can point at a ripple and say that was the snare" is
+        // retired — §7 R3 flagged that legibility as ungrounded and seven live viewings
+        // never produced it. Regions are spatial variety keyed to bar position now.
+        // THE SILENCE GATE (MEN.3h). Matt: "drops are still falling at silence."
         //
-        // So the grid supplies ALL timing. What the bar supplies is the SPATIAL pattern:
-        // different regions answer on different beats, which is what keeps a fully
-        // quantised surface from reading as a metronome. Force still comes from live audio
-        // (bass deviation + the loudness envelope), so the dynamics are current even though
-        // the timing is not derived from the moment.
-        //
-        // WHAT THIS GIVES UP, explicitly. §1's claim that "a listener can point at a ripple
-        // and say that was the snare" is retired. §7 R3 flagged that legibility as having
-        // no empirical grounding, and seven live viewings never produced it. The regions
-        // are now spatial variety keyed to bar position, not instrument identity.
-        // THE SILENCE GATE (MEN.3h). Matt, eighth round: "drops are still falling at
-        // silence."
-        //
-        // He is right and it was structural, not a tuning miss. Nothing in MEN.3g's firing
-        // path consulted CURRENT loudness. The grid keeps ticking through a quiet passage,
-        // the dynamics term had a 0.5 floor so every event still landed, `intensity` floors
-        // at `stemIntensityFloor`, and the only presence gate read STEMS — which lag 5.2 s
-        // and therefore cannot suppress a silence that started less than five seconds ago.
-        // Measured on `2026-08-05T15-06-31Z` (Hummer, a slow build with a sparse intro):
-        // the band level is EXACTLY 0.0000 on more than 25 % of frames, and drops rained
-        // through all of it. On a track whose intro has no beat yet, a steady 80 BPM
-        // patter of drops reads as completely unrelated to the music — which is also most
-        // of "drops do not match the beat" for this session, since the grid tempo itself
-        // measured correct here (grid 80.45 against 80.43 derived from the tap).
-        //
-        // Fast envelope, no floor: ~0.12 s so it opens on the first note of a phrase and
-        // closes within a beat of the music stopping. D-037 is unaffected — that rule
-        // governs what the SCREEN shows at silence (the backdrop still renders), not
-        // whether the water is being struck when nothing is playing.
+        // Structural, not a tuning miss: nothing in the firing path read CURRENT loudness.
+        // The grid keeps ticking through a quiet passage, the dynamics term had a floor so
+        // every event still landed, and the only presence gate read STEMS — 5.2 s stale, so
+        // it cannot close on a silence that just began. On `2026-08-05T15-06-31Z` the band
+        // level is exactly 0.0000 on >25 % of frames and drops rained through all of it.
+        // Fast envelope, no floor. D-037 governs what the SCREEN shows at silence (the
+        // backdrop still renders), not whether the water is struck when nothing plays.
         let level = max(0, (features.bass + features.mid + features.treble) / 3)
         audioGate += (level - audioGate) * (1 - exp(-dt / 0.12))
         let audible = audioGate > configuration.silenceFloor
@@ -226,17 +203,54 @@ struct MeniscusStemDrops {
         // §5's loudness row.
         let dynamics = min(audioGate / 0.09, 1.0) * (0.4 + min(max(features.bassDev, 0), 1.5))
 
+        // THE MUSICAL ARC (MEN.4a). Matt: "Music is more than just beat, remember."
+        //
+        // That is the diagnosis eight rounds of beat-timing work never reached. Meniscus
+        // was rhythmically accurate and structurally DEAF: the same drop density, the same
+        // placement pattern and the same character on every beat from the first bar to the
+        // last. Perfect timing on an unchanging pattern is still a metronome.
+        //
+        // Measured on `2026-08-05T15-06-31Z` (Hummer), the music moves a great deal across
+        // 92 s — arousal 0.19 -> 0.52 -> 0.27, valence swinging through zero twice, every
+        // stem rising to a peak at 30-45 s and then falling away — while the only things
+        // the preset varied were overall amplitude and camera distance.
+        //
+        // These drivers are all SECTION-SCALE, which is the point: it is exactly the
+        // timescale the stems are good at, so the ~5.2 s stem latency that made them
+        // useless for events (MEN.3f) is harmless here. The stems come back for the job
+        // they can actually do — telling us how full the arrangement is right now.
+        let bandCount = [stems.drumsEnergy, stems.bassEnergy,
+                         stems.vocalsEnergy, stems.otherEnergy].filter { $0 > 0.15 }.count
+        let fullness = Float(bandCount) / 4
+        arrangement += (fullness - arrangement) * (1 - exp(-dt / 3.0))
+        let lift = max(0, min(features.arousal, 1))
+        arcEnvelope += (lift - arcEnvelope) * (1 - exp(-dt / 6.0))
+        // How much of the pattern is playing right now. A sparse intro gets downbeats only;
+        // a full chorus gets every beat, the backbeat answer and the offbeat scatter. This
+        // is what makes a build FILL IN rather than merely grow louder.
+        let density = 0.35 * arcEnvelope + 0.65 * arrangement
+
         // §5's characters, mapped onto the bar. Drums mark every beat; the bass heave
         // arrives on the downbeat; vocals answer on the backbeat; `other` scatters on the
         // offbeat subdivisions so the surface is never merely pulsing on the beat.
         let beatInBar = ((beatIndex % 4) + 4) % 4
         var firing: [Int] = []
         if clock.beat {
-            firing.append(0)
+            // The downbeat always answers while anything is playing — it is the spine.
             if beatInBar == 0 { firing.append(1) }
-            if beatInBar == 1 || beatInBar == 3 { firing.append(2) }
+            // Every beat, once the arrangement is past a bare intro.
+            if density > 0.25 { firing.append(0) }
+            // The backbeat answer arrives when the band fills out.
+            if (beatInBar == 1 || beatInBar == 3) && density > 0.5 { firing.append(2) }
         }
-        if clock.halfBeat { firing.append(3) }
+        // Offbeat scatter is the top of the arc — the last thing to arrive and the first
+        // to go, so a chorus is visibly busier than the verse that set it up.
+        if clock.halfBeat && density > 0.55 { firing.append(3) }
+        // ASCENDING REGION ORDER IS A CONTRACT, not a coincidence. `lastSites` is emitted
+        // in this order and every diagnostic attributes sites to regions by walking
+        // `lastPerRegion` alongside it. Appending the downbeat's bass before the drums
+        // silently mis-attributed every drop — the region-ordering gate caught it.
+        firing.sort()
 
         for index in firing where audible {
 
@@ -341,6 +355,8 @@ struct MeniscusStemDrops {
         rng = 0x2545_F491_4F6C_DD1D
         loudness = 0
         audioGate = 0
+        arrangement = 0
+        arcEnvelope = 0
         localPhase = 0; beatPeriod = 0.5; previousBeatPhase = -1
         sinceGridUpdate = 0; firedThisBeat = false
     }

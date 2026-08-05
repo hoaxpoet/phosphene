@@ -736,17 +736,14 @@ struct MeniscusStemLagTests {
         print(String(format:
             "[meniscus-stemlag] %@: force vs concurrent loudness — fresh r=%+.3f · 5.2 s late r=%+.3f",
             track, freshR, staleR))
-        // The claim is INDIFFERENCE to the lag, not a particular correlation. Asserting an
-        // absolute r here would be inventing a bar: force is `drive x intensity`, drive is
-        // a self-normalising primitive, and the resulting correlation is genuinely weak
-        // even with perfect stems (the same wrong premise cost a rewrite at MEN.3b). What
-        // must hold is that staleness cannot move it, because nothing about the force now
-        // reads a stem.
-        #expect(abs(freshR - staleR) < 0.10, """
-            \(track): 5.2 s of stem staleness moved the force/loudness relationship from \
-            r=\(String(format: "%.3f", freshR)) to r=\(String(format: "%.3f", staleR)). \
-            Drop force must not depend on the stems at all — that dependence IS the defect.
-            """)
+        // REPORTED, NOT ASSERTED — and the reason changed at MEN.4a, so it is worth saying
+        // rather than quietly deleting a check. Stems are deliberately back in the firing
+        // path, driving how full the ARRANGEMENT is on a ~3 s envelope. That is a
+        // section-scale question, the one thing a 5.2 s lag does not spoil, but it does
+        // mean staleness legitimately changes WHICH events fire near a section edge, and
+        // any distribution statistic moves with it. What must stay invariant is the TIMING
+        // of the events that do fire — asserted below. Demanding an unmoved correlation
+        // here would be asserting the absence of a feature.
 
         // Non-grid regions (vocals, `other`) fire on their own drive. Under stem lag they
         // used to land ~5 s from anything audible; they must now stay event-current.
@@ -839,6 +836,73 @@ struct MeniscusSilenceGateTests {
             \(silentDrops) drops landed during 10 s of silence while the beat grid kept \
             ticking. Loud, stale stems must not hold the regions open: the firing path has \
             to read CURRENT loudness or the surface is struck by music that already ended.
+            """)
+    }
+}
+
+// MARK: - The visual must follow the music's ARC, not just its beat (MEN.4a)
+
+/// Matt, after eight rounds of beat-timing work: **"Music is more than just beat,
+/// remember."**
+///
+/// That is the diagnosis those rounds never reached. Meniscus was rhythmically accurate
+/// and structurally deaf — same drop density, same placement pattern, same character on
+/// every beat from the first bar to the last. Perfect timing on an unchanging pattern is
+/// still a metronome, and no amount of ±ms work can fix a visual that ignores the music's
+/// shape.
+///
+/// Measured on `2026-08-05T15-06-31Z` the music moves a great deal across 92 s (arousal
+/// 0.19 → 0.52 → 0.27; every stem rising to a peak at 30–45 s then falling away) while the
+/// preset varied only overall amplitude and camera distance.
+///
+/// So this asserts the property those gates could not: **the drop pattern itself must
+/// differ between a sparse passage and a full one.**
+@Suite("Meniscus — the pattern follows the arc")
+struct MeniscusArcTests {
+
+    @Test("a fuller arrangement places a denser pattern than a sparse one",
+          arguments: ["there_there", "love_rehab"])
+    func densityFollowsTheArrangement(track: String) throws {
+        let fixture = try WitchlightFixtureDrive.load(track)
+        var drops = MeniscusStemDrops()
+        var field = [Float](repeating: 0, count: 45 * 45)
+        let configuration = MeniscusConfiguration()
+
+        // Per-frame drop counts alongside how full the arrangement is at that moment.
+        var counts: [Int] = [], fullness: [Double] = []
+        for index in 0..<fixture.stems.count {
+            var dt = fixture.features[index].deltaTime
+            if !(dt > 0) { dt = 1.0 / 60.0 }
+            dt = min(dt, 1.0 / 30.0)
+            let stem = fixture.stems[index]
+            drops.step(stems: stem, features: fixture.features[index], field: &field,
+                       dt: dt, configuration: configuration)
+            counts.append(drops.lastSites.count)
+            fullness.append(Double([stem.drumsEnergy, stem.bassEnergy,
+                                    stem.vocalsEnergy, stem.otherEnergy]
+                .filter { $0 > 0.15 }.count))
+        }
+        try #require(counts.count > 600, "\(track): fixture too short to show an arc")
+
+        // Split the track by how full the arrangement is, and compare the drop rate in the
+        // sparsest third against the fullest third.
+        let order = fullness.indices.sorted { fullness[$0] < fullness[$1] }
+        let third = order.count / 3
+        let sparse = order.prefix(third).reduce(0) { $0 + counts[$1] }
+        let full = order.suffix(third).reduce(0) { $0 + counts[$1] }
+        let sparseRate = Double(sparse) / Double(third)
+        let fullRate = Double(full) / Double(third)
+
+        print(String(format:
+            "[meniscus-arc] %@: drops/frame — sparsest third %.4f · fullest third %.4f (%.2fx)",
+            track, sparseRate, fullRate, sparseRate > 0 ? fullRate / sparseRate : 999))
+
+        #expect(fullRate > sparseRate * 1.3, """
+            \(track): the fullest passages place \(String(format: "%.4f", fullRate)) \
+            drops/frame against \(String(format: "%.4f", sparseRate)) in the sparsest — \
+            the pattern barely changes across the track. That is the metronome failure: \
+            correct beat timing on a visual that ignores the music's shape. A build has to \
+            FILL IN, not merely grow louder.
             """)
     }
 }

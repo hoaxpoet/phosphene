@@ -421,6 +421,50 @@ badly understated.** This is the NACRE.2b pattern the plan predicted (§2 reason
    The warp shader body returns `vec3(0,0,0)` unconditionally. §3 asserted this from a
    read; it is now verified from the artifact.
 
+### MEN.4a — the visual follows the music's ARC, not just its beat (2026-08-05)
+
+Matt, after eight rounds of beat-timing work: **"Music is more than just beat, remember."**
+
+**That is the diagnosis those rounds never reached.** Meniscus was rhythmically accurate
+and structurally deaf: the same drop density, the same placement pattern and the same
+character on every beat from the first bar to the last. **Perfect timing on an unchanging
+pattern is still a metronome**, and no amount of ±ms work can fix a visual that ignores the
+music's shape.
+
+Measured on `2026-08-05T15-06-31Z` (Hummer, 92 s), the music moves a great deal:
+
+```
+arousal     0.19 → 0.52 → 0.44 → 0.43 → 0.43 → 0.35 → 0.27     (3x swing)
+valence     0.31 → −0.35 → 0.27 → −0.14 → 0.71 → 0.72          (sign flips twice)
+stems       all four rise to a peak at 30–45 s, then fall away entirely
+brightness  0.16 → 0.13 → 0.10 → 0.10 → 0.02 → 0.00
+```
+
+Against all of that the preset varied **only overall amplitude and camera distance**.
+
+**The build.** How much of the pattern plays is now a function of the arrangement and the
+mood arc: a sparse intro gets the downbeat spine only; every beat joins once the
+arrangement fills; the backbeat answer arrives above half; the offbeat scatter is the top
+of the arc — the last thing to arrive and the first to go. **A build now FILLS IN rather
+than merely growing louder.**
+
+**The stems come back, for the job they can actually do.** MEN.3f proved they are useless
+for event timing (5.2 s stale) and MEN.3h removed them entirely. But "how full is the
+arrangement right now" is a *section-scale* question, and section scale is exactly the
+timescale a 5.2 s lag does not spoil. Using a signal at its own timescale rather than
+against it is the whole lesson of MEN.3f, applied in the other direction.
+
+```
+[meniscus-arc] there_there: drops/frame — sparsest third 0.0932 · fullest third 0.1352 (1.45x)
+[meniscus-arc] love_rehab:  drops/frame — sparsest third 0.0559 · fullest third 0.1329 (2.38x)
+```
+
+**A real bug the gates caught.** Appending the downbeat's bass region before the drums
+broke an unstated contract — `lastSites` is emitted in ascending region order and every
+diagnostic attributes sites by walking `lastPerRegion` alongside it, so every drop was
+silently mis-attributed. The region-ordering gate failed immediately (bass mean row 0.81
+where it should be 0.48). `firing.sort()` restores it, and the contract is now written down.
+
 ### MEN.3h — nothing may strike the water at silence (2026-08-05)
 
 Matt, eighth round: **"drops are still falling at silence. drops do not match the beat or
