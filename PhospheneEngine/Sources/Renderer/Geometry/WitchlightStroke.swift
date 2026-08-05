@@ -248,8 +248,8 @@ public final class WitchlightStroke: ParticleGeometry, @unchecked Sendable {
         config.tumbleYaw = path.tumbleYaw
         config.tumblePitch = path.tumblePitch
         config.tumbleRoll = path.tumbleRoll
-        config.centroidX = path.centroidX
-        config.centroidY = path.centroidY
+        config.centroidX = path.cameraX
+        config.centroidY = path.cameraY
         config.viewScale = path.viewScale
         config.flareIntensity = path.flareIntensity
         if let head = beads.last {
