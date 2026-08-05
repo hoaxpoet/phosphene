@@ -421,6 +421,47 @@ badly understated.** This is the NACRE.2b pattern the plan predicted (§2 reason
    The warp shader body returns `vec3(0,0,0)` unconditionally. §3 asserted this from a
    read; it is now verified from the artifact.
 
+### MEN.4b — fewer drops, each one meaning something (2026-08-05)
+
+Matt, ninth round, on the MEN.4a build: **"Drops appear to follow the drums, not exactly
+but closely. feels busy / arbitrary."** He added that he did not understand the
+mechanical-vs-arbitrary distinction I had asked him to make — **that question was badly
+framed and the fault is mine**, asking him to translate my uncertainty into a diagnosis in
+my own vocabulary. What he volunteered instead was more useful than an answer to it.
+
+**"Follows the drums" is the sync reading for the first time in nine rounds.** That is the
+part to protect, and it is what the grid-timed beat drop delivers.
+
+**"Busy" was arithmetic, not taste.** Per bar at full density the MEN.4a pattern placed:
+
+```
+drums 4 · bass 1 · vocals 2 · other 8      = 15 drops/bar
+```
+
+**The offbeat scatter alone was 53 % of every drop** — and it is the widest random spread
+on the sheet (±0.42), landing *between* the beats. More than half of what a viewer saw
+corresponded to nothing audible. That is "arbitrary", precisely.
+
+He also said **"too much activity" in round one**, and eight rounds of adding layers
+followed. Hearing the same complaint twice and continuing to add is the failure worth
+recording here.
+
+**Cut to 7 drops/bar.** `other` moves from every offbeat (8/bar) to once per bar, and the
+backbeat answer is held back until the arrangement is genuinely full (0.5 → 0.65).
+
+```
+density   4.7–5.2  →  2.7–3.7 impacts/s
+`other`   54 drops →  11 drops
+sync      unchanged: median 6 ms from the beat, 99–100 % within 60 ms
+arc       1.52x / 2.69x sparse-to-full (MEN.4a's response survives the cut)
+```
+
+**One gate narrowed, deliberately.** `everyStemFires` required all four regions on every
+track. That encoded MEN.3's retired instrument-identity claim and it now *contradicts*
+MEN.4a: the `other` texture is gated to the top of the arc, so on sparse material
+(`so_what`) it should stay silent — a track that never fills out must not get the busiest
+layer. The three beat-locked regions remain absolute; `other` is reported, not required.
+
 ### MEN.4a — the visual follows the music's ARC, not just its beat (2026-08-05)
 
 Matt, after eight rounds of beat-timing work: **"Music is more than just beat, remember."**

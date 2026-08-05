@@ -1,32 +1,25 @@
-// MeniscusStemDrops — the Phosphene placement (MEN.3). THE DIVERGENCE AXIS.
+// MeniscusStemDrops — the Phosphene placement. THE DIVERGENCE AXIS.
 //
 // Replaces the source's cepstral placement (`MeniscusDrops`, ported at MEN.2b and kept as
-// the oracle). This is the D-121 divergence and the whole reason Meniscus is a Phosphene
-// preset rather than a reproduction: a different feature stack end to end — Open-Unmix HQ
-// stems + deviation primitives, against a hand-rolled DFT-of-FFT.
+// the oracle). Why it had to change, from Matt's live viewing rather than argument: the
+// ported placement reads as random. That is not a defect in the port — `MENISCUS_PLAN.md`
+// §3 says of the source's mechanism "no listener can perceive the mapping", so a faithful
+// port of an inaudible mechanism looks random BY CONSTRUCTION.
 //
-// WHY IT HAD TO CHANGE, confirmed from Matt's live viewing (2026-08-04) rather than
-// argued: the ported placement reads as random. That is not a defect in the port —
-// `MENISCUS_PLAN.md` §3 says of the source's mechanism "no listener can perceive the
-// mapping", so a faithful port of an inaudible mechanism produces motion that looks
-// random BY CONSTRUCTION. MEN.2b's job was to establish the drop distribution the wave
-// sim needs and to prove that point with evidence. Both done.
+// WHAT IT ACTUALLY DOES NOW, after nine live rounds (§9 MEN.3f-MEN.4b). §1's original
+// claim — "a listener can point at a ripple and say that was the snare" — is RETIRED:
+// §7 R3 flagged that legibility as ungrounded and nine viewings never produced it.
 //
-// THE MUSICAL ROLE (§1) is what this delivers: "every drop that strikes the water is an
-// instrument: the drums land on the near edge, the bass lands deep at the centre, the
-// vocal lands high and far, and the ripples that spread from each impact and interfere
-// with one another are the arrangement, drawn as a wake." A listener can point at a
-// ripple and say "that was the snare" — which was never true of the cepstral placement.
+//   WHEN   the cached BeatGrid, always. Every live-signal driver was measured and died:
+//          stems lag 5.2 s, the per-band beat pulses saturate, band deviations are too
+//          sparse. Grid-timed drops measure a median 6 ms from the beat.
+//   WHERE  bar position picks the region; regions are spatial variety, not instruments.
+//   WHETHER a fast band-level gate — nothing strikes the water at silence.
+//   HOW MUCH the musical arc (arrangement fullness + mood), so a build FILLS IN.
 //
-// REGION LAYOUT is §5's table. It is explicitly provisional there, and its legibility is
-// the plan's own risk R3 ("no empirical grounding for the combination") — assessable only
-// in motion against real music at M7.
-//
-// DENSITY IS THE NAMED RISK (§5): "four sources firing on their own onsets may be far
-// sparser than the source's continuous spectral placement". MEN.2b measured what the
-// surface actually needs — 1.1 to 39 new impact sites/second across sparse jazz to dense
-// electronic — so that target now exists as a number rather than a guess, and
-// `MeniscusStemDropsTests` holds this placement to it.
+// DENSITY IS THE NAMED RISK (§5) and Matt has raised it twice. Seven drops per bar, down
+// from fifteen: the offbeat scatter alone had been 53 % of every drop, landing between
+// beats at the widest spread on the sheet — which is what read as "busy / arbitrary".
 
 import Foundation
 import Shared
@@ -205,20 +198,15 @@ struct MeniscusStemDrops {
 
         // THE MUSICAL ARC (MEN.4a). Matt: "Music is more than just beat, remember."
         //
-        // That is the diagnosis eight rounds of beat-timing work never reached. Meniscus
-        // was rhythmically accurate and structurally DEAF: the same drop density, the same
-        // placement pattern and the same character on every beat from the first bar to the
-        // last. Perfect timing on an unchanging pattern is still a metronome.
+        // Meniscus was rhythmically accurate and structurally DEAF — the same density,
+        // pattern and character on every beat from first bar to last. Perfect timing on an
+        // unchanging pattern is still a metronome. Measured on `2026-08-05T15-06-31Z` the
+        // music moves a great deal across 92 s (arousal 0.19 -> 0.52 -> 0.27, every stem
+        // peaking at 30-45 s then falling away) while the preset varied only amplitude and
+        // camera distance. Full evidence in `MENISCUS_PLAN.md` §9 MEN.4a.
         //
-        // Measured on `2026-08-05T15-06-31Z` (Hummer), the music moves a great deal across
-        // 92 s — arousal 0.19 -> 0.52 -> 0.27, valence swinging through zero twice, every
-        // stem rising to a peak at 30-45 s and then falling away — while the only things
-        // the preset varied were overall amplitude and camera distance.
-        //
-        // These drivers are all SECTION-SCALE, which is the point: it is exactly the
-        // timescale the stems are good at, so the ~5.2 s stem latency that made them
-        // useless for events (MEN.3f) is harmless here. The stems come back for the job
-        // they can actually do — telling us how full the arrangement is right now.
+        // These drivers are SECTION-scale, which is the point: the stems come back for the
+        // one job their ~5.2 s latency does not spoil — how full the arrangement is now.
         let bandCount = [stems.drumsEnergy, stems.bassEnergy,
                          stems.vocalsEnergy, stems.otherEnergy].filter { $0 > 0.15 }.count
         let fullness = Float(bandCount) / 4
@@ -234,18 +222,32 @@ struct MeniscusStemDrops {
         // arrives on the downbeat; vocals answer on the backbeat; `other` scatters on the
         // offbeat subdivisions so the surface is never merely pulsing on the beat.
         let beatInBar = ((beatIndex % 4) + 4) % 4
+        // FEWER DROPS, EACH ONE MEANING SOMETHING (MEN.4b). Matt, ninth round: the drops
+        // "appear to follow the drums, not exactly but closely" — the sync finally reads —
+        // but it "feels busy / arbitrary". He also said "too much activity" in round one
+        // and I kept adding after hearing it.
+        //
+        // The arithmetic showed where the noise was. Per bar at full density the old
+        // pattern placed drums 4, bass 1, vocals 2 and `other` EIGHT — the offbeat scatter
+        // alone was 53 % of every drop, and it is the widest random spread on the sheet
+        // (±0.42) landing between the beats. So more than half of what a viewer saw was
+        // unrelated to anything audible, which is "arbitrary" exactly.
+        //
+        // Cut to 7 per bar. What survives is what he can already read: the beat itself.
         var firing: [Int] = []
         if clock.beat {
             // The downbeat always answers while anything is playing — it is the spine.
             if beatInBar == 0 { firing.append(1) }
-            // Every beat, once the arrangement is past a bare intro.
+            // Every beat, once the arrangement is past a bare intro. THIS is the drop he
+            // reads as following the drums, so it is the last thing that should ever go.
             if density > 0.25 { firing.append(0) }
-            // The backbeat answer arrives when the band fills out.
-            if (beatInBar == 1 || beatInBar == 3) && density > 0.5 { firing.append(2) }
+            // The backbeat answer, held back until the band is genuinely full.
+            if (beatInBar == 1 || beatInBar == 3) && density > 0.65 { firing.append(2) }
         }
-        // Offbeat scatter is the top of the arc — the last thing to arrive and the first
-        // to go, so a chorus is visibly busier than the verse that set it up.
-        if clock.halfBeat && density > 0.55 { firing.append(3) }
+        // `other` keeps its texture role but at ONE per bar rather than eight — enough to
+        // stop the layout reading as three fixed points (§7 R5), far too little to compete
+        // with the beat for attention.
+        if clock.halfBeat && beatInBar == 3 && density > 0.7 { firing.append(3) }
         // ASCENDING REGION ORDER IS A CONTRACT, not a coincidence. `lastSites` is emitted
         // in this order and every diagnostic attributes sites to regions by walking
         // `lastPerRegion` alongside it. Appending the downbeat's bass before the drums
