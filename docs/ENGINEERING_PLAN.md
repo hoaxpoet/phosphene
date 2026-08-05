@@ -1527,6 +1527,52 @@ the fixed band is exactly the defect this fixes.
 
 **Risk.** Higher than DYN.1 and the ordering matters: this is a *new DSP capability*, not plumbing. If (a) and (b) both fail to beat +0.237, say so and stop rather than shipping a route that is alive in the manifest and invisible on screen.
 
+**MEASURED AND STOPPED AT THE GATE (2026-08-05) — the risk clause above fired.** Matt's live
+review after DYN.1c: *"heavily favors the drums vs. guitars … The tips are too active. If
+possible, I would want only one tip per note of music."* He picked the offline note-track
+design (extract guitar note onsets from the separated stem across the full file, carry them
+like `BeatGrid`, one tip per note). **Three candidate mechanisms were measured against his
+capture `2026-08-05T14-57-26Z` before any of it was built, and none supports per-note guitar
+events on this material.**
+
+Metric: grid coherence of inter-onset INTERVALS against the eighth note (anchor-free — needs
+no alignment between audio and grid, so it works on the 10 s `stems/*/other.wav` dumps).
+Random baseline ≈ 20 % within 10 %, median error ≈ 25 %.
+
+| mechanism | guitar (`other`) | drums (control) |
+|---|---|---|
+| spectral-flux onsets | 31 % / median 24 % | **41 % / median 16 %** |
+| log-magnitude superflux | 39 % / median 25 % | 39 % / median 25 % |
+| chroma flux (pitch change) | 22 % / median 25 % | 23 % / median 25 % |
+| dominant-pitch change | 20 % / median 28 % | 22 % / median 25 % |
+
+**The control is what makes this conclusive.** The onset detector finds the metrical structure
+cleanly on the stem that *defines* the meter (41 %, median 16 %), so the tool is not broken —
+the guitar's attacks are genuinely smeared. Cause is a property this phase already measured:
+**distortion adds harmonics, not amplitude** (§DYN.1). The same physics that made level
+useless for detecting the guitar's arrival smears its per-note attacks; a note inside a
+sustained distorted chord wall often has no detectable attack. The pitch-change route fails
+independently — and correctly scores at chance on drums, confirming it measures pitch rather
+than transients.
+
+**The cheap fallback does not exist either.** Sweeping the tip quantisation coefficient
+against the same capture: the granularity is fixable (26 → 6 takes it from 4.54 to 1.00
+branches per change) but the **rate plateaus at ~6.5/s and then collapses to 0**, because
+`beat_mid` turns 6.9 times a second. Today's tips fire **9.41/s** against a measured guitar
+note rate of **3.29/s**. No stateless shader transform of a 6.9/s signal yields 3/s events —
+reaching the note rate needs an engine-side refractory gate (state belongs there), not a
+coefficient.
+
+**What is still achievable, stated honestly:** an engine-side note gate (EMA + minimum
+inter-event interval ≈ one eighth note) would deliver ~3 events/s at one branch each — two of
+Matt's three complaints (too active, wrong granularity). It would **not** fix "favors drums":
+the trigger remains a mid-band transient, and mid band in a rock mix is snare *and* guitar.
+Scoped but NOT started — it needs a new `FeatureVector` field (both declaration sites, CSV,
+route manifest) and is a real increment, not a tuning tweak. Matt's call.
+
+**Do not re-attempt per-note guitar events on distorted-guitar material without a changed
+premise.** The limit is physical, not a tuning failure.
+
 **Estimated sessions:** 1 for reach + validation of the existing path; 1–2 more if new DSP is needed.
 
 **Sequencing.** DYN.1 first — it is cheap, well-understood, and fixes the complaint Matt has raised in three consecutive reviews. MEL.1 second, and only after a live confirmation that dynamics alone did not resolve the "melody" feedback: it is plausible that a tree which grows correctly with the music reads as melodic without any melody signal, since that is exactly how the original illusion worked.
