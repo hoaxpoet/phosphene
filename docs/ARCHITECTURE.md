@@ -580,6 +580,7 @@ PhospheneEngine/
     MetalContext            → MTLDevice, command queue, triple-buffered semaphore, shared-texture helper
     ShaderLibrary           → Auto-discover .metal files, runtime compilation, cache
     RenderPipeline          → Render graph dispatch, feedback ping-pong, activePasses guarded by passesLock
+    DrawableLifecycleProbe  → HANG.1 lock-protected renderer diagnostic. Correlates per-frame render-pass/drawable requests, unique drawable objects, scheduled presentation, command-buffer commit/completion/failure, and unpresented acquisitions. `VisualizerEngine+InitHelpers` polls its public snapshot off the render thread and persists 10 s balance heartbeats plus >500 ms blocked-request alarms to session.log. Instrumentation only; no render decision or Metal resource ownership.
     RenderPipeline+Draw     → Per-frame render-graph executor (renderFrame). Walks activePasses, dispatches the first available pass. MV-2 multi-pass flow: when .mvWarp is present, a preceding .rayMarch pass renders to warpState.sceneTexture and continues the loop instead of returning. Fallback path is drawDirect.
     RenderPipeline+DirectDraw → NB.8 half-resolution direct-render path (Nimbus). `setDirectRenderScale(_:)` opts a `direct` preset into rendering its fragment to a 0.5× offscreen `halfResTarget` then bilinearly upscaling to the drawable (`feedback_blit` + linear-clamp sampler) — ~4× cheaper for a body that swells to fill the frame. `drawDirect` branches on the scale; the shared slot-binding contract lives in `encodePresetVisualization`. Default 1.0 (every other preset full-res, unaffected); the half-res target is pre-allocated at preset apply. MetalFX is NOT wired (Temporal needs motion vectors a procedural volume lacks → ghosting); the bilinear upscale substitutes, appropriate for soft gas. Worst-case Nimbus body ~2.6 ms half-res march + ~0.3 ms upscale ≈ 3 ms (vs ~7.6 ms full-res), well under the 7 ms Tier-2 ceiling.
     RenderPipeline+MeshDraw → Mesh shader draw: drawWithMeshShader. Delegates to MeshGenerator (native M3+ mesh or M1/M2 vertex fallback).
@@ -1269,5 +1270,4 @@ Hardware gated: `device.supportsFamily(.apple8)` (M3+). On M3+: `MTLMeshRenderPi
 `icb_populate_kernel` reads FeatureVector, activates slots based on cumulative energy thresholds. `setFragmentBytes` is NOT inherited by ICB commands — use `setFragmentBuffer` bindings. Pipelines must set `supportIndirectCommandBuffers = true`. Use `useResource(_:usage:stages:)` (stages-aware API, macOS 13+).
 
 ---
-
 

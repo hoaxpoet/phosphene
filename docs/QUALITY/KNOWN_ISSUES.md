@@ -93,6 +93,20 @@ Ruled out by inspection after the stack: the capture hook does not retain the dr
 
 **What that leaves.** The original capture stands unexplained: main thread hard-blocked in `nextDrawable` at 0 % CPU with every other thread idle, ~3.6 min in, after frames that were healthy to the last one. Drawables are being retained by something that is not the render path, not the capture hook, not the preset-swap skip, not the inflight semaphore, and not window state. No current hypothesis — the next step is instrumentation that counts drawables acquired against command buffers completed, rather than another guess.
 
+**HANG.1 instrumentation landed 2026-08-05 — stop here; this is not a fix.** Every
+drawable-facing render path now routes its existing `currentRenderPassDescriptor`,
+`currentDrawable`, and `present` calls through `DrawableLifecycleProbe`, which correlates the
+request site and unique drawable identity with its command buffer's commit and completion.
+An independent watchdog writes a balance heartbeat to `session.log` every 600 completions,
+logs command-buffer failures or completed frames with unpresented acquisitions immediately,
+and emits `DRAWABLE_LIFECYCLE STALL` after a request remains pending for 500 ms. The watchdog
+does not depend on the blocked render/main thread, so the next reproduction will identify the
+exact request site and the last known acquired/presented/completed balance. State-machine tests
+cover balanced duplicate lookups, pending-site/age capture, and failed unpresented completion.
+`Scripts/capture_hang.sh` now extracts the lifecycle lines explicitly. Next increment is
+HANG.2 reproduction/diagnosis: ≥10-minute particle-preset soak, then run the script before
+force-quit if the freeze returns. No render behavior or root-cause assertion changed.
+
 **The original note, kept for the record:**
 
 **It was NOT confirmed, and was not fixed on that basis** (the BUG-063/064 rule: no fix for an unreproduced hypothesis). Reproduction was attempted and could not be completed headlessly — the render loop only runs with an active session, and `osascript` lacks assistive access on this machine, so the window could not be driven from a script.

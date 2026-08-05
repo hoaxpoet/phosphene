@@ -46,7 +46,9 @@ extension RenderPipeline {
         activePipeline: MTLRenderPipelineState,
         chain: PostProcessChain
     ) {
-        guard let drawable = view.currentDrawable else { return }
+        guard let drawable = instrumentedDrawable(
+            from: view, commandBuffer: commandBuffer, site: "postProcess.drawable"
+        ) else { return }
 
         // Lazy-allocate the chain's textures if drawableSizeWillChange hasn't fired.
         let size = view.drawableSize
@@ -68,7 +70,7 @@ extension RenderPipeline {
             presetFragmentBuffer: presetBuf
         )
 
-        commandBuffer.present(drawable)
+        instrumentedPresent(drawable, on: commandBuffer)
     }
     // swiftlint:enable function_parameter_count
 }

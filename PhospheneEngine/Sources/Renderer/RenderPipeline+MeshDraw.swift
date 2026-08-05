@@ -42,8 +42,10 @@ extension RenderPipeline {
         stemFeatures: StemFeatures,
         meshGenerator: MeshGenerator
     ) {
-        guard let descriptor = view.currentRenderPassDescriptor,
-              let drawable = view.currentDrawable else { return }
+        guard let descriptor = instrumentedRenderPassDescriptor(
+                  from: view, commandBuffer: commandBuffer, site: "mesh.descriptor"),
+              let drawable = instrumentedDrawable(
+                  from: view, commandBuffer: commandBuffer, site: "mesh.drawable") else { return }
 
         descriptor.colorAttachments[0].clearColor  = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         descriptor.colorAttachments[0].loadAction  = .clear
@@ -64,6 +66,6 @@ extension RenderPipeline {
         meshGenerator.draw(encoder: encoder, features: features)
 
         encoder.endEncoding()
-        commandBuffer.present(drawable)
+        instrumentedPresent(drawable, on: commandBuffer)
     }
 }
