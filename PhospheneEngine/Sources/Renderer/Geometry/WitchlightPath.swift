@@ -253,13 +253,29 @@ public final class WitchlightPath: AudioResponseMetrics {
         let dt = min(max(deltaTime > 0 ? deltaTime : 1.0 / 60.0, 1.0 / 240.0), 1.0 / 30.0)
         frameCount += 1
         elapsedSeconds += Double(dt)
-        tumbleClock += dt
-
-        let stemTotal = stems.drumsEnergy + stems.bassEnergy + stems.otherEnergy + stems.vocalsEnergy
         let mixEnergy = features.bass + features.mid + features.treble
-        // D-037: at true silence the pen keeps advancing with zero turn rate, laying a
-        // slow straight stroke — "the pen still moving, with nothing to say".
-        let silent = stemTotal <= 0 && mixEnergy <= 0
+
+        // WL.5 — silence is decided by the LIVE MIX ALONE, and the `&& stemTotal` that used to
+        // be here is why Matt kept seeing the pattern move with no music playing.
+        //
+        // Measured on session `2026-08-05T13-06-38Z`: across a 5.5 s stretch where every mix
+        // band read exactly 0.000000, the stem energies read drums 0.52, bass 0.57, vocals
+        // 1.07, other 0.67. Stems come from the separator running on a lagging buffer and HOLD
+        // their last values when the audio stops, so `stemTotal <= 0` is essentially never
+        // true — which made the whole `silent` branch dead code in practice. Every "at true
+        // silence …" behaviour in this file was unreachable.
+        //
+        // The mix bands are the live signal and collapse to zero immediately, so they are the
+        // honest test for "is there sound right now". Stems still drive what they should drive
+        // (routing, colour); they just no longer get a vote on whether the room is quiet.
+        let silent = mixEnergy <= 1e-6
+
+        // WL.5 — the plane holds still in silence too. With the pen gated, the tumble was the
+        // only thing still moving when the audio stopped, and "the pattern is still moving
+        // when the preset is idle" is the complaint being answered; a drawing that keeps
+        // rotating itself is still a drawing that is not listening. Stars and bloom continue
+        // (they are the room, not the subject) so D-037's non-black frame is unaffected.
+        if !silent { tumbleClock += dt }
 
         advanceHarmonicPhase(dt: dt, features: features)
         updateEnergyBreath(features: features, silentNow: silent)
@@ -320,7 +336,8 @@ public final class WitchlightPath: AudioResponseMetrics {
         arousalSpread += (abs(features.arousal - arousalSlow) - arousalSpread) * slowAlpha
         let arousalNorm = max(-1, min(1, (features.arousal - arousalSlow) / (2 * max(arousalSpread, 0.05))))
 
-        let speed = tuning.baseSpeed * (1 + tuning.speedModDepth * arousalNorm)
+        let energyGate = energyGateForSpeed(silent: silent)
+        let speed = tuning.baseSpeed * (1 + tuning.speedModDepth * arousalNorm) * energyGate
         if !silent { speedMin = min(speedMin, speed); speedMax = max(speedMax, speed) }
         // ω_max derived from the speed so the ≥ 8 %-of-frame-height turning-radius bound
         // holds exactly at every speed, rather than only at the nominal one.

@@ -281,7 +281,16 @@ All deviation or relative semantics; no absolute threshold on an AGC-normalized 
 
 ### 3.6 Silence (D-037)
 
-At `totalStemEnergy == 0` the star field, the violet bloom and the full existing ribbon all persist; the pen continues to advance at `v₀` with `θ̇ = 0`, laying a slow straight stroke. The frame is never black, and silence reads as *the pen still moving, with nothing to say* — which is the honest visual for it.
+**REVISED at WL.5 (2026-08-05) — the original reading was wrong, and it was the defect.**
+
+At silence the star field, the violet bloom and the full existing ribbon persist, and **the pen HOLDS**: it stops advancing, stops emitting, and the plane stops tumbling. The frame is never black — D-037 forbids a black frame, not a still one — and silence reads as *the drawing waiting for something to draw*.
+
+The original spec said the opposite: *"the pen continues to advance at `v₀` with `θ̇ = 0`, laying a slow straight stroke … silence reads as the pen still moving, with nothing to say — which is the honest visual for it."* That reasoning does not survive a viewer. Matt's fifth M7: *"the witchlight pattern is still moving when the preset is idle, indicating that there is no real beat sync / connection to the music."* A stroke that advances at the same rate with and without music is, to anyone watching, a stroke that is not listening — and no coupling elsewhere can outvote it, because the drawing IS the subject.
+
+**Two mechanisms had to change, and the second is the one that mattered.**
+
+1. The pen's advance is now gated on energy (`0.25 + 1.5 · energyBreath`, centred so typical energy means normal speed), so it stops in silence and varies continuously with the music rather than running at a constant `v₀`.
+2. **`silent` was unreachable.** It was `stemTotal <= 0 && mixEnergy <= 0` — an AND across the live mix and the separated stems. Measured on session `2026-08-05T13-06-38Z`, across 5.5 s where every mix band read exactly `0.000000`, the stems read drums 0.52, bass 0.57, vocals 1.07, other 0.67: the separator runs on a lagging buffer and HOLDS its last values when audio stops, so `stemTotal <= 0` is essentially never true. Every "at true silence …" behaviour in the preset was dead code. Silence is now decided by the live mix alone.
 
 ---
 

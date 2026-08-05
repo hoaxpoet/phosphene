@@ -249,7 +249,10 @@ private let goldenPresetHashes: [String: PresetHashes] = [
     // responsive, and the bead halo narrowed 3.2 → 1.6 so the beads stop fusing into a
     // glow tube. Old hashes differed by Hamming 15–24 against a threshold of 8, which is
     // the gate correctly reporting that the frame changed.
-    "Witchlight": (steady: 0x1BCF33363539737F, beatHeavy: 0x699F4B37311115EA, quiet: 0x2BAD533D3E3E5155),
+    // WL.5 (2026-08-05): regenerated — the pen's advance is now gated on audio energy, so
+    // the synthetic drives draw a different amount of stroke by design. The "quiet passage"
+    // case moves most, which is the change working.
+    "Witchlight": (steady: 0x3B4B053537399A45, beatHeavy: 0x2B391735BF3EDD55, quiet: 0x1759053537391E45),
     "Staged Sandbox": (steady: 0x000022160A162A00, beatHeavy: 0x000022160A162A00, quiet: 0x000022160A162A00),
     // BUG-034 (2026-06-12, M7-lite approved): regen at the live 128-step budget.
     // Terrain now reaches the true horizon (the old "sky holes" at distance

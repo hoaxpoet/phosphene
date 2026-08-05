@@ -45,4 +45,34 @@ extension WitchlightPath {
             breathMax = max(breathMax, energyBreath)
         }
     }
+
+    /// WL.5 — the pen only draws while there is sound to draw.
+    ///
+    /// Matt's fifth M7: *"the witchlight pattern is still moving when the preset is idle,
+    /// indicating that there is no real beat sync / connection to the music."* He was right,
+    /// and it was DESIGNED that way — §3.6 specified "the pen continues to advance at `v₀` …
+    /// silence reads as the pen still moving, with nothing to say, which is the honest visual
+    /// for it", and `silent` zeroed only the TURN rate, never the speed.
+    ///
+    /// That reasoning does not survive a viewer. A stroke that advances at the same rate with
+    /// and without music is, to anyone watching, a stroke that is not listening — and no
+    /// coupling elsewhere can outvote it, because the drawing itself is the subject. This is
+    /// the most legible connection the preset can have: the line grows when you hear
+    /// something and holds when you do not.
+    ///
+    /// CONTINUOUS, and CENTRED so that typical energy means NORMAL speed. `energyBreath` is
+    /// centred on 0.5, so using it raw multiplied every speed by ~0.5 on average — measured,
+    /// that cut the 30 s trail from 96 beads to 71 and dropped ribbon share below its floor.
+    /// The gate must change WHEN the pen draws, not how much it draws overall, so
+    /// `0.25 + 1.5·b` puts breath 0.5 at exactly 1.0 and spans 0.25…1.75.
+    ///
+    /// The tangle guard holds at the top of that range by construction: `omegaMax` is derived
+    /// from `speed`, so a faster pen gets a proportionally higher turn-rate ceiling and the
+    /// ≥ 8 %-of-frame-height minimum radius survives (anti-reference `10`).
+    ///
+    /// D-037 is unaffected: silence still renders the star field, the bloom and the whole
+    /// existing ribbon. D-037 forbids a BLACK frame, not a still one.
+    func energyGateForSpeed(silent: Bool) -> Float {
+        silent ? 0 : min(1.75, 0.25 + 1.5 * energyBreath)
+    }
 }
