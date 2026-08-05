@@ -41,7 +41,7 @@ struct MultiPassRenderHarness {
     static let multiPassPresets = [
         "Lumen Mosaic", "Dragon Bloom", "Fata Morgana", "Skein", "Nacre",
         "Floret", "Glaze", "Filigree", "Mitosis", "Cytokinesis", "Cymatic Resonance",
-        "Volumetric Lithograph", "Witchlight"
+        "Volumetric Lithograph", "Witchlight", "Meniscus"
     ]
 
     /// Render `presetName` over `features`/`stems` (row-aligned), returning `reduce(bgra)`
@@ -58,6 +58,7 @@ struct MultiPassRenderHarness {
         case "Filigree":     return try renderFiligree(features, stems, settle: settle, reduce)
         case "Cymatic Resonance": return try renderCymaticSand(features, stems, settle: settle, reduce)
         case "Witchlight":   return try renderWitchlight(features, stems, settle: settle, reduce)
+        case "Meniscus":     return try renderMeniscus(features, stems, settle: settle, reduce)
         case "Mitosis":      return try renderMitosis(features, stems, reduce)
         case "Cytokinesis":  return try renderCytokinesis(features, stems, reduce)
         case "Lumen Mosaic": return try renderLumenMosaic(features, stems, reduce)
@@ -131,6 +132,65 @@ struct MultiPassRenderHarness {
         var pixels = [UInt8](repeating: 0, count: width * height * 4)
         // Grow the trail in before measuring: the flash question is about the STEADY ribbon
         // plus its head flare, not about the first few beads appearing on an empty field.
+        for i in 0..<settle {
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
+            geo.update(features: withAspect(i % drive.count), stemFeatures: stems[i % stems.count],
+                       commandBuffer: cmd)
+            cmd.commit(); cmd.waitUntilCompleted()
+        }
+        var out: [T] = []
+        out.reserveCapacity(drive.count)
+        for i in 0..<drive.count {
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
+            var features = withAspect(i)
+            var stem = stems[i]
+            geo.update(features: features, stemFeatures: stem, commandBuffer: cmd)
+            let rpd = clearRPD(tex)
+            guard let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) else { continue }
+            enc.setRenderPipelineState(preset.pipelineState)
+            enc.setFragmentBytes(&features, length: MemoryLayout<FeatureVector>.stride, index: 0)
+            enc.setFragmentBuffer(fft, offset: 0, index: 1)
+            enc.setFragmentBuffer(wav, offset: 0, index: 2)
+            enc.setFragmentBytes(&stem, length: MemoryLayout<StemFeatures>.stride, index: 3)
+            enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            geo.render(encoder: enc, features: features)
+            enc.endEncoding()
+            try commit(cmd, tex, into: &pixels)
+            out.append(reduce(pixels))
+        }
+        return out
+    }
+
+    // MARK: - Render: particle (Meniscus — wave surface over its own ground/sky)
+
+    /// Meniscus, like Witchlight, draws an audio-driven BACKDROP as well as its geometry:
+    /// `meniscus_ground_fragment` carries the ground and sky, and its brightness gate is
+    /// volume-driven. Measuring the surface against a black clear would under-report the
+    /// frame's mean luminance and hand the safety gate an easier signal than ships.
+    ///
+    /// Mirrors `RenderPipeline.drawParticleMode`: sim step inside the command buffer, then
+    /// the preset triangle, then the surface. The settle window matters here — the wave
+    /// field integrates, so the first frames are a field growing from flat rather than the
+    /// steady surface whose flash behaviour is the question.
+    private func renderMeniscus<T>(_ drive: [FeatureVector], _ stems: [StemFeatures],
+                                   settle: Int, _ reduce: (_ bgra: [UInt8]) -> T) throws -> [T] {
+        let ctx = try MetalContext()
+        let lib = try ShaderLibrary(context: ctx)
+        guard let preset = _acceptanceFixture.presets.first(where: { $0.descriptor.name == "Meniscus" }) else {
+            throw HarnessError.presetNotFound("Meniscus")
+        }
+        let geo = try MeniscusSurface(device: ctx.device, library: lib.library,
+                                      configuration: MeniscusConfiguration(), pixelFormat: ctx.pixelFormat)
+        let floatStride = MemoryLayout<Float>.stride
+        guard let fft = ctx.makeSharedBuffer(length: 512 * floatStride),
+              let wav = ctx.makeSharedBuffer(length: 2048 * floatStride) else {
+            throw HarnessError.setupFailed("audio buffers")
+        }
+        let aspect = Float(width) / Float(height)
+        func withAspect(_ i: Int) -> FeatureVector { var f = drive[i]; f.aspectRatio = aspect; return f }
+
+        let tex = try makeOutputTexture(ctx)
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
         for i in 0..<settle {
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
             geo.update(features: withAspect(i % drive.count), stemFeatures: stems[i % stems.count],

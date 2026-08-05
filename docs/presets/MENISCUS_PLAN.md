@@ -421,6 +421,52 @@ badly understated.** This is the NACRE.2b pattern the plan predicted (§2 reason
    The warp shader body returns `vec3(0,0,0)` unconditionally. §3 asserted this from a
    read; it is now verified from the artifact.
 
+### MEN.5 — CERTIFIED (2026-08-05, D-214)
+
+Matt's M7: **"Ready to certify. Looks good!!!"**
+
+First `mesh_animation` member of the Milkdrop-inspired family and the catalog's first
+projected line-surface preset. Certified count 15 → 16.
+
+**Certification work, not just a flag flip.** Meniscus had **no D-157 flash gate** — it was
+never written. Added at cert and measured on real music (a silence run cannot exercise the
+brightness routes, which is what makes a flash gate vacuous):
+
+```
+[meniscus-flash] maxΔ/frame 0.0048 (bar: 0.05) · luma range 0.068–0.170
+```
+
+**One instrument demoted to report-only, and the code now matches what was said about it.**
+The tether correlation reads 0.056 / 0.136 / 0.316 / 0.518 for the *same* configuration
+depending on window length — it describes the measurement window, not the preset, and an
+assertion on it would make the suite's verdict depend on a diagnostic knob (the defect the
+motion floor had before it was made stride-invariant). Its DIRECTION was still what revealed
+the display-only swell never reached the sim, so it is kept as an instrument and asserts
+nothing.
+
+**What eleven rounds actually taught, worth more than the preset.**
+
+| Round(s) | What I optimised | What was wrong |
+|---|---|---|
+| MEN.3b–3e | drop timing, ±ms | timing was already fine |
+| MEN.3f | stem-driven events | **stems lag 5.2 s** by design |
+| MEN.3g–4b | grid timing, density | **no continuous driver at all** |
+| MEN.4c | continuous driver | placement still scattered |
+| MEN.4d | **anchor** | — |
+
+Drop timing reached a median **6 ms** from the beat by MEN.3c and was confirmed against
+ground truth at **+4/+8/+8/+8 ms** across a track. Matt's verdict stayed "not synced" for
+seven more rounds. **The durable rule: when a preset does not read as synced, check which
+LAYER of the audio hierarchy is driving it before touching timing.** Accurate events cannot
+compensate for a missing continuous driver, and no timing accuracy survives scattered
+placement.
+
+**Still open, deliberately.** Per-note melodic response is closed on this material (MEL.1:
+31 % grid coherence vs a 20 % random baseline, 41 % drums control — distortion adds
+harmonics, not attacks). Harmony and timbre routes remain unbuilt. The preset is also still
+visually simple — one raster sheet on a plain backdrop — which Matt flagged early and which
+no increment here addressed.
+
 ### MEN.4d — the beat had no anchor to pulse in (2026-08-05)
 
 Matt, eleventh round: **"Drops are musical but it's not obvious how they are connected.
