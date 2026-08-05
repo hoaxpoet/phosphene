@@ -510,6 +510,13 @@ Every Phosphene launch creates `~/Documents/phosphene_sessions/<ISO-timestamp>/`
 | `session.log` has `Tap reinstall scheduled` entries | Audio path saw silence; check whether reinstall succeeded |
 | `video frame skipped: drawable WxH != writer WxH` log lines | Drawable size changed mid-session (window resize) |
 
+**Frozen-app exception.** If Phosphene is unresponsive or beachballing, do not force-quit it
+yet. From the repository root, run `Scripts/capture_hang.sh` and wait for the script to report
+its capture directory. The bundle records a process sample, process state, session-log tail,
+and the recent drawable lifecycle needed to diagnose renderer stalls. After the capture
+finishes, force-quit Phosphene if necessary. If the process is terminated first, this evidence
+cannot be recovered.
+
 **Quitting cleanly matters.** `AVAssetWriter.finishWriting` is called from an `NSApplication.willTerminateNotification` observer in `VisualizerEngine.init`. Force-quitting the app (Activity Monitor, kill -9) skips this and leaves `video.mp4` without its `moov` atom — unplayable. Use ⌘Q.
 
 ## Reclaiming Git-LFS storage

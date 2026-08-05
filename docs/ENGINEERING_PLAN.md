@@ -85,8 +85,9 @@ command-buffer commit/completion/failure, and unpresented acquisitions in a lock
 `DrawableLifecycleProbe`. An independent watchdog persists a balanced snapshot every 600
 completed frames and writes a `DRAWABLE_LIFECYCLE STALL` line with the exact pending call site
 after 500 ms, so evidence survives even though the render/main thread is blocked. The state
-machine is unit-tested; the app build is green. **No hang fix or new root-cause claim. Next:
-HANG.2 reproduction/diagnosis using a ≥10-minute particle-preset soak and
+machine is unit-tested; the app build is green. **No hang fix or new root-cause claim.
+HANG.2 subsequently completed the planned soak as a clean non-reproduction; see the HANG.2
+entry above. BUG-085 remains open, and the next live freeze must be captured with
 `Scripts/capture_hang.sh` before force-quit.**
 
 ### Increment SPOT.1 — Spotify `.authFailure` names the missing Client ID ✅ (2026-08-04)
