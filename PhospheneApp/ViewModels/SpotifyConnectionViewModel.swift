@@ -95,6 +95,33 @@ final class SpotifyConnectionViewModel: ObservableObject {
         observeTextChanges()
     }
 
+    // MARK: - Copy
+
+    /// User-facing copy for `.authFailure`, which covers several causes with
+    /// different fixes (missing Client ID, user-denied authorization, login
+    /// timeout). Only the missing-Client-ID case is distinguishable in-app: it
+    /// is a *developer-setup* failure, so DEBUG builds name the actual fix and
+    /// shipped builds keep the generic string — an end user cannot create an
+    /// xcconfig, and naming one would violate UX_SPEC §9.5 #4 (no jargon).
+    var authFailureMessage: String {
+        #if DEBUG
+        return Self.authFailureMessage(
+            clientID: Bundle.main.infoDictionary?["SpotifyClientID"] as? String
+        )
+        #else
+        return String(localized: "connector.spotify.auth_failure")
+        #endif
+    }
+
+    /// Testable seam for `authFailureMessage`. An empty or absent `SpotifyClientID`
+    /// is the state `SpotifyOAuthTokenProvider.resolveClientID()` throws on.
+    static func authFailureMessage(clientID: String?) -> String {
+        guard let clientID, !clientID.isEmpty else {
+            return String(localized: "connector.spotify.auth_failure.missing_client_id")
+        }
+        return String(localized: "connector.spotify.auth_failure")
+    }
+
     // MARK: - Actions
 
     /// Called when the user taps Continue. Only valid when state == .preview.

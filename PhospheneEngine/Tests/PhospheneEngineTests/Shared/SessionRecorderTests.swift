@@ -39,7 +39,7 @@ final class SessionRecorderTests: XCTestCase {
     /// mid_rel,mid_dev,treb_rel,treb_dev,mid_att_rel,treb_att_rel,beats_until_next`) so
     /// route-coverage replay reaches every FeatureVector primitive presets consume,
     /// shifting every pre-existing from-end offset by another 10.
-    /// **10, not 12 — and the 12 was my error.** After `[DYN.1]` appended two columns I bumped
+    /// **10, not 12 — and the 12 was my error.** After `[DYN.1]` appended two columns (`[DYN.1b]` later added a third, `spectral_surge`) I bumped
     /// this to 12, which was the right fix for the OLD scheme where offsets were measured from
     /// the end of the row. `[RECON.14]` then re-anchored every offset to a NAMED column
     /// (`featuresTailEnd`, found from `beats_until_next`), which makes appended columns

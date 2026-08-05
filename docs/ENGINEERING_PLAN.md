@@ -63,6 +63,13 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment SPOT.1 — Spotify `.authFailure` names the missing Client ID ✅ (2026-08-04)
+
+A full debugging round on 2026-08-04 was spent on a missing (gitignored) `PhospheneApp/Phosphene.local.xcconfig`: `SpotifyOAuthTokenProvider.resolveClientID()` found an empty `SpotifyClientID` and threw `.spotifyAuthFailure` immediately, and the connector rendered the same generic string it shows for user-denied authorization and login timeout — three causes, three different fixes, one message.
+
+- **Copy.** `SpotifyConnectionViewModel.authFailureMessage` reads `Bundle.main.infoDictionary["SpotifyClientID"]` and, when it is empty or absent, returns new copy naming the file to create and telling the developer to rebuild. **Gated `#if DEBUG`**: this is a developer-setup failure, and an end user can neither create an xcconfig nor be told about one (UX_SPEC §9.5 #4, no jargon), so shipped builds keep the generic string. No new state case — `.authFailure` still covers all causes, only the copy branches. New row in UX_SPEC §9.2; test `authFailureCopyDistinguishesMissingClientID` covers the static seam.
+- **Runbook.** Setup step 5 said to point the Debug/Release xcconfig at `Phosphene.local` in Xcode. That is stale and was the misleading half of the round: `project.pbxproj` already sets `baseConfigurationReference` to `Phosphene.xcconfig`, which ends with `#include? "Phosphene.local.xcconfig"` — creating the file is sufficient. Replaced with "build", plus a note that the file is gitignored and therefore does not survive `git clean -fdx`, a fresh clone, or a new worktree, which is how it went missing.
+
 ### Increment RECON.1–.3 — Production audit: hygiene + doc reconciliation ✅ (2026-08-03)
 
 A full production-environment audit (defects, plan state, pipeline health, dead code, repo
@@ -1425,6 +1432,45 @@ Original scope, Option A per D-212: per beat, hash-select a bounded subset of br
 **Validation is defined up front:** the new field must rise materially at ~75 s on this capture, where measured HF rises +90 % and every current feature is flat. If it does not, it is the wrong quantity and the increment stops rather than shipping.
 
 **Estimated sessions:** 1.
+
+---
+
+## Phase DYN.1c — Per-track loudness profile from full-file pre-analysis
+
+**NEXT SESSION STARTS HERE.** Matt, 2026-08-04: *"i don't understand why you are unable to
+determine the dynamic range across the full local file and optimize the growing and receding
+of the tree based on this analysis. I know this is not possible for streaming media, but there
+should be more you can do with local audio files … the tree had grown to full size before the
+full band kicked in later in the song. there are also louder / fuller sections later."*
+
+**The defect, measured** (session `2026-08-04T20-23-15Z`, Hummer, 75 s recovered). DYN.1b's
+`spectral_surge` uses a FIXED absolute band, so it saturates at whatever point in *this* track
+crosses it and can never rise again:
+
+- surge reaches 1.00 at **27 s** and stays pinned for the remaining 48 s — **64 % of the track**
+- later sections are **4 dB louder** than the one that saturated it (−15.7 dB at 63 s vs −20.1 at 27 s)
+- the file's own range: p05 −39.9, p50 −18.1, p95 −16.0
+
+A fixed band is calibrated for one song and wrong for the next. For a local file the whole
+thing is decoded during preparation, so the range is measurable up front.
+
+**The change.** Compute a loudness profile (percentiles) over the decoded file during local-file
+preparation; carry it on the cached track data; inject it into `MIRPipeline` at track-ready;
+map the surge to *that track's* p10→p95 instead of `surgeLowDB`/`surgeHighDB`. Streaming keeps
+the fixed band as fallback — the scope limit Matt named himself.
+
+**The plumbing already exists, and there is an exact precedent.** `LocalFilePreparing.prepareLocalFile`
+(implemented by `VisualizerEngine+LocalFilePlayback`) decodes and analyses the whole file;
+`handleLocalFileReady` installs the cached `BeatGrid` at track-ready via `MIRPipeline.setBeatGrid`.
+Add `setLoudnessProfile(_:)` alongside it and follow the same path. Roughly four files.
+
+**Done when:** on the capture above the surge no longer pins for 64 % of the track, and the
+louder late sections read as larger than the 27 s arrival. The end-to-end gate is already
+written — `sessionSequence` with `FT_SESSION` + `FT_EVENT` asserts on tree HEIGHT, the quantity
+in Matt's own definition of "shoot up" (trunk elongates, next tier appears).
+
+**Read first:** `docs/ENGINE/DYN1_CALIBRATION.md` — three ways this was already calibrated
+wrong, including a scale confusion that cost a full review round.
 
 ---
 

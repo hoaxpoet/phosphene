@@ -76,6 +76,21 @@ extension SessionRecorder {
         fh.write(bytesToWrite == data.count ? data : data.prefix(bytesToWrite))
         rawTapSamplesWritten += samplesToWrite
 
+        // KEEP THE HEADER TRUTHFUL AS WE GO, so a session that never finishes is still
+        // readable. `finalizeRawTapHeader` previously ran only on the sample cap or a
+        // graceful finish, so a crash or force-quit left the stub's `data` size at 0 —
+        // and every standard reader then sees an EMPTY file. Measured on session
+        // `2026-08-04T20-23-15Z`: 28.8 MB of intact audio behind a header claiming zero.
+        // That is backwards, because a session that died is precisely the one whose audio
+        // you need in order to work out why.
+        //
+        // Patching costs two 4-byte writes plus a seek back to the end, so it is done at
+        // most once a second rather than on every buffer.
+        if rawTapSamplesWritten - rawTapLastHeaderSyncSamples >= Int(rawTapSampleRate) {
+            patchRawTapHeader(fh: fh)
+            rawTapLastHeaderSyncSamples = rawTapSamplesWritten
+        }
+
         if rawTapSamplesWritten >= rawTapMaxSamples {
             finalizeRawTapHeader()
             try? fh.close()
@@ -121,7 +136,7 @@ extension SessionRecorder {
         patchRawTapHeader(fh: fh)
     }
 
-    private func patchRawTapHeader(fh: FileHandle) {
+    func patchRawTapHeader(fh: FileHandle) {
         let dataBytes = UInt32(rawTapSamplesWritten * MemoryLayout<Float>.size)
         let riffChunkSize = UInt32(36) + dataBytes
         try? fh.seek(toOffset: 4)

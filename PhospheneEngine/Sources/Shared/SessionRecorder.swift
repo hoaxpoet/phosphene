@@ -222,6 +222,9 @@ public final class SessionRecorder: @unchecked Sendable {
     var rawTapSamplesWritten: Int = 0
     var rawTapMaxSamples: Int = 0
     var rawTapHeaderWritten: Bool = false
+    /// Sample count at the last header size-patch. The header is re-patched about once a
+    /// second so a crashed session still yields a readable WAV (see `+RawTap`).
+    var rawTapLastHeaderSyncSamples: Int = 0
     /// Set once the duration cap is reached or `finish()` closes the file.
     var rawTapDone: Bool = false
     /// Default 30 s diagnostic cap. Set `PHOSPHENE_FULL_RAW_TAP=1` to capture
