@@ -53,6 +53,15 @@ public struct CachedTrackData: Sendable {
     /// its family series; empty on non-orchestral tracks (the no-activity fallback).
     public let instrumentFamilySeries: [InstrumentFamilyActivity]
 
+    /// DYN.1c — the track's own quiet-to-loud range, measured over the FULLY DECODED file
+    /// during local-file preparation. Installed at track-ready via
+    /// `MIRPipeline.setLoudnessProfile` and consumed as the `spectral_surge` band.
+    ///
+    /// `nil` for streaming: only a 30 s preview is ever decoded, and percentiles over a
+    /// preview window describe the preview, not the track. Those tracks keep the fixed
+    /// band — the scope limit Matt named himself.
+    public let loudnessProfile: LoudnessProfile?
+
     // MARK: - Init
 
     public init(
@@ -62,7 +71,8 @@ public struct CachedTrackData: Sendable {
         beatGrid: BeatGrid = .empty,
         drumsBeatGrid: BeatGrid = .empty,
         gridOnsetOffsetMs: Double = 0,
-        instrumentFamilySeries: [InstrumentFamilyActivity] = []
+        instrumentFamilySeries: [InstrumentFamilyActivity] = [],
+        loudnessProfile: LoudnessProfile? = nil
     ) {
         self.stemWaveforms = stemWaveforms
         self.stemFeatures = stemFeatures
@@ -71,6 +81,23 @@ public struct CachedTrackData: Sendable {
         self.drumsBeatGrid = drumsBeatGrid
         self.gridOnsetOffsetMs = gridOnsetOffsetMs
         self.instrumentFamilySeries = instrumentFamilySeries
+        self.loudnessProfile = loudnessProfile
+    }
+
+    /// DYN.1c — copy carrying a loudness profile. The profile is measured at the local-file
+    /// call site (which knows the decode was of the whole file); `SessionPreparer.analyzePreview`
+    /// is shared with streaming and deliberately does not produce one.
+    public func with(loudnessProfile: LoudnessProfile?) -> CachedTrackData {
+        CachedTrackData(
+            stemWaveforms: stemWaveforms,
+            stemFeatures: stemFeatures,
+            trackProfile: trackProfile,
+            beatGrid: beatGrid,
+            drumsBeatGrid: drumsBeatGrid,
+            gridOnsetOffsetMs: gridOnsetOffsetMs,
+            instrumentFamilySeries: instrumentFamilySeries,
+            loudnessProfile: loudnessProfile
+        )
     }
 }
 

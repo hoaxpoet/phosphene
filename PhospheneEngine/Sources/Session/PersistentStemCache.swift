@@ -130,6 +130,9 @@ private struct PersistentStemCacheEntryMetadata: Codable {
     /// non-orchestral tracks. Without it, a disk-cache hit on a local
     /// orchestral file replays with no family activity (the sections go dark).
     let instrumentFamilySeries: [InstrumentFamilyActivity]?
+    /// The track's own quiet-to-loud range (DYN.1c). Added in schema v7. Optional so a
+    /// decode never fails on it; nil means the surge falls back to the fixed band.
+    let loudnessProfile: LoudnessProfile?
 }
 
 // MARK: - PersistentStemCache
@@ -173,7 +176,11 @@ public final class PersistentStemCache: @unchecked Sendable {
     ///                       instrument-family activity, Layer 5a). v5 entries lack it, so an
     ///                       orchestral local file cached under v5 would replay with no family
     ///                       activity — re-analyse so the family series reaches the preset.
-    public static let currentSchemaVersion: Int = 6
+    ///   v7 (DYN.1c) — adds `loudnessProfile` (the track's own p10→p95 level range, the
+    ///                       `spectral_surge` band). v6 entries lack it and would replay
+    ///                       with the fixed band — i.e. with the exact defect DYN.1c fixes,
+    ///                       silently — so they must be re-analysed.
+    public static let currentSchemaVersion: Int = 7
 
     /// Names of the stem `.f32` files. Order matches `CachedTrackData.stemWaveforms`
     /// (`[vocals, drums, bass, other]`).
@@ -309,7 +316,8 @@ public final class PersistentStemCache: @unchecked Sendable {
                 beatGrid: metadata.beatGrid,
                 drumsBeatGrid: metadata.drumsBeatGrid,
                 gridOnsetOffsetMs: metadata.gridOnsetOffsetMs,
-                instrumentFamilySeries: metadata.instrumentFamilySeries ?? []
+                instrumentFamilySeries: metadata.instrumentFamilySeries ?? [],
+                loudnessProfile: metadata.loudnessProfile
             )
 
             // Artwork is optional — missing file or empty bytes is fine.
@@ -359,7 +367,8 @@ public final class PersistentStemCache: @unchecked Sendable {
                 stemSampleCounts: sampleCounts,
                 decodedDuration: decodedDuration,
                 metadata: metadata.isEmpty ? nil : metadata,
-                instrumentFamilySeries: data.instrumentFamilySeries.isEmpty ? nil : data.instrumentFamilySeries
+                instrumentFamilySeries: data.instrumentFamilySeries.isEmpty ? nil : data.instrumentFamilySeries,
+                loudnessProfile: data.loudnessProfile
             )
 
             // Write stems first so a partial-store leaves metadata

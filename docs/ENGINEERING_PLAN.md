@@ -1499,6 +1499,42 @@ in Matt's own definition of "shoot up" (trunk elongates, next tier appears).
 **Read first:** `docs/ENGINE/DYN1_CALIBRATION.md` — three ways this was already calibrated
 wrong, including a scale confusion that cost a full review round.
 
+**✅ DONE (2026-08-05).** Measured on the capture above: the surge pinned for **63.3 %** of
+it and read **1.000 at both** the 31 s arrival and the 4 dB-louder 63 s section — literally
+the same number, which is Matt's complaint in one figure. With the track's own profile
+installed: **0.9 % pinned**, 31 s reads **0.613** and 63 s **0.945**, the surge climbing
+0.07 → 0.32 → 0.61 → 0.95 across the track with the guitar arrival still landing as a step.
+
+**The design changed once, under measurement, and the first version is the interesting
+part.** Mapping the surge onto the track's p10→p95 — the shape this plan entry specified —
+only got 63.3 % → 46 %. The surge follower rides peaks (fast attack, slow release), so ANY
+two-edge band whose top is a percentile re-saturates the moment a transient in the last
+couple of seconds crosses it. Sweeping the edges did find a working pair (p30→p99, 13.5 %
+pinned), and taking it would have been the mistake: **p30 is a constant fitted to one
+track's intro length — the same error as the fixed band, one level up.** What shipped is
+the track's whole distribution (33 quantiles) with the surge target as a RANK: "how loud is
+this moment for this track". No fitted constant survives, and only the top few per cent of
+a track can pin, by construction.
+
+**Also found, not acted on: the live analysis rate is ~47 Hz, not the ~10 Hz every DYN.1
+comment assumes.** Mean `deltaTime` over the distinct analysis frames of that capture is
+0.021 s = 1024 samples at 48 kHz, which is simply the tap buffer size. The τ values quoted
+throughout `SpectralAnalyzer` and `DYN1_CALIBRATION.md` are therefore ~4.7× too long (the
+density fast leg is τ 0.18 s, not 0.8 s; level smoothing τ 0.7 s, not 3 s). The shipped
+ALPHAS are unaffected — they were swept for response against real captures — so this is a
+comment-accuracy defect, not a behaviour one, and correcting it would touch every DYN
+constant's stated rationale. Recorded in `DYN1_CALIBRATION.md` §Analysis rate; flagged for
+Matt rather than fixed inside this increment.
+
+**Streaming is unchanged by construction** — the profile is measured only where the whole
+file is decoded (`analyzeAndPersist` on the LF path), and `analyzePreview`, which streaming
+shares, deliberately does not produce one. Persisted in `PersistentStemCache` schema **v7**;
+v6 entries are re-analysed rather than read back profile-less, because a silent fallback to
+the fixed band is exactly the defect this fixes.
+
+**Still owed (unchanged by this increment):** the live M7 on Matt's machine. Code-complete
++ gated is not "resolved" for a visual change (`feedback_visual_fix_needs_live_m7`).
+
 ---
 
 ## Phase MEL — A melody signal the geometry stage can read

@@ -10,7 +10,7 @@ ways that are easy to repeat.
 |---|---|---|
 | `spectral_density` | 49 | Energy fraction above 1.5 kHz, from RAW FFT magnitudes, EMA τ ≈ 0.8 s |
 | `spectral_density_slow` | 50 | Same, τ ≈ 45 s — the track's own normal |
-| `spectral_surge` | 51 | Pre-AGC LEVEL through an asymmetric follower: attack ≈ 0.25 s, release τ ≈ 10 s |
+| `spectral_surge` | 51 | Pre-AGC LEVEL through an asymmetric follower, then mapped: per-track RANK (DYN.1c) for local files, fixed −24…−15 dB band otherwise |
 
 Both are computed in `SpectralAnalyzer` from the raw magnitudes — upstream of the
 total-energy AGC and of `BandDeviationTracker`'s per-band EMA. That placement is the whole
@@ -75,3 +75,49 @@ passing vacuously.
 **The always-on companion uses a BROADBAND spectrum, not single peaks.** Five synthetic
 single-peak density tests passed throughout the entire period the field was broken on real
 audio; real music is broadband and behaves nothing like two spikes.
+
+## DYN.1c — the fixed band is per-song wrong, and two edges are not enough
+
+A fixed band saturates at whatever point in a given track first crosses it, and can never
+rise again. Measured on `2026-08-04T20-23-15Z` (Hummer): `spectral_surge` pins for **63.3 %**
+of the capture and reads **1.000 at both** the 31 s arrival and the 4 dB-louder 63 s
+section. Matt: *"the tree had grown to full size before the full band kicked in later in
+the song. there are also louder / fuller sections later."*
+
+For a local file the whole thing is decoded during preparation, so the track's own loudness
+distribution is measurable up front (`LoudnessProfile.measure`, `Audio` module). Streaming
+keeps the fixed band — a 30 s preview describes the preview, not the track.
+
+**A fourth calibration error, avoided by measuring:** the obvious fix is to map the surge
+onto the track's p10→p95 instead of the fixed edges. It does not work — 63.3 % → 46 % —
+because the follower rides peaks, so any two-edge band whose top is a percentile
+re-saturates on a transient. Sweeping the edges finds a pair that does work (p30→p99,
+13.5 % pinned), and **taking it would repeat the original mistake one level up**: p30 is
+fitted to one track's intro length. What ships instead maps the level through the track's
+own CDF (33 quantiles, `rank(ofLevelDB:)`) — no fitted constant, and only the top few per
+cent of a track can pin by construction.
+
+| mapping | pinned | surge @31 s | surge @63 s |
+|---|---|---|---|
+| fixed −24…−15 dB | 63.3 % | 1.000 | 1.000 |
+| track p10→p95 | 45.9 % | 0.988 | 0.999 |
+| track p30→p99 (fitted) | 13.5 % | 0.919 | 0.994 |
+| **track CDF rank** | **0.9 %** | **0.613** | **0.945** |
+
+`isUsable` gates on the p12.5→p87.5 **inner** span, not min→max: the minimum quantile is
+routinely −200 dB (the silent frame before the first note), so min→max makes a constant
+source look dynamic.
+
+Gate: `SurgeLoudnessProfileRealAudioTests`, env-gated on `FT_SESSION` like the density one.
+
+## Analysis rate — the ~10 Hz in these comments is wrong (~47 Hz)
+
+Every τ in this document and in `SpectralAnalyzer` was derived assuming a ~10 Hz MIR rate.
+The live rate is the tap buffer size: mean `deltaTime` across the distinct analysis frames
+of `2026-08-04T20-23-15Z` is **0.021 s — 1024 samples at 48 kHz, ≈47 Hz**. Every quoted τ is
+therefore ~4.7× too long (density fast leg τ 0.18 s not 0.8 s; level smoothing τ 0.7 s not
+3 s). The shipped **alphas are unaffected** — they were swept for measured response against
+real captures, not derived from a target τ — so this is a comment-accuracy defect. It is
+recorded rather than corrected because fixing it touches the stated rationale of every DYN
+constant. `LoudnessProfile.measure` hops 1024 samples per frame for this reason: it matches
+the live rate by construction rather than by an assumed number.
