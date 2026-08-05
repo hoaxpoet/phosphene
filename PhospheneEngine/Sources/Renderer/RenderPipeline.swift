@@ -10,6 +10,9 @@ import os.log
 
 private let logger = Logger(subsystem: "com.phosphene.renderer", category: "RenderPipeline")
 
+// HANG.1's one stored probe tips this long-lived renderer owner over the 300-line threshold;
+// behavior remains split across the RenderPipeline+*.swift extensions below.
+// swiftlint:disable:next type_body_length
 public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
 
     // MARK: - Metal State
@@ -208,6 +211,10 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
     }
 
     // MARK: - Session Recording Hook
+
+    /// HANG.1 instrumentation. Tracks drawable requests/presentation against command-buffer
+    /// completion without participating in render decisions.
+    let drawableLifecycleProbe = DrawableLifecycleProbe()
 
     /// Per-frame capture hook for SessionRecorder. Invoked after `renderFrame`,
     /// before commit. Nil = zero overhead.
@@ -720,6 +727,8 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
             context.inflightSemaphore.signal()
             return
         }
+        let commandBufferID = ObjectIdentifier(commandBuffer as AnyObject)
+        drawableLifecycleProbe.beginFrame(commandBufferID: commandBufferID)
 
         let cpuDrawStart = CACurrentMediaTime()
 
@@ -768,10 +777,7 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         if willRenderActiveFrame {
             renderFrame(commandBuffer: commandBuffer, view: view, features: &features)
             // Session recording hook — after renderFrame so drawable has the final image.
-            if let hook = onFrameRendered, let drawable = view.currentDrawable {
-                let stems = stemFeaturesLock.withLock { latestStemFeatures }
-                hook(drawable.texture, features, stems, commandBuffer)
-            }
+            captureRenderedFrame(from: view, features: features, commandBuffer: commandBuffer)
         }
         let renderframeCpuMs = Float((CACurrentMediaTime() - renderframeStart) * 1000)
 
@@ -786,6 +792,7 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
         let sema = context.inflightSemaphore
         commandBuffer.addCompletedHandler { [weak self, cpuDrawStart, encodeCpuMs, renderframeCpuMs, sema] cb in
             sema.signal()
+            self?.recordDrawableLifecycleCompletion(commandBufferID: commandBufferID, commandBuffer: cb)
             let cpuMs = Float((CACurrentMediaTime() - cpuDrawStart) * 1000)
             let gpuMs: Float? = cb.gpuEndTime > cb.gpuStartTime
                 ? Float((cb.gpuEndTime - cb.gpuStartTime) * 1000)
@@ -800,6 +807,7 @@ public final class RenderPipeline: NSObject, Rendering, @unchecked Sendable {
             }
         }
 
+        drawableLifecycleProbe.recordCommit(commandBufferID: commandBufferID)
         commandBuffer.commit()
     }
 }

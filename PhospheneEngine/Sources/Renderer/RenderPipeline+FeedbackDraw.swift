@@ -85,8 +85,10 @@ extension RenderPipeline {
         activePipeline: MTLRenderPipelineState,
         particles: (any ParticleGeometry)?
     ) {
-        guard let descriptor = view.currentRenderPassDescriptor,
-              let drawable = view.currentDrawable else { return }
+        guard let descriptor = instrumentedRenderPassDescriptor(
+                  from: view, commandBuffer: commandBuffer, site: "feedback.particles.descriptor"),
+              let drawable = instrumentedDrawable(
+                  from: view, commandBuffer: commandBuffer, site: "feedback.particles.drawable") else { return }
         descriptor.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         descriptor.colorAttachments[0].loadAction = .clear
         descriptor.colorAttachments[0].storeAction = .store
@@ -103,7 +105,7 @@ extension RenderPipeline {
             particles?.render(encoder: encoder, features: features)
             encoder.endEncoding()
         }
-        commandBuffer.present(drawable)
+        instrumentedPresent(drawable, on: commandBuffer)
     }
 
     /// Surface mode: composite the preset additively into the (already warped)
@@ -133,8 +135,10 @@ extension RenderPipeline {
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
             encoder.endEncoding()
         }
-        guard let descriptor = view.currentRenderPassDescriptor,
-              let drawable = view.currentDrawable else { return }
+        guard let descriptor = instrumentedRenderPassDescriptor(
+                  from: view, commandBuffer: commandBuffer, site: "feedback.surface.descriptor"),
+              let drawable = instrumentedDrawable(
+                  from: view, commandBuffer: commandBuffer, site: "feedback.surface.drawable") else { return }
         descriptor.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         descriptor.colorAttachments[0].loadAction = .clear
         descriptor.colorAttachments[0].storeAction = .store
@@ -145,7 +149,7 @@ extension RenderPipeline {
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
             encoder.endEncoding()
         }
-        commandBuffer.present(drawable)
+        instrumentedPresent(drawable, on: commandBuffer)
     }
 
     // swiftlint:enable function_parameter_count

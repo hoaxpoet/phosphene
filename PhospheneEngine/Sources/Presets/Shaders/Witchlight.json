@@ -81,11 +81,6 @@
       "kind": "accent"
     },
     {
-      "route": "star_parallax",
-      "primitive": "spectralCentroid",
-      "kind": "continuous"
-    },
-    {
       "route": "nebula_hue",
       "primitive": "valence",
       "kind": "continuous"

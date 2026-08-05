@@ -67,6 +67,52 @@ extension VisualizerEngine {
                 postProcessMs: postMs
             )
         }
+        setupDrawableLifecycleWatchdog(pipe: pipe, recorder: recorder)
+    }
+
+    /// HANG.1 watchdog. The render thread cannot log after `nextDrawable` blocks, so this
+    /// independent task snapshots the lock-protected probe and persists the blocked call site.
+    /// It also writes a low-rate balance heartbeat for healthy-session comparison.
+    func setupDrawableLifecycleWatchdog(pipe: RenderPipeline, recorder: SessionRecorder) {
+        Task.detached(priority: .utility) { [weak pipe, weak recorder] in
+            var lastHeartbeatBucket: UInt64 = 0
+            var lastStallFrame: UInt64?
+            var lastFailureCount: UInt64 = 0
+            var lastUnpresentedCount: UInt64 = 0
+
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(250))
+                guard let pipe, let recorder else { return }
+                let snapshot = pipe.drawableLifecycleSnapshot()
+
+                let heartbeatBucket = snapshot.commandBuffersCompleted / 600
+                if heartbeatBucket > lastHeartbeatBucket {
+                    lastHeartbeatBucket = heartbeatBucket
+                    let message = "DRAWABLE_LIFECYCLE heartbeat \(snapshot.logDescription)"
+                    recorder.log(message)
+                    initLogger.info("\(message, privacy: .public)")
+                }
+
+                if snapshot.commandBufferFailures > lastFailureCount
+                    || snapshot.unpresentedAcquisitions > lastUnpresentedCount {
+                    lastFailureCount = snapshot.commandBufferFailures
+                    lastUnpresentedCount = snapshot.unpresentedAcquisitions
+                    let message = "DRAWABLE_LIFECYCLE imbalance \(snapshot.logDescription)"
+                    recorder.log(message)
+                    initLogger.error("\(message, privacy: .public)")
+                }
+
+                if let frame = snapshot.pendingRequestFrame,
+                   let pendingSeconds = snapshot.pendingRequestSeconds,
+                   pendingSeconds >= 0.5,
+                   frame != lastStallFrame {
+                    lastStallFrame = frame
+                    let message = "DRAWABLE_LIFECYCLE STALL \(snapshot.logDescription)"
+                    recorder.log(message)
+                    initLogger.fault("\(message, privacy: .public)")
+                }
+            }
+        }
     }
 
     /// Wire per-frame dashboard snapshot push. Replaces the DASH.6 GPU

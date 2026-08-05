@@ -63,6 +63,33 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment HANG.2 — BUG-085 instrumented soak ✅ non-reproduction control (2026-08-05)
+
+HANG.1's lifecycle probe ran through two visible Witchlight/local-file controls: one full
+6 min 50 s track (24,866 frames) and one 10 min 36 s soak through two track transitions
+(35,297 frames at the final snapshot). Both passed the original ~3.6-minute / 12,911-frame
+failure point. The final durable heartbeat balanced 34,811 unique acquisitions with 34,811
+presentations, with zero failures, unpresented acquisitions, stalls, or imbalances; memory
+remained stable. This refutes a deterministic per-frame drawable leak and a fixed ~3.6-minute
+exhaustion time. **BUG-085 remains OPEN and intermittent: no freeze means no owner was
+identified and no fix is justified.** Evidence:
+`docs/diagnostics/BUG085_HANG2_SOAK_2026-08-05.md`. Next live freeze: leave the process
+running and execute `Scripts/capture_hang.sh` before force-quit.
+
+### Increment HANG.1 — BUG-085 drawable lifecycle instrumentation ✅ (2026-08-05)
+
+The captured BUG-085 stack proves the main thread blocks inside `CAMetalLayer.nextDrawable`,
+but not which drawable escaped recycling. HANG.1 adds observation only: every drawable-facing
+render path now records request begin/end, unique drawable identity, scheduled presentation,
+command-buffer commit/completion/failure, and unpresented acquisitions in a lock-protected
+`DrawableLifecycleProbe`. An independent watchdog persists a balanced snapshot every 600
+completed frames and writes a `DRAWABLE_LIFECYCLE STALL` line with the exact pending call site
+after 500 ms, so evidence survives even though the render/main thread is blocked. The state
+machine is unit-tested; the app build is green. **No hang fix or new root-cause claim.
+HANG.2 subsequently completed the planned soak as a clean non-reproduction; see the HANG.2
+entry above. BUG-085 remains open, and the next live freeze must be captured with
+`Scripts/capture_hang.sh` before force-quit.**
+
 ### Increment SPOT.1 — Spotify `.authFailure` names the missing Client ID ✅ (2026-08-04)
 
 A full debugging round on 2026-08-04 was spent on a missing (gitignored) `PhospheneApp/Phosphene.local.xcconfig`: `SpotifyOAuthTokenProvider.resolveClientID()` found an empty `SpotifyClientID` and threw `.spotifyAuthFailure` immediately, and the connector rendered the same generic string it shows for user-denied authorization and login timeout — three causes, three different fixes, one message.
@@ -1870,6 +1897,37 @@ CLAUDE.md's most important design rule is that continuous energy is the DEFAULT 
 **A harness gap this exposed — and it nearly caused a misdiagnosis.** The new band first read **0.000 on all three fixtures**. The route was fine: `WitchlightFixtureDrive` did not carry the `bass_att` column, so the replay fed a constant zero and the gate reported a dead route. This is the documented "harness must carry every route" trap; the drive now carries it. **A drive that silently omits a field makes a working route look broken, which is the more expensive failure.**
 
 **Done when:** ✅ a continuous-energy route exists and is QG.5-banded · ✅ breath shape verified as continuous, not bimodal · ✅ flash budget unmoved · ✅ suites green · ⏳ **Matt's live M7 — the whole point, and the retire/keep decision rides on it.**
+
+---
+
+### Increment WL.6 — Witchlight: star field decoupled; CAMERA FRAMING IS THE OPEN ITEM 🔨 (2026-08-05)
+
+**Matt's sixth M7** (session `2026-08-05T15-33-46Z`, ~128 s), on the first build that actually contained WL.5:
+
+1. *"The starry background is STILL moving too much, appears to be tied to the music, which is probably not the right call."*
+2. *"The ribbon is STILL not tied to the music."*
+3. *"The ribbon is also moving faster than the camera can catch up, leaving the front of the ribbon out of frame for much of the run."*
+
+**LANDED — (1).** Star drift is now a fixed `rate = 0.02` (~0.9 px/s on the near layer at 1080p; a frame crossing takes ~35 min, longer than any track), **decoupled from audio entirely**. It was `0.05 + 0.16·b`, so a busy passage sped the field up — a second, competing music-driven motion behind the thing that is supposed to BE the music. The `star_parallax` route is **retired from the sidecar** rather than left declared-but-inert. Matt's "probably not the right call" was right: the room should not react.
+
+**OPEN, AND IT IS PROBABLY THE CAUSE OF (2) — the camera cannot keep up.** `reframe` has two compounding faults:
+
+- it targets the **centroid of all beads**, which lags the pen by construction (half the trail is up to 30 s old), on top of a **3 s follow constant**;
+- it fits `viewScale` to the **RMS radius**, which under-covers the extremes — for a roughly linear stroke RMS sits near 0.6 of true extent, so with `framedRadius` 0.62 the furthest bead sits at ≈ **1.03 of the half-frame, i.e. just outside the edge**.
+
+**Why this likely explains "still not tied to the music":** the head is where the flare fires, where the newest beads are brightest, and where the WL.4 breath and WL.5 energy gate are most visible. If it spends much of the run outside the frame, every coupling in the preset is happening where nobody can see it. **Test that hypothesis before adding any more coupling.**
+
+**Three attempts were made and REVERTED — do not simply repeat them:**
+
+| attempt | result |
+|---|---|
+| head-weighted target (0.6 head / 0.4 centroid), follow 3 s → 1.2 s, fit max extent × 1.12 | ribbon share 0.49 % → **0.277 %**, distinct cores 23 → **4** |
+| + `framedRadius` 0.62 → 0.86 to compensate | share **0.344 %**, still far below floor |
+| + fit/centre on the newest 40 % of beads only | share **0.355 %**, cores still short |
+
+**The tension, stated precisely:** fitting the whole 30 s trail into frame necessarily makes the drawing small, and small beads stop reading as beads (the WL.2-j distinctness gate is the thing that catches it, correctly). Framing the head properly and keeping the beads legible are in direct conflict *while the visible trail is 30 s long*. Plausible next moves, none tried: shorten the visible trail (`trailSeconds` is a concept constant — Matt's call), scale bead size with `viewScale` (explicitly rejected at WL.2-f for a good reason — re-read it first), or let the tail clip while framing only a recent window with a **larger** `framedRadius` than 0.86.
+
+Reverted to keep `main` coherent — a half-tuned framing change that degrades bead legibility is worse than the known lag.
 
 ---
 
