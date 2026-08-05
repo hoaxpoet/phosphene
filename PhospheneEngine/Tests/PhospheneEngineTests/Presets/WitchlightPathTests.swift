@@ -254,24 +254,53 @@ struct WitchlightPathTests {
         #expect(path.flareIntensity <= tuning.flareCeiling + 1e-4, "flare amplitude exceeded its ceiling")
     }
 
-    @Test("silence keeps the pen moving with zero turn rate (D-037)")
-    func silenceLaysAStraightStroke() {
+    /// **Rewritten at WL.5 — this test asserted the behaviour Matt rejected.**
+    ///
+    /// It was `silence keeps the pen moving with zero turn rate (D-037)`, encoding §3.6's
+    /// "the pen continues to advance at `v₀` … silence reads as the pen still moving, with
+    /// nothing to say". His fifth M7 named exactly that as the evidence the preset is not
+    /// listening: *"still moving when the preset is idle, indicating that there is no real
+    /// beat sync / connection to the music."*
+    ///
+    /// The D-037 obligation is unchanged and still asserted here — silence must not render
+    /// black, so the existing drawing PERSISTS. What changed is that persisting no longer
+    /// means advancing. Kept as a contract test rather than deleted, because "what does
+    /// silence look like" is a real question about this preset and the answer moved.
+    @Test("silence holds the drawing: it persists, and it stops growing (D-037, WL.5)")
+    func silenceHoldsTheDrawing() {
         let path = WitchlightPath()
-        for i in 0..<600 {
+        // 5 s of real audio to lay a stroke.
+        for i in 0..<300 {
             var f = FeatureVector()
             f.deltaTime = Self.dt
             f.time = Float(i) * Self.dt
-            f.tonalPhaseFifths = Self.wrap(Float(i) * Self.dt * 8.0)   // a live driver…
+            f.bass = 0.4; f.bassAtt = 0.30
+            f.tonalPhaseFifths = Self.wrap(Float(i) * Self.dt * 8.0)
+            path.advance(deltaTime: Self.dt, features: f, stems: StemFeatures())
+        }
+        let drawn = path.beads.count
+        #expect(drawn > 0, "no stroke was laid during the audio phase")
+
+        // 10 s of silence: a live harmonic driver, but no energy anywhere.
+        for i in 0..<600 {
+            var f = FeatureVector()
+            f.deltaTime = Self.dt
+            f.time = Float(300 + i) * Self.dt
+            f.tonalPhaseFifths = Self.wrap(Float(300 + i) * Self.dt * 8.0)   // a live driver…
             path.advance(deltaTime: Self.dt, features: f, stems: StemFeatures())  // …but no energy
         }
-        let expectedAtSilence = Int(600 * Self.dt * WitchlightTuning().emissionHz)
-        #expect(path.beads.count >= expectedAtSilence * 3 / 4,
-                """
-                emitted \(path.beads.count) beads at silence, expected about \
-                \(expectedAtSilence) — the pen stopped emitting and the trail would freeze
-                """)
-        #expect(path.headingTravel < 0.02,
-                "the pen turned at silence (\(path.headingTravel) rad); §3.6 says θ̇ = 0 with nothing to say")
+
+        // D-037: the drawing is still there — silence is not a black frame.
+        #expect(path.beads.count >= drawn, """
+            the trail shrank during silence (\(drawn) → \(path.beads.count)). D-037 requires \
+            silence to render non-black, and the persisting ribbon is most of what carries that.
+            """)
+        // WL.5: and it did not GROW. A harmonic driver alone must not move the pen.
+        #expect(path.beads.count <= drawn + 1, """
+            the trail grew during silence (\(drawn) → \(path.beads.count)) even though every \
+            band was zero. `tonalPhaseFifths` was live, so a driver that is not energy is \
+            advancing the pen — which is what made the preset read as not listening.
+            """)
     }
 
     @Test("reset clears the pen, the trail and every envelope (track-change contract)")
@@ -362,6 +391,13 @@ struct WitchlightPathTests {
         let path = WitchlightPath()
         var features = FeatureVector()
         features.deltaTime = 1.0 / 60
+        // WL.5 gated `tumbleClock` on audio energy, so a silent drive leaves the clock at 0
+        // and this gate passes vacuously — it reported |cos| = 1.000 at t = 0 s, i.e. it was
+        // measuring nothing. Feed real energy so the plane actually tumbles and the bound is
+        // exercised. (A gate that a later change can silently turn into a no-op is the same
+        // failure class as a metric that improves as the defect worsens.)
+        features.bass = 0.4; features.mid = 0.2; features.treble = 0.05
+        features.bassAtt = 0.30
         var worstCos: Float = 1
         var worstAt: Float = 0
 
@@ -390,4 +426,71 @@ struct WitchlightPathTests {
     /// re-tuned for feel without the gate becoming a tripwire on taste. The value that matters
     /// is that it is a BOUND at all — the old term grew without limit.
     private static let minCosYaw: Float = 0.85
+
+    // MARK: - WL.5: the pen does not draw in silence
+
+    /// Matt's fifth M7: *"the witchlight pattern is still moving when the preset is idle,
+    /// indicating that there is no real beat sync / connection to the music."*
+    ///
+    /// He was right, and it was DESIGNED that way — `WITCHLIGHT_DESIGN.md` §3.6 specified
+    /// "the pen continues to advance at `v₀` … silence reads as the pen still moving, with
+    /// nothing to say, which is the honest visual for it", and `silent` zeroed only the TURN
+    /// rate. That reasoning does not survive a viewer: a stroke advancing at the same rate
+    /// with and without music is a stroke that is not listening, and no coupling elsewhere
+    /// can outvote it because the drawing IS the subject.
+    ///
+    /// Asserted on pen POSITION rather than on a speed variable, because the property that
+    /// matters is that the drawing does not grow — a future refactor could keep `speed`
+    /// nonzero and still satisfy that, or zero it and still advance by some other route.
+    @Test("The pen does not advance while the audio is silent (WL.5)")
+    func penHoldsStillInSilence() {
+        let path = WitchlightPath()
+        var loud = FeatureVector()
+        loud.deltaTime = 1.0 / 60
+        loud.bass = 0.4; loud.mid = 0.2; loud.treble = 0.05
+        loud.bassAtt = 0.30
+        loud.tonalPhaseFifths = 0.4
+
+        // Draw for 5 s of real audio so there is a stroke to hold.
+        for i in 0..<300 {
+            loud.time = Float(i) / 60
+            path.advance(deltaTime: 1.0 / 60, features: loud, stems: StemFeatures())
+        }
+        let beadsAfterMusic = path.beads.count
+        let penAfterMusic = (path.beads.last?.posX ?? 0, path.beads.last?.posY ?? 0)
+
+        // Now 10 s of true silence: every band at zero, no stem energy.
+        var quiet = FeatureVector()
+        quiet.deltaTime = 1.0 / 60
+        for i in 0..<600 {
+            quiet.time = Float(300 + i) / 60
+            path.advance(deltaTime: 1.0 / 60, features: quiet, stems: StemFeatures())
+        }
+        let penAfterSilence = (path.beads.last?.posX ?? 0, path.beads.last?.posY ?? 0)
+        let moved = hypot(penAfterSilence.0 - penAfterMusic.0, penAfterSilence.1 - penAfterMusic.1)
+
+        print(String(format: "[silence] pen moved %.5f world units over 10 s of silence "
+                     + "(ceiling %.3f) | beads %d → %d",
+                     moved, Self.maxSilentDrift, beadsAfterMusic, path.beads.count))
+
+        #expect(moved <= Self.maxSilentDrift, """
+            the pen advanced \(String(format: "%.4f", moved)) world units during 10 s of \
+            SILENCE — more than the \(Self.maxSilentDrift) ceiling. A stroke that keeps \
+            drawing with no audio reads as a preset that is not listening, whatever else it \
+            is coupled to (Matt's fifth M7). Gate the pen's ADVANCE on energy; do not fix \
+            this by only zeroing the turn rate, which is what shipped and what he saw.
+            """)
+
+        // D-037: the ribbon must still be THERE. Holding still is required; vanishing is not.
+        #expect(path.beads.count >= beadsAfterMusic / 2, """
+            the trail collapsed during silence (\(beadsAfterMusic) → \(path.beads.count) \
+            beads). D-037 requires silence to render non-black — the existing drawing persists, \
+            it simply stops growing.
+            """)
+    }
+
+    /// 10 s of silence at the shipped base speed would carry the pen ~1.0 world units — about
+    /// a third of a 30 s trail. The ceiling is a small fraction of that, so a stroke that
+    /// visibly grows in silence cannot pass while ordinary float noise can.
+    private static let maxSilentDrift: Float = 0.02
 }
