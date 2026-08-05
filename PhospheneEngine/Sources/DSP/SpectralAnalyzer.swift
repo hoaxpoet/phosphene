@@ -4,6 +4,7 @@
 
 import Foundation
 import Accelerate
+import Shared
 import os.log
 
 private let logger = Logger(subsystem: "com.phosphene.dsp", category: "SpectralAnalyzer")
@@ -15,13 +16,6 @@ private let logger = Logger(subsystem: "com.phosphene.dsp", category: "SpectralA
 /// - **Centroid**: Weighted mean frequency — indicates spectral "brightness".
 /// - **Rolloff**: Frequency below which 85% of spectral energy is concentrated.
 /// - **Flux**: Half-wave rectified difference from previous frame — measures timbral change rate.
-///
-/// Usage:
-/// ```swift
-/// let analyzer = SpectralAnalyzer()
-/// let result = analyzer.process(magnitudes: fftMagnitudes)
-/// // result.centroid is in Hz, result.rolloff is in Hz, result.flux is ≥ 0
-/// ```
 public final class SpectralAnalyzer: @unchecked Sendable {
 
     // MARK: - Result
@@ -76,6 +70,10 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         /// The reasoning that earlier ruled level out was wrong in a specific way: the
         /// BODY of a limited master is flat, so level looked useless — but the intro→body
         /// transition is 26 dB. Limiting flattens the body, not the arrival.
+        ///
+        /// DYN.1c — with a per-track `LoudnessProfile` installed (local files only) the
+        /// target is this moment's RANK in that track's own loudness distribution, not a
+        /// fixed absolute band that saturates and can never rise again. See LoudnessProfile.
         public var surge: Float
     }
 
@@ -133,14 +131,11 @@ public final class SpectralAnalyzer: @unchecked Sendable {
     /// normal".
     ///
     /// THE FAST LEG'S WIDTH IS THE WHOLE BALLGAME, and it was wrong twice in opposite
-    /// directions. Measured against a real capture (`2026-08-04T17-17-01Z`, distorted
-    /// guitar entering at ~20 s, where an independent time-domain measure shows a 3.22×
-    /// rise in high-frequency energy):
-    ///
-    ///     τ 6.0 s   1.15×   — swallows the event whole; the field looked broken
-    ///     τ 1.5 s   2.22×
-    ///     τ 0.8 s   2.98×   — 93 % of the reference, and the count turns only 0.41/s
-    ///     τ 0.45 s  3.36×   — no better on response, and 50 % more restless
+    /// directions. Swept against a real capture (`2026-08-04T17-17-01Z`, distorted guitar
+    /// at ~20 s, independent time-domain reference showing a 3.22× rise): τ 0.8 s recovers
+    /// 93 % of the reference while turning only 0.41/s; τ 6 s recovers 19 % and τ 0.45 s
+    /// buys nothing for 50 % more restlessness. Full table:
+    /// `docs/ENGINE/DYN1_CALIBRATION.md` §1 — do not duplicate it back into this comment.
     ///
     /// τ 6 s was chosen when the TRUNK read this field and was bouncing. The trunk no
     /// longer reads it at all (FTR.3f confined density to the quantised branch count), so
@@ -170,8 +165,13 @@ public final class SpectralAnalyzer: @unchecked Sendable {
     /// False until the first non-silent frame seeds both density legs.
     private var densitySeeded = false
 
-    /// Thread safety.
-    private let lock = NSLock()
+    /// DYN.1c — installed per track via `setLoudnessProfile(_:)`; `nil` ⇒ fixed band.
+    /// Not `private`: the setter lives in `SpectralAnalyzer+Density.swift`.
+    var loudnessProfile: LoudnessProfile?
+
+    /// Thread safety. Not `private` — `SpectralAnalyzer+Density.swift` locks around the
+    /// DYN.1c profile install.
+    let lock = NSLock()
 
     // MARK: - Init
 
@@ -265,13 +265,15 @@ public final class SpectralAnalyzer: @unchecked Sendable {
             smoothedDensity = rawDensity
             densitySeeded = true
         }
-        // PRE-AGC LEVEL by Parseval: total spectral energy is proportional to signal
-        // power, and these magnitudes are the raw FFT — upstream of every normaliser.
-        var spectralEnergy: Float = 0
-        for i in 0..<count { spectralEnergy += magnitudes[i] * magnitudes[i] }
-        let levelDB = 10 * log10f(max(spectralEnergy, 1e-20))
-        smoothedLevelDB = Self.levelAlpha * levelDB + (1 - Self.levelAlpha) * smoothedLevelDB
-        let surgeTarget = Self.smoothstepf(Self.surgeLowDB, Self.surgeHighDB, smoothedLevelDB)
+        // PRE-AGC LEVEL by Parseval — the definition lives on `LoudnessProfile` so the
+        // live path and DYN.1c's offline profile measure the same quantity on the same
+        // scale. Scale confusion here has already cost one review round.
+        let levelDB = LoudnessProfile.levelDB(magnitudes: magnitudes, count: count)
+        let alpha = LoudnessProfile.levelSmoothingAlpha
+        smoothedLevelDB = alpha * levelDB + (1 - alpha) * smoothedLevelDB
+        // DYN.1c: this moment's rank in the track's own loudness distribution when a
+        // profile is installed, the fixed band's smoothstep otherwise.
+        let surgeTarget = Self.surgeTarget(levelDB: smoothedLevelDB, profile: loudnessProfile)
         // Asymmetric: arrive fast, leave slowly. A symmetric follower falls back between
         // phrases and reads as the pumping this field exists to avoid.
         let surgeAlpha = surgeTarget > surge ? Self.surgeAttack : Self.surgeRelease
@@ -320,6 +322,7 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         densitySeeded = false
         smoothedLevelDB = -120
         surge = 0
+        // `loudnessProfile` intentionally NOT cleared — see `setLoudnessProfile(_:)`.
     }
 
     // MARK: - Centroid

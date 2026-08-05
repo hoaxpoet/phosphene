@@ -10,6 +10,22 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-05-140643] DYN.1c — the loudness band is per-track now, and the first design was wrong
+
+`spectral_surge` used one absolute band (−24…−15 dB) for every song. Measured on Matt's Hummer capture (`2026-08-04T20-23-15Z`) that band saturates at 31 s and stays pinned for **63.3 %** of the track, reading **1.000 at both** the arrival and a section 4 dB louder half a minute later. Two identical numbers for two visibly different moments is the whole of *"the tree had grown to full size before the full band kicked in later in the song."*
+
+For a local file the whole thing is decoded during preparation, so the track's loudness distribution is measurable before a note plays. `LoudnessProfile.measure` runs it through the shared `FFTMagnitudeKernel` at the live hop, `MIRPipeline.setLoudnessProfile` installs it per track alongside the cached `BeatGrid`, and the surge becomes "how loud is this moment **for this track**". Same capture: **0.9 % pinned**, arrival 0.613, the louder late section 0.945, climbing 0.07 → 0.32 → 0.61 → 0.95 across the track with the guitar entry still landing as a step.
+
+**The plan specified p10→p95 and that does not work — 63.3 % → 46 %.** The surge follower rides peaks, so any two-edge band topped by a percentile re-saturates the moment a transient in the last couple of seconds crosses it. A sweep did find a pair that works (p30→p99, 13.5 % pinned), and shipping it would have been the real mistake: **p30 is a constant fitted to one track's intro length — the fixed band's error one level up.** What ships maps the level through the track's own CDF (33 quantiles, `rank(ofLevelDB:)`): no fitted constant, and only the top few per cent of a track can pin by construction. The mapping table is in `DYN1_CALIBRATION.md` for whoever is tempted by two edges again.
+
+Streaming is unchanged by construction — the profile is produced only where the whole file is decoded, and `analyzePreview` (shared with streaming) deliberately does not make one. `isUsable` gates on the p12.5→p87.5 **inner** span rather than min→max, because the minimum quantile is routinely −200 dB: the silent frame before the first note would otherwise make a constant-level source look dynamic. Cache schema **v7** — v6 entries re-analyse rather than replay profile-less, since a silent fall-back to the fixed band is exactly the defect.
+
+**Also found, deliberately not fixed: the live analysis rate is ~47 Hz, not the ~10 Hz every DYN comment assumes** (mean `deltaTime` 0.021 s = 1024 samples at 48 kHz — it is just the tap buffer). Every quoted τ in `SpectralAnalyzer` and the calibration doc is ~4.7× too long. The shipped alphas are unaffected because they were swept for measured response, not derived from a target τ, so this is a comment-accuracy defect whose correction touches every DYN constant's stated rationale — recorded in `DYN1_CALIBRATION.md` §Analysis rate and raised rather than folded in silently.
+
+Still owed: the live M7. Green gates on a recorded capture are not a visual sign-off.
+
+---
+
 ### [dev-2026-08-04-185133] RECON.13 — BUG-080's last follow-up, and a correction to the audit that filed it
 
 `Scripts/fixtures.manifest` is now the single source of truth for which gitignored files a default `swift test` needs. Three consumers read it — `link_fixtures.sh --verify`, `bootstrap_fixtures.sh`'s no-op guard, and the Swift gate (renamed `FixtureManifestPresenceGate`) — where previously the shell side and the Swift side each kept their own idea of the required set, synced by hand.

@@ -598,3 +598,17 @@ extension MIRPipeline {
         logger.info("MIR_RATE: reconfigured to \(newSampleRate) Hz")
     }
 }
+
+// MARK: - Per-track Loudness Profile (DYN.1c)
+
+extension MIRPipeline {
+
+    /// Install the track's own loudness distribution as the `spectral_surge` source, or
+    /// `nil` to use the fixed band. Same lifecycle as `setBeatGrid`: called from the app
+    /// layer on every track change after consulting `StemCache`, and only ever non-nil for
+    /// a local file (streaming decodes a 30 s preview, which cannot characterise a track).
+    public func setLoudnessProfile(_ profile: LoudnessProfile?) {
+        spectralAnalyzer.setLoudnessProfile(profile)
+        logger.info("MIR_LOUDNESS_PROFILE: \(profile?.summary ?? "cleared — fixed surge band")")
+    }
+}
