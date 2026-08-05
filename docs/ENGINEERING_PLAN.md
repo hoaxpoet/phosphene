@@ -63,6 +63,19 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment HANG.2 — BUG-085 instrumented soak ✅ non-reproduction control (2026-08-05)
+
+HANG.1's lifecycle probe ran through two visible Witchlight/local-file controls: one full
+6 min 50 s track (24,866 frames) and one 10 min 36 s soak through two track transitions
+(35,297 frames at the final snapshot). Both passed the original ~3.6-minute / 12,911-frame
+failure point. The final durable heartbeat balanced 34,811 unique acquisitions with 34,811
+presentations, with zero failures, unpresented acquisitions, stalls, or imbalances; memory
+remained stable. This refutes a deterministic per-frame drawable leak and a fixed ~3.6-minute
+exhaustion time. **BUG-085 remains OPEN and intermittent: no freeze means no owner was
+identified and no fix is justified.** Evidence:
+`docs/diagnostics/BUG085_HANG2_SOAK_2026-08-05.md`. Next live freeze: leave the process
+running and execute `Scripts/capture_hang.sh` before force-quit.
+
 ### Increment HANG.1 — BUG-085 drawable lifecycle instrumentation ✅ (2026-08-05)
 
 The captured BUG-085 stack proves the main thread blocks inside `CAMetalLayer.nextDrawable`,
