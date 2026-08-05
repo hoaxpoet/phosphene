@@ -162,8 +162,10 @@ extension RenderPipeline {
         // Final stage: render to drawable.
         guard let finalStage = stages.last,
               finalStage.writesToDrawable,
-              let descriptor = view.currentRenderPassDescriptor,
-              let drawable = view.currentDrawable else {
+              let descriptor = instrumentedRenderPassDescriptor(
+                  from: view, commandBuffer: commandBuffer, site: "staged.descriptor"),
+              let drawable = instrumentedDrawable(
+                  from: view, commandBuffer: commandBuffer, site: "staged.drawable") else {
             return
         }
         descriptor.colorAttachments[0].clearColor =
@@ -179,7 +181,7 @@ extension RenderPipeline {
                     stemFeatures: stemFeatures,
                     textures: textures)
         encoder.endEncoding()
-        commandBuffer.present(drawable)
+        instrumentedPresent(drawable, on: commandBuffer)
     }
 
     // MARK: Encoding

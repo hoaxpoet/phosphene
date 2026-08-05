@@ -167,14 +167,16 @@ extension RenderPipeline {
         stemFeatures: StemFeatures,
         warpState: MVWarpState
     ) {
-        guard let drawable = view.currentDrawable else { return }
+        guard let drawable = instrumentedDrawable(
+            from: view, commandBuffer: commandBuffer, site: "fataMorgana.drawable"
+        ) else { return }
         renderFataMorgana(
             commandBuffer: commandBuffer,
             features: features,
             stemFeatures: stemFeatures,
             warpState: warpState,
             target: drawable.texture)
-        commandBuffer.present(drawable)
+        instrumentedPresent(drawable, on: commandBuffer)
     }
 
     /// Fata Morgana feedback loop rendered into `target`: blur → warp → shapes (= the

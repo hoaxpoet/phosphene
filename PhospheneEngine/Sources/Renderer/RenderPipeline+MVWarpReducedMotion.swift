@@ -21,7 +21,9 @@ extension RenderPipeline {
         warpState: MVWarpState,
         sceneAlreadyRendered: Bool
     ) {
-        guard let drawable = view.currentDrawable else { return }
+        guard let drawable = instrumentedDrawable(
+            from: view, commandBuffer: commandBuffer, site: "mvWarp.reducedMotion.drawable"
+        ) else { return }
         // Nacre (BUG-061): its direct pipeline is compiled for the .rgba16Float feedback
         // format, so the `renderSceneToTexture(... target: drawable)` branch below would
         // render a 16-float pipeline to the 8-bit drawable → attachment-format mismatch →
@@ -36,7 +38,7 @@ extension RenderPipeline {
                 features: features,
                 warpState: warpState,
                 target: drawable.texture)
-            commandBuffer.present(drawable)
+            instrumentedPresent(drawable, on: commandBuffer)
             return
         }
         // Floret (FLORET.2a): same .rgba16Float-direct-pipeline crash class as Nacre
@@ -48,7 +50,7 @@ extension RenderPipeline {
                 features: features,
                 warpState: warpState,
                 target: drawable.texture)
-            commandBuffer.present(drawable)
+            instrumentedPresent(drawable, on: commandBuffer)
             return
         }
         // Glaze (BUG-061, same class as Nacre): its direct pipeline is .rgba16Float, so the
@@ -60,7 +62,7 @@ extension RenderPipeline {
                 features: features,
                 warpState: warpState,
                 target: drawable.texture)
-            commandBuffer.present(drawable)
+            instrumentedPresent(drawable, on: commandBuffer)
             return
         }
         if !sceneAlreadyRendered {
@@ -88,6 +90,6 @@ extension RenderPipeline {
             encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
             encoder.endEncoding()
         }
-        commandBuffer.present(drawable)
+        instrumentedPresent(drawable, on: commandBuffer)
     }
 }

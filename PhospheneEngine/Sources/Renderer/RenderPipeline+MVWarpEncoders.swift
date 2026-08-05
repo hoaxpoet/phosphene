@@ -22,8 +22,10 @@ extension RenderPipeline {
         features: FeatureVector,
         stemFeatures: StemFeatures
     ) {
-        guard let drawable = view.currentDrawable,
-              let descriptor = view.currentRenderPassDescriptor else { return }
+        guard let drawable = instrumentedDrawable(
+                  from: view, commandBuffer: commandBuffer, site: "mvWarp.drawable"),
+              let descriptor = instrumentedRenderPassDescriptor(
+                  from: view, commandBuffer: commandBuffer, site: "mvWarp.descriptor") else { return }
         // .dontCare is correct — the full-screen triangle overwrites every pixel.
         descriptor.colorAttachments[0].loadAction  = .dontCare
         descriptor.colorAttachments[0].storeAction = .store
@@ -37,7 +39,7 @@ extension RenderPipeline {
             encoder.endEncoding()
         }
 
-        commandBuffer.present(drawable)
+        instrumentedPresent(drawable, on: commandBuffer)
         swapMVWarpTextures()
     }
 

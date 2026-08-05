@@ -89,3 +89,24 @@ Idle exit:                  untracked
 Idle. No thread holds a Metal command buffer, waits on `waitUntilCompleted`, or blocks on a
 mutex. Full capture retained outside the repo (228 KB) — only the load-bearing stack is
 committed here.
+
+## HANG.1 instrumentation (2026-08-05)
+
+HANG.1 adds observation only. `DrawableLifecycleProbe` records, per command buffer:
+
+- render-pass-descriptor and drawable request begin/end plus the call-site label;
+- unique drawable identities acquired and scheduled for presentation;
+- command-buffer commit, completion, and failure;
+- acquisitions left unpresented when their command buffer completes.
+
+`VisualizerEngine` polls the probe from an independent task. Healthy sessions write a
+`DRAWABLE_LIFECYCLE heartbeat` every 600 completions. A failure or completed unpresented
+acquisition writes `DRAWABLE_LIFECYCLE imbalance` immediately. A descriptor/drawable request
+pending for 500 ms writes `DRAWABLE_LIFECYCLE STALL` with its frame, site, age, and the full
+counter balance. This last path remains live when the main/render thread is blocked in
+`nextDrawable`.
+
+Next reproduction procedure: run a particle preset for at least 10 minutes. If it freezes,
+run `Scripts/capture_hang.sh` before force-quit. Its `session.txt` now includes the last 20
+drawable-lifecycle records alongside the stack and process state. HANG.2 diagnoses from that
+artifact; HANG.1 makes no fix and advances no root-cause hypothesis.

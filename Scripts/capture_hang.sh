@@ -31,8 +31,8 @@ sample "$PID" 5 -file "$OUT/sample.txt" >/dev/null 2>&1 && echo "  ✓ sample.tx
 #    different causes and the stack alone does not tell you which.
 ps -o pid,stat,etime,%cpu,%mem,wq,command -p "$PID" > "$OUT/ps.txt" 2>&1 && echo "  ✓ ps.txt"
 
-# 3. Is the window composited? The leading BUG-085 hypothesis is that rendering continues
-#    into a layer that is NOT being composited, which makes nextDrawable block forever.
+# 3. Is the window composited? Occlusion was refuted as BUG-085's cause, but preserving
+#    the state in every capture prevents that hypothesis from being reopened without evidence.
 #    Uses CGWindowList, not AppleScript: the first capture recorded only
 #    "osascript is not allowed assistive access" where the answer should have been, which
 #    made the one artifact the hypothesis needed the one artifact we did not get.
@@ -51,6 +51,8 @@ if [ -n "$SESSION" ]; then
     { echo "session: $SESSION"
       echo "features rows: $(( $(wc -l < "$SESSION/features.csv" 2>/dev/null || echo 1) - 1 ))"
       echo; tail -40 "$SESSION/session.log" 2>/dev/null
+      echo; echo "drawable lifecycle:"
+      grep "DRAWABLE_LIFECYCLE" "$SESSION/session.log" 2>/dev/null | tail -20
     } > "$OUT/session.txt" && echo "  ✓ session.txt"
 fi
 

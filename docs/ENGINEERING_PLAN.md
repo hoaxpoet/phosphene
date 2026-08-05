@@ -63,6 +63,19 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment HANG.1 — BUG-085 drawable lifecycle instrumentation ✅ (2026-08-05)
+
+The captured BUG-085 stack proves the main thread blocks inside `CAMetalLayer.nextDrawable`,
+but not which drawable escaped recycling. HANG.1 adds observation only: every drawable-facing
+render path now records request begin/end, unique drawable identity, scheduled presentation,
+command-buffer commit/completion/failure, and unpresented acquisitions in a lock-protected
+`DrawableLifecycleProbe`. An independent watchdog persists a balanced snapshot every 600
+completed frames and writes a `DRAWABLE_LIFECYCLE STALL` line with the exact pending call site
+after 500 ms, so evidence survives even though the render/main thread is blocked. The state
+machine is unit-tested; the app build is green. **No hang fix or new root-cause claim. Next:
+HANG.2 reproduction/diagnosis using a ≥10-minute particle-preset soak and
+`Scripts/capture_hang.sh` before force-quit.**
+
 ### Increment SPOT.1 — Spotify `.authFailure` names the missing Client ID ✅ (2026-08-04)
 
 A full debugging round on 2026-08-04 was spent on a missing (gitignored) `PhospheneApp/Phosphene.local.xcconfig`: `SpotifyOAuthTokenProvider.resolveClientID()` found an empty `SpotifyClientID` and threw `.spotifyAuthFailure` immediately, and the connector rendered the same generic string it shows for user-denied authorization and login timeout — three causes, three different fixes, one message.

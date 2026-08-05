@@ -287,8 +287,10 @@ extension RenderPipeline {
         activePipeline: MTLRenderPipelineState,
         particles: (any ParticleGeometry)?
     ) {
-        guard let descriptor = view.currentRenderPassDescriptor,
-              let drawable = view.currentDrawable else { return }
+        guard let descriptor = instrumentedRenderPassDescriptor(
+                  from: view, commandBuffer: commandBuffer, site: "direct.descriptor"),
+              let drawable = instrumentedDrawable(
+                  from: view, commandBuffer: commandBuffer, site: "direct.drawable") else { return }
 
         // Refresh the dynamic text overlay (CPU write must complete before the GPU
         // reads the shared-memory texture, so before any encoder is created).
@@ -336,7 +338,7 @@ extension RenderPipeline {
             upEnc.setFragmentSamplerState(feedbackSamplerState, index: 0)
             upEnc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
             upEnc.endEncoding()
-            commandBuffer.present(drawable)
+            instrumentedPresent(drawable, on: commandBuffer)
             return
         }
 
@@ -353,7 +355,7 @@ extension RenderPipeline {
             particles: particles,
             textOverlay: textOverlay)
         encoder.endEncoding()
-        commandBuffer.present(drawable)
+        instrumentedPresent(drawable, on: commandBuffer)
     }
 
     // swiftlint:enable function_parameter_count
