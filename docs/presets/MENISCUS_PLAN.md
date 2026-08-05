@@ -421,6 +421,41 @@ badly understated.** This is the NACRE.2b pattern the plan predicted (§2 reason
    The warp shader body returns `vec3(0,0,0)` unconditionally. §3 asserted this from a
    read; it is now verified from the artifact.
 
+### MEN.4d — the beat had no anchor to pulse in (2026-08-05)
+
+Matt, eleventh round: **"Drops are musical but it's not obvious how they are connected.
+After the verse starts, the sync feels less tight."**
+
+**Timing was measured correct throughout that session**, so this is not a sync bug in the
+usual sense. Ground truth against Beat This! on `2026-08-05T22-27-38Z` (Hummer):
+
+```
+20 s +4 ms ✓   40 s +8 ms ✓   60 s +8 ms ✓   80 s +8 ms ✓   (all viable, ≤30 ms)
+```
+
+The drops were landing within 8 ms of the true beat for the whole track. **The problem was
+WHERE they landed, not when.**
+
+**Drums scattered ±0.34 — 68 % of the sheet's width — so the beat drop appeared somewhere
+different every single beat.** Visual sync needs a stable anchor: something a viewer can
+watch pulse *in place*. Impacts scattered across a surface read as noise however perfectly
+they are timed, which is exactly "musical but not obvious how they are connected".
+
+**And it explains the verse observation precisely.** The sparse intro fires only the
+downbeat (±0.13, fairly consistent). When the verse arrives, MEN.4a's arc response brings
+in drums ±0.34, vocals ±0.20 and `other` ±0.42 — so the scatter TRIPLES exactly when the
+band does, and the read gets worse as the music gets fuller.
+
+**This reverses §7 R5 deliberately.** R5 added jitter because "orderly may read as
+mechanical". Eleven rounds say the opposite risk is the real one: scatter destroyed the
+connection, and no amount of timing accuracy could compensate. The beat-locked regions now
+strike near-fixed points (drums ±0.05, bass ±0.05, vocals ±0.06). `other` keeps its wide
+±0.42 scatter — it is texture, fires once a bar, and is what stops the layout reading as
+three fixed dots.
+
+**Unverified:** whether a stable anchor actually makes the sync legible is a perceptual
+claim no gate here can settle. That is Matt's call.
+
 ### MEN.4c — the surface had no continuous driver at all (2026-08-05)
 
 Matt, tenth round, on the MEN.4b cut: **"feels less tethered to the music now, just fewer

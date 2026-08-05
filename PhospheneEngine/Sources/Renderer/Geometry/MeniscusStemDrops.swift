@@ -34,9 +34,14 @@ struct MeniscusStemDrops {
         let name: String
         /// Centre in grid units, 0…1.
         let centre: SIMD2<Float>
-        /// Half-extent of the scatter around that centre, 0…1. Jitter within the region
-        /// is §7 R5's mitigation: the source's wandering placement has a charm that a
-        /// fixed point per stem would lose, and "orderly may read as mechanical".
+        /// Half-extent of the scatter around that centre, 0…1.
+        ///
+        /// COLLAPSED AT MEN.4d, deliberately reversing §7 R5's "orderly may read as
+        /// mechanical". Scatter was destroying the sync read: drums jittered ±0.34 — 68 %
+        /// of the sheet — so the beat drop appeared somewhere different EVERY BEAT, while
+        /// the grid measured accurate throughout (+4/+8/+8/+8 ms vs Beat This!). Visual
+        /// sync needs an anchor to pulse in place. Beat-locked regions are near-fixed now;
+        /// `other` keeps its wide scatter as once-a-bar texture. §9 MEN.4d.
         let spread: SIMD2<Float>
         /// Stencil radius in cells. 1 = the source's 3×3 punctuation; larger spreads the
         /// impulse into a heave.
@@ -51,7 +56,7 @@ struct MeniscusStemDrops {
         Region(
             name: "drums",
             centre: SIMD2(0.5, 0.82),
-            spread: SIMD2(0.34, 0.07),
+            spread: SIMD2(0.05, 0.03),
             radius: 1,
             force: 0.30),
         // Bass — deep centre. Broad, low, slow-decaying: a heave rather than a spike, so
@@ -59,14 +64,14 @@ struct MeniscusStemDrops {
         Region(
             name: "bass",
             centre: SIMD2(0.5, 0.5),
-            spread: SIMD2(0.13, 0.13),
+            spread: SIMD2(0.05, 0.05),
             radius: 3,
             force: 0.13),
         // Vocals — far and high. Narrow and sustained.
         Region(
             name: "vocals",
             centre: SIMD2(0.5, 0.2),
-            spread: SIMD2(0.2, 0.07),
+            spread: SIMD2(0.06, 0.03),
             radius: 1,
             force: 0.22),
         // Other — wide, low-amplitude scatter. Texture; keeps the field from ever being
