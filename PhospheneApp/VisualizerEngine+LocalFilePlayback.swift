@@ -603,7 +603,17 @@ extension VisualizerEngine: LocalFilePreparing {
         let cached: CachedTrackData
         do {
             preview = try PreviewAudio.fromLocalFile(at: inputs.url, contentHash: contentHash)
-            cached = try SessionPreparer.analyzePreview(
+            // DYN.1c: measured over the WHOLE decoded file, which only this path has —
+            // `analyzePreview` is shared with streaming, where the same call would
+            // describe a 30 s preview window rather than the track.
+            let loudness = LoudnessProfile.measure(
+                samples: preview.pcmSamples,
+                sampleRate: Double(preview.sampleRate)
+            )
+            inputs.recorder?.log(
+                "LOUDNESS_PROFILE: track='\(inputs.filename)', "
+                + (loudness?.summary ?? "none — surge keeps the fixed band"))
+            let analyzed = try SessionPreparer.analyzePreview(
                 preview,
                 separator: separator,
                 analyzer: inputs.analyzer,
@@ -612,6 +622,7 @@ extension VisualizerEngine: LocalFilePreparing {
                 familyAnalyzer: inputs.familyAnalyzer,
                 prefetchedProfile: nil
             )
+            cached = analyzed.with(loudnessProfile: loudness)
         } catch {
             let msg = error.localizedDescription
             lfLogger.error(

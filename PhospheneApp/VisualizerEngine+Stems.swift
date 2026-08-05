@@ -515,27 +515,17 @@ extension VisualizerEngine {
             // activity series (Layer 5a). Sampled by playback position each
             // analysis frame (see processAnalysisFrame).
             currentFamilySeries = cached.instrumentFamilySeries
+            // DYN.1c: this track's own loudness distribution as the surge source. Non-nil
+            // only for a local file (the only path that decodes the whole thing); nil
+            // everywhere else keeps the fixed band. Deliberately survives the
+            // `mirPipeline.reset()` that `handleLocalFileReady` runs after this call.
+            mirPipeline.setLoudnessProfile(cached.loudnessProfile)
             // BUG-007.8: pass per-track grid-vs-onset offset as initial drift bias.
             mirPipeline.setBeatGrid(
                 cached.beatGrid.offsetBy(0),
                 initialDriftMs: cached.gridOnsetOffsetMs
             )
-            let grid = cached.beatGrid
-            let title = identity.title
-            if !grid.beats.isEmpty {
-                let bpmStr = String(format: "%.1f", grid.bpm)
-                let firstBeat = grid.beats.first.map { String(format: "%.3f", $0) } ?? "none"
-                let replaceNote = replacedExisting ? " (replaced existing grid)" : ""
-                let beatCount = grid.beats.count
-                let meter = grid.beatsPerBar
-                // swiftlint:disable:next line_length
-                logger.info("BEAT_GRID_INSTALL: source=preparedCache, track='\(title)', bpm=\(bpmStr), beats=\(beatCount), meter=\(meter)/X, firstBeat=\(firstBeat)s\(replaceNote)")
-                // swiftlint:disable:next line_length
-                sessionRecorder?.log("BeatGrid installed: source=preparedCache, track='\(title)', bpm=\(bpmStr), beats=\(beatCount), meter=\(meter)/X")
-            } else {
-                // swiftlint:disable:next line_length
-                logger.info("BEAT_GRID_INSTALL: source=preparedCache, track='\(title)' — empty grid, live inference will be allowed")
-            }
+            logCachedInstall(cached: cached, title: identity.title, replacedExisting: replacedExisting)
         } else {
             pipeline.setStemFeatures(.zero, live: false)   // BUG-064: not-live until convergence
             // CSP.3.1 — no cached preview available (live reactive mode /
@@ -545,6 +535,7 @@ extension VisualizerEngine {
             // early playback. Sentinel value MUST match
             // `FO_SPIKE_BASELINE_PIVOT` in `FerrofluidOcean.metal`.
             pipeline.setCachedBassProportion(0.15)
+            mirPipeline.setLoudnessProfile(nil)   // DYN.1c: no cache entry → fixed surge band
             mirPipeline.setBeatGrid(nil)
             let trackDesc = identity.map { "'\($0.title)'" } ?? "unknown"
             logger.info(
@@ -560,6 +551,28 @@ extension VisualizerEngine {
         if let identity, let lumenEngine = lumenPatternEngine {
             refreshLumenPaletteForTrack(identity: identity, lumenEngine: lumenEngine)
         }
+    }
+
+    /// BEAT_GRID_INSTALL + LOUDNESS_PROFILE breadcrumbs for a prepared-cache install.
+    /// Extracted from `resetStemPipeline(...)` to keep it under SwiftLint's
+    /// function_body_length cap — same reason as `refreshLumenPaletteForTrack` below.
+    private func logCachedInstall(cached: CachedTrackData, title: String, replacedExisting: Bool) {
+        let grid = cached.beatGrid
+        let loudness = cached.loudnessProfile.map { ", loudness=\($0.summary)" } ?? ""
+        guard !grid.beats.isEmpty else {
+            let empty = "BEAT_GRID_INSTALL: source=preparedCache, track='\(title)' — "
+                + "empty grid, live inference will be allowed\(loudness)"
+            logger.info("\(empty, privacy: .public)")
+            return
+        }
+        let detail = "bpm=" + String(format: "%.1f", grid.bpm)
+            + ", beats=\(grid.beats.count), meter=\(grid.beatsPerBar)/X"
+        let firstBeat = grid.beats.first.map { String(format: "%.3f", $0) } ?? "none"
+        let replaceNote = replacedExisting ? " (replaced existing grid)" : ""
+        let installed = "source=preparedCache, track='\(title)', \(detail)"
+        let full = "\(installed), firstBeat=\(firstBeat)s\(replaceNote)\(loudness)"
+        logger.info("BEAT_GRID_INSTALL: \(full, privacy: .public)")
+        sessionRecorder?.log("BeatGrid installed: \(installed)\(loudness)")
     }
 
     /// LM.4.7 per-track palette refresh — extracted into a helper to keep
