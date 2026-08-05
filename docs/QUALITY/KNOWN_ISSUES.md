@@ -23,7 +23,7 @@ for the same reason. BUG-081 and BUG-060 are the same hang class; they are cross
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
-| BUG-085 | P1 · HANG.1 complete 2026-08-05; HANG.2 next | renderer / app.hang | **App intermittently hangs hard in `CAMetalLayer.nextDrawable`; window unresponsive, force-quit required.** The live stack proves a main-thread drawable request blocked at 0 % CPU after healthy frames, but the cause remains unknown; direct render-path leakage, the capture hook, preset-swap skip, inflight semaphore, GPU completion, display sleep, and occlusion have been ruled out. **HANG.1 instrumentation is merged to `main` via PR #37 (`c54a2e7c`)**: every drawable request/acquisition/presentation is correlated with command-buffer commit/completion, and an independent watchdog persists lifecycle heartbeats, imbalance/failure signals, and ≥500 ms request stalls. This is evidence collection, not a fix. **Next: HANG.2** — run a ≥10-minute particle-preset soak and capture `DRAWABLE_LIFECYCLE` evidence before force-quit if the freeze recurs |
+| BUG-085 | P1 · HANG.1–2 complete 2026-08-05; remains open | renderer / app.hang | **App intermittently hangs hard in `CAMetalLayer.nextDrawable`; window unresponsive, force-quit required.** The live stack proves a main-thread drawable request blocked at 0 % CPU after healthy frames, but the cause remains unknown; direct render-path leakage, the capture hook, preset-swap skip, inflight semaphore, GPU completion, display sleep, and occlusion have been ruled out. **HANG.1 instrumentation is merged to `main` via PR #37 (`c54a2e7c`)**. HANG.2 completed a full-track control plus a 10 min 36 s Witchlight soak with 34,811/34,811 drawables balanced and no stalls or imbalances, refuting a deterministic per-frame leak but not identifying the intermittent owner. On the next freeze, run `Scripts/capture_hang.sh` before force-quit. |
 | BUG-081 | P2 | app.hang | **3 instances now** (2026-08-03 ×1, 2026-08-04 ×2). | **App beachballed ~78 s into session `2026-08-03T22-54-06Z` and needed a force-quit; no `.ips` exists** (force-quit produces none) and `session.log` ends mid-normal-operation with no fatal. **Evidence-only — no root cause asserted.** What the capture DOES establish: the renderer was healthy to the last frame — steady 60 fps, Fractal Tree at **0.18 ms GPU against a 0.7 ms budget**, no degradation trend across 3756 frames; background ML load rising but modest (`stem_analyzer_ms` 0 → 3.4). **Ruled out by test:** FTR.2's shader overflowing the mesh primitive limit via a bad `branch_count` — no non-finite values in the capture and `branch_count` never exceeds 59 against the 63 ceiling. A frozen UI with a live render loop points away from the preset, but that is inference and BUG-061's rule forbids acting on it. **Same class as BUG-060** (force-quit hang, render loop died, no stack captured, never reproduced) — two instances now, both blocked on the same missing artifact. **Next evidence:** `sample PhospheneApp 10 -file ~/Desktop/phosphene-hang.txt` run DURING the beachball, before force-quitting |
 | BUG-084 | P3 | dsp.stem | **`StemAnalyzer` deviation reaches 35 where the primitive's real ceiling is ~3.4** — suspected divide-by-near-zero against a not-yet-converged per-track EMA baseline (the stem-side twin of the BUG-027 / AGC2.4.1 cold-start family). No product impact today: FFO's aurora is defended by the FBS.S3.2 soft knee (35 → 1.64), which is what let BUG-041 close. Filed 2026-08-03 (RECON.2) so it survives that closure — the *input* is wrong even though the output is defended. Unreproduced; fixtures retained |
 | BUG-070 | P2 | audio.capture / resource-management | **Fix landed 2026-07-12 (PUB.6), pending live validation** — a FAILED device-change tap reinstall left `_isCapturing=true` with zero callbacks: engine health detectors starved (SignalHealthMonitor.evaluate is sample-driven → deadTap never confirms) and the router's recovery restart blocked at the alreadyCapturing guard; only the app-layer poll-based stall card surfaced it. Fix: the catch now clears `_isCapturing` (recovery unblocked) and keeps the monitor as a diagnostic beacon; the false "create steps stopped the monitor" comment corrected. Residual OPEN half: the 3-queue lifecycle interleave (device-change reinstall vs silence-recovery vs user stop) stays unserialized — static-only evidence; restructuring the G1-validated (12/12) path without a reproduced artifact is the BUG-063 pattern. Existing breadcrumbs (per-step diagnostics + install generation) are the instrumentation; serialize only if a live session shows an interleave |
@@ -93,9 +93,9 @@ Ruled out by inspection after the stack: the capture hook does not retain the dr
 
 **What that leaves.** The original capture stands unexplained: main thread hard-blocked in `nextDrawable` at 0 % CPU with every other thread idle, ~3.6 min in, after frames that were healthy to the last one. Drawables are being retained by something that is not the render path, not the capture hook, not the preset-swap skip, not the inflight semaphore, and not window state. No current hypothesis — the next step is instrumentation that counts drawables acquired against command buffers completed, rather than another guess.
 
-**Status 2026-08-05 — HANG.1 COMPLETE; BUG-085 remains OPEN.** Instrumentation merged to
+**Status 2026-08-05 — HANG.1 + HANG.2 COMPLETE; BUG-085 remains OPEN.** Instrumentation merged to
 `main` through PR #37 (source `f81c36cb`, merge `c54a2e7c`); the required `fast-gate` passed.
-This increment gathered no reproduction and makes no diagnosis or fix claim. Every
+HANG.1 gathered no reproduction and made no diagnosis or fix claim. Every
 drawable-facing render path now routes its existing `currentRenderPassDescriptor`,
 `currentDrawable`, and `present` calls through `DrawableLifecycleProbe`, which correlates the
 request site and unique drawable identity with its command buffer's commit and completion.
@@ -105,28 +105,38 @@ and emits `DRAWABLE_LIFECYCLE STALL` after a request remains pending for 500 ms.
 does not depend on the blocked render/main thread, so the next reproduction will identify the
 exact request site and the last known acquired/presented/completed balance. State-machine tests
 cover balanced duplicate lookups, pending-site/age capture, and failed unpresented completion.
-`Scripts/capture_hang.sh` now extracts the lifecycle lines explicitly. Next increment is
-HANG.2 reproduction/diagnosis: ≥10-minute particle-preset soak, then run the script before
-force-quit if the freeze returns. No render behavior or root-cause assertion changed.
+`Scripts/capture_hang.sh` now extracts the lifecycle lines explicitly.
+
+**HANG.2 non-reproduction control (2026-08-05).** Two visible Witchlight/local-file runs
+completed cleanly: a full 6 min 50 s Hummer control (24,866 frames) and a 10 min 36 s soak
+through two track transitions (35,297 frames at the final snapshot). Both passed the original
+~3.6-minute / 12,911-frame failure point. The final durable lifecycle heartbeat balanced
+34,811 unique acquisitions with 34,811 presentations, with zero command-buffer failures,
+unpresented acquisitions, stalls, or imbalances; process memory remained stable. This refutes
+a deterministic per-frame drawable leak and a fixed ~3.6-minute exhaustion time. It does not
+identify the intermittent owner and does not justify a render change. Full evidence:
+`docs/diagnostics/BUG085_HANG2_SOAK_2026-08-05.md`. On the next live freeze, leave the process
+running and execute `Scripts/capture_hang.sh` before force-quit.
 
 **The original note, kept for the record:**
 
 **It was NOT confirmed, and was not fixed on that basis** (the BUG-063/064 rule: no fix for an unreproduced hypothesis). Reproduction was attempted and could not be completed headlessly — the render loop only runs with an active session, and `osascript` lacks assistive access on this machine, so the window could not be driven from a script.
 
-**HANG.2 reproduction to run (needs Matt, ≥10 minutes).** Run a particle preset continuously
-for at least 10 minutes. If the app freezes, leave it running and execute
-`Scripts/capture_hang.sh` before force-quit; the capture now includes the last 20
+**Next reproduction.** Do not schedule another identical soak: HANG.2 established the clean
+control. If the app freezes during ordinary use, leave it running and execute
+`Scripts/capture_hang.sh` before force-quit; the capture includes the last 20
 `DRAWABLE_LIFECYCLE` records, the blocked request site, and acquired/presented/committed/completed
-balances. If the soak completes cleanly, retain the lifecycle tail as the non-reproduction
-control. Do not repeat the occlusion experiment; that hypothesis is refuted above.
+balances. Do not repeat the occlusion experiment; that hypothesis is refuted above.
 
 **`Scripts/capture_hang.sh` added** so the next freeze is captured in one command instead of improvised: stack, process state (0 % CPU distinguishes a block from a spin), window occlusion state, power-event log, and the session tail. **Run it BEFORE force-quitting** — a force-quit destroys the only evidence, which is why BUG-060 sat unactionable for months.
 
 **Phase verification.** HANG.1 automated criteria are complete: lifecycle state-machine tests
 cover balanced duplicate lookups, pending request site/age, and failed unpresented completion;
 the app suite, renderer golden hashes, strict lint, documentation gates, and CI `fast-gate`
-passed. HANG.2 still owes the ≥10-minute particle-preset soak and a full-track manual run. The
-minimised-window check is retired because the occlusion hypothesis was experimentally refuted.
+passed. HANG.2's ≥10-minute particle-preset soak and full-track manual run are complete; both
+were clean non-reproductions. The minimised-window check is retired because the occlusion
+hypothesis was experimentally refuted. BUG-085 remains open pending a frozen instrumented
+capture.
 
 ---
 
