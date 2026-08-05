@@ -89,3 +89,34 @@ Idle exit:                  untracked
 Idle. No thread holds a Metal command buffer, waits on `waitUntilCompleted`, or blocks on a
 mutex. Full capture retained outside the repo (228 KB) — only the load-bearing stack is
 committed here.
+
+## HANG.1 instrumentation (2026-08-05)
+
+HANG.1 adds observation only. `DrawableLifecycleProbe` records, per command buffer:
+
+- render-pass-descriptor and drawable request begin/end plus the call-site label;
+- unique drawable identities acquired and scheduled for presentation;
+- command-buffer commit, completion, and failure;
+- acquisitions left unpresented when their command buffer completes.
+
+`VisualizerEngine` polls the probe from an independent task. Healthy sessions write a
+`DRAWABLE_LIFECYCLE heartbeat` every 600 completions. A failure or completed unpresented
+acquisition writes `DRAWABLE_LIFECYCLE imbalance` immediately. A descriptor/drawable request
+pending for 500 ms writes `DRAWABLE_LIFECYCLE STALL` with its frame, site, age, and the full
+counter balance. This last path remains live when the main/render thread is blocked in
+`nextDrawable`.
+
+HANG.1 makes no fix and advances no root-cause hypothesis.
+
+## HANG.2 outcome (2026-08-05)
+
+HANG.2 completed the planned particle-preset soak as a clean non-reproduction. The two live
+controls ran for 6:50 and more than 10:36 respectively; the longer run crossed two local-file
+track transitions and retained balanced drawable acquisition/presentation with no recorded
+stall. The full evidence and bounded conclusions are in
+[`BUG085_HANG2_SOAK_2026-08-05.md`](BUG085_HANG2_SOAK_2026-08-05.md).
+
+BUG-085 remains open and intermittent; HANG.2 provides neither a diagnosis nor a fix. On the
+next live freeze, leave Phosphene running and execute `Scripts/capture_hang.sh` before
+force-quitting. Its `session.txt` includes the last 20 drawable-lifecycle records alongside
+the stack and process state.

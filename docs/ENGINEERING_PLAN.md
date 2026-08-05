@@ -63,6 +63,33 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment HANG.2 — BUG-085 instrumented soak ✅ non-reproduction control (2026-08-05)
+
+HANG.1's lifecycle probe ran through two visible Witchlight/local-file controls: one full
+6 min 50 s track (24,866 frames) and one 10 min 36 s soak through two track transitions
+(35,297 frames at the final snapshot). Both passed the original ~3.6-minute / 12,911-frame
+failure point. The final durable heartbeat balanced 34,811 unique acquisitions with 34,811
+presentations, with zero failures, unpresented acquisitions, stalls, or imbalances; memory
+remained stable. This refutes a deterministic per-frame drawable leak and a fixed ~3.6-minute
+exhaustion time. **BUG-085 remains OPEN and intermittent: no freeze means no owner was
+identified and no fix is justified.** Evidence:
+`docs/diagnostics/BUG085_HANG2_SOAK_2026-08-05.md`. Next live freeze: leave the process
+running and execute `Scripts/capture_hang.sh` before force-quit.
+
+### Increment HANG.1 — BUG-085 drawable lifecycle instrumentation ✅ (2026-08-05)
+
+The captured BUG-085 stack proves the main thread blocks inside `CAMetalLayer.nextDrawable`,
+but not which drawable escaped recycling. HANG.1 adds observation only: every drawable-facing
+render path now records request begin/end, unique drawable identity, scheduled presentation,
+command-buffer commit/completion/failure, and unpresented acquisitions in a lock-protected
+`DrawableLifecycleProbe`. An independent watchdog persists a balanced snapshot every 600
+completed frames and writes a `DRAWABLE_LIFECYCLE STALL` line with the exact pending call site
+after 500 ms, so evidence survives even though the render/main thread is blocked. The state
+machine is unit-tested; the app build is green. **No hang fix or new root-cause claim.
+HANG.2 subsequently completed the planned soak as a clean non-reproduction; see the HANG.2
+entry above. BUG-085 remains open, and the next live freeze must be captured with
+`Scripts/capture_hang.sh` before force-quit.**
+
 ### Increment SPOT.1 — Spotify `.authFailure` names the missing Client ID ✅ (2026-08-04)
 
 A full debugging round on 2026-08-04 was spent on a missing (gitignored) `PhospheneApp/Phosphene.local.xcconfig`: `SpotifyOAuthTokenProvider.resolveClientID()` found an empty `SpotifyClientID` and threw `.spotifyAuthFailure` immediately, and the connector rendered the same generic string it shows for user-denied authorization and login timeout — three causes, three different fixes, one message.

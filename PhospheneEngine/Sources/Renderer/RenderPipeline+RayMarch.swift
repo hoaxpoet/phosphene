@@ -96,13 +96,16 @@ extension RenderPipeline {
         if let offscreen = sceneOutputTexture {
             outputTex = offscreen
         } else {
-            guard let desc = view.currentDrawable else { return }
+            guard let desc = instrumentedDrawable(
+                from: view, commandBuffer: commandBuffer, site: "rayMarch.output.drawable"
+            ) else { return }
             outputTex = desc.texture
         }
 
         // Keep a reference to the drawable for presentation (normal path only).
         let drawable = sceneOutputTexture == nil
-            ? view.currentDrawable
+            ? instrumentedDrawable(
+                from: view, commandBuffer: commandBuffer, site: "rayMarch.present.drawable")
             : nil
 
         let size = view.drawableSize
@@ -245,7 +248,7 @@ extension RenderPipeline {
         // Present only when rendering directly to the drawable (normal path).
         // When sceneOutputTexture is non-nil, the mv_warp blit pass presents instead.
         if let drawable = drawable {
-            commandBuffer.present(drawable)
+            instrumentedPresent(drawable, on: commandBuffer)
         }
     }
 
