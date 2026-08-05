@@ -69,11 +69,10 @@ final class DSPPerformanceTests: XCTestCase {
     /// tempo states across 4 meters the cost is ≈113 M Viterbi operations, which does
     /// not fit. **If this fails, change the design — do not widen the budget.**
     ///
-    /// **The 50 ms budget is NOT verified by this test, and must not be reported as
-    /// met.** It is a release figure, and `swift test -c release` does not build in this
-    /// package (BUG-079: `ArachneState.forceActivateForTest` is `#if DEBUG`-gated in
-    /// source but its callers in the test target are not). Until that is fixed there is
-    /// no way to measure the number the plan actually specifies.
+    /// **The 50 ms budget is NOT asserted by this test, and must not be reported as
+    /// verified from this regression ceiling.** GATE.1 / BUG-079 restored release-suite
+    /// execution; changing this test to enforce the plan's release budget remains a
+    /// separate DBN measurement decision, outside that test-isolation increment.
     ///
     /// So this asserts a *regression* ceiling on the debug figure instead — wide enough
     /// not to flake, tight enough to catch an algorithmic regression. Deriving a release
@@ -112,8 +111,8 @@ final class DSPPerformanceTests: XCTestCase {
 
         // Regression ceiling, ~3× the measured debug figure. NOT the plan's budget.
         let regressionCeilingMs = 4000.0
-        print(String(format: "[DBN.2 budget] 30 s window decoded in %.1f ms (DEBUG). "
-                             + "Release budget is 50 ms and is UNVERIFIED — see BUG-079.",
+        print(String(format: "[DBN.2 budget] 30 s window decoded in %.1f ms. "
+                             + "Release budget is 50 ms and is not asserted by this regression test.",
                      elapsedMs))
         XCTAssertLessThan(
             elapsedMs, regressionCeilingMs,

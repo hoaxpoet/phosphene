@@ -40,7 +40,6 @@ for the same reason. BUG-081 and BUG-060 are the same hang class; they are cross
 | BUG-051 | P3 | local-file / security | m3u entry paths resolved with no extension/traversal guard (bounded: no egress) |
 | BUG-036 | P2 | audio.capture / performance | Heap allocations on the real-time audio thread (three sites) |
 | BUG-028 | P2 | dsp.beat | Beat-grid live phase imperfect on ~half of tracks |
-| BUG-079 | P3 | build / test-isolation | **`swift test -c release` does not build** — `ArachneState.forceActivateForTest` is `#if DEBUG`-gated in source but its three test-target call sites are not, so the test module fails to compile in release. Pre-existing; found at DBN.2. **Consequence: every release-only performance budget is unverifiable**, including BEAT_SYNC_PROGRAM_PLAN §DBN.2's "< 50 ms for a 30 s activation window" — DBN.2 could only measure debug and its budget test asserts a regression ceiling instead, with the real budget documented as unverified. Fix: guard the call sites, or promote the helper to test-support SPI |
 | BUG-078 | P2 | audio.playback / concurrency | **Engine test process traps in `AVAudioPlayerNode` teardown** — `EXC_BREAKPOINT` with libdispatch's "dispatch_sync called on queue already owned by current thread". The `scheduleFile` completion block's release deallocs an `AVAudioNode` on the node's own `CommandQueue`, and `dealloc` → `Stop()` → `dispatch_sync` re-enters that queue. Pre-existing (identical signature in 2026-07-26 crash reports), intermittent, needs full-suite parallelism; passes in isolation. Found at DBN.1, **not caused by it**. P2 not P1 only because it has been seen taking down the test process, not the app — the code path is shipped local-file playback. Leading hypothesis is the strong `self` from `guard let self` in `LocalFilePlaybackProvider.scheduleFileLoop` being released on the completion queue; unproven, next step is a `deinit` breakpoint. BUG-059's off-queue hop does NOT cover this |
 | BUG-077 | P3 | dsp.beat / api-contract | **`BeatGridResolver.snapToBeats` diverges from the Beat This! reference post-processor** — the reference moves *every* downbeat prediction to the closest beat unconditionally; we discard any candidate beyond `snapFrames = 2` (40 ms). Found at DBN.1 while auditing the resolver against the paper. **Currently harmless and NOT the cause of the low downbeat F** — measured, 100 % of candidates survive the gate (median distance 0.0 ms), so nothing is being discarded today (the real cause is a near-degenerate downbeat *stream*, see `docs/design/DBN_DECODER_SPEC.md` §2.1). Filed because it is a genuine spec-fidelity divergence of the D-077 class that will bite the moment downbeat timing loosens — e.g. on a track whose downbeat peaks sit a frame or two off the beat. Fix is one comparison; do it in DBN.3 when the resolver is being touched anyway, not as a standalone change |
 
@@ -149,31 +148,6 @@ capture.
 **Fix (landed, PUB.6):** catch clears `_isCapturing` (unblocks stopCapture+startCapture recovery), monitor deliberately left running as a diagnostic beacon (later fires land in the SKIP branch and breadcrumb), comment corrected.
 **Verification criteria:** automated — engine builds; audio suites green (a real failed reinstall cannot be staged headless: Core Audio create-step failures need a live device transition). Manual (pending): a live device-swap session confirming normal reinstalls still work (the G1 12/12 behaviour), and — if a reinstall failure can be provoked — the stall card appears AND a subsequent session restart recovers cleanly.
 **Residual (documented, deliberately open):** the 3-queue lifecycle interleave (device-change reinstall vs silence-recovery reinstall vs user stop) is real but static-only evidence; the per-step breadcrumbs + install-generation probes are the instrumentation. Serialize ONLY on a reproduced interleave artifact — restructuring the G1-live-validated path on theory is the BUG-063 class.
-
----
-
-### BUG-079 — `swift test -c release` does not build, so release-only performance budgets are unverifiable (2026-07-30)
-
-**P3 · build / test-isolation.** Found at DBN.2 when trying to measure a release-only budget; **pre-existing**, unrelated to that increment.
-
-**Expected:** `swift test -c release --package-path PhospheneEngine` builds and runs.
-
-**Actual:** the test target fails to compile in release:
-
-```
-error: value of type 'ArachneState' has no member 'forceActivateForTest'
-  — SoakTestHarnessTests.swift:294, ArachneSpiderRenderTests.swift:143, :189
-```
-
-**Cause.** `ArachneState.forceActivateForTest(at:)` is declared inside `#if DEBUG` (`PhospheneEngine/Sources/Presets/Arachnid/ArachneState+Spider.swift:344-372`), but its three call sites in the test target are not guarded, so they are unresolved in a release build. Debug builds are unaffected, which is why this has gone unnoticed.
-
-**Why it matters beyond tidiness.** It makes **release-only performance budgets unverifiable**. BEAT_SYNC_PROGRAM_PLAN §DBN.2 specifies "< 50 ms for a 30 s activation window on M1" for `BeatActivationDecoder`; that is a release figure, and DBN.2 could only measure debug (1366 ms after optimisation, down from 17,067 ms naive). `DSPPerformanceTests.test_beatActivationDecoder_30sWindow_performance` therefore asserts a *regression* ceiling and documents the real budget as unverified, rather than dividing the debug number by an invented constant. **Any plan gate phrased as a release timing is currently unenforceable.**
-
-**Suspected failure class:** `test-isolation` (a DEBUG-only API reachable from unguarded test code).
-
-**Fix shape:** wrap the three call sites in `#if DEBUG`, or drop the `#if DEBUG` around `forceActivateForTest` and mark it as test-support SPI. The first is smaller; the second is what the rest of the codebase does for `*ForTest` helpers, so check the convention before choosing.
-
-**Verification criteria.** `swift test -c release --package-path PhospheneEngine` builds and the suite passes; the DBN.2 budget test is then re-pointed at the real 50 ms release figure and either passes or forces the design change the spec calls for.
 
 ---
 
@@ -834,6 +808,42 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 
 ---
 
+### BUG-079 — Release-configuration engine tests did not compile (2026-07-30; resolved 2026-08-05)
+
+**P3 · build / test-isolation · RESOLVED 2026-08-05 (`002d7e90`, GATE.1).**
+
+**Expected.** `swift test --package-path PhospheneEngine -c release` compiles the test
+target, executes release tests, and terminates within the suite's normal bound.
+
+**Actual.** The test target failed to compile because
+`ArachneState.forceActivateForTest(at:)` was declared inside `#if DEBUG`, while
+`SoakTestHarnessTests` and `ArachneSpiderRenderTests` called it in release. Once that
+compile block was removed, `ArachneStateBuildTests.spiderPauseHaltsBuildProgress`
+exposed the same isolation error in its fixture setup: the setup was compiled out in
+release while its assertion remained active.
+
+**Reproduction.** `swift test --package-path PhospheneEngine -c release`; before GATE.1,
+compilation failed at `SoakTestHarnessTests.swift:294` and
+`ArachneSpiderRenderTests.swift:143,189`. No session artifact applies.
+
+**Failure class.** `test-isolation`.
+
+**Resolution.** The deterministic activation helper is now compiled in every
+configuration but is package-internal, so release tests using `@testable import Presets`
+retain the fixture seam while production clients cannot call it. The build-state pause
+test uses the same helper in every configuration instead of deleting its setup under
+`#if DEBUG`. No organic trigger, shader, preset metadata, or production call path changed.
+The meaningless standalone `#expect(true)` placeholder test was deleted.
+
+**Verification.** Release Arachne focus: 38 tests / 6 suites passed. Debug Arachne focus:
+38 tests / 6 suites passed. The final bounded full release suite compiled, ran, and
+terminated green: 1,784 tests / 266 suites in 92.594 s. GATE.2's separate known
+non-termination did not recur. Strict SwiftLint, `DocIntegrityTests`, app build, and the
+canonical closeout evidence are recorded in the GATE.1 closeout. No manual visual or
+musical-feel validation applies to this test-only change.
+
+---
+
 ### BUG-082 — Session retention keeps 6, not 10: fixture folders occupy the slots permanently (2026-08-03)
 
 > **Renumbered 080 → 082 at merge.** Filed as BUG-080 against a tree where 079 was the highest; a parallel session landed a *different* BUG-080 (gitignored-asset propagation) on `main` first, and `DocIntegrityTests` gates BUG-number uniqueness. **The commits on this branch are titled `[BUG-080]` — they mean this entry.** Its sibling was filed as BUG-081 and hit the SAME collision one merge later (a parallel `main` BUG-081, an unrelated beachball), so it is now **BUG-083**; its commits are titled `[BUG-081]`.
@@ -1060,7 +1070,7 @@ Both halves green — the first fully green engine run on this material. Every f
 **Open decision (narrower than first stated).** Either keep the `required=no` warning and re-curate locally when a preset session needs images, or drop both trees from the manifest entirely and rewrite the preset-session checklist's "look at the images" step to point at the READMEs as the authority. Not urgent, and **not** a reason to put images back under version control. Bears on FTR.2's reference curation, which per D-212 wants a low-fidelity set rather than the painterly one that left with Goldengrove.
 
 
-**Related.** D-211 (the images half of this same gap, and the worktree-propagation reasoning), PUB.2 (weights → Release asset), QR.3 (`BeatThisFixturePresenceGate` — the gate that caught Gap B), D-212 process note (one worktree per session), BUG-078 (the concurrency intermittent the cascade failures may mask), BUG-079 (the other build-level gate that cannot currently run).
+**Related.** D-211 (the images half of this same gap, and the worktree-propagation reasoning), PUB.2 (weights → Release asset), QR.3 (`BeatThisFixturePresenceGate` — the gate that caught Gap B), D-212 process note (one worktree per session), BUG-078 (the concurrency intermittent the cascade failures may mask), BUG-079 (the release build-level gate, resolved by GATE.1 on 2026-08-05).
 
 ---
 
@@ -1185,4 +1195,3 @@ osascript -e 'tell application "PhospheneApp" to quit'; pkill -x PhospheneApp
 **Verification criteria (written before the fix):** (1) the A/B/A above — launching the app flips a passing suite to exit 65 and quitting it flips back; (2) both annotation branches emit the correct line, exercised against a synthetic log with and without a live `PhospheneApp`; (3) `bash -n Scripts/closeout_evidence.sh` clean. All three met.
 
 ---
-

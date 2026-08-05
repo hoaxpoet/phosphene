@@ -10,6 +10,26 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-05-192617] GATE.1 — release engine tests are executable again
+
+`swift test --package-path PhospheneEngine -c release` previously stopped at compile
+time because Arachne's deterministic spider activation helper existed only under
+`#if DEBUG`, while three release test call sites depended on it. GATE.1 keeps the tests:
+the helper is now always compiled but package-internal, so `@testable` release tests can
+drive a fixed spider fixture without exposing a production API or changing an organic
+trigger path. The related build-state pause test now uses the same fixture seam in every
+configuration instead of compiling out its setup and leaving a meaningless release
+assertion. The standalone `#expect(true)` placeholder test was removed.
+
+Verification distinguishes compilation from execution. The release target compiled;
+all Arachne-focused tests passed in release and debug (38 tests / 6 suites each); and the
+final five-minute-bounded full release suite terminated normally with 1,784 tests in 266
+suites passing after 92.594 s. The separate GATE.2 non-termination did not recur and was
+not investigated or closed here. This is test-isolation only: no shaders, preset
+sidecars, visual references, preset concepts, or renderer capabilities changed.
+
+---
+
 ### [dev-2026-08-04-185133] RECON.13 — BUG-080's last follow-up, and a correction to the audit that filed it
 
 `Scripts/fixtures.manifest` is now the single source of truth for which gitignored files a default `swift test` needs. Three consumers read it — `link_fixtures.sh --verify`, `bootstrap_fixtures.sh`'s no-op guard, and the Swift gate (renamed `FixtureManifestPresenceGate`) — where previously the shell side and the Swift side each kept their own idea of the required set, synced by hand.
@@ -410,4 +430,3 @@ The fast gate had been red on every `main` push since 2026-06-29, always at the 
 ### [dev-2026-07-07-201922] CENSUS.1–.2 — corpus batch-analysis harness
 
 Phase CENSUS opens (from `docs/research/CORPUS_ML_OPPORTUNITIES.md §10 item 1`, Matt's go-ahead). **CENSUS.1** landed the corpus tooling: `tools/corpus_manifest.py` (scan/tag/pilot; mutagen; resumable) + the deterministic seed-42 stratified `tools/data/corpus_pilot_1000.csv` (jazz/classical/long-form/non-44.1 kHz/FLAC strata + proportional fill) over the 27,639-track archive, plus an ~800 KB gz repo copy of the full manifest. **CENSUS.2** added the `CorpusCensusRunner` executable target (retained-diagnostic; deps DSP/ML/Session): it drives the **existing** pipeline over the manifest and emits one CSV row per track — full-mix + drums-stem Beat This! grids, the continuous octave-folded BPM disagreement (D-154's evidence, not just its boolean), the MoodClassifier's 10 input-feature means + valence/arousal, K-S key + correlations, and the MIR tempo estimate. Resumable (skips already-written relpaths), `--dual-rate` emits 44.1/48 kHz MIR rows for the cross-path mood-skew calibration. The only production change is the **behaviour-identical** `foldedBPMDisagreement` extraction in `BPMMismatchCheck.swift`, now shared by the D-154 gate and the census (existing tests green; a new unit test pins the fold values incl. the just-under-2.0 edge). Fixed a real CRLF-parsing bug found on the pilot manifest (Swift treats `\r\n` as one grapheme cluster, so `split(separator: "\n")` silently made the whole file one line — now splits on `isNewline`). The census MEASURES only; every retune is a separate D-numbered increment. Dev-local validation: 12 real files (4 flac / 4 mp3 / 4 m4a, 44.1 + 48 kHz), sane BPMs, no empty feature columns, per-track <5 s, kill-and-resume lossless (zero duplicates). Next: CENSUS.3 (1,000-track pilot run + distribution report on the Mac mini).
-
