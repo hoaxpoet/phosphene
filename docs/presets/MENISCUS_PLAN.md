@@ -421,6 +421,54 @@ badly understated.** This is the NACRE.2b pattern the plan predicted (§2 reason
    The warp shader body returns `vec3(0,0,0)` unconditionally. §3 asserted this from a
    read; it is now verified from the artifact.
 
+### MEN.3h — nothing may strike the water at silence (2026-08-05)
+
+Matt, eighth round: **"drops are still falling at silence. drops do not match the beat or
+melody."**
+
+**He is right and it was structural, not a tuning miss. Nothing in MEN.3g's firing path
+consulted current loudness.** The grid keeps ticking through a quiet passage; the dynamics
+term carried a 0.5 floor so every grid event still landed; `intensity` floors at
+`stemIntensityFloor`; and the only presence gate read STEMS, which lag ~5.2 s and therefore
+cannot close on a silence that started less than five seconds ago. Measured on
+`2026-08-05T15-06-31Z` (Hummer — a slow build with a sparse intro): **the band level is
+exactly 0.0000 on more than 25 % of frames**, and drops rained through all of it.
+
+**And that is also most of "drops do not match the beat", because the grid was CORRECT
+here.** Verified two independent ways on this capture:
+
+```
+tempo   grid 80.45 BPM against 80.43 derived from the tap audio   (0.02 % error)
+phase   ColdStartVerifier re-diagnosis: +8 ms at 30 s, 45 s, 60 s — viable at every window
+```
+
+So the drops that landed on the beat were landing within 8 ms of it. What made the preset
+read as unrelated to the music was the *other* drops — a steady 80 BPM patter continuing
+through every silent passage, on a track where those passages are a quarter of the running
+time. Silence was drowning the signal.
+
+**The fix.** A fast band-level envelope (~0.12 s, no floor) gates all firing: it opens on
+the first note of a phrase and closes within a beat of the music stopping. The dynamics
+floor is gone, so quiet passages now produce genuinely small drops. D-037 is untouched —
+that rule governs what the SCREEN shows at silence (the backdrop still renders), not
+whether the water is being struck when nothing is playing.
+
+**The stem path is now gone entirely.** With region choice coming from the bar (MEN.3g) and
+gating from current loudness, no stem signal remains in the firing path — so the 5.2 s
+staleness cannot reach the surface by any route. `MeniscusStemDropsTests`' old
+stem-presence gate is retired in favour of `MeniscusSilenceGateTests`, which asserts the
+stronger property it could not: **loud, stale stems plus a ticking grid must still place
+nothing once the audio stops.**
+
+```
+[meniscus-silence] drops while playing: 37 · drops at silence: 0
+density 5.4–6.2 impacts/s · sync median 6 ms · modulation 44 % · audio share 60 %
+```
+
+**Not addressed, and it never was: melody.** No drop has ever tracked pitch or melodic
+contour, and this design does not claim to. If melodic response is wanted it is a new
+route, not a fix.
+
 ### MEN.3g — every drop is grid-timed, and the per-instrument claim is retired (2026-08-05)
 
 Matt, seventh round: **"still doesn't read as synced with the music."**

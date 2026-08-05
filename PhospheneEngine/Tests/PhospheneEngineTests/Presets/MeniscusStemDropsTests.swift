@@ -781,29 +781,64 @@ struct MeniscusStemLagTests {
             """)
     }
 
-    @Test("a region whose instrument is silent places nothing")
-    func presenceGateSuppressesSilentRegions() throws {
+    // RETIRED AT MEN.3h, deliberately, not because it became inconvenient.
+    //
+    // This suite used to assert that a region whose STEM is quiet places nothing. That gate
+    // is gone: stems lag ~5.2 s, so it could not close on a silence that had just started —
+    // Matt's eighth-round report was drops raining through a sparse intro while loud, stale
+    // stems held every region open. Region choice now comes from the BAR and gating from
+    // CURRENT loudness, so nothing in the firing path reads a stem at all.
+    //
+    // Its replacement is `MeniscusSilenceGateTests`, which asserts the stronger property
+    // the old test could not: loud stale stems plus a ticking grid must still place nothing
+    // when the audio has stopped.
+}
+
+// MARK: - Nothing strikes the water at silence (MEN.3h)
+
+/// Matt, eighth round: "drops are still falling at silence."
+///
+/// The grid keeps ticking through a quiet passage, so an all-grid-timed preset will happily
+/// rain drops into silence unless something reads CURRENT loudness. MEN.3g's only gate came
+/// from stems, which lag ~5.2 s and therefore cannot close on a silence that just started.
+/// Measured on `2026-08-05T15-06-31Z` (Hummer): band level exactly 0.0000 on >25 % of
+/// frames, drops falling throughout.
+@Suite("Meniscus — silence places nothing")
+struct MeniscusSilenceGateTests {
+
+    @Test("a grid that keeps ticking through silence places no drops")
+    func silencePlacesNothing() {
         var drops = MeniscusStemDrops()
         var field = [Float](repeating: 0, count: 45 * 45)
         let configuration = MeniscusConfiguration()
-
-        // Loud full-mix bands, but the stems say only drums are playing.
-        var features = FeatureVector()
-        features.bass = 1.0; features.mid = 1.0; features.treble = 1.0
-        features.bassDev = 0.9; features.midDev = 0.9; features.trebDev = 0.9
-        features.beatComposite = 0.9
+        // Stems deliberately LOUD and stale — this is exactly the 5.2 s-late signal that
+        // used to hold the regions open through a silence.
         var stems = StemFeatures()
-        stems.drumsEnergy = 0.8
+        stems.drumsEnergy = 0.9; stems.bassEnergy = 0.9
+        stems.vocalsEnergy = 0.9; stems.otherEnergy = 0.9
 
-        var perRegion = [Int](repeating: 0, count: 4)
-        for _ in 0..<600 {
+        var loudDrops = 0, silentDrops = 0
+        for frame in 0..<1200 {
+            var features = FeatureVector()
+            let playing = frame < 600
+            // The grid runs identically in both halves — that is the point.
+            features.beatPhase01 = Float(frame % 45) / 45
+            if playing {
+                features.bass = 0.20; features.mid = 0.09; features.treble = 0.02
+                features.bassDev = frame % 45 == 0 ? 0.5 : 0.0
+            }
             drops.step(stems: stems, features: features, field: &field,
                        dt: 1.0 / 60.0, configuration: configuration)
-            for r in 0..<4 { perRegion[r] += drops.lastPerRegion[r] }
+            let placed = drops.lastSites.count
+            if playing { loudDrops += placed } else { silentDrops += placed }
         }
-        print("[meniscus-presence] drops per region with only drums present: \(perRegion)")
-        #expect(perRegion[0] > 0, "drums are present and the band is loud — expected drops")
-        #expect(perRegion[1] == 0 && perRegion[2] == 0 && perRegion[3] == 0,
-                "silent stems still placed drops — the presence gate is not holding")
+
+        print("[meniscus-silence] drops while playing: \(loudDrops) · drops at silence: \(silentDrops)")
+        #expect(loudDrops > 0, "the gate closed on real audio — it is too tight")
+        #expect(silentDrops == 0, """
+            \(silentDrops) drops landed during 10 s of silence while the beat grid kept \
+            ticking. Loud, stale stems must not hold the regions open: the firing path has \
+            to read CURRENT loudness or the surface is struck by music that already ended.
+            """)
     }
 }

@@ -68,26 +68,6 @@
       "kind": "continuous"
     },
     {
-      "route": "drums_region_alive",
-      "primitive": "drumsEnergy",
-      "kind": "continuous"
-    },
-    {
-      "route": "bass_region_alive",
-      "primitive": "bassEnergy",
-      "kind": "continuous"
-    },
-    {
-      "route": "vocals_region_alive",
-      "primitive": "vocalsEnergy",
-      "kind": "continuous"
-    },
-    {
-      "route": "other_region_alive",
-      "primitive": "otherEnergy",
-      "kind": "continuous"
-    },
-    {
       "route": "camera_reaim",
       "primitive": "bassDev",
       "kind": "accent"

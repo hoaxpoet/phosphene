@@ -115,9 +115,8 @@ struct MeniscusStemDrops {
     private var envelopes = [Float](repeating: 0, count: 4)
     private var previous = [Float](repeating: 0, count: 4)
     private var refractory = [Float](repeating: 0, count: 4)
-    /// Per-region stem presence on a ~2.5 s envelope — "is this instrument playing in
-    /// this passage", never "did it just hit" (MEN.3f).
-    private var presence = [Float](repeating: 0, count: 4)
+    /// Fast band-level envelope the silence gate reads (MEN.3h). ~0.12 s, no floor.
+    private var audioGate: Float = 0
     private var rng: UInt64 = 0x2545_F491_4F6C_DD1D
 
     /// Diagnostics.
@@ -199,13 +198,33 @@ struct MeniscusStemDrops {
         // and say that was the snare" is retired. §7 R3 flagged that legibility as having
         // no empirical grounding, and seven live viewings never produced it. The regions
         // are now spatial variety keyed to bar position, not instrument identity.
-        let stemsPresent = updatePresence(stems: stems, dt: dt)
+        // THE SILENCE GATE (MEN.3h). Matt, eighth round: "drops are still falling at
+        // silence."
+        //
+        // He is right and it was structural, not a tuning miss. Nothing in MEN.3g's firing
+        // path consulted CURRENT loudness. The grid keeps ticking through a quiet passage,
+        // the dynamics term had a 0.5 floor so every event still landed, `intensity` floors
+        // at `stemIntensityFloor`, and the only presence gate read STEMS — which lag 5.2 s
+        // and therefore cannot suppress a silence that started less than five seconds ago.
+        // Measured on `2026-08-05T15-06-31Z` (Hummer, a slow build with a sparse intro):
+        // the band level is EXACTLY 0.0000 on more than 25 % of frames, and drops rained
+        // through all of it. On a track whose intro has no beat yet, a steady 80 BPM
+        // patter of drops reads as completely unrelated to the music — which is also most
+        // of "drops do not match the beat" for this session, since the grid tempo itself
+        // measured correct here (grid 80.45 against 80.43 derived from the tap).
+        //
+        // Fast envelope, no floor: ~0.12 s so it opens on the first note of a phrase and
+        // closes within a beat of the music stopping. D-037 is unaffected — that rule
+        // governs what the SCREEN shows at silence (the backdrop still renders), not
+        // whether the water is being struck when nothing is playing.
+        let level = max(0, (features.bass + features.mid + features.treble) / 3)
+        audioGate += (level - audioGate) * (1 - exp(-dt / 0.12))
+        let audible = audioGate > configuration.silenceFloor
 
-        // Dynamics from the one real-time primitive that measures clean: bass deviation.
-        // The floor keeps every grid event landing (a beat with no drop reads as a dropout,
-        // which is worse than a soft one); the deviation term is what makes a hard hit
-        // land harder than a soft one within the same passage.
-        let dynamics = 0.5 + min(max(features.bassDev, 0), 1.5)
+        // Dynamics with NO FLOOR — the floor was the bug. A quiet passage now produces
+        // genuinely small drops and silence produces none, which is the whole point of
+        // §5's loudness row.
+        let dynamics = min(audioGate / 0.09, 1.0) * (0.4 + min(max(features.bassDev, 0), 1.5))
 
         // §5's characters, mapped onto the bar. Drums mark every beat; the bass heave
         // arrives on the downbeat; vocals answer on the backbeat; `other` scatters on the
@@ -219,11 +238,7 @@ struct MeniscusStemDrops {
         }
         if clock.halfBeat { firing.append(3) }
 
-        for index in firing {
-            // The stem's one remaining job, and the timescale it is actually good for: a
-            // region whose instrument is not playing in this passage stays still.
-            guard !stemsPresent || presence[index] > configuration.stemPresenceThreshold
-            else { continue }
+        for index in firing where audible {
 
             let region = Self.regions[index]
             // Jitter WITHIN the region (§7 R5) — the stem decides the territory, not the
@@ -316,37 +331,16 @@ struct MeniscusStemDrops {
         return (gridBeat, gridHalf)
     }
 
-    /// Advance each region's stem-presence envelope and report whether separation is
-    /// running at all. Smoothed hard on purpose: this answers "is there a bass part in this
-    /// section", never "did it just hit", so the live path's ~5 s stem latency is harmless
-    /// here — that is the whole basis of the MEN.3f split.
-    ///
-    /// Returns false when no stem carries energy (warmup, a stem-less path, a fixture with
-    /// no stems). Callers must treat that as "every region alive": without it the gate
-    /// turns a missing OPTIONAL signal into a dead surface.
-    private mutating func updatePresence(stems: StemFeatures, dt: Float) -> Bool {
-        let energies: [Float] = [
-            max(stems.drumsEnergy, stems.drumsBeat),
-            stems.bassEnergy,
-            stems.vocalsEnergy,
-            stems.otherEnergy
-        ]
-        let alpha = 1 - exp(-dt / 2.5)
-        for index in 0..<4 {
-            presence[index] += (energies[index] - presence[index]) * alpha
-        }
-        return energies.contains { $0 > 0.001 }
-    }
-
     mutating func reset() {
         for i in envelopes.indices {
-            envelopes[i] = 0; previous[i] = 0; refractory[i] = 0; presence[i] = 0
+            envelopes[i] = 0; previous[i] = 0; refractory[i] = 0
         }
         lastSites.removeAll()
         lastForces.removeAll()
         for i in lastPerRegion.indices { lastPerRegion[i] = 0 }
         rng = 0x2545_F491_4F6C_DD1D
         loudness = 0
+        audioGate = 0
         localPhase = 0; beatPeriod = 0.5; previousBeatPhase = -1
         sinceGridUpdate = 0; firedThisBeat = false
     }
