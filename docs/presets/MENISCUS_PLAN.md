@@ -421,6 +421,56 @@ badly understated.** This is the NACRE.2b pattern the plan predicted (§2 reason
    The warp shader body returns `vec3(0,0,0)` unconditionally. §3 asserted this from a
    read; it is now verified from the artifact.
 
+### MEN.3g — every drop is grid-timed, and the per-instrument claim is retired (2026-08-05)
+
+Matt, seventh round: **"still doesn't read as synced with the music."**
+
+**The conclusion seven rounds were converging on, stated plainly: the only part of this
+preset that EVER measured as synced was the part taking its timing from the cached
+BeatGrid.** Grid-timed drops landed a median 6 ms from the beat in every round from MEN.3c
+onward. Every failure was a drop driven from a live audio signal, and each candidate died
+to a measurement rather than an opinion:
+
+| Signal | Current? | Per-instrument? | Usable for events? |
+|---|---|---|---|
+| Separated stems | ✗ **5.2 s stale** | ✓ | no (MEN.3f) |
+| `beatComposite` / `beatBass|Mid|Treble` | ✓ | ✓ | no — **saturated** |
+| Band deviations (D-026) | ✓ | partly | no — **too sparse** |
+
+- **Stems** lag 5.2 s (MEN.3f). Section-scale by design.
+- **The per-band beat pulses saturate.** On `2026-08-05T14-09-24Z`, `beatComposite` is
+  exactly 1.000 on **59 % of frames**, in runs up to 36 frames (600 ms). They are onset
+  pulses re-triggered faster than they decay, sampled at the 10 Hz MIR rate — the same
+  stair-step behind MEN.3c's lag. **Not a scaling bug**; they work as built. A drive pinned
+  high is a metronome, which is exactly what Matt watched.
+- **Band deviations** are correctly event-shaped but cannot carry the surface: ~40 % of
+  beats produced a drop against a 55 % bar, and audio's share of surface motion collapsed
+  to 17 % against a 50 % bar. Treble is effectively silent (mid p50 0.029, treble p50
+  0.004), so the `other` region got 1–3 drops per 30 s and drums/bass became one signal.
+
+**The build.** All timing comes from the grid. **The BAR supplies the spatial pattern** —
+drums mark every beat, the bass heave arrives on the downbeat, vocals answer on the
+backbeat, `other` scatters on the offbeat subdivisions — which is what keeps a fully
+quantised surface from reading as a metronome. Force still comes from live audio (bass
+deviation + the loudness envelope), so dynamics stay current even though timing does not
+derive from the moment. Stems keep only the presence gate.
+
+**What this gives up, and it is a real re-scope Matt approved.** §1's claim that "a listener
+can point at a ripple and say *that was the snare*" is **retired**. §7 R3 flagged that
+legibility as having no empirical grounding, and seven live viewings never produced it. The
+regions are now spatial variety keyed to bar position, not instrument identity.
+
+```
+density      5.2–6.0 impacts/s   (drums 57–66 · bass 14–16 · vocals 28–33 · other 55–64)
+sync         median 6 ms from the beat · 99–100 % within 60 ms
+modulation   44–50 %
+audio share  66 %
+stem lag     timing identical with stems fresh and 5.2 s stale
+```
+
+Best state on every measure so far. Whether it READS as synced is Matt's call — that is the
+one thing no gate here has ever been able to settle.
+
 ### MEN.3f — the drops were driven by a signal 5.2 seconds stale (2026-08-05)
 
 Matt, sixth round: **"Motion of the drops does not align with or follow the music."**

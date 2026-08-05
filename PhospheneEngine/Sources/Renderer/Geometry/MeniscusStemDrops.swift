@@ -102,8 +102,11 @@ struct MeniscusStemDrops {
     private var beatPeriod: Float = 0.5
     private var previousBeatPhase: Float = -1
     private var sinceGridUpdate: Float = 0
-    /// Guards one fire per beat.
+    /// Guards one fire per beat, and one per offbeat subdivision.
     private var firedThisBeat = false
+    private var firedThisHalf = false
+    /// Counts grid beats so the BAR can choose which regions answer (MEN.3g).
+    private var beatIndex = 0
     private var sinceGridBeat: Float = 99
     /// Whether the cached grid is delivering updates; false ⇒ degrade to onset-driven
     /// rather than freezing the percussion.
@@ -162,91 +165,65 @@ struct MeniscusStemDrops {
             + (1 - configuration.stemIntensityFloor) * min(loudness / 0.55, 1.8)
         lastIntensity = intensity
 
-        let gridBeat = advanceBeatClock(features: features, dt: dt, configuration: configuration)
+        let clock = advanceBeatClock(features: features, dt: dt, configuration: configuration)
+        if clock.beat { beatIndex &+= 1 }
 
-        // THE DRIVER IS REAL-TIME; THE STEMS ONLY SAY WHO IS PLAYING (MEN.3f).
+        // EVERY DROP IS GRID-TIMED (MEN.3g). Matt's call after seven live rounds.
         //
-        // MEN.3 drove both timing and force from stem deviations, and that was the whole
-        // defect. Measured on Matt's session `2026-08-05T13-17-18Z`, every stem lags the
-        // music by ~5.2 s (drums +5.25 s r=0.550, bass +5.25, vocals +5.08, other +5.25;
-        // the same data at lag 0 correlates only r=0.363). The live stem path says so
-        // itself — `VisualizerEngine+Audio.swift`: "Features carry ~5-10s of latency …
-        // acceptable because musical sections persist longer than that". They are a
-        // SECTION-SCALE signal by construction and cannot carry event timing.
+        // The evidence is unambiguous once assembled: the only part of this preset that
+        // EVER measured as synced was the part taking its timing from the cached BeatGrid.
+        // Grid-timed drops landed a median 6 ms from the beat in every single round. Every
+        // failure was a drop driven from a live audio signal, and each candidate died to a
+        // measurement:
         //
-        // So five rounds of ±100 ms work happened downstream of a 5,250 ms staleness, and
-        // offline fixtures hid it throughout by feeding stems in sync with the audio.
+        //   - SEPARATED STEMS lag the music by ~5.2 s (session `2026-08-05T13-17-18Z`:
+        //     drums +5.25 s, bass +5.25, vocals +5.08, other +5.25; r=0.363 at lag 0).
+        //     `VisualizerEngine+Audio.swift` documents this as intended — they answer
+        //     "what kind of passage is this", a section-scale question.
+        //   - THE PER-BAND BEAT PULSES saturate. On `2026-08-05T14-09-24Z`, beatComposite
+        //     is exactly 1.000 on 59 % of frames, in runs up to 36 frames (600 ms): they
+        //     are onset pulses re-triggered faster than they decay, sampled at the 10 Hz
+        //     MIR rate. A drive that is pinned high is a metronome, not music.
+        //   - BAND DEVIATIONS are correctly event-shaped but far too sparse to carry the
+        //     surface: ~40 % of beats produced a drop against a 55 % bar, and the audio's
+        //     share of surface motion collapsed to 17 % against a 50 % bar. Treble is
+        //     effectively silent (mid p50 0.029, treble p50 0.004).
         //
-        // Each signal now does what it is for: REAL-TIME per-band beat channels decide WHEN
-        // a drop lands and HOW HARD, on the same frame as the audio; STEMS decide only
-        // WHETHER a region is alive in this passage (`updatePresence`), which is exactly
-        // the section-scale question 5 s of lag does not harm. The price is that per-band
-        // channels separate the instruments less cleanly than the stems did.
+        // So the grid supplies ALL timing. What the bar supplies is the SPATIAL pattern:
+        // different regions answer on different beats, which is what keeps a fully
+        // quantised surface from reading as a metronome. Force still comes from live audio
+        // (bass deviation + the loudness envelope), so the dynamics are current even though
+        // the timing is not derived from the moment.
         //
-        // THE PER-BAND BEAT CHANNELS are the third driver tried here and the first with the
-        // range to work. The two that failed, both from measurement:
-        //
-        //   - `midDev`/`trebDev` are not carried by the recorded fixtures at all (only
-        //     `bassDev` is), so reading them fed constant zero and killed two regions.
-        //   - Deriving deviations from `bass`/`mid`/`treble` fails on the real values:
-        //     measured on `there_there`, mid p50 0.038 and treble p50 0.001 — the bands
-        //     are a track's quietest channels (the GLAZE.8 lesson), never reaching the
-        //     0.5 centre the deviation formula subtracts, so every region stayed dead.
-        //
-        // `beatBass`/`beatMid`/`beatTreble` are real-time, per-band and event-shaped, and
-        // they carry the range these need (p50 0.09-0.34, p90 0.77-1.00). They give each
-        // region its own instrument proxy on the SAME FRAME as the audio, which is the
-        // entire point of MEN.3f.
-        let drives: [Float] = [
-            features.beatComposite,   // drums — the full-mix beat (grid supplies its timing)
-            features.beatBass,        // bass — low-frequency onsets
-            features.beatMid,         // vocals sit in the mids
-            features.beatTreble       // other — texture up top
-        ]
+        // WHAT THIS GIVES UP, explicitly. §1's claim that "a listener can point at a ripple
+        // and say that was the snare" is retired. §7 R3 flagged that legibility as having
+        // no empirical grounding, and seven live viewings never produced it. The regions
+        // are now spatial variety keyed to bar position, not instrument identity.
         let stemsPresent = updatePresence(stems: stems, dt: dt)
 
-        for index in 0..<4 {
-            let drive = max(0, drives[index])
-            // Fast attack, slower release — an impact is an event, not a level.
-            let alpha = drive > envelopes[index] ? dt / (0.008 + dt) : dt / (0.11 + dt)
-            envelopes[index] += alpha * (drive - envelopes[index])
-            refractory[index] = max(0, refractory[index] - dt)
+        // Dynamics from the one real-time primitive that measures clean: bass deviation.
+        // The floor keeps every grid event landing (a beat with no drop reads as a dropout,
+        // which is worse than a soft one); the deviation term is what makes a hard hit
+        // land harder than a soft one within the same passage.
+        let dynamics = 0.5 + min(max(features.bassDev, 0), 1.5)
 
-            // TIMING. Drums and bass take their timing from the CACHED GRID; vocals and
-            // `other` stay onset-driven.
-            //
-            // This is the audio hierarchy's central rule, and Meniscus was on the wrong
-            // side of it: "visuals driven primarily by raw live beat detections feel out
-            // of sync", because live onsets jitter and beat-locked motion is valid only
-            // on the cached grid (D-153→D-158). Measured on Matt's session, threshold
-            // crossings of a smoothed deviation landed a median 200 ms from the nearest
-            // beat with only 8-10 % inside the ~60 ms perceptual window — uncorrelated.
-            //
-            // The grid supplies WHEN; the stem still supplies WHETHER and HOW HARD, so a
-            // beat with no drums on it places nothing and a hard hit still lands harder.
-            // Bounded footprint (a 3×3 stencil) and no global luminance change, so this
-            // satisfies D-157.
-            //
-            // Vocals and `other` are deliberately NOT quantised — §5 gives them
-            // "sustained" and "texture" characters that a grid would make robotic.
-            let usesGrid = index < 2 && configuration.stemGridSync && gridLive
-            // MEN.3f: the stem's only remaining job. A region whose instrument is not
-            // playing in this passage places nothing, however loud the band gets — that
-            // is what keeps the sheet's geography meaning something now that the events
-            // come from the full mix.
-            let alive = !stemsPresent || presence[index] > configuration.stemPresenceThreshold
-            let fired: Bool
-            if usesGrid {
-                fired = gridBeat && alive && envelopes[index] > configuration.stemDropThreshold
-            } else {
-                fired = alive
-                    && envelopes[index] > configuration.stemDropThreshold
-                    && previous[index] <= configuration.stemDropThreshold
-                    && refractory[index] <= 0
-            }
-            previous[index] = envelopes[index]
-            guard fired else { continue }
-            refractory[index] = configuration.stemDropRefractory
+        // §5's characters, mapped onto the bar. Drums mark every beat; the bass heave
+        // arrives on the downbeat; vocals answer on the backbeat; `other` scatters on the
+        // offbeat subdivisions so the surface is never merely pulsing on the beat.
+        let beatInBar = ((beatIndex % 4) + 4) % 4
+        var firing: [Int] = []
+        if clock.beat {
+            firing.append(0)
+            if beatInBar == 0 { firing.append(1) }
+            if beatInBar == 1 || beatInBar == 3 { firing.append(2) }
+        }
+        if clock.halfBeat { firing.append(3) }
+
+        for index in firing {
+            // The stem's one remaining job, and the timescale it is actually good for: a
+            // region whose instrument is not playing in this passage stays still.
+            guard !stemsPresent || presence[index] > configuration.stemPresenceThreshold
+            else { continue }
 
             let region = Self.regions[index]
             // Jitter WITHIN the region (§7 R5) — the stem decides the territory, not the
@@ -260,7 +237,7 @@ struct MeniscusStemDrops {
             // lands harder than a soft one — the dynamics survive the gate.
             // Force carries BOTH: how far the stem is above its own mean (dynamics
             // within the passage) and the loudness envelope (dynamics across the track).
-            let force = min(envelopes[index], 3.0) * region.force
+            let force = dynamics * region.force
                 * configuration.stemDropForce * intensity
             stamp(
                 &field,
@@ -284,7 +261,7 @@ struct MeniscusStemDrops {
         features: FeatureVector,
         dt: Float,
         configuration: MeniscusConfiguration
-    ) -> Bool {
+    ) -> (beat: Bool, halfBeat: Bool) {
         // PREDICTIVE BEAT CLOCK. Fires `stemLeadTime` BEFORE the grid beat, because the
         // ripple is an impulse into a wave field and has to GROW: measured, the visible
         // slope response is only 14 % one frame after impact, ~30 % at 67 ms and ~50 % at
@@ -325,11 +302,18 @@ struct MeniscusStemDrops {
         let leadPhase = 1 - min(configuration.stemLeadTime / max(beatPeriod, 0.05), 0.9)
         let gridBeat = !firedThisBeat && localPhase >= leadPhase
         if gridBeat { firedThisBeat = true }
+        // The offbeat, led the same way. `other` rides these so the surface carries motion
+        // between the beats rather than pulsing strictly on them — the quantised-metronome
+        // risk that MEN.3g's all-grid timing would otherwise walk straight into.
+        let halfLead = max(leadPhase - 0.5, 0.02)
+        let gridHalf = !firedThisHalf && localPhase >= halfLead && localPhase < leadPhase
+        if gridHalf { firedThisHalf = true }
+        if localPhase < halfLead { firedThisHalf = false }
         // A grid is "live" if a beat has arrived recently. 2 s covers anything down to
         // 30 BPM, and a stalled or absent grid degrades to the onset path rather than
         // silencing the drums entirely.
         gridLive = sinceGridBeat < 2.0
-        return gridBeat
+        return (gridBeat, gridHalf)
     }
 
     /// Advance each region's stem-presence envelope and report whether separation is
