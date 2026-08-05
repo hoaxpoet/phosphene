@@ -23,7 +23,7 @@ for the same reason. BUG-081 and BUG-060 are the same hang class; they are cross
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
-| BUG-085 | P1 · HANG.1–2 complete 2026-08-05; remains open | renderer / app.hang | **App intermittently hangs hard in `CAMetalLayer.nextDrawable`; window unresponsive, force-quit required.** The live stack proves a main-thread drawable request blocked at 0 % CPU after healthy frames, but the cause remains unknown; direct render-path leakage, the capture hook, preset-swap skip, inflight semaphore, GPU completion, display sleep, and occlusion have been ruled out. **HANG.1 instrumentation is merged to `main` via PR #37 (`c54a2e7c`)**. HANG.2 completed a full-track control plus a 10 min 36 s Witchlight soak with 34,811/34,811 drawables balanced and no stalls or imbalances, refuting a deterministic per-frame leak but not identifying the intermittent owner. On the next freeze, run `Scripts/capture_hang.sh` before force-quit. |
+| BUG-085 | P1 · HANG.1–2 complete 2026-08-05; remains open | renderer / app.hang | **App intermittently hangs hard in `CAMetalLayer.nextDrawable`; window unresponsive, force-quit required.** The live stack proves a main-thread drawable request blocked at 0 % CPU after healthy frames, but the cause remains unknown; direct render-path leakage, the capture hook, preset-swap skip, inflight semaphore, GPU completion, display sleep, and occlusion have been ruled out. **HANG.1 instrumentation is merged to `main` via PR #37 (`c54a2e7c`)**. HANG.2 completed a full-track control plus a 10 min 36 s Witchlight soak with 34,811/34,811 drawables balanced and no stalls or imbalances, refuting a deterministic per-frame leak but not identifying the intermittent owner. **THE INSTRUMENTED CAPTURE NOW EXISTS (2026-08-05, session `2026-08-05T21-21-03Z`, Fractal Tree / Cherub Rock)** — and every lifecycle counter is BALANCED at the moment of the hang: `drawable=12045/12045`, `unique_presented=6012/6012`, `command_completed=6012/6012`, `failures=0`, `unpresented=0`, one request outstanding (`pending=frame:6013,site:mesh.descriptor`). The app held ZERO drawables and CoreAnimation still would not vend one, which independently confirms HANG.2's soak: there is no app-side leak, and the owner is outside the app. Two captures 98 s apart are byte-identical on those counters — a PERMANENT block, not a long stall. See the detail section. |
 | BUG-081 | P2 | app.hang | **3 instances now** (2026-08-03 ×1, 2026-08-04 ×2). | **App beachballed ~78 s into session `2026-08-03T22-54-06Z` and needed a force-quit; no `.ips` exists** (force-quit produces none) and `session.log` ends mid-normal-operation with no fatal. **Evidence-only — no root cause asserted.** What the capture DOES establish: the renderer was healthy to the last frame — steady 60 fps, Fractal Tree at **0.18 ms GPU against a 0.7 ms budget**, no degradation trend across 3756 frames; background ML load rising but modest (`stem_analyzer_ms` 0 → 3.4). **Ruled out by test:** FTR.2's shader overflowing the mesh primitive limit via a bad `branch_count` — no non-finite values in the capture and `branch_count` never exceeds 59 against the 63 ceiling. A frozen UI with a live render loop points away from the preset, but that is inference and BUG-061's rule forbids acting on it. **Same class as BUG-060** (force-quit hang, render loop died, no stack captured, never reproduced) — two instances now, both blocked on the same missing artifact. **Next evidence:** `sample PhospheneApp 10 -file ~/Desktop/phosphene-hang.txt` run DURING the beachball, before force-quitting |
 | BUG-084 | P3 | dsp.stem | **`StemAnalyzer` deviation reaches 35 where the primitive's real ceiling is ~3.4** — suspected divide-by-near-zero against a not-yet-converged per-track EMA baseline (the stem-side twin of the BUG-027 / AGC2.4.1 cold-start family). No product impact today: FFO's aurora is defended by the FBS.S3.2 soft knee (35 → 1.64), which is what let BUG-041 close. Filed 2026-08-03 (RECON.2) so it survives that closure — the *input* is wrong even though the output is defended. Unreproduced; fixtures retained |
 | BUG-070 | P2 | audio.capture / resource-management | **Fix landed 2026-07-12 (PUB.6), pending live validation** — a FAILED device-change tap reinstall left `_isCapturing=true` with zero callbacks: engine health detectors starved (SignalHealthMonitor.evaluate is sample-driven → deadTap never confirms) and the router's recovery restart blocked at the alreadyCapturing guard; only the app-layer poll-based stall card surfaced it. Fix: the catch now clears `_isCapturing` (recovery unblocked) and keeps the monitor as a diagnostic beacon; the false "create steps stopped the monitor" comment corrected. Residual OPEN half: the 3-queue lifecycle interleave (device-change reinstall vs silence-recovery vs user stop) stays unserialized — static-only evidence; restructuring the G1-validated (12/12) path without a reproduced artifact is the BUG-063 pattern. Existing breadcrumbs (per-step diagnostics + install generation) are the instrumentation; serialize only if a live session shows an interleave |
@@ -137,6 +137,67 @@ passed. HANG.2's ≥10-minute particle-preset soak and full-track manual run are
 were clean non-reproductions. The minimised-window check is retired because the occlusion
 hypothesis was experimentally refuted. BUG-085 remains open pending a frozen instrumented
 capture.
+
+---
+
+**2026-08-05 — THE FROZEN INSTRUMENTED CAPTURE, at last.** Session `2026-08-05T21-21-03Z`
+(Fractal Tree on Cherub Rock, local file). Matt left the app frozen; two independent runs of
+`Scripts/capture_hang.sh` 98 s apart are preserved at
+`~/Documents/phosphene_sessions/_freeze_captures/bug085_20260805T224531Z/` and
+`…T224709Z/`.
+
+**The stack is the same block, at a different site.** `drawWithMeshShader` →
+`instrumentedRenderPassDescriptor` → `currentRenderPassDescriptor` → `currentDrawable` →
+`nextDrawable` → `semaphore_timedwait_trap`, 100 % of samples, 0 % CPU. The 2026-08-04
+capture blocked in `drawParticleMode`; this one in the MESH path. **The hang is not
+preset-path-specific** — it is whichever path happens to ask for the drawable.
+
+**What the instrumentation proves, and it is the important part.** The final heartbeat before
+the freeze:
+
+```
+DRAWABLE_LIFECYCLE heartbeat frames=6013 descriptor=5905/5906 drawable=12045/12045
+  unique_presented=6012/6012 command_completed=6012/6012 failures=0 unpresented=0
+  pending=frame:6013,site:mesh.descriptor,age_ms:8
+```
+
+Every pair balances. **The app was holding ZERO drawables when `nextDrawable` blocked
+forever.** That is not starvation-by-leak; CoreAnimation declined to vend a drawable to a
+client that owed it nothing. HANG.2's 34,811/34,811 soak said the same thing from the
+negative side; this says it from inside an actual freeze. **Direct app-side leakage is now
+refuted twice, by independent methods — stop looking there.**
+
+**Permanent, not slow.** The two captures 98 s apart report the identical frame (6013), site,
+counters and `age_ms:8`. The `age_ms` is frozen because the heartbeat writer itself never ran
+again — the render thread never took another step in 98 seconds.
+
+**Only the render thread died.** `session.log` continues past the hang: stem separations 18
+and 19 logged at 22:43:52 and 22:43:57, `SIGNAL_HEALTH` steady at −0.5 dBFS, `deadTap=false`.
+Audio, ML and the analysis queues all ran on normally. Any hypothesis requiring a
+process-wide stall (priority inversion on a shared lock, GPU device loss) is inconsistent
+with this.
+
+**Occlusion again NOT supported, and beware the tool.** `window_state.txt` shows the render
+window (13229) `onScreen=true`, `alpha=1.0`, `901x633`, **COMPOSITED**. The other eight
+windows it flags are `1920x30` and `1080x30` — menu-bar windows for secondary displays.
+`capture_hang.sh` labelled every one of them "this is the BUG-085 occlusion condition",
+which reads as confirmation of a hypothesis that was already refuted. (Label fixed in the
+same increment as this note.)
+
+**No display event.** `power.txt` has no display-sleep, wake, or reconfiguration entry
+anywhere near the freeze; the only traffic is `coreaudiod` assertion churn five minutes
+earlier.
+
+**One lead, explicitly NOT a finding.** The stall began at 22:43:51, ~1 s before stem
+separation #18. Stem separation is MPSGraph GPU work on a 5 s timer, so GPU contention
+starving the compositor is mechanically plausible — but 17 prior separations in the same
+session ran through cleanly, so this is a hypothesis to test, not a cause. A test would
+suppress stem separation for a full session and see whether the freeze class survives;
+BUG-061's rule forbids acting on it before that.
+
+**What is now excluded:** app-side drawable leakage (twice), occlusion, display sleep,
+preset-path specificity, and any process-wide stall. **What remains:** why CoreAnimation
+withholds a drawable from a client holding none.
 
 ---
 
