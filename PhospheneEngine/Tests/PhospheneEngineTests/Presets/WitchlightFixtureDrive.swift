@@ -90,6 +90,12 @@ enum WitchlightFixtureDrive {
         let beatBass = column("beatBass"), beatMid = column("beatMid")
         let beatTreble = column("beatTreble")
         let barPermille = column("barPhase01_permille")
+        // WL.8 — `trackElapsedS` gates the cold-start ramp on the bar pulse. FOURTH time a
+        // missing column here would have read as a dead route: without it the ramp sees a
+        // constant 0, `warm` never leaves 0, and EVERY flare is suppressed in every harness
+        // while the production path fires normally. The fixtures carry `time`, which is the
+        // same quantity for a replay that starts at track start.
+        let trackElapsed = column("time")
         let beatPhase = column("beatPhase01")
         let fifths = column("tonal_phase_fifths"), thirds = column("tonal_phase_thirds")
         let consonance = column("tonal_consonance"), tension = column("tonal_tension")
@@ -112,6 +118,7 @@ enum WitchlightFixtureDrive {
             f.beatBass = beatBass[i]; f.beatMid = beatMid[i]; f.beatTreble = beatTreble[i]
             f.bassAtt = bassAtt[i]
             f.barPhase01 = barPermille[i] * 0.001
+            f.trackElapsedS = trackElapsed[i]
             f.beatPhase01 = beatPhase[i]
             f.tonalPhaseFifths = fifths[i]; f.tonalPhaseThirds = thirds[i]
             f.tonalConsonance = consonance[i]; f.tonalTension = tension[i]

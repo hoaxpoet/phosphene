@@ -104,6 +104,14 @@ public final class WitchlightPath: AudioResponseMetrics {
     // Bar promotion.
     var previousBarPhase: Float = 0
     var promoteNextBead = false
+    /// True on the single frame a bar wraps. WL.8 hoisted it out of `emit` because the
+    /// flare now needs it too, and two independent wrap detectors would drift apart.
+    var barDownbeatNow = false
+    /// Seconds since `barPhase01` last read non-zero. `barPhase01` is documented as
+    /// "always 0 in reactive mode (no BeatGrid installed)", so this IS the grid-trust
+    /// signal — no separate confidence field needed, and D-154's "beat-irregular tracks
+    /// excluded" falls out for free: no grid, no bar pulse.
+    var gridSilentFor: Float = 0
     /// Downbeat beads set since `reset()`.
     public internal(set) var promotionCount: Int = 0
 
@@ -133,11 +141,9 @@ public final class WitchlightPath: AudioResponseMetrics {
     /// repeat play reads as the same figure seen anew rather than an identical stamp. Matt's
     /// call over "same figure exactly" and "different every play" (2026-08-04).
     ///
-    /// Injected rather than randomised INSIDE the path, and defaulting to zero, because the
-    /// replay harness, the golden dHashes and the QG.5 bands all require byte-identical output
-    /// for identical input. A `Math.random()` here would make every gate in the suite
-    /// non-deterministic to buy a visual property no gate is measuring. The app layer sets it
-    /// once per session; every test therefore renders the canonical framing.
+    /// Injected rather than randomised INSIDE the path: the replay harness, the golden
+    /// dHashes and the QG.5 bands all require byte-identical output for identical input.
+    /// The app layer sets it once per session; tests render the canonical framing.
     var sessionPhase: Float = 0
     var tumbleHandedness: Float = 1
     /// Current visible age window after section contraction.
@@ -223,6 +229,7 @@ public final class WitchlightPath: AudioResponseMetrics {
         bassDevSlow = 0; flareRefractoryRemaining = 0
         flareGoal = 0; flareHold = 0; flareIntensity = 0; flareCount = 0
         previousBarPhase = 0; promoteNextBead = false; promotionCount = 0
+        barDownbeatNow = false; gridSilentFor = 0
         previousSectionIndex = nil; contractGoal = 0; contractHold = 0; contraction = 0
         sectionEventCount = 0
         centroidX = 0; centroidY = 0; viewScale = 1; rmsRadius = 0.4; cameraX = 0; cameraY = 0
@@ -260,15 +267,11 @@ public final class WitchlightPath: AudioResponseMetrics {
         // be here is why Matt kept seeing the pattern move with no music playing.
         //
         // Measured on session `2026-08-05T13-06-38Z`: across a 5.5 s stretch where every mix
-        // band read exactly 0.000000, the stem energies read drums 0.52, bass 0.57, vocals
-        // 1.07, other 0.67. Stems come from the separator running on a lagging buffer and HOLD
-        // their last values when the audio stops, so `stemTotal <= 0` is essentially never
-        // true — which made the whole `silent` branch dead code in practice. Every "at true
-        // silence …" behaviour in this file was unreachable.
-        //
-        // The mix bands are the live signal and collapse to zero immediately, so they are the
-        // honest test for "is there sound right now". Stems still drive what they should drive
-        // (routing, colour); they just no longer get a vote on whether the room is quiet.
+        // band read exactly 0.000000, the stems read drums 0.52 / bass 0.57 / vocals 1.07 /
+        // other 0.67 — the separator runs on a lagging buffer and HOLDS its last values, so
+        // `stemTotal <= 0` was essentially never true and the whole `silent` branch was dead
+        // code. The mix bands collapse immediately, so they are the honest test for "is there
+        // sound right now"; stems no longer get a vote on whether the room is quiet.
         let silent = mixEnergy <= 1e-6
 
         // WL.5 — the plane holds still in silence too. With the pen gated, the tumble was the
@@ -277,6 +280,13 @@ public final class WitchlightPath: AudioResponseMetrics {
         // rotating itself is still a drawing that is not listening. Stars and bloom continue
         // (they are the room, not the subject) so D-037's non-black frame is unaffected.
         if !silent { tumbleClock += dt }
+
+        // WL.8 — the bar wrap is detected ONCE, here, ahead of everything that reacts to it.
+        let bar = features.barPhase01
+        barDownbeatNow = previousBarPhase > 0.85 && bar < 0.15
+        previousBarPhase = bar
+        if barDownbeatNow { promoteNextBead = true }
+        gridSilentFor = bar > 0 ? 0 : gridSilentFor + dt
 
         advanceHarmonicPhase(dt: dt, features: features)
         updateEnergyBreath(features: features, silentNow: silent)
@@ -335,7 +345,16 @@ public final class WitchlightPath: AudioResponseMetrics {
         let slowAlpha = dt / (12.0 + dt)
         arousalSlow += (features.arousal - arousalSlow) * slowAlpha
         arousalSpread += (abs(features.arousal - arousalSlow) - arousalSpread) * slowAlpha
-        let arousalNorm = max(-1, min(1, (features.arousal - arousalSlow) / (2 * max(arousalSpread, 0.05))))
+        // WL.8 — divisor 2 → 1.5. On Matt's 215 s session the realised swing was 1.42×,
+        // against 2.55× on the 21 s fixtures and a gate floor of 1.45: the route passed on
+        // material short enough to be dominated by the warm-up ramp and delivered almost
+        // nothing on a real listen. The fix is NOT more `speedModDepth` — WL.2-i stopped at
+        // 0.45 because lit-pixel share moves non-monotonically with it — the normaliser was
+        // the limit. 1.5 gives 1.57× while saturating only 5.5 % of frames (1.0 gives 1.74×
+        // but saturates 13.9 %, and bang-bang is not expressive); it is also where the
+        // distinctness gate holds: at 1.0 the wider swing grew the trail, the auto-fit
+        // zoomed out and distinct beads fell 20 → 4.
+        let arousalNorm = max(-1, min(1, (features.arousal - arousalSlow) / (1.5 * max(arousalSpread, 0.05))))
 
         let energyGate = energyGateForSpeed(silent: silent)
         let speed = tuning.baseSpeed * (1 + tuning.speedModDepth * arousalNorm) * energyGate
@@ -376,25 +395,5 @@ public final class WitchlightPath: AudioResponseMetrics {
         penX += speed * dt * cos(heading)
         penY += speed * dt * sin(heading)
         return speed
-    }
-
-    // MARK: - Turn detection (the chord-change colour boundary)
-
-    func confirmTurn(newSign: Float) {
-        turnSign = newSign
-        turnCandidateAge = 0
-        turnCount += 1
-        hueTurnOffset += tuning.turnHueStep
-        // Retro-apply the step to the beads laid since the apex (≤ ~9 beads) so the
-        // boundary in the ribbon coincides with the corner in the figure.
-        if let apex = turnCandidateBeadIndex, apex < beads.count {
-            for index in apex..<beads.count {
-                let rgb = Self.hsvToRGB(hue: hueForPhase(smoothedPhase), saturation: 0.80, value: 1.0)
-                beads[index].colR = rgb.x
-                beads[index].colG = rgb.y
-                beads[index].colB = rgb.z
-            }
-        }
-        turnCandidateBeadIndex = nil
     }
 }
