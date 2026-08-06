@@ -77,6 +77,8 @@ struct FeatureVector {
     // `spectral_density_slow` is a τ≈8 s companion: compare the two to get "denser
     // than this track's normal" without needing per-preset state.
     float spectral_density, spectral_density_slow;
+    // DYN.2: section-scale density leg (tau ~10 s); ratio vs _slow drives trunk size.
+    float spectral_density_section;
     // DYN.1b (float 51): SECTION SURGE, 0…1 — rises fast when the mix arrives and HOLDS.
     // Use it for a step the visual can sit on: a trunk that elongates, a new tier of
     // branches appearing. Every other field here is instantaneous or averaged, so a

@@ -201,14 +201,13 @@ public struct FeatureVector: Sendable {
     /// after the handoff. FFO mixes `mix(1.0, mask, blend)` into the punch.
     public var pulseRegionalBlend01: Float
 
-    // --- TONAL (D-178, floats 44–48): TonalAnalyzer's Tonal Interval Vector —
-    // fifths=hue, consonance gates saturation, tension=distance-from-home,
-    // flux=chord-change accent. Full rationale: `Common.metal`. ---
+    // --- TONAL (D-178, floats 44–48): fifths=hue, consonance gates saturation,
+    // tension=distance-from-home, flux=chord-change. Rationale: `Common.metal`. ---
     public var tonalPhaseFifths, tonalPhaseThirds: Float
     public var tonalConsonance, tonalTension, harmonicFlux: Float
-    // 49–50 DYN.1 HF fraction + companion; 51 DYN.1b SURGE; 52 pads. `Common.metal`.
-    // swiftlint:disable:next identifier_name
-    public var spectralDensity, spectralDensitySlow, spectralSurge, _pad52: Float
+    /// DYN.2 float 52 — section-scale density (τ ≈ 10 s). See DYN1_CALIBRATION §DYN.2.
+    public var spectralDensity, spectralDensitySlow, spectralSurge: Float
+    public var spectralDensitySection: Float
 
     public init(
         bass: Float = 0, mid: Float = 0, treble: Float = 0,
@@ -250,7 +249,8 @@ public struct FeatureVector: Sendable {
         self.pulseRegionalBlend01 = 0
         self.tonalPhaseFifths = 0; self.tonalPhaseThirds = 0; self.tonalConsonance = 0
         self.tonalTension = 0; self.harmonicFlux = 0   // TONAL (D-178), set by TonalAnalyzer
-        self.spectralDensity = 0; self.spectralDensitySlow = 0; self.spectralSurge = 0; self._pad52 = 0
+        self.spectralDensity = 0; self.spectralDensitySlow = 0; self.spectralSurge = 0
+        self.spectralDensitySection = 0
     }
 
     /// All-zero feature vector.

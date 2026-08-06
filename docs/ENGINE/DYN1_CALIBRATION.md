@@ -154,3 +154,42 @@ The install breadcrumb now prints `loudness=none (fixed band)` explicitly. An ab
 was indistinguishable from a line predating the field, which is why this ran for a whole
 session unnoticed — a silent fallback to the defect being fixed is the worst failure shape
 available.
+
+## DYN.2 — the trunk needed RANGE, and on a limited master only shape has it
+
+DYN.1e pointed the trunk at a blend of arousal and the ranked surge. Matt's review:
+*"Tree trunk neither grew nor receded when the distorted guitar came in … Did not recede
+after the chorus."* Measured on `2026-08-06T14-59-37Z`, he is right, and the cause is
+**range, not direction**: that blend traverses **0.83…0.92 across the whole body** — a 10 %
+band — and climbs over ~50 s, so nothing in the music registers.
+
+**Level cannot do better on this material.** Cherub Rock has 1.4 dB of inner range: verse
+and chorus are the same loudness, so no level-derived signal separates them.
+
+**Spectral content does** — DYN.1's founding observation, applied to sections rather than
+arrivals. Density τ10 s sits at 0.13 through the verse and 0.21 through the chorus.
+
+`spectral_density_section` (float 52, τ ≈ 10 s) divided by `spectral_density_slow` is that
+quantity against the track's OWN running average: self-normalising, no fitted per-track
+constant — the mistake DYN.1c/.1d exist to avoid. Mapped `smoothstep(0.40, 1.05)`:
+
+| | intro 20 s | guitar 30 s | verse 50–70 s | chorus 90–110 s | after 130 s |
+|---|---|---|---|---|---|
+| DYN.1e (rejected) | 0.198 | 0.379 | 0.80 / 0.92 | 0.83 / 0.83 | 0.886 |
+| **DYN.2** | **0.00** | 0.06 | **0.30 / 0.46** | **0.92 / 1.00** | **0.88** |
+
+**Smooth, not stepped — an explicit requirement.** A quantised version was built and
+rejected before shipping: *"I just want it to grow and recede with the energy of the music
+and do so smoothly - not in visible jumps."* Measured motion **0.0198/s**, BELOW the
+0.0221/s of the surge the trunk read at DYN.1e, and a fifth of the raw density that caused
+FTR.3f. **The τ10 s leg is what makes density trunk-safe** where the shipped τ0.8 s leg was
+not; that one stays confined to the branch count.
+
+Two guards: an arousal floor so the tree never collapses mid-song, and a surge gate so a
+bright QUIET intro cannot inflate it (§3 — a clean intro is brighter than a pre-distortion
+passage, so shape alone would grow the tree before the band arrives).
+
+**Replay caveat.** `spectral_density_section` did not exist when earlier captures were
+recorded, so `PresetSessionReplay` / the `FT_SESSION` harness feed **0** for it on any
+session before 2026-08-06 — the trunk will read flat-zero there. That is the harness's
+unmapped-field behaviour, not a route defect. Judge this route only on a fresh capture.
