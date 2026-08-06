@@ -53,6 +53,8 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         /// Slow EMA of `density` (τ ≈ 8 s). Lets a consumer read "denser than this
         /// track's normal" rather than an absolute, without rolling its own state.
         public var smoothedDensity: Float
+        /// DYN.2 — section-scale density (τ ≈ 10 s); trunk-safe, moves verse→chorus.
+        public var sectionDensity: Float
         /// DYN.1b — SECTION SURGE, 0…1. Rises fast when the mix arrives, and HOLDS.
         ///
         /// The field for "the tree shoots up when the distorted guitar enters" — which
@@ -137,16 +139,13 @@ public final class SpectralAnalyzer: @unchecked Sendable {
     /// buys nothing for 50 % more restlessness. Full table:
     /// `docs/ENGINE/DYN1_CALIBRATION.md` §1 — do not duplicate it back into this comment.
     ///
-    /// τ 6 s was chosen when the TRUNK read this field and was bouncing. The trunk no
-    /// longer reads it at all (FTR.3f confined density to the quantised branch count), so
-    /// the smoothing that was protecting the trunk was only destroying the signal. Widen
-    /// this only if something continuous starts reading density again — and the answer to
-    /// that is to stop it reading density, not to re-smooth the field.
-    ///
-    /// The raw per-frame fraction turns 5.59 times a second, which is why SOME smoothing
-    /// is still required; `density` is deliberately not instantaneous.
+    /// τ 6 s was chosen when the TRUNK read this field and was bouncing. The trunk reads
+    /// the τ10 s SECTION leg now (DYN.2), never this one, so widening this again would only
+    /// destroy the signal it exists to carry. The raw fraction turns 5.59/s, which is why
+    /// SOME smoothing is required; `density` is deliberately not instantaneous.
     private static let densityFastAlpha: Float = 0.117
     private static let densityAlpha: Float = 0.0022
+    private static let densitySectionAlpha: Float = 0.0021   // DYN.2 section leg, τ ≈ 10 s
 
     /// EMA-smoothed centroid value.
     private var smoothedCentroid: Float = 0
@@ -159,6 +158,7 @@ public final class SpectralAnalyzer: @unchecked Sendable {
 
     /// EMA-smoothed spectral density, both legs (DYN.1).
     private var fastDensity: Float = 0
+    private var sectionDensity: Float = 0
     private var smoothedLevelDB: Float = -120
     private var surge: Float = 0
     private var smoothedDensity: Float = 0
@@ -241,6 +241,7 @@ public final class SpectralAnalyzer: @unchecked Sendable {
                 smoothedFlux: 0,
                 density: 0,
                 smoothedDensity: 0,
+                sectionDensity: 0,
                 surge: 0
             )
         }
@@ -263,6 +264,7 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         if !densitySeeded && rawDensity > 0 {
             fastDensity = rawDensity
             smoothedDensity = rawDensity
+            sectionDensity = rawDensity   // DYN.2: seed with the others (same reason)
             densitySeeded = true
         }
         // PRE-AGC LEVEL by Parseval — the definition lives on `LoudnessProfile` so the
@@ -281,6 +283,8 @@ public final class SpectralAnalyzer: @unchecked Sendable {
 
         fastDensity = Self.densityFastAlpha * rawDensity + (1 - Self.densityFastAlpha) * fastDensity
         smoothedDensity = Self.densityAlpha * rawDensity + (1 - Self.densityAlpha) * smoothedDensity
+        sectionDensity = Self.densitySectionAlpha * rawDensity
+            + (1 - Self.densitySectionAlpha) * sectionDensity
 
         // Store current frame for next flux computation.
         magnitudes.withUnsafeBufferPointer { src in
@@ -301,6 +305,7 @@ public final class SpectralAnalyzer: @unchecked Sendable {
             smoothedFlux: smoothedFlux,
             density: fastDensity,
             smoothedDensity: smoothedDensity,
+            sectionDensity: sectionDensity,
             surge: surge
         )
     }
@@ -318,6 +323,7 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         smoothedRolloff = 0
         smoothedFlux = 0
         fastDensity = 0
+        sectionDensity = 0
         smoothedDensity = 0
         densitySeeded = false
         smoothedLevelDB = -120
