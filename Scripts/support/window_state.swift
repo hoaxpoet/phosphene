@@ -27,25 +27,37 @@ func isRenderCandidate(layer: Int, width: Double, height: Double) -> Bool {
 }
 
 struct Row {
-    let num: Int, layer: Int, alpha: Double, x: Double, y: Double, w: Double, h: Double, on: Bool
-    var isRender: Bool { isRenderCandidate(layer: layer, width: w, height: h) }
+    let num: Int
+    let layer: Int
+    let alpha: Double
+    let originX: Double
+    let originY: Double
+    let width: Double
+    let height: Double
+    let onScreen: Bool
+    var isRender: Bool { isRenderCandidate(layer: layer, width: width, height: height) }
 }
 
 let rows: [Row] = mine.map { win in
     let rect = win[kCGWindowBounds as String] as? [String: Any] ?? [:]
     func num(_ key: String) -> Double { (rect[key] as? NSNumber)?.doubleValue ?? 0 }
     let id = win[kCGWindowNumber as String] as? Int ?? -1
-    return Row(num: id,
-               layer: win[kCGWindowLayer as String] as? Int ?? -999,
-               alpha: win[kCGWindowAlpha as String] as? Double ?? -1,
-               x: num("X"), y: num("Y"), w: num("Width"), h: num("Height"),
-               on: onScreen.contains(id))
+    return Row(
+        num: id,
+        layer: win[kCGWindowLayer as String] as? Int ?? -999,
+        alpha: win[kCGWindowAlpha as String] as? Double ?? -1,
+        originX: num("X"),
+        originY: num("Y"),
+        width: num("Width"),
+        height: num("Height"),
+        onScreen: onScreen.contains(id))
 }
 
 for row in rows {
     let kind = row.isRender ? "RENDER" : "chrome"
-    print("window \(row.num) [\(kind)] layer=\(row.layer) alpha=\(row.alpha) onScreen=\(row.on) "
-          + "bounds=\(Int(row.x)),\(Int(row.y)) \(Int(row.w))x\(Int(row.h))")
+    let bounds = "bounds=\(Int(row.originX)),\(Int(row.originY)) \(Int(row.width))x\(Int(row.height))"
+    print("window \(row.num) [\(kind)] layer=\(row.layer) alpha=\(row.alpha) "
+          + "onScreen=\(row.onScreen) " + bounds)
 }
 
 // The verdict, computed ONLY over render-sized windows.
@@ -53,7 +65,7 @@ print("")
 let render = rows.filter(\.isRender)
 if render.isEmpty {
     print("VERDICT: no render-sized window found — cannot judge occlusion from this capture.")
-} else if render.contains(where: { $0.on && $0.alpha > 0.01 }) {
+} else if render.contains(where: { $0.onScreen && $0.alpha > 0.01 }) {
     print("VERDICT: render window is ON SCREEN and composited — occlusion is NOT the condition here.")
 } else {
     print("VERDICT: every render-sized window is off-screen or transparent — occlusion IS possible.")
