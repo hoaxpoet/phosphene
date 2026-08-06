@@ -40,6 +40,7 @@ extension WitchlightPath {
     /// `bassDev` survives only as the no-grid fallback below.
     func advanceFlare(dt: Float, features: FeatureVector) {
         flareRefractoryRemaining = max(0, flareRefractoryRemaining - dt)
+        offBeatRefractoryRemaining = max(0, offBeatRefractoryRemaining - dt)
 
         // No BeatGrid → `barPhase01` is pinned at 0 and never wraps, so the bar route is
         // silently dead. Fall back to the pre-WL.8 bass-excursion trigger rather than
@@ -60,6 +61,23 @@ extension WitchlightPath {
         let warm = gridActive ? smoothstepUnit(features.trackElapsedS, 2.0, 8.0) : 1
         let devAlpha = dt / (8.0 + dt)
         bassDevSlow += (features.bassDev - bassDevSlow) * devAlpha
+        // WL.9 — TWO TIERS. Matt's call after WL.8 read "too polite": every beat pulses, the
+        // downbeat harder. It is also the more robust routing, and that was HIS observation:
+        // the steady pulse now rides the BEAT grid, which is the strong signal, while only
+        // the ACCENT rides bar position, which is the weak one (four levers failed to recover
+        // bar position from the downbeat activation stream, odd meters worst). If the meter is
+        // wrong the pulse is still right and only the emphasis lands on the wrong beat —
+        // where WL.8's bar-only routing would have had everything wrong at once.
+        //
+        // Rate is why this is tempo-gated rather than unconditional. WL.8's "once per bar"
+        // was chosen off a 171 BPM track where a bar is 1.40 s (0.71 pulses/s); the same
+        // choice on his 80.5 BPM session is a bar every 2.98 s — 0.34/s, one flash per 3.3
+        // seconds, which is the whole of "too polite". Per-beat at 80.5 BPM is 1.34/s; at
+        // 171 BPM it would be 2.85/s, which is flicker. So off-beats run only when the beat
+        // is long enough to read as a pulse.
+        let beatSeconds = barPeriod > 0 ? barPeriod / max(features.beatsPerBar, 1) : 0
+        let offBeatsAllowed = beatSeconds >= tuning.offBeatMinBeatSeconds
+
         let fires: Bool
         if gridActive {
             fires = barDownbeatNow
@@ -75,6 +93,15 @@ extension WitchlightPath {
             flareGoal = tuning.flareCeiling * warm
             flareHold = 0.05
             flareCount += 1
+        } else if gridActive && offBeatsAllowed && beatEdgeNow && !barDownbeatNow
+                    && offBeatRefractoryRemaining <= 0 && warm > 0.01 {
+            // The dimmer tier. It does NOT touch `flareRefractoryRemaining`, so an off-beat
+            // pulse can never delay or suppress the next downbeat burst — the bar line is
+            // the event that has to be reliable.
+            offBeatRefractoryRemaining = tuning.offBeatRefractory
+            flareGoal = tuning.flareCeiling * tuning.offBeatShare * warm
+            flareHold = 0.05
+            offBeatCount += 1
         }
         flareHold -= dt
         if flareHold <= 0 { flareGoal = 0 }
@@ -250,8 +277,30 @@ extension WitchlightPath {
             let dx = bead.posX - centroidX, dy = bead.posY - centroidY
             sumSquares += dx * dx + dy * dy
         }
+        // WL.9b — the fit tracks the trail's GROWTH while it is still filling.
+        //
+        // Matt, session `2026-08-06T17-27-21Z`: "the camera cannot keep up with the head of
+        // the ribbon". Measured per 10 s window, the head-off-frame misses are entirely inside
+        // a 20–40 s band and are ZERO for the remaining two minutes — it is a startup
+        // transient, not a steady-state failure and (measured) not a pen-speed one either.
+        //
+        // The cause is structural: the visible trail is 30 s, so for the first half-minute the
+        // figure is still EXPANDING toward its final extent, and a 4 s fit constant chasing a
+        // monotonically growing target is always behind it. Once the trail reaches full length
+        // the target stops growing, the lag disappears, and framing is exact — which is why
+        // the settled behaviour Matt approved at WL.7 needs no change and gets none.
+        //
+        // WL.7's gate reported 0.0 % and was not lying, it was measuring 21 s fixtures that END
+        // before this window opens. The real-session harness (`WitchlightSpeedSweep`) is the
+        // one that can see it.
+        let oldest = beads.first?.age ?? trailWindow
+        let filling = oldest < trailWindow * 0.95
         let targetRadius = (sumSquares / count).squareRoot()
-        let fitAlpha = dt / (4.0 + dt)
+        // Asymmetric: catch up fast while the figure grows, never rush the shrink. A fast
+        // shrink would make the drawing pump on every section contraction.
+        let growing = targetRadius > rmsRadius
+        let fitTau: Float = filling && growing ? 0.8 : 4.0
+        let fitAlpha = dt / (fitTau + dt)
         rmsRadius += (targetRadius - rmsRadius) * fitAlpha
         viewScale = max(0.25, min(4.0, tuning.framedRadius / max(rmsRadius, 0.02)))
 
@@ -259,7 +308,10 @@ extension WitchlightPath {
         // enough to keep up with a pen that quickens 2.5× (WL.2-i) — at 3 s it cannot,
         // which is the lag Matt saw.
         guard let head = beads.last else { return }
-        let camAlpha = dt / (1.2 + dt)
+        // Same reasoning on the aim: while the figure is growing the head is travelling into
+        // new territory every frame, so the follow tightens. It relaxes to the settled 1.2 s
+        // the moment the trail is full.
+        let camAlpha = dt / ((filling ? 0.5 : 1.2) + dt)
         let aimX = centroidX * (1 - 0.6) + head.posX * 0.6
         let aimY = centroidY * (1 - 0.6) + head.posY * 0.6
         cameraX += (aimX - cameraX) * camAlpha

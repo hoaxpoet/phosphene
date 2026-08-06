@@ -285,7 +285,7 @@ All deviation or relative semantics; no absolute threshold on an AGC-normalized 
 
 ### 3.5 The head flare
 
-**WL.8 — the flare fires on the BAR DOWNBEAT.** It used to fire on a `bassDev` excursion measured against the track's running level, and that is now the no-grid fallback only.
+**WL.9 — the flare fires on EVERY BEAT, with the downbeat harder.** Matt, 2026-08-06, on the WL.8 build: *"Feels too polite. Beat match is also close but not exact."* Both were right and they had different causes — see §3.5.1. **WL.8 — the flare fires on the BAR DOWNBEAT.** It used to fire on a `bassDev` excursion measured against the track's running level, and that is now the no-grid fallback only.
 
 Matt after WL.7 landed the framing fix: *"Ribbon feels connected to the music, though how is not obvious."* The measurement behind the change (`WitchlightBeatAlignmentProbe`, his session `2026-08-05T21-48-13Z`, 171 BPM 4/4): the old trigger fired 110 times in 215 s at a **mean offset of 0.247 beats from the nearest grid beat — 0.25 is exactly what uniformly-random firing produces**, with 26 % landing within 10 % of a beat against a 20 % chance rate. The one element of this preset that flashed *in time* had no relationship to the rhythm. Retimed, it is 0.000 / 100 %.
 
@@ -298,6 +298,32 @@ Everything else here rides a continuous envelope, which is why the preset reads 
 **One primitive per visual layer (FA #67).** The bar pulse REPLACES `bassDev` on the head rather than joining it; two accent primitives on one layer is the documented "fighting itself" bug, and the one removed was measurably noise against the rhythm. `bead_promotion` and `head_flare` now both declare `barPhase01`, which is deliberate and not a violation of that rule: they are the same event rendered once in space and once in time, which is precisely what makes them read as one gesture.
 
 **Grid trust and cold start, both self-gating.** `barPhase01` is documented as *always 0 in reactive mode (no BeatGrid installed)*, so it IS the trust signal — no grid, no wraps, no pulse, and D-154's "beat-irregular tracks excluded" falls out for free. Cold-start suppression is implemented here because the phase contract requires presets to implement it themselves: the cached grid installs with reliable BPM and meter but possibly wrong PHASE, so the pulse ramps in over `trackElapsedS` 2 → 8 s. The bead is laid regardless — the record of where the downbeat fell is always honest; only the accent waits for confidence.
+
+### 3.5.1 Why per-beat, and what "close but not exact" actually was (WL.9)
+
+**Too polite was a RATE error, and it was mine.** WL.8's "once per bar" was chosen off a rate table computed on a 171 BPM track, where a bar is 1.40 s (0.71 pulses/s). His next session was **80.5 BPM**, where a bar is 2.98 s — the identical choice yields **0.34 pulses/s, one flash every 3.3 seconds**. The table was tempo-specific and was presented as general.
+
+Per-beat at 80.5 BPM is 1.34/s; at 171 BPM it would be 2.85/s, which reads as flicker. So the off-beat tier is **tempo-gated** (`offBeatMinBeatSeconds` 0.55 s ≈ 109 BPM) rather than unconditional, and fast tracks keep WL.8's bar-only behaviour. Measured on his session: 0.30/s → **1.15/s**.
+
+**"Close but not exact" is the GRID, not the flare.** The flare fires exactly on the grid; the grid drifts against the audible beat. Measured on the same session: median |drift| **25.4 ms**, p90 **63.2 ms**, max **91.4 ms**, **14.2 %** of frames beyond the ~60 ms perceptual window, and the tracker reports full lock only 69 % of the time. That is **BUG-065**, open and independently measured on other sessions. Witchlight cannot fix it — and note what WL.8 did to it: by putting the first thing in this preset that lands on the beat, it converted a latent engine defect into a *perceptible* one. That is the preset working, not failing.
+
+**Per-beat is also the more ROBUST routing, and that was Matt's observation, not mine.** He challenged the WL.8 design directly: downbeat/bar-position recovery is the weakest element of the beat stack (four levers failed to recover bar position from the downbeat activation stream; odd meters worst). Checking it: on both of his sessions the bar grid was metronomic — `beatsPerBar` pinned at 4, **0 %** of bar intervals more than 15 % off expected, 141/141 bars on the fast track — so WL.8 was not riding a broken signal *there*. But the grid-trust gate only asks *"is there a grid at all"*, never *"is the bar position trustworthy"*, and on a track like BUG-076's (`beatsPerBar` swinging 2/3/4 on a 4/4 track, bar confidence 0.14–0.64) it would pulse confidently on wrong downbeats. There is no bar-confidence field in the feature stream to gate on.
+
+Splitting the tiers fixes the exposure structurally: **the steady pulse rides the BEAT grid (strong), and only the ACCENT rides bar position (weak).** A wrong meter now costs emphasis on the wrong beat instead of everything being wrong at once.
+
+Beat edges are derived by **subdividing `barPhase01` by `beatsPerBar`**, not read from `beatPhase01` — that field measured stalled on real material (24 wraps in 215 s where 614 were due). Subdivision also handles odd meters for free: 7/8 subdivides into 7.
+
+### 3.5.2 The pen-speed lever, and the framing transient (WL.9b)
+
+Matt, session `2026-08-06T17-27-21Z`: *"The ribbon builds too fast and not in sync with the actual beat and downbeat. In addition, the camera cannot keep up with the head of the ribbon because it is moving too fast."* Two complaints, and the second is **not** caused by the first — measured, after two wrong diagnoses.
+
+**Speed is dominated by the ENERGY GATE, not by the arousal normaliser.** `energyGateForSpeed` multiplied speed by `0.25…1.75` — a 7× term sitting on the same product as the arousal route, which realises a **~10× swing** on real sessions. Sweeping `arousalSpreadDivisor` across 1.5–4.0 moves it barely at all (9.95 → 8.65). Narrowed to **0.55…1.45** (Matt's pick from the measured table): **3.8–4.0×**. The pen still halts completely in silence — that is the separate `silent` branch and it is untouched.
+
+**The camera transient is a STARTUP effect and is not about speed.** Head-off-frame by 10 s window on his sessions: `0 1 36 0 0 0 0 0 0 0 0` — the misses are entirely inside a **20–40 s band** and zero for the remaining two minutes. Narrowing the energy gate moved it 3.6 % → 3.4 %; speed was never the cause. The visible trail is 30 s, so for the first half-minute the figure is still EXPANDING toward its final extent, and a 4 s fit constant chasing a monotonically growing target is permanently behind it. The fit and the aim now tighten (0.8 s / 0.5 s) **while the trail is filling and only while the target is growing** — asymmetric, because a fast shrink would make the drawing pump on every section contraction — and relax to the settled WL.7 constants the moment the trail is full. **0.0 % head-off-frame across all three real sessions, every window**, worst reach 0.86–0.89.
+
+**Why WL.7's gate read 0.0 % and was not lying.** It measures the 21 s route-coverage fixtures, which END before the 20–40 s failure window opens. A temporal claim can only be tested on material long enough to contain the phenomenon; `WitchlightSpeedSweep` (`WITCHLIGHT_SESSIONS=<dirs>`) drives whole recorded sessions for exactly this reason.
+
+**Two measurement failures worth not repeating**, both mine, both in this increment: a tuning change validated with a Python model of one term (it omitted the energy gate and reported 1.57× where the real path gives ~10×), and a fixture gate reading 17.9× that was rationalised as a metric artifact when it was the actual signal. **A number that disagrees with the model is the signal.**
 
 ### 3.6 Silence (D-037)
 
@@ -344,7 +370,12 @@ Designed up front, not tuned down later. Anti-reference `12` is what this sectio
 | Max full-frame mean luminance Δ per frame | **≤ 0.06** | Below the 0.10 swing threshold, so **no transition ever qualifies as a flash** — the budget targets 0.00 flashes/s by construction rather than by staying under 3. Comparable shipped figures: Mitosis measured maxΔ/frame 0.0116, Cytokinesis 0.0263. |
 | Flare spatial extent, ≥ 50 % of peak intensity | **≤ 3 % of frame area** | `03` is what a real burning head looks like: the hot core is roughly the diameter of the trail. |
 | Flare spatial extent, ≥ 10 % of peak intensity | **≤ 12 % of frame area** | WCAG's area rule is ~25 % of a 10° field; 12 % keeps us inside it before the luminance ceiling is even considered. The source exceeds 50 % (`12`). |
-| Minimum re-fire interval | **≥ 900 ms** (hard refractory) | ≈ 1.1 flares/s maximum. The source re-fires on every qualifying hit — at the harness's 4.5 Hz worst case that is 4.5/s. The flare is not a beat accent; it is an occasional event on a significant `bass_dev` excursion. |
+| Minimum re-fire interval, **full-amplitude burst** | **≥ 900 ms** (hard refractory) | ≈ 1.1 bursts/s maximum. The source re-fires on every qualifying hit — at the harness's 4.5 Hz worst case that is 4.5/s. Unchanged since WL.2. |
+| Minimum re-fire interval, **WL.9 off-beat tier** | **≥ 450 ms**, and only when a beat is ≥ 0.55 s (≈ ≤ 109 BPM) | ≈ 2.2 pulses/s ceiling for the dim tier; combined worst case measured at **1.60 pulses/s**. |
+
+**WL.9 amended this table, and the reasoning is recorded rather than assumed.** The original row said *"the flare is not a beat accent; it is an occasional event"* — WL.8 made it a beat accent (per bar), and WL.9 made it a per-beat pulse with a harder downbeat, which exceeds the ≈ 1.1/s event ceiling the single-tier rule implied. That rule was written against the source's fault: a full-amplitude burst that saturates toward full-frame white (anti-reference `12`). The off-beat tier is a different object — **42 % of `flareCeiling`**, on a flare whose hot core covers **0.006 % of the frame at half-peak** — so the event count is not the quantity that bounds it.
+
+Measured at the tier's own worst case (1.75 Hz beats = 105 BPM, the fastest tempo at which off-beats run, 30 s): **peak mean relative luminance 0.0081 against the 0.35 ceiling, max Δ/frame 0.0009 against 0.06** — 43× and 66× under budget, at 1.60 pulses/s. WCAG 2.3.1's general flash threshold is 3/s; this sits at roughly half that with a stimulus two orders of magnitude below the luminance ceiling. Gated by `offBeatTierCeilingsHold`, which **asserts the tier actually fired** — the 4.5 Hz drive the older gate uses has a 0.22 s beat, below `offBeatMinBeatSeconds`, so without a second scenario the whole two-tier pulse would have been certified by a harness that never triggered it.
 | Rise envelope | **≥ 60 ms** | No instantaneous step. An instantaneous full-amplitude step is what makes a transition qualify in the first place. |
 | Fall envelope | **≥ 200 ms** | Asymmetric fast-attack / slow-decay, matching a real spark. |
 | **Target measured** | **0.00 flashes/s** | Under `FlashHarnessSupport.worstCaseBeatTrain(4.5 Hz, 60 fps, 3 s)`. |

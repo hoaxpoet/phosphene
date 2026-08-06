@@ -176,8 +176,45 @@ public struct WitchlightTuning: Sendable {
     /// clears both gates with headroom instead of squeaking past either.
     public var speedModDepth: Float = 0.45
 
+    /// Divisor on the arousal running spread when normalising the pen-speed driver.
+    ///
+    /// LOWER = wider realised speed swing. WL.8 took this 2.0 → 1.5 to answer "the speed
+    /// feels weak", validated on ONE session with a model that omitted the energy gate, and
+    /// it shipped a pen that lurches: measured 9.95x realised swing on the 171 BPM session
+    /// against ~2.5x before. Sweep it with the probe over REAL sessions, never a partial model.
+    public var arousalSpreadDivisor: Float = 1.5
+
+    /// WL.5's energy gate on pen advance: `speed *= min(cap, floor + span * energyBreath)`.
+    /// A 0.25…1.75 range is a **7x multiplier on speed** and dominates the arousal route
+    /// entirely — it, not the arousal normaliser, is what makes the ribbon lurch.
+    /// WL.9b: 0.25…1.75 → 0.55…1.45, Matt's pick from the measured swing table. The old
+    /// range is a 7x multiplier on speed and produced a realised swing of ~10x on both his
+    /// 171 BPM sessions — "the ribbon builds too fast". 0.55…1.45 measures 3.8x: the energy
+    /// still visibly drives the pen, and it stops outrunning itself. The pen still halts
+    /// completely in silence — that is the separate `silent` branch, untouched.
+    public var energyGateFloor: Float = 0.55
+    public var energyGateSpan: Float = 0.9
+    public var energyGateCap: Float = 1.45
+
     /// Head-flare refractory, seconds (§5: ≥ 900 ms, ≈ 1.1 flares/s ceiling).
+    /// Applies to the FULL-amplitude downbeat burst. The WL.9 off-beat tier is a separate,
+    /// much dimmer object with its own interval — see `offBeatRefractory`.
     public var flareRefractory: Float = 0.90
+
+    /// WL.9 — off-beat pulse amplitude, as a fraction of `flareCeiling`.
+    ///
+    /// Matt, 2026-08-06: "feels too polite… every beat with a harder downbeat." The downbeat
+    /// keeps the full §5 burst; the beats between it get this. Deliberately well under half,
+    /// so the bar line stays the loudest event in the pattern and the meter is still legible
+    /// rather than a flat train of identical flashes.
+    public var offBeatShare: Float = 0.42
+    /// Minimum interval between off-beat pulses. Shorter than the §5 flare refractory
+    /// because the object is dimmer, and bounded so the tier cannot exceed ~2.2 pulses/s.
+    public var offBeatRefractory: Float = 0.45
+    /// Off-beat pulses only run when a beat is at least this long, i.e. on tracks slow
+    /// enough that a per-beat pulse reads as a pulse rather than a flicker. 0.55 s ≈ 109 BPM;
+    /// above that the preset stays bar-only, which is what WL.8 shipped.
+    public var offBeatMinBeatSeconds: Float = 0.55
     /// Flare rise/fall time constants. 2.2τ ≈ 10–90 % time: 66 ms rise, 286 ms fall,
     /// against the §5 minima of 60 ms and 200 ms.
     public var flareRiseTau: Float = 0.030

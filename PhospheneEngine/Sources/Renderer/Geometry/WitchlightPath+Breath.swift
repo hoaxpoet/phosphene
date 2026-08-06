@@ -73,6 +73,6 @@ extension WitchlightPath {
     /// D-037 is unaffected: silence still renders the star field, the bloom and the whole
     /// existing ribbon. D-037 forbids a BLACK frame, not a still one.
     func energyGateForSpeed(silent: Bool) -> Float {
-        silent ? 0 : min(1.75, 0.25 + 1.5 * energyBreath)
+        silent ? 0 : min(tuning.energyGateCap, tuning.energyGateFloor + tuning.energyGateSpan * energyBreath)
     }
 }
