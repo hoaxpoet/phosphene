@@ -178,9 +178,14 @@ vertex WLBeadOut witchlight_bead_vertex(
     // steady global luminance). They are ~1 bead in 7, so the lit-pixel share moves a few
     // percent on the downbeat while the ribbon's overall level holds — a whole-trail flash
     // at 0.71/s would be a different, and much less safe, object.
+    // WL.9 — raised from +35 % / +80 % after Matt read the WL.8 pulse as "too polite".
+    // The §5 headroom is enormous (measured 0.0081 mean luminance against a 0.35 ceiling at
+    // the worst-case pulse rate), and the head flare itself covers 0.006 % of the frame, so
+    // the BEAD blink is the channel that actually carries this to the viewer — the flare is
+    // a highlight, the bar-line chain lighting up is the gesture.
     float pulse = cfg.barPulse * b.promoted;
-    radius *= 1.0 + 0.35 * pulse;
-    alpha  *= 1.0 + 0.80 * pulse;
+    radius *= 1.0 + 0.55 * pulse;
+    alpha  *= 1.0 + 1.40 * pulse;
     // WL.4 — the ribbon BREATHES with the music, every frame.
     //
     // Applied to the whole stroke rather than per-bead-age on purpose: a listener reads
