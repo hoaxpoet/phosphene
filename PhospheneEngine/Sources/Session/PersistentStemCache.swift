@@ -180,7 +180,12 @@ public final class PersistentStemCache: @unchecked Sendable {
     ///                       `spectral_surge` band). v6 entries lack it and would replay
     ///                       with the fixed band — i.e. with the exact defect DYN.1c fixes,
     ///                       silently — so they must be re-analysed.
-    public static let currentSchemaVersion: Int = 7
+    ///   v8 (DYN.1d) — `loudnessProfile` is now measured with a 0.5 dB usability floor
+    ///                       instead of 4 dB. v7 entries for narrow-range (brickwalled)
+    ///                       masters were persisted with the field NIL and replay under the
+    ///                       fixed band — the defect DYN.1c exists to fix, silently. They
+    ///                       must be re-analysed; a v7 hit would keep the nil forever.
+    public static let currentSchemaVersion: Int = 8
 
     /// Names of the stem `.f32` files. Order matches `CachedTrackData.stemWaveforms`
     /// (`[vocals, drums, bass, other]`).

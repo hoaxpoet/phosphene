@@ -1980,6 +1980,40 @@ This is the opposite of the three WL.6 framing attempts, which all tried to fit 
 
 ---
 
+### Increment WL.8 — Witchlight: something that lands ON the beat 🔨 **CODE-COMPLETE 2026-08-05, pending live M7**
+
+**Why.** WL.7's framing fix worked — Matt, first time in seven rounds: *"Ribbon feels connected to the music, though how is not obvious."* The remaining ask is legibility of the connection, and he proposed two mechanisms: speed tied to tempo, and drums/downbeats illuminating the head and other nodules.
+
+**Measured on his session `2026-08-05T21-48-13Z`** (215 s, grid locked 171.256 BPM 4/4) before building anything:
+
+- **Nothing in the preset landed on the beat.** The head flare — the only element that fires *in time* — sat at a **mean offset of 0.247 beats** from the nearest grid beat, where 0.25 is exactly what uniformly-random firing produces; 26 % within 10 % of a beat against a 20 % chance rate.
+- **The beat data was never missing:** 141 downbeats, **140 promoted beads**. That route is perfect. But a promoted bead is a mark in SPACE — it records where the downbeat fell and drifts away. Nothing happened at the MOMENT.
+- **Tempo cannot be the within-track driver.** `grid_bpm` is a single constant, 171.256, for all 215 s. Tying speed to it produces a difference perceivable only by A/B-ing two songs.
+- **But the speed route was genuinely weak on real material:** realised swing **1.42×** on his track, against 2.55× on the 21 s fixtures and a gate floor of 1.45 — passing on material short enough to be dominated by the warm-up ramp.
+
+**A measurement correction, recorded because it nearly shipped as a false claim.** The first cut of the probe scored flares against `beatPhase01`, and that signal is broken on this material: it wrapped **24 times in 215 s where 171 BPM demands 614** — the live BeatPredictor is effectively stalled. Any firing pattern scores near-chance against a stalled reference, so the metric could not have told a fix from a no-op. Re-derived against the cached grid, the original conclusion happened to survive intact (0.247 vs 0.250) — but it was luck, not method. Beat times are now synthesised from `grid_bpm` + bar wraps.
+
+**What changed.**
+1. **The head flare fires on the bar downbeat.** `bassDev` survives only as the no-grid fallback. Per bar, not per beat: at 171 BPM a beat is 0.35 s (~2.9 flashes/s, strobe territory and §5 would cap the amplitude); a bar is 1.40 s (0.71/s) and leaves the full ceiling usable. **Matt's call from the rate table.**
+2. **The trail blinks with the head** — the same envelope boosts every *promoted* bead (radius +35 %, alpha +80 %), so head and bar markers brighten on the same frames. Matt's "head and any other nodules", read literally. Bounded to ~1 bead in 7 per D-157.
+3. **Speed normalisation divisor 2 → 1.5.** NOT more `speedModDepth` — WL.2-i stopped at 0.45 for a measured reason. The normaliser was the limit.
+
+**Measured after.** Flare-vs-grid **0.000 offset / 100 % on-beat**, 141 flares for 141 downbeats. Speed swing **1.42× → 1.57×** on his session, saturating only 5.5 % of frames (1.0 would give 1.74× but saturates 13.9 %, and bang-bang is not expressive). Flash budget with the pulse firing: peak mean luminance **0.0107** (ceiling 0.35), max Δ/frame **0.0015** (0.06), flare extent 0.006 % / 0.012 % (caps 3 % / 12 %). Distinctness **17 cores** (floor 8), ribbon share **0.437 %** (floor 0.40).
+
+**Where the speed lever actually stops, measured not assumed.** Divisor 1.0 was tried first and **failed the WL.2-j distinctness gate: 20 → 4 distinct beads**, ribbon share 0.388 % below the 0.40 floor. A wider swing grows the trail, the auto-fit zooms out, and the beads stop reading — the same tension that killed the WL.6 framing attempts, reached from the other side. 1.5 clears both gates with headroom. **The speed route is capped by bead legibility, not by the driver.**
+
+**Four harness gaps this exposed, all the same class.** The cold-start ramp reads `trackElapsedS`, and every harness that left it at 0 silently suppressed *every* flare while the route looked correct in code — including **the §5 flash harness, which was therefore measuring a worst case containing no pulse at all**. Fixed in `WitchlightFixtureDrive`, `WitchlightPathTests.drive`, and `WitchlightFlashBudgetTests`. This is the fourth time a missing harness column has made a working route read as dead.
+
+**Also fixed:** `flareHonoursRefractoryInterval` drove a *constant* `bassDev`, which overtakes its own 8 s running threshold after ~4 s — the refractory was never the limiter the test claimed to measure. Now a pulsed driver, and it exercises the no-grid fallback explicitly.
+
+**Known limitation, reported not hidden.** `penSpeedSwing` conflates the arousal route with the WL.5 energy gate (realised speed includes both), so on short fixtures it now reads 17.9. That is the metric's definition, not a regression — the real-material number is 1.57×. Worth a cleaner per-route metric later.
+
+**Done when:** ✅ measured before building · ✅ flare lands on the grid · ✅ trail blinks in unison · ✅ speed deepened to the legibility cap · ✅ flash budget re-verified *with the pulse firing* · ✅ all suites green · ⏳ **Matt's live M7.**
+
+**Verify:** `WITCHLIGHT_SESSION=<dir> swift test --package-path PhospheneEngine --filter WitchlightBeatAlignment`
+
+---
+
 ### Increment MD.7 — Ray-march-composing inspired-by uplifts (formerly Hybrid tier)
 
 **Scope (revised per `MILKDROP_STRATEGY.md` §12 / D-103 amendment / D-107):** Inspired-by uplifts that compose `mv_warp` + `ray_march` against a static camera (D-029). **Not a tier** — these are `milkdrop_inspired` presets that happen to use the ray-march backdrop primitive; authoring choice, not classification. The MD.7.0 spike (single-preset proof of the `mv_warp` + `ray_march` composition) lands as one such uplift; subsequent ray-march-composing uplifts batch into the MD.6 work stream. The architectural composition has only Volumetric Lithograph as prior production proof (and VL's `mv_warp` plays against a ray-march scene that is not itself feedback-warped), so the spike is still a high-value increment under inspired-by.

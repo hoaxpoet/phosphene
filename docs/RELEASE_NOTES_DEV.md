@@ -10,6 +10,22 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-05-214036] DYN.1d — the usability gate rejected exactly the tracks that needed the fix
+
+Matt on Cherub Rock: *"the tree grows a bit too much BEFORE the distorted guitar comes in and then does not jump up again when the distorted guitar enters."* Both halves are one threshold.
+
+DYN.1c's `isUsable` required 4 dB of inner range before a measured loudness profile would replace the fixed band. **A brickwalled master has a narrow range — which is precisely when a fixed absolute band is most wrong.** Cherub Rock measures **1.46 dB**, was refused, and the surge pinned **93.6 %** of the session. Saturated by 30 s, there was no headroom left for the guitar entry to step into, which is exactly what Matt saw.
+
+Ranked instead: **0.6 % pinned**, stepping **0.237 → 0.887** across the entry. Verified with the real analyzer over his own capture.
+
+**Narrowness was never the hazard.** At 1.46 dB the ranked surge sits in the same regime as the Hummer capture Matt approved as reading musical — 2.87 turns/s vs 2.41, and *less* pinning (0.5 % vs 1.4 %). The floor is now 0.5 dB, which still catches the real degenerate case: a distribution with no shape at all.
+
+**It failed silently, which is the part worth fixing structurally.** `measure()` returned nil, the entry persisted at v7 with the field absent, and every later play was a cache HIT that logged nothing — the install line's missing `loudness=` suffix looked identical to a line predating the field. Schema is now **v8** (a v7 entry holding a nil profile would keep it behind a cache hit forever), and the breadcrumb prints `loudness=none (fixed band)` out loud. A silent fall back to the defect you are fixing is the worst failure shape available.
+
+Regression gate added: a 1.5 dB synthetic master must produce a usable, ranking profile, and it asserts the fixture sits under the OLD 4 dB gate so it cannot rot into a tautology.
+
+---
+
 ### [dev-2026-08-05-140643] DYN.1c — the loudness band is per-track now, and the first design was wrong
 
 `spectral_surge` used one absolute band (−24…−15 dB) for every song. Measured on Matt's Hummer capture (`2026-08-04T20-23-15Z`) that band saturates at 31 s and stays pinned for **63.3 %** of the track, reading **1.000 at both** the arrival and a section 4 dB louder half a minute later. Two identical numbers for two visibly different moments is the whole of *"the tree had grown to full size before the full band kicked in later in the song."*

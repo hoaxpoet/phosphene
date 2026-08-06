@@ -46,6 +46,10 @@ struct WLConfig {
     /// WL.4 — the per-frame energy breath, 0…1, centred ~0.5 at the track's own typical
     /// level. The ONLY continuous-energy coupling in the preset; see `energyBreath` below.
     var energyBreath: Float = 0.5
+    /// WL.8 — the head-flare envelope, normalised 0…1, so the bar-line beads in the trail
+    /// blink on the same frames the head does. MUST stay last: this struct is memcpy'd into
+    /// the GPU's `WLConfig` and field ORDER is the contract, not field names.
+    var barPulse: Float = 0
 }
 
 // MARK: - Configuration
@@ -252,6 +256,8 @@ public final class WitchlightStroke: ParticleGeometry, @unchecked Sendable {
         config.centroidY = path.cameraY
         config.viewScale = path.viewScale
         config.flareIntensity = path.flareIntensity
+        // Normalised so the shader gets 0…1 whatever `flareCeiling` is set to.
+        config.barPulse = path.flareIntensity / max(path.tuning.flareCeiling, 1e-4)
         if let head = beads.last {
             config.headX = head.posX
             config.headY = head.posY

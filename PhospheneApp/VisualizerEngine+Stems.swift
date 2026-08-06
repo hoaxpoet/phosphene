@@ -558,7 +558,11 @@ extension VisualizerEngine {
     /// function_body_length cap — same reason as `refreshLumenPaletteForTrack` below.
     private func logCachedInstall(cached: CachedTrackData, title: String, replacedExisting: Bool) {
         let grid = cached.beatGrid
-        let loudness = cached.loudnessProfile.map { ", loudness=\($0.summary)" } ?? ""
+        // DYN.1d: say "none" out loud. A local track running unprofiled is the DYN.1c
+        // defect in disguise, and an absent suffix looked identical to a line that simply
+        // predated the field — which is why Cherub Rock ran pinned for a whole session
+        // before anyone noticed.
+        let loudness = ", loudness=" + (cached.loudnessProfile?.summary ?? "none (fixed band)")
         guard !grid.beats.isEmpty else {
             let empty = "BEAT_GRID_INSTALL: source=preparedCache, track='\(title)' — "
                 + "empty grid, live inference will be allowed\(loudness)"
