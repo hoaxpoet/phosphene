@@ -12,14 +12,9 @@
 //       It is smoothed by the CR.1.2 / D-198 mechanism already shipped in Phosphene: EMA
 //       the sin and cos separately and recombine with `atan2`. NEVER EMA the raw sawtooth.
 //
-//   (b) ADVANCE — bounded-curvature kinematics (Dubins 1957). The pen does not move TO a
-//       harmonic position; it advances at a governed speed along a heading, and harmony
-//       controls only how fast that heading turns. With fixed speed v and turn rate
-//       clamped to ±v/R_min, every arc has radius ≥ R_min — so the pen cannot draw
-//       anti-reference `10` (a ball of yarn IS a sequence of sub-pixel-radius reversals).
-//       This is the rate governance WITCHLIGHT_DESIGN §2.3 item 3 requires as a mechanism:
-//       the measured ~10× cross-track spread in the harmonic rate lives entirely in the
-//       CURVATURE term, and curvature is clamped.
+//   (b) ADVANCE — bounded-curvature kinematics (Dubins 1957). Moved to
+//       `WitchlightPath+Pen.swift` at WL.9 for the 400-line lint; the rationale lives
+//       with the code.
 //
 //   (c) RELAXATION — age-weighted neighbour averaging (discrete Laplacian curve smoothing,
 //       the Taubin λ|μ family). Full weight on beads younger than ~1 s, zero by ~4 s, and
@@ -51,7 +46,7 @@ public final class WitchlightPath: AudioResponseMetrics {
     public internal(set) var beads: [WitchlightBead] = []
 
     // Pen state.
-    public private(set) var heading: Float = 0
+    public internal(set) var heading: Float = 0
     var penX: Float = 0
     var penY: Float = 0
     var emitAccumulator: Float = 0
@@ -66,7 +61,7 @@ public final class WitchlightPath: AudioResponseMetrics {
 
     // Tonal "home" — a long-τ circular mean of φ̄, for `.curvatureDeviation`.
     /// Running estimate of |deviation from tonal home|, for the per-track gain.
-    private var deviationScale: Float = 0.3
+    var deviationScale: Float = 0.3
 
     private var homeSin: Float = 0
     private var homeCos: Float = 1
@@ -88,8 +83,10 @@ public final class WitchlightPath: AudioResponseMetrics {
     public internal(set) var turnCount: Int = 0
 
     // Arousal running reference (deviation semantics — no absolute level on `arousal`).
-    private var arousalSlow: Float = 0
-    private var arousalSpread: Float = 0.15
+    // `internal`, not `private`: `advancePen` lives in WitchlightPath+Pen.swift and a Swift
+    // extension in a second file cannot reach file-private state.
+    var arousalSlow: Float = 0
+    var arousalSpread: Float = 0.15
 
     // Head flare.
     var bassDevSlow: Float = 0
@@ -98,8 +95,12 @@ public final class WitchlightPath: AudioResponseMetrics {
     var flareHold: Float = 0
     /// Current flare amplitude, 0…`flareCeiling`. Bounded by the §5 budget.
     public internal(set) var flareIntensity: Float = 0
-    /// Flare firings since `reset()`.
+    /// Full-amplitude (downbeat) flare firings since `reset()`.
     public internal(set) var flareCount: Int = 0
+    /// WL.9 — dimmer off-beat pulses since `reset()`, counted separately so the §5 rate
+    /// budget can be read per tier instead of as one blended number.
+    public internal(set) var offBeatCount: Int = 0
+    var offBeatRefractoryRemaining: Float = 0
 
     // Bar promotion.
     var previousBarPhase: Float = 0
@@ -107,6 +108,15 @@ public final class WitchlightPath: AudioResponseMetrics {
     /// True on the single frame a bar wraps. WL.8 hoisted it out of `emit` because the
     /// flare now needs it too, and two independent wrap detectors would drift apart.
     var barDownbeatNow = false
+    /// WL.9 — true on the frame any BEAT lands, downbeat included. Derived by subdividing
+    /// `barPhase01` rather than read from `beatPhase01`, which measured stalled (24 wraps in
+    /// 215 s where 614 were due). Subdividing also handles odd meters for free.
+    var beatEdgeNow = false
+    var previousBeatSlot = -1
+    /// Seconds between the last two bar wraps — the runtime tempo estimate the off-beat
+    /// tier is gated on. No `bpm` field is needed on FeatureVector.
+    var barPeriod: Float = 0
+    var timeSinceWrap: Float = 0
     /// Seconds since `barPhase01` last read non-zero. `barPhase01` is documented as
     /// "always 0 in reactive mode (no BeatGrid installed)", so this IS the grid-trust
     /// signal — no separate confidence field needed, and D-154's "beat-irregular tracks
@@ -157,14 +167,14 @@ public final class WitchlightPath: AudioResponseMetrics {
 
     /// Wall-clock seconds of drive consumed, for per-unit response metrics (QG.5).
     public private(set) var elapsedSeconds: Double = 0
-    public private(set) var clampedFrameCount: Int = 0
+    public internal(set) var clampedFrameCount: Int = 0
     /// ∫|φ̄̇| dt — how far the smoothed harmonic phase travelled, radians. The design's
     /// §2.3 measurement quotes this as "circles over 30 s" (2.1 / 1.7 / 15.4 on the
     /// fixtures); reproducing it here is what proves the steer is reading the real driver.
-    public private(set) var phaseTravel: Float = 0
+    public internal(set) var phaseTravel: Float = 0
     /// ∫|θ̇| dt — how far the PEN's heading actually turned, radians. `phaseTravel × k`
     /// before clamping; the gap between them is what the clamp removed.
-    public private(set) var headingTravel: Float = 0
+    public internal(set) var headingTravel: Float = 0
     /// WL.4 — the per-frame energy breath, 0…1 centred 0.5. Lives here rather than in
     /// `WitchlightStroke` so every audio→state mapping is in one place and the QG.5 metrics
     /// seam (which is on this type) can gate it.
@@ -181,7 +191,7 @@ public final class WitchlightPath: AudioResponseMetrics {
     /// Net signed heading change. `|headingNet| / headingTravel` near 1 means the pen turned
     /// one way the whole time — the "degenerates to a circle" state design §3.1(b) warns
     /// about when the clamp saturates. Near 0 means it reversed, which is a figure.
-    public private(set) var headingNet: Float = 0
+    public internal(set) var headingNet: Float = 0
     public var headingMonotonicity: Float {
         headingTravel > 1e-4 ? abs(headingNet) / headingTravel : 0
     }
@@ -228,8 +238,10 @@ public final class WitchlightPath: AudioResponseMetrics {
         breathMin = .greatestFiniteMagnitude; breathMax = 0
         bassDevSlow = 0; flareRefractoryRemaining = 0
         flareGoal = 0; flareHold = 0; flareIntensity = 0; flareCount = 0
+        offBeatCount = 0; offBeatRefractoryRemaining = 0
         previousBarPhase = 0; promoteNextBead = false; promotionCount = 0
         barDownbeatNow = false; gridSilentFor = 0
+        beatEdgeNow = false; previousBeatSlot = -1; barPeriod = 0; timeSinceWrap = 0
         previousSectionIndex = nil; contractGoal = 0; contractHold = 0; contraction = 0
         sectionEventCount = 0
         centroidX = 0; centroidY = 0; viewScale = 1; rmsRadius = 0.4; cameraX = 0; cameraY = 0
@@ -287,6 +299,14 @@ public final class WitchlightPath: AudioResponseMetrics {
         previousBarPhase = bar
         if barDownbeatNow { promoteNextBead = true }
         gridSilentFor = bar > 0 ? 0 : gridSilentFor + dt
+        timeSinceWrap += dt
+        if barDownbeatNow { barPeriod = timeSinceWrap; timeSinceWrap = 0 }
+        // WL.9 — beat edges by subdividing the bar. `beatsPerBar` carries the meter, so 7/8
+        // subdivides into 7 and the pulse stays musical without a special case.
+        let perBar = max(1, Int(features.beatsPerBar.rounded()))
+        let slot = min(perBar - 1, Int(bar * Float(perBar)))
+        beatEdgeNow = slot != previousBeatSlot && previousBeatSlot >= 0
+        previousBeatSlot = slot
 
         advanceHarmonicPhase(dt: dt, features: features)
         updateEnergyBreath(features: features, silentNow: silent)
@@ -322,78 +342,5 @@ public final class WitchlightPath: AudioResponseMetrics {
         // circles per 30 s) to 0.85 / 1.09 / 3.95, and the pen drew a straight line. The
         // derivative of an EMA-smoothed circular phase needs no further filtering.
         phaseRate = delta / dt
-    }
-
-    // MARK: - (b) Bounded-curvature advance
-
-    /// Returns the speed used this frame (world units/second).
-    private func advancePen(dt: Float, features: FeatureVector, silent: Bool) -> Float {
-        // Arousal against its own running spread — the per-track normalization the
-        // measured 0.44–1.57 cross-capture range demands (§2.1).
-        //
-        // WL.2-i — 20 s → 12 s. Matt's M7: "it looks like the preset makes the same choices
-        // about movement." Measured on his capture, the pen's speed varied by 13 % over the
-        // whole track, and every sample sat ABOVE the base speed (norm +0.13…+0.64): the pen
-        // never slowed down, it only ran fast and slightly faster. A 12 s reference lets the
-        // deviation cross zero (norm −0.05…+0.55), so the stroke visibly slows as well as
-        // quickens — which is what makes the coupling readable rather than merely present.
-        //
-        // Deliberately NOT slower. A 90 s reference was simulated first, on the theory that a
-        // 20 s window chases the 10–60 s structure it should be measuring against; it makes
-        // things worse, pinning two of the three fixtures at a permanently saturated +1 (0 %
-        // swing) because the reference never catches up from the warm-up ramp.
-        let slowAlpha = dt / (12.0 + dt)
-        arousalSlow += (features.arousal - arousalSlow) * slowAlpha
-        arousalSpread += (abs(features.arousal - arousalSlow) - arousalSpread) * slowAlpha
-        // WL.8 — divisor 2 → 1.5. On Matt's 215 s session the realised swing was 1.42×,
-        // against 2.55× on the 21 s fixtures and a gate floor of 1.45: the route passed on
-        // material short enough to be dominated by the warm-up ramp and delivered almost
-        // nothing on a real listen. The fix is NOT more `speedModDepth` — WL.2-i stopped at
-        // 0.45 because lit-pixel share moves non-monotonically with it — the normaliser was
-        // the limit. 1.5 gives 1.57× while saturating only 5.5 % of frames (1.0 gives 1.74×
-        // but saturates 13.9 %, and bang-bang is not expressive); it is also where the
-        // distinctness gate holds: at 1.0 the wider swing grew the trail, the auto-fit
-        // zoomed out and distinct beads fell 20 → 4.
-        let arousalNorm = max(-1, min(1, (features.arousal - arousalSlow) / (1.5 * max(arousalSpread, 0.05))))
-
-        let energyGate = energyGateForSpeed(silent: silent)
-        let speed = tuning.baseSpeed * (1 + tuning.speedModDepth * arousalNorm) * energyGate
-        if !silent { speedMin = min(speedMin, speed); speedMax = max(speedMax, speed) }
-        // ω_max derived from the speed so the ≥ 8 %-of-frame-height turning-radius bound
-        // holds exactly at every speed, rather than only at the nominal one.
-        let omegaMax = speed / max(tuning.minTurnRadius, 1e-4)
-
-        // WL.3 SPIKE — three candidate steer models, selected by `tuning.steerMode`.
-        // See WitchlightTuning.SteerMode for what each one maps to what.
-        let desired: Float
-        switch tuning.steerMode {
-        case .turnRate:
-            desired = silent ? 0 : tuning.steerGain * phaseRate
-        case .curvature:
-            desired = silent ? 0 : tuning.curvatureGain * smoothedPhase
-        case .curvatureDeviation:
-            // Per-track gain: scale the deviation against a running estimate of its own
-            // magnitude so a track that barely leaves its tonal home still draws a figure.
-            // See `WitchlightTuning.normaliseDeviationGain`.
-            let deviation = phaseFromHome
-            if tuning.normaliseDeviationGain {
-                let alpha = dt / (4.0 + dt)
-                deviationScale += (max(abs(deviation), 0.05) - deviationScale) * alpha
-                let gain = 0.85 * omegaMax / max(0.05, deviationScale)
-                desired = silent ? 0 : gain * deviation
-            } else {
-                desired = silent ? 0 : tuning.curvatureGain * deviation
-            }
-        }
-        let turnRate = max(-omegaMax, min(omegaMax, desired))
-        if !silent && abs(desired) >= omegaMax { clampedFrameCount += 1 }
-
-        phaseTravel += abs(phaseRate) * dt
-        headingTravel += abs(turnRate) * dt
-        headingNet += turnRate * dt
-        heading += turnRate * dt
-        penX += speed * dt * cos(heading)
-        penY += speed * dt * sin(heading)
-        return speed
     }
 }

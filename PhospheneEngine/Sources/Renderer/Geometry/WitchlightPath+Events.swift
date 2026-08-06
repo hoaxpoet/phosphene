@@ -40,6 +40,7 @@ extension WitchlightPath {
     /// `bassDev` survives only as the no-grid fallback below.
     func advanceFlare(dt: Float, features: FeatureVector) {
         flareRefractoryRemaining = max(0, flareRefractoryRemaining - dt)
+        offBeatRefractoryRemaining = max(0, offBeatRefractoryRemaining - dt)
 
         // No BeatGrid → `barPhase01` is pinned at 0 and never wraps, so the bar route is
         // silently dead. Fall back to the pre-WL.8 bass-excursion trigger rather than
@@ -60,6 +61,23 @@ extension WitchlightPath {
         let warm = gridActive ? smoothstepUnit(features.trackElapsedS, 2.0, 8.0) : 1
         let devAlpha = dt / (8.0 + dt)
         bassDevSlow += (features.bassDev - bassDevSlow) * devAlpha
+        // WL.9 — TWO TIERS. Matt's call after WL.8 read "too polite": every beat pulses, the
+        // downbeat harder. It is also the more robust routing, and that was HIS observation:
+        // the steady pulse now rides the BEAT grid, which is the strong signal, while only
+        // the ACCENT rides bar position, which is the weak one (four levers failed to recover
+        // bar position from the downbeat activation stream, odd meters worst). If the meter is
+        // wrong the pulse is still right and only the emphasis lands on the wrong beat —
+        // where WL.8's bar-only routing would have had everything wrong at once.
+        //
+        // Rate is why this is tempo-gated rather than unconditional. WL.8's "once per bar"
+        // was chosen off a 171 BPM track where a bar is 1.40 s (0.71 pulses/s); the same
+        // choice on his 80.5 BPM session is a bar every 2.98 s — 0.34/s, one flash per 3.3
+        // seconds, which is the whole of "too polite". Per-beat at 80.5 BPM is 1.34/s; at
+        // 171 BPM it would be 2.85/s, which is flicker. So off-beats run only when the beat
+        // is long enough to read as a pulse.
+        let beatSeconds = barPeriod > 0 ? barPeriod / max(features.beatsPerBar, 1) : 0
+        let offBeatsAllowed = beatSeconds >= tuning.offBeatMinBeatSeconds
+
         let fires: Bool
         if gridActive {
             fires = barDownbeatNow
@@ -75,6 +93,15 @@ extension WitchlightPath {
             flareGoal = tuning.flareCeiling * warm
             flareHold = 0.05
             flareCount += 1
+        } else if gridActive && offBeatsAllowed && beatEdgeNow && !barDownbeatNow
+                    && offBeatRefractoryRemaining <= 0 && warm > 0.01 {
+            // The dimmer tier. It does NOT touch `flareRefractoryRemaining`, so an off-beat
+            // pulse can never delay or suppress the next downbeat burst — the bar line is
+            // the event that has to be reliable.
+            offBeatRefractoryRemaining = tuning.offBeatRefractory
+            flareGoal = tuning.flareCeiling * tuning.offBeatShare * warm
+            flareHold = 0.05
+            offBeatCount += 1
         }
         flareHold -= dt
         if flareHold <= 0 { flareGoal = 0 }

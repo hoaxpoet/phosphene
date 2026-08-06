@@ -80,6 +80,9 @@ struct WitchlightBeatAlignmentProbe {
 
               WL.8 beat alignment — session \(url.lastPathComponent)
                 duration            \(String(format: "%.0f", seconds)) s, \(drive.features.count) frames
+                downbeat bursts     \(path.flareCount)  (\(String(format: "%.2f", Float(path.flareCount) / seconds))/s)
+                off-beat pulses     \(path.offBeatCount)  (\(String(format: "%.2f", Float(path.offBeatCount) / seconds))/s)
+                combined pulse rate \(String(format: "%.2f", Float(path.flareCount + path.offBeatCount) / seconds))/s
                 head flares         \(flareFrames.count)  (\(String(format: "%.2f", Float(flareFrames.count) / seconds))/s)
                   mean |offset|     \(String(format: "%.3f", mean)) beats   (0.25 = no relationship to the grid)
                   within 10 % of a beat  \(String(format: "%.0f", 100 * Float(onBeat) / Float(max(offsets.count, 1)))) %  (20 % = chance)

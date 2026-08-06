@@ -2014,6 +2014,32 @@ This is the opposite of the three WL.6 framing attempts, which all tried to fit 
 
 ---
 
+### Increment WL.9 — Witchlight: every beat, with the downbeat harder 🔨 **CODE-COMPLETE 2026-08-06, pending live M7**
+
+**Why.** Matt on the WL.8 build (session `2026-08-06T15-09-29Z`): *"Feels too polite. Beat match is also close but not exact. Not sure that this is better than the previous run."* Two complaints, two different causes, one of them mine and one an engine defect.
+
+**"Too polite" was a RATE error I introduced.** WL.8's per-bar choice came off a rate table computed on a 171 BPM track (bar 1.40 s, 0.71 pulses/s). This session is **80.5 BPM** — the same choice yields **0.34 pulses/s, one flash every 3.3 s**. I presented a tempo-specific table as if it were general and he picked against the wrong tempo.
+
+**"Close but not exact" is BUG-065, not the flare.** The flare fires exactly on the grid; the grid drifts against the audible beat: median |drift| **25.4 ms**, p90 **63.2 ms**, max **91.4 ms**, **14.2 %** of frames past the ~60 ms perceptual window, full lock only 69 % of the time. WL.8 did not cause this — it made a latent defect *perceptible* by being the first thing in the preset to land on the beat at all.
+
+**Matt's design challenge, and it changed the answer.** He asked why the pulse was built on the downbeat when downbeat/bar recovery is the known-weak part of the beat stack. Checked: on both his sessions the bar grid was metronomic (`beatsPerBar` pinned at 4, **0 %** of bar intervals >15 % off expected, 141/141 bars on the fast track), so WL.8 was not riding a broken signal there. **But he exposed a real hole:** the grid-trust gate asks only *"is there a grid"*, never *"is the bar position trustworthy"*, and on BUG-076's track (`beatsPerBar` swinging 2/3/4 on 4/4, bar confidence 0.14–0.64) it would pulse confidently on wrong downbeats. No bar-confidence field exists in the feature stream to gate on. His preferred option is therefore also the structurally safer one: **the steady pulse rides the BEAT grid (strong), only the accent rides bar position (weak)** — a wrong meter costs emphasis on the wrong beat instead of everything at once.
+
+**What changed.** Beat edges derived by **subdividing `barPhase01` by `beatsPerBar`** (not `beatPhase01`, measured stalled: 24 wraps where 614 were due; subdivision also handles odd meters for free). Two tiers: full-amplitude downbeat burst on the unchanged 900 ms §5 refractory, plus a **42 %-amplitude off-beat pulse** with its own 450 ms interval, **tempo-gated to beats ≥ 0.55 s (≈ ≤ 109 BPM)** so fast tracks keep WL.8's bar-only behaviour. Bead blink raised +35 %/+80 % → **+55 %/+140 %** radius/alpha.
+
+**Measured.** Pulse rate on his session **0.30/s → 1.15/s** (3.8×). At the off-beat tier's own worst case (105 BPM, the fastest tempo where it runs): **1.60 pulses/s, peak mean luminance 0.0081 (ceiling 0.35), max Δ/frame 0.0009 (ceiling 0.06)** — 43× and 66× under budget. Distinctness **17 cores** (floor 8), ribbon share 0.437 % (floor 0.40) — both unmoved by the brighter blink.
+
+**§5 was AMENDED, not quietly exceeded.** The old table said *"≥ 900 ms → ≈ 1.1 flares/s; the flare is not a beat accent"*. It is one now, and the combined rate exceeds that ceiling. The table gains a second row for the dim tier plus the reasoning: the ≈1.1/s rule was written against a full-amplitude burst that saturates toward full-frame white, and a 42 %-amplitude pulse whose hot core covers 0.006 % of the frame is a different object. WCAG 2.3.1's general threshold is 3/s; this sits at roughly half that, two orders of magnitude under the luminance ceiling.
+
+**The harness trap, caught a second time and then caught again inside itself.** The existing §5 drive runs a 4.5 Hz impulse train — a 0.22 s beat, *below* `offBeatMinBeatSeconds` — so the new tier would never have fired and the safety gate would have certified a worst case that never contained it (exactly WL.8's `trackElapsedS` failure). Added `offBeatTierCeilingsHold` at 1.75 Hz, which **asserts the tier actually fired**. The first version of that gate used 1.82 Hz, sitting exactly ON the threshold and landing a hair under it in floating point: 3 pulses in 30 s, certifying nothing. A worst case has to be measurably INSIDE the region it claims to bound.
+
+**Also:** `advancePen` moved to `WitchlightPath+Pen.swift` for the 400-line lint.
+
+**Done when:** ✅ rate error diagnosed and fixed · ✅ routing moved onto the stronger signal · ✅ §5 amended with measurements, not waived · ✅ safety gate proven to contain the hazard · ✅ all suites green · ⏳ **Matt's live M7.**
+
+**Verify:** `WITCHLIGHT_FLASH_BUDGET=1 swift test --package-path PhospheneEngine --filter WitchlightFlashBudget`
+
+---
+
 ### Increment MD.7 — Ray-march-composing inspired-by uplifts (formerly Hybrid tier)
 
 **Scope (revised per `MILKDROP_STRATEGY.md` §12 / D-103 amendment / D-107):** Inspired-by uplifts that compose `mv_warp` + `ray_march` against a static camera (D-029). **Not a tier** — these are `milkdrop_inspired` presets that happen to use the ray-march backdrop primitive; authoring choice, not classification. The MD.7.0 spike (single-preset proof of the `mv_warp` + `ray_march` composition) lands as one such uplift; subsequent ray-march-composing uplifts batch into the MD.6 work stream. The architectural composition has only Volumetric Lithograph as prior production proof (and VL's `mv_warp` plays against a ray-march scene that is not itself feedback-warped), so the spike is still a high-value increment under inspired-by.

@@ -177,7 +177,24 @@ public struct WitchlightTuning: Sendable {
     public var speedModDepth: Float = 0.45
 
     /// Head-flare refractory, seconds (§5: ≥ 900 ms, ≈ 1.1 flares/s ceiling).
+    /// Applies to the FULL-amplitude downbeat burst. The WL.9 off-beat tier is a separate,
+    /// much dimmer object with its own interval — see `offBeatRefractory`.
     public var flareRefractory: Float = 0.90
+
+    /// WL.9 — off-beat pulse amplitude, as a fraction of `flareCeiling`.
+    ///
+    /// Matt, 2026-08-06: "feels too polite… every beat with a harder downbeat." The downbeat
+    /// keeps the full §5 burst; the beats between it get this. Deliberately well under half,
+    /// so the bar line stays the loudest event in the pattern and the meter is still legible
+    /// rather than a flat train of identical flashes.
+    public var offBeatShare: Float = 0.42
+    /// Minimum interval between off-beat pulses. Shorter than the §5 flare refractory
+    /// because the object is dimmer, and bounded so the tier cannot exceed ~2.2 pulses/s.
+    public var offBeatRefractory: Float = 0.45
+    /// Off-beat pulses only run when a beat is at least this long, i.e. on tracks slow
+    /// enough that a per-beat pulse reads as a pulse rather than a flicker. 0.55 s ≈ 109 BPM;
+    /// above that the preset stays bar-only, which is what WL.8 shipped.
+    public var offBeatMinBeatSeconds: Float = 0.55
     /// Flare rise/fall time constants. 2.2τ ≈ 10–90 % time: 66 ms rise, 286 ms fall,
     /// against the §5 minima of 60 ms and 200 ms.
     public var flareRiseTau: Float = 0.030

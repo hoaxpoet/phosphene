@@ -53,6 +53,44 @@ struct WitchlightFlashBudgetTests {
         ProcessInfo.processInfo.environment["WITCHLIGHT_FLASH_BUDGET"] == "1"
     }
 
+    /// WL.9 — the off-beat tier's own worst case: 1.75 Hz beats (105 BPM), just inside the
+    /// fastest tempo at which off-beat pulses are permitted, so the train runs at its maximum
+    /// rate. (1.82 Hz sits exactly ON `offBeatMinBeatSeconds` and lands a hair under it in
+    /// floating point, which fires the tier three times in 30 s and certifies nothing —
+    /// a worst case has to be measurably INSIDE the region it claims to bound.)
+    /// Separate from the 4.5 Hz drive above because that one is TOO FAST to fire this tier at
+    /// all — its 0.22 s beat is below `offBeatMinBeatSeconds`, so without this case the whole
+    /// two-tier pulse would go unmeasured by the safety gate.
+    @Test("the off-beat pulse tier holds the §5 ceilings at its maximum rate (WL.9)")
+    func offBeatTierCeilingsHold() throws {
+        guard Self.isEnabled else { print("[witchlight-§5] WITCHLIGHT_FLASH_BUDGET not set, skipping"); return }
+        let rig = try Rig()
+        var series: [Double] = []
+        for i in 0..<1800 {
+            guard let pixels = rig.renderComposite(Self.worstCaseFrame(index: i, beatHz: 1.75)) else { continue }
+            series.append(Self.meanRelativeLuminance(pixels))
+        }
+        let peak = series.max() ?? 0
+        let maxDelta = zip(series, series.dropFirst()).map { abs($1 - $0) }.max() ?? 0
+        let path = rig.stroke.path
+        let seconds = 1800.0 / 60.0
+        let rate = Double(path.flareCount + path.offBeatCount) / seconds
+        print(String(format: "[witchlight-§5 WL.9] peak mean luminance %.4f (ceiling %.2f) · "
+                           + "max Δ/frame %.4f (ceiling %.2f) · downbeats %d + off-beats %d "
+                           + "= %.2f pulses/s",
+                     peak, Self.peakMeanLuminanceCeiling, maxDelta, Self.maxDeltaPerFrameCeiling,
+                     path.flareCount, path.offBeatCount, rate))
+
+        #expect(path.offBeatCount > 20, """
+            the off-beat tier never fired, so this gate measured nothing. That is the WL.8
+            failure repeated: a safety harness must be shown to CONTAIN the hazard it certifies.
+            """)
+        #expect(peak <= Self.peakMeanLuminanceCeiling,
+                "peak mean luminance \(peak) exceeds the §5 ceiling with the off-beat tier running")
+        #expect(maxDelta <= Self.maxDeltaPerFrameCeiling,
+                "max Δ/frame \(maxDelta) exceeds the §5 ceiling with the off-beat tier running")
+    }
+
     @Test("the composite never exceeds the §5 peak luminance or per-frame swing")
     func luminanceCeilingsHold() throws {
         guard Self.isEnabled else { print("[witchlight-§5] WITCHLIGHT_FLASH_BUDGET not set, skipping"); return }
@@ -128,10 +166,19 @@ struct WitchlightFlashBudgetTests {
 
     /// Maximal harmonic motion + a 4.5 Hz bass-dev impulse train, i.e. the flare asking to
     /// fire far more often than its refractory will allow.
-    private static func worstCaseFrame(index: Int) -> Frame {
+    private static func worstCaseFrame(index: Int) -> Frame { worstCaseFrame(index: index, beatHz: 4.5) }
+
+    /// WL.9 — `beatHz` parameterised so the OFF-BEAT tier can be driven at ITS worst case.
+    ///
+    /// The 4.5 Hz default is the bass-dev impulse train the §5 flare was written against; at
+    /// that rate a beat is 0.22 s, which is below `offBeatMinBeatSeconds`, so the off-beat
+    /// tier never fires and this drive alone would leave it entirely unmeasured — the same
+    /// gap WL.8 shipped with `trackElapsedS`. The tier's true worst case is the FASTEST
+    /// tempo at which it is permitted: a 0.55 s beat, i.e. 1.82 Hz, 109 BPM.
+    private static func worstCaseFrame(index: Int, beatHz: Float) -> Frame {
         let fps: Float = 60
         let t = Float(index) / fps
-        let period = fps / 4.5
+        let period = fps / beatHz
         let beatPhase = Float(index).truncatingRemainder(dividingBy: period) / period
         let env = exp(-beatPhase * 6.0)
 
