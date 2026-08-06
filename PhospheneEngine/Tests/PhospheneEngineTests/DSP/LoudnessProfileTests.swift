@@ -169,6 +169,29 @@ struct LoudnessProfileTests {
         #expect(Self.hold(analyzer, atLevelDB: -10, frames: 1800) > 0.99)
     }
 
+    /// DYN.1d — the gate used to require 4 dB of inner range, which refused every
+    /// brickwalled master and so kept the fixed band on exactly the tracks a fixed band
+    /// serves worst. Cherub Rock measures 1.46 dB and pinned 92.7 % of a session because
+    /// of it. A narrow-but-real distribution must produce a USABLE profile.
+    @Test("a narrow-range (brickwalled) master still yields a usable profile")
+    func narrowRangeMasterIsUsable() throws {
+        // ~1.5 dB of inner range — Cherub Rock's measured figure — over three sections.
+        let sections: [(levelDB: Float, frames: Int)] = [(-15.0, 800), (-14.2, 800), (-13.5, 800)]
+        let profile = try #require(
+            LoudnessProfile(smoothedLevelsDB: Self.smoothedLevels(sections: sections)))
+        print(String(format: "[narrow] inner range %.2f dB, usable=%@",
+                     profile.innerRangeDB, profile.isUsable ? "yes" : "NO"))
+        #expect(profile.innerRangeDB < 4.0, "fixture must sit under the OLD 4 dB gate to be a regression test")
+        #expect(profile.isUsable, """
+            A \(profile.innerRangeDB) dB master was refused, so the surge falls back to the \
+            fixed absolute band — which is precisely the DYN.1c defect, on the class of \
+            track least able to survive it.
+            """)
+
+        // And it must still RANK: the loudest section above the quietest.
+        #expect(profile.rank(ofLevelDB: -13.5) > profile.rank(ofLevelDB: -15.0) + 0.3)
+    }
+
     @Test("too few frames is not a track")
     func shortSeriesIsRefused() {
         let short = (0..<100).map { Float($0) * 0.1 - 30 }

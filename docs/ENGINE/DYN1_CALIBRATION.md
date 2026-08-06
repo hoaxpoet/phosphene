@@ -121,3 +121,36 @@ real captures, not derived from a target τ — so this is a comment-accuracy de
 recorded rather than corrected because fixing it touches the stated rationale of every DYN
 constant. `LoudnessProfile.measure` hops 1024 samples per frame for this reason: it matches
 the live rate by construction rather than by an assumed number.
+
+## DYN.1d — the usability gate pointed the wrong way
+
+`isUsable` required **4 dB** of inner range before a measured profile would replace the
+fixed band. That threshold rejects a brickwalled master — and a brickwalled master is
+exactly the case a FIXED absolute band serves worst. The guard was backwards, and it failed
+silently: `measure()` returned nil, the entry persisted at schema v7 with the field absent,
+and every subsequent play was a cache HIT that logged nothing.
+
+Measured on Matt's Cherub Rock capture `2026-08-05T21-21-03Z`:
+
+| | fixed band (what shipped) | ranked (after the fix) |
+|---|---|---|
+| inner range | 1.46 dB — refused | 1.46 dB — accepted |
+| pinned | **93.6 %** | **0.6 %** |
+| surge @25 s → @60 s | 1.000 → 1.000 | **0.237 → 0.887** |
+
+Matt's report was *"the tree grows a bit too much BEFORE the distorted guitar comes in and
+then does not jump up again when the distorted guitar enters."* **Both halves are this one
+threshold** — the surge was already saturated at 30 s, so there was no headroom left for the
+arrival to step into.
+
+**Narrowness was never the hazard.** Ranked at 1.46 dB the surge lands in the same regime as
+the Hummer capture Matt approved as reading musical: 2.87 turns/s against Hummer's 2.41, and
+*less* pinning (0.5 % vs 1.4 %). What the gate should catch is a distribution with no shape
+at all — digital silence, a test tone — so the floor is now 0.5 dB.
+
+Schema **v8**: a v7 entry holding a nil profile would keep it forever behind a cache hit.
+
+The install breadcrumb now prints `loudness=none (fixed band)` explicitly. An absent suffix
+was indistinguishable from a line predating the field, which is why this ran for a whole
+session unnoticed — a silent fallback to the defect being fixed is the worst failure shape
+available.

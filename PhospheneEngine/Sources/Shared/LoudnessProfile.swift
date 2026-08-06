@@ -56,10 +56,24 @@ public struct LoudnessProfile: Sendable, Equatable, Codable {
     /// `i / steps` of the track sits.
     public let quantilesDB: [Float]
 
-    /// Below this INNER span the quantiles are measuring noise, not dynamics — a
-    /// constant-level source (test tone, heavily-limited loop) would rank its own dither.
-    /// Such a profile is refused and the caller keeps the fixed band.
-    public static let minimumUsableRangeDB: Float = 4
+    /// Below this INNER span the quantiles are measuring nothing — a genuinely constant
+    /// source (digital silence, a test tone) would rank its own dither. Such a profile is
+    /// refused and the caller keeps the fixed band.
+    ///
+    /// **THIS WAS 4 dB AND THE GATE POINTED THE WRONG WAY (DYN.1d, 2026-08-05).** A
+    /// brickwalled master has a narrow range, which is exactly when a FIXED absolute band
+    /// is most wrong — so the threshold rejected the tracks that needed ranking most, and
+    /// did it silently. Measured on Matt's Cherub Rock capture `2026-08-05T21-21-03Z`:
+    /// inner range **1.46 dB**, refused, surge pinned **92.7 %** of the track. Ranking the
+    /// same audio gives **0.5 %** pinned and steps 0.119 → 0.548 across the guitar entry —
+    /// both halves of Matt's report ("grows too much BEFORE the distorted guitar comes in
+    /// and then does not jump up again when it enters") were this one threshold.
+    ///
+    /// 0.5 dB is safe, not merely permissive: ranked at 1.46 dB the surge lands in the same
+    /// regime as the Hummer capture Matt approved as reading musical — 2.87 turns/s against
+    /// Hummer's 2.41, and *less* pinning (0.5 % vs 1.4 %). Narrowness alone was never the
+    /// hazard; a distribution with no shape at all is, and that is what this now catches.
+    public static let minimumUsableRangeDB: Float = 0.5
 
     /// Fewer frames than this is not a track, it is a fragment; a distribution over it
     /// describes the fragment. 500 frames ≈ 11 s at the ~47 Hz analysis rate.
