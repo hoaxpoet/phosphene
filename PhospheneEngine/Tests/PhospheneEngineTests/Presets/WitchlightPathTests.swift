@@ -26,16 +26,30 @@ struct WitchlightPathTests {
     /// Drive the path with a constant-rate harmonic phase for `seconds`.
     private static func drive(
         _ path: WitchlightPath, seconds: Float, phaseRate: Float,
-        arousal: Float = 0, bassDev: Float = 0, barHz: Float = 0
+        arousal: Float = 0, bassDev: Float = 0, barHz: Float = 0,
+        bassDevPulseHz: Float = 0
     ) {
         let frames = Int(seconds / dt)
         for i in 0..<frames {
             var f = FeatureVector()
             f.deltaTime = dt
             f.time = Float(i) * dt
+            // WL.8 — the cold-start ramp reads this. A drive that leaves it at 0 suppresses
+            // every flare for the whole run while the route looks perfectly correct in code.
+            f.trackElapsedS = Float(i) * dt
             f.bass = 0.3; f.mid = 0.3; f.treble = 0.2       // not silent
             f.arousal = arousal
-            f.bassDev = bassDev
+            // A CONSTANT `bassDev` is self-defeating as a "fires continuously" driver: the
+            // trigger is `bassDevSlow * 2.5` on an 8 s EMA, so a held value overtakes its own
+            // threshold after ~4 s and firing stops. Pulsing keeps the running reference low,
+            // which is what makes the refractory — and nothing else — the rate limiter the
+            // test says it is measuring.
+            if bassDevPulseHz > 0 {
+                let phase = (Float(i) * dt * bassDevPulseHz).truncatingRemainder(dividingBy: 1)
+                f.bassDev = phase < 0.06 ? bassDev : 0
+            } else {
+                f.bassDev = bassDev
+            }
             f.tonalPhaseFifths = wrap(Float(i) * dt * phaseRate)
             if barHz > 0 { f.barPhase01 = (Float(i) * dt * barHz).truncatingRemainder(dividingBy: 1) }
             var s = StemFeatures()
@@ -57,6 +71,7 @@ struct WitchlightPathTests {
             var f = FeatureVector()
             f.deltaTime = dt
             f.time = Float(index) * dt
+            f.trackElapsedS = Float(index) * dt
             f.bass = 0.3; f.mid = 0.3; f.treble = 0.2       // not silent
             f.tonalPhaseFifths = phase
             var stems = StemFeatures()
@@ -242,8 +257,13 @@ struct WitchlightPathTests {
     @Test("the head flare honours its refractory interval (WITCHLIGHT_DESIGN §5)")
     func flareHonoursRefractoryInterval() {
         let path = WitchlightPath()
-        // A continuously-firing driver: the ONLY thing limiting the rate is the refractory.
-        Self.drive(path, seconds: 10, phaseRate: 0.4, bassDev: 1.5)
+        // WL.8 — this now exercises the NO-GRID FALLBACK (`barHz: 0` leaves `barPhase01`
+        // pinned at 0, which is exactly what a reactive-mode track looks like). The §5
+        // refractory still has to hold there, and the fallback is the only route where a
+        // driver can demand a re-fire faster than the bar rate.
+        // A pulsed driver at 4 Hz asks for a flare far more often than the 0.9 s refractory
+        // permits; the ONLY thing limiting the rate is the refractory.
+        Self.drive(path, seconds: 10, phaseRate: 0.4, bassDev: 1.5, bassDevPulseHz: 4)
         let tuning = WitchlightTuning()
         let ceiling = Int(10.0 / tuning.flareRefractory) + 1
         #expect(path.flareCount <= ceiling, """
@@ -252,6 +272,36 @@ struct WitchlightPathTests {
             """)
         #expect(path.flareCount >= 5, "the flare never fired on a driver far above its trigger")
         #expect(path.flareIntensity <= tuning.flareCeiling + 1e-4, "flare amplitude exceeded its ceiling")
+    }
+
+    @Test("the flare fires on the bar downbeat, once per bar (WL.8)")
+    func flareFiresOnTheDownbeat() {
+        let path = WitchlightPath()
+        // 0.5 Hz bars = 10 bars in 20 s, and a bassDev held far ABOVE the old trigger the
+        // whole time. Under the pre-WL.8 routing that bass would have driven the flare on its
+        // own schedule; here it must be ignored entirely, because the grid is live.
+        Self.drive(path, seconds: 20, phaseRate: 0.4, bassDev: 1.5, barHz: 0.5)
+        #expect(path.flareCount >= 8 && path.flareCount <= 11, """
+            \(path.flareCount) flares over 10 bars — the head flare is supposed to fire ONCE
+            PER BAR now, not on bass excursions. Matt's ask after WL.7 was that the connection
+            be perceivable, and the measurement behind it was that the old `bassDev` trigger
+            landed 0.247 beats from the nearest beat (0.25 = pure chance) on his own session.
+            """)
+        // The pulse and the bar-line bead are the SAME event seen twice — once in time, once
+        // in space — so the flare can never OUTNUMBER the promotions; if it did, two wrap
+        // detectors would have drifted apart. They are deliberately not equal, though: the
+        // cold-start ramp suppresses the first bar or two of PULSES because the cached grid
+        // can install with the wrong phase, while the BEAD is laid regardless. The record of
+        // where the downbeat fell is always honest; only the accent waits for confidence.
+        #expect(path.flareCount <= path.promotionCount, """
+            \(path.flareCount) flares vs \(path.promotionCount) promoted beads — a flare fired
+            without a bar to fire on, so the two wrap detectors have diverged.
+            """)
+        #expect(path.promotionCount - path.flareCount <= 2, """
+            \(path.promotionCount - path.flareCount) bars passed with a bead but no pulse. One or
+            two is the cold-start ramp; more means the pulse is being suppressed by something
+            that is not warm-up, and the downbeat is silent when it should be visible.
+            """)
     }
 
     /// **Rewritten at WL.5 — this test asserted the behaviour Matt rejected.**

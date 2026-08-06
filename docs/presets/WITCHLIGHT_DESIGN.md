@@ -285,9 +285,19 @@ All deviation or relative semantics; no absolute threshold on an AGC-normalized 
 
 ### 3.5 The head flare
 
-**Fires on** a significant `bass_dev` excursion — measured p95 0.12–0.31 and max 0.30–3.92 across the captures (§2.1), so the trigger is written against the per-capture p95, never a fixed value on an AGC-normalized band (this is exactly the fault in source trait #9, §1.2).
+**WL.8 — the flare fires on the BAR DOWNBEAT.** It used to fire on a `bassDev` excursion measured against the track's running level, and that is now the no-grid fallback only.
 
-**Bounded by** the numeric budget in §5, which is designed up front rather than tuned down later. Form: a small radial spark burst at the pen head with a hot core and a cooler halo (`03` for the real-world scale, `08`/`09` for the two-part radial profile), coloured by the head bead's hue. **Not** a six-spoke lens flare — the spokes are what let the source's flare cover the frame.
+Matt after WL.7 landed the framing fix: *"Ribbon feels connected to the music, though how is not obvious."* The measurement behind the change (`WitchlightBeatAlignmentProbe`, his session `2026-08-05T21-48-13Z`, 171 BPM 4/4): the old trigger fired 110 times in 215 s at a **mean offset of 0.247 beats from the nearest grid beat — 0.25 is exactly what uniformly-random firing produces**, with 26 % landing within 10 % of a beat against a 20 % chance rate. The one element of this preset that flashed *in time* had no relationship to the rhythm. Retimed, it is 0.000 / 100 %.
+
+Everything else here rides a continuous envelope, which is why the preset reads as connected; nothing landed on the pulse, which is why *how* was invisible. The beat data was never missing — 140 of 141 downbeats already promoted a bead. But a promoted bead is a mark in SPACE: it records where the downbeat fell and then drifts off with the trail. Nothing happened at the MOMENT.
+
+**Per bar, not per beat, and that is a rate decision not an aesthetic one.** At 171 BPM a beat is 0.35 s, so a per-beat head flash is ~2.9/s — strobe territory, and §5 would cap the amplitude until each pulse landed soft. A bar is 1.40 s (0.71/s), which leaves the full `flareCeiling` usable. Matt's call, 2026-08-05.
+
+**The trail blinks with the head.** The same envelope drives a bounded boost on every *promoted* bead (radius +35 %, alpha +80 %), so the head and every bar marker brighten on the same frames — one rhythmic gesture rather than two things happening near each other. Restricted to promoted beads by D-157: they are ~1 bead in 7, so the lit-pixel share moves a few percent on the downbeat while global luminance holds. Measured with the pulse firing: peak mean luminance **0.0107** against the §5 ceiling of 0.35, max Δ/frame **0.0015** against 0.06.
+
+**One primitive per visual layer (FA #67).** The bar pulse REPLACES `bassDev` on the head rather than joining it; two accent primitives on one layer is the documented "fighting itself" bug, and the one removed was measurably noise against the rhythm. `bead_promotion` and `head_flare` now both declare `barPhase01`, which is deliberate and not a violation of that rule: they are the same event rendered once in space and once in time, which is precisely what makes them read as one gesture.
+
+**Grid trust and cold start, both self-gating.** `barPhase01` is documented as *always 0 in reactive mode (no BeatGrid installed)*, so it IS the trust signal — no grid, no wraps, no pulse, and D-154's "beat-irregular tracks excluded" falls out for free. Cold-start suppression is implemented here because the phase contract requires presets to implement it themselves: the cached grid installs with reliable BPM and meter but possibly wrong PHASE, so the pulse ramps in over `trackElapsedS` 2 → 8 s. The bead is laid regardless — the record of where the downbeat fell is always honest; only the accent waits for confidence.
 
 ### 3.6 Silence (D-037)
 

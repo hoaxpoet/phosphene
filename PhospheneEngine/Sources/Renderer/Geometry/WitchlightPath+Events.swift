@@ -12,19 +12,67 @@ import Shared
 
 extension WitchlightPath {
 
-    // MARK: - Head flare
+    // MARK: - Head flare — the thing that lands ON the beat (WL.8)
 
+    /// Fire the head flare on the BAR DOWNBEAT, not on a bass excursion.
+    ///
+    /// Matt after WL.7: *"Ribbon feels connected to the music, though how is not obvious."*
+    /// Measured on his session `2026-08-05T21-48-13Z` (`WitchlightBeatAlignmentProbe`), the
+    /// old `bassDev` trigger fired 110 times in 215 s with a **mean offset of 0.250 beats**
+    /// from the nearest beat — 0.25 is exactly the value uniformly-random firing produces,
+    /// and 19 % landed within 10 % of a beat against a 20 % chance rate. The one thing in
+    /// this preset that flashed in TIME had no relationship to the rhythm whatsoever.
+    ///
+    /// Everything else here is on a continuous envelope, which is why it reads as connected;
+    /// nothing landed on the pulse, which is why "how" was invisible. The beat data was
+    /// never missing — the grid locked at 171 BPM in 4/4, and 140 of 141 downbeats already
+    /// promoted a bead. But a promoted bead is a mark in SPACE: it records where the downbeat
+    /// happened and then drifts away with the trail. Nothing happened at the MOMENT.
+    ///
+    /// Per bar, not per beat, and that is Matt's call from the measured rates: at 171 BPM a
+    /// beat is 0.35 s, so a per-beat head flash is ~2.9/s — strobe territory, and the §5
+    /// flash budget would cap the amplitude until each pulse landed soft. A bar is 1.40 s
+    /// (0.71/s), which leaves the full `flareCeiling` usable.
+    ///
+    /// One primitive per visual layer (FA #67): this REPLACES `bassDev` on the head rather
+    /// than joining it. Two accent primitives on one layer is the documented "fighting
+    /// itself" bug, and the one being removed was measurably noise against the rhythm.
+    /// `bassDev` survives only as the no-grid fallback below.
     func advanceFlare(dt: Float, features: FeatureVector) {
         flareRefractoryRemaining = max(0, flareRefractoryRemaining - dt)
-        // Running reference rather than a fixed level: `bassDev` measures p95 0.12–0.31
-        // and max 0.30–3.92 across the four §2 captures, so a constant trigger would fire
-        // continuously on one track and never on another (the fault in source trait #9).
+
+        // No BeatGrid → `barPhase01` is pinned at 0 and never wraps, so the bar route is
+        // silently dead. Fall back to the pre-WL.8 bass-excursion trigger rather than
+        // leaving those tracks with no accent at all. One primitive at a time, never both.
+        let gridActive = gridSilentFor < 2.0
+
+        // Cold-start suppression, implemented HERE because the phase contract says presets
+        // that need it implement it themselves. The cached grid installs with reliable BPM
+        // and meter but possibly WRONG PHASE, so the first bars can fire off-beat — and an
+        // accent that is wrong exactly when the viewer is forming their first impression is
+        // worse than no accent. Ramped, not switched: a hard cut-in at 8 s is its own event.
+        //
+        // Applies ONLY to the grid route: the fallback keys off a bass excursion, which has
+        // no phase to be wrong about, so suppressing it buys nothing. Scoping it this way
+        // also fixes a live hazard — `trackElapsedS` is populated by `MIRPipeline`, and any
+        // path that leaves it at 0 (every synthetic harness did) would otherwise suppress
+        // EVERY flare forever, silently, on a route that looks correct in code.
+        let warm = gridActive ? smoothstepUnit(features.trackElapsedS, 2.0, 8.0) : 1
         let devAlpha = dt / (8.0 + dt)
         bassDevSlow += (features.bassDev - bassDevSlow) * devAlpha
-        let trigger = max(bassDevSlow * 2.5, 0.03)
-        if features.bassDev > trigger && flareRefractoryRemaining <= 0 {
+        let fires: Bool
+        if gridActive {
+            fires = barDownbeatNow
+        } else {
+            // Running reference rather than a fixed level: `bassDev` measures p95 0.12–0.31
+            // and max 0.30–3.92 across the four §2 captures, so a constant trigger would fire
+            // continuously on one track and never on another (the fault in source trait #9).
+            fires = features.bassDev > max(bassDevSlow * 2.5, 0.03)
+        }
+
+        if fires && flareRefractoryRemaining <= 0 && warm > 0.01 {
             flareRefractoryRemaining = tuning.flareRefractory
-            flareGoal = tuning.flareCeiling
+            flareGoal = tuning.flareCeiling * warm
             flareHold = 0.05
             flareCount += 1
         }
@@ -33,6 +81,13 @@ extension WitchlightPath {
         let tau = flareGoal > flareIntensity ? tuning.flareRiseTau : tuning.flareFallTau
         flareIntensity += (flareGoal - flareIntensity) * (dt / (tau + dt))
         flareIntensity = max(0, min(tuning.flareCeiling, flareIntensity))
+    }
+
+    /// Hermite ramp, 0 below `lo` and 1 above `hi`. Local rather than shared — the one
+    /// caller is right here and `Shared` has no Float smoothstep.
+    func smoothstepUnit(_ x: Float, _ lo: Float, _ hi: Float) -> Float {
+        let edge = max(0, min(1, (x - lo) / max(hi - lo, 1e-4)))
+        return edge * edge * (3 - 2 * edge)
     }
 
     // MARK: - Section contraction
@@ -49,12 +104,8 @@ extension WitchlightPath {
     // MARK: - Emission
 
     func emit(dt: Float, features: FeatureVector, speed: Float) {
-        // Bar downbeat: promote the bead emitted at that instant. Wrap detection follows
-        // `LumenPatternEngine.updateBandCounters`; `barPhase01` measured a clean sawtooth
-        // on all four §2 captures.
-        let bar = features.barPhase01
-        if previousBarPhase > 0.85 && bar < 0.15 { promoteNextBead = true }
-        previousBarPhase = bar
+        // The downbeat that sets `promoteNextBead` is detected in `advance` (WL.8) — the
+        // flare needs the same edge, and two wrap detectors would eventually disagree.
 
         // WL.2-i — emit per DISTANCE travelled, not per unit time.
         //
@@ -259,5 +310,29 @@ extension WitchlightPath {
         } else {
             turnCandidateAge = 0
         }
+    }
+
+    // MARK: - Turn confirmation
+    //
+    // WL.8: moved here from WitchlightPath.swift, by the same reasoning the file header
+    // already gives for `advanceTurnDetection` — a confirmed direction change is a discrete
+    // EVENT. It was left behind when its sibling moved at WL.4.
+
+    func confirmTurn(newSign: Float) {
+        turnSign = newSign
+        turnCandidateAge = 0
+        turnCount += 1
+        hueTurnOffset += tuning.turnHueStep
+        // Retro-apply the step to the beads laid since the apex (≤ ~9 beads) so the
+        // boundary in the ribbon coincides with the corner in the figure.
+        if let apex = turnCandidateBeadIndex, apex < beads.count {
+            for index in apex..<beads.count {
+                let rgb = Self.hsvToRGB(hue: hueForPhase(smoothedPhase), saturation: 0.80, value: 1.0)
+                beads[index].colR = rgb.x
+                beads[index].colG = rgb.y
+                beads[index].colB = rgb.z
+            }
+        }
+        turnCandidateBeadIndex = nil
     }
 }
