@@ -89,7 +89,7 @@ struct FeatureVector {
     // Float 52 was _pad52 and is now DYN.2's section-scale density leg (tau ~10 s);
     // ratio against _slow drives trunk size. ORDER IS THE CONTRACT — it must match
     // AudioFeatures+Analyzed.swift field-for-field, not just in count.
-    float spectral_surge, spectral_density_section;   // 51 DYN.1b, 52 DYN.2
+    float spectral_surge, spectral_section_ratio;   // 51 DYN.1b, 52 DYN.2
 };
 
 // MARK: - FeedbackParams

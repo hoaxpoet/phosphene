@@ -73,4 +73,37 @@ extension SpectralAnalyzer {
         defer { lock.unlock() }
         loudnessProfile = profile
     }
+
+    /// Advance the level follower and all four density legs for one frame.
+    ///
+    /// Extracted from `process(magnitudes:)` at DYN.2b — that function and its file were
+    /// both over their caps, and this block is the part that belongs in the density
+    /// companion anyway. The stored properties it touches are `internal` for exactly this
+    /// reason (same relaxation as `lock` / `loudnessProfile` above).
+    func advanceLevelAndDensity(rawDensity: Float, magnitudes: [Float], count: Int) {
+        // PRE-AGC LEVEL by Parseval — the definition lives on `LoudnessProfile` so the live
+        // path and DYN.1c's offline profile measure the same quantity on the same scale.
+        // Scale confusion here has already cost one review round.
+        let levelDB = LoudnessProfile.levelDB(magnitudes: magnitudes, count: count)
+        let alpha = LoudnessProfile.levelSmoothingAlpha
+        smoothedLevelDB = alpha * levelDB + (1 - alpha) * smoothedLevelDB
+
+        // DYN.1c: this moment's rank in the track's own loudness distribution when a
+        // profile is installed, the fixed band's smoothstep otherwise. Asymmetric follower:
+        // arrive fast, leave slowly — a symmetric one pumps between phrases.
+        let target = Self.surgeTarget(levelDB: smoothedLevelDB, profile: loudnessProfile)
+        let surgeAlpha = target > surge ? Self.surgeAttack : Self.surgeRelease
+        surge = surgeAlpha * target + (1 - surgeAlpha) * surge
+
+        // Four legs on one raw fraction: τ0.8 s (branch count), τ9.7 s (`_slow`), τ20 s
+        // (section) and τ45 s (the track's true normal). THE SECTION AND NORMAL WIDTHS MUST
+        // STAY APART — at DYN.2 they were 0.38 % apart, their ratio was a constant 1.00 and
+        // the trunk never moved for a whole session.
+        fastDensity = Self.densityFastAlpha * rawDensity + (1 - Self.densityFastAlpha) * fastDensity
+        smoothedDensity = Self.densityAlpha * rawDensity + (1 - Self.densityAlpha) * smoothedDensity
+        sectionDensity = Self.densitySectionAlpha * rawDensity
+            + (1 - Self.densitySectionAlpha) * sectionDensity
+        densityNormal = Self.densityNormalAlpha * rawDensity
+            + (1 - Self.densityNormalAlpha) * densityNormal
+    }
 }

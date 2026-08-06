@@ -207,7 +207,7 @@ public struct FeatureVector: Sendable {
     public var tonalConsonance, tonalTension, harmonicFlux: Float
     /// DYN.2 float 52 — section-scale density (τ ≈ 10 s). See DYN1_CALIBRATION §DYN.2.
     public var spectralDensity, spectralDensitySlow, spectralSurge: Float
-    public var spectralDensitySection: Float
+    public var spectralSectionRatio: Float
 
     public init(
         bass: Float = 0, mid: Float = 0, treble: Float = 0,
@@ -250,7 +250,7 @@ public struct FeatureVector: Sendable {
         self.tonalPhaseFifths = 0; self.tonalPhaseThirds = 0; self.tonalConsonance = 0
         self.tonalTension = 0; self.harmonicFlux = 0   // TONAL (D-178), set by TonalAnalyzer
         self.spectralDensity = 0; self.spectralDensitySlow = 0; self.spectralSurge = 0
-        self.spectralDensitySection = 0
+        self.spectralSectionRatio = 0
     }
 
     /// All-zero feature vector.

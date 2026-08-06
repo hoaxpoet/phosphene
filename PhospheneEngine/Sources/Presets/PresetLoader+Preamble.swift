@@ -94,7 +94,7 @@ extension PresetLoader {
             // so a preset can only SCALE it, and scaling cannot produce a step. Driven by
             // pre-AGC LEVEL, not shape — a bright quiet intro must not read as an arrival.
             // 52 was _pad52, now DYN.2's section density leg. ORDER IS THE CONTRACT.
-            float spectral_surge, spectral_density_section;
+            float spectral_surge, spectral_section_ratio;
         };
 
         struct VertexOut {
