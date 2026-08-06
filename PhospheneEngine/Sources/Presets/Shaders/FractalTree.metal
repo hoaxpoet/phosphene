@@ -112,7 +112,37 @@ void fractal_tree_object_shader(
         // continuous geometry (trunk length, thickness) reads ONLY the slow envelope, and
         // the density lift is confined to the branch COUNT, which is quantised and reads
         // as growth rather than as the trunk sliding.
-        float reach = saturate((f.arousal - 0.10f) * (1.0f / 0.58f));
+        //
+        // ── DYN.1e: THE TREE MUST SHRINK AS WELL AS GROW ─────────────────────────
+        //
+        // Matt, 2026-08-05: *"I'm not expecting the tree to grow continuously throughout
+        // playback; I'm expecting it to grow AND shrink based on the energy of the music,
+        // so I would expect the trunk and branches to shrink or recede some after the
+        // return to the verse from the chorus."*
+        //
+        // `arousal` alone cannot do that. It is a mood-classifier output with ~10 s
+        // smoothing and it SATURATES: measured on his session `2026-08-05T22-41-27Z` the
+        // arousal-derived reach climbs 0.000 → 0.826 by 30 s and then never leaves
+        // 0.91…0.99 for the rest of the track, whatever the music does. The tree grew and
+        // then simply held — exactly what he described.
+        //
+        // `spectral_surge` is the signal that breathes, now that DYN.1c/.1d rank it in the
+        // track's OWN loudness distribution: on the same capture it spans 0.005…0.964 and
+        // DIPS to 0.770 at 90 s, where arousal-reach instead rises to 0.925.
+        //
+        // THIS IS NOT FTR.3f REPEATED — it was measured before being wired. The signal that
+        // made the trunk slide was `density`, a ratio of moving averages turning 5.59 times
+        // a second. The blended reach turns **0.37/s** with 1.4× the per-second motion of
+        // today's arousal-only reach: an order of magnitude below the signal that caused
+        // the complaint, because the surge is an asymmetric follower (fast attack, slow
+        // release), not a ratio. Re-measure this pair if either leg is ever retuned.
+        //
+        // 65/35 toward the surge: Matt asked it to "recede SOME", not to collapse. The
+        // arousal term is the floor that keeps a body through the song; the surge term is
+        // what makes a verse return visibly pull the tree back. Measured at the 90 s dip:
+        // 0.933 → 0.824 blended, against 0.913 → 0.925 today.
+        float arousalReach = saturate((f.arousal - 0.10f) * (1.0f / 0.58f));
+        float reach = saturate(0.35f * arousalReach + 0.65f * saturate(f.spectral_surge));
 
         // ── THE SURGE: "SHOOT UP" ← spectral_surge (DYN.1b) ──────────────────────
         //

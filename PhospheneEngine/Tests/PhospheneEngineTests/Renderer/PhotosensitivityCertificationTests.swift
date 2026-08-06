@@ -72,7 +72,9 @@ struct PhotosensitivityCertificationTests {
         "Mitosis",        // particles (MitosisGeometry RD field — geometry-driven, dark backdrop) — MITOSIS.2c
         "Cytokinesis",    // particles (MitosisGen2Geometry explicit cells — geometry-driven, dark backdrop) — MITOSIS-G2.3
         "Cymatic Resonance",  // particles (CymaticSandGeometry vibrating-sand — geometry-driven, black backdrop) — CR.2/D-199,
-        "Witchlight"       // feedback + particles; the CPU bead ring + bounded head flare
+        "Witchlight",      // feedback + particles; the CPU bead ring + bounded head flare
+        "Meniscus"         // feedback + particles; the wave surface is CPU geometry, the
+                           // fragment pass is only the ground/sky backdrop — MEN.5 / D-214
     ]
 
     // MARK: - Gate

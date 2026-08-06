@@ -421,6 +421,169 @@ badly understated.** This is the NACRE.2b pattern the plan predicted (§2 reason
    The warp shader body returns `vec3(0,0,0)` unconditionally. §3 asserted this from a
    read; it is now verified from the artifact.
 
+### MEN.5 — CERTIFIED (2026-08-05, D-214)
+
+Matt's M7: **"Ready to certify. Looks good!!!"**
+
+First `mesh_animation` member of the Milkdrop-inspired family and the catalog's first
+projected line-surface preset. Certified count 15 → 16.
+
+**Certification work, not just a flag flip.** Meniscus had **no D-157 flash gate** — it was
+never written. Added at cert and measured on real music (a silence run cannot exercise the
+brightness routes, which is what makes a flash gate vacuous):
+
+```
+[meniscus-flash] maxΔ/frame 0.0048 (bar: 0.05) · luma range 0.068–0.170
+```
+
+**One instrument demoted to report-only, and the code now matches what was said about it.**
+The tether correlation reads 0.056 / 0.136 / 0.316 / 0.518 for the *same* configuration
+depending on window length — it describes the measurement window, not the preset, and an
+assertion on it would make the suite's verdict depend on a diagnostic knob (the defect the
+motion floor had before it was made stride-invariant). Its DIRECTION was still what revealed
+the display-only swell never reached the sim, so it is kept as an instrument and asserts
+nothing.
+
+**What eleven rounds actually taught, worth more than the preset.**
+
+| Round(s) | What I optimised | What was wrong |
+|---|---|---|
+| MEN.3b–3e | drop timing, ±ms | timing was already fine |
+| MEN.3f | stem-driven events | **stems lag 5.2 s** by design |
+| MEN.3g–4b | grid timing, density | **no continuous driver at all** |
+| MEN.4c | continuous driver | placement still scattered |
+| MEN.4d | **anchor** | — |
+
+Drop timing reached a median **6 ms** from the beat by MEN.3c and was confirmed against
+ground truth at **+4/+8/+8/+8 ms** across a track. Matt's verdict stayed "not synced" for
+seven more rounds. **The durable rule: when a preset does not read as synced, check which
+LAYER of the audio hierarchy is driving it before touching timing.** Accurate events cannot
+compensate for a missing continuous driver, and no timing accuracy survives scattered
+placement.
+
+**Still open, deliberately.** Per-note melodic response is closed on this material (MEL.1:
+31 % grid coherence vs a 20 % random baseline, 41 % drums control — distortion adds
+harmonics, not attacks). Harmony and timbre routes remain unbuilt. The preset is also still
+visually simple — one raster sheet on a plain backdrop — which Matt flagged early and which
+no increment here addressed.
+
+### MEN.4d — the beat had no anchor to pulse in (2026-08-05)
+
+Matt, eleventh round: **"Drops are musical but it's not obvious how they are connected.
+After the verse starts, the sync feels less tight."**
+
+**Timing was measured correct throughout that session**, so this is not a sync bug in the
+usual sense. Ground truth against Beat This! on `2026-08-05T22-27-38Z` (Hummer):
+
+```
+20 s +4 ms ✓   40 s +8 ms ✓   60 s +8 ms ✓   80 s +8 ms ✓   (all viable, ≤30 ms)
+```
+
+The drops were landing within 8 ms of the true beat for the whole track. **The problem was
+WHERE they landed, not when.**
+
+**Drums scattered ±0.34 — 68 % of the sheet's width — so the beat drop appeared somewhere
+different every single beat.** Visual sync needs a stable anchor: something a viewer can
+watch pulse *in place*. Impacts scattered across a surface read as noise however perfectly
+they are timed, which is exactly "musical but not obvious how they are connected".
+
+**And it explains the verse observation precisely.** The sparse intro fires only the
+downbeat (±0.13, fairly consistent). When the verse arrives, MEN.4a's arc response brings
+in drums ±0.34, vocals ±0.20 and `other` ±0.42 — so the scatter TRIPLES exactly when the
+band does, and the read gets worse as the music gets fuller.
+
+**This reverses §7 R5 deliberately.** R5 added jitter because "orderly may read as
+mechanical". Eleven rounds say the opposite risk is the real one: scatter destroyed the
+connection, and no amount of timing accuracy could compensate. The beat-locked regions now
+strike near-fixed points (drums ±0.05, bass ±0.05, vocals ±0.06). `other` keeps its wide
+±0.42 scatter — it is texture, fires once a bar, and is what stops the layout reading as
+three fixed dots.
+
+**Unverified:** whether a stable anchor actually makes the sync legible is a perceptual
+claim no gate here can settle. That is Matt's call.
+
+### MEN.4c — the surface had no continuous driver at all (2026-08-05)
+
+Matt, tenth round, on the MEN.4b cut: **"feels less tethered to the music now, just fewer
+and more random drops."**
+
+**Cutting density made it WORSE, which is what finally ruled density out** — and pointed at
+something that had been true since MEN.2a and that I had never checked.
+
+**During music the surface had NO continuous audio-driven motion.** The swell — its only
+continuous element — was gated off as volume rose (MEN.3d, `swellGate = 1 − volume × 6`),
+so the sheet was 100 % discrete drop events. That inverts CLAUDE.md's single most important
+design rule:
+
+> *"visuals driven primarily by continuous energy feel locked to the music; visuals driven
+> primarily by raw live beat detections feel out of sync. Continuous energy is the DEFAULT
+> PRIMARY DRIVER."*
+
+**Ten rounds went into the SECONDARY driver** — drop timing, now a median 6 ms from the
+beat — **while the primary one was switched off.** "Not tethered" is the exact phrase that
+rule predicts.
+
+**Two fixes, both found by looking rather than by a metric.**
+
+1. **The excitation goes INTO the sim, not onto the display.** The MEN.2a swell was added
+   at draw time and never entered the field, so it could neither move the simulation nor
+   INTERFERE with the drops — §1's *"ripples that spread from each impact and interfere
+   with one another"* was never actually happening. Measured with a display-only swell, the
+   surface's own RMS correlated **r=+0.136** with the music.
+2. **A `tanh` soft ceiling.** The first render showed spears tearing off the sheet:
+   continuous forcing is *resonant* by nature — the same spatial pattern added every frame
+   pumps fixed antinodes without bound. The ceiling bends only the extremes, leaving ripple
+   shape untouched. Peak **4.196 → 1.242**.
+
+**A metric I stopped trusting mid-calibration.** The tether correlation reads 0.136 at one
+window length and 0.316 at another *for the same configuration*. It is a diagnostic, not
+something to tune against — so the drive was chosen from amplitude evidence and the render,
+not by pushing a number over a bar I had invented.
+
+`MeniscusSurface.swift` was split at this increment (`+Simulation`) purely for size; the
+doc-integrity gate caught the missing Module Map row immediately.
+
+### MEN.4b — fewer drops, each one meaning something (2026-08-05)
+
+Matt, ninth round, on the MEN.4a build: **"Drops appear to follow the drums, not exactly
+but closely. feels busy / arbitrary."** He added that he did not understand the
+mechanical-vs-arbitrary distinction I had asked him to make — **that question was badly
+framed and the fault is mine**, asking him to translate my uncertainty into a diagnosis in
+my own vocabulary. What he volunteered instead was more useful than an answer to it.
+
+**"Follows the drums" is the sync reading for the first time in nine rounds.** That is the
+part to protect, and it is what the grid-timed beat drop delivers.
+
+**"Busy" was arithmetic, not taste.** Per bar at full density the MEN.4a pattern placed:
+
+```
+drums 4 · bass 1 · vocals 2 · other 8      = 15 drops/bar
+```
+
+**The offbeat scatter alone was 53 % of every drop** — and it is the widest random spread
+on the sheet (±0.42), landing *between* the beats. More than half of what a viewer saw
+corresponded to nothing audible. That is "arbitrary", precisely.
+
+He also said **"too much activity" in round one**, and eight rounds of adding layers
+followed. Hearing the same complaint twice and continuing to add is the failure worth
+recording here.
+
+**Cut to 7 drops/bar.** `other` moves from every offbeat (8/bar) to once per bar, and the
+backbeat answer is held back until the arrangement is genuinely full (0.5 → 0.65).
+
+```
+density   4.7–5.2  →  2.7–3.7 impacts/s
+`other`   54 drops →  11 drops
+sync      unchanged: median 6 ms from the beat, 99–100 % within 60 ms
+arc       1.52x / 2.69x sparse-to-full (MEN.4a's response survives the cut)
+```
+
+**One gate narrowed, deliberately.** `everyStemFires` required all four regions on every
+track. That encoded MEN.3's retired instrument-identity claim and it now *contradicts*
+MEN.4a: the `other` texture is gated to the top of the arc, so on sparse material
+(`so_what`) it should stay silent — a track that never fills out must not get the busiest
+layer. The three beat-locked regions remain absolute; `other` is reported, not required.
+
 ### MEN.4a — the visual follows the music's ARC, not just its beat (2026-08-05)
 
 Matt, after eight rounds of beat-timing work: **"Music is more than just beat, remember."**

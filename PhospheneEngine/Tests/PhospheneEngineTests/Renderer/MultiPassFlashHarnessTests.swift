@@ -129,6 +129,25 @@ struct MultiPassFlashHarnessTests {
                         luma: try flashLuma("Witchlight", frames: 1800, harmonicMotion: true))
     }
 
+    @Test("Meniscus is flash-safe (continuous band drive + a drop on every beat, real headless render)")
+    func meniscusIsFlashSafe() throws {
+        // Meniscus reaches this harness because the single-pass gate correctly REFUSED it:
+        // its fragment pass draws only the ground and sky, so the FeatureVector harness
+        // renders it static and cannot flash-gate it. The surface itself is CPU geometry
+        // (`MeniscusSurface`), which is what the multi-pass path drives.
+        //
+        // Two routes make this measurement load-bearing rather than ceremonial, and BOTH
+        // arrived late in development: MEN.4c injects a continuous band-driven excitation
+        // into the wave field, so whole-sheet brightness now rises with the music, and
+        // MEN.3g puts a drop on EVERY grid beat. A worst-case beat train is precisely the
+        // input that stacks those two.
+        //
+        // Whole-frame mean is a fair proxy here — unlike Witchlight's small bright subject,
+        // the sheet occupies a large share of the frame — so the settled window is honest
+        // and no tiling is needed.
+        assertFlashSafe(name: "Meniscus", luma: try flashLuma("Meniscus", settle: 120))
+    }
+
     // MARK: - Flash-specific drive + reducer
 
     /// Render `name` through the shared harness on the synthetic worst-case beat+stem train,
