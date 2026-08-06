@@ -140,7 +140,12 @@ struct WitchlightFlashBudgetTests {
         f.deltaTime = 1 / fps
         f.aspectRatio = Float(width) / Float(height)
         f.bass = 0.55 + 0.15 * env; f.mid = 0.52; f.treble = 0.5
-        f.bassDev = env * 0.85                     // the flare's driver, at the measured p99
+        f.bassDev = env * 0.85                     // WL.8: no longer the flare's driver; the
+                                                   // no-grid fallback's, at the measured p99
+        // WL.8 — WITHOUT this the cold-start ramp holds the flare at zero for the whole run
+        // and §5 measures a worst case that contains no pulse at all. This is a warm,
+        // steady-state drive by construction; the whole point is the worst case.
+        f.trackElapsedS = t
         f.bassRel = 0.1
         f.spectralCentroid = 0.12 + 0.08 * env
         f.valence = 0.2

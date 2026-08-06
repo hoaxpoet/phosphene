@@ -356,9 +356,6 @@ Cut the fixed per-hit-pixel `sceneSDF` overhead in `PresetLoader+Preamble.swift`
 Ported the Rrrola/Fragmentarium Mandelbox distance estimator verbatim (FA #73) into a new `ray_march` preset, with a self-similar scale-descent that wraps seamlessly (a Mandelbox is bounded, so descent is `zoom = |Scale|^fract(phase)`, not a translation). **Gate initially FAILED at 8.06 ms** (§A8 stop-and-report); the DE port was verified correct against the curated `fractal_fly_by` references (fan vault, muqarnas) BEFORE any further work — the discipline the three prior PG-slate M7 deaths (KS / Truchet / Kleinian) each skipped. RMPERF.1 unblocked it. **Both heroes then wired:** descent SPEED = the music's energy via `accumulatedAudioTime` (monotonic energy-time; near-stationary in silence, D-037; the animation time base, so removed from `audio_routes` after it read constant on the offline fixtures — QG.1.1 boundary, VL precedent); fold-open = `f.bass_att_rel` widening the box-fold LIMIT (chamber unfolds on the bass swell, no scale-constant recompute). Camera static (`cameraDollySpeed` 0) → no collision with the preset-agnostic camera dolly (the FA #67 worry was moot — FD's camera doesn't dolly). **Iteration cap LOCKED at 8** (≈ cap 10 visually, cap 6 collapses). **Measured cap 8 p50 5.57 / p95 ~6.2 ms @1080p M2 Pro (3 clean runs; a flaky first run's 7.15 p95 did not reproduce).** **Motion-gated: 0 jitter spikes, 0 frozen frames over a 90-frame descent+swell sequence** — the identity trait (endless fall into self-elaborating recursive architecture) reads; the fold-open reads but subtly. Golden added; count 26 → 27. **NOT the look yet:** monochrome-gold orbit-trap, dim — jewel HDR palette / materials / god-rays / fog = FD.2; secondary audio + structural-boundary tuning + cert = FD.3. Stays a not-certified maquette pending Matt's live M7.
 
 ### Increment KFRETIRE.1 — Kleinian Froth retired ✅ (2026-07-22)
-
-Matt abandoned Kleinian Froth after its first live M7 (D-200): "complete garbage… I hate everything I see," "the entire LOOK is a failure," "where are the bubbles within bubbles?" It **never permanently landed on `main`** — built on branch `claude/kleinian-froth-design-04598d`, fast-forwarded to `main` for one live test, then reset back off; production count stays 26 and there is nothing to remove from `main`. Two failures: (1) the sustained-bass froth-inflation morph was invisible because `f.bass_att`→packing was calibrated against synthetic [0,1] fixtures while real `bass_att` maxes ~0.33 (p99 0.30) — the packing only crept s≈1.05–1.13; (2) IQ's Apollonian DE renders a knobby fractal limit-set, not round nested translucent bubbles — "bubbles within bubbles" needs a sphere-packing SDF **and** multi-hit transparency (see-through), which the single-hit deferred G-buffer can't do (a Gate-2/3 miss). ★ Deep root cause: the build was validated against the prompt's mechanism ("port IQ Apollonian") + green gates, never against the curated soap-foam reference — homework graded with the wrong answer key. **Third PG-slate preset to die at M7 on the same reference-vs-mechanism miss** (after Kinetic Sculpture / KSRETIRE.1, Truchet Loom / TLRETIRE.1) — worth re-examining the slate authoring process, not just each preset. Full record + lessons: D-200. Code recoverable from the branch.
-
 ### Increment KSRETIRE.1 — Kinetic Sculpture retired ✅ (2026-07-20)
 ### Increment KSRB.1 — Kinetic Sculpture geometry rebuild ✅ (2026-07-20) — SUPERSEDED
 ### Phase RMENV — Ray-march render environment ✅ capability-complete (RMENV.1–.4 ✅ 2026-07-20; awaits a future consumer)
@@ -1980,6 +1977,40 @@ This is the opposite of the three WL.6 framing attempts, which all tried to fit 
 **Done when:** ✅ head-off-frame measured before changing anything · ✅ scale fit and camera aim separated · ✅ `viewScale` provably unchanged · ✅ distinctness and flash gates green · ✅ new gate holds the framing · ⏳ **Matt's live M7 — certification rides on "feels connected".**
 
 **Verify:** `swift test --package-path PhospheneEngine --filter Witchlight`
+
+---
+
+### Increment WL.8 — Witchlight: something that lands ON the beat 🔨 **CODE-COMPLETE 2026-08-05, pending live M7**
+
+**Why.** WL.7's framing fix worked — Matt, first time in seven rounds: *"Ribbon feels connected to the music, though how is not obvious."* The remaining ask is legibility of the connection, and he proposed two mechanisms: speed tied to tempo, and drums/downbeats illuminating the head and other nodules.
+
+**Measured on his session `2026-08-05T21-48-13Z`** (215 s, grid locked 171.256 BPM 4/4) before building anything:
+
+- **Nothing in the preset landed on the beat.** The head flare — the only element that fires *in time* — sat at a **mean offset of 0.247 beats** from the nearest grid beat, where 0.25 is exactly what uniformly-random firing produces; 26 % within 10 % of a beat against a 20 % chance rate.
+- **The beat data was never missing:** 141 downbeats, **140 promoted beads**. That route is perfect. But a promoted bead is a mark in SPACE — it records where the downbeat fell and drifts away. Nothing happened at the MOMENT.
+- **Tempo cannot be the within-track driver.** `grid_bpm` is a single constant, 171.256, for all 215 s. Tying speed to it produces a difference perceivable only by A/B-ing two songs.
+- **But the speed route was genuinely weak on real material:** realised swing **1.42×** on his track, against 2.55× on the 21 s fixtures and a gate floor of 1.45 — passing on material short enough to be dominated by the warm-up ramp.
+
+**A measurement correction, recorded because it nearly shipped as a false claim.** The first cut of the probe scored flares against `beatPhase01`, and that signal is broken on this material: it wrapped **24 times in 215 s where 171 BPM demands 614** — the live BeatPredictor is effectively stalled. Any firing pattern scores near-chance against a stalled reference, so the metric could not have told a fix from a no-op. Re-derived against the cached grid, the original conclusion happened to survive intact (0.247 vs 0.250) — but it was luck, not method. Beat times are now synthesised from `grid_bpm` + bar wraps.
+
+**What changed.**
+1. **The head flare fires on the bar downbeat.** `bassDev` survives only as the no-grid fallback. Per bar, not per beat: at 171 BPM a beat is 0.35 s (~2.9 flashes/s, strobe territory and §5 would cap the amplitude); a bar is 1.40 s (0.71/s) and leaves the full ceiling usable. **Matt's call from the rate table.**
+2. **The trail blinks with the head** — the same envelope boosts every *promoted* bead (radius +35 %, alpha +80 %), so head and bar markers brighten on the same frames. Matt's "head and any other nodules", read literally. Bounded to ~1 bead in 7 per D-157.
+3. **Speed normalisation divisor 2 → 1.5.** NOT more `speedModDepth` — WL.2-i stopped at 0.45 for a measured reason. The normaliser was the limit.
+
+**Measured after.** Flare-vs-grid **0.000 offset / 100 % on-beat**, 141 flares for 141 downbeats. Speed swing **1.42× → 1.57×** on his session, saturating only 5.5 % of frames (1.0 would give 1.74× but saturates 13.9 %, and bang-bang is not expressive). Flash budget with the pulse firing: peak mean luminance **0.0107** (ceiling 0.35), max Δ/frame **0.0015** (0.06), flare extent 0.006 % / 0.012 % (caps 3 % / 12 %). Distinctness **17 cores** (floor 8), ribbon share **0.437 %** (floor 0.40).
+
+**Where the speed lever actually stops, measured not assumed.** Divisor 1.0 was tried first and **failed the WL.2-j distinctness gate: 20 → 4 distinct beads**, ribbon share 0.388 % below the 0.40 floor. A wider swing grows the trail, the auto-fit zooms out, and the beads stop reading — the same tension that killed the WL.6 framing attempts, reached from the other side. 1.5 clears both gates with headroom. **The speed route is capped by bead legibility, not by the driver.**
+
+**Four harness gaps this exposed, all the same class.** The cold-start ramp reads `trackElapsedS`, and every harness that left it at 0 silently suppressed *every* flare while the route looked correct in code — including **the §5 flash harness, which was therefore measuring a worst case containing no pulse at all**. Fixed in `WitchlightFixtureDrive`, `WitchlightPathTests.drive`, and `WitchlightFlashBudgetTests`. This is the fourth time a missing harness column has made a working route read as dead.
+
+**Also fixed:** `flareHonoursRefractoryInterval` drove a *constant* `bassDev`, which overtakes its own 8 s running threshold after ~4 s — the refractory was never the limiter the test claimed to measure. Now a pulsed driver, and it exercises the no-grid fallback explicitly.
+
+**Known limitation, reported not hidden.** `penSpeedSwing` conflates the arousal route with the WL.5 energy gate (realised speed includes both), so on short fixtures it now reads 17.9. That is the metric's definition, not a regression — the real-material number is 1.57×. Worth a cleaner per-route metric later.
+
+**Done when:** ✅ measured before building · ✅ flare lands on the grid · ✅ trail blinks in unison · ✅ speed deepened to the legibility cap · ✅ flash budget re-verified *with the pulse firing* · ✅ all suites green · ⏳ **Matt's live M7.**
+
+**Verify:** `WITCHLIGHT_SESSION=<dir> swift test --package-path PhospheneEngine --filter WitchlightBeatAlignment`
 
 ---
 

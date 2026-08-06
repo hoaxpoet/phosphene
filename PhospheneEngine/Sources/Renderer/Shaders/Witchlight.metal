@@ -59,6 +59,7 @@ struct WLConfig {
     float flareIntensity;   // 0…1, already bounded by the §5 budget
     float lineAlpha;
     float energyBreath;    // WL.4 — per-frame energy, 0…1 centred 0.5 (WitchlightStroke)
+    float barPulse;        // WL.8 — the head-flare envelope, 0…1; the bar-line beads blink with it
 };
 
 // MARK: - Shared projection
@@ -165,6 +166,21 @@ vertex WLBeadOut witchlight_bead_vertex(
     // ordinary bead — the ribbon carries a visible chain of bar markers (§3.2).
     radius *= mix(1.0, 2.2, b.promoted);
     alpha  *= mix(1.0, 1.6, b.promoted);
+    // WL.8 — and on the downbeat they BLINK, in unison with the head.
+    //
+    // Matt asked for the head plus "any other nodules desired". The bar-line beads are
+    // already the right nodules — they mark exactly the event being pulsed — so this reuses
+    // the head-flare envelope rather than inventing a second one: the head and every bar
+    // marker in the trail brighten on the same frames, which is what makes it read as one
+    // rhythmic gesture instead of two things happening near each other.
+    //
+    // Restricted to promoted beads BY DESIGN (D-157: bounded spatial footprint per beat,
+    // steady global luminance). They are ~1 bead in 7, so the lit-pixel share moves a few
+    // percent on the downbeat while the ribbon's overall level holds — a whole-trail flash
+    // at 0.71/s would be a different, and much less safe, object.
+    float pulse = cfg.barPulse * b.promoted;
+    radius *= 1.0 + 0.35 * pulse;
+    alpha  *= 1.0 + 0.80 * pulse;
     // WL.4 — the ribbon BREATHES with the music, every frame.
     //
     // Applied to the whole stroke rather than per-bead-age on purpose: a listener reads
