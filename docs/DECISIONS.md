@@ -122,6 +122,7 @@ Each decision records the what, why, and any relevant context that would prevent
 | D-211 | Accepted | **Reference/diagnostic images leave git; the LFS purge is a separate, explicit step** (LFS.2, Matt 2026-07-31). Raster images under `docs/VISUAL_REFERENCES/` + `docs/diagnostics/` are gitignored and **untracked** — dev-only material no build target reads. Supersedes an earlier attempt that added the `.gitignore` rules but never ran `git rm --cached`: because gitignore does not affect already-tracked paths, dropping the LFS filter converted 189 pointers into real blobs and would have added **~100 MB to git history** (25.7 KB → 100.6 MB measured) while leaving the LFS objects — and the bill — in place. **Untracking stops NEW objects; it does not reclaim the old ones.** GitHub does not GC unreferenced LFS objects, so reclaiming storage needs a history rewrite (`Scripts/reclaim-lfs-visual-refs.sh`) followed by a GitHub Support purge request — deliberately NOT done here. Text records in those dirs stay in git. Worktree consequence handled: `Scripts/link_fixtures.sh` now symlinks the images too, since the preset workflow is "read the README and LOOK at the images" and a worktree without them degrades silently rather than failing. §Rationale below. |
 | D-213 | Accepted | **Delete the zero-consumer dormant capabilities — RMENV.2/.3 gallery environment + MFX.1 temporal upscaler** (RECON, Matt 2026-08-03). Both were kept as "reusable capability, no consumer yet" (D-187, D-201). The production audit measured the consumer count as **zero and structurally so**: no preset sets `"environment"` in any of the 28 sidecars, so `environmentType` is always 0 and `ibl_gallery_env()` is unreachable — and **KSRB.2, the production wiring that would let a preset opt in, was never built**, so there is no path by which a preset could use it today. MFX.1's motivating preset (Fractal Fly-By) was retired at D-201. Applies the **D-203** precedent — the stage light rig was fully decommissioned once its consumer was stopped: *good work is not a reason to keep code with no consumer.* **RMENV.1 multi-light (`scene_lights`) is explicitly RETAINED** — three live consumers (Ferrofluid Ocean, Lumen Mosaic, Volumetric Lithograph). Cost is optionality only; nothing executes these paths today, and both are recoverable from git. **Decided, not executed** — the deletion touches the four-way 240-byte `SceneUniforms` mirror and the GPU contract, so it needs its own increment. Supersedes the retention halves of D-187 and D-201. §Rationale below. |
 | D-212 | Accepted | **Fractal Tree keeps the low-fidelity look; V.10 painterly uplift cancelled, its reference set transfers to Goldengrove** (FTR.1, Matt 2026-08-03). Matt: *"I like the low-fidelity look, but ... it will need to react to the music more accurately and more strongly."* Reclassified `rubric_profile: lightweight` (Plasma / Waveform / Nebula / Spectral Cartograph precedent) because the `full` rubric's M3 >= 3-distinct-materials gate is **unreachable by construction** for a flat-HSV mesh preset with no lighting and no G-buffer -- certification was blocked by classification, not by quality. **Measured on session `2026-08-03T15-05-43Z` (Hummer, 2695 frames):** of five declared audio routes, three are dead on real music -- canopy spread <- `mid_att` delivers **0.42 deg** of swing against a promised 7 deg, tip shimmer <- `treb_att` delivers **+0.002** brightness against a promised +0.12, and leaf hue <- `spectral_centroid` delivers **4.1 deg** while the `fract(t * 0.006)` wall-clock term in the same line sweeps **76 deg** (clock out-drives music **18.6 : 1**). The three live layers all read the SAME primitive, `bass_att` -- an FA #67 collision -- and `bass_att` rises **+0.024** on a 100 ms transient where raw `bass` rises **+0.141** (**5.8x** less responsive), which is the "not sensitive enough". The per-branch activation effect Matt likes is an **artifact**: there is no per-branch state, only a global `branch_count` truncating a breadth-first index list, changing on 12.1 % of frames. FTR.2-FTR.5 rebuild the routing and build that activation deliberately (Option A, stateless beat-grid). See Rationale below. |
+| D-214 | Accepted | **Meniscus CERTIFIED — and the sync came from the audio hierarchy, not from timing accuracy** (MEN.5, Matt's M7 2026-08-05: *"Ready to certify. Looks good!!!"*). First `mesh_animation` member of the Milkdrop-inspired family and the catalog's first projected line-surface preset; count 26 -> 16 certified. **Eleven live rounds, and the first ten optimised the wrong driver.** Drop timing reached a median **6 ms** from the beat and was verified against Beat This! ground truth at +4/+8/+8/+8 ms across a track — and Matt's verdict stayed "not synced" throughout. Three causes, each measured and each invisible to the gates that existed: **(1)** the live stem path lags **5.2 s** (`2026-08-05T13-17-18Z`: drums +5.25 s r=0.550, vs r=0.363 at lag 0) and is documented in-tree as section-scale by design, so MEN.3's per-stem event routing could never work live — offline fixtures hid it by feeding stems in sync; **(2)** the surface had **no continuous audio-driven motion at all** during music (the swell was gated off as volume rose), inverting CLAUDE.md's central rule that continuous energy is the PRIMARY driver — Matt's "feels less tethered" is that rule's predicted failure, and cutting drop density made it WORSE, which is what ruled density out; **(3)** the beat drop scattered **±0.34 (68 % of the sheet)**, so it appeared somewhere different every beat — **visual sync needs an anchor to pulse in place**, and scattered impacts read as noise however perfectly timed. **Two design claims retired on evidence:** §1's "a listener can point at a ripple and say that was the snare" (§7 R3 flagged it ungrounded; eleven viewings never produced it — regions are now spatial variety keyed to bar position), and **§7 R5's jitter**, which was added because "orderly may read as mechanical" and turned out to be what destroyed the connection. **Per-note melodic routing is closed, not deferred** — MEL.1 measured guitar note events at 31 % grid coherence against a 20 % random baseline with a 41 % drums control; distortion adds harmonics rather than amplitude, so notes inside a chord wall have no attack. D-157 flash gate added at cert and measured maxΔ/frame **0.0048** against a 0.05 bar. §Rationale below. |
 | D-198 | Accepted | Cymatic Resonance CR.1.2 — second-M7 fixes (Matt M7 2026-07-22 "Cherub Rock", clean chain). **(1) Framing:** the oblique tilt left a receding-background triangle at the top; switched to a **top-down orthographic cover-fit** — the square plate fills the 16:9 frame edge-to-edge, no background (Matt: "camera directly above would be better"). **(2) "Only 3 patterns, boring":** widened the ladder traversal (centroid-dev gain 8→12) AND replaced the uniform `(m,m+2)` ladder with a **varied same-parity** set (alternating `m=n` concentric grids with `m<n` cross-hatch) so adjacent rungs are visibly distinct figures. **(3) "Colour doesn't change":** brought CR.3's hue routing forward — a global jewel-palette hue offset driven by the **smoothed harmonic phase** (`tonal_phase_fifths`, D-178; range 6.25 on the track — fully alive), circular-smoothed via sin/cos. Snap depth 0.9→0.65 (top-down, lowest modes read empty). Golden regenerated. Pending Matt's next live M7. §Rationale below. |
 | D-197 | Accepted | Cymatic Resonance CR.1.1 — live-M7 defect fixes (Matt M7 2026-07-22, "Hummer"). **(1) Hero "held its pattern":** real `spectral_centroid` occupies ~0.08–0.18 on music (verified on the session's healthy portion: p5 0.085 / p95 0.162), so the old `centroid × (N-1)` mapping moved the ladder < 1 of 11 rungs (the Nimbus/BUG-027 AGC-calibration trap). Fixed with a **BLEND** (Matt's call): mostly a per-track centroid DEVIATION (guarantees visible travel on any track) + a gentle absolute tilt (brighter ⇒ finer). Regression-locked: the real narrow band now traverses 3.75 rungs (was < 1). **(2) Palette read white:** emissive 2.6 → 1.5 (ridges sit near the bloom threshold so colour survives ACES), white key → warm-gold, hue sweep widened to sapphire→magenta→gold. **(3) White space:** plate zoomed (camDist 2.75→1.85, plateHalf 1.0→1.18, elev 52→48) to fill the 16:9 canvas. **(4) ASH `.critical` nudge gap (folded in):** `PlaybackErrorBridge` fired the low-levels nudge only on `peakBand == .low`; `.critical` (worse) fired nothing, so the degraded-chain M7 ran unflagged — now both bands nudge. Golden regenerated. Pending a clean-chain live re-M7. §Rationale below. |
 | D-196 | Accepted | Cymatic Resonance CR.1 maquette landed (count 25 → 26; `certified:false`). First `direct`+`post_process` preset — a resonant-plate Chladni nodal figure selected live by spectral centroid (mode-complexity ladder), `bassDev` snap-to-simple, derived-normal relief + GGX + jewel emissive on deep black, strong oblique tilt, through ACES + bloom. **Engine:** slot-6 per-preset state now reaches the `direct`+`post_process` scene pass (`PostProcessChain.runScenePass` threads `presetFragmentBuffer` at fragment index 6 — zero-risk, that path had no production consumer before CR). **★ Concept-gate correction #5 (found at the maquette):** the plus basis forces an anti-diagonal nodal line for OPPOSITE-parity (m,n), so the design's adjacent-pair ladder carried the forbidden diagonal (incl. the fundamental); fixed by the SAME-parity `(m,m+2)` family `(1,3)…(11,13)`. Perf 1080p full-chain p95 ≈ 1–2.6 ms. Pending Matt's live M7. §Rationale below. |
@@ -3310,6 +3311,63 @@ Zero files left the index. Merging it would have written ~100 MB permanently int
 **References.** PUB.1 / PUB.2 (weights cutover), CLEAN.5.8 (the LFS bandwidth blow-out that started this), `Scripts/reclaim-lfs-visual-refs.sh`, `Scripts/link_fixtures.sh`, `docs/PUBLISHING.md` §1.
 
 ---
+
+## D-214: Meniscus CERTIFIED — the sync came from the audio hierarchy, not from timing accuracy (MEN.5, Matt 2026-08-05)
+
+Matt's M7: *"Ready to certify. Looks good!!!"*
+
+**The headline finding, and it cost eleven live rounds to reach: drop timing was never the
+problem.** By MEN.3c the visible ripple peak landed a median **6 ms** from the beat, and
+ground truth confirmed the grid itself at **+4 / +8 / +8 / +8 ms** across a whole track
+(Beat This! vs `2026-08-05T22-27-38Z`). Matt's verdict stayed "not synced" through all of
+it. Ten rounds of ±millisecond work moved a number that was already correct.
+
+**Three causes, each measured, none visible to the gates that existed at the time.**
+
+1. **The live stem path lags ~5.2 s.** Cross-correlated on `2026-08-05T13-17-18Z`: drums
+   +5.25 s (r=0.550), bass +5.25, vocals +5.08, other +5.25, against r=0.363 at lag 0.
+   `VisualizerEngine+Audio.swift` documents this as intended — stem features answer *what
+   kind of passage is this*, a section-scale question. MEN.3 routed per-stem **events**
+   through them, so ~40 % of drops fired five seconds late and every drop's force described
+   music that had already gone. **Offline fixtures hid it completely** by feeding stems in
+   sync with the audio; the latency exists only on the live path.
+2. **The surface had no continuous audio-driven motion during music.** The swell — its only
+   continuous element — was gated off as volume rose, leaving 100 % discrete drop events.
+   That inverts CLAUDE.md's central rule (*continuous energy is the DEFAULT PRIMARY
+   DRIVER*), and Matt's "feels less tethered to the music" is precisely that rule's
+   predicted failure. **Cutting drop density made it worse**, which is what ruled density
+   out and forced the right diagnosis.
+3. **The beat drop scattered ±0.34 — 68 % of the sheet's width** — so it appeared somewhere
+   different every beat. **Visual sync needs an anchor to pulse in place**; scattered
+   impacts read as noise however perfectly they are timed. This also explained "after the
+   verse starts the sync feels less tight": the arc response brings in three more scattering
+   regions exactly when the band arrives.
+
+**Two of the design's own claims were retired on evidence rather than defended.**
+
+- **§1's "a listener can point at a ripple and say *that was the snare*."** §7 R3 had already
+  flagged stem-region legibility as ungrounded; eleven live viewings never produced it.
+  Regions are now spatial variety keyed to bar position, not instrument identity.
+- **§7 R5's jitter**, added because "orderly may read as mechanical". It was the thing
+  destroying the connection. Reversing it is what made the beat legible.
+
+**Per-note melodic routing is closed, not deferred.** MEL.1 measured guitar note events at
+31 % grid coherence against a ~20 % random baseline, with a 41 % drums control proving the
+detector works. Distortion adds harmonics rather than amplitude, so a note inside a
+sustained chord wall has no detectable attack. This is a property of the material.
+
+**Certification obligations.** D-157 flash gate added at cert (it had never existed for this
+preset) and measured **maxΔ/frame 0.0048** against the 0.05 bar, luma range 0.068–0.170.
+Catalog count 26, certified 15 → 16.
+
+**One instrument was demoted to report-only.** The "tether" correlation reads 0.056 / 0.136 /
+0.316 / 0.518 for the *same configuration* depending on window length — it describes the
+window, not the preset. Its DIRECTION was still what revealed that the display-only swell
+never reached the sim, so it is kept as a diagnostic and asserts nothing.
+
+**The durable lesson, beyond this preset: when a preset does not read as synced, check which
+LAYER of the audio hierarchy is driving it before touching timing.** Ten rounds of accurate
+event timing could not compensate for a missing continuous driver.
 
 ## D-213: Delete the zero-consumer dormant capabilities — RMENV.2/.3 gallery environment and MFX.1 temporal upscaler (RECON, Matt 2026-08-03)
 

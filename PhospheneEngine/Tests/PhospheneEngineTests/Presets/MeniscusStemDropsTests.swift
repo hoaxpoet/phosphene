@@ -67,18 +67,29 @@ struct MeniscusStemDropsTests {
 
     // MARK: - Every instrument reaches the surface
 
-    @Test("all four stems place drops — no dead region",
+    /// NARROWED AT MEN.4b, and the narrowing is a design change rather than a concession.
+    ///
+    /// This used to require all four regions on every track. That encoded MEN.3's
+    /// instrument-identity claim — retired at MEN.3g — and it now contradicts MEN.4a: the
+    /// `other` texture is deliberately gated to the top of the musical arc, so on sparse
+    /// material (`so_what`, quiet jazz) it SHOULD stay silent. A track that never fills out
+    /// should not get the busiest layer.
+    ///
+    /// The three beat-locked regions are still absolute: if any of those goes quiet across
+    /// a whole track the preset has lost the beat, which is a real dead route.
+    @Test("the beat-locked regions never go dead",
           arguments: ["so_what", "there_there", "love_rehab"])
     func everyStemFires(track: String) throws {
         let result = try Self.run(track)
-        for region in 0..<4 {
+        for region in 0..<3 {
             #expect(result.perRegion[region] > 0, """
                 \(track): the \(Self.names[region]) region never fired across \
-                \(String(format: "%.0f", result.seconds)) s of real music. The musical role \
-                names all four instruments; a silent region is a dead route, and the \
-                listener loses that instrument from the surface entirely.
+                \(String(format: "%.0f", result.seconds)) s of real music. This region is \
+                beat-locked, so silence here means the preset has lost the beat entirely.
                 """)
         }
+        // `other` is arc-gated: reported, not required.
+        print("[meniscus-men3] \(track): arc-gated `other` placed \(result.perRegion[3]) drops")
     }
 
     // MARK: - The divergence claim itself
