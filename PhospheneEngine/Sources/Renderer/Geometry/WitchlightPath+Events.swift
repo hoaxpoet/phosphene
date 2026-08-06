@@ -277,8 +277,30 @@ extension WitchlightPath {
             let dx = bead.posX - centroidX, dy = bead.posY - centroidY
             sumSquares += dx * dx + dy * dy
         }
+        // WL.9b — the fit tracks the trail's GROWTH while it is still filling.
+        //
+        // Matt, session `2026-08-06T17-27-21Z`: "the camera cannot keep up with the head of
+        // the ribbon". Measured per 10 s window, the head-off-frame misses are entirely inside
+        // a 20–40 s band and are ZERO for the remaining two minutes — it is a startup
+        // transient, not a steady-state failure and (measured) not a pen-speed one either.
+        //
+        // The cause is structural: the visible trail is 30 s, so for the first half-minute the
+        // figure is still EXPANDING toward its final extent, and a 4 s fit constant chasing a
+        // monotonically growing target is always behind it. Once the trail reaches full length
+        // the target stops growing, the lag disappears, and framing is exact — which is why
+        // the settled behaviour Matt approved at WL.7 needs no change and gets none.
+        //
+        // WL.7's gate reported 0.0 % and was not lying, it was measuring 21 s fixtures that END
+        // before this window opens. The real-session harness (`WitchlightSpeedSweep`) is the
+        // one that can see it.
+        let oldest = beads.first?.age ?? trailWindow
+        let filling = oldest < trailWindow * 0.95
         let targetRadius = (sumSquares / count).squareRoot()
-        let fitAlpha = dt / (4.0 + dt)
+        // Asymmetric: catch up fast while the figure grows, never rush the shrink. A fast
+        // shrink would make the drawing pump on every section contraction.
+        let growing = targetRadius > rmsRadius
+        let fitTau: Float = filling && growing ? 0.8 : 4.0
+        let fitAlpha = dt / (fitTau + dt)
         rmsRadius += (targetRadius - rmsRadius) * fitAlpha
         viewScale = max(0.25, min(4.0, tuning.framedRadius / max(rmsRadius, 0.02)))
 
@@ -286,7 +308,10 @@ extension WitchlightPath {
         // enough to keep up with a pen that quickens 2.5× (WL.2-i) — at 3 s it cannot,
         // which is the lag Matt saw.
         guard let head = beads.last else { return }
-        let camAlpha = dt / (1.2 + dt)
+        // Same reasoning on the aim: while the figure is growing the head is travelling into
+        // new territory every frame, so the follow tightens. It relaxes to the settled 1.2 s
+        // the moment the trail is full.
+        let camAlpha = dt / ((filling ? 0.5 : 1.2) + dt)
         let aimX = centroidX * (1 - 0.6) + head.posX * 0.6
         let aimY = centroidY * (1 - 0.6) + head.posY * 0.6
         cameraX += (aimX - cameraX) * camAlpha

@@ -75,6 +75,34 @@ struct WitchlightBeatAlignmentProbe {
         let onBeat = offsets.filter { $0 < 0.1 }.count
         let mean = offsets.isEmpty ? 0 : offsets.reduce(0, +) / Float(offsets.count)
 
+        // WL.9 — head framing on the SAME session drive. Matt's 2026-08-06T17-27-21Z report
+        // was "the camera cannot keep up with the head because it is moving too fast", which
+        // is the WL.7 failure mode returning; the suspect is WL.8's wider speed swing.
+        var headOff = 0, framed = 0
+        let aspect: Float = 16.0 / 9.0
+        let path2 = WitchlightPath()
+        var st2 = StructuralPrediction()
+        for i in 0..<drive.features.count {
+            st2.sectionIndex = drive.sectionIndex[i]
+            path2.ingestStructure(st2)
+            path2.advance(deltaTime: drive.features[i].deltaTime,
+                          features: drive.features[i], stems: drive.stems[i])
+            guard let head = path2.beads.last else { continue }
+            framed += 1
+            let px = head.posX - path2.cameraX, py = head.posY - path2.cameraY
+            let cy = cos(path2.tumbleYaw), sy = sin(path2.tumbleYaw)
+            let cp = cos(path2.tumblePitch), sp = sin(path2.tumblePitch)
+            let cr = cos(path2.tumbleRoll), sr = sin(path2.tumbleRoll)
+            let a = SIMD3<Float>(px * cr - py * sr, px * sr + py * cr, 0)
+            let b = SIMD3<Float>(a.x, a.y * cp, a.y * sp)
+            let rel = SIMD3<Float>(b.x * cy + b.z * sy, b.y, -b.x * sy + b.z * cy)
+            let persp = 3.0 / max(3.0 - rel.z * path2.viewScale, 0.35)
+            var ndc = SIMD2<Float>(rel.x, rel.y) * path2.viewScale * persp
+            ndc.x /= aspect
+            if max(abs(ndc.x), abs(ndc.y)) > 1.0 { headOff += 1 }
+        }
+        let speedSwing = path2.responseMetric("penSpeedSwing") ?? 0
+
         let seconds = clock
         print("""
 
@@ -90,6 +118,8 @@ struct WitchlightBeatAlignmentProbe {
                 beads promoted      \(path.promotionCount)
                 beads alive at end  \(path.beads.count)
                 turns / sections    \(path.turnCount) / \(path.sectionEventCount)
+                head OFF FRAME      \(String(format: "%.1f", 100 * Double(headOff) / Double(max(framed, 1)))) %  (WL.7 gate: <= 2 %)
+                pen speed swing     \(String(format: "%.2f", speedSwing))x
 
               """)
     }

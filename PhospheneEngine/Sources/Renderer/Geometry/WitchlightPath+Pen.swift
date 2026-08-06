@@ -44,7 +44,8 @@ extension WitchlightPath {
         // but saturates 13.9 %, and bang-bang is not expressive); it is also where the
         // distinctness gate holds: at 1.0 the wider swing grew the trail, the auto-fit
         // zoomed out and distinct beads fell 20 → 4.
-        let arousalNorm = max(-1, min(1, (features.arousal - arousalSlow) / (1.5 * max(arousalSpread, 0.05))))
+        let spread = tuning.arousalSpreadDivisor * max(arousalSpread, 0.05)
+        let arousalNorm = max(-1, min(1, (features.arousal - arousalSlow) / spread))
 
         let energyGate = energyGateForSpeed(silent: silent)
         let speed = tuning.baseSpeed * (1 + tuning.speedModDepth * arousalNorm) * energyGate

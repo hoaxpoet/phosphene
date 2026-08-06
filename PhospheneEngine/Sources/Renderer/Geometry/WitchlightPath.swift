@@ -199,6 +199,9 @@ public final class WitchlightPath: AudioResponseMetrics {
         frameCount > 0 ? Float(clampedFrameCount) / Float(frameCount) : 0
     }
 
+    /// Test seam for sweeping tuning against a real session.
+    func overrideTuning(_ new: WitchlightTuning) { tuning = new }
+
     public init(tuning: WitchlightTuning = WitchlightTuning()) {
         self.tuning = tuning
         self.trailWindow = tuning.trailSeconds

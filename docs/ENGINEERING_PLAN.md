@@ -2040,6 +2040,34 @@ This is the opposite of the three WL.6 framing attempts, which all tried to fit 
 
 ---
 
+### Increment WL.9b — Witchlight: the ribbon stopped outrunning its own camera 🔨 **CODE-COMPLETE 2026-08-06, pending live M7**
+
+**Why.** Matt, session `2026-08-06T17-27-21Z`: *"The ribbon builds too fast and not in sync with the actual beat and downbeat. In addition, the camera cannot keep up with the head of the ribbon because it is moving too fast. Not a great result."*
+
+**First, a process failure: he was testing WL.8, not WL.9.** PR #52 never merged (CI could not get a runner), so his checkout had none of the per-beat work. Verified by marker before diagnosing — which is the rule that was ignored three times before WL.7.
+
+**Two wrong diagnoses before the right one, both stated to him and both retracted.**
+1. *"It's WL.8's speed divisor."* No: sweeping `arousalSpreadDivisor` 1.5 → 4.0 moves the realised swing 9.95× → 8.65× and head-off-frame stays 3.6–4.7 %. The pre-WL.8 value behaves the same.
+2. *"Then it's the energy gate causing the camera problem."* Half right. Narrowing the gate fixes the SPEED (10× → 3.8×) and moves head-off-frame 3.6 % → 3.4 % — i.e. not at all.
+
+**What each complaint actually is.**
+- **"Builds too fast"** — `energyGateForSpeed` multiplied pen speed by `0.25…1.75`, a **7× term** that dominates the arousal route entirely. Narrowed to **0.55…1.45** (Matt's pick from a measured table): swing **3.8–4.0×**. Silence behaviour untouched.
+- **"Camera cannot keep up"** — a **startup transient**, not a speed problem. Off-frame by 10 s window: `0 1 36 0 0 0 0 0 0 0 0`. Entirely inside 20–40 s, zero for the rest of the track. The 30 s trail is still expanding then, and a 4 s fit constant chasing a growing target is always behind. Fit and aim now tighten (0.8 s / 0.5 s) while filling AND growing — asymmetric so section contractions do not pump — and relax to the WL.7 constants once full.
+
+**Measured after, on three real sessions at production defaults: 0.0 % head-off-frame in every 10 s window**, worst reach 0.86–0.89 (from 1.22–1.26).
+
+**Why WL.7's gate never saw it.** It runs on 21 s fixtures, which end before the 20–40 s window opens. New harness `WitchlightSpeedSweep` (`WITCHLIGHT_SESSIONS=<dirs>`) drives whole recorded sessions.
+
+**Two measurement failures recorded so they are not repeated.** WL.8's speed change was validated with a Python model of the arousal EMA that omitted the energy gate — it claimed 1.57× where the real path gives ~10×. And the fixture gate reported 17.9×, which was rationalised as "metric definition, not a regression" when it was the signal.
+
+**Cost, reported not buried:** distinct beads **17 → 13** (floor 8) and ribbon share 0.437 % → 0.421 % (floor 0.40) — a slower pen packs beads closer. Matt's call to ship at this setting rather than back off to 0.70…1.30.
+
+**Done when:** ✅ build identity verified before diagnosis · ✅ both wrong causes falsified by sweep · ✅ speed bounded · ✅ framing transient fixed and measured on real sessions · ✅ all suites green · ⏳ **Matt's live M7.**
+
+**Verify:** `WITCHLIGHT_SESSIONS=<dir1>:<dir2> swift test --package-path PhospheneEngine --filter WitchlightSpeedSweep`
+
+---
+
 ### Increment MD.7 — Ray-march-composing inspired-by uplifts (formerly Hybrid tier)
 
 **Scope (revised per `MILKDROP_STRATEGY.md` §12 / D-103 amendment / D-107):** Inspired-by uplifts that compose `mv_warp` + `ray_march` against a static camera (D-029). **Not a tier** — these are `milkdrop_inspired` presets that happen to use the ray-march backdrop primitive; authoring choice, not classification. The MD.7.0 spike (single-preset proof of the `mv_warp` + `ray_march` composition) lands as one such uplift; subsequent ray-march-composing uplifts batch into the MD.6 work stream. The architectural composition has only Volumetric Lithograph as prior production proof (and VL's `mv_warp` plays against a ray-march scene that is not itself feedback-warped), so the spike is still a high-value increment under inspired-by.

@@ -176,6 +176,26 @@ public struct WitchlightTuning: Sendable {
     /// clears both gates with headroom instead of squeaking past either.
     public var speedModDepth: Float = 0.45
 
+    /// Divisor on the arousal running spread when normalising the pen-speed driver.
+    ///
+    /// LOWER = wider realised speed swing. WL.8 took this 2.0 → 1.5 to answer "the speed
+    /// feels weak", validated on ONE session with a model that omitted the energy gate, and
+    /// it shipped a pen that lurches: measured 9.95x realised swing on the 171 BPM session
+    /// against ~2.5x before. Sweep it with the probe over REAL sessions, never a partial model.
+    public var arousalSpreadDivisor: Float = 1.5
+
+    /// WL.5's energy gate on pen advance: `speed *= min(cap, floor + span * energyBreath)`.
+    /// A 0.25…1.75 range is a **7x multiplier on speed** and dominates the arousal route
+    /// entirely — it, not the arousal normaliser, is what makes the ribbon lurch.
+    /// WL.9b: 0.25…1.75 → 0.55…1.45, Matt's pick from the measured swing table. The old
+    /// range is a 7x multiplier on speed and produced a realised swing of ~10x on both his
+    /// 171 BPM sessions — "the ribbon builds too fast". 0.55…1.45 measures 3.8x: the energy
+    /// still visibly drives the pen, and it stops outrunning itself. The pen still halts
+    /// completely in silence — that is the separate `silent` branch, untouched.
+    public var energyGateFloor: Float = 0.55
+    public var energyGateSpan: Float = 0.9
+    public var energyGateCap: Float = 1.45
+
     /// Head-flare refractory, seconds (§5: ≥ 900 ms, ≈ 1.1 flares/s ceiling).
     /// Applies to the FULL-amplitude downbeat burst. The WL.9 off-beat tier is a separate,
     /// much dimmer object with its own interval — see `offBeatRefractory`.

@@ -313,6 +313,18 @@ Splitting the tiers fixes the exposure structurally: **the steady pulse rides th
 
 Beat edges are derived by **subdividing `barPhase01` by `beatsPerBar`**, not read from `beatPhase01` — that field measured stalled on real material (24 wraps in 215 s where 614 were due). Subdivision also handles odd meters for free: 7/8 subdivides into 7.
 
+### 3.5.2 The pen-speed lever, and the framing transient (WL.9b)
+
+Matt, session `2026-08-06T17-27-21Z`: *"The ribbon builds too fast and not in sync with the actual beat and downbeat. In addition, the camera cannot keep up with the head of the ribbon because it is moving too fast."* Two complaints, and the second is **not** caused by the first — measured, after two wrong diagnoses.
+
+**Speed is dominated by the ENERGY GATE, not by the arousal normaliser.** `energyGateForSpeed` multiplied speed by `0.25…1.75` — a 7× term sitting on the same product as the arousal route, which realises a **~10× swing** on real sessions. Sweeping `arousalSpreadDivisor` across 1.5–4.0 moves it barely at all (9.95 → 8.65). Narrowed to **0.55…1.45** (Matt's pick from the measured table): **3.8–4.0×**. The pen still halts completely in silence — that is the separate `silent` branch and it is untouched.
+
+**The camera transient is a STARTUP effect and is not about speed.** Head-off-frame by 10 s window on his sessions: `0 1 36 0 0 0 0 0 0 0 0` — the misses are entirely inside a **20–40 s band** and zero for the remaining two minutes. Narrowing the energy gate moved it 3.6 % → 3.4 %; speed was never the cause. The visible trail is 30 s, so for the first half-minute the figure is still EXPANDING toward its final extent, and a 4 s fit constant chasing a monotonically growing target is permanently behind it. The fit and the aim now tighten (0.8 s / 0.5 s) **while the trail is filling and only while the target is growing** — asymmetric, because a fast shrink would make the drawing pump on every section contraction — and relax to the settled WL.7 constants the moment the trail is full. **0.0 % head-off-frame across all three real sessions, every window**, worst reach 0.86–0.89.
+
+**Why WL.7's gate read 0.0 % and was not lying.** It measures the 21 s route-coverage fixtures, which END before the 20–40 s failure window opens. A temporal claim can only be tested on material long enough to contain the phenomenon; `WitchlightSpeedSweep` (`WITCHLIGHT_SESSIONS=<dirs>`) drives whole recorded sessions for exactly this reason.
+
+**Two measurement failures worth not repeating**, both mine, both in this increment: a tuning change validated with a Python model of one term (it omitted the energy gate and reported 1.57× where the real path gives ~10×), and a fixture gate reading 17.9× that was rationalised as a metric artifact when it was the actual signal. **A number that disagrees with the model is the signal.**
+
 ### 3.6 Silence (D-037)
 
 **REVISED at WL.5 (2026-08-05) — the original reading was wrong, and it was the defect.**
