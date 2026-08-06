@@ -65,6 +65,7 @@ public enum AudioRoutePrimitives {
         out["spectralDensity"] = RoutePrimitiveColumn(.features, "spectral_density")
         out["spectralDensitySlow"] = RoutePrimitiveColumn(.features, "spectral_density_slow")
         out["spectralSurge"] = RoutePrimitiveColumn(.features, "spectral_surge")
+        out["spectralDensitySection"] = RoutePrimitiveColumn(.features, "spectral_density_section")
         out["midDev"]    = RoutePrimitiveColumn(.features, "mid_dev")
         out["trebRel"]   = RoutePrimitiveColumn(.features, "treb_rel")
         out["trebDev"]   = RoutePrimitiveColumn(.features, "treb_dev")

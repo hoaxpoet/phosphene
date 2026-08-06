@@ -141,8 +141,43 @@ void fractal_tree_object_shader(
         // arousal term is the floor that keeps a body through the song; the surge term is
         // what makes a verse return visibly pull the tree back. Measured at the 90 s dip:
         // 0.933 → 0.824 blended, against 0.913 → 0.925 today.
+        // DYN.2 CORRECTION. The DYN.1e blend above moved the trunk, but Matt's review was
+        // *"neither grew nor receded when the distorted guitar came in … did not recede
+        // after the chorus."* Measured on his `2026-08-06T14-59-37Z` capture, he is right
+        // and the cause is range, not direction: that blend traverses **0.83…0.92 across
+        // the whole body of the track** — a 10 % band. It does move; there is nothing to
+        // see. And it climbs over ~50 s, so no passage of the music registers as an event.
+        //
+        // The reason level cannot do better HERE: Cherub Rock has **1.4 dB of inner range**
+        // (DYN.1d measured it). Verse and chorus are the same loudness. Nothing derived
+        // from level — including the ranked surge — can separate them.
+        //
+        // What separates them is SPECTRAL CONTENT, which is where DYN.1 came in: distortion
+        // adds harmonics, not amplitude. Measured on the same capture, density τ10 s sits
+        // at 0.13 through the verse and 0.21 through the chorus.
+        //
+        // `spectral_density_section / spectral_density_slow` is that quantity divided by
+        // the track's OWN running average, so it is self-normalising — no fitted per-track
+        // constant, the mistake DYN.1c/.1d exist to avoid. Measured trunk with the mapping
+        // below: intro 0.00, verse 0.30…0.46, chorus 0.92…1.00, easing to 0.88 after. A
+        // swing across the range instead of a 10 % wobble.
+        //
+        // AND IT IS SMOOTH, which is the explicit requirement — Matt, after I proposed a
+        // quantised version: *"I just want it to grow and recede with the energy of the
+        // music and do so smoothly - not in visible jumps."* Measured motion **0.0198/s**,
+        // BELOW the 0.0221/s of the surge the trunk reads today and a fifth of the raw
+        // density that caused FTR.3f. The τ10 s leg is what makes this safe where the
+        // shipped τ0.8 s leg was not — that one is still confined to the branch count.
+        //
+        // The arousal floor keeps a body through the song so the tree never collapses to a
+        // sapling mid-track, and the surge gate keeps a bright QUIET intro from inflating
+        // it (DYN1_CALIBRATION §3: a clean intro is BRIGHTER than a pre-distortion passage,
+        // so shape alone would grow the tree before the band arrives).
         float arousalReach = saturate((f.arousal - 0.10f) * (1.0f / 0.58f));
-        float reach = saturate(0.35f * arousalReach + 0.65f * saturate(f.spectral_surge));
+        float sectionRatio = f.spectral_density_section / max(f.spectral_density_slow, 1e-4f);
+        float fullness = smoothstep(0.40f, 1.05f, sectionRatio);
+        float musicGate = smoothstep(0.05f, 0.30f, saturate(f.spectral_surge));
+        float reach = saturate(max(0.10f * arousalReach, fullness) * musicGate);
 
         // ── THE SURGE: "SHOOT UP" ← spectral_surge (DYN.1b) ──────────────────────
         //
