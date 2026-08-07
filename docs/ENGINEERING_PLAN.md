@@ -63,6 +63,55 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment BUG078.1 — `AVAudioPlayerNode` teardown trap root-caused and fixed ✅ (2026-08-07)
+
+The intermittent `EXC_BREAKPOINT` / "dispatch_sync called on queue already owned by current
+thread" that has been taking down the engine test process since 2026-07-26 is a
+**concurrent-`start()` overwrite** in `LocalFilePlaybackProvider`, not the completion-block
+retain the entry had hypothesised. `start()` tears down before taking the lock (BUG-021), so
+two racing starts can interleave such that the second `_startLocked()` overwrites a live,
+playing engine/player. The orphan's last strong reference is the one AVFAudio holds inside
+the pending `scheduleFile` completion block, so the node is released on its own `CommandQueue`,
+where `dealloc` → `Stop()` → `dispatch_sync` re-enters that queue.
+
+**Fix:** `start()` snapshots the existing refs under the lock (pointer copy only — BUG-021's
+lock-free-teardown constraint holds) and tears them down after unlocking, holding a strong
+reference across `player.stop()`. Closes the orphaned-engine leak by the same change.
+
+**Gate:** `LocalFilePlaybackStartRaceTests` counts adopted instances against teardowns over 24
+racing double-starts — **48 adopted / 25 torn down (23 orphans) pre-fix, equal post-fix** —
+converting a 1-in-3 full-suite lottery into a 3-second deterministic check.
+
+**Method note worth keeping:** 25 matching `.ips` reports were already on disk, 19 naming the
+in-flight test and both racing threads. The bug stalled for a week on "nobody has captured the
+trap" while the capture sat in `~/Library/Logs/DiagnosticReports/`.
+
+**Manual criterion met, BUG-078 CLOSED** — Matt's session `2026-08-07T19-10-25Z`: 19 adopted
+instances / 18 teardowns in strict `I(EXI)*` alternation (the unpaired one is still playing at
+log end), clean chain health, no hang, through two rapid-Next bursts. Limit recorded in
+KNOWN_ISSUES: the live run never took the new stale-teardown branch, because the app serialises
+`start()` on the MainActor — it proves no-regression and the orphan invariant on the shipped
+path, while the deterministic gate is what covers the race itself. Merged in `f68efb67` (PR #62).
+
+### Increment BUG079.1 — release test build unblocked; DBN.2 budget measured ✅ (2026-08-07)
+
+`ArachneState.forceActivateForTest(at:)` was declared inside `#if DEBUG` while its three
+test-target call sites were not, so `swift test -c release` could not compile the engine test
+module (BUG-079). Dropped the gate rather than guarding the call sites — the smaller fix would
+have removed the Arachne spider render coverage from release runs, which trades coverage for a
+build. The doc comment now records why it is ungated.
+
+**The budget the block was hiding: 17.9 ms** for a 30 s activation window in release, against
+BEAT_SYNC_PROGRAM_PLAN §DBN.2's 50 ms — met, with no design change. Debug measures 1403 ms, a
+**78× config gap**, confirming that scaling the debug figure (which the spec forbade) would
+have been meaningless either way.
+`DSPPerformanceTests.test_beatActivationDecoder_30sWindow_performance` now asserts 50 ms under
+release and keeps the 4000 ms regression ceiling under debug.
+
+Correction to the filing: `swift test -c release` alone still fails, and that is not a defect —
+`@testable import` requires testability, which release does not enable. Use
+`swift test -c release -Xswiftc -enable-testing --package-path PhospheneEngine`.
+
 ### Increment HANG.2 — BUG-085 instrumented soak ✅ non-reproduction control (2026-08-05)
 
 HANG.1's lifecycle probe ran through two visible Witchlight/local-file controls: one full
@@ -464,7 +513,13 @@ Ported the Rrrola/Fragmentarium Mandelbox distance estimator verbatim (FA #73) i
 2. **Preset work in flight** — **FTR.3/.4/.5** (Fractal Tree per-branch activation → stem binding → M7+cert), **MEN.2b/.3/.4** (Meniscus faithful port → uplift → cert), **WL** (Witchlight; the WL.2 motion-gate verdict is an **open decision for Matt**, and §6 prescribes a re-scope rather than another tuning round). **Ricercar** carries three increments code-complete-pending-Matt's-eye since 2026-07-08/09 plus a fourth unmerged reboot branch — its rows need a disposition, not more work.
 3. **CLEAN backlog** — Phases 0–5 and 7 are closed. **Phase 6** (5 open rows) and **Phase 8** (4 open rows, the XL decomposition) remain. Phase 8 is the same work as PUB **R3.5**. Authoritative queue: [`docs/diagnostics/CODE_AUDIT_2026-06-13.md`](diagnostics/CODE_AUDIT_2026-06-13.md) Part C.
 4. **PUB R3 decomposition** — slices R3.1/R3.2 done; **R3.3 (analysis), R3.4 (LF transport), R3.5 (orchestrator bridge)** queued. R3.5 = CLEAN Phase 8; do not schedule them as separate efforts.
-5. **Open defects worth scheduling** — **BUG-079** (release-config test build; blocks every release-only perf budget, incl. the DBN.2 latency gate), **BUG-051** (m3u traversal guard), **BUG-060** (reopened 2026-08-03 — needs a captured stack, not another monitoring window). Full list: [`docs/QUALITY/KNOWN_ISSUES.md`](QUALITY/KNOWN_ISSUES.md) §Open Index.
+5. **Open defects worth scheduling** *(refreshed 2026-08-07 — BUG-079 and BUG-078 are now RESOLVED and have left §Open; the working order below is the triage that replaced this line's earlier list)*. The board splits by whether the work is *doable* rather than by severity label, because most of the P1/P2 headline items are evidence-blocked and cost nothing while they wait:
+   - **Unblocked and bounded:** **BUG-051** (m3u traversal/extension guard — a trust boundary, few lines), and BUG-085's one permitted experiment (suppress stem separation for a full session and see whether the freeze class survives; every other hypothesis on that entry is refuted).
+   - **Owned by the beat-sync program, not standalone:** BUG-076 / BUG-065 / BUG-028 all belong to D-202 — **FT.3** is the live thread. **BUG-077** is a one-comparison change; do it inside DBN.3 when the resolver is already open.
+   - **Blocked on an artifact, correctly idle:** **BUG-085 / BUG-081 / BUG-060** (one hang class; instrumentation merged, `Scripts/capture_hang.sh` exists — next freeze, run it before force-quit). **BUG-055**'s durable half needs a paid Apple Developer membership; its detector half closes on Matt's UX check of the fix-ladder card. **BUG-058 / BUG-070 residual / BUG-036 site 3** are explicitly parked pending a reproduction — restructuring the G1-validated path without one is the BUG-063 pattern.
+   - **Accept as-is:** BUG-084, BUG-054, BUG-056, the AUDIT-2026-06-09 P3 residue. No product impact; not worth an increment until something depends on them.
+
+   Full list and per-entry evidence: [`docs/QUALITY/KNOWN_ISSUES.md`](QUALITY/KNOWN_ISSUES.md) §Open Index.
 6. **RECON follow-ups** — the 2026-08-03 audit's own queue: consolidate the three fixture-restore mechanisms behind one shared manifest (the recorded BUG-080 follow-up), CI "Option B" (full-suite-minus-skip-list, replacing the hand-maintained ~130-test allow-list), wire `check_drums_beat_intensity.sh` into CI/closeout, and delete the zero-consumer RMENV.2/.3 + MFX.1 capabilities per Matt's 2026-08-03 call.
 
 > **Capability Audit (Phase CA, 2026-05-20).** The originally-planned `docs/CAPABILITY_GAP_AUDIT.md` (now at `archive/CAPABILITY_GAP_AUDIT.md`) single-deliverable was superseded 2026-05-20 by the multi-increment **Phase CA** audit, which produces one per-subsystem registry under [`docs/CAPABILITY_REGISTRY/`](CAPABILITY_REGISTRY/). **CA.1–CA.7b all shipped ✅ (2026-05-20 → 2026-05-21)** — see §Phase CA for the per-increment detail. *(This paragraph read "CA.1 landed; CA.2+ pending" until RECON.2, 2026-08-03, contradicting the Phase CA section in the same file.)* Preliminary 2026-05-12 inventory data (shader-utility-consumer matrix, distinct from CA's per-subsystem audits) lives at [`docs/diagnostics/capability-audit-pre-2026-05-12.md`](diagnostics/capability-audit-pre-2026-05-12.md) and continues to feed shader-cleanup increments.
@@ -3874,7 +3929,7 @@ Bar-pointer-model decoder over Beat This! activations (odd meters, tempo-state),
 - **DBN.1 — desk research + spec doc ✅ (2026-07-30).** Done-when met: [`docs/design/DBN_DECODER_SPEC.md`](design/DBN_DECODER_SPEC.md) committed with every constant cited to a paper equation (Krebs et al. 2015 Eq. 1–10, CC BY 4.0; Böck et al. 2014 Eq. 3) or marked a Phosphene tunable with a default, range and rationale. No decoder code written. **The premise was tested, not assumed** — Beat This! is titled "accurate beat tracking *without* DBN postprocessing", and its authors' own A/B on the model we ship shows a DBN *lowers* F1 (beat 89.1→88.1, downbeat 78.3→77.4) while raising CMLt downbeat 67.3→73.3 by "correcting some of the (wrongly) non-periodic outputs". That one benefit is exactly our failure mode, so the premise holds on narrower grounds than the plan assumed, and DBN.3 must now gate on no-regression to the clean 4/4 tracks. **Task-7 measurement** (`DownbeatStreamDiagnosticTests`, env-gated) located where the signal dies: not in post-processing — 100 % of downbeat candidates survive the resolver's ±40 ms snap gate — but in the model's own stream, which emits a confident downbeat on **69–90 % of beats** on money/solsbury_hill vs 24 % on the working billie_jean. Design consequence: decode each meter hypothesis separately over a narrow tempo band around the existing BPM estimate (tempo is not the broken axis), dropping the per-meter state space from 6,703 states / 28.2 M Viterbi ops to 1,351 / 2.8 M and making the < 50 ms budget reachable. Two DECISION-NEEDED items open (guess-vs-decline on unclear bars; whether {6,9,12} join the meter set).
 - **DBN.2 — `BeatActivationDecoder` implementation ✅ (2026-07-30).** Done-when met: 14-case unit suite green on synthetic activations; budget test in `DSPPerformanceTests`. Pure Swift, offline-path only, **not yet wired into `BeatGridResolver`** (that is DBN.3). D-207's decline path ships rather than deferring: the result is "a meter **or** no confident bar", `beatsPerBar` is `Optional`, and declining withholds downbeats while keeping beats.
   - *Two tunables moved off their spec defaults, both from measurement.* `downbeatWeight` 1.0 → **5.0**: at the spec's 1.0 the decoder picks the **wrong** meter on the degenerate fixture (Böck Eq. 3's beat/non-beat terms swamp the downbeat evidence; margin 0.0012 = indistinguishable). `meterMarginThreshold` 0 → **0.10**, set from the measured distribution across all 9 ground-truthed tracks per D-207 — but **the correct and wrong margin distributions OVERLAP** (correct min 0.1439, wrong max 0.2677), so the margin is necessary-but-not-sufficient and 0.10 is a tradeoff, not a boundary.
-  - *Performance:* 17,067 → **1,350 ms** for a 30 s window (debug) via precomputed observation classes, per-frame terms, a flattened transition table and unsafe buffers. **The plan's 50 ms is a release figure and remains UNVERIFIED** — `swift test -c release` does not build (BUG-079), so the gate asserts a regression ceiling and says so rather than inventing a debug/release constant.
+  - *Performance:* 17,067 → **1,350 ms** for a 30 s window (debug) via precomputed observation classes, per-frame terms, a flattened transition table and unsafe buffers. **The plan's 50 ms budget is MET — 17.9 ms measured in release** (BUG079.1, 2026-08-07, once BUG-079 unblocked the release test build). The gate asserts 50 ms under release and keeps the debug regression ceiling; the 78× config gap confirms no debug/release constant should ever have been invented.
   - ⚠️ **Real-audio result, ahead of DBN.3's gate:** the decoder **collapses every odd meter to 4**. On the 6 truth-bearing tracks it is correct on 3 (billie_jean, bohemian_rhapsody, bleed — all 4/4) vs the incumbent's 2, but money (7), solsbury_hill (7) and take_five (5) all decode as 4. The gain over baseline comes mostly from *declining* rather than from reading odd meters: confidently-wrong drops from 7 tracks to 2. **The category-2 case the phase exists for is not solved.** Evidence: `DecoderMarginCalibrationTests`.
   - 🔍 **Odd-meter collapse diagnosed (2026-07-30, Matt's direction).** **The tempo hint is exonerated** — money's `tap_bpm 60.97` is a half-time tap, both reference backends put the real pulse at ~122 BPM ("double the tapped pulse ×2.01") and the ground-truth file's own `meter_note` says the bar is 7 of *those* beats, so the incumbent hint already sits on the true pulse; forcing the half-time pulse makes it worse. The cause is a **structural bias in spec §5.1**: the two-stream observation model applies `w·log(1−d)` at every non-downbeat beat position, and meter `B` labels `(B−1)/B` of beats that way, so larger meters are penalised purely for being larger. Measured Δ(7 vs 3) is exactly linear in weight at **18.0 nats per unit**, against a closed-form prediction of **18.1** using DBN.1's independently-measured d = 0.805. **No single weight can work** — the evidence needs `w ≥ 2`, the bias needs `w` small. Not a tuning problem. Fix direction in spec §9.6 (asymmetric downbeat evidence is the recommended first attempt).
   - ✅ **§5.1 fix implemented (2026-07-31).** Downbeat evidence is now a **centred log-odds sampled at the bar position only** (spec §9.7). Two prior forms were diagnosed and discarded: the specified form's `(B−1)/B` bias, then a centred form smeared across the beat window whose second frame (`d ≈ 0.02`) charged every bar line ~−5.7, reintroducing a count bias toward *large* meters — measured at 78 nats where the closed form predicted 74. **Raw meter accuracy 3/6 → 4/6, and solsbury_hill's 7 is the first odd meter ever recovered.** But with the bias gone the margins collapsed: correct spans 0.0097–0.5534 and wrong 0.0155–0.1085, so a wrong answer outscores a right one and **the margin is no longer a sufficient decline signal**. Threshold re-derived to 0.05 (3 correct named, 1 wrong named). **The remaining gap is evidence quality, not model bias.** Stopped per the two-strikes rule after three diagnosed iterations.
