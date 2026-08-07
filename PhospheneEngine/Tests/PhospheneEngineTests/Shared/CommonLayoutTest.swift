@@ -32,11 +32,19 @@ struct CommonLayoutTest {
 
     /// Locates the repo root from this file's path so the test can read the two MSL
     /// declaration sites directly.
+    ///
+    /// **Relative ascent, not a name search.** Walking up to a directory literally named
+    /// `phosphene` sails past a git worktree at `phosphene/.claude/worktrees/<name>/` and
+    /// lands on the PRIMARY checkout, so the gate read this tree's Swift struct against
+    /// another tree's `.metal`. Both directions are silent: a worktree that legitimately
+    /// changes the layout in both places can go green on a real mismatch, and an untouched
+    /// worktree can report a phantom one the moment the primary's checkout moves. Count
+    /// components instead — this file sits a fixed depth below the repo root, in a
+    /// worktree or out of it.
     private static let repoRoot: URL = {
         var url = URL(fileURLWithPath: #filePath)
-        while url.pathComponents.count > 1 && url.lastPathComponent != "phosphene" {
-            url.deleteLastPathComponent()
-        }
+        // file → Shared → PhospheneEngineTests → Tests → PhospheneEngine → root
+        for _ in 0..<5 { url.deleteLastPathComponent() }
         return url
     }()
 
