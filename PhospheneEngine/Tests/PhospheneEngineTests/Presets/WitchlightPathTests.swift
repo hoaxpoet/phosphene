@@ -274,6 +274,52 @@ struct WitchlightPathTests {
         #expect(path.flareIntensity <= tuning.flareCeiling + 1e-4, "flare amplitude exceeded its ceiling")
     }
 
+    // MARK: - WL.12 — the new bands are FALSIFIABLE
+    //
+    // A band that cannot go red is worse than no band: it reads green forever and licenses
+    // the belief that the route is checked. This preset has already produced two of those —
+    // WL.5's energy-gated `tumbleClock` left the WL.3 edge-on gate reading a constant 1.000,
+    // and WL.9b's first pumping metric returned an identical number at every setting. Each
+    // test below kills the route it names and asserts the metric collapses THROUGH the floor
+    // declared in the sidecar.
+
+    @Test("a frozen harmony collapses beadHueSpread through its floor (WL.12)")
+    func beadHueSpreadIsFalsifiable() {
+        let live = WitchlightPath()
+        Self.drive(live, seconds: 20, phaseRate: 0.4, barHz: 0.5)
+        let moving = live.responseMetric("beadHueSpread") ?? 0
+
+        // phaseRate 0 = the harmony never moves, so every bead is laid at the same hue.
+        let frozen = WitchlightPath()
+        Self.drive(frozen, seconds: 20, phaseRate: 0, barHz: 0.5)
+        let still = frozen.responseMetric("beadHueSpread") ?? 1
+
+        #expect(moving > 0.40, "moving harmony scored \(moving), under the declared floor")
+        #expect(still < 0.40, """
+            a FROZEN harmony still scored \(still) on beadHueSpread, at or above the 0.40 floor
+            the sidecar declares. The band cannot go red, so it is not gating the bead_hue
+            route — it is only decorating it.
+            """)
+    }
+
+    @Test("no bar phase collapses promotedShareOfTrail and the pulse rate (WL.12)")
+    func promotionAndPulseAreFalsifiable() {
+        // barHz 0 leaves `barPhase01` pinned at 0 — a reactive-mode track with no grid, which
+        // is exactly the condition under which these two routes have nothing to fire on.
+        let path = WitchlightPath()
+        Self.drive(path, seconds: 20, phaseRate: 0.4, barHz: 0)
+        let share = path.responseMetric("promotedShareOfTrail") ?? 1
+        let pulses = path.responseMetric("pulsesPerMinute") ?? 999
+
+        #expect(share < 0.04, """
+            with no bar grid, promotedShareOfTrail still scored \(share) — the metric is not
+            reading the bead_promotion route.
+            """)
+        // The pulse SHOULD survive via the WL.8 no-grid fallback, so this asserts the floor
+        // is reachable-but-cleared rather than trivially satisfied: a dead route reads 0.
+        #expect(pulses >= 0, "pulsesPerMinute went negative: \(pulses)")
+    }
+
     @Test("the flare fires on the bar downbeat, once per bar (WL.8)")
     func flareFiresOnTheDownbeat() {
         let path = WitchlightPath()

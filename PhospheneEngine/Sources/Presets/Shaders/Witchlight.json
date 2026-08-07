@@ -59,7 +59,11 @@
     {
       "route": "bead_hue",
       "primitive": "tonalPhaseFifths",
-      "kind": "continuous"
+      "kind": "continuous",
+      "response": {
+        "metric": "beadHueSpread",
+        "min": 0.4
+      }
     },
     {
       "route": "pen_speed",
@@ -73,12 +77,20 @@
     {
       "route": "bead_promotion",
       "primitive": "barPhase01",
-      "kind": "accent"
+      "kind": "accent",
+      "response": {
+        "metric": "promotedShareOfTrail",
+        "min": 0.04
+      }
     },
     {
       "route": "head_flare",
       "primitive": "barPhase01",
-      "kind": "accent"
+      "kind": "accent",
+      "response": {
+        "metric": "pulsesPerMinute",
+        "min": 12.0
+      }
     },
     {
       "route": "nebula_hue",

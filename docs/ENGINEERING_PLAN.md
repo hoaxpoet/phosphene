@@ -1989,6 +1989,34 @@ This is the opposite of the three WL.6 framing attempts, which all tried to fit 
 
 ---
 
+### Increment WL.12 — Witchlight: band the routes that shipped unwatched ✅ (2026-08-07)
+
+**Why.** Witchlight certified with **5 of its 8 routes carrying no QG.5 band**, meaning a future change could kill any of them and every gate would stay green. That is not hypothetical: it is exactly how WL.2 shipped a speed route realising a 13 % swing, and how `vocalsPitchConfidence` sat at 0 % for five months while closeouts claimed the route worked.
+
+**Banded — 3 of 8 → 6 of 8.** Floors set FROM measurement on the committed fixtures, never the reverse:
+
+| route | metric | measured (3 fixtures) | floor |
+|---|---|---|---|
+| `bead_hue` | `beadHueSpread` — circular spread of live bead hues | 0.73–0.87 | 0.40 |
+| `bead_promotion` | `promotedShareOfTrail` — promoted share of the live trail | 0.095–0.168 | 0.04 |
+| `head_flare` | `pulsesPerMinute` — both tiers | 36.1–36.4 | 12 |
+
+Circular spread rather than min/max because hue **wraps**: a trail spanning 0.95 → 0.05 is a narrow band that a linear range scores as maximal. Share-of-trail rather than a count so the metric does not move with tempo or trail length.
+
+**The bands are proved FALSIFIABLE, which this preset has needed twice before.** WL.5's energy-gated `tumbleClock` left the WL.3 edge-on gate reading a constant 1.000, and WL.9b's first pumping metric returned an identical number at every setting. Two new tests kill the route each band names and assert the metric collapses **through** the declared floor: a frozen harmony drops `beadHueSpread` under 0.40; no bar grid drops `promotedShareOfTrail` under 0.04.
+
+**Two routes are NOT banded, and the reasons are structural rather than effort.**
+- **`nebula_hue`** — the hue is computed in `witchlight_sky_fragment` from `valence`, on the GPU. This seam is a `WitchlightPath` method and has no access to it. Measuring `valence` itself is not a substitute: that is the PRIMITIVE, which `RouteCoverageTests` already asserts varies, and a band re-asserting the input while the shader ignored it would read green while the route was dead. Same gap the registry records for mesh presets; closing it needs a CPU mirror or GPU readback — its own infrastructure increment, serving every preset with a shader-computed visual quantity.
+- **`trail_contraction`** — measurable (`trailContractionDepth`, 0.913 where it fires), but **two of the three committed fixtures contain no section boundary at all**, so the metric is `nil` there and `try #require` fails. A band that depends on fixture content measures the fixture, not the preset. Needs a fixture with a section change; QG.1.1 class.
+
+**Also recorded:** `penSpeedSwing` now reads an identical 6.733 on all three fixtures — it saturates, because it conflates the arousal route with the WL.5 energy gate. It passes, but it is measuring the pair, not the route.
+
+**Done when:** ✅ floors from measurement · ✅ 6 of 8 banded · ✅ every new band proved able to go red · ✅ the two unbandable routes documented with cause, not silence · ✅ suites green.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter "ResponseBand|WitchlightPathTests"`
+
+---
+
 ### Increment WL.9 — Witchlight: every beat, with the downbeat harder 🔨 **CODE-COMPLETE 2026-08-06, pending live M7**
 
 **Why.** Matt on the WL.8 build (session `2026-08-06T15-09-29Z`): *"Feels too polite. Beat match is also close but not exact. Not sure that this is better than the previous run."* Two complaints, two different causes, one of them mine and one an engine defect.

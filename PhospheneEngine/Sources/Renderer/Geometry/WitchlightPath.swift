@@ -138,6 +138,9 @@ public final class WitchlightPath: AudioResponseMetrics {
     var contraction: Float = 0
     /// Section boundaries ingested since `reset()`.
     public internal(set) var sectionEventCount: Int = 0
+    /// WL.12 — deepest trail contraction seen this run, 0…1. The `trail_contraction` route's
+    /// visible consequence; 0 means no section boundary ever shortened the trail.
+    public internal(set) var contractionPeak: Float = 0
 
     // View framing (a VIEW property, not a path property — see `advance`).
     public internal(set) var centroidX: Float = 0, centroidY: Float = 0
@@ -256,7 +259,7 @@ public final class WitchlightPath: AudioResponseMetrics {
         barDownbeatNow = false; gridSilentFor = 0; beatDriftSeconds = 0
         beatEdgeNow = false; previousBeatSlot = -1; barPeriod = 0; timeSinceWrap = 0
         previousSectionIndex = nil; contractGoal = 0; contractHold = 0; contraction = 0
-        sectionEventCount = 0
+        sectionEventCount = 0; contractionPeak = 0
         centroidX = 0; centroidY = 0; viewScale = 1; rmsRadius = 0.4; cameraX = 0; cameraY = 0
         fitCentroidX = 0; fitCentroidY = 0
         tumbleClock = 0
