@@ -44,7 +44,8 @@ enum LocalFileMenuCommands {
 
     /// File extensions Phosphene accepts for local-file playback. Matches the
     /// three formats covered by `LocalFilePlaybackFormatCoverageTests`.
-    static let allowedExtensions: Set<String> = ["m4a", "mp3", "flac"]
+    /// Aliases the engine-side allow-list so the two can't drift (BUG-051).
+    static let allowedExtensions: Set<String> = M3UParser.allowedAudioExtensions
 
     /// File extensions recognised as M3U / M3U8 playlists.
     static let playlistExtensions: Set<String> = ["m3u", "m3u8"]
