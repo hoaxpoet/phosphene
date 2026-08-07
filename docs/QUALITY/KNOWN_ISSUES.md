@@ -1125,20 +1125,6 @@ Both halves green — the first fully green engine run on this material. Every f
 
 ---
 
-### BUG-071 — Fractal Fly-By: descent direction inverted + severe motion aliasing (2026-07-23)
-
-**P1 · preset.fidelity / sdf-geometry / render-state · CLOSED wontfix — Fractal Fly-By RETIRED (FLY.14, D-201, 2026-07-25).**
-
-**Resolution: retired, not fixed.** Fourteen rounds against Matt's live M7s, ending on "deranged movement, very jittery, still passes through walls most of the time." The preset and its shaders are deleted; only provenance comments remain in `MetalFXTemporalUpscaler.swift` and `RayMarchPipeline.swift`.
-
-**The durable lesson — an instrument-proven ceiling, not a tuning failure.** Building the whole-frame temporal-coherence measurement is what ended the loop: it showed **~13 %/frame boiling** and geometry teleporting (**diff-2/diff-1 = 1.12**). A fast scale-zoom through a self-similar Mandelbox reveals new fold structure every frame — **incoherent by construction**, not reachable by anti-aliasing or steering inside the 7 ms budget. This is the origin of the rule that motion coherence is measured *first*, before peripheral metrics that agree with the build (D-195 / `motion_gate.sh`).
-
-**Original defect, in brief.** Live M7 failed (session `2026-07-23T19-27-48Z`, Cherub Rock): "deeply glitchy, camera moves OUT not IN." Three confirmed causes: (1) **descent inverted** — `q=(p+c)*zoom` with rising zoom collapses features toward a vanishing point, confirmed by a phase sweep and by monotonic phase in `features.csv`; (2) **severe shimmer/aliasing** — full-res Mandelbox detail plus high-frequency thin-film rims alias under motion, with no AA and MetalFX unwired; (3) **descent far too slow** — 0.12 gave < 1 octave in 78 s.
-
-*Condensed at RECON.9 (2026-08-03) from ~14 KB to fit the DOC.6 §Resolved budget. The full 14-round narrative is in git (`git log --grep=FLY\.`) and `RELEASE_NOTES_DEV_2026-07.md`. Two lines were **deliberately dropped as superseded**, not merely trimmed: "Still open: residual moiré on grazing high-detail surfaces / Decision needed (Matt): whether to fund further anti-aliasing…" and "Also open: the descent rate was far too slow" — both were void the moment the preset was retired, and both read as live open work on a preset that no longer exists (flagged as drift in the 2026-08-03 audit). Note the AA decision they asked for is settled from the other direction too: MetalFX (MFX.1) is scheduled for deletion under D-213.*
-
----
-
 ### BUG-075 — Volumetric Lithograph motion: rotary-dial spring-back + dual beat layer (2026-07-24)
 
 **P1 · preset.fidelity / audio-coupling · ✅ RESOLVED 2026-07-24 (VL-PSY.5).**
@@ -1223,27 +1209,4 @@ Staged Sandbox held 59.9 fps **in the same window**, through the same real-time 
 **Not fixed, recorded honestly.** VL remains the most expensive preset in the catalog: 21.9 ms p95 at 1080p (≈46 fps) against a 60 fps target. **v9.4 was already 14.7 ms there** — VL has never met the ~5 ms SHADER_CRAFT budget or its own declared `complexity_cost.tier2` of 2.0. The sidecar now carries the measured numbers (22.0 / 30.0) so the Orchestrator schedules against reality, and `VLBudgetProbeTests` gates at 12 ms as a **regression** guard rather than an aspiration that would fail on day one.
 
 **Also fixed (same report, separate cause).** "Moving much too slow" was not purely the frame rate: `VL_NOISE_TIME_SCALE` was 0.015, tuned in v3.2 for the *superseded naturalistic* direction where a slow boil was the point. Against the measured `accumulatedAudioTime` rate (~0.1 units/s) the terrain phase advanced 0.0014/s — visually frozen. Raised 10× to 0.15. Camera dolly 1.8 → 5.0 u/s: at 1.8 the flight crossed a 20-unit fold cell every ~14 s, which reads as hovering, and the flight is VL's identity.
-
-### BUG-072 — app test runner cannot launch while PhospheneApp is running (2026-07-23)
-
-**P1 · build.infrastructure · ✅ RESOLVED 2026-07-23 (BUG072.1).** Not a machine fault and not an Xcode/macOS regression — **a running instance of the app under test blocks the XCTest host launch.**
-
-**Root cause.** `PhospheneApp/Info.plist` sets `LSMultipleInstancesProhibited = true` (added at `[U.11] Spotify: fix OAuth callback single-instance` — the `phosphene://` URL-scheme callback must route to the one running instance). `xcodebuild test` launches the test *host*, which is `PhospheneApp.app` itself, via `IDELaunchServicesLauncher`. When any `com.phosphene.app` process is already running — even one launched from a different DerivedData path — LaunchServices refuses the second instance and the launcher fails with the generic `IDELaunchErrorDomain Code=20` / "The LaunchServices launcher has returned an error". `build` and `build-for-testing` succeed because neither launches anything.
-
-**Why it looked machine-wide.** The stray instance is a *user-session* app, not a build artifact, so it survived across checkouts, worktrees, DerivedData hashes, `lsregister -f -R -trusted`, and bundle delete+rebuild — every remedy aimed at the build products, none at the running process. Unified log for 2026-07-23 shows `PhospheneApp` PID 35320 launched 15:47:07 and last active 18:19:18; **every** `xcodebuild test` inside that window failed at runner launch (16:22:18, 16:27:52, 16:29:58, 16:30:40, 16:31:06, and the 16:47/16:53 runs — `xcresulttool` reports `failedTests: 1, passedTests: 0` for 16:47). Runs after that process exited pass.
-
-**Reproduction (A/B/A, 2026-07-23 20:38–20:44, sdk macosx26.5, Xcode 26.6 / 17F113, macOS 26.5.1 / 25F80).** No app running → `** TEST SUCCEEDED **`, 403 tests in 70 suites, exit 0 — three consecutive runs (primary checkout sandboxed, primary unsandboxed, worktree). `open …/Debug/PhospheneApp.app` (PID 80729) → same command, same checkout, `** TEST FAILED **`, exit 65, verbatim "Could not launch “PhospheneAppTests”", zero tests. Quit the app → `** TEST SUCCEEDED **`, exit 0.
-
-**Remediation (no app-side code change).** Quit PhospheneApp before running the app test suite:
-
-```bash
-osascript -e 'tell application "PhospheneApp" to quit'; pkill -x PhospheneApp
-```
-
-`LSMultipleInstancesProhibited` is deliberately kept — removing it would break OAuth callback routing (U.11) and would let a test-host instance and a live session contend for the system-audio tap. The repo-side fix is diagnostic, not behavioural: `Scripts/closeout_evidence.sh` Step 2 now detects this exact signature (non-zero exit + "Could not launch “PhospheneAppTests”") and annotates the evidence block — **"BUG-072 — not a test regression. PhospheneApp is running; quit it and re-run."** when a `PhospheneApp` process is live, and **"Runner launch failed with no PhospheneApp running — unlike BUG-072. Investigate."** when it is not. This re-arms the merge gate: a stray app instance can no longer masquerade as a genuine app-test regression, and a launch failure with *no* app running is explicitly flagged as a different, unexplained defect.
-
-**Suspected failure class:** `environment-interaction` (a product Info.plist policy colliding with the test harness's launch mechanism).
-**Verification criteria (written before the fix):** (1) the A/B/A above — launching the app flips a passing suite to exit 65 and quitting it flips back; (2) both annotation branches emit the correct line, exercised against a synthetic log with and without a live `PhospheneApp`; (3) `bash -n Scripts/closeout_evidence.sh` clean. All three met.
-
----
 
