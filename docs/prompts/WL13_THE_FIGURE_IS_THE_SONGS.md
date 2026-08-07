@@ -121,7 +121,17 @@ RENDER_VISUAL=1 swift test --package-path PhospheneEngine --filter WitchlightMot
 
 ---
 
-### DECISION-NEEDED — for Matt, at Task 2
+### DECISION — MADE. Matt, 2026-08-07: **option C.**
+
+> "also, option C for task 2"
+
+**Let the sense of "home" adapt faster, so even small harmonic moves register as direction changes.** The figure stays entirely harmony-driven — no second driver is introduced — and `homeTau` (currently 12 s) is the primary lever.
+
+**Task 2 still runs, and its result is still reported, because it decides whether C is HONEST on a given track — not whether to do C.** If a track's harmony genuinely never moves, adapting home faster manufactures reversals the music does not contain, and the closeout must say so per fixture rather than quietly shipping invented motion. Matt has the call either way; the obligation is to tell him which tracks are which.
+
+The original options, kept for context:
+
+### DECISION-NEEDED — for Matt, at Task 2 (ANSWERED ABOVE)
 
 **When a song's harmony barely moves, what should the drawing do?**
 
