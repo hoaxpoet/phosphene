@@ -64,7 +64,31 @@ public struct WitchlightTuning: Sendable {
     public var emissionHz: Float = 3.79
 
     /// Base pen speed in world units/second. World units: the frame is 2.0 tall.
-    public var baseSpeed: Float = 0.10
+    ///
+    /// WL.13: 0.10 → 0.060. Matt, 2026-08-07: *"slow the pen down so the ribbon fills the
+    /// frame again."* Removing the cold-start coil left the pen turning less, so it covered
+    /// more ground per 30 s trail, the auto-fit zoomed out to hold it, and the ribbon thinned
+    /// — distinct bright cores 15 → 4 against a floor of 8.
+    ///
+    /// The recovery is geometric, not cosmetic. `baseRadius` is SCREEN-space (a fraction of
+    /// half the frame height) while bead spacing is `baseSpeed / emissionHz` in WORLD units,
+    /// so what decides whether beads read as separate cores is spacing × `viewScale` against
+    /// a fixed diameter. A zoomed-out fit shrinks the numerator alone, which is exactly how
+    /// they fused. Slowing the pen shortens the trail, the fit comes back in (measured
+    /// `viewScale` 1.16 → 1.94) and screen spacing returns to what it was solved for:
+    ///
+    ///     0.0158 world × 1.94 = 0.0307   vs   0.0264 world × 1.16 = 0.0306 before WL.13
+    ///
+    /// `emissionHz` therefore stays at 3.79 and is NOT re-solved against the new speed. That
+    /// was measured too: coupling the two holds the world-space ratio its derivation assumed,
+    /// but the bead is screen-space, so it just removes beads — ribbon share fell to
+    /// 0.247–0.355 % across the same sweep, against 0.359–0.387 % with emission left alone.
+    ///
+    /// Costs `headingTurnsPerTrail`, because ω_max is `baseSpeed / minTurnRadius`: measured
+    /// 1.44 → 1.30 (there_there) and 1.76 → 1.44 (love_rehab), both still over the 1.20 band.
+    /// 0.050 fills more still (`viewScale` 2.33) and was not taken — it puts there_there at
+    /// 1.24, one bad track from the floor.
+    public var baseSpeed: Float = 0.060
 
     /// Minimum turning radius, world units. 0.16 = 8 % of frame height (§3.1(b)).
     public var minTurnRadius: Float = 0.16

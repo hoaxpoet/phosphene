@@ -30,6 +30,12 @@ struct MultiPassRenderHarness {
     let width: Int
     let height: Int
 
+    /// WL.13 — optional Witchlight path-tuning override, for sweeping a constant through the
+    /// REAL render path rather than a re-implementation of it. `nil` = production tuning.
+    /// A stored property rather than an `init` parameter: adding a defaulted parameter to an
+    /// existing initialiser breaks incremental relinking (CLEAN.3.5).
+    var witchlightTuning: WitchlightTuning?
+
     init(width: Int = 320, height: Int = 180) {
         self.width = width
         self.height = height
@@ -58,7 +64,8 @@ struct MultiPassRenderHarness {
         switch presetName {
         case "Filigree":     return try renderFiligree(features, stems, settle: settle, reduce)
         case "Cymatic Resonance": return try renderCymaticSand(features, stems, settle: settle, reduce)
-        case "Witchlight":   return try renderWitchlight(features, stems, settle: settle, reduce)
+        case "Witchlight":
+            return try renderWitchlight(features, stems, settle: settle, tuning: witchlightTuning, reduce)
         case "Meniscus":     return try renderMeniscus(features, stems, settle: settle, reduce)
         case "Mitosis":      return try renderMitosis(features, stems, reduce)
         case "Cytokinesis":  return try renderCytokinesis(features, stems, reduce)
@@ -113,7 +120,8 @@ struct MultiPassRenderHarness {
     /// safety gate an easier signal than the one that ships. This mirrors
     /// `RenderPipeline.drawParticleMode` — preset triangle first, then the four ribbon draws.
     private func renderWitchlight<T>(_ drive: [FeatureVector], _ stems: [StemFeatures],
-                                     settle: Int, _ reduce: (_ bgra: [UInt8]) -> T) throws -> [T] {
+                                     settle: Int, tuning: WitchlightTuning?,
+                                     _ reduce: (_ bgra: [UInt8]) -> T) throws -> [T] {
         let ctx = try MetalContext()
         let lib = try ShaderLibrary(context: ctx)
         guard let preset = _acceptanceFixture.presets.first(where: { $0.descriptor.name == "Witchlight" }) else {
@@ -129,6 +137,7 @@ struct MultiPassRenderHarness {
         // draw. Same class as the missing driver columns in `WitchlightFixtureDrive`.
         var sumSin: Float = 0, sumCos: Float = 0
         for f in drive { sumSin += sin(f.tonalPhaseFifths); sumCos += cos(f.tonalPhaseFifths) }
+        if let tuning { geo.path.overrideTuning(tuning) }
         if let home = TrackProfile.tonalHome(sumSin: sumSin, sumCos: sumCos, count: drive.count) {
             geo.path.ingestTonalHome(radians: home)
         }
