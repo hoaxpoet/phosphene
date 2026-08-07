@@ -25,6 +25,23 @@ struct WitchlightBeatAlignmentProbe {
         return a.isEmpty ? 0 : a[a.count / 2]
     }
 
+    /// WL.12 — what the four newly-measurable routes actually produce, on the committed
+    /// fixtures. Bands are set FROM this, never the other way round.
+    @Test("WL.12 route metrics on the committed fixtures", arguments: WitchlightFixtureDrive.tracks)
+    func routeMetrics(track: String) throws {
+        let drive = try WitchlightFixtureDrive.load(track)
+        let path = WitchlightPath()
+        WitchlightFixtureDrive.run(path, over: drive)
+        let names = ["beadHueSpread", "promotedShareOfTrail", "pulsesPerMinute",
+                     "trailContractionDepth", "headingTurnsPerTrail", "penSpeedSwing",
+                     "ribbonBreathSwing"]
+        let cells = names.map { n -> String in
+            guard let v = path.responseMetric(n) else { return "\(n)=nil" }
+            return String(format: "%@=%.3f", n, v)
+        }
+        print("WL.12 [\(track)] " + cells.joined(separator: "  "))
+    }
+
     @Test("where the flare lands relative to the beat grid")
     func flareVsGrid() throws {
         guard let dir = ProcessInfo.processInfo.environment["WITCHLIGHT_SESSION"] else { return }

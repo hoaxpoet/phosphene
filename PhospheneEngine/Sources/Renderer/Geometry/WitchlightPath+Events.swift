@@ -126,6 +126,7 @@ extension WitchlightPath {
         // ~0.4 s in, ~4 s back out (§3.2).
         let tau: Float = contractGoal > contraction ? 0.15 : 1.40
         contraction += (contractGoal - contraction) * (dt / (tau + dt))
+        contractionPeak = max(contractionPeak, contraction)
         trailWindow = tuning.trailSeconds * (1 - 0.30 * contraction)
     }
 
