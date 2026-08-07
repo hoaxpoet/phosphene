@@ -63,6 +63,46 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment BUG051.1/.2 — m3u entry allow-list + canonicalization at the parser boundary ✅ (2026-08-07)
+
+Closes **BUG-051**, filed by CLEAN.2.4's GAP-10 threat model in June and the last unblocked,
+bounded item on the defect board. `M3UParser` now canonicalizes every resolved entry
+(`standardizedFileURL` on all three resolve branches, not just the relative one; `file://`
+strings that aren't file URLs rejected) and filters against `allowedAudioExtensions`
+(`m4a`/`mp3`/`flac`) **at the parser boundary**, so a hostile playlist naming `~/.ssh/id_rsa`
+or `../../etc/passwd` resolves to zero entries and throws `noEntriesResolved` — never stat'd,
+never handed onward. `LocalFileMenuCommands.allowedExtensions` aliases the engine constant so
+the app- and engine-side lists cannot drift.
+
+**Deliberately not built: containment to an expected root.** The filing proposed rejecting
+entries that don't resolve "under an expected root". Absolute and `../`-relative entries
+pointing outside the playlist's own directory are how exported playlists (iTunes, foobar2000)
+address a music library, so containment would break normal use to close nothing — both attack
+examples in the filing are extensionless and the extension check already catches them.
+`parse_allowsTraversalToRealAudioOutsidePlaylistDir` pins that traversal-to-real-audio still
+resolves, so the guard is not re-added by reflex.
+
+**Correction to the original filing.** It stated the resolved path was "handed to AVFoundation"
+with "no allow-list short-circuits it first". Both app entry points already filtered the
+parser's output by extension, so the decoder never saw a non-audio path. The real residual was
+narrower — an `isReadableFile` stat of an attacker-named path plus that path in
+`skippedLines`/logs — and the guarantee depended on every future caller remembering to filter.
+The caller filters stay as belt-and-braces.
+
+**Method note worth keeping (BUG051.2).** The manual criterion took two live runs. The first
+(`2026-08-07T20-12-09Z`) looked clean and proved nothing: the launched app was built from a
+*parallel worktree* whose source contains zero occurrences of `allowedAudioExtensions`. Because
+this fix is invisible at the UI by construction, a no-op and a pass produce identical logs — so
+the log is not the evidence, **which binary ran is**. The closing run
+(`2026-08-07T20-20-07Z`, fixed build confirmed by app access time vs. session start and
+`M3UParser.o` compile time vs. the source edit) queued and played all three formats:
+`cached=3 failed=0 total=3`, both advances `ok=true`, `CHAIN_HEALTH: verdict=clean`, tap healthy
+at −2.03 dBFS. The wrong-build run is retained as the pre-fix control.
+
+**Done-when:** met. Automated (`M3UParserTests`, 11/11) + manual (Matt, above). Not visually
+verifiable — no renderer, shader, or preset surface touched, so no capability-registry row
+changes and no comparison sheet applies.
+
 ### Increment BUG078.1 — `AVAudioPlayerNode` teardown trap root-caused and fixed ✅ (2026-08-07)
 
 The intermittent `EXC_BREAKPOINT` / "dispatch_sync called on queue already owned by current
@@ -514,7 +554,7 @@ Ported the Rrrola/Fragmentarium Mandelbox distance estimator verbatim (FA #73) i
 3. **CLEAN backlog** — Phases 0–5 and 7 are closed. **Phase 6** (5 open rows) and **Phase 8** (4 open rows, the XL decomposition) remain. Phase 8 is the same work as PUB **R3.5**. Authoritative queue: [`docs/diagnostics/CODE_AUDIT_2026-06-13.md`](diagnostics/CODE_AUDIT_2026-06-13.md) Part C.
 4. **PUB R3 decomposition** — slices R3.1/R3.2 done; **R3.3 (analysis), R3.4 (LF transport), R3.5 (orchestrator bridge)** queued. R3.5 = CLEAN Phase 8; do not schedule them as separate efforts.
 5. **Open defects worth scheduling** *(refreshed 2026-08-07 — BUG-079 and BUG-078 are now RESOLVED and have left §Open; the working order below is the triage that replaced this line's earlier list)*. The board splits by whether the work is *doable* rather than by severity label, because most of the P1/P2 headline items are evidence-blocked and cost nothing while they wait:
-   - **Unblocked and bounded:** **BUG-051** (m3u traversal/extension guard — a trust boundary, few lines), and BUG-085's one permitted experiment (suppress stem separation for a full session and see whether the freeze class survives; every other hypothesis on that entry is refuted).
+   - **Unblocked and bounded:** ~~BUG-051~~ **done 2026-08-07 (BUG051.1)** — the m3u extension/canonicalization guard landed at the parser boundary; remaining here is BUG-085's one permitted experiment (suppress stem separation for a full session and see whether the freeze class survives; every other hypothesis on that entry is refuted).
    - **Owned by the beat-sync program, not standalone:** BUG-076 / BUG-065 / BUG-028 all belong to D-202 — **FT.3** is the live thread. **BUG-077** is a one-comparison change; do it inside DBN.3 when the resolver is already open.
    - **Blocked on an artifact, correctly idle:** **BUG-085 / BUG-081 / BUG-060** (one hang class; instrumentation merged, `Scripts/capture_hang.sh` exists — next freeze, run it before force-quit). **BUG-055**'s durable half needs a paid Apple Developer membership; its detector half closes on Matt's UX check of the fix-ladder card. **BUG-058 / BUG-070 residual / BUG-036 site 3** are explicitly parked pending a reproduction — restructuring the G1-validated path without one is the BUG-063 pattern.
    - **Accept as-is:** BUG-084, BUG-054, BUG-056, the AUDIT-2026-06-09 P3 residue. No product impact; not worth an increment until something depends on them.
