@@ -84,8 +84,14 @@ converting a 1-in-3 full-suite lottery into a 3-second deterministic check.
 
 **Method note worth keeping:** 25 matching `.ips` reports were already on disk, 19 naming the
 in-flight test and both racing threads. The bug stalled for a week on "nobody has captured the
-trap" while the capture sat in `~/Library/Logs/DiagnosticReports/`. **BUG-078 stays open on its
-manual criterion** — local-file playback end-to-end is Matt's sign-off.
+trap" while the capture sat in `~/Library/Logs/DiagnosticReports/`.
+
+**Manual criterion met, BUG-078 CLOSED** — Matt's session `2026-08-07T19-10-25Z`: 19 adopted
+instances / 18 teardowns in strict `I(EXI)*` alternation (the unpaired one is still playing at
+log end), clean chain health, no hang, through two rapid-Next bursts. Limit recorded in
+KNOWN_ISSUES: the live run never took the new stale-teardown branch, because the app serialises
+`start()` on the MainActor — it proves no-regression and the orphan invariant on the shipped
+path, while the deterministic gate is what covers the race itself. Merged in `f68efb67` (PR #62).
 
 ### Increment BUG079.1 — release test build unblocked; DBN.2 budget measured ✅ (2026-08-07)
 
@@ -507,7 +513,13 @@ Ported the Rrrola/Fragmentarium Mandelbox distance estimator verbatim (FA #73) i
 2. **Preset work in flight** — **FTR.3/.4/.5** (Fractal Tree per-branch activation → stem binding → M7+cert), **MEN.2b/.3/.4** (Meniscus faithful port → uplift → cert), **WL** (Witchlight; the WL.2 motion-gate verdict is an **open decision for Matt**, and §6 prescribes a re-scope rather than another tuning round). **Ricercar** carries three increments code-complete-pending-Matt's-eye since 2026-07-08/09 plus a fourth unmerged reboot branch — its rows need a disposition, not more work.
 3. **CLEAN backlog** — Phases 0–5 and 7 are closed. **Phase 6** (5 open rows) and **Phase 8** (4 open rows, the XL decomposition) remain. Phase 8 is the same work as PUB **R3.5**. Authoritative queue: [`docs/diagnostics/CODE_AUDIT_2026-06-13.md`](diagnostics/CODE_AUDIT_2026-06-13.md) Part C.
 4. **PUB R3 decomposition** — slices R3.1/R3.2 done; **R3.3 (analysis), R3.4 (LF transport), R3.5 (orchestrator bridge)** queued. R3.5 = CLEAN Phase 8; do not schedule them as separate efforts.
-5. **Open defects worth scheduling** — **BUG-079** (release-config test build; blocks every release-only perf budget, incl. the DBN.2 latency gate), **BUG-051** (m3u traversal guard), **BUG-060** (reopened 2026-08-03 — needs a captured stack, not another monitoring window). Full list: [`docs/QUALITY/KNOWN_ISSUES.md`](QUALITY/KNOWN_ISSUES.md) §Open Index.
+5. **Open defects worth scheduling** *(refreshed 2026-08-07 — BUG-079 and BUG-078 are now RESOLVED and have left §Open; the working order below is the triage that replaced this line's earlier list)*. The board splits by whether the work is *doable* rather than by severity label, because most of the P1/P2 headline items are evidence-blocked and cost nothing while they wait:
+   - **Unblocked and bounded:** **BUG-051** (m3u traversal/extension guard — a trust boundary, few lines), and BUG-085's one permitted experiment (suppress stem separation for a full session and see whether the freeze class survives; every other hypothesis on that entry is refuted).
+   - **Owned by the beat-sync program, not standalone:** BUG-076 / BUG-065 / BUG-028 all belong to D-202 — **FT.3** is the live thread. **BUG-077** is a one-comparison change; do it inside DBN.3 when the resolver is already open.
+   - **Blocked on an artifact, correctly idle:** **BUG-085 / BUG-081 / BUG-060** (one hang class; instrumentation merged, `Scripts/capture_hang.sh` exists — next freeze, run it before force-quit). **BUG-055**'s durable half needs a paid Apple Developer membership; its detector half closes on Matt's UX check of the fix-ladder card. **BUG-058 / BUG-070 residual / BUG-036 site 3** are explicitly parked pending a reproduction — restructuring the G1-validated path without one is the BUG-063 pattern.
+   - **Accept as-is:** BUG-084, BUG-054, BUG-056, the AUDIT-2026-06-09 P3 residue. No product impact; not worth an increment until something depends on them.
+
+   Full list and per-entry evidence: [`docs/QUALITY/KNOWN_ISSUES.md`](QUALITY/KNOWN_ISSUES.md) §Open Index.
 6. **RECON follow-ups** — the 2026-08-03 audit's own queue: consolidate the three fixture-restore mechanisms behind one shared manifest (the recorded BUG-080 follow-up), CI "Option B" (full-suite-minus-skip-list, replacing the hand-maintained ~130-test allow-list), wire `check_drums_beat_intensity.sh` into CI/closeout, and delete the zero-consumer RMENV.2/.3 + MFX.1 capabilities per Matt's 2026-08-03 call.
 
 > **Capability Audit (Phase CA, 2026-05-20).** The originally-planned `docs/CAPABILITY_GAP_AUDIT.md` (now at `archive/CAPABILITY_GAP_AUDIT.md`) single-deliverable was superseded 2026-05-20 by the multi-increment **Phase CA** audit, which produces one per-subsystem registry under [`docs/CAPABILITY_REGISTRY/`](CAPABILITY_REGISTRY/). **CA.1–CA.7b all shipped ✅ (2026-05-20 → 2026-05-21)** — see §Phase CA for the per-increment detail. *(This paragraph read "CA.1 landed; CA.2+ pending" until RECON.2, 2026-08-03, contradicting the Phase CA section in the same file.)* Preliminary 2026-05-12 inventory data (shader-utility-consumer matrix, distinct from CA's per-subsystem audits) lives at [`docs/diagnostics/capability-audit-pre-2026-05-12.md`](diagnostics/capability-audit-pre-2026-05-12.md) and continues to feed shader-cleanup increments.
