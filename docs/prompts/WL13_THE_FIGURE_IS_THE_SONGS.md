@@ -57,7 +57,7 @@ What makes this different: the correlation is computed on the **heading time-ser
 
 ### 3. Pre-flight invariants
 
-1. `origin/main` contains the WL.12 merge; `swift test --filter Witchlight` → **26 tests pass** (25 + the divergence probe).
+1. `origin/main` contains the WL.13 spec merge (`d814f0e6` or later); `swift test --package-path PhospheneEngine --filter Witchlight` → **29 tests pass**. (Verified 2026-08-07. If this number has moved, that is fine — confirm they all PASS and note the new count; a changed count is only a problem if something is red.)
 2. `swiftlint --strict` → 0 violations.
 3. `WitchlightPathDivergenceProbe` reproduces the table above, **including CONTROL r = 1.000**. If the control is not 1.000, stop — the path has become non-deterministic and nothing else in this increment can be interpreted.
 
