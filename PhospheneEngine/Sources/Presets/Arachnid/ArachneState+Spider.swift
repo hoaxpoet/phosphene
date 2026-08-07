@@ -341,12 +341,15 @@ extension ArachneState {
 
     // MARK: - Test helpers
 
-    #if DEBUG
     /// Pin the spider to a deterministic state for fixture rendering tests.
     ///
     /// Sets blend=1, positions the body at the given UV coordinate, heading=0,
     /// and all leg tips at their rest-pose angular offsets. Does not run the
     /// gait solver — tips are set directly so the output is frame-stable.
+    ///
+    /// Deliberately NOT `#if DEBUG`-gated: its test-target call sites are unconditional,
+    /// so gating it breaks the release test build and makes every release-only
+    /// performance budget unmeasurable (BUG-079).
     ///
     /// - Parameter uvPosition: UV-space anchor point (e.g. `SIMD2(0.42, 0.40)`).
     public func forceActivateForTest(at uvPosition: SIMD2<Float>) {
@@ -369,7 +372,6 @@ extension ArachneState {
         }
         writeSpiderToGPU()
     }
-    #endif
 
     // MARK: - Helpers used by both ArachneState.swift and this extension
 
