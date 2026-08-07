@@ -141,6 +141,38 @@ public struct WitchlightTuning: Sendable {
     /// rather than as the current chord.
     public var homeTau: Float = 12.0
 
+    /// How `home` behaves before its EMA has seen `homeTau` worth of music.
+    public enum HomeWarmup: Sendable {
+        /// Pre-WL.13. `reset()` leaves `homeSin/homeCos = (0, 1)`, i.e. home at 0 rad — an
+        /// arbitrary point on the circle of fifths with no relationship to the track about to
+        /// play. A 12 s EMA takes ~30 s to walk from there to the real tonal centre, and for
+        /// that whole window `phaseFromHome` holds ONE SIGN, so curvature holds one sign and
+        /// the pen winds a coil. 30 s is also the trail window, so the entire visible figure
+        /// for the first half-minute of EVERY track is drawn out of that ramp.
+        case fromZero
+        // A `seedFirstSample` case (seed home from frame 1's raw phase) was measured and
+        // DELETED: on the 21 s fixtures it looked strong (worst pair r +0.995 → +0.649) and
+        // on all three recorded sessions it was byte-identical to `fromZero`, because a real
+        // session's first frame has no tonal estimate yet and seeds home right back at 0 rad.
+        /// Standard EMA warm-up correction: run the time constant at `min(homeTau, elapsed)`
+        /// so home is the unbiased running circular mean of everything heard so far, settling
+        /// into the `homeTau` EMA once it has that much history. No arbitrary seed and no
+        /// ramp — home is a real estimate of the tonal centre from the first second.
+        case unbiased
+    }
+    /// WL.13 — see `HomeWarmup`.
+    public var homeWarmup: HomeWarmup = .fromZero
+
+    /// The `home` EMA time constant to use at `age` seconds since `reset()`.
+    ///
+    /// `.unbiased` runs it at `min(homeTau, age)`, which makes home the running circular
+    /// mean of everything heard so far and settles it into the full `homeTau` EMA once it
+    /// has that much history — the standard EMA warm-up correction. `.fromZero` ignores
+    /// `age` entirely, which is what leaves home ramping from 0 rad for ~30 s per track.
+    public func effectiveHomeTau(atAge age: Float) -> Float {
+        homeWarmup == .unbiased ? min(homeTau, age) : homeTau
+    }
+
     /// Circular-EMA time constant on the harmonic phase, seconds (CR.1.2 settled on 1.5 s).
     public var phaseTau: Float = 1.5
 

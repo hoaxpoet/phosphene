@@ -380,7 +380,7 @@ public final class WitchlightPath: AudioResponseMetrics {
         let raw = features.tonalPhaseFifths
         phaseSin += (sin(raw) - phaseSin) * alpha
         phaseCos += (cos(raw) - phaseCos) * alpha
-        let homeAlpha = dt / (tuning.homeTau + dt)
+        let homeAlpha = dt / (tuning.effectiveHomeTau(atAge: Float(elapsedSeconds)) + dt)
         homeSin += (sin(raw) - homeSin) * homeAlpha
         homeCos += (cos(raw) - homeCos) * homeAlpha
         let phi = atan2(phaseSin, phaseCos)
