@@ -143,7 +143,30 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
         // below (avoids the AVAudioPlayerNode.stop() / scheduleFile-callback
         // ABBA deadlock against the provider's NSLock).
         stop()
-        try lock.withLock { try _startLocked() }
+        // BUG-078 (2026-08-07): that pre-lock `stop()` is not enough when two
+        // `start()` calls race. Thread B's `stop()` can run while thread A is
+        // still inside `_startLocked()`, snapshot nothing, and then B's own
+        // `_startLocked()` overwrites A's live engine/player/observer — leaking
+        // a RUNNING engine whose node is finally released on its own
+        // CommandQueue, which traps the process. So snapshot whatever is
+        // present under the lock (a pointer copy — no AVFoundation calls, so
+        // BUG-021's constraint holds) and tear it down after unlocking, with a
+        // strong reference held across `player.stop()`.
+        let stale: TeardownRefs? = try lock.withLock {
+            let previous = TeardownRefs(
+                player: playerNode,
+                engine: engine,
+                observer: configChangeObserver
+            )
+            try _startLocked()
+            let hadPrevious = previous.player != nil
+                || previous.engine != nil
+                || previous.observer != nil
+            return hadPrevious ? previous : nil
+        }
+        if let stale {
+            Self.teardownAVFoundation(refs: stale, diagnostic: onDiagnosticEvent)
+        }
     }
 
     /// Stop playback and tear down the engine. Safe to call multiple times
@@ -232,9 +255,14 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
         // `_stopLocked`'s synchronous AVFoundation teardown while the
         // scheduleFile completion callback also tried to take the lock.
         // The new `start()` public method calls `stop()` (which now
-        // tears down outside the lock) BEFORE invoking `_startLocked`,
-        // so by the time we reach this point any previous instance is
-        // already gone and the fields below are guaranteed nil.
+        // tears down outside the lock) BEFORE invoking `_startLocked`.
+        //
+        // BUG-078 (2026-08-07): that does NOT make the fields below
+        // guaranteed nil, which this comment used to claim. A concurrent
+        // `start()` can complete between another thread's `stop()` and its
+        // `_startLocked()`, so the assignments at the end of this method can
+        // overwrite a live instance. `start()` now snapshots whatever is
+        // present before calling this and tears it down after unlocking.
 
         let file = try AVAudioFile(forReading: url)
         let engine = AVAudioEngine()
@@ -299,6 +327,10 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
         let rate = Int(sampleRate)
         logger.info(
             "[LF.1] start: \(lastComponent, privacy: .public) \(rate) Hz \(channelCount) ch")
+        // BUG-078: pairs with `provider.teardown ENTER`. Every instance this
+        // method adopts must be torn down exactly once; a missing pair means an
+        // instance was overwritten while still running.
+        onDiagnosticEvent?("provider.start INSTANCE")
     }
 
     /// BUG-021 (2026-05-28): tear-down ref bundle. Snapshotted under the

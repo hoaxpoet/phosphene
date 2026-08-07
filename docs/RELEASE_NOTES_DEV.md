@@ -10,6 +10,36 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-07-180458] BUG078.1 — the AVAudioPlayerNode trap was a concurrent-start overwrite, and the evidence was already on disk
+
+Twenty-five `.ips` reports for this trap were sitting in `~/Library/Logs/DiagnosticReports/`, nineteen of them naming `concurrentDoubleStart_serializesWithoutDeadlock` on a live thread. The entry said nobody had captured the trap; nobody had *read* it. The two racing threads are right there in the report — `_startLocked()` on one, `stop()` on the other — and they name the mechanism.
+
+**`start()` tears down before taking the lock** (BUG-021, so AVFoundation teardown never runs under the `NSLock`). Two racing starts interleave as: B's `stop()` snapshots nothing → A's `_startLocked()` adopts and plays instance #1 → B's `_startLocked()` overwrites the fields with #2. Instance #1 is orphaned **while running**. Its last strong reference is the one AVFAudio holds inside the pending `scheduleFile` completion block, so the node is finally released on its own `CommandQueue` — and `-[AVAudioNode dealloc]` → `Stop()` → `dispatch_sync` re-enters the queue it is already running on. `_startLocked`'s comment claiming "the fields below are guaranteed nil" was the false premise, now corrected in place.
+
+**The leading hypothesis was wrong and is worth recording as such.** The strong `self` from `guard let self` in `scheduleFileLoop` is not involved: there are **no Swift frames** between `_Block_release` and `-[AVAudioNode dealloc]`, so the object released there is the node, retained by AVFAudio's own wrapper block. Every capture in our completion block is `weak`.
+
+**Fix.** `start()` snapshots the existing refs under the lock — a pointer copy, no AVFoundation calls, so BUG-021's constraint holds — and tears them down after unlocking, holding a strong reference across `player.stop()` so the command queue drains before the final release. This also closes the orphaned-engine leak.
+
+**Gate.** `LocalFilePlaybackStartRaceTests` counts adopted instances against teardowns over 24 racing double-starts, which turns a 1-in-3 full-suite lottery into a 3-second deterministic check: **48 adopted / 25 torn down (23 orphans) before the fix, equal after**. It asserts the orphaning rather than the trap, because the trap needs full-suite timing and a gate that only fires under load is not a gate.
+
+**Full-suite ×5 clean** (1794 tests / 270 suites per run, no new `.ips`). That streak alone is weak evidence — at the observed ~1-in-3 trip rate it would happen by chance ~13 % of the time — so the deterministic 23 → 0 orphan count is what carries the fix.
+
+Still open on the manual criterion: local-file playback end-to-end (start, seek, track-change, quit-while-playing) is Matt's call on the shipped path.
+
+---
+
+### [dev-2026-08-07-171113] BUG079.1 — the release test build works, and the DBN.2 budget is met (17.9 ms vs 50 ms)
+
+`swift test -c release` could not build the engine test target: `ArachneState.forceActivateForTest(at:)` sat inside `#if DEBUG` while its three test-target call sites did not. Dropped the gate rather than guarding the call sites — the smaller fix would have quietly removed the Arachne spider render coverage from every release run, and losing coverage to fix a build is a bad trade.
+
+**The point of fixing it was the number.** BEAT_SYNC_PROGRAM_PLAN §DBN.2 budgets < 50 ms for a 30 s activation window; DBN.2 could only measure debug and had to assert a regression ceiling with the real budget marked UNVERIFIED. Measured now: **17.9 ms in release** against **1403 ms in debug**. A 78× config gap — the debug figure never carried information about the budget, and the spec's warning against scaling it was right.
+
+`DSPPerformanceTests` now asserts 50 ms under release and keeps the 4000 ms debug regression ceiling, so the plan gate is enforceable instead of documented.
+
+One correction to the filing: `swift test -c release` on its own still fails, and that is not a defect — `@testable import` needs testability, which release does not enable. The working invocation is `swift test -c release -Xswiftc -enable-testing --package-path PhospheneEngine`.
+
+---
+
 ### [dev-2026-08-05-214036] DYN.1d — the usability gate rejected exactly the tracks that needed the fix
 
 Matt on Cherub Rock: *"the tree grows a bit too much BEFORE the distorted guitar comes in and then does not jump up again when the distorted guitar enters."* Both halves are one threshold.

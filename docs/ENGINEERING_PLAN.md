@@ -63,6 +63,49 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment BUG078.1 — `AVAudioPlayerNode` teardown trap root-caused and fixed ✅ (2026-08-07)
+
+The intermittent `EXC_BREAKPOINT` / "dispatch_sync called on queue already owned by current
+thread" that has been taking down the engine test process since 2026-07-26 is a
+**concurrent-`start()` overwrite** in `LocalFilePlaybackProvider`, not the completion-block
+retain the entry had hypothesised. `start()` tears down before taking the lock (BUG-021), so
+two racing starts can interleave such that the second `_startLocked()` overwrites a live,
+playing engine/player. The orphan's last strong reference is the one AVFAudio holds inside
+the pending `scheduleFile` completion block, so the node is released on its own `CommandQueue`,
+where `dealloc` → `Stop()` → `dispatch_sync` re-enters that queue.
+
+**Fix:** `start()` snapshots the existing refs under the lock (pointer copy only — BUG-021's
+lock-free-teardown constraint holds) and tears them down after unlocking, holding a strong
+reference across `player.stop()`. Closes the orphaned-engine leak by the same change.
+
+**Gate:** `LocalFilePlaybackStartRaceTests` counts adopted instances against teardowns over 24
+racing double-starts — **48 adopted / 25 torn down (23 orphans) pre-fix, equal post-fix** —
+converting a 1-in-3 full-suite lottery into a 3-second deterministic check.
+
+**Method note worth keeping:** 25 matching `.ips` reports were already on disk, 19 naming the
+in-flight test and both racing threads. The bug stalled for a week on "nobody has captured the
+trap" while the capture sat in `~/Library/Logs/DiagnosticReports/`. **BUG-078 stays open on its
+manual criterion** — local-file playback end-to-end is Matt's sign-off.
+
+### Increment BUG079.1 — release test build unblocked; DBN.2 budget measured ✅ (2026-08-07)
+
+`ArachneState.forceActivateForTest(at:)` was declared inside `#if DEBUG` while its three
+test-target call sites were not, so `swift test -c release` could not compile the engine test
+module (BUG-079). Dropped the gate rather than guarding the call sites — the smaller fix would
+have removed the Arachne spider render coverage from release runs, which trades coverage for a
+build. The doc comment now records why it is ungated.
+
+**The budget the block was hiding: 17.9 ms** for a 30 s activation window in release, against
+BEAT_SYNC_PROGRAM_PLAN §DBN.2's 50 ms — met, with no design change. Debug measures 1403 ms, a
+**78× config gap**, confirming that scaling the debug figure (which the spec forbade) would
+have been meaningless either way.
+`DSPPerformanceTests.test_beatActivationDecoder_30sWindow_performance` now asserts 50 ms under
+release and keeps the 4000 ms regression ceiling under debug.
+
+Correction to the filing: `swift test -c release` alone still fails, and that is not a defect —
+`@testable import` requires testability, which release does not enable. Use
+`swift test -c release -Xswiftc -enable-testing --package-path PhospheneEngine`.
+
 ### Increment HANG.2 — BUG-085 instrumented soak ✅ non-reproduction control (2026-08-05)
 
 HANG.1's lifecycle probe ran through two visible Witchlight/local-file controls: one full
@@ -3793,7 +3836,7 @@ Bar-pointer-model decoder over Beat This! activations (odd meters, tempo-state),
 - **DBN.1 — desk research + spec doc ✅ (2026-07-30).** Done-when met: [`docs/design/DBN_DECODER_SPEC.md`](design/DBN_DECODER_SPEC.md) committed with every constant cited to a paper equation (Krebs et al. 2015 Eq. 1–10, CC BY 4.0; Böck et al. 2014 Eq. 3) or marked a Phosphene tunable with a default, range and rationale. No decoder code written. **The premise was tested, not assumed** — Beat This! is titled "accurate beat tracking *without* DBN postprocessing", and its authors' own A/B on the model we ship shows a DBN *lowers* F1 (beat 89.1→88.1, downbeat 78.3→77.4) while raising CMLt downbeat 67.3→73.3 by "correcting some of the (wrongly) non-periodic outputs". That one benefit is exactly our failure mode, so the premise holds on narrower grounds than the plan assumed, and DBN.3 must now gate on no-regression to the clean 4/4 tracks. **Task-7 measurement** (`DownbeatStreamDiagnosticTests`, env-gated) located where the signal dies: not in post-processing — 100 % of downbeat candidates survive the resolver's ±40 ms snap gate — but in the model's own stream, which emits a confident downbeat on **69–90 % of beats** on money/solsbury_hill vs 24 % on the working billie_jean. Design consequence: decode each meter hypothesis separately over a narrow tempo band around the existing BPM estimate (tempo is not the broken axis), dropping the per-meter state space from 6,703 states / 28.2 M Viterbi ops to 1,351 / 2.8 M and making the < 50 ms budget reachable. Two DECISION-NEEDED items open (guess-vs-decline on unclear bars; whether {6,9,12} join the meter set).
 - **DBN.2 — `BeatActivationDecoder` implementation ✅ (2026-07-30).** Done-when met: 14-case unit suite green on synthetic activations; budget test in `DSPPerformanceTests`. Pure Swift, offline-path only, **not yet wired into `BeatGridResolver`** (that is DBN.3). D-207's decline path ships rather than deferring: the result is "a meter **or** no confident bar", `beatsPerBar` is `Optional`, and declining withholds downbeats while keeping beats.
   - *Two tunables moved off their spec defaults, both from measurement.* `downbeatWeight` 1.0 → **5.0**: at the spec's 1.0 the decoder picks the **wrong** meter on the degenerate fixture (Böck Eq. 3's beat/non-beat terms swamp the downbeat evidence; margin 0.0012 = indistinguishable). `meterMarginThreshold` 0 → **0.10**, set from the measured distribution across all 9 ground-truthed tracks per D-207 — but **the correct and wrong margin distributions OVERLAP** (correct min 0.1439, wrong max 0.2677), so the margin is necessary-but-not-sufficient and 0.10 is a tradeoff, not a boundary.
-  - *Performance:* 17,067 → **1,350 ms** for a 30 s window (debug) via precomputed observation classes, per-frame terms, a flattened transition table and unsafe buffers. **The plan's 50 ms is a release figure and remains UNVERIFIED** — `swift test -c release` does not build (BUG-079), so the gate asserts a regression ceiling and says so rather than inventing a debug/release constant.
+  - *Performance:* 17,067 → **1,350 ms** for a 30 s window (debug) via precomputed observation classes, per-frame terms, a flattened transition table and unsafe buffers. **The plan's 50 ms budget is MET — 17.9 ms measured in release** (BUG079.1, 2026-08-07, once BUG-079 unblocked the release test build). The gate asserts 50 ms under release and keeps the debug regression ceiling; the 78× config gap confirms no debug/release constant should ever have been invented.
   - ⚠️ **Real-audio result, ahead of DBN.3's gate:** the decoder **collapses every odd meter to 4**. On the 6 truth-bearing tracks it is correct on 3 (billie_jean, bohemian_rhapsody, bleed — all 4/4) vs the incumbent's 2, but money (7), solsbury_hill (7) and take_five (5) all decode as 4. The gain over baseline comes mostly from *declining* rather than from reading odd meters: confidently-wrong drops from 7 tracks to 2. **The category-2 case the phase exists for is not solved.** Evidence: `DecoderMarginCalibrationTests`.
   - 🔍 **Odd-meter collapse diagnosed (2026-07-30, Matt's direction).** **The tempo hint is exonerated** — money's `tap_bpm 60.97` is a half-time tap, both reference backends put the real pulse at ~122 BPM ("double the tapped pulse ×2.01") and the ground-truth file's own `meter_note` says the bar is 7 of *those* beats, so the incumbent hint already sits on the true pulse; forcing the half-time pulse makes it worse. The cause is a **structural bias in spec §5.1**: the two-stream observation model applies `w·log(1−d)` at every non-downbeat beat position, and meter `B` labels `(B−1)/B` of beats that way, so larger meters are penalised purely for being larger. Measured Δ(7 vs 3) is exactly linear in weight at **18.0 nats per unit**, against a closed-form prediction of **18.1** using DBN.1's independently-measured d = 0.805. **No single weight can work** — the evidence needs `w ≥ 2`, the bias needs `w` small. Not a tuning problem. Fix direction in spec §9.6 (asymmetric downbeat evidence is the recommended first attempt).
   - ✅ **§5.1 fix implemented (2026-07-31).** Downbeat evidence is now a **centred log-odds sampled at the bar position only** (spec §9.7). Two prior forms were diagnosed and discarded: the specified form's `(B−1)/B` bias, then a centred form smeared across the beat window whose second frame (`d ≈ 0.02`) charged every bar line ~−5.7, reintroducing a count bias toward *large* meters — measured at 78 nats where the closed form predicted 74. **Raw meter accuracy 3/6 → 4/6, and solsbury_hill's 7 is the first odd meter ever recovered.** But with the bias gone the margins collapsed: correct spans 0.0097–0.5534 and wrong 0.0155–0.1085, so a wrong answer outscores a right one and **the margin is no longer a sufficient decline signal**. Threshold re-derived to 0.05 (3 correct named, 1 wrong named). **The remaining gap is evidence quality, not model bias.** Stopped per the two-strikes rule after three diagnosed iterations.

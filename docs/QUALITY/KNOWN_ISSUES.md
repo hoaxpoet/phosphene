@@ -40,8 +40,7 @@ for the same reason. BUG-081 and BUG-060 are the same hang class; they are cross
 | BUG-051 | P3 | local-file / security | m3u entry paths resolved with no extension/traversal guard (bounded: no egress) |
 | BUG-036 | P2 | audio.capture / performance | Heap allocations on the real-time audio thread (three sites) |
 | BUG-028 | P2 | dsp.beat | Beat-grid live phase imperfect on ~half of tracks |
-| BUG-079 | P3 | build / test-isolation | **`swift test -c release` does not build** — `ArachneState.forceActivateForTest` is `#if DEBUG`-gated in source but its three test-target call sites are not, so the test module fails to compile in release. Pre-existing; found at DBN.2. **Consequence: every release-only performance budget is unverifiable**, including BEAT_SYNC_PROGRAM_PLAN §DBN.2's "< 50 ms for a 30 s activation window" — DBN.2 could only measure debug and its budget test asserts a regression ceiling instead, with the real budget documented as unverified. Fix: guard the call sites, or promote the helper to test-support SPI |
-| BUG-078 | P2 | audio.playback / concurrency | **Engine test process traps in `AVAudioPlayerNode` teardown** — `EXC_BREAKPOINT` with libdispatch's "dispatch_sync called on queue already owned by current thread". The `scheduleFile` completion block's release deallocs an `AVAudioNode` on the node's own `CommandQueue`, and `dealloc` → `Stop()` → `dispatch_sync` re-enters that queue. Pre-existing (identical signature in 2026-07-26 crash reports), intermittent, needs full-suite parallelism; passes in isolation. Found at DBN.1, **not caused by it**. P2 not P1 only because it has been seen taking down the test process, not the app — the code path is shipped local-file playback. Leading hypothesis is the strong `self` from `guard let self` in `LocalFilePlaybackProvider.scheduleFileLoop` being released on the completion queue; unproven, next step is a `deinit` breakpoint. BUG-059's off-queue hop does NOT cover this |
+| BUG-078 | P2 · fix code-complete 2026-08-07 (BUG078.1), pending Matt's live local-file validation | audio.playback / concurrency | **ROOT-CAUSED AND FIXED: a concurrent-`start()` overwrite orphans a RUNNING engine/player** (thread B's pre-lock `stop()` snapshots nothing, then its `_startLocked()` overwrites thread A's live instance), so the node's last strong reference — the one AVFAudio holds inside the pending `scheduleFile` completion block — is released on the node's own `CommandQueue`, where `dealloc` → `Stop()` → `dispatch_sync` traps. Measured deterministically: **23 of 48 instances orphaned pre-fix, 0 post-fix**. The old leading hypothesis (strong `self` in `scheduleFileLoop`) is refuted — no Swift frames sit between `_Block_release` and `-[AVAudioNode dealloc]`. Original description: **Engine test process traps in `AVAudioPlayerNode` teardown** — `EXC_BREAKPOINT` with libdispatch's "dispatch_sync called on queue already owned by current thread". The `scheduleFile` completion block's release deallocs an `AVAudioNode` on the node's own `CommandQueue`, and `dealloc` → `Stop()` → `dispatch_sync` re-enters that queue. Pre-existing (identical signature in 2026-07-26 crash reports), intermittent, needs full-suite parallelism; passes in isolation. Found at DBN.1, **not caused by it**. P2 not P1 only because it has been seen taking down the test process, not the app — the code path is shipped local-file playback. Leading hypothesis is the strong `self` from `guard let self` in `LocalFilePlaybackProvider.scheduleFileLoop` being released on the completion queue; unproven, next step is a `deinit` breakpoint. BUG-059's off-queue hop does NOT cover this |
 | BUG-077 | P3 | dsp.beat / api-contract | **`BeatGridResolver.snapToBeats` diverges from the Beat This! reference post-processor** — the reference moves *every* downbeat prediction to the closest beat unconditionally; we discard any candidate beyond `snapFrames = 2` (40 ms). Found at DBN.1 while auditing the resolver against the paper. **Currently harmless and NOT the cause of the low downbeat F** — measured, 100 % of candidates survive the gate (median distance 0.0 ms), so nothing is being discarded today (the real cause is a near-degenerate downbeat *stream*, see `docs/design/DBN_DECODER_SPEC.md` §2.1). Filed because it is a genuine spec-fidelity divergence of the D-077 class that will bite the moment downbeat timing loosens — e.g. on a track whose downbeat peaks sit a frame or two off the beat. Fix is one comparison; do it in DBN.3 when the resolver is being touched anyway, not as a standalone change |
 
 
@@ -213,34 +212,19 @@ withholds a drawable from a client holding none.
 
 ---
 
-### BUG-079 — `swift test -c release` does not build, so release-only performance budgets are unverifiable (2026-07-30)
-
-**P3 · build / test-isolation.** Found at DBN.2 when trying to measure a release-only budget; **pre-existing**, unrelated to that increment.
-
-**Expected:** `swift test -c release --package-path PhospheneEngine` builds and runs.
-
-**Actual:** the test target fails to compile in release:
-
-```
-error: value of type 'ArachneState' has no member 'forceActivateForTest'
-  — SoakTestHarnessTests.swift:294, ArachneSpiderRenderTests.swift:143, :189
-```
-
-**Cause.** `ArachneState.forceActivateForTest(at:)` is declared inside `#if DEBUG` (`PhospheneEngine/Sources/Presets/Arachnid/ArachneState+Spider.swift:344-372`), but its three call sites in the test target are not guarded, so they are unresolved in a release build. Debug builds are unaffected, which is why this has gone unnoticed.
-
-**Why it matters beyond tidiness.** It makes **release-only performance budgets unverifiable**. BEAT_SYNC_PROGRAM_PLAN §DBN.2 specifies "< 50 ms for a 30 s activation window on M1" for `BeatActivationDecoder`; that is a release figure, and DBN.2 could only measure debug (1366 ms after optimisation, down from 17,067 ms naive). `DSPPerformanceTests.test_beatActivationDecoder_30sWindow_performance` therefore asserts a *regression* ceiling and documents the real budget as unverified, rather than dividing the debug number by an invented constant. **Any plan gate phrased as a release timing is currently unenforceable.**
-
-**Suspected failure class:** `test-isolation` (a DEBUG-only API reachable from unguarded test code).
-
-**Fix shape:** wrap the three call sites in `#if DEBUG`, or drop the `#if DEBUG` around `forceActivateForTest` and mark it as test-support SPI. The first is smaller; the second is what the rest of the codebase does for `*ForTest` helpers, so check the convention before choosing.
-
-**Verification criteria.** `swift test -c release --package-path PhospheneEngine` builds and the suite passes; the DBN.2 budget test is then re-pointed at the real 50 ms release figure and either passes or forces the design change the spec calls for.
-
----
-
 ### BUG-078 — Engine test process traps in `AVAudioPlayerNode` teardown: `dispatch_sync` on an already-owned queue (2026-07-30)
 
-**P2 · audio.playback / concurrency.** Found at DBN.1 while running the closeout evidence; **pre-existing, not introduced by that increment**. P2 rather than P1 because it has only been observed taking down the *test* process — but the code path is shipped local-file playback, so the app-facing impact would be a hard crash.
+**P2 · audio.playback / concurrency · FIX CODE-COMPLETE 2026-08-07 (BUG078.1), pending live local-file validation.** Found at DBN.1 while running the closeout evidence; **pre-existing, not introduced by that increment**. P2 rather than P1 because it has only been observed taking down the *test* process — but the code path is shipped local-file playback, so the app-facing impact would be a hard crash.
+
+**ROOT CAUSE (2026-08-07) — a concurrent-`start()` overwrite, not the completion block.** `start()` calls `stop()` *before* taking the lock (BUG-021, so AVFoundation teardown never runs under the provider's `NSLock`). Two racing `start()` calls therefore interleave as: thread B's `stop()` snapshots nothing → thread A's `_startLocked()` adopts engine/player #1 and starts playing → thread B's `_startLocked()` **overwrites the fields with #2**. Instance #1 is orphaned *while running*: never stopped, never detached, observer never removed. Its last strong reference is the one AVFAudio holds inside the pending `scheduleFile` completion block, so the node is finally released on its own `CommandQueue`, where `-[AVAudioNode dealloc]` → `Stop()` → `dispatch_sync` re-enters the queue it is already running on. `_startLocked`'s comment asserting "the fields below are guaranteed nil" was the false premise; it is corrected in place.
+
+**Measured, not inferred.** A new deterministic gate counts adopted instances against teardowns over 24 racing double-starts: **pre-fix 48 adopted / 25 torn down — 23 running engines orphaned**; post-fix the counts are equal. It fails in ~3 seconds instead of the 1-in-3 full-suite lottery.
+
+**Fix.** `start()` snapshots the existing refs under the lock (a pointer copy — no AVFoundation calls, so BUG-021's constraint holds), then tears them down after unlocking with a strong reference held across `player.stop()`, which drains the node's command queue before the final release. The orphan leak is closed by the same change.
+
+**Two corrections to this entry's earlier text, both worth keeping.**
+1. **The leading hypothesis was wrong.** The strong `self` materialised by `guard let self` in `scheduleFileLoop` is not the mechanism. The crash stack has **no Swift frames** between `_Block_release` and `-[AVAudioNode dealloc]` — the object released there is the node itself, retained by AVFAudio's own wrapper block. Every capture in our completion block is `weak` and none was ever implicated.
+2. **"Nobody has captured the trap itself" was not true.** `~/Library/Logs/DiagnosticReports/` held **25 matching `.ips` reports**, 19 of them naming `concurrentDoubleStart_serializesWithoutDeadlock` on a live thread, plus the two racing threads (`_startLocked()` on one, `stop()` on the other) that make the overwrite visible. The evidence had been on disk since 2026-07-26; what was missing was reading it, not capturing it.
 
 **Recurrence observed 2026-08-03 (RECON closeout).** A third data point, recorded because this bug is intermittent and every observation narrows it. A full `swift test` run exited **non-zero with `0 failures (0 unexpected)` and no per-test failure line** — the closeout script's own extractor reported "nonzero exit / failure count with no per-test failure lines extracted". The last suites logging before the exit were the `LocalFilePlaybackProvider` concurrency cases (`completionCallbackVsStop_abbaShape_neverDeadlocks`, `onFileEnded_queueAdvanceChurn_neverHangs`, `transportChurn_concurrentWithStopStart_neverDeadlocks`), which is the `AVAudioPlayerNode` teardown surface this entry describes. **The immediately following full run passed clean** (1737 tests / 250 suites, exit 0), and the run after that was green end-to-end — matching "intermittent, needs full-suite parallelism, passes in isolation". Two practical notes for whoever picks this up: (1) **the signature to look for is exit-code-without-failure, not a red test** — an extractor that only reports failing assertions will show nothing; (2) it reproduced on an otherwise-unmodified tree during a docs-only increment, so it needs no particular code state to fire.
 
@@ -270,6 +254,8 @@ AVAudioPlayerNodeImpl::CommandQueue::PerformWork
 **Note on BUG-059.** That fix hopped *off* the completion queue before re-scheduling, which addressed the lock-reentrancy deadlock. It does not cover this: the async hop returns immediately, but the strong `self` created by `guard let self` is still released on the completion queue afterwards. Same queue, different mechanism — do not assume BUG-059's fix covers it.
 
 **Verification criteria (written before any fix).** Automated: the full engine suite completes 5 consecutive times with no `.ips` generated. Regression: a targeted test that drops the provider's last reference while a `scheduleFile` completion is in flight and asserts no trap. Manual: local-file playback end-to-end — start, seek, track-change, and quit-while-playing — since this is the shipped path.
+
+**Verification status (BUG078.1).** Regression gate met, in a stronger form than specified: `LocalFilePlaybackStartRaceTests.concurrentStart_neverOrphansARunningInstance` asserts the orphan count deterministically rather than waiting for a timing-dependent trap (red before the fix at 23/48, green after). `SessionLifecycleChurnTests` 6/6 green. Full-suite ×5 no-`.ips` criterion **met** — 5 consecutive runs, 1794 tests / 270 suites each, all passing, `~/Library/Logs/DiagnosticReports` unchanged at 28 `.ips` throughout. Read honestly: against the ~1-in-3 observed trip rate, 5 clean runs alone would happen by luck ~13 % of the time, so the load-bearing evidence is the deterministic orphan count (23 → 0), not the streak. **Manual criterion NOT met — this stays open until Matt runs local-file playback end-to-end** (start, seek, track-change, quit-while-playing); the shipped path is his to sign off.
 
 **Out of scope for DBN.1** (which is a docs/spec increment). Filed and reported, not fixed.
 
@@ -892,6 +878,41 @@ These test failures are pre-existing, environment-dependent, and do not indicate
 ## Resolved (recent)
 
 *(PUB.3 pruning pass, 2026-07-11: 24 resolved entries moved here from §Open; BUG-013/001/005 reclassified to §Known Limitations. rotate_docs.sh files these to KNOWN_ISSUES_HISTORY.md after 14 days.)*
+
+---
+
+### BUG-079 — `swift test -c release` does not build, so release-only performance budgets are unverifiable (2026-07-30)
+
+**P3 · build / test-isolation · RESOLVED 2026-08-07 (BUG079.1).** Found at DBN.2 when trying to measure a release-only budget; **pre-existing**, unrelated to that increment.
+
+**Resolution.** Dropped the `#if DEBUG` around `ArachneState.forceActivateForTest(at:)` (the second of the two fix shapes below — the smaller one, guarding the call sites, would have silently dropped the Arachne render coverage from release runs). The doc comment now says why it is ungated so it is not re-added. `DSPPerformanceTests.test_beatActivationDecoder_30sWindow_performance` asserts the plan's real **50 ms budget in release** and keeps the 4000 ms regression ceiling in debug.
+
+**The budget is now measured and it is met: 17.9 ms** for a 30 s window (M2 Pro, release), against 1403 ms in debug — a **78×** config gap, which is why the debug figure was never informative. No design change needed.
+
+**One correction to the original filing:** `swift test -c release` alone still does not work, and that is not a defect — `@testable import` requires testability, which release builds do not enable by default. The working invocation is:
+
+```bash
+swift test -c release -Xswiftc -enable-testing --package-path PhospheneEngine
+```
+
+**Expected:** `swift test -c release --package-path PhospheneEngine` builds and runs.
+
+**Actual:** the test target fails to compile in release:
+
+```
+error: value of type 'ArachneState' has no member 'forceActivateForTest'
+  — SoakTestHarnessTests.swift:294, ArachneSpiderRenderTests.swift:143, :189
+```
+
+**Cause.** `ArachneState.forceActivateForTest(at:)` is declared inside `#if DEBUG` (`PhospheneEngine/Sources/Presets/Arachnid/ArachneState+Spider.swift:344-372`), but its three call sites in the test target are not guarded, so they are unresolved in a release build. Debug builds are unaffected, which is why this has gone unnoticed.
+
+**Why it matters beyond tidiness.** It makes **release-only performance budgets unverifiable**. BEAT_SYNC_PROGRAM_PLAN §DBN.2 specifies "< 50 ms for a 30 s activation window on M1" for `BeatActivationDecoder`; that is a release figure, and DBN.2 could only measure debug (1366 ms after optimisation, down from 17,067 ms naive). `DSPPerformanceTests.test_beatActivationDecoder_30sWindow_performance` therefore asserts a *regression* ceiling and documents the real budget as unverified, rather than dividing the debug number by an invented constant. **Any plan gate phrased as a release timing is currently unenforceable.**
+
+**Suspected failure class:** `test-isolation` (a DEBUG-only API reachable from unguarded test code).
+
+**Fix shape:** wrap the three call sites in `#if DEBUG`, or drop the `#if DEBUG` around `forceActivateForTest` and mark it as test-support SPI. The first is smaller; the second is what the rest of the codebase does for `*ForTest` helpers, so check the convention before choosing.
+
+**Verification criteria.** `swift test -c release --package-path PhospheneEngine` builds and the suite passes; the DBN.2 budget test is then re-pointed at the real 50 ms release figure and either passes or forces the design change the spec calls for.
 
 ---
 
