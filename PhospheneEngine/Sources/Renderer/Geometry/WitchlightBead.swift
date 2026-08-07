@@ -196,6 +196,13 @@ public struct WitchlightTuning: Sendable {
     public var energyGateSpan: Float = 0.9
     public var energyGateCap: Float = 1.45
 
+    /// WL.11 — how much of the measured grid-vs-audio drift to cancel, 0…1. 1 = fire at the
+    /// tracker's best estimate of the audible beat; 0 = fire on the grid (pre-WL.11).
+    public var driftCompensation: Float = 1.0
+    /// Hard cap on the correction, milliseconds. The estimate comes from onset detection,
+    /// which is weak on dense material; a mis-thrown accent is worse than a slightly late one.
+    public var driftCompensationCapMs: Float = 60
+
     /// Head-flare refractory, seconds (§5: ≥ 900 ms, ≈ 1.1 flares/s ceiling).
     /// Applies to the FULL-amplitude downbeat burst. The WL.9 off-beat tier is a separate,
     /// much dimmer object with its own interval — see `offBeatRefractory`.
