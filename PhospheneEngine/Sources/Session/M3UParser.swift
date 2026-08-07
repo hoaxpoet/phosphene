@@ -13,7 +13,8 @@
 //     paths resolved against the `.m3u` file's parent directory.
 //
 // Failure model: every parse failure surfaces as `M3UParser.ParseError`.
-// Unreadable individual entries are silently skipped (the caller logs
+// Individual entries that are unreadable — or that resolve outside the
+// `allowedAudioExtensions` allow-list (BUG-051) — are silently skipped (the caller logs
 // `STEM_QUEUE_SKIP` per skip via the returned `skippedLines` list); only
 // total-failure conditions (unreadable file, malformed UTF-8, zero
 // resolved entries) throw.
@@ -25,8 +26,10 @@ import Foundation
 /// Stateless `.m3u` / `.m3u8` parser.
 ///
 /// Returns the resolved file URLs alongside the lines that failed to
-/// resolve (for caller logging). Callers above this layer (typically
-/// `LocalFileMenuCommands`) further validate by extension and dispatch to
+/// resolve (for caller logging). Entries are canonicalized and filtered to
+/// `allowedAudioExtensions` here, at the trust boundary (BUG-051); callers
+/// above this layer (typically `LocalFileMenuCommands`) re-apply the same
+/// filter belt-and-braces and dispatch to
 /// `SessionManager.startLocalFiles(at:origin:)`.
 public enum M3UParser {
 
@@ -57,6 +60,22 @@ public enum M3UParser {
         /// itself stays side-effect-free.
         public let skippedLines: [String]
     }
+
+    // MARK: - Entry validation (BUG-051)
+
+    /// File extensions a resolved playlist entry may carry. Entries resolving
+    /// to anything else are skipped at the parser boundary rather than being
+    /// stat'd and handed onward — a hostile `.m3u` naming `~/.ssh/id_rsa` or
+    /// `../../etc/passwd` now resolves to zero entries.
+    ///
+    /// Canonical list: `LocalFileMenuCommands.allowedExtensions` aliases this.
+    ///
+    /// Note there is deliberately **no containment-to-root guard**: absolute
+    /// and `../`-relative entries pointing outside the playlist's directory
+    /// are how real exported playlists (iTunes, foobar2000) address a music
+    /// library, so rejecting them would break normal use. The extension
+    /// allow-list, applied after canonicalization, is the guard.
+    public static let allowedAudioExtensions: Set<String> = ["m4a", "mp3", "flac"]
 
     // MARK: - API
 
@@ -99,7 +118,8 @@ public enum M3UParser {
             if line.isEmpty { continue }
             if line.hasPrefix("#") { continue }                          // EXTM3U / EXTINF / comment
 
-            guard let resolved = resolveURL(line: line, baseDir: baseDir) else {
+            guard let resolved = resolveURL(line: line, baseDir: baseDir),
+                  allowedAudioExtensions.contains(resolved.pathExtension.lowercased()) else {
                 skipped.append(line)
                 continue
             }
@@ -131,18 +151,22 @@ public enum M3UParser {
         return data
     }
 
-    /// Resolve a single playlist entry to a `URL`, handling `file://` form,
-    /// absolute filesystem paths, and relative paths. Returns `nil` only
-    /// when the input is structurally unresolvable (e.g. empty after trim);
-    /// readability checks happen at the call site.
+    /// Resolve a single playlist entry to a canonicalized file `URL`, handling
+    /// `file://` form, absolute filesystem paths, and relative paths. Returns
+    /// `nil` when the input is structurally unresolvable (empty after trim, or
+    /// a `file://` string that isn't a file URL). Every branch is run through
+    /// `standardizedFileURL` so `..` segments are collapsed *before* the
+    /// extension allow-list is applied (BUG-051); extension + readability
+    /// checks happen at the call site.
     private static func resolveURL(line: String, baseDir: URL) -> URL? {
+        let resolved: URL?
         if line.hasPrefix("file://") {
-            return URL(string: line)
+            resolved = URL(string: line).flatMap { $0.isFileURL ? $0 : nil }
+        } else if line.hasPrefix("/") {
+            resolved = URL(fileURLWithPath: line)
+        } else {
+            resolved = URL(fileURLWithPath: line, relativeTo: baseDir)
         }
-        if line.hasPrefix("/") {
-            return URL(fileURLWithPath: line)
-        }
-        return URL(fileURLWithPath: line, relativeTo: baseDir)
-            .standardizedFileURL
+        return resolved?.standardizedFileURL
     }
 }

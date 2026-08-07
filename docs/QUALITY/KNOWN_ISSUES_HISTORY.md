@@ -4,6 +4,29 @@ Resolved entries rotated out of [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) §Resolved 
 
 ---
 
+### BUG-051 — m3u playlist entries resolve to arbitrary paths with no extension/traversal guard (2026-06-15)
+
+**P3 · local-file / security · RESOLVED 2026-08-07 (BUG051.1).** Filed by CLEAN.2.4 (GAP-10 threat model, `docs/SECURITY_POSTURE.md` §6); defense-in-depth, no realized harm.
+
+**Resolution.** The allow-list moved *down* to the trust boundary. `M3UParser` gains `allowedAudioExtensions` (`m4a`/`mp3`/`flac`) and applies it to every resolved entry, so a hostile `.m3u` naming `~/.ssh/id_rsa` or `../../etc/passwd` now yields zero entries and throws `noEntriesResolved` — the path is never stat'd or handed onward. `resolveURL` also runs **every** branch through `standardizedFileURL` (previously only the relative branch), so `..` segments are collapsed before the extension check can be fooled, and a `file://` string that isn't a file URL is rejected. `LocalFileMenuCommands.allowedExtensions` now aliases the engine constant so the two lists cannot drift.
+
+**Deliberately NOT added: containment to an expected root.** The original filing suggested "under an expected root", but absolute and `../`-relative entries pointing outside the playlist's own directory are how real exported playlists (iTunes, foobar2000) address a music library — rejecting them would break normal use to close nothing the extension check doesn't already close. Both attack examples in the filing are extensionless. `parse_allowsTraversalToRealAudioOutsidePlaylistDir` pins that traversal to real audio still resolves.
+
+**One correction to the original filing.** It stated the resolved path "is handed to AVFoundation … no allow-list short-circuits it first". That was wrong: both app entry points (`LocalFileMenuCommands.openLocalM3U:193` and `+Drop.swift:99`) already filtered the parser's output by `allowedExtensions`, so the decoder never saw a non-audio path. The real residual was narrower — an `isReadableFile` stat of an attacker-named path plus that path appearing in `skippedLines`/logs — and the guarantee depended on every future caller remembering to filter. Those two caller filters are left in place as belt-and-braces.
+
+**Verification criteria:**
+- [x] Automated: `M3UParserTests.parse_rejectsNonAudioAndTraversalEntries` — a `.m3u` listing a non-audio extension, an extensionless absolute path, and a `../` traversal throws `noEntriesResolved`. 11/11 in the suite; full engine suite 1800 green, app suite 407 green, SwiftLint strict 0 violations.
+- [ ] Manual: opening a normal `.m3u` of `.m4a/.mp3/.flac` is unaffected — **pending Matt**. Not automated end-to-end at the menu layer; the parse layer is covered.
+
+**Original report (for the record).**
+
+**Expected:** a `.m3u`/`.m3u8` entry resolves only to a readable **audio** file.
+**Actual:** `M3UParser.resolveURL` resolved `file://`, absolute (`/…`), and relative entries with no extension filter and no path-traversal guard. The local-file path has **no network egress**, so nothing escapes even on a successful open. Bounded, hence P3.
+**Suspected failure class:** `api-contract` (the parser's resolve contract admitted non-audio / out-of-tree paths). Confirmed.
+
+---
+
+
 ### BUG-071 — Fractal Fly-By: descent direction inverted + severe motion aliasing (2026-07-23)
 
 **P1 · preset.fidelity / sdf-geometry / render-state · CLOSED wontfix — Fractal Fly-By RETIRED (FLY.14, D-201, 2026-07-25).**

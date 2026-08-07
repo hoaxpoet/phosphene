@@ -26,7 +26,7 @@ Phosphene is **macOS-only**, single-user, **on-device only — no cloud, no tele
 | 3 | Hardened runtime + notarization | **Hardened runtime ON** (CLEAN.2.5a — `ENABLE_HARDENED_RUNTIME=YES` on the app target **Release** config; Debug left unhardened so XCTest injection works; signs `-o runtime`; `automation.apple-events` entitlement added). Still dev-signed ("Apple Development"), **not yet Developer ID / notarized**. | **CLEAN.2.5a done + verified** (HR; runtime gates verified 2026-06-15 — tap green @ −6 dBFS under HR, Apple-Events entitlement accepted); **CLEAN.2.5b deferred** — Developer ID + notarization, blocked on a paid Apple Developer Program membership. |
 | 4 | Library validation | Not declared. Links Apple frameworks + SPM static libs only. | Document — not required; keep ON under hardened runtime. |
 | 5 | `phosphene://` OAuth callback | scheme + host + `state` (CSRF/replay) + nil-pending rejection; double-checked at `.onOpenURL`. | Document — mitigated (CLEAN.2.2). |
-| 6 | Local-file open path | Defensive m3u parser + AVFoundation decoders; arbitrary resolved paths, no traversal guard. | Document; **filed: BUG-051 P3** (defense-in-depth). |
+| 6 | Local-file open path | Defensive m3u parser + AVFoundation decoders; resolved entries canonicalized + filtered to an audio extension allow-list. | **BUG-051 fixed 2026-08-07** (BUG051.1) — allow-list applied at the parser boundary. |
 | 7 | Secrets at rest + no-telemetry | OAuth tokens in Keychain; only the public client ID is checked in; no telemetry. | Document — posture strength. |
 
 ---
@@ -90,11 +90,11 @@ The tap is **TCC-gated**: macOS requires the user to grant screen-recording perm
 
 **Current posture (verified — `PhospheneEngine/Sources/Session/M3UParser.swift`, `PhospheneApp/PhospheneApp.swift:215` `dispatchFileURL`, `LocalFilePlaybackProvider`).** Opening a file (Finder double-click / `open -a` / drag / Recents) routes by extension to the local-file or m3u or folder entry point. The `.m3u`/`.m3u8` parser is **defensive**: maps the file (`mappedIfSafe`), strips a UTF-8 BOM, decodes UTF-8 or **throws** `malformedUTF8`, normalizes CRLF, skips comments, resolves each entry, **readability-checks** each (`isReadableFile`), silently skips unreadable entries, and **throws** `noEntriesResolved` if none resolve. Audio bytes are decoded by **AVFoundation** (`AVAudioFile`), Apple's framework decoders.
 
-**Threat / rationale.** Two surfaces: (a) **malformed media** fed to AVFoundation decoders (mp3/m4a/flac) — the standard audio-decoder attack surface, mitigated by Apple's hardened decoders and the fact that the file came from the user's own disk; (b) **arbitrary path resolution in `.m3u` entries** — `M3UParser.resolveURL` resolves `file://`, absolute (`/…`), and relative paths with **no path-traversal / extension guard**, so a hostile playlist could name `/Users/you/.ssh/id_rsa` or `../../etc/passwd`.
+**Threat / rationale.** Two surfaces: (a) **malformed media** fed to AVFoundation decoders (mp3/m4a/flac) — the standard audio-decoder attack surface, mitigated by Apple's hardened decoders and the fact that the file came from the user's own disk; (b) **arbitrary path resolution in `.m3u` entries** — a hostile playlist naming `/Users/you/.ssh/id_rsa` or `../../etc/passwd`.
 
-The **consequence is bounded**, which is why this is P3 not higher: a resolved non-audio path passes `isReadableFile`, is handed to AVFoundation, and **fails to decode** — it is never read back to the attacker. Critically, the local-file path has **no network egress** (§7), so even a successfully-opened file's contents have nowhere to go. The realized harm in the current architecture is ≈ nil; the value of fixing it is defense-in-depth, more relevant once builds are shared (§distribution).
+The consequence of (b) was always bounded, which is why it was P3 not higher: the local-file path has **no network egress** (§7), so even a successfully-opened file's contents have nowhere to go.
 
-**Decision — FILED: BUG-051 (P3, defense-in-depth).** Add an extension allow-list + path canonicalization to resolved `.m3u` entries (reject entries that don't resolve to an allowed audio extension under an expected root). Low value given the no-egress mitigation; tracked so it isn't lost.
+**Decision — FIXED 2026-08-07 (BUG051.1).** `M3UParser` canonicalizes every resolved entry (`standardizedFileURL` on all three branches, `file://` strings that aren't file URLs rejected) and filters against `allowedAudioExtensions` = `m4a`/`mp3`/`flac` **at the parser boundary**, so a hostile entry is never stat'd or handed onward and the playlist throws `noEntriesResolved`. `LocalFileMenuCommands.allowedExtensions` aliases that constant so the app- and engine-side lists cannot drift. **No containment-to-root guard was added** — absolute and `../`-relative entries pointing outside the playlist's directory are how real exported playlists address a music library; the extension allow-list closes both attack examples without breaking them. Regression: `M3UParserTests.parse_rejectsNonAudioAndTraversalEntries` + `…_allowsTraversalToRealAudioOutsidePlaylistDir`.
 
 ## 7. Secrets at rest + no-telemetry
 
@@ -115,7 +115,7 @@ The **consequence is bounded**, which is why this is P3 not higher: a resolved n
 |---|---|---|---|
 | **CLEAN.2.5a** | — | **Done (2026-06-15)** — hardened runtime enabled (app-target-scoped) + `automation.apple-events` entitlement; build + sign verified (`-o runtime`). Runtime gates (tap + Apple Events under HR) pending Matt's Mac-mini run. | The deliberate flip 2.4 deferred — applied here with a build behind it (§3). |
 | **CLEAN.2.5b** | — | Developer ID signing + notarization + Gatekeeper test; keep library validation on. | **Deferred — blocked on a paid Apple Developer Program membership.** Mechanical once the cert + notarization key exist (§3). |
-| **BUG-051** | P3 | m3u entry input validation: extension allow-list + path canonicalization on resolved playlist entries. | Defense-in-depth; consequence is bounded by the no-egress local-file path (§6). Low value, tracked so it isn't lost. |
+| **BUG-051** | P3 | **Done (2026-08-07, BUG051.1)** — extension allow-list + path canonicalization on resolved playlist entries, applied at the parser boundary. | Filed here as defense-in-depth; fixed in its own small increment (§6). |
 
 No fix was filed for §2 (partial sandbox — not viable), §4 (library validation — not required), §5 (OAuth — mitigated), §1/§7 (core mechanism / posture strength).
 

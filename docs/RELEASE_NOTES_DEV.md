@@ -10,6 +10,20 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-07-195110] BUG051.1 — the m3u allow-list moved down to the trust boundary
+
+BUG-051 was filed by CLEAN.2.4's threat model in June and has sat as the one unblocked, bounded defect on the board since. It is fixed: `M3UParser` now canonicalizes every resolved entry and filters it against `allowedAudioExtensions` (`m4a`/`mp3`/`flac`) before the entry is stat'd or handed onward. A hostile playlist naming `~/.ssh/id_rsa` or `../../etc/passwd` resolves to zero entries and throws `noEntriesResolved`.
+
+Canonicalization was the quieter half. `resolveURL` ran `standardizedFileURL` on the relative branch only; the `file://` and absolute branches returned whatever the line said. All three branches now standardize, so `..` segments collapse *before* the extension check reads `pathExtension`, and a `file://` string that isn't a file URL is rejected outright.
+
+**What was deliberately not built.** The filing suggested rejecting entries that don't resolve "under an expected root". Containment would break normal use — exported playlists from iTunes and foobar2000 routinely address a library above the playlist's own directory with absolute or `../` paths — and it closes nothing the extension check doesn't already close, since both attack examples in the filing are extensionless. `parse_allowsTraversalToRealAudioOutsidePlaylistDir` pins that traversal to real audio still resolves, so a future session doesn't add the guard back by reflex.
+
+**A correction to the original filing, since it changes how the residual should be read.** It claimed the resolved path was "handed to AVFoundation" with "no allow-list short-circuits it first". Both app entry points — `openLocalM3U` and the drop handler — already filtered the parser's output by `allowedExtensions`, so the decoder never saw a non-audio path. The real residual was narrower: an `isReadableFile` stat of an attacker-named path, and that path landing in `skippedLines`/logs. What the fix buys is that the guarantee no longer depends on every caller remembering to filter. The two caller filters stay as belt-and-braces, and `LocalFileMenuCommands.allowedExtensions` now aliases the engine constant so the two lists can't drift apart.
+
+Gates: engine 1800 green, app 407 green, SwiftLint strict 0 violations, app build clean. The manual criterion (open a normal `.m3u` and confirm nothing changed) is Matt's; the parse layer is covered by the suite.
+
+---
+
 ### [dev-2026-08-07-193500] BUG078.1 manual close — 19 starts, 18 teardowns, strict alternation
 
 Matt ran the local-file path end-to-end on session `2026-08-07T19-10-25Z` (5 files): start, pause/resume, natural track end, single Next, two rapid-Next bursts, quit. Clean — `CHAIN_HEALTH: verdict=clean`, drawable lifecycle 4815/4815, no hang, no crash.
