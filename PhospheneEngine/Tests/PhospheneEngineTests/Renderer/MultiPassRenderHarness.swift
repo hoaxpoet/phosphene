@@ -16,6 +16,7 @@
 import Testing
 import Metal
 @testable import Renderer
+@testable import Session
 @testable import Presets
 @testable import Shared
 
@@ -120,6 +121,17 @@ struct MultiPassRenderHarness {
         }
         let geo = try WitchlightStroke(device: ctx.device, library: lib.library,
                                        configuration: WitchlightConfiguration(), pixelFormat: ctx.pixelFormat)
+        // WL.13 — install the drive's tonal home, which is what PRODUCTION does for every
+        // prepared track (`TrackProfile.tonalHomeFifths` → `ingestTonalHome`). Without it the
+        // harness renders the FALLBACK path — the pen runs straight for `homeSettleSeconds`,
+        // which on a 21 s fixture is most of the clip — so every rendered frame, every flash
+        // measurement and every bead-count gate would be judging a path production does not
+        // draw. Same class as the missing driver columns in `WitchlightFixtureDrive`.
+        var sumSin: Float = 0, sumCos: Float = 0
+        for f in drive { sumSin += sin(f.tonalPhaseFifths); sumCos += cos(f.tonalPhaseFifths) }
+        if let home = TrackProfile.tonalHome(sumSin: sumSin, sumCos: sumCos, count: drive.count) {
+            geo.path.ingestTonalHome(radians: home)
+        }
         let floatStride = MemoryLayout<Float>.stride
         guard let fft = ctx.makeSharedBuffer(length: 512 * floatStride),
               let wav = ctx.makeSharedBuffer(length: 2048 * floatStride) else {

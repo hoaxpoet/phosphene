@@ -7,6 +7,31 @@
 import Foundation
 import Shared
 
+// MARK: - Pre-analysed tonal home (WL.13)
+
+extension WitchlightPath {
+
+    /// Install the track's tonal centre, measured ahead of playback.
+    ///
+    /// `SessionPreparer` already runs the full `MIRPipeline` over each preview clip, so the
+    /// circular mean of `tonal_phase_fifths` for a track is known BEFORE its first frame
+    /// (`TrackProfile.tonalHomeFifths`). Handing it over means the pen never has to learn
+    /// home from a 12 s running mean seeded at 0 rad — the ~30 s convergence that drew a coil
+    /// over the whole visible trail at the start of every track (WL.13).
+    ///
+    /// Delivered through the CPU-only runtime bridge, the same route `sectionIndex` and
+    /// `beatDriftSeconds` take: it is a per-TRACK scalar that never reaches a shader, so it
+    /// needs no `FeatureVector` field and breaks no MSL layout contract.
+    ///
+    /// Call AFTER `reset()` — reset clears it, because a home carried across a track boundary
+    /// is the previous song's key and would steer the new one confidently wrong.
+    public func ingestTonalHome(radians: Float) {
+        homeSin = sin(radians)
+        homeCos = cos(radians)
+        homeIsPreAnalysed = true
+    }
+}
+
 // MARK: - Energy breath (WL.4)
 
 extension WitchlightPath {

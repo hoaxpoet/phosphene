@@ -18,6 +18,7 @@
 import Foundation
 import Testing
 @testable import PresetSessionReplay
+@testable import Session
 @testable import Renderer
 @testable import Shared
 
@@ -156,9 +157,26 @@ enum WitchlightFixtureDrive {
                      sectionIndex: sections.map { UInt32(max(0, $0)) })
     }
 
+    /// The fixture's tonal home, by the SAME definition the preparation pipeline uses on a
+    /// preview clip (`TrackProfile.tonalHome`) — the fixtures ARE 30 s preview clips, so this
+    /// is what production would have measured for the track, not a test-only approximation.
+    static func tonalHome(of drive: Drive) -> Float? {
+        var sumSin: Float = 0, sumCos: Float = 0
+        for f in drive.features { sumSin += sin(f.tonalPhaseFifths); sumCos += cos(f.tonalPhaseFifths) }
+        return TrackProfile.tonalHome(sumSin: sumSin, sumCos: sumCos, count: drive.features.count)
+    }
+
     /// Drive a `WitchlightPath` over a whole fixture, feeding the section index through
     /// the same `ingestStructure` bridge the app layer uses.
-    static func run(_ path: WitchlightPath, over drive: Drive) {
+    ///
+    /// WL.13 — installs the fixture's pre-analysed tonal home by default, because that is
+    /// what PRODUCTION does: `SessionPreparer` measures it for every track it prepares, and
+    /// these fixtures are preview clips. A harness that omits it drives the fallback path
+    /// (15 s straight run) on 21 s of material and reads a live route as inert — the same
+    /// class of failure as the missing `bass_att` / `mid_dev` columns above, which cost three
+    /// separate diagnoses. Pass `preAnalysed: false` only to test the fallback deliberately.
+    static func run(_ path: WitchlightPath, over drive: Drive, preAnalysed: Bool = true) {
+        if preAnalysed, let home = tonalHome(of: drive) { path.ingestTonalHome(radians: home) }
         var structure = StructuralPrediction()
         for i in 0..<drive.features.count {
             structure.sectionIndex = drive.sectionIndex[i]

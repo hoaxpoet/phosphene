@@ -18,6 +18,9 @@ private struct MIRAnalysisResult {
     var mood: EmotionalState
     var centroidAvg: Float
     var sectionCount: Int
+    /// WL.13 — circular mean of `tonal_phase_fifths` over the clip; `nil` when the harmony
+    /// is too diffuse to place a centre. See `TrackProfile.tonalHomeFifths`.
+    var tonalHomeFifths: Float?
 }
 
 // MARK: - Analysis Pipeline
@@ -113,7 +116,8 @@ extension SessionPreparer {
             spectralCentroidAvg: mir.centroidAvg,
             genreTags: [],
             stemEnergyBalance: stemFeatures,
-            estimatedSectionCount: mir.sectionCount
+            estimatedSectionCount: mir.sectionCount,
+            tonalHomeFifths: mir.tonalHomeFifths
         )
 
         return CachedTrackData(
@@ -247,7 +251,12 @@ extension SessionPreparer {
         // FFTMagnitudeKernel — byte-identical to the live FFTProcessor (BUG-066 / MOOD-FLUX.3).
         guard let fft = try? FFTMagnitudeKernel(fftSize: fftSize) else {
             return MIRAnalysisResult(
-                bpm: nil, key: nil, mood: .neutral, centroidAvg: 0, sectionCount: 0
+                bpm: nil,
+                key: nil,
+                mood: .neutral,
+                centroidAvg: 0,
+                sectionCount: 0,
+                tonalHomeFifths: nil
             )
         }
 
@@ -256,6 +265,9 @@ extension SessionPreparer {
         let dt = 1.0 / fps
 
         var centroidSum: Float = 0
+        // WL.13 — the tonal centre, accumulated as sin/cos and recombined with atan2. NEVER
+        // as a mean of the raw ±π sawtooth: that averages a wrap to the opposite key.
+        var fifthsSin: Float = 0, fifthsCos: Float = 0
         var frameCount = 0
         var offset = 0
 
@@ -273,6 +285,7 @@ extension SessionPreparer {
             let time = Float(frameCount) * dt
             let fv = mir.process(magnitudes: fft.magnitudes, fps: fps, time: time, deltaTime: dt)
             centroidSum += fv.spectralCentroid
+            fifthsSin += sin(fv.tonalPhaseFifths); fifthsCos += cos(fv.tonalPhaseFifths)
             frameCount += 1
 
             // Run mood classifier every 30 frames to capture evolving mood.
@@ -290,6 +303,8 @@ extension SessionPreparer {
         }
 
         let centroidAvg = frameCount > 0 ? centroidSum / Float(frameCount) : 0
+        let tonalHome = TrackProfile.tonalHome(
+            sumSin: fifthsSin, sumCos: fifthsCos, count: frameCount)
         let sectionCount = frameCount > 0
             ? Int(mir.latestStructuralPrediction.sectionIndex) + 1
             : 0
@@ -306,7 +321,8 @@ extension SessionPreparer {
             key: mir.stableKey,
             mood: classifier.currentState,
             centroidAvg: centroidAvg,
-            sectionCount: sectionCount
+            sectionCount: sectionCount,
+            tonalHomeFifths: tonalHome
         )
     }
 }

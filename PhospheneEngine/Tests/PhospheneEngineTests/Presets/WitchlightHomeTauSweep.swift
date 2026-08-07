@@ -52,14 +52,16 @@ struct WitchlightRun {
     static func drive(_ drive: WitchlightFixtureDrive.Drive,
                       homeTau: Float = WitchlightTuning().homeTau,
                       normalise: Bool = WitchlightTuning().normaliseDeviationGain,
-                      warmup: WitchlightTuning.HomeWarmup = WitchlightTuning().homeWarmup,
+                      settle: Float = WitchlightTuning().homeSettleSeconds,
+                      preAnalysedHome: Float? = nil,
                       framing: Float? = nil) -> WitchlightRun {
         var tuning = WitchlightTuning()
         tuning.homeTau = homeTau
         tuning.normaliseDeviationGain = normalise
-        tuning.homeWarmup = warmup
+        tuning.homeSettleSeconds = settle
         let path = WitchlightPath()
         path.overrideTuning(tuning)
+        if let preAnalysedHome { path.ingestTonalHome(radians: preAnalysedHome) }
         if let framing { path.setSessionFraming(framing) }
         var structure = StructuralPrediction()
         var heading: [Float] = [], phase: [Float] = [], home: [Float] = [], dts: [Float] = []
@@ -265,17 +267,27 @@ struct WitchlightHomeTauSweep {
         print("")
     }
 
-    /// The 21 s fixtures cannot exercise a 12 s `home` past its warm-up: `reset()` leaves
-    /// home at 0 rad and the EMA takes ~30 s to reach the real tonal centre, so for the whole
-    /// clip `phaseFromHome` holds one sign and the pen coils. This A/B says how much of the
-    /// r = +0.995 finding is that ramp rather than the steady-state steer — and it is the
-    /// difference between a mechanism defect and a per-track-start one.
-    @Test("TASK 3b — how much of the coil is `home` warming up from 0 rad?")
-    func seedHomeAB() throws {
+    /// The shipped WL.13 design, measured against what it replaced.
+    ///
+    /// `preAnalysed` = the pen is handed the track's tonal centre before frame 1, which is
+    /// what production does for any track the preparation pipeline reached. `settle 15 s` =
+    /// the fallback when it was not: run straight until home is worth trusting. `settle 0`
+    /// reproduces the pre-WL.13 behaviour of steering from frame 1 against a home that is
+    /// still at 0 rad.
+    @Test("TASK 3b — pre-analysed home and the straight run, vs steering from a home at 0 rad")
+    func preAnalysedHomeAB() throws {
         let drives = try WitchlightFixtureDrive.tracks.map { try WitchlightFixtureDrive.load($0) }
-        print("\nWL.13 TASK 3b — seeding `home` from the first frame's phase (homeTau unchanged at 12 s)")
-        for seed in [WitchlightTuning.HomeWarmup.fromZero, .unbiased] {
-            let runs = drives.map { WitchlightRun.drive($0, warmup: seed) }
+        print("\nWL.13 TASK 3b — the shipped design (homeTau unchanged at 12 s)")
+        let arms: [(String, (WitchlightFixtureDrive.Drive) -> WitchlightRun)] = [
+            ("pre-WL.13 (settle 0, home@0rad)", { WitchlightRun.drive($0, settle: 0) }),
+            ("straight run 15 s only", { WitchlightRun.drive($0, settle: 15) }),
+            ("PRE-ANALYSED home (shipped)", {
+                WitchlightRun.drive($0, settle: 15,
+                                    preAnalysedHome: WitchlightFixtureDrive.tonalHome(of: $0))
+            })
+        ]
+        for (label, make) in arms {
+            let runs = drives.map(make)
             var pairs: [String] = []
             var worst = -1.0
             for i in 0..<runs.count {
@@ -286,14 +298,19 @@ struct WitchlightHomeTauSweep {
                                         String(runs[j].name.prefix(4)) as NSString, r))
                 }
             }
-            print(String(format: "  homeWarmup %-16@ | worst pair r %+.3f  (%@)",
-                         String(describing: seed) as NSString, worst,
-                         pairs.joined(separator: "  ") as NSString))
+            print(String(format: "  %-32@ | worst pair r %+.3f  (%@)",
+                         label as NSString, worst, pairs.joined(separator: "  ") as NSString))
             for run in runs {
-                print(String(format: "      %-12@ turns/trail %.2f | monotonicity %.2f | clamp %4.1f %% | crossings %.2f/s | dwell %5.2f s",
+                print(String(format: "      %-12@ turns/trail %.2f | monotonicity %.2f | first 15 s mono %.2f | clamp %4.1f %%",
                              run.name as NSString, run.turnsPerTrail, run.monotonicity,
-                             run.clampedFraction * 100, run.crossingsPerSecond, run.medianSignDwell))
+                             run.monotonicity(overFirst: 15), run.clampedFraction * 100))
             }
+        }
+        print("  per-fixture pre-analysed home (circular mean of tonal_phase_fifths):")
+        for drive in drives {
+            let home = WitchlightFixtureDrive.tonalHome(of: drive)
+            print(String(format: "      %-12@ %@", drive.name as NSString,
+                         (home.map { String(format: "%+.3f rad", $0) } ?? "nil — too diffuse to place") as NSString))
         }
         print("")
     }
@@ -310,12 +327,23 @@ struct WitchlightHomeTauSweep {
         // multi-minute material, at the SHIPPED homeTau, against the three warm-up variants.
         print("  cold-start vs steady state — heading monotonicity by window (1 = coiling)")
         for drive in drives {
-            for warm in [WitchlightTuning.HomeWarmup.fromZero, .unbiased] {
-                let run = WitchlightRun.drive(drive, warmup: warm)
-                print(String(format: "      %-22@ %-16@ | first 15 s %.2f | first 30 s %.2f | first 60 s %.2f | whole run %.2f",
-                             drive.name as NSString, String(describing: warm) as NSString,
+            for (label, settle) in [("pre-WL.13 (settle 0)", Float(0)), ("shipped (settle 15 s)", 15)] {
+                let run = WitchlightRun.drive(drive, settle: settle)
+                print(String(format: "      %-22@ %-22@ | first 15 s %.2f | first 30 s %.2f | first 60 s %.2f | whole run %.2f",
+                             drive.name as NSString, label as NSString,
                              run.monotonicity(overFirst: 15), run.monotonicity(overFirst: 30),
                              run.monotonicity(overFirst: 60), run.monotonicity))
+            }
+        }
+        print("  shipped design on real sessions (pre-analysed home from the session's own clip)")
+        for drive in drives {
+            let home = WitchlightFixtureDrive.tonalHome(of: drive)
+            for (label, pre) in [("no pre-analysis (straight 15 s)", Float?.none), ("PRE-ANALYSED (shipped)", home)] {
+                let run = WitchlightRun.drive(drive, preAnalysedHome: pre)
+                print(String(format: "      %-22@ %-30@ | turns/trail %.2f | mono %.2f | first 15 s %.2f | first 30 s %.2f | clamp %4.1f %%",
+                             drive.name as NSString, label as NSString, run.turnsPerTrail,
+                             run.monotonicity, run.monotonicity(overFirst: 15),
+                             run.monotonicity(overFirst: 30), run.clampedFraction * 100))
             }
         }
         for drive in drives {

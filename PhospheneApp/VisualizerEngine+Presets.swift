@@ -84,6 +84,21 @@ extension VisualizerEngine {
         // trail would be the PREVIOUS track's drawing — which the whole concept says it is not.
         if let witchlightPath = (witchlightGeometry as? WitchlightStroke)?.path {
             witchlightPath.reset()
+            // WL.13 — hand the pen this track's tonal centre, measured by the preparation
+            // pipeline over the preview clip. Witchlight steers on the excursion FROM home,
+            // so without this it learns home live from a 12 s mean seeded at 0 rad and spends
+            // ~30 s converging — the whole trail length — winding a coil that reads as harmony
+            // and is not. With it the steer is right from frame 1; without it (streaming with
+            // no preview, or analysis not ready) the pen runs straight for `homeSettleSeconds`
+            // rather than guessing. MUST follow `reset()`, which clears the previous track's.
+            //
+            // Keyed on `lastResolvedTrackIdentity`, NOT `currentTrackProfile()`: that reads
+            // `currentTrack`, which is not guaranteed to hold the NEW track at this point on
+            // either advance path, and a stale profile here installs the PREVIOUS song's key.
+            if let identity = lastResolvedTrackIdentity,
+               let home = stemCache?.trackProfile(for: identity)?.tonalHomeFifths {
+                witchlightPath.ingestTonalHome(radians: home)
+            }
             // WL.3 — per-session framing (Matt, 2026-08-04). The figure itself stays a
             // deterministic reading of the music, so a track always draws its own drawing;
             // this only varies the angle and chirality it is VIEWED from, so a repeat play

@@ -48,6 +48,12 @@ struct ResponseBandTests {
         case "Witchlight":
             guard let path = runtime as? WitchlightPath else { return }
             let drive = try WitchlightFixtureDrive.load(track)
+            // WL.13 — reset BETWEEN fixtures. The runtime is built once per route and
+            // replayed over each track in turn, so without this every metric after the first
+            // is a cumulative average over all tracks driven so far and no failure can be
+            // attributed to the fixture it names. `run` installs the pre-analysed tonal home,
+            // which must follow the reset that clears it.
+            path.reset()
             WitchlightFixtureDrive.run(path, over: drive)
         default:
             return

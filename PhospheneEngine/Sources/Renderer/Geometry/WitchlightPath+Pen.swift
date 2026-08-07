@@ -14,6 +14,23 @@ import Shared
 
 extension WitchlightPath {
 
+    /// Wrapped excursion of φ̄ from the track's tonal home, radians (±π) — the quantity the
+    /// steer below reads. Lives with its consumer rather than with the `home` accumulators;
+    /// `WitchlightPath.swift` is at the 400-line lint budget.
+    public var phaseFromHome: Float {
+        var delta = smoothedPhase - atan2(homeSin, homeCos)
+        while delta > .pi { delta -= 2 * .pi }
+        while delta < -.pi { delta += 2 * .pi }
+        return delta
+    }
+
+    /// False while the pen runs straight because the tonal home is not yet trustworthy.
+    /// A pre-analysed home is trustworthy immediately; a learned one needs
+    /// `homeSettleSeconds` of music first. See `WitchlightTuning.homeSettleSeconds`.
+    public var isSteering: Bool {
+        homeIsPreAnalysed || Float(elapsedSeconds) >= tuning.homeSettleSeconds
+    }
+
     // MARK: - (b) Bounded-curvature advance
 
     /// Returns the speed used this frame (world units/second).
@@ -53,6 +70,20 @@ extension WitchlightPath {
         // ω_max derived from the speed so the ≥ 8 %-of-frame-height turning-radius bound
         // holds exactly at every speed, rather than only at the nominal one.
         let omegaMax = speed / max(tuning.minTurnRadius, 1e-4)
+
+        // WL.13 — the pen runs STRAIGHT until it knows where the track's tonal home is.
+        // Steering is `gain · (φ̄ − home)`, so a wrong home is not a smaller steer, it is a
+        // CONFIDENTLY WRONG one: home used to start at 0 rad and take ~30 s to converge,
+        // over which the excursion held one sign and the pen wound a coil that read as
+        // harmony and was not. Matt's call (2026-08-07): an honest straight line instead.
+        // A pre-analysed home makes `isSteering` true from frame 1, so this costs nothing on
+        // any track the preparation pipeline reached. See `WitchlightTuning.homeSettleSeconds`.
+        guard isSteering else {
+            phaseTravel += abs(phaseRate) * dt
+            penX += speed * dt * cos(heading)
+            penY += speed * dt * sin(heading)
+            return speed
+        }
 
         // WL.3 SPIKE — three candidate steer models, selected by `tuning.steerMode`.
         // See WitchlightTuning.SteerMode for what each one maps to what.

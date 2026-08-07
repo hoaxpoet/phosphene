@@ -63,15 +63,10 @@ public final class WitchlightPath: AudioResponseMetrics {
     /// Running estimate of |deviation from tonal home|, for the per-track gain.
     var deviationScale: Float = 0.3
 
-    private var homeSin: Float = 0
-    private var homeCos: Float = 1
-    /// Wrapped excursion of φ̄ from the track's tonal home, radians (±π).
-    public var phaseFromHome: Float {
-        var delta = smoothedPhase - atan2(homeSin, homeCos)
-        while delta > .pi { delta -= 2 * .pi }
-        while delta < -.pi { delta += 2 * .pi }
-        return delta
-    }
+    var homeSin: Float = 0
+    var homeCos: Float = 1
+    /// True once `ingestTonalHome` supplied a pre-analysed centre (WL.13).
+    public internal(set) var homeIsPreAnalysed = false
 
     // Turn detection.
     var turnSign: Float = 0
@@ -245,7 +240,7 @@ public final class WitchlightPath: AudioResponseMetrics {
         beads.removeAll(keepingCapacity: true)
         heading = 0; penX = 0; penY = 0; emitAccumulator = 0
         phaseSin = 0; phaseCos = 1; previousPhase = 0; phaseRate = 0
-        homeSin = 0; homeCos = 1
+        homeSin = 0; homeCos = 1; homeIsPreAnalysed = false
         turnSign = 0; turnCandidateSign = 0; turnCandidateAge = 0
         turnCandidateBeadIndex = nil; hueTurnOffset = 0; turnCount = 0
         arousalSlow = 0; arousalSpread = 0.15
@@ -380,7 +375,8 @@ public final class WitchlightPath: AudioResponseMetrics {
         let raw = features.tonalPhaseFifths
         phaseSin += (sin(raw) - phaseSin) * alpha
         phaseCos += (cos(raw) - phaseCos) * alpha
-        let homeAlpha = dt / (tuning.effectiveHomeTau(atAge: Float(elapsedSeconds)) + dt)
+        let age: Float = homeIsPreAnalysed ? .infinity : Float(elapsedSeconds)
+        let homeAlpha = dt / (tuning.effectiveHomeTau(atAge: age) + dt)
         homeSin += (sin(raw) - homeSin) * homeAlpha
         homeCos += (cos(raw) - homeCos) * homeAlpha
         let phi = atan2(phaseSin, phaseCos)

@@ -51,6 +51,22 @@ public struct TrackProfile: Sendable, Codable {
     /// Optional so old persisted profiles decode unchanged.
     public var beatIrregular: Bool?
 
+    /// WL.13 — the track's tonal centre on the circle of fifths, radians (±π), measured as
+    /// the circular mean of `tonal_phase_fifths` over the whole preview clip. `nil` when the
+    /// harmony is too diffuse to place a centre, or when the track was never pre-analysed.
+    ///
+    /// Witchlight steers on the pen's excursion FROM this centre, and used to learn it live
+    /// from a 12 s running mean seeded at 0 rad — an arbitrary point with no relation to the
+    /// song. That took ~30 s per track to converge, during which the excursion held one sign
+    /// and the pen wound a coil; 30 s is also the trail length, so the entire visible drawing
+    /// for the first half-minute of every track was the convergence rather than the music
+    /// (WL.13 measurement: heading monotonicity 0.82–1.00 over the first 15 s of three real
+    /// sessions, against 0.10–0.23 over the whole run).
+    ///
+    /// Optional so old persisted profiles decode unchanged, and because the streaming path
+    /// can reach playback without a preview to analyse.
+    public var tonalHomeFifths: Float?
+
     // MARK: - Init
 
     public init(
@@ -61,7 +77,8 @@ public struct TrackProfile: Sendable, Codable {
         genreTags: [String] = [],
         stemEnergyBalance: StemFeatures = .zero,
         estimatedSectionCount: Int = 0,
-        beatIrregular: Bool? = nil
+        beatIrregular: Bool? = nil,
+        tonalHomeFifths: Float? = nil
     ) {
         self.bpm = bpm
         self.key = key
@@ -71,10 +88,30 @@ public struct TrackProfile: Sendable, Codable {
         self.stemEnergyBalance = stemEnergyBalance
         self.estimatedSectionCount = estimatedSectionCount
         self.beatIrregular = beatIrregular
+        self.tonalHomeFifths = tonalHomeFifths
     }
 
     // MARK: - Defaults
 
     /// Empty profile — all fields at zero or nil.
     public static let empty = TrackProfile()
+
+    // MARK: - Tonal home
+
+    /// Circular mean of a `tonal_phase_fifths` series, or `nil` when the harmony is too
+    /// diffuse to place a centre. Takes the sin/cos sums so a streaming accumulator and a
+    /// batch measurement produce the SAME answer — the definition lives here, once.
+    ///
+    /// NEVER a mean of the raw ±π sawtooth: that averages a wrap to the opposite key.
+    ///
+    /// The resultant length R is the concentration of the phase around its mean. Below 0.10
+    /// there is no centre worth naming (the WITCHLIGHT_DESIGN §2.1 captures measure R
+    /// 0.24–0.78), and returning a mean angle for one would hand a confidently wrong home to
+    /// a consumer that could otherwise have fallen back on getting `nil`.
+    public static func tonalHome(sumSin: Float, sumCos: Float, count: Int) -> Float? {
+        guard count > 0 else { return nil }
+        let meanSin = sumSin / Float(count), meanCos = sumCos / Float(count)
+        guard (meanSin * meanSin + meanCos * meanCos).squareRoot() >= 0.10 else { return nil }
+        return atan2(meanSin, meanCos)
+    }
 }

@@ -141,37 +141,33 @@ public struct WitchlightTuning: Sendable {
     /// rather than as the current chord.
     public var homeTau: Float = 12.0
 
-    /// How `home` behaves before its EMA has seen `homeTau` worth of music.
-    public enum HomeWarmup: Sendable {
-        /// Pre-WL.13. `reset()` leaves `homeSin/homeCos = (0, 1)`, i.e. home at 0 rad — an
-        /// arbitrary point on the circle of fifths with no relationship to the track about to
-        /// play. A 12 s EMA takes ~30 s to walk from there to the real tonal centre, and for
-        /// that whole window `phaseFromHome` holds ONE SIGN, so curvature holds one sign and
-        /// the pen winds a coil. 30 s is also the trail window, so the entire visible figure
-        /// for the first half-minute of EVERY track is drawn out of that ramp.
-        case fromZero
-        // A `seedFirstSample` case (seed home from frame 1's raw phase) was measured and
-        // DELETED: on the 21 s fixtures it looked strong (worst pair r +0.995 → +0.649) and
-        // on all three recorded sessions it was byte-identical to `fromZero`, because a real
-        // session's first frame has no tonal estimate yet and seeds home right back at 0 rad.
-        /// Standard EMA warm-up correction: run the time constant at `min(homeTau, elapsed)`
-        /// so home is the unbiased running circular mean of everything heard so far, settling
-        /// into the `homeTau` EMA once it has that much history. No arbitrary seed and no
-        /// ramp — home is a real estimate of the tonal centre from the first second.
-        case unbiased
-    }
-    /// WL.13 — see `HomeWarmup`.
-    public var homeWarmup: HomeWarmup = .fromZero
+    /// How long the pen runs STRAIGHT when the track's tonal home is not known in advance.
+    ///
+    /// Witchlight steers on the excursion from tonal home, so before it knows where home is
+    /// it cannot know which way to turn. It used to guess — `reset()` left home at 0 rad, an
+    /// arbitrary point on the circle of fifths, and the 12 s EMA took ~30 s to walk to the
+    /// real centre. For that whole window the excursion held ONE SIGN, so curvature held one
+    /// sign and the pen wound a coil. 30 s is also the trail length, so the entire visible
+    /// figure for the first half-minute of every track was that convergence, not the music:
+    /// measured heading monotonicity 0.82-1.00 over the first 15 s of three real sessions,
+    /// against 0.10-0.23 over the whole run (WL.13).
+    ///
+    /// Matt's call, 2026-08-07: draw a straight run instead. An honest straight line while
+    /// the key is still being placed beats a coil that claims to be the harmony and is not.
+    ///
+    /// Does NOT apply when `ingestTonalHome` supplied a pre-analysed home — then home is
+    /// right from frame 1 and there is nothing to wait for. 0 disables the suppression.
+    public var homeSettleSeconds: Float = 15
 
     /// The `home` EMA time constant to use at `age` seconds since `reset()`.
     ///
-    /// `.unbiased` runs it at `min(homeTau, age)`, which makes home the running circular
-    /// mean of everything heard so far and settles it into the full `homeTau` EMA once it
-    /// has that much history — the standard EMA warm-up correction. `.fromZero` ignores
-    /// `age` entirely, which is what leaves home ramping from 0 rad for ~30 s per track.
-    public func effectiveHomeTau(atAge age: Float) -> Float {
-        homeWarmup == .unbiased ? min(homeTau, age) : homeTau
-    }
+    /// Running it at `min(homeTau, age)` makes home the unbiased running circular mean of
+    /// everything heard so far, settling into the full `homeTau` EMA once it has that much
+    /// history — the standard EMA warm-up correction. That is what makes the pen's FIRST
+    /// steer, at `homeSettleSeconds`, read a real tonal centre rather than a point 15 s into
+    /// a ramp from 0 rad. A pre-analysed home skips it: that is already a whole-clip
+    /// estimate, so it earns the full memory from frame 1 and passes `age = .infinity`.
+    public func effectiveHomeTau(atAge age: Float) -> Float { min(homeTau, age) }
 
     /// Circular-EMA time constant on the harmonic phase, seconds (CR.1.2 settled on 1.5 s).
     public var phaseTau: Float = 1.5
