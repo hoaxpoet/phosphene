@@ -10,6 +10,18 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-07-171113] BUG079.1 — the release test build works, and the DBN.2 budget is met (17.9 ms vs 50 ms)
+
+`swift test -c release` could not build the engine test target: `ArachneState.forceActivateForTest(at:)` sat inside `#if DEBUG` while its three test-target call sites did not. Dropped the gate rather than guarding the call sites — the smaller fix would have quietly removed the Arachne spider render coverage from every release run, and losing coverage to fix a build is a bad trade.
+
+**The point of fixing it was the number.** BEAT_SYNC_PROGRAM_PLAN §DBN.2 budgets < 50 ms for a 30 s activation window; DBN.2 could only measure debug and had to assert a regression ceiling with the real budget marked UNVERIFIED. Measured now: **17.9 ms in release** against **1403 ms in debug**. A 78× config gap — the debug figure never carried information about the budget, and the spec's warning against scaling it was right.
+
+`DSPPerformanceTests` now asserts 50 ms under release and keeps the 4000 ms debug regression ceiling, so the plan gate is enforceable instead of documented.
+
+One correction to the filing: `swift test -c release` on its own still fails, and that is not a defect — `@testable import` needs testability, which release does not enable. The working invocation is `swift test -c release -Xswiftc -enable-testing --package-path PhospheneEngine`.
+
+---
+
 ### [dev-2026-08-05-214036] DYN.1d — the usability gate rejected exactly the tracks that needed the fix
 
 Matt on Cherub Rock: *"the tree grows a bit too much BEFORE the distorted guitar comes in and then does not jump up again when the distorted guitar enters."* Both halves are one threshold.
