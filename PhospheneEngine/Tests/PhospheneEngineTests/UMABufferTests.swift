@@ -162,7 +162,7 @@ import Metal
 
 @Test func featureVectorSizeAndAlignment() {
     // 48 floats × 4 bytes = 192 bytes after MV-1, 16-byte aligned for GPU uniforms.
-    #expect(MemoryLayout<FeatureVector>.size == 208 /* 52 floats = 208 bytes. DYN.1 added spectral_density/_slow (floats 49-50) taking it to 200, which is NOT 16-byte aligned; floats 51-52 are padding that restores the GPU-constant alignment every preset depends on at buffer(0). */)
+    #expect(MemoryLayout<FeatureVector>.size == 224 /* 56 floats = 224 bytes. FTR.6 added melodic_tips (float 53) taking it to 212, which is NOT 16-byte aligned; floats 54-56 are padding that restores the GPU-constant alignment every preset depends on at buffer(0). Same trap DYN.1 hit at floats 49-52. */)
     #expect(MemoryLayout<FeatureVector>.stride % 16 == 0)
 }
 

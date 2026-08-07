@@ -90,6 +90,14 @@ struct FeatureVector {
     // ratio against _slow drives trunk size. ORDER IS THE CONTRACT — it must match
     // AudioFeatures+Analyzed.swift field-for-field, not just in count.
     float spectral_surge, spectral_section_ratio;   // 51 DYN.1b, 52 DYN.2
+    // 53 FTR.6 — MELODIC TIPS, 0…12. `beat_mid` through a one-eighth-note refractory
+    // gate, accumulated one unit per note event and drained at tau 2.5 s. Truncate it:
+    // `(uint)f.melodic_tips` steps by exactly ONE branch, which no stateless scaling of
+    // `beat_mid` can do (it turns 6.9 times a second). See DSP/MelodicNoteGate.swift.
+    float melodic_tips;
+    // 54–56: alignment padding. 53 floats is 212 bytes, not a multiple of 16, and this
+    // struct is a GPU constant at buffer(0). Reclaim these before appending.
+    float _pad53, _pad54, _pad55;
 };
 
 // MARK: - FeedbackParams
