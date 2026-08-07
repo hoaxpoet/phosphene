@@ -21,6 +21,19 @@ open. That parallel session hit the same number collision from the other side �
 record a 080 → 082 renumber — and this branch renumbered its own new entry to **BUG-084**
 for the same reason. BUG-081 and BUG-060 are the same hang class; they are cross-linked.)*
 
+*(Progress pass, 2026-08-07 — **two entries left §Open, both fully resolved**: **BUG-079**
+(release-config test build; the DBN.2 budget it was hiding measures 17.9 ms in release against a
+50 ms plan figure) and **BUG-078** (the `AVAudioPlayerNode` teardown trap — root-caused as a
+concurrent-`start()` overwrite, fixed in `f68efb67`/PR #62, closed on Matt's live local-file
+session `2026-08-07T19-10-25Z`). Nothing else changed state. The working order for what remains
+is in [`ENGINEERING_PLAN.md`](../ENGINEERING_PLAN.md) §Immediate Next Increments item 5 —
+**sorted by whether the work is doable, not by severity label**, because most of the remaining
+P1/P2 headline items are blocked on an artifact that only a live failure can produce and cost
+nothing while they wait. The one method note worth carrying: BUG-078 sat for a week on "nobody
+has captured the trap" while 25 matching `.ips` reports sat in
+`~/Library/Logs/DiagnosticReports/`. **Before filing another sighting of an intermittent crash,
+read the crash reports already on disk.**)*
+
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
 | BUG-085 | P1 · HANG.1–2 complete 2026-08-05; remains open | renderer / app.hang | **App intermittently hangs hard in `CAMetalLayer.nextDrawable`; window unresponsive, force-quit required.** The live stack proves a main-thread drawable request blocked at 0 % CPU after healthy frames, but the cause remains unknown; direct render-path leakage, the capture hook, preset-swap skip, inflight semaphore, GPU completion, display sleep, and occlusion have been ruled out. **HANG.1 instrumentation is merged to `main` via PR #37 (`c54a2e7c`)**. HANG.2 completed a full-track control plus a 10 min 36 s Witchlight soak with 34,811/34,811 drawables balanced and no stalls or imbalances, refuting a deterministic per-frame leak but not identifying the intermittent owner. **THE INSTRUMENTED CAPTURE NOW EXISTS (2026-08-05, session `2026-08-05T21-21-03Z`, Fractal Tree / Cherub Rock)** — and every lifecycle counter is BALANCED at the moment of the hang: `drawable=12045/12045`, `unique_presented=6012/6012`, `command_completed=6012/6012`, `failures=0`, `unpresented=0`, one request outstanding (`pending=frame:6013,site:mesh.descriptor`). The app held ZERO drawables and CoreAnimation still would not vend one, which independently confirms HANG.2's soak: there is no app-side leak, and the owner is outside the app. Two captures 98 s apart are byte-identical on those counters — a PERMANENT block, not a long stall. See the detail section. |
