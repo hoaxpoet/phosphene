@@ -63,6 +63,30 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment BUG078.1 — `AVAudioPlayerNode` teardown trap root-caused and fixed ✅ (2026-08-07)
+
+The intermittent `EXC_BREAKPOINT` / "dispatch_sync called on queue already owned by current
+thread" that has been taking down the engine test process since 2026-07-26 is a
+**concurrent-`start()` overwrite** in `LocalFilePlaybackProvider`, not the completion-block
+retain the entry had hypothesised. `start()` tears down before taking the lock (BUG-021), so
+two racing starts can interleave such that the second `_startLocked()` overwrites a live,
+playing engine/player. The orphan's last strong reference is the one AVFAudio holds inside
+the pending `scheduleFile` completion block, so the node is released on its own `CommandQueue`,
+where `dealloc` → `Stop()` → `dispatch_sync` re-enters that queue.
+
+**Fix:** `start()` snapshots the existing refs under the lock (pointer copy only — BUG-021's
+lock-free-teardown constraint holds) and tears them down after unlocking, holding a strong
+reference across `player.stop()`. Closes the orphaned-engine leak by the same change.
+
+**Gate:** `LocalFilePlaybackStartRaceTests` counts adopted instances against teardowns over 24
+racing double-starts — **48 adopted / 25 torn down (23 orphans) pre-fix, equal post-fix** —
+converting a 1-in-3 full-suite lottery into a 3-second deterministic check.
+
+**Method note worth keeping:** 25 matching `.ips` reports were already on disk, 19 naming the
+in-flight test and both racing threads. The bug stalled for a week on "nobody has captured the
+trap" while the capture sat in `~/Library/Logs/DiagnosticReports/`. **BUG-078 stays open on its
+manual criterion** — local-file playback end-to-end is Matt's sign-off.
+
 ### Increment BUG079.1 — release test build unblocked; DBN.2 budget measured ✅ (2026-08-07)
 
 `ArachneState.forceActivateForTest(at:)` was declared inside `#if DEBUG` while its three
