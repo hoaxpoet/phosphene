@@ -7,10 +7,9 @@
   "inspired_by": {
     "milkdrop_filename": "martin - witchcraft reloaded",
     "original_artist": "martin",
-    "source_form": "butterchurn-presets built-in (pre-converted JSON; no .milk file on disk)",
-    "sha256": "da050f2ac84d11fda9ba2bbf43fa47dcd3014439b4b65fb79a1d542919de58ff",
-    "sha256_subject": "the butterchurn built-in JSON that was read as the source (~/mdrender/builtins/), not a .milk file",
-    "pack": "projectM-visualizer/presets-cream-of-the-crop"
+    "pack": "projectM-visualizer/presets-cream-of-the-crop",
+    "source_form": "butterchurn built-in JSON \u2014 rendered as the source oracle via tools/milkdrop-render/; sha256 is of that JSON, not a .milk",
+    "sha256": "da050f2ac84d11fda9ba2bbf43fa47dcd3014439b4b65fb79a1d542919de58ff"
   },
   "passes": [
     "feedback",

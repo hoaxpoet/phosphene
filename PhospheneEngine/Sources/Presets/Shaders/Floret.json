@@ -7,8 +7,8 @@
   "inspired_by": {
     "milkdrop_filename": "suksma - Rovastar - Sunflower Passion (Enlightment Mix)_Phat_edit + flexi und martin shaders - circumflex in character classes in regular expression",
     "original_artist": "suksma, Rovastar, Flexi, Martin",
-    "source_form": "butterchurn-presets built-in (pre-converted; no .milk file on disk, sha256 unavailable)",
-    "pack": "projectM-visualizer/presets-cream-of-the-crop"
+    "pack": "projectM-visualizer/presets-cream-of-the-crop",
+    "source_form": "butterchurn built-in JSON \u2014 rendered as the source oracle via tools/milkdrop-render/; no .milk on disk and no hash taken at authoring"
   },
   "passes": ["direct", "mv_warp"],
   "fragment_function": "floret_fragment",
