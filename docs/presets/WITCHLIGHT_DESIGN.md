@@ -243,6 +243,31 @@ It follows from the mechanism. The pen advances continuously, so the head is the
 
 Do **not** close a framing complaint by fitting more into frame: that shrinks the drawing below the legible-bead floor, and three WL.6 attempts died there (23 → 4 distinct cores).
 
+### 3.3.2 The camera comes back in — the fit window (WL.10)
+
+Matt, session `2026-08-06T19-36-40Z`: *"Does the camera ever zoom back in when the ribbon is back to making tighter shapes and forms?"* Measured answer before this increment: barely. `viewScale` by 10 s window ran `1.78 3.07 3.68 1.77 1.45 1.53 1.21 0.82 0.73 0.74` — one direction after the opening, a ~5× zoom-out over two minutes.
+
+**The cause is not a time constant.** The shrink τ was swept 4.0 → 2.0 → 1.0 → 0.5 s and the minimum `viewScale` never moved off 0.72. **It is the fit WINDOW:** `rmsRadius` measured the whole 30 s trail, so a wide passage kept the target large for a full half-minute after the pen tightened. There was nothing smaller to frame yet — the camera was not failing to notice.
+
+**The scale is now fitted over the most recent `fitWindowSeconds` (12 s) of beads, about a centre computed from the same beads.** Both halves are load-bearing: windowing the radius while measuring distances from the whole-trail centroid moves the scale the WRONG WAY, because recent beads sit far from an old centre and the measured radius grows. A radius measured about one point and a view centred on another do not compose.
+
+**The aim moved too, and the WL.10 spec said it must not.** That rule existed to protect head-in-frame — and honouring it literally is what broke head-in-frame: with the scale on a recent window and the aim still anchored to the 30 s centroid, the view zoomed in around a point the drawing had already left, and the head went off frame on **19.4 % / 14.8 % / 3.5 %** of frames across three real sessions. Pointing the aim at the fit centroid returns it to **0.0 % everywhere**. The constraint was right about the goal and wrong about the mechanism; the measurement is what settled it.
+
+| window | span (p90/p10) | most-zoomed-out (p10) | recovery events | head off frame |
+|---|---|---|---|---|
+| whole trail (before) | 4.91× | 0.73 | 6 | 0.0 % |
+| 20 s | 3.55× | 1.01 | 8 | 0.0 % |
+| **12 s (shipped)** | **2.57×** | **1.38** | **8** | **0.0 %** |
+| 8 s | 2.19× | 1.61 | 8 | 0.0 % |
+
+*(session `2026-08-06T19-36-40Z`; the same ordering holds on three others.)*
+
+**This is not the WL.6 recent-window retry.** WL.6's version collapsed bead legibility 23 → 4 because the aim and the fit were one point, so the only way to frame more was to shrink the drawing. Here the view zooms **in**, so beads get *bigger*: distinct cores measure **15**, up from 13. The WL.6 failure signature is absent by construction, and it remains the stop condition if this is ever retuned.
+
+**No pumping.** Steady-state max per-frame scale change (first 5 s excluded — `rmsRadius` starts at a 0.4 seed and snaps once) is 0.20–0.42 %, at or below the pre-WL.10 baseline. Measuring it *without* excluding the seed reports ~55 % identically at every window including the baseline, which says nothing about the change — a metric dominated by a one-off transient cannot compare configurations.
+
+**Cost:** the faded tail spends more time outside the frame, and ribbon share sits at 0.406 % against the 0.40 % floor — thin. That is the same trade WL.7 made deliberately when it aimed the camera at the burning head.
+
 ### 3.4 Colour
 
 **A bead's hue is the smoothed harmonic phase φ̄ at the moment it was laid down, mapped around the hue circle, and then frozen.** Both quantities are circular, so the map wraps seamlessly with no seam. This is D-178's "hue on the circle of fifths — relationships, never labels; hue, never brightness."

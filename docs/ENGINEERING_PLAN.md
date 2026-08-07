@@ -2043,6 +2043,33 @@ This is the opposite of the three WL.6 framing attempts, which all tried to fit 
 
 ---
 
+### Increment WL.10 — Witchlight: the camera comes back in 🔨 **CODE-COMPLETE 2026-08-07, pending live M7**
+
+**Why.** Matt, session `2026-08-06T19-36-40Z`: *"Does the camera ever zoom back in when the ribbon is back to making tighter shapes and forms? Other than this one question, the preset looks good and follows the music pretty well."* Measured answer: barely — `viewScale` ran 3.68 → 0.73 over two minutes with almost no recovery. Spec: `docs/prompts/WL10_CAMERA_COMES_BACK_IN.md`. **Matt's choice: option B** (frame roughly the last 10–15 s).
+
+**What changed.** The scale is fitted over the most recent **12 s** of beads about a centre computed from the same beads. Both halves matter — windowing the radius alone, while still measuring from the whole-trail centroid, moves the scale the *wrong way* (recent beads sit far from an old centre).
+
+**The spec's own Do-NOT had to be overturned, by measurement.** It said "do not touch the camera AIM", to protect head-in-frame. Honouring that literally BROKE head-in-frame: with the scale on a recent window and the aim on the 30 s centroid, the head left frame on **19.4 % / 14.8 % / 3.5 %** of frames across three real sessions. Pointing the aim at the fit centroid restores **0.0 % on all four**. A radius measured about one point and a view centred on another do not compose. The rule was right about the goal, wrong about the mechanism.
+
+**Measured** (`2026-08-06T19-36-40Z`; same ordering on three other sessions):
+
+| window | span | most-zoomed-out (p10) | recovery events | head off frame |
+|---|---|---|---|---|
+| whole trail (before) | 4.91× | 0.73 | 6 | 0.0 % |
+| **12 s (shipped)** | **2.57×** | **1.38** | **8** | **0.0 %** |
+
+**Not the WL.6 retry.** WL.6's recent-window fit collapsed beads 23 → 4 because the aim and fit were one point and the only lever was shrinking the drawing. Here the view zooms IN, so beads get bigger: distinct cores **13 → 15**. The WL.6 signature is absent by construction and remains the stop condition.
+
+**No pumping.** Steady-state max per-frame scale change 0.20–0.42 %, at or below baseline. Measured *with* the first 5 s included it reads ~55 % identically at every window including the baseline — a metric dominated by the `rmsRadius` seed transient cannot compare configurations, and was corrected rather than reported.
+
+**Cost, reported:** ribbon share 0.421 % → **0.406 %** against a 0.40 % floor. Thin. The faded tail spends more time outside frame — the WL.7 trade.
+
+**Done when:** ✅ recovery instrumented before any production change · ✅ windowed fit with a matching centroid · ✅ swept on four real sessions · ✅ hard-stop gates checked and one constraint overturned by measurement, not preference · ✅ no pumping · ⏳ **Matt's live M7.**
+
+**Verify:** `WITCHLIGHT_SESSIONS=<dirs> swift test --package-path PhospheneEngine --filter WitchlightSpeedSweep`
+
+---
+
 ### Increment MD.7 — Ray-march-composing inspired-by uplifts (formerly Hybrid tier)
 
 **Scope (revised per `MILKDROP_STRATEGY.md` §12 / D-103 amendment / D-107):** Inspired-by uplifts that compose `mv_warp` + `ray_march` against a static camera (D-029). **Not a tier** — these are `milkdrop_inspired` presets that happen to use the ray-march backdrop primitive; authoring choice, not classification. The MD.7.0 spike (single-preset proof of the `mv_warp` + `ray_march` composition) lands as one such uplift; subsequent ray-march-composing uplifts batch into the MD.6 work stream. The architectural composition has only Volumetric Lithograph as prior production proof (and VL's `mv_warp` plays against a ray-march scene that is not itself feedback-warped), so the spike is still a high-value increment under inspired-by.
