@@ -16,7 +16,9 @@ Resolved entries rotated out of [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) §Resolved 
 
 **Verification criteria:**
 - [x] Automated: `M3UParserTests.parse_rejectsNonAudioAndTraversalEntries` — a `.m3u` listing a non-audio extension, an extensionless absolute path, and a `../` traversal throws `noEntriesResolved`. 11/11 in the suite; full engine suite 1800 green, app suite 407 green, SwiftLint strict 0 violations.
-- [ ] Manual: opening a normal `.m3u` of `.m4a/.mp3/.flac` is unaffected — **pending Matt**. Not automated end-to-end at the menu layer; the parse layer is covered.
+- [x] Manual: opening a normal `.m3u` of `.m4a/.mp3/.flac` is unaffected — **Matt, session `2026-08-07T20-20-07Z`**. `origin=localPlaylist('normal.m3u',3)`, `prepareLocalFiles DONE cached=3 failed=0 total=3` across all three formats, both `advanceLocalFileQueue EXIT ok=true`, `CHAIN_HEALTH: verdict=clean`, tap healthy at −2.03 dBFS. Byte-identical queue behaviour to the pre-fix baseline session `2026-08-07T20-12-09Z`, which is the expected result — the fix moves the guarantee to the parser without changing what the UI does.
+
+**Build identity was verified, not assumed.** The first run (`20-12-09Z`) exercised an app built at 15:08:13 from a *parallel* worktree (`jolly-babbage-cf1fdf`, zero occurrences of `allowedAudioExtensions`) — a pre-fix baseline, recorded here because it is the control. The closing run launched the fixed build (`…-bzbcm…`, `M3UParser.o` compiled 14:48:41) at 15:20:21, matched to the session's 20:20:07Z start. When a fix is invisible at the UI by design, the *only* thing separating a pass from a no-op is which binary ran — check it before reading the log.
 
 **Original report (for the record).**
 

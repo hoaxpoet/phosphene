@@ -10,6 +10,18 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-07-203000] BUG051.1 closed on Matt's live m3u run — and the build-identity check that nearly didn't happen
+
+Session `2026-08-07T20-20-07Z`: `normal.m3u` (one `.m4a`, one `.mp3`, one `.flac`, absolute paths with spaces, brackets and an apostrophe) queued and played all three. `prepareLocalFiles DONE cached=3 failed=0 total=3`, both advances `ok=true`, `CHAIN_HEALTH: verdict=clean`, tap healthy at −2.03 dBFS. BUG-051's manual criterion is met and the entry is closed.
+
+**The part worth keeping.** The first run of that same playlist (`2026-08-07T20-12-09Z`) looked equally clean and proved nothing about the fix: the app it launched was built at 15:08:13 from a *parallel* worktree whose `M3UParser.swift` contains zero occurrences of `allowedAudioExtensions`. Every log line an observer would check — the dispatch, the three-file queue, the clean verdict — read identically in both runs, because the fix is invisible at the UI by construction (both app entry points already filtered by extension; what changed is that the guarantee moved to the parser). A no-op and a pass are indistinguishable in the log.
+
+So for this class of change — one deliberately designed to alter nothing the user sees — the log is not the evidence. **Which binary ran is the evidence.** The closing run was confirmed by matching the app's access time (15:20:21) to the session start (20:20:07Z) and the `M3UParser.o` compile time (14:48:41) to the source edit, before reading a single line of `session.log`. The generalisation of the existing worktree-reaches-the-build rule: verifying the build is not a precaution for risky changes, it is the *only* signal when the change is meant to be invisible.
+
+Housekeeping: `Scripts/rotate_docs.sh` filed the closed BUG-051 straight from §Resolved (recent) to `KNOWN_ISSUES_HISTORY.md` in the same pass, because rotation keys on the `(2026-06-15)` **filing** date in the header, not the resolution date. Anything filed more than 14 days ago skips §Resolved (recent) entirely the moment it closes. Content is preserved and the doc gates are green; noted because the section's name now overstates what it holds.
+
+---
+
 ### [dev-2026-08-07-195110] BUG051.1 — the m3u allow-list moved down to the trust boundary
 
 BUG-051 was filed by CLEAN.2.4's threat model in June and has sat as the one unblocked, bounded defect on the board since. It is fixed: `M3UParser` now canonicalizes every resolved entry and filters it against `allowedAudioExtensions` (`m4a`/`mp3`/`flac`) before the entry is stat'd or handed onward. A hostile playlist naming `~/.ssh/id_rsa` or `../../etc/passwd` resolves to zero entries and throws `noEntriesResolved`.
