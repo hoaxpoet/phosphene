@@ -25,12 +25,6 @@ struct SettingsViewTests {
         ))
     }
 
-    @Test func milkdropToggle_isDisabled() {
-        let vm = makeVM()
-        // Must remain disabled until Phase MD ships.
-        #expect(vm.includeMilkdropPresetsDisabled == true)
-    }
-
     @Test func qualityCeilingCases_allPresent() {
         // All four cases must be representable in the picker.
         let allCases = QualityCeiling.allCases

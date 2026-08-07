@@ -1341,26 +1341,41 @@ the only criterion that has produced certified presets.
 
 *Amends:* §12.2's D-112 row, §5 in full.
 
-### §13.5 Settings exposure — pending
+### §13.5 Settings exposure — deleted (Matt 2026-08-07)
 
-`phosphene.settings.visuals.milkdrop.inspired` was **never
-adopted**. The shipped surface is the QR.4 / D-091 `#if DEBUG`
-stub keyed `phosphene.settings.visuals.includeMilkdropPresets`,
-reading "Coming in a future update," `.disabled(true)`. Seven
-presets have shipped past it.
+**There is no Milkdrop toggle, and there will not be one.**
+`phosphene.settings.visuals.milkdrop.inspired` was never adopted;
+the QR.4 / D-091 `#if DEBUG` stub that stood in its place —
+`phosphene.settings.visuals.includeMilkdropPresets`, reading
+"Coming in a future update," `.disabled(true)` — was **removed at
+MD.0** along with its store property, persistence key, view-model
+flag, view row, two strings and three tests.
 
-The toggle is **inert, not merely hidden**:
-`SettingsStore.includeMilkdropPresets` is persisted and read by
-`SettingsViewModel` and `VisualsSettingsSection` — and by nothing
-else. `PresetScoringContextProvider` builds
-`PresetScoringContext.excludedFamilies` from
-`SettingsStore.excludedPresetCategories`, a different key.
-Flipping the debug toggle changes nothing about preset selection.
+**Why deleted rather than shipped (Matt's pick, MD.0
+DECISION-NEEDED #1).** D-119 commits Phosphene's identity to being
+Milkdrop-influenced; a switch that removes the majority of the
+catalog contradicts the brand call. The per-category exclusions
+(`excludedPresetCategories` → `PresetScoringContext.excludedFamilies`)
+already give a listener the granular control they would actually
+reach for. If the distinction is ever worth surfacing, it reads
+better as attribution in the preset info than as an opt-out.
 
-**Status: MD.0 DECISION-NEEDED #1, awaiting Matt.** Ship / delete /
-defer are all live. Default if unanswered: leave the toggle as-is
-and record the inconsistency in `KNOWN_ISSUES.md`; do not ship a
-release with a dead "coming soon" row visible.
+**What the shipped toggle would have cost, for the record.** It was
+**inert, not merely hidden** — `SettingsStore.includeMilkdropPresets`
+was read by `SettingsViewModel` and `VisualsSettingsSection` and by
+nothing else, while `PresetScoringContextProvider` builds
+`excludedFamilies` from a different key, so flipping it changed
+nothing about preset selection. Wiring it honestly could not go
+through `family`: under D-123 the seven uplifts sit in `hypnotic`
+and `particles` **alongside seven Phosphene-native presets** —
+Aurora Veil, Plasma, Filigree, Mitosis, Cytokinesis, Murmuration,
+Nebula, five of them certified — so a family-based exclusion would
+have removed Phosphene's own work. The only honest wiring is a
+per-preset `inspired_by` check, which needs `PresetDescriptor`
+decoding that does not exist (§13.1).
+
+Already-persisted `UserDefaults` values under the removed key are
+orphaned and harmless — nothing reads them, so no migration ships.
 
 *Amends:* §12.2's D-106 row, §12.9's MD.5 row (toggle bullet).
 
@@ -1419,9 +1434,21 @@ Witchlight took ten increments and Meniscus eleven.
 The reframe itself (D-113), the release model (D-114), the
 discipline rule (D-116 / D-121 / `SHADER_CRAFT.md §12.6`), the
 brand commitment (D-119) and the kill-switch triggers (D-122) are
-all untouched and still operative. D-115 (release-bundle
-composition) remains open — MD.0 DECISION-NEEDED #2. The D-122
-trigger assessment run at MD.0 is recorded in
-`ENGINEERING_PLAN.md` §Phase MD and in D-215.
+all untouched and still operative.
+
+**D-115 is now resolved: C' (10 + 10)**, Matt 2026-08-07, closing a
+question open since 2026-05-12. The first-release bundle is ten
+Phosphene-native + ten Milkdrop-inspired; at 18 certified (11
+native, 7 inspired-by) that is **three more uplifts** to the
+threshold, against six under the superseded A' (7+13) default.
+D-119's ≥ 50 % inspired-by is thereby a **steady-state target, not
+a first-release gate** — A' was priced on §12.1's "~2–3 days per
+preset," which §13.7 shows the record falsifies.
+
+That pick also settles the **D-122 trigger-4** reading: the
+measured 27 % roster / 39 % certified share is a transient of a
+catalog that has not yet been composed into a release, not the
+drift the trigger was written to catch. Phase MD proceeds. Full
+assessment in `ENGINEERING_PLAN.md` §Phase MD and in D-215.
 
 ---
