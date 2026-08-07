@@ -63,6 +63,46 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment BUG051.1/.2 — m3u entry allow-list + canonicalization at the parser boundary ✅ (2026-08-07)
+
+Closes **BUG-051**, filed by CLEAN.2.4's GAP-10 threat model in June and the last unblocked,
+bounded item on the defect board. `M3UParser` now canonicalizes every resolved entry
+(`standardizedFileURL` on all three resolve branches, not just the relative one; `file://`
+strings that aren't file URLs rejected) and filters against `allowedAudioExtensions`
+(`m4a`/`mp3`/`flac`) **at the parser boundary**, so a hostile playlist naming `~/.ssh/id_rsa`
+or `../../etc/passwd` resolves to zero entries and throws `noEntriesResolved` — never stat'd,
+never handed onward. `LocalFileMenuCommands.allowedExtensions` aliases the engine constant so
+the app- and engine-side lists cannot drift.
+
+**Deliberately not built: containment to an expected root.** The filing proposed rejecting
+entries that don't resolve "under an expected root". Absolute and `../`-relative entries
+pointing outside the playlist's own directory are how exported playlists (iTunes, foobar2000)
+address a music library, so containment would break normal use to close nothing — both attack
+examples in the filing are extensionless and the extension check already catches them.
+`parse_allowsTraversalToRealAudioOutsidePlaylistDir` pins that traversal-to-real-audio still
+resolves, so the guard is not re-added by reflex.
+
+**Correction to the original filing.** It stated the resolved path was "handed to AVFoundation"
+with "no allow-list short-circuits it first". Both app entry points already filtered the
+parser's output by extension, so the decoder never saw a non-audio path. The real residual was
+narrower — an `isReadableFile` stat of an attacker-named path plus that path in
+`skippedLines`/logs — and the guarantee depended on every future caller remembering to filter.
+The caller filters stay as belt-and-braces.
+
+**Method note worth keeping (BUG051.2).** The manual criterion took two live runs. The first
+(`2026-08-07T20-12-09Z`) looked clean and proved nothing: the launched app was built from a
+*parallel worktree* whose source contains zero occurrences of `allowedAudioExtensions`. Because
+this fix is invisible at the UI by construction, a no-op and a pass produce identical logs — so
+the log is not the evidence, **which binary ran is**. The closing run
+(`2026-08-07T20-20-07Z`, fixed build confirmed by app access time vs. session start and
+`M3UParser.o` compile time vs. the source edit) queued and played all three formats:
+`cached=3 failed=0 total=3`, both advances `ok=true`, `CHAIN_HEALTH: verdict=clean`, tap healthy
+at −2.03 dBFS. The wrong-build run is retained as the pre-fix control.
+
+**Done-when:** met. Automated (`M3UParserTests`, 11/11) + manual (Matt, above). Not visually
+verifiable — no renderer, shader, or preset surface touched, so no capability-registry row
+changes and no comparison sheet applies.
+
 ### Increment BUG078.1 — `AVAudioPlayerNode` teardown trap root-caused and fixed ✅ (2026-08-07)
 
 The intermittent `EXC_BREAKPOINT` / "dispatch_sync called on queue already owned by current
