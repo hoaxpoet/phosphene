@@ -37,6 +37,11 @@ extension LoudnessProfile {
 
         var levels = [Float]()
         levels.reserveCapacity(samples.count / fftSize)
+        // DYN.2c — the track's own density normal, measured here rather than learned
+        // during playback (a τ45 s EMA cannot develop contrast inside a 3-minute song).
+        var densities = [Float]()
+        densities.reserveCapacity(samples.count / fftSize)
+        let binResolution = Float(sampleRate) / Float(fftSize)
         var smoothed: Float = 0
         var seeded = false
         var offset = 0
@@ -50,6 +55,9 @@ extension LoudnessProfile {
             }
             fft.computeMagnitudes()
             let level = levelDB(magnitudes: fft.magnitudes, count: fft.binCount)
+            densities.append(densityFraction(magnitudes: fft.magnitudes,
+                                             count: fft.binCount,
+                                             binResolution: binResolution))
             if !seeded {
                 smoothed = level
                 seeded = true
@@ -60,9 +68,26 @@ extension LoudnessProfile {
             offset += fftSize
         }
 
-        guard let profile = LoudnessProfile(smoothedLevelsDB: levels), profile.isUsable else {
+        guard let base = LoudnessProfile(smoothedLevelsDB: levels), base.isUsable else {
             return nil
         }
-        return profile
+        // Smooth with the analyzer's OWN section alpha before taking quantiles — the live
+        // side ranks a τ20 s signal, and quantiles of the raw fraction would be far wider,
+        // parking every live value mid-scale. Seeded on the first frame, as the engine does.
+        var smoothedDensity: [Float] = []
+        smoothedDensity.reserveCapacity(densities.count)
+        var running: Float?
+        let sectionAlpha = LoudnessProfile.densitySectionAlpha
+        for value in densities {
+            let next = running.map { sectionAlpha * value + (1 - sectionAlpha) * $0 } ?? value
+            running = next
+            smoothedDensity.append(next)
+        }
+        let sortedDensity = smoothedDensity.sorted()
+        let densityQuantiles: [Float] = sortedDensity.isEmpty ? [] : (0...LoudnessProfile.steps).map { step in
+            let index = Int((Float(sortedDensity.count - 1) * Float(step) / Float(LoudnessProfile.steps)).rounded())
+            return sortedDensity[min(max(index, 0), sortedDensity.count - 1)]
+        }
+        return LoudnessProfile(quantilesDB: base.quantilesDB, densityQuantiles: densityQuantiles)
     }
 }

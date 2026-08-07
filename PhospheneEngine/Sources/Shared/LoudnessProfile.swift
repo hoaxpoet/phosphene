@@ -56,6 +56,29 @@ public struct LoudnessProfile: Sendable, Equatable, Codable {
     /// `i / steps` of the track sits.
     public let quantilesDB: [Float]
 
+    /// DYN.2c — the track's OWN density DISTRIBUTION: `steps + 1` ascending quantiles of
+    /// the SECTION-SMOOTHED (τ20 s) density, measured over the whole decode. Empty when
+    /// unmeasured.
+    ///
+    /// A single "normal" plus a smoothstep needed two fitted edges, and the first pair was
+    /// fitted against the broken DYN.2b ratio: with a correct normal the ratio spans
+    /// 0.0…8.6 and those edges clipped Hummer to a flat 1.00 for four minutes. Quantiles
+    /// need no edges — `densityRank` is uniform over the track by construction, the same
+    /// reason `rank(ofLevelDB:)` replaced the p10→p95 band at DYN.1c.
+    ///
+    /// Quantiles are of the τ20 s SMOOTHED series, not the raw fraction, because that is
+    /// what the live analyzer feeds in. Quantiles of the raw series would be far wider and
+    /// every live value would rank mid-scale.
+    ///
+    /// WHY THIS IS ON THE PROFILE. DYN.2b learned this live with a τ45 s EMA seeded to the
+    /// section leg, so the ratio began at exactly 1.00 and needed 90–135 s to develop any
+    /// contrast — most of a song. Measured on Matt's `2026-08-07T15-38-27Z` capture the
+    /// ratio spanned 1.00…1.17 and the trunk drifted monotonically 0.38 → 0.68 with no
+    /// structure. **A track's normal cannot be learned from the track while you are playing
+    /// it.** For a local file the whole thing is decoded at preparation, exactly like the
+    /// loudness quantiles beside it, so it is measured up front and available from frame 1.
+    public let densityQuantiles: [Float]
+
     /// Below this INNER span the quantiles are measuring nothing — a genuinely constant
     /// source (digital silence, a test tone) would rank its own dither. Such a profile is
     /// refused and the caller keeps the fixed band.
@@ -101,8 +124,29 @@ public struct LoudnessProfile: Sendable, Equatable, Codable {
             && innerRangeDB >= Self.minimumUsableRangeDB
     }
 
-    public init(quantilesDB: [Float]) {
+    public init(quantilesDB: [Float], densityQuantiles: [Float] = []) {
         self.quantilesDB = quantilesDB
+        self.densityQuantiles = densityQuantiles
+    }
+
+    /// Fraction of the track less dense than `density`, 0…1. Same interpolated-quantile
+    /// lookup as `rank(ofLevelDB:)`. Returns nil when no density distribution was measured
+    /// (streaming), so the caller can fall back.
+    public func densityRank(of density: Float) -> Float? {
+        guard densityQuantiles.count == Self.steps + 1 else { return nil }
+        return Self.rank(of: density, in: densityQuantiles)
+    }
+
+    /// Shared interpolated lookup for both quantile tables.
+    static func rank(of value: Float, in table: [Float]) -> Float {
+        guard let low = table.first, let high = table.last, table.count > 1 else { return 0 }
+        if value <= low { return 0 }
+        if value >= high { return 1 }
+        var index = 0
+        while index < table.count - 2 && table[index + 1] < value { index += 1 }
+        let span = table[index + 1] - table[index]
+        let fraction = span > 1e-9 ? (value - table[index]) / span : 0
+        return (Float(index) + fraction) / Float(table.count - 1)
     }
 
     /// One-line description for `session.log` and `os.Logger` — the durable artifact a
@@ -124,7 +168,7 @@ public struct LoudnessProfile: Sendable, Equatable, Codable {
         self.init(quantilesDB: (0...Self.steps).map { step in
             let index = Int((Float(sorted.count - 1) * Float(step) / Float(Self.steps)).rounded())
             return sorted[min(max(index, 0), sorted.count - 1)]
-        })
+        }, densityQuantiles: [])
     }
 
     /// Fraction of the track quieter than `levelDB`, 0…1. Linear interpolation inside the
@@ -143,9 +187,37 @@ public struct LoudnessProfile: Sendable, Equatable, Codable {
 
     // MARK: - The level scale (single source of truth)
 
+    /// EMA alpha for the SECTION-scale density leg (τ ≈ 20 s at the measured 43 Hz), shared
+    /// by the live analyzer and the offline quantile measurement so the two rank the same
+    /// signal. DYN.2b's legs collapsed because two nominally-different widths were 0.38 %
+    /// apart; keeping the constant in one place is how that stops recurring.
+    public static let densitySectionAlpha: Float = 0.00116
+
     /// EMA alpha applied to `levelDB` before anything reads it, live and offline.
     /// At the measured ~47 Hz analysis rate this is τ ≈ 0.7 s.
     public static let levelSmoothingAlpha: Float = 0.030
+
+    /// Split between "low" and "high" for the density fraction. 1.5 kHz sits above the
+    /// fundamental range of most rhythm-section content and below the harmonics distortion
+    /// adds. MUST match `SpectralAnalyzer.densitySplitHz` — it is the same quantity.
+    public static let densitySplitHz: Float = 1500
+
+    /// Fraction of spectral energy above `densitySplitHz`, from RAW magnitudes. Energy is
+    /// magnitude squared, so the ratio is scale-invariant and any upstream gain cancels.
+    /// ONE definition, used by the live `SpectralAnalyzer` and by the offline `measure` —
+    /// the same reason `levelDB` lives here (see the header).
+    public static func densityFraction(magnitudes: [Float], count: Int, binResolution: Float) -> Float {
+        guard binResolution > 0 else { return 0 }
+        let splitBin = min(Int(densitySplitHz / binResolution), count)
+        var low: Float = 0
+        var high: Float = 0
+        for index in 0..<min(count, magnitudes.count) {
+            let energy = magnitudes[index] * magnitudes[index]
+            if index < splitBin { low += energy } else { high += energy }
+        }
+        let total = low + high
+        return total > 1e-10 ? high / total : 0
+    }
 
     /// PRE-AGC LEVEL by Parseval: total spectral energy is proportional to signal power,
     /// and these magnitudes are the raw FFT — upstream of every normaliser in the pipeline.
