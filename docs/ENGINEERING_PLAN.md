@@ -1557,17 +1557,95 @@ than transients.
 **The cheap fallback does not exist either.** Sweeping the tip quantisation coefficient
 against the same capture: the granularity is fixable (26 → 6 takes it from 4.54 to 1.00
 branches per change) but the **rate plateaus at ~6.5/s and then collapses to 0**, because
-`beat_mid` turns 6.9 times a second. Today's tips fire **9.41/s** against a measured guitar
+`beat_mid` turns 6.9 times a second. Today's tips fire **9.41/s** (re-measured at
+**7.62/s with a mean jump of 4.6 branches** on `2026-08-07T18-53-30Z`) against a measured guitar
 note rate of **3.29/s**. No stateless shader transform of a 6.9/s signal yields 3/s events —
 reaching the note rate needs an engine-side refractory gate (state belongs there), not a
 coefficient.
 
-**What is still achievable, stated honestly:** an engine-side note gate (EMA + minimum
-inter-event interval ≈ one eighth note) would deliver ~3 events/s at one branch each — two of
-Matt's three complaints (too active, wrong granularity). It would **not** fix "favors drums":
-the trigger remains a mid-band transient, and mid band in a rock mix is snare *and* guitar.
-Scoped but NOT started — it needs a new `FeatureVector` field (both declaration sites, CSV,
-route manifest) and is a real increment, not a tuning tweak. Matt's call.
+**FTR.6 — tips: refractory gate.** ✅ (2026-08-07) Built exactly the gate scoped above and
+it delivers what was forecast. New `MelodicNoteGate` (DSP): level trigger on `beat_mid` at
+0.90 plus a refractory of one eighth note derived from `stableBPM` (clamped 0.15–0.50 s,
+120 BPM default before a tempo lands), feeding a unit accumulator drained at τ 2.5 s →
+`FeatureVector.melodicTips` (float 53, 0…8). The shader's tips term became
+`(uint)(f.melodic_tips * amp * smoothstep(0, 0.35, reach))` — truncation is what makes each
+change exactly one branch.
+
+*Verified offline on the source MP3s before any M7*, running the real `MIRPipeline` frame by
+frame over full decodes of *Hummer* and *Cherub Rock* (`MelodicNoteGateReportTests`, the
+`TrunkTrajectoryReportTests` pattern — no CSV, no proxy):
+
+| | note events/s | branches per change | count-changes/s |
+|---|---|---|---|
+| Hummer | **2.92** | **1.00** | 5.47 (was 31.56 on identical audio) |
+| Cherub Rock | **2.87** | **1.00** | 5.37 (was 31.46) |
+| target | ~3 (guitar note rate 3.29) | 1 | — |
+
+**The trigger level came from a sweep, not a preference.** `beat_mid` clips at exactly 1.0,
+so every level in (0.75, 1.0] selects the same full-strength beats. Below that the gate stops
+choosing: at 0.25 the music sits above the line 61 % of the time and **90 % of events fire on
+the first frame the clock allows** — the refractory, not the music, sets the rate, and the
+result is a metronome. At 0.90 the music chooses 71 % of the moments (duty 0.10).
+
+**τ 2.5 s is pinned from both sides, and τ 1.0 was wrong.** Upward, from the preset: the tips
+only read as a layer once the count crosses the depth-5 threshold at 31 branches and keeps
+crossing back. Measured through the render harness on the `route_coverage` fixture, τ 1.0 put
+depth-5 on **0 %** of frames (Matt's *"I never see beyond three levels"*), τ 2.0 on 6 %,
+τ **2.5 on 39 % with 1.36 crossings/s**. Downward, from saturation: `maxTips` rose 8 → 12
+with it, because at τ 2.5 the mean sits near 7 and a ceiling of 8 would have clipped every
+busy passage flat — the FTR.2 "pinned at 63" defect in a smaller register.
+
+**Two limits, stated rather than implied.** (1) *Instrument separation is unchanged* —
+"favors drums" survives, exactly as forecast; the trigger is mid-band = snare AND guitar
+(+0.973 correlated here). (2) *The count still changes about twice per note event* (5.4/s
+against 2.9/s), because a tip that appears must also disappear and at equilibrium the drain
+removes them at the rate the gate adds them. That is arithmetic: 3 transitions/s would mean
+1.5 events/s, i.e. half the notes. What the gate removes is the SIZE of each change.
+Decoupling the two needs tips to have IDENTITY — rotating which branches are lit at a
+constant count — which the shader's count-threshold tiering cannot express. Not scoped.
+
+**Two FTR.2-era motion floors were moved, and this is flagged for Matt rather than buried.**
+`FractalTreeMeshRenderTest` required `changeRate > 20 %` of frames — at the fixture's 43 fps,
+**more than 8.6 changes/s**, i.e. more activity than the 7.62/s build Matt rejected as "too
+active". A floor only a rejected build can clear is not a gate; it was calibrated at FTR.2
+against the opposite failure and never revisited when the direction reversed. Now floored at
+8 % **with a new ceiling at 18 %** — the ceiling is the substantive addition, since the old
+test bounded only the size of each change, which is exactly how a 7.62/s build passed it.
+`tipSpread` lowered 5 → 3 for the same reason: a refractory-gated accumulator has low
+variance by construction, so "spans ≥ 5 branches in 20 s" and "moves one branch per note" are
+in direct tension. The evidence that the tip layer is visible now rests on the two depth-5
+assertions (39 % presence, 1.36 crossings/s), which measure what actually reads on screen.
+
+**Also fixed in passing (real defect, found by the gate it broke).** `CommonLayoutTest`
+located the repo root by walking up to a directory *named* `phosphene` — which in a worktree
+at `phosphene/.claude/worktrees/<name>/` sails past the worktree onto the PRIMARY checkout.
+It was therefore comparing the worktree's Swift struct against the primary's `.metal`. Both
+failure directions are silent (a worktree MSL edit is invisible; an untouched primary reports
+a phantom mismatch). Now a fixed-depth ascent. The same gate correctly caught that
+`Common.metal` is a **third** FeatureVector declaration site the increment brief did not name.
+
+**Also removed:** the fourth, prose-only copy of the MSL struct in `AudioFeatures+Analyzed.swift`'s
+header doc. It had drifted to "48 floats = 192 bytes" — wrong by two increments — because no
+gate reads prose. Replaced with a pointer to the three real declaration sites.
+
+Files: `PhospheneEngine/Sources/DSP/MelodicNoteGate.swift` (new), `MIRPipeline.swift`,
+`Shared/AudioFeatures+Analyzed.swift`, `Shared/SessionRecorder+CSV.swift`,
+`Presets/PresetLoader+Preamble.swift`, `Presets/AudioRoutePrimitives.swift`,
+`Renderer/Shaders/Common.metal`, `Presets/Shaders/FractalTree.metal` + `.json`;
+tests `MelodicNoteGateReportTests.swift` (new), `FractalTreeMeshRenderTest.swift`,
+`CommonLayoutTest.swift`, `AudioFeaturesTests.swift`, `MIRPipelineUnitTests.swift`,
+`UMABufferTests.swift`, `PipelineIntegrationTests.swift`; the three `route_coverage`
+fixtures gained a `melodic_tips` column, backfilled by replaying the production gate over
+their own recorded `beatMid`/`grid_bpm`/`deltaTime` (`FTR_REGEN_FIXTURES=1`) rather than by
+reimplementing its arithmetic in a script.
+
+**Gates:** full engine suite 1802 tests / 271 suites green; app target 407 tests / 70 suites
+green; `xcodebuild` BUILD SUCCEEDED; SwiftLint `--strict` 0 violations; RouteCoverage 196
+routes / 20 presets / 3 fixtures, 0 red. **Done-when remaining: Matt's live M7 (FTR.5).**
+
+**Original scope, for the record:** an engine-side note gate (EMA + minimum inter-event
+interval ≈ one eighth note) delivering ~3 events/s at one branch each — two of Matt's three
+complaints (too active, wrong granularity), and explicitly **not** "favors drums".
 
 **Do not re-attempt per-note guitar events on distorted-guitar material without a changed
 premise.** The limit is physical, not a tuning failure.
@@ -1576,7 +1654,10 @@ premise.** The limit is physical, not a tuning failure.
 
 **Sequencing.** DYN.1 first — it is cheap, well-understood, and fixes the complaint Matt has raised in three consecutive reviews. MEL.1 second, and only after a live confirmation that dynamics alone did not resolve the "melody" feedback: it is plausible that a tree which grows correctly with the music reads as melodic without any melody signal, since that is exactly how the original illusion worked.
 
-**FTR.5 — M7 + certification.** Live review on *Hummer* plus **at least one mid-rich track** (*Hummer* is bass-dominant: the friendliest case for the old design and the harshest for `mid`/`treble`). Closeout cites per-route firing evidence from `features.csv` / `stems.csv` per the checklist's evidence rule. On positive M7: `certified: true`, add `"Fractal Tree"` to `FidelityRubricTests.certifiedPresets`.
+**FTR.5 — M7 + certification.** ⏸ **BLOCKED ON MATT — this is a live review, not work Claude
+can complete.** FTR.6 landed the rate/granularity adjustment Matt named as the precondition
+("close pending these adjustments") and it is verified offline on both source tracks; whether
+the tips now *read* as one-per-note is L4 and only his eye can settle it. Live review on *Hummer* plus **at least one mid-rich track** (*Hummer* is bass-dominant: the friendliest case for the old design and the harshest for `mid`/`treble`). Closeout cites per-route firing evidence from `features.csv` / `stems.csv` per the checklist's evidence rule. On positive M7: `certified: true`, add `"Fractal Tree"` to `FidelityRubricTests.certifiedPresets`.
 
 **Verify:** `swift test --package-path PhospheneEngine --filter "FidelityRubric|AudioRouteSchema|RouteCoverage"`; SwiftLint clean; p95 frame time within the Tier 2 budget.
 
