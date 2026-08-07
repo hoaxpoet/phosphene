@@ -63,6 +63,10 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment MD.0 — Phase MD reconciled to the work that actually happened ✅ (2026-08-07)
+
+Docs + 8 JSON sidecars; no preset authored, no `.metal` opened, no Swift changed. `MILKDROP_STRATEGY.md` had not been touched since 2026-05-12 while seven Milkdrop-inspired presets shipped and certified past it, so MD.5's done-when instructed an author to create a family, a directory and a Settings toggle that D-123 deleted the day after the strategy landed. Filed as **D-215**: `MILKDROP_STRATEGY.md` §13 appended (§12 left intact), §Phase MD rewritten, MD.1 retired, amendment blocks on D-105/D-106/D-110/D-112/D-115, `inspired_by` normalised across all seven sidecars, D-120 residue stripped, D-122 trigger verdict recorded (trigger 4 fires at 27 % roster / 39 % certified; Phase MD not halted). **Two decisions are open with Matt and block follow-up work: the Settings toggle (both diffs drafted, neither implemented) and D-115's release-bundle split.** Full detail in §Phase MD → Increment MD.0.
+
 ### Increment BUG078.1 — `AVAudioPlayerNode` teardown trap root-caused and fixed ✅ (2026-08-07)
 
 The intermittent `EXC_BREAKPOINT` / "dispatch_sync called on queue already owned by current
@@ -1696,6 +1700,20 @@ D-122 defines four halt-and-re-evaluate triggers. Assessed against the measured 
 **Trigger 4 fires. Phase MD is not halted.** MD.0's reading: the trigger is written against "before the *second* release bundle," and the **first** has not shipped; the catalog grew on both sides at once, so a sub-50 % share this early is the shape of a catalog that has not yet been *composed* into a release, not evidence of an unhealthy work-distribution model. The alternative reading is that the gap is real — D-119 committed to majority-inspired-by, three months moved the share to 27 %, and if uplifts are structurally slower than the strategy assumed (§13.7 says they are), the ratio will not close on its own. Both readings turn on the same question as D-115, so MD.0 routes them to Matt together rather than resolving either. Full assessment in **D-215**.
 
 Runs in parallel with Phase V.7+, Phase AV, Phase CC, Phase G-uplift. Cadence after first release: separate release-management decision (not in this phase's scope).
+
+### Increment MD.0 — Reconcile Phase MD to the work that actually happened ✅ (2026-08-07)
+
+**Docs + 8 JSON sidecars. No preset authored, no `.metal` opened, no Swift changed.** Filed as **D-215**.
+
+`MILKDROP_STRATEGY.md` had five commits, all 2026-05-12, and none since; seven Milkdrop-inspired presets shipped and certified after it, each by a process the doc does not describe. **The done-when criteria of a live increment (MD.5) instructed an author to create a family, a directory and a Settings toggle that D-123 deleted the day after the strategy landed.**
+
+**Landed:** `MILKDROP_STRATEGY.md` **§13** (appended, not rewritten in place — §12 stays as the reframe's record); this §Phase MD section rewritten against D-123; **MD.1 retired**; D-215 filed with amendment blocks on D-105 / D-106 / D-110 / D-112 / D-115; the `inspired_by` schema normalised across all seven sidecars + the CREDITS table; the D-120 residue stripped from `Meniscus.json` + `CymaticResonance.json`; the D-122 trigger verdict block above.
+
+**Two findings the brief did not have.** (1) The D-120 residue is a **recurrence, not a leftover** — the CA.4 audit's 2026-05-20 grep was correct, and both sidecars were created months later (CR.1 2026-07-22, MEN.2a 2026-08-03) by authors following seven design docs that still prescribed the reverted fields. All seven now carry a supersession note; nothing rejects an unknown sidecar key at decode, so it can recur again. (2) `DragonBloom.json` carried a bare `sha256` with no `source_form`, leaving what was hashed ambiguous — it was a real `.milk`, now recorded.
+
+**Deliberately not done:** the Settings toggle (both diffs drafted and costed, awaiting Matt — DECISION-NEEDED #1); `inspired_by` decoding on `PresetDescriptor` and unknown-key rejection (real changes with real cost, each its own increment); D-115 (product-identity call, DECISION-NEEDED #2).
+
+---
 
 ### Increment MD.1 — `.milk` grammar audit — **RETIRED** (MD.0 / D-215, 2026-08-07)
 
