@@ -2070,6 +2070,28 @@ This is the opposite of the three WL.6 framing attempts, which all tried to fit 
 
 ---
 
+### Increment WL.CERT — Witchlight certified ✅ (2026-08-07)
+
+**Matt's M7 sign-off, session `2026-08-07T16-08-39Z`: *"Looks great. Manual review passes!"*** — the load-bearing gate per SHADER_CRAFT §12.1. Witchlight is the **18th certified preset**; the D-114 first-release bundle needs 20.
+
+**What the flip required, checked rather than assumed:** `certified: true` in the sidecar, `"Witchlight"` added to `FidelityRubricTests.certifiedPresets`, a non-empty `audio_routes` manifest (8 routes) with every declared route green in `RouteCoverageTests`. All four hold. No golden or motion-reference artifact is required — none exist in the tree for any certified preset.
+
+**What it took to get here, in one line each.** WL.2 authored it and its "arc not figure" diagnosis was wrong. **WL.3** — an unbounded `tumbleYaw` was collapsing every figure to a line every ~57 s. **WL.4** — no per-frame energy coupling existed at all. **WL.5** — the pen never stopped, and the whole `silent` branch was unreachable dead code. **WL.6** — the star field competed with the ribbon. **WL.7** — six M7 rounds of "not tied to the music" were the CAMERA: the head was off frame 33/35/45 % of the time, so every coupling was real and invisible. **WL.8** — nothing landed on the beat (0.247 beats mean offset, 0.25 = chance). **WL.9** — per-beat pulse with a harder downbeat. **WL.9b** — the ribbon outran its own camera; the energy gate was a 7× multiplier on speed. **WL.10** — the camera never came back in, because the fit measured 30 s of history.
+
+**The through-line worth carrying to other presets:** in five of those nine increments the audio routing was already correct and something else — a projection, a camera, a dead branch, a stalled reference signal — made it unreadable. **"It doesn't feel connected" was never once solved by adding coupling.**
+
+**Open, and deliberately not blocking certification:**
+- **BUG-065 drift compensation.** The pulse is exact on the grid; the grid drifts 25 ms median / 91 ms worst against the audible beat. `drift_ms` is highly predictable (autocorr +0.985 at 1 s) so compensation is viable and measured — Matt's *"beat match is close but not exact"* is this, and it is the next recommended increment.
+- **5 of 8 routes unbanded** (`bead_hue`, `bead_promotion`, `head_flare`, `nebula_hue`, `trail_contraction`). A future change could silently kill any of them with every gate green — exactly how WL.2's speed route shipped realising a 13 % swing.
+- **`penSpeedSwing` is not a clean per-route metric** — it conflates the arousal route with the WL.5 energy gate, reading 17.9× on fixtures against ~4× on real material. It nearly caused a wrong diagnosis at WL.9b.
+- **Ribbon share sits at 0.406 % against a 0.40 % floor.** Thin; a future change will trip it.
+
+**Done when:** ✅ M7 sign-off · ✅ sidecar flag · ✅ ground-truth list · ✅ route manifest green · ✅ full suite green.
+
+**Verify:** `swift test --package-path PhospheneEngine --filter "FidelityRubric|RouteCoverage|Witchlight"`
+
+---
+
 ### Increment MD.7 — Ray-march-composing inspired-by uplifts (formerly Hybrid tier)
 
 **Scope (revised per `MILKDROP_STRATEGY.md` §12 / D-103 amendment / D-107):** Inspired-by uplifts that compose `mv_warp` + `ray_march` against a static camera (D-029). **Not a tier** — these are `milkdrop_inspired` presets that happen to use the ray-march backdrop primitive; authoring choice, not classification. The MD.7.0 spike (single-preset proof of the `mv_warp` + `ray_march` composition) lands as one such uplift; subsequent ray-march-composing uplifts batch into the MD.6 work stream. The architectural composition has only Volumetric Lithograph as prior production proof (and VL's `mv_warp` plays against a ray-march scene that is not itself feedback-warped), so the spike is still a high-value increment under inspired-by.
