@@ -10,6 +10,20 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-07-193500] BUG078.1 manual close — 19 starts, 18 teardowns, strict alternation
+
+Matt ran the local-file path end-to-end on session `2026-08-07T19-10-25Z` (5 files): start, pause/resume, natural track end, single Next, two rapid-Next bursts, quit. Clean — `CHAIN_HEALTH: verdict=clean`, drawable lifecycle 4815/4815, no hang, no crash.
+
+The useful part is that the run left an artifact rather than an impression. The provider breadcrumbs read **19 `provider.start INSTANCE` / 18 `provider.teardown ENTER`** in the exact sequence `I(EXI)*` — every adopted instance torn down before the next was adopted. The unpaired 19th is the one still playing at log end; `deinit` tears down with `diagnostic: nil` and emits nothing. **Zero orphans in production, through bursts of 3 and 5 starts inside a single second.**
+
+**What it does not prove, stated so nobody reads more into it later.** Every teardown is ordered `ENTER → EXIT → INSTANCE` — the pre-lock `stop()` path. The BUG078.1 stale-teardown path prints `INSTANCE → ENTER` and never fired, because the app drives `start()` from the MainActor and serialises it. The live session establishes no-regression plus the orphan invariant on the shipped path; the concurrent-start race stays covered by the deterministic gate. That the app cannot easily reach the race is also why the trap has only ever been seen in the test process.
+
+BUG-078 is closed.
+
+Unrelated observation from the same log, filed nowhere because it is already covered: the five tracks installed grids with `meter=` 1, 2, 3 and 4 across them — the `beatsPerBar` instability BUG-076 describes, visible on ordinary local files.
+
+---
+
 ### [dev-2026-08-07-180458] BUG078.1 — the AVAudioPlayerNode trap was a concurrent-start overwrite, and the evidence was already on disk
 
 Twenty-five `.ips` reports for this trap were sitting in `~/Library/Logs/DiagnosticReports/`, nineteen of them naming `concurrentDoubleStart_serializesWithoutDeadlock` on a live thread. The entry said nobody had captured the trap; nobody had *read* it. The two racing threads are right there in the report — `_startLocked()` on one, `stop()` on the other — and they name the mechanism.

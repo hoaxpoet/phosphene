@@ -84,8 +84,14 @@ converting a 1-in-3 full-suite lottery into a 3-second deterministic check.
 
 **Method note worth keeping:** 25 matching `.ips` reports were already on disk, 19 naming the
 in-flight test and both racing threads. The bug stalled for a week on "nobody has captured the
-trap" while the capture sat in `~/Library/Logs/DiagnosticReports/`. **BUG-078 stays open on its
-manual criterion** — local-file playback end-to-end is Matt's sign-off.
+trap" while the capture sat in `~/Library/Logs/DiagnosticReports/`.
+
+**Manual criterion met, BUG-078 CLOSED** — Matt's session `2026-08-07T19-10-25Z`: 19 adopted
+instances / 18 teardowns in strict `I(EXI)*` alternation (the unpaired one is still playing at
+log end), clean chain health, no hang, through two rapid-Next bursts. Limit recorded in
+KNOWN_ISSUES: the live run never took the new stale-teardown branch, because the app serialises
+`start()` on the MainActor — it proves no-regression and the orphan invariant on the shipped
+path, while the deterministic gate is what covers the race itself. Merged in `f68efb67` (PR #62).
 
 ### Increment BUG079.1 — release test build unblocked; DBN.2 budget measured ✅ (2026-08-07)
 
