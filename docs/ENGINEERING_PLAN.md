@@ -2092,6 +2092,28 @@ This is the opposite of the three WL.6 framing attempts, which all tried to fit 
 
 ---
 
+### Increment WL.11 — Witchlight: fire at the audible beat, not the grid 🔨 **CODE-COMPLETE 2026-08-07, pending live M7**
+
+**Why.** The last thing Matt raised that was still open: *"Beat match is also close but not exact."* The pulse is exact on the grid (0.000 beats, 100 % on-beat); the **grid** drifts against the audible beat — 25 ms median, 91 ms worst, 14.2 % of frames past the ~60 ms perceptual window (**BUG-065**).
+
+**What changed.** `barPhase01` is shifted by `LiveBeatDriftTracker`'s own published drift estimate before any edge is taken from it, so bar and beat edges fire earlier or later by the amount the tracker says the grid is wrong. Clamped ±60 ms, smoothed ~0.8 s, dial-out constant `driftCompensation` (0…1).
+
+**Not the parked tracker work (D-206).** No attempt to fix the grid. The tracker already computes its error and publishes it; nobody was reading it. Correcting at the consumer is the changed premise D-206 asked for.
+
+**Sign is the whole risk, and was verified rather than assumed.** `currentDriftMs` is *positive = beats arrive earlier*, so positive must LEAD; backwards doubles the error. Measured on real sessions: applied −14.7 ms where trailing drift was −12.6 ms, positive where drift was positive.
+
+**Plumbed via the CPU-only runtime tick** (the `sectionIndex` bridge) — the correction is a timing change and nothing downstream is a shader, so no `FeatureVector`/MSL layout change. Given the DYN.2 P0 (MSL struct 212 B against Swift's 208, misordered), avoiding that contract entirely is the point.
+
+**Honest limitation, recorded not buried.** There is no beat ground truth in the tree, so nothing offline proves the pulse now lands closer to the *audible* beat — only that the estimate is applied with correct sign, magnitude and bounds. If `drift_ms` is biased this moves the error rather than removing it. **Matt's ear is the test.**
+
+**Regression:** all 25 Witchlight gates green, head-off-frame 0.0 %, beads 15, ribbon 0.406 %, §5 flash budget unmoved, engine 1793 green, app build green.
+
+**Done when:** ✅ drift reaches the preset without touching the GPU contract · ✅ sign verified against recorded sessions · ✅ bounded and dial-out-able · ✅ all gates green · ⏳ **Matt's live M7 — does "close but not exact" close?**
+
+**Verify:** `WITCHLIGHT_SESSION=<dir> swift test --package-path PhospheneEngine --filter WitchlightBeatAlignment`
+
+---
+
 ### Increment MD.7 — Ray-march-composing inspired-by uplifts (formerly Hybrid tier)
 
 **Scope (revised per `MILKDROP_STRATEGY.md` §12 / D-103 amendment / D-107):** Inspired-by uplifts that compose `mv_warp` + `ray_march` against a static camera (D-029). **Not a tier** — these are `milkdrop_inspired` presets that happen to use the ray-march backdrop primitive; authoring choice, not classification. The MD.7.0 spike (single-preset proof of the `mv_warp` + `ray_march` composition) lands as one such uplift; subsequent ray-march-composing uplifts batch into the MD.6 work stream. The architectural composition has only Volumetric Lithograph as prior production proof (and VL's `mv_warp` plays against a ray-march scene that is not itself feedback-warped), so the spike is still a high-value increment under inspired-by.
