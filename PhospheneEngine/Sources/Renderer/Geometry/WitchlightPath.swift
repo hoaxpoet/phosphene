@@ -117,6 +117,12 @@ public final class WitchlightPath: AudioResponseMetrics {
     /// tier is gated on. No `bpm` field is needed on FeatureVector.
     var barPeriod: Float = 0
     var timeSinceWrap: Float = 0
+    /// WL.11 — the beat tracker's own estimate of how far its grid sits from the audible
+    /// beat, seconds, already clamped and smoothed. Fed through the CPU-only runtime tick
+    /// (the same bridge `sectionIndex` uses) because it never needs to reach a shader —
+    /// no `FeatureVector` field, so no MSL layout contract to break.
+    public internal(set) var beatDriftSeconds: Float = 0
+
     /// Seconds since `barPhase01` last read non-zero. `barPhase01` is documented as
     /// "always 0 in reactive mode (no BeatGrid installed)", so this IS the grid-trust
     /// signal — no separate confidence field needed, and D-154's "beat-irregular tracks
@@ -132,6 +138,9 @@ public final class WitchlightPath: AudioResponseMetrics {
     var contraction: Float = 0
     /// Section boundaries ingested since `reset()`.
     public internal(set) var sectionEventCount: Int = 0
+    /// WL.12 — deepest trail contraction seen this run, 0…1. The `trail_contraction` route's
+    /// visible consequence; 0 means no section boundary ever shortened the trail.
+    public internal(set) var contractionPeak: Float = 0
 
     // View framing (a VIEW property, not a path property — see `advance`).
     public internal(set) var centroidX: Float = 0, centroidY: Float = 0
@@ -247,10 +256,10 @@ public final class WitchlightPath: AudioResponseMetrics {
         flareGoal = 0; flareHold = 0; flareIntensity = 0; flareCount = 0
         offBeatCount = 0; offBeatRefractoryRemaining = 0
         previousBarPhase = 0; promoteNextBead = false; promotionCount = 0
-        barDownbeatNow = false; gridSilentFor = 0
+        barDownbeatNow = false; gridSilentFor = 0; beatDriftSeconds = 0
         beatEdgeNow = false; previousBeatSlot = -1; barPeriod = 0; timeSinceWrap = 0
         previousSectionIndex = nil; contractGoal = 0; contractHold = 0; contraction = 0
-        sectionEventCount = 0
+        sectionEventCount = 0; contractionPeak = 0
         centroidX = 0; centroidY = 0; viewScale = 1; rmsRadius = 0.4; cameraX = 0; cameraY = 0
         fitCentroidX = 0; fitCentroidY = 0
         tumbleClock = 0
@@ -266,6 +275,24 @@ public final class WitchlightPath: AudioResponseMetrics {
     /// Delivered by the app layer through the `RenderPipeline.latestStructuralPrediction`
     /// bridge (the Skein.ENGINE.3 / D-151 precedent) because `StructuralPrediction` is
     /// CPU-only and does not reach the `ParticleGeometry.update` signature.
+    /// Ingest the live grid-vs-audio drift estimate.
+    ///
+    /// Sign follows `LiveBeatDriftTracker.currentDriftMs`: **positive means the audible beats
+    /// arrive EARLIER than the grid predicts**, so a positive value makes the pulse LEAD.
+    /// Getting this backwards would double the error rather than cancel it.
+    ///
+    /// Clamped hard at +/-`driftCompensationCapMs`: the estimate is derived from onset
+    /// detection, which is weak on dense material, and an accent thrown a third of a beat by
+    /// a bad estimate is far worse than one sitting 25 ms late. Smoothed because a pulse
+    /// whose timing jitters frame to frame reads as sloppiness, not correction — though the
+    /// signal is already slow (autocorrelation +0.985 at 1 s on real sessions).
+    public func ingestBeatDrift(milliseconds: Float) {
+        let cap = tuning.driftCompensationCapMs
+        let clamped = max(-cap, min(cap, milliseconds)) * 0.001
+        let alpha: Float = 0.02
+        beatDriftSeconds += (clamped * tuning.driftCompensation - beatDriftSeconds) * alpha
+    }
+
     public func ingestStructure(_ structure: StructuralPrediction) {
         defer { previousSectionIndex = structure.sectionIndex }
         guard let previous = previousSectionIndex, previous != structure.sectionIndex else { return }
@@ -302,11 +329,29 @@ public final class WitchlightPath: AudioResponseMetrics {
         if !silent { tumbleClock += dt }
 
         // WL.8 — the bar wrap is detected ONCE, here, ahead of everything that reacts to it.
-        let bar = features.barPhase01
+        //
+        // WL.11 — and the phase is SHIFTED by the tracker's own drift estimate before any edge
+        // is taken off it. Advancing the phase makes every edge — bar and beat alike — fire
+        // earlier by that amount, which is what "positive drift = beats arrive early" asks
+        // for, and it needs no second code path for the negative case.
+        //
+        // Why this is not a re-run of the parked tracker work (D-206): it does not try to fix
+        // the GRID. The grid keeps its phase; the consumer subtracts the error the tracker
+        // already publishes and nobody was reading. Matt's "beat match is close but not
+        // exact" measured 25 ms median / 91 ms worst on his session, against a pulse that is
+        // otherwise exact on the grid.
+        let rawBar = features.barPhase01
+        let bar: Float
+        if barPeriod > 0 && beatDriftSeconds != 0 {
+            let shifted = rawBar + beatDriftSeconds / barPeriod
+            bar = shifted - floor(shifted)
+        } else {
+            bar = rawBar
+        }
         barDownbeatNow = previousBarPhase > 0.85 && bar < 0.15
         previousBarPhase = bar
         if barDownbeatNow { promoteNextBead = true }
-        gridSilentFor = bar > 0 ? 0 : gridSilentFor + dt
+        gridSilentFor = rawBar > 0 ? 0 : gridSilentFor + dt
         timeSinceWrap += dt
         if barDownbeatNow { barPeriod = timeSinceWrap; timeSinceWrap = 0 }
         // WL.9 — beat edges by subdividing the bar. `beatsPerBar` carries the meter, so 7/8

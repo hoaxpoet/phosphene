@@ -175,7 +175,12 @@ void fractal_tree_object_shader(
         // so shape alone would grow the tree before the band arrives).
         float arousalReach = saturate((f.arousal - 0.10f) * (1.0f / 0.58f));
         float sectionRatio = f.spectral_section_ratio;   // DYN.2b: already normalised
-        float fullness = smoothstep(0.78f, 1.38f, sectionRatio);
+        // DYN.2c: the field is this moment's RANK in the track's own density distribution
+        // (×2, so 1.0 still reads as "this track's normal"). Uniform over the track by
+        // construction, so there are NO fitted edges left to get wrong — the 0.78/1.38 pair
+        // this replaces was fitted against DYN.2b's broken ratio and clipped Hummer to a
+        // flat 1.00 for four minutes once the normal was measured correctly.
+        float fullness = saturate(sectionRatio * 0.5f);
         float musicGate = smoothstep(0.05f, 0.30f, saturate(f.spectral_surge));
         float reach = saturate(max(0.10f * arousalReach, fullness) * musicGate);
 

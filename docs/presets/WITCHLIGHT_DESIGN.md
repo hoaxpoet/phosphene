@@ -9,6 +9,8 @@
 
 ---
 
+> **CERTIFIED 2026-08-07 (WL.CERT).** Matt's M7 sign-off, session `2026-08-07T16-08-39Z`: *"Looks great. Manual review passes!"* — the 18th certified preset. Nine increments from authoring to certification; in five of them the audio routing was already correct and something else made it unreadable (a collapsing projection, a camera leaving the subject off frame, an unreachable silence branch, an accent uncorrelated with the beat, a fit that only measured history). **Not once was "it doesn't feel connected" solved by adding coupling.**
+
 ## 1. Source and what we are honouring
 
 ### 1.1 What the source is
@@ -349,6 +351,20 @@ Matt, session `2026-08-06T17-27-21Z`: *"The ribbon builds too fast and not in sy
 **Why WL.7's gate read 0.0 % and was not lying.** It measures the 21 s route-coverage fixtures, which END before the 20–40 s failure window opens. A temporal claim can only be tested on material long enough to contain the phenomenon; `WitchlightSpeedSweep` (`WITCHLIGHT_SESSIONS=<dirs>`) drives whole recorded sessions for exactly this reason.
 
 **Two measurement failures worth not repeating**, both mine, both in this increment: a tuning change validated with a Python model of one term (it omitted the energy gate and reported 1.57× where the real path gives ~10×), and a fixture gate reading 17.9× that was rationalised as a metric artifact when it was the actual signal. **A number that disagrees with the model is the signal.**
+
+### 3.5.3 Drift compensation — firing at the audible beat, not the grid (WL.11)
+
+Matt, after WL.8: *"Beat match is also close but not exact."* The pulse fires **exactly** on the grid — 0.000 beats offset, 100 % on-beat. The grid is what is off: measured on his sessions, |drift| against the audible beat runs **25 ms median, 63 ms p90, 91 ms worst**, with **14.2 %** of frames past the ~60 ms perceptual window. That is **BUG-065**, open and independently measured elsewhere. WL.8 did not cause it; WL.8 made it *perceptible* by being the first thing in this preset to land on the beat at all.
+
+**The correction is applied at the CONSUMER, and that is what makes it a different premise from the parked tracker work (D-206).** No attempt is made to fix the grid. `LiveBeatDriftTracker` already publishes its own error estimate every frame, and nothing was reading it: the phase is shifted by that estimate before any edge is taken off it, so bar and beat edges alike fire earlier or later by the amount the tracker says the grid is wrong.
+
+**Sign is the whole risk.** `currentDriftMs` is documented *positive = beats arrive earlier than expected*, so a positive value must make the pulse **lead**. Backwards, this doubles the error instead of cancelling it. Verified against recorded sessions: applied −14.7 ms where the trailing drift was −12.6 ms, and positive where the drift was positive.
+
+**Bounded on purpose.** Clamped at ±60 ms and smoothed (~0.8 s): the estimate derives from onset detection, which is weak on dense material (FA #68), and an accent thrown a third of a beat by a bad estimate is much worse than one sitting 25 ms late. `driftCompensation` is 0…1 so the whole mechanism can be dialled out to the pre-WL.11 behaviour without a code change.
+
+**Plumbed through the CPU-only runtime tick** — the same bridge `sectionIndex` uses — because the correction changes *when* the pulse fires and nothing downstream of it is a shader. No `FeatureVector` field, so no MSL layout contract to extend; the DYN.2 P0 (an MSL struct 212 bytes against Swift's 208, misordered) is a standing reminder of what that costs.
+
+**What cannot be verified offline, stated plainly.** There is no beat ground truth in the tree, so no measurement here proves the pulse now lands closer to the *audible* beat — only that the tracker's estimate is applied with the right sign, magnitude and bounds. If `drift_ms` is biased, this moves the error rather than removing it. The test is a live listen.
 
 ### 3.6 Silence (D-037)
 

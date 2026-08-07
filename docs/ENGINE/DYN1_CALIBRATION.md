@@ -222,3 +222,43 @@ engine applies a single EMA to the RAW per-frame fraction. Different impulse res
 proxy predicted a healthy 0.63→1.11 swing while the engine produced a flat 1.00. **Model the
 engine's computation, not a convenient reconstruction of it:** decode `raw_tap.wav`,
 recompute the quantity per frame, apply the real α. That is how DYN.2b was verified.
+
+## DYN.2c — a track's normal cannot be learned while the track is playing
+
+DYN.2b divided the τ20 s section leg by a τ45 s normal learned LIVE and seeded to the
+section leg. It therefore starts at exactly 1.00 and needs 90–135 s to develop contrast —
+most of a song. Measured on `2026-08-07T15-38-27Z`: ratio 1.00…1.17, trunk drifting
+monotonically 0.38 → 0.68 with no structure. Matt: *"the growing and receding does not feel
+connected to the music."*
+
+**The normal now comes from the offline profile**, measured over the full decode at local-file
+preparation — the same place the loudness quantiles already come from — so it is right from
+frame 1. Streaming keeps the live EMA, since no full decode exists there.
+
+**And it is a DISTRIBUTION, not a single number.** The first cut carried a median and kept the
+shader's `smoothstep(0.78, 1.38)`. Those edges had been fitted against DYN.2b's *broken*
+ratio; with a correct normal the ratio spans 0.0…8.6 and the edges clipped **Hummer to a flat
+1.00 for four minutes**. Ranking the section density in the track's own density distribution
+removes the edges entirely — uniform over the track by construction, exactly the reasoning
+that replaced the p10→p95 band at DYN.1c.
+
+Quantiles are taken of the **τ20 s-smoothed** density, not the raw fraction, because that is
+what the live analyzer feeds in; quantiles of the raw series are far wider and would park
+every live value mid-scale. The alpha now lives on `LoudnessProfile` and is shared by both
+paths — DYN.2b's legs collapsed because two nominally-different widths were 0.38 % apart.
+
+Verified with the REAL production objects (`LoudnessProfile.measure` + `SpectralAnalyzer`
+frame by frame) over the FULL source tracks, not a capture or a CSV reconstruction —
+`TrunkTrajectoryReportTests`:
+
+| track | trunk across the track | motion |
+|---|---|---|
+| Hummer 6:57 | 0.00 → 0.78 → 0.33 → 0.62 → 0.35 → **0.95** → 0.58 → 0.29 → 0.12 | 0.0205/s |
+| Cherub Rock 4:58 | 0.00 → 0.63 → 0.29 → 0.43 → 0.55 → **0.97** → 0.70 → 0.94 → 0.67 | 0.0531/s |
+
+(FTR.3f's rejected trunk measured 0.092/s.) Schema **v9** — v8 entries decode with an empty
+density distribution, which silently falls back to the live EMA, i.e. the DYN.2b defect.
+
+**The standing lesson from three rounds:** DYN.2 modelled a CSV column, DYN.2b modelled the
+arithmetic but not the warm-up, DYN.2c models nothing — it runs the production objects over
+the real file. Validate a signal by executing the engine's own code, never a reconstruction.

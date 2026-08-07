@@ -185,7 +185,11 @@ public final class PersistentStemCache: @unchecked Sendable {
     ///                       masters were persisted with the field NIL and replay under the
     ///                       fixed band — the defect DYN.1c exists to fix, silently. They
     ///                       must be re-analysed; a v7 hit would keep the nil forever.
-    public static let currentSchemaVersion: Int = 8
+    ///   v9 (DYN.2c) — `LoudnessProfile` gains `densityNormal`, the track's own density
+    ///                       measured over the full decode. v8 entries decode with it at 0,
+    ///                       which silently falls back to the live τ45 s EMA — the DYN.2b
+    ///                       defect. Re-analyse rather than replay them.
+    public static let currentSchemaVersion: Int = 9
 
     /// Names of the stem `.f32` files. Order matches `CachedTrackData.stemWaveforms`
     /// (`[vocals, drums, bass, other]`).

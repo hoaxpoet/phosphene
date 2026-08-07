@@ -631,8 +631,14 @@ extension VisualizerEngine {
             return
         }
         let renderPipeline = pipeline
-        pipeline.setMeshPresetTick { [weak stroke, weak renderPipeline] _, _ in
+        pipeline.setMeshPresetTick { [weak self, weak stroke, weak renderPipeline] _, _ in
             stroke?.path.ingestStructure(renderPipeline?.latestStructuralPrediction ?? .none)
+            // WL.11 — the grid-vs-audio drift the tracker already publishes. It rides this
+            // same CPU-only tick rather than a `FeatureVector` field because the correction
+            // is applied to WHEN the pulse fires, entirely on the CPU; nothing downstream of
+            // it is a shader, so there is no MSL layout contract to extend.
+            let drift = self?.beatSyncLock.withLock { self?.latestBeatSyncSnapshot.driftMs ?? 0 } ?? 0
+            stroke?.path.ingestBeatDrift(milliseconds: drift)
         }
     }
 

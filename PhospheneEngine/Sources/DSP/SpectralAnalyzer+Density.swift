@@ -51,16 +51,8 @@ extension SpectralAnalyzer {
     /// Energy is magnitude squared; the ratio is scale-invariant, so any gain applied
     /// upstream cancels. Returns 0 for silence rather than a division artefact.
     func computeDensity(magnitudes: [Float], count: Int) -> Float {
-        guard binResolution > 0 else { return 0 }
-        let splitBin = min(Int(Self.densitySplitHz / binResolution), count)
-        var low: Float = 0
-        var high: Float = 0
-        for i in 0..<count {
-            let energy = magnitudes[i] * magnitudes[i]
-            if i < splitBin { low += energy } else { high += energy }
-        }
-        let total = low + high
-        return total > 1e-10 ? high / total : 0
+        LoudnessProfile.densityFraction(
+            magnitudes: magnitudes, count: count, binResolution: binResolution)
     }
 
     /// DYN.1c — install this track's loudness distribution as the surge source, `nil` to
@@ -105,5 +97,23 @@ extension SpectralAnalyzer {
             + (1 - Self.densitySectionAlpha) * sectionDensity
         densityNormal = Self.densityNormalAlpha * rawDensity
             + (1 - Self.densityNormalAlpha) * densityNormal
+    }
+
+    /// DYN.2c — section density against the track's normal.
+    ///
+    /// Prefers the profile's OFFLINE normal (measured over the full decode at preparation)
+    /// and falls back to the live τ45 s EMA only when there is no profile — i.e. streaming,
+    /// where no full decode exists. DYN.2b used the live leg unconditionally and the ratio
+    /// spanned 1.00…1.17 across a whole song, because a τ45 s EMA seeded to the section leg
+    /// starts at exactly 1.00 and needs 90–135 s to separate from it.
+    static func sectionRatio(section: Float, liveNormal: Float, profile: LoudnessProfile?) -> Float {
+        // Ranked against the track's own density distribution, measured offline: uniform
+        // over the track by construction, so the consumer needs no fitted edges. Expressed
+        // on the same 0…2 scale the ratio used, so the shader's mapping still reads
+        // "1.0 = this track's normal".
+        if let profile, profile.isUsable, let rank = profile.densityRank(of: section) {
+            return rank * 2
+        }
+        return liveNormal > 1e-4 ? section / liveNormal : 1
     }
 }
