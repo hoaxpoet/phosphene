@@ -20,6 +20,11 @@ import Testing
 @Suite("Witchlight beat alignment probe (WL.8 diagnostic)")
 struct WitchlightBeatAlignmentProbe {
 
+    static func medianAbs(_ xs: [Float]) -> Float {
+        let a = xs.map { abs($0) }.sorted()
+        return a.isEmpty ? 0 : a[a.count / 2]
+    }
+
     @Test("where the flare lands relative to the beat grid")
     func flareVsGrid() throws {
         guard let dir = ProcessInfo.processInfo.environment["WITCHLIGHT_SESSION"] else { return }
@@ -40,6 +45,9 @@ struct WitchlightBeatAlignmentProbe {
         let period = 60.0 / gridBPM
         let beatsPerBar = Int((series.floatSeries("beatsPerBar") ?? []).compactMap { $0 }.first ?? 4)
 
+        // WL.11 — replay the RECORDED drift through the same setter the app tick uses, so the
+        // probe measures the compensated firing times rather than an idealised version.
+        let driftSeries = (series.floatSeries("drift_ms") ?? []).map { $0 ?? 0 }
         let path = WitchlightPath()
         var structure = StructuralPrediction()
         var flareFrames: [Int] = []
@@ -50,6 +58,7 @@ struct WitchlightBeatAlignmentProbe {
         for i in 0..<drive.features.count {
             structure.sectionIndex = drive.sectionIndex[i]
             path.ingestStructure(structure)
+            if i < driftSeries.count { path.ingestBeatDrift(milliseconds: driftSeries[i]) }
             path.advance(deltaTime: drive.features[i].deltaTime,
                          features: drive.features[i], stems: drive.stems[i])
             clock += drive.features[i].deltaTime
@@ -112,7 +121,11 @@ struct WitchlightBeatAlignmentProbe {
                 off-beat pulses     \(path.offBeatCount)  (\(String(format: "%.2f", Float(path.offBeatCount) / seconds))/s)
                 combined pulse rate \(String(format: "%.2f", Float(path.flareCount + path.offBeatCount) / seconds))/s
                 head flares         \(flareFrames.count)  (\(String(format: "%.2f", Float(flareFrames.count) / seconds))/s)
-                  mean |offset|     \(String(format: "%.3f", mean)) beats   (0.25 = no relationship to the grid)
+                  mean |offset|     \(String(format: "%.3f", mean)) beats vs the GRID
+                  ^ WL.11: a non-zero value here is now EXPECTED and is the drift correction,
+                    not an error. The pulse deliberately leads or lags the grid by the
+                    tracker's own estimate of how far the grid sits from the audible beat.
+                    0.25 still means "no relationship at all"; ~0 means compensation is off.
                   within 10 % of a beat  \(String(format: "%.0f", 100 * Float(onBeat) / Float(max(offsets.count, 1)))) %  (20 % = chance)
                 downbeats in grid   \(downbeats)
                 beads promoted      \(path.promotionCount)
@@ -120,6 +133,8 @@ struct WitchlightBeatAlignmentProbe {
                 turns / sections    \(path.turnCount) / \(path.sectionEventCount)
                 head OFF FRAME      \(String(format: "%.1f", 100 * Double(headOff) / Double(max(framed, 1)))) %  (WL.7 gate: <= 2 %)
                 pen speed swing     \(String(format: "%.2f", speedSwing))x
+                drift comp applied  \(String(format: "%+.1f", path.beatDriftSeconds * 1000)) ms at end \
+                (recorded |drift| p50 \(String(format: "%.0f", Self.medianAbs(driftSeries))) ms)
 
               """)
     }
