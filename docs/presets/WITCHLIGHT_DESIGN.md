@@ -9,6 +9,8 @@
 
 ---
 
+> **CERTIFIED 2026-08-07 (WL.CERT).** Matt's M7 sign-off, session `2026-08-07T16-08-39Z`: *"Looks great. Manual review passes!"* — the 18th certified preset. Nine increments from authoring to certification; in five of them the audio routing was already correct and something else made it unreadable (a collapsing projection, a camera leaving the subject off frame, an unreachable silence branch, an accent uncorrelated with the beat, a fit that only measured history). **Not once was "it doesn't feel connected" solved by adding coupling.**
+
 ## 1. Source and what we are honouring
 
 ### 1.1 What the source is
