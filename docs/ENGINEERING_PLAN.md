@@ -2044,6 +2044,37 @@ This is the opposite of the three WL.6 framing attempts, which all tried to fit 
 
 ---
 
+### Increment WL.13 — Witchlight: make the figure the song's, not the mechanism's ✅ (2026-08-07)
+
+**Why.** Matt: *"Is the ribbon path the same regardless of song or is the path of the ribbon influenced by the music?"* Measured: the music does steer it, but two of three fixtures drew almost the identical trajectory (heading correlation **r = +0.995**, against a same-track control at 1.000 that proves the metric can detect sameness).
+
+**Task 1 first, because WL.2 got this exact question wrong.** WL.2 parked "the stroke does not read as a figure, cause is mechanism-level `θ ≈ k·φ̄`" for weeks and WL.3 refuted it entirely — the path was fine and an unbounded `tumbleYaw` was collapsing the projection. So the claim that the correlation is upstream of every display stage was **verified, not assumed**: driving the fixtures under varied tumble phase and opposite roll handedness moves it by **0.000000**. Path finding confirmed.
+
+**What the measurement then changed.** The 21 s fixtures are entirely inside `home`'s convergence window, so they were measuring a transient. On three recorded sessions (2–4 min): different music correlates at **r = −0.09…+0.12**, two captures of the same track at **+0.974** (control), and whole-run heading monotonicity is **0.10–0.23**. Windowed, the coil is visible and is a **cold start**: monotonicity 0.82/1.00/1.00 over the first 15 s, 0.88/0.49/0.44 over 30 s, 0.49/0.15/0.06 over 60 s. `reset()` runs on every track change and left `home` at 0 rad, so a 12 s EMA spent ~30 s — the whole trail window — walking to the real tonal centre while the curvature held one sign.
+
+**Matt's calls, in order.** *Option C* (adapt `home` faster) was measured and **could not be delivered**: it never reaches r ≤ 0.90 and by `homeTau` 3 s the stroke has stopped being a figure (turns/trail 0.56/0.83/1.12), because a faster home sits closer to the current harmony and shrinks the excursion that drives the steer. Reported at the Task 4 stop. Matt then chose *"straight run for the first 15s, and wire up the pre-analysis home"*, and later *"slow the pen down so the ribbon fills the frame again"* and the floor change below.
+
+**Shipped.**
+
+| change | what |
+|---|---|
+| `TrackProfile.tonalHomeFifths` | `SessionPreparer` already ran the full `MIRPipeline` over every preview clip; it now reports the circular mean of `tonal_phase_fifths` (`nil` below resultant length 0.10). Definition lives once in `TrackProfile.tonalHome` so batch and streaming forms cannot drift. |
+| `WitchlightPath.ingestTonalHome` | Installs it via the CPU-only runtime bridge `sectionIndex`/`beatDriftSeconds` already use — no `FeatureVector` field, no MSL layout contract. Wired in `resetPerTrackPresetState`, keyed on `lastResolvedTrackIdentity` (not `currentTrackProfile()`, which reads `currentTrack` and is not guaranteed fresh on either advance path). |
+| `homeSettleSeconds` = 15 | With no pre-analysed home the pen runs **straight** rather than steering against a home still at 0 rad. `home` warms up as an unbiased running circular mean so its first steer reads a real centre. |
+| `baseSpeed` 0.10 → 0.060 | Removing the coil made the pen cover more ground, the fit zoom out and the ribbon thin (cores 15 → 4). Slowing it brings the fit back in (`viewScale` 1.16 → 1.94) and restores screen bead spacing to what `emissionHz` was solved for. |
+| QG.5 `headingTurnsPerTrail` floor 1.20 → 0.65 | **Matt's call, 2026-08-07.** See the open item below. |
+
+**Results.** Fixtures: worst cross-track pair **+0.995 → +0.808**; first-15 s monotonicity 0.30/0.04/0.03; distinct bead cores 4 → **11**. Sessions: whole-run monotonicity **0.05**, turns/trail 1.51/1.32/1.46. §5 flash budget passes with wide margin (peak mean luminance 0.0121 against a 0.35 ceiling). Motion gate: 1 spike in 1286 frames.
+
+**Task 5 — a gate that is provably alive.** Cross-track heading correlation with a **0.90 ceiling**, plus a same-track control (1.000) and a **falsification test**: two different fixtures driven through one identical harmony-blind steer score **r = +0.970** and trip it. This preset had already shipped two gates that measured nothing, so the falsification is not optional.
+
+**Three harness defects found and fixed** — all one class, a harness omitting a production input and so reading a live route as inert (the `bass_att` / `mid_dev` lineage): `WitchlightFixtureDrive.run` and `MultiPassRenderHarness.renderWitchlight` never installed the tonal home, so every rendered frame and every flash/bead gate was judging the 15 s fallback path on a 21 s clip; and `ResponseBandTests` reused one runtime across all three fixtures without resetting, making every metric after the first a cumulative average that could not be attributed to the fixture it named.
+
+**Open at close.**
+- **Ribbon share 0.375 % against a 0.40 % floor** (0.406 % before WL.13). Speed moves it only weakly (0.359 → 0.404 across a 2.5× slowdown) and the gate's own text names it a *shading* fix — widen/brighten the halo, lift the line — explicitly not `baseRadius` or `emissionHz`. `.metal` was on the WL.13 Do-NOT list, so this is unresolved and needs Matt's go-ahead.
+- **`headingTurnsPerTrail` 0.69 on So What.** That track's harmony genuinely does not move (φ̄ displaces 0.28 rad per 10 s, half a step on the circle of fifths), so its honest figure is close to an arc; the old 1.92 was the coil inflating it. Matt lowered the floor to 0.65 knowing this. The band's remaining range is narrow — WL.2's arc-drawing model measured 0.20–0.73.
+- Live M7 not yet run: this is a visual/temporal change, so it is **code-complete pending Matt's live confirmation**, not resolved.
+
 ### Increment WL.12 — Witchlight: band the routes that shipped unwatched ✅ (2026-08-07)
 
 **Why.** Witchlight certified with **5 of its 8 routes carrying no QG.5 band**, meaning a future change could kill any of them and every gate would stay green. That is not hypothetical: it is exactly how WL.2 shipped a speed route realising a 13 % swing, and how `vocalsPitchConfidence` sat at 0 % for five months while closeouts claimed the route worked.

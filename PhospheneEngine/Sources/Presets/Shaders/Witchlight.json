@@ -53,7 +53,7 @@
       "kind": "continuous",
       "response": {
         "metric": "headingTurnsPerTrail",
-        "min": 1.2
+        "min": 0.65
       }
     },
     {
