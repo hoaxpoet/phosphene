@@ -2080,9 +2080,46 @@ CLEAN.7.7 (live Reduce-Transparency + Increase-Contrast) and CLEAN.7.8 (cold-ins
 
 ## D-170: Section detection via McFee/Ellis spectral clustering on a beat-synced 252-bin log-CQT
 
-**Status:** Reversed (2026-06-24) — built (SECDET.1–.6), validated offline, live-tested 3×, then **removed**.
+**Status:** Reversed (2026-06-24) — built (SECDET.1–.6), validated offline, live-tested 3×, then **removed**. **Re-opened and re-abandoned 2026-08-07 (SECDET.8) — see §Re-test below; do not open a third time without a supervised model.**
 
 **Reversal (2026-06-24).** Section-aligned transitions were removed and the McFee/Ellis detector + the `~/phosphene_section_lab/` workspace deleted; the planner equal-slices for every track. Two decisive reasons: **(1) Structurally local-file-only.** Section detection needs the whole track, but streaming — Phosphene's primary path — only exposes a 30 s preview before playback (no full-track file exists), so the feature could only ever serve local-file playback, and **no detector, supervised or not, changes that.** **(2) Below the perceptual bar even there.** Live-tested on real tracks it landed at F@3 ≈ 0.29–0.41 — roughly half the transitions wrong, which reads as "awful." Beat-grid-granularity tuning lifts the *offline oracle* to only ~0.58; "feels aligned" needs ~0.70+, which requires a **supervised** model. **★ Premise correction:** the "no-ML / unsupervised" rationale that steered this whole approach was a **misreading** — [D-009] is "no *CoreML*" (use MPSGraph), NOT "no ML." Phosphene already ships supervised nets (Beat This!, Open-Unmix) via MPSGraph; Matt never prohibited ML. If section-aligned visuals on *local files* are ever wanted, the right path is a supervised section model ported to MPSGraph (a Beat-This!-scale effort), not more DSP. The SECDET doc history (this entry, the ENGINEERING_PLAN rows, the release notes) is kept so this isn't re-attempted from scratch on the same false premise.
+
+**§Re-test (2026-08-07, SECDET.8).** Matt cleared reversal reason 1 — local-file-only is
+now an accepted scope ("treat local files and streaming as two distinct paths") — and asked
+for the detector back to drive Fractal Tree's canopy size from section boundaries. **Reason 2
+survived contact and the approach was abandoned again.**
+
+The whole port was recovered from `6a219303^` (1,338 lines, 9 files); it compiles unchanged
+against today's tree and its unit tests pass (CQT peaks on the correct bin, mel basis exact
+to 3.7e-9, beat-sync matches `librosa.util.sync`, LAPACK eigen correct). **The code was never
+the problem.** Run on Matt's own full tracks:
+
+| track | length | result |
+|---|---|---|
+| Cherub Rock | 4:58 | 14 boundaries, including repeated **8.4 s** sections (four bars — riff repetition, not structure); the solo swallowed in one 65 s block |
+| Hummer | 6:57 | 5 boundaries, one **209 s** section spanning 0:54→4:23, then 3 of the 5 in the last 35 s |
+
+Cost: **150–185 s per track** of added preparation.
+
+Confound checked and eliminated: the run was repeated with the beat grid at half tempo
+(85.65 vs the cached 171.3 BPM, since a doubled grid halves McFee's effective window). The
+boundaries moved by under a second and the section count was identical — **the beat grid was
+not the cause; this is the detector's real behaviour on this material.**
+
+Consistent with the measurements that led here: on these tracks inner loudness range is
+**1.4 dB**, verse and chorus share timbre, and guitar/drums energy correlates **+0.973** — the
+weakest possible case for a repetition-and-contrast method.
+
+**Correction to the reasoning that reopened it.** The argument for re-testing leaned on the
+SECDET.5/.6 rows showing the live failures were confounded (a Beat This! 30 s grid truncation,
+then a planner that swallowed transitions). That is true but was given more weight than it
+deserved: **the offline F@3 of 0.41 was never confounded, and it was always the number that
+mattered.** Matt questioned the proposal twice before the run and was closer to right both
+times.
+
+**The branch `claude/secdet-rebuild` is left UNMERGED** as the recovered scaffolding — if a
+supervised section model on MPSGraph is ever built (D-170's stated path, Beat-This!-scale),
+the features/graph/clustering are there. Nothing from it is on `main`.
 
 ---
 *Original decision (now reversed) follows for the record:*
