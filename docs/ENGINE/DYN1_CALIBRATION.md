@@ -193,3 +193,32 @@ passage, so shape alone would grow the tree before the band arrives).
 recorded, so `PresetSessionReplay` / the `FT_SESSION` harness feed **0** for it on any
 session before 2026-08-06 — the trunk will read flat-zero there. That is the harness's
 unmapped-field behaviour, not a route defect. Judge this route only on a fresh capture.
+
+## DYN.2b — the two legs were the same signal, and the trunk never moved
+
+DYN.2 shipped and Matt reported *"trunk does not respond appropriately … grows and recedes
+at unexpected times."* Measured on `2026-08-06T17-29-44Z`, the trunk sat at **0.988 from
+40 s to the end of the session** — a fixed-size tree. He never saw the feature at all.
+
+**Cause.** `spectral_density_section` (α 0.0021, τ20 s at the real rate) was divided by
+`spectral_density_slow` (α 0.0022). Those legs differ by a **median of 0.38 %** — the same
+signal. The ratio was a constant 1.00, spread 1.05×.
+
+The α 0.0022 leg is documented as τ45 s but was sized under the retired ~10 Hz rate
+assumption; at the measured **43 Hz** it is τ9.7 s. **This is the rate error recorded in
+§Analysis rate and explicitly not acted on — it cost a full review round here.** Any new
+EMA constant must be sized against 43 Hz AND checked for collision with the existing legs.
+
+**Fix.** A dedicated τ45 s normal (α 0.00052) computed in the analyzer, with the section leg
+at τ20 s (α 0.00116), and the field now carries the RATIO — renamed `spectral_section_ratio`,
+because a field named "density" holding 0.78…1.38 is a trap. Measured on the same audio,
+modelled exactly as the engine computes it: spread **3.84×**, trunk 0.38 → 0.72 → 0.83 →
+0.23 → 0.18 → 0.38 across the session, motion **0.0349/s** (1.6× the surge, well under the
+0.092 that caused FTR.3f).
+
+**The methodological failure is the more important lesson.** DYN.2's offline validation
+cascaded a second EMA onto the already-smoothed `spectral_density` COLUMN of a CSV. The
+engine applies a single EMA to the RAW per-frame fraction. Different impulse response — the
+proxy predicted a healthy 0.63→1.11 swing while the engine produced a flat 1.00. **Model the
+engine's computation, not a convenient reconstruction of it:** decode `raw_tap.wav`,
+recompute the quantity per frame, apply the real α. That is how DYN.2b was verified.

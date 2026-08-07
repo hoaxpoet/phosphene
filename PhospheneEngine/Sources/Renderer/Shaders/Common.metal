@@ -77,8 +77,6 @@ struct FeatureVector {
     // `spectral_density_slow` is a τ≈8 s companion: compare the two to get "denser
     // than this track's normal" without needing per-preset state.
     float spectral_density, spectral_density_slow;
-    // DYN.2: section-scale density leg (tau ~10 s); ratio vs _slow drives trunk size.
-    float spectral_density_section;
     // DYN.1b (float 51): SECTION SURGE, 0…1 — rises fast when the mix arrives and HOLDS.
     // Use it for a step the visual can sit on: a trunk that elongates, a new tier of
     // branches appearing. Every other field here is instantaneous or averaged, so a
@@ -88,7 +86,10 @@ struct FeatureVector {
     // Floats 51–52 — PADDING, mirroring Swift. 50 floats is 200 bytes and a GPU constant
     // buffer must be 16-byte aligned; without these the Swift and MSL views of buffer(0)
     // disagree and every field past the mismatch reads garbage.
-    float spectral_surge, _pad52;   // 51 reclaimed by DYN.1b
+    // Float 52 was _pad52 and is now DYN.2's section-scale density leg (tau ~10 s);
+    // ratio against _slow drives trunk size. ORDER IS THE CONTRACT — it must match
+    // AudioFeatures+Analyzed.swift field-for-field, not just in count.
+    float spectral_surge, spectral_section_ratio;   // 51 DYN.1b, 52 DYN.2
 };
 
 // MARK: - FeedbackParams

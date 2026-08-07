@@ -156,7 +156,7 @@ void fractal_tree_object_shader(
         // adds harmonics, not amplitude. Measured on the same capture, density τ10 s sits
         // at 0.13 through the verse and 0.21 through the chorus.
         //
-        // `spectral_density_section / spectral_density_slow` is that quantity divided by
+        // `spectral_section_ratio / spectral_density_slow` is that quantity divided by
         // the track's OWN running average, so it is self-normalising — no fitted per-track
         // constant, the mistake DYN.1c/.1d exist to avoid. Measured trunk with the mapping
         // below: intro 0.00, verse 0.30…0.46, chorus 0.92…1.00, easing to 0.88 after. A
@@ -174,8 +174,8 @@ void fractal_tree_object_shader(
         // it (DYN1_CALIBRATION §3: a clean intro is BRIGHTER than a pre-distortion passage,
         // so shape alone would grow the tree before the band arrives).
         float arousalReach = saturate((f.arousal - 0.10f) * (1.0f / 0.58f));
-        float sectionRatio = f.spectral_density_section / max(f.spectral_density_slow, 1e-4f);
-        float fullness = smoothstep(0.40f, 1.05f, sectionRatio);
+        float sectionRatio = f.spectral_section_ratio;   // DYN.2b: already normalised
+        float fullness = smoothstep(0.78f, 1.38f, sectionRatio);
         float musicGate = smoothstep(0.05f, 0.30f, saturate(f.spectral_surge));
         float reach = saturate(max(0.10f * arousalReach, fullness) * musicGate);
 
