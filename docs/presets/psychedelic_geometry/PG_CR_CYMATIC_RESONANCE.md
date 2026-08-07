@@ -20,6 +20,9 @@ Concept-gate artifacts (throwaway spike, not committed): numpy renderer + contac
 
 # PART A — DESIGN
 
+> **⚠ Superseded (D-123, 2026-05-13; residue stripped at MD.0 / D-215, 2026-08-07).** `concept_tags` and `motion_paradigm` were reverted the day after D-120 filed them and are **not part of the sidecar schema**. `PresetDescriptor` does not decode them and the orchestrator does not read them; `family` (one of the 11 cream-of-crop `PresetCategory` cases) is the only taxonomy field. Do not add them to a new sidecar — this document is the vector by which they were re-added to a shipped preset after the revert.
+
+
 ## A0. Identity
 - **Name (working):** Cymatic Resonance
 - **Family:** `geometric` · **concept_tags:** `["geometric","resonant","hypnotic"]` (⚠ confirm `resonant` is in the D-120 controlled vocab at implementation; fallback `["geometric","hypnotic"]`)

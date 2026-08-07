@@ -1,11 +1,6 @@
 {
   "name": "Meniscus",
   "family": "hypnotic",
-  "concept_tags": [
-    "waveform",
-    "geometric"
-  ],
-  "motion_paradigm": "mesh_animation",
   "duration": 30,
   "description": "MEN.3 — a serpentine line-strip water surface where every drop that strikes it is an instrument: drums land on the near edge, bass deep at the centre, vocals far and high, and `other` scatters wide, with the ripples spreading from each impact and interfering as the arrangement drawn as a wake. Brightness comes from local slope, so crests read near-white against near-black troughs; the sideways glow spread is built into the line geometry as screen-X quads under MAX blending, which keeps the raster open in Y. Camera and hue are ported from the source (MEN.2b): three Euler angles re-randomised on beats, a distance oscillation, and a sky tint that rotates continuously with the camera attitude. Inspired by Martin/QBikal's Surface Turbulence IIb; the placement is the declared D-121 divergence — stem separation replaces the source's inaudible cepstral transform.",
   "author": "Matt",

@@ -54,6 +54,8 @@
    ```
    Zero residue in Swift sources, JSON sidecars, tests, or schema declarations. D-120's reversion (commit `0981ca4f`, 2026-05-13) was complete. No follow-up needed.
 
+   > **⚠ Recurred after this audit (MD.0 / D-215, 2026-08-07).** The grep above was correct on 2026-05-20 and the revert was complete. Both fields nonetheless reappeared in two sidecars created *later* — `CymaticResonance.json` (2026-07-22, `b9982dbb`) and `Meniscus.json` (2026-08-03, `72707e68`) — because their design docs still prescribed them. Stripped at MD.0. **A clean grep is a statement about a moment, not a closed class**: nothing rejects an unknown sidecar key at decode, so this can recur again. Unknown-key rejection is an open carry-forward on D-215.
+
 **Three follow-up items + one BUG entry are tracked in [§Follow-up Backlog](#follow-up-backlog).** Per the kickoff's audit-only discipline, BUG-015's fix is registered as a separate increment (CA.4-FU-3); CA.4 files the BUG entry and the immediate ARCHITECTURE.md / DECISIONS.md drift corrections, but does not implement the wire.
 
 ---
@@ -506,7 +508,7 @@ Applied:
 
 No other DECISIONS.md edits needed — every other D-014 / D-017 / D-018 / D-030 / D-032 / D-033 / D-034 / D-035 / D-036 / D-047 / D-050 / D-053 / D-058 / D-074 / D-077 / D-078 / D-080 / D-091 / D-095 / D-099 / D-123 claim was verified against current code with no contradictions.
 
-D-120 (`concept_tags` + `motion_paradigm`): revert is **clean** in code — zero residue per the cited grep above. The DECISIONS.md entry itself preserves the historical record correctly (the file has a `⚠ STATUS: REVERTED 2026-05-13` banner at line 3286).
+D-120 (`concept_tags` + `motion_paradigm`): revert is **clean** in code — zero residue per the cited grep above. The DECISIONS.md entry itself preserves the historical record correctly (the file has a `⚠ STATUS: REVERTED 2026-05-13` banner at line 3286). **⚠ True as of this audit (2026-05-20); the fields recurred in two later-created sidecars and were stripped at MD.0 / D-215 — see the note under §8 above.**
 
 ### Updates needed in source-file comments
 
