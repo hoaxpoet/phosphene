@@ -751,6 +751,15 @@ entry after this section is filled in.
   catalog ratio target ≥ 50% inspired-by, upper bound ~80%). The
   review's `fidelity` field proposal was rejected by Matt in
   favour of the property taxonomy that landed as D-120.
+* 2026-08-07 — §13 addendum landed (MD.0 / D-215): operative-record
+  reconciliation. §12's taxonomy (`family: "milkdrop_inspired"`),
+  filesystem layout (`Shaders/Milkdrop/<theme>_<source_name>`),
+  source form (`.milk` from the cream-of-crop pack) and candidate
+  list (D-112's nine) were each superseded by practice across the
+  seven uplifts that shipped 2026-05-13 → 2026-08-07. D-120's
+  `concept_tags` / `motion_paradigm` had already been reverted by
+  D-123 (2026-05-13) but were never written back here. No §3 / §10
+  / §12 text rewritten in place; §13 is the operative record.
 
 ---
 
@@ -759,7 +768,10 @@ entry after this section is filled in.
 This section supersedes §§1–11 above where the two conflict. §§1–11
 remain in place as the operative record of the *derivative-posture*
 framing they were authored under; the operative record going forward
-is this addendum.
+is this addendum. **Amended 2026-08-07 (MD.0 / D-215): §13 below
+supersedes this section where the two conflict** — §12's taxonomy,
+filesystem layout, source form and candidate list were all overtaken
+by the work that shipped between 2026-05-13 and 2026-08-07.
 
 ### §12.1 Reframe summary + why
 
@@ -1209,5 +1221,207 @@ worth surfacing for Matt's call before being filed.
   already says "swap for Rovastar Trippy S or similar at MD.5
   authoring," but the substitution could be made explicit now
   rather than at authoring. Matt's call. No amendment filed here.
+
+---
+
+## §13. Addendum — reconciliation to practice (2026-08-07, MD.0 / D-215)
+
+This section supersedes §12 where the two conflict, on the same
+terms §12 supersedes §§1–11. §12 stays in place as the operative
+record of the *inspired-by reframe* — it is the reason the work has
+the shape it has, and the RB.1 audit cites into it. What §12 got
+wrong was not the reframe; it was four pieces of downstream
+mechanics that were specified in advance and then overtaken by the
+seven uplifts that actually shipped.
+
+**Why this exists.** `MILKDROP_STRATEGY.md` has five commits, all
+dated 2026-05-12, and none since. Between then and 2026-08-07,
+seven Milkdrop-inspired presets shipped and certified — Dragon
+Bloom, Fata Morgana, Floret, Glaze, Nacre, Meniscus, Witchlight —
+every one of them authored by a process this document did not
+describe, producing sidecars this document's schema would reject.
+An author following §12 today would create a `family` value, a
+directory and a Settings toggle that D-123 deleted the day after
+§12 landed.
+
+### §13.1 Taxonomy — no `milkdrop_inspired` family
+
+**Superseded by D-123 (2026-05-13).** There is no
+`family: "milkdrop_inspired"` and no `.milkdropInspired`
+`PresetCategory` case. Milkdrop-inspired uplifts file into the same
+11-case cream-of-crop `PresetCategory` enum as every other
+Phosphene preset (`waveform`, `fractal`, `geometric`, `particles`,
+`hypnotic`, `supernova`, `reaction`, `drawing`, `dancer`,
+`sparkle`, `transition`). The seven shipped uplifts file as
+`hypnotic` ×6 and `particles` ×1.
+
+*Why.* D-123 mirrored `PresetCategory` to the cream-of-crop pack's
+own theme directories precisely so that inspired-by uplifts ingest
+1:1 with no translation layer. A separate `milkdrop_inspired`
+family would reintroduce the label-source inconsistency D-123
+existed to remove — identical visual registers getting different
+labels depending on origin.
+
+**The `inspired_by` sidecar block is the only marker of origin.**
+It is documentation-only metadata: `PresetDescriptor` does not
+declare a coding key for it and `Codable` ignores it. Nothing in
+the engine reads it. (Whether it *should* be decoded and gated is
+an open carry-forward, not a decision this addendum makes.)
+
+*Amends:* §12.2's D-105 row, §12.9's MD.5 / MD.6 rows.
+
+### §13.2 Layout — flat, and named for the Phosphene preset
+
+**Never adopted.** `PhospheneEngine/Sources/Presets/Shaders/Milkdrop/`
+does not exist and will not. All 28 sidecars are flat in
+`Shaders/`. Presets are named for the Phosphene preset, not the
+source: `Witchlight.metal`, not
+`sparkle_witchcraft_reloaded.metal`.
+
+*Why.* Moving 7 of 28 presets into a subdirectory changes
+`PresetLoader` enumeration and every golden path for no
+user-visible gain. The `<theme>_<source_name>` convention is also
+in direct tension with D-113 — a Phosphene preset named after the
+`.milk` it was inspired by reads as a port of that `.milk`, which
+is exactly the framing the reframe retired.
+
+*Amends:* §12.2's D-105 row (filesystem-path clause).
+
+### §13.3 Source form — butterchurn built-ins, not `.milk`
+
+**De-facto since Dragon Bloom.** The operative inspiration corpus
+is the **butterchurn built-in preset set rendered through
+`tools/milkdrop-render/`** as a live oracle, not raw `.milk` files
+from the cream-of-crop pack.
+
+*Why.* The runtime `.milk` converter renders directory presets
+poorly (see the `docs/presets/MILKDROP_UPLIFT_PICKS.md` header),
+so the render gallery Matt actually picks from is built from
+butterchurn built-ins, which render faithfully. Six of the seven
+shipped uplifts read a butterchurn built-in JSON as their source
+artifact; only Dragon Bloom read a `.milk` (since removed at PUB.1
+per D-116 bullet 4).
+
+**Consequence for provenance.** `sha256` is the hash of the source
+artifact **actually read**, and `source_form` names what that
+artifact was. The two fields are read together or not at all — a
+bare hash with no `source_form` is ambiguous about what was
+hashed. Where no hash was ever taken, `sha256` is omitted and
+`source_form` says why. The union schema, applied to all seven
+sidecars at MD.0:
+
+```json
+"inspired_by": {
+  "milkdrop_filename": "<source preset name as it appears in the gallery>",
+  "original_artist": "<best-effort from the filename pattern>",
+  "pack": "projectM-visualizer/presets-cream-of-the-crop",
+  "source_form": "<what was actually read — butterchurn built-in JSON | .milk>",
+  "sha256": "<hash of that artifact, or omitted with source_form explaining why>"
+}
+```
+
+D-116 bullet 4 is unaffected and still binding: no source artifact
+of either form is committed to this repository.
+
+*Amends:* §12.2's `inspired_by` schema block, §12.5 bullet 4's
+"developer-local checkout of the cream-of-crop pack" (now: a local
+butterchurn built-in render tree).
+
+### §13.4 Candidate selection — MILKDROP_UPLIFT_PICKS.md
+
+**Operative list:** [`docs/presets/MILKDROP_UPLIFT_PICKS.md`](presets/MILKDROP_UPLIFT_PICKS.md)
+(2026-06-01), the gallery Matt picks from by eye. D-112's nine
+named `.milk` candidates and §5's theme-stratified 10 / 20 / 5
+lists are **historical**; none was used for any shipped uplift.
+
+*Why.* §5's lists were selected on transpiler-proofness — a
+criterion that died with the transpiler (D-110 amendment). The
+operative criterion is Matt's eye on a rendered gallery, which is
+the only criterion that has produced certified presets.
+
+*Amends:* §12.2's D-112 row, §5 in full.
+
+### §13.5 Settings exposure — pending
+
+`phosphene.settings.visuals.milkdrop.inspired` was **never
+adopted**. The shipped surface is the QR.4 / D-091 `#if DEBUG`
+stub keyed `phosphene.settings.visuals.includeMilkdropPresets`,
+reading "Coming in a future update," `.disabled(true)`. Seven
+presets have shipped past it.
+
+The toggle is **inert, not merely hidden**:
+`SettingsStore.includeMilkdropPresets` is persisted and read by
+`SettingsViewModel` and `VisualsSettingsSection` — and by nothing
+else. `PresetScoringContextProvider` builds
+`PresetScoringContext.excludedFamilies` from
+`SettingsStore.excludedPresetCategories`, a different key.
+Flipping the debug toggle changes nothing about preset selection.
+
+**Status: MD.0 DECISION-NEEDED #1, awaiting Matt.** Ship / delete /
+defer are all live. Default if unanswered: leave the toggle as-is
+and record the inconsistency in `KNOWN_ISSUES.md`; do not ship a
+release with a dead "coming soon" row visible.
+
+*Amends:* §12.2's D-106 row, §12.9's MD.5 row (toggle bullet).
+
+### §13.6 MD.1 — retired
+
+The MD.1 `.milk` grammar audit is **retired**, not re-scoped. Its
+premise — that an author opening a source `.milk` for the first
+time needs a variable / function / HLSL reference — no longer
+describes the work: under §13.3 no author opens a `.milk` at all.
+Seven uplifts shipped without it. See `ENGINEERING_PLAN.md`
+§Phase MD → Increment MD.1 for the rationale in full.
+
+*Amends:* §12.7 and §12.9's MD.1 row (both of which preserved
+MD.1 as "retained, reframed").
+
+### §13.7 The per-preset workflow, as actually practised
+
+§12.1's replacement workflow ("read the source `.milk` as
+reference material, understand its aesthetic intent, author from
+scratch, apply the discipline rule, pass M7, certify") is
+directionally right and materially incomplete — it omits the
+gallery, the reference curation, and the design-doc gate that
+every shipped uplift went through. The five steps that actually
+produce a certified uplift:
+
+1. **Render the gallery.** `tools/milkdrop-render/` renders
+   butterchurn built-ins to stills and motion clips.
+   `MILKDROP_UPLIFT_PICKS.md` is the standing shortlist.
+2. **Matt picks by eye**, from motion, not stills. (A living
+   preset's dynamic range is invisible in a still — a source's
+   signature reads as a defect when curated from frames.)
+3. **Reference curation + design doc before any code.** A
+   `docs/VISUAL_REFERENCES/<preset>/` set with per-file
+   provenance, and a `docs/presets/<PRESET>_DESIGN.md` or
+   `_PLAN.md` carrying concept, drivers, motion model + temporal
+   contract, the three-part concept bar, flash budget and
+   grounding audit. This is a D-064 docs-only increment with no
+   `.metal` in it — the WL.1 / WL.2 and MEN.1 / MEN.2 splits are
+   the pattern.
+4. **Hand-author** the `.metal` + sidecar under the D-116
+   discipline rule and the `preset-session` / `shader-authoring`
+   skills. Nothing about this step is Milkdrop-specific.
+5. **M7 plus the D-121 side-by-side** before `certified: true`.
+   The side-by-side renders the Phosphene preset and the source
+   oracle on a shared track; Matt writes the divergence rationale
+   naming which of D-121's four axes diverges.
+
+Steps 3 and 5 are where uplifts actually cost time. §12.1's
+"~2–3 days per preset" estimate is falsified by the record:
+Witchlight took ten increments and Meniscus eleven.
+
+*Amends:* §12.1's replacement-workflow paragraph, §4 in full.
+
+### §13.8 What §13 does *not* change
+
+The reframe itself (D-113), the release model (D-114), the
+discipline rule (D-116 / D-121 / `SHADER_CRAFT.md §12.6`), the
+brand commitment (D-119) and the kill-switch triggers (D-122) are
+all untouched and still operative. D-115 (release-bundle
+composition) remains open — MD.0 DECISION-NEEDED #2. The D-122
+trigger assessment run at MD.0 is recorded in
+`ENGINEERING_PLAN.md` §Phase MD and in D-215.
 
 ---
