@@ -114,7 +114,7 @@ extension SessionRecorder {
         pulse_beat_index,pulse_regional_blend01,\
         tonal_phase_fifths,tonal_phase_thirds,tonal_consonance,tonal_tension,harmonic_flux,\
         bass_att,mid_att,treble_att,mid_rel,mid_dev,treb_rel,treb_dev,mid_att_rel,treb_att_rel,beats_until_next,\
-        spectral_density,spectral_density_slow,spectral_surge,spectral_density_section
+        spectral_density,spectral_density_slow,spectral_surge,spectral_section_ratio
 
         """
 
@@ -244,7 +244,7 @@ extension SessionRecorder {
         // the END, same positional-parser invariant as every column above.
         let densityCols = String(format: ",%.5f,%.5f,%.5f,%.5f\n",
                                  fv.spectralDensity, fv.spectralDensitySlow, fv.spectralSurge,
-                                 fv.spectralDensitySection)
+                                 fv.spectralSectionRatio)
         // QG.1 — the remaining FeatureVector primitives presets consume that the
         // CSV never carried (attenuated bands + mid/treb deviation family +
         // beats_until_next). Without them, RouteCoverageTests cannot replay

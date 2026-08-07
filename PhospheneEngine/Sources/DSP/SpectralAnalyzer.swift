@@ -53,8 +53,9 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         /// Slow EMA of `density` (τ ≈ 8 s). Lets a consumer read "denser than this
         /// track's normal" rather than an absolute, without rolling its own state.
         public var smoothedDensity: Float
-        /// DYN.2 — section-scale density (τ ≈ 10 s); trunk-safe, moves verse→chorus.
-        public var sectionDensity: Float
+        /// DYN.2b — SECTION RATIO: τ20 s density over the track's true τ45 s normal.
+        /// A ratio, not a density: ~1.0 means "as dense as this track usually is".
+        public var sectionRatio: Float
         /// DYN.1b — SECTION SURGE, 0…1. Rises fast when the mix arrives, and HOLDS.
         ///
         /// The field for "the tree shoots up when the distorted guitar enters" — which
@@ -143,9 +144,14 @@ public final class SpectralAnalyzer: @unchecked Sendable {
     /// the τ10 s SECTION leg now (DYN.2), never this one, so widening this again would only
     /// destroy the signal it exists to carry. The raw fraction turns 5.59/s, which is why
     /// SOME smoothing is required; `density` is deliberately not instantaneous.
-    private static let densityFastAlpha: Float = 0.117
-    private static let densityAlpha: Float = 0.0022
-    private static let densitySectionAlpha: Float = 0.0021   // DYN.2 section leg, τ ≈ 10 s
+    static let densityFastAlpha: Float = 0.117
+    static let densityAlpha: Float = 0.0022
+    /// DYN.2b at the MEASURED 43 Hz analysis rate: τ20 s section leg over a τ45 s normal.
+    /// The first cut used 0.0021 (τ10) against `densityAlpha` — but that "τ45" constant was
+    /// sized under the old wrong ~10 Hz assumption and is really τ9.7 s, so the two legs
+    /// landed 0.38 % apart, the ratio was a constant 1.00 and the trunk never moved.
+    static let densitySectionAlpha: Float = 0.00116   // τ 20 s
+    static let densityNormalAlpha: Float = 0.00052    // τ 45 s — the REAL normal
 
     /// EMA-smoothed centroid value.
     private var smoothedCentroid: Float = 0
@@ -157,11 +163,12 @@ public final class SpectralAnalyzer: @unchecked Sendable {
     private var smoothedFlux: Float = 0
 
     /// EMA-smoothed spectral density, both legs (DYN.1).
-    private var fastDensity: Float = 0
-    private var sectionDensity: Float = 0
-    private var smoothedLevelDB: Float = -120
-    private var surge: Float = 0
-    private var smoothedDensity: Float = 0
+    var fastDensity: Float = 0
+    var sectionDensity: Float = 0
+    var densityNormal: Float = 0
+    var smoothedLevelDB: Float = -120
+    var surge: Float = 0
+    var smoothedDensity: Float = 0
     /// False until the first non-silent frame seeds both density legs.
     private var densitySeeded = false
 
@@ -241,7 +248,7 @@ public final class SpectralAnalyzer: @unchecked Sendable {
                 smoothedFlux: 0,
                 density: 0,
                 smoothedDensity: 0,
-                sectionDensity: 0,
+                sectionRatio: 1,
                 surge: 0
             )
         }
@@ -265,26 +272,10 @@ public final class SpectralAnalyzer: @unchecked Sendable {
             fastDensity = rawDensity
             smoothedDensity = rawDensity
             sectionDensity = rawDensity   // DYN.2: seed with the others (same reason)
+            densityNormal = rawDensity
             densitySeeded = true
         }
-        // PRE-AGC LEVEL by Parseval — the definition lives on `LoudnessProfile` so the
-        // live path and DYN.1c's offline profile measure the same quantity on the same
-        // scale. Scale confusion here has already cost one review round.
-        let levelDB = LoudnessProfile.levelDB(magnitudes: magnitudes, count: count)
-        let alpha = LoudnessProfile.levelSmoothingAlpha
-        smoothedLevelDB = alpha * levelDB + (1 - alpha) * smoothedLevelDB
-        // DYN.1c: this moment's rank in the track's own loudness distribution when a
-        // profile is installed, the fixed band's smoothstep otherwise.
-        let surgeTarget = Self.surgeTarget(levelDB: smoothedLevelDB, profile: loudnessProfile)
-        // Asymmetric: arrive fast, leave slowly. A symmetric follower falls back between
-        // phrases and reads as the pumping this field exists to avoid.
-        let surgeAlpha = surgeTarget > surge ? Self.surgeAttack : Self.surgeRelease
-        surge = surgeAlpha * surgeTarget + (1 - surgeAlpha) * surge
-
-        fastDensity = Self.densityFastAlpha * rawDensity + (1 - Self.densityFastAlpha) * fastDensity
-        smoothedDensity = Self.densityAlpha * rawDensity + (1 - Self.densityAlpha) * smoothedDensity
-        sectionDensity = Self.densitySectionAlpha * rawDensity
-            + (1 - Self.densitySectionAlpha) * sectionDensity
+        advanceLevelAndDensity(rawDensity: rawDensity, magnitudes: magnitudes, count: count)
 
         // Store current frame for next flux computation.
         magnitudes.withUnsafeBufferPointer { src in
@@ -305,7 +296,7 @@ public final class SpectralAnalyzer: @unchecked Sendable {
             smoothedFlux: smoothedFlux,
             density: fastDensity,
             smoothedDensity: smoothedDensity,
-            sectionDensity: sectionDensity,
+            sectionRatio: densityNormal > 1e-4 ? sectionDensity / densityNormal : 1,
             surge: surge
         )
     }
@@ -324,6 +315,7 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         smoothedFlux = 0
         fastDensity = 0
         sectionDensity = 0
+        densityNormal = 0
         smoothedDensity = 0
         densitySeeded = false
         smoothedLevelDB = -120
