@@ -150,7 +150,7 @@ public final class SpectralAnalyzer: @unchecked Sendable {
     /// The first cut used 0.0021 (τ10) against `densityAlpha` — but that "τ45" constant was
     /// sized under the old wrong ~10 Hz assumption and is really τ9.7 s, so the two legs
     /// landed 0.38 % apart, the ratio was a constant 1.00 and the trunk never moved.
-    static let densitySectionAlpha: Float = 0.00116   // τ 20 s
+    static let densitySectionAlpha: Float = LoudnessProfile.densitySectionAlpha
     static let densityNormalAlpha: Float = 0.00052    // τ 45 s — the REAL normal
 
     /// EMA-smoothed centroid value.
@@ -296,7 +296,12 @@ public final class SpectralAnalyzer: @unchecked Sendable {
             smoothedFlux: smoothedFlux,
             density: fastDensity,
             smoothedDensity: smoothedDensity,
-            sectionRatio: densityNormal > 1e-4 ? sectionDensity / densityNormal : 1,
+            // DYN.2c: the OFFLINE normal when a local-file profile is installed — it is
+            // right from frame 1. The live τ45 s EMA remains the streaming fallback, where
+            // no full decode exists; there it still needs ~90 s to mean anything.
+            sectionRatio: Self.sectionRatio(section: sectionDensity,
+                                            liveNormal: densityNormal,
+                                            profile: loudnessProfile),
             surge: surge
         )
     }
