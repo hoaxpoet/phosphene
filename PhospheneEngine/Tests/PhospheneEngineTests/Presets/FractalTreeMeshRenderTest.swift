@@ -233,7 +233,9 @@ struct FractalTreeMeshRenderTest {
         print(String(format: "[fractal-tree/sequence] %d rows spanning %.1f s, stride %d",
                      rows.count, (rows.last?["time"] ?? 0) - (rows.first?["time"] ?? 0), stride))
         var fifths = FifthsSmoother()
+        var noteGate = MelodicNoteGate()
         var flickerFifths = FifthsSmoother()
+        var flickerGate = MelodicNoteGate()
         var strip: [(label: String, pixels: [UInt8])] = []
         var hues: [Double] = []
         var times: [Double] = []
@@ -243,7 +245,7 @@ struct FractalTreeMeshRenderTest {
 
         for (index, row) in rows.enumerated() where index % stride == 0 {
             if strip.count >= maxFrames { break }
-            var fv = Self.featuresFromSession(row, fifths: &fifths)
+            var fv = Self.featuresFromSession(row, fifths: &fifths, gate: &noteGate)
             Self.applyRecomputedDensity(densityByTime, at: row["time"] ?? 0, to: &fv)
             fv.aspectRatio = Float(Self.width) / Float(Self.height)
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
@@ -270,7 +272,7 @@ struct FractalTreeMeshRenderTest {
         // window, rendered separately.
         var adjacentHues: [Double] = []
         for row in rows.prefix(90) {
-            var fv = Self.featuresFromSession(row, fifths: &flickerFifths)
+            var fv = Self.featuresFromSession(row, fifths: &flickerFifths, gate: &flickerGate)
             fv.aspectRatio = Float(Self.width) / Float(Self.height)
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
             Self.encode(cmd, into: target, generator: generator, features: fv)
@@ -393,7 +395,8 @@ struct FractalTreeMeshRenderTest {
     }
 
     private static func featuresFromSession(_ row: [String: Double],
-                                            fifths: inout FifthsSmoother) -> FeatureVector {
+                                            fifths: inout FifthsSmoother,
+                                            gate: inout MelodicNoteGate) -> FeatureVector {
         var f = baseFeatures()
         func value(_ column: String) -> Float { Float(row[column] ?? 0) }
         f.bass = value("bass"); f.mid = value("mid"); f.treble = value("treble")
@@ -409,6 +412,19 @@ struct FractalTreeMeshRenderTest {
         f.barPhase01 = value("barPhase01_permille") / 1000; f.beatsPerBar = value("beatsPerBar")
         f.spectralDensity = value("spectral_density")
         f.spectralDensitySlow = value("spectral_density_slow")
+        // FTR.6 — the refractory-gated tip count. The object shader reads this INSTEAD of
+        // deriving tips from beat_mid, so leaving it unmapped pins the tips term to 0 and
+        // the harness reports a live route as dead (the Faraday failure named below).
+        //
+        // RECOMPUTED through the production `MelodicNoteGate`, not read from the CSV, for
+        // the same reason density is recomputed from `raw_tap.wav` above: a capture holds
+        // whatever the build that recorded it produced, and every session Matt has recorded
+        // predates this column entirely. Reading it would pin the route to 0 and report the
+        // hero layer dead. `beatMid` IS taken from the CSV — `BeatDetector` is unchanged by
+        // this increment, so the recorded value is the current one.
+        f.melodicTips = gate.update(beatMid: value("beatMid"),
+                                    bpm: value("grid_bpm"),
+                                    deltaTime: value("deltaTime"))
         f.time = value("time")
         return f
     }
@@ -470,22 +486,27 @@ struct FractalTreeMeshRenderTest {
             directory: base.appendingPathComponent(Self.driveTrack))
         guard let time = series.floatSeries("time"),
               let arousal = series.floatSeries("arousal"),
-              let beatMid = series.floatSeries("beatMid") else {
-            throw FractalTreeHarnessError.setupFailed("time/arousal/beatMid absent")
+              let beatMid = series.floatSeries("beatMid"),
+              let melodicTips = series.floatSeries("melodic_tips") else {
+            throw FractalTreeHarnessError.setupFailed("time/arousal/beatMid/melodic_tips absent")
         }
 
         // The shader's own arithmetic, mirrored. `amp` is 1: the fixtures are music
         // throughout, and the silence gate is covered by the D-037 render assertion.
         let rows = (0..<min(time.count, arousal.count)).filter { (time[$0] ?? 0) >= 10.0 }
+        // `melody` is now only the per-branch travelling wave in the MESH stage — the tip
+        // COUNT moved to the gated accumulator at FTR.6. Kept here because the line-turn
+        // metric below is about the driver's shape, which is unchanged.
         let melody = rows.map { Double(beatMid[$0] ?? 0) / (Double(beatMid[$0] ?? 0) + 2.2) }
         let growthEnv = rows.map { min(max((Double(arousal[$0] ?? 0) - 0.10) / 0.58, 0), 1) }
         let structure = rows.map { row -> Int in
             let reach = min(max((Double(arousal[row] ?? 0) - 0.10) / 0.58, 0), 1)
             return Int(4.0 + reach * 18.0)
         }
-        let tips = zip(melody, growthEnv).map { m, g -> Int in
+        // FTR.6 — `(uint)(f.melodic_tips * amp * smoothstep(0, 0.35, reach))`.
+        let tips = zip(rows.map { Double(melodicTips[$0] ?? 0) }, growthEnv).map { m, g -> Int in
             let t = min(max(g / 0.35, 0), 1)
-            return Int(m * 26.0 * (t * t * (3 - 2 * t)))
+            return Int(m * (t * t * (3 - 2 * t)))
         }
         let counts = zip(structure, tips).map { min(7 + $0 + $1, 63) }
         let seconds = Double((time[rows.last!] ?? 0) - (time[rows.first!] ?? 0))
@@ -514,9 +535,26 @@ struct FractalTreeMeshRenderTest {
 
         // (a) NOT INERT and (b) NOT SLAMMING — the two failures Matt named in FTR.2
         // ("either too excited or completely inert").
-        #expect(changeRate > 20, """
+        //
+        // FTR.6 MOVED THE FLOOR AND ADDED A CEILING, and that is a deliberate change to a
+        // gate rather than a convenience. The old floor was `changeRate > 20` — at this
+        // fixture's 43 fps, MORE THAN 8.6 CHANGES A SECOND. The build Matt then rejected
+        // as *"the tips are too active"* measured **7.62/s**: the floor was demanding more
+        // activity than the version he turned down, because it was calibrated at FTR.2
+        // against the opposite failure ("completely inert") and never revisited when the
+        // direction reversed. A floor that only a rejected build can clear is not a gate.
+        //
+        // So: floor at 8 % (≈ 3.4/s — unmistakably alive) and a NEW CEILING at 18 %
+        // (≈ 7.7/s — under the rejected build). The ceiling is the substantive addition;
+        // the old test bounded only the SIZE of each change, which is precisely how a
+        // 7.62/s build passed it on the way to Matt calling it too active.
+        #expect(changeRate > 8, """
             the canopy changes on only \(String(format: "%.1f", changeRate))% of frames — \
             too static to read as growing with the music.
+            """)
+        #expect(changeRate < 18, """
+            the canopy changes on \(String(format: "%.1f", changeRate))% of frames — at this \
+            fixture's frame rate that is past the 7.62/s Matt rejected as "too active".
             """)
         #expect(meanJump < 8, """
             the canopy moves \(String(format: "%.1f", meanJump)) branches per change — \
@@ -546,7 +584,16 @@ struct FractalTreeMeshRenderTest {
             too rare to read as the fine branches tracking the tune.
             """)
 
-        #expect(tipSpread >= 5, """
+        // FTR.6 LOWERED THIS 5 → 3, and the reason matters more than the number. A
+        // refractory-gated accumulator has low variance by construction: capping events at
+        // one per eighth note is exactly what stops the layer swinging, so "spans ≥ 5
+        // branches inside a 20 s window" and "moves one branch per note" are in direct
+        // tension — the old 5 encodes the big swing Matt asked to remove. The evidence that
+        // the tip layer is VISIBLE now rests on the two d5 assertions above (measured 39 %
+        // presence, 1.36 crossings/s), which test the thing that actually reads on screen:
+        // the deepest tier appearing and disappearing. This assertion is kept only as a
+        // floor against the layer collapsing to nothing.
+        #expect(tipSpread >= 3, """
             the melodic tip layer spans only \(tipSpread) branches — too small a share of \
             the canopy for "the tiny branches are following the melody" to be visible.
             """)
@@ -671,6 +718,9 @@ struct FractalTreeMeshRenderTest {
         // is exercised; until then this is a KNOWN blind spot, stated rather than implied.
         f.spectralDensity = value("spectral_density")
         f.spectralDensitySlow = value("spectral_density_slow")
+        // FTR.6 — see the note in `featuresFromSession`. Backfilled onto the fixtures by
+        // `MelodicNoteGateReportTests.regenerateFixtures`, so this one IS live here.
+        f.melodicTips = value("melodic_tips")
         // Context the shader reads directly.
         f.bass = value("bass")
         f.mid = value("mid")

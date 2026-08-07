@@ -255,7 +255,33 @@ void fractal_tree_object_shader(
         // Gating on the growth envelope means the fine tips can only appear once the
         // section itself has arrived. The smoothstep keeps them fully available through
         // the body of the song (reach ≥ 0.35) while suppressing them in an intro.
-        uint  tips   = (uint)(melody * 26.0f * amp * smoothstep(0.0f, 0.35f, reach));
+        // ONE TIP PER NOTE (FTR.6). Matt: *"The tips are too active. If possible, I would
+        // want only one tip per note of music."* Measured on his 2026-08-07T18-53-30Z
+        // capture, this line fired **7.62 times a second** with a mean jump of **4.6
+        // branches**, against a guitar note rate of **3.29/s** — wrong on both counts.
+        //
+        // Neither number is reachable from `melody`, and that is a property of the signal
+        // rather than of the coefficient. Sweeping the 26 fixes the granularity (26 → 6
+        // gives 1.00 branches per change) but the RATE plateaus at ~6.5/s and then falls
+        // off a cliff to 0, because `beat_mid` itself turns 6.9 times a second. Imposing a
+        // minimum interval between events needs memory of the last event, which a stateless
+        // object shader does not have — so it moved into the engine.
+        //
+        // `f.melodic_tips` is that gate's output: `beat_mid` through a one-eighth-note
+        // refractory, accumulated one unit per surviving event and drained at τ 2 s. It is
+        // ALREADY a branch count, so the only thing left to do here is truncate it — and
+        // truncation is what makes the change exactly one branch in either direction.
+        // Its 0…8 ceiling matches what this term actually reached before: `melody` is
+        // `beat_mid / (beat_mid + 2.2)`, which caps at 0.3125, so `melody * 26` never
+        // exceeded 8.1. Same canopy size, different rhythm.
+        //
+        // The GATING IS UNCHANGED — `amp` for silence and the growth smoothstep for Matt's
+        // *"the tree actually grows taller BEFORE this melody enters."*
+        // NOT CHANGED, deliberately: the per-branch `tap` in the mesh shader still reads
+        // the continuous `payload.melody`. That is the travelling-wave reach Matt called
+        // *"better overall and probably satisfactory"* at FTR.3e; his complaint here is
+        // about how many branches appear and how often, which is this line alone.
+        uint  tips   = (uint)(f.melodic_tips * amp * smoothstep(0.0f, 0.35f, reach));
         uint  count  = min(7u + base + section + tips, 63u);
 
         // ── BRANCH SPREAD ← spectral_flux ────────────────────────────────────────

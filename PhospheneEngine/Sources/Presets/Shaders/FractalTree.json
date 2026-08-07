@@ -41,6 +41,11 @@
     },
     {
       "route": "melodic_tips",
+      "primitive": "melodicTips",
+      "kind": "continuous"
+    },
+    {
+      "route": "melodic_reach",
       "primitive": "beatMid",
       "kind": "continuous"
     },
