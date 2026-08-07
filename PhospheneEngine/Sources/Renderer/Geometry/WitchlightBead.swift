@@ -228,6 +228,21 @@ public struct WitchlightTuning: Sendable {
     /// Hue step applied at a confirmed turn, so a turn reads as a colour boundary.
     public var turnHueStep: Float = 0.13
 
+    /// WL.10 — bead age, in seconds, included in the SCALE fit. `<= 0` or `>= trailSeconds`
+    /// means the whole trail, which is the pre-WL.10 behaviour.
+    ///
+    /// Matt, 2026-08-06: "Does the camera ever zoom back in when the ribbon is back to making
+    /// tighter shapes and forms?" Measured answer on his session: barely — `viewScale` ran
+    /// 3.68 → 0.73 over two minutes with almost no recovery. The cause is not a time constant
+    /// (the shrink τ was swept 4.0 → 0.5 s and the minimum scale never moved off 0.72); it is
+    /// that the fit measures the WHOLE 30 s trail, so a wide passage keeps the target large
+    /// for a full half-minute after the pen tightens. There is nothing smaller to frame yet.
+    ///
+    /// Framing a recent window makes the scale track what the pen is drawing NOW. What it
+    /// costs is the faded tail spending more time outside the frame — the same trade WL.7
+    /// made deliberately when it aimed the camera at the burning head.
+    public var fitWindowSeconds: Float = 12
+
     /// Target RMS radius of the figure, world units — the auto-fit setpoint.
     public var framedRadius: Float = 0.62
 

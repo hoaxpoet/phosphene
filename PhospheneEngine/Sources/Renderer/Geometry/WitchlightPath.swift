@@ -138,6 +138,10 @@ public final class WitchlightPath: AudioResponseMetrics {
     public internal(set) var viewScale: Float = 1
     /// Where the camera AIMS — head-biased, NOT `centroid` (which only fits the scale). `reframe` says why.
     public internal(set) var cameraX: Float = 0, cameraY: Float = 0
+    /// WL.10 — the centre the SCALE is fitted about. Distinct from `centroid` (whole trail,
+    /// drives the aim) because the fit now measures a recent window and a radius must be
+    /// measured from the centre of the same points it covers.
+    public internal(set) var fitCentroidX: Float = 0, fitCentroidY: Float = 0
     var rmsRadius: Float = 0.4
 
     // Plane tumble.
@@ -248,6 +252,7 @@ public final class WitchlightPath: AudioResponseMetrics {
         previousSectionIndex = nil; contractGoal = 0; contractHold = 0; contraction = 0
         sectionEventCount = 0
         centroidX = 0; centroidY = 0; viewScale = 1; rmsRadius = 0.4; cameraX = 0; cameraY = 0
+        fitCentroidX = 0; fitCentroidY = 0
         tumbleClock = 0
         trailWindow = tuning.trailSeconds
         frameCount = 0; clampedFrameCount = 0; phaseTravel = 0; headingTravel = 0; headingNet = 0
