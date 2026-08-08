@@ -255,6 +255,36 @@ void fractal_tree_object_shader(
         // Gating on the growth envelope means the fine tips can only appear once the
         // section itself has arrived. The smoothstep keeps them fully available through
         // the body of the song (reach ≥ 0.35) while suppressing them in an intro.
+        // TIPS ARE GATED BY GROWTH. Matt, 2026-08-04: *"the tree actually grows taller
+        // BEFORE this melody enters."* Measured on that session, he is exactly right and
+        // the cause is this layer: at t=19 s the growth part sat at its minimum of 4
+        // while the tips added 5 branches, taking the tree from 11 to 16 — eight seconds
+        // before the band arrives at 27–29 s. The quiet intro still has beats, so
+        // `beat_mid` fires through it and the tips grew a tree the music had not earned.
+        //
+        // Gating on the growth envelope means the fine tips can only appear once the
+        // section itself has arrived. The smoothstep keeps them fully available through
+        // the body of the song (reach ≥ 0.35) while suppressing them in an intro.
+        //
+        // ── FTR.6 WAS REVERTED HERE (2026-08-07), and the reason is worth keeping. ──
+        // FTR.6 replaced this term with `f.melodic_tips`, an engine-side accumulator that
+        // added exactly one branch per gated note event. It hit its stated targets — 2.9
+        // note events/s against a 3.29/s guitar note rate, 1.00 branch per change — and
+        // Matt's verdict was *"This is worse … the entire suite of movement does not feel
+        // strongly tied to the music."*
+        //
+        // Measured on his session `2026-08-07T22-59-38Z`, he is right and the cause is
+        // RANGE, which FTR.6 never measured. Across the body of the track this term swings
+        // p05→p95 of **8 branches** (sd 3.02), visiting 0, 1, 3 and 8. The accumulator
+        // swung **4** (sd 1.11) and sat on 5-or-6 for 91 % of frames — a near-constant
+        // where the layer that carried the connection used to be.
+        //
+        // **The tension is structural, not a tuning miss.** Sweeping the accumulator's
+        // drain from τ 0.3 s to 2.5 s against that session moves the PLATEAU (0↔1 up to
+        // 8↔9) and never the span, which stays 1–3 throughout. An integrator delivers
+        // one-branch steps XOR a wide swing; it cannot do both. Any future attempt at
+        // "one tip per note" must keep this term's amplitude and slow its RATE — Matt's
+        // own reading, confirmed 2026-08-07: same size, fewer times.
         uint  tips   = (uint)(melody * 26.0f * amp * smoothstep(0.0f, 0.35f, reach));
         uint  count  = min(7u + base + section + tips, 63u);
 

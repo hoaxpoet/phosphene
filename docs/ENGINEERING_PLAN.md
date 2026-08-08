@@ -333,71 +333,10 @@ Matt's call after the FLY.13 live M7 ("deranged movement, very jittery, still pa
 **Process lesson (durable):** measure motion coherence *before* touching a single tuning constant. A preset that cannot move coherently must be killed in a day, not a fortnight — the peripheral metrics that agree with the work are the trap.
 
 ### Increment VL-PSY.5 — Volumetric Lithograph: ratchet rotation + retire the second beat layer (BUG-075) ✅ (2026-07-24)
-
-**Done-when:** the downbeat motion reads as a coherent single accent, verified on Matt's real session. Met (pending his live confirmation of the felt character via the handed-over GIF).
-
-Matt M7: "dialing on a rotary telephone, combined with pulsing on the beat." Two causes from the session `features.csv`: (1) the VL-PSY.3 downbeat *twist* was a transient displacement (`attack*decay`, 0→1→0) so the fold angle advanced then RETRACTED — 2.7 % of frames spun backward; (2) the v9 drum-hit peak-lift was still live, a second beat layer at a different rate (FA #67). ★ **The lesson, third time on this preset: an accent on a monotonic quantity (angle) must itself be monotonic — add-and-hold, never add-and-return; and audit for a pre-existing accent before adding a new one.** Fix: monotonic eased ratchet off the cached grid (not amp-gated — that would collapse the accumulated angle backward in a quiet bar, the retraction latent until a Spotify playlist hits a rest), drum-hit peak-lift retired. The `accumulatedAudioTime` terrain morph Matt liked is kept.
-
-Verified on the real session via `SessionReplayHarness` (the harness VL-PSY.2/.3 should have used): 0 % backward, motion gate 0 spikes / 0 frozen, max 1.68× median. **Goldens byte-identical** — the synthetic regression fixtures set no beat position or drum stems, so they cannot see this class; real-session replay is the only gate that catches it. Perf 10.7 ms, unchanged. Residual: a one-time ~24 rad/s snap at BeatGrid install, logged.
-
-**Separate, UNRESOLVED — app crash.** Session crashed ~3.7 min into playback (Hummer). fps held 59.9 to the final recorded frame, so it was a hard fault, not a slowdown/leak-into-stall. No PhospheneApp crash report reachable (TCC; newest DiagnosticReports is Jul 19). Weak duration correlation (this was the longest session by far; the real-time tap stem separation writes unbounded, 142 MB/42 dumps here). **Needs Matt's `.ips` to diagnose — do not guess a cause.**
-
-**Still open on VL:** cert (full-length M7 hold + rubric/route gates), and the crash.
-
 ### Increment VL-PSY.3 — Volumetric Lithograph motion rewrite: rotate the tube (BUG-074) ✅ (2026-07-24)
-
-**Done-when:** the fold responds to music without convulsing, verified on Matt's real session, at a rotation speed he picked. Met.
-
-Matt's M7 on VL-PSY.2: "the music response is TERRIBLE, creating a convulsing mess… I REALLY dislike the motion." **Root cause was a category error.** VL-PSY.1/.2 drove the kaleidoscope's *symmetry ORDER* from audio — swell 3→9, a +2 snap every downbeat (2.67×/s at 171 BPM, reconstructed from the session `features.csv`). Order is (1) integer-valued — non-integer orders leave the last wedge unclosed, so continuous drive sweeps through malformed geometry — and (2) a global remap of every world point, so animating it convulses the whole frame. ★ **The lesson: `pModPolar`'s repetition count is a structural constant, not an animation channel; the audio-drivable axis of a kaleidoscope is ROTATION (an isometry), which is what a physical one actually varies.**
-
-Two audio-hierarchy faults compounded it: the downbeat fired **per-beat not per-bar** (the D-154 Ferrofluid lesson — VL-PSY.1 copied FFO's envelope and left the lesson), and the continuous driver `mid_att_rel` measured **0.009** on real music while the dev fold-sweep fixture drove it 0→1 — the hierarchy inversion the audio-data rule forbids, and the reason it reached M7.
-
-**Fix:** order FIXED at 6; ported hg_sdf `pR`; rotate the domain before the polar fold. Angle = `base·time + swell·accumulatedAudioTime + kick·downbeatTwist` — energy sets rotation *speed* off an already-integrated signal (a noisy swell can't produce a jittery angle), idle term keeps it alive at silence (fixes the VL.1 frozen-at-silence finding), twist gated to beat 0 of the bar.
-
-**Verified on the REAL session** via `SessionReplayHarness` (FLY.6, built for the "offline looks nicer than live" class — which VL-PSY.1/.2 should have used and didn't): motion gate 0 spikes / 0 frozen / max 1.32× median. Rotation speed chosen by Matt from a 3-speed real-audio GIF comparison (0.55). ★ **Process lesson: a synthetic fixture that drives a signal the real feature never reaches is worse than no test — it manufactures confidence. Replay real sessions for anything audio-coupled.**
-
-**Fidelity** (Matt: "visual quality is lower" — a real BUG-073 regression): warp 2→3 octaves; full restore was 13.5 ms over the 12 ms gate, so partial at 11.4 ms p95, stated as partial. Sidecar cost → measured 18/24.
-
-**Follow-up ✅ done in VL-PSY.4:** `SessionReplayHarness` rendered dollying presets with a static camera — `cameraDollySpeed` lived in the app target the engine tests can't import. `REPLAY_DOLLY` override was the stopgap; VL-PSY.4 moved dolly speed into the sidecar (`scene_dolly_speed`) and deleted the stopgap.
-
-**Still open on VL:** rebuild tasks 3–5 in their original sense are now largely met (beat-sync, silence state), so what remains is **cert** — a full-length M7 hold + the rubric/route gates. Pending Matt's next live look at this build.
-
 ### Increment TESTFLAKE.2 — BUG-032 generation-guard test: deterministic orphan wait ✅ (2026-07-24)
-
-`endThenRestart_staleOrphanDoesNotMutateNewSession` failed on **every** full `swift test` run (3/3) while passing 3/3 in isolation in 2.7 s — the exact slip-class signature TESTFLAKE.1 addressed elsewhere, in the one suite that sweep missed. The test asserted the orphan's *timing* (two 10 s `waitUntil` wall-clock polls plus a 2.5 s "wait past 3 × 600 ms of prep" sleep); under parallel-suite load the whole test stretched to 73–89 s, the polls starved, and session B's plan was still unread when the assertions fired (`tracks.count → 3` vs 2).
-
-**Guard verified correct first, per the caveat.** `streamingSessionGen`, the post-`await` staleness check (`SessionManager.swift:290`) and every plan/state write (303–337) are all `@MainActor`-isolated with **no suspension point between check and act** — the guard is atomic under concurrent load. This is a test timing assumption, not a race; nothing in `Sources/` changed.
-
-**Fix — assert behaviour, not timing.** `startSession` already returns with `state`/`currentPlan` installed synchronously by `_beginPreparation`, so both polls were unnecessary: the tests now `await` it directly. The 2.5 s sleep is replaced by awaiting session A's *actual* prep-task handle, captured before `endSession()` drops it (`sessionPreparationTask` was made `private(set)`-internal by TESTFLAKE.1 for exactly this). The assertion is now "whenever the orphan fires, the generation guard rejects it" rather than "the orphan fires inside 2.5 s". `SessionReadyWait` grew an `awaitPrepTask(_:)` overload taking a captured handle (same 120 s hang-cap race — a slip must not become a hang); the file-local `waitUntil` helper is deleted. Sibling `rejectedStartSession_leavesPublishedSourceUntouched` got the same treatment.
-
-**Done-when: ✅** full `swift test --package-path PhospheneEngine` run **3×**, the target test green in all three (previously 0/3); isolated runtime 2.7 s → **0.042 s**; 1689 tests / 233 suites, only the pre-declared `MemoryReporter` intermittent known issue and an unrelated DOC.6 red carried in from VL-PSY.2 (BUG-073's §Open Index row not removed when it moved to §Resolved) — fixed here as its own one-line commit so the merge gate is green. `swiftlint --strict` 0 violations. Recorded per the CLEAN.7.9–7.14 flake precedent: KNOWN_ISSUES §Pre-existing Flakes "Resolved 2026-07-24 (TESTFLAKE.2)" + `RELEASE_NOTES_DEV [dev-2026-07-24-164940]`.
-
 ### Increment VL-PSY.4 — Camera dolly speed moves to the sidecar (BUG-074 replay-harness parity) ✅ (2026-07-24)
-
-Per-preset camera dolly speed lived in app code (`VisualizerEngine+Presets.applyPreset`, a `switch desc.name` returning 5.0 for Volumetric Lithograph and 0 otherwise). The engine-side `SessionReplayHarness` (engine test target — cannot import the app) never saw that value, so it replayed VL — whose whole identity is a forward flight — with a **static camera**. That is the BUG-074 replay-harness camera-parity gap.
-
-**Fix.** New sidecar field `scene_dolly_speed` on `PresetDescriptor` (`Float`, default `0` = camera-static). `VolumetricLithograph.json` sets `5.0` (the value VL-PSY.2 shipped in the app switch). Both consumers now read one source of truth: `VisualizerEngine+Presets.applyPreset` seeds `rmPipeline.cameraDollySpeed = desc.sceneDollySpeed` (the `switch desc.name` block is deleted), and `SessionReplayHarness` seeds `pipeline.cameraDollySpeed = preset.descriptor.sceneDollySpeed`. `RayMarchPipeline+MetalFX.applyAudioModulation` is the sole reader — unchanged. VL-PSY.3's `REPLAY_DOLLY` env stopgap in `SessionReplayHarness` is **deleted** (the sidecar seed supersedes it) — reconciled when main (carrying VL-PSY.3) was merged into this branch. The `PresetSessionReplay` executable renders from recorded video, not re-render, so it has no parity gap.
-
-**Done-when: ✅** Engine + app both build clean. `PresetRegressionTests` byte-identical (27 presets × 3 energy states — the new `let` never touches a render: goldens render from `makeSceneUniforms()`, never call `applyAudioModulation`, and even in the live path the dolly integrator is 0 on frame 1). `PresetAcceptanceTests` 27/27. `swiftlint --strict` 0 violations. VL replayed through session `2026-07-24T22-01-51Z` (60 frames, no env var) shows the landscape flowing toward the camera — the flight renders in the engine harness. Byte-identical live behaviour: VL already dollied at 5.0 in the app; only the *source* of the value moved.
-
 ### Increment VL-PSY.2 — Volumetric Lithograph performance fix (BUG-073) ✅ (2026-07-24)
-
-**Done-when:** VL renders at a frame rate Matt can watch, with a measured instrument proving it. Met.
-
-Matt's live report on the VL-PSY.1 build: ~8 s of black on preset switch, then "very choppy and moving much too slow" — but "the LOOK is good." Session `2026-07-24T14-47-41Z` (chain verdict `clean`) put **VL at 1.0 fps / 986 ms per frame** while **Staged Sandbox held 59.9 fps in the same window**, through the same real-time stem separation — so the fault was VL's, not the machine's or the stem pipeline's, and the black screen and the choppiness were one fault, not two.
-
-**Root cause: `warped_fbm` in the SDF hot path.** It is 7 × fbm8 ≈ 56 Perlin evaluations, and `Utilities/Noise/DomainWarp.metal`'s own header says *"Use per-hit or per-vertex only."* VL-PSY.1 called it **twice** inside `vl_foldDomain` — reached from `sceneSDF`, which the marcher evaluates ~128 times per ray plus 4 normal and 3 AO taps. ≈15,000 Perlin evaluations per pixel. ★ The lesson worth keeping: **the documentation that would have prevented this was in the file being called** — a cost note in a utility header is an API contract, not a comment.
-
-**Instrument first (`VLBudgetProbeTests`, copy-adapted from the FLY probe, same Lumen Mosaic control):** VL 1120 ms p95 vs control 0.44 ms. It reproduced Matt's live 986 ms almost exactly, which is what made it trustworthy for the fix loop.
-
-**Fix → 9.4 ms p95** (v9.4 baseline on the same probe: 7.6 ms). Warp → 2-octave `fbm3D`, 4 evals not 112 (its job is a low-frequency displacement breaking the mirror tiling's identical cells; it never needed octave detail). `VL_SDF_STEP_SCALE` 0.35 → 0.55 — re-reasoned, not re-guessed: `pModPolar`/`pModMirror2` are **isometries** and add no Lipschitz cost, so only the now-smaller warp gradient needed headroom. Octaves 5 → 4; **3 was tried and reverted** (below SHADER_CRAFT's ≥4 floor the render went soft and airbrushed — a quality regression for ~1 ms). Far-plane 80 → 52 was tried and reverted: it bought nothing, because the marcher already terminates on hit.
-
-**Recorded, not papered over.** VL is still the catalog's most expensive preset — 21.9 ms p95 @1080p (~46 fps) — and **v9.4 was already 14.7 ms there**. VL has never met the ~5 ms SHADER_CRAFT budget or its own declared `complexity_cost.tier2` of 2.0. The sidecar now carries measured values (22.0 / 30.0) so the Orchestrator schedules against reality, and the probe gates at **12 ms as a regression guard** rather than an aspiration that would fail on day one.
-
-**Second, separate cause of "too slow."** `VL_NOISE_TIME_SCALE` was 0.015, tuned in v3.2 for the *superseded naturalistic* direction where a slow boil was the point; against the measured `accumulatedAudioTime` rate (~0.1 units/s) the terrain phase advanced 0.0014/s — visually frozen. Raised 10× to 0.15. Camera dolly 1.8 → 5.0 u/s: at 1.8 the flight crossed a 20-unit fold cell every ~14 s, which reads as hovering, and the flight is VL's identity. Motion gate after both changes: **0 spikes, 0 frozen**. A production-parity bug in the motion harness itself was fixed in passing — it hardcoded the old dolly speed, so it had been gating a flight speed the app never rendered (the FLY.5 lesson, repeated).
-
-**Still open for VL:** tasks 3–5 of the rebuild arc (beat-sync lurch, silence state — VL still freezes at silence — and cert polish). Pending Matt's next live look.
-
 ### Increment VL.1 — Volumetric Lithograph rebuild: design doc adopted + multi-frame ray-march harness ✅ (2026-07-23)
 ### Increment FD.2 — Fractal Descent look pass (jewel palette + materials + flash fix) 🔨 (2026-07-23)
 
@@ -1652,17 +1591,95 @@ than transients.
 **The cheap fallback does not exist either.** Sweeping the tip quantisation coefficient
 against the same capture: the granularity is fixable (26 → 6 takes it from 4.54 to 1.00
 branches per change) but the **rate plateaus at ~6.5/s and then collapses to 0**, because
-`beat_mid` turns 6.9 times a second. Today's tips fire **9.41/s** against a measured guitar
+`beat_mid` turns 6.9 times a second. Today's tips fire **9.41/s** (re-measured at
+**7.62/s with a mean jump of 4.6 branches** on `2026-08-07T18-53-30Z`) against a measured guitar
 note rate of **3.29/s**. No stateless shader transform of a 6.9/s signal yields 3/s events —
 reaching the note rate needs an engine-side refractory gate (state belongs there), not a
 coefficient.
 
-**What is still achievable, stated honestly:** an engine-side note gate (EMA + minimum
-inter-event interval ≈ one eighth note) would deliver ~3 events/s at one branch each — two of
-Matt's three complaints (too active, wrong granularity). It would **not** fix "favors drums":
-the trigger remains a mid-band transient, and mid band in a rock mix is snare *and* guitar.
-Scoped but NOT started — it needs a new `FeatureVector` field (both declaration sites, CSV,
-route manifest) and is a real increment, not a tuning tweak. Matt's call.
+**FTR.6 — tips: refractory gate.** ✅ (2026-08-07) Built exactly the gate scoped above and
+it delivers what was forecast. New `MelodicNoteGate` (DSP): level trigger on `beat_mid` at
+0.90 plus a refractory of one eighth note derived from `stableBPM` (clamped 0.15–0.50 s,
+120 BPM default before a tempo lands), feeding a unit accumulator drained at τ 2.5 s →
+`FeatureVector.melodicTips` (float 53, 0…8). The shader's tips term became
+`(uint)(f.melodic_tips * amp * smoothstep(0, 0.35, reach))` — truncation is what makes each
+change exactly one branch.
+
+*Verified offline on the source MP3s before any M7*, running the real `MIRPipeline` frame by
+frame over full decodes of *Hummer* and *Cherub Rock* (`MelodicNoteGateReportTests`, the
+`TrunkTrajectoryReportTests` pattern — no CSV, no proxy):
+
+| | note events/s | branches per change | count-changes/s |
+|---|---|---|---|
+| Hummer | **2.92** | **1.00** | 5.47 (was 31.56 on identical audio) |
+| Cherub Rock | **2.87** | **1.00** | 5.37 (was 31.46) |
+| target | ~3 (guitar note rate 3.29) | 1 | — |
+
+**The trigger level came from a sweep, not a preference.** `beat_mid` clips at exactly 1.0,
+so every level in (0.75, 1.0] selects the same full-strength beats. Below that the gate stops
+choosing: at 0.25 the music sits above the line 61 % of the time and **90 % of events fire on
+the first frame the clock allows** — the refractory, not the music, sets the rate, and the
+result is a metronome. At 0.90 the music chooses 71 % of the moments (duty 0.10).
+
+**τ 2.5 s is pinned from both sides, and τ 1.0 was wrong.** Upward, from the preset: the tips
+only read as a layer once the count crosses the depth-5 threshold at 31 branches and keeps
+crossing back. Measured through the render harness on the `route_coverage` fixture, τ 1.0 put
+depth-5 on **0 %** of frames (Matt's *"I never see beyond three levels"*), τ 2.0 on 6 %,
+τ **2.5 on 39 % with 1.36 crossings/s**. Downward, from saturation: `maxTips` rose 8 → 12
+with it, because at τ 2.5 the mean sits near 7 and a ceiling of 8 would have clipped every
+busy passage flat — the FTR.2 "pinned at 63" defect in a smaller register.
+
+**Two limits, stated rather than implied.** (1) *Instrument separation is unchanged* —
+"favors drums" survives, exactly as forecast; the trigger is mid-band = snare AND guitar
+(+0.973 correlated here). (2) *The count still changes about twice per note event* (5.4/s
+against 2.9/s), because a tip that appears must also disappear and at equilibrium the drain
+removes them at the rate the gate adds them. That is arithmetic: 3 transitions/s would mean
+1.5 events/s, i.e. half the notes. What the gate removes is the SIZE of each change.
+Decoupling the two needs tips to have IDENTITY — rotating which branches are lit at a
+constant count — which the shader's count-threshold tiering cannot express. Not scoped.
+
+**Two FTR.2-era motion floors were moved, and this is flagged for Matt rather than buried.**
+`FractalTreeMeshRenderTest` required `changeRate > 20 %` of frames — at the fixture's 43 fps,
+**more than 8.6 changes/s**, i.e. more activity than the 7.62/s build Matt rejected as "too
+active". A floor only a rejected build can clear is not a gate; it was calibrated at FTR.2
+against the opposite failure and never revisited when the direction reversed. Now floored at
+8 % **with a new ceiling at 18 %** — the ceiling is the substantive addition, since the old
+test bounded only the size of each change, which is exactly how a 7.62/s build passed it.
+`tipSpread` lowered 5 → 3 for the same reason: a refractory-gated accumulator has low
+variance by construction, so "spans ≥ 5 branches in 20 s" and "moves one branch per note" are
+in direct tension. The evidence that the tip layer is visible now rests on the two depth-5
+assertions (39 % presence, 1.36 crossings/s), which measure what actually reads on screen.
+
+**Also fixed in passing (real defect, found by the gate it broke).** `CommonLayoutTest`
+located the repo root by walking up to a directory *named* `phosphene` — which in a worktree
+at `phosphene/.claude/worktrees/<name>/` sails past the worktree onto the PRIMARY checkout.
+It was therefore comparing the worktree's Swift struct against the primary's `.metal`. Both
+failure directions are silent (a worktree MSL edit is invisible; an untouched primary reports
+a phantom mismatch). Now a fixed-depth ascent. The same gate correctly caught that
+`Common.metal` is a **third** FeatureVector declaration site the increment brief did not name.
+
+**Also removed:** the fourth, prose-only copy of the MSL struct in `AudioFeatures+Analyzed.swift`'s
+header doc. It had drifted to "48 floats = 192 bytes" — wrong by two increments — because no
+gate reads prose. Replaced with a pointer to the three real declaration sites.
+
+Files: `PhospheneEngine/Sources/DSP/MelodicNoteGate.swift` (new), `MIRPipeline.swift`,
+`Shared/AudioFeatures+Analyzed.swift`, `Shared/SessionRecorder+CSV.swift`,
+`Presets/PresetLoader+Preamble.swift`, `Presets/AudioRoutePrimitives.swift`,
+`Renderer/Shaders/Common.metal`, `Presets/Shaders/FractalTree.metal` + `.json`;
+tests `MelodicNoteGateReportTests.swift` (new), `FractalTreeMeshRenderTest.swift`,
+`CommonLayoutTest.swift`, `AudioFeaturesTests.swift`, `MIRPipelineUnitTests.swift`,
+`UMABufferTests.swift`, `PipelineIntegrationTests.swift`; the three `route_coverage`
+fixtures gained a `melodic_tips` column, backfilled by replaying the production gate over
+their own recorded `beatMid`/`grid_bpm`/`deltaTime` (`FTR_REGEN_FIXTURES=1`) rather than by
+reimplementing its arithmetic in a script.
+
+**Gates:** full engine suite 1802 tests / 271 suites green; app target 407 tests / 70 suites
+green; `xcodebuild` BUILD SUCCEEDED; SwiftLint `--strict` 0 violations; RouteCoverage 196
+routes / 20 presets / 3 fixtures, 0 red. **Done-when remaining: Matt's live M7 (FTR.5).**
+
+**Original scope, for the record:** an engine-side note gate (EMA + minimum inter-event
+interval ≈ one eighth note) delivering ~3 events/s at one branch each — two of Matt's three
+complaints (too active, wrong granularity), and explicitly **not** "favors drums".
 
 **Do not re-attempt per-note guitar events on distorted-guitar material without a changed
 premise.** The limit is physical, not a tuning failure.
@@ -1671,7 +1688,10 @@ premise.** The limit is physical, not a tuning failure.
 
 **Sequencing.** DYN.1 first — it is cheap, well-understood, and fixes the complaint Matt has raised in three consecutive reviews. MEL.1 second, and only after a live confirmation that dynamics alone did not resolve the "melody" feedback: it is plausible that a tree which grows correctly with the music reads as melodic without any melody signal, since that is exactly how the original illusion worked.
 
-**FTR.5 — M7 + certification.** Live review on *Hummer* plus **at least one mid-rich track** (*Hummer* is bass-dominant: the friendliest case for the old design and the harshest for `mid`/`treble`). Closeout cites per-route firing evidence from `features.csv` / `stems.csv` per the checklist's evidence rule. On positive M7: `certified: true`, add `"Fractal Tree"` to `FidelityRubricTests.certifiedPresets`.
+**FTR.5 — M7 + certification.** ⏸ **BLOCKED ON MATT — this is a live review, not work Claude
+can complete.** FTR.6 landed the rate/granularity adjustment Matt named as the precondition
+("close pending these adjustments") and it is verified offline on both source tracks; whether
+the tips now *read* as one-per-note is L4 and only his eye can settle it. Live review on *Hummer* plus **at least one mid-rich track** (*Hummer* is bass-dominant: the friendliest case for the old design and the harshest for `mid`/`treble`). Closeout cites per-route firing evidence from `features.csv` / `stems.csv` per the checklist's evidence rule. On positive M7: `certified: true`, add `"Fractal Tree"` to `FidelityRubricTests.certifiedPresets`.
 
 **Verify:** `swift test --package-path PhospheneEngine --filter "FidelityRubric|AudioRouteSchema|RouteCoverage"`; SwiftLint clean; p95 frame time within the Tier 2 budget.
 
