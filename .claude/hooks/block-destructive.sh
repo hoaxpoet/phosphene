@@ -19,6 +19,8 @@
 # Denied — plumbing / low-level equivalents (added 2026-08-03):
 #   git update-ref -d               deletes a ref directly; the exact bypass for `branch -D`
 #   git push --delete / :refspec    deletes a REMOTE branch (was entirely unguarded)
+#                                   — carve-out 2026-08-07: allowed when the remote tip is
+#                                     already an ancestor of <remote>/main. See that rule.
 #   git reflog expire --expire=now  destroys the recovery net the rules above rely on
 #   git gc --prune=now / --prune=all        same
 #   git stash drop / clear          discards stashed work, with no reflog path back
@@ -168,8 +170,60 @@ fi
 # git push --delete <branch>  /  git push origin :branch
 # Deletes a REMOTE branch. The colon form matches only a refspec that STARTS
 # with ':' (the delete shape) — `git push origin local:remote` is untouched.
+#
+# Carve-out (2026-08-07): deleting a remote branch whose tip is ALREADY AN
+# ANCESTOR of <remote>/main is not destructive — every commit stays reachable
+# from main no matter what the remote's GC does. That is the merged-PR cleanup
+# case, and it was the only thing this rule ever stopped in practice.
+#
+# Three properties keep the carve-out narrow:
+#   1. It verifies the REMOTE's real tip via `git ls-remote`, never the local
+#      remote-tracking ref, which can be stale and would then vouch for commits
+#      the remote has but we have not seen.
+#   2. It FAILS CLOSED. Anything unparsed, unresolvable, or merely unusual —
+#      an extra flag, a pipe, a second branch, a missing object, main/master
+#      itself, the `:refspec` form — returns non-zero and falls through to the
+#      block below. Only the exact shape `git push <remote> --delete <branch>`
+#      (any argument order) is eligible.
+#   3. It proves the merge with `merge-base --is-ancestor`, so a branch with
+#      even one unmerged commit is still blocked.
+# Because of (2), the command must be bare: `... --delete foo | tee log` has
+# tokens the parser rejects, and is blocked. That is deliberate, not a gap.
+PD_REMOTE=""; PD_BRANCH=""
+push_delete_is_merged() {
+    local -a toks=(); local tok; local saw_delete=0
+    PD_REMOTE=""; PD_BRANCH=""
+    read -ra toks <<< "$scan"
+    for tok in "${toks[@]}"; do
+        case "$tok" in
+            git|push)   ;;
+            --delete|-d) saw_delete=1 ;;
+            -*)         return 1 ;;                       # any other flag → not this shape
+            *)
+                if   [ -z "$PD_REMOTE" ]; then PD_REMOTE="$tok"
+                elif [ -z "$PD_BRANCH" ]; then PD_BRANCH="$tok"
+                else return 1                             # a third bare word → bail
+                fi ;;
+        esac
+    done
+    [ "$saw_delete" -eq 1 ] || return 1
+    [ -n "$PD_REMOTE" ] && [ -n "$PD_BRANCH" ] || return 1
+    case "$PD_BRANCH" in main|master|HEAD|*[!a-zA-Z0-9._/-]*) return 1 ;; esac
+    local sha
+    sha="$(git ls-remote --heads "$PD_REMOTE" "$PD_BRANCH" 2>/dev/null | awk 'NR==1{print $1}')"
+    [ -n "$sha" ] || return 1
+    # Both refs must resolve locally, or --is-ancestor errors → fail closed.
+    git rev-parse --verify --quiet "$PD_REMOTE/main" >/dev/null || return 1
+    git merge-base --is-ancestor "$sha" "$PD_REMOTE/main" 2>/dev/null || return 1
+    return 0
+}
+
 if printf '%s' "$scan" | grep -qE 'git[[:space:]]+([^|;&]*[[:space:]])?push\b([^|;&]*)(--delete\b|[[:space:]]-d([[:space:]]|$)|[[:space:]]:[^[:space:]|;&]+)'; then
-    block 'git push --delete' 'deletes a remote branch; recovery depends on the remote'"'"'s own GC window'
+    if push_delete_is_merged; then
+        echo "[block-destructive] ALLOWED: $PD_REMOTE/$PD_BRANCH is fully merged into $PD_REMOTE/main — deletion loses no commits." >&2
+    else
+        block 'git push --delete' 'deletes a remote branch; recovery depends on the remote'"'"'s own GC window'
+    fi
 fi
 
 # git reflog expire --expire=now / --expire-unreachable=now
