@@ -9,40 +9,25 @@ import Foundation
 
 /// Packed per-frame audio features for GPU uniform upload.
 ///
-/// This is the primary struct that shaders receive every frame.
-/// 48 floats = 192 bytes, naturally 16-byte aligned.
-/// Fields follow the audio data hierarchy: continuous energy first,
-/// spectral features second, onset pulses third, deviation primitives fourth.
+/// This is the primary struct that shaders receive every frame, bound at `buffer(0)`.
+/// 56 floats = 224 bytes (53 live fields + 3 alignment pads, FTR.6). Fields follow the
+/// audio data hierarchy: continuous energy first, spectral features second, onset pulses
+/// third, deviation primitives fourth.
 ///
-/// The matching MSL struct:
-/// ```metal
-/// struct FeatureVector {
-///     float bass, mid, treble;
-///     float bass_att, mid_att, treb_att;
-///     float sub_bass, low_bass, low_mid, mid_high, high_mid, high;
-///     float beat_bass, beat_mid, beat_treble, beat_composite;
-///     float spectral_centroid, spectral_flux;
-///     float valence, arousal;
-///     float time, delta_time;
-///     float _pad0, aspect_ratio;
-///     float accumulated_audio_time;
-///     // MV-1 deviation primitives (floats 26–34)
-///     float bass_rel, bass_dev;
-///     float mid_rel,  mid_dev;
-///     float treb_rel, treb_dev;
-///     float bass_att_rel, mid_att_rel, treb_att_rel;
-///     // MV-3b beat phase (floats 35–36)
-///     float beat_phase01, beats_until_next;
-///     // Bar phase (floats 37–38)
-///     float bar_phase01;   // 0 in reactive mode
-///     float beats_per_bar; // 4 default
-///     float track_elapsed_s;            // float 39 (reclaimed _pad3, CSP.3)
-///     float pulse_phase01, pulse_amp01; // floats 40–41 (FBS Stage 1, D-153)
-///     float pulse_beat_index;           // float 42 (D-157 spatial punch mask)
-///     float pulse_regional_blend01;  // float 43 (D-158)
-///     float tonal_phase_fifths, tonal_phase_thirds, tonal_consonance, tonal_tension, harmonic_flux; // 44–48 (D-178)
-/// };
-/// ```
+/// **ORDER IS THE CONTRACT, and it is stated in exactly three places — none of them here.**
+/// This doc comment used to carry a fourth copy of the MSL struct; it had drifted to "48
+/// floats = 192 bytes" and listed fields only through 48, i.e. it was wrong by two
+/// increments and nothing caught it, because no gate reads prose. Removed at FTR.6 rather
+/// than re-synced. The authoritative declarations are:
+///
+/// - this Swift struct;
+/// - `PresetLoader+Preamble.swift` (runtime-compiled preset shaders);
+/// - `Renderer/Shaders/Common.metal` (engine-library shaders).
+///
+/// `CommonLayoutTest` parses the latter two and asserts they agree with each other AND with
+/// `MemoryLayout<FeatureVector>.size`, field name by field name. Append only, keep the
+/// stride a multiple of 16, and update all three in one commit.
+
 @frozen
 public struct FeatureVector: Sendable {
 
@@ -208,6 +193,16 @@ public struct FeatureVector: Sendable {
     /// DYN.2 float 52 — section-scale density (τ ≈ 10 s). See DYN1_CALIBRATION §DYN.2.
     public var spectralDensity, spectralDensitySlow, spectralSurge: Float
     public var spectralSectionRatio: Float
+    /// FTR.6 float 53 — gated melodic tip count, 0…12; one unit per note event. Rationale
+    /// and limits: `MelodicNoteGate`.
+    public var melodicTips: Float
+    // FTR.6 floats 54–56 — alignment padding; 53 floats is 212 bytes, not 16-byte
+    // aligned, and this struct is a GPU constant at `buffer(0)`. Reclaim before appending.
+    // swiftlint:disable identifier_name
+    public var _pad53: Float
+    public var _pad54: Float
+    public var _pad55: Float
+    // swiftlint:enable identifier_name
 
     public init(
         bass: Float = 0, mid: Float = 0, treble: Float = 0,
@@ -251,6 +246,8 @@ public struct FeatureVector: Sendable {
         self.tonalTension = 0; self.harmonicFlux = 0   // TONAL (D-178), set by TonalAnalyzer
         self.spectralDensity = 0; self.spectralDensitySlow = 0; self.spectralSurge = 0
         self.spectralSectionRatio = 0
+        self.melodicTips = 0   // FTR.6 — set per frame by MIRPipeline from MelodicNoteGate
+        self._pad53 = 0; self._pad54 = 0; self._pad55 = 0
     }
 
     /// All-zero feature vector.
