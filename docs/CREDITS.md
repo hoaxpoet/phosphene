@@ -117,27 +117,34 @@ No `.milk` file is redistributed in this repository (D-111 scope
 condition; Dragon Bloom's reference copy was removed at PUB.1 — its
 SHA-256 is retained in the sidecar as provenance).
 
-**Per-preset attribution (`inspired_by` sidecar block, D-111 as amended):**
+**Per-preset attribution (`inspired_by` sidecar block, D-111 as amended; schema
+normalised across all seven sidecars at MD.0 / D-215 §13.3):**
 
 ```json
 "inspired_by": {
-  "milkdrop_filename": "<original preset name>",
-  "original_artist": "<author from filename pattern, best-effort>",
-  "sha256": "<SHA-256 of the source .milk, when one was on disk>",
-  "source_form": "<noted when the source was a butterchurn built-in, not a .milk>",
-  "pack": "projectM-visualizer/presets-cream-of-the-crop"
+  "milkdrop_filename": "<source preset name as it appears in the gallery>",
+  "original_artist": "<best-effort from the filename pattern>",
+  "pack": "projectM-visualizer/presets-cream-of-the-crop",
+  "source_form": "<what was actually read — butterchurn built-in JSON | .milk>",
+  "sha256": "<hash of that artifact; omitted where none was taken, with source_form saying why>"
 }
 ```
 
-| Phosphene preset (`.metal` / `.json`) | Source preset | Original author (best-effort) |
-|---|---|---|
-| `Nacre` | `$$$ Royal - Mashup (431)` | $$$ Royal mashup series (multiple component authors) |
-| `Glaze` | `Flexi + stahlregen - jelly showoff parade` | Flexi, stahlregen |
-| `Floret` | `suksma - Rovastar - Sunflower Passion (Enlightment Mix)_Phat_edit + flexi und martin shaders - circumflex in character classes in regular expression` | suksma, Rovastar, Flexi, Martin |
-| `DragonBloom` | `$$$ Royal - Mashup (220)` | $$$ Royal mashup series (multiple component authors) |
-| `FataMorgana` | `martin [shadow harlequins shape code] - fata morgana` | Martin |
-| `Witchlight` | `martin - witchcraft reloaded` | Martin |
-| `Meniscus` | `Martin - QBikal - Surface Turbulence IIb` (butterchurn JSON conversion — no original `.milk` on disk) | Martin, QBikal |
+`sha256` is the hash of the source artifact **actually read**, and `source_form`
+names what that artifact was — the two fields are read together. Six of the
+seven were authored against a **butterchurn built-in JSON** rendered as a live
+oracle through `tools/milkdrop-render/`; only Dragon Bloom read a `.milk`.
+Where no hash was taken at authoring, `sha256` is omitted rather than invented.
+
+| Phosphene preset (`.metal` / `.json`) | Source preset | Original author (best-effort) | Source form | Certified |
+|---|---|---|---|---|
+| `DragonBloom` | `$$$ Royal - Mashup (220)` | $$$ Royal mashup series (multiple component authors) | `.milk` (hashed; copy removed at PUB.1) | ✅ |
+| `FataMorgana` | `martin [shadow harlequins shape code] - fata morgana` | Martin | butterchurn built-in JSON (no hash taken) | ✅ |
+| `Nacre` | `$$$ Royal - Mashup (431)` | $$$ Royal mashup series (multiple component authors) | butterchurn built-in JSON (no hash taken) | ✅ |
+| `Glaze` | `Flexi + stahlregen - jelly showoff parade` | Flexi, stahlregen | butterchurn built-in JSON (no hash taken) | ✅ |
+| `Floret` | `suksma - Rovastar - Sunflower Passion (Enlightment Mix)_Phat_edit + flexi und martin shaders - circumflex in character classes in regular expression` | suksma, Rovastar, Flexi, Martin | butterchurn built-in JSON (no hash taken) | ✅ |
+| `Meniscus` | `Martin - QBikal - Surface Turbulence IIb` | Martin, QBikal | butterchurn built-in JSON (hashed) | ✅ |
+| `Witchlight` | `martin - witchcraft reloaded` | Martin | butterchurn built-in JSON (hashed) | ✅ |
 
 **Reference-image attribution (`docs/VISUAL_REFERENCES/`).** The Witchlight
 reference set (WL.1) is eleven license-verified images from Wikimedia

@@ -5,6 +5,24 @@ Completed-increment narratives moved out of `ENGINEERING_PLAN.md` at RB.3 (2026-
 
 ## Recently Completed
 
+### Increment VL-PSY.6 — Volumetric Lithograph: per-cell variety (spatial repetition) ✅ (2026-07-25)
+
+**Done-when:** the spatial repetition Matt flagged after the full-length listen is broken without disturbing the kaleidoscope symmetry, confirmed by him on a before/after. Met.
+
+Positive Spotify-length M7 ("aligns with the music pretty well, good variation of the terrain") with one residual: "on the repetitive side." Pre-agreed at VL-PSY.5 that if it survived a full-length listen it was the real spatial tiling, not a short-clip artifact — it did. Cause: `pModMirror2` maps every cell to one fundamental domain, so each renders an identical mandala. Fix: the mirror cell index seeds a per-cell offset on the noise's THIRD axis (orthogonal to the folded x/z), so each cell samples a different slice — relief and colour differ between cells, symmetry within a cell is untouched. ★ **The reusable idea: the phase/third axis of a folded noise field is a free "which-variant" channel — audioPhase drifts it over time, the cell index drifts it over space, and neither touches the fold symmetry.** Warp 4→5.5 into the headroom as a second lever. Matt confirmed before/after. Motion gate clean, symmetry intact, perf 10.8 ms. Goldens regenerated.
+
+**Still open on VL:** cert (full-length M7 hold + rubric/route gates), and the crash (unreproduced since the 3.7-min session; needs an .ips if it recurs).
+
+### Increment FLY.14 — Fractal Fly-By RETIRED (BUG-071 closed wontfix; D-201) ✅ (2026-07-25)
+
+Matt's call after the FLY.13 live M7 ("deranged movement, very jittery, still passes through walls most of the time"). Retired after 14 rounds across two reframings (fall-in → fly-through).
+
+**Why — the evidence that ended it (session `2026-07-25T18-55-51Z`).** Built the metric I should have built in round 1: whole-frame temporal coherence, not the peripheral metrics (lateral jerk, mush %) that flattered the work for rounds. Result: the image changes **~13 % every single frame, uniformly** (not spiky), and frames two apart are *more* different than adjacent ones (ratio 1.12) — the geometry genuinely teleports, it is not an aliasing/reprojection artifact that AA could fix. Six *consecutive* rendered frames share almost no structure. **Root cause is the core mechanic:** a fast scale-zoom through a self-similar Mandelbox reveals entirely new fold structure every frame, so there is no shared structure for the eye or for MetalFX to track — it reads as boiling/teleporting. The three FLY.12/13 steering guarantees worked as measured (0 % lateral-jerk spikes, 0 % mush) but were fixing the wrong axis; incoherence was always the dominant defect. Making it coherent needs ~3–4× slower travel (the "monotonous tunnel, BORING" Matt already rejected) and still leaves the shimmer. Horsthuis-class coherence comes from offline accumulation we cannot afford at 7 ms/60 fps. A real ceiling, instrument-proven — not a tuning gap.
+
+**Removed:** `FractalFlyBy.metal` + `.json` (preset gone from the scan-discovered roster), `RayMarchPipeline+Corridor.swift` (FLY.12/13 corridor steering — FFB was its only consumer; D-097 no-dead-concept-kernel), `FractalFlyByBudgetProbeTests.swift`, the `presetSteer` SceneUniforms lane (restores the 240-byte D-187 contract — SceneUniformsTests had been RED since FLY.12, a byte-contract regression that merged because the gate runs never included it; now green), `docs/VISUAL_REFERENCES/fractal_fly_by/`, and the FFB rows in the ARCHITECTURE module map + golden/rubric tables. **Kept dormant (reusable, agreed with Matt):** the MetalFX temporal-AA capability (MFX.1) and the RMPERF.1 preamble optimization — general ray-march engine work, no longer FFB-specific.
+
+**Process lesson (durable):** measure motion coherence *before* touching a single tuning constant. A preset that cannot move coherently must be killed in a day, not a fortnight — the peripheral metrics that agree with the work are the trap.
+
 ### Increment VL-PSY.5 — Volumetric Lithograph: ratchet rotation + retire the second beat layer (BUG-075) ✅ (2026-07-24)
 
 **Done-when:** the downbeat motion reads as a coherent single accent, verified on Matt's real session. Met (pending his live confirmation of the felt character via the handed-over GIF).

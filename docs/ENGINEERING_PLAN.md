@@ -63,6 +63,9 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment MD.0 — Phase MD reconciled to the work that actually happened ✅ (2026-08-07)
+
+Docs + 8 JSON sidecars; no preset authored, no `.metal` opened, no Swift changed. `MILKDROP_STRATEGY.md` had not been touched since 2026-05-12 while seven Milkdrop-inspired presets shipped and certified past it, so MD.5's done-when instructed an author to create a family, a directory and a Settings toggle that D-123 deleted the day after the strategy landed. Filed as **D-215**: `MILKDROP_STRATEGY.md` §13 appended (§12 left intact), §Phase MD rewritten, MD.1 retired, amendment blocks on D-105/D-106/D-110/D-112/D-115, `inspired_by` normalised across all seven sidecars, D-120 residue stripped, D-122 trigger verdict recorded (trigger 4 fired at 27 % roster / 39 % certified, reviewed, outcome `proceed`). **Matt resolved both open decisions the same day and both landed here: the dead Milkdrop Settings toggle is deleted (app tests 407 → 404), and D-115 is C' (10 + 10) — three more uplifts to the D-114 first-release threshold.** Full detail in §Phase MD → Increment MD.0.
 ### Increment BUG051.1/.2 — m3u entry allow-list + canonicalization at the parser boundary ✅ (2026-08-07)
 
 Closes **BUG-051**, filed by CLEAN.2.4's GAP-10 threat model in June and the last unblocked,
@@ -315,23 +318,7 @@ Matt (session 2026-07-26T20-06-59Z, chain clean): "Session looks good. Proceed w
 `certified:false→true`, `rubric_profile:full`, VL added to `FidelityRubricTests.certifiedPresets`. VL is the catalog's **first certified terrain-flight / kaleidoscope preset** — the culmination of the VL-PSY.1→.6 rebuild (concept reset → kaleidoscopic folds → perf fix → ratchet motion → per-cell variety).
 
 ### Increment VL-PSY.6 — Volumetric Lithograph: per-cell variety (spatial repetition) ✅ (2026-07-25)
-
-**Done-when:** the spatial repetition Matt flagged after the full-length listen is broken without disturbing the kaleidoscope symmetry, confirmed by him on a before/after. Met.
-
-Positive Spotify-length M7 ("aligns with the music pretty well, good variation of the terrain") with one residual: "on the repetitive side." Pre-agreed at VL-PSY.5 that if it survived a full-length listen it was the real spatial tiling, not a short-clip artifact — it did. Cause: `pModMirror2` maps every cell to one fundamental domain, so each renders an identical mandala. Fix: the mirror cell index seeds a per-cell offset on the noise's THIRD axis (orthogonal to the folded x/z), so each cell samples a different slice — relief and colour differ between cells, symmetry within a cell is untouched. ★ **The reusable idea: the phase/third axis of a folded noise field is a free "which-variant" channel — audioPhase drifts it over time, the cell index drifts it over space, and neither touches the fold symmetry.** Warp 4→5.5 into the headroom as a second lever. Matt confirmed before/after. Motion gate clean, symmetry intact, perf 10.8 ms. Goldens regenerated.
-
-**Still open on VL:** cert (full-length M7 hold + rubric/route gates), and the crash (unreproduced since the 3.7-min session; needs an .ips if it recurs).
-
 ### Increment FLY.14 — Fractal Fly-By RETIRED (BUG-071 closed wontfix; D-201) ✅ (2026-07-25)
-
-Matt's call after the FLY.13 live M7 ("deranged movement, very jittery, still passes through walls most of the time"). Retired after 14 rounds across two reframings (fall-in → fly-through).
-
-**Why — the evidence that ended it (session `2026-07-25T18-55-51Z`).** Built the metric I should have built in round 1: whole-frame temporal coherence, not the peripheral metrics (lateral jerk, mush %) that flattered the work for rounds. Result: the image changes **~13 % every single frame, uniformly** (not spiky), and frames two apart are *more* different than adjacent ones (ratio 1.12) — the geometry genuinely teleports, it is not an aliasing/reprojection artifact that AA could fix. Six *consecutive* rendered frames share almost no structure. **Root cause is the core mechanic:** a fast scale-zoom through a self-similar Mandelbox reveals entirely new fold structure every frame, so there is no shared structure for the eye or for MetalFX to track — it reads as boiling/teleporting. The three FLY.12/13 steering guarantees worked as measured (0 % lateral-jerk spikes, 0 % mush) but were fixing the wrong axis; incoherence was always the dominant defect. Making it coherent needs ~3–4× slower travel (the "monotonous tunnel, BORING" Matt already rejected) and still leaves the shimmer. Horsthuis-class coherence comes from offline accumulation we cannot afford at 7 ms/60 fps. A real ceiling, instrument-proven — not a tuning gap.
-
-**Removed:** `FractalFlyBy.metal` + `.json` (preset gone from the scan-discovered roster), `RayMarchPipeline+Corridor.swift` (FLY.12/13 corridor steering — FFB was its only consumer; D-097 no-dead-concept-kernel), `FractalFlyByBudgetProbeTests.swift`, the `presetSteer` SceneUniforms lane (restores the 240-byte D-187 contract — SceneUniformsTests had been RED since FLY.12, a byte-contract regression that merged because the gate runs never included it; now green), `docs/VISUAL_REFERENCES/fractal_fly_by/`, and the FFB rows in the ARCHITECTURE module map + golden/rubric tables. **Kept dormant (reusable, agreed with Matt):** the MetalFX temporal-AA capability (MFX.1) and the RMPERF.1 preamble optimization — general ray-march engine work, no longer FFB-specific.
-
-**Process lesson (durable):** measure motion coherence *before* touching a single tuning constant. A preset that cannot move coherently must be killed in a day, not a fortnight — the peripheral metrics that agree with the work are the trap.
-
 ### Increment VL-PSY.5 — Volumetric Lithograph: ratchet rotation + retire the second beat layer (BUG-075) ✅ (2026-07-24)
 ### Increment VL-PSY.3 — Volumetric Lithograph motion rewrite: rotate the tube (BUG-074) ✅ (2026-07-24)
 ### Increment TESTFLAKE.2 — BUG-032 generation-guard test: deterministic orphan wait ✅ (2026-07-24)
@@ -1723,25 +1710,71 @@ the tips now *read* as one-per-note is L4 and only his eye can settle it. Live r
 
 ## Phase MD — Milkdrop-inspired uplift work stream
 
-**Operative strategy:** [`docs/MILKDROP_STRATEGY.md`](MILKDROP_STRATEGY.md) §12 (inspired-by reframe addendum, landed 2026-05-12). §§1–11 of that doc remain in tree as the historical record of the derivative-posture framing that preceded the reframe; §12 is the operative record going forward. **Decisions D-103 through D-118 are signed off**; the addendum amended six base decisions in place (D-103 / D-105 / D-106 / D-110 / D-111 / D-112) and filed six new ones (D-113 — posture reframe; D-114 — 20-preset release bundle; D-115 — release-bundle composition (Matt's pick pending); D-116 — substantial-similarity discipline rule; D-117 — catalog-ratio framing (deferred); D-118 — read-only analysis tool scope). Empirical basis for both the base strategy and the addendum: [`docs/diagnostics/MD-strategy-pre-audit-2026-05-12.md`](diagnostics/MD-strategy-pre-audit-2026-05-12.md).
+**Operative strategy:** [`docs/MILKDROP_STRATEGY.md`](MILKDROP_STRATEGY.md) **§13** (reconciliation to practice, MD.0 / D-215, 2026-08-07). §13 supersedes §12 (the inspired-by reframe addendum, 2026-05-12) where the two conflict, on the same terms §12 supersedes §§1–11. Read **§13 first** — §12 specified a taxonomy, a filesystem layout, a source form and a candidate list that the seven shipped uplifts each overtook, and an author following §12 today would build three things D-123 deleted.
+
+**Decisions D-103 through D-123 are signed off, plus D-215.** The §12 addendum amended six base decisions (D-103 / D-105 / D-106 / D-110 / D-111 / D-112) and filed six new (D-113 posture reframe; D-114 20-preset release bundle; D-115 release-bundle composition — **still open, Matt's call, since 2026-05-12**; D-116 substantial-similarity discipline rule; D-117 catalog-ratio framing; D-118 read-only analysis tool scope). §12.10 then filed four more (D-119 brand identity; D-120 property taxonomy — **reverted by D-123**; D-121 visual-divergence rule; D-122 kill-switch triggers). **D-123** (2026-05-13) fixed `PresetCategory` at the 11 cream-of-crop cases and superseded D-120. **D-215** (2026-08-07) reconciled the strategy to what the work actually did, and amended D-105 / D-106 / D-110 / D-112 / D-115. Empirical basis for the base strategy and the §12 addendum: [`docs/diagnostics/MD-strategy-pre-audit-2026-05-12.md`](diagnostics/MD-strategy-pre-audit-2026-05-12.md).
+
+**What an uplift actually is, as of 2026-08-07** (D-215 / `MILKDROP_STRATEGY.md` §13) — the four things §12 got wrong, stated positively so no author has to reconstruct them:
+
+- **Family:** one of the 11 cream-of-crop `PresetCategory` cases (D-123). There is **no** `milkdrop_inspired` family and **no** `.milkdropInspired` enum case. The seven shipped uplifts file as `hypnotic` ×6, `particles` ×1.
+- **Location:** flat in `PhospheneEngine/Sources/Presets/Shaders/`, named for the Phosphene preset (`Witchlight.metal`). There is **no** `Shaders/Milkdrop/` directory and no `<theme>_<source_name>` convention.
+- **Source:** a **butterchurn built-in** rendered through `tools/milkdrop-render/`, not a `.milk`. Candidates come from [`docs/presets/MILKDROP_UPLIFT_PICKS.md`](presets/MILKDROP_UPLIFT_PICKS.md), not D-112's nine.
+- **Origin marker:** the `inspired_by` sidecar block to the §13.3 union schema — documentation-only, not decoded by `PresetDescriptor`.
 
 **Why this phase exists (revised under inspired-by):** `docs/MILKDROP_ARCHITECTURE.md` informed Phosphene's own authoring patterns (MV-0 through MV-3); Phase MD turns the cream-of-crop pack into a long-term *inspiration source* for new Phosphene presets — each uplift is a hand-authored, Phosphene-native creation that honors a source Milkdrop preset's concept and aesthetic. The vehicle for that work is the `mv_warp` render pass (D-027) plus the rest of Phosphene's preset infrastructure (V.1–V.4 utilities, ray-march, MV-3 capabilities); Milkdrop-inspired presets become additional consumers alongside Gossamer / Volumetric Lithograph. Initial planning target is **~200 uplifts** (multi-year work stream, not a finite phase); the **20-preset first-release bundle (D-114)** is the near-term milestone.
 
-**The 20-preset first-release bundle (D-114) is the load-bearing near-term milestone.** Phosphene's first public release ships when the catalog reaches 20 M7-certified presets — a mix of Phosphene-native + Milkdrop-inspired per D-115 (composition pending Matt sign-off; default working assumption: 10 + 10). Current state: 1 certified (Lumen Mosaic) + ~14 production-but-not-all-certified Phosphene-native; gap to 20 is the work this Phase MD section (combined with Phase G-uplift + Phase AV) scopes.
+**The 20-preset first-release bundle (D-114) is the load-bearing near-term milestone.** Phosphene's first public release ships when the catalog reaches 20 M7-certified presets — a mix of Phosphene-native + Milkdrop-inspired per D-115.
+
+**Measured state 2026-08-07 (MD.0):** 28 sidecars − 2 diagnostics = **26 production presets, 18 certified**, of which **7 are inspired-by (all certified)** and 11 Phosphene-native.
+
+**Composition RESOLVED (Matt 2026-08-07): D-115 = C' — 10 Phosphene-native + 10 Milkdrop-inspired.** Open since 2026-05-12; A' (7+13) and B' (5+15) superseded. **The gap to first release is three more Milkdrop-inspired uplifts**, and no further native cert work beyond the ten already available (A' would have needed six). D-119's ≥ 50 % inspired-by is thereby a **steady-state target, not a first-release gate** — A' was priced on §12.1's "~2–3 days per preset," which the record falsifies (Witchlight ten increments, Meniscus eleven). See the D-115 amendment block and D-215.
+
+### Phase MD — D-122 trigger assessment (MD.0, 2026-08-07)
+
+D-122 defines four halt-and-re-evaluate triggers. Assessed against the measured state above:
+
+| # | Trigger | State | Verdict |
+|---|---|---|---|
+| 1 | Milestone — health check after the 10th inspired-by preset | At **7** | **Not fired** |
+| 2 | Takedown signal — notice or substantive copyright complaint | None on record | **Not fired** |
+| 3 | Discipline-rule failure — M7 rejects an uplift for substantive similarity | Never occurred | **Not fired** |
+| 4 | Catalog-ratio drift — inspired-by share below ~50 % before the second bundle | **27 % roster / 39 % certified** | **FIRED** (on the letter) |
+
+**Trigger 3 — record the direction it did not fire in.** No M7 has ever rejected an uplift for being too *close* to its source. Witchlight's 2026-08-03 M7 rejected it for being too *unlike* the source, and it went on to certify at WL.CERT. Across seven uplifts the observed failure mode is **under-fidelity, not over-fidelity** — worth knowing before anyone tightens D-116.
+
+**Trigger 4 fired, was reviewed, outcome `proceed`. Phase MD is not halted.** Two readings were on the table: that the trigger reads a transient (it is written against "before the *second* release bundle," and the first has not shipped — the catalog grew on both sides at once, so a sub-50 % share this early is the shape of a catalog not yet *composed* into a release), or that the gap is real (D-119 committed to majority-inspired-by and three months moved the share to 27 %). Both turned on the same question as D-115, so MD.0 routed them to Matt together.
+
+**Matt resolved both 2026-08-07 by picking C' (10+10):** D-119's ≥ 50 % is a **steady-state target, not a first-release gate** — which is precisely the framing under which the current share is a transient. Trigger 4 is recorded fired-and-reviewed per D-122's "explicit review session with documented outcome." **Trigger 1 is the next one due** — the milestone health check after the 10th inspired-by preset, which under C' is also the first-release threshold, so the two land together. Full assessment in **D-215**.
 
 Runs in parallel with Phase V.7+, Phase AV, Phase CC, Phase G-uplift. Cadence after first release: separate release-management decision (not in this phase's scope).
 
-### Increment MD.1 — `.milk` grammar audit (read-only authoring aid)
+### Increment MD.0 — Reconcile Phase MD to the work that actually happened ✅ (2026-08-07)
 
-**Scope (revised per `MILKDROP_STRATEGY.md` §12 / D-110 amendment / D-118):** New doc `docs/MILKDROP_GRAMMAR.md` cataloguing the `.milk` expression sub-languages **and** the HLSL `warp_1=` / `comp_1=` surface used across the `presets-cream-of-the-crop` pack. **Reframed as a read-only authoring aid** under the inspired-by reframe — the doc helps an inspired-by author opening a source `.milk` for the first time look up unfamiliar variables / functions / HLSL features. It does **not** drive a transpiler (no transpiler ships per D-110 amendment); HLSL is no longer excluded (every preset in the pack is a viable inspiration source). The audit commits no licensed content (cites the pack as a corpus only).
+**Docs + 8 JSON sidecars. No preset authored, no `.metal` opened, no Swift changed.** Filed as **D-215**.
 
-**Done when:**
-- Doc enumerates all variables (bass/mid/treb/time/q1–q32/wave_* / mv_* / ob_* / ib_* etc.) used in the expression sub-languages, with frequency counts over the full 9,795-preset corpus.
-- Top-20 built-in functions (sigmoid, clamp, above, below, if_then_else etc.) have Phosphene-side authoring-equivalent notes (reference for inspired-by authors, not transpiler emission spec).
-- HLSL surface section (first-class, not appendix) catalogs the `sampler_*`, `GetPixel`, `GetBlur1/2`, `tex2D` etc. surface present in the 81% of pack presets that ship HLSL; each entry notes the Phosphene-side authoring equivalent (a Phosphene primitive an inspired-by author can reach for) — **never** an automated translation spec (D-110 amendment + D-116 discipline rule).
-- Frequency + HLSL-presence summary reports descriptive statistics over the full pack. No transpiler coverage gate.
+`MILKDROP_STRATEGY.md` had five commits, all 2026-05-12, and none since; seven Milkdrop-inspired presets shipped and certified after it, each by a process the doc does not describe. **The done-when criteria of a live increment (MD.5) instructed an author to create a family, a directory and a Settings toggle that D-123 deleted the day after the strategy landed.**
 
-**Verify:** Manual review against 10 randomly-sampled preset files spanning themes / sizes / HLSL presence.
+**Landed:** `MILKDROP_STRATEGY.md` **§13** (appended, not rewritten in place — §12 stays as the reframe's record); this §Phase MD section rewritten against D-123; **MD.1 retired**; D-215 filed with amendment blocks on D-105 / D-106 / D-110 / D-112 / D-115; the `inspired_by` schema normalised across all seven sidecars + the CREDITS table; the D-120 residue stripped from `Meniscus.json` + `CymaticResonance.json`; the D-122 trigger verdict block above.
+
+**Two findings the brief did not have.** (1) The D-120 residue is a **recurrence, not a leftover** — the CA.4 audit's 2026-05-20 grep was correct, and both sidecars were created months later (CR.1 2026-07-22, MEN.2a 2026-08-03) by authors following seven design docs that still prescribed the reverted fields. All seven now carry a supersession note; nothing rejects an unknown sidecar key at decode, so it can recur again. (2) `DragonBloom.json` carried a bare `sha256` with no `source_form`, leaving what was hashed ambiguous — it was a real `.milk`, now recorded.
+
+**Matt's two calls, same day, both landed in this increment.** **(1) Delete the Milkdrop Settings toggle** — the QR.4 / D-091 "Coming in a future update" stub, its store property, persistence key, view-model flag, `#if DEBUG` view row, two strings and three tests are removed (app tests 407 → 404). It could never have been wired honestly through `family`: `hypnotic` + `particles` also hold seven Phosphene-native presets (Aurora Veil, Plasma, Filigree, Mitosis, Cytokinesis, Murmuration, Nebula — five certified). **(2) D-115 = C' (10 + 10)**, resolved after twelve weeks; three more uplifts to the D-114 threshold, and D-122 trigger 4 closes `proceed`.
+
+**Deliberately not done:** `inspired_by` decoding on `PresetDescriptor` and unknown-key rejection at decode. The same missing mechanism explains both why the toggle could not be wired per-preset and why the D-120 fields re-entered a shipped sidecar unnoticed. A future increment that adds the decoding should carry the unknown-key gate with it.
+
+---
+
+### Increment MD.1 — `.milk` grammar audit — **RETIRED** (MD.0 / D-215, 2026-08-07)
+
+**Status:** Retired. `docs/MILKDROP_GRAMMAR.md` was never authored and will not be. Never started.
+
+**Original scope:** a variable / function / HLSL audit across the 9,795-preset cream-of-crop pack, published as a read-only reference for an inspired-by author opening a source `.milk` for the first time and needing to look up an unfamiliar variable, built-in, or HLSL feature.
+
+**Why retired.** The consumer does not exist. Under D-215 §13.3, **no author opens a `.milk` at all** — the runtime `.milk` converter renders directory presets poorly, so the render gallery is built from butterchurn built-ins via `tools/milkdrop-render/`, and six of the seven shipped uplifts read a butterchurn built-in JSON as their source artifact (the seventh, Dragon Bloom, read a `.milk` that was removed at PUB.1). A reference for a file format nobody reads is a document with no reader.
+
+Re-scoping the audit to the butterchurn-JSON corpus — same purpose, right corpus — was the obvious alternative and is also rejected. Seven certified uplifts are enough evidence about what actually gates authoring, and it is not syntax lookup: it is reference curation and the concept bar, which is where the WL.* and MEN.* increments spent their rounds. Re-scoping would spend a session producing a document with no demonstrated demand — which is the **D-118 opportunity-cost argument**, and D-118 was right; MD.0 applies it to D-118's own sibling increment. If a future author needs a slice of the corpus surface, they can generate exactly that slice in the session that needs it, which is cheaper than maintaining a standing audit against a 9,795-file corpus.
+
+**Nothing carries forward.** No doc, no tooling, no follow-up increment.
 
 ---
 
@@ -1757,34 +1790,52 @@ Under the inspired-by reframe, source `.milk` files become reference material th
 
 ---
 
-### Increment MD.5 — First 10 Milkdrop-inspired uplifts (initial release-bundle batch)
+### Increment MD.5 — First 10 Milkdrop-inspired uplifts (initial release-bundle batch) — **7 / 10 SHIPPED**
 
-**Scope (revised per `MILKDROP_STRATEGY.md` §12 / D-103 amendment / D-105 amendment / D-106 amendment / D-111 amendment / D-112 amendment / D-116):** Author 10 Milkdrop-inspired Phosphene presets, hand-crafted from scratch against Phosphene's primitives, each honoring a source `.milk` preset's concept and aesthetic per the substantial-similarity discipline rule (`SHADER_CRAFT.md §12.6` / D-116). All 10 ship under a single family — `milkdrop_inspired` — per D-105 amendment. Settings toggle is `phosphene.settings.visuals.milkdrop.inspired` per D-106 amendment. Each `.metal` / `.json` carries an `inspired_by` provenance block per D-111 amendment. Source-preset candidates draw from the D-112 list (HLSL-free constraint dissolves per D-112 amendment; substitutions encouraged at authoring). **This batch contributes to the 20-preset first-release bundle (D-114).**
+**Status (MD.0, 2026-08-07): 7 of 10 shipped and certified.** This increment reads as unstarted in its original form; it is not. The seven, in ship order:
 
-**Done when:**
-- 10 new presets in `PhospheneEngine/Sources/Presets/Shaders/Milkdrop/` with JSON sidecars. Naming: `<theme>_<source_name>.{metal,json}` per D-105 amendment.
-- Each preset's JSON sidecar declares `family: "milkdrop_inspired"`, the appropriate `rubric_profile` (per preset — full or lightweight per author + M7 judgment), and `inspired_by: { milkdrop_filename, original_artist, pack, sha256 }`.
-- Each preset passes M7 review against the substantial-similarity discipline rule (`SHADER_CRAFT.md §12.6` / D-116) — no source equations copy-pasted, no source shader logic ported line-for-line, no `.milk` content redistributed.
-- Each has a golden-session regression entry and Increment 5.2 acceptance test.
-- Orchestrator metadata (`visual_density`, `motion_intensity`, `fatigue_risk`, etc.) hand-authored per preset for planning integration.
-- `SettingsStore` + `VisualsSettingsSection` gain the single `phosphene.settings.visuals.milkdrop.inspired` toggle per D-106 amendment; defaults to `true` once the first preset ships.
-- `docs/CREDITS.md` "Milkdrop-inspired preset attribution" section enumerates all 10 source-preset references per D-111 amendment.
+| Preset | Family | Certified |
+|---|---|---|
+| Dragon Bloom | `hypnotic` | ✅ |
+| Fata Morgana | `hypnotic` | ✅ |
+| Nacre | `hypnotic` | ✅ (NACRE.4 / D-171) |
+| Glaze | `hypnotic` | ✅ (GLAZE.8 / D-173) |
+| Floret | `hypnotic` | ✅ (FLORET.4) |
+| Meniscus | `hypnotic` | ✅ (MEN.5 / D-214) |
+| Witchlight | `particles` | ✅ (WL.CERT, `e264cbb5`, 2026-08-07) |
 
-**Verify:** `swift test --filter PresetAcceptanceTests` + per-preset M7 review against `SHADER_CRAFT.md §12.6` checklist.
+**Three remain** to close the 10-preset target. Candidates: [`docs/presets/MILKDROP_UPLIFT_PICKS.md`](presets/MILKDROP_UPLIFT_PICKS.md).
+
+**Scope (rewritten at MD.0 / D-215; supersedes the D-105 / D-106 / D-112-amendment scope):** Author 10 Milkdrop-inspired Phosphene presets, hand-crafted from scratch against Phosphene's primitives, each honoring a source preset's concept and aesthetic per the substantial-similarity discipline rule (`SHADER_CRAFT.md §12.6` / D-116 / D-121). Source is a **butterchurn built-in** rendered through `tools/milkdrop-render/`, picked by Matt from the rendered gallery. **This batch contributes to the 20-preset first-release bundle (D-114).**
+
+**Done when** — what a real uplift ships, per the seven that did:
+- Flat `PhospheneEngine/Sources/Presets/Shaders/<Preset>.{metal,json}`, named for the Phosphene preset. **No `Shaders/Milkdrop/` subdirectory; no `<theme>_<source_name>` naming** (D-215 §13.2).
+- Sidecar declares one of the 11 cream-of-crop `PresetCategory` families (D-123) — **not** `milkdrop_inspired`, which does not exist — plus the appropriate `rubric_profile` (full or lightweight per author + M7 judgment) and the orchestrator metadata (`visual_density`, `motion_intensity`, `fatigue_risk`, …).
+- An `inspired_by` block to the D-215 §13.3 union schema: `milkdrop_filename`, `original_artist`, `pack`, `source_form`, and `sha256` of the artifact actually read (omitted where none was taken, with `source_form` saying why).
+- An `audio_routes` manifest that is **green under `RouteCoverageTests`** (QG.1 / D-180) — every declared route measurably alive on real music.
+- A **measured flash budget** against the D-157 bar, recorded in the closeout.
+- A golden-session regression entry and an Increment 5.2 acceptance test.
+- **M7 plus the mandatory D-121 side-by-side** before `certified: true` — the preset and the source oracle rendered on a shared track, with Matt's one-paragraph divergence rationale naming which of D-121's four axes diverges.
+- `docs/CREDITS.md` §"Milkdrop-inspired preset attribution" extended with the source-preset reference.
+
+**Verify:** `swift test --filter PresetAcceptanceTests` + `--filter RouteCoverageTests` + per-preset M7 review against the `SHADER_CRAFT.md §12.6` checklist.
 
 ---
 
 ### Increment MD.6 — Ongoing Milkdrop-inspired uplift batches
 
-**Scope (revised per `MILKDROP_STRATEGY.md` §12 / D-103 amendment):** Continued Milkdrop-inspired uplift authoring beyond MD.5's initial batch. **No tier distinction** under the inspired-by reframe (D-103 amendment retired the Classic / Evolved / Hybrid split); every uplift is a `milkdrop_inspired` preset hand-authored against the same discipline rule (D-116). Stem routing, beat anticipation, mood coupling, section awareness, ray-march composition — all per-preset authoring choices, not tier-mandated. Batch size and cadence are release-management decisions (separate from this phase scope).
+**Status: MD.6 is the active increment.** The WL.* (Witchlight) and MEN.* (Meniscus) increment bodies below are MD.6 uplifts — that is where the per-increment record of how this work actually goes lives, and it is worth reading before starting the next one. Both certified: Meniscus at MEN.5 / D-214, Witchlight at WL.CERT (`e264cbb5`, 2026-08-07).
 
-**Done when:**
-- Continued growth of `PhospheneEngine/Sources/Presets/Shaders/Milkdrop/` under the inspired-by framing.
-- Each uplift carries `family: "milkdrop_inspired"` per D-105 amendment + `inspired_by` provenance per D-111 amendment + passes M7 review against the D-116 discipline rule.
-- `docs/CREDITS.md` extended with each new source-preset reference per D-111 amendment.
-- Catalog growth tracked against the long-term ~200-uplift target (`MILKDROP_STRATEGY.md` §12.1). Steady-state catalog ratio question deferred to D-117 trigger.
+**Scope (rewritten at MD.0 / D-215; supersedes the D-105-amendment scope):** Continued Milkdrop-inspired uplift authoring beyond MD.5's initial batch. **No tier distinction** (the D-103 amendment retired the Classic / Evolved / Hybrid split); every uplift is hand-authored against the same discipline rule (D-116 / D-121). Stem routing, beat anticipation, mood coupling, ray-march composition — all per-preset authoring choices, not tier-mandated. Batch size and cadence are release-management decisions (separate from this phase scope).
 
-**Carry-forward:** MD.6 is the long-tail work stream. The 20-preset first-release bundle (D-114) is the first milestone; subsequent bundles ship at the cadence set by release planning.
+**Done when** — per uplift, identical to MD.5's done-when above:
+- Flat `Shaders/<Preset>.{metal,json}`, named for the Phosphene preset. **No `Shaders/Milkdrop/` directory.**
+- A cream-of-crop `PresetCategory` family (D-123) — **not** `milkdrop_inspired` — plus an `inspired_by` block to the D-215 §13.3 schema.
+- `audio_routes` green under `RouteCoverageTests`, a measured flash budget, a golden entry.
+- M7 plus the mandatory D-121 side-by-side before `certified: true`.
+- `docs/CREDITS.md` §"Milkdrop-inspired preset attribution" extended with the new source reference.
+
+**Carry-forward:** MD.6 is the long-tail work stream against the ~200-uplift target (`MILKDROP_STRATEGY.md` §12.1). The 20-preset first-release bundle (D-114) is the first milestone; subsequent bundles ship at the cadence set by release planning. Catalog-ratio drift is watched by the **D-122 trigger assessment** in this section's header — trigger 4 fired at MD.0 and is open with Matt alongside D-115.
 
 **Verify:** `swift test --filter PresetAcceptanceTests` per uplift.
 
@@ -2259,7 +2310,7 @@ Circular spread rather than min/max because hue **wraps**: a trail spanning 0.95
 
 ### Increment MD.7 — Ray-march-composing inspired-by uplifts (formerly Hybrid tier)
 
-**Scope (revised per `MILKDROP_STRATEGY.md` §12 / D-103 amendment / D-107):** Inspired-by uplifts that compose `mv_warp` + `ray_march` against a static camera (D-029). **Not a tier** — these are `milkdrop_inspired` presets that happen to use the ray-march backdrop primitive; authoring choice, not classification. The MD.7.0 spike (single-preset proof of the `mv_warp` + `ray_march` composition) lands as one such uplift; subsequent ray-march-composing uplifts batch into the MD.6 work stream. The architectural composition has only Volumetric Lithograph as prior production proof (and VL's `mv_warp` plays against a ray-march scene that is not itself feedback-warped), so the spike is still a high-value increment under inspired-by.
+**Scope (revised per `MILKDROP_STRATEGY.md` §12 / D-103 amendment / D-107):** Inspired-by uplifts that compose `mv_warp` + `ray_march` against a static camera (D-029). **Not a tier** — these are inspired-by presets that happen to use the ray-march backdrop primitive; authoring choice, not classification. (They file into a cream-of-crop `PresetCategory` like every other preset — there is no `milkdrop_inspired` family, per D-123 / D-215 §13.1.) The MD.7.0 spike (single-preset proof of the `mv_warp` + `ray_march` composition) lands as one such uplift; subsequent ray-march-composing uplifts batch into the MD.6 work stream. The architectural composition has only Volumetric Lithograph as prior production proof (and VL's `mv_warp` plays against a ray-march scene that is not itself feedback-warped), so the spike is still a high-value increment under inspired-by.
 
 **Done when:**
 - The MD.7.0 spike ships: 1 inspired-by preset composed of `["ray_march", "mv_warp", "post_process"]` renders correctly without obscuring either layer. Recommended source-preset inspiration: Geiss *3D-Luz* (D-107 pre-approved starter).

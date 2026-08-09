@@ -663,9 +663,8 @@ All user-facing strings live in `Localizable.strings` (even though v1 is English
 - **Device tier** — Auto (default) / Force M1/M2 (Tier 1) / Force M3+ (Tier 2). Override for testing or deliberate quality trade-off.
 - **Quality ceiling** — Auto / Performance (disables SSGI, reduces mesh density) / Balanced (default) / Ultra (ignores frame-budget governor; for recording/capture)
 - **Output display** — picker listing all connected displays. Selecting moves Phosphene there. (§7.9 Mode A)
-- **Include Milkdrop-style presets** — On (default, once Phase MD ships) / Off. Switches the orchestrator catalog.
 - **Reduced motion** — Matches system (default) / Always on / Always off
-- **Preset family blocklist** — multi-select; excludes families the user doesn't enjoy
+- **Preset family blocklist** — multi-select; excludes families the user doesn't enjoy. This is the only catalog-narrowing control. There is deliberately **no "Include Milkdrop presets" switch** — Milkdrop-inspired presets are simply Phosphene presets (D-119 / D-215 §13.5, Matt 2026-08-07); the dead "Coming in a future update" row was removed at MD.0.
 - **Show live-adaptation toasts** — Off (default) / On. Brief Curator-only acknowledgments on `+` / `-` / `⌘R` (per §7.4)
 - **Adaptive learning from feedback** — Off (default, post-v1) / On. Uses nudge history to tune weights.
 

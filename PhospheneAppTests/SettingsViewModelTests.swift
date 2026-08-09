@@ -61,12 +61,6 @@ struct SettingsViewModelTests {
         #expect(vm.about.gpuFamily == "Apple M2")
     }
 
-    @Test func includeMilkdropPresetsDisabled_flagIsTrue_untilPhaseMD() {
-        let (vm, _) = makeVM()
-        // Must remain true until Phase MD ships. This test is the enforcement gate.
-        #expect(vm.includeMilkdropPresetsDisabled == true)
-    }
-
     @Test func debugInfo_containsSystemInfo_noAudioData() {
         let (vm, _) = makeVM()
         let info = vm.about.debugInfo
