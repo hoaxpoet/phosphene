@@ -63,6 +63,18 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment QG.6 — The GPU-contract gate could not fail to find its own sources ✅ (2026-08-09)
+
+`CommonLayoutTest`'s MSL parity check — the gate whose own doc comment says it exists because a broken buffer(0) contract shipped to `main` — printed `"MSL sources not reachable — skipping"` and **returned green** whenever either declaration site was unreadable. A wrong `repoRoot` was therefore indistinguishable from a pass: the same silent-success shape the gate exists to prevent, one level up.
+
+**Two defects, one cause.** FTR.6 had just fixed `repoRoot` from a name search (walking up to a directory literally named `phosphene`, which from a worktree at `phosphene/.claude/worktrees/<name>/` sails past onto the PRIMARY checkout) to a fixed component count. That fixes worktrees and re-breaks the moment the file moves — and either way the skip swallowed the evidence.
+
+**Fix:** ascend to the nearest ancestor containing `PhospheneEngine/Package.swift`. Self-validating — a worktree root matches before the primary comes into range — and the result is either provably the enclosing checkout or `nil`. `nil` now means exactly one thing, "not a source checkout", which is the only legitimate skip; past that point both files are `try #require`d with a diagnostic naming the path and stating that an unverified GPU contract is never a pass. A new assertion pins the FTR.6 bug directly: the resolved root must contain `#filePath`.
+
+**Both paths exercised, not assumed.** Normal run 2/2 green. With `Common.metal` moved aside, the gate **fails** (it previously passed) with `Common.metal unreadable at … This is a source checkout … so the GPU contract is unverified — never a pass`, and the message confirms the root resolved to the worktree rather than the primary. File restored byte-identical.
+
+**Left alone deliberately:** the print-and-skip pattern in `DocIntegrityTests` and `DocsExampleCompileTests`. Those gate on an explicit `docsPresent`-style predicate first — "a MISSING doc in a real checkout is itself a failure, so distinguish" — which is the convention this change brings `CommonLayoutTest` into line with, not a defect to remove.
+
 ### Increment MD.0 — Phase MD reconciled to the work that actually happened ✅ (2026-08-07)
 
 Docs + 8 JSON sidecars; no preset authored, no `.metal` opened, no Swift changed. `MILKDROP_STRATEGY.md` had not been touched since 2026-05-12 while seven Milkdrop-inspired presets shipped and certified past it, so MD.5's done-when instructed an author to create a family, a directory and a Settings toggle that D-123 deleted the day after the strategy landed. Filed as **D-215**: `MILKDROP_STRATEGY.md` §13 appended (§12 left intact), §Phase MD rewritten, MD.1 retired, amendment blocks on D-105/D-106/D-110/D-112/D-115, `inspired_by` normalised across all seven sidecars, D-120 residue stripped, D-122 trigger verdict recorded (trigger 4 fired at 27 % roster / 39 % certified, reviewed, outcome `proceed`). **Matt resolved both open decisions the same day and both landed here: the dead Milkdrop Settings toggle is deleted (app tests 407 → 404), and D-115 is C' (10 + 10) — three more uplifts to the D-114 first-release threshold.** Full detail in §Phase MD → Increment MD.0.
