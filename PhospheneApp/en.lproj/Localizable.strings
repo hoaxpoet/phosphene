@@ -308,8 +308,6 @@
 
 // Visuals — presets
 "settings.visuals.presets.title"             = "Presets";
-"settings.visuals.milkdrop.label"            = "Include Milkdrop presets";
-"settings.visuals.milkdrop.coming_soon"      = "Coming in a future update.";
 "settings.visuals.reduced_motion.label"       = "Reduced motion";
 "settings.visuals.reduced_motion.match_system" = "Match system";
 "settings.visuals.reduced_motion.always_on"   = "Always on";

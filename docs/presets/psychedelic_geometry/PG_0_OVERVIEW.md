@@ -112,6 +112,9 @@ Every preset ships a `<Name>.json` sidecar (schema: `SHADER_CRAFT.md §17`). Com
 }
 ```
 
+> **⚠ Superseded (D-123, 2026-05-13; residue stripped at MD.0 / D-215, 2026-08-07).** `concept_tags` and `motion_paradigm` were reverted the day after D-120 filed them and are **not part of the sidecar schema**. `PresetDescriptor` does not decode them and the orchestrator does not read them; `family` (one of the 11 cream-of-crop `PresetCategory` cases) is the only taxonomy field. Do not add them to a new sidecar — this document is the vector by which they were re-added to a shipped preset after the revert.
+
+
 Notes:
 - **Provenance = Phosphene-native.** These are original designs, not ports, so **no `inspired_by` block** and the substantial-similarity discipline (D-116/D-121) does not apply. They contribute to the Phosphene-native side of the catalog (D-119 brand identity keeps a distinctive native minority; psychedelic geometry is squarely in that wheelhouse). If Matt would rather frame any of them as `milkdrop_inspired` (e.g. Droste ↔ EvilJim "Travelling backwards in a Tunnel of Light"), that flips `family`, adds `inspired_by`, and imposes the D-116/D-121 side-by-side divergence check — flagged per-preset where relevant.
 - **`concept_tags` / `motion_paradigm` (D-120).** Included on every sidecar so the orchestrator's concept-repeat and paradigm-repeat diversity scheduling works. Confirm the field is still live in the sidecar schema at implementation time (the taxonomy has moved between docs); if the schema has dropped it, omit and note it.

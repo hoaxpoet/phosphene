@@ -58,11 +58,6 @@ final class SettingsViewModel: ObservableObject {
 
     let about: AboutSectionData
 
-    // MARK: - Disabled-state flags (dormant features)
-
-    /// True until Phase MD (Milkdrop ingestion) ships. UI shows the toggle but disables it.
-    let includeMilkdropPresetsDisabled: Bool = true
-
     // MARK: - Init
 
     init(store: SettingsStore, about: AboutSectionData = .current()) {
@@ -81,15 +76,6 @@ final class SettingsViewModel: ObservableObject {
         get { store.qualityCeiling }
         set { store.qualityCeiling = newValue }
     }
-
-    #if DEBUG
-    /// QR.4 / D-091: persistence retained so DEBUG users round-trip their state,
-    /// but the UI surface is gated on `#if DEBUG` until Phase MD ships.
-    var includeMilkdropPresets: Bool {
-        get { store.includeMilkdropPresets }
-        set { store.includeMilkdropPresets = newValue }
-    }
-    #endif
 
     var reducedMotion: ReducedMotionPreference {
         get { store.reducedMotion }

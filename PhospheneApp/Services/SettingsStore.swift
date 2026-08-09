@@ -6,7 +6,6 @@
 //   - sessionRecorderEnabled:   next session start
 //   - reducedMotion:            next frame / render tick (read by SessionStateViewModel)
 //   - showLiveAdaptationToasts: immediate (LiveAdaptationToastBridge reads on each event)
-//   - includeMilkdropPresets:   persisted; UI surface gated on #if DEBUG (QR.4 / D-091)
 //   - resetOnboarding:          next app launch
 
 import Combine
@@ -29,7 +28,6 @@ final class SettingsStore: ObservableObject {
         // Visuals
         static let deviceTierOverride  = "phosphene.settings.visuals.deviceTierOverride"
         static let qualityCeiling      = "phosphene.settings.visuals.qualityCeiling"
-        static let includeMilkdropPresets = "phosphene.settings.visuals.includeMilkdropPresets"
         static let reducedMotion       = "phosphene.settings.visuals.reducedMotion"
         static let excludedPresetCategories = "phosphene.settings.visuals.excludedPresetCategories"
         static let showLiveAdaptationToasts = "phosphene.settings.visuals.showLiveAdaptationToasts"
@@ -49,11 +47,6 @@ final class SettingsStore: ObservableObject {
 
     @Published var qualityCeiling: QualityCeiling = .auto {
         didSet { encode(qualityCeiling, forKey: Keys.qualityCeiling) }
-    }
-
-    /// Always true until Phase MD ships. UI disables the toggle; store persists as-is.
-    @Published var includeMilkdropPresets: Bool = true {
-        didSet { defaults.set(includeMilkdropPresets, forKey: Keys.includeMilkdropPresets) }
     }
 
     @Published var reducedMotion: ReducedMotionPreference = .matchSystem {
@@ -111,9 +104,6 @@ final class SettingsStore: ObservableObject {
     private func loadAll() {
         deviceTierOverride = decodeOrDefault(.auto, forKey: Keys.deviceTierOverride)
         qualityCeiling = decodeOrDefault(.auto, forKey: Keys.qualityCeiling)
-        includeMilkdropPresets = defaults.object(forKey: Keys.includeMilkdropPresets) == nil
-            ? true
-            : defaults.bool(forKey: Keys.includeMilkdropPresets)
         reducedMotion = decodeOrDefault(.matchSystem, forKey: Keys.reducedMotion)
         excludedPresetCategories = decodeSet(PresetCategory.self, forKey: Keys.excludedPresetCategories)
         showLiveAdaptationToasts = defaults.bool(forKey: Keys.showLiveAdaptationToasts)

@@ -33,23 +33,35 @@ struct CommonLayoutTest {
     /// Locates the repo root from this file's path so the test can read the two MSL
     /// declaration sites directly.
     ///
-    /// **Relative ascent, not a name search.** Walking up to a directory literally named
-    /// `phosphene` sails past a git worktree at `phosphene/.claude/worktrees/<name>/` and
-    /// lands on the PRIMARY checkout, so the gate read this tree's Swift struct against
-    /// another tree's `.metal`. Both directions are silent: a worktree that legitimately
-    /// changes the layout in both places can go green on a real mismatch, and an untouched
-    /// worktree can report a phantom one the moment the primary's checkout moves. Count
-    /// components instead — this file sits a fixed depth below the repo root, in a
-    /// worktree or out of it.
+    /// **Ascend to an anchor, not to a name and not by a count (FTR.6, hardened QG.6).**
+    /// The original form walked up until it found a directory literally named `phosphene` —
+    /// which in a git worktree at `phosphene/.claude/worktrees/<name>/` sails straight past
+    /// the worktree and lands on the PRIMARY checkout. The gate then read the worktree's
+    /// Swift struct and the primary's `.metal`, so an MSL edit made in a worktree was
+    /// invisible to it while an untouched primary reported a phantom mismatch. Both
+    /// directions are silent, and FTR.6 hit the second.
     ///
-    /// FTR.6 hit the second direction: a 52 → 56 float `FeatureVector` merged into the
-    /// primary made four unrelated worktree sessions fail `224 == 208` on diffs containing
-    /// no Swift and no Metal.
-    private static let repoRoot: URL = {
+    /// FTR.6 replaced the name search with a fixed component count, which fixes the
+    /// worktree case but re-breaks the moment this file moves — and a wrong root reads as
+    /// "sources unreadable", which the parity test used to treat as a *pass*. Ascending to
+    /// the nearest ancestor containing `PhospheneEngine/Package.swift` is self-validating:
+    /// a worktree root matches before the primary ever comes into range, and the result is
+    /// either provably the enclosing checkout or `nil`.
+    ///
+    /// `nil` means this is not a source checkout (a bundled test product run outside the
+    /// tree) — the ONLY legitimate reason the MSL sources are unreadable. Same
+    /// arm-the-gate-or-skip-cleanly distinction `DocIntegrityTests.docsPresent` draws.
+    private static let repoRoot: URL? = {
         var url = URL(fileURLWithPath: #filePath)
-        // file → Shared → PhospheneEngineTests → Tests → PhospheneEngine → root
-        for _ in 0..<5 { url.deleteLastPathComponent() }
-        return url
+        // file → Shared → PhospheneEngineTests → Tests → PhospheneEngine → root is 5,
+        // but never rely on that: search, and bound the search so it cannot run away.
+        for _ in 0..<12 {
+            url.deleteLastPathComponent()
+            guard url.pathComponents.count > 1 else { return nil }
+            let anchor = url.appendingPathComponent("PhospheneEngine/Package.swift")
+            if FileManager.default.fileExists(atPath: anchor.path) { return url }
+        }
+        return nil
     }()
 
     /// Extract the `float` field names of `struct FeatureVector`, in declaration order.
@@ -85,16 +97,37 @@ struct CommonLayoutTest {
     /// fields would have silently swapped, which a byte-count check alone cannot see.
     ///
     /// Order is the contract, not just the count.
+    ///
+    /// **An unreadable source is a FAILURE here, not a skip (QG.6).** The gate previously
+    /// printed and returned green whenever either file could not be read, which made a
+    /// wrong `repoRoot` indistinguishable from a pass — the same silent-success shape the
+    /// gate exists to prevent, one level up. The only legitimate absence is "not a source
+    /// checkout", and `repoRoot` now decides that explicitly by finding the enclosing
+    /// package or returning `nil`. Past that point the files must exist.
     @Test func mslFeatureVector_matchesSwiftSizeAndAgreesAcrossBothSites() throws {
-        let commonURL = Self.repoRoot
-            .appendingPathComponent("PhospheneEngine/Sources/Renderer/Shaders/Common.metal")
-        let preambleURL = Self.repoRoot
-            .appendingPathComponent("PhospheneEngine/Sources/Presets/PresetLoader+Preamble.swift")
-        guard let common = try? String(contentsOf: commonURL, encoding: .utf8),
-              let preamble = try? String(contentsOf: preambleURL, encoding: .utf8) else {
-            print("CommonLayoutTest: MSL sources not reachable — skipping")
+        guard let root = Self.repoRoot else {
+            print("CommonLayoutTest: not a source checkout — skipping MSL parity")
             return
         }
+        // The FTR.6 bug in one assertion: the root must enclose THIS file. A root that
+        // resolves outside our own tree is how the gate came to compare two checkouts.
+        #expect(
+            URL(fileURLWithPath: #filePath).path.hasPrefix(root.path + "/"),
+            "repoRoot \(root.path) does not contain \(#filePath) — the gate would read another checkout"
+        )
+
+        let commonURL = root
+            .appendingPathComponent("PhospheneEngine/Sources/Renderer/Shaders/Common.metal")
+        let preambleURL = root
+            .appendingPathComponent("PhospheneEngine/Sources/Presets/PresetLoader+Preamble.swift")
+        let common = try #require(
+            try? String(contentsOf: commonURL, encoding: .utf8),
+            "Common.metal unreadable at \(commonURL.path). This is a source checkout (\(root.path) has PhospheneEngine/Package.swift), so the GPU contract is unverified — never a pass."
+        )
+        let preamble = try #require(
+            try? String(contentsOf: preambleURL, encoding: .utf8),
+            "PresetLoader+Preamble.swift unreadable at \(preambleURL.path). This is a source checkout, so the GPU contract is unverified — never a pass."
+        )
         let commonFields = Self.mslFields(of: common)
         let preambleFields = Self.mslFields(of: preamble)
 

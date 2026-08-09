@@ -29,7 +29,6 @@ struct SettingsStoreTests {
 
         #expect(store.deviceTierOverride == .auto)
         #expect(store.qualityCeiling == .auto)
-        #expect(store.includeMilkdropPresets == true)
         #expect(store.reducedMotion == .matchSystem)
         #expect(store.excludedPresetCategories.isEmpty)
         #expect(store.showLiveAdaptationToasts == false)
@@ -101,12 +100,5 @@ struct SettingsStoreTests {
         defer { teardown(defaults) }
         let store = SettingsStore(defaults: defaults)
         #expect(store.showLiveAdaptationToasts == false)
-    }
-
-    @Test func includeMilkdropPresets_default_isTrue() {
-        let defaults = makeSuite()
-        defer { teardown(defaults) }
-        let store = SettingsStore(defaults: defaults)
-        #expect(store.includeMilkdropPresets == true)
     }
 }

@@ -9,6 +9,9 @@
 
 ## A0. Identity
 
+> **⚠ Superseded (D-123, 2026-05-13; residue stripped at MD.0 / D-215, 2026-08-07).** `concept_tags` and `motion_paradigm` were reverted the day after D-120 filed them and are **not part of the sidecar schema**. `PresetDescriptor` does not decode them and the orchestrator does not read them; `family` (one of the 11 cream-of-crop `PresetCategory` cases) is the only taxonomy field. Do not add them to a new sidecar — this document is the vector by which they were re-added to a shipped preset after the revert.
+
+
 - **Name (working):** Mandala Engine
 - **Family:** `geometric` · **concept_tags:** `["kaleidoscope","hypnotic","geometric"]` · **motion_paradigm:** `mv_warp`
 - **Passes:** `["mv_warp"]` (direct-fragment kaleidoscope scene + per-vertex feedback warp)
