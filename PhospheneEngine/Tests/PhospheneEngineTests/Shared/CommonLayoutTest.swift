@@ -33,14 +33,18 @@ struct CommonLayoutTest {
     /// Locates the repo root from this file's path so the test can read the two MSL
     /// declaration sites directly.
     ///
-    /// **Relative ascent, not a name search (fixed FTR.6).** The previous form walked up
-    /// until it found a directory literally named `phosphene` — which in a git worktree at
-    /// `phosphene/.claude/worktrees/<name>/` sails straight past the worktree and lands on
-    /// the PRIMARY checkout. The gate then read the worktree's Swift struct and the
-    /// primary's `.metal`, so an MSL edit made in a worktree was invisible to it while an
-    /// untouched primary reported a phantom mismatch. Both directions are silent, and
-    /// FTR.6 hit the second. Count components instead: this file sits a fixed depth below
-    /// the repo root, in the worktree or out of it.
+    /// **Relative ascent, not a name search.** Walking up to a directory literally named
+    /// `phosphene` sails past a git worktree at `phosphene/.claude/worktrees/<name>/` and
+    /// lands on the PRIMARY checkout, so the gate read this tree's Swift struct against
+    /// another tree's `.metal`. Both directions are silent: a worktree that legitimately
+    /// changes the layout in both places can go green on a real mismatch, and an untouched
+    /// worktree can report a phantom one the moment the primary's checkout moves. Count
+    /// components instead — this file sits a fixed depth below the repo root, in a
+    /// worktree or out of it.
+    ///
+    /// FTR.6 hit the second direction: a 52 → 56 float `FeatureVector` merged into the
+    /// primary made four unrelated worktree sessions fail `224 == 208` on diffs containing
+    /// no Swift and no Metal.
     private static let repoRoot: URL = {
         var url = URL(fileURLWithPath: #filePath)
         // file → Shared → PhospheneEngineTests → Tests → PhospheneEngine → root
