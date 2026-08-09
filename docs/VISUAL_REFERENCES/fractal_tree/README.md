@@ -58,6 +58,15 @@ What this preset must NOT look like:
 | global brightness | `arousal` | **+54.0 % / +14.2 % / +28.1 % / +22.8 %** | *did not exist* — the preset had no section-scale route |
 | beat accent | `beat_bass` | live on 15.7–18.2 % of frames, firing 1.88–2.32/s at full amplitude | live on 99.2–100 % — read as a glow, not an accent |
 
+**Changed at FTR.6 — the melodic tips moved off `beat_mid` onto `melodic_tips`.** Matt, after DYN.1c: *"The tips are too active. If possible, I would want only one tip per note of music."* Measured on `2026-08-07T18-53-30Z` the tips fired **7.62/s with a mean jump of 4.6 branches**, against a guitar note rate of **3.29/s**. The rate is not reachable from `beat_mid` at any coefficient — it turns 6.9 times a second, and a stateless shader has no memory of the last event — so the minimum inter-event interval moved into the engine as `MelodicNoteGate` (`FeatureVector.melodicTips`, float 53).
+
+| Layer | Primitive | Measured (Hummer / Cherub Rock, full tracks through the real `MIRPipeline`) | Was |
+|---|---|---|---|
+| melodic tips — how many fine branches exist | `melodic_tips` | **2.92 / 2.87 note events per second, 1.00 branch per change**; count-changes 5.47 / 5.37 per second, down from 31.6 / 31.5 on identical audio | `beat_mid` through a soft knee — 7.62/s, mean jump 4.6 branches |
+| melodic reach — how far each branch travels | `beat_mid` | unchanged; the per-branch travelling wave Matt called *"better overall and probably satisfactory"* at FTR.3e | — |
+
+**Two things the gate does NOT fix, stated rather than implied.** (1) *Instrument separation* — Matt's *"heavily favors the drums vs. guitars"* survives it. The trigger is still mid-band, which in a rock mix is snare AND guitar (correlated **+0.973** here), and per-note guitar onsets do not survive distortion (§MEL.1: grid coherence 31 % for guitar against 41 % for the drums control). (2) *Total transition count* — a tip that appears must also disappear, so the branch count changes about **twice** per note event. That is arithmetic at equilibrium, not a tuning miss; what the gate removes is the SIZE of each change, 4.6 branches → 1.
+
 **Removed at FTR.2:** tip shimmer ← `treb_att`, which delivered +0.002 of a promised +0.12. Not re-homed — that visual layer belongs to FTR.3's per-branch activation, and a dead route is deleted rather than left declared as a false manifest.
 
 **Still to come:** per-branch activation (HERO) ← `beat_phase01` + `pulse_beat_index`, hash-selected bounded subset — FTR.3. Percussive accent ← `stems.drums_energy_dev` — FTR.4, which needs the object/mesh-stage stem binding (the *fragment* stage is already bound at buffer(3) by `drawWithMeshShader`; only the object/mesh half is missing).

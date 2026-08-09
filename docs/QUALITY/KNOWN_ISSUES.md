@@ -50,7 +50,6 @@ read the crash reports already on disk.**)*
 | BUG-056 | P3 | local-file / audio | Local-file playback restarts the track from the top on an output-device change (AVAudioEngine teardown/restart, no resume-from-position) |
 | BUG-055 | P2 | app.ui / permission | Silent system-audio tap after a rebuild: stale Screen-Recording grant; `CGPreflightScreenCaptureAccess` returns stale-`true` → app shows "ready", renders a flatline. **Symptom half RESOLVED 2026-06-17** (`a0a9ded`, silent-tap detector + fix-ladder card) — the app now explains the failure instead of lying. **Durable root still OPEN and externally BLOCKED** on CLEAN.2.5b: a stable signing identity needs a paid Apple Developer membership. Detector half closes on Matt's manual UX validation of the card |
 | BUG-054 | P3 | dsp.key | Key detection has never been accurate enough to use — 1024-pt FFT can't resolve semitones < 1 kHz, full-mix chroma, no constant-Q. Non-load-bearing today |
-| BUG-051 | P3 | local-file / security | m3u entry paths resolved with no extension/traversal guard (bounded: no egress) |
 | BUG-036 | P2 | audio.capture / performance | Heap allocations on the real-time audio thread (three sites) |
 | BUG-028 | P2 | dsp.beat | Beat-grid live phase imperfect on ~half of tracks |
 | BUG-077 | P3 | dsp.beat / api-contract | **`BeatGridResolver.snapToBeats` diverges from the Beat This! reference post-processor** — the reference moves *every* downbeat prediction to the closest beat unconditionally; we discard any candidate beyond `snapFrames = 2` (40 ms). Found at DBN.1 while auditing the resolver against the paper. **Currently harmless and NOT the cause of the low downbeat F** — measured, 100 % of candidates survive the gate (median distance 0.0 ms), so nothing is being discarded today (the real cause is a near-degenerate downbeat *stream*, see `docs/design/DBN_DECODER_SPEC.md` §2.1). Filed because it is a genuine spec-fidelity divergence of the D-077 class that will bite the moment downbeat timing loosens — e.g. on a track whose downbeat peaks sit a frame or two off the beat. Fix is one comparison; do it in DBN.3 when the resolver is being touched anyway, not as a standalone change |
@@ -563,25 +562,6 @@ Krumhansl-Schmuckler template matching at the end is fine; the chroma front-end 
 1. **Tier 1 (cheap, partial):** in the offline key pass, feed the **drums-removed / harmonic stem** signal (stems already exist → free HPSS), bump to an **8192-pt FFT** (or add harmonic summation), aggregate over the whole clip; keep Krumhansl. Likely "never right" → right on clear tonal tracks.
 2. **Tier 2 (proper):** **constant-Q transform** → harmonic-weighted pitch-class profile (HPCP) + spectral whitening → refined templates (Temperley / Albrecht-Shanahan) over the whole track — the librosa-`chroma_cqt` / essentia-`KeyExtractor` design, built in Accelerate (no Swift MIR lib; on-device constraint). The real fix.
 Recommended sequencing: Tier 1 measured against the labeled set first; escalate to Tier 2 only if it doesn't clear the bar. Confidence-gate either way.
-
-
----
-
-### BUG-051 — m3u playlist entries resolve to arbitrary paths with no extension/traversal guard (2026-06-15)
-
-**Severity:** P3 (defense-in-depth — the consequence is bounded by the no-egress local-file path; realized harm in the current single-user/no-telemetry architecture is ≈ nil). Filed by CLEAN.2.4 (GAP-10 threat model, `docs/SECURITY_POSTURE.md` §6).
-**Domain tag:** local-file / security
-**Status:** Open — filed 2026-06-15, not fixed (CLEAN.2.4 is doc-only). Fix is its own small increment.
-**Resolved:** —
-
-**Expected:** a `.m3u`/`.m3u8` entry resolves only to a readable **audio** file under an expected root.
-**Actual:** `M3UParser.resolveURL` (`PhospheneEngine/Sources/Session/M3UParser.swift:138-147`) resolves `file://`, absolute (`/…`), and relative entries with **no extension filter and no path-traversal guard** — a hostile playlist can name `/Users/you/.ssh/id_rsa` or `../../etc/passwd`. The entry is readability-checked (`isReadableFile`) and handed to AVFoundation, which **fails to decode** a non-audio file; the path is never read back to the attacker, and the local-file path has **no network egress**, so nothing escapes. Bounded, hence P3.
-**Reproduction steps:** open a `.m3u` whose body lists a readable non-audio absolute path; observe the entry is resolved + readability-checked before the audio decoder rejects it (no allow-list short-circuits it first).
-**Session artifacts:** n/a (static input-validation finding; verified by code read, see `SECURITY_POSTURE.md` §6 + §verification).
-**Suspected failure class:** `api-contract` (the parser's resolve contract admits non-audio / out-of-tree paths).
-**Verification criteria (for the eventual fix):**
-- [ ] Automated: a `.m3u` listing a non-audio extension and a `../`-traversal path resolves to **zero** entries (or throws `noEntriesResolved`); valid audio entries still resolve (extend `M3UParserTests`).
-- [ ] Manual: opening a normal `.m3u` of `.m4a/.mp3/.flac` is unaffected.
 
 
 ---

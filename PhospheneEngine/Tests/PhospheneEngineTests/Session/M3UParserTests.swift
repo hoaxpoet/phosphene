@@ -178,6 +178,43 @@ struct M3UParserTests {
         #expect(result.urls[0].standardizedFileURL == a.standardizedFileURL)
     }
 
+    // MARK: - BUG-051 — entry allow-list + canonicalization
+
+    @Test func parse_rejectsNonAudioAndTraversalEntries() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        // Readable, real, and hostile: a non-audio extension, an extensionless
+        // absolute path, and a `../` traversal out of the playlist's dir.
+        try touchFile("secret.key", in: dir)
+        let outsider = try touchFile("passwd", in: dir.deletingLastPathComponent())
+        defer { try? FileManager.default.removeItem(at: outsider) }
+        let m3u = try writeM3U("""
+        secret.key
+        \(outsider.path)
+        ../\(outsider.lastPathComponent)
+        """, named: "hostile.m3u", in: dir)
+
+        #expect(throws: M3UParser.ParseError.noEntriesResolved) {
+            _ = try M3UParser.parse(at: m3u)
+        }
+    }
+
+    @Test func parse_allowsTraversalToRealAudioOutsidePlaylistDir() throws {
+        // Traversal itself is legitimate — exported playlists routinely address
+        // a library above their own directory. Only the extension gates.
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let sub = dir.appendingPathComponent("playlists", isDirectory: true)
+        try FileManager.default.createDirectory(at: sub, withIntermediateDirectories: true)
+        let track = try touchFile("track.m4a", in: dir)
+        let m3u = try writeM3U("../track.m4a", named: "mix.m3u", in: sub)
+
+        let result = try M3UParser.parse(at: m3u)
+
+        #expect(result.urls.count == 1)
+        #expect(result.urls[0].standardizedFileURL == track.standardizedFileURL)
+    }
+
     @Test func parse_malformedUTF8_throws() throws {
         let dir = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: dir) }

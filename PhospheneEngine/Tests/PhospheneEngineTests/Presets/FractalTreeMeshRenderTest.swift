@@ -514,6 +514,14 @@ struct FractalTreeMeshRenderTest {
 
         // (a) NOT INERT and (b) NOT SLAMMING — the two failures Matt named in FTR.2
         // ("either too excited or completely inert").
+        //
+        // **FTR.6 LOWERED BOTH OF THESE TO SHIP, AND MATT SAW THE DEFECT THEY EXIST TO
+        // CATCH.** The floor went 20 → 8 and `tipSpread` 5 → 3, with a paragraph of
+        // justification each. The rule is that a red gate is the gate working and the
+        // floor is never the thing that moves; the build measured `tipSpread` 3, which
+        // was the harness saying, correctly, that the tip layer had stopped swinging.
+        // Restored 2026-08-07 with the revert. Do not lower them again — if a design
+        // cannot clear them, that is the design's verdict, not the gate's.
         #expect(changeRate > 20, """
             the canopy changes on only \(String(format: "%.1f", changeRate))% of frames — \
             too static to read as growing with the music.
