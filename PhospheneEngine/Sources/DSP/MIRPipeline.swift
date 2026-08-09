@@ -85,6 +85,8 @@ public final class MIRPipeline: @unchecked Sendable {
     /// Number of onsets detected per second (for BPM debugging).
     public private(set) var onsetsPerSecond: Int = 0
     private var onsetCountThisSecond: Int = 0
+    /// DYN.3 — canopy data-path probe. See the extension at the foot of this file.
+    var canopyProbe = CanopyProbe()
     private var lastOnsetRateTime: Double = 0
 
     // MARK: - Feature Recording
@@ -298,6 +300,8 @@ public final class MIRPipeline: @unchecked Sendable {
         rawSmoothedFlux = ctx.spectral.smoothedFlux
         rawSmoothedCentroid = ctx.spectral.smoothedCentroid
 
+        updateCanopyProbe(ctx)   // DYN.3
+
         if ctx.beat.onsets.contains(true) {
             onsetCountThisSecond += 1
         }
@@ -486,6 +490,7 @@ public final class MIRPipeline: @unchecked Sendable {
         // grid install differs across the LF / streaming paths.
         beatPulseClock.resetAnchor()
         melodicNoteGate.reset()   // FTR.6 — no notes and no refractory carried across tracks
+        canopyProbe = CanopyProbe()   // DYN.3 — one probe line per track
 
         lock.lock()
         fluxRunningMax = 1e-6
@@ -628,5 +633,84 @@ extension MIRPipeline {
     public func setLoudnessProfile(_ profile: LoudnessProfile?) {
         spectralAnalyzer.setLoudnessProfile(profile)
         logger.info("MIR_LOUDNESS_PROFILE: \(profile?.summary ?? "cleared — fixed surge band")")
+    }
+}
+
+// MARK: - DYN.3 canopy data-path probe
+
+/// Per-track probe state. A struct so `reset()` is one assignment and cannot forget a field
+/// — the "@Published written on one path, not cleared on the complementary path" trap in
+/// CLAUDE.md §What NOT To Do, in its plain-stored-property form.
+struct CanopyProbe {
+    var frames: Int = 0
+    var logged = false
+    var ratioMin: Float = .greatestFiniteMagnitude
+    var ratioMax: Float = -.greatestFiniteMagnitude
+    /// Which branch `sectionRatio` took; `nil` until the probe fires at 30 s.
+    var branch: String?
+    /// Measured analysis frames per second at the probe.
+    var fps: Double = 0
+}
+
+extension MIRPipeline {
+
+    /// DYN.3 — which branch `SpectralAnalyzer.sectionRatio` took, as of the last probe.
+    /// Exposed rather than only logged so the classification itself is gated by a test: a
+    /// diagnostic that names the wrong branch is worse than none, and this one exists
+    /// precisely because the branch cannot be inferred from the recorded CSV.
+    public var canopyDensityBranch: String? { canopyProbe.branch }
+    /// DYN.3 — measured analysis frames per second. Every density time constant is
+    /// `1 / (alpha * this)`, so this is what says whether the constants mean what they say.
+    public var canopyAnalysisFPS: Double { canopyProbe.fps }
+
+    /// One-shot per-track probe recording WHICH source `spectral_section_ratio` came from
+    /// and at what analysis rate.
+    ///
+    /// FTR.6r left a question no amount of reading settles. Offline, over Matt's own tap
+    /// capture and with his own cached profile installed, that field spans its full 0…2 and
+    /// the Fractal Tree canopy grows and recedes; on the live session `2026-08-07T22-59-38Z`
+    /// it sat in **0.785…1.084** and the canopy moved 0.38…0.50 — his *"the entire suite of
+    /// movement does not feel strongly tied to the music."* The field has exactly two
+    /// sources, DYN.2c's ranked branch and DYN.2b's live-EMA fallback, and their signatures
+    /// differ — but **one recorded column cannot say which ran**, and three rounds of
+    /// inference from the CSV did not settle it either.
+    ///
+    /// The analysis rate is recorded for the same reason: every density leg uses a
+    /// per-FRAME alpha, so its time constant is `1 / (alpha * fps)`. The constants were
+    /// calibrated at ~43 fps and the live rate has never been measured, so a rate that is
+    /// not what they assume silently retunes all four legs.
+    ///
+    /// Housed in a same-file extension so it keeps private access without inflating the
+    /// class's `type_body_length` — same reason as `setSampleRate` above.
+    private func updateCanopyProbe(_ ctx: ProcessContext) {
+        canopyProbe.frames += 1
+        canopyProbe.ratioMin = min(canopyProbe.ratioMin, ctx.spectral.sectionRatio)
+        canopyProbe.ratioMax = max(canopyProbe.ratioMax, ctx.spectral.sectionRatio)
+        guard !canopyProbe.logged, elapsedSeconds >= 30.0 else { return }
+        canopyProbe.logged = true
+
+        let fps = elapsedSeconds > 0 ? Double(canopyProbe.frames) / elapsedSeconds : 0
+        let tau = fps > 0 ? 1.0 / (Double(SpectralAnalyzer.densitySectionAlpha) * fps) : 0
+        let branch: String
+        if let profile = spectralAnalyzer.loudnessProfile {
+            if !profile.isUsable {
+                branch = "fallback(profile-unusable)"
+            } else if profile.densityRank(of: ctx.spectral.sectionRatio) == nil {
+                // A v8-era profile: level quantiles measured, density quantiles never.
+                // Reverts to the DYN.2b EMA and leaves no trace in the CSV.
+                branch = "fallback(no-density-quantiles)"
+            } else {
+                branch = "ranked"
+            }
+        } else {
+            branch = "fallback(no-profile)"
+        }
+        canopyProbe.branch = branch
+        canopyProbe.fps = fps
+
+        let span = String(format: "%.3f…%.3f", canopyProbe.ratioMin, canopyProbe.ratioMax)
+        let rate = String(format: "fps=%.1f tau_section=%.1fs", fps, tau)
+        let line = "DENSITY_PATH: branch=\(branch) \(rate) span=\(span)"
+        logger.info("\(line, privacy: .public)")
     }
 }
