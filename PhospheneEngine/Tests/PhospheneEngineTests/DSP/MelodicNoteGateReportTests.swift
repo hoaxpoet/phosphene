@@ -67,6 +67,10 @@ struct MelodicNoteGateReportTests {
         var tips: [Float] = []
         var duration: Double = 0
         var bpm: Float = 0
+        /// FTR.7 candidate per-note VALUE signals, captured through the production pipeline.
+        /// Measured on a session CSV first, the interval trough looked varied; on the real
+        /// pipeline it is a six-value staircase. The pipeline is the instrument.
+        var candidates: [String: [Float]] = [:]
     }
 
     /// Run the production pipeline over a decoded track, hop 1024 — the same hop
@@ -97,6 +101,12 @@ struct MelodicNoteGateReportTests {
                                       fps: fps, time: time, deltaTime: deltaTime)
             out.beatMid.append(fv.beatMid)
             out.tips.append(fv.melodicTips)
+            for (key, value) in [("beatTreble", fv.beatTreble), ("beatComposite", fv.beatComposite),
+                                 ("spectralFlux", fv.spectralFlux), ("midHigh", fv.midHigh),
+                                 ("mid_dev", fv.midDev), ("mid_att", fv.midAtt),
+                                 ("bass_dev", fv.bassDev), ("centroid", fv.spectralCentroid)] {
+                out.candidates[key, default: []].append(value)
+            }
             offset += fftSize
             time += deltaTime
         }
@@ -248,6 +258,81 @@ struct MelodicNoteGateReportTests {
         // Zero tips, and the refractory expired — the first note of the new track fires
         // immediately instead of waiting out the previous track's clock.
         #expect(gate.update(beatMid: 1.0, bpm: 120, deltaTime: 1.0 / 60.0) == 1)
+    }
+
+    // MARK: - FTR.7 — is "same size, fewer times" reachable?
+
+    /// Measures which signal, if any, carries a PER-NOTE MAGNITUDE on real material.
+    ///
+    /// Matt's instruction after FTR.6 was rejected: keep the tips' full 0…8 swing but change
+    /// it on notes (~3/s) instead of continuously (~10/s). That needs two things — a note
+    /// clock, which `MelodicNoteGate` already provides at 3.4 events/s, and a VALUE that
+    /// differs from note to note. This measures candidates for the second.
+    ///
+    /// **Result: nothing inside `beat_mid` can supply it, and that is provable rather than
+    /// empirical.** `beat_mid` is a saturating pulse with a deterministic per-frame decay, so
+    /// once the refractory fixes the interval length, EVERY statistic of it over that
+    /// interval is a function of the frame count alone. Measured on two unrelated tracks the
+    /// interval trough, mean and area all return **identical percentiles** (mean p05 0.3409 /
+    /// p50 0.3969 / p95 0.4310 on both) across only 11–14 distinct values. They are clocks.
+    /// The peak is worse still: it is the trigger level by construction.
+    ///
+    /// Of everything else in the vector, only `spectral_flux` carries real per-note variety
+    /// (582 / 441 distinct values, spread 0.66 / 0.50). `beat_treble` looks wide but is the
+    /// same staircase (11–13 values); `beat_composite` is a constant 1.0; the mid-band
+    /// deviation family spans < 0.04; `bass_dev` is the kick, which is the instrument Matt
+    /// asked to hear LESS of. So the mechanism is available only by driving the tips from
+    /// `spectral_flux` — which already drives branch spread, and is therefore the FA #67
+    /// collision this preset was rebuilt at FTR.2 to remove. That is a design call for Matt,
+    /// not a tuning choice, so FTR.7 stopped here rather than shipping it.
+    @Test("per-note magnitude candidates (FTR_AUDIO_DIR=…)")
+    func reportPerNoteValueCandidates() throws {
+        guard let dir = ProcessInfo.processInfo.environment["FTR_AUDIO_DIR"] else { return }
+        let base = URL(fileURLWithPath: (dir as NSString).expandingTildeInPath)
+        for name in Self.tracks {
+            let url = base.appendingPathComponent(name)
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            let result = try Self.run(url: url)
+            guard !result.tips.isEmpty else { continue }
+            let deltaTime = Float(result.duration / Double(result.tips.count))
+            let refractory = result.bpm > 0
+                ? min(max(30 / result.bpm, MelodicNoteGate.refractoryBounds.lowerBound),
+                      MelodicNoteGate.refractoryBounds.upperBound)
+                : MelodicNoteGate.defaultRefractory
+            var eventIdx: [Int] = []
+            var since = Float.greatestFiniteMagnitude
+            for (idx, value) in result.beatMid.enumerated() {
+                since += deltaTime
+                if value >= MelodicNoteGate.triggerLevel && since >= refractory {
+                    eventIdx.append(idx); since = 0
+                }
+            }
+            print("\n── PER-NOTE MAGNITUDE CANDIDATES ──────────────────────────────────")
+            print(String(format: "file  %@   %d notes over %.0fs (%.2f/s)",
+                         name as NSString, eventIdx.count, result.duration,
+                         Double(eventIdx.count) / result.duration))
+            for key in result.candidates.keys.sorted() {
+                guard let series = result.candidates[key] else { continue }
+                let at = eventIdx.compactMap { $0 < series.count ? series[$0] : nil }.sorted()
+                guard at.count > 20 else { continue }
+                print(String(format: "  %-14s spread %7.4f   distinct %4d / %d",
+                             (key as NSString).utf8String!,
+                             at[at.count * 19 / 20] - at[at.count / 20],
+                             Set(at.map { Int($0 * 1000) }).count, at.count))
+            }
+            print("───────────────────────────────────────────────────────────────────\n")
+
+            // The claim this suite exists to keep true: `beat_mid` carries no per-note
+            // magnitude. If a future change makes it vary, the FTR.7 conclusion is stale and
+            // should be revisited rather than cited.
+            let atNote = eventIdx.compactMap { $0 < result.beatMid.count ? result.beatMid[$0] : nil }
+            let distinct = Set(atNote.map { Int($0 * 1000) }).count
+            #expect(distinct <= 3, """
+                \(name): beat_mid takes \(distinct) distinct values at the note instants. \
+                FTR.7 concluded it saturates at the trigger and carries no magnitude; if that \
+                is no longer true, re-derive before reusing the conclusion.
+                """)
+        }
     }
 
     // MARK: - Fixture regeneration (FTR.6)

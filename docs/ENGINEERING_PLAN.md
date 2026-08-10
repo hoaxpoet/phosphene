@@ -1805,6 +1805,26 @@ Both wrong, in opposite directions, and for the DYN.4/DYN.5 reason: the constant
 
 **Also corrected in passing:** `MoodClassifierGolden` pinned a SINGLE `classify` call, i.e. whatever fraction of the answer the EMA had covered on its first step (10 % before, 2.4 % after). It was anchoring the smoother, not the model, and moved whenever the smoothing did. It now pins the CONVERGED output, which is what the file says it exists to anchor. `CorpusCensusRunner` classified once on an aggregate the same way — every valence/arousal it has ever emitted was damped 10× toward neutral. (The DYN.6.2 A/B was unaffected: it drove each row to convergence.)
 
+**FTR.7 — "same size, fewer times": STOPPED at the measurement, no visual change shipped.** ⏸ (2026-08-09) Matt's reading of his own instruction, confirmed after FTR.6 was rejected: keep the tips' full 0…8 swing, change it on notes (~3/s) instead of continuously (~10/s). That needs a note CLOCK — `MelodicNoteGate` already gives 2.9/s on both sources — and a per-note VALUE. The value does not exist.
+
+**`beat_mid` cannot supply it, and the reason is structural rather than empirical.** It is a saturating pulse with a deterministic per-frame decay, so once the refractory fixes the interval length, *every* statistic of it over that interval is a function of the frame count alone. Measured through the production pipeline on two unrelated tracks:
+
+| statistic | Hummer | Cherub Rock | distinct values |
+|---|---|---|---|
+| peak at the note | = trigger level by construction | same | 1 |
+| interval trough | p50 0.0902, max 0.1178 | **identical** | 6–7 |
+| interval mean | p05 0.3409 / p50 0.3969 / p95 0.4310 | **identical** | 12–14 |
+
+Identical percentiles on two different records is the signature of a clock. Built and measured anyway before concluding: the trough variant shipped span **2** against FTR.3e's **7** — it fails "same size" outright, which is precisely the half FTR.6 already failed.
+
+**Nothing else free carries it either.** Per-note spread / distinct values on the production pipeline: `spectral_flux` **0.66 / 582**, `beat_treble` 0.88 but only **13** (the same staircase), `beat_composite` a constant 1.0, the mid-band deviation family < 0.04, `centroid` 0.05–0.11, `bass_dev` 0.21 — and `bass_dev` is the kick, the instrument Matt asked to hear LESS of.
+
+**So the mechanism exists only via `spectral_flux`, which already drives branch spread — the FA #67 collision this preset was rebuilt at FTR.2 to remove.** Priced so the decision has numbers: held at the note events it gives span **6.0 / 5.0** at **2.06 / 2.15 changes/s** (against FTR.3e's 7.0 at 31.5/s ungated) — genuinely same-size-fewer-times. **Matt's call, not a tuning choice**, and the reason this increment stopped instead of shipping a third tips mechanism.
+
+**Shipped:** the measurement, as a standing diagnostic (`MelodicNoteGateReportTests.reportPerNoteValueCandidates`) with an assertion that `beat_mid` still takes ≤ 3 distinct values at the note instants — so if that ever stops being true, the FTR.7 conclusion is flagged as stale rather than cited. **No preset behaviour changed; the tips remain the FTR.3e term.**
+
+**Still unconsumed:** `MelodicNoteGate` + `FeatureVector.melodicTips` (floats 53). FTR.6r said they should be removed if the next increment did not consume them. It did not. Removing them is a two-file change; they are retained only pending Matt's FA #67 decision, and should go if he declines it.
+
 **FTR.5 — M7 + certification.** ⏸ **BLOCKED ON MATT — this is a live review, not work Claude
 can complete.** FTR.6 landed the rate/granularity adjustment Matt named as the precondition
 ("close pending these adjustments") and it is verified offline on both source tracks; whether
