@@ -10,7 +10,7 @@ import Foundation
 /// Packed per-frame audio features for GPU uniform upload.
 ///
 /// This is the primary struct that shaders receive every frame, bound at `buffer(0)`.
-/// 56 floats = 224 bytes (53 live fields + 3 alignment pads, FTR.6). Fields follow the
+/// 52 floats = 208 bytes. Fields follow the
 /// audio data hierarchy: continuous energy first, spectral features second, onset pulses
 /// third, deviation primitives fourth.
 ///
@@ -193,16 +193,6 @@ public struct FeatureVector: Sendable {
     /// DYN.2 float 52 — section-scale density (τ ≈ 10 s). See DYN1_CALIBRATION §DYN.2.
     public var spectralDensity, spectralDensitySlow, spectralSurge: Float
     public var spectralSectionRatio: Float
-    /// FTR.6 float 53 — gated melodic tip count, 0…12; one unit per note event. Rationale
-    /// and limits: `MelodicNoteGate`.
-    public var melodicTips: Float
-    // FTR.6 floats 54–56 — alignment padding; 53 floats is 212 bytes, not 16-byte
-    // aligned, and this struct is a GPU constant at `buffer(0)`. Reclaim before appending.
-    // swiftlint:disable identifier_name
-    public var _pad53: Float
-    public var _pad54: Float
-    public var _pad55: Float
-    // swiftlint:enable identifier_name
 
     public init(
         bass: Float = 0, mid: Float = 0, treble: Float = 0,
@@ -246,8 +236,6 @@ public struct FeatureVector: Sendable {
         self.tonalTension = 0; self.harmonicFlux = 0   // TONAL (D-178), set by TonalAnalyzer
         self.spectralDensity = 0; self.spectralDensitySlow = 0; self.spectralSurge = 0
         self.spectralSectionRatio = 0
-        self.melodicTips = 0   // FTR.6 — set per frame by MIRPipeline from MelodicNoteGate
-        self._pad53 = 0; self._pad54 = 0; self._pad55 = 0
     }
 
     /// All-zero feature vector.

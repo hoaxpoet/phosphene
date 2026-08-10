@@ -175,9 +175,6 @@ public final class MIRPipeline: @unchecked Sendable {
     /// installed by `setBeatGrid`; the anchor resets per track in `reset()`;
     /// the per-frame output lands on `FeatureVector.pulsePhase01/pulseAmp01`.
     private let beatPulseClock = BeatPulseClock()
-    /// FTR.6 — one-eighth-note refractory gate on `beat_mid`, feeding
-    /// `FeatureVector.melodicTips`. Reset per track in `reset()`.
-    private var melodicNoteGate = MelodicNoteGate()
 
     /// Sample rate the pipeline (and its bin→Hz sub-analyzers) is configured
     /// for. The live path adopts the actual tap rate via `setSampleRate(_:)`
@@ -514,7 +511,6 @@ public final class MIRPipeline: @unchecked Sendable {
         // authority and the track-change call order between `reset()` and the
         // grid install differs across the LF / streaming paths.
         beatPulseClock.resetAnchor()
-        melodicNoteGate.reset()   // FTR.6 — no notes and no refractory carried across tracks
         canopyProbe = CanopyProbe()   // DYN.3 — one probe line per track
 
         lock.lock()
@@ -577,13 +573,11 @@ extension MIRPipeline {
         fv.pulseRegionalBlend01 = pulse.regionalBlend01
     }
 
-    /// Post-init analyzer fields: TONAL (44–48), DYN.1 density (49–52) and the FTR.6
-    /// melodic note gate (53). Grouped so
+    /// Post-init analyzer fields: TONAL (44–48) and DYN.1 density (49–52). Grouped so
     /// `buildFeatureVector` stays inside its length budget as fields accrete.
     private func applyAnalyzerFields(_ ctx: ProcessContext, to fv: inout FeatureVector) {
         applyTonalFields(ctx.tonal, to: &fv)
         applyDensityFields(ctx.spectral, to: &fv)
-        applyMelodicTips(ctx, to: &fv)   // FTR.6 (float 53)
     }
 
     /// DYN.1: write spectral density onto floats 49–50.
@@ -596,17 +590,6 @@ extension MIRPipeline {
         fv.spectralDensitySlow = spectral.smoothedDensity
         fv.spectralSurge = spectral.surge
         fv.spectralSectionRatio = spectral.sectionRatio   // DYN.2b
-    }
-
-    /// FTR.6: write the refractory-gated melodic tip count onto float 53.
-    ///
-    /// `stableBPM` was written by `updateCPUSideProperties` earlier in this same `process`
-    /// call, so the refractory tracks the current track's tempo from the frame it is first
-    /// established — no one-frame lag, and the 120 BPM default only applies before then.
-    private func applyMelodicTips(_ ctx: ProcessContext, to fv: inout FeatureVector) {
-        fv.melodicTips = melodicNoteGate.update(beatMid: ctx.beat.beatMid,
-                                                bpm: stableBPM ?? 0,
-                                                deltaTime: ctx.deltaTime)
     }
 
     /// TONAL (D-178): write the Tonal Interval Vector signals onto floats 44–48.

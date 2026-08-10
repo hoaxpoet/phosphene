@@ -1823,7 +1823,9 @@ Identical percentiles on two different records is the signature of a clock. Buil
 
 **Shipped:** the measurement, as a standing diagnostic (`MelodicNoteGateReportTests.reportPerNoteValueCandidates`) with an assertion that `beat_mid` still takes ≤ 3 distinct values at the note instants — so if that ever stops being true, the FTR.7 conclusion is flagged as stale rather than cited. **No preset behaviour changed; the tips remain the FTR.3e term.**
 
-**Still unconsumed:** `MelodicNoteGate` + `FeatureVector.melodicTips` (floats 53). FTR.6r said they should be removed if the next increment did not consume them. It did not. Removing them is a two-file change; they are retained only pending Matt's FA #67 decision, and should go if he declines it.
+**Matt declined the FA #67 collision (2026-08-09), so "one tip per note" is CLOSED on this material** and `MelodicNoteGate` + `FeatureVector.melodicTips` were **removed** — the disposition FTR.6r committed to if nothing consumed them. `FeatureVector` returns to **52 floats / 208 bytes**, byte-identical to its pre-FTR.6 layout, across all four declaration sites (Swift, the preset preamble, `Common.metal`, and the six size gates) plus the CSV column, the route-primitive map and the `route_coverage` fixtures. The tips remain the FTR.3e term Matt called *"better overall and probably satisfactory"*.
+
+**What was KEPT, and why it is not orphaned code:** the measurement, as `PerNoteMagnitudeTests` — a standing answer to "which primitive carries per-note information", with its own note-clock constants now the gate is gone. **MEL.1 is still open and wants exactly that signal**, so this is the first thing that increment should read rather than re-derive. Its assertion fails if `beat_mid` ever stops saturating at the note instants, which would make the FTR.7 conclusion stale rather than a fact to cite.
 
 **FTR.5 — M7 + certification.** ⏸ **BLOCKED ON MATT — this is a live review, not work Claude
 can complete.** FTR.6 landed the rate/granularity adjustment Matt named as the precondition

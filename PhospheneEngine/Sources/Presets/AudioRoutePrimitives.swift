@@ -66,8 +66,6 @@ public enum AudioRoutePrimitives {
         out["spectralDensitySlow"] = RoutePrimitiveColumn(.features, "spectral_density_slow")
         out["spectralSurge"] = RoutePrimitiveColumn(.features, "spectral_surge")
         out["spectralSectionRatio"] = RoutePrimitiveColumn(.features, "spectral_section_ratio")
-        // FTR.6 — the refractory-gated melodic tip count (0…8, one unit per note event).
-        out["melodicTips"] = RoutePrimitiveColumn(.features, "melodic_tips")
         out["midDev"]    = RoutePrimitiveColumn(.features, "mid_dev")
         out["trebRel"]   = RoutePrimitiveColumn(.features, "treb_rel")
         out["trebDev"]   = RoutePrimitiveColumn(.features, "treb_dev")

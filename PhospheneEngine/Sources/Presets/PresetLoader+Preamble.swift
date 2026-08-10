@@ -98,17 +98,6 @@ extension PresetLoader {
             // pre-AGC LEVEL, not shape — a bright quiet intro must not read as an arrival.
             // 52 was _pad52, now DYN.2's section density leg. ORDER IS THE CONTRACT.
             float spectral_surge, spectral_section_ratio;
-            // FTR.6 (float 53): MELODIC TIPS, 0…8 — `beat_mid` through a one-eighth-note
-            // refractory gate, accumulated one unit per surviving note event and drained
-            // continuously (τ 2 s). Truncate it: `(uint)f.melodic_tips` steps by exactly
-            // ONE branch. Raw `beat_mid` cannot do this — it turns 6.9 times a second and
-            // any stateless scaling of it jumps several branches at once. Does NOT
-            // separate instruments; the trigger is mid-band = snare AND guitar.
-            float melodic_tips;
-            // Floats 54–56: alignment padding. 53 floats is 212 bytes, not a multiple
-            // of 16; this struct is a GPU constant at buffer(0) for every preset.
-            // Reclaim before appending (as _pad3…_pad7 were reclaimed).
-            float _pad53, _pad54, _pad55;
         };
 
         struct VertexOut {
