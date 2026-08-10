@@ -389,9 +389,13 @@ public final class LumenPatternEngine: @unchecked Sendable {
     /// Silence ambient floor magnitude (fed to the shader as
     /// `LumenPatternState.ambientFloorIntensity`). The shader scales it by the
     /// mood tint so the panel is never pure black at silence (D-019 + D-037
-    /// invariant 1 / "non-black at silence"). LM.2 keeps the value matched to
-    /// `LumenMosaic.json#lumen_mosaic.ambient_floor_intensity = 0.04` and
-    /// LM.1's static-backlight ambient term.
+    /// invariant 1 / "non-black at silence"), matched to LM.1's static-backlight
+    /// ambient term.
+    ///
+    /// This constant is the single source of truth. It used to be described as kept
+    /// "matched to `LumenMosaic.json#lumen_mosaic.ambient_floor_intensity`" — a manual
+    /// sync with no mechanism behind it. That sidecar block was dead JSON from LM.1
+    /// (nothing decoded it) and was deleted at LM.CLEAN, closing CA-Presets-FU-2.
     public static let defaultAmbientFloorIntensity: Float = 0.04
 
     /// Default falloff coefficient — `1 / (1 + r² × k)` half-falloff at r ≈ √(1/k).

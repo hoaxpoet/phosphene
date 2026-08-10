@@ -473,6 +473,8 @@ Required in `LumenMosaic.json` (in addition to the standard fields):
 }
 ```
 
+> **⚠ Superseded (LM.CLEAN, 2026-08-10 — CA-Presets-FU-2 closed).** The `lumen_mosaic` sidecar block below was **never decoded** and has been **deleted** from `LumenMosaic.json`. Nothing read it from LM.1 onward, six of its nine keys named no constant that exists, and `cell_density` had drifted to `30.0` against the shader's `kCellDensity = 15.0f`. The shader constants and `LumenPatternEngine`'s statics are the source of truth. **Do not re-add it to a sidecar** — `PresetSidecarKeyGateTests` (QG.7) now fails on unrecognised keys, and this document is the vector by which such a block would come back.
+
 The `lumen_mosaic` namespace is for preset-specific tunables read into `LumenPatternEngine` and forwarded to the shader via `LumenPatternState.ambientFloorIntensity` (other fields drive CPU-side state only).
 
 ## Shader file structure

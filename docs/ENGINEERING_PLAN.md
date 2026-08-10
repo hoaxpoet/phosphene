@@ -63,6 +63,20 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment LM.CLEAN — `lumen_mosaic` deleted, not decoded (closes CA-Presets-FU-2) ✅ (2026-08-10)
+
+The nine-value `"lumen_mosaic"` block in `LumenMosaic.json` is **removed**. It was dead from LM.1 — nothing ever decoded it — and the CA audit filed the decode-or-delete call as **CA-Presets-FU-2** on 2026-05-21, pricing it at **0.5 to remove against 2 to wire**.
+
+**Delete, on evidence rather than on cost alone.** Three months passed with nobody asking to tune any of it. More decisively, it was not the faithful mirror it was kept as: **six of the nine keys named no operative constant anywhere** in the Lumen sources or shader — `cell_density`, `cell_jitter`, `frost_amplitude`, `frost_scale`, `max_active_patterns`, `back_plane_depth` — and `cell_density` read **`30.0` against the shader's actual `kCellDensity = 15.0f`**. "Kept for documentation" was therefore misdocumentation: a reader consulting it would have come away with the wrong number for the one value they could check. Only `ambient_floor_intensity` (0.04), `light_agent_count` (4) and `mood_smoothing_seconds` (5.0) still matched, and each is already documented at its real home as a Swift constant.
+
+Wiring it would not have been a cleanup — it would have meant *building* six tunables the preset never had, to satisfy a design doc. Applies the D-213 / D-203 / D-097 precedent: zero-consumer configuration goes.
+
+**Every dangling reference closed in the same commit** — the failure mode this repo keeps re-learning is that the stale *document* is the vector, not the deleted code (D-120 came back into two shipped sidecars that way). Fixed: `LumenPatternEngine.swift`'s "kept matched to `LumenMosaic.json#…`" doc comment, `LumenMosaic.metal`'s "JSON-tunable later via `lumen_mosaic.cell_density`", the `docs/VISUAL_REFERENCES/lumen_mosaic/README.md` tunability claim, and the `Lumen_Mosaic_Rendering_Architecture_Contract.md` §sidecar block, which now carries a supersession note naming itself as the vector.
+
+**The QG.7 allow-list entry is deliberately NOT replaced.** Verified by re-adding the key: `PresetSidecarKeyGateTests` fails with `LumenMosaic.json: "lumen_mosaic"`. Sidecar restored; the gate now defends the deletion.
+
+**No golden moved** — `PresetRegressionTests` + `PresetAcceptanceTests` + `FidelityRubricTests` green with no regeneration, which is the proof a documentation-only key never reached the GPU. The `.metal` edit is comment-only; no shader logic, geometry or routing touched.
+
 ### Increment BUG078.3 — BUG-078: the second route to the same trap ✅ (2026-08-10)
 
 `AVAudioPlayerNode` teardown was still trapping the engine test process on trees containing the BUG078.1 fix. **10 crashes in 14 runs of `swift test --filter concurrentDoubleStart`; 0 in 30 after.**
