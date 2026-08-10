@@ -51,6 +51,12 @@ public final class MoodClassifier: MoodClassifying, @unchecked Sendable {
         0.11827, 0.25158, 0.53073, 0.50940
     ]
 
+    /// Read-only view of the scaler for calibration diagnostics (DYN.6). The z-score is
+    /// where a feature-scale error shows up, so a test must be able to compute it from the
+    /// SAME numbers inference uses rather than a transcribed copy.
+    public static var scalerMeansForTesting: [Float] { scalerMeans }
+    public static var scalerStdsForTesting: [Float] { scalerStds }
+
     /// Per-feature standard deviations from live-pipeline annotated training set.
     private static let scalerStds: [Float] = [
         0.12225, 0.13055, 0.08257, 0.03043, 0.01463, 0.01376,
