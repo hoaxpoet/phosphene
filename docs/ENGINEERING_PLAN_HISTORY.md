@@ -5,6 +5,18 @@ Completed-increment narratives moved out of `ENGINEERING_PLAN.md` at RB.3 (2026-
 
 ## Recently Completed
 
+### Increment VL.CERT — Volumetric Lithograph certified ✅ (2026-07-26)
+
+**Done-when:** all cert gates measured green and Matt's M7 signs off. Met.
+
+Matt (session 2026-07-26T20-06-59Z, chain clean): "Session looks good. Proceed with certification if all checks out." Gates, each RUN not assumed:
+- **RouteCoverage (QG.1):** 6 declared routes — `bass`→camera dolly speed, per-stem energies→palette hue (×4), `pulsePhase01`→fold downbeat ratchet — all fire on the canonical fixtures, 0 red. The identity coupling (fold rotation SPEED + terrain morph, both `accumulatedAudioTime`) is the animation time base, constant on offline fixtures → documented as the QG.1.1 boundary, not declared (the FD/VL precedent).
+- **Rubric:** `certifiedPresetsDeclareAudioRoutes` green (non-empty manifest); `automatedGate_uncertifiedPresetsAreUncertified` green (VL now correctly certified). ★ **Honest caveat: the automated rubric PROXY scores VL 3/15** — NOT a hard gate (suite passes), because the proxy is known-unreliable and VL's coupling lives where it can't see it (accumulatedAudioTime + fold rotation). Cert rests on M7 + route coverage + flash, exactly as Floret/Cytokinesis were certified.
+- **Flash (D-157 / GAP-9):** added VL to `MultiPassRenderHarness` (ray_march, no follower — Lumen's path minus the 4-light engine, plus VL's per-frame accumulatedAudioTime + sidecar dolly). MEASURED 0.00 flashes/s, 0 transitions, luma 0.18–0.24 (non-static, Δ0.057) under the worst-case beat train — flash-safe because VL-PSY.5 put the downbeat on geometry not luminance.
+
+`certified:false→true`, `rubric_profile:full`, VL added to `FidelityRubricTests.certifiedPresets`. VL is the catalog's **first certified terrain-flight / kaleidoscope preset** — the culmination of the VL-PSY.1→.6 rebuild (concept reset → kaleidoscopic folds → perf fix → ratchet motion → per-cell variety).
+
+
 ### Increment VL-PSY.6 — Volumetric Lithograph: per-cell variety (spatial repetition) ✅ (2026-07-25)
 
 **Done-when:** the spatial repetition Matt flagged after the full-length listen is broken without disturbing the kaleidoscope symmetry, confirmed by him on a before/after. Met.

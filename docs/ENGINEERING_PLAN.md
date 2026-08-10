@@ -63,6 +63,22 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment QG.7 — An unrecognised sidecar key is a failure, not a silent no-op ✅ (2026-08-09)
+
+Closes the unknown-key half of D-215's carry-forward. `PresetSidecarKeyGateTests` asserts that every top-level key in every preset sidecar is either decoded by `PresetDescriptor` or explicitly allow-listed **with a reason**, and that every `inspired_by` block matches the D-215 §13.3 union schema.
+
+**The failure it prevents, which already happened twice.** Synthesized `Codable` ignores keys it does not know, so a sidecar field can look authoritative, read as live to anyone opening the file, and be decoded by nothing. D-123 reverted `concept_tags` / `motion_paradigm` cleanly — the CA.4 audit's 2026-05-20 grep was correct — and both reappeared **months later** in `CymaticResonance.json` (2026-07-22) and `Meniscus.json` (2026-08-03), authored from design docs that still prescribed them. One level down, `Witchlight.json` grew a bespoke `sha256_subject` that no schema knew about. Neither was caught by anything; MD.0 found both by hand.
+
+**The allow-list is the point, not a loophole.** The gate does not decide what an unknown key *should* be — it forces the decision to be explicit: decode it, allow-list it with a reason, or delete it. Two entries today: `inspired_by` (documentation-only by decision, D-215 §13.3) and `lumen_mosaic` (below). `_comment_*` is a prefix convention for inline JSON commentary.
+
+**Known keys are parsed from `PresetDescriptor.CodingKeys`, not restated.** Same technique and same reason as `CommonLayoutTest` parsing `Common.metal` — a hard-coded copy would need lockstep updates, and forgetting would make the gate reject legitimate new fields.
+
+**Finding surfaced by writing it: `lumen_mosaic` is a manual-sync trap.** `LumenMosaic.json` carries a nine-value tuning block that nothing decodes; the operative values are Swift constants in `LumenPatternEngine.swift`, and the sync obligation exists only in a doc comment (`"LM.2 keeps the value matched to LumenMosaic.json#lumen_mosaic.ambient_floor_intensity = 0.04"`). `ambient_floor_intensity` and `light_agent_count` currently agree with Swift; the rest have no counterpart. Allow-listed with the trap named rather than silently deleted — whether the block should be decoded, or removed as decoration, is a Lumen call.
+
+**Both directions exercised.** Green on the catalog as it stands. Re-injecting the exact historical regressions — `concept_tags` + `motion_paradigm` into `CymaticResonance.json`, `sha256_subject` into `Witchlight.json`'s `inspired_by` — turns it **red, naming each offending key and file**. Sidecars restored; `git status` clean.
+
+**Still open (D-215):** whether `PresetDescriptor` should *decode* `inspired_by` rather than merely tolerate it. This increment deliberately does not settle that — it makes the tolerance explicit and auditable instead of accidental.
+
 ### Increment QG.6 — The GPU-contract gate could not fail to find its own sources ✅ (2026-08-09)
 
 `CommonLayoutTest`'s MSL parity check — the gate whose own doc comment says it exists because a broken buffer(0) contract shipped to `main` — printed `"MSL sources not reachable — skipping"` and **returned green** whenever either declaration site was unreadable. A wrong `repoRoot` was therefore indistinguishable from a pass: the same silent-success shape the gate exists to prevent, one level up.
@@ -319,16 +335,6 @@ thickness. Sibling to Cymatic Resonance: sound causes the image.
   slope); backdrop is a dark strip because the engine offers only `env` (grey studio) or `dark`.
 
 ### Increment VL.CERT — Volumetric Lithograph certified ✅ (2026-07-26)
-
-**Done-when:** all cert gates measured green and Matt's M7 signs off. Met.
-
-Matt (session 2026-07-26T20-06-59Z, chain clean): "Session looks good. Proceed with certification if all checks out." Gates, each RUN not assumed:
-- **RouteCoverage (QG.1):** 6 declared routes — `bass`→camera dolly speed, per-stem energies→palette hue (×4), `pulsePhase01`→fold downbeat ratchet — all fire on the canonical fixtures, 0 red. The identity coupling (fold rotation SPEED + terrain morph, both `accumulatedAudioTime`) is the animation time base, constant on offline fixtures → documented as the QG.1.1 boundary, not declared (the FD/VL precedent).
-- **Rubric:** `certifiedPresetsDeclareAudioRoutes` green (non-empty manifest); `automatedGate_uncertifiedPresetsAreUncertified` green (VL now correctly certified). ★ **Honest caveat: the automated rubric PROXY scores VL 3/15** — NOT a hard gate (suite passes), because the proxy is known-unreliable and VL's coupling lives where it can't see it (accumulatedAudioTime + fold rotation). Cert rests on M7 + route coverage + flash, exactly as Floret/Cytokinesis were certified.
-- **Flash (D-157 / GAP-9):** added VL to `MultiPassRenderHarness` (ray_march, no follower — Lumen's path minus the 4-light engine, plus VL's per-frame accumulatedAudioTime + sidecar dolly). MEASURED 0.00 flashes/s, 0 transitions, luma 0.18–0.24 (non-static, Δ0.057) under the worst-case beat train — flash-safe because VL-PSY.5 put the downbeat on geometry not luminance.
-
-`certified:false→true`, `rubric_profile:full`, VL added to `FidelityRubricTests.certifiedPresets`. VL is the catalog's **first certified terrain-flight / kaleidoscope preset** — the culmination of the VL-PSY.1→.6 rebuild (concept reset → kaleidoscopic folds → perf fix → ratchet motion → per-cell variety).
-
 ### Increment VL-PSY.6 — Volumetric Lithograph: per-cell variety (spatial repetition) ✅ (2026-07-25)
 ### Increment FLY.14 — Fractal Fly-By RETIRED (BUG-071 closed wontfix; D-201) ✅ (2026-07-25)
 ### Increment VL-PSY.5 — Volumetric Lithograph: ratchet rotation + retire the second beat layer (BUG-075) ✅ (2026-07-24)
