@@ -64,7 +64,10 @@ struct MoodScalerRefitABTests {
     private static func converged(_ features: [Float]) -> (v: Float, a: Float)? {
         let classifier = MoodClassifier()
         var last: EmotionalState?
-        for _ in 0..<80 { last = try? classifier.classify(features: features) }
+        // 80 calls at a fifth of the output window is > 15 tau — fully converged, and the
+        // dt is explicit now that the window is wall-clock (DYN.7).
+        let dt = MoodClassifier.outputTau / 5
+        for _ in 0..<80 { last = try? classifier.classify(features: features, deltaTime: dt) }
         guard let last else { return nil }
         return (last.valence, last.arousal)
     }

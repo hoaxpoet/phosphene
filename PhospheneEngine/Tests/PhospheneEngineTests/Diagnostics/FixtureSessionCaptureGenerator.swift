@@ -233,7 +233,8 @@ struct FixtureSessionCaptureGenerator {
                     fv.spectralCentroid, mir.rawSmoothedFlux,
                     mir.latestMajorKeyCorrelation, mir.latestMinorKeyCorrelation,
                 ]
-                if let state = try? mood.classify(features: input) {
+                // DYN.7 — 30 frames of wall clock since the previous classify.
+                if let state = try? mood.classify(features: input, deltaTime: deltaTime * 30) {
                     latestValence = state.valence
                     latestArousal = state.arousal
                 }

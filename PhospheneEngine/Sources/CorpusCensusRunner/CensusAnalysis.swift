@@ -136,9 +136,18 @@ func runMIR(samples: [Float], sampleRate: Double) -> MIRResult {
 
     // Run MoodClassifier ONCE on the aggregated vector. Fresh instance ⇒ EMA
     // starts from neutral and does not leak across tracks/rates.
+    //
+    // DYN.7 — `deltaTime` far beyond the 0.7 s output window, so alpha saturates to 1 and
+    // the single call returns the MLP's own reading. This is one AGGREGATE observation, not
+    // a point on a trajectory, so temporal smoothing has nothing to smooth. It also
+    // corrects a quiet error: under the previous per-call alpha of 0.1 a fresh classifier
+    // returned a TENTH of its output, so every valence/arousal in this census was damped
+    // 10× toward neutral. (The DYN.6.2 A/B was unaffected — it drove each row to
+    // convergence rather than calling once.)
     var valence: Double?
     var arousal: Double?
-    if let state = try? MoodClassifier().classify(features: means.map { Float($0) }) {
+    if let state = try? MoodClassifier().classify(features: means.map { Float($0) },
+                                                  deltaTime: 1000) {
         valence = Double(state.valence)
         arousal = Double(state.arousal)
     }
@@ -204,7 +213,10 @@ func runMoodAB(samples: [Float], sampleRate: Double) -> MoodABResult? {
                 fvOld.spectralCentroid, mirOld.rawSmoothedFlux,
                 mirOld.latestMajorKeyCorrelation, mirOld.latestMinorKeyCorrelation,
             ]
-            if let sNew = try? clfNew.classify(features: inNew), let sOld = try? clfOld.classify(features: inOld) {
+            // DYN.7 — 30 frames of wall clock have passed since the previous classify.
+            let sinceLastClassify = deltaTime * 30
+            if let sNew = try? clfNew.classify(features: inNew, deltaTime: sinceLastClassify),
+               let sOld = try? clfOld.classify(features: inOld, deltaTime: sinceLastClassify) {
                 newV = Double(sNew.valence); newA = Double(sNew.arousal)
                 oldV = Double(sOld.valence); oldA = Double(sOld.arousal)
                 gotResult = true

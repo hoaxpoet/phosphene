@@ -1785,6 +1785,26 @@ The library was reading systematically over-aroused (flux ran +1 σ high and dri
 
 **Gates:** `MoodClassifierGolden` regenerated through its documented `UPDATE_MOOD_GOLDEN=1` path (the classifier is untouched; only its input scaling moved). Full battery green — 1819 engine / 404 app / 0 lint.
 
+**DYN.7 — the prepared mood and the live mood become one measurement.** ✅ (2026-08-09) The split DYN.6 found and left alone, on Matt's instruction to take it.
+
+`TrackProfile.mood` is set at preparation and is 30 % of `DefaultPresetScorer`; the `valence`/`arousal` presets read is produced live. They disagreed on **every axis that defines the measurement**:
+
+| | intended (code comments) | live | offline |
+|---|---|---|---|
+| feature window | ~7 s | 1.67 s | **none — instantaneous** |
+| classify cadence | — | every frame | every 30th frame |
+| output window | ~0.7 s | 0.167 s | **6.96 s** |
+
+Both wrong, in opposite directions, and for the DYN.4/DYN.5 reason: the constants are per-CALL, so their meaning in seconds moves with the call rate. **The seconds in those two comments are the design intent** — each is off by ~4.2× against its own stated rate, the same 4.2× as 59.9 Hz / 14.3 Hz, which is what the analysis rate was when they were written. DYN.7 keeps the intent (7 s features, 0.7 s output) and discards the alphas.
+
+**Shipped:** `MoodFeatureAccumulator` (ML) — one `assemble(...)` fixing the ten-feature order and one wall-clock `update(...)`, driven by both paths. `MoodClassifier.classify(features:deltaTime:)` makes the output window wall-clock. The offline path now accumulates every frame and classifies every frame, as live does; cadence sets cost, not smoothing.
+
+**A reset that never existed.** The live accumulator's `featureAccumInitialized` was set once per SESSION, so **every track after the first inherited its predecessor's feature window** — the stale-publisher trap in CLAUDE.md §What NOT To Do, in plain-stored-property form. `resetStemPipeline` now clears it per track.
+
+**Gated by parity, not by example** (`MoodPathParityTests`): the accumulated window must agree across 43/60 Hz (< 0.002); **the live arrangement and the old preparation arrangement must reach the same reading on the same seconds** (< 0.05 on both axes); the output EMA must cover ~63 % in one τ whatever the call rate; and a track change must clear the window.
+
+**Also corrected in passing:** `MoodClassifierGolden` pinned a SINGLE `classify` call, i.e. whatever fraction of the answer the EMA had covered on its first step (10 % before, 2.4 % after). It was anchoring the smoother, not the model, and moved whenever the smoothing did. It now pins the CONVERGED output, which is what the file says it exists to anchor. `CorpusCensusRunner` classified once on an aggregate the same way — every valence/arousal it has ever emitted was damped 10× toward neutral. (The DYN.6.2 A/B was unaffected: it drove each row to convergence.)
+
 **FTR.5 — M7 + certification.** ⏸ **BLOCKED ON MATT — this is a live review, not work Claude
 can complete.** FTR.6 landed the rate/granularity adjustment Matt named as the precondition
 ("close pending these adjustments") and it is verified offline on both source tracks; whether

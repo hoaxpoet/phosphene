@@ -21,6 +21,7 @@
 import Testing
 import Foundation
 @testable import ML
+@testable import Shared
 
 @Suite("MoodClassifierGolden")
 struct MoodClassifierGoldenTests {
@@ -62,6 +63,22 @@ struct MoodClassifierGoldenTests {
             .appendingPathComponent("Fixtures/mood_classifier_golden.json")
     }()
 
+    /// The classifier's CONVERGED output for one input.
+    ///
+    /// DYN.7 — this used to be a single `classify` call, which returned whatever fraction
+    /// of the answer the output EMA had covered on its first step: 10 % under the old
+    /// per-call alpha, 2.4 % once the window became wall-clock. So the fixture was pinning
+    /// the SMOOTHER, and it moved whenever the smoothing did. This file's stated purpose is
+    /// to anchor "what the classifier should output for a known input" — that is the
+    /// converged value, and it is invariant to how the EMA is parameterised.
+    private static func converged(_ input: [Float]) throws -> EmotionalState {
+        let classifier = MoodClassifier()
+        let dt = MoodClassifier.outputTau / 5
+        var state = EmotionalState(valence: 0, arousal: 0)
+        for _ in 0..<80 { state = try classifier.classify(features: input, deltaTime: dt) }
+        return state
+    }
+
     // MARK: - Assertion test
 
     @Test("MoodClassifier output matches golden fixture within 1e-4 over 10 deterministic inputs")
@@ -91,8 +108,7 @@ struct MoodClassifierGoldenTests {
             #expect(entry.inputs == Self.goldenInputs[idx],
                     "Entry \(idx): stored inputs disagree with goldenInputs — regenerate fixture.")
 
-            let classifier = MoodClassifier()
-            let result = try classifier.classify(features: entry.inputs)
+            let result = try Self.converged(entry.inputs)
             #expect(abs(result.valence - entry.valence) < 1e-4,
                     "Entry \(idx): valence \(result.valence) vs golden \(entry.valence)")
             #expect(abs(result.arousal - entry.arousal) < 1e-4,
@@ -108,8 +124,7 @@ struct MoodClassifierGoldenTests {
     private func regenerateAndPrintFixture() throws {
         var entries: [GoldenEntry] = []
         for input in Self.goldenInputs {
-            let classifier = MoodClassifier()
-            let result = try classifier.classify(features: input)
+            let result = try Self.converged(input)
             entries.append(GoldenEntry(
                 inputs: input,
                 valence: result.valence,

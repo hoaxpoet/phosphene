@@ -41,8 +41,14 @@ public final class MoodClassifier: MoodClassifying, @unchecked Sendable {
     /// Expected number of input features.
     public static let featureCount = 10
 
-    /// EMA smoothing factor. At ~94 callbacks/s, alpha=0.1 gives ~0.7s time constant.
-    public static let emaAlpha: Float = 0.1
+    /// Output smoothing time constant, in SECONDS (DYN.7).
+    ///
+    /// Was `emaAlpha = 0.1` applied per CALL, so the window it produced depended on how
+    /// often the caller called: **0.167 s live** (every analysis frame at 59.9 Hz) against
+    /// **6.96 s offline** (every 30th frame at 43.07 Hz) — a 40× disagreement between the
+    /// mood a track was PREPARED with and the mood it PLAYED with. The 0.7 s here is the
+    /// figure that alpha's own comment always claimed; only the per-call form was wrong.
+    public static let outputTau: Float = 0.7
 
     // MARK: - Z-Score Normalization (from tools/data/mood_scaler.json)
     //
@@ -108,7 +114,10 @@ public final class MoodClassifier: MoodClassifying, @unchecked Sendable {
     ///
     /// - Parameter features: Array of exactly 10 floats (see class-level docs).
     /// - Returns: Smoothed `EmotionalState` with valence and arousal in [-1, 1].
-    public func classify(features: [Float]) throws -> EmotionalState {
+    /// - Parameter deltaTime: seconds since the previous `classify` call on this instance.
+    ///   Required (DYN.7): the output window is wall-clock, so a caller that classifies
+    ///   every 30th frame and one that classifies every frame reach the same reading.
+    public func classify(features: [Float], deltaTime: Float) throws -> EmotionalState {
         guard features.count == Self.featureCount else {
             throw MoodClassificationError.invalidFeatureCount(features.count)
         }
@@ -134,7 +143,7 @@ public final class MoodClassifier: MoodClassifying, @unchecked Sendable {
 
         // Apply EMA smoothing.
         lock.lock()
-        let alpha = Self.emaAlpha
+        let alpha = LoudnessProfile.emaAlpha(deltaTime: deltaTime, tau: Self.outputTau)
         let smoothedValence = alpha * clampedValence + (1 - alpha) * currentState.valence
         let smoothedArousal = alpha * clampedArousal + (1 - alpha) * currentState.arousal
         let state = EmotionalState(valence: smoothedValence, arousal: smoothedArousal)
