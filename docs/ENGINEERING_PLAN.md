@@ -63,6 +63,20 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment BUG078.3 — BUG-078: the second route to the same trap ✅ (2026-08-10)
+
+`AVAudioPlayerNode` teardown was still trapping the engine test process on trees containing the BUG078.1 fix. **10 crashes in 14 runs of `swift test --filter concurrentDoubleStart`; 0 in 30 after.**
+
+**Root cause, from a captured stack.** `scheduleFileLoop`'s reschedule path checked `playerNode === player` under `lock`, **released the lock**, then called `player.scheduleFile`. A `stop()` landing in that window nils the fields and runs `player.stop()`, so the command was armed on a node the provider had already released. AVFAudio's own `AVAEBlock` retains the node inside the queued command — our closure captures everything `weak`, so the retain is AVFAudio's — making that command the node's **last strong reference**. Its destruction on the node's own `CommandQueue` ran `-[AVAudioNode dealloc]` there, whose `Stop()` `dispatch_sync`s into the queue it is already running on. libdispatch's deadlock detector traps.
+
+**Fix.** `_scheduleFileLoopLocked` performs the identity check and the re-arm in one critical section, called with `lock` held. `stop()` / `start()` swap the fields under that same lock before the AVFoundation teardown runs, so the re-arm either arms while the node is still ours (and the teardown's `player.stop()` drains it) or sees the swap and bails. No new ABBA against BUG-021: `scheduleFile` only enqueues, teardown's `player.stop()` still runs outside the lock, and the completion handler still hops off the callback queue (BUG-059).
+
+**The durable lesson.** BUG078.1's gate — *adopted instances == torn-down instances* — stayed **green** through every one of these crashes, because the instance genuinely was torn down; the surviving defect was a command outliving a correct teardown. **A green invariant gate is evidence about the invariant it states and nothing else.** That green gate is what made "resolved" look safe for three days.
+
+**Method, for the next occurrence.** macOS wrote no `.ips` for any of these, so the stack came from `lldb -k "thread backtrace all"` after replicating SwiftPM's launch environment (`DYLD_FRAMEWORK_PATH` / `DYLD_LIBRARY_PATH` — SIP strips them from the shell, so they must be set via `settings set target.env-vars`). A temporary probe then quantified the window: every run recording a stale re-arm crashed (8/8); no clean run recorded one (0/4).
+
+**Not achieved, and not claimed: a fast deterministic gate that goes red on this race.** `rescheduleRacingTeardown_neverArmsACommandOnAReleasedNode` was written for it and **does not reproduce the trap** — 0 in 6 against the faithful pre-fix ordering, and an earlier stop-vs-start shape 0 in 5. The crash needs full-suite load, the same wall BUG078.1 hit. The test is kept because it asserts the guard *fires*, proving the window is entered; a green result there is not evidence the race is closed. The before/after measurement is the load-bearing signal.
+
 ### Increment DOC.7 — The rotation gate and its script now share one clock (UTC) ✅ (2026-08-10)
 
 `DocIntegrityTests.rotationCutoffString` and `Scripts/rotate_docs.sh` were carefully matched to each other — both on the **local** clock, compared as strings, byte-for-byte identical. That is exact on one machine and wrong across two. **CI runs in UTC; a dev machine usually does not**, so for however many hours separate the two midnights, the same tree is green locally and red in CI.
