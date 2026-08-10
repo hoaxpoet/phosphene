@@ -59,15 +59,15 @@ struct PresetSidecarKeyGateTests {
             it and no engine path reads it. Whether it SHOULD be decoded is an open \
             carry-forward on D-215, deliberately not settled by this gate.
             """,
-        "lumen_mosaic": """
-            LM.2 tuning mirror on LumenMosaic.json. The operative values are Swift \
-            constants in LumenPatternEngine.swift; the block restates them for readers. \
-            The sync is MANUAL — LumenPatternEngine.swift:393 documents the obligation in \
-            prose ("LM.2 keeps the value matched to LumenMosaic.json#lumen_mosaic.\
-            ambient_floor_intensity = 0.04") with no mechanism behind it, so the two can \
-            drift without anything failing.
-            """
     ]
+
+    // `lumen_mosaic` was allow-listed here at QG.7 and is now DELETED (LM.CLEAN,
+    // closing CA-Presets-FU-2). It was dead JSON from LM.1: nothing decoded it, and
+    // six of its nine keys — cell_density, cell_jitter, frost_amplitude, frost_scale,
+    // max_active_patterns, back_plane_depth — had no operative constant anywhere, so
+    // as documentation it described a preset that was never built. Deliberately NOT
+    // re-added to this allow-list: the gate should now reject it, which is the whole
+    // point of QG.7.
 
     /// Keys prefixed this way are inline commentary for a human reading the JSON
     /// (`_comment_audio_routes`, `_comment_scene_fog`, …). JSON has no comment syntax;
