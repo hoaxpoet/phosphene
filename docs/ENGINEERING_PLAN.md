@@ -1727,6 +1727,14 @@ And unchanged at the reference rate, which is the point: full-track Cherub Rock 
 
 **Done-when remaining: Matt's live look.** The probe stays in — the `DENSITY_PATH:` line now also confirms which branch runs, which this fix does not answer.
 
+**DYN.5 — the spectral-feature followers, in seconds.** ✅ (2026-08-09) Closes the gap DYN.4 flagged and left standing. `centroidAlpha` 0.12, `rolloffAlpha` 0.12, `fluxAlpha` 0.25 and `MIRPipeline.fluxMaxDecay` 0.999 were the last per-FRAME constants in the spectral path: at the live 59.9 Hz their real widths were 0.72× what the coefficients meant, so `spectral_centroid` and `spectral_flux` reacted ~40 % faster than calibrated — **on every preset that reads them, not just Fractal Tree.** Same `tau(legacyAlpha:)` treatment; nothing retuned.
+
+**A second, deeper rate dependence in flux — found by the gate, and NOT fixed.** Extending the invariance test to the raw `smoothedFlux` failed: it drifted 0.153 against a 0.52 span. That is not a follower-width error. Flux is a per-FRAME spectral difference, so its MAGNITUDE scales with the frame interval by construction, and no smoothing constant can correct it. Rescaling the raw value was rejected on inspection rather than tried: `rawSmoothedFlux` feeds the mood classifier (`VisualizerEngine+Audio`, `SessionPreparer+Analysis`) and the corpus census, all calibrated against its current scale.
+
+What presets actually read is `f.spectral_flux` = `smoothedFlux / fluxRunningMax`, and a constant gain cancels in that ratio **provided the running max decays over the same wall-clock window at both rates** — which is exactly what fixing `fluxMaxDecay` bought. The test asserts that field, measured through `MIRPipeline`, and it passes. **Standing caveat: `rawSmoothedFlux` remains rate-dependent in magnitude and the mood classifier consumes it.** Not in scope here; worth its own look if mood ever reads wrong.
+
+**Gates:** `DensitySmoothingRateInvarianceTests` extended — centroid drift < 2 % of its own span across 43/60 Hz, normalised flux < 15 %, and the τ-reproduces-legacy-alpha table now covers centroid/rolloff/flux. Full battery green (1817 engine / 404 app / 0 lint).
+
 **FTR.5 — M7 + certification.** ⏸ **BLOCKED ON MATT — this is a live review, not work Claude
 can complete.** FTR.6 landed the rate/granularity adjustment Matt named as the precondition
 ("close pending these adjustments") and it is verified offline on both source tracks; whether

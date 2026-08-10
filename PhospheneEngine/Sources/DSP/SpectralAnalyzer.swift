@@ -120,33 +120,24 @@ public final class SpectralAnalyzer: @unchecked Sendable {
 
     // MARK: - EMA Smoothing
 
-    /// EMA alpha for centroid smoothing.
-    private static let centroidAlpha: Float = 0.12
+    // DYN.5 — the spectral-feature followers, in SECONDS. The last per-FRAME alphas in this
+    // file: at the live 59.9 Hz their real widths were 0.72x what the coefficients meant,
+    // so `spectral_centroid` and `spectral_flux` reacted ~40 % faster than calibrated, on
+    // every preset that reads them. Each tau is what its old coefficient meant at the
+    // 43.07 Hz reference rate; nothing is retuned.
+    static let centroidTau: Float = LoudnessProfile.tau(legacyAlpha: 0.12)   // ≈ 0.18 s
+    static let rolloffTau: Float = LoudnessProfile.tau(legacyAlpha: 0.12)    // ≈ 0.18 s
+    static let fluxTau: Float = LoudnessProfile.tau(legacyAlpha: 0.25)       // ≈ 0.08 s
 
-    /// EMA alpha for rolloff smoothing.
-    private static let rolloffAlpha: Float = 0.12
-
-    /// EMA alpha for flux smoothing.
-    private static let fluxAlpha: Float = 0.25
-
-    // DYN.1 legs, at the ~10 Hz MIR rate: `density` at τ ≈ 0.8 s against
-    // `smoothedDensity` at τ ≈ 45 s, so the pair reads "this moment against this track's
-    // normal".
+    // DYN.1 density legs: a fast leg against a slow one, so the pair reads "this moment
+    // against this track's normal". THE FAST LEG'S WIDTH IS THE WHOLE BALLGAME and was
+    // wrong twice in opposite directions — the sweep against a real capture is in
+    // `docs/ENGINE/DYN1_CALIBRATION.md` §1; do not duplicate it back here. Widening it
+    // again would only destroy the signal it carries: the trunk reads the SECTION leg now
+    // (DYN.2), never this one.
     //
-    // THE FAST LEG'S WIDTH IS THE WHOLE BALLGAME, and it was wrong twice in opposite
-    // directions. Swept against a real capture (`2026-08-04T17-17-01Z`, distorted guitar
-    // at ~20 s, independent time-domain reference showing a 3.22× rise): τ 0.8 s recovers
-    // 93 % of the reference while turning only 0.41/s; τ 6 s recovers 19 % and τ 0.45 s
-    // buys nothing for 50 % more restlessness. Full table:
-    // `docs/ENGINE/DYN1_CALIBRATION.md` §1 — do not duplicate it back into this comment.
-    //
-    // τ 6 s was chosen when the TRUNK read this field and was bouncing. The trunk reads
-    // the τ10 s SECTION leg now (DYN.2), never this one, so widening this again would only
-    // destroy the signal it exists to carry. The raw fraction turns 5.59/s, which is why
-    // SOME smoothing is required; `density` is deliberately not instantaneous.
     // DYN.4 — widths in SECONDS, converted per frame. See LoudnessProfile §Smoothing time
-    // constants for why these stopped being per-frame alphas. Each tau is exactly what its
-    // old coefficient meant at the 43.07 Hz reference rate, so nothing is retuned.
+    // constants. Each tau is what its old coefficient meant at the reference rate.
     static let densityFastTau: Float = LoudnessProfile.tau(legacyAlpha: 0.117)     // ≈ 0.19 s
     static let densitySlowTau: Float = LoudnessProfile.tau(legacyAlpha: 0.0022)    // ≈ 10.5 s
     /// DYN.2b at the MEASURED 43 Hz analysis rate: τ20 s section leg over a τ45 s normal.
@@ -261,10 +252,14 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         let flux = computeFlux(magnitudes: magnitudes, count: count)
         let rawDensity = computeDensity(magnitudes: magnitudes, count: count)
 
-        // EMA smoothing.
-        smoothedCentroid = Self.centroidAlpha * centroid + (1 - Self.centroidAlpha) * smoothedCentroid
-        smoothedRolloff = Self.rolloffAlpha * rolloff + (1 - Self.rolloffAlpha) * smoothedRolloff
-        smoothedFlux = Self.fluxAlpha * flux + (1 - Self.fluxAlpha) * smoothedFlux
+        // EMA smoothing (DYN.5 — widths in seconds, alpha derived from this frame).
+        func blend(_ current: Float, _ target: Float, tau: Float) -> Float {
+            let alpha = LoudnessProfile.emaAlpha(deltaTime: deltaTime, tau: tau)
+            return alpha * target + (1 - alpha) * current
+        }
+        smoothedCentroid = blend(smoothedCentroid, centroid, tau: Self.centroidTau)
+        smoothedRolloff = blend(smoothedRolloff, rolloff, tau: Self.rolloffTau)
+        smoothedFlux = blend(smoothedFlux, flux, tau: Self.fluxTau)
         // SEED BOTH LEGS ON THE FIRST NON-SILENT FRAME. Without this the τ45 s baseline
         // climbs from 0 and never catches the fast leg inside a track: measured on Matt's
         // 2026-08-04T17-17-01Z capture the ratio sat at 2–6× and the resulting lift was

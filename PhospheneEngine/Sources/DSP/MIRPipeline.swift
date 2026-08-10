@@ -156,7 +156,14 @@ public final class MIRPipeline: @unchecked Sendable {
     // MARK: - Normalization State
 
     private var fluxRunningMax: Float = 1e-6
-    private static let fluxMaxDecay: Float = 0.999
+    /// DYN.5 — the running-max decay expressed in SECONDS.
+    ///
+    /// This was `0.999` applied once per FRAME, so the window it represents moved with the
+    /// analysis rate: ≈ 23 s at the 43.07 Hz the constant was chosen at, ≈ 16.7 s at the
+    /// live 59.9 Hz. It is the denominator of `spectral_flux`, so a shorter window makes
+    /// the normalised flux ride higher on quiet passages — a gain error on a field many
+    /// presets read, arriving silently with a frame-rate change.
+    private static let fluxMaxTau: Float = LoudnessProfile.tau(legacyAlpha: 1 - 0.999)
     /// MV-1 / D-146 (BUG-027): per-band running-average pivot for the deviation
     /// primitives. Each band's deviation is measured against its own recent
     /// average (mirroring StemAnalyzer's per-stem EMA), not a fixed 0.5 — the
@@ -244,7 +251,7 @@ public final class MIRPipeline: @unchecked Sendable {
         // Normalize spectral features for FeatureVector (0-1 range).
         let normalizedCentroid = nyquist > 0
             ? spectral.smoothedCentroid / nyquist : 0
-        let normalizedFlux = normalizeFlux(spectral.smoothedFlux)
+        let normalizedFlux = normalizeFlux(spectral.smoothedFlux, deltaTime: deltaTime)
 
         // Bundle intermediate results for helper methods.
         let context = ProcessContext(
@@ -284,11 +291,11 @@ public final class MIRPipeline: @unchecked Sendable {
     }
 
     /// Normalize spectral flux via running-max AGC.
-    private func normalizeFlux(_ smoothedFlux: Float) -> Float {
+    private func normalizeFlux(_ smoothedFlux: Float, deltaTime: Float) -> Float {
         lock.lock()
-        fluxRunningMax = max(
-            fluxRunningMax * Self.fluxMaxDecay, smoothedFlux
-        )
+        // `1 - alpha` IS the decay factor for this frame's duration: both are exp(-dt/tau).
+        let decay = 1 - LoudnessProfile.emaAlpha(deltaTime: deltaTime, tau: Self.fluxMaxTau)
+        fluxRunningMax = max(fluxRunningMax * decay, smoothedFlux)
         let result = fluxRunningMax > 1e-10
             ? smoothedFlux / fluxRunningMax : 0
         lock.unlock()

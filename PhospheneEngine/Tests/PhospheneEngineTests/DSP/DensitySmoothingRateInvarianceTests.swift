@@ -53,6 +53,9 @@ struct DensitySmoothingRateInvarianceTests {
         var section: [Float] = []
         var normal: [Float] = []
         var ratio: [Float] = []
+        // DYN.5 — the spectral-feature followers, on the same wall-clock grid.
+        var centroid: [Float] = []
+        var flux: [Float] = []
     }
 
     /// Run the analyzer for `seconds` at `fps`, sampling every whole second so two runs at
@@ -73,6 +76,8 @@ struct DensitySmoothingRateInvarianceTests {
                 track.section.append(analyzer.sectionDensity)
                 track.normal.append(analyzer.densityNormal)
                 track.ratio.append(result.sectionRatio)
+                track.centroid.append(result.smoothedCentroid)
+                track.flux.append(result.smoothedFlux)
                 nextSample += 1
             }
         }
@@ -138,6 +143,65 @@ struct DensitySmoothingRateInvarianceTests {
             """)
     }
 
+    /// DYN.5. `spectral_centroid` and `spectral_flux` are read by many presets, not just
+    /// Fractal Tree, so their followers running 1.4x fast at the live rate was a
+    /// cross-preset gain error — and exactly the same shape of defect as the density legs.
+    @Test("the centroid and flux followers agree across rates too")
+    func spectralFeatureFollowersAgreeAcrossRates() {
+        let slow = Self.run(fps: LoudnessProfile.referenceAnalysisHz, seconds: 90, profile: nil)
+        let fast = Self.run(fps: 59.9, seconds: 90, profile: nil)
+        let n = min(slow.centroid.count, fast.centroid.count)
+        #expect(n >= 89, "expected ~90 one-second samples, got \(n)")
+
+        // Centroid is in Hz, so scale the tolerance to the signal: 0.5 % of its own span.
+        let slowSpan = (slow.centroid.max() ?? 0) - (slow.centroid.min() ?? 0)
+        #expect(slowSpan > 1, "the drive must actually move the centroid (span \(slowSpan) Hz)")
+        let centroidDrift = Self.maxAbsDiff(Array(slow.centroid[0..<n]), Array(fast.centroid[0..<n]))
+        #expect(centroidDrift < slowSpan * 0.02, """
+            centroid drifts \(centroidDrift) Hz between 43 Hz and 60 Hz against a span of \
+            \(slowSpan) Hz — the follower width is still tied to the frame rate.
+            """)
+
+        // FLUX IS TESTED ON THE NORMALISED FIELD, and the distinction is the finding.
+        // `smoothedFlux` is a per-FRAME spectral difference, so its MAGNITUDE is rate
+        // dependent by construction — at 60 Hz consecutive frames are closer together and
+        // each difference is smaller. Fixing the follower width cannot change that, and
+        // rescaling the raw value is not available: `rawSmoothedFlux` feeds the mood
+        // classifier (`VisualizerEngine+Audio`, `SessionPreparer+Analysis`) and the corpus
+        // census, all calibrated against its current scale.
+        //
+        // What presets read is `f.spectral_flux`, which is `smoothedFlux / fluxRunningMax`
+        // — and a constant gain cancels in that ratio, provided the running max decays over
+        // the same WALL-CLOCK window at both rates. That is the part DYN.5 fixed, and it is
+        // what this asserts.
+        let slowNorm = Self.normalisedFlux(fps: LoudnessProfile.referenceAnalysisHz, seconds: 90)
+        let fastNorm = Self.normalisedFlux(fps: 59.9, seconds: 90)
+        let m = min(slowNorm.count, fastNorm.count)
+        let normSpan = max((slowNorm.max() ?? 0) - (slowNorm.min() ?? 0), 1e-6)
+        #expect(normSpan > 0.05, "the drive must move normalised flux (span \(normSpan))")
+        let normDrift = Self.maxAbsDiff(Array(slowNorm[0..<m]), Array(fastNorm[0..<m]))
+        #expect(normDrift < normSpan * 0.15, """
+            spectral_flux drifts \(normDrift) between rates against a span of \(normSpan). \
+            The running-max window is what must be wall-clock, not the raw difference.
+            """)
+    }
+
+    /// `f.spectral_flux` as presets receive it, sampled on the same one-second grid.
+    private static func normalisedFlux(fps: Float, seconds: Float) -> [Float] {
+        let pipeline = MIRPipeline(binCount: fftSize / 2, sampleRate: sampleRate, fftSize: fftSize)
+        let deltaTime = 1 / fps
+        var out: [Float] = []
+        var nextSample: Float = 1
+        var t: Float = 0
+        while t < seconds {
+            let fv = pipeline.process(magnitudes: magnitudes(atSeconds: t),
+                                      fps: fps, time: t, deltaTime: deltaTime)
+            t += deltaTime
+            if t >= nextSample { out.append(fv.spectralFlux); nextSample += 1 }
+        }
+        return out
+    }
+
     @Test("tau constants reproduce the legacy coefficients at the reference rate")
     func referenceRateIsUnchanged() {
         // DYN.4 fixes a rate dependence; it must not retune anything. Each tau is defined so
@@ -148,7 +212,10 @@ struct DensitySmoothingRateInvarianceTests {
             ("level", Float(0.030), LoudnessProfile.levelSmoothingTau),
             ("fast", Float(0.117), SpectralAnalyzer.densityFastTau),
             ("slow", Float(0.0022), SpectralAnalyzer.densitySlowTau),
-            ("normal", Float(0.00052), SpectralAnalyzer.densityNormalTau)
+            ("normal", Float(0.00052), SpectralAnalyzer.densityNormalTau),
+            ("centroid", Float(0.12), SpectralAnalyzer.centroidTau),
+            ("rolloff", Float(0.12), SpectralAnalyzer.rolloffTau),
+            ("flux", Float(0.25), SpectralAnalyzer.fluxTau)
         ] {
             let alpha = LoudnessProfile.emaAlpha(deltaTime: dt, tau: tau)
             #expect(abs(alpha - legacy) < 1e-5,
