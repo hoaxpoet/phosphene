@@ -33,9 +33,11 @@ struct CanopyDensityPathTests {
     /// FA #27 bars synthetic audio for *diagnosing musical behaviour*; this asserts only
     /// which code branch a profile selects, which is a property of the profile and not of
     /// the music. The magnitudes only need to be non-degenerate.
-    private static func runPastProbe(profile: LoudnessProfile?) -> MIRPipeline {
+    private static func runPastProbe(profile: LoudnessProfile?,
+                                     sink: (@Sendable (String) -> Void)? = nil) -> MIRPipeline {
         let pipeline = MIRPipeline(binCount: fftSize / 2, sampleRate: 44100, fftSize: fftSize)
         pipeline.setLoudnessProfile(profile)
+        pipeline.onDiagnostic = sink
         let fps: Float = 60
         let deltaTime: Float = 1.0 / fps
         var magnitudes = [Float](repeating: 0, count: fftSize / 2)
@@ -104,6 +106,32 @@ struct CanopyDensityPathTests {
             profile: LoudnessProfile(quantilesDB: db, densityQuantiles: density))
         #expect(pipeline.canopyDensityBranch == "fallback(profile-unusable)",
                 "got \(pipeline.canopyDensityBranch ?? "nil")")
+    }
+
+    /// DYN.3.1. The probe's first live session came back with NO probe line: it wrote
+    /// through `os.Logger`, and no engine `os.Logger` line has ever reached `session.log`
+    /// (`MIR_RESET` / `MIR_RATE` / `BEAT_GRID_INSTALL` are absent from every session dir).
+    /// The unified log had rolled off before the artifact was read, so a 115-second capture
+    /// answered nothing. A diagnostic nobody can retrieve is not a diagnostic — so the
+    /// retrievable route is gated, not just the classification.
+    @Test("the probe reaches the session-log sink exactly once")
+    func diagnosticReachesSessionLog() {
+        final class Box: @unchecked Sendable {
+            let lock = NSLock()
+            var lines: [String] = []
+        }
+        let box = Box()
+        _ = Self.runPastProbe(profile: Self.fullProfile()) { line in
+            box.lock.withLock { box.lines.append(line) }
+        }
+        let lines = box.lock.withLock { box.lines }
+        #expect(lines.count == 1, "expected exactly one probe line, got \(lines.count)")
+        let line = lines.first ?? ""
+        #expect(line.hasPrefix("DENSITY_PATH: "), "got \(line)")
+        // The two facts the next increment turns on must both be present and parseable.
+        #expect(line.contains("branch=ranked"), "got \(line)")
+        #expect(line.contains("fps="), "got \(line)")
+        #expect(line.contains("tau_section="), "got \(line)")
     }
 
     @Test("a track change clears the probe so the next track reports its own path")

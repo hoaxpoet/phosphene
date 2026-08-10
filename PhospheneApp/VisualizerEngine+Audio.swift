@@ -41,6 +41,13 @@ extension VisualizerEngine {
         audioRouter.onAudioCaptureDiagnostic = { [weak recorder] msg in
             recorder?.log("TAP: \(msg)")
         }
+        // DYN.3.1 — engine one-shot diagnostics into session.log. The DYN.3 canopy probe
+        // wrote through os.Logger and its first session came back with nothing: no engine
+        // os.Logger line has ever reached session.log, and the unified log had rolled off
+        // before the artifact was read. Same route `TAP:` already takes, same reason.
+        mirPipeline.onDiagnostic = { [weak recorder] msg in
+            recorder?.log(msg)
+        }
 
         // ASH.1: fresh session → clear stale silence timing / prior health, and
         // log + publish each health state CHANGE (not per-window). The overlay

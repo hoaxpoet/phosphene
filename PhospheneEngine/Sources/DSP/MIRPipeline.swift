@@ -135,6 +135,24 @@ public final class MIRPipeline: @unchecked Sendable {
     /// `1.0 + 0.35 * stems.bass_energy_dev`. A/B-able from the same build.
     public var ffoColdStartFixEnabled: Bool = true
 
+    // MARK: - Diagnostics sink
+
+    /// Session-log sink for one-shot engine diagnostics, wired by the app layer to
+    /// `SessionRecorder.log`.
+    ///
+    /// **Why this exists (DYN.3.1).** DYN.3's probe wrote through `os.Logger`, and the
+    /// first session recorded with it came back with no probe line at all: `session.log`
+    /// is a curated artifact written by `SessionRecorder`, and **no engine `os.Logger`
+    /// line has ever reached it** — `MIR_RESET`, `MIR_RATE` and `BEAT_GRID_INSTALL` are
+    /// all absent from every session dir. The unified log had already rolled off by the
+    /// time the session was read, so a 115-second capture answered nothing. A diagnostic
+    /// nobody can retrieve is not a diagnostic. Same lesson `TAP:` learned ("os_log rolls
+    /// off") one increment earlier, in this same file's neighbourhood.
+    ///
+    /// Set once at wiring time on the main actor, read on the analysis queue; a plain
+    /// stored property matching `ffoColdStartFixEnabled`, not lock-guarded.
+    public var onDiagnostic: (@Sendable (String) -> Void)?
+
     // MARK: - Normalization State
 
     private var fluxRunningMax: Float = 1e-6
@@ -712,5 +730,6 @@ extension MIRPipeline {
         let rate = String(format: "fps=%.1f tau_section=%.1fs", fps, tau)
         let line = "DENSITY_PATH: branch=\(branch) \(rate) span=\(span)"
         logger.info("\(line, privacy: .public)")
+        onDiagnostic?(line)   // DYN.3.1 — the copy that survives into session.log
     }
 }
