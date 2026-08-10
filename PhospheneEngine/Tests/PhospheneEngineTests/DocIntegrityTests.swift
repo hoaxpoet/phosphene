@@ -185,21 +185,36 @@ struct DocIntegrityTests {
 
     /// Cutoff date (`YYYY-MM-DD`) for the rotation gate — entries dated strictly
     /// BEFORE this string belong in the history files. Computed as today − 14 days
-    /// in the LOCAL calendar and compared as a STRING, byte-for-byte matching
-    /// `Scripts/rotate_docs.sh` (`date -v-14d +%Y-%m-%d` then awk string `<`).
+    /// **in UTC** and compared as a STRING, byte-for-byte matching
+    /// `Scripts/rotate_docs.sh` (`date -u -v-14d +%Y-%m-%d` then awk string `<`).
     /// Comparing dates-as-strings (not `Date` objects) is what keeps the gate and
     /// the tool agreeing on the exact boundary day: a datetime cutoff flagged
     /// day-14 entries that the date-only script refused to move (the CLEAN.2.3.5
     /// closeout red-gate class).
-    private static var rotationCutoffString: String {
-        let calendar = Calendar(identifier: .gregorian)   // local TZ, matches `date`
-        let cutoff = calendar.date(byAdding: .day, value: -14, to: Date())
-            ?? Date(timeIntervalSinceNow: -14 * 86_400)
+    ///
+    /// **UTC, not local (fixed DOC.7).** The gate and the script were matched to each
+    /// other on the local clock, which is exact on one machine and wrong across two.
+    /// CI runs in UTC; a dev machine usually does not, so for the hours between the
+    /// two midnights the same tree is green locally and red in CI. That is not a
+    /// hypothetical: on 2026-08-09 this gate passed at 18:25 EST and `fast-gate`
+    /// failed at 01:31 UTC on `VL.CERT (2026-07-26)` — 14 days old locally, 15 in
+    /// UTC — and `rotate_docs.sh` could not clear it, because it read the same local
+    /// clock and correctly reported nothing to move. The month-rotation check further
+    /// down this file was already on UTC, so local here was also internally
+    /// inconsistent.
+    static func rotationCutoffString(asOf now: Date) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
+        let cutoff = calendar.date(byAdding: .day, value: -14, to: now)
+            ?? now.addingTimeInterval(-14 * 86_400)
         let df = DateFormatter()
         df.dateFormat = "yyyy-MM-dd"
         df.locale = Locale(identifier: "en_US_POSIX")
+        df.timeZone = TimeZone(identifier: "UTC") ?? .gmt
         return df.string(from: cutoff)
     }
+
+    private static var rotationCutoffString: String { rotationCutoffString(asOf: Date()) }
 
     /// The LAST `YYYY-MM-DD` string in a header line (ranges use the end date) —
     /// the same rule `Scripts/rotate_docs.sh` applies. Returned as a string so the
@@ -255,6 +270,30 @@ struct DocIntegrityTests {
         }
         closeEntry()
         #expect(violations.isEmpty, "EP §Recently Completed ✅/⏳ entr\(violations.count == 1 ? "y" : "ies") older than 14 days still carr\(violations.count == 1 ? "ies" : "y") a body: \(violations) — run Scripts/rotate_docs.sh (bodies move to ENGINEERING_PLAN_HISTORY.md; headers stay).")
+    }
+
+    @Test("Rotation cutoff is UTC, so CI and a dev machine never disagree (DOC.7)")
+    func rotationCutoffIsUTC() {
+        // The exact instant fast-gate failed on PR #73: 2026-08-10T01:31Z. In UTC that
+        // is 2026-08-10, so the cutoff is 2026-07-27. West of Greenwich the local date
+        // is still 2026-08-09, which yields 2026-07-26 — and `VL.CERT (2026-07-26)` is
+        // then NOT flagged, because the comparison is strict `<`. That one-day gap is
+        // the whole bug: green here, red in CI, on a byte-identical tree.
+        let instant = Date(timeIntervalSince1970: 1_786_325_460)   // 2026-08-10T01:31:00Z
+        #expect(
+            Self.rotationCutoffString(asOf: instant) == "2026-07-27",
+            "cutoff must be derived in UTC regardless of the machine's time zone (TZ here: \(TimeZone.current.identifier))"
+        )
+        // And the entry that actually broke CI is flagged at that cutoff.
+        #expect(Self.epEntryNeedsRotation(
+            header: "### Increment VL.CERT — Volumetric Lithograph certified ✅ (2026-07-26)",
+            bodyLines: 10,
+            cutoff: Self.rotationCutoffString(asOf: instant)
+        ))
+        // Midnight UTC exactly — the boundary the two clocks straddle.
+        #expect(Self.rotationCutoffString(asOf: Date(timeIntervalSince1970: 1_786_320_000)) == "2026-07-27")
+        // One second earlier is the previous UTC day, and one day earlier a cutoff.
+        #expect(Self.rotationCutoffString(asOf: Date(timeIntervalSince1970: 1_786_319_999)) == "2026-07-26")
     }
 
     @Test("EP rotation predicate matches rotate_docs selection — boundary + ✅/⏳ marker (DOC.6)")
