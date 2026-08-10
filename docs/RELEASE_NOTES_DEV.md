@@ -10,6 +10,40 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-10-164918] BUG-078 closed for the second time — the reschedule race, caught with a stack
+
+`AVAudioPlayerNode` teardown was still trapping the engine test process on trees that
+contained the BUG078.1 fix. **Measured 10 crashes in 14 runs of
+`swift test --filter concurrentDoubleStart`; 0 in 30 after this change.**
+
+**Two routes to one trap.** BUG078.1 (2026-08-07) closed the *overwrite* route — a running
+instance orphaned when two `start()` calls raced. This is a second, independent route:
+`scheduleFileLoop` checked `playerNode === player` under the lock, **released it**, and only
+then called `player.scheduleFile`. A `stop()` landing in that window armed a command on a
+node the provider had already released; AVFAudio's own `AVAEBlock` retains the node inside
+that queued command, so it became the last strong reference, and its destruction on the
+node's own `CommandQueue` ran `-[AVAudioNode dealloc]` there — whose `Stop()` `dispatch_sync`s
+into the queue it is already on. libdispatch traps.
+
+**The lesson worth keeping.** BUG078.1's gate — adopted instances == torn-down instances —
+stayed **green** through every one of these crashes, because the instance really was being
+torn down. **A green invariant gate is evidence about the invariant it states and nothing
+else.** The green gate is what made "resolved" look safe for three days.
+
+**Method note.** macOS wrote no `.ips` for any occurrence, so the stack came from
+`lldb -k "thread backtrace all"` after replicating SwiftPM's launch environment
+(`DYLD_FRAMEWORK_PATH` / `DYLD_LIBRARY_PATH`, which SIP strips from the shell). A temporary
+probe then quantified the window: **every run recording a stale re-arm crashed (8/8); no
+clean run recorded one (0/4).**
+
+**What was not achieved, and is not claimed:** a fast deterministic gate that goes red on
+the surviving race. The new `rescheduleRacingTeardown_…` test does **not** reproduce the trap
+(0 in 6 against the faithful pre-fix ordering); it asserts only that the guard fires, proving
+the window is entered. The crash needs full-suite load — the same wall BUG078.1 hit. The
+before/after measurement is the load-bearing evidence, and the entry says so.
+
+---
+
 ### [dev-2026-08-07-203000] BUG051.1 closed on Matt's live m3u run — and the build-identity check that nearly didn't happen
 
 Session `2026-08-07T20-20-07Z`: `normal.m3u` (one `.m4a`, one `.mp3`, one `.flac`, absolute paths with spaces, brackets and an apostrophe) queued and played all three. `prepareLocalFiles DONE cached=3 failed=0 total=3`, both advances `ok=true`, `CHAIN_HEALTH: verdict=clean`, tap healthy at −2.03 dBFS. BUG-051's manual criterion is met and the entry is closed.
