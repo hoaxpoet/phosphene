@@ -63,6 +63,20 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment DOC.7 — The rotation gate and its script now share one clock (UTC) ✅ (2026-08-10)
+
+`DocIntegrityTests.rotationCutoffString` and `Scripts/rotate_docs.sh` were carefully matched to each other — both on the **local** clock, compared as strings, byte-for-byte identical. That is exact on one machine and wrong across two. **CI runs in UTC; a dev machine usually does not**, so for however many hours separate the two midnights, the same tree is green locally and red in CI.
+
+**Observed, not theorised.** PR #73's `fast-gate` failed on `VL.CERT (2026-07-26)` at 2026-08-10T01:31Z — 15 days old in UTC — while the identical tree passed locally at 2026-08-09 18:25 EST, where it was exactly 14. Worse, the obvious remedy was inert: running `rotate_docs.sh` locally reported *"nothing to move"* and meant it, because the script read the same local clock. Clearing CI required `PHOSPHENE_TODAY=$(date -u +%Y-%m-%d)`, i.e. lying to the script about the date to make it agree with the machine that matters.
+
+**Fix:** both sides derive the cutoff in UTC — `Calendar`/`DateFormatter` pinned to UTC in the gate, `date -u -v-14d` in the script. The string-comparison contract between them is untouched, which is what keeps them agreeing on the boundary day (the CLEAN.2.3.5 class). The `PHOSPHENE_TODAY` override stays pure calendar arithmetic on an explicit date, crossing no zone.
+
+**This file was already internally inconsistent:** the `RELEASE_NOTES_DEV` month-rotation check a few lines below used UTC while the day-rotation cutoff used local. Now both are UTC.
+
+**Regression test pinned to the actual failure.** `rotationCutoffIsUTC` asserts the cutoff at 2026-08-10T01:31Z is `2026-07-27` regardless of the host's time zone — west of Greenwich the local answer is `2026-07-26`, under which `VL.CERT` is *not* flagged (the comparison is strict `<`). It also asserts the entry that broke CI is flagged at that cutoff, and pins both sides of UTC midnight. Deterministic; no wall-clock.
+
+**Not addressed:** the three FLY/FD entries dated 2026-07-23 that the script reports for manual triage on every run — they carry 🔨 and no ✅/⏳ marker, so the predicate correctly skips them. They need a closing status marker whenever Fractal Fly-By's retirement under D-201 is written up.
+
 ### Increment QG.7 — An unrecognised sidecar key is a failure, not a silent no-op ✅ (2026-08-09)
 
 Closes the unknown-key half of D-215's carry-forward. `PresetSidecarKeyGateTests` asserts that every top-level key in every preset sidecar is either decoded by `PresetDescriptor` or explicitly allow-listed **with a reason**, and that every `inspired_by` block matches the D-215 §13.3 union schema.

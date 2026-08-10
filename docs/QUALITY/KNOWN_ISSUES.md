@@ -36,6 +36,7 @@ read the crash reports already on disk.**)*
 
 | ID | Sev | Domain | One-liner |
 |---|---|---|---|
+| BUG-078 | P2 · REOPENED 2026-08-10 | audio.playback / concurrency | **The `AVAudioPlayerNode` teardown trap still fires on a tree containing the BUG078.1 fix** — `EXC_BREAKPOINT`/`SIGTRAP`, **4 crashes in 20 consecutive runs (20 %)**, every one inside `concurrentDoubleStart_serializesWithoutDeadlock()` after its assertions pass. It presents as a suite-level exit 1 with *no failing test line*, which is how it hides in an otherwise-green run. The 2026-08-07 fix demonstrably narrowed the race (1-in-3 full-suite before) but did not close it. **No `.ips` exists for any post-fix occurrence, so the surviving mechanism is unknown — do not assume it is the same overwrite.** |
 | BUG-085 | P1 · HANG.1–2 complete 2026-08-05; remains open | renderer / app.hang | **App intermittently hangs hard in `CAMetalLayer.nextDrawable`; window unresponsive, force-quit required.** The live stack proves a main-thread drawable request blocked at 0 % CPU after healthy frames, but the cause remains unknown; direct render-path leakage, the capture hook, preset-swap skip, inflight semaphore, GPU completion, display sleep, and occlusion have been ruled out. **HANG.1 instrumentation is merged to `main` via PR #37 (`c54a2e7c`)**. HANG.2 completed a full-track control plus a 10 min 36 s Witchlight soak with 34,811/34,811 drawables balanced and no stalls or imbalances, refuting a deterministic per-frame leak but not identifying the intermittent owner. **THE INSTRUMENTED CAPTURE NOW EXISTS (2026-08-05, session `2026-08-05T21-21-03Z`, Fractal Tree / Cherub Rock)** — and every lifecycle counter is BALANCED at the moment of the hang: `drawable=12045/12045`, `unique_presented=6012/6012`, `command_completed=6012/6012`, `failures=0`, `unpresented=0`, one request outstanding (`pending=frame:6013,site:mesh.descriptor`). The app held ZERO drawables and CoreAnimation still would not vend one, which independently confirms HANG.2's soak: there is no app-side leak, and the owner is outside the app. Two captures 98 s apart are byte-identical on those counters — a PERMANENT block, not a long stall. See the detail section. |
 | BUG-081 | P2 | app.hang | **3 instances now** (2026-08-03 ×1, 2026-08-04 ×2). | **App beachballed ~78 s into session `2026-08-03T22-54-06Z` and needed a force-quit; no `.ips` exists** (force-quit produces none) and `session.log` ends mid-normal-operation with no fatal. **Evidence-only — no root cause asserted.** What the capture DOES establish: the renderer was healthy to the last frame — steady 60 fps, Fractal Tree at **0.18 ms GPU against a 0.7 ms budget**, no degradation trend across 3756 frames; background ML load rising but modest (`stem_analyzer_ms` 0 → 3.4). **Ruled out by test:** FTR.2's shader overflowing the mesh primitive limit via a bad `branch_count` — no non-finite values in the capture and `branch_count` never exceeds 59 against the 63 ceiling. A frozen UI with a live render loop points away from the preset, but that is inference and BUG-061's rule forbids acting on it. **Same class as BUG-060** (force-quit hang, render loop died, no stack captured, never reproduced) — two instances now, both blocked on the same missing artifact. **Next evidence:** `sample PhospheneApp 10 -file ~/Desktop/phosphene-hang.txt` run DURING the beachball, before force-quitting |
 | BUG-084 | P3 | dsp.stem | **`StemAnalyzer` deviation reaches 35 where the primitive's real ceiling is ~3.4** — suspected divide-by-near-zero against a not-yet-converged per-track EMA baseline (the stem-side twin of the BUG-027 / AGC2.4.1 cold-start family). No product impact today: FFO's aurora is defended by the FBS.S3.2 soft knee (35 → 1.64), which is what let BUG-041 close. Filed 2026-08-03 (RECON.2) so it survives that closure — the *input* is wrong even though the output is defended. Unreproduced; fixtures retained |
@@ -58,6 +59,84 @@ read the crash reports already on disk.**)*
 ---
 
 ## Open
+
+---
+
+### BUG-078 — Engine test process traps in `AVAudioPlayerNode` teardown: `dispatch_sync` on an already-owned queue (2026-07-30)
+
+**P2 · audio.playback / concurrency · REOPENED 2026-08-10 — the trap still fires on a tree containing the BUG078.1 fix (see §Recurrence below). Previously RESOLVED 2026-08-07 (BUG078.1, merged in `f68efb67` / PR #62; manual validation session `2026-08-07T19-10-25Z`).** Found at DBN.1 while running the closeout evidence; **pre-existing, not introduced by that increment**. P2 rather than P1 because it has only been observed taking down the *test* process — but the code path is shipped local-file playback, so the app-facing impact would be a hard crash.
+
+#### Recurrence (2026-08-10, DOC.7 closeout evidence) — REOPENS this entry
+
+**The fix is present and the trap still fires.** `f68efb67` is an ancestor of the tree under test (`git merge-base --is-ancestor` → true) and `LocalFilePlaybackProvider` carries the snapshot-under-lock change and its BUG-078 comments. The process still dies with `EXC_BREAKPOINT` / `SIGTRAP` (`exited with unexpected signal code 5`).
+
+**Reproduction rate, measured not anecdotal.** 20 consecutive runs of `swift test --filter 'LocalFilePlaybackProvider|SessionLifecycleChurn|concurrentDoubleStart'`: **4 crashed (iterations 8, 12, 16, 18) — 20 %.** Every one signal 5. First seen in a full-suite closeout run at 2026-08-10 08:43, which did not reproduce on the immediate re-run (1809 tests green) — the 4/20 loop is what pinned it.
+
+**Where it fires.** In all four, the five preceding tests pass and the process dies during **`concurrentDoubleStart_serializesWithoutDeadlock()`** — the same test the pre-fix `.ips` reports named, and the exact race BUG078.1 targeted. The crash is at teardown, after assertions have passed, so it presents as a suite-level exit 1 with **no failing test line**, which is how it hid inside an otherwise-green run.
+
+**What is NOT established.**
+- **No stack for a post-fix occurrence.** macOS wrote no new `.ips` for any of the four (the newest report on disk is 2026-08-08 08:51:57, and the 2026-08-03 file's mtime is merely being touched). Without one, the *mechanism* of the surviving race is unknown — do not assume it is the same overwrite the fix closed.
+- **The 2026-08-08 report is not evidence of a post-fix failure.** Its signature is identical (`__DISPATCH_WAIT_FOR_QUEUE__` → `_dispatch_sync_f_slow` → `AVAudioPlayerNodeImpl::StopImpl()` → `~AVAudioPlayerNodeImpl` → `-[AVAudioNode dealloc]` ← `_Block_release`, naming `concurrentDoubleStart_serializesWithoutDeadlock` / `_startLocked()` / `stop()`), but it carries no worktree path, and on 2026-08-08 most worktrees did not yet have the fix. Treat it as consistent-with, not proof-of.
+- **Whether the entry's deterministic adopted-vs-torn-down gate still passes.** Not re-run here.
+
+**Suspected failure class:** `concurrency` (unchanged). The fix demonstrably narrowed the window — the entry records a 1-in-3 full-suite rate before it, against 4/20 on a targeted filter now — but did not close it.
+
+**Verification criteria (written before any fix, per the defect protocol).**
+- [ ] Automated: the 20-iteration loop above runs **0/20** crashes; and the entry's adopted-vs-torn-down gate stays equal over its 24 racing double-starts.
+- [ ] Automated: a regression gate that fails on the *surviving* race specifically, in seconds rather than by lottery — the BUG078.1 gate did this for the overwrite and must be extended, not trusted, since it passes today while the trap still fires.
+- [ ] Artifact: one `.ips` from a post-fix crash, with the faulting thread and both racing threads. **Without a stack this is a guess** — the 2026-08-07 round already overturned one confident hypothesis (the completion-block retain) that a stack disproved.
+- [ ] Manual: none required — no musical-feel or visual surface. The shipped-path risk is a hard crash in local-file playback, so an app-level start/stop churn walk is worth one pass once a fix exists.
+
+**Evidence:** `/tmp/BUG078_recurrence_2026-08-10_evidence.txt` (the closeout run that first showed it); per-iteration logs `/tmp/rep_{8,12,16,18}.log`. Both are scratch paths and will not survive — re-run the loop rather than relying on them.
+
+**Why it was not fixed in the increment that found it.** DOC.7 was a doc-gate change (shell script + doc test + markdown) and cannot reach audio playback; the protocol's evidence-before-implementation rule applies, and there is no stack yet. Filed, not fixed.
+
+**ROOT CAUSE (2026-08-07) — a concurrent-`start()` overwrite, not the completion block.** `start()` calls `stop()` *before* taking the lock (BUG-021, so AVFoundation teardown never runs under the provider's `NSLock`). Two racing `start()` calls therefore interleave as: thread B's `stop()` snapshots nothing → thread A's `_startLocked()` adopts engine/player #1 and starts playing → thread B's `_startLocked()` **overwrites the fields with #2**. Instance #1 is orphaned *while running*: never stopped, never detached, observer never removed. Its last strong reference is the one AVFAudio holds inside the pending `scheduleFile` completion block, so the node is finally released on its own `CommandQueue`, where `-[AVAudioNode dealloc]` → `Stop()` → `dispatch_sync` re-enters the queue it is already running on. `_startLocked`'s comment asserting "the fields below are guaranteed nil" was the false premise; it is corrected in place.
+
+**Measured, not inferred.** A new deterministic gate counts adopted instances against teardowns over 24 racing double-starts: **pre-fix 48 adopted / 25 torn down — 23 running engines orphaned**; post-fix the counts are equal. It fails in ~3 seconds instead of the 1-in-3 full-suite lottery.
+
+**Fix.** `start()` snapshots the existing refs under the lock (a pointer copy — no AVFoundation calls, so BUG-021's constraint holds), then tears them down after unlocking with a strong reference held across `player.stop()`, which drains the node's command queue before the final release. The orphan leak is closed by the same change.
+
+**Two corrections to this entry's earlier text, both worth keeping.**
+1. **The leading hypothesis was wrong.** The strong `self` materialised by `guard let self` in `scheduleFileLoop` is not the mechanism. The crash stack has **no Swift frames** between `_Block_release` and `-[AVAudioNode dealloc]` — the object released there is the node itself, retained by AVFAudio's own wrapper block. Every capture in our completion block is `weak` and none was ever implicated.
+2. **"Nobody has captured the trap itself" was not true.** `~/Library/Logs/DiagnosticReports/` held **25 matching `.ips` reports**, 19 of them naming `concurrentDoubleStart_serializesWithoutDeadlock` on a live thread, plus the two racing threads (`_startLocked()` on one, `stop()` on the other) that make the overwrite visible. The evidence had been on disk since 2026-07-26; what was missing was reading it, not capturing it.
+
+**Sighting history, collapsed at close.** Four further sightings were recorded between 2026-08-03 and 2026-08-04 (RECON closeout, RECON.11) across different trees, each documenting the same thing: **nonzero exit with `0 failures (0 unexpected)` and no per-test failure line**, the raw tail sitting on the `LocalFilePlaybackProvider` concurrency cases, and the immediately following run passing clean. Rate over that audit: **~2 trips in 6 full-suite runs**. Two notes that outlived the diagnosis: the signature to look for is **exit-code-without-failure, not a red test** (an extractor that only reports failing assertions shows nothing), and it fires on an unmodified tree during docs-only work, so it needs no particular code state. The per-sighting paragraphs are dropped here because they existed to narrow an unknown cause; the cause is known.
+
+**Expected:** `swift test --package-path PhospheneEngine` completes.
+
+**Actual:** the test process dies with `EXC_BREAKPOINT` / SIGTRAP part-way through the suite, with no failing assertion. libdispatch's own diagnostic names the fault:
+
+> `BUG IN CLIENT OF LIBDISPATCH: dispatch_sync called on queue already owned by current thread`
+
+**Reproduction.** Full engine suite; dies while `concurrentDoubleStart_serializesWithoutDeadlock()` (suite "Session lifecycle churn (REVIEW.2)") is the in-flight test. Reproduced **twice on 2026-07-30** at `0d3d57d2` and `4bf6703d`, and the identical signature appears in two crash reports from **2026-07-26**, so it long predates this session. **Passes in isolation** (`--filter concurrentDoubleStart_serializesWithoutDeadlock`, 1.16 s) — it needs full-suite parallelism, which makes it timing-dependent and intermittent. The suite was green at `5b019f2f` hours earlier; adding one default-skipped test file appears to have perturbed scheduling enough to make it reproduce, which is a symptom of how narrow the window is, not a cause.
+
+**Artifacts.** `~/Library/Logs/DiagnosticReports/swiftpm-testing-helper-2026-07-30-171311.ips` (+ `-171004`, and `-2026-07-26-152850` / `-152102`). Faulting thread is named `CommandQueue`:
+
+```
+AVAudioPlayerNodeImpl::CommandQueue::PerformWork
+  → FileCommand::Perform → ~FileCommand → ~AVAEBlock → _Block_release
+  → -[AVAudioNode dealloc] → ~AVAudioPlayerNodeImpl
+  → AVAudioNodeImplBase::Stop() → dispatch_sync   ← same queue it is running on
+```
+
+**Suspected failure class:** `concurrency` (object deallocated on a queue whose teardown re-enters that queue synchronously).
+
+**Leading hypothesis — stated as a hypothesis, not a conclusion.** Releasing the `scheduleFile` completion block on the player node's own `CommandQueue` drops the last strong reference to an `AVAudioNode`, so `dealloc` runs *on that queue* and its `Stop()` synchronously re-enters it. In `LocalFilePlaybackProvider.scheduleFileLoop` (`:355-378`) every capture is already `[weak self, weak player, weak file]`, so the block itself does not retain the node — but `guard let self` inside the handler materialises a **strong** provider reference for the body's duration, and that reference is released when the block returns, still on the command queue. If it was the last one, the provider's `deinit` releases `playerNode` there. That is consistent with the stack but **not yet proven** — the next diagnostic step is a `deinit` breakpoint (or an `os_signpost`) on the provider and on the node to confirm which object's release triggers the dealloc, before any fix is designed.
+
+**Note on BUG-059.** That fix hopped *off* the completion queue before re-scheduling, which addressed the lock-reentrancy deadlock. It does not cover this: the async hop returns immediately, but the strong `self` created by `guard let self` is still released on the completion queue afterwards. Same queue, different mechanism — do not assume BUG-059's fix covers it.
+
+**Verification criteria (written before any fix).** Automated: the full engine suite completes 5 consecutive times with no `.ips` generated. Regression: a targeted test that drops the provider's last reference while a `scheduleFile` completion is in flight and asserts no trap. Manual: local-file playback end-to-end — start, seek, track-change, and quit-while-playing — since this is the shipped path.
+
+**Verification status (BUG078.1) — ALL CRITERIA MET.** Regression gate met in a stronger form than specified: `LocalFilePlaybackStartRaceTests.concurrentStart_neverOrphansARunningInstance` asserts the orphan count deterministically rather than waiting for a timing-dependent trap (red before the fix at 23/48, green after). `SessionLifecycleChurnTests` 6/6 green. Full-suite ×5 no-`.ips` criterion met — 5 consecutive runs, 1794 tests / 270 suites each, all passing, `~/Library/Logs/DiagnosticReports` unchanged at 28 `.ips` throughout. Read honestly: against the ~1-in-3 observed trip rate, 5 clean runs alone would happen by luck ~13 % of the time, so the load-bearing evidence is the deterministic orphan count (23 → 0), not the streak.
+
+**Manual criterion met — Matt, session `2026-08-07T19-10-25Z`, 5 local files.** Start, pause/resume, natural track end, single Next, rapid Next, and quit all passed; `CHAIN_HEALTH: verdict=clean reasons=[]`, drawable lifecycle balanced (4815/4815), no hang and no crash. The session is the artifact, not the impression: the provider's breadcrumbs give **19 `provider.start INSTANCE` against 18 `provider.teardown ENTER`** in the exact strict alternation `I(EXI)*` — every instance the session adopted was torn down before the next was adopted, and the unpaired 19th is the one still playing when the log ends (`deinit`'s teardown passes `diagnostic: nil`, so it never emits a breadcrumb). **Zero orphans on a real session, including two rapid-Next bursts** (3 starts inside 19:14:56, 5 inside 19:15:02).
+
+**One honest limit on what the live session proves.** Every teardown in it is ordered `ENTER → EXIT → INSTANCE` — the *pre-lock* `stop()` path. The BUG078.1 stale-teardown path would print `INSTANCE → ENTER`, and it never fired, because the app's transport drives `start()` from the MainActor and therefore serialises it. So the live run establishes **no regression on the shipped path** and confirms the orphan invariant in production; it does **not** exercise the concurrent-`start()` race itself. That race is only reachable from a multi-threaded caller — which is why the trap has only ever been seen in the test process — and the deterministic gate is what covers it. Both statements are needed; neither alone closes this.
+
+**Out of scope for DBN.1** (which is a docs/spec increment). Filed and reported, not fixed.
+
+---
 
 ---
 
@@ -856,57 +935,6 @@ error: value of type 'ArachneState' has no member 'forceActivateForTest'
 **Fix shape:** wrap the three call sites in `#if DEBUG`, or drop the `#if DEBUG` around `forceActivateForTest` and mark it as test-support SPI. The first is smaller; the second is what the rest of the codebase does for `*ForTest` helpers, so check the convention before choosing.
 
 **Verification criteria.** `swift test -c release --package-path PhospheneEngine` builds and the suite passes; the DBN.2 budget test is then re-pointed at the real 50 ms release figure and either passes or forces the design change the spec calls for.
-
----
-
-### BUG-078 — Engine test process traps in `AVAudioPlayerNode` teardown: `dispatch_sync` on an already-owned queue (2026-07-30)
-
-**P2 · audio.playback / concurrency · RESOLVED 2026-08-07 (BUG078.1, merged in `f68efb67` / PR #62; manual validation session `2026-08-07T19-10-25Z`).** Found at DBN.1 while running the closeout evidence; **pre-existing, not introduced by that increment**. P2 rather than P1 because it has only been observed taking down the *test* process — but the code path is shipped local-file playback, so the app-facing impact would be a hard crash.
-
-**ROOT CAUSE (2026-08-07) — a concurrent-`start()` overwrite, not the completion block.** `start()` calls `stop()` *before* taking the lock (BUG-021, so AVFoundation teardown never runs under the provider's `NSLock`). Two racing `start()` calls therefore interleave as: thread B's `stop()` snapshots nothing → thread A's `_startLocked()` adopts engine/player #1 and starts playing → thread B's `_startLocked()` **overwrites the fields with #2**. Instance #1 is orphaned *while running*: never stopped, never detached, observer never removed. Its last strong reference is the one AVFAudio holds inside the pending `scheduleFile` completion block, so the node is finally released on its own `CommandQueue`, where `-[AVAudioNode dealloc]` → `Stop()` → `dispatch_sync` re-enters the queue it is already running on. `_startLocked`'s comment asserting "the fields below are guaranteed nil" was the false premise; it is corrected in place.
-
-**Measured, not inferred.** A new deterministic gate counts adopted instances against teardowns over 24 racing double-starts: **pre-fix 48 adopted / 25 torn down — 23 running engines orphaned**; post-fix the counts are equal. It fails in ~3 seconds instead of the 1-in-3 full-suite lottery.
-
-**Fix.** `start()` snapshots the existing refs under the lock (a pointer copy — no AVFoundation calls, so BUG-021's constraint holds), then tears them down after unlocking with a strong reference held across `player.stop()`, which drains the node's command queue before the final release. The orphan leak is closed by the same change.
-
-**Two corrections to this entry's earlier text, both worth keeping.**
-1. **The leading hypothesis was wrong.** The strong `self` materialised by `guard let self` in `scheduleFileLoop` is not the mechanism. The crash stack has **no Swift frames** between `_Block_release` and `-[AVAudioNode dealloc]` — the object released there is the node itself, retained by AVFAudio's own wrapper block. Every capture in our completion block is `weak` and none was ever implicated.
-2. **"Nobody has captured the trap itself" was not true.** `~/Library/Logs/DiagnosticReports/` held **25 matching `.ips` reports**, 19 of them naming `concurrentDoubleStart_serializesWithoutDeadlock` on a live thread, plus the two racing threads (`_startLocked()` on one, `stop()` on the other) that make the overwrite visible. The evidence had been on disk since 2026-07-26; what was missing was reading it, not capturing it.
-
-**Sighting history, collapsed at close.** Four further sightings were recorded between 2026-08-03 and 2026-08-04 (RECON closeout, RECON.11) across different trees, each documenting the same thing: **nonzero exit with `0 failures (0 unexpected)` and no per-test failure line**, the raw tail sitting on the `LocalFilePlaybackProvider` concurrency cases, and the immediately following run passing clean. Rate over that audit: **~2 trips in 6 full-suite runs**. Two notes that outlived the diagnosis: the signature to look for is **exit-code-without-failure, not a red test** (an extractor that only reports failing assertions shows nothing), and it fires on an unmodified tree during docs-only work, so it needs no particular code state. The per-sighting paragraphs are dropped here because they existed to narrow an unknown cause; the cause is known.
-
-**Expected:** `swift test --package-path PhospheneEngine` completes.
-
-**Actual:** the test process dies with `EXC_BREAKPOINT` / SIGTRAP part-way through the suite, with no failing assertion. libdispatch's own diagnostic names the fault:
-
-> `BUG IN CLIENT OF LIBDISPATCH: dispatch_sync called on queue already owned by current thread`
-
-**Reproduction.** Full engine suite; dies while `concurrentDoubleStart_serializesWithoutDeadlock()` (suite "Session lifecycle churn (REVIEW.2)") is the in-flight test. Reproduced **twice on 2026-07-30** at `0d3d57d2` and `4bf6703d`, and the identical signature appears in two crash reports from **2026-07-26**, so it long predates this session. **Passes in isolation** (`--filter concurrentDoubleStart_serializesWithoutDeadlock`, 1.16 s) — it needs full-suite parallelism, which makes it timing-dependent and intermittent. The suite was green at `5b019f2f` hours earlier; adding one default-skipped test file appears to have perturbed scheduling enough to make it reproduce, which is a symptom of how narrow the window is, not a cause.
-
-**Artifacts.** `~/Library/Logs/DiagnosticReports/swiftpm-testing-helper-2026-07-30-171311.ips` (+ `-171004`, and `-2026-07-26-152850` / `-152102`). Faulting thread is named `CommandQueue`:
-
-```
-AVAudioPlayerNodeImpl::CommandQueue::PerformWork
-  → FileCommand::Perform → ~FileCommand → ~AVAEBlock → _Block_release
-  → -[AVAudioNode dealloc] → ~AVAudioPlayerNodeImpl
-  → AVAudioNodeImplBase::Stop() → dispatch_sync   ← same queue it is running on
-```
-
-**Suspected failure class:** `concurrency` (object deallocated on a queue whose teardown re-enters that queue synchronously).
-
-**Leading hypothesis — stated as a hypothesis, not a conclusion.** Releasing the `scheduleFile` completion block on the player node's own `CommandQueue` drops the last strong reference to an `AVAudioNode`, so `dealloc` runs *on that queue* and its `Stop()` synchronously re-enters it. In `LocalFilePlaybackProvider.scheduleFileLoop` (`:355-378`) every capture is already `[weak self, weak player, weak file]`, so the block itself does not retain the node — but `guard let self` inside the handler materialises a **strong** provider reference for the body's duration, and that reference is released when the block returns, still on the command queue. If it was the last one, the provider's `deinit` releases `playerNode` there. That is consistent with the stack but **not yet proven** — the next diagnostic step is a `deinit` breakpoint (or an `os_signpost`) on the provider and on the node to confirm which object's release triggers the dealloc, before any fix is designed.
-
-**Note on BUG-059.** That fix hopped *off* the completion queue before re-scheduling, which addressed the lock-reentrancy deadlock. It does not cover this: the async hop returns immediately, but the strong `self` created by `guard let self` is still released on the completion queue afterwards. Same queue, different mechanism — do not assume BUG-059's fix covers it.
-
-**Verification criteria (written before any fix).** Automated: the full engine suite completes 5 consecutive times with no `.ips` generated. Regression: a targeted test that drops the provider's last reference while a `scheduleFile` completion is in flight and asserts no trap. Manual: local-file playback end-to-end — start, seek, track-change, and quit-while-playing — since this is the shipped path.
-
-**Verification status (BUG078.1) — ALL CRITERIA MET.** Regression gate met in a stronger form than specified: `LocalFilePlaybackStartRaceTests.concurrentStart_neverOrphansARunningInstance` asserts the orphan count deterministically rather than waiting for a timing-dependent trap (red before the fix at 23/48, green after). `SessionLifecycleChurnTests` 6/6 green. Full-suite ×5 no-`.ips` criterion met — 5 consecutive runs, 1794 tests / 270 suites each, all passing, `~/Library/Logs/DiagnosticReports` unchanged at 28 `.ips` throughout. Read honestly: against the ~1-in-3 observed trip rate, 5 clean runs alone would happen by luck ~13 % of the time, so the load-bearing evidence is the deterministic orphan count (23 → 0), not the streak.
-
-**Manual criterion met — Matt, session `2026-08-07T19-10-25Z`, 5 local files.** Start, pause/resume, natural track end, single Next, rapid Next, and quit all passed; `CHAIN_HEALTH: verdict=clean reasons=[]`, drawable lifecycle balanced (4815/4815), no hang and no crash. The session is the artifact, not the impression: the provider's breadcrumbs give **19 `provider.start INSTANCE` against 18 `provider.teardown ENTER`** in the exact strict alternation `I(EXI)*` — every instance the session adopted was torn down before the next was adopted, and the unpaired 19th is the one still playing when the log ends (`deinit`'s teardown passes `diagnostic: nil`, so it never emits a breadcrumb). **Zero orphans on a real session, including two rapid-Next bursts** (3 starts inside 19:14:56, 5 inside 19:15:02).
-
-**One honest limit on what the live session proves.** Every teardown in it is ordered `ENTER → EXIT → INSTANCE` — the *pre-lock* `stop()` path. The BUG078.1 stale-teardown path would print `INSTANCE → ENTER`, and it never fired, because the app's transport drives `start()` from the MainActor and therefore serialises it. So the live run establishes **no regression on the shipped path** and confirms the orphan invariant in production; it does **not** exercise the concurrent-`start()` race itself. That race is only reachable from a multi-threaded caller — which is why the trap has only ever been seen in the test process — and the deterministic gate is what covers it. Both statements are needed; neither alone closes this.
-
-**Out of scope for DBN.1** (which is a docs/spec increment). Filed and reported, not fixed.
 
 ---
 
