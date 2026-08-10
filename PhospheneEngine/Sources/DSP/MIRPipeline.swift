@@ -231,7 +231,7 @@ public final class MIRPipeline: @unchecked Sendable {
     ) -> FeatureVector {
 
         // Run all four analyzers.
-        let spectral = spectralAnalyzer.process(magnitudes: magnitudes)
+        let spectral = spectralAnalyzer.process(magnitudes: magnitudes, deltaTime: deltaTime)
         let energy = bandEnergyProcessor.process(magnitudes: magnitudes, fps: fps)
         let chroma = chromaExtractor.process(magnitudes: magnitudes, deltaTime: deltaTime)
         // TONAL (D-178): TIV over the chroma vector — a consumer of the fold
@@ -708,7 +708,7 @@ extension MIRPipeline {
         canopyProbe.logged = true
 
         let fps = elapsedSeconds > 0 ? Double(canopyProbe.frames) / elapsedSeconds : 0
-        let tau = fps > 0 ? 1.0 / (Double(SpectralAnalyzer.densitySectionAlpha) * fps) : 0
+        let tau = Double(SpectralAnalyzer.densitySectionTau)
         let branch: String
         if let profile = spectralAnalyzer.loudnessProfile {
             if !profile.isUsable {

@@ -10,7 +10,7 @@ import Foundation
 @Test func centroid_silence_isZero() {
     let analyzer = SpectralAnalyzer()
     let magnitudes = [Float](repeating: 0, count: 512)
-    let result = analyzer.process(magnitudes: magnitudes)
+    let result = analyzer.process(magnitudes: magnitudes, deltaTime: 1024.0 / 44100.0)
     #expect(result.centroid == 0, "Centroid of silence should be 0")
 }
 
@@ -18,7 +18,7 @@ import Foundation
     let analyzer = SpectralAnalyzer()
     // Energy at bin 5 ≈ 234 Hz (well below Nyquist midpoint of 12000 Hz)
     let magnitudes = AudioFixtures.syntheticMagnitudes(peaks: [(bin: 5, magnitude: 1.0)])
-    let result = analyzer.process(magnitudes: magnitudes)
+    let result = analyzer.process(magnitudes: magnitudes, deltaTime: 1024.0 / 44100.0)
 
     let nyquistMidpoint: Float = 48000.0 / 4.0  // 12000 Hz
     #expect(result.centroid < nyquistMidpoint,
@@ -30,7 +30,7 @@ import Foundation
     let analyzer = SpectralAnalyzer()
     // Energy at bin 300 ≈ 14062 Hz (above Nyquist midpoint of 12000 Hz)
     let magnitudes = AudioFixtures.syntheticMagnitudes(peaks: [(bin: 300, magnitude: 1.0)])
-    let result = analyzer.process(magnitudes: magnitudes)
+    let result = analyzer.process(magnitudes: magnitudes, deltaTime: 1024.0 / 44100.0)
 
     let nyquistMidpoint: Float = 48000.0 / 4.0  // 12000 Hz
     #expect(result.centroid > nyquistMidpoint,
@@ -42,7 +42,7 @@ import Foundation
 @Test func rolloff_silence_isZero() {
     let analyzer = SpectralAnalyzer()
     let magnitudes = [Float](repeating: 0, count: 512)
-    let result = analyzer.process(magnitudes: magnitudes)
+    let result = analyzer.process(magnitudes: magnitudes, deltaTime: 1024.0 / 44100.0)
     #expect(result.rolloff == 0, "Rolloff of silence should be 0")
 }
 
@@ -50,7 +50,7 @@ import Foundation
     let analyzer = SpectralAnalyzer()
     // Uniform magnitudes across all bins — rolloff should be near 85% of bandwidth.
     let magnitudes = AudioFixtures.uniformMagnitudes()
-    let result = analyzer.process(magnitudes: magnitudes)
+    let result = analyzer.process(magnitudes: magnitudes, deltaTime: 1024.0 / 44100.0)
 
     // Nyquist = 24000 Hz. 85% of that = 20400 Hz.
     // With uniform energy, rolloff should land near bin 435 (85% of 512) ≈ 20390 Hz.
@@ -68,9 +68,9 @@ import Foundation
     let magnitudes = AudioFixtures.syntheticMagnitudes(peaks: [(bin: 50, magnitude: 0.8)])
 
     // First frame has no previous — flux is 0.
-    _ = analyzer.process(magnitudes: magnitudes)
+    _ = analyzer.process(magnitudes: magnitudes, deltaTime: 1024.0 / 44100.0)
     // Second frame with identical input — flux should be 0.
-    let result = analyzer.process(magnitudes: magnitudes)
+    let result = analyzer.process(magnitudes: magnitudes, deltaTime: 1024.0 / 44100.0)
     #expect(result.flux < 0.001, "Flux of steady signal should be near zero, got \(result.flux)")
 }
 
@@ -79,11 +79,11 @@ import Foundation
 
     // First frame: silence.
     let silence = [Float](repeating: 0, count: 512)
-    _ = analyzer.process(magnitudes: silence)
+    _ = analyzer.process(magnitudes: silence, deltaTime: 1024.0 / 44100.0)
 
     // Second frame: loud signal — flux should be high.
     let loud = AudioFixtures.uniformMagnitudes(magnitude: 1.0)
-    let result = analyzer.process(magnitudes: loud)
+    let result = analyzer.process(magnitudes: loud, deltaTime: 1024.0 / 44100.0)
     #expect(result.flux > 100, "Flux after sudden onset should be high, got \(result.flux)")
 }
 
@@ -97,12 +97,12 @@ import Foundation
     ])
 
     let analyzer1 = SpectralAnalyzer()
-    _ = analyzer1.process(magnitudes: [Float](repeating: 0, count: 512))
-    let result1 = analyzer1.process(magnitudes: magnitudes)
+    _ = analyzer1.process(magnitudes: [Float](repeating: 0, count: 512), deltaTime: 1024.0 / 44100.0)
+    let result1 = analyzer1.process(magnitudes: magnitudes, deltaTime: 1024.0 / 44100.0)
 
     let analyzer2 = SpectralAnalyzer()
-    _ = analyzer2.process(magnitudes: [Float](repeating: 0, count: 512))
-    let result2 = analyzer2.process(magnitudes: magnitudes)
+    _ = analyzer2.process(magnitudes: [Float](repeating: 0, count: 512), deltaTime: 1024.0 / 44100.0)
+    let result2 = analyzer2.process(magnitudes: magnitudes, deltaTime: 1024.0 / 44100.0)
 
     #expect(result1.centroid == result2.centroid, "Centroid should be deterministic")
     #expect(result1.rolloff == result2.rolloff, "Rolloff should be deterministic")
@@ -120,7 +120,7 @@ import Foundation
 
 @Test func density_silence_isZero() {
     let analyzer = SpectralAnalyzer()
-    let result = analyzer.process(magnitudes: [Float](repeating: 0, count: 512))
+    let result = analyzer.process(magnitudes: [Float](repeating: 0, count: 512), deltaTime: 1024.0 / 44100.0)
     #expect(result.density == 0, "density of silence must be 0, not a divide artefact")
 }
 
@@ -130,7 +130,7 @@ import Foundation
 private func settledDensity(_ magnitudes: [Float], frames: Int = 4000) -> Float {
     let analyzer = SpectralAnalyzer()
     var last: Float = 0
-    for _ in 0..<frames { last = analyzer.process(magnitudes: magnitudes).density }
+    for _ in 0..<frames { last = analyzer.process(magnitudes: magnitudes, deltaTime: 1024.0 / 44100.0).density }
     return last
 }
 

@@ -9,12 +9,16 @@ import Shared
 
 extension SpectralAnalyzer {
 
-    /// The surge follower: attack ≈ 0.25 s so an arrival registers at once, release
-    /// τ ≈ 10 s so it holds through a phrase rather than pumping between them. Level
-    /// smoothing itself is `LoudnessProfile.levelSmoothingAlpha` — shared with the
-    /// offline profile measurement so the two cannot drift apart.
-    static let surgeAttack: Float = 0.35
-    static let surgeRelease: Float = 0.010
+    /// The surge follower: arrives fast so an arrival registers at once, releases slowly so
+    /// it holds through a phrase rather than pumping between them. Level smoothing itself is
+    /// `LoudnessProfile.levelSmoothingTau` — shared with the offline profile measurement so
+    /// the two cannot drift apart.
+    ///
+    /// DYN.4 — seconds, not per-frame alphas (`LoudnessProfile` §Smoothing time constants).
+    /// The prose widths this comment used to quote ("attack ≈ 0.25 s, release τ ≈ 10 s")
+    /// were from the retired ~10 Hz rate assumption and never matched the coefficients.
+    static let surgeAttackTau: Float = LoudnessProfile.tau(legacyAlpha: 0.35)    // ≈ 0.054 s
+    static let surgeReleaseTau: Float = LoudnessProfile.tau(legacyAlpha: 0.010)  // ≈ 2.31 s
 
     /// FALLBACK band in dB of TOTAL SPECTRAL ENERGY — note the scale, it is NOT RMS dBFS.
     /// The first calibration confused the two and the surge saturated 14 s before the
@@ -72,31 +76,36 @@ extension SpectralAnalyzer {
     /// both over their caps, and this block is the part that belongs in the density
     /// companion anyway. The stored properties it touches are `internal` for exactly this
     /// reason (same relaxation as `lock` / `loudnessProfile` above).
-    func advanceLevelAndDensity(rawDensity: Float, magnitudes: [Float], count: Int) {
+    func advanceLevelAndDensity(deltaTime: Float, rawDensity: Float,
+                                magnitudes: [Float], count: Int) {
         // PRE-AGC LEVEL by Parseval — the definition lives on `LoudnessProfile` so the live
         // path and DYN.1c's offline profile measure the same quantity on the same scale.
         // Scale confusion here has already cost one review round.
         let levelDB = LoudnessProfile.levelDB(magnitudes: magnitudes, count: count)
-        let alpha = LoudnessProfile.levelSmoothingAlpha
+        let alpha = LoudnessProfile.emaAlpha(deltaTime: deltaTime,
+                                            tau: LoudnessProfile.levelSmoothingTau)
         smoothedLevelDB = alpha * levelDB + (1 - alpha) * smoothedLevelDB
 
         // DYN.1c: this moment's rank in the track's own loudness distribution when a
         // profile is installed, the fixed band's smoothstep otherwise. Asymmetric follower:
         // arrive fast, leave slowly — a symmetric one pumps between phrases.
         let target = Self.surgeTarget(levelDB: smoothedLevelDB, profile: loudnessProfile)
-        let surgeAlpha = target > surge ? Self.surgeAttack : Self.surgeRelease
+        let surgeTau = target > surge ? Self.surgeAttackTau : Self.surgeReleaseTau
+        let surgeAlpha = LoudnessProfile.emaAlpha(deltaTime: deltaTime, tau: surgeTau)
         surge = surgeAlpha * target + (1 - surgeAlpha) * surge
 
         // Four legs on one raw fraction: τ0.8 s (branch count), τ9.7 s (`_slow`), τ20 s
         // (section) and τ45 s (the track's true normal). THE SECTION AND NORMAL WIDTHS MUST
         // STAY APART — at DYN.2 they were 0.38 % apart, their ratio was a constant 1.00 and
         // the trunk never moved for a whole session.
-        fastDensity = Self.densityFastAlpha * rawDensity + (1 - Self.densityFastAlpha) * fastDensity
-        smoothedDensity = Self.densityAlpha * rawDensity + (1 - Self.densityAlpha) * smoothedDensity
-        sectionDensity = Self.densitySectionAlpha * rawDensity
-            + (1 - Self.densitySectionAlpha) * sectionDensity
-        densityNormal = Self.densityNormalAlpha * rawDensity
-            + (1 - Self.densityNormalAlpha) * densityNormal
+        func ema(_ current: Float, tau: Float) -> Float {
+            let alpha = LoudnessProfile.emaAlpha(deltaTime: deltaTime, tau: tau)
+            return alpha * rawDensity + (1 - alpha) * current
+        }
+        fastDensity = ema(fastDensity, tau: Self.densityFastTau)
+        smoothedDensity = ema(smoothedDensity, tau: Self.densitySlowTau)
+        sectionDensity = ema(sectionDensity, tau: Self.densitySectionTau)
+        densityNormal = ema(densityNormal, tau: Self.densityNormalTau)
     }
 
     /// DYN.2c — section density against the track's normal.

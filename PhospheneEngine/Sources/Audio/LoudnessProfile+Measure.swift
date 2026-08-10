@@ -42,6 +42,11 @@ extension LoudnessProfile {
         var densities = [Float]()
         densities.reserveCapacity(samples.count / fftSize)
         let binResolution = Float(sampleRate) / Float(fftSize)
+        // DYN.4 — this builder's frame duration; both followers below derive their alpha
+        // from it, so the quantiles describe the same tau the live analyzer applies.
+        let frameDuration = Float(fftSize) / Float(sampleRate)
+        let levelAlpha = LoudnessProfile.emaAlpha(deltaTime: frameDuration,
+                                                  tau: LoudnessProfile.levelSmoothingTau)
         var smoothed: Float = 0
         var seeded = false
         var offset = 0
@@ -62,7 +67,7 @@ extension LoudnessProfile {
                 smoothed = level
                 seeded = true
             } else {
-                smoothed = levelSmoothingAlpha * level + (1 - levelSmoothingAlpha) * smoothed
+                smoothed = levelAlpha * level + (1 - levelAlpha) * smoothed
             }
             levels.append(smoothed)
             offset += fftSize
@@ -77,7 +82,11 @@ extension LoudnessProfile {
         var smoothedDensity: [Float] = []
         smoothedDensity.reserveCapacity(densities.count)
         var running: Float?
-        let sectionAlpha = LoudnessProfile.densitySectionAlpha
+        // DYN.4 — the alpha for THIS builder's own frame duration. Previously a per-frame
+        // constant shared verbatim with the live analyzer, which only matched while the
+        // live path also hopped 1024 at 44.1 kHz. It runs at 59.9 Hz.
+        let sectionAlpha = LoudnessProfile.emaAlpha(deltaTime: frameDuration,
+                                                    tau: LoudnessProfile.densitySectionTau)
         for value in densities {
             let next = running.map { sectionAlpha * value + (1 - sectionAlpha) * $0 } ?? value
             running = next

@@ -425,7 +425,8 @@ struct FractalTreeMeshRenderTest {
         while start + 1024 <= samples.count {
             let frame = Array(samples[start..<(start + 1024)])
             let result = analyzer.process(
-                magnitudes: try SpectralDensityRealAudioTests.magnitudesShared(of: frame))
+                magnitudes: try SpectralDensityRealAudioTests.magnitudesShared(of: frame),
+                deltaTime: Float(hop) / 48000)
             out.append((Double(start) / 48000, result.density, result.smoothedDensity, result.surge))
             start += hop
         }

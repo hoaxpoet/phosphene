@@ -122,7 +122,9 @@ struct TrunkTrajectoryReportTests {
                 }
             }
             fft.computeMagnitudes()
-            let result = analyzer.process(magnitudes: fft.magnitudes)
+            // DYN.4 — dt is the HOP, so tau stays 20 s whatever rate this runs at.
+            let result = analyzer.process(magnitudes: fft.magnitudes,
+                                          deltaTime: Float(hop) / Float(sampleRate))
             // `arousal` is a mood-classifier output not modelled here; it only supplies a
             // floor (0.10×) and saturates in the body, so 1.0 is its steady-state value.
             trunks.append(Self.trunk(sectionRatio: result.sectionRatio,

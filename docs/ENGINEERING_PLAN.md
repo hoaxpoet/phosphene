@@ -319,16 +319,6 @@ thickness. Sibling to Cymatic Resonance: sound causes the image.
   slope); backdrop is a dark strip because the engine offers only `env` (grey studio) or `dark`.
 
 ### Increment VL.CERT — Volumetric Lithograph certified ✅ (2026-07-26)
-
-**Done-when:** all cert gates measured green and Matt's M7 signs off. Met.
-
-Matt (session 2026-07-26T20-06-59Z, chain clean): "Session looks good. Proceed with certification if all checks out." Gates, each RUN not assumed:
-- **RouteCoverage (QG.1):** 6 declared routes — `bass`→camera dolly speed, per-stem energies→palette hue (×4), `pulsePhase01`→fold downbeat ratchet — all fire on the canonical fixtures, 0 red. The identity coupling (fold rotation SPEED + terrain morph, both `accumulatedAudioTime`) is the animation time base, constant on offline fixtures → documented as the QG.1.1 boundary, not declared (the FD/VL precedent).
-- **Rubric:** `certifiedPresetsDeclareAudioRoutes` green (non-empty manifest); `automatedGate_uncertifiedPresetsAreUncertified` green (VL now correctly certified). ★ **Honest caveat: the automated rubric PROXY scores VL 3/15** — NOT a hard gate (suite passes), because the proxy is known-unreliable and VL's coupling lives where it can't see it (accumulatedAudioTime + fold rotation). Cert rests on M7 + route coverage + flash, exactly as Floret/Cytokinesis were certified.
-- **Flash (D-157 / GAP-9):** added VL to `MultiPassRenderHarness` (ray_march, no follower — Lumen's path minus the 4-light engine, plus VL's per-frame accumulatedAudioTime + sidecar dolly). MEASURED 0.00 flashes/s, 0 transitions, luma 0.18–0.24 (non-static, Δ0.057) under the worst-case beat train — flash-safe because VL-PSY.5 put the downbeat on geometry not luminance.
-
-`certified:false→true`, `rubric_profile:full`, VL added to `FidelityRubricTests.certifiedPresets`. VL is the catalog's **first certified terrain-flight / kaleidoscope preset** — the culmination of the VL-PSY.1→.6 rebuild (concept reset → kaleidoscopic folds → perf fix → ratchet motion → per-cell variety).
-
 ### Increment VL-PSY.6 — Volumetric Lithograph: per-cell variety (spatial repetition) ✅ (2026-07-25)
 ### Increment FLY.14 — Fractal Fly-By RETIRED (BUG-071 closed wontfix; D-201) ✅ (2026-07-25)
 ### Increment VL-PSY.5 — Volumetric Lithograph: ratchet rotation + retire the second beat layer (BUG-075) ✅ (2026-07-24)
@@ -1708,6 +1698,34 @@ So the mechanism is not broken, the cached profile is intact (33 level + 33 dens
 **Shipped:** a one-shot per-track `DENSITY_PATH: branch=… fps=… tau_section=… span=…` log line, plus `MIRPipeline.canopyDensityBranch` / `.canopyAnalysisFPS`. The analysis rate is recorded because every density leg uses a per-FRAME alpha, so its time constant is `1/(α·fps)`; the constants were calibrated at ~43 fps and **the live rate has never been measured**. Five tests gate the classifier itself (`CanopyDensityPathTests`) — ranked, no-profile, no-density-quantiles, profile-unusable, and cleared-on-track-change — because a diagnostic that names the wrong branch would send the next increment after the wrong cause, which this sequence has already done once.
 
 **Done-when remaining:** one ~60 s local-file session from Matt; the `DENSITY_PATH:` line then selects the fix with no further inference.
+
+**DYN.4 — a time constant must mean seconds.** ✅ (2026-08-09) The fix DYN.3 was instrumenting for, found by arithmetic rather than by the probe.
+
+**The defect.** Every density follower was an EMA with a constant per-FRAME alpha, so its real width was `1/(α·fps)` — a number that moves with the analysis rate. The constants were calibrated at 43.07 Hz (44.1 kHz / 1024, the offline hop). Measured directly from Matt's session `2026-08-10T01-29-10Z`, **the live pipeline runs at 59.9 Hz**:
+
+| leg | documented | actually live |
+|---|---|---|
+| section | τ 20 s | **14.4 s** |
+| normal | τ 45 s | **32.1 s** |
+
+**Why that compresses the canopy.** `LoudnessProfile.measure` builds `densityQuantiles` from a τ20 s-smoothed series, and its header claimed it *"mirrors the live path frame for frame"* — true only while the live path also ran at 43 Hz. Ranking a τ14.4 s signal against a τ20 s distribution pushes every result toward the middle. Live, `spectral_section_ratio` spanned **0.534…0.614** of its 0…2 range and the canopy used **0.00…0.31** of its own — Matt's *"the entire suite of movement does not feel strongly tied to the music."*
+
+**The fix.** Widths are now `Float` seconds converted per frame by `LoudnessProfile.emaAlpha(deltaTime:tau:)`; `SpectralAnalyzer.process` takes `deltaTime`, and the offline builder derives its alpha from its own frame duration. Each τ is defined as `tau(legacyAlpha:)` — exactly what the retired coefficient meant at the reference rate — so **nothing is retuned**. Covers the four density legs, the surge attack/release follower and the shared level follower.
+
+**Verified, offline, on Matt's own tap capture with his own cached profile:**
+
+| | before | after |
+|---|---|---|
+| `spectral_section_ratio` at 43.1 fps | 0.00 … 2.00 | 0.00 … 2.00 |
+| `spectral_section_ratio` at 59.9 fps | **0.00 … 0.58** | **0.00 … 2.00** |
+
+And unchanged at the reference rate, which is the point: full-track Cherub Rock motion **0.0531/s** and time-to-0.15 **24.4 s**, Hummer **0.0205/s** / **23.4 s** — identical to the pre-fix figures.
+
+**Gated by property, not by example** (`DensitySmoothingRateInvarianceTests`): the same signal over the same wall-clock seconds at 43 Hz and 60 Hz must smooth to the same trajectory (section/normal drift < 0.005, ratio < 0.02), the ranked span must agree across rates, every τ must reproduce its legacy alpha at the reference rate, and a zero/NaN `deltaTime` must not freeze a follower. This bug class is invisible to any test that runs at one rate — nothing is wrong on any single frame.
+
+**Not in scope, and flagged rather than fixed:** the centroid / rolloff / flux smoothers in `SpectralAnalyzer` are still per-frame alphas. Same class of defect; they feed `spectral_centroid` and `spectral_flux`, which many presets read, so changing them is its own increment with its own visual risk.
+
+**Done-when remaining: Matt's live look.** The probe stays in — the `DENSITY_PATH:` line now also confirms which branch runs, which this fix does not answer.
 
 **FTR.5 — M7 + certification.** ⏸ **BLOCKED ON MATT — this is a live review, not work Claude
 can complete.** FTR.6 landed the rate/granularity adjustment Matt named as the precondition
