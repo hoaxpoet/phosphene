@@ -1767,6 +1767,24 @@ This is consistent with, and explains, the +1.43 recorded at **BUG-066** and sig
 2. *Refit the flux mean/std to corpus statistics.* One constant pair; validate with `CorpusCensusRunner --mood-ab`, the same objective before/after Matt accepted for BUG-066 in place of a live M7.
 3. *Extend the annotated set to cover dense material and retrain.* The real fix, and much the largest.
 
+**DYN.6.2 — refit the flux scaler on corpus statistics.** ✅ (2026-08-09) Matt's call, option 2 of the three DYN.6.1 put up.
+
+`MoodClassifier` feature [7] (flux): mean **0.25158 → 0.56498**, std **0.20444 → 0.43400**. The other nine features keep their 818-track training fit, where the census measured them well calibrated. `tools/data/mood_scaler.json` updated in lockstep with a `provenance_flux` record, since the class contract requires the two to match.
+
+**Accepted on an objective corpus A/B** (`MoodScalerRefitABTests`, n = 21,037) — the same form of evidence BUG-066 was accepted on, the live M7 having been retired as unfit for a diffuse scoring change. Both sides are produced from one compiled classifier by rewriting feature [7] so the compiled z-score equals the target scaler's, so the harness stays valid whichever pair is compiled in:
+
+| | valence mean / sd | arousal mean / sd | quadrant flips | arousal railed |
+|---|---|---|---|---|
+| before (training fit) | +0.261 / 0.507 | +0.378 / 0.330 | — | 0.5 % |
+| **after (corpus fit)** | **−0.101 / 0.422** | **+0.229 / 0.331** | **41.3 %** | **0.0 %** |
+| *variant: widen std only* | +0.041 / 0.457 | +0.314 / **0.267** | 23.4 % | — |
+
+The library was reading systematically over-aroused (flux ran +1 σ high and drives arousal); the refit brings the mean down while **leaving arousal's spread intact** — sd 0.330 → 0.331. The std-only variant moves half as many tracks but costs arousal discrimination (sd → 0.267), which is why the authorised full refit is the better of the two on the evidence, not merely the bolder one.
+
+**What this A/B cannot show, stated because it matters.** Nobody has labelled these 27k tracks, so it establishes only that the change is real, bounded and non-degenerate — **not that the new readings are right.** BUG-066 could argue direction because its before-state was pathologically saturated (Beethoven adagios reading euphoric); this before-state was merely biased, so no such argument is available. Valence spread also narrowed (sd 0.507 → 0.422), which is a genuine cost. If mood-driven preset selection reads worse in use, this increment is the first thing to revert — one constant pair.
+
+**Gates:** `MoodClassifierGolden` regenerated through its documented `UPDATE_MOOD_GOLDEN=1` path (the classifier is untouched; only its input scaling moved). Full battery green — 1819 engine / 404 app / 0 lint.
+
 **FTR.5 — M7 + certification.** ⏸ **BLOCKED ON MATT — this is a live review, not work Claude
 can complete.** FTR.6 landed the rate/granularity adjustment Matt named as the precondition
 ("close pending these adjustments") and it is verified offline on both source tracks; whether
