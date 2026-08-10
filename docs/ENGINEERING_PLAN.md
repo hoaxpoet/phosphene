@@ -1745,6 +1745,28 @@ DYN.5 claimed `rawSmoothedFlux` stays rate-dependent because it is a per-FRAME s
 
 **Shipped:** `MoodFluxCalibrationTests` — reports all ten z-scores at both rates through the production pipeline, and **asserts rate-invariance only** (< 0.25 σ). Where features sit relative to training is reported, never asserted: a test cannot decide whether a distribution shift is a defect or the music.
 
+**DYN.6.1 — the corpus census, and what it settles.** ✅ (2026-08-09) DYN.6 reported flux running high on one album and named `CorpusCensusRunner` as the instrument that could tell a stale scaler from a dense record. Run.
+
+**First, a regression check that had to come before any conclusion.** Re-ran the census on the CURRENT build over 271 pilot tracks and paired them against the same tracks from the 2026-07-10 full run: **every one of the ten mood features is unchanged** — median ratio 1.000, worst relative delta 1.6 % (on the key correlations). So DYN.4/DYN.5 did not disturb the classifier's inputs, and July's 27,638-track corpus figures are still the CURRENT figures. The remaining ~700 pilot tracks were not run: with the pipeline provably unchanged they could not move the answer.
+
+**The corpus answer (n = 27,638):**
+
+| feature | scaler mean | corpus median | z(median) | \|z\|>2 |
+|---|---|---|---|---|
+| the nine others | — | — | **−0.45 … +0.21** | ≤ 4.7 % |
+| **flux** | 0.25158 | 0.45899 | **+1.01** | **33.8 %** |
+
+Nine features are well calibrated. Flux is not: corpus mean **0.5650** against the scaler's 0.2516 (2.25×) and corpus std **0.4340** against 0.2044 (2.12×). p75 = +2.74 σ, p95 = +5.61 σ, p99 = +7.96 σ.
+
+**But the scaler is not stale, and that is the finding.** Read back the annotated training set (`~/phosphene_features_annotated.csv`, n = 818): flux mean **0.2516**, std **0.2044** — the shipped constants *exactly*. Nothing drifted. What the numbers describe is **training-set coverage**: the annotated set's maximum flux is 1.0167, and **15.3 % of the corpus exceeds that maximum entirely** — the model has never seen material that dense on feature [7]. 22.2 % of the corpus is beyond |z| > 3.
+
+This is consistent with, and explains, the +1.43 recorded at **BUG-066** and signed off: that increment fixed a real 16× offline scale defect and left the residual, which is this.
+
+**Not a defect claim, and deliberately not fixed here.** Three options, all Matt's call, none safe to take silently — mood is 30 % of `DefaultPresetScorer`, so any of them changes preset selection for every track:
+1. *Accept.* BUG-066 already demonstrated the model discriminates post-fix (arousal spans [−0.87, +0.81], 32 % of tracks flipped quadrant in the right direction). Extrapolation on a third of the library may cost less than a change would.
+2. *Refit the flux mean/std to corpus statistics.* One constant pair; validate with `CorpusCensusRunner --mood-ab`, the same objective before/after Matt accepted for BUG-066 in place of a live M7.
+3. *Extend the annotated set to cover dense material and retrain.* The real fix, and much the largest.
+
 **FTR.5 — M7 + certification.** ⏸ **BLOCKED ON MATT — this is a live review, not work Claude
 can complete.** FTR.6 landed the rate/granularity adjustment Matt named as the precondition
 ("close pending these adjustments") and it is verified offline on both source tracks; whether
