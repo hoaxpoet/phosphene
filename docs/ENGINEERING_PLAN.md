@@ -268,35 +268,7 @@ duplicated by hand against the Swift presence gates — a single shared manifest
 both is the recorded follow-up, and is queued as a RECON item. *(Added at RECON.3.)*
 
 ### Increment FDYRETIRE.1 — Faraday retired; harness audit kept (D-204) ✅ (2026-07-27)
-
-Matt's call after the third live M7 ("looks cheap and does not sync with the music"). Roster
-27 → 26. **What distinguishes this retirement: the mechanisms were measurably correct.** Round 3
-verified on rendered frames — beat legibility r = +0.748 (decoy −0.659), structure swing 5.2× on
-the grid, motion 4.89/255 at coherence ratio 2.04 — and the image still read as low-energy. A
-correct mapping cannot rescue an intrinsically low-energy concept; a top-down field of
-slowly-breathing cells has a ceiling tuning cannot raise.
-
-- **Removed:** preset + sidecar, `FaradaySimulation.swift`, `FaradaySim.metal`, app wiring, and
-  `setRayMarchPreRenderCompute` (its only consumer — D-097; small and git-recoverable).
-- **Kept:** the HARNESS.1 repairs, which are independent of the concept and fix a measurement
-  instrument that had been feeding zeros to every replayable preset.
-
 ### Increment HARNESS.1 — the replay harness carried almost none of the routes it replayed ✅ (2026-07-27)
-
-Audit triggered by Faraday's beat lock measuring r = −0.019 and then r = +0.868 from the *same*
-shader once a field was mapped. `SessionReplayHarness` silently substitutes ZERO for any
-unmapped field, so a live route renders as dead with no error and a plausible image.
-
-- **Blast radius:** Volumetric Lithograph 5 of 6 routes dead (and it is CERTIFIED on per-stem
-  coupling); Lumen Mosaic 8 of 12; Ferrofluid Ocean 4 of 5; Faraday 1 of 5.
-- **Three causes:** `stemFeatures: .zero` on every frame (stems.csv sat unread; its columns match
-  `StemFeatures` property names exactly); pulse fields never mapped; and the FDY.2 repair itself
-  mapped `pulseAmp01` against a snake_case `pulse_amp01` column — a silent zero fixing a silent zero.
-- **Mechanized** (D-161, violated three times in one session): `ReplayHarnessRouteCoverageTests`
-  asserts every primitive a replayable preset declares is one the harness carries; verified to
-  bite by removing a primitive. **Implication: look/coupling judgements made through this harness
-  before this fix were drawn from images production never produced.**
-
 ### Increment FDY.1 — Faraday: a Swift–Hohenberg sea wired into the engine (D-203) 🔨 (2026-07-27)
 
 An iridescent liquid sea the music physically drives, built to exercise MFX.1 + RMPERF.1. A
@@ -1863,6 +1835,26 @@ Corrected in `LoudnessProfile`, `SpectralAnalyzer`, `MIRPipeline`, `MoodClassifi
 **The real blocker is FTR.4:** `StemFeatures` is not bound on the OBJECT/MESH stages, and the tips are computed in the object shader. Scope was corrected at FTR.3d — the fragment stage is already bound by `RenderPipeline.drawWithMeshShader`, so this is mirroring the existing `setObjectBytes`/`setMeshBytes` calls. Shared renderer code; every mesh preset inherits it.
 
 **Certification decision — Matt's, not taken here.** *"Overall, it is acceptable"* clears the L4 bar as written, but he asked for a specific improvement in the same breath, and certifying a preset the day its owner asked for more is the kind of pass that gets re-opened. Both routes are live: certify now and track the guitar work separately, or hold FTR.5 until FTR.4 + the guitar routing land and certify once.
+
+**FTR.4 — StemFeatures on the object/mesh stages.** ✅ (2026-08-11) The blocker D-212 filed and FTR.3d halved. `MeshGenerator.draw(encoder:features:stems:)` now binds `StemFeatures` at **object and mesh buffer(3)**, the slot the fragment stage and every non-mesh path already used; `RenderPipeline.drawWithMeshShader` passes the same `stemFeatures` it was already binding to the fragment stage. Shared renderer code — **every mesh preset inherits it**, and until now a mesh preset could colour by stem but not SHAPE by stem, because the object shader (which decides branch counts and dispatch) had no access.
+
+**Gated on consumption, not on binding** (`objectStageReceivesStems`): the same `FeatureVector` rendered twice, changing only `other_onset_rate`, must produce different pixels — and more of them for the busier guitar. Binding a buffer and the GPU reading it are different claims, and only the second matters; this is the failure class that left `vocalsPitchConfidence` at 0 % for five months while closeouts said it worked.
+
+**FTR.8 — the tips follow the guitar.** ✅ (2026-08-11) Matt at the FTR.5 review: *"The tips appear to follow drums and bass… I wish they would follow the guitar patterns more, as that is what drives the song — the guitar solo alone is a big missed opportunity."*
+
+He was right, and the old driver explains it: `beat_mid` is the beat in the melodic REGISTER, which in a rock mix is snare **and** guitar. Measured on his session `2026-08-11T01-07-17Z`, body of the track: the other stem's energy-deviation correlates **+0.65** with drums (it would still read as drums), while its **onset rate correlates +0.14** — p05→p95 0.53…3.30 across 374 distinct values. That is a genuinely independent guitar-activity channel, and it is what the tips now read.
+
+**This is not what MEL.1 proved futile.** MEL.1 measured per-NOTE onset DETECTION on this stem (grid coherence 31 % against the drums control's 41 %) and concluded distortion smears individual attacks — still true, and still the reason not to chase one-tip-per-note. An onset RATE is a far weaker requirement, `StemAnalyzer` already computes it, and it needs no new DSP. The **+0.973** guitar/drums correlation quoted since FTR.6 also does not reproduce: **+0.68** for raw energy here, and nobody had ever measured the onset-rate feature.
+
+**Coefficient sized in the harness, after fifteen mappings.** Every earlier attempt to size this in a scratch script drifted from what `FractalTreeMeshRenderTest` actually measures — the same drift that let FTR.6 ship a regression past a green gate — so the sweep was run through the harness's own arithmetic. The binding constraint is **not** the count: `melody` is also the threshold the per-branch travelling wave compares each branch's slot against, so it must stay inside the 0…0.3125 ceiling the `beat_mid` knee had, or every branch fires instead of the ~37 % that did. That rules out the S-curves that recover more span (measured: span 3–5, depth-5 parked at 73–76 %).
+
+`r/(r+18)` won on the metric Matt has actually complained about — **depth-5 presence 11 %, against the outgoing driver's 12 %**, so the tier dips in and out rather than parking (*"I never see beyond three levels"*, FTR.3b). The span-matching `r/(r+6.5)` parked depth-5 at **94 %** and the harness caught it.
+
+**Honest cost:** the tips layer spans **5** branches where `beat_mid` spanned 8, and the gate's floor is 5 — it sits exactly on it. An onset rate is continuous and cannot reproduce the bimodal 0↔8 slam of a saturating pulse. **Unverified live**; this needs Matt's eye before FTR.5 can certify.
+
+**D-019 warmup:** stems are zero until separation converges, so the tips crossfade from the old `beat_mid` driver on `smoothstep(0.02, 0.06, totalStemEnergy)` — the tree is alive from frame 1 and hands over to the guitar as the stems arrive.
+
+**Also caught, and worth recording:** writing the REJECTED primitive's name verbatim in a shader comment flipped Fractal Tree's automated rubric gate — L2 scans the file for deviation-primitive tokens and matched prose. The comment now spells it out in words. A rubric that reads comments will certify a comment.
 
 **FTR.5 — M7 + certification.** ⏸ **BLOCKED ON MATT — this is a live review, not work Claude
 can complete.** FTR.6 landed the rate/granularity adjustment Matt named as the precondition

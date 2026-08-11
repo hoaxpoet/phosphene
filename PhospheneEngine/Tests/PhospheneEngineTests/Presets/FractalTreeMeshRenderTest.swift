@@ -72,7 +72,8 @@ struct FractalTreeMeshRenderTest {
 
         for drive in drives {
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
-            Self.encode(cmd, into: target, generator: generator, features: drive.features)
+            Self.encode(cmd, into: target, generator: generator,
+                        features: drive.features, stems: drive.stems)
             cmd.commit()
             cmd.waitUntilCompleted()
             #expect(cmd.status == .completed, "frame '\(drive.label)' failed to render")
@@ -162,7 +163,8 @@ struct FractalTreeMeshRenderTest {
             var fv = Self.features(series, row: row)
             fv.aspectRatio = Float(Self.width) / Float(Self.height)
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
-            Self.encode(cmd, into: target, generator: generator, features: fv)
+            Self.encode(cmd, into: target, generator: generator,
+                        features: fv, stems: Self.stems(series, row: row))
             cmd.commit()
             cmd.waitUntilCompleted()
             frames.append(("t\(step)", Self.read(target)))
@@ -195,6 +197,13 @@ struct FractalTreeMeshRenderTest {
         let csv = URL(fileURLWithPath: (dir as NSString).expandingTildeInPath)
             .appendingPathComponent("features.csv")
         let rows = try Self.loadSessionRows(csv)
+        // FTR.4/FTR.8 — the tips are a stem route now, so the sequence must carry the
+        // session's own stems.csv or it renders the hero route silent.
+        let stemRows = (try? Self.loadSessionRows(
+            csv.deletingLastPathComponent().appendingPathComponent("stems.csv"))) ?? []
+        if stemRows.isEmpty {
+            print("[fractal-tree/sequence] no stems.csv — the guitar tips route will read ZERO")
+        }
 
         // RECOMPUTE engine-derived fields from the AUDIO rather than trusting the
         // recorded columns. A capture holds whatever the build that recorded it produced,
@@ -247,7 +256,8 @@ struct FractalTreeMeshRenderTest {
             Self.applyRecomputedDensity(densityByTime, at: row["time"] ?? 0, to: &fv)
             fv.aspectRatio = Float(Self.width) / Float(Self.height)
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
-            Self.encode(cmd, into: target, generator: generator, features: fv)
+            Self.encode(cmd, into: target, generator: generator, features: fv,
+                        stems: Self.sessionStems(stemRows, index: index))
             cmd.commit()
             cmd.waitUntilCompleted()
             let pixels = Self.read(target)
@@ -269,11 +279,12 @@ struct FractalTreeMeshRenderTest {
         // not a metric (the Meniscus stride lesson). So flicker gets its own stride-1
         // window, rendered separately.
         var adjacentHues: [Double] = []
-        for row in rows.prefix(90) {
+        for (flickerIndex, row) in rows.prefix(90).enumerated() {
             var fv = Self.featuresFromSession(row, fifths: &flickerFifths)
             fv.aspectRatio = Float(Self.width) / Float(Self.height)
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
-            Self.encode(cmd, into: target, generator: generator, features: fv)
+            Self.encode(cmd, into: target, generator: generator, features: fv,
+                        stems: Self.sessionStems(stemRows, index: flickerIndex))
             cmd.commit()
             cmd.waitUntilCompleted()
             adjacentHues.append(Self.meanHue(Self.read(target)))
@@ -352,6 +363,25 @@ struct FractalTreeMeshRenderTest {
 
     /// Parse a recorded `features.csv` into rows keyed by column name, dropping the
     /// malformed startup lines a live capture can contain.
+    /// StemFeatures for one row of a recorded session's `stems.csv` (FTR.4/FTR.8).
+    ///
+    /// The sequence harness drives from a real capture, and the tips are now a stem route —
+    /// passing `.zero` here would render the hero route silent and report it dead, the
+    /// Faraday trap. Rows are index-aligned: `SessionRecorder` writes features.csv and
+    /// stems.csv one row per render frame from the same tick.
+    private static func sessionStems(_ rows: [[String: Double]], index: Int) -> StemFeatures {
+        guard index < rows.count else { return .zero }
+        let row = rows[index]
+        func value(_ key: String) -> Float { Float(row[key] ?? 0) }
+        var st = StemFeatures.zero
+        st.otherOnsetRate = value("otherOnsetRate")
+        st.vocalsEnergy = value("vocalsEnergy")
+        st.drumsEnergy = value("drumsEnergy")
+        st.bassEnergy = value("bassEnergy")
+        st.otherEnergy = value("otherEnergy")
+        return st
+    }
+
     private static func loadSessionRows(_ url: URL) throws -> [[String: Double]] {
         let text = try String(contentsOf: url, encoding: .utf8)
         var lines = text.split(separator: "\n", omittingEmptySubsequences: true)
@@ -471,14 +501,20 @@ struct FractalTreeMeshRenderTest {
             directory: base.appendingPathComponent(Self.driveTrack))
         guard let time = series.floatSeries("time"),
               let arousal = series.floatSeries("arousal"),
-              let beatMid = series.floatSeries("beatMid") else {
-            throw FractalTreeHarnessError.setupFailed("time/arousal/beatMid absent")
+              let beatMid = series.floatSeries("beatMid"),
+              let onsetRate = series.floatSeries("otherOnsetRate") else {
+            throw FractalTreeHarnessError.setupFailed("time/arousal/beatMid/otherOnsetRate absent")
         }
 
         // The shader's own arithmetic, mirrored. `amp` is 1: the fixtures are music
         // throughout, and the silence gate is covered by the D-037 render assertion.
         let rows = (0..<min(time.count, arousal.count)).filter { (time[$0] ?? 0) >= 10.0 }
-        let melody = rows.map { Double(beatMid[$0] ?? 0) / (Double(beatMid[$0] ?? 0) + 2.2) }
+        // FTR.8 — mirror the SHIPPED driver. The tips read the guitar's onset rate through
+        // `r/(r+6.5)`; modelling the retired `beat_mid` knee here would measure a build that
+        // no longer exists, which is how FTR.6 shipped a regression past a green harness.
+        // Stems are alive across this fixture, so the D-019 crossfade sits at the guitar end.
+        let melody = rows.map { Double(onsetRate[$0] ?? 0) / (Double(onsetRate[$0] ?? 0) + 18.0) }
+        _ = beatMid
         let growthEnv = rows.map { min(max((Double(arousal[$0] ?? 0) - 0.10) / 0.58, 0), 1) }
         let structure = rows.map { row -> Int in
             let reach = min(max((Double(arousal[row] ?? 0) - 0.10) / 0.58, 0), 1)
@@ -587,17 +623,105 @@ struct FractalTreeMeshRenderTest {
             """)
     }
 
+    /// FTR.4 — proof that the OBJECT stage reads `StemFeatures` at buffer(3).
+    ///
+    /// Binding a buffer and the GPU reading it are different claims, and only the second one
+    /// matters. This renders the SAME `FeatureVector` twice, changing nothing but
+    /// `other_onset_rate`, and requires the pixels to differ. If the object binding were
+    /// missing or landed on the wrong slot, both frames would be identical and every stem
+    /// route on every future mesh preset would be silently dead — the class of failure that
+    /// left `vocalsPitchConfidence` at 0 % for five months while closeouts claimed it worked.
+    @Test("the object stage reads StemFeatures at buffer(3) (FTR.4)")
+    func objectStageReceivesStems() throws {
+        let ctx = try MetalContext()
+        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat,
+                                  loadBuiltIn: true)
+        let preset = try #require(loader.presets.first { $0.descriptor.name == "Fractal Tree" })
+        let generator = MeshGenerator(
+            device: ctx.device, pipelineState: preset.pipelineState,
+            configuration: .init(maxVerticesPerMeshlet: 252, maxPrimitivesPerMeshlet: 126,
+                                 meshThreadCount: preset.descriptor.meshThreadCount))
+        let target = try Self.makeTexture(ctx)
+
+        // A frame the growth gate lets the tips through on: the tips are multiplied by
+        // `smoothstep(0, 0.35, reach)`, so with a dead canopy this test would pass for the
+        // wrong reason (both frames identically empty).
+        var features = Self.baseFeatures()
+        features.arousal = 0.65
+        features.spectralSectionRatio = 1.6
+        features.spectralSurge = 0.9
+        features.pulseAmp01 = 1
+        features.aspectRatio = Float(Self.width) / Float(Self.height)
+
+        func render(onsetRate: Float) throws -> [UInt8] {
+            var stems = StemFeatures.zero
+            // Stems must read ALIVE or the D-019 crossfade holds the tips on `beat_mid` and
+            // the guitar value never reaches the count.
+            stems.vocalsEnergy = 0.05; stems.drumsEnergy = 0.05
+            stems.bassEnergy = 0.05; stems.otherEnergy = 0.05
+            stems.otherOnsetRate = onsetRate
+            let cmd = try #require(ctx.commandQueue.makeCommandBuffer())
+            Self.encode(cmd, into: target, generator: generator, features: features, stems: stems)
+            cmd.commit()
+            cmd.waitUntilCompleted()
+            #expect(cmd.status == .completed)
+            return Self.read(target)
+        }
+
+        let quiet = try render(onsetRate: 0.3)
+        let busy = try render(onsetRate: 6.0)
+        #expect(quiet.count == busy.count && !quiet.isEmpty)
+        let differing = zip(quiet, busy).filter { $0 != $1 }.count
+        #expect(differing > 0, """
+            a 20× change in other_onset_rate produced a byte-identical frame. The object \
+            stage is not reading StemFeatures at buffer(3) — binding it is not the same as \
+            the GPU consuming it, and every mesh stem route depends on this.
+            """)
+        // And the busier guitar must produce MORE tree, not merely a different one.
+        let quietInk = quiet.enumerated().filter { $0.offset % 4 != 3 && $0.element > 24 }.count
+        let busyInk = busy.enumerated().filter { $0.offset % 4 != 3 && $0.element > 24 }.count
+        #expect(busyInk > quietInk, """
+            busy guitar drew \(busyInk) lit subpixels against quiet's \(quietInk) — the route \
+            reaches the GPU but points the wrong way.
+            """)
+    }
+
     // MARK: - Drive
 
     private struct Drive {
         let label: String
         let features: FeatureVector
+        let stems: StemFeatures
+    }
+
+    /// Build the StemFeatures the preset reads from one fixture row (FTR.4/FTR.8).
+    ///
+    /// `SessionColumnSeries.floatSeries` falls through to stems.csv, so these come from the
+    /// same fixture rows as the FeatureVector — real separated stems on real music, not a
+    /// hand-authored envelope (FA #27). Only the fields Fractal Tree consumes are populated;
+    /// `other_onset_rate` is the hero route and the four energies drive the D-019 warmup
+    /// crossfade, so a zero there would silently hold the tips on their cold-start driver.
+    private static func stems(_ s: SessionColumnSeries, row: Int) -> StemFeatures {
+        func value(_ column: String) -> Float {
+            guard let series = s.floatSeries(column), row < series.count else { return 0 }
+            return series[row] ?? 0
+        }
+        var st = StemFeatures.zero
+        st.otherOnsetRate = value("otherOnsetRate")
+        st.vocalsEnergy = value("vocalsEnergy")
+        st.drumsEnergy = value("drumsEnergy")
+        st.bassEnergy = value("bassEnergy")
+        st.otherEnergy = value("otherEnergy")
+        return st
     }
 
     /// Silence plus four real-music frames, chosen at percentiles of `bass` so the sheet
     /// spans the track's actual dynamic range rather than three arbitrary rows.
     private static func driveFrames() throws -> [Drive] {
-        var out = [Drive(label: "silence", features: Self.baseFeatures())]
+        // Silence must include SILENT STEMS: with stems at zero the D-019 crossfade holds
+        // the tips on their cold-start driver, which is exactly the state a real track's
+        // first seconds are in, and the D-037 non-black floor has to survive it.
+        var out = [Drive(label: "silence", features: Self.baseFeatures(), stems: .zero)]
 
         let base = try #require(
             Bundle.module.url(forResource: "route_coverage", withExtension: nil),
@@ -619,7 +743,8 @@ struct FractalTreeMeshRenderTest {
 
         for (label, p) in [("p05", 0.05), ("p50", 0.50), ("p95", 0.95), ("peak", 1.0)] {
             let row = ranked[min(Int(Double(ranked.count - 1) * p), ranked.count - 1)]
-            out.append(Drive(label: label, features: Self.features(series, row: row)))
+            out.append(Drive(label: label, features: Self.features(series, row: row),
+                             stems: Self.stems(series, row: row)))
         }
 
         // Two frames ranked by HARMONY instead of energy. Without these the sheet cannot
@@ -630,8 +755,10 @@ struct FractalTreeMeshRenderTest {
             let byTonal = warm.filter { $0 < tonal.count }
                 .sorted { (tonal[$0] ?? 0) < (tonal[$1] ?? 0) }
             if let low = byTonal.first, let high = byTonal.last {
-                out.append(Drive(label: "harm-lo", features: Self.features(series, row: low)))
-                out.append(Drive(label: "harm-hi", features: Self.features(series, row: high)))
+                out.append(Drive(label: "harm-lo", features: Self.features(series, row: low),
+                                 stems: Self.stems(series, row: low)))
+                out.append(Drive(label: "harm-hi", features: Self.features(series, row: high),
+                                 stems: Self.stems(series, row: high)))
             }
         }
         return out
@@ -697,15 +824,21 @@ struct FractalTreeMeshRenderTest {
 
     // MARK: - Encode
 
+    /// FTR.4/FTR.8 — `stems` is not optional here on purpose. The tips now read
+    /// `stems.other_onset_rate`, and a harness that let it default to `.zero` would drive the
+    /// hero route with silence and then report it dead. That is the Faraday failure (a route
+    /// measured at r = −0.019 that was really +0.868) and the reason the drive builder must
+    /// be updated in the SAME commit as any new route.
     private static func encode(_ cmd: MTLCommandBuffer, into texture: MTLTexture,
-                               generator: MeshGenerator, features: FeatureVector) {
+                               generator: MeshGenerator, features: FeatureVector,
+                               stems: StemFeatures) {
         let rpd = MTLRenderPassDescriptor()
         rpd.colorAttachments[0].texture = texture
         rpd.colorAttachments[0].loadAction = .clear
         rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         rpd.colorAttachments[0].storeAction = .store
         guard let enc = cmd.makeRenderCommandEncoder(descriptor: rpd) else { return }
-        generator.draw(encoder: enc, features: features)
+        generator.draw(encoder: enc, features: features, stems: stems)
         enc.endEncoding()
     }
 

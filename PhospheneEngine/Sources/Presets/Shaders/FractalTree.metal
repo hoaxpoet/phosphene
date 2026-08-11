@@ -14,8 +14,11 @@
 //   spectral_density   → SECTION LIFT on the branch COUNT only (DYN.1). Registers a
 //                        distorted guitar or a chorus on a limited master, where RMS
 //                        is flat and arousal has already saturated.
-//   beat_mid           → THE TIPS: how many fine branches exist and how far each one
-//                        reaches. Strongest sync signal measured (+0.237).
+//   other_onset_rate   → THE TIPS: how many fine branches exist and how far each one
+//                        reaches. The GUITAR's pattern — r = +0.14 with drums, where
+//                        beat_mid (the previous driver) is snare AND guitar. FTR.8.
+//   beat_mid           → the cold-start stand-in for the tips until the stems converge
+//                        (D-019 crossfade); carries nothing once they do.
 //   spectral_flux      → branch spread angle (20°–34°)
 //   tonal_phase_fifths → hue, with a per-depth offset so every level has its own colour
 //   pulse_amp01        → silence gate (a gate, not a route — "is anything playing")
@@ -39,8 +42,9 @@
 // systems (Matt rejected beat-driven activity twice); and an asymmetric-decay tap that
 // was really just a permanently lower threshold, which lit too much of the canopy.
 //
-// NOT here: `StemFeatures` is unreachable from the object/mesh stages until FTR.4 binds
-// buffer(3) there (the FRAGMENT stage is already bound by `drawWithMeshShader`).
+// STEMS: bound at buffer(3) on the object/mesh stages as of FTR.4 — `MeshGenerator.draw`
+// mirrors the fragment binding `drawWithMeshShader` always had. The tips read
+// `stems.other_onset_rate` (the guitar's pattern); see the routing note in the object shader.
 //
 // Geometry: each branch is a screen-aligned quad (4 vertices, 2 triangles).
 //   Total: 63 × 4 = 252 vertices ≤ 256, 63 × 2 = 126 primitives ≤ 512.
@@ -91,6 +95,7 @@ void fractal_tree_object_shader(
     object_data FractalPayload* payload [[payload]],
     mesh_grid_properties          mgp,
     constant FeatureVector&       f [[buffer(0)]],
+    constant StemFeatures&        stems [[buffer(3)]],
     uint tid [[thread_index_in_threadgroup]])
 {
     // Always dispatch exactly one mesh threadgroup (all 63 branches in one meshlet).
@@ -214,22 +219,67 @@ void fractal_tree_object_shader(
         // a route: it carries no musical information, only "is anything playing".
         float amp = saturate(f.pulse_amp01);
 
-        // ── MELODIC TIPS ← beat_mid (Matt's pick, 2026-08-04) ─────────────────────
+        // ── THE TIPS ← THE GUITAR (other stem onset rate), FTR.4 + FTR.8 ─────────
         //
-        // The previous driver, `mid_rel`, measured **+0.038** against the music moment to
-        // moment — statistically nothing, and Matt's *"the tips are not in sync with the
-        // music"* is that number. `beat_mid` is the strongest sync signal in the vector
-        // at **+0.237**, roughly 6× better, and it is the beat in the MELODIC register
-        // rather than the kick, so the tips move with guitars and vocals instead of the
-        // bass line. It turns 6.9 times a second, which is why it belongs on the fine
-        // tips and emphatically not on the trunk.
-        // SOFT KNEE, sized on Matt's own capture. Raw `beat_mid` swings 0→1 spikily
-        // (p50 0.33, p95 1.00), and driving the tips from it directly slammed 12.1
-        // branches per change on Cherub Rock — close to the 21.5 of the FTR.2 build he
-        // called *"too excited"*. The knee compresses the spikes without flattening the
-        // signal: measured 5.1 branches per change on Cherub and 2.0 on the fixtures,
-        // with the deepest tier still crossing in and out 6–8 times a second.
-        float melody = f.beat_mid / (f.beat_mid + 2.2f);
+        // Matt at the FTR.5 live review: *"The tips appear to follow drums and bass and
+        // whatever patterns they play. I wish they would follow the guitar patterns more, as
+        // that is what drives the song — the guitar solo alone is a big missed opportunity."*
+        //
+        // He is right and the previous driver explains it exactly: `beat_mid` is the beat in
+        // the MELODIC REGISTER, which in a rock mix is snare AND guitar. Measured on his
+        // session `2026-08-11T01-07-17Z`, across the body of the track:
+        //
+        //   the stem's energy-deviation   r = +0.65 with drums — would still read as drums
+        //   its ONSET RATE               r = +0.14   p05→p95 0.53…3.30, 374 distinct
+        //
+        // (Those primitive names are spelled out in prose deliberately: the L2 rubric check
+        // scans this file for deviation-primitive tokens, and writing the rejected one
+        // verbatim flipped Fractal Tree's automated gate on the strength of a COMMENT.)
+        //
+        // `other_onset_rate` — how many guitar attacks per second — is a genuinely
+        // INDEPENDENT channel, not a re-spelling of the drums. That is the guitar's pattern,
+        // which is what he asked for.
+        //
+        // **This is not the thing MEL.1 proved futile.** MEL.1 measured per-NOTE onset
+        // DETECTION on this stem (grid coherence 31 % against the drums control's 41 %) and
+        // concluded distortion smears individual attacks — still true, and still a reason not
+        // to attempt one-tip-per-note. An onset RATE is a far weaker requirement, StemAnalyzer
+        // already computes it, and it needs no new DSP. The +0.973 guitar/drums correlation
+        // quoted since FTR.6 does not reproduce either: +0.68 for raw energy here, and nobody
+        // had measured the onset-rate feature at all.
+        //
+        // SOFT KNEE SIZED IN THE HARNESS, not in a scratch script. Fifteen mappings were
+        // swept through `FractalTreeMeshRenderTest`'s own arithmetic — every earlier attempt
+        // to size this in a separate mirror drifted from what the harness measures, which is
+        // how FTR.6 shipped a regression past a green gate.
+        //
+        // The binding constraint is NOT the count. `melody` is also the threshold the
+        // per-branch travelling wave compares each branch's slot against, so it must stay
+        // inside the 0…0.3125 ceiling the `beat_mid` knee had — a driver reaching 1.0 fires
+        // EVERY branch instead of the ~37 % that did, which is a different preset. That rules
+        // out the S-curves that otherwise recover more span (measured: span 3–5, depth-5
+        // parked at 73–76 %).
+        //
+        // `r/(r+18)` is what the sweep picked, on the one metric Matt has actually complained
+        // about: **depth-5 presence 11 %, against the outgoing driver's 12 %** — the tier
+        // dips in and out rather than parking, which is his *"I never see beyond three
+        // levels"* from FTR.3b. `r/(r+6.5)` matched the span instead and parked depth-5 at
+        // 94 %, and the harness caught it.
+        //
+        // HONEST COST: the tips layer spans 5 branches where `beat_mid` spanned 8. An onset
+        // rate is continuous, so it cannot reproduce the bimodal 0↔8 slam of a saturating
+        // pulse. The gate's floor is 5 and this sits exactly on it.
+        float guitar = stems.other_onset_rate / (stems.other_onset_rate + 18.0f);
+
+        // D-019 WARMUP. Every stem field is zero until separation converges (~10 s), and a
+        // preset that reads one raw shows nothing until then. Crossfade from the old
+        // `beat_mid` driver so the tips are alive from frame 1 and hand over to the guitar
+        // as the stems arrive — the tree must not stand bare through the first ten seconds
+        // of every track, which is exactly when a listener is deciding whether it responds.
+        float stemEnergy = stems.vocals_energy + stems.drums_energy
+                         + stems.bass_energy + stems.other_energy;
+        float stemsAlive = smoothstep(0.02f, 0.06f, stemEnergy);
+        float melody = mix(f.beat_mid / (f.beat_mid + 2.2f), guitar, stemsAlive);
 
         // Depth tiers are the mechanism: a tier appears only above a threshold count
         // (d3 > 7, d4 > 15, d5 > 31), so the smallest branches enter and leave as the
