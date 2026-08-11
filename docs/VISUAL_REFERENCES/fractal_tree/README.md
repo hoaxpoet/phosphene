@@ -67,6 +67,14 @@ What this preset must NOT look like:
 
 **Two things the gate does NOT fix, stated rather than implied.** (1) *Instrument separation* — Matt's *"heavily favors the drums vs. guitars"* survives it. The trigger is still mid-band, which in a rock mix is snare AND guitar (correlated **+0.973** here), and per-note guitar onsets do not survive distortion (§MEL.1: grid coherence 31 % for guitar against 41 % for the drums control). (2) *Total transition count* — a tip that appears must also disappear, so the branch count changes about **twice** per note event. That is arithmetic at equilibrium, not a tuning miss; what the gate removes is the SIZE of each change, 4.6 branches → 1.
 
+**Changed at FTR.10 — the trunk STEPS instead of sliding.** Matt, 2026-08-11: *"The trunk is moving too much, which unfortunately makes the motion of the tips difficult to see. We need less motion — like tying movement to the songbeat."* His choice, from three offered: steps on each beat. `base_len` now reads the beat-held `FeatureVector` at object buffer(4) (`BeatHold`) instead of the live one — same `0.27 + reach·0.13 + surge·0.32`, sampled on the beat and held between beats.
+
+| Layer | Primitive | Measured (`2026-08-11T18-26-52Z`, *Carry The Zero*, chain `clean`) | Was |
+|---|---|---|---|
+| trunk length — and with it the whole skeleton's scale | `spectralSectionRatio` + `spectralSurge`, **clocked by `beatPhase01`** | **0.52 turns/s, span 0.344** (hold engaged 95 % of frames) | 1.64 turns/s, span 0.348 — continuous |
+
+**This is a temporal contract, not a new route.** The primitives are unchanged; what changed is WHEN the trunk is allowed to move. Two consequences worth keeping: the range is deliberately preserved (98.9 % of the continuous span — a smoother would have traded it away, which is the DYN.1e failure), and the branch counts, tips and thickness are deliberately NOT held, because the tips becoming visible is the whole point. And the hold is gated: no `BeatGrid`, a beat-irregular grid (D-154), a stalled phase, or the first ~4 s of a track all fall back to continuous. Fractal Tree therefore stays eligible for beat-irregular tracks rather than being excluded from them.
+
 **Removed at FTR.2:** tip shimmer ← `treb_att`, which delivered +0.002 of a promised +0.12. Not re-homed — that visual layer belongs to FTR.3's per-branch activation, and a dead route is deleted rather than left declared as a false manifest.
 
 **Still to come:** per-branch activation (HERO) ← `beat_phase01` + `pulse_beat_index`, hash-selected bounded subset — FTR.3. Percussive accent ← `stems.drums_energy_dev` — FTR.4, which needs the object/mesh-stage stem binding (the *fragment* stage is already bound at buffer(3) by `drawWithMeshShader`; only the object/mesh half is missing).

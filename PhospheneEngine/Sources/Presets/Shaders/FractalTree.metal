@@ -69,6 +69,12 @@ struct FractalPayload {
     /// THE TIPS, 0…1 from `beat_mid` through a soft knee. Drives how many fine
     /// branches exist AND how far each one reaches — one gesture, two coupled terms.
     float melody;
+    /// TRUNK LENGTH, clip-space — the same 0.27 + reach·0.13 + surge·0.32 the mesh shader
+    /// used to compute inline, but evaluated on the BEAT-HELD FeatureVector (FTR.10). Holds
+    /// still between beats and steps on the beat; falls back to the continuous value
+    /// whenever the grid is not trustworthy. Every segment scales off it, so this is the
+    /// whole skeleton's size, and it is the one term Matt asked to stop sliding.
+    float trunk_len;
     float aspect_ratio;
     uint  branch_count;   // 15–61: how many branches to render this frame
 };
@@ -86,6 +92,29 @@ static inline uint fractal_hash(uint x)
     return x;
 }
 
+// MARK: - Growth
+
+/// The two continuous growth terms — `.x` canopy reach, `.y` section surge — derived from
+/// one FeatureVector.
+///
+/// Factored out at FTR.10 so the object shader can evaluate them TWICE: once on the live
+/// vector at buffer(0), for the canopy and the branch counts, and once on the beat-held
+/// vector at buffer(4), for the trunk. Two call sites, one arithmetic — a second copy of
+/// this expression is how the trunk and the canopy would silently drift apart.
+static inline float2 fractal_growth(constant FeatureVector& f)
+{
+    float arousalReach = saturate((f.arousal - 0.10f) * (1.0f / 0.58f));
+    // DYN.2c: the field is this moment's RANK in the track's own density distribution
+    // (×2, so 1.0 still reads as "this track's normal"). Uniform over the track by
+    // construction, so there are NO fitted edges left to get wrong — the 0.78/1.38 pair
+    // this replaces was fitted against DYN.2b's broken ratio and clipped Hummer to a
+    // flat 1.00 for four minutes once the normal was measured correctly.
+    float fullness = saturate(f.spectral_section_ratio * 0.5f);
+    float musicGate = smoothstep(0.05f, 0.30f, saturate(f.spectral_surge));
+    return float2(saturate(max(0.10f * arousalReach, fullness) * musicGate),
+                  saturate(f.spectral_surge));
+}
+
 // MARK: - Object Shader
 
 /// Reads the current FeatureVector, computes the audio-driven branch count,
@@ -96,6 +125,7 @@ void fractal_tree_object_shader(
     mesh_grid_properties          mgp,
     constant FeatureVector&       f [[buffer(0)]],
     constant StemFeatures&        stems [[buffer(3)]],
+    constant FeatureVector&       fHeld [[buffer(4)]],
     uint tid [[thread_index_in_threadgroup]])
 {
     // Always dispatch exactly one mesh threadgroup (all 63 branches in one meshlet).
@@ -178,16 +208,7 @@ void fractal_tree_object_shader(
         // sapling mid-track, and the surge gate keeps a bright QUIET intro from inflating
         // it (DYN1_CALIBRATION §3: a clean intro is BRIGHTER than a pre-distortion passage,
         // so shape alone would grow the tree before the band arrives).
-        float arousalReach = saturate((f.arousal - 0.10f) * (1.0f / 0.58f));
-        float sectionRatio = f.spectral_section_ratio;   // DYN.2b: already normalised
-        // DYN.2c: the field is this moment's RANK in the track's own density distribution
-        // (×2, so 1.0 still reads as "this track's normal"). Uniform over the track by
-        // construction, so there are NO fitted edges left to get wrong — the 0.78/1.38 pair
-        // this replaces was fitted against DYN.2b's broken ratio and clipped Hummer to a
-        // flat 1.00 for four minutes once the normal was measured correctly.
-        float fullness = saturate(sectionRatio * 0.5f);
-        float musicGate = smoothstep(0.05f, 0.30f, saturate(f.spectral_surge));
-        float reach = saturate(max(0.10f * arousalReach, fullness) * musicGate);
+        float reach = fractal_growth(f).x;   // see fractal_growth() above
 
         // ── THE SURGE: "SHOOT UP" ← spectral_surge (DYN.1b) ──────────────────────
         //
@@ -208,7 +229,40 @@ void fractal_tree_object_shader(
         // separates the pre-guitar passage from the arrival 20.4× (0.048 → 0.981) while
         // turning only 0.58 times a second — a step the trunk can safely read, which the
         // restless `density` ratio never was.
-        float surge = saturate(f.spectral_surge);
+        float surge = fractal_growth(f).y;
+
+        // ── FTR.10: THE TRUNK STEPS ON THE BEAT ──────────────────────────────────
+        //
+        // Matt, 2026-08-11 (`2026-08-11T18-26-52Z`): *"The trunk is moving too much, which
+        // unfortunately makes the motion of the tips difficult to see. We need less motion —
+        // like tying movement to the songbeat."* Asked to choose between per-beat steps,
+        // per-bar steps and continuous-but-smoother, he chose **steps on each beat**.
+        //
+        // Measured on that session before changing anything: the trunk turns **1.75 times a
+        // second**. Decomposed, `surge * 0.32` contributes span 0.168 at 1.27 turns/s and
+        // `reach * 0.13` contributes span 0.109 at 0.80 turns/s — so BOTH terms have to hold,
+        // not just the faster one. Freezing only the surge would leave 0.80/s, above the
+        // preset's own ~1.0 turns/s legibility rule but nowhere near still.
+        //
+        // The mechanism is a sample-and-hold, not a smoother: `fHeld` is the FeatureVector as
+        // it stood at the last beat boundary (MeshGenerator/`BeatHold`, object buffer(4)).
+        // Same arithmetic, older input — so the trunk's RANGE is untouched (0.173 against the
+        // continuous 0.178) and only its rate collapses (0.51 turns/s). A smoother would have
+        // cost range, which is the DYN.1e failure Matt named as "a 10 % band, nothing to see".
+        //
+        // WHAT IS NOT HELD, deliberately: the branch counts and the tips read the LIVE vector
+        // at buffer(0). Freezing them would freeze the guitar route FTR.8 exists for, and the
+        // whole point of this increment is that the tips become visible once the skeleton
+        // stops sliding underneath them. Thickness also stays live — it swings 0.020 of a
+        // 0.058 line weight, which is not what Matt is looking at.
+        //
+        // FALLBACKS ARE IN `BeatHold`, NOT HERE. When there is no grid (reactive/streaming),
+        // when the grid is beat-irregular (D-154), or when the phase stalls, the snapshot
+        // simply tracks the live vector and this expression is bit-identical to the
+        // continuous one. There is no frozen-trunk state to reach: a preset can only step
+        // while the phase is demonstrably ticking.
+        float2 heldGrowth = fractal_growth(fHeld);
+        float trunkLen = 0.27f + heldGrowth.x * 0.13f + heldGrowth.y * 0.32f;
 
         // Kept for the canopy's finer response; the surge carries the arrival.
         float lift = saturate((f.spectral_density / max(f.spectral_density_slow, 1e-4f) - 1.0f) * 1.1f);
@@ -377,6 +431,7 @@ void fractal_tree_object_shader(
         payload->melody       = melody * amp;
         payload->reach        = reach;
         payload->surge        = surge;
+        payload->trunk_len    = trunkLen;
         payload->spread       = spread;
         payload->branch_count = min(count, 63u);
         payload->aspect_ratio = max(f.aspect_ratio, 0.1f);
@@ -480,7 +535,10 @@ void fractal_tree_mesh_shader(
     // 0.27 at rest, not 0.22: the shorter tree tripped the D-037 silence gate (mean luma
     // 0.0027 against a 0.004 floor). Headroom for the surge still matters more than size
     // at rest, so the constant is raised only as far as legibility needs.
-    float base_len = 0.27f + payload.reach * 0.13f + payload.surge * 0.32f;
+    // FTR.10 — the expression moved to the object shader so it can be evaluated on the
+    // BEAT-HELD FeatureVector: same 0.27 + reach·0.13 + surge·0.32, sampled on the beat and
+    // held between beats. See the FTR.10 block there.
+    float base_len = payload.trunk_len;
     float ang_base = payload.spread;                    // 20°–34°, from spectral_flux
 
     float2 pos     = float2(0.0f, -0.90f);  // tree root (bottom-centre, clip space)
