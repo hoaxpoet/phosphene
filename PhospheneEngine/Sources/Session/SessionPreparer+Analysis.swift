@@ -257,6 +257,7 @@ extension SessionPreparer {
 
         var centroidSum: Float = 0
         var frameCount = 0
+        var moodAccumulator = MoodFeatureAccumulator()   // DYN.7
         var offset = 0
 
         while offset + fftSize <= samples.count {
@@ -275,16 +276,25 @@ extension SessionPreparer {
             centroidSum += fv.spectralCentroid
             frameCount += 1
 
-            // Run mood classifier every 30 frames to capture evolving mood.
-            if frameCount % 30 == 0 {
-                let moodInput: [Float] = [
-                    fv.subBass, fv.lowBass, fv.lowMid, fv.midHigh, fv.highMid, fv.high,
-                    fv.spectralCentroid,
-                    mir.rawSmoothedFlux,
-                    mir.latestMajorKeyCorrelation, mir.latestMinorKeyCorrelation
-                ]
-                _ = try? classifier.classify(features: moodInput)
-            }
+            // DYN.7 — the SAME measurement the live path makes. Previously this fed the
+            // classifier INSTANTANEOUS features every 30th frame while live fed a 1.67 s
+            // EMA every frame, and the per-call output alpha turned that cadence gap into a
+            // 6.96 s window here against 0.167 s live. A track was therefore prepared with
+            // one mood and played with another.
+            let smoothed = moodAccumulator.update(
+                frameFeatures: MoodFeatureAccumulator.assemble(
+                    bands: [fv.subBass, fv.lowBass, fv.lowMid, fv.midHigh, fv.highMid, fv.high],
+                    centroidNormalized: fv.spectralCentroid,
+                    rawFlux: mir.rawSmoothedFlux,
+                    majorCorrelation: mir.latestMajorKeyCorrelation,
+                    minorCorrelation: mir.latestMinorKeyCorrelation
+                ),
+                deltaTime: dt
+            )
+            // Classify every frame, as live does. The output window is wall-clock now, so
+            // the cadence no longer sets the smoothing — it only sets the cost, and the
+            // forward pass is a 10→64→32→16→2 MLP over a 30 s window.
+            _ = try? classifier.classify(features: smoothed, deltaTime: dt)
 
             offset += fftSize
         }

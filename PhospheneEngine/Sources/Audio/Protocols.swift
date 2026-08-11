@@ -174,7 +174,7 @@ public protocol MoodClassifying: AnyObject, Sendable {
     ///    spectralCentroid, spectralFlux,
     ///    majorKeyCorrelation, minorKeyCorrelation]`
     /// - Returns: EmotionalState with valence and arousal.
-    func classify(features: [Float]) throws -> EmotionalState
+    func classify(features: [Float], deltaTime: Float) throws -> EmotionalState
 
     /// Latest smoothed emotional state (EMA-filtered).
     var currentState: EmotionalState { get }

@@ -48,7 +48,7 @@ struct LoudnessProfileTests {
     private static func hold(_ analyzer: SpectralAnalyzer, atLevelDB level: Float, frames: Int) -> Float {
         let magnitudes = spectrum(atLevelDB: level)
         var surge: Float = 0
-        for _ in 0..<frames { surge = analyzer.process(magnitudes: magnitudes).surge }
+        for _ in 0..<frames { surge = analyzer.process(magnitudes: magnitudes, deltaTime: 1024.0 / 44100.0).surge }
         return surge
     }
 
@@ -59,7 +59,10 @@ struct LoudnessProfileTests {
         var levels: [Float] = []
         var smoothed: Float = 0
         var seeded = false
-        let alpha = LoudnessProfile.levelSmoothingAlpha
+        // DYN.4 — the alpha this fixture's own frame duration implies for the shared tau.
+        let alpha = LoudnessProfile.emaAlpha(
+            deltaTime: 1 / LoudnessProfile.referenceAnalysisHz,
+            tau: LoudnessProfile.levelSmoothingTau)
         for section in sections {
             let level = LoudnessProfile.levelDB(
                 magnitudes: spectrum(atLevelDB: section.levelDB), count: binCount)

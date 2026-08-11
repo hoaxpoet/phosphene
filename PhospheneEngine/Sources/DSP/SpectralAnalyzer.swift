@@ -120,38 +120,36 @@ public final class SpectralAnalyzer: @unchecked Sendable {
 
     // MARK: - EMA Smoothing
 
-    /// EMA alpha for centroid smoothing.
-    private static let centroidAlpha: Float = 0.12
+    // DYN.5 — the spectral-feature followers, in SECONDS; the last per-FRAME alphas in this
+    // file. Each tau is what its old coefficient meant at the 43.07 Hz reference rate, so
+    // nothing is retuned — only the rate dependence goes.
+    static let centroidTau: Float = LoudnessProfile.tau(legacyAlpha: 0.12)   // ≈ 0.18 s
+    static let rolloffTau: Float = LoudnessProfile.tau(legacyAlpha: 0.12)    // ≈ 0.18 s
+    static let fluxTau: Float = LoudnessProfile.tau(legacyAlpha: 0.25)       // ≈ 0.08 s
 
-    /// EMA alpha for rolloff smoothing.
-    private static let rolloffAlpha: Float = 0.12
-
-    /// EMA alpha for flux smoothing.
-    private static let fluxAlpha: Float = 0.25
-
-    /// DYN.1 legs, at the ~10 Hz MIR rate: `density` at τ ≈ 0.8 s against
-    /// `smoothedDensity` at τ ≈ 45 s, so the pair reads "this moment against this track's
-    /// normal".
-    ///
-    /// THE FAST LEG'S WIDTH IS THE WHOLE BALLGAME, and it was wrong twice in opposite
-    /// directions. Swept against a real capture (`2026-08-04T17-17-01Z`, distorted guitar
-    /// at ~20 s, independent time-domain reference showing a 3.22× rise): τ 0.8 s recovers
-    /// 93 % of the reference while turning only 0.41/s; τ 6 s recovers 19 % and τ 0.45 s
-    /// buys nothing for 50 % more restlessness. Full table:
-    /// `docs/ENGINE/DYN1_CALIBRATION.md` §1 — do not duplicate it back into this comment.
-    ///
-    /// τ 6 s was chosen when the TRUNK read this field and was bouncing. The trunk reads
-    /// the τ10 s SECTION leg now (DYN.2), never this one, so widening this again would only
-    /// destroy the signal it exists to carry. The raw fraction turns 5.59/s, which is why
-    /// SOME smoothing is required; `density` is deliberately not instantaneous.
-    static let densityFastAlpha: Float = 0.117
-    static let densityAlpha: Float = 0.0022
+    // DYN.1 density legs: a fast leg against a slow one, so the pair reads "this moment
+    // against this track's normal". THE FAST LEG'S WIDTH IS THE WHOLE BALLGAME and was wrong
+    // twice in opposite directions — the sweep is in `docs/ENGINE/DYN1_CALIBRATION.md` §1;
+    // do not duplicate it here. The trunk reads the SECTION leg (DYN.2), never this one.
+    //
+    // DYN.4 — widths in SECONDS, converted per frame. See LoudnessProfile §Smoothing time
+    // constants. Each tau is what its old coefficient meant at the reference rate.
+    static let densityFastTau: Float = LoudnessProfile.tau(legacyAlpha: 0.117)     // ≈ 0.19 s
+    static let densitySlowTau: Float = LoudnessProfile.tau(legacyAlpha: 0.0022)    // ≈ 10.5 s
     /// DYN.2b at the MEASURED 43 Hz analysis rate: τ20 s section leg over a τ45 s normal.
     /// The first cut used 0.0021 (τ10) against `densityAlpha` — but that "τ45" constant was
     /// sized under the old wrong ~10 Hz assumption and is really τ9.7 s, so the two legs
     /// landed 0.38 % apart, the ratio was a constant 1.00 and the trunk never moved.
-    static let densitySectionAlpha: Float = LoudnessProfile.densitySectionAlpha
-    static let densityNormalAlpha: Float = 0.00052    // τ 45 s — the REAL normal
+    static let densitySectionTau: Float = LoudnessProfile.densitySectionTau         // ≈ 20 s
+    /// FTR.9 — section-RATIO smoothing, after the rank. See `advanceLevelAndDensity`.
+    static let sectionRatioTau: Float = 1.0
+    static let densityNormalTau: Float = LoudnessProfile.tau(legacyAlpha: 0.00052) // ≈ 44.6 s
+
+    /// FTR.9 — the section ratio after its own τ1 s smoothing; what consumers read. Seeded
+    /// on the first analysis frame rather than ramping from zero. `internal` like the rest
+    /// of the density state: the follower that owns it lives in `SpectralAnalyzer+Density`.
+    var smoothedSectionRatio: Float = 0
+    var sectionRatioSeeded = false
 
     /// EMA-smoothed centroid value.
     private var smoothedCentroid: Float = 0
@@ -233,7 +231,7 @@ public final class SpectralAnalyzer: @unchecked Sendable {
     ///
     /// - Parameter magnitudes: FFT magnitude array (should have `binCount` elements).
     /// - Returns: Spectral centroid, rolloff, and flux.
-    public func process(magnitudes: [Float]) -> Result {
+    public func process(magnitudes: [Float], deltaTime: Float) -> Result {
         lock.lock()
         defer { lock.unlock() }
 
@@ -258,10 +256,14 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         let flux = computeFlux(magnitudes: magnitudes, count: count)
         let rawDensity = computeDensity(magnitudes: magnitudes, count: count)
 
-        // EMA smoothing.
-        smoothedCentroid = Self.centroidAlpha * centroid + (1 - Self.centroidAlpha) * smoothedCentroid
-        smoothedRolloff = Self.rolloffAlpha * rolloff + (1 - Self.rolloffAlpha) * smoothedRolloff
-        smoothedFlux = Self.fluxAlpha * flux + (1 - Self.fluxAlpha) * smoothedFlux
+        // EMA smoothing (DYN.5 — widths in seconds, alpha derived from this frame).
+        func blend(_ current: Float, _ target: Float, tau: Float) -> Float {
+            let alpha = LoudnessProfile.emaAlpha(deltaTime: deltaTime, tau: tau)
+            return alpha * target + (1 - alpha) * current
+        }
+        smoothedCentroid = blend(smoothedCentroid, centroid, tau: Self.centroidTau)
+        smoothedRolloff = blend(smoothedRolloff, rolloff, tau: Self.rolloffTau)
+        smoothedFlux = blend(smoothedFlux, flux, tau: Self.fluxTau)
         // SEED BOTH LEGS ON THE FIRST NON-SILENT FRAME. Without this the τ45 s baseline
         // climbs from 0 and never catches the fast leg inside a track: measured on Matt's
         // 2026-08-04T17-17-01Z capture the ratio sat at 2–6× and the resulting lift was
@@ -275,7 +277,7 @@ public final class SpectralAnalyzer: @unchecked Sendable {
             densityNormal = rawDensity
             densitySeeded = true
         }
-        advanceLevelAndDensity(rawDensity: rawDensity, magnitudes: magnitudes, count: count)
+        advanceLevelAndDensity(deltaTime: deltaTime, rawDensity: rawDensity, magnitudes: magnitudes, count: count)
 
         // Store current frame for next flux computation.
         magnitudes.withUnsafeBufferPointer { src in
@@ -299,9 +301,7 @@ public final class SpectralAnalyzer: @unchecked Sendable {
             // DYN.2c: the OFFLINE normal when a local-file profile is installed — it is
             // right from frame 1. The live τ45 s EMA remains the streaming fallback, where
             // no full decode exists; there it still needs ~90 s to mean anything.
-            sectionRatio: Self.sectionRatio(section: sectionDensity,
-                                            liveNormal: densityNormal,
-                                            profile: loudnessProfile),
+            sectionRatio: smoothedSectionRatio,
             surge: surge
         )
     }
@@ -316,6 +316,8 @@ public final class SpectralAnalyzer: @unchecked Sendable {
         }
         hasPreviousFrame = false
         smoothedCentroid = 0
+        smoothedSectionRatio = 0
+        sectionRatioSeeded = false
         smoothedRolloff = 0
         smoothedFlux = 0
         fastDensity = 0

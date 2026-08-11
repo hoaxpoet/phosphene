@@ -16,7 +16,7 @@ import Foundation
         0.127, 0.206, 0.125, 0.038, 0.011, 0.005,
         0.118, 0.252, 0.531, 0.509
     ]
-    let state = try classifier.classify(features: features)
+    let state = try classifier.classify(features: features, deltaTime: 1.0 / 60)
     #expect(state.valence.isFinite)
     #expect(state.arousal.isFinite)
 }
@@ -29,7 +29,7 @@ import Foundation
         [0.13, 0.21, 0.12, 0.04, 0.01, 0.005, 0.12, 0.25, 0.53, 0.51],
     ]
     for features in testCases {
-        let state = try classifier.classify(features: features)
+        let state = try classifier.classify(features: features, deltaTime: 1.0 / 60)
         #expect(state.valence >= -1.0 && state.valence <= 1.0)
     }
 }
@@ -42,7 +42,7 @@ import Foundation
         [0.13, 0.21, 0.12, 0.04, 0.01, 0.005, 0.12, 0.25, 0.53, 0.51],
     ]
     for features in testCases {
-        let state = try classifier.classify(features: features)
+        let state = try classifier.classify(features: features, deltaTime: 1.0 / 60)
         #expect(state.arousal >= -1.0 && state.arousal <= 1.0)
     }
 }
@@ -55,7 +55,7 @@ import Foundation
         0.1655, 0.4259, 0.4841, 0.4598
     ]
     var state = EmotionalState.neutral
-    for _ in 0..<50 { state = try classifier.classify(features: features) }
+    for _ in 0..<50 { state = try classifier.classify(features: features, deltaTime: 1.0 / 60) }
     #expect(state.valence > 0,
             "Party rock should have positive valence, got \(state.valence)")
 }
@@ -68,7 +68,7 @@ import Foundation
         0.0366, 0.0867, 0.5244, 0.4832
     ]
     var state = EmotionalState.neutral
-    for _ in 0..<50 { state = try classifier.classify(features: features) }
+    for _ in 0..<50 { state = try classifier.classify(features: features, deltaTime: 1.0 / 60) }
     #expect(state.valence < 0,
             "Dark haunting track should have negative valence, got \(state.valence)")
 }

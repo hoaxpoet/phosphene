@@ -200,5 +200,5 @@ private final class StubStemAnalyzer: StemAnalyzing, @unchecked Sendable {
 
 private final class MockMoodClassifier: MoodClassifying, @unchecked Sendable {
     var currentState: EmotionalState = .neutral
-    func classify(features: [Float]) throws -> EmotionalState { .neutral }
+    func classify(features: [Float], deltaTime: Float) throws -> EmotionalState { .neutral }
 }
