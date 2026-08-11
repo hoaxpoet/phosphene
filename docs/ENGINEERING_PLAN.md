@@ -63,6 +63,87 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment BUG086.1 — Stem features were 5.4 s late; the lag was the separation period ✅ (2026-08-11)
+
+**Nominal per-stem feature latency ≈5.4 s → 2.5 s.** Found inside CHR.1 while
+measuring whether per-stem energy could drive a plotting preset; it turned out not
+to be a preset problem. Filed as **BUG-086**, fixed in `BUG086.1`.
+
+**Root cause was read, not inferred** — three literals across two files encoding one
+relationship nothing named: separation every 5 s (`VisualizerEngine+Stems.swift`), on
+a 10 s chunk (same file), with the per-frame read window starting 5 s into that chunk
+(`VisualizerEngine+Audio.swift`). The chunk's newest sample is "now", so reading 5 s
+in reads 5-s-old audio; the window then advances in real time and can only do so for
+`chunkLength − startOffset` before clamping at the chunk's end — a span that must
+cover one separation period. **So `latency ≥ period`, and the 5 s head start was
+runway, not slack.** Chunk length is pinned by the exported Open-Unmix model
+(`modelFrameCount = 431`), leaving the period as the only lever.
+
+**Done-when, all met:** period 5.0 → 2.0 s; read start **derived** (`chunk − period −
+margin` = 7.5 s) rather than a fourth independent literal; the invariant stated once
+in code; a regression gate on the *relationship* not the values; measured inference
+cost logged to `session.log`. Engine 1809/1810 (sole failure the pre-existing DOC.6
+rotation gate — see Known risks), app **411/411** (404 + the 7 new tests, nothing else
+moved), lint clean.
+
+**Two things worth carrying forward.** The comment that hid this was not wrong, it was
+a non-sequitur — *"Features carry ~5-10s of latency … acceptable because musical
+sections persist longer than that."* True, and sound for section-scale coupling; but
+any preset pairing stems against the **time-aligned** beat grid (≈0.3 s) gets two
+clocks disagreeing by the whole lag, and nobody had checked. And the 142 ms inference
+figure the duty estimate rested on existed **only in a code comment** with no session
+artifact behind it, so the cost of the old cadence had never been verifiable —
+`STEM_SEPARATION:` now logs measured inference/duty/latency every separation.
+
+**The gate was verified to bite**: restoring the 5 s period fails it with
+`stemNominalLatencySeconds → 5.5 < 3.0`. A green assertion that also passes against
+the defect proves nothing.
+
+**BUG-086 stays OPEN.** Automated verification is complete; the `dsp.stem` manual gate
+is not. Stem timing is felt on every stem-driven preset — Aurora Veil
+(`other_energy_dev` load-bearing), Skein, Meniscus, FFO — so it needs M7-class
+observation on at least Aurora Veil, plus one real-session duty measurement.
+
+### Increment CHR.1 — Stave: measurement done, concept parked at the driver decision ⏸ (2026-08-11)
+
+**Docs + measurement only. No `.metal`, no sidecar, no design doc, no references
+curated, no `DECISIONS.md` entry.** The increment stopped twice on measurement, both
+times correctly.
+
+**Stop 1 — the four-trace premise failed its gate.** Four traces plotting
+`x_energy_rel` do not read as four voices: 65–93 % of each trace's motion is the mix's
+shared loudness envelope (rotation-control null ≈22 %), and the four collapse to two
+groups — `drums~bass` r +0.81…+0.98 and `vocals~other` r +0.80…+0.99 on every track in
+every register. Jazz was the *worst* case (Take Five, 93 %), not the best. 3 of 3
+captures, 8 of 8 tracks, 6 registers. Per `SHADER_CRAFT.md §2.0` the response is
+re-scope with Matt, not iteration — nothing was tuned to force separation (D-102 /
+FA #58).
+
+**Matt picked direction A** (two traces, rhythm vs melodic) and **A cleared its own
+gate**: median `r(R,M)` +0.756 with a divergence ratio of 0.75 against a 1.45
+independence null, i.e. the gap between the traces is 49–96 % of the motion each
+trace makes, and `r` swings *within* tracks (+0.32 → +0.91) so converge-and-diverge is
+measured behaviour.
+
+**Stop 2 — the driver itself is late.** Task 3c then measured the ≈5.4 s stem lag that
+became **BUG-086** / `BUG086.1` above. At the post-fix 2.5 s the stem traces would
+still sit visibly off in-sync gridlines on an ~8 s plot, so the driver decision
+(stems vs the time-aligned 6-band split, which measures `r` +0.055 / divergence 1.88)
+is **open with Matt** and CHR.2–.4 do not start until it lands.
+
+**Kept output:** `docs/diagnostics/CHR1_STEM_DECORRELATION_2026-08-11.md` — the
+selection table, beat-grid surface verification, per-stem liveness, the decorrelation
+tables with their controls, the latency measurement and the root cause. Written to be
+register-general so it outlives the concept. Also flagged there, unchased: `beatsPerBar`
+is **not stable within a track** (Pyramid Song 1, Bleed 2, Giorgio 2 and 3, Billie Jean
+4 in one segment and 3 in another), which any design weighting downbeats must not
+assume; and `beatPhase01` advances on 98.7–99.0 % of frames in the 2026-07-27 capture
+but only 13.4–16.7 % in the 2026-08 captures.
+
+**Blocked input, for the record:** `claude/CHARISMA_BACKLOG.md`, read-first item #1 and
+the stated home of the concept rationale, **does not exist** — not in the tree, any
+worktree, or any commit on any branch. The prompt restated enough to proceed.
+
 ### Increment LM.CLEAN — `lumen_mosaic` deleted, not decoded (closes CA-Presets-FU-2) ✅ (2026-08-10)
 
 The nine-value `"lumen_mosaic"` block in `LumenMosaic.json` is **removed**. It was dead from LM.1 — nothing ever decoded it — and the CA audit filed the decode-or-delete call as **CA-Presets-FU-2** on 2026-05-21, pricing it at **0.5 to remove against 2 to wire**.
@@ -326,35 +407,7 @@ duplicated by hand against the Swift presence gates — a single shared manifest
 both is the recorded follow-up, and is queued as a RECON item. *(Added at RECON.3.)*
 
 ### Increment FDYRETIRE.1 — Faraday retired; harness audit kept (D-204) ✅ (2026-07-27)
-
-Matt's call after the third live M7 ("looks cheap and does not sync with the music"). Roster
-27 → 26. **What distinguishes this retirement: the mechanisms were measurably correct.** Round 3
-verified on rendered frames — beat legibility r = +0.748 (decoy −0.659), structure swing 5.2× on
-the grid, motion 4.89/255 at coherence ratio 2.04 — and the image still read as low-energy. A
-correct mapping cannot rescue an intrinsically low-energy concept; a top-down field of
-slowly-breathing cells has a ceiling tuning cannot raise.
-
-- **Removed:** preset + sidecar, `FaradaySimulation.swift`, `FaradaySim.metal`, app wiring, and
-  `setRayMarchPreRenderCompute` (its only consumer — D-097; small and git-recoverable).
-- **Kept:** the HARNESS.1 repairs, which are independent of the concept and fix a measurement
-  instrument that had been feeding zeros to every replayable preset.
-
 ### Increment HARNESS.1 — the replay harness carried almost none of the routes it replayed ✅ (2026-07-27)
-
-Audit triggered by Faraday's beat lock measuring r = −0.019 and then r = +0.868 from the *same*
-shader once a field was mapped. `SessionReplayHarness` silently substitutes ZERO for any
-unmapped field, so a live route renders as dead with no error and a plausible image.
-
-- **Blast radius:** Volumetric Lithograph 5 of 6 routes dead (and it is CERTIFIED on per-stem
-  coupling); Lumen Mosaic 8 of 12; Ferrofluid Ocean 4 of 5; Faraday 1 of 5.
-- **Three causes:** `stemFeatures: .zero` on every frame (stems.csv sat unread; its columns match
-  `StemFeatures` property names exactly); pulse fields never mapped; and the FDY.2 repair itself
-  mapped `pulseAmp01` against a snake_case `pulse_amp01` column — a silent zero fixing a silent zero.
-- **Mechanized** (D-161, violated three times in one session): `ReplayHarnessRouteCoverageTests`
-  asserts every primitive a replayable preset declares is one the harness carries; verified to
-  bite by removing a primitive. **Implication: look/coupling judgements made through this harness
-  before this fix were drawn from images production never produced.**
-
 ### Increment FDY.1 — Faraday: a Swift–Hohenberg sea wired into the engine (D-203) 🔨 (2026-07-27)
 
 An iridescent liquid sea the music physically drives, built to exercise MFX.1 + RMPERF.1. A

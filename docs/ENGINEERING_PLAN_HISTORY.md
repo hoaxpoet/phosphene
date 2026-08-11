@@ -5,6 +5,37 @@ Completed-increment narratives moved out of `ENGINEERING_PLAN.md` at RB.3 (2026-
 
 ## Recently Completed
 
+### Increment FDYRETIRE.1 — Faraday retired; harness audit kept (D-204) ✅ (2026-07-27)
+
+Matt's call after the third live M7 ("looks cheap and does not sync with the music"). Roster
+27 → 26. **What distinguishes this retirement: the mechanisms were measurably correct.** Round 3
+verified on rendered frames — beat legibility r = +0.748 (decoy −0.659), structure swing 5.2× on
+the grid, motion 4.89/255 at coherence ratio 2.04 — and the image still read as low-energy. A
+correct mapping cannot rescue an intrinsically low-energy concept; a top-down field of
+slowly-breathing cells has a ceiling tuning cannot raise.
+
+- **Removed:** preset + sidecar, `FaradaySimulation.swift`, `FaradaySim.metal`, app wiring, and
+  `setRayMarchPreRenderCompute` (its only consumer — D-097; small and git-recoverable).
+- **Kept:** the HARNESS.1 repairs, which are independent of the concept and fix a measurement
+  instrument that had been feeding zeros to every replayable preset.
+
+### Increment HARNESS.1 — the replay harness carried almost none of the routes it replayed ✅ (2026-07-27)
+
+Audit triggered by Faraday's beat lock measuring r = −0.019 and then r = +0.868 from the *same*
+shader once a field was mapped. `SessionReplayHarness` silently substitutes ZERO for any
+unmapped field, so a live route renders as dead with no error and a plausible image.
+
+- **Blast radius:** Volumetric Lithograph 5 of 6 routes dead (and it is CERTIFIED on per-stem
+  coupling); Lumen Mosaic 8 of 12; Ferrofluid Ocean 4 of 5; Faraday 1 of 5.
+- **Three causes:** `stemFeatures: .zero` on every frame (stems.csv sat unread; its columns match
+  `StemFeatures` property names exactly); pulse fields never mapped; and the FDY.2 repair itself
+  mapped `pulseAmp01` against a snake_case `pulse_amp01` column — a silent zero fixing a silent zero.
+- **Mechanized** (D-161, violated three times in one session): `ReplayHarnessRouteCoverageTests`
+  asserts every primitive a replayable preset declares is one the harness carries; verified to
+  bite by removing a primitive. **Implication: look/coupling judgements made through this harness
+  before this fix were drawn from images production never produced.**
+
+
 ### Increment VL.CERT — Volumetric Lithograph certified ✅ (2026-07-26)
 
 **Done-when:** all cert gates measured green and Matt's M7 signs off. Met.

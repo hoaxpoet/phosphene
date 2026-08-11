@@ -1,10 +1,11 @@
 // swiftlint:disable file_length
 // VisualizerEngine+Stems — Background stem separation pipeline.
-// Runs StemSeparator on a utility-QoS queue at 5-second cadence,
+// Runs StemSeparator on a utility-QoS queue at `stemSeparationPeriodSeconds`
+// cadence (2 s since BUG-086; the period is the floor on stem latency),
 // feeds per-stem analysis to the render pipeline via buffer(3).
 //
 // Increment 6.3: dispatch is gated by MLDispatchScheduler. When recent render
-// frames are over budget, the 5s separation timer defers the actual MPSGraph call
+// frames are over budget, the separation timer defers the actual MPSGraph call
 // to a lighter render moment. Deferral is bounded by maxDeferralMs (2000 ms on
 // Tier 1, 1500 ms on Tier 2) to prevent stems from going stale.
 
@@ -38,7 +39,7 @@ extension VisualizerEngine {
         }
     }
 
-    /// Start the background stem separation timer (5-second cadence).
+    /// Start the background stem separation timer at `stemSeparationPeriodSeconds`.
     func startStemPipeline() {
         guard stemSeparator != nil else {
             logger.info("Stem pipeline skipped — separator not available")
@@ -46,13 +47,18 @@ extension VisualizerEngine {
         }
 
         let timer = DispatchSource.makeTimerSource(queue: stemQueue)
-        timer.schedule(deadline: .now() + 10, repeating: 5.0)
+        timer.schedule(deadline: .now() + 10, repeating: Self.stemSeparationPeriodSeconds)
         timer.setEventHandler { [weak self] in
             self?.runStemSeparation()
         }
         timer.resume()
         stemTimer = timer
-        logger.info("Stem pipeline started (5s cadence, 10s warmup)")
+        let summary = String(
+            format: "%.1fs cadence, 10s warmup, %.1fs nominal feature latency",
+            Self.stemSeparationPeriodSeconds,
+            Self.stemNominalLatencySeconds
+        )
+        logger.info("Stem pipeline started (\(summary, privacy: .public))")
     }
 
     /// Stop the background stem separation timer.
@@ -64,9 +70,82 @@ extension VisualizerEngine {
     /// RMS silence floor — below this the stem pipeline skips MPSGraph inference.
     private static let silenceRMSThreshold: Float = 1e-6
 
+    // MARK: - Separation cadence and read alignment (BUG-086)
+
+    // These four values are one interlocking set. They were three independent
+    // literals across two files until BUG-086, which is precisely why a ~5.4 s
+    // preset-facing stem latency sat unnoticed under every stem-driven preset
+    // (Aurora Veil's `other_energy_dev` route included) — no single line was
+    // wrong, and nothing named the relationship between them.
+
+    /// Length of the tap-audio chunk handed to the separator.
+    ///
+    /// **Not a free parameter.** `StemSeparator.modelFrameCount` (431) is fixed by
+    /// the exported Open-Unmix model, requiring `requiredMonoSamples` = 440320
+    /// mono samples ≈ 10 s at the model rate. Shortening the chunk to cut latency
+    /// would need a re-exported model, so it is not a lever here.
+    static let stemChunkSeconds: Double = 10.0
+
+    /// How often separation runs — and therefore the floor on stem latency.
+    ///
+    /// The chunk's newest sample is "now", so reading at `stemReadStartSeconds`
+    /// into it yields audio `stemChunkSeconds − stemReadStartSeconds` old. The
+    /// read window then advances in real time and can only do so for that same
+    /// span before clamping at the chunk's end, and that span has to cover one
+    /// separation period. Hence **latency ≥ period**, and the period is the only
+    /// lever once the chunk is fixed.
+    ///
+    /// Cost is one full MPSGraph inference per period whatever the period is (the
+    /// model always consumes the whole 10 s), so halving the period doubles
+    /// inference duty. `MLDispatchScheduler` (D-059) absorbs the pressure by
+    /// deferring when frames run over budget.
+    ///
+    /// Was `5.0` through 2026-08-11, measured at ≈5.4 s of preset-facing latency
+    /// against ≈0.3 s for the real-time band features (BUG-086).
+    static let stemSeparationPeriodSeconds: Double = 2.0
+
+    /// Slack beyond one period before the read window can clamp.
+    ///
+    /// Absorbs inference time and `MLDispatchScheduler` deferral so the window
+    /// does not run off the chunk's end between separations. Clamping is not a
+    /// stale freeze — the window pins to the chunk's *newest* audio, so latency
+    /// momentarily collapses toward zero and then jumps back when the next chunk
+    /// lands. That discontinuity reads as a glitch, which is why this is > 0.
+    static let stemReadMarginSeconds: Double = 0.5
+
+    /// Where the per-frame read window starts inside the chunk. **Derived, never a
+    /// literal** — see the note above this block.
+    static var stemReadStartSeconds: Double {
+        max(0, stemChunkSeconds - stemSeparationPeriodSeconds - stemReadMarginSeconds)
+    }
+
+    /// Nominal age of the audio the stem features describe.
+    static var stemNominalLatencySeconds: Double {
+        stemChunkSeconds - stemReadStartSeconds
+    }
+
+    /// Record separation cost to `session.log` (BUG-086).
+    ///
+    /// The duty-cycle estimate that justified dropping the period to 2 s rested on
+    /// a 142 ms inference figure that existed only in a code comment — no session
+    /// artifact carried it, so the estimate could not be checked against a real
+    /// capture. This line makes the cadence decision falsifiable: grep
+    /// `STEM_SEPARATION` in any session and the measured duty is right there.
+    func logSeparationCost(inferenceSeconds: Double) {
+        let inferenceMs = inferenceSeconds * 1000.0
+        sessionRecorder?.log(String(
+            format: "STEM_SEPARATION: inference=%.1fms period=%.1fs duty=%.1f%% "
+                + "nominal_latency=%.1fs",
+            inferenceMs,
+            Self.stemSeparationPeriodSeconds,
+            100.0 * inferenceSeconds / Self.stemSeparationPeriodSeconds,
+            Self.stemNominalLatencySeconds
+        ))
+    }
+
     // MARK: - Scheduler Gate (Increment 6.3)
 
-    /// Entry point fired by the 5s DispatchSourceTimer on stemQueue.
+    /// Entry point fired by the cadence DispatchSourceTimer on stemQueue.
     ///
     /// Hops to @MainActor to consult `MLDispatchScheduler` using the latest
     /// frame timing from `FrameBudgetManager`. If recent frames are over budget,
@@ -161,10 +240,15 @@ extension VisualizerEngine {
             return
         }
 
-        // Snapshot ~10s using the actual tap rate (D-079, QR.1).
+        // Snapshot the model's fixed chunk length using the actual tap rate
+        // (D-079, QR.1). Length is pinned by the model, not chosen — see
+        // `stemChunkSeconds` (BUG-086).
         let actualRate = tapSampleRate
-        let samples = stemSampleBuffer.snapshotLatest(seconds: 10, sampleRate: actualRate)
-        let requiredStereo = Int(actualRate) * 10 * 2
+        let chunkSeconds = Self.stemChunkSeconds
+        let samples = stemSampleBuffer.snapshotLatest(
+            seconds: chunkSeconds, sampleRate: actualRate
+        )
+        let requiredStereo = Int(actualRate * chunkSeconds) * 2
         guard samples.count >= requiredStereo else {
             logger.debug("Stem pipeline: warmup (\(samples.count)/\(requiredStereo) samples)")
             BUG012Probe.exitStemDispatch(dispatchID: dispatchID, outcome: "warmup-skip")
@@ -172,7 +256,7 @@ extension VisualizerEngine {
         }
 
         // Idle suppression: skip MPSGraph inference when the buffer is silence.
-        let rms = stemSampleBuffer.rms(seconds: 10, sampleRate: actualRate)
+        let rms = stemSampleBuffer.rms(seconds: chunkSeconds, sampleRate: actualRate)
         guard rms > Self.silenceRMSThreshold else {
             logger.debug("Stem pipeline: skipping — silence (RMS=\(rms))")
             BUG012Probe.exitStemDispatch(dispatchID: dispatchID, outcome: "silence-skip")
@@ -187,6 +271,7 @@ extension VisualizerEngine {
                 dispatchID: dispatchID,
                 detail: "samples=\(samples.count) sr=\(actualRate)"
             )
+            let inferenceT0 = CFAbsoluteTimeGetCurrent()
             let result = try separator.separate(
                 audio: samples, channelCount: 2, sampleRate: Float(actualRate)
             )
@@ -200,7 +285,7 @@ extension VisualizerEngine {
 
             // Hand off to the per-frame analyzer on analysisQueue.
             // runPerFrameStemAnalysis slides a 1024-sample window at ~94 Hz
-            // so StemFeatures update continuously rather than once per 5s.
+            // so StemFeatures update continuously rather than once per period.
             let sepTime = CFAbsoluteTimeGetCurrent()
             stemsStateLock.withLock {
                 self.latestSeparatedStems = stemWaveforms
@@ -208,6 +293,8 @@ extension VisualizerEngine {
             }
 
             logger.debug("Stem separation complete: \(sampleCount) samples per stem")
+
+            logSeparationCost(inferenceSeconds: sepTime - inferenceT0)
 
             // Diagnostic capture: dump the four separated stem waveforms as WAV
             // files so we can listen to separation quality against real audio.
