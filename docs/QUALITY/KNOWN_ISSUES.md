@@ -514,15 +514,43 @@ this one was checked against it.
 - App target — **411/411** (404 before this change, plus the 7 new tests; no existing
   test moved). Required quitting a live `PhospheneApp` first — **BUG-072**.
 
+**Measured latency is NOT yet verified, and the constants test does not verify it.**
+`StemSeparationCadenceRegressionTests` gates the arithmetic that *produces* 2.5 s; it
+cannot observe what the pipeline delivers. `Scripts/measure_stem_latency.py <capture>`
+does, from a real session:
+
+```
+Scripts/measure_stem_latency.py ~/Documents/phosphene_sessions/<capture>
+```
+
+It cross-correlates each stem's `energyRel` against the time-aligned `bass+mid` band
+sum (both at ~60 Hz, CSV only — no WAV, whose per-capture sample rate differs and
+silently scaled the time axis by 8.8 % in an early version of this measurement),
+reports per-stem lag with correlation strength, and PASS/FAILs against a 3.0 s
+ceiling. Validated against the pre-fix corpus: 15 of 15 `beat-match-test-session`
+segments report **5.4–5.5 s**, matching the original finding. It also detects a
+pre-fix capture from the absence of `STEM_SEPARATION` and says so, so a stale capture
+cannot be misread as a regression.
+
+*Its verification-criteria form was corrected in building it.* This entry originally
+specified "an automated gate". The lag is a live-pipeline property of the ML timer,
+wallclock advance and `MLDispatchScheduler` deferral — no unit test can synthesize it,
+and a synthetic one would be the green-test-measuring-the-wrong-thing trap. The honest
+artifact is a measurement over a capture a human supplies.
+
 **Outstanding before this is Resolved:**
 
-1. **The `dsp.stem` manual gate.** Stem timing is felt on every stem-driven preset;
+1. **No post-fix capture exists.** Three captures were taken on 2026-08-11 after the
+   change was written (`16-41-39Z`, `18-26-52Z`, plus earlier ones); **none carries a
+   `STEM_SEPARATION` line**, so none ran the fixed binary, and all still measure
+   ≈5.3–5.4 s. **One session on a build from `main` at or after `daa9f724` discharges
+   both this and item 3.**
+2. **The `dsp.stem` manual gate.** Stem timing is felt on every stem-driven preset;
    Aurora Veil (`other_energy_dev` load-bearing), Skein, Meniscus and FFO all shift.
-   Needs M7-class observation on at least Aurora Veil. Automated tests prove the
-   arithmetic, not that the coupling feels right.
-2. **Duty cycle unmeasured in a real session** — the `STEM_SEPARATION` line exists
-   for exactly this, but no capture has been taken since the change. If measured
-   inference is materially above the 142 ms the estimate assumed, 2 s may need
+   Needs M7-class observation on at least Aurora Veil. No automated test substitutes.
+3. **Duty cycle unmeasured** — the `STEM_SEPARATION` line reports measured inference
+   and duty per separation; the script summarises min/median/max across a capture. If
+   measured inference is materially above the 142 ms the estimate assumed, 2 s needs
    revisiting.
 
 #### Related
