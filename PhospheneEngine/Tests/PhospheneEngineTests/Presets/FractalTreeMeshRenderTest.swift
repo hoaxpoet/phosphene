@@ -200,9 +200,16 @@ struct FractalTreeMeshRenderTest {
         // FTR.4/FTR.8 — the tips are a stem route now, so the sequence must carry the
         // session's own stems.csv or it renders the hero route silent.
         let stemRows = (try? Self.loadSessionRows(
-            csv.deletingLastPathComponent().appendingPathComponent("stems.csv"))) ?? []
+            csv.deletingLastPathComponent().appendingPathComponent("stems.csv"),
+            dropBeforeSeconds: nil)) ?? []
+        let stemOffset = (try? Self.leadingRowsDropped(csv)) ?? 0
         if stemRows.isEmpty {
             print("[fractal-tree/sequence] no stems.csv — the guitar tips route will read ZERO")
+        } else {
+            let rate = stemRows.compactMap { $0["otherOnsetRate"] }
+            let live = rate.filter { $0 > 0 }.count
+            print(String(format: "[fractal-tree/sequence] stems: %d rows, offset %d, otherOnsetRate non-zero on %.0f%%",
+                         stemRows.count, stemOffset, 100 * Double(live) / Double(max(rate.count, 1))))
         }
 
         // RECOMPUTE engine-derived fields from the AUDIO rather than trusting the
@@ -257,7 +264,7 @@ struct FractalTreeMeshRenderTest {
             fv.aspectRatio = Float(Self.width) / Float(Self.height)
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
             Self.encode(cmd, into: target, generator: generator, features: fv,
-                        stems: Self.sessionStems(stemRows, index: index))
+                        stems: Self.sessionStems(stemRows, index: index + stemOffset))
             cmd.commit()
             cmd.waitUntilCompleted()
             let pixels = Self.read(target)
@@ -284,7 +291,7 @@ struct FractalTreeMeshRenderTest {
             fv.aspectRatio = Float(Self.width) / Float(Self.height)
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
             Self.encode(cmd, into: target, generator: generator, features: fv,
-                        stems: Self.sessionStems(stemRows, index: flickerIndex))
+                        stems: Self.sessionStems(stemRows, index: flickerIndex + stemOffset))
             cmd.commit()
             cmd.waitUntilCompleted()
             adjacentHues.append(Self.meanHue(Self.read(target)))
@@ -382,7 +389,13 @@ struct FractalTreeMeshRenderTest {
         return st
     }
 
-    private static func loadSessionRows(_ url: URL) throws -> [[String: Double]] {
+    /// - Parameter dropBeforeSeconds: skip rows before this `time`. **`stems.csv` has no
+    ///   `time` column**, so a loader that filters on one unconditionally returns ZERO rows
+    ///   for it — which is exactly what happened the first time the sequence harness tried
+    ///   to read stems, and is why `sessionStems` warns rather than silently rendering the
+    ///   hero route at zero. Pass nil for stems and align with `leadingRowsDropped`.
+    private static func loadSessionRows(_ url: URL,
+                                        dropBeforeSeconds: Double? = 15) throws -> [[String: Double]] {
         let text = try String(contentsOf: url, encoding: .utf8)
         var lines = text.split(separator: "\n", omittingEmptySubsequences: true)
         guard !lines.isEmpty else { return [] }
@@ -394,10 +407,21 @@ struct FractalTreeMeshRenderTest {
             guard parts.count == header.count else { continue }
             var row: [String: Double] = [:]
             for (key, value) in zip(header, parts) { row[key] = Double(value) }
-            guard let time = row["time"], time >= 15 else { continue }
+            if let cutoff = dropBeforeSeconds {
+                guard let time = row["time"], time >= cutoff else { continue }
+            }
             out.append(row)
         }
         return out
+    }
+
+    /// How many leading rows the features loader dropped, so `stems.csv` — loaded unfiltered
+    /// — can be indexed alongside it. `SessionRecorder` writes both files one row per render
+    /// frame from the same tick, so a constant offset is the whole alignment.
+    private static func leadingRowsDropped(_ url: URL) throws -> Int {
+        let all = try loadSessionRows(url, dropBeforeSeconds: nil)
+        let kept = try loadSessionRows(url)
+        return max(all.count - kept.count, 0)
     }
 
     /// Same field set as the fixture drive — kept together so a new route is added to
