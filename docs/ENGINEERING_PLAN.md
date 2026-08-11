@@ -63,6 +63,163 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment BUG086.1 — Stem features were 5.4 s late; the lag was the separation period ✅ (2026-08-11)
+
+**Nominal per-stem feature latency ≈5.4 s → 2.5 s.** Found inside CHR.1 while
+measuring whether per-stem energy could drive a plotting preset; it turned out not
+to be a preset problem. Filed as **BUG-086**, fixed in `BUG086.1`.
+
+**Root cause was read, not inferred** — three literals across two files encoding one
+relationship nothing named: separation every 5 s (`VisualizerEngine+Stems.swift`), on
+a 10 s chunk (same file), with the per-frame read window starting 5 s into that chunk
+(`VisualizerEngine+Audio.swift`). The chunk's newest sample is "now", so reading 5 s
+in reads 5-s-old audio; the window then advances in real time and can only do so for
+`chunkLength − startOffset` before clamping at the chunk's end — a span that must
+cover one separation period. **So `latency ≥ period`, and the 5 s head start was
+runway, not slack.** Chunk length is pinned by the exported Open-Unmix model
+(`modelFrameCount = 431`), leaving the period as the only lever.
+
+**Done-when, all met:** period 5.0 → 2.0 s; read start **derived** (`chunk − period −
+margin` = 7.5 s) rather than a fourth independent literal; the invariant stated once
+in code; a regression gate on the *relationship* not the values; measured inference
+cost logged to `session.log`. Engine 1809/1810 (sole failure the pre-existing DOC.6
+rotation gate — see Known risks), app **411/411** (404 + the 7 new tests, nothing else
+moved), lint clean.
+
+**Two things worth carrying forward.** The comment that hid this was not wrong, it was
+a non-sequitur — *"Features carry ~5-10s of latency … acceptable because musical
+sections persist longer than that."* True, and sound for section-scale coupling; but
+any preset pairing stems against the **time-aligned** beat grid (≈0.3 s) gets two
+clocks disagreeing by the whole lag, and nobody had checked. And the 142 ms inference
+figure the duty estimate rested on existed **only in a code comment** with no session
+artifact behind it, so the cost of the old cadence had never been verifiable —
+`STEM_SEPARATION:` now logs measured inference/duty/latency every separation.
+
+**The gate was verified to bite**: restoring the 5 s period fails it with
+`stemNominalLatencySeconds → 5.5 < 3.0`. A green assertion that also passes against
+the defect proves nothing.
+
+**BUG-086 stays OPEN.** Automated verification is complete; the `dsp.stem` manual gate
+is not. Stem timing is felt on every stem-driven preset — Aurora Veil
+(`other_energy_dev` load-bearing), Skein, Meniscus, FFO — so it needs M7-class
+observation on at least Aurora Veil, plus one real-session duty measurement.
+
+### Increment CHR.1 — Stave: measurement done, concept parked at the driver decision ⏸ (2026-08-11)
+
+**Docs + measurement only. No `.metal`, no sidecar, no design doc, no references
+curated, no `DECISIONS.md` entry.** The increment stopped twice on measurement, both
+times correctly.
+
+**Stop 1 — the four-trace premise failed its gate.** Four traces plotting
+`x_energy_rel` do not read as four voices: 65–93 % of each trace's motion is the mix's
+shared loudness envelope (rotation-control null ≈22 %), and the four collapse to two
+groups — `drums~bass` r +0.81…+0.98 and `vocals~other` r +0.80…+0.99 on every track in
+every register. Jazz was the *worst* case (Take Five, 93 %), not the best. 3 of 3
+captures, 8 of 8 tracks, 6 registers. Per `SHADER_CRAFT.md §2.0` the response is
+re-scope with Matt, not iteration — nothing was tuned to force separation (D-102 /
+FA #58).
+
+**Matt picked direction A** (two traces, rhythm vs melodic) and **A cleared its own
+gate**: median `r(R,M)` +0.756 with a divergence ratio of 0.75 against a 1.45
+independence null, i.e. the gap between the traces is 49–96 % of the motion each
+trace makes, and `r` swings *within* tracks (+0.32 → +0.91) so converge-and-diverge is
+measured behaviour.
+
+**Stop 2 — the driver itself is late.** Task 3c then measured the ≈5.4 s stem lag that
+became **BUG-086** / `BUG086.1` above. At the post-fix 2.5 s the stem traces would
+still sit visibly off in-sync gridlines on an ~8 s plot, so the driver decision
+(stems vs the time-aligned 6-band split, which measures `r` +0.055 / divergence 1.88)
+is **open with Matt** and CHR.2–.4 do not start until it lands.
+
+**Kept output:** `docs/diagnostics/CHR1_STEM_DECORRELATION_2026-08-11.md` — the
+selection table, beat-grid surface verification, per-stem liveness, the decorrelation
+tables with their controls, the latency measurement and the root cause. Written to be
+register-general so it outlives the concept. Also flagged there, unchased: `beatsPerBar`
+is **not stable within a track** (Pyramid Song 1, Bleed 2, Giorgio 2 and 3, Billie Jean
+4 in one segment and 3 in another), which any design weighting downbeats must not
+assume; and `beatPhase01` advances on 98.7–99.0 % of frames in the 2026-07-27 capture
+but only 13.4–16.7 % in the 2026-08 captures.
+
+**Blocked input — corrected 2026-08-11 after the plan was found.** CHR.1 reported its
+read-first item #1 as nonexistent. That was accurate about the *path it was given*
+(`claude/CHARISMA_BACKLOG.md`, absent from the tree, every worktree and every commit on
+every branch) but wrong about the *document*, which existed the whole time as
+[`docs/presets/STAVE_PLAN.md`](presets/STAVE_PLAN.md) — **untracked in the primary
+checkout**, while the session ran in a worktree that could not see it.
+
+Three things had to line up for that to go unnoticed, and all three did: the plan was
+delivered untracked rather than committed; the prompt variant the session received named
+the Claude.ai project mirror instead of the in-repo path and **omitted the committed
+prompt's Task 0**, which would have tracked both docs as the branch's first commit; and
+that same variant dropped the on-disk pre-flight's guard — *"if `STAVE_PLAN.md` is missing
+from the working tree, stop and report — do not reconstruct it from memory or from this
+prompt's summary of it."* With the guard absent and the worktree legitimately clean,
+pre-flight passed and the session proceeded on the prompt's summary, exactly what the
+guard existed to prevent.
+
+**The durable rule: a plan that is not in git is not deliverable to a worktree session.**
+Both docs are now committed. Losing the canonical plan cost CHR.1 nothing measurable — the
+prompt's summary carried the concept, and the measurement did not depend on it — but the
+loss was silent, which is the part worth not repeating.
+
+### Increment LM.CLEAN — `lumen_mosaic` deleted, not decoded (closes CA-Presets-FU-2) ✅ (2026-08-10)
+
+The nine-value `"lumen_mosaic"` block in `LumenMosaic.json` is **removed**. It was dead from LM.1 — nothing ever decoded it — and the CA audit filed the decode-or-delete call as **CA-Presets-FU-2** on 2026-05-21, pricing it at **0.5 to remove against 2 to wire**.
+
+**Delete, on evidence rather than on cost alone.** Three months passed with nobody asking to tune any of it. More decisively, it was not the faithful mirror it was kept as: **six of the nine keys named no operative constant anywhere** in the Lumen sources or shader — `cell_density`, `cell_jitter`, `frost_amplitude`, `frost_scale`, `max_active_patterns`, `back_plane_depth` — and `cell_density` read **`30.0` against the shader's actual `kCellDensity = 15.0f`**. "Kept for documentation" was therefore misdocumentation: a reader consulting it would have come away with the wrong number for the one value they could check. Only `ambient_floor_intensity` (0.04), `light_agent_count` (4) and `mood_smoothing_seconds` (5.0) still matched, and each is already documented at its real home as a Swift constant.
+
+Wiring it would not have been a cleanup — it would have meant *building* six tunables the preset never had, to satisfy a design doc. Applies the D-213 / D-203 / D-097 precedent: zero-consumer configuration goes.
+
+**Every dangling reference closed in the same commit** — the failure mode this repo keeps re-learning is that the stale *document* is the vector, not the deleted code (D-120 came back into two shipped sidecars that way). Fixed: `LumenPatternEngine.swift`'s "kept matched to `LumenMosaic.json#…`" doc comment, `LumenMosaic.metal`'s "JSON-tunable later via `lumen_mosaic.cell_density`", the `docs/VISUAL_REFERENCES/lumen_mosaic/README.md` tunability claim, and the `Lumen_Mosaic_Rendering_Architecture_Contract.md` §sidecar block, which now carries a supersession note naming itself as the vector.
+
+**The QG.7 allow-list entry is deliberately NOT replaced.** Verified by re-adding the key: `PresetSidecarKeyGateTests` fails with `LumenMosaic.json: "lumen_mosaic"`. Sidecar restored; the gate now defends the deletion.
+
+**No golden moved** — `PresetRegressionTests` + `PresetAcceptanceTests` + `FidelityRubricTests` green with no regeneration, which is the proof a documentation-only key never reached the GPU. The `.metal` edit is comment-only; no shader logic, geometry or routing touched.
+
+### Increment BUG078.3 — BUG-078: the second route to the same trap ✅ (2026-08-10)
+
+`AVAudioPlayerNode` teardown was still trapping the engine test process on trees containing the BUG078.1 fix. **10 crashes in 14 runs of `swift test --filter concurrentDoubleStart`; 0 in 30 after.**
+
+**Root cause, from a captured stack.** `scheduleFileLoop`'s reschedule path checked `playerNode === player` under `lock`, **released the lock**, then called `player.scheduleFile`. A `stop()` landing in that window nils the fields and runs `player.stop()`, so the command was armed on a node the provider had already released. AVFAudio's own `AVAEBlock` retains the node inside the queued command — our closure captures everything `weak`, so the retain is AVFAudio's — making that command the node's **last strong reference**. Its destruction on the node's own `CommandQueue` ran `-[AVAudioNode dealloc]` there, whose `Stop()` `dispatch_sync`s into the queue it is already running on. libdispatch's deadlock detector traps.
+
+**Fix.** `_scheduleFileLoopLocked` performs the identity check and the re-arm in one critical section, called with `lock` held. `stop()` / `start()` swap the fields under that same lock before the AVFoundation teardown runs, so the re-arm either arms while the node is still ours (and the teardown's `player.stop()` drains it) or sees the swap and bails. No new ABBA against BUG-021: `scheduleFile` only enqueues, teardown's `player.stop()` still runs outside the lock, and the completion handler still hops off the callback queue (BUG-059).
+
+**The durable lesson.** BUG078.1's gate — *adopted instances == torn-down instances* — stayed **green** through every one of these crashes, because the instance genuinely was torn down; the surviving defect was a command outliving a correct teardown. **A green invariant gate is evidence about the invariant it states and nothing else.** That green gate is what made "resolved" look safe for three days.
+
+**Method, for the next occurrence.** macOS wrote no `.ips` for any of these, so the stack came from `lldb -k "thread backtrace all"` after replicating SwiftPM's launch environment (`DYLD_FRAMEWORK_PATH` / `DYLD_LIBRARY_PATH` — SIP strips them from the shell, so they must be set via `settings set target.env-vars`). A temporary probe then quantified the window: every run recording a stale re-arm crashed (8/8); no clean run recorded one (0/4).
+
+**Not achieved, and not claimed: a fast deterministic gate that goes red on this race.** `rescheduleRacingTeardown_neverArmsACommandOnAReleasedNode` was written for it and **does not reproduce the trap** — 0 in 6 against the faithful pre-fix ordering, and an earlier stop-vs-start shape 0 in 5. The crash needs full-suite load, the same wall BUG078.1 hit. The test is kept because it asserts the guard *fires*, proving the window is entered; a green result there is not evidence the race is closed. The before/after measurement is the load-bearing signal.
+
+### Increment DOC.7 — The rotation gate and its script now share one clock (UTC) ✅ (2026-08-10)
+
+`DocIntegrityTests.rotationCutoffString` and `Scripts/rotate_docs.sh` were carefully matched to each other — both on the **local** clock, compared as strings, byte-for-byte identical. That is exact on one machine and wrong across two. **CI runs in UTC; a dev machine usually does not**, so for however many hours separate the two midnights, the same tree is green locally and red in CI.
+
+**Observed, not theorised.** PR #73's `fast-gate` failed on `VL.CERT (2026-07-26)` at 2026-08-10T01:31Z — 15 days old in UTC — while the identical tree passed locally at 2026-08-09 18:25 EST, where it was exactly 14. Worse, the obvious remedy was inert: running `rotate_docs.sh` locally reported *"nothing to move"* and meant it, because the script read the same local clock. Clearing CI required `PHOSPHENE_TODAY=$(date -u +%Y-%m-%d)`, i.e. lying to the script about the date to make it agree with the machine that matters.
+
+**Fix:** both sides derive the cutoff in UTC — `Calendar`/`DateFormatter` pinned to UTC in the gate, `date -u -v-14d` in the script. The string-comparison contract between them is untouched, which is what keeps them agreeing on the boundary day (the CLEAN.2.3.5 class). The `PHOSPHENE_TODAY` override stays pure calendar arithmetic on an explicit date, crossing no zone.
+
+**This file was already internally inconsistent:** the `RELEASE_NOTES_DEV` month-rotation check a few lines below used UTC while the day-rotation cutoff used local. Now both are UTC.
+
+**Regression test pinned to the actual failure.** `rotationCutoffIsUTC` asserts the cutoff at 2026-08-10T01:31Z is `2026-07-27` regardless of the host's time zone — west of Greenwich the local answer is `2026-07-26`, under which `VL.CERT` is *not* flagged (the comparison is strict `<`). It also asserts the entry that broke CI is flagged at that cutoff, and pins both sides of UTC midnight. Deterministic; no wall-clock.
+
+**Not addressed:** the three FLY/FD entries dated 2026-07-23 that the script reports for manual triage on every run — they carry 🔨 and no ✅/⏳ marker, so the predicate correctly skips them. They need a closing status marker whenever Fractal Fly-By's retirement under D-201 is written up.
+
+### Increment QG.7 — An unrecognised sidecar key is a failure, not a silent no-op ✅ (2026-08-09)
+
+Closes the unknown-key half of D-215's carry-forward. `PresetSidecarKeyGateTests` asserts that every top-level key in every preset sidecar is either decoded by `PresetDescriptor` or explicitly allow-listed **with a reason**, and that every `inspired_by` block matches the D-215 §13.3 union schema.
+
+**The failure it prevents, which already happened twice.** Synthesized `Codable` ignores keys it does not know, so a sidecar field can look authoritative, read as live to anyone opening the file, and be decoded by nothing. D-123 reverted `concept_tags` / `motion_paradigm` cleanly — the CA.4 audit's 2026-05-20 grep was correct — and both reappeared **months later** in `CymaticResonance.json` (2026-07-22) and `Meniscus.json` (2026-08-03), authored from design docs that still prescribed them. One level down, `Witchlight.json` grew a bespoke `sha256_subject` that no schema knew about. Neither was caught by anything; MD.0 found both by hand.
+
+**The allow-list is the point, not a loophole.** The gate does not decide what an unknown key *should* be — it forces the decision to be explicit: decode it, allow-list it with a reason, or delete it. Two entries today: `inspired_by` (documentation-only by decision, D-215 §13.3) and `lumen_mosaic` (below). `_comment_*` is a prefix convention for inline JSON commentary.
+
+**Known keys are parsed from `PresetDescriptor.CodingKeys`, not restated.** Same technique and same reason as `CommonLayoutTest` parsing `Common.metal` — a hard-coded copy would need lockstep updates, and forgetting would make the gate reject legitimate new fields.
+
+**Finding surfaced by writing it: `lumen_mosaic` is a manual-sync trap.** `LumenMosaic.json` carries a nine-value tuning block that nothing decodes; the operative values are Swift constants in `LumenPatternEngine.swift`, and the sync obligation exists only in a doc comment (`"LM.2 keeps the value matched to LumenMosaic.json#lumen_mosaic.ambient_floor_intensity = 0.04"`). `ambient_floor_intensity` and `light_agent_count` currently agree with Swift; the rest have no counterpart. Allow-listed with the trap named rather than silently deleted — whether the block should be decoded, or removed as decoration, is a Lumen call.
+
+**Both directions exercised.** Green on the catalog as it stands. Re-injecting the exact historical regressions — `concept_tags` + `motion_paradigm` into `CymaticResonance.json`, `sha256_subject` into `Witchlight.json`'s `inspired_by` — turns it **red, naming each offending key and file**. Sidecars restored; `git status` clean.
+
+**Still open (D-215):** whether `PresetDescriptor` should *decode* `inspired_by` rather than merely tolerate it. This increment deliberately does not settle that — it makes the tolerance explicit and auditable instead of accidental.
+
 ### Increment QG.6 — The GPU-contract gate could not fail to find its own sources ✅ (2026-08-09)
 
 `CommonLayoutTest`'s MSL parity check — the gate whose own doc comment says it exists because a broken buffer(0) contract shipped to `main` — printed `"MSL sources not reachable — skipping"` and **returned green** whenever either declaration site was unreadable. A wrong `repoRoot` was therefore indistinguishable from a pass: the same silent-success shape the gate exists to prevent, one level up.
@@ -1881,9 +2038,36 @@ Cause: `spectral_section_ratio` is the RANK of a τ20 s leg, and ranking a slow 
 
 **Certification NOT taken.** Matt asked whether to proceed; the answer was to fix these first, and he chose that. **Unverified live** — these are measurements, not his eye.
 
-**FTR.10 — the trunk steps on the beat.** ✅ code-complete, **pending live M7** (2026-08-11) Matt on session `2026-08-11T18-26-52Z` (*Carry The Zero*, single track, chain `clean`): *"The trunk is moving too much, which unfortunately makes the motion of the tips difficult to see. We need less motion — like tying movement to the songbeat."* Offered per-beat steps, per-bar steps or continuous-but-smoother, he chose **steps on each beat**.
+**FTR.9 verdict + FTR.10 SPEC — the trunk is `spectral_surge`, and FTR.9 calmed the wrong term.** ⏸ (2026-08-11, session `2026-08-11T18-26-52Z`, chain `clean`, *Carry The Zero*) Matt: *"The trunk is moving too much, which unfortunately makes the motion of the tips difficult to see. We need less motion — like tying movement to the songbeat."*
 
-**Measured first, and it changed the scope.** The trunk turns **1.64 times a second** on that capture. Decomposed: `surge × 0.32` contributes span 0.257 at **1.23 turns/s**, `reach × 0.13` span 0.130 at **0.80 turns/s**. Freezing only the faster term would have left the trunk at 0.80/s — still at this preset's own ~1 turn/s legibility limit. So the whole of `base_len` holds, not just the surge. (The FTR.10 spec quoted 1.75 / 0.168 / 0.109; the turn rates reproduce to within 7 %, the spans are ~2× because they are min→max here — p05→p95 gives 0.245 / 0.190 / 0.117. Reported rather than reconciled.)
+**FTR.9 did land and did work — on the canopy.** `spectral_section_ratio` turns **2.88 → 0.27/s**; `reach` **2.75 → 0.80/s**. But `trunk length = 0.27 + reach·0.13 + surge·0.32`, and decomposed on this session:
+
+| term | span | turns/s |
+|---|---|---|
+| `reach × 0.13` (what FTR.9 calmed) | 0.109 | 0.80 |
+| **`surge × 0.32`** | **0.168** | **1.27** |
+
+**The trunk is mostly `spectral_surge` — the bigger coefficient AND the faster signal — and FTR.9 never touched it.** Trunk still turns **1.75/s** against this preset's own ~1 turn/s rule for continuous geometry. Diagnosed by measuring "canopy reach" when Matt's word was "trunk"; they are not the same term.
+
+**FTR.10 — step the trunk on the beat. Matt's literal choice, taken 2026-08-11 rather than guessed** (the *"shoot up"* lesson: a visual verb gets his definition before any build). Of the three options put to him — per beat, per bar, or continuous-but-smoother — he chose **steps on each beat**: the trunk holds perfectly still between beats and steps to its new height ON the beat.
+
+Measured on his session (94.1 BPM → 0.64 s beat, 2.55 s bar), holding the trunk value and re-sampling on the phase wrap:
+
+| trunk mode | turns/s | span | changes/s |
+|---|---|---|---|
+| continuous (shipped) | 1.75 | 0.178 | 10.41 |
+| **held, per beat** ← chosen | **0.51** | 0.173 | 1.57 |
+| held, per bar | 0.25 | 0.207 | 0.39 |
+
+The growth survives (span 0.173 against 0.178) and the drift goes. **This is not the beat-driven activity Matt rejected twice** — those added per-beat accents (taps, a flash). This uses the beat to REMOVE motion, which is the opposite operation.
+
+**Constraints the implementation must honour:** beat-locked motion is valid only on the cached `BeatGrid`, never raw live onsets; **beat-irregular tracks are excluded (D-154)** and need a continuous fallback; the Cold-Start Phase Contract means the grid can install with the right BPM and the WRONG phase, so the first bars may step off-beat and the preset must not depend on phase being right from frame 1. `beatPhase01` / `barPhase01` / `beatsPerBar` / `pulse_beat_index` are all already in the FeatureVector.
+
+**Done-when:** trunk turns/s under the preset's ~1.0 rule with the span intact; `TrunkTrajectoryReportTests` full-track motion no worse than FTR.9's 0.0292/s; the motion gate re-run on a SINGLE-track capture (FTR.9.1 — a loudness profile is per track); then Matt's live look. **All four met except the last — see the implementation entry below.**
+
+**FTR.10 — the trunk steps on the beat, implemented.** ✅ code-complete, **pending live M7** (2026-08-11) The spec above, built.
+
+**The baseline reproduced, and it widened the scope by one term.** Independently on the same capture: the trunk turns **1.64/s** (spec: 1.75), `surge × 0.32` **1.23/s** (spec: 1.27), `reach × 0.13` **0.81/s** (spec: 0.80). **Freezing only the surge — the term the spec's diagnosis singles out — would have left the trunk at 0.81/s, still at this preset's own ~1 turn/s limit. So the whole of `base_len` holds, not just the surge.** The spans do not reproduce: 0.348 min→max / 0.245 p05→p95 against the spec's 0.178. The spec's own `changes/s 10.41` says it measured the ~10 Hz analysis series where this measures the ~60 Hz `features.csv` rows, which explains the rate agreement but not a 2× span. Flagged rather than reconciled — every conclusion here is a before/after ratio on one series, so it does not turn on which.
 
 **A sample-and-hold, not a smoother, and that is the whole design.** `BeatHold` (new, `Renderer/Geometry`) keeps the `FeatureVector` as it stood at the last beat boundary; `MeshGenerator` binds it at **object/mesh buffer(4)** beside the live vector at buffer(0). The object shader evaluates the same `fractal_growth()` on both — live for the branch counts and the tips, held for the trunk. Same arithmetic, older input, so the RANGE survives (**span 0.344 against the continuous 0.348**, 98.9 %) while the rate collapses to **0.52 turns/s**. A smoother would have bought the stillness with range, which is DYN.1e's *"neither grew nor receded"*.
 

@@ -10,6 +10,96 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-11-164751] BUG-086 — every stem-driven preset was running 5.4 s behind the music
+
+Found while measuring driver viability for a plotting preset (CHR.1), where a
+multi-second lag is disqualifying rather than cosmetic. It turned out not to be a
+preset problem: **per-stem features reached presets ≈5.4 s late while the beat grid
+beside them was time-aligned to ≈0.3 s** — on the local-file path, in steady state,
+deep inside tracks. Every stem-driven preset was affected, Aurora Veil's
+`other_energy_dev` anchor included.
+
+**Nothing was miscoded.** Three independent literals across two files described one
+relationship that no line named: separation every 5 s, on a 10 s chunk, with the
+per-frame read window starting 5 s into that chunk. The chunk's newest sample is
+"now", so reading 5 s in reads 5-s-old audio; the window then advances in real time
+and can only do so for `chunkLength − startOffset` before clamping at the chunk's
+end — and that span has to cover one separation period. So **latency ≥ period**,
+and the 5 s head start was runway, not slack.
+
+Chunk length is not a lever: `StemSeparator.modelFrameCount = 431` is fixed by the
+exported Open-Unmix model. The period is the only one, at one full inference each.
+Now 2 s with the read start **derived** from it (`10 − 2 − 0.5` margin), giving
+**2.5 s nominal latency** for ≈7 % inference duty, up from ≈2.8 %.
+
+**Two things worth keeping.** First, the comment that made this invisible was not
+wrong, it was a non-sequitur: *"Features carry ~5-10s of latency … acceptable
+because musical sections persist longer than that."* True premise, and it holds for
+section-scale coupling — but any preset pairing stems against the time-aligned beat
+grid gets two clocks disagreeing by the full lag, and nobody had checked. Second,
+the 142 ms inference figure that the duty estimate rested on lived **only in a code
+comment**; no session artifact carried it, so the estimate could not be checked
+against reality. `STEM_SEPARATION:` now logs measured inference, duty and nominal
+latency to `session.log`, which makes the cadence decision falsifiable from any
+capture.
+
+The measurement that found it is `docs/diagnostics/CHR1_STEM_DECORRELATION_2026-08-11.md`
+§7b–§8 — three independent methods agreeing, with the FFT bands as the alignment
+control at 0.2–0.4 s and a CSV-internal measurement (no WAV at all) putting the lag
+at 5.4 s on 39 of 40 stem × track pairs.
+
+**Status: automated verification complete, manual gate outstanding.** Engine
+1809/1810 (sole failure the pre-existing DOC.6 rotation gate), app target
+**411/411** — 404 before, plus the 7 new tests, no existing test moved — lint clean.
+Running the app target needed a live `PhospheneApp` quit first (BUG-072).
+
+The new suite was also checked against the defect rather than only for greenness:
+restoring the 5 s period fails it with `stemNominalLatencySeconds → 5.5 < 3.0`. A
+gate that passes against the bug it names is worth nothing, so it was run that way
+before being trusted.
+
+Still owed: the `dsp.stem` manual gate. Stem timing is felt on every stem-driven
+preset, so Aurora Veil needs M7-class observation before BUG-086 goes to Resolved —
+the tests prove the arithmetic, not that the coupling feels right. And the duty
+cycle has not been measured in a real session yet, which is what the new
+`STEM_SEPARATION` line is for.
+
+---
+
+### [dev-2026-08-10-164918] BUG-078 closed for the second time — the reschedule race, caught with a stack
+
+`AVAudioPlayerNode` teardown was still trapping the engine test process on trees that
+contained the BUG078.1 fix. **Measured 10 crashes in 14 runs of
+`swift test --filter concurrentDoubleStart`; 0 in 30 after this change.**
+
+**Two routes to one trap.** BUG078.1 (2026-08-07) closed the *overwrite* route — a running
+instance orphaned when two `start()` calls raced. This is a second, independent route:
+`scheduleFileLoop` checked `playerNode === player` under the lock, **released it**, and only
+then called `player.scheduleFile`. A `stop()` landing in that window armed a command on a
+node the provider had already released; AVFAudio's own `AVAEBlock` retains the node inside
+that queued command, so it became the last strong reference, and its destruction on the
+node's own `CommandQueue` ran `-[AVAudioNode dealloc]` there — whose `Stop()` `dispatch_sync`s
+into the queue it is already on. libdispatch traps.
+
+**The lesson worth keeping.** BUG078.1's gate — adopted instances == torn-down instances —
+stayed **green** through every one of these crashes, because the instance really was being
+torn down. **A green invariant gate is evidence about the invariant it states and nothing
+else.** The green gate is what made "resolved" look safe for three days.
+
+**Method note.** macOS wrote no `.ips` for any occurrence, so the stack came from
+`lldb -k "thread backtrace all"` after replicating SwiftPM's launch environment
+(`DYLD_FRAMEWORK_PATH` / `DYLD_LIBRARY_PATH`, which SIP strips from the shell). A temporary
+probe then quantified the window: **every run recording a stale re-arm crashed (8/8); no
+clean run recorded one (0/4).**
+
+**What was not achieved, and is not claimed:** a fast deterministic gate that goes red on
+the surviving race. The new `rescheduleRacingTeardown_…` test does **not** reproduce the trap
+(0 in 6 against the faithful pre-fix ordering); it asserts only that the guard fires, proving
+the window is entered. The crash needs full-suite load — the same wall BUG078.1 hit. The
+before/after measurement is the load-bearing evidence, and the entry says so.
+
+---
+
 ### [dev-2026-08-07-203000] BUG051.1 closed on Matt's live m3u run — and the build-identity check that nearly didn't happen
 
 Session `2026-08-07T20-20-07Z`: `normal.m3u` (one `.m4a`, one `.mp3`, one `.flac`, absolute paths with spaces, brackets and an apostrophe) queued and played all three. `prepareLocalFiles DONE cached=3 failed=0 total=3`, both advances `ok=true`, `CHAIN_HEALTH: verdict=clean`, tap healthy at −2.03 dBFS. BUG-051's manual criterion is met and the entry is closed.

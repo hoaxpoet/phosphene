@@ -143,8 +143,10 @@ constant float kFocalDist = 3.0f;
 /// larger cells per Matt 2026-05-09 LM.3.2 review ("the camera can zoom
 /// in a little, 50 → 30 cells across"). Cells are large enough that each
 /// cell's distinct palette colour reads as a stained-glass tile rather
-/// than as confetti. JSON-tunable later via `lumen_mosaic.cell_density`;
-/// constant here for LM.3.2. Lipschitz-safe relief + frost amplitudes
+/// than as confetti. This constant is the source of truth: the sidecar's
+/// `lumen_mosaic.cell_density` was never decoded and, by the time it was
+/// deleted (LM.CLEAN / CA-Presets-FU-2), still read 30.0 against the 15.0
+/// below — dead AND wrong. Lipschitz-safe relief + frost amplitudes
 /// are unchanged — halving density only halves the SDF gradient, which
 /// adds Lipschitz headroom.
 constant float kCellDensity = 15.0f;

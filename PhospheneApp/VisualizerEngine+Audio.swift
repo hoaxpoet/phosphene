@@ -257,7 +257,7 @@ extension VisualizerEngine {
         // Per-frame stem analysis. Slides a 1024-sample window through the
         // most recent separated stem waveforms at real-time rate so
         // StemFeatures update continuously. Before this, stems updated
-        // once per 5s separation cycle (piecewise-constant values hit the
+        // once per separation cycle (piecewise-constant values hit the
         // GPU for 5s at a time — see session 2026-04-16T20-56-46Z where
         // only 25 unique drumsBeat values appeared across 8,987 frames).
         let stemT0 = DispatchTime.now().uptimeNanoseconds
@@ -312,16 +312,28 @@ extension VisualizerEngine {
 
     /// Slide a 1024-sample window through the most recent separated stem
     /// waveforms and run `StemAnalyzer` on it. Produces continuously-varying
-    /// `StemFeatures` between 5-second separation cycles.
+    /// `StemFeatures` between separation cycles.
     ///
-    /// Strategy: each separation produces a 10-second chunk of audio that's
-    /// already been heard by the user. Starting at the chunk's 5-second mark,
-    /// we scan forward at real-time rate over the ~5 seconds until the next
-    /// separation completes. This ties the sliding window to wall-clock time
-    /// (not audio energy) so the window advances smoothly regardless of audio
-    /// dynamics. Features carry ~5-10s of latency (we're always analyzing
-    /// audio that's already been heard), which is acceptable because musical
-    /// sections persist longer than that.
+    /// Strategy: each separation produces a `stemChunkSeconds` chunk of audio the
+    /// user has already heard, whose newest sample is "now" at the moment of
+    /// separation. We start at `stemReadStartSeconds` into it and scan forward at
+    /// real-time rate until the next separation lands. Tying the window to
+    /// wall-clock time (not audio energy) keeps it advancing smoothly regardless
+    /// of dynamics.
+    ///
+    /// Features therefore lag by `stemNominalLatencySeconds` — see
+    /// `stemSeparationPeriodSeconds` for why that quantity cannot go below the
+    /// separation period.
+    ///
+    /// **BUG-086 corrected the claim that used to sit here.** This comment read
+    /// "Features carry ~5-10s of latency … which is acceptable because musical
+    /// sections persist longer than that." The premise is true and the conclusion
+    /// does not follow: section-scale coupling tolerates seconds of lag, but any
+    /// preset pairing stem features against the *time-aligned* beat grid
+    /// (`grid_bpm`, `beatPhase01`, ≈0.3 s) gets two clocks disagreeing by the full
+    /// lag, and every stem-driven preset was running ≈5.4 s behind unnoticed.
+    /// Latency is a cost to be minimised against inference duty, not a free
+    /// parameter justified by section persistence.
     func runPerFrameStemAnalysis(fps: Float) {
         var stems: [[Float]] = []
         var sepTime: CFAbsoluteTime = 0
@@ -340,11 +352,17 @@ extension VisualizerEngine {
         let sampleRate: Float = StemSeparator.modelSampleRate
         let windowSize = 1024
 
-        // Start scanning from the 5-second mark into the 10-second chunk.
-        // The last 5 seconds of the chunk represents audio heard 0-5 seconds
-        // ago at the moment of separation; as wall-clock time advances past
-        // the separation, we slide toward the chunk's end.
-        let startSample = Int(5.0 * sampleRate)
+        // Where to start reading inside the chunk. The chunk's newest sample is
+        // "now" at the moment of separation, so starting `stemReadStartSeconds`
+        // in yields audio `stemChunkSeconds − stemReadStartSeconds` old; the
+        // window then advances in real time toward the chunk's end, holding that
+        // age until the next chunk lands.
+        //
+        // BUG-086: this was the literal `5.0` against a 10 s chunk, i.e. a fixed
+        // 5 s of latency, chosen to buy runway for the then-5 s separation
+        // period. Derived from the cadence constants now so the two cannot drift
+        // apart again — the read start and the period are one decision, not two.
+        let startSample = Int(Float(Self.stemReadStartSeconds) * sampleRate)
         let elapsed = max(0.0, CFAbsoluteTimeGetCurrent() - sepTime)
         let advanceSamples = Int(Float(elapsed) * sampleRate)
         let maxOffset = max(0, chunkSampleCount - windowSize)

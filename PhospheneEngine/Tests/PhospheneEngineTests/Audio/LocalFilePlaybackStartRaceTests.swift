@@ -106,4 +106,69 @@ struct LocalFilePlaybackStartRaceTests {
             + "node's own CommandQueue (BUG-078)."
         #expect(teardowns == instances, Comment(rawValue: message))
     }
+
+    /// **BUG078.3 — the second route to the same trap, which the gate above cannot see.**
+    ///
+    /// The orphan gate above stayed GREEN while the process still trapped ~20 % of the
+    /// time (measured 2026-08-10, 4/20 on a targeted filter). That is the useful fact:
+    /// every instance *was* being torn down, so the surviving failure was never an
+    /// orphaned instance. It was a command armed on a correctly-torn-down one.
+    ///
+    /// The reschedule path used to check `playerNode === player` under `lock`, release
+    /// it, and only then call `scheduleFile`. A `stop()` landing in that window nils the
+    /// fields and runs `player.stop()`, so the command was armed on a node the provider
+    /// had already released — and AVFAudio's own `AVAEBlock` retains the node inside
+    /// that queued command, making it the last strong reference. Its destruction on the
+    /// node's `CommandQueue` then ran `-[AVAudioNode dealloc]` there, whose `Stop()`
+    /// `dispatch_sync`s into the queue it is already on. libdispatch traps.
+    ///
+    /// Instrumented proof of the window (temporary probe, 14 runs): **every run that
+    /// recorded a stale schedule crashed (8/8); no clean run recorded one (0/4).**
+    ///
+    /// `_scheduleFileLoopLocked` now performs the identity check and the re-arm in one
+    /// critical section.
+    ///
+    /// **What this test is worth, stated honestly: it does NOT reproduce the trap.**
+    /// Measured against the faithful pre-fix ordering it passed **0 traps in 6 runs**
+    /// (and an earlier stop-vs-start shape passed 5/5), because the crash needs the
+    /// accumulated load of the full churn suite — the same conclusion the orphan gate
+    /// above reached for the first race. It asserts only that the guard **fired**, i.e.
+    /// that the check-and-re-arm window is genuinely being entered; a green run here is
+    /// evidence the path is exercised, not evidence the race is closed.
+    ///
+    /// The load-bearing evidence for the fix is the measured before/after on the real
+    /// reproducer, `SessionLifecycleChurnTests.concurrentDoubleStart_…` under
+    /// `swift test --filter concurrentDoubleStart`: **10 crashes in 14 runs before,
+    /// 0 in 30 after.** Re-run that, not this, when judging a change to this path.
+    @Test func rescheduleRacingTeardown_neverArmsACommandOnAReleasedNode() throws {
+        guard #available(macOS 14.2, *) else { return }
+        guard let url = StartRaceFixture.url() else { return }
+
+        let provider = LocalFilePlaybackProvider(url: url)
+        // Racing double-`start()`, the shape that actually reproduces. A stop-vs-start
+        // churn was tried first and does NOT: 5/5 green against the pre-fix ordering,
+        // because the collision needs two `_startLocked()` calls swapping `playerNode`
+        // while a reschedule is already in flight. `onFileEnded` stays nil so the LF.1
+        // loop keeps re-arming underneath the swap.
+        for _ in 0..<48 {
+            let both = DispatchSemaphore(value: 0)
+            for _ in 0..<2 {
+                Thread.detachNewThread {
+                    try? provider.start()   // may legitimately throw mid-reconfiguration
+                    both.signal()
+                }
+            }
+            both.wait()
+            both.wait()
+        }
+        provider.stop()
+
+        let bailouts = provider.staleRescheduleBailoutCount()
+        #expect(bailouts > 0, """
+            The reschedule guard never fired across 40 stop/start rounds, so this test did \
+            not exercise the check-and-re-arm window it exists to protect. Treat a green \
+            result here as unproven, not as evidence the race is closed — tighten the \
+            churn until the guard trips.
+            """)
+    }
 }
