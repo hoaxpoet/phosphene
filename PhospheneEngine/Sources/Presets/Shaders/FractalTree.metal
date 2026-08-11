@@ -335,7 +335,21 @@ void fractal_tree_object_shader(
         // one-branch steps XOR a wide swing; it cannot do both. Any future attempt at
         // "one tip per note" must keep this term's amplitude and slow its RATE — Matt's
         // own reading, confirmed 2026-08-07: same size, fewer times.
-        uint  tips   = (uint)(melody * 26.0f * amp * smoothstep(0.0f, 0.35f, reach));
+        // FTR.9 — THE GROWTH GATE IS A GATE AGAIN. It exists for Matt's *"the tree actually
+        // grows taller BEFORE this melody enters"* (FTR.3e): suppress the fine tips during an
+        // intro. `smoothstep(0, 0.35, reach)` did that when reach lived in 0.00…0.31. DYN.4
+        // opened reach up to 0.07…0.88, so the gate was still CLIMBING through the middle of
+        // the working range — a 10× multiplier swinging 0.10→1.00 and turning ~3 times a
+        // second, sitting on top of the guitar term.
+        //
+        // Measured on `2026-08-11T16-41-39Z`, that is why Matt saw no clear guitar: the tips
+        // correlated **+0.590 with the gate** and only **+0.470 with the guitar**. The route
+        // was working; the gate was drowning it. With edges at 0.03/0.15 the gate saturates
+        // below the working range and the ordering inverts — guitar **+0.540**, gate +0.516 —
+        // so the guitar is finally the dominant driver of its own layer.
+        //
+        // It still gates: an intro measures reach ≈ 0.001…0.06, which this maps to 0.00…0.15.
+        uint  tips   = (uint)(melody * 26.0f * amp * smoothstep(0.03f, 0.15f, reach));
         uint  count  = min(7u + base + section + tips, 63u);
 
         // ── BRANCH SPREAD ← spectral_flux ────────────────────────────────────────

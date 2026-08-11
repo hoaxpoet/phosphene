@@ -1856,6 +1856,31 @@ He was right, and the old driver explains it: `beat_mid` is the beat in the melo
 
 **Also caught, and worth recording:** writing the REJECTED primitive's name verbatim in a shader comment flipped Fractal Tree's automated rubric gate — L2 scans the file for deviation-primitive tokens and matched prose. The comment now spells it out in words. A rubric that reads comments will certify a comment.
 
+**FTR.9 — the two things Matt saw at the 2026-08-11 review, both measured, neither architectural.** ✅ (2026-08-11) Matt on session `2026-08-11T16-41-39Z` (Cherub Rock + *Carry The Zero*, chain `clean`): *"It's ok. The motion of the trunk and branches is probably too intense — not really seeing strong and clear response to guitar signal. I suspect this is as good as we are going to get without some significant change in architecture."*
+
+**Both suspicions were right about the symptom and wrong about the cause.** Measured before touching anything:
+
+**(1) "Too intense" is AMPLITUDE, not rate.** The canopy's turn rate barely moved across DYN.4 (2.91 → 2.75/s); its **span went 0.30 → 0.81**. DYN.4 opened the range up — which is what earned *"the canopy grows and recedes"* — and in doing so made a long-standing restlessness visible. At 2.75 turns/s the canopy driver was running at nearly **3× this preset's own documented limit** for continuous geometry (*"anything faster than ~1 turn/s reads as the tree bouncing rather than growing"*). It always had been; before DYN.4 the amplitude was too small to see it.
+
+Cause: `spectral_section_ratio` is the RANK of a τ20 s leg, and ranking a slow signal through a quantile table amplifies small wiggles wherever the distribution is dense — a restless output from a calm input. Fix: **τ 1 s smoothing on the ratio, after the rank** (`SpectralAnalyzer.sectionRatioTau`), downstream of everything DYN.4 matched so it cannot re-break the offline/live distribution pairing.
+
+**(2) "No clear guitar" was the growth GATE drowning the route, not the route failing.** The tips correlated **+0.590 with the gate** and only **+0.470 with the guitar**. `smoothstep(0, 0.35, reach)` was a gate when reach lived in 0.00…0.31; after DYN.4 reach spans 0.07…0.88, so the gate was still climbing through the middle of the working range — a 10× multiplier swinging 0.10→1.00 and turning ~3×/s, sitting on top of the guitar term. Fix: edges to **0.03 / 0.15**, so it saturates below the working range and still suppresses an intro (which measures reach ≈ 0.001…0.06).
+
+**Measured before → after, on Matt's own session:**
+
+| | before | after |
+|---|---|---|
+| canopy reach turns/s | 2.75 | **0.57** (under the preset's own 1.0 rule) |
+| canopy reach span | 0.813 | **0.811** (the DYN.4 growth survives intact) |
+| trunk length turns/s | 1.60 | 1.50 |
+| tips span | 3 | **4** |
+| tips r(guitar) | +0.470 | **+0.540** |
+| tips r(gate) | +0.590 | **+0.509** — the ordering inverts; the guitar is finally the dominant driver of its own layer |
+
+**Full-track regression** (`TrunkTrajectoryReportTests`, production objects): Cherub Rock ratio **0.00…2.00** and trunk **0.00…1.00** unchanged, motion **0.0531 → 0.0292/s**; Hummer motion 0.0205 → 0.0172/s; time-to-0.15 unchanged at 24.4 s / 23.4 s. The range is preserved and the jitter halves — which is the whole trade.
+
+**Certification NOT taken.** Matt asked whether to proceed; the answer was to fix these first, and he chose that. **Unverified live** — these are measurements, not his eye.
+
 **FTR.5 — M7 + certification.** ⏸ **BLOCKED ON MATT — this is a live review, not work Claude
 can complete.** FTR.6 landed the rate/granularity adjustment Matt named as the precondition
 ("close pending these adjustments") and it is verified offline on both source tracks; whether

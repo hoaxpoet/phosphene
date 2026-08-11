@@ -544,8 +544,9 @@ struct FractalTreeMeshRenderTest {
             let reach = min(max((Double(arousal[row] ?? 0) - 0.10) / 0.58, 0), 1)
             return Int(4.0 + reach * 18.0)
         }
+        // FTR.9 — mirror the SHIPPED gate, smoothstep(0.03, 0.15).
         let tips = zip(melody, growthEnv).map { m, g -> Int in
-            let t = min(max(g / 0.35, 0), 1)
+            let t = min(max((g - 0.03) / 0.12, 0), 1)
             return Int(m * 26.0 * (t * t * (3 - 2 * t)))
         }
         let counts = zip(structure, tips).map { min(7 + $0 + $1, 63) }

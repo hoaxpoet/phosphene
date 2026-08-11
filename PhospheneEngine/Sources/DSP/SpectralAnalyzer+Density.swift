@@ -102,6 +102,35 @@ extension SpectralAnalyzer {
             let alpha = LoudnessProfile.emaAlpha(deltaTime: deltaTime, tau: tau)
             return alpha * rawDensity + (1 - alpha) * current
         }
+        // FTR.9 — the SECTION RATIO'S OWN SMOOTHING, applied after the rank rather than
+        // before it. `sectionDensity` is already a τ20 s leg, yet the RATIO turned 2.88
+        // times a second on Matt's `2026-08-11T16-41-39Z`: ranking a slow signal through a
+        // quantile table amplifies small wiggles wherever the distribution is dense, so the
+        // output is restless even though its input is not. The canopy reads this field for
+        // trunk length, thickness and the branch floor — continuous geometry — and this
+        // preset's own rule is that anything past ~1 turn/s there "reads as the tree
+        // bouncing rather than growing" (Matt, twice: *"the trunk of the tree is moving up
+        // and down constantly"*, then *"the motion of the trunk and branches is probably too
+        // intense"*).
+        //
+        // τ 1 s is the least intervention that clears the rule: measured on that session it
+        // takes the canopy from **2.75 to 0.57 turns/s** while leaving the span at 0.811
+        // against 0.813 — the growth DYN.4 opened up survives intact, only the jitter goes.
+        // Downstream of the rank, so it cannot re-break the offline/live distribution match
+        // DYN.4 exists to hold.
+        let rawSectionRatio = Self.sectionRatio(section: sectionDensity,
+                                               liveNormal: densityNormal,
+                                               profile: loudnessProfile)
+        if sectionRatioSeeded {
+            let ratioAlpha = LoudnessProfile.emaAlpha(deltaTime: deltaTime,
+                                                     tau: Self.sectionRatioTau)
+            smoothedSectionRatio = ratioAlpha * rawSectionRatio
+                + (1 - ratioAlpha) * smoothedSectionRatio
+        } else {
+            smoothedSectionRatio = rawSectionRatio
+            sectionRatioSeeded = true
+        }
+
         fastDensity = ema(fastDensity, tau: Self.densityFastTau)
         smoothedDensity = ema(smoothedDensity, tau: Self.densitySlowTau)
         sectionDensity = ema(sectionDensity, tau: Self.densitySectionTau)
