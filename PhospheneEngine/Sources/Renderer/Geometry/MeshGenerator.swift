@@ -121,6 +121,11 @@ public final class MeshGenerator: @unchecked Sendable {
         _ = beatHold.update(features)
     }
 
+    /// `true` while the snapshot at buffer(4) is frozen between beats. Diagnostic only — a
+    /// harness reporting "the trunk still slides" needs to be able to tell a preset that is
+    /// not stepping from a hold that never engaged.
+    public var beatHoldIsStepping: Bool { beatHold.isStepping }
+
     // MARK: - Private
 
     private let device: MTLDevice

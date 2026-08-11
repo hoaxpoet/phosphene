@@ -233,10 +233,21 @@ struct FractalTreeMeshRenderTest {
                 post-FTR.9 verdict needs a single-track capture.
                 """)
         }
-        let densityByTime = (try? Self.recomputeDensity(
-            wav: csv.deletingLastPathComponent().appendingPathComponent("raw_tap.wav"))) ?? []
+        // FTR.10 — RECOMPUTE IS NOW OPT-IN, and this is a correction to FTR.9.1 rather than a
+        // convenience. The recompute measures the `LoudnessProfile` from the TAP; the live
+        // path measures it from the local FILE (DYN.1c). On `2026-08-11T18-26-52Z` the two
+        // disagree by 11×: recomputed surge tops out at 0.073 against the recording's 0.802,
+        // which drives `musicGate` to ~0.03 and renders a permanent sapling. The FTR.10
+        // before/after A/B came back identical on that footing — both builds pinned — and it
+        // took an A/B to notice, because a pinned tree still renders a plausible picture.
+        // Replay is right whenever the capture postdates the engine change under review;
+        // FT_RECOMPUTE=1 is for when it does not, which is what FTR.9.1 was written for.
+        let densityByTime = ProcessInfo.processInfo.environment["FT_RECOMPUTE"] == "1"
+            ? ((try? Self.recomputeDensity(
+                wav: csv.deletingLastPathComponent().appendingPathComponent("raw_tap.wav"))) ?? [])
+            : []
         if densityByTime.isEmpty {
-            print("[fractal-tree/sequence] no raw_tap.wav — using RECORDED density (may be stale)")
+            print("[fractal-tree/sequence] drivers REPLAYED from features.csv (FT_RECOMPUTE=1 to recompute)")
         }
         guard !rows.isEmpty else {
             throw FractalTreeHarnessError.setupFailed("no usable rows in \(csv.path)")
@@ -261,6 +272,11 @@ struct FractalTreeMeshRenderTest {
         let maxFrames = Int(ProcessInfo.processInfo.environment["FT_FRAMES"] ?? "") ?? 96
         let stride = Int(ProcessInfo.processInfo.environment["FT_STRIDE"] ?? "")
             ?? Swift.max(1, rows.count / maxFrames)
+        // FT_SKIP — start the strip N seconds into the capture. The motion gate needs a
+        // stride-1 close-up, and at stride 1 the first frames are the first four seconds,
+        // which is exactly the `BeatHold` warm-up: a window that shows only the fallback
+        // path would be reviewed as "the trunk still slides".
+        let skipSeconds = Double(ProcessInfo.processInfo.environment["FT_SKIP"] ?? "") ?? 0
         print(String(format: "[fractal-tree/sequence] %d rows spanning %.1f s, stride %d",
                      rows.count, (rows.last?["time"] ?? 0) - (rows.first?["time"] ?? 0), stride))
         var fifths = FifthsSmoother()
@@ -270,6 +286,7 @@ struct FractalTreeMeshRenderTest {
         var times: [Double] = []
         var widths: [Double] = []
         var heights: [Double] = []
+        var steppingFrames = 0
         var inks: [Double] = []
 
         for (index, row) in rows.enumerated() {
@@ -282,7 +299,7 @@ struct FractalTreeMeshRenderTest {
             // its snapshot inside `draw`, so a harness that only draws every Nth row would
             // feed the hold an aliased phase and measure a clock that does not exist live.
             // Every skipped row goes through the same object, un-drawn.
-            guard index % stride == 0 else {
+            guard index % stride == 0, (row["time"] ?? 0) >= skipSeconds + (rows.first?["time"] ?? 0) else {
                 generator.advanceBeatHold(fv)
                 continue
             }
@@ -298,6 +315,7 @@ struct FractalTreeMeshRenderTest {
             times.append(row["time"] ?? 0)
             widths.append(Self.canopyWidth(pixels))
             heights.append(Self.canopyHeight(pixels))
+            if generator.beatHoldIsStepping { steppingFrames += 1 }
         }
 
         // FLICKER IS MEASURED ON ADJACENT FRAMES, ALWAYS — never on the sampled strip.
@@ -374,6 +392,41 @@ struct FractalTreeMeshRenderTest {
                 whatever the driver statistics say.
                 """)
         }
+        // FTR.10 — WAS THE HOLD ACTUALLY ON, and what did the frames do.
+        //
+        // NO PIXEL METRIC ON THIS PRESET ISOLATES THE TRUNK, and that is worth stating rather
+        // than working around, because two of them were built here before the reason was
+        // understood. `motion_gate.sh`'s whole-frame difference came back 2.26 against 2.18 —
+        // the tips and the hue dominate it. A centre-column scan for the top of the bark
+        // column came back turning MORE often with the hold on (5.68/s against 4.13/s), which
+        // reads as a refutation and is not one: the two depth-1 branches start AT the trunk
+        // top and overlap the centre column, and their length carries `tap` — up to
+        // 1 + 0.02 + 0.40·0.2² = 3.6 %, about 2 px at this resolution. A column scan measures
+        // the trunk plus a 2 px tip wobble, and at 33 px of total travel the wobble wins.
+        //
+        // So the split is: the trunk's stillness is established in the DRIVER domain by
+        // `trunkStepsOnTheBeat` (exact shader arithmetic, 1.64 → 0.52 turns/s), the GPU's
+        // reading of buffer(4) by `objectStageReadsTheBeatHeldVector` (canopy 0.42 against
+        // 0.92 — a 2× difference no wobble explains), and the temporal CHARACTER by the
+        // motion gate plus a reader. What this block adds is the one thing those cannot: that
+        // the hold was engaged at all while these frames were rendered. A fallback path
+        // renders a perfectly plausible tree, so "the trunk still slides" and "the hold never
+        // engaged" look identical from the outside.
+        let strippedSeconds = (times.last ?? 0) - (times.first ?? 0)
+        func report(_ label: String, _ values: [Double]) -> String {
+            let deltas = zip(values, values.dropFirst()).map { $1 - $0 }.filter { $0 != 0 }
+            let flips = zip(deltas, deltas.dropFirst()).filter { $0 * $1 < 0 }.count
+            let held = 100 * Double(deltas.count == 0 ? 1 : 1 - Double(deltas.count)
+                                    / Double(Swift.max(values.count - 1, 1)))
+            return String(format: "%@ %.4f…%.4f, turns %.2f/s, unchanged on %.0f%% of frames",
+                          label, values.min() ?? 0, values.max() ?? 0,
+                          Double(flips) / Swift.max(strippedSeconds, 1), held)
+        }
+        print(String(format: "[fractal-tree/trunk] beat hold engaged on %.0f%% of %d rendered frames over %.1f s",
+                     100 * Double(steppingFrames) / Double(Swift.max(strip.count, 1)),
+                     strip.count, strippedSeconds))
+        print("[fractal-tree/trunk] \(report("canopy top", heights)) — tips-dominated, see above")
+
         print("""
             [fractal-tree/sequence] \(strip.count) frames — FLICKER (adjacent frames) \
             hue step median \(String(format: "%.2f", Self.median(hueJumps)))° max \
@@ -388,7 +441,16 @@ struct FractalTreeMeshRenderTest {
                 Self.writeContactSheet(slice, to: outputDirectory,
                                        name: String(format: "seq_%03d.png", chunk))
             }
-            print("[fractal-tree] sequence strips: \(outputDirectory.path)")
+            // INDIVIDUAL frames as well, named for `Scripts/motion_gate.sh` to glob
+            // (`<slug>_seq_*.png`). The contact sheets are for reading eight stills at
+            // once; the gate needs the sequence itself, and pointing it at a directory of
+            // COMPOSITES would have it measure sheet-to-sheet difference and call an
+            // eight-frame jump "motion". PG.MG / D-195.
+            for (index, frame) in strip.enumerated() {
+                Self.writePNG(frame.pixels, to: outputDirectory,
+                              name: String(format: "fractal_tree_seq_%05d.png", index))
+            }
+            print("[fractal-tree] sequence strips + frames: \(outputDirectory.path)")
         }
     }
 
@@ -485,6 +547,25 @@ struct FractalTreeMeshRenderTest {
         \(line("trunk (held)", stepped))
         ───────────────────────────────────────────────────────────────────
         """)
+
+        // WHERE the trunk moves, in 5 s buckets. A motion-gate window picked without this is
+        // picked blind: the span above is a whole-track figure, and most 10 s windows of a
+        // rock track sit inside one section where the trunk barely moves at all. Reviewing
+        // one of those and concluding "the trunk looks the same either way" is a false
+        // negative about the increment, not a finding about it.
+        let times = rows.map { $0["time"] ?? 0 }
+        print("  trunk by 5 s bucket (continuous → held):")
+        for mark in Swift.stride(from: times.first ?? 0, to: times.last ?? 0, by: 5.0) {
+            let window = zip(times, zip(continuous, stepped))
+                .filter { $0.0 >= mark && $0.0 < mark + 5 }.map(\.1)
+            guard !window.isEmpty else { continue }
+            let cont = window.map(\.0)
+            let hold = window.map(\.1)
+            print(String(format: "  %6.1f s  %.3f→%.3f (Δ%.3f)   held %.3f→%.3f  %@",
+                         mark, cont.min() ?? 0, cont.max() ?? 0, Self.span(cont),
+                         hold.min() ?? 0, hold.max() ?? 0,
+                         String(repeating: "▉", count: Int((Self.span(cont) * 200).rounded()))))
+        }
 
         let heldTurns = Self.turnsPerSecond(stepped, seconds: seconds)
         #expect(heldTurns <= 0.6, """
