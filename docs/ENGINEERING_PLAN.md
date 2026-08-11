@@ -140,9 +140,27 @@ is **not stable within a track** (Pyramid Song 1, Bleed 2, Giorgio 2 and 3, Bill
 assume; and `beatPhase01` advances on 98.7–99.0 % of frames in the 2026-07-27 capture
 but only 13.4–16.7 % in the 2026-08 captures.
 
-**Blocked input, for the record:** `claude/CHARISMA_BACKLOG.md`, read-first item #1 and
-the stated home of the concept rationale, **does not exist** — not in the tree, any
-worktree, or any commit on any branch. The prompt restated enough to proceed.
+**Blocked input — corrected 2026-08-11 after the plan was found.** CHR.1 reported its
+read-first item #1 as nonexistent. That was accurate about the *path it was given*
+(`claude/CHARISMA_BACKLOG.md`, absent from the tree, every worktree and every commit on
+every branch) but wrong about the *document*, which existed the whole time as
+[`docs/presets/STAVE_PLAN.md`](presets/STAVE_PLAN.md) — **untracked in the primary
+checkout**, while the session ran in a worktree that could not see it.
+
+Three things had to line up for that to go unnoticed, and all three did: the plan was
+delivered untracked rather than committed; the prompt variant the session received named
+the Claude.ai project mirror instead of the in-repo path and **omitted the committed
+prompt's Task 0**, which would have tracked both docs as the branch's first commit; and
+that same variant dropped the on-disk pre-flight's guard — *"if `STAVE_PLAN.md` is missing
+from the working tree, stop and report — do not reconstruct it from memory or from this
+prompt's summary of it."* With the guard absent and the worktree legitimately clean,
+pre-flight passed and the session proceeded on the prompt's summary, exactly what the
+guard existed to prevent.
+
+**The durable rule: a plan that is not in git is not deliverable to a worktree session.**
+Both docs are now committed. Losing the canonical plan cost CHR.1 nothing measurable — the
+prompt's summary carried the concept, and the measurement did not depend on it — but the
+loss was silent, which is the part worth not repeating.
 
 ### Increment LM.CLEAN — `lumen_mosaic` deleted, not decoded (closes CA-Presets-FU-2) ✅ (2026-08-10)
 
