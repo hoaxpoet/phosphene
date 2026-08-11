@@ -48,12 +48,21 @@ The measurement that found it is `docs/diagnostics/CHR1_STEM_DECORRELATION_2026-
 control at 0.2–0.4 s and a CSV-internal measurement (no WAV at all) putting the lag
 at 5.4 s on 39 of 40 stem × track pairs.
 
-**Status: code-complete, validation incomplete.** Engine suite 1809/1810 (sole
-failure is the pre-existing DOC.6 rotation gate). App-target tests, including the
-new `StemSeparationCadenceRegressionTests`, have not run — a live `PhospheneApp`
-blocks the XCTest host (BUG-072). The `dsp.stem` manual gate is also outstanding:
-stem timing is felt on every stem-driven preset, so Aurora Veil needs M7-class
-observation before this is called resolved.
+**Status: automated verification complete, manual gate outstanding.** Engine
+1809/1810 (sole failure the pre-existing DOC.6 rotation gate), app target
+**411/411** — 404 before, plus the 7 new tests, no existing test moved — lint clean.
+Running the app target needed a live `PhospheneApp` quit first (BUG-072).
+
+The new suite was also checked against the defect rather than only for greenness:
+restoring the 5 s period fails it with `stemNominalLatencySeconds → 5.5 < 3.0`. A
+gate that passes against the bug it names is worth nothing, so it was run that way
+before being trusted.
+
+Still owed: the `dsp.stem` manual gate. Stem timing is felt on every stem-driven
+preset, so Aurora Veil needs M7-class observation before BUG-086 goes to Resolved —
+the tests prove the arithmetic, not that the coupling feels right. And the duty
+cycle has not been measured in a real session yet, which is what the new
+`STEM_SEPARATION` line is for.
 
 ---
 

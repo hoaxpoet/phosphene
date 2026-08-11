@@ -499,18 +499,31 @@ than the values — runway ≥ period, margin > 0, latency < 3 s, read start der
 chunk pinned to the model — so retuning the cadence stays free while re-breaking the
 invariant does not.
 
+**The gate was verified to bite, not merely to be green.** Setting the period back
+to 5.0 and re-running fails the latency test with
+`stemNominalLatencySeconds → 5.5 < 3.0` — so the suite would have caught the pre-fix
+configuration. A green assertion that also passes against the defect is worthless;
+this one was checked against it.
+
+**Automated verification complete (2026-08-11):**
+
+- `swiftlint --strict` — 0 violations, 503 files
+- `xcodebuild build` — succeeded
+- Engine suite — **1809/1810**; sole failure is the pre-existing DOC.6 rotation gate,
+  identical to the branch point
+- App target — **411/411** (404 before this change, plus the 7 new tests; no existing
+  test moved). Required quitting a live `PhospheneApp` first — **BUG-072**.
+
 **Outstanding before this is Resolved:**
 
-1. **App-target tests have not run.** A live `PhospheneApp` (PID 4972) blocks the
-   XCTest host — **BUG-072**, `Could not launch "PhospheneAppTests"`. The new suite
-   is therefore unexecuted. Engine suite is 1809/1810 (sole failure the pre-existing
-   DOC.6 rotation gate), lint clean, app target builds.
-2. **The `dsp.stem` manual gate.** Stem timing is felt on every stem-driven preset;
+1. **The `dsp.stem` manual gate.** Stem timing is felt on every stem-driven preset;
    Aurora Veil (`other_energy_dev` load-bearing), Skein, Meniscus and FFO all shift.
-   Needs M7-class observation on at least Aurora Veil.
-3. **Duty cycle unmeasured in a real session** — the `STEM_SEPARATION` line exists
+   Needs M7-class observation on at least Aurora Veil. Automated tests prove the
+   arithmetic, not that the coupling feels right.
+2. **Duty cycle unmeasured in a real session** — the `STEM_SEPARATION` line exists
    for exactly this, but no capture has been taken since the change. If measured
-   inference is materially above 142 ms, 2 s may need revisiting.
+   inference is materially above the 142 ms the estimate assumed, 2 s may need
+   revisiting.
 
 #### Related
 
