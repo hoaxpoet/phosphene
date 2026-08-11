@@ -84,7 +84,7 @@ extension LoudnessProfile {
         var running: Float?
         // DYN.4 — the alpha for THIS builder's own frame duration. Previously a per-frame
         // constant shared verbatim with the live analyzer, which only matched while the
-        // live path also hopped 1024 at 44.1 kHz. It runs at 59.9 Hz.
+        // live path also hopped 1024 at 44.1 kHz. It runs at 9.9 Hz.
         let sectionAlpha = LoudnessProfile.emaAlpha(deltaTime: frameDuration,
                                                     tau: LoudnessProfile.densitySectionTau)
         for value in densities {

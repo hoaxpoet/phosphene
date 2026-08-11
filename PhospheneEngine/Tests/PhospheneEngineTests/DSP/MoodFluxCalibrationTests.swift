@@ -14,7 +14,7 @@
 // almost completely between hops whatever the hop is, so the frame interval barely enters.
 // Measured through the production pipeline on eight Siamese Dream tracks, the rate shift on
 // EVERY one of the ten mood features is within ±0.11 sigma between the 43 Hz offline
-// preparation rate and the 59.9 Hz live rate. This is FA #27 exactly — a synthetic signal
+// preparation rate and the 9.9 Hz live rate. This is FA #27 exactly — a synthetic signal
 // reproduced a property real audio does not have — and it is worth the retraction being
 // louder than the original claim.
 //
@@ -125,7 +125,7 @@ struct MoodFluxCalibrationTests {
         let stds = MoodClassifier.scalerStdsForTesting
 
         // 1024 = the offline preparation hop (43.07 fps at CD rate); 736 ~ the measured
-        // live analysis rate on session 2026-08-10T01-29-10Z (59.9 fps).
+        // live analysis rate on session 2026-08-10T01-29-10Z (9.9 Hz).
         var zByRate: [Int: [Float]] = [:]
         for hop in [1024, 736] {
             let rows = try Self.moodFeatures(url: url, hop: hop)

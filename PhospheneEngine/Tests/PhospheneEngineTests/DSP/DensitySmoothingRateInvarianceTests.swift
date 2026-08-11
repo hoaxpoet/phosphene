@@ -3,15 +3,15 @@
 // THE DEFECT THIS GATES. Every density follower was an EMA with a constant per-FRAME alpha,
 // so its real time constant was `1 / (alpha * fps)` — a number that moves with the analysis
 // rate. The constants were calibrated at 43.07 Hz (44.1 kHz / 1024, the offline hop) and the
-// live pipeline runs at **59.9 Hz**, measured on Matt's session `2026-08-10T01-29-10Z`:
+// live pipeline runs at **9.9 Hz**, measured on Matt's session `2026-08-10T01-29-10Z`:
 //
-//     leg      documented   actually live
-//     section    τ 20 s       14.4 s
-//     normal     τ 45 s       32.1 s
+//     leg      documented   actually live (9.9 Hz)
+//     section    τ 20 s       87 s
+//     normal     τ 45 s       194 s
 //
 // That is not a subtle difference in feel. `LoudnessProfile.measure` builds the density
 // quantiles from a τ20 s-smoothed series and its header claimed it "mirrors the live path
-// frame for frame" — true only while both ran at 43 Hz. Ranking a τ14.4 s signal against a
+// frame for frame" — true only while both ran at 43 Hz. Ranking a τ87 s signal against a
 // τ20 s distribution compresses every result toward the middle: live,
 // `spectral_section_ratio` spanned **0.534…0.614** of its 0…2 range and Fractal Tree's
 // canopy used 0.00…0.31 of its own, which is Matt's *"the entire suite of movement does not
@@ -88,27 +88,27 @@ struct DensitySmoothingRateInvarianceTests {
         zip(a, b).map { abs($0 - $1) }.max() ?? 0
     }
 
-    @Test("the same seconds at 43 Hz and 60 Hz smooth to the same trajectory")
+    @Test("the same seconds at 43 Hz and 10 Hz smooth to the same trajectory")
     func trajectoriesAgreeAcrossRates() {
         let seconds: Float = 90
         let slow = Self.run(fps: LoudnessProfile.referenceAnalysisHz, seconds: seconds, profile: nil)
-        let fast = Self.run(fps: 59.9, seconds: seconds, profile: nil)
+        let fast = Self.run(fps: 9.9, seconds: seconds, profile: nil)
 
         #expect(slow.section.count >= 89 && fast.section.count >= 89,
                 "expected ~90 one-second samples, got \(slow.section.count) / \(fast.section.count)")
         let n = min(slow.section.count, fast.section.count)
 
         // The section leg is the one the canopy ranks. Its whole span here is ~0.2, so a
-        // 0.005 tolerance is ~2.5 % — tight enough that a 1.4x error in tau cannot pass
+        // 0.005 tolerance is ~2.5 % — tight enough that a 4.4x error in tau cannot pass
         // (that mistake moved the live ratio from 2.00 to 0.58).
         let sectionDrift = Self.maxAbsDiff(Array(slow.section[0..<n]), Array(fast.section[0..<n]))
         #expect(sectionDrift < 0.005, """
-            section leg drifts \(sectionDrift) between 43 Hz and 60 Hz. A per-FRAME alpha \
+            section leg drifts \(sectionDrift) between 43 Hz and 10 Hz. A per-FRAME alpha \
             makes tau depend on the analysis rate; it must be derived from deltaTime.
             """)
 
         let normalDrift = Self.maxAbsDiff(Array(slow.normal[0..<n]), Array(fast.normal[0..<n]))
-        #expect(normalDrift < 0.005, "normal leg drifts \(normalDrift) between 43 Hz and 60 Hz")
+        #expect(normalDrift < 0.005, "normal leg drifts \(normalDrift) between 43 Hz and 10 Hz")
 
         // The ratio is what Fractal Tree's canopy actually reads.
         let ratioDrift = Self.maxAbsDiff(Array(slow.ratio[0..<n]), Array(fast.ratio[0..<n]))
@@ -132,7 +132,7 @@ struct DensitySmoothingRateInvarianceTests {
         let profile = LoudnessProfile(quantilesDB: db, densityQuantiles: density)
 
         let slow = Self.run(fps: LoudnessProfile.referenceAnalysisHz, seconds: 90, profile: profile)
-        let fast = Self.run(fps: 59.9, seconds: 90, profile: profile)
+        let fast = Self.run(fps: 9.9, seconds: 90, profile: profile)
         let slowSpan = (slow.ratio.max() ?? 0) - (slow.ratio.min() ?? 0)
         let fastSpan = (fast.ratio.max() ?? 0) - (fast.ratio.min() ?? 0)
 
@@ -149,7 +149,7 @@ struct DensitySmoothingRateInvarianceTests {
     @Test("the centroid and flux followers agree across rates too")
     func spectralFeatureFollowersAgreeAcrossRates() {
         let slow = Self.run(fps: LoudnessProfile.referenceAnalysisHz, seconds: 90, profile: nil)
-        let fast = Self.run(fps: 59.9, seconds: 90, profile: nil)
+        let fast = Self.run(fps: 9.9, seconds: 90, profile: nil)
         let n = min(slow.centroid.count, fast.centroid.count)
         #expect(n >= 89, "expected ~90 one-second samples, got \(n)")
 
@@ -158,7 +158,7 @@ struct DensitySmoothingRateInvarianceTests {
         #expect(slowSpan > 1, "the drive must actually move the centroid (span \(slowSpan) Hz)")
         let centroidDrift = Self.maxAbsDiff(Array(slow.centroid[0..<n]), Array(fast.centroid[0..<n]))
         #expect(centroidDrift < slowSpan * 0.02, """
-            centroid drifts \(centroidDrift) Hz between 43 Hz and 60 Hz against a span of \
+            centroid drifts \(centroidDrift) Hz between 43 Hz and 10 Hz against a span of \
             \(slowSpan) Hz — the follower width is still tied to the frame rate.
             """)
 
@@ -175,7 +175,7 @@ struct DensitySmoothingRateInvarianceTests {
         // the same WALL-CLOCK window at both rates. That is the part DYN.5 fixed, and it is
         // what this asserts.
         let slowNorm = Self.normalisedFlux(fps: LoudnessProfile.referenceAnalysisHz, seconds: 90)
-        let fastNorm = Self.normalisedFlux(fps: 59.9, seconds: 90)
+        let fastNorm = Self.normalisedFlux(fps: 9.9, seconds: 90)
         let m = min(slowNorm.count, fastNorm.count)
         let normSpan = max((slowNorm.max() ?? 0) - (slowNorm.min() ?? 0), 1e-6)
         #expect(normSpan > 0.05, "the drive must move normalised flux (span \(normSpan))")

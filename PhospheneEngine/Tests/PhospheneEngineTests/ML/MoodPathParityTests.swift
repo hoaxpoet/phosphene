@@ -57,10 +57,10 @@ struct MoodPathParityTests {
             return last
         }
         let slow = run(fps: LoudnessProfile.referenceAnalysisHz, seconds: 60)
-        let fast = run(fps: 59.9, seconds: 60)
+        let fast = run(fps: 9.9, seconds: 60)
         let drift = Self.maxAbsDiff(slow, fast)
         #expect(drift < 0.002, """
-            the accumulated mood features drift \(drift) between 43 Hz and 60 Hz. A per-FRAME \
+            the accumulated mood features drift \(drift) between 43 Hz and 10 Hz. A per-FRAME \
             alpha makes the window depend on the analysis rate.
             """)
     }
@@ -90,7 +90,7 @@ struct MoodPathParityTests {
             return state
         }
         // Live arrangement against the old preparation arrangement, on identical seconds.
-        let live = try run(fps: 59.9, everyNthFrame: 1, seconds: 60)
+        let live = try run(fps: 9.9, everyNthFrame: 1, seconds: 60)
         let prepared = try run(fps: LoudnessProfile.referenceAnalysisHz,
                                everyNthFrame: 30, seconds: 60)
         let dv = abs(live.valence - prepared.valence)
@@ -118,12 +118,12 @@ struct MoodPathParityTests {
             }
             return state.arousal
         }
-        let converged = try valueAfter(seconds: 8, fps: 60)
-        let atOneTau60 = try valueAfter(seconds: MoodClassifier.outputTau, fps: 60)
+        let converged = try valueAfter(seconds: 8, fps: 10)
+        let atOneTau60 = try valueAfter(seconds: MoodClassifier.outputTau, fps: 10)
         let atOneTau5 = try valueAfter(seconds: MoodClassifier.outputTau, fps: 5)
         // 1 − 1/e = 0.632. Generous bounds: the point is rate-independence, not the exact
         // fraction, and a 5 Hz caller takes coarse steps through the curve.
-        for (label, v) in [("60 Hz", atOneTau60), ("5 Hz", atOneTau5)] {
+        for (label, v) in [("10 Hz", atOneTau60), ("5 Hz", atOneTau5)] {
             let fraction = converged != 0 ? v / converged : 0
             #expect(fraction > 0.45 && fraction < 0.80, """
                 at one tau the \(label) caller reached \(fraction) of its converged value; \

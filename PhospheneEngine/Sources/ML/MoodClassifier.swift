@@ -44,9 +44,10 @@ public final class MoodClassifier: MoodClassifying, @unchecked Sendable {
     /// Output smoothing time constant, in SECONDS (DYN.7).
     ///
     /// Was `emaAlpha = 0.1` applied per CALL, so the window it produced depended on how
-    /// often the caller called: **0.167 s live** (every analysis frame at 59.9 Hz) against
-    /// **6.96 s offline** (every 30th frame at 43.07 Hz) — a 40× disagreement between the
-    /// mood a track was PREPARED with and the mood it PLAYED with. The 0.7 s here is the
+    /// often the caller called: **1.01 s live** (every analysis frame at the measured
+    /// 9.9 Hz) against **6.96 s offline** (every 30th frame at 43.07 Hz) — a 7× disagreement
+    /// between the mood a track was PREPARED with and the mood it PLAYED with, with the
+    /// OFFLINE side the one far from intent. The 0.7 s here is the
     /// figure that alpha's own comment always claimed; only the per-call form was wrong.
     public static let outputTau: Float = 0.7
 

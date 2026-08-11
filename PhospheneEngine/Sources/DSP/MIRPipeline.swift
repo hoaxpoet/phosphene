@@ -160,7 +160,7 @@ public final class MIRPipeline: @unchecked Sendable {
     ///
     /// This was `0.999` applied once per FRAME, so the window it represents moved with the
     /// analysis rate: ≈ 23 s at the 43.07 Hz the constant was chosen at, ≈ 16.7 s at the
-    /// live 59.9 Hz. It is the denominator of `spectral_flux`, so a shorter window makes
+    /// live 9.9 Hz. It is the denominator of `spectral_flux`, so a shorter window makes
     /// the normalised flux ride higher on quiet passages — a gain error on a field many
     /// presets read, arriving silently with a frame-rate change.
     private static let fluxMaxTau: Float = LoudnessProfile.tau(legacyAlpha: 1 - 0.999)

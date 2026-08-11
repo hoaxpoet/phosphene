@@ -1827,6 +1827,43 @@ Identical percentiles on two different records is the signature of a clock. Buil
 
 **What was KEPT, and why it is not orphaned code:** the measurement, as `PerNoteMagnitudeTests` — a standing answer to "which primitive carries per-note information", with its own note-clock constants now the gate is gone. **MEL.1 is still open and wants exactly that signal**, so this is the first thing that increment should read rather than re-derive. Its assertion fails if `beat_mid` ever stops saturating at the note instants, which would make the FTR.7 conclusion stale rather than a fact to cite.
 
+**FTR.5 — live M7 (2026-08-11, session `2026-08-11T01-07-17Z`, chain `clean`, Cherub Rock).** Matt: *"the canopy grows and recedes with some connection — sometimes clear and sometimes vague… The tips appear to follow drums and bass… Nothing got worse. Overall, it is acceptable."* **Certification not taken — see the decision at the foot of this entry.**
+
+**DYN.4 is confirmed live, and by measurement not impression:**
+
+| | `spectral_section_ratio` | canopy reach |
+|---|---|---|
+| before (2026-08-10) | 0.534 … 0.614 | 0.00 … 0.31 |
+| **after (this session)** | **0.226 … 1.992** | **0.00 … 1.00** |
+
+The canopy now uses its whole range. That is the "grows and recedes" in his first sentence.
+
+**THE PROBE CORRECTED ME ON THE ANALYSIS RATE, and the correction reaches four increments.** `DENSITY_PATH: branch=ranked fps=9.9 tau_section=20.0s`. **The live MIR analysis rate is 9.9 Hz, not the 59.9 Hz asserted throughout DYN.4/.5/.6/.7** — 59.9 is the RENDER rate, which is what `features.csv` rows are written at, and I inferred the analysis rate from row count ÷ duration without checking which clock the recorder uses. Confirmed independently: `spectral_density` changes 10.0 times a second in the same capture. So:
+
+- the τ error ran the **opposite** way and 3× larger than claimed — before DYN.4 the section leg was **87 s** (not 14.4 s) against its documented 20 s, and the normal leg **194 s** against 45 s;
+- **the fixes are unaffected and matter more than stated** — making τ wall-clock moved live from 87 s to 20 s, matching the offline builder, which is why the ratio span went 0.08 → 1.77;
+- DYN.7's split was real but **the live side was near intent** (1.01 s output window against 0.7 s) and the **offline** side was the broken one (6.96 s);
+- `branch=ranked` settles DYN.3's open question: the canopy was always on the DYN.2c ranked branch, never the fallback.
+
+Corrected in `LoudnessProfile`, `SpectralAnalyzer`, `MIRPipeline`, `MoodClassifier`, `MoodFeatureAccumulator` and both rate-invariance suites, which now compare **9.9 Hz against 43.07 Hz** — a 4.4× ratio, a stronger gate than the 1.4× they were written with.
+
+**THE GUITAR QUESTION — NOT futile, and the blocker is infrastructure, not signal.** Matt: *"I wish they would follow the guitar patterns more… the guitar solo alone is a big missed opportunity. If it's futile, let me know."* Measured on his session's `stems.csv`:
+
+| candidate | vs drums (body) | p05 → p95 | distinct |
+|---|---|---|---|
+| `other_energy_dev` | r = **+0.65** | 0.00 → 0.39 | — |
+| **`other_onset_rate`** | r = **+0.14** | **0.53 → 3.30** | **374** |
+| `other_attack_ratio` | r = +0.14 | 0.76 → 1.29 | — |
+| `other_centroid` | r = −0.32 | 0.061 → 0.124 | — |
+
+**`other_onset_rate` is a genuinely independent guitar-activity channel** — how many guitar attacks per second, essentially uncorrelated with the drums, spread across 374 distinct values. Routing the tips to it is exactly "follow the guitar patterns".
+
+**Two corrections to the record this forces.** (1) The **+0.973 guitar/drums correlation** repeated since FTR.6 does not reproduce: on this capture it is **+0.68** for raw energy and **+0.65** for energy-dev — and the *onset-rate* feature, which nobody had measured, is +0.14. (2) **MEL.1's futility finding stands but does not apply here**: it measured per-NOTE onset DETECTION (grid coherence 31 % guitar vs 41 % drums) and concluded distortion smears individual attacks. An onset *rate* is a far weaker requirement, `StemAnalyzer` already computes it, and it needs no new DSP.
+
+**The real blocker is FTR.4:** `StemFeatures` is not bound on the OBJECT/MESH stages, and the tips are computed in the object shader. Scope was corrected at FTR.3d — the fragment stage is already bound by `RenderPipeline.drawWithMeshShader`, so this is mirroring the existing `setObjectBytes`/`setMeshBytes` calls. Shared renderer code; every mesh preset inherits it.
+
+**Certification decision — Matt's, not taken here.** *"Overall, it is acceptable"* clears the L4 bar as written, but he asked for a specific improvement in the same breath, and certifying a preset the day its owner asked for more is the kind of pass that gets re-opened. Both routes are live: certify now and track the guitar work separately, or hold FTR.5 until FTR.4 + the guitar routing land and certify once.
+
 **FTR.5 — M7 + certification.** ⏸ **BLOCKED ON MATT — this is a live review, not work Claude
 can complete.** FTR.6 landed the rate/granularity adjustment Matt named as the precondition
 ("close pending these adjustments") and it is verified offline on both source tracks; whether

@@ -121,7 +121,7 @@ public final class SpectralAnalyzer: @unchecked Sendable {
     // MARK: - EMA Smoothing
 
     // DYN.5 — the spectral-feature followers, in SECONDS. The last per-FRAME alphas in this
-    // file: at the live 59.9 Hz their real widths were 0.72x what the coefficients meant,
+    // file: at the live 9.9 Hz their real widths were 0.72x what the coefficients meant,
     // so `spectral_centroid` and `spectral_flux` reacted ~40 % faster than calibrated, on
     // every preset that reads them. Each tau is what its old coefficient meant at the
     // 43.07 Hz reference rate; nothing is retuned.

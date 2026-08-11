@@ -6,18 +6,22 @@
 // from `VisualizerEngine`. They disagreed on all three of the things that define the
 // measurement:
 //
-//   |                  | intended (code comments) | live         | offline            |
-//   | feature window   | ~7 s                     | 1.67 s       | none — INSTANTANEOUS |
-//   | classify cadence | —                        | every frame  | every 30th frame   |
-//   | output window    | ~0.7 s                   | 0.167 s      | 6.96 s             |
+//   |                  | intended (comments) | live (9.9 Hz) | offline              |
+//   | feature window   | ~7 s                | 10.1 s        | none — INSTANTANEOUS |
+//   | classify cadence | —                   | every frame   | every 30th frame     |
+//   | output window    | ~0.7 s              | 1.01 s        | 6.96 s               |
+//
+// **The LIVE side was close to intent; the OFFLINE side was the broken one** — 6.96 s
+// against 0.7 s, and no feature smoothing at all. The original DYN.7 note had this
+// backwards because it assumed a 59.9 Hz analysis rate; the DYN.3 probe later measured the
+// real rate at 9.9 Hz (the 59.9 figure is the RENDER rate, which is what `features.csv`
+// rows are written at — the analysis queue runs an order of magnitude slower).
 //
 // Both were wrong, in opposite directions, and for the same reason as DYN.4/DYN.5: the
-// constants are per-CALL, so their meaning in seconds moves with the call rate. The two
-// comments (`featureEmaAlpha` "≈7 s at ~94 callbacks/s", `emaAlpha` "≈0.7 s at ~94
-// callbacks/s") are each off by ~4.2× against their own stated rate — the same 4.2× as
-// 59.9 Hz / 14.3 Hz, which is what the analysis rate actually was when they were written.
-// **So the seconds in those comments are the design intent, and the alphas stopped meaning
-// them.** DYN.7 keeps the intent and discards the alphas.
+// constants are per-CALL, so their meaning in seconds moves with the call rate. The
+// seconds those two comments quote are the design intent; the "~94 callbacks/s" they quote
+// alongside is not the analysis rate (measured 9.9 Hz), which is why neither alpha produced
+// the window it claimed. DYN.7 keeps the intent and discards the alphas.
 //
 // Housing the accumulation here rather than at each call site is the point: two call sites
 // assembling "the same" vector is exactly how they drifted, and a shared type makes the

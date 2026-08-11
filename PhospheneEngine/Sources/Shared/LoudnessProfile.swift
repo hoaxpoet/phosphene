@@ -194,14 +194,14 @@ public struct LoudnessProfile: Sendable, Equatable, Codable {
     // meaning in seconds moves with the analysis rate. The offline quantile builder hops
     // 1024 samples at 44.1 kHz (43.07 Hz) and its header claimed it "mirrors the live path
     // frame for frame"; that was true when the live path also ran at 43 Hz. Measured on
-    // Matt's session `2026-08-10T01-29-10Z`, **the live path runs at 59.9 Hz**, so:
+    // Matt's session `2026-08-10T01-29-10Z`, **the live path runs at 9.9 Hz**, so:
     //
-    //   leg      documented   actually live
-    //   section    τ 20 s       14.4 s
-    //   normal     τ 45 s       32.1 s
+    //   leg      documented   actually live (9.9 Hz)
+    //   section    τ 20 s       87 s
+    //   normal     τ 45 s       194 s
     //
     // The consequence is not a slightly different feel. `densityQuantiles` are built from a
-    // τ20 s-smoothed series offline and the live value ranked against them is τ14.4 s
+    // τ20 s-smoothed series offline and the live value ranked against them is τ87 s
     // smoothed, so the two describe different distributions and every live rank is
     // compressed toward the middle. On that session `spectral_section_ratio` spanned
     // 0.534…0.614 of its 0…2 range and the Fractal Tree canopy used 0.00…0.31 of its own.
