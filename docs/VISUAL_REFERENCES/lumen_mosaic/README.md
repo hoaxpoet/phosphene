@@ -75,7 +75,7 @@ Pebbled pattern glass under raking directional light from upper-left. Higher cel
 - **The photographic gradient lighting.** This is a key-light from one direction; the preset's lighting comes from 4 audio-driven agents behind the panel. The disjoint between "raking from upper-left" in this image and "multiple sources behind" in the preset must NOT confuse Claude Code into placing fixed directional lights above the panel.
 - **The visible dust speck near mid-frame.** Photographic artifact, not a feature.
 - **Slight banding from JPEG compression** in the smoothest tonal regions. Procedural rendering produces no such artifact; do not attempt to simulate it.
-- **The specific cell size in absolute pixels.** Cell density in Lumen Mosaic is JSON-tunable via `lumen_mosaic.cell_density`; this reference is one example point, not a target.
+- **The specific cell size in absolute pixels.** Cell density is a shader constant (`kCellDensity` in `LumenMosaic.metal`), not a sidecar tunable; this reference is one example point, not a target.
 - **The lower-right shadow region's tonal dropoff to dark.** Lumen Mosaic's panel is fully emission-dominated everywhere — no truly dark regions of panel are permissible at any moment.
 
 ---

@@ -307,7 +307,7 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
         }
 
         try engine.start()
-        scheduleFileLoop(player: player, file: file)
+        _scheduleFileLoopLocked(player: player, file: file)
         player.play()
 
         let observer = NotificationCenter.default.addObserver(
@@ -384,7 +384,42 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
     /// re-scheduling. The caller drives queue advance from there. When
     /// `onFileEnded` is nil, the LF.1 behavior preserves and the file
     /// loops forever.
-    private func scheduleFileLoop(player: AVAudioPlayerNode, file: AVAudioFile) {
+    /// Times the reschedule path found the provider had moved on and refused to
+    /// re-arm. Guarded by `lock`. Exposed for the BUG-078 regression gate: a race
+    /// test that never trips this is not exercising the window it claims to cover.
+    private var staleRescheduleBailouts = 0
+
+    /// Snapshot of `staleRescheduleBailouts`, taken under `lock`.
+    public func staleRescheduleBailoutCount() -> Int {
+        lock.withLock { staleRescheduleBailouts }
+    }
+
+    /// Arm the next pass. **The caller must hold `lock`.**
+    ///
+    /// BUG-078 (2026-08-10, BUG078.3): the identity check and this `scheduleFile`
+    /// call have to be atomic against teardown. They used to be separate — the
+    /// reschedule path checked `playerNode === player` under the lock, released it,
+    /// and only then re-armed. A `stop()` landing in that window nils the fields and
+    /// runs `player.stop()`, so the command was armed on a node the provider had
+    /// already released. AVFAudio's own `AVAEBlock` wrapper retains the node inside
+    /// that queued command, so the command became its LAST strong reference; when it
+    /// was later destroyed on the node's own `CommandQueue`, `-[AVAudioNode dealloc]`
+    /// ran there and its `Stop()` did a `dispatch_sync` into the queue it was already
+    /// running on — libdispatch's deadlock detector traps the process.
+    ///
+    /// Both orderings are now safe, because `stop()` / `start()` nil-or-replace the
+    /// fields under this same lock *before* the AVFoundation teardown runs:
+    ///   - re-arm wins the lock → identity still holds → the command is armed while
+    ///     the node is still ours, and the teardown's subsequent `player.stop()`
+    ///     drains it;
+    ///   - teardown wins → the fields are already swapped → the re-arm sees the
+    ///     mismatch and bails.
+    ///
+    /// This does not reintroduce BUG-021's ABBA: `scheduleFile` only enqueues (it
+    /// never waits on the render thread the way `player.stop()` does), the teardown's
+    /// `player.stop()` still runs outside the lock, and the completion handler below
+    /// hops off the callback queue before touching the lock at all (BUG-059).
+    private func _scheduleFileLoopLocked(player: AVAudioPlayerNode, file: AVAudioFile) {
         player.scheduleFile(file, at: nil) { [weak self, weak player, weak file] in
             guard let self, let player, let file else { return }
             // BUG-059: hop OFF the AVAudioPlayerNode completion-handler queue
@@ -396,15 +431,22 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
             // `stop()` that lands in between cancels the loop cleanly.
             self.rescheduleQueue.async { [weak self, weak player, weak file] in
                 guard let self, let player, let file else { return }
-                let stillActive: Bool = self.lock.withLock {
-                    self.playerNode === player && self.audioFile === file
+                // One critical section: verify identity AND re-arm, or bail.
+                // `onFileEnded` is only *read* here — it is invoked after the
+                // unlock, since it is a caller-supplied closure that advances the
+                // queue and must not run under the provider's lock.
+                let advance: (() -> Void)? = self.lock.withLock {
+                    guard self.playerNode === player, self.audioFile === file else {
+                        self.staleRescheduleBailouts += 1
+                        return nil
+                    }
+                    if let onFileEnded = self.onFileEnded {
+                        return onFileEnded                          // LF.5 advance — caller takes over
+                    }
+                    self._scheduleFileLoopLocked(player: player, file: file)  // LF.1 single-file loop
+                    return nil
                 }
-                guard stillActive else { return }
-                if let onFileEnded = self.onFileEnded {
-                    onFileEnded()
-                    return                                          // LF.5 advance — caller takes over
-                }
-                self.scheduleFileLoop(player: player, file: file)   // LF.1 single-file loop default
+                advance?()
             }
         }
     }

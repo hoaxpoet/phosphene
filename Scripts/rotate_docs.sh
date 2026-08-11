@@ -47,11 +47,19 @@ for arg in "$@"; do
   esac
 done
 
-TODAY="${PHOSPHENE_TODAY:-$(date +%Y-%m-%d)}"
+# UTC, deliberately — see DocIntegrityTests.rotationCutoffString.
+# CI runs in UTC and a dev machine usually does not, so a local clock makes this
+# script and the gate that polices it disagree for however many hours separate the
+# two midnights. On 2026-08-09 that was five hours: the gate passed locally at
+# 18:25 EST and fast-gate failed at 01:31 UTC on an identical tree, and running
+# this script to fix it was a no-op because it too read the local clock. One clock,
+# and it has to be the one CI uses.
+TODAY="${PHOSPHENE_TODAY:-$(date -u +%Y-%m-%d)}"
 if [ -n "${PHOSPHENE_TODAY:-}" ]; then
+  # Explicit date in, explicit date out — pure calendar arithmetic, no zone crossing.
   CUTOFF="$(date -j -v-14d -f %Y-%m-%d "$PHOSPHENE_TODAY" +%Y-%m-%d)"
 else
-  CUTOFF="$(date -v-14d +%Y-%m-%d)"
+  CUTOFF="$(date -u -v-14d +%Y-%m-%d)"
 fi
 CUR_MONTH="${TODAY%-*}"
 
