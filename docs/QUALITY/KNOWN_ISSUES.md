@@ -538,20 +538,57 @@ wallclock advance and `MLDispatchScheduler` deferral — no unit test can synthe
 and a synthetic one would be the green-test-measuring-the-wrong-thing trap. The honest
 artifact is a measurement over a capture a human supplies.
 
+#### Post-fix capture measured — session `2026-08-11T23-35-27Z` (Matt, 2026-08-11)
+
+**The fix works: measured lag 5.4 s → 2.9 s**, PASS against the 3.0 s ceiling. Two
+findings alongside it, one of which was a stated caveat firing.
+
+| | assumed at BUG086.1 | **measured** |
+|---|---|---|
+| inference per separation | 142 ms (a code comment) | **335 ms median** (min 284, max 649; n=33) |
+| inference duty at 2 s period | ≈7 % | **≈20.5 %** |
+| preset-facing lag | 2.5 s nominal | **2.9 s** |
+
+**1. Inference is 2.4× the assumed cost, so duty is ≈20.5 %, not ≈7 %.** This is exactly
+the caveat this entry flagged — the 142 ms figure existed only in a code comment with no
+artifact behind it, and it was wrong.
+
+**It is nonetheless sustainable, on the engine's own signal.** 33 separations over a 65 s
+span against 33 expected at a 2 s cadence: `MLDispatchScheduler` (D-059) is absorbing the
+load with jitter, not falling behind. Frame-pacing comparison against pre-fix captures is
+**inconclusive and should not be quoted** — the pre- and post-fix sessions ran different
+presets (`frame_gpu_ms` p50 0.15–0.21 vs 6.71), so the difference is preset-confounded, not
+attributable to the cadence. `deltaTime > 20 ms` is 3.51 % post-fix against a pre-fix range
+of 1.75–3.88 %, i.e. inside the existing spread.
+
+**2. The 0.5 s read margin is too small — the read window clamps on ~25 % of cycles.**
+Separation-to-separation gaps measured 0/1/2/3/4 s (×2/6/16/5/3). Runway is
+`period + margin` = 2.5 s, so the 3 s and 4 s gaps — 8 of 32 cycles — overrun it by 0.5–1.5 s
+and the window pins at the chunk's newest audio until the next chunk lands. Worst-case
+inference alone does it too: 2.0 + 0.649 = 2.649 s > 2.5 s.
+
+**The margin was sized against the wrong quantity.** It was set to absorb inference time;
+the binding constraint is *deferral-induced gap jitter*, which reaches 4 s.
+
+**Recommendation: do not re-tune now.** Clamping costs a brief freeze-then-jump in stem
+features, not extra latency (measured 2.9 s already includes it — pinning to the newest
+audio makes latency momentarily *better*). Covering a 4 s gap needs `margin ≥ 2.0 s`, i.e.
+**4.0 s nominal latency** — paying 1.1 s of permanent latency to remove a discontinuity that
+no shipping preset can currently show, since every stem consumer today drives slow envelopes
+where a sub-second freeze is imperceptible. **It becomes a real decision the moment a
+stem-plotting preset ships** (Stave is exactly that), and it is recorded here so that
+session does not rediscover it.
+
 **Outstanding before this is Resolved:**
 
-1. **No post-fix capture exists.** Three captures were taken on 2026-08-11 after the
-   change was written (`16-41-39Z`, `18-26-52Z`, plus earlier ones); **none carries a
-   `STEM_SEPARATION` line**, so none ran the fixed binary, and all still measure
-   ≈5.3–5.4 s. **One session on a build from `main` at or after `daa9f724` discharges
-   both this and item 3.**
+1. **The measurement is thin.** One 60 s segment on one track, and only **2 of 4 stems**
+   passed the script's `r ≥ 0.40` strength filter — vocals 0.42 and other 0.48, both weak;
+   drums and bass were dropped as unreadable. 2.9 s is therefore a low-confidence number
+   sitting 0.1 s inside the ceiling. Wants one longer capture on a track with clearer
+   rhythmic structure (the pre-fix corpus read drums/bass at r 0.70–0.94).
 2. **The `dsp.stem` manual gate.** Stem timing is felt on every stem-driven preset;
    Aurora Veil (`other_energy_dev` load-bearing), Skein, Meniscus and FFO all shift.
    Needs M7-class observation on at least Aurora Veil. No automated test substitutes.
-3. **Duty cycle unmeasured** — the `STEM_SEPARATION` line reports measured inference
-   and duty per separation; the script summarises min/median/max across a capture. If
-   measured inference is materially above the 142 ms the estimate assumed, 2 s needs
-   revisiting.
 
 #### Related
 
