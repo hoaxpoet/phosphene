@@ -38,7 +38,7 @@ read the crash reports already on disk.**)*
 |---|---|---|---|
 | BUG-085 | P1 · HANG.1–2 complete 2026-08-05; remains open | renderer / app.hang | **App intermittently hangs hard in `CAMetalLayer.nextDrawable`; window unresponsive, force-quit required.** The live stack proves a main-thread drawable request blocked at 0 % CPU after healthy frames, but the cause remains unknown; direct render-path leakage, the capture hook, preset-swap skip, inflight semaphore, GPU completion, display sleep, and occlusion have been ruled out. **HANG.1 instrumentation is merged to `main` via PR #37 (`c54a2e7c`)**. HANG.2 completed a full-track control plus a 10 min 36 s Witchlight soak with 34,811/34,811 drawables balanced and no stalls or imbalances, refuting a deterministic per-frame leak but not identifying the intermittent owner. **THE INSTRUMENTED CAPTURE NOW EXISTS (2026-08-05, session `2026-08-05T21-21-03Z`, Fractal Tree / Cherub Rock)** — and every lifecycle counter is BALANCED at the moment of the hang: `drawable=12045/12045`, `unique_presented=6012/6012`, `command_completed=6012/6012`, `failures=0`, `unpresented=0`, one request outstanding (`pending=frame:6013,site:mesh.descriptor`). The app held ZERO drawables and CoreAnimation still would not vend one, which independently confirms HANG.2's soak: there is no app-side leak, and the owner is outside the app. Two captures 98 s apart are byte-identical on those counters — a PERMANENT block, not a long stall. See the detail section. |
 | BUG-081 | P2 | app.hang | **3 instances now** (2026-08-03 ×1, 2026-08-04 ×2). | **App beachballed ~78 s into session `2026-08-03T22-54-06Z` and needed a force-quit; no `.ips` exists** (force-quit produces none) and `session.log` ends mid-normal-operation with no fatal. **Evidence-only — no root cause asserted.** What the capture DOES establish: the renderer was healthy to the last frame — steady 60 fps, Fractal Tree at **0.18 ms GPU against a 0.7 ms budget**, no degradation trend across 3756 frames; background ML load rising but modest (`stem_analyzer_ms` 0 → 3.4). **Ruled out by test:** FTR.2's shader overflowing the mesh primitive limit via a bad `branch_count` — no non-finite values in the capture and `branch_count` never exceeds 59 against the 63 ceiling. A frozen UI with a live render loop points away from the preset, but that is inference and BUG-061's rule forbids acting on it. **Same class as BUG-060** (force-quit hang, render loop died, no stack captured, never reproduced) — two instances now, both blocked on the same missing artifact. **Next evidence:** `sample PhospheneApp 10 -file ~/Desktop/phosphene-hang.txt` run DURING the beachball, before force-quitting |
-| BUG-086 | P2 | dsp.stem / calibration | **Every per-stem feature reaches presets ≈5.4 s behind the audio, on the local-file path, in steady state — while the beat grid beside it is time-aligned to ≈0.3 s.** Root cause is read, not inferred: separation runs on a fixed 10 s chunk (`modelFrameCount = 431` — the exported Open-Unmix model cannot take a shorter one) every **5 s**, and `runPerFrameStemAnalysis` starts its read window **5 s into** that chunk to buy one separation period of runway. So `lag = chunkLength − startOffset ≥ separationPeriod`, exactly. Measured three independent ways, agreeing: 5.4 s on 39 of 40 stem × track pairs. Affects every stem-driven preset, Aurora Veil's `other_energy_dev` anchor included. Diagnosis only — no fix code, per the multi-increment process. Detail: `docs/diagnostics/CHR1_STEM_DECORRELATION_2026-08-11.md` §7b + §8 |
+| BUG-086 | P2 · **fix code-complete 2026-08-11, validation incomplete** | dsp.stem / calibration | **Every per-stem feature reaches presets ≈5.4 s behind the audio, on the local-file path, in steady state — while the beat grid beside it is time-aligned to ≈0.3 s.** Root cause is read, not inferred: separation runs on a fixed 10 s chunk (`modelFrameCount = 431` — the exported Open-Unmix model cannot take a shorter one) every **5 s**, and `runPerFrameStemAnalysis` starts its read window **5 s into** that chunk to buy one separation period of runway. So `lag = chunkLength − startOffset ≥ separationPeriod`, exactly. Measured three independent ways, agreeing: 5.4 s on 39 of 40 stem × track pairs. Affects every stem-driven preset, Aurora Veil's `other_energy_dev` anchor included. Diagnosis only — no fix code, per the multi-increment process. Detail: `docs/diagnostics/CHR1_STEM_DECORRELATION_2026-08-11.md` §7b + §8 |
 | BUG-084 | P3 | dsp.stem | **`StemAnalyzer` deviation reaches 35 where the primitive's real ceiling is ~3.4** — suspected divide-by-near-zero against a not-yet-converged per-track EMA baseline (the stem-side twin of the BUG-027 / AGC2.4.1 cold-start family). No product impact today: FFO's aurora is defended by the FBS.S3.2 soft knee (35 → 1.64), which is what let BUG-041 close. Filed 2026-08-03 (RECON.2) so it survives that closure — the *input* is wrong even though the output is defended. Unreproduced; fixtures retained |
 | BUG-070 | P2 | audio.capture / resource-management | **Fix landed 2026-07-12 (PUB.6), pending live validation** — a FAILED device-change tap reinstall left `_isCapturing=true` with zero callbacks: engine health detectors starved (SignalHealthMonitor.evaluate is sample-driven → deadTap never confirms) and the router's recovery restart blocked at the alreadyCapturing guard; only the app-layer poll-based stall card surfaced it. Fix: the catch now clears `_isCapturing` (recovery unblocked) and keeps the monitor as a diagnostic beacon; the false "create steps stopped the monitor" comment corrected. Residual OPEN half: the 3-queue lifecycle interleave (device-change reinstall vs silence-recovery vs user stop) stays unserialized — static-only evidence; restructuring the G1-validated (12/12) path without a reproduced artifact is the BUG-063 pattern. Existing breadcrumbs (per-step diagnostics + install generation) are the instrumentation; serialize only if a live session shows an interleave |
 | BUG-076 | P2 | dsp.beat | **Prep grid is window-position unstable on Bleed (Meshuggah) — a third of 30 s windows give a wrong tempo, and Spotify's preview lands on one.** CORRECTED 2026-07-30 after direct measurement (the original filing inferred a universal 3:2 mis-lock from a single session-log value; that was wrong). Measured across nine 30 s windows of the full track: six read ~115 BPM (correct — matches madmom 115.0, librosa 115.0, drums-stem 115.1), but three read 121.1 / 166.1 / 242.7 — a **2.11× spread**, including non-metrical values. `beatsPerBar` swings 2/3/4 on a 4/4 track and `barConfidence` sits at 0.14–0.64. **Control:** Billie Jean over the same windows is 116.9–117.3 with beatsPerBar 4 and barConfidence 1.00 throughout — so this is dense-transient-specific, not universal, and the existing confidence signal already flags it. The session's 174.6 was the preview excerpt landing in the unstable region. Evidence: `docs/diagnostics/BEATBENCH_BASELINE_2026-07-30.md`; reproduce with `BeatBench --audio <clip> --seconds 30`. Category-4 target for Phase DBN (a sequence decoder over the full activation timeline should not be excerpt-dependent); Phase FT removes the 30 s premise for local files |
@@ -469,6 +469,48 @@ worst-case lag is `period + deferral`, not `period`.
   timing is felt on every stem-driven preset — Aurora Veil (whose
   `other_energy_dev` route is load-bearing), Skein, Meniscus, FFO — so M7-class
   observation on at least Aurora Veil before it is called fixed.
+
+#### Fix — code-complete 2026-08-11, NOT yet validated
+
+Period 5.0 s → **2.0 s**, and the read start **derived** from it rather than being a
+fourth independent literal:
+
+```
+stemChunkSeconds            10.0   (pinned to the model, asserted against
+                                    StemSeparator.requiredMonoSamples)
+stemSeparationPeriodSeconds  2.0   (was 5.0)
+stemReadMarginSeconds        0.5   (slack for inference + D-059 deferral)
+stemReadStartSeconds         7.5   (derived: chunk − period − margin)
+→ nominal latency            2.5 s (was ≈5.4 s measured)
+→ inference duty            ≈7 %   (was ≈2.8 %; estimate, see below)
+```
+
+Margin is deliberately > 0: clamping is **not** a stale freeze — the window pins to
+the chunk's *newest* audio, so latency momentarily collapses toward zero and jumps
+back when the next chunk lands, which reads as a glitch rather than a lag.
+
+`STEM_SEPARATION: inference=…ms period=…s duty=…% nominal_latency=…s` now goes to
+`session.log` every separation, so the duty estimate above becomes checkable from a
+capture — it previously rested on a 142 ms figure that existed only in a code
+comment, which is why the pre-fix cost was never verifiable.
+
+`StemSeparationCadenceRegressionTests` (7 tests) asserts the *relationship* rather
+than the values — runway ≥ period, margin > 0, latency < 3 s, read start derived,
+chunk pinned to the model — so retuning the cadence stays free while re-breaking the
+invariant does not.
+
+**Outstanding before this is Resolved:**
+
+1. **App-target tests have not run.** A live `PhospheneApp` (PID 4972) blocks the
+   XCTest host — **BUG-072**, `Could not launch "PhospheneAppTests"`. The new suite
+   is therefore unexecuted. Engine suite is 1809/1810 (sole failure the pre-existing
+   DOC.6 rotation gate), lint clean, app target builds.
+2. **The `dsp.stem` manual gate.** Stem timing is felt on every stem-driven preset;
+   Aurora Veil (`other_energy_dev` load-bearing), Skein, Meniscus and FFO all shift.
+   Needs M7-class observation on at least Aurora Veil.
+3. **Duty cycle unmeasured in a real session** — the `STEM_SEPARATION` line exists
+   for exactly this, but no capture has been taken since the change. If measured
+   inference is materially above 142 ms, 2 s may need revisiting.
 
 #### Related
 

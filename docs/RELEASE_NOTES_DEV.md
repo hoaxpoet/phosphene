@@ -10,6 +10,53 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-11-164751] BUG-086 — every stem-driven preset was running 5.4 s behind the music
+
+Found while measuring driver viability for a plotting preset (CHR.1), where a
+multi-second lag is disqualifying rather than cosmetic. It turned out not to be a
+preset problem: **per-stem features reached presets ≈5.4 s late while the beat grid
+beside them was time-aligned to ≈0.3 s** — on the local-file path, in steady state,
+deep inside tracks. Every stem-driven preset was affected, Aurora Veil's
+`other_energy_dev` anchor included.
+
+**Nothing was miscoded.** Three independent literals across two files described one
+relationship that no line named: separation every 5 s, on a 10 s chunk, with the
+per-frame read window starting 5 s into that chunk. The chunk's newest sample is
+"now", so reading 5 s in reads 5-s-old audio; the window then advances in real time
+and can only do so for `chunkLength − startOffset` before clamping at the chunk's
+end — and that span has to cover one separation period. So **latency ≥ period**,
+and the 5 s head start was runway, not slack.
+
+Chunk length is not a lever: `StemSeparator.modelFrameCount = 431` is fixed by the
+exported Open-Unmix model. The period is the only one, at one full inference each.
+Now 2 s with the read start **derived** from it (`10 − 2 − 0.5` margin), giving
+**2.5 s nominal latency** for ≈7 % inference duty, up from ≈2.8 %.
+
+**Two things worth keeping.** First, the comment that made this invisible was not
+wrong, it was a non-sequitur: *"Features carry ~5-10s of latency … acceptable
+because musical sections persist longer than that."* True premise, and it holds for
+section-scale coupling — but any preset pairing stems against the time-aligned beat
+grid gets two clocks disagreeing by the full lag, and nobody had checked. Second,
+the 142 ms inference figure that the duty estimate rested on lived **only in a code
+comment**; no session artifact carried it, so the estimate could not be checked
+against reality. `STEM_SEPARATION:` now logs measured inference, duty and nominal
+latency to `session.log`, which makes the cadence decision falsifiable from any
+capture.
+
+The measurement that found it is `docs/diagnostics/CHR1_STEM_DECORRELATION_2026-08-11.md`
+§7b–§8 — three independent methods agreeing, with the FFT bands as the alignment
+control at 0.2–0.4 s and a CSV-internal measurement (no WAV at all) putting the lag
+at 5.4 s on 39 of 40 stem × track pairs.
+
+**Status: code-complete, validation incomplete.** Engine suite 1809/1810 (sole
+failure is the pre-existing DOC.6 rotation gate). App-target tests, including the
+new `StemSeparationCadenceRegressionTests`, have not run — a live `PhospheneApp`
+blocks the XCTest host (BUG-072). The `dsp.stem` manual gate is also outstanding:
+stem timing is felt on every stem-driven preset, so Aurora Veil needs M7-class
+observation before this is called resolved.
+
+---
+
 ### [dev-2026-08-10-164918] BUG-078 closed for the second time — the reschedule race, caught with a stack
 
 `AVAudioPlayerNode` teardown was still trapping the engine test process on trees that
