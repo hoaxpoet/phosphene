@@ -538,23 +538,56 @@ wallclock advance and `MLDispatchScheduler` deferral — no unit test can synthe
 and a synthetic one would be the green-test-measuring-the-wrong-thing trap. The honest
 artifact is a measurement over a capture a human supplies.
 
-#### Post-fix capture measured — session `2026-08-11T23-35-27Z` (Matt, 2026-08-11)
+#### Post-fix captures — two sessions, 2026-08-11 (`23-35-27Z`, `23-44-40Z`)
 
-**The fix works: measured lag 5.4 s → 2.9 s**, PASS against the 3.0 s ceiling. Two
-findings alongside it, one of which was a stated caveat firing.
+> **⚠ CORRECTION.** This section first reported "measured lag 5.4 s → 2.9 s, PASS" from
+> `23-35-27Z`. **Withdrawn — that was a false pass.** It rested on r 0.42/0.48 with no peak
+> behind it, squeaking past a `MIN_R` floor of 0.40 that was too permissive. The floor is
+> **0.60** now and both post-fix captures correctly report **INCONCLUSIVE**. The fix's
+> *direction* is confirmed (the lag peak moved from a sharp 5.4 s to somewhere in 0–3 s) but
+> **post-fix latency is not yet measured**, and the duty numbers below — which are direct log
+> readouts, not correlations — are unaffected.
 
-| | assumed at BUG086.1 | **measured** |
+**The tool needs a long capture, and that is not a post-fix phenomenon.** Correlation quality
+is a property of the capture, measured across the corpus:
+
+| capture regime | r | shape |
 |---|---|---|
-| inference per separation | 142 ms (a code comment) | **335 ms median** (min 284, max 649; n=33) |
-| inference duty at 2 s period | ≈7 % | **≈20.5 %** |
-| preset-facing lag | 2.5 s nominal | **2.9 s** |
+| `beat-match-test-session` (88 min, 16 tracks) | **0.70–0.94** | sharp unimodal peak |
+| single-track captures, 1–4 min | **0.19–0.48** | flat, no peak |
 
-**1. Inference is 2.4× the assumed cost, so duty is ≈20.5 %, not ≈7 %.** This is exactly
+Both regimes appear in **pre-fix** captures — `2026-08-11T01-07-17Z` (Cherub Rock, 255 s,
+pre-fix) reads r 0.19–0.36 — so short-capture weakness is not caused by anything BUG086.1
+changed, and is not evidence about the fix either way.
+
+**Two hypotheses for the weak post-fix correlation were tested and both refuted**, recorded
+so they are not re-run: (1) *clamping degrades the features* — correlation on clamped vs
+unclamped frames is identical (drums 0.388 vs 0.381; bass 0.413 vs 0.368), so clamping costs
+timing fidelity nothing measurable; (2) *the reference signal is too flat* — post-fix
+reference SD is **higher** than pre-fix (0.118/0.142 vs 0.071/0.115). A third guess was not
+made; the honest state is that short captures are below this measurement's resolution.
+
+**What a like-for-like before/after needs:** the same 16-track BeatBench corpus replayed on a
+fixed build. That is the only capture that has ever produced a clean number, and reusing it
+makes the comparison identical-material rather than a different track at a different length.
+
+Two findings that DO stand, both from direct `session.log` readouts:
+
+| | assumed at BUG086.1 | **measured `23-35-27Z`** | **measured `23-44-40Z`** |
+|---|---|---|---|
+| inference per separation | 142 ms (a code comment) | **335 ms** median (284–649, n=33) | **478 ms** median (421–596, n=63) |
+| inference duty at 2 s period | ≈7 % | **≈20.5 %** | **≈25.6 %** |
+| preset-facing lag | 2.5 s nominal | inconclusive | inconclusive |
+
+**1. Inference is 2.4–3.4× the assumed cost, so duty is 20–26 %, not ≈7 %.** This is exactly
 the caveat this entry flagged — the 142 ms figure existed only in a code comment with no
-artifact behind it, and it was wrong.
+artifact behind it, and it was wrong. Note the second capture is *higher* than the first
+(478 ms vs 335 ms median, and its **minimum** 421 ms exceeds the first capture's median), so
+inference cost is variable across material or system load, not a single constant.
 
 **It is nonetheless sustainable, on the engine's own signal.** 33 separations over a 65 s
-span against 33 expected at a 2 s cadence: `MLDispatchScheduler` (D-059) is absorbing the
+span against 33 expected, and 63 over 124 s in the second capture — both at the nominal 2 s
+cadence: `MLDispatchScheduler` (D-059) is absorbing the
 load with jitter, not falling behind. Frame-pacing comparison against pre-fix captures is
 **inconclusive and should not be quoted** — the pre- and post-fix sessions ran different
 presets (`frame_gpu_ms` p50 0.15–0.21 vs 6.71), so the difference is preset-confounded, not
@@ -570,9 +603,11 @@ inference alone does it too: 2.0 + 0.649 = 2.649 s > 2.5 s.
 **The margin was sized against the wrong quantity.** It was set to absorb inference time;
 the binding constraint is *deferral-induced gap jitter*, which reaches 4 s.
 
-**Recommendation: do not re-tune now.** Clamping costs a brief freeze-then-jump in stem
-features, not extra latency (measured 2.9 s already includes it — pinning to the newest
-audio makes latency momentarily *better*). Covering a 4 s gap needs `margin ≥ 2.0 s`, i.e.
+**Recommendation: do not re-tune now — and this is now tested, not assumed.** The earlier
+version of this paragraph argued clamping was probably imperceptible. It was then measured
+directly: correlation on clamped frames matches unclamped frames (drums 0.388 vs 0.381; bass
+0.413 vs 0.368), so clamping costs timing fidelity nothing detectable. It also costs no extra
+latency — pinning to the newest audio makes latency momentarily *better*. Covering a 4 s gap needs `margin ≥ 2.0 s`, i.e.
 **4.0 s nominal latency** — paying 1.1 s of permanent latency to remove a discontinuity that
 no shipping preset can currently show, since every stem consumer today drives slow envelopes
 where a sub-second freeze is imperceptible. **It becomes a real decision the moment a
@@ -581,11 +616,10 @@ session does not rediscover it.
 
 **Outstanding before this is Resolved:**
 
-1. **The measurement is thin.** One 60 s segment on one track, and only **2 of 4 stems**
-   passed the script's `r ≥ 0.40` strength filter — vocals 0.42 and other 0.48, both weak;
-   drums and bass were dropped as unreadable. 2.9 s is therefore a low-confidence number
-   sitting 0.1 s inside the ceiling. Wants one longer capture on a track with clearer
-   rhythmic structure (the pre-fix corpus read drums/bass at r 0.70–0.94).
+1. **Post-fix latency is still unmeasured.** Both post-fix captures are INCONCLUSIVE under
+   the corrected `MIN_R = 0.60`. **Replay the 16-track BeatBench corpus on a fixed build** —
+   identical material to the pre-fix 5.4 s baseline, and the only capture regime that has
+   produced r 0.70–0.94. A 1–4 minute single track is below this measurement's resolution.
 2. **The `dsp.stem` manual gate.** Stem timing is felt on every stem-driven preset;
    Aurora Veil (`other_energy_dev` load-bearing), Skein, Meniscus and FFO all shift.
    Needs M7-class observation on at least Aurora Veil. No automated test substitutes.

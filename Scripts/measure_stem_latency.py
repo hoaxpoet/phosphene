@@ -47,6 +47,24 @@ healthy data is worse than no check.
 What IS guarded is estimate strength: a lag read off a weak correlation is not a
 measurement, so segments whose best r falls below `MIN_R` are reported
 inconclusive rather than given a number.
+
+Capture scale — this tool needs a LONG capture
+----------------------------------------------
+`MIN_R` was 0.40 and that was too permissive. Measured across the corpus, the
+correlation this method achieves is a property of the *capture*, not of the fix:
+
+    beat-match-test-session   88 min, 16 tracks   r 0.70-0.94   sharp unimodal peak
+    single-track captures     1-4 min             r 0.19-0.48   flat, no peak
+
+Both regimes appear in PRE-fix captures, so the weakness is not caused by anything
+BUG086.1 changed. At 0.40 a 76 s capture returned "PASS 2.9 s" off r 0.42/0.48 —
+a number with no peak behind it, reported as validation. That was a false pass and
+the floor is 0.60 now.
+
+**A trustworthy before/after needs a BeatBench-scale capture on the fixed build** —
+ideally the same 16-track corpus that produced the pre-fix 5.4 s, so the comparison
+is like-for-like on identical material. Short captures are below the resolution of
+this measurement; the tool now says so instead of guessing.
 """
 import argparse
 import csv
@@ -62,7 +80,8 @@ LAG_STEP_FRAMES = 6
 WIN_MIN_FRAMES = 3600          # ≥60 s of track; shorter segments are too noisy
 EMA_S = 8.0
 TARGET_S = 3.0                 # BUG086.1 ceiling; nominal is 2.5 s
-MIN_R = 0.40                   # below this a peak lag is noise, not a measurement
+MIN_R = 0.60                   # see "Capture scale" below — 0.40 handed out a false PASS
+MIN_TRACK_S = 240.0            # single short tracks are below this tool's resolution
 
 
 def load(path):
@@ -200,6 +219,7 @@ def measure(capture):
         if b - a < WIN_MIN_FRAMES:
             continue
         name = names[k] if k < len(names) else "?"
+        short = (b - a) / FPS < MIN_TRACK_S
 
         bass = column(findex, frows, "bass", a, b)
         mid = column(findex, frows, "mid", a, b)
@@ -230,7 +250,11 @@ def measure(capture):
         worst = max(lag for _, lag, _ in lags)
         mark = "PASS" if worst < TARGET_S else "FAIL"
         detail = "  ".join(f"{s[:3]} {lag:.1f}s(r{r:+.2f})" for s, lag, r in lags)
-        print(f"  {name[:26]:26s} {mark}  worst {worst:4.1f}s  | {detail}")
+        if short:
+            mark = mark + "?"
+        print(f"  {name[:26]:26s} {mark:5s} worst {worst:4.1f}s  | {detail}"
+              + (f"   [only {(b-a)/FPS:.0f}s — below {MIN_TRACK_S:.0f}s, treat as indicative]"
+                 if short else ""))
         verdicts.append((name, worst))
 
     measured = [w for _, w in verdicts if w is not None]
