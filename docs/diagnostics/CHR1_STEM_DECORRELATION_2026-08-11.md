@@ -1,8 +1,9 @@
 # CHR.1 — Per-stem decorrelation measurement (2026-08-11)
 
 **Increment:** CHR.1 (MD.6 uplift #8 candidate, source `Martin - charisma`).
-**Status: stopped at the task-4 concept gate. No design doc written, no
-references curated, no decision filed.** This file is the measurement, kept
+**Status: direction A (two traces, rhythm vs melodic) picked by Matt and gated
+pass. Then blocked again on a latency finding — see §7b.** No design doc written,
+no references curated, no decision filed. This file is the measurement, kept
 because it is register-general and outlives whichever concept Matt picks next.
 
 **What was being tested.** The proposed preset ("Stave") draws four luminous
@@ -215,6 +216,83 @@ Measured while the concept was still live; kept because it is concept-independen
   gridlines from `beatPhase01`** — one of the two behaviours is wrong.
 
 ---
+
+## 7a. Direction A gated (Matt picked A, 2026-08-11)
+
+**A passes.** Direction A's traces are averages of tightly-correlated pairs, so
+`r(drums,vocals) = +0.43…+0.85` does not settle `r(R, M)` — averaging inside a
+pair barely shrinks that pair's variance while preserving the shared envelope.
+Measured directly, on 17 tracks:
+
+    R = mean(drumsEnergyRel, bassEnergyRel)
+    M = mean(vocalsEnergyRel, otherEnergyRel)
+
+| | median across 17 tracks | range | rotation control |
+|---|---|---|---|
+| `r(R, M)` | **+0.756** | +0.558 … +0.950 | ≈ 0.00 |
+| divergence ratio `std(R−M) / mean(std(R), std(M))` | **0.75** | 0.485 … 0.961 | ≈ 1.45 |
+
+The divergence ratio is the design-relevant one: the gap between the two traces
+is 49–96 % of the motion scale each trace makes, i.e. plainly visible. Weakest
+full-length cases are *Dance Yrself Clean* 0.485 and *Take Five* 0.493 — still
+half the motion scale. And `r(R,M)` swings **within** tracks (*Giorgio* p10 +0.32
+→ p90 +0.91; *Bohemian Rhapsody* +0.39 → +0.91), so converge-and-diverge is
+measured behaviour, not an aspiration. That swing is direction A's central
+visual event.
+
+## 7b. Preset-facing latency (task 3c) — the finding that outranks the above
+
+**The per-stem features run a fixed ≈5.4 s behind the real-time band features.**
+This contradicts the CHR.1 prompt's assumption that the lag was a live-capture
+problem and the local-file path would be clean. It is not: every measurement
+below is a local-file session.
+
+Three independent measurements, escalating in cleanliness:
+
+1. **Tap cross-correlation, cold start** (`2026-08-11T01-07-17Z`, 30 s tap):
+   FFT bands `bass`/`mid`/`treble` peak at −0.30 … +0.08 s. Every stem
+   `energyRel` has *no* peak inside ±3 s; widening to ±20 s finds a single broad
+   unimodal peak at **≈10 s** (r +0.58), rising monotonically from r −0.05 at
+   lag 0. No secondary peaks, so not aliasing.
+2. **Tap cross-correlation, steady state** (`beat-match-test-session`, full
+   2.04 GB tap, four 60 s windows ≥ 90 s into a track, long past the ~10 s
+   crossfade): control `bass` peaks at **0.20–0.40 s** — alignment confirmed —
+   while every stem peaks at **5.61 / 5.81 / 5.61 / 5.61 s**. So the lag is
+   steady state, not a cold-start artifact.
+3. **CSV-internal, no WAV at all** — each stem feature against the time-aligned
+   `bass+mid` band sum, both recorded at 60 Hz, which removes any
+   envelope-matching concern: **5.4 s on 39 of 40 stem × track measurements**,
+   with r up to +0.94. The single outlier is the *Cherub Rock* capture, whose
+   correlations are weak throughout (r 0.19–0.36).
+
+This agrees with TRK.2's independent 5–10 s finding and with the documented
+Layer-5a behaviour ("pre-analyzed from preview clips … **not time-aligned**").
+
+**Why it outranks the decorrelation result for this concept specifically.** The
+beat grid this preset rules its field with *is* time-aligned (`grid_bpm`,
+`beatPhase01`). Traces 5.4 s late against in-sync gridlines contradict each other
+on screen: trace peaks land visibly off the lines, and with an ~8 s scroll window
+the listener's current moment is not on screen at all. For a preset whose premise
+is "the marks on screen are the audio", that is a defect in the premise, not a
+footnote.
+
+**A time-aligned alternative exists and separates better.** Same two statistics,
+on a 6-band spectral stand-in for the same rhythm-vs-melodic axis
+(`R_spec = mean(subBass, lowBass)`, `M_spec = mean(midHigh, highMid, high)`, each
+band EMA-centred per FA #31), lag ≈ 0.3 s:
+
+| | stem split (5.4 s late) | spectral split (0.3 s) |
+|---|---|---|
+| median `r` | +0.756 | **+0.055** |
+| median divergence | 0.75 | **1.88** |
+
+The spectral traces are effectively uncorrelated — divergence *above* the 1.45
+independence null means mildly anti-correlated, i.e. a legible see-saw between
+low and high register. Cost: they are registers, not instruments (a low piano
+chord reads as "rhythm"; a broadband snare splits across both), and there is no
+converge/diverge story to replace the one the stem split has.
+
+**This is a product decision and is with Matt.** Not resolved here.
 
 ## 8. What was not done
 
