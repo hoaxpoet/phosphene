@@ -294,7 +294,61 @@ converge/diverge story to replace the one the stem split has.
 
 **This is a product decision and is with Matt.** Not resolved here.
 
-## 8. What was not done
+## 8. Root cause of the 5.4 s (Matt: "chase the 5.4 s first", 2026-08-11)
+
+Filed as **BUG-086**. Read from source, not inferred — three lines do it:
+
+| Where | What it says |
+|---|---|
+| `PhospheneApp/VisualizerEngine+Stems.swift:49` | `timer.schedule(deadline: .now() + 10, repeating: 5.0)` — separation every **5 s** |
+| `PhospheneApp/VisualizerEngine+Stems.swift:166` | `stemSampleBuffer.snapshotLatest(seconds: 10, …)` — the chunk is the latest **10 s**, so its start is 10 s old and its end is "now" |
+| `PhospheneApp/VisualizerEngine+Audio.swift:333` | `let startSample = Int(5.0 * sampleRate)` — the per-frame read window starts **5 s into** the chunk, then advances at real time |
+
+Reading at 5 s into a chunk whose end is "now" means reading audio that is 5 s
+old. The window then advances at real time, so the lag *holds* at 5 s until it
+reaches the chunk's end — which takes exactly `chunkLength − startOffset` = 5 s,
+i.e. one separation period, at which point a fresh chunk resets it.
+
+> **lag = chunkLength − startOffset, and that quantity must be ≥ the separation
+> period, or the read clamps at the chunk end and the features freeze between
+> separations. So lag ≥ separationPeriod.**
+
+The 5 s head start is not slack — it is the runway. Measured 5.4 s against a
+predicted 5.0 s; the extra ≈0.4 s is inference time, scheduler deferral, the
+1024-sample window and EMA smoothing.
+
+**Chunk length is not a lever.** `StemSeparator.modelFrameCount = 431` is
+commented "Fixed number of STFT frames the model expects", giving
+`requiredMonoSamples = 440320` ≈ 10 s at 44.1 kHz. A shorter chunk needs a
+re-exported Open-Unmix model.
+
+**So the only lever is the separation period**, at one full inference per period
+(cost fixed — the model always consumes 10 s regardless of how much is used):
+
+| period | resulting lag | inference duty |
+|---|---|---|
+| 5 s (today) | ≈5 s | ≈2.8 % |
+| 2 s | ≈2 s | ≈7.1 % |
+| 1 s | ≈1 s | ≈14.2 % |
+
+`startSample` moves to `chunkLength − period` in the same change, or the freeze
+described above replaces the lag.
+
+Two caveats, both flagged rather than resolved:
+
+- The **142 ms inference figure is a code comment** (`VisualizerEngine+Stems.swift:211`),
+  not a measurement. No session artifact records separation cost — `stem_analyzer_ms`
+  is the per-frame analyzer, not the MPSGraph call. Measuring it is step 1 of a fix.
+- `MLDispatchScheduler` (D-059) already defers when frames run over budget, with a
+  2 s ceiling, so worst-case lag is `period + deferral`. Short periods make
+  deferral common, which is the risk the table above does not price.
+
+**Scope note.** This is the diagnosis increment per the `defect-handling`
+multi-increment process: instrumentation and root cause, no fix code. The fix is
+its own increment with its own verification, and it touches every stem-driven
+preset, so it is not bundled into a preset increment.
+
+## 9. What was not done
 
 Tasks 5–8 of the CHR.1 prompt (history-mechanism confirmation, reference
 curation, `STAVE_DESIGN.md`, the `DECISIONS.md` entry) were **not started**, per
