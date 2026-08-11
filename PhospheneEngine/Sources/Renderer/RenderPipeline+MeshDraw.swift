@@ -63,7 +63,9 @@ extension RenderPipeline {
         bindNoiseTextures(to: encoder)
 
         // Delegate pipeline state selection and draw dispatch to the generator.
-        meshGenerator.draw(encoder: encoder, features: features)
+        // FTR.4 — the same `stemFeatures` the fragment stage got above now also reaches the
+        // OBJECT and MESH stages, which is where a mesh preset decides its geometry.
+        meshGenerator.draw(encoder: encoder, features: features, stems: stemFeatures)
 
         encoder.endEncoding()
         instrumentedPresent(drawable, on: commandBuffer)

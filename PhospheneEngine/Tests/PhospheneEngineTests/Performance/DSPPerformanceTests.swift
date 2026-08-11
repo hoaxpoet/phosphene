@@ -14,7 +14,7 @@ final class DSPPerformanceTests: XCTestCase {
 
         measure {
             for frame in frames {
-                _ = analyzer.process(magnitudes: frame)
+                _ = analyzer.process(magnitudes: frame, deltaTime: 1024.0 / 44100.0)
             }
             analyzer.reset()
         }
@@ -27,7 +27,7 @@ final class DSPPerformanceTests: XCTestCase {
 
         measure {
             for frame in frames {
-                _ = extractor.process(magnitudes: frame)
+                _ = extractor.process(magnitudes: frame, deltaTime: 1024.0 / 44100.0)
             }
         }
     }

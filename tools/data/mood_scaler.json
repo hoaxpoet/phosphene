@@ -1,38 +1,39 @@
 {
-  "feature_names": [
-    "subBass",
-    "lowBass",
-    "lowMid",
-    "midHigh",
-    "highMid",
-    "high",
-    "centroid",
-    "flux",
-    "majorCorr",
-    "minorCorr"
-  ],
-  "means": [
-    0.1272018402814865,
-    0.20593886077404022,
-    0.12508513033390045,
-    0.03841721639037132,
-    0.010676047764718533,
-    0.0050163245759904385,
-    0.11826906353235245,
-    0.25157615542411804,
-    0.5307288765907288,
-    0.5094026327133179
-  ],
-  "stds": [
-    0.12225166708230972,
-    0.13055114448070526,
-    0.0825742855668068,
-    0.030434895306825638,
-    0.014626867137849331,
-    0.013764978386461735,
-    0.07421354204416275,
-    0.20444412529468536,
-    0.15677136182785034,
-    0.12204064428806305
-  ]
+ "feature_names": [
+  "subBass",
+  "lowBass",
+  "lowMid",
+  "midHigh",
+  "highMid",
+  "high",
+  "centroid",
+  "flux",
+  "majorCorr",
+  "minorCorr"
+ ],
+ "means": [
+  0.1272018402814865,
+  0.20593886077404022,
+  0.12508513033390045,
+  0.03841721639037132,
+  0.010676047764718533,
+  0.0050163245759904385,
+  0.11826906353235245,
+  0.56498,
+  0.5307288765907288,
+  0.5094026327133179
+ ],
+ "stds": [
+  0.12225166708230972,
+  0.13055114448070526,
+  0.0825742855668068,
+  0.030434895306825638,
+  0.014626867137849331,
+  0.013764978386461735,
+  0.07421354204416275,
+  0.434,
+  0.15677136182785034,
+  0.12204064428806305
+ ],
+ "provenance_flux": "DYN.6.2 (2026-08-09): feature 'flux' refitted on the 27,638-track CorpusCensusRunner corpus (mean 0.56498, std 0.43400), replacing the 818-track live-annotated training fit (mean 0.25158, std 0.20444). The training fit was NOT stale \u2014 it reproduced its own set exactly \u2014 but its maximum flux is 1.0167 and 15.3% of the corpus exceeds that, so the model extrapolated on this feature. All other features remain training-fitted. Accepted on the objective corpus A/B in MoodScalerRefitABTests."
 }

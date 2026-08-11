@@ -145,7 +145,8 @@ struct SurgeLoudnessProfileRealAudioTests {
                 }
             }
             fft.computeMagnitudes()
-            let result = analyzer.process(magnitudes: fft.magnitudes)
+            let result = analyzer.process(magnitudes: fft.magnitudes,
+                                          deltaTime: Float(fftSize) / Float(sampleRate))
             frames.append(Frame(
                 time: Double(offset) / Double(sampleRate),
                 level: LoudnessProfile.levelDB(magnitudes: fft.magnitudes, count: fft.binCount),

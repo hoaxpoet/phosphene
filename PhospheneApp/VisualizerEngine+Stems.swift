@@ -540,6 +540,14 @@ extension VisualizerEngine {
 
         stemAnalyzer.reset()
 
+        // DYN.7 — a 7 s mood window must not carry the previous track's material into the
+        // new one's first seconds, which is exactly when preparation and the planner read
+        // it. The old accumulator had no reset at all: `featureAccumInitialized` was set
+        // once per SESSION, so every track after the first inherited its predecessor's
+        // window. Same class as the stale-@Published trap in CLAUDE.md §What NOT To Do —
+        // populated on one path, never cleared on the complementary one.
+        moodAccumulator.reset()
+
         // FBS / D-154: resolve the new track's beat regularity once, while the
         // cache is reachable (MainActor). Consumed by the reactive evaluate off
         // the analysis path. nil (uncached / no identity) = permissive.

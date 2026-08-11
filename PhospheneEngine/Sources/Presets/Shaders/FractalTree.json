@@ -41,6 +41,11 @@
     },
     {
       "route": "melodic_tips",
+      "primitive": "otherOnsetRate",
+      "kind": "continuous"
+    },
+    {
+      "route": "tips_cold_start",
       "primitive": "beatMid",
       "kind": "continuous"
     },

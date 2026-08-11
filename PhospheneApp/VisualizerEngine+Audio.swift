@@ -41,6 +41,13 @@ extension VisualizerEngine {
         audioRouter.onAudioCaptureDiagnostic = { [weak recorder] msg in
             recorder?.log("TAP: \(msg)")
         }
+        // DYN.3.1 — engine one-shot diagnostics into session.log. The DYN.3 canopy probe
+        // wrote through os.Logger and its first session came back with nothing: no engine
+        // os.Logger line has ever reached session.log, and the unified log had rolled off
+        // before the artifact was read. Same route `TAP:` already takes, same reason.
+        mirPipeline.onDiagnostic = { [weak recorder] msg in
+            recorder?.log(msg)
+        }
 
         // ASH.1: fresh session → clear stale silence timing / prior health, and
         // log + publish each health state CHANGE (not per-window). The overlay
@@ -245,7 +252,7 @@ extension VisualizerEngine {
 
         analysisFrameCount += 1
 
-        accumulateMoodFeatures(fv: fv, mir: mir)
+        accumulateMoodFeatures(fv: fv, mir: mir, deltaTime: 1.0 / max(effectiveFps, 1))
 
         // Per-frame stem analysis. Slides a 1024-sample window through the
         // most recent separated stem waveforms at real-time rate so
@@ -270,7 +277,14 @@ extension VisualizerEngine {
         var moodClassifierMs: Float = 0
         if let mood = moodClassifier {
             let moodT0 = DispatchTime.now().uptimeNanoseconds
-            runMoodClassifier(mood: mood, fv: fv, mir: mir, magnitudes: magnitudes)
+            let moodDeltaTime = 1.0 / max(effectiveFps, 1)
+            runMoodClassifier(
+                mood: mood,
+                fv: fv,
+                mir: mir,
+                magnitudes: magnitudes,
+                deltaTime: moodDeltaTime
+            )
             moodClassifierMs = Float(DispatchTime.now().uptimeNanoseconds - moodT0) / 1_000_000.0
         }
 
@@ -373,33 +387,29 @@ extension VisualizerEngine {
     }
 
     /// EMA-accumulate the 10 features that the mood classifier consumes.
-    func accumulateMoodFeatures(fv: FeatureVector, mir: MIRPipeline) {
+    ///
+    /// DYN.7 — the assembly and the smoothing both moved into `MoodFeatureAccumulator`,
+    /// shared with `SessionPreparer+Analysis`. Two call sites hand-writing "the same"
+    /// ten-element literal and each applying their own alpha is how the prepared mood and
+    /// the live mood drifted 40× apart in smoothing window; one type makes that
+    /// unrepresentable.
+    func accumulateMoodFeatures(fv: FeatureVector, mir: MIRPipeline, deltaTime: Float) {
         // BUG-053: normalize by the live Nyquist (tap rate / 2), not a hardcoded
         // 24 kHz. With the rate-aware SpectralAnalyzer, `rawSmoothedCentroid` is
         // now true Hz; a fixed 24 kHz divisor would mis-scale the mood centroid
         // feature on any tap ≠ 48 kHz (previously the over-count and the fixed
         // divisor cancelled — fixing one without the other reintroduces error).
         let nyquist = mir.sampleRate / 2.0
-        let centroidNorm = mir.rawSmoothedCentroid / nyquist
-        let frameFeatures: [Float] = [
-            fv.subBass, fv.lowBass, fv.lowMid,
-            fv.midHigh, fv.highMid, fv.high,
-            centroidNorm, mir.rawSmoothedFlux,
-            mir.latestMajorKeyCorrelation,
-            mir.latestMinorKeyCorrelation
-        ]
-
-        if !featureAccumInitialized {
-            accumulatedFeatures = frameFeatures
-            featureAccumInitialized = true
-            return
-        }
-
-        let alpha = Self.featureEmaAlpha
-        for idx in 0..<10 {
-            accumulatedFeatures[idx] = alpha * frameFeatures[idx]
-                + (1 - alpha) * accumulatedFeatures[idx]
-        }
+        accumulatedFeatures = moodAccumulator.update(
+            frameFeatures: MoodFeatureAccumulator.assemble(
+                bands: [fv.subBass, fv.lowBass, fv.lowMid, fv.midHigh, fv.highMid, fv.high],
+                centroidNormalized: nyquist > 0 ? mir.rawSmoothedCentroid / nyquist : 0,
+                rawFlux: mir.rawSmoothedFlux,
+                majorCorrelation: mir.latestMajorKeyCorrelation,
+                minorCorrelation: mir.latestMinorKeyCorrelation
+            ),
+            deltaTime: deltaTime
+        )
     }
 
     // MARK: - Mood Classification
@@ -409,7 +419,8 @@ extension VisualizerEngine {
         mood: MoodClassifier,
         fv: FeatureVector,
         mir: MIRPipeline,
-        magnitudes: [Float]
+        magnitudes: [Float],
+        deltaTime: Float
     ) {
         let features = accumulatedFeatures
 
@@ -423,7 +434,11 @@ extension VisualizerEngine {
             )
         }
 
-        guard let state = try? mood.classify(features: features) else { return }
+        // DYN.7 — one analysis frame of wall clock per call; the output window is
+        // 0.7 s regardless of how often this runs.
+        guard let state = try? mood.classify(features: features,
+                                             deltaTime: deltaTime)
+        else { return }
 
         if analysisFrameCount % 60 == 0 {
             writeDiagnosticLine(state: state, mir: mir)

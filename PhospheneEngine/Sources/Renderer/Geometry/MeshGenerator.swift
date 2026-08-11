@@ -14,7 +14,7 @@
 //                           configuration: .init(meshThreadCount: 64))
 //
 //   // Each frame inside a render pass:
-//   gen.draw(encoder: encoder, features: currentFeatures)
+//   gen.draw(encoder: encoder, features: currentFeatures, stems: currentStems)
 
 import Metal
 import Shared
@@ -189,9 +189,20 @@ public final class MeshGenerator: @unchecked Sendable {
     /// - Parameters:
     ///   - encoder: Active render command encoder.
     ///   - features: Current audio feature vector — bound at buffer(0) for all stages.
-    public func draw(encoder: MTLRenderCommandEncoder, features: FeatureVector) {
+    /// - Parameter stems: per-stem features, bound at buffer(3) on every mesh-pipeline
+    ///   stage (FTR.4). **Until this existed, mesh presets were blind to stems in the one
+    ///   stage that decides geometry.** `RenderPipeline.drawWithMeshShader` has always bound
+    ///   them at FRAGMENT buffer(3), so a mesh preset could colour by stem but not SHAPE by
+    ///   stem — the object shader, which computes branch counts and thread dispatch, had no
+    ///   access. That blocked Fractal Tree from routing its tips to the guitar (D-212 /
+    ///   FTR.4), and it blocks every future mesh preset the same way. Shared renderer code:
+    ///   binding here means every mesh preset inherits it.
+    public func draw(encoder: MTLRenderCommandEncoder,
+                     features: FeatureVector,
+                     stems: StemFeatures = .zero) {
         encoder.setRenderPipelineState(pipelineState)
         var feat = features
+        var stemFeat = stems
 
         if usesMeshShaderPath {
             // Bind features to all mesh-pipeline stages so preset shaders can read
@@ -203,6 +214,10 @@ public final class MeshGenerator: @unchecked Sendable {
             var density = densityMultiplier
             encoder.setObjectBytes(&density, length: MemoryLayout<Float>.stride, index: 1)
             encoder.setMeshBytes(&density, length: MemoryLayout<Float>.stride, index: 1)
+            // FTR.4 — StemFeatures at buffer(3), matching the slot the fragment stage and
+            // every non-mesh path already use. Same slot everywhere is the contract.
+            encoder.setObjectBytes(&stemFeat, length: MemoryLayout<StemFeatures>.stride, index: 3)
+            encoder.setMeshBytes(&stemFeat, length: MemoryLayout<StemFeatures>.stride, index: 3)
         }
         encoder.setFragmentBytes(&feat, length: MemoryLayout<FeatureVector>.stride, index: 0)
 

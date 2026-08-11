@@ -1806,6 +1806,265 @@ premise.** The limit is physical, not a tuning failure.
 
 **Sequencing.** DYN.1 first — it is cheap, well-understood, and fixes the complaint Matt has raised in three consecutive reviews. MEL.1 second, and only after a live confirmation that dynamics alone did not resolve the "melody" feedback: it is plausible that a tree which grows correctly with the music reads as melodic without any melody signal, since that is exactly how the original illusion worked.
 
+**DYN.3 — instrument the canopy data path.** ✅ (2026-08-09) A diagnostic increment, deliberately shipping no behavioural change, because the fix cannot be chosen until one fact is known.
+
+**The premise of this increment was wrong when Matt approved it, and the correction is the first result.** I reported that the canopy's trunk/thickness/branch-count read `arousal`, measured at a ~0.01 span, and Matt scoped the increment on that. Re-read against the shader: `reach = saturate(max(0.10 * arousalReach, fullness) * musicGate)` where `fullness = spectral_section_ratio * 0.5`. Measured on his session `2026-08-07T22-59-38Z`, **the section-ratio arm wins on 100 % of frames** — the arousal floor never binds, and I had measured the wrong variable.
+
+**What is established.** Run through the production objects (`LoudnessProfile.measure` + `SpectralAnalyzer`, `TrunkTrajectoryReportTests`):
+
+| source | `spectral_section_ratio` | canopy reach |
+|---|---|---|
+| Cherub Rock, file, full track | 0.00 … 2.00 | 0.00 … 1.00, grows *and* recedes, motion 0.053/s |
+| Hummer, file, full track | 0.00 … 2.00 | 0.00 … 1.00, motion 0.021/s |
+| Matt's tap capture, own profile | 0.00 … 2.00 | 0.00 … 1.00 |
+| Matt's tap capture, **his cached profile** | 0.00 … 2.00 | 0.00 … 1.00 |
+| **the same audio, live** | **0.785 … 1.084** | **0.38 … 0.50** |
+
+So the mechanism is not broken, the cached profile is intact (33 level + 33 density quantiles, innerRange 1.44 dB ≥ the 0.5 floor), and the file-vs-tap pairing is not the cause — offline reproduces the full range with his own profile against his own tap audio.
+
+**What is NOT established, and was not guessed.** The field has exactly two sources — DYN.2c's ranked branch and DYN.2b's live-EMA fallback — and their signatures differ (the fallback is a ratio of two EMAs of one signal, so it sits near 1.0 by construction, which is what the live capture looks like). **One recorded column cannot say which ran.** A hop sweep on the offline harness collapsed the range at 59.5 fps but *not monotonically* (21.5 → 0.25, 43.1 → 2.00, 59.5 → 0.58, 86.1 → 2.00), because changing the hop changes sample coverage as well as rate — a confounded instrument, so no cause was attributed to it.
+
+**Shipped:** a one-shot per-track `DENSITY_PATH: branch=… fps=… tau_section=… span=…` log line, plus `MIRPipeline.canopyDensityBranch` / `.canopyAnalysisFPS`. The analysis rate is recorded because every density leg uses a per-FRAME alpha, so its time constant is `1/(α·fps)`; the constants were calibrated at ~43 fps and **the live rate has never been measured**. Five tests gate the classifier itself (`CanopyDensityPathTests`) — ranked, no-profile, no-density-quantiles, profile-unusable, and cleared-on-track-change — because a diagnostic that names the wrong branch would send the next increment after the wrong cause, which this sequence has already done once.
+
+**Done-when remaining:** one ~60 s local-file session from Matt; the `DENSITY_PATH:` line then selects the fix with no further inference.
+
+**DYN.4 — a time constant must mean seconds.** ✅ (2026-08-09) The fix DYN.3 was instrumenting for, found by arithmetic rather than by the probe.
+
+**The defect.** Every density follower was an EMA with a constant per-FRAME alpha, so its real width was `1/(α·fps)` — a number that moves with the analysis rate. The constants were calibrated at 43.07 Hz (44.1 kHz / 1024, the offline hop). Measured directly from Matt's session `2026-08-10T01-29-10Z`, **the live pipeline runs at 59.9 Hz**:
+
+| leg | documented | actually live |
+|---|---|---|
+| section | τ 20 s | **14.4 s** |
+| normal | τ 45 s | **32.1 s** |
+
+**Why that compresses the canopy.** `LoudnessProfile.measure` builds `densityQuantiles` from a τ20 s-smoothed series, and its header claimed it *"mirrors the live path frame for frame"* — true only while the live path also ran at 43 Hz. Ranking a τ14.4 s signal against a τ20 s distribution pushes every result toward the middle. Live, `spectral_section_ratio` spanned **0.534…0.614** of its 0…2 range and the canopy used **0.00…0.31** of its own — Matt's *"the entire suite of movement does not feel strongly tied to the music."*
+
+**The fix.** Widths are now `Float` seconds converted per frame by `LoudnessProfile.emaAlpha(deltaTime:tau:)`; `SpectralAnalyzer.process` takes `deltaTime`, and the offline builder derives its alpha from its own frame duration. Each τ is defined as `tau(legacyAlpha:)` — exactly what the retired coefficient meant at the reference rate — so **nothing is retuned**. Covers the four density legs, the surge attack/release follower and the shared level follower.
+
+**Verified, offline, on Matt's own tap capture with his own cached profile:**
+
+| | before | after |
+|---|---|---|
+| `spectral_section_ratio` at 43.1 fps | 0.00 … 2.00 | 0.00 … 2.00 |
+| `spectral_section_ratio` at 59.9 fps | **0.00 … 0.58** | **0.00 … 2.00** |
+
+And unchanged at the reference rate, which is the point: full-track Cherub Rock motion **0.0531/s** and time-to-0.15 **24.4 s**, Hummer **0.0205/s** / **23.4 s** — identical to the pre-fix figures.
+
+**Gated by property, not by example** (`DensitySmoothingRateInvarianceTests`): the same signal over the same wall-clock seconds at 43 Hz and 60 Hz must smooth to the same trajectory (section/normal drift < 0.005, ratio < 0.02), the ranked span must agree across rates, every τ must reproduce its legacy alpha at the reference rate, and a zero/NaN `deltaTime` must not freeze a follower. This bug class is invisible to any test that runs at one rate — nothing is wrong on any single frame.
+
+**Not in scope, and flagged rather than fixed:** the centroid / rolloff / flux smoothers in `SpectralAnalyzer` are still per-frame alphas. Same class of defect; they feed `spectral_centroid` and `spectral_flux`, which many presets read, so changing them is its own increment with its own visual risk.
+
+**Done-when remaining: Matt's live look.** The probe stays in — the `DENSITY_PATH:` line now also confirms which branch runs, which this fix does not answer.
+
+**DYN.5 — the spectral-feature followers, in seconds.** ✅ (2026-08-09) Closes the gap DYN.4 flagged and left standing. `centroidAlpha` 0.12, `rolloffAlpha` 0.12, `fluxAlpha` 0.25 and `MIRPipeline.fluxMaxDecay` 0.999 were the last per-FRAME constants in the spectral path: at the live 59.9 Hz their real widths were 0.72× what the coefficients meant, so `spectral_centroid` and `spectral_flux` reacted ~40 % faster than calibrated — **on every preset that reads them, not just Fractal Tree.** Same `tau(legacyAlpha:)` treatment; nothing retuned.
+
+**A second, deeper rate dependence in flux — found by the gate, and NOT fixed.** Extending the invariance test to the raw `smoothedFlux` failed: it drifted 0.153 against a 0.52 span. That is not a follower-width error. Flux is a per-FRAME spectral difference, so its MAGNITUDE scales with the frame interval by construction, and no smoothing constant can correct it. Rescaling the raw value was rejected on inspection rather than tried: `rawSmoothedFlux` feeds the mood classifier (`VisualizerEngine+Audio`, `SessionPreparer+Analysis`) and the corpus census, all calibrated against its current scale.
+
+What presets actually read is `f.spectral_flux` = `smoothedFlux / fluxRunningMax`, and a constant gain cancels in that ratio **provided the running max decays over the same wall-clock window at both rates** — which is exactly what fixing `fluxMaxDecay` bought. The test asserts that field, measured through `MIRPipeline`, and it passes. **That caveat was RETRACTED at DYN.6 — see below. It was an artifact of the synthetic drive, not a property of real music.**
+
+**Gates:** `DensitySmoothingRateInvarianceTests` extended — centroid drift < 2 % of its own span across 43/60 Hz, normalised flux < 15 %, and the τ-reproduces-legacy-alpha table now covers centroid/rolloff/flux. Full battery green (1817 engine / 404 app / 0 lint).
+
+**DYN.6 — check the mood classifier's flux calibration.** ✅ (2026-08-09) Matt's follow-up on the DYN.5 caveat. **The caveat was wrong, and retracting it is the first result.**
+
+DYN.5 claimed `rawSmoothedFlux` stays rate-dependent because it is a per-FRAME spectral difference. That is true of the synthetic drive it was measured on — a smoothly varying spectrum, where consecutive frames differ mostly by the frame interval. Real music does not behave that way: at a 1024-sample window the spectrum decorrelates almost completely between hops whatever the hop is. Measured through the production `MIRPipeline` on eight Siamese Dream tracks, **every one of the ten mood features shifts by < 0.11 σ** between the 43 Hz offline preparation rate and the 59.9 Hz live rate. Rate-invariance is end-to-end after DYN.4/DYN.5, and the mood classifier was never at risk from it. This is FA #27 in its exact form — a synthetic signal reproducing a property real audio does not have — committed while *citing* FA #27 to justify the synthetic drive.
+
+**What the measurement did find, reported not asserted.** The flux feature runs systematically high against the shipped scaler on this material: z = +3.38, +2.87, +2.78, +1.89, +0.95, +0.78, +0.27, −0.18 across eight tracks (median **+1.34**), while the other nine features sit within ±1.9 σ — six of eight positive, three above +2.5. One album cannot separate a stale scaler from an accurate reading of a dense, distorted-guitar record. **`CorpusCensusRunner` already computes `rawSmoothedFlux` over a broad library and is the instrument that would settle it** — a well-scoped follow-up on existing infrastructure, not a guess to make now.
+
+**Also found, unrelated to rate and not fixed: the offline and live mood paths feed the classifier differently.** Live (`VisualizerEngine.accumulateMoodFeatures` → `runMoodClassifier`) classifies EVERY analysis frame (59.9/s) on features EMA-accumulated at `featureEmaAlpha` 0.01 (τ ≈ 1.7 s). Offline (`SessionPreparer+Analysis`) classifies every 30th frame (1.44/s) on INSTANTANEOUS features. `MoodClassifier.emaAlpha` 0.1 is then applied per call, so the output window is τ ≈ 0.17 s live against ≈ 7 s offline. A track's prepared mood and its live mood are therefore not the same measurement. Same per-frame-constant family as DYN.4/.5; changing it moves mood behaviour, so it is Matt's call rather than a silent fix.
+
+**Shipped:** `MoodFluxCalibrationTests` — reports all ten z-scores at both rates through the production pipeline, and **asserts rate-invariance only** (< 0.25 σ). Where features sit relative to training is reported, never asserted: a test cannot decide whether a distribution shift is a defect or the music.
+
+**DYN.6.1 — the corpus census, and what it settles.** ✅ (2026-08-09) DYN.6 reported flux running high on one album and named `CorpusCensusRunner` as the instrument that could tell a stale scaler from a dense record. Run.
+
+**First, a regression check that had to come before any conclusion.** Re-ran the census on the CURRENT build over 271 pilot tracks and paired them against the same tracks from the 2026-07-10 full run: **every one of the ten mood features is unchanged** — median ratio 1.000, worst relative delta 1.6 % (on the key correlations). So DYN.4/DYN.5 did not disturb the classifier's inputs, and July's 27,638-track corpus figures are still the CURRENT figures. The remaining ~700 pilot tracks were not run: with the pipeline provably unchanged they could not move the answer.
+
+**The corpus answer (n = 27,638):**
+
+| feature | scaler mean | corpus median | z(median) | \|z\|>2 |
+|---|---|---|---|---|
+| the nine others | — | — | **−0.45 … +0.21** | ≤ 4.7 % |
+| **flux** | 0.25158 | 0.45899 | **+1.01** | **33.8 %** |
+
+Nine features are well calibrated. Flux is not: corpus mean **0.5650** against the scaler's 0.2516 (2.25×) and corpus std **0.4340** against 0.2044 (2.12×). p75 = +2.74 σ, p95 = +5.61 σ, p99 = +7.96 σ.
+
+**But the scaler is not stale, and that is the finding.** Read back the annotated training set (`~/phosphene_features_annotated.csv`, n = 818): flux mean **0.2516**, std **0.2044** — the shipped constants *exactly*. Nothing drifted. What the numbers describe is **training-set coverage**: the annotated set's maximum flux is 1.0167, and **15.3 % of the corpus exceeds that maximum entirely** — the model has never seen material that dense on feature [7]. 22.2 % of the corpus is beyond |z| > 3.
+
+This is consistent with, and explains, the +1.43 recorded at **BUG-066** and signed off: that increment fixed a real 16× offline scale defect and left the residual, which is this.
+
+**Not a defect claim, and deliberately not fixed here.** Three options, all Matt's call, none safe to take silently — mood is 30 % of `DefaultPresetScorer`, so any of them changes preset selection for every track:
+1. *Accept.* BUG-066 already demonstrated the model discriminates post-fix (arousal spans [−0.87, +0.81], 32 % of tracks flipped quadrant in the right direction). Extrapolation on a third of the library may cost less than a change would.
+2. *Refit the flux mean/std to corpus statistics.* One constant pair; validate with `CorpusCensusRunner --mood-ab`, the same objective before/after Matt accepted for BUG-066 in place of a live M7.
+3. *Extend the annotated set to cover dense material and retrain.* The real fix, and much the largest.
+
+**DYN.6.2 — refit the flux scaler on corpus statistics.** ✅ (2026-08-09) Matt's call, option 2 of the three DYN.6.1 put up.
+
+`MoodClassifier` feature [7] (flux): mean **0.25158 → 0.56498**, std **0.20444 → 0.43400**. The other nine features keep their 818-track training fit, where the census measured them well calibrated. `tools/data/mood_scaler.json` updated in lockstep with a `provenance_flux` record, since the class contract requires the two to match.
+
+**Accepted on an objective corpus A/B** (`MoodScalerRefitABTests`, n = 21,037) — the same form of evidence BUG-066 was accepted on, the live M7 having been retired as unfit for a diffuse scoring change. Both sides are produced from one compiled classifier by rewriting feature [7] so the compiled z-score equals the target scaler's, so the harness stays valid whichever pair is compiled in:
+
+| | valence mean / sd | arousal mean / sd | quadrant flips | arousal railed |
+|---|---|---|---|---|
+| before (training fit) | +0.261 / 0.507 | +0.378 / 0.330 | — | 0.5 % |
+| **after (corpus fit)** | **−0.101 / 0.422** | **+0.229 / 0.331** | **41.3 %** | **0.0 %** |
+| *variant: widen std only* | +0.041 / 0.457 | +0.314 / **0.267** | 23.4 % | — |
+
+The library was reading systematically over-aroused (flux ran +1 σ high and drives arousal); the refit brings the mean down while **leaving arousal's spread intact** — sd 0.330 → 0.331. The std-only variant moves half as many tracks but costs arousal discrimination (sd → 0.267), which is why the authorised full refit is the better of the two on the evidence, not merely the bolder one.
+
+**What this A/B cannot show, stated because it matters.** Nobody has labelled these 27k tracks, so it establishes only that the change is real, bounded and non-degenerate — **not that the new readings are right.** BUG-066 could argue direction because its before-state was pathologically saturated (Beethoven adagios reading euphoric); this before-state was merely biased, so no such argument is available. Valence spread also narrowed (sd 0.507 → 0.422), which is a genuine cost. If mood-driven preset selection reads worse in use, this increment is the first thing to revert — one constant pair.
+
+**Gates:** `MoodClassifierGolden` regenerated through its documented `UPDATE_MOOD_GOLDEN=1` path (the classifier is untouched; only its input scaling moved). Full battery green — 1819 engine / 404 app / 0 lint.
+
+**DYN.7 — the prepared mood and the live mood become one measurement.** ✅ (2026-08-09) The split DYN.6 found and left alone, on Matt's instruction to take it.
+
+`TrackProfile.mood` is set at preparation and is 30 % of `DefaultPresetScorer`; the `valence`/`arousal` presets read is produced live. They disagreed on **every axis that defines the measurement**:
+
+| | intended (code comments) | live | offline |
+|---|---|---|---|
+| feature window | ~7 s | 1.67 s | **none — instantaneous** |
+| classify cadence | — | every frame | every 30th frame |
+| output window | ~0.7 s | 0.167 s | **6.96 s** |
+
+Both wrong, in opposite directions, and for the DYN.4/DYN.5 reason: the constants are per-CALL, so their meaning in seconds moves with the call rate. **The seconds in those two comments are the design intent** — each is off by ~4.2× against its own stated rate, the same 4.2× as 59.9 Hz / 14.3 Hz, which is what the analysis rate was when they were written. DYN.7 keeps the intent (7 s features, 0.7 s output) and discards the alphas.
+
+**Shipped:** `MoodFeatureAccumulator` (ML) — one `assemble(...)` fixing the ten-feature order and one wall-clock `update(...)`, driven by both paths. `MoodClassifier.classify(features:deltaTime:)` makes the output window wall-clock. The offline path now accumulates every frame and classifies every frame, as live does; cadence sets cost, not smoothing.
+
+**A reset that never existed.** The live accumulator's `featureAccumInitialized` was set once per SESSION, so **every track after the first inherited its predecessor's feature window** — the stale-publisher trap in CLAUDE.md §What NOT To Do, in plain-stored-property form. `resetStemPipeline` now clears it per track.
+
+**Gated by parity, not by example** (`MoodPathParityTests`): the accumulated window must agree across 43/60 Hz (< 0.002); **the live arrangement and the old preparation arrangement must reach the same reading on the same seconds** (< 0.05 on both axes); the output EMA must cover ~63 % in one τ whatever the call rate; and a track change must clear the window.
+
+**Also corrected in passing:** `MoodClassifierGolden` pinned a SINGLE `classify` call, i.e. whatever fraction of the answer the EMA had covered on its first step (10 % before, 2.4 % after). It was anchoring the smoother, not the model, and moved whenever the smoothing did. It now pins the CONVERGED output, which is what the file says it exists to anchor. `CorpusCensusRunner` classified once on an aggregate the same way — every valence/arousal it has ever emitted was damped 10× toward neutral. (The DYN.6.2 A/B was unaffected: it drove each row to convergence.)
+
+**FTR.7 — "same size, fewer times": STOPPED at the measurement, no visual change shipped.** ⏸ (2026-08-09) Matt's reading of his own instruction, confirmed after FTR.6 was rejected: keep the tips' full 0…8 swing, change it on notes (~3/s) instead of continuously (~10/s). That needs a note CLOCK — `MelodicNoteGate` already gives 2.9/s on both sources — and a per-note VALUE. The value does not exist.
+
+**`beat_mid` cannot supply it, and the reason is structural rather than empirical.** It is a saturating pulse with a deterministic per-frame decay, so once the refractory fixes the interval length, *every* statistic of it over that interval is a function of the frame count alone. Measured through the production pipeline on two unrelated tracks:
+
+| statistic | Hummer | Cherub Rock | distinct values |
+|---|---|---|---|
+| peak at the note | = trigger level by construction | same | 1 |
+| interval trough | p50 0.0902, max 0.1178 | **identical** | 6–7 |
+| interval mean | p05 0.3409 / p50 0.3969 / p95 0.4310 | **identical** | 12–14 |
+
+Identical percentiles on two different records is the signature of a clock. Built and measured anyway before concluding: the trough variant shipped span **2** against FTR.3e's **7** — it fails "same size" outright, which is precisely the half FTR.6 already failed.
+
+**Nothing else free carries it either.** Per-note spread / distinct values on the production pipeline: `spectral_flux` **0.66 / 582**, `beat_treble` 0.88 but only **13** (the same staircase), `beat_composite` a constant 1.0, the mid-band deviation family < 0.04, `centroid` 0.05–0.11, `bass_dev` 0.21 — and `bass_dev` is the kick, the instrument Matt asked to hear LESS of.
+
+**So the mechanism exists only via `spectral_flux`, which already drives branch spread — the FA #67 collision this preset was rebuilt at FTR.2 to remove.** Priced so the decision has numbers: held at the note events it gives span **6.0 / 5.0** at **2.06 / 2.15 changes/s** (against FTR.3e's 7.0 at 31.5/s ungated) — genuinely same-size-fewer-times. **Matt's call, not a tuning choice**, and the reason this increment stopped instead of shipping a third tips mechanism.
+
+**Shipped:** the measurement, as a standing diagnostic (`MelodicNoteGateReportTests.reportPerNoteValueCandidates`) with an assertion that `beat_mid` still takes ≤ 3 distinct values at the note instants — so if that ever stops being true, the FTR.7 conclusion is flagged as stale rather than cited. **No preset behaviour changed; the tips remain the FTR.3e term.**
+
+**Matt declined the FA #67 collision (2026-08-09), so "one tip per note" is CLOSED on this material** and `MelodicNoteGate` + `FeatureVector.melodicTips` were **removed** — the disposition FTR.6r committed to if nothing consumed them. `FeatureVector` returns to **52 floats / 208 bytes**, byte-identical to its pre-FTR.6 layout, across all four declaration sites (Swift, the preset preamble, `Common.metal`, and the six size gates) plus the CSV column, the route-primitive map and the `route_coverage` fixtures. The tips remain the FTR.3e term Matt called *"better overall and probably satisfactory"*.
+
+**What was KEPT, and why it is not orphaned code:** the measurement, as `PerNoteMagnitudeTests` — a standing answer to "which primitive carries per-note information", with its own note-clock constants now the gate is gone. **MEL.1 is still open and wants exactly that signal**, so this is the first thing that increment should read rather than re-derive. Its assertion fails if `beat_mid` ever stops saturating at the note instants, which would make the FTR.7 conclusion stale rather than a fact to cite.
+
+**FTR.5 — live M7 (2026-08-11, session `2026-08-11T01-07-17Z`, chain `clean`, Cherub Rock).** Matt: *"the canopy grows and recedes with some connection — sometimes clear and sometimes vague… The tips appear to follow drums and bass… Nothing got worse. Overall, it is acceptable."* **Certification not taken — see the decision at the foot of this entry.**
+
+**DYN.4 is confirmed live, and by measurement not impression:**
+
+| | `spectral_section_ratio` | canopy reach |
+|---|---|---|
+| before (2026-08-10) | 0.534 … 0.614 | 0.00 … 0.31 |
+| **after (this session)** | **0.226 … 1.992** | **0.00 … 1.00** |
+
+The canopy now uses its whole range. That is the "grows and recedes" in his first sentence.
+
+**THE PROBE CORRECTED ME ON THE ANALYSIS RATE, and the correction reaches four increments.** `DENSITY_PATH: branch=ranked fps=9.9 tau_section=20.0s`. **The live MIR analysis rate is 9.9 Hz, not the 59.9 Hz asserted throughout DYN.4/.5/.6/.7** — 59.9 is the RENDER rate, which is what `features.csv` rows are written at, and I inferred the analysis rate from row count ÷ duration without checking which clock the recorder uses. Confirmed independently: `spectral_density` changes 10.0 times a second in the same capture. So:
+
+- the τ error ran the **opposite** way and 3× larger than claimed — before DYN.4 the section leg was **87 s** (not 14.4 s) against its documented 20 s, and the normal leg **194 s** against 45 s;
+- **the fixes are unaffected and matter more than stated** — making τ wall-clock moved live from 87 s to 20 s, matching the offline builder, which is why the ratio span went 0.08 → 1.77;
+- DYN.7's split was real but **the live side was near intent** (1.01 s output window against 0.7 s) and the **offline** side was the broken one (6.96 s);
+- `branch=ranked` settles DYN.3's open question: the canopy was always on the DYN.2c ranked branch, never the fallback.
+
+Corrected in `LoudnessProfile`, `SpectralAnalyzer`, `MIRPipeline`, `MoodClassifier`, `MoodFeatureAccumulator` and both rate-invariance suites, which now compare **9.9 Hz against 43.07 Hz** — a 4.4× ratio, a stronger gate than the 1.4× they were written with.
+
+**THE GUITAR QUESTION — NOT futile, and the blocker is infrastructure, not signal.** Matt: *"I wish they would follow the guitar patterns more… the guitar solo alone is a big missed opportunity. If it's futile, let me know."* Measured on his session's `stems.csv`:
+
+| candidate | vs drums (body) | p05 → p95 | distinct |
+|---|---|---|---|
+| `other_energy_dev` | r = **+0.65** | 0.00 → 0.39 | — |
+| **`other_onset_rate`** | r = **+0.14** | **0.53 → 3.30** | **374** |
+| `other_attack_ratio` | r = +0.14 | 0.76 → 1.29 | — |
+| `other_centroid` | r = −0.32 | 0.061 → 0.124 | — |
+
+**`other_onset_rate` is a genuinely independent guitar-activity channel** — how many guitar attacks per second, essentially uncorrelated with the drums, spread across 374 distinct values. Routing the tips to it is exactly "follow the guitar patterns".
+
+**Two corrections to the record this forces.** (1) The **+0.973 guitar/drums correlation** repeated since FTR.6 does not reproduce: on this capture it is **+0.68** for raw energy and **+0.65** for energy-dev — and the *onset-rate* feature, which nobody had measured, is +0.14. (2) **MEL.1's futility finding stands but does not apply here**: it measured per-NOTE onset DETECTION (grid coherence 31 % guitar vs 41 % drums) and concluded distortion smears individual attacks. An onset *rate* is a far weaker requirement, `StemAnalyzer` already computes it, and it needs no new DSP.
+
+**The real blocker is FTR.4:** `StemFeatures` is not bound on the OBJECT/MESH stages, and the tips are computed in the object shader. Scope was corrected at FTR.3d — the fragment stage is already bound by `RenderPipeline.drawWithMeshShader`, so this is mirroring the existing `setObjectBytes`/`setMeshBytes` calls. Shared renderer code; every mesh preset inherits it.
+
+**Certification decision — Matt's, not taken here.** *"Overall, it is acceptable"* clears the L4 bar as written, but he asked for a specific improvement in the same breath, and certifying a preset the day its owner asked for more is the kind of pass that gets re-opened. Both routes are live: certify now and track the guitar work separately, or hold FTR.5 until FTR.4 + the guitar routing land and certify once.
+
+**FTR.4 — StemFeatures on the object/mesh stages.** ✅ (2026-08-11) The blocker D-212 filed and FTR.3d halved. `MeshGenerator.draw(encoder:features:stems:)` now binds `StemFeatures` at **object and mesh buffer(3)**, the slot the fragment stage and every non-mesh path already used; `RenderPipeline.drawWithMeshShader` passes the same `stemFeatures` it was already binding to the fragment stage. Shared renderer code — **every mesh preset inherits it**, and until now a mesh preset could colour by stem but not SHAPE by stem, because the object shader (which decides branch counts and dispatch) had no access.
+
+**Gated on consumption, not on binding** (`objectStageReceivesStems`): the same `FeatureVector` rendered twice, changing only `other_onset_rate`, must produce different pixels — and more of them for the busier guitar. Binding a buffer and the GPU reading it are different claims, and only the second matters; this is the failure class that left `vocalsPitchConfidence` at 0 % for five months while closeouts said it worked.
+
+**FTR.8 — the tips follow the guitar.** ✅ (2026-08-11) Matt at the FTR.5 review: *"The tips appear to follow drums and bass… I wish they would follow the guitar patterns more, as that is what drives the song — the guitar solo alone is a big missed opportunity."*
+
+He was right, and the old driver explains it: `beat_mid` is the beat in the melodic REGISTER, which in a rock mix is snare **and** guitar. Measured on his session `2026-08-11T01-07-17Z`, body of the track: the other stem's energy-deviation correlates **+0.65** with drums (it would still read as drums), while its **onset rate correlates +0.14** — p05→p95 0.53…3.30 across 374 distinct values. That is a genuinely independent guitar-activity channel, and it is what the tips now read.
+
+**This is not what MEL.1 proved futile.** MEL.1 measured per-NOTE onset DETECTION on this stem (grid coherence 31 % against the drums control's 41 %) and concluded distortion smears individual attacks — still true, and still the reason not to chase one-tip-per-note. An onset RATE is a far weaker requirement, `StemAnalyzer` already computes it, and it needs no new DSP. The **+0.973** guitar/drums correlation quoted since FTR.6 also does not reproduce: **+0.68** for raw energy here, and nobody had ever measured the onset-rate feature.
+
+**Coefficient sized in the harness, after fifteen mappings.** Every earlier attempt to size this in a scratch script drifted from what `FractalTreeMeshRenderTest` actually measures — the same drift that let FTR.6 ship a regression past a green gate — so the sweep was run through the harness's own arithmetic. The binding constraint is **not** the count: `melody` is also the threshold the per-branch travelling wave compares each branch's slot against, so it must stay inside the 0…0.3125 ceiling the `beat_mid` knee had, or every branch fires instead of the ~37 % that did. That rules out the S-curves that recover more span (measured: span 3–5, depth-5 parked at 73–76 %).
+
+`r/(r+18)` won on the metric Matt has actually complained about — **depth-5 presence 11 %, against the outgoing driver's 12 %**, so the tier dips in and out rather than parking (*"I never see beyond three levels"*, FTR.3b). The span-matching `r/(r+6.5)` parked depth-5 at **94 %** and the harness caught it.
+
+**Honest cost:** the tips layer spans **5** branches where `beat_mid` spanned 8, and the gate's floor is 5 — it sits exactly on it. An onset rate is continuous and cannot reproduce the bimodal 0↔8 slam of a saturating pulse. **Unverified live**; this needs Matt's eye before FTR.5 can certify.
+
+**D-019 warmup:** stems are zero until separation converges, so the tips crossfade from the old `beat_mid` driver on `smoothstep(0.02, 0.06, totalStemEnergy)` — the tree is alive from frame 1 and hands over to the guitar as the stems arrive.
+
+**Also caught, and worth recording:** writing the REJECTED primitive's name verbatim in a shader comment flipped Fractal Tree's automated rubric gate — L2 scans the file for deviation-primitive tokens and matched prose. The comment now spells it out in words. A rubric that reads comments will certify a comment.
+
+**FTR.9 — the two things Matt saw at the 2026-08-11 review, both measured, neither architectural.** ✅ (2026-08-11) Matt on session `2026-08-11T16-41-39Z` (Cherub Rock + *Carry The Zero*, chain `clean`): *"It's ok. The motion of the trunk and branches is probably too intense — not really seeing strong and clear response to guitar signal. I suspect this is as good as we are going to get without some significant change in architecture."*
+
+**Both suspicions were right about the symptom and wrong about the cause.** Measured before touching anything:
+
+**(1) "Too intense" is AMPLITUDE, not rate.** The canopy's turn rate barely moved across DYN.4 (2.91 → 2.75/s); its **span went 0.30 → 0.81**. DYN.4 opened the range up — which is what earned *"the canopy grows and recedes"* — and in doing so made a long-standing restlessness visible. At 2.75 turns/s the canopy driver was running at nearly **3× this preset's own documented limit** for continuous geometry (*"anything faster than ~1 turn/s reads as the tree bouncing rather than growing"*). It always had been; before DYN.4 the amplitude was too small to see it.
+
+Cause: `spectral_section_ratio` is the RANK of a τ20 s leg, and ranking a slow signal through a quantile table amplifies small wiggles wherever the distribution is dense — a restless output from a calm input. Fix: **τ 1 s smoothing on the ratio, after the rank** (`SpectralAnalyzer.sectionRatioTau`), downstream of everything DYN.4 matched so it cannot re-break the offline/live distribution pairing.
+
+**(2) "No clear guitar" was the growth GATE drowning the route, not the route failing.** The tips correlated **+0.590 with the gate** and only **+0.470 with the guitar**. `smoothstep(0, 0.35, reach)` was a gate when reach lived in 0.00…0.31; after DYN.4 reach spans 0.07…0.88, so the gate was still climbing through the middle of the working range — a 10× multiplier swinging 0.10→1.00 and turning ~3×/s, sitting on top of the guitar term. Fix: edges to **0.03 / 0.15**, so it saturates below the working range and still suppresses an intro (which measures reach ≈ 0.001…0.06).
+
+**Measured before → after, on Matt's own session:**
+
+| | before | after |
+|---|---|---|
+| canopy reach turns/s | 2.75 | **0.57** (under the preset's own 1.0 rule) |
+| canopy reach span | 0.813 | **0.811** (the DYN.4 growth survives intact) |
+| trunk length turns/s | 1.60 | 1.50 |
+| tips span | 3 | **4** |
+| tips r(guitar) | +0.470 | **+0.540** |
+| tips r(gate) | +0.590 | **+0.509** — the ordering inverts; the guitar is finally the dominant driver of its own layer |
+
+**Full-track regression** (`TrunkTrajectoryReportTests`, production objects): Cherub Rock ratio **0.00…2.00** and trunk **0.00…1.00** unchanged, motion **0.0531 → 0.0292/s**; Hummer motion 0.0205 → 0.0172/s; time-to-0.15 unchanged at 24.4 s / 23.4 s. The range is preserved and the jitter halves — which is the whole trade.
+
+**Certification NOT taken.** Matt asked whether to proceed; the answer was to fix these first, and he chose that. **Unverified live** — these are measurements, not his eye.
+
+**FTR.9 verdict + FTR.10 SPEC — the trunk is `spectral_surge`, and FTR.9 calmed the wrong term.** ⏸ (2026-08-11, session `2026-08-11T18-26-52Z`, chain `clean`, *Carry The Zero*) Matt: *"The trunk is moving too much, which unfortunately makes the motion of the tips difficult to see. We need less motion — like tying movement to the songbeat."*
+
+**FTR.9 did land and did work — on the canopy.** `spectral_section_ratio` turns **2.88 → 0.27/s**; `reach` **2.75 → 0.80/s**. But `trunk length = 0.27 + reach·0.13 + surge·0.32`, and decomposed on this session:
+
+| term | span | turns/s |
+|---|---|---|
+| `reach × 0.13` (what FTR.9 calmed) | 0.109 | 0.80 |
+| **`surge × 0.32`** | **0.168** | **1.27** |
+
+**The trunk is mostly `spectral_surge` — the bigger coefficient AND the faster signal — and FTR.9 never touched it.** Trunk still turns **1.75/s** against this preset's own ~1 turn/s rule for continuous geometry. Diagnosed by measuring "canopy reach" when Matt's word was "trunk"; they are not the same term.
+
+**FTR.10 — step the trunk on the beat. Matt's literal choice, taken 2026-08-11 rather than guessed** (the *"shoot up"* lesson: a visual verb gets his definition before any build). Of the three options put to him — per beat, per bar, or continuous-but-smoother — he chose **steps on each beat**: the trunk holds perfectly still between beats and steps to its new height ON the beat.
+
+Measured on his session (94.1 BPM → 0.64 s beat, 2.55 s bar), holding the trunk value and re-sampling on the phase wrap:
+
+| trunk mode | turns/s | span | changes/s |
+|---|---|---|---|
+| continuous (shipped) | 1.75 | 0.178 | 10.41 |
+| **held, per beat** ← chosen | **0.51** | 0.173 | 1.57 |
+| held, per bar | 0.25 | 0.207 | 0.39 |
+
+The growth survives (span 0.173 against 0.178) and the drift goes. **This is not the beat-driven activity Matt rejected twice** — those added per-beat accents (taps, a flash). This uses the beat to REMOVE motion, which is the opposite operation.
+
+**Constraints the implementation must honour:** beat-locked motion is valid only on the cached `BeatGrid`, never raw live onsets; **beat-irregular tracks are excluded (D-154)** and need a continuous fallback; the Cold-Start Phase Contract means the grid can install with the right BPM and the WRONG phase, so the first bars may step off-beat and the preset must not depend on phase being right from frame 1. `beatPhase01` / `barPhase01` / `beatsPerBar` / `pulse_beat_index` are all already in the FeatureVector.
+
+**Done-when:** trunk turns/s under the preset's ~1.0 rule with the span intact; `TrunkTrajectoryReportTests` full-track motion no worse than FTR.9's 0.0292/s; the motion gate re-run on a SINGLE-track capture (FTR.9.1 — a loudness profile is per track); then Matt's live look.
+
 **FTR.5 — M7 + certification.** ⏸ **BLOCKED ON MATT — this is a live review, not work Claude
 can complete.** FTR.6 landed the rate/granularity adjustment Matt named as the precondition
 ("close pending these adjustments") and it is verified offline on both source tracks; whether

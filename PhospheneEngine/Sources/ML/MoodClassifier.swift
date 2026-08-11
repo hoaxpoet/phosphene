@@ -8,8 +8,9 @@
 // in MoodClassifier+Weights.swift.
 //
 // Input features require z-score normalization before inference. The scaler
-// parameters (means and stds) are hardcoded from the training pipeline and
-// MUST match `tools/data/mood_scaler.json`.
+// parameters (means and stds) are hardcoded and MUST match
+// `tools/data/mood_scaler.json`. Feature [7] (flux) is fitted on the 27,638-track
+// corpus rather than the training set — see the §Z-Score Normalization note.
 //
 // Input features (10 floats, pre-normalization):
 //   [0-5]:  6-band energy (subBass, lowBass, lowMid, midHigh, highMid, high)
@@ -40,21 +41,55 @@ public final class MoodClassifier: MoodClassifying, @unchecked Sendable {
     /// Expected number of input features.
     public static let featureCount = 10
 
-    /// EMA smoothing factor. At ~94 callbacks/s, alpha=0.1 gives ~0.7s time constant.
-    public static let emaAlpha: Float = 0.1
+    /// Output smoothing time constant, in SECONDS (DYN.7).
+    ///
+    /// Was `emaAlpha = 0.1` applied per CALL, so the window it produced depended on how
+    /// often the caller called: **1.01 s live** (every analysis frame at the measured
+    /// 9.9 Hz) against **6.96 s offline** (every 30th frame at 43.07 Hz) — a 7× disagreement
+    /// between the mood a track was PREPARED with and the mood it PLAYED with, with the
+    /// OFFLINE side the one far from intent. The 0.7 s here is the
+    /// figure that alpha's own comment always claimed; only the per-call form was wrong.
+    public static let outputTau: Float = 0.7
 
     // MARK: - Z-Score Normalization (from tools/data/mood_scaler.json)
+    //
+    // FEATURE [7] (flux) IS FITTED ON A DIFFERENT POPULATION FROM THE OTHER NINE, and that
+    // is deliberate (DYN.6.2, Matt's call). Features 0–6 and 8–9 come from the 818-track
+    // live-annotated training set, where they are well calibrated: the corpus census
+    // (n = 27,638) measured their z(median) between −0.45 and +0.21, with ≤ 4.7 % of tracks
+    // beyond |z| > 2.
+    //
+    // Flux was not. Against the training fit (mean 0.25158, std 0.20444) the corpus sat at
+    // z(median) +1.01 with **33.8 % beyond |z| > 2** and 22.2 % beyond |z| > 3. The scaler
+    // was never stale — it reproduces the training set to five decimals — the training set
+    // simply never covered material this dense: its maximum flux is 1.0167 and **15.3 % of
+    // the corpus exceeds that outright**, so the model extrapolated on feature [7] for a
+    // large minority of the library. Refitting the pair to corpus statistics is the
+    // narrowest available fix; retraining on a broader annotated set is the real one.
+    //
+    // Accepted on the objective corpus A/B (`MoodScalerRefitABTests`, n = 21,037), the same
+    // form of evidence BUG-066 was accepted on: arousal mean +0.378 → +0.229 with its spread
+    // intact (sd 0.330 → 0.331), railed readings 0.5 % → 0.0 %, 41.3 % of tracks changing
+    // valence/arousal quadrant. **What that A/B cannot show is that the new readings are
+    // RIGHT** — nobody has labelled these tracks, so it establishes the change is real,
+    // bounded and non-degenerate, not that it is an improvement.
 
-    /// Per-feature means from live-pipeline annotated training set.
+    /// Per-feature means. [7] = flux, corpus-fitted (DYN.6.2); the rest, training-fitted.
     private static let scalerMeans: [Float] = [
         0.12720, 0.20594, 0.12509, 0.03842, 0.01068, 0.00502,
-        0.11827, 0.25158, 0.53073, 0.50940
+        0.11827, 0.56498, 0.53073, 0.50940
     ]
 
-    /// Per-feature standard deviations from live-pipeline annotated training set.
+    /// Read-only view of the scaler for calibration diagnostics (DYN.6). The z-score is
+    /// where a feature-scale error shows up, so a test must be able to compute it from the
+    /// SAME numbers inference uses rather than a transcribed copy.
+    public static var scalerMeansForTesting: [Float] { scalerMeans }
+    public static var scalerStdsForTesting: [Float] { scalerStds }
+
+    /// Per-feature standard deviations. [7] = flux, corpus-fitted (DYN.6.2).
     private static let scalerStds: [Float] = [
         0.12225, 0.13055, 0.08257, 0.03043, 0.01463, 0.01376,
-        0.07421, 0.20444, 0.15677, 0.12204
+        0.07421, 0.43400, 0.15677, 0.12204
     ]
 
     // MARK: - State
@@ -80,7 +115,10 @@ public final class MoodClassifier: MoodClassifying, @unchecked Sendable {
     ///
     /// - Parameter features: Array of exactly 10 floats (see class-level docs).
     /// - Returns: Smoothed `EmotionalState` with valence and arousal in [-1, 1].
-    public func classify(features: [Float]) throws -> EmotionalState {
+    /// - Parameter deltaTime: seconds since the previous `classify` call on this instance.
+    ///   Required (DYN.7): the output window is wall-clock, so a caller that classifies
+    ///   every 30th frame and one that classifies every frame reach the same reading.
+    public func classify(features: [Float], deltaTime: Float) throws -> EmotionalState {
         guard features.count == Self.featureCount else {
             throw MoodClassificationError.invalidFeatureCount(features.count)
         }
@@ -106,7 +144,7 @@ public final class MoodClassifier: MoodClassifying, @unchecked Sendable {
 
         // Apply EMA smoothing.
         lock.lock()
-        let alpha = Self.emaAlpha
+        let alpha = LoudnessProfile.emaAlpha(deltaTime: deltaTime, tau: Self.outputTau)
         let smoothedValence = alpha * clampedValence + (1 - alpha) * currentState.valence
         let smoothedArousal = alpha * clampedArousal + (1 - alpha) * currentState.arousal
         let state = EmotionalState(valence: smoothedValence, arousal: smoothedArousal)

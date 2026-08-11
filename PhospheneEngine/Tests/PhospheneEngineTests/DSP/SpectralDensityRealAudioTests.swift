@@ -69,7 +69,7 @@ struct SpectralDensityRealAudioTests {
         while frameStart + Self.fftSize <= samples.count {
             let frame = Array(samples[frameStart..<(frameStart + Self.fftSize)])
             let magnitudes = try Self.magnitudes(of: frame)
-            let result = analyzer.process(magnitudes: magnitudes)
+            let result = analyzer.process(magnitudes: magnitudes, deltaTime: 1024.0 / 44100.0)
             series.append((Double(frameStart) / Double(Self.sampleRate),
                            result.density,
                            Self.timeDomainHFFraction(frame)))
@@ -149,7 +149,7 @@ struct SpectralDensityRealAudioTests {
                                             sampleRate: Self.sampleRate,
                                             fftSize: Self.fftSize)
             var last: Float = 0
-            for _ in 0..<6000 { last = analyzer.process(magnitudes: magnitudes).density }
+            for _ in 0..<6000 { last = analyzer.process(magnitudes: magnitudes, deltaTime: 1024.0 / 44100.0).density }
             return last
         }
         let clean = settle(pink(harmonicGain: 0))

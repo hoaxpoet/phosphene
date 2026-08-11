@@ -702,8 +702,10 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
     /// 10-second EMA accumulator matching DEAM's track-level feature averages.
     var accumulatedFeatures = [Float](repeating: 0, count: 10)
 
-    /// Whether `accumulatedFeatures` has been seeded with the first frame.
-    var featureAccumInitialized = false
+    /// DYN.7 — the shared mood-input accumulator (7 s wall-clock window), the same type
+    /// `SessionPreparer+Analysis` drives, so a track's prepared mood and its live mood are
+    /// the same measurement. Replaces the local `featureAccumInitialized` + per-frame alpha.
+    var moodAccumulator = MoodFeatureAccumulator()
 
     /// Timestamp of the last analysis frame (for dt / effective fps).
     var lastAnalysisTime: CFAbsoluteTime = 0
@@ -716,10 +718,6 @@ final class VisualizerEngine: ObservableObject, @unchecked Sendable {
         label: "com.phosphene.analysis",
         qos: .userInteractive
     )
-
-    /// EMA alpha for the accumulated mood-classifier feature window.
-    /// At ~94 callbacks/s, alpha=0.01 gives ~7s effective window.
-    static let featureEmaAlpha: Float = 0.01
 
     // MARK: - Orchestrator
 

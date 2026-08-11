@@ -85,6 +85,8 @@ public final class MIRPipeline: @unchecked Sendable {
     /// Number of onsets detected per second (for BPM debugging).
     public private(set) var onsetsPerSecond: Int = 0
     private var onsetCountThisSecond: Int = 0
+    /// DYN.3 — canopy data-path probe. See the extension at the foot of this file.
+    var canopyProbe = CanopyProbe()
     private var lastOnsetRateTime: Double = 0
 
     // MARK: - Feature Recording
@@ -133,10 +135,35 @@ public final class MIRPipeline: @unchecked Sendable {
     /// `1.0 + 0.35 * stems.bass_energy_dev`. A/B-able from the same build.
     public var ffoColdStartFixEnabled: Bool = true
 
+    // MARK: - Diagnostics sink
+
+    /// Session-log sink for one-shot engine diagnostics, wired by the app layer to
+    /// `SessionRecorder.log`.
+    ///
+    /// **Why this exists (DYN.3.1).** DYN.3's probe wrote through `os.Logger`, and the
+    /// first session recorded with it came back with no probe line at all: `session.log`
+    /// is a curated artifact written by `SessionRecorder`, and **no engine `os.Logger`
+    /// line has ever reached it** — `MIR_RESET`, `MIR_RATE` and `BEAT_GRID_INSTALL` are
+    /// all absent from every session dir. The unified log had already rolled off by the
+    /// time the session was read, so a 115-second capture answered nothing. A diagnostic
+    /// nobody can retrieve is not a diagnostic. Same lesson `TAP:` learned ("os_log rolls
+    /// off") one increment earlier, in this same file's neighbourhood.
+    ///
+    /// Set once at wiring time on the main actor, read on the analysis queue; a plain
+    /// stored property matching `ffoColdStartFixEnabled`, not lock-guarded.
+    public var onDiagnostic: (@Sendable (String) -> Void)?
+
     // MARK: - Normalization State
 
     private var fluxRunningMax: Float = 1e-6
-    private static let fluxMaxDecay: Float = 0.999
+    /// DYN.5 — the running-max decay expressed in SECONDS.
+    ///
+    /// This was `0.999` applied once per FRAME, so the window it represents moved with the
+    /// analysis rate: ≈ 23 s at the 43.07 Hz the constant was chosen at, ≈ 16.7 s at the
+    /// live 9.9 Hz. It is the denominator of `spectral_flux`, so a shorter window makes
+    /// the normalised flux ride higher on quiet passages — a gain error on a field many
+    /// presets read, arriving silently with a frame-rate change.
+    private static let fluxMaxTau: Float = LoudnessProfile.tau(legacyAlpha: 1 - 0.999)
     /// MV-1 / D-146 (BUG-027): per-band running-average pivot for the deviation
     /// primitives. Each band's deviation is measured against its own recent
     /// average (mirroring StemAnalyzer's per-stem EMA), not a fixed 0.5 — the
@@ -148,9 +175,6 @@ public final class MIRPipeline: @unchecked Sendable {
     /// installed by `setBeatGrid`; the anchor resets per track in `reset()`;
     /// the per-frame output lands on `FeatureVector.pulsePhase01/pulseAmp01`.
     private let beatPulseClock = BeatPulseClock()
-    /// FTR.6 — one-eighth-note refractory gate on `beat_mid`, feeding
-    /// `FeatureVector.melodicTips`. Reset per track in `reset()`.
-    private var melodicNoteGate = MelodicNoteGate()
 
     /// Sample rate the pipeline (and its bin→Hz sub-analyzers) is configured
     /// for. The live path adopts the actual tap rate via `setSampleRate(_:)`
@@ -211,7 +235,7 @@ public final class MIRPipeline: @unchecked Sendable {
     ) -> FeatureVector {
 
         // Run all four analyzers.
-        let spectral = spectralAnalyzer.process(magnitudes: magnitudes)
+        let spectral = spectralAnalyzer.process(magnitudes: magnitudes, deltaTime: deltaTime)
         let energy = bandEnergyProcessor.process(magnitudes: magnitudes, fps: fps)
         let chroma = chromaExtractor.process(magnitudes: magnitudes, deltaTime: deltaTime)
         // TONAL (D-178): TIV over the chroma vector — a consumer of the fold
@@ -224,7 +248,7 @@ public final class MIRPipeline: @unchecked Sendable {
         // Normalize spectral features for FeatureVector (0-1 range).
         let normalizedCentroid = nyquist > 0
             ? spectral.smoothedCentroid / nyquist : 0
-        let normalizedFlux = normalizeFlux(spectral.smoothedFlux)
+        let normalizedFlux = normalizeFlux(spectral.smoothedFlux, deltaTime: deltaTime)
 
         // Bundle intermediate results for helper methods.
         let context = ProcessContext(
@@ -264,11 +288,11 @@ public final class MIRPipeline: @unchecked Sendable {
     }
 
     /// Normalize spectral flux via running-max AGC.
-    private func normalizeFlux(_ smoothedFlux: Float) -> Float {
+    private func normalizeFlux(_ smoothedFlux: Float, deltaTime: Float) -> Float {
         lock.lock()
-        fluxRunningMax = max(
-            fluxRunningMax * Self.fluxMaxDecay, smoothedFlux
-        )
+        // `1 - alpha` IS the decay factor for this frame's duration: both are exp(-dt/tau).
+        let decay = 1 - LoudnessProfile.emaAlpha(deltaTime: deltaTime, tau: Self.fluxMaxTau)
+        fluxRunningMax = max(fluxRunningMax * decay, smoothedFlux)
         let result = fluxRunningMax > 1e-10
             ? smoothedFlux / fluxRunningMax : 0
         lock.unlock()
@@ -297,6 +321,8 @@ public final class MIRPipeline: @unchecked Sendable {
         latestMinorKeyCorrelation = ctx.chroma.minorKeyCorrelation
         rawSmoothedFlux = ctx.spectral.smoothedFlux
         rawSmoothedCentroid = ctx.spectral.smoothedCentroid
+
+        updateCanopyProbe(ctx)   // DYN.3
 
         if ctx.beat.onsets.contains(true) {
             onsetCountThisSecond += 1
@@ -485,7 +511,7 @@ public final class MIRPipeline: @unchecked Sendable {
         // authority and the track-change call order between `reset()` and the
         // grid install differs across the LF / streaming paths.
         beatPulseClock.resetAnchor()
-        melodicNoteGate.reset()   // FTR.6 — no notes and no refractory carried across tracks
+        canopyProbe = CanopyProbe()   // DYN.3 — one probe line per track
 
         lock.lock()
         fluxRunningMax = 1e-6
@@ -547,13 +573,11 @@ extension MIRPipeline {
         fv.pulseRegionalBlend01 = pulse.regionalBlend01
     }
 
-    /// Post-init analyzer fields: TONAL (44–48), DYN.1 density (49–52) and the FTR.6
-    /// melodic note gate (53). Grouped so
+    /// Post-init analyzer fields: TONAL (44–48) and DYN.1 density (49–52). Grouped so
     /// `buildFeatureVector` stays inside its length budget as fields accrete.
     private func applyAnalyzerFields(_ ctx: ProcessContext, to fv: inout FeatureVector) {
         applyTonalFields(ctx.tonal, to: &fv)
         applyDensityFields(ctx.spectral, to: &fv)
-        applyMelodicTips(ctx, to: &fv)   // FTR.6 (float 53)
     }
 
     /// DYN.1: write spectral density onto floats 49–50.
@@ -566,17 +590,6 @@ extension MIRPipeline {
         fv.spectralDensitySlow = spectral.smoothedDensity
         fv.spectralSurge = spectral.surge
         fv.spectralSectionRatio = spectral.sectionRatio   // DYN.2b
-    }
-
-    /// FTR.6: write the refractory-gated melodic tip count onto float 53.
-    ///
-    /// `stableBPM` was written by `updateCPUSideProperties` earlier in this same `process`
-    /// call, so the refractory tracks the current track's tempo from the frame it is first
-    /// established — no one-frame lag, and the 120 BPM default only applies before then.
-    private func applyMelodicTips(_ ctx: ProcessContext, to fv: inout FeatureVector) {
-        fv.melodicTips = melodicNoteGate.update(beatMid: ctx.beat.beatMid,
-                                                bpm: stableBPM ?? 0,
-                                                deltaTime: ctx.deltaTime)
     }
 
     /// TONAL (D-178): write the Tonal Interval Vector signals onto floats 44–48.
@@ -628,5 +641,85 @@ extension MIRPipeline {
     public func setLoudnessProfile(_ profile: LoudnessProfile?) {
         spectralAnalyzer.setLoudnessProfile(profile)
         logger.info("MIR_LOUDNESS_PROFILE: \(profile?.summary ?? "cleared — fixed surge band")")
+    }
+}
+
+// MARK: - DYN.3 canopy data-path probe
+
+/// Per-track probe state. A struct so `reset()` is one assignment and cannot forget a field
+/// — the "@Published written on one path, not cleared on the complementary path" trap in
+/// CLAUDE.md §What NOT To Do, in its plain-stored-property form.
+struct CanopyProbe {
+    var frames: Int = 0
+    var logged = false
+    var ratioMin: Float = .greatestFiniteMagnitude
+    var ratioMax: Float = -.greatestFiniteMagnitude
+    /// Which branch `sectionRatio` took; `nil` until the probe fires at 30 s.
+    var branch: String?
+    /// Measured analysis frames per second at the probe.
+    var fps: Double = 0
+}
+
+extension MIRPipeline {
+
+    /// DYN.3 — which branch `SpectralAnalyzer.sectionRatio` took, as of the last probe.
+    /// Exposed rather than only logged so the classification itself is gated by a test: a
+    /// diagnostic that names the wrong branch is worse than none, and this one exists
+    /// precisely because the branch cannot be inferred from the recorded CSV.
+    public var canopyDensityBranch: String? { canopyProbe.branch }
+    /// DYN.3 — measured analysis frames per second. Every density time constant is
+    /// `1 / (alpha * this)`, so this is what says whether the constants mean what they say.
+    public var canopyAnalysisFPS: Double { canopyProbe.fps }
+
+    /// One-shot per-track probe recording WHICH source `spectral_section_ratio` came from
+    /// and at what analysis rate.
+    ///
+    /// FTR.6r left a question no amount of reading settles. Offline, over Matt's own tap
+    /// capture and with his own cached profile installed, that field spans its full 0…2 and
+    /// the Fractal Tree canopy grows and recedes; on the live session `2026-08-07T22-59-38Z`
+    /// it sat in **0.785…1.084** and the canopy moved 0.38…0.50 — his *"the entire suite of
+    /// movement does not feel strongly tied to the music."* The field has exactly two
+    /// sources, DYN.2c's ranked branch and DYN.2b's live-EMA fallback, and their signatures
+    /// differ — but **one recorded column cannot say which ran**, and three rounds of
+    /// inference from the CSV did not settle it either.
+    ///
+    /// The analysis rate is recorded for the same reason: every density leg uses a
+    /// per-FRAME alpha, so its time constant is `1 / (alpha * fps)`. The constants were
+    /// calibrated at ~43 fps and the live rate has never been measured, so a rate that is
+    /// not what they assume silently retunes all four legs.
+    ///
+    /// Housed in a same-file extension so it keeps private access without inflating the
+    /// class's `type_body_length` — same reason as `setSampleRate` above.
+    private func updateCanopyProbe(_ ctx: ProcessContext) {
+        canopyProbe.frames += 1
+        canopyProbe.ratioMin = min(canopyProbe.ratioMin, ctx.spectral.sectionRatio)
+        canopyProbe.ratioMax = max(canopyProbe.ratioMax, ctx.spectral.sectionRatio)
+        guard !canopyProbe.logged, elapsedSeconds >= 30.0 else { return }
+        canopyProbe.logged = true
+
+        let fps = elapsedSeconds > 0 ? Double(canopyProbe.frames) / elapsedSeconds : 0
+        let tau = Double(SpectralAnalyzer.densitySectionTau)
+        let branch: String
+        if let profile = spectralAnalyzer.loudnessProfile {
+            if !profile.isUsable {
+                branch = "fallback(profile-unusable)"
+            } else if profile.densityRank(of: ctx.spectral.sectionRatio) == nil {
+                // A v8-era profile: level quantiles measured, density quantiles never.
+                // Reverts to the DYN.2b EMA and leaves no trace in the CSV.
+                branch = "fallback(no-density-quantiles)"
+            } else {
+                branch = "ranked"
+            }
+        } else {
+            branch = "fallback(no-profile)"
+        }
+        canopyProbe.branch = branch
+        canopyProbe.fps = fps
+
+        let span = String(format: "%.3f…%.3f", canopyProbe.ratioMin, canopyProbe.ratioMax)
+        let rate = String(format: "fps=%.1f tau_section=%.1fs", fps, tau)
+        let line = "DENSITY_PATH: branch=\(branch) \(rate) span=\(span)"
+        logger.info("\(line, privacy: .public)")
+        onDiagnostic?(line)   // DYN.3.1 — the copy that survives into session.log
     }
 }

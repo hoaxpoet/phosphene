@@ -187,15 +187,68 @@ public struct LoudnessProfile: Sendable, Equatable, Codable {
 
     // MARK: - The level scale (single source of truth)
 
-    /// EMA alpha for the SECTION-scale density leg (τ ≈ 20 s at the measured 43 Hz), shared
-    /// by the live analyzer and the offline quantile measurement so the two rank the same
-    /// signal. DYN.2b's legs collapsed because two nominally-different widths were 0.38 %
-    /// apart; keeping the constant in one place is how that stops recurring.
-    public static let densitySectionAlpha: Float = 0.00116
+    // MARK: - Smoothing time constants (DYN.4)
+    //
+    // **These were per-FRAME alphas and that was a defect.** An EMA written as
+    // `x = α·new + (1-α)·x` with a constant α has a time constant of `1/(α·fps)` — so its
+    // meaning in seconds moves with the analysis rate. The offline quantile builder hops
+    // 1024 samples at 44.1 kHz (43.07 Hz) and its header claimed it "mirrors the live path
+    // frame for frame"; that was true when the live path also ran at 43 Hz. Measured on
+    // Matt's session `2026-08-10T01-29-10Z`, **the live path runs at 9.9 Hz**, so:
+    //
+    //   leg      documented   actually live (9.9 Hz)
+    //   section    τ 20 s       87 s
+    //   normal     τ 45 s       194 s
+    //
+    // The consequence is not a slightly different feel. `densityQuantiles` are built from a
+    // τ20 s-smoothed series offline and the live value ranked against them is τ87 s
+    // smoothed, so the two describe different distributions and every live rank is
+    // compressed toward the middle. On that session `spectral_section_ratio` spanned
+    // 0.534…0.614 of its 0…2 range and the Fractal Tree canopy used 0.00…0.31 of its own.
+    //
+    // Expressed in SECONDS and converted per frame with `emaAlpha(deltaTime:tau:)`, the
+    // constants mean what they say at any rate, and offline and live agree by construction.
 
-    /// EMA alpha applied to `levelDB` before anything reads it, live and offline.
-    /// At the measured ~47 Hz analysis rate this is τ ≈ 0.7 s.
-    public static let levelSmoothingAlpha: Float = 0.030
+    /// The analysis rate the legacy per-frame alphas were calibrated at — CD rate over the
+    /// offline 1024-sample hop, ≈ 43.07 Hz.
+    ///
+    /// A historical calibration anchor, NOT a runtime rate assumption: nothing derives a
+    /// live width from it (every follower takes the real `deltaTime`), it exists so
+    /// `tau(legacyAlpha:)` can state exactly what each retired coefficient meant. That is
+    /// why it does not violate QR.1 / D-079 — there is no tap rate to thread here.
+    public static let referenceAnalysisHz: Float = 1 / referenceFrameSeconds
+
+    /// Duration of one analysis frame at that reference rate, in SECONDS (1024 samples at
+    /// CD rate). A duration rather than a rate because a duration is what every follower
+    /// actually consumes — and stating it this way means no sample-rate literal is asserted
+    /// anywhere, which is the QR.1 / D-079 rule rather than an exemption from it.
+    public static let referenceFrameSeconds: Float = 0.023_219_954
+
+    /// Time constant a legacy per-frame alpha meant at `referenceAnalysisHz`. Chosen so the
+    /// exponential form below reproduces the old coefficient EXACTLY at that rate — this
+    /// increment fixes the rate dependence, it does not retune anything.
+    public static func tau(legacyAlpha alpha: Float) -> Float {
+        -referenceFrameSeconds / log(1 - alpha)
+    }
+
+    /// Frame alpha for a time constant, given this frame's duration.
+    ///
+    /// Falls back to the reference frame when `deltaTime` is absent or nonsensical — a
+    /// zero would freeze every follower, which is a worse failure than a slightly wrong
+    /// smoothing width on one frame.
+    public static func emaAlpha(deltaTime: Float, tau: Float) -> Float {
+        let dt = deltaTime.isFinite && deltaTime > 0 ? deltaTime : referenceFrameSeconds
+        return 1 - exp(-dt / max(tau, 1e-6))
+    }
+
+    /// SECTION-scale density leg, shared by the live analyzer and the offline quantile
+    /// measurement so the two rank the same signal. DYN.2b's legs collapsed because two
+    /// nominally-different widths were 0.38 % apart; keeping the constant in one place is
+    /// how that stops recurring — and DYN.4 is why it must be a τ, not an alpha.
+    public static let densitySectionTau: Float = tau(legacyAlpha: 0.00116)   // ≈ 20.0 s
+
+    /// Applied to `levelDB` before anything reads it, live and offline.
+    public static let levelSmoothingTau: Float = tau(legacyAlpha: 0.030)     // ≈ 0.76 s
 
     /// Split between "low" and "high" for the density fraction. 1.5 kHz sits above the
     /// fundamental range of most rhythm-section content and below the harmonics distortion

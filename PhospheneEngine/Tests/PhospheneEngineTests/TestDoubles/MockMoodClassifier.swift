@@ -27,7 +27,7 @@ final class MockMoodClassifier: MoodClassifying, @unchecked Sendable {
 
     private(set) var currentState: EmotionalState = .neutral
 
-    func classify(features: [Float]) throws -> EmotionalState {
+    func classify(features: [Float], deltaTime: Float) throws -> EmotionalState {
         classifyCallCount += 1
         lastFeatures = features
 
