@@ -31,6 +31,7 @@ import UniformTypeIdentifiers
 @testable import Renderer
 @testable import Presets
 @testable import PresetSessionReplay
+@testable import Audio
 @testable import DSP
 @testable import Shared
 
@@ -218,6 +219,20 @@ struct FractalTreeMeshRenderTest {
         // density looked unchanged here after it had already been fixed. Density is
         // recomputed through the real SpectralAnalyzer; everything else still comes from
         // the CSV, which is correct for fields the engine has not changed.
+        // A `LoudnessProfile` is a PER-TRACK distribution, so recomputing the section ratio
+        // is only valid for a single-track capture. Measured across a two-track session it
+        // ranks every moment against the wrong distribution and the canopy collapses to a
+        // sapling — observed on `2026-08-11T16-41-39Z` (Cherub Rock + Carry The Zero): growth
+        // span 0.0202 on a single-track capture against 0.0036 on that one, with the SAME
+        // build. Detected from the session log rather than guessed.
+        let trackCount = Self.trackCount(inSessionAt: csv.deletingLastPathComponent())
+        if trackCount > 1 {
+            print("""
+                [fractal-tree/sequence] \(trackCount)-track capture — section ratio REPLAYED \
+                from the recording, not recomputed (a loudness profile is per track). A \
+                post-FTR.9 verdict needs a single-track capture.
+                """)
+        }
         let densityByTime = (try? Self.recomputeDensity(
             wav: csv.deletingLastPathComponent().appendingPathComponent("raw_tap.wav"))) ?? []
         if densityByTime.isEmpty {
@@ -260,7 +275,8 @@ struct FractalTreeMeshRenderTest {
         for (index, row) in rows.enumerated() where index % stride == 0 {
             if strip.count >= maxFrames { break }
             var fv = Self.featuresFromSession(row, fifths: &fifths)
-            Self.applyRecomputedDensity(densityByTime, at: row["time"] ?? 0, to: &fv)
+            Self.applyRecomputedDensity(densityByTime, at: row["time"] ?? 0, to: &fv,
+                                        includeSectionRatio: trackCount == 1)
             fv.aspectRatio = Float(Self.width) / Float(Self.height)
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
             Self.encode(cmd, into: target, generator: generator, features: fv,
@@ -469,33 +485,60 @@ struct FractalTreeMeshRenderTest {
 
     /// Run the REAL `SpectralAnalyzer` over the capture's audio, returning
     /// (audioTime, density, densitySlow) at the ~10 Hz analysis rate.
-    private static func recomputeDensity(wav: URL) throws -> [(Double, Float, Float, Float)] {
+    /// Recomputed density fields for a capture, INCLUDING the section ratio (FTR.9).
+    ///
+    /// The ratio was the one field this recompute did not carry, so the sequence replayed
+    /// whatever the recording's build wrote — which after FTR.9 means the OLD, unsmoothed
+    /// value, and a motion gate that measures the behaviour the increment just changed. A
+    /// `LoudnessProfile` is measured from the capture itself so the ratio takes its RANKED
+    /// branch; without one it silently falls back to the DYN.2b live EMA and the whole
+    /// canopy reads wrong.
+    private static func recomputeDensity(wav: URL) throws -> [(Double, Float, Float, Float, Float)] {
         let samples = try SpectralDensityRealAudioTests.loadFloatWavMonoShared(wav)
         guard !samples.isEmpty else { return [] }
         let analyzer = SpectralAnalyzer(binCount: 512, sampleRate: 48000, fftSize: 1024)
+        analyzer.setLoudnessProfile(LoudnessProfile.measure(samples: samples, sampleRate: 48000))
         let hop = 4800
-        var out: [(Double, Float, Float, Float)] = []
+        var out: [(Double, Float, Float, Float, Float)] = []
         var start = 0
         while start + 1024 <= samples.count {
             let frame = Array(samples[start..<(start + 1024)])
             let result = analyzer.process(
                 magnitudes: try SpectralDensityRealAudioTests.magnitudesShared(of: frame),
                 deltaTime: Float(hop) / 48000)
-            out.append((Double(start) / 48000, result.density, result.smoothedDensity, result.surge))
+            out.append((Double(start) / 48000, result.density, result.smoothedDensity,
+                        result.surge, result.sectionRatio))
             start += hop
         }
         return out
     }
 
     /// The capture's `time` column and the audio share an origin at recording start.
-    private static func applyRecomputedDensity(_ table: [(Double, Float, Float, Float)],
+    private static func applyRecomputedDensity(_ table: [(Double, Float, Float, Float, Float)],
                                                at time: Double,
-                                               to fv: inout FeatureVector) {
+                                               to fv: inout FeatureVector,
+                                               includeSectionRatio: Bool) {
         guard !table.isEmpty else { return }
         let index = Swift.min(Swift.max(Int(time * 10), 0), table.count - 1)
         fv.spectralDensity = table[index].1
         fv.spectralDensitySlow = table[index].2
         fv.spectralSurge = table[index].3
+        // FTR.9 — the canopy's own driver, but only where a single-track profile is valid.
+        if includeSectionRatio { fv.spectralSectionRatio = table[index].4 }
+    }
+
+    /// Distinct tracks in a recorded session, from its log. Zero when the log is absent —
+    /// treated as "unknown", i.e. do not recompute.
+    private static func trackCount(inSessionAt directory: URL) -> Int {
+        guard let log = try? String(contentsOf: directory.appendingPathComponent("session.log"),
+                                    encoding: .utf8) else { return 0 }
+        var titles = Set<String>()
+        for line in log.split(separator: "\n") where line.contains("track='") {
+            guard let start = line.range(of: "track='"),
+                  let end = line[start.upperBound...].firstIndex(of: "'") else { continue }
+            titles.insert(String(line[start.upperBound..<end]))
+        }
+        return titles.count
     }
 
     private static func median(_ values: [Double]) -> Double {
