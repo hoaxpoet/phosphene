@@ -1881,6 +1881,33 @@ Cause: `spectral_section_ratio` is the RANK of a τ20 s leg, and ranking a slow 
 
 **Certification NOT taken.** Matt asked whether to proceed; the answer was to fix these first, and he chose that. **Unverified live** — these are measurements, not his eye.
 
+**FTR.9 verdict + FTR.10 SPEC — the trunk is `spectral_surge`, and FTR.9 calmed the wrong term.** ⏸ (2026-08-11, session `2026-08-11T18-26-52Z`, chain `clean`, *Carry The Zero*) Matt: *"The trunk is moving too much, which unfortunately makes the motion of the tips difficult to see. We need less motion — like tying movement to the songbeat."*
+
+**FTR.9 did land and did work — on the canopy.** `spectral_section_ratio` turns **2.88 → 0.27/s**; `reach` **2.75 → 0.80/s**. But `trunk length = 0.27 + reach·0.13 + surge·0.32`, and decomposed on this session:
+
+| term | span | turns/s |
+|---|---|---|
+| `reach × 0.13` (what FTR.9 calmed) | 0.109 | 0.80 |
+| **`surge × 0.32`** | **0.168** | **1.27** |
+
+**The trunk is mostly `spectral_surge` — the bigger coefficient AND the faster signal — and FTR.9 never touched it.** Trunk still turns **1.75/s** against this preset's own ~1 turn/s rule for continuous geometry. Diagnosed by measuring "canopy reach" when Matt's word was "trunk"; they are not the same term.
+
+**FTR.10 — step the trunk on the beat. Matt's literal choice, taken 2026-08-11 rather than guessed** (the *"shoot up"* lesson: a visual verb gets his definition before any build). Of the three options put to him — per beat, per bar, or continuous-but-smoother — he chose **steps on each beat**: the trunk holds perfectly still between beats and steps to its new height ON the beat.
+
+Measured on his session (94.1 BPM → 0.64 s beat, 2.55 s bar), holding the trunk value and re-sampling on the phase wrap:
+
+| trunk mode | turns/s | span | changes/s |
+|---|---|---|---|
+| continuous (shipped) | 1.75 | 0.178 | 10.41 |
+| **held, per beat** ← chosen | **0.51** | 0.173 | 1.57 |
+| held, per bar | 0.25 | 0.207 | 0.39 |
+
+The growth survives (span 0.173 against 0.178) and the drift goes. **This is not the beat-driven activity Matt rejected twice** — those added per-beat accents (taps, a flash). This uses the beat to REMOVE motion, which is the opposite operation.
+
+**Constraints the implementation must honour:** beat-locked motion is valid only on the cached `BeatGrid`, never raw live onsets; **beat-irregular tracks are excluded (D-154)** and need a continuous fallback; the Cold-Start Phase Contract means the grid can install with the right BPM and the WRONG phase, so the first bars may step off-beat and the preset must not depend on phase being right from frame 1. `beatPhase01` / `barPhase01` / `beatsPerBar` / `pulse_beat_index` are all already in the FeatureVector.
+
+**Done-when:** trunk turns/s under the preset's ~1.0 rule with the span intact; `TrunkTrajectoryReportTests` full-track motion no worse than FTR.9's 0.0292/s; the motion gate re-run on a SINGLE-track capture (FTR.9.1 — a loudness profile is per track); then Matt's live look.
+
 **FTR.5 — M7 + certification.** ⏸ **BLOCKED ON MATT — this is a live review, not work Claude
 can complete.** FTR.6 landed the rate/granularity adjustment Matt named as the precondition
 ("close pending these adjustments") and it is verified offline on both source tracks; whether
