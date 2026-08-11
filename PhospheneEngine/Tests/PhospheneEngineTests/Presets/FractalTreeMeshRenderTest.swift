@@ -272,12 +272,20 @@ struct FractalTreeMeshRenderTest {
         var heights: [Double] = []
         var inks: [Double] = []
 
-        for (index, row) in rows.enumerated() where index % stride == 0 {
+        for (index, row) in rows.enumerated() {
             if strip.count >= maxFrames { break }
             var fv = Self.featuresFromSession(row, fifths: &fifths)
             Self.applyRecomputedDensity(densityByTime, at: row["time"] ?? 0, to: &fv,
                                         includeSectionRatio: trackCount == 1)
             fv.aspectRatio = Float(Self.width) / Float(Self.height)
+            // FTR.10 — the strip is subsampled, the BEAT HOLD is not. `MeshGenerator` advances
+            // its snapshot inside `draw`, so a harness that only draws every Nth row would
+            // feed the hold an aliased phase and measure a clock that does not exist live.
+            // Every skipped row goes through the same object, un-drawn.
+            guard index % stride == 0 else {
+                generator.advanceBeatHold(fv)
+                continue
+            }
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
             Self.encode(cmd, into: target, generator: generator, features: fv,
                         stems: Self.sessionStems(stemRows, index: index + stemOffset))
@@ -384,6 +392,236 @@ struct FractalTreeMeshRenderTest {
         }
     }
 
+    // MARK: - FTR.10 — the stepped trunk
+
+    /// What the trunk does across a real capture, before and after the beat hold.
+    ///
+    /// Matt, 2026-08-11 (`2026-08-11T18-26-52Z`): *"The trunk is moving too much, which
+    /// unfortunately makes the motion of the tips difficult to see."* This reports the two
+    /// numbers that claim is about — how often the trunk changes direction, and how far it
+    /// travels — for the continuous build and for the held one, on the same rows.
+    ///
+    /// **Span is asserted as tightly as rate.** A smoother would also cut the turn rate, and
+    /// would do it by throwing away the range Matt spent DYN.1e–DYN.4 asking for ("a 10 %
+    /// band … nothing to see"). A sample-and-hold keeps the range by construction; this
+    /// assertion is what makes that a checked property rather than a claim.
+    ///
+    ///   FT_SESSION=~/Documents/phosphene_sessions/<id> \
+    ///   swift test --package-path PhospheneEngine --filter trunkStepsOnTheBeat
+    @Test("FTR.10: the trunk holds between beats and steps on them (FT_SESSION=<dir>)")
+    func trunkStepsOnTheBeat() throws {
+        guard let dir = ProcessInfo.processInfo.environment["FT_SESSION"] else { return }
+        let session = URL(fileURLWithPath: (dir as NSString).expandingTildeInPath)
+        let csv = session.appendingPathComponent("features.csv")
+        let rows = try Self.loadSessionRows(csv)
+        guard !rows.isEmpty else {
+            throw FractalTreeHarnessError.setupFailed("no usable rows in \(csv.path)")
+        }
+        // FTR.9.1 — a `LoudnessProfile` is per track, so recomputing the section ratio across
+        // a multi-track capture ranks every moment against the wrong distribution and the
+        // canopy collapses to a sapling. Refuse rather than report a fiction.
+        let trackCount = Self.trackCount(inSessionAt: session)
+        guard trackCount <= 1 else {
+            throw FractalTreeHarnessError.setupFailed("""
+                \(trackCount)-track capture — the trunk report needs a single-track session \
+                (a LoudnessProfile is per track; FTR.9.1).
+                """)
+        }
+        // REPLAYED, NOT RECOMPUTED — and that is the opposite of what the sequence harness
+        // does, so it needs a reason. `recomputeDensity` exists because a capture holds
+        // whatever build recorded it (FTR.9.1). But it measures the `LoudnessProfile` from the
+        // TAP, where the live path measures it from the local FILE (DYN.1c), and on this
+        // capture the two disagree hard: recomputed surge tops out at 0.073 against the
+        // recording's 0.802, which drives `musicGate` to ~0.03 and pins the trunk flat.
+        // The recording here postdates FTR.9, so its columns ARE the current engine's — the
+        // condition `recomputeDensity` was written to protect against does not hold.
+        // `FT_RECOMPUTE=1` forces the other path when the capture is genuinely old.
+        let recompute = ProcessInfo.processInfo.environment["FT_RECOMPUTE"] == "1"
+        let densityByTime = recompute
+            ? ((try? Self.recomputeDensity(
+                wav: session.appendingPathComponent("raw_tap.wav"))) ?? [])
+            : []
+        print("[fractal-tree/inputs] drivers \(recompute ? "RECOMPUTED from raw_tap.wav" : "replayed from features.csv")")
+
+        var fifths = FifthsSmoother()
+        var hold = BeatHold()
+        var reachTerm: [Float] = []
+        var surgeTerm: [Float] = []
+        var continuous: [Float] = []
+        var stepped: [Float] = []
+        var steppingFrames = 0
+        for row in rows {
+            var fv = Self.featuresFromSession(row, fifths: &fifths)
+            Self.applyRecomputedDensity(densityByTime, at: row["time"] ?? 0, to: &fv,
+                                        includeSectionRatio: true)
+            let held = hold.update(fv)
+            if hold.isStepping { steppingFrames += 1 }
+            let growth = Self.growth(fv)
+            reachTerm.append(growth.reach * 0.13)
+            surgeTerm.append(growth.surge * 0.32)
+            continuous.append(Self.trunkLength(fv))
+            stepped.append(Self.trunkLength(held))
+        }
+        let seconds = (rows.last?["time"] ?? 0) - (rows.first?["time"] ?? 0)
+
+        // Both span statistics, because they disagree by ~2× on this capture and the FTR.10
+        // spec quotes the narrower one. p05→p95 is the honest "how far does it travel in
+        // normal playback"; min→max includes the intro's climb out of the floor.
+        func line(_ label: String, _ values: [Float]) -> String {
+            String(format: "  %-22@ span %.3f (p05→p95 %.3f)   turns %.2f/s",
+                   label as NSString, Self.span(values), Self.percentileSpan(values),
+                   Self.turnsPerSecond(values, seconds: seconds))
+        }
+        print("""
+
+        ── FTR.10 TRUNK ───────────────────────────────────────────────────
+        session       \(session.lastPathComponent)   \(rows.count) rows / \
+        \(String(format: "%.1f", seconds)) s
+        hold engaged  \(String(format: "%.0f%%", 100 * Double(steppingFrames) / Double(rows.count))) \
+        of frames
+        \(line("reach x 0.13", reachTerm))
+        \(line("surge x 0.32", surgeTerm))
+        \(line("trunk (continuous)", continuous))
+        \(line("trunk (held)", stepped))
+        ───────────────────────────────────────────────────────────────────
+        """)
+
+        let heldTurns = Self.turnsPerSecond(stepped, seconds: seconds)
+        #expect(heldTurns <= 0.6, """
+            the held trunk still turns \(String(format: "%.2f", heldTurns))/s. Matt's \
+            complaint is motion, and this preset's own rule is that anything past ~1 turn/s \
+            reads as the tree bouncing rather than growing; a stepped trunk has to be well \
+            under it, not marginally under.
+            """)
+        let ratio = Double(Self.span(stepped) / Swift.max(Self.span(continuous), 1e-6))
+        #expect(ratio > 0.9, """
+            the held trunk spans \(String(format: "%.3f", Self.span(stepped))) against the \
+            continuous \(String(format: "%.3f", Self.span(continuous))) — \
+            \(String(format: "%.0f%%", 100 * ratio)) of the range. Losing range to buy \
+            stillness is the DYN.1e failure ("neither grew nor receded"), and it is what a \
+            smoother would have done here.
+            """)
+        #expect(steppingFrames > rows.count / 2, """
+            the hold engaged on only \(steppingFrames) of \(rows.count) frames — on a capture \
+            with a healthy cached grid it should hold for nearly the whole body of the track. \
+            Below half, this report is measuring the fallback path, not the feature.
+            """)
+    }
+
+    /// The shader's `fractal_growth()`, mirrored (FractalTree.metal).
+    ///
+    /// A Swift copy of shader arithmetic is exactly the drift that let FTR.6 ship a
+    /// regression past a green harness, so the mirror is kept honest two ways: it is the
+    /// ONLY copy in this file, and `objectStageReadsTheBeatHeldVector` proves through the
+    /// real pipeline that the GPU is reading the held vector this report models.
+    private static func growth(_ f: FeatureVector) -> (reach: Float, surge: Float) {
+        func saturate(_ v: Float) -> Float { Swift.min(Swift.max(v, 0), 1) }
+        func smoothstep(_ e0: Float, _ e1: Float, _ v: Float) -> Float {
+            let t = saturate((v - e0) / (e1 - e0))
+            return t * t * (3 - 2 * t)
+        }
+        let arousalReach = saturate((f.arousal - 0.10) / 0.58)
+        let fullness = saturate(f.spectralSectionRatio * 0.5)
+        let gate = smoothstep(0.05, 0.30, saturate(f.spectralSurge))
+        return (saturate(Swift.max(0.10 * arousalReach, fullness) * gate),
+                saturate(f.spectralSurge))
+    }
+
+    /// The shader's `trunk_len` (FractalTree.metal), mirrored — see ``growth(_:)``.
+    private static func trunkLength(_ f: FeatureVector) -> Float {
+        let g = growth(f)
+        return 0.27 + g.reach * 0.13 + g.surge * 0.32
+    }
+
+    private static func span(_ values: [Float]) -> Float {
+        (values.max() ?? 0) - (values.min() ?? 0)
+    }
+
+    private static func percentileSpan(_ values: [Float]) -> Float {
+        guard values.count > 20 else { return span(values) }
+        let sorted = values.sorted()
+        return sorted[sorted.count * 19 / 20] - sorted[sorted.count / 20]
+    }
+
+    /// Direction changes per second — the metric FTR.9 reported the canopy in, and the one
+    /// the preset's "faster than ~1 turn/s reads as bouncing" rule is written against.
+    private static func turnsPerSecond(_ values: [Float], seconds: Double) -> Double {
+        let deltas = zip(values, values.dropFirst()).map { $1 - $0 }.filter { $0 != 0 }
+        let flips = zip(deltas, deltas.dropFirst()).filter { $0 * $1 < 0 }.count
+        return Double(flips) / Swift.max(seconds, 1)
+    }
+
+    /// FTR.10 — proof that the OBJECT stage reads the beat-held FeatureVector at buffer(4).
+    ///
+    /// Binding a buffer and the GPU reading it are different claims (FTR.4's lesson, and the
+    /// five months `vocalsPitchConfidence` sat dead while closeouts said otherwise). This
+    /// drives the REAL `MeshGenerator` with a steady synthetic beat clock until the hold
+    /// engages, then renders a frame whose LIVE surge has jumped — mid-beat, so the held
+    /// vector still carries the old value. The tree must render at its OLD height. A
+    /// generator that never saw the clock renders the same live frame taller.
+    @Test("the object stage reads the beat-held FeatureVector at buffer(4) (FTR.10)")
+    func objectStageReadsTheBeatHeldVector() throws {
+        let ctx = try MetalContext()
+        let loader = PresetLoader(device: ctx.device, pixelFormat: ctx.pixelFormat,
+                                  loadBuiltIn: true)
+        let preset = try #require(loader.presets.first { $0.descriptor.name == "Fractal Tree" })
+        let target = try Self.makeTexture(ctx)
+
+        func makeGenerator() -> MeshGenerator {
+            MeshGenerator(device: ctx.device, pipelineState: preset.pipelineState,
+                          configuration: .init(maxVerticesPerMeshlet: 252,
+                                               maxPrimitivesPerMeshlet: 126,
+                                               meshThreadCount: preset.descriptor.meshThreadCount))
+        }
+        /// A frame on a steady 120 BPM grid. `surge` and the section ratio are what the trunk
+        /// reads; `pulse_amp01` keeps the silence gate open.
+        func frame(time: Float, surge: Float) -> FeatureVector {
+            var f = Self.baseFeatures()
+            f.time = time
+            f.beatPhase01 = (time.truncatingRemainder(dividingBy: 0.5)) / 0.5
+            f.barPhase01 = (time.truncatingRemainder(dividingBy: 2.0)) / 2.0
+            f.beatsPerBar = 4
+            f.pulseAmp01 = 1
+            f.arousal = 0.6
+            f.spectralSurge = surge
+            f.spectralSectionRatio = surge * 2
+            return f
+        }
+
+        // Ten seconds of quiet, steady beats at the ~10 Hz analysis rate — twenty beats,
+        // enough for the hold to engage after eight consistent intervals.
+        let warm = makeGenerator()
+        for tick in 0...101 { warm.advanceBeatHold(frame(time: Float(tick) * 0.1, surge: 0.10)) }
+
+        // t = 10.25 s is mid-beat (the last beat was 10.0, the last fed frame 10.1): the live
+        // surge slams to 1.0 but the held vector still carries the 0.10 sampled on the beat,
+        // so the trunk must still be short. Feeding a frame that itself crossed a beat would
+        // re-sample the hold and prove nothing.
+        let loud = frame(time: 10.25, surge: 1.0)
+        func render(_ generator: MeshGenerator) throws -> [UInt8] {
+            guard let cmd = ctx.commandQueue.makeCommandBuffer() else {
+                throw FractalTreeHarnessError.setupFailed("no command buffer")
+            }
+            Self.encode(cmd, into: target, generator: generator, features: loud, stems: .zero)
+            cmd.commit()
+            cmd.waitUntilCompleted()
+            return Self.read(target)
+        }
+        let heldFrame = try render(warm)
+        let freshFrame = try render(makeGenerator())
+
+        let heldHeight = Self.canopyHeight(heldFrame)
+        let freshHeight = Self.canopyHeight(freshFrame)
+        print(String(format: "[fractal-tree/hold] canopy height held %.4f vs unheld %.4f",
+                     heldHeight, freshHeight))
+        #expect(heldHeight < freshHeight * 0.95, """
+            the tree rendered the same height (\(heldHeight) vs \(freshHeight)) whether or not \
+            the beat hold had engaged. Either buffer(4) is not bound on the object stage or \
+            the shader is not reading it — the trunk is still sliding with the live surge and \
+            everything this increment reports is measuring a mirror, not the GPU.
+            """)
+    }
+
     /// Parse a recorded `features.csv` into rows keyed by column name, dropping the
     /// malformed startup lines a live capture can contain.
     /// StemFeatures for one row of a recorded session's `stems.csv` (FTR.4/FTR.8).
@@ -479,6 +717,12 @@ struct FractalTreeMeshRenderTest {
         f.barPhase01 = value("barPhase01_permille") / 1000; f.beatsPerBar = value("beatsPerBar")
         f.spectralDensity = value("spectral_density")
         f.spectralDensitySlow = value("spectral_density_slow")
+        // DYN.2/FTR.9 — the canopy's own two drivers, which this builder did not carry until
+        // FTR.10. Every caller happened to overwrite them from `applyRecomputedDensity`, so
+        // the omission was invisible; a caller that did not would have measured a trunk pinned
+        // at its silence floor and called the route dead.
+        f.spectralSurge = value("spectral_surge")
+        f.spectralSectionRatio = value("spectral_section_ratio")
         f.time = value("time")
         return f
     }
