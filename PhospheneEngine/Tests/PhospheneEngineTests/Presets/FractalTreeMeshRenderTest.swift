@@ -557,12 +557,14 @@ struct FractalTreeMeshRenderTest {
                                    - Self.tipBranches(frame: held, live: fv, stems: stems)))
         }
         let seconds = (rows.last?["time"] ?? 0) - (rows.first?["time"] ?? 0)
-        // TURNS PER BEAT, alongside turns per second, because a beat-held signal can only
-        // change ON a beat — its turn rate therefore carries the tempo as a factor, and an
-        // absolute per-second floor is silently stricter on fast songs for no musical reason.
-        // Seven Nation Army (124 BPM) measures 0.66/s against Carry The Zero's (94 BPM)
-        // 0.52/s, which is 0.32 turns per beat on BOTH. Reported, not yet asserted on — see
-        // the note under the trunk assertion.
+        // TURNS PER BEAT is the UNIT THE TRUNK BAR IS ASSERTED IN (FTR.12c, Matt's call
+        // 2026-08-12), because a beat-held signal can only change ON a beat — its per-second
+        // turn rate therefore carries the tempo as a factor, and an absolute per-second floor
+        // is silently stricter on fast songs for no musical reason. Seven Nation Army (124 BPM)
+        // measured 0.66/s against Carry The Zero's (94 BPM) 0.52/s, which is 0.32/beat on BOTH.
+        // Per second is still printed for every row, because the continuously-driven rows
+        // (tips, and the "continuous" comparators) are NOT beat-held and their natural unit is
+        // still per second.
         var wraps = 0
         var previousPhase: Double = 0
         for row in rows {
@@ -571,6 +573,33 @@ struct FractalTreeMeshRenderTest {
             previousPhase = phase
         }
         let beatsPerSecond = Double(wraps) / Swift.max(seconds, 1)
+
+        // THE TEMPO THIS UNIT DIVIDES BY MUST BE CROSS-CHECKED, or a red gate goes green for
+        // the wrong reason. `beatPhase01` is derived from wrap counting, and a stalled phase is
+        // a measured failure mode in this repo — one real 171 BPM session wrapped 24 times
+        // where 614 were due. A stall makes `beatsPerSecond` tiny, which inflates turns/beat
+        // and would fail LOUDLY; the dangerous direction is the opposite one, but either way
+        // the honest response to an untrustworthy denominator is to refuse the measurement
+        // rather than report a number in a unit that does not apply. `grid_bpm` is the
+        // installed grid's own tempo and is independent of the phase clock.
+        let gridBPMs = rows.compactMap { $0["grid_bpm"] }.filter { $0 > 20 && $0 < 300 }.sorted()
+        guard !gridBPMs.isEmpty else {
+            throw FractalTreeHarnessError.setupFailed("""
+                no usable grid_bpm in \(csv.path) — turns/beat has no trustworthy denominator.
+                """)
+        }
+        let gridBeatsPerSecond = gridBPMs[gridBPMs.count / 2] / 60
+        let tempoAgreement = beatsPerSecond / Swift.max(gridBeatsPerSecond, 1e-6)
+        guard tempoAgreement > 0.9, tempoAgreement < 1.1 else {
+            throw FractalTreeHarnessError.setupFailed("""
+                beatPhase01 wraps imply \(String(format: "%.3f", beatsPerSecond)) beats/s but \
+                grid_bpm says \(String(format: "%.3f", gridBeatsPerSecond)) — a \
+                \(String(format: "%.0f%%", 100 * tempoAgreement)) match. The phase clock is \
+                not tracking this capture's grid, so turns/beat cannot be measured on it. \
+                Fix the capture or the clock; do not reach for the per-second unit, which \
+                carries the tempo (FTR.12c).
+                """)
+        }
 
         // Both span statistics, because they disagree by ~2× on this capture and the FTR.10
         // spec quotes the narrower one. p05→p95 is the honest "how far does it travel in
@@ -588,6 +617,9 @@ struct FractalTreeMeshRenderTest {
         \(String(format: "%.1f", seconds)) s
         hold engaged  \(String(format: "%.0f%%", 100 * Double(steppingFrames) / Double(rows.count))) \
         of frames
+        tempo         \(String(format: "%.1f", beatsPerSecond * 60)) BPM from beatPhase01 wraps \
+        vs \(String(format: "%.1f", gridBeatsPerSecond * 60)) from grid_bpm \
+        (\(String(format: "%.0f%%", 100 * tempoAgreement)) — the turns/beat denominator)
         \(line("reach x 0.13", reachTerm))
         \(line("surge x 0.32", surgeTerm))
         \(line("trunk (continuous)", continuous))
@@ -621,20 +653,30 @@ struct FractalTreeMeshRenderTest {
                          String(repeating: "▉", count: Int((Self.span(cont) * 200).rounded()))))
         }
 
-        // THIS BAR IS RED ON A FAST TRACK AND IS BEING LEFT RED (FTR.11). Seven Nation Army
-        // (124 BPM) measures 0.66/s against Carry The Zero's (94 BPM) 0.52/s — but per BEAT
-        // both are 0.32, because a beat-held value can only change ON a beat and this unit
-        // therefore carries the tempo. The bar was calibrated on the slower track, so it is
-        // silently stricter on faster ones for no musical reason. Switching it to turns/beat
-        // is probably right and is NOT being done here: changing a metric in the same
-        // increment it goes red is how FTR.6 shipped a regression past a green gate. Surfaced
-        // to Matt with both numbers; his call, then one commit that only changes the unit.
-        let heldTurns = Self.turnsPerSecond(stepped, seconds: seconds)
-        #expect(heldTurns <= 0.6, """
-            the held trunk still turns \(String(format: "%.2f", heldTurns))/s. Matt's \
-            complaint is motion, and this preset's own rule is that anything past ~1 turn/s \
-            reads as the tree bouncing rather than growing; a stepped trunk has to be well \
-            under it, not marginally under.
+        // THE BAR IS TURNS PER BEAT (FTR.12c, Matt's call 2026-08-12). It was `<= 0.6` per
+        // SECOND, which went red on Seven Nation Army (0.66/s) and green on Carry The Zero
+        // (0.52/s) — but per BEAT both measure 0.32, because a beat-held value can only change
+        // ON a beat, so the per-second unit carries the tempo and the bar was silently stricter
+        // on faster songs for no musical reason.
+        //
+        // THE BAR ITSELF IS UNCHANGED, ONLY RE-EXPRESSED. It was calibrated on Carry The Zero
+        // at 94.1 BPM = 1.568 beats/s, so `0.6/s ÷ 1.568 = 0.383/beat`. 0.38 is that same bar
+        // in the new unit, on the same track, with the same headroom it always had — not a
+        // widened budget. Both captures pass at 0.32/beat, which is why the unit change is
+        // safe to make: it is not converting a red to a green by moving the line, it is
+        // removing a tempo factor that was never meant to be in it. (Changing a metric in the
+        // increment it goes red is the FTR.6 failure — which is exactly why FTR.11 left it red
+        // and this is a separate commit that changes nothing else.)
+        let heldTurnsPerSecond = Self.turnsPerSecond(stepped, seconds: seconds)
+        let heldTurnsPerBeat = heldTurnsPerSecond / Swift.max(beatsPerSecond, 1e-6)
+        #expect(heldTurnsPerBeat <= 0.38, """
+            the held trunk turns \(String(format: "%.2f", heldTurnsPerBeat))/beat \
+            (\(String(format: "%.2f", heldTurnsPerSecond))/s at \
+            \(String(format: "%.1f", beatsPerSecond * 60)) BPM). Matt's complaint is motion, \
+            and this preset's own rule is that anything past ~1 turn/s reads as the tree \
+            bouncing rather than growing; a stepped trunk has to be well under it, not \
+            marginally under. Do NOT widen this bar — re-derive it from the tempo if the \
+            unit is ever questioned again (FTR.12c).
             """)
         let ratio = Double(Self.span(stepped) / Swift.max(Self.span(continuous), 1e-6))
         #expect(ratio > 0.9, """

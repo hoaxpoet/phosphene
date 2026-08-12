@@ -2172,7 +2172,7 @@ Ranges intact (spread 13.751° both ways; frame count 48→48 on SNA, 42→38 on
 
 **Beat-locking verified in PIXELS, and it exposed a gate limitation.** `motion_gate.sh` reports **28 spike frames against 0** for the previous build — its heuristic reads high-frequency spikes as jitter, and a beat-stepped preset is a temporal shape it was never built to score. The spikes are the beats: of the large frame-to-frame changes in the rendered sequence **100 % land within a quarter-beat of a beat** (median phase 0.127) while the tips' small changes sit at **51 %**, which is chance. Peak per-frame change is unchanged (5.10 against 5.29) — the steps are no bigger than the jumps the continuous build was already making, just concentrated on the beat, with 83 % of frames now completely still. **First stepped preset in the catalogue; the gate needs to learn the shape, and until it does the phase test above is the instrument.**
 
-**One bar left RED on purpose.** The FTR.10 trunk assertion (≤ 0.6 turns/s) measures **0.66** on Seven Nation Army. Per BEAT both tracks measure **0.32** — a beat-held value can only change on a beat, so the per-second unit carries the tempo and the bar is silently stricter on fast songs. Switching to turns/beat is probably right and was deliberately NOT done here: changing a metric in the same increment it goes red is how FTR.6 shipped a regression past a green gate. **Matt's call, then one commit that only changes the unit.**
+**One bar left RED on purpose.** The FTR.10 trunk assertion (≤ 0.6 turns/s) measures **0.66** on Seven Nation Army. Per BEAT both tracks measure **0.32** — a beat-held value can only change on a beat, so the per-second unit carries the tempo and the bar is silently stricter on fast songs. Switching to turns/beat is probably right and was deliberately NOT done here: changing a metric in the same increment it goes red is how FTR.6 shipped a regression past a green gate. **Matt's call, then one commit that only changes the unit.** → **RESOLVED at FTR.12c** (Matt: *"Per beat"*, 2026-08-12) — both captures green in the new unit.
 
 **Matt reversed a prior instruction and the shader says so.** DYN.2 records him asking for growth that is smooth, *"not in visible jumps"*. He has now chosen steps twice (FTR.10, FTR.11), the second time after seeing the smooth version live. The later instruction wins; a comment in `FractalTree.metal` says not to restore smoothness citing DYN.2 without asking.
 
@@ -2271,6 +2271,38 @@ an instrument, so `RouteCoverageTests` and the sidecar schema are unaffected.
 **Not done, and it is not blocked on anything here:** if a guitar layer is ever wanted, the only
 measured candidate is the PANNs guitar-class probability (§FTR.12 above) — decisive on clean
 prominent guitar, unusable on distorted rock guitar. Its own increment, not a tweak.
+
+**FTR.12c — the trunk motion bar is asserted in turns per BEAT.** ✅ (2026-08-12) Matt, on the
+FTR.11 carry-over: *"Per beat."* One commit, one metric, **no preset change and no shader edit** —
+the gate's unit only.
+
+**The bar is unchanged, only re-expressed.** `≤ 0.6 turns/s` was calibrated on *Carry The Zero* at
+94.1 BPM = 1.568 beats/s, so `0.6 ÷ 1.568 = 0.383/beat`; the assertion is now `≤ 0.38/beat`. Same
+line, same track, same headroom. This is **not** converting a red to a green by moving the bar — it
+removes a tempo factor that was never meant to be in it, and both captures were already inside it:
+
+| capture | BPM | turns/s (old unit) | turns/beat (new unit) |
+|---|---|---|---|
+| `2026-08-11T23-52-49Z` *Seven Nation Army* | 122.3 | **0.66 — RED** against ≤ 0.6 | **0.32 — green** against ≤ 0.38 |
+| `2026-08-11T18-26-52Z` *Carry The Zero* | 94.1 | 0.52 — green | **0.33 — green** |
+
+Per second is still printed on every row, because the continuously-driven rows (the tips, and the
+`continuous` comparators) are **not** beat-held and their natural unit is still per second.
+
+**The denominator is cross-checked, because otherwise this unit change could turn a red gate green
+for the wrong reason.** `beatsPerSecond` comes from counting `beatPhase01` wraps, and a stalled
+phase clock is a measured failure mode here — one real 171 BPM session wrapped **24** times where
+**614** were due. The harness now derives the tempo a second, independent way from `grid_bpm` and
+**refuses the measurement** (throws, with both numbers) if the two disagree by more than 10 %,
+rather than reporting a figure in a unit that does not apply. Both captures agree to 99–100 %, and
+the agreement is printed in the report header so a future stall is visible before the guard fires.
+The failure direction is also the safe one: a stall shrinks the denominator, which *inflates*
+turns/beat and fails loudly.
+
+**Why this was safe to do now and not at FTR.11.** Changing a metric in the increment it goes red
+is how FTR.6 shipped a regression past a green gate — which is exactly why FTR.11 left it red and
+flagged it. This is a separate commit that changes nothing else, with the arithmetic that ties the
+new bar to the old one written into the test beside the assertion.
 
 **FTR.5 — M7 + certification.** ⏸ **BLOCKED ON MATT — this is a live review, not work Claude
 can complete.** FTR.6 landed the rate/granularity adjustment Matt named as the precondition
