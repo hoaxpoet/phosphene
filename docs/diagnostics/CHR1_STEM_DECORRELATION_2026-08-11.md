@@ -62,7 +62,7 @@ artifact-free statistic and the other two are read against ~22 % / ~0.49.
 |---|---|---|---|---|
 | `2026-08-11T01-07-17Z` | 255 s, 15 288 frames | local file | dense full-band alt-rock (*Cherub Rock*, Smashing Pumpkins) | most recent capture; post-DYN.7, so it is the current-code control |
 | `2026-08-07T20-20-07Z` | 68 s, 4 087 frames | local playlist (`normal.m3u`) | rock → free jazz (*Trail of Dead*, *Machine Gun* / Brötzmann) | a real multi-track playlist session with a register change inside it |
-| `beat-match-test-session` | 88 min, 318 383 frames, 16 tracks | local files (BeatBench corpus, 2026-07-27) | electronic, jazz, sparse acoustic, metal, pop, prog | the only capture carrying full-length tracks across every register |
+| `beat-match-test-session` | 88 min, 318 383 frames, 16 tracks | **streaming** (BeatBench corpus, 2026-07-27) — corrected 2026-08-11; this row said "local files" and was wrong, see §7c | electronic, jazz, sparse acoustic, metal, pop, prog | the only capture carrying full-length tracks across every register |
 
 **Note on the corpus shape.** The prompt assumed three comparable captures
 spanning registers. The actual corpus is seven repeats of *Cherub Rock*, two
@@ -200,11 +200,14 @@ not a null one.
 
 Measured while the concept was still live; kept because it is concept-independent.
 
-- `grid_bpm > 0` on **99.8–100 %** of frames in every capture, on the local-file
-  planned-session path. `lock_state` reaches its maximum observed value on all
-  captures. Reactive-mode fallback was **not** exercised — no live-capture
-  session exists in the corpus, so the `bpm 0` path in the prompt's task 2
-  remains unverified.
+- `grid_bpm > 0` on **99.8–100 %** of frames in every capture. `lock_state` reaches
+  its maximum observed value on all captures. **Correction (2026-08-11):** this bullet
+  originally said "no live-capture session exists in the corpus, so the `bpm 0`
+  reactive path remains unverified." Wrong — `beat-match-test-session`, the capture
+  most of §3/§4 rests on, **is a streaming session** (no `startLocalFiles`, stems from
+  `source=preparedCache`). It reports `grid_bpm > 0` throughout, so the streaming path
+  is covered; what is unverified is specifically a **reactive-mode** session with no
+  installed `BeatGrid`, which is a narrower gap than claimed.
 - `beatsPerBar` is **not stable within a track**: *Pyramid Song* reports 1,
   *Bleed* 2, *Giorgio* 2 and 3 in one track, and *Billie Jean* reports 4 in one
   capture segment and 3 in another. Any design weighting downbeats more heavily
@@ -347,6 +350,31 @@ Two caveats, both flagged rather than resolved:
 multi-increment process: instrumentation and root cause, no fix code. The fix is
 its own increment with its own verification, and it touches every stem-driven
 preset, so it is not bundled into a preset increment.
+
+## 7c. Path classification — corrected 2026-08-11
+
+Matt: *"that playlist is a streaming playlist."* He is right, and §2's table said local
+files. Verified from the logs: `beat-match-test-session` has no `startLocalFiles ENTER`
+and no `origin=` line, and loads stems from `source=preparedCache` ×17. Every other
+timestamped capture carries `origin=localFile` / `localPlaylist` / `localFolder`.
+
+**Why it matters.** The 5.4 s baseline in §7b is a *streaming* measurement while every
+post-fix capture is *local-file*, so the before/after the fix was first judged on was
+never like-for-like. Re-run against the pre-fix **local-file** capture it holds anyway:
+5.2 s → 2.9/3.0 s. See `KNOWN_ISSUES.md` BUG-086.
+
+**It also splits the corpus by correlation quality**, which no amount of capture length
+explains: streaming reads r 0.70–0.94, local-file reads r 0.19–0.46, and the 255 s
+local-file capture reads *worse* than the 102 s one. **Unexplained.** Three hypotheses
+were tested and refuted — clamping (identical r on clamped vs unclamped frames),
+low reference variance (post-fix SD is higher), capture length (above).
+
+⚠ **`fixturegen-*` are not live captures and must not be used as evidence.** No
+`raw_tap.wav`; their logs read `fixture=<file> stems=StemSeparator(MPSGraph)+StemAnalyzer
+hop=1024` — offline runs computing features and stems in lockstep from one file. They
+report r 0.886–0.975 at lag **0.0 s**, which is the generation method showing through,
+not the live pipeline. (The same class of trap as the replay-harness zero-fill that made
+Faraday's routes read as broken.)
 
 ## 9. What was not done
 

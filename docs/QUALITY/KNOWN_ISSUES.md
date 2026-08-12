@@ -540,25 +540,48 @@ artifact is a measurement over a capture a human supplies.
 
 #### Post-fix captures — two sessions, 2026-08-11 (`23-35-27Z`, `23-44-40Z`)
 
-> **⚠ CORRECTION.** This section first reported "measured lag 5.4 s → 2.9 s, PASS" from
-> `23-35-27Z`. **Withdrawn — that was a false pass.** It rested on r 0.42/0.48 with no peak
-> behind it, squeaking past a `MIN_R` floor of 0.40 that was too permissive. The floor is
-> **0.60** now and both post-fix captures correctly report **INCONCLUSIVE**. The fix's
-> *direction* is confirmed (the lag peak moved from a sharp 5.4 s to somewhere in 0–3 s) but
-> **post-fix latency is not yet measured**, and the duty numbers below — which are direct log
-> readouts, not correlations — are unaffected.
+> **⚠ TWO CORRECTIONS, in order.**
+>
+> **(a)** This section first reported "measured lag 5.4 s → 2.9 s, PASS" from a single capture.
+> That single-capture PASS rested on r 0.42/0.48 with no peak behind it and squeaked past a
+> `MIN_R` floor of 0.40. The floor is **0.60** now, and no single short capture clears it.
+>
+> **(b)** The withdrawal then over-corrected. The 5.4 s baseline came from a **streaming**
+> capture while every post-fix capture is **local-file**, so the two were never comparable —
+> but the corpus also holds a *pre-fix local-file* capture, and comparing like with like the
+> fix does hold: **5.2 s → 2.9/3.0 s across two independent post-fix captures.** Weak
+> correlations make each number soft; three same-path captures agreeing does not.
+>
+> What remains genuinely unmeasured is the **streaming** path post-fix — the path the clean
+> baseline came from. The duty figures are direct log readouts and unaffected throughout.
 
-**The tool needs a long capture, and that is not a post-fix phenomenon.** Correlation quality
-is a property of the capture, measured across the corpus:
+**Correlation quality tracks the PLAYBACK PATH, not capture length** (corrected 2026-08-11
+after Matt pointed out the 16-track corpus is a *streaming* playlist, which this entry had
+recorded as local files):
 
-| capture regime | r | shape |
-|---|---|---|
-| `beat-match-test-session` (88 min, 16 tracks) | **0.70–0.94** | sharp unimodal peak |
-| single-track captures, 1–4 min | **0.19–0.48** | flat, no peak |
+| real capture | path | duration | best r | best lag |
+|---|---|---|---|---|
+| `beat-match-test-session` (pre-fix) | **streaming** | 88 min | **0.70–0.94** | 5.4 s |
+| `2026-08-11T01-07-17Z` (pre-fix) | local file | 255 s | 0.193 | 5.2 s |
+| `2026-08-11T23-44-40Z` (post-fix) | local file | 137 s | 0.372 | 3.0 s |
+| `2026-08-11T23-52-49Z` (post-fix) | local file | 102 s | 0.462 | 2.9 s |
 
-Both regimes appear in **pre-fix** captures — `2026-08-11T01-07-17Z` (Cherub Rock, 255 s,
-pre-fix) reads r 0.19–0.36 — so short-capture weakness is not caused by anything BUG086.1
-changed, and is not evidence about the fix either way.
+Length is not the driver: the 255 s local-file capture reads *worse* than the 102 s one.
+
+⚠ **`fixturegen-*` are not evidence.** They read r 0.886–0.975 at lag **0.0 s**, which is
+tempting and wrong: they carry no `raw_tap.wav` and their logs say
+`fixture=<file> stems=StemSeparator(MPSGraph)+StemAnalyzer hop=1024` — offline generation
+runs where features and stems are computed in lockstep from the same file, so zero lag is an
+artifact of the method. Excluded from every number here.
+
+**Same-path comparison — this IS like-for-like, and the fix holds.** Local-file pre-fix
+**5.2 s** → local-file post-fix **3.0 s and 2.9 s**, two independent captures agreeing,
+against a predicted 5.4 → 2.5 s nominal shift. The correlations are weak on this path, so each
+number alone is soft; three same-path captures agreeing on a ~2.2 s reduction is not.
+
+**Why local-file correlations are weak (0.19–0.46) where streaming reads 0.70–0.94 is
+UNEXPLAINED.** Three hypotheses were tested and refuted (below, plus capture length above).
+No fourth is offered here.
 
 **Two hypotheses for the weak post-fix correlation were tested and both refuted**, recorded
 so they are not re-run: (1) *clamping degrades the features* — correlation on clamped vs
@@ -616,10 +639,11 @@ session does not rediscover it.
 
 **Outstanding before this is Resolved:**
 
-1. **Post-fix latency is still unmeasured.** Both post-fix captures are INCONCLUSIVE under
-   the corrected `MIN_R = 0.60`. **Replay the 16-track BeatBench corpus on a fixed build** —
-   identical material to the pre-fix 5.4 s baseline, and the only capture regime that has
-   produced r 0.70–0.94. A 1–4 minute single track is below this measurement's resolution.
+1. **The streaming path is unmeasured post-fix.** The local-file path is covered
+   (5.2 → 2.9/3.0 s, same-path, two captures). The 16-track corpus that produced the clean
+   pre-fix 5.4 s at r 0.70–0.94 is a **streaming playlist**, so reproducing that baseline means
+   a streaming session on a fixed build — not a local-file one. Until then the strong-r regime
+   has no post-fix counterpart.
 2. **The `dsp.stem` manual gate.** Stem timing is felt on every stem-driven preset;
    Aurora Veil (`other_energy_dev` load-bearing), Skein, Meniscus and FFO all shift.
    Needs M7-class observation on at least Aurora Veil. No automated test substitutes.
