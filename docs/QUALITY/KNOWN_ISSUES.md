@@ -538,20 +538,115 @@ wallclock advance and `MLDispatchScheduler` deferral — no unit test can synthe
 and a synthetic one would be the green-test-measuring-the-wrong-thing trap. The honest
 artifact is a measurement over a capture a human supplies.
 
+#### Post-fix captures — two sessions, 2026-08-11 (`23-35-27Z`, `23-44-40Z`)
+
+> **⚠ TWO CORRECTIONS, in order.**
+>
+> **(a)** This section first reported "measured lag 5.4 s → 2.9 s, PASS" from a single capture.
+> That single-capture PASS rested on r 0.42/0.48 with no peak behind it and squeaked past a
+> `MIN_R` floor of 0.40. The floor is **0.60** now, and no single short capture clears it.
+>
+> **(b)** The withdrawal then over-corrected. The 5.4 s baseline came from a **streaming**
+> capture while every post-fix capture is **local-file**, so the two were never comparable —
+> but the corpus also holds a *pre-fix local-file* capture, and comparing like with like the
+> fix does hold: **5.2 s → 2.9/3.0 s across two independent post-fix captures.** Weak
+> correlations make each number soft; three same-path captures agreeing does not.
+>
+> What remains genuinely unmeasured is the **streaming** path post-fix — the path the clean
+> baseline came from. The duty figures are direct log readouts and unaffected throughout.
+
+**Correlation quality tracks the PLAYBACK PATH, not capture length** (corrected 2026-08-11
+after Matt pointed out the 16-track corpus is a *streaming* playlist, which this entry had
+recorded as local files):
+
+| real capture | path | duration | best r | best lag |
+|---|---|---|---|---|
+| `beat-match-test-session` (pre-fix) | **streaming** | 88 min | **0.70–0.94** | 5.4 s |
+| `2026-08-11T01-07-17Z` (pre-fix) | local file | 255 s | 0.193 | 5.2 s |
+| `2026-08-11T23-44-40Z` (post-fix) | local file | 137 s | 0.372 | 3.0 s |
+| `2026-08-11T23-52-49Z` (post-fix) | local file | 102 s | 0.462 | 2.9 s |
+
+Length is not the driver: the 255 s local-file capture reads *worse* than the 102 s one.
+
+⚠ **`fixturegen-*` are not evidence.** They read r 0.886–0.975 at lag **0.0 s**, which is
+tempting and wrong: they carry no `raw_tap.wav` and their logs say
+`fixture=<file> stems=StemSeparator(MPSGraph)+StemAnalyzer hop=1024` — offline generation
+runs where features and stems are computed in lockstep from the same file, so zero lag is an
+artifact of the method. Excluded from every number here.
+
+**Same-path comparison — this IS like-for-like, and the fix holds.** Local-file pre-fix
+**5.2 s** → local-file post-fix **3.0 s and 2.9 s**, two independent captures agreeing,
+against a predicted 5.4 → 2.5 s nominal shift. The correlations are weak on this path, so each
+number alone is soft; three same-path captures agreeing on a ~2.2 s reduction is not.
+
+**Why local-file correlations are weak (0.19–0.46) where streaming reads 0.70–0.94 is
+UNEXPLAINED.** Three hypotheses were tested and refuted (below, plus capture length above).
+No fourth is offered here.
+
+**Two hypotheses for the weak post-fix correlation were tested and both refuted**, recorded
+so they are not re-run: (1) *clamping degrades the features* — correlation on clamped vs
+unclamped frames is identical (drums 0.388 vs 0.381; bass 0.413 vs 0.368), so clamping costs
+timing fidelity nothing measurable; (2) *the reference signal is too flat* — post-fix
+reference SD is **higher** than pre-fix (0.118/0.142 vs 0.071/0.115). A third guess was not
+made; the honest state is that short captures are below this measurement's resolution.
+
+**What a like-for-like before/after needs:** the same 16-track BeatBench corpus replayed on a
+fixed build. That is the only capture that has ever produced a clean number, and reusing it
+makes the comparison identical-material rather than a different track at a different length.
+
+Two findings that DO stand, both from direct `session.log` readouts:
+
+| | assumed at BUG086.1 | **measured `23-35-27Z`** | **measured `23-44-40Z`** |
+|---|---|---|---|
+| inference per separation | 142 ms (a code comment) | **335 ms** median (284–649, n=33) | **478 ms** median (421–596, n=63) |
+| inference duty at 2 s period | ≈7 % | **≈20.5 %** | **≈25.6 %** |
+| preset-facing lag | 2.5 s nominal | inconclusive | inconclusive |
+
+**1. Inference is 2.4–3.4× the assumed cost, so duty is 20–26 %, not ≈7 %.** This is exactly
+the caveat this entry flagged — the 142 ms figure existed only in a code comment with no
+artifact behind it, and it was wrong. Note the second capture is *higher* than the first
+(478 ms vs 335 ms median, and its **minimum** 421 ms exceeds the first capture's median), so
+inference cost is variable across material or system load, not a single constant.
+
+**It is nonetheless sustainable, on the engine's own signal.** 33 separations over a 65 s
+span against 33 expected, and 63 over 124 s in the second capture — both at the nominal 2 s
+cadence: `MLDispatchScheduler` (D-059) is absorbing the
+load with jitter, not falling behind. Frame-pacing comparison against pre-fix captures is
+**inconclusive and should not be quoted** — the pre- and post-fix sessions ran different
+presets (`frame_gpu_ms` p50 0.15–0.21 vs 6.71), so the difference is preset-confounded, not
+attributable to the cadence. `deltaTime > 20 ms` is 3.51 % post-fix against a pre-fix range
+of 1.75–3.88 %, i.e. inside the existing spread.
+
+**2. The 0.5 s read margin is too small — the read window clamps on ~25 % of cycles.**
+Separation-to-separation gaps measured 0/1/2/3/4 s (×2/6/16/5/3). Runway is
+`period + margin` = 2.5 s, so the 3 s and 4 s gaps — 8 of 32 cycles — overrun it by 0.5–1.5 s
+and the window pins at the chunk's newest audio until the next chunk lands. Worst-case
+inference alone does it too: 2.0 + 0.649 = 2.649 s > 2.5 s.
+
+**The margin was sized against the wrong quantity.** It was set to absorb inference time;
+the binding constraint is *deferral-induced gap jitter*, which reaches 4 s.
+
+**Recommendation: do not re-tune now — and this is now tested, not assumed.** The earlier
+version of this paragraph argued clamping was probably imperceptible. It was then measured
+directly: correlation on clamped frames matches unclamped frames (drums 0.388 vs 0.381; bass
+0.413 vs 0.368), so clamping costs timing fidelity nothing detectable. It also costs no extra
+latency — pinning to the newest audio makes latency momentarily *better*. Covering a 4 s gap needs `margin ≥ 2.0 s`, i.e.
+**4.0 s nominal latency** — paying 1.1 s of permanent latency to remove a discontinuity that
+no shipping preset can currently show, since every stem consumer today drives slow envelopes
+where a sub-second freeze is imperceptible. **It becomes a real decision the moment a
+stem-plotting preset ships** (Stave is exactly that), and it is recorded here so that
+session does not rediscover it.
+
 **Outstanding before this is Resolved:**
 
-1. **No post-fix capture exists.** Three captures were taken on 2026-08-11 after the
-   change was written (`16-41-39Z`, `18-26-52Z`, plus earlier ones); **none carries a
-   `STEM_SEPARATION` line**, so none ran the fixed binary, and all still measure
-   ≈5.3–5.4 s. **One session on a build from `main` at or after `daa9f724` discharges
-   both this and item 3.**
+1. **The streaming path is unmeasured post-fix.** The local-file path is covered
+   (5.2 → 2.9/3.0 s, same-path, two captures). The 16-track corpus that produced the clean
+   pre-fix 5.4 s at r 0.70–0.94 is a **streaming playlist**, so reproducing that baseline means
+   a streaming session on a fixed build — not a local-file one. Until then the strong-r regime
+   has no post-fix counterpart.
 2. **The `dsp.stem` manual gate.** Stem timing is felt on every stem-driven preset;
    Aurora Veil (`other_energy_dev` load-bearing), Skein, Meniscus and FFO all shift.
    Needs M7-class observation on at least Aurora Veil. No automated test substitutes.
-3. **Duty cycle unmeasured** — the `STEM_SEPARATION` line reports measured inference
-   and duty per separation; the script summarises min/median/max across a capture. If
-   measured inference is materially above the 142 ms the estimate assumed, 2 s needs
-   revisiting.
 
 #### Related
 
