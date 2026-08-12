@@ -109,7 +109,13 @@ public final class MeshGenerator: @unchecked Sendable {
     /// beat, so the snapshot lives here — one per generator, advanced by `draw`. See
     /// ``BeatHold`` for the trust conditions; while they are unmet it tracks the live
     /// vector, so a preset that reads buffer(4) degrades to continuous rather than frozen.
-    private var beatHold = BeatHold()
+    /// FTR.13 — EASED, not snapped, over a third of a beat. Matt's M7 on FTR.11 was that the
+    /// stepping itself reads robotic; a step that starts on the beat and arrives a third of a
+    /// beat later keeps the beat lock and the per-beat travel while losing the snap. A third
+    /// was chosen as the largest fraction that still reads as landing ON the beat rather than
+    /// after it — at 94–124 BPM that is 160–210 ms, inside the ~200 ms window where onset and
+    /// event are perceived together. Measured effect in `FractalTreeMeshRenderTest`.
+    private var beatHold = BeatHold(easeBeats: 1.0 / 3.0)
 
     /// Feed a frame through the beat hold WITHOUT drawing it.
     ///
@@ -117,7 +123,8 @@ public final class MeshGenerator: @unchecked Sendable {
     /// frame in order to see beat boundaries at all, and a harness that renders every
     /// seventh row would otherwise measure a hold driven by an aliased phase. Call this for
     /// the rows you skip; `draw` already feeds the rows you render.
-    public func advanceBeatHold(_ features: FeatureVector) {
+    public func advanceBeatHold(_ features: FeatureVector, stems: StemFeatures = .zero) {
+        beatHold.offerStems(stems)
         _ = beatHold.update(features)
     }
 
@@ -234,7 +241,11 @@ public final class MeshGenerator: @unchecked Sendable {
         var stemFeat = stems
         // FTR.10 — advance the beat hold on EVERY frame, drawn or not, so the snapshot at
         // buffer(4) reflects the real beat boundaries and not the draw cadence.
+        // FTR.13 — offer the stems BEFORE update: `update` is the one place the beat boundary
+        // is detected, and it latches both sides there.
+        beatHold.offerStems(stems)
         var heldFeat = beatHold.update(features)
+        var heldStemFeat = beatHold.heldStemFeatures(at: features.beatPhase01)
 
         if usesMeshShaderPath {
             // Bind features to all mesh-pipeline stages so preset shaders can read
@@ -256,6 +267,14 @@ public final class MeshGenerator: @unchecked Sendable {
             // the ray-march FRAGMENT path only — the mesh pipeline never binds that.
             encoder.setObjectBytes(&heldFeat, length: MemoryLayout<FeatureVector>.stride, index: 4)
             encoder.setMeshBytes(&heldFeat, length: MemoryLayout<FeatureVector>.stride, index: 4)
+            // FTR.13 — the beat-held StemFeatures at buffer(5), symmetric with 0/4: slot 3 is
+            // live, slot 5 is held on the same beats and eased on the same curve. A per-stem
+            // route that must not change between beats reads 5. Slot 5 is SpectralHistory on
+            // the DIRECT-PASS FRAGMENT encoder only — the mesh pipeline never binds that, the
+            // same reasoning that made slot 4 safe at FTR.10.
+            let heldStemLength = MemoryLayout<StemFeatures>.stride
+            encoder.setObjectBytes(&heldStemFeat, length: heldStemLength, index: 5)
+            encoder.setMeshBytes(&heldStemFeat, length: heldStemLength, index: 5)
         }
         encoder.setFragmentBytes(&feat, length: MemoryLayout<FeatureVector>.stride, index: 0)
 

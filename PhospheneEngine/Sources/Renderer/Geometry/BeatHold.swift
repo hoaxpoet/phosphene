@@ -60,7 +60,41 @@ public struct BeatHold: Sendable {
     private var intervals: [Float] = []
     private var sawBarClock = false
 
-    public init() {}
+    /// EASED STEPS (FTR.13, Matt 2026-08-12). Fraction of a beat over which the snapshot
+    /// travels from the previous beat's value to this one. `0` = the original hard snap.
+    ///
+    /// Matt's M7 on FTR.11: *"the motion reads as robotic and stuttering … it's the stepping
+    /// itself that is the problem."* A hard sample-and-hold holds perfectly still and then
+    /// jumps — which is what a low turn rate BUYS, and why a rate bar scored the frame calm at
+    /// 0.30 turns/beat while the canopy read as robotic. The opposite of a snap is not
+    /// "unlock from the beat", which brings back the motion he rejected at FTR.11; it is a step
+    /// that STARTS on the beat and takes a fraction of a beat to arrive. Motion onset stays
+    /// beat-locked (the eye reads onset as the event) and travel per beat is unchanged — only
+    /// the sharpness goes.
+    private let easeBeats: Float
+    /// The value the previous beat settled on — the near end of the ease.
+    private var previous = FeatureVector()
+
+    /// FTR.13 — THE STEM SIDE, held on the same beats. Matt: *"the tips … should be beat
+    /// matched."* The tips are driven by a per-stem field, which lives in a different struct,
+    /// so holding only the `FeatureVector` leaves them changing 4–5 times a second no matter
+    /// what the frame does. Same boundaries, same ease, one clock — the two cannot desync
+    /// because there is only one set of beat evidence.
+    private var heldStems = StemFeatures()
+    private var previousStems = StemFeatures()
+    private var pendingStems = StemFeatures()
+
+    /// Hard sample-and-hold: the snapshot snaps on the beat (FTR.10 behaviour, unchanged).
+    public init() { easeBeats = 0 }
+
+    /// Eased hold: the snapshot starts moving ON the beat and arrives `easeBeats` of a beat
+    /// later. Deliberately a separate initialiser rather than a defaulted parameter on
+    /// ``init()`` — a defaulted parameter changes the existing signature and breaks
+    /// incremental links (CLEAN.3.5), and an explicit initialiser keeps the two behaviours
+    /// legible at the call site.
+    ///
+    /// - Parameter easeBeats: clamped to `0…1`. Above 1 the ease would outlast its own beat.
+    public init(easeBeats: Float) { self.easeBeats = min(max(easeBeats, 0), 1) }
 
     /// `true` while the snapshot is frozen between beats — i.e. all three trust conditions
     /// hold. Diagnostics and tests read this; presets never need it.
@@ -103,8 +137,112 @@ public struct BeatHold: Sendable {
             intervals.removeAll()           // the phase stalled; never freeze on it
         }
 
-        if wrapped || !isStepping { held = frame }
-        return held
+        if wrapped || !isStepping {
+            // The value we were showing becomes the near end of the next ease. While not
+            // stepping both ends are the live frame, so the ease is a no-op and the preset
+            // gets exactly its continuous behaviour.
+            previous = isStepping ? held : frame
+            held = frame
+            previousStems = isStepping ? heldStems : pendingStems
+            heldStems = pendingStems
+        }
+        guard easeBeats > 0, isStepping else { return held }
+        let weight = Self.easeWeight(frame.beatPhase01, over: easeBeats)
+        return Self.lerp(previous, held, weight, clocksFrom: frame)
+    }
+
+    /// Feed the stem side for this frame, then read ``heldStemFeatures``.
+    ///
+    /// Separate from ``update(_:)`` on purpose: `update` is the beat clock and every caller
+    /// already drives it for every frame (including the harness rows it skips drawing). Making
+    /// the stems a second argument there would have meant one signature change across three
+    /// call sites and a silent desync the moment one of them was missed. Call this BEFORE
+    /// `update` for the same frame.
+    public mutating func offerStems(_ stems: StemFeatures) { pendingStems = stems }
+
+    /// The stem features as of the last beat boundary, eased identically to ``update(_:)``'s
+    /// return value. Read after `offerStems` + `update` for the frame.
+    public func heldStemFeatures(at beatPhase01: Float) -> StemFeatures {
+        guard easeBeats > 0, isStepping else { return heldStems }
+        let weight = Self.easeWeight(beatPhase01, over: easeBeats)
+        return Self.lerpStems(previousStems, heldStems, weight)
+    }
+
+    // MARK: - Easing
+
+    /// Smoothstep from 0 at the beat to 1 after `easeBeats` of a beat. Smoothstep rather than
+    /// a straight ramp so there is no velocity discontinuity at either end — a linear ease
+    /// still arrives with a visible stop, which is the artifact being removed.
+    static func easeWeight(_ beatPhase01: Float, over easeBeats: Float) -> Float {
+        guard easeBeats > 0 else { return 1 }
+        let progress = min(max(beatPhase01 / easeBeats, 0), 1)
+        return progress * progress * (3 - 2 * progress)
+    }
+
+    /// Element-wise lerp of two snapshots.
+    ///
+    /// `FeatureVector` is 47 stored properties and every one is a `Float` (verified by
+    /// `BeatHoldTests.everyFeatureVectorFieldIsFloat`, which fails if a non-`Float` field is
+    /// ever added), so the blend runs over the raw float storage instead of 47 hand-written
+    /// lines that a new field would silently escape.
+    ///
+    /// CLOCKS ARE NOT BLENDED. `time`, `beatPhase01`, `barPhase01` and `pulseBeatIndex` are
+    /// copied from the live frame: a phase lerped across its 1 → 0 wrap runs BACKWARDS, and a
+    /// consumer reading a clock wants the real one. (The pre-FTR.13 hard hold froze these too,
+    /// so this is strictly better, not a new obligation.)
+    static func lerp(
+        _ from: FeatureVector, _ to: FeatureVector, _ weight: Float,
+        clocksFrom live: FeatureVector
+    ) -> FeatureVector {
+        // t == 0 is the beat frame itself and must return the PREVIOUS value — the ease starts
+        // from where the eye already was. Returning `b` there put a one-frame snap on every
+        // beat, i.e. precisely the artifact FTR.13 exists to remove; caught by
+        // `BeatHoldTests.blendedStructsAreFloatOnly`.
+        var out = weight <= 0 ? from : to
+        if weight > 0 && weight < 1 {
+            let count = MemoryLayout<FeatureVector>.size / MemoryLayout<Float>.size
+            withUnsafeMutableBytes(of: &out) { destination in
+                withUnsafeBytes(of: from) { nearBytes in
+                    withUnsafeBytes(of: to) { farBytes in
+                        let output = destination.bindMemory(to: Float.self)
+                        let near = nearBytes.bindMemory(to: Float.self)
+                        let far = farBytes.bindMemory(to: Float.self)
+                        for i in 0..<count {
+                            output[i] = near[i] + (far[i] - near[i]) * weight
+                        }
+                    }
+                }
+            }
+        }
+        out.time = live.time
+        out.beatPhase01 = live.beatPhase01
+        out.barPhase01 = live.barPhase01
+        out.pulseBeatIndex = live.pulseBeatIndex
+        return out
+    }
+
+    /// `lerp` for the stem side. `StemFeatures` is 58 stored properties and every one is a
+    /// `Float` (gated by `BeatHoldTests.everyStemFeaturesFieldIsFloat`); it carries no clocks,
+    /// so nothing needs restoring from a live frame.
+    static func lerpStems(
+        _ from: StemFeatures, _ to: StemFeatures, _ weight: Float
+    ) -> StemFeatures {
+        guard weight > 0, weight < 1 else { return weight <= 0 ? from : to }
+        var out = to
+        let count = MemoryLayout<StemFeatures>.size / MemoryLayout<Float>.size
+        withUnsafeMutableBytes(of: &out) { destination in
+            withUnsafeBytes(of: from) { nearBytes in
+                withUnsafeBytes(of: to) { farBytes in
+                    let output = destination.bindMemory(to: Float.self)
+                    let near = nearBytes.bindMemory(to: Float.self)
+                    let far = farBytes.bindMemory(to: Float.self)
+                    for i in 0..<count {
+                        output[i] = near[i] + (far[i] - near[i]) * weight
+                    }
+                }
+            }
+        }
+        return out
     }
 
     // MARK: - Private

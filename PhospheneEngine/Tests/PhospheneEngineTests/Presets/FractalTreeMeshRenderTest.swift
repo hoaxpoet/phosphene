@@ -513,7 +513,9 @@ struct FractalTreeMeshRenderTest {
         }
 
         var fifths = FifthsSmoother()
-        var hold = BeatHold()
+        // FTR.13 — the same eased hold `MeshGenerator` installs in production. A hard
+        // `BeatHold()` here would measure a build that no longer ships.
+        var hold = BeatHold(easeBeats: 1.0 / 3.0)
         var reachTerm: [Float] = []
         var surgeTerm: [Float] = []
         var continuous: [Float] = []
@@ -558,7 +560,9 @@ struct FractalTreeMeshRenderTest {
             Self.applyRecomputedDensity(densityByTime, at: row["time"] ?? 0, to: &fv,
                                         includeSectionRatio: true)
             let stems = Self.sessionStems(stemRows, index: index + stemOffset)
+            hold.offerStems(stems)
             let held = hold.update(fv)
+            let stemsHeld = hold.heldStemFeatures(at: fv.beatPhase01)
             if hold.isStepping { steppingFrames += 1 }
             stepping.append(hold.isStepping)
             let growth = Self.growth(fv)
@@ -566,24 +570,37 @@ struct FractalTreeMeshRenderTest {
             surgeTerm.append(growth.surge * 0.32)
             continuous.append(Self.trunkLength(fv))
             stepped.append(Self.trunkLength(held))
-            countLive.append(Float(Self.branchCount(frame: fv, live: fv, stems: stems)))
-            countHeld.append(Float(Self.branchCount(frame: held, live: fv, stems: stems)))
+            // FTR.13 — FRACTIONAL counts. The shader scales the frontier branch's length by the
+            // fraction, so the visible canopy is the fractional value; an integer mirror would
+            // report a pop the shader no longer draws.
+            countLive.append(Self.branchCountF(frame: fv, live: fv, stems: stems,
+                                               stemsHeld: stems))
+            countHeld.append(Self.branchCountF(frame: held, live: fv, stems: stems,
+                                               stemsHeld: stemsHeld))
             spreadLive.append(Self.spreadDegrees(fv))
             spreadHeld.append(Self.spreadDegrees(held))
-            tips.append(Float(Self.tipBranches(frame: held, live: fv, stems: stems)))
-            frameOnlyLive.append(Float(Self.branchCount(frame: fv, live: fv, stems: stems)
-                                       - Self.tipBranches(frame: fv, live: fv, stems: stems)))
-            frameOnly.append(Float(Self.branchCount(frame: held, live: fv, stems: stems)
-                                   - Self.tipBranches(frame: held, live: fv, stems: stems)))
+            tips.append(Self.tipBranchesF(frame: held, live: fv, stems: stems,
+                                          stemsHeld: stemsHeld))
+            frameOnlyLive.append(Self.branchCountF(frame: fv, live: fv, stems: stems,
+                                                   stemsHeld: stems)
+                                 - Self.tipBranchesF(frame: fv, live: fv, stems: stems,
+                                                     stemsHeld: stems))
+            frameOnly.append(Self.branchCountF(frame: held, live: fv, stems: stems,
+                                               stemsHeld: stemsHeld)
+                             - Self.tipBranchesF(frame: held, live: fv, stems: stems,
+                                                 stemsHeld: stemsHeld))
 
             let barWrapped = fv.barPhase01 < lastBarPhase - 0.25
             lastBarPhase = fv.barPhase01
             if barWrapped || !hold.isStepping { barHeld = fv }
             trunkBar.append(Self.trunkLength(barHeld))
-            countBar.append(Float(Self.branchCount(frame: barHeld, live: fv, stems: stems)))
+            countBar.append(Self.branchCountF(frame: barHeld, live: fv, stems: stems,
+                                              stemsHeld: stemsHeld))
             spreadBar.append(Self.spreadDegrees(barHeld))
-            frameOnlyBar.append(Float(Self.branchCount(frame: barHeld, live: fv, stems: stems)
-                                      - Self.tipBranches(frame: barHeld, live: fv, stems: stems)))
+            frameOnlyBar.append(Self.branchCountF(frame: barHeld, live: fv, stems: stems,
+                                                  stemsHeld: stemsHeld)
+                                - Self.tipBranchesF(frame: barHeld, live: fv, stems: stems,
+                                                    stemsHeld: stemsHeld))
         }
         let seconds = (rows.last?["time"] ?? 0) - (rows.first?["time"] ?? 0)
         // TURNS PER BEAT is the UNIT THE TRUNK BAR IS ASSERTED IN (FTR.12c, Matt's call
@@ -804,14 +821,34 @@ struct FractalTreeMeshRenderTest {
             held as continuous. `spectral_flux` made this the fastest term in the preset \
             (5.48/s, against the trunk's 0.66).
             """)
-        // THE TIPS MUST STAY LIVE. Holding them would freeze the guitar route FTR.8 exists
-        // for and turn "the tips are hard to see" into "the tips do not move" — the opposite
-        // of the complaint. If this ever goes red, someone has held the whole object shader.
-        let tipTurns = Self.turnsPerSecond(tips, seconds: seconds)
-        #expect(tipTurns > 1.5, """
-            the tips turn only \(String(format: "%.2f", tipTurns))/s — with the frame held \
-            they are the ONLY continuously-moving layer left, so if they stop the preset is \
-            a slideshow.
+        // THE TIPS: ALIVE, BUT BEAT-MATCHED — a TWO-SIDED bar, and the replacement for a
+        // one-sided floor that Matt's instruction turned into a contradiction.
+        //
+        // THE PREVIOUS FORM AND WHY IT IS GONE, stated rather than quietly relaxed (the FTR.6
+        // failure was lowering a gate's floor to ship). It read `tipTurns > 1.5`/s, written when
+        // the tips were the only continuously-moving layer and the risk was that someone froze
+        // them. Matt's M7 on FTR.11 inverted that risk: *"the tips probably are still moving too
+        // fast if they change 2x per beat — should be beat matched."* Measured, they were turning
+        // 2.05/beat. A floor of 1.5/s is ~0.9–1.0 turns/BEAT at 94–124 BPM, so the old gate
+        // required almost exactly the behaviour he rejected. It is not being loosened; it is
+        // being replaced with the bar the instruction implies.
+        //
+        // The original concern is still gated, by the lower bound: the tips must not FREEZE.
+        // Measured after FTR.13 they sit at 0.49–0.56 turns/beat across three captures, so both
+        // bounds carry real headroom — this is not a bar drawn around a measurement.
+        let tipTurnsPerBeat = Self.turnsPerSecond(tips, seconds: seconds)
+            / Swift.max(beatsPerSecond, 1e-6)
+        #expect(tipTurnsPerBeat > 0.15, """
+            the tips turn only \(String(format: "%.2f", tipTurnsPerBeat))/beat — beat-matched \
+            must not mean frozen. With the frame stepping too, tips that stop make the preset \
+            a slideshow, which is the opposite of Matt's original "hard to see" complaint.
+            """)
+        #expect(tipTurnsPerBeat <= 1.0, """
+            the tips turn \(String(format: "%.2f", tipTurnsPerBeat))/beat. Matt asked for them \
+            beat-matched after measuring 2.05/beat live and calling it stuttering; a \
+            beat-matched layer cannot change more than once per beat by definition. Do NOT \
+            raise this bar — if a tip layer needs to move faster than the beat, that is a \
+            routing decision and his.
             """)
 
         #expect(steppingFrames > rows.count / 2, """
@@ -852,26 +889,47 @@ struct FractalTreeMeshRenderTest {
     /// the tips read. Passing the same vector for both gives the pre-FTR.11 continuous
     /// build, which is what makes the before/after column in the report an A/B rather than
     /// two separate runs.
-    private static func branchCount(frame: FeatureVector, live: FeatureVector,
-                                    stems: StemFeatures) -> Int {
+    /// FTR.13 — FRACTIONAL, mirroring the shader's `countF`. Rounding here would hide the very
+    /// thing the grow-in was built to fix: the shader renders `ceil(countF)` slots and scales
+    /// the frontier branch's LENGTH by `countF - bid`, so the visible canopy changes
+    /// continuously where an integer count popped. An `Int` mirror reports the pop that the
+    /// shader no longer draws.
+    private static func branchCountF(frame: FeatureVector, live: FeatureVector,
+                                     stems: StemFeatures, stemsHeld: StemFeatures) -> Float {
         let g = growth(frame)
         let lift = clamp((frame.spectralDensity / max(frame.spectralDensitySlow, 1e-4) - 1) * 1.1)
         let amp = clamp(live.pulseAmp01)
-        let base = Int((4.0 + g.reach * 18.0) * amp)
-        let section = Int((lift * 8.0 + g.surge * 26.0) * amp)
-        return min(7 + base + section + tipBranches(frame: frame, live: live, stems: stems), 63)
+        let base = (4.0 + g.reach * 18.0) * amp
+        let section = (lift * 8.0 + g.surge * 26.0) * amp
+        let tips = tipBranchesF(frame: frame, live: live, stems: stems, stemsHeld: stemsHeld)
+        return Swift.min(7 + base + section + tips, 63)
     }
 
-    /// The tips term alone — the only layer still reading the LIVE vector after FTR.11.
-    private static func tipBranches(frame: FeatureVector, live: FeatureVector,
+    private static func branchCount(frame: FeatureVector, live: FeatureVector,
                                     stems: StemFeatures) -> Int {
-        let rate = stems.otherOnsetRate
-        let guitar = rate / (rate + 18.0)
+        Int(branchCountF(frame: frame, live: live, stems: stems, stemsHeld: stems).rounded(.up))
+    }
+
+    /// The tips term alone.
+    ///
+    /// FTR.13 — both halves read the HELD side (`stemsHeld`, and `frame` for `beat_mid`), which
+    /// is what "beat matched" means. `stems` stays live for the D-019 arrival gate only: that
+    /// asks "have the stems converged yet", and reading a beat-held copy would pin it at zero
+    /// until the first beat lands.
+    private static func tipBranchesF(frame: FeatureVector, live: FeatureVector,
+                                     stems: StemFeatures, stemsHeld: StemFeatures) -> Float {
+        let rate = stemsHeld.otherOnsetRate
+        let residueActivity = rate / (rate + 18.0)
         let stemEnergy = stems.vocalsEnergy + stems.drumsEnergy + stems.bassEnergy + stems.otherEnergy
         let alive = smoothstep(0.02, 0.06, stemEnergy)
-        let melody = (1 - alive) * (live.beatMid / (live.beatMid + 2.2)) + alive * guitar
-        return Int(melody * 26.0 * clamp(live.pulseAmp01)
-                   * smoothstep(0.03, 0.15, growth(frame).reach))
+        let melody = (1 - alive) * (frame.beatMid / (frame.beatMid + 2.2)) + alive * residueActivity
+        return melody * 26.0 * clamp(live.pulseAmp01)
+            * smoothstep(0.03, 0.15, growth(frame).reach)
+    }
+
+    private static func tipBranches(frame: FeatureVector, live: FeatureVector,
+                                    stems: StemFeatures) -> Int {
+        Int(tipBranchesF(frame: frame, live: live, stems: stems, stemsHeld: stems))
     }
 
     /// Branch spread in degrees — the fastest-moving term in the preset before FTR.11.

@@ -79,7 +79,20 @@ struct FractalPayload {
     /// whole skeleton's size, and it is the one term Matt asked to stop sliding.
     float trunk_len;
     float aspect_ratio;
-    uint  branch_count;   // 15–61: how many branches to render this frame
+    uint  branch_count;   // 15–61: how many branch SLOTS to render this frame (= ceil below)
+    /// FRACTIONAL BRANCH COUNT — the same quantity as `branch_count` before rounding, and
+    /// the reason the canopy stops popping (FTR.13, Matt 2026-08-12).
+    ///
+    /// A count is an INTEGER, so a held count cannot ease however the clock is timed: 15
+    /// branches arriving is 15 discrete objects. Measured across three captures, the worst
+    /// single beat added 15–19 branches at once on a tree spanning 43, and moving the hold to
+    /// the bar made it 23–28 — slowing the clock concentrates the pop instead of removing it.
+    ///
+    /// So the mesh shader gives branch `bid` a growth weight of `count_f - bid`, clamped to
+    /// 0…1: the branch at the frontier extends from zero length as the count passes it, and
+    /// the ones behind it are already full. A 15-branch rise becomes a 15-branch SWEEP over
+    /// the eased step rather than a block appearing, which is Matt's *"grow in individually"*.
+    float branch_count_f;
 };
 
 // MARK: - Hash
@@ -129,6 +142,12 @@ void fractal_tree_object_shader(
     constant FeatureVector&       f [[buffer(0)]],
     constant StemFeatures&        stems [[buffer(3)]],
     constant FeatureVector&       fHeld [[buffer(4)]],
+    /// FTR.13 — the beat-held stem features, same beats and same ease as `fHeld` (buffer(5),
+    /// bound by `MeshGenerator`). Matt: *"the tips … should be beat matched."* The tips' driver
+    /// is a per-stem field, so holding only `fHeld` left them changing 4–5 times a second
+    /// whatever the frame did — measured 2.05 changes per BEAT against everything else at
+    /// ≤ 0.74. `stems` at buffer(3) stays live for anything that should not step.
+    constant StemFeatures&        stemsHeld [[buffer(5)]],
     uint tid [[thread_index_in_threadgroup]])
 {
     // Always dispatch exactly one mesh threadgroup (all 63 branches in one meshlet).
@@ -379,18 +398,24 @@ void fractal_tree_object_shader(
         // HONEST COST: the tips layer spans 5 branches where `beat_mid` spanned 8. An onset
         // rate is continuous, so it cannot reproduce the bimodal 0↔8 slam of a saturating
         // pulse. The gate's floor is 5 and this sits exactly on it.
-        float residueActivity = stems.other_onset_rate / (stems.other_onset_rate + 18.0f);
+        // FTR.13 — BEAT-MATCHED. Both halves now read the HELD side (buffer(5) stems,
+        // buffer(4) vector), so the tips change on the beat like everything else instead of
+        // 4–5 times a second. Matt, seeing FTR.11 live: *"the tips probably are still moving
+        // too fast if they change 2x per beat — should be beat matched."*
+        float residueActivity = stemsHeld.other_onset_rate
+                              / (stemsHeld.other_onset_rate + 18.0f);
 
         // D-019 WARMUP. Every stem field is zero until separation converges (~10 s), and a
         // preset that reads one raw shows nothing until then. Crossfade from the old
         // `beat_mid` driver so the tips are alive from frame 1 and hand over to the stem
         // term as the stems arrive — the tree must not stand bare through the first ten
         // seconds of every track, which is exactly when a listener is deciding whether it
-        // responds.
+        // responds. Read from the LIVE stems: this is a "have the stems arrived yet" gate, and
+        // gating on a beat-held copy would keep it at zero until the first beat lands.
         float stemEnergy = stems.vocals_energy + stems.drums_energy
                          + stems.bass_energy + stems.other_energy;
         float stemsAlive = smoothstep(0.02f, 0.06f, stemEnergy);
-        float melody = mix(f.beat_mid / (f.beat_mid + 2.2f), residueActivity, stemsAlive);
+        float melody = mix(fHeld.beat_mid / (fHeld.beat_mid + 2.2f), residueActivity, stemsAlive);
 
         // Depth tiers are the mechanism: a tier appears only above a threshold count
         // (d3 > 7, d4 > 15, d5 > 31), so the smallest branches enter and leave as the
@@ -400,12 +425,14 @@ void fractal_tree_object_shader(
         // 0.30 to 1.00 moved the tree's footprint 1.10× → 1.17× — the coefficient was not
         // the bottleneck, the saturation was. As its own term the section change adds
         // branches outright and the growth is visible.
-        uint  base    = (uint)((4.0f + reach * 18.0f) * amp);
+        // FTR.13 — float, like the tips below: an integer here re-quantises the count and
+        // the frontier branch cannot grow in.
+        float base    = (4.0f + reach * 18.0f) * amp;
         // THE NEXT LEVEL OF BRANCHES APPEARS — the other half. A tier exists only above
         // a threshold count (d4 > 15, d5 > 31), so the surge is sized to CARRY THE COUNT
         // ACROSS one of those lines rather than to nudge it: 26 branches is more than the
         // gap from a mid-verse canopy to the deepest tier.
-        uint  section = (uint)((lift * 8.0f + surge * 26.0f) * amp);
+        float section = (lift * 8.0f + surge * 26.0f) * amp;
         // TIPS ARE GATED BY GROWTH. Matt, 2026-08-04: *"the tree actually grows taller
         // BEFORE this melody enters."* Measured on that session, he is exactly right and
         // the cause is this layer: at t=19 s the growth part sat at its minimum of 4
@@ -462,8 +489,11 @@ void fractal_tree_object_shader(
         // changed the label, not the drowning problem this paragraph fixed.)
         //
         // It still gates: an intro measures reach ≈ 0.001…0.06, which this maps to 0.00…0.15.
-        uint  tips   = (uint)(melody * 26.0f * amp * smoothstep(0.03f, 0.15f, reach));
-        uint  count  = min(7u + base + section + tips, 63u);
+        // FTR.13 — FRACTIONAL, not rounded. The count is what pops, and the fractional part is
+        // what lets the frontier branch grow in instead of appearing (see `branch_count_f`).
+        float tipsF  = melody * 26.0f * amp * smoothstep(0.03f, 0.15f, reach);
+        float countF = min(7.0f + base + section + tipsF, 63.0f);
+        uint  count  = min((uint)ceil(countF), 63u);
 
         // ── BRANCH SPREAD ← spectral_flux ────────────────────────────────────────
         //
@@ -493,7 +523,8 @@ void fractal_tree_object_shader(
         payload->surge        = surge;
         payload->trunk_len    = trunkLen;
         payload->spread       = spread;
-        payload->branch_count = min(count, 63u);
+        payload->branch_count   = min(count, 63u);
+        payload->branch_count_f = countF;
         payload->aspect_ratio = max(f.aspect_ratio, 0.1f);
     }
 }
@@ -630,6 +661,26 @@ void fractal_tree_mesh_shader(
     float depth_norm = float(leaf_depth) / 5.0f;    // 0 = trunk … 1 = deepest leaf
     float is_leaf    = float(leaf_depth == 5 ? 1 : 0);
     seg_len *= 1.0f + tap * (0.02f + 0.40f * depth_norm * depth_norm);
+
+    // ── FTR.13: BRANCHES GROW IN, THEY DO NOT POP ────────────────────────────
+    //
+    // Matt's M7 on FTR.11 was that the canopy reads robotic and stuttering, and the measured
+    // cause is that a branch count is an INTEGER: the worst single beat added 15–19 branches at
+    // once on a tree spanning 43 (three captures), and holding on the BAR instead made it
+    // 23–28 — slowing the clock concentrates the pop rather than removing it. His call:
+    // *"grow in individually."*
+    //
+    // Stateless mechanism, no per-branch memory needed: the count arrives FRACTIONAL, so a
+    // branch's growth is just how far the count has passed its own index. Branch 40 is absent
+    // at count 40.0, half-grown at 40.5, full at 41.0 and beyond. A rise from 40 to 55 is then
+    // a fifteen-branch sweep spread across the eased step instead of a block appearing, and
+    // the frontier of the canopy is always the branch mid-extension.
+    //
+    // LENGTH ONLY, not thickness: a real branch extends from its parent joint at its own
+    // gauge. Scaling thickness too would make new growth read as a fading ghost rather than a
+    // shoot, and the joint is where the eye expects the motion to start.
+    float grow = saturate(payload.branch_count_f - float(bid));
+    seg_len *= grow * grow * (3.0f - 2.0f * grow);   // smoothstep: no kink at either end
 
     float2 branch_start = pos;
     float2 branch_end   = pos + dir * seg_len;

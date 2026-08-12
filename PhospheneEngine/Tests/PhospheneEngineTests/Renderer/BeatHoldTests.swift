@@ -42,9 +42,11 @@ struct BeatHoldTests {
         dt: Float,
         beatTime: (Int) -> Float?,   // nil = no beat clock at all (phase pinned)
         barPhase: Float = 0.5,
-        settleAfter: Float = 0
+        settleAfter: Float = 0,
+        // FTR.13 — 0 is the hard FTR.10 snap, which every pre-existing case here asserts.
+        easeBeats: Float = 0
     ) -> (staleFraction: Double, distinctHeldValues: Int, seconds: Float) {
-        var hold = BeatHold()
+        var hold = easeBeats > 0 ? BeatHold(easeBeats: easeBeats) : BeatHold()
         var stale = 0
         var total = 0
         var distinct = Set<Float>()
@@ -191,5 +193,72 @@ struct BeatHoldTests {
         #expect(!hold.isStepping, "beat evidence survived a track change")
         #expect(held.spectralSurge == firstOfB.spectralSurge,
                 "the new track's first frame returned the previous track's snapshot")
+    }
+
+    // MARK: - FTR.13 — eased steps
+
+    /// The raw-float blend is only correct while EVERY field is a `Float`. This is the guard the
+    /// blend's doc comment promises: add an `Int32`, a `Bool` or a SIMD member to either struct
+    /// and the lerp would reinterpret it as a float and produce garbage, silently.
+    @Test("FTR.13: the blended structs are still float-only, so the raw-storage lerp is valid")
+    func blendedStructsAreFloatOnly() {
+        #expect(MemoryLayout<FeatureVector>.size % MemoryLayout<Float>.size == 0, """
+            FeatureVector is \(MemoryLayout<FeatureVector>.size) bytes, not a whole number of \
+            Floats — BeatHold.lerp walks it as Float and would read a partial trailing field.
+            """)
+        #expect(MemoryLayout<StemFeatures>.size % MemoryLayout<Float>.size == 0, """
+            StemFeatures is \(MemoryLayout<StemFeatures>.size) bytes, not a whole number of Floats.
+            """)
+        // A float-only struct round-trips through the blend at t = 0 and t = 1 exactly. A
+        // non-float field would still round-trip, so the real guard is the pair above plus
+        // `CommonLayoutTest`, which locks both layouts against the MSL definitions.
+        var a = FeatureVector(); a.spectralSurge = 0.25; a.bass = 0.5
+        var b = FeatureVector(); b.spectralSurge = 0.75; b.bass = 0.1
+        #expect(BeatHold.lerp(a, b, 0, clocksFrom: b).spectralSurge == 0.25)
+        #expect(BeatHold.lerp(a, b, 1, clocksFrom: b).spectralSurge == 0.75)
+        let mid = BeatHold.lerp(a, b, 0.5, clocksFrom: b)
+        #expect(abs(mid.spectralSurge - 0.5) < 1e-6, "surge did not blend")
+        #expect(abs(mid.bass - 0.3) < 1e-6, "a second field did not blend — is the walk striding?")
+    }
+
+    /// Clocks must NOT be blended: a phase lerped across its 1 → 0 wrap runs backwards.
+    @Test("FTR.13: clocks come from the live frame, never from the blend")
+    func clocksAreNotBlended() {
+        var a = FeatureVector(); a.beatPhase01 = 0.97; a.time = 10
+        var b = FeatureVector(); b.beatPhase01 = 0.02; b.time = 11
+        var live = FeatureVector(); live.beatPhase01 = 0.31; live.time = 12; live.barPhase01 = 0.6
+        let out = BeatHold.lerp(a, b, 0.5, clocksFrom: live)
+        #expect(out.beatPhase01 == 0.31, "beatPhase01 was blended — 0.97→0.02 lerps BACKWARDS")
+        #expect(out.time == 12, "time was blended")
+        #expect(out.barPhase01 == 0.6, "barPhase01 was blended")
+    }
+
+    /// The ease starts at the beat and completes within its window — motion ONSET stays on the
+    /// beat, which is what keeps the step reading as beat-locked rather than late.
+    @Test("FTR.13: the ease starts on the beat and arrives inside its window")
+    func easeStartsOnTheBeatAndArrives() {
+        #expect(BeatHold.easeWeight(0, over: 1.0 / 3.0) == 0, "the ease did not start at the beat")
+        #expect(BeatHold.easeWeight(1.0 / 3.0, over: 1.0 / 3.0) == 1, "the ease did not arrive")
+        #expect(BeatHold.easeWeight(0.9, over: 1.0 / 3.0) == 1, "the ease re-opened after arriving")
+        let quarter = BeatHold.easeWeight(1.0 / 12.0, over: 1.0 / 3.0)
+        #expect(quarter > 0 && quarter < 0.25, """
+            a quarter of the way through the window the weight is \(quarter) — smoothstep should \
+            still be below the linear 0.25, i.e. easing IN rather than ramping.
+            """)
+        // easeBeats 0 is the FTR.10 hard snap: fully arrived at every phase.
+        #expect(BeatHold.easeWeight(0, over: 0) == 1, "easeBeats 0 must be the hard snap")
+    }
+
+    /// An eased hold moves for part of the beat and rests for the remainder. The hard hold's
+    /// `staleFraction > 0.75` bar is deliberately left asserting the OLD behaviour on
+    /// `BeatHold()` — this is the eased variant's own bar.
+    @Test("FTR.13: the eased hold glides for part of the beat and rests for the rest")
+    func easedHoldGlidesThenRests() {
+        let out = Self.run(duration: 12, dt: 1.0 / 60.0,
+                           beatTime: { Float($0) * 0.5 }, easeBeats: 1.0 / 3.0)
+        #expect(out.staleFraction > 0.4 && out.staleFraction < 0.9, """
+            the eased hold was unchanged on \(out.staleFraction) of frames. Near 1.0 means the \
+            ease never ran; near 0 means it never rested and the hold is doing nothing.
+            """)
     }
 }

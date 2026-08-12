@@ -2272,6 +2272,93 @@ an instrument, so `RouteCoverageTests` and the sidecar schema are unaffected.
 measured candidate is the PANNs guitar-class probability (§FTR.12 above) — decisive on clean
 prominent guitar, unusable on distorted rock guitar. Its own increment, not a tweak.
 
+**FTR.13 — eased beat-steps, branches that grow in, and beat-matched tips.** ✅ code-complete,
+**pending live M7** (2026-08-12) Matt's M7 on `2026-08-12T19-45-24Z` (*Carry The Zero*, local
+file, single track): *"motion reads as robotic and stuttering; looks best at the beginning of
+playback then transitions to the stuttering, robotic look."* Then, after the first diagnosis:
+*"The tips probably are still moving too fast if they change 2x per beat — should be beat
+matched. But my first issue is the robotic movement of the canopy … it's the stepping itself
+that is the problem."*
+
+**Two measurement errors of mine came out of this and both are worth keeping.** (1) **Every bar
+since FTR.10 was a turn RATE, and a rate cannot tell "holds still then snaps" from "drifts."**
+That is how the frame scored calm at 0.30 turns/beat while Matt watched the canopy stutter — a
+low turn rate is what a hard hold *buys*, not evidence against steppiness. Step SIZE is now
+measured beside it. (2) **My first recommendation was to remove the tips**, anchored on the one
+big number (2.05 turns/beat against everything else at ≤ 0.74) — the same one-layer answer
+FTR.10/FTR.11 already got wrong twice. Matt: *"Why is this the recommended fix? The whole canopy
+looks robotic / stuttering."* He was right; the tips were the *stutter*, the stepping was the
+*robotic*, and only measuring size separated them.
+
+**The per-bar option was measured and rejected on evidence, before anything was built.** Matt
+initially chose *"steps, but slower — on the bar"*. Frame branch count, per beat → per bar:
+
+| capture | per beat: changes/s · mean · max | per bar: changes/s · mean · max |
+|---|---|---|
+| `19-45-24Z` *Carry The Zero* | 1.35 · 2.78 · **15** | 0.53 · 4.79 · **23** |
+| `23-52-49Z` *Seven Nation Army* | 1.72 · 3.61 · **19** | 0.51 · 6.04 · **28** |
+| `18-26-52Z` *Carry The Zero* | 1.31 · 2.65 · **15** | 0.41 · 5.25 · **17** |
+
+Rate falls ~2.5–3×, mean step grows ~1.8×, worst single event 15 → 23 branches at once on a
+tree spanning 43. **Slowing the clock does not reduce steppiness, it concentrates it.** Shown to
+Matt with these numbers; he took eased-steps-on-the-beat instead.
+
+**Three mechanisms, all his calls.**
+
+1. **Eased steps** — `BeatHold(easeBeats:)`, a new *opt-in* initialiser (`BeatHold()` keeps the
+   hard FTR.10 snap and its tests untouched). The snapshot starts moving ON the beat and arrives
+   a third of a beat later, smoothstepped so there is no velocity discontinuity at either end.
+   Motion onset stays beat-locked — the eye reads onset as the event — and travel per beat is
+   unchanged; only the sharpness goes. A third of a beat is 160–210 ms at 94–124 BPM, inside the
+   window where onset and event are perceived together. The blend runs over the raw float
+   storage (`FeatureVector` is 47 fields and all `Float`, gated by a new test) rather than 47
+   hand-written lines a new field could escape; `time`/`beatPhase01`/`barPhase01`/
+   `pulseBeatIndex` are restored from the live frame, because a phase lerped across its 1 → 0
+   wrap runs backwards.
+2. **Branches grow in individually** (Matt's words) — the payload now carries a **fractional**
+   branch count and the mesh shader scales branch `bid`'s LENGTH by `saturate(count_f − bid)`.
+   Stateless: a branch's growth is just how far the count has passed its own index, so a rise
+   from 40 to 55 is a fifteen-branch sweep across the eased step instead of a block appearing.
+   Length only, not thickness — a real branch extends from its parent joint at its own gauge.
+   `base`/`section`/`tips` all became floats; an integer anywhere re-quantises the count.
+3. **Beat-matched tips** — the tips' driver is a per-stem field, so holding only the
+   `FeatureVector` left them at 4–5 changes/s whatever the frame did. `BeatHold` now holds
+   `StemFeatures` on the same beats with the same ease, bound at object/mesh **buffer(5)**
+   (symmetric with live-0/held-4; slot 5 is SpectralHistory on the direct-pass *fragment*
+   encoder only, the same reasoning that made slot 4 safe at FTR.10). The D-019 arrival gate
+   deliberately still reads the LIVE stems — it asks "have the stems converged", and a held copy
+   would pin it at zero until the first beat.
+
+**Measured effect** (`19-45-24Z`, the capture Matt reviewed):
+
+| | before FTR.13 | after FTR.13 |
+|---|---|---|
+| tips | **2.05** turns/beat, mean step 1.24 branches | **0.56** turns/beat, mean step **0.31** |
+| frame count | 0.30 turns/beat, mean step 2.78, max **15** | 0.42 turns/beat, mean step **0.75**, max **11.2** |
+| trunk | 0.27 turns/beat, mean step 0.015, max 0.125 | 0.27 turns/beat, mean step **0.006**, max **0.092** |
+
+Changes-per-second *rises* (frame count 1.35 → 5.28) and that is the point: many sub-branch
+glides replacing a few whole-branch jumps. Mean step under one branch per frame means the canopy
+now fills rather than pops.
+
+**`motion_gate.sh` scores it smooth for the first time: 0 spike frames of 95** (mean 2.46, max
+5.61), against **28** for the pre-FTR.11 build. That gate was documented as unable to score a
+beat-stepped preset — *"the spikes ARE the beats"* — and the easing removed the spikes rather
+than the beat lock, on an instrument built for a different question. The grow-in is visible in a
+still: the outermost tier renders mid-extension, shorter than the tier behind it.
+
+**A gate was replaced, and it is flagged rather than quietly relaxed.** `tipTurns > 1.5`/s was
+written when the tips were the only continuously-moving layer and the risk was freezing them. At
+94–124 BPM that floor is ~0.9–1.0 turns/BEAT — so it required almost exactly the 2×/beat
+behaviour Matt rejected. It is now a **two-sided** bar in beat-relative units: `> 0.15` (must not
+freeze — the original concern, still gated) and `≤ 1.0` (beat-matched by definition). Measured
+0.49–0.56/beat on three captures, so both bounds carry headroom. Lowering a floor to ship is the
+FTR.6 failure; replacing a bar whose premise an instruction has inverted is not the same thing,
+but it only counts as different if it is said out loud.
+
+**Still not certified, and FTR.11's M7 is superseded by this one rather than satisfied.** Whether
+the canopy now reads as growing instead of snapping is L4 and only Matt's eye settles it.
+
 **FTR.12c — the trunk motion bar is asserted in turns per BEAT.** ✅ (2026-08-12) Matt, on the
 FTR.11 carry-over: *"Per beat."* One commit, one metric, **no preset change and no shader edit** —
 the gate's unit only.
