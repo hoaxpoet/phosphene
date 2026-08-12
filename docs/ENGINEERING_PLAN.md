@@ -63,6 +63,48 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment BUG087.1 — Local-file playback analyses at 10 Hz, streaming at 51 Hz ✅ (2026-08-11)
+
+**Diagnosis increment. No fix code.** Filed as **BUG-087**. Found while chasing a
+`beatPhase01` discrepancy across captures that I had twice flagged as "one of two
+behaviours is wrong" — it is neither; both are real and the difference is the
+**playback path**.
+
+`LocalFilePlaybackProvider` requests `installTap(bufferSize: 1024)` (≈47 Hz).
+AVAudioEngine ignores it and delivers **0.1-second** buffers. `processAnalysisFrame`
+runs once per audio callback with no time gate, so the callback rate *is* the analysis
+rate: **10.0 Hz on local files against 51.1 Hz on streaming**, a 5.1× loss on the path
+essentially all development and preset work uses.
+
+**The discriminator that makes it a diagnosis rather than a correlation.** A fixed frame
+count would give different rates at 44.1 and 48 kHz. Measured: 4414 frames at 44.1 kHz
+and 4808 at 48 kHz — **both exactly 0.1 s**, and 100.0–100.2 ms on 8 of 10 captures. The
+size is duration-based, so the request is ignored rather than rounded. Streaming's 939
+frames ≈ the 1024 the system tap honours.
+
+**Method note worth keeping: path and date were perfectly confounded in the corpus** (the
+sole streaming capture is 2026-07-27, every local-file capture is 2026-08-07 or later), so
+the captures alone could not separate "local-file path" from "August regression". What
+settled it was the rate-independence discriminator plus the streaming capture's
+`TAP: startCapture: ENTER → createProcessTap` lines, which no local-file capture carries.
+Checking for that confound before theorising is the transferable part.
+
+`handleTapBuffer` was checked and cleared — it resizes its scratch for oversized buffers,
+so no samples are dropped. That would have been the more serious bug.
+
+**Consequence recorded in the capability registry**, because it is an authoring fact: a
+preset reading a deviation primitive per frame at 60 fps on the local-file path is sampling
+a **step function in 100 ms increments**, not a curve. This is the same 10 Hz the FTR program
+found from the preset side; it is a pipeline property and it is path-specific.
+
+**Left as a lead, not a conclusion:** it may also explain BUG-086's open question about
+local-file captures correlating stems against bands at r 0.19–0.46 where streaming reads
+0.70–0.94 (different clocks — stems advance per render frame, bands step at 10 Hz). Four
+other explanations for that gap were already tested and refuted; this one is untested.
+
+Tooling: `Scripts/measure_analysis_rate.py` recovers the rate from any capture with no
+app instrumentation, via `beatPhase01`'s advance rate against the CSV's own frame rate.
+
 ### Increment BUG086.1 — Stem features were 5.4 s late; the lag was the separation period ✅ (2026-08-11)
 
 **Nominal per-stem feature latency ≈5.4 s → 2.5 s.** Found inside CHR.1 while
