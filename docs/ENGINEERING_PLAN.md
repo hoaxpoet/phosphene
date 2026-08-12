@@ -2127,6 +2127,33 @@ The growth survives (span 0.173 against 0.178) and the drift goes. **This is not
 
 **Two measurement corrections came out of this, and both are the increment's real cost.** (1) The sequence harness's `recomputeDensity` measures the `LoudnessProfile` from the TAP where the live path measures it from the local FILE (DYN.1c). On this capture that is surge topping out at **0.073 against the recording's 0.802** — `musicGate` ~0.03, a permanent sapling. The first before/after A/B came back *identical* on that footing because both builds were pinned. Recompute is now opt-in (`FT_RECOMPUTE=1`), which is right whenever the capture postdates the change under review. (2) **No pixel metric on this preset isolates the trunk.** `motion_gate.sh`'s whole-frame difference is tips-and-hue dominated (2.26 vs 2.18). A centre-column scan for the top of the bark column reported the stepped build turning MORE often (5.68/s vs 4.13/s) — the two depth-1 branches start at the trunk top, overlap that column, and carry `tap` at 3.6 % of their length ≈ 2 px against 33 px of travel. It was measuring a tip wobble; it was deleted rather than explained away each time it is read.
 
+**FTR.11 — the frame holds too, and the guitar finding underneath it.** ✅ code-complete, **pending live M7** (2026-08-11) Matt on `2026-08-11T23-52-49Z` (*Seven Nation Army*, single track, chain `clean`), reviewing FTR.10: *"The trunk and branches are responding to both drums and vocals it seems and it's still too much. Guitar is barely registering."*
+
+**Three findings, and the first one is that the attribution is wrong in a way that changes the fix.**
+
+**(1) The trunk follows no stem.** Sweeping the stem lag 0–5 s, the trunk's best correlations are drums **−0.47**, bass **−0.43**, other **−0.30**, vocals **+0.07**. It follows `spectral_surge`, a whole-mix loudness rank. The motion is real; the attribution to drums and vocals is coincidence — those are what is audible while it moves. "Re-route the trunk off the drums" is not a fix that exists.
+
+**(2) FTR.10 fixed the smallest of the three moving things.** trunk 0.66 turns/s (held), branch **count 4.08/s span 46 branches**, branch **spread 5.48/s** — the two left continuous are 6–8× the trunk and are the biggest quantities on screen. Fixed here: `reach`, `surge`, `flux` and the density lift all read the beat-held vector, so the whole frame steps.
+
+| layer | SNA (124 BPM) | Carry The Zero (94 BPM) |
+|---|---|---|
+| frame branch count | 1.88 → **0.74**/s | 2.30 → **0.54**/s |
+| branch spread | 5.48 → **1.42**/s | 6.26 → **1.20**/s |
+| trunk (FTR.10) | 1.38 → 0.66/s | 1.64 → 0.52/s |
+| tips — deliberately live | 3.26/s | 3.38/s |
+
+Ranges intact (spread 13.751° both ways; frame count 48→48 on SNA, 42→38 on CTZ where a held sample misses a transient peak).
+
+**(3) "Guitar barely registering" is literal, and the route is not a guitar route on this material.** The tips span **4 branches of the count's 46** — under 9 % of its motion. `otherOnsetRate` correlates **+0.71 with `drumsOnsetRate`** and **+0.70 with bass** here, against the **+0.14** on Cherub Rock that FTR.8 justified the route with; all four stems' onset rates share one distribution (p50 1.72–2.02). Plausibly the riff is a guitar pitched an octave down, which separation splits across bass and other. **Widening the coefficient would make the drums louder in a layer labelled "guitar."** Matt's call, taken 2026-08-11: measure across captures whether any per-stem feature separates the guitar at all, before touching the preset — see FTR.12.
+
+**Beat-locking verified in PIXELS, and it exposed a gate limitation.** `motion_gate.sh` reports **28 spike frames against 0** for the previous build — its heuristic reads high-frequency spikes as jitter, and a beat-stepped preset is a temporal shape it was never built to score. The spikes are the beats: of the large frame-to-frame changes in the rendered sequence **100 % land within a quarter-beat of a beat** (median phase 0.127) while the tips' small changes sit at **51 %**, which is chance. Peak per-frame change is unchanged (5.10 against 5.29) — the steps are no bigger than the jumps the continuous build was already making, just concentrated on the beat, with 83 % of frames now completely still. **First stepped preset in the catalogue; the gate needs to learn the shape, and until it does the phase test above is the instrument.**
+
+**One bar left RED on purpose.** The FTR.10 trunk assertion (≤ 0.6 turns/s) measures **0.66** on Seven Nation Army. Per BEAT both tracks measure **0.32** — a beat-held value can only change on a beat, so the per-second unit carries the tempo and the bar is silently stricter on fast songs. Switching to turns/beat is probably right and was deliberately NOT done here: changing a metric in the same increment it goes red is how FTR.6 shipped a regression past a green gate. **Matt's call, then one commit that only changes the unit.**
+
+**Matt reversed a prior instruction and the shader says so.** DYN.2 records him asking for growth that is smooth, *"not in visible jumps"*. He has now chosen steps twice (FTR.10, FTR.11), the second time after seeing the smooth version live. The later instruction wins; a comment in `FractalTree.metal` says not to restore smoothness citing DYN.2 without asking.
+
+**FTR.12 — does a guitar channel exist at all? (SPEC, not started.)** Measurement only, no preset change. Across ≥ 4 captures spanning clean and distorted guitar, test every per-stem feature (`otherOnsetRate`, `otherEnergyDev`, `otherEnergySlope`, the IFC.4 instrument-family series) for separation from the drums control. **Done-when:** a table of r-against-drums per feature per capture, and a yes/no on whether any of them is an independent guitar channel. A "no" is a complete result and retires the ambition rather than funding a fourth attempt (MEL.1 already measured that per-note guitar onsets do not survive distortion; this asks the weaker question about rate and envelope).
+
 **FTR.5 — M7 + certification.** ⏸ **BLOCKED ON MATT — this is a live review, not work Claude
 can complete.** FTR.6 landed the rate/granularity adjustment Matt named as the precondition
 ("close pending these adjustments") and it is verified offline on both source tracks; whether
