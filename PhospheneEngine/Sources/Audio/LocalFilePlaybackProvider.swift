@@ -107,6 +107,21 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
     /// on the call thread.
     public var onDiagnosticEvent: ((String) -> Void)?
 
+    // MARK: - Tap buffer size (BUG-087)
+
+    /// Frames requested from `installTap`. **AVAudioEngine treats this as a hint and
+    /// routinely ignores it**, delivering ~0.1 s buffers instead — 4414 frames measured
+    /// at 44.1 kHz and 4808 at 48 kHz, both exactly 0.1 s, i.e. a fixed *duration*
+    /// rather than a frame count. Since `processAnalysisFrame` runs once per callback,
+    /// that put the whole MIR chain at **10 Hz on this path against 51 Hz on the system
+    /// tap** (BUG-087). The request is kept because it is the documented way to ask;
+    /// what changed is that the gap is now reported instead of silently costing 5× rate.
+    public static let requestedTapFrames: AVAudioFrameCount = 1024
+
+    /// Set once the first tap buffer arrives, so the requested-vs-delivered line is
+    /// emitted a single time per playback rather than ~10× a second.
+    private var reportedDeliveredFrames = false
+
     // MARK: - Init
 
     /// Create a provider that will play the file at `url` when `start()` is called.
@@ -283,13 +298,14 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
         let sampleRate = Float(tapFormat.sampleRate)
         let channelCount = tapFormat.channelCount
 
-        interleavedScratch = [Float](repeating: 0, count: 1024 * Int(channelCount))
+        interleavedScratch = [Float](repeating: 0, count: Int(Self.requestedTapFrames) * Int(channelCount))
+        reportedDeliveredFrames = false
 
         // Capture `onAudioSamples` at install time — the spike contract is
         // "set the callback, then call start()." This matches the existing
         // `.localFile` mode pattern in `AudioInputRouter.startFilePlayback`.
         let callback = onAudioSamples
-        player.installTap(onBus: 0, bufferSize: 1024, format: tapFormat) { [weak self] buffer, _ in
+        player.installTap(onBus: 0, bufferSize: Self.requestedTapFrames, format: tapFormat) { [weak self] buffer, _ in
             self?.handleTapBuffer(buffer,
                                   sampleRate: sampleRate,
                                   channelCount: channelCount,
@@ -451,6 +467,33 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
         }
     }
 
+    /// Report what AVAudioEngine actually delivered against what was requested (BUG-087),
+    /// once per playback rather than ~10x a second.
+    ///
+    /// An ignored `bufferSize` hint used to be invisible and cost 5x the analysis rate,
+    /// because `processAnalysisFrame` runs once per audio callback. The session artifact
+    /// now names the gap, so the next person reads it instead of measuring it.
+    private func reportDeliveredFramesOnce(frames: Int, sampleRate: Float) {
+        guard !reportedDeliveredFrames else { return }
+        reportedDeliveredFrames = true
+        let requested = Int(Self.requestedTapFrames)
+        let ms = sampleRate > 0 ? 1000.0 * Float(frames) / sampleRate : 0
+        let hz = ms > 0 ? 1000.0 / ms : 0
+        let flag = frames == requested ? "" : "  <- REQUEST IGNORED (BUG-087)"
+        let fmt = "TAP_BUFFER: requested=%d delivered=%d frames "
+            + "(%.1f ms → %.1f Hz analysis) rate=%.0f%@"
+        let msg = String(
+            format: fmt,
+            requested,
+            frames,
+            ms,
+            hz,
+            sampleRate,
+            flag
+        )
+        onDiagnosticEvent?(msg)
+    }
+
     private func handleTapBuffer(
         _ buffer: AVAudioPCMBuffer,
         sampleRate: Float,
@@ -463,6 +506,8 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
         guard frames > 0 else { return }
 
         let totalSamples = frames * Int(channelCount)
+
+        reportDeliveredFramesOnce(frames: frames, sampleRate: sampleRate)
 
         if interleavedScratch.count < totalSamples {
             interleavedScratch = [Float](repeating: 0, count: totalSamples)
