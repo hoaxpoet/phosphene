@@ -38,6 +38,7 @@ read the crash reports already on disk.**)*
 |---|---|---|---|
 | BUG-085 | P1 · HANG.1–2 complete 2026-08-05; remains open | renderer / app.hang | **App intermittently hangs hard in `CAMetalLayer.nextDrawable`; window unresponsive, force-quit required.** The live stack proves a main-thread drawable request blocked at 0 % CPU after healthy frames, but the cause remains unknown; direct render-path leakage, the capture hook, preset-swap skip, inflight semaphore, GPU completion, display sleep, and occlusion have been ruled out. **HANG.1 instrumentation is merged to `main` via PR #37 (`c54a2e7c`)**. HANG.2 completed a full-track control plus a 10 min 36 s Witchlight soak with 34,811/34,811 drawables balanced and no stalls or imbalances, refuting a deterministic per-frame leak but not identifying the intermittent owner. **THE INSTRUMENTED CAPTURE NOW EXISTS (2026-08-05, session `2026-08-05T21-21-03Z`, Fractal Tree / Cherub Rock)** — and every lifecycle counter is BALANCED at the moment of the hang: `drawable=12045/12045`, `unique_presented=6012/6012`, `command_completed=6012/6012`, `failures=0`, `unpresented=0`, one request outstanding (`pending=frame:6013,site:mesh.descriptor`). The app held ZERO drawables and CoreAnimation still would not vend one, which independently confirms HANG.2's soak: there is no app-side leak, and the owner is outside the app. Two captures 98 s apart are byte-identical on those counters — a PERMANENT block, not a long stall. See the detail section. |
 | BUG-081 | P2 | app.hang | **3 instances now** (2026-08-03 ×1, 2026-08-04 ×2). | **App beachballed ~78 s into session `2026-08-03T22-54-06Z` and needed a force-quit; no `.ips` exists** (force-quit produces none) and `session.log` ends mid-normal-operation with no fatal. **Evidence-only — no root cause asserted.** What the capture DOES establish: the renderer was healthy to the last frame — steady 60 fps, Fractal Tree at **0.18 ms GPU against a 0.7 ms budget**, no degradation trend across 3756 frames; background ML load rising but modest (`stem_analyzer_ms` 0 → 3.4). **Ruled out by test:** FTR.2's shader overflowing the mesh primitive limit via a bad `branch_count` — no non-finite values in the capture and `branch_count` never exceeds 59 against the 63 ceiling. A frozen UI with a live render loop points away from the preset, but that is inference and BUG-061's rule forbids acting on it. **Same class as BUG-060** (force-quit hang, render loop died, no stack captured, never reproduced) — two instances now, both blocked on the same missing artifact. **Next evidence:** `sample PhospheneApp 10 -file ~/Desktop/phosphene-hang.txt` run DURING the beachball, before force-quitting |
+| BUG-087 | P2 | audio.capture / calibration | **Local-file playback runs the whole MIR chain at 10 Hz where streaming runs it at 51 Hz — a 5.1× rate loss on the primary development session type.** `LocalFilePlaybackProvider` asks for `installTap(bufferSize: 1024)` (≈47 Hz) and AVAudioEngine ignores it, delivering **0.1-second** buffers instead — 4414 frames measured at 44.1 kHz, 4808/4810 at 48 kHz. `processAnalysisFrame` runs once per audio callback with no time gate, so the callback rate *is* the analysis rate: every `FeatureVector` field — bands, deviation primitives, `beatPhase01`, centroid, flux, mood inputs — updates at 10 Hz on local files. Proven a fixed *duration* rather than a frame count by the rate-independence discriminator (both sample rates land on 0.1 s). This is the same 10 Hz the FTR program hit from the preset side. Diagnosis only — no fix code. Detail below |
 | BUG-086 | P2 · **fix code-complete 2026-08-11, validation incomplete** | dsp.stem / calibration | **Every per-stem feature reaches presets ≈5.4 s behind the audio, on the local-file path, in steady state — while the beat grid beside it is time-aligned to ≈0.3 s.** Root cause is read, not inferred: separation runs on a fixed 10 s chunk (`modelFrameCount = 431` — the exported Open-Unmix model cannot take a shorter one) every **5 s**, and `runPerFrameStemAnalysis` starts its read window **5 s into** that chunk to buy one separation period of runway. So `lag = chunkLength − startOffset ≥ separationPeriod`, exactly. Measured three independent ways, agreeing: 5.4 s on 39 of 40 stem × track pairs. Affects every stem-driven preset, Aurora Veil's `other_energy_dev` anchor included. Diagnosis only — no fix code, per the multi-increment process. Detail: `docs/diagnostics/CHR1_STEM_DECORRELATION_2026-08-11.md` §7b + §8 |
 | BUG-084 | P3 | dsp.stem | **`StemAnalyzer` deviation reaches 35 where the primitive's real ceiling is ~3.4** — suspected divide-by-near-zero against a not-yet-converged per-track EMA baseline (the stem-side twin of the BUG-027 / AGC2.4.1 cold-start family). No product impact today: FFO's aurora is defended by the FBS.S3.2 soft knee (35 → 1.64), which is what let BUG-041 close. Filed 2026-08-03 (RECON.2) so it survives that closure — the *input* is wrong even though the output is defended. Unreproduced; fixtures retained |
 | BUG-070 | P2 | audio.capture / resource-management | **Fix landed 2026-07-12 (PUB.6), pending live validation** — a FAILED device-change tap reinstall left `_isCapturing=true` with zero callbacks: engine health detectors starved (SignalHealthMonitor.evaluate is sample-driven → deadTap never confirms) and the router's recovery restart blocked at the alreadyCapturing guard; only the app-layer poll-based stall card surfaced it. Fix: the catch now clears `_isCapturing` (recovery unblocked) and keeps the monitor as a diagnostic beacon; the false "create steps stopped the monitor" comment corrected. Residual OPEN half: the 3-queue lifecycle interleave (device-change reinstall vs silence-recovery vs user stop) stays unserialized — static-only evidence; restructuring the G1-validated (12/12) path without a reproduced artifact is the BUG-063 pattern. Existing breadcrumbs (per-step diagnostics + install generation) are the instrumentation; serialize only if a live session shows an interleave |
@@ -374,6 +375,107 @@ Run it *during* the beachball, before force-quitting. Without a blocked stack th
 **Note.** Signal health was `critical` (−24 dBFS) for the session's first ~50 s before reaching green; unlikely to be related but recorded because the session is otherwise the only artifact.
 
 ---
+
+### BUG-087 — Local-file playback analyses at 10 Hz where streaming analyses at 51 Hz (AVAudioEngine ignores the tap `bufferSize`) (2026-08-11)
+
+Found while chasing a `beatPhase01` discrepancy across captures. **Diagnosis increment
+only — no fix code.**
+
+#### Expected behavior
+
+The MIR chain analyses at a comparable rate whichever way audio arrives.
+`LocalFilePlaybackProvider` requests `installTap(onBus: 0, bufferSize: 1024, …)`, which at
+44.1–48 kHz is ≈43–47 Hz.
+
+#### Actual behavior
+
+**Local-file playback analyses at 10.0 Hz. Streaming analyses at 51.1 Hz.** A 5.1× rate
+loss, on the session type used for essentially all development and all preset work.
+
+#### Reproduction steps
+
+Any local-file session vs any streaming session. Measured across the whole capture corpus
+(10 local-file captures, 1 streaming).
+
+#### Session artifacts
+
+`beatPhase01` advance rate × the CSV's own frame rate gives the analysis rate directly:
+
+| capture | path | audio Hz | analysis Hz | implied buffer |
+|---|---|---|---|---|
+| `2026-08-11T01-07-17Z` | local | 44 100 | 9.99 | **4414 frames** |
+| `2026-08-11T23-52-49Z` | local | 48 000 | 9.98 | **4808 frames** |
+| `2026-08-11T23-44-40Z` | local | 48 000 | 9.98 | **4810 frames** |
+| `beat-match-test-session` | streaming | 48 000 | **51.11** | **939 frames** |
+
+All ten local-file captures read 15.2–16.8 % (16.7 % on eight of ten). The streaming capture
+reads 85.4 %.
+
+**The discriminator that makes this a diagnosis and not a correlation:** if the tap delivered
+a fixed *frame count*, the analysis rate would differ between the 44.1 kHz and 48 kHz
+captures. It does not — 4414 frames at 44.1 kHz and 4808 at 48 kHz are both **exactly 0.1 s**.
+The buffer is duration-based, so the `bufferSize: 1024` request is being ignored, not merely
+rounded. The streaming path's 939 frames ≈ the 1024 the system tap actually honours.
+
+⚠ **Path and date are perfectly confounded in the corpus** (the sole streaming capture is
+2026-07-27; every local-file capture is 2026-08-07 or later), so the *captures alone* cannot
+separate "local-file path" from "something regressed in August". The code and the
+rate-independence discriminator are what settle it, plus the streaming capture's
+`TAP: startCapture: ENTER → createProcessTap` lines, which no local-file capture has — they
+are genuinely different audio sources, not the same source at two dates.
+
+#### Suspected failure class
+
+`calibration` — intent (1024 frames) versus reality (~4800), unverified at the boundary.
+`api-contract` secondarily: AVFoundation treats `installTap`'s `bufferSize` as a hint, and
+nothing here checks what was actually delivered.
+
+#### Root cause (read from source)
+
+- `PhospheneEngine/Sources/Audio/LocalFilePlaybackProvider.swift:292` —
+  `player.installTap(onBus: 0, bufferSize: 1024, format: tapFormat)`. AVAudioEngine honours
+  this loosely and delivers ~0.1 s buffers on macOS.
+- `PhospheneApp/VisualizerEngine+Audio.swift` `processAnalysisFrame` — invoked once per audio
+  callback via `analysisQueue.async`, with **no time-based gate**, and it derives
+  `effectiveFps = 1 / dt` from the callback interval. So the callback rate *is* the analysis
+  rate, and `dt` correctly reports 0.1 s; nothing is lying, the rate is simply low.
+- `handleTapBuffer` is **not** at fault: it resizes `interleavedScratch` when a buffer exceeds
+  the 1024-frame allocation, so no samples are dropped. Checked, because a scratch sized 1024
+  against a 4800-frame buffer would have been the more serious bug.
+
+#### Impact
+
+Every `FeatureVector` consumer on the local-file path sees 10 Hz: bands, the D-026 deviation
+primitives, `beatPhase01`, centroid, flux, and the mood classifier's inputs. This is the same
+10 Hz the FTR program discovered from the preset side and carried as a preset-authoring fact;
+it is a pipeline property, and it is path-specific.
+
+**For a beat-ruled scrolling preset (Stave / the CHR series) it is a design input**, not a
+footnote: gridlines and trace samples would arrive in 100 ms steps on the path that preset
+would mostly run on.
+
+**Hypothesis, NOT established:** this may also explain BUG-086's observation that local-file
+captures correlate stem features against band features at r 0.19–0.46 where the streaming
+capture reads 0.70–0.94 — stems update per render frame off a wallclock-advanced window while
+bands step at 10 Hz, so the two are sampled on different clocks. Four other explanations for
+that gap have already been tested and refuted; this one is untested and is recorded as a lead,
+not a conclusion.
+
+#### Verification criteria (written before any fix)
+
+- Automated: assert the delivered buffer's `frameLength` against what was requested at the
+  `installTap` boundary, so an ignored hint fails loudly instead of silently costing 5× rate.
+- Automated: an analysis-rate floor measured from a real capture, the same shape as
+  `Scripts/measure_stem_latency.py` — `beatPhase01` advance × CSV fps ≥ target.
+- Manual: any fix raises the update rate of every deviation primitive on the local-file path,
+  which is felt on every preset. M7-class observation required; a 5× change in feature update
+  rate is not a silent change.
+
+#### Related
+
+**⇄ BUG-086** — same subsystem boundary, independent cause, and this may explain that entry's
+open "why are local-file correlations weak" question (see Impact). A fix here should re-run
+`Scripts/measure_stem_latency.py` on a local-file capture before and after.
 
 ### BUG-086 — Per-stem features reach presets ≈5.4 s late; lag is structurally pinned to the separation period (2026-08-11)
 
