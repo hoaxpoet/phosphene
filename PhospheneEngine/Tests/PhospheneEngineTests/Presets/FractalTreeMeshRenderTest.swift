@@ -540,6 +540,19 @@ struct FractalTreeMeshRenderTest {
         // column that can: the hold has a cold start (it needs a bar clock plus 8 stable beat
         // intervals), so the opening seconds run CONTINUOUS and then switch to STEPPED.
         var stepping: [Bool] = []
+        // FTR.12e — PER-BAR HOLD, emulated for measurement only (no production change).
+        // Matt's call on the M7 was *"steps, but slower — on the bar"*, and before building
+        // that there is a risk worth measuring: the tree still has to reach the same places,
+        // so 4x fewer steps means each step carries ~4x more. For a COUNT of branches that is
+        // fewer, BIGGER pops — possibly more stuttering, not less. Mirrors `BeatHold.update`
+        // exactly, substituting the bar clock for the beat clock, and reuses the real hold's
+        // `isStepping` for the trust gate so only the boundary differs.
+        var barHeld = FeatureVector()
+        var lastBarPhase: Float = 0
+        var trunkBar: [Float] = []
+        var countBar: [Float] = []
+        var spreadBar: [Float] = []
+        var frameOnlyBar: [Float] = []
         for (index, row) in rows.enumerated() {
             var fv = Self.featuresFromSession(row, fifths: &fifths)
             Self.applyRecomputedDensity(densityByTime, at: row["time"] ?? 0, to: &fv,
@@ -562,6 +575,15 @@ struct FractalTreeMeshRenderTest {
                                        - Self.tipBranches(frame: fv, live: fv, stems: stems)))
             frameOnly.append(Float(Self.branchCount(frame: held, live: fv, stems: stems)
                                    - Self.tipBranches(frame: held, live: fv, stems: stems)))
+
+            let barWrapped = fv.barPhase01 < lastBarPhase - 0.25
+            lastBarPhase = fv.barPhase01
+            if barWrapped || !hold.isStepping { barHeld = fv }
+            trunkBar.append(Self.trunkLength(barHeld))
+            countBar.append(Float(Self.branchCount(frame: barHeld, live: fv, stems: stems)))
+            spreadBar.append(Self.spreadDegrees(barHeld))
+            frameOnlyBar.append(Float(Self.branchCount(frame: barHeld, live: fv, stems: stems)
+                                      - Self.tipBranches(frame: barHeld, live: fv, stems: stems)))
         }
         let seconds = (rows.last?["time"] ?? 0) - (rows.first?["time"] ?? 0)
         // TURNS PER BEAT is the UNIT THE TRUNK BAR IS ASSERTED IN (FTR.12c, Matt's call
@@ -648,6 +670,28 @@ struct FractalTreeMeshRenderTest {
         let firstStepping = stepping.firstIndex(of: true)
         let playback = rows.map { $0["playback_time_s"] ?? $0["time"] ?? 0 }
         let framesPerSecond = Double(rows.count) / Swift.max(seconds, 1)
+
+        var barWraps = 0
+        var previousBarPhase: Double = 0
+        for row in rows {
+            let phase = (row["barPhase01_permille"] ?? 0) / 1000
+            if phase < previousBarPhase - 0.25 { barWraps += 1 }
+            previousBarPhase = phase
+        }
+        let barsPerSecond = Double(barWraps) / Swift.max(seconds, 1)
+
+        /// One `layer × hold` row: how OFTEN it changes and how BIG each change is.
+        /// Step size is measured only across frames where the value actually changed, so a
+        /// held signal's long still stretches do not dilute it toward zero.
+        func stepLine(_ label: String, _ values: [Float], _ hold: String) -> String {
+            var deltas: [Float] = []
+            for (a, b) in zip(values, values.dropFirst()) where a != b { deltas.append(abs(b - a)) }
+            let perSecond = Double(deltas.count) / Swift.max(seconds, 1)
+            let mean = deltas.isEmpty ? 0 : deltas.reduce(0, +) / Float(deltas.count)
+            return "  " + label.padding(toLength: 24, withPad: " ", startingAt: 0)
+                + hold.padding(toLength: 8, withPad: " ", startingAt: 0)
+                + String(format: "%8.2f   %9.3f   %9.3f", perSecond, mean, deltas.max() ?? 0)
+        }
         func splitLine(_ label: String, _ values: [Float]) -> String {
             func rate(_ want: Bool) -> String {
                 let picked = zip(values, stepping).filter { $0.1 == want }.map(\.0)
@@ -668,6 +712,26 @@ struct FractalTreeMeshRenderTest {
         \(splitLine("frame count", frameOnly))
         \(splitLine("spread°", spreadHeld))
         \(splitLine("tips (never held)", tips))
+        """)
+
+        // FTR.12e — STEP SIZE, which is the quantity the whole FTR.10/FTR.11 arc never
+        // measured. Every bar so far has been a turn RATE, and a rate cannot distinguish "holds
+        // still then snaps" from "drifts" — it is why the frame read as calm at 0.30 turns/beat
+        // while Matt saw the whole canopy stuttering. For a COUNT of branches the size of each
+        // change is the thing that pops, and slowing the clock trades rate for size.
+        print("""
+          STEP SIZE vs STEP RATE, per-beat hold against a per-bar hold (\(String(format: "%.2f", beatsPerSecond / Swift.max(barsPerSecond, 1e-6))) beats/bar measured)
+          A rate cannot tell "snaps" from "drifts". For a branch COUNT, size is what pops.
+          layer                    hold    changes/s   mean step    max step
+        \(stepLine("trunk", stepped, "beat"))
+        \(stepLine("trunk", trunkBar, "bar"))
+        \(stepLine("frame count", frameOnly, "beat"))
+        \(stepLine("frame count", frameOnlyBar, "bar"))
+        \(stepLine("spread°", spreadHeld, "beat"))
+        \(stepLine("spread°", spreadBar, "bar"))
+        \(stepLine("count incl. tips", countHeld, "beat"))
+        \(stepLine("count incl. tips", countBar, "bar"))
+        \(stepLine("tips", tips, "live"))
         """)
 
         // WHERE the trunk moves, in 5 s buckets. A motion-gate window picked without this is
