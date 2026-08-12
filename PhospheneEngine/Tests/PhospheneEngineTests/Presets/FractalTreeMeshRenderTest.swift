@@ -534,6 +534,12 @@ struct FractalTreeMeshRenderTest {
         var frameOnlyLive: [Float] = []
         var frameOnly: [Float] = []
         var steppingFrames = 0
+        // FTR.12d — WHEN the hold engages, per frame. Matt's M7 on this capture was
+        // *"looks best at the beginning of playback then transitions to the stuttering,
+        // robotic look"*, and a whole-track turn rate cannot show a transition. This is the
+        // column that can: the hold has a cold start (it needs a bar clock plus 8 stable beat
+        // intervals), so the opening seconds run CONTINUOUS and then switch to STEPPED.
+        var stepping: [Bool] = []
         for (index, row) in rows.enumerated() {
             var fv = Self.featuresFromSession(row, fifths: &fifths)
             Self.applyRecomputedDensity(densityByTime, at: row["time"] ?? 0, to: &fv,
@@ -541,6 +547,7 @@ struct FractalTreeMeshRenderTest {
             let stems = Self.sessionStems(stemRows, index: index + stemOffset)
             let held = hold.update(fv)
             if hold.isStepping { steppingFrames += 1 }
+            stepping.append(hold.isStepping)
             let growth = Self.growth(fv)
             reachTerm.append(growth.reach * 0.13)
             surgeTerm.append(growth.surge * 0.32)
@@ -632,6 +639,35 @@ struct FractalTreeMeshRenderTest {
         \(line("  frame count, HELD", frameOnly))
         \(line("tips (always live)", tips))
         ───────────────────────────────────────────────────────────────────
+        """)
+
+        // FTR.12d — THE TRANSITION, which is what Matt's M7 describes and no whole-track
+        // statistic can show. Split every layer by hold state and report both halves. If the
+        // CONTINUOUS half is the one that reads better, the feature FTR.10/FTR.11 built is the
+        // thing he is objecting to, and that is a product decision, not a tuning miss.
+        let firstStepping = stepping.firstIndex(of: true)
+        let playback = rows.map { $0["playback_time_s"] ?? $0["time"] ?? 0 }
+        let framesPerSecond = Double(rows.count) / Swift.max(seconds, 1)
+        func splitLine(_ label: String, _ values: [Float]) -> String {
+            func rate(_ want: Bool) -> String {
+                let picked = zip(values, stepping).filter { $0.1 == want }.map(\.0)
+                guard picked.count > 2 else { return "     —" }
+                let turns = Self.turnsPerSecond(picked, seconds: Double(picked.count) / framesPerSecond)
+                return String(format: "%5.2f/s %5.2f/beat",
+                              turns, turns / Swift.max(beatsPerSecond, 1e-6))
+            }
+            return "  " + label.padding(toLength: 22, withPad: " ", startingAt: 0)
+                + "cont " + rate(false) + "   held " + rate(true)
+        }
+        print("""
+          hold engages at playback \(firstStepping.map { String(format: "%.1f s", playback[$0]) } ?? "never") \
+        (\(stepping.filter { !$0 }.count) of \(rows.count) frames run continuous, \
+        \(String(format: "%.1f s", Double(stepping.filter { !$0 }.count) / framesPerSecond)))
+          BEFORE vs AFTER the hold engages — the transition Matt's M7 describes:
+        \(splitLine("trunk", stepped))
+        \(splitLine("frame count", frameOnly))
+        \(splitLine("spread°", spreadHeld))
+        \(splitLine("tips (never held)", tips))
         """)
 
         // WHERE the trunk moves, in 5 s buckets. A motion-gate window picked without this is
