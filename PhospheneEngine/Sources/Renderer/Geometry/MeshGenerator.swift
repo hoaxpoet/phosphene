@@ -101,6 +101,31 @@ public final class MeshGenerator: @unchecked Sendable {
     /// See D-057(e) for rationale on why the M1/M2 path is accepted as a no-op.
     public var densityMultiplier: Float = 1.0
 
+    // MARK: - Beat-Held FeatureVector (FTR.10)
+
+    /// Sample-and-hold on the cached beat grid, bound at object/mesh buffer(4).
+    ///
+    /// A stateless object shader cannot make a value hold between beats and step on the
+    /// beat, so the snapshot lives here — one per generator, advanced by `draw`. See
+    /// ``BeatHold`` for the trust conditions; while they are unmet it tracks the live
+    /// vector, so a preset that reads buffer(4) degrades to continuous rather than frozen.
+    private var beatHold = BeatHold()
+
+    /// Feed a frame through the beat hold WITHOUT drawing it.
+    ///
+    /// Only for harnesses that render a subsampled strip of a capture: the hold needs every
+    /// frame in order to see beat boundaries at all, and a harness that renders every
+    /// seventh row would otherwise measure a hold driven by an aliased phase. Call this for
+    /// the rows you skip; `draw` already feeds the rows you render.
+    public func advanceBeatHold(_ features: FeatureVector) {
+        _ = beatHold.update(features)
+    }
+
+    /// `true` while the snapshot at buffer(4) is frozen between beats. Diagnostic only — a
+    /// harness reporting "the trunk still slides" needs to be able to tell a preset that is
+    /// not stepping from a hold that never engaged.
+    public var beatHoldIsStepping: Bool { beatHold.isStepping }
+
     // MARK: - Private
 
     private let device: MTLDevice
@@ -197,12 +222,19 @@ public final class MeshGenerator: @unchecked Sendable {
     ///   access. That blocked Fractal Tree from routing its tips to the guitar (D-212 /
     ///   FTR.4), and it blocks every future mesh preset the same way. Shared renderer code:
     ///   binding here means every mesh preset inherits it.
+    ///
+    /// FTR.10 also binds a beat-held copy of `features` at object/mesh buffer(4) — see
+    /// ``BeatHold``. Shared renderer code again: any mesh preset can make a layer step on
+    /// the beat by reading buffer(4) instead of buffer(0).
     public func draw(encoder: MTLRenderCommandEncoder,
                      features: FeatureVector,
                      stems: StemFeatures = .zero) {
         encoder.setRenderPipelineState(pipelineState)
         var feat = features
         var stemFeat = stems
+        // FTR.10 — advance the beat hold on EVERY frame, drawn or not, so the snapshot at
+        // buffer(4) reflects the real beat boundaries and not the draw cadence.
+        var heldFeat = beatHold.update(features)
 
         if usesMeshShaderPath {
             // Bind features to all mesh-pipeline stages so preset shaders can read
@@ -218,6 +250,12 @@ public final class MeshGenerator: @unchecked Sendable {
             // every non-mesh path already use. Same slot everywhere is the contract.
             encoder.setObjectBytes(&stemFeat, length: MemoryLayout<StemFeatures>.stride, index: 3)
             encoder.setMeshBytes(&stemFeat, length: MemoryLayout<StemFeatures>.stride, index: 3)
+            // FTR.10 — the beat-held FeatureVector at buffer(4). Same struct as buffer(0),
+            // frozen at the last beat boundary; a preset reads it for the layers that should
+            // STEP and buffer(0) for the layers that should slide. Slot 4 is SceneUniforms on
+            // the ray-march FRAGMENT path only — the mesh pipeline never binds that.
+            encoder.setObjectBytes(&heldFeat, length: MemoryLayout<FeatureVector>.stride, index: 4)
+            encoder.setMeshBytes(&heldFeat, length: MemoryLayout<FeatureVector>.stride, index: 4)
         }
         encoder.setFragmentBytes(&feat, length: MemoryLayout<FeatureVector>.stride, index: 0)
 
