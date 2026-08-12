@@ -19,7 +19,7 @@ Do **not** invoke `shader-authoring`. If you find yourself needing it, the incre
 ## 2. Read first
 
 1. `docs/ENGINEERING_PLAN.md` §FTR.11 — the three findings that produced this increment, including the +0.71 measurement. Do not re-derive them.
-2. `docs/QUALITY/KNOWN_ISSUES.md` **BUG-086** and **BUG086.3** — the stem-latency picture changed on 2026-08-12 (the 2.9 s pass was withdrawn as a false pass and the corpus reclassified as streaming). Read this **before** designing the measurement, not after.
+2. `docs/QUALITY/KNOWN_ISSUES.md` **BUG-086**, **BUG086.3** and **BUG-087** — the measurement surface moved twice on 2026-08-11/12. BUG086.3 withdrew the 2.9 s stem-latency pass as a false pass and reclassified its corpus as streaming; BUG-087 found the local-file path analysing at 10 Hz against streaming's 51 Hz. Read all three **before** designing the measurement, not after. **BUG086.3's mistake is the one to avoid here: it reached a PASS on a corpus whose path it had mis-classified.** This increment's corpus is chosen offline, so state the path and hop explicitly rather than inheriting them.
 3. `docs/diagnostics/CHR1_STEM_DECORRELATION_2026-08-11.md` §7b, §8 — the method that measured stem lag three independent ways, and the CHR.1 finding that 65–93 % of each stem trace is the shared loudness envelope. **CHR.1 asked a neighbouring question and got a discouraging answer; read it before assuming this one is open.**
 4. `PhospheneEngine/Sources/DSP/StemAnalyzer.swift` — `analyze(stemWaveforms:fps:)` is the entry point; note every feature it produces.
 5. `PhospheneEngine/Sources/ML/StemSeparator.swift` — `separate(audio:channelCount:sampleRate:)`, and the **~10 s fixed model window** (`modelFrameCount = 431`) that forces chunking.
@@ -33,7 +33,9 @@ Each of these stops the session if it fails.
 * `Scripts/link_fixtures.sh` has been run if this is a fresh worktree.
 * HEAD descends from `947b52c3` (PR #83, FTR.11).
 * **FTR.11 is unverified live.** Matt's M7 on the stepped frame is still outstanding. This increment does not depend on it and must not wait for it — but do not describe Fractal Tree as fixed in any doc you touch.
-* The live MIR analysis rate is **~10 Hz**, not the 60 Hz render rate. `features.csv`/`stems.csv` rows are per RENDER frame. Any per-frame alpha means `τ = 1/(α·10)`. Four increments shipped with this wrong.
+* **The analysis rate depends on how the audio arrived — BUG-087, filed 2026-08-11.** Local-file playback analyses at **10 Hz**; streaming analyses at **51 Hz**. `AVAudioEngine` ignores `LocalFilePlaybackProvider`'s `bufferSize: 1024` and delivers 0.1-second buffers, and `processAnalysisFrame` runs once per callback with no time gate, so the callback rate *is* the analysis rate. `features.csv`/`stems.csv` rows are per RENDER frame regardless (~60 Hz), so **never infer the rate from row count ÷ duration** — four increments shipped with that wrong. Any per-frame alpha means `τ = 1/(α · rate)`, and the rate is not a constant of the system.
+* **Consequence for this increment, and it is load-bearing:** an offline harness chooses its own hop, so it is neither 10 nor 51 Hz unless you make it match one. State the hop you chose and why. A guitar/drums separation measured at one rate is not automatically the same at another — onset *rate* features are the ones most exposed to this.
+* **Consequence for the FTR.10/FTR.11 figures already in the plan:** every turns/second number there was measured on **local-file captures at 10 Hz**. They are correct for that path and are not rate-invariant. If BUG-087's fix lands, re-measure before citing them — do not quietly carry them forward.
 
 ## 4. Tasks
 
