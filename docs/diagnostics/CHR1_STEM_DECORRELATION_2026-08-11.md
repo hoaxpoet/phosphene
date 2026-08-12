@@ -16,6 +16,36 @@ four traces collapse into one visually."*
 
 **Verdict: they do not separate. 3 of 3 captures, 8 of 8 tracks, 6 registers.**
 
+
+> ## ⚠ TRACK LABELS CORRECTED 2026-08-12 — read before citing any per-track row
+>
+> Every per-track label in this file was **shifted by one** from segment 3 onward, and the
+> tables below are the corrected ones. The cause: the label list was built with
+> `loadForPlayback track='([^']*)'`, which fails on
+> `Stayin' Alive - From "Saturday Night Fever" Soundtrack` — the apostrophe in `Stayin'`
+> ends the capture group, the whole match fails, and the track vanished from a list that is
+> **index-aligned to segments**, so one dropped name renamed thirteen rows. Matt caught it
+> from a later capture: *"the test also excluded the song Staying Alive, which played start
+> to finish."*
+>
+> **The numbers were always per-segment and are unaffected. Only the attribution moved.**
+>
+> **What this changes, and it is not cosmetic:** this file previously reported *"jazz was the
+> worst case (Take Five, 93 %), not the best — the opposite of the intuition that sparse
+> material would separate best."* That reading was **the artifact**. Corrected, the worst are
+> **Bohemian Rhapsody 93.4 %, Superstition 93.0 %, Stayin' Alive 92.4 %** — dense, tightly
+> arranged, heavily compressed studio productions — and **Take Five is among the best at
+> 82.9 %**, second only to Solsbury Hill's 81.3 %. The intuitive reading was right all along.
+> Also swapped: the low-excursion track needing a trace-amplitude floor is **Bleed**
+> (p95 0.16–0.19), not Giorgio by Moroder.
+>
+> **What this does NOT change:** every conclusion. All 15 tracks still sit at 81–93 % common
+> mode, `drums~bass` is +0.81…+0.99 and `vocals~other` +0.80…+0.99 on every one, four traces
+> still collapse to two, and direction A's aggregate figures are unaffected. The re-scope was
+> correct; only the register story was wrong.
+>
+> Fixed in `Scripts/measure_stem_latency.py` (anchored regex + no silent segment skipping).
+
 ---
 
 ## 1. Method
@@ -82,19 +112,30 @@ concept does **not** fail on liveness.
 
 | Track (register) | drums | bass | vocals | other |
 |---|---|---|---|---|
-| Cherub Rock (dense rock) | −0.179 / 0.001 / 0.340 | −0.213 / 0.010 / 0.392 | −0.210 / −0.011 / 0.502 | −0.162 / −0.024 / 0.390 |
+| Cherub Rock (dense rock, separate capture) | −0.179 / 0.001 / 0.340 | −0.213 / 0.010 / 0.392 | −0.210 / −0.011 / 0.502 | −0.162 / −0.024 / 0.390 |
+| Billie Jean (pop) | −0.217 / −0.001 / 0.286 | −0.247 / −0.000 / 0.329 | −0.257 / −0.003 / 0.334 | −0.214 / 0.003 / 0.271 |
 | Around the World (electronic) | −0.383 / 0.022 / 0.361 | −0.442 / 0.009 / 0.458 | −0.346 / −0.008 / 0.477 | −0.321 / 0.005 / 0.370 |
-| Take Five (jazz) | −0.268 / −0.016 / 0.355 | −0.327 / −0.022 / 0.452 | −0.289 / −0.047 / 0.535 | −0.240 / −0.036 / 0.423 |
-| Bleed (metal) | −0.221 / −0.009 / 0.314 | −0.247 / −0.014 / 0.339 | −0.188 / −0.008 / 0.305 | −0.161 / −0.007 / 0.270 |
-| Clair De Lune (sparse acoustic) | −0.324 / −0.051 / 0.507 | −0.350 / −0.044 / 0.492 | −0.337 / −0.008 / 0.409 | −0.297 / −0.014 / 0.372 |
-| Billie Jean (pop) | −0.296 / −0.059 / 0.567 | −0.352 / −0.084 / 0.700 | −0.294 / −0.056 / 0.575 | −0.276 / −0.051 / 0.525 |
-| Giorgio by Moroder (electronic, quiet) | −0.142 / 0.007 / 0.160 | −0.169 / 0.005 / 0.186 | −0.139 / 0.000 / 0.198 | −0.115 / 0.005 / 0.148 |
+| Stayin' Alive (disco) | −0.265 / −0.014 / 0.369 | −0.312 / −0.013 / 0.420 | −0.218 / −0.022 / 0.372 | −0.213 / −0.018 / 0.341 |
+| Superstition (funk) | −0.268 / −0.016 / 0.355 | −0.327 / −0.022 / 0.452 | −0.289 / −0.047 / 0.535 | −0.240 / −0.036 / 0.423 |
+| Take Five (jazz) | −0.305 / −0.008 / 0.386 | −0.338 / −0.006 / 0.439 | −0.340 / −0.020 / 0.478 | −0.287 / −0.002 / 0.371 |
+| Money (prog) | −0.232 / 0.004 / 0.279 | −0.285 / −0.002 / 0.348 | −0.315 / −0.003 / 0.404 | −0.256 / 0.003 / 0.314 |
+| Solsbury Hill (rock) | −0.206 / −0.011 / 0.339 | −0.232 / −0.012 / 0.378 | −0.224 / 0.003 / 0.279 | −0.188 / 0.002 / 0.256 |
+| Pyramid Song (sparse art-rock) | −0.243 / −0.002 / 0.317 | −0.278 / 0.002 / 0.334 | −0.197 / −0.014 / 0.329 | −0.185 / −0.008 / 0.295 |
+| Bohemian Rhapsody (multi-section rock) | −0.319 / −0.022 / 0.443 | −0.412 / −0.024 / 0.537 | −0.318 / −0.019 / 0.422 | −0.299 / −0.014 / 0.399 |
+| Dance Yrself Clean (electronic) | −0.399 / −0.118 / **1.047** | −0.436 / −0.148 / **1.232** | −0.395 / −0.062 / 0.731 | −0.370 / −0.065 / 0.774 |
+| YYZ (prog instrumental) | −0.221 / −0.009 / 0.314 | −0.247 / −0.014 / 0.339 | −0.188 / −0.008 / 0.305 | −0.161 / −0.007 / 0.270 |
+| **Bleed (metal)** | **−0.142 / 0.007 / 0.160** | **−0.169 / 0.005 / 0.186** | −0.139 / 0.000 / 0.198 | −0.115 / 0.005 / 0.148 |
+| Giorgio by Moroder (electronic) | −0.289 / −0.015 / 0.389 | −0.324 / −0.009 / 0.380 | −0.328 / −0.009 / 0.378 | −0.264 / −0.004 / 0.301 |
+| The Girl From Ipanema (bossa) | −0.324 / −0.051 / 0.507 | −0.350 / −0.044 / 0.492 | −0.337 / −0.008 / 0.409 | −0.297 / −0.014 / 0.372 |
+| Clair De Lune (sparse acoustic) | −0.296 / −0.059 / 0.567 | −0.352 / −0.084 / 0.700 | −0.294 / −0.056 / 0.575 | −0.276 / −0.051 / 0.525 |
 
 **Median is ~0.00 on every stem in every register.** That is the D-026
 definition working as designed and it is genuinely good news for a plotting
 concept: the rest line is zero by construction, and silence flatlines without
-any gating. *Giorgio by Moroder* is the low-excursion case (p95−p5 ≈ 0.26–0.36),
-about half the corpus norm — a trace-amplitude floor would be needed there.
+any gating. ***Bleed* is the low-excursion case** (p95 0.16–0.19, p95−p5 ≈ 0.26–0.36), about half the
+corpus norm — a trace-amplitude floor would be needed there. *Dance Yrself Clean* is the
+opposite extreme, at p95 1.05–1.23, so any fixed trace gain has to span ~7× between them.
+(Both attributions were swapped in the pre-correction version of this table.)
 
 ---
 
@@ -102,32 +143,30 @@ about half the corpus norm — a trace-amplitude floor would be needed there.
 
 Median windowed pairwise r. Null is 0.00 (§1.1).
 
-| Track | dru~bas | dru~voc | dru~oth | bas~voc | bas~oth | voc~oth | all 6 pairs >0.9 |
-|---|---|---|---|---|---|---|---|
-| Cherub Rock | **+0.905** | +0.426 | +0.751 | +0.463 | +0.760 | **+0.899** | 3.3 % |
-| Trail of Dead | +0.865 | **+0.990** | **+0.986** | +0.819 | +0.826 | **+0.998** | 20.0 % |
-| Billie Jean | **+0.961** | +0.624 | +0.828 | +0.610 | +0.911 | **+0.984** | 6.2 % |
-| Around the World | **+0.983** | +0.731 | **+0.900** | +0.765 | **+0.919** | **+0.946** | — |
-| Take Five | **+0.983** | +0.847 | **+0.919** | +0.853 | **+0.911** | **+0.984** | — |
-| Pyramid Song | **+0.969** | +0.504 | +0.731 | +0.503 | +0.730 | **+0.945** | 0.0 % |
-| Bleed | **+0.940** | +0.528 | +0.804 | +0.618 | +0.849 | **+0.926** | 4.6 % |
-| Giorgio by Moroder | +0.810 | +0.200 | +0.765 | +0.437 | +0.770 | +0.801 | 0.0 % |
-| Girl From Ipanema | **+0.957** | +0.485 | **+0.907** | +0.575 | +0.897 | +0.857 | 5.2 % |
-| Clair De Lune | **+0.949** | +0.519 | +0.831 | +0.571 | +0.858 | **+0.900** | 2.5 % |
+| Track | dru~bas | dru~voc | dru~oth | bas~voc | bas~oth | voc~oth | common-mode | r(trace,mix) |
+|---|---|---|---|---|---|---|---|---|
+| Billie Jean | **+0.961** | +0.624 | +0.828 | +0.610 | +0.825 | **+0.945** | 86.2 % | +0.921 |
+| Around the World | **+0.983** | +0.731 | **+0.900** | +0.765 | **+0.919** | **+0.946** | 89.9 % | +0.952 |
+| Stayin' Alive | **+0.975** | +0.838 | **+0.936** | +0.793 | **+0.911** | **+0.969** | 92.4 % | +0.964 |
+| Superstition | **+0.983** | +0.847 | **+0.919** | +0.853 | **+0.911** | **+0.984** | **93.0 %** | +0.968 |
+| Take Five (jazz) | **+0.936** | +0.601 | +0.832 | +0.584 | +0.803 | **+0.936** | **82.9 %** | +0.920 |
+| Money | **+0.972** | +0.722 | +0.843 | +0.698 | +0.800 | **+0.973** | 88.4 % | +0.936 |
+| Solsbury Hill | **+0.969** | +0.504 | +0.731 | +0.503 | +0.730 | **+0.945** | **81.3 %** | +0.901 |
+| Pyramid Song | **+0.974** | +0.636 | +0.819 | +0.462 | +0.681 | **+0.961** | 88.1 % | +0.913 |
+| Bohemian Rhapsody | **+0.980** | **+0.907** | **+0.953** | +0.886 | **+0.929** | **+0.985** | **93.4 %** | +0.978 |
+| Dance Yrself Clean | **+0.988** | +0.851 | **+0.939** | +0.840 | **+0.925** | **+0.958** | 91.6 % | +0.970 |
+| YYZ | **+0.940** | +0.528 | +0.804 | +0.618 | +0.849 | **+0.926** | 87.6 % | +0.911 |
+| Bleed | +0.810 | +0.200 | +0.765 | +0.437 | +0.770 | +0.801 | 88.8 % | +0.857 |
+| Giorgio by Moroder | **+0.957** | +0.485 | **+0.907** | +0.575 | +0.897 | +0.857 | 87.0 % | +0.914 |
+| The Girl From Ipanema | **+0.949** | +0.519 | +0.831 | +0.571 | +0.858 | **+0.900** | 84.7 % | +0.912 |
+| Clair De Lune | **+0.978** | +0.839 | +0.896 | +0.743 | +0.804 | **+0.991** | 88.1 % | +0.954 |
+| *Cherub Rock* (separate capture) | **+0.905** | +0.426 | +0.751 | +0.463 | +0.760 | **+0.899** | 75.8 % | +0.878 |
+| *Trail of Dead* (separate capture) | +0.865 | **+0.990** | **+0.986** | +0.819 | +0.826 | **+0.998** | 85.1 % | +0.968 |
 
-And the share of each trace's motion that is simply the mix's overall loudness
-envelope (null ~22 % / ~0.49):
-
-| Track | common-mode share (mean of 4) | mean `r(trace, mix envelope)` |
-|---|---|---|
-| Cherub Rock | 75.8 % | +0.878 |
-| Trail of Dead | 85.1 % | +0.968 |
-| Billie Jean | 86.2 % | +0.921 |
-| Around the World | 89.9 % | +0.952 |
-| Take Five | **93.0 %** | **+0.968** |
-| Bleed | 87.6 % | +0.911 |
-| Giorgio by Moroder | 88.8 % | +0.858 |
-| Clair De Lune | 84.7 % | +0.912 |
+**Worst three, corrected: Bohemian Rhapsody 93.4 %, Superstition 93.0 %, Stayin' Alive
+92.4 %** — dense, tightly arranged, heavily compressed studio productions. **Best two:
+Solsbury Hill 81.3 %, Take Five 82.9 %.** The pre-correction version of this table read the
+worst case as "Take Five (jazz)" and built a whole finding on it; see the correction banner.
 
 Per-stem, `other` is the worst offender everywhere: 88.8 – 97.6 % common mode,
 `r ≥ 0.96` against the full-mix envelope on every track measured. The `other`
@@ -152,8 +191,10 @@ measured shape is specific and consistent:
    +0.20…+0.85, well clear of the pairs above.
 3. **No register escapes it.** Sparse solo piano (Clair De Lune, 84.7 %) and
    dense metal (Bleed, 87.6 %) fail the same way. Jazz is the *worst*
-   (Take Five, 93.0 %, all four traces `r ≥ 0.95` against the mix), which is the
-   opposite of the intuition that sparse material would separate best.
+   (Bohemian Rhapsody 93.4 %, Superstition 93.0 %). **Corrected 2026-08-12:** this
+   sentence previously named jazz as the worst case and called it counter-intuitive.
+   It was a mislabelling artifact — jazz (Take Five, 82.9 %) is among the *best*, and
+   the worst are dense compressed studio productions, which is the intuitive result.
 4. **Two plausible mechanisms, not separated here.** Shared musical dynamics
    (a band gets louder together) and Demucs bleed between stems both predict
    this. Distinguishing them was not attempted and is not needed for the gate —

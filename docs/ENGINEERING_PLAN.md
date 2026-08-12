@@ -156,7 +156,12 @@ times correctly.
 `x_energy_rel` do not read as four voices: 65–93 % of each trace's motion is the mix's
 shared loudness envelope (rotation-control null ≈22 %), and the four collapse to two
 groups — `drums~bass` r +0.81…+0.98 and `vocals~other` r +0.80…+0.99 on every track in
-every register. Jazz was the *worst* case (Take Five, 93 %), not the best. 3 of 3
+every register. **(Track labels corrected 2026-08-12: the worst cases are Bohemian
+Rhapsody 93.4 %, Superstition 93.0 %, Stayin' Alive 92.4 % — dense compressed
+productions — and jazz is among the BEST at 82.9 %. This entry originally said jazz was
+the worst and called it counter-intuitive; a `[^']*` regex dropped `Stayin' Alive` from an
+index-aligned label list and shifted thirteen rows. Numbers were always per-segment and
+are unaffected; every conclusion stands.)** 3 of 3
 captures, 8 of 8 tracks, 6 registers. Per `SHADER_CRAFT.md §2.0` the response is
 re-scope with Matt, not iteration — nothing was tuned to force separation (D-102 /
 FA #58).

@@ -24,7 +24,11 @@ The CHR.1 session prompt is `docs/prompts/CHR1_KICKOFF.md`, committed alongside 
 > tracks / 6 registers: **65–93 % of each trace's motion is the mix's shared loudness
 > envelope** (rotation-control null ≈22 %), and the four collapse into two groups —
 > `drums~bass` r +0.81…+0.98 and `vocals~other` r +0.80…+0.99, on every track in every
-> register. Jazz was the *worst* case (Take Five, 93 %), not the best. §0's "four separate
+> register. **(Corrected 2026-08-12: the worst cases are Bohemian Rhapsody 93.4 %,
+> Superstition 93.0 % and Stayin' Alive 92.4 % — dense compressed productions — and jazz
+> is among the BEST at 82.9 %. An earlier version of this block said jazz was the worst
+> and called that counter-intuitive; that was a track-labelling bug, not a finding.)**
+> §0's "four separate
 > voices" sentence is therefore **falsified**, and CHR.1 task 1's own stated verdict option
 > `re-scope` is the one that fired.
 >
@@ -51,14 +55,19 @@ The CHR.1 session prompt is `docs/prompts/CHR1_KICKOFF.md`, committed alongside 
 > written register-general so it outlives whichever driver is chosen. **CHR.1 must be re-run
 > for its design-doc half** once the driver is settled.
 >
-> **5. Unverified and unchased, flagged for whoever resumes.** No live-streaming capture
-> exists in the corpus, so CHR.1 task 2's reactive-mode (`bpm 0`) fallback is **still
-> unverified** — the plan asked for one live-streaming capture and none was available.
+> **5. Unverified and unchased, flagged for whoever resumes.** *(Two corrections,
+> 2026-08-12.)* This item claimed no live-streaming capture existed — **wrong**:
+> `beat-match-test-session`, the capture most of the measurement rests on, IS a streaming
+> session (diagnostics doc §7c). The narrower real gap is a **reactive-mode** session with no
+> installed `BeatGrid`. And the `beatPhase01` split named below is now explained — **BUG-087**:
+> local-file playback analyses at 10 Hz where streaming analyses at 51 Hz, because
+> AVAudioEngine ignores the tap's `bufferSize` request and delivers 0.1 s buffers. Neither
+> behaviour is "wrong"; they are two paths.
 > `beatsPerBar` is **not stable within a track** (Pyramid Song 1, Bleed 2, Giorgio 2 *and* 3,
 > Billie Jean 4 in one segment and 3 in another), so §CHR.1's "heavier weight on downbeats"
 > cannot assume a fixed bar length. And `beatPhase01` advances on 98.7–99.0 % of frames in the
-> 2026-07-27 capture but only 13.4–16.7 % in the 2026-08 captures — one of those two
-> behaviours is wrong.
+> 2026-07-27 capture but only 13.4–16.7 % in the 2026-08 captures — **explained by BUG-087,
+> not a defect in either capture** (see the correction at the head of this item).
 >
 > **6. Why this plan was not read during CHR.1.** It was delivered **untracked into the
 > primary checkout**, while the session ran in a git worktree that never saw it, and the
@@ -227,10 +236,12 @@ lesson that stills lie about the living result.
    (rhythm = `drums+bass`, melodic = `vocals+other`, or the band equivalent if Matt picks the
    time-aligned driver), flat colour, no glow, no backdrop, no echo. Beat gridlines as plain
    verticals. **2 rings, not 4** — halves the §0 history footprint, which was already trivial.
-2. Render against all CHR.1 captures. Include **Take Five** (the worst measured case, 93 %
-   common mode) and **Giorgio by Moroder** (lowest excursion, p95−p5 ≈ 0.26–0.36, where a
-   trace-amplitude floor is needed) — a spike that only looks good on the easy captures has
-   not answered the gate.
+2. Render against all CHR.1 captures. Include **Bohemian Rhapsody** or **Superstition** (the
+   worst measured cases at 93.4 % / 93.0 % common mode) and **Bleed** (lowest excursion,
+   p95 0.16–0.19, where a trace-amplitude floor is needed); **Dance Yrself Clean** is the
+   opposite extreme at p95 1.05–1.23, so those two together bound the ~7× trace-gain span. A
+   spike that only looks good on the easy captures has not answered the gate. *(Corrected
+   2026-08-12 — this list previously named Take Five and Giorgio, from shifted labels.)*
 3. **The gate, answered in writing with rendered evidence:** do the two traces read as two
    *voices* rather than two parallel copies of one line? Is the measured divergence — 49–96 %
    of each trace's own motion scale — actually **visible** at trace scale, and does it read as
@@ -307,9 +318,11 @@ proposing any fix).
 
 1. Matt's live M7 on real music — at least one dense mix and one sparse track (the **two-voice
    rhythm-vs-melodic** read is the concept, per the amendment block; a sparse track is where
-   it's most legible, a dense one where it's most at risk). Add a **jazz** track: Take Five
-   measured the highest common mode of the whole corpus (93 %), so it is the concept's genuine
-   worst case, which neither "dense" nor "sparse" captures.
+   it's most legible, a dense one where it's most at risk). Add a **densely-produced pop/rock**
+   track — Bohemian Rhapsody 93.4 %, Superstition 93.0 %, Stayin' Alive 92.4 % are the corpus's
+   genuine worst cases, and "dense mix" in the loose sense does not guarantee you land on one.
+   *(Corrected 2026-08-12: this asked for a jazz track on the false premise that Take Five was
+   the worst case. Jazz is among the best; it is the easy end, not the hard one.)*
 2. The D-121 side-by-side: our render next to the source's on the same track, plus **the
    two-track demonstration** (§0): source draws the same curve family on both tracks, ours
    draws different traces — that *is* the divergence rationale paragraph, with images.

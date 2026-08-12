@@ -38,8 +38,9 @@ read the crash reports already on disk.**)*
 |---|---|---|---|
 | BUG-085 | P1 · HANG.1–2 complete 2026-08-05; remains open | renderer / app.hang | **App intermittently hangs hard in `CAMetalLayer.nextDrawable`; window unresponsive, force-quit required.** The live stack proves a main-thread drawable request blocked at 0 % CPU after healthy frames, but the cause remains unknown; direct render-path leakage, the capture hook, preset-swap skip, inflight semaphore, GPU completion, display sleep, and occlusion have been ruled out. **HANG.1 instrumentation is merged to `main` via PR #37 (`c54a2e7c`)**. HANG.2 completed a full-track control plus a 10 min 36 s Witchlight soak with 34,811/34,811 drawables balanced and no stalls or imbalances, refuting a deterministic per-frame leak but not identifying the intermittent owner. **THE INSTRUMENTED CAPTURE NOW EXISTS (2026-08-05, session `2026-08-05T21-21-03Z`, Fractal Tree / Cherub Rock)** — and every lifecycle counter is BALANCED at the moment of the hang: `drawable=12045/12045`, `unique_presented=6012/6012`, `command_completed=6012/6012`, `failures=0`, `unpresented=0`, one request outstanding (`pending=frame:6013,site:mesh.descriptor`). The app held ZERO drawables and CoreAnimation still would not vend one, which independently confirms HANG.2's soak: there is no app-side leak, and the owner is outside the app. Two captures 98 s apart are byte-identical on those counters — a PERMANENT block, not a long stall. See the detail section. |
 | BUG-081 | P2 | app.hang | **3 instances now** (2026-08-03 ×1, 2026-08-04 ×2). | **App beachballed ~78 s into session `2026-08-03T22-54-06Z` and needed a force-quit; no `.ips` exists** (force-quit produces none) and `session.log` ends mid-normal-operation with no fatal. **Evidence-only — no root cause asserted.** What the capture DOES establish: the renderer was healthy to the last frame — steady 60 fps, Fractal Tree at **0.18 ms GPU against a 0.7 ms budget**, no degradation trend across 3756 frames; background ML load rising but modest (`stem_analyzer_ms` 0 → 3.4). **Ruled out by test:** FTR.2's shader overflowing the mesh primitive limit via a bad `branch_count` — no non-finite values in the capture and `branch_count` never exceeds 59 against the 63 ceiling. A frozen UI with a live render loop points away from the preset, but that is inference and BUG-061's rule forbids acting on it. **Same class as BUG-060** (force-quit hang, render loop died, no stack captured, never reproduced) — two instances now, both blocked on the same missing artifact. **Next evidence:** `sample PhospheneApp 10 -file ~/Desktop/phosphene-hang.txt` run DURING the beachball, before force-quitting |
+| BUG-088 | P3 | preset.fidelity / documentation-drift | **Aurora Veil's `audio_routes` manifest does not describe the preset, and it is CERTIFIED.** It declares 5 routes; `pulseAmp01` is declared `kind: continuous` but the shader uses it as a **silence gate** (`aurora_stars(rd, f.bar_phase01, f.pulse_amp01)`, "fades the twinkle to zero at silence") — measured pinned at 1.000 with **zero p5–p95 range**, which is correct gate behaviour and useless as a driver. And it **omits three routes the code actually reads**: `drumsEnergyDev` (ALIVE, 61 % nonzero — the only live stem input, so QG.1 route coverage is blind to it) and `vocalsPitchHz` / `vocalsPitchConfidence` (**0.1 % nonzero**). Net: the manifest overstates coupling. Surfaced by Matt's M7 2026-08-12 — *"I don't really see how the preset responds to music beyond the flickering of the stars once per bar. The veil is just aurora-ing."* Measurement explains it exactly: of everything Aurora Veil reads, only `barPhase01` has large dynamic range. Tool: `Scripts/check_route_liveness.py`. Detail below |
 | BUG-087 | P2 | audio.capture / calibration | **Local-file playback runs the whole MIR chain at 10 Hz where streaming runs it at 51 Hz — a 5.1× rate loss on the primary development session type.** `LocalFilePlaybackProvider` asks for `installTap(bufferSize: 1024)` (≈47 Hz) and AVAudioEngine ignores it, delivering **0.1-second** buffers instead — 4414 frames measured at 44.1 kHz, 4808/4810 at 48 kHz. `processAnalysisFrame` runs once per audio callback with no time gate, so the callback rate *is* the analysis rate: every `FeatureVector` field — bands, deviation primitives, `beatPhase01`, centroid, flux, mood inputs — updates at 10 Hz on local files. Proven a fixed *duration* rather than a frame count by the rate-independence discriminator (both sample rates land on 0.1 s). This is the same 10 Hz the FTR program hit from the preset side. Diagnosis only — no fix code. Detail below |
-| BUG-086 | P2 · **fix code-complete 2026-08-11, validation incomplete** | dsp.stem / calibration | **Every per-stem feature reaches presets ≈5.4 s behind the audio, on the local-file path, in steady state — while the beat grid beside it is time-aligned to ≈0.3 s.** Root cause is read, not inferred: separation runs on a fixed 10 s chunk (`modelFrameCount = 431` — the exported Open-Unmix model cannot take a shorter one) every **5 s**, and `runPerFrameStemAnalysis` starts its read window **5 s into** that chunk to buy one separation period of runway. So `lag = chunkLength − startOffset ≥ separationPeriod`, exactly. Measured three independent ways, agreeing: 5.4 s on 39 of 40 stem × track pairs. Affects every stem-driven preset, Aurora Veil's `other_energy_dev` anchor included. Diagnosis only — no fix code, per the multi-increment process. Detail: `docs/diagnostics/CHR1_STEM_DECORRELATION_2026-08-11.md` §7b + §8 |
+| BUG-086 | P2 · **RESOLVED 2026-08-12** (`e6c188e6`) | dsp.stem / calibration | **Every per-stem feature reaches presets ≈5.4 s behind the audio, on the local-file path, in steady state — while the beat grid beside it is time-aligned to ≈0.3 s.** Root cause is read, not inferred: separation runs on a fixed 10 s chunk (`modelFrameCount = 431` — the exported Open-Unmix model cannot take a shorter one) every **5 s**, and `runPerFrameStemAnalysis` starts its read window **5 s into** that chunk to buy one separation period of runway. So `lag = chunkLength − startOffset ≥ separationPeriod`, exactly. Measured three independent ways, agreeing: 5.4 s on 39 of 40 stem × track pairs. Affects every stem-driven preset, Aurora Veil's `other_energy_dev` anchor included. Diagnosis only — no fix code, per the multi-increment process. Detail: `docs/diagnostics/CHR1_STEM_DECORRELATION_2026-08-11.md` §7b + §8 |
 | BUG-084 | P3 | dsp.stem | **`StemAnalyzer` deviation reaches 35 where the primitive's real ceiling is ~3.4** — suspected divide-by-near-zero against a not-yet-converged per-track EMA baseline (the stem-side twin of the BUG-027 / AGC2.4.1 cold-start family). No product impact today: FFO's aurora is defended by the FBS.S3.2 soft knee (35 → 1.64), which is what let BUG-041 close. Filed 2026-08-03 (RECON.2) so it survives that closure — the *input* is wrong even though the output is defended. Unreproduced; fixtures retained |
 | BUG-070 | P2 | audio.capture / resource-management | **Fix landed 2026-07-12 (PUB.6), pending live validation** — a FAILED device-change tap reinstall left `_isCapturing=true` with zero callbacks: engine health detectors starved (SignalHealthMonitor.evaluate is sample-driven → deadTap never confirms) and the router's recovery restart blocked at the alreadyCapturing guard; only the app-layer poll-based stall card surfaced it. Fix: the catch now clears `_isCapturing` (recovery unblocked) and keeps the monitor as a diagnostic beacon; the false "create steps stopped the monitor" comment corrected. Residual OPEN half: the 3-queue lifecycle interleave (device-change reinstall vs silence-recovery vs user stop) stays unserialized — static-only evidence; restructuring the G1-validated (12/12) path without a reproduced artifact is the BUG-063 pattern. Existing breadcrumbs (per-step diagnostics + install generation) are the instrumentation; serialize only if a live session shows an interleave |
 | BUG-076 | P2 | dsp.beat | **Prep grid is window-position unstable on Bleed (Meshuggah) — a third of 30 s windows give a wrong tempo, and Spotify's preview lands on one.** CORRECTED 2026-07-30 after direct measurement (the original filing inferred a universal 3:2 mis-lock from a single session-log value; that was wrong). Measured across nine 30 s windows of the full track: six read ~115 BPM (correct — matches madmom 115.0, librosa 115.0, drums-stem 115.1), but three read 121.1 / 166.1 / 242.7 — a **2.11× spread**, including non-metrical values. `beatsPerBar` swings 2/3/4 on a 4/4 track and `barConfidence` sits at 0.14–0.64. **Control:** Billie Jean over the same windows is 116.9–117.3 with beatsPerBar 4 and barConfidence 1.00 throughout — so this is dense-transient-specific, not universal, and the existing confidence signal already flags it. The session's 174.6 was the preview excerpt landing in the unstable region. Evidence: `docs/diagnostics/BEATBENCH_BASELINE_2026-07-30.md`; reproduce with `BeatBench --audio <clip> --seconds 30`. Category-4 target for Phase DBN (a sequence decoder over the full activation timeline should not be excerpt-dependent); Phase FT removes the 30 s premise for local files |
@@ -375,6 +376,85 @@ Run it *during* the beachball, before force-quitting. Without a blocked stack th
 **Note.** Signal health was `critical` (−24 dBFS) for the session's first ~50 s before reaching green; unlikely to be related but recorded because the session is otherwise the only artifact.
 
 ---
+
+### BUG-088 — Aurora Veil's route manifest does not describe the preset (2026-08-12)
+
+**Diagnosis only, no fix.** Found because BUG-086's `dsp.stem` manual gate was aimed at
+Aurora Veil and returned nothing — for a reason that had nothing to do with BUG-086.
+
+#### How the wrong preset got picked (the process failure, recorded first)
+
+The gate was aimed here on a stale note calling `other_energy_dev` Aurora Veil's
+"song-defining anchor, never drop it." **Git contradicts it**: added at `e7cd6e3a`
+(AV.2.2f), dropped at `e305839a` (AV.2.h, "drop 5 routes"), and **AV.7 / D-185 reauthored
+the preset as a nimitz *Auroras* port onto mood envelopes rather than deviation
+primitives** — deliberately, for a GENTLE preset. Aurora Veil declares **no stem route at
+all**, so no stem-latency change could ever have shown up in it. A human review was spent
+on a question a CSV could have answered first. `Scripts/check_route_liveness.py` exists so
+that does not recur: **run it before aiming any manual review at a preset.**
+
+#### Expected behavior
+
+A preset's `audio_routes` manifest enumerates the primitives it reads, with a `kind` that
+describes how each is used. QG.1 / D-180 route coverage depends on it being accurate.
+
+#### Actual behavior — measured on capture `2026-08-12T19-57-29Z`
+
+| route | declared | verdict | detail |
+|---|---|---|---|
+| `star_beat_twinkle` / `barPhase01` | ✅ accent | **ALIVE** | range 901 / 1000 |
+| `star_beat_twinkle` / `pulseAmp01` | ✅ **continuous** | **DEAD** | pinned 1.000, p5–p95 range **0.000** |
+| `veil_breathe` / `arousal` | ✅ | ALIVE | range 0.178 |
+| `veil_breathe` / `bassAttRel` | ✅ | ALIVE | range 0.287, near-entirely negative |
+| `mood_colour` / `valence` | ✅ | ALIVE | range 0.453 |
+| `drumsEnergyDev` | ❌ **undeclared** | ALIVE | 61 % nonzero, p95 0.997 |
+| `vocalsPitchHz` | ❌ **undeclared** | SPARSE | **0.1 % nonzero** |
+| `vocalsPitchConfidence` | ❌ **undeclared** | SPARSE | **0.1 % nonzero** |
+
+**`pulseAmp01` is not misbehaving.** The shader uses it as a silence gate, and a gate
+pinned at 1.000 through music is exactly right. The defect is the **declaration**:
+`kind: continuous` reads as a driver, and WL.1 already measured this primitive as a silence
+gate with no dynamic range and ruled it out as a hero driver. That lesson did not propagate
+into this manifest.
+
+**The real gaps** are the three undeclared reads. `drumsEnergyDev` is Aurora Veil's only
+live stem input and QG.1 cannot see it; the vocals-pitch pair is garnish at 0.1 % — WL.1
+measured the same primitive at 4.5 % and called it garnish there too.
+
+#### Suspected failure class
+
+`documentation-drift` primarily (manifest vs code), `calibration` secondarily (a primitive
+declared as a driver that cannot drive).
+
+#### Matt's M7, and what it does and does not mean
+
+> *"I don't really see how the preset responds to music beyond the flickering of the stars
+> once per bar. The veil is just aurora-ing."* (2026-08-12)
+
+The measurement explains it precisely: **only `barPhase01` has large dynamic range.**
+Everything else is a slow narrow mood envelope (0.18–0.45) or effectively dead. The bar
+flicker he sees *is* `star_beat_twinkle` working.
+
+**Whether that is a defect or the design is Matt's call, not a measurement.** AV.7 / D-185
+chose mood envelopes over deviation primitives for a GENTLE preset and Matt certified it on
+2026-07-19. "Reads as uncoupled" may be the intended register. What is objectively wrong is
+the manifest. Flagged, not resolved.
+
+#### Verification criteria (before any fix)
+
+- The manifest matches what the code reads — ideally mechanized, since a hand-maintained
+  list drifted here on a certified preset.
+- `kind` distinguishes a **gate** from a **driver**, so a silence gate cannot be declared as
+  continuous coupling again.
+- `RouteCoverageTests` sees `drumsEnergyDev` for Aurora Veil after the fix.
+- If Matt decides the coupling itself is too weak, that is a **separate** preset increment
+  with its own M7 — not a manifest fix.
+
+#### Related
+
+**⇄ BUG-086** — this is why that entry's `dsp.stem` gate is still owed. Re-aimed at
+**Skein**, verified first: 20 of 28 routes ALIVE, **all eight stem-deviation routes alive**
+(`painter_speed` and `flick_trigger` on all four stems, ranges 0.60–1.39), zero DEAD.
 
 ### BUG-087 — Local-file playback analyses at 10 Hz where streaming analyses at 51 Hz (AVAudioEngine ignores the tap `bufferSize`) (2026-08-11)
 
@@ -770,13 +850,82 @@ where a sub-second freeze is imperceptible. **It becomes a real decision the mom
 stem-plotting preset ships** (Stave is exactly that), and it is recorded here so that
 session does not rediscover it.
 
-**Outstanding before this is Resolved:**
+#### Streaming path validated — session `2026-08-12T19-06-54Z` (Matt, 2026-08-12)
 
-1. **The streaming path is unmeasured post-fix.** The local-file path is covered
-   (5.2 → 2.9/3.0 s, same-path, two captures). The 16-track corpus that produced the clean
-   pre-fix 5.4 s at r 0.70–0.94 is a **streaming playlist**, so reproducing that baseline means
-   a streaming session on a fixed build — not a local-file one. Until then the strong-r regime
-   has no post-fix counterpart.
+**Both paths now measured post-fix, and the fix holds on each:**
+
+| path | pre-fix | post-fix |
+|---|---|---|
+| streaming | **5.4 s** | **3.0 s** |
+| local file | 5.2 s | 2.9 / 3.0 s |
+
+**The latency model in BUG086.1 was wrong, and this capture proved it.** The design claimed
+2.5 s nominal. Actual:
+
+    latency = (stemChunkSeconds − stemReadStartSeconds) + inference
+
+`latestSeparationTimestamp` is stamped **after** `separator.separate` returns, so the chunk's
+newest sample is already one inference old when the read window begins walking it. Predicted
+2.50 + 0.531 = **3.03 s**; measured **3.0 s**. Inference was priced as a duty cost only; it is
+also a latency cost, one-for-one.
+
+**Consequence: ≈3.0 s is the architectural floor at a 2 s period, not a number to tune
+toward.** Getting materially below it needs a smaller or faster model, not a cadence change —
+period 1 s would give 2.03 s latency at **53 % inference duty**, which the frame budget will
+not carry.
+
+**The 3.0 s ceiling in `Scripts/measure_stem_latency.py` is corrected to 3.5 s.** It was set
+from the wrong nominal and sat exactly on the floor, so it failed a working pipeline. 3.5 s
+accommodates measured p90 inference (868 ms → 3.37 s) and still fails the pre-fix 5.4 s
+decisively. **This is not floor-tuning (QG.1 / D-179)** — the gate was mis-set against a wrong
+model and the model is what changed; the regression it exists to catch still fails it.
+
+**Inference cost is higher again, and trending:** median 335 → 478 → **531 ms** across three
+post-fix captures of increasing length, duty **≈30 %**, with **37 of 479 separations over 1 s
+and one at 7105 ms**. The trend and the multi-second outliers are unexplained and worth
+watching — at 30 % duty this is competing with rendering, and `MLDispatchScheduler` is the only
+thing absorbing it.
+
+**Clamping is inherent, not a defect to fix.** 25 % of separation gaps exceed the 2.5 s runway
+(gaps ran 0–9 s). Removing clamping entirely needs `runway ≥ max gap` ≈ 9 s, i.e. **≈9.5 s
+latency — worse than the original defect.** Recorded so no future session tries to tune it out.
+
+**One observation, unresolved:** on the *same tracks*, post-fix streaming correlation is lower
+than pre-fix — Billie Jean 0.788 → 0.59, Around the World 0.822 → 0.63. Clamping is the
+obvious suspect, but the within-capture test (refuted hypothesis 1 above) found clamped and
+unclamped frames indistinguishable, so the two results are in tension. Not resolved, and no
+sixth hypothesis offered.
+
+#### `dsp.stem` manual gate — PASSED (Matt, 2026-08-12) → **RESOLVED**
+
+Session `2026-08-12T20-03-41Z`, local-file path, on a build carrying the fix (27
+`STEM_SEPARATION` lines). **Skein** active 20:03:59–20:04:36, then **Glaze** to session end.
+Matt: *"Session with Skein (and a little bit of Glaze as well) looks good."*
+
+**Target chosen by measurement, not memory** — the lesson of the first attempt. Skein declares
+28 routes of which 18 are stem routes, and `Scripts/check_route_liveness.py` verified in this
+capture: **22 ALIVE, 5 NARROW, 1 SPARSE, 1 ABSENT, zero DEAD**, including all eight
+stem-deviation routes (`painter_speed` and `flick_trigger` on all four stems). Glaze is the
+second-densest stem consumer (8 of 9 routes). So the observation was aimed where stem timing
+is actually visible.
+
+⚠ **The first attempt was aimed at Aurora Veil and returned nothing** — it declares no stem
+route at all, picked on a stale note claiming `other_energy_dev` was its anchor. That is
+**BUG-088**, and the tool above exists so it does not recur.
+
+Honest scope: Skein had ~37 s of a 63 s session. It is a felt judgement on a short window,
+which is what a `dsp.stem` gate is — not a measurement, and not a substitute for one. The
+measurements are separate and complete (both paths, above).
+
+**RESOLVED 2026-08-12.** Fix `e6c188e6` (`[BUG086.1] Stems: separation period 5 s → 2 s, read
+start derived from it`), merged in PR #77 (`f84d1eed`). Latency 5.4 s → 3.0 s streaming,
+5.2 s → 2.9/3.0 s local file, manual gate passed.
+
+**Carried forward, not blocking:** inference cost is trending (335 → 478 → 531 ms median, duty
+≈30 %, one 7105 ms outlier) and unexplained; ≈3.0 s is the architectural floor, so materially
+lower needs a different model; and the weak local-file stem/band correlation remains
+unexplained after five refuted hypotheses. None is a regression and none blocks closure — they
+are watch items for whoever next touches the stem path.
 2. **The `dsp.stem` manual gate.** Stem timing is felt on every stem-driven preset;
    Aurora Veil (`other_energy_dev` load-bearing), Skein, Meniscus and FFO all shift.
    Needs M7-class observation on at least Aurora Veil. No automated test substitutes.
