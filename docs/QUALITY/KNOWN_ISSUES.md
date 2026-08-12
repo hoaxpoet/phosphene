@@ -534,12 +534,15 @@ it is a pipeline property, and it is path-specific.
 footnote: gridlines and trace samples would arrive in 100 ms steps on the path that preset
 would mostly run on.
 
-**Hypothesis, NOT established:** this may also explain BUG-086's observation that local-file
-captures correlate stem features against band features at r 0.19–0.46 where the streaming
-capture reads 0.70–0.94 — stems update per render frame off a wallclock-advanced window while
-bands step at 10 Hz, so the two are sampled on different clocks. Four other explanations for
-that gap have already been tested and refuted; this one is untested and is recorded as a lead,
-not a conclusion.
+**A lead was recorded here and is now REFUTED (2026-08-12).** It read: this may also explain
+BUG-086's local-file stem/band correlation of r 0.19–0.46 against streaming's 0.70–0.94, since
+stems and bands would be sampled on different clocks. Both halves failed. Stems and bands are
+on the **same** clock within a path (streaming `beatPhase01` 85.4 % / stems 97.1 %; local
+16.7 % / 14.6–16.0 %), so the proposed mechanism does not exist. And step-holding the streaming
+capture's series down to 10 Hz — injecting this defect into strong-r data — barely changes the
+result (r 0.788→0.783 … 0.937→0.938, 5.4 s lag intact). **10 Hz does not explain BUG-086's weak
+correlation**, and this fix should not be expected to improve it. Kept as a record so the lead
+is not re-run; detail in BUG-086's refuted-hypothesis list.
 
 #### Verification criteria (written before any fix)
 
@@ -553,9 +556,10 @@ not a conclusion.
 
 #### Related
 
-**⇄ BUG-086** — same subsystem boundary, independent cause, and this may explain that entry's
-open "why are local-file correlations weak" question (see Impact). A fix here should re-run
-`Scripts/measure_stem_latency.py` on a local-file capture before and after.
+**⇄ BUG-086** — same subsystem boundary, independent cause. The lead that this entry might
+explain BUG-086's weak local-file correlation is **refuted** (see Impact). A fix here should
+still re-run `Scripts/measure_stem_latency.py` on a local-file capture before and after — not
+because the correlation is expected to improve, but so the claim is checked rather than assumed.
 
 ### BUG-086 — Per-stem features reach presets ≈5.4 s late; lag is structurally pinned to the separation period (2026-08-11)
 
@@ -762,8 +766,35 @@ against a predicted 5.4 → 2.5 s nominal shift. The correlations are weak on th
 number alone is soft; three same-path captures agreeing on a ~2.2 s reduction is not.
 
 **Why local-file correlations are weak (0.19–0.46) where streaming reads 0.70–0.94 is
-UNEXPLAINED.** Three hypotheses were tested and refuted (below, plus capture length above).
-No fourth is offered here.
+UNEXPLAINED, after five tested and refuted hypotheses.** Listed so none is re-run:
+
+1. *Clamping degrades the features* — refuted. Correlation on clamped vs unclamped frames is
+   identical (drums 0.388 vs 0.381; bass 0.413 vs 0.368).
+2. *The reference signal is too flat* — refuted. Post-fix reference SD is **higher** than
+   pre-fix (0.118/0.142 vs 0.071/0.115).
+3. *Capture length* — refuted. A 21 s streaming clip beats a 255 s local-file capture, and
+   the 255 s capture reads worse than the 102 s one.
+4. *The `MIN_R` threshold* — that was a tool defect (a false PASS), fixed, and not an
+   explanation.
+5. **BUG-087's 10 Hz analysis rate — refuted 2026-08-12.** This was recorded here as the
+   most promising lead. Two tests killed it. First, stems and bands sit on the **same clock
+   within a path** (streaming: `beatPhase01` 85.4 %, stems 97.1 %; local: 16.7 % and
+   14.6–16.0 %), so the "different clocks" mechanism does not exist. Second, step-holding the
+   *streaming* capture's band and stem series down to 10 Hz — injecting the local-file rate
+   into strong-r data — **barely moves the result**: r 0.788→0.783, 0.822→0.824, 0.871→0.860,
+   0.895→0.898, 0.898→0.897, 0.937→0.938, with the 5.4 s lag intact in every case. 10 Hz
+   sampling does not destroy the correlation, and the tool resolves lag fine at 10 Hz.
+
+**One observation, offered without a conclusion:** local-file analysis frames are ~5× rougher
+step-to-step at their own analysis grid than streaming's (mean |Δ| / SD ≈ 0.63–0.69 vs 0.12),
+consistent with the 5× longer interval. Rough signals correlate worse in principle — but
+hypothesis 5 shows decimation alone does not reproduce the weakness, so roughness is not a
+sufficient explanation either. No sixth hypothesis is offered.
+
+**This is a measurement-precision question, not a question about whether the fix works.**
+BUG086.1's validity rests on the same-path lag comparison (local-file pre-fix 5.2 s →
+post-fix 2.9/3.0 s, two independent captures), which does not depend on explaining
+correlation strength.
 
 **Two hypotheses for the weak post-fix correlation were tested and both refuted**, recorded
 so they are not re-run: (1) *clamping degrades the features* — correlation on clamped vs
