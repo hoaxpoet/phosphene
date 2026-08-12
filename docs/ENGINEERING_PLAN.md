@@ -2018,6 +2018,16 @@ The canopy now uses its whole range. That is the "grows and recedes" in his firs
 
 Corrected in `LoudnessProfile`, `SpectralAnalyzer`, `MIRPipeline`, `MoodClassifier`, `MoodFeatureAccumulator` and both rate-invariance suites, which now compare **9.9 Hz against 43.07 Hz** — a 4.4× ratio, a stronger gate than the 1.4× they were written with.
 
+> ⛔ **SUPERSEDED — the answer below is wrong, and the claim was retired at FTR.12 (Matt,
+> 2026-08-12).** The table's premise is that a low r-against-drums on ONE track identifies a
+> guitar channel. Measured across 7 tracks with 3 guitarless negative controls,
+> `other_onset_rate`'s r-against-drums is **highest (+0.792) on a solo piano recording with no
+> guitar and no drum kit** and lowest (+0.492) on Seven Nation Army; the +0.14 below reads
+> **+0.606** offline on the same track. The feature is broadband flux past an *adaptive*
+> threshold, so it measures the detector, not the instrument. Kept as the record of what was
+> believed; do not cite these numbers.
+> Evidence: `docs/diagnostics/FTR12_GUITAR_CHANNEL_2026-08-12.md`.
+
 **THE GUITAR QUESTION — NOT futile, and the blocker is infrastructure, not signal.** Matt: *"I wish they would follow the guitar patterns more… the guitar solo alone is a big missed opportunity. If it's futile, let me know."* Measured on his session's `stems.csv`:
 
 | candidate | vs drums (body) | p05 → p95 | distinct |
@@ -2039,9 +2049,23 @@ Corrected in `LoudnessProfile`, `SpectralAnalyzer`, `MIRPipeline`, `MoodClassifi
 
 **Gated on consumption, not on binding** (`objectStageReceivesStems`): the same `FeatureVector` rendered twice, changing only `other_onset_rate`, must produce different pixels — and more of them for the busier guitar. Binding a buffer and the GPU reading it are different claims, and only the second matters; this is the failure class that left `vocalsPitchConfidence` at 0 % for five months while closeouts said it worked.
 
-**FTR.8 — the tips follow the guitar.** ✅ (2026-08-11) Matt at the FTR.5 review: *"The tips appear to follow drums and bass… I wish they would follow the guitar patterns more, as that is what drives the song — the guitar solo alone is a big missed opportunity."*
+**FTR.8 — the tips move off `beat_mid` onto `other_onset_rate`.** ✅ (2026-08-11) *Title corrected
+2026-08-12: this landed as "the tips follow the guitar" and that description is retired — see the
+banner below. The ROUTE is unchanged and still correct as a change of driver; only the claim about
+what it reads was wrong.* Matt at the FTR.5 review: *"The tips appear to follow drums and bass… I wish they would follow the guitar patterns more, as that is what drives the song — the guitar solo alone is a big missed opportunity."*
 
-He was right, and the old driver explains it: `beat_mid` is the beat in the melodic REGISTER, which in a rock mix is snare **and** guitar. Measured on his session `2026-08-11T01-07-17Z`, body of the track: the other stem's energy-deviation correlates **+0.65** with drums (it would still read as drums), while its **onset rate correlates +0.14** — p05→p95 0.53…3.30 across 374 distinct values. That is a genuinely independent guitar-activity channel, and it is what the tips now read.
+> ⛔ **THE GUITAR CLAIM IS RETIRED (FTR.12, Matt's call 2026-08-12).** The paragraph below calls
+> `other_onset_rate` *"a genuinely independent guitar-activity channel"* on the strength of one
+> track's +0.14. FTR.12 measured 7 tracks including 3 guitarless negative controls: r-against-drums
+> is **highest at +0.792 on a guitarless solo piano** and lowest at +0.492 on Seven Nation Army,
+> p50 spans just 4.06…5.33 across solo classical guitar / player piano / pure synthesis / distorted
+> rock, and on a solo-classical-guitar record the drums stem's separation *residue* yields a higher
+> onset rate than the guitar. The +0.14 itself reads **+0.606** offline on the same track, and the
+> two captures behind the route disagree by 0.57. It is an **activity level**, not an instrument.
+> Retired in `FractalTree.json`, `FractalTree.metal` and the reference README the same day.
+> Evidence: `docs/diagnostics/FTR12_GUITAR_CHANNEL_2026-08-12.md`.
+
+He was right, and the old driver explains it: `beat_mid` is the beat in the melodic REGISTER, which in a rock mix is snare **and** guitar. Measured on his session `2026-08-11T01-07-17Z`, body of the track: the other stem's energy-deviation correlates **+0.65** with drums (it would still read as drums), while its **onset rate correlates +0.14** — p05→p95 0.53…3.30 across 374 distinct values. That is a genuinely independent guitar-activity channel, and it is what the tips now read. *[Retired — see banner.]*
 
 **This is not what MEL.1 proved futile.** MEL.1 measured per-NOTE onset DETECTION on this stem (grid coherence 31 % against the drums control's 41 %) and concluded distortion smears individual attacks — still true, and still the reason not to chase one-tip-per-note. An onset RATE is a far weaker requirement, `StemAnalyzer` already computes it, and it needs no new DSP. The **+0.973** guitar/drums correlation quoted since FTR.6 also does not reproduce: **+0.68** for raw energy here, and nobody had ever measured the onset-rate feature.
 
@@ -2228,11 +2252,25 @@ single-path. **Not invalidated:** FTR.10/FTR.11's beat-stepping, which is about 
 there is, not which stem drives it. Fractal Tree remains **not certified**, FTR.11 remains
 **unverified live**.
 
-**DECISION-NEEDED (Matt).** Retiring the guitar claim means edits to `FractalTree.json`'s
-`description`, the `FractalTree.metal` routing notes and the FTR.8 plan entry — all
-user-visible-copy or record changes, so none were made. If instead a guitar channel is wanted,
-the only measured candidate is the PANNs guitar-class probability, which needs its own increment
-and works on clean guitar only.
+**FTR.12b — the claim retired, on Matt's word.** ✅ (2026-08-12) Matt, shown the verdict:
+*"yup, retire the guitar claim."* Four surfaces, **copy and comments only — zero behaviour
+change, and the route is deliberately unchanged**: the tips still read `other_onset_rate`,
+they just stop being described as the guitar.
+
+| surface | before | after |
+|---|---|---|
+| `FractalTree.json` `description` | *"flickering in and out with the guitar"* | *"…with the melodic activity around the drums and bass"* |
+| `FractalTree.metal` header + tips routing note | *"The GUITAR's pattern"* / *"a genuinely INDEPENDENT channel"* | an **activity level** in the non-drum/non-bass/non-vocal residue, with the FTR.12 numbers, the adaptive-threshold mechanism, and an explicit *do not reintroduce the word* |
+| `FractalTree.metal` local `float guitar` | `guitar` | `residueActivity` (byte-identical arithmetic) |
+| `docs/VISUAL_REFERENCES/fractal_tree/README.md` | *"⚠ NOT a guitar route on all material… FTR.12 measures whether"* | *"⛔ RETIRED — there is no guitar channel and nothing to route to"* |
+| `ENGINEERING_PLAN.md` §FTR.8 + §FTR.3d table | asserted the +0.14 guitar channel | superseded banners; the original text kept as the record of what was believed, marked do-not-cite |
+
+The `audio_routes` manifest is untouched — `melodic_tips → otherOnsetRate` was never named for
+an instrument, so `RouteCoverageTests` and the sidecar schema are unaffected.
+
+**Not done, and it is not blocked on anything here:** if a guitar layer is ever wanted, the only
+measured candidate is the PANNs guitar-class probability (§FTR.12 above) — decisive on clean
+prominent guitar, unusable on distorted rock guitar. Its own increment, not a tweak.
 
 **FTR.5 — M7 + certification.** ⏸ **BLOCKED ON MATT — this is a live review, not work Claude
 can complete.** FTR.6 landed the rate/granularity adjustment Matt named as the precondition

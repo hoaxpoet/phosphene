@@ -15,8 +15,10 @@
 //                        distorted guitar or a chorus on a limited master, where RMS
 //                        is flat and arousal has already saturated.
 //   other_onset_rate   → THE TIPS: how many fine branches exist and how far each one
-//                        reaches. The GUITAR's pattern — r = +0.14 with drums, where
-//                        beat_mid (the previous driver) is snare AND guitar. FTR.8.
+//                        reaches. An ACTIVITY LEVEL in the non-drum/non-bass/non-vocal
+//                        residue — NOT an instrument. FTR.8 routed this as "the guitar";
+//                        FTR.12 measured that claim false and retired it (Matt,
+//                        2026-08-12). See the routing note in the object shader.
 //   beat_mid           → the cold-start stand-in for the tips until the stems converge
 //                        (D-019 crossfade); carries nothing once they do.
 //   spectral_flux      → branch spread angle (20°–34°)
@@ -44,7 +46,8 @@
 //
 // STEMS: bound at buffer(3) on the object/mesh stages as of FTR.4 — `MeshGenerator.draw`
 // mirrors the fragment binding `drawWithMeshShader` always had. The tips read
-// `stems.other_onset_rate` (the guitar's pattern); see the routing note in the object shader.
+// `stems.other_onset_rate` (residue activity, NOT an instrument — FTR.12); see the routing
+// note in the object shader.
 //
 // Geometry: each branch is a screen-aligned quad (4 vertices, 2 triangles).
 //   Total: 63 × 4 = 252 vertices ≤ 256, 63 × 2 = 126 primitives ≤ 512.
@@ -236,13 +239,13 @@ void fractal_tree_object_shader(
         // smooth version live. The later instruction wins. Do not "restore" smoothness citing
         // DYN.2 without asking him first.
         //
-        // NOT ADDRESSED HERE, and it is the bigger half: *"Guitar is barely registering."*
-        // The tips span 4 branches of the count's 46, and on this track `other_onset_rate`
-        // correlates **+0.71 with the drums' onset rate** (+0.14 on Cherub Rock, where FTR.8
-        // justified it) — it is not an independent guitar channel on this material. Widening
-        // the coefficient would make the drums louder in a layer labelled "guitar". Matt's
-        // call, taken 2026-08-11: measure across captures whether ANY per-stem feature
-        // separates the guitar, before touching the preset again.
+        // NOT ADDRESSED HERE, and it turned out not to be addressable: *"Guitar is barely
+        // registering."* The tips span 4 branches of the count's 46, and FTR.12 then measured
+        // that NO per-stem feature separates a guitar from the drums on any material — so
+        // there is no guitar channel to make register. Matt retired the claim 2026-08-12; the
+        // tips route is unchanged and is now described as residue activity. Evidence and the
+        // one remaining candidate (a PANNs guitar class, clean guitar only) are in the tips
+        // routing note in the object shader.
         float2 heldGrowth = fractal_growth(fHeld);
         float reach = heldGrowth.x;
 
@@ -307,34 +310,53 @@ void fractal_tree_object_shader(
         // a route: it carries no musical information, only "is anything playing".
         float amp = saturate(f.pulse_amp01);
 
-        // ── THE TIPS ← THE GUITAR (other stem onset rate), FTR.4 + FTR.8 ─────────
+        // ── THE TIPS ← RESIDUE ACTIVITY (other stem onset rate), FTR.4 + FTR.8 ───
         //
-        // Matt at the FTR.5 live review: *"The tips appear to follow drums and bass and
-        // whatever patterns they play. I wish they would follow the guitar patterns more, as
-        // that is what drives the song — the guitar solo alone is a big missed opportunity."*
+        // ⛔ THIS WAS "THE GUITAR" UNTIL FTR.12. IT IS NOT. Matt retired the claim on
+        // 2026-08-12; the ROUTE is unchanged, its DESCRIPTION is. `other_onset_rate` is an
+        // ACTIVITY LEVEL in whatever separation leaves outside drums/bass/vocals — it does
+        // not identify an instrument, and no coefficient makes it one. Do not reintroduce
+        // the word "guitar" here, and do not widen this term to make one "register": there
+        // is nothing to amplify except the drums.
         //
-        // He is right and the previous driver explains it exactly: `beat_mid` is the beat in
-        // the MELODIC REGISTER, which in a rock mix is snare AND guitar. Measured on his
-        // session `2026-08-11T01-07-17Z`, across the body of the track:
+        // Measured over 7 tracks — 2 clean-guitar positives, 3 GUITARLESS negatives, 2
+        // distorted-rock hard cases (`docs/diagnostics/FTR12_GUITAR_CHANNEL_2026-08-12.md`):
         //
-        //   the stem's energy-deviation   r = +0.65 with drums — would still read as drums
-        //   its ONSET RATE               r = +0.14   p05→p95 0.53…3.30, 374 distinct
+        //   r(other onset rate, drums onset rate) HIGHEST +0.792 on a SOLO PIANO recording
+        //     with no guitar and no drum kit; LOWEST +0.492 on Seven Nation Army
+        //   p50 spans only 4.06…5.33 across solo classical guitar, player piano, pure
+        //     synthesis and distorted rock — the distributions are interchangeable
+        //   on a SOLO CLASSICAL GUITAR record the drums stem, which holds nothing but
+        //     separation residue, yields a HIGHER onset rate than the guitar (4.71 vs 4.46)
         //
-        // (Those primitive names are spelled out in prose deliberately: the L2 rubric check
-        // scans this file for deviation-primitive tokens, and writing the rejected one
-        // verbatim flipped Fractal Tree's automated gate on the strength of a COMMENT.)
+        // WHY, from `StemAnalyzer+RichMetadata` rather than inferred: the onset fires on
+        // broadband RMS flux past an ADAPTIVE relative threshold (1.5x the stem's own recent
+        // flux average, 100 ms refractory). A relative threshold fires at a similar rate on
+        // any signal with transients, so the feature measures the DETECTOR, not the
+        // instrument. The envelope features are worse still — r 0.81…0.99 against drums on
+        // every track in the corpus.
         //
-        // `other_onset_rate` — how many guitar attacks per second — is a genuinely
-        // INDEPENDENT channel, not a re-spelling of the drums. That is the guitar's pattern,
-        // which is what he asked for.
+        // FTR.8 justified this route at r = +0.14 with drums on ONE track. That figure does
+        // not reproduce (+0.606 offline on the same track), and the two captures behind the
+        // route disagreed by 0.57 on the same feature — a single-capture correlation on this
+        // quantity is not a stable number. Nor is the +0.973 that FTR.6 quoted and FTR.8
+        // "corrected" to +0.68: the corpus reads +0.89…+0.99. Never justify a route here
+        // from one track again.
         //
-        // **This is not the thing MEL.1 proved futile.** MEL.1 measured per-NOTE onset
-        // DETECTION on this stem (grid coherence 31 % against the drums control's 41 %) and
-        // concluded distortion smears individual attacks — still true, and still a reason not
-        // to attempt one-tip-per-note. An onset RATE is a far weaker requirement, StemAnalyzer
-        // already computes it, and it needs no new DSP. The +0.973 guitar/drums correlation
-        // quoted since FTR.6 does not reproduce either: +0.68 for raw energy here, and nobody
-        // had measured the onset-rate feature at all.
+        // (Primitive names stay spelled out in prose deliberately: the L2 rubric check scans
+        // this file for deviation-primitive tokens, and writing a rejected one verbatim
+        // flipped Fractal Tree's automated gate on the strength of a COMMENT.)
+        //
+        // **MEL.1 is extended, not contradicted.** MEL.1 measured per-NOTE onset DETECTION on
+        // this stem (grid coherence 31 % against the drums control's 41 %) and concluded
+        // distortion smears individual attacks — still true, still a reason not to attempt
+        // one-tip-per-note. FTR.12 asked the deliberately weaker rate question and it fails
+        // for a DIFFERENT reason: not smeared attacks, but a content-independent rate.
+        //
+        // A guitar layer, if ever wanted, needs a different mechanism. IFC.4's four families
+        // are orchestral and contain no guitar class at all; the only measured candidate is
+        // the PANNs guitar-class probability, decisive on clean guitar and unusable on
+        // distorted rock guitar. That is its own increment, not a tweak here.
         //
         // SOFT KNEE SIZED IN THE HARNESS, not in a scratch script. Fifteen mappings were
         // swept through `FractalTreeMeshRenderTest`'s own arithmetic — every earlier attempt
@@ -357,17 +379,18 @@ void fractal_tree_object_shader(
         // HONEST COST: the tips layer spans 5 branches where `beat_mid` spanned 8. An onset
         // rate is continuous, so it cannot reproduce the bimodal 0↔8 slam of a saturating
         // pulse. The gate's floor is 5 and this sits exactly on it.
-        float guitar = stems.other_onset_rate / (stems.other_onset_rate + 18.0f);
+        float residueActivity = stems.other_onset_rate / (stems.other_onset_rate + 18.0f);
 
         // D-019 WARMUP. Every stem field is zero until separation converges (~10 s), and a
         // preset that reads one raw shows nothing until then. Crossfade from the old
-        // `beat_mid` driver so the tips are alive from frame 1 and hand over to the guitar
-        // as the stems arrive — the tree must not stand bare through the first ten seconds
-        // of every track, which is exactly when a listener is deciding whether it responds.
+        // `beat_mid` driver so the tips are alive from frame 1 and hand over to the stem
+        // term as the stems arrive — the tree must not stand bare through the first ten
+        // seconds of every track, which is exactly when a listener is deciding whether it
+        // responds.
         float stemEnergy = stems.vocals_energy + stems.drums_energy
                          + stems.bass_energy + stems.other_energy;
         float stemsAlive = smoothstep(0.02f, 0.06f, stemEnergy);
-        float melody = mix(f.beat_mid / (f.beat_mid + 2.2f), guitar, stemsAlive);
+        float melody = mix(f.beat_mid / (f.beat_mid + 2.2f), residueActivity, stemsAlive);
 
         // Depth tiers are the mechanism: a tier appears only above a threshold count
         // (d3 > 7, d4 > 15, d5 > 31), so the smallest branches enter and leave as the
@@ -428,13 +451,15 @@ void fractal_tree_object_shader(
         // intro. `smoothstep(0, 0.35, reach)` did that when reach lived in 0.00…0.31. DYN.4
         // opened reach up to 0.07…0.88, so the gate was still CLIMBING through the middle of
         // the working range — a 10× multiplier swinging 0.10→1.00 and turning ~3 times a
-        // second, sitting on top of the guitar term.
+        // second, sitting on top of the stem term.
         //
-        // Measured on `2026-08-11T16-41-39Z`, that is why Matt saw no clear guitar: the tips
-        // correlated **+0.590 with the gate** and only **+0.470 with the guitar**. The route
-        // was working; the gate was drowning it. With edges at 0.03/0.15 the gate saturates
-        // below the working range and the ordering inverts — guitar **+0.540**, gate +0.516 —
-        // so the guitar is finally the dominant driver of its own layer.
+        // Measured on `2026-08-11T16-41-39Z`, that is why the tips read as unconnected: they
+        // correlated **+0.590 with the gate** and only **+0.470 with the stem term**. The
+        // route was working; the gate was drowning it. With edges at 0.03/0.15 the gate
+        // saturates below the working range and the ordering inverts — stem term **+0.540**,
+        // gate +0.516 — so the route is finally the dominant driver of its own layer.
+        // (FTR.12 later measured that this term is residue activity, not a guitar; that
+        // changed the label, not the drowning problem this paragraph fixed.)
         //
         // It still gates: an intro measures reach ≈ 0.001…0.06, which this maps to 0.00…0.15.
         uint  tips   = (uint)(melody * 26.0f * amp * smoothstep(0.03f, 0.15f, reach));
