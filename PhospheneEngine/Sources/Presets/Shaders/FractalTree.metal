@@ -208,7 +208,43 @@ void fractal_tree_object_shader(
         // sapling mid-track, and the surge gate keeps a bright QUIET intro from inflating
         // it (DYN1_CALIBRATION §3: a clean intro is BRIGHTER than a pre-distortion passage,
         // so shape alone would grow the tree before the band arrives).
-        float reach = fractal_growth(f).x;   // see fractal_growth() above
+        // ── FTR.11: THE WHOLE FRAME HOLDS, NOT JUST THE TRUNK ────────────────────
+        //
+        // FTR.10 held the trunk and Matt's next review was *"The trunk and branches are
+        // responding to both drums and vocals it seems and it's still too much."* Measured on
+        // `2026-08-11T23-52-49Z` (*Seven Nation Army*), he is right and I had fixed the
+        // smallest of the three moving things:
+        //
+        //   trunk length   0.66 turns/s  (held at FTR.10)
+        //   branch COUNT   4.08 turns/s, span 46 branches   ← continuous
+        //   branch SPREAD  5.48 turns/s, span 13.8°         ← continuous, the fastest term
+        //
+        // The two I left continuous are 6–8× the trunk's rate and are the biggest quantities
+        // on screen. So `reach`, `surge` and `flux` all read the BEAT-HELD vector now: the
+        // tree's whole frame — height, branch count, canopy width, thickness — is still
+        // between beats and reshapes on the beat.
+        //
+        // THE TIPS STAY LIVE, deliberately, and that is the point of the change rather than
+        // a caveat: with the frame quiet the fine branches are the only thing in continuous
+        // motion, which is the *"the tips are difficult to see"* complaint answered from the
+        // other side. `melody` and `amp` below read `f`, everything else reads `fHeld`.
+        //
+        // NOTE FOR ANYONE READING DYN.2 ABOVE. That block records Matt asking for growth that
+        // is smooth, *"not in visible jumps"*, and this contradicts it. It is not an
+        // oversight: he was offered per-beat steps, per-bar steps and continuous-but-smoother
+        // twice (2026-08-11, FTR.10 and FTR.11) and chose steps both times, after seeing the
+        // smooth version live. The later instruction wins. Do not "restore" smoothness citing
+        // DYN.2 without asking him first.
+        //
+        // NOT ADDRESSED HERE, and it is the bigger half: *"Guitar is barely registering."*
+        // The tips span 4 branches of the count's 46, and on this track `other_onset_rate`
+        // correlates **+0.71 with the drums' onset rate** (+0.14 on Cherub Rock, where FTR.8
+        // justified it) — it is not an independent guitar channel on this material. Widening
+        // the coefficient would make the drums louder in a layer labelled "guitar". Matt's
+        // call, taken 2026-08-11: measure across captures whether ANY per-stem feature
+        // separates the guitar, before touching the preset again.
+        float2 heldGrowth = fractal_growth(fHeld);
+        float reach = heldGrowth.x;
 
         // ── THE SURGE: "SHOOT UP" ← spectral_surge (DYN.1b) ──────────────────────
         //
@@ -229,7 +265,7 @@ void fractal_tree_object_shader(
         // separates the pre-guitar passage from the arrival 20.4× (0.048 → 0.981) while
         // turning only 0.58 times a second — a step the trunk can safely read, which the
         // restless `density` ratio never was.
-        float surge = fractal_growth(f).y;
+        float surge = heldGrowth.y;   // FTR.11 — held, like every other frame term
 
         // ── FTR.10: THE TRUNK STEPS ON THE BEAT ──────────────────────────────────
         //
@@ -250,22 +286,20 @@ void fractal_tree_object_shader(
         // continuous 0.178) and only its rate collapses (0.51 turns/s). A smoother would have
         // cost range, which is the DYN.1e failure Matt named as "a 10 % band, nothing to see".
         //
-        // WHAT IS NOT HELD, deliberately: the branch counts and the tips read the LIVE vector
-        // at buffer(0). Freezing them would freeze the guitar route FTR.8 exists for, and the
-        // whole point of this increment is that the tips become visible once the skeleton
-        // stops sliding underneath them. Thickness also stays live — it swings 0.020 of a
-        // 0.058 line weight, which is not what Matt is looking at.
+        // SUPERSEDED BY FTR.11 — this paragraph used to read "the branch counts and the tips
+        // read the LIVE vector, thickness stays live". Only the TIPS still do. Holding the
+        // trunk alone left the count at 4.08 turns/s and the spread at 5.48 against the
+        // trunk's 0.66, and Matt's next review was "still too much". See the FTR.11 block.
         //
         // FALLBACKS ARE IN `BeatHold`, NOT HERE. When there is no grid (reactive/streaming),
         // when the grid is beat-irregular (D-154), or when the phase stalls, the snapshot
         // simply tracks the live vector and this expression is bit-identical to the
         // continuous one. There is no frozen-trunk state to reach: a preset can only step
         // while the phase is demonstrably ticking.
-        float2 heldGrowth = fractal_growth(fHeld);
-        float trunkLen = 0.27f + heldGrowth.x * 0.13f + heldGrowth.y * 0.32f;
+        float trunkLen = 0.27f + reach * 0.13f + surge * 0.32f;
 
         // Kept for the canopy's finer response; the surge carries the arrival.
-        float lift = saturate((f.spectral_density / max(f.spectral_density_slow, 1e-4f) - 1.0f) * 1.1f);
+        float lift = saturate((fHeld.spectral_density / max(fHeld.spectral_density_slow, 1e-4f) - 1.0f) * 1.1f);
 
         // SILENCE GATE. `pulse_amp01` is 0 before the first note and across sustained
         // silence, returning the sparse 7-branch figure the reference README asks for
@@ -422,7 +456,8 @@ void fractal_tree_object_shader(
         // zero on real music (p05 0.070–0.378), so mapping [0.10, 0.95] onto the full
         // spread range uses the range the music actually occupies. 20°→34° is double
         // the shipped 22°→29° nominal, and ~33× the swing actually delivered.
-        float flux   = saturate((f.spectral_flux - 0.10f) / 0.85f);
+        // FTR.11 — `fHeld`: at 5.48 turns/s this was the fastest-moving term in the preset.
+        float flux   = saturate((fHeld.spectral_flux - 0.10f) / 0.85f);
         float spread = 0.35f + flux * 0.24f;   // 20° … 34°
 
         // Only geometry terms travel in the payload. The fragment stage reads its own

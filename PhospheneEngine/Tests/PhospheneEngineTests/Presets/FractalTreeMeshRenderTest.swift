@@ -505,17 +505,40 @@ struct FractalTreeMeshRenderTest {
             : []
         print("[fractal-tree/inputs] drivers \(recompute ? "RECOMPUTED from raw_tap.wav" : "replayed from features.csv")")
 
+        let stemRows = (try? Self.loadSessionRows(
+            session.appendingPathComponent("stems.csv"), dropBeforeSeconds: nil)) ?? []
+        let stemOffset = (try? Self.leadingRowsDropped(csv)) ?? 0
+        if stemRows.isEmpty {
+            print("[fractal-tree/trunk] no stems.csv — the tips layer will read ZERO")
+        }
+
         var fifths = FifthsSmoother()
         var hold = BeatHold()
         var reachTerm: [Float] = []
         var surgeTerm: [Float] = []
         var continuous: [Float] = []
         var stepped: [Float] = []
+        // FTR.11 — the two layers FTR.10 left running. Matt's words were "the trunk AND
+        // branches", and reporting only the trunk is how an increment ships having fixed the
+        // smallest of the three moving things: on `2026-08-11T23-52-49Z` the trunk was held at
+        // 0.66 turns/s while the count turned 4.08 and the spread 5.48.
+        var countLive: [Float] = []
+        var countHeld: [Float] = []
+        var spreadLive: [Float] = []
+        var spreadHeld: [Float] = []
+        var tips: [Float] = []
+        // The count MINUS the tips. Without this row "count (HELD) 3.46/s" is unreadable:
+        // the tips are inside the count and are deliberately still live, so the residual
+        // could be a frame that never settled or a frame that is perfectly still under a
+        // busy tip layer. Those call for opposite next moves.
+        var frameOnlyLive: [Float] = []
+        var frameOnly: [Float] = []
         var steppingFrames = 0
-        for row in rows {
+        for (index, row) in rows.enumerated() {
             var fv = Self.featuresFromSession(row, fifths: &fifths)
             Self.applyRecomputedDensity(densityByTime, at: row["time"] ?? 0, to: &fv,
                                         includeSectionRatio: true)
+            let stems = Self.sessionStems(stemRows, index: index + stemOffset)
             let held = hold.update(fv)
             if hold.isStepping { steppingFrames += 1 }
             let growth = Self.growth(fv)
@@ -523,16 +546,40 @@ struct FractalTreeMeshRenderTest {
             surgeTerm.append(growth.surge * 0.32)
             continuous.append(Self.trunkLength(fv))
             stepped.append(Self.trunkLength(held))
+            countLive.append(Float(Self.branchCount(frame: fv, live: fv, stems: stems)))
+            countHeld.append(Float(Self.branchCount(frame: held, live: fv, stems: stems)))
+            spreadLive.append(Self.spreadDegrees(fv))
+            spreadHeld.append(Self.spreadDegrees(held))
+            tips.append(Float(Self.tipBranches(frame: held, live: fv, stems: stems)))
+            frameOnlyLive.append(Float(Self.branchCount(frame: fv, live: fv, stems: stems)
+                                       - Self.tipBranches(frame: fv, live: fv, stems: stems)))
+            frameOnly.append(Float(Self.branchCount(frame: held, live: fv, stems: stems)
+                                   - Self.tipBranches(frame: held, live: fv, stems: stems)))
         }
         let seconds = (rows.last?["time"] ?? 0) - (rows.first?["time"] ?? 0)
+        // TURNS PER BEAT, alongside turns per second, because a beat-held signal can only
+        // change ON a beat — its turn rate therefore carries the tempo as a factor, and an
+        // absolute per-second floor is silently stricter on fast songs for no musical reason.
+        // Seven Nation Army (124 BPM) measures 0.66/s against Carry The Zero's (94 BPM)
+        // 0.52/s, which is 0.32 turns per beat on BOTH. Reported, not yet asserted on — see
+        // the note under the trunk assertion.
+        var wraps = 0
+        var previousPhase: Double = 0
+        for row in rows {
+            let phase = row["beatPhase01"] ?? 0
+            if phase < previousPhase - 0.25 { wraps += 1 }
+            previousPhase = phase
+        }
+        let beatsPerSecond = Double(wraps) / Swift.max(seconds, 1)
 
         // Both span statistics, because they disagree by ~2× on this capture and the FTR.10
         // spec quotes the narrower one. p05→p95 is the honest "how far does it travel in
         // normal playback"; min→max includes the intro's climb out of the floor.
         func line(_ label: String, _ values: [Float]) -> String {
-            String(format: "  %-22@ span %.3f (p05→p95 %.3f)   turns %.2f/s",
-                   label as NSString, Self.span(values), Self.percentileSpan(values),
-                   Self.turnsPerSecond(values, seconds: seconds))
+            let turns = Self.turnsPerSecond(values, seconds: seconds)
+            return String(format: "  %-22@ span %.3f (p05→p95 %.3f)   turns %.2f/s  %.2f/beat",
+                          label as NSString, Self.span(values), Self.percentileSpan(values),
+                          turns, turns / Swift.max(beatsPerSecond, 1e-6))
         }
         print("""
 
@@ -544,7 +591,14 @@ struct FractalTreeMeshRenderTest {
         \(line("reach x 0.13", reachTerm))
         \(line("surge x 0.32", surgeTerm))
         \(line("trunk (continuous)", continuous))
-        \(line("trunk (held)", stepped))
+        \(line("trunk (HELD)", stepped))
+        \(line("count (continuous)", countLive))
+        \(line("count (HELD)", countHeld))
+        \(line("spread° (continuous)", spreadLive))
+        \(line("spread° (HELD)", spreadHeld))
+        \(line("  frame count, cont.", frameOnlyLive))
+        \(line("  frame count, HELD", frameOnly))
+        \(line("tips (always live)", tips))
         ───────────────────────────────────────────────────────────────────
         """)
 
@@ -567,6 +621,14 @@ struct FractalTreeMeshRenderTest {
                          String(repeating: "▉", count: Int((Self.span(cont) * 200).rounded()))))
         }
 
+        // THIS BAR IS RED ON A FAST TRACK AND IS BEING LEFT RED (FTR.11). Seven Nation Army
+        // (124 BPM) measures 0.66/s against Carry The Zero's (94 BPM) 0.52/s — but per BEAT
+        // both are 0.32, because a beat-held value can only change ON a beat and this unit
+        // therefore carries the tempo. The bar was calibrated on the slower track, so it is
+        // silently stricter on faster ones for no musical reason. Switching it to turns/beat
+        // is probably right and is NOT being done here: changing a metric in the same
+        // increment it goes red is how FTR.6 shipped a regression past a green gate. Surfaced
+        // to Matt with both numbers; his call, then one commit that only changes the unit.
         let heldTurns = Self.turnsPerSecond(stepped, seconds: seconds)
         #expect(heldTurns <= 0.6, """
             the held trunk still turns \(String(format: "%.2f", heldTurns))/s. Matt's \
@@ -582,6 +644,34 @@ struct FractalTreeMeshRenderTest {
             stillness is the DYN.1e failure ("neither grew nor receded"), and it is what a \
             smoother would have done here.
             """)
+        // FTR.11 — THE TWO LAYERS FTR.10 LEFT RUNNING. Asserted as RATIOS against the
+        // continuous build measured in the same run, not as absolute floors: a per-second
+        // floor carries the tempo (see the turns/beat note above), and these two would then
+        // need recalibrating per track, which is how a gate stops meaning anything.
+        let frameRatio = Self.turnsPerSecond(frameOnly, seconds: seconds)
+            / Swift.max(Self.turnsPerSecond(frameOnlyLive, seconds: seconds), 1e-6)
+        #expect(frameRatio < 0.5, """
+            the branch count's FRAME term turns \(String(format: "%.0f%%", 100 * frameRatio)) \
+            as often held as continuous. This is the layer Matt named second ("the trunk and \
+            branches") and the one FTR.10 left at 4.08/s while reporting the trunk fixed.
+            """)
+        let spreadRatio = Self.turnsPerSecond(spreadHeld, seconds: seconds)
+            / Swift.max(Self.turnsPerSecond(spreadLive, seconds: seconds), 1e-6)
+        #expect(spreadRatio < 0.5, """
+            the branch spread turns \(String(format: "%.0f%%", 100 * spreadRatio)) as often \
+            held as continuous. `spectral_flux` made this the fastest term in the preset \
+            (5.48/s, against the trunk's 0.66).
+            """)
+        // THE TIPS MUST STAY LIVE. Holding them would freeze the guitar route FTR.8 exists
+        // for and turn "the tips are hard to see" into "the tips do not move" — the opposite
+        // of the complaint. If this ever goes red, someone has held the whole object shader.
+        let tipTurns = Self.turnsPerSecond(tips, seconds: seconds)
+        #expect(tipTurns > 1.5, """
+            the tips turn only \(String(format: "%.2f", tipTurns))/s — with the frame held \
+            they are the ONLY continuously-moving layer left, so if they stop the preset is \
+            a slideshow.
+            """)
+
         #expect(steppingFrames > rows.count / 2, """
             the hold engaged on only \(steppingFrames) of \(rows.count) frames — on a capture \
             with a healthy cached grid it should hold for nearly the whole body of the track. \
@@ -612,6 +702,47 @@ struct FractalTreeMeshRenderTest {
     private static func trunkLength(_ f: FeatureVector) -> Float {
         let g = growth(f)
         return 0.27 + g.reach * 0.13 + g.surge * 0.32
+    }
+
+    /// The shader's branch-count arithmetic, mirrored — see ``growth(_:)``.
+    ///
+    /// `frame` is the vector the FRAME terms read (beat-held since FTR.11), `live` the one
+    /// the tips read. Passing the same vector for both gives the pre-FTR.11 continuous
+    /// build, which is what makes the before/after column in the report an A/B rather than
+    /// two separate runs.
+    private static func branchCount(frame: FeatureVector, live: FeatureVector,
+                                    stems: StemFeatures) -> Int {
+        let g = growth(frame)
+        let lift = clamp((frame.spectralDensity / max(frame.spectralDensitySlow, 1e-4) - 1) * 1.1)
+        let amp = clamp(live.pulseAmp01)
+        let base = Int((4.0 + g.reach * 18.0) * amp)
+        let section = Int((lift * 8.0 + g.surge * 26.0) * amp)
+        return min(7 + base + section + tipBranches(frame: frame, live: live, stems: stems), 63)
+    }
+
+    /// The tips term alone — the only layer still reading the LIVE vector after FTR.11.
+    private static func tipBranches(frame: FeatureVector, live: FeatureVector,
+                                    stems: StemFeatures) -> Int {
+        let rate = stems.otherOnsetRate
+        let guitar = rate / (rate + 18.0)
+        let stemEnergy = stems.vocalsEnergy + stems.drumsEnergy + stems.bassEnergy + stems.otherEnergy
+        let alive = smoothstep(0.02, 0.06, stemEnergy)
+        let melody = (1 - alive) * (live.beatMid / (live.beatMid + 2.2)) + alive * guitar
+        return Int(melody * 26.0 * clamp(live.pulseAmp01)
+                   * smoothstep(0.03, 0.15, growth(frame).reach))
+    }
+
+    /// Branch spread in degrees — the fastest-moving term in the preset before FTR.11.
+    private static func spreadDegrees(_ f: FeatureVector) -> Float {
+        let flux = clamp((f.spectralFlux - 0.10) / 0.85)
+        return (0.35 + flux * 0.24) * 180 / .pi
+    }
+
+    private static func clamp(_ v: Float) -> Float { Swift.min(Swift.max(v, 0), 1) }
+
+    private static func smoothstep(_ e0: Float, _ e1: Float, _ v: Float) -> Float {
+        let t = clamp((v - e0) / (e1 - e0))
+        return t * t * (3 - 2 * t)
     }
 
     private static func span(_ values: [Float]) -> Float {
