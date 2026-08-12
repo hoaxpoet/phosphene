@@ -2152,7 +2152,87 @@ Ranges intact (spread 13.751° both ways; frame count 48→48 on SNA, 42→38 on
 
 **Matt reversed a prior instruction and the shader says so.** DYN.2 records him asking for growth that is smooth, *"not in visible jumps"*. He has now chosen steps twice (FTR.10, FTR.11), the second time after seeing the smooth version live. The later instruction wins; a comment in `FractalTree.metal` says not to restore smoothness citing DYN.2 without asking.
 
-**FTR.12 — does a guitar channel exist at all? (SPEC, not started.)** Measurement only, no preset change. Across ≥ 4 captures spanning clean and distorted guitar, test every per-stem feature (`otherOnsetRate`, `otherEnergyDev`, `otherEnergySlope`, the IFC.4 instrument-family series) for separation from the drums control. **Done-when:** a table of r-against-drums per feature per capture, and a yes/no on whether any of them is an independent guitar channel. A "no" is a complete result and retires the ambition rather than funding a fourth attempt (MEL.1 already measured that per-note guitar onsets do not survive distortion; this asks the weaker question about rate and envelope).
+**FTR.12 — does a guitar channel exist at all? ANSWERED: no.** ✅ measurement complete
+(2026-08-12). Measurement only — **no preset behaviour changed, no `.metal` edit, no sidecar
+route change.** Evidence: `docs/diagnostics/FTR12_GUITAR_CHANNEL_2026-08-12.md`, raw output
+`…_RAW_2026-08-12.txt`, harness `GuitarChannelReportTests` + `Scripts/ftr12_guitar_channel.sh`.
+
+**Verdict, one sentence: no per-stem feature separates guitar from drums on any of the 7
+tracks.** Seven tracks, offline, 120 s each, production objects (`StemSeparator.separate` in the
+model's fixed ~10 s window → `StemAnalyzer.analyze` per 1024-hop, `SessionPreparer`'s framing).
+Offline rather than capture replay because the ten sessions on disk are four rock tracks and
+cannot answer a generalisation question; offline selection also buys guitarless **negative
+controls**, which are the whole design. Stem-vs-stem r is lag-immune, so BUG-086's ≈2.9 s
+latency cancels — no non-stem comparison was made, so no lag sweep was needed.
+
+| slot | track | why this slot |
+|---|---|---|
+| positive | Brouwer, *El Decameron Negro* (John Williams) | solo classical guitar, **nothing else on the record** |
+| positive | Wes Montgomery, *Four On Six* | clean electric lead **with real drums/bass**, so the control stem is live audio |
+| negative | Nancarrow, *Study for Player Piano No. 3a* | **adversarial** — dense plucked transients in the guitar's register, no guitar, no drums |
+| negative | Autechre, *13x0 step* | guitarless **with** heavy programmed percussion |
+| negative | Beethoven, *Pathétique* Rondo | sparse solo piano, the low-density guitarless case |
+| hard | *Seven Nation Army* | distorted guitar, sparse mix — FTR.11 continuity (+0.71) |
+| hard | *Cherub Rock* | distorted guitar, dense mix — FTR.8 continuity (+0.14) |
+
+`r(otherX, drumsX)`, whole series, null 0.00 · cm = CHR.1 common-mode share, null ≈22 %:
+
+| track | role | `onsetRate` | `energyRel` | `energyDev` | `energySlope` | cm |
+|---|---|---|---|---|---|---|
+| brouwer | pos | +0.675 | **+0.987** | +0.985 | +0.986 | **99 %** |
+| wesmont | pos | +0.647 | +0.933 | +0.941 | +0.911 | 96 % |
+| nancarrow | **neg** | +0.578 | +0.935 | +0.948 | +0.873 | 95 % |
+| autechre | **neg** | +0.547 | +0.918 | +0.896 | +0.864 | 97 % |
+| beethoven | **neg** | **+0.792** | +0.945 | +0.925 | +0.934 | 94 % |
+| sna | hard | **+0.492** | +0.906 | +0.887 | +0.893 | 97 % |
+| cherub | hard | +0.606 | +0.894 | +0.890 | +0.813 | 97 % |
+
+**The two rows that settle it.** (1) The corpus's **highest** other-vs-drums onset-rate
+correlation, **+0.792, is a solo piano recording with no guitar and no drum kit**; the lowest,
++0.492, is Seven Nation Army. The statistic meant to certify independence from the drums ranks
+a piano sonata as more drum-like than a rock track. (2) On the **solo classical guitar** record,
+where `other` *is* the guitar and the other three stems are pure separation residue, the residue
+produces a **higher** onset rate than the guitar (drums p50 **4.71** vs other **4.46**), and
+`otherOnsetRate` correlates **+0.895 with `vocalsOnsetRate`** on a record with no voice
+(`otherEnergyRel`: **+0.998**). One instrument in, four identical series out. `otherOnsetRate`
+p50 spans **4.06 … 5.33** across all seven tracks — a feature that reads the same on a Nancarrow
+player piano and on Cherub Rock is not a guitar channel at any coefficient.
+
+**Mechanism, read from the code not inferred.** `StemAnalyzer+RichMetadata` derives `onsetRate`
+from broadband RMS flux against an **adaptive relative threshold** (`fluxEMA × 1.5`, 100 ms
+refractory → 10 /s ceiling, corpus sits at 4–5 /s). A relative threshold fires at a similar rate
+on any signal with transient content: the feature measures the detector, not the instrument.
+**MEL.1 / FA #68 extended, not contradicted** — this fails for a different reason than smearing.
+Rate check (`FTR12_FPS=60`, the live cadence): cherub +0.606→+0.700, sna +0.492→+0.529, so the
+verdict is not an offline-rate artifact.
+
+**IFC.4 cannot answer this by construction** — its families are `strings [189–194,199]` (bowed
+strings + harp), brass, woodwinds, orchestral percussion. **No family contains a guitar class.**
+The 527-class PANNs probs the same model already computes *do*, and that channel works on clean
+guitar (p50 **0.582 / 0.517**) against guitarless (**0.096 / 0.006 / 0.004**) — but reads
+**0.071 / 0.086** on the two distorted rock tracks, *inside* the guitarless range, with only p95
+separating them (0.460 / 0.270 vs beethoven 0.149) and Nancarrow false-positiving at p95 0.390.
+Real for clean prominent guitar, not usable for distorted rock guitar. Recorded because it
+changes the options, not because it is a solution.
+
+**What this invalidates.** FTR.8's **+0.14** is a **single-track** figure and does not reproduce:
+offline Cherub Rock reads **+0.606** (43 Hz) / **+0.700** (60 Hz). The two capture figures behind
+the route (+0.14 Cherub, +0.71 SNA) disagree by 0.57 on the same feature, so a single-capture r
+on this quantity is not a stable number either way. Consequently the shader's *"a genuinely
+INDEPENDENT channel, not a re-spelling of the drums"* and *"how many guitar attacks per second"*
+notes, and `FractalTree.json`'s *"flickering in and out with the guitar"*, are **not supported on
+measured material** — Matt's *"Guitar is barely registering"* is the same fact seen live.
+FTR.8's own "correction" of the FTR.6 +0.973 figure (to +0.68 / +0.65) is also outside this
+corpus's range (+0.89…+0.99); the capture-vs-offline gap is unexplained and both are
+single-path. **Not invalidated:** FTR.10/FTR.11's beat-stepping, which is about how much motion
+there is, not which stem drives it. Fractal Tree remains **not certified**, FTR.11 remains
+**unverified live**.
+
+**DECISION-NEEDED (Matt).** Retiring the guitar claim means edits to `FractalTree.json`'s
+`description`, the `FractalTree.metal` routing notes and the FTR.8 plan entry — all
+user-visible-copy or record changes, so none were made. If instead a guitar channel is wanted,
+the only measured candidate is the PANNs guitar-class probability, which needs its own increment
+and works on clean guitar only.
 
 **FTR.5 — M7 + certification.** ⏸ **BLOCKED ON MATT — this is a live review, not work Claude
 can complete.** FTR.6 landed the rate/granularity adjustment Matt named as the precondition
