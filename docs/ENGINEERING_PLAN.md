@@ -2272,6 +2272,36 @@ an instrument, so `RouteCoverageTests` and the sidecar schema are unaffected.
 measured candidate is the PANNs guitar-class probability (§FTR.12 above) — decisive on clean
 prominent guitar, unusable on distorted rock guitar. Its own increment, not a tweak.
 
+**FTR.15 — the size reads LEVEL, and level is what a limiter destroys. (DIAGNOSIS, no code
+change.)** ⏸ (2026-08-13, capture `2026-08-13T16-29-44Z`) Matt on FTR.14: *"movement is synced to
+the bar and generally looks good. but the growing and shrinking of the trunk and canopy feels
+random, completely divorced from what's going on in the music."* **First clause closes the
+FTR.10→FTR.14 motion arc.** The second is a different axis — not how the size moves, but what
+decides it. Full evidence: `docs/diagnostics/FTR15_SIZE_READS_LEVEL_2026-08-13.md`.
+
+**`r(trunk, spectral_density) = −0.641`.** Three of the four size terms reduce to level rank
+(`surge` at coefficient 0.32, and `musicGate` which gates `reach`), and on a limited master level
+moves OPPOSITE to density — so the tree shrinks as the arrangement gets bigger. `musicRange` on
+this track is **3.6 dB**: there is almost no level range left to express structure with. DYN.1's
+own founding observation was that distortion adds harmonics, not amplitude.
+
+**It is neither uncoupled nor jittery, and my first two hypotheses were both wrong.** Against true
+loudness from `raw_tap.wav` the trunk reads **+0.86** at 5 s smoothing, cycling once per ~20 s over
+an 8.2 dB span — a well-behaved section-scale loudness follower. "Random" is not describing noise;
+it is describing a faithful follower of the wrong quantity.
+
+**⚠ A measurement rule this produced: AGC-normalised fields are not a loudness reference.**
+Correlating the trunk against `bass+mid+treble` and the per-stem energies gave −0.47…−0.52 on every
+one, i.e. the exact opposite sign. Their denominator moves with mix density. Measure against the raw
+tap or the pre-AGC DYN.1 fields.
+
+**FTR.3f is due a re-measurement rather than an override:** its "fast density leg goes to a
+QUANTISED count, never to a length" was written because raw density was too restless for continuous
+geometry — before FTR.14's render-rate glide existed to smooth any driver.
+
+**DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
+consequences, so no code was changed.
+
 **FTR.14 — the beat sets the destination, never the stillness.** ✅ code-complete, **pending
 live M7** (2026-08-13) Matt's M7 on `2026-08-13T12-58-08Z` (*Carry The Zero*): *"I still prefer the
 more continuous movement that happens at the very beginning of playback before the beat grid is
