@@ -63,6 +63,37 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment BUG087.2 + BUG087.3 — analysis rate 10 → 16.4 Hz; the remedy was wrong ⏸ (2026-08-13)
+
+**Partial. BUG-087 stays OPEN.** Local-file analysis measures **10.0 → 16.4 Hz** on capture
+`2026-08-13T13-15-36Z`; the increment's ≥ 40 Hz done-when is **not met**.
+
+**BUG087.2 (kept, correct):** the analysis time base moves off wall-clock onto the audio each
+callback carried (`frames / rate`). Landed on its own commit behind a mandatory hard stop, and
+verified behaviour-neutral by the full suite moving **zero** existing expectations — which is
+what made "neutral" a result rather than an assumption. It is a prerequisite for anything that
+produces several analysis frames per callback, and it stands regardless of the rest.
+
+**BUG087.3 (kept, insufficient):** slicing each delivered buffer into 1024-frame pieces raised
+the *computation* rate to ~47 Hz but not the rate a preset observes. All five slices complete
+within microseconds — they process already-buffered audio — so the render loop samples ~1.6 of
+them and supersedes the rest. Gap distribution is bimodal: **39 % of changes 1 render frame
+apart, 55 % 5–6 frames apart**, a burst against a 100 ms arrival period.
+
+**The transferable finding: the ceiling is how often audio ARRIVES, not how finely it is
+sliced.** A preset cannot observe more distinct values per second than buffers are delivered
+when every slice lands at one instant. Matt kept the change (option C) for its +64 % effective
+rate and fresher values; the remaining route — smaller buffers from AVAudioEngine via manual
+rendering mode, an `AUAudioUnit` render block, or a different tap node — is **its own
+increment**, since BUG087.1 already measured that `installTap(bufferSize:)` is ignored.
+
+**The methodological catch worth keeping.** A regression test asserted `hz >= 40` from slice
+count and **passed**, while the live capture measured 16.4 Hz — it measured the computation
+rate and called it the delivered rate. Renamed and re-scoped rather than deleted. This is the
+same class as BUG086.1's "2.5 s nominal" (which measurement corrected to 3.0 s) and the false
+PASS from too permissive a correlation floor: **an automated gate that cannot see the quantity
+it is named for will happily certify a claim the artifact refutes.**
+
 ### Increment BUG087.1 — Local-file playback analyses at 10 Hz, streaming at 51 Hz ✅ (2026-08-11)
 
 **Diagnosis increment. No fix code.** Filed as **BUG-087**. Found while chasing a

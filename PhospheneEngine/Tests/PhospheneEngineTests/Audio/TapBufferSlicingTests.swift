@@ -64,17 +64,27 @@ struct TapBufferSlicingTests {
         #expect(parts.last == 712)
     }
 
-    // MARK: - The rate this buys
+    // MARK: - Slice count — the COMPUTATION rate, which is not what a preset sees
 
-    @Test("A 0.1 s buffer yields enough slices to clear the 40 Hz target")
-    func sliceCountClearsTheRateTarget() {
-        // BUG-087's done-when is ≥ 40 Hz. A 0.1 s buffer sliced at 1024 frames gives
-        // 5 analysis frames per 100 ms at 48 kHz ⇒ ~47 Hz; 5 per 100 ms at 44.1 kHz ⇒ ~43 Hz.
+    @Test("A 0.1 s buffer yields 5 analysis frames — a ~47 Hz computation rate")
+    func sliceCountPerBuffer() {
+        // ⚠ This asserts the COMPUTATION rate, not the rate a preset observes.
+        //
+        // An earlier version of this test asserted `hz >= 40.0` against BUG-087's
+        // done-when, and it passed — while the live capture measured **16.4 Hz**
+        // effective. All five slices of a buffer complete within microseconds of each
+        // other, so the render loop samples roughly 1.6 of them as distinct values and
+        // the rest are superseded before anything reads them. The binding constraint is
+        // how often audio ARRIVES (every 100 ms on this path), not how finely it is cut.
+        //
+        // The assertion is kept because slice count is a real property worth pinning —
+        // but it is named for what it measures, so nobody reads a green tick here as
+        // evidence the preset-facing rate cleared 40 Hz. It did not.
         for (frames, rate) in [(4800, 48_000.0), (4410, 44_100.0)] {
             let parts = slices(frames: frames, sliceFrames: 1024)
-            let bufferSeconds = Double(frames) / rate
-            let hz = Double(parts.count) / bufferSeconds
-            #expect(hz >= 40.0, "frames=\(frames) rate=\(rate) → \(hz) Hz")
+            #expect(parts.count == 5, "frames=\(frames) → \(parts.count) slices")
+            let computationHz = Double(parts.count) / (Double(frames) / rate)
+            #expect(computationHz >= 40.0, "computation rate \(computationHz) Hz")
         }
     }
 
