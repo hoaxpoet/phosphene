@@ -117,7 +117,12 @@ static inline uint fractal_hash(uint x)
 /// vector at buffer(0), for the canopy and the branch counts, and once on the beat-held
 /// vector at buffer(4), for the trunk. Two call sites, one arithmetic — a second copy of
 /// this expression is how the trunk and the canopy would silently drift apart.
-static inline float2 fractal_growth(constant FeatureVector& f)
+/// - Parameter f: the beat-glided vector (buffer 4) — supplies the gate, arousal and fullness.
+/// - Parameter fSection: the ~5 s section-scale glide (buffer 6) — supplies the DENSITY that
+///   decides the size. Two vectors because the two answer to different timescales: a gate is a
+///   now question, a size is a section question (FTR.16).
+static inline float2 fractal_growth(constant FeatureVector& f,
+                                    constant FeatureVector& fSection)
 {
     float arousalReach = saturate((f.arousal - 0.10f) * (1.0f / 0.58f));
     // DYN.2c: the field is this moment's RANK in the track's own density distribution
@@ -126,9 +131,39 @@ static inline float2 fractal_growth(constant FeatureVector& f)
     // this replaces was fitted against DYN.2b's broken ratio and clipped Hummer to a
     // flat 1.00 for four minutes once the normal was measured correctly.
     float fullness = saturate(f.spectral_section_ratio * 0.5f);
+    // LEVEL IS THE RIGHT SIGNAL FOR A GATE and the wrong one for a SIZE. `spectral_surge` stays
+    // here as "is music playing at all" — a presence question, which is exactly what a level
+    // rank answers well. What it no longer does is decide how big the tree is (FTR.16).
     float musicGate = smoothstep(0.05f, 0.30f, saturate(f.spectral_surge));
-    return float2(saturate(max(0.10f * arousalReach, fullness) * musicGate),
-                  saturate(f.spectral_surge));
+
+    // ── THE SIZE ← HOW DENSE THE SOUND IS (FTR.16, Matt 2026-08-13) ──────────────────
+    //
+    // Matt on FTR.14: *"the growing and shrinking of the trunk and canopy feels random,
+    // completely divorced from what's going on in the music."* He was right, and the cause was
+    // not noise — the size read LEVEL, faithfully (r +0.86 against true tap loudness at 5 s
+    // smoothing, one cycle per ~20 s). The problem is that a limiter flattens level and can
+    // INVERT it: measured `r(trunk, spectral_density) = -0.641`, so the tree shrank as the
+    // arrangement grew. This track's `musicRange` is 3.6 dB — there is no level range left to
+    // carry structure. DYN.1's founding observation, turned against us: distortion adds
+    // harmonics, not amplitude.
+    //
+    // `spectral_density` is the HF-energy fraction from RAW magnitudes, upstream of the AGC —
+    // one of the few fields that survives normalisation, and the one that rises when distortion,
+    // cymbals and a fuller arrangement arrive. His call, from four options: size follows density.
+    //
+    // KNEE SIZED AGAINST THE MEASURED DISTRIBUTION, not against 0…1. Density reads p05 0.08 /
+    // p50 0.17 / p95 0.68 on the reviewed capture, so `d/(d+0.22)` puts the working range across
+    // the knee's steep part. A stretch to recover more span was measured and REJECTED: it clipped
+    // 19-22 % of frames to the floor on one capture and pinned 10 % on another, which is the
+    // DYN.1e/DYN.2b dead-region failure.
+    //
+    // READ FROM buffer(6), the ~5 s glide — NOT from this vector's own fast leg. At its own rate
+    // density turns 3.6 times a second, which is precisely the restlessness FTR.3f banned from
+    // continuous geometry ("the fast density leg goes to a QUANTISED count, never to a length").
+    // FTR.3f is honoured, not overridden: the driver is slowed to the ~0.8 turns/s band the level
+    // rank occupied before it feeds a length.
+    float density = saturate(fSection.spectral_density / (fSection.spectral_density + 0.22f));
+    return float2(saturate(max(0.10f * arousalReach, fullness) * musicGate), density);
 }
 
 // MARK: - Object Shader
@@ -142,6 +177,9 @@ void fractal_tree_object_shader(
     constant FeatureVector&       f [[buffer(0)]],
     constant StemFeatures&        stems [[buffer(3)]],
     constant FeatureVector&       fHeld [[buffer(4)]],
+    /// FTR.16 — the SECTION-SCALE glide (~5 s) of the same vector. The tree's SIZE reads density
+    /// from here; buffer(4) stays the beat-glided vector for everything the beat drives.
+    constant FeatureVector&       fSection [[buffer(6)]],
     /// FTR.13 — the beat-held stem features, same beats and same ease as `fHeld` (buffer(5),
     /// bound by `MeshGenerator`). Matt: *"the tips … should be beat matched."* The tips' driver
     /// is a per-stem field, so holding only `fHeld` left them changing 4–5 times a second
@@ -265,7 +303,7 @@ void fractal_tree_object_shader(
         // tips route is unchanged and is now described as residue activity. Evidence and the
         // one remaining candidate (a PANNs guitar class, clean guitar only) are in the tips
         // routing note in the object shader.
-        float2 heldGrowth = fractal_growth(fHeld);
+        float2 heldGrowth = fractal_growth(fHeld, fSection);
         float reach = heldGrowth.x;
 
         // ── THE SURGE: "SHOOT UP" ← spectral_surge (DYN.1b) ──────────────────────

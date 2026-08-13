@@ -553,6 +553,8 @@ struct FractalTreeMeshRenderTest {
         // FTR.14 — the same GLIDING hold `MeshGenerator` installs in production. A hard
         // `BeatHold()` here would measure a build that no longer ships.
         var hold = BeatHold(glideBeats: 0.25)
+        // FTR.16 — the section-scale glide `MeshGenerator` installs alongside it (buffer 6).
+        var sectionHold = BeatHold(glideSeconds: 5.0)
         var reachTerm: [Float] = []
         var surgeTerm: [Float] = []
         var continuous: [Float] = []
@@ -610,14 +612,15 @@ struct FractalTreeMeshRenderTest {
                             1.0 / 240.0))
                 : Float(1.0 / 60.0)
             let held = hold.update(fv, renderDeltaTime: min(renderDelta, 1.0 / 15.0))
+            let section = sectionHold.update(fv, renderDeltaTime: min(renderDelta, 1.0 / 15.0))
             let stemsHeld = hold.glidingStemFeatures
             if hold.isStepping { steppingFrames += 1 }
             stepping.append(hold.isStepping)
-            let growth = Self.growth(fv)
+            let growth = Self.growth(fv, section: fv)
             reachTerm.append(growth.reach * 0.13)
             surgeTerm.append(growth.surge * 0.32)
             continuous.append(Self.trunkLength(fv))
-            stepped.append(Self.trunkLength(held))
+            stepped.append(Self.trunkLength(held, section: section))
             // FTR.13 — FRACTIONAL counts. The shader scales the frontier branch's length by the
             // fraction, so the visible canopy is the fractional value; an integer mirror would
             // report a pop the shader no longer draws.
@@ -1051,22 +1054,27 @@ struct FractalTreeMeshRenderTest {
     /// regression past a green harness, so the mirror is kept honest two ways: it is the
     /// ONLY copy in this file, and `objectStageReadsTheBeatHeldVector` proves through the
     /// real pipeline that the GPU is reading the held vector this report models.
-    private static func growth(_ f: FeatureVector) -> (reach: Float, surge: Float) {
-        func saturate(_ v: Float) -> Float { Swift.min(Swift.max(v, 0), 1) }
-        func smoothstep(_ e0: Float, _ e1: Float, _ v: Float) -> Float {
-            let t = saturate((v - e0) / (e1 - e0))
-            return t * t * (3 - 2 * t)
-        }
-        let arousalReach = saturate((f.arousal - 0.10) / 0.58)
-        let fullness = saturate(f.spectralSectionRatio * 0.5)
-        let gate = smoothstep(0.05, 0.30, saturate(f.spectralSurge))
-        return (saturate(Swift.max(0.10 * arousalReach, fullness) * gate),
-                saturate(f.spectralSurge))
+    /// FTR.16 — two vectors, because the size and the gate answer to different timescales.
+    /// `f` is the beat-glided vector; `section` is the ~5 s glide that supplies DENSITY.
+    /// Mirrors `fractal_growth` in the shader; passing the same vector for both reproduces the
+    /// pre-FTR.16 build for A/B rows.
+    private static func growth(_ f: FeatureVector,
+                               section: FeatureVector) -> (reach: Float, surge: Float) {
+        let arousalReach = clamp((f.arousal - 0.10) / 0.58)
+        let fullness = clamp(f.spectralSectionRatio * 0.5)
+        let musicGate = smoothstep(0.05, 0.30, clamp(f.spectralSurge))
+        // The SIZE is density now, not level rank — see the shader's FTR.16 block.
+        let density = clamp(section.spectralDensity / (section.spectralDensity + 0.22))
+        return (clamp(Swift.max(0.10 * arousalReach, fullness) * musicGate), density)
     }
 
-    /// The shader's `trunk_len` (FractalTree.metal), mirrored — see ``growth(_:)``.
-    private static func trunkLength(_ f: FeatureVector) -> Float {
-        let g = growth(f)
+
+    /// The shader's `trunk_len` (FractalTree.metal), mirrored — see ``growth(_:section:)``.
+    /// FTR.16: `section` supplies the density that decides the size. Passing `f` for both is the
+    /// pre-FTR.16 arithmetic and is what the "continuous" A/B rows use.
+    private static func trunkLength(_ f: FeatureVector,
+                                    section: FeatureVector? = nil) -> Float {
+        let g = growth(f, section: section ?? f)
         return 0.27 + g.reach * 0.13 + g.surge * 0.32
     }
 
@@ -1083,7 +1091,7 @@ struct FractalTreeMeshRenderTest {
     /// shader no longer draws.
     private static func branchCountF(frame: FeatureVector, live: FeatureVector,
                                      stems: StemFeatures, stemsHeld: StemFeatures) -> Float {
-        let g = growth(frame)
+        let g = growth(frame, section: frame)
         let lift = clamp((frame.spectralDensity / max(frame.spectralDensitySlow, 1e-4) - 1) * 1.1)
         let amp = clamp(live.pulseAmp01)
         let base = (4.0 + g.reach * 18.0) * amp
@@ -1111,7 +1119,7 @@ struct FractalTreeMeshRenderTest {
         let alive = smoothstep(0.02, 0.06, stemEnergy)
         let melody = (1 - alive) * (frame.beatMid / (frame.beatMid + 2.2)) + alive * residueActivity
         return melody * 26.0 * clamp(live.pulseAmp01)
-            * smoothstep(0.03, 0.15, growth(frame).reach)
+            * smoothstep(0.03, 0.15, growth(frame, section: frame).reach)
     }
 
     private static func tipBranches(frame: FeatureVector, live: FeatureVector,
