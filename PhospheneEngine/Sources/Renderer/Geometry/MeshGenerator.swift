@@ -117,7 +117,7 @@ public final class MeshGenerator: @unchecked Sendable {
     /// local-file path (BUG-087) — 2.1 samples of ease then 4.3 samples of stillness per beat.
     /// τ = 1/4 beat: at 94–124 BPM that is 160–120 ms, so ~86 % of the travel happens inside
     /// one beat while the value never actually arrives, which is what removes the freeze.
-    private var beatHold = BeatHold(glideBeats: 0.25)
+    var beatHold = BeatHold(glideBeats: 0.25)
 
     /// FTR.16 — SECTION-SCALE glide of the same vector, bound at object/mesh buffer(6).
     ///
@@ -133,7 +133,7 @@ public final class MeshGenerator: @unchecked Sendable {
     /// occupied. A SEPARATE slot rather than a new `FeatureVector` field on purpose: a layout
     /// change would ripple into every parallel worktree's `CommonLayoutTest`, and this needs no
     /// new data — only the same data on a slower clock.
-    private var sectionHold = BeatHold(glideSeconds: 5.0)
+    var sectionHold = BeatHold(glideSeconds: 5.0)
 
     /// FTR.14 — render-clock state. The delta arithmetic that reads these lives in
     /// `MeshGenerator+RenderClock.swift`; see that file for why the clock is separate from
@@ -146,30 +146,6 @@ public final class MeshGenerator: @unchecked Sendable {
     /// frame then leaves it static — reproducing the FTR.13 staircase in the MEASUREMENT while
     /// production glides correctly. Production leaves this `nil`.
     public var renderDeltaOverride: Float?
-
-    /// Advance the beat clock AND the glide, without drawing.
-    ///
-    /// For still-frame harnesses only: a single draw per drive condition captures the glide's
-    /// first step from the previous condition rather than the geometry at this one. Call this
-    /// repeatedly to settle, then draw. Distinct from ``advanceBeatHold(_:stems:)``, which
-    /// advances only the BEAT clock and must not move the glide (a subsampled strip would
-    /// otherwise glide at the wrong rate).
-    public func advanceBeatHoldForSettling(_ features: FeatureVector, stems: StemFeatures = .zero) {
-        let delta = nextRenderDelta()
-        sectionHold.offerStems(stems)
-        _ = sectionHold.update(features, renderDeltaTime: delta)
-        beatHold.offerStems(stems)
-        _ = beatHold.update(features, renderDeltaTime: delta)
-    }
-
-    public func advanceBeatHold(_ features: FeatureVector, stems: StemFeatures = .zero) {
-        sectionHold.offerStems(stems)
-        _ = sectionHold.update(features, renderDeltaTime: 0)
-        beatHold.offerStems(stems)
-        // renderDeltaTime 0: advance the BEAT clock only. These rows are not drawn, so the
-        // glide must not advance for them or a subsampled strip would glide at the wrong rate.
-        _ = beatHold.update(features, renderDeltaTime: 0)
-    }
 
     /// `true` while the snapshot at buffer(4) is frozen between beats. Diagnostic only — a
     /// harness reporting "the trunk still slides" needs to be able to tell a preset that is

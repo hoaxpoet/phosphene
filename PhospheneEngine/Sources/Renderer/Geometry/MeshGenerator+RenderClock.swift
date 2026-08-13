@@ -30,4 +30,28 @@ extension MeshGenerator {
     /// frame in order to see beat boundaries at all, and a harness that renders every
     /// seventh row would otherwise measure a hold driven by an aliased phase. Call this for
     /// the rows you skip; `draw` already feeds the rows you render.
+
+    /// Advance the beat clock AND the glide, without drawing.
+    ///
+    /// For still-frame harnesses only: a single draw per drive condition captures the glide's
+    /// first step from the previous condition rather than the geometry at this one. Call this
+    /// repeatedly to settle, then draw. Distinct from ``advanceBeatHold(_:stems:)``, which
+    /// advances only the BEAT clock and must not move the glide (a subsampled strip would
+    /// otherwise glide at the wrong rate).
+    public func advanceBeatHoldForSettling(_ features: FeatureVector, stems: StemFeatures = .zero) {
+        let delta = nextRenderDelta()
+        sectionHold.offerStems(stems)
+        _ = sectionHold.update(features, renderDeltaTime: delta)
+        beatHold.offerStems(stems)
+        _ = beatHold.update(features, renderDeltaTime: delta)
+    }
+
+    public func advanceBeatHold(_ features: FeatureVector, stems: StemFeatures = .zero) {
+        sectionHold.offerStems(stems)
+        _ = sectionHold.update(features, renderDeltaTime: 0)
+        beatHold.offerStems(stems)
+        // renderDeltaTime 0: advance the BEAT clock only. These rows are not drawn, so the
+        // glide must not advance for them or a subsampled strip would glide at the wrong rate.
+        _ = beatHold.update(features, renderDeltaTime: 0)
+    }
 }
