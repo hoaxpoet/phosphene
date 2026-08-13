@@ -10,6 +10,31 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-13-163115] BUG-087 partially fixed — and the remedy was wrong about what limits the rate
+
+Local-file analysis goes **10.0 → 16.4 Hz**. BUG-087's ≥ 40 Hz target is **not met**, and the
+measurement says why: slicing was the wrong lever.
+
+`BUG087.2` moves the analysis time base off wall-clock onto the audio each callback carried —
+behaviour-neutral, zero existing expectations moved, and a prerequisite for producing several
+analysis frames per callback. `BUG087.3` slices each delivered buffer into 1024-frame pieces.
+
+**Why it falls short.** Slicing raised *computation* to ~47 Hz but not what a preset sees. All
+five slices complete within microseconds — they process already-buffered audio — so the render
+loop samples ~1.6 of them and supersedes the rest. The gap distribution is bimodal: 39 % of
+changes 1 render frame apart, 55 % five to six frames apart. A burst against a 100 ms arrival
+period. **The ceiling is how often audio arrives, not how finely it is cut.**
+
+Kept anyway: +64 % effective rate, and fresher values since the last slice reflects the newest
+1024 samples rather than a position inside a 4410-frame buffer.
+
+**The lesson this repo keeps re-learning:** a regression test here asserted `hz >= 40` from
+slice count and **passed**, while the live capture measured 16.4 Hz. It was measuring the
+computation rate and calling it the delivered rate. Renamed and re-scoped. Getting smaller
+buffers out of AVAudioEngine is filed as its own increment.
+
+---
+
 ### [dev-2026-08-12-200701] BUG-086 closed — stem latency 5.4 s → 3.0 s, and two lessons about aiming a review
 
 **RESOLVED.** Per-stem features reached presets ≈5.4 s behind the audio; they now reach it at
