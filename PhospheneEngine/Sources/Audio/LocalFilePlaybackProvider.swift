@@ -494,6 +494,50 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
         onDiagnosticEvent?(msg)
     }
 
+    /// Hand the interleaved scratch to `callback` in `requestedTapFrames`-sized slices
+    /// (BUG087.3), so the analysis runs at the requested rate rather than the rate
+    /// AVAudioEngine happens to deliver buffers at.
+    ///
+    /// AVAudioEngine gives this path ~0.1 s buffers whatever the `installTap` request
+    /// said, and `processAnalysisFrame` runs once per callback — so one call per buffer
+    /// pinned the whole MIR chain at 10 Hz here against 51 Hz on the system tap.
+    ///
+    /// Allocation-free: pointer arithmetic into the scratch interleaved by the caller, no
+    /// per-slice arrays (BUG-036). No pacing or sleeping — that would block the render
+    /// thread; correct per-slice `dt` (BUG087.2) is what makes burst delivery safe for the
+    /// seconds-based followers. The tail slice is short, never zero-padded, because
+    /// padding would inject a fake transient into the onset detectors.
+    ///
+    /// Downstream allocation rate: `makeAudioSampleCallback` allocates one magnitudes
+    /// array per invocation, so this multiplies that by ~5 on this path — landing at
+    /// ~47/s, the rate the system-tap path has always run at. It matches an established
+    /// rate rather than exceeding one.
+    private func deliverSliced(
+        frames: Int,
+        channelCount: AVAudioChannelCount,
+        sampleRate: Float,
+        callback: (UnsafePointer<Float>, Int, Float, UInt32) -> Void
+    ) {
+        interleavedScratch.withUnsafeBufferPointer { ptr in
+            guard let base = ptr.baseAddress else { return }
+            let sliceFrames = Int(Self.requestedTapFrames)
+            var offset = 0
+            while true {
+                let take = TapBufferSlicing.frameCount(
+                    frames: frames, sliceFrames: sliceFrames, offset: offset
+                )
+                guard take > 0 else { break }
+                callback(
+                    base + offset * Int(channelCount),
+                    take * Int(channelCount),
+                    sampleRate,
+                    UInt32(channelCount)
+                )
+                offset += take
+            }
+        }
+    }
+
     private func handleTapBuffer(
         _ buffer: AVAudioPCMBuffer,
         sampleRate: Float,
@@ -536,10 +580,12 @@ public final class LocalFilePlaybackProvider: @unchecked Sendable {
             }
         }
 
-        interleavedScratch.withUnsafeBufferPointer { ptr in
-            guard let base = ptr.baseAddress else { return }
-            callback(base, totalSamples, sampleRate, UInt32(channelCount))
-        }
+        deliverSliced(
+            frames: frames,
+            channelCount: channelCount,
+            sampleRate: sampleRate,
+            callback: callback
+        )
     }
 
     /// AVAudioEngine fires this when the audio configuration changes
