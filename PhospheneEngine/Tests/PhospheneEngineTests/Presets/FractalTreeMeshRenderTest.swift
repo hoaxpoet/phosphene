@@ -40,8 +40,21 @@ import UniformTypeIdentifiers
 @Suite("Fractal Tree mesh render")
 struct FractalTreeMeshRenderTest {
 
-    private static let width = 640
-    private static let height = 480
+    // FTR.14 — resolution is a KNOB because it changes what "frozen" means. Sub-pixel geometry
+    // motion cannot alter a rasterised pixel, so a 640x480 harness reports frames as frozen
+    // that are visibly moving at the 1080p the app renders at. `FT_RES=1920x1080` measures the
+    // shipping resolution; the default stays 640x480 so every existing golden and contact sheet
+    // is unchanged.
+    private static let renderSize: (width: Int, height: Int) = {
+        guard let spec = ProcessInfo.processInfo.environment["FT_RES"],
+              case let parts = spec.lowercased().split(separator: "x"), parts.count == 2,
+              let w = Int(parts[0]), let h = Int(parts[1]), w > 0, h > 0 else {
+            return (640, 480)
+        }
+        return (w, h)
+    }()
+    private static var width: Int { renderSize.width }
+    private static var height: Int { renderSize.height }
 
     /// Fixture the contact sheet is drawn from. `love_rehab` is the most dynamic of the
     /// three on the primitives FTR.2 routes from.
@@ -72,6 +85,19 @@ struct FractalTreeMeshRenderTest {
         var frames: [(label: String, pixels: [UInt8])] = []
 
         for drive in drives {
+            // FTR.14 — LET THE GLIDE SETTLE BEFORE CAPTURING. The beat-driven vector now chases
+            // its target over ~a quarter of a beat instead of snapping, so ONE draw per drive
+            // condition captures the first ~10 % of the journey from the PREVIOUS condition, not
+            // the tree at this energy. Uncaught, that is not a cosmetic problem: it collapsed
+            // this suite's own p05→p95 response measurement from 0.944 to 0.048 and would have
+            // made every contact sheet a picture of a tree mid-transition.
+            //
+            // Settling is also the honest model of playback — real audio holds an energy for far
+            // longer than one frame. 40 frames at 1/60 s is ~0.67 s, several time constants.
+            generator.renderDeltaOverride = 1.0 / 60.0
+            for _ in 0..<40 {
+                generator.advanceBeatHoldForSettling(drive.features, stems: drive.stems)
+            }
             guard let cmd = ctx.commandQueue.makeCommandBuffer() else { continue }
             Self.encode(cmd, into: target, generator: generator,
                         features: drive.features, stems: drive.stems)
@@ -299,6 +325,17 @@ struct FractalTreeMeshRenderTest {
             // its snapshot inside `draw`, so a harness that only draws every Nth row would
             // feed the hold an aliased phase and measure a clock that does not exist live.
             // Every skipped row goes through the same object, un-drawn.
+            // FTR.14 — drive the glide from the CAPTURE's frame delta, not the harness's
+            // wall clock. `MeshGenerator.nextRenderDelta` reads real time by default, which
+            // offline is the speed this test renders at; measured that way a contiguous window
+            // read 73 of 95 frames pixel-frozen purely because a slow harness frame produced a
+            // large delta, converged the glide in one frame and then had nothing to move
+            // toward until the next 10 Hz target. Injecting the capture's own delta is what
+            // makes the offline pixels representative of the app's.
+            generator.renderDeltaOverride = index > 0
+                ? Float(min(max((rows[index]["wallclock_s"] ?? 0)
+                                - (rows[index - 1]["wallclock_s"] ?? 0), 1.0 / 240.0), 1.0 / 15.0))
+                : Float(1.0 / 60.0)
             guard index % stride == 0, (row["time"] ?? 0) >= skipSeconds + (rows.first?["time"] ?? 0) else {
                 generator.advanceBeatHold(fv)
                 continue
@@ -513,9 +550,9 @@ struct FractalTreeMeshRenderTest {
         }
 
         var fifths = FifthsSmoother()
-        // FTR.13 — the same eased hold `MeshGenerator` installs in production. A hard
+        // FTR.14 — the same GLIDING hold `MeshGenerator` installs in production. A hard
         // `BeatHold()` here would measure a build that no longer ships.
-        var hold = BeatHold(easeBeats: 1.0 / 3.0)
+        var hold = BeatHold(glideBeats: 0.25)
         var reachTerm: [Float] = []
         var surgeTerm: [Float] = []
         var continuous: [Float] = []
@@ -561,8 +598,19 @@ struct FractalTreeMeshRenderTest {
                                         includeSectionRatio: true)
             let stems = Self.sessionStems(stemRows, index: index + stemOffset)
             hold.offerStems(stems)
-            let held = hold.update(fv)
-            let stemsHeld = hold.heldStemFeatures(at: fv.beatPhase01)
+            // FTR.14 — REAL RENDER DELTAS, and this is the correction that matters most in this
+            // file. FTR.13 was validated by a harness that fed no render clock at all, so it
+            // measured the interpolated value rather than how often the value actually ARRIVED,
+            // and it reported "0 spike frames / mean step 0.75 branches" for a build that
+            // rendered two jumps and four dead ticks per beat. `wallclock_s` is the render
+            // cadence the app really ran at (~59 rows/s), so the glide advances here exactly as
+            // it does live.
+            let renderDelta = index > 0
+                ? Float(max((rows[index]["wallclock_s"] ?? 0) - (rows[index - 1]["wallclock_s"] ?? 0),
+                            1.0 / 240.0))
+                : Float(1.0 / 60.0)
+            let held = hold.update(fv, renderDeltaTime: min(renderDelta, 1.0 / 15.0))
+            let stemsHeld = hold.glidingStemFeatures
             if hold.isStepping { steppingFrames += 1 }
             stepping.append(hold.isStepping)
             let growth = Self.growth(fv)
@@ -736,6 +784,111 @@ struct FractalTreeMeshRenderTest {
         // still then snaps" from "drifts" — it is why the frame read as calm at 0.30 turns/beat
         // while Matt saw the whole canopy stuttering. For a COUNT of branches the size of each
         // change is the thing that pops, and slowing the clock trades rate for size.
+        // FTR.14b — TAU SWEEP. τ = 1/4 beat left ~49 of 95 rendered frames pixel-frozen in the
+        // busiest passage, and the mechanism is convergence: the target is beat-latched, so it
+        // only moves every ~38 render frames, and an exponential with τ = 0.25 beat closes 98 %
+        // of the gap in two-thirds of a beat. Whatever is left is below a pixel. To never freeze,
+        // τ must be large enough that the glide has NOT caught up when the next target lands.
+        // The cost is lag and span compression (DYN.1e shipped a 10 % band Matt could not see),
+        // so both are reported next to the freeze number and the choice is made on the table.
+        //
+        // "Still" here uses a PERCEPTUAL epsilon, not float inequality: one pixel of trunk at
+        // 1080p is ~1/540 of clip space. Float inequality is what reported 0.005 frozen for a
+        // build whose pixels were frozen on half of frames.
+        func sweepLine(_ tau: Float) -> String {
+            var probe = BeatHold(glideBeats: tau)
+            var trunkSeries: [Float] = []
+            var localFifths = FifthsSmoother()
+            for (index, row) in rows.enumerated() {
+                var fv = Self.featuresFromSession(row, fifths: &localFifths)
+                Self.applyRecomputedDensity(densityByTime, at: row["time"] ?? 0, to: &fv,
+                                            includeSectionRatio: true)
+                let delta = index > 0
+                    ? Float(min(max((rows[index]["wallclock_s"] ?? 0)
+                                    - (rows[index - 1]["wallclock_s"] ?? 0), 1.0 / 240.0),
+                                1.0 / 15.0))
+                    : Float(1.0 / 60.0)
+                trunkSeries.append(Self.trunkLength(probe.update(fv, renderDeltaTime: delta)))
+            }
+            let epsilon: Float = 1.0 / 540.0
+            let still = zip(trunkSeries, trunkSeries.dropFirst())
+                .filter { abs($1 - $0) < epsilon }.count
+            let frozen = Double(still) / Double(trunkSeries.count - 1)
+            let turns = Self.turnsPerSecond(trunkSeries, seconds: seconds)
+                / Swift.max(beatsPerSecond, 1e-6)
+            return String(format: "    τ %.2f beat   frozen %.3f   span %.3f (p05→p95 %.3f)   %.2f turns/beat",
+                          tau, frozen, Self.span(trunkSeries),
+                          Self.percentileSpan(trunkSeries), turns)
+        }
+        // FTR.14c — BURSTINESS, which is what "dancing the robot" actually is.
+        //
+        // Two metrics have now failed on this question and both failures are instructive.
+        // Per-frame float inequality said 0.005 frozen for a build whose pixels were static on
+        // half of frames. Per-frame PIXEL identity then said ~0.95 frozen at every τ — because a
+        // trunk crossing 0.34 of clip space over a hundred seconds moves sub-pixel per frame
+        // whatever it does, so "did this frame differ from the last" cannot separate smooth slow
+        // motion from a freeze. A five-second pan is sub-pixel per frame too.
+        //
+        // The eye integrates motion over roughly 100 ms, so that is the window to measure in.
+        // A robot puts all of its displacement into a few windows and none into the rest; smooth
+        // motion spreads it evenly. So: total displacement per 100 ms window, then (a) the share
+        // of windows with essentially none, and (b) the coefficient of variation across windows.
+        // Low CV = even = smooth. High CV plus many empty windows = jump-hold-jump.
+        func burstiness(_ values: [Float], label: String) -> String {
+            let perWindow = Int((0.100 * framesPerSecond).rounded())
+            guard perWindow > 1, values.count > perWindow * 4 else { return "    \(label): too short" }
+            var travel: [Float] = []
+            var index = 0
+            while index + perWindow < values.count {
+                var sum: Float = 0
+                for k in index..<(index + perWindow) { sum += abs(values[k + 1] - values[k]) }
+                travel.append(sum)
+                index += perWindow
+            }
+            let mean = travel.reduce(0, +) / Float(travel.count)
+            let variance = travel.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Float(travel.count)
+            let cv = mean > 0 ? variance.squareRoot() / mean : 0
+            let empty = Double(travel.filter { $0 < mean * 0.05 }.count) / Double(travel.count)
+            return String(format: "    %-22@ empty windows %.3f   CV %.2f   mean travel %.4f",
+                          label as NSString, empty, cv, mean)
+        }
+        print("  BURSTINESS per 100 ms window — a robot is bursty, smooth motion is even:")
+        print(burstiness(continuous, label: "continuous (live)"))
+        print(burstiness(stepped, label: "GLIDE (shipping)"))
+        var hardProbe = BeatHold()
+        var hardFifths = FifthsSmoother()
+        var hardTrunk: [Float] = []
+        for row in rows {
+            var fv = Self.featuresFromSession(row, fifths: &hardFifths)
+            Self.applyRecomputedDensity(densityByTime, at: row["time"] ?? 0, to: &fv,
+                                        includeSectionRatio: true)
+            hardTrunk.append(Self.trunkLength(hardProbe.update(fv)))
+        }
+        print(burstiness(hardTrunk, label: "HARD HOLD (FTR.10)"))
+
+        print("  TAU SWEEP — trunk, perceptual epsilon (1 px at 1080p). Continuous span = \(String(format: "%.3f", Self.span(continuous))).")
+        for tau in [Float(0.25), 0.40, 0.55, 0.70, 0.85] { print(sweepLine(tau)) }
+
+        // FTR.14 — THE FREEZE FRACTION: the share of RENDERED frames on which a layer did not
+        // change at all. This is the number that would have caught FTR.13 and did not exist:
+        // its "smooth ease" left the canopy motionless on ~91 % of rendered frames, because a
+        // 1/3-beat ease off a 10 Hz `beatPhase01` is 2.1 samples of motion and 4.3 of stillness.
+        // Matt saw that as *"dancing the robot"*; every metric in this file agreed with the
+        // build because they all measured turn RATE or step SIZE, and a freeze has a low rate
+        // and a small step. A rate says how often direction changes, a size says how far — only
+        // this says whether anything is moving AT ALL.
+        func frozenFraction(_ values: [Float]) -> Double {
+            guard values.count > 1 else { return 1 }
+            let still = zip(values, values.dropFirst()).filter { $0 == $1 }.count
+            return Double(still) / Double(values.count - 1)
+        }
+        print("""
+          FROZEN FRACTION — share of rendered frames with NO change (FTR.13 read ~0.91 here)
+            trunk        \(String(format: "%.3f", frozenFraction(stepped)))
+            frame count  \(String(format: "%.3f", frozenFraction(frameOnly)))
+            spread°      \(String(format: "%.3f", frozenFraction(spreadHeld)))
+            tips         \(String(format: "%.3f", frozenFraction(tips)))
+        """)
         print("""
           STEP SIZE vs STEP RATE, per-beat hold against a per-bar hold (\(String(format: "%.2f", beatsPerSecond / Swift.max(barsPerSecond, 1e-6))) beats/bar measured)
           A rate cannot tell "snaps" from "drifts". For a branch COUNT, size is what pops.
@@ -850,6 +1003,40 @@ struct FractalTreeMeshRenderTest {
             raise this bar — if a tip layer needs to move faster than the beat, that is a \
             routing decision and his.
             """)
+
+        // FTR.14c — NOTHING MAY BE BURSTY. This is the gate for "dancing the robot", and it is
+        // the third metric attempted on that question — the two it replaces are recorded above
+        // because both PASSED the build Matt rejected. The bar is set from a measured separation
+        // between two references on this very capture, not drawn around the shipping number:
+        //
+        //   hard hold (the rejected look)   empty 0.817   CV 3.51
+        //   continuous (the preferred look) empty 0.083   CV 1.81
+        //   glide (shipping)                empty 0.101   CV 1.64
+        //
+        // A metric that cannot separate the first row from the second is not evidence, whatever
+        // it reports for the third. If a future build fails this, do NOT relax it: an empty
+        // window means the geometry gave the eye nothing for 100 ms, which is the complaint.
+        let perWindow = Int((0.100 * framesPerSecond).rounded())
+        for (label, series) in [("trunk", stepped), ("frame count", frameOnly),
+                                ("spread", spreadHeld)] {
+            guard series.count > perWindow * 4 else { continue }
+            var travel: [Float] = []
+            var index = 0
+            while index + perWindow < series.count {
+                var sum: Float = 0
+                for k in index..<(index + perWindow) { sum += abs(series[k + 1] - series[k]) }
+                travel.append(sum)
+                index += perWindow
+            }
+            let mean = travel.reduce(0, +) / Float(travel.count)
+            let empty = Double(travel.filter { $0 < mean * 0.05 }.count) / Double(travel.count)
+            #expect(empty < 0.35, """
+                \(label) gave the eye NOTHING in \(String(format: "%.0f%%", 100 * empty)) of \
+                100 ms windows. The hard hold Matt rejected three times measures 0.82 here and \
+                the continuous look he prefers measures 0.08 — this bar is the difference \
+                between them. The beat may set the destination; it may not set the stillness.
+                """)
+        }
 
         #expect(steppingFrames > rows.count / 2, """
             the hold engaged on only \(steppingFrames) of \(rows.count) frames — on a capture \

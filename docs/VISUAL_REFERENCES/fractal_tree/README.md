@@ -77,6 +77,22 @@ What this preset must NOT look like:
 
 **Changed at FTR.11 — the WHOLE FRAME steps, not just the trunk.** Matt, after FTR.10: *"The trunk and branches are responding to both drums and vocals it seems and it's still too much."* Branch count, branch spread and thickness now read the beat-held vector alongside the trunk. Measured (SNA 124 BPM / Carry The Zero 94 BPM): frame branch count **1.88 → 0.74** and **2.30 → 0.54** turns/s; branch spread **5.48 → 1.42** and **6.26 → 1.20**; ranges intact.
 
+**Changed at FTR.14 — the beat sets the DESTINATION, the render clock carries the MOTION** (Matt's third rejection of the stepped look, 2026-08-13: *"the tree looks like it's dancing the robot — I don't like the stepped changes"*, while adding that he *does* value the tighter sync). The visible geometry now glides toward the beat-latched target on the ~60 Hz render clock and never arrives-and-freezes. The glide runs pre-grid too, so the 6–8 s transition he objected to three times no longer exists.
+
+**★★★ FTR.13's EASE FAILED ON ARITHMETIC, NOT TASTE: it ran on 2 SAMPLES.** BUG-087 — every `FeatureVector` field updates at ~10 Hz on the local-file path, so a 94 BPM beat carries **6.4 samples**. A 1/3-beat ease is **2.1** of them and the hold after it is **4.3 dead**. Size any temporal effect in SAMPLES, never in fractions of a beat.
+
+**★★★ FOUR METRICS PASSED THE BUILD MATT REJECTED.** Turn rate (0.30 turns/beat — a low rate is what a freeze BUYS), step size (mean 0.75 branches — a freeze has small steps), per-frame float inequality (0.005 frozen — measured the interpolated value, not arrivals), per-frame PIXEL identity (0.95 frozen at *every* τ — a trunk crossing 0.34 clip units in 100 s is sub-pixel per frame however smooth, so a 5-second pan fails it too). `motion_gate.sh` also called FTR.13 smooth with 0 spikes. **A metric that cannot separate the known-bad build from the known-good one is not evidence, whatever it says about the new one.**
+
+**The metric that works: 100 ms-window burstiness** — the eye integrates over ~100 ms, so measure displacement per 100 ms window, then the share of empty windows and the CV. Validated against both references on Matt's own capture *before* being trusted:
+
+| build | empty 100 ms windows | CV | mean travel |
+|---|---|---|---|
+| hard hold (rejected) | **0.817** | **3.51** | 0.0032 |
+| continuous (preferred) | 0.083 | 1.81 | 0.0038 |
+| glide (shipping) | **0.101** | **1.64** | 0.0032 |
+
+Gated at `empty < 0.35`; the bar sits between two measured references, not around the shipping number. τ = 1/4 beat, tempo-relative — the sweep showed 0.25→0.85 buys nothing and costs lag and amplitude.
+
 **Changed at FTR.13 — the steps are EASED, branches GROW IN, and the tips are BEAT-MATCHED** (Matt's M7 on `2026-08-12T19-45-24Z`: *"motion reads as robotic and stuttering … it's the stepping itself that is the problem"*, and *"the tips … should be beat matched"*).
 
 **★★ THE LESSON, and it invalidates how FTR.10/FTR.11 were graded: a turn RATE cannot tell "holds still then snaps" from "drifts."** A low turn rate is what a hard sample-and-hold BUYS — so the frame scored a calm 0.30 turns/beat while Matt watched the canopy stutter. **Measure step SIZE beside step rate.** For a branch COUNT, size is the whole story: the worst single beat added 15–19 branches at once on a tree spanning 43.

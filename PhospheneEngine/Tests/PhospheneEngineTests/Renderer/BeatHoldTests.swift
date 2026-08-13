@@ -43,10 +43,11 @@ struct BeatHoldTests {
         beatTime: (Int) -> Float?,   // nil = no beat clock at all (phase pinned)
         barPhase: Float = 0.5,
         settleAfter: Float = 0,
-        // FTR.13 — 0 is the hard FTR.10 snap, which every pre-existing case here asserts.
-        easeBeats: Float = 0
+        // FTR.14 — 0 is the hard FTR.10 snap, which every pre-existing case here asserts.
+        glideBeats: Float = 0,
+        renderDeltaTime: Float = 0
     ) -> (staleFraction: Double, distinctHeldValues: Int, seconds: Float) {
-        var hold = easeBeats > 0 ? BeatHold(easeBeats: easeBeats) : BeatHold()
+        var hold = glideBeats > 0 ? BeatHold(glideBeats: glideBeats) : BeatHold()
         var stale = 0
         var total = 0
         var distinct = Set<Float>()
@@ -69,7 +70,7 @@ struct BeatHoldTests {
                     : 0
             }
             let live = frame(time: time, beatPhase: phase, barPhase: barPhase)
-            let held = hold.update(live)
+            let held = hold.update(live, renderDeltaTime: renderDeltaTime)
             if time >= settleAfter {
                 total += 1
                 if held.spectralSurge != live.spectralSurge { stale += 1 }
@@ -233,32 +234,73 @@ struct BeatHoldTests {
         #expect(out.barPhase01 == 0.6, "barPhase01 was blended")
     }
 
-    /// The ease starts at the beat and completes within its window — motion ONSET stays on the
-    /// beat, which is what keeps the step reading as beat-locked rather than late.
-    @Test("FTR.13: the ease starts on the beat and arrives inside its window")
-    func easeStartsOnTheBeatAndArrives() {
-        #expect(BeatHold.easeWeight(0, over: 1.0 / 3.0) == 0, "the ease did not start at the beat")
-        #expect(BeatHold.easeWeight(1.0 / 3.0, over: 1.0 / 3.0) == 1, "the ease did not arrive")
-        #expect(BeatHold.easeWeight(0.9, over: 1.0 / 3.0) == 1, "the ease re-opened after arriving")
-        let quarter = BeatHold.easeWeight(1.0 / 12.0, over: 1.0 / 3.0)
-        #expect(quarter > 0 && quarter < 0.25, """
-            a quarter of the way through the window the weight is \(quarter) — smoothstep should \
-            still be below the linear 0.25, i.e. easing IN rather than ramping.
+    /// τ is TEMPO-RELATIVE, so the motion means the same thing at every BPM — the FTR.12c
+    /// lesson about per-second quantities silently carrying the tempo.
+    @Test("FTR.14: the glide time constant scales with the beat period")
+    func glideTauIsTempoRelative() {
+        let slow = BeatHold.glideTau(glideBeats: 0.25, beatPeriod: 0.638)   // 94 BPM
+        let fast = BeatHold.glideTau(glideBeats: 0.25, beatPeriod: 0.484)   // 124 BPM
+        #expect(abs(slow - 0.1595) < 1e-3, "94 BPM τ is \(slow), expected ~160 ms")
+        #expect(fast < slow, "τ did not shorten with tempo — the glide would lag on fast tracks")
+        // Before the grid yields intervals there is no period; the glide must still run.
+        #expect(BeatHold.glideTau(glideBeats: 0.25, beatPeriod: nil) > 0, """
+            τ collapsed with no beat period — the glide must work from frame 1, which is the
+            pre-grid opening Matt has preferred at three consecutive M7s.
             """)
-        // easeBeats 0 is the FTR.10 hard snap: fully arrived at every phase.
-        #expect(BeatHold.easeWeight(0, over: 0) == 1, "easeBeats 0 must be the hard snap")
     }
 
-    /// An eased hold moves for part of the beat and rests for the remainder. The hard hold's
-    /// `staleFraction > 0.75` bar is deliberately left asserting the OLD behaviour on
-    /// `BeatHold()` — this is the eased variant's own bar.
-    @Test("FTR.13: the eased hold glides for part of the beat and rests for the rest")
-    func easedHoldGlidesThenRests() {
-        let out = Self.run(duration: 12, dt: 1.0 / 60.0,
-                           beatTime: { Float($0) * 0.5 }, easeBeats: 1.0 / 3.0)
-        #expect(out.staleFraction > 0.4 && out.staleFraction < 0.9, """
-            the eased hold was unchanged on \(out.staleFraction) of frames. Near 1.0 means the \
-            ease never ran; near 0 means it never rested and the hold is doing nothing.
+    /// THE BUG THIS INCREMENT EXISTS FOR. The smoothing factor must come from the RENDER delta,
+    /// so the same wall-clock motion happens whatever the frame rate. FTR.13 drove its ease off
+    /// `beatPhase01` at ~10 Hz (BUG-087) and rendered a 2-sample staircase.
+    @Test("FTR.14: the glide is frame-rate independent, not per-sample")
+    func glideIsFrameRateIndependent() {
+        let tau: Float = 0.16
+        // Advance 160 ms as one 10 Hz-ish step versus ten 60 fps steps: same total travel.
+        let oneBigStep = BeatHold.glideAlpha(deltaTime: 0.16, tau: tau)
+        var remaining: Float = 1
+        for _ in 0..<10 { remaining *= 1 - BeatHold.glideAlpha(deltaTime: 0.016, tau: tau) }
+        let manySmall = 1 - remaining
+        #expect(abs(oneBigStep - manySmall) < 0.02, """
+            160 ms of glide travelled \(oneBigStep) in one step but \(manySmall) in ten — the
+            smoothing is per-FRAME, not per-second, so motion speed would follow the frame rate.
+            """)
+        #expect(abs(oneBigStep - 0.632) < 0.01, "one τ should cover ~63 % of the remaining gap")
+        #expect(BeatHold.glideAlpha(deltaTime: 0, tau: tau) == 0, """
+            a zero delta advanced the glide — `advanceBeatHold` passes 0 for rows it does not
+            draw, and advancing there would glide a subsampled strip at the wrong rate.
+            """)
+    }
+
+    /// The whole point: with a render clock the value is essentially NEVER still. This is the
+    /// bar FTR.13 would have failed — its eased hold left the value unchanged on ~91 % of
+    /// rendered frames while every rate- and size-based metric called it smooth.
+    @Test("FTR.14: the gliding hold is never motionless for long")
+    func glidingHoldNeverFreezes() {
+        let out = Self.run(duration: 20, dt: 1.0 / 60.0, beatTime: { Float($0) * 0.5 },
+                           settleAfter: 6, glideBeats: 0.25, renderDeltaTime: 1.0 / 60.0)
+        // `staleFraction` here counts frames where the returned value differs from the LIVE
+        // frame, which under a glide is almost all of them — that is expected and not the
+        // question. The question is whether the glide keeps producing NEW values.
+        let perSecond = Double(out.distinctHeldValues) / Double(out.seconds)
+        #expect(perSecond > 30, """
+            the glided value produced only \(String(format: "%.1f", perSecond)) distinct values \
+            per second against a 60 fps render clock. Below the render rate it is freezing \
+            between beats, which is the "dancing the robot" look rejected at three M7s.
+            """)
+    }
+
+    /// A hard `BeatHold()` must be untouched by all of the above — its tests above still assert
+    /// the FTR.10 snap, and this pins the two apart explicitly.
+    @Test("FTR.14: the hard hold is unchanged and still freezes between beats")
+    func hardHoldStillSnaps() {
+        let hard = Self.run(duration: 20, dt: 1.0 / 60.0, beatTime: { Float($0) * 0.5 },
+                            settleAfter: 6)
+        let glide = Self.run(duration: 20, dt: 1.0 / 60.0, beatTime: { Float($0) * 0.5 },
+                             settleAfter: 6, glideBeats: 0.25, renderDeltaTime: 1.0 / 60.0)
+        #expect(hard.distinctHeldValues < glide.distinctHeldValues / 5, """
+            the hard hold produced \(hard.distinctHeldValues) distinct values and the glide \
+            \(glide.distinctHeldValues) — they should differ by more than 5x, or `BeatHold()` \
+            has silently inherited the glide and FTR.10's behaviour is gone.
             """)
     }
 }

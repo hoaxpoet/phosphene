@@ -2272,6 +2272,77 @@ an instrument, so `RouteCoverageTests` and the sidecar schema are unaffected.
 measured candidate is the PANNs guitar-class probability (§FTR.12 above) — decisive on clean
 prominent guitar, unusable on distorted rock guitar. Its own increment, not a tweak.
 
+**FTR.14 — the beat sets the destination, never the stillness.** ✅ code-complete, **pending
+live M7** (2026-08-13) Matt's M7 on `2026-08-13T12-58-08Z` (*Carry The Zero*): *"I still prefer the
+more continuous movement that happens at the very beginning of playback before the beat grid is
+established. After 6-8 seconds, the tree looks like it's dancing the robot — I don't like the
+stepped changes. I can appreciate that the tree is synced with the music to a greater degree, but
+I don't like the way it is executed."* Third consecutive rejection of the stepped look, and the
+second where the rejected thing was **Claude's recommendation**, not Matt's pick.
+
+**THE ROOT CAUSE IS ARITHMETIC AND IT IS MINE: FTR.13's ease ran on 2 SAMPLES.** BUG-087 — every
+`FeatureVector` field updates at **~10 Hz** on the local-file path, so a 94 BPM beat carries
+**6.4 samples**. FTR.13 eased over 1/3 of a beat = **2.1 samples**, then held for **4.3 samples**.
+The "smooth ease" rendered as two jumps and four dead ticks, 1.57 times a second. **The session
+prompt for this work warned in writing that the analysis rate is ~10 Hz and that four increments
+had already shipped with it wrong; FTR.13 was the fifth.** The ease was sized as a fraction of a
+beat and never converted to samples.
+
+**THE FIX (Matt's call from three options): the beat latches the TARGET, the render clock carries
+the MOTION.** The visible value glides toward the beat-latched snapshot with an exponential time
+constant on the ~60 Hz render clock, so it is always moving and never arrives-and-freezes. Same
+6.4 analysis samples per beat decide *where* to go; ~38 render frames decide *how it gets there*.
+The glide runs whether or not the grid is trusted, so **the 6–8 s transition no longer exists** —
+pre-grid the target is the live vector, post-grid it is the beat-latched one, and the geometry
+glides identically either side. `BeatHold(glideBeats:)` is opt-in; `BeatHold()` keeps the FTR.10
+snap and its tests assert it unchanged.
+
+**THREE METRICS FAILED ON THIS QUESTION BEFORE ONE WORKED, and that is the transferable lesson.**
+
+| metric | verdict on FTR.13 (rejected live) | why it failed |
+|---|---|---|
+| turn rate (FTR.10–12) | 0.30 turns/beat — "calm" | a low rate is what a freeze BUYS |
+| step size (FTR.12e) | mean 0.75 branches — "small" | a freeze has small steps too |
+| per-frame float inequality | 0.005 frozen — "always moving" | measured the interpolated value, not arrivals |
+| per-frame PIXEL identity | 0.95 frozen at **every** τ | a trunk crossing 0.34 clip units in 100 s is sub-pixel per frame however smooth; a 5 s pan fails this too |
+| **100 ms-window burstiness** | **separates them** | the eye integrates over ~100 ms |
+
+`motion_gate.sh` also scored FTR.13 **smooth, 0 spikes** — so it is not evidence here either.
+
+**The metric that works, validated against BOTH references on Matt's own capture before being
+trusted** — total displacement per 100 ms window, then the share of empty windows and the
+coefficient of variation:
+
+| build | empty 100 ms windows | CV | mean travel |
+|---|---|---|---|
+| hard hold (the rejected look) | **0.817** | **3.51** | 0.0032 |
+| continuous (the look Matt prefers) | 0.083 | 1.81 | 0.0038 |
+| **glide (shipping)** | **0.101** | **1.64** | 0.0032 |
+
+The glide is perceptually equivalent to the opening he keeps preferring — same travel, spread
+*more* evenly than the live vector — while keeping beat-set destinations. Gated at `empty < 0.35`
+for trunk, frame count and spread; the bar sits between two measured references rather than
+around the shipping number. Motion rates unchanged from FTR.11/FTR.12c (trunk 0.31 turns/beat,
+frame count 0.48, spread 0.82, tips 0.56), so the freeze was removed without reintroducing the
+"still too much" of FTR.11.
+
+**τ = 1/4 beat, and the sweep is why it is not larger.** τ ∈ {0.25 … 0.85} moves span 0.336 →
+0.326 and turns 0.31 → 0.25/beat — no meaningful gain, and larger τ costs lag and amplitude
+(DYN.1e shipped a 10 % band Matt could not see). Tempo-relative, so it means the same at 94 and
+124 BPM (the FTR.12c lesson).
+
+**Two harness defects the glide exposed, both of which would have produced false evidence.**
+(1) `nextRenderDelta()` reads wall-clock, so offline it advanced at the *harness's* render speed —
+converging the glide in one frame and reading 73 of 95 contiguous frames as pixel-frozen. Fixed
+with `renderDeltaOverride`, which the harness drives from the capture's own `wallclock_s`; without
+it the feature is unverifiable offline. (2) Still-frame renders capture ONE draw per drive
+condition, which under a glide is the first ~10 % of the journey from the *previous* condition —
+it collapsed this suite's own p05→p95 response measurement from 0.944 to **0.048** and would have
+made every contact sheet a tree mid-transition. Fixed by settling 40 frames before capture
+(`advanceBeatHoldForSettling`); measurement restored to 0.940.
+
+**Still NOT certified.** FTR.13's M7 is superseded, not satisfied.
+
 **FTR.13 — eased beat-steps, branches that grow in, and beat-matched tips.** ✅ code-complete,
 **pending live M7** (2026-08-12) Matt's M7 on `2026-08-12T19-45-24Z` (*Carry The Zero*, local
 file, single track): *"motion reads as robotic and stuttering; looks best at the beginning of
