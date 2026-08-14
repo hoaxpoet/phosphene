@@ -42,9 +42,12 @@ struct BeatHoldTests {
         dt: Float,
         beatTime: (Int) -> Float?,   // nil = no beat clock at all (phase pinned)
         barPhase: Float = 0.5,
-        settleAfter: Float = 0
+        settleAfter: Float = 0,
+        // FTR.14 — 0 is the hard FTR.10 snap, which every pre-existing case here asserts.
+        glideBeats: Float = 0,
+        renderDeltaTime: Float = 0
     ) -> (staleFraction: Double, distinctHeldValues: Int, seconds: Float) {
-        var hold = BeatHold()
+        var hold = glideBeats > 0 ? BeatHold(glideBeats: glideBeats) : BeatHold()
         var stale = 0
         var total = 0
         var distinct = Set<Float>()
@@ -67,7 +70,7 @@ struct BeatHoldTests {
                     : 0
             }
             let live = frame(time: time, beatPhase: phase, barPhase: barPhase)
-            let held = hold.update(live)
+            let held = hold.update(live, renderDeltaTime: renderDeltaTime)
             if time >= settleAfter {
                 total += 1
                 if held.spectralSurge != live.spectralSurge { stale += 1 }
@@ -191,5 +194,113 @@ struct BeatHoldTests {
         #expect(!hold.isStepping, "beat evidence survived a track change")
         #expect(held.spectralSurge == firstOfB.spectralSurge,
                 "the new track's first frame returned the previous track's snapshot")
+    }
+
+    // MARK: - FTR.13 — eased steps
+
+    /// The raw-float blend is only correct while EVERY field is a `Float`. This is the guard the
+    /// blend's doc comment promises: add an `Int32`, a `Bool` or a SIMD member to either struct
+    /// and the lerp would reinterpret it as a float and produce garbage, silently.
+    @Test("FTR.13: the blended structs are still float-only, so the raw-storage lerp is valid")
+    func blendedStructsAreFloatOnly() {
+        #expect(MemoryLayout<FeatureVector>.size % MemoryLayout<Float>.size == 0, """
+            FeatureVector is \(MemoryLayout<FeatureVector>.size) bytes, not a whole number of \
+            Floats — BeatHold.lerp walks it as Float and would read a partial trailing field.
+            """)
+        #expect(MemoryLayout<StemFeatures>.size % MemoryLayout<Float>.size == 0, """
+            StemFeatures is \(MemoryLayout<StemFeatures>.size) bytes, not a whole number of Floats.
+            """)
+        // A float-only struct round-trips through the blend at t = 0 and t = 1 exactly. A
+        // non-float field would still round-trip, so the real guard is the pair above plus
+        // `CommonLayoutTest`, which locks both layouts against the MSL definitions.
+        var a = FeatureVector(); a.spectralSurge = 0.25; a.bass = 0.5
+        var b = FeatureVector(); b.spectralSurge = 0.75; b.bass = 0.1
+        #expect(BeatHold.lerp(a, b, 0, clocksFrom: b).spectralSurge == 0.25)
+        #expect(BeatHold.lerp(a, b, 1, clocksFrom: b).spectralSurge == 0.75)
+        let mid = BeatHold.lerp(a, b, 0.5, clocksFrom: b)
+        #expect(abs(mid.spectralSurge - 0.5) < 1e-6, "surge did not blend")
+        #expect(abs(mid.bass - 0.3) < 1e-6, "a second field did not blend — is the walk striding?")
+    }
+
+    /// Clocks must NOT be blended: a phase lerped across its 1 → 0 wrap runs backwards.
+    @Test("FTR.13: clocks come from the live frame, never from the blend")
+    func clocksAreNotBlended() {
+        var a = FeatureVector(); a.beatPhase01 = 0.97; a.time = 10
+        var b = FeatureVector(); b.beatPhase01 = 0.02; b.time = 11
+        var live = FeatureVector(); live.beatPhase01 = 0.31; live.time = 12; live.barPhase01 = 0.6
+        let out = BeatHold.lerp(a, b, 0.5, clocksFrom: live)
+        #expect(out.beatPhase01 == 0.31, "beatPhase01 was blended — 0.97→0.02 lerps BACKWARDS")
+        #expect(out.time == 12, "time was blended")
+        #expect(out.barPhase01 == 0.6, "barPhase01 was blended")
+    }
+
+    /// τ is TEMPO-RELATIVE, so the motion means the same thing at every BPM — the FTR.12c
+    /// lesson about per-second quantities silently carrying the tempo.
+    @Test("FTR.14: the glide time constant scales with the beat period")
+    func glideTauIsTempoRelative() {
+        let slow = BeatHold.glideTau(glideBeats: 0.25, beatPeriod: 0.638)   // 94 BPM
+        let fast = BeatHold.glideTau(glideBeats: 0.25, beatPeriod: 0.484)   // 124 BPM
+        #expect(abs(slow - 0.1595) < 1e-3, "94 BPM τ is \(slow), expected ~160 ms")
+        #expect(fast < slow, "τ did not shorten with tempo — the glide would lag on fast tracks")
+        // Before the grid yields intervals there is no period; the glide must still run.
+        #expect(BeatHold.glideTau(glideBeats: 0.25, beatPeriod: nil) > 0, """
+            τ collapsed with no beat period — the glide must work from frame 1, which is the
+            pre-grid opening Matt has preferred at three consecutive M7s.
+            """)
+    }
+
+    /// THE BUG THIS INCREMENT EXISTS FOR. The smoothing factor must come from the RENDER delta,
+    /// so the same wall-clock motion happens whatever the frame rate. FTR.13 drove its ease off
+    /// `beatPhase01` at ~10 Hz (BUG-087) and rendered a 2-sample staircase.
+    @Test("FTR.14: the glide is frame-rate independent, not per-sample")
+    func glideIsFrameRateIndependent() {
+        let tau: Float = 0.16
+        // Advance 160 ms as one 10 Hz-ish step versus ten 60 fps steps: same total travel.
+        let oneBigStep = BeatHold.glideAlpha(deltaTime: 0.16, tau: tau)
+        var remaining: Float = 1
+        for _ in 0..<10 { remaining *= 1 - BeatHold.glideAlpha(deltaTime: 0.016, tau: tau) }
+        let manySmall = 1 - remaining
+        #expect(abs(oneBigStep - manySmall) < 0.02, """
+            160 ms of glide travelled \(oneBigStep) in one step but \(manySmall) in ten — the
+            smoothing is per-FRAME, not per-second, so motion speed would follow the frame rate.
+            """)
+        #expect(abs(oneBigStep - 0.632) < 0.01, "one τ should cover ~63 % of the remaining gap")
+        #expect(BeatHold.glideAlpha(deltaTime: 0, tau: tau) == 0, """
+            a zero delta advanced the glide — `advanceBeatHold` passes 0 for rows it does not
+            draw, and advancing there would glide a subsampled strip at the wrong rate.
+            """)
+    }
+
+    /// The whole point: with a render clock the value is essentially NEVER still. This is the
+    /// bar FTR.13 would have failed — its eased hold left the value unchanged on ~91 % of
+    /// rendered frames while every rate- and size-based metric called it smooth.
+    @Test("FTR.14: the gliding hold is never motionless for long")
+    func glidingHoldNeverFreezes() {
+        let out = Self.run(duration: 20, dt: 1.0 / 60.0, beatTime: { Float($0) * 0.5 },
+                           settleAfter: 6, glideBeats: 0.25, renderDeltaTime: 1.0 / 60.0)
+        // `staleFraction` here counts frames where the returned value differs from the LIVE
+        // frame, which under a glide is almost all of them — that is expected and not the
+        // question. The question is whether the glide keeps producing NEW values.
+        let perSecond = Double(out.distinctHeldValues) / Double(out.seconds)
+        #expect(perSecond > 30, """
+            the glided value produced only \(String(format: "%.1f", perSecond)) distinct values \
+            per second against a 60 fps render clock. Below the render rate it is freezing \
+            between beats, which is the "dancing the robot" look rejected at three M7s.
+            """)
+    }
+
+    /// A hard `BeatHold()` must be untouched by all of the above — its tests above still assert
+    /// the FTR.10 snap, and this pins the two apart explicitly.
+    @Test("FTR.14: the hard hold is unchanged and still freezes between beats")
+    func hardHoldStillSnaps() {
+        let hard = Self.run(duration: 20, dt: 1.0 / 60.0, beatTime: { Float($0) * 0.5 },
+                            settleAfter: 6)
+        let glide = Self.run(duration: 20, dt: 1.0 / 60.0, beatTime: { Float($0) * 0.5 },
+                             settleAfter: 6, glideBeats: 0.25, renderDeltaTime: 1.0 / 60.0)
+        #expect(hard.distinctHeldValues < glide.distinctHeldValues / 5, """
+            the hard hold produced \(hard.distinctHeldValues) distinct values and the glide \
+            \(glide.distinctHeldValues) — they should differ by more than 5x, or `BeatHold()` \
+            has silently inherited the glide and FTR.10's behaviour is gone.
+            """)
     }
 }

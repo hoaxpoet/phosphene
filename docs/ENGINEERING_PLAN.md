@@ -2138,6 +2138,16 @@ The canopy now uses its whole range. That is the "grows and recedes" in his firs
 
 Corrected in `LoudnessProfile`, `SpectralAnalyzer`, `MIRPipeline`, `MoodClassifier`, `MoodFeatureAccumulator` and both rate-invariance suites, which now compare **9.9 Hz against 43.07 Hz** — a 4.4× ratio, a stronger gate than the 1.4× they were written with.
 
+> ⛔ **SUPERSEDED — the answer below is wrong, and the claim was retired at FTR.12 (Matt,
+> 2026-08-12).** The table's premise is that a low r-against-drums on ONE track identifies a
+> guitar channel. Measured across 7 tracks with 3 guitarless negative controls,
+> `other_onset_rate`'s r-against-drums is **highest (+0.792) on a solo piano recording with no
+> guitar and no drum kit** and lowest (+0.492) on Seven Nation Army; the +0.14 below reads
+> **+0.606** offline on the same track. The feature is broadband flux past an *adaptive*
+> threshold, so it measures the detector, not the instrument. Kept as the record of what was
+> believed; do not cite these numbers.
+> Evidence: `docs/diagnostics/FTR12_GUITAR_CHANNEL_2026-08-12.md`.
+
 **THE GUITAR QUESTION — NOT futile, and the blocker is infrastructure, not signal.** Matt: *"I wish they would follow the guitar patterns more… the guitar solo alone is a big missed opportunity. If it's futile, let me know."* Measured on his session's `stems.csv`:
 
 | candidate | vs drums (body) | p05 → p95 | distinct |
@@ -2159,9 +2169,23 @@ Corrected in `LoudnessProfile`, `SpectralAnalyzer`, `MIRPipeline`, `MoodClassifi
 
 **Gated on consumption, not on binding** (`objectStageReceivesStems`): the same `FeatureVector` rendered twice, changing only `other_onset_rate`, must produce different pixels — and more of them for the busier guitar. Binding a buffer and the GPU reading it are different claims, and only the second matters; this is the failure class that left `vocalsPitchConfidence` at 0 % for five months while closeouts said it worked.
 
-**FTR.8 — the tips follow the guitar.** ✅ (2026-08-11) Matt at the FTR.5 review: *"The tips appear to follow drums and bass… I wish they would follow the guitar patterns more, as that is what drives the song — the guitar solo alone is a big missed opportunity."*
+**FTR.8 — the tips move off `beat_mid` onto `other_onset_rate`.** ✅ (2026-08-11) *Title corrected
+2026-08-12: this landed as "the tips follow the guitar" and that description is retired — see the
+banner below. The ROUTE is unchanged and still correct as a change of driver; only the claim about
+what it reads was wrong.* Matt at the FTR.5 review: *"The tips appear to follow drums and bass… I wish they would follow the guitar patterns more, as that is what drives the song — the guitar solo alone is a big missed opportunity."*
 
-He was right, and the old driver explains it: `beat_mid` is the beat in the melodic REGISTER, which in a rock mix is snare **and** guitar. Measured on his session `2026-08-11T01-07-17Z`, body of the track: the other stem's energy-deviation correlates **+0.65** with drums (it would still read as drums), while its **onset rate correlates +0.14** — p05→p95 0.53…3.30 across 374 distinct values. That is a genuinely independent guitar-activity channel, and it is what the tips now read.
+> ⛔ **THE GUITAR CLAIM IS RETIRED (FTR.12, Matt's call 2026-08-12).** The paragraph below calls
+> `other_onset_rate` *"a genuinely independent guitar-activity channel"* on the strength of one
+> track's +0.14. FTR.12 measured 7 tracks including 3 guitarless negative controls: r-against-drums
+> is **highest at +0.792 on a guitarless solo piano** and lowest at +0.492 on Seven Nation Army,
+> p50 spans just 4.06…5.33 across solo classical guitar / player piano / pure synthesis / distorted
+> rock, and on a solo-classical-guitar record the drums stem's separation *residue* yields a higher
+> onset rate than the guitar. The +0.14 itself reads **+0.606** offline on the same track, and the
+> two captures behind the route disagree by 0.57. It is an **activity level**, not an instrument.
+> Retired in `FractalTree.json`, `FractalTree.metal` and the reference README the same day.
+> Evidence: `docs/diagnostics/FTR12_GUITAR_CHANNEL_2026-08-12.md`.
+
+He was right, and the old driver explains it: `beat_mid` is the beat in the melodic REGISTER, which in a rock mix is snare **and** guitar. Measured on his session `2026-08-11T01-07-17Z`, body of the track: the other stem's energy-deviation correlates **+0.65** with drums (it would still read as drums), while its **onset rate correlates +0.14** — p05→p95 0.53…3.30 across 374 distinct values. That is a genuinely independent guitar-activity channel, and it is what the tips now read. *[Retired — see banner.]*
 
 **This is not what MEL.1 proved futile.** MEL.1 measured per-NOTE onset DETECTION on this stem (grid coherence 31 % against the drums control's 41 %) and concluded distortion smears individual attacks — still true, and still the reason not to chase one-tip-per-note. An onset RATE is a far weaker requirement, `StemAnalyzer` already computes it, and it needs no new DSP. The **+0.973** guitar/drums correlation quoted since FTR.6 also does not reproduce: **+0.68** for raw energy here, and nobody had ever measured the onset-rate feature.
 
@@ -2268,11 +2292,364 @@ Ranges intact (spread 13.751° both ways; frame count 48→48 on SNA, 42→38 on
 
 **Beat-locking verified in PIXELS, and it exposed a gate limitation.** `motion_gate.sh` reports **28 spike frames against 0** for the previous build — its heuristic reads high-frequency spikes as jitter, and a beat-stepped preset is a temporal shape it was never built to score. The spikes are the beats: of the large frame-to-frame changes in the rendered sequence **100 % land within a quarter-beat of a beat** (median phase 0.127) while the tips' small changes sit at **51 %**, which is chance. Peak per-frame change is unchanged (5.10 against 5.29) — the steps are no bigger than the jumps the continuous build was already making, just concentrated on the beat, with 83 % of frames now completely still. **First stepped preset in the catalogue; the gate needs to learn the shape, and until it does the phase test above is the instrument.**
 
-**One bar left RED on purpose.** The FTR.10 trunk assertion (≤ 0.6 turns/s) measures **0.66** on Seven Nation Army. Per BEAT both tracks measure **0.32** — a beat-held value can only change on a beat, so the per-second unit carries the tempo and the bar is silently stricter on fast songs. Switching to turns/beat is probably right and was deliberately NOT done here: changing a metric in the same increment it goes red is how FTR.6 shipped a regression past a green gate. **Matt's call, then one commit that only changes the unit.**
+**One bar left RED on purpose.** The FTR.10 trunk assertion (≤ 0.6 turns/s) measures **0.66** on Seven Nation Army. Per BEAT both tracks measure **0.32** — a beat-held value can only change on a beat, so the per-second unit carries the tempo and the bar is silently stricter on fast songs. Switching to turns/beat is probably right and was deliberately NOT done here: changing a metric in the same increment it goes red is how FTR.6 shipped a regression past a green gate. **Matt's call, then one commit that only changes the unit.** → **RESOLVED at FTR.12c** (Matt: *"Per beat"*, 2026-08-12) — both captures green in the new unit.
 
 **Matt reversed a prior instruction and the shader says so.** DYN.2 records him asking for growth that is smooth, *"not in visible jumps"*. He has now chosen steps twice (FTR.10, FTR.11), the second time after seeing the smooth version live. The later instruction wins; a comment in `FractalTree.metal` says not to restore smoothness citing DYN.2 without asking.
 
-**FTR.12 — does a guitar channel exist at all? (SPEC, not started.)** Measurement only, no preset change. Across ≥ 4 captures spanning clean and distorted guitar, test every per-stem feature (`otherOnsetRate`, `otherEnergyDev`, `otherEnergySlope`, the IFC.4 instrument-family series) for separation from the drums control. **Done-when:** a table of r-against-drums per feature per capture, and a yes/no on whether any of them is an independent guitar channel. A "no" is a complete result and retires the ambition rather than funding a fourth attempt (MEL.1 already measured that per-note guitar onsets do not survive distortion; this asks the weaker question about rate and envelope).
+**FTR.12 — does a guitar channel exist at all? ANSWERED: no.** ✅ measurement complete
+(2026-08-12). Measurement only — **no preset behaviour changed, no `.metal` edit, no sidecar
+route change.** Evidence: `docs/diagnostics/FTR12_GUITAR_CHANNEL_2026-08-12.md`, raw output
+`…_RAW_2026-08-12.txt`, harness `GuitarChannelReportTests` + `Scripts/ftr12_guitar_channel.sh`.
+
+**Verdict, one sentence: no per-stem feature separates guitar from drums on any of the 7
+tracks.** Seven tracks, offline, 120 s each, production objects (`StemSeparator.separate` in the
+model's fixed ~10 s window → `StemAnalyzer.analyze` per 1024-hop, `SessionPreparer`'s framing).
+Offline rather than capture replay because the ten sessions on disk are four rock tracks and
+cannot answer a generalisation question; offline selection also buys guitarless **negative
+controls**, which are the whole design. Stem-vs-stem r is lag-immune, so BUG-086's ≈2.9 s
+latency cancels — no non-stem comparison was made, so no lag sweep was needed.
+
+| slot | track | why this slot |
+|---|---|---|
+| positive | Brouwer, *El Decameron Negro* (John Williams) | solo classical guitar, **nothing else on the record** |
+| positive | Wes Montgomery, *Four On Six* | clean electric lead **with real drums/bass**, so the control stem is live audio |
+| negative | Nancarrow, *Study for Player Piano No. 3a* | **adversarial** — dense plucked transients in the guitar's register, no guitar, no drums |
+| negative | Autechre, *13x0 step* | guitarless **with** heavy programmed percussion |
+| negative | Beethoven, *Pathétique* Rondo | sparse solo piano, the low-density guitarless case |
+| hard | *Seven Nation Army* | distorted guitar, sparse mix — FTR.11 continuity (+0.71) |
+| hard | *Cherub Rock* | distorted guitar, dense mix — FTR.8 continuity (+0.14) |
+
+`r(otherX, drumsX)`, whole series, null 0.00 · cm = CHR.1 common-mode share, null ≈22 %:
+
+| track | role | `onsetRate` | `energyRel` | `energyDev` | `energySlope` | cm |
+|---|---|---|---|---|---|---|
+| brouwer | pos | +0.675 | **+0.987** | +0.985 | +0.986 | **99 %** |
+| wesmont | pos | +0.647 | +0.933 | +0.941 | +0.911 | 96 % |
+| nancarrow | **neg** | +0.578 | +0.935 | +0.948 | +0.873 | 95 % |
+| autechre | **neg** | +0.547 | +0.918 | +0.896 | +0.864 | 97 % |
+| beethoven | **neg** | **+0.792** | +0.945 | +0.925 | +0.934 | 94 % |
+| sna | hard | **+0.492** | +0.906 | +0.887 | +0.893 | 97 % |
+| cherub | hard | +0.606 | +0.894 | +0.890 | +0.813 | 97 % |
+
+**The two rows that settle it.** (1) The corpus's **highest** other-vs-drums onset-rate
+correlation, **+0.792, is a solo piano recording with no guitar and no drum kit**; the lowest,
++0.492, is Seven Nation Army. The statistic meant to certify independence from the drums ranks
+a piano sonata as more drum-like than a rock track. (2) On the **solo classical guitar** record,
+where `other` *is* the guitar and the other three stems are pure separation residue, the residue
+produces a **higher** onset rate than the guitar (drums p50 **4.71** vs other **4.46**), and
+`otherOnsetRate` correlates **+0.895 with `vocalsOnsetRate`** on a record with no voice
+(`otherEnergyRel`: **+0.998**). One instrument in, four identical series out. `otherOnsetRate`
+p50 spans **4.06 … 5.33** across all seven tracks — a feature that reads the same on a Nancarrow
+player piano and on Cherub Rock is not a guitar channel at any coefficient.
+
+**Mechanism, read from the code not inferred.** `StemAnalyzer+RichMetadata` derives `onsetRate`
+from broadband RMS flux against an **adaptive relative threshold** (`fluxEMA × 1.5`, 100 ms
+refractory → 10 /s ceiling, corpus sits at 4–5 /s). A relative threshold fires at a similar rate
+on any signal with transient content: the feature measures the detector, not the instrument.
+**MEL.1 / FA #68 extended, not contradicted** — this fails for a different reason than smearing.
+Rate check (`FTR12_FPS=60`, the live cadence): cherub +0.606→+0.700, sna +0.492→+0.529, so the
+verdict is not an offline-rate artifact.
+
+**IFC.4 cannot answer this by construction** — its families are `strings [189–194,199]` (bowed
+strings + harp), brass, woodwinds, orchestral percussion. **No family contains a guitar class.**
+The 527-class PANNs probs the same model already computes *do*, and that channel works on clean
+guitar (p50 **0.582 / 0.517**) against guitarless (**0.096 / 0.006 / 0.004**) — but reads
+**0.071 / 0.086** on the two distorted rock tracks, *inside* the guitarless range, with only p95
+separating them (0.460 / 0.270 vs beethoven 0.149) and Nancarrow false-positiving at p95 0.390.
+Real for clean prominent guitar, not usable for distorted rock guitar. Recorded because it
+changes the options, not because it is a solution.
+
+**What this invalidates.** FTR.8's **+0.14** is a **single-track** figure and does not reproduce:
+offline Cherub Rock reads **+0.606** (43 Hz) / **+0.700** (60 Hz). The two capture figures behind
+the route (+0.14 Cherub, +0.71 SNA) disagree by 0.57 on the same feature, so a single-capture r
+on this quantity is not a stable number either way. Consequently the shader's *"a genuinely
+INDEPENDENT channel, not a re-spelling of the drums"* and *"how many guitar attacks per second"*
+notes, and `FractalTree.json`'s *"flickering in and out with the guitar"*, are **not supported on
+measured material** — Matt's *"Guitar is barely registering"* is the same fact seen live.
+FTR.8's own "correction" of the FTR.6 +0.973 figure (to +0.68 / +0.65) is also outside this
+corpus's range (+0.89…+0.99); the capture-vs-offline gap is unexplained and both are
+single-path. **Not invalidated:** FTR.10/FTR.11's beat-stepping, which is about how much motion
+there is, not which stem drives it. Fractal Tree remains **not certified**, FTR.11 remains
+**unverified live**.
+
+**FTR.12b — the claim retired, on Matt's word.** ✅ (2026-08-12) Matt, shown the verdict:
+*"yup, retire the guitar claim."* Four surfaces, **copy and comments only — zero behaviour
+change, and the route is deliberately unchanged**: the tips still read `other_onset_rate`,
+they just stop being described as the guitar.
+
+| surface | before | after |
+|---|---|---|
+| `FractalTree.json` `description` | *"flickering in and out with the guitar"* | *"…with the melodic activity around the drums and bass"* |
+| `FractalTree.metal` header + tips routing note | *"The GUITAR's pattern"* / *"a genuinely INDEPENDENT channel"* | an **activity level** in the non-drum/non-bass/non-vocal residue, with the FTR.12 numbers, the adaptive-threshold mechanism, and an explicit *do not reintroduce the word* |
+| `FractalTree.metal` local `float guitar` | `guitar` | `residueActivity` (byte-identical arithmetic) |
+| `docs/VISUAL_REFERENCES/fractal_tree/README.md` | *"⚠ NOT a guitar route on all material… FTR.12 measures whether"* | *"⛔ RETIRED — there is no guitar channel and nothing to route to"* |
+| `ENGINEERING_PLAN.md` §FTR.8 + §FTR.3d table | asserted the +0.14 guitar channel | superseded banners; the original text kept as the record of what was believed, marked do-not-cite |
+
+The `audio_routes` manifest is untouched — `melodic_tips → otherOnsetRate` was never named for
+an instrument, so `RouteCoverageTests` and the sidecar schema are unaffected.
+
+**Not done, and it is not blocked on anything here:** if a guitar layer is ever wanted, the only
+measured candidate is the PANNs guitar-class probability (§FTR.12 above) — decisive on clean
+prominent guitar, unusable on distorted rock guitar. Its own increment, not a tweak.
+
+**FTR.15 — the size reads LEVEL, and level is what a limiter destroys. (DIAGNOSIS, no code
+change.)** ⏸ (2026-08-13, capture `2026-08-13T16-29-44Z`) Matt on FTR.14: *"movement is synced to
+the bar and generally looks good. but the growing and shrinking of the trunk and canopy feels
+random, completely divorced from what's going on in the music."* **First clause closes the
+FTR.10→FTR.14 motion arc.** The second is a different axis — not how the size moves, but what
+decides it. Full evidence: `docs/diagnostics/FTR15_SIZE_READS_LEVEL_2026-08-13.md`.
+
+**`r(trunk, spectral_density) = −0.641`.** Three of the four size terms reduce to level rank
+(`surge` at coefficient 0.32, and `musicGate` which gates `reach`), and on a limited master level
+moves OPPOSITE to density — so the tree shrinks as the arrangement gets bigger. `musicRange` on
+this track is **3.6 dB**: there is almost no level range left to express structure with. DYN.1's
+own founding observation was that distortion adds harmonics, not amplitude.
+
+**It is neither uncoupled nor jittery, and my first two hypotheses were both wrong.** Against true
+loudness from `raw_tap.wav` the trunk reads **+0.86** at 5 s smoothing, cycling once per ~20 s over
+an 8.2 dB span — a well-behaved section-scale loudness follower. "Random" is not describing noise;
+it is describing a faithful follower of the wrong quantity.
+
+**⚠ A measurement rule this produced: AGC-normalised fields are not a loudness reference.**
+Correlating the trunk against `bass+mid+treble` and the per-stem energies gave −0.47…−0.52 on every
+one, i.e. the exact opposite sign. Their denominator moves with mix density. Measure against the raw
+tap or the pre-AGC DYN.1 fields.
+
+**FTR.3f is due a re-measurement rather than an override:** its "fast density leg goes to a
+QUANTISED count, never to a length" was written because raw density was too restless for continuous
+geometry — before FTR.14's render-rate glide existed to smooth any driver.
+
+**DECISION-NEEDED (Matt):** which signal decides the tree's size. Routing with visible
+consequences, so no code was changed.
+
+**FTR.18 — the size correction, bounded to the limiter inversion. ✅ M7: Matt's "ok overall" —
+the FTR.9→FTR.18 motion-and-size arc LANDS HERE.** (2026-08-14, capture
+`2026-08-14T15-21-09Z`, *Carry The Zero*, from the worktree build) Matt: *"It's better than the
+previous, but ok overall. This is probably as good as we're gonna get right now."*
+
+**Not certified.** FTR.5 is a separate call and he has not given it. "Ok overall" closes the
+iteration; it does not open certification.
+
+**Shipped form.** Level rank remains the size driver; its one defect — the limiter dipping level as
+the band arrives — is corrected and nothing else is touched:
+`size = saturate(level + max(0, density − level) · (1 − smoothstep(0.15, 0.40, level)))`, with
+density from the ~2 s section glide at buffer(6). Both conditions must hold, so it fires only on
+the inversion signature. Verified on the render, like-for-like: band entry 1.738 → **3.400** mean
+luma (+96 %), quiet passage **5.36295 → 5.36295, byte-identical**.
+
+**What this arc cost and what it bought.** Ten increments from Matt's *"the trunk is moving too
+much"* (FTR.9) to here. Four M7 rejections along the way — *"robotic and stuttering"*,
+*"dancing the robot"*, *"both robotic and sluggish… you fed the preset ambien"*, *"feels random,
+completely divorced from what's going on in the music"* — and **two of those were rejections of a
+build shipped on my own recommendation**, not on his pick.
+
+**★★★ THE PROGRAM-LEVEL LESSON: every one of those four rejections was preceded by a green
+measurement, and in each case the measurement was modelling the wrong thing.** The list, because
+the pattern is the finding:
+
+| what I measured | why it was wrong |
+|---|---|
+| turn RATE | a freeze has a low turn rate — it is what a hold BUYS |
+| step SIZE | a freeze has small steps too |
+| per-frame float inequality | measured the interpolated value, not arrivals |
+| per-frame PIXEL identity | slow smooth motion is sub-pixel per frame; a 5 s pan fails it |
+| trunk length | the branch COUNT carries the same term at 26× the coefficient |
+| glide-as-EMA | the glide chases a BEAT-LATCHED target, not the live value |
+| a subsampled render | `advanceBeatHold` left both glides on their frame-0 seed |
+
+Six formulations of the size driver were measured and rejected on evidence (FTR.16/17); the
+diagnostics doc carries each with numbers so none is re-attempted. Full detail:
+`docs/diagnostics/FTR15_SIZE_READS_LEVEL_2026-08-13.md` §7.
+
+**FTR.14 — the beat sets the destination, never the stillness.** ✅ code-complete, **pending
+live M7** (2026-08-13) Matt's M7 on `2026-08-13T12-58-08Z` (*Carry The Zero*): *"I still prefer the
+more continuous movement that happens at the very beginning of playback before the beat grid is
+established. After 6-8 seconds, the tree looks like it's dancing the robot — I don't like the
+stepped changes. I can appreciate that the tree is synced with the music to a greater degree, but
+I don't like the way it is executed."* Third consecutive rejection of the stepped look, and the
+second where the rejected thing was **Claude's recommendation**, not Matt's pick.
+
+**THE ROOT CAUSE IS ARITHMETIC AND IT IS MINE: FTR.13's ease ran on 2 SAMPLES.** BUG-087 — every
+`FeatureVector` field updates at **~10 Hz** on the local-file path, so a 94 BPM beat carries
+**6.4 samples**. FTR.13 eased over 1/3 of a beat = **2.1 samples**, then held for **4.3 samples**.
+The "smooth ease" rendered as two jumps and four dead ticks, 1.57 times a second. **The session
+prompt for this work warned in writing that the analysis rate is ~10 Hz and that four increments
+had already shipped with it wrong; FTR.13 was the fifth.** The ease was sized as a fraction of a
+beat and never converted to samples.
+
+**THE FIX (Matt's call from three options): the beat latches the TARGET, the render clock carries
+the MOTION.** The visible value glides toward the beat-latched snapshot with an exponential time
+constant on the ~60 Hz render clock, so it is always moving and never arrives-and-freezes. Same
+6.4 analysis samples per beat decide *where* to go; ~38 render frames decide *how it gets there*.
+The glide runs whether or not the grid is trusted, so **the 6–8 s transition no longer exists** —
+pre-grid the target is the live vector, post-grid it is the beat-latched one, and the geometry
+glides identically either side. `BeatHold(glideBeats:)` is opt-in; `BeatHold()` keeps the FTR.10
+snap and its tests assert it unchanged.
+
+**THREE METRICS FAILED ON THIS QUESTION BEFORE ONE WORKED, and that is the transferable lesson.**
+
+| metric | verdict on FTR.13 (rejected live) | why it failed |
+|---|---|---|
+| turn rate (FTR.10–12) | 0.30 turns/beat — "calm" | a low rate is what a freeze BUYS |
+| step size (FTR.12e) | mean 0.75 branches — "small" | a freeze has small steps too |
+| per-frame float inequality | 0.005 frozen — "always moving" | measured the interpolated value, not arrivals |
+| per-frame PIXEL identity | 0.95 frozen at **every** τ | a trunk crossing 0.34 clip units in 100 s is sub-pixel per frame however smooth; a 5 s pan fails this too |
+| **100 ms-window burstiness** | **separates them** | the eye integrates over ~100 ms |
+
+`motion_gate.sh` also scored FTR.13 **smooth, 0 spikes** — so it is not evidence here either.
+
+**The metric that works, validated against BOTH references on Matt's own capture before being
+trusted** — total displacement per 100 ms window, then the share of empty windows and the
+coefficient of variation:
+
+| build | empty 100 ms windows | CV | mean travel |
+|---|---|---|---|
+| hard hold (the rejected look) | **0.817** | **3.51** | 0.0032 |
+| continuous (the look Matt prefers) | 0.083 | 1.81 | 0.0038 |
+| **glide (shipping)** | **0.101** | **1.64** | 0.0032 |
+
+The glide is perceptually equivalent to the opening he keeps preferring — same travel, spread
+*more* evenly than the live vector — while keeping beat-set destinations. Gated at `empty < 0.35`
+for trunk, frame count and spread; the bar sits between two measured references rather than
+around the shipping number. Motion rates unchanged from FTR.11/FTR.12c (trunk 0.31 turns/beat,
+frame count 0.48, spread 0.82, tips 0.56), so the freeze was removed without reintroducing the
+"still too much" of FTR.11.
+
+**τ = 1/4 beat, and the sweep is why it is not larger.** τ ∈ {0.25 … 0.85} moves span 0.336 →
+0.326 and turns 0.31 → 0.25/beat — no meaningful gain, and larger τ costs lag and amplitude
+(DYN.1e shipped a 10 % band Matt could not see). Tempo-relative, so it means the same at 94 and
+124 BPM (the FTR.12c lesson).
+
+**Two harness defects the glide exposed, both of which would have produced false evidence.**
+(1) `nextRenderDelta()` reads wall-clock, so offline it advanced at the *harness's* render speed —
+converging the glide in one frame and reading 73 of 95 contiguous frames as pixel-frozen. Fixed
+with `renderDeltaOverride`, which the harness drives from the capture's own `wallclock_s`; without
+it the feature is unverifiable offline. (2) Still-frame renders capture ONE draw per drive
+condition, which under a glide is the first ~10 % of the journey from the *previous* condition —
+it collapsed this suite's own p05→p95 response measurement from 0.944 to **0.048** and would have
+made every contact sheet a tree mid-transition. Fixed by settling 40 frames before capture
+(`advanceBeatHoldForSettling`); measurement restored to 0.940.
+
+**Still NOT certified.** FTR.13's M7 is superseded, not satisfied.
+
+**FTR.13 — eased beat-steps, branches that grow in, and beat-matched tips.** ✅ code-complete,
+**pending live M7** (2026-08-12) Matt's M7 on `2026-08-12T19-45-24Z` (*Carry The Zero*, local
+file, single track): *"motion reads as robotic and stuttering; looks best at the beginning of
+playback then transitions to the stuttering, robotic look."* Then, after the first diagnosis:
+*"The tips probably are still moving too fast if they change 2x per beat — should be beat
+matched. But my first issue is the robotic movement of the canopy … it's the stepping itself
+that is the problem."*
+
+**Two measurement errors of mine came out of this and both are worth keeping.** (1) **Every bar
+since FTR.10 was a turn RATE, and a rate cannot tell "holds still then snaps" from "drifts."**
+That is how the frame scored calm at 0.30 turns/beat while Matt watched the canopy stutter — a
+low turn rate is what a hard hold *buys*, not evidence against steppiness. Step SIZE is now
+measured beside it. (2) **My first recommendation was to remove the tips**, anchored on the one
+big number (2.05 turns/beat against everything else at ≤ 0.74) — the same one-layer answer
+FTR.10/FTR.11 already got wrong twice. Matt: *"Why is this the recommended fix? The whole canopy
+looks robotic / stuttering."* He was right; the tips were the *stutter*, the stepping was the
+*robotic*, and only measuring size separated them.
+
+**The per-bar option was measured and rejected on evidence, before anything was built.** Matt
+initially chose *"steps, but slower — on the bar"*. Frame branch count, per beat → per bar:
+
+| capture | per beat: changes/s · mean · max | per bar: changes/s · mean · max |
+|---|---|---|
+| `19-45-24Z` *Carry The Zero* | 1.35 · 2.78 · **15** | 0.53 · 4.79 · **23** |
+| `23-52-49Z` *Seven Nation Army* | 1.72 · 3.61 · **19** | 0.51 · 6.04 · **28** |
+| `18-26-52Z` *Carry The Zero* | 1.31 · 2.65 · **15** | 0.41 · 5.25 · **17** |
+
+Rate falls ~2.5–3×, mean step grows ~1.8×, worst single event 15 → 23 branches at once on a
+tree spanning 43. **Slowing the clock does not reduce steppiness, it concentrates it.** Shown to
+Matt with these numbers; he took eased-steps-on-the-beat instead.
+
+**Three mechanisms, all his calls.**
+
+1. **Eased steps** — `BeatHold(easeBeats:)`, a new *opt-in* initialiser (`BeatHold()` keeps the
+   hard FTR.10 snap and its tests untouched). The snapshot starts moving ON the beat and arrives
+   a third of a beat later, smoothstepped so there is no velocity discontinuity at either end.
+   Motion onset stays beat-locked — the eye reads onset as the event — and travel per beat is
+   unchanged; only the sharpness goes. A third of a beat is 160–210 ms at 94–124 BPM, inside the
+   window where onset and event are perceived together. The blend runs over the raw float
+   storage (`FeatureVector` is 47 fields and all `Float`, gated by a new test) rather than 47
+   hand-written lines a new field could escape; `time`/`beatPhase01`/`barPhase01`/
+   `pulseBeatIndex` are restored from the live frame, because a phase lerped across its 1 → 0
+   wrap runs backwards.
+2. **Branches grow in individually** (Matt's words) — the payload now carries a **fractional**
+   branch count and the mesh shader scales branch `bid`'s LENGTH by `saturate(count_f − bid)`.
+   Stateless: a branch's growth is just how far the count has passed its own index, so a rise
+   from 40 to 55 is a fifteen-branch sweep across the eased step instead of a block appearing.
+   Length only, not thickness — a real branch extends from its parent joint at its own gauge.
+   `base`/`section`/`tips` all became floats; an integer anywhere re-quantises the count.
+3. **Beat-matched tips** — the tips' driver is a per-stem field, so holding only the
+   `FeatureVector` left them at 4–5 changes/s whatever the frame did. `BeatHold` now holds
+   `StemFeatures` on the same beats with the same ease, bound at object/mesh **buffer(5)**
+   (symmetric with live-0/held-4; slot 5 is SpectralHistory on the direct-pass *fragment*
+   encoder only, the same reasoning that made slot 4 safe at FTR.10). The D-019 arrival gate
+   deliberately still reads the LIVE stems — it asks "have the stems converged", and a held copy
+   would pin it at zero until the first beat.
+
+**Measured effect** (`19-45-24Z`, the capture Matt reviewed):
+
+| | before FTR.13 | after FTR.13 |
+|---|---|---|
+| tips | **2.05** turns/beat, mean step 1.24 branches | **0.56** turns/beat, mean step **0.31** |
+| frame count | 0.30 turns/beat, mean step 2.78, max **15** | 0.42 turns/beat, mean step **0.75**, max **11.2** |
+| trunk | 0.27 turns/beat, mean step 0.015, max 0.125 | 0.27 turns/beat, mean step **0.006**, max **0.092** |
+
+Changes-per-second *rises* (frame count 1.35 → 5.28) and that is the point: many sub-branch
+glides replacing a few whole-branch jumps. Mean step under one branch per frame means the canopy
+now fills rather than pops.
+
+**`motion_gate.sh` scores it smooth for the first time: 0 spike frames of 95** (mean 2.46, max
+5.61), against **28** for the pre-FTR.11 build. That gate was documented as unable to score a
+beat-stepped preset — *"the spikes ARE the beats"* — and the easing removed the spikes rather
+than the beat lock, on an instrument built for a different question. The grow-in is visible in a
+still: the outermost tier renders mid-extension, shorter than the tier behind it.
+
+**A gate was replaced, and it is flagged rather than quietly relaxed.** `tipTurns > 1.5`/s was
+written when the tips were the only continuously-moving layer and the risk was freezing them. At
+94–124 BPM that floor is ~0.9–1.0 turns/BEAT — so it required almost exactly the 2×/beat
+behaviour Matt rejected. It is now a **two-sided** bar in beat-relative units: `> 0.15` (must not
+freeze — the original concern, still gated) and `≤ 1.0` (beat-matched by definition). Measured
+0.49–0.56/beat on three captures, so both bounds carry headroom. Lowering a floor to ship is the
+FTR.6 failure; replacing a bar whose premise an instruction has inverted is not the same thing,
+but it only counts as different if it is said out loud.
+
+**Still not certified, and FTR.11's M7 is superseded by this one rather than satisfied.** Whether
+the canopy now reads as growing instead of snapping is L4 and only Matt's eye settles it.
+
+**FTR.12c — the trunk motion bar is asserted in turns per BEAT.** ✅ (2026-08-12) Matt, on the
+FTR.11 carry-over: *"Per beat."* One commit, one metric, **no preset change and no shader edit** —
+the gate's unit only.
+
+**The bar is unchanged, only re-expressed.** `≤ 0.6 turns/s` was calibrated on *Carry The Zero* at
+94.1 BPM = 1.568 beats/s, so `0.6 ÷ 1.568 = 0.383/beat`; the assertion is now `≤ 0.38/beat`. Same
+line, same track, same headroom. This is **not** converting a red to a green by moving the bar — it
+removes a tempo factor that was never meant to be in it, and both captures were already inside it:
+
+| capture | BPM | turns/s (old unit) | turns/beat (new unit) |
+|---|---|---|---|
+| `2026-08-11T23-52-49Z` *Seven Nation Army* | 122.3 | **0.66 — RED** against ≤ 0.6 | **0.32 — green** against ≤ 0.38 |
+| `2026-08-11T18-26-52Z` *Carry The Zero* | 94.1 | 0.52 — green | **0.33 — green** |
+
+Per second is still printed on every row, because the continuously-driven rows (the tips, and the
+`continuous` comparators) are **not** beat-held and their natural unit is still per second.
+
+**The denominator is cross-checked, because otherwise this unit change could turn a red gate green
+for the wrong reason.** `beatsPerSecond` comes from counting `beatPhase01` wraps, and a stalled
+phase clock is a measured failure mode here — one real 171 BPM session wrapped **24** times where
+**614** were due. The harness now derives the tempo a second, independent way from `grid_bpm` and
+**refuses the measurement** (throws, with both numbers) if the two disagree by more than 10 %,
+rather than reporting a figure in a unit that does not apply. Both captures agree to 99–100 %, and
+the agreement is printed in the report header so a future stall is visible before the guard fires.
+The failure direction is also the safe one: a stall shrinks the denominator, which *inflates*
+turns/beat and fails loudly.
+
+**Why this was safe to do now and not at FTR.11.** Changing a metric in the increment it goes red
+is how FTR.6 shipped a regression past a green gate — which is exactly why FTR.11 left it red and
+flagged it. This is a separate commit that changes nothing else, with the arithmetic that ties the
+new bar to the old one written into the test beside the assertion.
 
 **FTR.5 — M7 + certification.** ⏸ **BLOCKED ON MATT — this is a live review, not work Claude
 can complete.** FTR.6 landed the rate/granularity adjustment Matt named as the precondition

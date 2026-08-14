@@ -16,6 +16,7 @@
 //   // Each frame inside a render pass:
 //   gen.draw(encoder: encoder, features: currentFeatures, stems: currentStems)
 
+import CoreFoundation
 import Metal
 import Shared
 import os.log
@@ -109,17 +110,42 @@ public final class MeshGenerator: @unchecked Sendable {
     /// beat, so the snapshot lives here — one per generator, advanced by `draw`. See
     /// ``BeatHold`` for the trust conditions; while they are unmet it tracks the live
     /// vector, so a preset that reads buffer(4) degrades to continuous rather than frozen.
-    private var beatHold = BeatHold()
+    /// FTR.14 — GLIDING, not stepped. The beat still latches the target; the visible value
+    /// chases it continuously on the RENDER clock and never holds still. Matt's M7 on FTR.13:
+    /// *"the tree looks like it's dancing the robot — I don't like the stepped changes."*
+    /// FTR.13's 1/3-beat ease was driven off `beatPhase01`, which updates at ~10 Hz on the
+    /// local-file path (BUG-087) — 2.1 samples of ease then 4.3 samples of stillness per beat.
+    /// τ = 1/4 beat: at 94–124 BPM that is 160–120 ms, so ~86 % of the travel happens inside
+    /// one beat while the value never actually arrives, which is what removes the freeze.
+    var beatHold = BeatHold(glideBeats: 0.25)
 
-    /// Feed a frame through the beat hold WITHOUT drawing it.
+    /// FTR.16 — SECTION-SCALE glide of the same vector, bound at object/mesh buffer(6).
     ///
-    /// Only for harnesses that render a subsampled strip of a capture: the hold needs every
-    /// frame in order to see beat boundaries at all, and a harness that renders every
-    /// seventh row would otherwise measure a hold driven by an aliased phase. Call this for
-    /// the rows you skip; `draw` already feeds the rows you render.
-    public func advanceBeatHold(_ features: FeatureVector) {
-        _ = beatHold.update(features)
-    }
+    /// Matt's M7 on FTR.14: *"the growing and shrinking of the trunk and canopy feels random,
+    /// completely divorced from what's going on in the music."* Measured cause: the size read
+    /// LEVEL rank, and on a limited master level moves OPPOSITE to density
+    /// (`r(trunk, spectral_density) = −0.641`), so the tree shrank as the arrangement grew. His
+    /// call: size should follow how dense/full the sound is.
+    ///
+    /// Density needs a much longer τ than the beat glide provides — measured over three captures
+    /// it turns 3.6 times a second at its own rate (the restlessness FTR.3f banned from
+    /// continuous geometry) and ~0.8/s at τ ≈ 5 s, which is the band the level rank it replaces
+    /// occupied. A SEPARATE slot rather than a new `FeatureVector` field on purpose: a layout
+    /// change would ripple into every parallel worktree's `CommonLayoutTest`, and this needs no
+    /// new data — only the same data on a slower clock.
+    var sectionHold = BeatHold(glideSeconds: 2.0)
+
+    /// FTR.14 — render-clock state. The delta arithmetic that reads these lives in
+    /// `MeshGenerator+RenderClock.swift`; see that file for why the clock is separate from
+    /// `BeatHold`'s math.
+    var lastDrawTime: CFAbsoluteTime = 0
+
+    /// REPLAY OVERRIDE — set by offline harnesses to the capture's own frame delta. Without it
+    /// the glide is unverifiable offline: wall-clock deltas in a test are the harness's render
+    /// speed, not the captured session's, and a slow harness frame converges the glide in one
+    /// frame then leaves it static — reproducing the FTR.13 staircase in the MEASUREMENT while
+    /// production glides correctly. Production leaves this `nil`.
+    public var renderDeltaOverride: Float?
 
     /// `true` while the snapshot at buffer(4) is frozen between beats. Diagnostic only — a
     /// harness reporting "the trunk still slides" needs to be able to tell a preset that is
@@ -234,7 +260,15 @@ public final class MeshGenerator: @unchecked Sendable {
         var stemFeat = stems
         // FTR.10 — advance the beat hold on EVERY frame, drawn or not, so the snapshot at
         // buffer(4) reflects the real beat boundaries and not the draw cadence.
-        var heldFeat = beatHold.update(features)
+        // FTR.13 — offer the stems BEFORE update: `update` is the one place the beat boundary
+        // is detected, and it latches both sides there.
+        beatHold.offerStems(stems)
+        let renderDelta = nextRenderDelta()
+        var heldFeat = beatHold.update(features, renderDeltaTime: renderDelta)
+        var heldStemFeat = beatHold.glidingStemFeatures
+        // FTR.16 — one delta, both holds: two clocks would drift apart within a track.
+        sectionHold.offerStems(stems)
+        var sectionFeat = sectionHold.update(features, renderDeltaTime: renderDelta)
 
         if usesMeshShaderPath {
             // Bind features to all mesh-pipeline stages so preset shaders can read
@@ -250,12 +284,27 @@ public final class MeshGenerator: @unchecked Sendable {
             // every non-mesh path already use. Same slot everywhere is the contract.
             encoder.setObjectBytes(&stemFeat, length: MemoryLayout<StemFeatures>.stride, index: 3)
             encoder.setMeshBytes(&stemFeat, length: MemoryLayout<StemFeatures>.stride, index: 3)
-            // FTR.10 — the beat-held FeatureVector at buffer(4). Same struct as buffer(0),
-            // frozen at the last beat boundary; a preset reads it for the layers that should
-            // STEP and buffer(0) for the layers that should slide. Slot 4 is SceneUniforms on
-            // the ray-march FRAGMENT path only — the mesh pipeline never binds that.
+            // FTR.10 — the beat-driven FeatureVector at buffer(4). Same struct as buffer(0).
+            // FTR.14: it is no longer FROZEN between beats — the beat latches the target and
+            // this value glides toward it on the render clock, so a preset reading slot 4 gets
+            // motion that is beat-directed but never still. Read slot 0 for the raw live value.
+            // Slot 4 is SceneUniforms on the ray-march FRAGMENT path only — the mesh pipeline
+            // never binds that.
             encoder.setObjectBytes(&heldFeat, length: MemoryLayout<FeatureVector>.stride, index: 4)
             encoder.setMeshBytes(&heldFeat, length: MemoryLayout<FeatureVector>.stride, index: 4)
+            // FTR.13 — the beat-held StemFeatures at buffer(5), symmetric with 0/4: slot 3 is
+            // live, slot 5 is held on the same beats and eased on the same curve. A per-stem
+            // route that must not change between beats reads 5. Slot 5 is SpectralHistory on
+            // the DIRECT-PASS FRAGMENT encoder only — the mesh pipeline never binds that, the
+            // same reasoning that made slot 4 safe at FTR.10.
+            let heldStemLength = MemoryLayout<StemFeatures>.stride
+            encoder.setObjectBytes(&heldStemFeat, length: heldStemLength, index: 5)
+            encoder.setMeshBytes(&heldStemFeat, length: heldStemLength, index: 5)
+            // FTR.16 — the section-scale vector at buffer(6). Same struct as buffer(0)/(4) on a
+            // ~5 s glide, for layers that answer to song structure rather than to beats.
+            let sectionLength = MemoryLayout<FeatureVector>.stride
+            encoder.setObjectBytes(&sectionFeat, length: sectionLength, index: 6)
+            encoder.setMeshBytes(&sectionFeat, length: sectionLength, index: 6)
         }
         encoder.setFragmentBytes(&feat, length: MemoryLayout<FeatureVector>.stride, index: 0)
 

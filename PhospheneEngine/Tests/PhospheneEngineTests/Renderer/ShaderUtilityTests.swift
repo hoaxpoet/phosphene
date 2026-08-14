@@ -396,27 +396,39 @@ import Metal
         cmdBuf.waitUntilCompleted()
     }
 
-    // Measure.
-    guard let cmdBuf = queue.makeCommandBuffer(),
-          let encoder = cmdBuf.makeComputeCommandEncoder() else {
-        throw ShaderUtilityTestError.metalSetupFailed
+    // Measure — MINIMUM OF 8 WARM SAMPLES, budget UNCHANGED at 5 ms (FTR.16).
+    //
+    // This was a SINGLE-sample GPU-timestamp assertion, the most contention-fragile shape there
+    // is, and it flaked 1 in 5 at 5.4 ms against the 5.0 ms budget on a machine that had been
+    // rendering 1080p sequences all session. `PostProcessChainTests.test_fullChain_under2ms_at1080p`
+    // is already in the KNOWN_ISSUES contention table for the same reason.
+    //
+    // The remedy is the one CLEAN.7.10 proved on `RayIntersectorTests.test_rayTrace_1000Rays_under2ms`
+    // and it is deliberately NOT a wider budget: contention can only ADD latency to a GPU submit,
+    // so the MINIMUM across samples is the clean estimate of true cost and is robust to a few
+    // starved ones. A real regression still fails this — it would raise the floor, not just the
+    // outliers.
+    var bestGpuMs = Double.greatestFiniteMagnitude
+    for _ in 0..<8 {
+        guard let cmdBuf = queue.makeCommandBuffer(),
+              let encoder = cmdBuf.makeComputeCommandEncoder() else {
+            throw ShaderUtilityTestError.metalSetupFailed
+        }
+        encoder.setComputePipelineState(pipeline)
+        encoder.setBuffer(buffer, offset: 0, index: 0)
+        encoder.dispatchThreads(MTLSize(width: 1920, height: 1080, depth: 1),
+                                threadsPerThreadgroup: MTLSize(width: 16, height: 16, depth: 1))
+        encoder.endEncoding()
+        cmdBuf.commit()
+        cmdBuf.waitUntilCompleted()
+        bestGpuMs = Swift.min(bestGpuMs, (cmdBuf.gpuEndTime - cmdBuf.gpuStartTime) * 1000.0)
     }
-    encoder.setComputePipelineState(pipeline)
-    encoder.setBuffer(buffer, offset: 0, index: 0)
-    let threadgroupSize = MTLSize(width: 16, height: 16, depth: 1)
-    let gridSize = MTLSize(width: 1920, height: 1080, depth: 1)
-    encoder.dispatchThreads(gridSize, threadsPerThreadgroup: threadgroupSize)
-    encoder.endEncoding()
 
-    cmdBuf.commit()
-    cmdBuf.waitUntilCompleted()
-
-    // Use Metal's own GPU timestamps to measure pure compute time, excluding CPU
-    // scheduling jitter from waitUntilCompleted (which can add ~1–2ms on a loaded system).
-    let gpuMs = (cmdBuf.gpuEndTime - cmdBuf.gpuStartTime) * 1000.0
-
-    #expect(gpuMs < 5.0,
-            "Full-screen fbm3D at 1080p should complete in <5ms GPU time, took \(String(format: "%.2f", gpuMs))ms")
+    #expect(bestGpuMs < 5.0, """
+        Full-screen fbm3D at 1080p should complete in <5ms GPU time; the fastest of 8 warm \
+        samples took \(String(format: "%.2f", bestGpuMs))ms. This is a MINIMUM, so contention \
+        cannot explain it — treat it as a real cost regression.
+        """)
 }
 
 // MARK: - Helpers
