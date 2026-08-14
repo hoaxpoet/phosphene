@@ -276,3 +276,63 @@ otherwise was modelling a glide it did not understand.
 
 **Consequence for anything next:** a candidate is judged from a render, and a metric is only
 admissible after it has reproduced that render's verdict on a known-good and a known-bad build.
+
+### 7.9 FTR.18 — the correction, BOUNDED, and the harness bug that hid everything
+
+Matt: *"bound the correction so it can't lift quiet passages."*
+
+**Shipped form.** Level rank stays the driver — it has the dynamic range and six alternatives each
+lost span, height or pacing. Its one defect is corrected and nothing else:
+
+```
+level    = saturate(fHeld.spectral_surge)
+density  = knee(fSection.spectral_density)          // ~2 s glide, buffer(6)
+inverted = 1 - smoothstep(0.15, 0.40, level)        // the gate
+size     = saturate(level + max(0, density - level) * inverted)
+```
+
+Both conditions must hold, so it fires only on the limiter signature — level LOW while density
+HIGH. Observed, via the harness:
+
+| window | level (beat-glided) | density → knee | lift |
+|---|---|---|---|
+| band entry, playback 6.7 s | **0.088** | 0.665 → **0.751** | **+0.663** |
+| quiet passage, 35.0 s | **0.515** | 0.174 → 0.442 | **0.000** |
+
+**Verified on the RENDER, like-for-like** (mean luma of an 8-frame strip):
+
+| window | approved | bounded |
+|---|---|---|
+| 6.5 s | 1.738 | **3.400** (+96 %) |
+| 35.0 s | **5.36295** | **5.36295** — byte-identical |
+
+### 7.9.1 ★★★ The harness bug that invalidated every rendered A/B before this
+
+`MeshGenerator.advanceBeatHold` — the path for capture rows that are fed to the holds but NOT
+drawn — passed `renderDeltaTime: 0`, on the documented reasoning that *"a subsampled strip would
+otherwise glide at the wrong rate."* **That reasoning is backwards.** A glide is a WALL-CLOCK
+filter; it must advance with elapsed time on every frame whether or not that frame is rasterised.
+Passing 0 meant a strip rendered with `FT_SKIP=N` arrived at its first drawn row with both glides
+still sitting on their **frame-0 seed**.
+
+Three things previously mistaken for something else, all this one bug:
+
+1. A rendered A/B looked **+44 % fuller** in a window whose measured correction was exactly 0.000
+   (§7.7 blamed the metric; the metric was right and the RENDER was broken).
+2. The gate above appeared not to shut — because the `level` the shader saw was near its seed, not
+   the 0.515 it actually is at that moment.
+3. **Matt's *"row 4 looks too active"* was graded on a render whose baseline AND candidate were
+   both wrong.** §7.8 concluded that judgement "stands, unconfounded". It does not; it was
+   confounded, and §7.8's confident reversal was itself wrong.
+
+**So §7.8's rule needs its own correction.** "When a render and a metric disagree, the render is
+right" is *not* the lesson. Both are models — the render is only ground truth if the harness
+feeding it is. The real rule is narrower and duller:
+
+> **When a render and a metric disagree, neither is trustworthy until the disagreement is
+> explained. Bisect until one of them is proven wrong on a control.** Three bisections did it here
+> (Swift-only, structural-only-with-identical-term, and approved-with-the-harness-fix); reasoning
+> from either number alone produced the wrong answer twice.
+
+Every harness figure quoted for FTR.14–FTR.17 that came through a subsampled render path was
+computed on the buggy glide. The trunk-report figures (which advance every row) are unaffected.

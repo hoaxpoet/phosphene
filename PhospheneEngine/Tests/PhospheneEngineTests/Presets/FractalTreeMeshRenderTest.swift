@@ -553,6 +553,7 @@ struct FractalTreeMeshRenderTest {
         // FTR.14 — the same GLIDING hold `MeshGenerator` installs in production. A hard
         // `BeatHold()` here would measure a build that no longer ships.
         var hold = BeatHold(glideBeats: 0.25)
+        var sectionHold = BeatHold(glideSeconds: 2.0)
         var reachTerm: [Float] = []
         var surgeTerm: [Float] = []
         var continuous: [Float] = []
@@ -611,13 +612,14 @@ struct FractalTreeMeshRenderTest {
                 : Float(1.0 / 60.0)
             let held = hold.update(fv, renderDeltaTime: min(renderDelta, 1.0 / 15.0))
             let stemsHeld = hold.glidingStemFeatures
+            let section = sectionHold.update(fv, renderDeltaTime: min(renderDelta, 1.0 / 15.0))
             if hold.isStepping { steppingFrames += 1 }
             stepping.append(hold.isStepping)
             let growth = Self.growth(fv)
             reachTerm.append(growth.reach * 0.13)
             surgeTerm.append(growth.surge * 0.32)
             continuous.append(Self.trunkLength(fv))
-            stepped.append(Self.trunkLength(held))
+            stepped.append(Self.trunkLength(held, section: section))
             // FTR.13 — FRACTIONAL counts. The shader scales the frontier branch's length by the
             // fraction, so the visible canopy is the fractional value; an integer mirror would
             // report a pop the shader no longer draws.
@@ -1051,7 +1053,8 @@ struct FractalTreeMeshRenderTest {
     /// regression past a green harness, so the mirror is kept honest two ways: it is the
     /// ONLY copy in this file, and `objectStageReadsTheBeatHeldVector` proves through the
     /// real pipeline that the GPU is reading the held vector this report models.
-    private static func growth(_ f: FeatureVector) -> (reach: Float, surge: Float) {
+    private static func growth(_ f: FeatureVector,
+                               section: FeatureVector? = nil) -> (reach: Float, surge: Float) {
         func saturate(_ v: Float) -> Float { Swift.min(Swift.max(v, 0), 1) }
         func smoothstep(_ e0: Float, _ e1: Float, _ v: Float) -> Float {
             let t = saturate((v - e0) / (e1 - e0))
@@ -1065,8 +1068,9 @@ struct FractalTreeMeshRenderTest {
     }
 
     /// The shader's `trunk_len` (FractalTree.metal), mirrored — see ``growth(_:)``.
-    private static func trunkLength(_ f: FeatureVector) -> Float {
-        let g = growth(f)
+    private static func trunkLength(_ f: FeatureVector,
+                                    section: FeatureVector? = nil) -> Float {
+        let g = growth(f, section: section)
         return 0.27 + g.reach * 0.13 + g.surge * 0.32
     }
 

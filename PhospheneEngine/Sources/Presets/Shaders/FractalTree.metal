@@ -117,7 +117,10 @@ static inline uint fractal_hash(uint x)
 /// vector at buffer(0), for the canopy and the branch counts, and once on the beat-held
 /// vector at buffer(4), for the trunk. Two call sites, one arithmetic — a second copy of
 /// this expression is how the trunk and the canopy would silently drift apart.
-static inline float2 fractal_growth(constant FeatureVector& f)
+/// - Parameter fSection: the same vector on a ~2 s glide (buffer 6). Supplies the DENSITY used
+///   only to correct a limiter inversion; see the size block.
+static inline float2 fractal_growth(constant FeatureVector& f,
+                                    constant FeatureVector& fSection)
 {
     float arousalReach = saturate((f.arousal - 0.10f) * (1.0f / 0.58f));
     // DYN.2c: the field is this moment's RANK in the track's own density distribution
@@ -127,8 +130,29 @@ static inline float2 fractal_growth(constant FeatureVector& f)
     // flat 1.00 for four minutes once the normal was measured correctly.
     float fullness = saturate(f.spectral_section_ratio * 0.5f);
     float musicGate = smoothstep(0.05f, 0.30f, saturate(f.spectral_surge));
+    // ── THE SIZE: LEVEL, CORRECTED ONLY WHERE THE LIMITER INVERTS IT (FTR.18) ────────
+    //
+    // Level rank stays the driver. It has the dynamic range — six alternatives were measured
+    // across FTR.16/17 and every one lost span, height or pacing (see the diagnostics doc). Its
+    // ONE defect is that on a limited master the level DIPS as the band arrives: measured
+    // r(trunk, spectral_density) = −0.641 on Carry The Zero, whose `musicRange` is 3.6 dB.
+    //
+    // So correct that defect and nothing else. The limiter signature is specific — level LOW
+    // while density is HIGH — and it is detectable without trusting level's magnitude:
+    //
+    //   band entry (playback 6.7 s):  level 0.088   density-knee 0.751   → lift +0.663
+    //   quiet passage (35.0 s):       level 0.515   density-knee 0.442   → lift  0.000
+    //
+    // BOUNDED, which is the whole point (Matt, after seeing an unbounded `max()` render:
+    // *"row 4 looks too active"*). The correction is gated OFF as level rises, so a passage whose
+    // level is already healthy cannot be lifted however high density goes. Below 0.15 the gate is
+    // fully open; by 0.40 it is shut. Both conditions must hold — `max(0, density − level)` is
+    // already zero unless density exceeds level — so this fires only on the inversion.
+    float level = saturate(f.spectral_surge);
+    float density = saturate(fSection.spectral_density / (fSection.spectral_density + 0.22f));
+    float inverted = 1.0f - smoothstep(0.15f, 0.40f, level);
     return float2(saturate(max(0.10f * arousalReach, fullness) * musicGate),
-                  saturate(f.spectral_surge));
+                  saturate(level + max(0.0f, density - level) * inverted));
 }
 
 // MARK: - Object Shader
@@ -142,6 +166,8 @@ void fractal_tree_object_shader(
     constant FeatureVector&       f [[buffer(0)]],
     constant StemFeatures&        stems [[buffer(3)]],
     constant FeatureVector&       fHeld [[buffer(4)]],
+    /// FTR.18 — the ~2 s section glide, read ONLY to correct a limiter inversion in the size.
+    constant FeatureVector&       fSection [[buffer(6)]],
     /// FTR.13 — the beat-held stem features, same beats and same ease as `fHeld` (buffer(5),
     /// bound by `MeshGenerator`). Matt: *"the tips … should be beat matched."* The tips' driver
     /// is a per-stem field, so holding only `fHeld` left them changing 4–5 times a second
@@ -265,7 +291,7 @@ void fractal_tree_object_shader(
         // tips route is unchanged and is now described as residue activity. Evidence and the
         // one remaining candidate (a PANNs guitar class, clean guitar only) are in the tips
         // routing note in the object shader.
-        float2 heldGrowth = fractal_growth(fHeld);
+        float2 heldGrowth = fractal_growth(fHeld, fSection);
         float reach = heldGrowth.x;
 
         // ── THE SURGE: "SHOOT UP" ← spectral_surge (DYN.1b) ──────────────────────
