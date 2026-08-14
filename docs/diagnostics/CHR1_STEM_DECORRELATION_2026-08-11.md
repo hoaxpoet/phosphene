@@ -100,6 +100,32 @@ about half the corpus norm — a trace-amplitude floor would be needed there.
 
 ## 4. Cross-stem decorrelation (task 3b) — the failing measurement
 
+> ### ⚠ CORRECTION (CHR.2, 2026-08-14) — the common-mode table below has shifted labels
+>
+> The **second** table in this section (common-mode share / `r(trace, mix envelope)`)
+> assigns its values to the wrong tracks. CHR.2 re-measured all 15 full-length tracks
+> from `stems.csv` with the same definition and got:
+>
+> | | committed below | re-measured |
+> |---|---|---|
+> | Take Five | 93.0 % (worst) | **82.9 %** (2nd *easiest*) |
+> | Bohemian Rhapsody | *(absent)* | **93.4 %** (worst) |
+> | Superstition | *(absent)* | **93.1 %** |
+> | Clair De Lune | 84.7 % | 88.0 % |
+> | Around the World | 89.9 % | 89.9 % ✓ |
+> | Billie Jean | 86.2 % | 86.3 % ✓ |
+>
+> **§5 bullet 3's conclusion — *"Jazz is the worst (Take Five, 93.0 %), which is the
+> opposite of the intuition that sparse material would separate best"* — does not
+> survive.** Take Five is among the easiest tracks in the corpus. Do not carry the
+> "jazz is hardest" reasoning forward; the corrected worst cases are Bohemian Rhapsody
+> and Superstition. The **pairwise-r table immediately below is unaffected** — it was
+> spot-checked and matches.
+>
+> Corrected figures for all 15 tracks:
+> [`CHR2_LOOK_SPIKE_2026-08-14.md`](CHR2_LOOK_SPIKE_2026-08-14.md) §0.
+
+
 Median windowed pairwise r. Null is 0.00 (§1.1).
 
 | Track | dru~bas | dru~voc | dru~oth | bas~voc | bas~oth | voc~oth | all 6 pairs >0.9 |

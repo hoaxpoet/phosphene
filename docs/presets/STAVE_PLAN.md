@@ -42,7 +42,25 @@ The CHR.1 session prompt is `docs/prompts/CHR1_KICKOFF.md`, committed alongside 
 > stem traces would still sit visibly off in-sync gridlines on an ~8 s plot. The alternative
 > is a time-aligned 6-band split of the same rhythm-vs-melodic axis (lag ≈0.3 s, `r` +0.055,
 > divergence 1.88) which separates *further* but trades instruments for registers and has no
-> converge/diverge story. **Matt's call; CHR.2 does not start until it lands.**
+> converge/diverge story. ~~**Matt's call; CHR.2 does not start until it lands.**~~
+>
+> > **✅ SETTLED by Matt 2026-08-13 — split the job.** Trace **position** from the
+> > time-aligned band split (rhythm `subBass+lowBass`, melodic `midHigh+highMid+high`, each
+> > EMA-centred, ≈0.3 s); trace **colour + weight** per-stem (`drums+bass` vs
+> > `vocals+other`, ≈3.0 s). Recorded here at CHR.2 — the decision was carried only in the
+> > CHR.2 session prompt, so CHR.2's own pre-flight check for it ("the amendment block
+> > records the driver as resolved") could not pass against this file. Same failure mode as
+> > item 6 below: **a decision that is not in git is not deliverable to a worktree session.**
+> >
+> > **CHR.2 ran and gated this driver.** Position half passed (median trace-to-beat offset
+> > 0 ms); colour half **failed** (colour and position on the same mark are uncorrelated at
+> > lag 0). See [`CHR2_LOOK_SPIKE_2026-08-14.md`](../diagnostics/CHR2_LOOK_SPIKE_2026-08-14.md);
+> > DECISION-NEEDED #1 is open with Matt and CHR.3 does not start until it lands.
+>
+> > **⚠ Also corrected at CHR.2:** item 2's divergence-ratio evidence (0.75 vs a 1.45 null)
+> > and its "converge and diverge" reading do not survive — the statistic is dominated by
+> > the rhythm/melodic amplitude mismatch. What survives is near-independence. And CHR.1
+> > §4's common-mode table has shifted track labels; **"jazz was the worst case" is false**.
 >
 > **4. What CHR.1 did NOT produce.** No `STAVE_DESIGN.md`, no `docs/VISUAL_REFERENCES/stave/`,
 > no `DECISIONS.md` entry — all correctly withheld under task 4's hard stop rather than

@@ -63,6 +63,50 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment CHR.2 — Stave look spike: geometry passes, stem colour fails ⏸ (2026-08-14)
+
+**Throwaway motion-gated spike. Nothing registered — preset count stays 28**, no sidecar,
+no golden, no `certified` flag. Output:
+[`docs/diagnostics/CHR2_LOOK_SPIKE_2026-08-14.md`](diagnostics/CHR2_LOOK_SPIKE_2026-08-14.md)
+plus four evidence frames in `docs/diagnostics/chr2_frames/`. Code lives in the test target
+only (`StaveLookSpike.swift`) and is **proposed as CHR.3's skeleton**.
+
+**Done-when: a written, rendered answer to both gate halves, and Matt has said go or
+re-scope.** Both halves answered; **Matt's gate is the open item and CHR.3 does not start
+until it lands.**
+
+- **Half 1 — geometry: PASS on 3 of 4 captures.** Two band-driven traces read as two
+  voices on Bohemian Rhapsody, Clair De Lune and Dance Yrself Clean. Median trace-to-beat
+  offset **0 ms** on every capture, so the driver decision delivered the in-time marks it
+  was chosen for. Gridline rate matches `grid_bpm` exactly (71/71, 97/98, 172/174.6).
+- **Half 1 misses.** **Bleed collapses** — `r +0.695`, the two traces read as one flat
+  band; predicted by measurement, not fixable by tuning. One fixed gain does **not**
+  survive the excursion span (Dance Yrself Clean clips off frame). Dense grids (>150 bpm)
+  read as graph paper.
+- **Half 2 — colour: FAIL.** Stem-driven colour separates the two traces but cannot carry
+  instrument identity: at the moment a mark is drawn, `r(position, colour)` is
+  **−0.15…+0.25**, because the colour is describing a moment **3.0 s** earlier (measured on
+  a post-BUG086.1 capture; the spike's renders are on the 5.4 s pre-fix capture). The hue
+  is a static label assigned by frequency band, and it is asserted even on solo piano,
+  where neither `drums+bass` nor `vocals+other` exists.
+- **Retired claim:** CHR.1 §7a's "converge and diverge" reading. Its divergence statistic
+  is dominated by the rhythm/melodic amplitude mismatch (std ratio 4.4–17.5×) and collapses
+  onto `√(2(1−r))` once both traces are drawn at visible scale. What survives is
+  near-independence, which is the property the concept actually wants.
+- **Corrected:** CHR.1 §4's common-mode table has shifted track labels; a banner is now on
+  that file and corrected figures for all 15 tracks are in the CHR.2 doc §0. **"Jazz is the
+  worst (Take Five, 93.0 %)" does not survive** — Take Five is 82.9 %, among the easiest.
+- **Instrument correction, not spike-specific:** `accumulatedAudioTime` is energy-weighted
+  by definition, so it advances ~12× slower than wall-clock here and at a music-dependent
+  rate. It is an animation phase, not a clock — anything plotting a **time series** must
+  use `time`. Measuring the beat offsets on it first gave a false pass by that factor.
+- **Motion gate:** 0 spike frames and 0 frozen frames on all four sequences (stdev
+  0.36–0.67 against means 3.3–6.4). The FTR beat-stepped caveat does not apply — Stave
+  scrolls continuously rather than stepping per beat.
+
+**Open — Matt's call, no default: DECISION-NEEDED #1**, what carries instrument identity
+now that hue cannot. Four options with trade-offs in the CHR.2 doc §8.
+
 ### Increment BUG087.1 — Local-file playback analyses at 10 Hz, streaming at 51 Hz ✅ (2026-08-11)
 
 **Diagnosis increment. No fix code.** Filed as **BUG-087**. Found while chasing a
@@ -453,12 +497,6 @@ step. The LFS history purge itself needs a GitHub Support ticket to GC unreferen
 zero references in this file, uniquely among D-203…D-212.)*
 
 ### Increment GT.3 — BeatBench live baseline ✅ (2026-07-30)
-
-The live-path baseline that D-205 ratifies its per-suite targets against, and that the TRK.3
-row cites. Artifacts: `docs/diagnostics/BEATBENCH_BASELINE_2026-07-30.md` and
-`BEATBENCH_LIVE_BASELINE_2026-07-30.md`. *(Added at RECON.3 — GT.3 was referenced by two
-other rows and by D-205 but had no row of its own.)*
-
 ### Increment BUG-080 fix — manifest-driven `link_fixtures.sh` ✅ (2026-08-03, `2b36c34d`)
 
 Gitignored-asset propagation repaired at both gaps; full engine suite green in a fresh
