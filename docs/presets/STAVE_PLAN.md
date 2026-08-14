@@ -64,6 +64,31 @@ The CHR.1 session prompt is `docs/prompts/CHR1_KICKOFF.md`, committed alongside 
 > between them. **Latency was the entire difference.** BUG-086 closed the stem path at 3.0 s,
 > which is its architectural floor — not something a later increment reduces.
 >
+> > **✅ CHR.2 RAN AND GATED THIS DRIVER (2026-08-14). Half 1 passed, half 2 failed.**
+> > Position passed on its own terms — **median trace-to-beat offset 0 ms** on all four
+> > captures. Colour failed on a measurement: **at the moment a mark is drawn,
+> > `r(position, colour)` = −0.15…+0.25**, because the colour peaks against its own trace at
+> > **3.0 s**. The row above says the 3 s "costs nothing here" for a hue — **CHR.2 measured
+> > that it costs the whole channel.** Hue is also a *static* label assigned by frequency
+> > band, so it is asserted even on solo piano where neither stem group exists.
+> > **→ Matt chose option D, 2026-08-14, filed as D-216: the stem channel comes OFF the
+> > traces and onto the FIELD** (tint / backdrop / grid luminance) where 3.0 s is invisible.
+> > Traces carry band-derived, in-time information only. **Accepted consequence: no per-mark
+> > instrument identity** — so the "traces still carry instrument identity" sentence above is
+> > **retired**, and the concept sentence is now *"low against high, ruled by the beat, in a
+> > room the stems tint."* CHR.3 builds to this; see
+> > [`CHR2_LOOK_SPIKE_2026-08-14.md`](../diagnostics/CHR2_LOOK_SPIKE_2026-08-14.md).
+>
+> > **⚠ Also corrected at CHR.2 — two claims in this block do not survive.**
+> > (a) **The "legible low-vs-high see-saw" reading of divergence 1.88 is wrong**, and so is
+> > item 2's 0.75-vs-1.45. The divergence ratio inflates toward 2.0 whenever `std R ≫ std M`,
+> > and the rhythm/melodic std ratio is **4.4–17.5×**; recomputed on the traces **as drawn**
+> > it collapses onto `√(2(1−r))` and carries no information beyond `r`. What survives is
+> > **near-independence** (r −0.27…+0.27 on 13 of 15) — the property the concept wants, but
+> > not a see-saw and not converge-and-diverge. (b) CHR.1 §4's common-mode table has
+> > **shifted track labels**: worst is Bohemian Rhapsody 93.4 %, and **Take Five 82.9 % is
+> > among the easiest**, so "jazz was the worst case" is false.
+>
 > **4. What CHR.1 did NOT produce.** No `STAVE_DESIGN.md`, no `docs/VISUAL_REFERENCES/stave/`,
 > no `DECISIONS.md` entry — all correctly withheld under task 4's hard stop rather than
 > written around a failed premise. CHR.1's measurement output is
