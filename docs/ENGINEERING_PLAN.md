@@ -63,6 +63,47 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment CHR.1.3 — Stave: the design-doc half CHR.1 withheld ✅ (2026-08-14)
+
+**Docs + reference curation only. No shader, no sidecar, preset count stays 28.** Unblocks
+CHR.3, which could not start: its own objective names the design doc as *authoritative* and
+the design doc did not exist. The CHR.1 amendment had already recorded the obligation —
+*"CHR.1 must be re-run for its design-doc half once the driver is settled"* — and the driver
+is now settled (2026-08-13) **and** gated (CHR.2) **and** revised (D-216).
+
+**Delivered.** [`docs/presets/STAVE_DESIGN.md`](presets/STAVE_DESIGN.md) — musical role
+locked to the post-D-216 sentence, three-part bar cleared with the CHR.2 spike as evidence
+rather than assertion, seven locked decisions, rendering architecture carrying the spike's
+four fixed defects forward, routing table with one primitive per layer, phased CHR.3 plan,
+D-116 bullet-3 divergence argument, and five open questions for Matt.
+[`docs/VISUAL_REFERENCES/stave/`](VISUAL_REFERENCES/stave/README.md) — five annotated
+references curated from a fresh render of the source.
+
+**The source, rendered for the first time in this program.** `Martin - charisma` confirmed as
+1 of the 100 butterchurn built-ins; rendered through `tools/milkdrop-render/` against 12 s of
+real music (Dance Yrself Clean, from the corpus tap). sha256 of the artifact read is recorded
+in the reference README. **The JSON itself is NOT committed** — D-116 bullet 4 names `.milk`
+specifically, so a butterchurn built-in is ambiguous, and `docs/VISUAL_REFERENCES/nacre/`
+*does* commit its source. Left uncommitted on the conservative reading; flagged for Matt.
+
+**What the render changed.** Three things the plan had assumed were wrong or unstated:
+- **D-216 is *more* source-faithful, not less.** The source's traces are all one cyan; its
+  colour lives in the field tint and the sparkles. Moving stems off the traces onto the field
+  lands closer to `Martin - charisma` than the rejected per-trace-colour scheme did.
+- **The source rules the field in BOTH axes.** Horizontal rules are the *stave*; verticals
+  become the beat. That is the preset's name made literal, and it was not in the plan.
+- **⚠ A curation reading corrected mid-session:** the sparkles are **scattered**, not sitting
+  on grid intersections. The macro frame suggested nodal placement; the crop refuted it. The
+  annotation records the correction so CHR.3 does not build grid-node sparkles.
+
+**Grounding risk surfaced, not resolved (checklist §Design grounding).** The stem-driven
+field tint is the one mechanism at **level 3 — no empirical grounding**. D-216 reasons a
+3.0 s lag is invisible on a slow diffuse surface; that is an argument, nothing has rendered
+it, and it is now carrying the entire post-D-216 stem story. The design doc recommends CHR.3
+**opens** with a field-tint spike so the answer arrives before a field pass is built around it.
+
+**Rejected as out of scope:** authoring anything. CHR.3 remains its own session.
+
 ### Increment CHR.2 — Stave look spike: geometry passes, stem colour fails ✅ (2026-08-14)
 
 **Throwaway motion-gated spike. Nothing registered — preset count stays 28**, no sidecar,
