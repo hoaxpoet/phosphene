@@ -99,3 +99,67 @@ dives rather than continuous shape, which is its own contribution to "random".
 
 No code changed. Which signal should decide the tree's size is a routing decision with visible
 consequences, so it is Matt's call and is put to him with these numbers.
+
+---
+
+## 7. Addendum 2026-08-14 — two failed candidates, and the measurement error under both
+
+**Status: the complaint in §1 is still OPEN. The shipped build is FTR.14 (level-driven size).**
+
+### 7.1 ★★★ Every statistic in §1–§6 measured TRUNK LENGTH. The branch COUNT is 26× more sensitive to the same term.
+
+`trunkLen = 0.27 + reach·0.13 + size·0.32` but `count = 7 + base + (lift·8 + size·**26**) · amp`.
+So the size term reaches the canopy with a coefficient **81× larger** than it reaches the trunk.
+Every span, turn-rate and burstiness figure quoted through FTR.16 was computed on the trunk —
+the *least* sensitive consumer of the number being tuned. That is why span numbers kept failing
+to predict what Matt saw, and it is the fourth measurement-blind-spot of the same family in this
+program (after turn-rate-vs-step-size, float-vs-pixel identity, and analysis-rate-vs-render-rate).
+
+**Any future candidate is measured on the branch count first, the trunk second.**
+
+### 7.2 Candidate A — `max(level, density)`: rejected by Matt on a rendered A/B
+
+Rationale: level DIPS as the band enters on a limited master (§4), so roughly a third of the
+tree's growth range on *Carry The Zero* is motion in the wrong direction; `max` removes the
+backwards dips and is a no-op wherever level is already honest. Measured on the reviewed capture:
+
+| | trunk span | trunk sig-turns/s | count span | mean count @6.7 s | @35.2 s |
+|---|---|---|---|---|---|
+| APPROVED (level) | 0.252 | 0.50 | 27.6 | **14.4** | 45.0 |
+| `max(level, density)` | 0.148 | 0.53 | 17.8 | **31.4** | 45.0 |
+
+It fixes the band entry (14.4 → 31.4 branches) and is numerically identical at the agreement
+window. Matt's read of the render: band entry *"yes, I suppose"*; the agreement window
+**"looks too active"**. Rejected.
+
+**⚠ Unreconciled:** the rendered agreement window looked visibly fuller under the candidate, yet
+the count measures 45.0 in both. Either the render window and the measured window differ, or a
+consumer other than trunk/count carries the difference. **Do not build on candidate A until that
+is explained** — an unexplained gap between a render and a metric is how FTR.16 shipped.
+
+### 7.3 Candidate B — `level + w·densityLift`: fails at the start of a track, by construction
+
+The deviation-primitive form (D-026), which should have been the first thing tried:
+`densityLift = density / density_slow − 1`, zero at steady state, so quiet passages are untouched
+by construction and only a density JUMP lifts the tree. It does not work here:
+
+| | mean count @6.7 s | @35.2 s |
+|---|---|---|
+| APPROVED | 14.4 | 45.0 |
+| `level + 0.5·densityLift` | **14.4** | 45.0 |
+| `level + 1.0·densityLift` | **14.4** | 45.0 |
+
+No lift at all at the band entry. Cause: `spectral_density_slow` has **τ ≈ 10.5 s**, so 6.7 s into
+a track it is still seeded near the current value and the ratio is ≈ 1. **A deviation against a
+10.5 s baseline cannot detect an event in the first ~15 s of a track** — which is exactly where
+the arrangement usually arrives. Any deviation-based correction needs a faster baseline than
+`density_slow`, and that is a new engine field, not a shader change.
+
+### 7.4 Where this leaves the problem
+
+Confirmed by Matt: correcting the band-entry lie is the right direction. Ruled out by
+measurement: single-field swaps (§FTR.16 — absolute density matches the motion rate but not the
+span; the per-track rank matches the span but barely moves), `max()` blending (too active), and
+deviation-against-`density_slow` (blind for the first 15 s). The remaining untried directions are
+a faster density baseline (new field) or a correction bounded so it cannot compress count span.
+Neither has been measured.
