@@ -113,6 +113,7 @@
 		G10009 /* PlanPreviewTransitionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20009; };
 		G10020 /* FirstAudioDetectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20020; };
 		G10025 /* StemSeparationCadenceRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20025; };
+		G10026 /* AnalysisTimeBaseRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20026; };
 		G10021 /* ReadyViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20021; };
 		G10022 /* PlanPreviewViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20022; };
 		G10023 /* PlanPreviewRegenerateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = G20023; };
@@ -312,6 +313,7 @@
 		G20009 /* PlanPreviewTransitionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPreviewTransitionView.swift; sourceTree = "<group>"; };
 		G20020 /* FirstAudioDetectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirstAudioDetectorTests.swift; sourceTree = "<group>"; };
 		G20025 /* StemSeparationCadenceRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StemSeparationCadenceRegressionTests.swift; sourceTree = "<group>"; };
+		G20026 /* AnalysisTimeBaseRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisTimeBaseRegressionTests.swift; sourceTree = "<group>"; };
 		G20021 /* ReadyViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadyViewModelTests.swift; sourceTree = "<group>"; };
 		G20022 /* PlanPreviewViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPreviewViewModelTests.swift; sourceTree = "<group>"; };
 		G20023 /* PlanPreviewRegenerateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanPreviewRegenerateTests.swift; sourceTree = "<group>"; };
@@ -702,6 +704,7 @@
 				F20007 /* PreparationCancelIntegrationTests.swift */,
 				G20020 /* FirstAudioDetectorTests.swift */,
 				G20025 /* StemSeparationCadenceRegressionTests.swift */,
+				G20026 /* AnalysisTimeBaseRegressionTests.swift */,
 				G20021 /* ReadyViewModelTests.swift */,
 				G20022 /* PlanPreviewViewModelTests.swift */,
 				G20023 /* PlanPreviewRegenerateTests.swift */,
@@ -999,6 +1002,7 @@
 				F10007 /* PreparationCancelIntegrationTests.swift in Sources */,
 				G10020 /* FirstAudioDetectorTests.swift in Sources */,
 				G10025 /* StemSeparationCadenceRegressionTests.swift in Sources */,
+				G10026 /* AnalysisTimeBaseRegressionTests.swift in Sources */,
 				G10021 /* ReadyViewModelTests.swift in Sources */,
 				G10022 /* PlanPreviewViewModelTests.swift in Sources */,
 				G10023 /* PlanPreviewRegenerateTests.swift in Sources */,

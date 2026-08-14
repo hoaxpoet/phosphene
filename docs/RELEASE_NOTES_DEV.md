@@ -10,6 +10,64 @@ Older entries: `RELEASE_NOTES_DEV_YYYY-MM.md` (one file per month).
 
 ---
 
+### [dev-2026-08-13-163115] BUG-087 partially fixed — and the remedy was wrong about what limits the rate
+
+Local-file analysis goes **10.0 → 16.4 Hz**. BUG-087's ≥ 40 Hz target is **not met**, and the
+measurement says why: slicing was the wrong lever.
+
+`BUG087.2` moves the analysis time base off wall-clock onto the audio each callback carried —
+behaviour-neutral, zero existing expectations moved, and a prerequisite for producing several
+analysis frames per callback. `BUG087.3` slices each delivered buffer into 1024-frame pieces.
+
+**Why it falls short.** Slicing raised *computation* to ~47 Hz but not what a preset sees. All
+five slices complete within microseconds — they process already-buffered audio — so the render
+loop samples ~1.6 of them and supersedes the rest. The gap distribution is bimodal: 39 % of
+changes 1 render frame apart, 55 % five to six frames apart. A burst against a 100 ms arrival
+period. **The ceiling is how often audio arrives, not how finely it is cut.**
+
+Kept anyway: +64 % effective rate, and fresher values since the last slice reflects the newest
+1024 samples rather than a position inside a 4410-frame buffer.
+
+**The lesson this repo keeps re-learning:** a regression test here asserted `hz >= 40` from
+slice count and **passed**, while the live capture measured 16.4 Hz. It was measuring the
+computation rate and calling it the delivered rate. Renamed and re-scoped. Getting smaller
+buffers out of AVAudioEngine is filed as its own increment.
+
+---
+
+### [dev-2026-08-12-200701] BUG-086 closed — stem latency 5.4 s → 3.0 s, and two lessons about aiming a review
+
+**RESOLVED.** Per-stem features reached presets ≈5.4 s behind the audio; they now reach it at
+3.0 s streaming and 2.9/3.0 s local file, with Matt's `dsp.stem` gate passed on Skein + Glaze.
+
+**The fix was three interlocking constants, not a bug.** Separation ran every 5 s on a fixed
+10 s chunk with the read window starting 5 s in — so `latency ≥ separationPeriod`, and the 5 s
+head start was runway rather than slack. Period → 2 s with the read offset **derived** from it.
+
+**Two things measurement corrected afterwards, both mine.** The "2.5 s nominal" was wrong:
+`latestSeparationTimestamp` is stamped *after* `separate()` returns, so
+`latency = nominal + inference`, and at 531 ms measured inference that predicts 3.03 s against
+3.0 s observed. ≈3.0 s is therefore the architectural floor at a 2 s period, not a tuning
+target. And the 142 ms inference figure the duty estimate rested on lived only in a code
+comment — real is 335 → 478 → 531 ms across three captures, duty ≈30 %, one 7105 ms outlier.
+
+**The review-aiming lesson is the transferable part.** The `dsp.stem` gate was first aimed at
+Aurora Veil on a stale note calling `other_energy_dev` its "song-defining anchor." Git says it
+was dropped at AV.2.h and AV.7/D-185 reauthored the preset onto mood envelopes; **Aurora Veil
+declares no stem route at all.** Matt spent a review on a preset that could not answer the
+question, and reported exactly that — *"the veil is just aurora-ing."*
+`Scripts/check_route_liveness.py` now answers "can this route be seen at all?" from a CSV
+before anyone is asked to look. Re-aimed at Skein — 22 of 28 routes ALIVE, zero DEAD, all
+eight stem-deviation routes live — the gate passed first time. The Aurora Veil manifest
+mismatch it exposed is **BUG-088**.
+
+**Also fixed en route:** a `track='([^']*)'` regex that dropped `Stayin' Alive` from an
+index-aligned label list and shifted 13 of 15 published track labels, taking with it a
+"finding" that jazz was the hardest register. It is among the easiest; dense compressed
+productions are hardest. Numbers were always per-segment; only attribution moved.
+
+---
+
 ### [dev-2026-08-11-164751] BUG-086 — every stem-driven preset was running 5.4 s behind the music
 
 Found while measuring driver viability for a plotting preset (CHR.1), where a

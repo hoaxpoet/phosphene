@@ -63,6 +63,86 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
+### Increment CHR.2 — Stave look spike: geometry passes, stem colour fails ✅ (2026-08-14)
+
+**Throwaway motion-gated spike. Nothing registered — preset count stays 28**, no sidecar,
+no golden, no `certified` flag. Output:
+[`docs/diagnostics/CHR2_LOOK_SPIKE_2026-08-14.md`](diagnostics/CHR2_LOOK_SPIKE_2026-08-14.md)
+plus four evidence frames in `docs/diagnostics/chr2_frames/`. Code lives in the test target
+only (`StaveLookSpike.swift`) and is **proposed as CHR.3's skeleton**.
+
+**Done-when: a written, rendered answer to both gate halves, and Matt has said go or
+re-scope.** Both halves answered; **Matt's gate is the open item and CHR.3 does not start
+until it lands.**
+
+- **Half 1 — geometry: PASS on 3 of 4 captures.** Two band-driven traces read as two
+  voices on Bohemian Rhapsody, Clair De Lune and Dance Yrself Clean. Median trace-to-beat
+  offset **0 ms** on every capture, so the driver decision delivered the in-time marks it
+  was chosen for. Gridline rate matches `grid_bpm` exactly (71/71, 97/98, 172/174.6).
+- **Half 1 misses.** **Bleed collapses** — `r +0.695`, the two traces read as one flat
+  band; predicted by measurement, not fixable by tuning. One fixed gain does **not**
+  survive the excursion span (Dance Yrself Clean clips off frame). Dense grids (>150 bpm)
+  read as graph paper.
+- **Half 2 — colour: FAIL.** Stem-driven colour separates the two traces but cannot carry
+  instrument identity: at the moment a mark is drawn, `r(position, colour)` is
+  **−0.15…+0.25**, because the colour is describing a moment **3.0 s** earlier (measured on
+  a post-BUG086.1 capture; the spike's renders are on the 5.4 s pre-fix capture). The hue
+  is a static label assigned by frequency band, and it is asserted even on solo piano,
+  where neither `drums+bass` nor `vocals+other` exists.
+- **Retired claim:** CHR.1 §7a's "converge and diverge" reading. Its divergence statistic
+  is dominated by the rhythm/melodic amplitude mismatch (std ratio 4.4–17.5×) and collapses
+  onto `√(2(1−r))` once both traces are drawn at visible scale. What survives is
+  near-independence, which is the property the concept actually wants.
+- **Corrected:** CHR.1 §4's common-mode table has shifted track labels; a banner is now on
+  that file and corrected figures for all 15 tracks are in the CHR.2 doc §0. **"Jazz is the
+  worst (Take Five, 93.0 %)" does not survive** — Take Five is 82.9 %, among the easiest.
+- **Instrument correction, not spike-specific:** `accumulatedAudioTime` is energy-weighted
+  by definition, so it advances ~12× slower than wall-clock here and at a music-dependent
+  rate. It is an animation phase, not a clock — anything plotting a **time series** must
+  use `time`. Measuring the beat offsets on it first gave a false pass by that factor.
+- **Motion gate:** 0 spike frames and 0 frozen frames on all four sequences (stdev
+  0.36–0.67 against means 3.3–6.4). The FTR beat-stepped caveat does not apply — Stave
+  scrolls continuously rather than stepping per beat.
+
+**✅ RESOLVED same day — Matt chose option D, filed as D-216.** The stem channel comes off
+the traces and onto the **field** (tint / backdrop / grid luminance), where a 3.0 s lag is
+invisible; traces carry band-derived, in-time information only. **Accepted consequence: no
+per-mark instrument identity** — the concept sentence becomes *"low against high, ruled by
+the beat, in a room the stems tint."* Rejected: A (discards a working capability), B (changes
+the medium, not the lag), C (weighed and rejected 2026-08-13; CHR.2 strengthens the case
+against). **CHR.3 is unblocked**; its brief in `STAVE_PLAN.md` is amended to build to this.
+
+### Increment BUG087.2 + BUG087.3 — analysis rate 10 → 16.4 Hz; the remedy was wrong ⏸ (2026-08-13)
+
+**Partial. BUG-087 stays OPEN.** Local-file analysis measures **10.0 → 16.4 Hz** on capture
+`2026-08-13T13-15-36Z`; the increment's ≥ 40 Hz done-when is **not met**.
+
+**BUG087.2 (kept, correct):** the analysis time base moves off wall-clock onto the audio each
+callback carried (`frames / rate`). Landed on its own commit behind a mandatory hard stop, and
+verified behaviour-neutral by the full suite moving **zero** existing expectations — which is
+what made "neutral" a result rather than an assumption. It is a prerequisite for anything that
+produces several analysis frames per callback, and it stands regardless of the rest.
+
+**BUG087.3 (kept, insufficient):** slicing each delivered buffer into 1024-frame pieces raised
+the *computation* rate to ~47 Hz but not the rate a preset observes. All five slices complete
+within microseconds — they process already-buffered audio — so the render loop samples ~1.6 of
+them and supersedes the rest. Gap distribution is bimodal: **39 % of changes 1 render frame
+apart, 55 % 5–6 frames apart**, a burst against a 100 ms arrival period.
+
+**The transferable finding: the ceiling is how often audio ARRIVES, not how finely it is
+sliced.** A preset cannot observe more distinct values per second than buffers are delivered
+when every slice lands at one instant. Matt kept the change (option C) for its +64 % effective
+rate and fresher values; the remaining route — smaller buffers from AVAudioEngine via manual
+rendering mode, an `AUAudioUnit` render block, or a different tap node — is **its own
+increment**, since BUG087.1 already measured that `installTap(bufferSize:)` is ignored.
+
+**The methodological catch worth keeping.** A regression test asserted `hz >= 40` from slice
+count and **passed**, while the live capture measured 16.4 Hz — it measured the computation
+rate and called it the delivered rate. Renamed and re-scoped rather than deleted. This is the
+same class as BUG086.1's "2.5 s nominal" (which measurement corrected to 3.0 s) and the false
+PASS from too permissive a correlation floor: **an automated gate that cannot see the quantity
+it is named for will happily certify a claim the artifact refutes.**
+
 ### Increment BUG087.1 — Local-file playback analyses at 10 Hz, streaming at 51 Hz ✅ (2026-08-11)
 
 **Diagnosis increment. No fix code.** Filed as **BUG-087**. Found while chasing a
@@ -156,7 +236,12 @@ times correctly.
 `x_energy_rel` do not read as four voices: 65–93 % of each trace's motion is the mix's
 shared loudness envelope (rotation-control null ≈22 %), and the four collapse to two
 groups — `drums~bass` r +0.81…+0.98 and `vocals~other` r +0.80…+0.99 on every track in
-every register. Jazz was the *worst* case (Take Five, 93 %), not the best. 3 of 3
+every register. **(Track labels corrected 2026-08-12: the worst cases are Bohemian
+Rhapsody 93.4 %, Superstition 93.0 %, Stayin' Alive 92.4 % — dense compressed
+productions — and jazz is among the BEST at 82.9 %. This entry originally said jazz was
+the worst and called it counter-intuitive; a `[^']*` regex dropped `Stayin' Alive` from an
+index-aligned label list and shifted thirteen rows. Numbers were always per-segment and
+are unaffected; every conclusion stands.)** 3 of 3
 captures, 8 of 8 tracks, 6 registers. Per `SHADER_CRAFT.md §2.0` the response is
 re-scope with Matt, not iteration — nothing was tuned to force separation (D-102 /
 FA #58).

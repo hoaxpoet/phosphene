@@ -171,20 +171,59 @@ extension VisualizerEngine {
             // in the monitor knows the band-to-bin mapping.
             let sr = rate
 
+            // BUG087.2: the audio duration this callback actually carried. `count` is
+            // total interleaved floats on BOTH paths — `mDataByteSize / sizeof(Float)`
+            // for the system tap, `frames * channelCount` for the local file — so
+            // frames = count / channels, verified at both call sites. This is the
+            // analysis frame's true `dt`; see `processAnalysisFrame`.
+            let audioDt = Self.audioDeltaTime(sampleCount: count, channels: channels, rate: rate)
+
             self?.analysisQueue.async { [weak self] in
                 self?.inputLevelMonitor.submitMagnitudes(magnitudes, sampleRate: sr)
-                self?.processAnalysisFrame(magnitudes: magnitudes)
+                self?.processAnalysisFrame(magnitudes: magnitudes, audioDeltaTime: audioDt)
             }
         }
+    }
+
+    // MARK: - Analysis Time Base (BUG087.2)
+
+    /// Audio duration carried by one `onAudioSamples` callback, in seconds.
+    ///
+    /// `sampleCount` is the total interleaved float count on both capture paths, so
+    /// `frames = sampleCount / channels` and the duration is `frames / rate`.
+    ///
+    /// **Why this replaces wall-clock as the analysis `dt`.** `processAnalysisFrame`
+    /// derived `dt` from `CFAbsoluteTimeGetCurrent()`, which is correct only while there
+    /// is exactly one analysis frame per callback. BUG087.3 slices oversized buffers so
+    /// one callback yields several frames, delivered microseconds apart — wall-clock `dt`
+    /// would collapse toward zero and `effectiveFps` would explode. That silently
+    /// corrupts every seconds-based follower the DYN.4 / DYN.5 work introduced
+    /// (`LoudnessProfile.emaAlpha(deltaTime:tau:)`, the centroid / rolloff / flux
+    /// followers) and `BandEnergyProcessor`'s `fps` — without failing a test, because
+    /// nothing asserts on `dt`. Audio-derived time is immune: N slices of a buffer report
+    /// N durations that sum to the buffer's own duration, whatever the wall clock did.
+    ///
+    /// Returns 0 when the inputs cannot yield a duration; callers fall back to wall-clock.
+    static func audioDeltaTime(sampleCount: Int, channels: UInt32, rate: Float) -> Float {
+        guard sampleCount > 0, channels > 0, rate > 0 else { return 0 }
+        let frames = sampleCount / Int(channels)
+        guard frames > 0 else { return 0 }
+        return Float(frames) / rate
     }
 
     // MARK: - Analysis Pipeline
 
     /// Run MIR analysis + mood classification on a single FFT magnitude frame.
     /// Called on the serial analysis queue.
-    func processAnalysisFrame(magnitudes: [Float]) {
+    func processAnalysisFrame(magnitudes: [Float], audioDeltaTime: Float = 0) {
         let now = CFAbsoluteTimeGetCurrent()
-        let dt = max(Float(now - lastAnalysisTime), 0.001)
+        // BUG087.2: prefer the callback's own audio duration over wall-clock. With one
+        // analysis frame per callback the two agree to within scheduling jitter, which is
+        // what the regression test asserts; they diverge the moment BUG087.3 produces
+        // several frames per callback, and only the audio-derived value stays correct.
+        // Wall-clock remains the fallback for callers that cannot supply a duration.
+        let wallDt = max(Float(now - lastAnalysisTime), 0.001)
+        let dt = audioDeltaTime > 0 ? audioDeltaTime : wallDt
         lastAnalysisTime = now
         let effectiveFps = 1.0 / dt
 

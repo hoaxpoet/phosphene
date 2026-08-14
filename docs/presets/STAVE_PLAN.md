@@ -13,7 +13,7 @@ The CHR.1 session prompt is `docs/prompts/CHR1_KICKOFF.md`, committed alongside 
 
 ---
 
-> ## ⚠ CHR.1 AMENDMENT (2026-08-11) — read before trusting §0 or CHR.2 below
+> ## ⚠ CHR.1 AMENDMENT (2026-08-11, driver resolved 2026-08-13) — read before trusting §0 or CHR.2 below
 >
 > **CHR.1 ran and its central premise did not survive measurement.** This block records
 > what changed; §0 and the CHR.2/.3/.4 bodies are left as authored, because they are the
@@ -24,7 +24,11 @@ The CHR.1 session prompt is `docs/prompts/CHR1_KICKOFF.md`, committed alongside 
 > tracks / 6 registers: **65–93 % of each trace's motion is the mix's shared loudness
 > envelope** (rotation-control null ≈22 %), and the four collapse into two groups —
 > `drums~bass` r +0.81…+0.98 and `vocals~other` r +0.80…+0.99, on every track in every
-> register. Jazz was the *worst* case (Take Five, 93 %), not the best. §0's "four separate
+> register. **(Corrected 2026-08-12: the worst cases are Bohemian Rhapsody 93.4 %,
+> Superstition 93.0 % and Stayin' Alive 92.4 % — dense compressed productions — and jazz
+> is among the BEST at 82.9 %. An earlier version of this block said jazz was the worst
+> and called that counter-intuitive; that was a track-labelling bug, not a finding.)**
+> §0's "four separate
 > voices" sentence is therefore **falsified**, and CHR.1 task 1's own stated verdict option
 > `re-scope` is the one that fired.
 >
@@ -35,14 +39,55 @@ The CHR.1 session prompt is `docs/prompts/CHR1_KICKOFF.md`, committed alongside 
 > (+0.32 → +0.91), which makes converge-and-diverge measured behaviour rather than an
 > aspiration. **The concept survives at two traces, not four.**
 >
-> **3. The driver decision is OPEN and blocks CHR.2.** Task 3c measured the preset-facing
-> per-stem features at **≈5.4 s behind the audio** while the beat grid this preset rules its
-> field with is time-aligned to ≈0.3 s. Filed as **BUG-086** and fixed in **BUG086.1**
-> (separation period 5 s → 2 s, read start derived; latency now **2.5 s**) — but at 2.5 s the
-> stem traces would still sit visibly off in-sync gridlines on an ~8 s plot. The alternative
-> is a time-aligned 6-band split of the same rhythm-vs-melodic axis (lag ≈0.3 s, `r` +0.055,
-> divergence 1.88) which separates *further* but trades instruments for registers and has no
-> converge/diverge story. **Matt's call; CHR.2 does not start until it lands.**
+> **3. The driver decision is RESOLVED — Matt, 2026-08-13: split the job.** CHR.2 is
+> unblocked.
+>
+> | layer | driver | latency | why |
+> |---|---|---|---|
+> | trace **position** | time-aligned **band** split — rhythm = `subBass+lowBass`, melodic = `midHigh+highMid+high`, each EMA-centred (FA #31) | **≈0.3 s** | marks land on the gridlines, which is the whole premise of a beat-ruled plot |
+> | trace **colour + weight** | **per-stem** — `drums+bass` vs `vocals+other` | ≈3.0 s | latency-tolerant: a hue does not need to be on the beat, so the 3 s costs nothing here |
+>
+> **What this buys and what it costs.** Marks land on the beat *and* the traces still carry
+> instrument identity — but the identity is in the **colour**, not the geometry, so "the band
+> locked together" is a weaker read than the stem-position option would have given. Measured
+> inputs: the band split reads `r` +0.055 with divergence **1.88** (above the 1.45 independence
+> null — mildly anti-correlated, i.e. a legible low-vs-high see-saw); the stem split reads
+> `r(R,M)` +0.756 with divergence 0.75 and a real converge/diverge story, but sits 3.0 s behind
+> in-time gridlines, which on an ~8 s plot is **37 % of the screen**.
+>
+> **Satisfies FA #67 by construction** — position and colour are different visual layers on
+> different primitives at different timescales, rather than two channels of the same signal.
+>
+> ⚠ **A correction that fed this decision.** An earlier version of this block argued the band
+> option was weakened because the grid steps at 10 Hz. Wrong on two counts: it is ~16 Hz since
+> BUG087.3, and stems and bands sit on the **same analysis clock**, so rate never discriminated
+> between them. **Latency was the entire difference.** BUG-086 closed the stem path at 3.0 s,
+> which is its architectural floor — not something a later increment reduces.
+>
+> > **✅ CHR.2 RAN AND GATED THIS DRIVER (2026-08-14). Half 1 passed, half 2 failed.**
+> > Position passed on its own terms — **median trace-to-beat offset 0 ms** on all four
+> > captures. Colour failed on a measurement: **at the moment a mark is drawn,
+> > `r(position, colour)` = −0.15…+0.25**, because the colour peaks against its own trace at
+> > **3.0 s**. The row above says the 3 s "costs nothing here" for a hue — **CHR.2 measured
+> > that it costs the whole channel.** Hue is also a *static* label assigned by frequency
+> > band, so it is asserted even on solo piano where neither stem group exists.
+> > **→ Matt chose option D, 2026-08-14, filed as D-216: the stem channel comes OFF the
+> > traces and onto the FIELD** (tint / backdrop / grid luminance) where 3.0 s is invisible.
+> > Traces carry band-derived, in-time information only. **Accepted consequence: no per-mark
+> > instrument identity** — so the "traces still carry instrument identity" sentence above is
+> > **retired**, and the concept sentence is now *"low against high, ruled by the beat, in a
+> > room the stems tint."* CHR.3 builds to this; see
+> > [`CHR2_LOOK_SPIKE_2026-08-14.md`](../diagnostics/CHR2_LOOK_SPIKE_2026-08-14.md).
+>
+> > **⚠ Also corrected at CHR.2 — two claims in this block do not survive.**
+> > (a) **The "legible low-vs-high see-saw" reading of divergence 1.88 is wrong**, and so is
+> > item 2's 0.75-vs-1.45. The divergence ratio inflates toward 2.0 whenever `std R ≫ std M`,
+> > and the rhythm/melodic std ratio is **4.4–17.5×**; recomputed on the traces **as drawn**
+> > it collapses onto `√(2(1−r))` and carries no information beyond `r`. What survives is
+> > **near-independence** (r −0.27…+0.27 on 13 of 15) — the property the concept wants, but
+> > not a see-saw and not converge-and-diverge. (b) CHR.1 §4's common-mode table has
+> > **shifted track labels**: worst is Bohemian Rhapsody 93.4 %, and **Take Five 82.9 % is
+> > among the easiest**, so "jazz was the worst case" is false.
 >
 > **4. What CHR.1 did NOT produce.** No `STAVE_DESIGN.md`, no `docs/VISUAL_REFERENCES/stave/`,
 > no `DECISIONS.md` entry — all correctly withheld under task 4's hard stop rather than
@@ -51,14 +96,19 @@ The CHR.1 session prompt is `docs/prompts/CHR1_KICKOFF.md`, committed alongside 
 > written register-general so it outlives whichever driver is chosen. **CHR.1 must be re-run
 > for its design-doc half** once the driver is settled.
 >
-> **5. Unverified and unchased, flagged for whoever resumes.** No live-streaming capture
-> exists in the corpus, so CHR.1 task 2's reactive-mode (`bpm 0`) fallback is **still
-> unverified** — the plan asked for one live-streaming capture and none was available.
+> **5. Unverified and unchased, flagged for whoever resumes.** *(Two corrections,
+> 2026-08-12.)* This item claimed no live-streaming capture existed — **wrong**:
+> `beat-match-test-session`, the capture most of the measurement rests on, IS a streaming
+> session (diagnostics doc §7c). The narrower real gap is a **reactive-mode** session with no
+> installed `BeatGrid`. And the `beatPhase01` split named below is now explained — **BUG-087**:
+> local-file playback analyses at 10 Hz where streaming analyses at 51 Hz, because
+> AVAudioEngine ignores the tap's `bufferSize` request and delivers 0.1 s buffers. Neither
+> behaviour is "wrong"; they are two paths.
 > `beatsPerBar` is **not stable within a track** (Pyramid Song 1, Bleed 2, Giorgio 2 *and* 3,
 > Billie Jean 4 in one segment and 3 in another), so §CHR.1's "heavier weight on downbeats"
 > cannot assume a fixed bar length. And `beatPhase01` advances on 98.7–99.0 % of frames in the
-> 2026-07-27 capture but only 13.4–16.7 % in the 2026-08 captures — one of those two
-> behaviours is wrong.
+> 2026-07-27 capture but only 13.4–16.7 % in the 2026-08 captures — **explained by BUG-087,
+> not a defect in either capture** (see the correction at the head of this item).
 >
 > **6. Why this plan was not read during CHR.1.** It was delivered **untracked into the
 > primary checkout**, while the session ran in a git worktree that never saw it, and the
@@ -212,8 +262,9 @@ header · `PhospheneEngine/Sources/Presets/PresetLoader+Preamble.swift` StemFeat
 
 > **⚠ AMENDED by the CHR.1 amendment block above.** The four-trace gate below is superseded:
 > four traces were measured and do not separate. The gate is now the **two-trace** question,
-> and **CHR.2 is blocked until Matt settles the driver** (stems at 2.5 s vs the time-aligned
-> 6-band split). Text updated in place; the "four instruments" framing is retired, not deferred.
+> and **CHR.2 is UNBLOCKED** — Matt settled the driver on 2026-08-13 (split the job: band-driven
+> position, stem-driven colour; amendment item 3). Text updated in place; the "four instruments"
+> framing is retired, not deferred.
 
 **Objective.** Answer, on the CHR.1 captures, before any material/shading work: **do two
 traces read as rhythm versus melody — and does the gap between them read as the arrangement
@@ -223,16 +274,25 @@ lesson that stills lie about the living result.
 
 **Tasks.**
 
-1. Minimal `ParticleGeometry` implementation: CPU history rings → **2** line-strip traces
-   (rhythm = `drums+bass`, melodic = `vocals+other`, or the band equivalent if Matt picks the
-   time-aligned driver), flat colour, no glow, no backdrop, no echo. Beat gridlines as plain
+1. Minimal `ParticleGeometry` implementation: CPU history rings → **2** line-strip traces,
+   **position from the band split** (rhythm = `subBass+lowBass`, melodic =
+   `midHigh+highMid+high`, each EMA-centred per FA #31 — never absolute AGC values), flat
+   colour, no glow, no backdrop, no echo. Stem-driven colour is added **second**, after the
+   flat-colour control render, so the gate can say what the colour added. Beat gridlines as plain
    verticals. **2 rings, not 4** — halves the §0 history footprint, which was already trivial.
-2. Render against all CHR.1 captures. Include **Take Five** (the worst measured case, 93 %
-   common mode) and **Giorgio by Moroder** (lowest excursion, p95−p5 ≈ 0.26–0.36, where a
-   trace-amplitude floor is needed) — a spike that only looks good on the easy captures has
-   not answered the gate.
-3. **The gate, answered in writing with rendered evidence:** do the two traces read as two
-   *voices* rather than two parallel copies of one line? Is the measured divergence — 49–96 %
+2. Render against all CHR.1 captures. Include **Bohemian Rhapsody** or **Superstition** (the
+   worst measured cases at 93.4 % / 93.0 % common mode) and **Bleed** (lowest excursion,
+   p95 0.16–0.19, where a trace-amplitude floor is needed); **Dance Yrself Clean** is the
+   opposite extreme at p95 1.05–1.23, so those two together bound the ~7× trace-gain span. A
+   spike that only looks good on the easy captures has not answered the gate. *(Corrected
+   2026-08-12 — this list previously named Take Five and Giorgio, from shifted labels.)*
+3. **The gate, answered in writing with rendered evidence.** Under the split-job driver
+   (amendment item 3) this has **two halves, and both must pass**: (i) does the *geometry* —
+   band-driven position — read as two voices rather than two parallel copies of one line, and
+   (ii) does the *stem-driven colour* legibly carry instrument identity, or is it decoration a
+   viewer cannot decode? Half (ii) is the part the split-job choice bought and the part most
+   likely to disappoint, so render it flat-coloured first as a control and then coloured, and
+   say whether the colour added a readable channel. Also: Is the measured divergence — 49–96 %
    of each trace's own motion scale — actually **visible** at trace scale, and does it read as
    the band locking together and pulling apart? Does the grid read as *the beat* rather than as
    graph paper? **Do the traces land on the gridlines** (this is where the residual driver
@@ -262,6 +322,24 @@ carried to the design doc's visual register — dotted trace luminance, echo sme
 feedback pass, sparkle-grid field, harmonic hue, downbeat-weighted grid — with routes declared
 and gates green. `certified: false` at end of session, pending M7.
 
+> **⚠ AMENDED by D-216 (Matt 2026-08-14).** Build to the CHR.2 verdict, not to the text below
+> wherever they disagree:
+> - **Traces carry band-derived, in-time information ONLY.** No per-stem channel on a trace —
+>   not hue, not weight, not brightness. That pairing is what failed gate half 2.
+> - **Stems drive the FIELD** — tint / backdrop / grid luminance — where a 3.0 s lag is
+>   invisible. This is where `drums+bass` vs `vocals+other` now lives.
+> - **The concept sentence is "low against high, ruled by the beat, in a room the stems
+>   tint."** Not instrument voices. Do not reintroduce per-mark instrument identity.
+> - **Per-trace gain normalisation is needed** — one fixed gain clips (Dance Yrself Clean).
+>   Decide the trade against absolute-amplitude comparison explicitly.
+> - **Dense grids read as graph paper** above ~150 bpm (Bleed: 22.9 lines per 8 s window).
+>   Downbeat weighting cannot assume a fixed bar — `beatsPerBar` is not stable within a track.
+> - **Bleed is a known, unfixable miss** (r +0.695, the two traces collapse). Do not spend
+>   rounds on it.
+> - Three spike defects are already solved in `StaveLookSpike.swift` — `packed_float4` vertex
+>   stride, alpha-not-additive blending, 20 Hz plot + degenerate-segment guard. Lift them.
+> - Plot on `time`, never `accumulatedAudioTime` (energy-weighted, ~12× slow, music-dependent).
+
 **Tasks (compressed — the session expands from the design doc, which is authoritative):**
 
 1. Registration per `docs/presets/NEW_PRESET_CHECKLIST.md`: sidecar with `family: "waveform"`,
@@ -269,9 +347,10 @@ and gates green. `certified: false` at end of session, pending M7.
    per §13 schema (butterchurn `source_form`, sha256 of the JSON actually read), orchestrator
    metadata hand-authored, `ParticleGeometryRegistry` case (D-097). Count 28 → 29;
    `expectedProductionPresetCount` updated.
-2. `audio_routes` manifest (QG.1/D-180) — **≥4** routes under the amended two-trace scope
-   (2 × trace amplitude, grid/downbeat, hue, backdrop mood), not the ≥6 this line originally
-   specified for four traces. `RouteCoverageTests` green on the committed fixtures, or a red
+2. `audio_routes` manifest (QG.1/D-180) — **≥4** routes under the amended two-trace scope.
+   **Per D-216 the route split is: 2 × trace amplitude (bands, fast) + grid/downbeat (fast)
+   + stem-driven field tint (slow).** Not the ≥6 this line originally specified for four
+   traces, and not a per-trace stem route. `RouteCoverageTests` green on the committed fixtures, or a red
    route filed as a defect — **never tune the floor** (QG.1/D-179).
 3. QG.5 response bands on the four trace routes — each trace's excursion band stated and
    asserted, so "trace moves but too little to see" fails a test instead of an M7.
@@ -307,9 +386,11 @@ proposing any fix).
 
 1. Matt's live M7 on real music — at least one dense mix and one sparse track (the **two-voice
    rhythm-vs-melodic** read is the concept, per the amendment block; a sparse track is where
-   it's most legible, a dense one where it's most at risk). Add a **jazz** track: Take Five
-   measured the highest common mode of the whole corpus (93 %), so it is the concept's genuine
-   worst case, which neither "dense" nor "sparse" captures.
+   it's most legible, a dense one where it's most at risk). Add a **densely-produced pop/rock**
+   track — Bohemian Rhapsody 93.4 %, Superstition 93.0 %, Stayin' Alive 92.4 % are the corpus's
+   genuine worst cases, and "dense mix" in the loose sense does not guarantee you land on one.
+   *(Corrected 2026-08-12: this asked for a jazz track on the false premise that Take Five was
+   the worst case. Jazz is among the best; it is the easy end, not the hard one.)*
 2. The D-121 side-by-side: our render next to the source's on the same track, plus **the
    two-track demonstration** (§0): source draws the same curve family on both tracks, ours
    draws different traces — that *is* the divergence rationale paragraph, with images.

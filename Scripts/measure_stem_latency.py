@@ -65,6 +65,24 @@ the floor is 0.60 now.
 ideally the same 16-track corpus that produced the pre-fix 5.4 s, so the comparison
 is like-for-like on identical material. Short captures are below the resolution of
 this measurement; the tool now says so instead of guessing.
+
+Why 3.5 and not 3.0
+-------------------
+The ceiling was 3.0 s, set from BUG086.1's "2.5 s nominal" plus slack. That nominal
+was wrong, and the streaming capture `2026-08-12T19-06-54Z` proved it:
+
+    latency = (chunkSeconds - stemReadStartSeconds) + inference
+
+`latestSeparationTimestamp` is stamped AFTER separation returns, so the chunk's newest
+sample is already one inference old when the read window starts walking it. Predicted
+2.50 + 0.531 = 3.03 s; measured 3.0 s. Inference was assumed to be a duty cost only and
+is also a latency cost.
+
+So ~3.0 s is the architectural floor at a 2 s period, not a number to tune toward, and a
+3.0 s ceiling sits exactly on it — it fails a working pipeline. 3.5 s accommodates measured
+p90 inference (868 ms → 3.37 s) while still failing the pre-fix 5.4 s decisively, which is
+the regression this gate exists to catch. **This is not floor-tuning (QG.1 / D-179): the
+gate was mis-set against a wrong model, and the model is what changed.**
 """
 import argparse
 import csv
@@ -79,7 +97,7 @@ MAX_LAG_S = 15.0
 LAG_STEP_FRAMES = 6
 WIN_MIN_FRAMES = 3600          # ≥60 s of track; shorter segments are too noisy
 EMA_S = 8.0
-TARGET_S = 3.0                 # BUG086.1 ceiling; nominal is 2.5 s
+TARGET_S = 3.5                 # see "Why 3.5 and not 3.0" below
 MIN_R = 0.60                   # see "Capture scale" below — 0.40 handed out a false PASS
 MIN_TRACK_S = 240.0            # single short tracks are below this tool's resolution
 
@@ -153,10 +171,20 @@ def track_segments(elapsed):
 
 
 def track_names(capture):
+    """Playback order from the log.
+
+    The pattern is greedy and anchored on ` duration=`, NOT `[^']*`. A title
+    containing an apostrophe — `Stayin' Alive - From "Saturday Night Fever"
+    Soundtrack` — makes `[^']*` stop mid-title, the whole match fail, and the track
+    vanish from this list. Because the list is index-aligned to segments, one
+    dropped name **shifts every label after it**: on capture
+    `2026-08-12T19-06-54Z` that silently reported Stayin' Alive's numbers under the
+    name "Superstition". Labels being wrong is worse than labels being missing.
+    """
     path = os.path.join(capture, "session.log")
     if not os.path.exists(path):
         return []
-    pattern = re.compile(r"loadForPlayback track='([^']*)' artist='([^']*)'")
+    pattern = re.compile(r"loadForPlayback track='(.*)' artist='(.*)' duration=")
     names = []
     with open(path, errors="replace") as handle:
         for line in handle:
@@ -215,10 +243,18 @@ def measure(capture):
     print()
 
     verdicts = []
-    for k, (a, b) in enumerate(track_segments(elapsed)):
-        if b - a < WIN_MIN_FRAMES:
-            continue
+    segments = track_segments(elapsed)
+    if len(names) not in (len(segments), len(segments) - 1, len(segments) - 2):
+        print(f"  ⚠ {len(segments)} segments but {len(names)} track names — labels below "
+              f"may be shifted. Check the log's loadForPlayback lines.")
+    for k, (a, b) in enumerate(segments):
         name = names[k] if k < len(names) else "?"
+        if b - a < WIN_MIN_FRAMES:
+            # Never skip silently: a dropped segment used to leave no trace, so the
+            # output looked like full coverage of a capture it had only partly read.
+            print(f"  {name[:26]:26s} SKIPPED   only {(b - a) / FPS:.0f}s "
+                  f"(needs {WIN_MIN_FRAMES / FPS:.0f}s)")
+            continue
         short = (b - a) / FPS < MIN_TRACK_S
 
         bass = column(findex, frows, "bass", a, b)
