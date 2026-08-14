@@ -5,6 +5,14 @@ Completed-increment narratives moved out of `ENGINEERING_PLAN.md` at RB.3 (2026-
 
 ## Recently Completed
 
+### Increment GT.3 — BeatBench live baseline ✅ (2026-07-30)
+
+The live-path baseline that D-205 ratifies its per-suite targets against, and that the TRK.3
+row cites. Artifacts: `docs/diagnostics/BEATBENCH_BASELINE_2026-07-30.md` and
+`BEATBENCH_LIVE_BASELINE_2026-07-30.md`. *(Added at RECON.3 — GT.3 was referenced by two
+other rows and by D-205 but had no row of its own.)*
+
+
 ### Increment FDYRETIRE.1 — Faraday retired; harness audit kept (D-204) ✅ (2026-07-27)
 
 Matt's call after the third live M7 ("looks cheap and does not sync with the music"). Roster
