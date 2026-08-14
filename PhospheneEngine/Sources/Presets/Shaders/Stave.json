@@ -17,7 +17,6 @@
   ],
   "fragment_function": "stave_field_fragment",
   "vertex_function": "fullscreen_vertex",
-  "feedback_pixel_format": "bgra8Unorm",
   "beat_source": "bass",
   "beat_zoom": 0.0,
   "beat_rot": 0.0,
@@ -70,7 +69,7 @@
       "kind": "continuous",
       "response": {
         "metric": "melodicTraceExcursion",
-        "min": 0.05
+        "min": 0.02
       }
     },
     {
@@ -79,7 +78,7 @@
       "kind": "continuous",
       "response": {
         "metric": "melodicTraceExcursion",
-        "min": 0.05
+        "min": 0.02
       }
     },
     {
@@ -88,7 +87,7 @@
       "kind": "continuous",
       "response": {
         "metric": "melodicTraceExcursion",
-        "min": 0.05
+        "min": 0.02
       }
     },
     {

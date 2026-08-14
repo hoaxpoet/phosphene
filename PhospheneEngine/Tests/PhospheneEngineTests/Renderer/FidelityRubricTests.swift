@@ -165,6 +165,17 @@ private let expectedAutomatedGate: [String: Bool] = [
                                      // heuristic cannot see it. The Filigree / Mitosis / Cytokinesis /
                                      // Cymatic Resonance / Skein / Lumen precedent exactly. L4 is
                                      // manual and awaits Matt's M7. WL.2, certified: false.
+    "Stave":                false,   // lightweight; L1 pass (silence renders the ruled field, its haze,
+                                     // its cloud and its sparkles — all audio-independent by design),
+                                     // L3 pass (0.5 ms tier2 against a 16.6 ms budget), L2 fails BY
+                                     // CONSTRUCTION for the same reason as Witchlight: every Stave
+                                     // route is consumed CPU-side in StaveTraceModel (the band EMAs,
+                                     // the stem share, the beat-wrap rule times) and reaches the GPU
+                                     // as packed vertices and a multiply colour, so the MSL-source
+                                     // heuristic cannot see any of it. The Filigree / Mitosis /
+                                     // Cymatic Resonance / Skein / Lumen / Witchlight precedent
+                                     // exactly. L4 is manual and awaits Matt's M7. CHR.3,
+                                     // certified: false.
     "Waveform":             false,   // lightweight; L2 fails — no deviation primitives in source
     // PUB.3 backfill — the 9 presets the dict silently omitted, locked at
     // their measured values (each certified preset's load-bearing gate is

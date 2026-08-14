@@ -191,6 +191,14 @@ fragment float4 stave_field_fragment(
     float blob = stave_fbm(float2(uv.x * aspect * 0.9, sky * 0.8) + float2(t * 0.004, t * 0.002));
     col += float3(0.018, 0.021, 0.032) * smoothstep(0.62, 0.95, blob);
 
+    // Tone-map rather than clamp. The sparkle layers sum a core + two cross bars + a halo and
+    // then get a layer weight, so a cell whose jitter lands under the sample point can reach
+    // ~2.9 — which clipped a channel to 255 and tripped the non-HDR white-clip acceptance
+    // gate. `1 - exp(-x)` is bounded below 1 by construction, keeps the flare cores reading as
+    // the frame's brightest element, and leaves the field's mid-tones essentially where they
+    // were (0.20 -> 0.18) rather than crushing them the way a hard clamp would.
+    col = 1.0 - exp(-col);
+
     // D-037: never black. The ground floor above already guarantees this, but the clamp makes
     // it explicit and survives any future edit to the gradient.
     col = max(col, float3(0.012, 0.014, 0.022));

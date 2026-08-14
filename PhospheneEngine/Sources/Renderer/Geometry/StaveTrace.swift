@@ -37,48 +37,13 @@ public final class StaveTrace: ParticleGeometry, @unchecked Sendable {
     /// 20 Hz × 8 s the ring is ~160 samples per trace — far inside budget at any level.
     public var activeParticleFraction: Float = 1.0
 
-    // MARK: Gains
-
-    /// **Per-trace gain is a precondition, not a tuning knob.** Melodic std is 4.4–17.5×
-    /// below rhythm across the corpus (CHR.2 §2.1); at a shared gain the melodic trace is a
-    /// flat line. Set so the corpus-median p95 excursion lands at ~0.30 NDC — measured
-    /// p95|R| ≈ 0.65, p95|M| ≈ 0.094 across 15 tracks.
-    static let rhythmGain: Float = 0.30 / 0.65
-    static let melodicGain: Float = 0.30 / 0.094
-
-    /// Soft saturation ceiling, tuned against p99 rather than 1.0 — deviation primitives
-    /// spike to ~3× on real music (FA #73). `limit · tanh(x / limit)` is linear to within
-    /// 4 % at the corpus median and compresses the 3.7× excursion span between Bleed and
-    /// Dance Yrself Clean instead of clipping it off frame (CHR.2 qualification 2).
-    /// **Decided over a running normaliser** (STAVE_DESIGN §6): a normaliser makes loud and
-    /// quiet passages look identical, and "the music got louder" is half of what a plot is for.
-    static let saturationLimit: Float = 0.85
-
-    /// The traces' band sits across the lower-middle of the frame, per reference
-    /// `01_macro_dotted_traces_on_grid.png` — hazy atmosphere above, near-black beneath.
-    static let bandCentre: Float = -0.10
-
-    // MARK: State
-
-    struct Sample {
-        var time: Float
-        var rhythm: Float
-        var melodic: Float
-    }
-
-    private(set) var samples: [Sample] = []
-    /// Times of beat-phase wraps — the vertical rules.
-    private(set) var beatTimes: [Float] = []
-
-    private var subBass = StaveBandTracker(), lowBass = StaveBandTracker()
-    private var midHigh = StaveBandTracker(), highMid = StaveBandTracker(), high = StaveBandTracker()
-    private var tintDriver = StaveFieldTintDriver()
-    private var lastBeatPhase: Float = 0
-    private var clock: Float = 0
+    /// The motion model. Exposed so harnesses and the QG.5 gate can reach it; every piece of
+    /// Stave's simulation lives there and nothing in this file re-derives it.
+    public let model: StaveTraceModel
 
     /// Exposed for the harnesses and the route-coverage evidence.
-    public var fieldTint: Float { tintDriver.tint }
-    public var ruleDensity: Float { Float(beatTimes.count) }
+    public var fieldTint: Float { model.fieldTint }
+    public var ruleDensity: Float { model.ruleDensity }
 
     private let traceBuffer: MTLBuffer
     private let ruleBuffer: MTLBuffer
@@ -102,6 +67,7 @@ public final class StaveTrace: ParticleGeometry, @unchecked Sendable {
         pixelFormat: MTLPixelFormat? = nil
     ) throws {
         self.configuration = configuration
+        self.model = StaveTraceModel(configuration: configuration)
 
         let stride = MemoryLayout<StaveVertexGPU>.stride
         guard let trace = device.makeBuffer(length: Self.sampleCapacity * 2 * stride,
@@ -146,37 +112,10 @@ public final class StaveTrace: ParticleGeometry, @unchecked Sendable {
         upload(features: features)
     }
 
-    /// Pure-CPU tick, split out so it is drivable without a command buffer (harnesses, tests).
+    /// Pure-CPU tick, drivable without a command buffer (harnesses, tests). Delegates to
+    /// `StaveTraceModel` — the simulation has exactly one home.
     public func advance(features: FeatureVector, stems: StemFeatures) {
-        // The RENDER clock, never `accumulatedAudioTime`. The latter is energy-weighted by
-        // definition, so it advances at a music-dependent rate — ~12× slower than wall-clock
-        // on the CHR.2 captures. That makes it an animation phase, not a clock, and a
-        // time-series plot needs a uniform axis or the whole window is warped.
-        clock = features.time
-
-        // POSITION — each band EMA-centred SEPARATELY and then summed, so a loud band cannot
-        // drag its partner's pivot (FA #31).
-        let rhythm = subBass.rel(features.subBass) + lowBass.rel(features.lowBass)
-        let melodic = midHigh.rel(features.midHigh) + highMid.rel(features.highMid)
-            + high.rel(features.high)
-
-        tintDriver.advance(stems: stems, deltaTime: features.deltaTime)
-
-        let interval = 1.0 / max(configuration.plotHz, 1)
-        if samples.last.map({ clock - $0.time >= interval }) ?? true {
-            samples.append(Sample(time: clock, rhythm: rhythm, melodic: melodic))
-        }
-
-        // Vertical rules from the beat-phase wrap. `beatsPerBar` is NOT stable within a track
-        // (Billie Jean reads 4 in one segment and 3 in another), so every beat gets an
-        // identical plain rule — no downbeat weighting, which would need a bar length the
-        // capture cannot reliably supply. Density is handled meter-free (§5 decision (c)).
-        if features.beatPhase01 < lastBeatPhase - 0.3 { beatTimes.append(clock) }
-        lastBeatPhase = features.beatPhase01
-
-        let cutoff = clock - configuration.window
-        samples.removeAll { $0.time < cutoff }
-        beatTimes.removeAll { $0 < cutoff }
+        model.advance(features: features, stems: stems)
     }
 
     public func render(encoder: MTLRenderCommandEncoder, features: FeatureVector) {
@@ -233,15 +172,10 @@ public final class StaveTrace: ParticleGeometry, @unchecked Sendable {
 
     // MARK: - Upload
 
-    /// `limit · tanh(x / limit)` — see `saturationLimit`.
-    private static func softSaturate(_ x: Float) -> Float {
-        saturationLimit * tanhf(x / saturationLimit)
-    }
-
     private func upload(features: FeatureVector) {
         config.aspect = features.aspectRatio > 0.05 ? features.aspectRatio : 16.0 / 9.0
-        config.time = clock
-        let tint = tintDriver.multiplyColour
+        config.time = model.clock
+        let tint = model.tintMultiplyColour
         config.tintR = tint.x
         config.tintG = tint.y
         config.tintB = tint.z
@@ -251,13 +185,13 @@ public final class StaveTrace: ParticleGeometry, @unchecked Sendable {
         // graph paper. (a) rule-on-the-bar and (b) downbeat weighting both need `beatsPerBar`,
         // which the corpus says is unreliable within a single track; this needs no bar
         // knowledge at all.
-        let density = Float(beatTimes.count)
+        let density = model.ruleDensity
         // The fade must not erase the rules — "no longer graph paper" and "the rules still
         // land on the beat" are both gate criteria. At 0.68 the Bleed render put them at the
         // edge of visibility; 0.55 leaves a legible pulse at 172 bpm without ruling the field.
         config.ruleAlpha = 1.0 - 0.55 * smoothstepf(9.0, 24.0, density)
 
-        let ordered = samples.suffix(Self.sampleCapacity)
+        let ordered = model.samples.suffix(Self.sampleCapacity)
         let count = ordered.count
         uploadedSamples = count
         guard count > 0 else { uploadedRules = 0; return }
@@ -265,7 +199,7 @@ public final class StaveTrace: ParticleGeometry, @unchecked Sendable {
         let pointer = traceBuffer.contents()
             .bindMemory(to: StaveVertexGPU.self, capacity: Self.sampleCapacity * 2)
         let window = configuration.window
-        let oldest = clock - window
+        let oldest = model.clock - window
 
         // Bead size rides the trace's OWN local slope (D3) — a derived geometric quantity,
         // not a new audio primitive, so it costs nothing against FA #67 and reads as "the
@@ -284,12 +218,19 @@ public final class StaveTrace: ParticleGeometry, @unchecked Sendable {
             let next = array[min(i + 1, count - 1)]
             let dx = max(next.time - previous.time, 1e-4)
 
-            let rhythmY = Self.softSaturate(sample.rhythm * Self.rhythmGain) + Self.bandCentre
-            let melodicY = Self.softSaturate(sample.melodic * Self.melodicGain) + Self.bandCentre
-            let rhythmSlope = abs(Self.softSaturate(next.rhythm * Self.rhythmGain)
-                                  - Self.softSaturate(previous.rhythm * Self.rhythmGain)) / dx
-            let melodicSlope = abs(Self.softSaturate(next.melodic * Self.melodicGain)
-                                   - Self.softSaturate(previous.melodic * Self.melodicGain)) / dx
+            // Drawn positions, matching StaveTraceModel's own QG.5 accounting exactly — the
+            // gain and the saturation live there, so the picture and the measured band can
+            // never drift apart.
+            func drawnRhythm(_ value: Float) -> Float {
+                StaveTraceModel.softSaturate(value * StaveTraceModel.rhythmGain)
+            }
+            func drawnMelodic(_ value: Float) -> Float {
+                StaveTraceModel.softSaturate(value * StaveTraceModel.melodicGain)
+            }
+            let rhythmY = drawnRhythm(sample.rhythm) + StaveTraceModel.bandCentre
+            let melodicY = drawnMelodic(sample.melodic) + StaveTraceModel.bandCentre
+            let rhythmSlope = abs(drawnRhythm(next.rhythm) - drawnRhythm(previous.rhythm)) / dx
+            let melodicSlope = abs(drawnMelodic(next.melodic) - drawnMelodic(previous.melodic)) / dx
 
             // BOTH traces carry the SAME cyan. Reference `03` is explicit that the traces
             // stay cyan throughout while the field's hue drifts, and giving the two traces
@@ -323,7 +264,7 @@ public final class StaveTrace: ParticleGeometry, @unchecked Sendable {
         let rulePointer = ruleBuffer.contents()
             .bindMemory(to: StaveVertexGPU.self, capacity: Self.ruleCapacity * 2)
         var written = 0
-        for time in beatTimes.suffix(Self.ruleCapacity) {
+        for time in model.beatTimes.suffix(Self.ruleCapacity) {
             let x = ((time - oldest) / window) * 2.0 - 1.0
             let violet = StaveVertexGPU(
                 x: x,
