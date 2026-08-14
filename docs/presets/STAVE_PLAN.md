@@ -322,6 +322,24 @@ carried to the design doc's visual register — dotted trace luminance, echo sme
 feedback pass, sparkle-grid field, harmonic hue, downbeat-weighted grid — with routes declared
 and gates green. `certified: false` at end of session, pending M7.
 
+> **⚠ AMENDED by D-216 (Matt 2026-08-14).** Build to the CHR.2 verdict, not to the text below
+> wherever they disagree:
+> - **Traces carry band-derived, in-time information ONLY.** No per-stem channel on a trace —
+>   not hue, not weight, not brightness. That pairing is what failed gate half 2.
+> - **Stems drive the FIELD** — tint / backdrop / grid luminance — where a 3.0 s lag is
+>   invisible. This is where `drums+bass` vs `vocals+other` now lives.
+> - **The concept sentence is "low against high, ruled by the beat, in a room the stems
+>   tint."** Not instrument voices. Do not reintroduce per-mark instrument identity.
+> - **Per-trace gain normalisation is needed** — one fixed gain clips (Dance Yrself Clean).
+>   Decide the trade against absolute-amplitude comparison explicitly.
+> - **Dense grids read as graph paper** above ~150 bpm (Bleed: 22.9 lines per 8 s window).
+>   Downbeat weighting cannot assume a fixed bar — `beatsPerBar` is not stable within a track.
+> - **Bleed is a known, unfixable miss** (r +0.695, the two traces collapse). Do not spend
+>   rounds on it.
+> - Three spike defects are already solved in `StaveLookSpike.swift` — `packed_float4` vertex
+>   stride, alpha-not-additive blending, 20 Hz plot + degenerate-segment guard. Lift them.
+> - Plot on `time`, never `accumulatedAudioTime` (energy-weighted, ~12× slow, music-dependent).
+
 **Tasks (compressed — the session expands from the design doc, which is authoritative):**
 
 1. Registration per `docs/presets/NEW_PRESET_CHECKLIST.md`: sidecar with `family: "waveform"`,
@@ -329,9 +347,10 @@ and gates green. `certified: false` at end of session, pending M7.
    per §13 schema (butterchurn `source_form`, sha256 of the JSON actually read), orchestrator
    metadata hand-authored, `ParticleGeometryRegistry` case (D-097). Count 28 → 29;
    `expectedProductionPresetCount` updated.
-2. `audio_routes` manifest (QG.1/D-180) — **≥4** routes under the amended two-trace scope
-   (2 × trace amplitude, grid/downbeat, hue, backdrop mood), not the ≥6 this line originally
-   specified for four traces. `RouteCoverageTests` green on the committed fixtures, or a red
+2. `audio_routes` manifest (QG.1/D-180) — **≥4** routes under the amended two-trace scope.
+   **Per D-216 the route split is: 2 × trace amplitude (bands, fast) + grid/downbeat (fast)
+   + stem-driven field tint (slow).** Not the ≥6 this line originally specified for four
+   traces, and not a per-trace stem route. `RouteCoverageTests` green on the committed fixtures, or a red
    route filed as a defect — **never tune the floor** (QG.1/D-179).
 3. QG.5 response bands on the four trace routes — each trace's excursion band stated and
    asserted, so "trace moves but too little to see" fails a test instead of an M7.

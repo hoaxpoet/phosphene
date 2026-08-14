@@ -272,8 +272,11 @@ oversight — curating references is CHR.1's unfinished half and belongs with CH
 | **1 — geometry** | **PASS on 3 of 4 captures.** Two band-driven traces read as two voices. Bleed is a measured, predicted miss. The grid is genuinely the beat. Two fixable qualifications (fixed gain clips; dense grids read as graph paper). The "converge and diverge" claim does not survive and should be dropped. |
 | **2 — colour** | **FAIL.** Stem-driven colour separates the traces but cannot carry instrument identity, because at 3.0 s it is uncorrelated with the geometry it is colouring, and because the hue label is assigned by frequency band rather than by what is playing. |
 
-Half 2 failing triggers **DECISION-NEEDED #1** — Matt's call, no default (see the session
-prompt §10). Material for it is in §8.
+Half 2 failing triggered **DECISION-NEEDED #1**. **✅ Matt chose option D on 2026-08-14 —
+filed as D-216.** The stem channel comes off the traces and onto the field; traces carry
+band-derived, in-time information only. Accepted consequence: the preset can no longer say
+"this trace is the drums", and the concept sentence becomes **"low against high, ruled by
+the beat, in a room the stems tint."** CHR.3 is unblocked and builds to that.
 
 ---
 
@@ -331,11 +334,12 @@ moment of drawing* (r −0.15…+0.25), which is a stronger statement than "the 
 late". If identity matters more than in-time marks, C is the only option that delivers it.
 If in-time marks matter more, A is honest and B is decoration.
 
-**A fourth option the spike surfaced, offered for completeness:** keep the split, but stop
+**D — ✅ CHOSEN (Matt 2026-08-14, D-216).** Keep the split, but stop
 drawing the stem channel *on the traces*. Put the slow stem information somewhere slow —
 a field tint or backdrop that is allowed to lag — and let the traces be purely
 band-driven and purely in-time. This removes the false pairing of a fast mark with a slow
-colour without giving up either driver.
+colour without giving up either driver. *Rationale, trade-offs and the rejected options in
+full: [`DECISIONS.md` D-216](../DECISIONS.md).*
 
 
 ---

@@ -63,7 +63,7 @@ Prepares the repo for opening to external preset contributors (Matt's go, 2026-0
 
 ## Recently Completed
 
-### Increment CHR.2 — Stave look spike: geometry passes, stem colour fails ⏸ (2026-08-14)
+### Increment CHR.2 — Stave look spike: geometry passes, stem colour fails ✅ (2026-08-14)
 
 **Throwaway motion-gated spike. Nothing registered — preset count stays 28**, no sidecar,
 no golden, no `certified` flag. Output:
@@ -104,8 +104,13 @@ until it lands.**
   0.36–0.67 against means 3.3–6.4). The FTR beat-stepped caveat does not apply — Stave
   scrolls continuously rather than stepping per beat.
 
-**Open — Matt's call, no default: DECISION-NEEDED #1**, what carries instrument identity
-now that hue cannot. Four options with trade-offs in the CHR.2 doc §8.
+**✅ RESOLVED same day — Matt chose option D, filed as D-216.** The stem channel comes off
+the traces and onto the **field** (tint / backdrop / grid luminance), where a 3.0 s lag is
+invisible; traces carry band-derived, in-time information only. **Accepted consequence: no
+per-mark instrument identity** — the concept sentence becomes *"low against high, ruled by
+the beat, in a room the stems tint."* Rejected: A (discards a working capability), B (changes
+the medium, not the lag), C (weighed and rejected 2026-08-13; CHR.2 strengthens the case
+against). **CHR.3 is unblocked**; its brief in `STAVE_PLAN.md` is amended to build to this.
 
 ### Increment BUG087.2 + BUG087.3 — analysis rate 10 → 16.4 Hz; the remedy was wrong ⏸ (2026-08-13)
 
